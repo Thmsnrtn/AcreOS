@@ -74,6 +74,8 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { RequestCountyCTA } from "@/components/maps/RequestCountyCTA";
 import { MarketHeatPanel } from "@/components/maps/MarketHeatPanel";
 import { LandCoveragePanel } from "@/components/maps/LandCoveragePanel";
+import { OfflineAreasPanel } from "@/components/maps/OfflineAreasPanel";
+import { WifiOff } from "lucide-react";
 import { ParcelFactsPanel } from "@/components/maps/ParcelFactsPanel";
 import { AreaDataPanel } from "@/components/maps/AreaDataPanel";
 import {
@@ -1481,6 +1483,30 @@ export default function MapsPage() {
               </SheetHeader>
               <div className="mt-3">
                 <LandCoveragePanel />
+              </div>
+            </SheetContent>
+          </Sheet>
+
+          {/* W5b — offline field maps: save an area for a visit with no signal. */}
+          <Sheet>
+            <SheetTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                aria-label="Save an area for offline field visits"
+                className="gap-1.5 shrink-0 min-h-11 min-w-11 sm:min-w-0 pointer-fine:sm:min-h-9 pointer-fine:sm:h-7 text-xs px-2.5"
+                data-testid="button-open-offline-maps"
+              >
+                <WifiOff className="w-4 h-4 sm:w-3.5 sm:h-3.5" aria-hidden="true" />
+                <span className="hidden sm:inline">Offline</span>
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="right" className="w-96 max-w-full overflow-y-auto">
+              <SheetHeader>
+                <SheetTitle className="text-sm">Offline field maps</SheetTitle>
+              </SheetHeader>
+              <div className="mt-3">
+                <OfflineAreasPanel properties={properties} />
               </div>
             </SheetContent>
           </Sheet>

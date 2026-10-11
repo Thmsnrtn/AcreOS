@@ -90,6 +90,8 @@ export interface ImportResult {
   totalRows: number;
   normalized: number;
   duplicates: number;
+  /** Rows skipped because the owner asked not to be contacted (W5a suppression hook). */
+  suppressed: number;
   imported: number;
   skipped: number;
   errors: number;
@@ -295,6 +297,7 @@ export async function processTaxDelinquentImport(
     totalRows: raw.length,
     normalized: normalized.length,
     duplicates: 0,
+    suppressed: 0,
     imported: 0,
     skipped: 0,
     errors: 0,
@@ -330,9 +333,17 @@ export async function processTaxDelinquentImport(
   );
 
   const toInsert: typeof leads.$inferInsert[] = [];
+  // W5a suppression hook: an owner who asked not to be contacted is not
+  // re-created by importing a list that still carries them.
+  const { loadOutreachSuppression } = await import("./leads/importSuppressionHook");
+  const isSuppressed = await loadOutreachSuppression(orgId);
 
   for (let i = 0; i < normalized.length; i++) {
     const rec = normalized[i];
+    if (isSuppressed({ address: rec.propertyAddress, zip: rec.zipCode, apn: rec.apn, state: rec.state || options.state, county: rec.county || options.county }).suppressed) {
+      result.suppressed++;
+      continue;
+    }
 
     // Dedup check on the composite (state, county, apn) tuple — IDENTITY, so
     // parcelDedupKey (strict `parcelKey`), never the loose match key.

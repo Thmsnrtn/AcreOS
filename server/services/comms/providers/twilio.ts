@@ -93,6 +93,89 @@ export async function orgHasByoTwilio(organizationId: number): Promise<boolean> 
   return (await getOrgTwilioCredentials(organizationId).catch(() => null)) != null;
 }
 
+/** The org's OWN (BYO) Twilio sending number, or null. Not a secret. */
+export async function orgByoTwilioNumber(organizationId: number): Promise<string | null> {
+  const creds = await getOrgTwilioCredentials(organizationId).catch(() => null);
+  return creds?.phoneNumber ?? null;
+}
+
+/**
+ * The org's A2P 10DLC registration as its OWN Twilio account reports it (W5b).
+ * Read-only; never registers anything. The credentials never leave this
+ * module. Resources and keys, from Twilio's API reference (read 2026-10-11):
+ *   GET messaging.twilio.com/v1/Services                     → "services"
+ *   GET …/v1/Services/{sid}/PhoneNumbers                     → "phone_numbers" (phone_number)
+ *   GET …/v1/Services/{sid}/Compliance/Usa2p                 → "compliance" (campaign_status, brand_registration_sid)
+ *   GET …/v1/a2p/BrandRegistrations/{sid}                    → status
+ * Toll-free verification is NOT read here (its list key could not be
+ * confirmed from the docs), so a toll-free number returns `readable: false`.
+ */
+export interface TwilioA2pSnapshot {
+  readable: boolean;
+  phoneNumber: string;
+  messagingServiceSid: string | null;
+  campaignSid: string | null;
+  rawCampaignStatus: string | null;
+  brandSid: string | null;
+  rawBrandStatus: string | null;
+  note: string | null;
+  errors: unknown[];
+}
+
+export async function fetchOrgTwilioA2pStatus(organizationId: number): Promise<TwilioA2pSnapshot | null> {
+  const creds = await getOrgTwilioCredentials(organizationId).catch(() => null);
+  if (!creds) return null;
+  const digits = creds.phoneNumber.replace(/\D/g, "").slice(-10);
+  const base: TwilioA2pSnapshot = {
+    readable: true,
+    phoneNumber: creds.phoneNumber,
+    messagingServiceSid: null,
+    campaignSid: null,
+    rawCampaignStatus: null,
+    brandSid: null,
+    rawBrandStatus: null,
+    note: null,
+    errors: [],
+  };
+  if (["800", "833", "844", "855", "866", "877", "888"].includes(digits.slice(0, 3))) {
+    return { ...base, readable: false, note: "toll-free number: AcreOS does not read toll-free verification from Twilio yet" };
+  }
+  const auth = Buffer.from(`${creds.accountSid}:${creds.authToken}`).toString("base64");
+  const get = async <T>(url: string): Promise<T> => {
+    const res = await fetch(url, { headers: { Authorization: `Basic ${auth}` } });
+    if (!res.ok) throw new Error(`twilio ${res.status} reading ${new URL(url).pathname}`);
+    return (await res.json()) as T;
+  };
+  interface TwService { sid: string }
+  interface TwNumber { phone_number?: string | null }
+  interface TwCampaign { sid?: string; campaign_status?: string | null; brand_registration_sid?: string | null; errors?: unknown }
+  const services = (await get<{ services?: TwService[] }>("https://messaging.twilio.com/v1/Services?PageSize=50")).services ?? [];
+  for (const svc of services) {
+    const numbers = (await get<{ phone_numbers?: TwNumber[] }>(`https://messaging.twilio.com/v1/Services/${svc.sid}/PhoneNumbers?PageSize=200`)).phone_numbers ?? [];
+    if (!numbers.some((n) => String(n.phone_number ?? "").replace(/\D/g, "").slice(-10) === digits)) continue;
+    const compliance = (await get<{ compliance?: TwCampaign[] }>(`https://messaging.twilio.com/v1/Services/${svc.sid}/Compliance/Usa2p`)).compliance ?? [];
+    const campaign = compliance[0];
+    if (!campaign) {
+      return { ...base, messagingServiceSid: svc.sid, note: "the number's Messaging Service has no A2P campaign registered" };
+    }
+    let rawBrandStatus: string | null = null;
+    if (campaign.brand_registration_sid) {
+      const brand = await get<{ status?: string | null }>(`https://messaging.twilio.com/v1/a2p/BrandRegistrations/${campaign.brand_registration_sid}`);
+      rawBrandStatus = brand.status ?? null;
+    }
+    return {
+      ...base,
+      messagingServiceSid: svc.sid,
+      campaignSid: campaign.sid ?? null,
+      rawCampaignStatus: campaign.campaign_status ?? null,
+      brandSid: campaign.brand_registration_sid ?? null,
+      rawBrandStatus,
+      errors: Array.isArray(campaign.errors) ? campaign.errors : [],
+    };
+  }
+  return { ...base, note: "the sending number is not in any Messaging Service sender pool, so no A2P campaign covers it" };
+}
+
 /**
  * Resolve effective Twilio creds: BYOK wins, falls back to platform env.
  */

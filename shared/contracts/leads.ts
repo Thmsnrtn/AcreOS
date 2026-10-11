@@ -26,7 +26,17 @@ import { stripServerOwnedFields } from "./serverOwnedFields";
  * and the STORED generated `phoneNormalized` (migration 0051), which Postgres
  * refuses to accept an explicit value for.
  */
-const LEAD_SERVER_OWNED_EXTRAS = ["lastScoreAt", "phoneNormalized"] as const;
+const LEAD_SERVER_OWNED_EXTRAS = [
+  "lastScoreAt",
+  "phoneNormalized",
+  // W5b: the outreach language has ONE writer (PATCH
+  // /api/leads/:id/outreach-language, which records who chose it). The
+  // passthrough below would otherwise carry a caller's language — from any
+  // source, including a surname guess — straight into the lead row.
+  "outreachLanguage",
+  "outreachLanguageSource",
+  "outreachLanguageSetAt",
+] as const;
 
 /** What the create handler receives: the lead fields plus transport extras. */
 export type LeadCreateBody = Omit<InsertLeadInput, "deletedAt" | "deletedBy"> & {

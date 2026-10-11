@@ -1,4 +1,5 @@
 import type { Express } from "express";
+import { isOutreachLanguage, OUTREACH_LANGUAGES } from "@shared/outreach/outreachLanguage";
 import { z } from "zod";
 import crypto from "crypto";
 import {
@@ -99,6 +100,12 @@ export function registerCampaignRoutes(app: Express): void {
       const body: Record<string, unknown> = { ...req.body };
       for (const key of ["budget", "scheduledDate", "completedDate"]) {
         if (body[key] === "") body[key] = null;
+      }
+      // W5b: the campaign's language is the customer's choice and one of the
+      // languages AcreOS ships checks for (shared/outreach/outreachLanguage.ts).
+      if (body.language === "" || body.language === undefined) body.language = null;
+      if (body.language !== null && !isOutreachLanguage(body.language)) {
+        return Errors.badRequest(res, `language must be one of ${OUTREACH_LANGUAGES.join(", ")}`);
       }
       const input = insertCampaignSchema.parse({
         ...body,
@@ -725,6 +732,9 @@ export function registerCampaignRoutes(app: Express): void {
   api.put("/api/campaigns/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const validated = updateCampaignSchema.parse(req.body);
+      if (validated.language != null && !isOutreachLanguage(validated.language)) {
+        return Errors.badRequest(res, `language must be one of ${OUTREACH_LANGUAGES.join(", ")}`);
+      }
       // Tenant-scoped: updateCampaign's organizationId parameter is optional,
       // and omitting it here let a caller edit any organization's campaign by
       // guessing its id (2026-09-04).

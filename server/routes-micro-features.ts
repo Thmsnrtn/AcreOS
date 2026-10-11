@@ -8,6 +8,8 @@
  * - Priority action
  */
 
+import { DIRECT_MAIL_TEMPLATES } from "@shared/outreach/templates";
+import { isOutreachLanguage } from "@shared/outreach/outreachLanguage";
 import type { Express } from "express";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
@@ -375,32 +377,13 @@ export function registerMicroFeatureRoutes(app: Express): void {
   // ─── STR-014: /api/direct-mail/templates ───────────────────────────
   // Minimal stock template library so the mail-campaign journey can pick
   // a template instead of hitting a 404 at step 4.
-  app.get("/api/direct-mail/templates", isAuthenticated, getOrCreateOrg, async (_req, res) => {
-    res.json({
-      templates: [
-        {
-          id: "postcard_cash_offer",
-          name: "Postcard — Cash Offer",
-          type: "postcard",
-          description: "Bright, direct, highest-response format for first-touch outreach.",
-          body: "Hi {owner_name},\nWe're making cash offers on land in {county} county. If {apn} is something you'd consider parting with, reply with your number and we'll send a no-obligation offer within 48 hours.\n— {from_name}",
-        },
-        {
-          id: "yellow_letter_personal",
-          name: "Yellow Letter — Personal Handwritten",
-          type: "letter",
-          description: "Higher-converting but slower. Simulated handwriting, personal tone.",
-          body: "Hi {owner_name},\nMy name is {from_name} and I buy land in {county} directly from owners. I'd love to make you an offer on {apn}. Call or text me anytime at {from_phone}. No pressure — just a conversation.",
-        },
-        {
-          id: "blind_offer_letter",
-          name: "Blind Offer — Printed Letter",
-          type: "letter",
-          description: "Dollar amount on the envelope. Lower response rate but pre-qualifies motivated sellers.",
-          body: "Re: {apn} — {county}, {state}\n\nWe are prepared to purchase this parcel for {offer_amount} cash, closing within 21 days. This offer is valid for 30 days. Reply to accept or counter.\n\n— {from_name}, {from_company}",
-        },
-      ],
-    });
+  // W5b: the library lives in shared/outreach/templates.ts, in English and
+  // Spanish, so the ethical-outreach test reads the same copy this serves.
+  // `?language=es` is the CUSTOMER's choice of campaign language — nothing
+  // about the audience picks it.
+  app.get("/api/direct-mail/templates", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const language = isOutreachLanguage(req.query.language) ? req.query.language : "en";
+    res.json({ language, templates: DIRECT_MAIL_TEMPLATES[language] });
   });
 
   // ─── STR-017: /api/fema/flood-zone ─────────────────────────────────

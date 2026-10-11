@@ -49,6 +49,8 @@ export interface QuoteResponse {
   heirsPropertyWarning: string | null;
   /** Ethical-outreach findings on the copy: "refuse" ones block the send. */
   outreachCheck: Array<{ rule: string; severity: "refuse" | "warn"; match: string; why: string }>;
+  /** Owners who asked for (or were set to) a different language than this copy. */
+  languageMismatch?: { copyLanguage: "en" | "es"; count: number; leadIds: number[] } | null;
 }
 
 export interface QueueResponse {
@@ -124,6 +126,8 @@ interface QuoteInput {
   speed: MailSpeed;
   /** Part of what the investor confirms (the quote's digest covers it). */
   copy?: string;
+  /** The language the customer wrote the copy in — their choice, never inferred. */
+  language?: "en" | "es";
 }
 
 export function useMailQuote(input: QuoteInput | null) {

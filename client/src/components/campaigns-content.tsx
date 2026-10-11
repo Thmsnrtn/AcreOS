@@ -8,6 +8,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertCampaignSchema } from "@shared/forms/campaign";
+import { campaignTemplatesFor } from "@shared/outreach/templates";
+import { OUTREACH_LANGUAGES, OUTREACH_LANGUAGE_LABELS, isOutreachLanguage, type OutreachLanguage } from "@shared/outreach/outreachLanguage";
 import type { Campaign, CampaignOptimization } from "@shared/schema";
 import { z } from "zod";
 import { CampaignAnalytics } from "@/components/campaign-analytics";
@@ -58,151 +60,9 @@ const pieceTypes = [
   { value: 'letter_1_page', label: 'Letter (1 page)', cost: 1.25 },
 ] as const;
 
-const campaignTemplates = {
-  direct_mail: [
-    {
-      id: 'dm_neutral',
-      name: 'Neutral Offer',
-      description: 'Professional inquiry without stating a specific price',
-      subject: 'Interested in Your Property',
-      content: `Dear {{firstName}} {{lastName}},
-
-My name is [Your Name] and I am a land investor interested in purchasing property in {{county}} County, {{state}}.
-
-I recently came across your parcel (APN: {{apn}}) and wanted to reach out to see if you might be interested in selling.
-
-I purchase land for cash and can close quickly with no fees or commissions on your end. If you're open to discussing a sale, please give me a call or text at [Your Phone] or email me at [Your Email].
-
-I look forward to hearing from you.
-
-Best regards,
-[Your Name]
-[Your Company]`,
-    },
-    {
-      id: 'dm_blind',
-      name: 'Blind Offer',
-      description: 'Specific cash offer without revealing how you found them',
-      subject: 'Cash Offer for Your {{county}} County Land',
-      content: `Dear {{firstName}} {{lastName}},
-
-I am writing to make you a cash offer of \${{offerAmount}} for your property located in {{county}} County, {{state}} (APN: {{apn}}).
-
-This is a no-obligation offer. If you accept:
-- I pay all closing costs
-- No realtor commissions
-- Close in as little as 14 days
-- Payment by cashier's check or wire transfer
-
-If you're interested, simply sign the enclosed Purchase Agreement and return it in the prepaid envelope provided.
-
-Questions? Call me directly at [Your Phone].
-
-Sincerely,
-[Your Name]
-[Your Company]`,
-    },
-    {
-      id: 'dm_followup',
-      name: 'Follow-Up Mailer',
-      description: 'Second touch for non-responders',
-      subject: 'Second Notice: Offer for Your Land',
-      content: `Dear {{firstName}} {{lastName}},
-
-I recently sent you a letter expressing my interest in purchasing your property in {{county}} County, {{state}}.
-
-I wanted to follow up in case my first letter didn't reach you or got lost in the mail. My offer still stands, and I remain very interested in your parcel.
-
-If you've been thinking about selling, I'd love to chat. Even if you're not ready to sell right now, feel free to reach out - I'm always happy to answer questions.
-
-Call or text: [Your Phone]
-Email: [Your Email]
-
-Best regards,
-[Your Name]`,
-    },
-  ],
-  email: [
-    {
-      id: 'email_neutral',
-      name: 'Neutral Inquiry',
-      description: 'Professional email inquiry about selling',
-      subject: 'Quick Question About Your {{county}} County Property',
-      content: `Hi {{firstName}},
-
-I came across your property in {{county}} County and wanted to reach out to see if you might be interested in selling.
-
-I'm a land investor and I purchase properties for cash with quick, hassle-free closings.
-
-Would you be open to a brief conversation? I'd be happy to answer any questions you might have.
-
-Best,
-[Your Name]
-[Your Phone]`,
-    },
-    {
-      id: 'email_blind',
-      name: 'Blind Offer Email',
-      description: 'Direct cash offer via email',
-      subject: 'Cash Offer: $' + '{{offerAmount}} for Your Land',
-      content: `Hi {{firstName}},
-
-I'd like to make you a cash offer of \${{offerAmount}} for your property in {{county}} County, {{state}}.
-
-Here's what I offer:
-- All cash, no financing contingencies
-- I cover closing costs
-- Close in 2-3 weeks
-- No realtor fees
-
-If this interests you, just reply to this email or call me at [Your Phone].
-
-No pressure either way - just let me know!
-
-[Your Name]
-[Your Company]`,
-    },
-    {
-      id: 'email_nurture',
-      name: 'Nurture Sequence',
-      description: 'Relationship-building email for warm leads',
-      subject: 'Checking In - {{county}} County Property',
-      content: `Hi {{firstName}},
-
-I wanted to check in and see how things are going. I know selling land is a big decision, and I'm here whenever you're ready to talk.
-
-In the meantime, if you have any questions about the process, property values in your area, or anything else - feel free to reach out. I'm happy to help with no obligation.
-
-Have a great week!
-
-[Your Name]
-[Your Phone]`,
-    },
-  ],
-  sms: [
-    {
-      id: 'sms_neutral',
-      name: 'Neutral Text',
-      description: 'Simple inquiry text message',
-      subject: '',
-      content: `Hi {{firstName}}, this is [Your Name]. I'm interested in buying land in {{county}} County and came across your property. Would you consider selling? No pressure - just reply YES if you'd like to chat.`,
-    },
-    {
-      id: 'sms_blind',
-      name: 'Blind Offer Text',
-      description: 'Direct offer via text',
-      subject: '',
-      content: `Hi {{firstName}}, I'd like to offer \${{offerAmount}} cash for your {{county}} County property. I pay all closing costs & can close in 2 weeks. Interested? Reply YES or call [Your Phone].`,
-    },
-    {
-      id: 'sms_followup',
-      name: 'Follow-Up Text',
-      description: 'Quick follow-up for non-responders',
-      subject: '',
-      content: `Hi {{firstName}}, just following up on my offer for your {{county}} County land. Still interested in selling? Let me know - [Your Name]`,
-    },
-  ],
-} as const;
+// Stock templates live in ONE registry (shared/outreach/templates.ts), in
+// English and Spanish, so the ethical-outreach test reads the exact copy this
+// picker offers. The language is the CUSTOMER's choice for the campaign.
 
 // ─── Sparkline: 7-day response trend ─────────────────────────────────────────
 
@@ -1330,8 +1190,10 @@ function CampaignForm({ onSuccess }: { onSuccess: () => void }) {
     }
   });
 
-  const campaignType = form.watch("type") as keyof typeof campaignTemplates;
-  const availableTemplates = campaignTemplates[campaignType] || [];
+  const campaignType = form.watch("type");
+  const watchedLanguage = form.watch("language");
+  const campaignLanguage: OutreachLanguage = isOutreachLanguage(watchedLanguage) ? watchedLanguage : "en";
+  const availableTemplates = campaignTemplatesFor(campaignLanguage, campaignType);
 
   const handleTemplateSelect = (templateId: string) => {
     setSelectedTemplate(templateId);
@@ -1434,6 +1296,31 @@ function CampaignForm({ onSuccess }: { onSuccess: () => void }) {
             For your planning only. Campaigns are not sent automatically on this date — send it when you're ready.
           </p>
         </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="campaign-language-trigger">Language of this campaign</Label>
+        <Select
+          value={campaignLanguage}
+          onValueChange={(val) => {
+            if (!isOutreachLanguage(val)) return;
+            form.setValue("language", val);
+            setSelectedTemplate("");
+          }}
+        >
+          <SelectTrigger id="campaign-language-trigger" aria-describedby="campaign-language-help" data-testid="select-campaign-language">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {OUTREACH_LANGUAGES.map((l) => (
+              <SelectItem key={l} value={l}>{OUTREACH_LANGUAGE_LABELS[l]}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <p id="campaign-language-help" className="text-xs text-muted-foreground">
+          You choose the language. AcreOS never guesses it from an owner's name or where they live.
+          An owner who asked for a language keeps it on their lead.
+        </p>
       </div>
 
       <div className="space-y-2">

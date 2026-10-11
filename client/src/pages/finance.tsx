@@ -1,4 +1,5 @@
 import { PageShell } from "@/components/page-shell";
+import { CustomerOutcomeCard } from "@/components/finance/CustomerOutcomeCard";
 import { useNotes, useCreateNote, useDeleteNote } from "@/hooks/use-notes";
 import { usePayments, useRecordPayment } from "@/hooks/use-payments";
 import { useLeads } from "@/hooks/use-leads";
@@ -312,6 +313,10 @@ export default function FinancePage({ embedded = false }: { embedded?: boolean }
               the hero is the entry point and the area chart is
               suppressed in favor of the persona-shaped representation. */}
           <PersonaFinanceHero notes={enrichedNotes} />
+
+          {/* W5b — deals closed and realised profit, from closed-deal records
+              only; refuses the profit figure when a cost basis is missing. */}
+          <CustomerOutcomeCard />
 
           {/* Portfolio Cash Flow Chart — kept for the default
               land_investor persona only. Note-investor sees the

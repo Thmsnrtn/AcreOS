@@ -1495,6 +1495,9 @@ export function registerLeadRoutes(app: Express): void {
   });
   const csvImportBodySchema = z.object({
     rows: z.array(csvImportRowSchema).min(1).max(CSV_IMPORT_MAX_ROWS_PER_REQUEST),
+    // W5b: the reversible-import batch this request belongs to (POST
+    // /api/lead-imports/batches). Must be this org's and not undone.
+    importBatchId: z.number().int().positive().optional(),
   });
   api.post(
     "/api/leads/csv-import",
@@ -1528,7 +1531,17 @@ export function registerLeadRoutes(app: Express): void {
             })),
           );
         }
-        const { rows } = parsed.data;
+        const { rows, importBatchId } = parsed.data;
+        if (importBatchId !== undefined) {
+          const { getOpenImportBatch } = await import("./services/leads/importBatches");
+          const batch = await getOpenImportBatch(org.id, importBatchId);
+          if (!batch) return Errors.notFound(res, "Import batch");
+        }
+        // W5a suppression hook — loaded once for the request, every row tested.
+        const { loadOutreachSuppression } = await import("./services/leads/importSuppressionHook");
+        const isSuppressed = await loadOutreachSuppression(org.id);
+        const createdLeadIds: number[] = [];
+        let skippedSuppressed = 0;
 
         // 1) Collect APNs for dedupe lookup.
         const incomingApns = Array.from(
@@ -1621,6 +1634,19 @@ export function registerLeadRoutes(app: Express): void {
             seenApnInFile.add(row.state, row.county, apn);
           }
 
+          // Suppression (W5a hook): an owner who asked not to be contacted
+          // is not re-created by importing a list that still carries them.
+          const suppression = isSuppressed({
+            phone: row.phone,
+            email: row.email,
+            address: row.address,
+            zip: row.zip,
+          });
+          if (suppression.suppressed) {
+            skippedSuppressed++;
+            continue;
+          }
+
           try {
             // `.returning()` (added Wave B) — we need the persisted row to
             // emit lead.created with a real entity id. Without it the
@@ -1647,6 +1673,7 @@ export function registerLeadRoutes(app: Express): void {
               ...(parseDncFlag(row.doNotContact) ? { doNotContact: true, optOutDate: clock.now(), optOutReason: "import_dnc_flag" } : {}),
             }).returning();
             imported++;
+            createdLeadIds.push(insertedLead.id);
             // One event per imported lead. See the volume note on
             // importLeads() in services/importExport.ts — the engine queues
             // these and drains them serially off the request path.
@@ -1660,6 +1687,16 @@ export function registerLeadRoutes(app: Express): void {
           }
         }
 
+        if (importBatchId !== undefined) {
+          const { recordImportIntoBatch } = await import("./services/leads/importBatches");
+          await recordImportIntoBatch(org.id, importBatchId, {
+            leadIds: createdLeadIds,
+            imported,
+            skipped: skippedExisting + skippedInvalid + skippedDuplicateInFile,
+            suppressed: skippedSuppressed,
+          });
+        }
+
         logger.info("CSV import completed", {
           orgId: org.id,
           total: rows.length,
@@ -1667,6 +1704,7 @@ export function registerLeadRoutes(app: Express): void {
           skippedExisting,
           skippedInvalid,
           skippedDuplicateInFile,
+          skippedSuppressed,
         });
 
         res.json({
@@ -1674,6 +1712,8 @@ export function registerLeadRoutes(app: Express): void {
           skippedExisting,
           skippedInvalid,
           skippedDuplicateInFile,
+          skippedSuppressed,
+          importBatchId: importBatchId ?? null,
           errors: errors.slice(0, 50), // cap to keep payload bounded
         });
       } catch (err) {
@@ -1713,7 +1753,7 @@ export function registerLeadRoutes(app: Express): void {
         }
       }
 
-      const results = { successCount: 0, errorCount: 0, duplicatesSkipped: 0, errors: [] as any[] };
+      const results = { successCount: 0, errorCount: 0, duplicatesSkipped: 0, suppressedSkipped: 0, errors: [] as any[] };
 
       // Parcel identity (DEFECT-0153). This path wrote the parcel id and the
       // county only into notes and tags, and deduped nothing: re-importing a
@@ -1791,6 +1831,18 @@ export function registerLeadRoutes(app: Express): void {
             row: i + 1,
             error: err instanceof Error ? err.message : "Unknown error",
           });
+        }
+      }
+
+      // W5a suppression hook: an owner who asked not to be contacted is not
+      // re-created by importing a list that still carries them.
+      const { loadOutreachSuppression } = await import("./services/leads/importSuppressionHook");
+      const isSuppressed = await loadOutreachSuppression(org.id);
+      for (let i = validLeads.length - 1; i >= 0; i--) {
+        const d = validLeads[i].data;
+        if (isSuppressed({ address: d.address, zip: d.zip, apn: d.apn, state: d.state, county: d.county }).suppressed) {
+          validLeads.splice(i, 1);
+          results.suppressedSkipped++;
         }
       }
 

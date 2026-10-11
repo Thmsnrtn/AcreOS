@@ -18,6 +18,14 @@
  *   4. On submit we POST /api/leads/csv-import which dedupes against
  *      existing leads.apn for the org and within the upload itself.
  *
+ * W5b — one-click migration: an .xlsx is read on the server
+ * (POST /api/lead-imports/parse-spreadsheet); a VERIFIED export layout
+ * (shared/leads/importFormats.ts — Regrid, AcreOS) is recognised and mapped in
+ * one click, and anything else gets this guided mapper with the reason no
+ * preset exists. Every import is a batch (POST /api/lead-imports/batches) the
+ * customer can undo; rows matching an owner who opted out are skipped
+ * (isSuppressedForOutreach).
+ *
  * Intentionally NOT a replacement for the legacy /api/leads/import path
  * (which uses fixed headers). That dialog still lives in /leads top-bar
  * for power users who already format their CSVs to spec.
@@ -53,6 +61,7 @@ import { Upload, AlertCircle, CheckCircle2 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useMutation } from "@tanstack/react-query";
+import { detectImportFormat, UNVERIFIED_SOURCES, type ImportFormatPreset } from "@shared/leads/importFormats";
 import {
   CSV_IMPORT_MAX_ROWS_PER_REQUEST,
   CSV_IMPORT_TARGET_FIELDS,
@@ -81,7 +90,23 @@ interface ImportResult {
   skippedExisting: number;
   skippedInvalid: number;
   skippedDuplicateInFile: number;
+  skippedSuppressed?: number;
+  importBatchId?: number | null;
   errors: Array<{ row: number; message: string }>;
+}
+
+interface UndoResult {
+  removed: number;
+  kept: Array<{ leadId: number; reason: string }>;
+}
+
+const XLSX_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+async function fileToBase64(file: File): Promise<string> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
 }
 
 export function CsvImportSheet({ open, onOpenChange, onImported }: CsvImportSheetProps) {
@@ -91,6 +116,9 @@ export function CsvImportSheet({ open, onOpenChange, onImported }: CsvImportShee
   const [mapping, setMapping] = useState<Record<string, TargetFieldId>>({});
   const [fileName, setFileName] = useState<string | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
+  const [preset, setPreset] = useState<ImportFormatPreset | null>(null);
+  const [undo, setUndo] = useState<UndoResult | null>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
 
   const reset = () => {
     setHeaders([]);
@@ -98,18 +126,46 @@ export function CsvImportSheet({ open, onOpenChange, onImported }: CsvImportShee
     setMapping({});
     setFileName(null);
     setResult(null);
+    setPreset(null);
+    setUndo(null);
+    setFileError(null);
   };
 
   const onFile = async (file: File) => {
     setFileName(file.name);
     setResult(null);
-    const text = await file.text();
-    const { headers: h, rows: r } = parseCsv(text);
+    setUndo(null);
+    setFileError(null);
+    let h: string[];
+    let r: string[][];
+    if (/\.xlsx$/i.test(file.name) || file.type === XLSX_TYPE) {
+      try {
+        const res = await apiRequest("POST", "/api/lead-imports/parse-spreadsheet", {
+          fileName: file.name,
+          base64: await fileToBase64(file),
+        });
+        ({ headers: h, rows: r } = (await res.json()) as { headers: string[]; rows: string[][] });
+      } catch (err: any) {
+        setFileError(err?.message ?? "This spreadsheet couldn't be read.");
+        return;
+      }
+    } else {
+      ({ headers: h, rows: r } = parseCsv(await file.text()));
+    }
     setHeaders(h);
     setRows(r);
-    // Pre-fill mapping from the whole header row (a bare "City" is the
-    // property's when the file also has a "Mailing City").
-    setMapping(suggestMapping(h));
+    // A verified export layout maps in one click; columns it doesn't name,
+    // and every file from an unverified tool, fall back to the header
+    // heuristic (a bare "City" is the property's when the file also has a
+    // "Mailing City") — and every mapping stays editable below.
+    const heuristic = suggestMapping(h);
+    const detected = detectImportFormat(h);
+    setPreset(detected?.preset ?? null);
+    setMapping(
+      detected
+        ? Object.fromEntries(h.map((col) => [col, detected.mapping[col] ?? heuristic[col] ?? "skip"])) as Record<string, TargetFieldId>
+        : heuristic,
+    );
   };
 
   // Compute mapped preview + counts.
@@ -153,7 +209,15 @@ export function CsvImportSheet({ open, onOpenChange, onImported }: CsvImportShee
   // go in, so the customer knows where to resume.
   const importMut = useMutation({
     mutationFn: async () => {
-      const total: ImportResult = { imported: 0, skippedExisting: 0, skippedInvalid: 0, skippedDuplicateInFile: 0, errors: [] };
+      const total: ImportResult = { imported: 0, skippedExisting: 0, skippedInvalid: 0, skippedDuplicateInFile: 0, skippedSuppressed: 0, errors: [] };
+      // One undoable batch for the whole file.
+      const batchRes = await apiRequest("POST", "/api/lead-imports/batches", {
+        sourceFormat: preset?.id ?? "mapped",
+        fileName,
+        rowCount: mappedRows.length,
+      });
+      const { id: importBatchId } = (await batchRes.json()) as { id: number };
+      total.importBatchId = importBatchId;
       const batches = chunkCsvImportRows(mappedRows);
       for (const batch of batches) {
         const first = batch.offset + 1;
@@ -161,7 +225,7 @@ export function CsvImportSheet({ open, onOpenChange, onImported }: CsvImportShee
         if (batches.length > 1) setProgress(`Importing rows ${first.toLocaleString()}–${last.toLocaleString()} of ${mappedRows.length.toLocaleString()}…`);
         let data: ImportResult;
         try {
-          const res = await apiRequest("POST", "/api/leads/csv-import", { rows: batch.rows });
+          const res = await apiRequest("POST", "/api/leads/csv-import", { rows: batch.rows, importBatchId });
           data = (await res.json()) as ImportResult;
         } catch (err: any) {
           const done = batch.offset > 0
@@ -176,6 +240,7 @@ export function CsvImportSheet({ open, onOpenChange, onImported }: CsvImportShee
         total.skippedExisting += data.skippedExisting;
         total.skippedInvalid += data.skippedInvalid;
         total.skippedDuplicateInFile += data.skippedDuplicateInFile;
+        total.skippedSuppressed = (total.skippedSuppressed ?? 0) + (data.skippedSuppressed ?? 0);
         total.errors.push(...data.errors.map((e) => ({ ...e, row: e.row + batch.offset })));
       }
       return total;
@@ -199,6 +264,16 @@ export function CsvImportSheet({ open, onOpenChange, onImported }: CsvImportShee
         variant: "destructive",
       });
     },
+  });
+
+  const undoMut = useMutation({
+    mutationFn: async (batchId: number) => (await (await apiRequest("POST", `/api/lead-imports/batches/${batchId}/undo`, {})).json()) as UndoResult,
+    onSuccess: (data) => {
+      setUndo(data);
+      queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
+      toast({ title: "Import undone", description: `${data.removed} lead${data.removed === 1 ? "" : "s"} removed${data.kept.length ? ` · ${data.kept.length} kept` : ""}` });
+    },
+    onError: (err: any) => toast({ title: "Couldn't undo the import", description: err?.message ?? "Try again.", variant: "destructive" }),
   });
 
   return (
@@ -226,12 +301,12 @@ export function CsvImportSheet({ open, onOpenChange, onImported }: CsvImportShee
               className="cursor-pointer block min-h-11 focus-within:outline-none focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 rounded"
             >
               <span className="text-sm text-muted-foreground">
-                Click to select or drop a CSV here
+                Click to select a CSV or Excel (.xlsx) file
               </span>
               <Input
                 id="csv-importer-file"
                 type="file"
-                accept=".csv,text/csv"
+                accept={`.csv,text/csv,.xlsx,${XLSX_TYPE}`}
                 className="sr-only"
                 onChange={(e) => {
                   const f = e.target.files?.[0];
@@ -243,6 +318,9 @@ export function CsvImportSheet({ open, onOpenChange, onImported }: CsvImportShee
             <p className="text-xs text-muted-foreground mt-2">
               Headers stay yours — we only map them; we don't rewrite the file.
             </p>
+            {fileError && (
+              <p className="text-sm text-acr-neg mt-3" role="alert" data-testid="csv-importer-file-error">{fileError}</p>
+            )}
           </div>
         )}
 
@@ -265,6 +343,26 @@ export function CsvImportSheet({ open, onOpenChange, onImported }: CsvImportShee
                   </span>
                 )}
               </div>
+            )}
+
+            {/* Source format: a verified preset, or why there isn't one */}
+            {preset ? (
+              <div className="rounded-md border p-3 text-sm" data-testid="csv-importer-preset">
+                <CheckCircle2 className="inline w-4 h-4 text-acr-pos mr-1" aria-hidden />
+                Recognised: <span className="font-medium">{preset.label}</span> — columns mapped from its published layout
+                ({preset.source}). Check them below.
+              </div>
+            ) : (
+              <details className="rounded-md border p-3 text-sm" data-testid="csv-importer-no-preset">
+                <summary className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">
+                  No verified layout matched — map the columns below. Why no preset for PropStream, LandInsights, DataTree…?
+                </summary>
+                <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
+                  {UNVERIFIED_SOURCES.map((u) => (
+                    <li key={u.tool}><span className="font-medium text-foreground">{u.tool}:</span> {u.why}.</li>
+                  ))}
+                </ul>
+              </details>
             )}
 
             {/* Mapping grid */}
@@ -394,7 +492,35 @@ export function CsvImportSheet({ open, onOpenChange, onImported }: CsvImportShee
                 label="Duplicates in file"
                 value={result.skippedDuplicateInFile}
               />
+              <Stat label="Skipped (owner opted out)" value={result.skippedSuppressed ?? 0} />
             </div>
+            {result.importBatchId && result.imported > 0 && !undo && (
+              <div className="rounded-md border p-3 text-sm flex items-center justify-between gap-3 flex-wrap" data-testid="csv-importer-undo">
+                <span>Imported the wrong file? Undo removes the leads this import created that haven&apos;t been worked yet.</span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="min-h-11 pointer-fine:sm:min-h-9"
+                  onClick={() => undoMut.mutate(result.importBatchId!)}
+                  disabled={undoMut.isPending}
+                  data-testid="csv-importer-undo-button"
+                >
+                  Undo this import
+                </Button>
+              </div>
+            )}
+            {undo && (
+              <div className="rounded-md border p-3 text-sm" role="status" data-testid="csv-importer-undo-result">
+                Removed {undo.removed} lead{undo.removed === 1 ? "" : "s"}.
+                {undo.kept.length > 0 && (
+                  <ul className="mt-1 text-xs text-muted-foreground list-disc pl-4">
+                    {undo.kept.slice(0, 10).map((k, i) => (
+                      <li key={i}>{k.leadId ? `Lead #${k.leadId} kept: ${k.reason}` : `Kept: ${k.reason}`}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
             {result.errors.length > 0 && (
               <details className="text-sm">
                 <summary className="cursor-pointer text-muted-foreground">

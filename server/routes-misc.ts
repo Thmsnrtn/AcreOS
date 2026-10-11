@@ -266,7 +266,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
             reason: `SMS send failed: ${result.error}`,
           });
         }
-        if ((result.error ?? "").startsWith("TCPA gate:")) {
+        if (smsServiceModule.isSmsGateRefusal(result.error)) {
           return Errors.forbidden(res, result.error);
         }
         return Errors.badRequest(res, String(result.error ?? "Bad request"));

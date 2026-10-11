@@ -158,6 +158,8 @@ export const insertCampaignSchema = z.object({
   subject: pgText().nullable().optional(),
   content: pgText().nullable().optional(),
   templateId: pgText().nullable().optional(),
+  // W5b: the language the customer wrote the campaign in (en | es; null = English).
+  language: pgText().nullable().optional(),
   // text("media_urls").array() — MMS attachments, public https URLs Twilio
   // fetches. Array of STRINGS: `[1]` is rejected, `[]` is accepted.
   mediaUrls: pgTextArray().nullable().optional(),

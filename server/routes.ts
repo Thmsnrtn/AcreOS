@@ -257,6 +257,8 @@ import { registerAutopilotRoutes } from "./routes-autopilot";
 import { registerSoleneChatRoutes } from "./routes-solene-chat";
 import { registerFounderMoneyRoutes } from "./routes-founder-money";
 import { registerFounderForecastingRoutes } from "./routes-founder-forecasting";
+import { registerFounderCustomerOutcomeRoutes } from "./routes-founder-customer-outcomes";
+import { registerGrowthRoutes } from "./routes-growth";
 import { registerAgentClaimsRoutes } from "./routes-agent-claims";
 import { registerDispatchRoutes } from "./routes-dispatch";
 import { registerErrorBoundaryRoutes } from "./routes-error-boundary";
@@ -2606,6 +2608,7 @@ export async function registerRoutes(
   // silently 404'd into Phase 0 placeholders.
   registerFounderMoneyRoutes(app);
   registerFounderForecastingRoutes(app);
+  registerFounderCustomerOutcomeRoutes(app);
   // W3 — creator revenue share, founder-only (Controls door section).
   registerFounderCreatorRoutes(app);
   // Solene (Layer 1 cap #2) — cross-agent claims founder read endpoint.
@@ -2704,6 +2707,9 @@ export async function registerRoutes(
   // plus the "Learn why" deep links from server/utils/errors.ts (docsSlug).
   registerKnowledgeBaseRoutes(app);
   registerMicroFeatureRoutes(app);
+  // W5b growth: outreach language, Pax language, A2P 10DLC, reversible
+  // imports, offline map packs, first-deal step, customer outcome.
+  registerGrowthRoutes(app);
   registerClosingRoutes(app);
   registerPlatformFeatureRoutes(app);
   // registerLeaseRoutes + registerMaintenanceRoutes removed — see import block.

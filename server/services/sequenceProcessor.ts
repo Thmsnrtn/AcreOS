@@ -648,7 +648,7 @@ export class SequenceProcessorService {
       // re-runs the full consent → quiet-hours → DNC → frequency chain at
       // the choke point; a refusal there comes back as !success with the
       // named reason and is NEVER reported as sent).
-      const { sendOrgSMS } = await import("./smsService");
+      const { sendOrgSMS, isSmsGateRefusal } = await import("./smsService");
       const result = await sendOrgSMS({
         organizationId: orgId,
         to: lead.phone,
@@ -663,7 +663,7 @@ export class SequenceProcessorService {
         // A choke-point refusal (TCPA gate, incl. the frequency cap) is a
         // deferral, not a permanent failure — the step should be retried,
         // not consumed.
-        const refused = (result.error ?? "").startsWith("TCPA gate:");
+        const refused = isSmsGateRefusal(result.error);
         return { status: refused ? "deferred" : "failed", reason: result.error };
       }
       await recordAutonomousSend(orgId, "sms", lead.id, content);

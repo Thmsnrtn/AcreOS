@@ -30,6 +30,8 @@ export interface ImportResult {
   successCount: number;
   errorCount: number;
   duplicatesSkipped: number;
+  /** Rows skipped because the owner asked not to be contacted (suppression hook). */
+  suppressedSkipped?: number;
   errors: Array<{
     row: number;
     data: Record<string, string>;
@@ -505,8 +507,17 @@ export async function importLeads(
   }
   const seenParcels = createParcelDedupeIndex();
 
+  // W5a suppression hook (server/services/leads/importSuppressionHook.ts):
+  // an owner who asked not to be contacted is not re-created by an import.
+  const { loadOutreachSuppression } = await import("./leads/importSuppressionHook");
+  const isSuppressed = await loadOutreachSuppression(organizationId);
+
   const nonDuplicateRows: typeof validatedRows = [];
   for (const row of validatedRows) {
+    if (isSuppressed({ phone: row.data.phone, email: row.data.email, address: row.data.address, zip: row.data.zip }).suppressed) {
+      result.suppressedSkipped = (result.suppressedSkipped ?? 0) + 1;
+      continue;
+    }
     const apn = String(row.data.apn ?? "").trim();
     if (apn) {
       if (existingParcels.has(row.data.state, row.data.county, apn) || seenParcels.has(row.data.state, row.data.county, apn)) {

@@ -617,6 +617,17 @@ export const leads = pgTable("leads", {
   // this column is the honest source — populated from the mailing address
   // (enrichment follow-up) or set manually. Null → area-code fallback.
   timezone: text("timezone"),
+
+  // W5b (migration 0280) — the language outreach to this owner is written in.
+  // Set ONLY by the customer (`customer_choice`) or recorded from what the
+  // owner said (`owner_stated`), through PATCH /api/leads/:id/outreach-language.
+  // NEVER inferred from a name, surname or place (a national-origin proxy under
+  // the Fair Housing Act); shared/outreach/outreachLanguage.ts is the one
+  // resolver and tests/unit/outreachLanguageNoInference.test.ts holds the
+  // population of writers. Null = not chosen, which resolves to English.
+  outreachLanguage: text("outreach_language"), // 'en' | 'es' | null
+  outreachLanguageSource: text("outreach_language_source"), // 'customer_choice' | 'owner_stated' | null
+  outreachLanguageSetAt: timestamp("outreach_language_set_at"),
   
   // Soft delete support for safe bulk operations with recovery
   deletedAt: timestamp("deleted_at"), // null = active, timestamp = soft deleted
@@ -1262,6 +1273,10 @@ export const campaigns = pgTable("campaigns", {
   subject: text("subject"),
   content: text("content"),
   templateId: text("template_id"),
+  // W5b (migration 0280): the language this campaign's copy is written in,
+  // chosen by the customer ('en' | 'es'; null = English). It picks the stock
+  // templates offered; it is never derived from the audience.
+  language: text("language"),
   // MMS attachments — array of public https URLs Twilio fetches and
   // attaches when sending. Currently constrained to 1 from the UI but
   // schema is array so we can lift the limit later without migration.
@@ -2932,6 +2947,13 @@ export const insertLeadSchema = createInsertSchema(leads).omit({
   // phoneNormalized is a STORED generated column — Postgres rejects
   // explicit writes. Omit from inserts. (Migration 0051.)
   phoneNormalized: true,
+  // W5b: the outreach language has ONE writer (PATCH
+  // /api/leads/:id/outreach-language), which records who chose it. A generic
+  // lead create/update or an import could otherwise set it from any field —
+  // including a list vendor's surname-derived "language" column.
+  outreachLanguage: true,
+  outreachLanguageSource: true,
+  outreachLanguageSetAt: true,
 }).extend({
   // F-D23: drizzle-zod treats text columns as bare z.string() — invalid
   // emails like "not-an-email" sailed through to the DB. Tighten to email
@@ -14131,6 +14153,7 @@ export * from "./schema/subdivision";
 // ============================================================================
 export * from "./schema/fix-and-flip";
 export * from "./schema/forecasting";
+export * from "./schema/growth";
 
 // ============================================================================
 // BUY-AND-HOLD / RENTAL VERTICAL — extracted to ./schema/rental.ts

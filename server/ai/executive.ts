@@ -1323,8 +1323,13 @@ export async function processChat(
   const { paxVerticalContext: _verticalCtxFn, getOrgInvestorType: _getInvType } =
     await import("../services/paxPersona");
   const _verticalCtx = _verticalCtxFn(await _getInvType(org.id));
+  // W5b: answer in the user's language (their setting, or the language they
+  // wrote in), and mentor toward the org's next real first-deal step.
+  const { loadPaxLanguageContext, loadFirstDealMentorContext } = await import("../services/pax/growthContext");
+  const _languageCtx = await loadPaxLanguageContext(userId, message);
+  const _mentorCtx = await loadFirstDealMentorContext(org.id);
   // P1-41 + P0-14: compose with response-shape v3 + untrusted-data clause.
-  const _basePrompt = profile.systemPrompt + _verticalCtx + (_enrichCtx || "") + (_prefCtx || "") + (_calibrationCtx || "") + (_knowledgeCtx || "") + (_projectCtx || "") + (_mentionCtx || "") + (_connectorCtx || "");
+  const _basePrompt = profile.systemPrompt + _verticalCtx + (_enrichCtx || "") + (_prefCtx || "") + (_calibrationCtx || "") + (_knowledgeCtx || "") + (_projectCtx || "") + (_mentionCtx || "") + (_connectorCtx || "") + _mentorCtx + _languageCtx;
   const _systemContent = composePaxSystemPrompt(_basePrompt, options.paxPromptVersion) + paxInputRedactionNote(options.inputRedaction);
 
   const chatMessages: OpenAI.ChatCompletionMessageParam[] = [
@@ -1845,8 +1850,13 @@ export async function* processChatStream(
   const { paxVerticalContext: _verticalCtxFn, getOrgInvestorType: _getInvType } =
     await import("../services/paxPersona");
   const _verticalCtx = _verticalCtxFn(await _getInvType(org.id));
+  // W5b: answer in the user's language (their setting, or the language they
+  // wrote in), and mentor toward the org's next real first-deal step.
+  const { loadPaxLanguageContext, loadFirstDealMentorContext } = await import("../services/pax/growthContext");
+  const _languageCtx = await loadPaxLanguageContext(userId, message);
+  const _mentorCtx = await loadFirstDealMentorContext(org.id);
   // P1-41 + P0-14: compose with response-shape v3 + untrusted-data clause.
-  const _basePrompt = profile.systemPrompt + _verticalCtx + (_enrichCtx || "") + (_prefCtx || "") + (_calibrationCtx || "") + (_knowledgeCtx || "") + (_projectCtx || "") + (_mentionCtx || "") + (_connectorCtx || "");
+  const _basePrompt = profile.systemPrompt + _verticalCtx + (_enrichCtx || "") + (_prefCtx || "") + (_calibrationCtx || "") + (_knowledgeCtx || "") + (_projectCtx || "") + (_mentionCtx || "") + (_connectorCtx || "") + _mentorCtx + _languageCtx;
   const _systemContent = composePaxSystemPrompt(_basePrompt, options.paxPromptVersion) + paxInputRedactionNote(options.inputRedaction);
 
   const chatMessages: OpenAI.ChatCompletionMessageParam[] = [

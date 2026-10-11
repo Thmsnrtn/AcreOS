@@ -142,6 +142,10 @@ export const users = pgTable("users", {
   // against the registry in client/src/lib/personaVocabulary.ts; stored as
   // free text so adding personas doesn't need a column migration.
   persona: text("persona").notNull().default("land_investor").$type<Persona>(),
+  // W5b (migration 0280): the language Pax answers this user in. Null = match
+  // the language the user writes in; 'es' = always Spanish; 'en' = always
+  // English. The user's own setting about their own chat — never a lead's.
+  paxLanguage: text("pax_language"),
   // Per-user notification matrix (JC#11) — overrides + global mute + digest.
   // Null = user hasn't adjusted; service applies category-tree defaults.
   // Shape matches UserNotificationPreferences in

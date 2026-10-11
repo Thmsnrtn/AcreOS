@@ -56,6 +56,14 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { ApiError, apiRequest, generateIdempotencyKey } from "@/lib/queryClient";
 import { mergeMailCopy } from "@shared/parcel/ownerName";
+import {
+  OUTREACH_LANGUAGES,
+  OUTREACH_LANGUAGE_LABELS,
+  isOutreachLanguage,
+  type OutreachLanguage,
+} from "@shared/outreach/outreachLanguage";
+import { OUTREACH_PREVIEW_STRINGS } from "@/lib/i18n/outreach-preview";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { staggerContainer, staggerItem } from "@/lib/animations";
 import {
   type AudienceFilter,
@@ -104,6 +112,9 @@ export default function ComposeTab() {
   const [pieceType, setPieceType] = useState<PieceType>("postcard_4x6");
   const [speed, setSpeed] = useState<MailSpeed>("standard");
   const [copy, setCopy] = useState("");
+  // The language the customer is writing this copy in — their choice, never
+  // derived from the audience (shared/outreach/outreachLanguage.ts).
+  const [copyLanguage, setCopyLanguage] = useState<OutreachLanguage>("en");
   const [label, setLabel] = useState("");
   const [templateId, setTemplateId] = useState<number | null>(null);
 
@@ -185,7 +196,7 @@ export default function ComposeTab() {
 
   const quote = useMailQuote(
     hasAudience
-      ? { audienceFilter: debouncedFilter, pieceType, speed, copy: debouncedCopy || undefined }
+      ? { audienceFilter: debouncedFilter, pieceType, speed, copy: debouncedCopy || undefined, language: copyLanguage }
       : null,
   );
 
@@ -490,6 +501,28 @@ export default function ComposeTab() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
+              <div className="space-y-1">
+                <Label htmlFor="compose-language">Language of this copy</Label>
+                <Select
+                  value={copyLanguage}
+                  onValueChange={(v) => {
+                    if (isOutreachLanguage(v)) setCopyLanguage(v);
+                  }}
+                >
+                  <SelectTrigger id="compose-language" className="w-48" aria-describedby="compose-language-help" data-testid="select-copy-language">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {OUTREACH_LANGUAGES.map((l) => (
+                      <SelectItem key={l} value={l}>{OUTREACH_LANGUAGE_LABELS[l]}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p id="compose-language-help" className="text-xs text-muted-foreground">
+                  You choose it. The same honesty checks read Spanish copy as English copy. AcreOS never picks a
+                  language from an owner&apos;s name or address.
+                </p>
+              </div>
               <div>
                 <Label htmlFor="compose-copy">Message</Label>
                 <Textarea
@@ -666,6 +699,17 @@ export default function ComposeTab() {
                     </div>
                   </div>
                 )}
+                {quote.data.languageMismatch && quote.data.languageMismatch.count > 0 && (
+                  <div
+                    className="rounded-md border border-border bg-muted/40 p-3 text-sm"
+                    role="status"
+                    data-testid="language-mismatch-note"
+                  >
+                    {quote.data.languageMismatch.count} of {quote.data.pieceCount} owners have a different language on
+                    their lead (stated by the owner or chosen by you). This copy is in{" "}
+                    {OUTREACH_LANGUAGE_LABELS[quote.data.languageMismatch.copyLanguage]}.
+                  </div>
+                )}
                 {(quote.data.outreachCheck ?? []).length > 0 && (
                   <div
                     className="rounded-md border border-acr-warn/40 bg-acr-warn/10 p-3 text-sm flex gap-2"
@@ -776,9 +820,9 @@ export default function ComposeTab() {
       <Dialog open={showPreview} onOpenChange={setShowPreview}>
         <DialogContent className="max-w-3xl max-h-[80vh] overflow-hidden flex flex-col">
           <DialogHeader>
-            <DialogTitle>Preview all</DialogTitle>
-            <DialogDescription>
-              {quote.data?.pieceCount.toLocaleString() ?? 0} pieces — recipient + rendered copy.
+            <DialogTitle lang={copyLanguage}>{OUTREACH_PREVIEW_STRINGS[copyLanguage].previewAll}</DialogTitle>
+            <DialogDescription lang={copyLanguage}>
+              {OUTREACH_PREVIEW_STRINGS[copyLanguage].pieces((quote.data?.pieceCount ?? 0).toLocaleString())}
             </DialogDescription>
           </DialogHeader>
           <div className="overflow-auto flex-1">
@@ -789,11 +833,12 @@ export default function ComposeTab() {
               copy={debouncedCopy}
               show={showPreview}
               expectedDigest={quote.data?.audienceDigest ?? null}
+              language={copyLanguage}
             />
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowPreview(false)}>
-              Close
+              {OUTREACH_PREVIEW_STRINGS[copyLanguage].close}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -870,7 +915,15 @@ interface PreviewResponse {
   audienceDigest: string;
   total: number;
   offset: number;
-  recipients: { leadId: number; name: string; addressLine1: string; city: string; state: string; zip: string }[];
+  recipients: {
+    leadId: number;
+    name: string;
+    addressLine1: string;
+    city: string;
+    state: string;
+    zip: string;
+    language?: { language: OutreachLanguage; basis: string };
+  }[];
 }
 
 /**
@@ -886,6 +939,7 @@ function PreviewList({
   copy,
   show,
   expectedDigest,
+  language,
 }: {
   audienceFilter: AudienceFilter;
   pieceType: PieceType;
@@ -893,8 +947,10 @@ function PreviewList({
   copy: string;
   show: boolean;
   expectedDigest: string | null;
+  language: OutreachLanguage;
 }) {
   const PAGE = 50;
+  const t = OUTREACH_PREVIEW_STRINGS[language];
   const [offset, setOffset] = useState(0);
   useEffect(() => setOffset(0), [audienceFilter, pieceType, copy]);
   const preview = useQuery<PreviewResponse>({
@@ -932,8 +988,8 @@ function PreviewList({
 
   if (!preview.data || preview.data.total === 0) {
     return (
-      <p className="text-sm text-muted-foreground p-4" data-testid="preview-empty">
-        No leads match this audience.
+      <p className="text-sm text-muted-foreground p-4" data-testid="preview-empty" lang={language}>
+        {t.empty}
       </p>
     );
   }
@@ -941,14 +997,14 @@ function PreviewList({
   const { total, recipients } = preview.data;
   const stale = expectedDigest !== null && preview.data.audienceDigest !== expectedDigest;
   return (
-    <div>
+    <div lang={language} data-testid="preview-root">
       {stale && (
         <p className="text-sm text-acr-warn p-3" role="status" data-testid="preview-stale">
-          The recipients changed since the quote on screen — the quote will refresh before anything is sent.
+          {t.stale}
         </p>
       )}
       <p className="text-xs text-muted-foreground px-3 pt-2" data-testid="preview-range">
-        Showing {offset + 1}–{offset + recipients.length} of {total.toLocaleString()}
+        {t.showing(offset + 1, offset + recipients.length, total.toLocaleString())}
       </p>
       <ul className="divide-y" data-testid="preview-list">
         {recipients.map((r) => (
@@ -957,6 +1013,11 @@ function PreviewList({
             <p className="text-xs text-muted-foreground">
               {r.addressLine1}, {r.city}, {r.state} {r.zip}
             </p>
+            {r.language && r.language.basis !== "default" && r.language.language !== language && (
+              <Badge variant="outline" className="mt-1" data-testid={`preview-language-${r.leadId}`}>
+                {t.ownerAskedFor(OUTREACH_LANGUAGE_LABELS[r.language.language])}
+              </Badge>
+            )}
             {copy && <p className="text-sm mt-2 whitespace-pre-wrap">{renderMerge(copy, r)}</p>}
           </li>
         ))}
@@ -969,7 +1030,7 @@ function PreviewList({
           onClick={() => setOffset(Math.max(0, offset - PAGE))}
           data-testid="button-preview-prev"
         >
-          Previous
+          {t.previous}
         </Button>
         <Button
           variant="outline"
@@ -978,9 +1039,14 @@ function PreviewList({
           onClick={() => setOffset(offset + PAGE)}
           data-testid="button-preview-next"
         >
-          Next
+          {t.next}
         </Button>
       </div>
+      {language !== "en" && (
+        <p className="text-xs text-muted-foreground px-3 pb-3" data-testid="preview-english-controls">
+          {t.englishControls}
+        </p>
+      )}
     </div>
   );
 }
