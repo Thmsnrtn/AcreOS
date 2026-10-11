@@ -27,7 +27,7 @@ describe("subdivision editor draw styles on MapLibre", () => {
   const styles = drawStylesForMapLibre();
 
   it("keeps every layer of the draw theme (nothing dropped to make it pass)", () => {
-    const ids = styles.map((s: { id: string }) => s.id);
+    const ids = (styles as Array<{ id: string }>).map((s) => s.id);
     const theme = (MapboxDraw as unknown as { lib: { theme: Array<{ id: string }> } }).lib.theme;
     expect(theme.length, "the draw theme was not found").toBeGreaterThanOrEqual(5);
     expect(ids).toEqual(theme.map((l) => l.id));
