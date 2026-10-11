@@ -90,7 +90,16 @@ export function ownerIdentifierHashes(ids: OwnerIdentifiers): Array<{ kind: Owne
 }
 
 /** Anything shaped like an address inside a recipient string ("A <a@x>, b@y"). */
-const EMBEDDED_EMAIL = /[^\s<>,;:"'()[\]]+@[^\s<>,;:"'()[\]]+\.[^\s<>,;:"'()[\]]+/g;
+/**
+ * Split a recipient string on every character an address cannot contain;
+ * each piece holding an "@" is a candidate. A split is linear in the input,
+ * where the earlier single regex (`[^…]+@[^…]+\.[^…]+`, global) backtracked
+ * polynomially on a long run like "a@a.a.a…" — and a model writes this field.
+ */
+const RECIPIENT_DELIMITERS = /[\s<>,;:"'()[\]]+/;
+function embeddedEmails(field: string): string[] {
+  return field.split(RECIPIENT_DELIMITERS).filter((t) => t.includes("@"));
+}
 
 /**
  * Every hash a stored suppression of `ids` could carry: each identifier under
@@ -101,7 +110,7 @@ const EMBEDDED_EMAIL = /[^\s<>,;:"'()[\]]+@[^\s<>,;:"'()[\]]+\.[^\s<>,;:"'()[\]]
  */
 function ownerIdentifierMatchHashes(ids: OwnerIdentifiers): Array<{ kind: OwnerIdentifierKind; hash: string }> {
   const values = normalizedOwnerIdentifiers(ids);
-  for (const token of (ids.email ?? "").match(EMBEDDED_EMAIL) ?? []) {
+  for (const token of embeddedEmails(ids.email ?? "")) {
     const email = normalizeEmail(token);
     if (email && !values.some((v) => v.kind === "email" && v.value === email)) values.push({ kind: "email", value: email });
   }

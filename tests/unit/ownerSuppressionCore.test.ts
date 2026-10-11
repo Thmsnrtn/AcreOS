@@ -178,3 +178,23 @@ describe("a recipient string is read for every address in it", () => {
     expect(await ownerContactRefusal("email", { email: "Someone <someone@example.com>" })).toBeNull();
   });
 });
+
+describe("hostile identifier text stays linear (CodeQL js/polynomial-redos)", () => {
+  // A model writes the recipient field, and the public opt-out form takes a
+  // typed email. The earlier global recipient regex backtracked
+  // quadratically: ~0.5 s at 20k characters, ~12 s at 100k, per send check.
+  it("a 200,000-character recipient field is read in well under a second, and still finds the address in it", async () => {
+    suppress("email", "jane@example.com");
+    const hostile = "a".repeat(200_000) + "@" + " jane@example.com";
+    const t = performance.now();
+    const refusal = await ownerContactRefusal("email", { email: hostile });
+    expect(performance.now() - t).toBeLessThan(1000);
+    expect(refusal).toMatch(/stop all contact/);
+  });
+  it("normalizeEmail refuses an over-long address before running its shape check", () => {
+    const t = performance.now();
+    expect(normalizeEmail("a@" + "a.".repeat(100_000) + "!")).toBeNull();
+    expect(performance.now() - t).toBeLessThan(200);
+    expect(normalizeEmail("Jane@Example.com")).toBe("jane@example.com");
+  });
+});

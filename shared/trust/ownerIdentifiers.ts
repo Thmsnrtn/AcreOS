@@ -23,7 +23,9 @@ export interface OwnerIdentifiers {
 
 export function normalizeEmail(raw: string | null | undefined): string | null {
   const s = (raw ?? "").trim().toLowerCase();
-  if (!s || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s)) return null;
+  // 254 is the longest valid address (RFC 5321). Checking length FIRST keeps
+  // the shape regex below linear on hostile input from the public form.
+  if (!s || s.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s)) return null;
   return s;
 }
 

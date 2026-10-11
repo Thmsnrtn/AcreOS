@@ -105,7 +105,7 @@ function staticLlmsTxt(): string {
     path.resolve(process.cwd(), "dist", "public", ".well-known", "llms.txt"),
   ]) {
     try {
-      if (fs.statSync(p).isFile()) return fs.readFileSync(p, "utf8");
+      return fs.readFileSync(p, "utf8"); // one read: no stat-then-read race
     } catch {
       // try the next location
     }
@@ -159,7 +159,7 @@ export function registerPublicLandRoutes(app: Express): void {
     }
   });
 
-  app.get("/land/:state/:county", async (req: Request, res: Response, next: NextFunction) => {
+  app.get("/land/:state/:county", guideLimiter, async (req: Request, res: Response, next: NextFunction) => {
     try {
       const shellPath = resolveShellPath();
       if (!shellPath) return next(); // dev — Vite serves the SPA shell

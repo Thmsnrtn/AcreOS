@@ -32,7 +32,7 @@
  * The `clockReads` ratchet (scripts/check-clock-reads.mjs) counts every direct
  * wall-clock read in server/ outside this file; it may only shrink.
  */
-import { readFileSync, statSync } from "node:fs";
+import { closeSync, fstatSync, openSync, readFileSync } from "node:fs";
 
 let inProcessOffsetMs = 0;
 
@@ -49,12 +49,19 @@ function readFileOffset(): number {
   if (wall - fileCheckedAt < 100) return fileOffsetMs;
   fileCheckedAt = wall;
   try {
-    const st = statSync(FILE);
-    if (st.mtimeMs !== fileMtimeMs) {
-      fileMtimeMs = st.mtimeMs;
-      const parsed = JSON.parse(readFileSync(FILE, "utf8")) as { offsetMs?: unknown };
-      const n = Number(parsed.offsetMs);
-      fileOffsetMs = Number.isFinite(n) ? n : 0;
+    // stat and read the SAME open file, so a writer swapping it between
+    // the two cannot pair one version's mtime with another's contents.
+    const fd = openSync(FILE, "r");
+    try {
+      const st = fstatSync(fd);
+      if (st.mtimeMs !== fileMtimeMs) {
+        const parsed = JSON.parse(readFileSync(fd, "utf8")) as { offsetMs?: unknown };
+        const n = Number(parsed.offsetMs);
+        fileOffsetMs = Number.isFinite(n) ? n : 0;
+        fileMtimeMs = st.mtimeMs;
+      }
+    } finally {
+      closeSync(fd);
     }
   } catch {
     // A half-written file keeps the last good offset; a missing one is zero.

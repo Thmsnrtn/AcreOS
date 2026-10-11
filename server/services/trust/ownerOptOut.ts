@@ -23,7 +23,7 @@
  *      and again on any request past due, and its own absence pages through
  *      the deadman roster.
  */
-import { randomBytes, createHash, timingSafeEqual } from "node:crypto";
+import { randomBytes, randomInt, createHash, timingSafeEqual } from "node:crypto";
 import { and, asc, eq, gt, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
 import { db } from "../../db";
 import {
@@ -139,7 +139,7 @@ export async function submitOwnerOptOut(input: OwnerOptOutSubmission): Promise<S
   const secret =
     input.verification === "email"
       ? randomBytes(24).toString("base64url")
-      : String(100000 + (randomBytes(4).readUInt32BE(0) % 900000));
+      : String(randomInt(100000, 1000000)) // unbiased, CSPRNG;
   const matches = await findMatchingLeads(input);
   const orgMatches: OwnerOptOutOrgMatch[] = Array.from(matches.entries()).map(([organizationId, leadIds]) => ({
     organizationId,
