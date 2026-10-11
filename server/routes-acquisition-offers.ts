@@ -45,7 +45,12 @@ async function availability() {
 
 const parcelKeyParam = (raw: unknown) => String(raw ?? "").slice(0, 200);
 
-export function registerAcquisitionOfferRoutes(app: Express): void {
+/**
+ * The public, no-auth half: mounted with the other public routes in
+ * server/routes.ts, AHEAD of the global /api auth gate (mounting it with the
+ * signed-in half made a stranger's offer page read 401 "Session expired").
+ */
+export function registerPublicOfferRoutes(app: Express): void {
   app.get("/api/public/offers/founding-member", async (_req, res: Response) => {
     try {
       const a = await availability();
@@ -55,6 +60,10 @@ export function registerAcquisitionOfferRoutes(app: Express): void {
       return Errors.internal(res, err);
     }
   });
+}
+
+/** The signed-in half: founding checkout and the due-diligence report. */
+export function registerAcquisitionOfferRoutes(app: Express): void {
 
   app.post(
     "/api/offers/founding-member/checkout",

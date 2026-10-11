@@ -98,7 +98,7 @@ import { registerMarketingTouchRoutes } from "./routes-marketing-touch";
 import publicParcelCheckRouter from "./routes-public-parcel-check";
 import publicParcelReportRouter, { registerPublicParcelReportPages } from "./routes-public-parcel-report";
 import { registerPublicLandRoutes } from "./routes-public-land";
-import { registerAcquisitionOfferRoutes } from "./routes-acquisition-offers";
+import { registerAcquisitionOfferRoutes, registerPublicOfferRoutes } from "./routes-acquisition-offers";
 import { registerFounderCreatorRoutes } from "./routes-founder-creators";
 import aiDisclosureRouter from "./routes-ai-disclosure";
 import paxDisclosureRouter from "./routes-pax-disclosure";
@@ -624,6 +624,8 @@ export async function registerRoutes(
   // where AcreOS keeps parcels), the land sitemaps and /llms.txt. Read-only,
   // rate-limited, registered here so the page routes win over the SPA shell.
   registerPublicLandRoutes(app);
+  // The founding-member offer's public availability (no price while unset).
+  registerPublicOfferRoutes(app);
 
   // /api/health/cached (Fly's health-check target) is registered by
   // registerPublicHealthRoutes above, with the same status-only body.

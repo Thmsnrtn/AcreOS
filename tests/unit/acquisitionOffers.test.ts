@@ -76,7 +76,7 @@ vi.mock("../../server/services/landData/ownedParcelView", async (importOriginal)
   return { ...real, findOwnedParcelByKey: vi.fn(async () => h.ownedRow) };
 });
 
-import { registerAcquisitionOfferRoutes } from "../../server/routes-acquisition-offers";
+import { registerAcquisitionOfferRoutes, registerPublicOfferRoutes } from "../../server/routes-acquisition-offers";
 import { FOUNDING_MEMBER_OFFER, foundingOfferAvailability } from "@shared/billing/foundingMemberOffer";
 import { PARCEL_DD_REPORT } from "@shared/billing/parcelReportProduct";
 import { pendingAcquisitionDecisions } from "../../server/services/acquisitionDecisions";
@@ -93,6 +93,7 @@ function priceOffer() {
 function app() {
   const a = express();
   a.use(express.json());
+  registerPublicOfferRoutes(a);
   registerAcquisitionOfferRoutes(a);
   return a;
 }
