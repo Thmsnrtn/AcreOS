@@ -200,7 +200,7 @@ async function main() {
     const { countySlots } = await import("../../server/services/forecasting/saturation");
     const slotCounty = `${tag}-cty`;
     await db.insert(customerOutcomeObservations).values(
-      Array.from({ length: 30 }, (_, i) => ({ organizationId: orgId!, kind: "offer_declined", subjectTable: "offers", subjectId: 1_000_000 + i, state: "TN", county: slotCounty, observedAt: new Date(Date.UTC(2025, i % 14, 3)), values: { result: "declined" } })),
+      Array.from({ length: 30 }, (_, i) => ({ organizationId: orgId!, kind: "offer_declined" as const, subjectTable: "offers", subjectId: 1_000_000 + i, state: "TN", county: slotCounty, observedAt: new Date(Date.UTC(2025, i % 14, 3)), values: { result: "declined" } })),
     );
     const slot = (await countySlots("TN")).find((x) => x.county === slotCounty);
     check(slot?.status === "warming_up" && slot.have.outcomes === 30 && slot.have.orgs === 1 && slot.have.spanMonths >= 12, `one customer's 30 outcomes over a year stay "warming up" (${JSON.stringify(slot?.have)})`);
