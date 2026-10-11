@@ -25,6 +25,19 @@ export class XlsxReadError extends Error {
 }
 
 const MAX_PART_BYTES = 64 * 1024 * 1024;
+/** All inflated parts of one workbook together (a zip bomb spreads over parts). */
+const MAX_TOTAL_INFLATED_BYTES = 96 * 1024 * 1024;
+/**
+ * Columns one sheet may use. A cell reference is attacker-controlled text: an
+ * unbounded `r="AAAAAAAA1"` decoded to column 26^8 and the padding loop below
+ * then tried to build a row that long (W5b audit). Excel's own limit is
+ * 16,384 (XFD); no lead export comes near this one.
+ */
+const XLSX_MAX_COLUMNS = 1_024;
+
+interface InflateBudget {
+  left: number;
+}
 
 interface CdEntry {
   name: string;
@@ -65,9 +78,10 @@ function readCentralDirectory(buf: Buffer): Map<string, CdEntry> {
   return out;
 }
 
-function readPart(buf: Buffer, dir: Map<string, CdEntry>, name: string): string | null {
+function readPart(buf: Buffer, dir: Map<string, CdEntry>, name: string, budget: InflateBudget): string | null {
   const e = dir.get(name);
   if (!e) return null;
+  if (e.localOffset + 30 > buf.length) throw new XlsxReadError("The workbook's ZIP entries are damaged.");
   if (buf.readUInt32LE(e.localOffset) !== 0x04034b50) throw new XlsxReadError("The workbook's ZIP entries are damaged.");
   const nameLen = buf.readUInt16LE(e.localOffset + 26);
   const extraLen = buf.readUInt16LE(e.localOffset + 28);
@@ -75,8 +89,15 @@ function readPart(buf: Buffer, dir: Map<string, CdEntry>, name: string): string 
   const raw = buf.subarray(start, start + e.compressedSize);
   let data: Buffer;
   if (e.method === 0) data = raw;
-  else if (e.method === 8) data = zlib.inflateRawSync(raw, { maxOutputLength: MAX_PART_BYTES });
-  else throw new XlsxReadError(`The workbook uses a compression method (${e.method}) this importer can't read. Export it as .csv.`);
+  else if (e.method === 8) {
+    try {
+      data = zlib.inflateRawSync(raw, { maxOutputLength: Math.min(MAX_PART_BYTES, budget.left) });
+    } catch {
+      throw new XlsxReadError("The workbook is damaged or expands to more data than an import can hold. Export it as .csv, or split it.");
+    }
+  } else throw new XlsxReadError(`The workbook uses a compression method (${e.method}) this importer can't read. Export it as .csv.`);
+  budget.left -= data.length;
+  if (budget.left < 0) throw new XlsxReadError("The workbook expands to more data than an import can hold. Export it as .csv, or split it.");
   return data.toString("utf8");
 }
 
@@ -105,9 +126,9 @@ function columnIndex(ref: string): number {
   return n - 1;
 }
 
-function firstSheetPath(buf: Buffer, dir: Map<string, CdEntry>): string {
-  const workbook = readPart(buf, dir, "xl/workbook.xml");
-  const rels = readPart(buf, dir, "xl/_rels/workbook.xml.rels");
+function firstSheetPath(buf: Buffer, dir: Map<string, CdEntry>, budget: InflateBudget): string {
+  const workbook = readPart(buf, dir, "xl/workbook.xml", budget);
+  const rels = readPart(buf, dir, "xl/_rels/workbook.xml.rels", budget);
   if (workbook && rels) {
     const sheet = /<sheet\b[^>]*\br:id="([^"]+)"/.exec(workbook) ?? /<sheet\b[^>]*\bid="([^"]+)"/.exec(workbook);
     if (sheet) {
@@ -124,14 +145,27 @@ function firstSheetPath(buf: Buffer, dir: Map<string, CdEntry>): string {
 }
 
 export function readXlsx(buf: Buffer, opts: { maxRows: number }): { headers: string[]; rows: string[][]; truncated: boolean } {
+  try {
+    return readXlsxUnchecked(buf, opts);
+  } catch (err) {
+    if (err instanceof XlsxReadError) throw err;
+    // A malformed offset reads past the buffer (RangeError) — the file's fault,
+    // not the server's: a 400 the customer can act on, never a 500.
+    if (err instanceof RangeError) throw new XlsxReadError("The workbook's ZIP structure is damaged. Save it again as .xlsx, or export it as .csv.");
+    throw err;
+  }
+}
+
+function readXlsxUnchecked(buf: Buffer, opts: { maxRows: number }): { headers: string[]; rows: string[][]; truncated: boolean } {
   if (buf.length < 22) throw new XlsxReadError("The file is empty.");
+  const budget: InflateBudget = { left: MAX_TOTAL_INFLATED_BYTES };
   if (buf.readUInt32LE(0) === 0xe011cfd0) {
     throw new XlsxReadError("This is an older .xls (or a password-protected) workbook. Save it as .xlsx or .csv and try again.");
   }
   const dir = readCentralDirectory(buf);
-  const sheetXml = readPart(buf, dir, firstSheetPath(buf, dir));
+  const sheetXml = readPart(buf, dir, firstSheetPath(buf, dir, budget), budget);
   if (!sheetXml) throw new XlsxReadError("The workbook's first sheet is missing.");
-  const sstXml = readPart(buf, dir, "xl/sharedStrings.xml");
+  const sstXml = readPart(buf, dir, "xl/sharedStrings.xml", budget);
   const shared: string[] = [];
   if (sstXml) for (const m of sstXml.matchAll(/<si>([\s\S]*?)<\/si>|<si\/>/g)) shared.push(textOf(m[1] ?? ""));
 
@@ -146,6 +180,9 @@ export function readXlsx(buf: Buffer, opts: { maxRows: number }): { headers: str
       const inner = c[2] ?? "";
       const ref = /\br="([A-Z]+\d+)"/.exec(attrs)?.[1];
       const col = ref ? columnIndex(ref) : next;
+      if (!(col >= 0 && col < XLSX_MAX_COLUMNS)) {
+        throw new XlsxReadError(`The sheet uses more than ${XLSX_MAX_COLUMNS.toLocaleString("en-US")} columns. Remove the unused columns, or export it as .csv.`);
+      }
       const type = /\bt="([^"]+)"/.exec(attrs)?.[1] ?? "n";
       const v = /<v>([\s\S]*?)<\/v>/.exec(inner)?.[1];
       let value = "";

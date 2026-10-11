@@ -96,6 +96,28 @@ describe("the .xlsx reader", () => {
     expect(() => readXlsx(ole, { maxRows: 10 })).toThrow(XlsxReadError);
     expect(() => readXlsx(Buffer.from("name,apn\nA,1\n".repeat(5)), { maxRows: 10 })).toThrow(XlsxReadError);
   });
+
+  // W5b audit: a cell reference is attacker text. `r="AAAAAAAA1"` decoded to
+  // column 26^8 and the row-padding loop tried to build a row that long.
+  it("refuses an absurd column reference instead of padding a row to it", async () => {
+    const buf = await workbook('<row r="1"><c r="AAAAAAAA1" t="inlineStr"><is><t>x</t></is></c></row>');
+    const t0 = Date.now();
+    expect(() => readXlsx(buf, { maxRows: 10 })).toThrow(XlsxReadError);
+    expect(Date.now() - t0).toBeLessThan(2_000);
+  });
+
+  it("a damaged ZIP is a 400-class refusal, never a RangeError (500)", async () => {
+    const buf = await workbook('<row r="1"><c r="A1" t="inlineStr"><is><t>x</t></is></c></row>');
+    // Point the first central-directory entry's local-header offset past the end.
+    const eocd = buf.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
+    const cd = buf.readUInt32LE(eocd + 16);
+    const broken = Buffer.from(buf);
+    for (let p = cd; p < eocd; ) {
+      broken.writeUInt32LE(0x7fffff00, p + 42);
+      p += 46 + broken.readUInt16LE(p + 28) + broken.readUInt16LE(p + 30) + broken.readUInt16LE(p + 32);
+    }
+    expect(() => readXlsx(broken, { maxRows: 10 })).toThrow(XlsxReadError);
+  });
 });
 
 describe("every lead-import writer passes the suppression hook", () => {
@@ -141,5 +163,23 @@ describe("every lead-import writer passes the suppression hook", () => {
     const handler = UNITS[0].unit.exec(src)![0];
     expect(handler).toMatch(/getOpenImportBatch\(org\.id, importBatchId\)/);
     expect(handler).toMatch(/recordImportIntoBatch\(org\.id, importBatchId/);
+  });
+});
+
+// W5b audit: rows now arrive from vendor .xlsx files as well as CSV, and the
+// AcreOS export is the round-trip twin of the AcreOS import preset. A cell an
+// exported spreadsheet would execute must not leave as a formula.
+describe("the lead export neutralises spreadsheet formulas", () => {
+  it("formula-leading text gets a leading apostrophe; numbers and phone numbers do not", async () => {
+    const { neutraliseCsvFormula } = await import("../../shared/csv/formulaSafe");
+    for (const f of ['=HYPERLINK("http://x","Click")', "+cmd|' /C calc'!A0", "-2+3", "@SUM(A1:A9)", "\t=1", "\r=1"]) {
+      expect(neutraliseCsvFormula(f), JSON.stringify(f)).toBe(`'${f}`);
+    }
+    for (const d of ["-12.50", "42", "+1 (512) 555-0100", "SMITH JOHN", "", "PO BOX 9"]) expect(neutraliseCsvFormula(d)).toBe(d);
+  });
+
+  it("exportLeadsToCSV writes every cell through it", () => {
+    const src = stripComments(fs.readFileSync(path.join(ROOT, "server/services/importExport.ts"), "utf8"));
+    expect(src).toMatch(/function escapeCSV\(value: any\): string \{\s*if \(value === null \|\| value === undefined\) return "";\s*const str = neutraliseCsvFormula\(String\(value\)\);/);
   });
 });

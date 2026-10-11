@@ -170,6 +170,25 @@ describe("2 · sendOrgSMS refuses until the registration is confirmed", () => {
     expect(ROUTED).toEqual(["+15125551234"]);
   });
 
+  it("own Twilio connected: a SELF-REPORTED approval on file is not confirmation (the provider is the authority)", async () => {
+    // W5b audit: selfReportA2p refuses a self-report once Twilio is connected,
+    // but a row reported BEFORE connecting stayed on file and passed the gate.
+    REG.rows = [{ ...approved, statusSource: "self_reported" }];
+    const r = await send("prospecting");
+    expect(r.success).toBe(false);
+    expect(r.error).toMatch(/^A2P gate: .*read from Twilio/);
+    expect(ROUTED).toEqual([]);
+    // Without a connected Twilio the same self-report is honoured (and labelled elsewhere).
+    TW.number = null;
+    expect((await send("prospecting")).success).toBe(true);
+  });
+
+  it("the platform system rail (smsService.sendSMS — AcreOS's own alerts and dunning) never consults an org's A2P row", async () => {
+    const { smsService } = await import("../../server/services/smsService");
+    await smsService.sendSMS({ to: "+15125550000", message: "AcreOS: your verification code" } as never);
+    expect(REG.tables).not.toContain("sms_a2p_registrations");
+  });
+
   it("an unreadable registration fails CLOSED", async () => {
     REG.throws = true;
     const r = await send("prospecting");

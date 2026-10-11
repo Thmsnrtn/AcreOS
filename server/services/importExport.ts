@@ -1,3 +1,4 @@
+import { neutraliseCsvFormula } from "@shared/csv/formulaSafe";
 import { parseDncFlag } from "@shared/leads/csvImportMapping";
 import { z } from "zod";
 // Exports read the WHOLE book, never the 5000-row capped list (DEFECT-0170).
@@ -719,7 +720,7 @@ export async function importDeals(
 
 function escapeCSV(value: any): string {
   if (value === null || value === undefined) return "";
-  const str = String(value);
+  const str = neutraliseCsvFormula(String(value));
   if (str.includes(",") || str.includes('"') || str.includes("\n") || str.includes("\r")) {
     return `"${str.replace(/"/g, '""')}"`;
   }

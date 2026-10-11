@@ -106,14 +106,15 @@ export function registerGrowthRoutes(app: Express): void {
   app.get("/api/sms/a2p-registration", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const orgId = getOrganizationId(req);
-      const { getA2pRegistration } = await import("./services/sms/a2pRegistration");
+      const { getA2pRegistration, a2pGateForSms } = await import("./services/sms/a2pRegistration");
       const { orgByoTwilioNumber } = await import("./services/comms/providers/twilio");
-      const { a2pSendVerdict, numberKindOf } = await import("@shared/sms/a2p10dlc");
-      const [registration, twilioNumber] = await Promise.all([getA2pRegistration(orgId), orgByoTwilioNumber(orgId)]);
+      const { numberKindOf } = await import("@shared/sms/a2p10dlc");
+      // The verdict shown is the SAME function the send chokepoint applies.
+      const [registration, twilioNumber, sendVerdict] = await Promise.all([getA2pRegistration(orgId), orgByoTwilioNumber(orgId), a2pGateForSms(orgId)]);
       return res.json({
         connected: twilioNumber ? { provider: "twilio", phoneNumber: twilioNumber, numberKind: numberKindOf(twilioNumber), readableByAcreOS: numberKindOf(twilioNumber) === "10dlc" } : null,
         registration,
-        sendVerdict: a2pSendVerdict(registration, twilioNumber),
+        sendVerdict,
       });
     } catch (err) {
       return Errors.internal(res, err as Error);

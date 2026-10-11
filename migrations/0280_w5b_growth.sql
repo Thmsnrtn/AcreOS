@@ -53,3 +53,29 @@ CREATE TABLE IF NOT EXISTS "lead_import_batches" (
   "undo_result"       jsonb
 );
 CREATE INDEX IF NOT EXISTS "lead_import_batches_org_created_idx" ON "lead_import_batches" ("organization_id", "created_at");
+
+-- Demo-data marker backfill (W5b audit). Settings → "Add Demo Data" used to
+-- create UNMARKED rows, so its two closed acquisitions counted as real
+-- closings in the customer outcome metric and the founder Letter aggregate.
+-- The seeder now marks rows at creation (server/services/onboarding/
+-- demoDataSeeder.ts); this relabels rows it created before, matched on the
+-- full fixture fingerprint (apn AND county AND the fixture's exact
+-- description / email AND notes), so no customer-entered row can match.
+-- Relabel only — nothing is deleted. Idempotent: a relabelled row no longer
+-- matches.
+UPDATE "properties" SET "apn" = 'SAMPLE-' || "apn", "description" = 'Sample — ' || "description"
+ WHERE ("apn", "county", "description") IN (
+   ('123-45-678', 'Cochise', 'Beautiful 5+ acre parcel with mountain views near Willcox'),
+   ('234-56-789', 'Mohave', '2.5 acre lot in Golden Valley with road access'),
+   ('345-67-890', 'Luna', '10 acres of open desert land near Deming'),
+   ('456-78-901', 'Navajo', '1.25 acre residential lot in Show Low area'),
+   ('567-89-012', 'Pinal', '40 acre ranch parcel with well and power nearby'));
+UPDATE "leads" SET "source" = 'sample_data'
+ WHERE ("email", "notes") IN (
+   ('john.martinez@email.com', 'Inherited property, motivated to sell'),
+   ('sarah.t@email.com', 'Moving out of state, needs quick close'),
+   ('rchen@email.com', 'Looking for 5-10 acre recreational parcels'),
+   ('mgarcia@email.com', 'Initial mailer sent 2 weeks ago'),
+   ('dwilson@email.com', 'Pre-approved for $50K, wants AZ or NM'),
+   ('jbrown@email.com', 'Responded to online ad'))
+   AND coalesce("source", '') <> 'sample_data';

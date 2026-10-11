@@ -160,6 +160,22 @@ export function useAuth() {
     try {
       if ("indexedDB" in window) indexedDB.deleteDatabase("acreos-offline");
     } catch { /* best-effort */ }
+    // Offline field maps (W5b): the saved areas hold this org's parcel facts
+    // (APN, address, assessed value, status) in IndexedDB, and the viewer at
+    // /offline-map.html opens with no sign-in — so on a shared device the
+    // NEXT person could read them. Same rule as the queue above: purge the
+    // area store and its tile cache (the tiles say where this org looks).
+    try {
+      if ("indexedDB" in window) indexedDB.deleteDatabase("acreos-offline-maps");
+    } catch { /* best-effort */ }
+    try {
+      // use-offline-storage.ts's large-value store — every IndexedDB the
+      // client opens is purged (tests/unit/anonymousSurfaceHygiene.test.ts).
+      if ("indexedDB" in window) indexedDB.deleteDatabase("acreos-storage");
+    } catch { /* best-effort */ }
+    try {
+      if ("caches" in window) await caches.delete("offline-map-tiles-v1");
+    } catch { /* best-effort */ }
 
     // Clear every Clerk-shaped cookie visible to client JS, including the
     // suffixed instance names. HttpOnly cookies remain server-cleared above.

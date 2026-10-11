@@ -42,11 +42,35 @@ class LeadsAreDistinctParcelsError extends Error {
  */
 const LEAD_INSERT_SERVER_OWNED = ["id", "updatedAt", "deletedAt", "deletedBy", "lastScoreAt", "phoneNormalized"];
 
+/**
+ * FAIR HOUSING (W5b audit). The lead's outreach-language columns have ONE
+ * writer — PATCH /api/leads/:id/outreach-language (server/routes-growth.ts),
+ * which writes with its own `db.update` and records who chose the language.
+ * Every generic lead write goes through this repository with a payload built
+ * elsewhere — a workflow's `update_record` action (whose `config.updates`
+ * keys are arbitrary and whose trigger can be conditioned on county), a
+ * merge, a bulk edit, an importer — so a language could otherwise be set
+ * from a name or place by configuration rather than code. The repository
+ * drops these keys from every insert and update it performs.
+ */
+const LEAD_OUTREACH_LANGUAGE_KEYS = ["outreachLanguage", "outreachLanguageSource", "outreachLanguageSetAt"] as const;
+
+function withoutOutreachLanguage<T extends object>(payload: T): T {
+  const row: Record<string, unknown> = { ...(payload as Record<string, unknown>) };
+  for (const key of LEAD_OUTREACH_LANGUAGE_KEYS) delete row[key];
+  return row as T;
+}
+
 function leadInsertRow<T extends InsertLead & { organizationId: number }>(lead: T): T {
-  const row: Record<string, unknown> = { ...lead };
+  const row: Record<string, unknown> = withoutOutreachLanguage({ ...lead });
   for (const key of LEAD_INSERT_SERVER_OWNED) delete row[key];
   if ("createdAt" in row && !(row.createdAt instanceof Date)) delete row.createdAt;
   return row as T;
+}
+
+/** The update payload every repository update writes: identity, tenancy and the language columns stripped. */
+function leadUpdatePayload(updates: unknown): Partial<InsertLead> {
+  return withoutOutreachLanguage(omitProtectedFields<Partial<InsertLead>>(updates));
 }
 
 export const leadRepo = {
@@ -338,7 +362,7 @@ export const leadRepo = {
     const conditions = [eq(leads.id, id)];
     if (organizationId) conditions.push(eq(leads.organizationId, organizationId));
     const [updated] = await db.update(leads)
-      .set({ ...stampConsentForUpdate(omitProtectedFields(updates), DEFAULT_GRANT_SOURCE), updatedAt: clock.now() })
+      .set({ ...stampConsentForUpdate(leadUpdatePayload(updates), DEFAULT_GRANT_SOURCE), updatedAt: clock.now() })
       .where(and(...conditions))
       .returning();
     return updated;
@@ -390,7 +414,7 @@ export const leadRepo = {
   async bulkUpdateLeads(this: DatabaseStorage, orgId: number, ids: number[], updates: Partial<InsertLead>): Promise<number> {
     if (ids.length === 0) return 0;
     await db.update(leads)
-      .set({ ...stampConsentForUpdate(omitProtectedFields(updates), DEFAULT_GRANT_SOURCE), updatedAt: clock.now() })
+      .set({ ...stampConsentForUpdate(leadUpdatePayload(updates), DEFAULT_GRANT_SOURCE), updatedAt: clock.now() })
       .where(and(
         eq(leads.organizationId, orgId),
         inArray(leads.id, ids),

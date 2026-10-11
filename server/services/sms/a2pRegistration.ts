@@ -182,5 +182,15 @@ export async function a2pGateForSms(organizationId: number): Promise<A2pVerdict>
       .then((r) => r[0] ?? null),
     import("../comms/providers/twilio").then((m) => m.orgByoTwilioNumber(organizationId)),
   ]);
+  // The org's own Twilio is connected for a 10DLC number, so its API is the
+  // authority (selfReportA2p refuses a self-report in that case). A
+  // self-reported row on file from BEFORE Twilio was connected is not
+  // confirmation — read the provider (W5b audit).
+  if (registration && sendingNumber && numberKindOf(sendingNumber) === "10dlc" && registration.statusSource !== "provider_api") {
+    return {
+      allowed: false,
+      reason: "your own Twilio account is connected, so the registration must be read from Twilio, not taken on report — use “Check with my provider” in Settings → Integrations → Text-message registration",
+    };
+  }
   return a2pSendVerdict(registration, sendingNumber);
 }

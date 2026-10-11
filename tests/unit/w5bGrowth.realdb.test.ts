@@ -20,7 +20,7 @@ useRealDb("w5bGrowth.realdb.test.ts");
 vi.mock("../../server/utils/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
 
 const tag = `w5b-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-const ids = { a: 0, b: 0 };
+const ids = { a: 0, b: 0, c: 0 };
 
 describe.runIf(realDbAvailable)("W5b growth (real database)", () => {
   vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
@@ -30,13 +30,14 @@ describe.runIf(realDbAvailable)("W5b growth (real database)", () => {
     const { organizations } = await import("@shared/schema");
     ids.a = (await db.insert(organizations).values({ name: tag, slug: tag, ownerId: `${tag}-a` } as any).returning())[0].id;
     ids.b = (await db.insert(organizations).values({ name: `${tag}-b`, slug: `${tag}-b`, ownerId: `${tag}-b` } as any).returning())[0].id;
+    ids.c = (await db.insert(organizations).values({ name: `${tag}-c`, slug: `${tag}-c`, ownerId: `${tag}-c` } as any).returning())[0].id;
   });
 
   afterAll(async () => {
     const { db } = await import("../../server/db");
     const { eq } = await import("drizzle-orm");
     const s = await import("@shared/schema");
-    for (const org of [ids.a, ids.b].filter(Boolean)) {
+    for (const org of [ids.a, ids.b, ids.c].filter(Boolean)) {
       await db.delete(s.deals).where(eq(s.deals.organizationId, org)).catch(() => undefined);
       await db.delete(s.notes).where(eq(s.notes.organizationId, org)).catch(() => undefined);
       await db.delete(s.properties).where(eq(s.properties.organizationId, org)).catch(() => undefined);
@@ -152,6 +153,33 @@ describe.runIf(realDbAvailable)("W5b growth (real database)", () => {
     expect(a.realisedProfit).toEqual({ status: "shown", cents: 1500000 - 500000 - 50000, salesCounted: 1 });
     const b = await customerOutcomeForOrg(ids.b);
     expect(b.realisedProfit.status).toBe("refused");
+  });
+
+  it("outcome: Settings → Add Demo Data is not an outcome, for the org or in the founder aggregate", async () => {
+    // The demo seeder's two CLOSED acquisitions used to be unmarked rows, so
+    // they counted as this org's closings and in the founder Letter's
+    // cross-customer total. Runs the REAL seeder, then the REAL metric.
+    const { customerOutcomeForOrg, platformCustomerOutcomes } = await import("../../server/services/growth/customerOutcome");
+    const { seedDemoDataForOrg } = await import("../../server/services/onboarding/demoDataSeeder");
+    const before = await platformCustomerOutcomes();
+    const counts = await seedDemoDataForOrg(ids.c);
+    expect(counts.deals).toBeGreaterThan(0);
+
+    const { db } = await import("../../server/db");
+    const s = await import("@shared/schema");
+    const { and, eq, inArray } = await import("drizzle-orm");
+    const closed = await db.select({ id: s.deals.id }).from(s.deals).where(and(eq(s.deals.organizationId, ids.c), inArray(s.deals.status, ["closed"])));
+    expect(closed.length).toBeGreaterThan(0); // the seeder really did make closed deals
+
+    const c = await customerOutcomeForOrg(ids.c);
+    expect(c.dealsClosed.total).toBe(0);
+    const after = await platformCustomerOutcomes();
+    expect(after.orgsWithAClosedDeal).toBe(before.orgsWithAClosedDeal);
+    expect(after.dealsClosed).toBe(before.dealsClosed);
+
+    const { realLead } = await import("../../server/services/onboarding/sampleFilters");
+    const real = await db.select({ id: s.leads.id }).from(s.leads).where(and(eq(s.leads.organizationId, ids.c), realLead()));
+    expect(real).toEqual([]);
   });
 
   it("first deal: the step follows this org's rows", async () => {

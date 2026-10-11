@@ -194,6 +194,114 @@ describe("3 · writers: one writer, fed only by the request", () => {
   });
 }, REPO_SWEEP_TIMEOUT_MS);
 
+// ── 3b · writers whose payload is built elsewhere ───────────────────────────
+//
+// The object-literal scan above sees a write only when the column is NAMED at
+// the write site. A payload assembled from arbitrary keys — a workflow's
+// `update_record` action passes `config.updates` (any keys, trigger
+// conditionable on county) into storage.updateLead — never names the column
+// and so was invisible to it (W5b audit). The population of such writers is
+// enumerated here: every `.update(leads).set(X)` / `.insert(leads).values(X)`
+// in server/ whose X is not a closed object literal. A new one fails until it
+// is read and registered; the repository's own must route through the
+// language strip, and that strip is exercised against the real repository.
+
+/** file → number of open-payload lead writes, each read and found to build its payload from a closed key set. */
+const OPEN_PAYLOAD_LEAD_WRITERS: Record<string, { count: number; why: string }> = {
+  "server/storage/leadRepo.ts": { count: 4, why: "createLead/createLeadsBatch via leadInsertRow, updateLead/bulkUpdateLeads via leadUpdatePayload — both strip the language keys (asserted below)" },
+  "server/api-v1/leads.ts": { count: 2, why: "mapCreateInput / mapUpdateInput copy a fixed list of snake_case fields; no language field" },
+  "server/routes-bulk.ts": { count: 1, why: "allowedUpdates = status / assignedTo / tags only" },
+  "server/routes-leads.ts": { count: 1, why: "csv-import row: explicit fields plus a DNC-flag spread of fixed keys" },
+  "server/services/leadEnrichment.ts": { count: 1, why: "parcelCols: propertyAddress / county / apn copied from the linked property" },
+  "server/services/onboardingEnhancements.ts": { count: 1, why: "fixed sample fixtures" },
+  "server/services/taxDelinquentPipeline.ts": { count: 1, why: "chunk of object literals built in the same file (covered by the literal scan)" },
+  "server/services/voiceCallAI.ts": { count: 1, why: "updateData = status / tags / updatedAt only" },
+  "server/storage/auditRepo.ts": { count: 1, why: "consent fields built in updateLeadConsent" },
+};
+
+function openPayloadLeadWrites(file: string): Array<{ file: string; arg: string }> {
+  const src = fs.readFileSync(file, "utf8");
+  if (!/\.(update|insert)\(\s*leads\s*\)/.test(src)) return [];
+  const sf = ts.createSourceFile(file, src, ts.ScriptTarget.Latest, true, file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
+  const out: Array<{ file: string; arg: string }> = [];
+  const visit = (n: ts.Node) => {
+    if (
+      ts.isCallExpression(n) &&
+      ts.isPropertyAccessExpression(n.expression) &&
+      (n.expression.name.text === "update" || n.expression.name.text === "insert") &&
+      n.arguments.length === 1 &&
+      n.arguments[0].getText(sf) === "leads"
+    ) {
+      let p: ts.Node = n;
+      let target: ts.CallExpression | null = null;
+      while (p.parent && !ts.isStatement(p)) {
+        p = p.parent;
+        if (ts.isCallExpression(p) && ts.isPropertyAccessExpression(p.expression) && (p.expression.name.text === "set" || p.expression.name.text === "values")) {
+          target = p;
+          break;
+        }
+      }
+      // A write whose payload call can't be located is COUNTED, never skipped.
+      const arg = target?.arguments[0];
+      let inner: ts.Expression | undefined = arg;
+      while (inner && (ts.isAsExpression(inner) || ts.isParenthesizedExpression(inner))) inner = inner.expression;
+      const closed = !!inner && ts.isObjectLiteralExpression(inner) && !inner.properties.some((q) => ts.isSpreadAssignment(q));
+      if (!closed) out.push({ file: path.relative(ROOT, file), arg: arg ? arg.getText(sf) : "<payload not located>" });
+    }
+    ts.forEachChild(n, visit);
+  };
+  visit(sf);
+  return out;
+}
+
+describe("3b · writers whose payload is built elsewhere cannot carry a language", () => {
+  const files: string[] = [];
+  walk(path.join(ROOT, "server"), files);
+  const open = files.flatMap(openPayloadLeadWrites);
+
+  it("every open-payload lead writer in server/ is registered, with its exact count", () => {
+    const counts: Record<string, number> = {};
+    for (const w of open) counts[w.file] = (counts[w.file] ?? 0) + 1;
+    const expected = Object.fromEntries(Object.entries(OPEN_PAYLOAD_LEAD_WRITERS).map(([f, v]) => [f, v.count]));
+    expect(counts, JSON.stringify(open, null, 2)).toEqual(expected);
+  });
+
+  it("the repository's open writes all pass through the language strip", () => {
+    const repo = open.filter((w) => w.file === "server/storage/leadRepo.ts");
+    expect(repo.length).toBe(4);
+    for (const w of repo) expect(w.arg, w.arg).toMatch(/\b(leadInsertRow|leadUpdatePayload)\(/);
+  });
+
+  it("the real repository drops a language from every create and update (a workflow's update_record lands here)", async () => {
+    const captured: unknown[] = [];
+    vi.doMock("../../server/db", () => {
+      const chain = (rows: unknown) => ({ where: () => chain(rows), returning: async () => rows, then: (r: (v: unknown) => unknown) => r(rows) });
+      return {
+        db: {
+          update: () => ({ set: (p: unknown) => { captured.push(p); return chain([{ id: 1 }]); } }),
+          insert: () => ({ values: (v: unknown) => { captured.push(v); const rows = (Array.isArray(v) ? v : [v]).map((r, i) => ({ ...(r as object), id: i + 1 })); return { returning: async () => rows, then: (r: (x: unknown) => unknown) => r(rows) }; } }),
+        },
+      };
+    });
+    const { leadRepo } = await import("../../server/storage/leadRepo");
+    const self = { logActivity: async () => undefined } as never;
+    const lang = { outreachLanguage: "es", outreachLanguageSource: "owner_stated", outreachLanguageSetAt: new Date() };
+    await leadRepo.updateLead.call(self, 1, { status: "contacted", ...lang } as never, 9);
+    await leadRepo.bulkUpdateLeads.call(self, 9, [1, 2], { tags: ["x"], ...lang } as never);
+    await leadRepo.createLead.call(self, { organizationId: 9, type: "seller", firstName: "José", lastName: "Hernández", ...lang } as never);
+    await leadRepo.createLeadsBatch.call(self, [{ organizationId: 9, type: "seller", firstName: "A", lastName: "B", ...lang }] as never);
+    vi.doUnmock("../../server/db");
+    const rows = captured.flatMap((c) => (Array.isArray(c) ? c : [c])) as Array<Record<string, unknown>>;
+    const leadRows = rows.filter((r) => "status" in r || "tags" in r || "firstName" in r);
+    expect(leadRows.length).toBe(4);
+    for (const r of leadRows) {
+      expect(r.outreachLanguage).toBeUndefined();
+      expect(r.outreachLanguageSource).toBeUndefined();
+      expect(r.outreachLanguageSetAt).toBeUndefined();
+    }
+  });
+}, REPO_SWEEP_TIMEOUT_MS);
+
 describe("4 · imports never map a language column", () => {
   it("no import target is a language", () => {
     expect(CSV_IMPORT_TARGET_FIELDS.map((f) => `${f.id} ${f.label}`).join(" ")).not.toMatch(/lang|idioma|ethnic/i);

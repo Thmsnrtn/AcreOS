@@ -431,12 +431,6 @@ export async function sendOrgSMS(input: SendOrgSmsInput): Promise<SmsResult> {
 }
 
 /**
- * Does the org have its OWN connected (BYO) SMS identity? Counterparty send
- * paths (campaign SMS) must refuse rather than fall back to AcreOS's platform
- * Twilio account — "be the rail, not the provider" (founder ruling 2026-07-29).
- * The platform account is system-mail only.
- */
-/**
  * A refusal by one of sendOrgSMS's own gates (TCPA purpose gate or the A2P
  * 10DLC registration gate) — a deferral for a sequence, a 403 for a person —
  * as opposed to a carrier or network failure.
@@ -446,6 +440,12 @@ export function isSmsGateRefusal(error: string | null | undefined): boolean {
   return e.startsWith("TCPA gate:") || e.startsWith("A2P gate:");
 }
 
+/**
+ * Does the org have its OWN connected (BYO) SMS identity? Counterparty send
+ * paths (campaign SMS) must refuse rather than fall back to AcreOS's platform
+ * Twilio account — "be the rail, not the provider" (founder ruling 2026-07-29).
+ * The platform account is system-mail only.
+ */
 export async function orgHasConnectedSmsIdentity(organizationId: number): Promise<boolean> {
   const { orgHasByoTwilio } = await import("./comms/providers/twilio");
   return orgHasByoTwilio(organizationId);
