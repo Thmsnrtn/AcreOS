@@ -748,6 +748,7 @@ export const CONSTITUTION: readonly ConstitutionInvariant[] = [
       kind: "ratchet-test",
       refs: [
         "tests/unit/digestLaneRunsOnlyReversibleWork.test.ts",
+        "tests/unit/digestLaneRiskExemption.test.ts",
         "server/services/autopilot/act.ts",
         "server/services/autopilot/weeklyAutopilotDigest.ts",
       ],
@@ -758,7 +759,16 @@ export const CONSTITUTION: readonly ConstitutionInvariant[] = [
         "worded as a routine ops move; each must ask and enqueue nothing. " +
         "Mutation-checked 2026-10-10: removing the reversibility check, the " +
         "hard-stop check, or the planAndAct call each turns it red; seeding " +
-        "a literal level instead of DEFAULT_DOMAIN_LEVEL turns it red.",
+        "a literal level instead of DEFAULT_DOMAIN_LEVEL turns it red. " +
+        "Founder ruling 2026-10-10 (picker): a digest-lane move is exempt " +
+        "from the risk check's 'unproven calibration escalates medium' rule " +
+        "(isDigestLaneMove → shouldEscalateForRisk opts.digestLane); the " +
+        "over-confident hard gate and the high tier still escalate it, and " +
+        "digestLaneRiskExemption.test.ts routes an irreversible move, a " +
+        "customer-facing move, the hard stops, a net-new move and every " +
+        "non-digest domain through the same path — each still escalates " +
+        "(mutation-checked: always-true, no domain check, no refusal check, " +
+        "the loop not passing it).",
     },
   },
   {

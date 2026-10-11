@@ -280,3 +280,31 @@ plan item W1-4.4.
   - the ratchet `tests/unit/digestLaneRunsOnlyReversibleWork.test.ts`.
 - **Founder action:** confirm ops and deploy at execute_gated in production
   (Controls).
+
+## 2026-10-10 — digest-lane moves are exempt from the unproven-calibration escalation
+
+**Date:** 2026-10-10
+
+**Source:** the founder's picker answer in the coordinating session.
+
+- The risk check escalates a medium-risk move while the brain's calibration
+  is still "unproven" (confidence below 0.5). That rule **no longer applies
+  to digest-lane moves**: reversible, internal ops and deploy moves that pass
+  `digestLaneRefusal`.
+- In the simulated year, this rule was the source of the remaining "higher-risk
+  ops/deploy action" asks for exactly the routine moves the earlier 2026-10-10
+  decision says should run and be digested.
+- **Unchanged:**
+  - the over-confident hard gate (confidence 0.2 or below escalates
+    everything);
+  - the high tier;
+  - hard stops, irreversible, customer-facing, new and unknown moves;
+  - every other domain.
+- **Implementation:** `shouldEscalateForRisk(…, { digestLane })` in
+  `riskautonomy.ts`, with `isDigestLaneMove` in `act.ts`, called from the
+  loop's risk check.
+- **Enforced by:**
+  - the ratchet `tests/unit/digestLaneRiskExemption.test.ts`;
+  - registry entry `ai.digest-lane-runs-only-reversible-work`.
+- **Recovery is unchanged:** a demoted domain climbs back with 10 clean cycles
+  plus a founder card.

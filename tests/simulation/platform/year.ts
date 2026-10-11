@@ -385,6 +385,9 @@ async function main() {
   const setup = await k.founderOneTimeSetup();
   const jobs = await k.defaultJobs();
   const monitor = new InvariantMonitor(join(OUT, "violations.jsonl"));
+  // The stand-in's call log is shared by every seed an instance runs: read only this run's lines.
+  const standinCalls = join(DIR, "standin", "calls.jsonl");
+  const standinCallsStart = existsSync(standinCalls) ? readFileSync(standinCalls, "utf8").split("\n").filter(Boolean).length : 0;
   const collector = new Collector(k.q, DIR, toVirtual);
   await collector.init();
   const truth: GroundTruth = { revokedAtVirtual: new Map(), outages: [], founderTaps: [], approvalsShown: new Map(), screens: [], webhookLandings: [] };
@@ -394,7 +397,7 @@ async function main() {
     { provider: "email_provider", names: ["Email", "SES"], fromDay: Math.floor(DAYS * 0.85), hours: 8 },
   ];
   const jobLog: Array<{ name: string; ok: boolean; err?: string }> = [];
-  const metrics = { weeks: [] as Array<{ week: number; customers: number; askMinutes: number; dropMinutes: number; pageMinutes: number; setupMinutes: number; total: number; asks: number; pages: number; dropped: number }>, wallSeconds: 0 };
+  const metrics = { weeks: [] as Array<{ levels?: Record<string, string>; week: number; customers: number; askMinutes: number; dropMinutes: number; pageMinutes: number; setupMinutes: number; total: number; asks: number; pages: number; dropped: number }>, wallSeconds: 0 };
   let weekAskMark = 0, weekPageMark = 0;
 
   for (let day = 0; day < DAYS; day++) {
@@ -474,7 +477,8 @@ async function main() {
           and not exists (select 1 from support_ticket_messages m where m.ticket_id = t.id and m.role <> 'user')
           and not exists (select 1 from autopilot_pending_actions a where a.hand_name = 'reply_support_ticket' and (a.args->>'ticket_id')::int = t.id and a.status in ('pending','approved','executed'))`))?.n ?? 0);
       const week = Math.floor(day / 7) + 1;
-      const row = { week, customers: customers.filter((c) => c.churnedDay == null).length, askMinutes, dropMinutes: dropped * k.MINUTES.investigation, pageMinutes: pages.length * k.MINUTES.yesNo, setupMinutes: week === 1 ? k.SETUP_MINUTES : week % 4 === 0 ? k.MINUTES.approvalWithReading : 0, total: 0, asks: asks.length, pages: pages.length, dropped };
+      const levels = Object.fromEntries((await k.q<any>("select domain, level from domain_autonomy_levels")).map((r: any) => [r.domain, r.level]));
+      const row = { levels, week, customers: customers.filter((c) => c.churnedDay == null).length, askMinutes, dropMinutes: dropped * k.MINUTES.investigation, pageMinutes: pages.length * k.MINUTES.yesNo, setupMinutes: week === 1 ? k.SETUP_MINUTES : week % 4 === 0 ? k.MINUTES.approvalWithReading : 0, total: 0, asks: asks.length, pages: pages.length, dropped };
       row.total = row.askMinutes + row.dropMinutes + row.pageMinutes + row.setupMinutes;
       metrics.weeks.push(row);
       console.log(`  week ${week}: customers=${row.customers} founder-min=${row.total} (asks ${asks.length}=${askMinutes}m, dropped ${dropped}, pages ${pages.length}) violations=${monitor.violations.length} wall=${((Date.now() - t0) / 1000).toFixed(0)}s`);
@@ -508,11 +512,25 @@ async function main() {
   // Founder minutes by what asked for them (the drivers the sensitivity analysis varies).
   const allAsks = await k.q<any>("select question_summary, question_body, answer_format, acts_payload is not null as acts, urgency from solene_founder_asks");
   const driverOf = (a: any): string =>
-    /^Support ticket #/.test(a.question_summary) ? (/refund/i.test(`${a.question_summary} ${a.question_body}`) ? "ticket: refund over ceiling" : /legal|lawsuit|tcpa|cease/i.test(a.question_body) ? "ticket: legal" : /delet/i.test(a.question_body) ? "ticket: data deletion" : "ticket: bug / other")
+    /^Support ticket #/.test(a.question_summary) ? ticketDriver(`${a.question_summary}\n${a.question_body ?? ""}`)
     : a.acts ? "autopilot move approval"
     : /policy|trust|autonomy|level/i.test(a.question_summary) ? "autonomy / policy proposal"
     : /budget|spend/i.test(a.question_summary) ? "budget"
     : "other ask";
+  // Label a ticket ask by WHY it reached the founder. The routine-support
+  // policy's ask states it ("Why this is yours: <reason>"); its body also
+  // quotes the policy ("refunds up to $50"), so a bare /refund/ match labelled
+  // EVERY held ticket a refund over the ceiling (46 a seed against ~12 real
+  // $80 refunds, measured 2026-10-10).
+  function ticketDriver(text: string): string {
+    const why = /Why this is yours: ([a-z_]+)/.exec(text)?.[1];
+    if (why) return why === "money_over_ceiling" ? "ticket: refund over ceiling" : `ticket: ${why.replace(/_/g, " ")}`;
+    const amounts = [...text.matchAll(/\$(\d[\d,]*(?:\.\d{2})?)/g)].map((m) => Number(m[1].replace(/,/g, "")));
+    if (/refund/i.test(text.split("\n").slice(0, 2).join(" ")) && amounts.some((n) => n > 50)) return "ticket: refund over ceiling";
+    if (/legal|lawsuit|tcpa|cease/i.test(text)) return "ticket: legal";
+    if (/delet/i.test(text)) return "ticket: data deletion";
+    return "ticket: bug / other";
+  }
   const askMinutesByDriver: Record<string, { n: number; minutes: number }> = {};
   for (const a of allAsks) {
     const d = driverOf(a);
@@ -520,9 +538,32 @@ async function main() {
     b.n++;
     b.minutes += k.priceAsk({ answerFormat: a.answer_format, questionBody: a.question_body });
   }
+  // Diagnostics (W1a, 2026-10-10): why the founder was asked, by move kind,
+  // domain and ask shape; where each domain's autonomy level ended and why it
+  // moved; why tickets were held or dropped.
+  const diag = {
+    levels: await k.q<any>("select domain, level, clean_cycle_count, last_promoted_at, last_demoted_at, last_demotion_reason from domain_autonomy_levels order by domain"),
+    moveAsks: await k.q<any>(`select acts_payload->>'moveKind' as kind, acts_payload->>'domain' as domain, split_part(question_summary, ':', 1) as shape, status, count(*)::int n
+                                from solene_founder_asks where acts_payload is not null group by 1,2,3,4 order by n desc`),
+    moveOutcomes: await k.q<any>(`select move_kind, domain, outcome, count(*)::int n from autopilot_experiences group by 1,2,3 order by n desc`),
+    supportHeldWhy: await k.q<any>(`select reasoning_trace->>'why' as why, count(*)::int n from autopilot_experiences where move_kind = 'support_held' group by 1 order by n desc`),
+    escalatedTickets: await k.q<any>(`select coalesce(t.resolution_type, '-') as resolution, coalesce(t.category, '-') as category,
+                                        exists (select 1 from autopilot_experiences e where e.move_kind = 'support_held' and (e.reasoning_trace->>'ticketId')::int = t.id) as held_by_policy,
+                                        count(*)::int n
+                                   from support_tickets t where t.assigned_agent = 'founder' group by 1,2,3 order by n desc`),
+    ticketSources: await k.q<any>(`select coalesce(t.category, '-') as category, coalesce(t.assigned_agent, '-') as assigned, coalesce(t.resolution_type, '-') as resolution, t.status, count(*)::int n
+                                     from support_tickets t group by 1,2,3,4 order by n desc limit 40`),
+    dispatchOutcomes: await k.q<any>(`select split_part(source_id, ':', 2) as kind, status, count(*)::int n from solene_dispatch_queue where source_id like 'autopilot:%' group by 1,2 order by n desc`),
+  };
   const summary = monitor.summary();
   const compliance = monitor.violations.filter((v) => ["no-send-without-consent", "no-platform-counterparty-mail", "customer-money-not-on-platform"].includes(v.invariant)).length;
   const weeksTotal = metrics.weeks.map((w) => w.total);
+  // Vacuity: every worker the run reached was modelled by the brain (workerCoverage.ts).
+  const { workerCoverage } = await import("./workerCoverage");
+  const callRows = (existsSync(standinCalls) ? readFileSync(standinCalls, "utf8").split("\n").filter(Boolean).slice(standinCallsStart) : [])
+    .map((l) => { try { return JSON.parse(l); } catch { return null; } })
+    .filter(Boolean);
+  const coverage = workerCoverage(callRows);
   const result = {
     seed: SEED, days: DAYS, stepHours: STEP_H, brain: BRAIN, plan: PLAN, wallSeconds: Math.round((Date.now() - t0) / 1000), setup,
     founderMinutesPerWeek: { mean: weeksTotal.reduce((a, b) => a + b, 0) / Math.max(1, weeksTotal.length), weeks: metrics.weeks, askMinutesByDriver },
@@ -533,7 +574,7 @@ async function main() {
     customers: { signedUp: customers.length, activated, churned: counts.churned, byPersona: Object.fromEntries((["land_flipper", "note_investor", "va_team"] as const).map((p) => [p, customers.filter((c) => c.persona === p).length])) },
     aiCost: { customerCentsPerCustomerMonth: aiCustomerCents / Math.max(1, customerMonths), platformCentsPerCustomerMonth: aiPlatformCents / Math.max(1, customerMonths), customerMonths },
     published: Number((await k.q1<any>("select count(*)::int n from marketing_artifacts"))?.n ?? 0),
-    counts, friction,
+    counts, friction, diag, workerCoverage: coverage,
     jobs: Object.entries(jobLog.reduce((a: Record<string, { runs: number; failed: number; lastErr?: string }>, l) => { const b = (a[l.name] ??= { runs: 0, failed: 0 }); b.runs++; if (!l.ok) { b.failed++; b.lastErr = l.err; } return a; }, {})),
     coverage: collector.coverage,
     outages: truth.outages,
@@ -549,6 +590,11 @@ async function main() {
     },
   };
   writeFileSync(join(OUT, "metrics.json"), JSON.stringify(result, null, 1));
+  if (BRAIN !== "adversarial" && coverage.failing.length > 0) {
+    console.error(`UNMODELLED WORKER — the brain skipped worker calls, so this run measures the stand-in, not the business:\n  ${coverage.failing.join("\n  ")}`);
+    await k.shutdown(1);
+    return;
+  }
   if (BRAIN === "adversarial") {
     const { scoreRedteamWorld } = await import("../redteam/world");
     const { scoreAll } = await import("../redteam/score");

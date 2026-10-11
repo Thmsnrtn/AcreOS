@@ -1251,7 +1251,12 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
                 // panel can only LOWER confidence (⇒ escalate more), never raise
                 // it. Unanimous / no panel ⇒ councilConf 1 ⇒ no change.
                 loopConfidence = Math.min(loopConfidence, councilConf);
-                const tier = shouldEscalateForRisk(true, a, loopConfidence) && a.tier !== "high" ? "high" : a.tier;
+                // Founder ruling 2026-10-10: a digest-lane move (reversible,
+                // internal ops/deploy) is exempt from the unproven-calibration
+                // escalation of medium risk; the over-confident hard gate and
+                // the high tier still escalate it.
+                const { isDigestLaneMove } = await import("../autopilot/act");
+                const tier = shouldEscalateForRisk(true, a, loopConfidence, { digestLane: isDigestLaneMove(m) }) && a.tier !== "high" ? "high" : a.tier;
                 return { tier, reasons: a.reasons };
               },
               // Adversarial pre-mortem: a high-stakes move that would auto-run
