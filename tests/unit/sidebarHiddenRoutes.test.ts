@@ -19,8 +19,10 @@
 import { describe, expect, it } from "vitest";
 import fs from "fs";
 import path from "path";
+import ts from "typescript";
 import {
   resolveHiddenRoutes,
+  isRouteHidden,
   _SIDEBAR_HIDDEN_ROUTES_REGISTRY,
   type InvestorType,
   type OrgInvestorType,
@@ -211,6 +213,15 @@ function childAllowed(child: ParsedNavChild, businessType?: string): boolean {
   return !!businessType && child.businessTypeOnly.includes(businessType);
 }
 
+/** Replica of the child/overflow filter in layout-sidebar.tsx (flags on). */
+function renderedEntries(
+  module: ParsedNavModule,
+  opts: { businessType?: string; hidden: string[] },
+): { children?: ParsedNavChild[]; overflow?: ParsedNavChild[] } {
+  const keep = (c: ParsedNavChild) => !isRouteHidden(c.href, opts.hidden) && childAllowed(c, opts.businessType);
+  return { children: module.children?.filter(keep), overflow: module.overflow?.filter(keep) };
+}
+
 /**
  * Replica of the `visibleModules` filter in layout-sidebar.tsx (feature
  * flags assumed on — this suite is about persona gating). Returns true when
@@ -221,17 +232,12 @@ function moduleRenders(
   opts: { businessType?: string; hidden: string[]; isFounder: boolean },
 ): boolean {
   const { businessType, hidden, isFounder } = opts;
-  const children = module.children?.filter(
-    (c) => !hidden.includes(c.href) && childAllowed(c, businessType),
-  );
-  const overflow = module.overflow?.filter(
-    (c) => !hidden.includes(c.href) && childAllowed(c, businessType),
-  );
+  const { children, overflow } = renderedEntries(module, { businessType, hidden });
   if (module.founderOnly && !isFounder) return false;
   if (module.businessTypeOnly && module.businessTypeOnly.length > 0) {
     if (!businessType || !module.businessTypeOnly.includes(businessType)) return false;
   }
-  if (hidden.includes(module.href)) return false;
+  if (isRouteHidden(module.href, hidden)) return false;
   if (children !== undefined) {
     const hasPrimary = children.length > 0;
     const hasOverflow = (overflow?.length ?? 0) > 0;
@@ -302,10 +308,10 @@ describe("five-doors doctrine — doors are unhideable BY ANY MEANS", () => {
     // These anchors fail if the real filter is edited, forcing the replica
     // to be re-derived instead of silently asserting yesterday's rules.
     for (const anchor of [
-      "!hiddenForType.includes(child.href) &&",
+      "!isRouteHidden(child.href, hiddenForType) &&",
       "childBusinessTypeAllows(child, businessType)",
       "if (module.founderOnly && !isFounder) return false;",
-      "if (hiddenForType.includes(module.href)) return false;",
+      "if (isRouteHidden(module.href, hiddenForType)) return false;",
       "if (module.children !== undefined) {",
       "const hasPrimary = module.children.length > 0;",
       "const hasOverflow = (module.overflow?.length ?? 0) > 0;",
@@ -352,5 +358,84 @@ describe("landlord family (V1, founder ruling #11) — siblings share buy_and_ho
       // /maps is in the registry entry but is a protected door — stays visible.
       expect(hidden, sibling).not.toContain("/maps");
     }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────
+// The catalog and the rail agree (2026-10-12).
+//
+// The persona walk found /campaigns in a note-investor's rail although the
+// notes hidden set names it. Two shapes, both fixed here and pinned below:
+//   1. Direct Mail and Sequences became channel tabs of /campaigns
+//      (`/campaigns?channel=…`); the rail compared hrefs by exact string, so
+//      a hidden /campaigns did not hide links INTO /campaigns.
+//   2. While feature flags loaded, the rail skipped the persona filter
+//      entirely — land Outreach and every businessTypeOnly vertical showed
+//      for that window.
+// ─────────────────────────────────────────────────────────────────────
+describe("persona gating — what the catalog hides, the rail does not render", () => {
+  const modules = parseNavModules();
+  const pathOf = (href: string) => href.split(/[?#]/)[0];
+
+  it("no rendered entry links into a route its persona hides (every axis combination)", () => {
+    let checked = 0;
+    for (const businessType of [undefined, ...ALL_BUSINESS_TYPES]) {
+      for (const detectedInvestorType of ALL_DETECTED) {
+        for (const orgInvestorType of ALL_ORG) {
+          const hidden = resolveHiddenRoutes({ businessType, detectedInvestorType, orgInvestorType });
+          for (const m of modules) {
+            if (!moduleRenders(m, { businessType, hidden, isFounder: false })) continue;
+            const { children, overflow } = renderedEntries(m, { businessType, hidden });
+            for (const c of [...(children ?? []), ...(overflow ?? [])]) {
+              expect(
+                hidden.includes(pathOf(c.href)),
+                `${businessType}/${detectedInvestorType}/${orgInvestorType}: "${m.id}" renders ${c.href}, a route the persona hides`,
+              ).toBe(false);
+              checked++;
+            }
+          }
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(1000);
+  });
+
+  it("a note-investor org's Deals door offers no land outreach (the walk's /campaigns finding)", () => {
+    const hidden = resolveHiddenRoutes({ businessType: "note_investor", detectedInvestorType: "note_investor", orgInvestorType: "notes" });
+    const deals = modules.find((m) => m.id === "deals")!;
+    const { children, overflow } = renderedEntries(deals, { businessType: "note_investor", hidden });
+    const hrefs = [...(children ?? []), ...(overflow ?? [])].map((c) => c.href);
+    // Vacuity: the Deals module really does carry /campaigns entries to hide.
+    expect([...(deals.children ?? []), ...(deals.overflow ?? [])].map((c) => c.href).filter((h) => pathOf(h) === "/campaigns").length).toBeGreaterThanOrEqual(2);
+    expect(hrefs.filter((h) => ["/campaigns", "/outreach/mail"].includes(pathOf(h)))).toEqual([]);
+    // …and the door itself still renders (contents, not doors).
+    expect(moduleRenders(deals, { businessType: "note_investor", hidden, isFounder: false })).toBe(true);
+  });
+
+  it("isRouteHidden hides links into a hidden route, never a different route", () => {
+    expect(isRouteHidden("/campaigns?channel=direct-mail", ["/campaigns"])).toBe(true);
+    expect(isRouteHidden("/campaigns#ab-tests", ["/campaigns"])).toBe(true);
+    expect(isRouteHidden("/campaigns", ["/campaigns"])).toBe(true);
+    expect(isRouteHidden("/campaigns-archive", ["/campaigns"])).toBe(false);
+    expect(isRouteHidden("/deals", ["/campaigns"])).toBe(false);
+  });
+
+  it("the rail applies persona gating while feature flags load (no bypass branch)", () => {
+    const sf = ts.createSourceFile("layout-sidebar.tsx", LAYOUT_SIDEBAR_SRC, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    let init: ts.Expression | undefined;
+    const visit = (n: ts.Node) => {
+      if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name) && n.name.text === "visibleModules") init = n.initializer;
+      ts.forEachChild(n, visit);
+    };
+    visit(sf);
+    expect(init, "visibleModules must be declared in layout-sidebar.tsx").toBeTruthy();
+    // ONE filter expression: not a `flagsLoading ? <unfiltered> : <filtered>` fork.
+    let e: ts.Expression = init!;
+    while (ts.isParenthesizedExpression(e)) e = e.expression;
+    expect(ts.isConditionalExpression(e), "visibleModules forks on a condition — a branch may skip persona gating").toBe(false);
+    const text = init!.getText(sf);
+    expect(text).toContain("isRouteHidden(child.href, hiddenForType)");
+    expect(text).toContain("childBusinessTypeAllows(child, businessType)");
+    expect(text).toContain("module.businessTypeOnly");
   });
 });

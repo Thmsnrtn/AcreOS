@@ -25,6 +25,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
+import { useHiddenRoutes } from "@/hooks/use-hidden-routes";
+import { isRouteHidden } from "@/lib/sidebar-hidden-routes";
 
 interface MobileCommandDrawerProps {
   open: boolean;
@@ -57,6 +59,9 @@ export function MobileCommandDrawer({ open, onOpenChange }: MobileCommandDrawerP
   const [location] = useLocation();
   const [searchQuery, setSearchQuery] = useState("");
   const { isFounder } = useAuth();
+  // Same persona gating as the desktop rail: a route the persona hides (a
+  // note-investor org's land Marketing/Outreach) is not offered here either.
+  const hidden = useHiddenRoutes();
 
   const handleNavigate = () => {
     onOpenChange(false);
@@ -64,6 +69,7 @@ export function MobileCommandDrawer({ open, onOpenChange }: MobileCommandDrawerP
   };
 
   const filteredQuickActions = quickActions.filter(item =>
+    !isRouteHidden(item.href, hidden) &&
     item.label.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
@@ -72,6 +78,7 @@ export function MobileCommandDrawer({ open, onOpenChange }: MobileCommandDrawerP
     : moreItems;
 
   const filteredMoreItems = dynamicMoreItems.filter(item =>
+    !isRouteHidden(item.href, hidden) &&
     item.label.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
