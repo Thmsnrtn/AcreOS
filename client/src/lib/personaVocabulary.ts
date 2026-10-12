@@ -242,12 +242,52 @@ const VOCABULARY = {
 
 export type VocabularyKey = keyof typeof VOCABULARY;
 
+/** Every registry key — read by the vocabulary-adoption gate (tests). */
+export const VOCABULARY_KEYS = Object.keys(VOCABULARY) as VocabularyKey[];
+
 const DEFAULT_PERSONA: Persona = "land_investor";
 
 export function getTerm(key: VocabularyKey, persona: Persona | null | undefined): string {
   const entry = VOCABULARY[key];
   const resolved = persona ?? DEFAULT_PERSONA;
   return entry[resolved] ?? entry[DEFAULT_PERSONA] ?? key;
+}
+
+/**
+ * The deal pipeline's stages, in the order a deal moves, and the label each
+ * renders with for a persona. Two stages carry persona vocabulary: the stage
+ * after a priced proposal goes out ("Offer sent" / "Bid sent" / "Note terms
+ * sent") and the terminal stage (`pipeline.stage.closed` — "Closed",
+ * "Acquired", "Originated", "Assigned", "Awarded", …). Every surface that
+ * names a deal stage (the board's columns, a card's status chip, the journey
+ * strip, the bulk-move picker) reads it here, so a note investor never sees
+ * the land-flipper word for the stage their deal is in.
+ */
+export const DEAL_STAGE_ORDER = [
+  "negotiating",
+  "offer_sent",
+  "countered",
+  "accepted",
+  "in_escrow",
+  "closed",
+] as const;
+
+const DEAL_STAGE_BASE_LABEL: Record<string, string> = {
+  negotiating: "Negotiating",
+  countered: "Countered",
+  accepted: "Accepted",
+  in_escrow: "In escrow",
+  cancelled: "Cancelled",
+};
+
+export function dealStageLabel(stage: string, persona: Persona | null | undefined): string {
+  if (stage === "offer_sent") return `${getTerm("entity.offer", persona)} sent`;
+  if (stage === "closed") return getTerm("pipeline.stage.closed", persona);
+  const base = DEAL_STAGE_BASE_LABEL[stage];
+  if (base) return base;
+  // An unknown stored value is humanised, never printed raw.
+  const spaced = stage.replace(/_/g, " ");
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
 export const PERSONAS: readonly Persona[] = [

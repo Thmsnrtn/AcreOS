@@ -20,7 +20,8 @@ import { telemetry } from "@/lib/telemetry";
 import { useDealChecklist, useChecklistTemplates, useApplyChecklistTemplate, useUpdateChecklistItem, useStageGate } from "@/hooks/use-checklists";
 import { useState, useMemo, useEffect, useRef } from "react";
 import { useDocumentTitle } from "@/hooks/use-document-title";
-import { useTerm } from "@/hooks/use-persona";
+import { usePersona, useTerm, useVocabulary } from "@/hooks/use-persona";
+import { DEAL_STAGE_ORDER, dealStageLabel } from "@/lib/personaVocabulary";
 import {
   DndContext,
   type DragEndEvent,
@@ -82,14 +83,35 @@ import { Verbs } from "@/lib/labels";
 
 type DealWithProperty = Deal & { property?: Property };
 
-const dealStages = [
-  { value: 'negotiating', label: 'Negotiating', color: 'bg-muted' },
-  { value: 'offer_sent', label: 'Offer Sent', color: 'bg-acr-brand-soft' },
-  { value: 'countered', label: 'Countered', color: 'bg-acr-warn-soft' },
-  { value: 'accepted', label: 'Accepted', color: 'bg-acr-pos-soft' },
-  { value: 'in_escrow', label: 'In Escrow', color: 'bg-acr-warn-soft' },
-  { value: 'closed', label: 'Closed', color: 'bg-acr-pos-soft' },
-];
+const STAGE_COLOR: Record<(typeof DEAL_STAGE_ORDER)[number], string> = {
+  negotiating: 'bg-muted',
+  offer_sent: 'bg-acr-brand-soft',
+  countered: 'bg-acr-warn-soft',
+  accepted: 'bg-acr-pos-soft',
+  in_escrow: 'bg-acr-warn-soft',
+  closed: 'bg-acr-pos-soft',
+};
+
+/** "an offer" / "a bid" / "note terms" — the priced artefact as a noun phrase. */
+function withArticle(singular: string, pluralForm: string): string {
+  const word = singular.toLowerCase();
+  if (singular === pluralForm) return word;
+  return `${/^[aeiou]/.test(word) ? "an" : "a"} ${word}`;
+}
+
+/**
+ * The board's stages with the persona's labels (dealStageLabel — the one
+ * place a stage is named), so the columns, the bulk-move picker and the
+ * screen-reader announcements say "Acquired"/"Bid sent" for the personas
+ * whose vocabulary says so.
+ */
+function useDealStages(): { value: string; label: string; color: string }[] {
+  const persona = usePersona();
+  return useMemo(
+    () => DEAL_STAGE_ORDER.map((value) => ({ value, label: dealStageLabel(value, persona), color: STAGE_COLOR[value] })),
+    [persona],
+  );
+}
 
 // Benchmark days per stage before a deal is considered stalled
 const STAGE_BENCHMARK_DAYS: Record<string, number> = {
@@ -129,8 +151,12 @@ const statusColors: Record<string, string> = {
 export default function DealsPage({ embedded = false }: { embedded?: boolean }) {
   // Parent page (pipeline.tsx) owns the H1 when embedded.
   const HeadingTag = embedded ? ("h2" as const) : ("h1" as const);
-  const dealsLabel = useTerm("entity.deal.plural");
-  const dealLabel = useTerm("entity.deal");
+  const term = useVocabulary();
+  const dealsLabel = term("entity.deal.plural");
+  const dealLabel = term("entity.deal");
+  const dealLower = dealLabel.toLowerCase();
+  const dealsLower = dealsLabel.toLowerCase();
+  const dealStages = useDealStages();
   useDocumentTitle(dealsLabel);
   const [dealCurrentPage, setDealCurrentPage] = useState(1);
   const [dealPageSize, setDealPageSize] = useState(25);
@@ -214,7 +240,7 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
     if (previousDeal && previousDeal.status === newStage) return;
     const locationLabel = previousDeal?.property
       ? `${previousDeal.property.county}, ${previousDeal.property.state}`
-      : `Deal #${dealId}`;
+      : `${dealLabel} #${dealId}`;
     updateDealStage(
       { id: dealId, status: newStage },
       {
@@ -226,7 +252,7 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
         },
         onError: (err: any) => {
           toast({
-            title: "Couldn't move deal",
+            title: `Couldn't move ${dealLower}`,
             description: err?.message || "Your change didn't save. Try again in a moment.",
             variant: "destructive",
           });
@@ -264,8 +290,8 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
       });
     } catch (error: any) {
       toast({
-        title: "Couldn't export deals",
-        description: error?.message || "CSV build failed. Try again — your deals weren't changed.",
+        title: `Couldn't export ${dealsLower}`,
+        description: error?.message || `CSV build failed. Try again — your ${dealsLower} weren't changed.`,
         variant: "destructive",
       });
     } finally {
@@ -280,15 +306,15 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
       const res = await apiRequest("POST", "/api/deals/bulk-delete", { ids: Array.from(selectedDealIds) });
       const result = await res.json();
       toast({
-        title: "Deals deleted",
-        description: `Removed ${plural(result.deletedCount ?? selectedDealIds.size, "deal")} from your pipeline.`,
+        title: `${dealsLabel} deleted`,
+        description: `Removed ${plural(result.deletedCount ?? selectedDealIds.size, dealLower, dealsLower)} from your ${term("pipeline.label").toLowerCase()}.`,
       });
       setSelectedDealIds(new Set());
       queryClient.invalidateQueries({ queryKey: ['/api/deals'] });
     } catch (err: any) {
       toast({
-        title: "Couldn't delete deals",
-        description: err?.message || "Delete failed. Your deals are unchanged.",
+        title: `Couldn't delete ${dealsLower}`,
+        description: err?.message || `Delete failed. Your ${dealsLower} are unchanged.`,
         variant: "destructive",
       });
     } finally {
@@ -327,12 +353,12 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
       document.body.removeChild(a);
       toast({
         title: "Export ready",
-        description: `Downloaded ${plural(selected.length, "deal")} to ${filename}.`,
+        description: `Downloaded ${plural(selected.length, dealLower, dealsLower)} to ${filename}.`,
       });
     } catch (err: any) {
       toast({
         title: "Couldn't export selection",
-        description: err?.message || "CSV build failed. Try again — your deals weren't changed.",
+        description: err?.message || `CSV build failed. Try again — your ${dealsLower} weren't changed.`,
         variant: "destructive",
       });
     }
@@ -380,7 +406,7 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
       ...s,
       count: byStatus.get(s.value)?.count ?? 0,
     }));
-  }, [dealAggregates]);
+  }, [dealAggregates, dealStages]);
 
   const handleDelete = () => {
     if (deletingDeal) {
@@ -432,7 +458,7 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
             setBulkStageDialogOpen(false);
             setBulkTargetStage("");
             toast({
-              title: "Deals updated",
+              title: `${dealsLabel} updated`,
               description: result.message,
               action: result.undoAvailable ? (
                 <Button
@@ -479,7 +505,7 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
         <QueryErrorState
           error={error as Error}
           onRetry={() => refetch()}
-          title="Failed to load deals"
+          title={`Failed to load ${dealsLower}`}
           testId="error-state-deals"
         />
       </PageShell>
@@ -493,7 +519,7 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             {isError && (
               <InlineError 
-                message={(error as Error)?.message || "Failed to load deals."}
+                message={(error as Error)?.message || `Failed to load ${dealsLower}.`}
                 onRetry={() => (refetch as () => void)()}
                 testId="inline-error-deals"
               />
@@ -504,7 +530,7 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
                 <HeadingTag className="text-hero acr-cc-greeting" data-testid="text-page-title">
                   Acquisitions and dispositions.
                   <span className="acr-cc-greeting-soft">
-                    {" "}From offer to close, all on one rail.
+                    {" "}From {term("entity.offer").toLowerCase()} to {term("pipeline.stage.closed").toLowerCase()}, all on one rail.
                   </span>
                 </HeadingTag>
               </div>
@@ -584,7 +610,7 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
                     <DollarSign className="w-4 h-4 md:w-5 md:h-5 text-primary" aria-hidden="true" />
                   </div>
                   <div className="min-w-0">
-                    <p className="text-xs md:text-sm text-muted-foreground truncate">Pipeline</p>
+                    <p className="text-xs md:text-sm text-muted-foreground truncate">{term("pipeline.label")}</p>
                     {isAggregatesLoading ? (
                       <Skeleton className="h-7 md:h-8 w-20" data-testid="skeleton-pipeline-value" />
                     ) : (
@@ -604,7 +630,7 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
                     <CheckCircle className="w-4 h-4 md:w-5 md:h-5 text-acr-pos" aria-hidden="true" />
                   </div>
                   <div className="min-w-0">
-                    <p className="text-xs md:text-sm text-muted-foreground truncate">Closed</p>
+                    <p className="text-xs md:text-sm text-muted-foreground truncate">{term("pipeline.stage.closed")}</p>
                     {isAggregatesLoading ? (
                       <Skeleton className="h-7 md:h-8 w-20" data-testid="skeleton-closed-value" />
                     ) : (
@@ -624,7 +650,7 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
           {/* Pipeline Health Bar — org-wide counts from /api/deals/aggregates (T0-10) */}
           {isAggregatesLoading ? (
             <div className="rounded-card border bg-card shadow-acr-1 p-4 space-y-2" role="status" aria-live="polite" aria-busy="true">
-              <span className="sr-only">Loading pipeline distribution…</span>
+              <span className="sr-only">Loading {term("pipeline.label").toLowerCase()} distribution…</span>
               <Skeleton className="h-4 w-48" />
               <Skeleton className="h-2 w-full rounded-full" />
               <Skeleton className="h-3 w-64" />
@@ -633,7 +659,7 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
             <div className="rounded-card border bg-card shadow-acr-1 p-4 space-y-2" aria-labelledby="pipeline-distribution-heading">
               <div className="flex items-center justify-between text-xs">
                 <span id="pipeline-distribution-heading" className="font-medium text-muted-foreground uppercase tracking-wide">
-                  Pipeline stage distribution
+                  {term("pipeline.label")} stage distribution
                 </span>
                 <div className="flex items-center gap-3">
                   {stalledCount > 0 && (
@@ -647,7 +673,7 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
                     </span>
                   )}
                   {stalledCount === 0 && warningCount === 0 && totalDealCount > 0 && (
-                    <span className="text-acr-pos font-medium">All deals on track</span>
+                    <span className="text-acr-pos font-medium">All {dealsLower} on track</span>
                   )}
                 </div>
               </div>
@@ -655,7 +681,7 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
                 className="flex h-2 rounded-full overflow-hidden gap-0.5"
                 role="img"
                 aria-label={
-                  "Pipeline distribution: " +
+                  `${term("pipeline.label")} distribution: ` +
                   stageDistribution
                     .filter(s => s.count > 0)
                     .map(s => `${s.count} ${s.label}`)
@@ -714,7 +740,7 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
             <div className="p-3 bg-muted/50 border rounded-card space-y-3 md:space-y-0 md:flex md:flex-wrap md:items-center md:gap-3" data-testid="bulk-actions-toolbar-deals">
               <div className="flex items-center gap-2">
                 <CheckSquare className="w-4 h-4" aria-hidden="true" />
-                <span className="text-sm font-medium">{plural(selectedDealIds.size, "deal")} selected</span>
+                <span className="text-sm font-medium">{plural(selectedDealIds.size, dealLower, dealsLower)} selected</span>
                 <Button variant="ghost" size="icon" className="md:hidden min-h-[44px] min-w-[44px] ml-auto" onClick={() => setSelectedDealIds(new Set())} aria-label="Clear selection">
                   <X className="w-4 h-4" aria-hidden="true" />
                 </Button>
@@ -727,12 +753,12 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
                   value={bulkTargetStage}
                   onValueChange={setBulkTargetStage}
                 >
-                  <SelectTrigger className="min-h-[44px] pointer-fine:md:min-h-8 w-full md:w-[160px]" aria-label="Change stage for selected deals" data-testid="select-bulk-stage-deals">
+                  <SelectTrigger className="min-h-[44px] pointer-fine:md:min-h-8 w-full md:w-[160px]" aria-label={`Change stage for selected ${dealsLower}`} data-testid="select-bulk-stage-deals">
                     <SelectValue placeholder="Change stage" />
                   </SelectTrigger>
                   <SelectContent>
                     {dealStages.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
-                    <SelectItem value="cancelled">Cancelled</SelectItem>
+                    <SelectItem value="cancelled">{dealStageLabel("cancelled", null)}</SelectItem>
                   </SelectContent>
                 </Select>
                 <Button
@@ -758,8 +784,10 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
           {!isLoading && enrichedDeals.length === 0 ? (
             <FirstHelloEmpty
               surface="deals"
+              headline={`${dealsLabel} you're working show up here`}
+              subtitle={`The moment you send ${withArticle(term("entity.offer"), term("entity.offer.plural"))}, Pax tracks the reply window and pings you on day 5 if the other side goes quiet.`}
               cta={{
-                primary: { label: "Create a deal", onClick: () => setIsCreateOpen(true) },
+                primary: { label: `New ${dealLower}`, onClick: () => setIsCreateOpen(true) },
               }}
             />
           ) : (
@@ -769,7 +797,7 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
                   <div
                     className="flex items-center gap-1 bg-muted/50 rounded-card p-1"
                     role="group"
-                    aria-label="Pipeline view mode"
+                    aria-label={`${term("pipeline.label")} view mode`}
                   >
                     <Button
                       size="sm"
@@ -814,7 +842,7 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
                       >
                         <SelectTrigger
                           className="min-w-[140px] min-h-[44px]"
-                          aria-label="Pipeline stage to show"
+                          aria-label={`${term("pipeline.label")} stage to show`}
                           data-testid="select-mobile-stage"
                         >
                           <SelectValue />
@@ -858,19 +886,19 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
                             <h2 id={`mobile-list-stage-${stage.value}`} className="font-medium text-sm">
                               {stage.label}
                             </h2>
-                            <Badge variant="secondary" className="font-mono" aria-label={`${stageDeals.length} ${stageDeals.length === 1 ? "deal" : "deals"}`}>
+                            <Badge variant="secondary" className="font-mono" aria-label={`${stageDeals.length} ${stageDeals.length === 1 ? dealLower : dealsLower}`}>
                               {stageDeals.length}
                             </Badge>
                           </div>
                         </div>
                         <div className="space-y-2">
                           {stageDeals.map((deal) => {
-                            const dealLabel = deal.property
+                            const rowLabel = deal.property
                               ? `${deal.property.county}, ${deal.property.state}`
-                              : `Deal #${deal.id}`;
+                              : `${dealLabel} #${deal.id}`;
                             return (
                               <div key={deal.id} className="flex items-start gap-2">
-                                <label className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] -ml-2 cursor-pointer" aria-label={`Select ${dealLabel}`}>
+                                <label className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] -ml-2 cursor-pointer" aria-label={`Select ${rowLabel}`}>
                                   <Checkbox
                                     checked={selectedDealIds.has(deal.id)}
                                     onCheckedChange={(checked) => {
@@ -879,7 +907,7 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
                                       setSelectedDealIds(next);
                                     }}
                                     className="h-5 w-5"
-                                    aria-label={`Select ${dealLabel}`}
+                                    aria-label={`Select ${rowLabel}`}
                                   />
                                 </label>
                                 <div className="flex-1 min-w-0">
@@ -917,7 +945,7 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
                             <h2 id={`mobile-kanban-stage-${stage.value}`} className="font-medium text-sm">
                               {stage.label}
                             </h2>
-                            <Badge variant="secondary" className="font-mono" aria-label={`${stageDeals.length} ${stageDeals.length === 1 ? "deal" : "deals"}`}>
+                            <Badge variant="secondary" className="font-mono" aria-label={`${stageDeals.length} ${stageDeals.length === 1 ? dealLower : dealsLower}`}>
                               {stageDeals.length}
                             </Badge>
                           </div>
@@ -933,7 +961,7 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
                           >
                             {stageDeals.length === 0 ? (
                               <div className="text-center py-8 text-muted-foreground text-sm">
-                                No deals in {stage.label}
+                                No {dealsLower} in {stage.label}
                               </div>
                             ) : (
                               <>
@@ -993,14 +1021,14 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
                     accessibility={{
                       screenReaderInstructions: {
                         draggable:
-                          "To move a deal between stages: press Space or Enter to pick it up, use arrow keys to move between columns, press Space or Enter to drop it into the highlighted stage, or press Escape to cancel.",
+                          `To move ${withArticle(dealLabel, dealsLabel)} between stages: press Space or Enter to pick it up, use arrow keys to move between columns, press Space or Enter to drop it into the highlighted stage, or press Escape to cancel.`,
                       },
                       announcements: {
                         onDragStart: ({ active }) => {
                           const d = enrichedDeals.find(x => x.id === active.id);
                           const label = d?.property
                             ? `${d.property.county}, ${d.property.state}`
-                            : `Deal ${String(active.id)}`;
+                            : `${dealLabel} ${String(active.id)}`;
                           return `Picked up ${label}.`;
                         },
                         onDragOver: ({ over }) => {
@@ -1012,7 +1040,7 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
                           const d = enrichedDeals.find(x => x.id === active.id);
                           const label = d?.property
                             ? `${d.property.county}, ${d.property.state}`
-                            : `Deal ${String(active.id)}`;
+                            : `${dealLabel} ${String(active.id)}`;
                           if (!over) return `Drop canceled for ${label}.`;
                           const s = dealStages.find(x => x.value === over.id);
                           return s ? `Moved ${label} to ${s.label}.` : `Drop canceled for ${label}.`;
@@ -1021,7 +1049,7 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
                           const d = enrichedDeals.find(x => x.id === active.id);
                           const label = d?.property
                             ? `${d.property.county}, ${d.property.state}`
-                            : `Deal ${String(active.id)}`;
+                            : `${dealLabel} ${String(active.id)}`;
                           return `Drop canceled for ${label}.`;
                         },
                       },
@@ -1061,9 +1089,9 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
       <ConfirmDialog
         open={!!deletingDeal}
         onOpenChange={(open) => !open && setDeletingDeal(null)}
-        title="Delete Deal"
-        description={`Are you sure you want to delete this ${deletingDeal?.type === 'acquisition' ? 'acquisition' : 'disposition'} deal${deletingDeal?.property ? ` for ${deletingDeal.property.county}, ${deletingDeal.property.state}` : ''}? This action cannot be undone.`}
-        confirmLabel="Delete Deal"
+        title={`Delete ${dealLower}`}
+        description={`Are you sure you want to delete this ${deletingDeal?.type === 'acquisition' ? 'acquisition' : 'disposition'} ${dealLower}${deletingDeal?.property ? ` for ${deletingDeal.property.county}, ${deletingDeal.property.state}` : ''}? This action cannot be undone.`}
+        confirmLabel={`Delete ${dealLower}`}
         onConfirm={handleDelete}
         isLoading={isDeleting}
         variant="destructive"
@@ -1072,8 +1100,8 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
       <ConfirmDialog
         open={showBulkDeleteConfirm}
         onOpenChange={(open) => !open && setShowBulkDeleteConfirm(false)}
-        title="Delete Selected Deals"
-        description={`Delete ${plural(selectedDealIds.size, "deal")}? This cannot be undone.`}
+        title={`Delete selected ${dealsLower}`}
+        description={`Delete ${plural(selectedDealIds.size, dealLower, dealsLower)}? This cannot be undone.`}
         confirmLabel="Delete All"
         onConfirm={handleBulkDelete}
         isLoading={isBulkDeleting}
@@ -1083,8 +1111,8 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
       <ConfirmDialog
         open={bulkStageDialogOpen}
         onOpenChange={setBulkStageDialogOpen}
-        title="Update Deal Stages"
-        description={`Move ${selectedDealIds.size} deal${selectedDealIds.size > 1 ? 's' : ''} to "${dealStages.find(s => s.value === bulkTargetStage)?.label || bulkTargetStage}"? You can undo this action.`}
+        title={`Update ${dealLower} stages`}
+        description={`Move ${plural(selectedDealIds.size, dealLower, dealsLower)} to "${dealStages.find(s => s.value === bulkTargetStage)?.label || bulkTargetStage}"? You can undo this action.`}
         confirmLabel="Update Stages"
         onConfirm={handleBulkStageUpdate}
         isLoading={isBulkStageUpdating}
@@ -1117,6 +1145,9 @@ function KanbanColumn({
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: stage.value });
   const headingId = `kanban-stage-${stage.value}`;
+  const term = useVocabulary();
+  const dealLower = term("entity.deal").toLowerCase();
+  const dealsLower = term("entity.deal.plural").toLowerCase();
   return (
     <section className="w-72 flex-shrink-0" aria-labelledby={headingId}>
       <div className={`rounded-t-card px-4 py-3 ${stage.color}`}>
@@ -1124,7 +1155,7 @@ function KanbanColumn({
           <h2 id={headingId} className="font-medium text-sm">
             {stage.label}
           </h2>
-          <Badge variant="secondary" className="font-mono" aria-label={`${deals.length} ${deals.length === 1 ? "deal" : "deals"} in ${stage.label}`}>
+          <Badge variant="secondary" className="font-mono" aria-label={`${deals.length} ${deals.length === 1 ? dealLower : dealsLower} in ${stage.label}`}>
             {deals.length}
           </Badge>
         </div>
@@ -1152,10 +1183,10 @@ function KanbanColumn({
           </div>
         ) : deals.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground text-sm" role="status">
-            No deals in {stage.label}
+            No {dealsLower} in {stage.label}
           </div>
         ) : (
-          <div role="list" aria-label={`Deals in ${stage.label}`} className="space-y-2">
+          <div role="list" aria-label={`${term("entity.deal.plural")} in ${stage.label}`} className="space-y-2">
             {deals.map((deal) => (
               <div role="listitem" key={deal.id}>
                 <DealCard
@@ -1198,6 +1229,10 @@ function DealCard({ deal, onSelect, isDragging = false, isSelected, onToggleSele
   const isClosed = deal.status === 'closed' || deal.status === 'cancelled';
   const nextAction = getDealNextAction(deal);
   const daysInStage = getDaysInStage(deal);
+  const persona = usePersona();
+  const term = useVocabulary();
+  const cardDealLabel = term("entity.deal");
+  const cardDealLower = cardDealLabel.toLowerCase();
   const urgency = getDealUrgency(deal);
   const isActiveStage = !isClosed;
   const { isMobile } = useIsMobile();
@@ -1236,7 +1271,7 @@ function DealCard({ deal, onSelect, isDragging = false, isSelected, onToggleSele
             aria-label={
               deal.property
                 ? `Drag ${deal.property.county}, ${deal.property.state} to change stage`
-                : `Drag deal ${deal.id} to change stage`
+                : `Drag ${cardDealLower} ${deal.id} to change stage`
             }
             className="mt-1 flex-shrink-0 hidden md:block cursor-grab active:cursor-grabbing text-muted-foreground/50 hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
             {...listeners}
@@ -1258,13 +1293,13 @@ function DealCard({ deal, onSelect, isDragging = false, isSelected, onToggleSele
                 {onToggleSelect && (
                   <label
                     className="inline-flex items-center justify-center min-h-[36px] min-w-[36px] cursor-pointer"
-                    aria-label={`Select ${deal.property ? `${deal.property.county}, ${deal.property.state}` : `Deal #${deal.id}`}`}
+                    aria-label={`Select ${deal.property ? `${deal.property.county}, ${deal.property.state}` : `${cardDealLabel} #${deal.id}`}`}
                   >
                     <Checkbox
                       checked={!!isSelected}
                       onCheckedChange={() => onToggleSelect(deal.id)}
                       className="h-4 w-4"
-                      aria-label={`Select deal ${deal.id}`}
+                      aria-label={`Select ${cardDealLower} ${deal.id}`}
                     />
                   </label>
                 )}
@@ -1272,7 +1307,7 @@ function DealCard({ deal, onSelect, isDragging = false, isSelected, onToggleSele
                 <PaxContextButton
                   entityType="deal"
                   entityId={deal.id}
-                  entityName={deal.property ? `${deal.property.county}, ${deal.property.state}` : `Deal #${deal.id}`}
+                  entityName={deal.property ? `${deal.property.county}, ${deal.property.state}` : `${cardDealLabel} #${deal.id}`}
                 />
                 {/* Overflow menu — secondary actions */}
                 <DropdownMenu>
@@ -1287,7 +1322,7 @@ function DealCard({ deal, onSelect, isDragging = false, isSelected, onToggleSele
                       // (subdued) on touch — same pattern as the Pax
                       // delete-conversation button (contract test #4).
                       className="min-h-11 min-w-11 pointer-fine:sm:h-8 pointer-fine:sm:w-8 pointer-fine:sm:min-h-0 pointer-fine:sm:min-w-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-60 transition-opacity"
-                      aria-label="More deal actions"
+                      aria-label={`More ${cardDealLower} actions`}
                     >
                       <EllipsisVertical className="h-4 w-4" aria-hidden="true" />
                     </Button>
@@ -1295,7 +1330,7 @@ function DealCard({ deal, onSelect, isDragging = false, isSelected, onToggleSele
                   <DropdownMenuContent align="end">
                     <DropdownMenuItem onSelect={() => onSelect()}>
                       <Eye className="w-4 h-4 mr-2" aria-hidden="true" />
-                      Open deal
+                      Open {cardDealLower}
                     </DropdownMenuItem>
                     <DropdownMenuItem onSelect={handleSnooze}>
                       <Clock className="w-4 h-4 mr-2" aria-hidden="true" />
@@ -1316,7 +1351,7 @@ function DealCard({ deal, onSelect, isDragging = false, isSelected, onToggleSele
                   </p>
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">Property #{deal.propertyId}</p>
+                <p className="text-sm text-muted-foreground">{term("entity.property")} #{deal.propertyId}</p>
               )}
               {deal.property?.sizeAcres && (
                 <p className="text-xs text-muted-foreground mt-0.5 ml-5">{deal.property.sizeAcres} acres</p>
@@ -1340,7 +1375,7 @@ function DealCard({ deal, onSelect, isDragging = false, isSelected, onToggleSele
             {/* Row 4: stage badge + days in stage */}
             <div className="mt-2.5 flex items-center gap-2 flex-wrap">
               <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${statusColors[deal.status] || statusColors.negotiating}`}>
-                {deal.status?.replace(/_/g, ' ')}
+                {dealStageLabel(deal.status ?? "negotiating", persona)}
               </span>
               {isActiveStage && (
                 <span
@@ -1421,6 +1456,8 @@ function DealForm({ onSuccess }: { onSuccess: () => void }) {
   const { mutate, isPending } = useCreateDeal();
   // Persona-correct word for the priced artefact (Offer / Bid / Note terms).
   const offerLabel = useTerm("entity.offer");
+  const formDealLabel = useTerm("entity.deal");
+  const formPropertyLabel = useTerm("entity.property");
 
   const form = useForm<z.infer<typeof dealFormSchema>, unknown, z.infer<typeof dealFormSchema>>({
     resolver: zodResolver(dealFormSchema),
@@ -1449,11 +1486,11 @@ function DealForm({ onSuccess }: { onSuccess: () => void }) {
             render={({ field }) => (
               <FormItem>
                 <FormLabel>
-                  Deal type <span className="text-destructive" aria-hidden="true">*</span>
+                  {formDealLabel} type <span className="text-destructive" aria-hidden="true">*</span>
                 </FormLabel>
                 <Select onValueChange={field.onChange} value={field.value || "acquisition"}>
                   <FormControl>
-                    <SelectTrigger className="min-h-[44px]" data-testid="select-deal-type" aria-label="Deal type">
+                    <SelectTrigger className="min-h-[44px]" data-testid="select-deal-type" aria-label={`${formDealLabel} type`}>
                       <SelectValue />
                     </SelectTrigger>
                   </FormControl>
@@ -1473,7 +1510,7 @@ function DealForm({ onSuccess }: { onSuccess: () => void }) {
             render={({ field }) => (
               <FormItem>
                 <FormLabel>
-                  Property <span className="text-destructive" aria-hidden="true">*</span>
+                  {formPropertyLabel} <span className="text-destructive" aria-hidden="true">*</span>
                 </FormLabel>
                 <FormControl>
                   {/* Server-searched (DEFECT-0168): this listed the newest 100
@@ -1484,7 +1521,7 @@ function DealForm({ onSuccess }: { onSuccess: () => void }) {
                     value={field.value ?? null}
                     onChange={(id) => field.onChange(id)}
                     className="min-h-[44px]"
-                    aria-label="Property"
+                    aria-label={formPropertyLabel}
                     data-testid="select-deal-property"
                   />
                 </FormControl>
@@ -1597,7 +1634,7 @@ function DealForm({ onSuccess }: { onSuccess: () => void }) {
                 Creating…
               </>
             ) : (
-              "Create deal"
+              `Create ${formDealLabel.toLowerCase()}`
             )}
           </Button>
         </div>

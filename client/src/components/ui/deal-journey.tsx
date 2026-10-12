@@ -23,6 +23,8 @@
 import * as React from "react";
 import { CheckCircle2, Circle, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { usePersona } from "@/hooks/use-persona";
+import { DEAL_STAGE_ORDER, dealStageLabel, getTerm } from "@/lib/personaVocabulary";
 
 export type DealStatus =
   | "negotiating"
@@ -33,14 +35,9 @@ export type DealStatus =
   | "closed"
   | "cancelled";
 
-const STAGES: { key: Exclude<DealStatus, "cancelled">; label: string }[] = [
-  { key: "negotiating", label: "Negotiating" },
-  { key: "offer_sent", label: "Offer sent" },
-  { key: "countered", label: "Countered" },
-  { key: "accepted", label: "Accepted" },
-  { key: "in_escrow", label: "In escrow" },
-  { key: "closed", label: "Closed" },
-];
+// Stage order and labels come from the canonical registry (dealStageLabel),
+// so the strip names the terminal stage in the persona's vocabulary.
+const STAGE_KEYS: readonly Exclude<DealStatus, "cancelled">[] = DEAL_STAGE_ORDER;
 
 interface DealJourneyProps {
   status: DealStatus | string;
@@ -50,6 +47,9 @@ interface DealJourneyProps {
 }
 
 export function DealJourney({ status, dense = false, className }: DealJourneyProps) {
+  const persona = usePersona();
+  const dealLabel = getTerm("entity.deal", persona);
+  const STAGES = STAGE_KEYS.map((key) => ({ key, label: dealStageLabel(key, persona) }));
   const cancelled = status === "cancelled";
   const currentIdx = cancelled
     ? -1
@@ -66,8 +66,8 @@ export function DealJourney({ status, dense = false, className }: DealJourneyPro
       role="img"
       aria-label={
         cancelled
-          ? "Deal cancelled"
-          : `Deal stage: ${STAGES[safeIdx]?.label ?? status} (step ${safeIdx + 1} of ${STAGES.length})`
+          ? `${dealLabel} cancelled`
+          : `${dealLabel} stage: ${STAGES[safeIdx]?.label ?? status} (step ${safeIdx + 1} of ${STAGES.length})`
       }
     >
       <div className={cn("flex items-center", dense ? "gap-1" : "gap-0")} aria-hidden="true">
