@@ -77,6 +77,30 @@ describe("describeFounderOrgResolution — boolean + source, never an id", () =>
     expect(JSON.stringify(s)).not.toContain(ORG_ID);
   });
 
+  it("on a miss the strict lookup runs once, not twice", async () => {
+    const prior = process.env.FOUNDER_EMAIL;
+    process.env.FOUNDER_EMAIL = "founder-diag@example.test"; // read at module load: a lookup to count
+    try {
+      let selects = 0;
+      const db = emptyDb();
+      const select = db.db.select;
+      db.db.select = () => {
+        selects++;
+        return select();
+      };
+      dbHolder.current = db;
+      const d = await load();
+      const s = await d.describeFounderOrgResolution();
+      expect(s.resolved).toBe(false);
+      expect(s.strictReason).toBe("no-founder-identity");
+      // strict users lookup (1) + the membership fallback's users lookup (1).
+      expect(selects).toBe(2);
+    } finally {
+      if (prior === undefined) delete process.env.FOUNDER_EMAIL;
+      else process.env.FOUNDER_EMAIL = prior;
+    }
+  });
+
   it("every strict refusal has a remedy", async () => {
     const d = await load();
     for (const reason of ["no-founder-identity", "no-founder-org", "ambiguous", "pin-not-founder-owned", "lookup-failed"] as const) {

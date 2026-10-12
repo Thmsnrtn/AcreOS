@@ -43,12 +43,18 @@ export interface FounderOrgDiagnostics {
 }
 
 export async function describeFounderOrgResolution(env: NodeJS.ProcessEnv = process.env): Promise<FounderOrgDiagnostics> {
-  const strict = await resolveFounderOrganization();
   const effective = await resolveFounderPrimaryOrgIdWithSource();
+  // The strict verdict: reuse the one the resolver just computed; run it only
+  // when the resolver answered from its cache or its miss window.
+  const strict =
+    effective.strict ??
+    (effective.source === "sole-owned" || effective.source === "pinned"
+      ? null
+      : await resolveFounderOrganization());
   return {
     resolved: effective.organizationId !== null,
     source: effective.organizationId !== null ? effective.source : null,
-    strictReason: strict.ok ? null : strict.reason,
+    strictReason: strict === null || strict.ok ? null : strict.reason,
     pinConfigured: (env.FOUNDER_PRIMARY_ORG_ID ?? "").trim().length > 0,
     checkedAt: clock.now().toISOString(),
   };

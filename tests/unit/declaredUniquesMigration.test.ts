@@ -23,7 +23,12 @@
  *   (a) on the built database every 0281 constraint exists as declared;
  *   (b) in a scratch schema seeded with a duplicate key, the migration runs
  *       without error, warns, keeps both rows and skips only that constraint;
- *   (c) re-running it changes nothing.
+ *   (c) re-running it changes nothing;
+ *   (d) hostile states never escape as errors: a held lock (bounded by the
+ *       block's 5s lock_timeout), a caller's statement_timeout cancelling the
+ *       count, and a role that does not own the table — each a WARNING + skip;
+ *   and a relation squatting on the declared name with the wrong shape (a
+ *   plain index) is a WARNING, not a silent "already exists".
  */
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import fs from "node:fs";
@@ -131,6 +136,8 @@ describe.runIf(realDbAvailable)("migration 0281 on a real database", () => {
   const dupEntry = () => fileEntries.find((e) => e.table === "company_agents")!;
   const nullEntry = () => fileEntries.find((e) => e.table === "shared_deal_links")!;
   const absentEntry = () => fileEntries.find((e) => e.table === "strategic_plans")!;
+  const squatEntry = () => fileEntries.find((e) => e.table === "board_meetings")!;
+  const role = `${scratch}_r`;
   let client: pg.Client;
   const notices: Array<{ severity: string; message: string }> = [];
 
@@ -170,11 +177,17 @@ describe.runIf(realDbAvailable)("migration 0281 on a real database", () => {
     await client.query(`INSERT INTO "${dup.table}" ("${dup.column}") VALUES ('same'), ('same'), ('other'), (NULL), (NULL)`);
     const nul = nullEntry();
     await client.query(`INSERT INTO "${nul.table}" ("${nul.column}") VALUES (NULL), (NULL), ('a')`);
+    // The declared name is taken by a NON-unique index: the name exists, the guarantee does not.
+    const sq = squatEntry();
+    await client.query(`CREATE INDEX "${sq.name}" ON "${sq.table}" ("${sq.column}")`);
   });
 
   afterAll(async () => {
     if (!client) return;
+    await client.query(`RESET ROLE`).catch(() => undefined);
     await client.query(`DROP SCHEMA IF EXISTS "${scratch}" CASCADE`).catch(() => undefined);
+    await client.query(`DROP OWNED BY "${role}"`).catch(() => undefined);
+    await client.query(`DROP ROLE IF EXISTS "${role}"`).catch(() => undefined);
     await client.end().catch(() => undefined);
   });
 
@@ -202,7 +215,11 @@ describe.runIf(realDbAvailable)("migration 0281 on a real database", () => {
     const before = await snapshot(dup.table, dup.column);
     const seen = await runMigration();
 
-    const warnings = seen.filter((n) => n.severity === "WARNING");
+    const sq = squatEntry();
+    const squat = seen.filter((n) => n.severity === "WARNING" && n.message.includes(sq.name));
+    expect(squat, "a wrong-shape relation on the declared name is reported").toHaveLength(1);
+    expect(squat[0].message).toMatch(/not a unique constraint\/index/);
+    const warnings = seen.filter((n) => n.severity === "WARNING" && !n.message.includes(sq.name));
     expect(warnings).toHaveLength(1);
     expect(warnings[0].message).toContain(dup.table);
     expect(warnings[0].message).toContain(dup.name);
@@ -211,7 +228,7 @@ describe.runIf(realDbAvailable)("migration 0281 on a real database", () => {
     expect(await snapshot(dup.table, dup.column)).toBe(before);
     const made = await constraintsInScratch();
     expect(made.has(dup.name)).toBe(false);
-    const expected = fileEntries.filter((e) => e !== dup && e !== absentEntry()).map((e) => e.name).sort();
+    const expected = fileEntries.filter((e) => e !== dup && e !== absentEntry() && e !== squatEntry()).map((e) => e.name).sort();
     expect([...made.keys()].sort()).toEqual(expected);
 
     // NULLs are distinct, as Drizzle declares: two NULL tokens are not duplicates.
@@ -227,15 +244,61 @@ describe.runIf(realDbAvailable)("migration 0281 on a real database", () => {
     const seen = await runMigration();
     expect(await constraintsInScratch()).toEqual(before);
     expect(await snapshot(dup.table, dup.column)).toBe(rows);
-    expect(seen.filter((n) => n.severity === "WARNING").map((n) => n.message.includes(dup.name))).toEqual([true]);
+    expect(seen.filter((n) => n.severity === "WARNING").map((n) => n.message.includes(dup.name)).sort()).toEqual([false, true]);
+  });
+
+  it("(d) a held lock, a caller's statement_timeout, and a non-owner role: each a WARNING + skip, never an error", async () => {
+    const dup = dupEntry();
+    let seen: Array<{ severity: string; message: string }> = [];
+    const holder = new pg.Client({ connectionString: realDbUrl });
+    await holder.connect();
+    try {
+      await holder.query(`BEGIN`);
+      await holder.query(`LOCK TABLE "${scratch}"."${dup.table}" IN ACCESS EXCLUSIVE MODE`);
+
+      // Held lock: the count waits at most the block's lock_timeout.
+      const t0 = Date.now();
+      seen = await runMigration();
+      expect(Date.now() - t0).toBeLessThan(30_000);
+      expect(seen.some((n) => n.severity === "WARNING" && n.message.includes(dup.name) && n.message.includes("55P03"))).toBe(true);
+
+      // A caller's statement_timeout cancels the waiting count: caught, not raised.
+      await client.query(`SET statement_timeout = '1s'`);
+      try {
+        seen = await runMigration();
+      } finally {
+        await client.query(`RESET statement_timeout`);
+      }
+      expect(seen.some((n) => n.severity === "WARNING" && n.message.includes(dup.name) && n.message.includes("57014"))).toBe(true);
+    } finally {
+      await holder.query(`ROLLBACK`).catch(() => undefined);
+      await holder.end().catch(() => undefined);
+    }
+
+    // A role that can read but does not own the table: ALTER is refused (42501) and becomes a warning.
+    const abs = absentEntry();
+    await client.query(`CREATE TABLE "${abs.table}" (id serial PRIMARY KEY, "${abs.column}" text)`);
+    await client.query(`CREATE ROLE "${role}" NOLOGIN`);
+    await client.query(`GRANT USAGE ON SCHEMA "${scratch}" TO "${role}"`);
+    await client.query(`GRANT SELECT ON ALL TABLES IN SCHEMA "${scratch}" TO "${role}"`);
+    await client.query(`SET ROLE "${role}"`);
+    try {
+      seen = await runMigration();
+    } finally {
+      await client.query(`RESET ROLE`);
+    }
+    expect(seen.some((n) => n.severity === "WARNING" && n.message.includes(abs.name) && n.message.includes("42501"))).toBe(true);
+    expect((await constraintsInScratch()).has(abs.name)).toBe(false);
   });
 
   it("once the duplicate is resolved by hand, the next run adds the constraint and the new key is enforced", async () => {
     const dup = dupEntry();
     await client.query(`UPDATE "${dup.table}" SET "${dup.column}" = 'same-2' WHERE id = (SELECT max(id) FROM "${dup.table}" WHERE "${dup.column}" = 'same')`);
     const seen = await runMigration();
-    expect(seen.filter((n) => n.severity === "WARNING")).toEqual([]);
+    // Only the squatted name is still reported; the owner now adds the absent-table entry too.
+    expect(seen.filter((n) => n.severity === "WARNING").map((n) => n.message.includes(squatEntry().name))).toEqual([true]);
     expect((await constraintsInScratch()).has(dup.name)).toBe(true);
+    expect((await constraintsInScratch()).has(absentEntry().name)).toBe(true);
     await expect(client.query(`INSERT INTO "${dup.table}" ("${dup.column}") VALUES ('other')`)).rejects.toThrow(/duplicate key/);
   });
 });

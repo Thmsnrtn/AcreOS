@@ -256,15 +256,21 @@ export async function resolveFounderPrimaryOrgId(): Promise<number | null> {
  */
 export type FounderPrimaryOrgSource = "sole-owned" | "pinned" | "env" | "membership";
 
-/** As `resolveFounderPrimaryOrgId`, plus the rule that answered (null when unresolved). */
+/**
+ * As `resolveFounderPrimaryOrgId`, plus the rule that answered (null when
+ * unresolved) and, when this call ran it, the strict rule's own verdict (so a
+ * caller reporting both does not run the strict lookup twice).
+ */
 export async function resolveFounderPrimaryOrgIdWithSource(): Promise<{
   organizationId: number | null;
   source: FounderPrimaryOrgSource | null;
+  strict?: FounderOrgResolution;
 }> {
+  let strict: FounderOrgResolution | undefined;
   const hit = (organizationId: number, source: FounderPrimaryOrgSource) => {
     _cachedFounderOrgId = organizationId;
     _cachedFounderOrgSource = source;
-    return { organizationId, source };
+    return { organizationId, source, strict };
   };
   if (_cachedFounderOrgId !== null) return { organizationId: _cachedFounderOrgId, source: _cachedFounderOrgSource };
 
@@ -273,6 +279,7 @@ export async function resolveFounderPrimaryOrgIdWithSource(): Promise<{
   const inMissWindow = clock.nowMs() < _unresolvedUntil;
   if (!inMissWindow) {
     const canonical = await resolveFounderOrganization();
+    strict = canonical;
     if (canonical.ok) return hit(canonical.organizationId, canonical.via);
   }
 
@@ -284,7 +291,7 @@ export async function resolveFounderPrimaryOrgIdWithSource(): Promise<{
 
   // A miss is remembered briefly, so callers on hot paths do not re-query the
   // users/teamMembers lookup on every call while no founder org exists.
-  if (inMissWindow) return { organizationId: null, source: null };
+  if (inMissWindow) return { organizationId: null, source: null, strict };
 
   try {
     const { db } = await import("../db");
@@ -315,7 +322,7 @@ export async function resolveFounderPrimaryOrgIdWithSource(): Promise<{
   void import("../metrics")
     .then((m) => m.recordFounderOrgUnresolved())
     .catch(() => {});
-  return { organizationId: null, source: null };
+  return { organizationId: null, source: null, strict };
 }
 
 /** As `resolveFounderPrimaryOrgId`, but throws `FounderOrgUnresolvedError` instead of answering null. */
