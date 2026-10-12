@@ -93,6 +93,16 @@ for (const f of unexplained) {
   }
 }
 if (MEASURE) process.exit(0);
+// A MISSING finding is never registrable: the schema promises a guarantee the
+// database does not enforce, and the fix is a migration (0274, 0281), not a
+// register entry. Only RENAMED drift may be carried in the register.
+const registeredMissing = diff.missing.filter((f) => allowed.has(findingKey(f)));
+if (registeredMissing.length > 0) {
+  fail(
+    `${registeredMissing.length} declared unique(s) are not enforced at all (${registeredMissing.map(findingKey).join(", ")}). ` +
+      `The register carries only renames; add the constraint in a migration mirrored in scripts/migrate.mjs.`,
+  );
+}
 if (unexplained.length > 0) {
   fail(
     `${unexplained.length} unique constraint(s) drift from shared/schema.ts (listed above). Fix the occurrence: name the ` +
