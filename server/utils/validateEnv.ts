@@ -1,4 +1,9 @@
 import { logger } from "./logger";
+import {
+  borrowerSessionSecretProblem,
+  BORROWER_SESSION_SECRET_ENV,
+  MIN_BORROWER_SESSION_SECRET_LENGTH,
+} from "./borrowerSessionSecret";
 
 /**
  * Beatrice / compliance-debt §3 — throwing guard for the field-encryption key.
@@ -62,6 +67,21 @@ export function validateEnv(): void {
     errors.push(
       "FIELD_ENCRYPTION_KEY (or legacy ENCRYPTION_KEY) is required — generate with: openssl rand -hex 32  (used for AES-256-GCM encryption of founder-vault / skip-trace PII / BYOK secrets). Required on every process that can reach prod data, regardless of NODE_ENV."
     );
+  }
+
+  // The borrower statement portal signs its cookie with this secret. Without
+  // a usable one only that portal is unavailable (the exchange answers 503),
+  // so it is a structured warning, reported once here — never an exit.
+  const borrowerSecretProblem = borrowerSessionSecretProblem();
+  if (borrowerSecretProblem) {
+    logger.warn("[startup] Borrower statement portal is not configured", {
+      metadata: {
+        variable: BORROWER_SESSION_SECRET_ENV,
+        problem: borrowerSecretProblem,
+        minLength: MIN_BORROWER_SESSION_SECRET_LENGTH,
+        effect: "POST /api/borrower/auth/exchange answers 503 until it is set",
+      },
+    });
   }
 
   if (errors.length > 0) {
