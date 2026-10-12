@@ -857,6 +857,12 @@ void runSoleneDispatchLoop();
 // sweepers, drip campaigns, the autonomous executor, etc. actually
 // fire in production. The per-job Postgres locks make it safe to run
 // the same module on multiple processes — only one will win each tick.
+// Production only, once per worker boot: log (and email on-call) when system
+// alerts have no founder organization to land in.
+void import("./services/founderOrgDiagnostics")
+  .then(({ reportFounderOrgAtBoot }) => reportFounderOrgAtBoot({ notify: process.env.WORKER_DISABLE_SCHEDULED_JOBS !== "1" }))
+  .catch((err) => logger.error("[worker] founder org boot check failed", err instanceof Error ? err : undefined));
+
 if (process.env.WORKER_DISABLE_SCHEDULED_JOBS !== "1") {
   void (async () => {
     try {

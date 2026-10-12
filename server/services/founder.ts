@@ -222,6 +222,8 @@ export async function resolveFounderOrganization(): Promise<FounderOrgResolution
  * `acreos_founder_org_unresolved_total` counter moves.
  */
 let _cachedFounderOrgId: number | null = null;
+/** How the cached id was found — reported (never the id) by founderOrgDiagnostics. */
+let _cachedFounderOrgSource: FounderPrimaryOrgSource | null = null;
 /** Until when a failed lookup is remembered (the env var is still read first). */
 let _unresolvedUntil = 0;
 const UNRESOLVED_CACHE_MS = 60_000;
@@ -243,31 +245,46 @@ class FounderOrgUnresolvedError extends Error {
  * report); use `getFounderPrimaryOrgId()` where it is an error.
  */
 export async function resolveFounderPrimaryOrgId(): Promise<number | null> {
-  if (_cachedFounderOrgId !== null) return _cachedFounderOrgId;
+  return (await resolveFounderPrimaryOrgIdWithSource()).organizationId;
+}
+
+/**
+ * Which rule answered `resolveFounderPrimaryOrgId`:
+ *   sole-owned / pinned — the strict canonical rule (resolveFounderOrganization);
+ *   env        — FOUNDER_PRIMARY_ORG_ID read as-is (the strict rule refused);
+ *   membership — a founder user's first team membership.
+ */
+export type FounderPrimaryOrgSource = "sole-owned" | "pinned" | "env" | "membership";
+
+/** As `resolveFounderPrimaryOrgId`, plus the rule that answered (null when unresolved). */
+export async function resolveFounderPrimaryOrgIdWithSource(): Promise<{
+  organizationId: number | null;
+  source: FounderPrimaryOrgSource | null;
+}> {
+  const hit = (organizationId: number, source: FounderPrimaryOrgSource) => {
+    _cachedFounderOrgId = organizationId;
+    _cachedFounderOrgSource = source;
+    return { organizationId, source };
+  };
+  if (_cachedFounderOrgId !== null) return { organizationId: _cachedFounderOrgId, source: _cachedFounderOrgSource };
 
   // Inside the miss window the lookups are not repeated (the env var below is
   // still read, so setting it takes effect at once).
   const inMissWindow = clock.nowMs() < _unresolvedUntil;
   if (!inMissWindow) {
     const canonical = await resolveFounderOrganization();
-    if (canonical.ok) {
-      _cachedFounderOrgId = canonical.organizationId;
-      return _cachedFounderOrgId;
-    }
+    if (canonical.ok) return hit(canonical.organizationId, canonical.via);
   }
 
   const fromEnv = process.env.FOUNDER_PRIMARY_ORG_ID;
   if (fromEnv) {
     const parsed = Number(fromEnv);
-    if (Number.isInteger(parsed) && parsed > 0) {
-      _cachedFounderOrgId = parsed;
-      return parsed;
-    }
+    if (Number.isInteger(parsed) && parsed > 0) return hit(parsed, "env");
   }
 
   // A miss is remembered briefly, so callers on hot paths do not re-query the
   // users/teamMembers lookup on every call while no founder org exists.
-  if (inMissWindow) return null;
+  if (inMissWindow) return { organizationId: null, source: null };
 
   try {
     const { db } = await import("../db");
@@ -287,10 +304,7 @@ export async function resolveFounderPrimaryOrgId(): Promise<number | null> {
           .from(teamMembers)
           .where(inArray(teamMembers.userId, userIds))
           .limit(1);
-        if (memberships[0]?.organizationId) {
-          _cachedFounderOrgId = memberships[0].organizationId;
-          return _cachedFounderOrgId;
-        }
+        if (memberships[0]?.organizationId) return hit(memberships[0].organizationId, "membership");
       }
     }
   } catch {
@@ -301,7 +315,7 @@ export async function resolveFounderPrimaryOrgId(): Promise<number | null> {
   void import("../metrics")
     .then((m) => m.recordFounderOrgUnresolved())
     .catch(() => {});
-  return null;
+  return { organizationId: null, source: null };
 }
 
 /** As `resolveFounderPrimaryOrgId`, but throws `FounderOrgUnresolvedError` instead of answering null. */
