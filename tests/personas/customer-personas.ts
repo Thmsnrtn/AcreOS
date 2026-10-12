@@ -265,7 +265,10 @@ const SEEDS: PersonaSeed[] = [
       // note book renders no collateral row — the Finance landing names the
       // note acquisitions it counts (CustomerOutcomeCard) instead. Collateral
       // is a Map/note-detail word (PersonaMapStrip, the notes table header).
-      vocab: { deals: ["Note opportunity", "Note pipeline"], money: ["Note acquisitions", "Acquired"] },
+      // "Note opportunities", not "Note opportunity": the Deals door names the
+      // section by entity.lead.plural, and the singular is not a substring of
+      // that plural (unlike "Motivated seller" ⊂ "Motivated sellers").
+      vocab: { deals: ["Note opportunities", "Note pipeline"], money: ["Note acquisitions", "Acquired"] },
       gatedCapabilities: ["Stripe Connect payments"],
     },
   },
@@ -283,7 +286,7 @@ const SEEDS: PersonaSeed[] = [
       financeHero: "portfolio",
       modulesVisible: ["/notes", "/money"],
       modulesHidden: NOTE_LAND_OUTREACH_HIDDEN,
-      vocab: { deals: ["Note opportunity"] },
+      vocab: { deals: ["Note opportunities"] }, // plural — see note-investor-buyer
       gatedCapabilities: ["Stripe Connect payments"],
     },
   },
