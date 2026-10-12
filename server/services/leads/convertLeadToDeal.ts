@@ -40,8 +40,8 @@ import type { UsageLimitResult } from "../usageLimits";
  * SQL pre-filter is a candidate match on the upper-cased, whitespace-collapsed
  * APN (the form parcelRef keeps); identity is then decided by `sameParcel`.
  */
-async function findParcelProperties(executor: PrimaryDb, orgId: number, ref: ParcelRef): Promise<Property[]> {
-  const candidates = await executor
+async function findParcelProperties(tx: PrimaryDb, orgId: number, ref: ParcelRef): Promise<Property[]> {
+  const candidates = await tx
     .select()
     .from(properties)
     .where(
@@ -59,9 +59,9 @@ async function findParcelProperties(executor: PrimaryDb, orgId: number, ref: Par
 }
 
 /** The oldest still-open deal (any pipeline stage) on any of these properties in this org. */
-async function findOpenDeal(executor: PrimaryDb, orgId: number, propertyIds: number[]): Promise<Deal | undefined> {
+async function findOpenDeal(tx: PrimaryDb, orgId: number, propertyIds: number[]): Promise<Deal | undefined> {
   if (propertyIds.length === 0) return undefined;
-  const [deal] = await executor
+  const [deal] = await tx
     .select()
     .from(deals)
     .where(
@@ -89,12 +89,12 @@ function pickProperty(rows: Property[], leadId: number): Property | undefined {
 export async function readLeadDealState(
   orgId: number,
   lead: LeadParcelFields & { id: number },
-  executor: PrimaryDb,
+  tx: PrimaryDb,
 ): Promise<{ readiness: LeadDealReadiness; existingDeal: Deal | null }> {
   const readiness = leadDealReadiness(lead);
   if (!readiness.ready) return { readiness, existingDeal: null };
-  const rows = await findParcelProperties(executor, orgId, readiness.ref);
-  const deal = await findOpenDeal(executor, orgId, rows.map((p) => p.id));
+  const rows = await findParcelProperties(tx, orgId, readiness.ref);
+  const deal = await findOpenDeal(tx, orgId, rows.map((p) => p.id));
   return { readiness, existingDeal: deal ?? null };
 }
 
