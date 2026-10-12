@@ -261,7 +261,11 @@ const SEEDS: PersonaSeed[] = [
       financeHero: "portfolio",
       modulesVisible: ["/notes", "/money"],
       modulesHidden: NOTE_LAND_OUTREACH_HIDDEN,
-      vocab: { deals: ["Note opportunity", "Note pipeline"], money: ["Collateral", "Acquired"] },
+      // money: "Collateral" (entity.property) was expected here, but an empty
+      // note book renders no collateral row — the Finance landing names the
+      // note acquisitions it counts (CustomerOutcomeCard) instead. Collateral
+      // is a Map/note-detail word (PersonaMapStrip, the notes table header).
+      vocab: { deals: ["Note opportunity", "Note pipeline"], money: ["Note acquisitions", "Acquired"] },
       gatedCapabilities: ["Stripe Connect payments"],
     },
   },
@@ -425,7 +429,11 @@ const SEEDS: PersonaSeed[] = [
       financeHero: "projectPnl",
       modulesVisible: ["/properties", "/deals", "/rehabs"],
       modulesHidden: ["/notes"],
-      vocab: { deals: ["Distressed owner", "Project"], money: ["Sold"] },
+      // "Project" is the flipper's word for a PROPERTY (entity.property): it
+      // lives on the Map door / properties, not on an empty Deals board. The
+      // Deals door's flipper words are the lead, the deal ("Flips") and the
+      // terminal stage ("Sold").
+      vocab: { deals: ["Distressed owner", "Flips"], money: ["Sold"] },
       gatedCapabilities: ["Twilio SMS", "Stripe Connect payments"],
     },
   },
@@ -442,7 +450,7 @@ const SEEDS: PersonaSeed[] = [
       financeHero: "projectPnl",
       modulesVisible: ["/properties", "/deals"],
       modulesHidden: ["/notes"],
-      vocab: { deals: ["Project"] },
+      vocab: { deals: ["Flips"] }, // "Project" is entity.property — see flipper-rehab
       gatedCapabilities: ["Stripe Connect payments"],
     },
   },
@@ -499,7 +507,11 @@ const SEEDS: PersonaSeed[] = [
       financeHero: "lotEconomics",
       modulesVisible: ["/maps", "/parcels", "/deals", "/permits", "/lot-pricing"],
       modulesHidden: ["/notes", "/capital-markets"],
-      vocab: { deals: ["Parent parcel"] },
+      // The registry gives a subdivider the land words for every Deals-door
+      // concept (lead, deal, pipeline, closed); only the PROPERTY ("Parent
+      // parcel") and the buyer differ, and neither is on the Deals landing.
+      // So the Deals door must read exactly like land's here.
+      vocab: { deals: ["Pipeline", "Closed"] },
       gatedCapabilities: ["Regrid parcel enrichment"],
     },
   },
@@ -573,7 +585,9 @@ const SEEDS: PersonaSeed[] = [
       financeHero: "projectPnl",
       modulesVisible: ["/rent-roll", "/tenants", "/leases", "/maintenance", "/investor-analytics", "/deals", "/money"],
       modulesHidden: ["/notes"],
-      vocab: { deals: ["Rental"] },
+      // "Rental" is entity.property (the Map door's Rental inventory strip);
+      // the Deals door's landlord word is the terminal stage, "Leased".
+      vocab: { deals: ["Leased"] },
       gatedCapabilities: ["Stripe Connect payments"],
     },
   },
