@@ -65,12 +65,8 @@ export const FOUNDER_ORG_REMEDY: Record<StrictRefusal, string> = {
   "lookup-failed": "The lookup itself failed (database unavailable?). It is retried on every alert.",
 };
 
+/** Per process: a fresh module (a restart) reports again. */
 let _bootReported = false;
-
-/** Test hook. */
-export function __resetFounderOrgBootReportForTests(): void {
-  _bootReported = false;
-}
 
 export type FounderOrgBootOutcome = "skipped-not-production" | "already-reported" | "resolved" | "unresolved" | "lookup-failed";
 
