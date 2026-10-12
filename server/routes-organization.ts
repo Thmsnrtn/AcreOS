@@ -45,6 +45,7 @@ import {
 } from "./utils/inviteTokens";
 import { checkInviteCreateLimit, checkInviteAcceptLimit } from "./services/inviteRateLimit";
 import { refuseSeatInvite } from "./utils/firstRunRefusals";
+import { seatRuleFor } from "@shared/billing/seats";
 import { encrypt, decrypt, isEncrypted } from "./services/fieldEncryption";
 import {
   taxIdentitySchema,
@@ -865,140 +866,39 @@ export function registerOrganizationRoutes(app: Express): void {
     }
   });
   
-  // Get seat add-on pricing for the organization's tier
-  api.get("/api/organization/seats/pricing", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  // Seat add-on purchase — not self-serve today.
+  //
+  // This used to open a Stripe Checkout in subscription mode for seat_addon
+  // prices. Nothing applied the purchased seats (no webhook branch reads
+  // that metadata type), and the completed session fell through to the
+  // plan-subscription handler, which records ANY subscription checkout as
+  // the org's plan subscription. Until a fulfilment path exists, seats beyond
+  // a plan's included ones are added by support, and both routes say so.
+  // The plan's included seats need nothing — shared/billing/seats.ts.
+  function seatPurchaseUnavailableMessage(subscriptionTier: string | null | undefined): string {
+    const { includedSeats } = seatRuleFor(subscriptionTier);
+    return (
+      `Your plan includes ${includedSeats} seat${includedSeats === 1 ? "" : "s"}. ` +
+      "Seats beyond those are added by support today — contact support to add teammates."
+    );
+  }
+
+  api.get("/api/organization/seats/pricing", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const org = req.organization;
-      const tier = org.subscriptionTier || "free";
-      
-      if (tier === "free" || tier === "enterprise") {
-        return res.json({ 
-          canPurchaseSeats: false,
-          message: tier === "free" 
-            ? "Upgrade to Starter or higher to add team members" 
-            : "Contact sales for enterprise seat additions"
-        });
-      }
-      
-      // Stripe being unconfigured/unreachable must not 500 the Settings
-      // page — pricing is informational here. Degrade to "not available"
-      // (2026-07-11 sweep: this 500'd /settings whenever STRIPE_SECRET_KEY
-      // was absent — which it is until the founder provisions keys).
-      let prices;
-      try {
-        const { getUncachableStripeClient } = await import("./stripeClient");
-        const stripe = await getUncachableStripeClient();
-        prices = await stripe.prices.search({
-          query: `metadata['type']:'seat_addon' AND metadata['tier']:'${tier}' AND active:'true'`,
-        });
-      } catch (stripeErr) {
-        logger.warn(
-          "Seat pricing unavailable — Stripe not configured/reachable",
-          stripeErr instanceof Error ? stripeErr : undefined,
-        );
-        return res.json({
-          canPurchaseSeats: false,
-          message: "Seat purchases aren't available right now.",
-        });
-      }
-
-      const monthlyPrice = prices.data.find((p) => p.recurring?.interval === "month");
-      const yearlyPrice = prices.data.find((p) => p.recurring?.interval === "year");
-
-      res.json({
-        canPurchaseSeats: true,
-        tier,
-        monthly: monthlyPrice ? {
-          id: monthlyPrice.id,
-          amount: monthlyPrice.unit_amount,
-          currency: monthlyPrice.currency,
-        } : null,
-        yearly: yearlyPrice ? {
-          id: yearlyPrice.id,
-          amount: yearlyPrice.unit_amount,
-          currency: yearlyPrice.currency,
-        } : null,
-      });
-    } catch (error: any) {
-      logger.error("Get seat pricing error", error instanceof Error ? error : undefined);
+      const org = getOrganization(req);
+      return res.json({ canPurchaseSeats: false, message: seatPurchaseUnavailableMessage(org.subscriptionTier) });
+    } catch (error) {
       Errors.internal(res, error);
     }
   });
-  
-  // Purchase additional seats
-  const purchaseSeatsSchema = z.object({
-    quantity: z.number().int().min(1, "Quantity must be at least 1"),
-    billingPeriod: z.enum(["monthly", "yearly"], { message: "Billing period must be 'monthly' or 'yearly'" }),
-  });
 
-  api.post("/api/organization/seats/purchase", isAuthenticated, getOrCreateOrg, requirePermission("canManageBilling"), async (req, res) => {
+  api.post("/api/organization/seats/purchase", isAuthenticated, getOrCreateOrg, requirePermission("canManageBilling"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const org = req.organization;
-      const parsed = purchaseSeatsSchema.safeParse(req.body);
-      if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.issues);
-      }
-      const { quantity, billingPeriod } = parsed.data;
-      
-      const tier = org.subscriptionTier || "free";
-      if (tier === "free" || tier === "enterprise") {
-        return Errors.badRequest(
-          res,
-          tier === "free"
-            ? "Upgrade to a paid plan first"
-            : "Contact sales for enterprise seat additions",
-        );
-      }
-      
-      const { getUncachableStripeClient } = await import("./stripeClient");
-      const stripe = await getUncachableStripeClient();
-      
-      // Server-side lookup of the correct price for this tier - prevents cross-tier price manipulation
-      const interval = billingPeriod === "monthly" ? "month" : "year";
-      const prices = await stripe.prices.search({
-        query: `metadata['type']:'seat_addon' AND metadata['tier']:'${tier}' AND active:'true'`,
+      const org = getOrganization(req);
+      return Errors.refusedUntil(res, "seat_purchase_unavailable", seatPurchaseUnavailableMessage(org.subscriptionTier), {
+        nextStep: { label: "Contact support", href: "/support" },
       });
-      
-      const validPrice = prices.data.find((p) => p.recurring?.interval === interval);
-      if (!validPrice) {
-        return Errors.badRequest(res, `Seat add-on pricing not available for ${tier} ${billingPeriod}`);
-      }
-      
-      let customerId = org.stripeCustomerId;
-      if (!customerId) {
-        const customer = await stripe.customers.create({
-          metadata: { organizationId: String(org.id) },
-        });
-        customerId = customer.id;
-        await storage.updateOrganization(org.id, { stripeCustomerId: customerId });
-      }
-      
-      const session = await stripe.checkout.sessions.create({
-        customer: customerId,
-        payment_method_types: ["card"],
-        line_items: [{
-          price: validPrice.id,
-          quantity: quantity,
-        }],
-        mode: "subscription",
-        success_url: `${req.protocol}://${req.get("host")}/settings?seats=success&quantity=${quantity}`,
-        cancel_url: `${req.protocol}://${req.get("host")}/settings?seats=cancelled`,
-        metadata: {
-          organizationId: String(org.id),
-          type: "seat_addon",
-          quantity: String(quantity),
-          tier: tier,
-        },
-        // Phase 3 W10 — Stripe Tax on seat add-ons.
-        automatic_tax: { enabled: true },
-        customer_update: { address: "auto", name: "auto" },
-        tax_id_collection: { enabled: true },
-      });
-      
-      logger.info(`[seats] Org ${org.id} initiating seat purchase: ${quantity} seats, ${billingPeriod}, price ${validPrice.id}`);
-      res.json({ url: session.url });
-    } catch (error: any) {
-      logger.error("Purchase seats error", error instanceof Error ? error : undefined);
+    } catch (error) {
       Errors.internal(res, error);
     }
   });
@@ -1816,12 +1716,14 @@ export function registerOrganizationRoutes(app: Express): void {
       }
       // Phase 5 §5 (team readiness) — backend seat enforcement. If the
       // pending invite(s) would push (active members + pending invites)
-      // above the org's seatCount, prompt for an upgrade BEFORE persisting
-      // anything. Surfaces upgrade requirement to the UI as a 402.
+      // above the org's seat allowance, refuse BEFORE persisting anything.
+      // The allowance is shared/billing/seats.ts — never below the plan's
+      // included seats, so a Pro owner can invite a first teammate.
       try {
-        const { tierForSubscriptionTier, canAddSeats } = await import("@shared/billing/tier-pricing");
+        const { tierForSubscriptionTier } = await import("@shared/billing/tier-pricing");
+        const { effectiveSeatAllowance, planAdmitsSeats } = await import("@shared/billing/seats");
         const tier = tierForSubscriptionTier(org.subscriptionTier);
-        const seatCount = (org as any).seatCount ?? 1;
+        const seatAllowance = effectiveSeatAllowance(org.subscriptionTier, org.seatCount, org.additionalSeats);
         const { teamMembers: tmTable, organizationInvitations: invTable } = await import("@shared/schema");
         const [activeRow] = await db
           .select({ count: sql<number>`count(*)::int` })
@@ -1832,15 +1734,12 @@ export function registerOrganizationRoutes(app: Express): void {
           .from(invTable)
           .where(and(eq(invTable.organizationId, org.id), eq(invTable.status, "pending")));
         const projected = (activeRow?.count ?? 0) + (pendingRow?.count ?? 0) + invites.length;
-        // Seat arithmetic unchanged (owner decision — see the PR notes on
-        // seat_count vs the tier's includedSeats); only the refusal copy and
-        // its next step come from refuseSeatInvite.
-        if (!tier || !canAddSeats(tier, projected) || projected > seatCount) {
+        if (!planAdmitsSeats(org.subscriptionTier, projected) || projected > seatAllowance) {
           return refuseSeatInvite(res, {
             subscriptionTier: org.subscriptionTier,
             tier,
             projected,
-            seatCount,
+            seatAllowance,
             inviting: invites.length,
           });
         }

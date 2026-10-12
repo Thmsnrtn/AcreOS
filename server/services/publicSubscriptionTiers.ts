@@ -7,23 +7,19 @@
  * number with no mechanism behind it is a fabricated claim
  * (lint:no-fabrication doctrine). The catalogue now carries the CANONICAL
  * included pool, `limits.creditPool`, read from TIER_LIMITS — the same number
- * the debit gate enforces for a new customer on that tier — and `null` for a
- * catalogue entry with no limits tier of its own, never a guess.
+ * the debit gate enforces for a new customer on that tier. Every other number
+ * in SUBSCRIPTION_TIERS is itself projected from TIER_LIMITS /
+ * TIER_PRICES_CENTS (shared/schema.ts), and every catalogue key is a limits
+ * tier.
  */
 import { SUBSCRIPTION_TIERS } from "@shared/schema";
 import { TIER_LIMITS, type SubscriptionTier } from "@shared/billing/tier-limits";
 
 export function publicSubscriptionTiers() {
   return Object.fromEntries(
-    Object.entries(SUBSCRIPTION_TIERS).map(([key, tier]) => {
-      const limitsTier = (key in TIER_LIMITS ? key : null) as SubscriptionTier | null;
-      return [
-        key,
-        {
-          ...tier,
-          limits: { ...tier.limits, creditPool: limitsTier ? TIER_LIMITS[limitsTier].creditPool : null },
-        },
-      ];
+    (Object.keys(SUBSCRIPTION_TIERS) as SubscriptionTier[]).map((key) => {
+      const tier = SUBSCRIPTION_TIERS[key];
+      return [key, { ...tier, limits: { ...tier.limits, creditPool: TIER_LIMITS[key].creditPool } }];
     }),
   );
 }

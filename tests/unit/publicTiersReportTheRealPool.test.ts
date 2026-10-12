@@ -26,7 +26,8 @@ describe("GET /api/subscription/tiers", () => {
       expect(body[t].limits.creditPool, t).toBe(TIER_LIMITS[t].creditPool);
     }
     expect(body.scale.limits.creditPool).toBe(3000);
-    // A catalogue entry with no limits tier of its own reports null, not a guess.
-    expect(body.sprout.limits.creditPool).toBeNull();
+    // Every catalogue entry is a limits tier — the catalogue no longer carries
+    // a plan the gates do not know (it once listed a "Sprout" plan at $29).
+    expect(Object.keys(body).sort()).toEqual(Object.keys(TIER_LIMITS).sort());
   });
 });

@@ -24,7 +24,8 @@ import {
   nextPaidTier,
   type SubscriptionTier,
 } from "@shared/billing/tier-limits";
-import { canAddSeats, tierForSubscriptionTier, type Tier } from "@shared/billing/tier-pricing";
+import { tierForSubscriptionTier, type Tier } from "@shared/billing/tier-pricing";
+import { planAdmitsSeats, seatRuleFor } from "@shared/billing/seats";
 import { tierDisplayName } from "@shared/billing/plan-limit-copy";
 
 export const PAX_CREDITS_REQUIRED = "PAX_CREDITS_REQUIRED" as const;
@@ -156,11 +157,16 @@ export function refuseCreditShortage(
 }
 
 /**
- * 402 for a teammate invite the org's plan or seat count does not cover.
+ * 402 for a teammate invite the org's seat allowance does not cover.
  *
  * Codes are unchanged (`upgrade_required`, `seat_purchase_required`); the
- * message now names what unlocks the invite and `details.nextStep` links it.
- * The seat arithmetic is the caller's — this only words the refusal.
+ * message names what unlocks the invite and `details.nextStep` links it.
+ * The seat arithmetic is shared/billing/seats.ts — this only words the
+ * refusal, and every number in it is read from TIER_LIMITS.
+ *
+ * What is self-serve today: changing plan (a plan's included seats apply as
+ * soon as the org is on it). What is not: seats beyond a plan's included
+ * ones — no in-app control applies them — so those name support.
  */
 export function refuseSeatInvite(
   res: Response,
@@ -168,59 +174,69 @@ export function refuseSeatInvite(
     subscriptionTier: string | null | undefined;
     tier: Tier | null;
     projected: number;
-    seatCount: number;
+    seatAllowance: number;
     inviting: number;
   },
 ): void {
-  const { tier, projected, seatCount, inviting } = input;
-  const planName = tier ? tierDisplayName(tier) : tierDisplayName("free");
+  const { subscriptionTier, tier, projected, seatAllowance, inviting } = input;
+  const current = seatRuleFor(subscriptionTier);
+  const planName = tierDisplayName(current.tier);
+  const seats = (n: number) => `${n} seat${n === 1 ? "" : "s"}`;
 
-  // Seat counts are not self-serve today: nothing in the app raises
-  // `seat_count`, so upgrading a plan does NOT by itself let an owner invite
-  // anyone. Every seat refusal therefore names support as the step — the
-  // plan is mentioned only as context, never as the fix.
-  if (!tier || !canAddSeats(tier, projected)) {
-    // The first VISIBLE tier up the ladder whose seat rule admits this many
-    // seats (same visibility rule as nextPaidTier).
-    let unlock: SubscriptionTier | null = null;
-    const start = TIER_UPGRADE_LADDER.indexOf((tier ?? "free") as SubscriptionTier);
+  if (!planAdmitsSeats(subscriptionTier, projected)) {
+    // The first VISIBLE tier up the ladder whose INCLUDED seats cover the
+    // invite (self-serve: upgrading applies them), else the first whose
+    // ceiling admits it (the seats past its included ones need support).
+    let included: SubscriptionTier | null = null;
+    let admits: SubscriptionTier | null = null;
+    const start = TIER_UPGRADE_LADDER.indexOf(current.tier);
     for (let i = Math.max(0, start) + 1; i < TIER_UPGRADE_LADDER.length; i++) {
       const step = TIER_UPGRADE_LADDER[i];
       if (!isTierVisible(step)) continue;
-      const candidate = tierForSubscriptionTier(step);
-      if (candidate && canAddSeats(candidate, projected)) {
-        unlock = candidate;
-        break;
-      }
+      if (!included && seatRuleFor(step).includedSeats >= projected) included = step;
+      if (!admits && planAdmitsSeats(step, projected)) admits = step;
+    }
+    const base = {
+      projected,
+      seatAllowance,
+      includedSeats: current.includedSeats,
+      tier,
+    };
+    if (included) {
+      Errors.refusedUntil(
+        res,
+        "upgrade_required",
+        `${planName} includes ${seats(current.includedSeats)}; this invite needs ${projected}. ` +
+          `${tierDisplayName(included)} includes ${seats(seatRuleFor(included).includedSeats)}, ` +
+          "available as soon as you switch plans.",
+        { ...base, seatsStartOn: included, nextStep: { label: `See ${tierDisplayName(included)}`, href: planLink(included) } },
+      );
+      return;
     }
     Errors.refusedUntil(
       res,
       "upgrade_required",
-      (unlock
-        ? `${planName} doesn't include teammate seats; they start on ${tierDisplayName(unlock)}. `
-        : `${planName} can't hold ${projected} seats on a self-serve plan. `) +
-        "Seat counts are set by support today — contact support to add teammates.",
-      {
-        projected,
-        seatCount,
-        tier,
-        seatsStartOn: unlock,
-        nextStep: { label: "Contact support", href: NEXT_STEP_HREF.support },
-      },
+      admits
+        ? `${planName} can't hold ${projected} seats. ${tierDisplayName(admits)} includes ` +
+            `${seats(seatRuleFor(admits).includedSeats)}; seats beyond those are added by support today — ` +
+            "contact support to add teammates."
+        : `${planName} can't hold ${projected} seats on a self-serve plan — contact support to add teammates.`,
+      { ...base, seatsStartOn: admits, nextStep: { label: "Contact support", href: NEXT_STEP_HREF.support } },
     );
     return;
   }
 
-  const needed = projected - seatCount;
+  const needed = projected - seatAllowance;
   Errors.refusedUntil(
     res,
     "seat_purchase_required",
     `Inviting ${inviting} teammate${inviting === 1 ? "" : "s"} needs ${projected} seats and this ` +
-      `organization is set up for ${seatCount}. Seat counts are set by support today — contact support to ` +
-      `add ${needed === 1 ? "a seat" : `${needed} seats`}.`,
+      `organization has ${seatAllowance} (${planName} includes ${current.includedSeats}). Seats beyond ` +
+      `those are added by support today — contact support to add ${needed === 1 ? "a seat" : `${needed} seats`}.`,
     {
       projected,
-      seatCount,
+      seatAllowance,
+      includedSeats: current.includedSeats,
       tier,
       additionalSeatsNeeded: needed,
       nextStep: { label: "Contact support", href: NEXT_STEP_HREF.support },

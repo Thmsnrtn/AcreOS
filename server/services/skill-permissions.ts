@@ -292,6 +292,7 @@ export function checkSkillPermission(
   const canUseTrialToken = trialTokens > 0;
   
   const tierConfig = SUBSCRIPTION_TIERS[action.requiredTier];
+  const planLabel = tierConfig.price === null ? tierConfig.name : `${tierConfig.name} ($${tierConfig.price}/mo)`;
   return {
     allowed: false,
     reason: `This action requires ${tierConfig.name} tier or higher`,
@@ -299,8 +300,8 @@ export function checkSkillPermission(
     currentTier: userTier,
     creditCost: action.creditCost,
     upgradeMessage: canUseTrialToken 
-      ? `Use a trial token to try "${action.name}" free, or upgrade to ${tierConfig.name} ($${tierConfig.price}/mo) for unlimited access.`
-      : `Upgrade to ${tierConfig.name} ($${tierConfig.price}/mo) to unlock "${action.name}" and other powerful actions.`,
+      ? `Use a trial token to try "${action.name}" free, or upgrade to ${planLabel} for unlimited access.`
+      : `Upgrade to ${planLabel} to unlock "${action.name}" and other powerful actions.`,
     canUseTrialToken,
     trialTokensRemaining: trialTokens,
   };
