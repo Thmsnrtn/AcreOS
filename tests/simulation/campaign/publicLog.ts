@@ -54,3 +54,23 @@ export function installPublicLogGuard(
     },
   };
 }
+
+/**
+ * Keep a database session's failed statements out of the database SERVER log.
+ *
+ * Postgres logs every failed statement with a DETAIL line that quotes the
+ * offending values. A sweep that forges rows expects refusals, and in CI the
+ * database service container's log is printed into the public job log when
+ * the job ends — outside any stream guard. Raising this session's thresholds
+ * to `panic` keeps its statements out of that log. It needs a superuser (the
+ * CI service user is one); returns false when the setting was refused.
+ */
+export async function quietSessionServerLog(db: { query(sql: string): Promise<unknown> }): Promise<boolean> {
+  try {
+    await db.query("SET log_min_error_statement = 'panic'");
+    await db.query("SET log_min_messages = 'panic'");
+    return true;
+  } catch {
+    return false;
+  }
+}

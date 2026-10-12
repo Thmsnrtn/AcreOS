@@ -29,7 +29,8 @@ import path from "node:path";
 import { Writable } from "node:stream";
 import yaml from "js-yaml";
 import { POPULATION_FLOOR, enumerateRoutes, routeSourceFiles } from "../simulation/campaign/byIdRoutes";
-import { installPublicLogGuard, WITHHELD_LINE } from "../simulation/campaign/publicLog";
+import { installPublicLogGuard, quietSessionServerLog, WITHHELD_LINE } from "../simulation/campaign/publicLog";
+import { stripComments } from "../helpers/stripComments";
 // The population check strips every route source file; under the coverage run
 // that does not fit the 30s default, so the budget is declared.
 vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
@@ -210,5 +211,30 @@ describe("the public-log guard", () => {
     stream.write("idcMARKER2\n");
     expect(chunks).toEqual(["idcMARKER2\n"]);
     expect(guard.leaks()).toBe(0);
+  });
+});
+
+describe("the database server log", () => {
+  it("raises both thresholds to panic, and reports a refusal instead of throwing", async () => {
+    const seen: string[] = [];
+    expect(await quietSessionServerLog({ query: async (q: string) => void seen.push(q) })).toBe(true);
+    expect(seen).toEqual(["SET log_min_error_statement = 'panic'", "SET log_min_messages = 'panic'"]);
+    expect(
+      await quietSessionServerLog({
+        query: async () => {
+          throw new Error("permission denied to set parameter");
+        },
+      }),
+    ).toBe(false);
+  });
+
+  it("the sweep quiets its session before it forges anything", () => {
+    // Source order in main(): the quieting call precedes the first forge.
+    const src = stripComments(readFileSync(path.join(ROOT, SWEEP_SCRIPT), "utf8"));
+    const main = src.slice(src.indexOf("async function main()"));
+    const quiet = main.indexOf("quietSessionServerLog(db)");
+    const forge = main.indexOf("getForged(");
+    expect(quiet, "main() must call quietSessionServerLog(db)").toBeGreaterThan(0);
+    expect(forge).toBeGreaterThan(quiet);
   });
 });

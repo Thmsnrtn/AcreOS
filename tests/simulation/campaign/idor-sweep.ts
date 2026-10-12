@@ -57,7 +57,7 @@ import { SimClient } from "./client";
 import { recordFinding, recordMetric, recordSkip } from "./ledger";
 import { stripComments } from "../../helpers/stripComments";
 import { personaTestUserId } from "../../../server/auth/testAuth";
-import { installPublicLogGuard, type PublicLogGuard } from "./publicLog";
+import { installPublicLogGuard, quietSessionServerLog, type PublicLogGuard } from "./publicLog";
 // routeSourceFiles is bound here for market/write-path-sweep.ts, which loads
 // this file's helpers (the source up to main()) and re-exports it by name.
 import { POPULATION_FLOOR, enumerateRoutes, routeSourceFiles, type Route } from "./byIdRoutes";
@@ -337,6 +337,11 @@ async function main() {
   if (!url) throw new SweepSetupError("DATABASE_URL required");
   const db = new pg.Client({ connectionString: url });
   await db.connect();
+  // The forger's refused inserts and cleanup's refused deletes are expected;
+  // keep their DETAIL lines (forged values) out of the database's own log,
+  // which CI prints into the public job log.
+  const serverLogQuiet = await quietSessionServerLog(db);
+  recordMetric(SIM, "session_server_log_quiet", serverLogQuiet);
 
   // Resolve org ids for the two personas (seedDb.ts already created the orgs).
   const orgRows = await db.query(
