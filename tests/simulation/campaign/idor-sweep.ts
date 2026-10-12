@@ -38,7 +38,15 @@
  *   SIM_BASE_URL=http://localhost:5000 \
  *   npx tsx tests/simulation/campaign/idor-sweep.ts
  *
- * Exit 1 ONLY on a confirmed BREACH. Skips never fail the run.
+ * Exit codes: 1 on a confirmed BREACH; 2 when the population is under its
+ * floor or the run could not complete; 3 when a line carrying run data was
+ * withheld from the log. Skips never fail the run.
+ *
+ * The console is a PUBLIC log (CI runs this on a public repository): it
+ * carries counts, route templates, table names and status codes only. Bodies,
+ * forged values and database error text go to the ledger files under
+ * CAMPAIGN_OUT, never to stdout/stderr — and `installPublicLogGuard` withholds
+ * any written chunk that carries this run's canary, failing the run.
  */
 
 import fs from "node:fs";
@@ -49,76 +57,16 @@ import { SimClient } from "./client";
 import { recordFinding, recordMetric, recordSkip } from "./ledger";
 import { stripComments } from "../../helpers/stripComments";
 import { personaTestUserId } from "../../../server/auth/testAuth";
+import { installPublicLogGuard, type PublicLogGuard } from "./publicLog";
+// routeSourceFiles is bound here for market/write-path-sweep.ts, which loads
+// this file's helpers (the source up to main()) and re-exports it by name.
+import { POPULATION_FLOOR, enumerateRoutes, routeSourceFiles, type Route } from "./byIdRoutes";
 
 const SIM = "idor-sweep";
 const A_SLUG = "land-operator-desktop"; // org A
 const B_SLUG = "note-investor-buyer"; // org B
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const SERVER_DIR = path.resolve(HERE, "../../../server");
 const SHARED_DIR = path.resolve(HERE, "../../../shared");
-
-// ───────────────────────────── route enumeration ─────────────────────────────
-
-interface Route {
-  verb: "GET" | "PUT" | "PATCH" | "DELETE";
-  path: string;
-  file: string;
-}
-
-/** `app.get("/api/…", …)` / `router.patch(…)` etc. Path captured from a quoted literal. */
-// ANY receiver: most route files register through `const api = app` (940
-// registrations), so a receiver allow-list of app|router|r read ~a third of the
-// population and silently skipped core CRUD (/api/leads/:id, /api/deals/:id).
-// Found by the independent audit of this campaign; the floor below makes a
-// regression of this regex fail loudly instead of shrinking the population.
-const VERB_RE = /\b[A-Za-z_$][\w$]*\.(get|put|patch|delete)\(\s*(["'`])(\/api\/[^"'`]*?)\2/g;
-/** Population floor: by-id routes this sweep must find, measured 2026-10-06. */
-const POPULATION_FLOOR = 400;
-/** A param whose name ends in id/Id/ID — the by-id shape this sweep governs. */
-const ID_PARAM = /:[a-zA-Z_]*[Ii][Dd]\b/;
-
-function routeSourceFiles(): string[] {
-  const out: string[] = [];
-  for (const f of fs.readdirSync(SERVER_DIR)) {
-    if (/^routes.*\.ts$/.test(f) && !/\.test\.ts$/.test(f)) out.push(path.join(SERVER_DIR, f));
-  }
-  const sub = path.join(SERVER_DIR, "routes");
-  if (fs.existsSync(sub)) {
-    for (const f of fs.readdirSync(sub)) {
-      if (/\.ts$/.test(f) && !/\.test\.ts$/.test(f)) out.push(path.join(sub, f));
-    }
-  }
-  return out;
-}
-
-/** Enumerate every verb+path pair with an id-style param. Returns the per-route
- *  handler window too (for the terminal-`.from()` fallback). */
-function enumerateRoutes(): { routes: Route[]; windows: Map<string, string> } {
-  const routes: Route[] = [];
-  const windows = new Map<string, string>();
-  const seen = new Set<string>();
-  for (const file of routeSourceFiles()) {
-    // Strip comments with the repo's real left-to-right lexer, NOT a two-regex
-    // idiom — a route literal written inside a `// retired …` comment must not
-    // enter the population, and a `/*` inside a line comment must not eat the file.
-    const src = stripComments(fs.readFileSync(file, "utf8"));
-    const ms = [...src.matchAll(VERB_RE)];
-    for (let i = 0; i < ms.length; i++) {
-      const m = ms[i];
-      const p = m[3];
-      if (!ID_PARAM.test(p)) continue;
-      const verb = m[1].toUpperCase() as Route["verb"];
-      const key = `${verb} ${p}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      const start = m.index ?? 0;
-      const end = i + 1 < ms.length ? ms[i + 1].index ?? src.length : Math.min(src.length, start + 2500);
-      windows.set(key, src.slice(start, end));
-      routes.push({ verb, path: p, file: path.basename(file) });
-    }
-  }
-  return { routes, windows };
-}
 
 // ─────────────────────────── drizzle var → table map ───────────────────────────
 
@@ -247,6 +195,13 @@ async function firstEnumLabel(db: pg.Client, udtName: string): Promise<string | 
 }
 
 const CANARY = "idc" + Math.random().toString(36).slice(2, 10); // unique-per-run breach marker
+// Installed first thing in main() (not at load: market/write-path-sweep.ts
+// evaluates this file's helpers without main): no stdout/stderr chunk that
+// carries the canary (i.e. forged row content) reaches the published log.
+let publicLog: PublicLogGuard | null = null;
+
+/** A setup failure whose message is ours and safe to print. */
+class SweepSetupError extends Error {}
 let rowCounter = 0;
 
 /** rows inserted this run, newest last — deleted in reverse for cleanup. */
@@ -377,8 +332,9 @@ async function readRowJson(db: pg.Client, table: string, pk: string, id: any): P
 // ───────────────────────────────── main ─────────────────────────────────
 
 async function main() {
+  publicLog = installPublicLogGuard(() => [CANARY]);
   const url = process.env.DATABASE_URL;
-  if (!url) throw new Error("DATABASE_URL required");
+  if (!url) throw new SweepSetupError("DATABASE_URL required");
   const db = new pg.Client({ connectionString: url });
   await db.connect();
 
@@ -390,9 +346,10 @@ async function main() {
   );
   const orgOf = (slug: string) => orgRows.rows.find((r: any) => r.clerk_user_id === personaTestUserId(slug))?.id;
   const orgA = orgOf(A_SLUG), orgB = orgOf(B_SLUG);
-  if (!orgA || !orgB) throw new Error("could not resolve both persona orgs — run tests/personas/seedDb.ts first");
-  console.log(`org A (${A_SLUG}) = ${orgA}   org B (${B_SLUG}) = ${orgB}`);
-  console.log(`breach canary marker = ${CANARY}\n`);
+  if (!orgA || !orgB) throw new SweepSetupError("could not resolve both persona orgs — run tests/personas/seedDb.ts first");
+  // Ids and the canary go to the ledger, not the published log.
+  recordMetric(SIM, "orgs", { a: { slug: A_SLUG, id: orgA }, b: { slug: B_SLUG, id: orgB }, canary: CANARY });
+  console.log(`org A = ${A_SLUG}   org B = ${B_SLUG}  (ids and canary: ${path.join("CAMPAIGN_OUT", "metrics.jsonl")})\n`);
 
   const clientA = new SimClient(A_SLUG);
   const clientB = new SimClient(B_SLUG);
@@ -489,7 +446,9 @@ async function main() {
     if (aRow.id == null || bRow.id == null) {
       const reason = `forge failed for ${table}: ${aRow.reason ?? bRow.reason}`;
       gaps.push({ route: rkey, reason });
-      recordSkip({ sim: SIM, step: rkey, reason });
+      // The reason can quote a database error about the forged row: ledger only.
+      recordSkip({ sim: SIM, step: rkey, reason }, { echo: false });
+      console.log(`  [skip] ${SIM}/${rkey}: could not forge a ${table} row (reason in skips.jsonl)`);
       results.push({ verb: route.verb, path: route.path, table, verdict: "skip-forge" });
       continue;
     }
@@ -744,11 +703,22 @@ async function main() {
 
   await db.end();
   if (breaches > 0) process.exit(1);
+  const withheld = publicLog?.leaks() ?? 0;
+  if (withheld > 0) {
+    console.error(`${withheld} log line(s) carried run data and were withheld — a print path leaks bodies or rows.`);
+    process.exit(3);
+  }
 }
 
 main().catch((e) => {
-  console.error(e);
   // A sim failure (not a breach) should be visible but must not be mistaken for
-  // a passing isolation result; exit non-zero only for a genuine crash.
+  // a passing isolation result. The message of an arbitrary error can quote a
+  // row or a body, so only our own setup errors print theirs.
+  if (e instanceof SweepSetupError) console.error(`idor-sweep could not run: ${e.message}`);
+  else {
+    // Name, driver code and stack frames (file positions) only.
+    const frames = String(e?.stack ?? "").split("\n").filter((l) => /^\s+at /.test(l)).slice(0, 8).join("\n");
+    console.error(`idor-sweep crashed: ${e?.name ?? "Error"}${e?.code ? ` (code ${e.code})` : ""}\n${frames}`);
+  }
   process.exit(2);
 });

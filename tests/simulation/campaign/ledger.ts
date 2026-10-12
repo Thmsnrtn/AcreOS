@@ -42,11 +42,16 @@ export function recordFinding(f: Finding): void {
   console.log(`  [${f.sev}] ${f.id}: ${f.title}`);
 }
 
-export function recordSkip(s: SkipRecord): void {
+/**
+ * `echo: false` keeps the reason out of the console (it still lands in the
+ * ledger file) — for a sim whose log is published and whose reasons can quote
+ * a database error about the rows it forged.
+ */
+export function recordSkip(s: SkipRecord, opts?: { echo?: boolean }): void {
   const file = join(OUT_DIR, "skips.jsonl");
   ensure(file);
   appendFileSync(file, JSON.stringify({ ...s, at: new Date().toISOString() }) + "\n");
-  console.log(`  [skip] ${s.sim}/${s.step}: ${s.reason}`);
+  if (opts?.echo !== false) console.log(`  [skip] ${s.sim}/${s.step}: ${s.reason}`);
 }
 
 export function recordMetric(sim: string, name: string, value: unknown): void {
