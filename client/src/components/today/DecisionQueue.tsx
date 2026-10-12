@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useHiddenRoutes } from "@/hooks/use-hidden-routes";
+import { isRouteHidden } from "@/lib/sidebar-hidden-routes";
 import { Link, useLocation } from "wouter";
 import { useKeyboardLayer } from "@/hooks/use-keyboard-layer";
 import { motion } from "framer-motion";
@@ -310,9 +312,13 @@ export function DecisionQueue({
   // Server owns the ranking (one explainable comparator in routes-today.ts:
   // overdue → money-touching → time-sensitive → routine). The client only
   // subtracts locally-snoozed rows — it never re-sorts.
+  // …and every row whose action opens a route this persona hides (the same
+  // registry the rail reads): a card may not send a note-investor org to land
+  // Outreach the rail itself refuses to show.
+  const hidden = useHiddenRoutes();
   const visible = useMemo(
-    () => items.filter((it) => !snoozed[it.id]),
-    [items, snoozed],
+    () => items.filter((it) => !snoozed[it.id] && !isRouteHidden(it.actionUrl, hidden)),
+    [items, snoozed, hidden],
   );
   const snoozedCount = Object.keys(snoozed).length;
 

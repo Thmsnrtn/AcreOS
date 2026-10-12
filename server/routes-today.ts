@@ -383,6 +383,11 @@ function isTodayOrOverdue(due: Date, now: Date) {
 
 // ── Pax priorities: mirrors /api/dashboard/today-priorities ────────────────
 async function gatherPaxPriorities(orgId: number, now: Date): Promise<DecisionItem[]> {
+  // A pure note book runs no land mail: /campaigns is hidden for it
+  // (sidebar-hidden-routes.ts byOrgInvestorType.notes), so the queue must not
+  // tell it to "send a direct mail campaign" and link the hidden page.
+  const orgRow = await Promise.resolve().then(() => storage.getOrganization(orgId)).catch(() => undefined);
+  const runsLandMail = (orgRow as { investorType?: string | null } | undefined)?.investorType !== "notes";
   const [unscoredLeads, staleFollowUps, campaignFreshness] = await Promise.allSettled([
     db.select({ count: sql<number>`COUNT(*)` })
       .from(leadsTable)
@@ -443,7 +448,7 @@ async function gatherPaxPriorities(orgId: number, now: Date): Promise<DecisionIt
       actionUrl: "/leads?filter=stale",
     });
   }
-  if (lastCampaignDaysAgo > 45) {
+  if (runsLandMail && lastCampaignDaysAgo > 45) {
     priorities.push({
       id: "send-campaign",
       priority: lastCampaignDaysAgo > 60 ? "high" : "medium",

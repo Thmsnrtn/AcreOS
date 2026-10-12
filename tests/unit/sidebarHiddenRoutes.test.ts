@@ -439,3 +439,78 @@ describe("persona gating — what the catalog hides, the rail does not render", 
     expect(text).toContain("module.businessTypeOnly");
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────
+// The Today door must not send a persona into a route it hides (2026-10-12).
+//
+// After the rail was fixed, the persona walk still found /campaigns on a
+// note-investor's Today: the server's priority builder emitted "Send a direct
+// mail campaign" → /campaigns for every org. Population: every server file
+// that emits an `actionUrl` literal into a route the notes set hides.
+// ─────────────────────────────────────────────────────────────────────
+describe("Today's queue never links a persona into a route it hides", () => {
+  const NOTES_HIDDEN = resolveHiddenRoutes({ detectedInvestorType: "note_investor", orgInvestorType: "notes" });
+  const SERVER = path.resolve(__dirname, "../../server");
+  /** Emitters that gate the suggestion on the org's investor type. */
+  const GATED = ["routes-today.ts", "routes-dashboard.ts"];
+  /** Emitters deliberately left as-is, with the reason. */
+  const EXEMPT: Record<string, string> = {
+    "routes-organization.ts": "opt-in land playbook templates — the user picks a land playbook; not a persona suggestion",
+  };
+
+  function walk(dir: string): string[] {
+    return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+      e.isDirectory() ? (e.name === "node_modules" ? [] : walk(path.join(dir, e.name)))
+        : /\.ts$/.test(e.name) && !/\.test\.ts$/.test(e.name) ? [path.join(dir, e.name)] : []);
+  }
+
+  /** actionUrl string literals whose route the notes set hides, with their nearest enclosing if-condition. */
+  function hiddenActionUrls(file: string): Array<{ url: string; condition: string | null }> {
+    const src = fs.readFileSync(file, "utf8");
+    if (!src.includes("actionUrl")) return [];
+    const sf = ts.createSourceFile(file, src, ts.ScriptTarget.Latest, true);
+    const out: Array<{ url: string; condition: string | null }> = [];
+    const visit = (n: ts.Node) => {
+      if (ts.isPropertyAssignment(n) && n.name.getText(sf) === "actionUrl" && ts.isStringLiteral(n.initializer)
+          && isRouteHidden(n.initializer.text, NOTES_HIDDEN)) {
+        let p: ts.Node | undefined = n.parent;
+        while (p && !ts.isIfStatement(p) && !ts.isFunctionLike(p)) p = p.parent;
+        out.push({ url: n.initializer.text, condition: p && ts.isIfStatement(p) ? p.expression.getText(sf) : null });
+      }
+      ts.forEachChild(n, visit);
+    };
+    visit(sf);
+    return out;
+  }
+
+  it("every emitter is classified, and the gated ones condition on the org's investor type", () => {
+    const found = new Map<string, Array<{ url: string; condition: string | null }>>();
+    for (const f of walk(SERVER)) {
+      const hits = hiddenActionUrls(f);
+      if (hits.length) found.set(path.basename(f), hits);
+    }
+    // Vacuity: both queue builders are read.
+    for (const g of GATED) expect(found.has(g), `${g} must emit the campaign suggestion this gate reads`).toBe(true);
+    const unclassified = [...found.keys()].filter((f) => !GATED.includes(f) && !(f in EXEMPT));
+    expect(unclassified, "a server file suggests a route the notes persona hides — gate it or classify it").toEqual([]);
+    for (const g of GATED) {
+      for (const h of found.get(g)!) {
+        expect(h.condition ?? "", `${g}: ${h.url} must be suggested only to orgs that run land mail`).toMatch(/investorType|runsLandMail/);
+      }
+    }
+    const today = fs.readFileSync(path.join(SERVER, "routes-today.ts"), "utf8");
+    expect(today).toMatch(/const runsLandMail = [^;]*investorType !== "notes"/);
+  });
+
+  it("the queue card filters rows whose action the persona hides (client guard)", () => {
+    const src = fs.readFileSync(path.resolve(__dirname, "../../client/src/components/today/DecisionQueue.tsx"), "utf8");
+    const sf = ts.createSourceFile("DecisionQueue.tsx", src, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    let init = "";
+    const visit = (n: ts.Node) => {
+      if (ts.isVariableDeclaration(n) && n.name.getText(sf) === "visible" && n.initializer) init = n.initializer.getText(sf);
+      ts.forEachChild(n, visit);
+    };
+    visit(sf);
+    expect(init).toContain("isRouteHidden(it.actionUrl, hidden)");
+  });
+});
