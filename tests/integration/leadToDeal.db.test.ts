@@ -60,7 +60,21 @@ vi.mock("../../server/middleware/viewerReadOnlyGate", async (importOriginal) => 
 });
 vi.mock("../../server/services/loginAnomalyDetector", () => ({ recordAndAlertIfNew: async () => undefined }));
 vi.mock("../../server/services/emailChangeDetector", () => ({ detectAndAlertEmailChange: async () => undefined }));
-const announce = vi.hoisted(() => ({ dealCreated: 0, dealLifecycle: 0, propertyCreated: 0 }));
+const announce = vi.hoisted(() => ({
+  dealCreated: 0,
+  dealLifecycle: 0,
+  propertyCreated: 0,
+  enrich: [] as Array<[number, number, number]>,
+  activation: [] as string[],
+}));
+vi.mock("../../server/services/dealEnrichmentTrigger", () => ({
+  triggerDealEnrichmentAsync: async (orgId: number, dealId: number, propertyId: number) =>
+    void announce.enrich.push([orgId, dealId, propertyId]),
+}));
+vi.mock("../../server/services/activation", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../../server/services/activation")>();
+  return { ...real, recordActivationEventAsync: (a: { eventName: string }) => void announce.activation.push(a.eventName) };
+});
 vi.mock("../../server/services/dealEvents", async (importOriginal) => {
   const real = await importOriginal<typeof import("../../server/services/dealEvents")>();
   return { ...real, emitDealCreated: () => void announce.dealCreated++ };
@@ -86,6 +100,7 @@ describe.runIf(realDbAvailable)("lead → deal conversion", () => {
   let schema: typeof import("../../shared/schema");
   let orm: typeof import("drizzle-orm");
   let auditSpy: ReturnType<typeof vi.fn>;
+  let createDealSpy: ReturnType<typeof vi.fn>;
 
   const orgIds: number[] = [];
   let orgId = 0;
@@ -118,6 +133,7 @@ describe.runIf(realDbAvailable)("lead → deal conversion", () => {
     orm = await import("drizzle-orm");
     const { storage } = await import("../../server/storage");
     auditSpy = vi.spyOn(storage, "createAuditLogEntry").mockResolvedValue({} as never) as never;
+    createDealSpy = vi.spyOn(storage, "createDeal") as never;
 
     const { registerLeadRoutes } = await import("../../server/routes-leads");
     app = express();
@@ -148,6 +164,9 @@ describe.runIf(realDbAvailable)("lead → deal conversion", () => {
     gateControl.bypass = false;
     gateControl.bypassViewer = false;
     auditSpy.mockClear();
+    createDealSpy.mockClear();
+    announce.enrich = [];
+    announce.activation = [];
     announce.dealCreated = 0;
     announce.dealLifecycle = 0;
     announce.propertyCreated = 0;
@@ -175,11 +194,23 @@ describe.runIf(realDbAvailable)("lead → deal conversion", () => {
     expect(deal).toMatchObject({ organizationId: orgId, propertyId: prop.id, type: "acquisition", status: "negotiating" });
     expect(await counts()).toEqual({ properties: before.properties + 1, deals: before.deals + 1 });
 
-    // Both audit entries, each handed the transaction's executor (not the pool).
+    // Both audit entries are handed THE transaction's executor — the same
+    // object the deal insert ran on — and never the pool handle.
     expect(auditSpy).toHaveBeenCalledTimes(2);
-    for (const call of auditSpy.mock.calls) expect(call[1], "audit write must join the transaction").toBeDefined();
+    expect(createDealSpy).toHaveBeenCalledTimes(1);
+    const txUsed = createDealSpy.mock.calls[0][1];
+    expect(txUsed, "deal insert must run on the transaction").toBeDefined();
+    expect(txUsed).not.toBe(db);
+    for (const call of auditSpy.mock.calls) expect(call[1], "audit write must join the deal's transaction").toBe(txUsed);
     expect(auditSpy.mock.calls.map((c) => (c[0] as { entityType: string }).entityType).sort()).toEqual(["deal", "property"]);
-    expect(announce).toEqual({ dealCreated: 1, dealLifecycle: 1, propertyCreated: 1 });
+    expect(announce).toEqual({
+      dealCreated: 1,
+      dealLifecycle: 1,
+      propertyCreated: 1,
+      // The post-commit effects POST /api/deals and POST /api/properties run.
+      enrich: [[orgId, deal.id, prop.id]],
+      activation: ["first_property_added"],
+    });
 
     const state = await request(app).get(`/api/leads/${leadId}/deal-state`).set(as(ownerId));
     expect(state.body).toMatchObject({ ready: true, existingDealId: deal.id });
@@ -206,6 +237,8 @@ describe.runIf(realDbAvailable)("lead → deal conversion", () => {
     expect(t.body.property.id).toBe(a.body.property.id);
     expect(await counts()).toEqual(before);
     expect(announce.dealCreated, "one announcement for one creation").toBe(1);
+    expect(announce.enrich.length, "one enrichment for one creation").toBe(1);
+    expect(announce.activation, "one property created, one activation event").toEqual(["first_property_added"]);
   });
 
   it("reuses an existing property for the parcel instead of creating a second one", async () => {
@@ -221,6 +254,47 @@ describe.runIf(realDbAvailable)("lead → deal conversion", () => {
     expect(r.body.property.id).toBe(existing.id);
     expect(r.body.property.sellerId).toBe(leadId);
     expect(await counts()).toEqual({ properties: before.properties, deals: before.deals + 1 });
+    expect(announce.enrich).toEqual([[orgId, r.body.deal.id, existing.id]]);
+    expect(announce.activation, "no property was created").toEqual([]);
+  });
+
+  it("five concurrent new-parcel conversions finish without waiting on the pool", async () => {
+    // The pool is five connections per process. Each conversion holds one for
+    // its transaction; a pool read from INSIDE that body (the plan-limit check
+    // once ran there) would need a sixth, and five at once would all wait out
+    // connectionTimeoutMillis (10s). Done right, they finish in well under it.
+    const ids = await Promise.all([1, 2, 3, 4, 5].map((n) => lead(parcel(`777-000-00${n}`))));
+    const started = Date.now();
+    const results = await Promise.all(ids.map((id) => convert(id)));
+    const elapsed = Date.now() - started;
+    for (const r of results) {
+      expect(r.status, JSON.stringify(r.body)).toBe(200);
+      expect(r.body.createdProperty).toBe(true);
+    }
+    expect(elapsed, "conversions waited on the pool").toBeLessThan(8_000);
+  }, 30_000);
+
+  it("never reuses a deleted property: a fresh one is created and the deleted one is untouched", async () => {
+    const first = await lead(parcel("321-654-987"));
+    const made = await convert(first);
+    expect(made.status, JSON.stringify(made.body)).toBe(200);
+    const oldPropertyId = made.body.property.id;
+    // Delete through the repository, the way the product deletes a property.
+    const { storage } = await import("../../server/storage");
+    await storage.deleteProperty(oldPropertyId, orgId);
+    const [deletedRow] = await db.select().from(schema.properties).where(orm.eq(schema.properties.id, oldPropertyId));
+    expect(deletedRow.status).toBe("deleted");
+
+    const second = await lead(parcel("321-654-987"));
+    const r = await convert(second);
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    expect(r.body).toMatchObject({ createdProperty: true, createdDeal: true });
+    expect(r.body.property.id).not.toBe(oldPropertyId);
+    const [after] = await db.select().from(schema.properties).where(orm.eq(schema.properties.id, oldPropertyId));
+    expect(after).toEqual(deletedRow);
+
+    const state = await request(app).get(`/api/leads/${second}/deal-state`).set(as(ownerId));
+    expect(state.body.existingDealId).toBe(r.body.deal.id);
   });
 
   it("refuses a lead without APN, county, state or acreage — naming what to add — and writes nothing", async () => {

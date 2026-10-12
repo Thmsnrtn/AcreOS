@@ -26,7 +26,7 @@
  * and the canCreateDeals / canCreateProperties permissions — and the
  * post-commit announcements, which may only fire after the commit.
  */
-import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { deals, insertDealSchema, leads, properties, type Deal, type Property } from "@shared/schema";
 import { ACTIVE_DEAL_STATUSES } from "@shared/lifecycle/pipeline-status";
 import { normalizeParcelRef, parcelKey, sameParcel, type ParcelRef } from "@shared/parcel/parcelRef";
@@ -34,6 +34,13 @@ import { leadDealReadiness, type LeadDealReadiness, type LeadParcelFields } from
 import { withTransaction, type PrimaryDb } from "../../db";
 import { storage } from "../../storage";
 import type { UsageLimitResult } from "../usageLimits";
+
+/**
+ * The first key of this conversion's two-key advisory lock — its namespace, so
+ * the (org, parcel) hash in the second key cannot collide with another
+ * feature's single-key `hashtext(...)` locks. Any int4; this one spells "L2D".
+ */
+const LEAD_TO_DEAL_LOCK_NAMESPACE = 0x4c3244;
 
 /**
  * Properties in THIS org that are the same parcel as `ref`, oldest first. The
@@ -47,6 +54,9 @@ async function findParcelProperties(tx: PrimaryDb, orgId: number, ref: ParcelRef
     .where(
       and(
         eq(properties.organizationId, orgId),
+        // A deleted property is not reused. Deletion (propertyRepo.deleteProperty
+        // and bulkDeleteProperties) sets status 'deleted'; deletedAt is checked too.
+        ne(properties.status, "deleted"),
         isNull(properties.deletedAt),
         sql`upper(regexp_replace(trim(${properties.apn}), '\\s+', ' ', 'g')) = ${ref.apn}`,
       ),
@@ -104,8 +114,13 @@ export interface ConvertLeadToDealInput {
   userId: string | undefined;
   /** False when the caller may create deals but not properties; a NEW property is then refused. */
   mayCreateProperty: boolean;
-  /** Plan check for a new property — called only when one would be created. */
-  checkPropertyLimit: () => Promise<UsageLimitResult>;
+  /**
+   * The plan's property-limit verdict, read by the caller BEFORE the
+   * transaction opens (it runs on the pool; reading it while this transaction
+   * holds a connection would take a second one). Consulted only when a new
+   * property would be created.
+   */
+  propertyLimit: UsageLimitResult;
   ipAddress?: string;
   userAgent?: string;
 }
@@ -139,7 +154,9 @@ export async function convertLeadToDeal(input: ConvertLeadToDealInput): Promise<
     // Serialize every conversion of THIS parcel in THIS org: the find-or-create
     // below is a read followed by a write, and two concurrent requests would
     // otherwise both read "none" and both insert.
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`lead_to_deal:${orgId}:${parcelKey(ref)}`}))`);
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(${LEAD_TO_DEAL_LOCK_NAMESPACE}::int4, hashtext(${`${orgId}:${parcelKey(ref)}`}))`,
+    );
 
     const parcelRows = await findParcelProperties(tx, orgId, ref);
     const openDeal = await findOpenDeal(tx, orgId, parcelRows.map((p) => p.id));
@@ -161,8 +178,7 @@ export async function convertLeadToDeal(input: ConvertLeadToDealInput): Promise<
       }
     } else {
       if (!input.mayCreateProperty) return { kind: "property_forbidden" } as const;
-      const usage = await input.checkPropertyLimit();
-      if (!usage.allowed) return { kind: "plan_limit", usage } as const;
+      if (!input.propertyLimit.allowed) return { kind: "plan_limit", usage: input.propertyLimit } as const;
       const values = {
         organizationId: orgId,
         // The lead's own spelling, trimmed — the parcel key is for matching,

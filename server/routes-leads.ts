@@ -1203,6 +1203,9 @@ export function registerLeadRoutes(app: Express): void {
         // A VA (or any assigned-only member) converts only leads assigned to them.
         if (assertAssignedLeadWritable(areq, res, lead)) return;
 
+        // Read before the transaction: it runs on the pool, and the transaction
+        // below already holds a connection for its whole body.
+        const propertyLimit = await checkUsageLimit(org.id, "properties");
         const { convertLeadToDeal } = await import("./services/leads/convertLeadToDeal");
         const { describeLeadDealMissing } = await import("@shared/leads/leadToDeal");
         const result = await convertLeadToDeal({
@@ -1210,7 +1213,7 @@ export function registerLeadRoutes(app: Express): void {
           leadId,
           userId: areq.user?.id,
           mayCreateProperty: areq.permissionContext?.permissions.canCreateProperties === true,
-          checkPropertyLimit: () => checkUsageLimit(org.id, "properties"),
+          propertyLimit,
           ipAddress: req.ip || req.socket?.remoteAddress,
           userAgent: req.headers["user-agent"],
         });
@@ -1240,15 +1243,27 @@ export function registerLeadRoutes(app: Express): void {
 
         const { deal, property, createdDeal, createdProperty } = result;
         // Committed — the only place these announcements may fire.
+        // The same post-commit effects POST /api/properties and POST /api/deals run.
         if (createdProperty) {
           const { emitPropertyCreated } = await import("./services/propertyEvents");
           emitPropertyCreated(org.id, property);
+          try {
+            const { recordActivationEventAsync } = await import("./services/activation");
+            recordActivationEventAsync({
+              orgId: org.id,
+              userId: areq.user?.id,
+              eventName: "first_property_added",
+              eventValue: { propertyId: property.id },
+            });
+          } catch { /* non-fatal */ }
         }
         if (createdDeal) {
           const { publishDealLifecycle } = await import("./services/dealLifecycleEvents");
           const { emitDealCreated } = await import("./services/dealEvents");
+          const { triggerDealEnrichmentAsync } = await import("./services/dealEnrichmentTrigger");
           publishDealLifecycle(deal.organizationId, null, deal);
           emitDealCreated(org.id, deal);
+          triggerDealEnrichmentAsync(org.id, deal.id, deal.propertyId);
         }
         logger.info("Lead converted to deal", {
           orgId: org.id,
