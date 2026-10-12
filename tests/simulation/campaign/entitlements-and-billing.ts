@@ -773,6 +773,8 @@ async function scenarioCredits() {
   // refusal at a short balance, 1¢ × sent, the zero-balance refusal) needs a
   // non-simulated send under the org's own sending identity, which a local run
   // cannot drive — recorded as a skip, never as green.
+  const simulated = (await orgRow(orgId)).settings?.simulationMode === true;
+  if (!simulated) { skip("credits/simulated-send", "the org is not in simulationMode, so the simulated-send expectations below do not apply"); return; }
   const over = await p.c.post(`/api/campaigns/${cid}/send-email`, { leadIds: ids });
   const b1 = await balance(); const t1 = await txCount(); const d1 = await deliveries();
   const sent1 = over.body?.sent;

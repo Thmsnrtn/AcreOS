@@ -98,6 +98,16 @@ function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
     p.then((v) => { clearTimeout(t); resolve(v); }, () => { clearTimeout(t); resolve(fallback); });
   });
 }
+/**
+ * Whether THIS org runs simulationMode right now — read from the database, not
+ * assumed from setup, so the "simulated sends are uncharged" expectation only
+ * applies when the org really is simulated.
+ */
+async function orgIsSimulated(): Promise<boolean> {
+  const r = await db.query(`SELECT settings->>'simulationMode' AS sim FROM organizations WHERE id = $1`, [orgId]);
+  return r.rows[0]?.sim === "true";
+}
+
 function msg(r: Resp): string {
   return (r.body?.message ?? r.body?.error ?? r.text ?? "").toString().slice(0, 240);
 }
@@ -481,8 +491,12 @@ async function main() {
       // design (routes-campaigns `chargeable` excludes them, c4f650b0). The
       // truth to hold is that a simulated send moves no credit; the real-send
       // 1¢ × sent arithmetic needs the org's own sending identity.
-      if (before - after !== 0) finding("P1", "billing", "A simulated email send moved credits", `Δ=${before - after}¢ sent=${b.sent} failed=${b.failed}`);
-      skip("w2/send-email-charge", "simulated sends are uncharged by design; 1¢ × sent is observable only on a real send under the org's own sending identity");
+      if (await orgIsSimulated()) {
+        if (before - after !== 0) finding("P1", "billing", "A simulated email send moved credits", `Δ=${before - after}¢ sent=${b.sent} failed=${b.failed}`);
+        skip("w2/send-email-charge", "simulated sends are uncharged by design; 1¢ × sent is observable only on a real send under the org's own sending identity");
+      } else if (before - after !== b.sent) {
+        finding("P1", "billing", "Email send credit deduction ≠ 1¢ × sent", `Δ=${before - after}¢ sent=${b.sent} failed=${b.failed}`);
+      }
       if (simAfter - simBefore !== b.sent) finding("P1", "honesty", "send-email reported sends that have no simulated_actions record (or vice-versa)", `sent=${b.sent} simulated rows=${simAfter - simBefore}`);
       if (delivered !== b.sent) finding("P1", "data-integrity", "campaign_delivery_events ≠ sent", `events=${delivered} sent=${b.sent}`);
       if (dncDelivered > 0) finding("P1", "compliance", "send-email delivered to leads flagged doNotContact", `${dncDelivered} of ${dncWithEmail.length} DNC leads received the campaign; the handler filters only on 'has an email'`, "A seller who opted out of ALL contact gets marketing email; TCPA/CAN-SPAM exposure per message.");
@@ -518,8 +532,12 @@ async function main() {
       if (b.tcpaBlocked !== nonConsented.length + dnc.length) finding("P2", "compliance", "send-sms tcpaBlocked count ≠ number of unconsented+DNC leads in the batch", `expected ${nonConsented.length + dnc.length}, got ${b.tcpaBlocked}; samples=${JSON.stringify(b.tcpaBlockedSamples).slice(0, 200)}`);
       if (leaked.length) finding("P1", "compliance", "An SMS was (simulated-)sent to a lead without TCPA consent or flagged DNC", leaked.map((l) => l.to).join(","));
       // Simulated SMS sends are uncharged by design, as for email above.
-      if (before - after !== 0) finding("P1", "billing", "A simulated SMS send moved credits", `Δ=${before - after}¢ sent=${b.sent}`);
-      skip("w2/send-sms-charge", "simulated sends are uncharged by design; 3¢ × sent is observable only on a real send");
+      if (await orgIsSimulated()) {
+        if (before - after !== 0) finding("P1", "billing", "A simulated SMS send moved credits", `Δ=${before - after}¢ sent=${b.sent}`);
+        skip("w2/send-sms-charge", "simulated sends are uncharged by design; 3¢ × sent is observable only on a real send");
+      } else if (before - after !== 3 * b.sent) {
+        finding("P1", "billing", "SMS credit deduction ≠ 3¢ × sent", `Δ=${before - after}¢ sent=${b.sent}`);
+      }
       if (b.quietHoursBlocked > 0) recordMetric(SIM, "w2/sms-quiet-hours", { blocked: b.quietHoursBlocked, note: "wall-clock dependent; not a defect" });
       if (b.sent === 0 && b.quietHoursBlocked > 0) skip("w2/send-sms", `all ${b.quietHoursBlocked} consented recipients blocked by quiet hours at ${new Date().toISOString()}`);
       if (!b.tcpaBlockedSamples?.[0]?.reason) finding("P2", "ux", "send-sms excludes TCPA-blocked leads without a per-lead reason", JSON.stringify(b).slice(0, 200));
