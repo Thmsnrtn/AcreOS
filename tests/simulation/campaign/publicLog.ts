@@ -27,7 +27,7 @@ export interface PublicLogGuard {
 export const WITHHELD_LINE = "[public-log] a line carrying run data was withheld\n";
 
 export function installPublicLogGuard(
-  markers: () => readonly string[],
+  markers: () => readonly (string | RegExp)[],
   streams: Array<NodeJS.WriteStream> = [process.stdout, process.stderr],
 ): PublicLogGuard {
   let withheld = 0;
@@ -38,8 +38,8 @@ export function installPublicLogGuard(
     const guarded = function (this: unknown, chunk: unknown, ...rest: unknown[]): boolean {
       const text =
         typeof chunk === "string" ? chunk : chunk instanceof Uint8Array ? Buffer.from(chunk).toString("utf8") : String(chunk);
-      const live = markers().filter((m) => m.length > 0);
-      if (live.some((m) => text.includes(m))) {
+      const hit = markers().some((m) => (typeof m === "string" ? m.length > 0 && text.includes(m) : m.test(text)));
+      if (hit) {
         withheld++;
         return (original as (...a: unknown[]) => boolean)(WITHHELD_LINE, ...rest);
       }

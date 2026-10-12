@@ -23,12 +23,24 @@
  *      and the floor is at least the program's 457.
  */
 import { describe, expect, it, vi } from "vitest";
+// The ledger reads CAMPAIGN_OUT when it loads; point it at a private temp dir
+// before any campaign module is imported.
+const LEDGER_DIR = vi.hoisted(() => {
+  const fs = require("node:fs") as typeof import("node:fs");
+  const os = require("node:os") as typeof import("node:os");
+  const p = require("node:path") as typeof import("node:path");
+  const dir = fs.mkdtempSync(p.join(os.tmpdir(), "sweep-ledger-"));
+  process.env.CAMPAIGN_OUT = dir;
+  return dir;
+});
 import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { Writable } from "node:stream";
 import yaml from "js-yaml";
-import { POPULATION_FLOOR, enumerateRoutes, routeSourceFiles } from "../simulation/campaign/byIdRoutes";
+import ts from "typescript";
+import { POPULATION_FLOOR, PROBED_FLOOR, enumerateRoutes, routeSourceFiles } from "../simulation/campaign/byIdRoutes";
+import { ledgerFinding, ledgerSkip, publicSummaryLines, routeVerdict, say } from "../simulation/campaign/sweepReport";
 import { installPublicLogGuard, quietSessionServerLog, WITHHELD_LINE } from "../simulation/campaign/publicLog";
 import { stripComments } from "../helpers/stripComments";
 // The population check strips every route source file; under the coverage run
@@ -236,5 +248,156 @@ describe("the database server log", () => {
     const forge = main.indexOf("getForged(");
     expect(quiet, "main() must call quietSessionServerLog(db)").toBeGreaterThan(0);
     expect(forge).toBeGreaterThan(quiet);
+  });
+});
+
+describe("the public log carries counts only", () => {
+  /** Capture everything written to stdout/stderr while `fn` runs. */
+  function captured(fn: () => void): string {
+    const out: string[] = [];
+    const wo = process.stdout.write.bind(process.stdout);
+    const we = process.stderr.write.bind(process.stderr);
+    const grab = ((chunk: unknown) => {
+      out.push(String(chunk));
+      return true;
+    }) as typeof process.stdout.write;
+    // Vitest intercepts console.* before the streams, so both are captured.
+    const saved = { log: console.log, error: console.error, warn: console.warn, info: console.info };
+    const grabConsole = (...a: unknown[]) => void out.push(a.map(String).join(" ") + "\n");
+    process.stdout.write = grab;
+    process.stderr.write = grab;
+    Object.assign(console, { log: grabConsole, error: grabConsole, warn: grabConsole, info: grabConsole });
+    try {
+      fn();
+    } finally {
+      process.stdout.write = wo;
+      process.stderr.write = we;
+      Object.assign(console, saved);
+    }
+    return out.join("");
+  }
+
+  it("a planted breach and a weak-authz verdict reach the ledger, never the streams", () => {
+    const BREACH_ROUTE = "/api/planted-resource/:id";
+    const WEAK_ROUTE = "/api/planted-parent/:parentId/children";
+    const out = captured(() => {
+      routeVerdict({ verb: "GET", path: BREACH_ROUTE, table: "planted", control: 200, attack: 200, verdict: "BREACH" });
+      routeVerdict({ verb: "GET", path: WEAK_ROUTE, table: "planted", control: 200, attack: 200, verdict: "2xx-weak-authz" });
+      ledgerFinding({
+        id: "planted-breach",
+        product: "AcreOS",
+        sev: "P0",
+        area: "tenant-isolation",
+        title: `Cross-tenant READ breach via GET ${BREACH_ROUTE}`,
+        evidence: "planted",
+        sim: "fixture",
+      });
+      ledgerSkip({ sim: "fixture", step: `DELETE ${WEAK_ROUTE}`, reason: "planted skip" });
+      for (const line of publicSummaryLines({
+        population: 2,
+        byVerb: { GET: 2 },
+        probed: 2,
+        skipped: 1,
+        forged: 2,
+        cleaned: 2,
+        breaches: 1,
+        verdicts: { breach: 1, "2xx-without-data": 1 },
+        controlFailed: 0,
+        controlHadCanary: 1,
+        getProbed: 2,
+      })) say(line);
+    });
+    // The streams carry the counts…
+    expect(out).toContain("breaches:                    1");
+    // …and nothing per route: no template, no route-shaped path, no verdict line.
+    for (const forbidden of [BREACH_ROUTE, WEAK_ROUTE, "/api/", "planted-resource", "planted-parent", "2xx-weak-authz", "Cross-tenant", "planted skip"]) {
+      expect(out, forbidden).not.toContain(forbidden);
+    }
+    // The ledger holds every one of them.
+    const routes = readFileSync(path.join(LEDGER_DIR, "idor-routes.jsonl"), "utf8");
+    expect(routes).toContain(BREACH_ROUTE);
+    expect(routes).toContain(WEAK_ROUTE);
+    expect(readFileSync(path.join(LEDGER_DIR, "findings.jsonl"), "utf8")).toContain(BREACH_ROUTE);
+    expect(readFileSync(path.join(LEDGER_DIR, "skips.jsonl"), "utf8")).toContain(WEAK_ROUTE);
+  });
+
+  it("the guard withholds any chunk carrying a route path", () => {
+    const chunks: string[] = [];
+    const stream = new Writable({
+      write(chunk, _enc, cb) {
+        chunks.push(String(chunk));
+        cb();
+      },
+    }) as unknown as NodeJS.WriteStream;
+    const guard = installPublicLogGuard(() => ["idcNOPE", /\/api\//], [stream]);
+    try {
+      stream.write("probed (org-scoped table):   285\n");
+      stream.write("GET /api/leads/:id → isolated\n");
+    } finally {
+      guard.uninstall();
+    }
+    expect(chunks).toEqual(["probed (org-scoped table):   285\n", WITHHELD_LINE]);
+    expect(guard.leaks()).toBe(1);
+  });
+
+  // The sweep itself, parsed (not text-scanned): it writes to no stream except
+  // through ./sweepReport, and it does not import the echoing ledger writers.
+  const SWEEP_SRC = readFileSync(path.join(ROOT, SWEEP_SCRIPT), "utf8");
+  const sf = ts.createSourceFile("idor-sweep.ts", SWEEP_SRC, ts.ScriptTarget.Latest, true);
+  const directWrites: string[] = [];
+  const echoingImports: string[] = [];
+  const calls = new Set<string>();
+  const visit = (n: ts.Node) => {
+    if (ts.isIdentifier(n) && n.text === "console") directWrites.push(`console @${n.getStart()}`);
+    if (
+      ts.isPropertyAccessExpression(n) &&
+      ts.isIdentifier(n.expression) &&
+      n.expression.text === "process" &&
+      (n.name.text === "stdout" || n.name.text === "stderr")
+    ) {
+      directWrites.push(`process.${n.name.text} @${n.getStart()}`);
+    }
+    if (ts.isImportDeclaration(n) && ts.isStringLiteral(n.moduleSpecifier) && /\/ledger$/.test(n.moduleSpecifier.text)) {
+      const named = n.importClause?.namedBindings;
+      if (named && ts.isNamedImports(named)) {
+        for (const el of named.elements) if (["recordFinding", "recordSkip"].includes(el.name.text)) echoingImports.push(el.name.text);
+      }
+    }
+    if (ts.isCallExpression(n) && ts.isIdentifier(n.expression)) calls.add(n.expression.text);
+    ts.forEachChild(n, visit);
+  };
+  visit(sf);
+
+  it("idor-sweep.ts writes to no stream directly and imports no echoing ledger writer", () => {
+    expect(directWrites).toEqual([]);
+    expect(echoingImports).toEqual([]);
+    // Vacuity: the parse saw the sweep's real reporting calls.
+    for (const fn of ["routeVerdict", "ledgerFinding", "ledgerSkip", "say", "stop"]) expect(calls.has(fn), fn).toBe(true);
+  });
+
+  /** The `if` statements of main() whose condition mentions `needle`. */
+  const ifsAbout = (needle: RegExp) => {
+    const found: ts.IfStatement[] = [];
+    const walk = (n: ts.Node) => {
+      if (ts.isIfStatement(n) && needle.test(n.expression.getText(sf))) found.push(n);
+      ts.forEachChild(n, walk);
+    };
+    walk(sf);
+    return found;
+  };
+  const exitsWith = (stmt: ts.IfStatement, code: number) => /process\.exit\(\s*(\d+)\s*\)/.exec(stmt.thenStatement.getText(sf))?.[1] === String(code);
+
+  it("an empty or blind run fails: probed floor, vacuous detector, unquieted CI log", () => {
+    expect(PROBED_FLOOR).toBeGreaterThanOrEqual(280);
+    const probedIf = ifsAbout(/\bprobed\s*<\s*PROBED_FLOOR\b/);
+    expect(probedIf.length, "probed < PROBED_FLOOR check").toBe(1);
+    expect(exitsWith(probedIf[0], 2)).toBe(true);
+    const vacuousIf = ifsAbout(/\bcontrolHadCanary\s*===\s*0\b/).filter((s) => /process\.exit/.test(s.thenStatement.getText(sf)));
+    expect(vacuousIf.length, "controlHadCanary === 0 exits").toBe(1);
+    expect(exitsWith(vacuousIf[0], 2)).toBe(true);
+    const quietIf = ifsAbout(/!serverLogQuiet\b/);
+    expect(quietIf.length, "unquieted session check").toBe(1);
+    expect(quietIf[0].expression.getText(sf)).toContain("GITHUB_ACTIONS");
+    expect(exitsWith(quietIf[0], 2)).toBe(true);
   });
 });

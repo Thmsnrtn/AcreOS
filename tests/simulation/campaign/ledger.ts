@@ -35,11 +35,12 @@ function ensure(file: string) {
   mkdirSync(dirname(file), { recursive: true });
 }
 
-export function recordFinding(f: Finding): void {
+/** `echo: false` keeps the finding off the console (ledger file only). */
+export function recordFinding(f: Finding, opts?: { echo?: boolean }): void {
   const file = join(OUT_DIR, "findings.jsonl");
   ensure(file);
   appendFileSync(file, JSON.stringify({ ...f, at: new Date().toISOString() }) + "\n");
-  console.log(`  [${f.sev}] ${f.id}: ${f.title}`);
+  if (opts?.echo !== false) console.log(`  [${f.sev}] ${f.id}: ${f.title}`);
 }
 
 /**

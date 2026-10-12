@@ -33,6 +33,14 @@ export const VERB_RE = /\b[A-Za-z_$][\w$]*\.(get|put|patch|delete)\(\s*(["'`])(\
  * extractor that stops reading a file is what this exists to catch.
  */
 export const POPULATION_FLOOR = 457;
+/**
+ * Probed floor: routes whose backing table was inferred AND whose rows were
+ * forged. Measured 2026-10-12: 322 against a push-built database (CI), 285
+ * against one built like production (push + scripts/migrate.mjs, whose extra
+ * constraints refuse more forged rows). A run under this probed too little of
+ * the population to say anything, and fails rather than passing green.
+ */
+export const PROBED_FLOOR = 280;
 /** A param whose name ends in id/Id/ID — the by-id shape this sweep governs. */
 export const ID_PARAM = /:[a-zA-Z_]*[Ii][Dd]\b/;
 
