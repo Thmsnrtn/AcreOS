@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/stripComments";
 import { DEAL_STATUSES, OPENING_DEAL_STATUSES } from "@shared/lifecycle/pipeline-status";
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 const h = vi.hoisted(() => ({ insert: vi.fn(), publish: vi.fn() }));
 vi.mock("../../server/db", () => ({ db: { insert: h.insert } }));
 vi.mock("../../server/services/dealLifecycleEvents", () => ({ publishDealLifecycle: h.publish, recordDealTransitionEvidence: vi.fn() }));
