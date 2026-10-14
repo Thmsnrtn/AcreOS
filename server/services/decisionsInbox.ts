@@ -28,12 +28,8 @@ import { meteredChatCompletion } from "./aiSpendGuard";
  */
 export { doNothingContract, DO_NOTHING_CONTRACTS } from "@shared/decisions/doNothing";
 
-async function requireGenericResolution(itemId: number): Promise<void> {
-  const item = await unscopedForPlatformOps("Founder resolution: read the platform-wide card type before routing it to its canonical writer")
-    .query.decisionsInboxItems.findFirst({ where: eq(decisionsInboxItems.id, itemId) });
-  if (item?.itemType === "cmo_ad_review") {
-    throw Object.assign(new Error("Review the videos and choose destinations in /founder/cmo; this queue cannot resolve video bundles"), { code: "CMO_REVIEW_REQUIRED" });
-  }
+function genericResolutionUnavailable(): Error {
+  return Object.assign(new Error("Decision unavailable or requires video review in /founder/cmo; this queue cannot resolve video bundles"), { code: "CMO_REVIEW_REQUIRED" });
 }
 
 /**
@@ -748,9 +744,14 @@ export const decisionsInboxService = {
    * WHICH option answered the card.
    */
   async approve(itemId: number, chosenOptionText?: string): Promise<{ executed: boolean; detail?: string }> {
-    await requireGenericResolution(itemId);
+    // Reuse the existing executor lookup before any write. Video bundles have
+    // one canonical writer, which also commits the assets and publication jobs.
+    const item = await db.query.decisionsInboxItems.findFirst({
+      where: eq(decisionsInboxItems.id, itemId),
+    });
+    if (!item || item.itemType === "cmo_ad_review") throw genericResolutionUnavailable();
     // Mark as approved
-    await db.update(decisionsInboxItems)
+    const changed = await db.update(decisionsInboxItems)
       .set({
         status: "approved",
         resolvedAt: clock.now(),
@@ -758,12 +759,11 @@ export const decisionsInboxService = {
         updatedAt: clock.now(),
         ...(chosenOptionText ? { founderOverrideAction: chosenOptionText } : {}),
       })
-      .where(and(eq(decisionsInboxItems.id, itemId), ne(decisionsInboxItems.itemType, "cmo_ad_review")));
+      .where(and(eq(decisionsInboxItems.id, itemId), ne(decisionsInboxItems.itemType, "cmo_ad_review")))
+      .returning({ id: decisionsInboxItems.id });
+    if (!changed.length) throw genericResolutionUnavailable();
 
-    // v3: Execute the approved action
-    const item = await db.query.decisionsInboxItems.findFirst({
-      where: eq(decisionsInboxItems.id, itemId),
-    });
+    // v3: Execute the approved action only after the guarded write succeeds.
 
     if (!item?.actionPayload) {
       return { executed: false, detail: "No action payload to execute" };
@@ -819,8 +819,7 @@ export const decisionsInboxService = {
   },
 
   async reject(itemId: number, reason?: string): Promise<void> {
-    await requireGenericResolution(itemId);
-    await db.update(decisionsInboxItems)
+    const changed = await db.update(decisionsInboxItems)
       .set({
         status: "rejected",
         resolvedAt: clock.now(),
@@ -828,20 +827,22 @@ export const decisionsInboxService = {
         founderOverrideAction: reason,
         updatedAt: clock.now(),
       })
-      .where(and(eq(decisionsInboxItems.id, itemId), ne(decisionsInboxItems.itemType, "cmo_ad_review")));
+      .where(and(eq(decisionsInboxItems.id, itemId), ne(decisionsInboxItems.itemType, "cmo_ad_review")))
+      .returning({ id: decisionsInboxItems.id });
+    if (!changed.length) throw genericResolutionUnavailable();
   },
 
   async defer(itemId: number, hours = 24): Promise<void> {
-    await requireGenericResolution(itemId);
     const deferredUntil = new Date(clock.nowMs() + hours * 60 * 60 * 1000);
-    await db.update(decisionsInboxItems)
+    const changed = await db.update(decisionsInboxItems)
       .set({ status: "deferred", deferredUntil, updatedAt: clock.now() })
-      .where(and(eq(decisionsInboxItems.id, itemId), ne(decisionsInboxItems.itemType, "cmo_ad_review")));
+      .where(and(eq(decisionsInboxItems.id, itemId), ne(decisionsInboxItems.itemType, "cmo_ad_review")))
+      .returning({ id: decisionsInboxItems.id });
+    if (!changed.length) throw genericResolutionUnavailable();
   },
 
   async override(itemId: number, customAction: string): Promise<void> {
-    await requireGenericResolution(itemId);
-    await db.update(decisionsInboxItems)
+    const changed = await db.update(decisionsInboxItems)
       .set({
         status: "approved",
         resolvedAt: clock.now(),
@@ -849,7 +850,9 @@ export const decisionsInboxService = {
         founderOverrideAction: customAction,
         updatedAt: clock.now(),
       })
-      .where(and(eq(decisionsInboxItems.id, itemId), ne(decisionsInboxItems.itemType, "cmo_ad_review")));
+      .where(and(eq(decisionsInboxItems.id, itemId), ne(decisionsInboxItems.itemType, "cmo_ad_review")))
+      .returning({ id: decisionsInboxItems.id });
+    if (!changed.length) throw genericResolutionUnavailable();
   },
 
   /**

@@ -678,3 +678,19 @@ passed all 24 tests. The failed full-check attempt is not a passing receipt;
 a fresh complete check and revised-commit CI are required. The unrelated
 JPEG remains excluded and preserved. The new review fix has independent
 source clearance; full suite/database/provider evidence stays distinct.
+
+### CI scope-ceiling finding and narrowed repair — 2026-10-14 UTC
+
+Published f3dff5fa matched local tree f331abfa. Full CI passed 17,430 tests
+but failed one orgScopedFetchCoverage waiver-ceiling assertion: 18 observed,
+16 permitted. The ceiling and every ratchet baseline remain unchanged. The
+worker now reads only founder-global (organizationId IS NULL) review cards.
+Generic approval reuses its existing lookup before mutation; all four generic
+resolvers use CMO-excluding atomic writes and require returned rows before
+success or execution. This removes both added exemptions. A new real-DB case
+checks all four generic paths leave card, render and outbox intact; eight
+distinct PostgreSQL cases across this program now require schema-building CI.
+Independent review cleared the actual narrowed source diff. On the previous
+head, security, mobile, customer-surface, column and migration checks passed;
+Test remained running. Previous-head evidence cannot substitute for revised
+head CI. Main and the 39-ticket/G0 completion status remain unchanged.

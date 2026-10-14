@@ -49,6 +49,23 @@ describe.runIf(realDbAvailable)("video review resolution on real PostgreSQL", ()
     const jobs = await db.select().from(outbox).where(sql`${outbox.payload}->>'inboxItemId' = ${String(item.id)}`);
     expect(asset.status).toBe(card.status); expect(jobs).toHaveLength(card.status === "approved" ? 1 : 0);
   });
+  it("all four generic resolvers leave the pending video card and ready asset intact", async () => {
+    const { item, render } = await fixture();
+    const { decisionsInboxService } = await import("../../server/services/decisionsInbox");
+    for (const resolve of [
+      () => decisionsInboxService.approve(item.id),
+      () => decisionsInboxService.reject(item.id, "fixture"),
+      () => decisionsInboxService.defer(item.id),
+      () => decisionsInboxService.override(item.id, "fixture"),
+    ]) await expect(resolve()).rejects.toMatchObject({ code: "CMO_REVIEW_REQUIRED" });
+    const { db } = await import("../../server/db");
+    const { decisionsInboxItems, cmoAdRenders, outbox } = await import("@shared/schema");
+    const { eq, sql } = await import("drizzle-orm");
+    const [card] = await db.select().from(decisionsInboxItems).where(eq(decisionsInboxItems.id, item.id));
+    const [asset] = await db.select().from(cmoAdRenders).where(eq(cmoAdRenders.id, render.id));
+    expect(card.status).toBe("pending"); expect(asset.status).toBe("ready");
+    expect(await db.select().from(outbox).where(sql`${outbox.payload}->>'inboxItemId' = ${String(item.id)}`)).toHaveLength(0);
+  });
   it("an existing but no-longer-ready asset rolls the approval claim back", async () => {
     const { item } = await fixture("rejected");
     expect((await request(app).post("/api/founder/cmo/approve").send({ inboxItemId: item.id, platforms: ["meta"] })).status).toBe(500);

@@ -13,14 +13,13 @@
 
 import * as path from "path";
 import { db } from "../db";
-import { unscopedForPlatformOps } from "../utils/orgScopedDb";
 import {
   cmoAdRenders,
   cmoScripts,
   brandProfiles,
   decisionsInboxItems,
 } from "@shared/schema";
-import { eq, and, inArray, sql } from "drizzle-orm";
+import { eq, and, inArray, sql, isNull } from "drizzle-orm";
 import { isPublishingEnabledFresh } from "../services/autopilot/settings";
 import { uploadVideoToMeta, waitForVideoReady, createMetaCreative } from "../integrations/metaAdsVideo";
 import { uploadVideoToTikTok, createTikTokAd } from "../integrations/tiktokAds";
@@ -56,8 +55,10 @@ export async function handleCmoBroadcast(payload: CmoBroadcastPayload): Promise<
   if (!["meta", "tiktok"].includes(payload.platform)) throw new Error("Unsupported publication platform");
   const requireCurrentReview = async () => {
     if (!Number.isInteger(payload.inboxItemId) || !payload.inboxItemId) throw new Error("Current video review approval is unavailable");
-    const review = await unscopedForPlatformOps("CMO worker: verify the founder's platform-wide video approval before provider effects")
-      .query.decisionsInboxItems.findFirst({ where: eq(decisionsInboxItems.id, payload.inboxItemId) });
+    // CMO cards are produced in the founder-global lane, never a tenant lane.
+    const review = await db.query.decisionsInboxItems.findFirst({
+      where: and(eq(decisionsInboxItems.id, payload.inboxItemId), isNull(decisionsInboxItems.organizationId)),
+    });
     const ctx = review?.contextBundle as { bundleId?: string; renders?: Array<{ id: string }>; approvedPlatforms?: string[] } | null;
     const current = await db.query.cmoAdRenders.findFirst({ where: eq(cmoAdRenders.id, render.id) });
     if (review?.itemType !== "cmo_ad_review" || review.status !== "approved" ||
