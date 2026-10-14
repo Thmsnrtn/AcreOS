@@ -11,7 +11,7 @@
  * Population: every `GET /api/health…` registration in server/, found by scan
  * and classified below. A new one fails the classification until it is placed.
  */
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import express from "express";
 import request from "supertest";
 import { readdirSync, readFileSync } from "node:fs";
@@ -34,7 +34,26 @@ vi.mock("../../server/services/healthCheck", () => {
   return { healthCheckService: { getLastResults: snapshot, checkAll: async () => snapshot() } };
 });
 
+// Keep the exact numeric value that exposed the whole-JSON substring false positive.
+beforeEach(() => { vi.spyOn(process, "uptime").mockReturnValue(9.540151209); });
+afterEach(() => { vi.restoreAllMocks(); });
+
 const PUBLIC_KEYS = new Set(["overall", "timestamp", "version", "uptime"]);
+
+function expectStatusOnly(body: Record<string, unknown>, path: string): void {
+  for (const [key, value] of Object.entries(body)) {
+    expect(PUBLIC_KEYS.has(key), `${path} exposes "${key}"`).toBe(true);
+    if (key === "uptime") {
+      expect(typeof value).toBe("number");
+      expect(Number.isFinite(value)).toBe(true);
+      expect(value).toBeGreaterThanOrEqual(0);
+    } else {
+      expect(typeof value).toBe("string");
+      expect(value).not.toMatch(/regrid|stripe|401|STRIPE_SECRET_KEY|services/i);
+    }
+  }
+}
+
 
 async function app() {
   const a = express();
@@ -49,9 +68,9 @@ describe("the public health probes", () => {
       h.overall = "degraded";
       const res = await request(await app()).get(path);
       expect(res.status).toBe(200);
-      for (const k of Object.keys(res.body)) expect(PUBLIC_KEYS.has(k), `${path} exposes "${k}"`).toBe(true);
+      expectStatusOnly(res.body, path);
       expect(res.body.overall).toBe("degraded");
-      expect(res.text).not.toMatch(/regrid|stripe|401|STRIPE_SECRET_KEY|services/i);
+      if (path.endsWith("/cached")) expect(res.body.uptime).toBe(9.540151209);
     });
 
     it(`${path} still answers 503 when unavailable (what Fly, Docker and CI read)`, async () => {
@@ -61,6 +80,20 @@ describe("the public health probes", () => {
       expect(res.body.overall).toBe("unavailable");
     });
   }
+});
+
+describe("status-only gate semantic canaries", () => {
+  it.each([
+    { services: [{ name: "regrid", message: "HTTP 401 invalid token" }] },
+    { message: "STRIPE_SECRET_KEY not set" },
+    { version: "stripe HTTP 401" },
+    { uptime: "HTTP 401" },
+  ])("still refuses an actual health response mutated to leak provider detail: %j", async leak => {
+    h.overall = "degraded";
+    const res = await request(await app()).get("/api/health/cached");
+    expectStatusOnly(res.body, "/api/health/cached");
+    expect(() => expectStatusOnly({ ...res.body, ...leak }, "/api/health/cached")).toThrow();
+  });
 });
 
 describe("every GET /api/health* registration is classified", () => {
