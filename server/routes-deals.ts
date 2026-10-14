@@ -1,5 +1,5 @@
 import type { Express } from "express";
-import { DealTransitionRefusedError } from "./storage/dealRepo";
+import { DealCreationRefusedError, DealTransitionRefusedError } from "./storage/dealRepo";
 import { omitProtectedFields, omitServerOwnedFields } from "./utils/updatePayload";
 import { fraudGateRefusal, sealWireAttestation, stampWireConfirmation, withdrawWireConfirmation } from "./services/closingEvidence";
 import { storage } from "./storage";
@@ -759,6 +759,7 @@ export function registerDealRoutes(app: Express): void {
 
       res.status(201).json(deal);
     } catch (err) {
+      if (err instanceof DealCreationRefusedError) return Errors.badRequest(res, err.message);
       if (err instanceof z.ZodError) {
         return Errors.badRequest(
           res,
