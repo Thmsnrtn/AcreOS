@@ -19,6 +19,7 @@
  * is the same mechanism the production clear path relies on.
  */
 
+import { isDealStatus } from "@shared/lifecycle/pipeline-status";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("../../server/db", () => ({ db: {} }));
@@ -189,6 +190,7 @@ describe("seedSampleDataForOrg — all 15 registered business types", () => {
     const apnSets = new Map<string, string>();
     for (const businessType of BUSINESS_TYPE_IDS) {
       const f = buildSampleFixtures(ORG, businessType);
+      for (const deal of f.deals) expect(isDealStatus(deal.status)).toBe(true);
       const key = f.properties.map((p) => p.apn).join("|");
       const prior = apnSets.get(key);
       // land_flipper is the canonical set; nothing else may collide with it

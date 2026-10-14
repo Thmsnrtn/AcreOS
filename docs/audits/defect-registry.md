@@ -6673,12 +6673,13 @@ Resolving commits: fourth audit fixes
 ### DEFECT-0276
 Title: Smaller residue of the audit of 1694a0b
 Severity: P2
-Status: OPEN
+Status: PARTIAL (2026-10-14; creation rule repaired, remaining residue open)
 Surfaced by lenses: independent audit of 1694a0b
 Description: (1) `POST /api/deals`, the CSV deal import (`server/services/importExport.ts`) and an admin route (`server/routes-admin.ts`) accept any status at creation, including `closed`, without the close evidence; `dealRepo.createDeal` enforces nothing, so `OPENING_DEAL_STATUSES` has one production caller (Pax). The rule belongs in the repository insert, with an explicit import-only opt-out. (2) A version race on a non-PUT deal route answers 500 rather than 409. (3) The storage spread gate sees a patch spread only when it is spread inline; a patch copied to a local first is outside what it reads. (4) `runPostCloseAutomation` in `titleChainService` has no caller. (5) `assertWritablePatch` stripped a server-set `updatedAt`, so a touch threw — FIXED here (a `Date` survives; a JSON body cannot carry one): `tests/unit/emptyPatchIsNotAnUpdate.test.ts`. (6) Several mocked tests in this change return fixed rows whatever the WHERE (the ACH in-flight and refund-cap tests), so their predicates are verified by reading, not by the tests. (7) `POST /api/deals/:id/advance-stage` and the command palette move a deal to in_escrow without consulting contract evidence — no event even when a signed document exists. (8) Today's new `samplePropertyIds` read is not wrapped like its neighbouring derivations: if it throws, Today answers 500.
 Evidence: `server/routes-deals.ts`; `server/storage/dealRepo.ts`; `tests/unit/dealStatusWritersHoldTheStateMachine.test.ts`; `server/services/titleChainService.ts`; `server/utils/patch.ts`.
 Remediation plan: (1) decide whether creation at a late stage is an import-only path; (2) give the repository's stale-version refusal (a plain `Error` today) its own type and answer 409 on every route that writes a deal; (3) follow a local to its spread, or ban the copy; (4) wire it behind the close evidence or delete it.
-Resolving commits: fourth audit fixes (5 only)
+Current verification (2026-10-14): (1) Creation now validates canonical status and opening-only ordinary stages in dealRepo before the sole server insert. CSV and two labelled seeders pass explicit internal historical contexts; they may retain canonical late stages but never arbitrary vocabulary. Six production callers independently censused. The admin arbitrary writer claim is stale: admin delegates to the marked demo seeder. Only future invalid listed sample-deal creation is normalized; no historical records changed. Red-first tests/unit/dealCreationStages.test.ts: 11 fail / 12 pass before repair, then all 23 pass. The creation/caller/transaction/state-machine group passed 69 tests before the added census/vocabulary checks. (2) Every production update caller currently passes undefined for expectedUpdatedAt, including PUT; simply mapping a typed error to 409 would not make those writes concurrency-safe. (7) Command palette now uses PUT and signed-document evidence; that part is refuted. Advance-stage evidence remains open. (4) The unused post-close automation logs several effects it never performs and must not be wired as truthful behavior unchanged. Independent reviewer cleared the creation source repair; full revised gates/CI pending.
+Resolving commits: fourth audit fixes (5); directed creation-stage repair pending publication
 
 ### DEFECT-0277
 Title: Suppressed-piece refunds skipped before DEFECT-0271 were never repaid
@@ -6787,6 +6788,17 @@ Evidence: server/routes-cmo.ts; server/jobs/cmoBroadcast.ts; server/services/dec
 Falsified/verified: tests/unit/cmoApprovalQueue.test.ts; tests/unit/cmoPublicationReceipts.test.ts; tests/unit/cmoGenericResolutionRefused.test.ts; tests/unit/cmoAutonomousResolutionRefused.test.ts; tests/unit/cmoNotificationResolutionRefused.test.ts; tests/unit/growthWorkspace.test.tsx. Consolidated repair run: 56 pass, two real-db concurrency/rollback cases skip locally (tests/unit/cmoReviewResolution.realdb.test.ts). These must run in schema-building CI. Independent reviewer found no remaining concrete blocker in the final source diff. Full CI subsequently found two added platform-read exemptions exceeded the fixed ceiling (18 versus 16). The narrowed repair removes both exemptions without raising the ceiling: worker reads require the founder-global lane, generic approval reuses its original lookup, and all generic updates require returned CMO-excluding rows. Independent review cleared that actual diff. A third real-DB case proves all four generic methods leave video state untouched; revised-head CI remains required. Exact content/account revision hashes, atomic spend reservations and real-provider evidence remain open acceptance work.
 Resolving commits: directed execution audit repairs, not deployed
 
+### DEFECT-0287
+Title: Single-deal Delete called a server endpoint that was never registered
+Severity: P2
+Status: PARTIAL (2026-10-14; hook repaired and audited, revised CI/live read-back pending)
+Surfaced by lenses: directed P1-05 creation/status writer census
+Description: useDeleteDeal sent DELETE /api/deals/:id, but no server route or repository deleteDeal writer exists. The mounted deletion path is POST /api/deals/bulk-delete; ordinary single-deal deletion therefore failed before reaching the canonical writer.
+Remediation: The hook posts one ID through the existing authenticated, organization-scoped, canDeleteDeals-gated bulk endpoint. Existing success invalidations and refusal behavior are preserved; no new route or duplicate writer is added. This addresses reachability only, not the existing bulk affected-count, hold or close/retraction concurrency semantics.
+Evidence: client/src/hooks/use-deals.ts; server/routes-deals.ts; server/storage/dealRepo.ts.
+Falsified/verified: tests/unit/dealDeletionEndpoint.test.tsx. An initial missing-library harness failure was corrected using the existing React createRoot/act setup; then the original hook failed one request-contract case with one refusal case passing. The corrected hook's five-file creation/deletion/census/transaction group passed all 72 tests. Independent source reviewer confirmed endpoint mounting, permission/scoping and unchanged cache paths. No live customer record was deleted.
+Resolving commits: directed lifecycle follow-up pending publication
+
 ### REFUTED AT HEAD, 2026-09-27
 
 The research report ("AcreOS at full maturity", pinned at `a2dc971`) was
@@ -6823,10 +6835,10 @@ not implemented against.
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
-| OPEN   | 0   | 0   | 21  | 21    |
+| OPEN   | 0   | 0   | 22  | 22    |
 | FIXED  | 14  | 132 | 117 | 263   |
 | DEFERRED | 0 | 2   | 0   | 2     |
-| **Total** | **14** | **134** | **138** | **286** |
+| **Total** | **14** | **134** | **139** | **287** |
 
 Recounted from the entries themselves on 2026-09-28 (184 `### DEFECT-` blocks
 by their Status and Severity lines; DEFECT-0063 PARTIALLY FIXED is counted as

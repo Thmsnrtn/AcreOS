@@ -452,7 +452,7 @@ manufactured locally. Blocked does not mean an account is missing in production.
 
 | Ticket | State | Evidence / actual work | Remaining acceptance or dependency |
 |---|---|---|---|
-| P0-01 | Partial | §I reconciles scope, LP state and active priorities; 21 registry entries currently OPEN/PARTIAL. | Current-consumer closure census and independent release review remain. |
+| P0-01 | Partial | §I reconciles scope, LP state and active priorities; 22 registry entries currently OPEN/PARTIAL. | Current-consumer closure census and independent release review remain. |
 | P0-02 | Partial | Public app and worker heartbeat both reported b852ce34; heartbeat fresh at 2026-10-13T12:48:25.446Z; cached health still degraded at 12:48:22.899Z. | Founder sign-in observed; authorized app/worker image, live catalog, release and migration reads remain. The live retract query fails; its underlying database cause and the degraded-health root cause remain unknown. |
 | P0-03 | Partial | tests/unit/deployGateRequiresCiAndSecurity.test.ts parses required CI/security job dependencies. | Isolated negative workflow run and separate rollback receipt; no production dispatch performed. |
 | P0-04 | Partial | Authenticated live Controls shows 4/13 setup rungs verified, two essential rungs left; canonical readinessLadder remains authority. | Resolve paging, confirm owner budgets and remaining account decisions; keys resolving is not a completed operational proof. |
@@ -466,7 +466,7 @@ manufactured locally. Blocked does not mean an account is missing in production.
 | P1-02 | Partial | Offers now searches/paginates the permitted book, labels matching totals and resolves identities by id; three DOM cases pass. 0169 population census and 0171 whole-book consumers remain open. | Repair each consumer with search/by-id/aggregate or explicit pagination; real >5000-row interrupted import/rollback proof. |
 | P1-03 | Partial | Existing parcel provenance/accuracy projection, DD and economics contracts retained. | Practising-investor journey, conflicting/stale data and insufficient-comps offer refusals on allowed corpus. |
 | P1-04 | Partial | Existing approval kernel, provider receipt, inbound and idempotent mail tests retained. | Credentialed exact-revision recipient/sender/asset/cost witness and provider timeout/replay drill. |
-| P1-05 | Open | 0244/0258/0276 still OPEN in registry; status writers must use canonical deal repo. | Predicate-sensitive real-db one-close-writer census and stale-version conflict recovery on every caller. |
+| P1-05 | Partial | Creation now validates canonical vocabulary and opening stages at the sole server insert; CSV and labelled sample callers explicitly retain canonical historical stages. Six callers independently censused. Single-deal deletion now reaches the existing permission-scoped bulk writer. Close evidence and concurrency remain open. | Predicate-sensitive real-db one-close-writer census, Close & Carry training race and stale-version conflict recovery on every caller. |
 | P1-06 | Open | 0185 remains OPEN (later installments/fee-posting concurrency); 0277 historical refund application remains owner operation. | Sandbox borrower cookie/checkout/ACH overlap proof and exact-cent reconciliation; never apply historical repair silently. |
 | P1-07 | Partial | Growth plan, review and progress reads now distinguish errors from empty; save/brief forms retain work; queue ID shown. | Complete wedge state census and recovery testing beyond Growth. |
 | P1-08 | Blocked | Growth uses existing semantic controls and responsive four-tab layout; DOM tests are not iPhone proof. | Physical iPhone Safari/VoiceOver and credentialed WebKit full-journey evidence. |
@@ -477,7 +477,7 @@ manufactured locally. Blocked does not mean an account is missing in production.
 | F-03 | Partial | Growth inside existing Controls saves bounded audience/positioning; seed preserves edits; master publishing setting uses existing canonical writer. | Live read-back and Story witness; other Controls sections remain current source, not newly certified. |
 | F-04 | Partial | Worker-backed progress links existing Story; raw provider errors excluded from job-status API. | Receipt chain across exact approval revision/account/cost/outcome and sensitive-data-safe export. |
 | F-05 | Blocked | Simulation mean 15.6 min/week, p90 39; no claim of <24 every real week. | A week of actual attention/interrupt/aging observations; fresh facts before repeated owner asks. |
-| G-01 | Implemented locally | Rebased Growth workspace, strict reporting, immutable/empty payload refusals, truthful brand wording and edit-preserving seed. | Final required gates/build, independent review and explicitly authorized publication; not deployed. |
+| G-01 | Partial | Merged in PR #352 at a85e02af after independent audit and all seven workflows / 14 checks passed, including full tests/coverage/build/security/mobile/customer journeys. | Main-branch release and live founder read-back remain separate proof; publication does not prove production behavior. |
 | G-02 | Partial | Existing outbox payload holds whitelisted completion receipt; children carry trusted parent ID; DLQ read survives terminal move; UI polls durable jobs. | Worker restart/key revocation/failed-ratio drill, provider cost completeness, cancellation and safe generation recovery. No automatic retry control added. |
 | G-03 | Partial | Transactional decision claim/enqueue; atomic per-platform manifest claim/merge; own destination receipt precedes aggregate status; uncertain outcome refuses replay; created objects no longer called live; performance consumer reads destination records. | Real-db concurrent claim/merge test, account/revision identity and upload/ad-review/organic URL reconciliation; legacy receipts do not prove delivery. |
 | G-04 | Partial | Fresh canonical publish/panic read before upload and object creation; destination config preflight; nonnegative integer operating caps validated; missing operating-budget row refuses generation. | Exact approved revision/account/assets, atomic spend reservation/invoice settlement and concurrent near-cap proof. Current budget gate is not a hard reservation. |
@@ -487,7 +487,7 @@ manufactured locally. Blocked does not mean an account is missing in production.
 | G-08 | Partial | Read real attribution and canonical growth trust instead of constant zero/false; unknown remains null and locks paid eligibility. | Paid cohort/spend/refund evidence join, freshness/window/sample boundaries. CAC remains explicitly unknown; paid stays locked. |
 | G-09 | Blocked | Meta creative and TikTok ad APIs are paid instruments, not evidence of organic posting. Manual handoff remains possible. | Choose one supported adapter/account with owner permission; witnessed real approved publication/read-back/revocation; no subscriptions purchased. |
 | G-10 | Blocked | No growth winner or conversion benchmark invented from pre-customer source. | Actual cohort and bottleneck; founder review date, hypothesis, cost/time and stop condition before traffic experiments. |
-| D-01 | Partial | Registry currently has 21 OPEN/PARTIAL entries; reproduced 0169/0171/0185/0243, repaired the offers consumer of 0169 and read 0244/0258/0265/0276 rather than declaring stale docs fixed. | Complete occurrence/consumer census, semantic forbidden-behavior tests and actual repairs; historical customer data separate. |
+| D-01 | Partial | Registry currently has 22 OPEN/PARTIAL entries; reproduced 0169/0171/0185/0243, repaired the offers consumer of 0169 and read 0244/0258/0265/0276 rather than declaring stale docs fixed. | Complete occurrence/consumer census, semantic forbidden-behavior tests and actual repairs; historical customer data separate. |
 | D-02 | Open | Canon, boundaries, reachability and down-only ratchets retained; no speculative schema/SDK abstractions added. | Incident/customer-friction-led net surface reductions and adoption proof; no customer tables dropped. |
 | D-03 | Partial | Metered gateway/current cost-efficiency program retained; CMO generation/scoring cost appears in durable receipt, render costs explicitly separate. | Remaining direct/streaming/embed/transcription/image exceptions and actual invoice reconciliation/caps. Generation receipt cost is for the completed worker attempt, not cumulative retries. |
 | D-04 | Partial | This section replaces stale roadmap execution state; NEXT_UP/MASTER_PLAN/COMPLETION_MATRIX point here for current execution; health degradation stays visible; no duplicate owner provisioning checklist. | Real paging/canary/restore cadence and deliberate retirement/configuration of dormant audits; no live workflow dispatch. |
@@ -694,3 +694,48 @@ Independent review cleared the actual narrowed source diff. On the previous
 head, security, mobile, customer-surface, column and migration checks passed;
 Test remained running. Previous-head evidence cannot substitute for revised
 head CI. Main and the 39-ticket/G0 completion status remain unchanged.
+
+### Main reconciliation and next creation-stage repair — 2026-10-14
+
+PR #352 merged at a85e02af2243fb08b02daf12e4205ef71daf2016. All seven PR
+workflows and 14 check runs passed on c47c0ee2: full repository check, tests,
+coverage, web/server/worker/container builds, bundle budgets, security, mobile,
+customer journeys, columns and migration mirror. The schema-building Test
+job passed with an explicit isolated PostgreSQL URL and REQUIRE flag; its
+eight program cases are mandatory in that environment. Job-log downloads
+currently fail with a connector transport error, so no final suite count is
+asserted. Main was ancestry-checked and fast-forwarded locally. The automatic
+main-branch deploy/staging workflows have started; this is not a live-release
+or production health receipt. The unrelated JPEG was absent after workspace
+recovery and was never published.
+
+P1-05 next repair reproduces ordinary creation at closed/escrow/arbitrary
+stages. Red-first creation tests: 11 failed / 12 passed before the repair.
+The sole server insert now validates canonical vocabulary in every mode and
+opening stages for ordinary creation. Imports and the two labelled seeders
+use literal internal contexts to retain known historical stages; HTTP/Pax
+payloads cannot select the context. A new sample deal's invalid listed status
+is corrected to negotiating; its property's listed status stays intact.
+Independent review accounted for all six creation call sites and cleared the
+actual diff. Historical rows are untouched. The simulation seed-cohort script
+remains a separate direct-insert fixture with invalid statuses, outside this
+repository enforcement proof. Complete close evidence, the Close & Carry
+training race, and concurrency/version proofs remain open; no ticket is
+closed by merely adding a creation guard.
+
+### Single-deal deletion reachability follow-up
+
+The writer census found useDeleteDeal's DELETE /api/deals/:id had no mounted
+server handler. The hook now sends one ID through the existing authenticated,
+org-scoped, canDeleteDeals bulk endpoint rather than adding another writer.
+Independent audit cleared the actual change and confirmed mounting/permissions.
+The corrected red-first harness failed one request-contract case on the old
+hook; the refusal case passed. The combined creation/deletion/caller/sample/
+transaction/state-machine group passes all 72 tests. The first harness failure
+was a missing test-library import, not proof of the product defect; no dependency
+was added. DEFECT-0287 records the narrow proof and remaining count/hold/retraction
+semantics. The registry now has 22 OPEN/PARTIAL entries. Creation's complete
+local check passed before this hook addition; revised-head gates remain required.
+PR #353 initially published creation alone at 41d01cf2; its next revision will
+include this repair and require fresh CI before merge. No historical or live
+customer record was deleted. Full 39-ticket/G0 completion remains unproven.
