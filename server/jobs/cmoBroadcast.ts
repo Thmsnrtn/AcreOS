@@ -27,6 +27,7 @@ import { logger } from "../utils/logger";
 import { clock } from "../utils/clock";
 
 export interface CmoBroadcastPayload {
+  reviewRevision?: string;
   renderId: string;
   platform: "meta" | "tiktok";
   bundleId?: string;
@@ -49,7 +50,12 @@ export async function handleCmoBroadcast(payload: CmoBroadcastPayload): Promise<
     throw new Error("Malformed destination records require reconciliation before publication");
   }
   const existingReceipt = existingManifest?.platforms?.[payload.platform];
-  if (existingReceipt?.externalId) return { externalId: existingReceipt.externalId };
+  if (existingReceipt?.externalId !== undefined) {
+    if (typeof existingReceipt.externalId !== "string" || !existingReceipt.externalId.trim()) {
+      throw new Error("Malformed destination receipt requires reconciliation before publication");
+    }
+    return { externalId: existingReceipt.externalId };
+  }
   if (existingReceipt?.state) throw new Error("Publication requires reconciliation before retry");
   if (!["approved", "broadcasting", "live"].includes(render.status)) throw new Error("Render is not approved for publication");
   if (!["meta", "tiktok"].includes(payload.platform)) throw new Error("Unsupported publication platform");
@@ -59,11 +65,13 @@ export async function handleCmoBroadcast(payload: CmoBroadcastPayload): Promise<
     const review = await db.query.decisionsInboxItems.findFirst({
       where: and(eq(decisionsInboxItems.id, payload.inboxItemId), isNull(decisionsInboxItems.organizationId)),
     });
-    const ctx = review?.contextBundle as { bundleId?: string; renders?: Array<{ id: string }>; approvedPlatforms?: string[] } | null;
+    const ctx = review?.contextBundle as { bundleId?: string; renders?: Array<{ id: string }>; approvedPlatforms?: string[]; approvedReviewRevision?: string; approvedDestinations?: Array<{ renderId: string; platform: string }> } | null;
     const current = await db.query.cmoAdRenders.findFirst({ where: eq(cmoAdRenders.id, render.id) });
     if (review?.itemType !== "cmo_ad_review" || review.status !== "approved" ||
       !ctx?.bundleId || ctx.bundleId !== render.bundleId || !ctx.renders?.some(r => r.id === render.id) ||
-      !ctx.approvedPlatforms?.includes(payload.platform) || !current ||
+      !ctx.approvedPlatforms?.includes(payload.platform) || !payload.reviewRevision || ctx.approvedReviewRevision !== payload.reviewRevision ||
+      !ctx.approvedDestinations?.some(d => d.renderId === render.id && d.platform === payload.platform) ||
+      (payload.platform === "tiktok" && current?.aspectRatio !== "9:16") || !current ||
       !["approved", "broadcasting", "live"].includes(current.status) ||
       current.bundleId !== render.bundleId || current.storagePath !== render.storagePath) {
       throw new Error("Video review approval or assets changed; publication refused");
@@ -112,11 +120,13 @@ export async function handleCmoBroadcast(payload: CmoBroadcastPayload): Promise<
         name: `${brand.displayName} ${script.hookArchetype}`,
         trackingId: render.trackingId,
       });
-      await waitForVideoReady(uploaded.videoId);
+      if (!uploaded.adAccountId) throw new Error("Meta upload account identity is unavailable; publication requires reconciliation");
+      await waitForVideoReady(uploaded.videoId, { expectedAdAccountId: uploaded.adAccountId });
 
       await requireCurrentReview();
       if (!(await isPublishingEnabledFresh())) throw new Error("Publication paused after upload");
       const creative = await createMetaCreative({
+        expectedAdAccountId: uploaded.adAccountId,
         videoId: uploaded.videoId,
         pageId: pageId!,
         ctaUrl: ctaConfig.ctaUrl,
@@ -153,6 +163,9 @@ export async function handleCmoBroadcast(payload: CmoBroadcastPayload): Promise<
       throw new Error(`[cmo:broadcast] unknown platform '${payload.platform}'`);
     }
 
+    if (typeof externalId !== "string" || !externalId.trim()) {
+      throw new Error("Provider object receipt is unavailable; reconcile before retry");
+    }
     // Creative/ad creation is a receipt, not proof of delivery or organic publication.
     const receipt = { state: "object_created", objectKind: payload.platform === "meta" ? "ad_creative" : "ad", externalId, delivery: "unverified", recordedAt: clock.now().toISOString() };
     await db.update(cmoAdRenders).set({

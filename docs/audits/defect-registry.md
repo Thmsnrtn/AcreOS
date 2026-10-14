@@ -6799,6 +6799,18 @@ Evidence: client/src/hooks/use-deals.ts; server/routes-deals.ts; server/storage/
 Falsified/verified: tests/unit/dealDeletionEndpoint.test.tsx. An initial missing-library harness failure was corrected using the existing React createRoot/act setup; then the original hook failed one request-contract case with one refusal case passing. The corrected hook's five-file creation/deletion/census/transaction group passed all 72 tests. Independent source reviewer confirmed endpoint mounting, permission/scoping and unchanged cache paths. No live customer record was deleted.
 Resolving commits: directed lifecycle follow-up pending publication
 
+### DEFECT-0288
+Title: Video publication could switch configured account or record a missing provider ID as created
+Severity: P2
+Status: PARTIAL (2026-10-14; bounded account/receipt repair audited, full binding/provider proof remains open)
+Surfaced by lenses: directed G-03/G-04 review-revision and provider caller census
+Description: Each CMO provider step selected an arbitrary first active account. TikTok creation ignored the advertiser ID returned by its upload; Meta polling/creation did not carry that upload identity. An account change could switch the configured destination between steps. Meta HTTP 200 without id also returned an undefined creative ID, allowing the worker to claim object_created without an object receipt.
+Remediation: Meta/TikTok refuse multiple active accounts before effects. Meta carries and compares its normalized upload account identity through polling and creative creation; TikTok compares and uses its uploaded advertiser ID. No credentials enter queue/context/receipts. Both create helpers require nonempty string object IDs; the worker refuses malformed existing IDs and enters uncertain/reconciliation state for unusable new IDs rather than claiming creation. No provider account or operating setting was changed.
+Evidence: server/integrations/metaAdsVideo.ts; server/integrations/tiktokAds.ts; server/jobs/cmoBroadcast.ts.
+Falsified/verified: tests/unit/cmoProviderAccountBinding.test.ts; tests/unit/cmoPublicationReceipts.test.ts; tests/unit/cmoApprovalQueue.test.ts. Account cases were 7 fail / 2 pass before repair; missing Meta-ID cases were 4 fail / 10 pass before refusal. Final group: 46 pass, including actual worker identity forwarding, refusal before new effects and uncertain receipt SQL parameters without object_created. Independent reviewer cleared the final bounded diff. These are mocked-provider engineering proofs. Approval-time account/config revision, founder displayed revision, video bytes, frozen outbound copy/CTA, render/destination matrix, spend reservations, provider ownership/permissions and delivery remain open. Selecting one configured identity does not prove external account ownership.
+Additional bounded verification (2026-10-14): Displayed dashboard metadata carries a canonical revision hash; approval compares it under decision and ordered render row locks before mutations. The queue/context records exact destination/render pairs, TikTok only9:16, and the worker refuses missing/mismatched revision or pair. The UI preserves the witnessed snapshot through polling and blocks in-flight retargeting/closure. Seven red-first route failures; final focused six-file group 88 pass including four DOM cases; four PostgreSQL cases still require CI after local skips. This does not freeze post-approval metadata, file bytes, live script/CTA/configuration or approval-time account identity. Rejection still has no displayed revision token. Status remains PARTIAL. No baseline or external authority is broadened.
+Resolving commits: account/receipt Git checkpoint22ec089a; displayed-revision follow-up pending publication; neither deployed
+
 ### REFUTED AT HEAD, 2026-09-27
 
 The research report ("AcreOS at full maturity", pinned at `a2dc971`) was
@@ -6835,10 +6847,10 @@ not implemented against.
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
-| OPEN   | 0   | 0   | 22  | 22    |
+| OPEN   | 0   | 0   | 23  | 23    |
 | FIXED  | 14  | 132 | 117 | 263   |
 | DEFERRED | 0 | 2   | 0   | 2     |
-| **Total** | **14** | **134** | **139** | **287** |
+| **Total** | **14** | **134** | **140** | **288** |
 
 Recounted from the entries themselves on 2026-09-28 (184 `### DEFECT-` blocks
 by their Status and Severity lines; DEFECT-0063 PARTIALLY FIXED is counted as
