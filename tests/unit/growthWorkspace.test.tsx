@@ -162,3 +162,10 @@ describe("native growth workspace", () => {
     expect(container.textContent).toContain("A lower bound")
   })
 })
+
+it("opens the exact failed request in Story", async () => {
+  h.api.mockImplementation(async (_method: string, url: string) => ({ json: async () => url.endsWith("generation-jobs") ? { jobs: [{ id: 1, intent: "Older failed brief", state: "failed", receipt: null, renderJobs: { expected: null, processed: 0, failed: 0 }, reviewIds: [] }] } : dashboard }))
+  await mount(); await flush()
+  const link = Array.from(container.querySelectorAll("a")).find(a => a.textContent === "Open Story")
+  expect(link?.getAttribute("href")).toBe("/founder/autopilot/story?generationJobId=1")
+})

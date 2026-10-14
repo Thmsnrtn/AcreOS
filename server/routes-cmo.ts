@@ -158,16 +158,15 @@ export function registerCmoRoutes(app: Express) {
     });
   });
 
-  // Durable progress comes from worker rows and dead letters, never a client timer.
-  app.get("/api/founder/cmo/generation-jobs", isAuthenticated, requireFounder, async (_req: AuthenticatedRequest, res) => {
-    try {
+  // The list is bounded; recovery reads use the actual outbox identity, including DLQ rows.
+  async function readGenerationJobs(rootId?: number) {
     const [active, dead] = await Promise.all([
-      db.select().from(outbox).where(eq(outbox.eventType, "cmo.manual-generate")).orderBy(desc(outbox.createdAt)).limit(20),
-      db.select().from(outboxDlq).where(eq(outboxDlq.eventType, "cmo.manual-generate")).orderBy(desc(outboxDlq.createdAt)).limit(20),
+      db.select().from(outbox).where(and(eq(outbox.eventType, "cmo.manual-generate"), rootId === undefined ? undefined : eq(outbox.id, rootId))).orderBy(desc(outbox.createdAt)).limit(rootId === undefined ? 20 : 1),
+      db.select().from(outboxDlq).where(and(eq(outboxDlq.eventType, "cmo.manual-generate"), rootId === undefined ? undefined : eq(outboxDlq.originalOutboxId, rootId))).orderBy(desc(outboxDlq.createdAt)).limit(rootId === undefined ? 20 : 1),
     ]);
     const roots = [...active, ...dead.filter((row) => row.originalOutboxId != null && !active.some((item) => item.id === row.originalOutboxId)).map((row) => ({ ...row, id: row.originalOutboxId!, status: "failed" }))]
-      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).slice(0, 20);
-    if (!roots.length) return res.json({ jobs: [], limit: 20 });
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).slice(0, rootId === undefined ? 20 : 1);
+    if (!roots.length) return [];
     // Fetch all children for these roots; retries can leave additional rows.
     // do not cap independently and turn missing rows into false completion.
     const ids = roots.map((row) => row.id);
@@ -178,10 +177,24 @@ export function registerCmoRoutes(app: Express) {
       db.select().from(outboxDlq).where(and(eq(outboxDlq.eventType, "cmo.render-script"), deadPredicate)),
     ]);
     const allChildren = [...children, ...deadChildren.filter((row) => row.originalOutboxId != null && !children.some((item) => item.id === row.originalOutboxId)).map((row) => ({ ...row, id: row.originalOutboxId!, status: "failed" }))];
-    res.json({ jobs: roots.map((root) => projectGenerationJob(root, allChildren.filter((child) => child.payload.generationJobId === root.id))), limit: 20 });
-    } catch (error) {
-      return Errors.internal(res, error);
-    }
+    return roots.map((root) => projectGenerationJob(root, allChildren.filter((child) => child.payload.generationJobId === root.id)));
+  }
+
+  app.get("/api/founder/cmo/generation-jobs", isAuthenticated, requireFounder, async (_req: AuthenticatedRequest, res) => {
+    try {
+      return res.json({ jobs: await readGenerationJobs(), limit: 20 });
+    } catch (error) { return Errors.internal(res, error); }
+  });
+
+  app.get("/api/founder/cmo/generation-jobs/:id", isAuthenticated, requireFounder, async (req: AuthenticatedRequest, res) => {
+    const rawId = req.params.id;
+    if (typeof rawId !== "string" || !/^[1-9]\d*$/.test(rawId) || !Number.isSafeInteger(Number(rawId)) || Number(rawId) > 2147483647)
+      return Errors.badRequest(res, "Invalid generation request identity");
+    try {
+      const [job] = await readGenerationJobs(Number(rawId));
+      if (!job) return Errors.notFound(res, "Generation request");
+      return res.json({ job });
+    } catch (error) { return Errors.internal(res, error); }
   });
 
   // ─── Brand profile ──────────────────────────────────────────────────────

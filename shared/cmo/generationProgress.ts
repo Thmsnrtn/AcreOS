@@ -79,3 +79,19 @@ export function projectGenerationJob(root: GenerationJobRow, children: Generatio
     reviewIds: [...new Set(reviewIds)],
   }
 }
+
+export const generationProgressLabels: Record<string, string> = {
+  queued: "Queued",
+  running: "Generating",
+  rendering: "Rendering",
+  render_queued: "Render queued",
+  failed: "Failed — inspect the record before retrying",
+  blocked: "Blocked by operating settings or daily budget",
+  partially_completed: "Some render jobs finished; others failed",
+  progress_unavailable: "Some job records are unavailable",
+  no_render_qualified: "No script qualified for rendering",
+  review_created: "Review item created — inspect the videos before choosing destinations",
+  render_processed: "Render worker finished; review status unverified",
+  legacy_unverified: "Older job — completion details unavailable",
+  unknown: "Progress unavailable",
+}
