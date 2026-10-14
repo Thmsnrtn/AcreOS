@@ -1,3 +1,5 @@
+import type { CmoApprovedAsset } from "@shared/cmo/publicationAssets";
+import { approvedAssetFromRender, verifyApprovedVideoBytes, publicationAssetRevision } from "./services/cmo/publicationAssets";
 import { cmoPublicationDestinations } from "@shared/cmo/publication";
 import { cmoReviewRevision } from "./services/cmo/reviewRevision";
 import { projectGenerationJob } from "@shared/cmo/generationProgress";
@@ -139,7 +141,10 @@ export function registerCmoRoutes(app: Express) {
         const reviewRenders = references.map((r) => rendersById.get(r.id)).filter((r): r is typeof renders[number] => Boolean(r));
         const bundleId = (item.contextBundle as { bundleId?: string } | null)?.bundleId ?? (item.actionPayload as { bundleId?: string } | null)?.bundleId;
         const approvalAvailable = references.length > 0 && new Set(references.map(r => r.id)).size === references.length &&
-          reviewRenders.length === references.length && Boolean(bundleId) && reviewRenders.every(r => r.status === "ready" && r.bundleId === bundleId);
+          reviewRenders.length === references.length && Boolean(bundleId) && reviewRenders.every(r => {
+            if (r.status !== "ready" || r.bundleId !== bundleId) return false;
+            try { approvedAssetFromRender(r); return true; } catch { return false; }
+          });
         return {
           inboxItem: item, renders: reviewRenders,
           reviewRevision: cmoReviewRevision(item, reviewRenders),
@@ -279,10 +284,13 @@ export function registerCmoRoutes(app: Express) {
       const destinations = cmoPublicationDestinations(lockedRenders, targetPlatforms);
       if (targetPlatforms.some(platform => !destinations.some(d => d.platform === platform))) return { unavailable: true } as const;
       const approvedRenderIds = [...new Set(destinations.map(d => d.renderId))];
+      const approvedAssets: Record<string, CmoApprovedAsset> = {};
+      try { for (const render of lockedRenders.filter(r => approvedRenderIds.includes(r.id))) approvedAssets[render.id] = approvedAssetFromRender(render); }
+      catch { return { unavailable: true } as const; }
       const [claimed] = await tx.update(decisionsInboxItems).set({
         status: "approved", resolvedAt: clock.now(),
         resolvedBy: req.user?.email ?? "founder", updatedAt: clock.now(),
-        contextBundle: sql`coalesce(${decisionsInboxItems.contextBundle}, '{}'::jsonb) || ${JSON.stringify({ bundleId, approvedPlatforms: targetPlatforms, approvedDestinations: destinations, approvedReviewRevision: reviewRevision })}::jsonb`,
+        contextBundle: sql`coalesce(${decisionsInboxItems.contextBundle}, '{}'::jsonb) || ${JSON.stringify({ bundleId, approvedPlatforms: targetPlatforms, approvedDestinations: destinations, approvedReviewRevision: reviewRevision, approvedAssets })}::jsonb`,
       }).where(and(eq(decisionsInboxItems.id, inboxItemId), eq(decisionsInboxItems.status, "pending"),
         sql`${decisionsInboxItems.contextBundle} = ${JSON.stringify(item.contextBundle)}::jsonb`,
       )).returning({ id: decisionsInboxItems.id });
@@ -295,7 +303,7 @@ export function registerCmoRoutes(app: Express) {
       for (const { renderId, platform } of destinations) {
         await tx.insert(outbox).values({
           eventType: "cmo.broadcast",
-          payload: stampTraceContext({ renderId, platform, bundleId, inboxItemId, reviewRevision }),
+          payload: stampTraceContext({ renderId, platform, bundleId, inboxItemId, reviewRevision, assetRevision: publicationAssetRevision(approvedAssets[renderId]) }),
         });
       }
       return { queued: destinations.length, approvedRenderIds } as const;
@@ -381,11 +389,26 @@ export function registerCmoRoutes(app: Express) {
   });
 
   // ─── Asset download (gated streaming for local FS storage in v1) ────────
-  app.get("/api/founder/cmo/asset", isAuthenticated, requireFounder, async (req: Request, res: Response) => {
+  app.get("/api/founder/cmo/asset", isAuthenticated, requireFounder, async (req: AuthenticatedRequest, res: Response) => {
     const key = String(req.query.key ?? "");
     if (!key) return Errors.badRequest(res, "key is required");
 
     const storage = getStorage();
+    if (req.query.renderId !== undefined || req.query.assetRevision !== undefined) {
+      const { renderId, assetRevision } = req.query;
+      if (typeof renderId !== "string" || typeof assetRevision !== "string" || !/^[a-f0-9]{64}$/.test(assetRevision)) return Errors.badRequest(res, "Valid render and asset revision are required");
+      const render = await db.query.cmoAdRenders.findFirst({ where: eq(cmoAdRenders.id, renderId) });
+      if (!render || render.storagePath !== `local:${key}`) return Errors.notFound(res, "asset");
+      try {
+        const asset = approvedAssetFromRender(render);
+        if (asset.publication.video.sha256 !== assetRevision) throw new Error("Asset revision changed");
+        const bytes = Buffer.from(await storage.read(`local:${key}`));
+        verifyApprovedVideoBytes(bytes, asset);
+        res.setHeader("Content-Type", "video/mp4");
+        res.setHeader("Cache-Control", "private, no-store");
+        return res.send(bytes);
+      } catch { return sendError(res, 409, "CONFLICT", "Review video is unavailable or changed; refresh and review again"); }
+    }
     const exists = await storage.exists(`local:${key}` as `local:${string}`);
     if (!exists) return Errors.notFound(res, "asset");
 

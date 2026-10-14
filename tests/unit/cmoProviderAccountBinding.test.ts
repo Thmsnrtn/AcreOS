@@ -32,7 +32,7 @@ it("refuses Meta account replacement before status polling", async () => {
 });
 it.each(["meta", "tiktok"] as const)("refuses ambiguous %s accounts before any upload", async platform => {
   h.accounts.push({ id: 2, adAccountId: "456", accessToken: "another-fixture" });
-  const upload = platform === "meta" ? uploadVideoToMeta({ videoAbsolutePath: "/fixture.mp4", name: "Fixture", trackingId: "fixture" }) : uploadVideoToTikTok({ videoAbsolutePath: "/fixture.mp4", videoName: "Fixture", trackingId: "fixture" });
+  const upload = platform === "meta" ? uploadVideoToMeta({ videoBytes: Buffer.from("fixture"), name: "Fixture", trackingId: "fixture" }) : uploadVideoToTikTok({ videoBytes: Buffer.from("fixture"), videoName: "Fixture", trackingId: "fixture" });
   await expect(upload).rejects.toThrow(/multiple|ambiguous/i); expect(h.fetch).not.toHaveBeenCalled();
 });
 it.each(["meta", "tiktok"] as const)("refuses ambiguous %s accounts before object creation", async platform => {
@@ -56,4 +56,14 @@ it.each([undefined, "", "   ", 17])("refuses an ambiguous Meta 200 response with
 it.each([undefined, "", "   ", 17])("refuses an ambiguous TikTok 200 response with invalid ID %j", async id => {
   h.fetch.mockResolvedValue({ ok: true, json: async () => ({ code: 0, data: { ad_ids: [id] } }) });
   await expect(createTikTokAd(tiktok)).rejects.toThrow(/id/i);
+});
+
+it.each(["meta", "tiktok"] as const)("uploads the exact verified buffer through %s multipart", async platform => {
+  const videoBytes = Buffer.from("verified-buffer-no-filesystem");
+  h.fetch.mockResolvedValue({ ok: true, json: async () => ({ id: "video", code: 0, data: [{ video_id: "video" }] }) });
+  if (platform === "meta") await uploadVideoToMeta({ videoBytes, name: "Fixture", trackingId: "fixture" });
+  else await uploadVideoToTikTok({ videoBytes, videoName: "Fixture", trackingId: "fixture" });
+  const body = h.fetch.mock.calls[0][1].body.getBuffer() as Buffer;
+  expect(body.includes(videoBytes)).toBe(true);
+  expect(body.toString()).toContain('filename="fixture.mp4"');
 });

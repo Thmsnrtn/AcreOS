@@ -1,23 +1,13 @@
 /**
  * Meta Marketing API — video creative broadcast.
  *
- * Pipeline:
- *  1. Upload local MP4 to Meta as ad video (returns video_id)
- *  2. Wait for processing (poll status until "ready")
- *  3. Create ad creative referencing the video_id + tracking_id
- *  4. Attach to the brand's active campaign / ad set (uses existing growth_campaigns row)
- *  5. Return external IDs back to the caller for persistence
- *
- * Auth: reads founder_ad_accounts row where platform='meta' and isActive=true.
- * Idempotency: if a render already has externalCreativeId set, short-circuits.
- *
- * Failure surface: any HTTP-level Meta error throws with the Meta error body
- * preserved. cmoBroadcast.ts catches, flips render.status='error', the
- * decision item gets a "needs attention" treatment.
+ * Uploads the caller's verified video Buffer, polls processing and creates an
+ * ad creative. This adapter does not attach it to a campaign or prove delivery.
+ * Reads one unambiguous active founder account and preserves upload identity.
+ * The worker records uncertain effects for reconciliation rather than retrying.
+
  */
 
-import * as fs from "fs";
-import * as path from "path";
 import FormData from "form-data";
 import { openFounderAdAccount } from "../services/founderAdAccountSecrets";
 import { db } from "../db";
@@ -29,7 +19,7 @@ import { clock } from "../utils/clock";
 const META_BASE = "https://graph.facebook.com/v19.0";
 
 export interface MetaUploadInput {
-  videoAbsolutePath: string;
+  videoBytes: Buffer;
   name: string;       // human-readable name in Meta Ads Manager
   trackingId: string; // becomes part of the video name suffix
 }
@@ -69,15 +59,9 @@ export async function uploadVideoToMeta(input: MetaUploadInput): Promise<MetaUpl
   const adAccountId = normalizedMetaAccountId(account.adAccountId);
   const url = `${META_BASE}/${adAccountId}/advideos`;
 
-  // Meta accepts multipart upload directly. Stream the file rather than
-  // reading into memory — these MP4s are small (sub-10MB at 1080p/30s/H.264)
-  // but the streaming path keeps the worker memory flat.
-  if (!fs.existsSync(input.videoAbsolutePath)) {
-    throw new Error(`[cmo:meta] file not found: ${input.videoAbsolutePath}`);
-  }
-
+  if (!Buffer.isBuffer(input.videoBytes) || input.videoBytes.length === 0) throw new Error("[cmo:meta] approved video bytes are unavailable");
   const form = new FormData();
-  form.append("source", fs.createReadStream(input.videoAbsolutePath));
+  form.append("source", input.videoBytes, { filename: `${input.trackingId}.mp4`, contentType: "video/mp4" });
   form.append("access_token", account.accessToken);
   form.append("name", `${input.name} · ${input.trackingId}`);
 

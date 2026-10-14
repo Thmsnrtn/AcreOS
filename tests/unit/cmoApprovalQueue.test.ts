@@ -1,3 +1,5 @@
+import { publicationAssetRevision, approvedAssetFromRender } from "../../server/services/cmo/publicationAssets";
+import { publicationFixture } from "../helpers/cmoPublicationFixture";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import express from "express";
 import request from "supertest";
@@ -11,7 +13,7 @@ import type { SQL } from "drizzle-orm";
 const app = express(); app.use(express.json()); registerCmoRoutes(app);
 import { cmoReviewRevision } from "../../server/services/cmo/reviewRevision";
 const item = { id: 1, itemType: "cmo_ad_review", status: "pending", actionPayload: { bundleId: "bundle-1" }, contextBundle: { renders: [{ id: "render-1" }] } };
-const render = { id: "render-1", status: "ready", bundleId: "bundle-1", aspectRatio: "9:16", storagePath: "local:test.mp4" };
+const render = { manifestJson: { publication: publicationFixture }, scriptId: "script-1", brandProfileId: 1, trackingId: "tracking", id: "render-1", status: "ready", bundleId: "bundle-1", aspectRatio: "9:16", storagePath: "local:test.mp4" };
 const approvalBody = { inboxItemId: 1, reviewRevision: cmoReviewRevision(item, [render]) };
 const tx = { select: h.select, update: h.update, insert: h.insert };
 beforeEach(() => {
@@ -27,12 +29,21 @@ beforeEach(() => {
   h.insert.mockReturnValue({ values: h.values });
 });
 describe("CMO approval queue transaction boundary", () => {
+  it("refuses a ready legacy asset without a content proof before any mutation", async () => {
+    const legacy = { ...render, manifestJson: {} };
+    h.locked.mockReset().mockResolvedValueOnce([item]).mockResolvedValueOnce([legacy]);
+    const response = await request(app).post("/api/founder/cmo/approve").send({ ...approvalBody, reviewRevision: cmoReviewRevision(item, [legacy]) });
+    expect(response.status).toBe(400); expect(h.update).not.toHaveBeenCalled(); expect(h.insert).not.toHaveBeenCalled();
+  });
   it("claims one decision and stages both destinations on the transaction executor", async () => {
     const response = await request(app).post("/api/founder/cmo/approve").send(approvalBody);
     expect(response.status).toBe(200); expect(response.body.broadcastQueued).toBe(2);
     expect(h.transaction).toHaveBeenCalledOnce();
     expect(h.values.mock.calls.map(([event]) => event.payload.platform)).toEqual(["meta", "tiktok"]);
-    expect(h.values.mock.calls.every(([event]) => event.eventType === "cmo.broadcast" && event.payload.inboxItemId === 1)).toBe(true);
+    expect(h.values.mock.calls.every(([event]) => event.eventType === "cmo.broadcast" && event.payload.inboxItemId === 1 && event.payload.assetRevision === publicationAssetRevision(approvedAssetFromRender(render)))).toBe(true);
+    const params = new PgDialect().sqlToQuery(h.set.mock.calls[0][0].contextBundle as SQL).params;
+    const approved = JSON.parse(params.find(value => typeof value === "string" && value.includes("approvedAssets")) as string);
+    expect(approved.approvedAssets[render.id].publication).toEqual(publicationFixture);
   });
   it("does not enqueue when another request already claimed the decision", async () => {
     h.returning.mockReset().mockResolvedValueOnce([]);

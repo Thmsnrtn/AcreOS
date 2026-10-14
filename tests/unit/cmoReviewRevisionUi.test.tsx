@@ -1,3 +1,4 @@
+import { publicationFixture } from "../helpers/cmoPublicationFixture";
 // @vitest-environment jsdom
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -11,7 +12,7 @@ vi.mock("@/components/page-shell", () => ({ PageShell: ({ children }: { children
 import FounderCmoPage from "../../client/src/pages/founder/cmo";
 let root: Root; let container: HTMLDivElement; let qc: QueryClient;
 function pending(id = 1, ratio: "9:16" | "1:1" = "9:16") {
-  const render = { id: `render-${id}`, aspectRatio: ratio, storagePath: `local:review-${id}.mp4`, durationSec: 15, status: "ready" };
+  const render = { manifestJson: { publication: publicationFixture }, id: `render-${id}`, aspectRatio: ratio, storagePath: `local:review-${id}.mp4`, durationSec: 15, status: "ready" };
   return { inboxItem: { id, sophieAnalysis: "Review", sophieConfidenceScore: 70, contextBundle: { scriptHook: `Hook ${id}`, scriptBody: `Body ${id}`, scriptCta: `CTA ${id}`, hookArchetype: "research", funnelStage: "cold", costBreakdown: { totalCents: 0 } } }, renders: [render], approvalAvailable: true, reviewRevision: String(id).repeat(64), destinations: [{ renderId: render.id, platform: "meta" }, ...(ratio === "9:16" ? [{ renderId: render.id, platform: "tiktok" }] : [])] };
 }
 const dashboard = (items = [pending()]) => ({ pending: items, live: [], archetypes: [], brandProfile: null, budget: null });
@@ -38,7 +39,9 @@ it("keeps the reviewed revision and videos after polling and ignores dialog reta
   await key("j"); await key("a"); await key("r");
   const dialog = document.querySelector('[role="dialog"]')!;
   expect(dialog.textContent).toContain("Hook 1"); expect(dialog.textContent).not.toContain("Hook 2");
-  expect(dialog.querySelector("video")?.getAttribute("src")).toContain("review-1.mp4");
+  const source = dialog.querySelector("video")?.getAttribute("src");
+  expect(source).toContain("review-1.mp4"); expect(source).toContain(`assetRevision=${publicationFixture.video.sha256}`); expect(source).toContain("renderId=render-1");
+  expect(dialog.textContent).toContain(publicationFixture.copy.primaryText); expect(dialog.textContent).toContain(publicationFixture.copy.adText); expect(dialog.textContent).toContain(publicationFixture.copy.ctaUrl);
   await click("Confirm broadcast");
   expect(h.api).toHaveBeenCalledWith("POST", "/api/founder/cmo/approve", { inboxItemId: 1, reviewRevision: "1".repeat(64), platforms: ["meta", "tiktok"] });
 });

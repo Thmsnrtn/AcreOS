@@ -1,3 +1,4 @@
+import { publicationFixture } from "../helpers/cmoPublicationFixture";
 import { randomUUID } from "node:crypto";
 import express from "express";
 import request from "supertest";
@@ -37,7 +38,7 @@ describe.runIf(realDbAvailable)("video review resolution on real PostgreSQL", ()
   async function fixture(status = "ready") {
     const { db } = await import("../../server/db"); const { cmoAdRenders, decisionsInboxItems } = await import("@shared/schema");
     const bundleId = randomUUID();
-    const [render] = await db.insert(cmoAdRenders).values({ scriptId, brandProfileId: brandId, bundleId, trackingId: randomUUID(), aspectRatio: "9:16", durationSec: 15, storagePath: "local:fixture.mp4", manifestJson: {}, status, costBreakdown: { scriptCents: 0, scoringCents: 0, voiceCents: 0, assetsCents: 0, renderCents: 0, totalCents: 0 } }).returning();
+    const [render] = await db.insert(cmoAdRenders).values({ scriptId, brandProfileId: brandId, bundleId, trackingId: randomUUID(), aspectRatio: "9:16", durationSec: 15, storagePath: "local:fixture.mp4", manifestJson: { publication: publicationFixture }, status, costBreakdown: { scriptCents: 0, scoringCents: 0, voiceCents: 0, assetsCents: 0, renderCents: 0, totalCents: 0 } }).returning();
     // The actual legacy producer put bundleId in actionPayload, not context.
     const [item] = await db.insert(decisionsInboxItems).values({ itemType: "cmo_ad_review", sophieAnalysis: "Fixture", recommendedAction: "approve_and_broadcast", recommendedActionLabel: "Fixture", actionPayload: { bundleId }, contextBundle: { brandSlug: tag, renders: [{ id: render.id }] } }).returning();
     itemIds.push(item.id); return { item, render };

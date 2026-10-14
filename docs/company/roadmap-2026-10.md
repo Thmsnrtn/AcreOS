@@ -841,3 +841,52 @@ asset digest plus matched immutable upload bytes, frozen outbound copy/CTA,
 atomic spend reservations, actual provider authority/delivery and displayed
 rejection revision remain open. G-04 and the full 39-ticket/G0 program remain
 partial; no ads, paid generation, real provider effects or customer mutations ran.
+
+
+#### October 14 continuation: reconciled main and content-bound publication
+
+PR #353 passed all seven workflows/14 check runs at cd9528c5 and merged to
+main as 1feed0247c6a0496190bc6ceda2f477f39dae294. Its automatic main release
+checks/deployment are running; no new deployed SHA is claimed. PR #352's Fly
+release completed successfully, including its HTTP liveness and actual migration
+evidence steps. Staging/customer-audit green wrappers that skipped execution
+remain separate from acceptance.
+
+PR #354 publishes the already audited account/receipt and displayed revision
+wave at a3e89b4bde108c56650e2208e01ef4c32d0289c9 (tree c3873e55). Its seven
+applicable workflows are running and must pass before merge. Recovered-source
+verification: 85 passed, four real-PostgreSQL cases skipped locally; independent
+review also ran 59 narrow cases successfully. These overlapping results are not
+additive. Legacy jobs without the newer approval proof require reconciliation.
+
+A further bounded DEFECT-0288 repair freezes publication copy and the CTA used
+by Remotion alongside the SHA-256 and byte length of the actual rendered output.
+The approval transaction stores strict per-render approved assets and the queue
+binds the full asset hash (identities, path, video proof, copy and CTA). The worker
+compares that hash on its FIRST and later reads, verifies a defensive byte copy
+before claiming/uploading, and passes that Buffer directly to both adapters.
+Neither adapter reopens a mutable file path; no live script/brand copy is read.
+Digest-addressed review previews verify and send that same buffer with no-store.
+The confirmation dialog shows the frozen destination copy and CTA.
+
+Red-first proof: three worker byte/copy cases failed before this repair. The
+independent audit then found a first-read gap in a video-only queue hash; a new
+pre-start CTA mutation case reproduced it (one fail/27 pass), and the queue now
+binds the full approved asset instead. Final eight-file focused group: 77 passed,
+four real-DB cases skipped locally. Independent worker/asset review: 34 passed;
+no source blocker remains in this bounded scope. Full final checks/build/bundle
+and fresh mandatory real-schema CI remain required before merge.
+
+Storage is still bounded: local web/worker volume sharing is unproven, and pure
+R2 generation has no transfer from Remotion's local output. Such failures refuse;
+this patch does not certify those deployments. Approval-time account/configuration
+and spend reservation binding, rejection revision, provider ownership/permissions
+and confirmed delivery remain open. No paid generation/provider effects ran.
+
+Read-only production Controls now shows Plan/Review/Results/Steer; one existing
+draft request is Failed, no video bundles await review, attributed signups are an
+explicit lower bound and publishing is paused. Job health's served 200-run window
+shows 199 successes, zero failures and one lock skip across 55 jobs. The previously
+failing retraction job is absent from that bounded window, so recovery of that
+specific job is NOT proven. Paging and owner/delegation witnesses remain open.
+All 39 tickets and G0 remain incomplete.

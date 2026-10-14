@@ -17,7 +17,6 @@
  * TikTok docs: https://business-api.tiktok.com/portal/docs (Marketing API v1.3)
  */
 
-import * as fs from "fs";
 import FormData from "form-data";
 import crypto from "crypto";
 import { openFounderAdAccount } from "../services/founderAdAccountSecrets";
@@ -47,7 +46,7 @@ async function loadTiktokAccount(): Promise<FounderAdAccount> {
 }
 
 export interface TikTokUploadInput {
-  videoAbsolutePath: string;
+  videoBytes: Buffer;
   videoName: string;
   trackingId: string;
 }
@@ -59,7 +58,8 @@ export interface TikTokUploadResult {
 
 export async function uploadVideoToTikTok(input: TikTokUploadInput): Promise<TikTokUploadResult> {
   const account = await loadTiktokAccount();
-  const buffer = await fs.promises.readFile(input.videoAbsolutePath);
+  if (!Buffer.isBuffer(input.videoBytes) || input.videoBytes.length === 0) throw new Error("[cmo:tiktok] approved video bytes are unavailable");
+  const buffer = input.videoBytes;
   const sig = crypto.createHash("md5").update(buffer).digest("hex");
 
   const form = new FormData();

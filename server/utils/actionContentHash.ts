@@ -28,4 +28,3 @@ export function actionContentHash(toolName: string, args: Record<string, unknown
     .update(`${toolName}\n${canonicalizeToolArgs(args)}`, "utf8")
     .digest("hex");
 }
-

@@ -1,3 +1,4 @@
+import type { CmoPublicationProof } from "@shared/cmo/publicationAssets";
 import type { CmoPublicationDestination } from "@shared/cmo/publication";
 /**
  * /founder/cmo — the single surface the founder uses to review and ship ads.
@@ -49,6 +50,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { Verbs } from "@/lib/labels";
 
 interface RenderShape {
+  manifestJson?: { publication?: CmoPublicationProof };
   id: string;
   aspectRatio: "9:16" | "1:1" | "16:9";
   storagePath: string;
@@ -58,6 +60,13 @@ interface RenderShape {
   costBreakdown: { totalCents: number; voiceCents: number; renderCents: number; scriptCents: number; scoringCents: number };
   durationSec: number;
   broadcastAt?: string;
+}
+
+function reviewAssetSrc(render: RenderShape): string {
+  const query = new URLSearchParams({ key: render.storagePath.replace(/^local:/, "") });
+  const revision = render.manifestJson?.publication?.video?.sha256;
+  if (revision) { query.set("renderId", render.id); query.set("assetRevision", revision); }
+  return `/api/founder/cmo/asset?${query}`;
 }
 
 interface InboxItem {
@@ -345,8 +354,14 @@ export default function FounderCmoPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {approveTarget.renders.map(render => <div key={render.id}>
                 <video controls playsInline preload="metadata" className="w-full max-h-48 object-contain rounded-card" aria-label={`Review ${render.aspectRatio} render`}
-                  src={`/api/founder/cmo/asset?key=${encodeURIComponent(render.storagePath.replace(/^local:/, ""))}`} />
+                  src={reviewAssetSrc(render)} />
                 <p className="text-xs text-muted-foreground">{render.aspectRatio} · {render.durationSec}s</p>
+                {render.manifestJson?.publication?.copy && <div className="text-xs space-y-1">
+                  <p>Meta headline: {render.manifestJson.publication.copy.headline}</p>
+                  <p>Meta text: {render.manifestJson.publication.copy.primaryText}</p>
+                  <p>TikTok text: {render.manifestJson.publication.copy.adText}</p>
+                  <p className="break-all">Destination: {render.manifestJson.publication.copy.ctaUrl}</p>
+                </div>}
               </div>)}
             </div>
           </div>}
@@ -519,7 +534,7 @@ function PendingBundleCard({
                     playsInline
                     preload="metadata"
                     className="w-full rounded-card bg-black aspect-[9/16] md:aspect-video lg:aspect-[9/16] max-h-[60vh] object-contain"
-                    src={`/api/founder/cmo/asset?key=${encodeURIComponent(headline.storagePath.replace(/^local:/, ""))}`}
+                    src={reviewAssetSrc(headline)}
                   />
                 ) : (
                   <div className="aspect-video rounded-card border bg-muted flex items-center justify-center text-muted-foreground text-sm">
