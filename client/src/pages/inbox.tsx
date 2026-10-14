@@ -2,8 +2,8 @@ import DOMPurify from "isomorphic-dompurify";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { Sidebar, useSidebarCollapsed } from "@/components/layout-sidebar";
 import "./today.css";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { queryClient, apiRequest, fetchJsonArray } from "@/lib/queryClient";
+import { useQuery, useQueries, useMutation } from "@tanstack/react-query";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useMemo, useEffect, useRef } from "react";
@@ -773,7 +773,7 @@ function SMSConversationDetail({
     },
   });
 
-  const leadName = lead ? `${lead.firstName} ${lead.lastName}` : "Unknown";
+  const leadName = lead ? `${lead.firstName} ${lead.lastName}` : "Contact details unavailable";
 
   return (
     <div className="flex flex-col h-full">
@@ -808,7 +808,7 @@ function SMSConversationDetail({
                 {lead.phone}
               </a>
             ) : (
-              <div className="text-sm text-muted-foreground">No phone number</div>
+              <div className="text-sm text-muted-foreground">Phone unavailable</div>
             )}
           </div>
         </div>
@@ -924,7 +924,7 @@ function SMSConversationDetail({
         </div>
         {!lead?.id && (
           <p className="text-xs text-muted-foreground mt-2" role="alert">
-            Can't send SMS — no lead is linked to this conversation.
+            Can't send SMS until this conversation's contact is available.
           </p>
         )}
       </div>
@@ -1026,10 +1026,24 @@ export default function InboxPage() {
     queryKey: ["/api/inbox/unread-count"],
   });
 
-  const { data: leads = [] } = useQuery<Lead[]>({
-    queryKey: ["/api/leads"],
-    queryFn: () => fetchJsonArray<Lead>("/api/leads"),
-  });
+  // Resolve only the identities referenced by the served inbox window (plus an
+  // opened thread). The paginated lead book is not a contact lookup index.
+  const leadIds = useMemo(() => [...new Set([
+    ...emailMessages.map(message => message.leadId),
+    ...smsConversations.map(conversation => conversation.leadId),
+    selectedItem?.data.leadId,
+  ].filter((id): id is number => typeof id === "number" && Number.isSafeInteger(id) && id > 0))].sort((a, b) => a - b), [emailMessages, smsConversations, selectedItem]);
+  const leadQueries = useQueries({ queries: leadIds.map(id => ({
+    queryKey: ["/api/leads", "by-id", id],
+    queryFn: async (): Promise<Lead> => {
+      const response = await apiRequest("GET", `/api/leads/${id}`);
+      const lead: Lead = await response.json();
+      if (!lead || lead.id !== id) throw new Error("Contact details could not be verified");
+      return lead;
+    },
+    retry: false,
+  })) });
+  const failedLeadQueries = leadQueries.filter(query => query.isError);
 
   const { toast } = useToast();
   const unreadCount = unreadCountData?.count ?? 0;
@@ -1056,11 +1070,10 @@ export default function InboxPage() {
     if (showSms) refetchSms();
   };
 
-  const leadsMap = useMemo(() => {
-    const map = new Map<number, Lead>();
-    leads.forEach(lead => map.set(lead.id, lead));
-    return map;
-  }, [leads]);
+  const leadsMap = new Map<number, Lead>();
+  leadQueries.forEach((query, index) => {
+    if (query.isSuccess && query.data?.id === leadIds[index]) leadsMap.set(leadIds[index], query.data);
+  });
 
   const unifiedItems = useMemo(() => {
     const items: UnifiedItem[] = [];
@@ -1377,7 +1390,17 @@ export default function InboxPage() {
         ) : channelFilter === "mail" ? (
           <NativeMailPanel />
         ) : (
-        <div className="flex-1 flex overflow-hidden">
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {leadQueries.some(query => query.isPending) && <p className="p-3 text-sm text-muted-foreground" role="status">Loading contact details…</p>}
+          {failedLeadQueries.length > 0 && <QueryErrorState
+            error={failedLeadQueries[0].error}
+            onRetry={() => { failedLeadQueries.forEach(query => void query.refetch()); }}
+            isRetrying={failedLeadQueries.some(query => query.isFetching)}
+            title="Couldn't load some contact details"
+            description="Messages remain available. Contact search and replies may be incomplete until those details can be read."
+            compact testId="inbox-contact-error"
+          />}
+          <div className="flex-1 flex overflow-hidden">
           <div ref={listColumnRef} className={`${selectedItem ? "hidden md:block" : ""} w-full md:w-96 border-r overflow-hidden flex flex-col`}>
             <ContentReveal
               ready={!isLoading}
@@ -1541,6 +1564,7 @@ export default function InboxPage() {
               </div>
             )}
           </div>
+        </div>
         </div>
         )}
         </ErrorBoundary>
