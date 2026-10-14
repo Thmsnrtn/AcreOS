@@ -659,3 +659,22 @@ was deliberately interrupted; only the new complete check is eligible as the
 final verdict. Current full checks/build/CI are pending for this revised
 release. The newly observed JPEG modification is excluded from the release
 and preserved in the working tree. The registry has 21 OPEN/PARTIAL entries.
+
+### Published review candidate and platform-scope correction
+
+PR #352 is open: https://github.com/Thmsnrtn/AcreOS/pull/352. The connected
+GitHub integration published ba83d56c with tree 208a268d, exactly matching
+local audited candidate 9e676a37. The native terminal could fetch the public
+repository but could not authenticate a push; no credentials were copied.
+GitHub main remains b852ce34 until the approved conditional merge actually
+occurs. Seven PR workflows started, including full CI, real-schema Test,
+security, mobile and customer-surface journeys.
+
+Final local gates correctly refused two new founder-wide reads without the
+explicit platform-operations access hatch. Both occurrences now use
+unscopedForPlatformOps with a reason. The tenant-scoping gate then passed
+with zero new/stale entries, and the focused publication/resolution set
+passed all 24 tests. The failed full-check attempt is not a passing receipt;
+a fresh complete check and revised-commit CI are required. The unrelated
+JPEG remains excluded and preserved. The new review fix has independent
+source clearance; full suite/database/provider evidence stays distinct.

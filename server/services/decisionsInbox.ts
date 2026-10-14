@@ -29,7 +29,8 @@ import { meteredChatCompletion } from "./aiSpendGuard";
 export { doNothingContract, DO_NOTHING_CONTRACTS } from "@shared/decisions/doNothing";
 
 async function requireGenericResolution(itemId: number): Promise<void> {
-  const item = await db.query.decisionsInboxItems.findFirst({ where: eq(decisionsInboxItems.id, itemId) });
+  const item = await unscopedForPlatformOps("Founder resolution: read the platform-wide card type before routing it to its canonical writer")
+    .query.decisionsInboxItems.findFirst({ where: eq(decisionsInboxItems.id, itemId) });
   if (item?.itemType === "cmo_ad_review") {
     throw Object.assign(new Error("Review the videos and choose destinations in /founder/cmo; this queue cannot resolve video bundles"), { code: "CMO_REVIEW_REQUIRED" });
   }
