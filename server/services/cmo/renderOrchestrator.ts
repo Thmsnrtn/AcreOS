@@ -402,6 +402,7 @@ async function createApprovalItem(
       ownerAgentCodename: "cmo",
       expectedOutcome: "Broadcast 3-aspect-ratio ad bundle to active platforms; track CTR/CPM/ROAS for archetype scoring.",
       contextBundle: {
+        bundleId: headlineRender.bundleId,
         brandSlug: brand.slug,
         scriptHook: script.hook,
         scriptBody: script.body,

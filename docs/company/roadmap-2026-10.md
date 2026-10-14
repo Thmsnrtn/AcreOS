@@ -5,16 +5,18 @@ horizons H0–H5) → **this document** (waves under the active horizon) → dec
 memos. It supersedes the execution ledger of `roadmap-2026-07.md`, whose open
 W6.3/W7 items fold in below. `public-readiness-plan-2026-09-29.md` remains the
 phase plan for crossing G0 and G1; this file schedules the engineering under it
-and reuses its §6 scoreboard. Verified against HEAD `b9b1330` on 2026-09-30.*
+and reuses its §6 scoreboard. Original snapshot: `b9b1330` on 2026-09-30. Execution state reconciled against `b852ce34188131f3a78d8ebdab218e43bc691c6a` on 2026-10-13; see §I.*
 
 *Nothing here relitigates CLAUDE.md's DO-NOT-DO list or a dated founder ruling
 (§F maps each to its reactivation trigger).*
 
 ## The through-line
 
-No gate is crossed. Active 0 / Trial 0. The repo's own verdict is "broad scope
-and little proof", and its research warns against "the recursive maturity
-program". So **mature** here means *the capability that exists is true,
+No gate crossing has been established by the current execution. Historical
+records listed Active 0 / Trial 0; current live customer counts are unknown
+until billing and organization records are read. The repo's own verdict is
+"broad scope and little proof", and its research warns against "the recursive
+maturity program". So **mature** here means *the capability that exists is true,
 drilled, and small enough to hold* — not more capability.
 
 **Prove before build · narrow before wide · delete while proving.**
@@ -334,20 +336,23 @@ The decisions behind it are recorded in `founder-decisions-2026-10-08.md`
 Its waves are named **LP-W0 … LP-W6** so they do not collide with §D's W10.x
 numbering.
 
-**Not resolved here: the stop rule.** LP-W2 to LP-W5 add surface, while the
-§A stop rule holds feature waves until G0's owner actions are done. The
-program is the founder's later, explicit direction, but this file records the
-tension rather than deciding it. Each feature wave below cites the gate
-criterion or the decision it serves (§G.3).
+**Scope reconciliation (2026-10-13).** The founder explicitly adopted the
+39-ticket Public Readiness and Native Growth plan and directed its execution.
+This authorizes those enumerated repairs and the native Growth integration;
+it does not unlock unrelated feature waves, remove a G0 proof requirement,
+or authorize account purchases, customer-data repair application, pricing,
+legal signing, paid publication or a production deployment. The narrow launch
+promise remains constrained by §I's recorded evidence. The older stop rule
+continues to govern work outside this directed scope.
 
 | Wave | Scope | Cash | Status |
 |---|---|---|---|
 | **LP-W0** Cost efficiency | Metered AI gateway (94 → 14 direct call sites); a platform AI ceiling scaled to MRR; the dormant $250 grant removed; a cost-to-serve alert; decisions A–C and Scale's $45 allowance; mail-credit recharges granted; legacy tier names folded | $0 | built (PR #339) |
-| **LP-W1** Flawless and protected | Accessibility (93 axe issues); 8 dead ends; plain-words refusals; **support autonomy** (under 24 founder min/week); a real AI eval or an explicit NOT MEASURED; guards (AI-voice written consent, heirs' property, contract-for-deed rules, ethical outreach); CA auto-renewal; one-click full export; security baseline (2FA, sealed credentials, off-provider backup with a tested restore); strategy docs to a private repo | $0 | W1a built: the protections half, see the ledger. W1b (a11y, dead ends, refusal copy) is next |
-| **LP-W2** Data foundation | Tennessee showcase preload (vacant and rural parcels, per-fact source and confidence, GeoParquet and PMTiles on R2's free tier); an on-demand county pipeline with refusal and "request this county"; a free-county-source census; small national datasets; tax-sale source registry; MapLibre with a free basemap; data-truth warnings; an accuracy gate before anything is shown | ~$0 | planned |
-| **LP-W3** Acquisition engine | A public Tennessee parcel report and a free landlocked checker (on `publicParcelReport.ts`); sourced county guides, llms.txt and structured data; creator revenue share; a founding-member yearly offer **[F: plan and price]**; a per-parcel report **[F: price]** | $0 | planned |
-| **LP-W4** Forecasting | A monthly vintage recorder (starts the clock); a cycle-phase model with walk-forward backtests on real-time vintages, gated by the evidence ladder; seasonal priors; county-forecast slots labelled "warming up"; a fair-housing check | $0 | planned |
-| **LP-W5** Trust, giving, growth | Owner opt-out and deletion; **giving at $1 per paying member per month** with receipts and a founder cap; fraud-check signals; collateral watch; Spanish; guided A2P 10DLC; migration import; offline maps; a first-deal-in-90-days program; a real customer outcome metric | giving only | planned |
+| **LP-W1** Flawless and protected | Accessibility (93 axe issues); 8 dead ends; plain-words refusals; **support autonomy** (under 24 founder min/week); a real AI eval or an explicit NOT MEASURED; guards (AI-voice written consent, heirs' property, contract-for-deed rules, ethical outreach); CA auto-renewal; one-click full export; security baseline (2FA, sealed credentials, off-provider backup with a tested restore); strategy docs to a private repo | $0 | implemented in current main; simulation and source tests are not live workload/restore/model proof (see §I) |
+| **LP-W2** Data foundation | Tennessee showcase preload (vacant and rural parcels, per-fact source and confidence, GeoParquet and PMTiles on R2's free tier); an on-demand county pipeline with refusal and "request this county"; a free-county-source census; small national datasets; tax-sale source registry; MapLibre with a free basemap; data-truth warnings; an accuracy gate before anything is shown | ~$0 | implemented in current main; allowed county load, durable artifact proof and licensed accuracy replacement still unverified/blocked (Oct11 ruling) |
+| **LP-W3** Acquisition engine | A public Tennessee parcel report and a free landlocked checker (on `publicParcelReport.ts`); sourced county guides, llms.txt and structured data; creator revenue share; a founding-member yearly offer **[F: plan and price]**; a per-parcel report **[F: price]** | $0 | implemented in current main; creator commission, yearly offer and parcel-report price remain founder decisions; real activation proof pending |
+| **LP-W4** Forecasting | A monthly vintage recorder (starts the clock); a cycle-phase model with walk-forward backtests on real-time vintages, gated by the evidence ladder; seasonal priors; county-forecast slots labelled "warming up"; a fair-housing check | $0 | implemented in current main (`e8e12d3c`, `a85b6fd0`); real-time vintages require elapsed time; forecasts remain evidence gated |
+| **LP-W5** Trust, giving, growth | Owner opt-out and deletion; **giving at $1 per paying member per month** with receipts and a founder cap; fraud-check signals; collateral watch; Spanish; guided A2P 10DLC; migration import; offline maps; a first-deal-in-90-days program; a real customer outcome metric | giving only | implemented in current main (`a843f108`, `0e0a47a3`, `0007a1e6`, `c444c3c7`); giving transfer and credentialed customer journeys not externally proven |
 | **LP-W6** Real-model proof | Pax, Solene and land-data explanations against a real model under the ceiling, moving evidence from E2 to E3 **[K: model API key]** | ≤ $25 | blocked on the key |
 
 **Later, gated by revenue (the self-funding rules).** Each unlocks only when
@@ -414,3 +419,243 @@ have no source. A real model's rates are E3 evidence (LP-W6). The year run
 now fails when any worker's calls go unanswered by the brain
 (`workerCoverage.ts`), so an unmodelled worker cannot silently become a
 demotion again.
+
+## §I Directed readiness and native Growth execution — 2026-10-13
+
+The founder adopted the 39-ticket report dated 2026-10-13 and directed its
+execution. This is the execution record within the existing roadmap, not a
+second provisioning authority. **G0 remains unproven.** A source implementation,
+a simulated result, a green wrapper with skipped steps and a live receipt are
+different evidence classes. Nothing here marks the whole program complete.
+
+**Active priorities (maximum three):** (1) reconcile degraded production health
+and owner readiness evidence; (2) land and verify the directed Growth rebase
+and durable progress repairs; (3) prove publication refusal/receipt semantics
+without enabling spend. Real restoration, licensed county proofs and staging
+journeys unblock the subsequent acceptance gates. Unrelated expansion remains
+deferred by the standing stop rule.
+
+The October 13 follow-up explicitly authorizes updating GitHub main with validated
+changes. It does not turn absent external acceptance receipts into completed tickets.
+
+**Release boundary:** base main `b852ce34188131f3a78d8ebdab218e43bc691c6a`;
+local branch `codex/acreos-readiness-execution`. Public app and fresh worker heartbeat both reported that base SHA.
+App health was **degraded**, not healthy. A later authenticated browser read reached
+Controls and Decisions; their live findings are recorded below. A later live Job health read identified the failing retract query; DEFECT-0285 records the release-path omission and the limits of that evidence. Actual worker image,
+migration ledger and physical-device evidence were not inspected. Earlier CI/security/mobile proofs are baseline evidence,
+not evidence that these local changes are deployed.
+
+Statuses mean: Implemented locally = code written, external proof still open;
+Partial = specified acceptance only partly established; Open = engineering
+still required; Blocked = named account/access/data/time proof cannot be
+manufactured locally. Blocked does not mean an account is missing in production.
+
+| Ticket | State | Evidence / actual work | Remaining acceptance or dependency |
+|---|---|---|---|
+| P0-01 | Partial | §I reconciles scope, LP state and active priorities; 21 registry entries currently OPEN/PARTIAL. | Current-consumer closure census and independent release review remain. |
+| P0-02 | Partial | Public app and worker heartbeat both reported b852ce34; heartbeat fresh at 2026-10-13T12:48:25.446Z; cached health still degraded at 12:48:22.899Z. | Founder sign-in observed; authorized app/worker image, live catalog, release and migration reads remain. The live retract query fails; its underlying database cause and the degraded-health root cause remain unknown. |
+| P0-03 | Partial | tests/unit/deployGateRequiresCiAndSecurity.test.ts parses required CI/security job dependencies. | Isolated negative workflow run and separate rollback receipt; no production dispatch performed. |
+| P0-04 | Partial | Authenticated live Controls shows 4/13 setup rungs verified, two essential rungs left; canonical readinessLadder remains authority. | Resolve paging, confirm owner budgets and remaining account decisions; keys resolving is not a completed operational proof. |
+| P0-05 | Blocked | Existing backup/restore procedures retained; no actual recovery claim. | Infrastructure backup/object access and isolated PostgreSQL restore target; no database mutation performed. |
+| P0-06 | Partial | Worker preserves bounded CMO receipts; generation parent identity follows render children and dead letters. | Live heartbeat/worker isolation and restart/timeout drill across all critical job classes. |
+| P0-07 | Blocked | Baseline CI/mobile/security jobs ran on b852ce34; scheduled audit issues 301/302/304 identify absent target configuration in their captured runs. | Current staging target and synthetic credentials; rerun actual authenticated journeys, not auth-bypass fixtures. |
+| P0-08 | Partial | DNC, STOP, owner suppression and late-opt-out regression families exist and are included in the acceptance test selection. | Actual account activation proof and policy-specific servicing determination; no real outreach sent. |
+| P0-09 | Partial | Credit grants, replay, pool resets and customer-money routing regression families included in acceptance selection. | Live price/account read-back and witnessed sandbox lifecycle; no charges/refunds issued. |
+| P0-10 | Blocked | Oct11 URL-level TN prohibition and coordinate routing tests retained; real-schema county pipeline exists. | Allowed Comptroller file and replacement labelled sample, artifact storage verification. Legacy 20-parcel fixture is not licensing proof. |
+| P1-01 | Partial | Public report, landlocked checker and county-guide source/tests exist on main. | P0-07/P0-10: same-parcel auth return and first REAL useful outcome on licensed served data. |
+| P1-02 | Partial | Offers now searches/paginates the permitted book, labels matching totals and resolves identities by id; three DOM cases pass. 0169 population census and 0171 whole-book consumers remain open. | Repair each consumer with search/by-id/aggregate or explicit pagination; real >5000-row interrupted import/rollback proof. |
+| P1-03 | Partial | Existing parcel provenance/accuracy projection, DD and economics contracts retained. | Practising-investor journey, conflicting/stale data and insufficient-comps offer refusals on allowed corpus. |
+| P1-04 | Partial | Existing approval kernel, provider receipt, inbound and idempotent mail tests retained. | Credentialed exact-revision recipient/sender/asset/cost witness and provider timeout/replay drill. |
+| P1-05 | Open | 0244/0258/0276 still OPEN in registry; status writers must use canonical deal repo. | Predicate-sensitive real-db one-close-writer census and stale-version conflict recovery on every caller. |
+| P1-06 | Open | 0185 remains OPEN (later installments/fee-posting concurrency); 0277 historical refund application remains owner operation. | Sandbox borrower cookie/checkout/ACH overlap proof and exact-cent reconciliation; never apply historical repair silently. |
+| P1-07 | Partial | Growth plan, review and progress reads now distinguish errors from empty; save/brief forms retain work; queue ID shown. | Complete wedge state census and recovery testing beyond Growth. |
+| P1-08 | Blocked | Growth uses existing semantic controls and responsive four-tab layout; DOM tests are not iPhone proof. | Physical iPhone Safari/VoiceOver and credentialed WebKit full-journey evidence. |
+| P1-09 | Open | 0243 still reproduces: Today awaits runPortfolioHealthJob per GET. Existing bundle budgets retained. | Agree p75 targets; measure on representative hardware/dataset before changing scheduled behavior. |
+| P1-10 | Blocked | Eval workflow success can skip real baseline/regression stages; keyless stubs never certify quality. | Bounded real-model run, served/requested model and judge-mode evidence, human review; no paid provider calls here. |
+| F-01 | Partial | Existing Letter quiet-day collapse/readiness/outcome sections preserved by rebase. | Live two-minute phone task and health/revenue/freshness evidence. |
+| F-02 | Partial | Growth Review links canonical Decisions. Live last-30-day view shows 74,254 Needs you records and repeated stale-lead/job-failure prompts in its latest 50. | Initiative pending/deferred cards now deduplicate by org/agent/action/input with a transaction-scoped advisory lock; three boundary tests pass. Two real-PostgreSQL concurrency/predicate cases are added but locally skipped without an isolated database. The authority gate now also deduplicates identical proactive/reaction pending or deferred observations without granting execution; five unit cases pass and two PostgreSQL cases await CI. Other producers, rejected-card changed facts, domain filters, aging/cost/held previews, expiry/replay and actual one-result proof; no historical cards silently dismissed. |
+| F-03 | Partial | Growth inside existing Controls saves bounded audience/positioning; seed preserves edits; master publishing setting uses existing canonical writer. | Live read-back and Story witness; other Controls sections remain current source, not newly certified. |
+| F-04 | Partial | Worker-backed progress links existing Story; raw provider errors excluded from job-status API. | Receipt chain across exact approval revision/account/cost/outcome and sensitive-data-safe export. |
+| F-05 | Blocked | Simulation mean 15.6 min/week, p90 39; no claim of <24 every real week. | A week of actual attention/interrupt/aging observations; fresh facts before repeated owner asks. |
+| G-01 | Implemented locally | Rebased Growth workspace, strict reporting, immutable/empty payload refusals, truthful brand wording and edit-preserving seed. | Final required gates/build, independent review and explicitly authorized publication; not deployed. |
+| G-02 | Partial | Existing outbox payload holds whitelisted completion receipt; children carry trusted parent ID; DLQ read survives terminal move; UI polls durable jobs. | Worker restart/key revocation/failed-ratio drill, provider cost completeness, cancellation and safe generation recovery. No automatic retry control added. |
+| G-03 | Partial | Transactional decision claim/enqueue; atomic per-platform manifest claim/merge; own destination receipt precedes aggregate status; uncertain outcome refuses replay; created objects no longer called live; performance consumer reads destination records. | Real-db concurrent claim/merge test, account/revision identity and upload/ad-review/organic URL reconciliation; legacy receipts do not prove delivery. |
+| G-04 | Partial | Fresh canonical publish/panic read before upload and object creation; destination config preflight; nonnegative integer operating caps validated; missing operating-budget row refuses generation. | Exact approved revision/account/assets, atomic spend reservation/invoice settlement and concurrent near-cap proof. Current budget gate is not a hard reservation. |
+| G-05 | Open | Existing growth-intelligence endpoint is analytics, not a sourced opportunity inbox; removed generic Sprout suggestion and failed-read-as-zero behavior. | Bounded sourced opportunities, retrieval/freshness/policy context, untrusted-input envelope and three useful moves; no public username outreach. |
+| G-06 | Open | Reuse marketingArtifacts, existing creative objects and canonical Decisions; no new calendar/approval database. | Revisioned educational artifacts/calendar, invalidated edited approvals, deduplicated scheduling and explicit manual handoff. |
+| G-07 | Open | Strict observational signup summary is a lower bound; failed source is unavailable. Existing outcomes/creator/billing remain their canonical records. | Windowed visit→signup→real outcome→paid→refund→retained joins, sample exclusions and unmatched attribution. No CAC or incremental revenue claim. |
+| G-08 | Partial | Read real attribution and canonical growth trust instead of constant zero/false; unknown remains null and locks paid eligibility. | Paid cohort/spend/refund evidence join, freshness/window/sample boundaries. CAC remains explicitly unknown; paid stays locked. |
+| G-09 | Blocked | Meta creative and TikTok ad APIs are paid instruments, not evidence of organic posting. Manual handoff remains possible. | Choose one supported adapter/account with owner permission; witnessed real approved publication/read-back/revocation; no subscriptions purchased. |
+| G-10 | Blocked | No growth winner or conversion benchmark invented from pre-customer source. | Actual cohort and bottleneck; founder review date, hypothesis, cost/time and stop condition before traffic experiments. |
+| D-01 | Partial | Registry currently has 21 OPEN/PARTIAL entries; reproduced 0169/0171/0185/0243, repaired the offers consumer of 0169 and read 0244/0258/0265/0276 rather than declaring stale docs fixed. | Complete occurrence/consumer census, semantic forbidden-behavior tests and actual repairs; historical customer data separate. |
+| D-02 | Open | Canon, boundaries, reachability and down-only ratchets retained; no speculative schema/SDK abstractions added. | Incident/customer-friction-led net surface reductions and adoption proof; no customer tables dropped. |
+| D-03 | Partial | Metered gateway/current cost-efficiency program retained; CMO generation/scoring cost appears in durable receipt, render costs explicitly separate. | Remaining direct/streaming/embed/transcription/image exceptions and actual invoice reconciliation/caps. Generation receipt cost is for the completed worker attempt, not cumulative retries. |
+| D-04 | Partial | This section replaces stale roadmap execution state; NEXT_UP/MASTER_PLAN/COMPLETION_MATRIX point here for current execution; health degradation stays visible; no duplicate owner provisioning checklist. | Real paging/canary/restore cadence and deliberate retirement/configuration of dormant audits; no live workflow dispatch. |
+
+### Verification receipts
+
+Initial rebased Growth/four-door run: 4 files, 28 passing tests. Initial durable
+progress run: 5 files, 33 passing tests. Publication/progress/API/DOM run after
+publication repairs: 4 files, 30 passing tests. These are unit/DOM fixtures,
+not real-provider or PostgreSQL concurrency evidence. Final consolidated
+gates and build results are recorded after execution below.
+
+Earlier checks and interrupted attempts below are historical receipts. The
+recovered release candidate has now passed the complete repository check,
+then the expanded test-type check (151 existing errors, baseline unchanged;
+8,794 files loaded). Six code/evidence commits are local above b852ce34,
+ending at 8b409d56; final verification is recorded below. This is not a
+clean whole-suite type or test claim.
+
+A 52-file acceptance run finished with 632/634 tests passing. One finance test
+timed out at its original 30-second deadline; the isolated finance file then
+passed all 20 tests with a 90-second command-line deadline (no repository timeout
+changed). The eval CLI test could not bootstrap tsx's IPC socket in this runtime;
+its harness now invokes Node with --import tsx, retains the strict keyless eval
+assertions and explicitly blanks the model key. The final four-file reliability
+run passed all 26 tests (publication 9, approval 3, Growth DOM 5, eval 9).
+This does not retroactively make the original 52-file run all green. An earlier
+whole-suite attempt was interrupted with exit 130 and produced no complete
+verdict. Seven publication regression cases failed against the original main
+handler and passed against the repaired handler. Provider publication, actual
+PostgreSQL concurrency and real-model quality remain unproven.
+
+### Additional engineering and release boundary — October 13 follow-up
+
+The offers population repair passed three DOM cases; initiative transaction
+boundaries passed three unit cases. The two actual PostgreSQL dedup/concurrency
+cases correctly SKIP locally without an isolated database; they must run in the
+schema-building Test/pre-deploy workflows before this behavior is certified.
+No active historical cards were removed. The scanner's unsourced 60% conversion
+and 70% cold-risk assertions were replaced with its actual observed age facts.
+The separate proactive/reaction authority producer is now repaired locally for identical recorded observations: a PostgreSQL JSONB-derived advisory lock and active-card predicate preserve distinct facts and all historical cards. Legacy cards lack subject input and cannot safely be folded. Tenant skills/goals retain separate cards because their trusted tenant identity is not carried by this gate. The 17-case unit/authority-ceiling run passed; two actual database cases skipped locally.
+
+Automatic approval review originally rejected publication without exact
+repository/branch scope. The founder subsequently approved the named branch,
+independent review and merge after required checks (October13 20:45 ET).
+The authorized native push then failed because the terminal has no GitHub
+credentials. Publication will use the connected GitHub Git-data integration,
+with an exact committed-tree comparison, not copied credentials. GitHub main
+still remains b852ce34 at this checkpoint; no gate has been bypassed.
+
+### Authenticated live observations
+
+An existing browser session reached live Controls and Decisions on October 13.
+No credentials were collected and no live operating settings were changed.
+Controls reported 4/13 setup rungs verified: model keys resolve, APP_URL is the
+production HTTPS origin, Stripe answered with 42 active prices and a webhook
+secret, and the system-mail credentials/from-address are configured. These are
+readiness UI receipts, not end-to-end billing, model-quality or delivery proofs.
+Two essential rungs remain: no paging channel resolves, and the $500/month
+mail/data plus $50/month agent limits have no observed metering or owner-choice
+witness. Worst-day spend is unavailable because no monthly agent envelopes
+exist; it must not be interpreted as zero. All five domains are watching only,
+auto-publish and self-patching are off, and a listed Support delegation expired
+September 27. Real direct mail is disarmed. The app cannot verify external
+watchdogs; the code-host connection reports unresolved credentials.
+
+Controls showed 74,262 waiting decisions, while its older five-hour tick showed
+74,111; Decisions showed 74,254 Needs you records plus eight questions. These
+are now reconciled against the canonical needsYou union: 74,254 pending decisions + eight open asks + zero frozen sends = 74,262. The older tick is stale, not a contradictory live count. The latest 50
+cards visibly repeat stale-lead prompts and job-failure alerts, including
+agent_retract_cron failures. This confirms a live attention-volume problem,
+but does not establish the degraded health endpoint's root cause. No card was
+approved, superseded, dismissed or deleted. The dashboard's stale $0 MRR and
++0 trials line is not a current customer census.
+
+### Required owner proofs
+
+Use existing Controls/readiness rungs to read configuration without revealing
+secrets. Live founder Controls/Decisions were inspected; infrastructure release,
+migration and recovery access remain required for private operational proofs.
+Provision/confirm staging and synthetic accounts, infrastructure read/restore
+access, an allowed Comptroller county file, model-spend envelope and a physical
+iPhone session. Commercial values and contracts remain explicit owner decisions.
+No current database, billing account, external publication, paid advertising,
+customer repair or production deployment was changed in this execution.
+
+### Recovered workspace and live failure follow-up
+
+The recovered execution branch was at 649dd6ce; the production initialization
+repair survived in a separate worktree as a3a9ee47 and was cherry-picked as
+59ca014d. No earlier final-check/build receipt is assumed to survive the
+workspace reset. Canonical createInsertSchema replaces the raw drizzle-zod
+route import. landStatusLAR now uses the container working directory or its
+explicit configured path, and schemaDriftDetector reads the compiled schema
+barrel, including re-exported tables and chained/spread columns, instead of
+loading production TypeScript source through import.meta. Four actual
+CommonJS compile/load cases pass; the earlier isolated runtime/schema set
+passed 59 tests. The restored 17-file release selection passed 126 tests,
+with two real-PostgreSQL cases skipped. Whole-suite attempts have no final
+passing verdict: one ran out of heap, another lost the executor connection.
+Its raw-drizzle-zod factory regression was repaired and the 12-case factory
+file now passes; that does not certify the whole suite.
+
+Fresh authenticated Controls at approximately 19:52 ET still reported 4/13
+setup rungs and no paging channel; the waiting count had grown to 74,435.
+The older four-hour tick displayed 74,280. Job health reported 70 unique
+jobs and 200 recent runs (196 success, three failures, one lock skip),
+with repeated agent_retract_cron failures on the initial SELECT from
+agent_proposal_observations. No underlying PostgreSQL cause is shown.
+DEFECT-0285 closes the confirmed source omission: the historical 0078 SQL
+had never reached Fly's executable release array. Both existing trust
+stores and their five indexes are now mirrored, with literal-definition
+parity and an isolated release-only PostgreSQL boot/read regression. No
+production migration or retry was executed; arbitrary partial table shapes
+still require catalog inspection. This is not proof of degraded-health
+recovery. The registry now has 20 OPEN/PARTIAL entries, including this gap.
+
+The build's source-map removal log no longer asserts a Sentry upload after
+an explicitly skipped local upload. The recovered candidate at 8b409d56
+passed the production web/server/worker build and prerendered all nine
+routes; 476 source maps were removed (30.2 MB). The actual bundle scan
+passed: 476 JS chunks, 10,027 KB total against 10,160 KB, largest map vendor
+1,068 KB against 1,090 KB. The local tsx IPC restriction was handled by Node
+--import tsx for the same build and prerender scripts, without weakening
+build assertions. No local Sentry upload receipt is claimed.
+
+Complete repository check: PASS. Expanded test-type check: PASS at the
+unchanged 151-error baseline, 8,794 files loaded. Restored release selection:
+126 pass / two PostgreSQL skips. Authority/ceiling run: 17 pass / two
+PostgreSQL skips (a prior 3 GB run exhausted heap; the completed 6 GB run
+is the verdict). Release-path/migration/authority selection: 30 pass / three
+PostgreSQL skips. The five distinct PostgreSQL proof cases across these
+sets remain required CI work, not locally passing database proofs. Ledger
+source references and schema/DDL mirrors pass; no ratchet baseline widened.
+
+GitHub main was freshly verified as
+b852ce34188131f3a78d8ebdab218e43bc691c6a. Local main had still pointed at
+its ancestor d2f46b37; an ancestry-checked fast-forward now matches the
+verified remote. The execution branch carries six implementation/evidence commits across
+49 changed files, followed by this final verification record. No remote publication, PR, merge, migration execution or
+deployment happened. Automatic approval review's publication block remains.
+Required full CI/security/real-DB and the independent completeness audit
+must pass before merge. The 39-ticket program and G0 remain incomplete.
+
+### Independent audit and review-resolution repairs — 20:45 ET continuation
+
+The founder approved publication of codex/acreos-readiness-execution to
+Thmsnrtn/AcreOS, an independent review agent and merging after required
+checks. The fresh reviewer identified real CMO resolution races and unwired
+generic resolution paths rather than accepting the original green tests.
+DEFECT-0286 records the complete repair and its remaining proof boundary.
+The final independent source review cleared all identified blockers after a
+36-write-site census across eight files. Dedicated resolution is now mutually
+exclusive and transactional; only ready bundle assets are eligible. The
+reviewer also caught the real producer's legacy actionPayload-only bundle ID,
+which is supported and normalized at approval. Generic service/chat,
+notification, scheduler, purge and reversal paths cannot resolve video cards
+without their review transaction. Decisions and progress now hand off to the
+existing video reviewer, which still uses the canonical queue. The worker
+checks current approval and selected destination twice and cannot restore a
+rejected status through its receipt write.
+
+Repair regression group: 56 tests pass; two real-PostgreSQL concurrency and
+rollback cases skip locally. Seven distinct database proof cases across the
+program remain required CI work. An initial DOM test fixture used the wrong
+request mock; it was corrected to exercise the actual generation API and
+now proves the video-review link. A check started before the producer repair
+was deliberately interrupted; only the new complete check is eligible as the
+final verdict. Current full checks/build/CI are pending for this revised
+release. The newly observed JPEG modification is excluded from the release
+and preserved in the working tree. The registry has 21 OPEN/PARTIAL entries.

@@ -4,7 +4,7 @@ import {
   decisionsInboxItems, supportTickets, systemAlerts, featureRequests,
   organizations,
 } from "@shared/schema";
-import { eq, and, desc, gte, isNull, or, lt, sql } from "drizzle-orm";
+import { eq, and, desc, gte, isNull, or, lt, sql, ne } from "drizzle-orm";
 import { executeAction, hasExecutor } from "./agentActionExecutors";
 import { customerSupportAutoResolver } from "./customerSupportAutoResolver";
 import { requireOpenAIClient } from "../utils/openaiClient";
@@ -27,6 +27,13 @@ import { meteredChatCompletion } from "./aiSpendGuard";
  * changing behavior for a class means updating BOTH the code and its sentence.
  */
 export { doNothingContract, DO_NOTHING_CONTRACTS } from "@shared/decisions/doNothing";
+
+async function requireGenericResolution(itemId: number): Promise<void> {
+  const item = await db.query.decisionsInboxItems.findFirst({ where: eq(decisionsInboxItems.id, itemId) });
+  if (item?.itemType === "cmo_ad_review") {
+    throw Object.assign(new Error("Review the videos and choose destinations in /founder/cmo; this queue cannot resolve video bundles"), { code: "CMO_REVIEW_REQUIRED" });
+  }
+}
 
 /**
  * Jarvis 2.2 — route a would-be founder inbox item through the interrupt
@@ -740,6 +747,7 @@ export const decisionsInboxService = {
    * WHICH option answered the card.
    */
   async approve(itemId: number, chosenOptionText?: string): Promise<{ executed: boolean; detail?: string }> {
+    await requireGenericResolution(itemId);
     // Mark as approved
     await db.update(decisionsInboxItems)
       .set({
@@ -749,7 +757,7 @@ export const decisionsInboxService = {
         updatedAt: clock.now(),
         ...(chosenOptionText ? { founderOverrideAction: chosenOptionText } : {}),
       })
-      .where(eq(decisionsInboxItems.id, itemId));
+      .where(and(eq(decisionsInboxItems.id, itemId), ne(decisionsInboxItems.itemType, "cmo_ad_review")));
 
     // v3: Execute the approved action
     const item = await db.query.decisionsInboxItems.findFirst({
@@ -810,6 +818,7 @@ export const decisionsInboxService = {
   },
 
   async reject(itemId: number, reason?: string): Promise<void> {
+    await requireGenericResolution(itemId);
     await db.update(decisionsInboxItems)
       .set({
         status: "rejected",
@@ -818,17 +827,19 @@ export const decisionsInboxService = {
         founderOverrideAction: reason,
         updatedAt: clock.now(),
       })
-      .where(eq(decisionsInboxItems.id, itemId));
+      .where(and(eq(decisionsInboxItems.id, itemId), ne(decisionsInboxItems.itemType, "cmo_ad_review")));
   },
 
   async defer(itemId: number, hours = 24): Promise<void> {
+    await requireGenericResolution(itemId);
     const deferredUntil = new Date(clock.nowMs() + hours * 60 * 60 * 1000);
     await db.update(decisionsInboxItems)
       .set({ status: "deferred", deferredUntil, updatedAt: clock.now() })
-      .where(eq(decisionsInboxItems.id, itemId));
+      .where(and(eq(decisionsInboxItems.id, itemId), ne(decisionsInboxItems.itemType, "cmo_ad_review")));
   },
 
   async override(itemId: number, customAction: string): Promise<void> {
+    await requireGenericResolution(itemId);
     await db.update(decisionsInboxItems)
       .set({
         status: "approved",
@@ -837,7 +848,7 @@ export const decisionsInboxService = {
         founderOverrideAction: customAction,
         updatedAt: clock.now(),
       })
-      .where(eq(decisionsInboxItems.id, itemId));
+      .where(and(eq(decisionsInboxItems.id, itemId), ne(decisionsInboxItems.itemType, "cmo_ad_review")));
   },
 
   /**

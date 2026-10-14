@@ -7,7 +7,7 @@
  *
  * Three panels:
  *   1. Awaiting review (pending decisionsInboxItems where itemType='cmo_ad_review')
- *   2. Live ads (renders with status='live', last 7 days, with perf summary)
+ *   2. Publication records (renders with status='live', last 7 days, with perf summary)
  *   3. Archetype intelligence (rolling CTR/ROAS by hook archetype)
  *
  * No multi-step wizard. Tap a bundle to expand inline preview + manifest.
@@ -16,6 +16,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { QueryErrorState } from "@/components/query-error-state";
 import {
   CheckCircle2,
   XCircle,
@@ -126,7 +127,7 @@ export default function FounderCmoPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const { data, isLoading } = useQuery<DashboardResponse>({
+  const { data, isLoading, isError, error, refetch, isFetching } = useQuery<DashboardResponse>({
     queryKey: ["/api/founder/cmo/dashboard"],
     refetchInterval: 30 * 1000,
   });
@@ -144,7 +145,7 @@ export default function FounderCmoPage() {
       return apiRequest("POST", "/api/founder/cmo/approve", args);
     },
     onSuccess: () => {
-      toast({ title: "Approved", description: "Broadcast queued. Live within minutes." });
+      toast({ title: "Approved", description: "Broadcast queued. Delivery is not yet confirmed." });
       queryClient.invalidateQueries({ queryKey: ["/api/founder/cmo/dashboard"] });
       setApproveTarget(null);
     },
@@ -196,6 +197,8 @@ export default function FounderCmoPage() {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [data, expandedItemId]);
+
+  if (isError) return <PageShell label="CMO ad engine"><QueryErrorState error={error} title="Ad engine unavailable" description="We couldn't read the review queue. This does not mean it is empty." onRetry={() => void refetch()} isRetrying={isFetching} /></PageShell>;
 
   return (
     <PageShell label="CMO ad engine">
@@ -257,7 +260,7 @@ export default function FounderCmoPage() {
         {data && data.live.length > 0 && (
           <section aria-labelledby="cmo-live-h">
             <h2 id="cmo-live-h" className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-3">
-              Live ads — last 7 days
+              Recent publication records
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
               {data.live.map((render) => (
@@ -267,7 +270,7 @@ export default function FounderCmoPage() {
                       <Badge variant="outline">{render.aspectRatio}</Badge>
                       <Badge variant="secondary" className="text-xs">
                         <Radio className="w-3 h-3 mr-1" aria-hidden="true" />
-                        Live
+                        Delivery unverified
                       </Badge>
                     </div>
                     <div className="text-xs text-muted-foreground font-mono break-all">
@@ -320,7 +323,7 @@ export default function FounderCmoPage() {
           <DialogHeader>
             <DialogTitle>Broadcast this bundle?</DialogTitle>
             <DialogDescription>
-              Pick the platforms. The bundle's 9:16 / 1:1 / 16:9 renders will be uploaded and the ad will go live within minutes.
+              Pick the platforms. The bundle's renders will be queued for the selected destinations. Meta creates an ad creative; TikTok creates an ad object. Neither receipt confirms delivery. Uncertain provider outcomes need reconciliation before retry.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2 py-2">

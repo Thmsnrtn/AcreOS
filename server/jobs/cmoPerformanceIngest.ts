@@ -39,14 +39,15 @@ async function loadAccount(platform: "meta" | "tiktok"): Promise<PlatformAccount
 }
 
 export async function ingestPerformanceAll(): Promise<{ ingested: number }> {
-  // Live renders from the last 30 days are the universe we ingest.
+  // Read recent destination receipts, including legacy records. Object creation
+  // does not imply impressions; only actual provider rows establish metrics.
   const thirtyDaysAgo = new Date(clock.nowMs() - 30 * 24 * 60 * 60 * 1000);
   const liveRenders = await db
     .select()
     .from(cmoAdRenders)
     .where(
       and(
-        eq(cmoAdRenders.status, "live"),
+        sql`(${cmoAdRenders.status} = 'live' OR ${cmoAdRenders.manifestJson}->'platforms' IS NOT NULL)`,
         gte(cmoAdRenders.broadcastAt, thirtyDaysAgo),
       ),
     );
@@ -77,7 +78,7 @@ export async function ingestPerformanceAll(): Promise<{ ingested: number }> {
     }
   }
 
-  logger.info(`[cmo:perf] ingested ${total} performance rows across ${liveRenders.length} live renders`);
+  logger.info(`[cmo:perf] ingested ${total} performance rows across ${liveRenders.length} publication records`);
 
   // Recompute archetype scoring after fresh data lands.
   const archetypeUpdates = await recomputeArchetypeScores();

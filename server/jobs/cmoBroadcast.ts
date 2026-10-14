@@ -4,12 +4,11 @@
  * Event payload: { renderId, platform, bundleId, inboxItemId }
  *
  * Idempotency: if the render already has external IDs recorded for this
- * platform, short-circuits. Re-runnable forever.
+ * platform, short-circuits. In-flight or uncertain work requires reconciliation.
  *
- * Reads from approved cmo_ad_renders (status='approved'), uploads to the
- * platform, then writes a row to growth_campaigns (or updates an existing
- * one keyed by tracking_id) so the existing performance ingest paths can
- * pull data on day +1.
+ * Reads approved renders, uploads to the selected paid instrument and
+ * records an ad creative/ad object receipt. Delivery is unverified until
+ * provider read-back confirms it. This is not an organic posting adapter.
  */
 
 import * as path from "path";
@@ -18,9 +17,10 @@ import {
   cmoAdRenders,
   cmoScripts,
   brandProfiles,
-  growthCampaigns,
+  decisionsInboxItems,
 } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { eq, and, inArray, sql } from "drizzle-orm";
+import { isPublishingEnabledFresh } from "../services/autopilot/settings";
 import { uploadVideoToMeta, waitForVideoReady, createMetaCreative } from "../integrations/metaAdsVideo";
 import { uploadVideoToTikTok, createTikTokAd } from "../integrations/tiktokAds";
 import { logger } from "../utils/logger";
@@ -42,21 +42,38 @@ export async function handleCmoBroadcast(payload: CmoBroadcastPayload): Promise<
   });
   if (!render) throw new Error(`[cmo:broadcast] render ${payload.renderId} not found`);
 
-  if (render.status !== "approved" && render.status !== "broadcasting") {
-    throw new Error(
-      `[cmo:broadcast] render ${payload.renderId} status='${render.status}' — must be 'approved' to broadcast`,
-    );
+  // Return this destination's own receipt before inspecting aggregate status.
+  const existingManifest = render.manifestJson as { platforms?: Record<string, { externalId?: string; state?: string }> } | null;
+  const platformRecords = existingManifest?.platforms;
+  if (platformRecords !== undefined && (platformRecords === null || typeof platformRecords !== "object" || Array.isArray(platformRecords))) {
+    throw new Error("Malformed destination records require reconciliation before publication");
   }
-
-  // Idempotency: check manifest for previously-recorded external IDs.
-  const existingManifest = render.manifestJson as { platforms?: Record<string, { externalId?: string }> } | null;
-  const existingExternalId = existingManifest?.platforms?.[payload.platform]?.externalId;
-  if (existingExternalId) {
-    logger.info(
-      `[cmo:broadcast] render ${render.id.slice(0, 8)} already broadcast to ${payload.platform}: ${existingExternalId}`,
-    );
-    return { externalId: existingExternalId };
-  }
+  const existingReceipt = existingManifest?.platforms?.[payload.platform];
+  if (existingReceipt?.externalId) return { externalId: existingReceipt.externalId };
+  if (existingReceipt?.state) throw new Error("Publication requires reconciliation before retry");
+  if (!["approved", "broadcasting", "live"].includes(render.status)) throw new Error("Render is not approved for publication");
+  if (!["meta", "tiktok"].includes(payload.platform)) throw new Error("Unsupported publication platform");
+  const requireCurrentReview = async () => {
+    if (!Number.isInteger(payload.inboxItemId) || !payload.inboxItemId) throw new Error("Current video review approval is unavailable");
+    const review = await db.query.decisionsInboxItems.findFirst({ where: eq(decisionsInboxItems.id, payload.inboxItemId) });
+    const ctx = review?.contextBundle as { bundleId?: string; renders?: Array<{ id: string }>; approvedPlatforms?: string[] } | null;
+    const current = await db.query.cmoAdRenders.findFirst({ where: eq(cmoAdRenders.id, render.id) });
+    if (review?.itemType !== "cmo_ad_review" || review.status !== "approved" ||
+      !ctx?.bundleId || ctx.bundleId !== render.bundleId || !ctx.renders?.some(r => r.id === render.id) ||
+      !ctx.approvedPlatforms?.includes(payload.platform) || !current ||
+      !["approved", "broadcasting", "live"].includes(current.status) ||
+      current.bundleId !== render.bundleId || current.storagePath !== render.storagePath) {
+      throw new Error("Video review approval or assets changed; publication refused");
+    }
+  };
+  await requireCurrentReview();
+  if (!(await isPublishingEnabledFresh())) throw new Error("Publication is paused");
+  // Configuration is checked before any upload or billable provider effect.
+  const pageId = process.env.META_PAGE_ID;
+  const identityId = process.env.TIKTOK_IDENTITY_ID;
+  const adGroupId = process.env.TIKTOK_DEFAULT_ADGROUP_ID;
+  if (payload.platform === "meta" && !pageId) throw new Error("Meta Page configuration is unavailable");
+  if (payload.platform === "tiktok" && (!identityId || !adGroupId)) throw new Error("TikTok destination configuration is unavailable");
 
   const script = await db.query.cmoScripts.findFirst({ where: eq(cmoScripts.id, render.scriptId) });
   if (!script) throw new Error(`[cmo:broadcast] script for render ${render.id} not found`);
@@ -65,10 +82,15 @@ export async function handleCmoBroadcast(payload: CmoBroadcastPayload): Promise<
   });
   if (!brand) throw new Error(`[cmo:broadcast] brand for render ${render.id} not found`);
 
-  await db
-    .update(cmoAdRenders)
-    .set({ status: "broadcasting", updatedAt: clock.now() })
-    .where(eq(cmoAdRenders.id, render.id));
+  // Atomic per-destination claim. Another platform's receipt is never copied
+  // from a stale read. A crash after the claim requires reconciliation, not a
+  // blind repeat of an ambiguous external effect.
+  const claim = { state: "processing", startedAt: clock.now().toISOString() };
+  const [claimed] = await db.update(cmoAdRenders).set({
+    status: "broadcasting", updatedAt: clock.now(),
+    manifestJson: sql`jsonb_set(coalesce(${cmoAdRenders.manifestJson}, '{}'::jsonb), '{platforms}', coalesce(${cmoAdRenders.manifestJson}->'platforms', '{}'::jsonb) || jsonb_build_object(${payload.platform}::text, ${JSON.stringify(claim)}::jsonb), true)`,
+  }).where(and(eq(cmoAdRenders.id, render.id), inArray(cmoAdRenders.status, ["approved", "broadcasting", "live"]), sql`NOT (coalesce(${cmoAdRenders.manifestJson}->'platforms', '{}'::jsonb) ? ${payload.platform})`)).returning({ id: cmoAdRenders.id });
+  if (!claimed) throw new Error("Publication already claimed or approval changed; refresh before retry");
 
   const storageRoot = process.env.CMO_STORAGE_ROOT ?? "/data/cmo";
   const videoKey = render.storagePath.replace(/^local:/, "");
@@ -89,19 +111,11 @@ export async function handleCmoBroadcast(payload: CmoBroadcastPayload): Promise<
       });
       await waitForVideoReady(uploaded.videoId);
 
-      // The creative needs an FB Page ID. Read from env until we add a
-      // founder_ad_accounts.pageId column (likely v2). Fail loud if absent
-      // so the founder knows the broadcast can't complete.
-      const pageId = process.env.META_PAGE_ID;
-      if (!pageId) {
-        throw new Error(
-          "[cmo:broadcast] META_PAGE_ID env not set. Set it via `fly secrets set META_PAGE_ID=<page-id>` before broadcasting to Meta.",
-        );
-      }
-
+      await requireCurrentReview();
+      if (!(await isPublishingEnabledFresh())) throw new Error("Publication paused after upload");
       const creative = await createMetaCreative({
         videoId: uploaded.videoId,
-        pageId,
+        pageId: pageId!,
         ctaUrl: ctaConfig.ctaUrl,
         ctaType: "SIGN_UP",
         primaryText: script.body,
@@ -117,26 +131,18 @@ export async function handleCmoBroadcast(payload: CmoBroadcastPayload): Promise<
         trackingId: render.trackingId,
       });
 
-      const identityId = process.env.TIKTOK_IDENTITY_ID;
-      const adGroupId = process.env.TIKTOK_DEFAULT_ADGROUP_ID;
-      if (!identityId || !adGroupId) {
-        throw new Error(
-          "[cmo:broadcast] TIKTOK_IDENTITY_ID and TIKTOK_DEFAULT_ADGROUP_ID required. " +
-            "Set via `fly secrets set` — pick an existing ad group on TikTok Ads Manager " +
-            "(or create one) and grab the identity ID from your business center.",
-        );
-      }
-
+      await requireCurrentReview();
+      if (!(await isPublishingEnabledFresh())) throw new Error("Publication paused after upload");
       const ad = await createTikTokAd({
         videoId: uploaded.videoId,
         advertiserId: uploaded.advertiserId,
-        identityId,
+        identityId: identityId!,
         identityType: "TT_USER",
         adText: `${script.hook} ${script.body}`.slice(0, 200),
         ctaButtonText: "SIGN_UP",
         landingPageUrl: ctaConfig.ctaUrl,
         trackingId: render.trackingId,
-        adGroupId,
+        adGroupId: adGroupId!,
       });
 
       externalId = ad.adId;
@@ -144,40 +150,22 @@ export async function handleCmoBroadcast(payload: CmoBroadcastPayload): Promise<
       throw new Error(`[cmo:broadcast] unknown platform '${payload.platform}'`);
     }
 
-    // Persist external IDs in the manifest + flip status.
-    const updatedManifest = {
-      ...(render.manifestJson as Record<string, unknown>),
-      platforms: {
-        ...(existingManifest?.platforms ?? {}),
-        [payload.platform]: { externalId, externalCampaignId, broadcastAt: clock.now().toISOString() },
-      },
-    };
-
-    await db
-      .update(cmoAdRenders)
-      .set({
-        status: "live",
-        broadcastAt: clock.now(),
-        manifestJson: updatedManifest as Record<string, unknown>,
-        updatedAt: clock.now(),
-      })
-      .where(eq(cmoAdRenders.id, render.id));
-
-    logger.info(
-      `[cmo:broadcast] render ${render.id.slice(0, 8)} now live on ${payload.platform}: ${externalId}`,
-    );
+    // Creative/ad creation is a receipt, not proof of delivery or organic publication.
+    const receipt = { state: "object_created", objectKind: payload.platform === "meta" ? "ad_creative" : "ad", externalId, delivery: "unverified", recordedAt: clock.now().toISOString() };
+    await db.update(cmoAdRenders).set({
+      broadcastAt: clock.now(), updatedAt: clock.now(),
+      manifestJson: sql`jsonb_set(coalesce(${cmoAdRenders.manifestJson}, '{}'::jsonb), '{platforms}', coalesce(${cmoAdRenders.manifestJson}->'platforms', '{}'::jsonb) || jsonb_build_object(${payload.platform}::text, ${JSON.stringify(receipt)}::jsonb), true)`,
+    }).where(eq(cmoAdRenders.id, render.id));
+    logger.info(`[cmo:broadcast] ${payload.platform} object recorded; delivery unverified`);
     return { externalId, externalCampaignId };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     logger.error(`[cmo:broadcast] failed on ${payload.platform}: ${message}`, err instanceof Error ? err : undefined);
-    await db
-      .update(cmoAdRenders)
-      .set({
-        status: "error",
-        errorMessage: message,
-        updatedAt: clock.now(),
-      })
-      .where(eq(cmoAdRenders.id, render.id));
+    const uncertain = { state: "uncertain", reason: "Provider or receipt write failed; reconcile before retry", recordedAt: clock.now().toISOString() };
+    await db.update(cmoAdRenders).set({
+      updatedAt: clock.now(),
+      manifestJson: sql`jsonb_set(coalesce(${cmoAdRenders.manifestJson}, '{}'::jsonb), '{platforms}', coalesce(${cmoAdRenders.manifestJson}->'platforms', '{}'::jsonb) || jsonb_build_object(${payload.platform}::text, ${JSON.stringify(uncertain)}::jsonb), true)`,
+    }).where(eq(cmoAdRenders.id, render.id));
     throw err;
   }
 }
