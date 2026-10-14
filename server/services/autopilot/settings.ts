@@ -184,3 +184,10 @@ export async function setGrowthBudgetOverrideUsd(
   cache = null;
   return getEffectiveSettings();
 }
+
+/** Execution-time publication check. A failed read refuses; the UI cache cannot authorize an effect. */
+export async function isPublishingEnabledFresh(): Promise<boolean> {
+  if (isPanicStopped()) return false;
+  const [row] = await db.select().from(autopilotSettings).where(eq(autopilotSettings.id, 1)).limit(1);
+  return !isPanicStopped() && (row?.publishEnabled ?? envPublish());
+}

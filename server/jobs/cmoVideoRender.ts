@@ -22,7 +22,7 @@ export interface CmoRenderPayload {
   aspectRatios?: Array<"9:16" | "1:1" | "16:9">;
 }
 
-export async function handleCmoRender(payload: CmoRenderPayload): Promise<{ bundleId: string }> {
+export async function handleCmoRender(payload: CmoRenderPayload): Promise<{ bundleId: string; renderCount?: number; requestedRenderCount?: number; renderCostCents?: number; decisionsInboxItemId?: number }> {
   // Idempotency: if a 'ready' render exists for this script, skip.
   const existingReady = await db.query.cmoAdRenders.findFirst({
     where: and(
@@ -55,5 +55,5 @@ export async function handleCmoRender(payload: CmoRenderPayload): Promise<{ bund
       `decision item ${result.decisionsInboxItemId}, total cost $${(result.costBreakdown.totalCents / 100).toFixed(2)}`,
   );
 
-  return { bundleId: result.bundleId };
+  return { bundleId: result.bundleId, renderCount: result.renders.length, requestedRenderCount: payload.aspectRatios?.length ?? 3, renderCostCents: result.costBreakdown.totalCents, decisionsInboxItemId: result.decisionsInboxItemId };
 }

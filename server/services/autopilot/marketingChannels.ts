@@ -102,13 +102,13 @@ export interface MarketingState {
   /** Owned-content publish switch (Control Center). Gates every free content channel. */
   publishEnabled: boolean;
   /** Real signups attributed to owned content — proof the free funnel converts. */
-  attributedSignups: number;
+  attributedSignups: number | null;
   /** Whether the growth domain has EARNED autonomy for spend/outbound. */
-  growthAutonomyEarned: boolean;
+  growthAutonomyEarned: boolean | null;
   /** A real ad provider is wired (adProvider) — else paid is dormant by absence. */
   paidProviderAvailable: boolean;
   /** economics.shouldRampBudget: healthy CAC proven from real attributed conversion. */
-  cacProven: boolean;
+  cacProven: boolean | null;
 }
 
 /** Attributed signups below which the free funnel is NOT yet proven (don't pay). */
@@ -130,7 +130,7 @@ export interface ChannelDecision {
  *       has proven it converts (attributed signups ≥ threshold) AND CAC is healthy.
  */
 export function evaluateMarketingChannels(state: MarketingState): ChannelDecision[] {
-  const funnelProven = state.attributedSignups >= FUNNEL_PROVEN_MIN_SIGNUPS && state.cacProven;
+  const funnelProven = state.attributedSignups !== null && state.attributedSignups >= FUNNEL_PROVEN_MIN_SIGNUPS && state.cacProven === true;
   return MARKETING_CHANNELS.map((channel) => {
     if (channel.costClass === "free" && channel.kind !== "outbound") {
       return state.publishEnabled
@@ -145,7 +145,7 @@ export function evaluateMarketingChannels(state: MarketingState): ChannelDecisio
     // Paid — the "when the time is right" gate.
     if (!state.paidProviderAvailable) return { channel, eligible: false, reason: "no ad provider wired — paid is dormant by absence" };
     if (!state.growthAutonomyEarned) return { channel, eligible: false, reason: "growth domain has not earned paid-spend autonomy" };
-    if (!funnelProven) return { channel, eligible: false, reason: `free funnel not yet proven (${state.attributedSignups}/${FUNNEL_PROVEN_MIN_SIGNUPS} attributed signups + healthy CAC) — don't pay to fill a funnel you haven't proven` };
+    if (!funnelProven) return { channel, eligible: false, reason: `free funnel not yet proven (${state.attributedSignups ?? "unavailable"}/${FUNNEL_PROVEN_MIN_SIGNUPS} attributed signups + healthy CAC) — don't pay to fill a funnel you haven't proven` };
     return { channel, eligible: true, reason: "free funnel proven + CAC healthy + autonomy earned — amplify what already converts" };
   });
 }
@@ -177,14 +177,29 @@ export async function readMarketingState(): Promise<MarketingState> {
   } catch {
     /* dormant by absence */
   }
-  // Attributed conversion + earned autonomy + proven CAC are 0/false until real
-  // outcomes accrue (needs customers). Conservative defaults keep paid LOCKED.
+  let attributedSignups: number | null = null;
+  let growthAutonomyEarned: boolean | null = null;
+  try {
+    const { readConversionSummary } = await import("./attribution");
+    attributedSignups = (await readConversionSummary()).totalSignups;
+  } catch {
+    // Unknown remains unknown; it cannot establish funnel proof.
+  }
+  try {
+    const { getDomainLevel } = await import("./domainAutonomy");
+    const level = await getDomainLevel("growth");
+    growthAutonomyEarned = level === "execute_gated" || level === "autonomous_gated";
+  } catch {
+    // Failed trust reads cannot grant authority.
+  }
+  // Signup attribution is observational and not a paid cohort/invoice/refund
+  // join. Do not certify paid CAC from it or from a blended tier-count metric.
   return {
     publishEnabled,
-    attributedSignups: 0,
-    growthAutonomyEarned: false,
+    attributedSignups,
+    growthAutonomyEarned,
     paidProviderAvailable,
-    cacProven: false,
+    cacProven: null,
   };
 }
 

@@ -4623,7 +4623,7 @@ Resolving commits: this branch, round 3
 ### DEFECT-0169
 Title: Lead pickers and lookups read the first page of leads
 Severity: P2
-Status: OPEN
+Status: PARTIAL (2026-10-13)
 Surfaced by lenses: DEFECT-0168 audit, 2026-09-28
 Description: The offers page (`client/src/pages/offers.tsx`) reads
 `fetchJsonArray('/api/leads')`, which is the first page of 25 rows. It
@@ -4635,7 +4635,14 @@ finance's borrower lookup is not affected.
 The leads route already takes `q`. The fix mirrors DEFECT-0168: a
 server-searched lead picker, by-id lookups, and a population register over
 every lead read shape.
-Resolving commits: —
+Progress (2026-10-13): offers now uses the existing SQL q/pagination endpoint,
+shows the complete matching count and explicit page boundaries, retains selected
+ids across pages and resolves letter/selected identities by id. Failed searches
+show unavailable and retain work. Three DOM cases exercise older-lead search,
+page changes and failed reads. The population register and remaining lead-picker
+census are still open; the legacy hook's claimed 10,000 ceiling is also stale:
+its requested limit 250 is clamped to 100 by the route, so 40 pages is 4,000.
+Resolving commits: directed readiness branch, offer consumer only
 ### DEFECT-0170
 Title: Exports and book-wide money figures silently dropped an org's oldest rows past 5000
 Severity: P1
@@ -6759,6 +6766,27 @@ Remediation: `scripts/npm-audit-gate.mjs` prints every critical/high finding wit
 Falsified: `tests/unit/npmAuditGate.test.ts` — 12 cases, including an accepted advisory reaching a production package, a second production copy, a mixed advisory chain, expiry and staleness; each of the dev-only, any-copy, expiry and staleness checks was removed in turn and went red.
 Resolving commits: W10.1b follow-up
 
+### DEFECT-0285
+Title: Trust graduation stores have historical SQL but never reach the Fly release command
+Severity: P2
+Status: PARTIAL (2026-10-13; source repair local, release-only PostgreSQL and live proof pending)
+Surfaced by lenses: directed readiness execution and authenticated Job health read
+Description: The live Job health page showed agent_retract_cron repeatedly failing its initial SELECT from agent_proposal_observations (including Oct13 19:49:55 ET). The UI shows the query, not its underlying PostgreSQL cause; a missing table/column or permission failure is not independently established. Source inspection establishes a separate concrete defect: migrations/0078_pillar_r_trust_graduation.sql declares both trust stores and five indexes, but none appeared in the executable STATEMENTS array of scripts/migrate.mjs. Fly's release_command runs that script alone; schema rebuild CI first applies historical SQL, concealing this release-path omission.
+Evidence: fly.toml; server/services/agentRetractCron.ts; shared/schema.ts; migrations/0078_pillar_r_trust_graduation.sql; scripts/migrate.mjs; live /job-health UI. No live job was retried and no production DDL was executed.
+Remediation: Mirror the seven existing idempotent CREATE statements into the release array. tests/unit/trustGraduationReachesRelease.test.ts reads executable literal array entries and checks complete definition parity. tests/unit/trustGraduationReachesRelease.realdb.test.ts applies those entries twice in an empty transaction-local schema, then performs both actual ORM reads, without historical migrations masking an omission; the entire fixture transaction rolls back. Local PostgreSQL is unavailable, so that proof must run in the required schema-building CI jobs. A CREATE IF NOT EXISTS does not repair arbitrary partial tables; inspect the live catalog and underlying failure before claiming recovery.
+Resolving commits: local directed execution; not deployed
+
+### DEFECT-0286
+Title: Video reviews could be resolved by competing generic writers without their asset/outbox transaction
+Severity: P2
+Status: PARTIAL (2026-10-13; independent source audit cleared repairs, real-db/full CI pending)
+Surfaced by lenses: independent completeness audit of directed Growth execution
+Description: CMO reject was nontransactional and accepted already-resolved cards; concurrent approval could overwrite a rejected render and queue publication while the final inbox said rejected. Generic service/chat approvals, scheduled autonomous triage, notification PATCH, purge and reverse could also resolve the inbox alone. Growth progress sent founders to a Decisions row without an actionable video-review handoff. The source audit traced 36 update/delete sites across eight files to establish the live mutation population.
+Remediation: Dedicated approve/reject claim the same pending inbox/context snapshot within their card/render/note/outbox transaction, mutate only ready assets belonging to the validated bundle, and record chosen destinations. Legacy producer-shaped pending cards read bundleId from actionPayload and normalize it into the approved context; new producer contexts include it. The worker verifies current approved review, destination and asset before upload and object creation; receipt writes preserve aggregate status. Generic service/chat methods, executor selection/processing, notification PATCH, purge and reverse refuse or exclude CMO resolution. Decisions and Growth progress hand off to the mounted video reviewer over the same queue. No historical cards were repaired or removed.
+Evidence: server/routes-cmo.ts; server/jobs/cmoBroadcast.ts; server/services/decisionsInbox.ts; server/services/autonomousDecisionExecutor.ts; server/routes-rosy-river.ts; server/routes-founder-intelligence.ts; server/services/cmo/renderOrchestrator.ts; client/src/pages/founder-decisions.tsx; client/src/components/founder/growth-workspace.tsx.
+Falsified/verified: tests/unit/cmoApprovalQueue.test.ts; tests/unit/cmoPublicationReceipts.test.ts; tests/unit/cmoGenericResolutionRefused.test.ts; tests/unit/cmoAutonomousResolutionRefused.test.ts; tests/unit/cmoNotificationResolutionRefused.test.ts; tests/unit/growthWorkspace.test.tsx. Consolidated repair run: 56 pass, two real-db concurrency/rollback cases skip locally (tests/unit/cmoReviewResolution.realdb.test.ts). These must run in schema-building CI. Independent reviewer found no remaining concrete blocker in the final source diff. Full CI subsequently found two added platform-read exemptions exceeded the fixed ceiling (18 versus 16). The narrowed repair removes both exemptions without raising the ceiling: worker reads require the founder-global lane, generic approval reuses its original lookup, and all generic updates require returned CMO-excluding rows. Independent review cleared that actual diff. A third real-DB case proves all four generic methods leave video state untouched; revised-head CI remains required. Exact content/account revision hashes, atomic spend reservations and real-provider evidence remain open acceptance work.
+Resolving commits: directed execution audit repairs, not deployed
+
 ### REFUTED AT HEAD, 2026-09-27
 
 The research report ("AcreOS at full maturity", pinned at `a2dc971`) was
@@ -6795,10 +6823,10 @@ not implemented against.
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
-| OPEN   | 0   | 0   | 19  | 19    |
+| OPEN   | 0   | 0   | 21  | 21    |
 | FIXED  | 14  | 132 | 117 | 263   |
 | DEFERRED | 0 | 2   | 0   | 2     |
-| **Total** | **14** | **134** | **136** | **284** |
+| **Total** | **14** | **134** | **138** | **286** |
 
 Recounted from the entries themselves on 2026-09-28 (184 `### DEFECT-` blocks
 by their Status and Severity lines; DEFECT-0063 PARTIALLY FIXED is counted as

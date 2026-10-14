@@ -1,5 +1,13 @@
 # MASTER PLAN
 
+> **Execution authority updated 2026-10-13:** this document retains the older
+> canonical-architecture program's rationale and evidence snapshot. Current
+> readiness/native Growth execution state and the single active next-up list
+> live in [October roadmap §I](../company/roadmap-2026-10.md#i-directed-readiness-and-native-growth-execution--2026-10-13).
+> Revalidate historical counts/"verified" rows against current consumers; they
+> do not certify deployed readiness. `CLAUDE.md`, the constitution and the
+> machine-readable canon retain their governing authority.
+
 **Read `NEXT_UP.md` first** — it is the resumable state. This file is the
 program's reasoning: how the target architecture was derived, what order the
 work must happen in, and why.

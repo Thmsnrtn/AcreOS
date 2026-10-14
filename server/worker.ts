@@ -44,6 +44,7 @@
 
 // FIRST: refuse blocked outbound sources on every fetch (founder decision 2026-10-11).
 import "./outboundGuard";
+import { generationReceipt } from "@shared/cmo/generationProgress";
 import { pool, db } from "./db";
 import { outbox, outboxDlq, workerHeartbeat } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
@@ -438,12 +439,14 @@ async function reapOrphanedOutbox(): Promise<void> {
   }
 }
 
-async function markSent(id: number, _result: unknown): Promise<void> {
+async function markSent(id: number, result: unknown, eventType: string): Promise<void> {
+  const receipt = ["cmo.manual-generate", "cmo.render-script"].includes(eventType) ? generationReceipt(result) : null;
   await db
     .update(outbox)
     .set({
       status: "sent",
       sentAt: clock.now(),
+      ...(receipt ? { payload: sql`jsonb_set(${outbox.payload}, '{generationReceipt}', ${JSON.stringify(receipt)}::jsonb, true)` } : {}),
     })
     .where(eq(outbox.id, id));
 }
@@ -561,9 +564,9 @@ async function processOne(row: {
     // a scheduled-tick producer with no upstream request), a fresh context
     // is minted so consumer work is always traceable.
     const result = await runWithRestoredTraceContext(row.payload, () =>
-      handler(row.payload),
+      handler(row.eventType === "cmo.manual-generate" ? { ...row.payload, generationJobId: row.id } : row.payload),
     );
-    await markSent(row.id, result);
+    await markSent(row.id, result, row.eventType);
     logger.info(`[worker] ${row.eventType} #${row.id} sent`, {
       metadata: { durationMs: clock.nowMs() - started },
     });

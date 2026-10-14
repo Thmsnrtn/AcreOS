@@ -21,14 +21,12 @@
  */
 
 import { readFileSync, existsSync } from "fs";
-import { join, dirname } from "path";
-import { fileURLToPath } from "url";
+import { join } from "path";
 import { logger } from "../utils/logger";
 import type { LandStatus } from "@shared/schema";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
 const LAR_GEOJSON_PATH = process.env.BIA_LAR_GEOJSON_PATH
-  ?? join(__dirname, "..", "..", "data", "bia-lar.geojson");
+  ?? join(process.cwd(), "data", "bia-lar.geojson");
 
 export interface LarDetectionResult {
   /** Detected land status. `unknown` when no LAR polygon contains the point. */
