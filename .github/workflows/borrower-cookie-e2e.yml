@@ -140,13 +140,30 @@ jobs:
             echo "::error::no started machine found on $APP"; exit 1
           fi
           echo "Seeding fixture on machine $MACHINE_ID ($APP)"
-          SEED_B64=$(base64 -w0 scripts/seed-test-borrower.mjs)
-          fly machine exec "$MACHINE_ID" --app "$APP" \
-            "sh -c 'echo $SEED_B64 | base64 -d > /app/seed-borrower.mjs && cd /app && node seed-borrower.mjs seed'"
+          # Prefer the in-image script (no transfer). Fall back to base64
+          # transfer only if scripts/ isn't in the deployed image.
+          if fly machine exec "$MACHINE_ID" --app "$APP" "test -f /app/scripts/seed-test-borrower.mjs"; then
+            echo "using in-image scripts/seed-test-borrower.mjs"
+            fly machine exec "$MACHINE_ID" --app "$APP" \
+              "cd /app && node scripts/seed-test-borrower.mjs seed"
+          else
+            echo "transferring seeder via base64"
+            SEED_B64=$(base64 -w0 scripts/seed-test-borrower.mjs)
+            fly machine exec "$MACHINE_ID" --app "$APP" \
+              "sh -c 'echo $SEED_B64 | base64 -d > /app/seed-borrower.mjs && cd /app && node seed-borrower.mjs seed'"
+          fi
           fly machine exec "$MACHINE_ID" --app "$APP" \
             "cat /app/.test-borrower-credentials.json" > .test-borrower-credentials.json
           if [ ! -s .test-borrower-credentials.json ]; then
             echo "::error::seeder did not produce .test-borrower-credentials.json"
+            exit 1
+          fi
+          # The credentials file must be valid JSON — a failed `fly machine exec`
+          # writes "Exit code: N" to stdout, which would otherwise poison the
+          # spec's JSON.parse with a confusing SyntaxError.
+          if ! node -e "JSON.parse(require('fs').readFileSync('.test-borrower-credentials.json','utf8'))" 2>/dev/null; then
+            echo "::error::seeder produced invalid JSON credentials file:"
+            cat .test-borrower-credentials.json
             exit 1
           fi
           echo "Fixture seeded; credentials retrieved."
