@@ -52,9 +52,27 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
+    # Throwaway Postgres for the E2E global setup (pushes schema + seeds test
+    # identities). pgvector image because the schema has a vector column.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: acreos_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     env:
       TARGET_URL: ${{ github.event.inputs.target_url || secrets.TARGET_URL }}
       E2E_TEST_AUTH_TOKEN: ${{ secrets.E2E_TEST_AUTH_TOKEN }}
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/acreos_e2e
       CI: "true"
 
     steps:
