@@ -36,12 +36,10 @@ import crypto from "crypto";
 import { sql, desc, eq, gte } from "drizzle-orm";
 
 import { unscopedForPlatformOps } from "./utils/orgScopedDb";
-// Platform-ops aggregates (cross-org by design — this is the COO's
-// morning-brief data, not a tenant view). The reason string is logged
-// and greppable via `git grep unscopedForPlatformOps`.
-const opsDb = unscopedForPlatformOps(
-  "AI COO ops API: cross-org cost/user aggregates for /api/ops/summary and /api/ops/costs (read-only, bearer-token gated)"
-);
+// NOTE: unscopedForPlatformOps() MUST be called inside each function/handler
+// body, not at module scope. The org-scoped-fetch lint is purely textual per
+// extracted unit — a stored handle referenced as bare `opsDb` does not carry
+// the marker into the unit's text. Three deploy attempts died on this.
 import {
   aiUsageDaily,
   costOptimizationRuns,
@@ -93,6 +91,10 @@ function toNum(v: unknown): number {
 }
 
 async function getInfraSnapshot() {
+  // Hatch must live inside the unit body for the org-scoped-fetch lint.
+  const opsDb = unscopedForPlatformOps(
+    "AI COO ops API getInfraSnapshot: cross-org cost run aggregates (read-only)"
+  );
   const rows = await opsDb
     .select({
       runAt: costOptimizationRuns.runAt,
@@ -123,6 +125,10 @@ export function registerOpsRoutes(app: Express): void {
   // Morning-brief payload: one call, everything the COO checks daily.
   app.get("/api/ops/summary", opsServiceAuth, async (_req: Request, res: Response) => {
     try {
+      // Hatch must live inside the unit body for the org-scoped-fetch lint.
+      const opsDb = unscopedForPlatformOps(
+        "AI COO ops API /api/ops/summary: cross-org AI spend and org/user counts (read-only)"
+      );
       const monthStart = thisMonthStart();
 
       const [monthRows, orgRows, userRows, infraSnapshot] = await Promise.all([
@@ -157,6 +163,12 @@ export function registerOpsRoutes(app: Express): void {
   // Full cost breakdown — same sources as /api/founder/cost-summary.
   app.get("/api/ops/costs", opsServiceAuth, async (_req: Request, res: Response) => {
     try {
+      // Hatch must live inside the unit body for the org-scoped-fetch lint.
+      // (This handler previously passed incidentally via an organizationId
+      // select; make the exemption explicit so refactors can't re-break it.)
+      const opsDb = unscopedForPlatformOps(
+        "AI COO ops API /api/ops/costs: cross-org cost breakdown aggregates (read-only)"
+      );
       const monthStart = thisMonthStart();
 
       const [monthRows, infraSnapshot, perOrgRows] = await Promise.all([
