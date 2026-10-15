@@ -93,7 +93,7 @@ function toNum(v: unknown): number {
 }
 
 async function getInfraSnapshot() {
-  const rows = await db
+  const rows = await opsDb
     .select({
       runAt: costOptimizationRuns.runAt,
       totalAiCostUsd: costOptimizationRuns.totalAiCostUsd,
@@ -126,7 +126,7 @@ export function registerOpsRoutes(app: Express): void {
       const monthStart = thisMonthStart();
 
       const [monthRows, orgRows, userRows, infraSnapshot] = await Promise.all([
-        db
+        opsDb
           .select({
             totalUsd: sql<string>`SUM(${aiUsageDaily.totalUsd})`,
             totalCalls: sql<string>`SUM(${aiUsageDaily.callCount})`,
@@ -160,7 +160,7 @@ export function registerOpsRoutes(app: Express): void {
       const monthStart = thisMonthStart();
 
       const [monthRows, infraSnapshot, perOrgRows] = await Promise.all([
-        db
+        opsDb
           .select({
             totalUsd: sql<string>`SUM(${aiUsageDaily.totalUsd})`,
             totalCalls: sql<string>`SUM(${aiUsageDaily.callCount})`,
@@ -168,7 +168,7 @@ export function registerOpsRoutes(app: Express): void {
           .from(aiUsageDaily)
           .where(gte(aiUsageDaily.date, monthStart)),
         getInfraSnapshot(),
-        db
+        opsDb
           .select({
             organizationId: aiUsageDaily.organizationId,
             orgName: organizations.name,
@@ -188,12 +188,19 @@ export function registerOpsRoutes(app: Express): void {
         aiSpendThisMonthUsd: toNum(monthRows[0]?.totalUsd),
         aiCallsThisMonth: Math.round(toNum(monthRows[0]?.totalCalls)),
         infraSnapshot,
-        topOrgs: perOrgRows.map((r) => ({
-          organizationId: r.organizationId,
-          organizationName: r.orgName ?? `Org ${r.organizationId}`,
-          usd: toNum(r.totalUsd),
-          calls: Math.round(toNum(r.totalCalls)),
-        })),
+        topOrgs: perOrgRows.map(
+          (r: {
+            organizationId: number | null;
+            orgName: string | null;
+            totalUsd: string | null;
+            totalCalls: string | null;
+          }) => ({
+            organizationId: r.organizationId,
+            organizationName: r.orgName ?? `Org ${r.organizationId}`,
+            usd: toNum(r.totalUsd),
+            calls: Math.round(toNum(r.totalCalls)),
+          }),
+        ),
       });
     } catch (err) {
       logger.error("[/api/ops/costs] failed", err instanceof Error ? err : undefined);
