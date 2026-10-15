@@ -242,6 +242,7 @@ import { registerFounderPaidDataEvalRoutes } from "./routes-founder-paid-data-ev
 import { registerCountyCoverageRoutes } from "./routes-county-coverage";
 import { registerLandDataRoutes } from "./routes-land-data";
 import { registerFounderCostRoutes } from "./routes-founder-cost";
+import { registerOpsRoutes } from "./routes-ops";
 import { registerFounderAuditRoutes } from "./routes-founder-audit";
 import { registerFounderLifeCockpitRoutes } from "./routes-founder-life-cockpit";
 import { registerPublicDealRoomRoute } from "./routes-deal-rooms";
@@ -2572,6 +2573,9 @@ export async function registerRoutes(
   // Cost summary — /api/founder/cost-summary. Consolidated cost view for
   // the /founder/cost screen (AI spend + infra + per-org breakdown).
   registerFounderCostRoutes(app);
+  // Ops service API — machine-readable operations for the AI COO.
+  // GET-only, bearer-token auth (OPS_SERVICE_TOKEN). See routes-ops.ts.
+  registerOpsRoutes(app);
   // Domain-audit cockpit — /api/founder/audit-findings — the shared
   // continuous-audit substrate's founder "is it green?" read surface +
   // acknowledge/resolve. Founder-only. Company-level (no org scope).
