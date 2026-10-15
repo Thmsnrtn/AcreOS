@@ -1,3 +1,5 @@
+import type { CmoPublicationProof } from "@shared/cmo/publicationAssets";
+import type { CmoPublicationDestination } from "@shared/cmo/publication";
 /**
  * /founder/cmo — the single surface the founder uses to review and ship ads.
  *
@@ -14,7 +16,7 @@
  * Approve = two-step confirm. Reject = tag picker + freeform note.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useCallback, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { QueryErrorState } from "@/components/query-error-state";
 import {
@@ -48,6 +50,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { Verbs } from "@/lib/labels";
 
 interface RenderShape {
+  manifestJson?: { publication?: CmoPublicationProof };
   id: string;
   aspectRatio: "9:16" | "1:1" | "16:9";
   storagePath: string;
@@ -57,6 +60,13 @@ interface RenderShape {
   costBreakdown: { totalCents: number; voiceCents: number; renderCents: number; scriptCents: number; scoringCents: number };
   durationSec: number;
   broadcastAt?: string;
+}
+
+function reviewAssetSrc(render: RenderShape): string {
+  const query = new URLSearchParams({ key: render.storagePath.replace(/^local:/, "") });
+  const revision = render.manifestJson?.publication?.video?.sha256;
+  if (revision) { query.set("renderId", render.id); query.set("assetRevision", revision); }
+  return `/api/founder/cmo/asset?${query}`;
 }
 
 interface InboxItem {
@@ -78,6 +88,9 @@ interface InboxItem {
 }
 
 interface Pending {
+  reviewRevision: string;
+  destinations: CmoPublicationDestination[];
+  approvalAvailable: boolean;
   inboxItem: InboxItem;
   renders: RenderShape[];
 }
@@ -133,7 +146,7 @@ export default function FounderCmoPage() {
   });
 
   const [expandedItemId, setExpandedItemId] = useState<number | null>(null);
-  const [approveTarget, setApproveTarget] = useState<InboxItem | null>(null);
+  const [approveTarget, setApproveTarget] = useState<Pending | null>(null);
   const [rejectTarget, setRejectTarget] = useState<InboxItem | null>(null);
   const [approveMeta, setApproveMeta] = useState(true);
   const [approveTiktok, setApproveTiktok] = useState(true);
@@ -141,7 +154,7 @@ export default function FounderCmoPage() {
   const [rejectNote, setRejectNote] = useState("");
 
   const approve = useMutation({
-    mutationFn: async (args: { inboxItemId: number; platforms: string[] }) => {
+    mutationFn: async (args: { inboxItemId: number; reviewRevision: string; platforms: string[] }) => {
       return apiRequest("POST", "/api/founder/cmo/approve", args);
     },
     onSuccess: () => {
@@ -170,10 +183,17 @@ export default function FounderCmoPage() {
     },
   });
 
+  const openApproval = useCallback((pending: Pending) => {
+    if (!pending.approvalAvailable || approve.isPending || reject.isPending) return;
+    setApproveMeta(pending.destinations.some(d => d.platform === "meta"));
+    setApproveTiktok(pending.destinations.some(d => d.platform === "tiktok"));
+    setApproveTarget(pending);
+  }, [approve.isPending, reject.isPending]);
+
   // Keyboard shortcuts (desktop). j/k to navigate, a to approve, r to reject.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (!data || data.pending.length === 0) return;
+      if (!data || data.pending.length === 0 || approveTarget || rejectTarget || approve.isPending || reject.isPending) return;
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
 
       const current = expandedItemId
@@ -188,7 +208,7 @@ export default function FounderCmoPage() {
         setExpandedItemId(data.pending[prev].inboxItem.id);
       } else if (e.key === "a" && expandedItemId) {
         const item = data.pending.find((p) => p.inboxItem.id === expandedItemId);
-        if (item) setApproveTarget(item.inboxItem);
+        if (item) openApproval(item);
       } else if (e.key === "r" && expandedItemId) {
         const item = data.pending.find((p) => p.inboxItem.id === expandedItemId);
         if (item) setRejectTarget(item.inboxItem);
@@ -196,7 +216,7 @@ export default function FounderCmoPage() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [data, expandedItemId]);
+  }, [data, expandedItemId, approveTarget, rejectTarget, approve.isPending, reject.isPending, openApproval]);
 
   if (isError) return <PageShell label="CMO ad engine"><QueryErrorState error={error} title="Ad engine unavailable" description="We couldn't read the review queue. This does not mean it is empty." onRetry={() => void refetch()} isRetrying={isFetching} /></PageShell>;
 
@@ -241,15 +261,16 @@ export default function FounderCmoPage() {
             />
           ) : (
             <div className="grid grid-cols-1 gap-3">
-              {data.pending.map(({ inboxItem, renders }) => (
+              {data.pending.map((pending) => (
                 <PendingBundleCard
-                  key={inboxItem.id}
-                  item={inboxItem}
-                  renders={renders}
-                  expanded={expandedItemId === inboxItem.id}
-                  onToggle={() => setExpandedItemId((prev) => (prev === inboxItem.id ? null : inboxItem.id))}
-                  onApprove={() => setApproveTarget(inboxItem)}
-                  onReject={() => setRejectTarget(inboxItem)}
+                  key={pending.inboxItem.id}
+                  item={pending.inboxItem}
+                  renders={pending.renders}
+                  approvalAvailable={pending.approvalAvailable}
+                  expanded={expandedItemId === pending.inboxItem.id}
+                  onToggle={() => setExpandedItemId((prev) => (prev === pending.inboxItem.id ? null : pending.inboxItem.id))}
+                  onApprove={() => openApproval(pending)}
+                  onReject={() => setRejectTarget(pending.inboxItem)}
                 />
               ))}
             </div>
@@ -318,27 +339,45 @@ export default function FounderCmoPage() {
       </div>
 
       {/* APPROVE CONFIRMATION */}
-      <Dialog open={approveTarget !== null} onOpenChange={(open) => !open && setApproveTarget(null)}>
-        <DialogContent>
+      <Dialog open={approveTarget !== null} onOpenChange={(open) => !open && !approve.isPending && setApproveTarget(null)}>
+        <DialogContent className="max-h-[90dvh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Broadcast this bundle?</DialogTitle>
             <DialogDescription>
               Pick the platforms. The bundle's renders will be queued for the selected destinations. Meta creates an ad creative; TikTok creates an ad object. Neither receipt confirms delivery. Uncertain provider outcomes need reconciliation before retry.
             </DialogDescription>
           </DialogHeader>
+          {approveTarget && <div className="space-y-2 text-sm">
+            <p className="font-semibold">{approveTarget.inboxItem.contextBundle.scriptHook}</p>
+            <p>{approveTarget.inboxItem.contextBundle.scriptBody}</p>
+            <p>{approveTarget.inboxItem.contextBundle.scriptCta}</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {approveTarget.renders.map(render => <div key={render.id}>
+                <video controls playsInline preload="metadata" className="w-full max-h-48 object-contain rounded-card" aria-label={`Review ${render.aspectRatio} render`}
+                  src={reviewAssetSrc(render)} />
+                <p className="text-xs text-muted-foreground">{render.aspectRatio} · {render.durationSec}s</p>
+                {render.manifestJson?.publication?.copy && <div className="text-xs space-y-1">
+                  <p>Meta headline: {render.manifestJson.publication.copy.headline}</p>
+                  <p>Meta text: {render.manifestJson.publication.copy.primaryText}</p>
+                  <p>TikTok text: {render.manifestJson.publication.copy.adText}</p>
+                  <p className="break-all">Destination: {render.manifestJson.publication.copy.ctaUrl}</p>
+                </div>}
+              </div>)}
+            </div>
+          </div>}
           <div className="space-y-2 py-2">
             <label className="flex items-center gap-3 p-3 rounded-card border cursor-pointer">
-              <Checkbox checked={approveMeta} onCheckedChange={(v) => setApproveMeta(!!v)} />
+              <Checkbox disabled={!approveTarget?.destinations.some(d => d.platform === "meta")} checked={approveMeta} onCheckedChange={(v) => setApproveMeta(!!v)} />
               <div>
                 <div className="font-medium text-sm">Meta (Facebook + Instagram)</div>
-                <div className="text-xs text-muted-foreground">Uses 1:1 + 9:16 + 16:9</div>
+                <div className="text-xs text-muted-foreground">{approveTarget?.renders.filter(r => approveTarget.destinations.some(d => d.platform === "meta" && d.renderId === r.id)).map(r => r.aspectRatio).join(" + ") || "No eligible renders"}</div>
               </div>
             </label>
             <label className="flex items-center gap-3 p-3 rounded-card border cursor-pointer">
-              <Checkbox checked={approveTiktok} onCheckedChange={(v) => setApproveTiktok(!!v)} />
+              <Checkbox disabled={!approveTarget?.destinations.some(d => d.platform === "tiktok")} checked={approveTiktok} onCheckedChange={(v) => setApproveTiktok(!!v)} />
               <div>
                 <div className="font-medium text-sm">TikTok</div>
-                <div className="text-xs text-muted-foreground">Uses 9:16</div>
+                <div className="text-xs text-muted-foreground">{approveTarget?.renders.filter(r => approveTarget.destinations.some(d => d.platform === "tiktok" && d.renderId === r.id)).map(r => r.aspectRatio).join(" + ") || "No eligible portrait render"}</div>
               </div>
             </label>
           </div>
@@ -356,7 +395,7 @@ export default function FounderCmoPage() {
                   toast({ title: "Pick at least one platform", variant: "destructive" });
                   return;
                 }
-                approve.mutate({ inboxItemId: approveTarget.id, platforms });
+                approve.mutate({ inboxItemId: approveTarget.inboxItem.id, reviewRevision: approveTarget.reviewRevision, platforms });
               }}
               disabled={approve.isPending}
               className="gap-2"
@@ -439,6 +478,7 @@ export default function FounderCmoPage() {
 function PendingBundleCard({
   item,
   renders,
+  approvalAvailable,
   expanded,
   onToggle,
   onApprove,
@@ -446,6 +486,7 @@ function PendingBundleCard({
 }: {
   item: InboxItem;
   renders: RenderShape[];
+  approvalAvailable: boolean;
   expanded: boolean;
   onToggle: () => void;
   onApprove: () => void;
@@ -493,7 +534,7 @@ function PendingBundleCard({
                     playsInline
                     preload="metadata"
                     className="w-full rounded-card bg-black aspect-[9/16] md:aspect-video lg:aspect-[9/16] max-h-[60vh] object-contain"
-                    src={`/api/founder/cmo/asset?key=${encodeURIComponent(headline.storagePath.replace(/^local:/, ""))}`}
+                    src={reviewAssetSrc(headline)}
                   />
                 ) : (
                   <div className="aspect-video rounded-card border bg-muted flex items-center justify-center text-muted-foreground text-sm">
@@ -544,7 +585,7 @@ function PendingBundleCard({
                 <XCircle className="w-4 h-4" aria-hidden="true" />
                 Reject
               </Button>
-              <Button onClick={onApprove} className="gap-2">
+              <Button onClick={onApprove} disabled={!approvalAvailable} className="gap-2">
                 <Send className="w-4 h-4" aria-hidden="true" />
                 Approve &amp; broadcast
               </Button>

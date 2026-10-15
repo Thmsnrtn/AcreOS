@@ -1,3 +1,7 @@
+import type { CmoApprovedAsset } from "@shared/cmo/publicationAssets";
+import { approvedAssetFromRender, verifyApprovedVideoBytes, publicationAssetRevision } from "./services/cmo/publicationAssets";
+import { cmoPublicationDestinations } from "@shared/cmo/publication";
+import { cmoReviewRevision } from "./services/cmo/reviewRevision";
 import { projectGenerationJob } from "@shared/cmo/generationProgress";
 /**
  * CMO ad engine routes — founder-only.
@@ -34,7 +38,7 @@ import {
   outbox,
   outboxDlq,
 } from "@shared/schema";
-import { eq, desc, and, inArray, sql } from "drizzle-orm";
+import { eq, desc, asc, and, inArray, sql } from "drizzle-orm";
 import { isAuthenticated, requireFounder } from "./auth/clerkAuth";
 import { logger } from "./utils/logger";
 import { stampTraceContext } from "./utils/queueTraceContext";
@@ -61,6 +65,7 @@ const generationRequestSchema = z.object({
 
 const approvalRequestSchema = z.object({
   inboxItemId: z.number().int().positive(),
+  reviewRevision: z.string().regex(/^[a-f0-9]{64}$/),
   platforms: z.array(z.enum(["meta", "tiktok"])).min(1).max(2).default(["meta", "tiktok"])
     .refine((platforms) => new Set(platforms).size === platforms.length, "Destinations must be unique"),
 }).strict();
@@ -131,12 +136,22 @@ export function registerCmoRoutes(app: Express) {
 
     res.json({
       brandProfile: brand,
-      pending: pendingItems.map((item) => ({
-        inboxItem: item,
-        renders: ((item.contextBundle as { renders?: Array<{ id: string }> } | null)?.renders ?? [])
-          .map((r) => rendersById.get(r.id))
-          .filter(Boolean),
-      })),
+      pending: pendingItems.map((item) => {
+        const references = (item.contextBundle as { renders?: Array<{ id: string }> } | null)?.renders ?? [];
+        const reviewRenders = references.map((r) => rendersById.get(r.id)).filter((r): r is typeof renders[number] => Boolean(r));
+        const bundleId = (item.contextBundle as { bundleId?: string } | null)?.bundleId ?? (item.actionPayload as { bundleId?: string } | null)?.bundleId;
+        const approvalAvailable = references.length > 0 && new Set(references.map(r => r.id)).size === references.length &&
+          reviewRenders.length === references.length && Boolean(bundleId) && reviewRenders.every(r => {
+            if (r.status !== "ready" || r.bundleId !== bundleId) return false;
+            try { approvedAssetFromRender(r); return true; } catch { return false; }
+          });
+        return {
+          inboxItem: item, renders: reviewRenders,
+          reviewRevision: cmoReviewRevision(item, reviewRenders),
+          destinations: approvalAvailable ? cmoPublicationDestinations(reviewRenders, ["meta", "tiktok"]) : [],
+          approvalAvailable,
+        };
+      }),
       live: recentLive,
       archetypes,
       budget,
@@ -236,7 +251,7 @@ export function registerCmoRoutes(app: Express) {
   app.post("/api/founder/cmo/approve", isAuthenticated, requireFounder, async (req: AuthenticatedRequest, res: Response) => {
     const parsed = approvalRequestSchema.safeParse(req.body);
     if (!parsed.success) return Errors.badRequest(res, "Invalid publication approval");
-    const { inboxItemId, platforms: targetPlatforms } = parsed.data;
+    const { inboxItemId, reviewRevision, platforms: targetPlatforms } = parsed.data;
 
     const item = await db.query.decisionsInboxItems.findFirst({
       where: eq(decisionsInboxItems.id, inboxItemId),
@@ -259,37 +274,43 @@ export function registerCmoRoutes(app: Express) {
 
     // Claim the specific pending decision and enqueue all destinations in the
     // same transaction. A racing approval cannot create a second batch.
-    const queued = await db.transaction(async (tx) => {
+    const result = await db.transaction(async (tx) => {
+      const [lockedItem] = await tx.select().from(decisionsInboxItems).where(eq(decisionsInboxItems.id, inboxItemId)).for("update");
+      if (!lockedItem || lockedItem.status !== "pending" || lockedItem.itemType !== "cmo_ad_review") return { conflict: true } as const;
+      const lockedRenders = await tx.select().from(cmoAdRenders).where(inArray(cmoAdRenders.id, renderIds)).orderBy(asc(cmoAdRenders.id)).for("update");
+      if (cmoReviewRevision(lockedItem, lockedRenders) !== reviewRevision) return { conflict: true } as const;
+      if (new Set(renderIds).size !== renderIds.length || lockedRenders.length !== renderIds.length ||
+        lockedRenders.some(r => r.bundleId !== bundleId || r.status !== "ready")) return { unavailable: true } as const;
+      const destinations = cmoPublicationDestinations(lockedRenders, targetPlatforms);
+      if (targetPlatforms.some(platform => !destinations.some(d => d.platform === platform))) return { unavailable: true } as const;
+      const approvedRenderIds = [...new Set(destinations.map(d => d.renderId))];
+      const approvedAssets: Record<string, CmoApprovedAsset> = {};
+      try { for (const render of lockedRenders.filter(r => approvedRenderIds.includes(r.id))) approvedAssets[render.id] = approvedAssetFromRender(render); }
+      catch { return { unavailable: true } as const; }
       const [claimed] = await tx.update(decisionsInboxItems).set({
         status: "approved", resolvedAt: clock.now(),
         resolvedBy: req.user?.email ?? "founder", updatedAt: clock.now(),
-        contextBundle: sql`jsonb_set(jsonb_set(${decisionsInboxItems.contextBundle}, '{bundleId}', ${JSON.stringify(bundleId)}::jsonb, true), '{approvedPlatforms}', ${JSON.stringify(targetPlatforms)}::jsonb, true)`,
+        contextBundle: sql`coalesce(${decisionsInboxItems.contextBundle}, '{}'::jsonb) || ${JSON.stringify({ bundleId, approvedPlatforms: targetPlatforms, approvedDestinations: destinations, approvedReviewRevision: reviewRevision, approvedAssets })}::jsonb`,
       }).where(and(eq(decisionsInboxItems.id, inboxItemId), eq(decisionsInboxItems.status, "pending"),
         sql`${decisionsInboxItems.contextBundle} = ${JSON.stringify(item.contextBundle)}::jsonb`,
       )).returning({ id: decisionsInboxItems.id });
-      if (!claimed) return null;
+      if (!claimed) return { conflict: true } as const;
       const updated = await tx.update(cmoAdRenders).set({
         status: "approved", approvedAt: clock.now(),
         approvedBy: req.user?.email ?? "founder", updatedAt: clock.now(),
-      }).where(and(inArray(cmoAdRenders.id, renderIds), eq(cmoAdRenders.bundleId, bundleId), eq(cmoAdRenders.status, "ready"))).returning({ id: cmoAdRenders.id });
-      if (updated.length !== new Set(renderIds).size) throw new Error("Review assets changed; approval not queued");
-      for (const platform of targetPlatforms) {
-        for (const renderId of new Set(renderIds)) {
-          await tx.insert(outbox).values({
-            eventType: "cmo.broadcast",
-            payload: stampTraceContext({ renderId, platform, bundleId, inboxItemId }),
-          });
-        }
+      }).where(and(inArray(cmoAdRenders.id, approvedRenderIds), eq(cmoAdRenders.bundleId, bundleId), eq(cmoAdRenders.status, "ready"))).returning({ id: cmoAdRenders.id });
+      if (updated.length !== approvedRenderIds.length) throw new Error("Review assets changed; approval not queued");
+      for (const { renderId, platform } of destinations) {
+        await tx.insert(outbox).values({
+          eventType: "cmo.broadcast",
+          payload: stampTraceContext({ renderId, platform, bundleId, inboxItemId, reviewRevision, assetRevision: publicationAssetRevision(approvedAssets[renderId]) }),
+        });
       }
-      return targetPlatforms.length * new Set(renderIds).size;
+      return { queued: destinations.length, approvedRenderIds } as const;
     });
-    if (queued === null) return sendError(res, 409, "CONFLICT", "Review already resolved; nothing else queued");
-
-    res.json({
-      ok: true,
-      approvedRenderIds: renderIds,
-      broadcastQueued: queued,
-    });
+    if ("conflict" in result) return sendError(res, 409, "CONFLICT", "Review changed or already resolved; refresh and review it again");
+    if ("unavailable" in result) return Errors.badRequest(res, "Selected destinations or ready review assets are unavailable");
+    res.json({ ok: true, approvedRenderIds: result.approvedRenderIds, broadcastQueued: result.queued });
   });
 
   app.post("/api/founder/cmo/reject", isAuthenticated, requireFounder, async (req: AuthenticatedRequest, res: Response) => {
@@ -368,11 +389,26 @@ export function registerCmoRoutes(app: Express) {
   });
 
   // ─── Asset download (gated streaming for local FS storage in v1) ────────
-  app.get("/api/founder/cmo/asset", isAuthenticated, requireFounder, async (req: Request, res: Response) => {
+  app.get("/api/founder/cmo/asset", isAuthenticated, requireFounder, async (req: AuthenticatedRequest, res: Response) => {
     const key = String(req.query.key ?? "");
     if (!key) return Errors.badRequest(res, "key is required");
 
     const storage = getStorage();
+    if (req.query.renderId !== undefined || req.query.assetRevision !== undefined) {
+      const { renderId, assetRevision } = req.query;
+      if (typeof renderId !== "string" || typeof assetRevision !== "string" || !/^[a-f0-9]{64}$/.test(assetRevision)) return Errors.badRequest(res, "Valid render and asset revision are required");
+      const render = await db.query.cmoAdRenders.findFirst({ where: eq(cmoAdRenders.id, renderId) });
+      if (!render || render.storagePath !== `local:${key}`) return Errors.notFound(res, "asset");
+      try {
+        const asset = approvedAssetFromRender(render);
+        if (asset.publication.video.sha256 !== assetRevision) throw new Error("Asset revision changed");
+        const bytes = Buffer.from(await storage.read(`local:${key}`));
+        verifyApprovedVideoBytes(bytes, asset);
+        res.setHeader("Content-Type", "video/mp4");
+        res.setHeader("Cache-Control", "private, no-store");
+        return res.send(bytes);
+      } catch { return sendError(res, 409, "CONFLICT", "Review video is unavailable or changed; refresh and review again"); }
+    }
     const exists = await storage.exists(`local:${key}` as `local:${string}`);
     if (!exists) return Errors.notFound(res, "asset");
 

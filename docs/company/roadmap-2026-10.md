@@ -452,7 +452,7 @@ manufactured locally. Blocked does not mean an account is missing in production.
 
 | Ticket | State | Evidence / actual work | Remaining acceptance or dependency |
 |---|---|---|---|
-| P0-01 | Partial | §I reconciles scope, LP state and active priorities; 22 registry entries currently OPEN/PARTIAL. | Current-consumer closure census and independent release review remain. |
+| P0-01 | Partial | §I reconciles scope, LP state and active priorities; 23 registry entries currently OPEN/PARTIAL. | Current-consumer closure census and independent release review remain. |
 | P0-02 | Partial | Public app and worker heartbeat both reported b852ce34; heartbeat fresh at 2026-10-13T12:48:25.446Z; cached health still degraded at 12:48:22.899Z. | Founder sign-in observed; authorized app/worker image, live catalog, release and migration reads remain. The live retract query fails; its underlying database cause and the degraded-health root cause remain unknown. |
 | P0-03 | Partial | tests/unit/deployGateRequiresCiAndSecurity.test.ts parses required CI/security job dependencies. | Isolated negative workflow run and separate rollback receipt; no production dispatch performed. |
 | P0-04 | Partial | Authenticated live Controls shows 4/13 setup rungs verified, two essential rungs left; canonical readinessLadder remains authority. | Resolve paging, confirm owner budgets and remaining account decisions; keys resolving is not a completed operational proof. |
@@ -480,14 +480,14 @@ manufactured locally. Blocked does not mean an account is missing in production.
 | G-01 | Partial | Merged in PR #352 at a85e02af after independent audit and all seven workflows / 14 checks passed, including full tests/coverage/build/security/mobile/customer journeys. | Main-branch release and live founder read-back remain separate proof; publication does not prove production behavior. |
 | G-02 | Partial | Existing outbox payload holds whitelisted completion receipt; children carry trusted parent ID; DLQ read survives terminal move; UI polls durable jobs. | Worker restart/key revocation/failed-ratio drill, provider cost completeness, cancellation and safe generation recovery. No automatic retry control added. |
 | G-03 | Partial | Transactional decision claim/enqueue; atomic per-platform manifest claim/merge; own destination receipt precedes aggregate status; uncertain outcome refuses replay; created objects no longer called live; performance consumer reads destination records. | Real-db concurrent claim/merge test, account/revision identity and upload/ad-review/organic URL reconciliation; legacy receipts do not prove delivery. |
-| G-04 | Partial | Fresh canonical publish/panic read before upload and object creation; destination config preflight; nonnegative integer operating caps validated; missing operating-budget row refuses generation. | Exact approved revision/account/assets, atomic spend reservation/invoice settlement and concurrent near-cap proof. Current budget gate is not a hard reservation. |
+| G-04 | Partial | Fresh canonical publish/panic read before upload and object creation; bounded upload-account identity guards and ambiguity refusals; destination config preflight; nonnegative integer operating caps validated; missing operating-budget row refuses generation. | Exact approved revision/account/assets, atomic spend reservation/invoice settlement and concurrent near-cap proof. Current budget gate is not a hard reservation. |
 | G-05 | Open | Existing growth-intelligence endpoint is analytics, not a sourced opportunity inbox; removed generic Sprout suggestion and failed-read-as-zero behavior. | Bounded sourced opportunities, retrieval/freshness/policy context, untrusted-input envelope and three useful moves; no public username outreach. |
 | G-06 | Open | Reuse marketingArtifacts, existing creative objects and canonical Decisions; no new calendar/approval database. | Revisioned educational artifacts/calendar, invalidated edited approvals, deduplicated scheduling and explicit manual handoff. |
 | G-07 | Open | Strict observational signup summary is a lower bound; failed source is unavailable. Existing outcomes/creator/billing remain their canonical records. | Windowed visit→signup→real outcome→paid→refund→retained joins, sample exclusions and unmatched attribution. No CAC or incremental revenue claim. |
 | G-08 | Partial | Read real attribution and canonical growth trust instead of constant zero/false; unknown remains null and locks paid eligibility. | Paid cohort/spend/refund evidence join, freshness/window/sample boundaries. CAC remains explicitly unknown; paid stays locked. |
 | G-09 | Blocked | Meta creative and TikTok ad APIs are paid instruments, not evidence of organic posting. Manual handoff remains possible. | Choose one supported adapter/account with owner permission; witnessed real approved publication/read-back/revocation; no subscriptions purchased. |
 | G-10 | Blocked | No growth winner or conversion benchmark invented from pre-customer source. | Actual cohort and bottleneck; founder review date, hypothesis, cost/time and stop condition before traffic experiments. |
-| D-01 | Partial | Registry currently has 22 OPEN/PARTIAL entries; reproduced 0169/0171/0185/0243, repaired the offers consumer of 0169 and read 0244/0258/0265/0276 rather than declaring stale docs fixed. | Complete occurrence/consumer census, semantic forbidden-behavior tests and actual repairs; historical customer data separate. |
+| D-01 | Partial | Registry currently has 23 OPEN/PARTIAL entries; reproduced 0169/0171/0185/0243, repaired the offers consumer of 0169 and read 0244/0258/0265/0276 rather than declaring stale docs fixed. | Complete occurrence/consumer census, semantic forbidden-behavior tests and actual repairs; historical customer data separate. |
 | D-02 | Open | Canon, boundaries, reachability and down-only ratchets retained; no speculative schema/SDK abstractions added. | Incident/customer-friction-led net surface reductions and adoption proof; no customer tables dropped. |
 | D-03 | Partial | Metered gateway/current cost-efficiency program retained; CMO generation/scoring cost appears in durable receipt, render costs explicitly separate. | Remaining direct/streaming/embed/transcription/image exceptions and actual invoice reconciliation/caps. Generation receipt cost is for the completed worker attempt, not cumulative retries. |
 | D-04 | Partial | This section replaces stale roadmap execution state; NEXT_UP/MASTER_PLAN/COMPLETION_MATRIX point here for current execution; health degradation stays visible; no duplicate owner provisioning checklist. | Real paging/canary/restore cadence and deliberate retirement/configuration of dormant audits; no live workflow dispatch. |
@@ -739,3 +739,154 @@ local check passed before this hook addition; revised-head gates remain required
 PR #353 initially published creation alone at 41d01cf2; its next revision will
 include this repair and require fresh CI before merge. No historical or live
 customer record was deleted. Full 39-ticket/G0 completion remains unproven.
+
+### Bounded provider account/receipt checkpoint — G-03/G-04
+
+PR #353 now publishes creation and deletion repairs at 4ced5240 with tree
+71b017d9, matching the committed source. The complete combined local check
+passed with no ratchet/baseline increase; all 72 focused tests pass and both
+source audits cleared. Revised PR checks remain running. Main a85e02af's
+automatic release is still behind its required test/CI gates; security,
+columns/migration mirror, mobile and customer-surface checks passed. A fresh
+scheduled Customer Journey Audit again skipped its actual audit step because
+its target was unset. Its green wrapper is not an authenticated journey proof.
+No production release or health recovery is claimed.
+
+The next local checkpoint refuses ambiguous active Meta/TikTok accounts and
+binds polling/object creation to the account identity returned by that upload.
+TikTok no longer ignores its supplied advertiser identity. Meta normalization
+preserves its act_ prefix convention. Missing/malformed provider IDs never
+become object_created: the worker records uncertain and refuses blind replay.
+The provider/account group was red-first (7 fail / 2 pass); the missing Meta-ID
+case was separately red-first (4 fail / 10 pass). The final provider/worker/
+approval group passes 46 cases and inspects uncertain receipt parameters.
+Independent audit cleared the bounded final source. DEFECT-0288 records the
+remaining proof; current registry census is 23 OPEN/PARTIAL, 263 FIXED and two
+DEFERRED (288 total). No secrets are copied into receipts and no provider call
+was made. Complete local check passed without widening a ratchet or baseline; publication/CI remain pending for this account checkpoint.
+
+This is not approval-time revision binding. The broader G-04 census found
+ready manifests omit byte digest/baked CTA URL, approval requests carry no
+displayed revision token, workers use current script/brand CTA, and TikTok UI
+says 9:16 only while approval queues all ratios. Those need one coherent frozen
+review/destination snapshot using existing JSON/outbox and the canonical
+approval hash, with matched immutable upload bytes. Account ownership/token
+permissions, spend reservations and witnessed delivery remain separate proofs.
+Likewise stage locks alone cannot close P1-05: six status/delete mutation sites
+and unlocked route-side close effects need reconciliation; async Close & Carry
+training insertion/retraction still requires shared serialization. These remain
+engineering work, not absent-credential assumptions or completed tickets.
+
+### Fresh live and staging evidence — morning October 14
+
+The authenticated founder Controls session is still available. It reports
+4/13 onboarding rungs verified (separate from its 8/14 armed projection), no
+resolving pager, unproven/unchosen default spending lines, all five domains
+watching only, and auto-publish/self-patching off. The live waiting count is
+74,767; the older five-hour tick shows 74,616. No queue card or operating
+setting was changed. The new Growth workspace was not visible in this view;
+main's production workflow remains gated. Its exact served SHA was not read.
+Job health's bounded 200-run view reports 58 unique jobs, 196 successes and
+four failures, with agent_retract_cron still failing on the observation-table
+SELECT (latest displayed failure October 14 08:10 ET). No underlying database
+cause or production recovery is inferred from the error wrapper.
+
+Main's Test workflow passed and the production gate's real-schema test step
+passed. Staging's pre-deploy tests passed, but its deployment and smoke-test
+jobs skipped: the workflow requires the FLY_STAGING_APP repository variable
+and that gate was not met. This proves the staging workflow did not deploy;
+its overall green badge is not a staging journey or recovery receipt. The
+scheduled customer-journey audit also skipped its actual audit step. No new
+staging app, account permission, budget, page, spend or customer mutation was
+configured in this session.
+
+### Displayed-review revision and destination matrix — October 14
+
+PR #353's first remote CI run passed 17,457 tests and found two test-contract
+failures. The persona assertion now keeps the property listed while its deal
+uses negotiating; the repository census declares its existing sweep budget.
+The four-file repair group passed 55 tests, and the exact repaired head is
+cd9528c5f11ea62199141b12f6b922637acb28ed (tree 7b813aeb).
+All applicable checks must pass on that new head before merge. The separately
+preserved account checkpoint is 22ec089a36bee384c87081aa7f1a191235d29500,
+not an active PR head or deployed release.
+
+The next bounded G-04/DEFECT-0288 source repair sends a required displayed
+metadata revision from the actual dashboard into approval. Existing canonical
+approval hashing is factored without changing its semantics. The transaction
+locks the pending decision and referenced renders in stable ID order, compares
+the served revision, refuses stale metadata before writes, and queues only the
+approved render/platform matrix. Meta receives available reviewed standard
+ratios; TikTok receives portrait only, matching its UI description. A selected
+platform with no eligible render refuses. Missing assets disable review approval.
+The worker validates both the stored revision token and approved pair before
+provider effects; legacy queued jobs without this proof refuse and require
+manual reconciliation rather than implicitly acquiring new authority.
+
+The confirmation dialog keeps the complete reviewed pending snapshot despite
+polling, shows its copy/videos/available ratios, disables unsupported selections,
+and blocks keyboard retargeting or Escape closure during an in-flight approval.
+Stale errors do not silently replace the witnessed token. Seven red-first route
+cases failed before the new approval contract. Latest targeted result: six files,
+88 passed (including four real DOM dialog cases); four PostgreSQL cases skipped
+locally and still require mandatory real-schema CI. The real-DB fixture obtains
+the actual served dashboard token and creates the canonical brand only if absent,
+with cleanup limited to a row it inserted. Final source review/full gates and
+publication remain pending at this checkpoint.
+
+This establishes displayed metadata at approval and the selected matrix. It
+still does not freeze or re-hash post-approval render metadata/file bytes, current
+script/brand CTA or provider configuration. Approval-time account identity,
+asset digest plus matched immutable upload bytes, frozen outbound copy/CTA,
+atomic spend reservations, actual provider authority/delivery and displayed
+rejection revision remain open. G-04 and the full 39-ticket/G0 program remain
+partial; no ads, paid generation, real provider effects or customer mutations ran.
+
+
+#### October 14 continuation: reconciled main and content-bound publication
+
+PR #353 passed all seven workflows/14 check runs at cd9528c5 and merged to
+main as 1feed0247c6a0496190bc6ceda2f477f39dae294. Its automatic main release
+checks/deployment are running; no new deployed SHA is claimed. PR #352's Fly
+release completed successfully, including its HTTP liveness and actual migration
+evidence steps. Staging/customer-audit green wrappers that skipped execution
+remain separate from acceptance.
+
+PR #354 publishes the already audited account/receipt and displayed revision
+wave at a3e89b4bde108c56650e2208e01ef4c32d0289c9 (tree c3873e55). Its seven
+applicable workflows are running and must pass before merge. Recovered-source
+verification: 85 passed, four real-PostgreSQL cases skipped locally; independent
+review also ran 59 narrow cases successfully. These overlapping results are not
+additive. Legacy jobs without the newer approval proof require reconciliation.
+
+A further bounded DEFECT-0288 repair freezes publication copy and the CTA used
+by Remotion alongside the SHA-256 and byte length of the actual rendered output.
+The approval transaction stores strict per-render approved assets and the queue
+binds the full asset hash (identities, path, video proof, copy and CTA). The worker
+compares that hash on its FIRST and later reads, verifies a defensive byte copy
+before claiming/uploading, and passes that Buffer directly to both adapters.
+Neither adapter reopens a mutable file path; no live script/brand copy is read.
+Digest-addressed review previews verify and send that same buffer with no-store.
+The confirmation dialog shows the frozen destination copy and CTA.
+
+Red-first proof: three worker byte/copy cases failed before this repair. The
+independent audit then found a first-read gap in a video-only queue hash; a new
+pre-start CTA mutation case reproduced it (one fail/27 pass), and the queue now
+binds the full approved asset instead. Final eight-file focused group: 77 passed,
+four real-DB cases skipped locally. Independent worker/asset review: 34 passed;
+no source blocker remains in this bounded scope. Full final checks/build/bundle
+and fresh mandatory real-schema CI remain required before merge.
+
+Storage is still bounded: local web/worker volume sharing is unproven, and pure
+R2 generation has no transfer from Remotion's local output. Such failures refuse;
+this patch does not certify those deployments. Approval-time account/configuration
+and spend reservation binding, rejection revision, provider ownership/permissions
+and confirmed delivery remain open. No paid generation/provider effects ran.
+
+Read-only production Controls now shows Plan/Review/Results/Steer; one existing
+draft request is Failed, no video bundles await review, attributed signups are an
+explicit lower bound and publishing is paused. Job health's served 200-run window
+shows 199 successes, zero failures and one lock skip across 55 jobs. The previously
+failing retraction job is absent from that bounded window, so recovery of that
+specific job is NOT proven. Paging and owner/delegation witnesses remain open.
+All 39 tickets and G0 remain incomplete.
