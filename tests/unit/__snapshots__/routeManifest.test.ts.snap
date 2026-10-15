@@ -193,6 +193,7 @@ exports[`route manifest > snapshot: sorted manifest file paths (additions/remova
   "routes-onboarding-funnel.ts",
   "routes-onboarding.ts",
   "routes-opportunities.ts",
+  "routes-ops.ts",
   "routes-organization.ts",
   "routes-outreach-mail.ts",
   "routes-owner-optout.ts",
