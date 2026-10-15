@@ -130,14 +130,10 @@ jobs:
       - name: Get staging URL
         id: get_url
         run: |
-          HOSTNAME=$(flyctl info \
-            --app "${{ vars.FLY_STAGING_APP || 'acreos-staging' }}" \
-            --json | jq -r '.Hostname')
-          STAGING_URL="https://${HOSTNAME}"
+          APP_NAME="${{ vars.FLY_STAGING_APP || 'acreos-staging' }}"
+          STAGING_URL="https://${APP_NAME}.fly.dev"
           echo "staging_url=${STAGING_URL}" >> "$GITHUB_OUTPUT"
           echo "Staging URL: ${STAGING_URL}"
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
   # ── Health check ─────────────────────────────────────────────────────────────
   health-check:
