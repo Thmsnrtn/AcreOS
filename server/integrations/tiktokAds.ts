@@ -29,11 +29,13 @@ import { logger } from "../utils/logger";
 const TIKTOK_BASE = "https://business-api.tiktok.com/open_api/v1.3";
 
 async function loadTiktokAccount(): Promise<FounderAdAccount> {
-  const [account] = await db
+  const accounts = await db
     .select()
     .from(founderAdAccounts)
     .where(and(eq(founderAdAccounts.platform, "tiktok"), eq(founderAdAccounts.isActive, true)))
-    .limit(1);
+    .limit(2);
+  if (accounts.length > 1) throw new Error("[cmo:tiktok] multiple active accounts require explicit reconciliation");
+  const [account] = accounts;
   if (!account) {
     throw new Error(
       "[cmo:tiktok] no active TikTok ad account on file. " +
@@ -121,6 +123,10 @@ export interface TikTokCreativeResult {
 export async function createTikTokAd(input: TikTokCreativeInput): Promise<TikTokCreativeResult> {
   const account = await loadTiktokAccount();
 
+  if (!input.advertiserId || account.adAccountId !== input.advertiserId) {
+    throw new Error("[cmo:tiktok] account changed since upload; publication requires reconciliation");
+  }
+
   if (!input.adGroupId) {
     throw new Error(
       "[cmo:tiktok] adGroupId required. Create or pick an existing TikTok ad group before broadcasting.",
@@ -128,7 +134,7 @@ export async function createTikTokAd(input: TikTokCreativeInput): Promise<TikTok
   }
 
   const payload = {
-    advertiser_id: account.adAccountId,
+    advertiser_id: input.advertiserId,
     adgroup_id: input.adGroupId,
     creatives: [
       {
@@ -168,7 +174,7 @@ export async function createTikTokAd(input: TikTokCreativeInput): Promise<TikTok
   if (data.code !== 0) {
     throw new Error(`[cmo:tiktok] create ad API error (code=${data.code}): ${data.message}`);
   }
-  if (!data.data?.ad_ids?.[0]) {
+  if (typeof data.data?.ad_ids?.[0] !== "string" || !data.data.ad_ids[0].trim()) {
     throw new Error(`[cmo:tiktok] create returned no ad id`);
   }
 
