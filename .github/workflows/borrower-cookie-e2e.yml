@@ -121,14 +121,35 @@ jobs:
           missing: "TARGET_URL"
           what-it-covers: "the borrower statement flow end to end — cookie mint, cookie verify, and 401 without one"
 
-      - name: Seed test-borrower fixture
+      - name: Seed test-borrower fixture (on staging machine)
         if: steps.guard.outputs.skip != 'true'
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
-          node scripts/seed-test-borrower.mjs seed
-          if [ ! -f .test-borrower-credentials.json ]; then
+          # The fixture MUST land in the staging DB, which is reachable only
+          # from inside the Fly network (acreos-staging-pgv.flycast does not
+          # resolve from GitHub runners). So the seeder runs ON a staging
+          # machine via `fly machine exec` — no app code changes, no new
+          # endpoints, no security-boundary changes. The machine already has
+          # DATABASE_URL and node_modules (pg) in /app.
+          curl -L https://fly.io/install.sh | sh
+          export PATH="$HOME/.fly/bin:$PATH"
+          APP="${{ vars.FLY_STAGING_APP || 'acreos-staging' }}"
+          MACHINE_ID=$(fly machine list --app "$APP" --json | jq -r '[.[] | select(.state=="started")][0].id')
+          if [ -z "$MACHINE_ID" ] || [ "$MACHINE_ID" = "null" ]; then
+            echo "::error::no started machine found on $APP"; exit 1
+          fi
+          echo "Seeding fixture on machine $MACHINE_ID ($APP)"
+          SEED_B64=$(base64 -w0 scripts/seed-test-borrower.mjs)
+          fly machine exec "$MACHINE_ID" --app "$APP" \
+            "sh -c 'echo $SEED_B64 | base64 -d > /app/seed-borrower.mjs && cd /app && node seed-borrower.mjs seed'"
+          fly machine exec "$MACHINE_ID" --app "$APP" \
+            "cat /app/.test-borrower-credentials.json" > .test-borrower-credentials.json
+          if [ ! -s .test-borrower-credentials.json ]; then
             echo "::error::seeder did not produce .test-borrower-credentials.json"
             exit 1
           fi
+          echo "Fixture seeded; credentials retrieved."
 
       - name: Unit tests — statementAccess service
         if: steps.guard.outputs.skip != 'true'
