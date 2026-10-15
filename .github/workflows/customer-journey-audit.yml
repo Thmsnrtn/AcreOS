@@ -147,6 +147,29 @@ jobs:
           retention-days: 14
 
       # Page Solene on hard red (audit exit code 2).
+
+      # Verdict gate — a green checkmark must mean tests actually ran.
+      # If the Playwright report is missing or shows zero executed tests,
+      # fail loudly. A silent zero-test "pass" is worse than a red.
+      - name: Verdict gate — refuse green on zero tests
+        if: always() && steps.guard.outputs.skip != 'true'
+        run: |
+          node -e "
+            const fs = require('fs');
+            const p = 'tests/e2e-customer-journey/results/playwright-report.json';
+            if (!fs.existsSync(p)) {
+              console.error('::error::verdict gate: no playwright report at ' + p + ' — audit produced no evidence');
+              process.exit(1);
+            }
+            const s = JSON.parse(fs.readFileSync(p, 'utf8')).stats || {};
+            const ran = (s.expected || 0) + (s.unexpected || 0) + (s.flaky || 0);
+            console.log('verdict: tests_ran=' + ran + ' (expected=' + s.expected + ' unexpected=' + s.unexpected + ' flaky=' + s.flaky + ' skipped=' + s.skipped + ')');
+            if (ran === 0) {
+              console.error('::error::verdict gate: zero tests executed — this is not a pass');
+              process.exit(1);
+            }
+          "
+
       - name: Page Solene on RED
         if: steps.audit.outcome == 'failure'
         env:
