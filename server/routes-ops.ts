@@ -40,6 +40,7 @@ import {
   aiUsageDaily,
   costOptimizationRuns,
   organizations,
+  users,
 } from "@shared/schema";
 import { Errors, sendError } from "./utils/errors";
 import { logger } from "./utils/logger";
@@ -126,8 +127,8 @@ export function registerOpsRoutes(app: Express): void {
           })
           .from(aiUsageDaily)
           .where(gte(aiUsageDaily.date, monthStart)),
-        db.execute(sql`SELECT COUNT(*)::int AS c FROM organizations`),
-        db.execute(sql`SELECT COUNT(*)::int AS c FROM users`),
+        db.select({ c: sql<number>`COUNT(*)::int` }).from(organizations),
+        db.select({ c: sql<number>`COUNT(*)::int` }).from(users),
         getInfraSnapshot(),
       ]);
 
@@ -135,8 +136,8 @@ export function registerOpsRoutes(app: Express): void {
         asOf: clock.now().toISOString(),
         aiSpendThisMonthUsd: toNum(monthRows[0]?.totalUsd),
         aiCallsThisMonth: Math.round(toNum(monthRows[0]?.totalCalls)),
-        organizationCount: Number((orgRows as any)[0]?.c ?? 0),
-        userCount: Number((userRows as any)[0]?.c ?? 0),
+        organizationCount: orgRows[0]?.c ?? 0,
+        userCount: userRows[0]?.c ?? 0,
         mrrUsd: infraSnapshot?.mrrUsd ?? 0,
         profitMarginPct: infraSnapshot?.profitMarginPct ?? null,
         infraSnapshot,
