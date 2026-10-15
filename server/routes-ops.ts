@@ -35,7 +35,13 @@ import type { Express, Request, Response, NextFunction } from "express";
 import crypto from "crypto";
 import { sql, desc, eq, gte } from "drizzle-orm";
 
-import { db } from "./db";
+import { unscopedForPlatformOps } from "./utils/orgScopedDb";
+// Platform-ops aggregates (cross-org by design — this is the COO's
+// morning-brief data, not a tenant view). The reason string is logged
+// and greppable via `git grep unscopedForPlatformOps`.
+const opsDb = unscopedForPlatformOps(
+  "AI COO ops API: cross-org cost/user aggregates for /api/ops/summary and /api/ops/costs (read-only, bearer-token gated)"
+);
 import {
   aiUsageDaily,
   costOptimizationRuns,
@@ -127,8 +133,8 @@ export function registerOpsRoutes(app: Express): void {
           })
           .from(aiUsageDaily)
           .where(gte(aiUsageDaily.date, monthStart)),
-        db.select({ c: sql<number>`COUNT(*)::int` }).from(organizations),
-        db.select({ c: sql<number>`COUNT(*)::int` }).from(users),
+        opsDb.select({ c: sql<number>`COUNT(*)::int` }).from(organizations),
+        opsDb.select({ c: sql<number>`COUNT(*)::int` }).from(users),
         getInfraSnapshot(),
       ]);
 
