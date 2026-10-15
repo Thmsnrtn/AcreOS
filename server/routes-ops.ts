@@ -36,10 +36,11 @@ import crypto from "crypto";
 import { sql, desc, eq, gte } from "drizzle-orm";
 
 import { unscopedForPlatformOps } from "./utils/orgScopedDb";
-// NOTE: unscopedForPlatformOps() MUST be called inside each function/handler
-// body, not at module scope. The org-scoped-fetch lint is purely textual per
-// extracted unit — a stored handle referenced as bare `opsDb` does not carry
-// the marker into the unit's text. Three deploy attempts died on this.
+// NOTE: unscopedForPlatformOps() must be inline in each QUERY CHAIN, not stored
+// in a handle. The org-scoped-fetch lint exemption is CHAIN-scoped: it looks
+// back only to the enclosing statement's boundary. `const opsDb = hatch(...)`
+// then `opsDb.select()` does NOT exempt the chain. Four deploy attempts died
+// learning this. Inline the hatch into every chain below.
 import {
   aiUsageDaily,
   costOptimizationRuns,
@@ -91,11 +92,10 @@ function toNum(v: unknown): number {
 }
 
 async function getInfraSnapshot() {
-  // Hatch must live inside the unit body for the org-scoped-fetch lint.
-  const opsDb = unscopedForPlatformOps(
-    "AI COO ops API getInfraSnapshot: cross-org cost run aggregates (read-only)"
-  );
-  const rows = await opsDb
+  // Hatch inlined into the chain: the lint exemption is chain-scoped.
+  const rows = await unscopedForPlatformOps(
+    "AI COO ops API: cross-org aggregates for machine monitoring (read-only)"
+  )
     .select({
       runAt: costOptimizationRuns.runAt,
       totalAiCostUsd: costOptimizationRuns.totalAiCostUsd,
@@ -125,22 +125,24 @@ export function registerOpsRoutes(app: Express): void {
   // Morning-brief payload: one call, everything the COO checks daily.
   app.get("/api/ops/summary", opsServiceAuth, async (_req: Request, res: Response) => {
     try {
-      // Hatch must live inside the unit body for the org-scoped-fetch lint.
-      const opsDb = unscopedForPlatformOps(
-        "AI COO ops API /api/ops/summary: cross-org AI spend and org/user counts (read-only)"
-      );
       const monthStart = thisMonthStart();
 
       const [monthRows, orgRows, userRows, infraSnapshot] = await Promise.all([
-        opsDb
+        unscopedForPlatformOps(
+          "AI COO ops API: cross-org aggregates for machine monitoring (read-only)"
+        )
           .select({
             totalUsd: sql<string>`SUM(${aiUsageDaily.totalUsd})`,
             totalCalls: sql<string>`SUM(${aiUsageDaily.callCount})`,
           })
           .from(aiUsageDaily)
           .where(gte(aiUsageDaily.date, monthStart)),
-        opsDb.select({ c: sql<number>`COUNT(*)::int` }).from(organizations),
-        opsDb.select({ c: sql<number>`COUNT(*)::int` }).from(users),
+        unscopedForPlatformOps(
+          "AI COO ops API: cross-org aggregates for machine monitoring (read-only)"
+        ).select({ c: sql<number>`COUNT(*)::int` }).from(organizations),
+        unscopedForPlatformOps(
+          "AI COO ops API: cross-org aggregates for machine monitoring (read-only)"
+        ).select({ c: sql<number>`COUNT(*)::int` }).from(users),
         getInfraSnapshot(),
       ]);
 
@@ -163,16 +165,12 @@ export function registerOpsRoutes(app: Express): void {
   // Full cost breakdown — same sources as /api/founder/cost-summary.
   app.get("/api/ops/costs", opsServiceAuth, async (_req: Request, res: Response) => {
     try {
-      // Hatch must live inside the unit body for the org-scoped-fetch lint.
-      // (This handler previously passed incidentally via an organizationId
-      // select; make the exemption explicit so refactors can't re-break it.)
-      const opsDb = unscopedForPlatformOps(
-        "AI COO ops API /api/ops/costs: cross-org cost breakdown aggregates (read-only)"
-      );
       const monthStart = thisMonthStart();
 
       const [monthRows, infraSnapshot, perOrgRows] = await Promise.all([
-        opsDb
+        unscopedForPlatformOps(
+          "AI COO ops API: cross-org aggregates for machine monitoring (read-only)"
+        )
           .select({
             totalUsd: sql<string>`SUM(${aiUsageDaily.totalUsd})`,
             totalCalls: sql<string>`SUM(${aiUsageDaily.callCount})`,
@@ -180,7 +178,9 @@ export function registerOpsRoutes(app: Express): void {
           .from(aiUsageDaily)
           .where(gte(aiUsageDaily.date, monthStart)),
         getInfraSnapshot(),
-        opsDb
+        unscopedForPlatformOps(
+          "AI COO ops API: cross-org aggregates for machine monitoring (read-only)"
+        )
           .select({
             organizationId: aiUsageDaily.organizationId,
             orgName: organizations.name,
