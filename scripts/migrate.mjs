@@ -11575,6 +11575,19 @@ END $$`,
    ('dwilson@email.com', 'Pre-approved for $50K, wants AZ or NM'),
    ('jbrown@email.com', 'Responded to online ad'))
    AND coalesce("source", '') <> 'sample_data'`,
+  `CREATE TABLE IF NOT EXISTS "coo_ledger" (
+  "id"                serial PRIMARY KEY,
+  "created_at"        timestamptz NOT NULL DEFAULT now(),
+  "actor"             text NOT NULL DEFAULT 'coo',
+  "action_type"       text NOT NULL,
+  "target"            text,
+  "reasoning"         text,
+  "status"            text NOT NULL DEFAULT 'completed',
+  "result_summary"    text,
+  "cost_usd"          numeric(10,2),
+  "parent_id"         integer,
+  "metadata"          jsonb
+)`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
@@ -11837,17 +11850,3 @@ try {
 await new Promise((resolve) => setTimeout(resolve, 3000));
 
 process.exit(exitCode);
-
-CREATE TABLE IF NOT EXISTS "coo_ledger" (
-  "id" serial PRIMARY KEY,
-  "created_at" timestamptz NOT NULL DEFAULT now(),
-  "actor" text NOT NULL DEFAULT 'coo',
-  "action_type" text NOT NULL,
-  "target" text,
-  "reasoning" text,
-  "status" text NOT NULL DEFAULT 'completed',
-  "result_summary" text,
-  "cost_usd" numeric,
-  "parent_id" integer,
-  "metadata" jsonb
-);
