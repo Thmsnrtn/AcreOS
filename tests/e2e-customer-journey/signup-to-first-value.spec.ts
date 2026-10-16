@@ -314,14 +314,13 @@ test.describe("CJ1: signup → onboarding → first value", () => {
     await test.step("/ai (Pax) surface mounts with composer", async () => {
       const t0 = Date.now();
       await page.goto("/ai", { waitUntil: "domcontentloaded" });
-      await page.waitForTimeout(1200);
       await recordThemeProbe(page, testInfo, meta, "pax-mount");
       await assertNonBlank(page, "pax-mount");
-      const composer = page
-        .locator(
-          'textarea, [contenteditable="true"], [data-testid*="composer"], [data-testid*="message-input"]',
-        )
-        .first();
+      // PaxPage lazy-loads CommandCenterPage behind AiChatGuard (waits on
+      // /api/system/health) + React Suspense. The fixed 1.2s wait was too
+      // short on staging — wait for the actual composer instead.
+      const composer = page.locator('textarea[data-testid="input-message"]');
+      await composer.waitFor({ state: "visible", timeout: 15000 }).catch(() => {});
       const composerVisible = await composer.isVisible().catch(() => false);
       expect(composerVisible, "Pax composer affordance missing on /ai").toBe(
         true,
