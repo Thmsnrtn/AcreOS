@@ -14402,3 +14402,23 @@ export * from "./schema/parcel-data";
 // W3 acquisition engine — creator revenue share (AcreOS's own money to
 // creators; rules in shared/billing/creatorProgram.ts).
 export * from "./schema/creators";
+
+/**
+ * COO Operations Ledger — append-only log of every COO/autopilot action.
+ * No updates, no deletes. Corrections are new entries with parentId.
+ * Synchronization point between COO (Muse) and founder dashboard autopilot.
+ */
+export const cooLedger = pgTable("coo_ledger", {
+  id: serial("id").primaryKey(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  actor: text("actor").notNull().default("coo"),
+  actionType: text("action_type").notNull(),
+  target: text("target"),
+  reasoning: text("reasoning"),
+  status: text("status").notNull().default("completed"),
+  resultSummary: text("result_summary"),
+  costUsd: numeric("cost_usd"),
+  parentId: integer("parent_id"),
+  metadata: jsonb("metadata"),
+});
+
