@@ -185,12 +185,20 @@ test.describe("CJ1: signup → onboarding → first value", () => {
       // We don't require a specific data-testid because the landing
       // copy is owned by Soren and may evolve; the contract is
       // "some primary CTA is visible above the fold."
-      const ctaLocator = page
-        .locator(
-          'a[href*="/auth"], a[href*="/sign-up"], button:has-text("Get started"), button:has-text("Sign up"), a:has-text("Get started"), a:has-text("Sign up"), a:has-text("Start free")',
-        )
-        .first();
-      const ctaVisible = await ctaLocator.isVisible().catch(() => false);
+      const ctaCandidates = page.locator(
+        'a[href*="/auth"], a[href*="/sign-up"], button:has-text("Get started"), button:has-text("Sign up"), a:has-text("Get started"), a:has-text("Sign up"), a:has-text("Start free")',
+      );
+      // Check all candidates — on mobile the header nav links come first in
+      // DOM order but are hidden by responsive CSS, so .first() can grab a
+      // hidden element even when the hero CTA is visible.
+      let ctaVisible = false;
+      const ctaCount = await ctaCandidates.count();
+      for (let i = 0; i < ctaCount; i++) {
+        if (await ctaCandidates.nth(i).isVisible().catch(() => false)) {
+          ctaVisible = true;
+          break;
+        }
+      }
       expect(ctaVisible, "landing primary CTA missing").toBe(true);
       stepDurations["landing"] = Date.now() - t0;
     });
