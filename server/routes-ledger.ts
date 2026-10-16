@@ -83,7 +83,7 @@ export function registerLedgerRoutes(app: Express): void {
         })
         .returning({ id: cooLedger.id, createdAt: cooLedger.createdAt });
 
-      return res.status(201).json({
+      return res.json({
         id: rows[0].id,
         createdAt: rows[0].createdAt,
       });
