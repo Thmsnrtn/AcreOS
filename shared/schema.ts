@@ -9354,7 +9354,7 @@ export const autopilotExperiences = pgTable("autopilot_experiences", {
   // to. Reads stay platform-wide until a second tenant exists; the column is the
   // cheap insurance that the cross-tenant split is a pure migration later.
   scope: text("scope").default("platform"),
-  costUsd: numeric("cost_usd"),
+  costUsd: numeric("cost_usd", { precision: 10, scale: 2 }),
   // Calibrated foresight: the success probability the system PREDICTED for this
   // action at act-time. Compared against the realized outcome to measure the
   // system's own calibration (Brier score). Null when no forecast was made.
