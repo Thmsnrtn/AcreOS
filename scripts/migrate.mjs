@@ -7613,7 +7613,7 @@ $mig0262$`,
      "founder_verdict" text,
      "resolution" text,
      "satisfaction" integer,
-     "cost_usd" numeric,
+     "cost_usd" numeric(10,2),
      "created_at" timestamp DEFAULT now(),
      "resolved_at" timestamp
    )`,
