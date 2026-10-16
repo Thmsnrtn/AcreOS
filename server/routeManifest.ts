@@ -235,6 +235,7 @@ export const ROUTE_MANIFEST: RouteManifestEntry[] = [
   { file: "routes-onboarding-funnel.ts", mountPath: null, kind: "register", export: "registerOnboardingFunnelRoutes" },
   { file: "routes-opportunities.ts", mountPath: "/api/opportunities", kind: "router", export: "default" },
   { file: "routes-ops.ts", mountPath: null, kind: "register", export: "registerOpsRoutes" },
+  { file: "routes-ledger.ts", mountPath: null, kind: "register", export: "registerLedgerRoutes" },
   { file: "routes-organization.ts", mountPath: null, kind: "register", export: "registerOrganizationRoutes" },
   { file: "routes-outreach-mail.ts", mountPath: null, kind: "register", export: "registerOutreachMailRoutes" },
   { file: "routes-parcel-alerts.ts", mountPath: "/api/parcel-alerts", kind: "router", export: "default" },
