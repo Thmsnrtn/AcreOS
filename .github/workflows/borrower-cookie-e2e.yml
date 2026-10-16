@@ -144,8 +144,10 @@ jobs:
           # transfer only if scripts/ isn't in the deployed image.
           if fly machine exec "$MACHINE_ID" --app "$APP" "test -f /app/scripts/seed-test-borrower.mjs"; then
             echo "using in-image scripts/seed-test-borrower.mjs"
+            # fly machine exec does NOT run a shell (cd is a shell builtin,
+            # not an executable) — wrap in sh -c like the fallback branch.
             fly machine exec "$MACHINE_ID" --app "$APP" \
-              "cd /app && node scripts/seed-test-borrower.mjs seed"
+              "sh -c 'cd /app && node scripts/seed-test-borrower.mjs seed'"
           else
             echo "transferring seeder via base64"
             SEED_B64=$(base64 -w0 scripts/seed-test-borrower.mjs)
@@ -268,3 +270,4 @@ jobs:
         run: |
           echo "::error::borrower cookie-session E2E exited RED — see issue + artifacts"
           exit 1
+
