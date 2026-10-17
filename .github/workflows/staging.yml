@@ -95,7 +95,8 @@ jobs:
   deploy-staging:
     name: Deploy to Staging (Fly.io)
     needs: test
-    if: vars.FLY_STAGING_APP != ''
+    # Kill switch: DEPLOY_FROZEN=true blocks all automated deploys (2026-10-17)
+    if: vars.FLY_STAGING_APP != '' && vars.DEPLOY_FROZEN != 'true'
     runs-on: ubuntu-latest
     environment: staging
     outputs:
