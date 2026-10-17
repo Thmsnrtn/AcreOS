@@ -2194,13 +2194,27 @@ body[data-offline-banner="true"] [data-page-topbar] {
   animation: badgePulse 2s ease-in-out infinite;
 }
 
-/* Improved focus ring — accent color with depth */
+/* Improved focus ring — accent color with depth.
+ * Covers all natively focusable elements AND focusable divs / ARIA
+ * interactive roles. Without the div/role selectors, focusable <div>
+ * elements (cards, list rows, custom triggers with tabindex) had no
+ * visible focus indicator — a systemic a11y gap caught by the
+ * desktop-feel C2 focus-ring contract (2026-10-17). */
 button:focus-visible,
 a:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible,
-[role="button"]:focus-visible {
+[role="button"]:focus-visible,
+div[tabindex]:focus-visible,
+[role="option"]:focus-visible,
+[role="tab"]:focus-visible,
+[role="switch"]:focus-visible,
+[role="menuitem"]:focus-visible,
+[role="menuitemcheckbox"]:focus-visible,
+[role="menuitemradio"]:focus-visible,
+[role="treeitem"]:focus-visible,
+[role="gridcell"]:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px hsl(var(--background)),
               0 0 0 4px hsl(var(--primary) / 0.5);
