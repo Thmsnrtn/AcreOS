@@ -1599,6 +1599,16 @@ export async function registerRoutes(
   registerMetaLeadAdsWebhookRoutes(app);
 
   // EPIC Services: Seller Motivation, County Opportunity, Title Chain, Investor Network, Financial OS, Developer API
+  // Ops service API — machine-readable operations for the AI COO.
+  // GET-only, bearer-token auth (OPS_SERVICE_TOKEN). Must register BEFORE
+  // the catch-all below, or the catch-all 401s them. (Fix 2026-10-17: moved
+  // from tail of file where they were shadowed.)
+  registerOpsRoutes(app);
+  registerLedgerRoutes(app);
+  // Kill switches — emergency stops. Ops-token auth. Must register BEFORE
+  // the catch-all for the same reason.
+  registerKillSwitchRoutes(app);
+
   app.use('/api', isAuthenticated, getOrCreateOrg, epicServicesRouter);
 
   // Data Intelligence: USDA NASS, Census, Parcel Fusion, Blind Offer Calculator, Freedom Meter
@@ -2577,9 +2587,7 @@ export async function registerRoutes(
   registerFounderCostRoutes(app);
   // Ops service API — machine-readable operations for the AI COO.
   // GET-only, bearer-token auth (OPS_SERVICE_TOKEN). See routes-ops.ts.
-  registerOpsRoutes(app);
-  registerLedgerRoutes(app);
-  registerKillSwitchRoutes(app);
+
   // Domain-audit cockpit — /api/founder/audit-findings — the shared
   // continuous-audit substrate's founder "is it green?" read surface +
   // acknowledge/resolve. Founder-only. Company-level (no org scope).
