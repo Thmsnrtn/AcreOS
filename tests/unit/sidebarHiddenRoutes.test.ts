@@ -16,7 +16,8 @@
  * empty container. The third block therefore runs the real visibility
  * predicate over parsed NAV_MODULES and asserts each door still RENDERS.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
 import fs from "fs";
 import path from "path";
 import ts from "typescript";
@@ -29,6 +30,9 @@ import {
 } from "../../client/src/lib/sidebar-hidden-routes";
 import { MOBILE_DOORS } from "../../client/src/lib/nav-items";
 import { BUSINESS_TYPE_IDS } from "../../shared/business-types";
+// The Today-queue block walks the whole server tree; its cost scales with the
+// repo, so the budget is declared, not inherited (repoSweepsDeclareTheirBudget).
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 const DOORS = ["/today", "/maps", "/deals", "/pipeline", "/money", "/finance", "/ai", "/inbox", "/settings"];
 
@@ -511,6 +515,19 @@ describe("Today's queue never links a persona into a route it hides", () => {
       ts.forEachChild(n, visit);
     };
     visit(sf);
-    expect(init).toContain("isRouteHidden(it.actionUrl, hidden)");
+    expect(init).toContain("isRouteHidden(it.actionUrl, hiddenRoutes)");
+    // …and the Today page actually supplies the persona's hidden set.
+    const today = fs.readFileSync(path.resolve(__dirname, "../../client/src/pages/today.tsx"), "utf8");
+    const tsf = ts.createSourceFile("today.tsx", today, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    let passes = false;
+    const v2 = (n: ts.Node) => {
+      if ((ts.isJsxSelfClosingElement(n) || ts.isJsxOpeningElement(n)) && n.tagName.getText(tsf) === "DecisionQueue") {
+        passes ||= n.attributes.properties.some((a) => ts.isJsxAttribute(a) && a.name.getText(tsf) === "hiddenRoutes");
+      }
+      ts.forEachChild(n, v2);
+    };
+    v2(tsf);
+    expect(passes, "TodayPage must pass hiddenRoutes to DecisionQueue").toBe(true);
+    expect(today).toMatch(/const hiddenRoutes = useHiddenRoutes\(\)/);
   });
 });
