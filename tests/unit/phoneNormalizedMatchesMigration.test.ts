@@ -26,36 +26,10 @@ import ts from "typescript";
 import { getTableConfig, PgDialect } from "drizzle-orm/pg-core";
 import type { SQL } from "drizzle-orm";
 import { leads, insertLeadSchema } from "../../shared/schema";
+import { stripSqlComments } from "../helpers/stripSqlComments";
 
 const ROOT = process.cwd();
 const EXPECTED = "regexp_replace(coalesce(phone, ''), '[^0-9]', '', 'g')";
-
-/** Remove SQL comments outside string literals. */
-function stripSqlComments(sql: string): string {
-  let out = "";
-  for (let i = 0; i < sql.length; ) {
-    const c = sql[i];
-    if (c === "'") {
-      let j = i + 1;
-      for (; j < sql.length; j++) {
-        if (sql[j] === "'" && sql[j + 1] === "'") j++;
-        else if (sql[j] === "'") break;
-      }
-      out += sql.slice(i, j + 1);
-      i = j + 1;
-    } else if (c === "-" && sql[i + 1] === "-") {
-      while (i < sql.length && sql[i] !== "\n") i++;
-    } else if (c === "/" && sql[i + 1] === "*") {
-      const end = sql.indexOf("*/", i + 2);
-      i = end < 0 ? sql.length : end + 2;
-      out += " ";
-    } else {
-      out += c;
-      i++;
-    }
-  }
-  return out;
-}
 
 /** Whitespace collapsed and keywords lower-cased OUTSIDE string literals. */
 function normalize(expr: string): string {
