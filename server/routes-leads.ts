@@ -1,4 +1,5 @@
 import type { Express, Response } from "express";
+import { refusePaxCredits } from "./utils/firstRunRefusals";
 import { stampOwnerSuppression } from "./services/trust/ownerSuppression";
 import { readPropertiesBySellerIds } from "./storage/wholeBookReads";
 import { getOrganization, getUserId, type AuthenticatedRequest } from "./types/request";
@@ -1359,17 +1360,30 @@ export function registerLeadRoutes(app: Express): void {
       return Errors.notFound(res, "Lead");
     }
 
+    // An included turn on a paid plan is free (founder decision 2026-10-12);
+    // only the credit lane spends purchased credits.
+    const { paxTurnFunding } = await import("./services/paxTurnFunding");
+    const paxLane = await paxTurnFunding(org.id);
     const usageResult = await usageMeteringService.recordUsage(
       org.id,
       "ai_chat",
       1,
-      { feature: "lead_nurturing", leadId }
+      { feature: "lead_nurturing", leadId, paxLane },
+      paxLane !== "included",
     );
 
     if (usageResult.insufficientCredits) {
-      return res.status(402).json({
-        message: "Insufficient credits for AI follow-up generation",
-        error: "INSUFFICIENT_CREDITS",
+      const { CreditService } = await import("./services/credits");
+      const credits = new CreditService();
+      const requiredCents = await usageMeteringService.calculateCost("ai_chat", 1).catch(() => 2);
+      const credit = await credits.evaluateCredits(org.id, requiredCents).catch(() => ({ lane: "balance" as const }));
+      const balance = await credits.getBalance(org.id).catch(() => 0);
+      return refusePaxCredits(res, {
+        lane: credit.lane === "founder" ? "balance" : credit.lane,
+        requiredCents,
+        balanceCents: balance,
+        subscriptionTier: org.subscriptionTier,
+        byokAvailable: undefined,
       });
     }
 

@@ -160,7 +160,7 @@ describe("every hasEnoughCredits caller is classified", () => {
     "server/routes-realtime.ts": "allowance",
     "server/routes-deals.ts": "allowance",
     "server/routes-ai.ts": "allowance",
-    "server/utils/openaiClient.ts": "allowance",
+    "server/routes-leads.ts": "allowance",
     "server/services/directMailService.ts": "own-credit",
   };
 

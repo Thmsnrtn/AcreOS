@@ -25,6 +25,15 @@ const TRIAL_SPENDING_CAP_CENTS = 500;
 /** usage_records.metadata.fundedBy for usage the trial allowance paid for. */
 const TRIAL_ALLOWANCE_FUNDING = "trial_allowance";
 
+/**
+ * Whether an org is inside its trial window — the one test the trial credit
+ * lane uses (trialAllowanceRemaining) and paxTurnFunding uses to leave trial
+ * Pax on that lane (founder decision 2026-10-12: trial behaviour unchanged).
+ */
+export function isInTrialWindow(trialEndsAt: Date | string | null | undefined): boolean {
+  return !!trialEndsAt && new Date(trialEndsAt) > clock.now();
+}
+
 export class CreditService {
   async isFounder(organizationId: number): Promise<boolean> {
     const org = await db.query.organizations.findFirst({
@@ -187,7 +196,7 @@ export class CreditService {
       where: eq(organizations.id, organizationId),
       columns: { trialEndsAt: true },
     });
-    if (!org?.trialEndsAt || new Date(org.trialEndsAt) <= clock.now()) return null;
+    if (!isInTrialWindow(org?.trialEndsAt)) return null;
 
     const [result] = await db
       .select({

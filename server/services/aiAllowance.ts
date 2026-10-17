@@ -34,6 +34,7 @@
 import { logger } from "../utils/logger";
 import { clock } from "../utils/clock";
 import type { AiByokRouting } from "./byok/aiByok";
+import { isAiAllowanceSpent } from "./aiAllowanceRule";
 
 export class AiAllowanceExhaustedError extends Error {
   readonly code = "AI_ALLOWANCE_BYOK_REQUIRED" as const;
@@ -68,7 +69,7 @@ async function readGate(orgId: number) {
   if (hit && clock.nowMs() - hit.at <= GATE_TTL_MS) return hit;
   const { checkAiTurnGate } = await import("./usageLimits");
   const g = await checkAiTurnGate(orgId);
-  const exhausted = g.mode !== "founder" && g.threshold !== null && g.current >= g.threshold;
+  const exhausted = isAiAllowanceSpent(g);
   const entry = {
     at: clock.nowMs(),
     exhausted,

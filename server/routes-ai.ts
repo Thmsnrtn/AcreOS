@@ -7,6 +7,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { checkUsageLimit } from "./services/usageLimits";
 import { usageLimitGate, aiByokThresholdGate, refusePlanLimit } from "./middleware/usageLimitGate";
 import { refusePaxCredits } from "./utils/firstRunRefusals";
+import { paxTurnFunding } from "./services/paxTurnFunding";
 import { usageMeteringService, creditService } from "./services/credits";
 import { processChat, processChatStream, agentProfiles, getOrCreateConversation, ProviderCreditError, PaxAiPausedError } from "./ai/executive";
 import { parsePaxPromptVersion } from "./ai/paxPromptVersions";
@@ -310,9 +311,9 @@ export function registerAIRoutes(app: Express): void {
       // Credit pre-check for AI chat. If credit/rate lookup throws, fail open
       // rather than 500 — founders, trial users, and insufficient-credit cases
       // should never be surfaced as a server crash.
-      // Tier 1I: BYOK-routed turns are the CUSTOMER's provider spend, not
-      // platform COGS — never wall them behind the platform credit balance.
-      const byokMode = res.locals.aiTurnGate?.mode === "byok";
+      // Who pays for this turn (founder decision 2026-10-12): an included turn
+      // on a paid plan, and a BYOK turn, never wait on purchased credits.
+      const paxLane = await paxTurnFunding(org.id, { gate: res.locals.aiTurnGate, usage: usageCheck });
       let aiChatCost = 2;
       try {
         aiChatCost = await usageMeteringService.calculateCost("ai_chat", 1);
@@ -320,7 +321,7 @@ export function registerAIRoutes(app: Express): void {
         logger.warn("[AI Chat] calculateCost failed, using default 2¢", err instanceof Error ? err : undefined);
       }
       try {
-        const credit = byokMode ? null : await creditService.evaluateCredits(org.id, aiChatCost);
+        const credit = paxLane === "credits" ? await creditService.evaluateCredits(org.id, aiChatCost) : null;
         if (credit && !credit.allowed) {
           const balance = await creditService.getBalance(org.id).catch(() => 0);
           return refusePaxCredits(res, {
@@ -400,7 +401,8 @@ export function registerAIRoutes(app: Express): void {
           estimatedCost: result.estimatedCost,
           promptTokens: result.promptTokens,
           completionTokens: result.completionTokens,
-        });
+          paxLane,
+        }, paxLane !== "included");
       } catch (err) {
         logger.warn("[AI Chat] recordUsage failed (continuing)", err instanceof Error ? err : undefined);
       }
@@ -503,9 +505,9 @@ export function registerAIRoutes(app: Express): void {
       }
 
       step = "credit_check";
-      // Tier 1I: BYOK-routed turns are the customer's provider spend —
-      // skip the platform credit wall (parity with /api/ai/chat).
-      const byokMode = res.locals.aiTurnGate?.mode === "byok";
+      // Who pays for this turn (founder decision 2026-10-12) — parity with
+      // /api/ai/chat: included and BYOK turns never wait on purchased credits.
+      const paxLane = await paxTurnFunding(org.id, { gate: res.locals.aiTurnGate, usage: usageCheck });
       let aiChatCost = 2;
       try {
         aiChatCost = await usageMeteringService.calculateCost("ai_chat", 1);
@@ -513,7 +515,7 @@ export function registerAIRoutes(app: Express): void {
         logger.warn("[AI Chat Stream] calculateCost failed, using default 2¢", err instanceof Error ? err : undefined);
       }
       try {
-        const credit = byokMode ? null : await creditService.evaluateCredits(org.id, aiChatCost);
+        const credit = paxLane === "credits" ? await creditService.evaluateCredits(org.id, aiChatCost) : null;
         if (credit && !credit.allowed) {
           const balance = await creditService.getBalance(org.id).catch(() => 0);
           return refusePaxCredits(res, {
@@ -646,7 +648,8 @@ export function registerAIRoutes(app: Express): void {
           estimatedCost: streamEstimatedCost,
           promptTokens: streamPromptTokens,
           completionTokens: streamCompletionTokens,
-        });
+          paxLane,
+        }, paxLane !== "included");
       }
       
       res.end();

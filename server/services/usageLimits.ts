@@ -2,6 +2,7 @@ import { db } from "../storage";
 import { organizations, leads, properties, notes, campaigns, usageEvents, aiTelemetryEvents } from "@shared/schema";
 import { eq, and, gte, count, sum, ne, sql } from "drizzle-orm";
 import { realLead, realNote, realProperty } from "./onboarding/sampleFilters";
+import { isAiAllowanceSpent } from "./aiAllowanceRule";
 import { effectiveSeatAllowance, planAdmitsSeats, seatRuleFor } from "@shared/billing/seats";
 // Lens 3 (Pricing Coherence): tier limits live in shared/billing so the
 // pricing page, upgrade modal, and server gate can never drift. Re-exported
@@ -428,6 +429,13 @@ async function recordAiByokThresholdCrossing(args: {
   }
 }
 
+/** Whether a Pax message is still under the plan's monthly message cap — a
+ * read for paxTurnFunding's lane decision; it never refuses anything (a refusal
+ * of the cap goes through refusePlanLimit). */
+export async function aiMessageCapAllows(organizationId: number, options: UsageLimitOptions = {}): Promise<boolean> {
+  return (await checkUsageLimit(organizationId, "ai_requests", options)).allowed;
+}
+
 /**
  * The Tier 1I gate every AI-turn route consults before spending platform
  * AI dollars. Resolution order:
@@ -500,7 +508,7 @@ export async function checkAiTurnGate(
     };
   }
 
-  const blocked = current >= threshold;
+  const blocked = isAiAllowanceSpent({ mode: "platform", threshold, current });
   const warning = !blocked && current >= threshold * AI_TURNS_BYOK_WARN_RATIO;
 
   if (blocked) {

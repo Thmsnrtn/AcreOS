@@ -7,7 +7,8 @@ import { CreditService } from './services/credits';
 import { requireOpenAIClient } from './utils/openaiClient';
 import { logger } from './utils/logger';
 import { Errors } from './utils/errors';
-import { sendError } from "./utils/errors";
+import { refusePaxCredits } from "./utils/firstRunRefusals";
+import { paxTurnFunding } from "./services/paxTurnFunding";
 import { meteredChatCompletion } from "./services/aiSpendGuard";
 const creditService = new CreditService();
 
@@ -37,12 +38,20 @@ router.post('/ask', async (req: AuthenticatedRequest, res: Response) => {
       return Errors.badRequest(res, 'message is required');
     }
 
-    // Credit check — block if org can't afford the AI call
+    // Credit check — only on the credit lane (founder decision 2026-10-12:
+    // an included turn on a paid plan neither needs nor spends credits).
     const org = req.organization;
-    if (org) {
-      const hasCredits = await creditService.hasEnoughCredits(org.id, 2);
-      if (!hasCredits) {
-        return sendError(res, 402, "PAYMENT_REQUIRED", 'Insufficient credits for AI request');
+    if (org && (await paxTurnFunding(org.id, { isFounder: req.isFounder })) !== "included") {
+      const credit = await creditService.evaluateCredits(org.id, 2);
+      if (!credit.allowed) {
+        const balance = await creditService.getBalance(org.id).catch(() => 0);
+        return refusePaxCredits(res, {
+          lane: credit.lane,
+          requiredCents: 2,
+          balanceCents: balance,
+          subscriptionTier: org.subscriptionTier,
+          byokAvailable: undefined,
+        });
       }
       // Deduct after response (fire-and-forget)
       res.on('finish', () => {

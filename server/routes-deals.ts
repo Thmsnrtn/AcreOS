@@ -1586,12 +1586,15 @@ export function registerDealRoutes(app: Express): void {
         return refusePlanLimit(res, usageCheck);
       }
 
-      // Credit check for deal AI chat
+      // Credit check for deal AI chat — only on the credit lane (founder
+      // decision 2026-10-12: an included turn on a paid plan is free).
       const { CreditService } = await import('./services/credits');
+      const { paxTurnFunding } = await import('./services/paxTurnFunding');
       const dealCreditService = new CreditService();
       const dealChatCents = 2;
-      const credit = await dealCreditService.evaluateCredits(org.id, dealChatCents);
-      if (!credit.allowed) {
+      const paxLane = await paxTurnFunding(org.id, { usage: usageCheck });
+      const credit = paxLane !== "included" ? await dealCreditService.evaluateCredits(org.id, dealChatCents) : null;
+      if (credit && !credit.allowed) {
         const balance = await dealCreditService.getBalance(org.id).catch(() => 0);
         return refusePaxCredits(res, {
           lane: credit.lane,
@@ -1698,7 +1701,9 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       const aiResponse = response.content || "I couldn't generate a response. Please try again.";
 
       // Deduct credits after successful AI call
-      dealCreditService.deductOrFundFromTrial(org.id, 2, 'Deal AI analysis', { actionType: 'ai_chat' }).catch(() => {});
+      if (paxLane !== "included") {
+        dealCreditService.deductOrFundFromTrial(org.id, 2, 'Deal AI analysis', { actionType: 'ai_chat' }).catch(() => {});
+      }
 
       const suggestions = generateSuggestions(message, property);
 
