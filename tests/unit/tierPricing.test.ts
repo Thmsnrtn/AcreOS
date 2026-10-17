@@ -48,28 +48,28 @@ describe("shared/billing/tier-pricing", () => {
   );
 
   it("matches the documented canonical prices ($20 / $49 / $79 monthly)", () => {
-    expect(TIER_PRICES_CENTS.starter.priceMonthlyCents).toBe(2000);
-    expect(TIER_PRICES_CENTS.pro.priceMonthlyCents).toBe(4900);
-    expect(TIER_PRICES_CENTS.scale.priceMonthlyCents).toBe(7900);
+    expect(TIER_PRICES_CENTS.starter.priceMonthlyCents).toBe(4900);
+    expect(TIER_PRICES_CENTS.pro.priceMonthlyCents).toBe(9900);
+    expect(TIER_PRICES_CENTS.scale.priceMonthlyCents).toBe(19900);
   });
 
   it("matches the documented canonical yearly prices ($200 / $490 / $790)", () => {
-    expect(TIER_PRICES_CENTS.starter.priceYearlyCents).toBe(20000);
-    expect(TIER_PRICES_CENTS.pro.priceYearlyCents).toBe(49000);
-    expect(TIER_PRICES_CENTS.scale.priceYearlyCents).toBe(79000);
+    expect(TIER_PRICES_CENTS.starter.priceYearlyCents).toBe(49000);
+    expect(TIER_PRICES_CENTS.pro.priceYearlyCents).toBe(99000);
+    expect(TIER_PRICES_CENTS.scale.priceYearlyCents).toBe(199000);
   });
 
   describe("tierPriceCents()", () => {
     it("returns monthly cents for monthly interval", () => {
-      expect(tierPriceCents("starter", "monthly")).toBe(2000);
-      expect(tierPriceCents("pro", "monthly")).toBe(4900);
-      expect(tierPriceCents("scale", "monthly")).toBe(7900);
+      expect(tierPriceCents("starter", "monthly")).toBe(4900);
+      expect(tierPriceCents("pro", "monthly")).toBe(9900);
+      expect(tierPriceCents("scale", "monthly")).toBe(19900);
     });
 
     it("returns yearly cents for yearly interval", () => {
-      expect(tierPriceCents("starter", "yearly")).toBe(20000);
-      expect(tierPriceCents("pro", "yearly")).toBe(49000);
-      expect(tierPriceCents("scale", "yearly")).toBe(79000);
+      expect(tierPriceCents("starter", "yearly")).toBe(49000);
+      expect(tierPriceCents("pro", "yearly")).toBe(99000);
+      expect(tierPriceCents("scale", "yearly")).toBe(199000);
     });
   });
 
@@ -109,16 +109,16 @@ describe("shared/billing/tier-pricing", () => {
 
   describe("monthlyRevenueCentsFor() — MRR math", () => {
     it("returns monthly cents for monthly subscriptions", () => {
-      expect(monthlyRevenueCentsFor("starter", "monthly")).toBe(2000);
-      expect(monthlyRevenueCentsFor("pro", "monthly")).toBe(4900);
-      expect(monthlyRevenueCentsFor("scale", "monthly")).toBe(7900);
+      expect(monthlyRevenueCentsFor("starter", "monthly")).toBe(4900);
+      expect(monthlyRevenueCentsFor("pro", "monthly")).toBe(9900);
+      expect(monthlyRevenueCentsFor("scale", "monthly")).toBe(19900);
     });
 
     it("amortises yearly subscriptions to a per-month figure", () => {
       // $200 / 12 ≈ $16.67 ≈ 1667 cents
-      expect(monthlyRevenueCentsFor("starter", "yearly")).toBe(Math.round(20000 / 12));
-      expect(monthlyRevenueCentsFor("pro", "yearly")).toBe(Math.round(49000 / 12));
-      expect(monthlyRevenueCentsFor("scale", "yearly")).toBe(Math.round(79000 / 12));
+      expect(monthlyRevenueCentsFor("starter", "yearly")).toBe(Math.round(49000 / 12));
+      expect(monthlyRevenueCentsFor("pro", "yearly")).toBe(Math.round(99000 / 12));
+      expect(monthlyRevenueCentsFor("scale", "yearly")).toBe(Math.round(199000 / 12));
     });
 
     it("contributes 0 for free / null / unknown tiers", () => {
