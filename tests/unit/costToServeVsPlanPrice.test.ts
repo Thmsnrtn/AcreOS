@@ -119,7 +119,7 @@ describe("poolProviderCostFor — what the plan's pool paid", () => {
 
 describe("the nightly snapshot carries it, and the alert reads it", () => {
   const heavy = [
-    { category: "ai_tokens", feature: "pax_chat", postedBy: "system", totalCents: -2000, rowCount: 40 },
+    { category: "ai_tokens", feature: "pax_chat", postedBy: "system", totalCents: -5000, rowCount: 40 },
     { category: "opex_spent", feature: "data_lookup", postedBy: "system:credit-pool:comps_lookup", totalCents: -600, rowCount: 3 },
   ];
 
@@ -127,14 +127,14 @@ describe("the nightly snapshot carries it, and the alert reads it", () => {
     world(heavy);
     const r = await computeUnitEconomicsForOrg(ORG, { activeCustomerCount: 1 });
     expect(r.mrrUsd).toBe(PRO_PRICE);
-    expect(r.breakdown.costToServe).toMatchObject({ aiUsd: 20, poolProviderUsd: 6, usd: 26 });
-    expect(r.breakdown.costToServe!.shareOfPrice).toBeCloseTo(26 / PRO_PRICE, 4);
+    expect(r.breakdown.costToServe).toMatchObject({ aiUsd: 50, poolProviderUsd: 6, usd: 56 });
+    expect(r.breakdown.costToServe!.shareOfPrice).toBeCloseTo(56 / PRO_PRICE, 4);
   });
 
   it("files ONE read-only alert above the line", async () => {
     world(heavy);
     const r = await computeUnitEconomicsForOrg(ORG, { activeCustomerCount: 1 });
-    expect(r.breakdown.costToServe!.overAlertShare).toBe(true); // $26 of $49 > 50%
+    expect(r.breakdown.costToServe!.overAlertShare).toBe(true); // $56 of $99 > 50%
     expect(await maybeEmitCostToServeAlert(r)).toBe(true);
     expect(st.alerts).toHaveLength(1);
     expect(st.alerts[0]).toMatchObject({ alertType: "customer_cost_to_serve_high", organizationId: ORG, autoResolvable: false });
@@ -164,11 +164,11 @@ describe("the founder read API re-projects through the same rule", () => {
       fixed_cost_share_usd: "0", total_cogs_usd: "20", profit_margin_usd: "29", profit_margin_pct: "59",
       consecutive_unprofitable_days: 0,
       // A share written by an older rule — must NOT be what the page shows.
-      breakdown: { costToServe: { usd: 1, aiUsd: 20, poolProviderUsd: 6, shareOfPrice: 0.01, overAlertShare: false, alertShare: 0.9 } },
+      breakdown: { costToServe: { usd: 1, aiUsd: 50, poolProviderUsd: 6, shareOfPrice: 0.01, overAlertShare: false, alertShare: 0.9 } },
       organization_name: "Acme Land", subscription_tier: "pro", subscription_status: "active",
     }];
     const api = await readUnitEconomicsRollup();
-    expect(api.rows[0].costToServe).toEqual(costToServeOf({ mrrUsd: 49, aiUsd: 20, poolProviderUsd: 6 }));
+    expect(api.rows[0].costToServe).toEqual(costToServeOf({ mrrUsd: 99, aiUsd: 50, poolProviderUsd: 6 }));
     expect(api.rows[0].costToServe!.overAlertShare).toBe(true);
   });
   it("a snapshot from before the field existed reads as null, not $0", async () => {
