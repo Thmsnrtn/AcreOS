@@ -146,13 +146,15 @@ jobs:
             echo "using in-image scripts/seed-test-borrower.mjs"
             # fly machine exec does NOT run a shell (cd is a shell builtin,
             # not an executable) — wrap in sh -c like the fallback branch.
+            # --i-know-this-is-prod: the seeder refuses to run when DATABASE_URL
+            # looks like prod; staging URLs contain .fly.dev so we must override.
             fly machine exec "$MACHINE_ID" --app "$APP" \
-              "sh -c 'cd /app && node scripts/seed-test-borrower.mjs seed'"
+              "sh -c 'cd /app && node scripts/seed-test-borrower.mjs seed --i-know-this-is-prod'"
           else
             echo "transferring seeder via base64"
             SEED_B64=$(base64 -w0 scripts/seed-test-borrower.mjs)
             fly machine exec "$MACHINE_ID" --app "$APP" \
-              "sh -c 'echo $SEED_B64 | base64 -d > /app/seed-borrower.mjs && cd /app && node seed-borrower.mjs seed'"
+              "sh -c 'echo $SEED_B64 | base64 -d > /app/seed-borrower.mjs && cd /app && node seed-borrower.mjs seed --i-know-this-is-prod'"
           fi
           fly machine exec "$MACHINE_ID" --app "$APP" \
             "cat /app/.test-borrower-credentials.json" > .test-borrower-credentials.json
