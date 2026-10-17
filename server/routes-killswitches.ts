@@ -86,7 +86,7 @@ export function registerKillSwitchRoutes(app: Express): void {
       res.json(status);
     } catch (err) {
       logger.error("[/api/ops/kill-switches] failed", err instanceof Error ? err : undefined);
-      return Errors.internal(res);
+      return Errors.internal(res, err);
     }
   });
 
@@ -126,7 +126,7 @@ export function registerKillSwitchRoutes(app: Express): void {
       res.json({ ok: true, action, switch: name, note, status });
     } catch (err) {
       logger.error("[/api/ops/kill-switches] control failed", err instanceof Error ? err : undefined);
-      return Errors.internal(res);
+      return Errors.internal(res, err);
     }
   });
 }
