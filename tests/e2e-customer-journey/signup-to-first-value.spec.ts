@@ -136,9 +136,18 @@ async function seedTestAuth(page: Page, baseURL: string): Promise<void> {
   // Token-gated bypass for Fly staging: the blanket E2E_TEST_AUTH bypass is
   // disabled on Fly by design, so CI presents a shared secret via header.
   // The server validates it with timing-safe comparison (see testAuth.ts).
+  // Use route interception (not setExtraHTTPHeaders) to guarantee the header
+  // is attached to every /api/* fetch, including ones fired before headers
+  // would apply or from service workers.
   const e2eToken = process.env.E2E_TEST_AUTH_TOKEN;
   if (e2eToken) {
-    await page.setExtraHTTPHeaders({ "X-E2E-Auth-Token": e2eToken });
+    await page.route("**/api/**", async (route) => {
+      const headers = {
+        ...route.request().headers(),
+        "X-E2E-Auth-Token": e2eToken,
+      };
+      await route.continue({ headers });
+    });
   }
 }
 
