@@ -157,7 +157,7 @@ describe("checkAiTurnGate — the shared monthly AI allowance (cents)", () => {
   });
 
   it("at/past the allowance WITHOUT BYOK → blocked with reason byok_required", async () => {
-    state.monthlySpendCents = 2250;
+    state.monthlySpendCents = 5000;
     const { checkAiTurnGate } = await importGate();
     const r = await checkAiTurnGate(1);
     expect(r.allowed).toBe(false);
@@ -180,7 +180,7 @@ describe("checkAiTurnGate — the shared monthly AI allowance (cents)", () => {
 
   it("Starter is also BYOK-eligible when blocked (AI channels open to all paid tiers)", async () => {
     state.orgRow.subscriptionTier = "starter";
-    state.monthlySpendCents = 1125;
+    state.monthlySpendCents = 2500;
     const { checkAiTurnGate } = await importGate();
     const r = await checkAiTurnGate(1);
     expect(r.allowed).toBe(false);
