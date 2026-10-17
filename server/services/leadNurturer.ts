@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { leads, type Lead, type NurturingStage, type InsertLeadActivity } from "@shared/schema";
 import { storage } from "../storage";
 import { usageMeteringService } from "./credits";
+import { paxTurnFunding } from "./paxTurnFunding";
 import { alertingService } from "./alerting";
 import { getOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
@@ -411,7 +412,10 @@ Respond in JSON format:
 
       if (generateFollowUps) {
         const leadsDueForFollowUp = await storage.getLeadsDueForFollowUp(organizationId);
-        
+        // Same rule as a Pax turn (founder decision 2026-10-17): no credit
+        // charge while the org is inside its included allowance; credits after.
+        const paxLane = await paxTurnFunding(organizationId);
+
         for (const lead of leadsDueForFollowUp.slice(0, 10)) {
           if (lead.nurturingStage === "dead") continue;
 
@@ -419,7 +423,8 @@ Respond in JSON format:
             organizationId,
             "ai_chat",
             1,
-            { feature: "lead_nurturing", leadId: lead.id }
+            { feature: "lead_nurturing", leadId: lead.id, paxLane },
+            paxLane !== "included",
           );
 
           if (usageResult.insufficientCredits) {
@@ -427,7 +432,7 @@ Respond in JSON format:
             break;
           }
 
-          result.creditsUsed += 1;
+          if (paxLane !== "included") result.creditsUsed += 1;
 
           try {
             const followUp = await this.generateFollowUp(lead);

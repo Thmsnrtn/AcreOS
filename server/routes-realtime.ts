@@ -9,6 +9,7 @@ import { logger } from './utils/logger';
 import { Errors } from './utils/errors';
 import { refusePaxCredits } from "./utils/firstRunRefusals";
 import { paxTurnFunding } from "./services/paxTurnFunding";
+import { markPaxTurn, paxTurnScope } from "./services/paxTurnContext";
 import { meteredChatCompletion } from "./services/aiSpendGuard";
 const creditService = new CreditService();
 
@@ -31,7 +32,7 @@ function getUser(req: Request) {
  * Answers a natural language question about the user's real estate business.
  * Returns a reply and optionally an action path to navigate to.
  */
-router.post('/ask', async (req: AuthenticatedRequest, res: Response) => {
+router.post('/ask', paxTurnScope(), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { message } = req.body;
     if (!message || typeof message !== 'string') {
@@ -43,6 +44,7 @@ router.post('/ask', async (req: AuthenticatedRequest, res: Response) => {
     const org = req.organization;
     if (org && (await paxTurnFunding(org.id, { isFounder: req.isFounder })) !== "included") {
       const credit = await creditService.evaluateCredits(org.id, 2);
+      if (credit.allowed) markPaxTurn(org.id, credit.lane === "balance");
       if (!credit.allowed) {
         const balance = await creditService.getBalance(org.id).catch(() => 0);
         return refusePaxCredits(res, {

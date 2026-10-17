@@ -1,5 +1,6 @@
 /**
- * Who pays for one customer-triggered Pax turn — founder decision 2026-10-12,
+ * Who pays for one Pax turn (or one unit of background ai_chat work) — founder
+ * decision 2026-10-12,
  * "Included Pax turns are free" (docs/company/founder-decisions-2026-10-12.md).
  *
  * Within a paid plan's included Pax — under the plan's monthly message cap
@@ -17,8 +18,15 @@
  *               allowance: no credit check, no credit charge.
  *   credits   — everything else (free plan, trial, past the cap or the
  *               allowance): the existing credit gate and charge apply. Past
- *               the allowance the existing wall (aiByokThresholdGate /
- *               enforceAiAllowance) still governs.
+ *               the allowance, purchased credits fund the turn on the
+ *               platform key (founder decision 2026-10-17): the site marks a
+ *               balance-paid turn (paxTurnContext.markPaxTurn) so the
+ *               allowance enforcement lets it through; the AI cost ceilings
+ *               still bound it.
+ *
+ * Background AI work that charges `ai_chat` credits (campaignOptimizer,
+ * leadNurturer batch runs) follows the same rule (decision 2026-10-17): it
+ * calls this once per run and charges only when the lane is not "included".
  *
  * The allowance test is aiAllowanceRule.isAiAllowanceSpent — the same predicate
  * the wall and the per-call enforcement use — read from the same

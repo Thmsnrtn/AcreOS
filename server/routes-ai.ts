@@ -8,6 +8,7 @@ import { checkUsageLimit } from "./services/usageLimits";
 import { usageLimitGate, aiByokThresholdGate, refusePlanLimit } from "./middleware/usageLimitGate";
 import { refusePaxCredits } from "./utils/firstRunRefusals";
 import { paxTurnFunding } from "./services/paxTurnFunding";
+import { markPaxTurn, paxTurnScope } from "./services/paxTurnContext";
 import { usageMeteringService, creditService } from "./services/credits";
 import { processChat, processChatStream, agentProfiles, getOrCreateConversation, ProviderCreditError, PaxAiPausedError } from "./ai/executive";
 import { parsePaxPromptVersion } from "./ai/paxPromptVersions";
@@ -279,7 +280,7 @@ export function registerAIRoutes(app: Express): void {
     propertyId: z.union([z.number(), z.string()]).optional(),
   });
 
-  api.post("/api/ai/chat", isAuthenticated, getOrCreateOrg, aiLimiter, requirePaxDisclosure, paxChatGuard, usageLimitGate("ai_requests"), aiByokThresholdGate(), async (req, res) => {
+  api.post("/api/ai/chat", isAuthenticated, getOrCreateOrg, aiLimiter, requirePaxDisclosure, paxChatGuard, usageLimitGate("ai_requests"), aiByokThresholdGate(), paxTurnScope(), async (req, res) => {
     // STR-016: step tags let us see in Fly logs exactly which pre-processing
     // dependency failed when the handler 500s. Non-essential side effects
     // (trackUsage, recordUsage) are wrapped so they can't block the user's
@@ -322,6 +323,9 @@ export function registerAIRoutes(app: Express): void {
       }
       try {
         const credit = paxLane === "credits" ? await creditService.evaluateCredits(org.id, aiChatCost) : null;
+        // Past the allowance, a turn the org's own balance pays for runs on
+        // the platform key (founder decision 2026-10-17).
+        markPaxTurn(org.id, credit?.allowed === true && credit.lane === "balance");
         if (credit && !credit.allowed) {
           const balance = await creditService.getBalance(org.id).catch(() => 0);
           return refusePaxCredits(res, {
@@ -464,7 +468,7 @@ export function registerAIRoutes(app: Express): void {
     // OD-7). Auto routes per turn — that is the product.
   });
 
-  api.post("/api/ai/chat/stream", isAuthenticated, getOrCreateOrg, aiLimiter, requirePaxDisclosure, paxChatGuard, usageLimitGate("ai_requests"), aiByokThresholdGate(), async (req, res) => {
+  api.post("/api/ai/chat/stream", isAuthenticated, getOrCreateOrg, aiLimiter, requirePaxDisclosure, paxChatGuard, usageLimitGate("ai_requests"), aiByokThresholdGate(), paxTurnScope(), async (req, res) => {
     // STR-016: mirror the resilience pattern from /api/ai/chat.
     let step: string = "init";
     try {
@@ -516,6 +520,9 @@ export function registerAIRoutes(app: Express): void {
       }
       try {
         const credit = paxLane === "credits" ? await creditService.evaluateCredits(org.id, aiChatCost) : null;
+        // Past the allowance, a turn the org's own balance pays for runs on
+        // the platform key (founder decision 2026-10-17).
+        markPaxTurn(org.id, credit?.allowed === true && credit.lane === "balance");
         if (credit && !credit.allowed) {
           const balance = await creditService.getBalance(org.id).catch(() => 0);
           return refusePaxCredits(res, {

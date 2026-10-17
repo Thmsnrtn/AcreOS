@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { campaigns, type Campaign, type InsertCampaignOptimization } from "@shared/schema";
 import { storage } from "../storage";
 import { usageMeteringService } from "./credits";
+import { paxTurnFunding } from "./paxTurnFunding";
 import { voiceLearningService } from "./voiceLearning";
 import { getOpenAIClient } from "../utils/openaiClient";
 import { MODELS } from "./models";
@@ -334,13 +335,17 @@ Respond in JSON format:
 
     try {
       const campaignsToProcess = await storage.getCampaignsNeedingOptimization(organizationId);
-      
+      // Same rule as a Pax turn (founder decision 2026-10-17): no credit
+      // charge while the org is inside its included allowance; credits after.
+      const paxLane = await paxTurnFunding(organizationId);
+
       for (const campaign of campaignsToProcess.slice(0, limit)) {
         const usageResult = await usageMeteringService.recordUsage(
           organizationId,
           "ai_chat",
           1,
-          { feature: "campaign_optimization", campaignId: campaign.id }
+          { feature: "campaign_optimization", campaignId: campaign.id, paxLane },
+          paxLane !== "included",
         );
 
         if (usageResult.insufficientCredits) {
@@ -348,7 +353,7 @@ Respond in JSON format:
           break;
         }
 
-        result.creditsUsed += 1;
+        if (paxLane !== "included") result.creditsUsed += 1;
 
         try {
           const optimizationResult = await this.optimizeCampaign(campaign);

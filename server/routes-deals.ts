@@ -1,5 +1,6 @@
 import type { Express } from "express";
 import { DealCreationRefusedError, DealTransitionRefusedError } from "./storage/dealRepo";
+import { markPaxTurn, paxTurnScope } from "./services/paxTurnContext";
 import { omitProtectedFields, omitServerOwnedFields } from "./utils/updatePayload";
 import { fraudGateRefusal, sealWireAttestation, stampWireConfirmation, withdrawWireConfirmation } from "./services/closingEvidence";
 import { storage } from "./storage";
@@ -1564,7 +1565,7 @@ export function registerDealRoutes(app: Express): void {
   // PROPERTY ANALYSIS CHAT
   // ============================================
   
-  api.post("/api/properties/:id/analyze", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.post("/api/properties/:id/analyze", isAuthenticated, getOrCreateOrg, paxTurnScope(), async (req, res) => {
     try {
       const org = req.organization;
       const propertyId = Number(req.params.id);
@@ -1594,6 +1595,9 @@ export function registerDealRoutes(app: Express): void {
       const dealChatCents = 2;
       const paxLane = await paxTurnFunding(org.id, { usage: usageCheck });
       const credit = paxLane !== "included" ? await dealCreditService.evaluateCredits(org.id, dealChatCents) : null;
+      if (credit?.allowed) {
+        markPaxTurn(org.id, credit.lane === "balance");
+      }
       if (credit && !credit.allowed) {
         const balance = await dealCreditService.getBalance(org.id).catch(() => 0);
         return refusePaxCredits(res, {

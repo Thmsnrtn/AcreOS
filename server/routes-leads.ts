@@ -1,5 +1,6 @@
 import type { Express, Response } from "express";
 import { refusePaxCredits } from "./utils/firstRunRefusals";
+import { markPaxTurn, paxTurnScope } from "./services/paxTurnContext";
 import { stampOwnerSuppression } from "./services/trust/ownerSuppression";
 import { readPropertiesBySellerIds } from "./storage/wholeBookReads";
 import { getOrganization, getUserId, type AuthenticatedRequest } from "./types/request";
@@ -1351,7 +1352,7 @@ export function registerLeadRoutes(app: Express): void {
     }
   });
 
-  api.post("/api/leads/:id/nurture", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.post("/api/leads/:id/nurture", isAuthenticated, getOrCreateOrg, paxTurnScope(), async (req, res) => {
     const org = req.organization;
     const leadId = Number(req.params.id);
     
@@ -1371,6 +1372,12 @@ export function registerLeadRoutes(app: Express): void {
       { feature: "lead_nurturing", leadId, paxLane },
       paxLane !== "included",
     );
+
+    if (usageResult.deducted) {
+      // Paid from the org's own balance: past the allowance, that funds the
+      // turn on the platform key (founder decision 2026-10-17).
+      markPaxTurn(org.id, true);
+    }
 
     if (usageResult.insufficientCredits) {
       const { CreditService } = await import("./services/credits");

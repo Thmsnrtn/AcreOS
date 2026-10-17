@@ -27,6 +27,7 @@ import {
 } from "../services/usageLimits";
 import { planLimitDetails } from "@shared/billing/plan-limit-copy";
 import { Errors } from "../utils/errors";
+import { allowanceExhaustedMessage } from "../services/aiAllowance";
 import { logger } from "../utils/logger";
 import type { AuthenticatedRequest } from "../types/request";
 
@@ -120,6 +121,14 @@ export function aiByokThresholdGate() {
       res.locals.aiTurnGate = gate;
 
       if (!gate.allowed) {
+        // Founder decision 2026-10-17: past the allowance, purchased credits
+        // fund a Pax turn as well as the org's own key. A balance that covers
+        // one turn passes; the route's credit lane (paxTurnFunding) checks and
+        // charges it. Only a balance that cannot is refused here.
+        const { CreditService, usageMeteringService } = await import("../services/credits");
+        const turnCents = await usageMeteringService.calculateCost("ai_chat", 1).catch(() => 2);
+        const balance = await new CreditService().getBalance(organizationId).catch(() => 0);
+        if (balance >= turnCents) return next();
         return Errors.limitExceeded(res, {
           reason: "byok_required" as const,
           resourceType: "ai_requests" as const,
@@ -130,9 +139,8 @@ export function aiByokThresholdGate() {
           remaining: 0,
           byokAvailable: gate.byokAvailable,
           byokSettingsUrl: "/settings/byok",
-          message: gate.byokAvailable
-            ? "You've used this month's included AI. Add your own Anthropic, OpenRouter, or OpenAI key in Settings → Your provider keys to keep going without limits — your data and drafts stay fully accessible either way."
-            : "You've used this month's included AI. Upgrade your plan to unlock bring-your-own-key for unlimited AI — your data and drafts stay fully accessible either way.",
+          addCreditsUrl: "/settings#account",
+          message: allowanceExhaustedMessage(gate.byokAvailable, true),
           upgradeUrl: "/settings#billing",
         });
       }
