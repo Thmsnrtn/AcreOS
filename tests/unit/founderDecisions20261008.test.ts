@@ -165,7 +165,7 @@ describe("C — one shared monthly AI allowance per plan, in cents", () => {
     const allowance = Object.fromEntries(
       (["free", "starter", "pro", "scale", "enterprise"] as const).map((t) => [t, TIER_LIMITS[t].aiAllowanceCents]),
     );
-    expect(allowance).toEqual({ free: null, starter: 1125, pro: 2250, scale: 4500, enterprise: null });
+    expect(allowance).toEqual({ free: null, starter: 2500, pro: 5000, scale: 10000, enterprise: null });
     // Starter and pro remain their turn threshold priced at 1.5¢.
     expect(TIER_LIMITS.starter.aiAllowanceCents).toBe(Math.floor(AI_TURNS_BYOK_THRESHOLDS.starter! * 1.5));
     expect(TIER_LIMITS.pro.aiAllowanceCents).toBe(Math.floor(AI_TURNS_BYOK_THRESHOLDS.pro! * 1.5));
