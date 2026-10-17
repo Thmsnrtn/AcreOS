@@ -5,6 +5,7 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/empty-state";
+import { QueryErrorState } from "@/components/query-error-state";
 import { usePersona, useTerm } from "@/hooks/use-persona";
 import { usd } from "@/lib/format";
 import {
@@ -469,14 +470,7 @@ function ServicingStrip({ propertyLabel }: { propertyLabel: string }) {
     queryKey: ["/api/notes"],
     queryFn: () => fetchJsonArray<Note>("/api/notes"),
   });
-  const { data: leads = [] } = useQuery<Lead[]>({
-    queryKey: ["/api/leads"],
-    // /api/leads returns a paginated envelope ({ data: Lead[] }) — the default
-    // queryFn hands back raw JSON, which crashed every strip calling
-    // leads.filter(...) ("t.filter is not a function" -> ErrorBoundary on
-    // /maps, caught by the customer-surface journey monitor 2026-06-10).
-    queryFn: () => fetchJsonArray<Lead>("/api/leads"),
-  });
+
 
   const activeNotes = useMemo(
     () => notes.filter((n) => n.status === "active"),
@@ -497,9 +491,21 @@ function ServicingStrip({ propertyLabel }: { propertyLabel: string }) {
     });
     return candidate;
   }, [activeNotes]);
-  const borrowerName = worstLate
-    ? leads.find((l) => l.id === worstLate.note.borrowerId)
-    : null;
+  const borrowerId = worstLate?.note.borrowerId;
+  const hasBorrowerId = typeof borrowerId === "number" && Number.isSafeInteger(borrowerId) && borrowerId > 0;
+  const borrowerQuery = useQuery<Lead>({
+    queryKey: ["/api/leads", "by-id", borrowerId],
+    enabled: hasBorrowerId,
+    retry: false,
+    queryFn: async () => {
+      if (typeof borrowerId !== "number" || !Number.isSafeInteger(borrowerId) || borrowerId <= 0) throw new Error("Borrower identity is unavailable");
+      const response = await okOrThrow(await fetch(`/api/leads/${borrowerId}`, { credentials: "include" }));
+      const borrower: Lead = await response.json();
+      if (!borrower || borrower.id !== borrowerId) throw new Error("Borrower identity could not be verified");
+      return borrower;
+    },
+  });
+  const borrowerName = borrowerQuery.isSuccess && borrowerQuery.data?.id === borrowerId ? borrowerQuery.data : undefined;
 
   if (activeNotes.length === 0) {
     return (
@@ -587,6 +593,15 @@ function ServicingStrip({ propertyLabel }: { propertyLabel: string }) {
           All current
         </span>
       )}
+      {hasBorrowerId && borrowerQuery.isPending && <span className="text-xs text-muted-foreground" role="status">Loading borrower details…</span>}
+      {borrowerQuery.isError && <QueryErrorState
+        error={borrowerQuery.error}
+        onRetry={() => void borrowerQuery.refetch()}
+        isRetrying={borrowerQuery.isFetching}
+        title="Borrower details unavailable"
+        description="The note remains available. Retry to resolve this borrower's contact."
+        compact testId="servicing-borrower-error"
+      />}
     </StripShell>
   );
 }

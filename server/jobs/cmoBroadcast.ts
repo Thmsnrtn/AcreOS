@@ -11,12 +11,11 @@
  * provider read-back confirms it. This is not an organic posting adapter.
  */
 
-import * as path from "path";
+import { getStorage, type StoragePath } from "../services/cmo/storage";
+import { approvedAssetMatchesRender, verifyApprovedVideoBytes, publicationAssetRevision } from "../services/cmo/publicationAssets";
 import { db } from "../db";
 import {
   cmoAdRenders,
-  cmoScripts,
-  brandProfiles,
   decisionsInboxItems,
 } from "@shared/schema";
 import { eq, and, inArray, sql, isNull } from "drizzle-orm";
@@ -27,6 +26,8 @@ import { logger } from "../utils/logger";
 import { clock } from "../utils/clock";
 
 export interface CmoBroadcastPayload {
+  reviewRevision?: string;
+  assetRevision?: string;
   renderId: string;
   platform: "meta" | "tiktok";
   bundleId?: string;
@@ -49,7 +50,12 @@ export async function handleCmoBroadcast(payload: CmoBroadcastPayload): Promise<
     throw new Error("Malformed destination records require reconciliation before publication");
   }
   const existingReceipt = existingManifest?.platforms?.[payload.platform];
-  if (existingReceipt?.externalId) return { externalId: existingReceipt.externalId };
+  if (existingReceipt?.externalId !== undefined) {
+    if (typeof existingReceipt.externalId !== "string" || !existingReceipt.externalId.trim()) {
+      throw new Error("Malformed destination receipt requires reconciliation before publication");
+    }
+    return { externalId: existingReceipt.externalId };
+  }
   if (existingReceipt?.state) throw new Error("Publication requires reconciliation before retry");
   if (!["approved", "broadcasting", "live"].includes(render.status)) throw new Error("Render is not approved for publication");
   if (!["meta", "tiktok"].includes(payload.platform)) throw new Error("Unsupported publication platform");
@@ -59,17 +65,22 @@ export async function handleCmoBroadcast(payload: CmoBroadcastPayload): Promise<
     const review = await db.query.decisionsInboxItems.findFirst({
       where: and(eq(decisionsInboxItems.id, payload.inboxItemId), isNull(decisionsInboxItems.organizationId)),
     });
-    const ctx = review?.contextBundle as { bundleId?: string; renders?: Array<{ id: string }>; approvedPlatforms?: string[] } | null;
+    const ctx = review?.contextBundle as { bundleId?: string; renders?: Array<{ id: string }>; approvedPlatforms?: string[]; approvedAssets?: Record<string, unknown>; approvedReviewRevision?: string; approvedDestinations?: Array<{ renderId: string; platform: string }> } | null;
     const current = await db.query.cmoAdRenders.findFirst({ where: eq(cmoAdRenders.id, render.id) });
     if (review?.itemType !== "cmo_ad_review" || review.status !== "approved" ||
       !ctx?.bundleId || ctx.bundleId !== render.bundleId || !ctx.renders?.some(r => r.id === render.id) ||
-      !ctx.approvedPlatforms?.includes(payload.platform) || !current ||
+      !ctx.approvedPlatforms?.includes(payload.platform) || !payload.reviewRevision || ctx.approvedReviewRevision !== payload.reviewRevision ||
+      !ctx.approvedDestinations?.some(d => d.renderId === render.id && d.platform === payload.platform) ||
+      (payload.platform === "tiktok" && current?.aspectRatio !== "9:16") || !current ||
       !["approved", "broadcasting", "live"].includes(current.status) ||
       current.bundleId !== render.bundleId || current.storagePath !== render.storagePath) {
       throw new Error("Video review approval or assets changed; publication refused");
     }
+    const asset = approvedAssetMatchesRender(ctx.approvedAssets?.[render.id], current);
+    if (payload.assetRevision !== publicationAssetRevision(asset)) throw new Error("Approved publication proof changed; publication refused");
+    return asset;
   };
-  await requireCurrentReview();
+  const approvedAsset = await requireCurrentReview();
   if (!(await isPublishingEnabledFresh())) throw new Error("Publication is paused");
   // Configuration is checked before any upload or billable provider effect.
   const pageId = process.env.META_PAGE_ID;
@@ -78,12 +89,10 @@ export async function handleCmoBroadcast(payload: CmoBroadcastPayload): Promise<
   if (payload.platform === "meta" && !pageId) throw new Error("Meta Page configuration is unavailable");
   if (payload.platform === "tiktok" && (!identityId || !adGroupId)) throw new Error("TikTok destination configuration is unavailable");
 
-  const script = await db.query.cmoScripts.findFirst({ where: eq(cmoScripts.id, render.scriptId) });
-  if (!script) throw new Error(`[cmo:broadcast] script for render ${render.id} not found`);
-  const brand = await db.query.brandProfiles.findFirst({
-    where: eq(brandProfiles.id, render.brandProfileId),
-  });
-  if (!brand) throw new Error(`[cmo:broadcast] brand for render ${render.id} not found`);
+  // Copy once, verify once, and hand these exact bytes to the adapter.
+  const videoBytes = Buffer.from(await getStorage().read(approvedAsset.storagePath as StoragePath));
+  verifyApprovedVideoBytes(videoBytes, approvedAsset);
+  const copy = approvedAsset.publication.copy;
 
   // Atomic per-destination claim. Another platform's receipt is never copied
   // from a stale read. A crash after the claim requires reconciliation, not a
@@ -95,42 +104,37 @@ export async function handleCmoBroadcast(payload: CmoBroadcastPayload): Promise<
   }).where(and(eq(cmoAdRenders.id, render.id), inArray(cmoAdRenders.status, ["approved", "broadcasting", "live"]), sql`NOT (coalesce(${cmoAdRenders.manifestJson}->'platforms', '{}'::jsonb) ? ${payload.platform})`)).returning({ id: cmoAdRenders.id });
   if (!claimed) throw new Error("Publication already claimed or approval changed; refresh before retry");
 
-  const storageRoot = process.env.CMO_STORAGE_ROOT ?? "/data/cmo";
-  const videoKey = render.storagePath.replace(/^local:/, "");
-  const videoAbsPath = path.join(storageRoot, videoKey);
-
-  const funnelStages = brand.funnelStages as Record<string, { ctaLabel: string; ctaUrl: string }>;
-  const ctaConfig = funnelStages[script.funnelStage] ?? { ctaLabel: "Start free trial", ctaUrl: "https://acreos.io/auth?mode=register" };
-
   let externalId: string;
   let externalCampaignId: string | undefined;
 
   try {
     if (payload.platform === "meta") {
       const uploaded = await uploadVideoToMeta({
-        videoAbsolutePath: videoAbsPath,
-        name: `${brand.displayName} ${script.hookArchetype}`,
+        videoBytes,
+        name: copy.name,
         trackingId: render.trackingId,
       });
-      await waitForVideoReady(uploaded.videoId);
+      if (!uploaded.adAccountId) throw new Error("Meta upload account identity is unavailable; publication requires reconciliation");
+      await waitForVideoReady(uploaded.videoId, { expectedAdAccountId: uploaded.adAccountId });
 
       await requireCurrentReview();
       if (!(await isPublishingEnabledFresh())) throw new Error("Publication paused after upload");
       const creative = await createMetaCreative({
+        expectedAdAccountId: uploaded.adAccountId,
         videoId: uploaded.videoId,
         pageId: pageId!,
-        ctaUrl: ctaConfig.ctaUrl,
-        ctaType: "SIGN_UP",
-        primaryText: script.body,
-        headline: script.hook.slice(0, 40),
+        ctaUrl: copy.ctaUrl,
+        ctaType: copy.ctaType,
+        primaryText: copy.primaryText,
+        headline: copy.headline,
         trackingId: render.trackingId,
       });
 
       externalId = creative.creativeId;
     } else if (payload.platform === "tiktok") {
       const uploaded = await uploadVideoToTikTok({
-        videoAbsolutePath: videoAbsPath,
-        videoName: `${brand.displayName} ${script.hookArchetype}`,
+        videoBytes,
+        videoName: copy.name,
         trackingId: render.trackingId,
       });
 
@@ -141,9 +145,9 @@ export async function handleCmoBroadcast(payload: CmoBroadcastPayload): Promise<
         advertiserId: uploaded.advertiserId,
         identityId: identityId!,
         identityType: "TT_USER",
-        adText: `${script.hook} ${script.body}`.slice(0, 200),
-        ctaButtonText: "SIGN_UP",
-        landingPageUrl: ctaConfig.ctaUrl,
+        adText: copy.adText,
+        ctaButtonText: copy.ctaType,
+        landingPageUrl: copy.ctaUrl,
         trackingId: render.trackingId,
         adGroupId: adGroupId!,
       });
@@ -153,8 +157,11 @@ export async function handleCmoBroadcast(payload: CmoBroadcastPayload): Promise<
       throw new Error(`[cmo:broadcast] unknown platform '${payload.platform}'`);
     }
 
+    if (typeof externalId !== "string" || !externalId.trim()) {
+      throw new Error("Provider object receipt is unavailable; reconcile before retry");
+    }
     // Creative/ad creation is a receipt, not proof of delivery or organic publication.
-    const receipt = { state: "object_created", objectKind: payload.platform === "meta" ? "ad_creative" : "ad", externalId, delivery: "unverified", recordedAt: clock.now().toISOString() };
+    const receipt = { assetRevision: payload.assetRevision, reviewRevision: payload.reviewRevision, state: "object_created", objectKind: payload.platform === "meta" ? "ad_creative" : "ad", externalId, delivery: "unverified", recordedAt: clock.now().toISOString() };
     await db.update(cmoAdRenders).set({
       broadcastAt: clock.now(), updatedAt: clock.now(),
       manifestJson: sql`jsonb_set(coalesce(${cmoAdRenders.manifestJson}, '{}'::jsonb), '{platforms}', coalesce(${cmoAdRenders.manifestJson}->'platforms', '{}'::jsonb) || jsonb_build_object(${payload.platform}::text, ${JSON.stringify(receipt)}::jsonb), true)`,
