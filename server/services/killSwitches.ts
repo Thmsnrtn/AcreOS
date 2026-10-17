@@ -37,7 +37,7 @@ export interface KillSwitchState {
 }
 
 /** Monthly spending threshold in USD (Law III). Adjustable by Tom. */
-export const COST_BREAKER_THRESHOLD_USD = 25;
+const COST_BREAKER_THRESHOLD_USD = 25;
 
 /**
  * Find the latest ledger entry for a given actionType pair.
@@ -62,7 +62,7 @@ async function latestSwitchEntry(
 }
 
 /** Switch 3: Is the COO currently stood down? */
-export async function isCooStoodDown(): Promise<KillSwitchState> {
+async function isCooStoodDown(): Promise<KillSwitchState> {
   const entry = await latestSwitchEntry("coo_stand_down", "coo_stand_up");
   return {
     name: "coo_stand_down",
@@ -74,7 +74,7 @@ export async function isCooStoodDown(): Promise<KillSwitchState> {
 }
 
 /** Switch 2: Is the autopilot currently paused? */
-export async function isAutopilotPaused(): Promise<KillSwitchState> {
+async function isAutopilotPaused(): Promise<KillSwitchState> {
   const entry = await latestSwitchEntry("autopilot_pause", "autopilot_resume");
   return {
     name: "autopilot_pause",
@@ -92,7 +92,7 @@ export async function isAutopilotPaused(): Promise<KillSwitchState> {
  *
  * NOTE: costUsd is stored as text/decimal; we cast to numeric for the sum.
  */
-export async function checkCostCircuitBreaker(
+async function checkCostCircuitBreaker(
   thresholdUsd: number = COST_BREAKER_THRESHOLD_USD,
 ): Promise<KillSwitchState & { spentUsd: number; thresholdUsd: number }> {
   const now = clock.now();
@@ -142,7 +142,7 @@ export async function checkCostCircuitBreaker(
  * This reports the ledger's record of freeze/unfreeze events for visibility.
  * NOTE: the GitHub variable is the source of truth; the ledger is the audit trail.
  */
-export async function getDeployFreezeState(): Promise<KillSwitchState> {
+async function getDeployFreezeState(): Promise<KillSwitchState> {
   const entry = await latestSwitchEntry("deploy_freeze", "deploy_unfreeze");
   return {
     name: "deploy_freeze",
