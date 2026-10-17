@@ -8,7 +8,7 @@ import { storage, db } from "./storage";
 
 // Auth imports
 import { clerkMiddleware, isAuthenticated, registerAuthRoutes, requireFounder } from "./auth";
-import { e2eTestAuthEnabled } from "./auth/testAuth";
+import { e2eTestAuthEnabled, e2eTokenAuthEnabled } from "./auth/testAuth";
 
 // Feature routes (Router-based)
 import { registerAIOperationsRoutes } from "./routes-ai-operations";
@@ -679,7 +679,7 @@ export async function registerRoutes(
     // dev-instance keys when no session is found, which CI can't complete and
     // which blanks the page. The isAuthenticated bypass populates req.auth
     // itself. Never active on Fly — see server/auth/testAuth.ts.
-    if (e2eTestAuthEnabled()) return next();
+    if (e2eTestAuthEnabled() || e2eTokenAuthEnabled(req)) return next();
     try {
       clerkMw(req, res, (err?: unknown) => {
         if (err) {
