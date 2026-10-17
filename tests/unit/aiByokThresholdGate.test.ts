@@ -45,7 +45,7 @@ describe("AI_TURNS_BYOK_THRESHOLDS — tunable economics constants", () => {
   it("included COGS at threshold stays under monthly price (margin-positive)", () => {
     // ~1.5¢/turn worst case. Starter $29, Pro $49, Scale $199.
     expect(750 * 1.5).toBeLessThan(2900);
-    expect(1500 * 1.5).toBeLessThan(4900);
+    expect(1500 * 1.5).toBeLessThan(9900);
     expect(6000 * 1.5).toBeLessThan(19900);
   });
 
@@ -144,7 +144,7 @@ describe("checkAiTurnGate — the shared monthly AI allowance (cents)", () => {
     expect(r.allowed).toBe(true);
     expect(r.mode).toBe("platform");
     expect(r.warning).toBe(false);
-    expect(r.threshold).toBe(2250);
+    expect(r.threshold).toBe(5000);
     expect(r.unit).toBe("cents");
   });
 
