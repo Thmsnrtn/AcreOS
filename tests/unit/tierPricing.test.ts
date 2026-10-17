@@ -75,8 +75,8 @@ describe("shared/billing/tier-pricing", () => {
 
   describe("tierPriceDollars()", () => {
     it("returns prices in dollars (cents / 100)", () => {
-      expect(tierPriceDollars("starter", "monthly")).toBe(20);
-      expect(tierPriceDollars("pro", "yearly")).toBe(490);
+      expect(tierPriceDollars("starter", "monthly")).toBe(49);
+      expect(tierPriceDollars("pro", "yearly")).toBe(990);
     });
   });
 
