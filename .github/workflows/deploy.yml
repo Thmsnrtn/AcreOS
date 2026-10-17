@@ -140,6 +140,8 @@ jobs:
   deploy:
     name: Deploy to Fly.io
     needs: [test, ci, security]
+    # Kill switch: DEPLOY_FROZEN=true blocks all automated deploys (2026-10-17)
+    if: vars.DEPLOY_FROZEN != 'true'
     runs-on: ubuntu-latest
     environment: production
     env:
