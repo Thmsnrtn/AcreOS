@@ -244,6 +244,7 @@ import { registerLandDataRoutes } from "./routes-land-data";
 import { registerFounderCostRoutes } from "./routes-founder-cost";
 import { registerOpsRoutes } from "./routes-ops";
 import { registerLedgerRoutes } from "./routes-ledger";
+import { registerKillSwitchRoutes } from "./routes-killswitches";
 import { registerFounderAuditRoutes } from "./routes-founder-audit";
 import { registerFounderLifeCockpitRoutes } from "./routes-founder-life-cockpit";
 import { registerPublicDealRoomRoute } from "./routes-deal-rooms";
@@ -2578,6 +2579,7 @@ export async function registerRoutes(
   // GET-only, bearer-token auth (OPS_SERVICE_TOKEN). See routes-ops.ts.
   registerOpsRoutes(app);
   registerLedgerRoutes(app);
+  registerKillSwitchRoutes(app);
   // Domain-audit cockpit — /api/founder/audit-findings — the shared
   // continuous-audit substrate's founder "is it green?" read surface +
   // acknowledge/resolve. Founder-only. Company-level (no org scope).
