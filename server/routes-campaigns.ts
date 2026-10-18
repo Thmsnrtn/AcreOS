@@ -791,15 +791,6 @@ export function registerCampaignRoutes(app: Express): void {
         postcardSpec,
         letterSpec,
       } = await import("./services/mail/mailLane");
-      const mailLane = await resolveMailLane(
-        org.id,
-        pieceType.startsWith('postcard_') ? postcardSpec(pieceType.replace('postcard_', '')) : letterSpec({ pages: 1 }),
-        { via: 'lob', listedCredits: DIRECT_MAIL_COSTS[pieceType] },
-      );
-      if (mailLane.lane === 'refused') {
-        return Errors.badRequest(res, mailLane.message, { reason: mailLane.reason, lane: 'refused' });
-      }
-      const usingOrgLobCredentials = mailLane.lane === 'own_account';
 
       const campaign = await storage.getCampaign(org.id, campaignId);
       if (!campaign || campaign.type !== 'direct_mail') {
@@ -834,6 +825,20 @@ export function registerCampaignRoutes(app: Express): void {
       if (!leadIds || leadIds.length === 0) {
         return Errors.badRequest(res, "No recipients specified");
       }
+
+      // The lane is resolved once the content is known (a letter's page count
+      // is confirmed from it), and still before anything is claimed or charged.
+      const mailLane = await resolveMailLane(
+        org.id,
+        // A letter's page count is confirmed from its content; the house lane
+        // refuses one it cannot confirm is a single page (decision 2026-10-18).
+        pieceType.startsWith('postcard_') ? postcardSpec(pieceType.replace('postcard_', '')) : letterSpec({ file: mailContent }),
+        { via: 'lob', listedCredits: DIRECT_MAIL_COSTS[pieceType] },
+      );
+      if (mailLane.lane === 'refused') {
+        return Errors.badRequest(res, mailLane.message, { reason: mailLane.reason, lane: 'refused' });
+      }
+      const usingOrgLobCredentials = mailLane.lane === 'own_account';
 
       // Get the organization's default mail sender identity
       const mailSenderIdentity = await storage.getDefaultMailSenderIdentity(org.id);
@@ -1755,11 +1760,22 @@ export function registerCampaignRoutes(app: Express): void {
       const { line1, line2, city, state, zip } = parsed.data;
       const org = req.organization;
       
-      // The org's own Lob key verifies on its own account; only an org with
-      // none uses AcreOS's (mail/mailLane.ts, founder decision 2026-10-17).
-      const { orgHasOwnMailKey, houseMailConfigured } = await import("./services/mail/mailLane");
-      if (!(await orgHasOwnMailKey(org.id, "lob")) && !(await houseMailConfigured())) {
-        return Errors.badRequest(res, "Address verification is not available yet. Connect your own Lob key in Settings → Your provider keys.");
+      // A LEAD-address check (founder decision 2026-10-18): on the org's own
+      // Lob key; on AcreOS's account only once a per-check cost is set, and
+      // then pre-paid from purchased credits (mail/mailLane.ts).
+      const { resolveAddressCheckLane, chargeHouseMail, isHouseMailShort, refundUnbilledHouseMail } = await import("./services/mail/mailLane");
+      const lane = await resolveAddressCheckLane(org.id);
+      if (lane.lane === "refused") {
+        return Errors.badRequest(res, lane.message, { reason: "address_checks_own_key_only", byokSettingsUrl: "/settings/byok" });
+      }
+      let charge: Awaited<ReturnType<typeof chargeHouseMail>> | null = null;
+      if (lane.lane === "house") {
+        try {
+          charge = await chargeHouseMail({ organizationId: org.id, lane, externalEventId: `addrcheck:${org.id}:${crypto.randomUUID()}` });
+        } catch (chargeErr) {
+          if (!isHouseMailShort(chargeErr)) throw chargeErr;
+          return Errors.paymentRequired(res, chargeErr.message, { purchaseUrl: "/usage", byokSettingsUrl: "/settings/byok" });
+        }
       }
 
       const { verifyAddress } = await import("./services/directMailService");
@@ -1770,7 +1786,10 @@ export function registerCampaignRoutes(app: Express): void {
         city,
         state,
         zip,
-      }, org.id);
+      }, org.id, { purpose: "lead_address", lane });
+      if (charge && result.errorMessage) {
+        await refundUnbilledHouseMail(org.id, charge, { providerNotBilled: result.providerNotBilled === true }, "Address check did not run");
+      }
       res.json(result);
     } catch (error: any) {
       Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to verify address"));
@@ -1794,14 +1813,30 @@ export function registerCampaignRoutes(app: Express): void {
         return Errors.badRequest(res, "Maximum 100 addresses can be verified at once");
       }
       
-      // The org's own Lob key verifies on its own account; only an org with
-      // none uses AcreOS's (mail/mailLane.ts, founder decision 2026-10-17).
-      const { orgHasOwnMailKey, houseMailConfigured } = await import("./services/mail/mailLane");
-      if (!(await orgHasOwnMailKey(org.id, "lob")) && !(await houseMailConfigured())) {
-        return Errors.badRequest(res, "Address verification is not available yet. Connect your own Lob key in Settings → Your provider keys.");
+      // LEAD-address checks (founder decision 2026-10-18): on the org's own
+      // Lob key; on AcreOS's account only once a per-check cost is set, and
+      // then every check is pre-paid from purchased credits before Lob runs.
+      const { resolveAddressCheckLane, chargeHouseMail, isHouseMailShort, refundUnbilledHouseMail } = await import("./services/mail/mailLane");
+      const lane = await resolveAddressCheckLane(org.id);
+      if (lane.lane === "refused") {
+        return Errors.badRequest(res, lane.message, { reason: "address_checks_own_key_only", byokSettingsUrl: "/settings/byok" });
       }
 
       const { verifyAddress } = await import("./services/directMailService");
+
+      // Read every lead first, so the checks that will reach Lob are counted
+      // (and, on AcreOS's account, paid for) before the first one runs.
+      const loaded = await Promise.all(leadIds.map(async (leadId) => ({ leadId, lead: await storage.getLead(org.id, leadId) })));
+      const checkable = loaded.filter(({ lead }) => lead && lead.address && lead.city && lead.state && lead.zip).length;
+      let charge: Awaited<ReturnType<typeof chargeHouseMail>> | null = null;
+      if (lane.lane === "house" && checkable > 0) {
+        try {
+          charge = await chargeHouseMail({ organizationId: org.id, lane, units: checkable, externalEventId: `addrcheck:${org.id}:${crypto.randomUUID()}` });
+        } catch (chargeErr) {
+          if (!isHouseMailShort(chargeErr)) throw chargeErr;
+          return Errors.paymentRequired(res, chargeErr.message, { purchaseUrl: "/usage", byokSettingsUrl: "/settings/byok" });
+        }
+      }
 
       const results: Array<{
         leadId: number;
@@ -1813,8 +1848,7 @@ export function registerCampaignRoutes(app: Express): void {
       let deliverable = 0;
       let undeliverable = 0;
       
-      for (const leadId of leadIds) {
-        const lead = await storage.getLead(org.id, leadId);
+      for (const { leadId, lead } of loaded) {
         if (!lead) {
           results.push({ leadId, isValid: false, deliverability: 'unknown', errorMessage: 'Lead not found' });
           undeliverable++;
@@ -1834,7 +1868,17 @@ export function registerCampaignRoutes(app: Express): void {
             city: lead.city,
             state: lead.state,
             zip: lead.zip,
-          }, org.id);
+          }, org.id, { purpose: "lead_address", lane });
+          if (charge && verificationResult.errorMessage) {
+            // Only a check Lob certainly did not run is returned.
+            await refundUnbilledHouseMail(
+              org.id,
+              charge,
+              { providerNotBilled: verificationResult.providerNotBilled === true },
+              `Address check for lead ${leadId} did not run`,
+              { amountCents: lane.lane === "house" ? lane.creditsPerPiece : 0, refundKey: `${charge.externalEventId}:lead:${leadId}:refund` },
+            );
+          }
           
           results.push({
             leadId,

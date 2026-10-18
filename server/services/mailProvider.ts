@@ -289,7 +289,7 @@ function notSent(error: string): MailResult {
 }
 
 export async function sendLetter(options: LetterOptions): Promise<MailResult> {
-  const plan = await planLobSend(letterSpec({ color: options.color ?? false }), options.organizationId, options.from);
+  const plan = await planLobSend(letterSpec({ color: options.color ?? false, file: options.file }), options.organizationId, options.from);
 
   if (plan.kind === 'refused') {
     logger.warn(`[Mail] Letter to ${options.to.name} refused: ${plan.error}`);

@@ -12,14 +12,14 @@ import {
   chargeHouseMailPiece,
   refundUnbilledHouseMail,
   withBillingVerdict,
-  houseMailProviderCostCents,
+  providerDidNotBill,
+  type AddressCheckLane,
   postcardSpec,
   letterSpec,
   type HouseMailCharge,
   type HouseMailSpec,
   type SendableMailLane,
 } from './mail/mailLane';
-import { houseMailSpecKey } from '@shared/billing/house-mail-pricing';
 import { randomUUID } from 'node:crypto';
 
 interface RecipientAddress {
@@ -121,7 +121,23 @@ interface VerifyAddressResult {
     lobAddressId?: string;
   };
   errorMessage?: string;
+  /** True when the check was refused before Lob was contacted (no lane for it). */
+  refused?: boolean;
+  /** On a failure: true only when Lob certainly did not run (or bill) the check. */
+  providerNotBilled?: boolean;
 }
+
+/**
+ * Why an address is being checked (founder decision 2026-10-18):
+ *   sender_identity — the org's own return address, checked once before house
+ *                     mail can use it: free on AcreOS's account.
+ *   lead_address    — a lead's address: on the org's own Lob key, or on
+ *                     AcreOS's account only under a house AddressCheckLane the
+ *                     caller has already pre-paid (mailLane.resolveAddressCheckLane).
+ */
+export type AddressCheckUse =
+  | { purpose: 'sender_identity' }
+  | { purpose: 'lead_address'; lane: AddressCheckLane };
 
 interface LobClientResult {
   client: InstanceType<typeof Lob>;
@@ -290,14 +306,14 @@ async function prepareLobSend(args: {
   return { lane, client, source, isTestKey, charge };
 }
 
-// Pillar 1.6 — what a Lob piece cost AcreOS, for the opex ledger. Read from
-// the ONE cost table (shared/billing/house-mail-pricing.ts via
-// mailLane.houseMailProviderCostCents: founder setting → legacy env knob →
-// compiled), the same figure the house charge is checked against. A spec the
-// table does not price posts no figure rather than a guessed one.
-async function lobPieceCostCents(spec: HouseMailSpec): Promise<number> {
-  const key = houseMailSpecKey(spec);
-  return key ? houseMailProviderCostCents(key) : 0;
+// Pillar 1.6 — what a Lob piece cost AcreOS, for the opex ledger: the house
+// lane's price, which came from the ONE cost table (shared/billing/
+// house-mail-pricing.ts via mailLane.houseMailProviderCostCents: founder
+// setting → legacy env knob → compiled; plus confirmed extra pages) — the same
+// figure the house charge was checked against. A piece on the org's own key
+// cost AcreOS nothing and posts nothing.
+function lobPieceCostCents(lane: SendableMailLane): number {
+  return lane.lane === 'house' ? lane.price.providerCostCents : 0;
 }
 
 async function postLobCostToLedger(
@@ -367,7 +383,7 @@ export async function sendPostcard(options: SendPostcardOptions): Promise<SendRe
     }
   }
 
-  const { client, source, isTestKey, charge } = await prepareLobSend({
+  const { lane, client, source, isTestKey, charge } = await prepareLobSend({
     organizationId,
     spec: postcardSpec(size),
     senderIdentity,
@@ -391,7 +407,7 @@ export async function sendPostcard(options: SendPostcardOptions): Promise<SendRe
     logger.info(`[DirectMailService] Postcard sent successfully: ${result.id} (source: ${source})`);
 
     // Pillar 1.6 — debit opex_available by Lob piece cost.
-    await postLobCostToLedger(organizationId, result.id, await lobPieceCostCents(postcardSpec(size)), 'postcard');
+    await postLobCostToLedger(organizationId, result.id, lobPieceCostCents(lane), 'postcard');
 
     return {
       lobId: result.id,
@@ -513,9 +529,10 @@ async function performLetterSend(options: SendLetterOptions): Promise<SendResult
     }
   }
 
-  const { client, source, isTestKey, charge } = await prepareLobSend({
+  const { lane, client, source, isTestKey, charge } = await prepareLobSend({
     organizationId,
-    spec: letterSpec({ color }),
+    // The house lane confirms the page count from the content itself.
+    spec: letterSpec({ color, file: htmlContent }),
     senderIdentity,
     housePrepaid: options.housePrepaid === true,
     idempotencyKey: options.idempotencyKey,
@@ -540,7 +557,7 @@ async function performLetterSend(options: SendLetterOptions): Promise<SendResult
     await postLobCostToLedger(
       organizationId,
       result.id,
-      await lobPieceCostCents(letterSpec({ color })),
+      lobPieceCostCents(lane),
       'letter',
     );
 
@@ -578,15 +595,29 @@ export function isAddressMinimallyValid(address: { line1?: string; city?: string
 
 /**
  * Lob address verification, on the ORG's own Lob account when it has one —
- * a BYO org's verifications are its own Lob traffic, never AcreOS's. Only an
- * org with no own key verifies on AcreOS's account (the house lane, whose
- * pieces require a verified return address in the first place).
+ * a BYO org's verifications are its own Lob traffic, never AcreOS's. Without
+ * one, AcreOS's account runs the free one-off sender-identity check, and a
+ * lead-address check only under a pre-paid house AddressCheckLane; otherwise
+ * the check is refused before Lob is contacted.
  */
-export async function verifyAddress(address: RecipientAddress, organizationId: number): Promise<VerifyAddressResult> {
-  logger.info(`[DirectMailService] Verifying address for org ${organizationId}: ${address.line1}, ${address.city}, ${address.state} ${address.zip}`);
+export async function verifyAddress(address: RecipientAddress, organizationId: number, use: AddressCheckUse): Promise<VerifyAddressResult> {
+  logger.info(`[DirectMailService] Verifying address for org ${organizationId} (${use.purpose}): ${address.line1}, ${address.city}, ${address.state} ${address.zip}`);
   
   try {
     const own = await getOwnLobClient(organizationId);
+    if (!own && use.purpose === 'lead_address' && use.lane.lane !== 'house') {
+      return {
+        isValid: false,
+        deliverability: 'unknown',
+        details: {},
+        errorMessage:
+          use.lane.lane === 'refused'
+            ? use.lane.message
+            : 'Checking lead addresses runs on your own Lob key. Connect it in Settings → Your provider keys.',
+        refused: true,
+        providerNotBilled: true,
+      };
+    }
     const client = (own ? own.client : getPlatformLobClient()) as any;
     
     const result = await client.usVerifications.verify({
@@ -635,6 +666,7 @@ export async function verifyAddress(address: RecipientAddress, organizationId: n
       deliverability: 'undeliverable',
       details: {},
       errorMessage,
+      providerNotBilled: providerDidNotBill(error),
     };
   }
 }

@@ -142,13 +142,15 @@ describe("a spec with no cost row is refused, never guessed", () => {
     expect(houseMailSpecKey({ kind: "postcard", size: "4x6" })).toBe("postcard_4x6");
     expect(houseMailSpecKey({ kind: "postcard", size: "6x11" })).toBe("postcard_6x11");
     expect(houseMailSpecKey({ kind: "letter", color: false, pages: 1 })).toBe("letter_bw");
-    expect(houseMailSpecKey({ kind: "letter", color: true })).toBe("letter_color");
-    expect(houseMailSpecKey({ kind: "letter", mailClass: "usps_first_class", extraService: null })).toBe("letter_bw");
+    expect(houseMailSpecKey({ kind: "letter", color: true, pages: 1 })).toBe("letter_color");
+    expect(houseMailSpecKey({ kind: "letter", pages: 1, mailClass: "usps_first_class", extraService: null })).toBe("letter_bw");
   });
 
   it.each([
     ["an unknown postcard size", { kind: "postcard" as const, size: "5x7" }],
     ["a two-page letter", { kind: "letter" as const, pages: 2 }],
+    ["a letter whose page count is not confirmed", { kind: "letter" as const }],
+    ["a letter that only carries its HTML", { kind: "letter" as const, file: "<p>Dear owner</p>" }],
     ["standard mail", { kind: "letter" as const, mailClass: "usps_standard" }],
     ["certified mail", { kind: "letter" as const, extraService: "certified" }],
     ["registered postcard", { kind: "postcard" as const, size: "4x6", extraService: "registered" }],
@@ -158,12 +160,15 @@ describe("a spec with no cost row is refused, never guessed", () => {
 });
 
 describe("one source of AcreOS's mail cost", () => {
-  it("the COGS ledger posting reads the canonical table, not its own literals", () => {
+  it("the COGS ledger posting reads the lane's price (from the canonical table), not its own literals", () => {
     const src = stripComments(fs.readFileSync(path.join(ROOT, "server/services/directMailService.ts"), "utf8"));
-    const start = src.indexOf("async function lobPieceCostCents(");
+    const start = src.indexOf("function lobPieceCostCents(lane: SendableMailLane)");
     expect(start).toBeGreaterThan(-1);
     const body = src.slice(start, src.indexOf("\n}", start));
-    expect(body).toMatch(/houseMailProviderCostCents\(/);
-    expect(body).not.toMatch(/\b(?:65|85|110|120)\b/);
+    expect(body).toMatch(/lane\.price\.providerCostCents/);
+    expect(body).not.toMatch(/\b(?:65|75|85|95|110|120)\b/);
+    // …and the lane's price is read from the table by houseMailProviderCostCents.
+    const lane = stripComments(fs.readFileSync(path.join(ROOT, "server/services/mail/mailLane.ts"), "utf8"));
+    expect(lane).toMatch(/houseMailProviderCostCents\(key\)/);
   });
 });

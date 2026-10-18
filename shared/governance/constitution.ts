@@ -516,6 +516,7 @@ export const CONSTITUTION: readonly ConstitutionInvariant[] = [
         "tests/unit/houseMailSelfFunding.test.ts",
         "tests/unit/houseMailPurchasedOnly.realdb.test.ts",
         "tests/unit/counterpartySmsStaysByo.test.ts",
+        "tests/unit/cardPaidCreditsAreAtPackPrice.test.ts",
       ],
       note:
         "PHYSICAL MAIL (2026-10-17): mail/mailLane.ts is the one lane authority " +
@@ -534,6 +535,11 @@ export const CONSTITUTION: readonly ConstitutionInvariant[] = [
         "fails when one is reached without a lane or pays/refunds any other " +
         "way. counterpartySmsStaysByo.test.ts keeps SMS BYO. This superseded " +
         "the deferred 'platform Lob fallback' note. " +
+        "2026-10-18: house letters must be CONFIRMED one page (a counted PDF) " +
+        "unless the founder sets an extra-page cost; lead-address checks run " +
+        "on the org's own key unless a per-check cost is set (the sender " +
+        "return-address check stays free); card top-ups buy credits at the " +
+        "pack price (cardPaidCreditsAreAtPackPrice.test.ts). " +
         "emailService purpose lanes separate system mail from counterparty " +
         "mail. CORRECTED 2026-08-16: this entry claimed `code-invariant` — " +
         "which this file defines as \"enforced structurally in code + covered " +

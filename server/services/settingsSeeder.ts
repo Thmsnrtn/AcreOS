@@ -186,6 +186,25 @@ export const SETTINGS_CATALOG: SeedSettingArgs[] = [
     validRange: { type: "number", min: 0, max: 10000 },
   })),
 
+  // Founder decision 2026-10-18: costs that are UNSET until the founder sets
+  // them. While unset, house mail refuses multi-page letters and lead-address
+  // checks on AcreOS's account; once set, each is priced through the same
+  // self-funding rule and pre-paid from purchased credits.
+  {
+    key: "mail.house.cost_cents.letter_extra_page",
+    category: "cost" as const,
+    description: "AcreOS's Lob cost for each page of a house-mail letter beyond the first, in cents. 0 = unset: house mail prints one-page letters only.",
+    defaultValue: 0,
+    validRange: { type: "number", min: 0, max: 10000 },
+  },
+  {
+    key: "mail.house.cost_cents.address_check",
+    category: "cost" as const,
+    description: "AcreOS's Lob cost for one lead-address check on AcreOS's account, in cents. 0 = unset: lead-address checks run only on the org's own Lob key.",
+    defaultValue: 0,
+    validRange: { type: "number", min: 0, max: 10000 },
+  },
+
   // ─── Revenue-trigger ladder ───────────────────────────────────────────
   {
     key: "revenue.triggers",

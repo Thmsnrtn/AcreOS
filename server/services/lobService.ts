@@ -190,7 +190,7 @@ export class LobService {
    */
   async isConfiguredForOrg(organizationId: number): Promise<boolean> {
     try {
-      const lane = await resolveMailLane(organizationId, letterSpec(), { via: 'lob' });
+      const lane = await resolveMailLane(organizationId, letterSpec({ pages: 1 }), { via: 'lob' });
       return lane.lane !== 'refused';
     } catch {
       return false;
@@ -321,7 +321,7 @@ export class LobService {
     let charge: HouseMailCharge | null = null;
     let accepted = false;
     try {
-      const resolved = await this.resolveClient(mode, ctx, letterSpec({ color: options.color ?? false }), options.from);
+      const resolved = await this.resolveClient(mode, ctx, letterSpec({ color: options.color ?? false, file: options.file }), options.from);
       const client = resolved.client;
       isTestMode = resolved.isTestMode;
       charge = resolved.charge;

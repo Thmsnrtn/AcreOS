@@ -402,7 +402,9 @@ export function registerCommunicationRoutes(app: Express): void {
         city: identity.city,
         state: identity.state,
         zip: identity.zipCode,
-      }, org.id);
+        // The org's own return address: the one-off check stays free on
+        // AcreOS's account (founder decision 2026-10-18).
+      }, org.id, { purpose: "sender_identity" });
       
       let updated;
       if (verificationResult.isValid) {

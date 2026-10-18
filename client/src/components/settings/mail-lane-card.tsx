@@ -127,6 +127,12 @@ export function MailLaneCard({ compact = false, showRates = true }: { compact?: 
               ))}
             </ul>
           )}
+          {!compact && (
+            <p className="text-xs text-muted-foreground" data-testid="mail-lane-letter-rule">
+              Letters on AcreOS mail must be confirmed one page — send a one-page PDF. Longer or HTML letters go out on
+              your own Lob key. Checking lead addresses also runs on your own Lob key.
+            </p>
+          )}
           {short && (
             <div className="flex flex-wrap items-center gap-2" data-testid="mail-lane-short">
               <p className="text-muted-foreground">Not enough purchased credits for a piece yet.</p>

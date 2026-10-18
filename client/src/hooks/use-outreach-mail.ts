@@ -554,7 +554,13 @@ export function useCreditExamples() {
 export interface MailLaneSummary {
   lob: {
     lane: "own_account" | "house" | "refused";
-    reason?: "no_sender_identity" | "sender_identity_unverified" | "house_mail_unavailable" | "unknown_spec";
+    reason?:
+      | "no_sender_identity"
+      | "sender_identity_unverified"
+      | "house_mail_unavailable"
+      | "unknown_spec"
+      | "letter_pages_unconfirmed"
+      | "letter_too_long";
     message?: string;
   };
   ownKeys: { lob: boolean; postgrid: boolean };

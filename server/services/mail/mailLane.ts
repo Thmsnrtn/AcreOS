@@ -43,6 +43,7 @@ import {
   HOUSE_MAIL_CARD_FEE_ALLOWANCE,
   HOUSE_MAIL_MARGIN_FLOOR,
   houseMailSpecKey,
+  houseMailBaseKey,
   type HouseMailSpec,
   type HouseMailSpecKey,
 } from "@shared/billing/house-mail-pricing";
@@ -85,9 +86,75 @@ export function postcardSpec(size: string | null | undefined): HouseMailSpec {
   return { kind: "postcard", size: size || "4x6" };
 }
 
-/** A spec for a letter. `pages` is what the caller knows; unknown means one. */
-export function letterSpec(opts: { color?: boolean | null; pages?: number | null } = {}): HouseMailSpec {
-  return { kind: "letter", color: opts.color ?? false, pages: opts.pages ?? 1 };
+/**
+ * A spec for a letter. `pages` only when CONFIRMED; otherwise pass `file` (the
+ * letter's HTML or PDF URL) and the house lane confirms the count itself
+ * (confirmLetterPages). Unknown is refused on the house lane — never assumed
+ * to be one page (founder decision 2026-10-18).
+ */
+export function letterSpec(opts: { color?: boolean | null; pages?: number | null; file?: string | null } = {}): HouseMailSpec {
+  return { kind: "letter", color: opts.color ?? false, pages: opts.pages ?? null, file: opts.file ?? null };
+}
+
+/** founder_settings keys that are UNSET (0) by default: no figure is assumed until the founder sets one. */
+const HOUSE_MAIL_LETTER_EXTRA_PAGE_COST_KEY = "mail.house.cost_cents.letter_extra_page";
+const HOUSE_MAIL_ADDRESS_CHECK_COST_KEY = "mail.house.cost_cents.address_check";
+
+/** A founder-set cost in cents, or null while it is unset (0, missing or malformed). */
+async function founderSetCostCents(key: string): Promise<number | null> {
+  try {
+    const { getSetting } = await import("../settings");
+    const value = await getSetting<number>(key, 0, { scope: "global", scopeRef: null });
+    return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+const PDF_MAX_BYTES = 10 * 1024 * 1024;
+const PDF_FETCH_TIMEOUT_MS = 10_000;
+
+/**
+ * The page count of a letter, when it can be CONFIRMED: `file` is an https URL
+ * (passing the SSRF guard) that serves a PDF, whose pages are counted by
+ * parsing it. HTML — whose page count only Lob's renderer knows — and anything
+ * that cannot be fetched or parsed is null (unknown). Never throws.
+ */
+async function confirmLetterPages(file: string | null | undefined): Promise<number | null> {
+  const url = (file ?? "").trim();
+  if (!/^https:\/\//i.test(url)) return null;
+  try {
+    const { checkOperatorUrl } = await import("../providers/ssrf-guard");
+    if (!checkOperatorUrl(url).ok) return null;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), PDF_FETCH_TIMEOUT_MS);
+    let bytes: Buffer;
+    try {
+      // No redirects: a redirect could lead past the SSRF guard.
+      const res = await fetch(url, { signal: ctrl.signal, redirect: "manual" });
+      if (!res.ok) return null;
+      const declared = Number(res.headers.get("content-length"));
+      if (Number.isFinite(declared) && declared > PDF_MAX_BYTES) return null;
+      bytes = Buffer.from(await res.arrayBuffer());
+    } finally {
+      clearTimeout(timer);
+    }
+    if (bytes.length === 0 || bytes.length > PDF_MAX_BYTES) return null;
+    if (bytes.subarray(0, 5).toString("latin1") !== "%PDF-") return null;
+    const { PDFParse } = await import("pdf-parse");
+    const parser = new PDFParse({ data: new Uint8Array(bytes) });
+    try {
+      const info = await parser.getInfo();
+      return Number.isInteger(info.total) && info.total > 0 ? info.total : null;
+    } finally {
+      await parser.destroy().catch(() => undefined);
+    }
+  } catch (err) {
+    logger.warn("[mailLane] letter page count could not be confirmed", {
+      metadata: { error: err instanceof Error ? err.message : String(err) },
+    });
+    return null;
+  }
 }
 
 /**
@@ -96,7 +163,7 @@ export function letterSpec(opts: { color?: boolean | null; pages?: number | null
  * the ONE place AcreOS's mail cost is read — the house charge and the COGS
  * ledger posting both come through here.
  */
-export async function houseMailProviderCostCents(key: HouseMailSpecKey): Promise<number> {
+async function houseMailProviderCostCents(key: HouseMailSpecKey): Promise<number> {
   const compiled = houseMailCostEntry(key).providerCostCents;
   try {
     const { getSetting } = await import("../settings");
@@ -130,17 +197,36 @@ async function listedCreditsFor(kind: MailPieceKind): Promise<number> {
  * The house price of one piece of `spec`, or null when AcreOS has no recorded
  * cost for it (refused, never guessed). `listedCredits` lets a surface with its
  * own listed price (the campaign send) price through the same floor.
+ *
+ * A letter must carry a CONFIRMED page count. One page prices from its table
+ * row; more pages price only once the founder has set the extra-page cost —
+ * cost = one-page cost + (pages − 1) × extra page, through the same floor.
  */
 async function houseMailPrice(
   spec: HouseMailSpec,
   opts: { listedCredits?: number } = {},
 ): Promise<HouseMailPrice | null> {
-  const key = houseMailSpecKey(spec);
+  const key = houseMailBaseKey(spec);
   if (!key) return null;
-  const [providerCostCents, listed] = await Promise.all([
+  let extraPages = 0;
+  let extraPageCents = 0;
+  if (spec.kind === "letter") {
+    const pages = spec.pages;
+    if (pages == null || !Number.isInteger(pages) || pages < 1) return null;
+    if (pages > 1) {
+      const extra = await founderSetCostCents(HOUSE_MAIL_LETTER_EXTRA_PAGE_COST_KEY);
+      if (extra === null) return null;
+      extraPages = pages - 1;
+      extraPageCents = extra;
+    }
+  } else if (!houseMailSpecKey(spec)) {
+    return null;
+  }
+  const [baseCostCents, listed] = await Promise.all([
     houseMailProviderCostCents(key),
     opts.listedCredits !== undefined ? Promise.resolve(opts.listedCredits) : listedCreditsFor(spec.kind),
   ]);
+  const providerCostCents = baseCostCents + extraPages * extraPageCents;
   const listedCredits = Math.ceil(listed);
   const creditsPerPiece = houseMailCreditsPerPiece(listedCredits, providerCostCents);
   // Belt and braces: a charge that does not pay for the piece is never
@@ -151,9 +237,10 @@ async function houseMailPrice(
     });
     return null;
   }
+  const baseLabel = houseMailCostEntry(key).label;
   return {
     key,
-    label: houseMailCostEntry(key).label,
+    label: extraPages > 0 ? baseLabel.replace("one page", `${extraPages + 1} pages`) : baseLabel,
     providerCostCents,
     listedCredits,
     creditsPerPiece,
@@ -165,7 +252,9 @@ async function houseMailPrice(
 async function houseMailPriceTable(): Promise<HouseMailPrice[]> {
   const rows = await Promise.all(
     HOUSE_MAIL_COST_TABLE.map((e) =>
-      houseMailPrice(e.kind === "postcard" ? postcardSpec(e.key.replace("postcard_", "")) : letterSpec({ color: e.key === "letter_color" })),
+      houseMailPrice(
+        e.kind === "postcard" ? postcardSpec(e.key.replace("postcard_", "")) : letterSpec({ color: e.key === "letter_color", pages: 1 }),
+      ),
     ),
   );
   return rows.filter((r): r is HouseMailPrice => r !== null);
@@ -175,7 +264,9 @@ export type MailLaneRefusalReason =
   | "no_sender_identity"
   | "sender_identity_unverified"
   | "house_mail_unavailable"
-  | "unknown_spec";
+  | "unknown_spec"
+  | "letter_pages_unconfirmed"
+  | "letter_too_long";
 
 export type HouseMailLane = {
   lane: "house";
@@ -264,6 +355,26 @@ function decideMailLane(input: MailLaneInputs): MailLane {
         "is not verified yet. Verify it in Mail Settings, or connect your own Lob key in Settings → Your provider keys.",
     };
   }
+  const knownBase = houseMailBaseKey(input.spec) !== null;
+  if (!input.price && knownBase && input.spec.kind === "letter" && input.spec.pages == null) {
+    return {
+      lane: "refused",
+      reason: "letter_pages_unconfirmed",
+      message:
+        "AcreOS mail prints only letters it can confirm are one page, and this letter's length can't be confirmed " +
+        "(only a PDF's pages can be counted before printing). Shorten it to a one-page PDF, or use your own Lob key " +
+        "(Settings → Your provider keys).",
+    };
+  }
+  if (!input.price && knownBase && input.spec.kind === "letter" && (input.spec.pages ?? 0) > 1) {
+    return {
+      lane: "refused",
+      reason: "letter_too_long",
+      message:
+        `AcreOS mail prints one-page letters only, and this letter is ${input.spec.pages} pages. ` +
+        "Shorten it to one page, or use your own Lob key (Settings → Your provider keys).",
+    };
+  }
   if (!input.price) {
     return {
       lane: "refused",
@@ -293,7 +404,7 @@ function decideMailLane(input: MailLaneInputs): MailLane {
 }
 
 /** True when AcreOS's own Lob account resolves (under the live-send interlock). */
-export async function houseMailConfigured(): Promise<boolean> {
+async function houseMailConfigured(): Promise<boolean> {
   const { resolvePlatformLobKey } = await import("./liveSendInterlock");
   try {
     resolvePlatformLobKey();
@@ -345,13 +456,19 @@ export async function resolveMailLane(
     const { storage } = await import("../../storage");
     senderIdentity = (await storage.getDefaultMailSenderIdentity(organizationId).catch(() => undefined)) ?? null;
   }
-  // The house account is only probed once the identity would pass — a refused
-  // identity never touches anything of AcreOS's.
+  // The house account is only probed — and a letter's file only fetched to
+  // count its pages — once the identity would pass: a refused identity never
+  // touches anything of AcreOS's.
+  const identityOk = isVerifiedSenderIdentityFor(organizationId, senderIdentity);
+  let priced = spec;
+  if (identityOk && via === "lob" && spec.kind === "letter" && spec.pages == null && spec.file) {
+    priced = { ...spec, pages: await confirmLetterPages(spec.file) };
+  }
   const [houseConfigured, price] = await Promise.all([
-    isVerifiedSenderIdentityFor(organizationId, senderIdentity) ? houseMailConfigured() : Promise.resolve(false),
-    via === "lob" ? houseMailPrice(spec, { listedCredits: opts.listedCredits }) : Promise.resolve(null),
+    identityOk ? houseMailConfigured() : Promise.resolve(false),
+    via === "lob" && identityOk ? houseMailPrice(priced, { listedCredits: opts.listedCredits }) : Promise.resolve(null),
   ]);
-  return decideMailLane({ organizationId, spec, via, hasOwnKey: false, houseConfigured, senderIdentity, price });
+  return decideMailLane({ organizationId, spec: priced, via, hasOwnKey: false, houseConfigured, senderIdentity, price });
 }
 
 /** Raised when a lane refuses or purchased credits run short — nothing was sent or charged. */
@@ -411,7 +528,7 @@ export interface HouseMailCharge {
 }
 
 /** The ledger posted_by suffix creditPool reads as "paid from purchased credits" (never pool usage). */
-const HOUSE_LEDGER_POSTED_BY = (key: HouseMailSpecKey) => `system:house-mail:${key}:purchased-overflow`;
+const HOUSE_LEDGER_POSTED_BY = (key: string) => `system:house-mail:${key}:purchased-overflow`;
 
 class InsufficientPurchasedCredits extends Error {
   constructor(readonly required: number) {
@@ -419,7 +536,10 @@ class InsufficientPurchasedCredits extends Error {
   }
 }
 
-function shortMessage(lane: HouseMailLane, units: number): string {
+/** Anything house-paid: a mail piece, or a lead-address check. */
+export type HouseChargeable = { creditsPerPiece: number; price: { key: string; label: string } };
+
+function shortMessage(lane: HouseChargeable, units: number): string {
   const total = lane.creditsPerPiece * units;
   return (
     `AcreOS mail is paid from purchased credits only: this needs ${total} credit${total === 1 ? "" : "s"} ` +
@@ -447,7 +567,7 @@ function shortMessage(lane: HouseMailLane, units: number): string {
  */
 export async function chargeHouseMail(args: {
   organizationId: number;
-  lane: HouseMailLane;
+  lane: HouseChargeable;
   units?: number;
   externalEventId: string;
   notes?: string;
@@ -548,6 +668,35 @@ export async function chargeHouseMailPiece(args: {
       err instanceof Error ? err : undefined,
     );
   }
+}
+
+// ── Lead-address checks (founder decision 2026-10-18) ────────────────────────
+
+/**
+ * How a LEAD-address check may run. The one-off check of the org's own return
+ * address (sender identity) stays free on AcreOS's account and does not come
+ * through here. Lead addresses run on the org's own Lob key; on AcreOS's
+ * account only once the founder has set a per-check cost, and then each check
+ * is pre-paid from purchased credits at the self-funding minimum.
+ */
+export type AddressCheckLane =
+  | { lane: "own_account" }
+  | ({ lane: "house"; providerCostCents: number } & HouseChargeable)
+  | { lane: "refused"; message: string };
+
+export async function resolveAddressCheckLane(organizationId: number): Promise<AddressCheckLane> {
+  if (await orgHasOwnMailKey(organizationId, "lob")) return { lane: "own_account" };
+  const refused: AddressCheckLane = {
+    lane: "refused",
+    message:
+      "Checking lead addresses runs on your own Lob key. Connect your own Lob key in Settings → Your provider keys " +
+      "to check these addresses.",
+  };
+  const cost = await founderSetCostCents(HOUSE_MAIL_ADDRESS_CHECK_COST_KEY);
+  if (cost === null || !(await houseMailConfigured())) return refused;
+  const credits = houseMailMinimumCredits(cost);
+  if (!houseMailChargeIsSelfFunding(credits, cost)) return refused;
+  return { lane: "house", providerCostCents: cost, creditsPerPiece: credits, price: { key: "address_check", label: "Address check" } };
 }
 
 // ── Refunds: only for a piece the provider did not bill ─────────────────────

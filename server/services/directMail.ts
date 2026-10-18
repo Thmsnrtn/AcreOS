@@ -471,7 +471,9 @@ export class DirectMailService {
     await assertOwnerContactAllowed("mail", { addressLine1: options.to.addressLine1, zip: options.to.zip });
     const prepared = await this.prepareLane(
       orgId,
-      letterSpec({ color: options.color ?? false, pages: options.pageCount ?? 1 }),
+      // The page count is CONFIRMED from the content (a caller's pageCount is
+      // a claim, not a confirmation — founder decision 2026-10-18).
+      letterSpec({ color: options.color ?? false, file: options.file }),
       options.from,
       options.housePrepaid === true,
     );
@@ -574,45 +576,9 @@ export class DirectMailService {
     };
   }
 
-  // Validate an address using Lob's address verification
-  async verifyAddress(address: DirectMailRecipient, mode: MailMode = 'test'): Promise<{
-    isValid: boolean;
-    deliverability: string;
-    normalizedAddress?: DirectMailRecipient;
-  }> {
-    // Use test mode by default for verification to save costs. The
-    // interlock also applies: without a test key and while disarmed this
-    // throws rather than silently using the live key.
-    const lob = this.getLobClient(this.hasTestKey ? 'test' : this.effectiveMode(mode));
-    
-    try {
-      const result = await lob.usVerifications.verify({
-        primary_line: address.addressLine1,
-        secondary_line: address.addressLine2 || '',
-        city: address.city,
-        state: address.state,
-        zip_code: address.zip,
-      });
-      
-      return {
-        isValid: result.deliverability === 'deliverable',
-        deliverability: result.deliverability,
-        normalizedAddress: result.deliverability === 'deliverable' ? {
-          name: address.name,
-          addressLine1: result.primary_line,
-          addressLine2: result.secondary_line || undefined,
-          city: result.components.city,
-          state: result.components.state,
-          zip: result.components.zip_code,
-        } : undefined,
-      };
-    } catch (error) {
-      return {
-        isValid: false,
-        deliverability: 'error',
-      };
-    }
-  }
+  // (A Lob address verifier on AcreOS's env keys used to live here with no
+  // caller; it was deleted 2026-10-18. Address checks run only through
+  // directMailService.verifyAddress, which applies the founder's lanes.)
 
   // Get estimated delivery date (works with test keys too)
   getEstimatedDeliveryDays(): { min: number; max: number } {

@@ -26,6 +26,7 @@
  * or a mock that never records.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { makePdf } from "../helpers/pdfFixture";
 import { houseMail } from "../helpers/fakeHouseMailDb";
 // W5a: the owner opt-out list is empty for this test (the guard is proven elsewhere).
 vi.mock("../../server/services/trust/ownerSuppression", async () => (await import("../helpers/ownerSuppressionAllowAll")).ownerSuppressionAllowAll);
@@ -140,11 +141,18 @@ vi.mock("../../server/services/credits", () => ({
 
 const TO = { name: "Lee Owner", addressLine1: "2 Dirt Rd", city: "Llano", state: "TX", zip: "78643" };
 const FROM = { name: "Brazos Land Partners", addressLine1: "1 Main St", city: "Austin", state: "TX", zip: "78701" };
-const LETTER = { to: TO, from: FROM, file: "<p>Dear Lee</p>" };
+// A house letter must be CONFIRMED one page (founder decision 2026-10-18):
+// a one-page PDF on an https URL, served by the fetch stub below.
+const LETTER = { to: TO, from: FROM, file: "https://files.example.com/letter.pdf" };
 
 let lobService: typeof import("../../server/services/lobService").lobService;
 
 beforeEach(async () => {
+  vi.stubGlobal("fetch", async (url: string) =>
+    /\.pdf$/.test(String(url))
+      ? new Response(new Uint8Array(await makePdf(1)), { status: 200, headers: { "content-type": "application/pdf" } })
+      : new Response("nope", { status: 404 }),
+  );
   state.liveSendArmed = true;
   state.byokKey = null;
   state.legacyRow = null;
@@ -317,6 +325,18 @@ describe("counterparty direct mail resolves the ORG's own Lob account first", ()
     expect(state.created).toEqual([{ kind: "letter", apiKey: "live_platform_key" }]);
     expect(state.poolDebits).toEqual([]); // never the monthly pool
     expect(houseMail.charges.map((c) => c.credits)).toEqual([120]); // pre-paid from purchased credits
+  });
+
+  it("an HTML letter on house mail is refused — its length cannot be confirmed (decision 2026-10-18)", async () => {
+    state.identity = VERIFIED_IDENTITY;
+    const result = await lobService.sendLetter({ ...LETTER, file: "<p>Dear Lee</p>" }, "live", {
+      organizationId: 42,
+      purpose: "counterparty",
+    });
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/confirm are one page/);
+    expect(state.created).toHaveLength(0);
+    expect(houseMail.charges).toEqual([]);
   });
 
   it("an org with nothing connected and NO verified identity is refused — the platform key is not a fallback", async () => {

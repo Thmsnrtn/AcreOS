@@ -72,7 +72,17 @@ const SEND_SITES: Record<string, string> = {
 };
 
 /** Files that verify addresses on a Lob account. */
-const VERIFY_SITES = new Set(["server/services/directMailService.ts", "server/services/directMail.ts"]);
+const VERIFY_SITES = new Set(["server/services/directMailService.ts"]);
+
+/**
+ * Where `verifyAddress(…)` is called, and with which purpose (founder decision
+ * 2026-10-18): only the sender-identity check is free on AcreOS's account;
+ * every other caller checks LEAD addresses under an address-check lane.
+ */
+const VERIFY_CALLERS: Record<string, "sender_identity" | "lead_address"> = {
+  "server/routes-communications.ts": "sender_identity",
+  "server/routes-campaigns.ts": "lead_address",
+};
 
 /** Where a Lob SDK client may be constructed. */
 const LOB_CONSTRUCTORS = new Set([
@@ -157,12 +167,37 @@ describe("every physical-mail send site resolves a lane", () => {
     expect(hits(VERIFY_PRIMITIVE)).toEqual([...VERIFY_SITES].sort());
   });
 
-  it("directMailService.verifyAddress takes the org and reads its own key first", () => {
+  it("directMailService.verifyAddress takes the org and a purpose, and reads its own key first", () => {
     const src = FILES.find((f) => f.rel === "server/services/directMailService.ts")!.src;
     const body = src.slice(src.indexOf("export async function verifyAddress"));
-    expect(body).toMatch(/^export async function verifyAddress\(address: RecipientAddress, organizationId: number\)/);
+    expect(body).toMatch(/^export async function verifyAddress\(address: RecipientAddress, organizationId: number, use: AddressCheckUse\)/);
     expect(body.indexOf("getOwnLobClient(organizationId)")).toBeGreaterThan(-1);
     expect(body.indexOf("getOwnLobClient(organizationId)")).toBeLessThan(body.indexOf("usVerifications"));
+    // A lead-address check without a house lane is refused before the platform client.
+    expect(body.indexOf("use.lane.lane !== 'house'")).toBeGreaterThan(-1);
+    expect(body.indexOf("use.lane.lane !== 'house'")).toBeLessThan(body.indexOf("getPlatformLobClient()"));
+  });
+
+  it("every verifyAddress caller names its purpose; only the sender-identity check is free", () => {
+    // Callers of THE Lob verifier (server/services/addressVerification.ts is a
+    // different, non-Lob verifier with the same name).
+    const callers = FILES.filter(
+      (f) =>
+        f.rel !== "server/services/directMailService.ts" &&
+        /\bverifyAddress\s*\(/.test(f.src) &&
+        /\bverifyAddress\b[^;]*directMailService|directMailService[^;]*\bverifyAddress\b/.test(f.src),
+    );
+    expect(callers.map((f) => f.rel).sort()).toEqual(Object.keys(VERIFY_CALLERS).sort());
+    for (const f of callers) {
+      const calls = f.src.split(/\bverifyAddress\s*\(/).slice(1);
+      expect(calls.length, f.rel).toBeGreaterThan(0);
+      for (const c of calls) {
+        const args = c.slice(0, c.indexOf(");"));
+        expect(args, `${f.rel}: a verifyAddress call without the expected purpose`).toMatch(
+          new RegExp(`purpose:\\s*"${VERIFY_CALLERS[f.rel]}"`),
+        );
+      }
+    }
   });
 });
 

@@ -144,10 +144,52 @@ used for customer mail.
   lane, the per-spec credits and the purchased balance from
   `GET /api/outreach/mail/lane`, with "Buy credits" when the balance is short.
 
+## 2026-10-18 — the founder's answers to the open questions
+
+Relayed by the coordinating session on 2026-10-18; recorded by the
+implementing session.
+
+1. **Card top-ups buy credits at the pack price.** `executeAutoTopUp` now
+   grants `creditsForPackPrice(amount charged)` — 1.5¢ per credit, rounded
+   down exactly as a pack is (a $25 top-up grants 1,666 credits, as the $25
+   pack does; it used to grant 2,500). A charge too small to buy one whole
+   credit is not made. Existing balances keep their value; only new top-ups
+   change. Every card-paid grant path (credit pack, mail recharge, auto
+   top-up) is enumerated in `tests/unit/cardPaidCreditsAreAtPackPrice.test.ts`.
+   **No minimum top-up is recorded anywhere** (the settings schema accepts any
+   amount ≥ 0; the default is $25), so none was added.
+2. **House letters must be confirmed one page.** A letter's page count is
+   confirmed only by counting the pages of a PDF served from an https URL
+   (SSRF-guarded, no redirects, 10 MB / 10 s caps). HTML — whose length only
+   Lob's renderer knows — and anything that cannot be fetched or parsed is
+   UNKNOWN and refused on the house lane ("shorten it to a one-page PDF, or use
+   your own Lob key"); a caller's declared page count is a claim, not a
+   confirmation. A confirmed multi-page letter is refused ("shorten it to one
+   page, or use your own Lob key") until the founder sets
+   `mail.house.cost_cents.letter_extra_page` (founder_settings, UNSET by
+   default); then it prices at one-page cost + (pages − 1) × extra page,
+   through the same self-funding rule. The own-key lane is unchanged.
+   Consequence: every house letter path in the product today sends HTML (the
+   outreach queue's letter template, sequence letters, campaign letters,
+   communications letters), so on AcreOS mail those are refused until the
+   content is a one-page PDF; they still go out on an org's own Lob key.
+   Postcards are unaffected.
+3. **Address checks.** The one-off check of the org's own return address
+   (sender identity) stays free on AcreOS's Lob account. Lead-address checks
+   (`/api/direct-mail/verify-address` and `/bulk-verify-addresses`) run only
+   on the org's own Lob key — refused on house with "connect your own Lob
+   key" — until the founder sets `mail.house.cost_cents.address_check`
+   (UNSET by default); then each check is pre-paid from purchased credits at
+   the self-funding minimum, and a check Lob certainly did not run is
+   refunded. The callerless env-key verifier in `directMail.ts` was deleted.
+
+Still open (unchanged, to be raised with the founder): the two house price
+lists (campaign send vs per-piece lanes), and real current Lob prices for the
+cost table.
+
 ## Open for the founder
 
-See the implementing session's report for the full list. In short: card
-top-ups grant 1 credit per 1¢ paid (not 1.5¢), so a top-up-funded house piece
-earns less than the rule assumes; letters of unknown page count are priced as
-one page; Lob address verification on AcreOS's account is uncharged; and the
-campaign send keeps its own price list.
+- The two house price lists (campaign send `DIRECT_MAIL_COSTS` vs the
+  credit-weight listing on the per-piece lanes) — both pass the rule.
+- Real current Lob prices for every row of the cost table (it uses only
+  figures the repo already recorded).

@@ -36,6 +36,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { makePdf } from "../helpers/pdfFixture";
 import { houseMail } from "../helpers/fakeHouseMailDb";
 // W5a: the owner opt-out list is empty for this test (the guard is proven elsewhere).
 vi.mock("../../server/services/trust/ownerSuppression", async () => (await import("../helpers/ownerSuppressionAllowAll")).ownerSuppressionAllowAll);
@@ -148,10 +149,17 @@ import { stripComments } from "../helpers/stripComments";
 
 const TO = { name: "Lee Owner", addressLine1: "2 Dirt Rd", city: "Llano", state: "TX", zip: "78643" };
 const FROM = { name: "Test Land Co", addressLine1: "1 Main St", city: "Austin", state: "TX", zip: "78701" };
-const LETTER = { to: TO, from: FROM, file: "https://example.com/letter.pdf" };
+// A house letter must be CONFIRMED one page (founder decision 2026-10-18):
+// a one-page PDF on an https URL, served by the fetch stub below.
+const LETTER = { to: TO, from: FROM, file: "https://files.example.com/letter.pdf" };
 const POSTCARD = { to: TO, from: FROM, front: "<h1>front</h1>", back: "<h1>back</h1>" };
 
 beforeEach(() => {
+  vi.stubGlobal("fetch", async (url: string) =>
+    /\.pdf$/.test(String(url))
+      ? new Response(new Uint8Array(await makePdf(1)), { status: 200, headers: { "content-type": "application/pdf" } })
+      : new Response("nope", { status: 404 }),
+  );
   state.byokKey = null;
   state.legacyRow = null;
   state.platformKey = { apiKey: "test_platform_key", isTestKey: true };

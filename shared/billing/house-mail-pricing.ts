@@ -29,9 +29,16 @@
  * `mail.house.cost_cents.{key}`, resolved in server/services/mail/mailLane.ts).
  *
  * WHAT THE TABLE DOES NOT KNOW (so the house lane refuses it): any mail class
- * but USPS First Class (the class every send path uses, Lob's default), any
- * extra service (certified, registered), and a letter of more than one page —
- * the repo records no Lob cost for an extra page.
+ * but USPS First Class (the class every send path uses, Lob's default), and any
+ * extra service (certified, registered).
+ *
+ * LETTERS (founder decision 2026-10-18): a house letter must be CONFIRMED to
+ * be exactly one page — a letter whose page count cannot be determined is
+ * refused, never assumed to be one page. A longer letter is refused too until
+ * the founder sets an extra-page cost (founder_settings
+ * `mail.house.cost_cents.letter_extra_page`, unset by default); then it is
+ * priced per page through the same self-funding rule (server/services/mail/
+ * mailLane.ts houseMailPrice).
  */
 
 import { CREDIT_PRICE_CENTS } from "./credit-packs";
@@ -54,7 +61,16 @@ export type HouseMailKind = "postcard" | "letter";
 /** What a send path is about to print. Fields a path does not set take the defaults every path uses today. */
 export type HouseMailSpec =
   | { kind: "postcard"; size: string; mailClass?: string | null; extraService?: string | null }
-  | { kind: "letter"; color?: boolean | null; pages?: number | null; mailClass?: string | null; extraService?: string | null };
+  | {
+      kind: "letter";
+      color?: boolean | null;
+      /** CONFIRMED page count; null/undefined = unknown (refused on the house lane). */
+      pages?: number | null;
+      /** The letter's content (HTML or a PDF URL), from which the page count may be confirmed. */
+      file?: string | null;
+      mailClass?: string | null;
+      extraService?: string | null;
+    };
 
 export type HouseMailSpecKey = "postcard_4x6" | "postcard_6x9" | "postcard_6x11" | "letter_bw" | "letter_color";
 
@@ -116,22 +132,29 @@ export function houseMailCostEntry(key: HouseMailSpecKey): HouseMailCostEntry {
 const FIRST_CLASS = "usps_first_class";
 
 /**
- * The table row for `spec`, or null when AcreOS has no recorded cost for it —
- * which the house lane treats as a refusal, never a guess.
+ * The ONE-PAGE row a spec is built on, ignoring page count: the postcard size,
+ * or the letter's colour. Null for a mail class / extra service AcreOS has no
+ * cost for.
  */
-export function houseMailSpecKey(spec: HouseMailSpec): HouseMailSpecKey | null {
+export function houseMailBaseKey(spec: HouseMailSpec): HouseMailSpecKey | null {
   if (spec.mailClass != null && spec.mailClass !== FIRST_CLASS) return null;
   if (spec.extraService != null && spec.extraService !== "" && spec.extraService !== "none") return null;
   if (spec.kind === "postcard") {
     const key = `postcard_${spec.size}`;
     return ENTRY_BY_KEY.has(key as HouseMailSpecKey) ? (key as HouseMailSpecKey) : null;
   }
-  if (spec.kind === "letter") {
-    const pages = spec.pages ?? 1;
-    if (pages !== 1) return null;
-    return spec.color ? "letter_color" : "letter_bw";
-  }
+  if (spec.kind === "letter") return spec.color ? "letter_color" : "letter_bw";
   return null;
+}
+
+/**
+ * The table row for `spec` exactly as printed, or null when AcreOS has no
+ * recorded cost for it — which the house lane treats as a refusal, never a
+ * guess. A letter matches only when it is CONFIRMED to be one page.
+ */
+export function houseMailSpecKey(spec: HouseMailSpec): HouseMailSpecKey | null {
+  if (spec.kind === "letter" && spec.pages !== 1) return null;
+  return houseMailBaseKey(spec);
 }
 
 /** What one credit of the purchased balance was bought for, in cents. */
