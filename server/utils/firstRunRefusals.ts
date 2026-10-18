@@ -243,3 +243,20 @@ export function refuseSeatInvite(
     },
   );
 }
+
+/**
+ * 402 for buying seats beyond a plan's included ones: not self-serve today.
+ * Nothing in the app fulfils a seat purchase, so seats past the included ones
+ * are added by support. Shared by the seat purchase routes and the seat-count
+ * route so every self-serve seat path says the same thing.
+ */
+export function refuseSeatPurchase(res: Response, subscriptionTier: string | null | undefined): void {
+  const { includedSeats } = seatRuleFor(subscriptionTier);
+  Errors.refusedUntil(
+    res,
+    "seat_purchase_unavailable",
+    `Your plan includes ${includedSeats} seat${includedSeats === 1 ? "" : "s"}. ` +
+      "Seats beyond those are added by support today — contact support to add teammates.",
+    { includedSeats, nextStep: { label: "Contact support", href: NEXT_STEP_HREF.support } },
+  );
+}

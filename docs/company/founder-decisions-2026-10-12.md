@@ -97,8 +97,60 @@ coordinating session to the implementing session on
   - Their reported `creditsUsed` counts only units actually charged.
 - Every `ai_chat` credit charge site in `server/` now adopts the rule. The
   population test has no "outside the decision" register any more.
-- Background work is still not counted toward the allowance
-  (`origin = 'background'`, decision C of 2026-10-08), and it is not gated by
-  the allowance wall.
+- Their spend counts toward the allowance (recorded as origin
+  `background_metered`; corrected 2026-10-18 below). Other background work is
+  still not counted (decision C of 2026-10-08). Background work is not gated
+  by the allowance wall.
 
 **Pinned by** `tests/unit/paxTurnsIncludedAreFree.test.ts`.
+
+## 2026-10-18 — implementation corrections after an independent audit
+
+**Date:** 2026-10-18
+
+**Source:** an independent audit of `claude/billing-entitlement-truth`, relayed
+by the coordinating session. These are corrections that make the 2026-10-12
+and 2026-10-17 answers true in code. They are not new decisions.
+
+- **Every AI cent counts toward the allowance.** The allowance sum reads
+  `ai_telemetry_events.origin` in (`customer`, `background_metered`).
+  - The owner-requested lead follow-up (`POST /api/leads/:id/nurture`) is a
+    customer Pax turn. It is recorded as origin `customer` and gets chat's
+    gate stack: rate limit, message cap (counted), allowance wall, turn scope.
+  - The batch jobs (campaign optimizer, lead-nurturer follow-ups) are recorded
+    as `background_metered`, so their spend counts.
+  - Other background work is still not counted (decision C, 2026-10-08).
+- **Credits pass the wall only on a Pax-turn route.** The pass-through is
+  opt-in (`aiByokThresholdGate({ creditsFundTurn: true })`, chat and lead
+  follow-up only). Document intelligence and the owner-run campaign optimizer
+  are walled as before, and their refusal does not offer credits.
+  - The optimizer surfaces the wall's refusal instead of falling back
+    silently.
+  - When the AI is merely unavailable, its response says the suggestions are
+    rule-based (`source: "rules"`).
+- **Charged only on the credit lane, before the AI call, atomically.**
+  `paxTurnFunding.reservePaxTurn` is the only `ai_chat` charge in `server/`.
+  - It runs only when the funding answer is `credits`. Included, own-key and
+    founder turns, foreground or background, take nothing.
+  - It is a conditional debit, so concurrent turns cannot all ride one
+    balance.
+  - `settlePaxTurn` writes the usage record when the turn was delivered and
+    refunds when it was not.
+  - A failed refund or record is logged at error level and counted
+    (`acreos_pax_turn_settle_failures_total`).
+- **Background batch calls past the allowance are allowed and charged.** They
+  are origin `background` (not walled), metered, and refunded when the AI did
+  not answer.
+- **Detached work does not inherit a turn's credit mark.** The Pax executive's
+  fire-and-forget spawns (memory extraction, quality scoring) run outside the
+  turn scope.
+- **Seats.** No organization pays for seats today. A read-only check by the
+  coordinating session on 2026-10-18 found 0 paying orgs and 0 with
+  `seat_count > 1`. So the add-on quantity change (seats beyond the included
+  ones) affects no existing subscription, and no reconciliation job is needed.
+  - The self-serve `POST /api/team-readiness/seat-count` may lower the seat
+    count, or set it within the plan's included seats or the seat count
+    already on file. That stored count is what the per-seat add-on sync
+    bills, so seats granted any other way are never turned into billed ones.
+  - Raising it into new billable seats is refused with the same "contact
+    support" step as the seat purchase route.

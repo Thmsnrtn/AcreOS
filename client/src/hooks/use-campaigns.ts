@@ -209,6 +209,8 @@ export function useCampaignOptimizations(campaignId: number) {
 
 export interface OptimizeResult {
   success: boolean;
+  /** "rules": the AI was unavailable — built-in rule-based suggestions. "none": every benchmark met, no AI call. */
+  source: "ai" | "rules" | "none";
   campaignId: number;
   metrics: Record<string, number>;
   score: number;

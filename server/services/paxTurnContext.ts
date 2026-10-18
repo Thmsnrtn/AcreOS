@@ -46,3 +46,14 @@ export function paxTurnMarkFor(orgId: number): { creditFunded: boolean } | null 
   const mark = store.getStore();
   return mark && mark.orgId === orgId ? { creditFunded: mark.creditFunded } : null;
 }
+
+/**
+ * Run `fn` OUTSIDE any Pax-turn scope. Fire-and-forget work a turn starts
+ * (memory extraction, quality scoring) must not inherit the turn's credit
+ * mark: only the turn itself is credit-funded. Wrap the SCHEDULING call
+ * (`detachedFromPaxTurn(() => setImmediate(...))`) so the callback captures
+ * the exited context.
+ */
+export function detachedFromPaxTurn<T>(fn: () => T): T {
+  return store.exit(fn);
+}

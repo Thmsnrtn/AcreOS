@@ -51,6 +51,23 @@ vi.mock("../../server/services/usageLimits", () => ({
 }));
 vi.mock("../../server/services/credits", () => ({
   usageMeteringService: { calculateCost: async () => 2, recordUsage: async () => undefined },
+  // The chat routes take the turn's charge through paxTurnFunding.reservePaxTurn
+  // (2026-10-18): an atomic debit, then the refusal from its answer.
+  CreditService: class {
+    async deductOrFundFromTrial() {
+      return h.hasCredits ? "balance" : null;
+    }
+    async getBalance() {
+      return 0;
+    }
+    async trialAllowanceRemaining() {
+      return null;
+    }
+    async addCredits() {
+      return {};
+    }
+  },
+  isInTrialWindow: () => false,
   creditService: {
     hasEnoughCredits: async () => h.hasCredits,
     // The chat routes read the decision WITH its lane (#335).

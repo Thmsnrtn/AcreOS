@@ -107,7 +107,7 @@ export function usageLimitGate(resourceType: ResourceType) {
  * Fail-open on gate errors (matches usageLimitGate): an internal error in
  * the threshold machinery must never take Pax down.
  */
-export function aiByokThresholdGate() {
+export function aiByokThresholdGate(opts: { creditsFundTurn?: boolean } = {}) {
   return async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const organizationId = req.organizationId;
@@ -122,13 +122,18 @@ export function aiByokThresholdGate() {
 
       if (!gate.allowed) {
         // Founder decision 2026-10-17: past the allowance, purchased credits
-        // fund a Pax turn as well as the org's own key. A balance that covers
-        // one turn passes; the route's credit lane (paxTurnFunding) checks and
-        // charges it. Only a balance that cannot is refused here.
-        const { CreditService, usageMeteringService } = await import("../services/credits");
-        const turnCents = await usageMeteringService.calculateCost("ai_chat", 1).catch(() => 2);
-        const balance = await new CreditService().getBalance(organizationId).catch(() => 0);
-        if (balance >= turnCents) return next();
+        // fund a PAX TURN as well as the org's own key. Only a Pax-turn route
+        // opts in (`creditsFundTurn`) — its handler reserves the charge
+        // atomically (paxTurnFunding.reservePaxTurn). Any other route is
+        // walled as before: credits do not pay for its AI, so its refusal
+        // does not offer them.
+        if (opts.creditsFundTurn) {
+          const { CreditService, usageMeteringService } = await import("../services/credits");
+          const turnCents = await usageMeteringService.calculateCost("ai_chat", 1).catch(() => 2);
+          const balance = await new CreditService().getBalance(organizationId).catch(() => 0);
+          if (balance >= turnCents) return next();
+        }
+        const creditsFund = opts.creditsFundTurn === true;
         return Errors.limitExceeded(res, {
           reason: "byok_required" as const,
           resourceType: "ai_requests" as const,
@@ -139,8 +144,8 @@ export function aiByokThresholdGate() {
           remaining: 0,
           byokAvailable: gate.byokAvailable,
           byokSettingsUrl: "/settings/byok",
-          addCreditsUrl: "/settings#account",
-          message: allowanceExhaustedMessage(gate.byokAvailable, true),
+          ...(creditsFund ? { addCreditsUrl: "/settings#account" } : {}),
+          message: allowanceExhaustedMessage(gate.byokAvailable, creditsFund),
           upgradeUrl: "/settings#billing",
         });
       }

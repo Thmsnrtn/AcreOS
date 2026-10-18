@@ -2,8 +2,7 @@ import { db } from "../db";
 import { eq } from "drizzle-orm";
 import { campaigns, type Campaign, type InsertCampaignOptimization } from "@shared/schema";
 import { storage } from "../storage";
-import { usageMeteringService } from "./credits";
-import { paxTurnFunding } from "./paxTurnFunding";
+import { paxTurnFunding, reservePaxTurn, settlePaxTurn } from "./paxTurnFunding";
 import { voiceLearningService } from "./voiceLearning";
 import { getOpenAIClient } from "../utils/openaiClient";
 import { MODELS } from "./models";
@@ -128,18 +127,29 @@ export class CampaignOptimizerService {
     return issues;
   }
 
-  async generateOptimizations(campaign: Campaign): Promise<OptimizationSuggestion[]> {
+  /**
+   * `source` says what produced the suggestions: the AI call ("ai"), the
+   * built-in rules when no AI answer was available ("rules"), or nothing
+   * because the campaign meets every benchmark ("none", no AI call) — callers
+   * must not present a non-AI answer as AI. Past the allowance the wall's refusal propagates (it is the
+   * answer, not a reason to fall back silently).
+   */
+  async generateOptimizations(
+    campaign: Campaign,
+    opts: { origin: "customer" | "background" } = { origin: "customer" },
+  ): Promise<{ suggestions: OptimizationSuggestion[]; source: "ai" | "rules" | "none" }> {
     const openai = getOpenAIClient();
     if (!openai) {
       logger.info("OpenAI API key not configured, skipping AI optimization generation");
-      return this.generateFallbackOptimizations(campaign);
+      return { suggestions: this.generateFallbackOptimizations(campaign), source: "rules" };
     }
 
     const metrics = this.analyzeCampaignPerformance(campaign);
     const issues = this.identifyIssues(metrics);
 
     if (issues.length === 0) {
-      return [];
+      // Every benchmark is met: nothing to ask the AI, and no AI call made.
+      return { suggestions: [], source: "none" };
     }
 
     // Voice learning: incorporate org's communication style in suggestions
@@ -210,19 +220,27 @@ Respond in JSON format:
         temperature: 0.7,
         max_tokens: 1000,
         response_format: { type: "json_object" },
-      }, { taskType: "campaign_optimization", orgId: campaign.organizationId, origin: "customer" });
+      }, {
+        taskType: "campaign_optimization",
+        orgId: campaign.organizationId,
+        origin: opts.origin,
+        // The batch run is background work the org pays for past its
+        // allowance, so it counts toward it (founder decision 2026-10-17).
+        allowanceMetered: opts.origin === "background",
+      });
 
       const content = response.choices[0]?.message?.content;
       if (content) {
         const parsed = JSON.parse(content);
-        return parsed.suggestions || [];
+        return { suggestions: parsed.suggestions || [], source: "ai" };
       }
     } catch (error) {
+      if ((error as { code?: string })?.code === "AI_ALLOWANCE_BYOK_REQUIRED") throw error;
       logger.error("Error generating AI optimizations", error);
-      return this.generateFallbackOptimizations(campaign);
+      return { suggestions: this.generateFallbackOptimizations(campaign), source: "rules" };
     }
 
-    return [];
+    return { suggestions: [], source: "ai" };
   }
 
   generateFallbackOptimizations(campaign: Campaign): OptimizationSuggestion[] {
@@ -277,15 +295,19 @@ Respond in JSON format:
     return suggestions;
   }
 
-  async optimizeCampaign(campaign: Campaign): Promise<{
+  async optimizeCampaign(
+    campaign: Campaign,
+    opts: { origin: "customer" | "background" } = { origin: "customer" },
+  ): Promise<{
     metrics: CampaignMetrics;
     score: number;
     suggestions: OptimizationSuggestion[];
     savedOptimizations: number;
+    source: "ai" | "rules" | "none";
   }> {
     const metrics = this.analyzeCampaignPerformance(campaign);
     const score = this.calculateOptimizationScore(campaign);
-    const suggestions = await this.generateOptimizations(campaign);
+    const { suggestions, source } = await this.generateOptimizations(campaign, opts);
 
     let savedOptimizations = 0;
     for (const suggestion of suggestions) {
@@ -313,7 +335,7 @@ Respond in JSON format:
       })
       .where(eq(campaigns.id, campaign.id));
 
-    return { metrics, score, suggestions, savedOptimizations };
+    return { metrics, score, suggestions, savedOptimizations, source };
   }
 
   async processOrganizationCampaigns(
@@ -335,31 +357,33 @@ Respond in JSON format:
 
     try {
       const campaignsToProcess = await storage.getCampaignsNeedingOptimization(organizationId);
-      // Same rule as a Pax turn (founder decision 2026-10-17): no credit
-      // charge while the org is inside its included allowance; credits after.
-      const paxLane = await paxTurnFunding(organizationId);
 
       for (const campaign of campaignsToProcess.slice(0, limit)) {
-        const usageResult = await usageMeteringService.recordUsage(
-          organizationId,
-          "ai_chat",
-          1,
-          { feature: "campaign_optimization", campaignId: campaign.id, paxLane },
-          paxLane !== "included",
-        );
-
-        if (usageResult.insufficientCredits) {
+        // Same rule as a Pax turn (founder decision 2026-10-17), decided per
+        // unit because this run's own metered spend moves the allowance: no
+        // charge inside the included allowance, credits after — taken before
+        // the AI call and refunded when the AI did not answer (a rules
+        // fallback is not what was paid for).
+        const paxLane = await paxTurnFunding(organizationId);
+        const reservation = await reservePaxTurn(organizationId, paxLane, { description: "Campaign optimization (AI)" });
+        if (!reservation.ok) {
           result.errors.push(`Insufficient credits for campaign ${campaign.id} optimization`);
           break;
         }
 
-        if (paxLane !== "included") result.creditsUsed += 1;
-
+        let settled = false;
         try {
-          const optimizationResult = await this.optimizeCampaign(campaign);
+          const optimizationResult = await this.optimizeCampaign(campaign, { origin: "background" });
+          const delivered = optimizationResult.source === "ai";
+          settled = true;
+          await settlePaxTurn(reservation.charge, delivered
+            ? { delivered: true, metadata: { feature: "campaign_optimization", campaignId: campaign.id } }
+            : { delivered: false, reason: "AI unavailable; rules fallback" });
+          if (delivered && reservation.charge.fundedBy === "balance") result.creditsUsed += 1;
           result.processed++;
           result.totalSuggestions += optimizationResult.savedOptimizations;
         } catch (err) {
+          if (!settled) await settlePaxTurn(reservation.charge, { delivered: false, reason: "optimization failed" });
           result.errors.push(`Failed to optimize campaign ${campaign.id}: ${err}`);
         }
       }

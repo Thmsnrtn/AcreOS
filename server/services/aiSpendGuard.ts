@@ -45,6 +45,7 @@ import { computeCostUsd } from "./aiCostRates";
 import { ANTHROPIC_CACHE_MIN_CHARS } from "./promptCache";
 import { clock } from "../utils/clock";
 import { logger } from "../utils/logger";
+import { storedAiOrigin } from "./aiAllowanceRule";
 
 /**
  * Throws AiCostCeilingExceededError (code AI_COST_CEILING_EXCEEDED) when the
@@ -79,6 +80,8 @@ export function recordExternalAiSpend(input: {
    * allowance (founder decision 2026-10-08); omitted/null never does.
    */
   origin?: AiCallOrigin | null;
+  /** Background work the org pays for past its allowance — counts toward it (decision 2026-10-17). */
+  allowanceMetered?: boolean;
 }): void {
   void (async () => {
     try {
@@ -101,7 +104,7 @@ export function recordExternalAiSpend(input: {
         success: input.success ?? true,
         ...(input.errorMessage ? { errorMessage: input.errorMessage.slice(0, 500) } : {}),
         // Only an org's own call can count toward that org's allowance.
-        origin: input.orgId != null ? input.origin ?? null : null,
+        origin: input.orgId != null ? storedAiOrigin(input.origin, input.allowanceMetered) : null,
       });
     } catch (err) {
       logger.warn("[aiSpendGuard] failed to record external AI spend", {
@@ -134,6 +137,12 @@ export interface MeteredCallMeta {
   origin: AiCallOrigin;
   /** The customer's own key serves this call: no ceilings, $0 recorded. */
   byok?: boolean;
+  /**
+   * Background work the org pays for in credits once its allowance is spent
+   * (founder decision 2026-10-17): recorded so it counts toward the allowance.
+   * The ceiling posture stays `origin`'s.
+   */
+  allowanceMetered?: boolean;
 }
 
 /** Price-table id for a model as sent: direct-Anthropic ids get the catalogue prefix. */
@@ -209,6 +218,7 @@ function recordMeteredCall(meta: MeteredCallMeta, o: MeteredOutcome, provider: s
     errorMessage: o.error ? (o.error instanceof Error ? o.error.message : String(o.error)) : null,
     byok: meta.byok,
     origin: meta.origin,
+    allowanceMetered: meta.allowanceMetered,
   });
   void (async () => {
     try {

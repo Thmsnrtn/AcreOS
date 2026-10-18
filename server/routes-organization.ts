@@ -44,7 +44,7 @@ import {
   tokenMatchesRow,
 } from "./utils/inviteTokens";
 import { checkInviteCreateLimit, checkInviteAcceptLimit } from "./services/inviteRateLimit";
-import { refuseSeatInvite } from "./utils/firstRunRefusals";
+import { refuseSeatInvite, refuseSeatPurchase } from "./utils/firstRunRefusals";
 import { seatRuleFor } from "@shared/billing/seats";
 import { encrypt, decrypt, isEncrypted } from "./services/fieldEncryption";
 import {
@@ -875,18 +875,16 @@ export function registerOrganizationRoutes(app: Express): void {
   // the org's plan subscription. Until a fulfilment path exists, seats beyond
   // a plan's included ones are added by support, and both routes say so.
   // The plan's included seats need nothing — shared/billing/seats.ts.
-  function seatPurchaseUnavailableMessage(subscriptionTier: string | null | undefined): string {
-    const { includedSeats } = seatRuleFor(subscriptionTier);
-    return (
-      `Your plan includes ${includedSeats} seat${includedSeats === 1 ? "" : "s"}. ` +
-      "Seats beyond those are added by support today — contact support to add teammates."
-    );
-  }
-
   api.get("/api/organization/seats/pricing", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const org = getOrganization(req);
-      return res.json({ canPurchaseSeats: false, message: seatPurchaseUnavailableMessage(org.subscriptionTier) });
+      const { includedSeats } = seatRuleFor(org.subscriptionTier);
+      return res.json({
+        canPurchaseSeats: false,
+        message:
+          `Your plan includes ${includedSeats} seat${includedSeats === 1 ? "" : "s"}. ` +
+          "Seats beyond those are added by support today — contact support to add teammates.",
+      });
     } catch (error) {
       Errors.internal(res, error);
     }
@@ -895,9 +893,7 @@ export function registerOrganizationRoutes(app: Express): void {
   api.post("/api/organization/seats/purchase", isAuthenticated, getOrCreateOrg, requirePermission("canManageBilling"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const org = getOrganization(req);
-      return Errors.refusedUntil(res, "seat_purchase_unavailable", seatPurchaseUnavailableMessage(org.subscriptionTier), {
-        nextStep: { label: "Contact support", href: "/support" },
-      });
+      return refuseSeatPurchase(res, org.subscriptionTier);
     } catch (error) {
       Errors.internal(res, error);
     }

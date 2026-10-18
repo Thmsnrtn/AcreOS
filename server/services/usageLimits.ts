@@ -1,8 +1,8 @@
 import { db } from "../storage";
 import { organizations, leads, properties, notes, campaigns, usageEvents, aiTelemetryEvents } from "@shared/schema";
-import { eq, and, gte, count, sum, ne, sql } from "drizzle-orm";
+import { eq, and, gte, count, sum, ne, sql, inArray } from "drizzle-orm";
 import { realLead, realNote, realProperty } from "./onboarding/sampleFilters";
-import { isAiAllowanceSpent } from "./aiAllowanceRule";
+import { isAiAllowanceSpent, ALLOWANCE_COUNTED_ORIGINS } from "./aiAllowanceRule";
 import { effectiveSeatAllowance, planAdmitsSeats, seatRuleFor } from "@shared/billing/seats";
 // Lens 3 (Pricing Coherence): tier limits live in shared/billing so the
 // pricing page, upgrade modal, and server gate can never drift. Re-exported
@@ -154,7 +154,9 @@ async function getMonthlyCustomerAiSpendCents(organizationId: number): Promise<n
     .where(
       and(
         eq(aiTelemetryEvents.organizationId, organizationId),
-        eq(aiTelemetryEvents.origin, "customer"),
+        // Customer-triggered spend, plus background work the org pays for in
+        // credits past its allowance (founder decision 2026-10-17).
+        inArray(aiTelemetryEvents.origin, [...ALLOWANCE_COUNTED_ORIGINS]),
         gte(aiTelemetryEvents.createdAt, monthStart),
       ),
     );

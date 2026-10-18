@@ -84,7 +84,10 @@ vi.mock("../../server/services/workflow-engine", () => ({
 }));
 vi.mock("../../server/auth", () => ({ isAuthenticated: (_q: any, _s: any, n: any) => n() }));
 vi.mock("../../server/middleware/getOrCreateOrg", () => ({ getOrCreateOrg: (_q: any, _s: any, n: any) => n() }));
-vi.mock("../../server/middleware/usageLimitGate", () => ({ usageLimitGate: () => (_q: any, _s: any, n: any) => n() }));
+vi.mock("../../server/middleware/usageLimitGate", () => ({
+  usageLimitGate: () => (_q: any, _s: any, n: any) => n(),
+  aiByokThresholdGate: () => (_q: any, _s: any, n: any) => n(),
+}));
 vi.mock("../../server/middleware/roleScope", () => ({ requireScope: () => (_q: any, _s: any, n: any) => n() }));
 vi.mock("../../server/utils/permissions", () => ({
   attachPermissionContext: () => (_q: any, _s: any, n: any) => n(),

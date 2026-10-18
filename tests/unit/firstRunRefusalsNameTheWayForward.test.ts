@@ -98,8 +98,11 @@ describe("Pax credit refusal", () => {
     // /api/ai/chat and /api/ai/chat/stream.
     expect(refusals, "a chat route lost its credit refusal").toBeGreaterThanOrEqual(2);
     expect(src).not.toMatch(/error:\s*["']Insufficient credits["']/);
-    // The reason comes from the credit service's own decision.
-    expect(src.match(/creditService\.evaluateCredits\(/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
+    // The reason comes from the turn's atomic reservation (paxTurnFunding.
+    // reservePaxTurn, which reads the credit service's trial window) —
+    // rewritten 2026-10-18 when the charge moved before the AI call.
+    expect(src.match(/\breservePaxTurn\(/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
+    expect(src).toMatch(/\.\.\.reservation\.refusal/);
     // An unset AI-turn gate (it fails open) is passed as unknown, never as "no".
     expect(src).not.toMatch(/aiTurnGate\?\.byokAvailable\s*===\s*true/);
   });
@@ -176,6 +179,7 @@ const h = vi.hoisted(() => ({
   org: { id: 7, subscriptionTier: "pro", seatCount: 1 } as Record<string, unknown>,
   counts: [1, 0] as number[],
   calls: 0,
+  seatSyncs: [] as number[],
 }));
 
 vi.mock("../../server/auth", () => ({
@@ -205,8 +209,17 @@ vi.mock("../../server/storage", () => {
     q.where = () => Promise.resolve([{ count: h.counts[h.calls++ % 2] }]);
     return q;
   };
-  return { storage: {}, db: { select } };
+  // The seat-count route's write (its result is not read).
+  const update = () => ({ set: () => ({ where: async () => undefined }) });
+  return { storage: {}, db: { select, update } };
 });
+// The seat-count route hands the stored count to the Stripe add-on sync.
+vi.mock("../../server/services/billing/seatBilling", () => ({
+  syncSeatAddon: async (_org: number, seatCount: number) => {
+    h.seatSyncs.push(seatCount);
+    return { ok: true };
+  },
+}));
 
 // Past the seat preflight, the invite rate limit refuses — a deterministic
 // signal that the seat check let the invite through.
@@ -357,5 +370,42 @@ describe("seat add-on purchase (not self-serve until it is fulfilled)", () => {
     expect(res.status).toBe(200);
     expect(res.body.canPurchaseSeats).toBe(false);
     expect(stripeOpened.count).toBe(0);
+  });
+});
+
+describe("the self-serve seat-count route never creates billable seats", () => {
+  async function setSeats(org: Record<string, unknown>, seatCount: number) {
+    h.org = org;
+    const { registerTeamReadinessRoutes } = await import("../../server/routes-team-readiness");
+    const app = express();
+    app.use(express.json());
+    registerTeamReadinessRoutes(app);
+    return request(app).post("/api/team-readiness/seat-count").send({ seatCount });
+  }
+
+  it("raising past the included seats is refused with the support step, like the purchase route", async () => {
+    h.seatSyncs = [];
+    const res = await setSeats({ id: 7, subscriptionTier: "pro", seatCount: 1 }, TIER_LIMITS.pro.includedSeats + 1);
+    expect(res.status).toBe(402);
+    expect(res.body.error).toBe("seat_purchase_unavailable");
+    expect(res.body.details.nextStep.href).toBe("/support");
+    // Seats granted outside the stored seat count are not billable add-ons:
+    // raising seat_count onto them would bill them, so it is refused too.
+    const granted = await setSeats(
+      { id: 7, subscriptionTier: "pro", seatCount: 1, additionalSeats: 3 },
+      TIER_LIMITS.pro.includedSeats + 1,
+    );
+    expect(granted.status).toBe(402);
+    expect(h.seatSyncs, "no billable seat reached the add-on sync").toEqual([]);
+  });
+
+  it("within what the org already has, the route is not a seat purchase", async () => {
+    const res = await setSeats({ id: 7, subscriptionTier: "pro", seatCount: 1 }, TIER_LIMITS.pro.includedSeats);
+    expect(res.body?.error).not.toBe("seat_purchase_unavailable");
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    // A support-set count can be kept or lowered.
+    const kept = await setSeats({ id: 7, subscriptionTier: "pro", seatCount: 4 }, 4);
+    expect(kept.body?.error).not.toBe("seat_purchase_unavailable");
+    expect(kept.status, JSON.stringify(kept.body)).toBe(200);
   });
 });

@@ -42,6 +42,7 @@ import {
   seatRuleFor,
 } from "@shared/billing/seats";
 import type { AuthenticatedRequest } from "./types/request";
+import { refuseSeatPurchase } from "./utils/firstRunRefusals";
 import { clock } from "./utils/clock";
 
 // ─── Validation schemas ─────────────────────────────────────────────────────
@@ -153,6 +154,15 @@ export function registerTeamReadinessRoutes(app: Express): void {
             res,
             `Tier ${tier} is capped at ${seatRuleFor(org.subscriptionTier).maxSeats} seat(s).`,
           );
+        }
+        // Billable seats (beyond the plan's included ones) are added by
+        // support today, exactly as the seat purchase route says. The stored
+        // seat_count is what the add-on sync below bills, so this route may
+        // lower it, or keep it within the included seats or the count already
+        // on file — never raise it into new billable seats.
+        const storedSeats = Math.max(0, Math.floor(Number(org.seatCount) || 0));
+        if (parsed.data.seatCount > Math.max(seatRuleFor(org.subscriptionTier).includedSeats, storedSeats)) {
+          return refuseSeatPurchase(res, org.subscriptionTier);
         }
 
         await db

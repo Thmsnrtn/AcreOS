@@ -57,6 +57,8 @@ export interface TracedLlmCallOpts {
   origin: AiCallOrigin;
   /** The org's own key serves this call ($0 platform cost, no ceilings). */
   byok?: boolean;
+  /** Background work that counts toward the org's allowance (aiSpendGuard.MeteredCallMeta). */
+  allowanceMetered?: boolean;
 }
 
 export async function tracedLlmCall(opts: TracedLlmCallOpts): Promise<{
@@ -73,6 +75,7 @@ export async function tracedLlmCall(opts: TracedLlmCallOpts): Promise<{
       orgId: opts.organizationId ?? null,
       origin: opts.origin,
       byok: opts.byok,
+      allowanceMetered: opts.allowanceMetered,
     });
     content =
       response.choices[0]?.message?.content ??

@@ -7,9 +7,8 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { checkUsageLimit } from "./services/usageLimits";
 import { usageLimitGate, aiByokThresholdGate, refusePlanLimit } from "./middleware/usageLimitGate";
 import { refusePaxCredits } from "./utils/firstRunRefusals";
-import { paxTurnFunding } from "./services/paxTurnFunding";
-import { markPaxTurn, paxTurnScope } from "./services/paxTurnContext";
-import { usageMeteringService, creditService } from "./services/credits";
+import { paxTurnFunding, reservePaxTurn, settlePaxTurn, type PaxTurnCharge } from "./services/paxTurnFunding";
+import { paxTurnScope } from "./services/paxTurnContext";
 import { processChat, processChatStream, agentProfiles, getOrCreateConversation, ProviderCreditError, PaxAiPausedError } from "./ai/executive";
 import { parsePaxPromptVersion } from "./ai/paxPromptVersions";
 import { summariseCostSavings } from "./services/aiCostSavings";
@@ -280,12 +279,13 @@ export function registerAIRoutes(app: Express): void {
     propertyId: z.union([z.number(), z.string()]).optional(),
   });
 
-  api.post("/api/ai/chat", isAuthenticated, getOrCreateOrg, aiLimiter, requirePaxDisclosure, paxChatGuard, usageLimitGate("ai_requests"), aiByokThresholdGate(), paxTurnScope(), async (req, res) => {
+  api.post("/api/ai/chat", isAuthenticated, getOrCreateOrg, aiLimiter, requirePaxDisclosure, paxChatGuard, usageLimitGate("ai_requests"), aiByokThresholdGate({ creditsFundTurn: true }), paxTurnScope(), async (req, res) => {
     // STR-016: step tags let us see in Fly logs exactly which pre-processing
     // dependency failed when the handler 500s. Non-essential side effects
     // (trackUsage, recordUsage) are wrapped so they can't block the user's
     // response.
     let step: string = "init";
+    let paxCharge: PaxTurnCharge | null = null;
     try {
       step = "parse";
       const org = req.organization;
@@ -315,31 +315,21 @@ export function registerAIRoutes(app: Express): void {
       // Who pays for this turn (founder decision 2026-10-12): an included turn
       // on a paid plan, and a BYOK turn, never wait on purchased credits.
       const paxLane = await paxTurnFunding(org.id, { gate: res.locals.aiTurnGate, usage: usageCheck });
-      let aiChatCost = 2;
-      try {
-        aiChatCost = await usageMeteringService.calculateCost("ai_chat", 1);
-      } catch (err) {
-        logger.warn("[AI Chat] calculateCost failed, using default 2¢", err instanceof Error ? err : undefined);
+      // The credit lane's charge is taken HERE, atomically, before any AI
+      // call — concurrent turns cannot all ride one balance — and settled
+      // after: a refund if the turn is not delivered. Past the allowance a
+      // balance-paid turn runs on the platform key (founder decision
+      // 2026-10-17). Included, own-key and founder turns take nothing.
+      const reservation = await reservePaxTurn(org.id, paxLane, { description: "AI Chat Request x1", markTurn: true });
+      if (!reservation.ok) {
+        return refusePaxCredits(res, {
+          ...reservation.refusal,
+          subscriptionTier: org.subscriptionTier,
+          // Undefined when the gate failed open — the tier table decides then.
+          byokAvailable: res.locals.aiTurnGate?.byokAvailable as boolean | undefined,
+        });
       }
-      try {
-        const credit = paxLane === "credits" ? await creditService.evaluateCredits(org.id, aiChatCost) : null;
-        // Past the allowance, a turn the org's own balance pays for runs on
-        // the platform key (founder decision 2026-10-17).
-        markPaxTurn(org.id, credit?.allowed === true && credit.lane === "balance");
-        if (credit && !credit.allowed) {
-          const balance = await creditService.getBalance(org.id).catch(() => 0);
-          return refusePaxCredits(res, {
-            lane: credit.lane,
-            requiredCents: aiChatCost,
-            balanceCents: balance,
-            subscriptionTier: org.subscriptionTier,
-            // Undefined when the gate failed open — the tier table decides then.
-            byokAvailable: res.locals.aiTurnGate?.byokAvailable as boolean | undefined,
-          });
-        }
-      } catch (err) {
-        logger.warn("[AI Chat] hasEnoughCredits failed, allowing request", err instanceof Error ? err : undefined);
-      }
+      paxCharge = reservation.charge;
 
       step = "track_usage";
       // Non-blocking: never fail the chat over a telemetry write.
@@ -368,6 +358,8 @@ export function registerAIRoutes(app: Express): void {
           // reads WHY and what Pax can do instead, as Pax's reply — not a bare
           // "refused by the constitutional pre-call check".
           const refusal = await paxRefusalFor(org.id, guard.immutableNumber ?? null, message);
+          if (paxCharge) await settlePaxTurn(paxCharge, { delivered: false, reason: "constitutional refusal" });
+          paxCharge = null;
           return res.json({
             response: refusal.message,
             refused: true,
@@ -395,24 +387,28 @@ export function registerAIRoutes(app: Express): void {
       });
 
       step = "record_usage";
-      // Non-blocking: already returned the user their AI response; don't 500 on billing.
-      try {
-        await usageMeteringService.recordUsage(org.id, "ai_chat", 1, {
-          conversationId,
-          agentRole,
-          provider: result.provider || "openai",
-          model: result.model || "gpt-4o",
-          estimatedCost: result.estimatedCost,
-          promptTokens: result.promptTokens,
-          completionTokens: result.completionTokens,
-          paxLane,
-        }, paxLane !== "included");
-      } catch (err) {
-        logger.warn("[AI Chat] recordUsage failed (continuing)", err instanceof Error ? err : undefined);
+      // The charge was taken before the turn; this writes the usage record.
+      // settlePaxTurn logs and counts a failure — never silent.
+      if (paxCharge) {
+        await settlePaxTurn(paxCharge, {
+          delivered: true,
+          metadata: {
+            conversationId,
+            agentRole,
+            provider: result.provider || "openai",
+            model: result.model || "gpt-4o",
+            estimatedCost: result.estimatedCost,
+            promptTokens: result.promptTokens,
+            completionTokens: result.completionTokens,
+          },
+        });
+        paxCharge = null;
       }
 
       res.json(result);
     } catch (error: any) {
+      // The turn was not delivered: return a charge taken for it.
+      if (paxCharge) await settlePaxTurn(paxCharge, { delivered: false, reason: `error at ${step}` });
       if (error instanceof ProviderCreditError) {
         logger.error(`[AI Chat] provider out of credits at step=${step}`, error);
         // AcreOS's PROVIDER account is out of credits — a dependency outage,
@@ -468,9 +464,10 @@ export function registerAIRoutes(app: Express): void {
     // OD-7). Auto routes per turn — that is the product.
   });
 
-  api.post("/api/ai/chat/stream", isAuthenticated, getOrCreateOrg, aiLimiter, requirePaxDisclosure, paxChatGuard, usageLimitGate("ai_requests"), aiByokThresholdGate(), paxTurnScope(), async (req, res) => {
+  api.post("/api/ai/chat/stream", isAuthenticated, getOrCreateOrg, aiLimiter, requirePaxDisclosure, paxChatGuard, usageLimitGate("ai_requests"), aiByokThresholdGate({ creditsFundTurn: true }), paxTurnScope(), async (req, res) => {
     // STR-016: mirror the resilience pattern from /api/ai/chat.
     let step: string = "init";
+    let paxCharge: PaxTurnCharge | null = null;
     try {
       step = "parse";
       const org = req.organization;
@@ -512,31 +509,21 @@ export function registerAIRoutes(app: Express): void {
       // Who pays for this turn (founder decision 2026-10-12) — parity with
       // /api/ai/chat: included and BYOK turns never wait on purchased credits.
       const paxLane = await paxTurnFunding(org.id, { gate: res.locals.aiTurnGate, usage: usageCheck });
-      let aiChatCost = 2;
-      try {
-        aiChatCost = await usageMeteringService.calculateCost("ai_chat", 1);
-      } catch (err) {
-        logger.warn("[AI Chat Stream] calculateCost failed, using default 2¢", err instanceof Error ? err : undefined);
+      // The credit lane's charge is taken HERE, atomically, before any AI
+      // call — concurrent turns cannot all ride one balance — and settled
+      // after: a refund if the turn is not delivered. Past the allowance a
+      // balance-paid turn runs on the platform key (founder decision
+      // 2026-10-17). Included, own-key and founder turns take nothing.
+      const reservation = await reservePaxTurn(org.id, paxLane, { description: "AI Chat Request x1", markTurn: true });
+      if (!reservation.ok) {
+        return refusePaxCredits(res, {
+          ...reservation.refusal,
+          subscriptionTier: org.subscriptionTier,
+          // Undefined when the gate failed open — the tier table decides then.
+          byokAvailable: res.locals.aiTurnGate?.byokAvailable as boolean | undefined,
+        });
       }
-      try {
-        const credit = paxLane === "credits" ? await creditService.evaluateCredits(org.id, aiChatCost) : null;
-        // Past the allowance, a turn the org's own balance pays for runs on
-        // the platform key (founder decision 2026-10-17).
-        markPaxTurn(org.id, credit?.allowed === true && credit.lane === "balance");
-        if (credit && !credit.allowed) {
-          const balance = await creditService.getBalance(org.id).catch(() => 0);
-          return refusePaxCredits(res, {
-            lane: credit.lane,
-            requiredCents: aiChatCost,
-            balanceCents: balance,
-            subscriptionTier: org.subscriptionTier,
-            // Undefined when the gate failed open — the tier table decides then.
-            byokAvailable: res.locals.aiTurnGate?.byokAvailable as boolean | undefined,
-          });
-        }
-      } catch (err) {
-        logger.warn("[AI Chat Stream] hasEnoughCredits failed, allowing request", err instanceof Error ? err : undefined);
-      }
+      paxCharge = reservation.charge;
 
       step = "track_usage";
       try {
@@ -562,6 +549,8 @@ export function registerAIRoutes(app: Express): void {
           // lines with a `type`) dropped it and showed "How can I help?" —
           // the refusal never reached the customer at all.
           const refusal = await paxRefusalFor(org.id, guard.immutableNumber ?? null, message);
+          if (paxCharge) await settlePaxTurn(paxCharge, { delivered: false, reason: "constitutional refusal" });
+          paxCharge = null;
           res.setHeader("Content-Type", "text/event-stream");
           res.setHeader("Cache-Control", "no-cache");
           res.setHeader("Connection", "keep-alive");
@@ -645,22 +634,31 @@ export function registerAIRoutes(app: Express): void {
         }
       }
       
-      // Record usage only after successful stream completion with provider/model/cost info
-      if (streamCompleted) {
-        await usageMeteringService.recordUsage(org.id, "ai_chat", 1, {
-          conversationId,
-          agentRole,
-          provider: streamProvider || "openai",
-          model: streamModel || "gpt-4o",
-          estimatedCost: streamEstimatedCost,
-          promptTokens: streamPromptTokens,
-          completionTokens: streamCompletionTokens,
-          paxLane,
-        }, paxLane !== "included");
+      // Settle the reserved charge: a completed stream is delivered (usage
+      // recorded); a stopped or incomplete one is refunded, as before it was
+      // simply not charged.
+      if (paxCharge) {
+        await settlePaxTurn(paxCharge, streamCompleted
+          ? {
+              delivered: true,
+              metadata: {
+                conversationId,
+                agentRole,
+                provider: streamProvider || "openai",
+                model: streamModel || "gpt-4o",
+                estimatedCost: streamEstimatedCost,
+                promptTokens: streamPromptTokens,
+                completionTokens: streamCompletionTokens,
+              },
+            }
+          : { delivered: false, reason: "stream did not complete" });
+        paxCharge = null;
       }
       
       res.end();
     } catch (error: any) {
+      // Not delivered (cancelled or failed): return a charge taken for it.
+      if (paxCharge) await settlePaxTurn(paxCharge, { delivered: false, reason: "stream error or cancel" });
       // A cancelled turn is not a failure. The provider SDK throws on abort,
       // and logging that as "AI Stream error" would bury real ones under every
       // Stop press — and writing to the socket the customer just closed is

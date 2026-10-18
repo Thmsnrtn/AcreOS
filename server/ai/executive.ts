@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { detachedFromPaxTurn } from "../services/paxTurnContext";
 import { db } from "../db";
 import { eq, desc, and } from "drizzle-orm";
 // APPROVAL_REQUIRED_TOOLS is no longer consulted here — the Tier 1A approval
@@ -1108,7 +1109,7 @@ async function loadOrgKnowledgeContext(orgId: number): Promise<string> {
       wrapUntrusted(f.extractedContent ?? "", `knowledge:${f.name}`)
     ).join("\n\n");
     // Non-blocking usage tracking
-    process.nextTick(() => storage.incrementKnowledgeFileUsage(orgId).catch(() => {}));
+    detachedFromPaxTurn(() => process.nextTick(() => storage.incrementKnowledgeFileUsage(orgId).catch(() => {})));
     return `\n\n=== COMPANY KNOWLEDGE BASE ===\n${sections}\n=== END COMPANY KNOWLEDGE ===`;
   } catch {
     return "";
@@ -1171,14 +1172,14 @@ async function compactConversationIfNeeded(
     }, { taskType: "pax_chat", orgId: organizationId, origin: "customer" });
     const summary = res.choices[0]?.message?.content || "";
     // Store summary async (non-blocking)
-    process.nextTick(() => {
+    detachedFromPaxTurn(() => process.nextTick(() => {
       db.update(aiConversations)
         .set({ contextSummary: summary } as any)
         // The org now reaches this function (it meters the summary call), so
         // the write names it too — not only the verified-parent id.
         .where(and(eq(aiConversations.id, conversationId), eq(aiConversations.organizationId, organizationId)))
         .catch(() => {});
-    });
+    }));
     logger.info(`[AI] Auto-compacted ${compactUpTo} messages for conversation ${conversationId}`);
     return [
       { id: -1, conversationId, role: "assistant", content: `=== CONVERSATION SUMMARY (auto-compacted) ===\n${summary}\n=== END SUMMARY ===`, createdAt: clock.now() } as AiMessage,
@@ -1683,15 +1684,16 @@ export async function processChat(
     await updateConversation(conversation.id, { title });
   }
 
-  // Async memory extraction — fire and forget (don't block response)
-  setImmediate(async () => {
+  // Async memory extraction — fire and forget (don't block response). Outside
+  // the Pax-turn scope: only the turn itself may ride its credit mark.
+  detachedFromPaxTurn(() => setImmediate(async () => {
     try {
       const { processConversationMemories } = await import("../services/atlasMemory");
       const allMsgs = await getMessages(conversation.id);
       const msgHistory = allMsgs.map(m => ({ role: m.role, content: m.content || '' }));
       await processConversationMemories(org.id, msgHistory, client, agentRole || 'atlas');
     } catch (_) { /* non-blocking */ }
-  });
+  }));
 
   let estimatedCost: number | undefined;
   if (turnUsage.prompt > 0 || turnUsage.completion > 0) {
@@ -1715,9 +1717,9 @@ export async function processChat(
   }
 
   // Fire-and-forget quality scoring — never blocks the response
-  process.nextTick(() => {
+  detachedFromPaxTurn(() => process.nextTick(() => {
     scoreAndLearnFromResponse(org.id, message, finalContent).catch(() => {});
-  });
+  }));
 
   return {
     response: finalContent,

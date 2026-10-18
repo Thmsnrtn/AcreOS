@@ -1,6 +1,8 @@
 import type { Express, Response } from "express";
 import { refusePaxCredits } from "./utils/firstRunRefusals";
-import { markPaxTurn, paxTurnScope } from "./services/paxTurnContext";
+import { paxTurnScope } from "./services/paxTurnContext";
+import { paxTurnFunding, reservePaxTurn, settlePaxTurn, type PaxTurnCharge } from "./services/paxTurnFunding";
+import { aiLimiter } from "./middleware/rateLimit";
 import { stampOwnerSuppression } from "./services/trust/ownerSuppression";
 import { readPropertiesBySellerIds } from "./storage/wholeBookReads";
 import { getOrganization, getUserId, type AuthenticatedRequest } from "./types/request";
@@ -13,7 +15,7 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { idempotencyMiddleware } from "./middleware/idempotency";
 import { checkUsageLimit } from "./services/usageLimits";
-import { usageLimitGate, refusePlanLimit } from "./middleware/usageLimitGate";
+import { usageLimitGate, refusePlanLimit, aiByokThresholdGate } from "./middleware/usageLimitGate";
 import { requireScope } from "./middleware/roleScope";
 import { leadNurturerService } from "./services/leadNurturer";
 import { leadScoringService } from "./services/leadScoring";
@@ -23,7 +25,6 @@ import { refuseUnpermittedAssignment } from "./utils/leadAssignmentGate";
 import { alertingService } from "./services/alerting";
 import { propertyEnrichmentService } from "./services/propertyEnrichment";
 import { requirePermission } from "./utils/permissions";
-import { usageMeteringService, creditService } from "./services/credits";
 import { parseCSV, importLeads, exportLeadsToCSV, getExpectedColumns, type ExportFilters } from "./services/importExport";
 import { logger } from "./utils/logger";
 import { DEFAULT_GRANT_SOURCE } from "./services/consentStamp";
@@ -1352,73 +1353,87 @@ export function registerLeadRoutes(app: Express): void {
     }
   });
 
-  api.post("/api/leads/:id/nurture", isAuthenticated, getOrCreateOrg, paxTurnScope(), async (req, res) => {
-    const org = req.organization;
-    const leadId = Number(req.params.id);
-    
-    const lead = await storage.getLead(org.id, leadId);
-    if (!lead) {
-      return Errors.notFound(res, "Lead");
-    }
+  // Owner-requested AI follow-up: a Pax turn, gated, counted and charged
+  // exactly like chat (founder decisions 2026-10-12/17) — the same rate limit,
+  // message cap and allowance wall, the call recorded as origin "customer" so
+  // it counts toward the allowance, and the credit lane charged atomically
+  // before the AI call and refunded if nothing is delivered.
+  api.post(
+    "/api/leads/:id/nurture",
+    isAuthenticated,
+    getOrCreateOrg,
+    aiLimiter,
+    usageLimitGate("ai_requests"),
+    aiByokThresholdGate({ creditsFundTurn: true }),
+    paxTurnScope(),
+    async (req: AuthenticatedRequest, res: Response) => {
+      let paxCharge: PaxTurnCharge | null = null;
+      try {
+        const org = getOrganization(req);
+        const leadId = Number(req.params.id);
 
-    // An included turn on a paid plan is free (founder decision 2026-10-12);
-    // only the credit lane spends purchased credits.
-    const { paxTurnFunding } = await import("./services/paxTurnFunding");
-    const paxLane = await paxTurnFunding(org.id);
-    const usageResult = await usageMeteringService.recordUsage(
-      org.id,
-      "ai_chat",
-      1,
-      { feature: "lead_nurturing", leadId, paxLane },
-      paxLane !== "included",
-    );
+        const lead = await storage.getLead(org.id, leadId);
+        if (!lead) {
+          return Errors.notFound(res, "Lead");
+        }
 
-    if (usageResult.deducted) {
-      // Paid from the org's own balance: past the allowance, that funds the
-      // turn on the platform key (founder decision 2026-10-17).
-      markPaxTurn(org.id, true);
-    }
+        const paxLane = await paxTurnFunding(org.id, { gate: res.locals.aiTurnGate });
+        const reservation = await reservePaxTurn(org.id, paxLane, {
+          description: "AI lead follow-up",
+          markTurn: true,
+        });
+        if (!reservation.ok) {
+          return refusePaxCredits(res, {
+            ...reservation.refusal,
+            subscriptionTier: org.subscriptionTier,
+            byokAvailable: res.locals.aiTurnGate?.byokAvailable as boolean | undefined,
+          });
+        }
+        paxCharge = reservation.charge;
 
-    if (usageResult.insufficientCredits) {
-      const { CreditService } = await import("./services/credits");
-      const credits = new CreditService();
-      const requiredCents = await usageMeteringService.calculateCost("ai_chat", 1).catch(() => 2);
-      const credit = await credits.evaluateCredits(org.id, requiredCents).catch(() => ({ lane: "balance" as const }));
-      const balance = await credits.getBalance(org.id).catch(() => 0);
-      return refusePaxCredits(res, {
-        lane: credit.lane === "founder" ? "balance" : credit.lane,
-        requiredCents,
-        balanceCents: balance,
-        subscriptionTier: org.subscriptionTier,
-        byokAvailable: undefined,
-      });
-    }
+        // Counted against the plan's monthly message cap, like a chat turn.
+        try {
+          await storage.trackUsage(org.id, "ai_request");
+        } catch (err) {
+          logger.warn("[lead-nurture] trackUsage failed (continuing)", err instanceof Error ? err : undefined);
+        }
 
-    const followUp = await leadNurturerService.generateFollowUp(lead);
-    
-    if (!followUp) {
-      return Errors.internal(res, new Error("Failed to generate follow-up message"));
-    }
+        const followUp = await leadNurturerService.generateFollowUp(lead, { origin: "customer" });
+        if (!followUp) {
+          await settlePaxTurn(paxCharge, { delivered: false, reason: "no follow-up generated" });
+          paxCharge = null;
+          return Errors.internal(res, new Error("Failed to generate follow-up message"));
+        }
 
-    await storage.createLeadActivity({
-      organizationId: org.id,
-      leadId,
-      type: "ai_followup_generated",
-      description: `AI generated follow-up: ${followUp.subject}`,
-      metadata: {
-        subject: followUp.subject,
-        messagePreview: followUp.message.substring(0, 100),
-      },
-    });
+        await settlePaxTurn(paxCharge, { delivered: true, metadata: { feature: "lead_nurturing", leadId } });
+        const charged = paxCharge.fundedBy === "balance" ? 1 : 0;
+        paxCharge = null;
 
-    res.json({
-      subject: followUp.subject,
-      message: followUp.message,
-      creditsUsed: 1,
-    });
-  });
-  
-  
+        await storage.createLeadActivity({
+          organizationId: org.id,
+          leadId,
+          type: "ai_followup_generated",
+          description: `AI generated follow-up: ${followUp.subject}`,
+          metadata: {
+            subject: followUp.subject,
+            messagePreview: followUp.message.substring(0, 100),
+          },
+        });
+
+        res.json({
+          subject: followUp.subject,
+          message: followUp.message,
+          // What this follow-up actually took from purchased credits.
+          creditsUsed: charged,
+        });
+      } catch (err) {
+        if (paxCharge) await settlePaxTurn(paxCharge, { delivered: false, reason: "lead follow-up failed" });
+        Errors.internal(res, err);
+      }
+    },
+  );
+
+
   api.post("/api/leads/import", isAuthenticated, getOrCreateOrg, requirePermission("canImportData"), upload.single("file"), validateCSV, async (req, res) => {
     try {
       const org = req.organization;

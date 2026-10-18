@@ -139,10 +139,20 @@ function OptimizerSuggestionsPanel({ campaign }: { campaign: Campaign }) {
   const handleRunOptimizer = async () => {
     try {
       const result = await optimizeMutation.mutateAsync(campaign.id);
-      toast({
-        title: "AI analysis complete",
-        description: `Generated ${result.suggestionsGenerated} suggestions. Campaign score: ${result.score}/100.`,
-      });
+      toast(result.source === "none"
+        ? {
+            title: "No issues found",
+            description: `This campaign meets every benchmark, so there was nothing to ask the AI. Campaign score: ${result.score}/100.`,
+          }
+        : result.source === "rules"
+        ? {
+            title: "AI unavailable — rule-based suggestions",
+            description: `The AI couldn't answer, so these ${result.suggestionsGenerated} suggestions come from built-in rules. Campaign score: ${result.score}/100.`,
+          }
+        : {
+            title: "AI analysis complete",
+            description: `Generated ${result.suggestionsGenerated} suggestions. Campaign score: ${result.score}/100.`,
+          });
     } catch (err: any) {
       toast({ title: "Couldn't run AI analysis", description: `${err.message} — your existing suggestions are unchanged.`, variant: "destructive" });
     }

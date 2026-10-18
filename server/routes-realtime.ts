@@ -3,15 +3,13 @@ import type { AuthenticatedRequest } from './types/request';
 import { realtimeAlertsService } from './services/realtimeAlerts';
 import { certificationService } from './services/certification';
 import { wsServer } from './websocket';
-import { CreditService } from './services/credits';
 import { requireOpenAIClient } from './utils/openaiClient';
 import { logger } from './utils/logger';
 import { Errors } from './utils/errors';
 import { refusePaxCredits } from "./utils/firstRunRefusals";
-import { paxTurnFunding } from "./services/paxTurnFunding";
-import { markPaxTurn, paxTurnScope } from "./services/paxTurnContext";
+import { paxTurnFunding, reservePaxTurn, settlePaxTurn, type PaxTurnCharge } from "./services/paxTurnFunding";
+import { paxTurnScope } from "./services/paxTurnContext";
 import { meteredChatCompletion } from "./services/aiSpendGuard";
-const creditService = new CreditService();
 
 const router = Router();
 
@@ -33,34 +31,28 @@ function getUser(req: Request) {
  * Returns a reply and optionally an action path to navigate to.
  */
 router.post('/ask', paxTurnScope(), async (req: AuthenticatedRequest, res: Response) => {
+  let paxCharge: PaxTurnCharge | null = null;
   try {
     const { message } = req.body;
     if (!message || typeof message !== 'string') {
       return Errors.badRequest(res, 'message is required');
     }
 
-    // Credit check — only on the credit lane (founder decision 2026-10-12:
-    // an included turn on a paid plan neither needs nor spends credits).
+    // A Pax turn (founder decisions 2026-10-12/17): only the credit lane is
+    // charged — atomically, before the AI call — and an undelivered turn is
+    // refunded below. Included, own-key and founder turns take nothing.
     const org = req.organization;
-    if (org && (await paxTurnFunding(org.id, { isFounder: req.isFounder })) !== "included") {
-      const credit = await creditService.evaluateCredits(org.id, 2);
-      if (credit.allowed) markPaxTurn(org.id, credit.lane === "balance");
-      if (!credit.allowed) {
-        const balance = await creditService.getBalance(org.id).catch(() => 0);
+    if (org) {
+      const lane = await paxTurnFunding(org.id, { isFounder: req.isFounder });
+      const reservation = await reservePaxTurn(org.id, lane, { description: 'Command palette AI query', markTurn: true });
+      if (!reservation.ok) {
         return refusePaxCredits(res, {
-          lane: credit.lane,
-          requiredCents: 2,
-          balanceCents: balance,
+          ...reservation.refusal,
           subscriptionTier: org.subscriptionTier,
           byokAvailable: undefined,
         });
       }
-      // Deduct after response (fire-and-forget)
-      res.on('finish', () => {
-        creditService.deductOrFundFromTrial(org.id, 2, 'Command palette AI query', { actionType: 'ai_chat' }).catch((err) =>
-          logger.error('[realtime] credit deduction failed', err instanceof Error ? err : undefined)
-        );
-      });
+      paxCharge = reservation.charge;
     }
 
     const systemPrompt = `You are an expert AI assistant built into AcreOS, a real estate management platform.
@@ -102,12 +94,15 @@ Respond with JSON: { "reply": "...", "actionPath": "/path or null", "actionLabel
       parsed = { reply: raw, actionPath: null, actionLabel: null };
     }
 
+    if (paxCharge) await settlePaxTurn(paxCharge, { delivered: true, metadata: { feature: "command_palette" } });
+    paxCharge = null;
     res.json({
       reply: parsed.reply || 'I can help with that. Try exploring the relevant section.',
       actionPath: parsed.actionPath || null,
       actionLabel: parsed.actionLabel || null,
     });
   } catch (err) {
+    if (paxCharge) await settlePaxTurn(paxCharge, { delivered: false, reason: "command palette AI failed" });
     Errors.internal(res, err);
   }
 });

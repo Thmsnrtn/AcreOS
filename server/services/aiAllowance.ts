@@ -18,7 +18,9 @@
  *                                    /settings/byok (Errors.internal maps it)
  *
  * WHAT COUNTS (and the rule for work the org did not trigger): spend recorded
- * with origin = 'customer'. Background work that serves the org but that it
+ * with origin = 'customer', plus background work the org pays for in credits
+ * past its allowance, recorded as 'background_metered' (founder decision
+ * 2026-10-17; aiAllowanceRule.ALLOWANCE_COUNTED_ORIGINS). Background work that serves the org but that it
  * did not trigger (origin = 'background') is NOT counted and is never gated
  * here — it cannot quietly drain the allowance and wall the customer off; it is
  * bounded by the per-org tier ceilings (aiCostCeiling.ts) and shows on the
