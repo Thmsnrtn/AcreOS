@@ -540,7 +540,6 @@ const BASELINE_FUNCTION_OFFENDERS = new Set([
   "server/services/autonomyHealth.ts::gradeFounderInterventionRate",
   "server/services/autonomyHealth.ts::gradePendingQueue",
   "server/services/autonomyHealth.ts::gradeSafetyRailTripRate",
-  "server/services/autopilot/attribution.ts::getConversionSummary",
   "server/services/autopilot/guidedResume.ts::resumePreflight",
   "server/services/autopilot/learnedGates.ts::readSupportConfidenceOutcomeHistory",
   "server/services/autopilot/narrate.ts::composeFounderBrief",

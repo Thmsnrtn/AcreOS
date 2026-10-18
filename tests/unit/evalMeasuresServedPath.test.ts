@@ -128,16 +128,17 @@ describe("honesty: no key means no score, said loudly", () => {
   it("the CLI writes measured:false, prints NOT MEASURED and no score, and --require-measured exits 2", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "eval-"));
     const env = { ...process.env } as Record<string, string>;
-    for (const k of Object.keys(env)) if (/API_KEY/.test(k)) delete env[k];
+    for (const k of Object.keys(env)) if (/API_KEY/.test(k)) env[k] = "";
+    env.AI_INTEGRATIONS_OPENROUTER_API_KEY = "";
     delete env.NODE_OPTIONS;
-    const r = spawnSync(process.execPath, [path.join(ROOT, "node_modules/tsx/dist/cli.mjs"), "evals/run-eval.ts", "--limit", "3", "--report-dir", dir], { cwd: ROOT, env, encoding: "utf8" });
+    const r = spawnSync(process.execPath, ["--import", "tsx", "evals/run-eval.ts", "--limit", "3", "--report-dir", dir], { cwd: ROOT, env, encoding: "utf8" });
     expect(r.status).toBe(0);
     expect(r.stdout).toMatch(/NOT MEASURED/);
     expect(r.stdout).not.toMatch(/overall=\d/);
     const rep = JSON.parse(fs.readFileSync(path.join(dir, "latest.json"), "utf8"));
     expect(rep.measured).toBe(false);
     expect(rep.totals).toBeNull();
-    const strict = spawnSync(process.execPath, [path.join(ROOT, "node_modules/tsx/dist/cli.mjs"), "evals/run-eval.ts", "--limit", "1", "--report-dir", dir, "--require-measured"], { cwd: ROOT, env, encoding: "utf8" });
+    const strict = spawnSync(process.execPath, ["--import", "tsx", "evals/run-eval.ts", "--limit", "1", "--report-dir", dir, "--require-measured"], { cwd: ROOT, env, encoding: "utf8" });
     expect(strict.status).toBe(2);
     fs.rmSync(dir, { recursive: true, force: true });
   });

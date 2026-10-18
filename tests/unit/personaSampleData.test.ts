@@ -143,9 +143,12 @@ describe("buildSampleFixtures — persona shaping", () => {
     const f = await build("fix_and_flip");
     expect(f.notes.length).toBe(0);
     const statuses = f.deals.map((d) => d.status);
-    // An in-rehab acquisition + a listed-for-resale disposition.
+    // Property listing state is separate from the canonical deal pipeline.
     expect(statuses).toContain("closed");
-    expect(statuses).toContain("listed");
+    const resale = f.deals.find(d => d.type === "disposition");
+    expect(resale).toMatchObject({ status: "negotiating" });
+    expect(resale?.propertyIndex).toBeTypeOf("number");
+    expect(f.properties[resale!.propertyIndex!].status).toBe("listed");
   });
 
   it("land_flipper ships the original parcels + one seller-financed note", async () => {

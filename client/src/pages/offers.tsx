@@ -1,10 +1,11 @@
 import { useState, useMemo, useId } from "react";
+import { useLeadsPaginated } from "@/hooks/use-leads";
 import { usePropertiesByIds, usePropertiesBySellerIds } from "@/hooks/use-properties";
 import DOMPurify from "isomorphic-dompurify";
 import { PageShell } from "@/components/page-shell";
 import { RequiredDisclaimer } from "@/components/required-disclaimer";
 import { ListSkeleton } from "@/components/list-skeleton";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueries } from "@tanstack/react-query";
 import { queryClient, apiRequest, fetchJsonArray, ApiError } from "@/lib/queryClient";
 import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
 import { useToast } from "@/hooks/use-toast";
@@ -693,6 +694,8 @@ export default function OffersPage() {
   const [offerPercent, setOfferPercent] = useState(25);
   const [expirationDays, setExpirationDays] = useState(30);
   const [selectedLeadIds, setSelectedLeadIds] = useState<number[]>([]);
+  const [leadPage, setLeadPage] = useState(1);
+  const [leadSearch, setLeadSearch] = useState("");
   const [leadFilter, setLeadFilter] = useState({ county: "", status: "" });
   
   // Template dialog state
@@ -723,10 +726,24 @@ export default function OffersPage() {
     queryFn: () => fetchJsonArray<OfferTemplate>('/api/offer-templates'),
   });
 
-  const { data: leads } = useQuery<Lead[]>({
-    queryKey: ['/api/leads'],
-    queryFn: () => fetchJsonArray<Lead>('/api/leads'),
-  });
+  // Search the whole permitted book in SQL; this page is explicitly bounded.
+  const leadCandidates = useLeadsPaginated({ page: leadPage, pageSize: 100, q: leadSearch });
+  // Letters and selections refer to exact leads, even when they are absent
+  // from the current search page. Never resolve their identities from a list.
+  const lookupIds = [...new Set([
+    ...(offerLetters ?? []).map((offer) => offer.leadId), ...selectedLeadIds,
+  ].filter((id): id is number => typeof id === "number" && id > 0))];
+  const leadLookups = useQueries({ queries: lookupIds.map((id) => ({
+    queryKey: ["/api/leads", "by-id", id],
+    queryFn: async (): Promise<Lead | null> => {
+      const res = await apiRequest("GET", `/api/leads/${id}`);
+      return await res.json() as Lead;
+    },
+  })) });
+  const leads = [...new Map([
+    ...((leadCandidates.data?.data ?? []) as Lead[]),
+    ...leadLookups.flatMap((lookup) => lookup.data ? [lookup.data] : []),
+  ].map((lead) => [lead.id, lead])).values()];
 
 
   // Accepted deals feed the contract chain (Contracts tab). Fetched only when
@@ -894,12 +911,11 @@ export default function OffersPage() {
   }, [offerLetters, statusFilter]);
   
   const filteredLeads = useMemo(() => {
-    if (!leads) return [];
-    return leads.filter(lead => {
+    return ((leadCandidates.data?.data ?? []) as Lead[]).filter(lead => {
       if (leadFilter.status && lead.status !== leadFilter.status) return false;
       return true;
     });
-  }, [leads, leadFilter]);
+  }, [leadCandidates.data, leadFilter]);
   
   const propertyMap = useMemo(() => propertiesBySeller ?? new Map<number, Property>(), [propertiesBySeller]);
   
@@ -1343,7 +1359,7 @@ export default function OffersPage() {
                       </div>
 
                       <div className="space-y-2">
-                        <Label htmlFor="lead-status-filter">Filter leads by status</Label>
+                        <Label htmlFor="lead-status-filter">Filter this page by status</Label>
                         <Select value={leadFilter.status} onValueChange={(v) => setLeadFilter(f => ({ ...f, status: v }))}>
                           <SelectTrigger id="lead-status-filter" data-testid="select-lead-status-filter">
                             <SelectValue placeholder="All statuses" />
@@ -1401,16 +1417,29 @@ export default function OffersPage() {
                   <CardHeader>
                     <CardTitle>Select leads</CardTitle>
                     <CardDescription>
-                      Choose leads to include in the batch offer generation.
+                      Search all your leads, then select from each page. Selections stay when you change pages.
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <fieldset className="border-0 p-0 m-0">
+                    <div className="space-y-2 mb-4">
+                      <Label htmlFor="offer-lead-search">Search all leads</Label>
+                      <Input id="offer-lead-search" value={leadSearch} onChange={(event) => { setLeadSearch(event.target.value); setLeadPage(1); }} placeholder="Name, email or phone" />
+                      {leadCandidates.isError ? (
+                        <QueryErrorState error={leadCandidates.error} onRetry={() => void leadCandidates.refetch()} title="Couldn't load candidate leads" />
+                      ) : leadCandidates.isPending ? (
+                        <Skeleton className="h-10 w-full" />
+                      ) : (
+                        <p className="text-sm text-muted-foreground" role="status">
+                          Page {leadCandidates.data?.page} of {Math.max(1, leadCandidates.data?.totalPages ?? 1)} · {leadCandidates.data?.total} matching leads · {selectedLeadIds.length} selected across pages
+                        </p>
+                      )}
+                    </div>
+                    <fieldset className="border-0 p-0 m-0" disabled={leadCandidates.isFetching || leadCandidates.isError}>
                       <legend className="sr-only">Choose leads to include in the batch</legend>
                       <ul className="max-h-96 overflow-y-auto space-y-2 list-none p-0 m-0" aria-label={`${filteredLeads.length} candidate lead${filteredLeads.length === 1 ? "" : "s"}`}>
                         {filteredLeads.length === 0 ? (
                           <li className="text-center text-muted-foreground py-8 list-none">
-                            No leads available.
+                            {leadCandidates.isError ? "Candidate leads are unavailable." : leadCandidates.isFetching ? "Loading candidate leads…" : "No leads match on this page."}
                           </li>
                         ) : (
                           filteredLeads.map(lead => {
@@ -1472,10 +1501,11 @@ export default function OffersPage() {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => setSelectedLeadIds(filteredLeads.map(l => l.id))}
+                        onClick={() => setSelectedLeadIds(ids => [...new Set([...ids, ...filteredLeads.map(l => l.id)])])}
+                        disabled={leadCandidates.isFetching || leadCandidates.isError}
                         data-testid="button-select-all-leads"
                       >
-                        Select all
+                        Select this page
                       </Button>
                       <Button
                         variant="ghost"
@@ -1485,6 +1515,10 @@ export default function OffersPage() {
                       >
                         Clear selection
                       </Button>
+                    </div>
+                    <div className="flex items-center justify-between gap-2 mt-4">
+                      <Button variant="outline" disabled={leadPage <= 1 || leadCandidates.isFetching} onClick={() => setLeadPage(page => page - 1)}>Previous leads</Button>
+                      <Button variant="outline" disabled={leadCandidates.isError || leadCandidates.isFetching || leadPage >= (leadCandidates.data?.totalPages ?? 1)} onClick={() => setLeadPage(page => page + 1)}>Next leads</Button>
                     </div>
                   </CardContent>
                 </Card>

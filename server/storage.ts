@@ -1,4 +1,4 @@
-import { db, withTransaction } from "./db";
+import { db, withTransaction, type PrimaryDb } from "./db";
 import { tallySubscriptionEvents } from "@shared/billing/subscriptionEventVocabulary";
 import { forOrg, unscopedForPlatformOps } from "./utils/orgScopedDb";
 import { addMonths } from "./utils/dateUtils";
@@ -227,7 +227,7 @@ export interface IStorage {
   getDeals(orgId: number): Promise<Deal[]>;
   getDeal(orgId: number, id: number): Promise<Deal | undefined>;
   getDealsByIds(orgId: number, ids: number[]): Promise<Deal[]>;
-  createDeal(deal: InsertDeal & { organizationId: number }): Promise<Deal>;
+  createDeal(deal: InsertDeal & { organizationId: number }, tx?: PrimaryDb, opts?: { source?: "historical_import" | "sample_fixture" }): Promise<Deal>;
   updateDeal(id: number, updates: Partial<InsertDeal>, expectedUpdatedAt?: Date, organizationId?: number, opts?: { backwardUndo?: boolean }): Promise<Deal>;
   bulkDeleteDeals(orgId: number, ids: number[]): Promise<number>;
   bulkUpdateDeals(orgId: number, ids: number[], updates: Partial<InsertDeal>): Promise<number>;

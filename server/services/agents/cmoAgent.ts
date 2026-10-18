@@ -18,6 +18,7 @@
  * proposal emission. Renders happen on the worker via outbox.
  */
 
+import { stampTraceContext } from "../../utils/queueTraceContext";
 import { db } from "../../db";
 import { brandProfiles, cmoBudget, outbox } from "@shared/schema";
 import { eq } from "drizzle-orm";
@@ -30,6 +31,7 @@ import {
 import { scoreScript } from "../cmo/scriptScorer";
 
 interface GenerateBundleInput {
+  generationJobId?: number;
   intent: string;
   count: number;
   funnelStage: "cold" | "warm" | "retargeting";
@@ -78,7 +80,11 @@ export async function generateBundle(input: GenerateBundleInput): Promise<Genera
   // and don't generate. (Generation itself is cheap, but scoring + voice +
   // render add up.)
   const [budget] = await db.select().from(cmoBudget).where(eq(cmoBudget.brandProfileId, brand.id));
-  if (budget && budget.spendTodayCents >= budget.dailyCapCents) {
+  if (!budget) {
+    return { scriptsGenerated: 0, scriptsPassed: 0, scriptsRejectedPreRender: 0,
+      renderJobsQueued: 0, totalCostCents: 0, blockedBy: "operating_budget_unavailable" };
+  }
+  if (budget.spendTodayCents >= budget.dailyCapCents) {
     logger.warn(
       `[cmoAgent] daily budget cap reached ($${(budget.dailyCapCents / 100).toFixed(2)}) — skipping generation`,
     );
@@ -143,7 +149,7 @@ export async function generateBundle(input: GenerateBundleInput): Promise<Genera
   for (const scriptId of passedScriptIds) {
     await db.insert(outbox).values({
       eventType: "cmo.render-script",
-      payload: { scriptId },
+      payload: stampTraceContext({ scriptId, ...(input.generationJobId ? { generationJobId: input.generationJobId } : {}) }),
     });
     renderJobsQueued++;
   }
@@ -167,6 +173,7 @@ export async function generateBundle(input: GenerateBundleInput): Promise<Genera
  * (from /api/founder/cmo/generate) and the weekly-refresh scheduler.
  */
 export async function handleCmoGenerateEvent(payload: {
+  generationJobId?: number;
   intent: string;
   count: number;
   funnelStage?: "cold" | "warm" | "retargeting";
@@ -176,6 +183,7 @@ export async function handleCmoGenerateEvent(payload: {
 }): Promise<GenerateBundleResult> {
   return generateBundle({
     intent: payload.intent,
+    generationJobId: payload.generationJobId,
     count: payload.count,
     funnelStage: payload.funnelStage ?? "cold",
     notes: payload.notes,
