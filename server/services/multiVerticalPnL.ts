@@ -12,7 +12,10 @@
  * their W-2 income is replaceable.
  *
  * Pure aggregation — no new schema. Reads from leads, deals, notes,
- * rental_leases, rent_payments, etc. across the orgVerticalPacks set.
+ * rental_leases, rent_payments, etc., scoped to the org's SELECTED verticals
+ * (orgVerticalPacks rows with status='active'). Verticals are included
+ * profiles (founder decision 2026-10-18), never billed — this P&L tracks
+ * operating revenue/costs per vertical, not pack sales.
  */
 
 import { db } from "../db";
