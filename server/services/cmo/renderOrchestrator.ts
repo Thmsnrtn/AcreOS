@@ -1,3 +1,4 @@
+import { videoByteProof } from "./publicationAssets";
 /**
  * Render orchestrator — turns a scored script into 3 rendered MP4s
  * (9:16, 1:1, 16:9), persisted with manifest and queued for founder review.
@@ -123,6 +124,7 @@ export async function renderScriptToBundle(input: OrchestratorInput): Promise<Or
   const renders: CmoAdRender[] = [];
   const storage = getStorage();
   const voiceUrl = await storage.url(voResult.storagePath);
+  const ctaUrl = (brand.funnelStages as Record<string, { ctaUrl: string }>)[script.funnelStage]?.ctaUrl ?? "https://acreos.io";
 
   for (const aspectRatio of aspectRatios) {
     const variant = ASPECT_RATIOS.find((a) => a.ratio === aspectRatio);
@@ -186,7 +188,7 @@ export async function renderScriptToBundle(input: OrchestratorInput): Promise<Or
           hook: script.hook,
           body: script.body,
           cta: script.cta,
-          ctaUrl: (brand.funnelStages as Record<string, { ctaUrl: string }>)[script.funnelStage]?.ctaUrl ?? "https://acreos.io",
+          ctaUrl,
           lengthTargetSec: script.lengthTargetSec,
           voiceAudioUrl: voiceUrl,
           brollClips: brollClips.map((c) => ({ url: c.url, durationSec: c.durationSec })),
@@ -207,7 +209,9 @@ export async function renderScriptToBundle(input: OrchestratorInput): Promise<Or
         await recordAssetUsage(clip, renderId);
       }
 
+      const video = videoByteProof(await storage.read(`local:${outputKey}`));
       const manifest = buildManifest({
+        ctaUrl, video,
         script,
         brand,
         renderId,
@@ -318,6 +322,8 @@ async function resolveStorageAbsolutePath(key: string): Promise<string> {
 }
 
 interface BuildManifestArgs {
+  ctaUrl: string;
+  video: { sha256: string; byteLength: number };
   script: CmoScript;
   brand: BrandProfile;
   renderId: string;
@@ -330,7 +336,14 @@ interface BuildManifestArgs {
 
 function buildManifest(args: BuildManifestArgs) {
   return {
-    schema: "cmo.manifest.v1",
+    schema: "cmo.manifest.v2",
+    publication: {
+      schema: "cmo.publication.v1",
+      video: args.video,
+      copy: { name: `${args.brand.displayName} ${args.script.hookArchetype}`, primaryText: args.script.body,
+        headline: args.script.hook.slice(0, 40), adText: `${args.script.hook} ${args.script.body}`.slice(0, 200),
+        ctaUrl: args.ctaUrl, ctaType: "SIGN_UP" },
+    },
     renderId: args.renderId,
     trackingId: args.trackingId,
     createdAt: clock.now().toISOString(),
@@ -402,6 +415,7 @@ async function createApprovalItem(
       ownerAgentCodename: "cmo",
       expectedOutcome: "Broadcast 3-aspect-ratio ad bundle to active platforms; track CTR/CPM/ROAS for archetype scoring.",
       contextBundle: {
+        bundleId: headlineRender.bundleId,
         brandSlug: brand.slug,
         scriptHook: script.hook,
         scriptBody: script.body,

@@ -1,23 +1,13 @@
 /**
  * Meta Marketing API — video creative broadcast.
  *
- * Pipeline:
- *  1. Upload local MP4 to Meta as ad video (returns video_id)
- *  2. Wait for processing (poll status until "ready")
- *  3. Create ad creative referencing the video_id + tracking_id
- *  4. Attach to the brand's active campaign / ad set (uses existing growth_campaigns row)
- *  5. Return external IDs back to the caller for persistence
- *
- * Auth: reads founder_ad_accounts row where platform='meta' and isActive=true.
- * Idempotency: if a render already has externalCreativeId set, short-circuits.
- *
- * Failure surface: any HTTP-level Meta error throws with the Meta error body
- * preserved. cmoBroadcast.ts catches, flips render.status='error', the
- * decision item gets a "needs attention" treatment.
+ * Uploads the caller's verified video Buffer, polls processing and creates an
+ * ad creative. This adapter does not attach it to a campaign or prove delivery.
+ * Reads one unambiguous active founder account and preserves upload identity.
+ * The worker records uncertain effects for reconciliation rather than retrying.
+
  */
 
-import * as fs from "fs";
-import * as path from "path";
 import FormData from "form-data";
 import { openFounderAdAccount } from "../services/founderAdAccountSecrets";
 import { db } from "../db";
@@ -29,7 +19,7 @@ import { clock } from "../utils/clock";
 const META_BASE = "https://graph.facebook.com/v19.0";
 
 export interface MetaUploadInput {
-  videoAbsolutePath: string;
+  videoBytes: Buffer;
   name: string;       // human-readable name in Meta Ads Manager
   trackingId: string; // becomes part of the video name suffix
 }
@@ -40,12 +30,20 @@ export interface MetaUploadResult {
   adAccountId: string;
 }
 
+function normalizedMetaAccountId(id: string): string {
+  if (typeof id !== "string" || !id.trim()) throw new Error("[cmo:meta] upload account identity is unavailable");
+  const value = id.trim();
+  return value.startsWith("act_") ? value : `act_${value}`;
+}
+
 async function loadMetaAccount(): Promise<FounderAdAccount> {
-  const [account] = await db
+  const accounts = await db
     .select()
     .from(founderAdAccounts)
     .where(and(eq(founderAdAccounts.platform, "meta"), eq(founderAdAccounts.isActive, true)))
-    .limit(1);
+    .limit(2);
+  if (accounts.length > 1) throw new Error("[cmo:meta] multiple active accounts require explicit reconciliation");
+  const [account] = accounts;
   if (!account) {
     throw new Error(
       "[cmo:meta] no active Meta ad account on file. " +
@@ -58,18 +56,12 @@ async function loadMetaAccount(): Promise<FounderAdAccount> {
 
 export async function uploadVideoToMeta(input: MetaUploadInput): Promise<MetaUploadResult> {
   const account = await loadMetaAccount();
-  const adAccountId = account.adAccountId.startsWith("act_") ? account.adAccountId : `act_${account.adAccountId}`;
+  const adAccountId = normalizedMetaAccountId(account.adAccountId);
   const url = `${META_BASE}/${adAccountId}/advideos`;
 
-  // Meta accepts multipart upload directly. Stream the file rather than
-  // reading into memory — these MP4s are small (sub-10MB at 1080p/30s/H.264)
-  // but the streaming path keeps the worker memory flat.
-  if (!fs.existsSync(input.videoAbsolutePath)) {
-    throw new Error(`[cmo:meta] file not found: ${input.videoAbsolutePath}`);
-  }
-
+  if (!Buffer.isBuffer(input.videoBytes) || input.videoBytes.length === 0) throw new Error("[cmo:meta] approved video bytes are unavailable");
   const form = new FormData();
-  form.append("source", fs.createReadStream(input.videoAbsolutePath));
+  form.append("source", input.videoBytes, { filename: `${input.trackingId}.mp4`, contentType: "video/mp4" });
   form.append("access_token", account.accessToken);
   form.append("name", `${input.name} · ${input.trackingId}`);
 
@@ -102,8 +94,11 @@ export async function uploadVideoToMeta(input: MetaUploadInput): Promise<MetaUpl
  * Poll Meta until the video is processed and ready to attach to a creative.
  * Meta usually finishes within 15-60s for sub-30s 1080p clips.
  */
-export async function waitForVideoReady(videoId: string, opts?: { maxWaitMs?: number }): Promise<void> {
+export async function waitForVideoReady(videoId: string, opts: { expectedAdAccountId: string; maxWaitMs?: number }): Promise<void> {
   const account = await loadMetaAccount();
+  if (normalizedMetaAccountId(account.adAccountId) !== normalizedMetaAccountId(opts?.expectedAdAccountId)) {
+    throw new Error("[cmo:meta] account changed since upload; publication requires reconciliation");
+  }
   const maxWaitMs = opts?.maxWaitMs ?? 5 * 60 * 1000;
   const startedAt = clock.nowMs();
 
@@ -123,6 +118,7 @@ export async function waitForVideoReady(videoId: string, opts?: { maxWaitMs?: nu
 }
 
 export interface MetaCreativeInput {
+  expectedAdAccountId: string; // identity returned by this video's upload
   videoId: string;
   pageId: string;       // FB page id
   ctaUrl: string;       // destination URL
@@ -140,7 +136,10 @@ export interface MetaCreativeResult {
 
 export async function createMetaCreative(input: MetaCreativeInput): Promise<MetaCreativeResult> {
   const account = await loadMetaAccount();
-  const adAccountId = account.adAccountId.startsWith("act_") ? account.adAccountId : `act_${account.adAccountId}`;
+  const adAccountId = normalizedMetaAccountId(account.adAccountId);
+  if (adAccountId !== normalizedMetaAccountId(input.expectedAdAccountId)) {
+    throw new Error("[cmo:meta] account changed since upload; publication requires reconciliation");
+  }
   const url = `${META_BASE}/${adAccountId}/adcreatives`;
 
   const creativePayload = {
@@ -173,6 +172,9 @@ export async function createMetaCreative(input: MetaCreativeInput): Promise<Meta
     throw new Error(`[cmo:meta] create creative failed (${response.status}): ${errBody.slice(0, 500)}`);
   }
 
-  const data = (await response.json()) as { id: string };
+  const data = (await response.json()) as { id?: unknown };
+  if (typeof data.id !== "string" || !data.id.trim()) {
+    throw new Error("[cmo:meta] create returned no valid object receipt identifier; reconcile before retry");
+  }
   return { creativeId: data.id, adAccountId };
 }

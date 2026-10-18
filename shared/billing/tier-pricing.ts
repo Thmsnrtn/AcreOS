@@ -70,8 +70,8 @@ function envPriceId(name: string): string | undefined {
 
 export const TIER_PRICES_CENTS: Record<Tier, TierPricing> = {
   starter: {
-    priceMonthlyCents: 2000,   // $20.00 / mo
-    priceYearlyCents: 20000,   // $200.00 / yr — pay 10 months, ~17% off (matches "Save 17%" badge)
+    priceMonthlyCents: 4900,   // $49.00 / mo
+    priceYearlyCents: 49000,   // $490.00 / yr — pay 10 months, ~17% off (matches "Save 17%" badge)
     // Stripe env vars kept on their legacy SOLO/OPERATOR/EMPIRE names so
     // existing Stripe price IDs in Fly secrets keep resolving without a
     // billing-side renaming sweep. The aliases are documented next to the
@@ -85,8 +85,8 @@ export const TIER_PRICES_CENTS: Record<Tier, TierPricing> = {
     maxSeats: 1,
   },
   pro: {
-    priceMonthlyCents: 4900,   // $49.00 / mo
-    priceYearlyCents: 49000,   // $490.00 / yr — pay 10 months, ~17% off (matches "Save 17%" badge)
+    priceMonthlyCents: 9900,   // $99.00 / mo
+    priceYearlyCents: 99000,   // $990.00 / yr — pay 10 months, ~17% off (matches "Save 17%" badge)
     stripePriceIdMonthly: envPriceId("STRIPE_PRICE_OPERATOR_MONTHLY"),
     stripePriceIdYearly: envPriceId("STRIPE_PRICE_OPERATOR_YEARLY"),
     displayName: "Pro",
@@ -98,8 +98,8 @@ export const TIER_PRICES_CENTS: Record<Tier, TierPricing> = {
     maxSeats: null,
   },
   scale: {
-    priceMonthlyCents: 7900,   // $79.00 / mo
-    priceYearlyCents: 79000,   // $790.00 / yr — pay 10 months, ~17% off (matches "Save 17%" badge)
+    priceMonthlyCents: 19900,   // $199.00 / mo
+    priceYearlyCents: 199000,   // $1,990.00 / yr — pay 10 months, ~17% off (matches "Save 17%" badge)
     stripePriceIdMonthly: envPriceId("STRIPE_PRICE_EMPIRE_MONTHLY"),
     stripePriceIdYearly: envPriceId("STRIPE_PRICE_EMPIRE_YEARLY"),
     displayName: "Scale",

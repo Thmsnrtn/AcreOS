@@ -51,7 +51,7 @@ import {
   featureRequests,
   revenueProtectionInterventions,
 } from "@shared/schema";
-import { eq, and, desc, isNull, sql, lte } from "drizzle-orm";
+import { eq, and, desc, isNull, sql, lte, ne } from "drizzle-orm";
 import { acknowledgeSystemAlert } from "./alertAcknowledge";
 import { routeAITask, routeCriticalTask, TaskComplexity } from "./aiRouter";
 
@@ -920,6 +920,13 @@ async function processInboxItem(item: any): Promise<ExecutionResult> {
     executedAt: clock.now(),
   };
 
+  // This executor cannot witness video assets or destination choices. Never
+  // triage, spend model tokens on, or resolve the dedicated CMO review queue.
+  if (item.itemType === "cmo_ad_review") {
+    result.decision = { action: "hard_stop", confidence: 1, reasoning: "Video bundles require founder review in /founder/cmo" };
+    return result;
+  }
+
   // ── Pax pause kill-switch (Workstream A honesty) ────────────────────────
   // pax.pausedUntil (written by /settings/pax, org-level semantics — see
   // server/services/paxPause.ts) pauses ALL autonomous action for the org.
@@ -1589,12 +1596,13 @@ export async function runAutonomousDecisionExecutor(): Promise<DecisionExecutorR
     .where(and(
       eq(decisionsInboxItems.status, "deferred"),
       sql`deferred_until IS NOT NULL AND deferred_until <= NOW()`,
+      ne(decisionsInboxItems.itemType, "cmo_ad_review"),
     ));
 
   // Get all pending items, highest urgency first
   const pendingItems = await db.select()
     .from(decisionsInboxItems)
-    .where(eq(decisionsInboxItems.status, "pending"))
+    .where(and(eq(decisionsInboxItems.status, "pending"), ne(decisionsInboxItems.itemType, "cmo_ad_review")))
     .orderBy(desc(decisionsInboxItems.urgencyScore))
     .limit(20); // Process up to 20 items per run (cost guard)
 

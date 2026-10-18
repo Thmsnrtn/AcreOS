@@ -1,5 +1,13 @@
 # COMPLETION MATRIX — Master Audit requirements → repository evidence
 
+> **Execution authority updated 2026-10-13:** this document retains the older
+> canonical-architecture program's rationale and evidence snapshot. Current
+> readiness/native Growth execution state and the single active next-up list
+> live in [October roadmap §I](../company/roadmap-2026-10.md#i-directed-readiness-and-native-growth-execution--2026-10-13).
+> Revalidate historical counts/"verified" rows against current consumers; they
+> do not certify deployed readiness. `CLAUDE.md`, the constitution and the
+> machine-readable canon retain their governing authority.
+
 Every row is grounded in a file that exists at HEAD. A row with no file
 reference is `MISSING`, not "in progress".
 
