@@ -208,12 +208,12 @@ export async function resolveFounderOrganization(): Promise<FounderOrgResolution
  * routes that need an `organizationId` for inserts but aren't run in the
  * context of a specific tenant (on-call alerts, founder-only collaboration /
  * agent lifecycle / trust events). Defers first to resolveFounderOrganization
- * (the strict canonical rule above). When FOUNDER_PRIMARY_ORG_ID is set and the
- * strict rule did not accept it, the answer is UNRESOLVED — founder decision
- * 2026-10-18 "refuse and alert" (docs/company/founder-decisions-2026-10-18.md):
- * the pin is never taken as written and never replaced by a membership guess.
- * Only with NO pin set does it fall back to the founder's org via users →
- * teamMembers. Cached after the first SUCCESSFUL resolution.
+ * (the strict canonical rule above) and to nothing else: only an organization a
+ * founder identity OWNS can be the founder org — the sole founder-owned org, or
+ * the founder-owned org FOUNDER_PRIMARY_ORG_ID pins. An invalid pin is never
+ * taken as written, and a founder's team membership never answers, pinned or
+ * not (founder decisions 2026-10-18, docs/company/founder-decisions-2026-10-18.md).
+ * Cached after the first SUCCESSFUL resolution.
  *
  * NO HARD-CODED FALLBACK (2026-10-07). This used to resolve to org 1 when
  * neither source answered, "so callers never blow up on a NOT NULL
@@ -231,7 +231,7 @@ let _cachedFounderOrgSource: FounderPrimaryOrgSource | null = null;
 let _unresolvedUntil = 0;
 const UNRESOLVED_CACHE_MS = 60_000;
 
-/** No founder org could be resolved — no valid FOUNDER_PRIMARY_ORG_ID pin, sole founder-owned org, or (unpinned) founder membership. */
+/** No founder org could be resolved — no sole founder-owned org and no valid FOUNDER_PRIMARY_ORG_ID pin. */
 class FounderOrgUnresolvedError extends Error {
   readonly code = "FOUNDER_ORG_UNRESOLVED";
   constructor() {
@@ -253,10 +253,10 @@ export async function resolveFounderPrimaryOrgId(): Promise<number | null> {
 
 /**
  * Which rule answered `resolveFounderPrimaryOrgId`:
- *   sole-owned / pinned — the strict canonical rule (resolveFounderOrganization);
- *   membership — a founder user's first team membership (only when NO pin is set).
+ *   sole-owned / pinned — the strict canonical rule (resolveFounderOrganization),
+ * the only rule there is.
  */
-export type FounderPrimaryOrgSource = "sole-owned" | "pinned" | "membership";
+export type FounderPrimaryOrgSource = "sole-owned" | "pinned";
 
 /**
  * As `resolveFounderPrimaryOrgId`, plus the rule that answered (null when
@@ -285,41 +285,14 @@ export async function resolveFounderPrimaryOrgIdWithSource(): Promise<{
   }
 
   // A miss is remembered briefly, so callers on hot paths do not re-query the
-  // users/teamMembers lookup on every call while no founder org exists.
+  // founder-ownership lookup on every call while no founder org exists.
   if (inMissWindow) return { organizationId: null, source: null, strict };
 
-  // Founder decision 2026-10-18, "refuse and alert": a pin the strict rule did
-  // not accept is INVALID. It is not used as written and no membership guess
-  // replaces it; the write path refuses (FOUNDER_ORG_UNRESOLVED) and the boot
-  // diagnostics alert on-call that the pin is invalid.
-  const pinSet = (process.env.FOUNDER_PRIMARY_ORG_ID || "").trim().length > 0;
-  if (!pinSet) {
-    try {
-      const { db } = await import("../db");
-      const { users, teamMembers } = await import("@shared/schema");
-      const { inArray } = await import("drizzle-orm");
-      const founderEmails = getFounderEmails();
-      if (founderEmails.length > 0) {
-        const founderUsers = await db
-          .select({ id: users.id })
-          .from(users)
-          .where(inArray(users.email, founderEmails))
-          .limit(5);
-        if (founderUsers.length > 0) {
-          const userIds = founderUsers.map((u) => u.id);
-          const memberships = await db
-            .select({ organizationId: teamMembers.organizationId })
-            .from(teamMembers)
-            .where(inArray(teamMembers.userId, userIds))
-            .limit(1);
-          if (memberships[0]?.organizationId) return hit(memberships[0].organizationId, "membership");
-        }
-      }
-    } catch {
-      /* unresolved — reported below */
-    }
-  }
-
+  // Founder decisions 2026-10-18 ("refuse and alert", then "refuse it too"):
+  // only an organization a founder identity OWNS can be the founder org — the
+  // strict rule above. A pin it did not accept is not used as written, and no
+  // team-membership guess answers, pinned or not. Unresolved: the write path
+  // refuses (FOUNDER_ORG_UNRESOLVED) and the boot diagnostics alert on-call.
   _unresolvedUntil = clock.nowMs() + UNRESOLVED_CACHE_MS;
   void import("../metrics")
     .then((m) => m.recordFounderOrgUnresolved())

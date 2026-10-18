@@ -16,7 +16,9 @@
  * Founder decision 2026-10-18 ("refuse and alert",
  * docs/company/founder-decisions-2026-10-18.md): a FOUNDER_PRIMARY_ORG_ID pin
  * the strict check does not accept is INVALID — it is never taken as written
- * and no founder-membership guess replaces it. The pin tests below pin that.
+ * and no founder-membership guess replaces it; follow-up the same day ("refuse
+ * it too"): with no pin set a team membership does not answer either — only an
+ * org a founder identity OWNS can be the founder org. The tests below pin both.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -178,15 +180,22 @@ describe("resolving the founder org", () => {
     expect(await (await founderModule()).resolveFounderPrimaryOrgId()).toBeNull();
   });
 
-  it("an invalid pin is not replaced by a founder-membership guess; with NO pin the membership fallback still answers", async () => {
+  it("a founder's team membership never answers — not to replace an invalid pin, and not with NO pin either", async () => {
     // The founder owns nothing but is a member of org 9 (e.g. a customer workspace).
     dbHolder.current = founderDb([], [{ organizationId: 9 }]);
     process.env.FOUNDER_PRIMARY_ORG_ID = "42";
     expect(await (await founderModule()).resolveFounderPrimaryOrgId()).toBeNull();
 
+    // Was (until "refuse it too", 2026-10-18): with no pin the membership fallback resolved org 9.
     delete process.env.FOUNDER_PRIMARY_ORG_ID;
     dbHolder.current = founderDb([], [{ organizationId: 9 }]);
-    expect(await (await founderModule()).resolveFounderPrimaryOrgIdWithSource()).toMatchObject({ organizationId: 9, source: "membership" });
+    const founder = await founderModule();
+    expect(await founder.resolveFounderPrimaryOrgIdWithSource()).toMatchObject({ organizationId: null, source: null });
+    await expect(founder.getFounderPrimaryOrgId()).rejects.toMatchObject({ code: "FOUNDER_ORG_UNRESOLVED" });
+
+    // Membership alongside ownership changes nothing: the owned org answers.
+    dbHolder.current = founderDb([{ id: 7, ownerId: FOUNDER_UID }], [{ organizationId: 9 }]);
+    expect(await (await founderModule()).resolveFounderPrimaryOrgIdWithSource()).toMatchObject({ organizationId: 7, source: "sole-owned" });
   });
 });
 

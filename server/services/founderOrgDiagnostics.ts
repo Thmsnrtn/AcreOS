@@ -99,14 +99,11 @@ export async function reportFounderOrgAtBoot(opts: {
   }
 
   if (state.resolved) {
-    const meta = { metadata: { source: state.source, strictReason: state.strictReason, pinConfigured: state.pinConfigured } };
-    if (state.strictReason) {
-      // Resolved only by the unpinned membership fallback, which the
-      // strict rule refused — worth seeing, not worth a page.
-      logger.warn("[founder-org] founder organization resolved at boot by a fallback the strict rule refused", meta);
-    } else {
-      logger.info("[founder-org] founder organization resolved at boot", meta);
-    }
+    // Resolved means the strict rule answered: there is no other rule
+    // (founder decisions 2026-10-18).
+    logger.info("[founder-org] founder organization resolved at boot", {
+      metadata: { source: state.source, pinConfigured: state.pinConfigured },
+    });
     return "resolved";
   }
   if (state.strictReason === "lookup-failed") {

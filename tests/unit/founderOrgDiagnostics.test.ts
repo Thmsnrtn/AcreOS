@@ -38,10 +38,12 @@ function emptyDb() {
 }
 
 /** A database where FOUNDER_UID owns `orgs` (rows chosen by drizzle table name). */
-function founderDb(orgs: Array<{ id: number; ownerId: string }>) {
+function founderDb(orgs: Array<{ id: number; ownerId: string }>, memberships: Array<{ organizationId: number }> = []) {
   const rowsFor = (t: unknown): unknown[] => {
     const name = (t as Record<symbol, string>)[Symbol.for("drizzle:Name")];
     if (name === "organizations") return orgs;
+    if (name === "team_members") return memberships;
+    if (name === "users") return [{ id: FOUNDER_UID, email: "founder-diag@example.test" }];
     return [];
   };
   const chain = () => {
@@ -137,9 +139,9 @@ describe("describeFounderOrgResolution — boolean + source, never an id", () =>
       const s = await d.describeFounderOrgResolution();
       expect(s.resolved).toBe(false);
       expect(s.strictReason).toBe("no-founder-org");
-      // strict users + organizations lookups (2) + the membership fallback's users lookup (1);
-      // running the strict rule twice would read 5.
-      expect(selects).toBe(3);
+      // strict users + organizations lookups (2) and nothing else (there is no
+      // membership fallback); running the strict rule twice would read 4.
+      expect(selects).toBe(2);
     } finally {
       if (prior === undefined) delete process.env.FOUNDER_EMAIL;
       else process.env.FOUNDER_EMAIL = prior;
@@ -208,6 +210,18 @@ describe("reportFounderOrgAtBoot", () => {
     for (const id of ids) expect(everything).not.toContain(id);
     expect(await d.reportFounderOrgAtBoot({ notify: true, env: { ...PROD, FOUNDER_PRIMARY_ORG_ID: ORG_ID } })).toBe("already-reported");
     expect(notifyOnCall).toHaveBeenCalledTimes(1);
+  });
+
+  it("no pin and the founder only a MEMBER (owns nothing): unresolved, one alert, no ids (founder decision 2026-10-18, 'refuse it too')", async () => {
+    dbHolder.current = founderDb([], [{ organizationId: OWNED_B }]);
+    const d = await load();
+    const s = await d.describeFounderOrgResolution();
+    expect(s).toMatchObject({ resolved: false, source: null, strictReason: "no-founder-org", pinConfigured: false });
+    expect(await d.reportFounderOrgAtBoot({ notify: true, env: PROD })).toBe("unresolved");
+    expect(errorsWithCode()).toHaveLength(1);
+    expect(notifyOnCall).toHaveBeenCalledTimes(1);
+    const everything = JSON.stringify([s, notifyOnCall.mock.calls, logger.error.mock.calls]);
+    for (const id of ids) expect(everything).not.toContain(id);
   });
 
   it("a failed lookup is not reported as a misconfiguration (no page on a database blip)", async () => {

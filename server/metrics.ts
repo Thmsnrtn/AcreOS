@@ -176,7 +176,7 @@ export const stripeWebhookSignatureRejectedTotal = new Counter({
 
 const founderOrgUnresolvedTotal = new Counter({
   name: "acreos_founder_org_unresolved_total",
-  help: "Times a founder-scoped write found no founder organization (no valid FOUNDER_PRIMARY_ORG_ID pin, no sole founder-owned org, and — only when unpinned — no founder membership) and wrote nothing instead of guessing an org.",
+  help: "Times a founder-scoped write found no founder organization (no sole founder-owned org and no valid FOUNDER_PRIMARY_ORG_ID pin) and wrote nothing instead of guessing an org.",
   registers: [registry],
 });
 
