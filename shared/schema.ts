@@ -6132,12 +6132,18 @@ export type InsertPreChurnRung = typeof preChurnRungs.$inferInsert;
 // (column added via ALTER on fcra_attestations in scripts/migrate.mjs)
 
 // ─── FW-TEGAN-1 + FW-ASHOK-1 (push-forward 2026-05-08): vertical packs ───
-// 5-persona convergence (Tegan + Bryn + Ashok + Caspar + Ana): meter
-// verticals as add-on packs on top of the base tier ($49 / $99 / $199).
-// One row per (organization, pack_key) — the org has a pack active when
-// status='active' AND (cancel_at IS NULL OR cancel_at > now()). Stripe
-// subscription IDs stored alongside the local row so we can reconcile
-// nightly against Stripe's own state.
+// REPURPOSED 2026-10-18 (founder decision): verticals are INCLUDED profiles,
+// not paid add-ons — a customer's subscription price is determined ONLY by
+// tier. This table now tracks which verticals an org has SELECTED (free,
+// via POST /api/verticals/select), not purchased. One row per
+// (organization, pack_key) — the org has a vertical selected when
+// status='active' AND (cancel_at IS NULL OR cancel_at > now()).
+// Purchase-era columns (billing_interval, price_cents,
+// stripe_subscription_item_id) are vestigial: new selection rows write
+// price_cents=0 and leave them null/default. Kept (not dropped) so the
+// table's history stays queryable and no migration is needed on an empty
+// table — every row predating the decision describes a purchase that can no
+// longer exist (products archived, checkout route removed).
 export const orgVerticalPacks = pgTable(
   "org_vertical_packs",
   {

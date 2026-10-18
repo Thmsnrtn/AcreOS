@@ -13,7 +13,7 @@ One live Stripe account is shared by three unrelated concerns:
 | Tenant | What it is | Ownership tag |
 | --- | --- | --- |
 | **Land sales** (personal) | Owner-financed lots + fees (Luna County lots, Down Payment, Doc Fee), created by hand in the dashboard. The only live money in the account. | `app=land` |
-| **AcreOS** | Land-investor SaaS — tiers, seats, vertical packs. | `app=acreos` |
+| **AcreOS** | Land-investor SaaS — tiers, seats. (Verticals are included profiles, not products — founder decision 2026-10-18.) | `app=acreos` |
 | **Foundry** | AI ops layer for solo founders — subscription tiers. | `app=foundry` |
 
 A Stripe webhook endpoint **cannot** be scoped to "only my products" — every endpoint receives
@@ -41,7 +41,7 @@ A small, fixed set of keys. Set them on **create**; never rely on an object bein
 | --- | --- | --- | --- |
 | All objects | `app` | owner slug: `foundry` · `acreos` · `land` | **yes** |
 | All objects | `env` | `live` · `test` | optional |
-| Products | `app_object` | `plan` · `seat` · `pack` | **yes** |
+| Products | `app_object` | `plan` · `seat` (`pack` retired 2026-10-18) | **yes** |
 | Products | `plan_key` | stable key: `starter`, `pro`, `scale`, `solo`, `growth`, … | **yes** |
 | Prices | `plan_key` | matches the product's key | **yes** |
 | Prices | `billing_period` | `monthly` · `yearly` · `one_time` | **yes** |
@@ -61,7 +61,8 @@ Every price gets a native Stripe `lookup_key`:
 ```
 
 Examples: `acreos_pro_monthly`, `acreos_pro_yearly`, `foundry_solo_monthly`,
-`acreos_pack_note_investor_monthly`, `acreos_seat_scale_monthly`.
+`acreos_seat_scale_monthly`. (`acreos_pack_*` keys are retired — verticals
+are included profiles, not products, since 2026-10-18.)
 
 Code resolves prices by lookup key instead of a wall of `STRIPE_PRICE_*` secrets:
 

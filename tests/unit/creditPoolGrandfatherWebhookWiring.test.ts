@@ -5,9 +5,13 @@
  *
  *   - a subscription event stamps the plan period's end;
  *   - a renewal of the org's PLAN subscription ends it;
- *   - a renewal of some OTHER subscription on the same Stripe customer (a
- *     vertical-pack add-on renews on its own cycle) must NOT end it — that
- *     would take the grandfathered pool away before the plan ever renewed.
+ *   - a renewal of some OTHER subscription on the same Stripe customer
+ *     must NOT end it — that would take the grandfathered pool away before
+ *     the plan ever renewed.
+ *
+ * (Founder decision 2026-10-18 removed vertical-pack subscriptions
+ * entirely; the "different subscription" case below used to be a pack
+ * add-on. The invariant is unchanged: only the plan's renewal counts.)
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -57,8 +61,8 @@ describe("credit-pool grandfather — webhook wiring", () => {
     expect(endAtRenewal).toHaveBeenCalledWith(77, new Date(1_790_000_000 * 1000));
   });
 
-  it("a renewal of a DIFFERENT subscription (vertical-pack add-on) does not end it", async () => {
-    await WebhookHandlers.processInvoicePaid(invoice("sub_pack"));
+  it("a renewal of a DIFFERENT subscription on the same customer does not end it", async () => {
+    await WebhookHandlers.processInvoicePaid(invoice("sub_other"));
     expect(endAtRenewal).not.toHaveBeenCalled();
   });
 
@@ -81,8 +85,19 @@ describe("credit-pool grandfather — webhook wiring", () => {
     expect(stamp).toHaveBeenCalledWith(77, new Date(1_792_592_000 * 1000));
   });
 
-  it("a vertical-pack subscription event stamps nothing", async () => {
-    await WebhookHandlers.processSubscriptionUpdated({ id: "sub_pack", customer: "cus_1", metadata: { type: "vertical_pack" }, items: { data: [] } } as never);
-    expect(stamp).not.toHaveBeenCalled();
+  it("a subscription event for a non-plan subscription still stamps its own period", async () => {
+    // The stamp records the current period's end from the event itself —
+    // it is not plan-gated. (The pack-subscription guard that used to
+    // skip stamping here was removed with vertical-pack purchases,
+    // founder decision 2026-10-18.)
+    const sub = {
+      id: "sub_other",
+      customer: "cus_1",
+      status: "active",
+      metadata: {},
+      items: { data: [{ current_period_start: 1_790_000_000, current_period_end: 1_792_592_000, price: { id: "p", recurring: { interval: "month" } } }] },
+    } as never;
+    await WebhookHandlers.processSubscriptionUpdated(sub).catch(() => {});
+    expect(stamp).toHaveBeenCalledWith(77, new Date(1_792_592_000 * 1000));
   });
 });
