@@ -621,7 +621,7 @@ export const CONSTITUTION: readonly ConstitutionInvariant[] = [
         "scripts/check-residential-comps-hold.mjs",
         "tests/unit/residentialCompsHold.test.ts",
         "shared/business-types.ts",
-        "tests/unit/verticalPackPurchasable.test.ts",
+        "tests/unit/verticalSelectability.test.ts",
       ],
       note:
         "The hard-stop bars building a dedicated residential-comps data PLANE (bulk ingest, dedicated vendors, new tables) — it does not bar routing residential lookups through the EXISTING provider registry. Ruling #11 wave V3 (2026-07-29) promoted residential verticals by routing comps/valuation via the registry's ATTOM seam (pay-per-call/BYOK, honest unkeyed degradation, server/services/residentialComps.ts); no plane was built and none ships before the revenue trigger. " +

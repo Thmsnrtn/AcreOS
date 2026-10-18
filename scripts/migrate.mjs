@@ -3473,8 +3473,10 @@ $mig0262$`,
   'ALTER TABLE "fcra_attestations" ADD COLUMN IF NOT EXISTS "substantive_form" jsonb',
 
   // FW-TEGAN-1 + FW-ASHOK-1 (push-forward 2026-05-08): vertical packs.
-  // One row per (org, pack_key). Org has a pack active when status='active'
-  // AND (cancel_at IS NULL OR cancel_at > now()).
+  // REPURPOSED 2026-10-18 (founder decision): verticals are included
+  // profiles, not paid add-ons. One row per (org, pack_key). Org has a
+  // vertical selected when status='active' AND (cancel_at IS NULL OR
+  // cancel_at > now()). Purchase-era columns are vestigial (see schema.ts).
   `CREATE TABLE IF NOT EXISTS "org_vertical_packs" (
      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
      "organization_id" integer NOT NULL,

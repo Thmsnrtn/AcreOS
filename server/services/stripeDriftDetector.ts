@@ -25,7 +25,7 @@
 import Stripe from "stripe";
 import { db } from "../db";
 import { agentEvents, decisionsInboxItems } from "@shared/schema";
-import { TIER_PRICES_CENTS, VERTICAL_PACKS } from "@shared/billing/tier-pricing";
+import { TIER_PRICES_CENTS } from "@shared/billing/tier-pricing";
 import { logger } from "../utils/logger";
 
 export interface DriftFinding {
@@ -62,14 +62,8 @@ function canonicalSpecs(): CanonicalSpec[] {
       });
     }
   }
-  for (const key of Object.keys(VERTICAL_PACKS) as Array<keyof typeof VERTICAL_PACKS>) {
-    const pack = VERTICAL_PACKS[key];
-    specs.push({
-      acreosKey: `pack_${key}`,
-      expectedMonthlyCents: pack.priceMonthlyCents,
-      expectedYearlyCents: pack.priceYearlyCents,
-    });
-  }
+  // Founder decision 2026-10-18: verticals are included profiles, not paid
+  // add-ons — there are no pack products in Stripe to drift-detect.
   return specs;
 }
 
