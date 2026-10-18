@@ -95,3 +95,13 @@ describe("safeHttpsGet refuses before connecting", () => {
     expect(await safeHttpsGet(url, { maxBytes: 1024, timeoutMs: 1000, resolve: publicResolver })).toBeNull();
   });
 });
+
+describe("safeHttpsGet applies the outbound source block-list (it bypasses the fetch guard)", () => {
+  it("a retired data service named in a letter is refused before DNS", async () => {
+    let resolved = false;
+    const url = "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0/query";
+    const r = await safeHttpsGet(url, { maxBytes: 1024, timeoutMs: 1000, resolve: async () => ((resolved = true), [{ address: "93.184.216.34", family: 4 }]) });
+    expect(r).toBeNull();
+    expect(resolved).toBe(false);
+  });
+});

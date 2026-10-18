@@ -14,6 +14,7 @@ import dns from "node:dns/promises";
 import https from "node:https";
 import net from "node:net";
 import type { LookupFunction } from "node:net";
+import { blockedOutboundSource } from "../providers/blockedOutboundSources";
 
 /** Expand an IPv6 literal (with an optional embedded dotted IPv4 tail) to 8 hextets, or null. */
 function ipv6Hextets(ip: string): number[] | null {
@@ -130,6 +131,9 @@ export async function safeHttpsGet(
     return null;
   }
   if (url.protocol !== "https:" || !url.hostname || url.username || url.password) return null;
+  // This client bypasses the process fetch guard, so it applies the same
+  // source block-list itself (a letter could name a retired data service).
+  if (blockedOutboundSource(url)) return null;
   let pinned: { address: string; family: number } | null;
   try {
     pinned = await resolvePublicAddress(url.hostname, opts.resolve);
