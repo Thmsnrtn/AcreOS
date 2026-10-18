@@ -67,7 +67,7 @@ export const FOUNDER_ORG_REMEDY: Record<StrictRefusal, string> = {
   "no-founder-org": "No organisation is owned by a founder identity. Create (or take ownership of) the AcreOS company organisation.",
   ambiguous: "Several organisations are owned by founder identities. Set FOUNDER_PRIMARY_ORG_ID to the one system alerts belong in.",
   "pin-not-founder-owned":
-    "FOUNDER_PRIMARY_ORG_ID is set, but to an organisation no founder identity owns. Point it at the founder-owned organisation.",
+    "FOUNDER_PRIMARY_ORG_ID is set, but to an organisation no founder identity owns, so it is refused (founder decision 2026-10-18). Point it at the founder-owned organisation.",
   "lookup-failed": "The lookup itself failed (database unavailable?). It is retried on every alert.",
 };
 
@@ -101,7 +101,7 @@ export async function reportFounderOrgAtBoot(opts: {
   if (state.resolved) {
     const meta = { metadata: { source: state.source, strictReason: state.strictReason, pinConfigured: state.pinConfigured } };
     if (state.strictReason) {
-      // Resolved only by a fallback (env as-is, or first membership) that the
+      // Resolved only by the unpinned membership fallback, which the
       // strict rule refused — worth seeing, not worth a page.
       logger.warn("[founder-org] founder organization resolved at boot by a fallback the strict rule refused", meta);
     } else {
@@ -123,12 +123,18 @@ export async function reportFounderOrgAtBoot(opts: {
   });
 
   if (opts.notify) {
+    // Founder decision 2026-10-18 ("refuse and alert"): a pin the strict check
+    // did not accept is refused, never used as written — say so plainly.
+    const pinInvalid = state.pinConfigured;
     try {
       const { notifyOnCall } = await import("./oncall");
       await notifyOnCall(
         "P1",
-        "Founder organization is not configured",
-        "System alerts and on-call pages have no founder organization to land in, so the in-app alert and the phone push are skipped " +
+        pinInvalid ? "FOUNDER_PRIMARY_ORG_ID is invalid and was refused" : "Founder organization is not configured",
+        (pinInvalid
+          ? "FOUNDER_PRIMARY_ORG_ID is set, but the strict check did not accept it, so it is refused (never used as written, never replaced by a guess). "
+          : "") +
+          "System alerts and on-call pages have no founder organization to land in, so the in-app alert and the phone push are skipped " +
           "(this email still arrives).\n\n" +
           `Why: ${state.strictReason ?? "unresolved"}. ${remedy}\n\n` +
           "Confirm on /founder/readiness (\"Founder organization resolves\"), or check the secret with `fly secrets list` (FOUNDER_PRIMARY_ORG_ID).",

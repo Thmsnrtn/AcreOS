@@ -2904,8 +2904,7 @@ export function registerAdminRoutes(app: Express): void {
       const founderOrgSourceText: Record<string, string> = {
         "sole-owned": "Resolved: the one organization a founder identity owns.",
         pinned: "Resolved: FOUNDER_PRIMARY_ORG_ID, confirmed founder-owned.",
-        env: "Resolved only by FOUNDER_PRIMARY_ORG_ID as written — the strict check refused it.",
-        membership: "Resolved only by a founder's first team membership — the strict check refused it.",
+        membership: "Resolved only by a founder's first team membership (no pin set) — the strict check refused it.",
       };
 
       const items = [

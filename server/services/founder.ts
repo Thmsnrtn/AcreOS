@@ -208,9 +208,12 @@ export async function resolveFounderOrganization(): Promise<FounderOrgResolution
  * routes that need an `organizationId` for inserts but aren't run in the
  * context of a specific tenant (on-call alerts, founder-only collaboration /
  * agent lifecycle / trust events). Defers first to resolveFounderOrganization
- * (the strict canonical rule above); otherwise reads `FOUNDER_PRIMARY_ORG_ID` from env if
- * set; otherwise looks up the founder's org via users → teamMembers. Cached
- * after the first SUCCESSFUL resolution.
+ * (the strict canonical rule above). When FOUNDER_PRIMARY_ORG_ID is set and the
+ * strict rule did not accept it, the answer is UNRESOLVED — founder decision
+ * 2026-10-18 "refuse and alert" (docs/company/founder-decisions-2026-10-18.md):
+ * the pin is never taken as written and never replaced by a membership guess.
+ * Only with NO pin set does it fall back to the founder's org via users →
+ * teamMembers. Cached after the first SUCCESSFUL resolution.
  *
  * NO HARD-CODED FALLBACK (2026-10-07). This used to resolve to org 1 when
  * neither source answered, "so callers never blow up on a NOT NULL
@@ -224,16 +227,16 @@ export async function resolveFounderOrganization(): Promise<FounderOrgResolution
 let _cachedFounderOrgId: number | null = null;
 /** How the cached id was found — reported (never the id) by founderOrgDiagnostics. */
 let _cachedFounderOrgSource: FounderPrimaryOrgSource | null = null;
-/** Until when a failed lookup is remembered (the env var is still read first). */
+/** Until when a failed lookup is remembered. */
 let _unresolvedUntil = 0;
 const UNRESOLVED_CACHE_MS = 60_000;
 
-/** No founder org could be resolved — neither FOUNDER_PRIMARY_ORG_ID nor a founder membership. */
+/** No founder org could be resolved — no valid FOUNDER_PRIMARY_ORG_ID pin, sole founder-owned org, or (unpinned) founder membership. */
 class FounderOrgUnresolvedError extends Error {
   readonly code = "FOUNDER_ORG_UNRESOLVED";
   constructor() {
     super(
-      "No founder organization is configured: set FOUNDER_PRIMARY_ORG_ID, or make a FOUNDER_EMAILS user a member of the founder's organization.",
+      "No founder organization is configured: set FOUNDER_PRIMARY_ORG_ID to an organization a founder identity owns (an invalid pin is refused), or leave it unset with exactly one founder-owned organization.",
     );
     this.name = "FounderOrgUnresolvedError";
   }
@@ -251,10 +254,9 @@ export async function resolveFounderPrimaryOrgId(): Promise<number | null> {
 /**
  * Which rule answered `resolveFounderPrimaryOrgId`:
  *   sole-owned / pinned — the strict canonical rule (resolveFounderOrganization);
- *   env        — FOUNDER_PRIMARY_ORG_ID read as-is (the strict rule refused);
- *   membership — a founder user's first team membership.
+ *   membership — a founder user's first team membership (only when NO pin is set).
  */
-export type FounderPrimaryOrgSource = "sole-owned" | "pinned" | "env" | "membership";
+export type FounderPrimaryOrgSource = "sole-owned" | "pinned" | "membership";
 
 /**
  * As `resolveFounderPrimaryOrgId`, plus the rule that answered (null when
@@ -274,8 +276,7 @@ export async function resolveFounderPrimaryOrgIdWithSource(): Promise<{
   };
   if (_cachedFounderOrgId !== null) return { organizationId: _cachedFounderOrgId, source: _cachedFounderOrgSource };
 
-  // Inside the miss window the lookups are not repeated (the env var below is
-  // still read, so setting it takes effect at once).
+  // Inside the miss window the lookups are not repeated.
   const inMissWindow = clock.nowMs() < _unresolvedUntil;
   if (!inMissWindow) {
     const canonical = await resolveFounderOrganization();
@@ -283,39 +284,40 @@ export async function resolveFounderPrimaryOrgIdWithSource(): Promise<{
     if (canonical.ok) return hit(canonical.organizationId, canonical.via);
   }
 
-  const fromEnv = process.env.FOUNDER_PRIMARY_ORG_ID;
-  if (fromEnv) {
-    const parsed = Number(fromEnv);
-    if (Number.isInteger(parsed) && parsed > 0) return hit(parsed, "env");
-  }
-
   // A miss is remembered briefly, so callers on hot paths do not re-query the
   // users/teamMembers lookup on every call while no founder org exists.
   if (inMissWindow) return { organizationId: null, source: null, strict };
 
-  try {
-    const { db } = await import("../db");
-    const { users, teamMembers } = await import("@shared/schema");
-    const { inArray } = await import("drizzle-orm");
-    const founderEmails = getFounderEmails();
-    if (founderEmails.length > 0) {
-      const founderUsers = await db
-        .select({ id: users.id })
-        .from(users)
-        .where(inArray(users.email, founderEmails))
-        .limit(5);
-      if (founderUsers.length > 0) {
-        const userIds = founderUsers.map((u) => u.id);
-        const memberships = await db
-          .select({ organizationId: teamMembers.organizationId })
-          .from(teamMembers)
-          .where(inArray(teamMembers.userId, userIds))
-          .limit(1);
-        if (memberships[0]?.organizationId) return hit(memberships[0].organizationId, "membership");
+  // Founder decision 2026-10-18, "refuse and alert": a pin the strict rule did
+  // not accept is INVALID. It is not used as written and no membership guess
+  // replaces it; the write path refuses (FOUNDER_ORG_UNRESOLVED) and the boot
+  // diagnostics alert on-call that the pin is invalid.
+  const pinSet = (process.env.FOUNDER_PRIMARY_ORG_ID || "").trim().length > 0;
+  if (!pinSet) {
+    try {
+      const { db } = await import("../db");
+      const { users, teamMembers } = await import("@shared/schema");
+      const { inArray } = await import("drizzle-orm");
+      const founderEmails = getFounderEmails();
+      if (founderEmails.length > 0) {
+        const founderUsers = await db
+          .select({ id: users.id })
+          .from(users)
+          .where(inArray(users.email, founderEmails))
+          .limit(5);
+        if (founderUsers.length > 0) {
+          const userIds = founderUsers.map((u) => u.id);
+          const memberships = await db
+            .select({ organizationId: teamMembers.organizationId })
+            .from(teamMembers)
+            .where(inArray(teamMembers.userId, userIds))
+            .limit(1);
+          if (memberships[0]?.organizationId) return hit(memberships[0].organizationId, "membership");
+        }
       }
+    } catch {
+      /* unresolved — reported below */
     }
-  } catch {
-    /* unresolved — reported below */
   }
 
   _unresolvedUntil = clock.nowMs() + UNRESOLVED_CACHE_MS;

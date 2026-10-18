@@ -12,6 +12,11 @@
  * Now: unresolved → `null` / `FounderOrgUnresolvedError`; on-call skips the
  * org-anchored channels (in-app row, push, ack-timer), still emails, logs an
  * error and moves `acreos_founder_alert_undeliverable_total`.
+ *
+ * Founder decision 2026-10-18 ("refuse and alert",
+ * docs/company/founder-decisions-2026-10-18.md): a FOUNDER_PRIMARY_ORG_ID pin
+ * the strict check does not accept is INVALID — it is never taken as written
+ * and no founder-membership guess replaces it. The pin tests below pin that.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -41,7 +46,72 @@ afterEach(() => {
   dbHolder.current = null;
   vi.doUnmock("../../server/services/founder");
   delete process.env.FOUNDER_PRIMARY_ORG_ID;
+  restoreEnv("FOUNDER_USER_IDS");
+  restoreEnv("FOUNDER_EMAIL");
 });
+
+const savedEnv: Record<string, string | undefined> = {
+  FOUNDER_USER_IDS: process.env.FOUNDER_USER_IDS,
+  FOUNDER_EMAIL: process.env.FOUNDER_EMAIL,
+};
+function restoreEnv(k: string) {
+  if (savedEnv[k] === undefined) delete process.env[k];
+  else process.env[k] = savedEnv[k];
+}
+
+const FOUNDER_UID = "founder-u";
+const FOUNDER_MAIL = "founder-guess-test@example.test";
+
+/**
+ * A db that KNOWS a founder: users / organizations / team_members rows by
+ * table name, every select resolving to that table's rows (the resolver
+ * re-checks ownership in JS on what comes back). Records inserts.
+ */
+function founderDb(
+  orgs: Array<{ id: number; ownerId: string }>,
+  memberships: Array<{ organizationId: number }> = [],
+  inserts: Array<{ organizationId?: unknown }> = [],
+) {
+  const rowsFor = (t: unknown): unknown[] => {
+    const name = (t as Record<symbol, string>)[Symbol.for("drizzle:Name")];
+    if (name === "users") return [{ id: FOUNDER_UID, email: FOUNDER_MAIL }];
+    if (name === "organizations") return orgs;
+    if (name === "team_members") return memberships;
+    return [];
+  };
+  const chain = () => {
+    let rows: unknown[] = [];
+    const q: Record<string, unknown> = {};
+    q.from = (t: unknown) => {
+      rows = rowsFor(t);
+      return q;
+    };
+    q.where = () => q;
+    q.limit = async () => rows;
+    q.then = (ok: (r: unknown[]) => unknown) => Promise.resolve(rows).then(ok);
+    return q;
+  };
+  return {
+    db: {
+      select: () => chain(),
+      insert: () => ({
+        values: (v: { organizationId?: unknown }) => {
+          inserts.push(v);
+          return { returning: async () => [{ id: 1 }] };
+        },
+      }),
+    },
+    pool: { totalCount: 0, idleCount: 0, waitingCount: 0 },
+  };
+}
+
+/** Load a fresh founder module with a known founder identity. */
+async function founderModule() {
+  vi.resetModules();
+  process.env.FOUNDER_USER_IDS = FOUNDER_UID;
+  process.env.FOUNDER_EMAIL = FOUNDER_MAIL;
+  return import("../../server/services/founder");
+}
 
 /** A db whose founder lookups find nothing, recording every insert. */
 function emptyDb(inserts: Array<{ organizationId?: unknown }>) {
@@ -79,20 +149,49 @@ describe("resolving the founder org", () => {
     await expect(founder.getFounderPrimaryOrgId()).rejects.toMatchObject({ code: "FOUNDER_ORG_UNRESOLVED" });
   });
 
-  it("FOUNDER_PRIMARY_ORG_ID wins when set, and a non-id value is ignored rather than coerced", async () => {
-    dbHolder.current = emptyDb([]);
+  it("a VALID pin (a founder-owned org) selects it; the sole-owned path needs no pin", async () => {
+    dbHolder.current = founderDb([{ id: 7, ownerId: FOUNDER_UID }, { id: 42, ownerId: FOUNDER_UID }]);
     process.env.FOUNDER_PRIMARY_ORG_ID = "42";
-    expect(await (await import("../../server/services/founder")).getFounderPrimaryOrgId()).toBe(42);
-    // A fresh module (the resolution is cached per process).
+    expect(await (await founderModule()).resolveFounderPrimaryOrgIdWithSource()).toMatchObject({ organizationId: 42, source: "pinned" });
+
+    delete process.env.FOUNDER_PRIMARY_ORG_ID;
+    dbHolder.current = founderDb([{ id: 7, ownerId: FOUNDER_UID }]);
+    expect(await (await founderModule()).resolveFounderPrimaryOrgIdWithSource()).toMatchObject({ organizationId: 7, source: "sole-owned" });
+  });
+
+  it("an INVALID pin is refused — never taken as written (founder decision 2026-10-18)", async () => {
+    // Was: FOUNDER_PRIMARY_ORG_ID "wins when set", even naming an org no founder owns.
+    dbHolder.current = founderDb([{ id: 7, ownerId: FOUNDER_UID }]);
+    process.env.FOUNDER_PRIMARY_ORG_ID = "42";
+    const founder = await founderModule();
+    expect(await founder.resolveFounderPrimaryOrgId()).toBeNull();
+    await expect(founder.getFounderPrimaryOrgId()).rejects.toMatchObject({ code: "FOUNDER_ORG_UNRESOLVED" });
+
+    // With no founder on record at all a pin cannot be confirmed either: refused.
     vi.resetModules();
     dbHolder.current = emptyDb([]);
-    process.env.FOUNDER_PRIMARY_ORG_ID = "0";
     expect(await (await import("../../server/services/founder")).resolveFounderPrimaryOrgId()).toBeNull();
+
+    // A non-id value is not coerced into one.
+    dbHolder.current = founderDb([{ id: 7, ownerId: FOUNDER_UID }, { id: 8, ownerId: FOUNDER_UID }]);
+    process.env.FOUNDER_PRIMARY_ORG_ID = "0";
+    expect(await (await founderModule()).resolveFounderPrimaryOrgId()).toBeNull();
+  });
+
+  it("an invalid pin is not replaced by a founder-membership guess; with NO pin the membership fallback still answers", async () => {
+    // The founder owns nothing but is a member of org 9 (e.g. a customer workspace).
+    dbHolder.current = founderDb([], [{ organizationId: 9 }]);
+    process.env.FOUNDER_PRIMARY_ORG_ID = "42";
+    expect(await (await founderModule()).resolveFounderPrimaryOrgId()).toBeNull();
+
+    delete process.env.FOUNDER_PRIMARY_ORG_ID;
+    dbHolder.current = founderDb([], [{ organizationId: 9 }]);
+    expect(await (await founderModule()).resolveFounderPrimaryOrgIdWithSource()).toMatchObject({ organizationId: 9, source: "membership" });
   });
 });
 
 describe("a miss is remembered briefly", () => {
-  it("a second resolution inside the window does not re-query; the env var still wins", async () => {
+  it("a second resolution inside the window does not re-query, and a pin set meanwhile is not taken as written", async () => {
     vi.resetModules();
     vi.doMock("../../server/utils/logger", () => ({ logger }));
     let selects = 0;
@@ -109,8 +208,10 @@ describe("a miss is remembered briefly", () => {
     expect(after1).toBeGreaterThan(0);
     expect(await founder.resolveFounderPrimaryOrgId()).toBeNull();
     expect(selects).toBe(after1);
+    // Was: "the env var still wins" — the pin was read as written inside the window.
     process.env.FOUNDER_PRIMARY_ORG_ID = "55";
-    expect(await founder.resolveFounderPrimaryOrgId()).toBe(55);
+    expect(await founder.resolveFounderPrimaryOrgId()).toBeNull();
+    expect(selects).toBe(after1);
   });
 });
 
@@ -149,11 +250,14 @@ describe("notifyOnCall with no founder org", () => {
     vi.resetModules();
     const inserts: Array<{ organizationId?: unknown }> = [];
     vi.doMock("../../server/utils/logger", () => ({ logger }));
-    dbHolder.current = emptyDb(inserts);
+    // A valid pin: org 77 is founder-owned (org 3 too, so the pin decides).
+    dbHolder.current = founderDb([{ id: 3, ownerId: FOUNDER_UID }, { id: 77, ownerId: FOUNDER_UID }], [], inserts);
     vi.doMock("../../server/services/pushNotificationService", () => ({ sendPushToUser: vi.fn(async () => ({ sent: 0, failed: 0 })) }));
     vi.doMock("../../server/services/emailService", () => ({ emailService: { sendEmail: vi.fn(async () => ({ success: true })) } }));
     vi.doMock("../../server/routes-founder-critical-alerts", () => ({ registerCriticalAlert: vi.fn(async () => undefined) }));
     process.env.FOUNDER_PRIMARY_ORG_ID = "77";
+    process.env.FOUNDER_USER_IDS = FOUNDER_UID;
+    process.env.FOUNDER_EMAIL = FOUNDER_MAIL;
     logger.error.mockClear();
     const { notifyOnCall } = await import("../../server/services/oncall");
     const r = await notifyOnCall("P1", "t", "b");

@@ -37,11 +37,37 @@ function emptyDb() {
   return { db: { select: () => chain() } };
 }
 
+/** A database where FOUNDER_UID owns `orgs` (rows chosen by drizzle table name). */
+function founderDb(orgs: Array<{ id: number; ownerId: string }>) {
+  const rowsFor = (t: unknown): unknown[] => {
+    const name = (t as Record<symbol, string>)[Symbol.for("drizzle:Name")];
+    if (name === "organizations") return orgs;
+    return [];
+  };
+  const chain = () => {
+    let rows: unknown[] = [];
+    const q: Record<string, unknown> = {};
+    q.from = (t: unknown) => {
+      rows = rowsFor(t);
+      return q;
+    };
+    q.where = () => q;
+    q.limit = async () => rows;
+    q.then = (ok: (r: unknown[]) => unknown) => Promise.resolve(rows).then(ok);
+    return q;
+  };
+  return { db: { select: () => chain() } };
+}
+
+const FOUNDER_UID = "founder-diag-u";
 const ORG_ID = "987654";
+const OWNED_A = 424242;
+const OWNED_B = 515151;
 const PROD = { NODE_ENV: "production" } as NodeJS.ProcessEnv;
 
 async function load() {
   vi.resetModules();
+  process.env.FOUNDER_USER_IDS = FOUNDER_UID; // read at module load
   vi.doMock("../../server/utils/logger", () => ({ logger }));
   vi.doMock("../../server/services/oncall", () => ({ notifyOnCall }));
   return import("../../server/services/founderOrgDiagnostics");
@@ -53,9 +79,13 @@ beforeEach(() => {
   dbHolder.current = emptyDb();
   delete process.env.FOUNDER_PRIMARY_ORG_ID;
 });
+const priorUserIds = process.env.FOUNDER_USER_IDS;
 afterEach(() => {
   delete process.env.FOUNDER_PRIMARY_ORG_ID;
+  if (priorUserIds === undefined) delete process.env.FOUNDER_USER_IDS;
+  else process.env.FOUNDER_USER_IDS = priorUserIds;
 });
+const ids = [ORG_ID, String(OWNED_A), String(OWNED_B)];
 
 const errorsWithCode = () =>
   logger.error.mock.calls.filter((c) => (c[2] as { metadata?: { code?: string } } | undefined)?.metadata?.code === "FOUNDER_ORG_UNRESOLVED");
@@ -68,13 +98,27 @@ describe("describeFounderOrgResolution — boolean + source, never an id", () =>
     expect(s.strictReason).not.toBeNull();
   });
 
-  it("resolved by FOUNDER_PRIMARY_ORG_ID as written: source 'env', the strict refusal still shown, the id never", async () => {
+  it("an INVALID pin is refused (founder decision 2026-10-18): unresolved, the reason named, no id", async () => {
+    // Was: "resolved by FOUNDER_PRIMARY_ORG_ID as written: source 'env'".
+    dbHolder.current = founderDb([{ id: OWNED_A, ownerId: FOUNDER_UID }]);
     process.env.FOUNDER_PRIMARY_ORG_ID = ORG_ID;
     const d = await load();
     const s = await d.describeFounderOrgResolution();
-    expect(s).toMatchObject({ resolved: true, source: "env", pinConfigured: true });
-    expect(s.strictReason).not.toBeNull();
-    expect(JSON.stringify(s)).not.toContain(ORG_ID);
+    expect(s).toMatchObject({ resolved: false, source: null, strictReason: "pin-not-founder-owned", pinConfigured: true });
+    for (const id of ids) expect(JSON.stringify(s)).not.toContain(id);
+  });
+
+  it("a VALID pin among two founder-owned orgs resolves as 'pinned'; one founder-owned org resolves as 'sole-owned'", async () => {
+    dbHolder.current = founderDb([{ id: OWNED_A, ownerId: FOUNDER_UID }, { id: OWNED_B, ownerId: FOUNDER_UID }]);
+    process.env.FOUNDER_PRIMARY_ORG_ID = String(OWNED_B);
+    let s = await (await load()).describeFounderOrgResolution();
+    expect(s).toMatchObject({ resolved: true, source: "pinned", strictReason: null, pinConfigured: true });
+    for (const id of ids) expect(JSON.stringify(s)).not.toContain(id);
+
+    delete process.env.FOUNDER_PRIMARY_ORG_ID;
+    dbHolder.current = founderDb([{ id: OWNED_A, ownerId: FOUNDER_UID }]);
+    s = await (await load()).describeFounderOrgResolution();
+    expect(s).toMatchObject({ resolved: true, source: "sole-owned", strictReason: null, pinConfigured: false });
   });
 
   it("on a miss the strict lookup runs once, not twice", async () => {
@@ -92,9 +136,10 @@ describe("describeFounderOrgResolution — boolean + source, never an id", () =>
       const d = await load();
       const s = await d.describeFounderOrgResolution();
       expect(s.resolved).toBe(false);
-      expect(s.strictReason).toBe("no-founder-identity");
-      // strict users lookup (1) + the membership fallback's users lookup (1).
-      expect(selects).toBe(2);
+      expect(s.strictReason).toBe("no-founder-org");
+      // strict users + organizations lookups (2) + the membership fallback's users lookup (1);
+      // running the strict rule twice would read 5.
+      expect(selects).toBe(3);
     } finally {
       if (prior === undefined) delete process.env.FOUNDER_EMAIL;
       else process.env.FOUNDER_EMAIL = prior;
@@ -137,15 +182,32 @@ describe("reportFounderOrgAtBoot", () => {
     expect(notifyOnCall).not.toHaveBeenCalled();
   });
 
-  it("resolved: no error, no notice; the log carries the source and never the id", async () => {
-    process.env.FOUNDER_PRIMARY_ORG_ID = ORG_ID;
+  it("resolved by a valid pin: no error, no notice; the log carries the source and never the id", async () => {
+    dbHolder.current = founderDb([{ id: OWNED_A, ownerId: FOUNDER_UID }, { id: OWNED_B, ownerId: FOUNDER_UID }]);
+    process.env.FOUNDER_PRIMARY_ORG_ID = String(OWNED_A);
     const d = await load();
-    expect(await d.reportFounderOrgAtBoot({ notify: true, env: { ...PROD, FOUNDER_PRIMARY_ORG_ID: ORG_ID } })).toBe("resolved");
+    expect(await d.reportFounderOrgAtBoot({ notify: true, env: { ...PROD, FOUNDER_PRIMARY_ORG_ID: String(OWNED_A) } })).toBe("resolved");
     expect(logger.error).not.toHaveBeenCalled();
     expect(notifyOnCall).not.toHaveBeenCalled();
     const logged = JSON.stringify([...logger.warn.mock.calls, ...logger.info.mock.calls]);
-    expect(logged).toContain('"source":"env"');
-    expect(logged).not.toContain(ORG_ID);
+    expect(logged).toContain('"source":"pinned"');
+    for (const id of ids) expect(logged).not.toContain(id);
+  });
+
+  it("an invalid pin at boot: one error and ONE on-call alert saying the pin is invalid — no ids anywhere", async () => {
+    dbHolder.current = founderDb([{ id: OWNED_A, ownerId: FOUNDER_UID }]);
+    process.env.FOUNDER_PRIMARY_ORG_ID = ORG_ID;
+    const d = await load();
+    expect(await d.reportFounderOrgAtBoot({ notify: true, env: { ...PROD, FOUNDER_PRIMARY_ORG_ID: ORG_ID } })).toBe("unresolved");
+    expect(errorsWithCode()).toHaveLength(1);
+    expect(notifyOnCall).toHaveBeenCalledTimes(1);
+    const [, title, body] = notifyOnCall.mock.calls[0] as unknown as [string, string, string];
+    expect(title).toMatch(/FOUNDER_PRIMARY_ORG_ID is invalid/);
+    expect(body).toMatch(/refused/);
+    const everything = JSON.stringify([notifyOnCall.mock.calls, logger.error.mock.calls]);
+    for (const id of ids) expect(everything).not.toContain(id);
+    expect(await d.reportFounderOrgAtBoot({ notify: true, env: { ...PROD, FOUNDER_PRIMARY_ORG_ID: ORG_ID } })).toBe("already-reported");
+    expect(notifyOnCall).toHaveBeenCalledTimes(1);
   });
 
   it("a failed lookup is not reported as a misconfiguration (no page on a database blip)", async () => {
