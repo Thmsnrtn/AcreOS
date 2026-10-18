@@ -29,4 +29,5 @@ export function shellWarmers(
   chunks: Record<string, unknown>,
   entryClosure: Set<string>,
   mapIn: (closure: Set<string>) => string[],
+  routeClosures?: Array<{ route: string; closure: Set<string> }>,
 ): string[];

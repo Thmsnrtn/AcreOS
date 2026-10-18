@@ -137,6 +137,21 @@ describe("route-closure gate — fixture graphs", () => {
     expect(failuresOf(g).some((x) => x.includes("client/src/main.tsx") && x.includes("helper.ts"))).toBe(true);
   });
 
+  it("a door landing that import()s map code at mount fails (not only shell modules)", () => {
+    const g = cleanGraph();
+    g.dynamicImports["client/src/pages/today.tsx"] = ["client/src/lib/map-engine.ts"];
+    const f = failuresOf(g);
+    expect(f.some((x) => x.startsWith("/today: client/src/pages/today.tsx") && x.includes("map-engine.ts"))).toBe(true);
+  });
+
+  it("…including from a shared chunk in that landing's static closure", () => {
+    const g = cleanGraph();
+    g.chunks["assets/money.js"].imports.push("assets/money-panel.js");
+    g.chunks["assets/money-panel.js"] = chunk(null, ["client/src/components/money-panel.tsx"]);
+    g.dynamicImports["client/src/components/money-panel.tsx"] = ["client/src/pages/maps.tsx"];
+    expect(failuresOf(g).some((x) => x.startsWith("/money: client/src/components/money-panel.tsx"))).toBe(true);
+  });
+
   it("the router's own lazy import of /maps is the one allowed dynamic edge", () => {
     expect(failuresOf(cleanGraph())).toEqual([]);
   });

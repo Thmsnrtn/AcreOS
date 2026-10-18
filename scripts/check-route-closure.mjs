@@ -27,7 +27,10 @@
  * entry closure except the router's React.lazy() table — may import() a module
  * whose closure carries map code. That edge is dynamic, so static closures
  * cannot see it; an idle "warm the doors" prefetch in the mobile nav did
- * exactly this and executed all of MapLibre on Today.
+ * exactly this and executed all of MapLibre on Today. The rule also covers
+ * every module in a map-free door landing's static closure, so a page that
+ * import()s map code at mount fails the same way. It reads one dynamic hop:
+ * an import() whose TARGET's static closure carries map code.
  *
  * Population floors, so the gate cannot pass over nothing:
  *   · the graph must hold at least MIN_CHUNKS chunks and exactly one HTML entry;
@@ -200,10 +203,12 @@ export function evaluate(graph, { assetsRoot } = {}) {
     return matches[0];
   };
 
+  const routeClosures = [];
   for (const r of [...MAP_FREE_ROUTES, MAP_ROUTE]) {
     const file = findRouteChunk(r);
     if (!file) continue;
     const closure = staticClosure(chunks, file);
+    if (r !== MAP_ROUTE) routeClosures.push({ route: r.route, closure });
     const pageView = new Set([...entryClosure, ...closure]);
     const hits = mapIn(closure);
     const isMapRoute = r === MAP_ROUTE;
@@ -217,7 +222,7 @@ export function evaluate(graph, { assetsRoot } = {}) {
     }
     rows.push({ route: r.route, chunk: file, chunks: pageView.size, bytes: bytesOf(pageView), mapModules: hits.length });
   }
-  failures.push(...shellWarmers(graph, chunks, entryClosure, mapIn));
+  failures.push(...shellWarmers(graph, chunks, entryClosure, mapIn, routeClosures));
   return { failures, rows };
 }
 
@@ -236,7 +241,7 @@ export const ROUTER_MODULE = "client/src/App.tsx";
  * the module-level `dynamicImports` record (which module issues each import())
  * is read instead.
  */
-export function shellWarmers(graph, chunks, entryClosure, mapIn) {
+export function shellWarmers(graph, chunks, entryClosure, mapIn, routeClosures = []) {
   const failures = [];
   const dyn = graph.dynamicImports;
   if (!dyn || typeof dyn !== "object") {
@@ -268,6 +273,25 @@ export function shellWarmers(graph, chunks, entryClosure, mapIn) {
         failures.push(
           `${m} is loaded on every page and dynamically imports ${t}, whose closure carries map code — map code would load on routes that render no map`,
         );
+      }
+    }
+  }
+  // The same rule over each map-free door landing: a module in the route's
+  // static closure (not already reported as shell) that import()s map code —
+  // a mount-time `import("@/lib/map-engine")` in today.tsx, a lazy map panel
+  // the page renders unconditionally — loads map code on a route that renders
+  // no map, exactly as a static import would, just later.
+  for (const { route, closure } of routeClosures) {
+    for (const f of closure) {
+      for (const m of moduleIds(chunks[f])) {
+        if (m === ROUTER_MODULE || shellModules.has(m)) continue;
+        for (const t of dyn[m] ?? []) {
+          if (carriesMap(t)) {
+            failures.push(
+              `${route}: ${m} (in its static closure) dynamically imports ${t}, whose closure carries map code — map code would load on a route that renders no map`,
+            );
+          }
+        }
       }
     }
   }
