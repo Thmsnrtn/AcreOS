@@ -389,8 +389,8 @@ function grantedCreditsSql(organizationId: number) {
  * ever granted. Conservative by construction — grants are assumed unspent —
  * so the sum of every house charge can never exceed what the org paid for.
  */
-export async function purchasedCreditsAvailable(organizationId: number, q: PrimaryDb = db): Promise<number> {
-  const [row] = await q
+export async function purchasedCreditsAvailable(organizationId: number, tx: PrimaryDb = db): Promise<number> {
+  const [row] = await tx
     .select({
       available: sql<number>`greatest(coalesce(${organizations.creditBalance}, '0')::numeric - ${grantedCreditsSql(organizationId)}, 0)::int`,
     })
