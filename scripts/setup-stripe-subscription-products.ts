@@ -25,7 +25,7 @@
  *   `fly secrets set` after reviewing.
  */
 import Stripe from "stripe";
-import { TIER_PRICES_CENTS, VERTICAL_PACKS } from "../shared/billing/tier-pricing";
+import { TIER_PRICES_CENTS } from "../shared/billing/tier-pricing";
 
 const DRY_RUN = process.argv.includes("--dry-run");
 
@@ -105,57 +105,6 @@ const SPECS: ProductSpec[] = [
     envMonthly: "STRIPE_PRICE_EMPIRE_SEAT_MONTHLY",
     envYearly: "STRIPE_PRICE_EMPIRE_SEAT_YEARLY",
   },
-  // ── Vertical packs ─────────────────────────────────────────────────
-  {
-    acreosKey: "pack_note_investor",
-    name: "AcreOS — Note Investor pack",
-    description: VERTICAL_PACKS.note_investor.tagline,
-    metadata: { type: "vertical_pack", pack_key: "note_investor" },
-    monthlyPriceCents: VERTICAL_PACKS.note_investor.priceMonthlyCents,
-    yearlyPriceCents: VERTICAL_PACKS.note_investor.priceYearlyCents,
-    envMonthly: "STRIPE_PRICE_PACK_NI_MONTHLY",
-    envYearly: "STRIPE_PRICE_PACK_NI_YEARLY",
-  },
-  {
-    acreosKey: "pack_buy_and_hold",
-    name: "AcreOS — Property Management pack",
-    description: VERTICAL_PACKS.buy_and_hold.tagline,
-    metadata: { type: "vertical_pack", pack_key: "buy_and_hold" },
-    monthlyPriceCents: VERTICAL_PACKS.buy_and_hold.priceMonthlyCents,
-    yearlyPriceCents: VERTICAL_PACKS.buy_and_hold.priceYearlyCents,
-    envMonthly: "STRIPE_PRICE_PACK_BH_MONTHLY",
-    envYearly: "STRIPE_PRICE_PACK_BH_YEARLY",
-  },
-  {
-    acreosKey: "pack_fix_and_flipper",
-    name: "AcreOS — Fix-and-Flip pack",
-    description: VERTICAL_PACKS.fix_and_flipper.tagline,
-    metadata: { type: "vertical_pack", pack_key: "fix_and_flipper" },
-    monthlyPriceCents: VERTICAL_PACKS.fix_and_flipper.priceMonthlyCents,
-    yearlyPriceCents: VERTICAL_PACKS.fix_and_flipper.priceYearlyCents,
-    envMonthly: "STRIPE_PRICE_PACK_FF_MONTHLY",
-    envYearly: "STRIPE_PRICE_PACK_FF_YEARLY",
-  },
-  {
-    acreosKey: "pack_subdivision",
-    name: "AcreOS — Subdivision pack",
-    description: VERTICAL_PACKS.subdivision.tagline,
-    metadata: { type: "vertical_pack", pack_key: "subdivision" },
-    monthlyPriceCents: VERTICAL_PACKS.subdivision.priceMonthlyCents,
-    yearlyPriceCents: VERTICAL_PACKS.subdivision.priceYearlyCents,
-    envMonthly: "STRIPE_PRICE_PACK_SD_MONTHLY",
-    envYearly: "STRIPE_PRICE_PACK_SD_YEARLY",
-  },
-  {
-    acreosKey: "pack_wholesale",
-    name: "AcreOS — Wholesale pack",
-    description: VERTICAL_PACKS.wholesale.tagline,
-    metadata: { type: "vertical_pack", pack_key: "wholesale" },
-    monthlyPriceCents: VERTICAL_PACKS.wholesale.priceMonthlyCents,
-    yearlyPriceCents: VERTICAL_PACKS.wholesale.priceYearlyCents,
-    envMonthly: "STRIPE_PRICE_PACK_W_MONTHLY",
-    envYearly: "STRIPE_PRICE_PACK_W_YEARLY",
-  },
 ];
 
 /**
@@ -165,7 +114,7 @@ const SPECS: ProductSpec[] = [
  * as `<lookupBase>_<monthly|yearly>`.
  */
 function deriveConvention(acreosKey: string): {
-  appObject: "plan" | "seat" | "pack";
+  appObject: "plan" | "seat";
   planKey: string;
   lookupBase: string;
 } {
@@ -177,10 +126,8 @@ function deriveConvention(acreosKey: string): {
     const planKey = acreosKey.slice("seat_".length);
     return { appObject: "seat", planKey, lookupBase: `acreos_seat_${planKey}` };
   }
-  if (acreosKey.startsWith("pack_")) {
-    const planKey = acreosKey.slice("pack_".length);
-    return { appObject: "pack", planKey, lookupBase: `acreos_pack_${planKey}` };
-  }
+  // NOTE (founder decision 2026-10-18): verticals are included profiles, not
+  // paid add-ons — the "pack" branch was removed with the pack SPECS.
   throw new Error(`Unrecognised acreos_key prefix: ${acreosKey}`);
 }
 
