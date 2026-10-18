@@ -906,7 +906,7 @@ export function registerOutreachMailRoutes(app: Express): void {
                 debitedCents: mailDebit.debitedCents,
                 operationKey,
                 // How this shipment is paid for — the flusher sends it only
-                // through this lane and provider (migration 0281).
+                // through this lane and provider (migration 0282).
                 fundingLane: ownAccountPool ? "own_account" : houseChargedAtSend ? "house_at_send" : houseCharge ? "house_prepaid" : "pool",
               })
               .returning({ id: mailShipments.id });

@@ -372,7 +372,7 @@ export const mailShipments = pgTable("mail_shipments", {
   // composer's Idempotency-Key, held across retries. A lost response followed
   // by another click finds this row instead of debiting and queuing again.
   operationKey: text("operation_key"),
-  // How this shipment is paid for, decided at queue time (migration 0281,
+  // How this shipment is paid for, decided at queue time (migration 0282,
   // founder decisions 2026-10-17/18): 'house_prepaid' (house postcards, debited
   // from purchased credits at queue), 'house_at_send' (house letters, each
   // rendered, counted and charged at send), 'own_account' (the org's own key)

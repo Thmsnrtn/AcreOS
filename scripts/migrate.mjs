@@ -11558,8 +11558,8 @@ END $$`,
   "undo_result"       jsonb
 )`,
   `CREATE INDEX IF NOT EXISTS "lead_import_batches_org_created_idx" ON "lead_import_batches" ("organization_id", "created_at")`,
-  // 0281 — how a mail shipment is paid for (house mail lanes). Mirrors
-  // migrations/0281_mail_shipment_funding_lane.sql.
+  // 0282 — how a mail shipment is paid for (house mail lanes). Mirrors
+  // migrations/0282_mail_shipment_funding_lane.sql.
   `ALTER TABLE "mail_shipments" ADD COLUMN IF NOT EXISTS "funding_lane" text`,
   // 0280 (W5b audit) — relabel rows the old "Add Demo Data" seeder created
   // unmarked, on the full fixture fingerprint, so the outcome metric and the
