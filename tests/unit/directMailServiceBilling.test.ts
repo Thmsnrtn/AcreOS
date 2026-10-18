@@ -21,6 +21,7 @@ const state = {
   byokKey: null as string | null,
   byokToggleActive: false,
   platformKey: { apiKey: "test_platform_key", isTestKey: true },
+  armed: false,
   simulate: false,
   lobCreateCalls: [] as any[],
   poolDebits: [] as any[],
@@ -66,6 +67,7 @@ vi.mock("../../server/services/fieldEncryption", () => ({
 
 vi.mock("../../server/services/mail/liveSendInterlock", () => ({
   resolvePlatformLobKey: () => state.platformKey,
+  isLiveSendArmed: () => state.armed,
 }));
 
 vi.mock("../../server/services/byok/key-vault", () => ({
@@ -129,6 +131,7 @@ beforeEach(() => {
   state.byokKey = null;
   state.byokToggleActive = false;
   state.platformKey = { apiKey: "test_platform_key", isTestKey: true };
+  state.armed = false;
   state.simulate = false;
   state.lobCreateCalls = [];
   state.poolDebits = [];
@@ -150,12 +153,31 @@ describe("sendPostcard — payer + ledger semantics", () => {
     expect(state.opexPosts).toHaveLength(0); // their Lob bill, not our COGS
   });
 
-  it("platform key (interlock unarmed): send succeeds but is honestly testMode", async () => {
+  // Audit 2026-10-18: this case used to send on the TEST platform key and
+  // still charge purchased credits for a piece Lob's test environment never
+  // printed. House mail now requires the interlock ARMED and a LIVE key.
+  it("platform key (interlock unarmed): house mail is refused — nothing sent, nothing charged", async () => {
+    await expect(sendPostcard(BASE_OPTIONS)).rejects.toThrow(/AcreOS mail is not available on this deployment/);
+    expect(state.lobCreateCalls).toHaveLength(0);
+    expect(houseMail.charges).toHaveLength(0);
+    expect(state.opexPosts).toHaveLength(0);
+  });
+
+  it("armed but only a TEST platform key: still refused, never charged", async () => {
+    state.armed = true;
+    await expect(sendPostcard(BASE_OPTIONS)).rejects.toThrow(/AcreOS mail is not available on this deployment/);
+    expect(state.lobCreateCalls).toHaveLength(0);
+    expect(houseMail.charges).toHaveLength(0);
+  });
+
+  it("armed with a LIVE platform key: real mail, pre-paid from purchased credits", async () => {
+    state.armed = true;
+    state.platformKey = { apiKey: "live_platform_key", isTestKey: false };
     const result = await sendPostcard(BASE_OPTIONS);
 
-    expect(state.lobCreateCalls[0].apiKey).toBe("test_platform_key");
+    expect(state.lobCreateCalls[0].apiKey).toBe("live_platform_key");
     expect(result.credentialSource).toBe("platform");
-    expect(result.testMode).toBe(true); // NEVER present a test send as real mail
+    expect(result.testMode).toBe(false);
     // Platform pays → one house piece pre-paid from purchased credits AND COGS posted.
     expect(houseMail.charges.map((c) => c.credits)).toEqual([75]);
     expect(state.poolDebits).toEqual([]); // never the monthly pool
@@ -166,6 +188,8 @@ describe("sendPostcard — payer + ledger semantics", () => {
   });
 
   it("platform send with insufficient credits refuses BEFORE any Lob call", async () => {
+    state.armed = true;
+    state.platformKey = { apiKey: "live_platform_key", isTestKey: false };
     houseMail.reset(10); // purchased credits cannot pay a 75-credit piece
 
     await expect(sendPostcard(BASE_OPTIONS)).rejects.toThrow(/purchased credits only/);
@@ -175,6 +199,8 @@ describe("sendPostcard — payer + ledger semantics", () => {
   });
 
   it("passes use_type to Lob (defaults to marketing)", async () => {
+    state.armed = true;
+    state.platformKey = { apiKey: "live_platform_key", isTestKey: false };
     await sendPostcard(BASE_OPTIONS);
     expect(state.lobCreateCalls[0].params.use_type).toBe("marketing");
   });

@@ -156,7 +156,7 @@ const req = (key: string) => ({
   params: { id: "3" },
   body: { pieceType: "letter_1_page", leadIds: [11, 12] },
   headers: { "idempotency-key": key },
-  organization: { id: 5, settings: { mailMode: "test" } },
+  organization: { id: 5, settings: { mailMode: "live" } },
   user: { id: "u1" },
 });
 

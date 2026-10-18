@@ -169,7 +169,14 @@ export async function getOwnLobClient(orgId: number): Promise<LobClientResult | 
       };
     }
   } catch (error) {
-    logger.warn(`[DirectMailService] BYOK lookup failed for org ${orgId} — falling back to legacy`, error instanceof Error ? error : undefined);
+    // The org may well have its own key: an unreadable vault is not "no key".
+    // Refuse rather than fall through to AcreOS house mail (and its charge).
+    logger.error(`[DirectMailService] BYOK lookup failed for org ${orgId} — refusing rather than guessing the lane`, error instanceof Error ? error : undefined);
+    const { ProviderNotContactedError } = await import('./actions/outwardAction');
+    throw new ProviderNotContactedError(
+      'Your provider keys could not be read just now, so nothing was mailed or charged. Try again shortly.',
+      error instanceof Error ? error : undefined,
+    );
   }
 
   try {
@@ -191,7 +198,12 @@ export async function getOwnLobClient(orgId: number): Promise<LobClientResult | 
       }
     }
   } catch (error) {
-    logger.error(`[DirectMailService] Failed to get org Lob credentials for org ${orgId}`, error);
+    logger.error(`[DirectMailService] Failed to get org Lob credentials for org ${orgId} — refusing rather than guessing the lane`, error);
+    const { ProviderNotContactedError } = await import('./actions/outwardAction');
+    throw new ProviderNotContactedError(
+      'Your provider keys could not be read just now, so nothing was mailed or charged. Try again shortly.',
+      error instanceof Error ? error : undefined,
+    );
   }
 
   return null;

@@ -36,7 +36,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { makePdf } from "../helpers/pdfFixture";
+import { fakeSafeFetch } from "../helpers/fakeSafeFetch";
+vi.mock("../../server/services/mail/safeFetch", async () => (await import("../helpers/fakeSafeFetch")).fakeSafeFetchModule());
 import { houseMail } from "../helpers/fakeHouseMailDb";
 // W5a: the owner opt-out list is empty for this test (the guard is proven elsewhere).
 vi.mock("../../server/services/trust/ownerSuppression", async () => (await import("../helpers/ownerSuppressionAllowAll")).ownerSuppressionAllowAll);
@@ -54,6 +55,8 @@ const state = {
   lobCreateCalls: [] as Array<{ kind: string; apiKey: string; params: unknown }>,
   identity: { id: 1, organizationId: 42, name: "Main", companyName: "Test Land Co", addressLine1: "1 Main St", city: "Austin", state: "TX", zipCode: "78701", status: "verified", isActive: true } as Record<string, unknown> | null,
   poolDebits: [] as string[],
+  /** The platform live-send interlock. House mail needs it armed AND a live key. */
+  armed: false,
 };
 
 vi.mock("lob", () => ({
@@ -127,7 +130,7 @@ vi.mock("../../server/services/mail/liveSendInterlock", () => ({
     if (!state.platformKey) throw new Error("Lob test key not configured.");
     return state.platformKey;
   },
-  isLiveSendArmed: () => false,
+  isLiveSendArmed: () => state.armed,
 }));
 
 // Static imports of directMailService that the client-resolution path never
@@ -150,16 +153,13 @@ import { stripComments } from "../helpers/stripComments";
 const TO = { name: "Lee Owner", addressLine1: "2 Dirt Rd", city: "Llano", state: "TX", zip: "78643" };
 const FROM = { name: "Test Land Co", addressLine1: "1 Main St", city: "Austin", state: "TX", zip: "78701" };
 // A house letter must be CONFIRMED one page (founder decision 2026-10-18):
-// a one-page PDF on an https URL, served by the fetch stub below.
+// a one-page PDF on an https URL, served by the safeFetch stand-in.
 const LETTER = { to: TO, from: FROM, file: "https://files.example.com/letter.pdf" };
 const POSTCARD = { to: TO, from: FROM, front: "<h1>front</h1>", back: "<h1>back</h1>" };
 
 beforeEach(() => {
-  vi.stubGlobal("fetch", async (url: string) =>
-    /\.pdf$/.test(String(url))
-      ? new Response(new Uint8Array(await makePdf(1)), { status: 200, headers: { "content-type": "application/pdf" } })
-      : new Response("nope", { status: 404 }),
-  );
+  fakeSafeFetch.reset();
+  state.armed = false;
   state.byokKey = null;
   state.legacyRow = null;
   state.platformKey = { apiKey: "test_platform_key", isTestKey: true };
@@ -204,15 +204,29 @@ describe("mailProvider resolves Lob credentials through the single authority, va
   });
 
   it("platform key is LAST and only as house mail — vault → legacy row → house lane (credits)", async () => {
+    // House mail runs only on AcreOS's LIVE account with the interlock armed.
+    state.armed = true;
+    state.platformKey = { apiKey: "live_platform_key", isTestKey: false };
     const result = await sendLetter({ ...LETTER, organizationId: 42 });
 
     expect(result.success).toBe(true);
-    expect(state.lobCreateCalls[0].apiKey).toBe("test_platform_key");
-    expect(result.isTestMode).toBe(true);
+    expect(state.lobCreateCalls[0].apiKey).toBe("live_platform_key");
+    expect(result.isTestMode).toBe(false);
     expect(state.probes.slice(0, 2)).toEqual(["byok-vault", "legacy-row"]);
     expect(state.probes.indexOf("platform")).toBeGreaterThan(state.probes.lastIndexOf("legacy-row"));
     expect(state.poolDebits).toEqual([]); // never the monthly pool
     expect(houseMail.charges.map((c) => c.credits)).toEqual([120]); // pre-paid from purchased credits
+  });
+
+  it("no own key and only the TEST platform key: house mail refused — a test-env piece is never charged (audit 2026-10-18)", async () => {
+    for (const armed of [false, true]) {
+      state.armed = armed;
+      const result = await sendLetter({ ...LETTER, organizationId: 42 });
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/not available/);
+    }
+    expect(state.lobCreateCalls).toHaveLength(0);
+    expect(houseMail.charges).toEqual([]);
   });
 
   it("no own key and no verified identity: refused — the platform key is never a silent fallback", async () => {

@@ -74,7 +74,8 @@ describe("campaign charge sites read the one price table", () => {
     // floor with DIRECT_MAIL_COSTS as the listed price; the per-piece charge
     // is what that lane resolves to.
     expect(src).toMatch(/listedCredits: DIRECT_MAIL_COSTS\[pieceType\]/);
-    expect(src).toMatch(/const costPerPiece = mailLane\.lane === 'house' \? mailLane\.creditsPerPiece : 0;/);
+    // …charged only when the house piece will PRINT (live mode, not simulated).
+    expect(src).toMatch(/const costPerPiece = houseCharges && mailLane\.lane === 'house' \? mailLane\.creditsPerPiece : 0;/);
   });
 
   it("…and the floor raises none of them, so the quoted price IS the charge", () => {

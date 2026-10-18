@@ -23,7 +23,7 @@
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../../db";
 import { leads, mailShipments, mailShipmentPieces, marketingSpend, organizations } from "@shared/schema";
-import { MailRouter, PartialMailSendError, type MailShipment, type MailPiece, type MailShipmentSpeed } from "./router";
+import { MailRouter, PartialMailSendError, type MailShipment, type MailPiece, type MailShipmentSpeed, type MailProviderName } from "./router";
 import { qrRedirectUrl } from "./qrCodes";
 import { refundPoolDebit } from "../creditPool";
 import { logger } from "../../utils/logger";
@@ -42,6 +42,10 @@ export interface FlushShipment {
   debitedCents: number | null;
   /** Pieces the debit paid for — the denominator of every per-piece refund share. */
   pieceCount?: number | null;
+  /** The provider the shipment was quoted and funded for. */
+  provider?: string | null;
+  /** How the shipment is paid for (mail_shipments.funding_lane; null = queued before it was recorded). */
+  fundingLane?: string | null;
 }
 
 export interface FlushPiece {
@@ -131,12 +135,15 @@ export function buildRouterShipment(ship: FlushShipment, pieces: FlushPiece[]): 
     speed: ship.speed as MailShipmentSpeed,
     personalizationRequired: false,
     feature: "outreach_mail_queue",
-    // A house shipment was pre-paid from purchased credits for every piece at
-    // queue time (and the flusher refunds what certainly did not go out), so
-    // its pieces are not charged again at send. A shipment that took no
-    // charge (own key) is NOT prepaid: if it ever reaches AcreOS's Lob
-    // account, each piece is charged there before Lob is called.
-    housePrepaid: (ship.debitedCents ?? 0) > 0,
+    // Only a shipment recorded as HOUSE-PREPAID (purchased credits debited at
+    // queue for every piece) skips the per-piece charge at send; the flusher
+    // returns the share of any piece that cost AcreOS nothing. Anything else
+    // — a house letter charged at send, an own-key or pool-funded shipment —
+    // is charged (or not) by the lane it resolves to at send.
+    housePrepaid: ship.fundingLane === "house_prepaid" || (ship.fundingLane == null && (ship.debitedCents ?? 0) > 0 && ship.provider === "lob"),
+    // Only the provider it was quoted and funded for: a shipment never falls
+    // through to another provider or lane nobody paid for.
+    ...(ship.provider ? { onlyProviders: [ship.provider as MailProviderName] } : {}),
   };
 }
 
@@ -170,6 +177,10 @@ async function refundShipment(ship: FlushShipment, reason: string, alreadyRefund
  * founder decision 2026-10-17 B) is not acquisition spend and is not booked.
  */
 async function bookFreeSendAcquisitionCogs(ship: FlushShipment): Promise<void> {
+  // Only an AcreOS-funded allowance (the credit pool) is acquisition spend.
+  // House mail is paid by the org (purchased credits — at queue or per piece
+  // at send) and an own-key shipment by the org's own Lob account.
+  if (ship.fundingLane != null && ship.fundingLane !== "pool") return;
   if ((ship.debitedCents ?? 0) > 0) return;
   try {
     const [org] = await db
@@ -439,6 +450,20 @@ async function flushOne(ship: FlushShipment): Promise<"sent" | "failed"> {
     );
     return "sent";
   }
+  // Pre-paid pieces that cost AcreOS nothing (Lob's test environment, a
+  // simulated send, or the org's own key at send) get their share back.
+  const unbilled = Math.min(route.result.unbilledPieceCount ?? 0, sentPieces.length);
+  if (unbilled > 0 && ship.debitEventKey && (ship.debitedCents ?? 0) > 0) {
+    await refundPoolDebit({
+      organizationId: ship.organizationId,
+      originalEventId: ship.debitEventKey,
+      refundKey: `${ship.debitEventKey}:unbilled:refund`,
+      amountCents: debitShareCents(ship, unbilled),
+      reason: `${unbilled} pre-paid piece(s) cost AcreOS nothing (test, simulated or own-key send)`,
+    }).catch((e) =>
+      logger.error("[mailFlusher] unbilled-piece refund failed", e instanceof Error ? e : undefined, { metadata: { shipmentId: ship.id } }),
+    );
+  }
   await bookFreeSendAcquisitionCogs(ship);
   await recordFirstLiveLetter(ship, route.chosenProvider, sentPieces.length);
   logger.info(`[mailFlusher] sent shipment ${ship.id} (${pieces.length} pieces via ${route.chosenProvider})`);
@@ -554,7 +579,7 @@ export async function flushDueMailShipments(now: Date = clock.now(), limit = 50)
       LIMIT ${limit}
       FOR UPDATE SKIP LOCKED
     )
-    RETURNING id, organization_id, piece_type, speed, copy_snapshot, debit_event_key, debited_cents, piece_count
+    RETURNING id, organization_id, piece_type, speed, copy_snapshot, debit_event_key, debited_cents, piece_count, provider, funding_lane
   `);
   const rows: any[] = Array.isArray(claimed) ? claimed : ((claimed as { rows?: unknown[] })?.rows ?? []);
   let sent = 0;
@@ -569,6 +594,8 @@ export async function flushDueMailShipments(now: Date = clock.now(), limit = 50)
       debitEventKey: r.debit_event_key ?? null,
       debitedCents: r.debited_cents ?? null,
       pieceCount: r.piece_count ?? null,
+      provider: r.provider ?? null,
+      fundingLane: r.funding_lane ?? null,
     };
     try {
       const outcome = await flushOne(ship);

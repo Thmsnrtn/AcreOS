@@ -535,8 +535,14 @@ export const CONSTITUTION: readonly ConstitutionInvariant[] = [
         "fails when one is reached without a lane or pays/refunds any other " +
         "way. counterpartySmsStaysByo.test.ts keeps SMS BYO. This superseded " +
         "the deferred 'platform Lob fallback' note. " +
-        "2026-10-18: house letters must be CONFIRMED one page (a counted PDF) " +
-        "unless the founder sets an extra-page cost; lead-address checks run " +
+        "2026-10-18: a house letter is charged for its CONFIRMED page count — " +
+        "AcreOS renders or fetches the PDF, counts it, charges exactly that " +
+        "(each page past the first at Lob's list extra-page price unless the " +
+        "founder overrides it, capped at mail.house.max_letter_pages) and " +
+        "sends Lob that PDF; a letter that cannot be counted is refused. The " +
+        "house lane requires the live-send interlock armed AND a live " +
+        "platform key, and a piece sent to Lob's test environment or " +
+        "simulated is never charged (refunded if pre-paid); lead-address checks run " +
         "on the org's own key unless a per-check cost is set (the sender " +
         "return-address check stays free); card top-ups buy credits at the " +
         "pack price (cardPaidCreditsAreAtPackPrice.test.ts). " +

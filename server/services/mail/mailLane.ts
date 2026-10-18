@@ -138,26 +138,41 @@ async function countPdfPages(bytes: Buffer): Promise<number | null> {
   }
 }
 
+/**
+ * Fetch a letter PDF the customer named: DNS resolved once and every address
+ * checked public, the connection pinned to it, the body streamed under a hard
+ * byte cap, no redirects (mail/safeFetch.ts).
+ */
 async function fetchPdf(url: string): Promise<Buffer | null> {
-  const { checkOperatorUrl } = await import("../providers/ssrf-guard");
-  if (!checkOperatorUrl(url).ok) return null;
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), PDF_FETCH_TIMEOUT_MS);
-  try {
-    // No redirects: a redirect could lead past the SSRF guard.
-    const res = await fetch(url, { signal: ctrl.signal, redirect: "manual" });
-    if (!res.ok) return null;
-    const declared = Number(res.headers.get("content-length"));
-    if (Number.isFinite(declared) && declared > PDF_MAX_BYTES) return null;
-    return Buffer.from(await res.arrayBuffer());
-  } finally {
-    clearTimeout(timer);
-  }
+  const { safeHttpsGet } = await import("./safeFetch");
+  const got = await safeHttpsGet(url, { maxBytes: PDF_MAX_BYTES, timeoutMs: PDF_FETCH_TIMEOUT_MS });
+  return got && got.status >= 200 && got.status < 300 ? got.body : null;
 }
 
-/** Rendered letters by content hash: the same HTML lays out the same, so a campaign renders once. */
+/**
+ * Rendered letters by content hash: the same HTML lays out the same, so a
+ * campaign renders once. Bounded by BYTES, not entries.
+ */
 const RENDER_CACHE = new Map<string, LetterPdf>();
-const RENDER_CACHE_MAX = 32;
+const RENDER_CACHE_MAX_BYTES = 16 * 1024 * 1024;
+const RENDER_CACHE_MAX_ENTRY_BYTES = 2 * 1024 * 1024;
+let renderCacheBytes = 0;
+
+function cacheRender(hash: string, pdf: LetterPdf): void {
+  if (pdf.bytes.length > RENDER_CACHE_MAX_ENTRY_BYTES) return;
+  while (renderCacheBytes + pdf.bytes.length > RENDER_CACHE_MAX_BYTES && RENDER_CACHE.size > 0) {
+    const oldest = RENDER_CACHE.keys().next().value as string;
+    renderCacheBytes -= RENDER_CACHE.get(oldest)!.bytes.length;
+    RENDER_CACHE.delete(oldest);
+  }
+  RENDER_CACHE.set(hash, pdf);
+  renderCacheBytes += pdf.bytes.length;
+}
+
+/** Bytes held by the rendered-letter cache (bounded by RENDER_CACHE_MAX_BYTES). */
+export function letterRenderCacheBytes(): number {
+  return renderCacheBytes;
+}
 
 /**
  * The PDF a house letter will print, with its CONFIRMED page count (founder
@@ -193,8 +208,7 @@ async function prepareLetterPdf(file: string | null | undefined): Promise<Letter
     const pages = await countPdfPages(bytes);
     if (!pages) return { ok: false, reason: "render_failed" };
     const pdf = { bytes, pages };
-    if (RENDER_CACHE.size >= RENDER_CACHE_MAX) RENDER_CACHE.delete(RENDER_CACHE.keys().next().value as string);
-    RENDER_CACHE.set(hash, pdf);
+    cacheRender(hash, pdf);
     return { ok: true, pdf };
   } catch (err) {
     logger.error("[mailLane] letter HTML could not be rendered — refusing the house send", err instanceof Error ? err : undefined);
@@ -496,11 +510,18 @@ function decideMailLane(input: MailLaneInputs): MailLane {
 }
 
 /** True when AcreOS's own Lob account resolves (under the live-send interlock). */
+/**
+ * True only when AcreOS's own Lob account would PRINT a piece: the live-send
+ * interlock is armed AND the platform key it resolves is a live key. A test
+ * key (or a disarmed interlock, which only ever hands out the test key) prints
+ * nothing — so there is no house lane to charge for, and a piece is never
+ * charged for mail that will not exist.
+ */
 async function houseMailConfigured(): Promise<boolean> {
-  const { resolvePlatformLobKey } = await import("./liveSendInterlock");
+  const { resolvePlatformLobKey, isLiveSendArmed } = await import("./liveSendInterlock");
   try {
-    resolvePlatformLobKey();
-    return true;
+    if (!isLiveSendArmed()) return false;
+    return resolvePlatformLobKey().isTestKey === false;
   } catch {
     return false;
   }
@@ -819,6 +840,8 @@ function lobStatusOf(err: unknown): number | null {
  */
 export function providerDidNotBill(err: unknown): boolean {
   if (err instanceof ProviderNotContactedError) return true;
+  // The outreach stop-loss refuses BEFORE any provider call: nothing was sent.
+  if (err && typeof err === "object" && (err as { code?: unknown }).code === "OUTREACH_STOPLOSS_PAUSED") return true;
   if (err && typeof err === "object" && (err as { providerNotBilled?: unknown }).providerNotBilled === true) return true;
   const status = lobStatusOf(err);
   return status !== null && LOB_REJECTED_STATUSES.has(status);

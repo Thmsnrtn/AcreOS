@@ -853,12 +853,18 @@ export function registerCampaignRoutes(app: Express): void {
         identityWarning = `Warning: Return address "${mailSenderIdentity.name}" is not verified. Mail may be delayed or returned.`;
       }
 
-      const costPerPiece = mailLane.lane === 'house' ? mailLane.creditsPerPiece : 0;
+      // A house order is charged only when it will PRINT: a live-mode send
+      // that is not simulated (the house lane itself requires the armed
+      // interlock and a live AcreOS key). A test-mode or simulated send
+      // prints nothing and costs nothing.
+      const houseCharges =
+        mailLane.lane === 'house' && (org.settings?.mailMode || 'test') === 'live' && !shouldSimulate("lob", org as never);
+      const costPerPiece = houseCharges && mailLane.lane === 'house' ? mailLane.creditsPerPiece : 0;
       const totalCost = costPerPiece * leadIds.length;
 
-      // Only check credits if NOT using org Lob credentials (BYOK) — and only
-      // PURCHASED credits count (grants never pay for house mail).
-      if (!usingOrgLobCredentials) {
+      // Only check credits for a charged house order — and only PURCHASED
+      // credits count (grants never pay for house mail).
+      if (houseCharges) {
         const purchased = await purchasedCreditsAvailable(org.id);
         if (purchased < totalCost) {
           return Errors.paymentRequired(res, "AcreOS mail is paid from purchased credits, and your purchased balance is short.", {
@@ -955,9 +961,9 @@ export function registerCampaignRoutes(app: Express): void {
           returnAddressSnapshot,
           mailType,
           totalPieces: validLeads.length,
-          costPerPiece: usingOrgLobCredentials ? 0 : costPerPiece,
-          totalCost: usingOrgLobCredentials ? 0 : (costPerPiece * validLeads.length),
-          creditsUsed: usingOrgLobCredentials ? 0 : (costPerPiece * validLeads.length),
+          costPerPiece,
+          totalCost: costPerPiece * validLeads.length,
+          creditsUsed: costPerPiece * validLeads.length,
           status: 'pending',
           operationKey,
         });
@@ -1000,7 +1006,7 @@ export function registerCampaignRoutes(app: Express): void {
           .catch((e) => logger.error('[Campaigns] could not release a failed send claim', e instanceof Error ? e : undefined));
       };
       try {
-        if (mailLane.lane === 'house') {
+        if (houseCharges && mailLane.lane === 'house') {
           // The order is the claim, so its id keys the charge: a retry of
           // this order cannot be charged twice.
           try {
@@ -1124,6 +1130,17 @@ export function registerCampaignRoutes(app: Express): void {
           sendResults.push({ leadId: lead.id, success: true, lobId: result.id, expectedDeliveryDate, isTest: result.isTestMode ?? isTestMode });
           lobJobIds.push(result.id);
           providerAccepted = true;
+          // A pre-paid piece that went to Lob's test environment (or was
+          // simulated) printed nothing: its charge is returned.
+          if (debited && (result.isTestMode === true || result.credentialSource === 'simulation')) {
+            await refundUnbilledHouseMail(
+              org.id,
+              houseCharge,
+              { providerNotBilled: true },
+              `Direct mail piece to lead ${lead.id} printed nothing (test or simulated send)`,
+              { amountCents: costPerPiece, refundKey: `${houseCharge!.externalEventId}:lead:${lead.id}:refund` },
+            );
+          }
 
           // Phase 3 Week 14 — Activation telemetry. First successfully-sent
           // direct-mail piece. Idempotent FIRST-occurrence — so a TEST send

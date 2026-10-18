@@ -28,10 +28,12 @@ import { CREDIT_WEIGHTS } from "@shared/billing/credit-weights";
 import { financialLedger, organizations, creditTransactions } from "@shared/schema";
 import { stripComments } from "../helpers/stripComments";
 import { makePdf } from "../helpers/pdfFixture";
+import { fakeSafeFetch } from "../helpers/fakeSafeFetch";
 
 // The campaign class builds its env clients at import; give it a sandbox key.
 vi.hoisted(() => {
   process.env.LOB_TEST_API_KEY = "test_env_key";
+  process.env.LOB_LIVE_API_KEY = "live_env_key";
 });
 
 vi.mock("../../server/services/trust/ownerSuppression", async () => (await import("../helpers/ownerSuppressionAllowAll")).ownerSuppressionAllowAll);
@@ -89,13 +91,16 @@ const state = {
   lobError: null as unknown,
   creditOverride: null as number | null,
   platformMissing: false,
+  /** The live-send interlock (house mail requires it armed with a live key). */
+  armed: true,
   /** founder_settings rows (unset unless a test sets one). */
   settings: {} as Record<string, number>,
-  /** Pages of the PDF served at any https …pdf URL; null = the fetch fails. */
-  pdfPages: 1 as number | null,
-  fetched: [] as string[],
   renders: 0,
   lastRendered: null as Buffer | null,
+  /** Trailing bytes the renderer mock appends (a large render). */
+  padBytes: 0,
+  /** The platform key reports live whatever the interlock says (misconfiguration). */
+  keyClaimsLive: false,
 };
 
 /** HTML that the renderer mock lays out as exactly `n` pages. */
@@ -218,9 +223,11 @@ vi.mock("../../server/services/mail/liveSendInterlock", () => ({
   resolvePlatformLobKey: () => {
     state.platformResolves++;
     if (state.platformMissing) throw new Error("Lob test key not configured.");
-    return { apiKey: "test_platform_key", isTestKey: true };
+    // Models the real interlock: armed → the live key; disarmed → test key only.
+    if (state.keyClaimsLive) return { apiKey: "live_platform_key", isTestKey: false };
+    return state.armed ? { apiKey: "live_platform_key", isTestKey: false } : { apiKey: "live_platform_key", isTestKey: true };
   },
-  isLiveSendArmed: () => false,
+  isLiveSendArmed: () => state.armed,
 }));
 
 vi.mock("../../server/services/creditCost", () => ({
@@ -237,6 +244,8 @@ vi.mock("../../server/services/creditPool", () => ({
   },
 }));
 vi.mock("../../server/services/credits", () => ({ creditService: { afterDebitCommitted: () => undefined } }));
+// PDF fetches keep the real address checks but serve a fixture PDF (no network).
+vi.mock("../../server/services/mail/safeFetch", async () => (await import("../helpers/fakeSafeFetch")).fakeSafeFetchModule());
 // The renderer is faked here (real Chromium: houseLetterRenderReal.test.ts):
 // it returns a real PDF of the page count the HTML asks for, or fails.
 vi.mock("../../server/services/mail/letterRender", () => ({
@@ -245,7 +254,8 @@ vi.mock("../../server/services/mail/letterRender", () => ({
     if (html.includes("RENDER_FAIL")) throw new Error("chromium crashed");
     const n = Number(/data-pages="(\d+)"/.exec(html)?.[1] ?? 1);
     const { makePdf } = await import("../helpers/pdfFixture");
-    state.lastRendered = await makePdf(n);
+    const pdf = await makePdf(n);
+    state.lastRendered = state.padBytes ? Buffer.concat([pdf, Buffer.alloc(state.padBytes, 0x20)]) : pdf;
     return state.lastRendered;
   },
 }));
@@ -263,6 +273,7 @@ import {
   postcardSpec,
   letterSpec,
   providerDidNotBill,
+  letterRenderCacheBytes,
 } from "../../server/services/mail/mailLane";
 
 /** Lob's own error shape for a rejected request (lob/lib/resources/resourceBase.js). */
@@ -307,15 +318,12 @@ beforeEach(() => {
   state.lobError = null;
   state.creditOverride = null;
   state.settings = {};
-  state.pdfPages = 1;
-  state.fetched = [];
   state.renders = 0;
+  state.padBytes = 0;
+  state.keyClaimsLive = false;
   state.lastRendered = null;
-  vi.stubGlobal("fetch", async (url: string) => {
-    state.fetched.push(String(url));
-    if (state.pdfPages === null || !/\.pdf$/.test(String(url))) return new Response("nope", { status: 404 });
-    return new Response(new Uint8Array(await makePdf(state.pdfPages)), { status: 200, headers: { "content-type": "application/pdf" } });
-  });
+  fakeSafeFetch.reset();
+  state.armed = true;
   state.platformMissing = false;
   pending = null;
 });
@@ -330,7 +338,7 @@ describe("house lane — AcreOS's Lob account, purchased credits, verified ident
     expect(state.purchased).toBe(10_000 - 75);
     expect(state.poolDebits).toEqual([]); // never the monthly pool
     expect(state.lobCalls).toHaveLength(1);
-    expect(state.lobCalls[0].apiKey).toBe("test_platform_key");
+    expect(state.lobCalls[0].apiKey).toBe("live_platform_key");
     expect(result.credentialSource).toBe("platform");
   });
 
@@ -506,7 +514,7 @@ describe("own-key lane — the org's own Lob account, no credits, platform key u
 
   it("an org with no own key checks its RETURN address free on AcreOS's account (vacuity for the case above)", async () => {
     await dms.verifyAddress(TO, ORG, { purpose: "sender_identity" });
-    expect(state.lobCalls[0].apiKey).toBe("test_platform_key");
+    expect(state.lobCalls[0].apiKey).toBe("live_platform_key");
   });
 });
 
@@ -516,12 +524,12 @@ describe("the other send chokepoints follow the same lane", () => {
     const from = { name: "Typed Name", addressLine1: "9 Fake St", city: "X", state: "TX", zip: "1" };
     const to = { name: "Lee", addressLine1: "2 Dirt Rd", city: "Llano", state: "TX", zip: "78643" };
 
-    await directMailService.sendPostcard({ size: "6x9", front: "a", back: "b", to, from }, "test", ORG);
+    await directMailService.sendPostcard({ size: "6x9", front: "a", back: "b", to, from }, "live", ORG);
     expect(charged()).toEqual([81]); // Lob's 104¢ list price lifts the 75 weight to the floor
     expect(state.lobCalls[0].params.from).toMatchObject({ name: "Brazos Land Partners", address_line1: "1 Main St" });
 
     state.charges = [];
-    await directMailService.sendLetter({ file: PDF_URL, to, from, housePrepaid: true }, "test", ORG);
+    await directMailService.sendLetter({ file: PDF_URL, to, from, housePrepaid: true }, "live", ORG);
     expect(state.charges).toEqual([]);
 
     // A caller's pageCount is a claim, not a confirmation: the HTML is
@@ -529,13 +537,13 @@ describe("the other send chokepoints follow the same lane", () => {
     // render is 3 pages, and 3 pages is what Lob is sent).
     state.lobCalls = [];
     state.charges = [];
-    await directMailService.sendLetter({ file: htmlOfPages(3), to, from, pageCount: 1 }, "test", ORG);
+    await directMailService.sendLetter({ file: htmlOfPages(3), to, from, pageCount: 1 }, "live", ORG);
     expect(charged()).toEqual([120]); // 107 + 2 × 11 = 129¢ → minimum 101; the 120 listing stands
     expect(state.lobCalls[0].params.file.value.equals(state.lastRendered)).toBe(true);
     state.lobCalls = [];
 
     state.identity = identity({ status: "pending_verification" });
-    await expect(directMailService.sendLetter({ file: PDF_URL, to, from }, "test", ORG)).rejects.toThrow(/verified return address/);
+    await expect(directMailService.sendLetter({ file: PDF_URL, to, from }, "live", ORG)).rejects.toThrow(/verified return address/);
     expect(state.lobCalls).toEqual([]);
   });
 
@@ -543,11 +551,20 @@ describe("the other send chokepoints follow the same lane", () => {
     const { directMailService } = await import("../../server/services/directMail");
     const a = { name: "A", addressLine1: "1 A St", city: "X", state: "TX", zip: "1" };
     state.lobError = lobRejection(422);
-    await expect(directMailService.sendPostcard({ size: "4x6", front: "a", back: "b", to: a, from: a }, "test", ORG)).rejects.toThrow();
+    await expect(directMailService.sendPostcard({ size: "4x6", front: "a", back: "b", to: a, from: a }, "live", ORG)).rejects.toThrow();
     expect(state.refunds).toHaveLength(1);
     state.lobError = lobRejection(502);
-    await expect(directMailService.sendPostcard({ size: "4x6", front: "a", back: "b", to: a, from: a }, "test", ORG)).rejects.toThrow();
+    await expect(directMailService.sendPostcard({ size: "4x6", front: "a", back: "b", to: a, from: a }, "live", ORG)).rejects.toThrow();
     expect(state.refunds).toHaveLength(1);
+  });
+
+  it("campaign class: a TEST-mode house send goes to Lob's test environment and is never charged", async () => {
+    const { directMailService } = await import("../../server/services/directMail");
+    const a = { name: "A", addressLine1: "1 A St", city: "X", state: "TX", zip: "1" };
+    const r = await directMailService.sendPostcard({ size: "4x6", front: "a", back: "b", to: a, from: a }, "test", ORG);
+    expect(r.isTestMode).toBe(true);
+    expect(state.lobCalls[0].apiKey).toBe("test_env_key");
+    expect(state.charges).toEqual([]);
   });
 
   it("campaign class: an org-less send is refused instead of using AcreOS's account", async () => {
@@ -622,6 +639,60 @@ describe("the other send chokepoints follow the same lane", () => {
   });
 });
 
+describe("house mail never charges for a piece that will not print (audit 2026-10-18)", () => {
+  it("interlock DISARMED: no house lane — refused, no charge, no Lob call", async () => {
+    state.armed = false;
+    expect(await resolveMailLane(ORG, postcardSpec("4x6"))).toMatchObject({ lane: "refused", reason: "house_mail_unavailable" });
+    await expect(postcard()).rejects.toThrow(/not available on this deployment/);
+    expect(state.charges).toEqual([]);
+    expect(state.lobCalls).toEqual([]);
+  });
+
+  it("disarmed: autopilot (mailProvider) and lobService refuse too — nothing charged", async () => {
+    state.armed = false;
+    const { sendLetter } = await import("../../server/services/mailProvider");
+    const typed = { name: "X", addressLine1: "9 Fake St", city: "X", state: "TX", zip: "1" };
+    expect((await sendLetter({ to: typed, from: typed, file: PDF_URL, organizationId: ORG })).success).toBe(false);
+    const { lobService } = await import("../../server/services/lobService");
+    expect((await lobService.sendLetter({ to: typed, from: typed, file: PDF_URL }, "live", { organizationId: ORG, purpose: "counterparty" })).success).toBe(false);
+    expect(state.charges).toEqual([]);
+    expect(state.lobCalls).toEqual([]);
+  });
+
+  it("DISARMED is refused even when the platform key reports live — both conditions are required", async () => {
+    state.armed = false;
+    state.keyClaimsLive = true;
+    expect(await resolveMailLane(ORG, postcardSpec("4x6"))).toMatchObject({ lane: "refused", reason: "house_mail_unavailable" });
+    expect(state.charges).toEqual([]);
+  });
+
+  it("a stop-loss pause (nothing sent) counts as not billed, so a pre-paid piece is refunded", () => {
+    expect(providerDidNotBill(Object.assign(new Error("paused"), { code: "OUTREACH_STOPLOSS_PAUSED" }))).toBe(true);
+  });
+
+  it("the rendered-letter cache is bounded by BYTES: an oversized render is not kept, and the total stays under budget", async () => {
+    state.padBytes = 3 * 1024 * 1024; // over the per-entry cap
+    const big = htmlOfPages(1).replace("Dear owner", "Dear big owner");
+    await resolveMailLane(ORG, letterSpec({ file: big }));
+    await resolveMailLane(ORG, letterSpec({ file: big }));
+    expect(state.renders).toBe(2); // rendered again: never cached
+    state.padBytes = 1_500_000;
+    for (let i = 0; i < 14; i++) await resolveMailLane(ORG, letterSpec({ file: htmlOfPages(1).replace("Dear owner", `Dear owner ${i}`) }));
+    expect(letterRenderCacheBytes()).toBeGreaterThan(0);
+    expect(letterRenderCacheBytes()).toBeLessThanOrEqual(16 * 1024 * 1024);
+    state.padBytes = 0;
+  });
+
+  it("an unreadable key vault refuses the send — it never falls to the house lane", async () => {
+    const vault = await import("../../server/services/byok/key-vault");
+    const spy = vi.spyOn(vault, "getByokCredential").mockRejectedValueOnce(new Error("vault down"));
+    await expect(postcard()).rejects.toThrow(/provider keys could not be read/);
+    expect(state.charges).toEqual([]);
+    expect(state.lobCalls).toEqual([]);
+    spy.mockRestore();
+  });
+});
+
 describe("resolveMailLane decisions", () => {
   it("own key wins and costs nothing", async () => {
     state.ownLobKey = "live_org_key";
@@ -682,7 +753,7 @@ describe("letters: render to PDF, then count, then charge, then print THAT PDF (
 
   it("a one-page PDF URL is fetched, counted, pre-paid at the letter price, and those bytes are what Lob prints", async () => {
     await letter();
-    expect(state.fetched).toEqual([PDF_URL]);
+    expect(fakeSafeFetch.fetched).toEqual([PDF_URL]);
     expect(charged()).toEqual([120]);
     expect(await lobFilePages(state.lobCalls[0])).toBe(1);
   });
@@ -751,7 +822,7 @@ describe("letters: render to PDF, then count, then charge, then print THAT PDF (
 
   it("content that is neither HTML nor a fetchable PDF is unknown, and refused", async () => {
     await expect(letter({ htmlContent: "just plain words" })).rejects.toThrow(/length it can confirm/);
-    state.pdfPages = null;
+    fakeSafeFetch.pdfPages = null;
     await expect(letter()).rejects.toThrow(/length it can confirm/);
     expect(state.charges).toEqual([]);
   });
@@ -760,7 +831,7 @@ describe("letters: render to PDF, then count, then charge, then print THAT PDF (
     for (const url of ["http://files.example.com/a.pdf", "https://127.0.0.1/a.pdf", "https://169.254.169.254/a.pdf"]) {
       await expect(letter({ htmlContent: url }), url).rejects.toThrow(/length it can confirm/);
     }
-    expect(state.fetched).toEqual([]);
+    expect(fakeSafeFetch.fetched).toEqual([]);
     expect(state.charges).toEqual([]);
   });
 
@@ -768,7 +839,7 @@ describe("letters: render to PDF, then count, then charge, then print THAT PDF (
     state.ownLobKey = "live_org_key";
     await letter({ htmlContent: htmlOfPages(9) });
     expect(state.renders).toBe(0);
-    expect(state.fetched).toEqual([]);
+    expect(fakeSafeFetch.fetched).toEqual([]);
     expect(typeof state.lobCalls[0].params.file).toBe("string");
   });
 });
@@ -777,7 +848,7 @@ describe("address checks (founder decision 2026-10-18)", () => {
   it("the org's own RETURN address is checked free on AcreOS's account", async () => {
     const r = await dms.verifyAddress(TO, ORG, { purpose: "sender_identity" });
     expect(r.isValid).toBe(true);
-    expect(state.lobCalls.map((c) => [c.kind, c.apiKey])).toEqual([["verify", "test_platform_key"]]);
+    expect(state.lobCalls.map((c) => [c.kind, c.apiKey])).toEqual([["verify", "live_platform_key"]]);
     expect(state.charges).toEqual([]);
   });
 
@@ -796,7 +867,7 @@ describe("address checks (founder decision 2026-10-18)", () => {
     expect(lane).toMatchObject({ lane: "house", creditsPerPiece: 4, providerCostCents: 5, price: { key: "address_check" } });
     const r = await dms.verifyAddress(TO, ORG, { purpose: "lead_address", lane });
     expect(r.isValid).toBe(true);
-    expect(state.lobCalls[0].apiKey).toBe("test_platform_key");
+    expect(state.lobCalls[0].apiKey).toBe("live_platform_key");
   });
 
   it("the org's own key checks lead addresses whatever the setting", async () => {

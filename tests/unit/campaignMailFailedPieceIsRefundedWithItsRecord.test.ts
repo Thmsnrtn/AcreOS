@@ -32,6 +32,8 @@ const S = vi.hoisted(() => ({
   campaign: {} as Record<string, unknown>,
   txThrows: false,
   lobCalls: 0,
+  /** What Lob reports for an accepted letter: live, its test env, or a simulation. */
+  lobEnv: "live" as "live" | "test" | "simulation",
 }));
 
 vi.mock("../../server/middleware/idempotency", () => ({
@@ -101,7 +103,7 @@ vi.mock("../../server/services/directMail", () => ({
       const leadId = Number(o.idempotencyKey.split(":").pop());
       if (S.failLob.has(leadId)) throw Object.assign(new Error("address undeliverable"), { status_code: 422 });
       if (S.unknownLob.has(leadId)) throw Object.assign(new Error("lob 502"), { status_code: 502 });
-      return { id: `ltr_${leadId}` };
+      return { id: `ltr_${leadId}`, isTestMode: S.lobEnv === "test", credentialSource: S.lobEnv === "simulation" ? "simulation" : "platform" };
     },
   },
   DIRECT_MAIL_COSTS: { letter_1_page: 150, postcard_4x6: 100, postcard_6x9: 120, postcard_6x11: 130 },
@@ -168,11 +170,11 @@ function res() {
   r.json = (b: unknown) => ((r.body = b), r);
   return r;
 }
-const req = (leadIds: number[] = [11, 12], pieceType = "letter_1_page") => ({
+const req = (leadIds: number[] = [11, 12], pieceType = "letter_1_page", mailMode = "live") => ({
   params: { id: "3" },
   body: { pieceType, leadIds },
   headers: {},
-  organization: { id: 5, settings: { mailMode: "test" } },
+  organization: { id: 5, settings: { mailMode } },
   user: { id: "u1" },
 });
 
@@ -187,6 +189,7 @@ beforeEach(() => {
   S.campaign = { id: 3, name: "Fall letters", type: "direct_mail", content: "<p>Hi</p>", subject: "We buy land" };
   S.txThrows = false;
   S.lobCalls = 0;
+  S.lobEnv = "live";
 });
 
 describe("campaign direct mail: a refused piece is refunded with its failure record", () => {
@@ -270,5 +273,38 @@ describe("campaign direct mail: no placeholder is ever printed", () => {
     expect(r.statusCode).toBe(400);
     expect(S.lobCalls).toBe(0);
     expect(S.deducted).toEqual([]);
+  });
+});
+
+describe("campaign direct mail: a house piece that prints nothing is never charged (audit 2026-10-18)", () => {
+  it("an org in TEST mail mode is sent to Lob's test environment and charged nothing", async () => {
+    S.lobEnv = "test";
+    const r = res();
+    await (await handler())(req([11, 12], "letter_1_page", "test"), r);
+    expect(S.lobCalls).toBe(2);
+    expect(S.deducted).toEqual([]);
+    expect(S.refunds).toEqual([]);
+  });
+
+  it.each(["test", "simulation"] as const)("a live-mode piece Lob reports as %s is refunded its share", async (env) => {
+    S.lobEnv = env;
+    const r = res();
+    await (await handler())(req([11, 12]), r);
+    expect(S.deducted).toEqual([300]);
+    expect(S.refunds.map((x) => x.cents)).toEqual([150, 150]);
+    expect(S.refunds[0].key).toMatch(/:lead:11:refund$/);
+  });
+
+  it("an org in SIMULATION mode is never charged, even in live mail mode", async () => {
+    const r = res();
+    await (await handler())({ ...req([11, 12]), organization: { id: 5, settings: { mailMode: "live", simulationMode: true } } }, r);
+    expect(S.deducted).toEqual([]);
+  });
+
+  it("a live piece Lob really printed keeps its charge", async () => {
+    const r = res();
+    await (await handler())(req([11, 12]), r);
+    expect(S.deducted).toEqual([300]);
+    expect(S.refunds).toEqual([]);
   });
 });

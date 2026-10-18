@@ -67,6 +67,12 @@ export interface MailShipment {
    * never charged either way.
    */
   housePrepaid?: boolean;
+  /**
+   * The only providers this shipment may go out through — the one it was
+   * quoted and funded for. A shipment never falls through to a provider (or
+   * lane) nobody paid for.
+   */
+  onlyProviders?: MailProviderName[];
 }
 
 export type MailProviderName =
@@ -90,6 +96,12 @@ export interface ProviderSendResult {
   providerEventId: string;
   pieces: { providerPieceId: string; recipientRef: string }[];
   totalCostCents: number;
+  /**
+   * Accepted pieces that cost AcreOS nothing although the shipment may have
+   * pre-paid them: sent to Lob's test environment, simulated, or carried by
+   * the org's OWN key. The flusher returns their pre-paid share.
+   */
+  unbilledPieceCount?: number;
 }
 
 /**
@@ -230,6 +242,7 @@ export class MailRouter {
     // Viable = meetsConstraints + within budget if specified.
     const viable = quotes.filter((q) => {
       if (!q.meetsConstraints) return false;
+      if (shipment.onlyProviders && !shipment.onlyProviders.includes(q.provider)) return false;
       if (shipment.budgetCentsPerPiece != null && q.costPerPieceCents > shipment.budgetCentsPerPiece) {
         return false;
       }

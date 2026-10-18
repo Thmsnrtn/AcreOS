@@ -458,6 +458,19 @@ describe("a house LETTER is not charged at queue time (decision 2026-10-18)", ()
     expect(S.debitKeys).toEqual([]);
     expect(S.poolDebits).toBe(0);
     expect(S.shipments[0].debitedCents).toBe(0);
+    // Recorded as charged per piece AT SEND — the flusher must not treat it as pre-paid.
+    expect(S.shipments[0].fundingLane).toBe("house_at_send");
+  });
+
+  it("a house POSTCARD is recorded as pre-paid — the only funding the flusher skips the per-piece charge for (audit 2026-10-18)", async () => {
+    const q = await quoted();
+    const res = await request(app())
+      .post("/api/outreach/mail/queue")
+      .set("Idempotency-Key", "op-postcard-lane")
+      .send({ ...TX, expectedAudienceDigest: q.audienceDigest });
+    expect(res.status).toBe(201);
+    expect(S.shipments[0].debitedCents).toBe(300);
+    expect(S.shipments[0].fundingLane).toBe("house_prepaid");
   });
 });
 

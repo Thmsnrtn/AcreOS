@@ -6,8 +6,22 @@
  * installs one — Dockerfile `chromium`, PUPPETEER_EXECUTABLE_PATH); elsewhere
  * it is skipped.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import fs from "node:fs";
+
+// Every sub-resource is fetched by AcreOS through safeHttpsGet (the real one,
+// recorded) — Chromium never makes a network request of its own.
+const fetchedBySafeGet = vi.hoisted(() => [] as string[]);
+vi.mock("../../server/services/mail/safeFetch", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../server/services/mail/safeFetch")>();
+  return {
+    ...actual,
+    safeHttpsGet: async (url: string, opts: Parameters<typeof actual.safeHttpsGet>[1]) => {
+      fetchedBySafeGet.push(url);
+      return actual.safeHttpsGet(url, { ...opts, resolve: async () => [{ address: "127.0.0.1", family: 4 }] });
+    },
+  };
+});
 
 const CANDIDATES = [
   process.env.PUPPETEER_EXECUTABLE_PATH,
@@ -52,9 +66,39 @@ describe.runIf(Boolean(chrome))("letter HTML renders to a US-Letter PDF whose pa
     expect(ms).toBeLessThan(20_000);
   }, 30_000);
 
+  it("an https image is fetched by AcreOS's guarded fetch, never by Chromium directly", async () => {
+    const { renderLetterHtmlToPdf } = await import("../../server/services/mail/letterRender");
+    fetchedBySafeGet.length = 0;
+    const pdf = await renderLetterHtmlToPdf('<html><body><img src="https://letters.example.com/logo.png"><p>Hi</p></body></html>');
+    expect(await count(pdf)).toBe(1);
+    expect(fetchedBySafeGet).toEqual(["https://letters.example.com/logo.png"]);
+  }, 30_000);
+
   it("a letter cannot make the server fetch a private address (the request is aborted, the letter still renders)", async () => {
     const { renderLetterHtmlToPdf } = await import("../../server/services/mail/letterRender");
     const pdf = await renderLetterHtmlToPdf('<html><body><img src="http://169.254.169.254/latest/meta-data/"><p>Hi</p></body></html>');
     expect(await count(pdf)).toBe(1);
   }, 30_000);
+});
+
+describe("the renderer is bounded (audit 2026-10-18)", () => {
+  it("HTML over the size cap is refused before any browser starts", async () => {
+    const { renderLetterHtmlToPdf, MAX_HTML_BYTES, rendersInFlight } = await import("../../server/services/mail/letterRender");
+    await expect(renderLetterHtmlToPdf("<p>" + "x".repeat(MAX_HTML_BYTES) + "</p>")).rejects.toThrow(/exceeds/);
+    expect(rendersInFlight()).toBe(0);
+  });
+
+  it.runIf(Boolean(chrome))("a burst of renders runs at most MAX_CONCURRENT_RENDERS at once, on one browser", async () => {
+    const { renderLetterHtmlToPdf, MAX_CONCURRENT_RENDERS, rendersInFlight } = await import("../../server/services/mail/letterRender");
+    let peak = 0;
+    const poll = setInterval(() => (peak = Math.max(peak, rendersInFlight())), 5);
+    try {
+      const pdfs = await Promise.all(Array.from({ length: 6 }, (_, i) => renderLetterHtmlToPdf(htmlOfPages((i % 2) + 1))));
+      expect(pdfs).toHaveLength(6);
+    } finally {
+      clearInterval(poll);
+    }
+    expect(peak).toBeGreaterThan(0);
+    expect(peak).toBeLessThanOrEqual(MAX_CONCURRENT_RENDERS);
+  }, 60_000);
 });

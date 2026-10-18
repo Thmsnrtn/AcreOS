@@ -230,6 +230,33 @@ Still open (unchanged, to be raised with the founder): the two house price
 lists (campaign send vs per-piece lanes), and real current Lob prices for the
 cost table.
 
+### 2026-10-18 — independent audit: what was tightened
+
+No decision changed; these make the code match decisions A and B.
+
+- **A house piece is charged only when it really prints on AcreOS's live
+  account.** The house lane resolves only with the live-send interlock armed
+  AND a live platform Lob key. The campaign route charges only in an org's
+  live mail mode with simulation off, and refunds a pre-paid piece Lob
+  reports as test-mode or simulated; the queue flusher refunds the share of
+  any pre-paid piece that cost AcreOS nothing.
+- **A paused send is not a billed send.** The outreach stop-loss pause is
+  treated as "the provider did not bill", so a pre-paid piece is refunded.
+- **Each shipment records how it is funded** (`mail_shipments.funding_lane`:
+  `house_prepaid`, `house_at_send`, `own_account`, `pool`). Only a
+  `house_prepaid` shipment skips the per-piece charge at send, and the
+  flusher sends only through the provider the shipment was quoted for.
+  Acquisition spend is booked only for pool-funded free sends — never for a
+  piece the org paid for.
+- **A key-vault read failure refuses the send** ("nothing was mailed or
+  charged") instead of falling through to house mail.
+- **Letter rendering and fetching are bounded.** One reused browser, at most
+  two renders at once, a 512 KB HTML cap, a per-page timeout and a
+  byte-bounded cache; every URL AcreOS fetches for a letter is resolved once,
+  must be a public address (private, loopback, link-local, CGNAT, ULA and
+  IPv4-mapped/compatible/NAT64 forms refused), is pinned to that address, is
+  byte-capped and does not follow redirects.
+
 ## Open for the founder
 
 - The two house price lists (campaign send `DIRECT_MAIL_COSTS` vs the

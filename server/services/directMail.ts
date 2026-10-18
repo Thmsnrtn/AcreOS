@@ -384,7 +384,9 @@ export class DirectMailService {
       usedTestEnv = effective === 'test';
     }
 
-    const charge = await this.chargeHouse(orgId!, prepared, options.idempotencyKey);
+    // Lob's test environment prints nothing: a house piece sent there is
+    // never charged (the house lane already requires the armed interlock).
+    const charge = usedTestEnv ? null : await this.chargeHouse(orgId!, prepared, options.idempotencyKey);
     let result: { id: string; expected_delivery_date: string };
     try {
     result = await lob.postcards.create({
@@ -516,7 +518,9 @@ export class DirectMailService {
       usedTestEnv = effective === 'test';
     }
 
-    const charge = await this.chargeHouse(orgId!, prepared, options.idempotencyKey);
+    // Lob's test environment prints nothing: a house piece sent there is
+    // never charged (the house lane already requires the armed interlock).
+    const charge = usedTestEnv ? null : await this.chargeHouse(orgId!, prepared, options.idempotencyKey);
     let result: { id: string; expected_delivery_date: string };
     try {
     result = await lob.letters.create({

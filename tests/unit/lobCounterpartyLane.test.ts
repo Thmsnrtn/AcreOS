@@ -26,7 +26,8 @@
  * or a mock that never records.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { makePdf } from "../helpers/pdfFixture";
+import { fakeSafeFetch } from "../helpers/fakeSafeFetch";
+vi.mock("../../server/services/mail/safeFetch", async () => (await import("../helpers/fakeSafeFetch")).fakeSafeFetchModule());
 const rendered: string[] = [];
 // The real renderer is proven in houseLetterRenderReal.test.ts; here a fake
 // lays every letter out as one page, or fails on request.
@@ -152,17 +153,13 @@ vi.mock("../../server/services/credits", () => ({
 const TO = { name: "Lee Owner", addressLine1: "2 Dirt Rd", city: "Llano", state: "TX", zip: "78643" };
 const FROM = { name: "Brazos Land Partners", addressLine1: "1 Main St", city: "Austin", state: "TX", zip: "78701" };
 // A house letter must be CONFIRMED one page (founder decision 2026-10-18):
-// a one-page PDF on an https URL, served by the fetch stub below.
+// a one-page PDF on an https URL, served by the safeFetch stand-in.
 const LETTER = { to: TO, from: FROM, file: "https://files.example.com/letter.pdf" };
 
 let lobService: typeof import("../../server/services/lobService").lobService;
 
 beforeEach(async () => {
-  vi.stubGlobal("fetch", async (url: string) =>
-    /\.pdf$/.test(String(url))
-      ? new Response(new Uint8Array(await makePdf(1)), { status: 200, headers: { "content-type": "application/pdf" } })
-      : new Response("nope", { status: 404 }),
-  );
+  fakeSafeFetch.reset();
   state.liveSendArmed = true;
   state.byokKey = null;
   state.legacyRow = null;
@@ -284,11 +281,13 @@ describe("counterparty direct mail resolves the ORG's own Lob account first", ()
     ).toBe(false);
   });
 
-  it("a DISARMED interlock STILL degrades a send on the PLATFORM key", async () => {
+  it("a DISARMED interlock STILL holds the PLATFORM key — house mail is refused, nothing printed or charged", async () => {
     // The other half, and the reason the narrowing is safe: nothing about the
     // platform interlock was weakened. An org with nothing connected reaches
-    // the platform key only as AcreOS house mail (verified identity, credits)
-    // and must still be held by the interlock.
+    // the platform key only as AcreOS house mail (verified identity, credits).
+    // Audit 2026-10-18: a disarmed interlock used to send that piece to Lob's
+    // TEST environment and still charge for it; the house lane now requires
+    // the interlock armed AND a live key, so the send is refused outright.
     state.liveSendArmed = false;
     state.byokKey = null;
     state.legacyRow = null;
@@ -303,8 +302,9 @@ describe("counterparty direct mail resolves the ORG's own Lob account first", ()
       state.created.some((c) => c.apiKey === "live_platform_key"),
       "a disarmed platform interlock still handed out the LIVE platform key",
     ).toBe(false);
-    expect(state.created).toEqual([{ kind: "letter", apiKey: "test_platform_key" }]);
-    expect(result.isTestMode).toBe(true);
+    expect(state.created).toEqual([]);
+    expect(result.success).toBe(false);
+    expect(houseMail.charges).toEqual([]);
   });
 
   it("an explicit TEST-mode request never prints on a live BYOK key", async () => {
