@@ -557,33 +557,33 @@ export function registerBillingRoutes(app: Express): void {
     priceId: z.string().min(1, "priceId is required"),
   });
 
-  // ── Vertical-pack catalog (V1, founder ruling #11 2026-07-28) ──────────
-  // The pack substrate (pricing, checkout, webhook activation) existed with
-  // ZERO client surface — "The substrate is there; the surface is not"
-  // (docs/internal/pricing/alternatives-2026-06-06.md). This endpoint lists
-  // EVERY pack, purchasable or waitlisted, so the pricing page can tell the
-  // truth about all five verticals instead of hiding the frozen ones.
+  // ── Vertical catalog (founder decision 2026-10-18) ─────────────────────
+  // Verticals are INCLUDED profiles, not paid add-ons: a customer's
+  // subscription price is determined ONLY by tier (Starter/Pro/Scale).
+  // This endpoint lists EVERY vertical, selectable or waitlisted, so the
+  // pricing page can tell the truth about all five verticals instead of
+  // hiding the frozen ones. There is no price and no checkout for a
+  // vertical — selection is free and tracked in org_vertical_packs.
   //
   // Auth: the catalog is public — /pricing renders for logged-out prospects,
   // mirroring GET /api/stripe/products (the tier catalog above). When the
   // request carries a Clerk session we run the standard isAuthenticated →
-  // getOrCreateOrg chain so `owned` reflects the org's real
-  // org_vertical_packs rows; an anonymous request gets owned: false on
-  // every pack. Purchasability itself stays server-gated in the checkout
-  // route below — this endpoint only REPORTS it, never widens it.
-  const listVerticalPacks = async (req: AuthenticatedRequest, res: Response) => {
+  // getOrCreateOrg chain so `selected` reflects the org's real
+  // org_vertical_packs rows; an anonymous request gets selected: false on
+  // every vertical.
+  const listVerticals = async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { VERTICAL_PACKS, isVerticalPackPurchasable } = await import("@shared/billing/tier-pricing");
+      const { VERTICAL_PACKS, isVerticalSelectable } = await import("@shared/billing/tier-pricing");
 
       // Anonymous catalog requests carry no org (the global Request
       // augmentation types `organization` as always-present, but this
       // endpoint also serves logged-out prospects).
       const orgId: number | undefined = req.organization?.id;
 
-      // Active-pack detection follows the schema's own contract (see
-      // orgVerticalPacks in shared/schema.ts): active when status='active'
-      // AND (cancel_at IS NULL OR cancel_at > now()).
-      const ownedKeys = new Set<string>();
+      // Selected-vertical detection follows the schema's own contract (see
+      // orgVerticalPacks in shared/schema.ts): selected when
+      // status='active' AND (cancel_at IS NULL OR cancel_at > now()).
+      const selectedKeys = new Set<string>();
       if (orgId) {
         const { orgVerticalPacks } = await import("@shared/schema");
         const rows = await db
@@ -597,155 +597,135 @@ export function registerBillingRoutes(app: Express): void {
         const now = clock.now();
         for (const row of rows) {
           if (row.status === "active" && (!row.cancelAt || row.cancelAt > now)) {
-            ownedKeys.add(row.packKey);
+            selectedKeys.add(row.packKey);
           }
         }
       }
 
-      const packs = Object.values(VERTICAL_PACKS).map((pack) => {
-        const purchasable = isVerticalPackPurchasable(pack.key);
+      const verticals = Object.values(VERTICAL_PACKS).map((pack) => {
+        const selectable = isVerticalSelectable(pack.key);
         return {
           key: pack.key,
           name: pack.displayName,
           tagline: pack.tagline,
+          features: pack.features,
           businessTypeId: pack.businessTypeId,
-          // Dollars, straight from the cents source of truth — never
-          // hardcode pack prices anywhere else.
-          priceMonthly: pack.priceMonthlyCents / 100,
-          priceYearly: pack.priceYearlyCents / 100,
-          purchasable,
-          // Honest waitlist framing in plain words. The pack stays VISIBLE
-          // — the landing promises these verticals — it just isn't sellable
-          // until its vertical passes the honesty bar.
-          waitlistReason: purchasable
+          selectable,
+          // Honest waitlist framing in plain words. The vertical stays
+          // VISIBLE — the landing promises these verticals — it just isn't
+          // selectable until its vertical passes the honesty bar.
+          waitlistReason: selectable
             ? null
             : "On the waitlist until this vertical is production-ready",
-          owned: ownedKeys.has(pack.key),
-          // Same load-time env capture the checkout route reads — if a
-          // price env var is missing, checkout would 503, so the client
-          // can render an honest "purchase not yet enabled" instead.
-          stripeConfigured: {
-            monthly: Boolean(pack.stripePriceIdMonthly),
-            yearly: Boolean(pack.stripePriceIdYearly),
-          },
+          selected: selectedKeys.has(pack.key),
         };
       });
 
       // `authenticated` lets the public pricing page route anonymous
-      // prospects to signup instead of firing a checkout that would 401.
-      res.json({ authenticated: Boolean(orgId), packs });
+      // prospects to signup instead of firing a selection that would 401.
+      res.json({ authenticated: Boolean(orgId), verticals });
     } catch (error: any) {
       Errors.internal(res, error);
     }
   };
 
-  api.get("/api/billing/packs", (req, res, next) => {
-    // Session present → the standard authenticated chain (so `owned` is
+  api.get("/api/verticals", (req, res, next) => {
+    // Session present → the standard authenticated chain (so `selected` is
     // real). No session at all → serve the catalog anonymously rather than
     // 401-ing a logged-out prospect on the public pricing page.
     const hasSession =
       Boolean(getClerkAuth(req)?.userId) ||
       (req.headers.cookie ?? "").includes("__session");
     if (!hasSession) {
-      return void listVerticalPacks(req as AuthenticatedRequest, res);
+      return void listVerticals(req as AuthenticatedRequest, res);
     }
     isAuthenticated(req, res, (err?: unknown) => {
       if (err) return next(err);
       void getOrCreateOrg(req, res, (err2?: unknown) => {
         if (err2) return next(err2);
-        void listVerticalPacks(req as AuthenticatedRequest, res);
+        void listVerticals(req as AuthenticatedRequest, res);
       });
     });
   });
 
-  // ── Vertical-pack add-on checkout (S3) ─────────────────────────────────
-  // The packs were priced, tracked (org_vertical_packs) and P&L'd but had NO
-  // purchase path — /api/stripe/checkout takes one tier priceId only. This
-  // route sells a pack as its own subscription; the webhook activates the
-  // org_vertical_packs row on checkout completion, and pack subscriptions
-  // are metadata-tagged so the generic subscription handlers never mistake
-  // them for the org's plan.
-  const packCheckoutSchema = z.object({
+  // ── Vertical selection (founder decision 2026-10-18) ────────────────────
+  // Selecting a vertical is free and included in every tier. It upserts the
+  // org_vertical_packs row as selected (status='active', priceCents=0 — the
+  // purchase columns are vestigial; see the schema comment). Idempotent on
+  // (organization, packKey).
+  const verticalSelectSchema = z.object({
     packKey: z.enum(["note_investor", "buy_and_hold", "fix_and_flipper", "subdivision", "wholesale"]),
-    interval: z.enum(["monthly", "yearly"]).default("monthly"),
   });
 
-  api.post("/api/billing/packs/checkout", isAuthenticated, getOrCreateOrg, requirePermission("canManageBilling"), idempotencyMiddleware, async (req, res) => {
+  api.post("/api/verticals/select", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const { stripeService } = await import("./stripeService");
-      const { VERTICAL_PACKS, isVerticalPackPurchasable } = await import("@shared/billing/tier-pricing");
+      const { VERTICAL_PACKS, isVerticalSelectable } = await import("@shared/billing/tier-pricing");
+      const { orgVerticalPacks } = await import("@shared/schema");
       const org = req.organization;
-      const parsed = packCheckoutSchema.safeParse(req.body);
+      const parsed = verticalSelectSchema.safeParse(req.body);
       if (!parsed.success) {
         return Errors.validationFailed(res, parsed.error.issues);
       }
-      const { packKey, interval } = parsed.data;
+      const { packKey } = parsed.data;
       const pack = VERTICAL_PACKS[packKey];
-      // Waitlisted verticals are NOT sellable. A pack whose vertical is
-      // `roadmap` (e.g. fix_and_flip, demoted by founder decision 2026-07-11)
-      // must not be purchasable — charging for a frozen product is a broken
-      // promise. Refuse honestly rather than take the money.
-      if (!isVerticalPackPurchasable(packKey)) {
+      if (!pack) {
+        return Errors.badRequest(res, `Unknown vertical '${packKey}'.`);
+      }
+      // Waitlisted verticals are NOT selectable — a `roadmap` vertical
+      // isn't production-ready, so it can't tailor the workspace yet.
+      if (!isVerticalSelectable(packKey)) {
         return Errors.forbidden(
           res,
-          `${pack.displayName} isn't available yet — this vertical is on the waitlist. You won't be charged. We'll open it up when it's production-ready.`,
+          `${pack.displayName} isn't available yet — this vertical is on the waitlist. We'll open it up when it's production-ready.`,
         );
       }
-      const priceId = interval === "yearly" ? pack.stripePriceIdYearly : pack.stripePriceIdMonthly;
-      if (!priceId) {
-        // Honest 503, mirroring requireStripePriceId for tiers — an
-        // unconfigured pack price is an ops gap, not a customer error.
-        return Errors.serviceUnavailable(
-          res,
-          `${pack.displayName} is not yet purchasable — its Stripe price is not configured.`,
-        );
-      }
+      await db
+        .insert(orgVerticalPacks)
+        .values({
+          organizationId: org.id,
+          packKey,
+          status: "active",
+          activatedAt: clock.now(),
+          priceCents: 0, // included profile — never billed
+          activatedBy: req.user?.id ?? null,
+          notes: "Selected as an included vertical profile (founder decision 2026-10-18)",
+        })
+        .onConflictDoUpdate({
+          target: [orgVerticalPacks.organizationId, orgVerticalPacks.packKey],
+          set: {
+            status: "active",
+            activatedAt: clock.now(),
+            cancelledAt: null,
+            cancelAt: null,
+            priceCents: 0,
+            activatedBy: req.user?.id ?? null,
+            updatedAt: clock.now(),
+          },
+        });
+      return res.json({ ok: true, selected: packKey });
+    } catch (err) {
+      logger.error("[billing] vertical select failed", err instanceof Error ? err : undefined);
+      return Errors.internal(res, err);
+    }
+  });
 
-      let customerId = org.stripeCustomerId;
-      if (!customerId) {
-        // NOT A TRANSACTION, AND IT NEVER COULD BE.
-        //
-        // This was wrapped in withTransaction() under a comment promising the
-        // Stripe customer creation and the org update were "atomic". Three
-        // things were wrong with that. The callback took no `tx`, so the UPDATE
-        // ran on the global pool — outside the transaction the wrapper opened.
-        // A Stripe API call is not a Postgres statement and cannot roll back
-        // whatever happens next. And the wrapper held one of the pool's five
-        // connections on an open BEGIN for the duration of an outbound HTTP
-        // request, while the body reached back into the same pool for a second
-        // one: five concurrent callers wedge the whole process for
-        // connectionTimeoutMillis, and every other request on the machine —
-        // any route, any org — stalls with them.
-        //
-        // The honest version is the straight line. If the UPDATE fails the
-        // Stripe customer is orphaned and the next attempt creates another;
-        // the fix for THAT is an idempotency key on createCustomer, not a
-        // transaction that cannot include it.
-        const user = req.user;
-        const customer = await stripeService.createCustomer(user.email, user.id, org.name);
-        await storage.updateOrganization(org.id, { stripeCustomerId: customer.id });
-        customerId = customer.id;
+  api.post("/api/verticals/deselect", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { orgVerticalPacks } = await import("@shared/schema");
+      const { and, eq } = await import("drizzle-orm");
+      const org = req.organization;
+      const parsed = verticalSelectSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.issues);
       }
-
-      const packMetadata = {
-        type: "vertical_pack",
-        packKey,
-        interval,
-        organizationId: String(org.id),
-        app: "acreos",
-      };
-      const session = await stripeService.createCheckoutSession(
-        customerId,
-        priceId,
-        `${req.protocol}://${req.get('host')}/settings?pack=success`,
-        `${req.protocol}://${req.get('host')}/settings?pack=cancelled`,
-        packMetadata,
-        undefined, // packs never carry the first-subscription trial
-        { subscriptionMetadata: packMetadata },
-      );
-      return res.json({ url: session.url });
+      const { packKey } = parsed.data;
+      await db
+        .update(orgVerticalPacks)
+        .set({ status: "cancelled", cancelledAt: clock.now(), updatedAt: clock.now() })
+        .where(and(eq(orgVerticalPacks.organizationId, org.id), eq(orgVerticalPacks.packKey, packKey)));
+      return res.json({ ok: true, deselected: packKey });
     } catch (err: any) {
-      logger.error("[billing] pack checkout failed", err instanceof Error ? err : undefined);
+      logger.error("[billing] vertical deselect failed", err instanceof Error ? err : undefined);
       return Errors.internal(res, err);
     }
   });
@@ -1044,7 +1024,7 @@ export function registerBillingRoutes(app: Express): void {
   // AcreOS takes no fee, and no funds transit AcreOS's balance. An org with no
   // connected processor is REFUSED with the reason and a route to connect one
   // — never quietly charged onto the platform account. Everything else in
-  // this file (subscriptions, seats, credits, packs, top-ups, dunning) is
+  // this file (subscriptions, seats, credits, verticals, top-ups, dunning) is
   // AcreOS-as-vendor and is deliberately unchanged.
   //
   // `POST /api/stripe/connect/payment-intent` was removed 2026-09-27
