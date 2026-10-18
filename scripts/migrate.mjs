@@ -30,6 +30,48 @@ if (!process.env.DATABASE_URL) {
 }
 
 const STATEMENTS = [
+  // 0078 — mirror the existing trust-graduation stores into the ONLY Fly
+  // release path. Rebuild CI also applies migrations/*.sql, which concealed
+  // this omission: production deploys run this array alone. The Oct 13 live
+  // retract job fails reading agent_proposal_observations; its underlying DB
+  // cause is not exposed by Job health. This closes the source-level omission,
+  // not a claim that a live schema repair has been applied or proven.
+  `CREATE TABLE IF NOT EXISTS "agent_action_graduations" (
+    "id" SERIAL PRIMARY KEY,
+    "agent_codename" TEXT NOT NULL,
+    "action_category" TEXT NOT NULL,
+    "graduation_tier" TEXT NOT NULL DEFAULT 'manual',
+    "consecutive_accepted" INTEGER NOT NULL DEFAULT 0,
+    "consecutive_retracted" INTEGER NOT NULL DEFAULT 0,
+    "total_accepted" INTEGER NOT NULL DEFAULT 0,
+    "total_retracted" INTEGER NOT NULL DEFAULT 0,
+    "tier_changed_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
+    "founder_override" TEXT,
+    "created_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
+    "updated_at" TIMESTAMPTZ NOT NULL DEFAULT now()
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "agent_graduation_unique" ON "agent_action_graduations" ("agent_codename", "action_category")`,
+  `CREATE INDEX IF NOT EXISTS "agent_graduation_tier_idx" ON "agent_action_graduations" ("graduation_tier")`,
+  `CREATE TABLE IF NOT EXISTS "agent_proposal_observations" (
+    "id" SERIAL PRIMARY KEY,
+    "agent_codename" TEXT NOT NULL,
+    "action_category" TEXT NOT NULL,
+    "shipped_ref" TEXT NOT NULL,
+    "shipped_ref_type" TEXT NOT NULL,
+    "shipped_at" TIMESTAMPTZ NOT NULL,
+    "observation_ends_at" TIMESTAMPTZ NOT NULL,
+    "telemetry_baseline" JSONB,
+    "telemetry_current" JSONB,
+    "status" TEXT NOT NULL DEFAULT 'observing',
+    "retract_reason" TEXT,
+    "retracted_at" TIMESTAMPTZ,
+    "retract_commit_sha" TEXT,
+    "created_at" TIMESTAMPTZ NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "agent_observations_agent_idx" ON "agent_proposal_observations" ("agent_codename")`,
+  `CREATE INDEX IF NOT EXISTS "agent_observations_status_idx" ON "agent_proposal_observations" ("status")`,
+  `CREATE INDEX IF NOT EXISTS "agent_observations_ends_idx" ON "agent_proposal_observations" ("observation_ends_at")`,
+
   // ── 0247 OD-8 LEDGER: one line carrying the whole program's state ──
   // POSITIONED FIRST deliberately (2026-08-30): notices printed at the END
   // of the run die with the release machine before Fly's log forwarder
@@ -7571,7 +7613,7 @@ $mig0262$`,
      "founder_verdict" text,
      "resolution" text,
      "satisfaction" integer,
-     "cost_usd" numeric,
+     "cost_usd" numeric(10,2),
      "created_at" timestamp DEFAULT now(),
      "resolved_at" timestamp
    )`,
@@ -11533,6 +11575,19 @@ END $$`,
    ('dwilson@email.com', 'Pre-approved for $50K, wants AZ or NM'),
    ('jbrown@email.com', 'Responded to online ad'))
    AND coalesce("source", '') <> 'sample_data'`,
+  `CREATE TABLE IF NOT EXISTS "coo_ledger" (
+  "id"                serial PRIMARY KEY,
+  "created_at"        timestamptz NOT NULL DEFAULT now(),
+  "actor"             text NOT NULL DEFAULT 'coo',
+  "action_type"       text NOT NULL,
+  "target"            text,
+  "reasoning"         text,
+  "status"            text NOT NULL DEFAULT 'completed',
+  "result_summary"    text,
+  "cost_usd"          numeric(10,2),
+  "parent_id"         integer,
+  "metadata"          jsonb
+)`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

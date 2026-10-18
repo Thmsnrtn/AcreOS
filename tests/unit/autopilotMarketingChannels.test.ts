@@ -71,6 +71,12 @@ describe("marketingChannels — paid 'when the time is right'", () => {
     expect(decisionFor({ ...proven, cacProven: false }, "paid_ads").eligible).toBe(false);
   });
 
+  it("unknown attribution, trust or CAC cannot unlock paid channels", () => {
+    for (const missing of [{ attributedSignups: null }, { growthAutonomyEarned: null }, { cacProven: null }]) {
+      expect(decisionFor({ ...proven, ...missing }, "paid_ads").eligible).toBe(false);
+    }
+    expect(decisionFor({ ...proven, attributedSignups: null }, "paid_ads").reason).toContain("unavailable");
+  });
   it("the posture line reports paid unlocked once proven", () => {
     expect(marketingPostureLine(proven)).toContain("paid amplification UNLOCKED");
   });

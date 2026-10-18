@@ -22,12 +22,12 @@
 
 import type { Express, Response } from "express";
 import { z } from "zod";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql, ne } from "drizzle-orm";
 import { db } from "./db";
 import { agentTasks, decisionsInboxItems } from "@shared/schema";
 import { isAuthenticated, requireFounder } from "./auth";
 import type { AuthenticatedRequest } from "./types/request";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 import { logger } from "./utils/logger";
 import {
   getWeeklyAgentSpend,
@@ -303,6 +303,8 @@ export function registerRosyRiverRoutes(app: Express): void {
           return Errors.validationFailed(res, parsed.error.flatten());
         }
         const { status, founderModification } = parsed.data;
+        const [current] = await db.select().from(decisionsInboxItems).where(eq(decisionsInboxItems.id, id)).limit(1);
+        if (current?.itemType === "cmo_ad_review") return sendError(res, 409, "CMO_REVIEW_REQUIRED", "Use /founder/cmo video review and publishing controls to pause queued work");
         const now = clock.now();
 
         const patch: Record<string, unknown> = {
@@ -320,7 +322,7 @@ export function registerRosyRiverRoutes(app: Express): void {
         const [row] = await db
           .update(decisionsInboxItems)
           .set(patch)
-          .where(eq(decisionsInboxItems.id, id))
+          .where(and(eq(decisionsInboxItems.id, id), ne(decisionsInboxItems.itemType, "cmo_ad_review")))
           .returning();
 
         if (!row) return Errors.notFound(res, "Notification");

@@ -45,7 +45,7 @@ describe("AI_TURNS_BYOK_THRESHOLDS — tunable economics constants", () => {
   it("included COGS at threshold stays under monthly price (margin-positive)", () => {
     // ~1.5¢/turn worst case. Starter $29, Pro $49, Scale $199.
     expect(750 * 1.5).toBeLessThan(2900);
-    expect(1500 * 1.5).toBeLessThan(4900);
+    expect(1500 * 1.5).toBeLessThan(9900);
     expect(6000 * 1.5).toBeLessThan(19900);
   });
 
@@ -136,7 +136,9 @@ beforeEach(() => {
 });
 
 describe("checkAiTurnGate — the shared monthly AI allowance (cents)", () => {
-  // Pro: 1,500 turns × 1.5¢ = 2,250¢ ($22.50). Starter: 750 × 1.5¢ = 1,125¢.
+  // Pro: 5,000¢ ($50.00). Starter: 2,500¢ ($25.00). Scale: 10,000¢ ($100.00).
+  // Explicit per tier since the 2026-10-17 reprice (supersedes the old
+  // turn-threshold × 1.5¢ derivation).
   it("under the allowance → allowed, mode platform, no warning", async () => {
     state.monthlySpendCents = 100;
     const { checkAiTurnGate } = await importGate();
@@ -144,12 +146,12 @@ describe("checkAiTurnGate — the shared monthly AI allowance (cents)", () => {
     expect(r.allowed).toBe(true);
     expect(r.mode).toBe("platform");
     expect(r.warning).toBe(false);
-    expect(r.threshold).toBe(2250);
+    expect(r.threshold).toBe(5000);
     expect(r.unit).toBe("cents");
   });
 
   it("at ≥80% of the allowance → allowed with warning flag", async () => {
-    state.monthlySpendCents = 1800; // exactly 80% of pro's 2,250¢
+    state.monthlySpendCents = 4000; // exactly 80% of pro's 5,000¢
     const { checkAiTurnGate } = await importGate();
     const r = await checkAiTurnGate(1);
     expect(r.allowed).toBe(true);
@@ -157,7 +159,7 @@ describe("checkAiTurnGate — the shared monthly AI allowance (cents)", () => {
   });
 
   it("at/past the allowance WITHOUT BYOK → blocked with reason byok_required", async () => {
-    state.monthlySpendCents = 2250;
+    state.monthlySpendCents = 5000;
     const { checkAiTurnGate } = await importGate();
     const r = await checkAiTurnGate(1);
     expect(r.allowed).toBe(false);
@@ -173,14 +175,14 @@ describe("checkAiTurnGate — the shared monthly AI allowance (cents)", () => {
     expect((await checkAiTurnGate(1)).allowed).toBe(true);
     vi.resetModules();
     state.monthlyTurns = 3;
-    state.monthlySpendCents = 2300; // three long document reads
+    state.monthlySpendCents = 5200; // three long document reads — over pro's 5,000¢
     const g2 = await importGate();
     expect((await g2.checkAiTurnGate(1)).allowed).toBe(false);
   });
 
   it("Starter is also BYOK-eligible when blocked (AI channels open to all paid tiers)", async () => {
     state.orgRow.subscriptionTier = "starter";
-    state.monthlySpendCents = 1125;
+    state.monthlySpendCents = 2500;
     const { checkAiTurnGate } = await importGate();
     const r = await checkAiTurnGate(1);
     expect(r.allowed).toBe(false);

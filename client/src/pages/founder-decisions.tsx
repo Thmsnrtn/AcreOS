@@ -324,7 +324,15 @@ function DecisionRowCard({
       {/* Needs-you rows carry answerable options (contextBundle.options) —
           render them inline, phone-sized, one tap each. Every tap posts the
           EXPLICIT chosen option key; nothing relies on a server default. */}
-      {answerable && onAnswer && options.length > 0 && (
+      {row.itemType === "cmo_ad_review" && (
+        <div className="mt-3">
+          <PrefetchLink href="/founder/cmo" className="inline-flex min-h-11 items-center text-primary underline underline-offset-4">
+            Review videos and choose destinations
+          </PrefetchLink>
+          <p className="text-xs text-muted-foreground">This is the same review item. Approval and rejection happen after you inspect the videos.</p>
+        </div>
+      )}
+      {row.itemType !== "cmo_ad_review" && answerable && onAnswer && options.length > 0 && (
         <div className="flex flex-col gap-2 mt-3" data-testid={`decision-options-${row.id}`}>
           {options.map((opt) => {
             const armed = armedOption === opt.key;

@@ -1047,9 +1047,11 @@ router.get("/growth", requireFounder, async (req: Request, res: Response) => {
         )),
     ]);
 
-    const tiers = tierDistribution.status === "fulfilled" ? tierDistribution.value : [];
+    if (tierDistribution.status === "rejected") throw tierDistribution.reason;
+    if (tierChanges30d.status === "rejected") throw tierChanges30d.reason;
+    const tiers = tierDistribution.value;
     const totalOrgs = tiers.reduce((sum, t) => sum + Number(t.count), 0);
-    const changes = tierChanges30d.status === "fulfilled" ? tierChanges30d.value : [];
+    const changes = tierChanges30d.value;
     const upgradeCount = changes.filter((c) => classifyTierChange(c.fromTier, c.toTier) === "upgrade").length;
     const downgradeCount = changes.filter((c) => classifyTierChange(c.fromTier, c.toTier) === "downgrade").length;
     // Free → any paid tier.
@@ -1076,7 +1078,6 @@ router.get("/growth", requireFounder, async (req: Request, res: Response) => {
       growthOpportunities: [
         freeOrgs && Number(freeOrgs.count) > 50 ? `${Number(freeOrgs.count)} free accounts ready to convert — consider targeted in-app upgrade prompts` : null,
         upgradeCount > downgradeCount ? `Net positive expansion: ${upgradeCount - downgradeCount} more upgrades than downgrades` : null,
-        "Consider in-app feature announcement for Sprout tier to accelerate free → paid conversion",
       ].filter(Boolean),
     });
   } catch (err: any) {
@@ -1277,6 +1278,7 @@ router.post("/decisions-inbox/:id/approve", requireFounder, async (req: Authenti
 
     res.json({ success: true, ...result });
   } catch (err: any) {
+    if (err.code === "CMO_REVIEW_REQUIRED") return sendError(res, 409, "CMO_REVIEW_REQUIRED", err.message);
     Errors.internal(res, err);
   }
 });
@@ -1366,6 +1368,7 @@ router.post("/decisions-inbox/:id/reject", requireFounder, async (req: Authentic
 
     res.json({ success: true });
   } catch (err: any) {
+    if (err.code === "CMO_REVIEW_REQUIRED") return sendError(res, 409, "CMO_REVIEW_REQUIRED", err.message);
     Errors.internal(res, err);
   }
 });
@@ -1377,6 +1380,7 @@ router.post("/decisions-inbox/:id/defer", requireFounder, async (req: Request, r
     await decisionsInboxService.defer(id, hours ?? 24);
     res.json({ success: true });
   } catch (err: any) {
+    if (err.code === "CMO_REVIEW_REQUIRED") return sendError(res, 409, "CMO_REVIEW_REQUIRED", err.message);
     Errors.internal(res, err);
   }
 });
@@ -1480,6 +1484,7 @@ router.post("/decisions-inbox/:id/override", requireFounder, async (req: Authent
 
     res.json({ success: true });
   } catch (err: any) {
+    if (err.code === "CMO_REVIEW_REQUIRED") return sendError(res, 409, "CMO_REVIEW_REQUIRED", err.message);
     Errors.internal(res, err);
   }
 });
@@ -1514,6 +1519,8 @@ router.post("/decisions-inbox/purge", requireFounder, async (req: Request, res: 
     const whereClauses = [
       inArray(decisionsInboxItems.status, statuses),
       lte(decisionsInboxItems.createdAt, cutoff),
+      // Resolving a video card alone cannot cancel its approved render work.
+      ne(decisionsInboxItems.itemType, "cmo_ad_review"),
     ];
     if (itemTypes) whereClauses.push(inArray(decisionsInboxItems.itemType, itemTypes));
 
@@ -2703,6 +2710,7 @@ router.post("/decision-log/:id/reverse", requireFounder, async (req: Request, re
       .where(eq(decisionsInboxItems.id, id))
       .limit(1);
     if (!row) return Errors.notFound(res, "Decision");
+    if (row.itemType === "cmo_ad_review") return sendError(res, 409, "CMO_REVIEW_REQUIRED", "Use /founder/cmo video review and publishing controls to pause queued work");
     await db
       .update(decisionsInboxItems)
       .set({

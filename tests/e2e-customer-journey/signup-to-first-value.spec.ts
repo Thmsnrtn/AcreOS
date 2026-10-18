@@ -133,6 +133,22 @@ async function seedTestAuth(page: Page, baseURL: string): Promise<void> {
       path: "/",
     },
   ]);
+  // Token-gated bypass for Fly staging: the blanket E2E_TEST_AUTH bypass is
+  // disabled on Fly by design, so CI presents a shared secret via header.
+  // The server validates it with timing-safe comparison (see testAuth.ts).
+  // Use route interception (not setExtraHTTPHeaders) to guarantee the header
+  // is attached to every /api/* fetch, including ones fired before headers
+  // would apply or from service workers.
+  const e2eToken = process.env.E2E_TEST_AUTH_TOKEN;
+  if (e2eToken) {
+    await page.route("**/api/**", async (route) => {
+      const headers = {
+        ...route.request().headers(),
+        "X-E2E-Auth-Token": e2eToken,
+      };
+      await route.continue({ headers });
+    });
+  }
 }
 
 const MIN_BODY_TEXT_LEN = 80;
@@ -185,12 +201,20 @@ test.describe("CJ1: signup → onboarding → first value", () => {
       // We don't require a specific data-testid because the landing
       // copy is owned by Soren and may evolve; the contract is
       // "some primary CTA is visible above the fold."
-      const ctaLocator = page
-        .locator(
-          'a[href*="/auth"], a[href*="/sign-up"], button:has-text("Get started"), button:has-text("Sign up"), a:has-text("Get started"), a:has-text("Sign up"), a:has-text("Start free")',
-        )
-        .first();
-      const ctaVisible = await ctaLocator.isVisible().catch(() => false);
+      const ctaCandidates = page.locator(
+        'a[href*="/auth"], a[href*="/sign-up"], button:has-text("Get started"), button:has-text("Sign up"), a:has-text("Get started"), a:has-text("Sign up"), a:has-text("Start free")',
+      );
+      // Check all candidates — on mobile the header nav links come first in
+      // DOM order but are hidden by responsive CSS, so .first() can grab a
+      // hidden element even when the hero CTA is visible.
+      let ctaVisible = false;
+      const ctaCount = await ctaCandidates.count();
+      for (let i = 0; i < ctaCount; i++) {
+        if (await ctaCandidates.nth(i).isVisible().catch(() => false)) {
+          ctaVisible = true;
+          break;
+        }
+      }
       expect(ctaVisible, "landing primary CTA missing").toBe(true);
       stepDurations["landing"] = Date.now() - t0;
     });
@@ -306,14 +330,13 @@ test.describe("CJ1: signup → onboarding → first value", () => {
     await test.step("/ai (Pax) surface mounts with composer", async () => {
       const t0 = Date.now();
       await page.goto("/ai", { waitUntil: "domcontentloaded" });
-      await page.waitForTimeout(1200);
       await recordThemeProbe(page, testInfo, meta, "pax-mount");
       await assertNonBlank(page, "pax-mount");
-      const composer = page
-        .locator(
-          'textarea, [contenteditable="true"], [data-testid*="composer"], [data-testid*="message-input"]',
-        )
-        .first();
+      // PaxPage lazy-loads CommandCenterPage behind AiChatGuard (waits on
+      // /api/system/health) + React Suspense. The fixed 1.2s wait was too
+      // short on staging — wait for the actual composer instead.
+      const composer = page.locator('textarea[data-testid="input-message"]');
+      await composer.waitFor({ state: "visible", timeout: 15000 }).catch(() => {});
       const composerVisible = await composer.isVisible().catch(() => false);
       expect(composerVisible, "Pax composer affordance missing on /ai").toBe(
         true,

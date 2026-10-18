@@ -25,6 +25,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryErrorState } from "@/components/query-error-state";
+import { GrowthWorkspace } from "@/components/founder/growth-workspace";
 import { FounderAuthError } from "@/components/founder/FounderAuthError";
 import { PrefetchLink as Link } from "@/components/prefetch-link";
 import { FounderPulseStrip } from "@/components/founder/PulseStrip";
@@ -43,7 +44,7 @@ interface ControlData {
   /** The needs-you union; total null = a source could not be read. */
   needsYou: { total: number | null; unreadSources: string[] };
   calibration: { grade: string; n: number } | null;
-  conversions?: { totalSignups: number; byPlay: Array<{ playId: string; signups: number }> };
+  conversions?: { totalSignups: number; byPlay: Array<{ playId: string; signups: number }> } | null;
   budget?: { baseCapUsd: number; overrideUsd: number | null; effectiveCapUsd: number; ceilingUsd: number } | null;
 }
 
@@ -151,7 +152,7 @@ export default function FounderAutopilotControlPage() {
   // narrations) could run.
   const [resumePinned, setResumePinned] = useState(false);
 
-  const { data, isLoading, isError, error, refetch } = useQuery<ControlData>({
+  const { data, isLoading, isError, error, refetch, isFetching } = useQuery<ControlData>({
     queryKey: CONTROL_KEY,
     queryFn: async () => {
       const res = await fetch("/api/founder/autopilot/control", { credentials: "include" });
@@ -322,6 +323,9 @@ export default function FounderAutopilotControlPage() {
           <FounderAuthError error={error instanceof Error ? error : new Error("Failed")} title="Control Center unavailable" onRetry={() => void refetch()} />
         ) : (
           <motion.div className="space-y-6" variants={staggerContainer} initial="hidden" animate="visible">
+            <motion.section variants={staggerItem} aria-label="Growth workspace">
+              <GrowthWorkspace conversions={data.conversions} budget={data.budget} publishEnabled={data.settings.publishEnabled} isSettingPending={setSetting.isPending} onPublishChange={(value) => setSetting.mutate({ key: "publishEnabled", value })} onRefresh={() => void refetch()} isRefreshing={isFetching} />
+            </motion.section>
             {/* The "can I leave?" answer — machine-verified, never vibes. */}
             <motion.section variants={staggerItem}>
               <StepAwaySection />
@@ -565,10 +569,10 @@ export default function FounderAutopilotControlPage() {
                 <TrendingUp className={`h-5 w-5 shrink-0 ${(data.conversions?.totalSignups ?? 0) > 0 ? "text-acr-success" : "text-muted-foreground"}`} aria-hidden="true" />
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold text-foreground">
-                    {(data.conversions?.totalSignups ?? 0) > 0 ? `${data.conversions!.totalSignups} signup${data.conversions!.totalSignups === 1 ? "" : "s"} from published content` : "No attributed signups yet"}
+                    {data.conversions == null ? "Signup attribution unavailable" : data.conversions.totalSignups > 0 ? `${data.conversions.totalSignups} signup${data.conversions.totalSignups === 1 ? "" : "s"} from published content` : "No attributed signups yet"}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {(data.conversions?.byPlay?.length ?? 0) > 0
+                    {data.conversions == null ? "The attribution source could not be read. Reload Controls to retry." : (data.conversions.byPlay.length ?? 0) > 0
                       ? data.conversions!.byPlay.slice(0, 3).map((p) => `${prettyDomain(p.playId.replace(/[-_]/g, " "))}: ${p.signups}`).join(" · ")
                       : "Real signups attributed to what the autopilot publishes will show here (a lower bound)."}
                   </p>

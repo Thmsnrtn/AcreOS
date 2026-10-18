@@ -1,14 +1,10 @@
 name: Deploy to Fly.io
 
 on:
-  push:
-    branches: [main]
-  # Manual re-kick (2026-07-07): a Fly release-command VM failed to start
-  # ("deadline_exceeded: machine still starting" — transient platform
-  # failure, run 28885355298) and there was NO way to re-run the deploy
-  # short of pushing a new commit to main. workflow_dispatch gives the
-  # founder a one-click retry from the Actions tab; the full pre-deploy
-  # gate still runs.
+  # Manual dispatch only (2026-10-17): the push trigger was removed so a green
+  # pre-deploy gate on a routine main push can never auto-deploy to prod.
+  # Prod deploys are founder-approved via the Actions tab; the full
+  # pre-deploy gate still runs. Staging (staging.yml) keeps auto-deploying.
   workflow_dispatch:
 
 concurrency:
@@ -140,6 +136,8 @@ jobs:
   deploy:
     name: Deploy to Fly.io
     needs: [test, ci, security]
+    # Kill switch: DEPLOY_FROZEN=true blocks all automated deploys (2026-10-17)
+    if: vars.DEPLOY_FROZEN != 'true'
     runs-on: ubuntu-latest
     environment: production
     env:
