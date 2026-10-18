@@ -13,7 +13,7 @@ import { logger } from "../utils/logger";
 import { publishDealLifecycle, recordDealTransitionEvidence } from "../services/dealLifecycleEvents";
 import { LIST_READ_CAP, capListRead } from "./listCap";
 
-import { ADMINISTRATIVE_DEAL_STATUSES, isDealStatus, validateDealTransition } from "@shared/lifecycle/pipeline-status";
+import { ADMINISTRATIVE_DEAL_STATUSES, OPENING_DEAL_STATUSES, isDealStatus, validateDealTransition } from "@shared/lifecycle/pipeline-status";
 import { clock } from "../utils/clock";
 
 /**
@@ -27,6 +27,14 @@ export class DealTransitionRefusedError extends Error {
   constructor(readonly dealId: number, readonly refusal: string) {
     super(`Deal ${dealId}: ${refusal}`);
     this.name = "DealTransitionRefusedError";
+  }
+}
+
+/** Ordinary creation cannot bypass escrow/close transitions. */
+export class DealCreationRefusedError extends Error {
+  constructor(status: string) {
+    super(`Deal cannot be created at status "${status}"; use an opening stage or the historical import path`);
+    this.name = "DealCreationRefusedError";
   }
 }
 
@@ -101,8 +109,17 @@ export const dealRepo = {
     this: DatabaseStorage,
     deal: InsertDeal & { organizationId: number },
     tx: PrimaryDb = db,
+    opts: { source?: "historical_import" | "sample_fixture" } = {},
   ): Promise<Deal> {
-    const [newDeal] = await tx.insert(deals).values(deal).returning();
+    const status = deal.status ?? "negotiating";
+    // This context is passed by internal import/fixture callers, never copied
+    // from the row or request body. It admits known historical stages, not
+    // invented vocabulary, and does not manufacture close-transition evidence.
+    const historical = opts.source === "historical_import" || opts.source === "sample_fixture";
+    if (!isDealStatus(status) || (!historical && !(OPENING_DEAL_STATUSES as readonly string[]).includes(status))) {
+      throw new DealCreationRefusedError(status);
+    }
+    const [newDeal] = await tx.insert(deals).values({ ...deal, status }).returning();
     // Jarvis 2.1 (audit G2): a new deal is a perception event. Fire-and-forget
     // — publishDealLifecycle never throws, so a mesh outage can't fail the create.
     //

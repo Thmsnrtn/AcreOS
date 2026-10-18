@@ -81,7 +81,7 @@ export async function seedDemoDataForOrg(organizationId: number): Promise<{ lead
   for (const deal of demoDeals) {
     if (deal.propertyId == null) continue;
     const dealInput: InsertDeal & { organizationId: number } = { ...deal, propertyId: deal.propertyId, organizationId };
-    await storage.createDeal(dealInput);
+    await storage.createDeal(dealInput, undefined, { source: "sample_fixture" });
   }
 
   // Sample notes (seller financing)

@@ -1,8 +1,8 @@
 /**
  * Pillar T — Schema drift detector.
  *
- * Compares the live pg_catalog against shared/schema.ts (indexed via
- * the existing schema-column validator infra). Detects:
+ * Compares the live public catalog against the compiled schema registry,
+ * including tables re-exported from domain modules. Detects:
  *   - drizzle tables that don't exist in the live DB (missing migration)
  *   - columns declared in schema.ts but missing in pg_catalog
  *   - columns in pg_catalog that aren't declared in schema.ts (drift
@@ -13,17 +13,11 @@
  */
 
 import { db } from "../db";
+import * as schema from "@shared/schema";
 import { agentEvents, decisionsInboxItems } from "@shared/schema";
-import { sql } from "drizzle-orm";
+import { is, sql, getTableName, getTableColumns } from "drizzle-orm";
+import { PgTable, getTableConfig } from "drizzle-orm/pg-core";
 import { logger } from "../utils/logger";
-import { Project, Node } from "ts-morph";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const SCHEMA_FILE = path.resolve(__dirname, "../../shared/schema.ts");
-
 export interface SchemaFinding {
   kind: "missing_table" | "missing_column" | "orphan_column";
   table: string;
@@ -31,41 +25,17 @@ export interface SchemaFinding {
   message: string;
 }
 
-function indexSchemaSource(): Map<string, Set<string>> {
-  const project = new Project({
-    skipFileDependencyResolution: true,
-    skipAddingFilesFromTsConfig: true,
-  });
-  const source = project.addSourceFileAtPath(SCHEMA_FILE);
+// Use the compiled authoritative registry: it includes re-exported domain
+// tables, column chains and spread columns, and needs no source files or AST
+// parser in the production image. The catalog query below is public-only.
+function indexSchemaRegistry(): Map<string, Set<string>> {
   const tables = new Map<string, Set<string>>();
-  for (const v of source.getVariableStatements()) {
-    for (const decl of v.getDeclarations()) {
-      const init = decl.getInitializer();
-      if (!init || !Node.isCallExpression(init)) continue;
-      if (init.getExpression().getText() !== "pgTable") continue;
-      const args = init.getArguments();
-      if (args.length < 2) continue;
-      const nameArg = args[0];
-      if (!Node.isStringLiteral(nameArg)) continue;
-      const tableName = nameArg.getLiteralText();
-      const colsArg = args[1];
-      if (!Node.isObjectLiteralExpression(colsArg)) continue;
-      const cols = new Set<string>();
-      for (const p of colsArg.getProperties()) {
-        if (Node.isPropertyAssignment(p)) {
-          const propInit = p.getInitializer();
-          if (propInit && Node.isCallExpression(propInit)) {
-            // The column builder calls look like `text("col_name")...` —
-            // we want the SQL column name (first string arg).
-            const sqlNameArg = propInit.getArguments()[0];
-            if (sqlNameArg && Node.isStringLiteral(sqlNameArg)) {
-              cols.add(sqlNameArg.getLiteralText());
-            }
-          }
-        }
-      }
-      tables.set(tableName, cols);
-    }
+  const values: readonly unknown[] = Object.values(schema);
+  for (const value of values) {
+    if (!is(value, PgTable)) continue;
+    const config = getTableConfig(value);
+    if (config.schema && config.schema !== "public") continue;
+    tables.set(getTableName(value), new Set(Object.values(getTableColumns(value)).map(column => column.name)));
   }
   return tables;
 }
@@ -84,7 +54,7 @@ async function indexPgCatalog(): Promise<Map<string, Set<string>>> {
 }
 
 export async function detectSchemaDrift(): Promise<SchemaFinding[]> {
-  const schemaTables = indexSchemaSource();
+  const schemaTables = indexSchemaRegistry();
   const dbTables = await indexPgCatalog();
   const findings: SchemaFinding[] = [];
 

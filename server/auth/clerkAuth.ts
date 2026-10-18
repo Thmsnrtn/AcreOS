@@ -5,7 +5,7 @@ import { users } from "@shared/models/auth";
 import { eq } from "drizzle-orm";
 import { isFounderEmail, isFounderIdentity } from "../services/founder";
 import { logger } from "../utils/logger";
-import { e2eTestAuthEnabled, resolveTestUserId } from "./testAuth";
+import { e2eTestAuthEnabled, e2eTokenAuthEnabled, resolveTestUserId } from "./testAuth";
 import { sendError } from "../utils/errors";
 import { clock } from "../utils/clock";
 
@@ -298,7 +298,7 @@ export const isAuthenticated: RequestHandler = (req: any, res, next) => {
   // The `__session` cookie value selects customer vs founder test identity
   // so the suite can assert both sides of the founder gate.
   // See server/auth/testAuth.ts.
-  if (e2eTestAuthEnabled()) {
+  if (e2eTestAuthEnabled() || e2eTokenAuthEnabled(req)) {
     req.auth = { userId: resolveTestUserId(req.headers.cookie) };
     return hydrateUser(req, res, next);
   }

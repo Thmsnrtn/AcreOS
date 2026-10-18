@@ -9,7 +9,7 @@
  * second brand would be a new row, not a refactor — but no multi-tenant
  * abstraction layer is introduced yet (KISS).
  *
- * Seeding is idempotent: `seedAcreosBrandProfile()` upserts the canonical row
+ * Seeding is idempotent: `seedAcreosBrandProfile()` creates a missing row
  * and is called on server boot. Founders edit the profile via
  * `/api/founder/cmo/brand-profile` (server/routes-cmo.ts).
  */
@@ -24,7 +24,7 @@ import { clock } from "../../utils/clock";
 const ACREOS_SLUG = "acreos";
 
 /**
- * Seed (or update) the canonical AcreOS brand profile. Pulled from
+ * Seed the canonical AcreOS brand profile without overwriting founder edits. Pulled from
  * client/src/pages/landing/copy.ts and the existing TEMPLATE_CONTEXT
  * in adCreativeService.ts so the brand voice stays unified across the
  * landing page and the ad engine.
@@ -37,6 +37,7 @@ export async function seedAcreosBrandProfile(): Promise<BrandProfile> {
   const existing = await db.query.brandProfiles.findFirst({
     where: eq(brandProfiles.slug, ACREOS_SLUG),
   });
+  if (existing) return existing;
 
   const profileData = {
     slug: ACREOS_SLUG,
@@ -55,12 +56,12 @@ export async function seedAcreosBrandProfile(): Promise<BrandProfile> {
       "respects-the-reader",
     ],
     usps: [
-      "Pulls comps in 30 seconds, not 30 minutes",
-      "Pax (AI ops partner) drafts replies, scores leads, and services notes overnight",
-      "Multi-vertical: land, notes, fix-and-flip, wholesale, subdivide, tax-delinquent, buy-and-hold",
-      "Built-in offer composer, e-sign, escrow handoff — no DocuSign needed",
-      "Audit log on every agent action — what, when, why, what data it used",
-      "Transparent pricing on the page, no contact-us wall",
+      "Research parcels, organize deals, prepare offers, and manage seller-financed notes in one workspace",
+      "Pax helps investigate records and prepare work inside AcreOS",
+      "Core land workflows, with additional property strategies at varying stages of readiness",
+      "Prepares offers and deal documents for review and provider handoff",
+      "Action trails and receipts for supported workflows",
+      "Published self-service plans with pricing and included allowances",
     ],
     bannedPhrases: [
       // Voice
@@ -116,9 +117,9 @@ export async function seedAcreosBrandProfile(): Promise<BrandProfile> {
       stability: 0.55,
       similarityBoost: 0.75,
       sampleScripts: [
-        "AcreOS pulls comps in thirty seconds for any APN. The same workflow that used to take an evening on PropStream.",
-        "Three hundred leads in your spreadsheet. None of them ranked. Pax scores every one overnight and surfaces the four worth your morning call.",
-        "Your note serviced. Receipt sent. Late notice queued. You touched nothing.",
+        "Review available parcel records and their sources before making an offer.",
+        "Organize land leads and use Pax to prepare research and work for review.",
+        "Track seller-financed notes and inspect payment and servicing receipts.",
       ],
     },
     funnelStages: {
@@ -139,23 +140,13 @@ export async function seedAcreosBrandProfile(): Promise<BrandProfile> {
       },
     },
     founderVoiceSamples: [
-      "Pull lists, run comps, send mail, draft replies, and track every deal through closing. Whether you flip land, buy notes, rehab houses, wholesale contracts, subdivide, or buy-and-hold — AcreOS does the busy work so the operator only handles judgment calls.",
-      "Three steps. Most happens on its own. Define the buy-box. AcreOS does the busy work. Operator makes the calls.",
-      "Replies drafted within sixty seconds of an inbound message, queued for review before send.",
+      "Find or import parcel records, review the available evidence, prepare offers and outreach, and track land deals with clear approvals.",
+      "Define the buy-box, prepare the work and review the evidence. The investor makes the decision.",
+      "Prepare replies for review. Queuing work does not confirm that a message was sent.",
     ],
     referenceAds: [],
     autoGenerationEnabled: false,
   };
-
-  if (existing) {
-    const [updated] = await db
-      .update(brandProfiles)
-      .set({ ...profileData, updatedAt: clock.now() })
-      .where(eq(brandProfiles.id, existing.id))
-      .returning();
-    logger.info(`[cmo] brand profile '${ACREOS_SLUG}' updated (id=${updated.id})`);
-    return updated;
-  }
 
   const [created] = await db
     .insert(brandProfiles)
