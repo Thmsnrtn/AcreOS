@@ -60,6 +60,7 @@ import { MembershipGivingPanel } from "@/components/settings/MembershipGivingPan
 // modules under pages/settings/, mirroring the existing 8 routed subpages.
 import { StripeConnectSettings, SeatManagement } from "@/pages/settings/billing-sections";
 import { AvailablePlansError } from "@/components/billing/AvailablePlansError";
+import { CheckoutReturnHandler } from "@/components/billing/CheckoutReturnHandler";
 import { ApiKeyManager, ActivityLogPanel } from "@/pages/settings/developer-sections";
 import { ReferralSettings, PrivacyDataSettings } from "@/pages/settings/account-sections";
 import { GoalsSettings } from "@/pages/settings/organization-sections";
@@ -432,6 +433,9 @@ export default function Settings() {
 
   return (
     <PageShell label="Settings" maxWidth="4xl">
+      {/* Stripe Checkout returns land here (/settings?subscription=… or
+          ?credits=…); this closes the loop with a toast + fresh data. */}
+      <CheckoutReturnHandler />
           {/* Mobile back-to-app affordance. PageTopbar's breadcrumb is hidden
               on mobile, so without this an entrant from the MobileShell brand
               tap has no obvious return path other than the bottom nav. The
@@ -1324,13 +1328,11 @@ export default function Settings() {
                     {products
                       .filter(p => p.active && p.prices.length > 0)
                       // Only the 3 base tier cards (Starter / Pro / Scale).
-                      // Seat add-ons + vertical packs come from the same
-                      // /api/stripe/products endpoint but are managed via
-                      // the seats UI + per-vertical pack picker (Phase 5
-                      // §5). Tagging convention: metadata.tier is
+                      // Seat add-ons come from the same /api/stripe/products
+                      // endpoint but are managed via the seats UI.
+                      // Tagging convention: metadata.tier is
                       // starter|pro|scale on base tiers; seat-addons carry
-                      // metadata.type=seat_addon; packs carry
-                      // metadata.type=vertical_pack.
+                      // metadata.type=seat_addon.
                       .filter(p => {
                         const tier = p.metadata?.tier;
                         const type = p.metadata?.type;
@@ -1343,6 +1345,13 @@ export default function Settings() {
                       .map((product) => {
                         const price = product.prices.find(p => p.active && p.recurring);
                         const isCurrent = isCurrentTier(product.name);
+                        // Label the CTA honestly: moving to a cheaper tier
+                        // is a switch, not an upgrade.
+                        const tierOrder: Record<string, number> = { starter: 0, pro: 1, scale: 2 };
+                        const targetOrder = tierOrder[product.metadata?.tier as string] ?? 99;
+                        const currentTier = currentTierKey(organization?.subscriptionTier);
+                        const currentOrder = tierOrder[currentTier] ?? -1;
+                        const isDowngrade = currentOrder >= 0 && targetOrder < currentOrder;
                         
                         return (
                           <Card 
@@ -1394,7 +1403,7 @@ export default function Settings() {
                                   {checkoutMutation.isPending ? (
                                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                                   ) : null}
-                                  Upgrade to {product.name}
+                                  {isDowngrade ? "Switch to" : "Upgrade to"} {product.name}
                                 </Button>
                               )}
                               

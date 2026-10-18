@@ -130,19 +130,27 @@ export type VerticalPackKey =
   | "subdivision"
   | "wholesale";
 
+/**
+ * A vertical profile — a tailored AcreOS experience for one investor
+ * vertical (vocabulary, workflows, tooling).
+ *
+ * Founder decision 2026-10-18: verticals are INCLUDED profiles, not paid
+ * add-ons. A customer's subscription price is determined ONLY by tier
+ * (Starter/Pro/Scale). Verticals are selectable, never purchasable — there
+ * is no price, no Stripe product, and no checkout for a vertical. The
+ * org_vertical_packs table tracks which verticals an org has selected.
+ */
 export interface VerticalPack {
   key: VerticalPackKey;
   displayName: string;
-  priceMonthlyCents: number;
-  priceYearlyCents: number;
-  stripePriceIdMonthly?: string;
-  stripePriceIdYearly?: string;
   /** Description shown on the pricing page tile. */
   tagline: string;
+  /** Feature bullets describing what the vertical profile tailors. */
+  features: string[];
   /**
-   * The vertical this pack unlocks. A pack is only purchasable when its
-   * vertical is production-ready (core|beta); a `roadmap` vertical is on the
-   * waitlist and must NOT be sold — see isVerticalPackPurchasable().
+   * The vertical this profile tailors. A vertical is selectable when it is
+   * production-ready (core|beta); a `roadmap` vertical is on the waitlist —
+   * see isVerticalSelectable().
    */
   businessTypeId: BusinessTypeId;
 }
@@ -150,91 +158,81 @@ export interface VerticalPack {
 export const VERTICAL_PACKS: Record<VerticalPackKey, VerticalPack> = {
   note_investor: {
     key: "note_investor",
-    displayName: "Note Investor pack",
-    priceMonthlyCents: 10000, // $100/mo
-    priceYearlyCents: 100000, // $1,000/yr (~17% off)
-    stripePriceIdMonthly: envPriceId("STRIPE_PRICE_PACK_NI_MONTHLY"),
-    stripePriceIdYearly: envPriceId("STRIPE_PRICE_PACK_NI_YEARLY"),
+    displayName: "Note Investor",
     tagline: "Amortization, payment ledger, 1098/1099-INT, portfolio dashboard",
+    features: [
+      "Amortization schedules",
+      "Payment ledger",
+      "1098 / 1099-INT reporting",
+      "Portfolio dashboard",
+    ],
     businessTypeId: "note_investor",
   },
   buy_and_hold: {
     key: "buy_and_hold",
-    displayName: "Property management pack",
-    priceMonthlyCents: 20000, // $200/mo
-    priceYearlyCents: 200000,
-    stripePriceIdMonthly: envPriceId("STRIPE_PRICE_PACK_BH_MONTHLY"),
-    stripePriceIdYearly: envPriceId("STRIPE_PRICE_PACK_BH_YEARLY"),
+    displayName: "Property Management",
     tagline: "Tenant screening, rent ledger, maintenance tickets, late-fee engine",
+    features: [
+      "Tenant screening",
+      "Rent ledger",
+      "Maintenance tickets",
+      "Late-fee engine",
+    ],
     businessTypeId: "buy_and_hold",
   },
   fix_and_flipper: {
     key: "fix_and_flipper",
-    displayName: "Fix-and-flip pack",
-    priceMonthlyCents: 15000, // $150/mo
-    priceYearlyCents: 150000,
-    stripePriceIdMonthly: envPriceId("STRIPE_PRICE_PACK_FF_MONTHLY"),
-    stripePriceIdYearly: envPriceId("STRIPE_PRICE_PACK_FF_YEARLY"),
+    displayName: "Fix-and-Flip",
     tagline: "ARV, rehab budgets, contractor 1099s, construction draws",
+    features: [
+      "ARV analysis",
+      "Rehab budgets",
+      "Contractor 1099s",
+      "Construction draws",
+    ],
     businessTypeId: "fix_and_flip",
   },
   subdivision: {
     key: "subdivision",
-    displayName: "Subdivision pack",
-    priceMonthlyCents: 15000,
-    priceYearlyCents: 150000,
-    stripePriceIdMonthly: envPriceId("STRIPE_PRICE_PACK_SD_MONTHLY"),
-    stripePriceIdYearly: envPriceId("STRIPE_PRICE_PACK_SD_YEARLY"),
+    displayName: "Subdivision",
     tagline: "Lot subdivision, CC&R templates, permit tracker",
+    features: [
+      "Lot subdivision planning",
+      "CC&R templates",
+      "Permit tracker",
+    ],
     businessTypeId: "subdivider",
   },
   wholesale: {
     key: "wholesale",
-    displayName: "Wholesale pack",
-    priceMonthlyCents: 10000,
-    priceYearlyCents: 100000,
-    stripePriceIdMonthly: envPriceId("STRIPE_PRICE_PACK_W_MONTHLY"),
-    stripePriceIdYearly: envPriceId("STRIPE_PRICE_PACK_W_YEARLY"),
+    displayName: "Wholesale",
     tagline: "Assignment-of-contract, buyer-match, double-close, state-rule gate",
+    features: [
+      "Assignment-of-contract",
+      "Buyer matching",
+      "Double-close support",
+      "State-rule gate",
+    ],
     businessTypeId: "residential_wholesaler",
   },
 };
 
 /**
- * Whether a vertical pack may be sold. A pack is purchasable only when its
- * underlying vertical is production-ready (core|beta). A `roadmap` vertical
- * is on the waitlist — e.g. fix_and_flip was demoted beta→roadmap by founder
- * decision 2026-07-11 — and selling access to it would charge a customer for
- * a frozen product. The checkout route and the pricing UI both gate on this.
+ * Whether a vertical profile may be selected. A vertical is selectable only
+ * when it is production-ready (core|beta). A `roadmap` vertical is on the
+ * waitlist — e.g. fix_and_flip was demoted beta→roadmap by founder decision
+ * 2026-07-11 — and must not be presented as available. Selection is free and
+ * included in every tier; this gates availability, never payment.
  */
-export function isVerticalPackPurchasable(packKey: VerticalPackKey): boolean {
+export function isVerticalSelectable(packKey: VerticalPackKey): boolean {
   const pack = VERTICAL_PACKS[packKey];
   if (!pack) return false;
   return isProductionReady(pack.businessTypeId);
 }
 
-/** The subset of packs that are currently purchasable (vertical is core|beta). */
-export function purchasableVerticalPacks(): VerticalPack[] {
+/** The subset of verticals currently selectable (vertical is core|beta). */
+export function selectableVerticals(): VerticalPack[] {
   return Object.values(VERTICAL_PACKS).filter((p) => isProductionReady(p.businessTypeId));
-}
-
-export function packPriceCents(packKey: VerticalPackKey, interval: BillingInterval): number {
-  const pack = VERTICAL_PACKS[packKey];
-  if (!pack) return 0;
-  return interval === "yearly" ? pack.priceYearlyCents : pack.priceMonthlyCents;
-}
-
-export function totalSubscriptionCents(opts: {
-  tier: Tier;
-  interval: BillingInterval;
-  activePacks: VerticalPackKey[];
-}): { tierCents: number; packCents: number; totalCents: number } {
-  const tierCents = tierPriceCents(opts.tier, opts.interval);
-  const packCents = (opts.activePacks ?? []).reduce(
-    (s, k) => s + packPriceCents(k, opts.interval),
-    0,
-  );
-  return { tierCents, packCents, totalCents: tierCents + packCents };
 }
 
 /** Convenience: returns the price in dollars (float) for display contexts. */
