@@ -1349,7 +1349,8 @@ export default function Settings() {
                         // is a switch, not an upgrade.
                         const tierOrder: Record<string, number> = { starter: 0, pro: 1, scale: 2 };
                         const targetOrder = tierOrder[product.metadata?.tier as string] ?? 99;
-                        const currentOrder = tierOrder[organization?.subscriptionTier?.toLowerCase() ?? ""] ?? -1;
+                        const currentTier = currentTierKey(organization?.subscriptionTier);
+                        const currentOrder = tierOrder[currentTier] ?? -1;
                         const isDowngrade = currentOrder >= 0 && targetOrder < currentOrder;
                         
                         return (
