@@ -174,6 +174,18 @@ export const SETTINGS_CATALOG: SeedSettingArgs[] = [
     validRange: { type: "number", min: 0, max: 10000 },
   })),
 
+  // ─── House mail provider cost — founder decision 2026-10-17 B ────────
+  // AcreOS's Lob cost per house piece (cents). The house charge is checked
+  // against it (shared/billing/house-mail-pricing.ts) and raised to the
+  // self-funding minimum when it does not cover it.
+  ...["postcard_4x6", "postcard_6x9", "postcard_6x11", "letter_bw", "letter_color"].map((key): SeedSettingArgs => ({
+    key: `mail.house.cost_cents.${key}`,
+    category: "cost" as const,
+    description: `AcreOS's Lob cost for one house-mail ${key} piece, in cents. The credit charge is raised automatically if it stops covering this cost.`,
+    defaultValue: 0, // 0 = use the compiled table in shared/billing/house-mail-pricing.ts
+    validRange: { type: "number", min: 0, max: 10000 },
+  })),
+
   // ─── Revenue-trigger ladder ───────────────────────────────────────────
   {
     key: "revenue.triggers",

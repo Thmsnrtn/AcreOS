@@ -140,6 +140,7 @@ export const lobAdapter: MailProvider = {
               // DEFECT-0105: the durable piece identity runs the letter
               // through the outward-action guard, so a retry replays it.
               idempotencyKey: piece.pieceRef,
+              housePrepaid: shipment.housePrepaid === true,
             });
             lobId = result.lobId;
           } catch (err) {
@@ -163,6 +164,7 @@ export const lobAdapter: MailProvider = {
             frontHtml: piece.vars?.frontHtml ?? piece.templateId ?? "",
             backHtml: piece.vars?.backHtml ?? "",
             size: size as "4x6" | "6x9",
+            housePrepaid: shipment.housePrepaid === true,
           });
           pieces.push({ providerPieceId: result.lobId, recipientRef: `${shipment.customerId}` });
           totalCostCents += LOB_COSTS[piece.pieceType];
@@ -171,7 +173,14 @@ export const lobAdapter: MailProvider = {
         // DEFECT-0105: a failure after earlier pieces were accepted must say
         // which ones — they are printed and must not be re-sent or refunded.
         if (pieces.length > 0) {
-          throw new PartialMailSendError("lob", pieces, shipment.pieces.length, err instanceof Error ? err.message : String(err));
+          const { providerDidNotBill } = await import("../mailLane");
+          throw new PartialMailSendError(
+            "lob",
+            pieces,
+            shipment.pieces.length,
+            err instanceof Error ? err.message : String(err),
+            providerDidNotBill(err),
+          );
         }
         throw err;
       }

@@ -192,13 +192,25 @@ describe("a STOP during the hold stops the piece", () => {
   it("one suppressed, then the provider refuses everything: the two refunds add up to the debit — not more", async () => {
     S.optedOut.add(11);
     S.route = async () => {
-      throw new Error("every viable provider failed");
+      // Every provider REJECTED the first piece (the router marks that verdict).
+      throw Object.assign(new Error("every viable provider failed"), { providerNotBilled: true });
     };
     await flushDueMailShipments();
     const total = S.refunds.reduce((s, r) => s + r.amountCents, 0);
     expect(total).toBe(300);
     expect(S.refunds).toContainEqual({ originalEventId: "mail:1", refundKey: "mail:1:suppressed:refund", amountCents: 100 });
     expect(S.refunds).toContainEqual({ originalEventId: "mail:1", refundKey: "mail:1:refund", amountCents: 200 });
+  });
+
+  it("one suppressed, then an UNKNOWN provider outcome: the first piece's share is kept (it may be printed)", async () => {
+    S.optedOut.add(11);
+    S.route = async () => {
+      throw Object.assign(new Error("every viable provider failed"), { providerNotBilled: false });
+    };
+    await flushDueMailShipments();
+    const total = S.refunds.reduce((s, r) => s + r.amountCents, 0);
+    expect(total).toBe(200);
+    expect(S.refunds).toContainEqual({ originalEventId: "mail:1", refundKey: "mail:1:refund", amountCents: 100 });
   });
 
   it("no STOP: all three go out, nothing refunded", async () => {

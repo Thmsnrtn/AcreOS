@@ -116,7 +116,8 @@ beforeEach(() => {
 describe("mail the provider accepted is never failed or refunded (DEFECT-0105)", () => {
   it("provider accepts 2 of 3 then fails: 2 sent with ids, 1 failed, only 1/3 of the debit refunded", async () => {
     S.route = async () => {
-      throw new PartialMailSendError("lob", [{ providerPieceId: "ltr_1", recipientRef: "5" }, { providerPieceId: "ltr_2", recipientRef: "5" }], 3, "rate limited");
+      // The third piece was REJECTED (429): certainly not billed.
+      throw new PartialMailSendError("lob", [{ providerPieceId: "ltr_1", recipientRef: "5" }, { providerPieceId: "ltr_2", recipientRef: "5" }], 3, "rate limited", true);
     };
     const summary = await flushDueMailShipments();
     expect(S.pieces.map((p) => p.status)).toEqual(["sent", "sent", "failed"]);
@@ -125,6 +126,15 @@ describe("mail the provider accepted is never failed or refunded (DEFECT-0105)",
     expect(S.ship.status).toBe("sent");
     expect(String(S.ship.cancellationReason)).toMatch(/2 of 3/);
     expect(summary.sent).toBe(1);
+  });
+
+  it("…but a failed piece whose outcome is UNKNOWN (a 5xx or timeout) keeps its charge — Lob may have billed it (decision 2026-10-17 B)", async () => {
+    S.route = async () => {
+      throw new PartialMailSendError("lob", [{ providerPieceId: "ltr_1", recipientRef: "5" }, { providerPieceId: "ltr_2", recipientRef: "5" }], 3, "lob 503", false);
+    };
+    await flushDueMailShipments();
+    expect(S.pieces.map((p) => p.status)).toEqual(["sent", "sent", "failed"]);
+    expect(S.refunds).toEqual([]);
   });
 
   it("provider accepts everything, then the write-back fails: NOT marked failed, NOT refunded", async () => {

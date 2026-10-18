@@ -402,7 +402,7 @@ export function registerCommunicationRoutes(app: Express): void {
         city: identity.city,
         state: identity.state,
         zip: identity.zipCode,
-      });
+      }, org.id);
       
       let updated;
       if (verificationResult.isValid) {

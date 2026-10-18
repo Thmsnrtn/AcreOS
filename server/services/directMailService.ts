@@ -1,12 +1,26 @@
 import Lob from 'lob';
 import type { MailSenderIdentity } from '@shared/schema';
-import { creditService, usageMeteringService } from './credits';
 import { storage } from '../storage';
 import { readIntegrationCredentials } from './integrationCredentials';
 import { logger } from "../utils/logger";
 import { resolvePlatformLobKey } from './mail/liveSendInterlock';
 import { clock } from "../utils/clock";
 import { assertOwnerContactAllowed } from "./trust/ownerSuppression";
+import {
+  resolveMailLane,
+  assertSendableLane,
+  chargeHouseMailPiece,
+  refundUnbilledHouseMail,
+  withBillingVerdict,
+  houseMailProviderCostCents,
+  postcardSpec,
+  letterSpec,
+  type HouseMailCharge,
+  type HouseMailSpec,
+  type SendableMailLane,
+} from './mail/mailLane';
+import { houseMailSpecKey } from '@shared/billing/house-mail-pricing';
+import { randomUUID } from 'node:crypto';
 
 interface RecipientAddress {
   line1: string;
@@ -24,7 +38,13 @@ interface SendPostcardOptions {
   frontHtml: string;
   backHtml: string;
   size?: '4x6' | '6x9' | '6x11';
-  skipCredits?: boolean;
+  /**
+   * The caller already charged this piece through its own ledger, so a house
+   * piece is not charged again here. Only the outreach mail queue (via the
+   * Lob router adapter) and the campaign send route may pass it —
+   * tests/unit/physicalMailLanePopulation.test.ts holds that list.
+   */
+  housePrepaid?: boolean;
   // Lob requires use_type ("marketing" | "operational") unless an account
   // default is configured — omitting it makes every send fail. Default to
   // marketing (land-owner outreach is promotional); override for transactional.
@@ -39,7 +59,13 @@ interface SendLetterOptions {
   htmlContent: string;
   color?: boolean;
   doubleSided?: boolean;
-  skipCredits?: boolean;
+  /**
+   * The caller already charged this piece through its own ledger, so a house
+   * piece is not charged again here. Only the outreach mail queue (via the
+   * Lob router adapter) and the campaign send route may pass it —
+   * tests/unit/physicalMailLanePopulation.test.ts holds that list.
+   */
+  housePrepaid?: boolean;
   useType?: 'marketing' | 'operational';
   /**
    * Stable key for THIS logical letter, derived from durable domain identity
@@ -106,17 +132,14 @@ interface LobClientResult {
 
 /**
  * THE single Lob credential authority (founder-approved consolidation,
- * 2026-08-16). Resolution order: BYOK vault → legacy organization_integrations
- * row → platform key under the live-send interlock. Every Lob send path must
- * resolve its client HERE — mailProvider.ts delegates to this function rather
- * than running its own lookup, because two resolution orders is how a
- * BYOK-vault org's letters ended up on AcreOS's own Lob account, against the
- * BYO-rails ruling (2026-07-29). tests/unit/lobCredentialAuthority.test.ts
- * pins both the order and the absence of a second resolver.
+ * 2026-08-16; lanes per founder decision 2026-10-17).
+ *
+ * The ORG's own Lob key: BYOK vault first, then the legacy
+ * organization_integrations row. Null when the org has none — this function
+ * never falls back to AcreOS's key. tests/unit/lobCredentialAuthority.test.ts
+ * pins the order and the absence of a second resolver.
  */
-export async function getLobClient(orgId: number): Promise<LobClientResult> {
-  // Universal BYOK (2026-05-22) — preferred path. Falls back to the
-  // legacy organization_integrations row, then platform env.
+export async function getOwnLobClient(orgId: number): Promise<LobClientResult | null> {
   try {
     const { getByokCredential } = await import('./byok/key-vault');
     const byokKey = await getByokCredential({ organizationId: orgId, channel: 'lob' });
@@ -153,12 +176,36 @@ export async function getLobClient(orgId: number): Promise<LobClientResult> {
   } catch (error) {
     logger.error(`[DirectMailService] Failed to get org Lob credentials for org ${orgId}`, error);
   }
-  
-  // Platform key under the live-send interlock — test env unless armed.
-  const { apiKey, isTestKey } = resolvePlatformLobKey();
 
+  return null;
+}
+
+/**
+ * The Lob client for a resolved mail lane (server/services/mail/mailLane.ts).
+ *
+ *   own_account → the org's own key (getOwnLobClient). The platform key is
+ *                 never read on this lane.
+ *   house       → AcreOS's own Lob account under the live-send interlock —
+ *                 reachable ONLY with a house lane, which resolveMailLane
+ *                 grants only with a verified sender identity, and whose
+ *                 per-piece credit charge the send site takes.
+ */
+export async function getLobClientForLane(orgId: number, lane: SendableMailLane): Promise<LobClientResult> {
+  if (lane.lane === 'own_account') {
+    const own = await getOwnLobClient(orgId);
+    if (!own) {
+      const { ProviderNotContactedError } = await import('./actions/outwardAction');
+      throw new ProviderNotContactedError(
+        'Your own Lob key could not be read, so nothing was mailed. Reconnect it in Settings → Your provider keys.',
+      );
+    }
+    return own;
+  }
+
+  // House lane: platform key under the live-send interlock — test env unless armed.
+  const { apiKey, isTestKey } = resolvePlatformLobKey();
   logger.info(
-    `[DirectMailService] Using platform Lob credentials for org ${orgId} (lobEnv: ${isTestKey ? "test" : "live"})`,
+    `[DirectMailService] AcreOS house mail for org ${orgId} (lobEnv: ${isTestKey ? "test" : "live"})`,
   );
   return {
     client: new Lob({ apiKey }),
@@ -200,41 +247,57 @@ function parseExpectedDeliveryDate(dateString: string): Date {
   return isNaN(parsed.getTime()) ? clock.now() : parsed;
 }
 
-async function checkCreditsAndRecord(organizationId: number, metadata?: Record<string, any>): Promise<{ hasCredits: boolean; costCents: number; errorMessage?: string }> {
-  const costCents = await usageMeteringService.calculateCost('direct_mail', 1);
-  // Real printed mail: the org's own credit only. The trial allowance never
-  // funds a piece that is physically posted.
-  const hasCredits = await creditService.hasEnoughOwnCredits(organizationId, costCents);
-  
-  if (!hasCredits) {
-    const balance = await creditService.getBalance(organizationId);
-    return {
-      hasCredits: false,
-      costCents,
-      errorMessage: `Insufficient credits. Required: $${(costCents / 100).toFixed(2)}, Balance: $${(balance / 100).toFixed(2)}`,
-    };
+/**
+ * Resolve the lane for one piece, the Lob client for that lane, and — on the
+ * house lane — take the piece's credit charge. Everything here happens BEFORE
+ * Lob is contacted, so every refusal is a ProviderNotContactedError: the
+ * outward-action claim records `failed`, and a retry after the customer fixes
+ * the cause (verifies the address, buys credits) works under the same key.
+ *
+ * `housePrepaid`: the caller already charged this piece through its own
+ * ledger (the outreach mail queue debits the pool at queue time; the campaign
+ * route debits its order). tests/unit/physicalMailLanePopulation.test.ts
+ * restricts which callers may say so.
+ */
+async function prepareLobSend(args: {
+  organizationId: number;
+  spec: HouseMailSpec;
+  senderIdentity: MailSenderIdentity;
+  housePrepaid: boolean;
+  idempotencyKey?: string;
+  recipientName: string;
+}): Promise<{ lane: SendableMailLane; client: InstanceType<typeof Lob>; source: 'organization' | 'platform'; isTestKey: boolean; charge: HouseMailCharge | null }> {
+  const lane = await assertSendableLane(
+    await resolveMailLane(args.organizationId, args.spec, { via: 'lob', senderIdentity: args.senderIdentity }),
+  );
+  const { client, source, isTestKey } = await getLobClientForLane(args.organizationId, lane);
+  let charge: HouseMailCharge | null = null;
+  if (lane.lane === 'house' && !args.housePrepaid) {
+    // Pre-paid from PURCHASED credits before Lob is contacted. The key is per
+    // attempt: a letter with an idempotencyKey runs inside the outward-action
+    // boundary (at most one attempt reaches Lob), and an attempt Lob rejected
+    // was refunded — replaying its key would mail a piece no one paid for.
+    charge = await chargeHouseMailPiece({
+      organizationId: args.organizationId,
+      lane,
+      externalEventId: `mail:house:${args.organizationId}:${lane.price.key}:${args.idempotencyKey ?? 'adhoc'}:${randomUUID()}`,
+      notes: `AcreOS mail: ${lane.price.label} to ${args.recipientName}`,
+    });
   }
-  
-  return { hasCredits: true, costCents };
+  if (lane.lane === 'own_account') {
+    logger.info(`[DirectMailService] Own Lob account for org ${args.organizationId} — no AcreOS credits`);
+  }
+  return { lane, client, source, isTestKey, charge };
 }
 
-async function recordUsage(organizationId: number, metadata: Record<string, any>): Promise<void> {
-  await usageMeteringService.recordUsage(organizationId, 'direct_mail', 1, metadata);
-}
-
-// Pillar 1.6 — Lob piece-cost table (cents). Numbers approximate Lob's
-// public 2026 pricing; adjust if Lob repriced. Read once per call from
-// env overrides so a founder can re-tune without redeploying.
-function lobPieceCostCents(type: 'postcard' | 'letter', size?: string, color?: boolean): number {
-  if (type === 'postcard') {
-    if (size === '6x11') return Number(process.env.LOB_POSTCARD_6X11_CENTS ?? 110);
-    if (size === '6x9') return Number(process.env.LOB_POSTCARD_6X9_CENTS ?? 85);
-    return Number(process.env.LOB_POSTCARD_4X6_CENTS ?? 65);
-  }
-  // letter — color flips the rate up a notch
-  return color
-    ? Number(process.env.LOB_LETTER_COLOR_CENTS ?? 120)
-    : Number(process.env.LOB_LETTER_BW_CENTS ?? 85);
+// Pillar 1.6 — what a Lob piece cost AcreOS, for the opex ledger. Read from
+// the ONE cost table (shared/billing/house-mail-pricing.ts via
+// mailLane.houseMailProviderCostCents: founder setting → legacy env knob →
+// compiled), the same figure the house charge is checked against. A spec the
+// table does not price posts no figure rather than a guessed one.
+async function lobPieceCostCents(spec: HouseMailSpec): Promise<number> {
+  const key = houseMailSpecKey(spec);
+  return key ? houseMailProviderCostCents(key) : 0;
 }
 
 async function postLobCostToLedger(
@@ -304,29 +367,16 @@ export async function sendPostcard(options: SendPostcardOptions): Promise<SendRe
     }
   }
 
-  const { client, source, isTestKey } = await getLobClient(organizationId);
-  
-  const skipCredits = options.skipCredits === true || source === 'organization';
-  
-  if (!skipCredits) {
-    const creditCheck = await checkCreditsAndRecord(organizationId, { type: 'postcard', recipient: recipientName });
-    if (!creditCheck.hasCredits) {
-      // PROVABLY not sent: checkCreditsAndRecord only READS the balance (it
-      // deducts nothing despite its name), and Lob has not been called. Typing
-      // this as ProviderNotContactedError records the claim `failed` rather than
-      // `ambiguous`, so topping up the balance and retrying under the SAME
-      // durable key works. An unclassified throw here would poison the key
-      // permanently and tell the operator to reconcile against a provider that
-      // never heard of the request.
-      const { ProviderNotContactedError } = await import('./actions/outwardAction');
-      throw new ProviderNotContactedError(creditCheck.errorMessage!);
-    }
-  }
-  
-  if (source === 'organization') {
-    logger.info(`[DirectMailService] Skipping credit usage for org ${organizationId} - using org credentials`);
-  }
-  
+  const { client, source, isTestKey, charge } = await prepareLobSend({
+    organizationId,
+    spec: postcardSpec(size),
+    senderIdentity,
+    housePrepaid: options.housePrepaid === true,
+    idempotencyKey: undefined,
+    recipientName,
+  });
+
+  let accepted = false;
   try {
     const result = await client.postcards.create({
       to: formatRecipientAddress(recipientName, recipientAddress),
@@ -337,14 +387,11 @@ export async function sendPostcard(options: SendPostcardOptions): Promise<SendRe
       use_type: useType,
     });
     
+    accepted = true;
     logger.info(`[DirectMailService] Postcard sent successfully: ${result.id} (source: ${source})`);
 
-    if (!skipCredits) {
-      await recordUsage(organizationId, { type: 'postcard', lobId: result.id, recipient: recipientName });
-    }
-
     // Pillar 1.6 — debit opex_available by Lob piece cost.
-    await postLobCostToLedger(organizationId, result.id, lobPieceCostCents('postcard', size), 'postcard');
+    await postLobCostToLedger(organizationId, result.id, await lobPieceCostCents(postcardSpec(size)), 'postcard');
 
     return {
       lobId: result.id,
@@ -354,8 +401,11 @@ export async function sendPostcard(options: SendPostcardOptions): Promise<SendRe
       testMode: isTestKey,
     };
   } catch (error: any) {
+    // Refunded only when Lob certainly did not bill the piece (it rejected
+    // it); a timeout or 5xx keeps the charge — Lob may have printed it.
+    if (!accepted) await refundUnbilledHouseMail(organizationId, charge, error, 'Postcard was rejected by Lob');
     logger.error('[DirectMailService] Postcard send failed', error);
-    throw new Error(`Failed to send postcard: ${error.message || 'Unknown error'}`);
+    throw withBillingVerdict(new Error(`Failed to send postcard: ${error.message || 'Unknown error'}`), accepted ? null : error);
   }
 }
 
@@ -463,29 +513,16 @@ async function performLetterSend(options: SendLetterOptions): Promise<SendResult
     }
   }
 
-  const { client, source, isTestKey } = await getLobClient(organizationId);
-  
-  const skipCredits = options.skipCredits === true || source === 'organization';
-  
-  if (!skipCredits) {
-    const creditCheck = await checkCreditsAndRecord(organizationId, { type: 'letter', recipient: recipientName });
-    if (!creditCheck.hasCredits) {
-      // PROVABLY not sent: checkCreditsAndRecord only READS the balance (it
-      // deducts nothing despite its name), and Lob has not been called. Typing
-      // this as ProviderNotContactedError records the claim `failed` rather than
-      // `ambiguous`, so topping up the balance and retrying under the SAME
-      // durable key works. An unclassified throw here would poison the key
-      // permanently and tell the operator to reconcile against a provider that
-      // never heard of the request.
-      const { ProviderNotContactedError } = await import('./actions/outwardAction');
-      throw new ProviderNotContactedError(creditCheck.errorMessage!);
-    }
-  }
-  
-  if (source === 'organization') {
-    logger.info(`[DirectMailService] Skipping credit usage for org ${organizationId} - using org credentials`);
-  }
-  
+  const { client, source, isTestKey, charge } = await prepareLobSend({
+    organizationId,
+    spec: letterSpec({ color }),
+    senderIdentity,
+    housePrepaid: options.housePrepaid === true,
+    idempotencyKey: options.idempotencyKey,
+    recipientName,
+  });
+
+  let accepted = false;
   try {
     const result = await client.letters.create({
       to: formatRecipientAddress(recipientName, recipientAddress),
@@ -496,17 +533,14 @@ async function performLetterSend(options: SendLetterOptions): Promise<SendResult
       use_type: useType,
     });
     
+    accepted = true;
     logger.info(`[DirectMailService] Letter sent successfully: ${result.id} (source: ${source})`);
-
-    if (!skipCredits) {
-      await recordUsage(organizationId, { type: 'letter', lobId: result.id, recipient: recipientName });
-    }
 
     // Pillar 1.6 — debit opex_available by Lob piece cost.
     await postLobCostToLedger(
       organizationId,
       result.id,
-      lobPieceCostCents('letter', undefined, color),
+      await lobPieceCostCents(letterSpec({ color })),
       'letter',
     );
 
@@ -518,8 +552,9 @@ async function performLetterSend(options: SendLetterOptions): Promise<SendResult
       testMode: isTestKey,
     };
   } catch (error: any) {
+    if (!accepted) await refundUnbilledHouseMail(organizationId, charge, error, 'Letter was rejected by Lob');
     logger.error('[DirectMailService] Letter send failed', error);
-    throw new Error(`Failed to send letter: ${error.message || 'Unknown error'}`);
+    throw withBillingVerdict(new Error(`Failed to send letter: ${error.message || 'Unknown error'}`), accepted ? null : error);
   }
 }
 
@@ -541,11 +576,18 @@ export function isAddressMinimallyValid(address: { line1?: string; city?: string
   return true;
 }
 
-export async function verifyAddress(address: RecipientAddress): Promise<VerifyAddressResult> {
-  logger.info(`[DirectMailService] Verifying address: ${address.line1}, ${address.city}, ${address.state} ${address.zip}`);
+/**
+ * Lob address verification, on the ORG's own Lob account when it has one —
+ * a BYO org's verifications are its own Lob traffic, never AcreOS's. Only an
+ * org with no own key verifies on AcreOS's account (the house lane, whose
+ * pieces require a verified return address in the first place).
+ */
+export async function verifyAddress(address: RecipientAddress, organizationId: number): Promise<VerifyAddressResult> {
+  logger.info(`[DirectMailService] Verifying address for org ${organizationId}: ${address.line1}, ${address.city}, ${address.state} ${address.zip}`);
   
   try {
-    const client = getPlatformLobClient() as any;
+    const own = await getOwnLobClient(organizationId);
+    const client = (own ? own.client : getPlatformLobClient()) as any;
     
     const result = await client.usVerifications.verify({
       primary_line: address.line1,

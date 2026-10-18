@@ -51,6 +51,8 @@ const S = vi.hoisted(() => ({
   fundedByPurchased: false,
   /** Post-commit auto top-ups fired (audit of 1694a0b). */
   topUps: 0,
+  /** Draws on the monthly credit pool — a house shipment must make none. */
+  poolDebits: 0,
 }));
 
 vi.mock("../../server/utils/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
@@ -134,9 +136,38 @@ vi.mock("../../server/db", () => {
   };
   return { db: { select, transaction } };
 });
+// The physical-mail lane (founder decisions 2026-10-17) is pinned by
+// houseMailLane.test.ts; here it resolves to the house lane, whose pieces are
+// pre-paid from PURCHASED credits by chargeHouseMail — faked with the same
+// ledger semantics the pool fake below had (a key already written replays at
+// 0), so this file keeps testing what it was written for. A house shipment
+// never reaches poolDebit (S.poolDebits stays empty).
+vi.mock("../../server/services/mail/mailLane", () => ({
+  resolveMailLane: async (_org: number, spec: { kind: string }) => ({
+    lane: "house",
+    provider: "lob",
+    spec,
+    price: { key: spec.kind === "letter" ? "letter_bw" : "postcard_4x6", label: "Letter" },
+    creditsPerPiece: spec.kind === "letter" ? 120 : 75,
+    senderIdentity: { id: 1, status: "verified" },
+  }),
+  chargeHouseMail: async (a: { externalEventId: string; tx?: unknown }) => {
+    S.debitKeys.push(a.externalEventId);
+    S.debitInTx.push(a.tx !== undefined && a.tx !== null);
+    if (S.debitDelayMs) await new Promise((r) => setTimeout(r, S.debitDelayMs));
+    const replay = S.ledgerKeys.has(a.externalEventId);
+    S.ledgerKeys.add(a.externalEventId);
+    return { externalEventId: a.externalEventId, debitedCents: replay ? 0 : 300, units: 1, replay };
+  },
+  isHouseMailShort: () => false,
+  letterSpec: () => ({ kind: "letter", color: false, pages: 1 }),
+  postcardSpec: (size: string) => ({ kind: "postcard", size }),
+  summarizeMailLane: async () => ({}),
+}));
 vi.mock("../../server/services/mail/router", () => ({ mailRouter: { quote: async () => [] } }));
 vi.mock("../../server/services/creditPool", () => ({
   poolDebit: async (a: { externalEventId: string; tx?: unknown }) => {
+    S.poolDebits++;
     S.debitKeys.push(a.externalEventId);
     S.debitInTx.push(a.tx !== undefined && a.tx !== null);
     if (S.debitDelayMs) await new Promise((r) => setTimeout(r, S.debitDelayMs));
@@ -218,6 +249,7 @@ beforeEach(() => {
   S.debitDelayMs = 0;
   S.fundedByPurchased = false;
   S.topUps = 0;
+  S.poolDebits = 0;
 });
 
 describe("the audience is exactly what the investor chose — or refused", () => {
@@ -360,6 +392,7 @@ describe("one confirmed set, one operation", () => {
     // and no crash between two commits can strand it.
     expect(S.debitInTx).toEqual([true]);
     expect(S.refunds).toHaveLength(0);
+    expect(S.poolDebits).toBe(0); // the house charge, never the pool
     const second = await send();
     expect(second.status).toBe(201);
     // A fresh debit for the attempt that saved — the refunded one is not reused.

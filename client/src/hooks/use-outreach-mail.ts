@@ -547,3 +547,35 @@ export function useCreditExamples() {
     },
   });
 }
+
+// ── Physical-mail lane (founder decision 2026-10-17) ────────────────────────
+
+/** Mirrors server/services/mail/mailLane.ts → MailLaneSummary. */
+export interface MailLaneSummary {
+  lob: {
+    lane: "own_account" | "house" | "refused";
+    reason?: "no_sender_identity" | "sender_identity_unverified" | "house_mail_unavailable" | "unknown_spec";
+    message?: string;
+  };
+  ownKeys: { lob: boolean; postgrid: boolean };
+  /** Credits per house piece, cheapest spec of each kind — from the canonical house-mail table server-side. */
+  houseRates: { postcard: number; letter: number };
+  /** Every spec AcreOS mail prints, with its credits per piece. */
+  housePrices: Array<{ key: string; label: string; kind: "postcard" | "letter"; creditsPerPiece: number }>;
+  /** Purchased credits house mail may spend (granted credits excluded). */
+  purchasedCredits: number;
+  /** The self-funding rule every house price satisfies. */
+  pricingRule: { cardFeeAllowance: number; marginFloor: number };
+  houseConfigured: boolean;
+  senderIdentity: { id: number; name: string; status: string } | null;
+}
+
+export function useMailLane() {
+  return useQuery<MailLaneSummary>({
+    queryKey: ["outreach-mail", "lane"] as const,
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/outreach/mail/lane");
+      return res.json();
+    },
+  });
+}

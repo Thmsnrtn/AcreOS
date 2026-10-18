@@ -1,12 +1,15 @@
 /**
- * POST /api/campaigns/:id/send-direct-mail — a piece the provider refused is
- * refunded in the same transaction that records it as failed.
+ * POST /api/campaigns/:id/send-direct-mail — a piece the provider REFUSED is
+ * refunded as soon as its failure is recorded; a piece whose outcome is
+ * UNKNOWN (a 5xx, a timeout) keeps its charge, because Lob may have printed
+ * and billed it (founder decision 2026-10-17 B).
  *
- * The route debits every piece upfront. Failed pieces were refunded by ONE
+ * The route pre-pays every piece upfront. Failed pieces were refunded by ONE
  * batch credit after the loop, after the mailing order was closed out — so any
  * failure between a refused piece and that line (closing the order, recording
  * usage) returned 500 with the charge for every refused piece kept. The refund
- * now posts with the piece's failure record, before anything else can fail.
+ * now posts right after the piece's failure record (keyed per piece, so it is
+ * idempotent), before anything else can fail.
  *
  * Opt-out exclusion on this path is the pre-mail scanner's job and is pinned
  * through `leadHasOptedOut` (the same predicate the email audience uses).
@@ -18,9 +21,12 @@ vi.mock("../../server/utils/logger", () => ({ logger: { info: vi.fn(), warn: vi.
 
 const S = vi.hoisted(() => ({
   deducted: [] as number[],
-  refunds: [] as Array<{ cents: number; tx: unknown }>,
+  refunds: [] as Array<{ cents: number; key?: string }>,
   pieces: [] as Array<{ row: Record<string, unknown>; on: unknown }>,
   failLob: new Set<number>(),
+  /** Lead ids whose Lob failure is a 5xx — outcome unknown. */
+  unknownLob: new Set<number>(),
+  genericCredits: 0,
   failCompletion: false,
   rootDb: null as unknown,
   campaign: {} as Record<string, unknown>,
@@ -35,8 +41,10 @@ vi.mock("../../server/services/credits", () => ({
   creditService: {
     getBalance: async () => 1_000_000,
     deductCredits: async (_o: number, cents: number) => (S.deducted.push(cents), { id: 1, amountCents: -cents }),
-    addCredits: async (_o: number, cents: number, _t: string, _d: string, _m?: unknown, opts?: { tx?: unknown }) => {
-      S.refunds.push({ cents, tx: opts?.tx });
+    // A house refund goes through refundUnbilledHouseMail only; a generic
+    // credit grant here would be a defect (counted, asserted zero below).
+    addCredits: async () => {
+      S.genericCredits++;
       return { id: 2 };
     },
   },
@@ -49,6 +57,40 @@ vi.mock("../../server/services/preMailDedupe", () => ({
     skipped: { ownedParcel: [], recentlyMailed: [], returnedMail: [], doNotContact: [], missingAddress: [] },
   }),
 }));
+// The physical-mail lane (founder decisions 2026-10-17) is pinned by
+// houseMailLane.test.ts; here it resolves to the house lane at the surface's
+// listed price, the charge is recorded, and the refund door applies the real
+// rule's shape: only a certain rejection (4xx / never contacted) is refunded.
+vi.mock("../../server/services/mail/mailLane", () => {
+  const providerDidNotBill = (e: any) =>
+    e?.providerNotBilled === true || (Number.isInteger(e?.status_code) && e.status_code >= 400 && e.status_code < 500 && e.status_code !== 409);
+  return {
+    resolveMailLane: async (_org: number, spec: { kind: string }, opts: { listedCredits?: number }) => ({
+      lane: "house",
+      provider: "lob",
+      spec,
+      price: { key: spec.kind === "letter" ? "letter_bw" : "postcard_4x6" },
+      creditsPerPiece: opts.listedCredits ?? 75,
+      senderIdentity: { id: 1, status: "verified" },
+    }),
+    chargeHouseMail: async (a: { units: number; lane: { creditsPerPiece: number }; externalEventId: string }) => {
+      const cents = a.units * a.lane.creditsPerPiece;
+      S.deducted.push(cents);
+      return { externalEventId: a.externalEventId, debitedCents: cents, units: a.units, replay: false };
+    },
+    isHouseMailShort: () => false,
+    providerDidNotBill,
+    refundUnbilledHouseMail: async (_o: number, charge: any, failure: unknown, _r: string, opts: { amountCents?: number; refundKey?: string } = {}) => {
+      if (!charge || !providerDidNotBill(failure)) return false;
+      S.refunds.push({ cents: opts.amountCents ?? charge.debitedCents, key: opts.refundKey });
+      return true;
+    },
+    purchasedCreditsAvailable: async () => 1_000_000,
+    postcardSpec: (size: string) => ({ kind: "postcard", size }),
+    letterSpec: () => ({ kind: "letter", color: false, pages: 1 }),
+    summarizeMailLane: async () => ({}),
+  };
+});
 vi.mock("../../server/services/directMail", () => ({
   directMailService: {
     hasOrgLobCredentials: async () => false,
@@ -57,7 +99,8 @@ vi.mock("../../server/services/directMail", () => ({
     sendLetter: async (o: { idempotencyKey: string }) => {
       S.lobCalls++;
       const leadId = Number(o.idempotencyKey.split(":").pop());
-      if (S.failLob.has(leadId)) throw new Error("address undeliverable");
+      if (S.failLob.has(leadId)) throw Object.assign(new Error("address undeliverable"), { status_code: 422 });
+      if (S.unknownLob.has(leadId)) throw Object.assign(new Error("lob 502"), { status_code: 502 });
       return { id: `ltr_${leadId}` };
     },
   },
@@ -138,6 +181,8 @@ beforeEach(() => {
   S.refunds = [];
   S.pieces = [];
   S.failLob = new Set();
+  S.unknownLob = new Set();
+  S.genericCredits = 0;
   S.failCompletion = false;
   S.campaign = { id: 3, name: "Fall letters", type: "direct_mail", content: "<p>Hi</p>", subject: "We buy land" };
   S.txThrows = false;
@@ -145,18 +190,28 @@ beforeEach(() => {
 });
 
 describe("campaign direct mail: a refused piece is refunded with its failure record", () => {
-  it("the refund and the failed-piece row share one transaction", async () => {
+  it("a REJECTED piece is recorded failed and refunded its share, under a per-piece key", async () => {
     S.failLob.add(12);
     const r = res();
     await (await handler())(req(), r);
     expect(S.deducted).toEqual([300]);
     expect(S.refunds).toHaveLength(1);
     expect(S.refunds[0].cents).toBe(150);
+    expect(S.refunds[0].key).toMatch(/:lead:12:refund$/);
     const failed = S.pieces.find((p) => p.row.status === "failed");
     expect(failed).toBeDefined();
     expect(failed!.on).not.toBe(S.rootDb);
-    expect(S.refunds[0].tx).toBe(failed!.on);
     expect(r.body).toMatchObject({ piecesQueued: 1, piecesFailed: 1, refunded: 1.5 });
+    expect(S.genericCredits).toBe(0);
+  });
+
+  it("a piece whose outcome is UNKNOWN (5xx) is recorded failed but keeps its charge", async () => {
+    S.unknownLob.add(12);
+    const r = res();
+    await (await handler())(req(), r);
+    expect(S.deducted).toEqual([300]);
+    expect(S.refunds).toEqual([]);
+    expect(S.pieces.find((p) => p.row.status === "failed")).toBeDefined();
   });
 
   it("a failure closing out the order does not keep the refused piece's charge", async () => {
@@ -180,12 +235,20 @@ describe("campaign direct mail: charged once per recipient, refunded if interrup
   });
 
   it("a send that dies part-way refunds every piece not settled", async () => {
-    // 11 is accepted; 12 is refused and its failure transaction throws; 13 is never reached.
+    // 11 is accepted; 12 is REJECTED and its failure transaction throws; 13 is never reached.
     S.failLob.add(12);
     S.txThrows = true;
     await (await handler())(req([11, 12, 13]), res()).catch(() => undefined);
     expect(S.deducted).toEqual([450]);
     expect(S.refunds.map((x) => x.cents)).toEqual([300]);
+  });
+
+  it("…but the piece in flight keeps its charge when its outcome was unknown", async () => {
+    S.unknownLob.add(12);
+    S.txThrows = true;
+    await (await handler())(req([11, 12, 13]), res()).catch(() => undefined);
+    expect(S.deducted).toEqual([450]);
+    expect(S.refunds.map((x) => x.cents)).toEqual([150]); // only 13, never attempted
   });
 });
 

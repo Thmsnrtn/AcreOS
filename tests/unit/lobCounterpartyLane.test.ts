@@ -26,6 +26,7 @@
  * or a mock that never records.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { houseMail } from "../helpers/fakeHouseMailDb";
 // W5a: the owner opt-out list is empty for this test (the guard is proven elsewhere).
 vi.mock("../../server/services/trust/ownerSuppression", async () => (await import("../helpers/ownerSuppressionAllowAll")).ownerSuppressionAllowAll);
 
@@ -38,6 +39,15 @@ const state = {
     | { apiKey: string; isTestKey: boolean }
     | null,
   created: [] as Array<{ kind: string; apiKey: string }>,
+  /** The org's default return address (house mail requires it verified). */
+  identity: null as null | Record<string, unknown>,
+  poolDebits: [] as string[],
+};
+
+const VERIFIED_IDENTITY = {
+  id: 7, organizationId: 42, name: "Main office", companyName: "Brazos Land Partners",
+  addressLine1: "1 Main St", addressLine2: null, city: "Austin", state: "TX", zipCode: "78701",
+  country: "US", status: "verified", isActive: true, isDefault: true,
 };
 
 vi.mock("lob", () => ({
@@ -73,7 +83,22 @@ vi.mock("../../server/storage", () => ({
   storage: {
     getOrganizationIntegration: async () => state.legacyRow,
     getOrganization: async () => ({ id: 42, name: "Brazos Land Partners", settings: {} }),
+    getDefaultMailSenderIdentity: async () => state.identity ?? undefined,
   },
+}));
+
+vi.mock("../../server/services/creditCost", () => ({ creditCost: async () => 120 }));
+// House mail (founder decisions 2026-10-17) is pre-paid from PURCHASED
+// credits (mail/mailLane.ts chargeHouseMail), whose SQL is faked here
+// (tests/helpers/fakeHouseMailDb); a poolDebit would be a defect and is recorded.
+vi.mock("../../server/db", async () => (await import("../helpers/fakeHouseMailDb")).fakeHouseMailDbModule);
+vi.mock("../../server/services/settings", () => ({ getSetting: async (_k: string, fallback: unknown) => fallback }));
+vi.mock("../../server/services/creditPool", () => ({
+  poolDebit: async (a: { action: string }) => {
+    state.poolDebits.push(a.action);
+    return { allowed: true, debitedCents: 120, remaining: 100, poolMonthly: 750, ledgerRowId: 1, overPool: false };
+  },
+  refundPoolDebit: async () => undefined,
 }));
 
 vi.mock("../../server/services/fieldEncryption", () => ({
@@ -109,7 +134,7 @@ vi.mock("../../server/services/mail/liveSendInterlock", () => ({
 
 // Static imports directMailService makes that the credential path never uses.
 vi.mock("../../server/services/credits", () => ({
-  creditService: { hasEnoughCredits: async () => true, getBalance: async () => 0 },
+  creditService: { hasEnoughCredits: async () => true, getBalance: async () => 0, afterDebitCommitted: () => undefined },
   usageMeteringService: { calculateCost: async () => 0, recordUsage: async () => undefined },
 }));
 
@@ -125,6 +150,9 @@ beforeEach(async () => {
   state.legacyRow = null;
   state.platformKey = { apiKey: "live_platform_key", isTestKey: false };
   state.created = [];
+  state.identity = null;
+  state.poolDebits = [];
+  houseMail.reset();
   // The env keys are read in the CONSTRUCTOR, so the module is rebuilt for
   // every case AFTER the env is set. Without the reset, one case that deletes
   // the platform keys would leak its singleton into whatever ran next — the
@@ -239,11 +267,13 @@ describe("counterparty direct mail resolves the ORG's own Lob account first", ()
 
   it("a DISARMED interlock STILL degrades a send on the PLATFORM key", async () => {
     // The other half, and the reason the narrowing is safe: nothing about the
-    // platform interlock was weakened. An org with nothing connected falls to
-    // the platform key and must still be held by the interlock.
+    // platform interlock was weakened. An org with nothing connected reaches
+    // the platform key only as AcreOS house mail (verified identity, credits)
+    // and must still be held by the interlock.
     state.liveSendArmed = false;
     state.byokKey = null;
     state.legacyRow = null;
+    state.identity = VERIFIED_IDENTITY;
 
     const result = await lobService.sendLetter(LETTER, "live", {
       organizationId: 42,
@@ -274,9 +304,10 @@ describe("counterparty direct mail resolves the ORG's own Lob account first", ()
     expect(state.created).toEqual([{ kind: "letter", apiKey: "test_platform_key" }]);
   });
 
-  it("platform fallback still exists for an org with nothing connected (deliberately kept)", async () => {
-    // The founder explicitly deferred killing the Lob platform fallback; this
-    // pins that the change above did NOT quietly kill it.
+  it("an org with nothing connected gets AcreOS house mail ONLY under its verified identity, for credits", async () => {
+    // Founder decision 2026-10-17 superseded the deferred "platform fallback":
+    // the platform key is reached for an org's mail only on the house lane.
+    state.identity = VERIFIED_IDENTITY;
     const result = await lobService.sendLetter(LETTER, "live", {
       organizationId: 42,
       purpose: "counterparty",
@@ -284,6 +315,20 @@ describe("counterparty direct mail resolves the ORG's own Lob account first", ()
 
     expect(result.success).toBe(true);
     expect(state.created).toEqual([{ kind: "letter", apiKey: "live_platform_key" }]);
+    expect(state.poolDebits).toEqual([]); // never the monthly pool
+    expect(houseMail.charges.map((c) => c.credits)).toEqual([120]); // pre-paid from purchased credits
+  });
+
+  it("an org with nothing connected and NO verified identity is refused — the platform key is not a fallback", async () => {
+    const result = await lobService.sendLetter(LETTER, "live", {
+      organizationId: 42,
+      purpose: "counterparty",
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/return address/);
+    expect(state.created).toHaveLength(0);
+    expect(state.poolDebits).toEqual([]);
   });
 
   it("isConfiguredForOrg sees a BYOK org even with NO platform key at all", async () => {
@@ -321,11 +366,11 @@ describe.each([
 ])("%s carries no independent Lob credential resolution", (rel) => {
   const src = stripComments(fs.readFileSync(path.join(ROOT, rel), "utf8"));
 
-  it("delegates to directMailService.getLobClient at all (vacuity guard)", () => {
+  it("delegates to the directMailService credential authority at all (vacuity guard)", () => {
     // Without this, every "does not" below would pass on a file that resolves
     // credentials a brand-new third way, or on an unreadable/empty file.
     expect(src).toMatch(/from\s+['"]\.\/directMailService['"]/);
-    expect(src).toContain("getLobClient");
+    expect(src).toMatch(/\b(?:getOwnLobClient|getLobClientForLane)\(/);
   });
 
   it("never queries organization_integrations or the BYOK vault itself", () => {

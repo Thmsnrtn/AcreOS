@@ -166,7 +166,9 @@ export class ApiQueueService {
       case 'lob': {
         const { directMailService } = await import('./directMail');
         if (job.operation === 'sendPostcard') {
-          return directMailService.sendPostcard(payload as any);
+          // The job's org decides the lane (mail/mailLane.ts); an org-less job
+          // is refused by the service rather than sent on AcreOS's account.
+          return directMailService.sendPostcard(payload as any, 'live', job.organizationId ?? undefined);
         }
         // B6 (BLOCKERS): `sendPostcard` is the ONLY implemented Lob operation.
         // Anything else is not "unknown" — it is not implemented, and the fault

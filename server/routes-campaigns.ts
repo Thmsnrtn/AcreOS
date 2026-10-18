@@ -774,12 +774,32 @@ export function registerCampaignRoutes(app: Express): void {
 
       const { directMailService, DIRECT_MAIL_COSTS, MailAlreadySentError } = await import("./services/directMail");
       
-      // Check if org has their own Lob credentials (BYOK) - if so, skip credit check
-      const usingOrgLobCredentials = await directMailService.hasOrgLobCredentials(org.id);
-      
-      if (!usingOrgLobCredentials && !directMailService.isAvailable()) {
-        return Errors.badRequest(res, "Direct mail service not configured. Please add LOB_API_KEY or configure your own Lob API key in Integrations.");
+      // The physical-mail lane (founder decision 2026-10-17, mail/mailLane.ts):
+      // the org's own Lob key (no credits), or AcreOS house mail (credits,
+      // under the org's VERIFIED return address). A refused lane stops here,
+      // before anything is claimed or charged.
+      // A house piece is priced at this surface's listed price (sendPricing),
+      // raised to the self-funding floor if it ever falls below it, and
+      // pre-paid from PURCHASED credits only (decision B).
+      const {
+        resolveMailLane,
+        chargeHouseMail,
+        isHouseMailShort,
+        refundUnbilledHouseMail,
+        providerDidNotBill,
+        purchasedCreditsAvailable,
+        postcardSpec,
+        letterSpec,
+      } = await import("./services/mail/mailLane");
+      const mailLane = await resolveMailLane(
+        org.id,
+        pieceType.startsWith('postcard_') ? postcardSpec(pieceType.replace('postcard_', '')) : letterSpec({ pages: 1 }),
+        { via: 'lob', listedCredits: DIRECT_MAIL_COSTS[pieceType] },
+      );
+      if (mailLane.lane === 'refused') {
+        return Errors.badRequest(res, mailLane.message, { reason: mailLane.reason, lane: 'refused' });
       }
+      const usingOrgLobCredentials = mailLane.lane === 'own_account';
 
       const campaign = await storage.getCampaign(org.id, campaignId);
       if (!campaign || campaign.type !== 'direct_mail') {
@@ -821,24 +841,28 @@ export function registerCampaignRoutes(app: Express): void {
         return Errors.badRequest(res, "No return address configured. Please set up a mail sender identity in Mail Settings.");
       }
 
-      // Warn if identity is not verified but allow sending
+      // Own-key sends keep the old warning for an unverified address; a house
+      // send cannot reach this line without a verified one (the lane above).
       let identityWarning: string | undefined;
       if (mailSenderIdentity.status !== 'verified') {
         identityWarning = `Warning: Return address "${mailSenderIdentity.name}" is not verified. Mail may be delayed or returned.`;
       }
 
-      const costPerPiece = DIRECT_MAIL_COSTS[pieceType];
+      const costPerPiece = mailLane.lane === 'house' ? mailLane.creditsPerPiece : 0;
       const totalCost = costPerPiece * leadIds.length;
 
-      // Only check credits if NOT using org Lob credentials (BYOK)
+      // Only check credits if NOT using org Lob credentials (BYOK) — and only
+      // PURCHASED credits count (grants never pay for house mail).
       if (!usingOrgLobCredentials) {
-        const balance = await creditService.getBalance(org.id);
-        if (balance < totalCost) {
-          return Errors.paymentRequired(res, "Insufficient credits", {
-            required: totalCost / 100,
-            balance: balance / 100,
-            perPiece: costPerPiece / 100,
+        const purchased = await purchasedCreditsAvailable(org.id);
+        if (purchased < totalCost) {
+          return Errors.paymentRequired(res, "AcreOS mail is paid from purchased credits, and your purchased balance is short.", {
+            requiredCredits: totalCost,
+            purchasedCredits: purchased,
+            creditsPerPiece: costPerPiece,
             recipientCount: leadIds.length,
+            purchaseUrl: "/usage",
+            byokSettingsUrl: "/settings/byok",
           });
         }
       } else {
@@ -964,29 +988,30 @@ export function registerCampaignRoutes(app: Express): void {
       // never did (audit of 7cc7345). A debit already taken is returned.
       const debitCents = costPerPiece * validLeads.length;
       let debited = false;
+      let houseCharge: Awaited<ReturnType<typeof chargeHouseMail>> | null = null;
       const releaseClaim = async (errorMessage: string) => {
         await storage
           .updateMailingOrder(mailingOrder.id, { status: 'failed', errorMessage, operationKey: null }, org.id)
           .catch((e) => logger.error('[Campaigns] could not release a failed send claim', e instanceof Error ? e : undefined));
       };
-      let deductResult: any = true;
       try {
-        if (!usingOrgLobCredentials) {
-          deductResult = await creditService.deductCredits(
-            org.id,
-            debitCents,
-            `Direct mail campaign: ${campaign.name} - ${validLeads.length} pieces`,
-            { campaignId, pieceType, recipientCount: validLeads.length, mailingOrderId: mailingOrder.id }
-          );
-
-          if (!deductResult) {
-            await releaseClaim('Insufficient credits — nothing was mailed');
-            return Errors.paymentRequired(res, "Insufficient credits");
+        if (mailLane.lane === 'house') {
+          // The order is the claim, so its id keys the charge: a retry of
+          // this order cannot be charged twice.
+          try {
+            houseCharge = await chargeHouseMail({
+              organizationId: org.id,
+              lane: mailLane,
+              units: validLeads.length,
+              externalEventId: `mail:campaign:order:${mailingOrder.id}`,
+              notes: `Direct mail campaign: ${campaign.name} - ${validLeads.length} pieces`,
+            });
+          } catch (chargeErr) {
+            if (!isHouseMailShort(chargeErr)) throw chargeErr;
+            await releaseClaim('Not enough purchased credits — nothing was mailed');
+            return Errors.paymentRequired(res, chargeErr.message, { purchaseUrl: "/usage", byokSettingsUrl: "/settings/byok" });
           }
-          // What was actually taken: the founder bypass debits 0 and returns
-          // a row, and must not be refunded a debit it never paid (audit of
-          // 9ed61f4).
-          debited = Number(deductResult?.amountCents ?? 0) !== 0;
+          debited = houseCharge.debitedCents > 0;
         } else {
           logger.info(`Skipping credit deduction for org - using org Lob credentials`, { orgId: org.id });
         }
@@ -998,13 +1023,13 @@ export function registerCampaignRoutes(app: Express): void {
         });
       } catch (preSendErr) {
         if (debited) {
-          await creditService
-            .addCredits(org.id, debitCents, 'refund', `Refund: direct mail send failed before any piece was sent (${campaign.name})`, {
-              campaignId,
-              pieceType,
-              mailingOrderId: mailingOrder.id,
-            })
-            .catch((e) => logger.error('[Campaigns] refund after a failed send start did not post', e instanceof Error ? e : undefined));
+          // No piece reached Lob — certainly not billed.
+          await refundUnbilledHouseMail(
+            org.id,
+            houseCharge,
+            { providerNotBilled: true },
+            `Direct mail send failed before any piece was sent (${campaign.name})`,
+          );
         }
         await releaseClaim('The send failed before any piece was sent — nothing was mailed');
         throw preSendErr;
@@ -1028,6 +1053,9 @@ export function registerCampaignRoutes(app: Express): void {
       const sendResults: Array<{ leadId: number; success: boolean; lobId?: string; expectedDeliveryDate?: Date; error?: string; isTest?: boolean }> = [];
       const lobJobIds: string[] = [];
       let refundedCents = 0;
+      // The piece being settled when the loop dies: was its failure a certain
+      // rejection (refundable) or an unknown outcome (possibly billed)?
+      let inFlightMayBeBilled = false;
       
       try {
       for (const lead of validLeads) {
@@ -1065,6 +1093,8 @@ export function registerCampaignRoutes(app: Express): void {
               },
               from: senderAddress,
               idempotencyKey: pieceIdempotencyKey,
+              // This route debited the mailing order above.
+              housePrepaid: true,
             }, mailMode, org.id);
           } else {
             result = await directMailService.sendLetter({
@@ -1078,6 +1108,8 @@ export function registerCampaignRoutes(app: Express): void {
               },
               from: senderAddress,
               idempotencyKey: pieceIdempotencyKey,
+              // This route debited the mailing order above.
+              housePrepaid: true,
             }, mailMode, org.id);
           }
 
@@ -1150,10 +1182,10 @@ export function registerCampaignRoutes(app: Express): void {
             continue;
           }
 
-          // Record the failed piece AND return its upfront charge in one
-          // transaction. The refund used to be one batch credit after the loop,
-          // after the order was closed out — so a failure in between (closing
-          // the order, recording usage) kept the charge for every refused piece.
+          // Record the failed piece, then return its upfront charge — ONLY
+          // when Lob certainly did not bill it (a rejection, or never reached).
+          // A timeout or 5xx may be a printed piece: its charge stands.
+          inFlightMayBeBilled = !providerDidNotBill(err);
           await db.transaction(async (rawTx) => {
             const tx = rawTx as unknown as PrimaryDb;
             await tx.insert(mailingOrderPieces).values({
@@ -1167,18 +1199,18 @@ export function registerCampaignRoutes(app: Express): void {
               status: 'failed',
               errorMessage: err.message,
             });
-            if (debited) {
-              await creditService.addCredits(
-                org.id,
-                costPerPiece,
-                'refund',
-                `Refund: direct mail piece to lead ${lead.id} was not sent (${campaign.name})`,
-                { campaignId, pieceType, mailingOrderId: mailingOrder.id, leadId: lead.id },
-                { tx },
-              );
-            }
           });
-          if (debited) refundedCents += costPerPiece;
+          if (debited) {
+            const refunded = await refundUnbilledHouseMail(
+              org.id,
+              houseCharge,
+              err,
+              `Direct mail piece to lead ${lead.id} was not sent (${campaign.name})`,
+              { amountCents: costPerPiece, refundKey: `${houseCharge!.externalEventId}:lead:${lead.id}:refund` },
+            );
+            if (refunded) refundedCents += costPerPiece;
+          }
+          inFlightMayBeBilled = false;
           // Pushed only once the failure is recorded and refunded, so
           // sendResults.length is the count of SETTLED pieces (see below).
           sendResults.push({ leadId: lead.id, success: false, error: err.message });
@@ -1188,13 +1220,16 @@ export function registerCampaignRoutes(app: Express): void {
         // The loop died part-way (a failed piece's record/refund transaction
         // threw). Every piece not yet settled — sent, already-sent or refunded
         // — was charged upfront for an attempt that never finished.
-        const unsettled = validLeads.length - sendResults.length;
+        // The piece in flight keeps its charge when its outcome was unknown.
+        const unsettled = validLeads.length - sendResults.length - (inFlightMayBeBilled ? 1 : 0);
         if (debited && unsettled > 0) {
-          await creditService
-            .addCredits(org.id, unsettled * costPerPiece, 'refund',
-              `Refund: ${unsettled} direct mail piece(s) not attempted — the send stopped part-way (${campaign.name})`,
-              { campaignId, pieceType, mailingOrderId: mailingOrder.id, unsettled })
-            .catch((e) => logger.error('[Campaigns] refund after an interrupted mail send did not post', e instanceof Error ? e : undefined));
+          await refundUnbilledHouseMail(
+            org.id,
+            houseCharge,
+            { providerNotBilled: true },
+            `${unsettled} direct mail piece(s) not attempted — the send stopped part-way (${campaign.name})`,
+            { amountCents: unsettled * costPerPiece, refundKey: `${houseCharge!.externalEventId}:unsettled:refund` },
+          );
         }
         throw loopErr;
       }
@@ -1718,14 +1753,13 @@ export function registerCampaignRoutes(app: Express): void {
         return Errors.validationFailed(res, parsed.error.issues);
       }
       const { line1, line2, city, state, zip } = parsed.data;
+      const org = req.organization;
       
-      const isProduction = process.env.NODE_ENV === 'production';
-      const apiKey = isProduction 
-        ? process.env.LOB_LIVE_API_KEY 
-        : (process.env.LOB_TEST_API_KEY || process.env.LOB_LIVE_API_KEY);
-      
-      if (!apiKey) {
-        return Errors.badRequest(res, "Address verification service not configured. Please add Lob API key in settings.");
+      // The org's own Lob key verifies on its own account; only an org with
+      // none uses AcreOS's (mail/mailLane.ts, founder decision 2026-10-17).
+      const { orgHasOwnMailKey, houseMailConfigured } = await import("./services/mail/mailLane");
+      if (!(await orgHasOwnMailKey(org.id, "lob")) && !(await houseMailConfigured())) {
+        return Errors.badRequest(res, "Address verification is not available yet. Connect your own Lob key in Settings → Your provider keys.");
       }
 
       const { verifyAddress } = await import("./services/directMailService");
@@ -1736,7 +1770,7 @@ export function registerCampaignRoutes(app: Express): void {
         city,
         state,
         zip,
-      });
+      }, org.id);
       res.json(result);
     } catch (error: any) {
       Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to verify address"));
@@ -1760,13 +1794,11 @@ export function registerCampaignRoutes(app: Express): void {
         return Errors.badRequest(res, "Maximum 100 addresses can be verified at once");
       }
       
-      const isProduction = process.env.NODE_ENV === 'production';
-      const apiKey = isProduction 
-        ? process.env.LOB_LIVE_API_KEY 
-        : (process.env.LOB_TEST_API_KEY || process.env.LOB_LIVE_API_KEY);
-      
-      if (!apiKey) {
-        return Errors.badRequest(res, "Address verification service not configured. Please add Lob API key in settings.");
+      // The org's own Lob key verifies on its own account; only an org with
+      // none uses AcreOS's (mail/mailLane.ts, founder decision 2026-10-17).
+      const { orgHasOwnMailKey, houseMailConfigured } = await import("./services/mail/mailLane");
+      if (!(await orgHasOwnMailKey(org.id, "lob")) && !(await houseMailConfigured())) {
+        return Errors.badRequest(res, "Address verification is not available yet. Connect your own Lob key in Settings → Your provider keys.");
       }
 
       const { verifyAddress } = await import("./services/directMailService");
@@ -1802,7 +1834,7 @@ export function registerCampaignRoutes(app: Express): void {
             city: lead.city,
             state: lead.state,
             zip: lead.zip,
-          });
+          }, org.id);
           
           results.push({
             leadId,

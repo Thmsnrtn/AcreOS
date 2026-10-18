@@ -654,8 +654,8 @@ export class CommunicationsService {
     // COUNTERPARTY LANE. The recipient is a lead — the customer's seller — so
     // the letter must print on the CUSTOMER's Lob account when they have one.
     // Passing the org id routes the credential through
-    // `directMailService.getLobClient`, the single authority (BYOK vault →
-    // legacy organization_integrations row → platform key). Before this,
+    // the mail lane (mail/mailLane.ts): the org's own Lob key, else AcreOS
+    // house mail for credits under its verified identity. Before this,
     // lobService read only the platform env keys, so every seller letter in
     // this lane printed on AcreOS's account.
     const lobResult = await lobService.sendLetter(
