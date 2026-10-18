@@ -161,6 +161,7 @@ exports[`route manifest > snapshot: sorted manifest file paths (additions/remova
   "routes-iris-perf.ts",
   "routes-job-health.ts",
   "routes-kb.ts",
+  "routes-killswitches.ts",
   "routes-kpis.ts",
   "routes-land-credit.ts",
   "routes-land-data.ts",

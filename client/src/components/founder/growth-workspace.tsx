@@ -1,4 +1,4 @@
-import type { projectGenerationJob } from "@shared/cmo/generationProgress"
+import { generationProgressLabels as progressLabels, type projectGenerationJob } from "@shared/cmo/generationProgress"
 import { useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Megaphone } from "lucide-react"
@@ -452,21 +452,6 @@ function DraftRequestForm() {
   )
 }
 
-const progressLabels: Record<string, string> = {
-  queued: "Queued",
-  running: "Generating",
-  rendering: "Rendering",
-  render_queued: "Render queued",
-  failed: "Failed — open Story before retrying",
-  blocked: "Blocked by operating settings or daily budget",
-  partially_completed: "Some render jobs finished; others failed",
-  progress_unavailable: "Some job records are unavailable",
-  no_render_qualified: "No script qualified for rendering",
-  review_created: "Review item created — inspect the videos before choosing destinations",
-  render_processed: "Render worker finished; review status unverified",
-  legacy_unverified: "Older job — completion details unavailable",
-  unknown: "Progress unavailable",
-}
 function GenerationProgress() {
   const jobs = useQuery<{ jobs: ReturnType<typeof projectGenerationJob>[] }>({
     queryKey: JOBS_KEY,
@@ -511,7 +496,7 @@ function GenerationProgress() {
                 </p>
               )}
               <Link
-                href={job.reviewIds.length ? "/founder/cmo" : "/founder/autopilot/story"}
+                href={job.reviewIds.length ? "/founder/cmo" : `/founder/autopilot/story?generationJobId=${job.id}`}
                 className="underline underline-offset-4"
               >
                 {job.reviewIds.length ? "Review videos" : "Open Story"}
