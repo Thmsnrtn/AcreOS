@@ -703,7 +703,7 @@ export function registerBillingRoutes(app: Express): void {
           },
         });
       return res.json({ ok: true, selected: packKey });
-    } catch (err: any) {
+    } catch (err) {
       logger.error("[billing] vertical select failed", err instanceof Error ? err : undefined);
       return Errors.internal(res, err);
     }
