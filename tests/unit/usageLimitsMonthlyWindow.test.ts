@@ -29,8 +29,8 @@ describe("TIER_LIMITS — monthly Pax-message caps (2026-06-06)", () => {
     expect(maxCogsCents).toBeLessThan(2900);
   });
 
-  it("Free is 75/mo (not 25/day)", () => {
-    expect(TIER_LIMITS.free.ai_requests).toBe(75);
+  it("Free is 5/mo (not 25/day)", () => {
+    expect(TIER_LIMITS.free.ai_requests).toBe(5);
   });
 
   it("Pro is 12,000/mo", () => {

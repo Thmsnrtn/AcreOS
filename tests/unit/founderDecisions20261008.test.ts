@@ -15,7 +15,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { TIER_LIMITS, AI_TURNS_BYOK_THRESHOLDS } from "@shared/billing/tier-limits";
+import { TIER_LIMITS } from "@shared/billing/tier-limits";
 import { CREDIT_PACK_CATALOG, creditsForPackPrice, CREDIT_PRICE_CENTS } from "@shared/billing/credit-packs";
 import { CREDIT_PACKS } from "@shared/schema";
 import { TIER_PRICES_CENTS } from "@shared/billing/tier-pricing";
@@ -161,14 +161,17 @@ describe("B — top-up packs: same prices, 1.5¢ per credit, rounded down", () =
 // ── C. One shared monthly AI allowance, in cents ─────────────────────────────
 
 describe("C — one shared monthly AI allowance per plan, in cents", () => {
-  it("starter 1,125¢ · pro 2,250¢ · scale 4,500¢ (2026-10-09) · free/enterprise none", () => {
+  it("starter 2,500¢ · pro 5,000¢ · scale 10,000¢ (2026-10-17) · free/enterprise none", () => {
     const allowance = Object.fromEntries(
       (["free", "starter", "pro", "scale", "enterprise"] as const).map((t) => [t, TIER_LIMITS[t].aiAllowanceCents]),
     );
-    expect(allowance).toEqual({ free: null, starter: 1125, pro: 2250, scale: 4500, enterprise: null });
-    // Starter and pro remain their turn threshold priced at 1.5¢.
-    expect(TIER_LIMITS.starter.aiAllowanceCents).toBe(Math.floor(AI_TURNS_BYOK_THRESHOLDS.starter! * 1.5));
-    expect(TIER_LIMITS.pro.aiAllowanceCents).toBe(Math.floor(AI_TURNS_BYOK_THRESHOLDS.pro! * 1.5));
+    expect(allowance).toEqual({ free: null, starter: 2500, pro: 5000, scale: 10000, enterprise: null });
+    // Explicit per tier since the 2026-10-17 reprice — supersedes the
+    // 2026-10-09 turn-threshold × 1.5¢ derivation (starter $25, pro $50,
+    // scale $100, each below its plan price).
+    expect(TIER_LIMITS.starter.aiAllowanceCents).toBe(2500);
+    expect(TIER_LIMITS.pro.aiAllowanceCents).toBe(5000);
+    expect(TIER_LIMITS.scale.aiAllowanceCents).toBe(10000);
   });
 
   it("aiAllowanceBelowPrice — no tier's allowance reaches or exceeds its monthly price", () => {

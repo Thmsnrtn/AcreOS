@@ -700,7 +700,7 @@ export async function importDeals(
         titleCompany: row.titleCompany || null,
         escrowNumber: row.escrowNumber || null,
         notes: row.notes || null,
-      });
+      }, undefined, { source: "historical_import" });
 
       result.successCount++;
       if (options.durableEvents) await emitDealCreatedDurably(organizationId, createdDeal);

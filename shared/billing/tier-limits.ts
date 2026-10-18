@@ -174,9 +174,9 @@ export const AI_TURNS_BYOK_THRESHOLDS: Record<SubscriptionTier, number | null> =
  */
 const AI_ALLOWANCE_CENTS: Record<SubscriptionTier, number | null> = {
   free: null,
-  starter: 1125,
-  pro: 2250,
-  scale: 4500,
+  starter: 2500,   // $25.00 — scaled with $49 price (founder decision 2026-10-17)
+  pro: 5000,       // $50.00 — scaled with $99 price
+  scale: 10000,    // $100.00 — scaled with $199 price
   enterprise: null,
 };
 
@@ -206,17 +206,19 @@ export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
     leads: 50,
     properties: 3,
     notes: 2,
-    // Monthly cap. Free is a permanent evaluation tier; 75 turns/mo gives
-    // ~2-3 turns/day average — enough to feel Pax once before deciding to
-    // pay, not enough to operate a business on.
-    ai_requests: 75,
+    // Monthly cap. Free is a capped evaluation tier (founder decision
+    // 2026-10-17): 5 turns/mo — enough for one real Pax conversation to
+    // feel the product, then the upgrade decision. Not operable as a
+    // business tool. (Was 75; tightened alongside the $49/$99/$199
+    // repricing so the free tier can't substitute for Starter.)
+    ai_requests: 5,
     campaigns: 0,
     sequences: 0,
     byokSupport: false,
     includedSeats: 1,
     maxSeats: 1,
     seatPriceCents: null,
-    creditPool: 50,
+    creditPool: 25,
     aiTurnsByokThreshold: AI_TURNS_BYOK_THRESHOLDS.free,
     aiAllowanceCents: AI_ALLOWANCE_CENTS.free,
   },

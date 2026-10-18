@@ -114,9 +114,9 @@ async function uploadSourceMapsToSentry(release: string): Promise<void> {
  * exposure rather than a breach. It is still ours to close, and the close is
  * one delete.
  *
- * Sentry keeps its own copy, uploaded immediately above, so stack-trace
- * symbolication is unaffected. Deleting them here rather than not emitting
- * them is deliberate: the upload needs the files to exist.
+ * When the upload above runs, Sentry keeps its own copy. An explicitly
+ * skipped upload carries no symbolication proof. Deleting maps here rather
+ * than not emitting them is deliberate: an upload needs the files to exist.
  */
 async function stripSourceMapsFromDist(): Promise<void> {
   const root = "dist/public";
@@ -153,8 +153,7 @@ async function stripSourceMapsFromDist(): Promise<void> {
 
   await walk(root);
   console.log(
-    `[build] removed ${removed} source map(s) from ${root} (${(bytes / 1_048_576).toFixed(1)} MB) — ` +
-      "Sentry holds the uploaded copy",
+    `[build] removed ${removed} source map(s) from ${root} (${(bytes / 1_048_576).toFixed(1)} MB)`,
   );
 
   // Assert, do not assume. A silent no-op here restores the exposure while the

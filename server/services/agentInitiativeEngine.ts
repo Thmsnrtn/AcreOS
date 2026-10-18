@@ -67,7 +67,7 @@ const scanners: Record<string, Scanner> = {
           action: "send_follow_up",
           actionInput: { leadId: lead.id, channel: "email" },
           confidence: 0.85,
-          reasoning: "Leads contacted within first week have 60% higher conversion rate.",
+          reasoning: "This lead is still new after seven days; review whether contact is appropriate.",
           estimatedImpact: "Potential deal recovery",
         });
       }
@@ -105,7 +105,7 @@ const scanners: Record<string, Scanner> = {
           action: "flag_deal_risk",
           actionInput: { dealId: deal.id, riskLevel: "high", reason: "Stale for 14+ days" },
           confidence: 0.8,
-          reasoning: "Deals inactive for 14+ days have 70% chance of going cold.",
+          reasoning: "This active deal has no recorded update for fourteen days; its actual risk is unknown.",
           estimatedImpact: "Risk mitigation",
         });
       }
@@ -188,6 +188,47 @@ const scanners: Record<string, Scanner> = {
 // ─── Initiative Engine ───────────────────────────────────────────────────────
 
 class AgentInitiativeEngine {
+  /** One active question per org, agent, action and subject, including legacy cards.
+   * The transaction-scoped lock serializes competing scanners without a new queue
+   * or migration. Completed/rejected history is preserved; it is never rewritten.
+   */
+  async enqueueProposal(orgId: number, proposal: Proposal, trustScore: number): Promise<boolean> {
+    const inputJson = JSON.stringify(proposal.actionInput, Object.keys(proposal.actionInput).sort());
+    const key = `initiative:${orgId}:${proposal.agentCodename}:${proposal.action}:${inputJson}`;
+    return db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${key}))`);
+      const [existing] = await tx.select({ id: decisionsInboxItems.id }).from(decisionsInboxItems).where(and(
+        eq(decisionsInboxItems.organizationId, orgId),
+        eq(decisionsInboxItems.itemType, "agent_initiative"),
+        eq(decisionsInboxItems.ownerAgentCodename, proposal.agentCodename),
+        eq(decisionsInboxItems.recommendedAction, proposal.action),
+        inArray(decisionsInboxItems.status, ["pending", "deferred"]),
+        sql`${decisionsInboxItems.actionPayload}->'actionInput' = ${JSON.stringify(proposal.actionInput)}::jsonb`,
+      )).limit(1);
+      if (existing) return false;
+      const blocked = trustAuthorityEscalation.isActionAllowed(trustScore, proposal.action) ? "low_confidence" : "insufficient_trust";
+      await tx.insert(decisionsInboxItems).values({
+        itemType: "agent_initiative",
+        riskLevel: proposal.type === "risk" ? "high" : "medium",
+        urgencyScore: Math.round(proposal.confidence * 100),
+        sophieAnalysis: proposal.description,
+        sophieConfidenceScore: Math.round(proposal.confidence * 100),
+        recommendedAction: proposal.action,
+        recommendedActionLabel: proposal.title,
+        actionPayload: { action: proposal.action, actionInput: proposal.actionInput, proposalType: proposal.type, estimatedImpact: proposal.estimatedImpact },
+        organizationId: orgId,
+        ownerAgentCodename: proposal.agentCodename,
+        status: "pending",
+        contextBundle: { reasoning: proposal.reasoning, estimatedImpact: proposal.estimatedImpact, trustScore, autoExecuteBlocked: blocked },
+      });
+      await tx.insert(agentEvents).values({
+        organizationId: orgId, eventType: "initiative_proposal", eventSource: "agent",
+        payload: { ...proposal, trustScore, autoExecuteBlocked: blocked },
+      });
+      return true;
+    });
+  }
+
   /**
    * Run all scanners and collect proposals.
    * Auto-execute proposals where agent trust allows; escalate the rest.
@@ -250,67 +291,11 @@ class AgentInitiativeEngine {
               });
             } catch {}
           } else {
-            // Escalate to founder
+            // A repeated blocked scan is not a new founder decision. Failure
+            // to persist the card also cannot be reported as an escalation.
+            const created = await this.enqueueProposal(orgId, proposal, trustScore);
+            if (!created) continue;
             escalated++;
-            await db.insert(agentEvents).values({
-              organizationId: orgId,
-              eventType: "initiative_proposal",
-              eventSource: "agent",
-              payload: {
-                agentCodename: proposal.agentCodename,
-                type: proposal.type,
-                title: proposal.title,
-                description: proposal.description,
-                action: proposal.action,
-                actionInput: proposal.actionInput,
-                confidence: proposal.confidence,
-                reasoning: proposal.reasoning,
-                estimatedImpact: proposal.estimatedImpact,
-                trustScore,
-                autoExecuteBlocked: !allowed ? "insufficient_trust" : "low_confidence",
-              },
-            });
-
-            // Mirror into decisionsInboxItems so the founder agent-queue UI
-            // shows initiative-engine proposals next to codebase-monitor
-            // proposals. agentEvents stays as the firehose; this row is
-            // the actionable queue entry.
-            try {
-              await db.insert(decisionsInboxItems).values({
-                itemType: "agent_initiative",
-                riskLevel: proposal.type === "risk" ? "high" : "medium",
-                urgencyScore: Math.round(proposal.confidence * 100),
-                sophieAnalysis: proposal.description,
-                sophieConfidenceScore: Math.round(proposal.confidence * 100),
-                recommendedAction: proposal.action,
-                recommendedActionLabel: proposal.title,
-                actionPayload: {
-                  action: proposal.action,
-                  actionInput: proposal.actionInput,
-                  proposalType: proposal.type,
-                  estimatedImpact: proposal.estimatedImpact,
-                },
-                organizationId: orgId,
-                ownerAgentCodename: proposal.agentCodename,
-                status: "pending",
-                contextBundle: {
-                  reasoning: proposal.reasoning,
-                  estimatedImpact: proposal.estimatedImpact,
-                  trustScore,
-                  autoExecuteBlocked: !allowed ? "insufficient_trust" : "low_confidence",
-                },
-              });
-            } catch (inboxErr) {
-              // Inbox mirror is advisory — never let it block the agentEvents
-              // write or the founder broadcast.
-              logger.warn("[initiative] inbox mirror failed", {
-                source: "initiative",
-                metadata: {
-                  agent: proposal.agentCodename,
-                  error: inboxErr instanceof Error ? inboxErr.message : String(inboxErr),
-                },
-              });
-            }
 
             // Notify founder
             wsServer.broadcastFounderEvent("agent_proposal", {

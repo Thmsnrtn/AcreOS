@@ -4623,7 +4623,7 @@ Resolving commits: this branch, round 3
 ### DEFECT-0169
 Title: Lead pickers and lookups read the first page of leads
 Severity: P2
-Status: OPEN
+Status: PARTIAL (2026-10-13)
 Surfaced by lenses: DEFECT-0168 audit, 2026-09-28
 Description: The offers page (`client/src/pages/offers.tsx`) reads
 `fetchJsonArray('/api/leads')`, which is the first page of 25 rows. It
@@ -4635,7 +4635,14 @@ finance's borrower lookup is not affected.
 The leads route already takes `q`. The fix mirrors DEFECT-0168: a
 server-searched lead picker, by-id lookups, and a population register over
 every lead read shape.
-Resolving commits: —
+Progress (2026-10-13): offers now uses the existing SQL q/pagination endpoint,
+shows the complete matching count and explicit page boundaries, retains selected
+ids across pages and resolves letter/selected identities by id. Failed searches
+show unavailable and retain work. Three DOM cases exercise older-lead search,
+page changes and failed reads. The population register and remaining lead-picker
+census are still open; the legacy hook's claimed 10,000 ceiling is also stale:
+its requested limit 250 is clamped to 100 by the route, so 40 pages is 4,000.
+Resolving commits: directed readiness branch, offer consumer only
 ### DEFECT-0170
 Title: Exports and book-wide money figures silently dropped an org's oldest rows past 5000
 Severity: P1
@@ -6666,12 +6673,13 @@ Resolving commits: fourth audit fixes
 ### DEFECT-0276
 Title: Smaller residue of the audit of 1694a0b
 Severity: P2
-Status: OPEN
+Status: PARTIAL (2026-10-14; creation rule repaired, remaining residue open)
 Surfaced by lenses: independent audit of 1694a0b
 Description: (1) `POST /api/deals`, the CSV deal import (`server/services/importExport.ts`) and an admin route (`server/routes-admin.ts`) accept any status at creation, including `closed`, without the close evidence; `dealRepo.createDeal` enforces nothing, so `OPENING_DEAL_STATUSES` has one production caller (Pax). The rule belongs in the repository insert, with an explicit import-only opt-out. (2) A version race on a non-PUT deal route answers 500 rather than 409. (3) The storage spread gate sees a patch spread only when it is spread inline; a patch copied to a local first is outside what it reads. (4) `runPostCloseAutomation` in `titleChainService` has no caller. (5) `assertWritablePatch` stripped a server-set `updatedAt`, so a touch threw — FIXED here (a `Date` survives; a JSON body cannot carry one): `tests/unit/emptyPatchIsNotAnUpdate.test.ts`. (6) Several mocked tests in this change return fixed rows whatever the WHERE (the ACH in-flight and refund-cap tests), so their predicates are verified by reading, not by the tests. (7) `POST /api/deals/:id/advance-stage` and the command palette move a deal to in_escrow without consulting contract evidence — no event even when a signed document exists. (8) Today's new `samplePropertyIds` read is not wrapped like its neighbouring derivations: if it throws, Today answers 500.
 Evidence: `server/routes-deals.ts`; `server/storage/dealRepo.ts`; `tests/unit/dealStatusWritersHoldTheStateMachine.test.ts`; `server/services/titleChainService.ts`; `server/utils/patch.ts`.
 Remediation plan: (1) decide whether creation at a late stage is an import-only path; (2) give the repository's stale-version refusal (a plain `Error` today) its own type and answer 409 on every route that writes a deal; (3) follow a local to its spread, or ban the copy; (4) wire it behind the close evidence or delete it.
-Resolving commits: fourth audit fixes (5 only)
+Current verification (2026-10-14): (1) Creation now validates canonical status and opening-only ordinary stages in dealRepo before the sole server insert. CSV and two labelled seeders pass explicit internal historical contexts; they may retain canonical late stages but never arbitrary vocabulary. Six production callers independently censused. The admin arbitrary writer claim is stale: admin delegates to the marked demo seeder. Only future invalid listed sample-deal creation is normalized; no historical records changed. Red-first tests/unit/dealCreationStages.test.ts: 11 fail / 12 pass before repair, then all 23 pass. The creation/caller/transaction/state-machine group passed 69 tests before the added census/vocabulary checks. (2) Every production update caller currently passes undefined for expectedUpdatedAt, including PUT; simply mapping a typed error to 409 would not make those writes concurrency-safe. (7) Command palette now uses PUT and signed-document evidence; that part is refuted. Advance-stage evidence remains open. (4) The unused post-close automation logs several effects it never performs and must not be wired as truthful behavior unchanged. Independent reviewer cleared the creation source repair; full revised gates/CI pending.
+Resolving commits: fourth audit fixes (5); directed creation-stage repair pending publication
 
 ### DEFECT-0277
 Title: Suppressed-piece refunds skipped before DEFECT-0271 were never repaid
@@ -6759,6 +6767,51 @@ Remediation: `scripts/npm-audit-gate.mjs` prints every critical/high finding wit
 Falsified: `tests/unit/npmAuditGate.test.ts` — 12 cases, including an accepted advisory reaching a production package, a second production copy, a mixed advisory chain, expiry and staleness; each of the dev-only, any-copy, expiry and staleness checks was removed in turn and went red.
 Resolving commits: W10.1b follow-up
 
+### DEFECT-0285
+Title: Trust graduation stores have historical SQL but never reach the Fly release command
+Severity: P2
+Status: PARTIAL (2026-10-13; source repair local, release-only PostgreSQL and live proof pending)
+Surfaced by lenses: directed readiness execution and authenticated Job health read
+Description: The live Job health page showed agent_retract_cron repeatedly failing its initial SELECT from agent_proposal_observations (including Oct13 19:49:55 ET). The UI shows the query, not its underlying PostgreSQL cause; a missing table/column or permission failure is not independently established. Source inspection establishes a separate concrete defect: migrations/0078_pillar_r_trust_graduation.sql declares both trust stores and five indexes, but none appeared in the executable STATEMENTS array of scripts/migrate.mjs. Fly's release_command runs that script alone; schema rebuild CI first applies historical SQL, concealing this release-path omission.
+Evidence: fly.toml; server/services/agentRetractCron.ts; shared/schema.ts; migrations/0078_pillar_r_trust_graduation.sql; scripts/migrate.mjs; live /job-health UI. No live job was retried and no production DDL was executed.
+Remediation: Mirror the seven existing idempotent CREATE statements into the release array. tests/unit/trustGraduationReachesRelease.test.ts reads executable literal array entries and checks complete definition parity. tests/unit/trustGraduationReachesRelease.realdb.test.ts applies those entries twice in an empty transaction-local schema, then performs both actual ORM reads, without historical migrations masking an omission; the entire fixture transaction rolls back. Local PostgreSQL is unavailable, so that proof must run in the required schema-building CI jobs. A CREATE IF NOT EXISTS does not repair arbitrary partial tables; inspect the live catalog and underlying failure before claiming recovery.
+Resolving commits: local directed execution; not deployed
+
+### DEFECT-0286
+Title: Video reviews could be resolved by competing generic writers without their asset/outbox transaction
+Severity: P2
+Status: PARTIAL (2026-10-13; independent source audit cleared repairs, real-db/full CI pending)
+Surfaced by lenses: independent completeness audit of directed Growth execution
+Description: CMO reject was nontransactional and accepted already-resolved cards; concurrent approval could overwrite a rejected render and queue publication while the final inbox said rejected. Generic service/chat approvals, scheduled autonomous triage, notification PATCH, purge and reverse could also resolve the inbox alone. Growth progress sent founders to a Decisions row without an actionable video-review handoff. The source audit traced 36 update/delete sites across eight files to establish the live mutation population.
+Remediation: Dedicated approve/reject claim the same pending inbox/context snapshot within their card/render/note/outbox transaction, mutate only ready assets belonging to the validated bundle, and record chosen destinations. Legacy producer-shaped pending cards read bundleId from actionPayload and normalize it into the approved context; new producer contexts include it. The worker verifies current approved review, destination and asset before upload and object creation; receipt writes preserve aggregate status. Generic service/chat methods, executor selection/processing, notification PATCH, purge and reverse refuse or exclude CMO resolution. Decisions and Growth progress hand off to the mounted video reviewer over the same queue. No historical cards were repaired or removed.
+Evidence: server/routes-cmo.ts; server/jobs/cmoBroadcast.ts; server/services/decisionsInbox.ts; server/services/autonomousDecisionExecutor.ts; server/routes-rosy-river.ts; server/routes-founder-intelligence.ts; server/services/cmo/renderOrchestrator.ts; client/src/pages/founder-decisions.tsx; client/src/components/founder/growth-workspace.tsx.
+Falsified/verified: tests/unit/cmoApprovalQueue.test.ts; tests/unit/cmoPublicationReceipts.test.ts; tests/unit/cmoGenericResolutionRefused.test.ts; tests/unit/cmoAutonomousResolutionRefused.test.ts; tests/unit/cmoNotificationResolutionRefused.test.ts; tests/unit/growthWorkspace.test.tsx. Consolidated repair run: 56 pass, two real-db concurrency/rollback cases skip locally (tests/unit/cmoReviewResolution.realdb.test.ts). These must run in schema-building CI. Independent reviewer found no remaining concrete blocker in the final source diff. Full CI subsequently found two added platform-read exemptions exceeded the fixed ceiling (18 versus 16). The narrowed repair removes both exemptions without raising the ceiling: worker reads require the founder-global lane, generic approval reuses its original lookup, and all generic updates require returned CMO-excluding rows. Independent review cleared that actual diff. A third real-DB case proves all four generic methods leave video state untouched; revised-head CI remains required. Exact content/account revision hashes, atomic spend reservations and real-provider evidence remain open acceptance work.
+Resolving commits: directed execution audit repairs, not deployed
+
+### DEFECT-0287
+Title: Single-deal Delete called a server endpoint that was never registered
+Severity: P2
+Status: PARTIAL (2026-10-14; hook repaired and audited, revised CI/live read-back pending)
+Surfaced by lenses: directed P1-05 creation/status writer census
+Description: useDeleteDeal sent DELETE /api/deals/:id, but no server route or repository deleteDeal writer exists. The mounted deletion path is POST /api/deals/bulk-delete; ordinary single-deal deletion therefore failed before reaching the canonical writer.
+Remediation: The hook posts one ID through the existing authenticated, organization-scoped, canDeleteDeals-gated bulk endpoint. Existing success invalidations and refusal behavior are preserved; no new route or duplicate writer is added. This addresses reachability only, not the existing bulk affected-count, hold or close/retraction concurrency semantics.
+Evidence: client/src/hooks/use-deals.ts; server/routes-deals.ts; server/storage/dealRepo.ts.
+Falsified/verified: tests/unit/dealDeletionEndpoint.test.tsx. An initial missing-library harness failure was corrected using the existing React createRoot/act setup; then the original hook failed one request-contract case with one refusal case passing. The corrected hook's five-file creation/deletion/census/transaction group passed all 72 tests. Independent source reviewer confirmed endpoint mounting, permission/scoping and unchanged cache paths. No live customer record was deleted.
+Resolving commits: directed lifecycle follow-up pending publication
+
+### DEFECT-0288
+Title: Video publication could switch configured account or record a missing provider ID as created
+Severity: P2
+Status: PARTIAL (2026-10-14; bounded account/receipt repair audited, full binding/provider proof remains open)
+Surfaced by lenses: directed G-03/G-04 review-revision and provider caller census
+Description: Each CMO provider step selected an arbitrary first active account. TikTok creation ignored the advertiser ID returned by its upload; Meta polling/creation did not carry that upload identity. An account change could switch the configured destination between steps. Meta HTTP 200 without id also returned an undefined creative ID, allowing the worker to claim object_created without an object receipt.
+Remediation: Meta/TikTok refuse multiple active accounts before effects. Meta carries and compares its normalized upload account identity through polling and creative creation; TikTok compares and uses its uploaded advertiser ID. No credentials enter queue/context/receipts. Both create helpers require nonempty string object IDs; the worker refuses malformed existing IDs and enters uncertain/reconciliation state for unusable new IDs rather than claiming creation. No provider account or operating setting was changed.
+Evidence: server/integrations/metaAdsVideo.ts; server/integrations/tiktokAds.ts; server/jobs/cmoBroadcast.ts.
+Falsified/verified: tests/unit/cmoProviderAccountBinding.test.ts; tests/unit/cmoPublicationReceipts.test.ts; tests/unit/cmoApprovalQueue.test.ts. Account cases were 7 fail / 2 pass before repair; missing Meta-ID cases were 4 fail / 10 pass before refusal. Final group: 46 pass, including actual worker identity forwarding, refusal before new effects and uncertain receipt SQL parameters without object_created. Independent reviewer cleared the final bounded diff. These are mocked-provider engineering proofs. Approval-time account/config revision, founder displayed revision, video bytes, frozen outbound copy/CTA, render/destination matrix, spend reservations, provider ownership/permissions and delivery remain open. Selecting one configured identity does not prove external account ownership.
+Additional bounded verification (2026-10-14): Displayed dashboard metadata carries a canonical revision hash; approval compares it under decision and ordered render row locks before mutations. The queue/context records exact destination/render pairs, TikTok only9:16, and the worker refuses missing/mismatched revision or pair. The UI preserves the witnessed snapshot through polling and blocks in-flight retargeting/closure. Seven red-first route failures; final focused six-file group 88 pass including four DOM cases; four PostgreSQL cases still require CI after local skips. This does not freeze post-approval metadata, file bytes, live script/CTA/configuration or approval-time account identity. Rejection still has no displayed revision token. Status remains PARTIAL. No baseline or external authority is broadened.
+Additional content binding (2026-10-14): Actual rendered output now yields SHA-256/byte length and frozen publication copy/CTA. Approval stores strict per-render assets; queue binds the full asset hash and worker checks it on its first and later reads. Preview and provider uploads use precisely the verified Buffer; adapters never reopen the file. Before-start CTA drift was reproduced red and repaired after independent review found a video-only hash insufficient. Eight focused files: 77 pass/four local real-DB skips; independent worker/assets: 34 pass. Final full gates/build and new mandatory CI remain required. Local cross-machine storage and pure R2 transfer remain unproven; account/config/spend authority, rejection revision and provider/delivery proofs remain open. Status remains PARTIAL.
+Resolving commits: account/displayed-review PR #354 a3e89b4b (CI pending); further byte/copy proof awaiting release; none of this follow-up is deployed
+
 ### REFUTED AT HEAD, 2026-09-27
 
 The research report ("AcreOS at full maturity", pinned at `a2dc971`) was
@@ -6795,10 +6848,10 @@ not implemented against.
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
-| OPEN   | 0   | 0   | 19  | 19    |
+| OPEN   | 0   | 0   | 23  | 23    |
 | FIXED  | 14  | 132 | 117 | 263   |
 | DEFERRED | 0 | 2   | 0   | 2     |
-| **Total** | **14** | **134** | **136** | **284** |
+| **Total** | **14** | **134** | **140** | **288** |
 
 Recounted from the entries themselves on 2026-09-28 (184 `### DEFECT-` blocks
 by their Status and Severity lines; DEFECT-0063 PARTIALLY FIXED is counted as

@@ -96,3 +96,51 @@ export function assertTestAuthSafe(): void {
     process.exit(1);
   }
 }
+
+/**
+ * Token-gated E2E bypass for Fly staging.
+ *
+ * Unlike e2eTestAuthEnabled() (blanket bypass, disabled on Fly by design),
+ * this allows CI to authenticate E2E tests against staging using a shared
+ * secret token.
+ *
+ * SAFETY:
+ * - Only active when E2E_TEST_AUTH_TOKEN is set. This env var must NEVER
+ *   be set on production. It is set as a Fly secret on acreos-staging only.
+ * - The token is compared using timing-safe equality to prevent timing attacks.
+ * - The token must be provided via the X-E2E-Auth-Token header.
+ * - All activations are logged for audit.
+ * - The token should be a high-entropy random value, rotated periodically.
+ */
+export function e2eTokenAuthValid(providedToken: string | undefined): boolean {
+  const expected = process.env.E2E_TEST_AUTH_TOKEN;
+  if (!expected || !providedToken) return false;
+
+  // Timing-safe comparison to prevent timing attacks
+  const expectedBuf = Buffer.from(expected, "utf8");
+  const providedBuf = Buffer.from(providedToken, "utf8");
+  if (expectedBuf.length !== providedBuf.length) return false;
+
+  // Use timingSafeEqual from node:crypto
+  try {
+    const { timingSafeEqual } = require("node:crypto");
+    return timingSafeEqual(expectedBuf, providedBuf);
+  } catch {
+    // Fallback (should not happen on Node 18+)
+    return false;
+  }
+}
+
+/**
+ * Check if the current request carries a valid E2E token.
+ * Used by isAuthenticated and the global Clerk middleware bypass.
+ */
+export function e2eTokenAuthEnabled(req: { headers: Record<string, string | string[] | undefined> }): boolean {
+  const token = req.headers["x-e2e-auth-token"];
+  const tokenStr = Array.isArray(token) ? token[0] : token;
+  if (e2eTokenAuthValid(tokenStr)) {
+    logger.info("[e2e-token-auth] Valid token presented, bypassing Clerk for E2E test");
+    return true;
+  }
+  return false;
+}

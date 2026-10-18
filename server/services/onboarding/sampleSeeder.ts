@@ -312,7 +312,7 @@ function buildFixAndFlipFixtures(orgId: number): SampleFixtureSet {
 
   const deals: SampleDealFixture[] = [
     { organizationId: orgId, type: "acquisition", status: "closed", offerAmount: "160000", acceptedAmount: "165000", notes: "Sample acquisition. Closed at $165k. Rehab scope locked at $38k. Target exit $285k.", propertyIndex: 0 },
-    { organizationId: orgId, type: "disposition", status: "listed", offerAmount: "299000", notes: "Sample resale. Listed at $299k after a $41k rehab. Watching days-on-market against the $182k basis.", propertyIndex: 1 },
+    { organizationId: orgId, type: "disposition", status: "negotiating", offerAmount: "299000", notes: "Sample resale. Listed at $299k after a $41k rehab. Watching days-on-market against the $182k basis.", propertyIndex: 1 },
   ];
 
   return { leads, properties, deals, notes: [] };
@@ -784,7 +784,7 @@ export async function seedSampleDataForOrg(
       (d) => d.propertyId === propertyId && d.type === dealData.type,
     );
     if (already) continue;
-    await storage.createDeal({ ...dealData, propertyId } as any);
+    await storage.createDeal({ ...dealData, propertyId } as any, undefined, { source: "sample_fixture" });
     dealsCreated++;
   }
 
