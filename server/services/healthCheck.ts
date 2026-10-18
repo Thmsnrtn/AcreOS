@@ -28,6 +28,83 @@ class HealthCheckService {
   private checkInterval: NodeJS.Timeout | null = null;
 
   /**
+   * Per-check timeout in ms. Individual service checks must not hang
+   * indefinitely — a hung check would block checkAll() and leave clients
+   * (e.g. AiChatGuard on /ai) stuck in a loading state forever.
+   * Added 2026-10-17 after the /ai Pax composer incident.
+   */
+  private static readonly CHECK_TIMEOUT_MS = 5000;
+
+  /**
+   * Race a check against a timeout. On timeout, returns an "unavailable"
+   * ServiceHealth instead of hanging. On check error, also returns
+   * "unavailable" (the individual check methods already handle their own
+   * errors, but this is defense-in-depth for unexpected throws).
+   */
+  private async withTimeout(
+    name: string,
+    check: Promise<ServiceHealth>,
+  ): Promise<ServiceHealth> {
+    const timeoutMs = HealthCheckService.CHECK_TIMEOUT_MS;
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      const timeout = new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`health check timed out after ${timeoutMs}ms`)),
+          timeoutMs,
+        );
+      });
+      return await Promise.race([check, timeout]);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.warn(`[healthCheck] ${name} check failed/timed out: ${message}`);
+      return {
+        name,
+        status: 'unavailable',
+        message: `check failed: ${message}`,
+        lastChecked: clock.now(),
+      };
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
+  /**
+   * Race a batch check (returns ServiceHealth[]) against a timeout.
+   * On timeout/error, returns a single "unavailable" entry so checkAll()
+   * never hangs on a slow provider group.
+   */
+  private async withTimeoutAll(
+    name: string,
+    check: Promise<ServiceHealth[]>,
+  ): Promise<ServiceHealth[]> {
+    const timeoutMs = HealthCheckService.CHECK_TIMEOUT_MS;
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      const timeout = new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`health check timed out after ${timeoutMs}ms`)),
+          timeoutMs,
+        );
+      });
+      return await Promise.race([check, timeout]);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.warn(`[healthCheck] ${name} batch check failed/timed out: ${message}`);
+      return [
+        {
+          name,
+          status: 'unavailable',
+          message: `check failed: ${message}`,
+          lastChecked: clock.now(),
+        },
+      ];
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
+  /**
    * Check if Stripe is configured and accessible
    */
   async checkStripe(): Promise<ServiceHealth> {
@@ -324,16 +401,16 @@ class HealthCheckService {
   async checkAll(): Promise<HealthCheckResult> {
     const [coreChecks, dataChecks, invariantChecks] = await Promise.all([
       Promise.all([
-        this.checkDatabase(),
-        this.checkRedis(),
-        this.checkStripe(),
-        this.checkOpenAI(),
-        this.checkTwilio(),
-        this.checkEmail(),
-        this.checkLob(),
+        this.withTimeout('stripe', this.checkStripe()),
+        this.withTimeout('database', this.checkDatabase()),
+        this.withTimeout('redis', this.checkRedis()),
+        this.withTimeout('openai', this.checkOpenAI()),
+        this.withTimeout('twilio', this.checkTwilio()),
+        this.withTimeout('email', this.checkEmail()),
+        this.withTimeout('lob', this.checkLob()),
       ]),
-      this.checkDataProviders(),
-      this.checkInvariants(),
+      this.withTimeoutAll('data-providers', this.checkDataProviders()),
+      this.withTimeoutAll('invariants', this.checkInvariants()),
     ]);
     const checks = [...coreChecks, ...dataChecks, ...invariantChecks];
 

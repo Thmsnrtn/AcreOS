@@ -32,10 +32,16 @@ vi.mock("../../server/services/founder", () => ({
 vi.mock("../../server/utils/logger", () => ({
   logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn() },
 }));
-vi.mock("../../server/auth/testAuth", () => ({
-  e2eTestAuthEnabled: () => false,
-  E2E_TEST_USER_ID: "test-user",
-}));
+vi.mock("../../server/auth/testAuth", async (importOriginal) => {
+  // Partial mock: keep the unit-test overrides, but inherit real exports
+  // so new names (e.g. e2eTokenAuthEnabled, resolveTestUserId) stay defined.
+  const actual = await importOriginal<typeof import("../../server/auth/testAuth")>();
+  return {
+    ...actual,
+    e2eTestAuthEnabled: () => false,
+    E2E_TEST_USER_ID: "test-user",
+  };
+});
 vi.mock("@clerk/express", () => ({
   clerkMiddleware: vi.fn(() => (_req: Request, _res: Response, next: NextFunction) => next()),
   createClerkClient: vi.fn(() => ({

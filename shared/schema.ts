@@ -9360,7 +9360,7 @@ export const autopilotExperiences = pgTable("autopilot_experiences", {
   // to. Reads stay platform-wide until a second tenant exists; the column is the
   // cheap insurance that the cross-tenant split is a pure migration later.
   scope: text("scope").default("platform"),
-  costUsd: numeric("cost_usd"),
+  costUsd: numeric("cost_usd", { precision: 10, scale: 2 }),
   // Calibrated foresight: the success probability the system PREDICTED for this
   // action at act-time. Compared against the realized outcome to measure the
   // system's own calibration (Brier score). Null when no forecast was made.
@@ -14408,3 +14408,23 @@ export * from "./schema/parcel-data";
 // W3 acquisition engine — creator revenue share (AcreOS's own money to
 // creators; rules in shared/billing/creatorProgram.ts).
 export * from "./schema/creators";
+
+/**
+ * COO Operations Ledger — append-only log of every COO/autopilot action.
+ * No updates, no deletes. Corrections are new entries with parentId.
+ * Synchronization point between COO (Muse) and founder dashboard autopilot.
+ */
+export const cooLedger = pgTable("coo_ledger", {
+  id: serial("id").primaryKey(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  actor: text("actor").notNull().default("coo"),
+  actionType: text("action_type").notNull(),
+  target: text("target"),
+  reasoning: text("reasoning"),
+  status: text("status").notNull().default("completed"),
+  resultSummary: text("result_summary"),
+  costUsd: numeric("cost_usd"),
+  parentId: integer("parent_id"),
+  metadata: jsonb("metadata"),
+});
+

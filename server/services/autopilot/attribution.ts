@@ -19,6 +19,7 @@
  */
 import { eq, inArray } from "drizzle-orm";
 import { db } from "../../db";
+import { unscopedForPlatformOps } from "../../utils/orgScopedDb";
 import { marketingTouch, marketingArtifacts, autopilotConversions } from "@shared/schema";
 import { logger } from "../../utils/logger";
 
@@ -104,22 +105,27 @@ export interface ConversionSummary {
   byPlay: Array<{ playId: string; signups: number }>;
 }
 
-/** Conversions rolled up for the founder dashboard. Never throws. */
+/** Strict read for reporting: a failed source must not look like zero conversions. */
+export async function readConversionSummary(): Promise<ConversionSummary> {
+  const rows = await unscopedForPlatformOps("Founder-only platform growth attribution across organizations")
+    .select({ playId: autopilotConversions.playId })
+    .from(autopilotConversions)
+    .where(eq(autopilotConversions.event, "signup"));
+  const byPlayMap = new Map<string, number>();
+  for (const r of rows) {
+    const key = r.playId ?? "unknown";
+    byPlayMap.set(key, (byPlayMap.get(key) ?? 0) + 1);
+  }
+  return {
+    totalSignups: rows.length,
+    byPlay: [...byPlayMap.entries()].map(([playId, signups]) => ({ playId, signups })).sort((a, b) => b.signups - a.signups),
+  };
+}
+
+/** Best-effort compatibility read for background consumers. */
 export async function getConversionSummary(): Promise<ConversionSummary> {
   try {
-    const rows = await db
-      .select({ playId: autopilotConversions.playId })
-      .from(autopilotConversions)
-      .where(eq(autopilotConversions.event, "signup"));
-    const byPlayMap = new Map<string, number>();
-    for (const r of rows) {
-      const key = r.playId ?? "unknown";
-      byPlayMap.set(key, (byPlayMap.get(key) ?? 0) + 1);
-    }
-    return {
-      totalSignups: rows.length,
-      byPlay: [...byPlayMap.entries()].map(([playId, signups]) => ({ playId, signups })).sort((a, b) => b.signups - a.signups),
-    };
+    return await readConversionSummary();
   } catch {
     return { totalSignups: 0, byPlay: [] };
   }

@@ -8,7 +8,7 @@ import { storage, db } from "./storage";
 
 // Auth imports
 import { clerkMiddleware, isAuthenticated, registerAuthRoutes, requireFounder } from "./auth";
-import { e2eTestAuthEnabled } from "./auth/testAuth";
+import { e2eTestAuthEnabled, e2eTokenAuthEnabled } from "./auth/testAuth";
 
 // Feature routes (Router-based)
 import { registerAIOperationsRoutes } from "./routes-ai-operations";
@@ -242,6 +242,9 @@ import { registerFounderPaidDataEvalRoutes } from "./routes-founder-paid-data-ev
 import { registerCountyCoverageRoutes } from "./routes-county-coverage";
 import { registerLandDataRoutes } from "./routes-land-data";
 import { registerFounderCostRoutes } from "./routes-founder-cost";
+import { registerOpsRoutes } from "./routes-ops";
+import { registerLedgerRoutes } from "./routes-ledger";
+import { registerKillSwitchRoutes } from "./routes-killswitches";
 import { registerFounderAuditRoutes } from "./routes-founder-audit";
 import { registerFounderLifeCockpitRoutes } from "./routes-founder-life-cockpit";
 import { registerPublicDealRoomRoute } from "./routes-deal-rooms";
@@ -677,7 +680,7 @@ export async function registerRoutes(
     // dev-instance keys when no session is found, which CI can't complete and
     // which blanks the page. The isAuthenticated bypass populates req.auth
     // itself. Never active on Fly — see server/auth/testAuth.ts.
-    if (e2eTestAuthEnabled()) return next();
+    if (e2eTestAuthEnabled() || e2eTokenAuthEnabled(req)) return next();
     try {
       clerkMw(req, res, (err?: unknown) => {
         if (err) {
@@ -2572,6 +2575,11 @@ export async function registerRoutes(
   // Cost summary — /api/founder/cost-summary. Consolidated cost view for
   // the /founder/cost screen (AI spend + infra + per-org breakdown).
   registerFounderCostRoutes(app);
+  // Ops service API — machine-readable operations for the AI COO.
+  // GET-only, bearer-token auth (OPS_SERVICE_TOKEN). See routes-ops.ts.
+  registerOpsRoutes(app);
+  registerLedgerRoutes(app);
+  registerKillSwitchRoutes(app);
   // Domain-audit cockpit — /api/founder/audit-findings — the shared
   // continuous-audit substrate's founder "is it green?" read surface +
   // acknowledge/resolve. Founder-only. Company-level (no org scope).

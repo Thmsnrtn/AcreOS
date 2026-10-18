@@ -18,7 +18,7 @@
 import { db } from "../db";
 import { HARD_STOP_LANE_COVERAGE } from "./autopilot/hardStops";
 import { companyAgents, agentActionLog, decisionsInboxItems } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { clock } from "../utils/clock";
 
 // ─── Trust thresholds per authority level ────────────────────────────────────
@@ -329,6 +329,40 @@ async function checkAuthorityInner(codename: string, action: string): Promise<Au
   };
 }
 
+/** Keep repeat platform observations as one active question. Skill/goal callers
+ * do not yet carry a trusted tenant identity, so they retain their separate
+ * cards. Legacy cards without the recorded input cannot safely be folded.
+ * This is queue deduplication, never permission to execute the action.
+ */
+async function enqueueAuthorityQuestion(
+  card: typeof decisionsInboxItems.$inferInsert,
+  action: string,
+  metadata: Partial<ActionExecution>,
+): Promise<void> {
+  if (metadata.actionType !== "proactive" && metadata.actionType !== "reaction") {
+    await db.insert(decisionsInboxItems).values(card);
+    return;
+  }
+  const inputJson = JSON.stringify(metadata.input ?? {});
+  const subject = { action, input: JSON.parse(inputJson), relatedGoalId: metadata.relatedGoalId ?? null };
+  const subjectJson = JSON.stringify(subject);
+  const lockPrefix = `authority:${card.ownerAgentCodename}:${card.itemType}:`;
+  await db.transaction(async (tx) => {
+    // PostgreSQL's canonical JSONB text gives reordered/nested object keys the
+    // same lock as well as the same equality predicate. Arrays remain ordered.
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${lockPrefix} || ${subjectJson}::jsonb::text))`);
+    const [existing] = await tx.select({ id: decisionsInboxItems.id }).from(decisionsInboxItems).where(and(
+      isNull(decisionsInboxItems.organizationId),
+      eq(decisionsInboxItems.ownerAgentCodename, card.ownerAgentCodename!),
+      eq(decisionsInboxItems.itemType, card.itemType),
+      inArray(decisionsInboxItems.status, ["pending", "deferred"]),
+      sql`${decisionsInboxItems.contextBundle}->'authorityQuestion' = ${subjectJson}::jsonb`,
+    )).limit(1);
+    if (existing) return;
+    await tx.insert(decisionsInboxItems).values({ ...card, contextBundle: { authorityQuestion: subject } });
+  });
+}
+
 /**
  * Execute an action through the authority gate.
  * Logs all actions regardless of outcome.
@@ -360,7 +394,7 @@ export async function executeWithAuthority(
     } as ActionExecution);
 
     // Create a decisions inbox item
-    await db.insert(decisionsInboxItems).values({
+    await enqueueAuthorityQuestion({
       itemType: "agent_escalation",
       riskLevel: "medium",
       urgencyScore: 60,
@@ -369,7 +403,7 @@ export async function executeWithAuthority(
       recommendedActionLabel: `${codename}: ${action}`,
       ownerAgentCodename: codename,
       status: "pending",
-    });
+    }, action, metadata);
 
     return { success: false, escalated: true, logId };
   }
@@ -383,7 +417,7 @@ export async function executeWithAuthority(
       durationMs: clock.nowMs() - startTime,
     } as ActionExecution);
 
-    await db.insert(decisionsInboxItems).values({
+    await enqueueAuthorityQuestion({
       itemType: "agent_recommendation",
       riskLevel: "low",
       urgencyScore: 40,
@@ -392,7 +426,7 @@ export async function executeWithAuthority(
       recommendedActionLabel: `${codename} recommends: ${action}`,
       ownerAgentCodename: codename,
       status: "pending",
-    });
+    }, action, metadata);
 
     return { success: false, escalated: true, logId };
   }

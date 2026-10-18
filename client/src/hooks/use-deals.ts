@@ -159,7 +159,8 @@ export function useDeleteDeal() {
   const { toast } = useToast();
   return useMutation({
     mutationFn: async (id: number) => {
-      const res = await apiRequest("DELETE", `/api/deals/${id}`);
+      // Single deletion uses the same mounted permission/scoping path as bulk deletion.
+      const res = await apiRequest("POST", "/api/deals/bulk-delete", { ids: [id] });
       if (!res.ok) throw new Error(`${res.status}: Failed to delete deal`);
     },
     onSuccess: (_data, id) => {

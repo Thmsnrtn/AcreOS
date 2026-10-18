@@ -53,9 +53,27 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
+    # Throwaway Postgres for the E2E global setup (pushes schema + seeds test
+    # identities). pgvector image because the schema has a vector column.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: acreos_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     env:
       TARGET_URL: ${{ github.event.inputs.target_url || secrets.TARGET_URL }}
       E2E_TEST_AUTH_TOKEN: ${{ secrets.E2E_TEST_AUTH_TOKEN }}
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/acreos_e2e
       CI: "true"
 
     steps:
@@ -129,6 +147,29 @@ jobs:
           retention-days: 14
 
       # Page Solene on hard red (audit exit code 2).
+
+      # Verdict gate — a green checkmark must mean tests actually ran.
+      # If the Playwright report is missing or shows zero executed tests,
+      # fail loudly. A silent zero-test "pass" is worse than a red.
+      - name: Verdict gate — refuse green on zero tests
+        if: always() && steps.guard.outputs.skip != 'true'
+        run: |
+          node -e "
+            const fs = require('fs');
+            const p = 'tests/e2e-customer-journey/results/playwright-report.json';
+            if (!fs.existsSync(p)) {
+              console.error('::error::verdict gate: no playwright report at ' + p + ' — audit produced no evidence');
+              process.exit(1);
+            }
+            const s = JSON.parse(fs.readFileSync(p, 'utf8')).stats || {};
+            const ran = (s.expected || 0) + (s.unexpected || 0) + (s.flaky || 0);
+            console.log('verdict: tests_ran=' + ran + ' (expected=' + s.expected + ' unexpected=' + s.unexpected + ' flaky=' + s.flaky + ' skipped=' + s.skipped + ')');
+            if (ran === 0) {
+              console.error('::error::verdict gate: zero tests executed — this is not a pass');
+              process.exit(1);
+            }
+          "
+
       - name: Page Solene on RED
         if: steps.audit.outcome == 'failure'
         env:

@@ -273,12 +273,12 @@ export function registerAutopilotRoutes(app: Express): void {
         } catch {
           calibration = null;
         }
-        let conversions = { totalSignups: 0, byPlay: [] as Array<{ playId: string; signups: number }> };
+        let conversions: import("./services/autopilot/attribution").ConversionSummary | null = null;
         try {
-          const { getConversionSummary } = await import("./services/autopilot/attribution");
-          conversions = await getConversionSummary();
+          const { readConversionSummary } = await import("./services/autopilot/attribution");
+          conversions = await readConversionSummary();
         } catch {
-          conversions = { totalSignups: 0, byPlay: [] };
+          conversions = null;
         }
         // Growth budget: the base env/charter cap, any founder-approved ramp
         // override, the effective cap the loop spends against, and the hard
