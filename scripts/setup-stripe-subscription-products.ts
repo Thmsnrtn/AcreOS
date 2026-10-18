@@ -55,7 +55,7 @@ const SPECS: ProductSpec[] = [
     acreosKey: "tier_starter",
     name: "AcreOS — Starter",
     description:
-      "Replace your spreadsheet. 250 leads, 50 properties, 25 notes, 500 AI requests/mo, 5 campaigns, 2 sequences. Single seat.",
+      "Replace your spreadsheet. 250 leads, 50 properties, 25 notes, 1,500 AI turns/mo, 5 campaigns, 2 sequences. Single seat.",
     metadata: { tier: "starter", maxSeats: "1", aiCreditsMonthly: "500" },
     monthlyPriceCents: TIER_PRICES_CENTS.starter.priceMonthlyCents,
     yearlyPriceCents: TIER_PRICES_CENTS.starter.priceYearlyCents,
@@ -66,7 +66,7 @@ const SPECS: ProductSpec[] = [
     acreosKey: "tier_pro",
     name: "AcreOS — Pro",
     description:
-      "For serious operators. 500 leads, 100 properties, 50 notes, 1,000 AI requests/mo, unlimited campaigns + sequences, BYOK data providers. Up to 2 seats included; $20/extra seat/mo.",
+      "For serious operators. 500 leads, 100 properties, 50 notes, 12,000 AI turns/mo, unlimited campaigns + sequences, BYOK data providers. 2 seats included; $20/extra seat/mo.",
     metadata: { tier: "pro", aiCreditsMonthly: "1000" },
     monthlyPriceCents: TIER_PRICES_CENTS.pro.priceMonthlyCents,
     yearlyPriceCents: TIER_PRICES_CENTS.pro.priceYearlyCents,
@@ -77,7 +77,7 @@ const SPECS: ProductSpec[] = [
     acreosKey: "tier_scale",
     name: "AcreOS — Scale",
     description:
-      "For growing teams. Unlimited leads / properties / notes / AI, 10 seats included, $40/extra seat/mo, priority support, SMS + voice outreach, full BYOK provider stack.",
+      "For growing teams. Unlimited leads, properties and notes, 50,000 AI turns/mo, 10 seats included ($25/extra seat/mo), priority support, SMS + voice outreach, full BYOK provider stack.",
     metadata: { tier: "scale", aiCreditsMonthly: "-1" },
     monthlyPriceCents: TIER_PRICES_CENTS.scale.priceMonthlyCents,
     yearlyPriceCents: TIER_PRICES_CENTS.scale.priceYearlyCents,

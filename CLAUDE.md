@@ -1,5 +1,7 @@
 # AcreOS Engineering Standards
 
+Before starting any session, also read `docs/agent-operating-guide.md` (the working method: verify, prove, review, decide, report) and `docs/company/next-moves.md` (where the last session stopped). Update `next-moves.md` before you finish.
+
 ## Request Types
 
 Always use `AuthenticatedRequest` from `server/types/request.ts` in route handlers.

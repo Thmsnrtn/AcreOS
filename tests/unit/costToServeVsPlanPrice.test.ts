@@ -168,7 +168,11 @@ describe("the founder read API re-projects through the same rule", () => {
       organization_name: "Acme Land", subscription_tier: "pro", subscription_status: "active",
     }];
     const api = await readUnitEconomicsRollup();
-    expect(api.rows[0].costToServe).toEqual(costToServeOf({ mrrUsd: 99, aiUsd: 50, poolProviderUsd: 6 }));
+    // Re-projected from the snapshot's PERSISTED components: mrr_usd "49" is
+    // the persisted MRR, so the share is 56/49 even though pro's list price is
+    // now $99. The point is the API recomputes from components instead of
+    // serving the stale persisted shareOfPrice (0.01).
+    expect(api.rows[0].costToServe).toEqual(costToServeOf({ mrrUsd: 49, aiUsd: 50, poolProviderUsd: 6 }));
     expect(api.rows[0].costToServe!.overAlertShare).toBe(true);
   });
   it("a snapshot from before the field existed reads as null, not $0", async () => {

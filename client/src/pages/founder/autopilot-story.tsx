@@ -7,6 +7,8 @@
  * pleasure to read rather than a log to audit.
  */
 
+import { useSearch } from "wouter";
+import { GrowthGenerationReceipt } from "@/components/founder/GrowthGenerationReceipt";
 import { useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
@@ -245,6 +247,8 @@ function TraceBlock({ label, children }: { label: string; children: ReactNode })
 
 export default function FounderAutopilotStoryPage() {
   useDocumentTitle("The Story · Founder");
+  const search = useSearch();
+  const generationJobId = new URLSearchParams(search).get("generationJobId");
   const { data, isLoading, isError, error, refetch } = useQuery<{ entries: StoryEntry[] }>({
     queryKey: ["/api/founder/autopilot/story"],
     queryFn: async () => {
@@ -281,6 +285,8 @@ export default function FounderAutopilotStoryPage() {
             options it weighed, its honest forecast, which gate decided, and how it turned out.
           </p>
         </header>
+
+        {generationJobId !== null && <GrowthGenerationReceipt jobId={generationJobId} />}
 
         {/* The board report — the CEO-to-board summary (OKR progress, decision
             quality, what needs you). Wire-for-real: boardReport + okr. */}
