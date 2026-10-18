@@ -40,6 +40,7 @@ import {
   effectiveSeatAllowance,
   planAdmitsSeats,
   seatRuleFor,
+  billableExtraSeats,
 } from "@shared/billing/seats";
 import type { AuthenticatedRequest } from "./types/request";
 import { refuseSeatPurchase } from "./utils/firstRunRefusals";
@@ -160,8 +161,10 @@ export function registerTeamReadinessRoutes(app: Express): void {
         // seat_count is what the add-on sync below bills, so this route may
         // lower it, or keep it within the included seats or the count already
         // on file — never raise it into new billable seats.
-        const storedSeats = Math.max(0, Math.floor(Number(org.seatCount) || 0));
-        if (parsed.data.seatCount > Math.max(seatRuleFor(org.subscriptionTier).includedSeats, storedSeats)) {
+        if (
+          billableExtraSeats(org.subscriptionTier, parsed.data.seatCount) >
+          billableExtraSeats(org.subscriptionTier, org.seatCount)
+        ) {
           return refuseSeatPurchase(res, org.subscriptionTier);
         }
 

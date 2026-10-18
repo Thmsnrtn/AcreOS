@@ -22,7 +22,7 @@ export function isAiAllowanceSpent(gate: {
  * of that work must be measured against it. Other background work (origin
  * 'background') is still not counted (decision C, 2026-10-08).
  */
-export const ALLOWANCE_METERED_BACKGROUND_ORIGIN = "background_metered" as const;
+const ALLOWANCE_METERED_BACKGROUND_ORIGIN = "background_metered" as const;
 
 /** Every stored origin whose spend counts toward the org's monthly allowance. */
 export const ALLOWANCE_COUNTED_ORIGINS: readonly string[] = ["customer", ALLOWANCE_METERED_BACKGROUND_ORIGIN];
