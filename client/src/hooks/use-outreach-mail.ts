@@ -560,7 +560,8 @@ export interface MailLaneSummary {
       | "house_mail_unavailable"
       | "unknown_spec"
       | "letter_pages_unconfirmed"
-      | "letter_too_long";
+      | "letter_over_max"
+      | "letter_render_failed";
     message?: string;
   };
   ownKeys: { lob: boolean; postgrid: boolean };

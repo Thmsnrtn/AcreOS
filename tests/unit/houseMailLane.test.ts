@@ -94,7 +94,14 @@ const state = {
   /** Pages of the PDF served at any https …pdf URL; null = the fetch fails. */
   pdfPages: 1 as number | null,
   fetched: [] as string[],
+  renders: 0,
+  lastRendered: null as Buffer | null,
 };
+
+/** HTML that the renderer mock lays out as exactly `n` pages. */
+function htmlOfPages(n: number): string {
+  return `<html><body data-pages="${n}">Dear owner</body></html>`;
+}
 
 /** A letter whose length can be confirmed: a PDF on an https URL (served by the fetch stub). */
 const PDF_URL = "https://files.example.com/letter.pdf";
@@ -230,6 +237,18 @@ vi.mock("../../server/services/creditPool", () => ({
   },
 }));
 vi.mock("../../server/services/credits", () => ({ creditService: { afterDebitCommitted: () => undefined } }));
+// The renderer is faked here (real Chromium: houseLetterRenderReal.test.ts):
+// it returns a real PDF of the page count the HTML asks for, or fails.
+vi.mock("../../server/services/mail/letterRender", () => ({
+  renderLetterHtmlToPdf: async (html: string) => {
+    state.renders++;
+    if (html.includes("RENDER_FAIL")) throw new Error("chromium crashed");
+    const n = Number(/data-pages="(\d+)"/.exec(html)?.[1] ?? 1);
+    const { makePdf } = await import("../helpers/pdfFixture");
+    state.lastRendered = await makePdf(n);
+    return state.lastRendered;
+  },
+}));
 vi.mock("../../server/services/settings", () => ({ getSetting: async (k: string, fallback: unknown) => state.settings[k] ?? fallback }));
 
 // The outward-action boundary needs a database; letters in this file carry no
@@ -290,6 +309,8 @@ beforeEach(() => {
   state.settings = {};
   state.pdfPages = 1;
   state.fetched = [];
+  state.renders = 0;
+  state.lastRendered = null;
   vi.stubGlobal("fetch", async (url: string) => {
     state.fetched.push(String(url));
     if (state.pdfPages === null || !/\.pdf$/.test(String(url))) return new Response("nope", { status: 404 });
@@ -331,9 +352,9 @@ describe("house lane — AcreOS's Lob account, purchased credits, verified ident
     expect(state.lobCalls[0].kind).toBe("letter");
   });
 
-  it("a 6x11 postcard is charged the self-funding minimum (86), not the 75 weight", async () => {
+  it("a 6x11 postcard is charged the self-funding minimum (101 at Lob's 130¢ list price), not the 75 weight", async () => {
     await postcard({ size: "6x11" });
-    expect(charged()).toEqual([86]);
+    expect(charged()).toEqual([101]);
   });
 
   it("house prices come from the weights, raised to the floor; founder overrides of the weight included", async () => {
@@ -346,7 +367,7 @@ describe("house lane — AcreOS's Lob account, purchased credits, verified ident
     expect(await resolveMailLane(ORG, postcardSpec("4x6"))).toMatchObject({ creditsPerPiece: 99 });
     // An override BELOW the cost is lifted to the self-funding minimum.
     state.creditOverride = 10;
-    expect(await resolveMailLane(ORG, postcardSpec("6x9"))).toMatchObject({ creditsPerPiece: 74 });
+    expect(await resolveMailLane(ORG, postcardSpec("6x9"))).toMatchObject({ creditsPerPiece: 81 });
   });
 
   it("the return address printed is the org's verified identity", async () => {
@@ -496,19 +517,22 @@ describe("the other send chokepoints follow the same lane", () => {
     const to = { name: "Lee", addressLine1: "2 Dirt Rd", city: "Llano", state: "TX", zip: "78643" };
 
     await directMailService.sendPostcard({ size: "6x9", front: "a", back: "b", to, from }, "test", ORG);
-    expect(charged()).toEqual([75]);
+    expect(charged()).toEqual([81]); // Lob's 104¢ list price lifts the 75 weight to the floor
     expect(state.lobCalls[0].params.from).toMatchObject({ name: "Brazos Land Partners", address_line1: "1 Main St" });
 
     state.charges = [];
     await directMailService.sendLetter({ file: PDF_URL, to, from, housePrepaid: true }, "test", ORG);
     expect(state.charges).toEqual([]);
 
-    // A letter whose length cannot be confirmed: refused, not guessed.
+    // A caller's pageCount is a claim, not a confirmation: the HTML is
+    // rendered and its REAL page count decides (the caller declared 1; the
+    // render is 3 pages, and 3 pages is what Lob is sent).
     state.lobCalls = [];
-    // A caller's pageCount is a claim, not a confirmation: an HTML letter is
-    // refused whatever it declares.
-    await expect(directMailService.sendLetter({ file: "<p>Dear owner</p>", to, from, pageCount: 1 }, "test", ORG)).rejects.toThrow(/confirm are one page/);
-    expect(state.lobCalls).toEqual([]);
+    state.charges = [];
+    await directMailService.sendLetter({ file: htmlOfPages(3), to, from, pageCount: 1 }, "test", ORG);
+    expect(charged()).toEqual([120]); // 107 + 2 × 11 = 129¢ → minimum 101; the 120 listing stands
+    expect(state.lobCalls[0].params.file.value.equals(state.lastRendered)).toBe(true);
+    state.lobCalls = [];
 
     state.identity = identity({ status: "pending_verification" });
     await expect(directMailService.sendLetter({ file: PDF_URL, to, from }, "test", ORG)).rejects.toThrow(/verified return address/);
@@ -551,6 +575,8 @@ describe("the other send chokepoints follow the same lane", () => {
     expect(result.success).toBe(true);
     expect(charged()).toEqual([120]);
     expect(state.lobCalls[0].params.from).toMatchObject({ name: "Brazos Land Partners", address_line1: "1 Main St" });
+    // The PDF fetched and counted is the PDF Lob prints (never the URL again).
+    expect(Buffer.isBuffer(state.lobCalls[0].params.file?.value)).toBe(true);
 
     // Rejected → refunded; unknown → kept.
     state.lobError = lobRejection(403);
@@ -585,6 +611,7 @@ describe("the other send chokepoints follow the same lane", () => {
     expect(house.success).toBe(true);
     expect(charged()).toEqual([120]);
     expect(state.lobCalls[0].params.from.name).toBe("Brazos Land Partners");
+    expect(Buffer.isBuffer(state.lobCalls[0].params.file?.value)).toBe(true);
 
     state.lobError = lobRejection(429);
     expect((await lobService.sendLetter({ to: a, from: a, file: PDF_URL }, "live", { organizationId: ORG, purpose: "counterparty" })).success).toBe(false);
@@ -607,7 +634,7 @@ describe("resolveMailLane decisions", () => {
   });
 
   it("an unpriced spec is refused with its own reason", async () => {
-    expect(await resolveMailLane(ORG, letterSpec({ pages: 3 }))).toMatchObject({ lane: "refused", reason: "letter_too_long" });
+    expect(await resolveMailLane(ORG, letterSpec({ pages: 7 }))).toMatchObject({ lane: "refused", reason: "letter_over_max" });
     expect(await resolveMailLane(ORG, { kind: "letter", extraService: "certified" })).toMatchObject({ lane: "refused", reason: "unknown_spec" });
   });
 
@@ -623,7 +650,7 @@ describe("resolveMailLane decisions", () => {
 
   it("a surface's own listed price passes through the same floor", async () => {
     expect(await resolveMailLane(ORG, postcardSpec("6x11"), { listedCredits: 115 })).toMatchObject({ creditsPerPiece: 115 });
-    expect(await resolveMailLane(ORG, postcardSpec("6x11"), { listedCredits: 50 })).toMatchObject({ creditsPerPiece: 86 });
+    expect(await resolveMailLane(ORG, postcardSpec("6x11"), { listedCredits: 50 })).toMatchObject({ creditsPerPiece: 101 });
   });
 });
 
@@ -640,60 +667,109 @@ describe("providerDidNotBill — the only door to a refund", () => {
   });
 });
 
-describe("letters: AcreOS mail prints only letters it can CONFIRM are one page (founder decision 2026-10-18)", () => {
-  it("a one-page PDF is confirmed by counting its pages, and pre-paid at the letter price", async () => {
+describe("letters: render to PDF, then count, then charge, then print THAT PDF (founder decisions 2026-10-18)", () => {
+  const lobFilePages = async (call: { params: any }) => {
+    const file = call.params.file;
+    expect(Buffer.isBuffer(file?.value), "Lob must be sent the counted PDF, not HTML or a URL").toBe(true);
+    const { PDFParse } = await import("pdf-parse");
+    const p = new PDFParse({ data: new Uint8Array(file.value) });
+    try {
+      return (await p.getInfo()).total;
+    } finally {
+      await p.destroy();
+    }
+  };
+
+  it("a one-page PDF URL is fetched, counted, pre-paid at the letter price, and those bytes are what Lob prints", async () => {
     await letter();
     expect(state.fetched).toEqual([PDF_URL]);
     expect(charged()).toEqual([120]);
+    expect(await lobFilePages(state.lobCalls[0])).toBe(1);
   });
 
-  it("an HTML letter (length unknowable before Lob renders it) is refused — never assumed to be one page", async () => {
-    const err = await letter({ htmlContent: "<p>Dear owner, we buy land.</p>" }).catch((e: unknown) => e as Error);
-    expect((err as Error).name).toBe("ProviderNotContactedError");
-    expect((err as Error).message).toMatch(/confirm are one page/);
-    expect((err as Error).message).toMatch(/one-page PDF, or use your own Lob key/);
+  it("an HTML letter is rendered by AcreOS BEFORE the charge, and the rendered PDF is what Lob prints", async () => {
+    await letter({ htmlContent: htmlOfPages(1) });
+    expect(state.renders).toBe(1);
+    expect(charged()).toEqual([120]);
+    expect(state.lobCalls[0].params.file.value.equals(state.lastRendered)).toBe(true);
+    expect(await lobFilePages(state.lobCalls[0])).toBe(1);
+  });
+
+  it.each([
+    [1, 107, 120], // the 120 listing covers it
+    [2, 107 + 11, 120], // 118¢ → minimum 92; listing stands
+    [6, 107 + 5 * 11, 126], // 162¢ → ⌈162 × 1.059 × 1.1 / 1.5⌉ = 126
+  ])("at Lob's list prices: a %i-page render is charged for exactly that page count", async (pages, cost, credits) => {
+    await letter({ htmlContent: htmlOfPages(pages) });
+    expect(charged()).toEqual([credits]);
+    expect(await lobFilePages(state.lobCalls[0])).toBe(pages);
+    const lane = await resolveMailLane(ORG, letterSpec({ pages }));
+    expect(lane).toMatchObject({ lane: "house", creditsPerPiece: credits, price: { providerCostCents: cost } });
+  });
+
+  it("a colour letter's extra pages cost Lob's colour price (6 pages: 123 + 5 × 21 = 228¢ → 178 credits)", async () => {
+    const lane = await resolveMailLane(ORG, letterSpec({ pages: 6, color: true }));
+    expect(lane).toMatchObject({ lane: "house", creditsPerPiece: 178, price: { providerCostCents: 228 } });
+  });
+
+  it.each([
+    [2, 107 + 20, 120], // 127¢ → minimum 99; listing stands
+    [6, 107 + 5 * 20, 161], // 207¢ → ⌈207 × 1.1649 / 1.5⌉ = 161
+  ])("founder-set extra-page cost: a %i-page render is charged through it", async (pages, cost, credits) => {
+    state.settings["mail.house.cost_cents.letter_extra_page"] = 20;
+    await letter({ htmlContent: htmlOfPages(pages) });
+    expect(charged()).toEqual([credits]);
+    expect(await lobFilePages(state.lobCalls[0])).toBe(pages);
+    const lane = await resolveMailLane(ORG, letterSpec({ pages }));
+    expect(lane).toMatchObject({ lane: "house", creditsPerPiece: credits, price: { providerCostCents: cost } });
+  });
+
+  it("over the cap (default 6): a 7-page letter is refused — use your own Lob key — even with the extra-page cost set", async () => {
+    state.settings["mail.house.cost_cents.letter_extra_page"] = 20;
+    const err = await letter({ htmlContent: htmlOfPages(7) }).catch((e: unknown) => e as Error);
+    expect((err as Error).message).toMatch(/up to 6 pages, and this letter is 7/);
+    expect((err as Error).message).toMatch(/Use your own Lob key/);
     expect(state.charges).toEqual([]);
     expect(state.lobCalls).toEqual([]);
   });
 
-  it("a PDF that cannot be fetched is unknown, and refused", async () => {
+  it("the cap is founder-settable", async () => {
+    state.settings["mail.house.cost_cents.letter_extra_page"] = 20;
+    state.settings["mail.house.max_letter_pages"] = 3;
+    await expect(letter({ htmlContent: htmlOfPages(4) })).rejects.toThrow(/up to 3 pages, and this letter is 4/);
+    await letter({ htmlContent: htmlOfPages(3) });
+    expect(state.charges).toHaveLength(1);
+  });
+
+  it("a render that fails refuses the send honestly — nothing debited, nothing printed", async () => {
+    const err = await letter({ htmlContent: "<p>RENDER_FAIL</p>" }).catch((e: unknown) => e as Error);
+    expect((err as Error).name).toBe("ProviderNotContactedError");
+    expect((err as Error).message).toMatch(/couldn't lay this letter out/);
+    expect(state.charges).toEqual([]);
+    expect(state.lobCalls).toEqual([]);
+  });
+
+  it("content that is neither HTML nor a fetchable PDF is unknown, and refused", async () => {
+    await expect(letter({ htmlContent: "just plain words" })).rejects.toThrow(/length it can confirm/);
     state.pdfPages = null;
-    await expect(letter()).rejects.toThrow(/confirm are one page/);
+    await expect(letter()).rejects.toThrow(/length it can confirm/);
     expect(state.charges).toEqual([]);
   });
 
   it("a non-https or private-network URL is never fetched", async () => {
     for (const url of ["http://files.example.com/a.pdf", "https://127.0.0.1/a.pdf", "https://169.254.169.254/a.pdf"]) {
-      await expect(letter({ htmlContent: url }), url).rejects.toThrow(/confirm are one page/);
+      await expect(letter({ htmlContent: url }), url).rejects.toThrow(/length it can confirm/);
     }
     expect(state.fetched).toEqual([]);
     expect(state.charges).toEqual([]);
   });
 
-  it("extra-page cost UNSET: a 3-page PDF is refused — shorten it or use your own Lob key", async () => {
-    state.pdfPages = 3;
-    const err = await letter().catch((e: unknown) => e as Error);
-    expect((err as Error).message).toMatch(/one-page letters only, and this letter is 3 pages/);
-    expect((err as Error).message).toMatch(/Shorten it to one page, or use your own Lob key/);
-    expect(state.charges).toEqual([]);
-    expect(state.lobCalls).toEqual([]);
-  });
-
-  it("extra-page cost SET: a 3-page PDF is priced per page through the same self-funding rule", async () => {
-    state.pdfPages = 3;
-    state.settings["mail.house.cost_cents.letter_extra_page"] = 20;
-    // cost 120 + 2 × 20 = 160¢ → minimum ⌈160 × 1.059 × 1.1 / 1.5⌉ = 125 credits (> the 120 listing)
-    await letter();
-    expect(charged()).toEqual([125]);
-    const lane = await resolveMailLane(ORG, letterSpec({ pages: 3 }));
-    expect(lane).toMatchObject({ lane: "house", creditsPerPiece: 125, price: { providerCostCents: 160 } });
-  });
-
-  it("the own-key lane prints any letter, of any length, without counting it", async () => {
+  it("the own-key lane prints any letter, of any length, as written — nothing rendered or counted", async () => {
     state.ownLobKey = "live_org_key";
-    await letter({ htmlContent: "<p>A long HTML letter</p>" });
+    await letter({ htmlContent: htmlOfPages(9) });
+    expect(state.renders).toBe(0);
     expect(state.fetched).toEqual([]);
-    expect(state.lobCalls).toHaveLength(1);
+    expect(typeof state.lobCalls[0].params.file).toBe("string");
   });
 });
 

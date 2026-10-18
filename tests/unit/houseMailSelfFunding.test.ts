@@ -101,7 +101,7 @@ describe("every spec in the cost table pays for itself, on every price list", ()
     }
   });
 
-  it("the raises the rule makes are exactly the ones reported (6×11 postcard at the weight: 75 → 86)", () => {
+  it("the raises the rule makes are exactly the ones reported (at Lob's list prices: 6×9 75 → 81, 6×11 75 → 101)", () => {
     const raised: string[] = [];
     for (const [list, prices] of Object.entries(PRICE_LISTS)) {
       for (const row of HOUSE_MAIL_COST_TABLE) {
@@ -111,7 +111,10 @@ describe("every spec in the cost table pays for itself, on every price list", ()
         if (charged !== listed) raised.push(`${list}|${row.key}|${listed}->${charged}`);
       }
     }
-    expect(raised).toEqual(["credit weights (per-piece lanes, outreach queue)|postcard_6x11|75->86"]);
+    expect(raised).toEqual([
+      "credit weights (per-piece lanes, outreach queue)|postcard_6x9|75->81",
+      "credit weights (per-piece lanes, outreach queue)|postcard_6x11|75->101",
+    ]);
   });
 });
 

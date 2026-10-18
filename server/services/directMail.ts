@@ -9,6 +9,7 @@ import {
   assertSendableLane,
   chargeHouseMailPiece,
   refundUnbilledHouseMail,
+  houseLetterFile,
   postcardSpec,
   letterSpec,
   type HouseMailCharge,
@@ -535,7 +536,8 @@ export class DirectMailService {
         address_state: options.from.state,
         address_zip: options.from.zip,
       },
-      file: options.file,
+      // House: the counted PDF itself (decision 2026-10-18).
+      file: prepared.lane.lane === 'house' ? houseLetterFile(prepared.lane) : options.file,
       color: options.color ?? false,
       double_sided: options.doubleSided ?? false,
     });

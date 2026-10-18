@@ -222,7 +222,10 @@ function app() {
   return a;
 }
 
-const BASE = { pieceType: "letter_10", speed: "standard" };
+// A POSTCARD: a house postcard is pre-paid at queue time, which is the debit
+// these cases pin. (A house LETTER is charged per piece at send, after it is
+// rendered and counted — founder decision 2026-10-18; pinned below.)
+const BASE = { pieceType: "postcard_4x6", speed: "standard" };
 const TX = { audienceFilter: { states: ["TX"], counties: ["Hidalgo"] }, ...BASE };
 
 async function quoted(body: Record<string, unknown> = TX) {
@@ -441,6 +444,20 @@ describe("one confirmed set, one operation", () => {
       expect(r.status).toBe(201);
     }
     expect(S.shipments).toHaveLength(2);
+  });
+});
+
+describe("a house LETTER is not charged at queue time (decision 2026-10-18)", () => {
+  it("its length is unknown until each piece is rendered at send, so the queue takes no debit and the shipment is not prepaid", async () => {
+    const qr = await request(app()).post("/api/outreach/mail/quote").send({ ...TX, pieceType: "letter_10" });
+    const res = await request(app())
+      .post("/api/outreach/mail/queue")
+      .set("Idempotency-Key", "op-letter")
+      .send({ ...TX, pieceType: "letter_10", expectedAudienceDigest: qr.body.audienceDigest });
+    expect(res.status).toBe(201);
+    expect(S.debitKeys).toEqual([]);
+    expect(S.poolDebits).toBe(0);
+    expect(S.shipments[0].debitedCents).toBe(0);
   });
 });
 

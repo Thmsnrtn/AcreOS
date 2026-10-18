@@ -70,26 +70,30 @@ used for customer mail.
   founder-settable without a deploy (`founder_settings`
   `mail.house.cost_cents.{spec}`, the same mechanism as the credit weights):
 
+  *(As of 2026-10-18 the costs are Lob's published list prices — see item 6
+  below; this table is the current state.)*
+
   | Spec | Provider cost | Listed credits (weight) | Charged | Minimum that passes |
   |---|---|---|---|---|
-  | 4×6 postcard | 75¢ | 75 (`postcard_lob`) | 75 | 59 |
-  | 6×9 postcard | 95¢ | 75 (`postcard_lob`) | 75 | 74 |
-  | 6×11 postcard | 110¢ | 75 (`postcard_lob`) | **86** | 86 |
-  | Letter, 1 page, B&W | 120¢ | 120 (`letter_lob`) | 120 | 94 |
-  | Letter, 1 page, colour | 120¢ | 120 (`letter_lob`) | 120 | 94 |
+  | 4×6 postcard | 92¢ | 75 (`postcard_lob`) | 75 | 72 |
+  | 6×9 postcard | 104¢ | 75 (`postcard_lob`) | **81** | 81 |
+  | 6×11 postcard | 130¢ | 75 (`postcard_lob`) | **101** | 101 |
+  | Letter, 1 page, B&W | 107¢ | 120 (`letter_lob`) | 120 | 84 |
+  | Letter, 1 page, colour | 123¢ | 120 (`letter_lob`) | 120 | 96 |
 
   The campaign send lists its own prices (`DIRECT_MAIL_COSTS`: 4×6 75, 6×9 95,
   6×11 115, 1-page letter 125); every one passes, so none changed.
-- **The only price change:** a house **6×11 postcard sent outside the campaign
-  send** (the per-piece lanes listed at the `postcard_lob` weight) fails the
-  rule at 75 credits (112.5¢ against 128.1¢ required) and is raised to the
-  minimum that passes, **86 credits**. This applies the founder's own rule; it
+- **The price changes:** on the per-piece lanes (listed at the `postcard_lob`
+  weight) the rule raises a house **6×11 postcard** to the minimum that
+  passes — 86 credits at the 2026-10-17 estimate, **101 credits** at Lob's
+  list price (2026-10-18) — and a **6×9 postcard** 75 → **81** (2026-10-18). This applies the founder's own rule; it
   is not a new price decision. The raise is computed, not hard-coded
   (`houseMailCreditsPerPiece`): if a cost or weight is recalibrated, the floor
   follows.
 - **Unknown spec → refused, never guessed**: a mail class other than USPS
-  First Class, any extra service (certified, registered), a letter of more
-  than one page, or a postcard size outside 4×6 / 6×9 / 6×11.
+  First Class, any extra service (certified, registered), a letter whose page
+  count cannot be confirmed or that exceeds the page cap (2026-10-18), or a
+  postcard size outside 4×6 / 6×9 / 6×11.
 - **Refunds only for pieces Lob did not bill.** A charge is returned only when
   Lob was never contacted or answered with a rejection status (4xx). A
   timeout, a network error or a 5xx may be a printed piece: its charge stands
@@ -183,6 +187,45 @@ implementing session.
    the self-funding minimum, and a check Lob certainly did not run is
    refunded. The callerless env-key verifier in `directMail.ts` was deleted.
 
+### 2026-10-18 (later the same day) — render, count, cap, Lob list prices
+
+4. **Render to PDF, then count.** For house mail AcreOS renders each HTML
+   letter to PDF itself, before anything is debited — with the repo's existing
+   headless Chromium (`puppeteer-core`; the production image already installs
+   `chromium` and sets `PUPPETEER_EXECUTABLE_PATH`, Dockerfile), at Lob's
+   letter size (US Letter, 8.5 × 11 in, no added margins) —
+   `server/services/mail/letterRender.ts`. It counts that PDF's pages, charges
+   for exactly that page count through the self-funding rule, and sends Lob
+   THAT PDF (a multipart upload), so the printed piece is the counted piece;
+   a PDF URL is fetched once and those bytes are sent. JavaScript is off and
+   sub-resource requests are limited to SSRF-guarded https while rendering.
+   A render that fails refuses the house send honestly, with nothing debited;
+   content that is neither HTML nor a readable PDF stays "unknown → refused".
+   The own-key lane is unchanged (Lob renders the customer's own content).
+   Outreach-queue letters (laid out per recipient only at send) are now
+   charged per piece at send, after each is rendered and counted, instead of
+   being refused; queued postcards are still pre-paid at queue time.
+   Measured locally: ~1.3–1.5 s per render (a cold Chromium launch each time;
+   identical HTML is cached, so a campaign renders once).
+5. **Cap at 6 pages.** House letters over `mail.house.max_letter_pages`
+   (founder_settings, default 6) are refused with "use your own Lob key".
+6. **Cost table seeded from Lob's published list prices** (Lob help center
+   "Pricing details", help.lob.com/print-and-mail/ready-to-get-started/
+   pricing-details; rates effective 2026-07-12 and the 2026-11-01 update,
+   read 2026-10-18), highest plan column (pay-as-you-go / Developer), the
+   2026-11-01 rate where higher, rounded up to the whole cent:
+   4×6 92¢ · 6×9 104¢ · 6×11 130¢ · B&W letter first page 107¢ · colour first
+   page 123¢ · extra page B&W 11¢ / colour 21¢. The extra-page figures are now
+   the DEFAULTS of `mail.house.cost_cents.letter_extra_page` /
+   `…letter_extra_page_color` (still founder-overridable), so pages 2–6 go —
+   this supersedes "pages 2–6 need the extra-page key set" above. Address
+   verification has no published price and stays unset.
+   **Charges the rule raised (no charge was lowered):** per-piece / queue lanes
+   6×9 postcard 75 → 81 credits, 6×11 postcard 86 → 101 credits. Campaign-send
+   prices (75 / 95 / 115 / 125) and every letter's 120 listing still pass and
+   are unchanged; multi-page letters price from the rule (e.g. 6-page B&W
+   126, 6-page colour 178).
+
 Still open (unchanged, to be raised with the founder): the two house price
 lists (campaign send vs per-piece lanes), and real current Lob prices for the
 cost table.
@@ -191,5 +234,4 @@ cost table.
 
 - The two house price lists (campaign send `DIRECT_MAIL_COSTS` vs the
   credit-weight listing on the per-piece lanes) — both pass the rule.
-- Real current Lob prices for every row of the cost table (it uses only
-  figures the repo already recorded).
+- Which Lob plan AcreOS is on (the table assumes the highest-priced column).

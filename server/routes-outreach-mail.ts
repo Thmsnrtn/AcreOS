@@ -234,7 +234,11 @@ type PoolDebitResult = Awaited<ReturnType<typeof poolDebit>>;
 function queueSpecFor(pieceType: (typeof PIECE_TYPES)[number]): HouseMailSpec {
   if (pieceType === "postcard_4x6") return postcardSpec("4x6");
   if (pieceType === "postcard_6x9") return postcardSpec("6x9");
-  return letterSpec();
+  // A queued letter is laid out per recipient only at send (merge fields, the
+  // response block), so its pages cannot be counted here. The lane is checked
+  // as a one-page letter; each piece is then rendered, counted and charged
+  // for its real page count at send (decision 2026-10-18).
+  return letterSpec({ pages: 1 });
 }
 
 class PoolRefusal extends Error {
@@ -741,6 +745,11 @@ export function registerOutreachMailRoutes(app: Express): void {
           if (lane.lane === "own_account") ownAccountPool = await poolSnapshot(org.id);
           if (lane.lane === "house") houseLane = lane;
         }
+        // A house LETTER is charged per piece at send, after AcreOS renders and
+        // counts it — not here, where its length is unknown. A house postcard
+        // is pre-paid now.
+        const houseChargedAtSend = houseLane !== null && (pieceType.startsWith("letter") || pieceType === "handwritten");
+        if (houseChargedAtSend) houseLane = null;
 
         // W2.1 — free-tier lifetime cap. Checked BEFORE the pool debit so a
         // refusal never writes a ledger row. The refusal payload mirrors
@@ -837,15 +846,15 @@ export function registerOutreachMailRoutes(app: Express): void {
                   tx: tx as unknown as PrimaryDb,
                 })
               : null;
-            mailDebit = ownAccountPool
+            mailDebit = ownAccountPool || houseChargedAtSend
               ? {
                   allowed: true,
                   debitedCents: 0,
-                  remaining: ownAccountPool.remaining,
-                  poolMonthly: ownAccountPool.poolMonthly,
+                  remaining: ownAccountPool?.remaining ?? 0,
+                  poolMonthly: ownAccountPool?.poolMonthly ?? 0,
                   ledgerRowId: null,
                   overPool: false,
-                  byokBypassed: true,
+                  byokBypassed: ownAccountPool !== null,
                 }
               : houseCharge
               ? {

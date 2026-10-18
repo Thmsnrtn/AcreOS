@@ -224,8 +224,10 @@ describe("POST /api/outreach/mail/queue — free-tier first-send wedge (W2.1)", 
     const res = await queue();
     expect(res.status).toBe(201);
     expect(res.body.shipmentId).toBe(777);
-    expect(state.houseCharges).toBe(1); // pre-paid from purchased credits
-    expect(state.poolDebitCalls).toBe(0); // never the monthly pool
+    // A house letter is charged per piece at send, after it is rendered and
+    // counted (decision 2026-10-18) — never here, and never from the pool.
+    expect(state.houseCharges).toBe(0);
+    expect(state.poolDebitCalls).toBe(0);
   });
 
   it("refuses with free_send_spent once the lifetime allowance is used — no pool debit", async () => {
@@ -257,7 +259,7 @@ describe("POST /api/outreach/mail/queue — free-tier first-send wedge (W2.1)", 
     state.audienceSize = 40;
     const res = await queue();
     expect(res.status).toBe(201);
-    expect(state.houseCharges).toBe(1);
+    expect(state.houseCharges).toBe(0);
     expect(state.poolDebitCalls).toBe(0);
   });
 

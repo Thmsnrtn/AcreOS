@@ -44,10 +44,12 @@ import {
   HOUSE_MAIL_MARGIN_FLOOR,
   houseMailSpecKey,
   houseMailBaseKey,
+  HOUSE_MAIL_EXTRA_PAGE_COST_CENTS,
   type HouseMailSpec,
   type HouseMailSpecKey,
 } from "@shared/billing/house-mail-pricing";
 import { db, withTransaction, type PrimaryDb } from "../../db";
+import { getSetting } from "../settings";
 import { ProviderNotContactedError } from "../actions/outwardAction";
 import { logger } from "../../utils/logger";
 import { clock } from "../../utils/clock";
@@ -89,7 +91,7 @@ export function postcardSpec(size: string | null | undefined): HouseMailSpec {
 /**
  * A spec for a letter. `pages` only when CONFIRMED; otherwise pass `file` (the
  * letter's HTML or PDF URL) and the house lane confirms the count itself
- * (confirmLetterPages). Unknown is refused on the house lane — never assumed
+ * (prepareLetterPdf: render HTML / fetch a PDF, then count). Unknown is refused on the house lane — never assumed
  * to be one page (founder decision 2026-10-18).
  */
 export function letterSpec(opts: { color?: boolean | null; pages?: number | null; file?: string | null } = {}): HouseMailSpec {
@@ -97,13 +99,14 @@ export function letterSpec(opts: { color?: boolean | null; pages?: number | null
 }
 
 /** founder_settings keys that are UNSET (0) by default: no figure is assumed until the founder sets one. */
+/** founder_settings overrides of Lob's extra-page list price (0 = use HOUSE_MAIL_EXTRA_PAGE_COST_CENTS). */
 const HOUSE_MAIL_LETTER_EXTRA_PAGE_COST_KEY = "mail.house.cost_cents.letter_extra_page";
+const HOUSE_MAIL_LETTER_EXTRA_PAGE_COLOR_COST_KEY = "mail.house.cost_cents.letter_extra_page_color";
 const HOUSE_MAIL_ADDRESS_CHECK_COST_KEY = "mail.house.cost_cents.address_check";
 
 /** A founder-set cost in cents, or null while it is unset (0, missing or malformed). */
 async function founderSetCostCents(key: string): Promise<number | null> {
   try {
-    const { getSetting } = await import("../settings");
     const value = await getSetting<number>(key, 0, { scope: "global", scopeRef: null });
     return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null;
   } catch {
@@ -114,46 +117,116 @@ async function founderSetCostCents(key: string): Promise<number | null> {
 const PDF_MAX_BYTES = 10 * 1024 * 1024;
 const PDF_FETCH_TIMEOUT_MS = 10_000;
 
-/**
- * The page count of a letter, when it can be CONFIRMED: `file` is an https URL
- * (passing the SSRF guard) that serves a PDF, whose pages are counted by
- * parsing it. HTML — whose page count only Lob's renderer knows — and anything
- * that cannot be fetched or parsed is null (unknown). Never throws.
- */
-async function confirmLetterPages(file: string | null | undefined): Promise<number | null> {
-  const url = (file ?? "").trim();
-  if (!/^https:\/\//i.test(url)) return null;
+/** The PDF a house letter prints, and its counted pages. */
+export interface LetterPdf {
+  bytes: Buffer;
+  pages: number;
+}
+
+type LetterPdfResult = { ok: true; pdf: LetterPdf } | { ok: false; reason: "unknown" | "render_failed" };
+
+async function countPdfPages(bytes: Buffer): Promise<number | null> {
+  if (bytes.length === 0 || bytes.length > PDF_MAX_BYTES) return null;
+  if (bytes.subarray(0, 5).toString("latin1") !== "%PDF-") return null;
+  const { PDFParse } = await import("pdf-parse");
+  const parser = new PDFParse({ data: new Uint8Array(bytes) });
   try {
-    const { checkOperatorUrl } = await import("../providers/ssrf-guard");
-    if (!checkOperatorUrl(url).ok) return null;
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), PDF_FETCH_TIMEOUT_MS);
-    let bytes: Buffer;
-    try {
-      // No redirects: a redirect could lead past the SSRF guard.
-      const res = await fetch(url, { signal: ctrl.signal, redirect: "manual" });
-      if (!res.ok) return null;
-      const declared = Number(res.headers.get("content-length"));
-      if (Number.isFinite(declared) && declared > PDF_MAX_BYTES) return null;
-      bytes = Buffer.from(await res.arrayBuffer());
-    } finally {
-      clearTimeout(timer);
+    const info = await parser.getInfo();
+    return Number.isInteger(info.total) && info.total > 0 ? info.total : null;
+  } finally {
+    await parser.destroy().catch(() => undefined);
+  }
+}
+
+async function fetchPdf(url: string): Promise<Buffer | null> {
+  const { checkOperatorUrl } = await import("../providers/ssrf-guard");
+  if (!checkOperatorUrl(url).ok) return null;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), PDF_FETCH_TIMEOUT_MS);
+  try {
+    // No redirects: a redirect could lead past the SSRF guard.
+    const res = await fetch(url, { signal: ctrl.signal, redirect: "manual" });
+    if (!res.ok) return null;
+    const declared = Number(res.headers.get("content-length"));
+    if (Number.isFinite(declared) && declared > PDF_MAX_BYTES) return null;
+    return Buffer.from(await res.arrayBuffer());
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Rendered letters by content hash: the same HTML lays out the same, so a campaign renders once. */
+const RENDER_CACHE = new Map<string, LetterPdf>();
+const RENDER_CACHE_MAX = 32;
+
+/**
+ * The PDF a house letter will print, with its CONFIRMED page count (founder
+ * decisions 2026-10-18):
+ *   - an https URL (SSRF-guarded) serving a PDF → fetched once, counted, and
+ *     those exact bytes are what Lob is sent;
+ *   - HTML → rendered by AcreOS at Lob's letter size (letterRender.ts),
+ *     counted, and that rendered PDF is what Lob is sent;
+ *   - anything else, or a fetch that fails → unknown.
+ * A render that fails is its own answer (render_failed). Never throws.
+ */
+async function prepareLetterPdf(file: string | null | undefined): Promise<LetterPdfResult> {
+  const content = (file ?? "").trim();
+  if (!content) return { ok: false, reason: "unknown" };
+  try {
+    if (/^https:\/\//i.test(content)) {
+      const bytes = await fetchPdf(content);
+      const pages = bytes ? await countPdfPages(bytes) : null;
+      return bytes && pages ? { ok: true, pdf: { bytes, pages } } : { ok: false, reason: "unknown" };
     }
-    if (bytes.length === 0 || bytes.length > PDF_MAX_BYTES) return null;
-    if (bytes.subarray(0, 5).toString("latin1") !== "%PDF-") return null;
-    const { PDFParse } = await import("pdf-parse");
-    const parser = new PDFParse({ data: new Uint8Array(bytes) });
-    try {
-      const info = await parser.getInfo();
-      return Number.isInteger(info.total) && info.total > 0 ? info.total : null;
-    } finally {
-      await parser.destroy().catch(() => undefined);
-    }
+    if (/^[a-z]+:\/\//i.test(content) || !/[<>]/.test(content)) return { ok: false, reason: "unknown" };
   } catch (err) {
-    logger.warn("[mailLane] letter page count could not be confirmed", {
-      metadata: { error: err instanceof Error ? err.message : String(err) },
+    logger.warn("[mailLane] letter PDF could not be fetched", { metadata: { error: err instanceof Error ? err.message : String(err) } });
+    return { ok: false, reason: "unknown" };
+  }
+  const { createHash } = await import("node:crypto");
+  const hash = createHash("sha256").update(content).digest("hex");
+  const cached = RENDER_CACHE.get(hash);
+  if (cached) return { ok: true, pdf: cached };
+  try {
+    const { renderLetterHtmlToPdf } = await import("./letterRender");
+    const bytes = await renderLetterHtmlToPdf(content);
+    const pages = await countPdfPages(bytes);
+    if (!pages) return { ok: false, reason: "render_failed" };
+    const pdf = { bytes, pages };
+    if (RENDER_CACHE.size >= RENDER_CACHE_MAX) RENDER_CACHE.delete(RENDER_CACHE.keys().next().value as string);
+    RENDER_CACHE.set(hash, pdf);
+    return { ok: true, pdf };
+  } catch (err) {
+    logger.error("[mailLane] letter HTML could not be rendered — refusing the house send", err instanceof Error ? err : undefined);
+    return { ok: false, reason: "render_failed" };
+  }
+}
+
+/**
+ * The `file` a house letter is sent to Lob with: the counted PDF itself, as a
+ * multipart upload (lob SDK: `{ value, options }`), so Lob prints exactly the
+ * pages AcreOS counted and charged for and never re-renders anything.
+ */
+export function houseLetterFile(lane: HouseMailLane): { value: Buffer; options: { filename: string; contentType: string } } {
+  if (!lane.letterPdf) {
+    throw new ProviderNotContactedError("AcreOS mail has no counted PDF for this letter, so nothing was mailed.");
+  }
+  return { value: lane.letterPdf.bytes, options: { filename: "letter.pdf", contentType: "application/pdf" } };
+}
+
+/** founder_settings: the most pages a house letter may have (default 6). */
+const HOUSE_MAIL_MAX_LETTER_PAGES_KEY = "mail.house.max_letter_pages";
+const HOUSE_MAIL_MAX_LETTER_PAGES_DEFAULT = 6;
+
+async function houseMailMaxLetterPages(): Promise<number> {
+  try {
+    const value = await getSetting<number>(HOUSE_MAIL_MAX_LETTER_PAGES_KEY, HOUSE_MAIL_MAX_LETTER_PAGES_DEFAULT, {
+      scope: "global",
+      scopeRef: null,
     });
-    return null;
+    return typeof value === "number" && Number.isInteger(value) && value >= 1 ? value : HOUSE_MAIL_MAX_LETTER_PAGES_DEFAULT;
+  } catch {
+    return HOUSE_MAIL_MAX_LETTER_PAGES_DEFAULT;
   }
 }
 
@@ -166,7 +239,6 @@ async function confirmLetterPages(file: string | null | undefined): Promise<numb
 async function houseMailProviderCostCents(key: HouseMailSpecKey): Promise<number> {
   const compiled = houseMailCostEntry(key).providerCostCents;
   try {
-    const { getSetting } = await import("../settings");
     const value = await getSetting<number>(houseMailCostSettingKey(key), 0, { scope: "global", scopeRef: null });
     if (typeof value === "number" && Number.isFinite(value) && value > 0) return value;
   } catch {
@@ -213,11 +285,13 @@ async function houseMailPrice(
   if (spec.kind === "letter") {
     const pages = spec.pages;
     if (pages == null || !Number.isInteger(pages) || pages < 1) return null;
+    if (pages > (await houseMailMaxLetterPages())) return null;
     if (pages > 1) {
-      const extra = await founderSetCostCents(HOUSE_MAIL_LETTER_EXTRA_PAGE_COST_KEY);
-      if (extra === null) return null;
+      // Lob's list price per extra page (B&W / colour), unless the founder set one.
+      const color = spec.color === true;
+      const extra = await founderSetCostCents(color ? HOUSE_MAIL_LETTER_EXTRA_PAGE_COLOR_COST_KEY : HOUSE_MAIL_LETTER_EXTRA_PAGE_COST_KEY);
       extraPages = pages - 1;
-      extraPageCents = extra;
+      extraPageCents = extra ?? HOUSE_MAIL_EXTRA_PAGE_COST_CENTS[color ? "color" : "bw"];
     }
   } else if (!houseMailSpecKey(spec)) {
     return null;
@@ -266,7 +340,8 @@ export type MailLaneRefusalReason =
   | "house_mail_unavailable"
   | "unknown_spec"
   | "letter_pages_unconfirmed"
-  | "letter_too_long";
+  | "letter_over_max"
+  | "letter_render_failed";
 
 export type HouseMailLane = {
   lane: "house";
@@ -276,6 +351,8 @@ export type HouseMailLane = {
   creditsPerPiece: number;
   /** The org's verified return address every house piece must carry. */
   senderIdentity: MailSenderIdentity;
+  /** A letter: the counted PDF that is sent to Lob (houseLetterFile). */
+  letterPdf?: LetterPdf;
 };
 
 export type MailLane =
@@ -316,6 +393,10 @@ interface MailLaneInputs {
   senderIdentity: MailSenderIdentity | null | undefined;
   /** The house price of the spec, or null when the cost table has no row for it. */
   price: HouseMailPrice | null;
+  /** A letter: its counted PDF, or why there is none. */
+  letter?: LetterPdfResult;
+  /** The founder's page cap for a house letter. */
+  maxLetterPages?: number;
 }
 
 /**
@@ -356,23 +437,33 @@ function decideMailLane(input: MailLaneInputs): MailLane {
     };
   }
   const knownBase = houseMailBaseKey(input.spec) !== null;
+  if (!input.price && knownBase && input.letter && !input.letter.ok && input.letter.reason === "render_failed") {
+    return {
+      lane: "refused",
+      reason: "letter_render_failed",
+      message:
+        "AcreOS mail couldn't lay this letter out to count its pages, so nothing was charged or mailed. " +
+        "Try again, send it as a one-page PDF, or use your own Lob key (Settings → Your provider keys).",
+    };
+  }
+  const maxPages = input.maxLetterPages ?? 6;
+  if (!input.price && knownBase && input.spec.kind === "letter" && (input.spec.pages ?? 0) > maxPages) {
+    return {
+      lane: "refused",
+      reason: "letter_over_max",
+      message:
+        `AcreOS mail prints letters of up to ${maxPages} pages, and this letter is ${input.spec.pages}. ` +
+        "Use your own Lob key (Settings → Your provider keys) to send it.",
+    };
+  }
   if (!input.price && knownBase && input.spec.kind === "letter" && input.spec.pages == null) {
     return {
       lane: "refused",
       reason: "letter_pages_unconfirmed",
       message:
-        "AcreOS mail prints only letters it can confirm are one page, and this letter's length can't be confirmed " +
-        "(only a PDF's pages can be counted before printing). Shorten it to a one-page PDF, or use your own Lob key " +
+        "AcreOS mail prints only letters whose length it can confirm, and this letter's can't be (it is neither " +
+        "HTML AcreOS can lay out nor a PDF it can read). Send it as HTML or a one-page PDF, or use your own Lob key " +
         "(Settings → Your provider keys).",
-    };
-  }
-  if (!input.price && knownBase && input.spec.kind === "letter" && (input.spec.pages ?? 0) > 1) {
-    return {
-      lane: "refused",
-      reason: "letter_too_long",
-      message:
-        `AcreOS mail prints one-page letters only, and this letter is ${input.spec.pages} pages. ` +
-        "Shorten it to one page, or use your own Lob key (Settings → Your provider keys).",
     };
   }
   if (!input.price) {
@@ -400,6 +491,7 @@ function decideMailLane(input: MailLaneInputs): MailLane {
     price: input.price,
     creditsPerPiece: input.price.creditsPerPiece,
     senderIdentity: input.senderIdentity,
+    ...(input.letter && input.letter.ok ? { letterPdf: input.letter.pdf } : {}),
   };
 }
 
@@ -460,15 +552,20 @@ export async function resolveMailLane(
   // count its pages — once the identity would pass: a refused identity never
   // touches anything of AcreOS's.
   const identityOk = isVerifiedSenderIdentityFor(organizationId, senderIdentity);
+  // A house letter is rendered (HTML) or fetched (PDF URL) BEFORE anything is
+  // charged, its pages counted, and that PDF is what Lob will print.
   let priced = spec;
+  let letter: LetterPdfResult | undefined;
   if (identityOk && via === "lob" && spec.kind === "letter" && spec.pages == null && spec.file) {
-    priced = { ...spec, pages: await confirmLetterPages(spec.file) };
+    letter = await prepareLetterPdf(spec.file);
+    priced = { ...spec, pages: letter.ok ? letter.pdf.pages : null };
   }
-  const [houseConfigured, price] = await Promise.all([
+  const [houseConfigured, price, maxLetterPages] = await Promise.all([
     identityOk ? houseMailConfigured() : Promise.resolve(false),
     via === "lob" && identityOk ? houseMailPrice(priced, { listedCredits: opts.listedCredits }) : Promise.resolve(null),
+    houseMailMaxLetterPages(),
   ]);
-  return decideMailLane({ organizationId, spec: priced, via, hasOwnKey: false, houseConfigured, senderIdentity, price });
+  return decideMailLane({ organizationId, spec: priced, via, hasOwnKey: false, houseConfigured, senderIdentity, price, letter, maxLetterPages });
 }
 
 /** Raised when a lane refuses or purchased credits run short — nothing was sent or charged. */

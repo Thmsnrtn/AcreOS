@@ -160,7 +160,7 @@ describe("sendPostcard — payer + ledger semantics", () => {
     expect(houseMail.charges.map((c) => c.credits)).toEqual([75]);
     expect(state.poolDebits).toEqual([]); // never the monthly pool
     expect(state.opexPosts).toHaveLength(1);
-    expect(state.opexPosts[0].amountCents).toBe(75); // the canonical cost table (4x6)
+    expect(state.opexPosts[0].amountCents).toBe(92); // the canonical cost table: Lob's 4x6 list price
     expect(state.opexPosts[0].externalEventId).toBe("lob:postcard:psc_123");
     expect(state.opexPosts[0].organizationId).toBe(42);
   });

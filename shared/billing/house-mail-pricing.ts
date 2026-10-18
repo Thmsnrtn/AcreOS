@@ -15,30 +15,28 @@
  * HOUSE_MAIL_COST_TABLE is refused on the house lane — its cost is never
  * guessed.
  *
- * WHERE THE COSTS COME FROM. The repo records AcreOS's Lob cost in three
- * places, and they disagree; each row takes the HIGHEST figure recorded for
- * that spec, so the inequality is checked against the worst case the repo
- * knows of:
- *   - the Lob piece-cost table in server/services/directMailService.ts
- *     (Pillar 1.6: 4x6 65¢, 6x9 85¢, 6x11 110¢, B&W letter 85¢, colour 120¢);
- *   - the credit-weight comments in shared/billing/credit-weights.ts
- *     (single-piece Lob postcard ~$0.75, Lob letter ~$1.20);
- *   - the Lob router quote in server/services/mail/providers/lob.ts
- *     (4x6 75¢, 6x9 95¢, letter_10 120¢).
- * Each row is founder-settable without a deploy (founder_settings key
+ * WHERE THE COSTS COME FROM. Lob's published list prices — Lob help center,
+ * "Pricing details" (help.lob.com/print-and-mail/ready-to-get-started/
+ * pricing-details), rates effective 2026-07-12 and the update scheduled for
+ * 2026-11-01, read 2026-10-18. Each row takes the HIGHEST plan column
+ * (pay-as-you-go / Developer — the plan AcreOS is on is unconfirmed, so the
+ * conservative column), the 2026-11-01 rate where it is higher, rounded UP to
+ * the whole cent. (Before 2026-10-18 the rows were the highest of three
+ * internal estimates — 65–120¢ — which these replace.) Each row is
+ * founder-settable without a deploy (founder_settings key
  * `mail.house.cost_cents.{key}`, resolved in server/services/mail/mailLane.ts).
  *
  * WHAT THE TABLE DOES NOT KNOW (so the house lane refuses it): any mail class
  * but USPS First Class (the class every send path uses, Lob's default), and any
  * extra service (certified, registered).
  *
- * LETTERS (founder decision 2026-10-18): a house letter must be CONFIRMED to
- * be exactly one page — a letter whose page count cannot be determined is
- * refused, never assumed to be one page. A longer letter is refused too until
- * the founder sets an extra-page cost (founder_settings
- * `mail.house.cost_cents.letter_extra_page`, unset by default); then it is
- * priced per page through the same self-funding rule (server/services/mail/
- * mailLane.ts houseMailPrice).
+ * LETTERS (founder decisions 2026-10-18): a house letter's page count must be
+ * CONFIRMED — AcreOS renders HTML to PDF (or reads a PDF) and counts it; a
+ * letter it cannot count is refused, never assumed to be one page. Pages after
+ * the first cost HOUSE_MAIL_EXTRA_PAGE_COST_CENTS (Lob's list price, same
+ * source), founder-overridable via `mail.house.cost_cents.letter_extra_page`
+ * (B&W) and `…letter_extra_page_color`; letters over the founder's page cap
+ * (default 6) are refused (server/services/mail/mailLane.ts houseMailPrice).
  */
 
 import { CREDIT_PRICE_CENTS } from "./credit-packs";
@@ -90,38 +88,46 @@ export const HOUSE_MAIL_COST_TABLE: readonly HouseMailCostEntry[] = [
     key: "postcard_4x6",
     kind: "postcard",
     label: "4×6 postcard",
-    providerCostCents: 75,
-    source: "max(directMailService 65¢, credit-weight comment ~75¢, Lob router quote 75¢)",
+    providerCostCents: 92,
+    source: "Lob \"Pricing details\" (help.lob.com/print-and-mail/ready-to-get-started/pricing-details), highest plan column, read 2026-10-18: First-Class 4x6 $0.905 → 92¢ (rounded up, headroom for the 2026-11-01 update)",
   },
   {
     key: "postcard_6x9",
     kind: "postcard",
     label: "6×9 postcard",
-    providerCostCents: 95,
-    source: "max(directMailService 85¢, Lob router quote 95¢)",
+    providerCostCents: 104,
+    source: "Lob \"Pricing details\" (help.lob.com/print-and-mail/ready-to-get-started/pricing-details), highest plan column, read 2026-10-18: First-Class 6x9 $1.026 → 104¢",
   },
   {
     key: "postcard_6x11",
     kind: "postcard",
     label: "6×11 postcard",
-    providerCostCents: 110,
-    source: "directMailService 110¢",
+    providerCostCents: 130,
+    source: "Lob \"Pricing details\" (help.lob.com/print-and-mail/ready-to-get-started/pricing-details), highest plan column, read 2026-10-18: First-Class 6x11 $1.290 → 130¢",
   },
   {
     key: "letter_bw",
     kind: "letter",
     label: "Letter (one page, black & white)",
-    providerCostCents: 120,
-    source: "max(directMailService 85¢, credit-weight comment ~$1.20, Lob router quote 120¢)",
+    providerCostCents: 107,
+    source: "Lob \"Pricing details\" (help.lob.com/print-and-mail/ready-to-get-started/pricing-details), highest plan column, read 2026-10-18: B&W letter first page $1.060, $1.066 from 2026-11-01 → 107¢",
   },
   {
     key: "letter_color",
     kind: "letter",
     label: "Letter (one page, colour)",
-    providerCostCents: 120,
-    source: "max(directMailService 120¢, credit-weight comment ~$1.20)",
+    providerCostCents: 123,
+    source: "Lob \"Pricing details\" (help.lob.com/print-and-mail/ready-to-get-started/pricing-details), highest plan column, read 2026-10-18: colour letter first page $1.220 → 123¢",
   },
 ];
+
+/**
+ * Lob's list price for each letter page after the first, in cents — the
+ * default extra-page cost (founder-overridable). Same source as the table:
+ * Lob 'Pricing details' (help.lob.com/print-and-mail/ready-to-get-started/pricing-details), highest plan column, read 2026-10-18: B&W $0.10 / $0.101 from 2026-11-01 → 11¢;
+ * colour $0.20 / $0.201 → 21¢.
+ */
+export const HOUSE_MAIL_EXTRA_PAGE_COST_CENTS: Readonly<Record<"bw" | "color", number>> = { bw: 11, color: 21 };
 
 const ENTRY_BY_KEY = new Map(HOUSE_MAIL_COST_TABLE.map((e) => [e.key, e] as const));
 

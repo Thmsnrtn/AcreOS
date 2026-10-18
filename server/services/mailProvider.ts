@@ -7,6 +7,7 @@ import {
   chargeHouseMailPiece,
   refundUnbilledHouseMail,
   providerDidNotBill,
+  houseLetterFile,
   postcardSpec,
   letterSpec,
   type HouseMailCharge,
@@ -32,7 +33,8 @@ export interface MailAddress {
 export interface LetterOptions {
   to: MailAddress;
   from: MailAddress;
-  file: string;
+  /** HTML or a PDF URL — or, internally for a house letter, the counted PDF upload. */
+  file: string | ReturnType<typeof houseLetterFile>;
   color?: boolean;
   doubleSided?: boolean;
   description?: string;
@@ -116,7 +118,14 @@ function withLobTimeout<T>(promise: Promise<T>): Promise<T> {
  * (getDefaultCredentials), unchanged.
  */
 type LobSendPlan =
-  | { kind: 'send'; resolved: ResolvedLobClient; from: MailAddress; charge: HouseMailCharge | null }
+  | {
+      kind: 'send';
+      resolved: ResolvedLobClient;
+      from: MailAddress;
+      charge: HouseMailCharge | null;
+      /** House letter: the counted PDF Lob prints (decision 2026-10-18). */
+      letterFile?: ReturnType<typeof houseLetterFile>;
+    }
   | { kind: 'refused'; error: string }
   | { kind: 'unconfigured' };
 
@@ -152,6 +161,7 @@ async function planLobSend(
           zip: identity.zipCode,
         },
         charge,
+        ...(spec.kind === 'letter' ? { letterFile: houseLetterFile(lane) } : {}),
       };
     } catch (error) {
       // Never fall through to the platform key for an org's mail.
@@ -289,7 +299,11 @@ function notSent(error: string): MailResult {
 }
 
 export async function sendLetter(options: LetterOptions): Promise<MailResult> {
-  const plan = await planLobSend(letterSpec({ color: options.color ?? false, file: options.file }), options.organizationId, options.from);
+  const plan = await planLobSend(
+    letterSpec({ color: options.color ?? false, file: typeof options.file === 'string' ? options.file : null }),
+    options.organizationId,
+    options.from,
+  );
 
   if (plan.kind === 'refused') {
     logger.warn(`[Mail] Letter to ${options.to.name} refused: ${plan.error}`);
@@ -313,7 +327,7 @@ export async function sendLetter(options: LetterOptions): Promise<MailResult> {
   }
 
   logger.info(`[Mail] Sending letter via ${MailProvider.LOB} to ${options.to.name}`);
-  const result = await sendLetterViaLob(plan.resolved, { ...options, from: plan.from });
+  const result = await sendLetterViaLob(plan.resolved, { ...options, from: plan.from, file: plan.letterFile ?? options.file });
   if (!result.success && options.organizationId) {
     await refundUnbilledHouseMail(options.organizationId, plan.charge, { providerNotBilled: result.providerNotBilled === true }, 'Letter was rejected by Lob');
   }

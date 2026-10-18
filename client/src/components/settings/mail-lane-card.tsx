@@ -129,8 +129,8 @@ export function MailLaneCard({ compact = false, showRates = true }: { compact?: 
           )}
           {!compact && (
             <p className="text-xs text-muted-foreground" data-testid="mail-lane-letter-rule">
-              Letters on AcreOS mail must be confirmed one page — send a one-page PDF. Longer or HTML letters go out on
-              your own Lob key. Checking lead addresses also runs on your own Lob key.
+              AcreOS lays each letter out and counts its pages before charging, and prints exactly that. Letters over
+              the page limit go out on your own Lob key, and so do lead-address checks.
             </p>
           )}
           {short && (

@@ -186,16 +186,31 @@ export const SETTINGS_CATALOG: SeedSettingArgs[] = [
     validRange: { type: "number", min: 0, max: 10000 },
   })),
 
-  // Founder decision 2026-10-18: costs that are UNSET until the founder sets
-  // them. While unset, house mail refuses multi-page letters and lead-address
-  // checks on AcreOS's account; once set, each is priced through the same
+  // Founder decisions 2026-10-18: the extra-page costs default to Lob's list
+  // price (0 = that default); the address-check cost is UNSET until the
+  // founder sets it (no published price), and while unset lead-address checks
+  // run only on the org's own Lob key. Each is priced through the same
   // self-funding rule and pre-paid from purchased credits.
   {
     key: "mail.house.cost_cents.letter_extra_page",
     category: "cost" as const,
-    description: "AcreOS's Lob cost for each page of a house-mail letter beyond the first, in cents. 0 = unset: house mail prints one-page letters only.",
+    description: "AcreOS's Lob cost for each B&W page of a house-mail letter beyond the first, in cents. 0 = use Lob's list price (shared/billing/house-mail-pricing.ts).",
     defaultValue: 0,
     validRange: { type: "number", min: 0, max: 10000 },
+  },
+  {
+    key: "mail.house.cost_cents.letter_extra_page_color",
+    category: "cost" as const,
+    description: "AcreOS's Lob cost for each colour page of a house-mail letter beyond the first, in cents. 0 = use Lob's list price (shared/billing/house-mail-pricing.ts).",
+    defaultValue: 0,
+    validRange: { type: "number", min: 0, max: 10000 },
+  },
+  {
+    key: "mail.house.max_letter_pages",
+    category: "cost" as const,
+    description: "The most pages a house-mail letter may have (founder decision 2026-10-18). Longer letters go out only on the org's own Lob key.",
+    defaultValue: 6,
+    validRange: { type: "number", min: 1, max: 60 },
   },
   {
     key: "mail.house.cost_cents.address_check",

@@ -12,6 +12,7 @@ import {
   chargeHouseMailPiece,
   refundUnbilledHouseMail,
   withBillingVerdict,
+  houseLetterFile,
   providerDidNotBill,
   type AddressCheckLane,
   postcardSpec,
@@ -544,7 +545,10 @@ async function performLetterSend(options: SendLetterOptions): Promise<SendResult
     const result = await client.letters.create({
       to: formatRecipientAddress(recipientName, recipientAddress),
       from: formatSenderAddress(senderIdentity),
-      file: htmlContent,
+      // House: the PDF AcreOS rendered/fetched, counted and charged for —
+      // Lob prints that, never a re-render of the HTML (decision 2026-10-18).
+      // The SDK's type says string; its runtime takes a multipart `{ value, options }` upload.
+      file: (lane.lane === 'house' ? houseLetterFile(lane) : htmlContent) as unknown as string,
       color,
       double_sided: doubleSided,
       use_type: useType,

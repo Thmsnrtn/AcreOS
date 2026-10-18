@@ -7,6 +7,7 @@ import {
   assertSendableLane,
   chargeHouseMailPiece,
   refundUnbilledHouseMail,
+  houseLetterFile,
   postcardSpec,
   letterSpec,
   type HouseMailCharge,
@@ -219,7 +220,13 @@ export class LobService {
     ctx: LobSendContext | undefined,
     spec: HouseMailSpec,
     from: LobAddress,
-  ): Promise<{ client: InstanceType<typeof Lob>; isTestMode: boolean; from: LobAddress; charge: HouseMailCharge | null }> {
+  ): Promise<{
+    client: InstanceType<typeof Lob>;
+    isTestMode: boolean;
+    from: LobAddress;
+    charge: HouseMailCharge | null;
+    letterFile?: ReturnType<typeof houseLetterFile>;
+  }> {
     // Contract check FIRST, in every mode. "Counterparty mail with no tenant"
     // is a call-site bug whether or not this particular send would have
     // printed, and a lane rule that only applies sometimes is not a rule.
@@ -270,6 +277,8 @@ export class LobService {
           zip: identity.zipCode,
         },
         charge,
+        // A letter prints the PDF AcreOS counted and charged for.
+        ...(spec.kind === 'letter' ? { letterFile: houseLetterFile(lane) } : {}),
       };
     }
 
@@ -326,6 +335,7 @@ export class LobService {
       isTestMode = resolved.isTestMode;
       charge = resolved.charge;
       options = { ...options, from: resolved.from };
+      const letterFile = resolved.letterFile;
 
       logger.info(`[LobService] Sending letter (${isTestMode ? 'test' : 'live'} env) to ${options.to.name}`);
       // Platform-wide owner opt-out (W5a): refused inside the try, so the
@@ -349,7 +359,8 @@ export class LobService {
           address_state: options.from.state,
           address_zip: options.from.zip,
         },
-        file: options.file,
+        // The SDK's type says string; its runtime takes a multipart `{ value, options }` upload.
+        file: (letterFile ?? options.file) as unknown as string,
         color: options.color ?? false,
         double_sided: options.doubleSided ?? false,
       });

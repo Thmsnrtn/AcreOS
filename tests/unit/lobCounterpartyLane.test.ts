@@ -27,6 +27,16 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { makePdf } from "../helpers/pdfFixture";
+const rendered: string[] = [];
+// The real renderer is proven in houseLetterRenderReal.test.ts; here a fake
+// lays every letter out as one page, or fails on request.
+vi.mock("../../server/services/mail/letterRender", () => ({
+  renderLetterHtmlToPdf: async (html: string) => {
+    rendered.push(html);
+    if (html.includes("RENDER_FAIL")) throw new Error("chromium crashed");
+    return (await import("../helpers/pdfFixture")).makePdf(1);
+  },
+}));
 import { houseMail } from "../helpers/fakeHouseMailDb";
 // W5a: the owner opt-out list is empty for this test (the guard is proven elsewhere).
 vi.mock("../../server/services/trust/ownerSuppression", async () => (await import("../helpers/ownerSuppressionAllowAll")).ownerSuppressionAllowAll);
@@ -161,6 +171,7 @@ beforeEach(async () => {
   state.identity = null;
   state.poolDebits = [];
   houseMail.reset();
+  rendered.length = 0;
   // The env keys are read in the CONSTRUCTOR, so the module is rebuilt for
   // every case AFTER the env is set. Without the reset, one case that deletes
   // the platform keys would leak its singleton into whatever ran next — the
@@ -327,14 +338,25 @@ describe("counterparty direct mail resolves the ORG's own Lob account first", ()
     expect(houseMail.charges.map((c) => c.credits)).toEqual([120]); // pre-paid from purchased credits
   });
 
-  it("an HTML letter on house mail is refused — its length cannot be confirmed (decision 2026-10-18)", async () => {
+  it("an HTML letter on house mail is rendered by AcreOS and Lob is sent that PDF (decision 2026-10-18)", async () => {
     state.identity = VERIFIED_IDENTITY;
     const result = await lobService.sendLetter({ ...LETTER, file: "<p>Dear Lee</p>" }, "live", {
       organizationId: 42,
       purpose: "counterparty",
     });
+    expect(result.success).toBe(true);
+    expect(rendered).toEqual(["<p>Dear Lee</p>"]);
+    expect(houseMail.charges.map((c) => c.credits)).toEqual([120]);
+  });
+
+  it("a render that fails refuses the house letter — nothing charged or printed", async () => {
+    state.identity = VERIFIED_IDENTITY;
+    const result = await lobService.sendLetter({ ...LETTER, file: "<p>RENDER_FAIL</p>" }, "live", {
+      organizationId: 42,
+      purpose: "counterparty",
+    });
     expect(result.success).toBe(false);
-    expect(result.error).toMatch(/confirm are one page/);
+    expect(result.error).toMatch(/couldn't lay this letter out/);
     expect(state.created).toHaveLength(0);
     expect(houseMail.charges).toEqual([]);
   });
