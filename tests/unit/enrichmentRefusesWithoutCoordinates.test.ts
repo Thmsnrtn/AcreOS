@@ -143,12 +143,21 @@ describe("property enrichment without coordinates", () => {
       return /propertyEnrichmentService\.enrichProperty\(/.test(src) && /\.(get|post|put|patch)\(\s*["']/.test(src);
     });
     const names = routeCallers.map((f) => f.slice(root.length + 1)).sort();
-    // routes-deals.ts calls it only from a background helper that writes a
-    // failed status, never an HTTP response.
-    expect(names).toEqual(["routes-admin.ts", "routes-deals.ts", "routes-property-enrichment.ts"]);
-    for (const f of routeCallers.filter((x) => !x.endsWith("routes-deals.ts"))) {
+    expect(names).toEqual(["routes-admin.ts", "routes-property-enrichment.ts"]);
+    for (const f of routeCallers) {
       expect(stripComments(readFileSync(f, "utf8")), f).toMatch(/respondToEnrichmentRefusal\(res, err\)|enrichmentRefusalOf\(err\)/);
     }
+    // The deal routes' background enrichment (moved out of routes-deals.ts into
+    // services/dealEnrichmentTrigger.ts, shared with the lead → deal
+    // conversion) answers no HTTP request: a refusal there must land as the
+    // deal's failed enrichment status, never vanish.
+    const backgroundCallers = files
+      .filter((f) => !routeCallers.includes(f))
+      .filter((f) => /propertyEnrichmentService\.enrichProperty\(/.test(stripComments(readFileSync(f, "utf8"))))
+      .map((f) => f.slice(root.length + 1));
+    expect(backgroundCallers).toContain("services/dealEnrichmentTrigger.ts");
+    const trigger = stripComments(readFileSync(join(root, "services/dealEnrichmentTrigger.ts"), "utf8"));
+    expect(trigger).toMatch(/catch \(err\)[\s\S]*enrichmentStatus: "failed"/);
   });
 });
 

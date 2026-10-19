@@ -11,6 +11,7 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { leadScoringService } from "./services/leadScoring";
 import { propertyEnrichmentService } from "./services/propertyEnrichment";
+import { triggerDealEnrichmentAsync } from "./services/dealEnrichmentTrigger";
 import { checkUsageLimit } from "./services/usageLimits";
 import { refusePlanLimit } from "./middleware/usageLimitGate";
 import { refusePaxCredits } from "./utils/firstRunRefusals";
@@ -121,47 +122,6 @@ function validateOfferAmounts(data: Record<string, any>): string | null {
     if (val > MAX_OFFER_AMOUNT) return `${label} exceeds the maximum allowed value of $1,000,000,000`;
   }
   return null;
-}
-
-// Helper function to trigger deal enrichment asynchronously (non-blocking)
-async function triggerDealEnrichmentAsync(
-  organizationId: number,
-  dealId: number,
-  propertyId: number
-): Promise<void> {
-  Promise.resolve().then(async () => {
-    try {
-      await storage.updateDeal(dealId, { enrichmentStatus: "pending" }, undefined, organizationId);
-      const enrichmentResult = await propertyEnrichmentService.enrichProperty(organizationId, propertyId);
-      const enrichmentPayload = {
-        enrichedAt: enrichmentResult.enrichedAt.toISOString(),
-        lookupTimeMs: enrichmentResult.lookupTimeMs,
-        parcel: enrichmentResult.parcel,
-        hazards: enrichmentResult.hazards,
-        environment: enrichmentResult.environment,
-        infrastructure: enrichmentResult.infrastructure,
-        demographics: enrichmentResult.demographics,
-        publicLands: enrichmentResult.publicLands,
-        transportation: enrichmentResult.transportation,
-        water: enrichmentResult.water,
-        scores: enrichmentResult.scores,
-        errors: enrichmentResult.errors,
-      };
-      await storage.updateDeal(dealId, {
-        enrichmentStatus: "completed",
-        enrichedAt: clock.now(),
-        enrichmentData: enrichmentPayload as any,
-      }, undefined, organizationId);
-      logger.info("Deal and property enrichment completed", { dealId, propertyId, organizationId, lookupTimeMs: enrichmentResult.lookupTimeMs });
-    } catch (err) {
-      logger.error("Deal enrichment failed", { dealId, propertyId, organizationId, error: String(err) });
-      try {
-        await storage.updateDeal(dealId, { enrichmentStatus: "failed", enrichmentData: { errors: { enrichment: String(err) } } as any }, undefined, organizationId);
-      } catch (updateErr) {
-        logger.error("Failed to update deal enrichment status", { dealId, error: String(updateErr) });
-      }
-    }
-  });
 }
 
 // T0-10 — query params for GET /api/deals/aggregates. `type` mirrors the

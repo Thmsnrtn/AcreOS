@@ -251,6 +251,8 @@ describe("population: writers that bypass the repository cannot store an arbitra
     "server/routes-lot-pricing.ts": "names-no-land-status",
     "server/routes-bulk.ts": "names-no-land-status",
     "server/api-v1/properties.ts": "names-no-land-status",
+    // Lead → deal: inserts the lead's parcel inside its transaction; land status stays the column default.
+    "server/services/leads/convertLeadToDeal.ts": "names-no-land-status",
     // server/services/import.ts was deleted as unreferenced (#328).
   };
 
