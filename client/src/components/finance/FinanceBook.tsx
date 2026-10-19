@@ -13,6 +13,7 @@ import { QueryErrorState } from "@/components/query-error-state";
 import { STALE_TIMES, CACHE_TIMES } from "@/lib/queryClient";
 import { staggerContainer, staggerItem } from "@/lib/animations";
 import { usd } from "@/lib/format";
+import { useTerm } from "@/hooks/use-persona";
 import type { Note, Lead, Property, Payment } from "@shared/schema";
 
 type NoteWithDetails = Note & {
@@ -58,6 +59,7 @@ interface FinanceBookProps {
  * "not tracked yet" note instead of inventing debits.
  */
 export function FinanceBook({ notes }: FinanceBookProps) {
+  const dealLower = useTerm("entity.deal").toLowerCase();
   // Org-wide payments: GET /api/payments with no noteId returns every payment
   // for the org (see server/routes-finance.ts). We can't reuse usePayments here
   // because that hook is `enabled` only when a noteId is supplied — so we read
@@ -204,7 +206,7 @@ export function FinanceBook({ notes }: FinanceBookProps) {
           <EmptyState
             icon={BookOpen}
             headline="No entries in the book yet"
-            subtitle="The book fills in as cash moves — record a payment or close a seller-financed deal and the first line posts here automatically."
+            subtitle={`The book fills in as cash moves — record a payment or close a seller-financed ${dealLower} and the first line posts here automatically.`}
             cta={{ label: "", _noOp: true }}
             // TODO(cta): the book is a derived read-only view; the actionable
             // CTAs (record payment, create note) live on the Portfolio tab.
@@ -355,6 +357,7 @@ export function FinanceBook({ notes }: FinanceBookProps) {
  */
 function CrossLinks({ noteId, dealId }: { noteId?: number | null; dealId?: number | null }) {
   void noteId; // reserved — note-level cross-link surfaces on the Portfolio tab
+  const dealLabel = useTerm("entity.deal");
   if (dealId == null) return null;
   return (
     <Link href={`/deals/${dealId}`}>
@@ -364,7 +367,7 @@ function CrossLinks({ noteId, dealId }: { noteId?: number | null; dealId?: numbe
         data-testid={`chip-deal-${dealId}`}
       >
         <ExternalLink className="w-3 h-3" aria-hidden="true" />
-        from Deal #{dealId}
+        from {dealLabel} #{dealId}
       </Badge>
     </Link>
   );

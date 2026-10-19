@@ -39,6 +39,7 @@ import { queryClient } from "@/lib/queryClient";
 import { ScoreBreakdownCard, TcpaConsentBadge, TcpaConsentToggle } from "@/pages/leads";
 import { StatusBadge, type StatusKind } from "@/components/StatusBadge";
 import { LeadOutreachLanguage } from "@/components/growth/LeadOutreachLanguage";
+import { MakeDealAction } from "@/components/leads/MakeDealAction";
 import type { Lead } from "@shared/schema";
 
 const LEAD_STATUS_KIND: Record<string, StatusKind> = {
@@ -385,6 +386,12 @@ export function LeadDetailContent({
                 <CustomFieldValuesEditor entityType="lead" entityId={lead.id} />
               </CardContent>
             </Card>
+
+            {/* Lead → deal: the server enforces the role and the assigned-lead
+                rule; this only hides an action the caller's role cannot take. */}
+            {userPermissions?.permissions.canCreateDeals && (
+              <MakeDealAction leadId={lead.id} onEdit={onEdit} />
+            )}
 
             {onEdit && (
               <div className="flex gap-2">

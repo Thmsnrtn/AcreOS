@@ -125,6 +125,7 @@ const NON_FETCH_REGISTER: Record<string, string> = {
   "server/routes.ts": "imports node:http createServer, not requests.",
   "server/utils/gracefulShutdown.ts": "imports node:http Server type for shutdown, not requests.",
   "server/vite.ts": "dev-server plumbing, not outbound requests.",
+  "server/services/mail/safeFetch.ts": "https.request for customer-named letter content, pinned to a resolved public address; it applies blockedOutboundSource() itself before connecting (mailSafeFetch.test.ts).",
 };
 
 /**

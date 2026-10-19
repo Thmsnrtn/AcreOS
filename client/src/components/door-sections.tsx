@@ -19,9 +19,22 @@
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import { useHiddenRoutes } from "@/hooks/use-hidden-routes";
+import { isRouteHidden } from "@/lib/sidebar-hidden-routes";
+import { useVocabulary } from "@/hooks/use-persona";
+import type { VocabularyKey } from "@/lib/personaVocabulary";
 
 export interface DoorSection {
-  label: string;
+  /** Stable id of the section — its test id and React key. Never rendered. */
+  id: string;
+  /** Rendered label, for a section that is not a persona concept ("Outreach"). */
+  label?: string;
+  /**
+   * Persona vocabulary key for the rendered label. A section named after a
+   * persona concept ("Leads", "Pipeline") renders the persona's word for it —
+   * a note investor's Deals door reads "Note pipeline · Note opportunities",
+   * not the land flipper's "Pipeline · Leads".
+   */
+  term?: VocabularyKey;
   href: string;
   /** Other paths that belong to this section, for the current-page marker. */
   also?: string[];
@@ -33,9 +46,9 @@ export interface DoorSection {
  * children + the Outreach overflow entry in layout-sidebar.tsx NAV_MODULES.
  */
 export const DEALS_SECTIONS: DoorSection[] = [
-  { label: "Pipeline", href: "/deals" },
-  { label: "Leads", href: "/leads" },
-  { label: "Outreach", href: "/campaigns", also: ["/outreach/mail"] },
+  { id: "pipeline", term: "pipeline.label", href: "/deals" },
+  { id: "leads", term: "entity.lead.plural", href: "/leads" },
+  { id: "outreach", label: "Outreach", href: "/campaigns", also: ["/outreach/mail"] },
 ];
 
 function isCurrent(location: string, s: DoorSection): boolean {
@@ -54,7 +67,8 @@ export function DoorSections({
 }) {
   const [location] = useLocation();
   const hidden = useHiddenRoutes();
-  const visible = sections.filter((s) => !hidden.includes(s.href));
+  const term = useVocabulary();
+  const visible = sections.filter((s) => !isRouteHidden(s.href, hidden));
   if (visible.length < 2) return null;
   return (
     <nav aria-label={`${door} sections`} className={cn("-mx-1 overflow-x-auto", className)} data-testid={`door-sections-${door.toLowerCase()}`}>
@@ -73,9 +87,9 @@ export function DoorSections({
                     ? "border-primary bg-primary text-primary-foreground"
                     : "border-border bg-card text-foreground hover:bg-muted",
                 )}
-                data-testid={`door-section-${s.label.toLowerCase()}`}
+                data-testid={`door-section-${s.id}`}
               >
-                {s.label}
+                {s.term ? term(s.term) : (s.label ?? s.id)}
               </Link>
             </li>
           );

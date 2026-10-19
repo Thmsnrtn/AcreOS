@@ -46,7 +46,7 @@ import { QueryErrorState } from "@/components/query-error-state";
 import { okOrThrow } from "@/lib/fetch-honesty";
 import { PersonaFinanceHero } from "@/components/finance/PersonaFinanceHero";
 import { FinanceBook } from "@/components/finance/FinanceBook";
-import { usePersona, useTerm } from "@/hooks/use-persona";
+import { usePersona, useTerm, useVocabulary } from "@/hooks/use-persona";
 import { AtrGate } from "@/components/AtrGate";
 import { useAuth } from "@/hooks/use-auth";
 import { Verbs } from "@/lib/labels";
@@ -160,9 +160,12 @@ export default function FinancePage({ embedded = false }: { embedded?: boolean }
   // persona-shaped hero in front and the area chart suppressed in
   // favor of the small-multiple or P&L tile, which speaks to them.
   const persona = usePersona();
-  const propertyPluralLabel = useTerm("entity.property.plural");
+  // Persona vocabulary for the rows below: a note investor's "property" is
+  // collateral, and the deal a note came from is a note acquisition.
+  const term = useVocabulary();
+  const propertyTerm = term("entity.property");
+  const dealLabel = term("entity.deal");
   const isLandInvestorPersona = persona === "land_investor" || persona === "tax_delinquent";
-  void propertyPluralLabel; // reserved for future per-persona vocabulary swaps in this page
   const { data: notes, isLoading, error: notesError, refetch: refetchNotes } = useNotes();
   const { data: leads } = useLeads();
   // Each note's property, fetched by the notes' own ids (DEFECT-0168). This
@@ -332,7 +335,7 @@ export default function FinancePage({ embedded = false }: { embedded?: boolean }
                 variant="outline"
                 asChild
                 data-testid="button-open-borrower-portal"
-                title="Preview the borrower-facing portal where buyers view balances and make payments"
+                title="Preview the borrower-facing portal where borrowers view balances and make payments"
               >
                 <a href="/portal" target="_blank" rel="noopener noreferrer" aria-label="Open borrower portal (opens in new tab)">
                   Borrower Portal
@@ -376,7 +379,7 @@ export default function FinancePage({ embedded = false }: { embedded?: boolean }
                   <DialogHeader>
                     <DialogTitle>Create Promissory Note</DialogTitle>
                     <DialogDescription>
-                      Enter the details for a new promissory note including borrower, property, and payment terms.
+                      Enter the details for a new promissory note including borrower, {propertyTerm.toLowerCase()}, and payment terms.
                     </DialogDescription>
                   </DialogHeader>
                   <NoteForm onSuccess={() => setIsCreateOpen(false)} />
@@ -597,8 +600,8 @@ export default function FinancePage({ embedded = false }: { embedded?: boolean }
                       const propertyLabel = note.property
                         ? `${note.property.county}, ${note.property.state}`
                         : note.propertyId
-                          ? `Property #${note.propertyId}`
-                          : "Unassigned property";
+                          ? `${propertyTerm} #${note.propertyId}`
+                          : `Unassigned ${propertyTerm.toLowerCase()}`;
                       return (
                         <li key={note.id}>
                           <button
@@ -629,7 +632,7 @@ export default function FinancePage({ embedded = false }: { embedded?: boolean }
                                       data-testid={`chip-note-deal-${note.id}`}
                                     >
                                       <Link2 className="w-3 h-3" aria-hidden="true" />
-                                      from Deal #{note.originatingDealId}
+                                      from {dealLabel} #{note.originatingDealId}
                                     </Badge>
                                   </div>
                                 )}
@@ -664,7 +667,7 @@ export default function FinancePage({ embedded = false }: { embedded?: boolean }
                       <TableHeader>
                         <TableRow className="bg-muted/30">
                           <TableHead className="min-w-[140px]">Borrower</TableHead>
-                          <TableHead className="min-w-[140px]">Property</TableHead>
+                          <TableHead className="min-w-[140px]">{propertyTerm}</TableHead>
                           <TableHead className="text-right min-w-[90px]">Balance</TableHead>
                           <TableHead className="text-right min-w-[80px]">Monthly</TableHead>
                           <TableHead className="min-w-[100px]">Next Due</TableHead>
@@ -695,7 +698,7 @@ export default function FinancePage({ embedded = false }: { embedded?: boolean }
                                 <div className="flex items-center gap-2">
                                   <MapPin className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
                                   <span className="text-sm">
-                                    {note.property ? `${note.property.county}, ${note.property.state}` : (note.propertyId ? `Property #${note.propertyId}` : "Unassigned property")}
+                                    {note.property ? `${note.property.county}, ${note.property.state}` : (note.propertyId ? `${propertyTerm} #${note.propertyId}` : `Unassigned ${propertyTerm.toLowerCase()}`)}
                                   </span>
                                 </div>
                                 {note.originatingDealId != null && (
@@ -711,7 +714,7 @@ export default function FinancePage({ embedded = false }: { embedded?: boolean }
                                       data-testid={`chip-note-deal-${note.id}`}
                                     >
                                       <Link2 className="w-3 h-3" aria-hidden="true" />
-                                      from Deal #{note.originatingDealId}
+                                      from {dealLabel} #{note.originatingDealId}
                                     </Badge>
                                   </Link>
                                 )}
@@ -809,6 +812,9 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
   onDelete: () => void;
 }) {
   const { user: authedUser } = useAuth();
+  const drawerTerm = useVocabulary();
+  const drawerDealLabel = drawerTerm("entity.deal");
+  const drawerPropertyLabel = drawerTerm("entity.property");
   // Build the attestor payload for the ATR gate (Reg-Z §1026.43). Only the
   // current authenticated user can attest — we drop a render of AtrGate
   // entirely if useAuth hasn't resolved.
@@ -1090,7 +1096,7 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                     data-testid="chip-drawer-originating-deal"
                   >
                     <Link2 className="w-3 h-3" aria-hidden="true" />
-                    from Deal #{note.originatingDealId}
+                    from {drawerDealLabel} #{note.originatingDealId}
                   </Badge>
                 </Link>
               )}
@@ -1736,7 +1742,7 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
 
           <Card className="glass-panel">
             <CardHeader className="pb-2">
-              <CardTitle className="text-base">Property details</CardTitle>
+              <CardTitle className="text-base">{drawerPropertyLabel} details</CardTitle>
             </CardHeader>
             <CardContent>
               {note.property ? (
@@ -1759,9 +1765,9 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                   </div>
                 </dl>
               ) : note.propertyId ? (
-                <p className="text-muted-foreground">Property #{note.propertyId} — details couldn't be loaded.</p>
+                <p className="text-muted-foreground">{drawerPropertyLabel} #{note.propertyId} — details couldn't be loaded.</p>
               ) : (
-                <p className="text-muted-foreground">No property linked.</p>
+                <p className="text-muted-foreground">No {drawerPropertyLabel.toLowerCase()} linked.</p>
               )}
             </CardContent>
           </Card>
@@ -2067,6 +2073,7 @@ function RecordPaymentModal({
 
 function NoteForm({ onSuccess }: { onSuccess: () => void }) {
   const { mutate, isPending } = useCreateNote();
+  const formPropertyLabel = useTerm("entity.property");
   const { data: leads } = useLeads();
   const { toast } = useToast();
 
@@ -2182,12 +2189,12 @@ function NoteForm({ onSuccess }: { onSuccess: () => void }) {
                 <Select onValueChange={(val) => field.onChange(parseInt(val))}>
                   <FormControl>
                     <SelectTrigger data-testid="select-borrower">
-                      <SelectValue placeholder={buyers.length === 0 ? "No buyers yet — add a buyer lead first" : "Select buyer"} />
+                      <SelectValue placeholder={buyers.length === 0 ? "No borrowers yet — add the borrower as a contact first" : "Select borrower"} />
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
                     {buyers.length === 0 ? (
-                      <SelectItem value="none" disabled>No buyers available</SelectItem>
+                      <SelectItem value="none" disabled>No borrowers available</SelectItem>
                     ) : (
                       buyers.map((lead: any) => (
                         <SelectItem key={lead.id} value={lead.id.toString()}>
@@ -2208,7 +2215,7 @@ function NoteForm({ onSuccess }: { onSuccess: () => void }) {
             render={({ field }) => (
               <FormItem>
                 <FormLabel>
-                  Property <span className="text-destructive" aria-label="required">*</span>
+                  {formPropertyLabel} <span className="text-destructive" aria-label="required">*</span>
                 </FormLabel>
                 <FormControl>
                   {/* Unsold land, searched on the server (DEFECT-0168). This
@@ -2219,7 +2226,7 @@ function NoteForm({ onSuccess }: { onSuccess: () => void }) {
                     value={field.value ?? null}
                     onChange={(id) => field.onChange(id)}
                     excludeStatus="sold"
-                    aria-label="Property"
+                    aria-label={formPropertyLabel}
                     data-testid="select-property"
                   />
                 </FormControl>

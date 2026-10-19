@@ -38,7 +38,16 @@
  *   SIM_BASE_URL=http://localhost:5000 \
  *   npx tsx tests/simulation/campaign/idor-sweep.ts
  *
- * Exit 1 ONLY on a confirmed BREACH. Skips never fail the run.
+ * Exit codes: 1 on a confirmed BREACH; 2 when the population or the probed
+ * count is under its floor, the read detector is vacuous, or the run could not
+ * complete; 3 when a line carrying run data was withheld from the log.
+ *
+ * The console is a PUBLIC log (CI runs this on a public repository): it
+ * carries counts only — per-verdict counts, breaches, population / probed /
+ * skipped. Every per-route verdict, finding and skip goes to the ledger under
+ * CAMPAIGN_OUT through ./sweepReport, never to stdout/stderr; and
+ * `installPublicLogGuard` withholds any written chunk that carries the canary
+ * or a route path, failing the run.
  */
 
 import fs from "node:fs";
@@ -46,79 +55,20 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { SimClient } from "./client";
-import { recordFinding, recordMetric, recordSkip } from "./ledger";
+import { recordMetric } from "./ledger";
+import { ledgerFinding, ledgerSkip, publicSummaryLines, routeVerdict, say, stop, verdictClass } from "./sweepReport";
 import { stripComments } from "../../helpers/stripComments";
 import { personaTestUserId } from "../../../server/auth/testAuth";
+import { installPublicLogGuard, quietSessionServerLog, type PublicLogGuard } from "./publicLog";
+// routeSourceFiles is bound here for market/write-path-sweep.ts, which loads
+// this file's helpers (the source up to main()) and re-exports it by name.
+import { POPULATION_FLOOR, PROBED_FLOOR, enumerateRoutes, routeSourceFiles, type Route } from "./byIdRoutes";
 
 const SIM = "idor-sweep";
 const A_SLUG = "land-operator-desktop"; // org A
 const B_SLUG = "note-investor-buyer"; // org B
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const SERVER_DIR = path.resolve(HERE, "../../../server");
 const SHARED_DIR = path.resolve(HERE, "../../../shared");
-
-// ───────────────────────────── route enumeration ─────────────────────────────
-
-interface Route {
-  verb: "GET" | "PUT" | "PATCH" | "DELETE";
-  path: string;
-  file: string;
-}
-
-/** `app.get("/api/…", …)` / `router.patch(…)` etc. Path captured from a quoted literal. */
-// ANY receiver: most route files register through `const api = app` (940
-// registrations), so a receiver allow-list of app|router|r read ~a third of the
-// population and silently skipped core CRUD (/api/leads/:id, /api/deals/:id).
-// Found by the independent audit of this campaign; the floor below makes a
-// regression of this regex fail loudly instead of shrinking the population.
-const VERB_RE = /\b[A-Za-z_$][\w$]*\.(get|put|patch|delete)\(\s*(["'`])(\/api\/[^"'`]*?)\2/g;
-/** Population floor: by-id routes this sweep must find, measured 2026-10-06. */
-const POPULATION_FLOOR = 400;
-/** A param whose name ends in id/Id/ID — the by-id shape this sweep governs. */
-const ID_PARAM = /:[a-zA-Z_]*[Ii][Dd]\b/;
-
-function routeSourceFiles(): string[] {
-  const out: string[] = [];
-  for (const f of fs.readdirSync(SERVER_DIR)) {
-    if (/^routes.*\.ts$/.test(f) && !/\.test\.ts$/.test(f)) out.push(path.join(SERVER_DIR, f));
-  }
-  const sub = path.join(SERVER_DIR, "routes");
-  if (fs.existsSync(sub)) {
-    for (const f of fs.readdirSync(sub)) {
-      if (/\.ts$/.test(f) && !/\.test\.ts$/.test(f)) out.push(path.join(sub, f));
-    }
-  }
-  return out;
-}
-
-/** Enumerate every verb+path pair with an id-style param. Returns the per-route
- *  handler window too (for the terminal-`.from()` fallback). */
-function enumerateRoutes(): { routes: Route[]; windows: Map<string, string> } {
-  const routes: Route[] = [];
-  const windows = new Map<string, string>();
-  const seen = new Set<string>();
-  for (const file of routeSourceFiles()) {
-    // Strip comments with the repo's real left-to-right lexer, NOT a two-regex
-    // idiom — a route literal written inside a `// retired …` comment must not
-    // enter the population, and a `/*` inside a line comment must not eat the file.
-    const src = stripComments(fs.readFileSync(file, "utf8"));
-    const ms = [...src.matchAll(VERB_RE)];
-    for (let i = 0; i < ms.length; i++) {
-      const m = ms[i];
-      const p = m[3];
-      if (!ID_PARAM.test(p)) continue;
-      const verb = m[1].toUpperCase() as Route["verb"];
-      const key = `${verb} ${p}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      const start = m.index ?? 0;
-      const end = i + 1 < ms.length ? ms[i + 1].index ?? src.length : Math.min(src.length, start + 2500);
-      windows.set(key, src.slice(start, end));
-      routes.push({ verb, path: p, file: path.basename(file) });
-    }
-  }
-  return { routes, windows };
-}
 
 // ─────────────────────────── drizzle var → table map ───────────────────────────
 
@@ -247,6 +197,13 @@ async function firstEnumLabel(db: pg.Client, udtName: string): Promise<string | 
 }
 
 const CANARY = "idc" + Math.random().toString(36).slice(2, 10); // unique-per-run breach marker
+// Installed first thing in main() (not at load: market/write-path-sweep.ts
+// evaluates this file's helpers without main): no stdout/stderr chunk that
+// carries the canary (i.e. forged row content) reaches the published log.
+let publicLog: PublicLogGuard | null = null;
+
+/** A setup failure whose message is ours and safe to print. */
+class SweepSetupError extends Error {}
 let rowCounter = 0;
 
 /** rows inserted this run, newest last — deleted in reverse for cleanup. */
@@ -377,10 +334,23 @@ async function readRowJson(db: pg.Client, table: string, pk: string, id: any): P
 // ───────────────────────────────── main ─────────────────────────────────
 
 async function main() {
+  // The canary (forged row content) and any route path are withheld.
+  publicLog = installPublicLogGuard(() => [CANARY, /\/api\//]);
   const url = process.env.DATABASE_URL;
-  if (!url) throw new Error("DATABASE_URL required");
+  if (!url) throw new SweepSetupError("DATABASE_URL required");
   const db = new pg.Client({ connectionString: url });
   await db.connect();
+  // The forger's refused inserts and cleanup's refused deletes are expected;
+  // keep their DETAIL lines (forged values) out of the database's own log,
+  // which CI prints into the public job log.
+  const serverLogQuiet = await quietSessionServerLog(db);
+  recordMetric(SIM, "session_server_log_quiet", serverLogQuiet);
+  if (!serverLogQuiet && process.env.GITHUB_ACTIONS === "true") {
+    // In CI the database log is published; a session that cannot keep its
+    // statements out of it must not forge anything.
+    stop("idor-sweep could not run: this database session cannot keep its failed statements out of the published database log.");
+    process.exit(2);
+  }
 
   // Resolve org ids for the two personas (seedDb.ts already created the orgs).
   const orgRows = await db.query(
@@ -390,9 +360,9 @@ async function main() {
   );
   const orgOf = (slug: string) => orgRows.rows.find((r: any) => r.clerk_user_id === personaTestUserId(slug))?.id;
   const orgA = orgOf(A_SLUG), orgB = orgOf(B_SLUG);
-  if (!orgA || !orgB) throw new Error("could not resolve both persona orgs — run tests/personas/seedDb.ts first");
-  console.log(`org A (${A_SLUG}) = ${orgA}   org B (${B_SLUG}) = ${orgB}`);
-  console.log(`breach canary marker = ${CANARY}\n`);
+  if (!orgA || !orgB) throw new SweepSetupError("could not resolve both persona orgs — run tests/personas/seedDb.ts first");
+  // Ids and the canary go to the ledger, not the published log.
+  recordMetric(SIM, "orgs", { a: { slug: A_SLUG, id: orgA }, b: { slug: B_SLUG, id: orgB }, canary: CANARY });
 
   const clientA = new SimClient(A_SLUG);
   const clientB = new SimClient(B_SLUG);
@@ -414,11 +384,11 @@ async function main() {
   const varToTable = buildVarToTable();
 
   // ── POPULATION FLOOR ──
-  console.log(`POPULATION: ${routes.length} mounted /api by-id routes (GET/PUT/PATCH/DELETE with an :id-style param).`);
+  say(`POPULATION: ${routes.length} mounted by-id routes (GET/PUT/PATCH/DELETE with an id-style param).`);
   recordMetric(SIM, "population_byid_routes", routes.length);
   if (routes.length < POPULATION_FLOOR) {
     // A shrunken population reads exactly like a clean one. Refuse to report.
-    console.error(`POPULATION ${routes.length} is under the floor ${POPULATION_FLOOR}: the route extractor stopped reading part of the server.`);
+    stop(`POPULATION ${routes.length} is under the floor ${POPULATION_FLOOR}: the route extractor stopped reading part of the server.`);
     process.exit(2);
   }
   const verbCounts: Record<string, number> = {};
@@ -478,7 +448,7 @@ async function main() {
         ? "backing table is not org-scoped (no organization_id) or differently named — not a tenant-isolation surface"
         : "could not infer an org-scoped backing table from route/param/handler";
       gaps.push({ route: rkey, reason });
-      recordSkip({ sim: SIM, step: rkey, reason });
+      ledgerSkip({ sim: SIM, step: rkey, reason });
       results.push({ verb: route.verb, path: route.path, table: null, verdict: "skip" });
       continue;
     }
@@ -489,7 +459,8 @@ async function main() {
     if (aRow.id == null || bRow.id == null) {
       const reason = `forge failed for ${table}: ${aRow.reason ?? bRow.reason}`;
       gaps.push({ route: rkey, reason });
-      recordSkip({ sim: SIM, step: rkey, reason });
+      // The reason can quote a database error about the forged row: ledger only.
+      ledgerSkip({ sim: SIM, step: rkey, reason });
       results.push({ verb: route.verb, path: route.path, table, verdict: "skip-forge" });
       continue;
     }
@@ -531,7 +502,7 @@ async function main() {
         if (body.includes(CANARY) || stampedWithA) {
           verdict = "BREACH";
           breaches++;
-          recordFinding({
+          ledgerFinding({
             id: `idor-sweep-read-${table}`,
             product: "AcreOS",
             sev: "P0",
@@ -544,7 +515,7 @@ async function main() {
           });
         } else {
           verdict = "2xx-weak-authz";
-          recordFinding({
+          ledgerFinding({
             id: `idor-sweep-read-weakauthz-${table}-${route.path.replace(/[^a-z0-9]+/gi, "-")}`,
             product: "AcreOS",
             sev: "P2",
@@ -557,7 +528,7 @@ async function main() {
         }
       } else if (atk.status >= 500) {
         verdict = `sloppy-reject-${atk.status}`;
-        recordFinding({
+        ledgerFinding({
           id: `idor-sweep-sloppy-${table}-${route.verb}`,
           product: "AcreOS",
           sev: "P2",
@@ -575,7 +546,7 @@ async function main() {
       // Control-failed is itself a finding class (a by-id route that 500s on a valid row).
       if (!(ctrl.status >= 200 && ctrl.status < 300)) {
         const sev = ctrl.status >= 500 ? "P2" : "P3";
-        recordFinding({
+        ledgerFinding({
           id: `idor-sweep-control-${table}-${route.verb}`,
           product: "AcreOS",
           sev: sev as any,
@@ -591,9 +562,7 @@ async function main() {
       }
 
       results.push({ verb: route.verb, path: route.path, table, control: ctrl.status, attack: atk.status, verdict });
-      console.log(
-        `${verdict.startsWith("BREACH") ? "✗" : verdict.startsWith("isolated") ? "✓" : "!"} ${route.verb.padEnd(6)} ${route.path.padEnd(52)} tbl=${table.padEnd(26)} ctrl=${ctrl.status} atk=${atk.status} → ${verdict}`,
-      );
+      routeVerdict({ verb: route.verb, path: route.path, table, control: ctrl.status, attack: atk.status, verdict });
     } else {
       // WRITE vector: B mutates A's row; prove A's row survives unchanged in DB.
       const before = await readRowJson(db, table, meta.pk!, aRow.id);
@@ -611,7 +580,7 @@ async function main() {
       if (route.verb === "DELETE" && !survived) {
         verdict = "WRITE-BREACH(deleted)";
         breaches++;
-        recordFinding({
+        ledgerFinding({
           id: `idor-sweep-delete-${table}`,
           product: "AcreOS",
           sev: "P0",
@@ -625,7 +594,7 @@ async function main() {
       } else if ((route.verb === "PUT" || route.verb === "PATCH") && survived && !unchanged) {
         verdict = "WRITE-BREACH(mutated)";
         breaches++;
-        recordFinding({
+        ledgerFinding({
           id: `idor-sweep-mutate-${table}-${route.verb}`,
           product: "AcreOS",
           sev: "P0",
@@ -638,7 +607,7 @@ async function main() {
         });
       } else if (resp.status >= 500) {
         verdict = `sloppy-reject-${resp.status}`;
-        recordFinding({
+        ledgerFinding({
           id: `idor-sweep-write-sloppy-${table}-${route.verb}`,
           product: "AcreOS",
           sev: "P2",
@@ -650,7 +619,7 @@ async function main() {
         });
       } else if (resp.status >= 200 && resp.status < 300 && unchanged) {
         verdict = "write-accepted-no-change";
-        recordFinding({
+        ledgerFinding({
           id: `idor-sweep-write-accepted-${table}-${route.verb}`,
           product: "AcreOS",
           sev: "P2",
@@ -664,9 +633,7 @@ async function main() {
         verdict = survived ? "isolated" : "isolated(gone?)";
       }
       results.push({ verb: route.verb, path: route.path, table, attack: resp.status, verdict });
-      console.log(
-        `${verdict.includes("BREACH") ? "✗" : verdict.startsWith("isolated") ? "✓" : "!"} ${route.verb.padEnd(6)} ${route.path.padEnd(52)} tbl=${table.padEnd(26)} atk=${resp.status} survived=${survived} → ${verdict}`,
-      );
+      routeVerdict({ verb: route.verb, path: route.path, table, attack: resp.status, survived, verdict });
     }
   }
 
@@ -684,7 +651,7 @@ async function main() {
     const summary = Object.entries(byReason)
       .map(([reason, rs]) => `• ${rs.length} route(s): ${reason}\n    ${rs.sort().join("\n    ")}`)
       .join("\n");
-    recordFinding({
+    ledgerFinding({
       id: "idor-sweep-population-gap",
       product: "AcreOS",
       sev: "P2",
@@ -712,20 +679,25 @@ async function main() {
   recordMetric(SIM, "forged_rows", rowCounter);
   recordMetric(SIM, "cleaned_rows", cleaned);
 
-  // ── summary ──
-  console.log(`\n── IDOR sweep summary ──`);
-  console.log(`population (by-id routes):   ${routes.length}  ${JSON.stringify(verbCounts)}`);
-  console.log(`probed (org-scoped table):   ${probed}`);
-  console.log(`skipped (coverage gap):      ${gaps.length}`);
-  console.log(`forged rows / cleaned:       ${rowCounter} / ${cleaned}`);
-  console.log(`breaches:                    ${breaches}`);
-  const isolated = results.filter((r) => r.verdict.startsWith("isolated")).length;
+  // ── summary: counts only (per-route detail is in the ledger) ──
+  const verdicts: Record<string, number> = {};
+  for (const r of results) verdicts[verdictClass(r.verdict)] = (verdicts[verdictClass(r.verdict)] || 0) + 1;
   const controlIssues = results.filter((r) => typeof r.control === "number" && !(r.control! >= 200 && r.control! < 300)).length;
-  console.log(`isolated (clean rejects):    ${isolated}`);
-  console.log(`control-failed by-id routes: ${controlIssues}`);
-  console.log(`GET detector live-ness:      A's own response echoed the canary on ${controlHadCanary}/${getProbed} GET routes (0 would mean the P0 read detector is vacuous)`);
+  for (const line of publicSummaryLines({
+    population: routes.length,
+    byVerb: verbCounts,
+    probed,
+    skipped: gaps.length,
+    forged: rowCounter,
+    cleaned,
+    breaches,
+    verdicts,
+    controlFailed: controlIssues,
+    controlHadCanary,
+    getProbed,
+  })) say(line);
   if (getProbed > 0 && controlHadCanary === 0) {
-    recordFinding({
+    ledgerFinding({
       id: "idor-sweep-detector-vacuous",
       product: "AcreOS",
       sev: "P1",
@@ -736,19 +708,39 @@ async function main() {
       sim: SIM,
     });
   }
-  console.log(
-    breaches === 0
-      ? `\n✓ No confirmed cross-tenant breach across ${probed} probed by-id routes.`
-      : `\n✗ ${breaches} BREACH(es) — cross-tenant data exposure.`,
-  );
 
   await db.end();
-  if (breaches > 0) process.exit(1);
+  if (breaches > 0) {
+    stop(`${breaches} confirmed cross-tenant breach(es); details in findings.jsonl.`);
+    process.exit(1);
+  }
+  // An empty or blind run must not pass: too few routes probed, or a read
+  // detector that never saw the owner's own data, proves nothing.
+  if (probed < PROBED_FLOOR) {
+    stop(`PROBED ${probed} is under the floor ${PROBED_FLOOR}: the forger stopped reaching part of the population.`);
+    process.exit(2);
+  }
+  if (getProbed === 0 || controlHadCanary === 0) {
+    stop(`The read detector is vacuous: the owner's own reads echoed the canary on ${controlHadCanary}/${getProbed} GET routes.`);
+    process.exit(2);
+  }
+  const withheld = publicLog?.leaks() ?? 0;
+  if (withheld > 0) {
+    stop(`${withheld} log line(s) carried run data and were withheld — a print path leaks routes, bodies or rows.`);
+    process.exit(3);
+  }
+  say(`No confirmed cross-tenant breach across ${probed} probed by-id routes.`);
 }
 
 main().catch((e) => {
-  console.error(e);
   // A sim failure (not a breach) should be visible but must not be mistaken for
-  // a passing isolation result; exit non-zero only for a genuine crash.
+  // a passing isolation result. The message of an arbitrary error can quote a
+  // row or a body, so only our own setup errors print theirs.
+  if (e instanceof SweepSetupError) stop(`idor-sweep could not run: ${e.message}`);
+  else {
+    // Name, driver code and stack frames (file positions) only.
+    const frames = String(e?.stack ?? "").split("\n").filter((l) => /^\s+at /.test(l)).slice(0, 8).join("\n");
+    stop(`idor-sweep crashed: ${e?.name ?? "Error"}${e?.code ? ` (code ${e.code})` : ""}\n${frames}`);
+  }
   process.exit(2);
 });

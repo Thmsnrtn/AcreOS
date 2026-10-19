@@ -9,12 +9,15 @@
  * alone. `tabular-nums` is the discriminator, so a class string holding BOTH
  * is a figure set in the wrong face.
  *
- * Population: every string literal in client/src. Mutation probe: put
- * `font-mono` back on deals.tsx's text-pipeline-value.
+ * Population: every string literal in client/src, template literals across
+ * lines included. Mutation probes: put `font-mono` back on deals.tsx's
+ * text-pipeline-value, or on auction-worksheet.tsx's multi-line
+ * text-budget-remaining className.
  */
 import { describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import ts from "typescript";
 import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
 
 vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
@@ -36,12 +39,25 @@ describe("figures use tabular Inter", () => {
   const offenders: string[] = [];
   for (const f of files) {
     const src = fs.readFileSync(f, "utf8");
-    for (const m of src.matchAll(/(["'`])((?:(?!\1)[^\n\\])*)\1/g)) {
-      const cls = m[2];
-      if (!/\btabular-nums\b/.test(cls)) continue;
-      tabularStrings += 1;
-      if (/\bfont-mono\b/.test(cls)) offenders.push(`${path.relative(CLIENT, f)}: "${cls.slice(0, 80)}"`);
-    }
+    const kind = f.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
+    const sf = ts.createSourceFile(f, src, ts.ScriptTarget.Latest, false, kind);
+    // A parse, not a scan: every string and template literal, a multi-line
+    // `className={`...`}` included (a one-line regex never saw those), and
+    // never a comment. A template's static parts are joined so a class list
+    // split by `${...}` is still read as one.
+    const visit = (node: ts.Node) => {
+      let cls: string | null = null;
+      if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) cls = node.text;
+      else if (ts.isTemplateExpression(node)) {
+        cls = [node.head.text, ...node.templateSpans.map((sp) => sp.literal.text)].join(" ");
+      }
+      if (cls !== null && /\btabular-nums\b/.test(cls)) {
+        tabularStrings += 1;
+        if (/\bfont-mono\b/.test(cls)) offenders.push(`${path.relative(CLIENT, f)}: "${cls.slice(0, 80)}"`);
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sf);
   }
 
   it("reads a real population", () => {

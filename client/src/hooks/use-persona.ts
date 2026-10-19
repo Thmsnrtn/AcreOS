@@ -23,3 +23,14 @@ export function useTerm(key: VocabularyKey): string {
   const persona = usePersona();
   return getTerm(key, persona);
 }
+
+/**
+ * Persona-aware copy lookup for a surface that needs several terms (and for
+ * sub-components and callbacks that cannot call a hook per term). Returns a
+ * stable lookup bound to the active persona: `const term = useVocabulary();
+ * term("entity.deal.plural")`. Same registry and fallbacks as `useTerm`.
+ */
+export function useVocabulary(): (key: VocabularyKey) => string {
+  const persona = usePersona();
+  return (key: VocabularyKey) => getTerm(key, persona);
+}

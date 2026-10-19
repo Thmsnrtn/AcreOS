@@ -45,6 +45,16 @@ import { TIER_LIMITS, type SubscriptionTier } from "./services/usageLimits";
 import { creditExamples, type CreditAction } from "@shared/billing/credit-weights";
 import { poolDebit, refundPoolDebit, poolRefusalDetails, poolSnapshot } from "./services/creditPool";
 import {
+  resolveMailLane,
+  summarizeMailLane,
+  chargeHouseMail,
+  isHouseMailShort,
+  letterSpec,
+  postcardSpec,
+  type HouseMailLane,
+  type HouseMailSpec,
+} from "./services/mail/mailLane";
+import {
   mailRouter,
   type MailPiece,
   type MailShipmentSpeed,
@@ -220,6 +230,17 @@ class AudienceRefusal extends Error {
 type PoolDebitResult = Awaited<ReturnType<typeof poolDebit>>;
 
 /** The pool refused the debit inside the queue transaction. */
+/** The house-mail spec a queued piece type prints as (the Lob adapter sends handwritten as a letter). */
+function queueSpecFor(pieceType: (typeof PIECE_TYPES)[number]): HouseMailSpec {
+  if (pieceType === "postcard_4x6") return postcardSpec("4x6");
+  if (pieceType === "postcard_6x9") return postcardSpec("6x9");
+  // A queued letter is laid out per recipient only at send (merge fields, the
+  // response block), so its pages cannot be counted here. The lane is checked
+  // as a one-page letter; each piece is then rendered, counted and charged
+  // for its real page count at send (decision 2026-10-18).
+  return letterSpec({ pages: 1 });
+}
+
 class PoolRefusal extends Error {
   constructor(readonly result: PoolDebitResult) {
     super("pool refused the mail debit");
@@ -568,6 +589,24 @@ export function registerOutreachMailRoutes(app: Express): void {
     },
   );
 
+  // ── GET /api/outreach/mail/lane ──────────────────────────────────────────
+  // Which physical-mail lane this org's postcards and letters will use
+  // (founder decision 2026-10-17): its own Lob key (no credits) or AcreOS
+  // house mail (credits per piece, read from the canonical credit weights).
+  // Settings and the mail composer render exactly this — no copy of the rates.
+  app.get(
+    "/api/outreach/mail/lane",
+    isAuthenticated,
+    getOrCreateOrg,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        res.json(await summarizeMailLane(getOrganizationId(req)));
+      } catch (err) {
+        Errors.internal(res, err);
+      }
+    },
+  );
+
   // ── POST /api/outreach/mail/preview ──────────────────────────────────────
   // The composer's "Preview all" called this route and it did not exist: the
   // failure was caught and replaced by a placeholder, so nobody could see who
@@ -689,6 +728,29 @@ export function registerOutreachMailRoutes(app: Express): void {
           });
         }
 
+        // The physical-mail lane (founder decision 2026-10-17, mail/mailLane.ts):
+        // the org's own key carries the pieces for no credits, or AcreOS house
+        // mail carries them for credits under the org's VERIFIED return
+        // address. A refused lane (no verified address, no house account)
+        // stops here — nothing is charged or queued.
+        // House pieces are pre-paid below from PURCHASED credits only
+        // (decision B) — never the monthly pool, a trial or a grant.
+        let ownAccountPool: Awaited<ReturnType<typeof poolSnapshot>> | null = null;
+        let houseLane: HouseMailLane | null = null;
+        if (quote.provider === "lob" || quote.provider === "postgrid") {
+          const lane = await resolveMailLane(org.id, queueSpecFor(pieceType), { via: quote.provider });
+          if (lane.lane === "refused") {
+            return Errors.badRequest(res, lane.message, { reason: lane.reason, lane: "refused" });
+          }
+          if (lane.lane === "own_account") ownAccountPool = await poolSnapshot(org.id);
+          if (lane.lane === "house") houseLane = lane;
+        }
+        // A house LETTER is charged per piece at send, after AcreOS renders and
+        // counts it — not here, where its length is unknown. A house postcard
+        // is pre-paid now.
+        const houseChargedAtSend = houseLane !== null && (pieceType.startsWith("letter") || pieceType === "handwritten");
+        if (houseChargedAtSend) houseLane = null;
+
         // W2.1 — free-tier lifetime cap. Checked BEFORE the pool debit so a
         // refusal never writes a ledger row. The refusal payload mirrors
         // poolRefusalDetails' shape (one refusal component client-side) but
@@ -771,7 +833,40 @@ export function registerOutreachMailRoutes(app: Express): void {
             // Lens 3 (Pricing Coherence) — debit the pool for the piece count
             // BEFORE the shipment is written (the /credits/summary gauge
             // aggregates these rows). Tier 1I — refusals surface, never swallowed.
-            mailDebit = await poolDebit({
+            // Own key: the org's provider bills the pieces — no credit draw at all.
+            // House: every piece pre-paid from PURCHASED credits, in this
+            // transaction (a shortfall throws and nothing is queued).
+            const houseCharge = houseLane
+              ? await chargeHouseMail({
+                  organizationId: org.id,
+                  lane: houseLane,
+                  units: quote.pieceCount,
+                  externalEventId: mailDebitKey,
+                  notes: `Mail queue: ${pieceType} via AcreOS mail (${quote.pieceCount} pieces)`,
+                  tx: tx as unknown as PrimaryDb,
+                })
+              : null;
+            mailDebit = ownAccountPool || houseChargedAtSend
+              ? {
+                  allowed: true,
+                  debitedCents: 0,
+                  remaining: ownAccountPool?.remaining ?? 0,
+                  poolMonthly: ownAccountPool?.poolMonthly ?? 0,
+                  ledgerRowId: null,
+                  overPool: false,
+                  byokBypassed: ownAccountPool !== null,
+                }
+              : houseCharge
+              ? {
+                  allowed: true,
+                  debitedCents: houseCharge.debitedCents,
+                  remaining: 0,
+                  poolMonthly: 0,
+                  ledgerRowId: null,
+                  overPool: false,
+                  fundedBy: "purchased_credits" as const,
+                }
+              : await poolDebit({
               organizationId: org.id,
               action: poolAction,
               units: quote.pieceCount,
@@ -810,6 +905,9 @@ export function registerOutreachMailRoutes(app: Express): void {
                 debitEventKey: mailDebitKey,
                 debitedCents: mailDebit.debitedCents,
                 operationKey,
+                // How this shipment is paid for — the flusher sends it only
+                // through this lane and provider (migration 0282).
+                fundingLane: ownAccountPool ? "own_account" : houseChargedAtSend ? "house_at_send" : houseCharge ? "house_prepaid" : "pool",
               })
               .returning({ id: mailShipments.id });
 
@@ -878,6 +976,19 @@ export function registerOutreachMailRoutes(app: Express): void {
           // Persist failure: refund the pool draw before re-throwing.
           if (txErr instanceof PoolRefusal) {
             return Errors.limitExceeded(res, poolRefusalDetails(poolAction, txErr.result));
+          }
+          if (isHouseMailShort(txErr)) {
+            return Errors.limitExceeded(res, {
+              reason: "insufficient_purchased_credits",
+              resourceType: "purchased_credits" as const,
+              creditsPerPiece: houseLane?.creditsPerPiece ?? null,
+              requiredCredits: (houseLane?.creditsPerPiece ?? 0) * quote.pieceCount,
+              byokAvailable: true,
+              byokSettingsUrl: "/settings/byok",
+              purchaseAvailable: true,
+              purchaseUrl: "/usage",
+              message: txErr.message,
+            });
           }
           // The debit was taken inside the transaction that just rolled back,
           // so it rolled back with it: there is nothing to refund (DEFECT-0213).

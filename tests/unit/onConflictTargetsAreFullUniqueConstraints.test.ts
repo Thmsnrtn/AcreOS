@@ -71,8 +71,6 @@ vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
  * Key: `<file> <kind> <table>(<cols>)` → number of such sites in that file.
  */
 const KNOWN_UNARBITRATED: Record<string, number> = {
-  // Schema declares `.unique()`; no migration creates it.
-  "server/services/modelIntelligence.ts onConflictDoUpdate openrouter_model_catalog(model_id)": 1,
   // No unique declared anywhere for the target columns.
   "server/jobs/countyAssessorIngest.ts onConflictDoUpdate county_markets(state,county)": 1,
   "server/routes-platform-features.ts raw-sql organization_integrations(organization_id,provider)": 2,
@@ -91,7 +89,10 @@ const KNOWN_UNARBITRATED: Record<string, number> = {
 // 14 → 12 on 2026-10-11: migration 0274 creates provider_cache_cache_key_unique,
 // the arbiter both provider_cache(cache_key) writers (the registry's cache
 // upsert and attom-provider's raw SQL) had been missing.
-const KNOWN_UNARBITRATED_BASELINE = 12;
+// 12 → 11 on 2026-10-12: migration 0281 adds openrouter_model_catalog_model_id_unique
+// (with the other 16 declared-but-unenforced uniques), the arbiter
+// modelIntelligence.ts's catalog upsert had been missing.
+const KNOWN_UNARBITRATED_BASELINE = 11;
 
 /**
  * Population floors (measured 2026-10-06). A parser that stops matching a shape
@@ -202,7 +203,7 @@ describe("ON CONFLICT targets — every target has an arbiter in the shipped DDL
     expect(stale, "stale register entries — remove them and lower KNOWN_UNARBITRATED_BASELINE").toEqual([]);
     const total = Object.values(KNOWN_UNARBITRATED).reduce((a, b) => a + b, 0);
     expect(total).toBe(KNOWN_UNARBITRATED_BASELINE);
-    expect(KNOWN_UNARBITRATED_BASELINE).toBeLessThanOrEqual(14);
+    expect(KNOWN_UNARBITRATED_BASELINE).toBeLessThanOrEqual(11);
   });
 });
 

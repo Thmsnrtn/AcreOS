@@ -168,6 +168,13 @@ jobs:
       - name: Bundle-size budget
         run: node scripts/check-bundle-size.js
 
+      # Map code loads only on routes that render a map. Reads the chunk graph
+      # the build wrote (dist/client-chunk-graph.json): the entry and the
+      # map-free door landings carry no MapLibre/Mapbox module in their static
+      # closure, and no module loaded on every page import()s one.
+      - name: Route closure (map code only on map routes)
+        run: node scripts/check-route-closure.mjs
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 

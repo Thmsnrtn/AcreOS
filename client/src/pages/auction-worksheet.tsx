@@ -1217,7 +1217,7 @@ function SaleBar({
                     Remaining
                   </div>
                   <div
-                    className={`font-mono tabular-nums text-lg font-semibold ${
+                    className={`tabular-nums text-lg font-semibold ${
                       budget.data?.overBudget ? "text-acr-neg" : "text-acr-pos"
                     }`}
                     data-testid="text-budget-remaining"

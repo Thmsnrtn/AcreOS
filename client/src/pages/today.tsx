@@ -32,6 +32,7 @@ import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
 import { DecisionQueue, type DecisionItem, type ResolveAction } from "@/components/today/DecisionQueue";
+import { useHiddenRoutes } from "@/hooks/use-hidden-routes";
 import { usePaxNeedsYou } from "@/hooks/usePaxNeedsYou";
 import { ReceiptsStrip, type ReceiptItem } from "@/components/today/ReceiptsStrip";
 import { trackEvent } from "@/lib/telemetry";
@@ -135,6 +136,8 @@ export default function TodayPage() {
   const { toast } = useToast();
   const { data: organization } = useOrganization();
   const { user } = useAuth();
+  // Queue rows that open a route this persona hides are dropped (DecisionQueue).
+  const hiddenRoutes = useHiddenRoutes();
   const { data: stats, isLoading: statsLoading } = useDashboardStats();
   const { data: leadsRaw = [] } = useLeads();
   const leads = Array.isArray(leadsRaw) ? leadsRaw : [];
@@ -801,6 +804,7 @@ export default function TodayPage() {
       {!showEmptyState && !todayError && (
         <DecisionQueue
           items={decisionItems}
+          hiddenRoutes={hiddenRoutes}
           isLoading={decisionQueueLoading}
           onResolve={handleResolve}
           resolvingIds={resolvingIds}

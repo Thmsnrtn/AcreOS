@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { QueryErrorState } from "@/components/query-error-state";
-import { usePersona, useTerm } from "@/hooks/use-persona";
+import { usePersona, useTerm, useVocabulary } from "@/hooks/use-persona";
 import { usd } from "@/lib/format";
 import { staggerContainer, staggerItem } from "@/lib/animations";
 import { SmallMultipleTwelveMonth, type MonthBreakdown } from "./SmallMultipleTwelveMonth";
@@ -140,6 +140,7 @@ interface PersonaFinanceHeroProps {
 export function PersonaFinanceHero({ notes }: PersonaFinanceHeroProps) {
   const persona = usePersona();
   const propertyPluralLabel = useTerm("entity.property.plural");
+  const term = useVocabulary();
 
   const isOriginator = persona === "note_originator";
   const isServicer = persona === "note_servicer";
@@ -234,19 +235,19 @@ export function PersonaFinanceHero({ notes }: PersonaFinanceHeroProps) {
           <div className="flex items-center justify-between mb-4">
             <div>
               <p className="text-xs uppercase tracking-wide text-muted-foreground">Assignment fees</p>
-              <p className="text-sm text-muted-foreground">Fees recorded on your assignments — closed this month, pending, and the average per close.</p>
+              <p className="text-sm text-muted-foreground">Fees recorded on your {term("entity.deal.plural").toLowerCase()} — {term("pipeline.stage.closed").toLowerCase()} this month, pending, and the average per {term("entity.deal").toLowerCase()}.</p>
             </div>
             <Handshake className="w-5 h-5 text-acr-brand" aria-hidden="true" />
           </div>
           <div className="grid grid-cols-3 gap-4">
             <div>
-              <p className="text-xs text-muted-foreground">Fees closed (MTD)</p>
+              <p className="text-xs text-muted-foreground">{term("pipeline.stage.closed")} fees (MTD)</p>
               <p className="text-2xl font-bold tabular-nums text-acr-pos" data-testid="text-assignment-mtd">
                 {usd(fees.mtdClosedFees, { noCents: true })}
               </p>
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Fees pending close</p>
+              <p className="text-xs text-muted-foreground">Fees pending</p>
               <p className="text-2xl font-bold tabular-nums" data-testid="text-assignment-pending">
                 {usd(fees.pendingFees, { noCents: true })}
                 <span className="text-sm font-normal text-muted-foreground ml-1">
@@ -255,7 +256,7 @@ export function PersonaFinanceHero({ notes }: PersonaFinanceHeroProps) {
               </p>
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Avg fee / close</p>
+              <p className="text-xs text-muted-foreground">Avg fee / {term("entity.deal").toLowerCase()}</p>
               <p className="text-2xl font-bold tabular-nums" data-testid="text-assignment-avg">
                 {usd(fees.avgFeePerClose, { noCents: true })}
               </p>
@@ -748,6 +749,7 @@ function CertificatesBookHero() {
 
 // ── subdivider (wave V2, ruling #11) ─────────────────────────────────────
 function SubdividerLotEconomicsHero() {
+  const closedLower = useTerm("pipeline.stage.closed").toLowerCase();
   const { data, isLoading, error, refetch, isRefetching } = useQuery<LotEconomicsSummary>({
     queryKey: ["/api/lots/economics-summary"],
   });
@@ -858,7 +860,7 @@ function SubdividerLotEconomicsHero() {
           <span className={`tabular-nums ${realizedMarginCents < 0 ? "text-acr-neg" : "text-acr-pos"}`}>
             {usd(realizedMarginCents / 100, { noCents: true })}
           </span>
-          {" "}realized over allocated basis across {data.lotsSold} closed {data.lotsSold === 1 ? "lot" : "lots"}.
+          {" "}realized over allocated basis across {data.lotsSold} {closedLower} {data.lotsSold === 1 ? "lot" : "lots"}.
         </div>
       ) : (
         <div className="flex items-center gap-2 text-xs text-muted-foreground">

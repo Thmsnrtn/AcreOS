@@ -187,7 +187,10 @@ describe("population — the walker read the server tree", () => {
     for (const site of Object.keys(BALANCE_INCREMENT_REGISTER)) {
       expect(REAL.balanceIncrements, `register member ${site} not found — the parser stopped reading it`).toContain(site);
     }
-    expect(REAL.addCreditsCalls.length).toBeGreaterThanOrEqual(7);
+    // Floor lowered 7 → 6 (2026-10-17): the campaign direct-mail send's
+    // three addCredits refunds moved to mailLane.refundUnbilledHouseMail
+    // (founder decision 2026-10-17 B), leaving six real sites.
+    expect(REAL.addCreditsCalls.length).toBeGreaterThanOrEqual(6);
   });
 });
 

@@ -22,6 +22,7 @@ import { Upload, FileText, CheckCircle2, AlertCircle, Loader2, X } from "lucide-
 import { queryClient } from "@/lib/queryClient";
 import { Verbs } from "@/lib/labels";
 import { cn } from "@/lib/utils";
+import { useTerm } from "@/hooks/use-persona";
 
 type ImportIntent = "acquired" | "originated";
 
@@ -45,7 +46,9 @@ const ACQUIRED_NOTE_FIELDS = [
   { value: "paymentDayOfMonth", label: "Payment Day of Month" },
   { value: "originalLender", label: "Original Lender / Seller" },
   { value: "status", label: "Status" },
-  { value: "propertyAddress", label: "Property Address" },
+  // Rendered as "<persona's property word> address" (Collateral address for
+  // a note book) — see fieldLabel in NotesImportDialog.
+  { value: "propertyAddress", label: "address" },
   { value: "internalNotes", label: "Internal Notes" },
   { value: "__skip__", label: "— Skip this column —" },
 ];
@@ -65,7 +68,9 @@ const ORIGINATED_NOTE_FIELDS = [
   { value: "lateFeeAmount", label: "Late Fee Amount" },
   { value: "gracePeriodDays", label: "Grace Period (Days)" },
   { value: "status", label: "Status" },
-  { value: "propertyAddress", label: "Property Address" },
+  // Rendered as "<persona's property word> address" (Collateral address for
+  // a note book) — see fieldLabel in NotesImportDialog.
+  { value: "propertyAddress", label: "address" },
   { value: "internalNotes", label: "Internal Notes" },
   { value: "__skip__", label: "— Skip this column —" },
 ];
@@ -133,6 +138,9 @@ export function NotesImportDialog({ open, onOpenChange }: Props) {
   const [result, setResult] = useState<ImportResult | null>(null);
 
   const fieldChoices = intent === "acquired" ? ACQUIRED_NOTE_FIELDS : ORIGINATED_NOTE_FIELDS;
+  const propertyLabel = useTerm("entity.property");
+  const fieldLabel = (f: { value: string; label: string }) =>
+    f.value === "propertyAddress" ? `${propertyLabel} ${f.label}` : f.label;
 
   const reset = () => {
     setStep("upload");
@@ -358,7 +366,7 @@ export function NotesImportDialog({ open, onOpenChange }: Props) {
                       <SelectContent>
                         {fieldChoices.map((f) => (
                           <SelectItem key={f.value} value={f.value} className="text-xs">
-                            {f.label}
+                            {fieldLabel(f)}
                           </SelectItem>
                         ))}
                       </SelectContent>

@@ -155,7 +155,7 @@ import {
 import { prefetchRoute } from "@/lib/queryClient";
 import { AcreosLogo } from "@/components/acreos-logo";
 import { useContextProfile, type InvestorType } from "@/hooks/use-context-profile";
-import { resolveHiddenRoutes, type OrgInvestorType } from "@/lib/sidebar-hidden-routes";
+import { resolveHiddenRoutes, isRouteHidden, type OrgInvestorType } from "@/lib/sidebar-hidden-routes";
 import { NotificationCenter } from "@/components/notification-center";
 // The rail's appearance entry opens the SAME Colorway + Display dialog as the
 // top bar (it used to be a bare light/dark toggle — a third, smaller picker).
@@ -951,21 +951,24 @@ export function Sidebar() {
 
   // Filter NAV_MODULES: hide any nav items whose route is feature-flagged off
   // or hidden for the user's investor type.
-  // While flags are loading we show everything (prevents flicker on initial load)
-  const visibleModules = flagsLoading
-    ? NAV_MODULES.filter((module) => !module.founderOnly || isFounder)
-    : NAV_MODULES.map((module) => ({
+  // While flags are loading every route counts as ENABLED (prevents flicker
+  // on initial load) — but persona gating still applies. It used to skip the
+  // whole filter while flags loaded, so for that window a note-investor org
+  // saw land Outreach and every businessTypeOnly vertical (Wholesale,
+  // Tax-delinquent) in its rail: the catalog said hidden, the page rendered it.
+  const routeEnabled = (href: string) => flagsLoading || isRouteEnabled(href);
+  const visibleModules = NAV_MODULES.map((module) => ({
         ...module,
         children: module.children?.filter(
           (child) =>
-            isRouteEnabled(child.href) &&
-            !hiddenForType.includes(child.href) &&
+            routeEnabled(child.href) &&
+            !isRouteHidden(child.href, hiddenForType) &&
             childBusinessTypeAllows(child, businessType)
         ),
         overflow: module.overflow?.filter(
           (child) =>
-            isRouteEnabled(child.href) &&
-            !hiddenForType.includes(child.href) &&
+            routeEnabled(child.href) &&
+            !isRouteHidden(child.href, hiddenForType) &&
             childBusinessTypeAllows(child, businessType)
         ),
       })).filter((module) => {
@@ -978,8 +981,8 @@ export function Sidebar() {
           if (!businessType || !module.businessTypeOnly.includes(businessType)) return false;
         }
         // If the module itself has a controlled route, check it
-        if (!isRouteEnabled(module.href)) return false;
-        if (hiddenForType.includes(module.href)) return false;
+        if (!routeEnabled(module.href)) return false;
+        if (isRouteHidden(module.href, hiddenForType)) return false;
         // If all children + overflow were filtered out and the module is purely
         // a container, hide it. A module with overflow but no primary children
         // still renders so the user can find the surfaces under "Show more."

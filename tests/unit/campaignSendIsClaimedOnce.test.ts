@@ -21,6 +21,8 @@ const S = vi.hoisted(() => ({
   lobCalls: 0,
   refunds: [] as number[],
   failSendingUpdate: false,
+  /** A charge that took nothing (debitedCents 0) — must not be refunded. */
+  zeroCharge: false,
 }));
 
 vi.mock("../../server/middleware/idempotency", () => ({
@@ -42,6 +44,40 @@ vi.mock("../../server/services/preMailDedupe", () => ({
     skipped: { ownedParcel: [], recentlyMailed: [], returnedMail: [], doNotContact: [], missingAddress: [] },
   }),
 }));
+// The physical-mail lane (founder decisions 2026-10-17) is pinned by
+// houseMailLane.test.ts; here it resolves to the house lane at the surface's
+// listed price and the purchased-only charge is recorded (refused when
+// S.deductOk is false), so this file keeps testing what it was written for.
+vi.mock("../../server/services/mail/mailLane", () => {
+  class Short extends Error {}
+  return {
+    resolveMailLane: async (_org: number, spec: { kind: string }, opts: { listedCredits?: number }) => ({
+      lane: "house",
+      provider: "lob",
+      spec,
+      price: { key: "letter_bw" },
+      creditsPerPiece: opts.listedCredits ?? 120,
+      senderIdentity: { id: 1, status: "verified" },
+    }),
+    chargeHouseMail: async (a: { units: number; lane: { creditsPerPiece: number }; externalEventId: string }) => {
+      const cents = a.units * a.lane.creditsPerPiece;
+      S.deducted.push(cents);
+      if (!S.deductOk) throw new Short("AcreOS mail is paid from purchased credits only");
+      return { externalEventId: a.externalEventId, debitedCents: S.zeroCharge ? 0 : cents, units: a.units, replay: false };
+    },
+    isHouseMailShort: (e: unknown) => e instanceof Short,
+    providerDidNotBill: (e: any) => e?.providerNotBilled === true,
+    refundUnbilledHouseMail: async (_o: number, charge: any, failure: any, _r: string, opts: { amountCents?: number } = {}) => {
+      if (!charge || charge.debitedCents <= 0 || failure?.providerNotBilled !== true) return false;
+      S.refunds.push(opts.amountCents ?? charge.debitedCents);
+      return true;
+    },
+    purchasedCreditsAvailable: async () => 1_000_000,
+    postcardSpec: (size: string) => ({ kind: "postcard", size }),
+    letterSpec: () => ({ kind: "letter", color: false, pages: 1 }),
+    summarizeMailLane: async () => ({}),
+  };
+});
 vi.mock("../../server/services/directMail", () => ({
   directMailService: {
     hasOrgLobCredentials: async () => false,
@@ -120,7 +156,7 @@ const req = (key: string) => ({
   params: { id: "3" },
   body: { pieceType: "letter_1_page", leadIds: [11, 12] },
   headers: { "idempotency-key": key },
-  organization: { id: 5, settings: { mailMode: "test" } },
+  organization: { id: 5, settings: { mailMode: "live" } },
   user: { id: "u1" },
 });
 
@@ -133,6 +169,7 @@ beforeEach(() => {
   S.lobCalls = 0;
   S.refunds = [];
   S.failSendingUpdate = false;
+  S.zeroCharge = false;
 });
 
 describe("a campaign send is claimed once, before any credit moves", () => {
@@ -171,15 +208,11 @@ describe("a campaign send is claimed once, before any credit moves", () => {
     expect(S.orders).toHaveLength(2);
   });
 
-  it("a founder's zero debit is not refunded (audit of 9ed61f4)", async () => {
-    const { creditService } = (await import("../../server/services/credits")) as unknown as {
-      creditService: { deductCredits: (o: number, c: number) => Promise<unknown> };
-    };
-    const real = creditService.deductCredits;
-    creditService.deductCredits = async (_o: number, cents: number) => (S.deducted.push(cents), { id: 2, amountCents: 0 });
+  it("a charge that took nothing is not refunded (audit of 9ed61f4; there is no founder bypass on house mail any more)", async () => {
+    S.zeroCharge = true;
     S.failSendingUpdate = true;
     await (await handler())(req("send-key-0005"), res()).catch(() => undefined);
-    creditService.deductCredits = real;
+    expect(S.deducted).toEqual([300]);
     expect(S.refunds).toEqual([]);
   });
 

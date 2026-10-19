@@ -188,6 +188,9 @@ const REGISTRY: HiddenRouteRegistry = {
       "/campaigns",
       "/direct-mail",
       "/sequences",
+      // The mail composer (Deals → Outreach → "Mail (new)") is the same
+      // land direct-mail surface as /direct-mail, at its current route.
+      "/outreach/mail",
       "/blind-offer-wizard",
       "/offers/batches",
       "/leads/dedupe",
@@ -244,6 +247,20 @@ export function resolveHiddenRoutes(input: ResolveHiddenRoutesInput): string[] {
   for (const r of REGISTRY.byOrgInvestorType[input.orgInvestorType] ?? []) out.add(r);
   for (const door of PROTECTED_DOOR_ROUTES) out.delete(door);
   return Array.from(out);
+}
+
+/**
+ * Is a nav href hidden by a resolved hidden set? A route hides every link
+ * INTO it, query and hash included: once Direct Mail and Sequences became
+ * channel tabs of /campaigns (`/campaigns?channel=direct-mail`), an exact
+ * string match let a note-investor org — whose hidden set names /campaigns —
+ * still see both entries, each opening the very page the set hides. Every
+ * consumer (sidebar, door section strips) asks here, never `includes`.
+ */
+export function isRouteHidden(href: string, hidden: readonly string[]): boolean {
+  if (hidden.includes(href)) return true;
+  const path = href.split(/[?#]/)[0];
+  return path !== href && hidden.includes(path);
 }
 
 // Exported for test introspection only.

@@ -133,9 +133,11 @@ describe("executeAutoTopUp — D2", () => {
       }),
       expect.objectContaining({ idempotencyKey: expect.stringContaining("auto-topup:42:") }),
     );
+    // Founder decision 2026-10-18: $25.00 buys credits at the pack price
+    // (1.5¢, floor) — 1,666, the same as the $25 pack — not 2,500.
     expect(addCreditsSpy).toHaveBeenCalledWith(
       42,
-      2500,
+      1666,
       "topup",
       expect.any(String),
       expect.objectContaining({ auto: "true", paymentIntentId: "pi_1" }),
@@ -161,7 +163,7 @@ describe("executeAutoTopUp — D2", () => {
       expect.objectContaining({ amount: 50_000 }), // capped at $500
       expect.anything(),
     );
-    expect(addCreditsSpy).toHaveBeenCalledWith(42, 50_000, "topup", expect.any(String), expect.anything());
+    expect(addCreditsSpy).toHaveBeenCalledWith(42, 33_333, "topup", expect.any(String), expect.anything()); // $500 at 1.5¢, floor
     addCreditsSpy.mockRestore();
   });
 

@@ -1,7 +1,19 @@
 import Lob from 'lob';
 import { logger } from "../utils/logger";
 import { isLiveSendArmed } from "./mail/liveSendInterlock";
-import { getLobClient } from "./directMailService";
+import { getLobClientForLane } from "./directMailService";
+import {
+  resolveMailLane,
+  assertSendableLane,
+  chargeHouseMailPiece,
+  refundUnbilledHouseMail,
+  houseLetterFile,
+  postcardSpec,
+  letterSpec,
+  type HouseMailCharge,
+  type HouseMailSpec,
+} from "./mail/mailLane";
+import { randomUUID } from "node:crypto";
 import { assertOwnerContactAllowed } from "./trust/ownerSuppression";
 
 /**
@@ -19,16 +31,19 @@ import { assertOwnerContactAllowed } from "./trust/ownerSuppression";
  * 2026-08-16 consolidation fixed in `mailProvider.ts` and left standing here.
  *
  * The fix is NOT a fourth copy of the resolution order. `directMailService.
- * getLobClient` is the single authority (BYOK vault → legacy
- * organization_integrations row → platform key under the live-send interlock);
- * this class now obtains its client THROUGH it whenever an organizationId is
- * in hand. The env-key clients below survive only for the org-less
- * PLATFORM/system path and for `isConfigured()`.
+ * getLobClientForLane` is the single authority (own key: BYOK vault → legacy
+ * organization_integrations row; house lane: platform key under the
+ * live-send interlock); this class obtains its client THROUGH it whenever an
+ * organizationId is in hand. The env-key clients below survive only for the
+ * org-less PLATFORM/system path, the customer's own test-mode dry runs, and
+ * `isConfigured()`.
  *
- * NOTE the platform fallback inside the authority is deliberately kept — the
- * founder explicitly deferred the "kill the platform fallback for Lob"
- * question (see tests/unit/lobCredentialAuthority.test.ts). What is closed
- * here is that an org's OWN key is now consulted first on this path too.
+ * LANES (founder decision 2026-10-17): with an organizationId the send's lane
+ * comes from mail/mailLane.ts — the org's own Lob key (no credits), or AcreOS
+ * house mail, charged its credit weight here and printed under the org's
+ * VERIFIED sender identity (which replaces the caller's `from`). This
+ * supersedes the earlier "platform fallback deliberately kept" note: the
+ * platform key is now reachable for an org's mail only on the house lane.
  */
 export type MailLane = 'system' | 'counterparty';
 
@@ -176,10 +191,10 @@ export class LobService {
    */
   async isConfiguredForOrg(organizationId: number): Promise<boolean> {
     try {
-      await getLobClient(organizationId);
-      return true;
+      const lane = await resolveMailLane(organizationId, letterSpec({ pages: 1 }), { via: 'lob' });
+      return lane.lane !== 'refused';
     } catch {
-      return this.isConfigured();
+      return false;
     }
   }
   
@@ -203,7 +218,15 @@ export class LobService {
   private async resolveClient(
     mode: 'test' | 'live',
     ctx: LobSendContext | undefined,
-  ): Promise<{ client: InstanceType<typeof Lob>; isTestMode: boolean }> {
+    spec: HouseMailSpec,
+    from: LobAddress,
+  ): Promise<{
+    client: InstanceType<typeof Lob>;
+    isTestMode: boolean;
+    from: LobAddress;
+    charge: HouseMailCharge | null;
+    letterFile?: ReturnType<typeof houseLetterFile>;
+  }> {
     // Contract check FIRST, in every mode. "Counterparty mail with no tenant"
     // is a call-site bug whether or not this particular send would have
     // printed, and a lane rule that only applies sometimes is not a rule.
@@ -214,59 +237,53 @@ export class LobService {
       );
     }
 
-    // THE CUSTOMER'S OWN dry-run switch — not the platform interlock.
-    //
-    // This read `this.effectiveMode(mode) === 'test'`, which folded two
-    // unrelated switches into one and let the PLATFORM interlock decide for a
-    // customer's own account. `isLiveSendArmed()` is false by default, so on
-    // any deployment that has not explicitly armed production, an org sending a
-    // LIVE counterparty letter on THEIR OWN Lob key silently resolved to the
-    // platform sandbox and printed nothing. The org branch below already says
-    // "the platform live-send interlock governs the PLATFORM key only — never a
-    // customer's own account", and this ordering was what made that sentence
-    // unreachable: a correct rule stated in a comment that the control flow
-    // above it defeated.
-    //
-    // Nothing is weakened by narrowing it. Every PLATFORM path is still
-    // interlocked, in both places it can be reached: `getClient()` applies
-    // `effectiveMode` itself, and the platform tier of `getLobClient` applies it
-    // inside `resolvePlatformLobKey`. What is restored is the customer's own
-    // dry-run switch meaning THEIRS — `mode === 'test'` still short-circuits to
-    // the sandbox, which is the safe direction the original comment defends: an
-    // org whose vault holds a live key must not have their own dry-run print
-    // real mail to a real person.
+    // THE CUSTOMER'S OWN dry-run switch — not the platform interlock. A
+    // test-mode send prints NOTHING and reaches no counterparty, so it uses
+    // the platform sandbox key and costs nothing. It is also the SAFE
+    // direction: an org whose vault holds a LIVE key must not have its own
+    // dry-run switch print real mail to a real person.
     if (mode === 'test') {
-      // A test-mode send prints NOTHING and reaches no counterparty, so whose
-      // account pays is moot (it costs $0). Two reasons to keep the platform
-      // sandbox key here rather than resolving the org's own:
-      //   1. It preserves the pre-existing behaviour of an explicit test run.
-      //   2. It is the SAFE direction. An org whose vault holds a LIVE key
-      //      would otherwise have `org.settings.mailMode = 'test'` — the
-      //      customer's own dry-run switch — silently print real mail to a
-      //      real person. Resolving BYO here would trade a billing nicety for
-      //      an irreversible one.
-      return { client: this.getClient('test'), isTestMode: true };
+      return { client: this.getClient('test'), isTestMode: true, from, charge: null };
     }
 
     if (ctx?.organizationId) {
-      const { client, source, isTestKey } = await getLobClient(ctx.organizationId);
-      if (source === 'organization') {
+      const orgId = ctx.organizationId;
+      const lane = await assertSendableLane(await resolveMailLane(orgId, spec, { via: 'lob' }));
+      const { client, isTestKey } = await getLobClientForLane(orgId, lane);
+      if (lane.lane === 'own_account') {
         // The org's own key. The platform live-send interlock governs the
-        // PLATFORM key only — never a customer's own account — so the mode
-        // here is whatever their key actually is.
-        return { client, isTestMode: isTestKey };
+        // PLATFORM key only — never a customer's own account.
+        return { client, isTestMode: isTestKey, from, charge: null };
       }
-      // Platform tier of the authority: the interlock already decided test vs
-      // live inside resolvePlatformLobKey, so report what it actually chose
-      // rather than what the caller asked for.
-      logger.info(
-        `[LobService] No org Lob credential for org ${ctx.organizationId} — using the platform key (lobEnv: ${isTestKey ? 'test' : 'live'})`,
-      );
-      return { client, isTestMode: isTestKey };
+      // House lane: the interlock already decided test vs live inside
+      // resolvePlatformLobKey. The piece carries the org's verified identity
+      // and is pre-paid from PURCHASED credits before Lob is contacted.
+      const identity = lane.senderIdentity;
+      const charge = await chargeHouseMailPiece({
+        organizationId: orgId,
+        lane,
+        externalEventId: `mail:house:${orgId}:${lane.price.key}:lobService:${randomUUID()}`,
+      });
+      logger.info(`[LobService] AcreOS house mail for org ${orgId} (lobEnv: ${isTestKey ? 'test' : 'live'})`);
+      return {
+        client,
+        isTestMode: isTestKey,
+        from: {
+          name: identity.companyName,
+          addressLine1: identity.addressLine1,
+          addressLine2: identity.addressLine2 || undefined,
+          city: identity.city,
+          state: identity.state,
+          zip: identity.zipCode,
+        },
+        charge,
+        // A letter prints the PDF AcreOS counted and charged for.
+        ...(spec.kind === 'letter' ? { letterFile: houseLetterFile(lane) } : {}),
+      };
     }
 
     // Org-less LIVE system mail (AcreOS's own physical mail): platform key.
-    return { client: this.getClient('live'), isTestMode: false };
+    return { client: this.getClient('live'), isTestMode: false, from, charge: null };
   }
 
   /**
@@ -310,10 +327,15 @@ export class LobService {
     ctx?: LobSendContext,
   ): Promise<LobSendResult> {
     let isTestMode = mode === 'test';
+    let charge: HouseMailCharge | null = null;
+    let accepted = false;
     try {
-      const resolved = await this.resolveClient(mode, ctx);
+      const resolved = await this.resolveClient(mode, ctx, letterSpec({ color: options.color ?? false, file: options.file }), options.from);
       const client = resolved.client;
       isTestMode = resolved.isTestMode;
+      charge = resolved.charge;
+      options = { ...options, from: resolved.from };
+      const letterFile = resolved.letterFile;
 
       logger.info(`[LobService] Sending letter (${isTestMode ? 'test' : 'live'} env) to ${options.to.name}`);
       // Platform-wide owner opt-out (W5a): refused inside the try, so the
@@ -337,11 +359,13 @@ export class LobService {
           address_state: options.from.state,
           address_zip: options.from.zip,
         },
-        file: options.file,
+        // The SDK's type says string; its runtime takes a multipart `{ value, options }` upload.
+        file: (letterFile ?? options.file) as unknown as string,
         color: options.color ?? false,
         double_sided: options.doubleSided ?? false,
       });
       
+      accepted = true;
       logger.info(`[LobService] Letter sent successfully: ${result.id}, expected delivery: ${result.expected_delivery_date}`);
       
       return {
@@ -351,6 +375,10 @@ export class LobService {
         isTestMode,
       };
     } catch (error: any) {
+      if (!accepted && ctx?.organizationId) {
+        // Only a piece Lob certainly did not bill (rejected / never reached).
+        await refundUnbilledHouseMail(ctx.organizationId, charge, error, 'Piece was rejected by Lob');
+      }
       const classified = classifyLobError(error);
       
       logger.error(`[LobService] Letter send failed`, undefined, { metadata: { detail: {
@@ -376,10 +404,14 @@ export class LobService {
     ctx?: LobSendContext,
   ): Promise<LobSendResult> {
     let isTestMode = mode === 'test';
+    let charge: HouseMailCharge | null = null;
+    let accepted = false;
     try {
-      const resolved = await this.resolveClient(mode, ctx);
+      const resolved = await this.resolveClient(mode, ctx, postcardSpec(options.size || '4x6'), options.from);
       const client = resolved.client;
       isTestMode = resolved.isTestMode;
+      charge = resolved.charge;
+      options = { ...options, from: resolved.from };
 
       logger.info(`[LobService] Sending postcard (${isTestMode ? 'test' : 'live'} env) to ${options.to.name}`);
       await assertOwnerContactAllowed('mail', { addressLine1: options.to.addressLine1, zip: options.to.zip });
@@ -406,6 +438,7 @@ export class LobService {
         size: options.size || '4x6',
       });
       
+      accepted = true;
       logger.info(`[LobService] Postcard sent successfully: ${result.id}, expected delivery: ${result.expected_delivery_date}`);
       
       return {
@@ -415,6 +448,10 @@ export class LobService {
         isTestMode,
       };
     } catch (error: any) {
+      if (!accepted && ctx?.organizationId) {
+        // Only a piece Lob certainly did not bill (rejected / never reached).
+        await refundUnbilledHouseMail(ctx.organizationId, charge, error, 'Piece was rejected by Lob');
+      }
       const classified = classifyLobError(error);
       
       logger.error(`[LobService] Postcard send failed`, undefined, { metadata: { detail: {

@@ -60,6 +60,19 @@ export interface MailShipment {
   callbackUrl?: string;
   /** e.g. "lead_nurture_campaign" — propagated to per-piece ledger rows. */
   feature?: string;
+  /**
+   * True when the caller already charged every HOUSE piece of this shipment
+   * through the credit pool (the outreach mail queue). Otherwise the Lob send
+   * charges each house piece itself (mail/mailLane.ts). Own-key pieces are
+   * never charged either way.
+   */
+  housePrepaid?: boolean;
+  /**
+   * The only providers this shipment may go out through — the one it was
+   * quoted and funded for. A shipment never falls through to a provider (or
+   * lane) nobody paid for.
+   */
+  onlyProviders?: MailProviderName[];
 }
 
 export type MailProviderName =
@@ -83,6 +96,12 @@ export interface ProviderSendResult {
   providerEventId: string;
   pieces: { providerPieceId: string; recipientRef: string }[];
   totalCostCents: number;
+  /**
+   * Accepted pieces that cost AcreOS nothing although the shipment may have
+   * pre-paid them: sent to Lob's test environment, simulated, or carried by
+   * the org's OWN key. The flusher returns their pre-paid share.
+   */
+  unbilledPieceCount?: number;
 }
 
 /**
@@ -102,6 +121,12 @@ export class PartialMailSendError extends Error {
     readonly accepted: { providerPieceId: string; recipientRef: string }[],
     readonly totalPieces: number,
     readonly causeMessage: string,
+    /**
+     * True only when the provider certainly did not bill the piece that
+     * failed (mail/mailLane.ts providerDidNotBill). False = unknown: it may
+     * be printed, so its pre-paid charge is never refunded.
+     */
+    readonly failedPieceNotBilled: boolean = false,
   ) {
     super(`${provider} accepted ${accepted.length} of ${totalPieces} piece(s), then failed: ${causeMessage}`);
     this.name = "PartialMailSendError";
@@ -217,6 +242,7 @@ export class MailRouter {
     // Viable = meetsConstraints + within budget if specified.
     const viable = quotes.filter((q) => {
       if (!q.meetsConstraints) return false;
+      if (shipment.onlyProviders && !shipment.onlyProviders.includes(q.provider)) return false;
       if (shipment.budgetCentsPerPiece != null && q.costPerPieceCents > shipment.budgetCentsPerPiece) {
         return false;
       }
@@ -228,7 +254,10 @@ export class MailRouter {
       const reason = quotes
         .map((q) => `${q.provider}=${q.meetsConstraints ? "over_budget_or_volume" : q.reasonIfNot}`)
         .join(", ");
-      throw new Error(`MailRouter.route: no viable provider matches constraints (${reason}).`);
+      // No provider was contacted, so nothing was billed.
+      throw Object.assign(new Error(`MailRouter.route: no viable provider matches constraints (${reason}).`), {
+        providerNotBilled: true,
+      });
     }
 
     // Sort ascending by cost. Tie-break: prefer aggregation queues (presort)
@@ -247,6 +276,10 @@ export class MailRouter {
     const byName = new Map(providers.map((p) => [p.name, p] as const));
 
     let lastErr: unknown = null;
+    // Whether EVERY failed attempt certainly billed nothing — what decides
+    // whether the caller may refund the first piece's pre-paid charge.
+    let everyFailureUnbilled = true;
+    const { providerDidNotBill } = await import("./mailLane");
     for (const candidate of sorted) {
       const adapter = byName.get(candidate.provider);
       if (!adapter) continue;
@@ -265,13 +298,17 @@ export class MailRouter {
         // them again through another provider — surface the partial result.
         if (err instanceof PartialMailSendError) throw err;
         lastErr = err;
+        if (!providerDidNotBill(err)) everyFailureUnbilled = false;
         logger.warn(`[MailRouter] ${candidate.provider} send failed; falling through`, {
           metadata: { error: err instanceof Error ? err.message : String(err) },
         });
       }
     }
-    throw new Error(
-      `MailRouter.route: every viable provider failed. Last error: ${lastErr instanceof Error ? lastErr.message : String(lastErr)}`,
+    throw Object.assign(
+      new Error(
+        `MailRouter.route: every viable provider failed. Last error: ${lastErr instanceof Error ? lastErr.message : String(lastErr)}`,
+      ),
+      { providerNotBilled: everyFailureUnbilled },
     );
   }
 }

@@ -26,12 +26,19 @@
  *      no vault read, no db import. The defect was a SECOND resolution order
  *      existing at all, so the pin is that one cannot exist.
  *
- * NOTE the platform fallback itself is deliberately KEPT — the founder
- * explicitly deferred the "kill the platform fallback" question. Only the
- * ORDER (and its single ownership) is pinned here.
+ * UPDATED 2026-10-17 (founder decision, docs/company/founder-decisions-2026-10-17.md):
+ * the deferred "platform fallback" is superseded. The authority now splits in
+ * two — `getOwnLobClient` (vault → legacy row, never the platform key) and
+ * `getLobClientForLane` (the platform key only for a HOUSE lane, which
+ * mail/mailLane.ts grants only under the org's verified sender identity and
+ * charges in credits). The order pinned here is therefore
+ * vault → legacy row → house lane.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { fakeSafeFetch } from "../helpers/fakeSafeFetch";
+vi.mock("../../server/services/mail/safeFetch", async () => (await import("../helpers/fakeSafeFetch")).fakeSafeFetchModule());
+import { houseMail } from "../helpers/fakeHouseMailDb";
 // W5a: the owner opt-out list is empty for this test (the guard is proven elsewhere).
 vi.mock("../../server/services/trust/ownerSuppression", async () => (await import("../helpers/ownerSuppressionAllowAll")).ownerSuppressionAllowAll);
 import fs from "node:fs";
@@ -46,6 +53,10 @@ const state = {
   /** Which credential tiers were consulted, in order. */
   probes: [] as string[],
   lobCreateCalls: [] as Array<{ kind: string; apiKey: string; params: unknown }>,
+  identity: { id: 1, organizationId: 42, name: "Main", companyName: "Test Land Co", addressLine1: "1 Main St", city: "Austin", state: "TX", zipCode: "78701", status: "verified", isActive: true } as Record<string, unknown> | null,
+  poolDebits: [] as string[],
+  /** The platform live-send interlock. House mail needs it armed AND a live key. */
+  armed: false,
 };
 
 vi.mock("lob", () => ({
@@ -87,7 +98,22 @@ vi.mock("../../server/storage", () => ({
       return state.legacyRow;
     },
     getOrganization: async () => ({ id: 42, settings: {} }),
+    getDefaultMailSenderIdentity: async () => state.identity ?? undefined,
   },
+}));
+
+vi.mock("../../server/services/creditCost", () => ({ creditCost: async () => 120 }));
+// House mail (founder decisions 2026-10-17) is pre-paid from PURCHASED
+// credits (mail/mailLane.ts chargeHouseMail), whose SQL is faked here
+// (tests/helpers/fakeHouseMailDb); a poolDebit would be a defect and is recorded.
+vi.mock("../../server/db", async () => (await import("../helpers/fakeHouseMailDb")).fakeHouseMailDbModule);
+vi.mock("../../server/services/settings", () => ({ getSetting: async (_k: string, fallback: unknown) => fallback }));
+vi.mock("../../server/services/creditPool", () => ({
+  poolDebit: async (a: { action: string }) => {
+    state.poolDebits.push(a.action);
+    return { allowed: true, debitedCents: 120, remaining: 1, poolMonthly: 1, ledgerRowId: 1, overPool: false };
+  },
+  refundPoolDebit: async () => undefined,
 }));
 
 // integrationCredentials runs for real (it decides plaintext-vs-envelope);
@@ -104,7 +130,7 @@ vi.mock("../../server/services/mail/liveSendInterlock", () => ({
     if (!state.platformKey) throw new Error("Lob test key not configured.");
     return state.platformKey;
   },
-  isLiveSendArmed: () => false,
+  isLiveSendArmed: () => state.armed,
 }));
 
 // Static imports of directMailService that the client-resolution path never
@@ -113,6 +139,7 @@ vi.mock("../../server/services/credits", () => ({
   creditService: {
     hasEnoughCredits: async () => true,
     getBalance: async () => 0,
+    afterDebitCommitted: () => undefined,
   },
   usageMeteringService: {
     calculateCost: async () => 0,
@@ -125,15 +152,22 @@ import { stripComments } from "../helpers/stripComments";
 
 const TO = { name: "Lee Owner", addressLine1: "2 Dirt Rd", city: "Llano", state: "TX", zip: "78643" };
 const FROM = { name: "Test Land Co", addressLine1: "1 Main St", city: "Austin", state: "TX", zip: "78701" };
-const LETTER = { to: TO, from: FROM, file: "https://example.com/letter.pdf" };
+// A house letter must be CONFIRMED one page (founder decision 2026-10-18):
+// a one-page PDF on an https URL, served by the safeFetch stand-in.
+const LETTER = { to: TO, from: FROM, file: "https://files.example.com/letter.pdf" };
 const POSTCARD = { to: TO, from: FROM, front: "<h1>front</h1>", back: "<h1>back</h1>" };
 
 beforeEach(() => {
+  fakeSafeFetch.reset();
+  state.armed = false;
   state.byokKey = null;
   state.legacyRow = null;
   state.platformKey = { apiKey: "test_platform_key", isTestKey: true };
   state.probes = [];
   state.lobCreateCalls = [];
+  state.poolDebits = [];
+  houseMail.reset();
+  state.identity = { id: 1, organizationId: 42, name: "Main", companyName: "Test Land Co", addressLine1: "1 Main St", city: "Austin", state: "TX", zipCode: "78701", status: "verified", isActive: true };
   delete process.env.MAIL_MOCK;
   delete process.env.LOB_API_KEY;
 });
@@ -151,7 +185,9 @@ describe("mailProvider resolves Lob credentials through the single authority, va
     // platform key, never an org's own.
     expect(result.isTestMode).toBe(false);
     // Vault answered; the later tiers must not even be consulted.
-    expect(state.probes).toEqual(["byok-vault"]);
+    expect(state.probes.length).toBeGreaterThan(0);
+    expect(state.probes.every((p) => p === "byok-vault")).toBe(true);
+    expect(state.poolDebits).toEqual([]);
   });
 
   it("legacy organization_integrations row is SECOND — used only when the vault is empty", async () => {
@@ -162,16 +198,45 @@ describe("mailProvider resolves Lob credentials through the single authority, va
     expect(result.success).toBe(true);
     expect(state.lobCreateCalls[0].apiKey).toBe("test_row_key");
     expect(result.isTestMode).toBe(true);
-    expect(state.probes).toEqual(["byok-vault", "legacy-row"]);
+    expect(state.probes).not.toContain("platform");
+    expect(state.probes.slice(0, 2)).toEqual(["byok-vault", "legacy-row"]);
+    expect(state.poolDebits).toEqual([]);
   });
 
-  it("platform key is LAST — the full order is vault → legacy row → platform", async () => {
+  it("platform key is LAST and only as house mail — vault → legacy row → house lane (credits)", async () => {
+    // House mail runs only on AcreOS's LIVE account with the interlock armed.
+    state.armed = true;
+    state.platformKey = { apiKey: "live_platform_key", isTestKey: false };
     const result = await sendLetter({ ...LETTER, organizationId: 42 });
 
     expect(result.success).toBe(true);
-    expect(state.lobCreateCalls[0].apiKey).toBe("test_platform_key");
-    expect(result.isTestMode).toBe(true);
-    expect(state.probes).toEqual(["byok-vault", "legacy-row", "platform"]);
+    expect(state.lobCreateCalls[0].apiKey).toBe("live_platform_key");
+    expect(result.isTestMode).toBe(false);
+    expect(state.probes.slice(0, 2)).toEqual(["byok-vault", "legacy-row"]);
+    expect(state.probes.indexOf("platform")).toBeGreaterThan(state.probes.lastIndexOf("legacy-row"));
+    expect(state.poolDebits).toEqual([]); // never the monthly pool
+    expect(houseMail.charges.map((c) => c.credits)).toEqual([120]); // pre-paid from purchased credits
+  });
+
+  it("no own key and only the TEST platform key: house mail refused — a test-env piece is never charged (audit 2026-10-18)", async () => {
+    for (const armed of [false, true]) {
+      state.armed = armed;
+      const result = await sendLetter({ ...LETTER, organizationId: 42 });
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/not available/);
+    }
+    expect(state.lobCreateCalls).toHaveLength(0);
+    expect(houseMail.charges).toEqual([]);
+  });
+
+  it("no own key and no verified identity: refused — the platform key is never a silent fallback", async () => {
+    state.identity = { ...state.identity, status: "draft" };
+    const result = await sendLetter({ ...LETTER, organizationId: 42 });
+
+    expect(result.success).toBe(false);
+    expect(state.lobCreateCalls).toHaveLength(0);
+    expect(state.probes).not.toContain("platform");
+    expect(state.poolDebits).toEqual([]);
   });
 
   it("sendPostcard delegates through the same authority — a vault org's postcards ship on its own account", async () => {
@@ -181,7 +246,7 @@ describe("mailProvider resolves Lob credentials through the single authority, va
 
     expect(result.success).toBe(true);
     expect(state.lobCreateCalls[0]).toMatchObject({ kind: "postcard", apiKey: "live_vault_key" });
-    expect(state.probes).toEqual(["byok-vault"]);
+    expect(state.probes.every((p) => p === "byok-vault")).toBe(true);
   });
 
   it("no organizationId: platform default path unchanged, and the vault is never consulted", async () => {
@@ -198,8 +263,14 @@ describe("mailProvider resolves Lob credentials through the single authority, va
     const result = await sendLetter({ ...LETTER, organizationId: 42 });
 
     expect(result.success).toBe(false);
-    expect(result.error).toBe("mail provider not configured");
+    expect(result.error).toMatch(/not available/);
     expect(state.lobCreateCalls).toHaveLength(0);
+    expect(state.poolDebits).toEqual([]);
+
+    // Org-less system mail with no platform key at all still refuses plainly.
+    const system = await sendLetter({ ...LETTER });
+    expect(system.success).toBe(false);
+    expect(system.error).toBe("mail provider not configured");
   });
 });
 
@@ -216,7 +287,7 @@ describe("mailProvider carries no independent Lob credential resolution (source 
     // If the delegation disappeared, every "does not" assertion below could
     // pass on a file that resolves credentials some brand-new third way.
     expect(src).toMatch(/from\s+['"]\.\/directMailService['"]/);
-    expect(src).toContain("getLobClient");
+    expect(src).toContain("getLobClientForLane(");
   });
 
   it("never queries organization_integrations itself", () => {
@@ -240,20 +311,21 @@ describe("mailProvider carries no independent Lob credential resolution (source 
     expect(src).not.toMatch(/\bdb\s*\.\s*select\b/);
   });
 
-  it("the authority itself still resolves vault → legacy row → platform", () => {
+  it("the authority resolves the org's own key vault → legacy row, and never the platform key", () => {
     const dms = stripComments(
       fs.readFileSync(path.join(ROOT, "server/services/directMailService.ts"), "utf8"),
     );
-    const start = dms.indexOf("export async function getLobClient");
-    const end = dms.indexOf("function getPlatformLobClient");
-    expect(start, "getLobClient not found — renamed?").toBeGreaterThan(-1);
-    expect(end, "getPlatformLobClient not found — renamed?").toBeGreaterThan(start);
+    const start = dms.indexOf("export async function getOwnLobClient");
+    const end = dms.indexOf("export async function getLobClientForLane");
+    expect(start, "getOwnLobClient not found — renamed?").toBeGreaterThan(-1);
+    expect(end, "getLobClientForLane not found — renamed?").toBeGreaterThan(start);
     const body = dms.slice(start, end);
     const vault = body.indexOf("getByokCredential");
     const legacy = body.indexOf("getOrganizationIntegration");
-    const platform = body.indexOf("resolvePlatformLobKey");
-    expect(vault, "vault tier missing from getLobClient").toBeGreaterThan(-1);
-    expect(legacy, "legacy-row tier missing from getLobClient").toBeGreaterThan(vault);
-    expect(platform, "platform tier missing from getLobClient").toBeGreaterThan(legacy);
+    expect(vault, "vault tier missing from getOwnLobClient").toBeGreaterThan(-1);
+    expect(legacy, "legacy-row tier missing from getOwnLobClient").toBeGreaterThan(vault);
+    expect(body, "getOwnLobClient must never fall back to AcreOS's key").not.toContain("resolvePlatformLobKey");
+    const lane = dms.slice(end, dms.indexOf("function getPlatformLobClient"));
+    expect(lane).toContain("resolvePlatformLobKey");
   });
 });
