@@ -53,7 +53,13 @@ import { ProviderSettings } from "@/components/provider-settings";
 import { AICostDashboard } from "@/components/ai-cost-dashboard";
 import { SettingsQuickFind } from "@/components/settings/SettingsQuickFind";
 import { TeamInviteCard } from "@/components/settings/TeamInviteCard";
-import { BrandingEditor } from "@/components/settings/branding-editor";
+import { lazy, Suspense } from "react";
+import { Skeleton } from "@/components/ui/skeleton";
+
+// Lazy-loaded to keep it out of the entry chunk (bundle budget: index ≤ 628 KB).
+const BrandingEditor = lazy(() =>
+  import("@/components/settings/branding-editor").then((m) => ({ default: m.BrandingEditor })),
+);
 import { TeamActivityCard } from "@/components/settings/TeamActivityCard";
 import { MembershipGivingPanel } from "@/components/settings/MembershipGivingPanel";
 
@@ -936,7 +942,9 @@ export default function Settings() {
 
             <TabsContent value="organization" className="space-y-8 mt-6" data-testid="tab-content-organization">
               <TeamInviteCard />
-              <BrandingEditor />
+              <Suspense fallback={<Skeleton className="h-48 w-full" announceText="Loading branding settings" />}>
+                <BrandingEditor />
+              </Suspense>
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
