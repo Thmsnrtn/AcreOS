@@ -606,7 +606,7 @@ export default function TodayPage() {
               // The one dominant next action on Today: a primary button, not
               // the destructive pill it used to be — a pending decision is
               // attention, not an overdue/failed state (Fieldstone redesign).
-              className="inline-flex items-center gap-2 mt-4 min-h-11 pointer-fine:sm:min-h-10 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium shadow-acr-1 hover:bg-primary/90 active:bg-primary/80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              className="inline-flex items-center gap-2 mt-4 min-h-11 pointer-fine:sm:min-h-10 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium shadow-acr-1 hover:opacity-90 active:opacity-80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               data-testid="button-review-decisions"
             >
               <span>
