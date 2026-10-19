@@ -54,7 +54,6 @@ import { AICostDashboard } from "@/components/ai-cost-dashboard";
 import { SettingsQuickFind } from "@/components/settings/SettingsQuickFind";
 import { TeamInviteCard } from "@/components/settings/TeamInviteCard";
 import { lazy, Suspense } from "react";
-import { Skeleton } from "@/components/ui/skeleton";
 
 // Lazy-loaded to keep it out of the entry chunk (bundle budget: index ≤ 628 KB).
 const BrandingEditor = lazy(() =>
