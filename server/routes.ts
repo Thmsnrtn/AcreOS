@@ -1598,6 +1598,16 @@ export async function registerRoutes(
   registerTitleOrderStatusWebhookRoute(app);
   registerMetaLeadAdsWebhookRoutes(app);
 
+  // Borrower portal — PUBLIC by design (borrowers have no AcreOS account;
+  // they authenticate via accessToken+email / signed session cookies inside
+  // each handler). Must register BEFORE the '/api' isAuthenticated catch-all
+  // below, or the catch-all 401s every anonymous borrower before the handler
+  // runs — the same trap documented above for /api/docs, e-sign routes, and
+  // the transparency report. Every mutating borrower route carries its own
+  // per-route gate (validateBorrowerSession / isAuthenticated); only the
+  // credential-exchange and cookie-gated statement routes are anonymous.
+  registerBorrowerRoutes(app);
+
   // EPIC Services: Seller Motivation, County Opportunity, Title Chain, Investor Network, Financial OS, Developer API
   app.use('/api', isAuthenticated, getOrCreateOrg, epicServicesRouter);
 
@@ -2439,7 +2449,6 @@ export async function registerRoutes(
   app.use('/api/ai', isAuthenticated, getOrCreateOrg, aiDraftRouter);
   registerBillingRoutes(app);
   registerSubscriptionRoutes(app);
-  registerBorrowerRoutes(app);
   // Note Investor vertical (Phase 5 §5) — acquired-notes + payments + amort.
   registerNoteRoutes(app);
   // Note Investor vertical (Phase 5 §5) — pre-book diligence pipeline.
