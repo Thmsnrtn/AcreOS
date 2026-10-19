@@ -6,7 +6,7 @@
  * installs one — Dockerfile `chromium`, PUPPETEER_EXECUTABLE_PATH); elsewhere
  * it is skipped.
  */
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeAll } from "vitest";
 import fs from "node:fs";
 
 // Every sub-resource is fetched by AcreOS through safeHttpsGet (the real one,
@@ -54,6 +54,17 @@ async function count(pdf: Buffer): Promise<number> {
 }
 
 describe.runIf(Boolean(chrome))("letter HTML renders to a US-Letter PDF whose pages are counted (real Chromium)", () => {
+  // The renderer reuses ONE browser. Its one-time launch (module import +
+  // Chromium cold start) is paid here, and must still yield a real PDF; under
+  // a loaded CI runner that launch alone has taken >20 s. The per-letter
+  // latency bound below then measures what a letter actually costs on the
+  // running browser, which is what RENDER_TIMEOUT_MS bounds in the renderer.
+  beforeAll(async () => {
+    const { renderLetterHtmlToPdf } = await import("../../server/services/mail/letterRender");
+    const pdf = await renderLetterHtmlToPdf(htmlOfPages(1));
+    expect(await count(pdf)).toBe(1);
+  }, 120_000);
+
   it.each([1, 2, 6, 7])("%i page(s) of HTML → a PDF of exactly that many pages", async (n) => {
     const { renderLetterHtmlToPdf } = await import("../../server/services/mail/letterRender");
     const started = Date.now();
@@ -61,7 +72,8 @@ describe.runIf(Boolean(chrome))("letter HTML renders to a US-Letter PDF whose pa
     const ms = Date.now() - started;
     expect(pdf.subarray(0, 5).toString("latin1")).toBe("%PDF-");
     expect(await count(pdf)).toBe(n);
-    // Latency is reported, not tightly gated: a cold Chromium launch dominates.
+    // A warm render (the launch was paid in beforeAll) stays inside the
+    // renderer's own per-render ceiling.
     console.info(`[houseLetterRenderReal] ${n} page(s) rendered in ${ms} ms`);
     expect(ms).toBeLessThan(20_000);
   }, 30_000);
