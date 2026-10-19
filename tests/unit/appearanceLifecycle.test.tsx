@@ -118,6 +118,25 @@ describe("defaults and device following", () => {
   });
 });
 
+describe("browser chrome", () => {
+  it("theme-color follows the active colorway and resolved mode", async () => {
+    vi.stubGlobal("fetch", vi.fn());
+    const meta = document.createElement("meta");
+    meta.setAttribute("name", "theme-color");
+    meta.setAttribute("content", "#F8F8F3");
+    document.head.appendChild(meta);
+    try {
+      await mount();
+      await act(async () => api!.setThemeConfig({ theme: "meridian", mode: "dark" }));
+      expect(meta.getAttribute("content")).toBe("#1B161F");
+      await act(async () => api!.setThemeConfig({ theme: "bedrock", mode: "light" }));
+      expect(meta.getAttribute("content")).toBe("#EDE3D0");
+    } finally {
+      meta.remove();
+    }
+  });
+});
+
 describe("stored values and migration", () => {
   it("boots a retired colorway migrated, keeps its mode, and drops retired keys on write", async () => {
     vi.stubGlobal("fetch", vi.fn());
@@ -212,5 +231,18 @@ describe("accessibility owns reading density and motion", () => {
     await mount();
     expect(html().getAttribute("data-motion")).toBe("reduced");
     expect(JSON.parse(localStorage.getItem("acreos:accessibility-prefs:v1")!).reduceMotion).toBe(true);
+    // The old field is consumed, so the carry-over can happen only once.
+    expect(JSON.parse(localStorage.getItem("acreos-theme-config")!)).not.toHaveProperty("motion");
+  });
+
+  it("switching Reduce motion off survives a reload (the carry-over never re-fires)", async () => {
+    vi.stubGlobal("fetch", vi.fn());
+    // An old blob still holding motion:"reduced", and an Accessibility record
+    // where the person has since switched it off ("system").
+    localStorage.setItem("acreos-theme-config", JSON.stringify({ theme: "bedrock", mode: "auto", motion: "reduced" }));
+    localStorage.setItem("acreos:accessibility-prefs:v1", JSON.stringify({ reduceMotion: "system" }));
+    await mount();
+    expect(html().getAttribute("data-motion"), "a stale legacy field turned Reduce motion back on").toBe("full");
+    expect(JSON.parse(localStorage.getItem("acreos:accessibility-prefs:v1")!).reduceMotion).toBe("system");
   });
 });

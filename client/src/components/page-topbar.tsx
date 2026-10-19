@@ -8,8 +8,8 @@
  *
  * v1 ships:
  * - Breadcrumb derived from document title (deepest crumb)
- * - Quick appearance dialog (ThemeSettings) — the same Colorway + Display
- *   controls as /settings → appearance, including Match device
+ * - Quick appearance dialog (ThemeSettings) on phones — the same Colorway +
+ *   Display controls as /settings → appearance (desktop: in the rail)
  * - Notifications bell (placeholder, hooks into existing
  *   NotificationBanner state in a follow-up commit)
  * - Command-palette trigger (⌘K) — kbd hint visible, click opens
@@ -161,7 +161,9 @@ export function PageTopbar({ title: explicitTitle, crumbs }: PageTopbarProps = {
         )}
         {/* Quick appearance — the same Colorway + Display controls as
             Settings → Appearance, one tap away. */}
-        <ThemeSettings className="min-h-[44px] min-w-[44px] pointer-fine:md:h-9 pointer-fine:md:w-9 pointer-fine:md:min-h-9 pointer-fine:md:min-w-9" />
+        {/* Phones only: on desktop the navigation rail carries the same
+            Appearance entry, and two identical buttons on one screen is noise. */}
+        {isMobile && <ThemeSettings className="min-h-[44px] min-w-[44px]" />}
         {/* Notifications bell — until a dedicated notifications drawer
             ships, route the user to Today, whose decision queue is the one
             list of what needs them (DEFECT-0148). */}

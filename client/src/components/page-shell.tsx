@@ -89,8 +89,11 @@ export function PageShell({ children, isLoading, loadingFallback, maxWidth = "7x
   // Publish the shell's rail offsets while it is mounted, so chrome rendered
   // OUTSIDE the shell (App.tsx's trial / early-access banner stack) can sit
   // beside the fixed navigation rail instead of under it. Cleared on unmount,
-  // so routes without the shell get no offset.
+  // so routes without the shell get no offset. An EMBEDDED shell (a tab inside
+  // a host page's shell) owns no rail and must not publish or clear them — its
+  // unmount would strip the host's offsets and drop the banner under the rail.
   useEffect(() => {
+    if (embedded) return;
     const root = document.documentElement;
     root.style.setProperty("--shell-rail-left", isCollapsed ? "76px" : "17rem");
     root.style.setProperty("--shell-rail-right", railOpen ? "360px" : "3rem");
@@ -98,7 +101,7 @@ export function PageShell({ children, isLoading, loadingFallback, maxWidth = "7x
       root.style.removeProperty("--shell-rail-left");
       root.style.removeProperty("--shell-rail-right");
     };
-  }, [isCollapsed, railOpen]);
+  }, [isCollapsed, railOpen, embedded]);
   const resolvedLabel = useDocumentTitleFallback(label);
   // Embedded mode: the parent PageShell already provides sidebar, topbar,
   // skip link, main landmark, banners, and outer padding — render only the

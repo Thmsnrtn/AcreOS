@@ -4,6 +4,7 @@ import { okOrThrow } from "@/lib/fetch-honesty";
 import { hasAnyClerkSession } from "@/lib/clerk-session-detect";
 import { apiRequest } from "@/lib/queryClient";
 import {
+  COLORWAYS,
   COLORWAY_IDS,
   DEFAULT_COLORWAY,
   DEFAULT_DISPLAY_MODE,
@@ -118,6 +119,14 @@ export function applyThemeToDocument(config: ThemeConfig, deviceDark: boolean) {
   root.classList.toggle("dark", resolved === "dark");
   root.setAttribute("data-theme", config.theme);
   root.style.colorScheme = resolved;
+  // Browser chrome (iOS status area, Android toolbar) follows the page the
+  // person actually sees — colorway AND resolved mode, not the OS default.
+  const page = COLORWAYS.find((c) => c.id === config.theme)?.[resolved].page;
+  if (page) {
+    for (const meta of Array.from(document.querySelectorAll('meta[name="theme-color"]'))) {
+      meta.setAttribute("content", page);
+    }
+  }
 }
 
 const PREFERENCES_ENDPOINT = "/api/me/preferences";
@@ -202,7 +211,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       patchTimerRef.current = undefined;
       const flush = pendingPatchRef.current;
       pendingPatchRef.current = {};
-      if (Object.keys(flush).length > 0) void patchServerPreferences(flush);
+      if (Object.keys(flush).length > 0 && hasAnyClerkSession()) void patchServerPreferences(flush);
     }
   }, []);
 

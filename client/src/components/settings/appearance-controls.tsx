@@ -1,3 +1,4 @@
+import { useId } from "react";
 import * as RadioGroupPrimitive from "@radix-ui/react-radio-group";
 import { Check, Monitor, Moon, Sun } from "lucide-react";
 import { useTheme } from "@/contexts/theme-context";
@@ -156,11 +157,15 @@ export function DisplayModePicker() {
 
 /** Colorway + Display, with their labels. `compact` is the quick dialog. */
 export function AppearanceControls({ compact = false }: { compact?: boolean }) {
+  // Settings and the quick dialog can both be mounted at once; ids must differ.
+  const uid = useId();
+  const colorwayHeading = `${uid}-colorway`;
+  const displayHeading = `${uid}-display`;
   return (
     <div className={cn("space-y-6", compact && "space-y-5")} data-testid="appearance-controls">
-      <section aria-labelledby="appearance-colorway-heading" className="space-y-3">
+      <section aria-labelledby={colorwayHeading} className="space-y-3">
         <div>
-          <h3 id="appearance-colorway-heading" className="font-sans text-sm font-semibold tracking-normal">
+          <h3 id={colorwayHeading} className="font-sans text-sm font-semibold tracking-normal">
             Colorway
           </h3>
           {!compact && (
@@ -171,9 +176,9 @@ export function AppearanceControls({ compact = false }: { compact?: boolean }) {
         </div>
         <ColorwayPicker compact={compact} />
       </section>
-      <section aria-labelledby="appearance-display-heading" className="space-y-3">
+      <section aria-labelledby={displayHeading} className="space-y-3">
         <div>
-          <h3 id="appearance-display-heading" className="font-sans text-sm font-semibold tracking-normal">
+          <h3 id={displayHeading} className="font-sans text-sm font-semibold tracking-normal">
             Display
           </h3>
           {!compact && (

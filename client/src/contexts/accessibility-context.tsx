@@ -94,12 +94,21 @@ export function migrateLegacyMotion(storage: Pick<Storage, "getItem" | "setItem"
   try {
     const themeRaw = storage.getItem(LEGACY_THEME_KEY);
     if (!themeRaw) return;
-    const legacy = JSON.parse(themeRaw) as { motion?: unknown } | null;
-    if (!legacy || legacy.motion !== "reduced") return;
+    const legacy = JSON.parse(themeRaw) as Record<string, unknown> | null;
+    if (!legacy || typeof legacy !== "object" || !("motion" in legacy)) return;
     const raw = storage.getItem(LS_KEY);
     const current = raw ? (JSON.parse(raw) as Partial<AccessibilityPrefs>) : {};
-    if (current.reduceMotion === true || current.reduceMotion === false) return;
-    storage.setItem(LS_KEY, JSON.stringify({ ...DEFAULTS, ...current, reduceMotion: true }));
+    // Carry over ONLY when Accessibility has never recorded a motion choice:
+    // once the person has touched the switch here (true, or "system" for off)
+    // their choice stands — re-reading the old blob on every load would turn
+    // "Reduce motion" back on after they switched it off.
+    if (legacy.motion === "reduced" && !("reduceMotion" in current)) {
+      storage.setItem(LS_KEY, JSON.stringify({ ...DEFAULTS, ...current, reduceMotion: true }));
+    }
+    // Consume the old field either way, so this runs at most once.
+    const rest: Record<string, unknown> = { ...legacy };
+    delete rest.motion;
+    storage.setItem(LEGACY_THEME_KEY, JSON.stringify(rest));
   } catch {
     // Malformed storage — nothing to carry over.
   }

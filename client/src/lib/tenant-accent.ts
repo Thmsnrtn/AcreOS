@@ -137,12 +137,14 @@ export function deriveTenantAccent(hex: string, s: AccentSurfaces): TenantAccent
   // over both page and surface (the same rule as every colorway's -soft-ink).
   const softA = s.mode === "dark" ? 0.16 : 0.12;
   const washes = [over(fill, softA, bg), over(fill, softA, surface)];
-  let softInk: RGB = fill;
+  let softInk: RGB | null = null;
   const [fh, fs, fl] = rgbToHsl(fill);
   for (let i = 0, l = fl; i <= 100 && l >= 0 && l <= 100; i++, l += step) {
     const c = hslToRgb(fh, fs, l);
     if (washes.every((w) => contrastRatio(c, w) >= AA)) { softInk = c; break; }
   }
+  // Refuse rather than ship a wash ink that fails AA.
+  if (!softInk) return null;
 
   const rgba = (a: number) => `rgba(${fill.join(",")},${a})`;
   return {

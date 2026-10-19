@@ -378,8 +378,8 @@ motion-tokens, not the shim). **Do not touch this system** (census: 5/5).
 (`client/src/components/settings/appearance-controls.tsx`) renders Colorway (three
 radio cards with live swatches from the contract) and Display (Light · Dark ·
 Match device). It is the ONLY appearance control: Settings → Appearance and the
-top-bar / rail quick dialog (`theme-settings.tsx`) both render it, so they cannot
-drift. Public pages keep the plain light/dark `ThemeToggle`.
+quick dialog (`theme-settings.tsx` — in the navigation rail on desktop, in the
+top bar on phones) both render it, so they cannot drift. Public pages keep the plain light/dark `ThemeToggle`.
 
 **Preference lifecycle** (`client/src/contexts/theme-context.tsx`):
 

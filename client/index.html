@@ -124,7 +124,7 @@
       // Resolve the personal colorway + display mode BEFORE React renders, so
       // the first paint is already the right palette (no flash of the old
       // one). Mirrors normalizeAppearance() in shared/appearance.ts exactly —
-      // tests/unit/appearanceBoot.test.ts runs this script against the shared
+      // tests/unit/appearanceContract.test.ts runs this script against the shared
       // function over a corpus of stored values, so the two cannot drift.
       try {
         var COLORWAYS = ['fieldstone', 'bedrock', 'meridian'];
