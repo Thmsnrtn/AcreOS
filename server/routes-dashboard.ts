@@ -657,7 +657,9 @@ export function registerDashboardRoutes(app: Express): void {
         });
       }
 
-      if (lastCampaignDaysAgo > 45) {
+      // A pure note book runs no land mail (/campaigns is hidden for it —
+      // sidebar-hidden-routes.ts byOrgInvestorType.notes): never suggest it.
+      if ((org as { investorType?: string | null }).investorType !== "notes" && lastCampaignDaysAgo > 45) {
         priorities.push({
           id: "send-campaign",
           type: "campaign",

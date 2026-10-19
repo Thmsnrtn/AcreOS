@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { isRouteHidden } from "@/lib/sidebar-hidden-routes";
 import { Link, useLocation } from "wouter";
 import { useKeyboardLayer } from "@/hooks/use-keyboard-layer";
 import { motion } from "framer-motion";
@@ -128,6 +129,12 @@ interface DecisionQueueProps {
   items: DecisionItem[];
   isLoading: boolean;
   /**
+   * Routes this persona hides (useHiddenRoutes — the registry the rail reads).
+   * Rows whose action opens one are not shown. The parent supplies it so this
+   * component stays presentational.
+   */
+  hiddenRoutes?: readonly string[];
+  /**
    * Inline-resolve a queue item in place (Maren CPO #2). The parent owns the
    * PATCH mutation + query invalidation so this component stays presentational.
    * When omitted, items fall back to navigate-only (legacy behavior).
@@ -222,6 +229,8 @@ function persistSnoozed(map: Record<string, number>) {
  * inside are approximations, and they are sized from the type scale the row
  * actually uses.
  */
+const NO_HIDDEN_ROUTES: readonly string[] = [];
+
 function DecisionQueueSkeleton() {
   return (
     <div className="space-y-2" data-testid="decision-queue-skeleton">
@@ -258,6 +267,7 @@ function DecisionQueueSkeleton() {
 export function DecisionQueue({
   items,
   isLoading,
+  hiddenRoutes = NO_HIDDEN_ROUTES,
   onResolve,
   resolvingIds,
   onVisibleCountChange,
@@ -310,9 +320,12 @@ export function DecisionQueue({
   // Server owns the ranking (one explainable comparator in routes-today.ts:
   // overdue → money-touching → time-sensitive → routine). The client only
   // subtracts locally-snoozed rows — it never re-sorts.
+  // …and every row whose action opens a route this persona hides (the same
+  // registry the rail reads): a card may not send a note-investor org to land
+  // Outreach the rail itself refuses to show.
   const visible = useMemo(
-    () => items.filter((it) => !snoozed[it.id]),
-    [items, snoozed],
+    () => items.filter((it) => !snoozed[it.id] && !isRouteHidden(it.actionUrl, hiddenRoutes)),
+    [items, snoozed, hiddenRoutes],
   );
   const snoozedCount = Object.keys(snoozed).length;
 
