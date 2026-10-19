@@ -39,6 +39,26 @@ export interface AppearancePreferences {
     startHour?: number;
     endHour?: number;
   };
+  /**
+   * Accessibility & comfort preferences (Wave B accommodations). Stored with
+   * the account so they follow the person across devices; the browser's
+   * localStorage copy is the fast-boot cache. Shape mirrors
+   * client/src/contexts/accessibility-context.tsx AccessibilityPrefs.
+   */
+  accessibility?: {
+    fontFamily?: "system" | "lexend";
+    readingDensity?: "compact" | "comfortable" | "spacious";
+    cognitiveA11yMode?: boolean;
+    largerTapsMode?: boolean;
+    pictureFirstParcels?: boolean;
+    focusMode?: boolean;
+    quietHours?: {
+      enabled?: boolean;
+      start?: string;
+      end?: string;
+    };
+    reduceMotion?: boolean | "system";
+  };
 }
 
 /**

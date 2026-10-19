@@ -3,6 +3,31 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-10-19 — Open Fieldstone items closed (Muse)
+
+### Shipped to main
+- **Company branding editor.** Settings → Organization now has a Company
+  branding card: accent color (picker + hex, 6-digit validated), logo URL
+  (absolute http(s), live preview), density (compact/comfortable/adaptive).
+  Writes go through PATCH /api/tenant-theme (owner/admin only, enforced
+  server-side); everyone else sees it read-only. Reset-to-defaults clears all
+  three back to the theme. Test: `tests/unit/brandingEditor.test.ts`.
+- **Accessibility prefs follow the person.** `/api/me/preferences` now accepts,
+  validates, and deep-merges an `accessibility` blob (same JSONB column as
+  appearance); the client hydrates from the server on login and debounced-PATCHes
+  changes — the same pattern as appearance in theme-context.tsx. localStorage
+  stays the fast-boot cache. The stale header comment about the non-existent
+  `use-sync-accessibility-prefs` hook is corrected.
+  Tests: `tests/unit/accessibilityPreferencesSync.test.ts` (15 tests).
+
+**Measured:** new unit tests 15/15 green; appearanceContract + tenantKey
+suites still green (56 tests); tsc clean on changed files.
+
+### Top next moves
+
+1. Then resume the 2026-10-18 list below (land the waiting branches; time to
+   first deal; every paid action covers its cost).
+
 ## 2026-10-18 — Fieldstone redesign (`claude/fieldstone-redesign-q48nuj`)
 
 ### Built, on a branch with a draft PR, waiting for founder review

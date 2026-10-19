@@ -53,6 +53,16 @@ const DEFAULT_PREFERENCES: Required<AppearancePreferences> = {
   sidebarConfig: {},
   listViews: {},
   notificationQuietHours: { enabled: false },
+  accessibility: {
+    fontFamily: "system",
+    readingDensity: "comfortable",
+    cognitiveA11yMode: false,
+    largerTapsMode: false,
+    pictureFirstParcels: false,
+    focusMode: false,
+    quietHours: { enabled: false, start: "22:00", end: "07:00" },
+    reduceMotion: "system",
+  },
 };
 
 const ACCEPTED_COLORWAY_VALUES = [
@@ -89,6 +99,25 @@ export const preferencesSchema = z.object({
     startHour: z.number().int().min(0).max(23).optional(),
     endHour: z.number().int().min(0).max(23).optional(),
   }).strict().optional(),
+  // Accessibility & comfort preferences — stored with the account so they
+  // follow the person across devices (the browser's localStorage copy is the
+  // fast-boot cache; see client/src/contexts/accessibility-context.tsx).
+  // Partial updates merge; "HH:MM" strings validated loosely (client owns the
+  // picker UI).
+  accessibility: z.object({
+    fontFamily: z.enum(["system", "lexend"]).optional(),
+    readingDensity: z.enum(["compact", "comfortable", "spacious"]).optional(),
+    cognitiveA11yMode: z.boolean().optional(),
+    largerTapsMode: z.boolean().optional(),
+    pictureFirstParcels: z.boolean().optional(),
+    focusMode: z.boolean().optional(),
+    quietHours: z.object({
+      enabled: z.boolean().optional(),
+      start: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Expected HH:MM").optional(),
+      end: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Expected HH:MM").optional(),
+    }).strict().optional(),
+    reduceMotion: z.union([z.boolean(), z.literal("system")]).optional(),
+  }).strict().optional(),
 }).strict();
 
 /** Remove the retired fields from a stored or incoming blob. */
@@ -103,7 +132,19 @@ function stripRetired<T extends object>(blob: T): T {
 export function serializePreferences(stored: unknown): Required<AppearancePreferences> {
   const blob = stored && typeof stored === "object" ? (stored as Record<string, unknown>) : {};
   const { theme, mode } = normalizeAppearance(blob);
-  return { ...DEFAULT_PREFERENCES, ...(stripRetired(blob) as AppearancePreferences), theme, mode };
+  const storedAccessibility =
+    blob.accessibility && typeof blob.accessibility === "object"
+      ? (blob.accessibility as Record<string, unknown>)
+      : {};
+  return {
+    ...DEFAULT_PREFERENCES,
+    ...(stripRetired(blob) as AppearancePreferences),
+    theme,
+    mode,
+    // Deep-merge the accessibility blob so a partial stored value still gets
+    // defaults for the fields it lacks (shallow spread would drop them).
+    accessibility: { ...DEFAULT_PREFERENCES.accessibility, ...storedAccessibility },
+  };
 }
 
 router.get("/", async (req: AuthenticatedRequest, res: Response) => {
@@ -144,9 +185,15 @@ router.patch("/", async (req: AuthenticatedRequest, res: Response) => {
 
     // Retired keys left in an older row are dropped on the person's own
     // next write; nothing rewrites rows in bulk.
+    const currentBlob = (current?.appearancePreferences ?? {}) as AppearancePreferences;
     const merged: AppearancePreferences = stripRetired({
-      ...((current?.appearancePreferences ?? {}) as AppearancePreferences),
+      ...currentBlob,
       ...update,
+      // Deep-merge accessibility: a partial client PATCH (e.g. only
+      // fontFamily) must not wipe the fields the person set earlier.
+      ...(update.accessibility
+        ? { accessibility: { ...currentBlob.accessibility, ...update.accessibility } }
+        : {}),
     });
 
     await db

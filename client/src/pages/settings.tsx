@@ -53,6 +53,7 @@ import { ProviderSettings } from "@/components/provider-settings";
 import { AICostDashboard } from "@/components/ai-cost-dashboard";
 import { SettingsQuickFind } from "@/components/settings/SettingsQuickFind";
 import { TeamInviteCard } from "@/components/settings/TeamInviteCard";
+import { BrandingEditor } from "@/components/settings/branding-editor";
 import { TeamActivityCard } from "@/components/settings/TeamActivityCard";
 import { MembershipGivingPanel } from "@/components/settings/MembershipGivingPanel";
 
@@ -935,6 +936,7 @@ export default function Settings() {
 
             <TabsContent value="organization" className="space-y-8 mt-6" data-testid="tab-content-organization">
               <TeamInviteCard />
+              <BrandingEditor />
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">

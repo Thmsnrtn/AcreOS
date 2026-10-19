@@ -1,5 +1,9 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocalStorageState } from "@/hooks/use-local-storage-state";
+import { apiRequest } from "@/lib/queryClient";
+import { okOrThrow } from "@/lib/fetch-honesty";
+import { hasAnyClerkSession } from "@/lib/clerk-session-detect";
+import { clientLogger } from "@/lib/clientLogger";
 
 /**
  * Accessibility & comfort preferences (Wave B accommodations).
@@ -11,9 +15,10 @@ import { useLocalStorageState } from "@/hooks/use-local-storage-state";
  *   • Earl §1     — picture-first parcel cards
  *   • Yelena §1   — focus mode + quiet hours
  *
- * Persistence: localStorage (per-browser). When user is logged in, a sync
- * hook (`use-sync-accessibility-prefs`) mirrors changes to `/api/user/preferences`
- * so the choice carries across devices.
+ * Persistence: localStorage (per-browser fast-boot cache) + `/api/me/preferences`
+ * (account-level, debounced PATCH; server hydrates on mount when logged in —
+ * same pattern as appearance in theme-context.tsx). The choice now carries
+ * across devices.
  *
  * The provider attaches matching `data-*` attributes to `<html>`, which feed
  * the global CSS rules in `index.css` (font-family swap, line-height ramp,
@@ -85,6 +90,40 @@ const AccessibilityContext = createContext<AccessibilityContextValue | null>(nul
 const LS_KEY = "acreos:accessibility-prefs:v1";
 const LEGACY_THEME_KEY = "acreos-theme-config";
 
+const PREFERENCES_ENDPOINT = "/api/me/preferences";
+const PATCH_DEBOUNCE_MS = 300;
+
+async function fetchServerAccessibility(): Promise<Partial<AccessibilityPrefs> | null> {
+  try {
+    const res = await okOrThrow(await fetch(PREFERENCES_ENDPOINT, { credentials: "include" }));
+    const body = (await res.json()) as { accessibility?: Partial<AccessibilityPrefs> };
+    return body.accessibility ?? null;
+  } catch (err) {
+    clientLogger.info("[a11y] could not read saved preferences; local prefs kept", err);
+    return null;
+  }
+}
+
+async function patchServerAccessibility(update: Partial<AccessibilityPrefs>): Promise<void> {
+  try {
+    await apiRequest("PATCH", PREFERENCES_ENDPOINT, { accessibility: update });
+  } catch (err) {
+    clientLogger.warn("[a11y] PATCH /api/me/preferences failed; local state retained", err);
+  }
+}
+
+/** Fields that survive a server round-trip (validated by the zod schema). */
+const SYNCABLE_KEYS = [
+  "fontFamily",
+  "readingDensity",
+  "cognitiveA11yMode",
+  "largerTapsMode",
+  "pictureFirstParcels",
+  "focusMode",
+  "quietHours",
+  "reduceMotion",
+] as const;
+
 /**
  * Before the Fieldstone redesign, "Reduce motion" lived in Appearance and was
  * stored in the theme blob. Carry a stored "reduced" over once, so the person
@@ -151,6 +190,62 @@ export function AccessibilityProvider({ children }: { children: ReactNode }) {
   const prefs = useMemo(() => ({ ...DEFAULTS, ...storedPrefs }), [storedPrefs]);
   const [deviceReduced, setDeviceReduced] = useState<boolean>(deviceReducesMotion);
 
+  // Server sync (account-level, like appearance): hydrate once on mount when
+  // logged in, then debounce PATCHes. Fields the person changed in this page
+  // lifetime are never overwritten by a slow hydration.
+  const pendingPatchRef = useRef<Partial<AccessibilityPrefs>>({});
+  const patchTimerRef = useRef<number | undefined>(undefined);
+  const locallyChangedRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!hasAnyClerkSession()) return;
+    let cancelled = false;
+    fetchServerAccessibility().then((server) => {
+      if (cancelled || !server) return;
+      setRaw((local) => {
+        const next = { ...local };
+        let changed = false;
+        for (const k of SYNCABLE_KEYS) {
+          if (locallyChangedRef.current.has(k)) continue;
+          const v = server[k];
+          if (v !== undefined && JSON.stringify(v) !== JSON.stringify(local[k])) {
+            (next as Record<string, unknown>)[k] = v;
+            changed = true;
+          }
+        }
+        return changed ? next : local;
+      });
+    });
+    return () => { cancelled = true; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Flush a pending PATCH if the provider unmounts mid-debounce.
+  useEffect(() => () => {
+    if (patchTimerRef.current !== undefined) {
+      window.clearTimeout(patchTimerRef.current);
+      patchTimerRef.current = undefined;
+      const flush = pendingPatchRef.current;
+      pendingPatchRef.current = {};
+      if (Object.keys(flush).length > 0 && hasAnyClerkSession()) void patchServerAccessibility(flush);
+    }
+  }, []);
+
+  const queueServerSync = (update: Partial<AccessibilityPrefs>) => {
+    const clean: Partial<AccessibilityPrefs> = {};
+    for (const k of SYNCABLE_KEYS) {
+      if (update[k] !== undefined) (clean as Record<string, unknown>)[k] = update[k];
+    }
+    if (Object.keys(clean).length === 0) return;
+    pendingPatchRef.current = { ...pendingPatchRef.current, ...clean };
+    if (patchTimerRef.current !== undefined) window.clearTimeout(patchTimerRef.current);
+    patchTimerRef.current = window.setTimeout(() => {
+      const flush = pendingPatchRef.current;
+      pendingPatchRef.current = {};
+      patchTimerRef.current = undefined;
+      if (Object.keys(flush).length > 0 && hasAnyClerkSession()) void patchServerAccessibility(flush);
+    }, PATCH_DEBOUNCE_MS);
+  };
+
   useEffect(() => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -160,10 +255,16 @@ export function AccessibilityProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const setPrefs = (next: Partial<AccessibilityPrefs>) => {
+    for (const k of Object.keys(next)) locallyChangedRef.current.add(k);
     setRaw((prev) => ({ ...prev, ...next }));
+    queueServerSync(next);
   };
 
-  const reset = () => setRaw(DEFAULTS);
+  const reset = () => {
+    for (const k of SYNCABLE_KEYS) locallyChangedRef.current.add(k);
+    setRaw(DEFAULTS);
+    queueServerSync({ ...DEFAULTS });
+  };
 
   // Reflect prefs onto <html data-*> for CSS hooks.
   useEffect(() => {
