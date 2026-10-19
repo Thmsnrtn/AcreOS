@@ -552,10 +552,15 @@ export const leads = pgTable("leads", {
   lastName: text("last_name").notNull(),
   email: text("email"),
   phone: text("phone"),
-  // GENERATED ALWAYS AS (regexp_replace(coalesce(phone,''),'[^0-9]','','g')) STORED
-  // (see migration 0051). Never written from JS — Drizzle treats it
-  // as a read-only string column.
-  phoneNormalized: text("phone_normalized"),
+  // STORED generated column, declared with migration 0051's exact expression
+  // so a database built by `drizzle-kit push` gets the same column production
+  // has (pinned by tests/unit/phoneNormalizedMatchesMigration.test.ts). As a
+  // plain column a push-built database left it NULL, and inbound-SMS STOP
+  // matching (findLeadsByPhoneLast10) found no lead. Never written from JS:
+  // Drizzle leaves generated columns out of insert and update types.
+  phoneNormalized: text("phone_normalized").generatedAlwaysAs(
+    sql`regexp_replace(coalesce(phone, ''), '[^0-9]', '', 'g')`,
+  ),
   address: text("address"),
   city: text("city"),
   state: text("state"),
@@ -2948,9 +2953,10 @@ export const insertTeamMemberSchema = createInsertSchema(teamMembers).omit({
 export const insertLeadSchema = createInsertSchema(leads).omit({
   id: true, createdAt: true, updatedAt: true, lastScoreAt: true,
   organizationId: true,
-  // phoneNormalized is a STORED generated column — Postgres rejects
-  // explicit writes. Omit from inserts. (Migration 0051.)
-  phoneNormalized: true,
+  // phoneNormalized (migration 0051) is declared generatedAlwaysAs, so
+  // createInsertSchema already leaves it out; naming it here is now an
+  // unknown key. tests/unit/phoneNormalizedMatchesMigration.test.ts pins that
+  // the insert schema has no such field.
   // W5b: the outreach language has ONE writer (PATCH
   // /api/leads/:id/outreach-language), which records who chose it. A generic
   // lead create/update or an import could otherwise set it from any field —

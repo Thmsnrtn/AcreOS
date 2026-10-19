@@ -88,6 +88,11 @@ import {
 import { lenderServicingPhase, servicingEndedBorrowerMessage } from "./services/borrower/servicingPhase";
 import { getClientIp, clientIpOrNull } from "./utils/clientIp";
 import { clock } from "./utils/clock";
+import {
+  isStatementPortalConfigured,
+  StatementPortalNotConfiguredError,
+  STATEMENT_PORTAL_NOT_CONFIGURED_MESSAGE,
+} from "./utils/borrowerSessionSecret";
 
 // ─────────────────────────────────────────────────────────────────────
 // Borrower ACH autopay (Wave C — "money moves")
@@ -586,6 +591,12 @@ export function registerBorrowerRoutes(app: Express): void {
         return Errors.badRequest(res, "accessToken and email are required");
       }
 
+      // No usable signing secret: the portal is not configured. Refuse before
+      // any credential is looked up, with a 503 — not a 500, never a cookie.
+      if (!isStatementPortalConfigured()) {
+        return Errors.serviceUnavailable(res, STATEMENT_PORTAL_NOT_CONFIGURED_MESSAGE);
+      }
+
       const ip = getClientIp(req);
 
       const resolver: BorrowerGrantResolver = {
@@ -626,6 +637,9 @@ export function registerBorrowerRoutes(app: Express): void {
 
       return res.status(204).end();
     } catch (err) {
+      if (err instanceof StatementPortalNotConfiguredError) {
+        return Errors.serviceUnavailable(res, STATEMENT_PORTAL_NOT_CONFIGURED_MESSAGE);
+      }
       return Errors.internal(res, err);
     }
   });
@@ -1812,7 +1826,9 @@ export function registerBorrowerRoutes(app: Express): void {
         }
       }
 
-      if (noteIdFromSession === null) {
+      // The signed statement cookie can only be verified with a configured
+      // secret; unconfigured, that path simply does not authenticate.
+      if (noteIdFromSession === null && isStatementPortalConfigured()) {
         const verified = verifyBorrowerSession(stmtCookie, ip);
         if (verified.valid && verified.statementSetScope?.startsWith("note:")) {
           noteIdFromSession = verified.statementSetScope.slice("note:".length);
