@@ -530,8 +530,8 @@ export const CONSTITUTION: readonly ConstitutionInvariant[] = [
         "row with failing canaries; houseMailPurchasedOnly.realdb.test.ts " +
         "proves on Postgres that grants and the pool never pay. " +
         "houseMailLane.test.ts pins the charge, the identity requirement, the " +
-        "refund rule and the own-key isolation; physicalMailLanePopulation." +
-        "test.ts enumerates every Lob/PostGrid send primitive in server/ and " +
+        "refund rule and the own-key isolation; " +
+        "physicalMailLanePopulation.test.ts enumerates every Lob/PostGrid send primitive in server/ and " +
         "fails when one is reached without a lane or pays/refunds any other " +
         "way. counterpartySmsStaysByo.test.ts keeps SMS BYO. This superseded " +
         "the deferred 'platform Lob fallback' note. " +

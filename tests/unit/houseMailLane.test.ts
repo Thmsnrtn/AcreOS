@@ -27,7 +27,6 @@ import path from "node:path";
 import { CREDIT_WEIGHTS } from "@shared/billing/credit-weights";
 import { financialLedger, organizations, creditTransactions } from "@shared/schema";
 import { stripComments } from "../helpers/stripComments";
-import { makePdf } from "../helpers/pdfFixture";
 import { fakeSafeFetch } from "../helpers/fakeSafeFetch";
 
 // The campaign class builds its env clients at import; give it a sandbox key.
