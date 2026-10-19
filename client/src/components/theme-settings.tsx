@@ -1,9 +1,36 @@
+import { lazy, Suspense } from "react";
 import { Monitor, Moon, Sun } from "lucide-react";
 import { useTheme } from "@/contexts/theme-context";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { AppearanceControls } from "@/components/settings/appearance-controls";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+
+// The trigger mounts on every page (sidebar, phone top bar); the pickers only
+// render once the dialog opens, so they load then instead of riding in the
+// entry chunk (scripts/bundle-budget.json ceiling).
+const AppearanceControls = lazy(() =>
+  import("@/components/settings/appearance-controls").then((m) => ({ default: m.AppearanceControls })),
+);
+
+function AppearanceControlsSkeleton() {
+  return (
+    <div className="space-y-5" aria-hidden="true">
+      <div className="space-y-2">
+        <Skeleton className="h-4 w-20" />
+        <div className="grid gap-2 sm:grid-cols-3">
+          <Skeleton className="h-16" />
+          <Skeleton className="h-16" />
+          <Skeleton className="h-16" />
+        </div>
+      </div>
+      <div className="space-y-2">
+        <Skeleton className="h-4 w-16" />
+        <Skeleton className="h-10" />
+      </div>
+    </div>
+  );
+}
 
 /**
  * Quick appearance dialog — mounted in the page top bar. Renders the same
@@ -32,7 +59,9 @@ export function ThemeSettings({ className }: { className?: string }) {
           <DialogTitle>Appearance</DialogTitle>
           <DialogDescription>Changes apply instantly and follow you to your other devices.</DialogDescription>
         </DialogHeader>
-        <AppearanceControls compact />
+        <Suspense fallback={<AppearanceControlsSkeleton />}>
+          <AppearanceControls compact />
+        </Suspense>
       </DialogContent>
     </Dialog>
   );

@@ -33,6 +33,13 @@ in the PR. Real-app screenshots (production build, E2E test auth, seeded
 fixture data) for all 6 colorway × mode combinations at desktop and iPhone,
 plus 320px and tablet spot checks, are under `docs/design/fieldstone/`.
 
+**Entry-chunk budget:** CI's Build job measured the entry chunk at 747 KB against
+the 745 KB ceiling in `scripts/bundle-budget.json` (CI reads ~6 KB higher than a
+local `NODE_ENV=production` build of the same tree, so `main` sits close to the
+line there). The ceiling was not raised. The quick-appearance dialog now
+lazy-loads its pickers, which takes the entry chunk below `main`'s own
+(local: 755.0 KB on the branch, 756.2 KB on `main` at `e413ab6`).
+
 **Not verified here:** the logged-out landing and sign-in pages (no real Clerk in
 this environment — the public server answers the Clerk proxy's 502, and test
 auth has no logged-out identity); real map imagery (no map key locally); real
