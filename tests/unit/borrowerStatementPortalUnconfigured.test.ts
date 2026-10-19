@@ -67,7 +67,6 @@ vi.mock("../../server/middleware/rateLimit", () => ({
   RATE_LIMIT_CONFIGS: { public: { maxRequests: 100, windowMs: 60_000 } },
 }));
 
-import cookieParser from "cookie-parser";
 import { registerBorrowerRoutes } from "../../server/routes-borrower";
 import { validateEnv } from "../../server/utils/validateEnv";
 
@@ -77,7 +76,15 @@ const USABLE = "a-usable-statement-portal-secret-0123456789";
 function makeApp() {
   const app = express();
   app.use(express.json());
-  app.use(cookieParser());
+  // Only the statement cookie matters here, so read just that one name into
+  // req.cookies (what the route reads) — no generic cookie parsing.
+  app.use((req: express.Request, _res, next) => {
+    const m = /(?:^|;\s*)borrower_stmt_session=([^;]*)/.exec(String(req.headers.cookie ?? ""));
+    (req as express.Request & { cookies: Record<string, string> }).cookies = m
+      ? { borrower_stmt_session: decodeURIComponent(m[1]) }
+      : {};
+    next();
+  });
   registerBorrowerRoutes(app);
   return app;
 }
