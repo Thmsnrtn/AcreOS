@@ -162,8 +162,12 @@ async function cmdSeed(client) {
   const borrowerId = leadRows[0].id;
 
   // 4. note — drop the prior sentinel-tagged row (matched via the lead) and
-  // re-insert with a fresh access token. notes.access_token is UNIQUE; we
-  // can't UPSERT-on-token because we want a fresh token each seed cycle.
+  // re-insert. The access token is deterministic (derived from the sentinel):
+  // the note is deleted and re-inserted each cycle, so a fresh random token
+  // buys nothing, and a stable token eliminates the seeder/runner
+  // token-mismatch class where the credentials file doesn't match the DB.
+  // notes.access_token is UNIQUE; we can't UPSERT-on-token because the
+  // row is deleted first.
   //
   // `atr_exemption_code` is REQUIRED for an active note by the DB-level CHECK
   // `notes_atr_origination_gate`; without it this INSERT threw and the
@@ -178,7 +182,10 @@ async function cmdSeed(client) {
     `DELETE FROM notes WHERE organization_id = $1 AND borrower_id = $2`,
     [orgId, borrowerId],
   );
-  const accessToken = crypto.randomBytes(32).toString("hex");
+  const accessToken = crypto
+    .createHash("sha256")
+    .update(`borrower-e2e-access-token:${SENTINEL}`)
+    .digest("hex");
   const now = new Date();
   const firstPayment = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
   const maturity = new Date(now.getTime() + 120 * 30 * 24 * 60 * 60 * 1000);
