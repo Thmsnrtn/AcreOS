@@ -89,11 +89,17 @@ function maskEmail(email: string): string {
  * it never receives the cookie — fetch one explicitly before POSTing to
  * the exchange endpoint, the way the real borrower page (csrf-fetch.ts)
  * does on load.
+ *
+ * NOTE: the bootstrap GET must hit a route that passes THROUGH the
+ * csrfProtection middleware. /api/health is registered BEFORE the
+ * middleware mount, so it never issues the cookie. The statement
+ * endpoint is the borrower's own safe-method route: it 401s without a
+ * session, but the middleware issues the cookie before the handler runs.
  */
 async function csrfHeadersFor(
   apiCtx: Pick<APIRequestContext, "get" | "storageState">,
 ): Promise<Record<string, string>> {
-  await apiCtx.get("/api/health");
+  await apiCtx.get(STATEMENT_PATH);
   const { cookies } = await apiCtx.storageState();
   const token = cookies.find((c) => c.name === "csrf_token")?.value ?? "";
   if (!token) {
