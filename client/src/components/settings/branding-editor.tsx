@@ -172,6 +172,7 @@ export function BrandingEditor() {
               disabled={!isAdmin}
               className="max-w-64 font-mono"
               data-testid="input-brand-accent-hex"
+              aria-label="Accent color hex value"
               aria-invalid={!!hexError}
               aria-describedby={hexError ? "branding-accent-error" : undefined}
             />
