@@ -951,7 +951,11 @@
    `> *`: unlayered and later in the file than Tailwind's utilities, they beat
    `.absolute` on equal specificity — so every dialog's top-left close button
    (an absolute child of .modal-surface) fell into flow at the bottom of the
-   dialog (found in the Fieldstone redesign's screenshots, 2026-10-18). */
+   dialog (found in the Fieldstone redesign's screenshots, 2026-10-18).
+   The companion `> :is(.absolute, .fixed, .sticky) { z-index: 2 }` keeps a
+   positioned child (that close button) ABOVE the z-index:1 in-flow layer —
+   without it the dialog header box covered the button and swallowed its
+   clicks (CI: e2e-mobile billing journey, 2026-10-19). */
 .glass-panel {
   position: relative;
   backdrop-filter: blur(32px) saturate(190%);
@@ -971,6 +975,7 @@
   z-index: 0;
 }
 .glass-panel > :not(.absolute):not(.fixed):not(.sticky) { position: relative; z-index: 1; }
+.glass-panel > :is(.absolute, .fixed, .sticky) { z-index: 2; }
 
 /* ── Liquid Glass material primitives ─────────────────────────────── */
 .liquid-glass {
@@ -992,6 +997,7 @@
   z-index: 0;
 }
 .liquid-glass > :not(.absolute):not(.fixed):not(.sticky) { position: relative; z-index: 1; }
+.liquid-glass > :is(.absolute, .fixed, .sticky) { z-index: 2; }
 
 .liquid-glass-sm {
   position: relative;
@@ -1012,6 +1018,7 @@
   z-index: 0;
 }
 .liquid-glass-sm > :not(.absolute):not(.fixed):not(.sticky) { position: relative; z-index: 1; }
+.liquid-glass-sm > :is(.absolute, .fixed, .sticky) { z-index: 2; }
 
 .liquid-glass-subtle {
   position: relative;
@@ -1032,6 +1039,7 @@
   z-index: 0;
 }
 .liquid-glass-subtle > :not(.absolute):not(.fixed):not(.sticky) { position: relative; z-index: 1; }
+.liquid-glass-subtle > :is(.absolute, .fixed, .sticky) { z-index: 2; }
 
 /* ── Touch-device glass budget ──────────────────────────────────────
    iOS Safari has a hard GPU tile budget; every backdrop-filter surface
@@ -1086,6 +1094,7 @@
   z-index: 0;
 }
 .modal-surface > :not(.absolute):not(.fixed):not(.sticky) { position: relative; z-index: 1; }
+.modal-surface > :is(.absolute, .fixed, .sticky) { z-index: 2; }
 
 /* ── Tab-strip overflow ─────────────────────────────────────────────
    Applied by the base TabsList. Lets any tab strip scroll horizontally

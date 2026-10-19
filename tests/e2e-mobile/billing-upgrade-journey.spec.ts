@@ -59,6 +59,13 @@ async function seedSessionCookies(page: Page, baseURL: string) {
  * actually has. Escape is only a fallback: verified on ipad-mini (768px)
  * that Escape does NOT close this dialog while the close button does
  * (CI run 28945029549; reproduced locally at the same viewport).
+ *
+ * Open toasts are dismissed first, by their own "Dismiss notification"
+ * button, exactly as a person would: without Stripe keys the billing page
+ * raises an error toast, which on a phone sits at the top of the viewport —
+ * over the dialog's top-left close button. (That button only sits there since
+ * the 2026-10-18 fix that stopped a CSS rule dropping it to the bottom of
+ * every dialog; at the bottom it was never under the toast.)
  */
 async function dismissPlanComparisonDialog(page: Page) {
   const dialog = page.getByRole("dialog", { name: /compare plans/i });
@@ -66,6 +73,10 @@ async function dismissPlanComparisonDialog(page: Page) {
     await dialog.waitFor({ state: "visible", timeout: 10_000 });
   } catch {
     return; // never opened — nothing to dismiss
+  }
+  const toastDismiss = page.getByRole("button", { name: "Dismiss notification" });
+  for (let i = await toastDismiss.count(); i > 0; i--) {
+    await toastDismiss.first().click().catch(() => {}); // a toast may time out on its own meanwhile
   }
   const closeButton = dialog.getByRole("button", { name: /close/i }).first();
   if (await closeButton.count()) {
