@@ -642,6 +642,13 @@ app.use("/mcp", mcpLimiter);
       // Worker-only in production (founder ruling 2026-09-29 #5): see
       // server/jobs/jobPlacement.ts for the rule and its override.
       const jobPlacement = appProcessRunsScheduledJobs();
+
+      // Production only, once: say so loudly when system alerts have no
+      // founder organization to land in. The process that runs the scheduler
+      // also emails on-call once; app machines only log.
+      void import("./services/founderOrgDiagnostics")
+        .then(({ reportFounderOrgAtBoot }) => reportFounderOrgAtBoot({ notify: jobPlacement.run }))
+        .catch((err) => log(`founder org boot check failed: ${err}`, "startup"));
       if (!jobPlacement.run) {
         log(`Background jobs not started on app process (${jobPlacement.reason})`, "startup");
       } else {
