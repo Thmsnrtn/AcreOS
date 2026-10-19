@@ -1126,7 +1126,7 @@ function PersonaStat({
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <p className={`text-2xl font-bold ${mono ? "font-mono tabular-nums" : ""}`}>{value}</p>
+          <p className={`text-2xl font-bold ${mono ? "tabular-nums" : ""}`}>{value}</p>
           <p className="text-xs text-muted-foreground mt-1">{sub}</p>
         </CardContent>
       </Card>

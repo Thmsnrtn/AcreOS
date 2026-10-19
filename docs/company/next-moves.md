@@ -3,7 +3,61 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
-## 2026-10-18
+## 2026-10-18 — Fieldstone redesign (`claude/fieldstone-redesign-q48nuj`)
+
+### Built, on a branch with a draft PR, waiting for founder review
+
+The approved Fieldstone redesign (founder decisions recorded in
+`founder-decisions-2026-10-18-fieldstone.md`), implemented in the real app:
+
+- **Three colorways, one product.** Fieldstone (default), Bedrock, Meridian ×
+  Light / Dark / Match device, from one contract (`shared/appearance.ts`) read
+  by both pickers, the boot script, the server and the gates. Retired themes
+  migrate (Homestead → Bedrock, others → Fieldstone) with no customer row
+  rewritten.
+- **Appearance = Colorway + Display.** Font, density, motion and list-style
+  pickers retired; Accessibility & comfort is its own section and owns reduced
+  motion (the device setting is now honoured — it was being switched off).
+- **One mark** across the app, auth, public pages and every installed icon /
+  launch image (regenerated, reproducible from the manifest and index.html).
+- **Fixed on the way** (each with a test that fails without the fix): undefined
+  `--card-border` (every card outline was the text colour), `useIsMobile()`
+  used as a boolean in four components, dialog close buttons dropped to the
+  bottom, Today's section spacing lost on phones, the Map toolbar overlapping
+  on phones, Finance's heading below its cards, the banner hidden under the
+  rail, and — found by the independent review — the deploy-time migrator that
+  would have deleted every Homestead user's choice on the next release.
+
+**Measured:** `npm run check` exit 0; `npm test` and `npm run build` results are
+in the PR. Real-app screenshots (production build, E2E test auth, seeded
+fixture data) for all 6 colorway × mode combinations at desktop and iPhone,
+plus 320px and tablet spot checks, are under `docs/design/fieldstone/`.
+
+**Entry-chunk budget:** CI's Build job measured the entry chunk at 747 KB against
+the 745 KB ceiling in `scripts/bundle-budget.json` (CI reads ~6 KB higher than a
+local `NODE_ENV=production` build of the same tree, so `main` sits close to the
+line there). The ceiling was not raised. The quick-appearance dialog now
+lazy-loads its pickers, which takes the entry chunk below `main`'s own
+(local: 755.0 KB on the branch, 756.2 KB on `main` at `e413ab6`).
+
+**Not verified here:** the logged-out landing and sign-in pages (no real Clerk in
+this environment — the public server answers the Clerk proxy's 502, and test
+auth has no logged-out identity); real map imagery (no map key locally); real
+Safari on an iPhone.
+
+### Top next moves
+
+1. **Founder review of the Fieldstone PR** — look at the screenshots, try the
+   three colorways on the phone, then merge and run the manual deploy.
+2. **Company branding editor.** Org accent/logo are applied safely now, but no
+   UI sets them (only the API). Put a small editor under Settings → Organization.
+3. **Accessibility prefs follow the person.** They live only in this browser;
+   the sync hook the context's header mentions does not exist. Store them with
+   the account like appearance.
+4. Then resume the 2026-10-18 list below (land the waiting branches; time to
+   first deal; every paid action covers its cost).
+
+## 2026-10-18 (earlier sessions)
 
 ### Built, on branches, waiting for review and merge
 

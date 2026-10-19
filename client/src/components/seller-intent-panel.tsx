@@ -196,7 +196,7 @@ export function SellerIntentPanel({ leads }: Props) {
                             className="h-1.5 flex-1"
                             aria-label={`${leadName} intent score: ${prediction.score} out of 100`}
                           />
-                          <span className="text-xs font-mono text-muted-foreground w-8 text-right tabular-nums">{prediction.score}</span>
+                          <span className="text-xs text-muted-foreground w-8 text-right tabular-nums">{prediction.score}</span>
                         </div>
                         {prediction.recommendedAction && (
                           <p className="text-xs text-muted-foreground">{prediction.recommendedAction}</p>

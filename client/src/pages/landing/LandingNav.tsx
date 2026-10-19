@@ -11,6 +11,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
+import { AcreosMark } from "@/components/acreos-logo";
 
 const SECTION_LINKS = [
   { href: "#how", label: "How it works" },
@@ -46,9 +47,7 @@ export function LandingNav() {
     <nav className="lp-nav" aria-label="Primary">
       <div className="lp-nav-row">
         <Link href="/" className="lp-logo" aria-label="AcreOS home">
-          <span className="lp-logo-mark" aria-hidden="true">
-            A
-          </span>
+          <AcreosMark size={28} className="lp-logo-mark" />
           AcreOS
         </Link>
         <div className="lp-nav-links">

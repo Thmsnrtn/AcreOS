@@ -199,7 +199,7 @@ export function CarryNoteDialog({ deal, open, onOpenChange }: CarryNoteDialogPro
 
           <div className="rounded-card bg-muted/50 p-3 text-sm flex items-center justify-between">
             <span className="text-muted-foreground">Financed principal</span>
-            <span className="font-mono tabular-nums font-medium" data-testid="text-carry-financed">
+            <span className="tabular-nums font-medium" data-testid="text-carry-financed">
               ${financedPrincipal.toLocaleString(undefined, { maximumFractionDigits: 0 })}
             </span>
           </div>

@@ -194,7 +194,7 @@ export function ConfirmationRequestArtifact({
                 transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
                 className="overflow-hidden"
               >
-                <pre className="mt-2 p-3 rounded-md bg-muted/60 overflow-x-auto text-[11px] font-mono leading-relaxed tabular-nums">
+                <pre className="mt-2 p-3 rounded-md bg-muted/60 overflow-x-auto text-[11px] leading-relaxed tabular-nums">
                   {argsJson}
                 </pre>
               </motion.div>

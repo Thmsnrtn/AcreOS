@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useLocalStorageState } from "@/hooks/use-local-storage-state";
 
 /**
@@ -19,6 +19,14 @@ import { useLocalStorageState } from "@/hooks/use-local-storage-state";
  * the global CSS rules in `index.css` (font-family swap, line-height ramp,
  * tap-target floor, button shadow, etc.). Components can also read the
  * preferences directly via `useAccessibility()`.
+ *
+ * Sole owner of `data-density` (reading density) and `data-motion`
+ * (Fieldstone redesign, 2026-10-18). Both used to be written by the theme
+ * provider as well, with a different vocabulary: its "adaptive" density
+ * overwrote the reading density on every mount, and its default
+ * `data-motion="full"` switched OFF the CSS that honours the device's
+ * reduce-motion setting. Motion now follows the device unless the person
+ * turns on "Reduce motion" here.
  */
 
 export type ReadingDensity = "compact" | "comfortable" | "spacious";
@@ -75,6 +83,48 @@ interface AccessibilityContextValue {
 const AccessibilityContext = createContext<AccessibilityContextValue | null>(null);
 
 const LS_KEY = "acreos:accessibility-prefs:v1";
+const LEGACY_THEME_KEY = "acreos-theme-config";
+
+/**
+ * Before the Fieldstone redesign, "Reduce motion" lived in Appearance and was
+ * stored in the theme blob. Carry a stored "reduced" over once, so the person
+ * keeps it; never carry "full" (it was the default, not a choice).
+ */
+export function migrateLegacyMotion(storage: Pick<Storage, "getItem" | "setItem">): void {
+  try {
+    const themeRaw = storage.getItem(LEGACY_THEME_KEY);
+    if (!themeRaw) return;
+    const legacy = JSON.parse(themeRaw) as Record<string, unknown> | null;
+    if (!legacy || typeof legacy !== "object" || !("motion" in legacy)) return;
+    const raw = storage.getItem(LS_KEY);
+    const current = raw ? (JSON.parse(raw) as Partial<AccessibilityPrefs>) : {};
+    // Carry over ONLY when Accessibility has never recorded a motion choice:
+    // once the person has touched the switch here (true, or "system" for off)
+    // their choice stands — re-reading the old blob on every load would turn
+    // "Reduce motion" back on after they switched it off.
+    if (legacy.motion === "reduced" && !("reduceMotion" in current)) {
+      storage.setItem(LS_KEY, JSON.stringify({ ...DEFAULTS, ...current, reduceMotion: true }));
+    }
+    // Consume the old field either way, so this runs at most once.
+    const rest: Record<string, unknown> = { ...legacy };
+    delete rest.motion;
+    storage.setItem(LEGACY_THEME_KEY, JSON.stringify(rest));
+  } catch {
+    // Malformed storage — nothing to carry over.
+  }
+}
+
+/** Effective `data-motion` value. */
+export function resolveMotion(pref: AccessibilityPrefs["reduceMotion"] | undefined, deviceReduced: boolean): "reduced" | "full" {
+  if (pref === true) return "reduced";
+  if (pref === false) return "full";
+  return deviceReduced ? "reduced" : "full";
+}
+
+function deviceReducesMotion(): boolean {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
 
 function isQuietHoursActive(qh: QuietHours, now = new Date()): boolean {
   if (!qh.enabled) return false;
@@ -91,7 +141,23 @@ function isQuietHoursActive(qh: QuietHours, now = new Date()): boolean {
 }
 
 export function AccessibilityProvider({ children }: { children: ReactNode }) {
-  const [prefs, setRaw] = useLocalStorageState<AccessibilityPrefs>(LS_KEY, DEFAULTS);
+  // Runs once, synchronously, before the stored prefs are read below.
+  useState(() => {
+    if (typeof window !== "undefined") migrateLegacyMotion(window.localStorage);
+    return true;
+  });
+  const [storedPrefs, setRaw] = useLocalStorageState<AccessibilityPrefs>(LS_KEY, DEFAULTS);
+  // A blob saved by an older build may lack newer keys; fill them.
+  const prefs = useMemo(() => ({ ...DEFAULTS, ...storedPrefs }), [storedPrefs]);
+  const [deviceReduced, setDeviceReduced] = useState<boolean>(deviceReducesMotion);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const handler = () => setDeviceReduced(mq.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
 
   const setPrefs = (next: Partial<AccessibilityPrefs>) => {
     setRaw((prev) => ({ ...prev, ...next }));
@@ -109,6 +175,10 @@ export function AccessibilityProvider({ children }: { children: ReactNode }) {
     root.toggleAttribute("data-picture-first", prefs.pictureFirstParcels);
     root.toggleAttribute("data-focus-mode", prefs.focusMode);
   }, [prefs]);
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-motion", resolveMotion(prefs.reduceMotion, deviceReduced));
+  }, [prefs.reduceMotion, deviceReduced]);
 
   const isQuietNow = useMemo(() => isQuietHoursActive(prefs.quietHours), [prefs.quietHours]);
 

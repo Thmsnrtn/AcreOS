@@ -11,7 +11,6 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Link } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { QueryErrorState } from "@/components/query-error-state";
 import { PullToRefresh } from "@/components/mobile/PullToRefresh";
 import { AnimatedCounter } from "@/components/ui/animated-counter";
@@ -20,7 +19,6 @@ import {
   Map,
   ArrowRight,
   Sun,
-  Clock,
   Target,
   Sparkles,
   RefreshCw,
@@ -576,19 +574,23 @@ export default function TodayPage() {
           </div>
           <h1 className="acr-cc-greeting text-hero" data-testid="text-today-title">
             {greeting()}{user?.firstName ? `, ${user.firstName}` : ""}.
+          </h1>
+          {/* The count reads as a calm Inter subline under the editorial
+              heading (Fieldstone redesign) rather than a second display-size
+              sentence — on an iPhone the old run-on heading filled half the
+              first screen before any decision appeared. */}
+          <p className="acr-cc-subline" data-testid="text-today-subline">
             {pendingDecisionCount > 0 ? (
-              <span className="acr-cc-greeting-soft">
+              <>
                 {/* "decision", not "deal": the queue mixes leads, deals,
                     properties and Pax asks, and the old label counted stalled
                     LEADS as deals. The word matches the list's own name. */}
-                {" "}{plural(pendingDecisionCount, "decision")} need your attention today.
-              </span>
+                {plural(pendingDecisionCount, "decision")} need your attention today.
+              </>
             ) : (
-              <span className="acr-cc-greeting-soft">
-                {" "}Here's what's on the horizon.
-              </span>
+              <>Here's what's on the horizon.</>
             )}
-          </h1>
+          </p>
           {pendingDecisionCount > 0 && (
             <button
               type="button"
@@ -604,16 +606,17 @@ export default function TodayPage() {
                 queue?.scrollIntoView({ behavior: "smooth", block: "start" });
                 queue?.querySelector<HTMLElement>("h2")?.focus?.();
               }}
-              className="inline-flex items-center gap-2 mt-3 md:mt-2 min-h-11 pointer-fine:sm:min-h-9 pointer-fine:md:min-h-0 px-3 py-1.5 md:px-2.5 md:py-1 rounded-full bg-acr-neg-soft border border-acr-neg/30 text-sm md:text-xs text-acr-neg-soft-ink hover:opacity-80 active:opacity-60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              aria-label={`${plural(pendingDecisionCount, "pending decision")} — review now`}
+              // The one dominant next action on Today: a primary button, not
+              // the destructive pill it used to be — a pending decision is
+              // attention, not an overdue/failed state (Fieldstone redesign).
+              className="inline-flex items-center gap-2 mt-4 min-h-11 pointer-fine:sm:min-h-10 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium shadow-acr-1 hover:opacity-90 active:opacity-80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               data-testid="button-review-decisions"
             >
-              <Clock className="w-4 h-4 md:w-3.5 md:h-3.5" aria-hidden="true" />
-              <span className="font-medium">Review now</span>
-              <Badge variant="destructive" className="text-xs px-1.5 py-0 tabular-nums">
-                <AnimatedCounter value={pendingDecisionCount} />
-              </Badge>
-              <ArrowRight className="w-3.5 h-3.5 md:w-3 md:h-3" aria-hidden="true" />
+              <span>
+                Review <span className="tabular-nums"><AnimatedCounter value={pendingDecisionCount} /></span>{" "}
+                {pendingDecisionCount === 1 ? "decision" : "decisions"}
+              </span>
+              <ArrowRight className="w-4 h-4" aria-hidden="true" />
             </button>
           )}
         </div>

@@ -313,7 +313,7 @@ function Kv({
       </div>
       <div
         className={cn(
-          "font-mono text-base tabular-nums mt-0.5",
+          "text-base tabular-nums mt-0.5",
           highlight && "text-primary font-semibold",
         )}
       >

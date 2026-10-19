@@ -115,7 +115,7 @@ function SHAPWaterfall({ adjustments }: { adjustments: any[] }) {
                     <div className="h-5 rounded" style={{ backgroundColor: f.fill, width: `${Math.abs(f.value) * 4}px`, minWidth: '8px' }} aria-hidden="true" />
                   </div>
                 )}
-                <span className="text-xs font-mono w-12 text-center tabular-nums">{f.value > 0 ? '+' : ''}{f.value}%</span>
+                <span className="text-xs w-12 text-center tabular-nums">{f.value > 0 ? '+' : ''}{f.value}%</span>
                 {f.value >= 0 && (
                   <div style={{ flex: f.value, maxWidth: '50%' }}>
                     <div className="h-5 rounded" style={{ backgroundColor: f.fill, width: `${f.value * 4}px`, minWidth: '8px' }} aria-hidden="true" />

@@ -4,24 +4,21 @@
 
 /* ═══════════════════════════════════════════════════════════════════
    ACREOS DESIGN SYSTEM — TOKEN LAYER
-   Lifted verbatim from acreos/theme.jsx + primitives.jsx + shell.jsx.
-   See docs/exhaustive-completion/prototype-design-system.md for the
-   full spec including voice, density, and motion.
 
-   Five themes × light/dark — each block defines BOTH the prototype
-   --acr-* hex tokens AND the shadcn-style HSL parallel set, kept
-   visually adjacent so future-you can spot drift at a glance.
+   Three colorways × light/dark (Fieldstone default · Bedrock · Meridian,
+   listed once in shared/appearance.ts). Each block defines BOTH the raw
+   --acr-* hex tokens AND the shadcn-style HSL parallel set, kept adjacent
+   so drift is visible at a glance. Canonical guidance:
+   docs/design/design-language.md (§ Colorways).
 
-   Theme order: homestead (default house brand) · quarry · nocturne ·
-                meadow · slate (renamed from prototype's "titan").
-
-   Active theme is set via [data-theme="<id>"] on <html>; mode is
-   toggled via .dark on <html> per Tailwind darkMode: ["class"].
+   Active colorway is [data-theme="<id>"] on <html>; mode is .dark on <html>
+   per Tailwind darkMode: ["class"]. Both are set before first paint by the
+   inline script in client/index.html, then owned by theme-context.tsx.
 ═══════════════════════════════════════════════════════════════════ */
 
 /* ─────────────── Theme-agnostic globals (mode-independent) ─────────────── */
 /* Type system tokens (--font-sans / --font-display / --font-serif / --font-mono)
- * are owned by client/src/fonts.css per [data-font-pairing] on <html>.
+ * are owned by client/src/fonts.css (one system for every colorway).
  * fonts.css imports BEFORE index.css in main.tsx, so pairing defaults are
  * already resolved when this :root block parses. */
 :root {
@@ -68,6 +65,31 @@
      per-theme block overrides --acr-line. */
   --button-outline: var(--border);
   --badge-outline:  var(--border);
+}
+
+/* ─────────────── Derived component tokens ─────────────── */
+/* tailwind.config.ts maps `border-card-border`, `border-popover-border`,
+   `border-primary-border` (etc.) and `bg-sidebar` to these properties, but
+   until the Fieldstone redesign NONE of them was defined anywhere. An
+   undefined var makes the declaration invalid at computed time, so every
+   shadcn <Card> outline fell back to `currentColor` — the full-strength text
+   colour — which is why cards read as heavy dark boxes in every theme.
+   Derived here from the colorway tokens, so they follow every colorway and
+   mode. Re-declared on the rail scope so they resolve against the rail's
+   own --border there. Pinned by tests/unit/appearanceContract.test.ts. */
+:root,
+.vibrancy-sidebar,
+.sidebar-vibrancy {
+  --card-border:          var(--border);
+  --popover-border:       var(--border);
+  --sidebar:              var(--sidebar-background);
+  --primary-border:       hsl(var(--primary));
+  --secondary-border:     hsl(var(--border));
+  --muted-border:         hsl(var(--border));
+  --accent-border:        hsl(var(--border));
+  --destructive-border:   hsl(var(--destructive));
+  --sidebar-primary-border: hsl(var(--sidebar-primary));
+  --sidebar-accent-border:  hsl(var(--sidebar-border));
 }
 
 /* ─────────────── Motion preference ─────────────── */
@@ -235,28 +257,231 @@
 }
 
 /* ═══════════════════════════════════════════════════════════════════
-   SIX THEME BLOCKS — each contains --acr-* + HSL together.
-   The :root block doubles as the BEDROCK-light fallback so apps
-   without an explicit data-theme attribute still land on the house
-   brand (BEDROCK Vol. 1 — see the block below).
+   THREE COLORWAYS × LIGHT/DARK — each block carries --acr-* AND the
+   shadcn HSL parallel set together, plus the rail ramp, heat/density and
+   glass, so a block is complete on its own.
+
+   Fieldstone (default) · Bedrock · Meridian — the list lives in
+   shared/appearance.ts. A colorway changes the palette only; layout, type,
+   spacing and components are shared.
+
+   The Fieldstone blocks double as the `:root` / `.dark` fallback, which
+   means their selectors match under EVERY colorway. So every colorway block
+   must define the identical token set, or Fieldstone values leak into it —
+   pinned by tests/unit/appearanceContract.test.ts. Contrast is re-derived
+   from this file by tests/unit/statusInkContrast.test.ts and
+   scripts/lint-semantic-contrast.mjs.
 ═══════════════════════════════════════════════════════════════════ */
 
-
-/* ─────────────── BEDROCK · light (default) ─────────────────
-   BEDROCK Vol. 1 — raw earth, weathered iron, sun-bleached dust.
-   Inspired by riding-culture poster design: oxidized rust on bone,
-   dust-gold accents, moss-green positives, dried-blood negatives.
-   This block doubles as the :root fallback so apps without an
-   explicit [data-theme] attribute land on BEDROCK. */
+/* ─────────────── Fieldstone · light ─────────────── */
 :root,
+[data-theme="fieldstone"]:root {
+  --acr-bg:             #F8F8F3;
+  --acr-bg-sunken:      #EDF1EB;
+  --acr-bg-raised:      #FFFFFF;
+  --acr-surface:        #FFFFFF;
+  --acr-surface-2:      #EDF1EB;
+  --acr-line:           rgba(25,44,40,0.14);
+  --acr-line-soft:      rgba(25,44,40,0.07);
+  --acr-ink:            #192C28;
+  --acr-ink-2:          #33463F;
+  --acr-ink-3:          #526359;
+  --acr-ink-4:          #97A49C;
+  --acr-brand:          #174B40;
+  --acr-brand-ink:      #FFFFFF;
+  --acr-brand-soft:     rgba(23,75,64,0.12);
+  --acr-brand-soft-ink: #174B40;
+  --acr-accent:         #B79A5B;
+  --acr-accent-text:    #7B6536;
+  --acr-pos:            #2F7A3E;
+  --acr-pos-text:       #2C733A;
+  --acr-pos-soft:       rgba(47,122,62,0.12);
+  --acr-pos-soft-ink:   #2C733A;
+  --acr-warn:           #B7791F;
+  --acr-warn-text:      #8E5E18;
+  --acr-warn-soft:      rgba(183,121,31,0.12);
+  --acr-warn-soft-ink:  #8E5E18;
+  --acr-neg:            #B03A2E;
+  --acr-neg-text:       #B03A2E;
+  --acr-neg-soft:       rgba(176,58,46,0.12);
+  --acr-neg-soft-ink:   #B03A2E;
+  --acr-glow:           rgba(23,75,64,0.28);
+  --acr-shadow-1:       0 1px 2px rgba(25,44,40,0.06);
+  --acr-shadow-2:       0 1px 2px rgba(25,44,40,0.06), 0 8px 22px -6px rgba(25,44,40,0.12);
+  --acr-shadow-3:       0 2px 4px rgba(25,44,40,0.08), 0 22px 50px -12px rgba(25,44,40,0.18);
+  --acr-ring:           0 0 0 3px rgba(23,75,64,0.3);
+  --acr-chart-a:        #174B40;
+  --acr-chart-b:        #B79A5B;
+  --acr-chart-c:        #6E9A7E;
+  --acr-chart-d:        #526359;
+  --acr-sidebar-bg:     #123B32;
+  --acr-sidebar-ink:    #F2F3EB;
+  --acr-sidebar-ink-2:  #BFD0C5;
+  --acr-sidebar-raised: #1D4C41;
+  --acr-sidebar-line:   #2A5A4E;
+  --acr-sidebar-brand:  #B6D3BA;
+  /* HSL parallel — keep in sync with --acr-* above. */
+  --background:                   60 26.3% 96.3%;
+  --foreground:                   167 27.5% 13.5%;
+  --card:                         0 0.0% 100.0%;
+  --card-foreground:              167 27.5% 13.5%;
+  --popover:                      0 0.0% 100.0%;
+  --popover-foreground:           167 27.5% 13.5%;
+  --primary:                      167 53.1% 19.2%;
+  --primary-foreground:           0 0.0% 100.0%;
+  --secondary:                    100 17.6% 93.3%;
+  --secondary-foreground:         167 27.5% 13.5%;
+  --muted:                        100 17.6% 93.3%;
+  --muted-foreground:             145 9.4% 35.5%;
+  --accent:                       115 18.0% 88.0%;
+  --accent-foreground:            167 27.5% 13.5%;
+  --destructive:                  6 58.6% 43.5%;
+  --destructive-foreground:       0 0.0% 100.0%;
+  --border:                       96 5.4% 81.8%;
+  --input:                        96 5.4% 81.8%;
+  --ring:                         167 53.1% 19.2%;
+  --chart-1:                      167 53.1% 19.2%;
+  --chart-2:                      41 39.0% 53.7%;
+  --chart-3:                      142 17.9% 51.8%;
+  --chart-4:                      145 9.4% 35.5%;
+  --chart-5:                      145 9.4% 35.5%;
+  --sidebar-background:           167 53.2% 15.1%;
+  --sidebar-foreground:           67 25.0% 93.7%;
+  --sidebar-muted-foreground:     141 15.3% 78.2%;
+  --sidebar-primary:              128 24.8% 77.1%;
+  --sidebar-primary-foreground:   154 39.6% 10.4%;
+  --sidebar-accent:               166 44.8% 20.6%;
+  --sidebar-accent-foreground:    67 25.0% 93.7%;
+  --sidebar-border:               165 36.4% 25.9%;
+  --sidebar-ring:                 128 24.8% 77.1%;
+  /* Heat + sequential density (maps, heatmaps) */
+  --acr-heat-cold:        #526359;
+  --acr-heat-warm:        #B7791F;
+  --acr-heat-hot:         #B03A2E;
+  --acr-heat-cold-soft:   rgba(82,99,89,0.14);
+  --acr-heat-warm-soft:   rgba(183,121,31,0.14);
+  --acr-heat-hot-soft:    rgba(176,58,46,0.14);
+  --acr-density-1:        #E3EEE7;
+  --acr-density-2:        #93BDA6;
+  --acr-density-3:        #3F7F65;
+  --acr-density-4:        #174B40;
+  /* Glass chrome tinted to this colorway */
+  --glass-bg-light:     rgba(252,252,248,0.72);
+  --glass-bg-subtle:    rgba(252,252,248,0.55);
+  --glass-bg-sm:        rgba(252,252,248,0.65);
+  --glass-bg-modal:     rgba(252,252,248,0.96);
+}
+
+/* ─────────────── Fieldstone · dark ─────────────── */
+.dark,
+[data-theme="fieldstone"].dark {
+  --acr-bg:             #111B18;
+  --acr-bg-sunken:      #0C1512;
+  --acr-bg-raised:      #192823;
+  --acr-surface:        #192823;
+  --acr-surface-2:      #22362E;
+  --acr-line:           rgba(242,243,235,0.1);
+  --acr-line-soft:      rgba(242,243,235,0.05);
+  --acr-ink:            #F2F3EB;
+  --acr-ink-2:          #D5DDD5;
+  --acr-ink-3:          #B5C2B9;
+  --acr-ink-4:          #5E6E66;
+  --acr-brand:          #B6D3BA;
+  --acr-brand-ink:      #10251C;
+  --acr-brand-soft:     rgba(182,211,186,0.16);
+  --acr-brand-soft-ink: #B6D3BA;
+  --acr-accent:         #D2B77C;
+  --acr-accent-text:    #D2B77C;
+  --acr-pos:            #74C08A;
+  --acr-pos-text:       #74C08A;
+  --acr-pos-soft:       rgba(116,192,138,0.16);
+  --acr-pos-soft-ink:   #74C08A;
+  --acr-warn:           #E3AC52;
+  --acr-warn-text:      #E3AC52;
+  --acr-warn-soft:      rgba(227,172,82,0.16);
+  --acr-warn-soft-ink:  #E3AC52;
+  --acr-neg:            #EE8A78;
+  --acr-neg-text:       #EE8A78;
+  --acr-neg-soft:       rgba(238,138,120,0.16);
+  --acr-neg-soft-ink:   #EE8A78;
+  --acr-glow:           rgba(182,211,186,0.36);
+  --acr-shadow-1:       0 1px 2px rgba(0,0,0,0.42);
+  --acr-shadow-2:       0 1px 2px rgba(0,0,0,0.42), 0 8px 22px -6px rgba(0,0,0,0.52);
+  --acr-shadow-3:       0 2px 4px rgba(0,0,0,0.48), 0 22px 50px -12px rgba(0,0,0,0.60);
+  --acr-ring:           0 0 0 3px rgba(182,211,186,0.45);
+  --acr-chart-a:        #B6D3BA;
+  --acr-chart-b:        #D2B77C;
+  --acr-chart-c:        #74C08A;
+  --acr-chart-d:        #8FA79A;
+  --acr-sidebar-bg:     #0C1512;
+  --acr-sidebar-ink:    #F2F3EB;
+  --acr-sidebar-ink-2:  #A9B8AE;
+  --acr-sidebar-raised: #1A2A24;
+  --acr-sidebar-line:   #22352D;
+  --acr-sidebar-brand:  #B6D3BA;
+  /* HSL parallel — keep in sync with --acr-* above. */
+  --background:                   162 22.7% 8.6%;
+  --foreground:                   67 25.0% 93.7%;
+  --card:                         160 23.1% 12.7%;
+  --card-foreground:              67 25.0% 93.7%;
+  --popover:                      160 23.1% 12.7%;
+  --popover-foreground:           67 25.0% 93.7%;
+  --primary:                      128 24.8% 77.1%;
+  --primary-foreground:           154 39.6% 10.4%;
+  --secondary:                    156 22.7% 17.3%;
+  --secondary-foreground:         67 25.0% 93.7%;
+  --muted:                        156 22.7% 17.3%;
+  --muted-foreground:             138 9.6% 73.5%;
+  --accent:                       158 23.4% 18.4%;
+  --accent-foreground:            67 25.0% 93.7%;
+  --destructive:                  9 77.6% 70.2%;
+  --destructive-foreground:       162 22.7% 8.6%;
+  --border:                       153 7.8% 22.5%;
+  --input:                        153 7.8% 22.5%;
+  --ring:                         128 24.8% 77.1%;
+  --chart-1:                      128 24.8% 77.1%;
+  --chart-2:                      41 48.9% 65.5%;
+  --chart-3:                      137 37.6% 60.4%;
+  --chart-4:                      147 12.0% 60.8%;
+  --chart-5:                      138 9.6% 73.5%;
+  --sidebar-background:           160 27.3% 6.5%;
+  --sidebar-foreground:           67 25.0% 93.7%;
+  --sidebar-muted-foreground:     140 9.6% 69.2%;
+  --sidebar-primary:              128 24.8% 77.1%;
+  --sidebar-primary-foreground:   154 39.6% 10.4%;
+  --sidebar-accent:               158 23.5% 13.3%;
+  --sidebar-accent-foreground:    67 25.0% 93.7%;
+  --sidebar-border:               155 21.8% 17.1%;
+  --sidebar-ring:                 128 24.8% 77.1%;
+  /* Heat + sequential density (maps, heatmaps) */
+  --acr-heat-cold:        #8FA79A;
+  --acr-heat-warm:        #E3AC52;
+  --acr-heat-hot:         #EE8A78;
+  --acr-heat-cold-soft:   rgba(143,167,154,0.16);
+  --acr-heat-warm-soft:   rgba(227,172,82,0.16);
+  --acr-heat-hot-soft:    rgba(238,138,120,0.18);
+  --acr-density-1:        #E3EEE7;
+  --acr-density-2:        #A9CDB6;
+  --acr-density-3:        #5E9E7E;
+  --acr-density-4:        #2F6B53;
+  /* Glass chrome tinted to this colorway */
+  --glass-bg-light:     rgba(17,27,24,0.78);
+  --glass-bg-subtle:    rgba(17,27,24,0.6);
+  --glass-bg-sm:        rgba(17,27,24,0.7);
+  --glass-bg-modal:     rgba(17,27,24,0.97);
+}
+
+/* ─────────────── Bedrock · light ─────────────────
+   Rust on bone, dust-gold accents, moss positives — the familiar warm
+   colorway, kept recognisable (its established AA ink corrections are
+   unchanged). Since the Fieldstone redesign it shares the same structure as
+   every colorway, including the dark navigation rail. */
 [data-theme="bedrock"]:root {
   --acr-bg:           #EDE3D0;
   --acr-bg-sunken:    #D9CDB6;
   --acr-bg-raised:    #F7F0DD;
   --acr-surface:      #F7F0DD;
   --acr-surface-2:    #E5DAC1;
-  --acr-sidebar-bg:   #DECEB0;
-  --acr-sidebar-ink:  #1F1810;
   --acr-line:         rgba(60,40,20,0.16);
   --acr-line-soft:    rgba(60,40,20,0.08);
   --acr-ink:          #1F1810;
@@ -278,6 +503,7 @@
   --acr-warn-soft:    rgba(185,122,30,0.14);
   --acr-warn-soft-ink: #805415;  /* AA on -soft: 4.53:1 */
   --acr-neg:          #8E2B16;
+  --acr-neg-text:     var(--acr-neg);  /* explicit: without it the Fieldstone :root fallback ink would leak in */
   --acr-neg-soft:     rgba(142,43,22,0.14);
   --acr-neg-soft-ink: #8E2B16;  /* AA on -soft: 5.26:1 */
   --acr-glow:         rgba(160,68,40,0.32);
@@ -314,43 +540,47 @@
   --chart-3:                     84 28% 35%;
   --chart-4:                     30 27% 24%;
   --chart-5:                     34 21% 40%;
-  --sidebar-background:          37 47% 78%;
-  --sidebar-foreground:          28 33% 9%;
-  --sidebar-primary:             14 60% 39%;
-  --sidebar-primary-foreground:  41 51% 92%;
-  --sidebar-accent:              38 31% 83%;
-  --sidebar-accent-foreground:   28 33% 9%;
-  --sidebar-border:              34 23% 66%;
-  --sidebar-ring:                14 60% 39%;
-}
-
-/* ─────────────── BEDROCK · light — heat token override ─────────────── */
-/* (global :root block already carries the BEDROCK light defaults above) */
-:root,
-[data-theme="bedrock"]:root {
+  /* Navigation rail — a dark umber rail with its own text ramp */
+  --acr-sidebar-bg:     #2B2017;
+  --acr-sidebar-ink:    #F2E8D2;
+  --acr-sidebar-ink-2:  #CDBF9F;
+  --acr-sidebar-raised: #3B2D21;
+  --acr-sidebar-line:   #46372A;
+  --acr-sidebar-brand:  #E0A48C;
+  --sidebar-background:           27 30.3% 12.9%;
+  --sidebar-foreground:           41 55.2% 88.6%;
+  --sidebar-muted-foreground:     42 31.5% 71.4%;
+  --sidebar-primary:              17 57.5% 71.4%;
+  --sidebar-primary-foreground:   32 31.9% 9.2%;
+  --sidebar-accent:               28 28.3% 18.0%;
+  --sidebar-accent-foreground:    41 55.2% 88.6%;
+  --sidebar-border:               28 25.0% 22.0%;
+  --sidebar-ring:                 17 57.5% 71.4%;
+  /* Heat + sequential density */
   --acr-heat-cold:      #6B5C42;  /* --acr-ink-3 — quiet/zero signal          */
   --acr-heat-warm:      #B97A1E;  /* --acr-warn  — building signal             */
   --acr-heat-hot:       #8E2B16;  /* --acr-neg   — high/active signal          */
   --acr-heat-cold-soft: rgba(107,92,66,0.14);
   --acr-heat-warm-soft: rgba(185,122,30,0.14);
   --acr-heat-hot-soft:  rgba(142,43,22,0.14);
-  /* Density tokens — BEDROCK light */
   --acr-density-1: #F8E7E2;
   --acr-density-2: #DE937C;
   --acr-density-3: #C45331;
   --acr-density-4: #873922;
+  /* Glass chrome (the warm values Bedrock always had) */
+  --glass-bg-light:     rgba(252,250,247,0.72);
+  --glass-bg-subtle:    rgba(252,250,247,0.55);
+  --glass-bg-sm:        rgba(252,250,247,0.65);
+  --glass-bg-modal:     rgba(252,250,247,0.96);
 }
 
-/* ─────────────── BEDROCK · dark ─────────────── */
-.dark,
+/* ─────────────── Bedrock · dark ─────────────── */
 [data-theme="bedrock"].dark {
   --acr-bg:           #13100B;
   --acr-bg-sunken:    #0A0805;
   --acr-bg-raised:    #1F1A12;
   --acr-surface:      #1F1A12;
   --acr-surface-2:    #2B2418;
-  --acr-sidebar-bg:   #0A0805;
-  --acr-sidebar-ink:  #E8DCC4;
   --acr-line:         rgba(232,220,196,0.10);
   --acr-line-soft:    rgba(232,220,196,0.05);
   --acr-ink:          #E8DCC4;
@@ -408,14 +638,6 @@
   --chart-3:                     86 31% 57%;
   --chart-4:                     38 16% 65%;
   --chart-5:                     41 19% 46%;
-  --sidebar-background:          31 27% 4%;
-  --sidebar-foreground:          39 50% 84%;
-  --sidebar-primary:             11 49% 53%;
-  --sidebar-primary-foreground:  31 22% 6%;
-  --sidebar-accent:              33 28% 13%;
-  --sidebar-accent-foreground:   39 50% 84%;
-  --sidebar-border:              36 26% 18%;
-  --sidebar-ring:                11 49% 53%;
   /* Heat tokens — BEDROCK dark */
   --acr-heat-cold:      #9C8E72;  /* --acr-ink-3 */
   --acr-heat-warm:      #D9A24A;  /* --acr-warn  */
@@ -428,6 +650,27 @@
   --acr-density-2: #D59485;
   --acr-density-3: #B6543E;
   --acr-density-4: #7D3A2B;
+  /* Navigation rail */
+  --acr-sidebar-bg:     #0A0805;
+  --acr-sidebar-ink:    #E8DCC4;
+  --acr-sidebar-ink-2:  #A89A7D;
+  --acr-sidebar-raised: #1F1A12;
+  --acr-sidebar-line:   #2B2418;
+  --acr-sidebar-brand:  #C2604A;
+  --sidebar-background:           36 33.3% 2.9%;
+  --sidebar-foreground:           40 43.9% 83.9%;
+  --sidebar-muted-foreground:     40 19.8% 57.5%;
+  --sidebar-primary:              11 49.6% 52.5%;
+  --sidebar-primary-foreground:   38 26.7% 5.9%;
+  --sidebar-accent:               37 26.5% 9.6%;
+  --sidebar-accent-foreground:    40 43.9% 83.9%;
+  --sidebar-border:               38 28.4% 13.1%;
+  --sidebar-ring:                 11 49.6% 52.5%;
+  /* Glass chrome (the warm values Bedrock always had) */
+  --glass-bg-light:     rgba(20,14,8,0.78);
+  --glass-bg-subtle:    rgba(20,14,8,0.60);
+  --glass-bg-sm:        rgba(20,14,8,0.70);
+  --glass-bg-modal:     rgba(24,18,12,0.97);
 }
 
 /* ─────────────── Borrower portal — warm public identity ─────────────── */
@@ -445,914 +688,202 @@
   --acr-portal-grad-to:   #1A130D;
 }
 
-/* ─────────────── Homestead · light ─────────────── */
-[data-theme="homestead"]:root {
-  /* --acr-* hex tokens (lifted verbatim from acreos/theme.jsx) */
-  --acr-bg:           #FAF4E8;
-  --acr-bg-sunken:    #F1E9D6;
-  --acr-bg-raised:    #FFFBF1;
-  --acr-surface:      #FFFBF1;
-  --acr-surface-2:    #F3EAD4;
-  --acr-sidebar-bg:   #F1E7D0;
-  --acr-sidebar-ink:  #2B1B0A;
-  --acr-line:         rgba(80,40,15,0.14);
-  --acr-line-soft:    rgba(80,40,15,0.07);
-  --acr-ink:          #241607;
-  --acr-ink-2:        #5A4424;
-  /* WCAG-AA tuning (Wave-4): original #8F7A52 vs --acr-bg #FAF4E8 = 3.78:1
-     — below the 4.5:1 small-text threshold. Darkened to #786644 = 5.07:1. */
-  --acr-ink-3:        #786644;
-  --acr-ink-4:        #BAAA85;
-  --acr-brand:        #C2531C;
-  --acr-brand-ink:    #FFFBF1;
-  --acr-brand-soft:   rgba(194,83,28,0.14);
-  --acr-brand-soft-ink: #A54718;  /* AA on -soft: 4.55:1 */
-  --acr-accent:       #4C7B80;
-  --acr-accent-text:  #40686D;  /* text-acr-accent ink: AA 4.69:1 on this theme's surfaces + its /15 wash (was 3.60) */
-  --acr-pos:          #3B7C2E;
-  --acr-pos-text:     #356F29;  /* text-acr-pos ink: AA 4.63:1 on this theme's surfaces + its -soft wash (was 3.90) */
-  --acr-pos-soft:     rgba(59,124,46,0.14);
-  --acr-pos-soft-ink: #36712A;  /* AA on -soft: 4.51:1 */
-  --acr-warn:         #C48A1E;
-  --acr-warn-text:    #865E15;  /* text-acr-warn ink: AA 4.65:1 on this theme's surfaces + its -soft wash (was 2.41) */
-  --acr-warn-soft:    rgba(196,138,30,0.14);
-  --acr-warn-soft-ink: #886015;  /* AA on -soft: 4.52:1 */
-  --acr-neg:          #B33419;
-  --acr-neg-soft:     rgba(179,52,25,0.14);
-  --acr-neg-soft-ink: #B33419;  /* AA on -soft: 4.53:1 */
-  --acr-glow:         rgba(194,83,28,0.35);
-  --acr-shadow-1:     0 1px 2px rgba(60,30,8,0.06);
-  --acr-shadow-2:     0 1px 2px rgba(60,30,8,0.06), 0 8px 22px -6px rgba(60,30,8,0.16);
-  --acr-shadow-3:     0 2px 4px rgba(60,30,8,0.08), 0 22px 50px -12px rgba(60,30,8,0.22);
-  --acr-ring:         0 0 0 3px rgba(194,83,28,0.28);
-  --acr-chart-a:      #C2531C;
-  --acr-chart-b:      #4C7B80;
-  --acr-chart-c:      #C48A1E;
-  --acr-chart-d:      #3B7C2E;
+/* ─────────────── Meridian · light ─────────────── */
+[data-theme="meridian"]:root {
+  --acr-bg:             #FAF8F7;
+  --acr-bg-sunken:      #F0EBF1;
+  --acr-bg-raised:      #FFFFFF;
+  --acr-surface:        #FFFFFF;
+  --acr-surface-2:      #F0EBF1;
+  --acr-line:           rgba(39,31,46,0.14);
+  --acr-line-soft:      rgba(39,31,46,0.07);
+  --acr-ink:            #271F2E;
+  --acr-ink-2:          #43384B;
+  --acr-ink-3:          #65576B;
+  --acr-ink-4:          #A99EAD;
+  --acr-brand:          #35283F;
+  --acr-brand-ink:      #FFFFFF;
+  --acr-brand-soft:     rgba(53,40,63,0.12);
+  --acr-brand-soft-ink: #35283F;
+  --acr-accent:         #B36E4D;
+  --acr-accent-text:    #8E573D;
+  --acr-pos:            #337A4C;
+  --acr-pos-text:       #307348;
+  --acr-pos-soft:       rgba(51,122,76,0.12);
+  --acr-pos-soft-ink:   #307348;
+  --acr-warn:           #B4771E;
+  --acr-warn-text:      #8F5E18;
+  --acr-warn-soft:      rgba(180,119,30,0.12);
+  --acr-warn-soft-ink:  #8F5E18;
+  --acr-neg:            #B23A3A;
+  --acr-neg-text:       #B23A3A;
+  --acr-neg-soft:       rgba(178,58,58,0.12);
+  --acr-neg-soft-ink:   #B23A3A;
+  --acr-glow:           rgba(53,40,63,0.28);
+  --acr-shadow-1:       0 1px 2px rgba(39,31,46,0.06);
+  --acr-shadow-2:       0 1px 2px rgba(39,31,46,0.06), 0 8px 22px -6px rgba(39,31,46,0.12);
+  --acr-shadow-3:       0 2px 4px rgba(39,31,46,0.08), 0 22px 50px -12px rgba(39,31,46,0.18);
+  --acr-ring:           0 0 0 3px rgba(53,40,63,0.3);
+  --acr-chart-a:        #35283F;
+  --acr-chart-b:        #B36E4D;
+  --acr-chart-c:        #7C6A8A;
+  --acr-chart-d:        #65576B;
+  --acr-sidebar-bg:     #2D2235;
+  --acr-sidebar-ink:    #F5EEF6;
+  --acr-sidebar-ink-2:  #CDBDD3;
+  --acr-sidebar-raised: #3D3047;
+  --acr-sidebar-line:   #463A50;
+  --acr-sidebar-brand:  #DDC5E3;
   /* HSL parallel — keep in sync with --acr-* above. */
-  --background:                  40 64.3% 94.5%;
-  --foreground:                  31 67.4% 8.4%;
-  --card:                        43 100% 97.3%;
-  --card-foreground:             31 67.4% 8.4%;
-  --popover:                     43 100% 97.3%;
-  --popover-foreground:          31 67.4% 8.4%;
-  --primary:                     20 74.8% 43.5%;
-  --primary-foreground:          43 100% 97.3%;
-  --secondary:                   43 56.4% 89.2%;
-  --secondary-foreground:        31 67.4% 8.4%;
-  --muted:                       43 56.4% 89.2%;
-  --muted-foreground:            39 27.1% 36.1%;
-  --accent:                      186 25.5% 40%;
-  --accent-foreground:           43 100% 97.3%;
-  --destructive:                 11 75.5% 40%;
-  --destructive-foreground:      43 100% 97.3%;
-  --border:                      34 29.6% 86.1%;
-  --input:                       34 29.6% 86.1%;
-  --ring:                        20 74.8% 43.5%;
-  --chart-1:                     20 74.8% 43.5%;
-  --chart-2:                     186 25.5% 40%;
-  --chart-3:                     39 73.5% 44.3%;
-  --chart-4:                     110 45.9% 33.3%;
-  --chart-5:                     39 27.1% 44.1%;
-  --sidebar-background:          42 54.1% 88%;
-  --sidebar-foreground:          31 62.3% 10.4%;
-  --sidebar-primary:             20 74.8% 43.5%;
-  --sidebar-primary-foreground:  43 100% 97.3%;
-  --sidebar-accent:              43 56.4% 89.2%;
-  --sidebar-accent-foreground:   31 67.4% 8.4%;
-  --sidebar-border:              37 33.3% 78.2%;
-  --sidebar-ring:                20 74.8% 43.5%;
-  /* Heat tokens — Homestead light */
-  --acr-heat-cold:      #786644;  /* --acr-ink-3 */
-  --acr-heat-warm:      #C48A1E;  /* --acr-warn  */
-  --acr-heat-hot:       #B33419;  /* --acr-neg   */
-  --acr-heat-cold-soft: rgba(120,102,68,0.14);
-  --acr-heat-warm-soft: rgba(196,138,30,0.14);
-  --acr-heat-hot-soft:  rgba(179,52,25,0.14);
-  /* Density tokens — Homestead light */
-  --acr-density-1: #FBE9E0;
-  --acr-density-2: #EB9970;
-  --acr-density-3: #D65C1F;
-  --acr-density-4: #933F15;
+  --background:                   20 23.1% 97.5%;
+  --foreground:                   272 19.5% 15.1%;
+  --card:                         0 0.0% 100.0%;
+  --card-foreground:              272 19.5% 15.1%;
+  --popover:                      0 0.0% 100.0%;
+  --popover-foreground:           272 19.5% 15.1%;
+  --primary:                      274 22.3% 20.2%;
+  --primary-foreground:           0 0.0% 100.0%;
+  --secondary:                    290 17.6% 93.3%;
+  --secondary-foreground:         272 19.5% 15.1%;
+  --muted:                        290 17.6% 93.3%;
+  --muted-foreground:             282 10.3% 38.0%;
+  --accent:                       285 16.7% 90.6%;
+  --accent-foreground:            272 19.5% 15.1%;
+  --destructive:                  0 50.8% 46.3%;
+  --destructive-foreground:       0 0.0% 100.0%;
+  --border:                       320 3.4% 82.5%;
+  --input:                        320 3.4% 82.5%;
+  --ring:                         274 22.3% 20.2%;
+  --chart-1:                      274 22.3% 20.2%;
+  --chart-2:                      19 40.2% 50.2%;
+  --chart-3:                      274 13.1% 47.8%;
+  --chart-4:                      282 10.3% 38.0%;
+  --chart-5:                      282 10.3% 38.0%;
+  --sidebar-background:           275 21.8% 17.1%;
+  --sidebar-foreground:           292 30.8% 94.9%;
+  --sidebar-muted-foreground:     284 20.0% 78.4%;
+  --sidebar-primary:              288 34.9% 83.1%;
+  --sidebar-primary-foreground:   272 19.5% 15.1%;
+  --sidebar-accent:               274 19.3% 23.3%;
+  --sidebar-accent-foreground:    292 30.8% 94.9%;
+  --sidebar-border:               273 15.9% 27.1%;
+  --sidebar-ring:                 288 34.9% 83.1%;
+  /* Heat + sequential density (maps, heatmaps) */
+  --acr-heat-cold:        #65576B;
+  --acr-heat-warm:        #B4771E;
+  --acr-heat-hot:         #B23A3A;
+  --acr-heat-cold-soft:   rgba(101,87,107,0.14);
+  --acr-heat-warm-soft:   rgba(180,119,30,0.14);
+  --acr-heat-hot-soft:    rgba(178,58,58,0.14);
+  --acr-density-1:        #EFE8F1;
+  --acr-density-2:        #C2AECB;
+  --acr-density-3:        #7E6290;
+  --acr-density-4:        #35283F;
+  /* Glass chrome tinted to this colorway */
+  --glass-bg-light:     rgba(252,250,250,0.72);
+  --glass-bg-subtle:    rgba(252,250,250,0.55);
+  --glass-bg-sm:        rgba(252,250,250,0.65);
+  --glass-bg-modal:     rgba(252,250,250,0.96);
 }
 
-/* ─────────────── Homestead · dark ─────────────── */
-[data-theme="homestead"].dark {
-  /* --acr-* hex tokens (lifted verbatim from acreos/theme.jsx) */
-  --acr-bg:           #1A120A;
-  --acr-bg-sunken:    #120B05;
-  --acr-bg-raised:    #241811;
-  --acr-surface:      #241811;
-  --acr-surface-2:    #2D2017;
-  --acr-sidebar-bg:   #130C05;
-  --acr-sidebar-ink:  #F2E0C4;
-  --acr-line:         rgba(255,230,195,0.10);
-  --acr-line-soft:    rgba(255,230,195,0.05);
-  --acr-ink:          #F8EAD2;
-  --acr-ink-2:        #CBB896;
-  /* WCAG-AA verified (Wave-4): #8F7E62 vs --acr-bg #1A120A = 4.70:1 — passes. */
-  --acr-ink-3:        #8F7E62;
-  --acr-ink-4:        #5C4E3C;
-  --acr-brand:        #ED8852;
-  --acr-brand-ink:    #1A0E05;
-  --acr-brand-soft:   rgba(237,136,82,0.16);
-  --acr-brand-soft-ink: #ED8852;  /* AA on -soft: 5.18:1 */
-  --acr-accent:       #7FB3B7;
-  --acr-accent-text:  var(--acr-accent);  /* dark: resets the light block's ink, which shares this element — base already AA 5.73:1 here */
-  --acr-pos:          #7FCA72;
-  --acr-pos-text:     var(--acr-pos);  /* dark: resets the light block's ink, which shares this element — base already AA 6.41:1 here */
-  --acr-pos-soft:     rgba(127,202,114,0.16);
-  --acr-pos-soft-ink: #7FCA72;  /* AA on -soft: 6.41:1 */
-  --acr-warn:         #F0BC58;
-  --acr-warn-text:    var(--acr-warn);  /* dark: resets the light block's ink, which shares this element — base already AA 6.98:1 here */
-  --acr-warn-soft:    rgba(240,188,88,0.16);
-  --acr-warn-soft-ink: #F0BC58;  /* AA on -soft: 6.98:1 */
-  --acr-neg:          #EE8063;
-  --acr-neg-text:     var(--acr-neg);  /* dark: resets the light block's ink, which shares this element — base already AA 5.00:1 here */
-  --acr-neg-soft:     rgba(238,128,99,0.16);
-  --acr-neg-soft-ink: #EE8063;  /* AA on -soft: 5.00:1 */
-  --acr-glow:         rgba(237,136,82,0.40);
-  --acr-shadow-1:     0 1px 2px rgba(0,0,0,0.4);
-  --acr-shadow-2:     0 2px 4px rgba(0,0,0,0.35), 0 14px 36px -8px rgba(0,0,0,0.55);
-  --acr-shadow-3:     0 4px 8px rgba(0,0,0,0.4), 0 26px 60px -12px rgba(0,0,0,0.7);
-  --acr-ring:         0 0 0 3px rgba(237,136,82,0.35);
-  --acr-chart-a:      #ED8852;
-  --acr-chart-b:      #7FB3B7;
-  --acr-chart-c:      #F0BC58;
-  --acr-chart-d:      #7FCA72;
+/* ─────────────── Meridian · dark ─────────────── */
+[data-theme="meridian"].dark {
+  --acr-bg:             #1B161F;
+  --acr-bg-sunken:      #140F18;
+  --acr-bg-raised:      #241D2A;
+  --acr-surface:        #241D2A;
+  --acr-surface-2:      #302637;
+  --acr-line:           rgba(245,238,246,0.1);
+  --acr-line-soft:      rgba(245,238,246,0.05);
+  --acr-ink:            #F5EEF6;
+  --acr-ink-2:          #DDD0E1;
+  --acr-ink-3:          #C3B0CB;
+  --acr-ink-4:          #6B5E72;
+  --acr-brand:          #DDC5E3;
+  --acr-brand-ink:      #271F2E;
+  --acr-brand-soft:     rgba(221,197,227,0.16);
+  --acr-brand-soft-ink: #DDC5E3;
+  --acr-accent:         #DBA486;
+  --acr-accent-text:    #DBA486;
+  --acr-pos:            #7DC892;
+  --acr-pos-text:       #7DC892;
+  --acr-pos-soft:       rgba(125,200,146,0.16);
+  --acr-pos-soft-ink:   #7DC892;
+  --acr-warn:           #E4B05A;
+  --acr-warn-text:      #E4B05A;
+  --acr-warn-soft:      rgba(228,176,90,0.16);
+  --acr-warn-soft-ink:  #E4B05A;
+  --acr-neg:            #F08F80;
+  --acr-neg-text:       #F08F80;
+  --acr-neg-soft:       rgba(240,143,128,0.16);
+  --acr-neg-soft-ink:   #F08F80;
+  --acr-glow:           rgba(221,197,227,0.36);
+  --acr-shadow-1:       0 1px 2px rgba(0,0,0,0.42);
+  --acr-shadow-2:       0 1px 2px rgba(0,0,0,0.42), 0 8px 22px -6px rgba(0,0,0,0.52);
+  --acr-shadow-3:       0 2px 4px rgba(0,0,0,0.48), 0 22px 50px -12px rgba(0,0,0,0.60);
+  --acr-ring:           0 0 0 3px rgba(221,197,227,0.45);
+  --acr-chart-a:        #DDC5E3;
+  --acr-chart-b:        #DBA486;
+  --acr-chart-c:        #7DC892;
+  --acr-chart-d:        #A796AF;
+  --acr-sidebar-bg:     #140F18;
+  --acr-sidebar-ink:    #F5EEF6;
+  --acr-sidebar-ink-2:  #B5A3BD;
+  --acr-sidebar-raised: #251D2B;
+  --acr-sidebar-line:   #2F2536;
+  --acr-sidebar-brand:  #DDC5E3;
   /* HSL parallel — keep in sync with --acr-* above. */
-  --background:                  30 44.4% 7.1%;
-  --foreground:                  38 73.1% 89.8%;
-  --card:                        22 35.8% 10.4%;
-  --card-foreground:             38 73.1% 89.8%;
-  --popover:                     22 35.8% 10.4%;
-  --popover-foreground:          38 73.1% 89.8%;
-  --primary:                     21 81.2% 62.5%;
-  --primary-foreground:          26 67.7% 6.1%;
-  --secondary:                   25 32.4% 13.3%;
-  --secondary-foreground:        38 73.1% 89.8%;
-  --muted:                       25 32.4% 13.3%;
-  --muted-foreground:            37 18.7% 51.3%;
-  --accent:                      184 28% 60.8%;
-  --accent-foreground:           26 67.7% 6.1%;
-  --destructive:                 13 80.3% 66.1%;
-  --destructive-foreground:      26 67.7% 6.1%;
-  --border:                      26 24.7% 18.2%;
-  --input:                       26 24.7% 18.2%;
-  --ring:                        21 81.2% 62.5%;
-  --chart-1:                     21 81.2% 62.5%;
-  --chart-2:                     184 28% 60.8%;
-  --chart-3:                     39 83.5% 64.3%;
-  --chart-4:                     111 45.4% 62%;
-  --chart-5:                     37 18.7% 47.3%;
-  --sidebar-background:          30 58.3% 4.7%;
-  --sidebar-foreground:          37 63.9% 85.9%;
-  --sidebar-primary:             21 81.2% 62.5%;
-  --sidebar-primary-foreground:  26 67.7% 6.1%;
-  --sidebar-accent:              25 32.4% 13.3%;
-  --sidebar-accent-foreground:   38 73.1% 89.8%;
-  --sidebar-border:              32 28.4% 13.1%;
-  --sidebar-ring:                21 81.2% 62.5%;
-  /* Heat tokens — Homestead dark */
-  --acr-heat-cold:      #8F7E62;  /* --acr-ink-3 */
-  --acr-heat-warm:      #F0BC58;  /* --acr-warn  */
-  --acr-heat-hot:       #EE8063;  /* --acr-neg   */
-  --acr-heat-cold-soft: rgba(143,126,98,0.16);
-  --acr-heat-warm-soft: rgba(240,188,88,0.16);
-  --acr-heat-hot-soft:  rgba(238,128,99,0.16);
-  /* Density tokens — Homestead dark */
-  --acr-density-1: #FCE9DF;
-  --acr-density-2: #EF9A6B;
-  --acr-density-3: #DE5D17;
-  --acr-density-4: #984010;
+  --background:                   273 17.0% 10.4%;
+  --foreground:                   292 30.8% 94.9%;
+  --card:                         272 18.3% 13.9%;
+  --card-foreground:              292 30.8% 94.9%;
+  --popover:                      272 18.3% 13.9%;
+  --popover-foreground:           292 30.8% 94.9%;
+  --primary:                      288 34.9% 83.1%;
+  --primary-foreground:           272 19.5% 15.1%;
+  --secondary:                    275 18.3% 18.2%;
+  --secondary-foreground:         292 30.8% 94.9%;
+  --muted:                        275 18.3% 18.2%;
+  --muted-foreground:             282 20.6% 74.3%;
+  --accent:                       275 17.4% 21.4%;
+  --accent-foreground:            292 30.8% 94.9%;
+  --destructive:                  8 78.9% 72.2%;
+  --destructive-foreground:       273 17.0% 10.4%;
+  --border:                       278 6.6% 23.9%;
+  --input:                        278 6.6% 23.9%;
+  --ring:                         288 34.9% 83.1%;
+  --chart-1:                      288 34.9% 83.1%;
+  --chart-2:                      21 54.1% 69.2%;
+  --chart-3:                      137 40.5% 63.7%;
+  --chart-4:                      281 13.5% 63.7%;
+  --chart-5:                      282 20.6% 74.3%;
+  --sidebar-background:           273 23.1% 7.6%;
+  --sidebar-foreground:           292 30.8% 94.9%;
+  --sidebar-muted-foreground:     282 16.5% 69.0%;
+  --sidebar-primary:              288 34.9% 83.1%;
+  --sidebar-primary-foreground:   272 19.5% 15.1%;
+  --sidebar-accent:               274 19.4% 14.1%;
+  --sidebar-accent-foreground:    292 30.8% 94.9%;
+  --sidebar-border:               275 18.7% 17.8%;
+  --sidebar-ring:                 288 34.9% 83.1%;
+  /* Heat + sequential density (maps, heatmaps) */
+  --acr-heat-cold:        #A796AF;
+  --acr-heat-warm:        #E4B05A;
+  --acr-heat-hot:         #F08F80;
+  --acr-heat-cold-soft:   rgba(167,150,175,0.16);
+  --acr-heat-warm-soft:   rgba(228,176,90,0.16);
+  --acr-heat-hot-soft:    rgba(240,143,128,0.18);
+  --acr-density-1:        #F1E8F3;
+  --acr-density-2:        #CDB3D6;
+  --acr-density-3:        #9474A5;
+  --acr-density-4:        #5B406C;
+  /* Glass chrome tinted to this colorway */
+  --glass-bg-light:     rgba(27,22,31,0.78);
+  --glass-bg-subtle:    rgba(27,22,31,0.6);
+  --glass-bg-sm:        rgba(27,22,31,0.7);
+  --glass-bg-modal:     rgba(27,22,31,0.97);
 }
 
-/* ─────────────── Quarry · light ─────────────── */
-[data-theme="quarry"]:root {
-  /* --acr-* hex tokens (lifted verbatim from acreos/theme.jsx) */
-  --acr-bg:           #F3F0EA;
-  --acr-bg-sunken:    #E7E3DB;
-  --acr-bg-raised:    #FBFAF5;
-  --acr-surface:      #FBFAF5;
-  --acr-surface-2:    #EDEAE2;
-  --acr-sidebar-bg:   #EDEAE2;
-  --acr-sidebar-ink:  #0C0C0A;
-  --acr-line:         rgba(20,20,16,0.18);
-  --acr-line-soft:    rgba(20,20,16,0.08);
-  --acr-ink:          #0C0C0A;
-  --acr-ink-2:        #3D3D38;
-  /* WCAG-AA tuning (Wave-4): original #74746B vs --acr-bg #F3F0EA = 4.15:1
-     — below the 4.5:1 small-text threshold. Darkened to #6A6A62 = 4.79:1. */
-  --acr-ink-3:        #6A6A62;
-  --acr-ink-4:        #ACACA1;
-  --acr-brand:        #C8241C;
-  --acr-brand-ink:    #FBFAF5;
-  --acr-brand-soft:   rgba(200,36,28,0.10);
-  --acr-brand-soft-ink: #C1231B;  /* AA on -soft: 4.50:1 */
-  --acr-accent:       #0C0C0A;
-  --acr-pos:          #18623A;
-  --acr-pos-soft:     rgba(24,98,58,0.10);
-  --acr-pos-soft-ink: #18623A;  /* AA on -soft: 5.60:1 */
-  --acr-warn:         #8F6A00;
-  --acr-warn-text:    #805F00;  /* text-acr-warn ink: AA 4.61:1 on this theme's surfaces + its -soft wash (was 3.88) */
-  --acr-warn-soft:    rgba(143,106,0,0.10);
-  --acr-warn-soft-ink: #805F00;  /* AA on -soft: 4.61:1 */
-  --acr-neg:          #9E1E17;
-  --acr-neg-soft:     rgba(158,30,23,0.10);
-  --acr-neg-soft-ink: #9E1E17;  /* AA on -soft: 5.89:1 */
-  --acr-glow:         rgba(200,36,28,0.22);
-  --acr-shadow-1:     0 1px 0 rgba(20,20,16,0.05);
-  --acr-shadow-2:     0 1px 0 rgba(20,20,16,0.06), 0 2px 8px rgba(20,20,16,0.06);
-  --acr-shadow-3:     0 2px 0 rgba(20,20,16,0.08), 0 12px 32px -8px rgba(20,20,16,0.14);
-  --acr-ring:         0 0 0 3px rgba(200,36,28,0.25);
-  --acr-chart-a:      #0C0C0A;
-  --acr-chart-b:      #74746B;
-  --acr-chart-c:      #C8241C;
-  --acr-chart-d:      #18623A;
-  /* HSL parallel — keep in sync with --acr-* above. */
-  --background:                  40 27.3% 93.5%;
-  --foreground:                  60 9.1% 4.3%;
-  --card:                        50 42.9% 97.3%;
-  --card-foreground:             60 9.1% 4.3%;
-  --popover:                     50 42.9% 97.3%;
-  --popover-foreground:          60 9.1% 4.3%;
-  --primary:                     3 75.4% 44.7%;
-  --primary-foreground:          50 42.9% 97.3%;
-  --secondary:                   44 23.4% 90.8%;
-  --secondary-foreground:        60 9.1% 4.3%;
-  --muted:                       44 23.4% 90.8%;
-  --muted-foreground:            60 4% 38.7%;
-  --accent:                      60 9.1% 4.3%;
-  --accent-foreground:           50 42.9% 97.3%;
-  --destructive:                 3 74.6% 35.5%;
-  --destructive-foreground:      50 42.9% 97.3%;
-  --border:                      60 5.2% 81%;
-  --input:                       60 5.2% 81%;
-  --ring:                        3 75.4% 44.7%;
-  --chart-1:                     60 9.1% 4.3%;
-  --chart-2:                     60 4% 43.7%;
-  --chart-3:                     3 75.4% 44.7%;
-  --chart-4:                     148 60.7% 23.9%;
-  --chart-5:                     60 4% 43.7%;
-  --sidebar-background:          44 23.4% 90.8%;
-  --sidebar-foreground:          60 9.1% 4.3%;
-  --sidebar-primary:             3 75.4% 44.7%;
-  --sidebar-primary-foreground:  50 42.9% 97.3%;
-  --sidebar-accent:              44 23.4% 90.8%;
-  --sidebar-accent-foreground:   60 9.1% 4.3%;
-  --sidebar-border:              42 8.1% 75.7%;
-  --sidebar-ring:                3 75.4% 44.7%;
-  /* Heat tokens — Quarry light */
-  --acr-heat-cold:      #6A6A62;  /* --acr-ink-3 */
-  --acr-heat-warm:      #8F6A00;  /* --acr-warn  */
-  --acr-heat-hot:       #9E1E17;  /* --acr-neg   */
-  --acr-heat-cold-soft: rgba(106,106,98,0.10);
-  --acr-heat-warm-soft: rgba(143,106,0,0.10);
-  --acr-heat-hot-soft:  rgba(158,30,23,0.10);
-  /* Density tokens — Quarry light */
-  --acr-density-1: #FBE1E0;
-  --acr-density-2: #EB7670;
-  --acr-density-3: #D6281F;
-  --acr-density-4: #931B15;
-}
-
-/* ─────────────── Quarry · dark ─────────────── */
-[data-theme="quarry"].dark {
-  /* --acr-* hex tokens (lifted verbatim from acreos/theme.jsx) */
-  --acr-bg:           #121210;
-  --acr-bg-sunken:    #080807;
-  --acr-bg-raised:    #1B1B18;
-  --acr-surface:      #1B1B18;
-  --acr-surface-2:    #232320;
-  --acr-sidebar-bg:   #0E0E0C;
-  --acr-sidebar-ink:  #F2EFE5;
-  --acr-line:         rgba(245,242,232,0.14);
-  --acr-line-soft:    rgba(245,242,232,0.07);
-  --acr-ink:          #F2EFE5;
-  --acr-ink-2:        #BDBAB0;
-  /* WCAG-AA tuning (Wave-4): original #7E7B71 vs --acr-bg #121210 = 4.43:1
-     — below the 4.5:1 small-text threshold. Lightened to #87847A = 5.01:1. */
-  --acr-ink-3:        #87847A;
-  --acr-ink-4:        #4F4D47;
-  --acr-brand:        #E85142;
-  --acr-brand-ink:    #121210;
-  --acr-brand-soft:   rgba(232,81,66,0.14);
-  --acr-brand-soft-ink: #EA6456;  /* AA on -soft: 4.52:1 */
-  --acr-accent:       #F2EFE5;
-  --acr-accent-text:  var(--acr-accent);  /* dark: resets the light block's ink, which shares this element — base already AA 9.78:1 here */
-  --acr-pos:          #5BC783;
-  --acr-pos-text:     var(--acr-pos);  /* dark: resets the light block's ink, which shares this element — base already AA 6.30:1 here */
-  --acr-pos-soft:     rgba(91,199,131,0.14);
-  --acr-pos-soft-ink: #5BC783;  /* AA on -soft: 6.30:1 */
-  --acr-warn:         #E4B14A;
-  --acr-warn-text:    var(--acr-warn);  /* dark: resets the light block's ink, which shares this element — base already AA 6.66:1 here */
-  --acr-warn-soft:    rgba(228,177,74,0.14);
-  --acr-warn-soft-ink: #E4B14A;  /* AA on -soft: 6.66:1 */
-  --acr-neg:          #E85142;
-  --acr-neg-text:     #EB6659;  /* text-acr-neg ink: AA 4.61:1 on this theme's surfaces + its -soft wash (was 3.98) */
-  --acr-neg-soft:     rgba(232,81,66,0.14);
-  --acr-neg-soft-ink: #EA6456;  /* AA on -soft: 4.52:1 */
-  --acr-glow:         rgba(232,81,66,0.35);
-  --acr-shadow-1:     0 1px 0 rgba(0,0,0,0.5);
-  --acr-shadow-2:     0 1px 0 rgba(0,0,0,0.5), 0 8px 24px rgba(0,0,0,0.5);
-  --acr-shadow-3:     0 2px 0 rgba(0,0,0,0.6), 0 20px 48px -8px rgba(0,0,0,0.7);
-  --acr-ring:         0 0 0 3px rgba(232,81,66,0.35);
-  --acr-chart-a:      #F2EFE5;
-  --acr-chart-b:      #7E7B71;
-  --acr-chart-c:      #E85142;
-  --acr-chart-d:      #5BC783;
-  /* HSL parallel — keep in sync with --acr-* above. */
-  --background:                  60 5.9% 6.7%;
-  --foreground:                  46 33.3% 92.4%;
-  --card:                        60 5.9% 10%;
-  --card-foreground:             46 33.3% 92.4%;
-  --popover:                     60 5.9% 10%;
-  --popover-foreground:          46 33.3% 92.4%;
-  --primary:                     5 78.3% 58.4%;
-  --primary-foreground:          60 5.9% 6.7%;
-  --secondary:                   60 4.5% 13.1%;
-  --secondary-foreground:        46 33.3% 92.4%;
-  --muted:                       60 4.5% 13.1%;
-  --muted-foreground:            46 5.4% 53.9%;
-  --accent:                      46 33.3% 92.4%;
-  --accent-foreground:           60 5.9% 6.7%;
-  --destructive:                 5 78.3% 58.4%;
-  --destructive-foreground:      60 5.9% 6.7%;
-  --border:                      48 4.5% 21.8%;
-  --input:                       48 4.5% 21.8%;
-  --ring:                        5 78.3% 58.4%;
-  --chart-1:                     46 33.3% 92.4%;
-  --chart-2:                     46 5.4% 46.9%;
-  --chart-3:                     5 78.3% 58.4%;
-  --chart-4:                     142 49.1% 56.9%;
-  --chart-5:                     46 5.4% 46.9%;
-  --sidebar-background:          60 7.7% 5.1%;
-  --sidebar-foreground:          46 33.3% 92.4%;
-  --sidebar-primary:             5 78.3% 58.4%;
-  --sidebar-primary-foreground:  60 5.9% 6.7%;
-  --sidebar-accent:              60 4.5% 13.1%;
-  --sidebar-accent-foreground:   46 33.3% 92.4%;
-  --sidebar-border:              60 3.4% 17.5%;
-  --sidebar-ring:                5 78.3% 58.4%;
-  /* Heat tokens — Quarry dark */
-  --acr-heat-cold:      #87847A;  /* --acr-ink-3 */
-  --acr-heat-warm:      #E4B14A;  /* --acr-warn  */
-  --acr-heat-hot:       #E85142;  /* --acr-neg   */
-  --acr-heat-cold-soft: rgba(135,132,122,0.14);
-  --acr-heat-warm-soft: rgba(228,177,74,0.14);
-  --acr-heat-hot-soft:  rgba(232,81,66,0.14);
-  /* Density tokens — Quarry dark */
-  --acr-density-1: #FBE2DF;
-  --acr-density-2: #ED786E;
-  --acr-density-3: #DA2B1B;
-  --acr-density-4: #961D13;
-}
-
-/* ─────────────── Nocturne · light ─────────────── */
-[data-theme="nocturne"]:root {
-  /* --acr-* hex tokens (lifted verbatim from acreos/theme.jsx) */
-  --acr-bg:           #FAFAF9;
-  --acr-bg-sunken:    #EFEFED;
-  --acr-bg-raised:    #FFFFFF;
-  --acr-surface:      #FFFFFF;
-  --acr-surface-2:    #F4F4F2;
-  --acr-sidebar-bg:   #F4F4F2;
-  --acr-sidebar-ink:  #0A0A0A;
-  --acr-line:         rgba(15,15,15,0.10);
-  --acr-line-soft:    rgba(15,15,15,0.05);
-  --acr-ink:          #0A0A0A;
-  --acr-ink-2:        #3A3A3A;
-  /* WCAG-AA tuning (Wave-4): original #777777 vs --acr-bg #FAFAF9 = 4.29:1
-     — below the 4.5:1 small-text threshold. Darkened to #6D6D6D = 4.95:1. */
-  --acr-ink-3:        #6D6D6D;
-  --acr-ink-4:        #B4B4B4;
-  --acr-brand:        #D63A2D;
-  --acr-brand-ink:    #FFFFFF;
-  --acr-brand-soft:   rgba(214,58,45,0.10);
-  --acr-brand-soft-ink: #C53327;  /* AA on -soft: 4.51:1 */
-  --acr-accent:       #0A0A0A;
-  --acr-pos:          #1E7A3E;
-  --acr-pos-text:     #1D783D;  /* text-acr-pos ink: AA 4.61:1 on this theme's surfaces + its -soft wash (was 4.49) */
-  --acr-pos-soft:     rgba(30,122,62,0.10);
-  --acr-pos-soft-ink: #1D783D;  /* AA on -soft: 4.61:1 */
-  --acr-warn:         #B8820E;
-  --acr-warn-text:    #8B620B;  /* text-acr-warn ink: AA 4.71:1 on this theme's surfaces + its -soft wash (was 2.91) */
-  --acr-warn-soft:    rgba(184,130,14,0.10);
-  --acr-warn-soft-ink: #8D640B;  /* AA on -soft: 4.58:1 */
-  --acr-neg:          #B02B20;
-  --acr-neg-soft:     rgba(176,43,32,0.10);
-  --acr-neg-soft-ink: #B02B20;  /* AA on -soft: 5.33:1 */
-  --acr-glow:         rgba(214,58,45,0.30);
-  --acr-shadow-1:     0 1px 2px rgba(0,0,0,0.05);
-  --acr-shadow-2:     0 1px 2px rgba(0,0,0,0.05), 0 8px 24px -6px rgba(0,0,0,0.12);
-  --acr-shadow-3:     0 2px 4px rgba(0,0,0,0.06), 0 20px 48px -12px rgba(0,0,0,0.18);
-  --acr-ring:         0 0 0 3px rgba(214,58,45,0.25);
-  --acr-chart-a:      #0A0A0A;
-  --acr-chart-b:      #777777;
-  --acr-chart-c:      #D63A2D;
-  --acr-chart-d:      #1E7A3E;
-  /* HSL parallel — keep in sync with --acr-* above. */
-  --background:                  60 9.1% 97.8%;
-  --foreground:                  0 0% 3.9%;
-  --card:                        0 0% 100%;
-  --card-foreground:             0 0% 3.9%;
-  --popover:                     0 0% 100%;
-  --popover-foreground:          0 0% 3.9%;
-  --primary:                     5 67.3% 50.8%;
-  --primary-foreground:          0 0% 100%;
-  --secondary:                   60 8.3% 95.3%;
-  --secondary-foreground:        0 0% 3.9%;
-  --muted:                       60 8.3% 95.3%;
-  --muted-foreground:            0 0% 42.7%;
-  --accent:                      0 0% 3.9%;
-  --accent-foreground:           0 0% 100%;
-  --destructive:                 5 69.2% 40.8%;
-  --destructive-foreground:      0 0% 100%;
-  --border:                      0 0% 90.6%;
-  --input:                       0 0% 90.6%;
-  --ring:                        5 67.3% 50.8%;
-  --chart-1:                     0 0% 3.9%;
-  --chart-2:                     0 0% 46.7%;
-  --chart-3:                     5 67.3% 50.8%;
-  --chart-4:                     141 60.5% 29.8%;
-  --chart-5:                     0 0% 46.7%;
-  --sidebar-background:          60 8.3% 95.3%;
-  --sidebar-foreground:          0 0% 3.9%;
-  --sidebar-primary:             5 67.3% 50.8%;
-  --sidebar-primary-foreground:  0 0% 100%;
-  --sidebar-accent:              60 8.3% 95.3%;
-  --sidebar-accent-foreground:   0 0% 3.9%;
-  --sidebar-border:              60 2.9% 86.3%;
-  --sidebar-ring:                5 67.3% 50.8%;
-  /* Heat tokens — Nocturne light */
-  --acr-heat-cold:      #6D6D6D;  /* --acr-ink-3 */
-  --acr-heat-warm:      #B8820E;  /* --acr-warn  */
-  --acr-heat-hot:       #B02B20;  /* --acr-neg   */
-  --acr-heat-cold-soft: rgba(109,109,109,0.10);
-  --acr-heat-warm-soft: rgba(184,130,14,0.10);
-  --acr-heat-hot-soft:  rgba(176,43,32,0.10);
-  /* Density tokens — Nocturne light */
-  --acr-density-1: #F9E3E1;
-  --acr-density-2: #E48077;
-  --acr-density-3: #CC3628;
-  --acr-density-4: #8D251C;
-}
-
-/* ─────────────── Nocturne · dark ─────────────── */
-[data-theme="nocturne"].dark {
-  /* --acr-* hex tokens (lifted verbatim from acreos/theme.jsx) */
-  --acr-bg:           #0A0A0A;
-  --acr-bg-sunken:    #050505;
-  --acr-bg-raised:    #121212;
-  --acr-surface:      #121212;
-  --acr-surface-2:    #1A1A1A;
-  --acr-sidebar-bg:   #050505;
-  --acr-sidebar-ink:  #F4F4F4;
-  --acr-line:         rgba(255,255,255,0.08);
-  --acr-line-soft:    rgba(255,255,255,0.04);
-  --acr-ink:          #F4F4F4;
-  --acr-ink-2:        #B8B8B8;
-  /* WCAG-AA verified (Wave-4): #7A7A7A vs --acr-bg #0A0A0A = 4.61:1 — passes. */
-  --acr-ink-3:        #7A7A7A;
-  --acr-ink-4:        #4A4A4A;
-  --acr-brand:        #FF4A38;
-  --acr-brand-ink:    #0A0505;
-  --acr-brand-soft:   rgba(255,74,56,0.12);
-  --acr-brand-soft-ink: #FF4A38;  /* AA on -soft: 4.96:1 */
-  --acr-accent:       #F4F4F4;
-  --acr-accent-text:  var(--acr-accent);  /* dark: resets the light block's ink, which shares this element — base already AA 11.32:1 here */
-  --acr-pos:          #4ADE80;
-  --acr-pos-text:     var(--acr-pos);  /* dark: resets the light block's ink, which shares this element — base already AA 8.66:1 here */
-  --acr-pos-soft:     rgba(74,222,128,0.12);
-  --acr-pos-soft-ink: #4ADE80;  /* AA on -soft: 8.66:1 */
-  --acr-warn:         #FAC84D;
-  --acr-warn-text:    var(--acr-warn);  /* dark: resets the light block's ink, which shares this element — base already AA 9.37:1 here */
-  --acr-warn-soft:    rgba(250,200,77,0.12);
-  --acr-warn-soft-ink: #FAC84D;  /* AA on -soft: 9.37:1 */
-  --acr-neg:          #FF4A38;
-  --acr-neg-text:     var(--acr-neg);  /* dark: resets the light block's ink, which shares this element — base already AA 4.96:1 here */
-  --acr-neg-soft:     rgba(255,74,56,0.12);
-  --acr-neg-soft-ink: #FF4A38;  /* AA on -soft: 4.96:1 */
-  --acr-glow:         rgba(255,74,56,0.45);
-  --acr-shadow-1:     0 1px 2px rgba(0,0,0,0.6);
-  --acr-shadow-2:     0 2px 4px rgba(0,0,0,0.5), 0 12px 32px -8px rgba(0,0,0,0.7);
-  --acr-shadow-3:     0 4px 8px rgba(0,0,0,0.5), 0 24px 56px -12px rgba(0,0,0,0.8);
-  --acr-ring:         0 0 0 3px rgba(255,74,56,0.4);
-  --acr-chart-a:      #F4F4F4;
-  --acr-chart-b:      #7A7A7A;
-  --acr-chart-c:      #FF4A38;
-  --acr-chart-d:      #4ADE80;
-  /* HSL parallel — keep in sync with --acr-* above. */
-  --background:                  0 0% 3.9%;
-  --foreground:                  0 0% 95.7%;
-  --card:                        0 0% 7.1%;
-  --card-foreground:             0 0% 95.7%;
-  --popover:                     0 0% 7.1%;
-  --popover-foreground:          0 0% 95.7%;
-  --primary:                     5 100% 61%;
-  --primary-foreground:          0 33.3% 2.9%;
-  --secondary:                   0 0% 10.2%;
-  --secondary-foreground:        0 0% 95.7%;
-  --muted:                       0 0% 10.2%;
-  --muted-foreground:            0 0% 51.8%;
-  --accent:                      0 0% 95.7%;
-  --accent-foreground:           0 33.3% 2.9%;
-  --destructive:                 5 100% 61%;
-  --destructive-foreground:      0 33.3% 2.9%;
-  --border:                      0 0% 14.5%;
-  --input:                       0 0% 14.5%;
-  --ring:                        5 100% 61%;
-  --chart-1:                     0 0% 95.7%;
-  --chart-2:                     0 0% 47.8%;
-  --chart-3:                     5 100% 61%;
-  --chart-4:                     142 69.2% 58%;
-  --chart-5:                     0 0% 47.8%;
-  --sidebar-background:          0 0% 2%;
-  --sidebar-foreground:          0 0% 95.7%;
-  --sidebar-primary:             5 100% 61%;
-  --sidebar-primary-foreground:  0 33.3% 2.9%;
-  --sidebar-accent:              0 0% 10.2%;
-  --sidebar-accent-foreground:   0 0% 95.7%;
-  --sidebar-border:              0 0% 9.8%;
-  --sidebar-ring:                5 100% 61%;
-  /* Heat tokens — Nocturne dark */
-  --acr-heat-cold:      #7A7A7A;  /* --acr-ink-3 */
-  --acr-heat-warm:      #FAC84D;  /* --acr-warn  */
-  --acr-heat-hot:       #FF4A38;  /* --acr-neg   */
-  --acr-heat-cold-soft: rgba(122,122,122,0.12);
-  --acr-heat-warm-soft: rgba(250,200,77,0.12);
-  --acr-heat-hot-soft:  rgba(255,74,56,0.12);
-  /* Density tokens — Nocturne dark */
-  --acr-density-1: #FFDEDB;
-  --acr-density-2: #FF695C;
-  --acr-density-3: #F51400;
-  --acr-density-4: #A80E00;
-}
-
-/* ─────────────── Meadow · light ─────────────── */
-[data-theme="meadow"]:root {
-  /* --acr-* hex tokens (lifted verbatim from acreos/theme.jsx) */
-  --acr-bg:           #F5F6EE;
-  --acr-bg-sunken:    #EAECDF;
-  --acr-bg-raised:    #FCFCF5;
-  --acr-surface:      #FCFCF5;
-  --acr-surface-2:    #EEF0E3;
-  --acr-sidebar-bg:   #E7EBDA;
-  --acr-sidebar-ink:  #132010;
-  --acr-line:         rgba(30,50,22,0.12);
-  --acr-line-soft:    rgba(30,50,22,0.06);
-  --acr-ink:          #132010;
-  --acr-ink-2:        #425038;
-  /* WCAG-AA tuning (Wave-4): original #7B8470 vs --acr-bg #F5F6EE = 3.59:1
-     — well below the 4.5:1 small-text threshold (worst of the 5). Darkened
-     to #676E5E = 4.86:1. */
-  --acr-ink-3:        #676E5E;
-  --acr-ink-4:        #B0B6A4;
-  --acr-brand:        #3D6B2F;
-  --acr-brand-ink:    #FCFCF5;
-  --acr-brand-soft:   rgba(61,107,47,0.14);
-  --acr-brand-soft-ink: #3D6B2F;  /* AA on -soft: 4.77:1 */
-  --acr-accent:       #D89528;
-  --acr-accent-text:  #875D19;  /* text-acr-accent ink: AA 4.73:1 on this theme's surfaces + its /15 wash (was 2.07) */
-  --acr-pos:          #3D6B2F;
-  --acr-pos-soft:     rgba(61,107,47,0.14);
-  --acr-pos-soft-ink: #3D6B2F;  /* AA on -soft: 4.77:1 */
-  --acr-warn:         #D89528;
-  --acr-warn-text:    #875D18;  /* text-acr-warn ink: AA 4.69:1 on this theme's surfaces + its -soft wash (was 2.05) */
-  --acr-warn-soft:    rgba(216,149,40,0.16);
-  --acr-warn-soft-ink: #895E19;  /* AA on -soft: 4.60:1 */
-  --acr-neg:          #C85632;
-  --acr-neg-text:     #A54729;  /* text-acr-neg ink: AA 4.61:1 on this theme's surfaces + its -soft wash (was 3.37) */
-  --acr-neg-soft:     rgba(200,86,50,0.14);
-  --acr-neg-soft-ink: #A7482A;  /* AA on -soft: 4.52:1 */
-  --acr-glow:         rgba(61,107,47,0.32);
-  --acr-shadow-1:     0 1px 2px rgba(30,50,22,0.06);
-  --acr-shadow-2:     0 1px 2px rgba(30,50,22,0.06), 0 8px 22px -6px rgba(30,50,22,0.14);
-  --acr-shadow-3:     0 2px 4px rgba(30,50,22,0.08), 0 22px 50px -12px rgba(30,50,22,0.2);
-  --acr-ring:         0 0 0 3px rgba(61,107,47,0.28);
-  --acr-chart-a:      #3D6B2F;
-  --acr-chart-b:      #D89528;
-  --acr-chart-c:      #6B8F3B;
-  --acr-chart-d:      #C85632;
-  /* HSL parallel — keep in sync with --acr-* above. */
-  --background:                  67 30.8% 94.9%;
-  --foreground:                  109 33.3% 9.4%;
-  --card:                        60 53.8% 97.5%;
-  --card-foreground:             109 33.3% 9.4%;
-  --popover:                     60 53.8% 97.5%;
-  --popover-foreground:          109 33.3% 9.4%;
-  --primary:                     106 39% 30.2%;
-  --primary-foreground:          60 53.8% 97.5%;
-  --secondary:                   69 30.2% 91.6%;
-  --secondary-foreground:        109 33.3% 9.4%;
-  --muted:                       69 30.2% 91.6%;
-  --muted-foreground:            87 8.2% 37.8%;
-  --accent:                      37 69.3% 50.2%;
-  --accent-foreground:           60 53.8% 97.5%;
-  --destructive:                 14 60% 49%;
-  --destructive-foreground:      60 53.8% 97.5%;
-  --border:                      78 15.6% 87.5%;
-  --input:                       78 15.6% 87.5%;
-  --ring:                        106 39% 30.2%;
-  --chart-1:                     106 39% 30.2%;
-  --chart-2:                     37 69.3% 50.2%;
-  --chart-3:                     86 41.6% 39.6%;
-  --chart-4:                     14 60% 49%;
-  --chart-5:                     87 8.2% 47.8%;
-  --sidebar-background:          74 29.8% 88.8%;
-  --sidebar-foreground:          109 33.3% 9.4%;
-  --sidebar-primary:             106 39% 30.2%;
-  --sidebar-primary-foreground:  60 53.8% 97.5%;
-  --sidebar-accent:              69 30.2% 91.6%;
-  --sidebar-accent-foreground:   109 33.3% 9.4%;
-  --sidebar-border:              79 18.4% 79.8%;
-  --sidebar-ring:                106 39% 30.2%;
-  /* Heat tokens — Meadow light */
-  --acr-heat-cold:      #676E5E;  /* --acr-ink-3 */
-  --acr-heat-warm:      #D89528;  /* --acr-warn  */
-  --acr-heat-hot:       #C85632;  /* --acr-neg   */
-  --acr-heat-cold-soft: rgba(103,110,94,0.14);
-  --acr-heat-warm-soft: rgba(216,149,40,0.16);
-  --acr-heat-hot-soft:  rgba(200,86,50,0.14);
-  /* Density tokens — Meadow light */
-  --acr-density-1: #E9F4E6;
-  --acr-density-2: #9CCD8E;
-  --acr-density-3: #61AA4B;
-  --acr-density-4: #437533;
-}
-
-/* ─────────────── Meadow · dark ─────────────── */
-[data-theme="meadow"].dark {
-  /* --acr-* hex tokens (lifted verbatim from acreos/theme.jsx) */
-  --acr-bg:           #141A10;
-  --acr-bg-sunken:    #0B1008;
-  --acr-bg-raised:    #1D2417;
-  --acr-surface:      #1D2417;
-  --acr-surface-2:    #262E1E;
-  --acr-sidebar-bg:   #0D130A;
-  --acr-sidebar-ink:  #E8ECD4;
-  --acr-line:         rgba(220,240,200,0.10);
-  --acr-line-soft:    rgba(220,240,200,0.05);
-  --acr-ink:          #EEF2E0;
-  --acr-ink-2:        #BCC4AA;
-  /* WCAG-AA verified (Wave-4): #838B72 vs --acr-bg #141A10 = 4.98:1 — passes. */
-  --acr-ink-3:        #838B72;
-  --acr-ink-4:        #535947;
-  --acr-brand:        #8BC76A;
-  --acr-brand-ink:    #0E1508;
-  --acr-brand-soft:   rgba(139,199,106,0.18);
-  --acr-brand-soft-ink: #8BC76A;  /* AA on -soft: 5.47:1 */
-  --acr-accent:       #F2BF55;
-  --acr-accent-text:  var(--acr-accent);  /* dark: resets the light block's ink, which shares this element — base already AA 6.70:1 here */
-  --acr-pos:          #8BC76A;
-  --acr-pos-text:     var(--acr-pos);  /* dark: resets the light block's ink, which shares this element — base already AA 5.47:1 here */
-  --acr-pos-soft:     rgba(139,199,106,0.18);
-  --acr-pos-soft-ink: #8BC76A;  /* AA on -soft: 5.47:1 */
-  --acr-warn:         #F2BF55;
-  --acr-warn-text:    var(--acr-warn);  /* dark: resets the light block's ink, which shares this element — base already AA 6.19:1 here */
-  --acr-warn-soft:    rgba(242,191,85,0.18);
-  --acr-warn-soft-ink: #F2BF55;  /* AA on -soft: 6.19:1 */
-  --acr-neg:          #EA8460;
-  --acr-neg-text:     var(--acr-neg);  /* dark: resets the light block's ink, which shares this element — base already AA 4.51:1 here */
-  --acr-neg-soft:     rgba(234,132,96,0.18);
-  --acr-neg-soft-ink: #EA8460;  /* AA on -soft: 4.51:1 */
-  --acr-glow:         rgba(139,199,106,0.40);
-  --acr-shadow-1:     0 1px 2px rgba(0,0,0,0.4);
-  --acr-shadow-2:     0 2px 4px rgba(0,0,0,0.35), 0 12px 32px -8px rgba(0,0,0,0.55);
-  --acr-shadow-3:     0 4px 8px rgba(0,0,0,0.4), 0 24px 56px -12px rgba(0,0,0,0.65);
-  --acr-ring:         0 0 0 3px rgba(139,199,106,0.35);
-  --acr-chart-a:      #8BC76A;
-  --acr-chart-b:      #F2BF55;
-  --acr-chart-c:      #B0D47E;
-  --acr-chart-d:      #EA8460;
-  /* HSL parallel — keep in sync with --acr-* above. */
-  --background:                  96 23.8% 8.2%;
-  --foreground:                  73 40.9% 91.4%;
-  --card:                        92 22% 11.6%;
-  --card-foreground:             73 40.9% 91.4%;
-  --popover:                     92 22% 11.6%;
-  --popover-foreground:          73 40.9% 91.4%;
-  --primary:                     99 45.4% 59.8%;
-  --primary-foreground:          92 44.8% 5.7%;
-  --secondary:                   90 21.1% 14.9%;
-  --secondary-foreground:        73 40.9% 91.4%;
-  --muted:                       90 21.1% 14.9%;
-  --muted-foreground:            79 9.9% 54.6%;
-  --accent:                      41 85.8% 64.1%;
-  --accent-foreground:           92 44.8% 5.7%;
-  --destructive:                 16 76.7% 64.7%;
-  --destructive-foreground:      92 44.8% 5.7%;
-  --border:                      92 15.5% 19%;
-  --input:                       92 15.5% 19%;
-  --ring:                        99 45.4% 59.8%;
-  --chart-1:                     99 45.4% 59.8%;
-  --chart-2:                     41 85.8% 64.1%;
-  --chart-3:                     85 50% 66.3%;
-  --chart-4:                     16 76.7% 64.7%;
-  --chart-5:                     79 9.9% 49.6%;
-  --sidebar-background:          100 31% 5.7%;
-  --sidebar-foreground:          70 38.7% 87.8%;
-  --sidebar-primary:             99 45.4% 59.8%;
-  --sidebar-primary-foreground:  92 44.8% 5.7%;
-  --sidebar-accent:              90 21.1% 14.9%;
-  --sidebar-accent-foreground:   73 40.9% 91.4%;
-  --sidebar-border:              95 17.1% 13.7%;
-  --sidebar-ring:                99 45.4% 59.8%;
-  /* Heat tokens — Meadow dark */
-  --acr-heat-cold:      #838B72;  /* --acr-ink-3 */
-  --acr-heat-warm:      #F2BF55;  /* --acr-warn  */
-  --acr-heat-hot:       #EA8460;  /* --acr-neg   */
-  --acr-heat-cold-soft: rgba(131,139,114,0.18);
-  --acr-heat-warm-soft: rgba(242,191,85,0.18);
-  --acr-heat-hot-soft:  rgba(234,132,96,0.18);
-  /* Density tokens — Meadow dark */
-  --acr-density-1: #EBF5E5;
-  --acr-density-2: #A2D289;
-  --acr-density-3: #6AB143;
-  --acr-density-4: #497A2E;
-}
-
-/* ─────────────── Slate · light ─────────────── */
-[data-theme="slate"]:root {
-  /* --acr-* hex tokens (lifted verbatim from acreos/theme.jsx) */
-  --acr-bg:           #F1F4F8;
-  --acr-bg-sunken:    #E4E9F0;
-  --acr-bg-raised:    #FFFFFF;
-  --acr-surface:      #FFFFFF;
-  --acr-surface-2:    #EAEEF4;
-  --acr-sidebar-bg:   #E4E9F0;
-  --acr-sidebar-ink:  #0B1220;
-  --acr-line:         rgba(18,30,48,0.14);
-  --acr-line-soft:    rgba(18,30,48,0.07);
-  --acr-ink:          #0B1220;
-  --acr-ink-2:        #38465E;
-  /* WCAG-AA tuning (Wave-4): original #6D7A92 vs --acr-bg #F1F4F8 = 3.93:1
-     — below the 4.5:1 small-text threshold. Darkened to #5F6B80 = 4.88:1. */
-  --acr-ink-3:        #5F6B80;
-  --acr-ink-4:        #A6B0C2;
-  --acr-brand:        #1E4FCC;
-  --acr-brand-ink:    #FFFFFF;
-  --acr-brand-soft:   rgba(30,79,204,0.12);
-  --acr-brand-soft-ink: #1E4FCC;  /* AA on -soft: 5.21:1 */
-  --acr-accent:       #0B7A82;
-  --acr-accent-text:  #0A6B72;  /* text-acr-accent ink: AA 4.67:1 on this theme's surfaces + its /15 wash (was 3.80) */
-  --acr-pos:          #0F7A4A;
-  --acr-pos-text:     #0E7144;  /* text-acr-pos ink: AA 4.67:1 on this theme's surfaces + its -soft wash (was 4.14) */
-  --acr-pos-soft:     rgba(15,122,74,0.12);
-  --acr-pos-soft-ink: #0E7346;  /* AA on -soft: 4.54:1 */
-  --acr-warn:         #B5720A;
-  --acr-warn-text:    #8C5808;  /* text-acr-warn ink: AA 4.73:1 on this theme's surfaces + its -soft wash (was 3.09) */
-  --acr-warn-soft:    rgba(181,114,10,0.12);
-  --acr-warn-soft-ink: #8E5A08;  /* AA on -soft: 4.60:1 */
-  --acr-neg:          #B8213B;
-  --acr-neg-soft:     rgba(184,33,59,0.12);
-  --acr-neg-soft-ink: #B8213B;  /* AA on -soft: 4.74:1 */
-  --acr-glow:         rgba(30,79,204,0.32);
-  --acr-shadow-1:     0 1px 2px rgba(18,30,48,0.06);
-  --acr-shadow-2:     0 1px 2px rgba(18,30,48,0.06), 0 8px 22px -6px rgba(18,30,48,0.14);
-  --acr-shadow-3:     0 2px 4px rgba(18,30,48,0.08), 0 22px 50px -12px rgba(18,30,48,0.2);
-  --acr-ring:         0 0 0 3px rgba(30,79,204,0.28);
-  --acr-chart-a:      #1E4FCC;
-  --acr-chart-b:      #0B7A82;
-  --acr-chart-c:      #B5720A;
-  --acr-chart-d:      #B8213B;
-  /* HSL parallel — keep in sync with --acr-* above. */
-  --background:                  214 33.3% 95.9%;
-  --foreground:                  220 48.8% 8.4%;
-  --card:                        0 0% 100%;
-  --card-foreground:             220 48.8% 8.4%;
-  --popover:                     0 0% 100%;
-  --popover-foreground:          220 48.8% 8.4%;
-  --primary:                     223 74.4% 45.9%;
-  --primary-foreground:          0 0% 100%;
-  --secondary:                   216 31.3% 93.7%;
-  --secondary-foreground:        220 48.8% 8.4%;
-  --muted:                       216 31.3% 93.7%;
-  --muted-foreground:            219 14.5% 43%;
-  --accent:                      184 84.4% 27.6%;
-  --accent-foreground:           0 0% 100%;
-  --destructive:                 350 69.6% 42.5%;
-  --destructive-foreground:      0 0% 100%;
-  --border:                      225 6.5% 87.8%;
-  --input:                       225 6.5% 87.8%;
-  --ring:                        223 74.4% 45.9%;
-  --chart-1:                     223 74.4% 45.9%;
-  --chart-2:                     184 84.4% 27.6%;
-  --chart-3:                     36 89.5% 37.5%;
-  --chart-4:                     350 69.6% 42.5%;
-  --chart-5:                     219 14.5% 50%;
-  --sidebar-background:          215 28.6% 91.8%;
-  --sidebar-foreground:          220 48.8% 8.4%;
-  --sidebar-primary:             223 74.4% 45.9%;
-  --sidebar-primary-foreground:  0 0% 100%;
-  --sidebar-accent:              216 31.3% 93.7%;
-  --sidebar-accent-foreground:   220 48.8% 8.4%;
-  --sidebar-border:              214 14.3% 80.8%;
-  --sidebar-ring:                223 74.4% 45.9%;
-  /* Heat tokens — Slate light */
-  --acr-heat-cold:      #5F6B80;  /* --acr-ink-3 */
-  --acr-heat-warm:      #B5720A;  /* --acr-warn  */
-  --acr-heat-hot:       #B8213B;  /* --acr-neg   */
-  --acr-heat-cold-soft: rgba(95,107,128,0.12);
-  --acr-heat-warm-soft: rgba(181,114,10,0.12);
-  --acr-heat-hot-soft:  rgba(184,33,59,0.12);
-  /* Density tokens — Slate light (closest to the legacy hardcoded blues) */
-  --acr-density-1: #E0E7FA;
-  --acr-density-2: #7193EA;
-  --acr-density-3: #2053D5;
-  --acr-density-4: #163992;
-}
-
-/* ─────────────── Slate · dark ─────────────── */
-[data-theme="slate"].dark {
-  /* --acr-* hex tokens (lifted verbatim from acreos/theme.jsx) */
-  --acr-bg:           #0A1018;
-  --acr-bg-sunken:    #050810;
-  --acr-bg-raised:    #121A26;
-  --acr-surface:      #121A26;
-  --acr-surface-2:    #1A2330;
-  --acr-sidebar-bg:   #060C14;
-  --acr-sidebar-ink:  #E6EDF8;
-  --acr-line:         rgba(180,210,255,0.10);
-  --acr-line-soft:    rgba(180,210,255,0.05);
-  --acr-ink:          #E6EDF8;
-  --acr-ink-2:        #B4BECC;
-  /* WCAG-AA verified (Wave-4): #778294 vs --acr-bg #0A1018 = 4.91:1 — passes. */
-  --acr-ink-3:        #778294;
-  --acr-ink-4:        #4B5566;
-  --acr-brand:        #5B8BFF;
-  --acr-brand-ink:    #07101F;
-  --acr-brand-soft:   rgba(91,139,255,0.18);
-  --acr-brand-soft-ink: #6592FF;  /* AA on -soft: 4.57:1 */
-  --acr-accent:       #4BC3CC;
-  --acr-accent-text:  var(--acr-accent);  /* dark: resets the light block's ink, which shares this element — base already AA 6.27:1 here */
-  --acr-pos:          #4CC88A;
-  --acr-pos-text:     var(--acr-pos);  /* dark: resets the light block's ink, which shares this element — base already AA 5.87:1 here */
-  --acr-pos-soft:     rgba(76,200,138,0.18);
-  --acr-pos-soft-ink: #4CC88A;  /* AA on -soft: 5.87:1 */
-  --acr-warn:         #EAB14A;
-  --acr-warn-text:    var(--acr-warn);  /* dark: resets the light block's ink, which shares this element — base already AA 6.33:1 here */
-  --acr-warn-soft:    rgba(234,177,74,0.18);
-  --acr-warn-soft-ink: #EAB14A;  /* AA on -soft: 6.33:1 */
-  --acr-neg:          #F1536E;
-  --acr-neg-text:     #F2647C;  /* text-acr-neg ink: AA 4.65:1 on this theme's surfaces + its -soft wash (was 4.19) */
-  --acr-neg-soft:     rgba(241,83,110,0.18);
-  --acr-neg-soft-ink: #F25F78;  /* AA on -soft: 4.52:1 */
-  --acr-glow:         rgba(91,139,255,0.45);
-  --acr-shadow-1:     0 1px 2px rgba(0,0,0,0.5);
-  --acr-shadow-2:     0 2px 4px rgba(0,0,0,0.4), 0 12px 32px -8px rgba(0,0,0,0.6);
-  --acr-shadow-3:     0 4px 8px rgba(0,0,0,0.45), 0 24px 56px -12px rgba(0,0,0,0.7);
-  --acr-ring:         0 0 0 3px rgba(91,139,255,0.4);
-  --acr-chart-a:      #5B8BFF;
-  --acr-chart-b:      #4BC3CC;
-  --acr-chart-c:      #EAB14A;
-  --acr-chart-d:      #F1536E;
-  /* HSL parallel — keep in sync with --acr-* above. */
-  --background:                  214 41.2% 6.7%;
-  --foreground:                  217 56.3% 93.7%;
-  --card:                        216 35.7% 11%;
-  --card-foreground:             217 56.3% 93.7%;
-  --popover:                     216 35.7% 11%;
-  --popover-foreground:          217 56.3% 93.7%;
-  --primary:                     222 100% 67.8%;
-  --primary-foreground:          218 63.2% 7.5%;
-  --secondary:                   215 29.7% 14.5%;
-  --secondary-foreground:        217 56.3% 93.7%;
-  --muted:                       215 29.7% 14.5%;
-  --muted-foreground:            217 11.9% 56.4%;
-  --accent:                      184 55.8% 54.7%;
-  --accent-foreground:           218 63.2% 7.5%;
-  --destructive:                 350 84.9% 63.5%;
-  --destructive-foreground:      218 63.2% 7.5%;
-  --border:                      217 27.7% 18.4%;
-  --input:                       217 27.7% 18.4%;
-  --ring:                        222 100% 67.8%;
-  --chart-1:                     222 100% 67.8%;
-  --chart-2:                     184 55.8% 54.7%;
-  --chart-3:                     39 79.2% 60.4%;
-  --chart-4:                     350 84.9% 63.5%;
-  --chart-5:                     217 11.9% 52.4%;
-  --sidebar-background:          214 53.8% 5.1%;
-  --sidebar-foreground:          217 56.3% 93.7%;
-  --sidebar-primary:             222 100% 67.8%;
-  --sidebar-primary-foreground:  218 63.2% 7.5%;
-  --sidebar-accent:              215 29.7% 14.5%;
-  --sidebar-accent-foreground:   217 56.3% 93.7%;
-  --sidebar-border:              214 31.3% 13.1%;
-  --sidebar-ring:                222 100% 67.8%;
-  /* Heat tokens — Slate dark */
-  --acr-heat-cold:      #778294;  /* --acr-ink-3 */
-  --acr-heat-warm:      #EAB14A;  /* --acr-warn  */
-  --acr-heat-hot:       #F1536E;  /* --acr-neg   */
-  --acr-heat-cold-soft: rgba(119,130,148,0.18);
-  --acr-heat-warm-soft: rgba(234,177,74,0.18);
-  --acr-heat-hot-soft:  rgba(241,83,110,0.18);
-  /* Density tokens — Slate dark */
-  --acr-density-1: #DBE6FF;
-  --acr-density-2: #5C8DFF;
-  --acr-density-3: #0049F5;
-  --acr-density-4: #0032A8;
-}
 
 @layer base {
   * {
@@ -1415,6 +946,16 @@
 }
 
 /* Apple-style Glass Panel Effect — Liquid Glass */
+/* The `> :not(.absolute):not(.fixed):not(.sticky)` child rules below lift
+   in-flow children above the ::before specular layer. They used to read
+   `> *`: unlayered and later in the file than Tailwind's utilities, they beat
+   `.absolute` on equal specificity — so every dialog's top-left close button
+   (an absolute child of .modal-surface) fell into flow at the bottom of the
+   dialog (found in the Fieldstone redesign's screenshots, 2026-10-18).
+   The companion `> :is(.absolute, .fixed, .sticky) { z-index: 2 }` keeps a
+   positioned child (that close button) ABOVE the z-index:1 in-flow layer —
+   without it the dialog header box covered the button and swallowed its
+   clicks (CI: e2e-mobile billing journey, 2026-10-19). */
 .glass-panel {
   position: relative;
   backdrop-filter: blur(32px) saturate(190%);
@@ -1433,7 +974,8 @@
   pointer-events: none;
   z-index: 0;
 }
-.glass-panel > * { position: relative; z-index: 1; }
+.glass-panel > :not(.absolute):not(.fixed):not(.sticky) { position: relative; z-index: 1; }
+.glass-panel > :is(.absolute, .fixed, .sticky) { z-index: 2; }
 
 /* ── Liquid Glass material primitives ─────────────────────────────── */
 .liquid-glass {
@@ -1454,7 +996,8 @@
   pointer-events: none;
   z-index: 0;
 }
-.liquid-glass > * { position: relative; z-index: 1; }
+.liquid-glass > :not(.absolute):not(.fixed):not(.sticky) { position: relative; z-index: 1; }
+.liquid-glass > :is(.absolute, .fixed, .sticky) { z-index: 2; }
 
 .liquid-glass-sm {
   position: relative;
@@ -1474,7 +1017,8 @@
   pointer-events: none;
   z-index: 0;
 }
-.liquid-glass-sm > * { position: relative; z-index: 1; }
+.liquid-glass-sm > :not(.absolute):not(.fixed):not(.sticky) { position: relative; z-index: 1; }
+.liquid-glass-sm > :is(.absolute, .fixed, .sticky) { z-index: 2; }
 
 .liquid-glass-subtle {
   position: relative;
@@ -1494,7 +1038,8 @@
   pointer-events: none;
   z-index: 0;
 }
-.liquid-glass-subtle > * { position: relative; z-index: 1; }
+.liquid-glass-subtle > :not(.absolute):not(.fixed):not(.sticky) { position: relative; z-index: 1; }
+.liquid-glass-subtle > :is(.absolute, .fixed, .sticky) { z-index: 2; }
 
 /* ── Touch-device glass budget ──────────────────────────────────────
    iOS Safari has a hard GPU tile budget; every backdrop-filter surface
@@ -1548,7 +1093,8 @@
   pointer-events: none;
   z-index: 0;
 }
-.modal-surface > * { position: relative; z-index: 1; }
+.modal-surface > :not(.absolute):not(.fixed):not(.sticky) { position: relative; z-index: 1; }
+.modal-surface > :is(.absolute, .fixed, .sticky) { z-index: 2; }
 
 /* ── Tab-strip overflow ─────────────────────────────────────────────
    Applied by the base TabsList. Lets any tab strip scroll horizontally
@@ -1670,6 +1216,16 @@
 
 /* section — h2-grade in-page section heads (Decision Queue, Activity, …)
    Keeps --font-display identity at body weight so it reads below the H1. */
+/* Today's subline under the editorial greeting — Inter, body scale, muted. */
+.acr-cc-subline {
+  font: 400 17px/1.45 var(--font-sans);
+  color: var(--acr-ink-3);
+  margin: 6px 0 0;
+  max-width: 640px;
+}
+@media (max-width: 720px) {
+  .acr-cc-subline { font-size: 16px; }
+}
 .acr-section-h2 {
   font: 500 18px/1.2 var(--font-display, var(--font-sans));
   letter-spacing: -0.015em;
@@ -1707,17 +1263,47 @@
 }
 
 /* Sidebar surface — consolidated alias for .sidebar-vibrancy (Phase 9 block below).
-   Both classes apply the same blur/saturation/background. Only one definition
-   drives the values; this alias keeps existing .vibrancy-sidebar call sites working
-   without a JSX diff. Do not add independent background overrides here —
-   edit .sidebar-vibrancy instead. */
+   Both classes apply the same material. Only one definition drives the values;
+   this alias keeps existing .vibrancy-sidebar call sites working without a JSX
+   diff. Do not add independent background overrides here — edit
+   .sidebar-vibrancy instead.
+
+   THE RAIL IS ITS OWN TOKEN SCOPE (Fieldstone redesign). Every colorway's
+   navigation rail is dark — next to a light page in light mode — so the page
+   ink ramp cannot be reused inside it: `text-muted-foreground` there would be
+   dark-grey-on-forest. Instead the rail re-points the shared tokens at its
+   own ramp, and every descendant utility (text-muted-foreground, bg-accent,
+   border-border, text-primary, the active-item surface, focus rings) inherits
+   rail-correct colours with no per-component class. Portalled popovers and
+   menus render outside the rail and keep the page ramp. Contrast of this
+   ramp is pinned by tests/unit/statusInkContrast.test.ts. */
+.vibrancy-sidebar,
+.sidebar-vibrancy {
+  --foreground:          var(--sidebar-foreground);
+  --muted-foreground:    var(--sidebar-muted-foreground);
+  --accent:              var(--sidebar-accent);
+  --accent-foreground:   var(--sidebar-accent-foreground);
+  --border:              var(--sidebar-border);
+  --primary:             var(--sidebar-primary);
+  --primary-foreground:  var(--sidebar-primary-foreground);
+  --ring:                var(--sidebar-ring);
+  --background:          var(--sidebar-background);
+  --acr-ink:             var(--acr-sidebar-ink);
+  --acr-ink-2:           var(--acr-sidebar-ink);
+  --acr-ink-3:           var(--acr-sidebar-ink-2);
+  --acr-line:            var(--acr-sidebar-line);
+  --acr-line-soft:       var(--acr-sidebar-line);
+  --acr-surface:         var(--acr-sidebar-raised);
+  --acr-brand:           var(--acr-sidebar-brand);
+  color: hsl(var(--sidebar-foreground));
+}
 .vibrancy-sidebar {
   backdrop-filter: blur(28px) saturate(185%);
   -webkit-backdrop-filter: blur(28px) saturate(185%);
-  background: color-mix(in srgb, var(--acr-sidebar-bg) 82%, transparent);
+  background: color-mix(in srgb, var(--acr-sidebar-bg) 96%, transparent);
 }
 .dark .vibrancy-sidebar {
-  background: color-mix(in srgb, var(--acr-sidebar-bg) 86%, transparent);
+  background: color-mix(in srgb, var(--acr-sidebar-bg) 96%, transparent);
 }
 
 /* Animation utilities */
@@ -1902,12 +1488,12 @@ body[data-offline-banner="true"] [data-page-topbar] {
 .sidebar-vibrancy {
   backdrop-filter: blur(28px) saturate(185%);
   -webkit-backdrop-filter: blur(28px) saturate(185%);
-  background: color-mix(in srgb, var(--acr-sidebar-bg) 82%, transparent);
-  border-right: 1px solid var(--acr-line-soft);
+  background: color-mix(in srgb, var(--acr-sidebar-bg) 96%, transparent);
+  border-right: 1px solid var(--acr-sidebar-line);
 }
 .dark .sidebar-vibrancy {
-  background: color-mix(in srgb, var(--acr-sidebar-bg) 86%, transparent);
-  border-right: 1px solid var(--acr-line-soft);
+  background: color-mix(in srgb, var(--acr-sidebar-bg) 96%, transparent);
+  border-right: 1px solid var(--acr-sidebar-line);
 }
 
 /* Active nav item — homestead treatment per acreos/shell.jsx:195-203

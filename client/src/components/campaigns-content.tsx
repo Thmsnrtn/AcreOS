@@ -1076,7 +1076,7 @@ function CampaignDetailDrawer({ campaign, onClose }: { campaign: Campaign; onClo
                       <DollarSign className="w-3.5 h-3.5" aria-hidden="true" />
                       Cost per response
                     </span>
-                    <span className="font-mono font-medium tabular-nums">${mailAttribution.costPerResponse.toFixed(2)}</span>
+                    <span className="font-medium tabular-nums">${mailAttribution.costPerResponse.toFixed(2)}</span>
                   </div>
                 )}
                 <div className="flex items-center justify-between text-sm">
@@ -1084,7 +1084,7 @@ function CampaignDetailDrawer({ campaign, onClose }: { campaign: Campaign; onClo
                     <DollarSign className="w-3.5 h-3.5" aria-hidden="true" />
                     Total spend
                   </span>
-                  <span className="font-mono tabular-nums">${(mailAttribution.totalCostCents / 100).toFixed(2)}</span>
+                  <span className="tabular-nums">${(mailAttribution.totalCostCents / 100).toFixed(2)}</span>
                 </div>
               </CardContent>
             </Card>
@@ -1128,7 +1128,7 @@ function CampaignDetailDrawer({ campaign, onClose }: { campaign: Campaign; onClo
               <CardContent>
                 <div className="flex justify-between items-center">
                   <span className="text-muted-foreground">Spent</span>
-                  <span className="font-mono tabular-nums">{usd(campaign.spent, { noCents: true })} / {usd(campaign.budget, { noCents: true })}</span>
+                  <span className="tabular-nums">{usd(campaign.spent, { noCents: true })} / {usd(campaign.budget, { noCents: true })}</span>
                 </div>
                 <Progress
                   value={Number(campaign.budget) > 0 ? (Number(campaign.spent || 0) / Number(campaign.budget) * 100) : 0}

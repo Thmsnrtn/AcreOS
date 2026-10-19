@@ -1,5 +1,13 @@
 # AcreOS Bold Tahoe Re-Skin — Treatment Recipe (Wave R0)
 
+> **Superseded in part (2026-10-18, Fieldstone redesign):** the theme list,
+> font pairings, density/motion appearance pickers and the Bedrock/terracotta
+> defaults described here are retired. Current: three colorways (Fieldstone
+> default, Bedrock, Meridian), one type system (Fraunces + Inter), Appearance =
+> Colorway + Display only — see `docs/design/design-language.md` §0.1, §1.1,
+> §1.2 and §1.6.
+
+
 > **The shared playbook.** Every surface-re-skin agent applies THIS recipe,
 > identically, so the platform-wide re-skin stays coherent and does not fragment
 > into per-agent taste. This is the contract — when the prose here disagrees with

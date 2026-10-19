@@ -614,7 +614,7 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
                     {isAggregatesLoading ? (
                       <Skeleton className="h-7 md:h-8 w-20" data-testid="skeleton-pipeline-value" />
                     ) : (
-                      <p className="text-lg md:text-2xl font-bold font-mono tabular-nums truncate" data-testid="text-pipeline-value">
+                      <p className="text-lg md:text-2xl font-bold tabular-nums truncate" data-testid="text-pipeline-value">
                         {usd(totalPipelineValue, { noCents: true })}
                       </p>
                     )}
@@ -634,7 +634,7 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
                     {isAggregatesLoading ? (
                       <Skeleton className="h-7 md:h-8 w-20" data-testid="skeleton-closed-value" />
                     ) : (
-                      <p className="text-lg md:text-2xl font-bold font-mono tabular-nums text-acr-pos truncate" data-testid="text-closed-value">
+                      <p className="text-lg md:text-2xl font-bold tabular-nums text-acr-pos truncate" data-testid="text-closed-value">
                         {usd(closedValue, { noCents: true })}
                       </p>
                     )}
@@ -1361,7 +1361,7 @@ function DealCard({ deal, onSelect, isDragging = false, isSelected, onToggleSele
             {/* Row 3: deal amount — big readable number */}
             {amountValue && (
               <div className="mt-2.5 flex items-baseline gap-1">
-                <span className="text-lg font-semibold font-mono tabular-nums text-acr-pos leading-none">
+                <span className="text-lg font-semibold tabular-nums text-acr-pos leading-none">
                   {usd(amountValue, { noCents: true })}
                 </span>
                 {deal.acceptedAmount && deal.offerAmount && deal.acceptedAmount !== deal.offerAmount && (

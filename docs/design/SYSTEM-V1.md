@@ -1,4 +1,12 @@
 > **⚠️ SUPERSEDED (2026-06-11) by [`docs/design/design-language.md`](./design-language.md).**
+
+> **Superseded in part (2026-10-18, Fieldstone redesign):** the theme list,
+> font pairings, density/motion appearance pickers and the Bedrock/terracotta
+> defaults described here are retired. Current: three colorways (Fieldstone
+> default, Bedrock, Meridian), one type system (Fraunces + Inter), Appearance =
+> Colorway + Display only — see `docs/design/design-language.md` §0.1, §1.1,
+> §1.2 and §1.6.
+
 > That document is now the single canonical, code-synced source of truth — it
 > blesses + folds in this spec (typography §1.2, motion §2, color §3, components
 > §4) and adds the three green-field scales (spacing/grid, z-index, translucency),

@@ -9,15 +9,48 @@ interface AcreosLogoProps extends React.SVGAttributes<SVGSVGElement> {
 }
 
 /**
- * AcreOS brandmark.
+ * The AcreOS mark — ONE geometry everywhere (Fieldstone redesign, 2026-10-18).
  *
- * The mark is a parcel-outline geometry evoking aerial land boundaries
- * + a bold "A" aperture — the shape reads as land plot first, letter
- * second. Uses currentColor so it inherits text color from context.
+ * An "A" drawn as land: an outer peaked parcel line (the boundary, flat at
+ * the summit like a surveyed lot) and an inner chevron in the colorway's
+ * accent (the horizon/aperture of the earlier mark). The same two paths are
+ * in client/public/favicon.svg and favicon-maskable.svg, rasterized by
+ * scripts/generate-icons.mjs, and in the landing nav — pinned by
+ * tests/unit/brandMarkIsOne.test.ts.
  *
- * Replaces the placeholder `<span>A</span>` square that's been sitting
- * on the landing nav, emails, and auth surfaces since launch.
+ * Theme-aware: the boundary uses currentColor (ink on light content, rail ink
+ * on the dark navigation rail) and the chevron uses --acr-accent (brass,
+ * dust-gold or copper by colorway), with the Fieldstone brass as fallback
+ * for surfaces outside the token scope.
  */
+export const ACREOS_MARK_PATHS = {
+  boundary: "M3.5 27 L13.4 5 L18.6 5 L28.5 27",
+  chevron: "M10.6 27 L17.3 12.6 L24 27",
+} as const;
+
+export function AcreosMark({ size = 32, ...rest }: { size?: number } & React.SVGAttributes<SVGSVGElement>) {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 32 32" width={size} height={size} xmlns="http://www.w3.org/2000/svg" {...rest}>
+      <path
+        d={ACREOS_MARK_PATHS.boundary}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinejoin="miter"
+        strokeLinecap="square"
+      />
+      <path
+        d={ACREOS_MARK_PATHS.chevron}
+        fill="none"
+        stroke="var(--acr-accent, #B79A5B)"
+        strokeWidth="2.2"
+        strokeLinejoin="miter"
+        strokeLinecap="square"
+      />
+    </svg>
+  );
+}
+
 export function AcreosLogo({
   variant = "full",
   size = 32,
@@ -33,40 +66,13 @@ export function AcreosLogo({
       role="img"
       aria-label="AcreOS"
     >
-      {showMark && (
-        <svg
-          aria-hidden="true"
-          viewBox="0 0 32 32"
-          width={size}
-          height={size}
-          xmlns="http://www.w3.org/2000/svg"
-          {...rest}
-        >
-          {/* Parcel outline: slightly irregular to evoke real land lots */}
-          <path
-            d="M5 6 L27 4 L29 18 L24 27 L7 26 L3 14 Z"
-            fill="url(#acreos-gradient)"
-            stroke="currentColor"
-            strokeOpacity="0.15"
-            strokeWidth="0.75"
-          />
-          {/* "A" aperture cut — negative space reads as both letter and horizon */}
-          <path
-            d="M16 9 L22 22 L18.75 22 L17.5 19 L14 19 L12.75 22 L9.5 22 Z M15 17 L17 17 L16 14 Z"
-            fill="white"
-            fillOpacity="0.95"
-          />
-          <defs>
-            <linearGradient id="acreos-gradient" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
-              {/* brand primary → accent (Saddle Brown → Desert Sage) */}
-              <stop offset="0%" stopColor="hsl(25 70% 35%)" />
-              <stop offset="100%" stopColor="hsl(160 25% 40%)" />
-            </linearGradient>
-          </defs>
-        </svg>
-      )}
+      {showMark && <AcreosMark size={size} {...rest} />}
       {showWord && (
-        <span className="font-bold tracking-tight leading-none" style={{ fontSize: size * 0.6 }}>
+        <span
+          aria-hidden="true"
+          className="font-display font-semibold leading-none"
+          style={{ fontSize: size * 0.72, letterSpacing: "-0.02em" }}
+        >
           AcreOS
         </span>
       )}

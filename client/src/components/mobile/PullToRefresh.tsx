@@ -162,7 +162,7 @@ export function PullToRefresh({
   return (
     <div
       ref={containerRef}
-      className={cn("relative overflow-auto", className)}
+      className="relative overflow-auto"
       data-testid="pull-to-refresh-container"
     >
       {/* Pull indicator */}
@@ -217,6 +217,13 @@ export function PullToRefresh({
           transitionProperty: "transform",
           transitionDuration: pullState === "idle" || pullState === "refreshing" ? "200ms" : "0ms",
         }}
+        // The caller's className (Today passes its section rhythm,
+        // `space-y-6 md:space-y-8`) belongs on the element that actually
+        // holds the children. It sat on the outer container, whose only
+        // children are the indicator and this wrapper — so on phones (the
+        // only place this branch renders) every Today section touched the
+        // next. Same element as the disabled branch's <div className>.
+        className={className}
         data-testid="pull-to-refresh-content"
       >
         {children}

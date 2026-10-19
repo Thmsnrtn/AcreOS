@@ -336,7 +336,7 @@ export default function PortfolioPage({ embedded = false }: { embedded?: boolean
                       {isLoading ? (
                         <Skeleton className="h-8 w-24" />
                       ) : (
-                        <dd className="text-2xl font-bold font-mono tabular-nums m-0" data-testid="text-total-portfolio-value">
+                        <dd className="text-2xl font-bold tabular-nums m-0" data-testid="text-total-portfolio-value">
                           {formatCurrency(summary?.totalPortfolioValue || 0)}
                         </dd>
                       )}
@@ -356,7 +356,7 @@ export default function PortfolioPage({ embedded = false }: { embedded?: boolean
                       {isLoading ? (
                         <Skeleton className="h-8 w-24" />
                       ) : (
-                        <dd className="text-2xl font-bold font-mono tabular-nums text-acr-pos m-0" data-testid="text-monthly-cashflow">
+                        <dd className="text-2xl font-bold tabular-nums text-acr-pos m-0" data-testid="text-monthly-cashflow">
                           {formatCurrency(summary?.totalMonthlyPayment || 0)}
                         </dd>
                       )}
@@ -376,7 +376,7 @@ export default function PortfolioPage({ embedded = false }: { embedded?: boolean
                       {isLoading ? (
                         <Skeleton className="h-8 w-24" />
                       ) : (
-                        <dd className="text-2xl font-bold font-mono tabular-nums m-0" data-testid="text-avg-interest-rate">
+                        <dd className="text-2xl font-bold tabular-nums m-0" data-testid="text-avg-interest-rate">
                           {formatPercent(summary?.averageInterestRate || 0)}
                         </dd>
                       )}
@@ -396,7 +396,7 @@ export default function PortfolioPage({ embedded = false }: { embedded?: boolean
                       {isLoading ? (
                         <Skeleton className="h-8 w-16" />
                       ) : (
-                        <dd className="text-2xl font-bold font-mono tabular-nums m-0" data-testid="text-active-notes-count">
+                        <dd className="text-2xl font-bold tabular-nums m-0" data-testid="text-active-notes-count">
                           {summary?.activeNotes || 0}
                         </dd>
                       )}
@@ -733,7 +733,7 @@ export default function PortfolioPage({ embedded = false }: { embedded?: boolean
                     <dl className="grid grid-cols-2 gap-4 m-0">
                       <div className="p-4 rounded-card bg-muted/50">
                         <dt className="text-sm text-muted-foreground">Delinquency rate</dt>
-                        <dd className="text-2xl font-bold font-mono tabular-nums m-0" data-testid="text-delinquency-rate">
+                        <dd className="text-2xl font-bold tabular-nums m-0" data-testid="text-delinquency-rate">
                           {formatPercent(delinquency?.delinquencyRate || 0)}
                         </dd>
                       </div>
@@ -823,13 +823,13 @@ export default function PortfolioPage({ embedded = false }: { embedded?: boolean
                 <dl className="flex justify-center gap-8 mt-4 text-sm m-0">
                   <div>
                     <dt className="text-muted-foreground inline">Total principal collected: </dt>
-                    <dd className="font-mono font-semibold tabular-nums inline m-0" data-testid="text-total-principal-collected">
+                    <dd className="font-semibold tabular-nums inline m-0" data-testid="text-total-principal-collected">
                       {formatCurrency(delinquency?.totalPrincipalCollected || 0)}
                     </dd>
                   </div>
                   <div>
                     <dt className="text-muted-foreground inline">Total interest collected: </dt>
-                    <dd className="font-mono font-semibold tabular-nums text-acr-pos inline m-0" data-testid="text-total-interest-collected">
+                    <dd className="font-semibold tabular-nums text-acr-pos inline m-0" data-testid="text-total-interest-collected">
                       {formatCurrency(delinquency?.totalInterestCollected || 0)}
                     </dd>
                   </div>
@@ -852,7 +852,7 @@ export default function PortfolioPage({ embedded = false }: { embedded?: boolean
                       {isLoading ? (
                         <Skeleton className="h-8 w-24" />
                       ) : (
-                        <dd className="text-2xl font-bold font-mono tabular-nums m-0" data-testid="text-total-invested">
+                        <dd className="text-2xl font-bold tabular-nums m-0" data-testid="text-total-invested">
                           {formatCurrency(projections?.totalInvested || 0)}
                         </dd>
                       )}
@@ -872,7 +872,7 @@ export default function PortfolioPage({ embedded = false }: { embedded?: boolean
                       {isLoading ? (
                         <Skeleton className="h-8 w-24" />
                       ) : (
-                        <dd className="text-2xl font-bold font-mono tabular-nums text-acr-pos m-0" data-testid="text-total-collected">
+                        <dd className="text-2xl font-bold tabular-nums text-acr-pos m-0" data-testid="text-total-collected">
                           {formatCurrency(projections?.totalCollected || 0)}
                         </dd>
                       )}
@@ -1011,7 +1011,7 @@ export default function PortfolioPage({ embedded = false }: { embedded?: boolean
                   {isLoading ? (
                     <Skeleton className="h-8 w-24 mt-1" />
                   ) : (
-                    <dd className="text-2xl font-bold font-mono tabular-nums text-acr-pos m-0" data-testid="text-expected-interest">
+                    <dd className="text-2xl font-bold tabular-nums text-acr-pos m-0" data-testid="text-expected-interest">
                       {formatCurrency(projections?.amortizationSummary.totalExpectedInterest || 0)}
                     </dd>
                   )}

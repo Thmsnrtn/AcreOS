@@ -1,42 +1,22 @@
 <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
   <!--
-    AcreOS app icon — new brand mark (2026-05-25).
+    AcreOS app icon — Fieldstone identity (2026-10-18).
 
-    Design: 2×2 acre-grid (the parcel motif) on terracotta. Three cells
-    are empty (terracotta showing through cream hairlines); the top-right
-    cell is filled cream — the "claimed acre."
+    The one AcreOS mark (client/src/components/acreos-logo.tsx — the same two
+    paths): an outer peaked parcel line in limestone and an inner brass
+    chevron, on the Fieldstone forest. Static installed icons always use the
+    default Fieldstone identity, whatever colorway a person picks in the app.
 
-    Canvas is FULL-BLEED terracotta. iOS and Android apply their own
-    squircle / adaptive-icon mask, so we do NOT bake rounded corners
-    here — that would result in a double-rounded "icon-on-white" look.
+    Canvas is FULL-BLEED forest. iOS and Android apply their own squircle /
+    adaptive mask, so no rounded corners are baked in. The glyph spans the
+    central ~49% (well inside every platform's safe area). The companion
+    favicon-maskable.svg shrinks it further for aggressive Android masks.
 
-    Companion file `favicon-maskable.svg` shrinks the grid into the
-    central 80% safe zone for Android adaptive-icon masks that may crop
-    aggressively (circle / teardrop / etc).
+    Rasterized by `node scripts/generate-icons.mjs` — never edit the PNGs.
   -->
-
-  <!-- Full-bleed terracotta canvas -->
-  <rect width="1024" height="1024" fill="#C45C3E"/>
-
-  <!--
-    2×2 grid. The mark sits in the central ~52% of the canvas:
-    glyph 540×540 centred at (512,512). Each cell is 270×270.
-    Hairlines are cream at 12px (the brand stroke thickness — visible
-    even at 60px iOS Spotlight size after downscale).
-  -->
-  <g>
-    <!-- Filled top-right cell -->
-    <rect x="512" y="242" width="270" height="270" fill="#F9EDDB"/>
-
-    <!-- Outer frame (single rect for clean joins) -->
-    <rect
-      x="242" y="242" width="540" height="540"
-      fill="none" stroke="#F9EDDB" stroke-width="12"
-      stroke-linejoin="miter"
-    />
-
-    <!-- Inner crosshair -->
-    <line x1="512" y1="242" x2="512" y2="782" stroke="#F9EDDB" stroke-width="12"/>
-    <line x1="242" y1="512" x2="782" y2="512" stroke="#F9EDDB" stroke-width="12"/>
+  <rect width="1024" height="1024" fill="#123B32"/>
+  <g transform="translate(224 224) scale(18)">
+    <path d="M3.5 27 L13.4 5 L18.6 5 L28.5 27" fill="none" stroke="#F2F3EB" stroke-width="2.2" stroke-linejoin="miter" stroke-linecap="square"/>
+    <path d="M10.6 27 L17.3 12.6 L24 27" fill="none" stroke="#D2B77C" stroke-width="2.2" stroke-linejoin="miter" stroke-linecap="square"/>
   </g>
 </svg>

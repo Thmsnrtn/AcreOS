@@ -291,7 +291,7 @@ function HeartbeatMonitor() {
               >
                 <div className="bg-primary h-3 rounded-full" style={{ width: `${Math.min(100, Number(heartbeat?.escalationRatio || 0))}%` }} />
               </div>
-              <span className="text-sm font-mono tabular-nums">{Number(heartbeat?.escalationRatio || 0).toFixed(1)}%</span>
+              <span className="text-sm tabular-nums">{Number(heartbeat?.escalationRatio || 0).toFixed(1)}%</span>
             </div>
           </CardContent>
         </Card>
@@ -309,7 +309,7 @@ function HeartbeatMonitor() {
               >
                 <div className="bg-acr-pos h-3 rounded-full" style={{ width: `${Math.min(100, Number(heartbeat?.feedbackClosureRate || 0))}%` }} />
               </div>
-              <span className="text-sm font-mono tabular-nums">{Number(heartbeat?.feedbackClosureRate || 0).toFixed(1)}%</span>
+              <span className="text-sm tabular-nums">{Number(heartbeat?.feedbackClosureRate || 0).toFixed(1)}%</span>
             </div>
           </CardContent>
         </Card>
@@ -929,7 +929,7 @@ function LearningEngine() {
                   >
                     <div className={`h-2 rounded-full ${c.isOverconfident ? "bg-acr-warn" : "bg-acr-pos"}`} style={{ width: `${c.actualSuccessRate}%` }} />
                   </div>
-                  <span className="text-xs font-mono tabular-nums w-20 text-right">
+                  <span className="text-xs tabular-nums w-20 text-right">
                     {c.actualSuccessRate}% real / {c.averageConfidence}% pred
                   </span>
                 </li>

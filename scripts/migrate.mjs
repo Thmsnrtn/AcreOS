@@ -3004,9 +3004,16 @@ $mig0262$`,
   `UPDATE users
      SET appearance_preferences = jsonb_set(appearance_preferences, '{theme}', '"bedrock"'::jsonb)
      WHERE appearance_preferences->>'theme' = 'dirtpass'`,
-  `UPDATE users
-     SET appearance_preferences = appearance_preferences - 'theme'
-     WHERE appearance_preferences->>'theme' = 'homestead'`,
+  // The second statement (2026-05-16) DELETED the theme from every
+  // 'homestead' row. It was removed by the Fieldstone redesign (founder
+  // decision 2026-10-18: Homestead -> Bedrock, docs/company/
+  // founder-decisions-2026-10-18-fieldstone.md). This script runs as Fly's
+  // release_command on EVERY deploy, so leaving it would wipe exactly the
+  // rows that decision says to keep, before the new code could read them.
+  // No rewrite replaces it: server/routes-preferences.ts normalizes a stored
+  // 'homestead' to 'bedrock' on read (shared/appearance.ts), so no customer
+  // preference row is touched. Pinned by
+  // tests/unit/appearanceMigrationAgreesWithContract.test.ts.
 
   // email_suppressions: deliverability extensions (0056 Part 4)
   `ALTER TABLE email_suppressions ADD COLUMN IF NOT EXISTS bounce_category text`,

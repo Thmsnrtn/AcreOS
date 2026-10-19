@@ -430,7 +430,7 @@ export function CostContent() {
                               <SourceBadge source={v.source} />
                             </div>
                           </TableCell>
-                          <TableCell className="text-right font-mono text-sm tabular-nums">
+                          <TableCell className="text-right text-sm tabular-nums">
                             {fmtUsd(v.usd)}
                           </TableCell>
                           <TableCell className="text-xs text-muted-foreground hidden sm:table-cell">
@@ -470,7 +470,7 @@ export function CostContent() {
                         {data.topOrgs.map((o) => (
                           <TableRow key={o.organizationId}>
                             <TableCell className="font-medium text-sm">{o.organizationName}</TableCell>
-                            <TableCell className="text-right font-mono text-sm tabular-nums">
+                            <TableCell className="text-right text-sm tabular-nums">
                               {fmtUsd(o.usd)}
                             </TableCell>
                             <TableCell className="text-right text-xs text-muted-foreground hidden sm:table-cell tabular-nums">

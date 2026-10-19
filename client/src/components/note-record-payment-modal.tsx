@@ -481,13 +481,13 @@ export function NoteRecordPaymentModal({ open, onOpenChange, note }: Props) {
             >
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Gross cash applied</span>
-                <span className="font-mono tabular-nums">
+                <span className="tabular-nums">
                   {fmtUsd(preview.grossCash)}
                 </span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">New current balance</span>
-                <span className="font-mono tabular-nums">
+                <span className="tabular-nums">
                   {fmtUsd(preview.newCurrentBalance)}{" "}
                   <span className="text-xs text-muted-foreground">
                     ({preview.principalApplied >= 0 ? "−" : "+"}
@@ -498,7 +498,7 @@ export function NoteRecordPaymentModal({ open, onOpenChange, note }: Props) {
               {preview.unappliedDelta !== 0 && (
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">New unapplied balance</span>
-                  <span className="font-mono tabular-nums">
+                  <span className="tabular-nums">
                     {fmtUsd(preview.newUnappliedBalance)}{" "}
                     <span className="text-xs text-muted-foreground">
                       ({preview.unappliedDelta >= 0 ? "+" : "−"}

@@ -1,26 +1,16 @@
 <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
   <!--
-    AcreOS app icon — maskable variant.
+    AcreOS app icon — maskable variant (Fieldstone, 2026-10-18).
 
-    Same brand mark as favicon.svg but the grid glyph is shrunk and
-    inset so it stays inside the central 80% safe zone Android's
-    adaptive-icon masks (circle, squircle, teardrop, rounded square)
-    require. The terracotta canvas remains full-bleed.
+    Same mark as favicon.svg, scaled so the glyph stays inside the central
+    80% safe-zone circle Android adaptive-icon masks require (the glyph's
+    corners sit within ~31% of the canvas radius). Forest stays full-bleed.
   -->
-  <rect width="1024" height="1024" fill="#C45C3E"/>
-
-  <!--
-    Grid centred at (512,512), scaled to ~62% of canvas — comfortably
-    inside the 80% safe-zone circle.
-  -->
-  <g transform="translate(512 512) scale(0.62) translate(-512 -512)">
-    <rect x="512" y="242" width="270" height="270" fill="#F9EDDB"/>
-    <rect
-      x="242" y="242" width="540" height="540"
-      fill="none" stroke="#F9EDDB" stroke-width="12"
-      stroke-linejoin="miter"
-    />
-    <line x1="512" y1="242" x2="512" y2="782" stroke="#F9EDDB" stroke-width="12"/>
-    <line x1="242" y1="512" x2="782" y2="512" stroke="#F9EDDB" stroke-width="12"/>
+  <rect width="1024" height="1024" fill="#123B32"/>
+  <g transform="translate(512 512) scale(0.7) translate(-512 -512)">
+    <g transform="translate(224 224) scale(18)">
+      <path d="M3.5 27 L13.4 5 L18.6 5 L28.5 27" fill="none" stroke="#F2F3EB" stroke-width="2.2" stroke-linejoin="miter" stroke-linecap="square"/>
+      <path d="M10.6 27 L17.3 12.6 L24 27" fill="none" stroke="#D2B77C" stroke-width="2.2" stroke-linejoin="miter" stroke-linecap="square"/>
+    </g>
   </g>
 </svg>

@@ -341,13 +341,13 @@ function PortfolioYieldStrip() {
         <span className="tabular-nums">{activeNotes.length}</span> note
         {activeNotes.length === 1 ? "" : "s"}
         {" · outstanding "}
-        <span className="font-mono tabular-nums text-foreground font-medium">
+        <span className="tabular-nums text-foreground font-medium">
           {usd(totalOutstanding, { noCents: true })}
         </span>
         {weightedRate !== null ? (
           <span className="hidden md:inline">
             {" · "}
-            <span className="font-mono tabular-nums text-acr-pos font-medium">
+            <span className="tabular-nums text-acr-pos font-medium">
               {weightedRate.toFixed(2)}%
             </span>{" "}
             wtd yield
@@ -445,7 +445,7 @@ function OriginationStrip() {
         {totalFinanced > 0 && (
           <span className="hidden md:inline">
             {" · "}
-            <span className="font-mono tabular-nums text-foreground font-medium">
+            <span className="tabular-nums text-foreground font-medium">
               {usd(totalFinanced, { noCents: true })}
             </span>{" "}
             financed
@@ -581,7 +581,7 @@ function ServicingStrip({ propertyLabel }: { propertyLabel: string }) {
                 ? `${borrowerName.firstName} ${borrowerName.lastName}`
                 : `Note #${worstLate.note.id}`}
             </span>{" "}
-            <span className="text-acr-neg font-mono tabular-nums">
+            <span className="text-acr-neg tabular-nums">
               {worstLate.daysLate}d
             </span>
           </span>
@@ -780,7 +780,7 @@ function InventoryStrip({ properties }: { properties: Property[] }) {
           <span className="hidden md:inline text-muted-foreground">·</span>
           <span className="hidden md:inline text-sm">
             Top spread: <span className="font-medium">{topProject.p.county}, {topProject.p.state}</span>{" "}
-            <span className={`font-mono tabular-nums ${topProject.net < 0 ? "text-acr-neg" : "text-acr-pos"}`}>
+            <span className={`tabular-nums ${topProject.net < 0 ? "text-acr-neg" : "text-acr-pos"}`}>
               {usd(topProject.net, { noCents: true })}
             </span>
           </span>
@@ -894,7 +894,7 @@ function SubdividerStrip({ hasAnyProperties }: { hasAnyProperties: boolean }) {
         {(live.totalParentBasisCents ?? 0) > 0 && (
           <span className="hidden md:inline">
             {" · "}
-            <span className="font-mono tabular-nums text-acr-pos font-medium">
+            <span className="tabular-nums text-acr-pos font-medium">
               {live.recoveredPct ?? 0}%
             </span>{" "}
             basis recovered

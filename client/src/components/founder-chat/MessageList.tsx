@@ -187,7 +187,7 @@ export function MessageList({
                         <li
                           key={i}
                           className={cn(
-                            "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-micro font-mono tabular-nums",
+                            "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-micro tabular-nums",
                             tc.status === "running" && "bg-muted/60 text-muted-foreground",
                             tc.status === "complete" && "bg-acr-pos-soft text-acr-pos-soft-ink",
                             tc.status === "failed" && "bg-acr-neg-soft text-acr-neg-soft-ink",

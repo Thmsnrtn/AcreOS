@@ -459,7 +459,7 @@ function ResultCard({ label, value, description, variant = "default", testId }: 
   return (
     <div className="p-4 rounded-card bg-muted/50 space-y-1">
       <dt className="text-sm text-muted-foreground m-0">{label}</dt>
-      <dd className={`text-xl font-bold font-mono tabular-nums m-0 ${valueColor}`} data-testid={testId} aria-label={`${label}: ${value}`}>
+      <dd className={`text-xl font-bold tabular-nums m-0 ${valueColor}`} data-testid={testId} aria-label={`${label}: ${value}`}>
         {value}
       </dd>
       {description && (

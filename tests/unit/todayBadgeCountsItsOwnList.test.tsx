@@ -181,7 +181,10 @@ describe("Today has one definition of the count, not three", () => {
     expect(today).toContain('[data-testid="section-decision-queue"]');
     // The chip is no longer a link to the page that re-fetched leads
     // unpaginated and could only ever see 25 of them.
-    const heroStart = today.indexOf("Review now");
+    // Anchored on the control's test id (its label became "Review N
+    // decisions" in the Fieldstone redesign); a missing anchor fails loudly.
+    const heroStart = today.indexOf('data-testid="button-review-decisions"');
+    expect(heroStart, "review control not found").toBeGreaterThan(0);
     const hero = today.slice(Math.max(0, heroStart - 1600), heroStart);
     expect(hero).not.toContain('href="/decision-queue"');
   });

@@ -20,9 +20,39 @@
 
 ---
 
-## 0. Founder decisions in force (2026-06-11)
+## 0. Founder decisions in force
 
-These gate the Phase-2 elevation and are settled:
+### 0.1 Fieldstone redesign (2026-10-18) — supersedes 0.2 items 3 and 4
+
+Recorded in `docs/company/founder-decisions-2026-10-18-fieldstone.md`:
+
+1. **Fieldstone is the default visual identity** — forest, limestone, sage and
+   restrained brass.
+2. **Exactly three curated colorways: Fieldstone, Bedrock, Meridian.** They
+   share every layout, type rule, spacing rule, navigation, icon, component,
+   interaction pattern and information hierarchy. A colorway changes the
+   palette, never the structure or the font personality. ("Choosing the finish
+   on the same well-designed piece of furniture.")
+3. **Light, Dark and Match device** for every colorway; Match device (stored as
+   `auto`) is the default.
+4. **Personal Appearance holds only Colorway and Display.** Font pairing,
+   density/spacing, motion and the global list-style picker are retired from
+   it.
+5. **One typography system:** Fraunces display + Inter interface/body, tabular
+   figures for operational and financial numbers, no serif in dense tables or
+   form controls.
+6. **Accessibility & comfort is its own section** (collapsed by default unless
+   an accommodation is on). Device reduced-motion works automatically.
+7. **Company logos and colours belong to Company branding**, which never
+   overrides a person's accessibility or reading preferences.
+8. The product stays **AcreOS**; Fieldstone/Bedrock/Meridian are colorway names.
+9. Illustrative figures and parcels from the design concepts never become
+   product data.
+
+### 0.2 Phase-2 elevation (2026-06-11)
+
+These gate the Phase-2 elevation and are settled (items 3 and 4 superseded by
+0.1):
 
 1. **Bold re-skin** on the existing kit — a deliberate new visual identity pass,
    not just consolidation. Sequencing: foundation (this doc + the 3 token scales
@@ -100,39 +130,47 @@ conflating them (the old raw-hex approach) made the distinction invisible:
   maps, acquisition-radar scores, deal temperature) MUST use `--acr-heat-*`.
 - **Density = choropleth intensity**, sentiment-separated the same way.
 
-#### The 6 themes — flagship vs extended
+#### The three colorways (Fieldstone redesign, 2026-10-18)
 
-Six themes × light/dark (`ThemeId = bedrock | homestead | quarry | nocturne |
-meadow | slate`, see `client/src/contexts/theme-context.tsx`). Per founder
-decision, the re-skin designs + QAs **3 flagship themes** to the full bar; the
-other three stay available but **flagged experimental/extended** (kept working,
-not re-skin-QA'd across every component × 2 modes).
+Source of truth: `shared/appearance.ts` (`COLORWAY_IDS`, `COLORWAYS`,
+`DEFAULT_COLORWAY`, `LEGACY_COLORWAY_MIGRATION`). Both pickers, the theme
+provider, the pre-paint boot script in `client/index.html`, the preference API
+and the contrast gates read it. Token blocks: `client/src/index.css`, one per
+colorway × mode, each carrying BOTH token families plus the rail ramp,
+heat/density and glass tints.
 
-**★ FLAGSHIP (design + QA to the full bar):**
+| Colorway | Light page / surface / primary / rail | Dark page / surface / primary / rail | Accent |
+|---|---|---|---|
+| **★ Fieldstone** (default, `:root` fallback) | `#F8F8F3` / `#FFFFFF` / `#174B40` / `#123B32` | `#111B18` / `#192823` / `#B6D3BA` / `#0C1512` | brass `#B79A5B` / `#D2B77C` |
+| **Bedrock** | `#EDE3D0` / `#F7F0DD` / `#A04428` / `#2B2017` | `#13100B` / `#1F1A12` / `#C2604A` / `#0A0805` | dust gold `#B8842E` / `#D9A24A` |
+| **Meridian** | `#FAF8F7` / `#FFFFFF` / `#35283F` / `#2D2235` | `#1B161F` / `#241D2A` / `#DDC5E3` / `#140F18` | copper `#B36E4D` / `#DBA486` |
 
-| Theme | Mode focus | Why flagship |
-|---|---|---|
-| **★ Bedrock** | light (brand default) | The brand default (`DEFAULT_CONFIG.theme = "bedrock"`); carries the global `:root` defaults. Rust/terracotta on cream — the editorial-mechanical identity the Fraunces default is built for. |
-| **★ Nocturne** | dark | The strongest dark theme — warm-red brand on near-black, a purpose-built monochrome+accent dark identity that pairs naturally with the editorial re-skin. The flagship dark. |
-| **★ Slate** | light + dark | The most differentiated non-terracotta palette (blue/teal, true-white surfaces). The "cool/professional" alternative that broadens appeal without exploding QA. |
+Rules that make the three behave as one system:
 
-**Extended / experimental (available, not re-skin-QA'd):** Homestead
-(orange-terracotta + teal), Quarry (crimson monochrome + accent), Meadow (forest
-green + gold).
-
-Palette families (all six, `index.css`):
-
-| Theme | Brand | Accent | Pos | Neg |
-|---|---|---|---|---|
-| ★ Bedrock | Rust/terracotta | Dust gold | Moss green | Dried blood |
-| Homestead | Orange-terracotta | Teal | Forest green | Orange-red |
-| Quarry | Crimson | Near-black/neutral | Emerald | Crimson (same) |
-| ★ Nocturne | Warm red | Near-black/white | Forest green | Warm red (same) |
-| Meadow | Forest green | Gold | Forest green (same) | Terracotta |
-| ★ Slate | Blue | Teal | Teal-green | Rose-red |
-
-Quarry + Nocturne intentionally share brand/neg hue (monochrome + accent) —
-context disambiguates.
+- **Every block defines the identical token set.** The Fieldstone blocks are
+  also the `:root` / `.dark` fallback, so their selectors match under every
+  colorway; a token another block omits silently renders Fieldstone's value
+  there (`tests/unit/appearanceContract.test.ts`).
+- **The navigation rail is dark in every colorway and is its own token scope.**
+  `.sidebar-vibrancy` / `.vibrancy-sidebar` re-point `--foreground`,
+  `--muted-foreground`, `--border`, `--accent`, `--primary`, `--acr-ink*`,
+  `--acr-line*`, `--acr-surface` and `--acr-brand` at the rail ramp
+  (`--sidebar-*`, `--acr-sidebar-*`), so every descendant utility is
+  rail-correct with no per-component class. The page's muted ink is never
+  reused on the rail (`tests/unit/statusInkContrast.test.ts`).
+- **Semantic colour is separate from brand.** Each colorway keeps distinct
+  positive / warning / destructive / heat hues with solved AA inks
+  (`--acr-*-text`, `--acr-*-soft-ink`), re-derived from the CSS by
+  `statusInkContrast.test.ts` and `scripts/lint-semantic-contrast.mjs`.
+- **Retired colorways migrate, never error.** Homestead (and `dirtpass`) →
+  Bedrock; Quarry, Nocturne, Meadow, Slate → Fieldstone. The display mode is
+  never inferred from an old colorway name; legacy `system` mode → Match
+  device.
+- **Company accents layer over both families.** `client/src/lib/tenant-accent.ts`
+  nudges an org colour per colorway + mode until its label clears AA and it
+  shows as a ≥3:1 focus ring, writes `--primary`/`--ring` AND
+  `--acr-brand*`/`--acr-ring`, never touches `--accent` (the hover tint), and
+  clears every override on removal.
 
 #### Residual hex debt → drive-to-zero
 
@@ -151,39 +189,26 @@ Two distinct debts, both tracked:
 
 ### 1.2 Typography
 
-#### Pairings + the editorial default
+#### One type system (Fieldstone redesign, 2026-10-18)
 
-Five font pairings, switched via `[data-font-pairing]` on `<html>`
-(`theme-context.tsx`), self-hosted latin-subset variable woff2 in
-`client/public/fonts/`. Source: `client/src/fonts.css`.
+There is no personal font choice. `client/src/fonts.css` sets the type
+variables once, for every colorway:
 
-| Pairing | Display | Body | Notes |
-|---|---|---|---|
-| **★ editorial (DEFAULT)** | **Fraunces** | Inter | Brand identity. `:root` resolves here. |
-| modern | Inter Tight | Inter | All-sans, tighter display |
-| classic | Source Serif 4 | Inter | Stronger serif voice |
-| native | system stack | system stack | Zero font load (opt-in) |
-| refined | Newsreader | Inter | Soft editorial register |
+| Role | Face | Where |
+|---|---|---|
+| Display (`--font-display`, `font-display`) | **Fraunces** | Page H1s, a restrained set of section heads, the wordmark |
+| Interface / body (`--font-sans`) | **Inter** | Body, controls, menus, labels, tables, status, **money** |
+| Mono (`--font-mono`) | JetBrains Mono | Identifiers and code only |
 
-Mono is **JetBrains Mono** in every non-native pairing. All faces use
-`font-display: swap` (Lexend, the dyslexia-friendly opt-in, uses
-`font-display: optional` so it never costs CLS on the cold path).
-
-**Editorial-as-default (Wave F, 2026-06-11):** the default flipped from `native`
-to `editorial` so a fresh load shows the Fraunces display serif on headings. The
-default is set in **three coherent places**, all now resolving to editorial:
-
-1. `client/src/contexts/theme-context.tsx` — `DEFAULT_CONFIG.fontPairing`
-   (runtime initial value).
-2. `client/src/fonts.css` — the bare `:root` block (CSS fallback before the
-   attribute is set; shares the selector with `[data-font-pairing="editorial"]`).
-3. `server/routes-preferences.ts` — `DEFAULT_PREFERENCES.fontPairing`
-   (server-synced accounts).
-
-**CLS-safety:** Fraunces + Inter ship `font-display: swap` — text paints
-immediately in the fallback stack (each `--font-*` var lists a system fallback
-chain), then swaps to the loaded face. The cold path stays CLS-safe; zero CLS
-budget is consumed by the editorial default.
+- **Figures are tabular Inter.** `tabular-nums` on money and comparable
+  quantities; never `font-mono` with `tabular-nums`
+  (`tests/unit/moneyIsTabularInter.test.ts`, 195 sites converted on
+  2026-10-18).
+- Lexend remains the Accessibility & comfort reading face
+  (`html[data-font="lexend"]`). Inter Tight / Source Serif 4 / Newsreader stay
+  declared only for reseller white-label branding and download only when used.
+- All faces are self-hosted with fallbacks; `font-display: swap` (Lexend:
+  `optional`).
 
 #### h1–h6 display coupling (intentional)
 
@@ -346,6 +371,45 @@ motion-tokens, not the shim). **Do not touch this system** (census: 5/5).
   respectful hooks.
 
 ---
+
+### 1.6 Appearance, accessibility and the mark (Fieldstone redesign)
+
+**Personal appearance — two choices.** `AppearanceControls`
+(`client/src/components/settings/appearance-controls.tsx`) renders Colorway (three
+radio cards with live swatches from the contract) and Display (Light · Dark ·
+Match device). It is the ONLY appearance control: Settings → Appearance and the
+quick dialog (`theme-settings.tsx` — in the navigation rail on desktop, in the
+top bar on phones) both render it, so they cannot drift. Public pages keep the plain light/dark `ThemeToggle`.
+
+**Preference lifecycle** (`client/src/contexts/theme-context.tsx`):
+
+- Fresh account/browser → Fieldstone + Match device. The inline boot script in
+  `client/index.html` applies the same normalization as `normalizeAppearance()`
+  before first paint (pinned by executing it in `appearanceContract.test.ts`).
+- Explicit Light/Dark wins over OS changes until Match device is picked; Match
+  device follows the OS live.
+- Local storage first, then a debounced, batched PATCH to `/api/me/preferences`
+  (only with a session cookie — logged-out pages make no preference call). A
+  slow server read never overwrites a field changed after load.
+- The server accepts retired colorway ids (stored as their successor) and the
+  retired `fontPairing`/`density`/`motion` fields (accepted and dropped, so an old
+  client's combined PATCH still saves), normalizes stored rows on read, and drops
+  retired keys on the person's next write. No bulk rewrite of user rows.
+
+**Accessibility & comfort** (`accessibility-context.tsx`) is the sole owner of
+`data-density` (reading density) and `data-motion`. Motion follows the device's
+reduce-motion setting unless "Reduce motion" is switched on there. (Before the
+redesign the theme provider also wrote both attributes: its `adaptive` density
+overwrote the reading density on mount, and its default `data-motion="full"`
+switched off the CSS that honours the device setting.)
+
+**One mark.** `ACREOS_MARK_PATHS` in `client/src/components/acreos-logo.tsx` — an
+outer peaked parcel boundary (currentColor) and an inner chevron
+(`--acr-accent`) — is the only AcreOS mark: the rail, auth, public pages, landing
+nav/footer, `favicon.svg`, `favicon-maskable.svg`, `images/acreos-mark.svg` and
+the iOS launch images. `node scripts/generate-icons.mjs` derives every PNG target
+from the manifest and `index.html` links; `installedBrandAssets.test.ts` checks
+each referenced image exists at size in the Fieldstone identity.
 
 ## 2. Materials — the Tahoe glass kit (house language)
 

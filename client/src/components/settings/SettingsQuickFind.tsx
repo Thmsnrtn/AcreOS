@@ -30,7 +30,8 @@ type SettingsEntry = {
 
 const CATALOG: SettingsEntry[] = [
   { label: "Profile + name", description: "Display name, email, avatar", tab: "account", keywords: "name email avatar profile photo display" },
-  { label: "Appearance / theme", description: "Themes, fonts, density, motion", tab: "account", keywords: "theme dark light bedrock dirtpass homestead font sf appearance ui color" },
+  { label: "Appearance", description: "Colorway and light, dark or match device", tab: "account", keywords: "appearance theme colorway colour color fieldstone bedrock meridian dark light mode match device system auto" },
+  { label: "Accessibility & comfort", description: "Reading font and size, larger taps, reduced motion, focus mode", tab: "account", keywords: "accessibility a11y comfort lexend dyslexia font size reading density larger taps motion reduce animation focus quiet hours" },
   { label: "Persona vocabulary", description: "Land flipper / fix-and-flip / note investor labels", tab: "account", keywords: "persona vocabulary lead deal investor type land flipper note fix flip" },
   { label: "Referrals", description: "Invite friends and earn credit", tab: "account", keywords: "referral invite share friends bonus" },
   { label: "Privacy / DSAR", description: "Data export, deletion, GDPR", tab: "account", keywords: "privacy data export dsar gdpr delete download my data" },

@@ -28,7 +28,7 @@
  * - All aria-* attributes, min-h-[44px] mobile touch targets
  * - Mobile Sheet pattern, white-label brand name, founder gating via
  *   useAuth().isFounder
- * - PaxNotificationBadge, NotificationCenter, ThemeToggle wiring
+ * - PaxNotificationBadge, NotificationCenter, appearance (ThemeSettings) wiring
  * - Vibrancy backdrop-filter blur(28px) saturate(185%)
  * - Sidebar collapse spring animation, hover prefetch, Popover for
  *   collapsed-children
@@ -157,7 +157,9 @@ import { AcreosLogo } from "@/components/acreos-logo";
 import { useContextProfile, type InvestorType } from "@/hooks/use-context-profile";
 import { resolveHiddenRoutes, isRouteHidden, type OrgInvestorType } from "@/lib/sidebar-hidden-routes";
 import { NotificationCenter } from "@/components/notification-center";
-import { ThemeToggle } from "@/components/theme-toggle";
+// The rail's appearance entry opens the SAME Colorway + Display dialog as the
+// top bar (it used to be a bare light/dark toggle — a third, smaller picker).
+import { ThemeSettings } from "@/components/theme-settings";
 import { useFeatureFlags } from "@/hooks/use-feature-flags";
 import { useOrganization } from "@/hooks/use-organization";
 // Phase 4 of the Solene migration — opt-in flag flips the founder
@@ -1135,9 +1137,7 @@ export function Sidebar() {
         ) : (
           <div className="flex items-center justify-between gap-1 min-w-0">
             <div className="flex items-center gap-1.5 min-w-0 shrink">
-              <h1 className="text-lg font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent shrink-0">
-                {brandName}
-              </h1>
+              <RailBrand name={brandName} size={26} />
               {isFounder && (
                 <Badge
                   variant="outline"
@@ -1525,7 +1525,7 @@ export function Sidebar() {
         {isCollapsed ? (
           <>
             <div className="flex justify-center py-1">
-              <ThemeToggle />
+              <ThemeSettings />
             </div>
             <button aria-label="Sign out"
               onClick={() => logout()}
@@ -1550,8 +1550,8 @@ export function Sidebar() {
         ) : (
           <>
             <div className="flex items-center justify-between px-1">
-              <span className="text-xs text-muted-foreground">Theme</span>
-              <ThemeToggle />
+              <span className="text-xs text-muted-foreground">Appearance</span>
+              <ThemeSettings />
             </div>
             <button
               onClick={() => logout()}
@@ -1583,9 +1583,7 @@ export function Sidebar() {
         <div className="p-4 md:p-6">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-              {brandName}
-            </h1>
+            <RailBrand name={brandName} size={28} />
             {isFounder && (
               <Badge
                 variant="outline"
@@ -1832,8 +1830,8 @@ export function Sidebar() {
 
       <div className="p-4 border-t border-sidebar-border safe-area-bottom space-y-2">
         <div className="flex items-center justify-between px-1">
-          <span className="text-xs text-muted-foreground">Theme</span>
-          <ThemeToggle />
+          <span className="text-xs text-muted-foreground">Appearance</span>
+          <ThemeSettings />
         </div>
         <button
           onClick={() => logout()}
@@ -2158,9 +2156,7 @@ function NewFounderSidebar({
           ) : (
             <div className="flex items-center justify-between gap-1 min-w-0">
               <div className="flex items-center gap-1.5 min-w-0 shrink">
-                <h1 className="text-lg font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent shrink-0">
-                  {brandName}
-                </h1>
+                <RailBrand name={brandName} size={26} />
                 <Badge
                   variant="outline"
                   className="bg-acr-warn/10 text-acr-warn border-acr-warn/30 text-micro px-1.5 py-0 shrink-0"
@@ -2256,8 +2252,8 @@ function NewFounderSidebar({
           />
           {!isCollapsed && (
             <div className="flex items-center justify-between px-1">
-              <span className="text-xs text-muted-foreground">Theme</span>
-              <ThemeToggle />
+              <span className="text-xs text-muted-foreground">Appearance</span>
+              <ThemeSettings />
             </div>
           )}
           <button
@@ -2375,5 +2371,23 @@ function FounderDoorItem({
         <p className="text-xs text-muted-foreground">{door.description}</p>
       </TooltipContent>
     </Tooltip>
+  );
+}
+
+/**
+ * The brand at the top of the navigation rail: the AcreOS mark + Fraunces
+ * wordmark (rail ink + the colorway accent, via the rail token scope). A
+ * white-label reseller name renders as plain rail-ink text — never the old
+ * primary→accent gradient text, which on the dark rail dissolved into it.
+ * A div, not an h1: the page under the rail owns the document's heading.
+ */
+function RailBrand({ name, size }: { name: string; size: number }) {
+  if (name === "AcreOS") {
+    return <AcreosLogo variant="full" size={size} className="shrink-0 text-sidebar-foreground" />;
+  }
+  return (
+    <div className="font-display text-lg font-semibold leading-none tracking-tight text-sidebar-foreground shrink-0">
+      {name}
+    </div>
   );
 }

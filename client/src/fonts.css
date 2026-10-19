@@ -1,22 +1,22 @@
 /**
- * Self-hosted variable fonts — five free curated pairings.
+ * Self-hosted variable fonts — ONE typography system.
  *
- * Sourced as latin-subset variable woff2 from the Google Fonts API for
- * one-time bundling (see B.3 in _RESUME-PORT-PHASE-B.md). Files live in
- * client/public/fonts/ and are served at /fonts/* at runtime.
- *
+ * Files live in client/public/fonts/ and are served at /fonts/* at runtime.
  * Standing constraint (design-system §0.1): no paid faces, no runtime CDN.
- * All fonts ship with the app bundle. Latin subset only (HANDOFF.md §13).
+ * Latin subset only (HANDOFF.md §13).
  *
- * Pairings (design-system §4.1):
- *   editorial · Fraunces (display) + Inter (body) + JetBrains Mono — DEFAULT
- *   modern    · Inter Tight (display) + Inter (body) + JetBrains Mono
- *   classic   · Source Serif 4 (display) + Inter (body) + JetBrains Mono
- *               (Source Serif 4 substituted for Charter at B.3 — JUDGMENT-CALLS.md B.3.1)
- *   native    · system stack only — no @font-face, zero font load (opt-in)
- *   refined   · Newsreader (display) + Inter (body) + JetBrains Mono
+ * The product type system (Fieldstone redesign, founder decision 2026-10-18):
+ *   Fraunces       — page headings, a few section headings, the wordmark
+ *   Inter          — body, controls, labels, tables, status and money
+ *                    (with tabular figures for comparable numbers)
+ *   JetBrains Mono — identifiers and code only
+ * It is identical in every colorway; there is no personal font-pairing
+ * choice any more. Lexend remains as the Accessibility & comfort reading
+ * face (html[data-font="lexend"], index.css). Inter Tight, Source Serif 4 and
+ * Newsreader stay declared only because reseller white-label branding can
+ * pick them (pages/reseller-dashboard.tsx); a face downloads only when used.
  *
- * Imported BEFORE client/src/index.css in main.tsx so pairing variables
+ * Imported BEFORE client/src/index.css in main.tsx so the type variables
  * resolve to loaded faces at first paint.
  */
 
@@ -94,63 +94,11 @@
     U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
-/* ─────────────── Pairing variable assignments ─────────────── */
-/* Active pairing is set via [data-font-pairing] on <html> by theme-context.tsx.
- * Each block redefines --font-display / --font-sans / --font-mono / --font-serif
- * for that pairing. Browsers only fetch faces actually referenced by the
- * cascade-active selector — the inactive pairings declare faces but don't
- * trigger downloads. (Verify in DevTools network tab during B.6 audit.)
- *
- * Native pairing references zero @font-face — falls through to the system
- * stack baked into each var. Zero font load.
- */
-
-:root,
-[data-font-pairing="editorial"]:root {
-  /* Default pairing — `editorial` (Fraunces display + Inter body), the
-   * brand-preferred editorial-mechanical identity (Phase 2 Wave F,
-   * founder-decided 2026-06-11). A fresh load — before theme-context.tsx sets
-   * [data-font-pairing] — resolves here, so headings show the Fraunces serif
-   * immediately. Fraunces/Inter use font-display: swap above, so the cold
-   * path is CLS-safe: text paints in the fallback stack, then swaps to the
-   * loaded face. Matches DEFAULT_CONFIG in theme-context.tsx and
-   * DEFAULT_PREFERENCES in server/routes-preferences.ts. */
+/* ─────────────── Type variables ─────────────── */
+:root {
   --font-display: "Fraunces", -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, serif;
   --font-sans:    "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
   --font-serif:   "Fraunces", "Times New Roman", Georgia, serif;
-  --font-mono:    "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
-}
-
-[data-font-pairing="modern"]:root {
-  --font-display: "Inter Tight", -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
-  --font-sans:    "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
-  --font-serif:   "Inter Tight", -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-mono:    "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
-}
-
-[data-font-pairing="classic"]:root {
-  --font-display: "Source Serif 4", -apple-system, BlinkMacSystemFont, "SF Pro Display", Georgia, serif;
-  --font-sans:    "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
-  --font-serif:   "Source Serif 4", "Times New Roman", Georgia, serif;
-  --font-mono:    "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
-}
-
-[data-font-pairing="native"]:root {
-  /* Pure system stack — zero @font-face references, zero font load.
-   * Apple platforms get SF Pro Display/Text/Mono; everywhere else
-   * falls through to the next available family. Opt-in (no longer the
-   * default — editorial is, see the :root block above); applies only when
-   * the user explicitly selects `native`. */
-  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
-  --font-sans:    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
-  --font-serif:   ui-serif, "Times New Roman", Georgia, serif;
-  --font-mono:    ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
-}
-
-[data-font-pairing="refined"]:root {
-  --font-display: "Newsreader", -apple-system, BlinkMacSystemFont, "SF Pro Display", Georgia, serif;
-  --font-sans:    "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
-  --font-serif:   "Newsreader", "Times New Roman", Georgia, serif;
   --font-mono:    "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
 }
 

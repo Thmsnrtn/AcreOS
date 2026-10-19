@@ -219,19 +219,19 @@ export function FinanceBook({ notes }: FinanceBookProps) {
             <dl className="grid grid-cols-2 sm:grid-cols-3 gap-px bg-border border-b">
               <div className="bg-card p-4">
                 <dt className="text-xs text-muted-foreground">Total credits (in)</dt>
-                <dd className="text-lg font-bold font-mono tabular-nums text-acr-pos" data-testid="book-total-credits">
+                <dd className="text-lg font-bold tabular-nums text-acr-pos" data-testid="book-total-credits">
                   {usd(totalCredits)}
                 </dd>
               </div>
               <div className="bg-card p-4">
                 <dt className="text-xs text-muted-foreground">Total debits (out)</dt>
-                <dd className="text-lg font-bold font-mono tabular-nums text-muted-foreground" data-testid="book-total-debits">
+                <dd className="text-lg font-bold tabular-nums text-muted-foreground" data-testid="book-total-debits">
                   {usd(totalDebits)}
                 </dd>
               </div>
               <div className="bg-card p-4 col-span-2 sm:col-span-1">
                 <dt className="text-xs text-muted-foreground">Running balance</dt>
-                <dd className="text-lg font-bold font-mono tabular-nums" data-testid="book-net-balance">
+                <dd className="text-lg font-bold tabular-nums" data-testid="book-net-balance">
                   {usd(netBalance)}
                 </dd>
               </div>
@@ -270,16 +270,16 @@ export function FinanceBook({ notes }: FinanceBookProps) {
                     </div>
                     <div className="text-right shrink-0">
                       {e.credit != null && (
-                        <div className="font-mono font-semibold tabular-nums text-acr-pos">
+                        <div className="font-semibold tabular-nums text-acr-pos">
                           +{usd(e.credit)}
                         </div>
                       )}
                       {e.debit != null && (
-                        <div className="font-mono font-semibold tabular-nums text-acr-neg">
+                        <div className="font-semibold tabular-nums text-acr-neg">
                           &minus;{usd(e.debit)}
                         </div>
                       )}
-                      <div className="font-mono text-xs text-muted-foreground tabular-nums mt-0.5">
+                      <div className="text-xs text-muted-foreground tabular-nums mt-0.5">
                         {usd(e.balance)}
                       </div>
                     </div>
@@ -320,13 +320,13 @@ export function FinanceBook({ notes }: FinanceBookProps) {
                           <p className="text-xs text-muted-foreground mt-0.5 ml-6">{e.detail}</p>
                         )}
                       </TableCell>
-                      <TableCell className="text-right font-mono tabular-nums text-muted-foreground">
+                      <TableCell className="text-right tabular-nums text-muted-foreground">
                         {e.debit != null ? usd(e.debit) : "—"}
                       </TableCell>
-                      <TableCell className="text-right font-mono tabular-nums text-acr-pos">
+                      <TableCell className="text-right tabular-nums text-acr-pos">
                         {e.credit != null ? usd(e.credit) : "—"}
                       </TableCell>
-                      <TableCell className="text-right font-mono font-medium tabular-nums">
+                      <TableCell className="text-right font-medium tabular-nums">
                         {usd(e.balance)}
                       </TableCell>
                     </TableRow>

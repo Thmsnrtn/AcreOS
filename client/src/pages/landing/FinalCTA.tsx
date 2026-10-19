@@ -1,7 +1,7 @@
 /**
  * Prototype reference: /acreos-landing/sections-3.jsx → FinalCTA (lines 152-179)
  *
- * Dark contrast card (acr-ink bg with terracotta radial glow upper-right).
+ * Dark contrast card (acr-ink bg with brand-colour radial glow upper-right).
  * Brand-color eyebrow, large serif title, sub copy, email-capture form,
  * "or" divider, "Email me first" ghost link, trust microcopy bottom.
  *

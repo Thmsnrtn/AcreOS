@@ -395,7 +395,7 @@ export function ContractChainSection({
                   <dl className="space-y-1 text-sm">
                     <div className="flex items-baseline justify-between gap-2">
                       <dt className="text-muted-foreground">Accepted amount</dt>
-                      <dd className="font-mono tabular-nums">
+                      <dd className="tabular-nums">
                         {deal.acceptedAmount ? usd(deal.acceptedAmount) : "Not recorded"}
                       </dd>
                     </div>
@@ -1146,7 +1146,7 @@ export default function OffersPage() {
                               </div>
                             </div>
                             <div className="text-right shrink-0">
-                              <div className="font-mono font-medium tabular-nums">{usd(Number(offer.offerAmount))}</div>
+                              <div className="font-medium tabular-nums">{usd(Number(offer.offerAmount))}</div>
                               {offer.offerPercent && (
                                 <div className="text-xs text-muted-foreground tabular-nums">{offer.offerPercent}% of assessed</div>
                               )}
@@ -1249,7 +1249,7 @@ export default function OffersPage() {
                               </div>
                             </TableCell>
                             <TableCell>
-                              <div className="font-mono font-medium tabular-nums">
+                              <div className="font-medium tabular-nums">
                                 {usd(Number(offer.offerAmount))}
                               </div>
                               {offer.offerPercent && (
@@ -1383,13 +1383,13 @@ export default function OffersPage() {
                           <dt className="text-xs text-muted-foreground">Leads selected</dt>
                         </div>
                         <div className="p-3 rounded-card bg-muted/50">
-                          <dd className="text-2xl font-bold font-mono tabular-nums" data-testid="text-preview-total">
+                          <dd className="text-2xl font-bold tabular-nums" data-testid="text-preview-total">
                             {usd(previewCalculation.totalValue)}
                           </dd>
                           <dt className="text-xs text-muted-foreground">Total offers</dt>
                         </div>
                         <div className="p-3 rounded-card bg-muted/50">
-                          <dd className="text-2xl font-bold font-mono tabular-nums" data-testid="text-preview-avg">
+                          <dd className="text-2xl font-bold tabular-nums" data-testid="text-preview-avg">
                             {usd(previewCalculation.avgOffer)}
                           </dd>
                           <dt className="text-xs text-muted-foreground">Avg offer</dt>
@@ -1481,7 +1481,7 @@ export default function OffersPage() {
                                         <div className="text-xs text-muted-foreground tabular-nums">
                                           Assessed: {usd(assessedValue)}
                                         </div>
-                                        <div className="text-sm font-medium font-mono text-primary tabular-nums">
+                                        <div className="text-sm font-medium text-primary tabular-nums">
                                           Offer: {usd(estimatedOffer)}
                                         </div>
                                       </>

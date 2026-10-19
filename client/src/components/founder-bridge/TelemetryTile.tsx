@@ -51,7 +51,7 @@ export function TelemetryTile({
           <div className="flex items-baseline gap-1.5">
             <span
               className={cn(
-                "font-mono text-3xl font-medium leading-none tabular-nums tracking-tight md:text-[28px]",
+                "text-3xl font-medium leading-none tabular-nums tracking-tight md:text-[28px]",
               )}
               style={tone === "alert" ? { color: BRIDGE_ACCENT } : undefined}
               data-testid="bridge-telemetry-value"

@@ -1195,7 +1195,7 @@ function SaleBar({
                   <div className="text-micro uppercase tracking-wide text-muted-foreground">
                     Allocated
                   </div>
-                  <div className="font-mono tabular-nums text-sm">
+                  <div className="tabular-nums text-sm">
                     {budget.data?.budgetCents === null || budget.data === undefined
                       ? "Not set"
                       : centsExact(budget.data.budgetCents)}
@@ -1205,7 +1205,7 @@ function SaleBar({
                   <div className="text-micro uppercase tracking-wide text-muted-foreground">
                     Committed
                   </div>
-                  <div className="font-mono tabular-nums text-sm" data-testid="text-budget-committed">
+                  <div className="tabular-nums text-sm" data-testid="text-budget-committed">
                     {centsExact(budget.data?.committedCents ?? 0)}
                   </div>
                   <div className="text-micro text-muted-foreground">
@@ -1217,7 +1217,7 @@ function SaleBar({
                     Remaining
                   </div>
                   <div
-                    className={`font-mono tabular-nums text-lg font-semibold ${
+                    className={`tabular-nums text-lg font-semibold ${
                       budget.data?.overBudget ? "text-acr-neg" : "text-acr-pos"
                     }`}
                     data-testid="text-budget-remaining"
@@ -1686,7 +1686,7 @@ function LotListImportCard({ defaultAuctionId }: { defaultAuctionId: number | nu
                   </Card>
                   <Card className="p-3">
                     <div className="text-xs text-muted-foreground">Tax owed (valid rows)</div>
-                    <div className="text-lg font-mono tabular-nums">
+                    <div className="text-lg tabular-nums">
                       {centsExact(preview.summary.totalTaxOwedCents)}
                     </div>
                   </Card>

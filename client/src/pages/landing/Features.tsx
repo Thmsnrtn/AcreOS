@@ -37,7 +37,8 @@ const FEATURES: { cat: string; t: string; d: string; i: GlyphKind }[] = [
 ];
 
 function FeatureGlyph({ kind }: { kind: GlyphKind }) {
-  const stroke = "#C2531C";
+  // currentColor — .lp-feature-glyph sets it to the colorway's brand token.
+  const stroke = "currentColor";
   const props = {
     width: 28,
     height: 28,

@@ -342,7 +342,7 @@ export default function InvestorAnalyticsPage() {
                         </div>
                       </div>
                       <div className="text-right shrink-0">
-                        <div className="font-mono font-semibold tabular-nums">{fmtNoi(p.noiMonthlyCents)}</div>
+                        <div className="font-semibold tabular-nums">{fmtNoi(p.noiMonthlyCents)}</div>
                         <div className="text-xs text-muted-foreground">
                           NOI / mo
                           <OpExProvenance source={p.opExSource} monthsCovered={p.opExMonthsCovered} className="ml-1" />

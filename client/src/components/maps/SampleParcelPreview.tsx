@@ -51,7 +51,7 @@ export function SampleParcelPreview({
   onOpenChange,
   initialParcelId,
 }: SampleParcelPreviewProps) {
-  const isMobile = useIsMobile();
+  const { isMobile } = useIsMobile();
   const [selected, setSelected] = useState<CuratedSampleParcel>(
     () =>
       CURATED_SAMPLE_PARCELS.find((p) => p.id === initialParcelId) ??

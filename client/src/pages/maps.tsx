@@ -1070,7 +1070,7 @@ function PortfolioStatPill({
   color: string;
 }) {
   return (
-    <div className={cn("flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border", color)}>
+    <div className={cn("flex shrink-0 items-center gap-1.5 whitespace-nowrap px-2.5 py-1 rounded-full text-xs font-medium tabular-nums border", color)}>
       <span className="text-muted-foreground">{label}:</span>
       <span>{value}</span>
     </div>
@@ -1267,7 +1267,11 @@ export default function MapsPage() {
 
   return (
     <PageShell label="Maps">
-      <div className="-mx-4 -my-8 md:-mx-8 md:-my-8">
+      {/* Bleeds to <main>'s edges: main pads p-4 on a phone and p-8 from md,
+          (bottom pb-8 at every width), so the negative margins match per
+          edge and breakpoint (a flat -my-8
+          pulled the map bar 16px under the page topbar on phones). */}
+      <div className="-mx-4 -mt-4 -mb-8 md:-mx-8 md:-my-8">
         {/* Header bar */}
         {/* Bold Tahoe re-skin (Wave R, §1.2 nested sticky chrome): this is the
             map's own control bar, nested under the global PageTopbar — so it
@@ -1277,8 +1281,12 @@ export default function MapsPage() {
             (10) keeps the semantic layer it already had (z-docked). No shadow — it
             sits under the primary topbar's shadow. Visual-only; layout/sizing
             unchanged. See docs/design/reskin-treatment.md. */}
-        <div className="flex items-center gap-2 px-4 md:px-6 py-2.5 border-b border-border/50 bg-surface-veil backdrop-blur-lg sticky top-0 z-docked">
-          <div className="flex items-center gap-2 flex-1 min-w-0">
+        {/* `-top-4 md:-top-8`, not `top-0`: <main> (overflow-x-hidden, so it
+            is the sticky container) pads 1rem / 2rem and the wrapper's
+            negative margin pulls the bar into that padding; with top-0 sticky
+            pushed it back down by the padding, over the persona strip. */}
+        <div className="flex flex-wrap md:flex-nowrap items-center gap-x-2 gap-y-2 px-4 md:px-6 py-2.5 border-b border-border/50 bg-surface-veil backdrop-blur-lg sticky -top-4 md:-top-8 z-docked">
+          <div className="flex items-center gap-2 min-w-0 w-full md:w-auto md:flex-1">
             <MapPin className="w-4 h-4 text-primary shrink-0" aria-hidden="true" />
             <h1 className="text-section-h2 truncate">
               {mapMode === "deals" ? "Portfolio map" : "Property intelligence map"}
@@ -1335,6 +1343,11 @@ export default function MapsPage() {
               </Badge>
             )}
           </div>
+          {/* Controls: their own row on a phone, scrolling sideways inside
+              the bar if they outgrow it — never overlapping the title and
+              stats (they did: the title group shrank to nothing and its pills
+              spilled under the mode toggle). Fieldstone redesign, 2026-10-18. */}
+          <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto md:overflow-visible -mx-1 px-1 md:mx-0 md:px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0">
 
           {/* Mode toggle — shadcn Button group, design system §4.1 */}
           <div className="flex items-center rounded-md border overflow-hidden shrink-0" role="group" aria-label="Map mode">
@@ -1651,6 +1664,7 @@ export default function MapsPage() {
               </fieldset>
             </SheetContent>
           </Sheet>
+        </div>
         </div>
 
         {/* Persona-shaped overlay strip — re-flavors the same map

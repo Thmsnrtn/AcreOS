@@ -1,19 +1,18 @@
 import { sql } from "drizzle-orm";
 import { index, integer, jsonb, pgTable, serial, text, timestamp, varchar } from "drizzle-orm/pg-core";
+import type { ColorwayId, DisplayMode } from "../appearance";
 
 /**
- * User-scoped appearance preferences. Drives the theme system (5 themes ×
- * light/dark + 5 font pairings + density + motion) per design-system §3-§6,
- * plus sidebar/mobile-nav ordering and per-list-type view preferences (§6.3).
- * Mirror of `ThemeConfig` in client/src/contexts/theme-context.tsx — keep
- * the union types in sync when adding new options.
+ * User-scoped appearance preferences: one colorway + one display mode (the
+ * canonical lists live in shared/appearance.ts), plus sidebar/mobile-nav
+ * ordering, per-list-type view preferences and quiet hours. Rows written
+ * before the Fieldstone redesign may still hold a retired colorway id or the
+ * retired fontPairing/density/motion keys; routes-preferences.ts normalizes
+ * them on read and drops them on the next write.
  */
 export interface AppearancePreferences {
-  theme?: "bedrock" | "homestead" | "quarry" | "nocturne" | "meadow" | "slate";
-  mode?: "light" | "dark" | "auto";
-  fontPairing?: "editorial" | "modern" | "classic" | "native" | "refined";
-  density?: "compact" | "comfortable" | "adaptive";
-  motion?: "full" | "reduced";
+  theme?: ColorwayId;
+  mode?: DisplayMode;
   /**
    * Sidebar + mobile bottom-bar customization. IDs reference the flat
    * registry in client/src/lib/nav-items.ts. Desktop sidebar refactor to
@@ -129,9 +128,9 @@ export const users = pgTable("users", {
   failedLoginAttempts: varchar("failed_login_attempts").default("0"),
   lockedUntil: timestamp("locked_until"),
   referralCode: varchar("referral_code", { length: 16 }).unique(),
-  // User-scoped appearance preferences (theme, mode, font pairing, density, motion).
-  // Defaults applied client-side via DEFAULT_CONFIG in theme-context.tsx; nulls in
-  // any field fall back to those defaults.
+  // User-scoped appearance preferences (colorway + display mode, nav ordering,
+  // list views, quiet hours). Missing fields fall back to shared/appearance.ts
+  // defaults on both client and server.
   appearancePreferences: jsonb("appearance_preferences").$type<AppearancePreferences>(),
   // The Pax pause (pax.pausedUntil) — split off from appearance_preferences in
   // migration 0030 so theme writes can't trample it; narrowed to the pause

@@ -7,10 +7,16 @@
  * screenshot. Used post-deploy to spot-check that no theme regressed
  * (missing tokens, broken contrast, ghost backgrounds).
  *
- * Themes: homestead, quarry, nocturne, meadow, slate (5)
+ * Colorways: read from shared/appearance.ts COLORWAY_IDS (Fieldstone,
+ *   Bedrock, Meridian since the 2026-10-18 redesign — was five retired themes)
  * Modes: light, dark (2)
  * Pages: /today, /leads, /settings/appearance (3 representative)
- * Total: 5 × 2 × 3 = 30 screenshots.
+ * Total: 3 × 2 × 3 = 18 screenshots.
+ *
+ * Note: a signed-in account's server preferences win over localStorage after
+ * hydration, so for an authed run set the colorway through
+ * PATCH /api/me/preferences as well (or use a session whose saved choice
+ * matches).
  *
  * Run: STORAGE_STATE=storageState.json node scripts/per-theme-visual-matrix.mjs
  * Output: docs/archive/exhaustive-completion/auth-screenshots/theme-matrix/
@@ -38,7 +44,10 @@ const NAV_TIMEOUT = 30000;
 const INTER_CAPTURE_DELAY_MS = 2500;
 const STORAGE_KEY = "acreos-theme-config";
 
-const THEMES = ["homestead", "quarry", "nocturne", "meadow", "slate"];
+// Derived from the shared contract so this cannot drift from the product.
+const appearanceSrc = fs.readFileSync(path.join(ROOT, "shared/appearance.ts"), "utf8");
+const THEMES = (/COLORWAY_IDS\s*=\s*\[([^\]]*)\]/.exec(appearanceSrc)?.[1].match(/"([a-z]+)"/g) ?? []).map((q) => q.slice(1, -1));
+if (THEMES.length === 0) throw new Error("could not read COLORWAY_IDS from shared/appearance.ts");
 const MODES = ["light", "dark"];
 const PAGES = [
   { path: "/today", slug: "today" },
@@ -66,13 +75,7 @@ const browser = await chromium.launch();
 
 for (const theme of THEMES) {
   for (const mode of MODES) {
-    const themeConfig = {
-      theme,
-      mode,
-      fontPairing: "editorial",
-      density: "adaptive",
-      motion: "reduced", // disable animations for stable screenshots
-    };
+    const themeConfig = { theme, mode };
     const initScript = `
       try {
         localStorage.setItem(${JSON.stringify(STORAGE_KEY)}, ${JSON.stringify(JSON.stringify(themeConfig))});
