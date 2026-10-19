@@ -28,7 +28,7 @@
  * URL. That's the credential-leak surface the F3.4 fix was built to
  * close — these probes lock it shut.
  */
-import { test, expect } from "@playwright/test";
+import { test, expect, type APIRequestContext } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -81,6 +81,29 @@ function maskEmail(email: string): string {
   return `${(local[0] ?? "x")}***@***${tld}`;
 }
 
+/**
+ * CSRF double-submit bootstrap. The server's csrfProtection middleware
+ * (mounted at /api) issues a `csrf_token` cookie on any safe-method
+ * response and requires mutating requests to mirror it in the
+ * `x-csrf-token` header. A raw APIRequestContext never visits a page, so
+ * it never receives the cookie — fetch one explicitly before POSTing to
+ * the exchange endpoint, the way the real borrower page (csrf-fetch.ts)
+ * does on load.
+ */
+async function csrfHeadersFor(
+  apiCtx: Pick<APIRequestContext, "get" | "storageState">,
+): Promise<Record<string, string>> {
+  await apiCtx.get("/api/health");
+  const { cookies } = await apiCtx.storageState();
+  const token = cookies.find((c) => c.name === "csrf_token")?.value ?? "";
+  if (!token) {
+    throw new Error(
+      "CSRF bootstrap failed: server did not issue a csrf_token cookie",
+    );
+  }
+  return { "x-csrf-token": token };
+}
+
 test.describe("F3.4 borrower cookie-session — end-to-end", () => {
   test.skip(
     creds === null,
@@ -103,7 +126,9 @@ test.describe("F3.4 borrower cookie-session — end-to-end", () => {
   test("case 1 — exchange succeeds and sets HttpOnly Secure SameSite=Strict cookie", async ({
     request,
   }) => {
+    const csrfHeaders = await csrfHeadersFor(request);
     const res = await request.post(EXCHANGE_PATH, {
+      headers: csrfHeaders,
       data: { accessToken: C.accessToken, email: C.email },
     });
     expect(res.status()).toBe(204);
@@ -123,7 +148,9 @@ test.describe("F3.4 borrower cookie-session — end-to-end", () => {
   test("case 2 — exchange with wrong email returns 401 and sets no cookie", async ({
     request,
   }) => {
+    const csrfHeaders = await csrfHeadersFor(request);
     const res = await request.post(EXCHANGE_PATH, {
+      headers: csrfHeaders,
       data: { accessToken: C.accessToken, email: "not-the-borrower@acreos.test" },
     });
     expect(res.status()).toBe(401);
@@ -134,7 +161,9 @@ test.describe("F3.4 borrower cookie-session — end-to-end", () => {
   test("case 3 — exchange with wrong accessToken returns 401 and sets no cookie", async ({
     request,
   }) => {
+    const csrfHeaders = await csrfHeadersFor(request);
     const res = await request.post(EXCHANGE_PATH, {
+      headers: csrfHeaders,
       data: { accessToken: "deadbeef".repeat(8), email: C.email },
     });
     expect(res.status()).toBe(401);
@@ -150,7 +179,9 @@ test.describe("F3.4 borrower cookie-session — end-to-end", () => {
       baseURL: process.env.TARGET_URL ?? process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:5000",
     });
     try {
+      const csrfHeaders = await csrfHeadersFor(ctx);
       const exchange = await ctx.post(EXCHANGE_PATH, {
+        headers: csrfHeaders,
         data: { accessToken: C.accessToken, email: C.email },
       });
       expect(exchange.status()).toBe(204);
@@ -184,7 +215,9 @@ test.describe("F3.4 borrower cookie-session — end-to-end", () => {
       baseURL: process.env.TARGET_URL ?? process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:5000",
     });
     try {
+      const csrfHeaders = await csrfHeadersFor(ctx);
       const exchange = await ctx.post(EXCHANGE_PATH, {
+        headers: csrfHeaders,
         data: { accessToken: C.accessToken, email: C.email },
       });
       expect(exchange.status()).toBe(204);
@@ -269,7 +302,9 @@ test.describe("F3.4 borrower cookie-session — end-to-end", () => {
       extraHTTPHeaders: { "x-forwarded-for": "203.0.113.5" },
     });
     try {
+      const csrfHeaders = await csrfHeadersFor(ctx);
       const exchange = await ctx.post(EXCHANGE_PATH, {
+        headers: csrfHeaders,
         data: { accessToken: C.accessToken, email: C.email },
       });
       // 204 only when proxy trust is on. If the server didn't honor XFF,
@@ -314,7 +349,9 @@ test.describe("F3.4 borrower cookie-session — end-to-end", () => {
     try {
       // Drive the exchange + statement fetch through page.request so the
       // page-level listener catches everything.
+      const csrfHeaders = await csrfHeadersFor(page.request);
       const exchange = await page.request.post(EXCHANGE_PATH, {
+        headers: csrfHeaders,
         data: { accessToken: C.accessToken, email: C.email },
       });
       expect(exchange.status()).toBe(204);
@@ -353,7 +390,9 @@ test.describe("F3.4 borrower cookie-session — end-to-end", () => {
       seen.push(req.url());
     });
     try {
+      const csrfHeaders = await csrfHeadersFor(page.request);
       const exchange = await page.request.post(EXCHANGE_PATH, {
+        headers: csrfHeaders,
         data: { accessToken: C.accessToken, email: C.email },
       });
       expect(exchange.status()).toBe(204);
