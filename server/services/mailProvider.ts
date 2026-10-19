@@ -1,7 +1,19 @@
 import Lob from 'lob';
 import { logger } from "../utils/logger";
 import { resolvePlatformLobKey, isLiveSendArmed } from './mail/liveSendInterlock';
-import { getLobClient } from './directMailService';
+import { getLobClientForLane } from './directMailService';
+import {
+  resolveMailLane,
+  chargeHouseMailPiece,
+  refundUnbilledHouseMail,
+  providerDidNotBill,
+  houseLetterFile,
+  postcardSpec,
+  letterSpec,
+  type HouseMailCharge,
+  type HouseMailSpec,
+} from './mail/mailLane';
+import { randomUUID } from 'node:crypto';
 import { clock } from "../utils/clock";
 import { assertOwnerContactAllowed } from "./trust/ownerSuppression";
 
@@ -21,7 +33,8 @@ export interface MailAddress {
 export interface LetterOptions {
   to: MailAddress;
   from: MailAddress;
-  file: string;
+  /** HTML or a PDF URL — or, internally for a house letter, the counted PDF upload. */
+  file: string | ReturnType<typeof houseLetterFile>;
   color?: boolean;
   doubleSided?: boolean;
   description?: string;
@@ -47,6 +60,8 @@ export interface MailResult {
   provider: MailProvider;
   cost?: number;
   error?: string;
+  /** Set on a failure: true only when Lob certainly did not accept (or bill) the piece. */
+  providerNotBilled?: boolean;
 }
 
 interface ProviderCredentials {
@@ -57,7 +72,7 @@ interface ProviderCredentials {
 
 /**
  * A resolved, ready-to-send Lob client. Credential RESOLUTION does not live in
- * this module — `directMailService.getLobClient` is the single authority (BYOK
+ * this module — `directMailService.getOwnLobClient` / `getLobClientForLane` are the single authority (BYOK
  * vault → legacy organization_integrations row → platform key). This module
  * only adapts the resolved client into its own send/timeout/result plumbing.
  */
@@ -91,41 +106,76 @@ function withLobTimeout<T>(promise: Promise<T>): Promise<T> {
 }
 
 /**
- * Resolve the Lob client for a send.
+ * Resolve how one piece is sent.
  *
- * Org-scoped resolution is DELEGATED to `directMailService.getLobClient` — the
- * one credential authority — so every live sendLetter path agrees on whose Lob
- * account pays: BYOK vault first, then the legacy organization_integrations
- * row, then the platform key. This module previously ran its OWN resolution
- * (legacy row → platform, never the vault), so an org whose key lived in the
- * BYOK vault — the documented Universal-BYOK path — sent letters on ACREOS'S
- * account, against the BYO-rails ruling (founder, 2026-07-29). One resolver,
- * one answer.
+ * WITH an organizationId the piece is the org's mail, and its lane is decided
+ * by the one lane authority (mail/mailLane.ts, founder decision 2026-10-17):
+ * the org's own Lob key (no credits), or AcreOS house mail — charged its
+ * credit weight here, with the return address REPLACED by the org's verified
+ * sender identity. A refused lane is returned as a refusal; nothing is sent.
  *
- * getLobClient throws only when no platform key is configured at all
- * (resolvePlatformLobKey); in that case we fall through to
- * getDefaultCredentials so the legacy LOB_API_KEY env fallback — and the
- * MAIL_MOCK / refuse-to-fabricate path behind it — behaves exactly as before.
+ * WITHOUT one it is AcreOS's own system mail on the platform key
+ * (getDefaultCredentials), unchanged.
  */
-async function resolveLobClient(organizationId?: number): Promise<ResolvedLobClient | null> {
+type LobSendPlan =
+  | {
+      kind: 'send';
+      resolved: ResolvedLobClient;
+      from: MailAddress;
+      charge: HouseMailCharge | null;
+      /** House letter: the counted PDF Lob prints (decision 2026-10-18). */
+      letterFile?: ReturnType<typeof houseLetterFile>;
+    }
+  | { kind: 'refused'; error: string }
+  | { kind: 'unconfigured' };
+
+async function planLobSend(
+  spec: HouseMailSpec,
+  organizationId: number | undefined,
+  from: MailAddress,
+): Promise<LobSendPlan> {
   if (organizationId) {
     try {
-      const { client, source, isTestKey } = await getLobClient(organizationId);
-      logger.info(`[Mail] Lob client resolved for org ${organizationId} (source: ${source})`);
-      return { client, isTestKey };
+      const lane = await resolveMailLane(organizationId, spec, { via: 'lob' });
+      if (lane.lane === 'refused') return { kind: 'refused', error: lane.message };
+      const { client, source, isTestKey } = await getLobClientForLane(organizationId, lane);
+      logger.info(`[Mail] Lob client resolved for org ${organizationId} (lane: ${lane.lane}, source: ${source})`);
+      if (lane.lane === 'own_account') {
+        return { kind: 'send', resolved: { client, isTestKey }, from, charge: null };
+      }
+      const identity = lane.senderIdentity;
+      const charge = await chargeHouseMailPiece({
+        organizationId,
+        lane,
+        externalEventId: `mail:house:${organizationId}:${lane.price.key}:autopilot:${randomUUID()}`,
+      });
+      return {
+        kind: 'send',
+        resolved: { client, isTestKey },
+        from: {
+          name: identity.companyName,
+          addressLine1: identity.addressLine1,
+          addressLine2: identity.addressLine2 || undefined,
+          city: identity.city,
+          state: identity.state,
+          zip: identity.zipCode,
+        },
+        charge,
+        ...(spec.kind === 'letter' ? { letterFile: houseLetterFile(lane) } : {}),
+      };
     } catch (error) {
-      logger.warn(
-        `[Mail] Lob credential resolution failed for org ${organizationId} - trying legacy env fallback`,
-        error instanceof Error ? error : undefined,
-      );
+      // Never fall through to the platform key for an org's mail.
+      return { kind: 'refused', error: error instanceof Error ? error.message : String(error) };
     }
   }
 
   const credentials = getDefaultCredentials();
-  if (!credentials) return null;
+  if (!credentials) return { kind: 'unconfigured' };
   return {
-    client: new Lob({ apiKey: credentials.apiKey }),
-    isTestKey: credentials.isTestKey,
+    kind: 'send',
+    resolved: { client: new Lob({ apiKey: credentials.apiKey }), isTestKey: credentials.isTestKey },
+    from,
+    charge: null,
   };
 }
 
@@ -198,6 +248,8 @@ async function sendLetterViaLob(
       error: error instanceof LobTimeoutError ? 'lob timeout' : (error.message || String(error)),
       isTestMode: resolved.isTestKey,
       provider: MailProvider.LOB,
+      // A timeout or network error is "unknown" — Lob may have printed it.
+      providerNotBilled: !(error instanceof LobTimeoutError) && providerDidNotBill(error),
     };
   }
 }
@@ -235,14 +287,29 @@ async function sendPostcardViaLob(
       error: error instanceof LobTimeoutError ? 'lob timeout' : (error.message || String(error)),
       isTestMode: resolved.isTestKey,
       provider: MailProvider.LOB,
+      // A timeout or network error is "unknown" — Lob may have printed it.
+      providerNotBilled: !(error instanceof LobTimeoutError) && providerDidNotBill(error),
     };
   }
 }
 
-export async function sendLetter(options: LetterOptions): Promise<MailResult> {
-  const resolved = await resolveLobClient(options.organizationId);
+/** A piece that was not sent — nothing reached Lob. */
+function notSent(error: string): MailResult {
+  return { success: false, error, isTestMode: false, provider: MailProvider.LOB };
+}
 
-  if (!resolved) {
+export async function sendLetter(options: LetterOptions): Promise<MailResult> {
+  const plan = await planLobSend(
+    letterSpec({ color: options.color ?? false, file: typeof options.file === 'string' ? options.file : null }),
+    options.organizationId,
+    options.from,
+  );
+
+  if (plan.kind === 'refused') {
+    logger.warn(`[Mail] Letter to ${options.to.name} refused: ${plan.error}`);
+    return notSent(plan.error);
+  }
+  if (plan.kind === 'unconfigured') {
     // No mail credentials configured. Only produce a mock mailing id under an
     // explicit dev flag — never as the silent default, which would fabricate a
     // successful send and let a real letter no-op while reporting success.
@@ -256,22 +323,25 @@ export async function sendLetter(options: LetterOptions): Promise<MailResult> {
       };
     }
     logger.warn(`[Mail] No provider configured - refusing to send letter to ${options.to.name}`);
-    return {
-      success: false,
-      error: 'mail provider not configured',
-      isTestMode: false,
-      provider: MailProvider.LOB,
-    };
+    return notSent('mail provider not configured');
   }
 
   logger.info(`[Mail] Sending letter via ${MailProvider.LOB} to ${options.to.name}`);
-  return sendLetterViaLob(resolved, options);
+  const result = await sendLetterViaLob(plan.resolved, { ...options, from: plan.from, file: plan.letterFile ?? options.file });
+  if (!result.success && options.organizationId) {
+    await refundUnbilledHouseMail(options.organizationId, plan.charge, { providerNotBilled: result.providerNotBilled === true }, 'Letter was rejected by Lob');
+  }
+  return result;
 }
 
 export async function sendPostcard(options: PostcardOptions): Promise<MailResult> {
-  const resolved = await resolveLobClient(options.organizationId);
+  const plan = await planLobSend(postcardSpec(options.size || '4x6'), options.organizationId, options.from);
 
-  if (!resolved) {
+  if (plan.kind === 'refused') {
+    logger.warn(`[Mail] Postcard to ${options.to.name} refused: ${plan.error}`);
+    return notSent(plan.error);
+  }
+  if (plan.kind === 'unconfigured') {
     // No mail credentials configured. Only produce a mock mailing id under an
     // explicit dev flag — never as the silent default, which would fabricate a
     // successful send and let a real postcard no-op while reporting success.
@@ -285,16 +355,15 @@ export async function sendPostcard(options: PostcardOptions): Promise<MailResult
       };
     }
     logger.warn(`[Mail] No provider configured - refusing to send postcard to ${options.to.name}`);
-    return {
-      success: false,
-      error: 'mail provider not configured',
-      isTestMode: false,
-      provider: MailProvider.LOB,
-    };
+    return notSent('mail provider not configured');
   }
 
   logger.info(`[Mail] Sending postcard via ${MailProvider.LOB} to ${options.to.name}`);
-  return sendPostcardViaLob(resolved, options);
+  const result = await sendPostcardViaLob(plan.resolved, { ...options, from: plan.from });
+  if (!result.success && options.organizationId) {
+    await refundUnbilledHouseMail(options.organizationId, plan.charge, { providerNotBilled: result.providerNotBilled === true }, 'Postcard was rejected by Lob');
+  }
+  return result;
 }
 
 export function getProviderInfo(): {

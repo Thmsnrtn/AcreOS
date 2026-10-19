@@ -20,6 +20,10 @@ vi.mock("../../server/utils/logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
+// The PostGrid adapter looks for the org's OWN key; none in this file.
+vi.mock("../../server/services/byok/key-vault", () => ({ getByokCredential: async () => null }));
+vi.mock("../../server/services/trust/ownerSuppression", async () => (await import("../helpers/ownerSuppressionAllowAll")).ownerSuppressionAllowAll);
+
 vi.mock("../../server/services/founderSettings", () => ({
   getSetting: vi.fn(async () => null), // default → ["lob"], but tests override via registry
 }));
@@ -198,16 +202,22 @@ describe("MailRouter.quote", () => {
   });
 });
 
-describe("PostGrid adapter (real, env-gated)", () => {
-  it("isConfigured() returns false when POSTGRID_API_KEY is unset", async () => {
+describe("PostGrid adapter (real, own-key only — founder decision 2026-10-17)", () => {
+  it("the PLATFORM PostGrid key is never used: no own key → non-viable quote and a refused send, nothing fetched", async () => {
     const prev = process.env.POSTGRID_API_KEY;
-    delete process.env.POSTGRID_API_KEY;
+    process.env.POSTGRID_API_KEY = "live_platform_pg_key";
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
     try {
       const { postgridAdapter } = await import("../../server/services/mail/providers/postgrid");
-      expect(postgridAdapter.isConfigured()).toBe(false);
-      await expect(postgridAdapter.send(shipment())).rejects.toThrow(/POSTGRID_API_KEY/i);
+      const q = await postgridAdapter.quote(shipment());
+      expect(q.meetsConstraints).toBe(false);
+      expect(q.reasonIfNot).toMatch(/own-key only/);
+      await expect(postgridAdapter.send(shipment())).rejects.toThrow(/own PostGrid key/);
+      expect(fetchSpy).not.toHaveBeenCalled();
     } finally {
-      if (prev !== undefined) process.env.POSTGRID_API_KEY = prev;
+      fetchSpy.mockRestore();
+      if (prev === undefined) delete process.env.POSTGRID_API_KEY;
+      else process.env.POSTGRID_API_KEY = prev;
     }
   });
 });

@@ -24,13 +24,15 @@ organization's own connected identity (BYO). The platform sender is for
 - SMS: `server/services/smsService.ts` sends counterparty SMS with
   `requireByoIdentity: true` and checks for the org's own Twilio
   (`orgHasByoTwilio`).
-- Direct mail: `server/services/lobService.ts` resolves the client through
-  `getLobClient` in `server/services/directMailService.ts` (BYOK vault →
-  legacy org integration → platform key under the live-send interlock in
-  `server/services/mail/liveSendInterlock.ts`). The lobService header records
-  that removing the Lob platform fallback was explicitly **deferred** by the
-  founder (`tests/unit/lobCredentialAuthority.test.ts`); this plan records
-  the current behaviour and does not decide that question.
+- Direct mail (physical): the one carve-out (founder decision 2026-10-17,
+  `docs/company/founder-decisions-2026-10-17.md`). Every send resolves its
+  lane in `server/services/mail/mailLane.ts`: the org's own Lob/PostGrid key
+  (no credits), or AcreOS house mail on the platform Lob key under the
+  live-send interlock (`server/services/mail/liveSendInterlock.ts`),
+  pre-paid per piece from PURCHASED credits only at a self-funding charge
+  (`shared/billing/house-mail-pricing.ts`) and printed under the org's
+  VERIFIED sender identity. The earlier "platform fallback deferred" note is
+  superseded; this plan should exercise both lanes.
 
 ## Why the campaign could not cover it
 

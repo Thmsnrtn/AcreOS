@@ -342,8 +342,20 @@ describe("failure 3 — an outward action whose outcome is unknown", () => {
       path.join(ROOT, "server/services/directMailService.ts"),
       "utf8",
     );
-    const throwsTyped = mail.match(/throw new ProviderNotContactedError\(/g) ?? [];
-    expect(throwsTyped.length).toBe(2);
+    // Since the 2026-10-17 lane change both paths take the charge in ONE
+    // helper (prepareLobSend), which pre-pays through mailLane's
+    // chargeHouseMailPiece — and THAT raises the typed error on a credit
+    // refusal. The pin is: both paths call the helper, the helper calls the
+    // charge, and the charge throws typed.
+    const helper = mail.slice(mail.indexOf("async function prepareLobSend"), mail.indexOf("// Pillar 1.6"));
+    expect(helper).toMatch(/await chargeHouseMailPiece\(/);
+    const lane = fs.readFileSync(path.join(ROOT, "server/services/mail/mailLane.ts"), "utf8");
+    const charge = lane.slice(lane.indexOf("export async function chargeHouseMailPiece("));
+    expect(charge.slice(0, charge.indexOf("\n}\n"))).toMatch(/err instanceof MailLaneRefusedError\) throw new ProviderNotContactedError\(/);
+    const postcardBody = mail.slice(mail.indexOf("export async function sendPostcard"), mail.indexOf("export async function sendLetter"));
+    const letterBody = mail.slice(mail.indexOf("async function performLetterSend"));
+    expect(postcardBody).toContain("await prepareLobSend(");
+    expect(letterBody).toContain("await prepareLobSend(");
     // And the old untyped throw is gone from the credit branch.
     expect(mail).not.toMatch(/hasCredits\s*\)\s*\{\s*throw new Error\(creditCheck\.errorMessage\)/);
   });

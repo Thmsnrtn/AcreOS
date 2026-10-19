@@ -74,6 +74,7 @@ import {
   useMailQuote,
   useQueueMailShipment,
 } from "@/hooks/use-outreach-mail";
+import { MailLaneCard } from "@/components/settings/mail-lane-card";
 
 // ── Static option metadata ──────────────────────────────────────────────────
 
@@ -618,6 +619,8 @@ export default function ComposeTab() {
 
       {/* ── Right column: live cost + Send ─────────────────────────────── */}
       <aside className="space-y-6 lg:sticky lg:top-4 self-start">
+        {/* Which lane these pieces go out on — own Lob key or AcreOS mail (credits). */}
+        <MailLaneCard compact />
         <Card data-testid="card-summary">
           <CardHeader>
             <CardTitle>Live cost</CardTitle>

@@ -494,16 +494,58 @@ export const CONSTITUTION: readonly ConstitutionInvariant[] = [
     id: "rails.byo-not-refront",
     title: "No re-fronting platform send rails",
     statement:
-      "Counterparty mail requires the org's own connected identity (BYO); the platform sender is for system mail only.",
+      "Counterparty email and SMS require the org's own connected identity (BYO); the platform sender is for system mail only. " +
+      "Physical mail is the one carve-out: postcards and letters go out on the org's own Lob/PostGrid key for no credits, " +
+      "or on AcreOS house mail (AcreOS's Lob account), pre-paid per piece from PURCHASED credits only (never the monthly " +
+      "pool, a trial or any grant) at a charge that covers AcreOS's cost — always under the org's own verified sender identity.",
     category: "rails",
-    source: "CLAUDE.md DO-NOT-DO list; founder decision 2026-07-17",
+    source:
+      "CLAUDE.md DO-NOT-DO list; founder decision 2026-07-17 (email/SMS); " +
+      "founder decisions 2026-10-17 A + B (physical mail house lane; self-funding, purchased credits only — " +
+      "docs/company/founder-decisions-2026-10-17.md)",
     enforcement: {
       kind: "code-invariant",
       refs: [
         "server/services/emailService.ts",
         "tests/unit/emailPurposeEnforcement.test.ts",
+        "server/services/mail/mailLane.ts",
+        "server/services/directMailService.ts",
+        "shared/billing/house-mail-pricing.ts",
+        "tests/unit/houseMailLane.test.ts",
+        "tests/unit/physicalMailLanePopulation.test.ts",
+        "tests/unit/houseMailSelfFunding.test.ts",
+        "tests/unit/houseMailPurchasedOnly.realdb.test.ts",
+        "tests/unit/counterpartySmsStaysByo.test.ts",
+        "tests/unit/cardPaidCreditsAreAtPackPrice.test.ts",
       ],
       note:
+        "PHYSICAL MAIL (2026-10-17): mail/mailLane.ts is the one lane authority " +
+        "— own key (no credits, platform key never read, address verification " +
+        "included) or house (the org's verified sender identity + a spec the " +
+        "cost table prices + an atomic pre-paid debit of PURCHASED credits via " +
+        "chargeHouseMail, never poolDebit; refunds only through " +
+        "refundUnbilledHouseMail when Lob certainly did not bill) or an honest " +
+        "refusal. house-mail-pricing.ts holds the cost table and the " +
+        "self-funding inequality; houseMailSelfFunding.test.ts iterates every " +
+        "row with failing canaries; houseMailPurchasedOnly.realdb.test.ts " +
+        "proves on Postgres that grants and the pool never pay. " +
+        "houseMailLane.test.ts pins the charge, the identity requirement, the " +
+        "refund rule and the own-key isolation; " +
+        "physicalMailLanePopulation.test.ts enumerates every Lob/PostGrid send primitive in server/ and " +
+        "fails when one is reached without a lane or pays/refunds any other " +
+        "way. counterpartySmsStaysByo.test.ts keeps SMS BYO. This superseded " +
+        "the deferred 'platform Lob fallback' note. " +
+        "2026-10-18: a house letter is charged for its CONFIRMED page count — " +
+        "AcreOS renders or fetches the PDF, counts it, charges exactly that " +
+        "(each page past the first at Lob's list extra-page price unless the " +
+        "founder overrides it, capped at mail.house.max_letter_pages) and " +
+        "sends Lob that PDF; a letter that cannot be counted is refused. The " +
+        "house lane requires the live-send interlock armed AND a live " +
+        "platform key, and a piece sent to Lob's test environment or " +
+        "simulated is never charged (refunded if pre-paid); lead-address checks run " +
+        "on the org's own key unless a per-check cost is set (the sender " +
+        "return-address check stays free); card top-ups buy credits at the " +
+        "pack price (cardPaidCreditsAreAtPackPrice.test.ts). " +
         "emailService purpose lanes separate system mail from counterparty " +
         "mail. CORRECTED 2026-08-16: this entry claimed `code-invariant` — " +
         "which this file defines as \"enforced structurally in code + covered " +

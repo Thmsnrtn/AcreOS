@@ -44,6 +44,7 @@ import { Trash2, KeyRound, ShieldCheck, MessageSquare, Mail, Printer, Sparkles, 
 import { formatDate } from "@/lib/format";
 import { Verbs } from "@/lib/labels";
 import { MailboxConnect } from "@/components/settings/mailbox-connect";
+import { MailLaneCard } from "@/components/settings/mail-lane-card";
 
 interface ChannelStatus {
   channel: string;
@@ -163,10 +164,12 @@ export default function ByokSettingsPage() {
         </CardHeader>
         <CardContent className="text-sm text-muted-foreground space-y-2">
           <p>
-            By default, AcreOS routes every paid action through our shared
-            provider accounts and debits your AcreOS credit pool. If you'd
-            rather use your own Twilio, Lob, SendGrid, OpenAI, or other
-            provider account, paste the key here.
+            Texts and email to your sellers always go out on your own
+            connected accounts. Printed mail can go out on AcreOS's Lob
+            account for credits, under your verified return address, or on
+            your own Lob or PostGrid key. Other paid actions run on AcreOS's
+            provider accounts and use your AcreOS credit pool unless you
+            paste your own key here.
           </p>
           <p>
             <strong>When you use your own keys, your spend on that channel
@@ -285,7 +288,9 @@ export default function ByokSettingsPage() {
                       </CardTitle>
                       <CardDescription>{group.blurb}</CardDescription>
                     </CardHeader>
-                    <CardContent>
+                    <CardContent className="space-y-3">
+                      {/* Printed mail has two lanes (founder decision 2026-10-17). */}
+                      {group.channels.includes("lob") && <MailLaneCard />}
                       <div className="divide-y">{group.channels.map(renderRow)}</div>
                     </CardContent>
                   </Card>

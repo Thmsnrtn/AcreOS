@@ -17,6 +17,7 @@ import { AbTestManager } from "@/components/ab-test-manager";
 import { CampaignVariantsPanel } from "@/components/campaign-variants-panel";
 
 const campaignFormSchema = insertCampaignSchema.omit({ organizationId: true });
+import { MailLaneCard } from "@/components/settings/mail-lane-card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -721,6 +722,8 @@ function SendMailDialog({
         </DialogHeader>
 
         <div className="space-y-4 py-4">
+          {/* Own Lob key (no credits) or AcreOS mail (credits) — founder decision 2026-10-17. */}
+          <MailLaneCard compact showRates={false} />
           <div className="space-y-2">
             <Label htmlFor="piece-type-trigger">Mail piece type</Label>
             <Select value={pieceType} onValueChange={handlePieceTypeChange}>

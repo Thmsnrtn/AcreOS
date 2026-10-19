@@ -51,6 +51,8 @@ const S = vi.hoisted(() => ({
   fundedByPurchased: false,
   /** Post-commit auto top-ups fired (audit of 1694a0b). */
   topUps: 0,
+  /** Draws on the monthly credit pool — a house shipment must make none. */
+  poolDebits: 0,
 }));
 
 vi.mock("../../server/utils/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
@@ -134,9 +136,38 @@ vi.mock("../../server/db", () => {
   };
   return { db: { select, transaction } };
 });
+// The physical-mail lane (founder decisions 2026-10-17) is pinned by
+// houseMailLane.test.ts; here it resolves to the house lane, whose pieces are
+// pre-paid from PURCHASED credits by chargeHouseMail — faked with the same
+// ledger semantics the pool fake below had (a key already written replays at
+// 0), so this file keeps testing what it was written for. A house shipment
+// never reaches poolDebit (S.poolDebits stays empty).
+vi.mock("../../server/services/mail/mailLane", () => ({
+  resolveMailLane: async (_org: number, spec: { kind: string }) => ({
+    lane: "house",
+    provider: "lob",
+    spec,
+    price: { key: spec.kind === "letter" ? "letter_bw" : "postcard_4x6", label: "Letter" },
+    creditsPerPiece: spec.kind === "letter" ? 120 : 75,
+    senderIdentity: { id: 1, status: "verified" },
+  }),
+  chargeHouseMail: async (a: { externalEventId: string; tx?: unknown }) => {
+    S.debitKeys.push(a.externalEventId);
+    S.debitInTx.push(a.tx !== undefined && a.tx !== null);
+    if (S.debitDelayMs) await new Promise((r) => setTimeout(r, S.debitDelayMs));
+    const replay = S.ledgerKeys.has(a.externalEventId);
+    S.ledgerKeys.add(a.externalEventId);
+    return { externalEventId: a.externalEventId, debitedCents: replay ? 0 : 300, units: 1, replay };
+  },
+  isHouseMailShort: () => false,
+  letterSpec: () => ({ kind: "letter", color: false, pages: 1 }),
+  postcardSpec: (size: string) => ({ kind: "postcard", size }),
+  summarizeMailLane: async () => ({}),
+}));
 vi.mock("../../server/services/mail/router", () => ({ mailRouter: { quote: async () => [] } }));
 vi.mock("../../server/services/creditPool", () => ({
   poolDebit: async (a: { externalEventId: string; tx?: unknown }) => {
+    S.poolDebits++;
     S.debitKeys.push(a.externalEventId);
     S.debitInTx.push(a.tx !== undefined && a.tx !== null);
     if (S.debitDelayMs) await new Promise((r) => setTimeout(r, S.debitDelayMs));
@@ -191,7 +222,10 @@ function app() {
   return a;
 }
 
-const BASE = { pieceType: "letter_10", speed: "standard" };
+// A POSTCARD: a house postcard is pre-paid at queue time, which is the debit
+// these cases pin. (A house LETTER is charged per piece at send, after it is
+// rendered and counted — founder decision 2026-10-18; pinned below.)
+const BASE = { pieceType: "postcard_4x6", speed: "standard" };
 const TX = { audienceFilter: { states: ["TX"], counties: ["Hidalgo"] }, ...BASE };
 
 async function quoted(body: Record<string, unknown> = TX) {
@@ -218,6 +252,7 @@ beforeEach(() => {
   S.debitDelayMs = 0;
   S.fundedByPurchased = false;
   S.topUps = 0;
+  S.poolDebits = 0;
 });
 
 describe("the audience is exactly what the investor chose — or refused", () => {
@@ -360,6 +395,7 @@ describe("one confirmed set, one operation", () => {
     // and no crash between two commits can strand it.
     expect(S.debitInTx).toEqual([true]);
     expect(S.refunds).toHaveLength(0);
+    expect(S.poolDebits).toBe(0); // the house charge, never the pool
     const second = await send();
     expect(second.status).toBe(201);
     // A fresh debit for the attempt that saved — the refunded one is not reused.
@@ -408,6 +444,33 @@ describe("one confirmed set, one operation", () => {
       expect(r.status).toBe(201);
     }
     expect(S.shipments).toHaveLength(2);
+  });
+});
+
+describe("a house LETTER is not charged at queue time (decision 2026-10-18)", () => {
+  it("its length is unknown until each piece is rendered at send, so the queue takes no debit and the shipment is not prepaid", async () => {
+    const qr = await request(app()).post("/api/outreach/mail/quote").send({ ...TX, pieceType: "letter_10" });
+    const res = await request(app())
+      .post("/api/outreach/mail/queue")
+      .set("Idempotency-Key", "op-letter")
+      .send({ ...TX, pieceType: "letter_10", expectedAudienceDigest: qr.body.audienceDigest });
+    expect(res.status).toBe(201);
+    expect(S.debitKeys).toEqual([]);
+    expect(S.poolDebits).toBe(0);
+    expect(S.shipments[0].debitedCents).toBe(0);
+    // Recorded as charged per piece AT SEND — the flusher must not treat it as pre-paid.
+    expect(S.shipments[0].fundingLane).toBe("house_at_send");
+  });
+
+  it("a house POSTCARD is recorded as pre-paid — the only funding the flusher skips the per-piece charge for (audit 2026-10-18)", async () => {
+    const q = await quoted();
+    const res = await request(app())
+      .post("/api/outreach/mail/queue")
+      .set("Idempotency-Key", "op-postcard-lane")
+      .send({ ...TX, expectedAudienceDigest: q.audienceDigest });
+    expect(res.status).toBe(201);
+    expect(S.shipments[0].debitedCents).toBe(300);
+    expect(S.shipments[0].fundingLane).toBe("house_prepaid");
   });
 });
 

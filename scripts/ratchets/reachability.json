@@ -27,6 +27,41 @@
   "allowlist": [
     {
       "kind": "export",
+      "id": "server/services/mail/letterRender.ts::rendersInFlight",
+      "reason": "TEST-INTROSPECTION SEAM (house mail audit, 2026-10-18). How many letter renders are running; houseLetterRenderReal.test.ts samples it during a burst to prove the global semaphore holds renders to MAX_CONCURRENT_RENDERS. REVOCATION: if a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "server/services/mail/letterRender.ts::MAX_HTML_BYTES",
+      "reason": "TEST-INTROSPECTION SEAM (house mail audit, 2026-10-18). The letter-HTML size cap renderLetterHtmlToPdf enforces; houseLetterRenderReal.test.ts sends one byte over it and asserts the refusal, so the test follows the cap if it changes. REVOCATION: if a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "server/services/mail/letterRender.ts::MAX_CONCURRENT_RENDERS",
+      "reason": "TEST-INTROSPECTION SEAM (house mail audit, 2026-10-18). The render semaphore's width; houseLetterRenderReal.test.ts asserts a burst never exceeds it. REVOCATION: if a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "server/services/mail/mailLane.ts::letterRenderCacheBytes",
+      "reason": "TEST-INTROSPECTION SEAM (house mail audit, 2026-10-18). Bytes held by the rendered-letter cache; houseMailLane.test.ts fills it past budget and asserts it stays bounded by bytes. REVOCATION: if a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "server/services/mail/safeFetch.ts::isBlockedAddress",
+      "reason": "TEST-INTROSPECTION SEAM (house mail audit, 2026-10-18). The address rule safeHttpsGet applies after DNS resolution; mailSafeFetch.test.ts drives it over private, loopback, link-local, CGNAT, ULA and IPv4-mapped/compatible/NAT64 forms. REVOCATION: if a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "server/services/mail/safeFetch.ts::resolvePublicAddress",
+      "reason": "TEST-INTROSPECTION SEAM (house mail audit, 2026-10-18). Resolve-once-and-check-every-answer, with an injectable resolver; mailSafeFetch.test.ts uses rebinding-style resolver mocks against it, and tests/helpers/fakeSafeFetch.ts keeps the real check in other suites. REVOCATION: if a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "server/services/mail/safeFetch.ts::pinnedLookup",
+      "reason": "TEST-INTROSPECTION SEAM (house mail audit, 2026-10-18). The lookup that pins a connection to the one checked address; mailSafeFetch.test.ts asserts it never resolves again. REVOCATION: if a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
       "id": "shared/db/createInsertSchema.ts::USER_ENTERED_DATE_COLUMNS",
       "reason": "TEST-INTROSPECTION SEAM (same category as PAX_FIXED_RULES). The allowlist is consumed inside its own module by createInsertSchema, which every table's insert schema is built with, so it has no external PRODUCTION consumer by construction. It is exported so insertSchemasAcceptIsoDates.test.ts can prove, over every table, that a date column accepts a client string IF AND ONLY IF it is listed here, and that no entry is stale. REVOCATION: if a client or server module imports it directly, remove this entry."
     },

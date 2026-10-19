@@ -13,6 +13,11 @@
  *   4. paid org                           → cap never consulted, 201
  *   5. founder on a free org              → cap bypassed
  *
+ * Founder decision 2026-10-17 B: a piece on AcreOS house mail is pre-paid
+ * from PURCHASED credits only — the free tier's pieces included. The cap still
+ * bounds how many a free org may queue; what pays for them is the purchased-
+ * only charge (houseCharges below), and the credit pool is never drawn.
+ *
  * The mail-shipments piece count is the source of truth (cancelled excluded
  * — a cancel inside the hold window gives pieces back). Witnessed-send /
  * live-send interlocks are untouched by the wedge and not exercised here.
@@ -32,6 +37,8 @@ const state = {
   /** how many leads resolveAudience finds */
   audienceSize: 3,
   poolDebitCalls: 0,
+  /** purchased-only house charges (mail/mailLane.ts chargeHouseMail) */
+  houseCharges: 0,
   txInserts: 0,
   /** per-piece QR stamp updates inside the queue transaction */
   txPieceUpdates: 0,
@@ -126,6 +133,27 @@ vi.mock("../../server/db", () => {
   };
 });
 
+// The physical-mail lane (founder decision 2026-10-17) is pinned by
+// houseMailLane.test.ts; here it resolves to the house lane.
+vi.mock("../../server/services/mail/mailLane", () => ({
+  resolveMailLane: async (_org: number, spec: { kind: string }) => ({
+    lane: "house",
+    provider: "lob",
+    spec,
+    price: { key: spec.kind === "letter" ? "letter_bw" : "postcard_4x6", label: "Letter" },
+    creditsPerPiece: spec.kind === "letter" ? 120 : 75,
+    senderIdentity: { id: 1, status: "verified" },
+  }),
+  chargeHouseMail: async (a: { units: number; lane: { creditsPerPiece: number }; externalEventId: string }) => {
+    state.houseCharges += 1;
+    return { externalEventId: a.externalEventId, debitedCents: a.units * a.lane.creditsPerPiece, units: a.units, replay: false };
+  },
+  isHouseMailShort: () => false,
+  letterSpec: () => ({ kind: "letter", color: false, pages: 1 }),
+  postcardSpec: (size: string) => ({ kind: "postcard", size }),
+  summarizeMailLane: async () => ({}),
+}));
+vi.mock("../../server/services/credits", () => ({ creditService: { afterDebitCommitted: () => undefined } }));
 vi.mock("../../server/services/mail/router", () => ({
   // Empty quote list → route falls back to retail estimates; enough for the gate.
   mailRouter: { quote: async () => [] },
@@ -184,6 +212,7 @@ beforeEach(() => {
   state.piecesUsed = 0;
   state.audienceSize = 3;
   state.poolDebitCalls = 0;
+  state.houseCharges = 0;
   state.txInserts = 0;
   state.txPieceUpdates = 0;
   state.piecesUsedConcurrently = 0;
@@ -195,7 +224,10 @@ describe("POST /api/outreach/mail/queue — free-tier first-send wedge (W2.1)", 
     const res = await queue();
     expect(res.status).toBe(201);
     expect(res.body.shipmentId).toBe(777);
-    expect(state.poolDebitCalls).toBe(1);
+    // A house letter is charged per piece at send, after it is rendered and
+    // counted (decision 2026-10-18) — never here, and never from the pool.
+    expect(state.houseCharges).toBe(0);
+    expect(state.poolDebitCalls).toBe(0);
   });
 
   it("refuses with free_send_spent once the lifetime allowance is used — no pool debit", async () => {
@@ -205,6 +237,7 @@ describe("POST /api/outreach/mail/queue — free-tier first-send wedge (W2.1)", 
     expect(res.body.details?.reason).toBe("free_send_spent");
     expect(res.body.details?.upgradeUrl).toBe("/settings#billing");
     expect(state.poolDebitCalls).toBe(0);
+    expect(state.houseCharges).toBe(0);
     expect(state.txInserts).toBe(0);
   });
 
@@ -217,6 +250,7 @@ describe("POST /api/outreach/mail/queue — free-tier first-send wedge (W2.1)", 
     expect(res.body.details?.remainingPieces).toBe(3);
     expect(res.body.details?.requestedPieces).toBe(4);
     expect(state.poolDebitCalls).toBe(0);
+    expect(state.houseCharges).toBe(0);
   });
 
   it("never consults the cap for paid tiers", async () => {
@@ -225,7 +259,8 @@ describe("POST /api/outreach/mail/queue — free-tier first-send wedge (W2.1)", 
     state.audienceSize = 40;
     const res = await queue();
     expect(res.status).toBe(201);
-    expect(state.poolDebitCalls).toBe(1);
+    expect(state.houseCharges).toBe(0);
+    expect(state.poolDebitCalls).toBe(0);
   });
 
   it("two sends racing for the last of the allowance: the loser is refused under the lock, before it is charged", async () => {
