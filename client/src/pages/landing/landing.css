@@ -1792,8 +1792,11 @@
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--acr-brand-strong, #A54718);
-  background: var(--acr-brand-soft);
+  /* The colorway's solved AA ink on its own wash (--acr-brand-strong was never
+     defined, so this always rendered the retired terracotta fallback).
+     Fallbacks are the Fieldstone values. */
+  color: var(--acr-brand-soft-ink, #174B40);
+  background: var(--acr-brand-soft, rgba(23, 75, 64, 0.12));
   padding: 2px 5px;
   border-radius: 4px;
   line-height: 1;

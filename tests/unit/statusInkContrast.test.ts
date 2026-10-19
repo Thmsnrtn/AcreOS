@@ -225,9 +225,15 @@ describe("status inks and muted text clear AA on every theme", () => {
 
     // The ramp above is only what renders if the rail scope re-points the
     // shared tokens at it. Read the rule itself.
-    const rule = /\.sidebar-vibrancy\s*\{([^}]*)\}/.exec(CSS.replace(/\.vibrancy-sidebar,\s*/g, ""));
-    expect(rule, ".sidebar-vibrancy rail scope not found").toBeTruthy();
-    const decl = (n: string) => new RegExp(`--${n}:\\s*([^;]+);`).exec(rule![1])?.[1].trim();
+    // Every rule whose selector list includes .sidebar-vibrancy, merged in
+    // source order — what the cascade applies (the derived-token block and
+    // the rail scope are separate rules on the same element).
+    const bodies = [...CSS.matchAll(/([^{}]*)\{([^{}]*)\}/g)]
+      .filter((m) => m[1].split(",").some((sel) => sel.trim() === ".sidebar-vibrancy"))
+      .map((m) => m[2]);
+    expect(bodies.length, ".sidebar-vibrancy rail scope not found").toBeGreaterThan(0);
+    const merged = bodies.join("\n");
+    const decl = (n: string) => [...merged.matchAll(new RegExp(`--${n}:\\s*([^;]+);`, "g"))].pop()?.[1].trim();
     expect(decl("muted-foreground")).toBe("var(--sidebar-muted-foreground)");
     expect(decl("foreground")).toBe("var(--sidebar-foreground)");
     expect(decl("acr-ink-3")).toBe("var(--acr-sidebar-ink-2)");

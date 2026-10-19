@@ -12,9 +12,12 @@
  * Population: every string literal in client/src. Mutation probe: put
  * `font-mono` back on deals.tsx's text-pipeline-value.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
+
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 const CLIENT = path.resolve(__dirname, "../../client/src");
 

@@ -11,10 +11,13 @@
  * Population: every client source file. Mutation probe: restore
  * `const isMobile = useIsMobile();` in team-chat-dock.tsx.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
 import { stripComments } from "../helpers/stripComments";
+
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 const CLIENT = path.resolve(__dirname, "../../client/src");
 
