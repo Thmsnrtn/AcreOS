@@ -3,10 +3,15 @@ import { cn } from "@/lib/utils";
 import { MoreHorizontal, Plus } from "lucide-react";
 import { motion } from "framer-motion";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { useEffect, useState } from "react";
+import { Suspense, lazy, useEffect, useState } from "react";
 import { prefetchDoorChunksOnIdle } from "@/lib/door-prefetch";
 import { MobileCommandDrawer } from "./MobileCommandDrawer";
-import { QuickAddSheet } from "./QuickAddSheet";
+// The quick-add sheet renders nothing until the FAB is tapped, but its forms
+// pull zod, the shared contracts and cmdk — measured 2026-10-12 they were
+// ~200 KB of the entry chunk that every page (desktop included) downloaded
+// and parsed. Loaded on first open instead; stays mounted afterwards so the
+// close animation runs.
+const QuickAddSheet = lazy(() => import("./QuickAddSheet"));
 import { useAuth } from "@/hooks/use-auth";
 import { NAV_ITEM_MAP, MOBILE_DOORS, type MasterNavItem } from "@/lib/nav-items";
 import { usePaxNeedsYouCount } from "@/hooks/usePaxNeedsYou";
@@ -18,6 +23,10 @@ export function MobileBottomNav() {
   const { user } = useAuth();
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
+  const [quickAddRequested, setQuickAddRequested] = useState(false);
+  useEffect(() => {
+    if (isQuickAddOpen) setQuickAddRequested(true);
+  }, [isQuickAddOpen]);
   // The Pax door badge — asks "Waiting for your tap", from the server's own
   // count (live on `pax.needs_you`, 5-min poll fallback). `null` until the
   // server answers, so the door never shows an invented 0.
@@ -177,11 +186,15 @@ export function MobileBottomNav() {
         onOpenChange={setIsDrawerOpen}
       />
 
-      <QuickAddSheet
-        open={isQuickAddOpen}
-        onOpenChange={setIsQuickAddOpen}
-        persona={user?.persona}
-      />
+      {(isQuickAddOpen || quickAddRequested) && (
+        <Suspense fallback={null}>
+          <QuickAddSheet
+            open={isQuickAddOpen}
+            onOpenChange={setIsQuickAddOpen}
+            persona={user?.persona}
+          />
+        </Suspense>
+      )}
 
       <div className="h-[72px] md:hidden" style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }} />
     </>

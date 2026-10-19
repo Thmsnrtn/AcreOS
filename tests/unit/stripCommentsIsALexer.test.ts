@@ -243,6 +243,11 @@ describe("and nothing goes back to hand-rolling it", () => {
       why: "YAML, not TypeScript. The canonical stripper is a TS parser and cannot read a workflow file; this is the one shared copy the three workflow gates use.",
     },
     {
+      file: "tests/helpers/stripSqlComments.ts",
+      fn: "stripSqlComments",
+      why: "SQL, not TypeScript. The canonical stripper is a TS parser and cannot read a migration file; this is the one shared copy, used by the gate that pins migration 0051 to the schema.",
+    },
+    {
       file: "scripts/lint-css-hover.mjs",
       fn: "maskCssComments",
       why: "CSS, not TypeScript. The canonical stripper is a TS parser and cannot read a stylesheet; CSS has no line comments and no regex literals, so the class of bug this gate exists for does not arise there.",

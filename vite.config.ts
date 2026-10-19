@@ -1,9 +1,66 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
+import fs from "fs";
 import { execSync } from "child_process";
 import { visualizer } from "rollup-plugin-visualizer";
 import viteCompression from "vite-plugin-compression";
+import type { Plugin } from "vite";
+
+// Writes the client chunk graph Rollup actually produced — for every chunk:
+// its file, the source module it fronts (facade), the chunks it imports
+// statically and dynamically, and EVERY module bundled into it (with the
+// bytes it contributes) — to dist/client-chunk-graph.json, BESIDE the served
+// directory (dist/public) so it is never served. scripts/check-route-closure.mjs
+// reads it to prove which code each route loads (map code must load only on
+// routes that render a map). Vite's own manifest lists chunks but not the
+// modules inside them, so it cannot answer "is maplibre-gl in this closure".
+// Written in writeBundle, not generateBundle: later plugins still rename some
+// chunks after generateBundle (measured: a chunk with a CSS import), and a
+// graph naming files that do not exist would be a graph of another build.
+function chunkGraphPlugin(): Plugin {
+  const rootDir = path.resolve(import.meta.dirname);
+  const rel = (id: string) =>
+    path.relative(rootDir, id.replace(/^\0/, "").split("?")[0]).split(path.sep).join("/");
+  return {
+    name: "acreos-chunk-graph",
+    apply: "build",
+    writeBundle(options, bundle) {
+      const chunks: Record<string, unknown> = {};
+      for (const out of Object.values(bundle)) {
+        if (out.type !== "chunk") continue;
+        chunks[out.fileName] = {
+          name: out.name,
+          isEntry: out.isEntry,
+          isDynamicEntry: out.isDynamicEntry,
+          facadeModule: out.facadeModuleId ? rel(out.facadeModuleId) : null,
+          imports: out.imports,
+          dynamicImports: out.dynamicImports,
+          // module id -> bytes it contributes to this chunk after tree-shaking
+          modules: Object.fromEntries(
+            Object.entries(out.modules).map(([id, m]) => [rel(id), m.renderedLength]),
+          ),
+          bytes: Buffer.byteLength(out.code, "utf8"),
+        };
+      }
+      // Module-level dynamic imports: which module issues each import(). A
+      // chunk-level edge cannot tell the router's React.lazy() (loads when
+      // the route renders) from an idle "warm" call in shell code (loads on
+      // every page), so the gate needs the issuing module.
+      const dynamicImporters: Record<string, string[]> = {};
+      for (const id of this.getModuleIds()) {
+        const info = this.getModuleInfo(id);
+        if (!info || info.dynamicallyImportedIds.length === 0) continue;
+        dynamicImporters[rel(id)] = info.dynamicallyImportedIds.map(rel);
+      }
+      const outDir = options.dir ?? path.resolve(rootDir, "dist/public");
+      fs.writeFileSync(
+        path.resolve(outDir, "..", "client-chunk-graph.json"),
+        JSON.stringify({ version: 2, chunks, dynamicImports: dynamicImporters }, null, 1),
+      );
+    },
+  };
+}
 
 // Phase 8 Mo 12 — Beatriz §3 bundle-analyzer.
 // Enabled when ANALYZE=1 (CI / one-off `npm run build:analyze`).
@@ -36,6 +93,7 @@ export default defineConfig({
   },
   plugins: [
     react(),
+    chunkGraphPlugin(),
     // Pre-compress build output (gzip + brotli) so static-serve can deliver
     // already-compressed bytes. Sidesteps the HTTP/2 + `compression`
     // middleware bug where compression negotiation fails under H2 (verified

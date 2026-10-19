@@ -4,7 +4,8 @@
  *
  * The five doors (Today · Map · Deals · Finance · Pax) are React.lazy
  * chunks; on a cold tap the user pays chunk-download + parse before the
- * door even starts fetching data. This module warms those chunks during
+ * door even starts fetching data. This module warms four of them (not Map —
+ * see DOOR_CHUNKS) during
  * browser idle time after the app shell settles, so tapping a door goes
  * straight to the door-shaped skeleton → cached data instead of the
  * route-level fallback.
@@ -20,9 +21,15 @@
  *     makes repeats harmless anyway, but there's no reason to re-enter.
  */
 
+// The Map door is deliberately NOT warmed. Its page statically imports the
+// map engine, so import() of it downloads AND EXECUTES all of MapLibre
+// (vendor-map, ~290 KB gzipped, ~1 MB parsed) on whatever page the user is
+// actually on — measured 2026-10-12, it doubled the JS of every mobile page
+// view (Today: 534 -> 1,074 KB gzipped). Map code loads only when the map
+// route renders; scripts/check-route-closure.mjs fails the build job if any
+// module loaded on every page import()s map code again.
 const DOOR_CHUNKS: ReadonlyArray<() => Promise<unknown>> = [
   () => import("@/pages/today"),
-  () => import("@/pages/maps"),
   () => import("@/pages/deals"),
   () => import("@/pages/money"),
   () => import("@/pages/pax"),
@@ -40,7 +47,7 @@ function whenIdle(callback: () => void) {
   }
 }
 
-/** Warm the five door chunks once, sequentially, during idle time. */
+/** Warm the non-map door chunks once, sequentially, during idle time. */
 export function prefetchDoorChunksOnIdle(): void {
   if (started) return;
   started = true;

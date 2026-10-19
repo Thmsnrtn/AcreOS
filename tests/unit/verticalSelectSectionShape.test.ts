@@ -61,7 +61,7 @@ describe("VerticalSelectSection — data comes from the API, not literals", () =
 
 describe("VerticalSelectSection — waitlisted verticals render, never hidden", () => {
   it("maps over ALL verticals and never filters by selectability", () => {
-    expect(section).toMatch(/data\.verticals\.map\(/);
+    expect(section).toMatch(/viewData\.verticals\.map\(/);
     expect(section).not.toMatch(/verticals\s*\.\s*filter/);
     expect(section).not.toMatch(/filter\(\s*\(?\s*\w+\s*\)?\s*=>\s*\w+\.selectable/);
   });
@@ -112,5 +112,24 @@ describe("pricing page — the section is actually mounted", () => {
 
   it("pricing.tsx no longer references the removed pack section", () => {
     expect(pricing).not.toMatch(/VerticalPackSection/);
+  });
+});
+
+describe("VerticalSelectSection — logged-out 401 fallback", () => {
+  it("falls back to the shared VERTICAL_PACKS catalog on 401 (never an error screen for guests)", () => {
+    expect(section).toMatch(/VERTICAL_PACKS/);
+    expect(section).toMatch(/isVerticalSelectable/);
+    expect(section).toMatch(/fallbackData/);
+    // Only 401s fall back — other errors still surface honestly.
+    expect(section).toMatch(/err\.status === 401/);
+  });
+
+  it("does not retry a 401 from the catalog endpoint", () => {
+    expect(section).toMatch(/retry:/);
+  });
+
+  it("guest tiles route to signup, not to a dead select call", () => {
+    expect(section).toMatch(/!viewData\.authenticated/);
+    expect(section).toMatch(/\/auth\?mode=register/);
   });
 });

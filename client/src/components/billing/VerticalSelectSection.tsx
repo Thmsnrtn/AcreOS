@@ -10,7 +10,9 @@
  * Data honesty rules:
  *   - Every vertical comes from GET /api/verticals, which reads
  *     shared/billing/tier-pricing.ts VERTICAL_PACKS. No hardcoded
- *     vertical data here.
+ *     vertical data here — the one exception is the logged-out 401
+ *     fallback, which builds the same listing from the same shared
+ *     VERTICAL_PACKS source (never a second copy of the data).
  *   - Waitlisted verticals (not production-ready) are SHOWN with their
  *     honest waitlist reason — never hidden. The landing promises these
  *     verticals; hiding them would be a silent broken promise.
@@ -24,7 +26,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { Check, Clock, Layers } from "lucide-react";
 import { Link } from "wouter";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, ApiError } from "@/lib/queryClient";
+import { VERTICAL_PACKS, isVerticalSelectable } from "@shared/billing/tier-pricing";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -75,7 +78,46 @@ export function VerticalSelectSection() {
   const { data, isLoading, error, refetch, isRefetching } =
     useQuery<VerticalsResponse>({
       queryKey: [...VERTICALS_QUERY_KEY],
+      // A logged-out visitor gets a 401 from the catalog endpoint (selection
+      // state requires a session). Don't retry a 401 — fall through to the
+      // static catalog below on the first failure.
+      retry: (failureCount, err) =>
+        err instanceof ApiError && err.status === 401
+          ? false
+          : failureCount < 3,
     });
+
+  // Static fallback for logged-out visitors: the catalog is marketing data
+  // from the same shared VERTICAL_PACKS source the server reads, so a 401
+  // never becomes an error screen on the public pricing page. Selection
+  // state is guest-false; the tiles below already render signup CTAs when
+  // `authenticated` is false.
+  const fallbackData: VerticalsResponse | null =
+    error instanceof ApiError && error.status === 401
+      ? {
+          authenticated: false,
+          verticals: Object.values(VERTICAL_PACKS).map((pack) => {
+            const selectable = isVerticalSelectable(pack.key);
+            return {
+              key: pack.key,
+              name: pack.displayName,
+              tagline: pack.tagline,
+              features: pack.features,
+              businessTypeId: pack.businessTypeId,
+              selectable,
+              waitlistReason: selectable
+                ? null
+                : "On the waitlist until this vertical is production-ready",
+              selected: false,
+            };
+          }),
+        }
+      : null;
+
+  // Prefer server data (has real selection state); fall back to the static
+  // catalog for logged-out visitors. A non-401 error still shows the error
+  // state — that's a real failure, not a guest.
+  const viewData = data ?? fallbackData;
 
   const select = useMutation({
     mutationFn: async (packKey: string) => {
@@ -88,7 +130,7 @@ export function VerticalSelectSection() {
     },
     onSuccess: (_result, packKey) => {
       queryClient.invalidateQueries({ queryKey: [...VERTICALS_QUERY_KEY] });
-      const name = data?.verticals.find((v) => v.key === packKey)?.name ?? "Vertical";
+      const name = viewData?.verticals.find((v) => v.key === packKey)?.name ?? "Vertical";
       toast({
         title: `${name} selected`,
         description: "Your workspace is now tailored to this vertical. Included in your plan — nothing extra was charged.",
@@ -114,7 +156,7 @@ export function VerticalSelectSection() {
     },
     onSuccess: (_result, packKey) => {
       queryClient.invalidateQueries({ queryKey: [...VERTICALS_QUERY_KEY] });
-      const name = data?.verticals.find((v) => v.key === packKey)?.name ?? "Vertical";
+      const name = viewData?.verticals.find((v) => v.key === packKey)?.name ?? "Vertical";
       toast({
         title: `${name} deselected`,
         description: "You can select it again any time.",
@@ -142,7 +184,7 @@ export function VerticalSelectSection() {
           subscription price is set by your plan alone.
         </p>
 
-        {isLoading ? (
+        {isLoading && !viewData ? (
           <div
             className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6"
             role="status"
@@ -153,7 +195,7 @@ export function VerticalSelectSection() {
               <VerticalTileSkeleton key={i} />
             ))}
           </div>
-        ) : error ? (
+        ) : error && !viewData ? (
           <QueryErrorState
             error={error as Error}
             onRetry={() => refetch()}
@@ -163,7 +205,7 @@ export function VerticalSelectSection() {
             description="The vertical catalog didn't load. Retry, or come back in a moment."
             testId="vertical-select-error"
           />
-        ) : !data || data.verticals.length === 0 ? (
+        ) : !viewData || viewData.verticals.length === 0 ? (
           <EmptyState
             framed
             icon={Layers}
@@ -185,7 +227,7 @@ export function VerticalSelectSection() {
             whileInView="visible"
             viewport={{ once: true, margin: "-40px" }}
           >
-            {data.verticals.map((vertical) => {
+            {viewData.verticals.map((vertical) => {
               const busy =
                 pending &&
                 (select.variables === vertical.key || deselect.variables === vertical.key);
@@ -270,7 +312,7 @@ export function VerticalSelectSection() {
                               "On the waitlist until this vertical is production-ready"}
                           </p>
                         </>
-                      ) : !data.authenticated ? (
+                      ) : !viewData.authenticated ? (
                         <Button
                           className="w-full"
                           asChild

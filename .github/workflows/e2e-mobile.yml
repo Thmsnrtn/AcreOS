@@ -88,6 +88,7 @@ jobs:
         run: npx playwright install --with-deps chromium webkit
 
       - name: Build app
+        id: build
         run: npm run build
 
       - name: Run mobile E2E (nav smoke + Pax founder gate)
@@ -108,6 +109,34 @@ jobs:
       # gating PRs here gives same-PR detection of journey regressions.
       - name: Run customer-surface user-journey monitor
         run: npx playwright test --config=playwright.mobile.config.ts tests/e2e-mobile/customer-surface-journeys.spec.ts
+
+      # Cross-tenant isolation sweep: every org-scoped by-id route under /api
+      # (GET/PUT/PATCH/DELETE with an :id-style param), probed as two persona
+      # orgs against this job's production build. Exit 1 = a confirmed
+      # cross-tenant read or write; 2 = population under its floor or the run
+      # could not complete; 3 = a log line carried run data. The log is public:
+      # the sweep prints counts, route templates and status codes only, and its
+      # detailed ledger goes to the runner's temp dir, which is never uploaded.
+      # Runs whenever the build succeeded, so a red E2E step above does not hide
+      # an isolation result. The schema is pushed by the E2E global setup.
+      - name: Cross-tenant isolation sweep (by-id routes)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        timeout-minutes: 15
+        env:
+          SIM_BASE_URL: http://localhost:5000
+          CAMPAIGN_OUT: ${{ runner.temp }}/isolation-sweep
+        run: |
+          set -euo pipefail
+          npx tsx tests/personas/seedDb.ts
+          NODE_ENV=production node dist/index.cjs > "$RUNNER_TEMP/isolation-sweep-server.log" 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          for _ in $(seq 1 60); do
+            if curl -fsS -o /dev/null http://localhost:5000/api/version; then break; fi
+            sleep 2
+          done
+          curl -fsS -o /dev/null http://localhost:5000/api/version || { echo "server did not come up"; tail -n 40 "$RUNNER_TEMP/isolation-sweep-server.log"; exit 1; }
+          npx tsx tests/simulation/campaign/idor-sweep.ts
 
       - name: Upload report + screenshots
         if: always()

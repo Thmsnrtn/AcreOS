@@ -10,9 +10,17 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { QueryErrorState } from "@/components/query-error-state";
 import { Trophy } from "lucide-react";
 import { usd } from "@/lib/format";
+import { useVocabulary } from "@/hooks/use-persona";
 import type { CustomerOutcome } from "@shared/outcomes/customerOutcome";
 
 export function CustomerOutcomeCard() {
+  // The persona's words for what is counted and the stage it reached — the
+  // same name the Deals board gives that column (dealStageLabel): a note
+  // investor reads "Note acquisitions · Acquired", a tax-lien operator "Tax
+  // certificates · Awarded", never the land flipper's "Deals closed".
+  const term = useVocabulary();
+  const dealsLabel = term("entity.deal.plural");
+  const closedStage = term("pipeline.stage.closed");
   const q = useQuery<CustomerOutcome>({ queryKey: ["/api/finance/outcome"] });
   if (q.isLoading) {
     return (
@@ -38,7 +46,7 @@ export function CustomerOutcomeCard() {
       <CardContent className="space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <p className="text-xs text-muted-foreground">Deals closed</p>
+            <p className="text-xs text-muted-foreground">{dealsLabel} · {closedStage}</p>
             <p className="text-2xl font-semibold tabular-nums" data-testid="outcome-deals-closed">{o.dealsClosed.total}</p>
             <p className="text-xs text-muted-foreground">
               {o.dealsClosed.acquisitions} bought · {o.dealsClosed.dispositions} sold
@@ -49,7 +57,7 @@ export function CustomerOutcomeCard() {
             {p.status === "shown" ? (
               <>
                 <p className="text-2xl font-semibold tabular-nums" data-testid="outcome-profit">{usd(p.cents / 100, { noCents: true })}</p>
-                <p className="text-xs text-muted-foreground">from {p.salesCounted} closed sale{p.salesCounted === 1 ? "" : "s"}</p>
+                <p className="text-xs text-muted-foreground">from {p.salesCounted} completed sale{p.salesCounted === 1 ? "" : "s"}</p>
               </>
             ) : (
               <p className="text-sm" data-testid="outcome-profit-refused">{p.reason}</p>
@@ -67,7 +75,7 @@ export function CustomerOutcomeCard() {
           </p>
         )}
         <p className="text-xs text-muted-foreground" data-testid="outcome-label">
-          {o.included} Closing costs were recorded on {o.closingCostsRecordedOn} of the deals counted.
+          {o.included} Closing costs were recorded on {o.closingCostsRecordedOn} of the {dealsLabel.toLowerCase()} counted.
         </p>
       </CardContent>
     </Card>

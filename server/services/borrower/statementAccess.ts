@@ -29,6 +29,7 @@
 import crypto from "crypto";
 import { logger } from "../../utils/logger";
 import { clock } from "../../utils/clock";
+import { borrowerSessionSecretProblem, StatementPortalNotConfiguredError } from "../../utils/borrowerSessionSecret";
 
 /** 30 minutes — borrower opens email link, reads statement, done. */
 export const SESSION_TTL_SECONDS = 30 * 60;
@@ -44,16 +45,13 @@ export const COOKIE_NAME = "borrower_stmt_session";
 /**
  * Read the signing secret lazily so tests can set the env var before
  * the first call. Module-load reads break vitest's isolated test runs.
- * Throws on first call when unset (fail-closed).
+ * Throws StatementPortalNotConfiguredError when unset or too short
+ * (fail-closed); the exchange route turns that into a 503.
  */
 function getSigningSecret(): string {
-  const secret = process.env.BORROWER_SESSION_SECRET;
-  if (!secret || secret.length < 16) {
-    throw new Error(
-      "BORROWER_SESSION_SECRET is required (>=16 chars) — fail-closed.",
-    );
-  }
-  return secret;
+  const problem = borrowerSessionSecretProblem();
+  if (problem) throw new StatementPortalNotConfiguredError(problem);
+  return process.env.BORROWER_SESSION_SECRET as string;
 }
 
 export interface ExchangeInput {

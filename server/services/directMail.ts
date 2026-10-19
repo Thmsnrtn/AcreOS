@@ -3,7 +3,20 @@ import { storage } from '../storage';
 import { logger } from "../utils/logger";
 import { shouldSimulate, recordSimulatedAction } from "../utils/simulationMode";
 import { isLiveSendArmed } from './mail/liveSendInterlock';
-import { getLobClient } from './directMailService';
+import { getOwnLobClient } from './directMailService';
+import {
+  resolveMailLane,
+  assertSendableLane,
+  chargeHouseMailPiece,
+  refundUnbilledHouseMail,
+  houseLetterFile,
+  postcardSpec,
+  letterSpec,
+  type HouseMailCharge,
+  type HouseMailSpec,
+  type SendableMailLane,
+} from './mail/mailLane';
+import { randomUUID } from 'node:crypto';
 import { DIRECT_MAIL_COSTS, type MailPieceType } from "./sendPricing";
 import { clock } from "../utils/clock";
 import { assertOwnerContactAllowed } from "./trust/ownerSuppression";
@@ -57,6 +70,13 @@ export interface PostcardOptions {
    * See server/services/actions/outwardAction.ts.
    */
   idempotencyKey?: string;
+  /**
+   * The caller already charged this piece (the campaign send route debits its
+   * mailing order), so a house piece is not charged again here.
+   * tests/unit/physicalMailLanePopulation.test.ts holds the callers allowed
+   * to say so.
+   */
+  housePrepaid?: boolean;
 }
 
 export interface LetterOptions {
@@ -68,6 +88,8 @@ export interface LetterOptions {
   pageCount?: number;
   /** See PostcardOptions.idempotencyKey. Requires `orgId`. */
   idempotencyKey?: string;
+  /** See PostcardOptions.housePrepaid. */
+  housePrepaid?: boolean;
 }
 
 /**
@@ -197,9 +219,9 @@ export class DirectMailService {
   /**
    * The org's OWN Lob client, or null when the org has none.
    *
-   * Resolution is DELEGATED to `directMailService.getLobClient` — the single
-   * credential authority (BYOK vault → legacy organization_integrations row →
-   * platform key), per the 2026-08-16 consolidation. This method used to run
+   * Resolution is DELEGATED to `directMailService.getOwnLobClient` — the single
+   * credential authority (BYOK vault → legacy organization_integrations row),
+   * per the 2026-08-16 consolidation. This method used to run
    * its own lookup that queried ONLY the legacy row, so an org whose Lob key
    * lives in the BYOK vault — the documented Universal-BYOK path — had its
    * campaign postcards and letters to LEADS printed on ACREOS's Lob account.
@@ -207,23 +229,82 @@ export class DirectMailService {
    * it survived here because the fix was applied to one file, not to the
    * behaviour.
    *
-   * We deliberately return NULL on the authority's platform tier rather than
-   * handing the platform client back: the caller's platform branch carries the
-   * live-send interlock and the outreach stop-loss gate, and short-circuiting
-   * past those would spend the founder's mail budget ungated.
+   * Returns NULL when the org has no own key: the house-lane branch of the
+   * send carries the live-send interlock and the outreach stop-loss gate.
    */
   async getOrgLobClient(orgId: number): Promise<{ client: any; source: 'organization' | 'platform'; isTestKey: boolean } | null> {
     try {
-      const resolved = await getLobClient(orgId);
-      if (resolved.source === 'organization') {
+      const own = await getOwnLobClient(orgId);
+      if (own) {
         logger.info(`[DirectMail] Using organization Lob credentials for org ${orgId}`);
-        return resolved;
+        return own;
       }
     } catch (error) {
       logger.error(`[DirectMail] Failed to get org Lob credentials for org ${orgId}`, error);
     }
 
     return null;
+  }
+
+  /**
+   * The lane for one piece (founder decision 2026-10-17, mail/mailLane.ts),
+   * decided before simulation, credits or Lob. Customer mail from this class
+   * always belongs to an org: with no orgId there is no way to tell whose
+   * account pays, so it refuses rather than defaulting to AcreOS's.
+   *
+   * On the house lane the return address is REPLACED by the org's verified
+   * sender identity — a house piece never carries anything else. The credit
+   * charge is taken by chargeHouse, immediately before Lob.
+   */
+  private async prepareLane(
+    orgId: number | undefined,
+    spec: HouseMailSpec,
+    from: DirectMailRecipient,
+    housePrepaid: boolean,
+  ): Promise<{ orgClient: Awaited<ReturnType<DirectMailService['getOrgLobClient']>>; from: DirectMailRecipient; lane: SendableMailLane; housePrepaid: boolean }> {
+    const { ProviderNotContactedError } = await import('./actions/outwardAction');
+    if (!orgId) {
+      throw new ProviderNotContactedError(
+        'Customer direct mail requires an organization — without one there is no way to tell whose Lob account pays.',
+      );
+    }
+    const lane = await assertSendableLane(await resolveMailLane(orgId, spec, { via: 'lob' }));
+    if (lane.lane === 'own_account') {
+      const orgClient = await this.getOrgLobClient(orgId);
+      if (!orgClient) {
+        throw new ProviderNotContactedError('Your own Lob key could not be read, so nothing was mailed. Reconnect it in Settings → Your provider keys.');
+      }
+      return { orgClient, from, lane, housePrepaid };
+    }
+    const identity = lane.senderIdentity;
+    const houseFrom: DirectMailRecipient = {
+      name: identity.companyName,
+      addressLine1: identity.addressLine1,
+      addressLine2: identity.addressLine2 || undefined,
+      city: identity.city,
+      state: identity.state,
+      zip: identity.zipCode,
+    };
+    return { orgClient: null, from: houseFrom, lane, housePrepaid };
+  }
+
+  /**
+   * Pre-pay one HOUSE piece from purchased credits, immediately before Lob is
+   * called (after simulation and the stop-loss gate, which send nothing).
+   * Own-key and prepaid pieces are never charged. Per-attempt key: see
+   * directMailService.prepareLobSend.
+   */
+  private async chargeHouse(
+    orgId: number,
+    prepared: { lane: SendableMailLane; housePrepaid: boolean },
+    idempotencyKey: string | undefined,
+  ): Promise<HouseMailCharge | null> {
+    if (prepared.lane.lane !== 'house' || prepared.housePrepaid) return null;
+    return chargeHouseMailPiece({
+      organizationId: orgId,
+      lane: prepared.lane,
+      externalEventId: `mail:house:${orgId}:${prepared.lane.price.key}:${idempotencyKey ?? 'adhoc'}:${randomUUID()}`,
+    });
   }
 
   /** True when the ORG has its own Lob credential in any tier of the authority. */
@@ -255,6 +336,8 @@ export class DirectMailService {
   private async performSendPostcard(options: PostcardOptions, mode: MailMode = 'live', orgId?: number): Promise<SendResult> {
     // Platform-wide owner opt-out (W5a) — before simulation and Lob.
     await assertOwnerContactAllowed("mail", { addressLine1: options.to.addressLine1, zip: options.to.zip });
+    const prepared = await this.prepareLane(orgId, postcardSpec(options.size), options.from, options.housePrepaid === true);
+    options = { ...options, from: prepared.from };
     // Honor SIMULATION_MODE / SIMULATION_MODE_LOB / org.settings.simulationMode.
     // Previously this service relied only on Lob's own `test_*` key for safety,
     // which made the global kill-switch a lie for direct-mail. Caught 2026-05-10.
@@ -280,7 +363,7 @@ export class DirectMailService {
     // mail) — org keys by prefix, platform keys by interlock-degraded mode.
     let usedTestEnv: boolean;
 
-    const orgClient = orgId ? await this.getOrgLobClient(orgId) : null;
+    const orgClient = prepared.orgClient;
     if (orgClient) {
       lob = orgClient.client;
       credentialSource = orgClient.source;
@@ -301,7 +384,12 @@ export class DirectMailService {
       usedTestEnv = effective === 'test';
     }
 
-    const result = await lob.postcards.create({
+    // Lob's test environment prints nothing: a house piece sent there is
+    // never charged (the house lane already requires the armed interlock).
+    const charge = usedTestEnv ? null : await this.chargeHouse(orgId!, prepared, options.idempotencyKey);
+    let result: { id: string; expected_delivery_date: string };
+    try {
+    result = await lob.postcards.create({
       to: {
         name: options.to.name,
         address_line1: options.to.addressLine1,
@@ -322,6 +410,11 @@ export class DirectMailService {
       back: options.back,
       size: options.size,
     });
+    } catch (err) {
+      // Only a piece Lob certainly did not bill (rejected) is refunded.
+      await refundUnbilledHouseMail(orgId!, charge, err, 'Postcard was rejected by Lob');
+      throw err;
+    }
     
     const costCents = options.size === '4x6' ? 80 : options.size === '6x9' ? 95 : 115;
     logLobApiUsage(orgId, 'send_postcard', costCents, { size: options.size, isTestMode: usedTestEnv });
@@ -379,6 +472,15 @@ export class DirectMailService {
 
   private async performSendLetter(options: LetterOptions, mode: MailMode = 'live', orgId?: number): Promise<SendResult> {
     await assertOwnerContactAllowed("mail", { addressLine1: options.to.addressLine1, zip: options.to.zip });
+    const prepared = await this.prepareLane(
+      orgId,
+      // The page count is CONFIRMED from the content (a caller's pageCount is
+      // a claim, not a confirmation — founder decision 2026-10-18).
+      letterSpec({ color: options.color ?? false, file: options.file }),
+      options.from,
+      options.housePrepaid === true,
+    );
+    options = { ...options, from: prepared.from };
     const org = orgId ? await storage.getOrganization(orgId).catch(() => null) : null;
     if (shouldSimulate("lob", org)) {
       const sim = await recordSimulatedAction(
@@ -400,7 +502,7 @@ export class DirectMailService {
     // See sendPostcard — honest test-environment tracking.
     let usedTestEnv: boolean;
 
-    const orgClient = orgId ? await this.getOrgLobClient(orgId) : null;
+    const orgClient = prepared.orgClient;
     if (orgClient) {
       lob = orgClient.client;
       credentialSource = orgClient.source;
@@ -416,7 +518,12 @@ export class DirectMailService {
       usedTestEnv = effective === 'test';
     }
 
-    const result = await lob.letters.create({
+    // Lob's test environment prints nothing: a house piece sent there is
+    // never charged (the house lane already requires the armed interlock).
+    const charge = usedTestEnv ? null : await this.chargeHouse(orgId!, prepared, options.idempotencyKey);
+    let result: { id: string; expected_delivery_date: string };
+    try {
+    result = await lob.letters.create({
       to: {
         name: options.to.name,
         address_line1: options.to.addressLine1,
@@ -433,10 +540,15 @@ export class DirectMailService {
         address_state: options.from.state,
         address_zip: options.from.zip,
       },
-      file: options.file,
+      // House: the counted PDF itself (decision 2026-10-18).
+      file: prepared.lane.lane === 'house' ? houseLetterFile(prepared.lane) : options.file,
       color: options.color ?? false,
       double_sided: options.doubleSided ?? false,
     });
+    } catch (err) {
+      await refundUnbilledHouseMail(orgId!, charge, err, 'Letter was rejected by Lob');
+      throw err;
+    }
     
     const costCents = (options.pageCount || 1) <= 1 ? 150 : 150 + ((options.pageCount || 1) - 1) * 15;
     logLobApiUsage(orgId, 'send_letter', costCents, { pageCount: options.pageCount || 1, isTestMode: usedTestEnv });
@@ -470,45 +582,9 @@ export class DirectMailService {
     };
   }
 
-  // Validate an address using Lob's address verification
-  async verifyAddress(address: DirectMailRecipient, mode: MailMode = 'test'): Promise<{
-    isValid: boolean;
-    deliverability: string;
-    normalizedAddress?: DirectMailRecipient;
-  }> {
-    // Use test mode by default for verification to save costs. The
-    // interlock also applies: without a test key and while disarmed this
-    // throws rather than silently using the live key.
-    const lob = this.getLobClient(this.hasTestKey ? 'test' : this.effectiveMode(mode));
-    
-    try {
-      const result = await lob.usVerifications.verify({
-        primary_line: address.addressLine1,
-        secondary_line: address.addressLine2 || '',
-        city: address.city,
-        state: address.state,
-        zip_code: address.zip,
-      });
-      
-      return {
-        isValid: result.deliverability === 'deliverable',
-        deliverability: result.deliverability,
-        normalizedAddress: result.deliverability === 'deliverable' ? {
-          name: address.name,
-          addressLine1: result.primary_line,
-          addressLine2: result.secondary_line || undefined,
-          city: result.components.city,
-          state: result.components.state,
-          zip: result.components.zip_code,
-        } : undefined,
-      };
-    } catch (error) {
-      return {
-        isValid: false,
-        deliverability: 'error',
-      };
-    }
-  }
+  // (A Lob address verifier on AcreOS's env keys used to live here with no
+  // caller; it was deleted 2026-10-18. Address checks run only through
+  // directMailService.verifyAddress, which applies the founder's lanes.)
 
   // Get estimated delivery date (works with test keys too)
   getEstimatedDeliveryDays(): { min: number; max: number } {

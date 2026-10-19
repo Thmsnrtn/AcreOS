@@ -1,14 +1,14 @@
 /**
  * Pillar 2 — PostGrid adapter (pay-as-you-go).
  *
- * Activates the moment POSTGRID_API_KEY appears. Same per-piece API
- * shape as Lob (https://postgrid.com/docs/print-mail-v1/index.html);
- * we wrap the bare minimum endpoints needed for postcards + letters.
- *
- * Pricing is roughly 25-35% cheaper than Lob retail — that's the whole
- * point of routing. We post to the financial ledger here directly
- * (Lob does it inside directMailService; PostGrid has no legacy hook
- * so it owns its own debit).
+ * OWN-KEY ONLY (founder decision 2026-10-17). AcreOS house mail runs on
+ * AcreOS's own Lob account; PostGrid is a lane only for an org that connected
+ * its OWN PostGrid key, which pays PostGrid directly — so this adapter never
+ * reads a platform PostGrid key, never charges credits and never posts the
+ * spend to AcreOS's opex ledger. An org without its own key gets a
+ * non-viable quote and the router uses Lob instead.
+ * Same per-piece API shape as Lob
+ * (https://postgrid.com/docs/print-mail-v1/index.html).
  */
 
 import type {
@@ -32,13 +32,18 @@ const POSTGRID_COSTS: Record<PieceType, number> = {
   handwritten: 240, // PostGrid does not offer true handwriting; quoted high so router prefers lettrlabs once it ships
 };
 
-function postgridApiKey(): string | null {
-  return process.env.POSTGRID_API_KEY ?? null;
+/** The org's OWN PostGrid key (BYOK vault), or null. */
+async function orgPostgridKey(organizationId: number): Promise<string | null> {
+  try {
+    const { getByokCredential } = await import("../../byok/key-vault");
+    return await getByokCredential({ organizationId, channel: "postgrid" });
+  } catch (err) {
+    logger.warn("[postgridAdapter] own-key lookup failed", { metadata: { organizationId, error: err instanceof Error ? err.message : String(err) } });
+    return null;
+  }
 }
 
-async function postgridFetch(path: string, body: Record<string, unknown>): Promise<any> {
-  const key = postgridApiKey();
-  if (!key) throw new Error("PostGrid not configured (POSTGRID_API_KEY unset).");
+async function postgridFetch(key: string, path: string, body: Record<string, unknown>): Promise<any> {
 
   const form = new URLSearchParams();
   // PostGrid expects flat form-encoded bodies with dot-notation nesting
@@ -64,46 +69,25 @@ async function postgridFetch(path: string, body: Record<string, unknown>): Promi
   return res.json();
 }
 
-async function postPostgridCostToLedger(
-  organizationId: number,
-  providerEventId: string,
-  amountCents: number,
-  pieceType: PieceType,
-  feature: string,
-): Promise<void> {
-  if (amountCents <= 0 || !providerEventId) return;
-  try {
-    const { postOpexSpent } = await import("../../financial-ledger");
-    await postOpexSpent({
-      organizationId,
-      amountCents,
-      category: "mail",
-      feature,
-      providerName: "postgrid",
-      providerEventId,
-      externalEventId: `postgrid:${pieceType}:${providerEventId}`,
-    });
-  } catch (err) {
-    logger.warn("[postgridAdapter] ledger postOpexSpent failed (non-fatal)", err instanceof Error ? err : undefined);
-  }
-}
-
 export const postgridAdapter: MailProvider = {
   name: "postgrid",
 
+  // Participation is per org (its own key), decided in quote(); there is no
+  // platform PostGrid account to be configured.
   isConfigured(): boolean {
-    return Boolean(postgridApiKey());
+    return true;
   },
 
   async quote(shipment: MailShipment): Promise<ProviderQuote> {
-    if (!this.isConfigured()) {
+    const { orgHasOwnMailKey } = await import("../mailLane");
+    if (!(await orgHasOwnMailKey(shipment.organizationId, "postgrid"))) {
       return {
         provider: "postgrid",
         costPerPieceCents: 0,
         deliveryEtaDays: 0,
         minVolume: 0,
         meetsConstraints: false,
-        reasonIfNot: "POSTGRID_API_KEY not set",
+        reasonIfNot: "PostGrid is own-key only and this org has no PostGrid key",
       };
     }
     const costPerPieceCents = averageCostCentsPerPiece(shipment.pieces, POSTGRID_COSTS);
@@ -123,9 +107,6 @@ export const postgridAdapter: MailProvider = {
   },
 
   async send(shipment: MailShipment): Promise<ProviderSendResult> {
-    if (!this.isConfigured()) {
-      throw new Error("PostGrid not configured (POSTGRID_API_KEY unset).");
-    }
     // Platform-wide owner opt-out (W5a): every recipient is checked BEFORE
     // the first piece is sent, so a suppressed owner refuses the shipment
     // with nothing printed (ProviderNotContactedError) rather than half-sent.
@@ -133,12 +114,22 @@ export const postgridAdapter: MailProvider = {
       await assertOwnerContactAllowed("mail", { addressLine1: piece.recipient.address1, zip: piece.recipient.zip });
     }
 
+    // The lane: own PostGrid key or nothing. Resolved before any piece.
+    const { resolveMailLane, assertSendableLane, letterSpec, postcardSpec } = await import("../mailLane");
+    const isLetter = shipment.pieces.some((p) => p.pieceType === "letter_10" || p.pieceType === "handwritten");
+    await assertSendableLane(
+      await resolveMailLane(shipment.organizationId, isLetter ? letterSpec() : postcardSpec("4x6"), { via: "postgrid" }),
+    );
+    const key = await orgPostgridKey(shipment.organizationId);
+    if (!key) {
+      const { ProviderNotContactedError } = await import("../../actions/outwardAction");
+      throw new ProviderNotContactedError("Your own PostGrid key could not be read, so nothing was mailed.");
+    }
+
     const { storage } = await import("../../../storage");
-    const identities = (storage as any).getMailSenderIdentitiesByOrganizationId
-      ? await (storage as any).getMailSenderIdentitiesByOrganizationId(shipment.organizationId)
-      : [];
+    const identities = await storage.getMailSenderIdentities(shipment.organizationId);
     const senderIdentity = Array.isArray(identities)
-      ? identities.find((i: any) => i.isDefault && i.isActive) ?? identities[0]
+      ? identities.find((i) => i.isDefault && i.isActive) ?? identities[0]
       : null;
     if (!senderIdentity) {
       throw new Error(
@@ -192,7 +183,7 @@ export const postgridAdapter: MailProvider = {
 
       let result: Awaited<ReturnType<typeof postgridFetch>>;
       try {
-        result = await postgridFetch(path, body);
+        result = await postgridFetch(key, path, body);
       } catch (err) {
         // DEFECT-0105: pieces already accepted are printed — say which.
         if (pieces.length > 0) {
@@ -206,18 +197,7 @@ export const postgridAdapter: MailProvider = {
       pieces.push({ providerPieceId, recipientRef: `${shipment.customerId}` });
       totalCostCents += cost;
 
-      // Ledger debit — PostGrid has no legacy hook, so we own the post. The
-      // piece is ACCEPTED at this point; a ledger failure is logged, never
-      // allowed to turn an accepted piece into a thrown send.
-      try {
-        await postPostgridCostToLedger(shipment.organizationId, providerPieceId, cost, piece.pieceType, feature);
-      } catch (err) {
-        logger.error(
-          "[postgridAdapter] cost ledger post failed for an accepted piece",
-          err instanceof Error ? err : undefined,
-          { metadata: { organizationId: shipment.organizationId, providerPieceId } },
-        );
-      }
+      // No opex ledger post: the org's own PostGrid account paid for it.
     }
 
     logger.info(`[postgridAdapter] sent ${pieces.length} pieces for org ${shipment.organizationId}`);

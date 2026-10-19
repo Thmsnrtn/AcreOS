@@ -22,6 +22,7 @@
  *     send_sms case in tools.ts: red ("Pax's own sends debit nothing").
  */
 import { describe, it, expect } from "vitest";
+import { HOUSE_MAIL_COST_TABLE, houseMailCreditsPerPiece, houseMailSpecKey, type HouseMailSpec } from "@shared/billing/house-mail-pricing";
 import fs from "node:fs";
 import path from "node:path";
 import { stripCommentsPreservingLines } from "../../scripts/lib/strip-comments.mjs";
@@ -69,7 +70,27 @@ describe("campaign charge sites read the one price table", () => {
   });
 
   it("the direct-mail send debits DIRECT_MAIL_COSTS[pieceType] × pieces", () => {
-    expect(src).toMatch(/const costPerPiece = DIRECT_MAIL_COSTS\[pieceType\];/);
+    // Since 2026-10-17 B the house piece is priced through the self-funding
+    // floor with DIRECT_MAIL_COSTS as the listed price; the per-piece charge
+    // is what that lane resolves to.
+    expect(src).toMatch(/listedCredits: DIRECT_MAIL_COSTS\[pieceType\]/);
+    // …charged only when the house piece will PRINT (live mode, not simulated).
+    expect(src).toMatch(/const costPerPiece = houseCharges && mailLane\.lane === 'house' \? mailLane\.creditsPerPiece : 0;/);
+  });
+
+  it("…and the floor raises none of them, so the quoted price IS the charge", () => {
+    const specFor: Record<string, HouseMailSpec> = {
+      postcard_4x6: { kind: "postcard", size: "4x6" },
+      postcard_6x9: { kind: "postcard", size: "6x9" },
+      postcard_6x11: { kind: "postcard", size: "6x11" },
+      letter_1_page: { kind: "letter", color: false, pages: 1 },
+    };
+    for (const [piece, spec] of Object.entries(specFor)) {
+      const key = houseMailSpecKey(spec)!;
+      const cost = HOUSE_MAIL_COST_TABLE.find((r) => r.key === key)!.providerCostCents;
+      const listed = DIRECT_MAIL_COSTS[piece as keyof typeof DIRECT_MAIL_COSTS];
+      expect(houseMailCreditsPerPiece(listed, cost), piece).toBe(listed);
+    }
   });
 
   it("a quote is that price times the count", () => {

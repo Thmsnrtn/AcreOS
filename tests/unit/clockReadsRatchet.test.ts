@@ -15,10 +15,15 @@
  *   - the population: every non-test source file under server/ is walked,
  *     the clock module is the only exclusion, and the floors hold.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 // @ts-expect-error — plain .mjs gate module, no type declarations
 import { findClockReads, measure, serverPopulation, CLOCK_MODULE } from "../../scripts/check-clock-reads.mjs";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
+
+// measure() walks every server file; under the coverage run on a shared CI
+// runner that exceeds the default 30s test timeout.
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 type Read = { shape: string; line: number };
 const reads = (src: string, f = "x.ts"): Read[] => findClockReads(src, f);

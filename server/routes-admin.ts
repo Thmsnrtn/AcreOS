@@ -2897,6 +2897,15 @@ export function registerAdminRoutes(app: Express): void {
       const [{ adAccounts }] = await db.select({ adAccounts: sql<number>`count(*)` }).from(founderAdAccounts);
       const [{ campaigns }] = await db.select({ campaigns: sql<number>`count(*)` }).from(growthCampaigns);
 
+      // Where system alerts land. Reported as resolved yes/no + the rule that
+      // answered — never the organisation id.
+      const { describeFounderOrgResolution, FOUNDER_ORG_REMEDY } = await import("./services/founderOrgDiagnostics");
+      const founderOrg = await describeFounderOrgResolution();
+      const founderOrgSourceText: Record<string, string> = {
+        "sole-owned": "Resolved: the one organization a founder identity owns.",
+        pinned: "Resolved: FOUNDER_PRIMARY_ORG_ID, confirmed founder-owned.",
+      };
+
       const items = [
         // ── CRITICAL ─────────────────────────────────────────
         {
@@ -2943,6 +2952,19 @@ export function registerAdminRoutes(app: Express): void {
           status: hasEnv("FOUNDER_EMAIL") ? "complete" : "incomplete",
           section: "section-config",
           helpText: "Set FOUNDER_EMAIL environment variable to your email address",
+        },
+        {
+          key: "founder_org_resolved",
+          label: "Founder organization resolves",
+          description: founderOrg.resolved
+            ? founderOrgSourceText[founderOrg.source ?? ""] ?? "Resolved."
+            : "Unresolved: system alerts and on-call pages skip the in-app alert and the phone push.",
+          priority: "critical",
+          status: founderOrg.resolved && founderOrg.strictReason === null ? "complete" : "incomplete",
+          section: "section-config",
+          helpText: founderOrg.strictReason
+            ? FOUNDER_ORG_REMEDY[founderOrg.strictReason]
+            : "Set FOUNDER_PRIMARY_ORG_ID (fly secrets set) if more than one organization is founder-owned.",
         },
         // ── CORE ─────────────────────────────────────────────
         {
@@ -3027,7 +3049,7 @@ export function registerAdminRoutes(app: Express): void {
       const earnedWeight = items.reduce((s, i) => s + (i.status === "complete" ? (weights[i.priority] || 1) : 0), 0);
       const score = Math.round((earnedWeight / totalWeight) * 100);
 
-      res.json({ score, items });
+      res.json({ score, items, founderOrg });
     } catch (err: any) {
       logger.error("Launch readiness error", { message: err.message, name: err.name });
       res.json({ score: 0, items: [] });

@@ -162,7 +162,6 @@ describe("every hasEnoughCredits caller is classified", () => {
     // credits and charge later — paxTurnFunding.reservePaxTurn takes the
     // charge atomically through deductOrFundFromTrial, which records
     // trial-funded usage (paxTurnsIncludedAreFree.test.ts pins that path).
-    "server/services/directMailService.ts": "own-credit",
   };
 
   function walk(dir: string, out: string[] = []): string[] {
@@ -197,6 +196,24 @@ describe("every hasEnoughCredits caller is classified", () => {
       }
     });
   }
+});
+
+describe("printed mail is never funded by the trial allowance", () => {
+  // directMailService gated on hasEnoughOwnCredits until the 2026-10-17 lane
+  // change; house mail is now pre-paid from PURCHASED credits only by
+  // mail/mailLane.ts chargeHouseMail (decision B) — never the trial
+  // allowance, and never the monthly pool either.
+  it("the house-mail charge is the purchased-only debit, with no trial- or pool-aware path", () => {
+    const lane = src("server/services/mail/mailLane.ts");
+    expect(lane).toMatch(/export async function chargeHouseMail\(/);
+    expect(lane).not.toMatch(/\bpoolDebit\(/);
+    expect(lane).not.toMatch(/hasEnoughCredits|evaluateCredits|deductOrFundFromTrial|trialAllowance/);
+    for (const f of ["server/services/directMailService.ts", "server/services/directMail.ts", "server/services/mailProvider.ts", "server/services/lobService.ts"]) {
+      const s = src(f);
+      expect(s, f).toMatch(/chargeHouseMailPiece\(/);
+      expect(s, f).not.toMatch(/hasEnoughCredits\(|evaluateCredits\(|deductOrFundFromTrial\(/);
+    }
+  });
 });
 
 describe("campaign sends never bill a simulated send", () => {

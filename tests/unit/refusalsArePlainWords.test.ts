@@ -123,7 +123,6 @@ const UNCOVERED: Record<string, number> = {
   "server/services/autopilot/hands/reply-support-ticket.ts": 4,
   "server/services/comps.ts": 4,
   "server/services/core-agents.ts": 4,
-  "server/services/mailProvider.ts": 4,
   "server/services/task-runner.ts": 4,
   "server/services/inboundEmailService.ts": 3,
   "server/services/orgEmailIdentity.ts": 3,
@@ -131,7 +130,7 @@ const UNCOVERED: Record<string, number> = {
 };
 
 /** The register's total — it may only go down. */
-const UNCOVERED_TOTAL_BASELINE = 226;
+const UNCOVERED_TOTAL_BASELINE = 222;
 
 /** A file holding this many refusal objects is a dispatch surface and must be named above. */
 const DISCOVERY_MIN = 3;

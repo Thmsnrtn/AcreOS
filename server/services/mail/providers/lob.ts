@@ -113,6 +113,11 @@ export const lobAdapter: MailProvider = {
 
     const pieces: { providerPieceId: string; recipientRef: string }[] = [];
     let totalCostCents = 0;
+    // Pre-paid pieces that cost AcreOS nothing: Lob's test environment, a
+    // simulated send, or the org's OWN key (the org's Lob account billed it).
+    let unbilledPieceCount = 0;
+    const costsAcreOsNothing = (r: { testMode?: boolean; credentialSource?: string }) =>
+      r.testMode === true || r.credentialSource === "simulation" || r.credentialSource === "organization";
 
     for (const piece of shipment.pieces) {
       try {
@@ -140,8 +145,10 @@ export const lobAdapter: MailProvider = {
               // DEFECT-0105: the durable piece identity runs the letter
               // through the outward-action guard, so a retry replays it.
               idempotencyKey: piece.pieceRef,
+              housePrepaid: shipment.housePrepaid === true,
             });
             lobId = result.lobId;
+            if (shipment.housePrepaid && costsAcreOsNothing(result)) unbilledPieceCount++;
           } catch (err) {
             // Replay of a piece Lob already accepted under this key: it IS
             // in the mail. Record it as accepted with its real id.
@@ -163,15 +170,24 @@ export const lobAdapter: MailProvider = {
             frontHtml: piece.vars?.frontHtml ?? piece.templateId ?? "",
             backHtml: piece.vars?.backHtml ?? "",
             size: size as "4x6" | "6x9",
+            housePrepaid: shipment.housePrepaid === true,
           });
           pieces.push({ providerPieceId: result.lobId, recipientRef: `${shipment.customerId}` });
           totalCostCents += LOB_COSTS[piece.pieceType];
+          if (shipment.housePrepaid && costsAcreOsNothing(result)) unbilledPieceCount++;
         }
       } catch (err) {
         // DEFECT-0105: a failure after earlier pieces were accepted must say
         // which ones — they are printed and must not be re-sent or refunded.
         if (pieces.length > 0) {
-          throw new PartialMailSendError("lob", pieces, shipment.pieces.length, err instanceof Error ? err.message : String(err));
+          const { providerDidNotBill } = await import("../mailLane");
+          throw new PartialMailSendError(
+            "lob",
+            pieces,
+            shipment.pieces.length,
+            err instanceof Error ? err.message : String(err),
+            providerDidNotBill(err),
+          );
         }
         throw err;
       }
@@ -184,6 +200,7 @@ export const lobAdapter: MailProvider = {
       providerEventId: pieces[0]?.providerPieceId ?? `lob_shipment_${clock.nowMs()}`,
       pieces,
       totalCostCents,
+      unbilledPieceCount,
     };
   },
 };

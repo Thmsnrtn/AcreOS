@@ -747,12 +747,18 @@ async function scenarioCredits() {
     [orgId],
   );
   const ids: number[] = [];
+  // Email sends go only to leads with recorded consent (canSendViaChannel), so
+  // the recipients carry a per-lead grant (the create form's consent checkbox,
+  // an express source). Without it every send is refused before credits are
+  // ever read, and this scenario would measure the consent gate, not the ledger.
   for (let i = 1; i <= 150; i++) {
-    const r = await p.c.post("/api/leads", leadBody("credits", i));
+    const r = await p.c.post("/api/leads", leadBody("credits", i, { tcpaConsent: true, consentSource: "written" }));
     if (r.body?.id) ids.push(r.body.id);
     else { skip("credits/leads", `lead #${i} → ${short(r)}`); break; }
   }
   if (ids.length < 150) return;
+  const consented = (await db.query(`SELECT count(*)::int AS n FROM leads WHERE id = ANY($1) AND tcpa_consent = true`, [ids])).rows[0].n;
+  if (consented !== ids.length) { skip("credits/consent", `only ${consented}/${ids.length} recipients carry consent; the ledger checks below would read a consent refusal`); return; }
   const camp = await p.c.post("/api/campaigns", campaignBody(1));
   if (camp.status !== 201) { skip("credits/campaign", short(camp)); return; }
   const cid = camp.body.id;
@@ -760,35 +766,31 @@ async function scenarioCredits() {
   const txCount = async () => (await db.query(`SELECT count(*)::int AS n, coalesce(sum(amount_cents),0)::int AS sum FROM credit_transactions WHERE organization_id=$1`, [orgId])).rows[0];
   const deliveries = async () => (await db.query(`SELECT count(*)::int AS n FROM campaign_delivery_events WHERE campaign_id=$1`, [cid])).rows[0].n;
 
-  // 150 recipients against 100¢
+  // This org runs simulationMode, and simulated campaign sends are not charged
+  // (routes-campaigns: `chargeable` excludes simulated sends; c4f650b0). So a
+  // simulated send is checked for the truth it CAN show: it is reported, it
+  // writes its delivery rows, and it moves no credit. The real-send ledger (the
+  // refusal at a short balance, 1¢ × sent, the zero-balance refusal) needs a
+  // non-simulated send under the org's own sending identity, which a local run
+  // cannot drive — recorded as a skip, never as green.
+  const simulated = (await orgRow(orgId)).settings?.simulationMode === true;
+  if (!simulated) { skip("credits/simulated-send", "the org is not in simulationMode, so the simulated-send expectations below do not apply"); return; }
   const over = await p.c.post(`/api/campaigns/${cid}/send-email`, { leadIds: ids });
   const b1 = await balance(); const t1 = await txCount(); const d1 = await deliveries();
-  metric("credits:over-send", { resp: short(over, 200), balance: b1, tx: t1, deliveries: d1 });
-  if (over.status !== 429 && over.status !== 402) {
-    finding("6-over-send-status", "P1", "billing", `Sending to 150 leads with 100¢ returned ${over.status}, not a refusal`, short(over));
+  const sent1 = over.body?.sent;
+  metric("credits:simulated-send", { resp: short(over, 200), balance: b1, tx: t1, deliveries: d1 });
+  if (over.status !== 200) {
+    finding("6-simulated-send-status", "P2", "billing", `A simulated send to 150 consented leads returned ${over.status}`, short(over));
+  } else {
+    if (b1 !== 100 || t1.n !== 0) {
+      finding("6-simulated-send-charged", "P1", "billing", `A simulated send moved credits: balance 100→${b1}, credit rows=${t1.n}`, JSON.stringify({ tx: t1 }));
+    }
+    if (typeof sent1 === "number" && d1 !== sent1) {
+      finding("6-delivery-rows", "P2", "billing", `Reported ${sent1} sends but ${d1} delivery rows exist`, JSON.stringify(t1));
+    }
   }
-  if (b1 !== 100 || d1 !== 0) {
-    finding("6-over-send-deducted", "P1", "billing", `A refused send still moved money/mail: balance 100→${b1}, deliveries=${d1}`, JSON.stringify({ tx: t1 }));
-  }
-  // 100 recipients → balance must be exactly 100 - sent
-  const exact = await p.c.post(`/api/campaigns/${cid}/send-email`, { leadIds: ids.slice(0, 100) });
-  const sent = exact.body?.sent ?? exact.body?.results?.sent;
-  const failed = exact.body?.failed ?? exact.body?.results?.failed;
-  const b2 = await balance(); const t2 = await txCount(); const d2 = await deliveries();
-  metric("credits:exact-send", { resp: short(exact, 200), sent, failed, balance: b2, tx: t2, deliveries: d2 });
-  if (exact.status !== 200) {
-    finding("6-exact-send", "P1", "billing", `Sending to exactly 100 leads with 100¢ returned ${exact.status}`, short(exact));
-  } else if (typeof sent === "number" && b2 !== 100 - sent) {
-    finding("6-ledger-arith", "P1", "billing", `Credit arithmetic is off: 100¢ − ${sent} sent ≠ ${b2}¢ balance (failed=${failed})`, JSON.stringify({ tx: t2, deliveries: d2 }));
-  } else if (typeof sent === "number" && d2 !== sent) {
-    finding("6-delivery-rows", "P2", "billing", `Charged for ${sent} sends but ${d2} delivery rows exist`, JSON.stringify(t2));
-  }
-  // balance 0 → one more refused
-  await setOrg(orgId, { credit_balance: 0 });
-  const zero = await p.c.post(`/api/campaigns/${cid}/send-email`, { leadIds: [ids[120]] });
+  skip("credits/real-send-ledger", "simulated campaign sends are uncharged by design (chargeable excludes simulated, c4f650b0); the short-balance refusal, 1¢ × sent arithmetic and zero-balance refusal need a non-simulated send under the org's own sending identity, which a local run cannot drive");
   const b3 = await balance();
-  metric("credits:zero-send", { resp: short(zero, 160), balance: b3 });
-  if (zero.status < 400 || b3 !== 0) finding("6-zero-send", "P1", "billing", `With 0¢ a 1-recipient send returned ${zero.status}; balance now ${b3}`, short(zero));
   // API balance == DB
   const api = await p.c.get("/api/credits/balance");
   metric("credits:api-balance", { api: api.body, db: b3 });

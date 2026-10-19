@@ -98,6 +98,16 @@ function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
     p.then((v) => { clearTimeout(t); resolve(v); }, () => { clearTimeout(t); resolve(fallback); });
   });
 }
+/**
+ * Whether THIS org runs simulationMode right now — read from the database, not
+ * assumed from setup, so the "simulated sends are uncharged" expectation only
+ * applies when the org really is simulated.
+ */
+async function orgIsSimulated(): Promise<boolean> {
+  const r = await db.query(`SELECT settings->>'simulationMode' AS sim FROM organizations WHERE id = $1`, [orgId]);
+  return r.rows[0]?.sim === "true";
+}
+
 function msg(r: Resp): string {
   return (r.body?.message ?? r.body?.error ?? r.text ?? "").toString().slice(0, 240);
 }
@@ -335,10 +345,27 @@ async function main() {
     note("w1", "POST /api/leads/bulk-update with ISO consentDate", iso, msg(iso));
     if (iso.status === 400 && /expected date/i.test(iso.text)) finding("P3", "api-contract", "Timestamp fields reject ISO-8601 strings over JSON ('expected date, received string')", `bulk-update consentDate → ${msg(iso)}; the only representation a JSON client can send is refused, so the field is unsettable over the API`);
     const r2 = await c.post("/api/leads/bulk-update", { ids: tcpaIds, updates: { tcpaConsent: true, consentSource: "written_form_sim" } });
-    const tcpaDb = await countWhere(`leads WHERE organization_id=$1 AND tcpa_consent=true`, [orgId]);
-    const consentDated = await countWhere(`leads WHERE organization_id=$1 AND tcpa_consent=true AND consent_date IS NOT NULL`, [orgId]);
+    let tcpaDb = await countWhere(`leads WHERE organization_id=$1 AND tcpa_consent=true`, [orgId]);
+    let consentDated = await countWhere(`leads WHERE organization_id=$1 AND tcpa_consent=true AND consent_date IS NOT NULL`, [orgId]);
     note("w1", "POST /api/leads/bulk-update tcpaConsent", r2, `${r2.status >= 400 ? msg(r2) + " | " : ""}requested=${tcpaIds.length} updatedCount=${r2.body?.updatedCount} | DB tcpa=${tcpaDb} with consent_date=${consentDated}`);
-    if (r2.status < 300 && tcpaDb > 0 && consentDated === 0) finding("P2", "compliance", "Granting tcpaConsent over the API leaves consent_date NULL (no timestamp of when consent was captured)", `tcpa=${tcpaDb} consent_date set=${consentDated}`, "A TCPA defence needs the date consent was obtained; the record cannot show one.");
+    // Consent is refused in bulk by design (a per-lead attestation with its
+    // evidence is the only grant path). Record the refusal, then grant the way
+    // an operator does — one lead at a time, naming an express source — so the
+    // consent-gated sends below run against consented leads.
+    let perLead: Resp | null = null;
+    let perLeadOk = 0;
+    if (r2.status >= 400) {
+      for (const id of tcpaIds) {
+        perLead = await c.patch(`/api/leads/${id}/consent`, { tcpaConsent: true, consentSource: "written" });
+        if (perLead.status === 200) perLeadOk++;
+      }
+      tcpaDb = await countWhere(`leads WHERE organization_id=$1 AND tcpa_consent=true`, [orgId]);
+      consentDated = await countWhere(`leads WHERE organization_id=$1 AND tcpa_consent=true AND consent_date IS NOT NULL`, [orgId]);
+      if (perLead) note("w1", "PATCH /api/leads/:id/consent (per lead, source=written)", perLead, `ok=${perLeadOk}/${tcpaIds.length} | DB tcpa=${tcpaDb} with consent_date=${consentDated}`);
+      if (perLeadOk === tcpaIds.length && tcpaDb !== tcpaIds.length) finding("P1", "compliance", "Per-lead consent grants answered 200 but did not persist for every lead", `ok=${perLeadOk} requested ${tcpaIds.length}, DB ${tcpaDb}`);
+      if (perLeadOk < tcpaIds.length) skip("w1/consent-per-lead", `only ${perLeadOk}/${tcpaIds.length} per-lead consent grants succeeded; last=${perLead?.status} ${perLead ? msg(perLead) : ""}`);
+    }
+    if ((r2.status < 300 || perLeadOk > 0) && tcpaDb > 0 && consentDated === 0) finding("P2", "compliance", "Granting tcpaConsent over the API leaves consent_date NULL (no timestamp of when consent was captured)", `tcpa=${tcpaDb} consent_date set=${consentDated}`, "A TCPA defence needs the date consent was obtained; the record cannot show one.");
     if (r1.status < 300 && dncDb !== dncIds.length) finding("P1", "compliance", "bulk-update doNotContact did not persist for every requested lead", `requested ${dncIds.length}, DB ${dncDb}`);
     if (r2.status < 300 && tcpaDb !== tcpaIds.length) finding("P1", "compliance", "bulk-update tcpaConsent did not persist for every requested lead", `requested ${tcpaIds.length}, DB ${tcpaDb}`);
     leadsDb = await q<LeadRow>(`SELECT id, apn, email, phone, state, county, do_not_contact, tcpa_consent, status FROM leads WHERE organization_id=$1 AND deleted_at IS NULL ORDER BY id`, [orgId]);
@@ -460,7 +487,16 @@ async function main() {
     const b = r.body ?? {};
     note("w2", "POST send-email (95 ok + 5 DNC)", r, `sent=${b.sent} failed=${b.failed} skippedDup=${b.skippedDuplicates} | credits ${before}→${after} (Δ${before - after}¢) simulated_actions.email +${simAfter - simBefore} delivery_events=${delivered} dncDelivered=${dncDelivered}`);
     if (r.status === 200) {
-      if (before - after !== b.sent) finding("P1", "billing", "Email send credit deduction ≠ 1¢ × sent", `Δ=${before - after}¢ sent=${b.sent} failed=${b.failed}`);
+      // This org runs simulationMode; simulated campaign sends are uncharged by
+      // design (routes-campaigns `chargeable` excludes them, c4f650b0). The
+      // truth to hold is that a simulated send moves no credit; the real-send
+      // 1¢ × sent arithmetic needs the org's own sending identity.
+      if (await orgIsSimulated()) {
+        if (before - after !== 0) finding("P1", "billing", "A simulated email send moved credits", `Δ=${before - after}¢ sent=${b.sent} failed=${b.failed}`);
+        skip("w2/send-email-charge", "simulated sends are uncharged by design; 1¢ × sent is observable only on a real send under the org's own sending identity");
+      } else if (before - after !== b.sent) {
+        finding("P1", "billing", "Email send credit deduction ≠ 1¢ × sent", `Δ=${before - after}¢ sent=${b.sent} failed=${b.failed}`);
+      }
       if (simAfter - simBefore !== b.sent) finding("P1", "honesty", "send-email reported sends that have no simulated_actions record (or vice-versa)", `sent=${b.sent} simulated rows=${simAfter - simBefore}`);
       if (delivered !== b.sent) finding("P1", "data-integrity", "campaign_delivery_events ≠ sent", `events=${delivered} sent=${b.sent}`);
       if (dncDelivered > 0) finding("P1", "compliance", "send-email delivered to leads flagged doNotContact", `${dncDelivered} of ${dncWithEmail.length} DNC leads received the campaign; the handler filters only on 'has an email'`, "A seller who opted out of ALL contact gets marketing email; TCPA/CAN-SPAM exposure per message.");
@@ -495,7 +531,13 @@ async function main() {
     if (r.status === 200) {
       if (b.tcpaBlocked !== nonConsented.length + dnc.length) finding("P2", "compliance", "send-sms tcpaBlocked count ≠ number of unconsented+DNC leads in the batch", `expected ${nonConsented.length + dnc.length}, got ${b.tcpaBlocked}; samples=${JSON.stringify(b.tcpaBlockedSamples).slice(0, 200)}`);
       if (leaked.length) finding("P1", "compliance", "An SMS was (simulated-)sent to a lead without TCPA consent or flagged DNC", leaked.map((l) => l.to).join(","));
-      if (before - after !== 3 * b.sent) finding("P1", "billing", "SMS credit deduction ≠ 3¢ × sent", `Δ=${before - after}¢ sent=${b.sent}`);
+      // Simulated SMS sends are uncharged by design, as for email above.
+      if (await orgIsSimulated()) {
+        if (before - after !== 0) finding("P1", "billing", "A simulated SMS send moved credits", `Δ=${before - after}¢ sent=${b.sent}`);
+        skip("w2/send-sms-charge", "simulated sends are uncharged by design; 3¢ × sent is observable only on a real send");
+      } else if (before - after !== 3 * b.sent) {
+        finding("P1", "billing", "SMS credit deduction ≠ 3¢ × sent", `Δ=${before - after}¢ sent=${b.sent}`);
+      }
       if (b.quietHoursBlocked > 0) recordMetric(SIM, "w2/sms-quiet-hours", { blocked: b.quietHoursBlocked, note: "wall-clock dependent; not a defect" });
       if (b.sent === 0 && b.quietHoursBlocked > 0) skip("w2/send-sms", `all ${b.quietHoursBlocked} consented recipients blocked by quiet hours at ${new Date().toISOString()}`);
       if (!b.tcpaBlockedSamples?.[0]?.reason) finding("P2", "ux", "send-sms excludes TCPA-blocked leads without a per-lead reason", JSON.stringify(b).slice(0, 200));

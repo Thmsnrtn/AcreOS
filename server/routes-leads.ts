@@ -1159,6 +1159,131 @@ export function registerLeadRoutes(app: Express): void {
     }
   });
 
+  // ── Lead → deal (behind the Deals door; reached from the lead detail) ──────
+  // The by-id read gate (assignedLeadScopeGate, chained from getOrCreateOrg)
+  // already answers 404 to an assigned-only caller for a lead not assigned to
+  // them; the in-handler checks below are the write rule and the permission.
+
+  /** Can this lead become a deal, and is there already an open one for its parcel? */
+  api.get("/api/leads/:id/deal-state", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = getOrganization(req as AuthenticatedRequest);
+      const leadId = Number(req.params.id);
+      if (!Number.isSafeInteger(leadId) || leadId <= 0) return Errors.badRequest(res, "Invalid lead ID");
+      const lead = await storage.getLead(org.id, leadId);
+      if (!lead || lead.deletedAt) return Errors.notFound(res, "Lead");
+      const { readLeadDealState } = await import("./services/leads/convertLeadToDeal");
+      const { readiness, existingDeal } = await readLeadDealState(org.id, lead, db);
+      res.json({
+        ready: readiness.ready,
+        reason: readiness.ready ? null : readiness.reason,
+        missing: !readiness.ready && readiness.reason === "missing" ? readiness.missing : [],
+        existingDealId: existingDeal?.id ?? null,
+      });
+    } catch (err) {
+      return Errors.internal(res, err as Error);
+    }
+  });
+
+  /**
+   * Make this lead a deal: create or reuse the property for the lead's parcel,
+   * then create or reuse the open deal on it — one transaction, idempotent.
+   */
+  api.post(
+    "/api/leads/:id/convert-to-deal",
+    isAuthenticated,
+    getOrCreateOrg,
+    requirePermission("canCreateDeals"),
+    async (req, res) => {
+      try {
+        const areq = req as AuthenticatedRequest;
+        const org = getOrganization(areq);
+        const leadId = Number(req.params.id);
+        if (!Number.isSafeInteger(leadId) || leadId <= 0) return Errors.badRequest(res, "Invalid lead ID");
+
+        const lead = await storage.getLead(org.id, leadId);
+        if (!lead || lead.deletedAt) return Errors.notFound(res, "Lead");
+        // A VA (or any assigned-only member) converts only leads assigned to them.
+        if (assertAssignedLeadWritable(areq, res, lead)) return;
+
+        // Read before the transaction: it runs on the pool, and the transaction
+        // below already holds a connection for its whole body.
+        const propertyLimit = await checkUsageLimit(org.id, "properties");
+        const { convertLeadToDeal } = await import("./services/leads/convertLeadToDeal");
+        const { describeLeadDealMissing } = await import("@shared/leads/leadToDeal");
+        const result = await convertLeadToDeal({
+          orgId: org.id,
+          leadId,
+          userId: areq.user?.id,
+          mayCreateProperty: areq.permissionContext?.permissions.canCreateProperties === true,
+          propertyLimit,
+          ipAddress: req.ip || req.socket?.remoteAddress,
+          userAgent: req.headers["user-agent"],
+        });
+
+        switch (result.kind) {
+          case "not_found":
+            return Errors.notFound(res, "Lead");
+          case "not_ready": {
+            if (result.readiness.reason === "not_seller") {
+              return Errors.badRequest(res, "Only a seller lead becomes an acquisition deal. Nothing was created.", {
+                code: "LEAD_NOT_SELLER",
+              });
+            }
+            const missing = result.readiness.missing;
+            return Errors.badRequest(res, `${describeLeadDealMissing(missing)} Nothing was created.`, {
+              code: "LEAD_PARCEL_INCOMPLETE",
+              missing,
+            });
+          }
+          case "property_forbidden":
+            return Errors.forbidden(res, "Your role can create deals but not properties, and this parcel is not a property yet.");
+          case "plan_limit":
+            return refusePlanLimit(res, result.usage);
+          case "ok":
+            break;
+        }
+
+        const { deal, property, createdDeal, createdProperty } = result;
+        // Committed — the only place these announcements may fire.
+        // The same post-commit effects POST /api/properties and POST /api/deals run.
+        if (createdProperty) {
+          const { emitPropertyCreated } = await import("./services/propertyEvents");
+          emitPropertyCreated(org.id, property);
+          try {
+            const { recordActivationEventAsync } = await import("./services/activation");
+            recordActivationEventAsync({
+              orgId: org.id,
+              userId: areq.user?.id,
+              eventName: "first_property_added",
+              eventValue: { propertyId: property.id },
+            });
+          } catch { /* non-fatal */ }
+        }
+        if (createdDeal) {
+          const { publishDealLifecycle } = await import("./services/dealLifecycleEvents");
+          const { emitDealCreated } = await import("./services/dealEvents");
+          const { triggerDealEnrichmentAsync } = await import("./services/dealEnrichmentTrigger");
+          publishDealLifecycle(deal.organizationId, null, deal);
+          emitDealCreated(org.id, deal);
+          triggerDealEnrichmentAsync(org.id, deal.id, deal.propertyId);
+        }
+        logger.info("Lead converted to deal", {
+          orgId: org.id,
+          leadId,
+          dealId: deal.id,
+          propertyId: property.id,
+          createdDeal,
+          createdProperty,
+        });
+        // 200 either way: `createdDeal` / `createdProperty` say what this call did.
+        res.json({ deal, property, createdDeal, createdProperty });
+      } catch (err) {
+        return Errors.internal(res, err as Error);
+      }
+    },
+  );
+
   // Timeline endpoints for communication history
   api.get("/api/leads/:id/timeline", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;

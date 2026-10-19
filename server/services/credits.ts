@@ -17,7 +17,7 @@ import {
   type CreditPackId,
 } from "@shared/schema";
 import { logger } from "../utils/logger";
-import { creditsForPackPrice } from "@shared/billing/credit-packs";
+import { creditsForPackPrice, CREDIT_PRICE_CENTS } from "@shared/billing/credit-packs";
 import { clock } from "../utils/clock";
 
 /** FRAUD-011: the most free usage a trial may consume. */
@@ -645,6 +645,12 @@ export class UsageMeteringService {
     }
 
     const amountCents = Math.min(configuredCents, AUTO_TOP_UP_HARD_STOP_CENTS);
+    // Founder decision 2026-10-18: a top-up buys credits at the pack price
+    // (CREDIT_PRICE_CENTS, 1.5¢), rounded DOWN exactly as a pack is — never a
+    // credit the money doesn't cover. It used to credit 1 per cent paid.
+    // A charge too small to buy one whole credit is not made at all.
+    const credits = creditsForPackPrice(amountCents);
+    if (credits <= 0) return { executed: false, reason: "amount_buys_no_credit" };
 
     // Ledger-based idempotency: one auto charge per org per hour, max.
     const oneHourAgo = new Date(clock.nowMs() - 60 * 60 * 1000);
@@ -720,19 +726,21 @@ export class UsageMeteringService {
       );
 
       // Credits land ONLY after the charge succeeded.
-      await creditService.addCredits(organizationId, amountCents, "topup", "Auto-top-up (card on file)", {
+      await creditService.addCredits(organizationId, credits, "topup", "Auto-top-up (card on file)", {
         auto: "true",
         paymentIntentId: intent.id,
+        paidCents: amountCents,
+        creditPriceCents: CREDIT_PRICE_CENTS,
       } as any);
 
-      logger.info(`[credits] Auto-top-up SUCCEEDED for org ${organizationId}: ${amountCents}¢ (pi ${intent.id})`);
+      logger.info(`[credits] Auto-top-up SUCCEEDED for org ${organizationId}: ${amountCents}¢ → ${credits} credits (pi ${intent.id})`);
       const { logActivity } = await import("./systemActivityLogger");
       logActivity({
         orgId: organizationId,
         job: "billing",
         action: "auto_top_up_succeeded",
-        summary: `Auto-top-up charged $${(amountCents / 100).toFixed(2)} to the card on file and credited the balance`,
-        metadata: { amountCents, paymentIntentId: intent.id },
+        summary: `Auto-top-up charged $${(amountCents / 100).toFixed(2)} to the card on file and credited ${credits.toLocaleString("en-US")} credits`,
+        metadata: { amountCents, credits, paymentIntentId: intent.id },
       }).catch(() => {});
 
       // Receipt — best-effort, never blocks the credit.
@@ -742,8 +750,8 @@ export class UsageMeteringService {
           await emailService.sendEmail({
             to: recipientEmail,
             subject: `Receipt: $${(amountCents / 100).toFixed(2)} AcreOS credit top-up`,
-            html: `<p>Hi ${org.name},</p><p>Your credit balance dropped below your auto-top-up threshold, so we charged your card on file <strong>$${(amountCents / 100).toFixed(2)}</strong> and credited your balance. You can adjust or disable auto-top-up any time in Settings → Billing.</p>`,
-            text: `Hi ${org.name},\n\nYour credit balance dropped below your auto-top-up threshold, so we charged your card on file $${(amountCents / 100).toFixed(2)} and credited your balance.\n\nAdjust or disable auto-top-up any time in Settings → Billing.`,
+            html: `<p>Hi ${org.name},</p><p>Your credit balance dropped below your auto-top-up threshold, so we charged your card on file <strong>$${(amountCents / 100).toFixed(2)}</strong> and added ${credits.toLocaleString("en-US")} credits to your balance. You can adjust or disable auto-top-up any time in Settings → Billing.</p>`,
+            text: `Hi ${org.name},\n\nYour credit balance dropped below your auto-top-up threshold, so we charged your card on file $${(amountCents / 100).toFixed(2)} and added ${credits.toLocaleString("en-US")} credits to your balance.\n\nAdjust or disable auto-top-up any time in Settings → Billing.`,
           });
         }
       } catch (mailErr) {

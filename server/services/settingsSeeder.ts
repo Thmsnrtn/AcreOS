@@ -174,6 +174,52 @@ export const SETTINGS_CATALOG: SeedSettingArgs[] = [
     validRange: { type: "number", min: 0, max: 10000 },
   })),
 
+  // ─── House mail provider cost — founder decision 2026-10-17 B ────────
+  // AcreOS's Lob cost per house piece (cents). The house charge is checked
+  // against it (shared/billing/house-mail-pricing.ts) and raised to the
+  // self-funding minimum when it does not cover it.
+  ...["postcard_4x6", "postcard_6x9", "postcard_6x11", "letter_bw", "letter_color"].map((key): SeedSettingArgs => ({
+    key: `mail.house.cost_cents.${key}`,
+    category: "cost" as const,
+    description: `AcreOS's Lob cost for one house-mail ${key} piece, in cents. The credit charge is raised automatically if it stops covering this cost.`,
+    defaultValue: 0, // 0 = use the compiled table in shared/billing/house-mail-pricing.ts
+    validRange: { type: "number", min: 0, max: 10000 },
+  })),
+
+  // Founder decisions 2026-10-18: the extra-page costs default to Lob's list
+  // price (0 = that default); the address-check cost is UNSET until the
+  // founder sets it (no published price), and while unset lead-address checks
+  // run only on the org's own Lob key. Each is priced through the same
+  // self-funding rule and pre-paid from purchased credits.
+  {
+    key: "mail.house.cost_cents.letter_extra_page",
+    category: "cost" as const,
+    description: "AcreOS's Lob cost for each B&W page of a house-mail letter beyond the first, in cents. 0 = use Lob's list price (shared/billing/house-mail-pricing.ts).",
+    defaultValue: 0,
+    validRange: { type: "number", min: 0, max: 10000 },
+  },
+  {
+    key: "mail.house.cost_cents.letter_extra_page_color",
+    category: "cost" as const,
+    description: "AcreOS's Lob cost for each colour page of a house-mail letter beyond the first, in cents. 0 = use Lob's list price (shared/billing/house-mail-pricing.ts).",
+    defaultValue: 0,
+    validRange: { type: "number", min: 0, max: 10000 },
+  },
+  {
+    key: "mail.house.max_letter_pages",
+    category: "cost" as const,
+    description: "The most pages a house-mail letter may have (founder decision 2026-10-18). Longer letters go out only on the org's own Lob key.",
+    defaultValue: 6,
+    validRange: { type: "number", min: 1, max: 60 },
+  },
+  {
+    key: "mail.house.cost_cents.address_check",
+    category: "cost" as const,
+    description: "AcreOS's Lob cost for one lead-address check on AcreOS's account, in cents. 0 = unset: lead-address checks run only on the org's own Lob key.",
+    defaultValue: 0,
+    validRange: { type: "number", min: 0, max: 10000 },
+  },
+
   // ─── Revenue-trigger ladder ───────────────────────────────────────────
   {
     key: "revenue.triggers",

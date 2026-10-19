@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryErrorState } from "@/components/query-error-state";
+import { useTerm } from "@/hooks/use-persona";
 
 interface DealCoachItem {
   dealId: string;
@@ -37,6 +38,7 @@ const URGENCY_VARIANT: Record<DealCoachItem["urgency"], "destructive" | "default
 };
 
 export function DealCoach() {
+  const dealsLower = useTerm("entity.deal.plural").toLowerCase();
   const { data, isLoading, error, refetch } = useQuery<{ items: DealCoachItem[] }>({
     queryKey: ["/api/deals/coach"],
     queryFn: async () => {
@@ -61,12 +63,12 @@ export function DealCoach() {
             <Skeleton className="h-14 w-full" />
           </div>
         ) : error ? (
-          <QueryErrorState error={error as Error} onRetry={() => refetch()} title="Couldn't load your deal coach" />
+          <QueryErrorState error={error as Error} onRetry={() => refetch()} title="Couldn't load what to work next" />
         ) : !data?.items?.length ? (
           <div className="flex flex-col items-center gap-2 py-6 text-center">
             <CheckCircle2 className="h-6 w-6 text-[hsl(var(--acr-pos))]" aria-hidden="true" />
             <p className="text-sm font-medium">You're all caught up</p>
-            <p className="text-xs text-muted-foreground">No deals need attention right now.</p>
+            <p className="text-xs text-muted-foreground">No {dealsLower} need attention right now.</p>
           </div>
         ) : (
           <motion.ul role="list" className="space-y-2" variants={staggerContainer} initial="hidden" animate="visible">
