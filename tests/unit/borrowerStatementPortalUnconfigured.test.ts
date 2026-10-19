@@ -67,6 +67,7 @@ vi.mock("../../server/middleware/rateLimit", () => ({
   RATE_LIMIT_CONFIGS: { public: { maxRequests: 100, windowMs: 60_000 } },
 }));
 
+import cookieParser from "cookie-parser";
 import { registerBorrowerRoutes } from "../../server/routes-borrower";
 import { validateEnv } from "../../server/utils/validateEnv";
 
@@ -76,15 +77,7 @@ const USABLE = "a-usable-statement-portal-secret-0123456789";
 function makeApp() {
   const app = express();
   app.use(express.json());
-  app.use((req: any, _res, next) => {
-    req.cookies = {};
-    const header = req.headers.cookie as string | undefined;
-    if (header) for (const part of header.split(";")) {
-      const [k, v] = part.trim().split("=");
-      if (k) req.cookies[k] = decodeURIComponent(v ?? "");
-    }
-    next();
-  });
+  app.use(cookieParser());
   registerBorrowerRoutes(app);
   return app;
 }
