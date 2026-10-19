@@ -467,7 +467,7 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
                               <div className="p-4 space-y-4">
                                 <div className="text-center">
                                   <p className="text-sm text-muted-foreground mb-1">Suggested offer</p>
-                                  <p className="text-3xl font-bold font-mono tabular-nums text-primary" data-testid="text-suggested-offer">
+                                  <p className="text-3xl font-bold tabular-nums text-primary" data-testid="text-suggested-offer">
                                     {usd(pricingRecommendation.suggestedOffer, { noCents: true })}
                                   </p>
                                   <p className="text-xs text-muted-foreground mt-1 tabular-nums">
@@ -580,7 +580,7 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
                         )}
                       </ResponsiveModalContent>
                     </ResponsiveModal>
-                    <p className="acr-metric-value font-mono tabular-nums mt-1">
+                    <p className="acr-metric-value tabular-nums mt-1">
                       {deal.offerAmount != null && deal.offerAmount !== ''
                         ? usd(deal.offerAmount, { noCents: true })
                         : <span className="text-muted-foreground">—</span>}
@@ -590,7 +590,7 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
                 <Card className="shadow-acr-1">
                   <CardContent className="p-4">
                     <p className="text-sm text-muted-foreground">Accepted amount</p>
-                    <p className="acr-metric-value font-mono tabular-nums text-acr-pos mt-1">
+                    <p className="acr-metric-value tabular-nums text-acr-pos mt-1">
                       {deal.acceptedAmount != null && deal.acceptedAmount !== ''
                         ? usd(deal.acceptedAmount, { noCents: true })
                         : <span className="text-muted-foreground">—</span>}
@@ -622,7 +622,7 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
                       </div>
                       <div>
                         <p className="text-muted-foreground">Assessed value</p>
-                        <p className="font-mono tabular-nums">{usd(deal.property.assessedValue, { noCents: true })}</p>
+                        <p className="tabular-nums">{usd(deal.property.assessedValue, { noCents: true })}</p>
                       </div>
                     </div>
                   </CardContent>
@@ -679,7 +679,7 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
                       {deal.closingCosts && (
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">Closing costs</span>
-                          <span className="font-mono tabular-nums">{usd(deal.closingCosts, { noCents: true })}</span>
+                          <span className="tabular-nums">{usd(deal.closingCosts, { noCents: true })}</span>
                         </div>
                       )}
                     </div>

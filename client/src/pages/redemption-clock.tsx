@@ -314,7 +314,7 @@ export default function RedemptionClockPage() {
                     <div className="text-micro uppercase tracking-wide text-muted-foreground">
                       Rate
                     </div>
-                    <div className={`font-mono tabular-nums ${c.preliminary ? "text-acr-warn" : ""}`}>
+                    <div className={`tabular-nums ${c.preliminary ? "text-acr-warn" : ""}`}>
                       {fmtPct(c.appliedRateBps)}{c.preliminary && "*"}
                       {c.preliminary && <span className="sr-only"> (preliminary rate — verify with the county clerk)</span>}
                     </div>
@@ -323,13 +323,13 @@ export default function RedemptionClockPage() {
                     <div className="text-micro uppercase tracking-wide text-muted-foreground">
                       Principal
                     </div>
-                    <div className="font-mono tabular-nums">{fmtUsd(c.purchaseAmountCents)}</div>
+                    <div className="tabular-nums">{fmtUsd(c.purchaseAmountCents)}</div>
                   </div>
                   <div>
                     <div className="text-micro uppercase tracking-wide text-muted-foreground">
                       Interest
                     </div>
-                    <div className="font-mono tabular-nums text-acr-pos">
+                    <div className="tabular-nums text-acr-pos">
                       +{fmtUsd(c.currentInterestCents)}
                     </div>
                   </div>
@@ -338,7 +338,7 @@ export default function RedemptionClockPage() {
                   <div className="text-micro uppercase tracking-wide text-muted-foreground">
                     Total redemption
                   </div>
-                  <div className="font-mono text-base font-semibold tabular-nums">
+                  <div className="text-base font-semibold tabular-nums">
                     {fmtUsd(c.currentRedemptionAmountCents)}
                   </div>
                 </div>

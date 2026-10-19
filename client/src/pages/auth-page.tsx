@@ -11,6 +11,7 @@ import { markSignupIntent } from "@/lib/acquisition-utm";
 import { trackCanonicalEvent } from "@/lib/analytics";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { AcreosLogo } from "@/components/acreos-logo";
 
 /**
  * Provider-aware entry. AuthPage's body calls useClerk()/useUser() at the
@@ -487,15 +488,13 @@ function AuthPageClerk() {
         </h1>
         {/* Branding — swaps to white-label tenant name when configured */}
         <div className="flex flex-col items-center gap-3">
-          <div className="flex items-center gap-2.5">
-            <div
-              className="w-10 h-10 rounded-card bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-sm"
-              aria-hidden="true"
-            >
-              <span className="text-white font-bold text-lg">{brandName.slice(0, 1)}</span>
-            </div>
-            <span className="text-2xl font-bold tracking-tight" aria-hidden="true">{brandName}</span>
-          </div>
+          {brandName === "AcreOS" ? (
+            // The one AcreOS mark + Fraunces wordmark (components/acreos-logo).
+            <AcreosLogo variant="full" size={36} className="text-foreground" aria-hidden="true" />
+          ) : (
+            // White-label tenants keep their own name; no AcreOS mark.
+            <span className="font-display text-2xl font-semibold tracking-tight" aria-hidden="true">{brandName}</span>
+          )}
           <p className="text-sm text-muted-foreground text-center">
             The operating system for property investors
           </p>

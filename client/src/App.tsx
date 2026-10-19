@@ -2126,7 +2126,10 @@ function AppContent() {
         Skip to content
       </a>
       {user && (
-        <NotificationStack>
+        // Desktop: beside the navigation rail and the Pax rail, using the
+        // offsets PageShell publishes (0 on routes without the shell) — it
+        // used to start at x=0, under the fixed rail.
+        <NotificationStack className="md:ml-[var(--shell-rail-left,0px)] md:mr-[var(--shell-rail-right,0px)]">
           {/* most-urgent first; only the top active one shows */}
           <TrialBanner />
           <EarlyAccessBanner />

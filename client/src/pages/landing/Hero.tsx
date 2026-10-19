@@ -46,18 +46,18 @@ export function Hero() {
               <path
                 d="M 60 0 L 0 0 0 60"
                 fill="none"
-                stroke="rgba(80,40,15,0.06)"
+                style={{ stroke: "var(--acr-ink)", strokeOpacity: 0.06 }}
                 strokeWidth="0.5"
               />
             </pattern>
             <radialGradient id="hero-glow" cx="50%" cy="20%" r="60%">
-              <stop offset="0%" stopColor="rgba(194,83,28,0.08)" />
-              <stop offset="100%" stopColor="rgba(194,83,28,0)" />
+              <stop offset="0%" style={{ stopColor: "var(--acr-brand)", stopOpacity: 0.08 }} />
+              <stop offset="100%" style={{ stopColor: "var(--acr-brand)", stopOpacity: 0 }} />
             </radialGradient>
           </defs>
           <rect width="1200" height="700" fill="url(#parcel-grid)" />
           <rect width="1200" height="700" fill="url(#hero-glow)" />
-          <g opacity="0.18" fill="none" stroke="#C2531C" strokeWidth="1">
+          <g opacity="0.18" fill="none" style={{ stroke: "var(--acr-brand)" }} strokeWidth="1">
             <path d="M 120 420 L 280 410 L 290 540 L 130 550 Z" />
             <path d="M 280 410 L 460 405 L 475 545 L 290 540 Z" />
             <path d="M 900 380 L 1080 390 L 1070 510 L 890 500 Z" />

@@ -4,7 +4,10 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Button } from "@/components/ui/button";
 import { useAccessibility } from "@/contexts/accessibility-context";
-import { Eye, Type, Clock, Image as ImageIcon, Hand, Brain } from "lucide-react";
+import { useState } from "react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Eye, Type, Clock, Image as ImageIcon, Hand, Brain, Wind, ChevronDown, Accessibility } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 /**
  * Accessibility & comfort settings — Wave B accommodations.
@@ -15,9 +18,68 @@ import { Eye, Type, Clock, Image as ImageIcon, Hand, Brain } from "lucide-react"
  *   • Larger taps mode (Mavis §1)
  *   • Picture-first parcel cards (Earl §1)
  *   • Focus mode + quiet hours (Yelena §1)
+ *   • Reduce motion (moved here from Appearance, 2026-10-18 — follows the
+ *     device setting unless switched on)
  *
- * Mounted under Settings → Accessibility.
+ * Mounted under Settings → Account as the "Accessibility & comfort"
+ * disclosure (AccessibilityComfortSection below), separate from Appearance.
  */
+
+/** True when the person has changed any accommodation from its default. */
+function hasCustomAccommodations(p: ReturnType<typeof useAccessibility>["prefs"]): boolean {
+  return (
+    p.fontFamily !== "system" ||
+    p.readingDensity !== "comfortable" ||
+    p.cognitiveA11yMode ||
+    p.largerTapsMode ||
+    p.pictureFirstParcels ||
+    p.focusMode ||
+    p.quietHours.enabled ||
+    p.reduceMotion === true
+  );
+}
+
+/**
+ * The Accessibility & comfort section: collapsed by default so Appearance
+ * stays two simple choices, but open on arrival when the person already uses
+ * an accommodation (so they can always see what is on) or followed a link to
+ * #accessibility.
+ */
+export function AccessibilityComfortSection() {
+  const { prefs } = useAccessibility();
+  const [open, setOpen] = useState<boolean>(
+    () => hasCustomAccommodations(prefs) || (typeof window !== "undefined" && window.location.hash === "#accessibility"),
+  );
+  return (
+    <section id="accessibility" aria-labelledby="accessibility-comfort-heading" data-testid="accessibility-comfort">
+      <Collapsible open={open} onOpenChange={setOpen}>
+        <CollapsibleTrigger
+          className="flex w-full items-center justify-between gap-3 rounded-card border border-border bg-card px-4 py-3 text-left transition-colors hover:bg-accent/50 active:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring min-h-[56px]"
+          data-testid="accessibility-comfort-toggle"
+        >
+          <span className="flex items-center gap-3 min-w-0">
+            <Accessibility className="h-5 w-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+            <span className="min-w-0">
+              <span id="accessibility-comfort-heading" className="block text-sm font-semibold">
+                Accessibility &amp; comfort
+              </span>
+              <span className="block text-xs text-muted-foreground">
+                Reading font and size, larger taps, reduced motion, focus mode and quiet hours
+              </span>
+            </span>
+          </span>
+          <ChevronDown
+            className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")}
+            aria-hidden="true"
+          />
+        </CollapsibleTrigger>
+        <CollapsibleContent className="pt-4">
+          <AccessibilityPanel />
+        </CollapsibleContent>
+      </Collapsible>
+    </section>
+  );
+}
 export function AccessibilityPanel() {
   const { prefs, setPrefs, reset } = useAccessibility();
 
@@ -80,6 +142,31 @@ export function AccessibilityPanel() {
                 </div>
               ))}
             </RadioGroup>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Motion — follows the device unless switched on here. */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Wind className="h-5 w-5 text-acr-info" aria-hidden="true" />
+            <CardTitle>Motion</CardTitle>
+          </div>
+          <CardDescription>
+            AcreOS follows your device's reduce-motion setting automatically. Switch this on to
+            reduce motion here regardless of the device.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between gap-4">
+            <Label htmlFor="reduce-motion" className="text-sm">Reduce motion</Label>
+            <Switch
+              id="reduce-motion"
+              checked={prefs.reduceMotion === true}
+              onCheckedChange={(v) => setPrefs({ reduceMotion: v ? true : "system" })}
+              data-testid="switch-reduce-motion"
+            />
           </div>
         </CardContent>
       </Card>

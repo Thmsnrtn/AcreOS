@@ -149,7 +149,7 @@ export default function ChangelogPage() {
                   {entry.version && (
                     <Badge
                       variant="outline"
-                      className="text-xs font-mono tabular-nums"
+                      className="text-xs tabular-nums"
                     >
                       {entry.version}
                     </Badge>

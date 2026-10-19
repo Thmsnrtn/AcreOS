@@ -67,7 +67,7 @@ import { GoalsSettings } from "@/pages/settings/organization-sections";
 // ThemeSettings (dialog quick-picker) is intended for top-bar mount in Phase E;
 // the full Settings → Appearance surface uses AppearancePanel below.
 import { AppearancePanel } from "@/components/settings/appearance-panel";
-import { AccessibilityPanel } from "@/components/settings/accessibility-panel";
+import { AccessibilityComfortSection } from "@/components/settings/accessibility-panel";
 import { PersonaPanel } from "@/components/settings/persona-panel";
 import { NotificationQuietHours } from "@/components/settings/notification-quiet-hours";
 import { PreferencesCard } from "@/components/preferences-card";
@@ -1698,20 +1698,20 @@ export default function Settings() {
                     Appearance
                   </h2>
                   <p className="text-muted-foreground text-sm">
-                    Five themes, five type pairings, and the small comforts that make
-                    the workspace feel like yours.
+                    Choose a colorway and how AcreOS follows light and dark.
                   </p>
                 </div>
                 <AppearancePanel />
+                {/* Accessibility & comfort — its own clearly labelled section,
+                    collapsed by default so Appearance stays two choices:
+                    Lexend, reading density, reduced motion, cognitive a11y,
+                    larger taps, picture-first parcels, focus mode + quiet hours. */}
+                <AccessibilityComfortSection />
                 <PreferencesCard />
                 {/* Investor persona — drives vocabulary swaps + onboarding
                     path. Sits in Workspace cluster alongside appearance
                     because both shape how the workspace feels. */}
                 <PersonaPanel />
-                {/* Wave B accessibility & comfort accommodations:
-                    Lexend, reading density, cognitive a11y, larger taps,
-                    picture-first parcels, focus mode + quiet hours. */}
-                <AccessibilityPanel />
               </div>
 
               {/* Privacy & data rights (GDPR/CCPA) */}

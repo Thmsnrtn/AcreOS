@@ -252,6 +252,13 @@ describe("the loading and loaded states agree on what is already known", () => {
     expect((src.match(/<CashStripHeader \/>/g) ?? []).length).toBe(2);
     // No bare block left standing in for the three-column card.
     expect(loadingBranch).not.toMatch(/Skeleton className="h-24 w-full"/);
-    expect(loadingBranch).toContain("grid-cols-1 sm:grid-cols-3");
+    // Same geometry as the loaded band — since the Fieldstone redesign both
+    // branches render the one BAND constant and the one cellClass(), so the
+    // column grid cannot drift between them.
+    expect(loadingBranch).toContain("className={BAND}");
+    expect(loadingBranch).toContain("cellClass(i)");
+    const loadedBranch = src.slice(src.indexOf("return (", src.indexOf("}", loadingAt)));
+    expect(loadedBranch).toContain("className={BAND}");
+    expect(src).toMatch(/className=\{cellClass\(index\)\}/);
   });
 });

@@ -254,7 +254,7 @@ export default function EarnestMoneyPage() {
                         {h.referenceNumber ?? h.id.slice(0, 8)}
                       </div>
                     </div>
-                    <div className="font-mono font-semibold tabular-nums shrink-0">{fmtUsd(h.amountCents)}</div>
+                    <div className="font-semibold tabular-nums shrink-0">{fmtUsd(h.amountCents)}</div>
                   </div>
                   <div className="flex items-center justify-between gap-3 mt-2 text-xs">
                     <span className="text-muted-foreground">

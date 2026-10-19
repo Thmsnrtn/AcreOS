@@ -68,7 +68,7 @@ export function AIBudgetTile({
           <span className="text-caption uppercase tracking-[0.08em] text-muted-foreground">
             AI Budget · today
           </span>
-          <span className="font-mono text-caption tabular-nums text-muted-foreground">
+          <span className="text-caption tabular-nums text-muted-foreground">
             {isLoading ? "—" : `${dollars(totalSpentCents)} / ${dollars(totalCapCents)}`}
           </span>
         </div>

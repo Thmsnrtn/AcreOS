@@ -377,7 +377,7 @@ function JurisdictionTable({ est, title }: { est: JurisdictionEstimate; title: s
                   <p className="font-medium">{line.label}</p>
                   <p className="text-xs text-muted-foreground">{line.basis}</p>
                 </td>
-                <td className="px-3 py-2 text-right font-mono tabular-nums whitespace-nowrap">
+                <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap">
                   {fmtSignedUsd(line.amount)}
                 </td>
               </tr>
@@ -651,7 +651,7 @@ function IncomeSection({ income, taxYear }: { income: IncomeSource[]; taxYear: n
                     </p>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="font-mono text-sm tabular-nums">{fmtUsd(s.amount)}</span>
+                    <span className="text-sm tabular-nums">{fmtUsd(s.amount)}</span>
                     <Button
                       variant="ghost"
                       size="icon"

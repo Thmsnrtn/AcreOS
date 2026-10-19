@@ -8,8 +8,8 @@
  *
  * v1 ships:
  * - Breadcrumb derived from document title (deepest crumb)
- * - Theme mode quick-toggle (light ↔ dark, no system option here —
- *   that lives in /settings → appearance)
+ * - Quick appearance dialog (ThemeSettings) — the same Colorway + Display
+ *   controls as /settings → appearance, including Match device
  * - Notifications bell (placeholder, hooks into existing
  *   NotificationBanner state in a follow-up commit)
  * - Command-palette trigger (⌘K) — kbd hint visible, click opens
@@ -18,15 +18,15 @@
  * own feature project (websocket, focus management, error states),
  * out of scope for the polish pass.
  *
- * Mobile: only shows the theme toggle + bell on small screens — bread-
+ * Mobile: only shows the appearance button + bell on small screens — bread-
  * crumb collapses to the title-only view in PageShell.
  */
 
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { Sun, Moon, Bell, Command, Home, ChevronRight } from "lucide-react";
+import { Bell, Command, Home, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useTheme } from "@/contexts/theme-context";
+import { ThemeSettings } from "@/components/theme-settings";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 import { OrgSwitcher } from "@/components/org-switcher";
@@ -69,20 +69,7 @@ export function PageTopbar({ title: explicitTitle, crumbs }: PageTopbarProps = {
   const docTitle = useDocumentTitle();
   const title = explicitTitle ?? docTitle;
   const [location] = useLocation();
-  const { themeConfig, setThemeConfig } = useTheme();
   const { isMobile } = useIsMobile();
-
-  // Resolved mode: on auto, the actual rendered mode tracks system. The
-  // toggle button here flips light↔dark and pins explicit (auto users
-  // can opt back in via /settings → appearance).
-  const isDark =
-    themeConfig.mode === "dark" ||
-    (themeConfig.mode === "auto" && typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches);
-
-  const toggleMode = () => {
-    setThemeConfig({ mode: isDark ? "light" : "dark" });
-  };
-
   const openCommandPalette = () => {
     // Existing CommandPalette listens for ⌘K keyboard shortcut. Dispatching
     // a synthetic keydown is the lowest-risk integration point — the palette
@@ -172,15 +159,9 @@ export function PageTopbar({ title: explicitTitle, crumbs }: PageTopbarProps = {
             </kbd>
           </Button>
         )}
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={toggleMode}
-          aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
-          className={cn("min-h-[44px] min-w-[44px] pointer-fine:md:h-9 pointer-fine:md:w-9 pointer-fine:md:min-h-9 pointer-fine:md:min-w-9")}
-        >
-          {isDark ? <Sun className="w-4 h-4" aria-hidden="true" /> : <Moon className="w-4 h-4" aria-hidden="true" />}
-        </Button>
+        {/* Quick appearance — the same Colorway + Display controls as
+            Settings → Appearance, one tap away. */}
+        <ThemeSettings className="min-h-[44px] min-w-[44px] pointer-fine:md:h-9 pointer-fine:md:w-9 pointer-fine:md:min-h-9 pointer-fine:md:min-w-9" />
         {/* Notifications bell — until a dedicated notifications drawer
             ships, route the user to Today, whose decision queue is the one
             list of what needs them (DEFECT-0148). */}

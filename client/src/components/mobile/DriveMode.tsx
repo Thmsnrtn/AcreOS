@@ -103,7 +103,7 @@ function haptic(ms = 20) {
 }
 
 export function DriveMode() {
-  const isMobile = useIsMobile();
+  const { isMobile } = useIsMobile();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const { fix, error: gpsError, pending: gpsPending } = useGpsWatch();

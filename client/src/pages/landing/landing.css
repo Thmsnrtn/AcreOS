@@ -68,9 +68,9 @@
   animation: lp-pulse 2.4s ease-out infinite;
 }
 @keyframes lp-pulse {
-  0% { box-shadow: 0 0 0 0 rgba(194, 83, 28, 0.4); }
-  70% { box-shadow: 0 0 0 8px rgba(194, 83, 28, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(194, 83, 28, 0); }
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--acr-brand) 40%, transparent); }
+  70% { box-shadow: 0 0 0 8px color-mix(in srgb, var(--acr-brand) 0%, transparent); }
+  100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--acr-brand) 0%, transparent); }
 }
 
 .lp-hero-title {
@@ -804,6 +804,7 @@
 .lp-feature-glyph {
   margin-bottom: 12px;
   display: block;
+  color: var(--acr-brand);
 }
 .lp-feature-title {
   font: 600 16px/1.3 var(--font-sans);
@@ -1185,7 +1186,7 @@
   right: -100px;
   width: 300px;
   height: 300px;
-  background: radial-gradient(circle, rgba(194, 83, 28, 0.4), transparent 70%);
+  background: radial-gradient(circle, color-mix(in srgb, var(--acr-brand) 40%, transparent), transparent 70%);
   border-radius: 50%;
   pointer-events: none;
 }
@@ -1306,18 +1307,11 @@
   text-decoration: none;
   margin-bottom: 12px;
 }
+/* The shared AcreOS mark (components/acreos-logo.tsx): boundary in the
+   current ink, chevron in the colorway accent. No tile, no letter. */
 .lp-footer-logo-mark {
-  width: 28px;
-  height: 28px;
-  border-radius: 7px;
-  background: var(--acr-brand);
-  color: var(--acr-bg-raised);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--font-serif);
-  font-size: 16px;
-  font-weight: 600;
+  flex-shrink: 0;
+  color: var(--acr-ink);
 }
 .lp-footer-tag {
   font: 400 14px/1.5 var(--font-sans);
@@ -1426,29 +1420,10 @@
   min-height: 44px;
   padding: 0 4px;
 }
+/* The shared AcreOS mark — the same geometry as the app and the icons. */
 .lp-logo-mark {
-  width: 28px;
-  height: 28px;
-  border-radius: 7px;
-  background: var(--acr-brand);
-  color: var(--acr-brand-ink);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font: 700 16px/1 var(--font-display, var(--font-sans));
-  letter-spacing: -0.04em;
-  position: relative;
-}
-.lp-logo-mark::after {
-  content: "";
-  position: absolute;
-  right: -2px;
-  bottom: -2px;
-  width: 6px;
-  height: 6px;
-  background: var(--acr-accent);
-  border-radius: 50%;
-  border: 1.5px solid var(--acr-bg);
+  flex-shrink: 0;
+  color: var(--acr-ink);
 }
 .lp-nav-links {
   display: flex;
@@ -1679,17 +1654,19 @@
      light-text-on-cream (unreadable). Pin the ink/surface ramp to the
      light-theme values here so the whole band is always dark-on-cream
      regardless of the page theme — heading, body, and chips all inherit it. */
-  --acr-ink: #1F1810;
-  --acr-ink-2: #3D2F1F;
-  --acr-ink-3: #6B5C42;
-  --acr-surface: #FFFBF1;
-  --acr-surface-1: #FAF4E8;
-  --acr-line-soft: rgba(60, 40, 20, 0.12);
-  --acr-border: rgba(80, 40, 15, 0.12);
+  /* Pinned to the Fieldstone LIGHT ramp (limestone + forest ink) since the
+     2026-10-18 redesign; it was the retired Homestead cream before. */
+  --acr-ink: #192C28;
+  --acr-ink-2: #33463F;
+  --acr-ink-3: #526359;
+  --acr-surface: #FFFFFF;
+  --acr-surface-1: #EDF1EB;
+  --acr-line-soft: rgba(25, 44, 40, 0.10);
+  --acr-border: rgba(25, 44, 40, 0.12);
   width: 100%;
-  background: var(--acr-surface-1, #FAF4E8);
-  border-top: 1px solid var(--acr-border, rgba(80, 40, 15, 0.12));
-  border-bottom: 1px solid var(--acr-border, rgba(80, 40, 15, 0.12));
+  background: var(--acr-surface-1, #EDF1EB);
+  border-top: 1px solid var(--acr-border, rgba(25, 44, 40, 0.12));
+  border-bottom: 1px solid var(--acr-border, rgba(25, 44, 40, 0.12));
 }
 .lp-positioning-inner {
   max-width: 1080px;
@@ -1776,7 +1753,7 @@
    a slightly stronger border to signal production readiness. */
 .lp-positioning-chip-core {
   color: var(--acr-ink-2, #4a3520) !important;
-  border-color: color-mix(in srgb, var(--acr-brand, #C2531C) 35%, transparent);
+  border-color: color-mix(in srgb, var(--acr-brand) 35%, transparent);
   background: var(--acr-surface, #FFFCF6);
   font-weight: 600;
 }
@@ -1794,7 +1771,7 @@
 
 /* The "Beta" label inside a beta chip — small, brand-adjacent, uppercase.
  *
- * CONTRAST FIXED 2026-08-17. The text was `var(--acr-brand, #C2531C)` on a 10%
+ * CONTRAST FIXED 2026-08-17. The text was `var(--acr-brand)` on a 10%
  * brand tint, which composites to #F9EBE0 over the chip surface: MEASURED
  * 3.96:1. At font-size 10px / weight 600 this is small text, so WCAG AA needs
  * 4.5:1 — it failed, in the only theme this page has (the landing carries no
@@ -1816,7 +1793,7 @@
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--acr-brand-strong, #A54718);
-  background: var(--acr-brand-soft, rgba(194, 83, 28, 0.10));
+  background: var(--acr-brand-soft);
   padding: 2px 5px;
   border-radius: 4px;
   line-height: 1;
@@ -2132,18 +2109,18 @@
   width: 100%;
 }
 .lp-shot-map svg { width: 100%; height: 100%; min-height: 170px; border-radius: 8px; }
-.lp-shot-map-bg { fill: rgba(194, 83, 28, 0.05); }
+.lp-shot-map-bg { fill: color-mix(in srgb, var(--acr-brand) 5%, transparent); }
 .lp-shot-map-parcels path {
   fill: none;
   stroke: rgba(80, 40, 15, 0.28);
   stroke-width: 1;
 }
 .lp-shot-map-active {
-  fill: rgba(194, 83, 28, 0.16);
-  stroke: #c2531c;
+  fill: color-mix(in srgb, var(--acr-brand) 16%, transparent);
+  stroke: var(--acr-brand);
   stroke-width: 1.5;
 }
-.lp-shot-map-pin { fill: #c2531c; }
+.lp-shot-map-pin { fill: var(--acr-brand); }
 .lp-shot-panel {
   display: flex;
   flex-direction: column;
@@ -2200,7 +2177,7 @@
   border-radius: 999px;
   padding: 3px 8px;
 }
-.lp-shot-tag-reply { color: #c2531c; background: rgba(194, 83, 28, 0.1); }
+.lp-shot-tag-reply { color: var(--acr-brand-soft-ink); background: var(--acr-brand-soft); }
 .lp-shot-tag-offer { color: var(--acr-pos, #2e7d4f); background: rgba(46, 125, 79, 0.1); }
 .lp-shot-tag-mail { color: var(--acr-ink-2); background: var(--acr-line-soft); }
 .lp-shot-queue-done {
@@ -2227,8 +2204,8 @@
 .lp-shot-msg p { margin: 0; font: 400 12px/1.5 var(--font-sans); color: var(--acr-ink-2); }
 .lp-shot-msg-in { background: var(--acr-line-soft); align-self: flex-start; }
 .lp-shot-msg-out {
-  background: rgba(194, 83, 28, 0.08);
-  border: 0.5px solid rgba(194, 83, 28, 0.2);
+  background: color-mix(in srgb, var(--acr-brand) 8%, transparent);
+  border: 0.5px solid color-mix(in srgb, var(--acr-brand) 20%, transparent);
   align-self: flex-end;
 }
 .lp-shot-thread-actions { display: flex; gap: 6px; margin-top: 2px; }
@@ -2238,7 +2215,7 @@
   border-radius: 8px;
   padding: 7px 12px;
 }
-.lp-shot-action-primary { color: #fff; background: #c2531c; }
+.lp-shot-action-primary { color: var(--acr-brand-ink); background: var(--acr-brand); }
 .lp-shot-action { color: var(--acr-ink-2); border: 0.5px solid var(--acr-line-soft); }
 
 .lp-shots-cta { display: flex; justify-content: center; margin-top: 28px; }

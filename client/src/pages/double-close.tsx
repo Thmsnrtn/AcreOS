@@ -181,19 +181,19 @@ function DoubleCloseIndex() {
                         <div className="font-medium text-sm truncate">
                           {d.aSellerName} → {d.bcBuyerName ?? "—"}
                         </div>
-                        <div className="text-xs text-muted-foreground font-mono tabular-nums mt-0.5">
+                        <div className="text-xs text-muted-foreground tabular-nums mt-0.5">
                           A-B {fmtUsd(d.aSidePurchasePriceCents)} · B-C {fmtUsd(d.bcSidePurchasePriceCents)}
                         </div>
                       </div>
                       <div className="text-right shrink-0">
-                        <div className={`font-mono font-semibold tabular-nums ${net !== null && net < 0 ? "text-acr-neg" : net !== null ? "text-acr-pos" : ""}`}>
+                        <div className={`font-semibold tabular-nums ${net !== null && net < 0 ? "text-acr-neg" : net !== null ? "text-acr-pos" : ""}`}>
                           {fmtUsd(net)}
                         </div>
                         <div className="text-xs text-muted-foreground">net</div>
                       </div>
                     </div>
                     <div className="flex items-center justify-between gap-3 mt-2 text-xs">
-                      <span className="text-muted-foreground font-mono tabular-nums">
+                      <span className="text-muted-foreground tabular-nums">
                         Funder fee {fmtUsd(d.transactionalFunderFeeCents)}
                       </span>
                       <span>{STATUS_LABELS[d.status]}</span>

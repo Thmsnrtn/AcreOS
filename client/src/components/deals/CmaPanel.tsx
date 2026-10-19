@@ -181,7 +181,7 @@ function CmaResult({
       {valuation ? (
         <div className="rounded-md border border-border p-4">
           <p className="text-sm text-muted-foreground">Estimated value (ATTOM AVM)</p>
-          <p className="mt-1 text-2xl font-bold font-mono tabular-nums" data-testid="cma-avm-value">
+          <p className="mt-1 text-2xl font-bold tabular-nums" data-testid="cma-avm-value">
             {usd(valuation.value, { noCents: true })}
           </p>
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
@@ -242,7 +242,7 @@ function CmaResult({
                     {comp.saleDate && <span>Sold {comp.saleDate}</span>}
                   </div>
                 </div>
-                <p className="shrink-0 font-mono tabular-nums text-sm font-semibold">
+                <p className="shrink-0 tabular-nums text-sm font-semibold">
                   {comp.salePrice !== null ? usd(comp.salePrice, { noCents: true }) : "—"}
                 </p>
               </li>

@@ -177,7 +177,7 @@ export function CancellationDialog({ open, onOpenChange, currentTier, onDowngrad
                     return (
                       <li key={key} className="flex justify-between" aria-label={`${niceKey}: ${val.used} of ${val.limit} used`}>
                         <span className="capitalize" aria-hidden="true">{niceKey}</span>
-                        <span className="font-mono tabular-nums" aria-hidden="true">{val.used} / {val.limit}</span>
+                        <span className="tabular-nums" aria-hidden="true">{val.used} / {val.limit}</span>
                       </li>
                     );
                   })}
@@ -255,7 +255,7 @@ export function CancellationDialog({ open, onOpenChange, currentTier, onDowngrad
                 aria-live="polite"
                 data-testid="downgrade-savings-pitch"
               >
-                Switch to <span className="font-medium text-foreground">{suggestionDisplayName}</span> instead — you'd save <span className="font-mono tabular-nums text-foreground">${monthlySavingsDollars}/mo</span>. Your data stays.
+                Switch to <span className="font-medium text-foreground">{suggestionDisplayName}</span> instead — you'd save <span className="tabular-nums text-foreground">${monthlySavingsDollars}/mo</span>. Your data stays.
               </p>
             )}
 

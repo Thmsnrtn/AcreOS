@@ -267,7 +267,7 @@ export function StripeConnectSettings() {
           {connectStatus?.isConnected && connectStatus.accountId && (
             <div className="text-right">
               <p className="text-sm text-muted-foreground">Account ID</p>
-              <p className="font-mono text-sm tabular-nums" data-testid="text-stripe-account-id">
+              <p className="text-sm tabular-nums" data-testid="text-stripe-account-id">
                 {connectStatus.accountId}
               </p>
             </div>

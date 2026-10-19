@@ -19,6 +19,7 @@ import { useState } from "react";
 import { Link } from "wouter";
 import { SupportFeedbackModal } from "@/components/support-feedback-modal";
 import { LEGAL_ENTITY_NAME } from "@/lib/legal-entity";
+import { AcreosMark } from "@/components/acreos-logo";
 
 export function Footer() {
   // 2026-05-11: replaced dead `mailto:` contact link with the
@@ -39,7 +40,7 @@ export function Footer() {
             className="lp-footer-logo"
             aria-label="Back to top"
           >
-            <span className="lp-footer-logo-mark">A</span>AcreOS
+            <AcreosMark size={28} className="lp-footer-logo-mark" />AcreOS
           </a>
           <p className="lp-footer-tag">
             The operating system for property investors.

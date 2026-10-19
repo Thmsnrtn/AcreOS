@@ -464,7 +464,7 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
                         <span className="font-medium">{factor.name}</span>
                         <div className="flex items-center gap-2">
                           <span className="text-muted-foreground text-xs capitalize">{factor.description}</span>
-                          <span className="font-mono text-xs tabular-nums" aria-hidden="true"><span className="tabular-nums">{factor.score}</span>/<span className="tabular-nums">{factor.maxScore}</span></span>
+                          <span className="text-xs tabular-nums" aria-hidden="true"><span className="tabular-nums">{factor.score}</span>/<span className="tabular-nums">{factor.maxScore}</span></span>
                         </div>
                       </div>
                       <Progress

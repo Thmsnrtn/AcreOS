@@ -95,9 +95,11 @@ export async function seedAcreosBrandProfile(): Promise<BrandProfile> {
       },
     ],
     brandKit: {
-      primaryColor: "#A04428",   // brand orange (homestead palette)
-      secondaryColor: "#1F1810", // ink
-      accentColor: "#B8842E",
+      // Fieldstone identity (2026-10-18). Seed default for a NEW profile only —
+      // an existing (possibly founder-edited) profile row is never rewritten.
+      primaryColor: "#123B32",   // forest
+      secondaryColor: "#192C28", // ink
+      accentColor: "#B79A5B",    // brass
       logoPath: "/images/acreos-mark.svg",
       fonts: {
         display: "Fraunces", // serif on landing

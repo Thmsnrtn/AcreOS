@@ -873,7 +873,7 @@ function StatCard({ label, value, sub, testid }: { label: string; value: string;
     <Card className="p-4">
       <div className="text-xs text-muted-foreground">{label}</div>
       {/* Fraunces (display font) for hero metric; tabular-nums for alignment. */}
-      <div className="text-2xl font-semibold tracking-tight mt-1 font-mono tabular-nums" data-testid={testid}>{value}</div>
+      <div className="text-2xl font-semibold tracking-tight mt-1 tabular-nums" data-testid={testid}>{value}</div>
       {sub && <div className="text-xs text-muted-foreground mt-1">{sub}</div>}
     </Card>
   );
@@ -970,7 +970,7 @@ function PaymentLedger({ payments }: { payments: NotePayment[] }) {
                     </span>
                   </div>
                   <div className="text-right shrink-0">
-                    <div className="font-mono font-semibold tabular-nums">{fmtCents(total)}</div>
+                    <div className="font-semibold tabular-nums">{fmtCents(total)}</div>
                     <div className="text-xs uppercase text-muted-foreground mt-0.5">{p.paymentMethod}</div>
                   </div>
                 </div>
@@ -986,7 +986,7 @@ function PaymentLedger({ payments }: { payments: NotePayment[] }) {
                     .map(([label, cents]) => (
                       <div key={label} className="flex items-center justify-between gap-2">
                         <dt className="text-muted-foreground">{label}</dt>
-                        <dd className="font-mono tabular-nums">{fmtCents(cents)}</dd>
+                        <dd className="tabular-nums">{fmtCents(cents)}</dd>
                       </div>
                     ))}
                 </dl>
@@ -1001,7 +1001,7 @@ function PaymentLedger({ payments }: { payments: NotePayment[] }) {
         >
           <div className="flex items-center justify-between gap-2 font-semibold">
             <span>Totals · {payments.length} payment{payments.length === 1 ? "" : "s"}</span>
-            <span className="font-mono tabular-nums">{fmtCents(grandTotal)}</span>
+            <span className="tabular-nums">{fmtCents(grandTotal)}</span>
           </div>
           <dl className="grid grid-cols-2 gap-x-6 gap-y-0.5 mt-1.5">
             {([
@@ -1013,7 +1013,7 @@ function PaymentLedger({ payments }: { payments: NotePayment[] }) {
             ] as const).map(([label, cents]) => (
               <div key={label} className="flex items-center justify-between gap-2">
                 <dt className="text-muted-foreground">{label}</dt>
-                <dd className="font-mono tabular-nums">{fmtCents(cents)}</dd>
+                <dd className="tabular-nums">{fmtCents(cents)}</dd>
               </div>
             ))}
           </dl>
@@ -1048,12 +1048,12 @@ function PaymentLedger({ payments }: { payments: NotePayment[] }) {
                     {PAYMENT_TYPE_LABEL[p.paymentType]}
                   </span>
                 </td>
-                <td className="px-2 py-2 text-right font-mono text-xs tabular-nums">{fmtCents(p.principalCents)}</td>
-                <td className="px-2 py-2 text-right font-mono text-xs tabular-nums">{fmtCents(p.interestCents)}</td>
-                <td className="px-2 py-2 text-right font-mono text-xs tabular-nums">{fmtCents(p.escrowCents)}</td>
-                <td className="px-2 py-2 text-right font-mono text-xs tabular-nums">{fmtCents(p.lateFeeCents)}</td>
-                <td className="px-2 py-2 text-right font-mono text-xs tabular-nums">{fmtCents(p.unappliedCents)}</td>
-                <td className="px-2 py-2 text-right font-mono text-xs font-semibold tabular-nums">{fmtCents(total)}</td>
+                <td className="px-2 py-2 text-right text-xs tabular-nums">{fmtCents(p.principalCents)}</td>
+                <td className="px-2 py-2 text-right text-xs tabular-nums">{fmtCents(p.interestCents)}</td>
+                <td className="px-2 py-2 text-right text-xs tabular-nums">{fmtCents(p.escrowCents)}</td>
+                <td className="px-2 py-2 text-right text-xs tabular-nums">{fmtCents(p.lateFeeCents)}</td>
+                <td className="px-2 py-2 text-right text-xs tabular-nums">{fmtCents(p.unappliedCents)}</td>
+                <td className="px-2 py-2 text-right text-xs font-semibold tabular-nums">{fmtCents(total)}</td>
                 <td className="px-2 py-2 text-right text-xs uppercase">{p.paymentMethod}</td>
               </tr>
             );
@@ -1067,12 +1067,12 @@ function PaymentLedger({ payments }: { payments: NotePayment[] }) {
             <td className="px-2 py-2 font-semibold" colSpan={2}>
               Totals · {payments.length} payment{payments.length === 1 ? "" : "s"}
             </td>
-            <td className="px-2 py-2 text-right font-mono tabular-nums">{fmtCents(totals.principal)}</td>
-            <td className="px-2 py-2 text-right font-mono tabular-nums">{fmtCents(totals.interest)}</td>
-            <td className="px-2 py-2 text-right font-mono tabular-nums">{fmtCents(totals.escrow)}</td>
-            <td className="px-2 py-2 text-right font-mono tabular-nums">{fmtCents(totals.lateFee)}</td>
-            <td className="px-2 py-2 text-right font-mono tabular-nums">{fmtCents(totals.unapplied)}</td>
-            <td className="px-2 py-2 text-right font-mono font-semibold tabular-nums">{fmtCents(grandTotal)}</td>
+            <td className="px-2 py-2 text-right tabular-nums">{fmtCents(totals.principal)}</td>
+            <td className="px-2 py-2 text-right tabular-nums">{fmtCents(totals.interest)}</td>
+            <td className="px-2 py-2 text-right tabular-nums">{fmtCents(totals.escrow)}</td>
+            <td className="px-2 py-2 text-right tabular-nums">{fmtCents(totals.lateFee)}</td>
+            <td className="px-2 py-2 text-right tabular-nums">{fmtCents(totals.unapplied)}</td>
+            <td className="px-2 py-2 text-right font-semibold tabular-nums">{fmtCents(grandTotal)}</td>
             <td className="px-2 py-2" />
           </tr>
         </tfoot>

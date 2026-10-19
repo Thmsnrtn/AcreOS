@@ -168,7 +168,7 @@ export function StatementsPanel() {
                   </p>
                 </div>
               </div>
-              <div className="text-sm font-mono tabular-nums shrink-0 sm:w-24 sm:text-right">
+              <div className="text-sm tabular-nums shrink-0 sm:w-24 sm:text-right">
                 {dollars(s.amountDueCents)}
               </div>
               <Button

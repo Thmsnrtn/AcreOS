@@ -35,6 +35,7 @@ import path from "node:path";
 import ts from "typescript";
 import { stripComments } from "../helpers/stripComments";
 import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
+import { COLORWAY_IDS } from "../../shared/appearance";
 
 vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
@@ -134,7 +135,10 @@ function effectivePalettes(css: string = CSS) {
 
 const STATUS = ["acr-warn", "acr-accent", "acr-pos", "acr-neg"] as const;
 const MAIN_SURFACES = ["acr-bg", "acr-surface", "background", "card"] as const;
-const MUTED_SURFACES = ["background", "card", "muted", "popover", "sidebar-background"] as const;
+const MUTED_SURFACES = ["background", "card", "muted", "popover"] as const;
+/** The nav rail is its own token scope (index.css .sidebar-vibrancy): inside it
+ *  --muted-foreground IS --sidebar-muted-foreground, on these surfaces. */
+const RAIL_SURFACES = ["sidebar-background", "sidebar-accent"] as const;
 const AA = 4.5;
 /** The opacity of `bg-acr-<x>/15`, the wash for a status token with no -soft. */
 const WASH_ALPHA = 0.15;
@@ -156,10 +160,14 @@ describe("status inks and muted text clear AA on every theme", () => {
   });
 
   it("the population is every theme, fully read", () => {
-    // 6 themes × light/dark = 12 on 2026-10-07.
-    expect(palettes.length, "theme palette blocks found").toBeGreaterThanOrEqual(12);
+    // EXACTLY the shipped colorways × light/dark — derived from the shared
+    // contract, so a colorway added there without a palette here (or a block
+    // the parser stopped reading) fails. 6 themes × 2 = 12 until 2026-10-18;
+    // the Fieldstone redesign retired three and added two (3 × 2 = 6).
+    expect(palettes.length, "theme palette blocks found").toBe(COLORWAY_IDS.length * 2);
+    expect([...new Set(palettes.map((p) => p.theme))].sort()).toEqual([...COLORWAY_IDS].sort());
     for (const b of palettes) {
-      for (const t of [...STATUS, ...MAIN_SURFACES, "muted-foreground", "muted", "popover", "sidebar-background"]) {
+      for (const t of [...STATUS, ...MAIN_SURFACES, "muted-foreground", "muted", "popover", "sidebar-background", "sidebar-accent", "sidebar-foreground", "sidebar-muted-foreground"]) {
         expect(parseColour(b.tokens[t]), `${b.selector} --${t} missing or unparseable`).not.toBeNull();
       }
     }
@@ -199,6 +207,32 @@ describe("status inks and muted text clear AA on every theme", () => {
     expect(failures, "run: node tests/personas/fixMutedContrast.mjs").toEqual([]);
   });
 
+  it("the rail's own ink ramp clears AA on the rail, and the rail scope really uses it", () => {
+    const failures: string[] = [];
+    for (const b of palettes) {
+      for (const ink of ["sidebar-muted-foreground", "sidebar-foreground"]) {
+        const fg = parseColour(b.tokens[ink])!.rgb;
+        for (const s of RAIL_SURFACES) {
+          const c = contrast(fg, parseColour(b.tokens[s])!.rgb);
+          if (c < AA) failures.push(`${b.selector} ${ink} on ${s}: ${c.toFixed(2)}:1`);
+        }
+      }
+      // A rail primary (badge fill) must carry its own label.
+      const c = contrast(parseColour(b.tokens["sidebar-primary-foreground"])!.rgb, parseColour(b.tokens["sidebar-primary"])!.rgb);
+      if (c < AA) failures.push(`${b.selector} sidebar-primary-foreground on sidebar-primary: ${c.toFixed(2)}:1`);
+    }
+    expect(failures, "run: node tests/personas/fixMutedContrast.mjs").toEqual([]);
+
+    // The ramp above is only what renders if the rail scope re-points the
+    // shared tokens at it. Read the rule itself.
+    const rule = /\.sidebar-vibrancy\s*\{([^}]*)\}/.exec(CSS.replace(/\.vibrancy-sidebar,\s*/g, ""));
+    expect(rule, ".sidebar-vibrancy rail scope not found").toBeTruthy();
+    const decl = (n: string) => new RegExp(`--${n}:\\s*([^;]+);`).exec(rule![1])?.[1].trim();
+    expect(decl("muted-foreground")).toBe("var(--sidebar-muted-foreground)");
+    expect(decl("foreground")).toBe("var(--sidebar-foreground)");
+    expect(decl("acr-ink-3")).toBe("var(--acr-sidebar-ink-2)");
+  });
+
   it("the muted-token fixer reads the sidebar surface", () => {
     const src = fs.readFileSync(path.join(ROOT, "tests/personas/fixMutedContrast.mjs"), "utf8");
     const sf = ts.createSourceFile("f.mjs", src, ts.ScriptTarget.Latest, false, ts.ScriptKind.JS);
@@ -212,7 +246,8 @@ describe("status inks and muted text clear AA on every theme", () => {
     };
     visit(sf);
     expect(literals, "the fixer's surface list was not found").toContain("background");
-    expect(literals).toContain("sidebar-background");
+    // The rail ink is solved against the rail (its own pair since 2026-10-18).
+    expect(src).toMatch(/ink:\s*"sidebar-muted-foreground",\s*surfaces:\s*\[\s*"sidebar-background"/);
   });
 });
 
@@ -359,7 +394,7 @@ describe("no status ink on its own solid fill", () => {
 describe("dark mode reads the cascade, not the dark block alone", () => {
   it("every theme yields both modes", () => {
     const themes = new Set(palettes.map((p) => p.theme));
-    expect(themes.size, "themes found").toBeGreaterThanOrEqual(6);
+    expect(themes.size, "themes found").toBe(COLORWAY_IDS.length);
     for (const t of themes) {
       expect(palettes.filter((p) => p.theme === t).map((p) => p.mode).sort(), `${t} modes`).toEqual(["dark", "light"]);
     }

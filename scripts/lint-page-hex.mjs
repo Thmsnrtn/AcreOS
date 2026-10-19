@@ -66,12 +66,10 @@ const BASELINE = new Map([
   // CHART_POS/WARN/NEG and regulatory-intel.tsx (alert-severity dots)
   // migrated to bg-acr-neg/warn/accent tokens in W5 (2026-06-11) — entries
   // removed, both must stay at zero.
-  // Landing art direction (SVG parcel-line stroke / Pax accent / feature
-  // stroke). Landing renders outside the app theme, but these should still
-  // centralize — drive down when the landing palette module lands.
-  ["client/src/pages/landing/Hero.tsx", 1],
+  // Landing art direction (Pax accent). Hero.tsx (parcel-line stroke) and
+  // Features.tsx (feature-glyph stroke) moved onto --acr-brand in the
+  // Fieldstone redesign (2026-10-18) — entries removed, both stay at zero.
   ["client/src/pages/landing/Agents.tsx", 1],
-  ["client/src/pages/landing/Features.tsx", 1],
 ]);
 
 const args = process.argv.slice(2);

@@ -136,7 +136,19 @@ walk(join(ROOT, "client/src"));
 const FILE_FLOOR = 400;   // 868 measured 2026-09-04
 const PAIR_FLOOR = 4;     // 8 distinct pairings measured 2026-09-04
 const SITE_FLOOR = 200;   // 416 authored sites measured 2026-09-04
-const THEME_FLOOR = 8;    // 12 theme × mode blocks measured 2026-09-04
+// Theme blocks: EXACTLY the shipped colorways × 2 modes, read from the shared
+// contract (was 12 blocks, floor 8, until the Fieldstone redesign retired
+// three colorways and added two on 2026-10-18).
+const colorwaySrc = readFileSync(join(ROOT, "shared/appearance.ts"), "utf8");
+const colorwayIds = /COLORWAY_IDS\s*=\s*\[([^\]]*)\]/.exec(colorwaySrc)?.[1].match(/"[a-z]+"/g) ?? [];
+const THEME_FLOOR = colorwayIds.length * 2;
+if (colorwayIds.length < 2 || themes.length !== THEME_FLOOR) {
+  console.error(
+    `[lint-semantic-contrast] FAIL — ${themes.length} theme × mode blocks in index.css, ` +
+      `expected ${THEME_FLOOR} (${colorwayIds.length} colorways in shared/appearance.ts × light/dark).`,
+  );
+  process.exit(1);
+}
 
 const totalSites = [...pairings.values()].reduce((n, v) => n + v.length, 0);
 for (const [what, got, floor] of [

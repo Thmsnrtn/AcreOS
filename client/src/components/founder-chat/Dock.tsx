@@ -87,7 +87,7 @@ export interface DockProps {
 }
 
 export function Dock({ pageContext, prefillMessage }: DockProps) {
-  const isMobile = useIsMobile();
+  const { isMobile } = useIsMobile();
   const [open, setOpen] = useState<boolean>(false);
   // One chat brain per mobile surface: when the new founder UI is on,
   // FounderMobileBottomNav already mounts the Solene FAB (bottom-right)

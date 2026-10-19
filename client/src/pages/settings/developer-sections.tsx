@@ -153,7 +153,7 @@ export function ApiKeyManager() {
               <Label htmlFor="text-created-api-key" className="sr-only">Newly created API key</Label>
               <code
                 id="text-created-api-key"
-                className="flex-1 text-xs bg-muted rounded px-2 py-1.5 font-mono break-all tabular-nums"
+                className="flex-1 text-xs bg-muted rounded px-2 py-1.5 break-all tabular-nums"
                 data-testid="text-created-api-key"
               >{createdKey}</code>
               <Button
@@ -311,7 +311,7 @@ export function ApiKeyManager() {
                   {keys.map(k => (
                     <TableRow key={k.id}>
                       <TableCell className="font-medium">{k.name}</TableCell>
-                      <TableCell className="font-mono text-xs text-muted-foreground tabular-nums">{k.keyPrefix}…</TableCell>
+                      <TableCell className="text-xs text-muted-foreground tabular-nums">{k.keyPrefix}…</TableCell>
                       <TableCell>
                         <Badge variant="secondary" className="text-xs capitalize">{k.scope}</Badge>
                       </TableCell>

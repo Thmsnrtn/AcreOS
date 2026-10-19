@@ -27,10 +27,17 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-const SRC = readFileSync(
-  path.resolve(process.cwd(), "client/src/components/settings/appearance-panel.tsx"),
-  "utf8",
-);
+// The population is every file that renders a personal-appearance control.
+// Since the Fieldstone redesign (2026-10-18) both entry points — the Settings
+// panel and the quick dialog — render ONE shared component, which holds every
+// control; the two wrappers are read too so a control re-added to either of
+// them is checked the day it lands.
+const FILES = [
+  "client/src/components/settings/appearance-controls.tsx",
+  "client/src/components/settings/appearance-panel.tsx",
+  "client/src/components/theme-settings.tsx",
+];
+const SRC = FILES.map((f) => readFileSync(path.resolve(process.cwd(), f), "utf8")).join("\n");
 
 /**
  * The class strings that style an UNSELECTED control. Extracted as the
@@ -42,14 +49,15 @@ const hoverClassStrings = [...SRC.matchAll(/"([^"\n]*\bhover:[^"\n]*)"/g)].map((
 describe("appearance panel — press state", () => {
   it("finds the hover-styled control classes (vacuity guard)", () => {
     // Three sites on 2026-09-05: theme cards, mode buttons, typography
-    // pairings. If this drops to zero the assertions below prove nothing —
+    // pairings. Two since 2026-10-18 (colorway cards, display modes — the
+    // typography picker was retired). If this drops the assertions below prove nothing —
     // which is exactly how C7 passed at 1280-light while failing at
     // 1280-dark, having measured a page that had not hydrated yet.
     expect(
       hoverClassStrings.length,
       "no hover-styled class strings found in the appearance panel — the " +
         "extractor stopped matching, and every assertion below is now vacuous",
-    ).toBeGreaterThanOrEqual(3);
+    ).toBeGreaterThanOrEqual(2);
   });
 
   for (const [i, classes] of hoverClassStrings.entries()) {

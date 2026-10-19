@@ -1,5 +1,6 @@
 /**
- * a11y token fixer — bring every theme's --muted-foreground to WCAG AA (4.5:1).
+ * a11y token fixer — bring every theme's --muted-foreground (and the nav
+ * rail's own --sidebar-muted-foreground) to WCAG AA (4.5:1).
  *
  * The persona audit found color-contrast is the #1 accessibility issue, and it
  * traces overwhelmingly to the --muted-foreground token (secondary text) sitting
@@ -77,22 +78,30 @@ lines.forEach((line, i) => {
   blocks.push({ tokens });
 });
 
+// Which muted ink renders on which surfaces. The nav rail renders muted
+// secondary text (the org subtitle, "Sign out") on sidebar-background — on
+// Bedrock light it was once the worst surface of all (4.35:1). Since the
+// Fieldstone redesign the rail is dark in every colorway and is its own token
+// scope (index.css .sidebar-vibrancy re-points --muted-foreground at
+// --sidebar-muted-foreground), so the rail ink is solved against the rail.
+const PAIRS = [
+  { ink: "muted-foreground", surfaces: ["background", "card", "muted", "popover"] },
+  { ink: "sidebar-muted-foreground", surfaces: ["sidebar-background", "sidebar-accent"] },
+];
+
 let fixed = 0;
 const report = [];
-for (const b of blocks) {
-  const mf = b.tokens.get("muted-foreground");
-  const bg = b.tokens.get("background");
+for (const b of blocks) for (const { ink, surfaces: surfaceKeys } of PAIRS) {
+  const mf = b.tokens.get(ink);
+  const bg = b.tokens.get(surfaceKeys[0]);
   if (!mf || !bg) continue;
-  // sidebar-background: the nav rail renders muted secondary text (the org
-  // subtitle, "Sign out") on it, and on Bedrock light it was the worst surface
-  // of all (4.35:1) while every surface this list used to read passed.
-  const surfaces = ["background", "card", "muted", "popover", "sidebar-background"]
+  const surfaces = surfaceKeys
     .map((k) => b.tokens.get(k)?.hsl)
     .filter(Boolean);
-  const worst = () => Math.min(...surfaces.map((s) => contrast(b.tokens.get("muted-foreground").hsl, s)));
+  const worst = () => Math.min(...surfaces.map((s) => contrast(b.tokens.get(ink).hsl, s)));
   let c = worst();
   if (c >= 4.5) continue;
-  // Light theme (bright bg) → darken; dark theme → lighten.
+  // Light surface → darken; dark surface → lighten.
   const dark = bg.hsl[2] < 50;
   const step = dark ? +1 : -1;
   const origL = mf.hsl[2];
@@ -100,12 +109,12 @@ for (const b of blocks) {
   let guard = 0;
   while (worst() < TARGET && l > 1 && l < 99 && guard++ < 80) {
     l = Math.round((l + step) * 10) / 10;
-    b.tokens.get("muted-foreground").hsl = [h, s, l];
+    b.tokens.get(ink).hsl = [h, s, l];
   }
   const newVal = `${h} ${s}% ${l}%`;
-  report.push(`${dark ? "dark " : "light"}  L ${origL}→${l}  (${c.toFixed(2)}→${worst().toFixed(2)}:1)  @line ${mf.line + 1}`);
+  report.push(`${ink} ${dark ? "dark " : "light"}  L ${origL}→${l}  (${c.toFixed(2)}→${worst().toFixed(2)}:1)  @line ${mf.line + 1}`);
   if (!check) {
-    lines[mf.line] = lines[mf.line].replace(/--muted-foreground:\s*[\d.]+\s+[\d.]+%\s+[\d.]+%\s*;/i, `--muted-foreground:            ${newVal};`);
+    lines[mf.line] = lines[mf.line].replace(new RegExp(`--${ink}:\\s*[\\d.]+\\s+[\\d.]+%\\s+[\\d.]+%\\s*;`, "i"), `--${ink}: ${newVal};`);
   }
   fixed++;
 }

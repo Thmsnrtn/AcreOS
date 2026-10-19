@@ -317,7 +317,7 @@ function FigureRow({
         {label}
         {note ? <span className="block text-xs text-muted-foreground">{note}</span> : null}
       </dt>
-      <dd className={`font-mono tabular-nums ${strong ? "text-base font-semibold" : "text-sm"}`}>
+      <dd className={`tabular-nums ${strong ? "text-base font-semibold" : "text-sm"}`}>
         {value}
       </dd>
     </div>
@@ -875,7 +875,7 @@ export default function FlipAnalyzerPage() {
                           <TableCell className="tabular-nums">
                             {comp.soldDate ? formatDate(comp.soldDate) : "Date not reported"}
                           </TableCell>
-                          <TableCell className="font-mono tabular-nums">
+                          <TableCell className="tabular-nums">
                             {dollars(comp.soldPriceCents)}
                           </TableCell>
                           <TableCell className="tabular-nums">
@@ -1174,7 +1174,7 @@ export default function FlipAnalyzerPage() {
                     Your MAO
                   </p>
                   <p
-                    className="font-mono text-4xl font-semibold tabular-nums"
+                    className="text-4xl font-semibold tabular-nums"
                     data-testid="text-mao-value"
                   >
                     {dollars(maoQuery.data.maoCents)}
@@ -1304,7 +1304,7 @@ export default function FlipAnalyzerPage() {
                       >
                         <span className="text-sm">
                           {a.label}
-                          <span className="block font-mono text-xs tabular-nums text-muted-foreground">
+                          <span className="block text-xs tabular-nums text-muted-foreground">
                             {a.display}
                           </span>
                         </span>

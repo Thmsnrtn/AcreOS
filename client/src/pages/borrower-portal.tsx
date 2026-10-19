@@ -1221,7 +1221,7 @@ function BorrowerDashboard({ data }: { data: BorrowerLoanData }) {
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
               <div className="text-center sm:text-left">
                 <p className="text-sm text-muted-foreground font-medium uppercase tracking-wide">Amount due</p>
-                <p className="text-4xl sm:text-5xl font-bold font-mono tabular-nums text-primary" data-testid="text-payment-amount">
+                <p className="text-4xl sm:text-5xl font-bold tabular-nums text-primary" data-testid="text-payment-amount">
                   ${amountDueDollars.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </p>
                 {lateFeesOwedCents > 0 && (
@@ -1347,7 +1347,7 @@ function BorrowerDashboard({ data }: { data: BorrowerLoanData }) {
                 </div>
                 <div>
                   <p className="text-xs sm:text-sm text-muted-foreground">Balance</p>
-                  <p className="text-lg sm:text-2xl font-bold font-mono tabular-nums" data-testid="text-balance">
+                  <p className="text-lg sm:text-2xl font-bold tabular-nums" data-testid="text-balance">
                     ${Number(note.currentBalance || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </p>
                 </div>
@@ -1363,7 +1363,7 @@ function BorrowerDashboard({ data }: { data: BorrowerLoanData }) {
                 </div>
                 <div>
                   <p className="text-xs sm:text-sm text-muted-foreground">Total paid</p>
-                  <p className="text-lg sm:text-2xl font-bold font-mono tabular-nums" data-testid="text-total-paid">
+                  <p className="text-lg sm:text-2xl font-bold tabular-nums" data-testid="text-total-paid">
                     ${totalPaid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </p>
                 </div>
@@ -1468,7 +1468,7 @@ function BorrowerDashboard({ data }: { data: BorrowerLoanData }) {
               <div className="space-y-3">
                 <div className="flex justify-between py-2 border-b">
                   <dt className="text-sm text-muted-foreground">Original amount</dt>
-                  <dd className="font-mono font-medium tabular-nums">
+                  <dd className="font-medium tabular-nums">
                     ${Number(note.originalPrincipal || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </dd>
                 </div>
@@ -1516,7 +1516,7 @@ function BorrowerDashboard({ data }: { data: BorrowerLoanData }) {
                 </div>
                 <div>
                   <dt className="text-xs sm:text-sm text-muted-foreground">APN</dt>
-                  <dd className="font-mono text-sm tabular-nums">{note.property.apn}</dd>
+                  <dd className="text-sm tabular-nums">{note.property.apn}</dd>
                 </div>
                 <div>
                   <dt className="text-xs sm:text-sm text-muted-foreground">Size</dt>
@@ -1598,13 +1598,13 @@ function BorrowerDashboard({ data }: { data: BorrowerLoanData }) {
                           {payments.slice(0, visiblePayments).map((payment) => (
                             <TableRow key={payment.id} data-testid={`payment-row-${payment.id}`}>
                               <TableCell className="text-xs sm:text-sm tabular-nums">{format(new Date(payment.paymentDate), 'MMM d, yyyy')}</TableCell>
-                              <TableCell className="text-right font-mono font-medium text-xs sm:text-sm tabular-nums">
+                              <TableCell className="text-right font-medium text-xs sm:text-sm tabular-nums">
                                 ${Number(payment.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </TableCell>
-                              <TableCell className="text-right font-mono text-muted-foreground hidden sm:table-cell tabular-nums">
+                              <TableCell className="text-right text-muted-foreground hidden sm:table-cell tabular-nums">
                                 ${Number(payment.principalAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </TableCell>
-                              <TableCell className="text-right font-mono text-muted-foreground hidden sm:table-cell tabular-nums">
+                              <TableCell className="text-right text-muted-foreground hidden sm:table-cell tabular-nums">
                                 ${Number(payment.interestAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </TableCell>
                               <TableCell className="capitalize hidden md:table-cell">{payment.paymentMethod || '—'}</TableCell>
@@ -1825,14 +1825,14 @@ function BorrowerDashboard({ data }: { data: BorrowerLoanData }) {
                             <TableCell className="text-xs sm:text-sm tabular-nums">
                               <time dateTime={new Date(row.dueDate).toISOString()}>{format(new Date(row.dueDate), 'MMM d, yyyy')}</time>
                             </TableCell>
-                            <TableCell className="text-right font-mono text-xs sm:text-sm tabular-nums">${row.payment.toFixed(2)}</TableCell>
-                            <TableCell className="text-right font-mono text-muted-foreground hidden sm:table-cell tabular-nums">
+                            <TableCell className="text-right text-xs sm:text-sm tabular-nums">${row.payment.toFixed(2)}</TableCell>
+                            <TableCell className="text-right text-muted-foreground hidden sm:table-cell tabular-nums">
                               ${row.principal.toFixed(2)}
                             </TableCell>
-                            <TableCell className="text-right font-mono text-muted-foreground hidden sm:table-cell tabular-nums">
+                            <TableCell className="text-right text-muted-foreground hidden sm:table-cell tabular-nums">
                               ${row.interest.toFixed(2)}
                             </TableCell>
-                            <TableCell className="text-right font-mono hidden md:table-cell tabular-nums">${row.balance.toFixed(2)}</TableCell>
+                            <TableCell className="text-right hidden md:table-cell tabular-nums">${row.balance.toFixed(2)}</TableCell>
                             <TableCell>
                               <Badge
                                 variant={row.status === 'paid' ? 'default' : row.status === 'late' ? 'destructive' : 'secondary'}
@@ -1896,7 +1896,7 @@ function BorrowerDashboard({ data }: { data: BorrowerLoanData }) {
               <dl className="space-y-2">
                 <div className="flex justify-between py-2 border-b">
                   <dt className="text-muted-foreground">Principal balance</dt>
-                  <dd className="font-mono font-medium tabular-nums">
+                  <dd className="font-medium tabular-nums">
                     ${(payoffQuote.principalBalanceCents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </dd>
                 </div>
@@ -1907,14 +1907,14 @@ function BorrowerDashboard({ data }: { data: BorrowerLoanData }) {
                       {payoffQuote.daysAccrued} {payoffQuote.daysAccrued === 1 ? 'day' : 'days'} since {format(new Date(`${payoffQuote.accrualStartDate}T00:00:00`), 'MMM d, yyyy')}
                     </span>
                   </dt>
-                  <dd className="font-mono font-medium tabular-nums">
+                  <dd className="font-medium tabular-nums">
                     ${(payoffQuote.accruedInterestCents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </dd>
                 </div>
                 {payoffQuote.lateFeesOutstandingCents > 0 && (
                   <div className="flex justify-between py-2 border-b" data-testid="row-payoff-late-fees">
                     <dt className="text-muted-foreground">Late fees owed</dt>
-                    <dd className="font-mono font-medium tabular-nums">
+                    <dd className="font-medium tabular-nums">
                       ${(payoffQuote.lateFeesOutstandingCents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </dd>
                   </div>
@@ -1922,14 +1922,14 @@ function BorrowerDashboard({ data }: { data: BorrowerLoanData }) {
                 {payoffQuote.payoffFeeCents > 0 && (
                   <div className="flex justify-between py-2 border-b">
                     <dt className="text-muted-foreground">Payoff fee</dt>
-                    <dd className="font-mono font-medium tabular-nums">
+                    <dd className="font-medium tabular-nums">
                       ${(payoffQuote.payoffFeeCents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </dd>
                   </div>
                 )}
                 <div className="flex justify-between py-3 bg-primary/10 rounded-card px-3 mt-4">
                   <dt className="font-semibold">Total payoff amount</dt>
-                  <dd className="font-mono font-bold text-lg text-primary tabular-nums" data-testid="text-payoff-total">
+                  <dd className="font-bold text-lg text-primary tabular-nums" data-testid="text-payoff-total">
                     ${(payoffQuote.totalPayoffCents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </dd>
                 </div>

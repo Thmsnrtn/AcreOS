@@ -371,7 +371,7 @@ export function IRRCalculator({
             {results.annualCashFlows.map((cf, i) => (
               <li key={i} className="text-center" aria-label={`Year ${i}: ${fmtDollar(cf)}`}>
                 <p className="text-xs text-muted-foreground" aria-hidden="true">Y<span className="tabular-nums">{i}</span></p>
-                <p className={`text-xs font-mono font-bold tabular-nums ${cf >= 0 ? 'text-acr-pos' : 'text-acr-neg'}`} aria-hidden="true">
+                <p className={`text-xs font-bold tabular-nums ${cf >= 0 ? 'text-acr-pos' : 'text-acr-neg'}`} aria-hidden="true">
                   {fmtDollar(cf)}
                 </p>
               </li>

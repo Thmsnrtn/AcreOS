@@ -193,7 +193,7 @@ export function Composer({ onSubmit, disabled, placeholder, initialText }: Compo
                     onClick={() => insertSlash(tool)}
                     data-testid={`slash-option-${tool.alias}`}
                   >
-                    <span className="font-mono text-xs text-acr-brand tabular-nums">
+                    <span className="text-xs text-acr-brand tabular-nums">
                       /{tool.alias}
                     </span>
                     {tool.argsHint && (

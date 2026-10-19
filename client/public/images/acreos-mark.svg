@@ -1,0 +1,7 @@
+<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+  <!-- The AcreOS mark on a transparent ground (Fieldstone forest + brass) —
+       the same geometry as client/src/components/acreos-logo.tsx. Used by
+       marketing renders (server/services/cmo/brandProfiles.ts logoPath). -->
+  <path d="M3.5 27 L13.4 5 L18.6 5 L28.5 27" fill="none" stroke="#123B32" stroke-width="2.2" stroke-linejoin="miter" stroke-linecap="square"/>
+  <path d="M10.6 27 L17.3 12.6 L24 27" fill="none" stroke="#B79A5B" stroke-width="2.2" stroke-linejoin="miter" stroke-linecap="square"/>
+</svg>

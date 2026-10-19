@@ -613,7 +613,7 @@ export default function NotesPage() {
                           : ""}
                       </div>
                     </div>
-                    <div className="font-mono font-medium tabular-nums shrink-0">
+                    <div className="font-medium tabular-nums shrink-0">
                       {fmtUsd(note.currentBalanceCents)}
                     </div>
                   </div>

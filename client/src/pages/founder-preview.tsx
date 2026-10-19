@@ -225,7 +225,7 @@ function PendingPreviewRow({
         </div>
         <div className="flex flex-col items-end gap-2">
           <span
-            className="text-xs font-mono text-acr-warn dark:text-acr-warn tabular-nums"
+            className="text-xs text-acr-warn dark:text-acr-warn tabular-nums"
             aria-live="polite"
             aria-label={secondsLeft > 0 ? `${secondsLeft.toFixed(1)} seconds until commit` : "Committing now"}
           >

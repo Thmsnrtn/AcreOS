@@ -428,7 +428,7 @@ export default function RentRollPage() {
                             </div>
                           </div>
                           <div className="text-right shrink-0">
-                            <div className="font-mono font-semibold tabular-nums">
+                            <div className="font-semibold tabular-nums">
                               {centsExact(c.balance_cents)}
                             </div>
                             {c.late_fee_cents > 0 && (
@@ -502,10 +502,10 @@ export default function RentRollPage() {
                             >
                               {c.days_overdue}
                             </td>
-                            <td className="px-3 py-2 text-right font-mono tabular-nums">
+                            <td className="px-3 py-2 text-right tabular-nums">
                               {centsExact(c.balance_cents)}
                             </td>
-                            <td className="px-3 py-2 text-right font-mono tabular-nums text-muted-foreground">
+                            <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
                               {c.late_fee_cents > 0 ? centsExact(c.late_fee_cents) : "—"}
                             </td>
                             <td className="px-3 py-2">
@@ -631,7 +631,7 @@ export default function RentRollPage() {
                           ? `${(parseFloat(r.capPctLargeProperty) * 100).toFixed(0)}%`
                           : "Not encoded"}
                       </td>
-                      <td className="px-3 py-2 text-right font-mono tabular-nums">
+                      <td className="px-3 py-2 text-right tabular-nums">
                         {r.capFlatCents === null ? "—" : centsExact(r.capFlatCents)}
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums">{r.graceDays}d</td>
@@ -765,21 +765,21 @@ function LedgerBody({ ledger }: { ledger: LedgerResponse }) {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card className="p-3">
           <div className="text-xs text-muted-foreground">Charged</div>
-          <div className="font-mono tabular-nums">{centsExact(ledger.totals.totalDueCents)}</div>
+          <div className="tabular-nums">{centsExact(ledger.totals.totalDueCents)}</div>
         </Card>
         <Card className="p-3">
           <div className="text-xs text-muted-foreground">Received</div>
-          <div className="font-mono tabular-nums">{centsExact(ledger.totals.totalPaidCents)}</div>
+          <div className="tabular-nums">{centsExact(ledger.totals.totalPaidCents)}</div>
         </Card>
         <Card className="p-3">
           <div className="text-xs text-muted-foreground">Outstanding</div>
-          <div className="font-mono tabular-nums font-semibold">
+          <div className="tabular-nums font-semibold">
             {centsExact(ledger.totals.totalBalanceCents)}
           </div>
         </Card>
         <Card className="p-3">
           <div className="text-xs text-muted-foreground">Late fees charged</div>
-          <div className="font-mono tabular-nums">{centsExact(ledger.totals.totalLateFeesCents)}</div>
+          <div className="tabular-nums">{centsExact(ledger.totals.totalLateFeesCents)}</div>
         </Card>
       </div>
 
@@ -811,22 +811,22 @@ function LedgerBody({ ledger }: { ledger: LedgerResponse }) {
                 >
                   <td className="px-3 py-2">{String(c.chargedForMonth).slice(0, 7)}</td>
                   <td className="px-3 py-2">{String(c.dueDate).slice(0, 10)}</td>
-                  <td className="px-3 py-2 text-right font-mono tabular-nums">
+                  <td className="px-3 py-2 text-right tabular-nums">
                     {centsExact(c.amountCents)}
                   </td>
-                  <td className="px-3 py-2 text-right font-mono tabular-nums">
+                  <td className="px-3 py-2 text-right tabular-nums">
                     {c.lateFeeCents > 0 ? centsExact(c.lateFeeCents) : "—"}
                   </td>
-                  <td className="px-3 py-2 text-right font-mono tabular-nums">
+                  <td className="px-3 py-2 text-right tabular-nums">
                     {centsExact(c.paidCents)}
                   </td>
-                  <td className="px-3 py-2 text-right font-mono tabular-nums">
+                  <td className="px-3 py-2 text-right tabular-nums">
                     {centsExact(split.rentOutstandingCents)}
                   </td>
-                  <td className="px-3 py-2 text-right font-mono tabular-nums">
+                  <td className="px-3 py-2 text-right tabular-nums">
                     {centsExact(split.lateFeeOutstandingCents)}
                   </td>
-                  <td className="px-3 py-2 text-right font-mono tabular-nums font-semibold">
+                  <td className="px-3 py-2 text-right tabular-nums font-semibold">
                     {centsExact(c.balanceCents)}
                   </td>
                 </tr>
@@ -1118,19 +1118,19 @@ function RecordPaymentForm({
                     >
                       <td className="px-2 py-1 tabular-nums">{a.sequence}</td>
                       <td className="px-2 py-1">{a.chargedForMonth.slice(0, 7)}</td>
-                      <td className="px-2 py-1 text-right font-mono tabular-nums">
+                      <td className="px-2 py-1 text-right tabular-nums">
                         {centsExact(a.appliedToRentCents)}
                       </td>
-                      <td className="px-2 py-1 text-right font-mono tabular-nums">
+                      <td className="px-2 py-1 text-right tabular-nums">
                         {a.appliedToLateFeeCents > 0 ? centsExact(a.appliedToLateFeeCents) : "—"}
                       </td>
-                      <td className="px-2 py-1 text-right font-mono tabular-nums font-semibold">
+                      <td className="px-2 py-1 text-right tabular-nums font-semibold">
                         {centsExact(a.appliedCents)}
                       </td>
-                      <td className="px-2 py-1 text-right font-mono tabular-nums text-muted-foreground">
+                      <td className="px-2 py-1 text-right tabular-nums text-muted-foreground">
                         {centsExact(a.balanceBeforeCents)}
                       </td>
-                      <td className="px-2 py-1 text-right font-mono tabular-nums">
+                      <td className="px-2 py-1 text-right tabular-nums">
                         {centsExact(a.balanceAfterCents)}
                       </td>
                     </tr>
@@ -1492,7 +1492,7 @@ function LateFeeProposalDialog({
               <div className="flex items-baseline justify-between gap-3">
                 <span className="text-xs text-muted-foreground">Proposed fee</span>
                 <span
-                  className="text-xl font-semibold font-mono tabular-nums"
+                  className="text-xl font-semibold tabular-nums"
                   data-testid="text-proposed-fee"
                 >
                   {centsExact(proposal.proposedFeeCents)}

@@ -85,6 +85,20 @@ const MAX_WIDTH_CLASSES = {
 export function PageShell({ children, isLoading, loadingFallback, maxWidth = "7xl", label, embedded }: PageShellProps) {
   const { isCollapsed } = useSidebarCollapsed();
   const { isOpen: railOpen } = usePaxRail();
+
+  // Publish the shell's rail offsets while it is mounted, so chrome rendered
+  // OUTSIDE the shell (App.tsx's trial / early-access banner stack) can sit
+  // beside the fixed navigation rail instead of under it. Cleared on unmount,
+  // so routes without the shell get no offset.
+  useEffect(() => {
+    const root = document.documentElement;
+    root.style.setProperty("--shell-rail-left", isCollapsed ? "76px" : "17rem");
+    root.style.setProperty("--shell-rail-right", railOpen ? "360px" : "3rem");
+    return () => {
+      root.style.removeProperty("--shell-rail-left");
+      root.style.removeProperty("--shell-rail-right");
+    };
+  }, [isCollapsed, railOpen]);
   const resolvedLabel = useDocumentTitleFallback(label);
   // Embedded mode: the parent PageShell already provides sidebar, topbar,
   // skip link, main landmark, banners, and outer padding — render only the

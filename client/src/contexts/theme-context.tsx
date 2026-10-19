@@ -1,59 +1,53 @@
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { clientLogger } from "@/lib/clientLogger";
 import { okOrThrow } from "@/lib/fetch-honesty";
 import { hasAnyClerkSession } from "@/lib/clerk-session-detect";
 import { apiRequest } from "@/lib/queryClient";
+import {
+  COLORWAY_IDS,
+  DEFAULT_COLORWAY,
+  DEFAULT_DISPLAY_MODE,
+  normalizeAppearance,
+  normalizeColorway,
+  normalizeDisplayMode,
+  resolveDisplayMode,
+  type ColorwayId,
+  type DisplayMode,
+} from "@shared/appearance";
 
 /**
- * Theme system — five themes × light/dark + five font pairings.
+ * Personal appearance — one colorway (Fieldstone · Bedrock · Meridian) and one
+ * display mode (Light · Dark · Match device). The canonical lists, defaults and
+ * the migration of retired values live in shared/appearance.ts; this provider
+ * only owns the lifecycle.
  *
- * Spec: docs/archive/exhaustive-completion/prototype-design-system.md (§3 themes,
- * §4 type pairings, §0.2 Phase B locked decisions).
- *
- * Apple-native auto semantics: when the user explicitly picks `light` or
- * `dark`, manual selection wins until they explicitly choose `auto`. OS
- * `prefers-color-scheme` changes do not flip the app under a manual pick.
+ * Lifecycle rules (Fieldstone redesign, 2026-10-18):
+ *   - localStorage is read synchronously at boot (and by the inline script in
+ *     client/index.html before first paint) through the same normalization, so
+ *     the boot palette and the hydrated palette agree.
+ *   - An explicit Light/Dark wins over later OS changes until the person picks
+ *     Match device; Match device follows the OS live, without a reload.
+ *   - Changes persist locally at once, then sync to /api/me/preferences
+ *     (debounced, batched). A failed sync keeps the local choice.
+ *   - A slow server read can never undo a choice made after the page loaded:
+ *     fields the person changed locally are not overwritten by hydration.
+ *   - Font pairing, density and motion are no longer appearance choices. Their
+ *     old stored values are dropped here; reading comfort and reduced motion
+ *     belong to AccessibilityProvider.
  */
 
-export type ThemeId = "bedrock" | "homestead" | "quarry" | "nocturne" | "meadow" | "slate";
-export type ThemeMode = "light" | "dark" | "auto";
-export type FontPairing = "editorial" | "modern" | "classic" | "native" | "refined";
-export type Density = "compact" | "comfortable" | "adaptive";
-export type MotionPreference = "full" | "reduced";
-
-export const THEME_IDS: ThemeId[] = ["bedrock", "homestead", "quarry", "nocturne", "meadow", "slate"];
-export const FONT_PAIRINGS: FontPairing[] = ["editorial", "modern", "classic", "native", "refined"];
-export const DENSITIES: Density[] = ["compact", "comfortable", "adaptive"];
-export const MOTION_PREFERENCES: MotionPreference[] = ["full", "reduced"];
+export type ThemeId = ColorwayId;
+export type ThemeMode = DisplayMode;
+export const THEME_IDS: readonly ThemeId[] = COLORWAY_IDS;
 
 export interface ThemeConfig {
   theme: ThemeId;
   mode: ThemeMode;
-  fontPairing: FontPairing;
-  density: Density;
-  motion: MotionPreference;
 }
 
-function getInitialMotion(): MotionPreference {
-  if (typeof window === "undefined") return "full";
-  return window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "reduced" : "full";
-}
+const DEFAULT_CONFIG: ThemeConfig = { theme: DEFAULT_COLORWAY, mode: DEFAULT_DISPLAY_MODE };
 
-const DEFAULT_CONFIG: ThemeConfig = {
-  theme: "bedrock",
-  mode: "auto",
-  // Brand default is `editorial` (Fraunces display + Inter body) — the
-  // editorial-mechanical identity (Phase 2 Wave F, founder-decided 2026-06-11).
-  // Matches the server-side DEFAULT_PREFERENCES (routes-preferences.ts) so a
-  // fresh client and a fresh server-synced account resolve to the same pairing.
-  // Fraunces is self-hosted (fonts.css) with font-display: swap, so the cold
-  // path stays CLS-safe. Users can still switch among all five pairings.
-  fontPairing: "editorial",
-  density: "adaptive",
-  motion: "full",
-};
-
-const STORAGE_KEY = "acreos-theme-config";
+export const THEME_STORAGE_KEY = "acreos-theme-config";
 const LEGACY_LIGHTDARK_KEY = "acreos-theme";
 
 interface ThemeContextValue {
@@ -70,77 +64,71 @@ interface ThemeContextValue {
 
 const ThemeContext = createContext<ThemeContextValue | undefined>(undefined);
 
-function getSystemPreference(): "light" | "dark" {
-  if (typeof window === "undefined") return "light";
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+function devicePrefersDark(): boolean {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
+  return window.matchMedia("(prefers-color-scheme: dark)").matches;
+}
+
+/** Stored blob → config. Exported for tests; mirrors the inline boot script. */
+export function readStoredThemeConfig(storage: Pick<Storage, "getItem"> | null): ThemeConfig {
+  if (!storage) return DEFAULT_CONFIG;
+  try {
+    const stored = storage.getItem(THEME_STORAGE_KEY);
+    if (stored) {
+      let parsed: unknown = null;
+      try { parsed = JSON.parse(stored); } catch { parsed = null; }
+      return normalizeAppearance(parsed);
+    }
+    // Very-old raw "light" | "dark" key.
+    const legacyMode = normalizeDisplayMode(storage.getItem(LEGACY_LIGHTDARK_KEY));
+    if (legacyMode) return { ...DEFAULT_CONFIG, mode: legacyMode };
+  } catch {
+    // Storage unavailable — fall through to defaults.
+  }
+  return DEFAULT_CONFIG;
 }
 
 function loadStoredConfig(): ThemeConfig {
   if (typeof window === "undefined") return DEFAULT_CONFIG;
   try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      const parsed = JSON.parse(stored) as Partial<ThemeConfig> & {
-        // Legacy field names from the pre-port theme system.
-        preset?: string;
-        accent?: string;
-      };
-      const next: ThemeConfig = { ...DEFAULT_CONFIG };
-      if (parsed.theme && (THEME_IDS as readonly string[]).includes(parsed.theme)) {
-        next.theme = parsed.theme;
-      }
-      // 2026-05-26 migration: the previous client default was "homestead"
-      // for months before the dirtpass→bedrock rename. Anyone with
-      // theme: "homestead" in localStorage almost certainly inherited it
-      // as the default and never explicitly chose it — server-side
-      // migrate.mjs already cleared the corresponding appearance_preferences
-      // row. Mirror that here so clients land on the new default (bedrock).
-      // Real homestead fans can re-pick from Settings → Appearance in one click.
-      if (next.theme === "homestead") {
-        next.theme = "bedrock";
-      }
-      // Migrate legacy "system" mode value → "auto" (semantic rename).
-      const m = parsed.mode as string | undefined;
-      if (m === "light" || m === "dark" || m === "auto") next.mode = m;
-      else if (m === "system") next.mode = "auto";
-      if (parsed.fontPairing && (FONT_PAIRINGS as readonly string[]).includes(parsed.fontPairing)) {
-        next.fontPairing = parsed.fontPairing;
-      }
-      if (parsed.density && (DENSITIES as readonly string[]).includes(parsed.density)) {
-        next.density = parsed.density;
-      }
-      if (parsed.motion && (MOTION_PREFERENCES as readonly string[]).includes(parsed.motion)) {
-        next.motion = parsed.motion;
-      } else {
-        // First load with no stored motion pref — honor OS prefers-reduced-motion.
-        next.motion = getInitialMotion();
-      }
-      return next;
-    }
-    // Migrate from very-old "acreos-theme" light|dark key.
-    const legacy = localStorage.getItem(LEGACY_LIGHTDARK_KEY) as "light" | "dark" | null;
-    if (legacy) return { ...DEFAULT_CONFIG, mode: legacy, motion: getInitialMotion() };
+    return readStoredThemeConfig(window.localStorage);
   } catch {
-    // localStorage unavailable / malformed — fall through to defaults.
+    return DEFAULT_CONFIG;
   }
-  return { ...DEFAULT_CONFIG, motion: getInitialMotion() };
 }
 
-/**
- * Server preferences sync — fetch on mount, debounced PATCH on change.
- * The local state remains canonical; failures log silently (per design-system
- * §0.2 + B.5 spec) and never block UI. localStorage hydration runs first to
- * avoid a flash; the server fetch overwrites only if it returns valid prefs.
- */
+function persistLocal(config: ThemeConfig) {
+  try {
+    // Only the two live fields are written, which also drops the retired
+    // fontPairing / density / motion keys from an older stored blob.
+    localStorage.setItem(THEME_STORAGE_KEY, JSON.stringify({ theme: config.theme, mode: config.mode }));
+    if (config.mode !== "auto") localStorage.setItem(LEGACY_LIGHTDARK_KEY, config.mode);
+    else localStorage.removeItem(LEGACY_LIGHTDARK_KEY);
+  } catch {
+    // localStorage unavailable — in-memory state still updates.
+  }
+}
+
+/** Write the colorway + mode onto <html>. Exported so the tenant overlay can
+ *  re-assert the personal palette after removing company branding. */
+export function applyThemeToDocument(config: ThemeConfig, deviceDark: boolean) {
+  if (typeof document === "undefined") return;
+  const root = document.documentElement;
+  const resolved = resolveDisplayMode(config.mode, deviceDark);
+  root.classList.toggle("dark", resolved === "dark");
+  root.setAttribute("data-theme", config.theme);
+  root.style.colorScheme = resolved;
+}
+
 const PREFERENCES_ENDPOINT = "/api/me/preferences";
 const PATCH_DEBOUNCE_MS = 300;
 
-async function fetchServerPreferences(): Promise<Partial<ThemeConfig> | null> {
+async function fetchServerPreferences(): Promise<Record<string, unknown> | null> {
   try {
     // A failed read throws to the catch, which keeps the local theme and says
     // so — local state is canonical; nothing is shown as the server's (W10.1).
     const res = await okOrThrow(await fetch(PREFERENCES_ENDPOINT, { credentials: "include" }));
-    return (await res.json()) as Partial<ThemeConfig>;
+    return (await res.json()) as Record<string, unknown>;
   } catch (err) {
     clientLogger.info("[theme] could not read saved preferences; local theme kept", err);
     return null;
@@ -149,148 +137,110 @@ async function fetchServerPreferences(): Promise<Partial<ThemeConfig> | null> {
 
 async function patchServerPreferences(update: Partial<ThemeConfig>): Promise<void> {
   try {
-    // apiRequest rather than fetch: the catch below only ever fired on a
-    // NETWORK error, so a 4xx/5xx was logged as success and the "failed;
-    // local state retained" line could never appear for the case that
-    // actually loses the write. apiRequest throws on a non-OK status, which
-    // makes the handler that was already written reachable.
+    // apiRequest throws on a non-OK status, so a rejected write reaches the
+    // catch rather than being logged as success.
     await apiRequest("PATCH", PREFERENCES_ENDPOINT, update);
   } catch (err) {
-    // eslint-disable-next-line no-console
     clientLogger.warn("[theme] PATCH /api/me/preferences failed; local state retained", err);
   }
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [themeConfig, setThemeConfigState] = useState<ThemeConfig>(loadStoredConfig);
+  const [deviceDark, setDeviceDark] = useState<boolean>(devicePrefersDark);
   const pendingPatchRef = useRef<Partial<ThemeConfig>>({});
   const patchTimerRef = useRef<number | undefined>(undefined);
+  // Fields the person changed in this page lifetime. Server hydration never
+  // overwrites these — a slow GET must not undo a fresh choice.
+  const locallyChangedRef = useRef<Set<keyof ThemeConfig>>(new Set());
 
-  const resolvedMode: "light" | "dark" =
-    themeConfig.mode === "auto" ? getSystemPreference() : themeConfig.mode;
+  const resolvedMode = resolveDisplayMode(themeConfig.mode, deviceDark);
 
-  // Hydrate from server on mount — server preferences (if available) win
-  // over localStorage for cross-device consistency. If the user is
-  // unauthenticated or the endpoint errors, local state stays as-is.
-  //
-  // Only fetch when the browser carries a Clerk session; on public/logged-out
-  // pages there is nothing to hydrate and the authed call would just emit a
-  // 401. localStorage hydration (loadStoredConfig) already ran, so the local
-  // state is the correct fallback with no network call.
+  // Hydrate from the server once. Only when the browser carries a Clerk
+  // session: on public/logged-out pages there is nothing to hydrate and the
+  // authed call would only emit a 401.
   useEffect(() => {
     if (!hasAnyClerkSession()) return;
     let cancelled = false;
     fetchServerPreferences().then((server) => {
       if (cancelled || !server) return;
+      const serverTheme = normalizeColorway(server.theme);
+      const serverMode = normalizeDisplayMode(server.mode);
       setThemeConfigState((local) => {
         const next: ThemeConfig = { ...local };
-        if (server.theme && (THEME_IDS as readonly string[]).includes(server.theme)) {
-          next.theme = server.theme;
-        }
-        if (server.mode === "light" || server.mode === "dark" || server.mode === "auto") {
-          next.mode = server.mode;
-        }
-        if (server.fontPairing && (FONT_PAIRINGS as readonly string[]).includes(server.fontPairing)) {
-          next.fontPairing = server.fontPairing;
-        }
-        if (server.density && (DENSITIES as readonly string[]).includes(server.density)) {
-          next.density = server.density;
-        }
-        if (server.motion && (MOTION_PREFERENCES as readonly string[]).includes(server.motion)) {
-          next.motion = server.motion;
-        }
-        // Update localStorage to match server state.
-        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch {}
+        if (serverTheme && !locallyChangedRef.current.has("theme")) next.theme = serverTheme;
+        if (serverMode && !locallyChangedRef.current.has("mode")) next.mode = serverMode;
+        if (next.theme === local.theme && next.mode === local.mode) return local;
+        persistLocal(next);
         return next;
       });
     });
     return () => { cancelled = true; };
   }, []);
 
-  // Track system preference — but only re-render when the user is on Auto.
-  // Apple-native: a manual pick wins, OS flips do not surprise the user.
+  // Follow the OS colour scheme live. A manual Light/Dark ignores it because
+  // resolveDisplayMode only consults deviceDark on `auto`.
   useEffect(() => {
-    if (themeConfig.mode !== "auto") return;
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    const handler = () => {
-      // Touch state to force re-render; resolvedMode re-derives on every render.
-      setThemeConfigState((c) => ({ ...c }));
-    };
+    const handler = () => setDeviceDark(mq.matches);
     mq.addEventListener("change", handler);
     return () => mq.removeEventListener("change", handler);
-  }, [themeConfig.mode]);
+  }, []);
 
-  // Apply .dark class for Tailwind darkMode: ["class"].
-  useEffect(() => {
-    const root = document.documentElement;
-    if (resolvedMode === "dark") root.classList.add("dark");
-    else root.classList.remove("dark");
-  }, [resolvedMode]);
+  // Layout effect: the attributes land before any passive effect runs, so the
+  // company-accent overlay (a child, whose effects run first) always reads the
+  // NEW colorway's surfaces from getComputedStyle.
+  useLayoutEffect(() => {
+    applyThemeToDocument(themeConfig, deviceDark);
+  }, [themeConfig, deviceDark]);
 
-  // Apply [data-theme] for the per-theme CSS blocks in index.css.
-  useEffect(() => {
-    document.documentElement.setAttribute("data-theme", themeConfig.theme);
-  }, [themeConfig.theme]);
-
-  // Apply [data-font-pairing] so fonts.css can switch pairings via attribute selectors.
-  useEffect(() => {
-    document.documentElement.setAttribute("data-font-pairing", themeConfig.fontPairing);
-  }, [themeConfig.fontPairing]);
-
-  // Apply [data-density] for surface-level density rules.
-  useEffect(() => {
-    document.documentElement.setAttribute("data-density", themeConfig.density);
-  }, [themeConfig.density]);
-
-  // Apply [data-motion] so motion-sensitive utilities can opt out.
-  useEffect(() => {
-    document.documentElement.setAttribute("data-motion", themeConfig.motion);
-  }, [themeConfig.motion]);
+  // Flush a pending PATCH if the provider unmounts mid-debounce.
+  useEffect(() => () => {
+    if (patchTimerRef.current !== undefined) {
+      window.clearTimeout(patchTimerRef.current);
+      patchTimerRef.current = undefined;
+      const flush = pendingPatchRef.current;
+      pendingPatchRef.current = {};
+      if (Object.keys(flush).length > 0) void patchServerPreferences(flush);
+    }
+  }, []);
 
   const setThemeConfig = (update: Partial<ThemeConfig>) => {
+    // Accept only valid values; anything else is ignored rather than stored.
+    const clean: Partial<ThemeConfig> = {};
+    const t = normalizeColorway(update.theme);
+    const m = normalizeDisplayMode(update.mode);
+    if (update.theme !== undefined && t) clean.theme = t;
+    if (update.mode !== undefined && m) clean.mode = m;
+    if (Object.keys(clean).length === 0) return;
+
+    for (const k of Object.keys(clean) as (keyof ThemeConfig)[]) locallyChangedRef.current.add(k);
+
     setThemeConfigState((prev) => {
-      const next = { ...prev, ...update };
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-        // Keep legacy light|dark key warm for any consumer still reading it.
-        if (next.mode !== "auto") localStorage.setItem(LEGACY_LIGHTDARK_KEY, next.mode);
-      } catch {
-        // localStorage unavailable — skip persistence; in-memory state still updates.
-      }
+      const next = { ...prev, ...clean };
+      persistLocal(next);
       return next;
     });
 
-    // Server PATCH — debounced. Accumulate field updates from rapid clicks
-    // (e.g. theme + mode toggled in succession) and flush as a single PATCH
-    // after the user pauses. Failure logs silently; local state is canonical.
-    pendingPatchRef.current = { ...pendingPatchRef.current, ...update };
-    if (patchTimerRef.current !== undefined) {
-      window.clearTimeout(patchTimerRef.current);
-    }
+    // Debounced server sync — adjacent colorway/mode changes batch into one
+    // PATCH carrying every field touched since the last flush.
+    pendingPatchRef.current = { ...pendingPatchRef.current, ...clean };
+    if (patchTimerRef.current !== undefined) window.clearTimeout(patchTimerRef.current);
     patchTimerRef.current = window.setTimeout(() => {
       const flush = pendingPatchRef.current;
       pendingPatchRef.current = {};
       patchTimerRef.current = undefined;
-      if (Object.keys(flush).length > 0) {
-        void patchServerPreferences(flush);
-      }
+      if (Object.keys(flush).length > 0 && hasAnyClerkSession()) void patchServerPreferences(flush);
     }, PATCH_DEBOUNCE_MS);
   };
 
   const setTheme = (t: "light" | "dark") => setThemeConfig({ mode: t });
-  const toggleTheme = () =>
-    setThemeConfig({ mode: resolvedMode === "light" ? "dark" : "light" });
+  const toggleTheme = () => setThemeConfig({ mode: resolvedMode === "light" ? "dark" : "light" });
 
   return (
     <ThemeContext.Provider
-      value={{
-        themeConfig,
-        setThemeConfig,
-        resolvedMode,
-        theme: resolvedMode,
-        setTheme,
-        toggleTheme,
-      }}
+      value={{ themeConfig, setThemeConfig, resolvedMode, theme: resolvedMode, setTheme, toggleTheme }}
     >
       {children}
     </ThemeContext.Provider>

@@ -55,7 +55,7 @@ export function ActionQueueTile({
           <span className="text-caption uppercase tracking-[0.08em] text-muted-foreground">
             Action queue
           </span>
-          <span className="font-mono text-caption text-muted-foreground/80 tabular-nums">
+          <span className="text-caption text-muted-foreground/80 tabular-nums">
             {isLoading ? "—" : items.length}
           </span>
         </div>

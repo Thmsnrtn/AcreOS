@@ -41,7 +41,7 @@ export function BridgeHeader({ streamActive, onMenu }: BridgeHeaderProps) {
         <span className="text-xs uppercase tracking-[0.08em] text-muted-foreground">Founder</span>
       </div>
       <div className="flex items-center gap-3">
-        <span className="hidden font-mono text-caption tabular-nums text-muted-foreground sm:inline">
+        <span className="hidden text-caption tabular-nums text-muted-foreground sm:inline">
           {clock}
         </span>
         {streamActive && (

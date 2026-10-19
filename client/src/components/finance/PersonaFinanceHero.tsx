@@ -241,13 +241,13 @@ export function PersonaFinanceHero({ notes }: PersonaFinanceHeroProps) {
           <div className="grid grid-cols-3 gap-4">
             <div>
               <p className="text-xs text-muted-foreground">Fees closed (MTD)</p>
-              <p className="text-2xl font-bold font-mono tabular-nums text-acr-pos" data-testid="text-assignment-mtd">
+              <p className="text-2xl font-bold tabular-nums text-acr-pos" data-testid="text-assignment-mtd">
                 {usd(fees.mtdClosedFees, { noCents: true })}
               </p>
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Fees pending close</p>
-              <p className="text-2xl font-bold font-mono tabular-nums" data-testid="text-assignment-pending">
+              <p className="text-2xl font-bold tabular-nums" data-testid="text-assignment-pending">
                 {usd(fees.pendingFees, { noCents: true })}
                 <span className="text-sm font-normal text-muted-foreground ml-1">
                   ({fees.pendingCount})
@@ -256,7 +256,7 @@ export function PersonaFinanceHero({ notes }: PersonaFinanceHeroProps) {
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Avg fee / close</p>
-              <p className="text-2xl font-bold font-mono tabular-nums" data-testid="text-assignment-avg">
+              <p className="text-2xl font-bold tabular-nums" data-testid="text-assignment-avg">
                 {usd(fees.avgFeePerClose, { noCents: true })}
               </p>
             </div>
@@ -283,7 +283,7 @@ export function PersonaFinanceHero({ notes }: PersonaFinanceHeroProps) {
         <div className="grid grid-cols-2 gap-4 mb-4">
           <div>
             <p className="text-xs text-muted-foreground">Net (MTD)</p>
-            <p className={`text-2xl font-bold font-mono tabular-nums ${projects.netMtd < 0 ? "text-acr-neg" : "text-acr-pos"}`} data-testid="text-projects-net-mtd">
+            <p className={`text-2xl font-bold tabular-nums ${projects.netMtd < 0 ? "text-acr-neg" : "text-acr-pos"}`} data-testid="text-projects-net-mtd">
               {usd(projects.netMtd, { noCents: true })}
             </p>
           </div>
@@ -304,7 +304,7 @@ export function PersonaFinanceHero({ notes }: PersonaFinanceHeroProps) {
                   </span>
                   <span className="truncate">{p.label}</span>
                 </span>
-                <span className={`font-mono tabular-nums ${p.net < 0 ? "text-acr-neg" : "text-acr-pos"}`}>
+                <span className={`tabular-nums ${p.net < 0 ? "text-acr-neg" : "text-acr-pos"}`}>
                   {usd(p.net, { noCents: true })}
                   {p.projected && (
                     <span className="ml-1 text-[11px] font-sans text-muted-foreground">at asking price</span>
@@ -415,7 +415,7 @@ function OriginatorHero({ notes }: { notes: Note[] }) {
       >
         <motion.div variants={staggerItem}>
           <p className="text-xs text-muted-foreground">Capital deployed</p>
-          <p className="text-2xl font-bold font-mono tabular-nums" data-testid="text-orig-capital">
+          <p className="text-2xl font-bold tabular-nums" data-testid="text-orig-capital">
             {usd(m.capitalDeployed, { noCents: true })}
           </p>
         </motion.div>
@@ -486,7 +486,7 @@ function ServicerHero({
         <motion.div variants={staggerItem}>
           <p className="text-xs text-muted-foreground">Fee income / mo</p>
           {m.hasFeeSchedule ? (
-            <p className="text-2xl font-bold font-mono tabular-nums text-acr-pos" data-testid="text-svc-fee-income">
+            <p className="text-2xl font-bold tabular-nums text-acr-pos" data-testid="text-svc-fee-income">
               {usd(m.monthlyFeeIncome, { noCents: true })}
             </p>
           ) : (
@@ -502,7 +502,7 @@ function ServicerHero({
         </motion.div>
         <motion.div variants={staggerItem}>
           <p className="text-xs text-muted-foreground">Escrow under mgmt</p>
-          <p className="text-2xl font-bold font-mono tabular-nums" data-testid="text-svc-escrow">
+          <p className="text-2xl font-bold tabular-nums" data-testid="text-svc-escrow">
             {usd(m.escrowUnderManagement, { noCents: true })}
           </p>
           <p className="text-[11px] text-muted-foreground/80 mt-0.5 tabular-nums">
@@ -511,7 +511,7 @@ function ServicerHero({
         </motion.div>
         <motion.div variants={staggerItem}>
           <p className="text-xs text-muted-foreground">Serviced book</p>
-          <p className="text-2xl font-bold font-mono tabular-nums" data-testid="text-svc-book">
+          <p className="text-2xl font-bold tabular-nums" data-testid="text-svc-book">
             {usd(m.servicedUpb, { noCents: true })}
           </p>
           <p className="text-[11px] text-muted-foreground/80 mt-0.5 tabular-nums">
@@ -575,7 +575,7 @@ function InvestorHero({
       >
         <motion.div variants={staggerItem}>
           <p className="text-xs text-muted-foreground">Outstanding principal</p>
-          <p className="text-2xl font-bold font-mono tabular-nums" data-testid="text-inv-upb">
+          <p className="text-2xl font-bold tabular-nums" data-testid="text-inv-upb">
             {usd(m.principalOutstanding, { noCents: true })}
           </p>
         </motion.div>
@@ -600,7 +600,7 @@ function InvestorHero({
         </motion.div>
         <motion.div variants={staggerItem}>
           <p className="text-xs text-muted-foreground">Forecast inflow / mo</p>
-          <p className="text-2xl font-bold font-mono tabular-nums text-acr-pos" data-testid="text-inv-inflow">
+          <p className="text-2xl font-bold tabular-nums text-acr-pos" data-testid="text-inv-inflow">
             {usd(m.forecastMonthlyInflow, { noCents: true })}
           </p>
         </motion.div>
@@ -702,7 +702,7 @@ function CertificatesBookHero() {
       >
         <motion.div variants={staggerItem}>
           <p className="text-xs text-muted-foreground">Capital deployed</p>
-          <p className="text-2xl font-bold font-mono tabular-nums" data-testid="text-certs-capital">
+          <p className="text-2xl font-bold tabular-nums" data-testid="text-certs-capital">
             {usd(data.totalCapitalCents / 100, { noCents: true })}
           </p>
           <p className="text-[11px] text-muted-foreground/80 mt-0.5">Active certificates at purchase</p>
@@ -819,7 +819,7 @@ function SubdividerLotEconomicsHero() {
         <motion.div variants={staggerItem}>
           <p className="text-xs text-muted-foreground">Basis allocated</p>
           {data.lotsAllocated > 0 ? (
-            <p className="text-2xl font-bold font-mono tabular-nums" data-testid="text-lots-basis">
+            <p className="text-2xl font-bold tabular-nums" data-testid="text-lots-basis">
               {usd(data.basisAllocatedCents / 100, { noCents: true })}
             </p>
           ) : (
@@ -836,7 +836,7 @@ function SubdividerLotEconomicsHero() {
         <motion.div variants={staggerItem}>
           <p className="text-xs text-muted-foreground">Sale proceeds</p>
           {data.lotsSold > 0 ? (
-            <p className="text-2xl font-bold font-mono tabular-nums text-acr-pos" data-testid="text-lots-proceeds">
+            <p className="text-2xl font-bold tabular-nums text-acr-pos" data-testid="text-lots-proceeds">
               {usd(data.realizedSaleProceedsCents / 100, { noCents: true })}
             </p>
           ) : (

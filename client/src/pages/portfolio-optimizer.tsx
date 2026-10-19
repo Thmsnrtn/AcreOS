@@ -1156,14 +1156,14 @@ export default function PortfolioOptimizerPage() {
                             <p className="text-xs text-muted-foreground">{h.county}, {h.state}</p>
                           </div>
                           <div className="text-right shrink-0">
-                            <div className="font-mono font-medium tabular-nums">{formatDollar(h.currentValue || h.estimatedValue || 0)}</div>
+                            <div className="font-medium tabular-nums">{formatDollar(h.currentValue || h.estimatedValue || 0)}</div>
                             <div className="text-xs text-muted-foreground tabular-nums">
                               {metrics?.totalValue ? ((h.currentValue / metrics.totalValue) * 100).toFixed(1) : '—'}% of portfolio
                             </div>
                           </div>
                         </div>
                         <div className="flex items-center justify-between gap-3 mt-1.5 text-xs">
-                          <span className={`font-mono tabular-nums ${(h.annualCashFlow || 0) >= 0 ? 'text-acr-pos' : 'text-acr-neg'}`}>
+                          <span className={`tabular-nums ${(h.annualCashFlow || 0) >= 0 ? 'text-acr-pos' : 'text-acr-neg'}`}>
                             {formatDollar(h.annualCashFlow || 0)}/yr cash flow
                           </span>
                           <span className={`tabular-nums ${(h.appreciationRate || 0) >= 0 ? 'text-acr-pos' : 'text-acr-neg'}`}>

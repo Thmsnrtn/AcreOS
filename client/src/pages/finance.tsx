@@ -308,6 +308,83 @@ export default function FinancePage({ embedded = false }: { embedded?: boolean }
 
   return (
     <PageShell label="Finance" embedded={embedded}>
+          {/* The page's own heading leads (Fieldstone redesign): it used to
+              render BELOW the persona hero and the outcome card, so on a
+              phone Finance opened on a card with no page title above it. */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="acr-cc-hero" style={{ marginTop: 0 }}>
+              <div>
+                <div className="acr-eyebrow">Finance</div>
+                {/* §1.3: dual class + Tailwind utility. */}
+                <HeadingTag className="acr-cc-greeting text-hero" data-testid="text-page-title">
+                  The paper side.
+                  <span className="acr-cc-greeting-soft">
+                    {" "}Notes, payments, and statements — kept straight.
+                  </span>
+                </HeadingTag>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {/* r8 James: the borrower portal at /portal was advertised
+                  in the product model but had no discoverable nav
+                  entry. Surface a direct link from /finance. */}
+              <Button
+                variant="outline"
+                asChild
+                data-testid="button-open-borrower-portal"
+                title="Preview the borrower-facing portal where buyers view balances and make payments"
+              >
+                <a href="/portal" target="_blank" rel="noopener noreferrer" aria-label="Open borrower portal (opens in new tab)">
+                  Borrower Portal
+                </a>
+              </Button>
+              <Button
+                variant="outline"
+                onClick={handleExport}
+                disabled={isExporting}
+                data-testid="button-export-notes"
+              >
+                {isExporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" /> : <Download className="w-4 h-4 mr-2" aria-hidden="true" />}
+                Export CSV
+              </Button>
+              <Button
+                variant="outline"
+                onClick={handleQboSync}
+                disabled={isQboSyncing}
+                data-testid="button-qbo-sync"
+              >
+                {isQboSyncing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" /> : <RefreshCw className="w-4 h-4 mr-2" aria-hidden="true" />}
+                Sync to QuickBooks
+              </Button>
+              {mayRecordPayments && (
+                <Button
+                  variant="outline"
+                  onClick={() => setIsPickPaymentOpen(true)}
+                  data-testid="button-record-payment-from-list"
+                >
+                  <Receipt className="w-4 h-4 mr-2" aria-hidden="true" /> Record payment
+                </Button>
+              )}
+              <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+                <DialogTrigger asChild>
+                  {/* The one primary action leads the row on a phone. */}
+                  <Button data-testid="button-create-note" className="order-first md:order-last">
+                    <Plus className="w-4 h-4 mr-2" aria-hidden="true" /> Create Note
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-[600px] floating-window">
+                  <DialogHeader>
+                    <DialogTitle>Create Promissory Note</DialogTitle>
+                    <DialogDescription>
+                      Enter the details for a new promissory note including borrower, property, and payment terms.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <NoteForm onSuccess={() => setIsCreateOpen(false)} />
+                </DialogContent>
+              </Dialog>
+            </div>
+          </div>
+
           {/* Persona-shaped hero — renders nothing for default
               land_investor persona, so the existing chart below stays
               the entry point. For note_investor / wholesaler / flipper
@@ -382,79 +459,6 @@ export default function FinancePage({ embedded = false }: { embedded?: boolean }
             </Card>
           )}
 
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="acr-cc-hero" style={{ marginTop: 0 }}>
-              <div>
-                <div className="acr-eyebrow">Finance</div>
-                {/* §1.3: dual class + Tailwind utility. */}
-                <HeadingTag className="acr-cc-greeting text-hero" data-testid="text-page-title">
-                  The paper side.
-                  <span className="acr-cc-greeting-soft">
-                    {" "}Notes, payments, and statements — kept straight.
-                  </span>
-                </HeadingTag>
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {/* r8 James: the borrower portal at /portal was advertised
-                  in the product model but had no discoverable nav
-                  entry. Surface a direct link from /finance. */}
-              <Button
-                variant="outline"
-                asChild
-                data-testid="button-open-borrower-portal"
-                title="Preview the borrower-facing portal where buyers view balances and make payments"
-              >
-                <a href="/portal" target="_blank" rel="noopener noreferrer" aria-label="Open borrower portal (opens in new tab)">
-                  Borrower Portal
-                </a>
-              </Button>
-              <Button
-                variant="outline"
-                onClick={handleExport}
-                disabled={isExporting}
-                data-testid="button-export-notes"
-              >
-                {isExporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" /> : <Download className="w-4 h-4 mr-2" aria-hidden="true" />}
-                Export CSV
-              </Button>
-              <Button
-                variant="outline"
-                onClick={handleQboSync}
-                disabled={isQboSyncing}
-                data-testid="button-qbo-sync"
-              >
-                {isQboSyncing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" /> : <RefreshCw className="w-4 h-4 mr-2" aria-hidden="true" />}
-                Sync to QuickBooks
-              </Button>
-              {mayRecordPayments && (
-                <Button
-                  variant="outline"
-                  onClick={() => setIsPickPaymentOpen(true)}
-                  data-testid="button-record-payment-from-list"
-                >
-                  <Receipt className="w-4 h-4 mr-2" aria-hidden="true" /> Record payment
-                </Button>
-              )}
-              <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-                <DialogTrigger asChild>
-                  <Button data-testid="button-create-note">
-                    <Plus className="w-4 h-4 mr-2" aria-hidden="true" /> Create Note
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-[600px] floating-window">
-                  <DialogHeader>
-                    <DialogTitle>Create Promissory Note</DialogTitle>
-                    <DialogDescription>
-                      Enter the details for a new promissory note including borrower, property, and payment terms.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <NoteForm onSuccess={() => setIsCreateOpen(false)} />
-                </DialogContent>
-              </Dialog>
-            </div>
-          </div>
-
           <DisclaimerBanner type="finance" />
 
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -466,7 +470,7 @@ export default function FinancePage({ embedded = false }: { embedded?: boolean }
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Active Notes</p>
-                    <p className="text-2xl font-bold font-mono tabular-nums" data-testid="text-active-notes">{activeNotes.length}</p>
+                    <p className="text-2xl font-bold tabular-nums" data-testid="text-active-notes">{activeNotes.length}</p>
                   </div>
                 </div>
               </CardContent>
@@ -480,7 +484,7 @@ export default function FinancePage({ embedded = false }: { embedded?: boolean }
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Portfolio value</p>
-                    <p className="text-2xl font-bold font-mono tabular-nums" data-testid="text-portfolio-value">
+                    <p className="text-2xl font-bold tabular-nums" data-testid="text-portfolio-value">
                       {usd(totalPortfolio)}
                     </p>
                   </div>
@@ -496,7 +500,7 @@ export default function FinancePage({ embedded = false }: { embedded?: boolean }
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Monthly income</p>
-                    <p className="text-2xl font-bold font-mono tabular-nums text-acr-pos" data-testid="text-monthly-income">
+                    <p className="text-2xl font-bold tabular-nums text-acr-pos" data-testid="text-monthly-income">
                       {usd(monthlyIncome)}
                     </p>
                   </div>
@@ -512,7 +516,7 @@ export default function FinancePage({ embedded = false }: { embedded?: boolean }
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Total originated</p>
-                    <p className="text-2xl font-bold font-mono tabular-nums" data-testid="text-total-principal">
+                    <p className="text-2xl font-bold tabular-nums" data-testid="text-total-principal">
                       {usd(totalPrincipal)}
                     </p>
                   </div>
@@ -631,8 +635,8 @@ export default function FinancePage({ embedded = false }: { embedded?: boolean }
                                 )}
                               </div>
                               <div className="text-right shrink-0">
-                                <div className="font-mono font-semibold tabular-nums">{usd(note.currentBalance)}</div>
-                                <div className="font-mono text-sm text-acr-pos tabular-nums">
+                                <div className="font-semibold tabular-nums">{usd(note.currentBalance)}</div>
+                                <div className="text-sm text-acr-pos tabular-nums">
                                   {usd(note.monthlyPayment)}<span className="text-muted-foreground">/mo</span>
                                 </div>
                               </div>
@@ -712,10 +716,10 @@ export default function FinancePage({ embedded = false }: { embedded?: boolean }
                                   </Link>
                                 )}
                               </TableCell>
-                              <TableCell className="text-right font-mono font-medium tabular-nums">
+                              <TableCell className="text-right font-medium tabular-nums">
                                 {usd(note.currentBalance)}
                               </TableCell>
-                              <TableCell className="text-right font-mono font-bold tabular-nums text-acr-pos">
+                              <TableCell className="text-right font-bold tabular-nums text-acr-pos">
                                 {usd(note.monthlyPayment)}
                               </TableCell>
                               <TableCell className="text-muted-foreground">
@@ -1150,7 +1154,7 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
             <Card className="glass-panel">
               <CardContent className="p-4">
                 <p className="text-sm text-muted-foreground">Current balance</p>
-                <p className="text-2xl font-bold font-mono tabular-nums" data-testid="text-current-balance">
+                <p className="text-2xl font-bold tabular-nums" data-testid="text-current-balance">
                   {usd(note.currentBalance)}
                 </p>
               </CardContent>
@@ -1158,7 +1162,7 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
             <Card className="glass-panel">
               <CardContent className="p-4">
                 <p className="text-sm text-muted-foreground">Monthly payment</p>
-                <p className="text-2xl font-bold font-mono tabular-nums text-acr-pos" data-testid="text-monthly-payment">
+                <p className="text-2xl font-bold tabular-nums text-acr-pos" data-testid="text-monthly-payment">
                   {usd(note.monthlyPayment)}
                 </p>
               </CardContent>
@@ -1237,7 +1241,7 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                   <div className="bg-muted/50 rounded-card p-3">
                     <div className="flex justify-between items-center">
                       <span className="text-sm text-muted-foreground">Monthly payment</span>
-                      <span className="font-bold font-mono tabular-nums text-acr-pos">
+                      <span className="font-bold tabular-nums text-acr-pos">
                         {usd(note.monthlyPayment)}
                       </span>
                     </div>
@@ -1346,13 +1350,13 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                               <span className="text-sm tabular-nums">
                                 {format(new Date(payment.paymentDate), 'MMM d, yyyy')}
                               </span>
-                              <span className="font-mono font-medium tabular-nums">{usd(payment.amount)}</span>
+                              <span className="font-medium tabular-nums">{usd(payment.amount)}</span>
                             </div>
                             <div className="flex items-center justify-between gap-3 mt-1.5">
                               <Badge variant={payment.status === 'completed' ? 'default' : 'secondary'} className="capitalize">
                                 {payment.status}
                               </Badge>
-                              <span className="text-xs text-muted-foreground font-mono tabular-nums">
+                              <span className="text-xs text-muted-foreground tabular-nums">
                                 P {usd(payment.principalAmount)} · I {usd(payment.interestAmount)}
                               </span>
                             </div>
@@ -1396,13 +1400,13 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                             <TableCell className="tabular-nums">
                               {format(new Date(payment.paymentDate), 'MMM d, yyyy')}
                             </TableCell>
-                            <TableCell className="text-right font-mono font-medium tabular-nums">
+                            <TableCell className="text-right font-medium tabular-nums">
                               {usd(payment.amount)}
                             </TableCell>
-                            <TableCell className="text-right font-mono text-muted-foreground tabular-nums">
+                            <TableCell className="text-right text-muted-foreground tabular-nums">
                               {usd(payment.principalAmount)}
                             </TableCell>
-                            <TableCell className="text-right font-mono text-muted-foreground tabular-nums">
+                            <TableCell className="text-right text-muted-foreground tabular-nums">
                               {usd(payment.interestAmount)}
                             </TableCell>
                             <TableCell>
@@ -1424,7 +1428,7 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="bg-muted/50 rounded-card p-3 text-center">
                   <p className="text-xs text-muted-foreground">Total interest</p>
-                  <p className="font-bold font-mono tabular-nums text-acr-warn" data-testid="text-total-interest">
+                  <p className="font-bold tabular-nums text-acr-warn" data-testid="text-total-interest">
                     {usd(schedule.reduce((sum, s) => sum + (s.interest || 0), 0))}
                   </p>
                 </div>
@@ -1496,7 +1500,7 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                                   <span className="text-muted-foreground font-medium mr-2">#{row.paymentNumber}</span>
                                   {format(new Date(row.dueDate), 'MMM d, yyyy')}
                                 </span>
-                                <span className="font-mono font-medium tabular-nums">{usd(row.payment)}</span>
+                                <span className="font-medium tabular-nums">{usd(row.payment)}</span>
                               </div>
                               <div className="flex items-center justify-between gap-3 mt-1.5">
                                 <span className="flex items-center gap-1.5 text-xs">
@@ -1509,7 +1513,7 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                                   )}
                                   {statusLabel}
                                 </span>
-                                <span className="text-xs text-muted-foreground font-mono tabular-nums">
+                                <span className="text-xs text-muted-foreground tabular-nums">
                                   P {usd(row.principal)} · I {usd(row.interest)} · Bal {usd(row.balance)}
                                 </span>
                               </div>
@@ -1560,14 +1564,14 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                             <TableRow key={row.paymentNumber} data-testid={`row-amort-${row.paymentNumber}`}>
                               <TableCell className="font-medium tabular-nums">{row.paymentNumber}</TableCell>
                               <TableCell className="tabular-nums">{format(new Date(row.dueDate), 'MMM d, yyyy')}</TableCell>
-                              <TableCell className="text-right font-mono tabular-nums">{usd(row.payment)}</TableCell>
-                              <TableCell className="text-right font-mono tabular-nums text-muted-foreground">
+                              <TableCell className="text-right tabular-nums">{usd(row.payment)}</TableCell>
+                              <TableCell className="text-right tabular-nums text-muted-foreground">
                                 {usd(row.principal)}
                               </TableCell>
-                              <TableCell className="text-right font-mono tabular-nums text-muted-foreground">
+                              <TableCell className="text-right tabular-nums text-muted-foreground">
                                 {usd(row.interest)}
                               </TableCell>
-                              <TableCell className="text-right font-mono tabular-nums">{usd(row.balance)}</TableCell>
+                              <TableCell className="text-right tabular-nums">{usd(row.balance)}</TableCell>
                               <TableCell>
                                 {row.status === 'paid' ? (
                                   <CheckCircle className="w-4 h-4 text-acr-pos" aria-label="Paid" role="img" />
@@ -1643,7 +1647,7 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                     <Card className="glass-panel">
                       <CardContent className="p-4">
                         <dt className="text-xs text-muted-foreground mb-1">Past due amount</dt>
-                        <dd className="font-bold font-mono tabular-nums text-acr-neg" data-testid="text-past-due-amount">
+                        <dd className="font-bold tabular-nums text-acr-neg" data-testid="text-past-due-amount">
                           {usd(dunningData.pastDueAmount ?? 0)}
                         </dd>
                       </CardContent>
@@ -1743,7 +1747,7 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                   </div>
                   <div>
                     <dt className="text-muted-foreground inline">APN:</dt>
-                    <dd className="ml-2 font-mono tabular-nums inline">{note.property.apn}</dd>
+                    <dd className="ml-2 tabular-nums inline">{note.property.apn}</dd>
                   </div>
                   <div>
                     <dt className="text-muted-foreground inline">Size:</dt>
@@ -2019,18 +2023,18 @@ function RecordPaymentModal({
             <dl className="bg-muted/50 rounded-card p-4 space-y-2">
               <div className="flex justify-between text-sm">
                 <dt className="text-muted-foreground">Principal (est.)</dt>
-                <dd className="font-mono tabular-nums">{usd(principalAmount)}</dd>
+                <dd className="tabular-nums">{usd(principalAmount)}</dd>
               </div>
               <div className="flex justify-between text-sm">
                 <dt className="text-muted-foreground">Interest (est.)</dt>
-                <dd className="font-mono tabular-nums">{usd(interestAmount)}</dd>
+                <dd className="tabular-nums">{usd(interestAmount)}</dd>
               </div>
               <p className="text-xs text-muted-foreground">
                 The exact split is computed in cents from the note's balance when the payment is recorded.
               </p>
               <div className="flex justify-between font-medium pt-2 border-t">
                 <dt>Total</dt>
-                <dd className="font-mono tabular-nums">{usd(Number(amount) || 0)}</dd>
+                <dd className="tabular-nums">{usd(Number(amount) || 0)}</dd>
               </div>
             </dl>
 
@@ -2316,7 +2320,7 @@ function NoteForm({ onSuccess }: { onSuccess: () => void }) {
           >
             <div className="flex justify-between items-center">
               <span className="text-sm text-muted-foreground">Calculated monthly payment</span>
-              <span className="text-lg font-bold font-mono tabular-nums text-acr-pos">
+              <span className="text-lg font-bold tabular-nums text-acr-pos">
                 {usd(suggestedPayment)}
               </span>
             </div>
