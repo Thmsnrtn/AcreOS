@@ -209,13 +209,20 @@ describe("checkAiTurnGate — the shared monthly AI allowance (cents)", () => {
     expect(r.threshold).toBeNull();
   });
 
-  it("counts ONLY customer-triggered spend (origin = 'customer') — background never draws it down", async () => {
+  // Rewritten 2026-10-18 (founder decision 2026-10-17 B): background work
+  // the org pays for in credits past its allowance is recorded as
+  // origin 'background_metered' and counts; plain background work still never
+  // draws the allowance down (decision C, 2026-10-08).
+  it("counts customer-triggered and allowance-metered background spend — never plain background", async () => {
     state.monthlySpendCents = 10;
     const { checkAiTurnGate } = await importGate();
     await checkAiTurnGate(1);
     const spendWhere = state.wheres.find((w) => JSON.stringify(w).includes("ate.origin"));
     expect(spendWhere, "the allowance read must filter on origin").toBeDefined();
-    expect(JSON.stringify(spendWhere)).toContain(JSON.stringify({ op: "eq", a: "ate.origin", b: "customer" }));
+    expect(JSON.stringify(spendWhere)).toContain(
+      JSON.stringify({ op: "inArray", a: "ate.origin", b: ["customer", "background_metered"] }),
+    );
+    expect(JSON.stringify(spendWhere)).not.toContain('"background"');
   });
 
   it("founders are never gated", async () => {

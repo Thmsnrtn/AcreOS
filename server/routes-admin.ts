@@ -8,7 +8,7 @@ import { z } from "zod";
 import { eq, sql, and, desc, lt, inArray, or, count } from "drizzle-orm";
 import {
   insertFeatureRequestSchema,
-  SUBSCRIPTION_TIERS, payments, notes, deals, properties, leads, activityLog, organizations,
+  payments, notes, deals, properties, leads, activityLog, organizations,
   offers, organizationIntegrations, dataSources,
   supportTickets, supportTicketMessages, knowledgeBaseArticles,
   paxMemory, paxObservations, paxCrossOrgLearnings, systemAlerts,

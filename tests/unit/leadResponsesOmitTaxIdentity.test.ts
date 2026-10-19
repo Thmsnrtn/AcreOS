@@ -106,6 +106,7 @@ vi.mock("../../server/middleware/getOrCreateOrg", () => ({
 }));
 vi.mock("../../server/middleware/usageLimitGate", () => ({
   usageLimitGate: () => (_req: any, _res: any, next: any) => next(),
+  aiByokThresholdGate: () => (_req: any, _res: any, next: any) => next(),
 }));
 vi.mock("../../server/middleware/roleScope", () => ({
   requireScope: () => (_req: any, _res: any, next: any) => next(),

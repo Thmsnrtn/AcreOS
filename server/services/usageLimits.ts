@@ -1,7 +1,9 @@
 import { db } from "../storage";
 import { organizations, leads, properties, notes, campaigns, usageEvents, aiTelemetryEvents } from "@shared/schema";
-import { eq, and, gte, count, sum, ne, sql } from "drizzle-orm";
+import { eq, and, gte, count, sum, ne, sql, inArray } from "drizzle-orm";
 import { realLead, realNote, realProperty } from "./onboarding/sampleFilters";
+import { isAiAllowanceSpent, ALLOWANCE_COUNTED_ORIGINS } from "./aiAllowanceRule";
+import { effectiveSeatAllowance, planAdmitsSeats, seatRuleFor } from "@shared/billing/seats";
 // Lens 3 (Pricing Coherence): tier limits live in shared/billing so the
 // pricing page, upgrade modal, and server gate can never drift. Re-exported
 // from this module for back-compat with existing imports.
@@ -152,7 +154,9 @@ async function getMonthlyCustomerAiSpendCents(organizationId: number): Promise<n
     .where(
       and(
         eq(aiTelemetryEvents.organizationId, organizationId),
-        eq(aiTelemetryEvents.origin, "customer"),
+        // Customer-triggered spend, plus background work the org pays for in
+        // credits past its allowance (founder decision 2026-10-17).
+        inArray(aiTelemetryEvents.origin, [...ALLOWANCE_COUNTED_ORIGINS]),
         gte(aiTelemetryEvents.createdAt, monthStart),
       ),
     );
@@ -427,6 +431,13 @@ async function recordAiByokThresholdCrossing(args: {
   }
 }
 
+/** Whether a Pax message is still under the plan's monthly message cap — a
+ * read for paxTurnFunding's lane decision; it never refuses anything (a refusal
+ * of the cap goes through refusePlanLimit). */
+export async function aiMessageCapAllows(organizationId: number, options: UsageLimitOptions = {}): Promise<boolean> {
+  return (await checkUsageLimit(organizationId, "ai_requests", options)).allowed;
+}
+
 /**
  * The Tier 1I gate every AI-turn route consults before spending platform
  * AI dollars. Resolution order:
@@ -499,7 +510,7 @@ export async function checkAiTurnGate(
     };
   }
 
-  const blocked = current >= threshold;
+  const blocked = isAiAllowanceSpent({ mode: "platform", threshold, current });
   const warning = !blocked && current >= threshold * AI_TURNS_BYOK_WARN_RATIO;
 
   if (blocked) {
@@ -564,21 +575,24 @@ export interface SeatInfo {
 
 async function getOrganizationSeatData(organizationId: number): Promise<{
   tier: SubscriptionTier;
+  seatCount: number | null;
   additionalSeats: number;
   isFounder: boolean;
 }> {
   const [org] = await db
     .select({ 
       subscriptionTier: organizations.subscriptionTier,
+      seatCount: organizations.seatCount,
       additionalSeats: organizations.additionalSeats,
       isFounder: organizations.isFounder 
     })
     .from(organizations)
     .where(eq(organizations.id, organizationId));
   
-  if (!org) return { tier: "free", additionalSeats: 0, isFounder: false };
+  if (!org) return { tier: "free", seatCount: null, additionalSeats: 0, isFounder: false };
   return {
     tier: normalizeTier(org.subscriptionTier),
+    seatCount: org.seatCount,
     additionalSeats: org.additionalSeats || 0,
     isFounder: org.isFounder || false,
   };
@@ -597,7 +611,8 @@ export async function getSeatInfo(
   organizationId: number,
   options: UsageLimitOptions = {}
 ): Promise<SeatInfo & { isFounder?: boolean }> {
-  const { tier, additionalSeats, isFounder: orgIsFounder } = await getOrganizationSeatData(organizationId);
+  const { tier, seatCount, additionalSeats: legacyAdditionalSeats, isFounder: orgIsFounder } =
+    await getOrganizationSeatData(organizationId);
   const isFounder = options.isFounder ?? orgIsFounder;
   
   // Founders have unlimited access
@@ -618,14 +633,17 @@ export async function getSeatInfo(
     };
   }
   
-  const limits = TIER_LIMITS[tier];
   const usedSeats = await getTeamMemberCount(organizationId);
   
-  const includedSeats = limits.includedSeats;
-  const totalSeats = includedSeats + additionalSeats;
-  const maxSeats = limits.maxSeats;
+  // shared/billing/seats.ts is the seat rule — the same allowance the
+  // invite check enforces, so this page never shows a seat it refuses.
+  const rule = seatRuleFor(tier);
+  const includedSeats = rule.includedSeats;
+  const totalSeats = effectiveSeatAllowance(tier, seatCount, legacyAdditionalSeats);
+  const additionalSeats = totalSeats - includedSeats;
+  const maxSeats = rule.maxSeats;
   const availableSeats = totalSeats - usedSeats;
-  const canAddSeats = limits.seatPriceCents !== null && (maxSeats === null || totalSeats < maxSeats);
+  const canAddSeats = planAdmitsSeats(tier, totalSeats + 1);
   
   // Team messaging is available if the org has 2+ total seats
   const hasTeamMessaging = totalSeats >= 2;
@@ -639,7 +657,7 @@ export async function getSeatInfo(
     usedSeats,
     availableSeats,
     canAddSeats,
-    seatPriceCents: limits.seatPriceCents,
+    seatPriceCents: rule.seatPriceCents,
     hasTeamMessaging,
   };
 }

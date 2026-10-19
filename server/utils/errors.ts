@@ -434,7 +434,7 @@ export const Errors = {
     // with the path forward, never a 500. Shape-detected (utils does not
     // import services).
     if (error instanceof Error && (error as { code?: string }).code === "AI_ALLOWANCE_BYOK_REQUIRED") {
-      const e = error as Error & { spentCents?: number; allowanceCents?: number; byokAvailable?: boolean; byokSettingsUrl?: string };
+      const e = error as Error & { spentCents?: number; allowanceCents?: number; byokAvailable?: boolean; byokSettingsUrl?: string; addCreditsUrl?: string };
       this.limitExceeded(res, {
         reason: "byok_required",
         resourceType: "ai_requests",
@@ -446,6 +446,7 @@ export const Errors = {
         byokSettingsUrl: e.byokSettingsUrl ?? "/settings/byok",
         message: e.message,
         upgradeUrl: "/settings#billing",
+        ...(e.addCreditsUrl ? { addCreditsUrl: e.addCreditsUrl } : {}),
       }, opts);
       return;
     }

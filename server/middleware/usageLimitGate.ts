@@ -27,6 +27,7 @@ import {
 } from "../services/usageLimits";
 import { planLimitDetails } from "@shared/billing/plan-limit-copy";
 import { Errors } from "../utils/errors";
+import { allowanceExhaustedMessage } from "../services/aiAllowance";
 import { logger } from "../utils/logger";
 import type { AuthenticatedRequest } from "../types/request";
 
@@ -106,7 +107,7 @@ export function usageLimitGate(resourceType: ResourceType) {
  * Fail-open on gate errors (matches usageLimitGate): an internal error in
  * the threshold machinery must never take Pax down.
  */
-export function aiByokThresholdGate() {
+export function aiByokThresholdGate(opts: { creditsFundTurn?: boolean } = {}) {
   return async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const organizationId = req.organizationId;
@@ -120,6 +121,19 @@ export function aiByokThresholdGate() {
       res.locals.aiTurnGate = gate;
 
       if (!gate.allowed) {
+        // Founder decision 2026-10-17: past the allowance, purchased credits
+        // fund a PAX TURN as well as the org's own key. Only a Pax-turn route
+        // opts in (`creditsFundTurn`) — its handler reserves the charge
+        // atomically (paxTurnFunding.reservePaxTurn). Any other route is
+        // walled as before: credits do not pay for its AI, so its refusal
+        // does not offer them.
+        if (opts.creditsFundTurn) {
+          const { CreditService, usageMeteringService } = await import("../services/credits");
+          const turnCents = await usageMeteringService.calculateCost("ai_chat", 1).catch(() => 2);
+          const balance = await new CreditService().getBalance(organizationId).catch(() => 0);
+          if (balance >= turnCents) return next();
+        }
+        const creditsFund = opts.creditsFundTurn === true;
         return Errors.limitExceeded(res, {
           reason: "byok_required" as const,
           resourceType: "ai_requests" as const,
@@ -130,9 +144,8 @@ export function aiByokThresholdGate() {
           remaining: 0,
           byokAvailable: gate.byokAvailable,
           byokSettingsUrl: "/settings/byok",
-          message: gate.byokAvailable
-            ? "You've used this month's included AI. Add your own Anthropic, OpenRouter, or OpenAI key in Settings → Your provider keys to keep going without limits — your data and drafts stay fully accessible either way."
-            : "You've used this month's included AI. Upgrade your plan to unlock bring-your-own-key for unlimited AI — your data and drafts stay fully accessible either way.",
+          ...(creditsFund ? { addCreditsUrl: "/settings#account" } : {}),
+          message: allowanceExhaustedMessage(gate.byokAvailable, creditsFund),
           upgradeUrl: "/settings#billing",
         });
       }

@@ -8,10 +8,14 @@
  *
  * Behavior contract:
  *   • If org has no Stripe subscription → no-op (free tier / dev env).
- *   • If tier is starter → throw, since starter cannot have additional seats.
+ *   • If the plan cannot hold seatCount seats → throw (upgrade first).
  *   • If extraSeats === 0 → remove the per-seat line item (or skip if absent).
  *   • Otherwise upsert a subscription item on the per-seat Price, quantity =
- *     seatCount - 1. Idempotent on repeat calls.
+ *     the seats beyond the plan's INCLUDED seats (shared/billing/seats.ts
+ *     billableExtraSeats). Idempotent on repeat calls.
+ *
+ * Only called when an admin changes seatCount; nothing re-syncs existing
+ * subscriptions in bulk.
  *
  * In dev / CI where Stripe price IDs are unset, this becomes a structured
  * log-only operation so tests don't depend on a live Stripe account.
@@ -27,6 +31,7 @@ import {
   type Tier,
   type BillingInterval,
 } from "@shared/billing/tier-pricing";
+import { billableExtraSeats, planAdmitsSeats } from "@shared/billing/seats";
 
 export interface SeatSyncResult {
   ok: boolean;
@@ -51,8 +56,8 @@ export async function syncSeatAddon(
   if (!tier) {
     return { ok: false, reason: "free_tier" };
   }
-  if (tier === "starter" && seatCount > 1) {
-    throw new Error("Starter tier does not support additional seats — upgrade first.");
+  if (!planAdmitsSeats(org.subscriptionTier, seatCount)) {
+    throw new Error(`The ${tier} plan cannot hold ${seatCount} seats — upgrade first.`);
   }
 
   const subscriptionId = org.stripeSubscriptionId;
@@ -77,7 +82,7 @@ export async function syncSeatAddon(
     return { ok: true, reason: "price_id_unset" };
   }
 
-  const extraSeats = Math.max(0, seatCount - 1);
+  const extraSeats = billableExtraSeats(org.subscriptionTier, seatCount);
 
   try {
     const { getUncachableStripeClient } = await import("../../stripeClient");

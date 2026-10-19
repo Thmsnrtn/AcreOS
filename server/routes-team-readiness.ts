@@ -29,15 +29,21 @@ import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import {
   TIER_PRICES_CENTS,
-  totalMonthlyBillCents,
-  seatAddonCents,
-  describeSeatPricing,
-  canAddSeats,
   tierForSubscriptionTier,
   type Tier,
   type BillingInterval,
 } from "@shared/billing/tier-pricing";
+import {
+  totalMonthlyBillCents,
+  seatAddonCents,
+  describeSeatPricing,
+  effectiveSeatAllowance,
+  planAdmitsSeats,
+  seatRuleFor,
+  billableExtraSeats,
+} from "@shared/billing/seats";
 import type { AuthenticatedRequest } from "./types/request";
+import { refuseSeatPurchase } from "./utils/firstRunRefusals";
 import { clock } from "./utils/clock";
 
 // ─── Validation schemas ─────────────────────────────────────────────────────
@@ -96,7 +102,8 @@ export function registerTeamReadinessRoutes(app: Express): void {
         const org = (req as AuthenticatedRequest).organization;
         const tier = tierForSubscriptionTier(org.subscriptionTier);
         const interval = (org.billingInterval as BillingInterval) || "monthly";
-        const seatCount = (org as any).seatCount ?? 1;
+        const seatCount = effectiveSeatAllowance(org.subscriptionTier, org.seatCount, org.additionalSeats);
+        const rule = seatRuleFor(org.subscriptionTier);
 
         if (!tier) {
           return res.json({
@@ -115,13 +122,14 @@ export function registerTeamReadinessRoutes(app: Express): void {
           tier,
           seatCount,
           interval,
-          description: describeSeatPricing(tier, seatCount, interval),
+          description: describeSeatPricing(tier, org.seatCount, interval),
           baseCents: TIER_PRICES_CENTS[tier].priceMonthlyCents,
-          seatAddonCents: seatAddonCents(tier, seatCount, interval),
-          totalCents: totalMonthlyBillCents(tier, seatCount, interval),
-          maxSeats: TIER_PRICES_CENTS[tier].maxSeats,
+          seatAddonCents: seatAddonCents(tier, org.seatCount, interval),
+          totalCents: totalMonthlyBillCents(tier, org.seatCount, interval),
+          includedSeats: rule.includedSeats,
+          maxSeats: rule.maxSeats,
           perSeatCents: TIER_PRICES_CENTS[tier].priceMonthlyPerSeatCents,
-          canAddMoreSeats: canAddSeats(tier, seatCount + 1),
+          canAddMoreSeats: planAdmitsSeats(org.subscriptionTier, seatCount + 1),
         });
       } catch (err) {
         return Errors.internal(res, err);
@@ -142,11 +150,22 @@ export function registerTeamReadinessRoutes(app: Express): void {
 
         const tier = tierForSubscriptionTier(org.subscriptionTier);
         if (!tier) return Errors.forbidden(res, "Free tier cannot add seats — upgrade required");
-        if (!canAddSeats(tier, parsed.data.seatCount)) {
+        if (!planAdmitsSeats(org.subscriptionTier, parsed.data.seatCount)) {
           return Errors.forbidden(
             res,
-            `Tier ${tier} is capped at ${TIER_PRICES_CENTS[tier].maxSeats} seat(s). Upgrade to Pro or Scale to add more.`,
+            `Tier ${tier} is capped at ${seatRuleFor(org.subscriptionTier).maxSeats} seat(s).`,
           );
+        }
+        // Billable seats (beyond the plan's included ones) are added by
+        // support today, exactly as the seat purchase route says. The stored
+        // seat_count is what the add-on sync below bills, so this route may
+        // lower it, or keep it within the included seats or the count already
+        // on file — never raise it into new billable seats.
+        if (
+          billableExtraSeats(org.subscriptionTier, parsed.data.seatCount) >
+          billableExtraSeats(org.subscriptionTier, org.seatCount)
+        ) {
+          return refuseSeatPurchase(res, org.subscriptionTier);
         }
 
         await db
@@ -182,7 +201,7 @@ export function registerTeamReadinessRoutes(app: Express): void {
       try {
         const org = (req as AuthenticatedRequest).organization;
         const tier = tierForSubscriptionTier(org.subscriptionTier);
-        const seatCount = (org as any).seatCount ?? 1;
+        const seatCount = effectiveSeatAllowance(org.subscriptionTier, org.seatCount, org.additionalSeats);
 
         // Count active members to know the next seat the invite will fill.
         const [{ count: activeCount }] = await db
@@ -196,11 +215,9 @@ export function registerTeamReadinessRoutes(app: Express): void {
           );
 
         const requestedSeat = activeCount + 1;
-        const needsUpgrade = !tier ||
-          !canAddSeats(tier, requestedSeat);
-        const needsSeatPurchase = tier !== null &&
-          canAddSeats(tier, requestedSeat) &&
-          requestedSeat > seatCount;
+        const admits = planAdmitsSeats(org.subscriptionTier, requestedSeat);
+        const needsUpgrade = !admits;
+        const needsSeatPurchase = admits && requestedSeat > seatCount;
 
         return res.json({
           tier,

@@ -18,7 +18,9 @@
  *                                    /settings/byok (Errors.internal maps it)
  *
  * WHAT COUNTS (and the rule for work the org did not trigger): spend recorded
- * with origin = 'customer'. Background work that serves the org but that it
+ * with origin = 'customer', plus background work the org pays for in credits
+ * past its allowance, recorded as 'background_metered' (founder decision
+ * 2026-10-17; aiAllowanceRule.ALLOWANCE_COUNTED_ORIGINS). Background work that serves the org but that it
  * did not trigger (origin = 'background') is NOT counted and is never gated
  * here — it cannot quietly drain the allowance and wall the customer off; it is
  * bounded by the per-org tier ceilings (aiCostCeiling.ts) and shows on the
@@ -34,22 +36,43 @@
 import { logger } from "../utils/logger";
 import { clock } from "../utils/clock";
 import type { AiByokRouting } from "./byok/aiByok";
+import { isAiAllowanceSpent } from "./aiAllowanceRule";
+import { paxTurnMarkFor } from "./paxTurnContext";
+
+/**
+ * The refusal sentence past the allowance. It names only what really works:
+ * credits only for a Pax turn (the one AI call a purchased-credit meter pays
+ * for), the org's own key only where the plan allows one.
+ */
+export function allowanceExhaustedMessage(byokAvailable: boolean, creditsFund: boolean): string {
+  const lead = "You've used this month's included AI.";
+  const tail = "— your data and drafts stay fully accessible.";
+  if (creditsFund && byokAvailable) {
+    return `${lead} Add credits, or connect your own Anthropic, OpenRouter, or OpenAI key in Settings → Your provider keys, to keep going ${tail}`;
+  }
+  if (creditsFund) return `${lead} Add credits to keep going ${tail}`;
+  if (byokAvailable) {
+    return `${lead} Add your own Anthropic, OpenRouter, or OpenAI key in Settings → Your provider keys to keep going ${tail}`;
+  }
+  return `${lead} Upgrade your plan to unlock bring-your-own-key ${tail}`;
+}
 
 export class AiAllowanceExhaustedError extends Error {
   readonly code = "AI_ALLOWANCE_BYOK_REQUIRED" as const;
   readonly reason = "byok_required" as const;
   readonly byokSettingsUrl = "/settings/byok";
+  /** Set when this call was a Pax turn, which purchased credits can fund. */
+  readonly addCreditsUrl: string | undefined;
   constructor(
     public readonly organizationId: number,
     public readonly spentCents: number,
     public readonly allowanceCents: number,
     public readonly byokAvailable: boolean,
+    /** A Pax turn: purchased credits are a way forward too (decision 2026-10-17). */
+    public readonly creditsFundThisCall: boolean = false,
   ) {
-    super(
-      byokAvailable
-        ? "You've used this month's included AI. Add your own Anthropic, OpenRouter, or OpenAI key in Settings → Your provider keys to keep going — your data and drafts stay fully accessible."
-        : "You've used this month's included AI. Upgrade your plan to unlock bring-your-own-key — your data and drafts stay fully accessible.",
-    );
+    super(allowanceExhaustedMessage(byokAvailable, creditsFundThisCall));
+    this.addCreditsUrl = creditsFundThisCall ? "/settings#account" : undefined;
     this.name = "AiAllowanceExhaustedError";
   }
 }
@@ -68,7 +91,7 @@ async function readGate(orgId: number) {
   if (hit && clock.nowMs() - hit.at <= GATE_TTL_MS) return hit;
   const { checkAiTurnGate } = await import("./usageLimits");
   const g = await checkAiTurnGate(orgId);
-  const exhausted = g.mode !== "founder" && g.threshold !== null && g.current >= g.threshold;
+  const exhausted = isAiAllowanceSpent(g);
   const entry = {
     at: clock.nowMs(),
     exhausted,
@@ -109,5 +132,11 @@ export async function enforceAiAllowance(orgId: number): Promise<AiByokRouting |
     byok = null;
   }
   if (byok) return byok;
-  throw new AiAllowanceExhaustedError(orgId, gate.spent, gate.allowance, gate.byokAvailable);
+  // Founder decision 2026-10-17: past the allowance, purchased credits fund a
+  // Pax turn whose site has already passed its credit check on the org's own
+  // balance (and will charge the turn). It runs on the platform key, still
+  // bounded by the per-org and platform AI cost ceilings (aiCostCeiling).
+  const turn = paxTurnMarkFor(orgId);
+  if (turn?.creditFunded) return null;
+  throw new AiAllowanceExhaustedError(orgId, gate.spent, gate.allowance, gate.byokAvailable, turn !== null);
 }

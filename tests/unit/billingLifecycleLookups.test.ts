@@ -157,10 +157,11 @@ describe("every hasEnoughCredits caller is classified", () => {
   const CLASSIFIED: Record<string, "allowance" | "own-credit"> = {
     "server/routes-documents.ts": "allowance",
     "server/routes-properties.ts": "allowance",
-    "server/routes-realtime.ts": "allowance",
-    "server/routes-deals.ts": "allowance",
-    "server/routes-ai.ts": "allowance",
-    "server/utils/openaiClient.ts": "allowance",
+    // The Pax turn routes (routes-ai, routes-deals, routes-realtime,
+    // routes-leads) left this population 2026-10-18: they no longer check
+    // credits and charge later — paxTurnFunding.reservePaxTurn takes the
+    // charge atomically through deductOrFundFromTrial, which records
+    // trial-funded usage (paxTurnsIncludedAreFree.test.ts pins that path).
   };
 
   function walk(dir: string, out: string[] = []): string[] {

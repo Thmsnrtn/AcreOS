@@ -15,6 +15,8 @@ import { dealRooms } from "./schema/marketplace";
 // source_ref. Type-only, so nothing here reaches the client bundle.
 import type { PaxAskOrigin, PaxAskSourceRef, PaxControls } from "./pax-controls";
 import { CREDIT_PACK_CATALOG } from "./billing/credit-packs";
+import { TIER_LIMITS } from "./billing/tier-limits";
+import { TIER_PRICES_CENTS, type Tier } from "./billing/tier-pricing";
 
 /**
  * Phase 3 Week 14 (Sayuri-Vatanen §1): pgvector custom column type.
@@ -92,11 +94,12 @@ export const organizations = pgTable("organizations", {
   autoTopUpAmountCents: integer("auto_top_up_amount_cents").default(2500), // Add $25
   // Seat management
   additionalSeats: integer("additional_seats").default(0), // Extra seats purchased beyond tier limit
-  // Per-seat pricing (Phase 5 §5 — team-readiness). seat_count is the
-  // canonical "how many active seats does this org pay for" value. Tier
-  // bundles 1 seat; each additional seat is billed via the per-seat
-  // add-on subscription. additional_seats is retained for legacy callers
-  // and equals max(seat_count - 1, 0) for new flows.
+  // Per-seat pricing (Phase 5 §5 — team-readiness). seat_count is the total
+  // seats the org has set. It is read ONLY through shared/billing/seats.ts:
+  // the allowance never falls below the plan's included seats (TIER_LIMITS
+  // includedSeats), and only seats beyond those are billed as add-ons — so
+  // the default 1 means "what the plan includes". additional_seats is a
+  // legacy column, honoured on top of the included seats; nothing writes it.
   seatCount: integer("seat_count").notNull().default(1),
   // Offer-approval threshold (Phase 5 §5 Part E). When non-null, offers
   // with cashOffer or termsOffer above this dollar amount route to the
@@ -3313,202 +3316,101 @@ export type CreditPackId = keyof typeof CREDIT_PACKS;
 // GET /api/subscription/tiers serialized it as if the plan included it. The
 // included monthly credits are TIER_LIMITS[*].creditPool (tier-limits.ts); the
 // public endpoint reports that (server/services/publicSubscriptionTiers.ts).
-export const SUBSCRIPTION_TIERS = {
-  free: {
-    name: "Free",
-    price: 0,
-    tagline: "Explore the platform",
-    limits: {
-      leads: 50,
-      properties: 10,
-      notes: 5,
-      teamMembers: 1,
-      aiRequestsPerMonth: 100,
-      campaigns: 1,
-    },
-    features: ["basic_crm", "basic_inventory", "basic_notes"],
-  },
-  sprout: {
-    name: "Sprout",
-    price: 29,
-    tagline: "Plant your first seeds",
-    badge: "Best to start",
-    limits: {
-      leads: 250,
-      properties: 50,
-      notes: 25,
-      teamMembers: 1,
-      aiRequestsPerMonth: 500,
-      campaigns: 5,
-    },
-    features: [
-      "basic_crm", "basic_inventory", "basic_notes",
-      "ai_due_diligence", "email_campaigns",
-      "evening_review_dashboard", "deal_calculator",
-      "tax_delinquent_import", "direct_mail_basic"
-    ],
-    // Superpowers unlocked at this tier (shown to free users as preview)
-    unlocks: [
-      "AI-powered due diligence on every parcel",
-      "Tax delinquent list import & processing",
-      "Evening Review passive income dashboard",
-      "Blind offer calculation wizard",
-      "Direct mail campaign builder",
-      "Deal & ROI calculator",
-    ],
-  },
-  starter: {
-    name: "Starter",
-    // Canonical price comes from shared/billing/tier-pricing.ts (solo tier).
-    // The literal here is kept synchronous so this `as const` schema object
-    // stays statically analysable for downstream tier-config consumers; the
-    // tierPricing CI test pins this value and will fail if the two drift.
-    price: 20,
-    tagline: "Build momentum",
-    badge: "Most popular solo",
-    limits: {
-      leads: 500,
-      properties: 100,
-      notes: 50,
-      teamMembers: 2,
-      aiRequestsPerMonth: 1000,
-      campaigns: 10,
-    },
-    features: [
-      "basic_crm", "basic_inventory", "basic_notes",
-      "ai_due_diligence", "email_campaigns",
-      "evening_review_dashboard", "deal_calculator",
-      "tax_delinquent_import", "direct_mail_basic",
-      "atlas_ai_assistant", "seller_intent", "comps_analysis",
-      "skip_tracing_basic", "avm_basic"
-    ],
-    unlocks: [
-      "Atlas AI executive assistant",
-      "Seller intent prediction",
-      "Automated comps analysis",
-      "Basic skip tracing",
-      "Automated Valuation Model (AVM)",
-      "Email drip sequences",
-      "2 team member seats",
-    ],
-  },
-  pro: {
-    name: "Pro",
-    // Canonical price from shared/billing/tier-pricing.ts (operator tier).
-    price: 49,
-    tagline: "Scale your operation",
-    badge: "Best value for growth",
-    limits: {
-      leads: 5000,
-      properties: 1000,
-      notes: 500,
-      teamMembers: 10,
-      aiRequestsPerMonth: 10000,
-      campaigns: 100,
-    },
-    features: [
-      "advanced_crm", "advanced_inventory", "advanced_notes",
-      "ai_due_diligence", "ai_marketing", "ai_buyer_communication",
-      "email_campaigns", "sms_campaigns", "direct_mail",
-      "payment_processing", "reporting",
-      "atlas_ai_assistant", "seller_intent", "comps_analysis",
-      "skip_tracing_full", "avm_full", "deal_hunter", "portfolio_health",
-      "owner_financing_manager", "buyer_network", "negotiation_copilot",
-      "market_intelligence", "deal_patterns", "acquisition_radar"
-    ],
-    unlocks: [
-      "Full skip tracing suite",
-      "Deal Hunter AI (finds opportunities automatically)",
-      "Negotiation Copilot",
-      "Owner financing management & note portfolio",
-      "Buyer network access",
-      "Portfolio health monitoring",
-      "Market intelligence reports",
-      "Acquisition Radar (proactive deal alerts)",
-      "SMS campaigns",
-      "Up to 10 team members",
-    ],
-  },
-  scale: {
-    name: "Scale",
-    // Canonical price from shared/billing/tier-pricing.ts (empire tier).
-    price: 79,
-    tagline: "Operate like a fund",
-    badge: "For serious operators",
-    limits: {
-      leads: -1, // unlimited
-      properties: -1,
-      notes: -1,
-      teamMembers: 25,
-      aiRequestsPerMonth: -1,
-      campaigns: -1,
-    },
-    features: [
-      "advanced_crm", "advanced_inventory", "advanced_notes",
-      "ai_due_diligence", "ai_marketing", "ai_buyer_communication", "ai_custom_agents",
-      "email_campaigns", "sms_campaigns", "direct_mail", "marketplace_syndication",
-      "payment_processing", "advanced_reporting", "api_access", "webhooks",
-      "priority_support", "custom_branding", "team_messaging",
-      "atlas_ai_assistant", "seller_intent", "comps_analysis",
-      "skip_tracing_full", "avm_full", "deal_hunter", "portfolio_health",
-      "owner_financing_manager", "buyer_network", "negotiation_copilot",
-      "market_intelligence", "deal_patterns", "acquisition_radar",
-      "portfolio_optimizer", "portfolio_sentinel", "capital_markets",
-      "va_management", "cohort_analysis", "territory_manager",
-      "exchange_1031", "tax_optimization"
-    ],
-    unlocks: [
-      "Unlimited leads, properties & notes",
-      "Portfolio Optimizer & Sentinel (AI-managed portfolio)",
-      "Capital markets access",
-      "VA management system",
-      "1031 Exchange tracker",
-      "Tax optimization engine",
-      "Full API access & webhooks",
-      "Up to 25 team members",
-    ],
-  },
-  enterprise: {
-    name: "Enterprise",
-    price: 899,
-    tagline: "White-label your empire",
-    badge: "For funds & teams",
-    limits: {
-      leads: -1, // unlimited
-      properties: -1,
-      notes: -1,
-      teamMembers: -1, // unlimited seats
-      aiRequestsPerMonth: -1,
-      campaigns: -1,
-    },
-    features: [
-      "advanced_crm", "advanced_inventory", "advanced_notes",
-      "ai_due_diligence", "ai_marketing", "ai_buyer_communication", "ai_custom_agents",
-      "email_campaigns", "sms_campaigns", "direct_mail", "marketplace_syndication",
-      "payment_processing", "advanced_reporting", "api_access", "webhooks",
-      "priority_support", "custom_branding", "team_messaging",
-      "white_label_portal", "dedicated_support", "compliance_exports", "custom_integrations",
-      "atlas_ai_assistant", "seller_intent", "comps_analysis",
-      "skip_tracing_full", "avm_full", "deal_hunter", "portfolio_health",
-      "owner_financing_manager", "buyer_network", "negotiation_copilot",
-      "market_intelligence", "deal_patterns", "acquisition_radar",
-      "portfolio_optimizer", "portfolio_sentinel", "capital_markets",
-      "va_management", "cohort_analysis", "territory_manager",
-      "exchange_1031", "tax_optimization",
-      "reseller_dashboard", "multi_org_management", "sso", "audit_logs_export"
-    ],
-    unlocks: [
-      "White-label portal for your brand",
-      "Multi-organization management",
-      "SSO & enterprise authentication",
-      "Dedicated account support",
-      "Full compliance export suite",
-      "Custom integrations",
-      "Reseller dashboard",
-      "Unlimited team members",
-    ],
-  },
+//
+// Every NUMBER here is derived (2026-10-12). This table used to carry its own
+// prices, lead/property/note caps, Pax turns and team-member counts, and they
+// had drifted from the tables the gates enforce (TIER_LIMITS, TIER_PRICES_CENTS):
+// Pro said 5,000 leads and 10 team members while the gate enforced 500 leads
+// and 2 included seats (max 5); a "Sprout" plan at $29 and an Enterprise list
+// price of $899 existed nowhere else. The table now keeps only what it alone
+// owns — the per-tier feature keys — and projects names, prices and limits
+// from the canonical tables, so it cannot drift (planTablesAgree.test.ts).
+// Enterprise is negotiated: its price is null, never a guessed list price.
+const SUBSCRIPTION_TIER_FEATURES = {
+  free: ["basic_crm", "basic_inventory", "basic_notes"],
+  starter: [
+    "basic_crm", "basic_inventory", "basic_notes",
+    "ai_due_diligence", "email_campaigns",
+    "evening_review_dashboard", "deal_calculator",
+    "tax_delinquent_import", "direct_mail_basic",
+    "atlas_ai_assistant", "seller_intent", "comps_analysis",
+    "skip_tracing_basic", "avm_basic"
+  ],
+  pro: [
+    "advanced_crm", "advanced_inventory", "advanced_notes",
+    "ai_due_diligence", "ai_marketing", "ai_buyer_communication",
+    "email_campaigns", "sms_campaigns", "direct_mail",
+    "payment_processing", "reporting",
+    "atlas_ai_assistant", "seller_intent", "comps_analysis",
+    "skip_tracing_full", "avm_full", "deal_hunter", "portfolio_health",
+    "owner_financing_manager", "buyer_network", "negotiation_copilot",
+    "market_intelligence", "deal_patterns", "acquisition_radar"
+  ],
+  scale: [
+    "advanced_crm", "advanced_inventory", "advanced_notes",
+    "ai_due_diligence", "ai_marketing", "ai_buyer_communication", "ai_custom_agents",
+    "email_campaigns", "sms_campaigns", "direct_mail", "marketplace_syndication",
+    "payment_processing", "advanced_reporting", "api_access", "webhooks",
+    "priority_support", "custom_branding", "team_messaging",
+    "atlas_ai_assistant", "seller_intent", "comps_analysis",
+    "skip_tracing_full", "avm_full", "deal_hunter", "portfolio_health",
+    "owner_financing_manager", "buyer_network", "negotiation_copilot",
+    "market_intelligence", "deal_patterns", "acquisition_radar",
+    "portfolio_optimizer", "portfolio_sentinel", "capital_markets",
+    "va_management", "cohort_analysis", "territory_manager",
+    "exchange_1031", "tax_optimization"
+  ],
+  enterprise: [
+    "advanced_crm", "advanced_inventory", "advanced_notes",
+    "ai_due_diligence", "ai_marketing", "ai_buyer_communication", "ai_custom_agents",
+    "email_campaigns", "sms_campaigns", "direct_mail", "marketplace_syndication",
+    "payment_processing", "advanced_reporting", "api_access", "webhooks",
+    "priority_support", "custom_branding", "team_messaging",
+    "white_label_portal", "dedicated_support", "compliance_exports", "custom_integrations",
+    "atlas_ai_assistant", "seller_intent", "comps_analysis",
+    "skip_tracing_full", "avm_full", "deal_hunter", "portfolio_health",
+    "owner_financing_manager", "buyer_network", "negotiation_copilot",
+    "market_intelligence", "deal_patterns", "acquisition_radar",
+    "portfolio_optimizer", "portfolio_sentinel", "capital_markets",
+    "va_management", "cohort_analysis", "territory_manager",
+    "exchange_1031", "tax_optimization",
+    "reseller_dashboard", "multi_org_management", "sso", "audit_logs_export"
+  ],
 } as const;
+
+/** -1 = unlimited, the catalogue's historical encoding of a null limit. */
+function catalogueLimit(n: number | null): number {
+  return n === null ? -1 : n;
+}
+
+function subscriptionTierEntry<T extends keyof typeof SUBSCRIPTION_TIER_FEATURES>(tier: T) {
+  const limits = TIER_LIMITS[tier];
+  const paidTier: Tier | null = tier === "starter" || tier === "pro" || tier === "scale" ? tier : null;
+  const pricing = paidTier ? TIER_PRICES_CENTS[paidTier] : null;
+  return {
+    name: pricing ? pricing.displayName : tier === "free" ? "Free" : "Enterprise",
+    /** Monthly list price in whole dollars; null = negotiated (Enterprise). */
+    price: pricing ? pricing.priceMonthlyCents / 100 : tier === "free" ? 0 : null,
+    limits: {
+      leads: catalogueLimit(limits.leads),
+      properties: catalogueLimit(limits.properties),
+      notes: catalogueLimit(limits.notes),
+      includedSeats: limits.includedSeats,
+      maxSeats: catalogueLimit(limits.maxSeats),
+      aiRequestsPerMonth: catalogueLimit(limits.ai_requests),
+      campaigns: catalogueLimit(limits.campaigns),
+    },
+    features: SUBSCRIPTION_TIER_FEATURES[tier],
+  };
+}
+
+export const SUBSCRIPTION_TIERS = {
+  free: subscriptionTierEntry("free"),
+  starter: subscriptionTierEntry("starter"),
+  pro: subscriptionTierEntry("pro"),
+  scale: subscriptionTierEntry("scale"),
+  enterprise: subscriptionTierEntry("enterprise"),
+};
 
 export type SubscriptionTier = keyof typeof SUBSCRIPTION_TIERS;
 

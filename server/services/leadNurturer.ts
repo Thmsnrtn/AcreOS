@@ -2,7 +2,7 @@ import { db } from "../db";
 import { and, eq } from "drizzle-orm";
 import { leads, type Lead, type NurturingStage, type InsertLeadActivity } from "@shared/schema";
 import { storage } from "../storage";
-import { usageMeteringService } from "./credits";
+import { paxTurnFunding, reservePaxTurn, settlePaxTurn } from "./paxTurnFunding";
 import { alertingService } from "./alerting";
 import { getOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
@@ -131,7 +131,15 @@ export class LeadNurturerService {
     return "dead";
   }
 
-  async generateFollowUp(lead: Lead): Promise<{ message: string; subject?: string } | null> {
+  /**
+   * `customer`: the owner asked for this follow-up (POST /api/leads/:id/nurture)
+   * — a Pax turn, counted and walled like chat. `background`: the batch run,
+   * recorded so it counts toward the org's allowance (decision 2026-10-17).
+   */
+  async generateFollowUp(
+    lead: Lead,
+    opts: { origin: "customer" | "background" } = { origin: "background" },
+  ): Promise<{ message: string; subject?: string } | null> {
     const openai = getOpenAIClient();
     if (!openai) {
       logger.info("OpenAI API key not configured, skipping AI follow-up generation");
@@ -193,7 +201,8 @@ Respond in JSON format:
         userPrompt: prompt,
         metadata: { leadStage: context.nurturingStage, leadType: context.type },
         client: openai,
-        origin: "background",
+        origin: opts.origin,
+        allowanceMetered: opts.origin === "background",
         request: {
             model: "openai/gpt-4o",
             messages: [{ role: "user", content: prompt }],
@@ -211,6 +220,9 @@ Respond in JSON format:
         };
       }
     } catch (error) {
+      // Past the allowance, the wall's refusal is the answer — not a null that
+      // reads as "the AI failed".
+      if ((error as { code?: string })?.code === "AI_ALLOWANCE_BYOK_REQUIRED") throw error;
       logger.error("Error generating follow-up message", error);
     }
 
@@ -411,27 +423,30 @@ Respond in JSON format:
 
       if (generateFollowUps) {
         const leadsDueForFollowUp = await storage.getLeadsDueForFollowUp(organizationId);
-        
+
         for (const lead of leadsDueForFollowUp.slice(0, 10)) {
           if (lead.nurturingStage === "dead") continue;
 
-          const usageResult = await usageMeteringService.recordUsage(
-            organizationId,
-            "ai_chat",
-            1,
-            { feature: "lead_nurturing", leadId: lead.id }
-          );
-
-          if (usageResult.insufficientCredits) {
+          // Same rule as a Pax turn (founder decision 2026-10-17), decided per
+          // unit because this run's own metered spend moves the allowance:
+          // no charge inside the included allowance, credits after — taken
+          // before the AI call and refunded when no follow-up comes back.
+          const paxLane = await paxTurnFunding(organizationId);
+          const reservation = await reservePaxTurn(organizationId, paxLane, { description: "AI lead follow-up (batch)" });
+          if (!reservation.ok) {
             result.errors.push(`Insufficient credits for AI follow-up on lead ${lead.id}`);
             break;
           }
 
-          result.creditsUsed += 1;
-
+          let settled = false;
           try {
-            const followUp = await this.generateFollowUp(lead);
-            
+            const followUp = await this.generateFollowUp(lead, { origin: "background" });
+            settled = true;
+            await settlePaxTurn(reservation.charge, followUp
+              ? { delivered: true, metadata: { feature: "lead_nurturing", leadId: lead.id } }
+              : { delivered: false, reason: "no follow-up generated" });
+            if (followUp && reservation.charge.fundedBy === "balance") result.creditsUsed += 1;
+
             if (followUp) {
               result.followUpsGenerated++;
 
@@ -456,6 +471,7 @@ Respond in JSON format:
                 .where(eq(leads.id, lead.id));
             }
           } catch (err) {
+            if (!settled) await settlePaxTurn(reservation.charge, { delivered: false, reason: "follow-up failed" });
             result.errors.push(`Failed to generate follow-up for lead ${lead.id}: ${err}`);
           }
         }

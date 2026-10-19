@@ -11,7 +11,9 @@
  *     covers that one, through the real gate).
  *
  * WHO is refused is an owner decision and is not changed here: no credit
- * amount, seat count, price or entitlement is touched. What is pinned is that
+ * amount, seat count, price or entitlement is touched. (Seats: the invite
+ * check now admits a plan's INCLUDED seats — seatAllowanceIsCanonical.test.ts
+ * — and the cases below were rewritten to that truth.) What is pinned is that
  * each refusal carries a machine-readable code, a sentence naming the plan or
  * action that unlocks it, and a `details.nextStep` link the client renders.
  *
@@ -28,6 +30,7 @@ import path from "node:path";
 import { stripComments } from "../helpers/stripComments";
 import { refusePaxCredits, refuseCreditShortage, PAX_CREDITS_REQUIRED } from "../../server/utils/firstRunRefusals";
 import { refusalFromBody } from "../../client/src/lib/refusal";
+import { TIER_LIMITS } from "@shared/billing/tier-limits";
 
 const ROOT = path.resolve(__dirname, "../..");
 
@@ -95,8 +98,11 @@ describe("Pax credit refusal", () => {
     // /api/ai/chat and /api/ai/chat/stream.
     expect(refusals, "a chat route lost its credit refusal").toBeGreaterThanOrEqual(2);
     expect(src).not.toMatch(/error:\s*["']Insufficient credits["']/);
-    // The reason comes from the credit service's own decision.
-    expect(src.match(/creditService\.evaluateCredits\(/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
+    // The reason comes from the turn's atomic reservation (paxTurnFunding.
+    // reservePaxTurn, which reads the credit service's trial window) —
+    // rewritten 2026-10-18 when the charge moved before the AI call.
+    expect(src.match(/\breservePaxTurn\(/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
+    expect(src).toMatch(/\.\.\.reservation\.refusal/);
     // An unset AI-turn gate (it fails open) is passed as unknown, never as "no".
     expect(src).not.toMatch(/aiTurnGate\?\.byokAvailable\s*===\s*true/);
   });
@@ -173,6 +179,7 @@ const h = vi.hoisted(() => ({
   org: { id: 7, subscriptionTier: "pro", seatCount: 1 } as Record<string, unknown>,
   counts: [1, 0] as number[],
   calls: 0,
+  seatSyncs: [] as number[],
 }));
 
 vi.mock("../../server/auth", () => ({
@@ -202,8 +209,31 @@ vi.mock("../../server/storage", () => {
     q.where = () => Promise.resolve([{ count: h.counts[h.calls++ % 2] }]);
     return q;
   };
-  return { storage: {}, db: { select } };
+  // The seat-count route's write (its result is not read).
+  const update = () => ({ set: () => ({ where: async () => undefined }) });
+  return { storage: {}, db: { select, update } };
 });
+// The seat-count route hands the stored count to the Stripe add-on sync.
+vi.mock("../../server/services/billing/seatBilling", () => ({
+  syncSeatAddon: async (_org: number, seatCount: number) => {
+    h.seatSyncs.push(seatCount);
+    return { ok: true };
+  },
+}));
+
+// Past the seat preflight, the invite rate limit refuses — a deterministic
+// signal that the seat check let the invite through.
+vi.mock("../../server/services/inviteRateLimit", () => ({
+  checkInviteCreateLimit: async () => ({ allowed: false, limit: 100, retryAfterSeconds: 60 }),
+  checkInviteAcceptLimit: async () => ({ allowed: true }),
+}));
+const stripeOpened = vi.hoisted(() => ({ count: 0 }));
+vi.mock("../../server/stripeClient", () => ({
+  getUncachableStripeClient: async () => {
+    stripeOpened.count++;
+    throw new Error("Stripe must not be reached");
+  },
+}));
 
 async function invite(org: Record<string, unknown>, active: number, pending: number) {
   h.org = org;
@@ -221,59 +251,161 @@ describe("teammate invite refusal (through the real route)", () => {
     h.calls = 0;
   });
 
-  it("a Pro org on the default seat count is told it needs a seat and where to get one", async () => {
+  // Rewritten 2026-10-12 (seat allowance): the default seat_count of 1 no
+  // longer caps an org below its plan's INCLUDED seats. These pinned the old
+  // truth — "a Pro owner needs support for a first teammate" — and now pin the
+  // new one, read from TIER_LIMITS rather than restated.
+
+  it("a Pro org on the default seat count invites its first teammate — the seat check passes", async () => {
     const res = await invite({ id: 7, subscriptionTier: "pro", seatCount: 1 }, 1, 0);
+    // The next gate (the invite rate limit, stubbed to refuse) answered: the
+    // seat preflight let the invite through.
+    expect(res.status).toBe(429);
+    expect(res.body.error).not.toMatch(/upgrade_required|seat_purchase_required/);
+  });
+
+  it("past the included seats, a Pro org is told how many it has and that support adds more", async () => {
+    const included = TIER_LIMITS.pro.includedSeats;
+    const res = await invite({ id: 7, subscriptionTier: "pro", seatCount: 1 }, included, 0);
     expect(res.status).toBe(402);
     expect(res.body.error).toBe("seat_purchase_required");
     expect(res.body.message).toBe(
-      "Inviting 1 teammate needs 2 seats and this organization is set up for 1. Seat counts are set by " +
-        "support today — contact support to add a seat.",
+      `Inviting 1 teammate needs ${included + 1} seats and this organization has ${included} (Pro includes ${included}). ` +
+        "Seats beyond those are added by support today — contact support to add a seat.",
     );
-    expect(res.body.details).toMatchObject({ projected: 2, seatCount: 1, additionalSeatsNeeded: 1 });
+    expect(res.body.details).toMatchObject({ projected: included + 1, seatAllowance: included, additionalSeatsNeeded: 1 });
     expect(res.body.details.nextStep).toEqual({ label: "Contact support", href: "/support" });
   });
 
-  it("a Free org learns seats start on Pro — and that support, not the upgrade, sets the count", async () => {
+  it("a Free org learns which plan includes the seat, and that switching plans is enough", async () => {
     const res = await invite({ id: 7, subscriptionTier: "free", seatCount: 1 }, 1, 0);
     expect(res.status).toBe(402);
     expect(res.body.error).toBe("upgrade_required");
     expect(res.body.message).toBe(
-      "Free doesn't include teammate seats; they start on Pro. Seat counts are set by support today — " +
-        "contact support to add teammates.",
+      `Free includes 1 seat; this invite needs 2. Pro includes ${TIER_LIMITS.pro.includedSeats} seats, available as soon as you switch plans.`,
     );
     expect(res.body.details.seatsStartOn).toBe("pro");
-    expect(res.body.details.nextStep).toEqual({ label: "Contact support", href: "/support" });
+    expect(res.body.details.nextStep).toEqual({ label: "See Pro", href: "/settings#billing?tier=pro" });
   });
 
-  it("no seat refusal promises that upgrading alone unlocks an invite (seat_count stays 1 after an upgrade)", async () => {
-    // Upgrading does not raise seat_count and nothing in the app can, so a
-    // refusal whose only step is a plan page would send the owner round in a
-    // circle: upgrade, try again, refused again.
-    const PROMISES_UPGRADE = /upgrade to|teammate seats start on|see (pro|scale|starter)/i;
-    for (const org of [
-      { id: 7, subscriptionTier: "free", seatCount: 1 },
-      { id: 7, subscriptionTier: "starter", seatCount: 1 },
-      { id: 7, subscriptionTier: "pro", seatCount: 1 },
-    ]) {
-      const res = await invite(org, 1, 0);
-      expect(res.body.message, org.subscriptionTier).not.toMatch(PROMISES_UPGRADE);
-      expect(res.body.message, org.subscriptionTier).toMatch(/contact support/);
-      expect(res.body.details.nextStep.href, org.subscriptionTier).toBe("/support");
+  it("past a plan's ceiling, the refusal names the next plan and support for seats past its included ones", async () => {
+    const max = TIER_LIMITS.pro.maxSeats!;
+    // Scale includes 10, so up to 10 it is a plain upgrade; past that, support.
+    const res = await invite({ id: 7, subscriptionTier: "pro", seatCount: max }, TIER_LIMITS.scale.includedSeats, 0);
+    expect(res.status).toBe(402);
+    expect(res.body.error).toBe("upgrade_required");
+    expect(res.body.details.nextStep.href).toBe("/support");
+    expect(res.body.message).toMatch(/Scale includes 10 seats; seats beyond those are added by support today/);
+  });
+
+  it("a refusal promises an upgrade only when that plan's INCLUDED seats cover the invite", async () => {
+    // The semantic rule behind every plan link: upgrading must actually admit
+    // the invite, or the owner goes round in a circle — upgrade, refused again.
+    const cases: Array<[Record<string, unknown>, number]> = [
+      [{ id: 7, subscriptionTier: "free", seatCount: 1 }, 1],
+      [{ id: 7, subscriptionTier: "free", seatCount: 1 }, 2],
+      [{ id: 7, subscriptionTier: "starter", seatCount: 1 }, 1],
+      [{ id: 7, subscriptionTier: "starter", seatCount: 1 }, 4],
+      [{ id: 7, subscriptionTier: "pro", seatCount: 1 }, 2],
+      [{ id: 7, subscriptionTier: "pro", seatCount: 5 }, 5],
+      [{ id: 7, subscriptionTier: "pro", seatCount: 5 }, 12],
+    ];
+    let planLinks = 0;
+    for (const [org, active] of cases) {
+      const res = await invite(org, active, 0);
+      expect(res.status, `${org.subscriptionTier}/${active}`).toBe(402);
+      const m = /^\/settings#billing\?tier=(\w+)$/.exec(res.body.details.nextStep.href);
+      if (m) {
+        planLinks++;
+        const plan = m[1] as keyof typeof TIER_LIMITS;
+        expect(TIER_LIMITS[plan].includedSeats, `${org.subscriptionTier}/${active} → ${plan}`).toBeGreaterThanOrEqual(res.body.details.projected);
+      } else {
+        expect(res.body.details.nextStep.href).toBe("/support");
+      }
     }
+    expect(planLinks, "vacuity: no case produced a plan link").toBeGreaterThan(0);
   });
 
   it("every invite refusal carries a next step the client renders, to a real destination", async () => {
-    for (const org of [
-      { id: 7, subscriptionTier: "free", seatCount: 1 },
-      { id: 7, subscriptionTier: "starter", seatCount: 1 },
-      { id: 7, subscriptionTier: "pro", seatCount: 1 },
-    ]) {
-      const res = await invite(org, 1, 0);
+    for (const [org, active] of [
+      [{ id: 7, subscriptionTier: "free", seatCount: 1 }, 1],
+      [{ id: 7, subscriptionTier: "starter", seatCount: 1 }, 1],
+      [{ id: 7, subscriptionTier: "pro", seatCount: 1 }, 2],
+    ] as Array<[Record<string, unknown>, number]>) {
+      const res = await invite(org, active, 0);
       expect(res.status, `${org.subscriptionTier}: expected a refusal`).toBe(402);
       const view = refusalFromBody(res.body);
       expect(view, `${org.subscriptionTier}: the client cannot render this refusal`).not.toBeNull();
       expect(view!.description).toBe(res.body.message);
       expect(view!.action.href).toMatch(KNOWN_DESTINATIONS);
     }
+  });
+});
+
+describe("seat add-on purchase (not self-serve until it is fulfilled)", () => {
+  async function app() {
+    h.org = { id: 7, subscriptionTier: "pro", seatCount: 1 };
+    const { registerOrganizationRoutes } = await import("../../server/routes-organization");
+    const a = express();
+    a.use(express.json());
+    registerOrganizationRoutes(a);
+    return a;
+  }
+
+  it("the purchase route refuses with a next step and never opens a Stripe checkout", async () => {
+    stripeOpened.count = 0;
+    const res = await request(await app()).post("/api/organization/seats/purchase").send({ quantity: 1, billingPeriod: "monthly" });
+    expect(res.status).toBe(402);
+    expect(res.body.error).toBe("seat_purchase_unavailable");
+    expect(res.body.message).toBe(
+      `Your plan includes ${TIER_LIMITS.pro.includedSeats} seats. Seats beyond those are added by support today — contact support to add teammates.`,
+    );
+    expect(res.body.details.nextStep.href).toBe("/support");
+    expect(stripeOpened.count).toBe(0);
+  });
+
+  it("the pricing read says purchases are unavailable, so the settings card offers no Add seats button", async () => {
+    stripeOpened.count = 0;
+    const res = await request(await app()).get("/api/organization/seats/pricing");
+    expect(res.status).toBe(200);
+    expect(res.body.canPurchaseSeats).toBe(false);
+    expect(stripeOpened.count).toBe(0);
+  });
+});
+
+describe("the self-serve seat-count route never creates billable seats", () => {
+  async function setSeats(org: Record<string, unknown>, seatCount: number) {
+    h.org = org;
+    const { registerTeamReadinessRoutes } = await import("../../server/routes-team-readiness");
+    const app = express();
+    app.use(express.json());
+    registerTeamReadinessRoutes(app);
+    return request(app).post("/api/team-readiness/seat-count").send({ seatCount });
+  }
+
+  it("raising past the included seats is refused with the support step, like the purchase route", async () => {
+    h.seatSyncs = [];
+    const res = await setSeats({ id: 7, subscriptionTier: "pro", seatCount: 1 }, TIER_LIMITS.pro.includedSeats + 1);
+    expect(res.status).toBe(402);
+    expect(res.body.error).toBe("seat_purchase_unavailable");
+    expect(res.body.details.nextStep.href).toBe("/support");
+    // Seats granted outside the stored seat count are not billable add-ons:
+    // raising seat_count onto them would bill them, so it is refused too.
+    const granted = await setSeats(
+      { id: 7, subscriptionTier: "pro", seatCount: 1, additionalSeats: 3 },
+      TIER_LIMITS.pro.includedSeats + 1,
+    );
+    expect(granted.status).toBe(402);
+    expect(h.seatSyncs, "no billable seat reached the add-on sync").toEqual([]);
+  });
+
+  it("within what the org already has, the route is not a seat purchase", async () => {
+    const res = await setSeats({ id: 7, subscriptionTier: "pro", seatCount: 1 }, TIER_LIMITS.pro.includedSeats);
+    expect(res.body?.error).not.toBe("seat_purchase_unavailable");
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    // A support-set count can be kept or lowered.
+    const kept = await setSeats({ id: 7, subscriptionTier: "pro", seatCount: 4 }, 4);
+    expect(kept.body?.error).not.toBe("seat_purchase_unavailable");
+    expect(kept.status, JSON.stringify(kept.body)).toBe(200);
   });
 });

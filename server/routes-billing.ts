@@ -3,7 +3,7 @@ import { autoRenewalTermsText, AUTO_RENEWAL_TERMS_VERSION } from "@shared/billin
 import express from "express";
 import { getOrganization, getClerkAuth, type AuthenticatedRequest } from "./types/request";
 import { storage, db } from "./storage";
-import { SUBSCRIPTION_TIERS, cancellationSurveys, refundRequests, stripeProcessedEvents } from "@shared/schema";
+import { cancellationSurveys, refundRequests, stripeProcessedEvents } from "@shared/schema";
 import { SUBSCRIPTION_EVENT } from "@shared/billing/subscriptionEventVocabulary";
 import { eq, and, desc, gte } from "drizzle-orm";
 import { isAuthenticated } from "./auth";

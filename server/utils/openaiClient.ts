@@ -100,38 +100,9 @@ export async function callWithCircuitBreaker<T>(fn: () => Promise<T>): Promise<T
   return openAICircuitBreaker.call(fn);
 }
 
-/**
- * Credit-checked AI call: verifies the org has sufficient credits before
- * calling the AI API, then deducts credits on success.
- *
- * Throws an Error with message "Insufficient credits" if the org cannot afford the call.
- * Founders bypass all credit checks.
- */
-export async function callWithCreditCheck<T>(
-  organizationId: number,
-  fn: () => Promise<T>,
-  costCents = 2, // default to ai_chat cost
-): Promise<T> {
-  // Lazy import to avoid circular dependencies
-  const { CreditService } = await import("../services/credits");
-  const creditService = new CreditService();
-
-  const hasCredits = await creditService.hasEnoughCredits(organizationId, costCents);
-  if (!hasCredits) {
-    logger.warn(`[AI] Organization ${organizationId} blocked — insufficient credits (need ${costCents}¢)`);
-    throw new Error("Insufficient credits for AI request. Please purchase a credit pack to continue.");
-  }
-
-  const result = await openAICircuitBreaker.call(fn);
-
-  // Deduct after success — don't charge for failed calls
-  await creditService.deductOrFundFromTrial(organizationId, costCents, "AI chat completion", {
-    actionType: "ai_chat",
-  }).catch((err) => {
-    logger.error("[AI] Failed to deduct credits after successful call", err instanceof Error ? err : undefined);
-  });
-
-  return result;
-}
+// callWithCreditCheck (a credit-gated wrapper charging every call as
+// ai_chat) was removed 2026-10-12: it had no callers, and a Pax charge path
+// that bypasses paxTurnFunding would bill included turns (founder decision
+// 2026-10-12). Charge sites are enumerated in paxTurnsIncludedAreFree.test.ts.
 
 export { CircuitOpenError };

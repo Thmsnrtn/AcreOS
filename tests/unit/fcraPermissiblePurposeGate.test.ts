@@ -231,6 +231,7 @@ vi.mock("../../server/middleware/getOrCreateOrg", () => ({
 }));
 vi.mock("../../server/middleware/usageLimitGate", () => ({
   usageLimitGate: () => (_req: any, _res: any, next: any) => next(),
+  aiByokThresholdGate: () => (_req: any, _res: any, next: any) => next(),
 }));
 vi.mock("../../server/middleware/roleScope", () => ({
   requireScope: () => (_req: any, _res: any, next: any) => next(),
@@ -264,6 +265,7 @@ vi.mock("../../server/services/skipTracingService", () => ({
 }));
 vi.mock("../../server/middleware/rateLimit", () => ({
   createRateLimiter: () => (_req: any, _res: any, next: any) => next(),
+  aiLimiter: (_req: any, _res: any, next: any) => next(),
 }));
 vi.mock("../../server/services/creditPool", () => ({
   poolDebit: (...args: any[]) => H.poolDebitMock(...(args as [any])),

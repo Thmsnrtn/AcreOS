@@ -200,6 +200,18 @@ export const publicParcelReportEventsTotal = new Counter({
   registers: [registry],
 });
 
+// ── Pax turn settlement ─────────────────────────────────────────────────────
+// A Pax turn on the credit lane is charged BEFORE the AI call
+// (paxTurnFunding.reservePaxTurn) and settled after it: a usage record when it
+// was delivered, a refund when it was not. A failure at either stage is logged
+// at error level AND counted here, so a refund that never landed is visible.
+export const paxTurnSettleFailuresTotal = new Counter({
+  name: "acreos_pax_turn_settle_failures_total",
+  help: "Pax turn settlement failures, labelled by stage: refund (an undelivered turn's charge was not returned) | record (a delivered turn's usage record was not written).",
+  labelNames: ["stage"] as const,
+  registers: [registry],
+});
+
 // ── Response secret-column guard ────────────────────────────────────────────
 // server/middleware/secretColumnGuard.ts removes registered secret columns
 // (server/utils/secretColumns.ts) from JSON responses. Every increment is a

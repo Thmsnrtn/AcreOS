@@ -1,5 +1,6 @@
 import type { Express } from "express";
 import { DealCreationRefusedError, DealTransitionRefusedError } from "./storage/dealRepo";
+import { paxTurnScope } from "./services/paxTurnContext";
 import { omitProtectedFields, omitServerOwnedFields } from "./utils/updatePayload";
 import { fraudGateRefusal, sealWireAttestation, stampWireConfirmation, withdrawWireConfirmation } from "./services/closingEvidence";
 import { storage } from "./storage";
@@ -1524,7 +1525,8 @@ export function registerDealRoutes(app: Express): void {
   // PROPERTY ANALYSIS CHAT
   // ============================================
   
-  api.post("/api/properties/:id/analyze", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.post("/api/properties/:id/analyze", isAuthenticated, getOrCreateOrg, paxTurnScope(), async (req, res) => {
+    let paxCharge: import('./services/paxTurnFunding').PaxTurnCharge | null = null;
     try {
       const org = req.organization;
       const propertyId = Number(req.params.id);
@@ -1546,26 +1548,21 @@ export function registerDealRoutes(app: Express): void {
         return refusePlanLimit(res, usageCheck);
       }
 
-      // Credit check for deal AI chat
-      const { CreditService } = await import('./services/credits');
-      const dealCreditService = new CreditService();
-      const dealChatCents = 2;
-      const credit = await dealCreditService.evaluateCredits(org.id, dealChatCents);
-      if (!credit.allowed) {
-        const balance = await dealCreditService.getBalance(org.id).catch(() => 0);
-        return refusePaxCredits(res, {
-          lane: credit.lane,
-          requiredCents: dealChatCents,
-          balanceCents: balance,
-          subscriptionTier: org.subscriptionTier,
-          byokAvailable: undefined,
-        });
-      }
-
       const property = await storage.getProperty(org.id, propertyId);
       if (!property) {
         return Errors.notFound(res, "Property");
       }
+
+      // Deal AI chat is a Pax turn (founder decisions 2026-10-12/17): only the
+      // credit lane is charged, atomically, before the AI call; an undelivered
+      // turn is refunded below.
+      const { paxTurnFunding, reservePaxTurn } = await import('./services/paxTurnFunding');
+      const paxLane = await paxTurnFunding(org.id, { usage: usageCheck });
+      const reservation = await reservePaxTurn(org.id, paxLane, { description: 'Deal AI analysis', markTurn: true });
+      if (!reservation.ok) {
+        return refusePaxCredits(res, { ...reservation.refusal, subscriptionTier: org.subscriptionTier, byokAvailable: undefined });
+      }
+      paxCharge = reservation.charge;
 
       const { ResearchIntelligenceAgent, DealsAcquisitionAgent, skillRegistry } = await import('./services/core-agents');
       // Panel-300 90-15 / gap E: migrated from direct OpenAI to routeAITask.
@@ -1657,8 +1654,9 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
 
       const aiResponse = response.content || "I couldn't generate a response. Please try again.";
 
-      // Deduct credits after successful AI call
-      dealCreditService.deductOrFundFromTrial(org.id, 2, 'Deal AI analysis', { actionType: 'ai_chat' }).catch(() => {});
+      const { settlePaxTurn } = await import('./services/paxTurnFunding');
+      await settlePaxTurn(paxCharge, { delivered: true, metadata: { feature: "property_analysis_chat", propertyId } });
+      paxCharge = null;
 
       const suggestions = generateSuggestions(message, property);
 
@@ -1668,6 +1666,10 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
         actions: [],
       });
     } catch (err: any) {
+      if (paxCharge) {
+        const { settlePaxTurn } = await import('./services/paxTurnFunding');
+        await settlePaxTurn(paxCharge, { delivered: false, reason: "property analysis failed" });
+      }
       logger.error("Property analysis error", err instanceof Error ? err : undefined);
       Errors.internal(res, err instanceof Error ? err : new Error("Failed to analyze property"));
     }

@@ -50,7 +50,6 @@ const AMBIGUOUS_LITERAL_BASELINE: Record<string, number> = {
   "server/services/aiOfferService.ts#generateOfferLetter#routeAITask#customer": 1,
   "server/services/atlasMemory.ts#extractMemoriesFromConversation#meteredChatCompletion#background": 1,
   "server/services/buyerMatchingAI.ts#analyzeBuyerPreferences#meteredChatCompletion#customer": 1,
-  "server/services/campaignOptimizer.ts#generateOptimizations#meteredChatCompletion#customer": 1,
   "server/services/complianceGuardian.ts#generateComplianceReport#meteredChatCompletion#customer": 1,
   "server/services/complianceValidator.ts#validateCompliance#routeAITask#background": 1,
   "server/services/directorAgent.ts#reason#routeReasoningTask#customer": 1,

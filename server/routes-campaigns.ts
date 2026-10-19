@@ -1558,10 +1558,15 @@ export function registerCampaignRoutes(app: Express): void {
       }
 
       const { campaignOptimizerService } = await import("./services/campaignOptimizer");
-      const result = await campaignOptimizerService.optimizeCampaign(campaign);
-      
+      // Past the allowance the wall's refusal propagates to the catch below
+      // (a 429 naming the way forward), never a silent rules fallback.
+      const result = await campaignOptimizerService.optimizeCampaign(campaign, { origin: "customer" });
+
       res.json({
         success: true,
+        // "rules": no AI answer was available; these are the built-in
+        // rule-based suggestions and are not presented as AI.
+        source: result.source,
         campaignId,
         metrics: result.metrics,
         score: result.score,
