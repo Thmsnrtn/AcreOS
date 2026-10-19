@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useAccessibility } from "@/contexts/accessibility-context";
 import { useState } from "react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Eye, Type, Clock, Image as ImageIcon, Hand, Brain, Wind, ChevronDown, Accessibility } from "lucide-react";
+import { Type, Clock, Image as ImageIcon, Hand, Brain, Wind, ChevronDown, Accessibility } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /**
