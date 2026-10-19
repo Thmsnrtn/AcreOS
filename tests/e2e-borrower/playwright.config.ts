@@ -41,14 +41,14 @@ export default defineConfig({
         ["html", { open: "never" }],
         [
           "json",
-          { outputFile: "tests/e2e-borrower/results/playwright-report.json" },
+          { outputFile: "results/playwright-report.json" },
         ],
       ]
     : [
         ["list"],
         [
           "json",
-          { outputFile: "tests/e2e-borrower/results/playwright-report.json" },
+          { outputFile: "results/playwright-report.json" },
         ],
       ],
   outputDir: "test-results/e2e-borrower",
