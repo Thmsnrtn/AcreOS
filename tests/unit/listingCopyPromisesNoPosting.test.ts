@@ -32,11 +32,15 @@
  * (listings.tsx named in the offender list); restoring the tools.tsx desc →
  * red. Reverted after each red run.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import ts from "typescript";
 import { PLATFORMS, channelCredentialStore, type LegacySyndicationPlatform } from "../../server/services/listingSyndication";
+
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
+
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 const ROOT = path.resolve(__dirname, "../..");
 const CLIENT = path.join(ROOT, "client/src");

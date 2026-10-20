@@ -15,6 +15,10 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { stripComments } from "../helpers/stripComments";
 
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
+
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
+
 const created: any[] = [];
 vi.mock("stripe", () => {
   class FakeStripe {
