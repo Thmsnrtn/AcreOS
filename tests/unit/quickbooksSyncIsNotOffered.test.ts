@@ -25,6 +25,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { stripComments } from "../helpers/stripComments";
 
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
+
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
+
 const ROOT = path.resolve(__dirname, "../..");
 
 function walk(dir: string, acc: string[] = []): string[] {
