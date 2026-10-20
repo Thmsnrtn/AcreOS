@@ -191,14 +191,27 @@ describe("checkTcpaConsentFromLead — the consent matrix", () => {
     expect(result.canDirectMail).toBe(false);
   });
 
-  it("with consent and no DNC flag: all channels open", () => {
-    expect(checkTcpaConsentFromLead({ doNotContact: false, tcpaConsent: true, optOutDate: null })).toMatchObject({
+  it("with WRITTEN consent and no DNC flag: all channels open", () => {
+    expect(checkTcpaConsentFromLead({ doNotContact: false, tcpaConsent: true, optOutDate: null, consentSource: "written" })).toMatchObject({
       canEmail: true,
       canSms: true,
       canCall: true,
       canDirectMail: true,
       blocked: false,
     });
+  });
+
+  // Founder decision 2026-10-20 #1 — the same predicate as tcpaGateForSms.
+  it("with a NON-written grant: everything but SMS", () => {
+    for (const consentSource of ["verbal", "admin_manual", "manual", null]) {
+      expect(checkTcpaConsentFromLead({ doNotContact: false, tcpaConsent: true, optOutDate: null, consentSource })).toMatchObject({
+        canEmail: true,
+        canSms: false,
+        canCall: true,
+        canDirectMail: true,
+        blocked: false,
+      });
+    }
   });
 });
 

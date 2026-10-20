@@ -61,7 +61,7 @@ export default function ToolsPage() {
             {[
               { href: "/tax-optimizer", icon: Receipt, title: "Tax optimizer", desc: "Capital gains analysis, 1031 exchanges, and year-end tax planning.", color: "bg-acr-pos-soft dark:bg-acr-pos-soft/20 text-acr-pos-soft-ink" },
               { href: "/goals", icon: Target, title: "Goals & OKRs", desc: "Track revenue targets, deal counts, and organizational KPIs.", color: "bg-acr-accent/15 dark:bg-acr-accent/20 text-acr-accent" },
-              { href: "/syndication", icon: Share2, title: "Listing syndication", desc: "Publish properties to Land.com, LandWatch, LandFlip, and more.", color: "bg-acr-accent/15 dark:bg-acr-accent/20 text-acr-accent" },
+              { href: "/syndication", icon: Share2, title: "Listing syndication", desc: "AcreOS prepares the listing copy. Posting to Land.com or Facebook runs on your own account with each, which can't be connected yet; Craigslist gets ready-to-paste text.", color: "bg-acr-accent/15 dark:bg-acr-accent/20 text-acr-accent" },
               { href: "/model-training", icon: Brain, title: "Valuation model", desc: "AcreOS Market Value™ training data, accuracy metrics, and predictions.", color: "bg-acr-warn-soft dark:bg-acr-warn-soft/20 text-acr-warn-soft-ink" },
               { href: "/webhooks", icon: Webhook, title: "Webhooks", desc: "HMAC-signed webhooks for Zapier, Make, and custom integrations.", color: "bg-muted dark:bg-acr-bg-sunken/20 text-muted-foreground" },
             ].map(({ href, icon: Icon, title, desc, color }) => (

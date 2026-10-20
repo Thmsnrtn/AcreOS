@@ -2384,7 +2384,7 @@ export async function executeTool(
           if (!lead) return toolRefusal({ what: "No lead with that number is in this account", why: "It may have been deleted, merged, or the number came from another list", unlock: "Search your leads by name or address to find the one you mean" });
           if (!lead.email) return toolRefusal({ what: "The email was not sent", why: "This lead has no email address on file", unlock: "Add their email on the lead's page, or reach them by mail or text instead" });
           toEmail = lead.email;
-          leadForCompliance = { tcpaConsent: lead.tcpaConsent, doNotContact: lead.doNotContact, optOutDate: lead.optOutDate };
+          leadForCompliance = { tcpaConsent: lead.tcpaConsent, doNotContact: lead.doNotContact, optOutDate: lead.optOutDate, consentSource: lead.consentSource };
         } else if (args.email) {
           toEmail = args.email;
         } else {
@@ -2394,7 +2394,7 @@ export async function executeTool(
         if (leadForCompliance) {
           const compliance = checkTcpaConsentFromLead(leadForCompliance);
           if (!compliance.canEmail) {
-            return toolRefusal({ what: "The email was not sent", why: "This lead has asked not to be contacted", unlock: "Reach them only if they contact you again; their opt-out is on the lead's page" });
+            return toolRefusal({ what: "The email was not sent", why: "This lead has asked not to be contacted", unlock: "Contact them only if they reach out to you first; their opt-out is on the lead's page" });
           }
         }
 
@@ -2468,7 +2468,7 @@ export async function executeTool(
           if (!lead) return toolRefusal({ what: "No lead with that number is in this account", why: "It may have been deleted, merged, or the number came from another list", unlock: "Search your leads by name or address to find the one you mean" });
           if (!lead.phone) return toolRefusal({ what: "The text was not sent", why: "This lead has no phone number on file", unlock: "Add their number on the lead's page, or reach them by mail instead" });
           toPhone = lead.phone;
-          leadForCompliance = { tcpaConsent: lead.tcpaConsent, doNotContact: lead.doNotContact, optOutDate: lead.optOutDate };
+          leadForCompliance = { tcpaConsent: lead.tcpaConsent, doNotContact: lead.doNotContact, optOutDate: lead.optOutDate, consentSource: lead.consentSource };
           // Lead-aware quiet hours (uses lead.timezone when present).
           const qh = isWithinQuietHoursForLead(lead as any);
           if (qh.blocked) {
@@ -2488,7 +2488,7 @@ export async function executeTool(
         if (leadForCompliance) {
           const compliance = checkTcpaConsentFromLead(leadForCompliance);
           if (!compliance.canSms) {
-            return toolRefusal({ what: "The text was not sent", why: "This lead has not given consent to be texted, or has asked not to be contacted", unlock: "Record their consent on the lead's page if they gave it, or reach them by mail instead" });
+            return toolRefusal({ what: "The text was not sent", why: "This lead has not given written consent to be texted, or has asked not to be contacted", unlock: "Record their written consent on the lead's page if they gave it (a signed form, a web form, or a texted opt-in), or reach them by mail or a call instead" });
           }
         }
 

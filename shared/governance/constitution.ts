@@ -886,6 +886,7 @@ export const CONSTITUTION: readonly ConstitutionInvariant[] = [
       refs: [
         "tests/unit/noColdTextWithoutWrittenConsent.test.ts",
         "server/services/tcpaCompliance.ts",
+        "server/services/leadContactability.ts",
         "server/services/smsService.ts",
       ],
       note:
@@ -894,7 +895,13 @@ export const CONSTITUTION: readonly ConstitutionInvariant[] = [
         "TCPA grant AND a source in WRITTEN_SMS_CONSENT_SOURCES. Servicing " +
         "texts (borrower of record) and replies (an inbound in the last 24h) " +
         "have their own lawful bases and are not cold texts. The test drives " +
-        "the real gate for every non-written source and every written one.",
+        "the real gate for every non-written source and every written one. " +
+        "ADOPTION: every reader that decides SMS reachability gives the " +
+        "gate's verdict — checkTcpaConsentFromLead.canSms (so canSendViaChannel " +
+        "and Pax's reachability), the channel picker, checkTcpaBeforeSend, the " +
+        "autopilot send_sms hand, and Pax's text count (writtenSmsConsentSql, " +
+        "built from the same constant). The test drives each over every source " +
+        "and enrols every server function naming tcpaConsent, by parse.",
     },
   },
   {

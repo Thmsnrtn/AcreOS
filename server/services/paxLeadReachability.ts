@@ -25,7 +25,7 @@ export interface LeadReachability {
 type ReachabilityLead = Pick<
   Lead,
   "tcpaConsent" | "doNotContact" | "optOutDate" | "phone" | "email" | "address" | "city" | "state" | "zip"
-> & Partial<Pick<Lead, "firstName" | "lastName" | "notes">>;
+> & Partial<Pick<Lead, "firstName" | "lastName" | "notes" | "consentSource">>;
 
 function verdict(
   gate: { allowed: boolean; reason?: string },

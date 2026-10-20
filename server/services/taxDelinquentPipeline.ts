@@ -25,6 +25,7 @@ import { normalizeParcelRef, parcelKey } from "@shared/parcel/parcelRef";
 import { splitOwnerName } from "@shared/parcel/ownerName";
 import { clock } from "../utils/clock";
 import { stampOwnerSuppression } from "./trust/ownerSuppression";
+import { hasWrittenSmsConsent } from "./leadContactability";
 
 // ─── Tax-delinquent payload convention ──────────────────────────────────────
 // The leads table has no apn/county/taxDelinquent/delinquentAmount/metadata/
@@ -657,8 +658,10 @@ async function addToOutreach(id: number, orgId: number): Promise<AddToOutreachRe
   // and lead activity. Without explicit consent the legal-safe default is
   // mail-only (no TCPA risk; FDCPA mini-Miranda still applies on letter
   // copy but that's a template concern).
+  // "Express consent" is the textable state, so it is decided by the text
+  // gate's own predicate (founder decision 2026-10-20 #1: WRITTEN consent).
   const consentState: AddToOutreachResult["consentState"] =
-    (row as any).tcpaConsent ? "express_consent" : "mail_only";
+    hasWrittenSmsConsent(row) ? "express_consent" : "mail_only";
 
   // Move the lead into 'contacted' status. The actual mailer / SMS / call
   // queueing is a separate service that runs from the lead's status; we

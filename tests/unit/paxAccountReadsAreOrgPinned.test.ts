@@ -185,6 +185,30 @@ describe("the finance summary reports only what is recorded", () => {
   });
 });
 
+describe("Pax's text count is the text gate's own verdict (founder decision 2026-10-20 #1)", () => {
+  // Mutation recorded: reverting the text branch to
+  // `eq(leads.tcpaConsent, true)` turns this red — the count then promised
+  // texts to verbal / admin_manual leads that tcpaGateForSms refuses.
+  it("counts only WRITTEN consent, from the same WRITTEN_SMS_CONSENT_SOURCES constant", async () => {
+    const { WRITTEN_SMS_CONSENT_SOURCES } = await import("../../server/services/leadContactability");
+    await reads.countContactableLeadsForPax(ORG, "text");
+    const q = queries.find((x) => x.from === "leads")!;
+    const { sql, params } = render(q.where!);
+    expect(sql).toContain('"leads"."tcpa_consent" IS TRUE');
+    const m = sql.match(/"leads"\."consent_source" in \(([^)]*)\)/);
+    expect(m, "the text count does not filter on consent_source").not.toBeNull();
+    const bound = [...m![1].matchAll(/\$(\d+)/g)].map((x) => params[Number(x[1]) - 1]);
+    expect(bound.sort()).toEqual([...WRITTEN_SMS_CONSENT_SOURCES].sort());
+  });
+
+  it("the email count needs no TCPA consent (decision #2)", async () => {
+    await reads.countContactableLeadsForPax(ORG, "email");
+    const { sql } = render(queries.find((x) => x.from === "leads")!.where!);
+    expect(sql).not.toContain("tcpa_consent");
+    expect(sql).not.toContain("consent_source");
+  });
+});
+
 describe("the delegating readers pass the caller's org to the canonical service", () => {
   it("credits read the org's balance and history", async () => {
     const out: any = await reads.readCreditsForPax(ORG, { limit: 3 });

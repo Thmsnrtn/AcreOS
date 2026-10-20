@@ -22,7 +22,7 @@ import { db } from "../db";
 import { eq, and } from "drizzle-orm";
 import { agentMemory } from "@shared/schema";
 import { logger } from "../utils/logger";
-import { leadHasOptedOut } from "./leadContactability";
+import { leadHasOptedOut, hasWrittenSmsConsent } from "./leadContactability";
 
 import { TERMINAL_LEAD_STATUSES } from "@shared/lifecycle/pipeline-status";
 import { clock } from "../utils/clock";
@@ -110,6 +110,7 @@ export async function checkTcpaBeforeSend(
     const rows = await db
       .select({
         tcpaConsent: leads.tcpaConsent,
+        consentSource: leads.consentSource,
         doNotContact: leads.doNotContact,
         optOutDate: leads.optOutDate,
         status: leads.status,
@@ -131,9 +132,14 @@ export async function checkTcpaBeforeSend(
       };
     }
 
-    // TCPA consent required for SMS and calls — never for email.
+    // TCPA consent required for SMS and calls — never for email. A text
+    // needs it WRITTEN (founder decision 2026-10-20 #1): the same
+    // hasWrittenSmsConsent tcpaGateForSms refuses on.
     if (channel !== "email" && !lead.tcpaConsent) {
       return { allowed: false, reason: "No TCPA consent on record for this lead" };
+    }
+    if (channel === "sms" && !hasWrittenSmsConsent(lead)) {
+      return { allowed: false, reason: `No written consent on record (source: ${lead.consentSource ?? "unknown"}) — a text needs prior express written consent` };
     }
 
     // Dead/closed leads — never contact autonomously

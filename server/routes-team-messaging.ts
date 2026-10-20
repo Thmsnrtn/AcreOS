@@ -1256,7 +1256,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
               platform: p,
               status: "missing_credentials",
               error: "Marketplace syndication requires a Scale plan or higher",
-              manualInstructions: `Upgrade your plan to enable ${listingSyndication.PLATFORMS[p].name} syndication.`,
+              manualInstructions: `Channel publishing is on the Scale plan and up. Even there, ${listingSyndication.PLATFORMS[p].name} posts only on your own ${listingSyndication.PLATFORMS[p].name} account, which AcreOS can't connect yet — post this listing there yourself.`,
             });
             continue;
           }

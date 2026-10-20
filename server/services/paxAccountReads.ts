@@ -44,6 +44,7 @@ import { counterpartyEmailIdentityStatus } from "./emailService";
 import { orgHasConnectedSmsIdentity } from "./smsService";
 import { directMailService } from "./directMail";
 import { storage } from "../storage";
+import { writtenSmsConsentSql } from "./leadContactability";
 import { byokTierAllows } from "@shared/billing/byok-tiers";
 import { tierForSubscriptionTier } from "@shared/billing/tier-pricing";
 import { clock } from "../utils/clock";
@@ -463,19 +464,22 @@ export async function readSendingIdentityForPax(organizationId: number, subscrip
 /**
  * Leads the org may contact on `channel`, counted the way the send gate
  * decides it (tcpaCompliance.checkTcpaConsentFromLead: not do-not-contact,
- * TCPA consent for SMS only — email needs none), plus an address to send to.
+ * WRITTEN TCPA consent for SMS only — email needs none), plus an address to
+ * send to.
  * Used to word the screener's refusal ("I can text only the N leads who did").
  */
 export async function countContactableLeadsForPax(
   organizationId: number,
   channel: "text" | "email",
 ): Promise<number> {
-  // Texting needs TCPA consent; email does not (CAN-SPAM opt-out model,
-  // founder decision 2026-10-20 #2) — the same split checkTcpaConsentFromLead
-  // makes. Opt-outs are excluded below for both.
+  // Texting needs WRITTEN TCPA consent (founder decision 2026-10-20 #1) —
+  // writtenSmsConsentSql is hasWrittenSmsConsent in SQL, built from the
+  // same source list, so this count is the gate's own verdict; email needs
+  // none (CAN-SPAM opt-out model, decision #2). Opt-outs are excluded below
+  // for both.
   const reachable =
     channel === "text"
-      ? and(eq(leads.tcpaConsent, true), isNotNull(leads.phone))
+      ? and(writtenSmsConsentSql(), isNotNull(leads.phone))
       : isNotNull(leads.email);
   const [row] = await db
     .select({ n: sql<number>`count(*)::int` })

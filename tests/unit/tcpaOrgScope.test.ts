@@ -54,7 +54,7 @@ beforeEach(() => {
 describe("checkTcpaBeforeSend — org scoping (T0-5)", () => {
   it("constrains the lookup by organization_id AND lead id", async () => {
     state.rows = [
-      { tcpaConsent: true, doNotContact: false, optOutDate: null, status: "new" },
+      { tcpaConsent: true, consentSource: "website", doNotContact: false, optOutDate: null, status: "new" },
     ];
 
     const result = await checkTcpaBeforeSend(7, 42, "sms");
