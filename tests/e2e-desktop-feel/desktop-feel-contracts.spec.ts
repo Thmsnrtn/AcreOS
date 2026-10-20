@@ -93,6 +93,24 @@ async function seedTestAuth(page: Page, baseURL: string): Promise<void> {
       sameSite: "Lax",
     },
   ]);
+  // Token-gated bypass for Fly staging (parity with the customer-journey
+  // spec): the cookie alone is not a Clerk session, so without the token
+  // header the server cannot resolve the synthetic user — Clerk-JS then
+  // handshakes against the Clerk API with this origin as redirect_url,
+  // which Clerk rejects for the staging domain, and the audit ends up
+  // tabbing through Clerk's raw error JSON instead of the app. Present
+  // the shared secret on every /api/* request so the server-side bypass
+  // resolves the test identity (see server/auth/testAuth.ts).
+  const e2eToken = process.env.E2E_TEST_AUTH_TOKEN;
+  if (e2eToken) {
+    await page.route("**/api/**", async (route) => {
+      const headers = {
+        ...route.request().headers(),
+        "X-E2E-Auth-Token": e2eToken,
+      };
+      await route.continue({ headers });
+    });
+  }
 }
 
 async function attachFinding(
