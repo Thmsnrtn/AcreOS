@@ -298,14 +298,20 @@ test.describe("F3.4 borrower cookie-session — end-to-end", () => {
     playwright,
   }) => {
     // We can't truly change source IP from a Playwright runner, but we
-    // CAN forge `X-Forwarded-For` if the server trusts the proxy header.
-    // The server reads `req.ip` (Express). When `trust proxy` is on
-    // (Fly + Cloudflare prod), `req.ip` becomes the left-most XFF entry.
-    // We exchange with one XFF and fetch with another — verifies the
-    // IP-binding check fires.
+    // CAN forge the header the server actually keys client IP on.
+    // getClientIp (server/utils/clientIp.ts) prefers CF-Connecting-IP —
+    // the header Cloudflare stamps in production — and deliberately does
+    // NOT trust the left-most X-Forwarded-For entry (spoofable; with
+    // trust proxy = 1, req.ip is the Fly-edge view, identical for both
+    // contexts). Forging XFF therefore can't move the resolved IP; forge
+    // CF-Connecting-IP instead: exchange binds to one value, fetch
+    // presents another, and the binding check must fire.
     const ctx = await playwright.request.newContext({
       baseURL: process.env.TARGET_URL ?? process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:5000",
-      extraHTTPHeaders: { "x-forwarded-for": "203.0.113.5" },
+      extraHTTPHeaders: {
+        "x-forwarded-for": "203.0.113.5",
+        "cf-connecting-ip": "203.0.113.5",
+      },
     });
     try {
       const csrfHeaders = await csrfHeadersFor(ctx);
@@ -329,6 +335,7 @@ test.describe("F3.4 borrower cookie-session — end-to-end", () => {
         baseURL: process.env.TARGET_URL ?? process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:5000",
         extraHTTPHeaders: {
           "x-forwarded-for": "198.51.100.7",
+          "cf-connecting-ip": "198.51.100.7",
           cookie: `${STMT_COOKIE_NAME}=${cookie!.value}`,
         },
       });
