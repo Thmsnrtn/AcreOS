@@ -14,6 +14,7 @@ import { omitProtectedFields, omitServerOwnedFields } from "./utils/updatePayloa
 import { getOrganizationId } from "./types/request";
 import * as vaManagement from "./services/vaManagement";
 import { clock } from "./utils/clock";
+import { OfferBatchUnavailableError, assertOfferBatchCreatable } from "./services/offerBatchGate";
 
 export async function registerVAEngineRoutes(app: Express): Promise<void> {
   const api = app;
@@ -142,6 +143,16 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   });
 
   api.post("/api/offer-batches", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      // Nothing processes a batch yet, so none is created — the same refusal
+      // as POST /api/offers/batch (services/offerBatchGate.ts).
+      assertOfferBatchCreatable();
+    } catch (refusal) {
+      if (refusal instanceof OfferBatchUnavailableError) {
+        return Errors.badRequest(res, refusal.message, { reason: refusal.reason });
+      }
+      return Errors.internal(res, refusal);
+    }
     try {
       const org = req.organization;
       const validated = insertOfferBatchSchema.parse({

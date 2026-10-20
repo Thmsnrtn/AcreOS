@@ -34,7 +34,7 @@ import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { assertEntityBelongsToOrg } from "./utils/orgScope";
 import { generate1099NecPdf, type Nec1099Form } from "./services/form1099NecPdf";
-import { NEC_THRESHOLD_CENTS, NEC_THRESHOLD_NEEDS_REVIEW, resolve1099Payer, type PayerSource } from "./services/form1099NecPayer";
+import { NEC_THRESHOLD_CENTS, NEC_THRESHOLD_NEEDS_REVIEW, resolve1099Payer } from "./services/form1099NecPayer";
 import { clock } from "./utils/clock";
 
 // The 1099-NEC threshold lives in services/form1099NecPayer.ts with its
@@ -195,8 +195,10 @@ export function registerContractorRoutes(app: Express): void {
       if (!org) return Errors.notFound(res, "Organization");
 
       // Never print a placeholder payer on a tax form: refuse until the
-      // payer's legal name, full address and TIN are on file.
-      const payerResolution = resolve1099Payer(org as unknown as PayerSource, (raw) => maskTaxId(raw, "ein"));
+      // payer's legal name, full tax address and a real TIN are on file.
+      // organizations.ein is ciphertext; the shared resolver decrypts it
+      // (the same one the Form 1098 lender block uses).
+      const payerResolution = resolve1099Payer(org);
       if (!payerResolution.ok) {
         return Errors.badRequest(
           res,

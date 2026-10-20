@@ -3,14 +3,21 @@
  *
  * A 1099-NEC is a tax form furnished to a recipient and the IRS. The batch
  * generator used to print "(payer address not configured)" / "—" in the payer
- * address and a "—" payer TIN when the organization had none on file — and
- * the organizations table carries no tax address or EIN column at all, so
- * every form it ever produced had a placeholder payer. A placeholder on a tax
- * form is never acceptable: the form is refused until the payer's legal name,
- * full address and TIN are on file.
+ * address and a "—" payer TIN when the organization had none on file, and it
+ * read a `taxAddress` it never typed. A placeholder on a tax form is never
+ * acceptable: the form is refused until the payer's legal name, full address
+ * and a real TIN are on file.
+ *
+ * The payer identity IS on the organizations row — `legalEntityName`,
+ * `taxAddress` (jsonb), `taxIdType` and `ein`, which holds CIPHERTEXT (see
+ * PATCH /api/organization/tax-identity). It is resolved by the same
+ * resolver the Form 1098 lender block uses (./orgTaxIdentity): the TIN is
+ * decrypted before it is validated or masked, and masked in the shape of its
+ * type (an SSN payer is never printed as an EIN).
  */
 
 import type { Nec1099Payer } from "./form1099NecPdf";
+import { maskOrgTin, resolveOrgTaxIdentity, type OrgTaxIdentitySource } from "./orgTaxIdentity";
 
 /**
  * 1099-NEC reporting threshold, in cents ($600.00 — the figure in force
@@ -24,52 +31,35 @@ import type { Nec1099Payer } from "./form1099NecPdf";
 export const NEC_THRESHOLD_CENTS = 60000;
 export const NEC_THRESHOLD_NEEDS_REVIEW = true;
 
-export interface PayerAddress {
-  line1?: string | null;
-  line2?: string | null;
-  city?: string | null;
-  state?: string | null;
-  zip?: string | null;
-}
-
-export interface PayerSource {
-  name?: string | null;
-  legalEntityName?: string | null;
-  taxAddress?: PayerAddress | null;
-  ein?: string | null;
-  phone?: string | null;
-}
+export type PayerSource = OrgTaxIdentitySource;
 
 export type PayerResolution =
   | { ok: true; payer: Nec1099Payer }
   | { ok: false; missing: string[] };
 
-const present = (v: unknown): v is string => typeof v === "string" && v.trim().length > 0;
-
-export function resolve1099Payer(org: PayerSource, maskTaxId: (raw: string) => string): PayerResolution {
+export function resolve1099Payer(org: PayerSource): PayerResolution {
+  const id = resolveOrgTaxIdentity(org);
   const missing: string[] = [];
-  const name = present(org.legalEntityName) ? org.legalEntityName : present(org.name) ? org.name : null;
-  if (!name) missing.push("payer legal name");
-  const a = org.taxAddress ?? null;
-  if (!a || !present(a.line1) || !present(a.city) || !present(a.state) || !present(a.zip)) {
-    missing.push("payer address (street, city, state, ZIP)");
+  if (!id.name) missing.push("payer legal name");
+  if (id.problems.includes("ADDRESS_INCOMPLETE")) missing.push("payer address (street, city, state, ZIP)");
+  const tinDigits = id.tin.replace(/[^0-9]/g, "");
+  if (id.problems.includes("TIN_MISSING") || id.problems.includes("TIN_PLACEHOLDER") || tinDigits.length !== 9) {
+    missing.push(`payer TIN (${id.tinType})`);
   }
-  const tinDigits = present(org.ein) ? org.ein.replace(/[^0-9]/g, "") : "";
-  if (tinDigits.length !== 9) missing.push("payer TIN (EIN)");
-  if (missing.length > 0 || !name || !a) return { ok: false, missing };
+  if (missing.length > 0 || !id.name) return { ok: false, missing };
   return {
     ok: true,
     payer: {
-      name,
+      name: id.name,
       address: {
-        line1: a.line1 as string,
-        ...(present(a.line2) ? { line2: a.line2 } : {}),
-        city: a.city as string,
-        state: a.state as string,
-        zip: a.zip as string,
+        line1: id.address.line1,
+        ...(id.address.line2 ? { line2: id.address.line2 } : {}),
+        city: id.address.city,
+        state: id.address.state,
+        zip: id.address.zip,
       },
-      ...(present(org.phone) ? { phone: org.phone } : {}),
-      taxIdMasked: maskTaxId(org.ein as string),
+      ...(id.phone ? { phone: id.phone } : {}),
+      taxIdMasked: maskOrgTin(id.tin, id.tinType),
     },
   };
 }

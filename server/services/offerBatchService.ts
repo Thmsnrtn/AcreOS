@@ -23,6 +23,7 @@ import {
 import { eq, and, inArray } from "drizzle-orm";
 import { jobQueueService } from "./jobQueue";
 import { clock } from "../utils/clock";
+import { OFFER_BATCH_JOB_TYPE, assertOfferBatchCreatable } from "./offerBatchGate";
 
 // ─── Pricing Matrix ──────────────────────────────────────────────────────────
 
@@ -136,32 +137,9 @@ function computeOfferAmount(parcel: BatchParcel, config: BatchConfig): number | 
 
 // ─── Batch Processing ────────────────────────────────────────────────────────
 
-/** The job a created batch hands its letters / sends / reply tracking to. */
-const OFFER_BATCH_JOB_TYPE = "process-offer-batch" as const;
-
-/**
- * Whether anything processes an offer batch after it is created.
- *
- * FALSE today: no handler for OFFER_BATCH_JOB_TYPE is registered
- * (server/jobs/runScheduledJobs.ts), so a batch used to be written, its job
- * enqueued into nothing, and its status set to "processing" forever — while
- * the page promised the print vendor merge and per-recipient reply tracking.
- * Until the handler exists (Phase 4 land work), creation is refused outright.
- * Flip this in the same commit that registers the handler;
- * offerBatchIsRefusedWithoutHandler.test.ts holds the refusal to whether a
- * handler is registered anywhere in server/.
- */
-const OFFER_BATCH_PROCESSOR_REGISTERED = false;
-
-export class OfferBatchUnavailableError extends Error {
-  readonly reason = "offer_batch_processing_unavailable";
-  constructor() {
-    super(
-      "Offer batches are not processed yet: nothing generates the letters, sends them, or tracks replies. No batch was created.",
-    );
-    this.name = "OfferBatchUnavailableError";
-  }
-}
+// The creation refusal (flag, error, job type) lives in ./offerBatchGate so
+// the storage-layer insert path is held to the same rule.
+export { OfferBatchUnavailableError } from "./offerBatchGate";
 
 export async function createOfferBatch(
   parcels: BatchParcel[],
@@ -169,7 +147,7 @@ export async function createOfferBatch(
 ): Promise<BatchResult> {
   // Refused before any row is written: a batch nothing processes would sit
   // "processing" forever with draft offers attached to it.
-  if (!OFFER_BATCH_PROCESSOR_REGISTERED) throw new OfferBatchUnavailableError();
+  assertOfferBatchCreatable();
 
   // Create the batch record
   // TODO(tsc): offer_batches has no createdBy/metadata columns and `pricingMatrix` is a

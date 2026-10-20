@@ -5,7 +5,7 @@
  * batch, enqueue a "process-offer-batch" job that no handler ever picked up,
  * and leave the batch "processing" forever — while this page promised that
  * Pax hands the merge to the print vendor and tracks reply windows. Creation
- * is now refused at the API (offerBatchService OFFER_BATCH_PROCESSOR_REGISTERED)
+ * is now refused at the API (services/offerBatchGate.ts, on both creation routes)
  * and this page says plainly what exists: a list of batches created earlier,
  * none of which were processed.
  */
