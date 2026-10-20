@@ -119,7 +119,7 @@ export const ALL_NAV_ITEMS: MasterNavItem[] = [
   { id: "model-training",label: "Valuation Model", icon: Brain,       href: "/model-training", description: "AcreOS Market Value model training and insights" },
   { id: "investor-network", label: "Investor Network", icon: UserCheck, href: "/investor-network", description: "Verified investor directory and profiles" },
   // Additional Pages
-  { id: "avm-bulk",             label: "Bulk AVM",            icon: TrendingUp,  href: "/avm-bulk",             description: "Bulk AI valuations via CSV upload" },
+  { id: "avm-bulk",             label: "Bulk AVM",            icon: TrendingUp,  href: "/avm-bulk",             description: "Run the AVM on every property you own" },
   // marketplace-analytics + va-dashboard entries removed 2026-07-07 (WS1):
   // both pages were archived 2026-06-01 with no App.tsx route, so the
   // command palette navigated straight to NotFound.

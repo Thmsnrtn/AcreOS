@@ -580,11 +580,43 @@ async function checkSuperfund(lat: number, lng: number): Promise<EnvironmentalRe
 // Uses OpenStreetMap Overpass API (free)
 // ============================================
 
+/**
+ * Shortest distance, in feet, from (lat,lng) to an OSM way's geometry
+ * (equirectangular projection — accurate to well under 1% at a 500 m radius).
+ * Null when the way carries no geometry: an unmeasured distance is not a
+ * number.
+ */
+function distanceToWayFeet(
+  lat: number,
+  lng: number,
+  geometry: Array<{ lat: number; lon: number }> | undefined,
+): number | null {
+  if (!geometry || geometry.length === 0) return null;
+  const mPerDegLat = 111_320;
+  const mPerDegLng = 111_320 * Math.cos((lat * Math.PI) / 180);
+  const pts = geometry.map((g) => ({ x: (g.lon - lng) * mPerDegLng, y: (g.lat - lat) * mPerDegLat }));
+  let best = Infinity;
+  if (pts.length === 1) best = Math.hypot(pts[0].x, pts[0].y);
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const a = pts[i];
+    const b = pts[i + 1];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const len2 = dx * dx + dy * dy;
+    const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, -(a.x * dx + a.y * dy) / len2));
+    best = Math.min(best, Math.hypot(a.x + t * dx, a.y + t * dy));
+  }
+  return Number.isFinite(best) ? Math.round(best * 3.281) : null;
+}
+
 async function checkRoadAccess(lat: number, lng: number): Promise<RoadAccessResult> {
   try {
-    // Query for roads within 500m
+    // Query for roads within 500m — WITH geometry, so the distance to the
+    // nearest one is measured rather than asserted. (This used to request
+    // `out body 5` — no geometry — and report a hardcoded 1,640 ft for every
+    // parcel.)
     const radius = 500;
-    const query = `[out:json][timeout:10];(way["highway"](around:${radius},${lat},${lng}););out body 5;`;
+    const query = `[out:json][timeout:10];(way["highway"](around:${radius},${lat},${lng}););out geom;`;
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10000);
@@ -614,37 +646,41 @@ async function checkRoadAccess(lat: number, lng: number): Promise<RoadAccessResu
       };
     }
 
-    // Classify road type
+    // The NEAREST mapped road, by measured distance (ties / unmeasured ways
+    // fall back to OSM's road hierarchy). This used to pick the "best" road
+    // by hierarchy alone and call it "adequate access" / "Road access
+    // confirmed" — a road somewhere within 500 m is a proximity MEASUREMENT;
+    // it does not establish that the parcel touches it or has legal
+    // ingress/egress.
     const roadHierarchy = ["motorway", "trunk", "primary", "secondary", "tertiary", "residential", "unclassified", "service", "track", "path"];
-    const bestRoad = ways.sort((a: any, b: any) => {
-      return roadHierarchy.indexOf(a.tags?.highway) - roadHierarchy.indexOf(b.tags?.highway);
-    })[0];
+    const measured = ways.map((w: any) => ({ w, ft: distanceToWayFeet(lat, lng, w.geometry) }));
+    measured.sort((a: any, b: any) => {
+      if (a.ft !== null && b.ft !== null && a.ft !== b.ft) return a.ft - b.ft;
+      if (a.ft !== null && b.ft === null) return -1;
+      if (a.ft === null && b.ft !== null) return 1;
+      return roadHierarchy.indexOf(a.w.tags?.highway) - roadHierarchy.indexOf(b.w.tags?.highway);
+    });
+    const nearest = measured[0];
+    const bestRoad = nearest?.w;
+    const distanceFeet: number | null = nearest?.ft ?? null;
 
     const roadType = bestRoad?.tags?.highway || "unknown";
     const roadName = bestRoad?.tags?.name || null;
+    const distanceText = distanceFeet !== null ? `~${distanceFeet.toLocaleString("en-US")} ft from the parcel point` : "within 500 m (distance not measured)";
 
     let risk: RiskLevel = "low";
-    let note = "";
+    let note = `Nearest mapped road: ${roadName || roadType} (${roadType}), ${distanceText}. Proximity is not legal access — confirm frontage or a recorded easement.`;
 
     if (["track", "path"].includes(roadType)) {
       risk = "medium";
-      note = `Nearest road is a ${roadType} — not a maintained public road. Verify county road maintenance.`;
-    } else if (["residential", "unclassified", "service"].includes(roadType)) {
-      risk = "low";
-      note = `${roadName || "Local road"} (${roadType}) within 500m — adequate access.`;
-    } else if (["tertiary", "secondary", "primary"].includes(roadType)) {
-      risk = "low";
-      note = `Good access — ${roadName || roadType} road nearby.`;
-    } else {
-      risk = "low";
-      note = `Road access confirmed.`;
+      note = `Nearest mapped road is a ${roadType}, ${distanceText} — not a maintained public road. Verify county road maintenance and legal access.`;
     }
 
     return {
       status: "done",
       hasDirectRoadAccess: true,
       nearestRoadName: roadName,
-      nearestRoadDistanceFeet: Math.round(500 * 3.281), // conservative max distance in feet
+      nearestRoadDistanceFeet: distanceFeet,
       roadType,
       risk,
       note,
@@ -1362,9 +1398,9 @@ function scoreChecks(checks: AutoDDReport["checks"]): { score: number; risk: Ris
   } else if (checks.roadAccess.risk === "medium") {
     score -= 8; offerAdjustment -= 5;
     redFlags.push(checks.roadAccess.note);
-  } else if (checks.roadAccess.hasDirectRoadAccess) {
-    greenFlags.push(`Road access confirmed: ${checks.roadAccess.nearestRoadName || checks.roadAccess.roadType}`);
   }
+  // No "Road access confirmed" green flag: a mapped road within 500 m is a
+  // proximity measurement (see checkRoadAccess), not confirmed access.
 
   // Soil (informational, small adjustment)
   if (checks.soil.farmlandClassification?.toLowerCase().includes("prime")) {

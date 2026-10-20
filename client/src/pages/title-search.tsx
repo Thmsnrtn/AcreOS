@@ -10,40 +10,198 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { usd, formatDate } from "@/lib/format";
-import { Search, FileCheck, AlertTriangle, XCircle, CheckCircle2, Loader2, DollarSign, Calendar, Info } from "lucide-react";
+import { Search, FileCheck, AlertTriangle, XCircle, Loader2, Calendar, Info } from "lucide-react";
 
-interface TitleIssue {
-  type: "lien" | "encumbrance" | "easement" | "judgment" | "tax_lien";
-  description: string;
-  amount?: number;
-  holder?: string;
+/**
+ * MIRRORS `TitleSearchResult` in server/services/titleSearchService.ts — the
+ * exact JSON that POST /api/title-search/search returns. This page used to
+ * declare an invented shape (issues[] / titleClear / chainOfTitle / reportId /
+ * estimatedClearanceCost) that the server never sent, so `result.issues.filter`
+ * threw on EVERY response and the page could not render a single result.
+ * `titleSearchPreScreen.test.tsx` renders this view with the server's own
+ * output so the two cannot drift apart again.
+ */
+export interface TitleLienRecord {
+  type: "mortgage" | "tax_lien" | "mechanic_lien" | "judgment" | "hoa" | "other";
+  amount: number;
+  lender?: string;
   recordedDate?: string;
-  severity: "blocking" | "warning" | "informational";
+  maturityDate?: string;
+  position: number;
+  status: "open" | "satisfied" | "unknown";
 }
 
-interface TitleSearchResult {
-  parcelId: string;
-  address: string;
-  currentOwner: string;
-  ownerSince: string;
-  legalDescription: string;
-  titleClear: boolean;
-  issues: TitleIssue[];
-  chainOfTitle: Array<{ owner: string; from: string; to?: string }>;
-  estimatedClearanceCost?: number;
-  searchDate: string;
-  reportId: string;
+export interface TitleDeedRecord {
+  grantee: string | null;
+  grantor: string | null;
+  deedType: "warranty" | "quitclaim" | "grant" | "trustee" | "other";
+  recordedDate: string;
+  documentNumber?: string;
+  saleAmount?: number;
 }
 
-const SEVERITY_CONFIG = {
-  blocking: { color: "text-acr-neg-soft-ink", bg: "bg-acr-neg-soft", icon: XCircle },
-  warning: { color: "text-acr-warn-soft-ink", bg: "bg-acr-warn-soft", icon: AlertTriangle },
-  informational: { color: "text-acr-accent", bg: "bg-acr-accent", icon: FileCheck },
-};
+export interface TitleSearchResult {
+  apn: string;
+  address?: string;
+  currentOwner: string | null;
+  ownerOccupied: boolean | null;
+  vestingType?: string;
+  ownerMailingAddress?: string;
+  liens: TitleLienRecord[];
+  totalLienAmount: number;
+  hasOpenLiens: true | null;
+  deedChain: TitleDeedRecord[];
+  lastSaleDate?: string;
+  lastSalePrice?: number;
+  hasHoa: boolean | null;
+  hoaName?: string;
+  hoaFeeMonthly?: number;
+  titleClearStatus: "encumbered" | "unverified";
+  redFlags: string[];
+  source: "propstream" | "attom" | "mock";
+  searchedAt: string;
+}
+
+const NOT_REPORTED = "Not reported";
 
 function humanizeType(s: string): string {
   const spaced = s.replace(/_/g, " ");
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
+function yesNoUnknown(v: boolean | null): string {
+  if (v === null) return NOT_REPORTED;
+  return v ? "Yes" : "No";
+}
+
+const SOURCE_LABEL: Record<TitleSearchResult["source"], string> = {
+  propstream: "PropStream",
+  attom: "ATTOM",
+  mock: "No provider",
+};
+
+/**
+ * Renders the server's pre-screen result. Unknown is shown as unknown: there
+ * is no "Clear" badge, because a public-records pre-screen cannot certify
+ * clear title and absence of a reported lien is not evidence of none.
+ */
+export function TitleSearchResultView({ result }: { result: TitleSearchResult }) {
+  const openLiens = result.liens.filter((l) => l.status === "open");
+  const encumbered = result.titleClearStatus === "encumbered";
+  return (
+    <div className="space-y-4" data-testid="title-search-result">
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div>
+              <CardTitle className="text-base">{result.address || `Parcel ${result.apn}`}</CardTitle>
+              <p className="text-xs text-muted-foreground">
+                Parcel <span className="font-mono">{result.apn}</span> · Source {SOURCE_LABEL[result.source]} · Searched {formatDate(result.searchedAt)}
+              </p>
+            </div>
+            <Badge variant={encumbered ? "destructive" : "secondary"} data-testid="badge-title-status">
+              {encumbered ? (
+                <><XCircle className="w-3 h-3 mr-1" aria-hidden="true" />Encumbrances reported</>
+              ) : (
+                <><AlertTriangle className="w-3 h-3 mr-1" aria-hidden="true" />Not verified</>
+              )}
+            </Badge>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <dl className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+            <div>
+              <dt className="text-muted-foreground">Current owner</dt>
+              <dd className="font-medium" data-testid="text-current-owner">{result.currentOwner ?? NOT_REPORTED}</dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">Owner occupied</dt>
+              <dd className="font-medium">{yesNoUnknown(result.ownerOccupied)}</dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">HOA</dt>
+              <dd className="font-medium" data-testid="text-hoa">{yesNoUnknown(result.hasHoa)}</dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">Open liens reported</dt>
+              <dd className={`font-medium tabular-nums ${openLiens.length > 0 ? "text-acr-neg" : ""}`} data-testid="text-open-lien-count">
+                {openLiens.length > 0 ? `${openLiens.length} (${usd(result.totalLienAmount)})` : "None reported"}
+              </dd>
+            </div>
+          </dl>
+        </CardContent>
+      </Card>
+
+      {result.redFlags.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Red flags</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ul className="space-y-2" aria-label="Red flags" data-testid="list-red-flags">
+              {result.redFlags.map((flag, i) => (
+                <li key={i} className="flex items-start gap-2 rounded-md p-3 bg-acr-warn-soft text-acr-warn-soft-ink text-xs">
+                  <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" aria-hidden="true" />
+                  <span>{flag}</span>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
+
+      {result.liens.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Liens reported</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ul className="space-y-2" aria-label="Liens reported">
+              {result.liens.map((lien, i) => (
+                <li key={i} className={`rounded-md p-3 ${lien.status === "open" ? "bg-acr-neg-soft" : "bg-muted"}`}>
+                  <div className={`flex items-center gap-2 text-xs font-medium ${lien.status === "open" ? "text-acr-neg-soft-ink" : ""}`}>
+                    <FileCheck className="w-3.5 h-3.5" aria-hidden="true" />
+                    <span>{humanizeType(lien.type)} · {humanizeType(lien.status)}</span>
+                  </div>
+                  <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1 text-xs text-muted-foreground">
+                    {lien.lender && <span>Holder: {lien.lender}</span>}
+                    <span className="tabular-nums">Amount: {usd(lien.amount)}</span>
+                    {lien.recordedDate && (
+                      <span className="flex items-center gap-1">
+                        <Calendar className="w-3 h-3" aria-hidden="true" />
+                        <span className="tabular-nums">{formatDate(lien.recordedDate)}</span>
+                      </span>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
+
+      {result.deedChain.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Recorded transfers</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ol className="space-y-2" aria-label="Recorded transfers">
+              {result.deedChain.map((deed, i) => (
+                <li key={i} className="flex flex-wrap items-center gap-3 text-xs">
+                  <div className="w-2 h-2 rounded-full bg-primary flex-shrink-0" aria-hidden="true" />
+                  <span className="font-medium">{deed.grantor ?? NOT_REPORTED} → {deed.grantee ?? NOT_REPORTED}</span>
+                  <span className="text-muted-foreground">{humanizeType(deed.deedType)}</span>
+                  <span className="text-muted-foreground tabular-nums">{formatDate(deed.recordedDate)}</span>
+                  {deed.saleAmount != null && <span className="tabular-nums">{usd(deed.saleAmount)}</span>}
+                </li>
+              ))}
+            </ol>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
 }
 
 export default function TitleSearchPage() {
@@ -77,9 +235,6 @@ export default function TitleSearchPage() {
         variant: "destructive",
       }),
   });
-
-  const blockingCount = result?.issues.filter(i => i.severity === "blocking").length ?? 0;
-  const warningCount = result?.issues.filter(i => i.severity === "warning").length ?? 0;
 
   return (
     <PageShell>
@@ -157,119 +312,7 @@ export default function TitleSearchPage() {
         </CardContent>
       </Card>
 
-      {result && (
-        <div className="space-y-4">
-          <Card>
-            <CardHeader className="pb-2">
-              <div className="flex items-start justify-between gap-3 flex-wrap">
-                <div>
-                  <CardTitle className="text-base">{result.address}</CardTitle>
-                  <p className="text-xs text-muted-foreground">
-                    Parcel <span className="font-mono">{result.parcelId}</span> · Report <span className="font-mono">#{result.reportId}</span>
-                  </p>
-                </div>
-                <Badge variant={result.titleClear ? "default" : "destructive"}>
-                  {result.titleClear ? (
-                    <><CheckCircle2 className="w-3 h-3 mr-1" aria-hidden="true" />Clear</>
-                  ) : (
-                    <><XCircle className="w-3 h-3 mr-1" aria-hidden="true" />Issues found</>
-                  )}
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <dl className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                <div>
-                  <dt className="text-muted-foreground">Current owner</dt>
-                  <dd className="font-medium">{result.currentOwner}</dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">Owner since</dt>
-                  <dd className="font-medium tabular-nums">{formatDate(result.ownerSince)}</dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">Blocking issues</dt>
-                  <dd className={`font-medium tabular-nums ${blockingCount > 0 ? "text-acr-neg" : "text-acr-pos"}`}>{blockingCount}</dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">Warnings</dt>
-                  <dd className={`font-medium tabular-nums ${warningCount > 0 ? "text-acr-warn" : ""}`}>{warningCount}</dd>
-                </div>
-              </dl>
-
-              {result.estimatedClearanceCost && result.estimatedClearanceCost > 0 && (
-                <div className="flex items-center gap-2 text-sm">
-                  <DollarSign className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
-                  Est. clearance cost: <strong className="tabular-nums">{usd(result.estimatedClearanceCost / 100)}</strong>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {result.issues.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">Title issues</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ul className="space-y-2" aria-label="Title issues">
-                  {result.issues.map((issue, i) => {
-                    const config = SEVERITY_CONFIG[issue.severity];
-                    const Icon = config.icon;
-                    return (
-                      <li
-                        key={i}
-                        className={`rounded-md p-3 ${config.bg}`}
-                        role={issue.severity === "blocking" ? "alert" : undefined}
-                      >
-                        <div className={`flex items-center gap-2 text-xs font-medium ${config.color}`}>
-                          <Icon className="w-3.5 h-3.5" aria-hidden="true" />
-                          <span aria-label={`${issue.severity} issue: ${humanizeType(issue.type)}`}>
-                            {humanizeType(issue.type)}
-                          </span>
-                        </div>
-                        <p className="text-xs mt-1">{issue.description}</p>
-                        <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1 text-xs text-muted-foreground">
-                          {issue.holder && <span>Holder: {issue.holder}</span>}
-                          {issue.amount && <span className="tabular-nums">Amount: {usd(issue.amount / 100)}</span>}
-                          {issue.recordedDate && (
-                            <span className="flex items-center gap-1">
-                              <Calendar className="w-3 h-3" aria-hidden="true" />
-                              <span className="tabular-nums">{formatDate(issue.recordedDate)}</span>
-                            </span>
-                          )}
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </CardContent>
-            </Card>
-          )}
-
-          {result.chainOfTitle.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">Chain of title</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ol className="space-y-2" aria-label="Chain of title">
-                  {result.chainOfTitle.map((entry, i) => (
-                    <li key={i} className="flex items-center gap-3 text-xs">
-                      <div className="w-2 h-2 rounded-full bg-primary flex-shrink-0" aria-hidden="true" />
-                      <span className="font-medium">{entry.owner}</span>
-                      <span className="text-muted-foreground tabular-nums">
-                        {formatDate(entry.from)}
-                        {entry.to ? ` — ${formatDate(entry.to)}` : " — Present"}
-                      </span>
-                    </li>
-                  ))}
-                </ol>
-              </CardContent>
-            </Card>
-          )}
-        </div>
-      )}
+      {result && <TitleSearchResultView result={result} />}
     </PageShell>
   );
 }

@@ -1064,31 +1064,13 @@ $mig0262$`,
    )`,
   'CREATE UNIQUE INDEX IF NOT EXISTS "county_timelines_state_county_uk" ON "county_subdivision_timelines" ("state", "county_name")',
 
-  // Brigid §7 seed: TN counties she actually works.
-  `INSERT INTO "county_subdivision_timelines"
-     ("state","county_name","p50_total_days","p90_total_days","pre_application_lead_days","sketch_plan_lead_days","preliminary_plat_lead_days","percolation_lead_days","final_plat_lead_days","recording_lead_days","percolation_season_note","typical_revision_rounds","source")
-     VALUES ('TN','Williamson',420,540,14,30,45,90,45,21,'TDEC tester April-May and Sept-Oct only — frozen / saturated ground blocks tests',3,'Williamson Co Planning + Brigid historicals 2024-2026')
-     ON CONFLICT ("state","county_name") DO NOTHING`,
-  `INSERT INTO "county_subdivision_timelines"
-     ("state","county_name","p50_total_days","p90_total_days","pre_application_lead_days","sketch_plan_lead_days","preliminary_plat_lead_days","percolation_lead_days","final_plat_lead_days","recording_lead_days","percolation_season_note","typical_revision_rounds","source")
-     VALUES ('TN','Hickman',120,180,7,14,21,120,21,14,'One TDEC tester serves three counties — queue is the bottleneck',2,'Hickman Co Planning')
-     ON CONFLICT ("state","county_name") DO NOTHING`,
-  `INSERT INTO "county_subdivision_timelines"
-     ("state","county_name","p50_total_days","p90_total_days","pre_application_lead_days","sketch_plan_lead_days","preliminary_plat_lead_days","percolation_lead_days","final_plat_lead_days","recording_lead_days","percolation_season_note","typical_revision_rounds","source")
-     VALUES ('TN','Maury',180,240,14,21,30,90,30,21,'TDEC seasonal window applies',2,'Maury Co Planning')
-     ON CONFLICT ("state","county_name") DO NOTHING`,
-  `INSERT INTO "county_subdivision_timelines"
-     ("state","county_name","p50_total_days","p90_total_days","pre_application_lead_days","sketch_plan_lead_days","preliminary_plat_lead_days","percolation_lead_days","final_plat_lead_days","recording_lead_days","percolation_season_note","typical_revision_rounds","source")
-     VALUES ('TN','Davidson',null,null,30,45,60,null,60,30,'Davidson restricts residential subdivisions in some districts — confirm zoning before bidding',4,'Metro Nashville Planning Dept')
-     ON CONFLICT ("state","county_name") DO NOTHING`,
-  `INSERT INTO "county_subdivision_timelines"
-     ("state","county_name","p50_total_days","p90_total_days","preliminary_plat_lead_days","percolation_lead_days","final_plat_lead_days","recording_lead_days","typical_revision_rounds","source")
-     VALUES ('TN','Rutherford',300,420,45,90,45,21,3,'Rutherford Co Planning — Brigid expansion estimate')
-     ON CONFLICT ("state","county_name") DO NOTHING`,
-  `INSERT INTO "county_subdivision_timelines"
-     ("state","county_name","p50_total_days","p90_total_days","preliminary_plat_lead_days","percolation_lead_days","final_plat_lead_days","recording_lead_days","typical_revision_rounds","source")
-     VALUES ('TN','Marshall',150,210,30,90,30,14,2,'Marshall Co Planning estimate')
-     ON CONFLICT ("state","county_name") DO NOTHING`,
+  // The six TN "county timeline" seed rows that stood here (Williamson,
+  // Hickman, Maury, Davidson, Rutherford, Marshall) were authored by "Brigid",
+  // an AI review persona — two of them even cited "Brigid historicals" /
+  // "Brigid expansion estimate" as their source, and the rest attributed the
+  // persona's numbers to county planning offices. /county-timelines and the
+  // carry-cost projector presented them as county data. Removed; 0283 at the
+  // end of this list deletes them from databases that already ran this seed.
 
   `CREATE TABLE IF NOT EXISTS "cc_r_templates" (
      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -12338,6 +12320,64 @@ BEGIN
   PERFORM set_config('lock_timeout', prior_lock_timeout, true);
 END
 $mig0281$`,
+  // 0283 — delete the county-timeline rows seeded from an AI review persona
+  // ("Brigid"), not from any county. Two cite Brigid by name in "source"; the
+  // other four are the same persona seed attributed to planning offices, and
+  // are matched on their exact seeded (state, county, source) so an operator-
+  // entered row for the same county is never touched. Idempotent: a second run
+  // deletes nothing. Guarded so a fresh DB without the table is a no-op.
+  // Mirrors migrations/0283_county_timelines_drop_persona_seed.sql.
+  `DO $mig0283$
+BEGIN
+  IF to_regclass('"county_subdivision_timelines"') IS NULL THEN
+    RETURN;
+  END IF;
+  DELETE FROM "county_subdivision_timelines"
+   WHERE "source" ILIKE '%brigid%'
+      OR ("state", "county_name", "source") IN (
+        ('TN', 'Hickman', 'Hickman Co Planning'),
+        ('TN', 'Maury', 'Maury Co Planning'),
+        ('TN', 'Davidson', 'Metro Nashville Planning Dept'),
+        ('TN', 'Marshall', 'Marshall Co Planning estimate'));
+END
+$mig0283$`,
+  // 0284 — the seeded "Assignment Contract" system template named the deal's
+  // SELLER ({{seller_name}}) as the ASSIGNOR; the assignor is the original
+  // BUYER. seedSystemTemplates() only seeds an empty table, so existing rows
+  // are corrected here. Idempotent (matches only the uncorrected body) and
+  // guarded for a database without the table.
+  // Mirrors migrations/0284_assignment_template_assignor_label.sql.
+  `DO $mig0284$
+BEGIN
+  IF to_regclass('"document_templates"') IS NULL THEN
+    RETURN;
+  END IF;
+UPDATE "document_templates"
+   SET "content" = REPLACE(REPLACE(REPLACE(REPLACE(REPLACE("content",
+         '<strong>ASSIGNOR:</strong> {{seller_name}}', '<strong>ASSIGNOR:</strong> {{assignor_name}}'),
+         '<strong>ASSIGNEE:</strong> {{buyer_name}}', '<strong>ASSIGNEE:</strong> {{assignee_name}}'),
+         'Assignor: {{seller_name}}', 'Assignor: {{assignor_name}}'),
+         'Assignee: {{buyer_name}}', 'Assignee: {{assignee_name}}'),
+         'Assignor entered into a Real Estate Purchase Agreement dated {{original_contract_date}} ("Original Contract")',
+         'Assignor, as buyer, entered into a Real Estate Purchase Agreement dated {{original_contract_date}} with {{seller_name}}, as seller ("Original Contract")'),
+       "variables" = '[
+         {"name":"assignor_name","description":"Full legal name of the assignor — the original BUYER under the purchase contract","type":"text","required":true},
+         {"name":"assignee_name","description":"Full legal name of the assignee — the party stepping into the buyer position under the original contract","type":"text","required":true},
+         {"name":"seller_name","description":"Full legal name of the property seller under the original contract (not a party to this assignment)","type":"text","required":true},
+         {"name":"property_address","description":"Full street address of the property","type":"text","required":true},
+         {"name":"parcel_number","description":"APN/Parcel number","type":"text","required":true},
+         {"name":"county","description":"County where property is located","type":"text","required":true},
+         {"name":"state","description":"State where property is located","type":"text","required":true},
+         {"name":"purchase_price","description":"Original purchase price","type":"currency","required":true},
+         {"name":"assignment_fee","description":"Assignment fee amount","type":"currency","required":true},
+         {"name":"closing_date","description":"Date of assignment","type":"date","required":true},
+         {"name":"original_contract_date","description":"Date of original purchase contract","type":"date","required":true}
+       ]'::jsonb,
+       "updated_at" = now()
+ WHERE "is_system_template" = true
+   AND "content" LIKE '%<strong>ASSIGNOR:</strong> {{seller_name}}%';
+END
+$mig0284$`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

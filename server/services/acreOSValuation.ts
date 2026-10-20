@@ -6,7 +6,6 @@ import {
 } from '../../shared/schema';
 import { eq, and, desc, gte, sql, between } from 'drizzle-orm';
 import { GradientBoostingRegressor, extractLandFeatures, LAND_FEATURE_NAMES, type LandFeatureInput } from './gradientBoosting';
-import { requireOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
 import { addMonths } from "../utils/dateUtils";
 import { assertFeeSimpleOrThrow } from "../utils/landStatus";
@@ -28,7 +27,6 @@ import { assertFeeSimpleOrThrow } from "../utils/landStatus";
 import { femaZoneCode, isSfhaCode } from "./data-source-broker";
 import { clock } from "../utils/clock";
 
-import { meteredChatCompletion } from "./aiSpendGuard";
 export const publicRecordTransaction = () =>
   sql`(${transactionTraining.transactionHash} NOT LIKE '%|%' AND ${transactionTraining.contributorOrgId} IS NULL)`;
 
@@ -448,7 +446,7 @@ class AcreOSValuationModel {
         request.acres
       );
 
-      // Stage 2 fallback: if no comparables, use AI to estimate from county/state context
+      // No comparables: only a trained model may produce a value; otherwise refuse.
       if (comparables.length === 0) {
         return await this.generateMarketEstimate(organizationId, request);
       }
@@ -470,15 +468,13 @@ class AcreOSValuationModel {
         adjustedValue *= (1 + adj.adjustment / 100);
       }
 
-      // Step 4: Use GPT-4 for qualitative analysis
-      const aiEnhancement = await this.getAIValuationEnhancement(
-        request,
-        comparables,
-        adjustedValue,
-        Number(organizationId),
-      );
-
-      const finalValue = adjustedValue * (1 + aiEnhancement.adjustment / 100);
+      // Step 4 used to ask GPT-4o for a "market momentum" ±20% adjustment and
+      // fold it into the value — while leaving it OUT of the returned
+      // `marketAdjustments`, so a customer saw adjustments that did not
+      // multiply out to the number they were shown, and part of a billable
+      // value was a language model's unaudited guess. Removed: the value is
+      // the comps baseline times exactly the adjustments we report.
+      const finalValue = adjustedValue;
       const pricePerAcre = finalValue / request.acres;
 
       // Step 5: Calculate confidence interval
@@ -658,18 +654,16 @@ class AcreOSValuationModel {
   }
 
   /**
-   * Stage 2 fallback: generate a market estimate using OpenAI when no comparables exist.
-   * Returns a lower-confidence valuation clearly labeled as a market estimate.
+   * No comparables: a trained-model estimate when one can be made, else an honest refusal. Never an LLM-supplied number.
    */
   private async generateMarketEstimate(
     organizationId: string,
     request: ValuationRequest
   ): Promise<ValuationResult> {
     const { county, state } = request.location;
-    const { zoning, roadAccess, floodZone } = request.characteristics;
 
-    // W3.1: no fabricated baseline. Either a trained model or a clearly
-    // labeled AI estimate produces a number, or we refuse honestly. The old
+    // W3.1: no fabricated baseline. Only a trained model may produce a
+    // number, or we refuse honestly. The old
     // `= 1000` seed meant every parcel in America "was worth" $1,000/acre
     // the moment both real paths failed — branded as a proprietary model.
     let pricePerAcreEstimate: number | null = null;
@@ -698,49 +692,18 @@ class AcreOSValuationModel {
         estimateSource = 'gbm_model';
       }
     } catch {
-      // GBM unavailable — continue to AI fallback
+      // GBM unavailable — refuse below
     }
 
-    // --- Path 2: AI fallback (richer context, used when GBM isn't trained yet) ---
-    // Routed through OpenRouter → gpt-4o-mini equivalent for cost efficiency.
-    // `requireOpenAIClient()` throws if OPENROUTER isn't configured, so the
-    // outer try/catch above the path-2 block handles that as a soft failure.
-    if (estimateSource !== 'gbm_model' && process.env.AI_INTEGRATIONS_OPENROUTER_API_KEY) {
-      try {
-        const prompt = `You are a rural land valuation expert. Provide a realistic price-per-acre estimate for vacant land with these characteristics:
-
-County: ${county}, ${state}
-Acres: ${request.acres}
-Zoning: ${zoning || 'unknown'}
-Road access: ${roadAccess || 'unknown'}
-Flood zone: ${floodZone || 'unknown'}
-
-Return ONLY a JSON object with this exact format (no markdown, no explanation):
-{"pricePerAcre": <number>, "lowPerAcre": <number>, "highPerAcre": <number>, "rationale": "<one sentence>"}
-
-Base your estimate on typical rural land market conditions in ${county} County, ${state}. Be conservative.`;
-
-        const completion = await meteredChatCompletion(requireOpenAIClient(), {
-          model: 'openai/gpt-4o-mini',
-          messages: [{ role: 'user', content: prompt }],
-          temperature: 0.2,
-          max_tokens: 200,
-        }, { taskType: "valuation", orgId: Number(organizationId), origin: "customer" });
-
-        const raw = completion.choices[0]?.message?.content?.trim() || '';
-        const parsed = JSON.parse(raw);
-        if (parsed.pricePerAcre && typeof parsed.pricePerAcre === 'number') {
-          pricePerAcreEstimate = parsed.pricePerAcre;
-          estimateSource = 'ai_market_estimate';
-        }
-      } catch {
-        // AI call failed — nothing left that can honestly produce a value.
-      }
-    }
+    // Path 2 USED TO ask gpt-4o-mini for a $/acre "market estimate" when there
+    // were no comps, then price the parcel off it with a hardcoded confidence
+    // of 45 and an invented 0.6–1.5× band. A language model asked for a number
+    // with no sales data invents one. There is no LLM rung here any more: no
+    // comps → refuse, with the real fix path in `missing`.
 
     // ── Honest refusal (W3.1) ──────────────────────────────────────────────
     // No comps (we're only here because comparables.length === 0), the GBM
-    // isn't trained, and the AI path didn't produce a value. Refuse with
+    // declined. Refuse with
     // exactly what's missing instead of inventing a number.
     if (pricePerAcreEstimate === null) {
       logger.info('[avm] refusing valuation — insufficient data', {
@@ -755,7 +718,7 @@ Base your estimate on typical rural land market conditions in ${county} County, 
         confidence: 0,
         methodology: 'No valuation — not enough data to produce one honestly',
         missing: [
-          `Comparable land sales in ${county} County, ${state} (last 24 months)`,
+          `Comparable land sales in ${county} County, ${state} (last 24 months) — enter comps for this area, or run blind-offer comps`,
           'A trained regional valuation model for this area',
         ],
         comparables: [],
@@ -764,7 +727,8 @@ Base your estimate on typical rural land market conditions in ${county} County, 
     }
 
     const estimatedValue = Math.round(pricePerAcreEstimate * request.acres);
-    const confidence = gbmConfidence || 45; // GBM provides dynamic confidence; AI estimate = 45
+    // The trained model's own confidence — never a hardcoded fallback.
+    const confidence = gbmConfidence;
     const confidenceInterval = {
       low: Math.round(estimatedValue * 0.6),
       high: Math.round(estimatedValue * 1.5),
@@ -817,12 +781,9 @@ Base your estimate on typical rural land market conditions in ${county} County, 
       });
     } catch { /* non-fatal */ }
 
-    // W3.1(b): the LLM rung must never masquerade as a modeled value — it
-    // is an AI's educated guess and is labeled as exactly that.
-    const isAiEstimate = estimateSource === 'ai_market_estimate';
     return {
       status: "ok",
-      classification: isAiEstimate ? "ai_estimate" : "trained_model",
+      classification: "trained_model",
       estimatedValue,
       pricePerAcre: Math.round(pricePerAcreEstimate),
       confidenceInterval,
@@ -832,9 +793,7 @@ Base your estimate on typical rural land market conditions in ${county} County, 
       // "trained model estimate computed largely from defaults" — the two read
       // identically to a customer otherwise, and only one of them is worth
       // what this endpoint charges for it.
-      methodology: isAiEstimate
-        ? 'AI estimate (no local comparables) — an educated guess by a language model, not a comps-based value'
-        : gbmAssumedFeatures.length > 0
+      methodology: gbmAssumedFeatures.length > 0
           ? `AcreOS trained model estimate (no local comparables). ${gbmAssumedFeatures.length} of ${LAND_FEATURE_NAMES.length} model inputs were not measured for this parcel and used defaults: ${gbmAssumedFeatures.join(', ')}.`
           : 'AcreOS trained model estimate (no local comparables)',
       comparables: [],
@@ -1093,61 +1052,6 @@ Base your estimate on typical rural land market conditions in ${county} County, 
   }
 
   /**
-   * Get AI-powered valuation enhancement
-   */
-  private async getAIValuationEnhancement(
-    request: ValuationRequest,
-    comparables: ValuationResult['comparables'],
-    preliminaryValue: number,
-    organizationId: number,
-  ): Promise<{ adjustment: number; reasoning: string }> {
-    try {
-      const prompt = `You are a land valuation expert analyzing a property in ${request.location.county}, ${request.location.state}.
-
-Property Details:
-- Acres: ${request.acres}
-- Zoning: ${request.characteristics.zoning || 'Unknown'}
-- Water Rights: ${request.characteristics.waterRights ? 'Yes' : 'No'}
-- Utilities: ${request.characteristics.utilities?.join(', ') || 'None'}
-- Road Access: ${request.characteristics.roadAccess || 'Unknown'}
-- Topography: ${request.characteristics.topography || 'Unknown'}
-
-Comparable Sales: ${comparables.length} properties
-Average Comparable Price/Acre: $${Math.round(comparables.reduce((sum, c) => sum + c.pricePerAcre, 0) / comparables.length).toLocaleString()}
-
-Preliminary Valuation: $${preliminaryValue.toLocaleString()}
-
-Based on market trends, location factors, and property characteristics, provide:
-1. A percentage adjustment (-20% to +20%) to the preliminary valuation
-2. Brief reasoning (1-2 sentences)
-
-Consider factors like:
-- Market momentum in this area
-- Unique property characteristics
-- Development potential
-- Location advantages/disadvantages
-
-Respond in JSON format: { "adjustment": number, "reasoning": string }`;
-
-      const completion = await meteredChatCompletion(requireOpenAIClient(), {
-        model: 'openai/gpt-4o',
-        messages: [{ role: 'user', content: prompt }],
-        response_format: { type: 'json_object' },
-      }, { taskType: "valuation", orgId: organizationId, origin: "customer" });
-
-      const result = JSON.parse(completion.choices[0].message.content || '{}');
-      
-      return {
-        adjustment: result.adjustment || 0,
-        reasoning: result.reasoning || 'No additional adjustments',
-      };
-    } catch (error) {
-      logger.error('AI valuation enhancement failed', error);
-      return { adjustment: 0, reasoning: 'AI enhancement unavailable' };
-    }
-  }
-
-  /**
    * Calculate market volatility from comparables
    */
   private calculateMarketVolatility(comparables: ValuationResult['comparables']): number {
@@ -1318,26 +1222,32 @@ Respond in JSON format: { "adjustment": number, "reasoning": string }`;
    */
   async generateBulkValuations(
     organizationId: string
-  ): Promise<{ valuated: number; failed: number }> {
+  ): Promise<{ total: number; valuated: number; refused: number; skipped: number; failed: number }> {
+    // Values every property the org owns — there is NO file input. Counts are
+    // honest: `valuated` is only a status "ok" result; an insufficient-data
+    // refusal is `refused` (it used to be counted as valuated); rows missing
+    // acreage/state/county or not fee-simple are `skipped`.
     try {
       const props = await db.query.properties.findMany({
         where: eq(properties.organizationId, Number(organizationId)),
       });
 
       let valuated = 0;
+      let refused = 0;
+      let skipped = 0;
       let failed = 0;
 
       for (const prop of props) {
         try {
           if (!prop.sizeAcres || !prop.state || !prop.county) {
-            failed++;
+            skipped++;
             continue;
           }
           // Aniyah §2 — skip non-fee parcels in bulk mode. Per-call guard
           // inside generateValuation will also block; we short-circuit here
           // so the failure count is meaningful and we don't hammer the DB.
           if ((prop.landStatus ?? "unknown") !== "fee") {
-            failed++;
+            skipped++;
             logger.warn(`[BulkValuation] Skipping property ${prop.id} — landStatus=${prop.landStatus ?? "unknown"} requires manual review`);
             continue;
           }
@@ -1365,15 +1275,16 @@ Respond in JSON format: { "adjustment": number, "reasoning": string }`;
             },
           };
 
-          await this.generateValuation(organizationId, request);
-          valuated++;
+          const result = await this.generateValuation(organizationId, request);
+          if (result.status === "ok") valuated++;
+          else refused++;
         } catch (error) {
           failed++;
           logger.error(`Failed to valuate property ${prop.id}`, error);
         }
       }
 
-      return { valuated, failed };
+      return { total: props.length, valuated, refused, skipped, failed };
     } catch (error) {
       logger.error('Bulk valuation failed', error);
       throw error;

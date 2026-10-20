@@ -39,6 +39,70 @@ function refuseSignerRequest(res: Parameters<typeof Errors.badRequest>[0], err: 
 }
 
 /**
+ * THE canonical "is this an assignment-of-contract document?" predicate for
+ * the wholesaler state-rule gate (W-1).
+ *
+ * The gate used to fire only on `template.type === "assignment_of_contract"`
+ * — while the seeded SYSTEM template is type "assignment"
+ * (server/storage/documentsRepo.ts), the schema comment names a third
+ * spelling ("assignment_contract"), and an org template can be any type. So
+ * an IL / OK assignment generated with no block at all. A predicate keyed on
+ * one spelling is defeated by the next spelling; this one reads the type for
+ * any "assign" token AND the body for the instrument itself (an Assignor, or
+ * an "assignment of … contract" heading), so renaming the type does not
+ * reopen the bypass.
+ */
+export function isAssignmentTemplate(template: { type?: string | null; name?: string | null; content?: string | null }): boolean {
+  const type = (template.type ?? "").toLowerCase();
+  if (/assign/.test(type)) return true;
+  const name = (template.name ?? "").toLowerCase();
+  if (/\bassignment\b/.test(name) && /contract|agreement/.test(name)) return true;
+  const content = template.content ?? "";
+  return /\bassignor\b/i.test(content) || /assignment\s+of\s+(?:the\s+)?(?:real\s+estate\s+|purchase\s+)?(?:contract|agreement)/i.test(content);
+}
+
+type AssignmentGateOutcome =
+  | { ok: true }
+  | { ok: false; body: Record<string, unknown> };
+
+/** Run the wholesaler state-rule check for an assignment template. */
+async function assignmentComplianceGate(
+  state: string | undefined,
+  ackComplianceWarning: boolean,
+): Promise<AssignmentGateOutcome> {
+  const { checkAssignmentCompliance } = await import("./routes-wholesaler-rules");
+  const result = await checkAssignmentCompliance(state);
+  if (result.blocked) {
+    return {
+      ok: false,
+      body: {
+        error: "wholesaler_compliance_blocked",
+        message: result.summary,
+        recommendation: result.recommendation,
+        citation: result.citation,
+        attorneyReviewed: result.attorneyReviewed,
+        statusCode: 409,
+      },
+    };
+  }
+  if (result.warn && !ackComplianceWarning) {
+    return {
+      ok: false,
+      body: {
+        error: "wholesaler_compliance_warn",
+        message: result.summary,
+        recommendation: result.recommendation,
+        citation: result.citation,
+        attorneyReviewed: result.attorneyReviewed,
+        actionRequired: "set ackComplianceWarning=true in the request to acknowledge and proceed",
+        statusCode: 409,
+      },
+    };
+  }
+  return { ok: true };
+}
+
+/**
  * Document statuses where the content is considered legally frozen.
  * Any mutation of `content` (or other content-bearing fields) on a document
  * in one of these states would invalidate the SHA-256 hash captured on the
@@ -787,30 +851,12 @@ export function registerDocSystemRoutes(app: Express): void {
       // warning, the platform is materially complicit." Block when the
       // state requires a license; warn (with ack) when restrictions apply
       // but assignment may still be permissible.
-      if (template.type === "assignment_of_contract") {
-        const { checkAssignmentCompliance } = await import("./routes-wholesaler-rules");
-        const result = await checkAssignmentCompliance(mergedVars.state);
-        if (result.blocked) {
-          return res.status(409).json({
-            error: "wholesaler_compliance_blocked",
-            message: result.summary,
-            recommendation: result.recommendation,
-            citation: result.citation,
-            attorneyReviewed: result.attorneyReviewed,
-            statusCode: 409,
-          });
-        }
-        if (result.warn && !ackComplianceWarning) {
-          return res.status(409).json({
-            error: "wholesaler_compliance_warn",
-            message: result.summary,
-            recommendation: result.recommendation,
-            citation: result.citation,
-            attorneyReviewed: result.attorneyReviewed,
-            actionRequired: "set ackComplianceWarning=true in the request to acknowledge and proceed",
-            statusCode: 409,
-          });
-        }
+      if (isAssignmentTemplate(template)) {
+        const gate = await assignmentComplianceGate(
+          mergedVars.state || mergedVars.property_state,
+          !!ackComplianceWarning,
+        );
+        if (!gate.ok) return res.status(409).json(gate.body);
       }
 
       let generatedContent = template.content;
@@ -1624,7 +1670,21 @@ export function registerDocSystemRoutes(app: Express): void {
             });
           }
         }
-        
+
+        // W-1 wholesaler gate — this bulk path generated assignment documents
+        // with no state-rule check at all. Same canonical predicate as POST
+        // /api/generated-documents; a refused item is reported, not generated.
+        if (isAssignmentTemplate(template)) {
+          const gate = await assignmentComplianceGate(
+            (mergedVars as Record<string, string | undefined>).state || (mergedVars as Record<string, string | undefined>).property_state,
+            !!req.body?.ackComplianceWarning,
+          );
+          if (!gate.ok) {
+            generatedDocs.push({ ...docItem, status: "blocked", compliance: gate.body });
+            continue;
+          }
+        }
+
         for (const [key, value] of Object.entries(mergedVars)) {
           const regex = new RegExp(`{{\\s*${key}\\s*}}`, 'gi');
           content = content.replace(regex, String(value || ''));
