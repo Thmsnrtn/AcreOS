@@ -21,7 +21,6 @@ import {
   Clock,
   Eye,
   Mail as MailIcon,
-  PenLine,
   Send,
   Sparkles,
   Truck,
@@ -75,26 +74,25 @@ import {
   useQueueMailShipment,
 } from "@/hooks/use-outreach-mail";
 import { MailLaneCard } from "@/components/settings/mail-lane-card";
+import type { DeliverableMailPieceType, DeliverableMailSpeed } from "@shared/outreach/mailOptions";
 
 // ── Static option metadata ──────────────────────────────────────────────────
+// Only products a provider actually delivers (shared/outreach/mailOptions.ts).
+// Handwritten, next-day, batch and EDDM were offered here and mailed as plain
+// standard-class pieces; the server now refuses them too.
 
-const PIECE_TYPE_OPTIONS: { value: PieceType; label: string; sub: string; icon: typeof MailIcon }[] = [
+const PIECE_TYPE_OPTIONS: { value: DeliverableMailPieceType; label: string; sub: string; icon: typeof MailIcon }[] = [
   { value: "postcard_4x6", label: "Postcard 4×6", sub: "Highest-volume workhorse", icon: MailIcon },
   { value: "postcard_6x9", label: "Postcard 6×9", sub: "Larger format, higher recall", icon: MailIcon },
   { value: "letter_10", label: "Letter #10", sub: "Personalized, envelope", icon: ClipboardEdit },
-  { value: "handwritten", label: "Handwritten", sub: "Premium touch", icon: PenLine },
 ];
 
 const SPEED_OPTIONS: {
-  value: MailSpeed;
+  value: DeliverableMailSpeed;
   label: string;
   hint: string;
 }[] = [
-  { value: "next_day", label: "Next day", hint: "1-day ETA — overnight handoff" },
-  { value: "standard", label: "Standard", hint: "5-day ETA — class-stamped" },
-  { value: "batch_3d", label: "Batch (3-day)", hint: "Aggregated with same-day senders" },
-  { value: "batch_weekly", label: "Batch (cheapest)", hint: "Weekly aggregation — lowest $/piece" },
-  { value: "eddm_geo", label: "EDDM blast", hint: "Geo-target carrier walks (Round 4)" },
+  { value: "standard", label: "Standard", hint: "Standard mail class — about 5 days" },
 ];
 
 // ── Compose tab ─────────────────────────────────────────────────────────────
@@ -572,7 +570,7 @@ export default function ComposeTab() {
                 Speed
               </CardTitle>
               <CardDescription>
-                Live $/piece + delivery ETA + total update as you switch.
+                Every piece mails on the standard class. Faster or batched classes are not available.
               </CardDescription>
             </CardHeader>
             <CardContent>

@@ -1,19 +1,13 @@
 /**
- * /offers/batches — read-only list view of bulk-offer batches.
+ * /offers/batches — read-only list of offer batches.
  *
- * The backend (server/services/offerBatchService.ts +
- * routes-analytics.ts POST /api/offers/batch) can generate batches of
- * offers against pricing matrices and lead lists. Until this commit
- * there was no UI to see or manage them. This page closes that loop:
- *
- *   - Lists every batch for the org with counts + status
- *   - Shows offers-generated / offers-sent / offers-accepted progress
- *   - Empty state points at the API for now (bulk-create dialog is a
- *     separate pass — pricing matrix + parcel-list picker need product
- *     input before they ship)
- *
- * Roadmap top-20 #5 (bulk offer generation) — makes the existing
- * backend capability usable.
+ * Batch PROCESSING does not exist yet: POST /api/offers/batch used to write a
+ * batch, enqueue a "process-offer-batch" job that no handler ever picked up,
+ * and leave the batch "processing" forever — while this page promised that
+ * Pax hands the merge to the print vendor and tracks reply windows. Creation
+ * is now refused at the API (offerBatchService OFFER_BATCH_PROCESSOR_REGISTERED)
+ * and this page says plainly what exists: a list of batches created earlier,
+ * none of which were processed.
  */
 import { useQuery } from "@tanstack/react-query";
 import { PageShell } from "@/components/page-shell";
@@ -64,7 +58,7 @@ export default function OfferBatchesPage() {
         <PageHeader
           title="Offer batches"
           icon={<Layers className="h-5 w-5 text-muted-foreground" />}
-          description="Bulk-generate purchase offers against a pricing matrix and a lead list. Each batch computes per-parcel offer amounts, optionally with seller-financing terms, and produces a stack of draft offer records ready to send."
+          description="Batches of purchase offers priced against a pricing matrix. Creating new batches is not available yet: nothing processes a batch after it is created — no letters are generated, nothing is sent, and replies are not tracked."
         />
 
         {isLoading ? (
@@ -83,9 +77,9 @@ export default function OfferBatchesPage() {
         ) : data.length === 0 ? (
           <EmptyState
             icon={Layers}
-            headline="No batches mailed"
-            subtitle="POST a pricing matrix + parcel list to /api/offers/batch — Pax generates an offer per parcel, hands the merge to the print vendor, and tracks reply windows per recipient. A guided dialog is on the roadmap."
-            // TODO(cta): guided batch creation dialog is on roadmap — no inline create yet
+            headline="No offer batches"
+            subtitle="Offer batches can't be created yet. Batch processing isn't built, so new batches are refused rather than left waiting on work that never runs."
+            // TODO(cta): read-only list — batch creation is refused until batch processing exists
             cta={{ label: "", _noOp: true }}
           />
         ) : (
@@ -116,6 +110,11 @@ export default function OfferBatchesPage() {
                             )}
                           </div>
                           <p className="text-sm font-medium text-foreground mt-1.5 truncate">{b.name}</p>
+                          {b.status === "processing" && (
+                            <p className="text-caption text-muted-foreground" data-testid={`batch-not-processed-${b.id}`}>
+                              Never processed — batch processing isn't built, so nothing from this batch was sent.
+                            </p>
+                          )}
                           {cfg && (
                             <p className="text-caption text-muted-foreground">
                               {cfg.targetMargin != null && (

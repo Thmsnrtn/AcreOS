@@ -688,15 +688,23 @@ export function registerAnalyticsRoutes(app: Express): void {
     try {
       const org = req.organization;
       const user = req.user;
-      const { createOfferBatch } = await import("./services/offerBatchService");
+      const { createOfferBatch, OfferBatchUnavailableError } = await import("./services/offerBatchService");
       const { parcels = [], ...configBody } = req.body ?? {};
       const userIdNum = parseInt(String(user.id), 10);
-      const batch = await createOfferBatch(parcels, {
-        ...configBody,
-        orgId: org.id,
-        userId: Number.isNaN(userIdNum) ? 0 : userIdNum,
-      });
-      res.json(batch);
+      try {
+        const batch = await createOfferBatch(parcels, {
+          ...configBody,
+          orgId: org.id,
+          userId: Number.isNaN(userIdNum) ? 0 : userIdNum,
+        });
+        res.json(batch);
+      } catch (refusal) {
+        // Nothing processes a batch yet, so none is created (offerBatchService).
+        if (refusal instanceof OfferBatchUnavailableError) {
+          return Errors.badRequest(res, refusal.message, { reason: refusal.reason });
+        }
+        throw refusal;
+      }
     } catch (err: any) {
       Errors.badRequest(res, err.message ?? "Bad request");
     }

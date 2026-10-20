@@ -412,7 +412,8 @@ export class MarketWatchlistService {
   }
 
   /**
-   * Fire a test alert for a watchlist entry.
+   * Write a test alert for a watchlist entry to the in-app list (only; no
+   * email or push is sent by emitAlert).
    */
   async testAlert(orgId: number, entryId: string): Promise<MarketAlert | null> {
     const entry = await this.storage.getEntry(entryId);
@@ -421,13 +422,16 @@ export class MarketWatchlistService {
     return this.emitAlert(entry, {
       type: "opportunity",
       title: `Test Alert: ${entry.county}, ${entry.state}`,
-      summary: `This is a test alert for your ${entry.county} County, ${entry.state} watchlist. Real alerts will appear here when market conditions match your thresholds.`,
+      summary: `This is a test alert for your ${entry.county} County, ${entry.state} watchlist. Market alerts are not generated yet — nothing monitors this county's market conditions.`,
       severity: "low",
     });
   }
 
   /**
-   * Trigger an alert programmatically (called by market prediction engine).
+   * Trigger an alert programmatically. NO production caller exists yet — no
+   * market engine calls this — so the watchlist page offers no alert triggers
+   * or channels. marketWatchlistAlertsAreReal.test.ts couples the page to the
+   * real call sites of this method.
    */
   async triggerAlert(
     entryId: string,
