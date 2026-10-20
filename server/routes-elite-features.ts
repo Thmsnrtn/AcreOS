@@ -465,13 +465,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
 
       const [orgData] = await db.select().from(organizations).where(eq(organizations.id, org.id));
 
-      const normalizedListing = await listingSyndication.buildNormalizedListing(property, orgData, {
-        askingPrice: parseFloat(listing.askingPrice || "0"),
-        sellerFinancingAvailable: listing.sellerFinancingAvailable || false,
-        downPaymentMin: listing.downPaymentMin ? parseFloat(listing.downPaymentMin) : undefined,
-        monthlyPaymentMin: listing.monthlyPaymentMin ? parseFloat(listing.monthlyPaymentMin) : undefined,
-        interestRate: listing.interestRate ? parseFloat(listing.interestRate) : undefined,
-      });
+      const normalizedListing = await listingSyndication.buildNormalizedListing(property, orgData, listingSyndication.listingContentForChannels(listing));
 
       const results = await listingSyndication.syndicateListing(normalizedListing, platforms);
       // Record every outcome on the listing (DEFECT-0182): this returned the

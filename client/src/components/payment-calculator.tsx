@@ -30,7 +30,7 @@ function calculateMonthlyPayment(principal: number, annualRate: number, termMont
 
 export function PaymentCalculator({
   listingPrice,
-  sellerFinancingAvailable = true,
+  sellerFinancingAvailable = false,
   defaultDownPaymentPercent = 10,
   defaultInterestRate = 9.9,
   defaultTermMonths = 60,

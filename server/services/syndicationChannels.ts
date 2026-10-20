@@ -35,6 +35,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import {
   PLATFORMS,
   buildNormalizedListing,
+  listingContentForChannels,
   syndicateListing,
   canonicalPlatform,
   customerAccountConnected,
@@ -297,10 +298,7 @@ export async function syncChannels(
     });
     if (needed.length === 0) continue;
 
-    const normalized = await buildNormalizedListing(property, org, {
-      askingPrice: parseFloat(listing.askingPrice || "0"),
-      sellerFinancingAvailable: listing.sellerFinancingAvailable || false,
-    });
+    const normalized = await buildNormalizedListing(property, org, listingContentForChannels(listing));
     const results = await syndicateListing(normalized, needed);
 
     const nextTargets = [...(listing.syndicationTargets ?? [])];

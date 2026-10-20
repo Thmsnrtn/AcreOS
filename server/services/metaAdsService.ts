@@ -215,7 +215,7 @@ export async function buildPropertyCatalogItem(
     name: property.name || property.address || `${property.acreage || "?"} Acres in ${property.county || ""}, ${property.state || ""}`,
     description:
       property.description ||
-      `${property.acreage || "?"} acre ${property.propertyType || "land"} parcel in ${property.county || ""} County, ${property.state || ""}. ${property.zoning ? `Zoned ${property.zoning}.` : ""} Seller financing available.`,
+      `${property.acreage || "?"} acre ${property.propertyType || "land"} parcel in ${property.county || ""} County, ${property.state || ""}. ${property.zoning ? `Zoned ${property.zoning}.` : ""}`,
     url: `${appBaseUrl}/properties/${property.id}`,
     image_url: property.imageUrl || property.photos?.[0]?.url || `https://maps.googleapis.com/maps/api/staticmap?center=${property.latitude},${property.longitude}&zoom=14&size=800x600&maptype=satellite`,
     price: `${Math.round(parseFloat(price || "0"))} USD`,
