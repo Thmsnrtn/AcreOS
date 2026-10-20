@@ -28,7 +28,8 @@ interface Platform {
   apiAvailable: boolean;
   requiresPartnerAccount: boolean;
   partnerSignupUrl: string;
-  envKeys: string[];
+  /** "customer_account": posts on your own account with the channel. */
+  connection: "customer_account" | "none";
 }
 
 interface Property {
@@ -57,7 +58,9 @@ export default function SyndicationPage() {
   const { toast } = useToast();
   const searchId = useId();
   const [selectedPropertyId, setSelectedPropertyId] = useState<number | null>(null);
-  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(["land_com", "landwatch"]);
+  // Nothing pre-selected: this used to pre-select LandWatch, which has no
+  // adapter, and no channel can post until the org's own account connects.
+  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
   const [syndicating, setSyndicating] = useState(false);
   const [results, setResults] = useState<SyndicationResult[] | null>(null);
   const [propertySearch, setPropertySearch] = useState("");
@@ -383,9 +386,9 @@ export default function SyndicationPage() {
                         </a>
                       </div>
                     )}
-                    {platform.envKeys.length > 0 && (
+                    {platform.connection === "customer_account" && (
                       <p className="text-xs text-muted-foreground mt-1">
-                        Requires: {platform.envKeys.join(", ")}.
+                        Posts on your own {platform.name} account, which AcreOS can't connect yet.
                       </p>
                     )}
                   </CardContent>

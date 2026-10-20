@@ -2394,7 +2394,7 @@ export async function executeTool(
         if (leadForCompliance) {
           const compliance = checkTcpaConsentFromLead(leadForCompliance);
           if (!compliance.canEmail) {
-            return toolRefusal({ what: "The email was not sent", why: "This lead has not given consent to be emailed, or has asked not to be contacted", unlock: "Record their consent on the lead's page if they gave it, or reach them by mail instead" });
+            return toolRefusal({ what: "The email was not sent", why: "This lead has asked not to be contacted", unlock: "Reach them only if they contact you again; their opt-out is on the lead's page" });
           }
         }
 
@@ -2421,7 +2421,7 @@ export async function executeTool(
         if (args.lead_id) {
           // 2026-06-10 (T0-5): org-scoped — a bare lead id can no longer
           // resolve against another org's consent record.
-          const tcpaCheck = await checkTcpaBeforeSend(org.id, args.lead_id);
+          const tcpaCheck = await checkTcpaBeforeSend(org.id, args.lead_id, "email");
           if (!tcpaCheck.allowed) {
             return toolRefusal({ what: "The email was not sent", why: `${tcpaCheck.reason ?? "The consent check for this lead did not pass"}`, unlock: "Open the lead to see their consent, and record it there if they gave it" });
           }
@@ -2507,7 +2507,7 @@ export async function executeTool(
 
         if (args.lead_id) {
           // 2026-06-10 (T0-5): org-scoped TCPA lookup, same as send_email.
-          const tcpaCheck = await checkTcpaBeforeSend(org.id, args.lead_id);
+          const tcpaCheck = await checkTcpaBeforeSend(org.id, args.lead_id, "sms");
           if (!tcpaCheck.allowed) {
             return toolRefusal({ what: "The text was not sent", why: `${tcpaCheck.reason ?? "The consent check for this lead did not pass"}`, unlock: "Open the lead to see their consent, and record it there if they gave it" });
           }

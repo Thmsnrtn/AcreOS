@@ -576,14 +576,22 @@ export function checkTcpaConsentFromLead(lead: ConsentFlags): TcpaCheckResult {
     };
   }
 
+  // EMAIL IS NOT GATED ON TCPA CONSENT (founder decision 2026-10-20 #2).
+  // `tcpaConsent` is consent to be TEXTED or CALLED (47 U.S.C. § 227). Email
+  // runs on the CAN-SPAM opt-out model: reachable unless the person opted
+  // out — the do-not-contact / opt-out check above — or is on the email
+  // suppression list, which emailService enforces at its send chokepoint
+  // (filterSuppressed) along with the unsubscribe footer. This used to
+  // return canEmail: false here, so every imported lead was unreachable by
+  // email until someone ticked a box about texting.
   if (!lead.tcpaConsent) {
     return {
-      canEmail: false,
+      canEmail: true,
       canSms: false,
       canCall: false,
       canDirectMail: true,
       blocked: false,
-      reason: "TCPA/CAN-SPAM consent not provided - email, SMS and phone calls blocked. Direct mail allowed.",
+      reason: "No TCPA consent on record — SMS and phone calls blocked. Email (opt-out list enforced at send) and direct mail allowed.",
     };
   }
 
@@ -617,6 +625,32 @@ export async function checkTcpaConsent(leadId: number, organizationId: number): 
  * Full TCPA gate for SMS: checks consent + quiet hours.
  * Returns { allowed, reason } — gate at the send site.
  */
+/**
+ * Consent sources that are WRITTEN consent (47 C.F.R. § 64.1200(f)(9): a
+ * signed agreement, electronic signatures under E-SIGN included — a web
+ * form checkbox, a written form, a texted double opt-in, an IVR keypress).
+ *
+ * Standing founder decision 2026-10-20 #1: NO COLD TEXTING WITHOUT WRITTEN
+ * CONSENT. A verbal yes, an operator's unevidenced "manual" tick, or any
+ * source not listed here does not license a prospecting text, even though
+ * it may record TCPA consent for other purposes.
+ */
+export const WRITTEN_SMS_CONSENT_SOURCES: ReadonlySet<string> = new Set([
+  "website",
+  "written",
+  "sms_double_optin",
+  "phone_ivr",
+]);
+
+export function hasWrittenSmsConsent(lead: Pick<Lead, "tcpaConsent" | "consentSource">): boolean {
+  return lead.tcpaConsent === true && WRITTEN_SMS_CONSENT_SOURCES.has(lead.consentSource ?? "");
+}
+
+/**
+ * The PROSPECTING (cold) text gate: written consent + not opted out + quiet
+ * hours. sendOrgSMS's "prospecting" purpose calls this for every lead at the
+ * number; servicing and reply texts have their own lawful bases and do not.
+ */
 export async function tcpaGateForSms(
   leadId: number,
   organizationId: number,
@@ -629,6 +663,12 @@ export async function tcpaGateForSms(
   // Prefer the lead's explicit IANA zone over area-code inference — the
   // leads.timezone column landed with roadmap W1.5 (migration 0190).
   const lead = await storage.getLead(organizationId, leadId).catch(() => null);
+  if (!lead || !hasWrittenSmsConsent(lead)) {
+    return {
+      allowed: false,
+      reason: `No written consent on record (source: ${lead?.consentSource ?? "unknown"}) — a cold text needs prior express written consent`,
+    };
+  }
   const recipientZone = lead?.timezone ?? null;
   const quietHours = isWithinQuietHours(phoneNumber, recipientZone ?? null);
   if (quietHours.blocked) {

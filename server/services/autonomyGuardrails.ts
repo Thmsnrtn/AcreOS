@@ -98,7 +98,12 @@ export async function checkSendRateLimit(
  */
 export async function checkTcpaBeforeSend(
   orgId: number,
-  leadId: number
+  leadId: number,
+  // REQUIRED so every caller states the channel: TCPA consent governs texts
+  // and calls only. Email runs on the CAN-SPAM opt-out model (founder
+  // decision 2026-10-20 #2) — this used to require tcpaConsent for Pax's
+  // send_email too, so an email was refused for want of SMS consent.
+  channel: "sms" | "phone" | "email",
 ): Promise<{ allowed: boolean; reason?: string }> {
   try {
     const { leads } = await import("@shared/schema");
@@ -126,8 +131,8 @@ export async function checkTcpaBeforeSend(
       };
     }
 
-    // TCPA consent required for SMS
-    if (!lead.tcpaConsent) {
+    // TCPA consent required for SMS and calls — never for email.
+    if (channel !== "email" && !lead.tcpaConsent) {
       return { allowed: false, reason: "No TCPA consent on record for this lead" };
     }
 

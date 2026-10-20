@@ -44,10 +44,13 @@ vi.mock("../../server/db", () => {
 vi.mock("../../server/utils/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
 vi.mock("../../server/services/listingSyndication", () => ({
   PLATFORMS: {
-    land_com: { apiAvailable: true, envKeys: [] },
-    landwatch: { apiAvailable: true, envKeys: [] },
-    lands_of_america: { apiAvailable: true, envKeys: [] },
+    land_com: { apiAvailable: true, connection: "customer_account" },
+    landwatch: { apiAvailable: true, connection: "customer_account" },
+    lands_of_america: { apiAvailable: true, connection: "customer_account" },
   },
+  // These tests are about WHAT is pushed, so every channel reads as
+  // connected to the org's own account (founder decision 2026-10-20 #3).
+  customerAccountConnected: async () => true,
   canonicalPlatform: (p: string) => (p === "lands_of_america" ? "land_com" : p),
   buildNormalizedListing: async (p: { id: number }) => ({ title: `parcel-${p.id}` }),
   syndicateListing: async (n: { title: string }, platforms: string[]) => {

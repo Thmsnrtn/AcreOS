@@ -1261,18 +1261,15 @@ export function registerTeamMessagingRoutes(app: Express): void {
             continue;
           }
 
-          // 3. Credential gate (env vars listed in PLATFORMS registry)
+          // 3. Account gate: an API channel posts on the org's OWN account
+          // (founder decision 2026-10-20 #3), never on AcreOS env keys.
           const cfg = listingSyndication.PLATFORMS[p];
-          const missingEnv = (cfg.envKeys || []).filter(
-            (k) => !process.env[k]
-          );
-          // Craigslist + any platform with no envKeys requires no creds
-          if (cfg.envKeys.length > 0 && missingEnv.length === cfg.envKeys.length) {
+          if (!(await listingSyndication.customerAccountConnected(org.id, p))) {
             earlyResults.push({
               platform: p,
               status: "missing_credentials",
-              error: `Missing env vars: ${missingEnv.join(", ")}`,
-              manualInstructions: `Add ${cfg.envKeys.join(", ")} in Settings → Integrations to enable ${cfg.name}.`,
+              error: `${cfg.name} is not connected to your own account`,
+              manualInstructions: `Automatic posting to ${cfg.name} runs on your own ${cfg.name} account, and AcreOS can't connect one yet. Post this listing on ${cfg.name} yourself.`,
             });
             continue;
           }

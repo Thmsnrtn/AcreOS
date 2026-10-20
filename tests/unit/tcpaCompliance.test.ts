@@ -168,13 +168,18 @@ describe("checkTcpaConsentFromLead — the consent matrix", () => {
     expect(result.canDirectMail).toBe(false);
   });
 
-  it("without consent: only direct mail is allowed (TCPA covers calls/SMS, CAN-SPAM email)", () => {
+  it("without TCPA consent: SMS and calls are blocked; email and direct mail are not (founder decision 2026-10-20 #2)", () => {
+    // TCPA consent governs texts and calls. Email is CAN-SPAM opt-out: it is
+    // reachable unless the person opted out (checked above) or is on the
+    // suppression list (enforced at emailService's send chokepoint). This
+    // test used to pin canEmail: false — email reachability depended on SMS
+    // consent, which the founder ruled out.
     const result = checkTcpaConsentFromLead({ doNotContact: false, tcpaConsent: false, optOutDate: null });
     expect(result.blocked).toBe(false);
     expect(result.canDirectMail).toBe(true);
     expect(result.canSms).toBe(false);
     expect(result.canCall).toBe(false);
-    expect(result.canEmail).toBe(false);
+    expect(result.canEmail).toBe(true);
   });
 
   it("an opt-out DATE alone blocks every channel, even with consent and no DNC flag", () => {
@@ -202,11 +207,24 @@ describe("canSendViaChannel / requiresTcpaConsent", () => {
 
   it("mirrors the consent matrix per channel with a reason on refusal", () => {
     expect(canSendViaChannel(noConsent, "direct_mail").allowed).toBe(true);
-    for (const channel of ["sms", "phone", "email"] as const) {
+    expect(canSendViaChannel(noConsent, "email").allowed).toBe(true);
+    for (const channel of ["sms", "phone"] as const) {
       const result = canSendViaChannel(noConsent, channel);
       expect(result.allowed, channel).toBe(false);
       expect(result.reason, channel).toBeTruthy();
     }
+  });
+
+  it("the channel gate and requiresTcpaConsent agree for every channel", () => {
+    // Two predicates answered "does email need TCPA consent?" differently
+    // (gate: yes; requiresTcpaConsent: no). They must now agree.
+    for (const channel of ["sms", "phone", "email", "direct_mail"] as const) {
+      expect(canSendViaChannel(noConsent, channel).allowed, channel).toBe(!requiresTcpaConsent(channel));
+    }
+  });
+
+  it("an opted-out lead is unreachable by email even though email needs no TCPA consent", () => {
+    expect(canSendViaChannel({ doNotContact: true, tcpaConsent: false, optOutDate: null }, "email").allowed).toBe(false);
   });
 
   it("flags exactly the regulated channels as consent-requiring", () => {
