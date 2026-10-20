@@ -237,8 +237,12 @@ export const dealRepo = {
       logger.info(`[storage.updateDeal] closing checklist deferred for deal ${dealId}: ${!state ? "no property state" : "no closing date"} yet`);
       return;
     }
-    const { generateClosingChecklist } = await import("../services/closingChecklistGenerator");
-    await generateClosingChecklist(dealId, state, closingDate, false);
+    const [dealRow] = await db.select({ analysisResults: deals.analysisResults })
+      .from(deals)
+      .where(and(eq(deals.id, dealId), eq(deals.organizationId, organizationId)))
+      .limit(1);
+    const { generateClosingChecklist, dealIsSellerFinanced } = await import("../services/closingChecklistGenerator");
+    await generateClosingChecklist(dealId, state, closingDate, dealIsSellerFinanced(dealRow));
   },
 
   async bulkDeleteDeals(this: DatabaseStorage, orgId: number, ids: number[]): Promise<number> {

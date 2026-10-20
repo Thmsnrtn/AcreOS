@@ -5,17 +5,37 @@
  * loan originators to be licensed under the SAFE Act. However, there are
  * seller-financing exemptions under CFPB Reg Z:
  *
- * Exemption 1: "3-property safe harbor" (12 CFR 1026.36(a)(4)(i))
- *   - Seller finances no more than 3 properties per 12-month period
- *   - Each financed property is a "dwelling" (includes manufactured/land-home)
- *   - Seller did NOT construct the property
+ * Exclusion 1: "3-property seller financer" (12 CFR 1026.36(a)(4))
+ *   Any person (natural person OR entity) that meets ALL of:
+ *   (i)   finances the sale of 3 or fewer properties in any 12-month period,
+ *         each owned by the person and securing the financing;
+ *   (ii)  did not construct, or act as contractor for, a residence on the
+ *         property in the ordinary course of business;
+ *   (iii)(A) the financing is FULLY AMORTIZING — so NO balloon of any length;
+ *   (iii)(B) the person determines in good faith that the buyer has a
+ *         reasonable ability to repay;
+ *   (iii)(C) fixed rate, or adjustable only after 5+ years with reasonable
+ *         annual and lifetime caps.
  *
- * Exemption 2: "1-property natural person" (12 CFR 1026.36(a)(4)(ii))
- *   - Seller is a natural person, estate, or trust (not an LLC/corp)
- *   - Finances only 1 property per 12-month period
- *   - Property is the seller's primary or secondary residence
- *   - No balloon payment < 5 years
- *   - Rate is fixed or does not increase in the first 5 years
+ * Exclusion 2: "1-property seller financer" (12 CFR 1026.36(a)(5))
+ *   A natural person, estate, or trust that meets ALL of:
+ *   (i)   finances the sale of only 1 property in any 12-month period, owned
+ *         by it and securing the financing;
+ *   (ii)  did not construct, or act as contractor for, a residence on the
+ *         property in the ordinary course of business;
+ *   (iii)(A) the repayment schedule does not produce negative amortization
+ *         — balloons ARE permitted here;
+ *   (iii)(B) fixed rate, or adjustable only after 5+ years with reasonable
+ *         caps.
+ *   Being the seller's own residence is NOT an element of either exclusion.
+ *
+ * 2026-10-20 (best-in-class audit): the previous version granted the
+ * 3-property exclusion to balloon notes, said a balloon disqualified the
+ * 1-property exclusion (backwards), required the property to be the seller's
+ * residence, cited (a)(4)(i)/(ii) for what are (a)(4) and (a)(5), and had no
+ * ability-to-repay element. An exclusion is now granted only when every
+ * element is affirmatively satisfied; an element the operator has not
+ * answered blocks the grant and is named (refuse, never assume).
  *
  * For LAND (non-dwelling), CFPB Reg Z and TILA generally do NOT apply
  * because land without a dwelling is not a "residential mortgage transaction."
@@ -39,8 +59,12 @@ export interface DoddFrankInput {
   hasDwelling: boolean;
   /** Did the seller construct the dwelling themselves? */
   sellerConstructedDwelling: boolean;
-  /** Is the property the seller's primary or secondary residence? */
-  isSellerResidence: boolean;
+  /**
+   * Retained for request compatibility only. Whether the property is the
+   * seller's residence is NOT an element of either seller-financer exclusion
+   * and is ignored by the check.
+   */
+  isSellerResidence?: boolean;
   /** Loan term in months */
   loanTermMonths: number;
   /** Interest rate type */
@@ -49,6 +73,22 @@ export interface DoddFrankInput {
   balloonAfterMonths?: number;
   /** Annual interest rate (as a decimal, e.g. 0.12 for 12%) */
   interestRate: number;
+  /**
+   * For an adjustable rate: months from consummation to the FIRST possible
+   * rate change. Both exclusions require 60+. Unknown blocks the exclusion.
+   */
+  firstRateAdjustmentMonths?: number;
+  /**
+   * 12 CFR 1026.36(a)(4)(iii)(B): did the seller determine in good faith that
+   * the buyer has a reasonable ability to repay? Required for the 3-property
+   * exclusion; unknown (undefined) blocks it.
+   */
+  abilityToRepayDetermined?: boolean;
+  /**
+   * Can the payment schedule produce negative amortization (payments below
+   * accruing interest)? Disqualifies both exclusions; unknown blocks both.
+   */
+  negativeAmortization?: boolean;
   /**
    * Total points and fees in cents (12 CFR 1026.32(b)(1)). Includes
    * origination fees, discount points the borrower didn't choose, mortgage-
@@ -69,6 +109,8 @@ export type ComplianceRisk = 'compliant' | 'review_needed' | 'likely_violation' 
 export interface DoddFrankCheckResult {
   risk: ComplianceRisk;
   exemptionApplicable?: '3_property' | '1_property_natural_person' | 'non_dwelling_land' | 'none';
+  /** Exclusion elements the operator has not answered, which block a grant. */
+  unansweredElements?: string[];
   /** Summary verdict */
   summary: string;
   /** Ordered list of findings */
@@ -121,74 +163,13 @@ export function checkDoddFrankCompliance(input: DoddFrankInput): DoddFrankCheckR
     };
   }
 
-  // Case 2: Has a dwelling — apply Dodd-Frank seller-financing exemptions
-  let requiresMLO = true;
-  let applicableExemption: DoddFrankCheckResult['exemptionApplicable'] = 'none';
-
-  // Check 3-property exemption
-  if (input.sellerFinancedDealsLast12Months <= 3 && !input.sellerConstructedDwelling) {
-    applicableExemption = '3_property';
-    requiresMLO = false;
-
-    findings.push({
-      issue: '3-Property Exemption',
-      detail: `Seller has financed ${input.sellerFinancedDealsLast12Months} property(s) in the past 12 months (limit: 3). The property was not constructed by the seller. The 3-property exemption under 12 CFR 1026.36(a)(4)(i) appears to apply.`,
-      severity: 'info',
-    });
-
-    // Even under this exemption, there are still requirements
-    if (input.rateType === 'adjustable') {
-      findings.push({
-        issue: 'Adjustable Rate — Additional disclosure required',
-        detail: 'Even under the 3-property exemption, adjustable-rate seller-financed mortgages may require additional disclosures and cannot have certain prepayment penalties.',
-        severity: 'warning',
-      });
-      recommendations.push('Have a real estate attorney draft the adjustable-rate seller-finance note with proper TILA disclosures.');
-    }
-  } else if (input.sellerFinancedDealsLast12Months > 3) {
-    findings.push({
-      issue: '3-Property Limit Exceeded',
-      detail: `Seller has financed ${input.sellerFinancedDealsLast12Months} properties in the past 12 months. The 3-property exemption does NOT apply when more than 3 properties per year are seller-financed.`,
-      severity: 'critical',
-    });
-  }
-
-  // Check 1-property natural person exemption (even stricter)
-  if (applicableExemption === 'none' && input.sellerType === 'natural_person') {
-    if (input.sellerFinancedDealsLast12Months <= 1 && input.isSellerResidence) {
-      if (input.rateType === 'fixed' || input.rateType === 'balloon_5yr_plus') {
-        if (!input.balloonAfterMonths || input.balloonAfterMonths >= 60) {
-          applicableExemption = '1_property_natural_person';
-          requiresMLO = false;
-          findings.push({
-            issue: '1-Property Natural Person Exemption',
-            detail: 'Seller is a natural person, financed ≤1 property in 12 months, property is seller\'s residence, and note terms satisfy the balloon/rate requirements. Exemption under 12 CFR 1026.36(a)(4)(ii) appears to apply.',
-            severity: 'info',
-          });
-        }
-      }
-    }
-  }
-
-  // Entity seller — additional scrutiny
-  if (input.sellerType === 'entity') {
-    findings.push({
-      issue: 'Entity Seller — Reduced Exemption Eligibility',
-      detail: 'The 1-property natural person exemption does NOT apply to entities (LLC, corporation). Only the 3-property exemption may be available if deal count qualifies.',
-      severity: 'warning',
-    });
-    recommendations.push('If the selling entity is an LLC, consider whether a licensed MLO is needed or restructure as a land contract in a state where that is permissible without licensing.');
-  }
-
-  // Balloon payment check
-  if (input.balloonAfterMonths && input.balloonAfterMonths < 60) {
-    findings.push({
-      issue: 'Balloon Payment Under 5 Years',
-      detail: `A balloon payment in less than 60 months (${input.balloonAfterMonths} months) disqualifies the 1-property natural person exemption and may violate qualified mortgage rules.`,
-      severity: 'warning',
-    });
-    recommendations.push('Consider extending the balloon period to 60+ months to preserve exemption eligibility.');
-  }
+  // Case 2: Has a dwelling — test each seller-financer exclusion element by
+  // element (12 CFR 1026.36(a)(4) and (a)(5)). See the header for the rule.
+  const evaluation = evaluateSellerFinancerExclusions(input);
+  const applicableExemption = evaluation.exemption;
+  let requiresMLO = applicableExemption === 'none';
+  findings.push(...evaluation.findings);
+  recommendations.push(...evaluation.recommendations);
 
   // ── HPML / HOEPA pricing screens ─────────────────────────────────────────
   //
@@ -276,7 +257,7 @@ export function checkDoddFrankCompliance(input: DoddFrankInput): DoddFrankCheckR
   if (input.sellerConstructedDwelling) {
     findings.push({
       issue: 'Seller-Constructed Dwelling',
-      detail: 'When the seller constructed the dwelling, the 3-property exemption does NOT apply. A licensed mortgage loan originator is required.',
+      detail: 'A seller who constructed (or acted as contractor for) the residence in the ordinary course of business qualifies for neither seller-financer exclusion (12 CFR 1026.36(a)(4)(ii), (a)(5)(ii)). A licensed mortgage loan originator is required.',
       severity: 'critical',
     });
     requiresMLO = true;
@@ -287,7 +268,11 @@ export function checkDoddFrankCompliance(input: DoddFrankInput): DoddFrankCheckR
   const criticals = findings.filter(f => f.severity === 'critical').length;
   const warnings = findings.filter(f => f.severity === 'warning').length;
 
-  if (requiresMLO || criticals > 0) {
+  const undetermined = applicableExemption === 'none' && evaluation.unanswered.length > 0 && evaluation.disqualified.length === 0;
+  if (undetermined && criticals === 0) {
+    risk = 'review_needed';
+    recommendations.push(`Answer the open exclusion element${evaluation.unanswered.length === 1 ? '' : 's'} (${evaluation.unanswered.join('; ')}) and run the check again. Until then, treat the loan as requiring a licensed MLO.`);
+  } else if (requiresMLO || criticals > 0) {
     risk = 'likely_violation';
     recommendations.push('IMPORTANT: Consult a licensed real estate attorney before proceeding with this seller-financed transaction.');
     recommendations.push('Consider using a licensed mortgage loan originator (MLO) to originate the loan, even if an exemption may apply.');
@@ -299,7 +284,9 @@ export function checkDoddFrankCompliance(input: DoddFrankInput): DoddFrankCheckR
     recommendations.push('Document the exemption basis in your deal file. Keep a running count of seller-financed deals to stay within the annual limit.');
   }
 
-  const summary = risk === 'compliant'
+  const summary = undetermined && criticals === 0
+    ? `No seller-financer exclusion can be confirmed yet: ${evaluation.unanswered.join('; ')}. Treat the loan as requiring a licensed MLO until these are answered.`
+    : risk === 'compliant'
     ? `Transaction appears to qualify for the ${applicableExemption?.replace(/_/g, ' ')} exemption. MLO licensing not required based on disclosed facts.`
     : risk === 'review_needed'
     ? `Transaction may qualify for an exemption but has conditions requiring attorney review. MLO may or may not be required.`
@@ -308,10 +295,122 @@ export function checkDoddFrankCompliance(input: DoddFrankInput): DoddFrankCheckR
   return {
     risk,
     exemptionApplicable: applicableExemption,
+    unansweredElements: evaluation.unanswered,
     summary,
     findings,
     recommendations,
     requiresLicensedMLO: requiresMLO,
     disclaimer: DISCLAIMER_WORKSHEET,
   };
+}
+
+interface ExclusionEvaluation {
+  exemption: '3_property' | '1_property_natural_person' | 'none';
+  findings: DoddFrankCheckResult['findings'];
+  recommendations: string[];
+  /** Elements not answered that block a grant. */
+  unanswered: string[];
+  /** Elements affirmatively failed (for both exclusions). */
+  disqualified: string[];
+}
+
+/**
+ * Element-by-element test of the two Reg Z seller-financer exclusions. Each
+ * exclusion is granted only when every element is affirmatively met.
+ * Exported for tests.
+ */
+function evaluateSellerFinancerExclusions(input: DoddFrankInput): ExclusionEvaluation {
+  const findings: DoddFrankCheckResult['findings'] = [];
+  const recommendations: string[] = [];
+  const n = input.sellerFinancedDealsLast12Months;
+  const hasBalloon =
+    input.rateType === 'balloon_under_5yr' ||
+    input.rateType === 'balloon_5yr_plus' ||
+    (typeof input.balloonAfterMonths === 'number' && input.balloonAfterMonths > 0);
+
+  // Rate element, shared by (a)(4)(iii)(C) and (a)(5)(iii)(B).
+  let rate: 'met' | 'failed' | 'unknown' = 'met';
+  if (input.rateType === 'adjustable') {
+    if (typeof input.firstRateAdjustmentMonths !== 'number') rate = 'unknown';
+    else rate = input.firstRateAdjustmentMonths >= 60 ? 'met' : 'failed';
+  }
+  const negAm: 'met' | 'failed' | 'unknown' =
+    input.negativeAmortization === undefined ? 'unknown' : input.negativeAmortization ? 'failed' : 'met';
+
+  // ── 3-property exclusion, 12 CFR 1026.36(a)(4) ─────────────────────────
+  const three: { failed: string[]; unknown: string[] } = { failed: [], unknown: [] };
+  if (n > 3) three.failed.push(`financed ${n} properties in 12 months (limit 3)`);
+  if (input.sellerConstructedDwelling) three.failed.push('seller constructed the residence');
+  if (hasBalloon) three.failed.push('the note has a balloon, so it is not fully amortizing');
+  if (negAm === 'failed') three.failed.push('the schedule can negatively amortize');
+  else if (negAm === 'unknown') three.unknown.push('whether the schedule can negatively amortize');
+  if (rate === 'failed') three.failed.push('the rate can adjust within the first 5 years');
+  else if (rate === 'unknown') three.unknown.push('when the adjustable rate can first change');
+  if (input.abilityToRepayDetermined === false) three.failed.push('no good-faith ability-to-repay determination');
+  else if (input.abilityToRepayDetermined === undefined) three.unknown.push('whether a good-faith ability-to-repay determination was made');
+
+  // ── 1-property exclusion, 12 CFR 1026.36(a)(5) ─────────────────────────
+  const one: { failed: string[]; unknown: string[] } = { failed: [], unknown: [] };
+  if (input.sellerType === 'entity') one.failed.push('seller is an entity, not a natural person, estate or trust');
+  if (n > 1) one.failed.push(`financed ${n} properties in 12 months (limit 1)`);
+  if (input.sellerConstructedDwelling) one.failed.push('seller constructed the residence');
+  if (negAm === 'failed') one.failed.push('the schedule can negatively amortize');
+  else if (negAm === 'unknown') one.unknown.push('whether the schedule can negatively amortize');
+  if (rate === 'failed') one.failed.push('the rate can adjust within the first 5 years');
+  else if (rate === 'unknown') one.unknown.push('when the adjustable rate can first change');
+
+  if (three.failed.length === 0 && three.unknown.length === 0) {
+    findings.push({
+      issue: '3-Property Seller-Financer Exclusion',
+      detail: `Every element of 12 CFR 1026.36(a)(4) is met on the disclosed facts: ${n} propert${n === 1 ? 'y' : 'ies'} financed in 12 months (limit 3), seller did not construct the residence, the note is fully amortizing with no balloon, the rate is fixed or first adjusts after 5+ years, and the seller made a good-faith ability-to-repay determination.`,
+      severity: 'info',
+    });
+    recommendations.push('Keep the ability-to-repay determination (income, debts, credit) in the deal file — it is an element of the exclusion, not a formality.');
+    return { exemption: '3_property', findings, recommendations, unanswered: [], disqualified: [] };
+  }
+  if (one.failed.length === 0 && one.unknown.length === 0) {
+    findings.push({
+      issue: '1-Property Seller-Financer Exclusion',
+      detail: `Every element of 12 CFR 1026.36(a)(5) is met on the disclosed facts: the seller is a natural person, estate or trust, financed only 1 property in 12 months, did not construct the residence, the schedule cannot negatively amortize, and the rate is fixed or first adjusts after 5+ years.${hasBalloon ? ' A balloon is permitted under this exclusion.' : ''}`,
+      severity: 'info',
+    });
+    if (three.failed.length > 0) {
+      findings.push({
+        issue: '3-Property Exclusion Not Available',
+        detail: `The 3-property exclusion (12 CFR 1026.36(a)(4)) does not apply: ${three.failed.join('; ')}. Only the 1-property exclusion covers this loan, so a second seller-financed sale within 12 months would lose it.`,
+        severity: 'warning',
+      });
+    }
+    return { exemption: '1_property_natural_person', findings, recommendations, unanswered: [], disqualified: [] };
+  }
+
+  if (three.failed.length > 0) {
+    findings.push({
+      issue: '3-Property Exclusion Not Met',
+      detail: `12 CFR 1026.36(a)(4) does not apply: ${three.failed.join('; ')}.`,
+      severity: three.failed.some((f) => f.startsWith('financed')) ? 'critical' : 'warning',
+    });
+  }
+  if (one.failed.length > 0 && input.sellerType !== 'entity') {
+    findings.push({
+      issue: '1-Property Exclusion Not Met',
+      detail: `12 CFR 1026.36(a)(5) does not apply: ${one.failed.join('; ')}.`,
+      severity: 'warning',
+    });
+  }
+  if (hasBalloon && three.failed.length > 0 && input.sellerType === 'entity') {
+    recommendations.push('An entity seller can only use the 3-property exclusion, which forbids any balloon. Restructure to a fully amortizing note or use a licensed MLO.');
+  }
+  // An exclusion still reachable once the open questions are answered.
+  const reachable = [three, one].filter((e) => e.failed.length === 0 && e.unknown.length > 0);
+  const unanswered = Array.from(new Set(reachable.flatMap((e) => e.unknown)));
+  const disqualified = reachable.length === 0 ? Array.from(new Set([...three.failed, ...one.failed])) : [];
+  if (unanswered.length > 0) {
+    findings.push({
+      issue: 'Exclusion Elements Unanswered',
+      detail: `A seller-financer exclusion may apply but cannot be confirmed until these are answered: ${unanswered.join('; ')}.`,
+      severity: 'warning',
+    });
+  }
+  return { exemption: 'none', findings, recommendations, unanswered, disqualified };
 }
