@@ -640,9 +640,6 @@ export function registerBorrowerRoutes(app: Express): void {
       if (err instanceof StatementPortalNotConfiguredError) {
         return Errors.serviceUnavailable(res, STATEMENT_PORTAL_NOT_CONFIGURED_MESSAGE);
       }
-      // TEMP DEBUG (borrower-cookie 500): log the full exception so the
-      // staging logs show the cause. Remove once #360 is green.
-      logger.error("Borrower session exchange 500 (debug)", err);
       return Errors.internal(res, err);
     }
   });
