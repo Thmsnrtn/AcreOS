@@ -36,7 +36,7 @@ import {
 const TELNYX_DISABLED_ERROR = "TELNYX_NOT_CONFIGURED";
 
 /** No method below performs a Telnyx call yet. */
-export const TELNYX_ADAPTER_IMPLEMENTED: boolean = false;
+const TELNYX_ADAPTER_IMPLEMENTED: boolean = false;
 
 function ensureConfigured(): void {
   if (!process.env.TELNYX_API_KEY) {

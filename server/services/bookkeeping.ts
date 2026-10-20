@@ -673,7 +673,7 @@ export async function syncPaymentsToQbo(
 // than deleted) only so its existing caller fails loudly instead of compiling
 // against nothing; build the code exchange before un-refusing it.
 
-export const QBO_OAUTH_NOT_IMPLEMENTED =
+const QBO_OAUTH_NOT_IMPLEMENTED =
   "QuickBooks Online connection is not implemented: AcreOS has no OAuth code exchange " +
   "for QuickBooks, so no access token can be obtained. Use the ledger export " +
   "(GET /api/accounting/qbo-export) instead.";
