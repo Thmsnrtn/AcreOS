@@ -11,7 +11,7 @@
  * the form both defaulted the flag on.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -23,6 +23,10 @@ import { propertyListings, type PropertyListing } from "../../shared/schema";
 import { photoUrlsFromText } from "../../client/src/lib/listingPhotos";
 import { stripComments } from "../helpers/stripComments";
 import { stripSqlComments } from "../helpers/stripSqlComments";
+
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
+
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 const property = {
   id: 7,
