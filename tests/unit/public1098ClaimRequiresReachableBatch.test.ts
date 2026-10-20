@@ -11,10 +11,14 @@
  * surface calls the batch route, the claim is allowed again.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { stripComments } from "../helpers/stripComments";
+
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
+
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 function walk(dir: string, exts: string[]): string[] {
   const out: string[] = [];
