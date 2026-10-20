@@ -14,10 +14,14 @@
  * county data. And the cleanup for databases that already ran the seed must
  * exist in both places (the release command runs migrate.mjs only).
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { stripComments } from "../helpers/stripComments";
+
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
+
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 const ROOT = resolve(__dirname, "../..");
 const mjs = stripComments(readFileSync(resolve(ROOT, "scripts/migrate.mjs"), "utf8"));

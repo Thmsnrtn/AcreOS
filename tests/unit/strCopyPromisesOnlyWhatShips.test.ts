@@ -12,10 +12,14 @@
  * STR description in onboarding-v2.tsx and every non-comment line of
  * bookings-panel.tsx; callers: every .ts/.tsx under client/src.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { stripComments } from "../helpers/stripComments";
+
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
+
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 const ROOT = resolve(__dirname, "../..");
 const read = (p: string) => stripComments(readFileSync(resolve(ROOT, p), "utf8"));
