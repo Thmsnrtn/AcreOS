@@ -946,7 +946,7 @@ export const CONSTITUTION: readonly ConstitutionInvariant[] = [
         "server/services/syndicationChannels.ts",
       ],
       note:
-        "Listing syndication read AcreOS's own process.env for every portal, " +
+        "Listing syndication read AcreOS's own environment credentials for every portal, " +
         "and the Facebook path used META_ACCESS_TOKEN — the founder-only ads " +
         "token — from a customer route. Credentials now come only from " +
         "channelCredentialStore.resolve (the org's own account), which " +
