@@ -1,7 +1,15 @@
-import { useState } from "react";
+import { Suspense, lazy, useEffect, useState } from "react";
 import { X, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { FeedbackDialog } from "@/components/feedback-button";
+
+// The feedback form renders nothing until "Send Feedback" is tapped, yet this
+// banner sits in the shell of every signed-in page — so the dialog (form,
+// textarea, checkbox, submit path) loads on first open instead of riding in
+// the entry chunk (measured 2026-10-20, entry-chunk budget). Stays mounted
+// afterwards so the close animation runs.
+const FeedbackDialog = lazy(() =>
+  import("@/components/feedback-button").then((m) => ({ default: m.FeedbackDialog })),
+);
 
 const DISMISS_KEY = "acreos_ea_banner_dismissed_v1";
 
@@ -15,6 +23,10 @@ export function EarlyAccessBanner() {
   });
 
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [feedbackRequested, setFeedbackRequested] = useState(false);
+  useEffect(() => {
+    if (feedbackOpen) setFeedbackRequested(true);
+  }, [feedbackOpen]);
 
   function handleDismiss() {
     setDismissed(true);
@@ -57,7 +69,11 @@ export function EarlyAccessBanner() {
         </Button>
       </div>
 
-      <FeedbackDialog open={feedbackOpen} onOpenChange={setFeedbackOpen} />
+      {(feedbackOpen || feedbackRequested) && (
+        <Suspense fallback={null}>
+          <FeedbackDialog open={feedbackOpen} onOpenChange={setFeedbackOpen} />
+        </Suspense>
+      )}
     </>
   );
 }
