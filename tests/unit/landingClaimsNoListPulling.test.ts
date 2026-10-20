@@ -29,7 +29,16 @@ function walk(dir: string, out: string[] = []): string[] {
   return out;
 }
 
-const stripHtmlComments = (s: string) => s.replace(/<!--[\s\S]*?-->/g, "");
+// Repeat to a fixpoint: one pass can join the halves of a nested or
+// split marker ("<!-<!---->-") into a new comment opener.
+function stripHtmlComments(s: string): string {
+  let prev: string;
+  do {
+    prev = s;
+    s = s.replace(/<!--[\s\S]*?-->/g, "");
+  } while (s !== prev);
+  return s;
+}
 
 function landingPopulation(): { file: string; text: string }[] {
   const files = [
