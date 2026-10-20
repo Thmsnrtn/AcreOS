@@ -398,7 +398,12 @@ const TRANSFER_TAX_COUNTY_RULES: Record<string, TransferTaxRule> = {
 // ─── Computation ──────────────────────────────────────────────────────────
 
 function normalizeCounty(county: string | null | undefined): string {
-  return (county ?? "").trim().replace(/\s+county$/i, "").replace(/\s+parish$/i, "");
+  // Word split, not a trailing-whitespace regex: /\s+county$/ backtracks
+  // quadratically on a long whitespace run (CodeQL, a caller-supplied value).
+  const words = (county ?? "").trim().split(/\s+/).filter(Boolean);
+  const last = words[words.length - 1]?.toLowerCase();
+  if (words.length > 1 && (last === "county" || last === "parish")) words.pop();
+  return words.join(" ");
 }
 
 /** Find the rule for a state and (optional) county. */
