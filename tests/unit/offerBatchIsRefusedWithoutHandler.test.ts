@@ -55,6 +55,10 @@ import { createOfferBatch, OfferBatchUnavailableError } from "../../server/servi
 import { vaEngineRepo } from "../../server/storage/vaEngineRepo";
 import { registerVAEngineRoutes } from "../../server/routes-va-engine";
 
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
+
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
+
 const OFFER_BATCH_JOB_TYPE = "process-offer-batch";
 
 const ROOT = path.resolve(__dirname, "../..");
