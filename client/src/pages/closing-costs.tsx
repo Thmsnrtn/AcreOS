@@ -25,8 +25,11 @@ interface RecordingFeeInfo {
   recordingFeePerPage: number;
   typicalPages: number;
   estimatedRecordingFee: number;
-  transferTaxPer1000: number;
-  transferTaxPaidBy: "buyer" | "seller" | "split" | "none";
+  /** null when the tax is graduated, class-dependent or local-only — see transferTaxRule. */
+  transferTaxPer1000: number | null;
+  /** The statutory rule in words, with citation (shared/regulatory/transferTax.ts). */
+  transferTaxRule: string;
+  transferTaxPaidBy: "buyer" | "seller" | "split" | "varies" | "none";
   specialNotes: string[];
   source: "database" | "state_default" | "estimate";
   confidence: "high" | "medium" | "low";
@@ -216,13 +219,20 @@ export default function ClosingCostsPage() {
                 </div>
                 <div>
                   <dt className="text-muted-foreground">Transfer tax</dt>
-                  <dd className="font-medium tabular-nums">${feeInfo.transferTaxPer1000.toFixed(2)}/$1,000</dd>
+                  <dd className="font-medium tabular-nums">
+                    {feeInfo.transferTaxPer1000 === null
+                      ? "Varies — see the rule below"
+                      : `$${feeInfo.transferTaxPer1000.toFixed(2)}/$1,000`}
+                  </dd>
                 </div>
                 <div>
                   <dt className="text-muted-foreground">Paid by</dt>
                   <dd className="font-medium capitalize">{feeInfo.transferTaxPaidBy}</dd>
                 </div>
               </dl>
+              <p className="text-xs text-muted-foreground" data-testid="transfer-tax-rule">
+                {feeInfo.transferTaxRule}
+              </p>
               {feeInfo.specialNotes.length > 0 && (
                 <ul className="space-y-1" aria-label="Special notes for this county">
                   {feeInfo.specialNotes.map((note, i) => (

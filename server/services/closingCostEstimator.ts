@@ -5,6 +5,7 @@
  */
 
 import { getRecordingFees } from "./countyRecordingFees";
+import { estimateTransferTax } from "@shared/regulatory/transferTax";
 import { STATE_DOCUMENT_CONFIGS } from "./stateDocumentConfig";
 import { clock } from "../utils/clock";
 
@@ -31,8 +32,10 @@ export function estimateClosingCosts(
 
   const recordingFee = feeInfo.estimatedRecordingFee;
 
-  // Transfer tax from recording fees service (already has state+county data)
-  const transferTax = Math.round((safePrice / 1000) * feeInfo.transferTaxPer1000);
+  // Transfer tax from the one canonical table. A refused estimate contributes
+  // nothing to the total and says why, rather than reading as "$0 tax".
+  const tt = estimateTransferTax(state, safePrice, { county, asOfIsoDate: closingDate ? closingDate.toISOString().slice(0, 10) : undefined });
+  const transferTax = tt.kind === "estimate" ? Math.round(tt.amountCents / 100) : 0;
 
   // Title insurance rough estimate — 0.5% of sale price
   const titleInsuranceEstimate = Math.round(safePrice * 0.005);
@@ -58,9 +61,11 @@ export function estimateClosingCosts(
     {
       item: "Transfer tax",
       amount: transferTax,
-      source: feeInfo.transferTaxPer1000 > 0
-        ? `$${feeInfo.transferTaxPer1000}/$1,000 — paid by ${feeInfo.transferTaxPaidBy}`
-        : `No transfer tax in ${state.toUpperCase()}`,
+      source: tt.kind === "estimate"
+        ? `${tt.statutoryUnit} (${tt.citation}) — customarily paid by ${tt.customaryPayer}${tt.excludesLocal ? `; excludes ${tt.excludesLocal}` : ""}`
+        : tt.kind === "none"
+        ? `No transfer tax in ${state.toUpperCase()} (${tt.citation})`
+        : `Not estimated: ${tt.reason}`,
     },
     {
       item: "Title insurance (estimate)",
