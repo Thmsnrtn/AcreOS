@@ -6,7 +6,7 @@ import { z } from "zod";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { usageMeteringService, creditService } from "./services/credits";
-import { deals, properties, leads, notes } from "@shared/schema";
+import { deals, properties, leads, notes, organizations } from "@shared/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { format as formatDate } from "date-fns";
 import { logger } from "./utils/logger";
@@ -59,6 +59,36 @@ export function isAssignmentTemplate(template: { type?: string | null; name?: st
   if (/\bassignment\b/.test(name) && /contract|agreement/.test(name)) return true;
   const content = template.content ?? "";
   return /\bassignor\b/i.test(content) || /assignment\s+of\s+(?:the\s+)?(?:real\s+estate\s+|purchase\s+)?(?:contract|agreement)/i.test(content);
+}
+
+/**
+ * The two parties an assignment cannot be drafted without. Migration 0284
+ * relabelled the seeded template's parties to {{assignor_name}} /
+ * {{assignee_name}}, but nothing resolved either, so every generated
+ * assignment printed the raw braces where the parties' names belong.
+ *
+ * Same rule as the canonical contract assembler
+ * (server/services/contracts/contractAssembly.ts): the Assignor is the
+ * original BUYER — the org's legal entity name, never its display name —
+ * and the Assignee is the assignment record's end buyer. A party that is
+ * unknown is NAMED and the document is refused; it is never left as
+ * `{{assignor_name}}` on a contract.
+ */
+export const ASSIGNMENT_PARTY_FIELDS = [
+  { field: "assignor_name", label: "Assignor's legal entity name", fixAt: "Settings → Organization → legal entity name" },
+  { field: "assignee_name", label: "End buyer (assignee) name", fixAt: "Deal → Assignment → End buyer" },
+] as const;
+
+export function missingAssignmentParties(
+  template: { content?: string | null },
+  vars: Record<string, unknown>,
+): Array<{ field: string; label: string; fixAt: string }> {
+  const content = template.content ?? "";
+  return ASSIGNMENT_PARTY_FIELDS.filter(({ field }) => {
+    if (!new RegExp(`\\{\\{\\s*${field}\\s*\\}\\}`, "i").test(content)) return false;
+    const v = vars[field];
+    return typeof v !== "string" || v.trim() === "";
+  }).map((f) => ({ ...f }));
 }
 
 type AssignmentGateOutcome =
@@ -132,6 +162,19 @@ async function resolveContextVariables(
 ): Promise<Record<string, string>> {
   const ctx: Record<string, string> = {};
 
+  // Assignor = the original buyer = this org's LEGAL entity name. The display
+  // name is not a legal party name (contractAssembly.ts uses the same field);
+  // unset stays unset so the assignment refusal can name it.
+  try {
+    const [org] = await db
+      .select({ legalEntityName: organizations.legalEntityName })
+      .from(organizations)
+      .where(eq(organizations.id, orgId))
+      .limit(1);
+    const legal = org?.legalEntityName?.trim();
+    if (legal) ctx['assignor_name'] = legal;
+  } catch { /* org lookup failure leaves the assignor unresolved — refused downstream */ }
+
   // Resolve property context
   let propId = propertyId;
   let deal: any = null;
@@ -155,6 +198,9 @@ async function resolveContextVariables(
       ctx['state'] = prop.state ?? '';
       ctx['acres'] = prop.sizeAcres != null ? String(prop.sizeAcres) : '';
       ctx['apn'] = prop.apn ?? '';
+      // Seeded templates (assignment, deed) use {{parcel_number}}; only the
+      // package path set it.
+      if (prop.apn) ctx['parcel_number'] = prop.apn;
       ctx['zoning'] = prop.zoning ?? '';
 
       if (prop.purchasePrice) ctx['purchase_price'] = `$${Number(prop.purchasePrice).toLocaleString()}`;
@@ -237,8 +283,10 @@ async function resolveContextVariables(
         if (assignment.originalContractDate) {
           ctx['original_contract_date'] = formatDate(new Date(assignment.originalContractDate), 'MMMM d, yyyy');
         }
-        if (!ctx['buyer_name'] && assignment.endBuyerName) {
-          ctx['buyer_name'] = assignment.endBuyerName;
+        const endBuyer = assignment.endBuyerName?.trim();
+        if (endBuyer) ctx['assignee_name'] = endBuyer;
+        if (!ctx['buyer_name'] && endBuyer) {
+          ctx['buyer_name'] = endBuyer;
         }
       }
     } catch { /* assignment table missing on fresh installs — vars stay manual */ }
@@ -527,6 +575,11 @@ export function registerDocSystemRoutes(app: Express): void {
         "note.downPayment": "$5,000",
       };
       
+      // The Assignor is the org's legal entity name — real, so show it. With
+      // none set, the placeholder stays marked [assignor_name] below.
+      const legalEntityName = typeof org.legalEntityName === "string" ? org.legalEntityName.trim() : "";
+      if (legalEntityName) defaultSampleData["assignor_name"] = legalEntityName;
+
       // Merge provided sample data with defaults
       const mergedData = { ...defaultSampleData, ...(sampleData || {}) };
       
@@ -857,6 +910,14 @@ export function registerDocSystemRoutes(app: Express): void {
           !!ackComplianceWarning,
         );
         if (!gate.ok) return res.status(409).json(gate.body);
+        const missing = missingAssignmentParties(template, mergedVars);
+        if (missing.length > 0) {
+          return Errors.unprocessable(
+            res,
+            `Cannot draft this assignment without: ${missing.map((m) => m.label).join(", ")}.`,
+            { missing },
+          );
+        }
       }
 
       let generatedContent = template.content;
@@ -1621,6 +1682,10 @@ export function registerDocSystemRoutes(app: Express): void {
       }
 
       const { variables } = req.body;
+      // Same context resolution as POST /api/generated-documents — this path
+      // resolved none of it, so any {{seller_name}} / {{assignor_name}}
+      // printed raw. Caller variables still win over resolved context.
+      const resolvedCtx = await resolveContextVariables(org.id, pkg.dealId, pkg.propertyId);
       const currentDocs = pkg.documents || [];
       const generatedDocs: any[] = [];
       
@@ -1643,7 +1708,7 @@ export function registerDocSystemRoutes(app: Express): void {
         }
         
         let content = template.content;
-        const mergedVars = { ...variables };
+        const mergedVars: Record<string, unknown> = { ...resolvedCtx, ...(variables && typeof variables === "object" ? variables : {}) };
         
         if (pkg.dealId) {
           const deal = await storage.getDeal(org.id, pkg.dealId);
@@ -1683,6 +1748,11 @@ export function registerDocSystemRoutes(app: Express): void {
             generatedDocs.push({ ...docItem, status: "blocked", compliance: gate.body });
             continue;
           }
+          const missing = missingAssignmentParties(template, mergedVars);
+          if (missing.length > 0) {
+            generatedDocs.push({ ...docItem, status: "blocked", missing });
+            continue;
+          }
         }
 
         for (const [key, value] of Object.entries(mergedVars)) {
@@ -1698,7 +1768,10 @@ export function registerDocSystemRoutes(app: Express): void {
           name: docItem.name || template.name,
           type: template.type,
           content,
-          variables: mergedVars,
+          // Stored as the template engine wrote them: strings, numbers kept.
+          variables: Object.fromEntries(
+            Object.entries(mergedVars).map(([k, v]) => [k, typeof v === "number" ? v : String(v ?? "")]),
+          ),
           status: "draft",
           generatedBy: user?.id,
         });

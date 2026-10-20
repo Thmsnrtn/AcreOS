@@ -59,7 +59,14 @@ export interface EnvironmentalResult {
 
 export interface RoadAccessResult {
   status: "done" | "error";
-  hasDirectRoadAccess: boolean;
+  /**
+   * Whether the parcel touches a road. A map lookup can only DISPROVE it (no
+   * mapped road within 500 m → false); a road nearby is proximity, not
+   * frontage or a recorded easement, so it leaves this null — as does a
+   * failed lookup. Null is "not established", never "has access" or
+   * "landlocked".
+   */
+  hasDirectRoadAccess: boolean | null;
   nearestRoadName: string | null;
   nearestRoadDistanceFeet: number | null;
   roadType: string | null; // residential, primary, secondary, track
@@ -632,7 +639,8 @@ async function checkRoadAccess(lat: number, lng: number): Promise<RoadAccessResu
     if (!resp.ok) throw new Error(`Overpass API ${resp.status}`);
 
     const data = await resp.json();
-    const ways = data.elements || [];
+    type OverpassWay = { tags?: { highway?: string; name?: string }; geometry?: Array<{ lat: number; lon: number }> };
+    const ways: OverpassWay[] = data.elements || [];
 
     if (ways.length === 0) {
       return {
@@ -653,12 +661,12 @@ async function checkRoadAccess(lat: number, lng: number): Promise<RoadAccessResu
     // it does not establish that the parcel touches it or has legal
     // ingress/egress.
     const roadHierarchy = ["motorway", "trunk", "primary", "secondary", "tertiary", "residential", "unclassified", "service", "track", "path"];
-    const measured = ways.map((w: any) => ({ w, ft: distanceToWayFeet(lat, lng, w.geometry) }));
-    measured.sort((a: any, b: any) => {
+    const measured = ways.map((w) => ({ w, ft: distanceToWayFeet(lat, lng, w.geometry) }));
+    measured.sort((a, b) => {
       if (a.ft !== null && b.ft !== null && a.ft !== b.ft) return a.ft - b.ft;
       if (a.ft !== null && b.ft === null) return -1;
       if (a.ft === null && b.ft !== null) return 1;
-      return roadHierarchy.indexOf(a.w.tags?.highway) - roadHierarchy.indexOf(b.w.tags?.highway);
+      return roadHierarchy.indexOf(a.w.tags?.highway ?? "") - roadHierarchy.indexOf(b.w.tags?.highway ?? "");
     });
     const nearest = measured[0];
     const bestRoad = nearest?.w;
@@ -678,7 +686,7 @@ async function checkRoadAccess(lat: number, lng: number): Promise<RoadAccessResu
 
     return {
       status: "done",
-      hasDirectRoadAccess: true,
+      hasDirectRoadAccess: null,
       nearestRoadName: roadName,
       nearestRoadDistanceFeet: distanceFeet,
       roadType,
@@ -688,7 +696,7 @@ async function checkRoadAccess(lat: number, lng: number): Promise<RoadAccessResu
   } catch (err: any) {
     return {
       status: "error",
-      hasDirectRoadAccess: false,
+      hasDirectRoadAccess: null,
       nearestRoadName: null,
       nearestRoadDistanceFeet: null,
       roadType: null,
@@ -1492,7 +1500,7 @@ export async function runAutoDueDiligence(
     floodZone: resolve(floodZone, { status: "error" as const, zone: null, zoneDescription: null, risk: "unknown" as RiskLevel, inFloodplain: false, floodInsuranceRequired: false }),
     wetlands: resolve(wetlands, { status: "error" as const, hasWetlands: false, wetlandAcres: 0, wetlandPercent: 0, wetlandTypes: [], risk: "unknown" as RiskLevel, developmentImpact: "Check failed" }),
     environmental: resolve(environmental, { status: "error" as const, superfundSitesWithin1Mile: 0, superfundSitesWithin5Miles: 0, nearestHazardName: null, nearestHazardDistanceMiles: null, risk: "unknown" as RiskLevel }),
-    roadAccess: resolve(roadAccess, { status: "error" as const, hasDirectRoadAccess: false, nearestRoadName: null, nearestRoadDistanceFeet: null, roadType: null, risk: "unknown" as RiskLevel, note: "Check failed" }),
+    roadAccess: resolve(roadAccess, { status: "error" as const, hasDirectRoadAccess: null, nearestRoadName: null, nearestRoadDistanceFeet: null, roadType: null, risk: "unknown" as RiskLevel, note: "Check failed" }),
     soil: resolve(soil, { status: "error" as const, dominantSoilName: null, farmlandClassification: null, drainage: null, risk: "unknown" as RiskLevel }),
     elevation: resolve(elevation, { status: "error" as const, elevationFeet: null, slope: null, risk: "unknown" as RiskLevel }),
     landCover: resolve(landCover, { status: "error" as const, forestPercent: 0, farmlandPercent: 0, wetlandPercent: 0, developedPercent: 0, grasslandPercent: 0, dominantCover: "Unknown", recreationalPremium: false, developedEncroachment: false, agriculturalValue: false }),

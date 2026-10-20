@@ -317,13 +317,17 @@ function extractMotivationSignals(ownerData: any): string[] {
   return signals;
 }
 
-function extractEnvironmentalSignals(enrichment: any): string[] {
+export function extractEnvironmentalSignals(enrichment: any): string[] {
   const signals: string[] = [];
   if (enrichment?.floodZone === "X" || enrichment?.floodZone === "None") {
     signals.push("No flood risk");
   }
-  if (enrichment?.roadAccess && enrichment.roadAccess !== "none") {
-    signals.push("Road access confirmed");
+  // A mapped road near the parcel is proximity, not access — a landlocked
+  // tract can sit beside a highway. This said "Road access confirmed" for any
+  // value but "none", including "Unknown". Say only what was observed.
+  const road = typeof enrichment?.roadAccess === "string" ? enrichment.roadAccess.trim().toLowerCase() : "";
+  if (road && road !== "none" && road !== "unknown") {
+    signals.push("Mapped road nearby (access not verified)");
   }
   if (enrichment?.terrain === "flat" || enrichment?.terrain === "gentle") {
     signals.push("Flat terrain");
@@ -345,12 +349,14 @@ function extractMarketSignals(countyData: any): string[] {
   return signals;
 }
 
-function extractRiskSignals(enrichment: any): string[] {
+export function extractRiskSignals(enrichment: any): string[] {
   const risks: string[] = [];
   if (enrichment?.floodZone && enrichment.floodZone !== "X" && enrichment.floodZone !== "None") {
     risks.push(`Flood zone ${enrichment.floodZone}`);
   }
-  if (enrichment?.roadAccess === "none") risks.push("No road access");
+  // Absence of a mapped road is not proof of no legal access (an unmapped
+  // easement may exist), so the risk names the observation.
+  if (enrichment?.roadAccess === "none") risks.push("No mapped road nearby (access not verified)");
   if (enrichment?.wetlandsPercent > 10) risks.push("Wetlands adjacent");
   if (enrichment?.hasEnvironmentalIssues) risks.push("Environmental concern");
   return risks;

@@ -10956,7 +10956,7 @@ export interface DealOpportunity {
   };
   signals: {
     motivation: string[]; // "tax delinquent", "out of state", "owned 20+ years"
-    environmental: string[]; // "no flood risk", "road access confirmed"
+    environmental: string[]; // "no flood risk", "mapped road nearby (access not verified)"
     market: string[]; // "county values rising 8% YoY"
     risks: string[]; // "wetlands adjacent", "no road access"
   };
