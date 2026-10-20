@@ -3,6 +3,39 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-10-20 — Lead imports keep the parcel facts (`claude/p4-csv-import-keeps-parcel-facts`, uncommitted)
+
+### Built (working tree, not committed)
+- **One parser module, every import path.** `shared/leads/parcelFacts.ts`
+  reads ACREAGE, ASSESSED value (county), ESTIMATED value (market) and
+  TAX-DELINQUENT status (flag, amount owed, years) — refuse-not-fabricate:
+  "N/A" / blank / garbage / a county 0 are null, never 0; a positive amount or
+  years count implies delinquent. Used by POST /api/leads/csv-import,
+  POST /api/leads/import/tax-delinquent, importLeads() (POST /api/leads/import,
+  /api/import/leads + its background job) and processTaxDelinquentImport();
+  header rule shared by the Smart CSV sheet and the tax-delinquent importer.
+- **Migration 0286** (+ migrate.mjs mirror): `leads.assessed_value`
+  numeric(14,2), `tax_delinquent_amount` numeric(12,2), `tax_delinquent_years`
+  integer. Assessed ≠ estimated, never one written into the other.
+- **Lead detail Parcel card**: property address, APN/county, acreage,
+  "Assessed value (county)" vs "Estimated value", tax delinquent / owed / years.
+- **Fixed on the way:** the Smart CSV sheet's `parseCsv` stripped quotes before
+  splitting cells, so any quoted comma ("$45,000", "SMITH, JOHN") split a cell
+  and shifted the row.
+
+**Measured:** new tests `leadImportKeepsParcelFacts` (44) +
+`leadCsvImportParcelFacts` (8); 31 related files / 556 tests green; 12
+mutations all red. Lints schema-migrate-mirror / schema / ghost-fields /
+measurement-defaults / reachability / no-fabrication / org-fetch exit 0;
+ratchet measure at baseline. NOT run: npm run check / tsc / full suite.
+
+### Next
+1. Run `npm run check` + full suite on a machine that can, then commit.
+2. processTaxDelinquentImport() still has no production route
+   (`/api/import/tax-delinquent` is named in a 404 hint but never mounted).
+3. The synchronous `/api/import/:entityType` path ignores a `fieldMap` the
+   job path honours (no client sends one today).
+
 ## 2026-10-19 — Open Fieldstone items closed (Muse)
 
 ### Shipped to main

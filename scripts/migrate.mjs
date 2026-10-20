@@ -12338,6 +12338,12 @@ BEGIN
   PERFORM set_config('lock_timeout', prior_lock_timeout, true);
 END
 $mig0281$`,
+  // 0286 — a lead keeps the county's assessed value, the amount owed and the
+  // years delinquent from an imported list. Mirrors
+  // migrations/0286_leads_assessed_value.sql.
+  `ALTER TABLE "leads" ADD COLUMN IF NOT EXISTS "assessed_value" numeric(14,2)`,
+  `ALTER TABLE "leads" ADD COLUMN IF NOT EXISTS "tax_delinquent_amount" numeric(12,2)`,
+  `ALTER TABLE "leads" ADD COLUMN IF NOT EXISTS "tax_delinquent_years" integer`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
