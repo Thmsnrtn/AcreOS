@@ -23,6 +23,7 @@
  */
 
 import { offerabilityRefusal } from "./services/listability";
+import { leadNotOptedOutSql } from "./services/leadContactability";
 import type { Express, Response } from "express";
 import { z } from "zod";
 import { and, asc, desc, eq, sql } from "drizzle-orm";
@@ -107,6 +108,9 @@ export function registerBuyerBlastRoutes(app: Express): void {
             eq(buyerPropertyMatches.propertyId, propertyId),
             // An inactive buyer profile is not an audience (DEFECT-0174).
             eq(buyerProfiles.isActive, true),
+            // A buyer who said stop (STOP reply, revocation, operator
+            // do-not-contact) is not an audience on any channel.
+            leadNotOptedOutSql(),
             sql`${buyerPropertyMatches.matchScore} >= ${minMatchScore}`,
           ))
           .orderBy(desc(buyerPropertyMatches.matchScore))
