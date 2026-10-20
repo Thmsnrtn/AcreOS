@@ -3,6 +3,31 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-10-20 — V0 vertical program re-applied (staged, not committed)
+
+### Staged on `claude/recover-v0-vertical-program`
+- Stranded commit `6f6c65f4` (V0: evidence rule v2, underwriting kit, land and
+  buy-and-hold released) re-applied onto main. Its defects were renumbered
+  because main had issued 0285–0288 meanwhile: 0285 → **DEFECT-0290**,
+  0286 → **0291**, 0287 → **0292** (0289 reserved by another branch).
+- One vertical rule, not two: `shared/governance/evidenceLadder.ts` no longer
+  restates the OD-5 demotions by hand. Each vertical entry states one readiness
+  tier and its claim/caveat derive from it; `verticalReadiness.test.ts` pins the
+  ladder to the measured tier, the demotion map and the gradeable set
+  (mutation-checked). Land and buy-and-hold now read "closes the canonical loop";
+  subdivider carries "decided, not yet gradeable".
+- New wall-clock reads from the stranded commit converted to `clock`.
+
+**Measured:** targeted vitest 50 files (routeManifest run twice) / 776 test runs green; lint:reachability,
+clock-reads, no-fabrication, boundaries, browser-safe-shared, org-fetch exit 0.
+`npm run check`, the full suite and the build were NOT run (memory limits).
+
+### Top next moves
+1. Run `npm run check`, full `npm test` and `npm run build`, then an
+   independent audit of the re-applied wave before committing.
+2. DEFECT-0292 (acquisition-cost wording vs `total_cost`) is a founder-visible
+   product choice.
+
 ## 2026-10-19 — Open Fieldstone items closed (Muse)
 
 ### Shipped to main

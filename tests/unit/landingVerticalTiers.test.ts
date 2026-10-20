@@ -102,7 +102,7 @@ describe("landing vertical tiers derive from the business-type registry", () => 
 });
 
 describe("DEMOTE_ON_LANDING — the only sanctioned public conservatism", () => {
-  it("carries the thirteen OD-5 demotions, and every one is dated", () => {
+  it("carries the remaining OD-5 demotions, and every one is dated", () => {
     // WAS: `expect(Object.keys(DEMOTE_ON_LANDING)).toHaveLength(0)` with the
     // note that the registry truth pass had superseded all hardcoded
     // demotions. That pin was correct until the truth pass itself was
@@ -116,8 +116,12 @@ describe("DEMOTE_ON_LANDING — the only sanctioned public conservatism", () => 
     // membership itself is pinned in verticalReadiness.test.ts against the
     // EVIDENCE rather than against a hand-written list, so this file does not
     // duplicate that.
+    //
+    // The count shrinks as verticals close the loop (vertical program,
+    // decision-memos/2026-10-04-vertical-program.md): 13 at OD-5; land and
+    // buy-and-hold released 2026-10-04.
     const entries = Object.entries(DEMOTE_ON_LANDING);
-    expect(entries).toHaveLength(13);
+    expect(entries).toHaveLength(11);
     for (const [id, d] of entries) {
       expect(d!.reason.trim().length, `${id} has an empty reason`).toBeGreaterThan(0);
       expect(d!.decidedOn, `${id} is undated`).toMatch(/^\d{4}-\d{2}-\d{2}$/);
