@@ -15,7 +15,7 @@
 import { describe, it, expect } from "vitest";
 import {
   estimateTransferTax,
-  TRANSFER_TAX_RULES,
+  transferTaxRuleFor,
   type TransferTaxEstimate,
 } from "../../shared/regulatory/transferTax";
 
@@ -102,7 +102,7 @@ describe("graduated schedules", () => {
     expect(cents(estimateTransferTax("RI", 100_000, { propertyClass: "vacant_land", asOfIsoDate: "2026-10-20" }))).toBe(75_000);
   });
   it("VT vacant land $100,000: 1.25% + 0.22% surcharge = $1,470", () => {
-    expect(cents(estimateTransferTax("VT", 100_000, { propertyClass: "vacant_land" }))).toBe(147_000);
+    expect(cents(estimateTransferTax("VT", 100_000, { propertyClass: "vacant_land", asOfIsoDate: "2026-10-20" }))).toBe(147_000);
   });
   it("a graduated state refuses when the property class is unknown", () => {
     expect(estimateTransferTax("WA", 600_000).kind).toBe("refused");
@@ -140,10 +140,66 @@ describe("no tax, local-only, refused and dated rules", () => {
   });
 });
 
+describe("statute re-checks (audit 2026-10-20, finding 6)", () => {
+  // RSA 78-B:1, I: $0.75 per $100 (or fraction) from EACH of buyer and seller,
+  // and "a minimum tax of $20" from each when the consideration is $4,000 or
+  // less (revenue.nh.gov RETT FAQ). Combined: $1.50 per $100, minimum $40.
+  const at = { asOfIsoDate: "2026-10-20" };
+  it("NH $1,000: 10 × $1.50 = $15, below the $20 + $20 minimum → $40", () => {
+    expect(cents(estimateTransferTax("NH", 1_000, at))).toBe(4_000);
+  });
+  it("NH $2,000: 20 × $1.50 = $30, below the minimum → $40", () => {
+    expect(cents(estimateTransferTax("NH", 2_000, at))).toBe(4_000);
+  });
+  it("NH $3,000: 30 × $1.50 = $45, above the minimum → $45", () => {
+    expect(cents(estimateTransferTax("NH", 3_000, at))).toBe(4_500);
+  });
+  it("NH $2,650.01: 27 units (fraction rounds up) × $1.50 = $40.50", () => {
+    expect(cents(estimateTransferTax("NH", 2_650.01, at))).toBe(4_050);
+  });
+
+  // D.C. Code §§ 42-1103, 47-903: the 2019 Class 2 increase to 2.5% + 2.5%
+  // on commercial deeds of $2,000,000+ expired 2023-09-30 (OTR Tax Notice
+  // 2019-05) and was not extended, so it is 1.45% + 1.45% = 2.9% today.
+  it("DC nonresidential $2,500,000: 2.9% = $72,500 (not the lapsed 5%)", () => {
+    expect(cents(estimateTransferTax("DC", 2_500_000, { ...at, propertyClass: "nonresidential" }))).toBe(7_250_000);
+  });
+  it("DC residence $300,000 (under $400,000): 1.1% + 1.1% = 2.2% = $6,600", () => {
+    expect(cents(estimateTransferTax("DC", 300_000, { ...at, propertyClass: "single_family_residence" }))).toBe(660_000);
+  });
+  it("DC residence $500,000: 1.45% + 1.45% = 2.9% of the whole price = $14,500", () => {
+    expect(cents(estimateTransferTax("DC", 500_000, { ...at, propertyClass: "single_family_residence" }))).toBe(1_450_000);
+  });
+
+  // 32 V.S.A. § 9602 (1.25%) + § 9602a clean water surcharge 0.22% (from
+  // 2024-08-01, Act 181 of 2024): 1.47% on property other than a principal
+  // residence. § 9602a has a further version from 2027-07-01 not encoded.
+  it("VT vacant land $250,000: 1.47% = $3,675", () => {
+    expect(cents(estimateTransferTax("VT", 250_000, { ...at, propertyClass: "vacant_land" }))).toBe(367_500);
+  });
+  it("VT refuses a transfer on/after 2027-07-01 (the next § 9602a version is not in the table)", () => {
+    expect(estimateTransferTax("VT", 250_000, { asOfIsoDate: "2027-07-01", propertyClass: "vacant_land" }).kind).toBe("refused");
+  });
+  it("VT cites the surcharge section, not only § 9602", () => {
+    expect(transferTaxRuleFor("VT")!.citation).toMatch(/9602a/);
+  });
+
+  // W. Va. Code § 11-22-2(b) IMPOSES the $0.55-per-$500 county tax; a county
+  // may raise it to $1.10 or $1.65. So the $0.55 is in the figure and the
+  // optional increase is named as excluded.
+  it("WV $100,000: $1.10 × 200 + $0.55 × 200 = $330, excluding any county increase", () => {
+    const e = estimateTransferTax("WV", 100_000, at);
+    expect(cents(e)).toBe(33_000);
+    expect(e.kind === "estimate" && e.excludesLocal).toMatch(/county increase/);
+  });
+});
+
 describe("coverage", () => {
   it("every state and DC has a rule", () => {
     const states = "AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY".split(" ");
-    expect(states.filter((s) => !TRANSFER_TAX_RULES[s])).toEqual([]);
-    expect(Object.keys(TRANSFER_TAX_RULES)).toHaveLength(51);
+    expect(states).toHaveLength(51);
+    // Read through the module's own lookup (the table itself is not exported:
+    // nothing outside the module may hold a reference to a rate row).
+    expect(states.filter((s) => transferTaxRuleFor(s)?.state !== s)).toEqual([]);
   });
 });

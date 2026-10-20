@@ -66,6 +66,7 @@ import { DISCLAIMER_DOCUMENT_TEMPLATE } from "../legalDisclaimers";
 import {
   describeTransferTax,
   estimateTransferTax,
+  isoDateOf,
   type PropertyClass,
 } from "@shared/regulatory/transferTax";
 import { checkDisclosure, buildDisclosureMissingPayload } from "../disclosureRegistry";
@@ -259,7 +260,9 @@ export interface ContractPropertyInput {
   /**
    * What is on the land, when known. Some states' transfer tax turns on it
    * (WA brackets, CT, Miami-Dade's surtax); without it those states print
-   * the statutory rule and no dollar estimate.
+   * the statutory rule and no dollar estimate. Production callers derive it
+   * from the property's recorded structureType via
+   * propertyClassFromStructureType() — never a guess.
    */
   propertyClass?: PropertyClass;
 }
@@ -743,7 +746,9 @@ export function assembleContract(input: ContractAssemblyInput): ContractAssembly
   const transferTaxContext: TransferTaxContext = {
     county: county as string,
     propertyClass: property.propertyClass,
-    asOfIsoDate: closingIso && !isNaN(closingIso.getTime()) ? closingIso.toISOString().slice(0, 10) : undefined,
+    // No valid closing date = today on the server clock, so a dated rule
+    // still refuses once it lapses (never "skip the date check").
+    asOfIsoDate: isoDateOf(closingIso && !isNaN(closingIso.getTime()) ? closingIso : clock.now()),
   };
   const variables: Record<string, string> = {
     state,

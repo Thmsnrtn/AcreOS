@@ -89,12 +89,78 @@ describe("there is one transfer-tax table", () => {
     expect(files).toContain("shared/regulatory/transferTax.ts");
   });
 
-  it("no file outside the canonical module keeps a per-state transfer-tax rate", () => {
-    const offenders = files.filter((f) => {
-      if (f === "shared/regulatory/transferTax.ts") return false;
-      const src = stripComments(readFileSync(f, "utf8"));
-      return /\btransferTaxPercent\s*:|\bSTATE_TRANSFER_TAX\b|\bgetTransferTaxAmount\b/.test(src);
+  it("the population includes every surface that has held a second table", () => {
+    for (const f of [
+      "server/services/regulatoryIntelligence.ts",
+      "server/services/countyRecordingFees.ts",
+      "server/services/stateDocumentConfig.ts",
+      "server/services/closingCostEstimator.ts",
+      "client/src/pages/regulatory-intel.tsx",
+      "client/src/pages/closing-costs.tsx",
+    ]) expect(files).toContain(f);
+  });
+
+  // Each predicate is a SHAPE a second table has taken on this repo:
+  //  - the old column / map / getter names;
+  //  - a string literal on a transferTax* key (regulatoryIntelligence.ts held
+  //    `transferTax: "0.35% documentary stamp"` for FL — the deed rate is
+  //    $0.70 per $100 — and wrong AR and OK strings, served at
+  //    /api/regulatory/states/:code);
+  //  - a SCREAMING-case per-state rate table (STATE_TRANSFER_TAX, …);
+  //  - a statutory rate written as prose ("$0.60 per $100", "0.35%
+  //    documentary stamp") — countyRecordingFees restated Miami-Dade's rate
+  //    in a special note.
+  // Source is comment-stripped first, so the comments recording WHY a table
+  // was removed (this file's own included) are not read as the table.
+  const PREDICATES: Array<[string, RegExp]> = [
+    ["legacy table names", /\btransferTaxPercent\s*:|\bSTATE_TRANSFER_TAX\b|\bgetTransferTaxAmount\b/],
+    // (a payer field — `transferTaxPaidBy: "buyer" | …` — names who pays, not a rate.)
+    ["string literal on a transferTax key", /["']?\btransferTax(?!PaidBy|Payer)\w*["']?\s*\??:\s*["'`]/],
+    ["per-state rate table name", /\b[A-Z_]*(?:TRANSFER|DEED|STAMP|EXCISE|CONVEYANCE|RECORDATION)_?TAX(?:_[A-Z]+)*\s*(?::|=)/],
+    ["statutory rate as prose", /\$\d+(?:\.\d+)?\s*per\s*\$(?:100|500|1,?000)\b|\d(?:\.\d+)?%\s*(?:documentary|doc(?:ument)?\s*stamp|deed tax|transfer tax|excise|conveyance)/i],
+  ];
+  const CANONICAL = "shared/regulatory/transferTax.ts";
+  const stripped = new Map(files.map((f) => [f, stripComments(readFileSync(f, "utf8"))]));
+
+  it("every predicate is live: each matches its own fixture, and prose matches the canonical module", () => {
+    const fixtures: Record<string, string> = {
+      "legacy table names": "const STATE_TRANSFER_TAX = {}",
+      "string literal on a transferTax key": 'const p = { transferTax: "0.35% documentary stamp" }',
+      "per-state rate table name": "const DEED_TAX_RATES: Record<string, number> = { FL: 0.7 }",
+      "statutory rate as prose": 'notes: ["$0.60 per $100 single-family"]',
+    };
+    for (const [name, re] of PREDICATES) expect(re.test(fixtures[name]), name).toBe(true);
+    // The real table is written in statutory prose; if the prose predicate
+    // stopped matching it, it would stop matching a second copy too.
+    expect(PREDICATES[3][1].test(stripped.get(CANONICAL)!)).toBe(true);
+    // And the stripper did not blank the canonical module.
+    expect(stripped.get(CANONICAL)!).toContain("TRANSFER_TAX_RULES");
+  });
+
+  it("the comment stripper does not hide a table: a commented-out table is not an offender, a live one is", () => {
+    const live = 'const p = { transferTax: "none" };';
+    const dead = '// const p = { transferTax: "none" };';
+    expect(PREDICATES[1][1].test(stripComments(live))).toBe(true);
+    expect(PREDICATES[1][1].test(stripComments(dead))).toBe(false);
+  });
+
+  for (const [name, re] of PREDICATES) {
+    it(`no file outside the canonical module has a ${name}`, () => {
+      const offenders = files.filter((f) => f !== CANONICAL && re.test(stripped.get(f)!));
+      expect(offenders).toEqual([]);
     });
-    expect(offenders).toEqual([]);
+  }
+});
+
+describe("/api/regulatory/states/:code serves the canonical rule", () => {
+  it("FL, AR, OK and NC profiles carry describeTransferTax(), not a hand-typed string", async () => {
+    const { regulatoryIntelligenceService } = await import("../../server/services/regulatoryIntelligence");
+    const { describeTransferTax } = await import("../../shared/regulatory/transferTax");
+    for (const st of ["FL", "AR", "OK", "NC", "TX"]) {
+      expect(regulatoryIntelligenceService.getStateProfile(st)!.transferTax).toBe(describeTransferTax(st));
+    }
+    expect(regulatoryIntelligenceService.getStateProfile("FL")!.transferTax).toContain("$0.70 per $100");
+    expect(regulatoryIntelligenceService.getStateProfile("AR")!.transferTax).toContain("$3.30 per $1,000");
+    expect(regulatoryIntelligenceService.getStateProfile("OK")!.transferTax).toContain("$0.75 per $500");
   });
 });

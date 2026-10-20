@@ -13,10 +13,13 @@
 import {
   describeTransferTax,
   estimateTransferTax,
+  isoDateOf,
   per1000,
   transferTaxRuleFor,
   type CustomaryPayer,
+  type PropertyClass,
 } from "@shared/regulatory/transferTax";
+import { clock } from "../utils/clock";
 
 export interface RecordingFeeInfo {
   state: string;
@@ -73,9 +76,9 @@ const COUNTY_OVERRIDES: Record<string, Partial<RecordingFeeInfo>> = {
     recordingFeePerPage: 36,
     specialNotes: ["No state transfer tax in Texas"],
   },
-  "FL|Miami-Dade": {
-    specialNotes: ["Miami-Dade: $0.60 per $100 for a single-family residence; $0.60 + $0.45 surtax per $100 for all other property, vacant land included (Fla. Stat. § 201.02(1)(b), § 201.031)"],
-  },
+  // Miami-Dade's class-dependent rate is NOT restated here: transferTaxRule
+  // (describeTransferTax with the county) already carries it from the one
+  // table, and a second copy of a rate is how the tables drifted.
 };
 
 export function getRecordingFees(state: string, county: string): RecordingFeeInfo {
@@ -117,23 +120,42 @@ export function getRecordingFees(state: string, county: string): RecordingFeeInf
 
 /**
  * Compute total estimated closing cost contribution for a buyer given purchase price.
+ *
+ * A refused transfer tax is null everywhere it appears — the total, the
+ * buyer's share and the seller's share leave it OUT and `totalExcludes` says
+ * so. A "varies" payer is not assigned to either side: the tax is in
+ * `unallocatedTransferTax`, not silently dropped from both.
  */
 export function estimateClosingCosts(
   purchasePrice: number,
   state: string,
-  county: string
+  county: string,
+  opts: { propertyClass?: PropertyClass; asOfIsoDate?: string } = {},
 ): {
   recordingFee: number;
-  /** null when the canonical table refuses to estimate (see breakdown.transferTaxRule). */
+  /** null when the canonical table refuses to estimate (see transferTaxRefusal). */
   transferTaxTotal: number | null;
+  /** Why the transfer tax was not estimated; null when it was (or there is none). */
+  transferTaxRefusal: string | null;
   transferTaxExcludesLocal: string | null;
-  buyerResponsibility: number;
-  sellerResponsibility: number;
+  /** null when the transfer tax is refused (the share cannot be known). */
+  buyerResponsibility: number | null;
+  /** null when the transfer tax is refused. */
+  sellerResponsibility: number | null;
+  /** Transfer tax whose payer is negotiated ("varies"), in neither side's share; null when refused. */
+  unallocatedTransferTax: number | null;
+  /** Sum of what WAS estimated. */
   totalCost: number;
+  /** What totalCost leaves out, in words. Empty when complete. */
+  totalExcludes: string[];
   breakdown: RecordingFeeInfo;
 } {
   const info = getRecordingFees(state, county);
-  const est = estimateTransferTax(state, purchasePrice, { county });
+  const est = estimateTransferTax(state, purchasePrice, {
+    county,
+    propertyClass: opts.propertyClass,
+    asOfIsoDate: opts.asOfIsoDate ?? isoDateOf(clock.now()),
+  });
   // A refused estimate is null, never 0 — 0 would read as "no tax".
   const transferTaxTotal: number | null =
     est.kind === "estimate" ? est.amountCents / 100 : est.kind === "none" ? 0 : null;
@@ -141,22 +163,30 @@ export function estimateClosingCosts(
 
   let buyerPct = 0;
   let sellerPct = 0;
+  let unallocatedPct = 0;
   if (info.transferTaxPaidBy === "buyer") buyerPct = 1;
   else if (info.transferTaxPaidBy === "seller") sellerPct = 1;
   else if (info.transferTaxPaidBy === "split") { buyerPct = 0.5; sellerPct = 0.5; }
+  else if (info.transferTaxPaidBy === "varies") unallocatedPct = 1;
+
+  const totalExcludes: string[] = [];
+  if (est.kind === "refused") totalExcludes.push(`Transfer tax — not estimated: ${est.reason}`);
+  else if (est.kind === "estimate" && est.excludesLocal) totalExcludes.push(`Local transfer taxes — ${est.excludesLocal}`);
 
   // Recording fee typically paid by buyer
-  const tax = transferTaxTotal ?? 0;
-  const buyerResponsibility = recordingFee + tax * buyerPct;
-  const sellerResponsibility = tax * sellerPct;
+  const buyerResponsibility = transferTaxTotal === null ? null : Math.round(recordingFee + transferTaxTotal * buyerPct);
+  const sellerResponsibility = transferTaxTotal === null ? null : Math.round(transferTaxTotal * sellerPct);
 
   return {
     recordingFee,
     transferTaxTotal,
+    transferTaxRefusal: est.kind === "refused" ? est.reason : null,
     transferTaxExcludesLocal: est.kind === "estimate" ? est.excludesLocal : null,
-    buyerResponsibility: Math.round(buyerResponsibility),
-    sellerResponsibility: Math.round(sellerResponsibility),
-    totalCost: Math.round(recordingFee + tax),
+    buyerResponsibility,
+    sellerResponsibility,
+    unallocatedTransferTax: transferTaxTotal === null ? null : Math.round(transferTaxTotal * unallocatedPct),
+    totalCost: Math.round(transferTaxTotal === null ? recordingFee : recordingFee + transferTaxTotal),
+    totalExcludes,
     breakdown: info,
   };
 }

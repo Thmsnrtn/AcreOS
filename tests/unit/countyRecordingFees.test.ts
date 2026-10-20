@@ -68,7 +68,8 @@ describe("closingCostEstimator (all-in estimate)", () => {
   });
   it("a refused state contributes nothing and says it was not estimated", () => {
     const e = estimateAllIn("NJ", "Morris", 100_000);
-    expect(e.transferTax).toBe(0);
+    // null, never 0 — 0 reads as "no tax" (transferTaxRefusalIsNeverZero.test.ts).
+    expect(e.transferTax).toBeNull();
     expect(e.breakdown.find((b) => b.item === "Transfer tax")?.source).toMatch(/^Not estimated/);
   });
 });

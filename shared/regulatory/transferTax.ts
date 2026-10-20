@@ -41,7 +41,45 @@
 export const TRANSFER_TAX_TABLE_VERIFIED_AT = "2026-10-20";
 
 export type CustomaryPayer = "seller" | "buyer" | "split" | "varies" | "none";
-export type PropertyClass = "vacant_land" | "single_family_residence" | "other_residential" | "nonresidential";
+export const PROPERTY_CLASSES = ["vacant_land", "single_family_residence", "other_residential", "nonresidential"] as const;
+export type PropertyClass = (typeof PROPERTY_CLASSES)[number];
+
+export function isPropertyClass(v: unknown): v is PropertyClass {
+  return typeof v === "string" && (PROPERTY_CLASSES as readonly string[]).includes(v);
+}
+
+/**
+ * The transfer-tax property class implied by a property's recorded
+ * `structureType` (shared/schema.ts `properties.structure_type`: sfr, duplex,
+ * triplex, fourplex, condo, townhouse, commercial, mixed_use, vacant_land).
+ *
+ * Only an EXPLICIT value maps. Unknown, blank, condo/townhouse (whether a
+ * unit counts as a "single-family residence" differs by statute — Miami-Dade's
+ * surtax turns on it) and mixed_use (apportioned in several states) return
+ * undefined, so the estimate refuses rather than guessing a bracket.
+ */
+export function propertyClassFromStructureType(structureType: string | null | undefined): PropertyClass | undefined {
+  const t = (structureType ?? "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  switch (t) {
+    case "vacant_land":
+    case "vacant":
+    case "land":
+    case "raw_land":
+      return "vacant_land";
+    case "sfr":
+    case "single_family":
+    case "single_family_residence":
+      return "single_family_residence";
+    case "duplex":
+    case "triplex":
+    case "fourplex":
+      return "other_residential";
+    case "commercial":
+      return "nonresidential";
+    default:
+      return undefined;
+  }
+}
 export type Rounding = "up" | "nearest" | "exact";
 
 /** A rate exactly as a statute states it. */
@@ -85,6 +123,8 @@ export interface TransferTaxRule {
   addOns?: Array<StatutoryRate & { citation: string }>;
   /** A conveyance at or below this consideration is not taxed (AR $100, CO $500). */
   exemptBelowUsd?: number;
+  /** The statute's minimum tax on a taxable transfer, all parties combined (NH: $20 from each of buyer and seller). */
+  minimumTaxUsd?: number;
   /** This much of the consideration is deducted before the rate applies (IA: the first $500). */
   exemptFirstUsd?: number;
   /** Local taxes this table does NOT include (city/county/municipal add-ons that vary). */
@@ -120,7 +160,7 @@ const none = (state: string, citation: string, confidence: "high" | "medium" = "
   confidence,
 });
 
-export const TRANSFER_TAX_RULES: Record<string, TransferTaxRule> = {
+const TRANSFER_TAX_RULES: Record<string, TransferTaxRule> = {
   AL: { state: "AL", kind: "flat", rate: r(0.5, 500, "up", "$0.50 per $500 (or fraction) of value"), customaryPayer: "varies", citation: "Ala. Code § 40-22-1", confidence: "high" },
   AK: none("AK", "No state or local real-estate transfer tax statute"),
   AZ: none("AZ", "Ariz. Const. art. 9 § 24 (no real-property transfer tax; a $2 affidavit fee is not a tax on value)"),
@@ -163,7 +203,10 @@ export const TRANSFER_TAX_RULES: Record<string, TransferTaxRule> = {
       ] },
       { appliesTo: ["nonresidential"], method: "whole_value", brackets: [{ upToUsd: null, rate: pct(2.9, "1.45% recordation + 1.45% transfer") }] },
     ],
-    customaryPayer: "split", citation: "D.C. Code § 42-1103 (recordation), § 47-903 (transfer)", confidence: "high",
+    // The 2019 Class 2 increase (2.5% + 2.5% = 5% on commercial deeds of
+    // $2,000,000+) expired 2023-09-30 and was not extended (OTR Tax Notice
+    // 2019-05; FY2024 budget), so nonresidential is 1.45% + 1.45% at any price.
+    customaryPayer: "split", citation: "D.C. Code § 42-1103 (recordation), § 47-903 (transfer); https://code.dccouncil.gov/us/dc/council/code/sections/47-903", confidence: "medium",
   },
   FL: { state: "FL", kind: "flat", rate: r(0.7, 100, "up", "$0.70 per $100 (or fraction) — documentary stamp tax"), customaryPayer: "seller", citation: "Fla. Stat. § 201.02(1)(a)", confidence: "high" },
   GA: { state: "GA", kind: "flat", rate: r(0.1, 100, "up", "$1.00 for the first $1,000 and $0.10 per additional $100 (or fraction)"), customaryPayer: "seller", citation: "O.C.G.A. § 48-6-1", confidence: "high" },
@@ -225,7 +268,11 @@ export const TRANSFER_TAX_RULES: Record<string, TransferTaxRule> = {
   MT: none("MT", "Mont. Const. art. VIII § 17 (bars transfer taxes)", "high"),
   NE: { state: "NE", kind: "flat", rate: r(3.32, 1000, "exact", "$3.32 per $1,000 of value"), effectiveFrom: "2026-07-18", customaryPayer: "seller", citation: "Neb. Rev. Stat. § 76-901 (as amended by LB 1067, 2026)", confidence: "high" },
   NV: { state: "NV", kind: "flat", rate: r(1.95, 500, "up", "$1.95 per $500 (or fraction) — statewide base"), customaryPayer: "varies", citation: "NRS 375.020, 375.023", confidence: "high" },
-  NH: { state: "NH", kind: "flat", rate: r(1.5, 100, "up", "$0.75 per $100 (or fraction) from each of buyer and seller"), customaryPayer: "split", citation: "RSA 78-B:1", confidence: "high" },
+  NH: {
+    state: "NH", kind: "flat", rate: r(1.5, 100, "up", "$0.75 per $100 (or fraction) from each of buyer and seller; minimum $20 from each on consideration of $4,000 or less"),
+    minimumTaxUsd: 40,
+    customaryPayer: "split", citation: "RSA 78-B:1, I (https://www.gc.nh.gov/rsa/html/V/78-B/78-B-1.htm; https://www.revenue.nh.gov/resource-center/frequently-asked-questions/real-estate-transfer-tax)", confidence: "high",
+  },
   NJ: {
     state: "NJ", kind: "refused",
     refusalReason: "New Jersey's realty transfer fee is graduated by price with partial exemptions, and the graduated-percent fee (from 7/10/2025) applies to classes AcreOS does not record. Get the figure from the closing agent.",
@@ -282,7 +329,10 @@ export const TRANSFER_TAX_RULES: Record<string, TransferTaxRule> = {
     schedules: [{ appliesTo: ["vacant_land", "nonresidential"], method: "whole_value", brackets: [
       { upToUsd: null, rate: pct(1.47, "1.25% general rate + 0.22% clean water surcharge") },
     ] }],
-    customaryPayer: "buyer", citation: "32 V.S.A. § 9602 (as amended by Act 181 of 2024)", confidence: "high",
+    // § 9602a has a second version effective 2027-07-01 that this table does
+    // not encode, so the row stops at 2027-06-30 rather than outlive its text.
+    effectiveThrough: "2027-06-30",
+    customaryPayer: "buyer", citation: "32 V.S.A. § 9602 (general 1.25%); 32 V.S.A. § 9602a (clean water surcharge 0.22% from 2024-08-01, Act 181 of 2024) — https://legislature.vermont.gov/statutes/section/32/231/09602a; https://tax.vermont.gov/property/property-transfer-tax", confidence: "high",
   },
   VA: {
     state: "VA", kind: "flat", rate: r(0.25, 100, "up", "$0.25 per $100 (or fraction) — state recordation tax"),
@@ -303,8 +353,12 @@ export const TRANSFER_TAX_RULES: Record<string, TransferTaxRule> = {
   },
   WV: {
     state: "WV", kind: "flat", rate: r(1.1, 500, "up", "$1.10 per $500 (or fraction)"),
-    addOns: [{ ...r(0.55, 500, "up", "$0.55 per $500 (or fraction) — county"), citation: "W. Va. Code § 11-22-2(b)" }],
-    customaryPayer: "seller", citation: "W. Va. Code § 11-22-2", confidence: "high",
+    // § 11-22-2(b) IMPOSES the $0.55 county tax everywhere; only the
+    // increase above it is a county option, so the $0.55 is included and the
+    // optional increase is named as excluded.
+    addOns: [{ ...r(0.55, 500, "up", "$0.55 per $500 (or fraction) — county (statutory floor)"), citation: "W. Va. Code § 11-22-2(b)" }],
+    excludesLocal: "any county increase above the statutory $0.55 per $500 (a county commission may raise it to $1.10 or $1.65 per $500)",
+    customaryPayer: "seller", citation: "W. Va. Code § 11-22-2 (https://code.wvlegislature.gov/11-22-2/)", confidence: "high",
   },
   WI: { state: "WI", kind: "flat", rate: r(0.3, 100, "up", "$0.30 per $100 (or fraction) — real estate transfer fee"), customaryPayer: "seller", citation: "Wis. Stat. § 77.22(1)", confidence: "high" },
   WY: none("WY", "No transfer tax statute"),
@@ -314,7 +368,7 @@ export const TRANSFER_TAX_RULES: Record<string, TransferTaxRule> = {
  * County rules that REPLACE the state row for that county. Keyed "ST|County"
  * with the county name as the clerk writes it (no "County" suffix).
  */
-export const TRANSFER_TAX_COUNTY_RULES: Record<string, TransferTaxRule> = {
+const TRANSFER_TAX_COUNTY_RULES: Record<string, TransferTaxRule> = {
   // Fla. Stat. § 201.02(1)(b): Miami-Dade's base is $0.60 per $100; deeds of
   // anything other than solely a single-family residence add a $0.45 per $100
   // surtax (§ 201.031) — vacant land included.
@@ -359,7 +413,7 @@ export function transferTaxRuleFor(state: string, county?: string | null): Trans
 }
 
 /** Tax on `amountUsd` at one statutory rate, in cents, honouring the statute's rounding. */
-export function taxAtRateCents(amountUsd: number, rate: StatutoryRate): number {
+function taxAtRateCents(amountUsd: number, rate: StatutoryRate): number {
   if (amountUsd <= 0) return 0;
   const raw = amountUsd / rate.unitUsd;
   const units = rate.rounding === "up" ? Math.ceil(raw - 1e-9) : rate.rounding === "nearest" ? Math.round(raw) : raw;
@@ -407,8 +461,19 @@ export interface EstimateOptions {
   county?: string | null;
   /** Needed where a bracket or surtax turns on it; omitted = refuse those. */
   propertyClass?: PropertyClass;
-  /** ISO date of the transfer (closing). Defaults to the caller's today. */
+  /**
+   * ISO date of the transfer (closing). Omitted = today, from `now` (server
+   * callers pass their clock — server/utils/clock — so a simulated calendar
+   * reaches the effective-date checks; shared/ cannot import it).
+   */
   asOfIsoDate?: string;
+  /** "Today" when `asOfIsoDate` is omitted. Defaults to the wall clock. */
+  now?: Date;
+}
+
+/** A Date as a calendar ISO date (UTC), the form effective dates are stored in. */
+export function isoDateOf(d: Date): string {
+  return d.toISOString().slice(0, 10);
 }
 
 /**
@@ -425,7 +490,9 @@ export function estimateTransferTax(state: string, priceUsd: number, opts: Estim
   if (!Number.isFinite(priceUsd) || priceUsd <= 0) {
     return { kind: "refused", reason: "A positive price is required to estimate transfer tax.", citation: rule.citation };
   }
-  const asOf = opts.asOfIsoDate;
+  // An omitted date is TODAY, never "skip the check" — a dated row must stop
+  // estimating once its rate lapses even when the caller passes no date.
+  const asOf = opts.asOfIsoDate || isoDateOf(opts.now ?? new Date());
   if (asOf && rule.effectiveFrom && asOf < rule.effectiveFrom) {
     return { kind: "refused", reason: `${rule.state}'s rate changed on ${rule.effectiveFrom}; this table holds only the current rate.`, citation: rule.citation };
   }
@@ -457,6 +524,7 @@ export function estimateTransferTax(state: string, priceUsd: number, opts: Estim
     cents += taxAtRateCents(priceUsd, addOn);
     statutoryUnit = `${statutoryUnit} + ${addOn.statutoryUnit}`;
   }
+  if (rule.minimumTaxUsd !== undefined) cents = Math.max(cents, Math.round(rule.minimumTaxUsd * 100));
   return {
     kind: "estimate",
     amountCents: cents,
