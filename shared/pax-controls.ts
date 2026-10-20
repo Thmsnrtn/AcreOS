@@ -258,16 +258,24 @@ const TOOL_REGISTRY: Readonly<Record<string, ToolEntry>> = Object.fromEntries([
       "draft_offer",
       "schedule_followup",
       "schedule_follow_up",
-      "create_calendar_event",
-      "trigger_zapier",
-      "trigger_make",
     ],
     "changes_records",
     "executeTool",
   ),
   // APPROVAL_REQUIRED_TOOLS (server/services/approvalKernel.ts) — may only grow.
   ...tools(
-    ["send_email", "send_sms", "send_gmail", "send_slack_message", "create_stripe_payment_link"],
+    [
+      "send_email",
+      "send_sms",
+      "send_gmail",
+      "send_slack_message",
+      "create_stripe_payment_link",
+      // Outbound connector POSTs — a webhook fan-out or a calendar invite
+      // leaves AcreOS exactly like an email does (2026-10-20).
+      "trigger_zapier",
+      "trigger_make",
+      "create_calendar_event",
+    ],
     "sends",
     "executeTool",
   ),

@@ -48,6 +48,16 @@ export const APPROVAL_REQUIRED_TOOLS: ReadonlySet<string> = new Set([
   "send_gmail",
   "send_slack_message",
   "create_stripe_payment_link",
+  // 2026-10-20: every connector executor that POSTs outward is a send.
+  // trigger_zapier / trigger_make POST a model-composed payload (lead PII
+  // included) to the customer's webhook, which can fan out to any of 6,000
+  // apps; create_calendar_event POSTs an event that emails its attendees.
+  // All three ran on Pax's word alone, classed as mere record changes.
+  // connectorOutboundWritesRequireApproval.test.ts derives this from the
+  // executor source, so a new POSTing executor cannot skip the tap.
+  "trigger_zapier",
+  "trigger_make",
+  "create_calendar_event",
 ]);
 
 /** Pending approvals expire after 24 hours — stale drafts must be re-witnessed. */
@@ -65,6 +75,9 @@ const TOOL_CHANNELS: Record<string, string> = {
   send_sms: "sms",
   send_slack_message: "slack",
   create_stripe_payment_link: "stripe",
+  trigger_zapier: "zapier",
+  trigger_make: "make",
+  create_calendar_event: "calendar",
 };
 
 export function toolChannel(toolName: string): string {

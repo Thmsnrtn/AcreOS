@@ -61,6 +61,7 @@ const AI_ROUTES_SRC = stripCommentsPreservingLines(read("server/routes-ai.ts"));
 
 interface Entry {
   id: string;
+  authType: string;
   tools: string[];
   capabilities: string[];
   planned: boolean;
@@ -77,8 +78,10 @@ function entries(): Entry[] {
     const block = REGISTRY_SRC.slice(from, to);
     const toolsM = /tools: \[([^\]]*)\]/.exec(block);
     const capsM = /capabilities: \[([^\]]*)\]/.exec(block);
+    const authM = /authType: "([a-z]+)"/.exec(block);
     out.push({
       id: starts[i][1],
+      authType: authM ? authM[1] : "",
       tools: toolsM ? [...toolsM[1].matchAll(/"([a-z_0-9]+)"/g)].map((m) => m[1]) : [],
       capabilities: capsM ? [...capsM[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]) : [],
       planned: /availability:\s*"planned"/.test(block),
@@ -103,7 +106,61 @@ function dispatchableTools(): Set<string> {
   return new Set([...TOOLS_SRC.matchAll(/\n {6}case "([a-z_0-9]+)": \{/g)].map((m) => m[1]));
 }
 
+/**
+ * ── THE OAUTH RULE (2026-10-20) ─────────────────────────────────────────────
+ * gmail, google_drive and google_calendar were `authType: "oauth"`, had
+ * dispatchable tools, and so passed every rule above — while NO route anywhere
+ * could start an OAuth consent or receive its callback for a Pax connector.
+ * The only way to "connect" one was the generic connect route, which accepted
+ * `{}` and answered `status: "connected"`; the panel then said "Pax can now use
+ * this integration" and offered "Click Connect to be redirected to authorize
+ * access" — a redirect that did not exist. Dispatchable tools are not enough:
+ * an OAuth connector is available only if an OAuth start route exists for it.
+ *
+ * Population: every .ts file under server/, comment-stripped. A start route is
+ * a string literal naming `/api/ai/connectors/<:id | the id>/oauth/start`.
+ */
+function listServerSources(dir: string, acc: string[] = []): string[] {
+  for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, ent.name);
+    if (ent.isDirectory()) {
+      if (ent.name === "node_modules") continue;
+      listServerSources(full, acc);
+    } else if (ent.name.endsWith(".ts")) {
+      acc.push(full);
+    }
+  }
+  return acc;
+}
+const SERVER_FILES = listServerSources(path.join(ROOT, "server"));
+const SERVER_SRC = SERVER_FILES.map((f) => stripCommentsPreservingLines(fs.readFileSync(f, "utf8"))).join("\n");
+
+/** Connector ids (or ":id", meaning every connector) that have an OAuth start route. */
+function oauthStartRouteIds(src: string): Set<string> {
+  const ids = new Set<string>();
+  for (const m of src.matchAll(/["'`]\/api\/ai\/connectors\/(:[a-zA-Z]+|[a-z_0-9]+)\/oauth\/start["'`]/g)) {
+    ids.add(m[1].startsWith(":") ? "*" : m[1]);
+  }
+  return ids;
+}
+function hasOauthFlow(e: Entry, routes: Set<string>): boolean {
+  return e.authType !== "oauth" || routes.has("*") || routes.has(e.id);
+}
+
 describe("vacuity: the catalog and the dispatch switch both parsed", () => {
+  it("the OAuth-route scan read the whole server tree and its matcher works", () => {
+    expect(SERVER_FILES.length, "server/ source population collapsed").toBeGreaterThan(200);
+    // Canary: the matcher must recognise both shapes it claims to.
+    expect(oauthStartRouteIds('api.get("/api/ai/connectors/:id/oauth/start", h)').has("*")).toBe(true);
+    expect(oauthStartRouteIds("router.get('/api/ai/connectors/gmail/oauth/start', h)").has("gmail")).toBe(true);
+    expect(oauthStartRouteIds("// '/api/ai/connectors/gmail/oauth/start'").size).toBe(1); // raw (unstripped) text matches…
+    expect(oauthStartRouteIds(stripCommentsPreservingLines("// '/api/ai/connectors/gmail/oauth/start'\n")).size).toBe(0); // …but a comment never counts.
+    // Every entry parsed an authType, and the OAuth set is non-empty.
+    const es = entries();
+    expect(es.filter((e) => e.authType === "").map((e) => e.id)).toEqual([]);
+    expect(es.filter((e) => e.authType === "oauth").length).toBeGreaterThanOrEqual(3);
+  });
+
   it("found real connectors with real tool lists", () => {
     // Without this, every "no violation" below is satisfied by a broken regex.
     const es = entries();
@@ -148,13 +205,34 @@ describe("availability agrees with whether the tools exist", () => {
     ).toEqual([]);
   });
 
+  it("every AVAILABLE OAuth connector has an OAuth start route", () => {
+    const routes = oauthStartRouteIds(SERVER_SRC);
+    const offenders = entries()
+      .filter((e) => !e.planned && !hasOauthFlow(e, routes))
+      .map((e) => e.id);
+    expect(
+      offenders,
+      "these OAuth connectors are presented as available but no route starts their OAuth " +
+        "consent, so no access token can ever be obtained. The connect route would store an " +
+        'empty credential and call it connected. Build the flow, or mark them `availability: "planned"`.',
+    ).toEqual([]);
+  });
+
   it("no PLANNED connector is secretly finished", () => {
     // The other direction. A flag left stale after the adapter lands would hide
     // a working integration behind a refusal and keep telling customers it does
-    // not exist.
+    // not exist. "Finished" means every tool dispatches AND (for OAuth) a
+    // consent flow exists.
     const d = dispatchableTools();
+    const routes = oauthStartRouteIds(SERVER_SRC);
     const stale = entries()
-      .filter((e) => e.planned && e.tools.length > 0 && e.tools.every((t) => d.has(t)))
+      .filter(
+        (e) =>
+          e.planned &&
+          e.tools.length > 0 &&
+          e.tools.every((t) => d.has(t)) &&
+          hasOauthFlow(e, routes),
+      )
       .map((e) => e.id);
     expect(
       stale,
@@ -222,9 +300,66 @@ describe("the rule is falsifiable", () => {
     // The negative control, on a real entry. A rule that flagged working
     // connectors would be deleted within a week.
     const d = dispatchableTools();
-    const gmail = entries().find((e) => e.id === "gmail");
-    expect(gmail).toBeDefined();
-    expect(gmail!.planned).toBe(false);
-    expect(gmail!.tools.filter((t) => !d.has(t))).toEqual([]);
+    const routes = oauthStartRouteIds(SERVER_SRC);
+    const slack = entries().find((e) => e.id === "slack");
+    expect(slack).toBeDefined();
+    expect(slack!.planned).toBe(false);
+    expect(slack!.tools.filter((t) => !d.has(t))).toEqual([]);
+    expect(hasOauthFlow(slack!, routes)).toBe(true);
+  });
+
+  it("FIRES when gmail (dispatchable tools, no OAuth flow) is re-marked available", () => {
+    // The 2026-10-20 defect exactly: gmail's tools all dispatch, so only the
+    // OAuth rule can catch it.
+    const d = dispatchableTools();
+    const routes = oauthStartRouteIds(SERVER_SRC);
+    for (const id of ["gmail", "google_drive", "google_calendar"]) {
+      const e = entries().find((x) => x.id === id);
+      expect(e, `${id} entry is gone — re-anchor this`).toBeDefined();
+      expect(e!.planned, `${id} is no longer marked planned`).toBe(true);
+      expect(e!.tools.every((t) => d.has(t)), `${id}'s tools no longer dispatch — this canary is moot`).toBe(true);
+      const asAvailable = { ...e!, planned: false };
+      expect(hasOauthFlow(asAvailable, routes), `marking ${id} available did not trip the OAuth rule`).toBe(false);
+    }
+  });
+});
+
+
+describe("the connect route refuses empty or missing credentials", () => {
+  it("credentialRefusal refuses {} / undefined / blank, accepts real values (driven)", async () => {
+    const { getConnector, credentialRefusal } = await import("../../server/services/connectors/registry");
+    const slack = getConnector("slack")!;
+    expect(credentialRefusal(slack, undefined)).not.toBeNull();
+    expect(credentialRefusal(slack, {})).not.toBeNull();
+    expect(credentialRefusal(slack, { webhookUrl: "   " })).not.toBeNull();
+    expect(credentialRefusal(slack, { webhookUrl: 42 as unknown as string })).not.toBeNull();
+    // Optional field may be blank.
+    expect(credentialRefusal(slack, { webhookUrl: "https://hooks.slack.com/services/x" })).toBeNull();
+    const mls = getConnector("mls")!;
+    expect(credentialRefusal(mls, { mlsUrl: "https://x" })?.missing).toEqual(["accessToken"]);
+    // A connector with no credential fields (OAuth) can never be connected by paste.
+    for (const id of ["gmail", "google_drive", "google_calendar"]) {
+      expect(credentialRefusal(getConnector(id)!, {}), id).not.toBeNull();
+      expect(credentialRefusal(getConnector(id)!, { accessToken: "x" }), id).not.toBeNull();
+    }
+  });
+
+  it("the route applies credentialRefusal BEFORE encrypting or storing", () => {
+    const connectAt = AI_ROUTES_SRC.indexOf('api.post("/api/ai/connectors/:id/connect"');
+    const end = AI_ROUTES_SRC.indexOf('api.post("/api/ai/connectors/:id/test"');
+    expect(connectAt).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(connectAt);
+    const body = AI_ROUTES_SRC.slice(connectAt, end);
+    const refusalAt = body.search(/credentialRefusal\(def,\s*credentials\)/);
+    expect(refusalAt, "the connect route no longer calls credentialRefusal").toBeGreaterThan(-1);
+    expect(refusalAt).toBeLessThan(body.indexOf("encryptCredentials("));
+    expect(refusalAt).toBeLessThan(body.indexOf("upsertPaxConnector"));
+  });
+
+  it("stale connected rows on planned connectors grant Pax no tools or context", async () => {
+    const { getConnectorTools, buildConnectorContextBlock } = await import("../../server/services/connectors/registry");
+    expect(getConnectorTools(["gmail", "google_calendar"])).toEqual([]);
+    expect(buildConnectorContextBlock(["gmail"])).toBe("");
+    expect(getConnectorTools(["slack"])).toEqual(["send_slack_message"]);
   });
 });
