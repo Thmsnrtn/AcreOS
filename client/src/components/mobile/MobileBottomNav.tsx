@@ -5,7 +5,15 @@ import { motion } from "framer-motion";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Suspense, lazy, useEffect, useState } from "react";
 import { prefetchDoorChunksOnIdle } from "@/lib/door-prefetch";
-import { MobileCommandDrawer } from "./MobileCommandDrawer";
+// The More drawer renders nothing until the More tab is tapped, but it pulls
+// vaul (the drawer engine) and its own icon set — measured 2026-10-20 it was
+// the largest lazy-able piece of the entry chunk every page (desktop
+// included) downloaded and parsed. Same treatment as the quick-add sheet
+// below: loaded on first open, stays mounted afterwards so the close
+// animation runs.
+const MobileCommandDrawer = lazy(() =>
+  import("./MobileCommandDrawer").then((m) => ({ default: m.MobileCommandDrawer })),
+);
 // The quick-add sheet renders nothing until the FAB is tapped, but its forms
 // pull zod, the shared contracts and cmdk — measured 2026-10-12 they were
 // ~200 KB of the entry chunk that every page (desktop included) downloaded
@@ -22,6 +30,10 @@ export function MobileBottomNav() {
   const { isMobile, isKeyboardOpen } = useIsMobile();
   const { user } = useAuth();
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [drawerRequested, setDrawerRequested] = useState(false);
+  useEffect(() => {
+    if (isDrawerOpen) setDrawerRequested(true);
+  }, [isDrawerOpen]);
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
   const [quickAddRequested, setQuickAddRequested] = useState(false);
   useEffect(() => {
@@ -181,10 +193,14 @@ export function MobileBottomNav() {
         </div>
       </nav>
 
-      <MobileCommandDrawer
-        open={isDrawerOpen}
-        onOpenChange={setIsDrawerOpen}
-      />
+      {(isDrawerOpen || drawerRequested) && (
+        <Suspense fallback={null}>
+          <MobileCommandDrawer
+            open={isDrawerOpen}
+            onOpenChange={setIsDrawerOpen}
+          />
+        </Suspense>
+      )}
 
       {(isQuickAddOpen || quickAddRequested) && (
         <Suspense fallback={null}>
