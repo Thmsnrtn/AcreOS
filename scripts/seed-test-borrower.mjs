@@ -140,6 +140,15 @@ async function cmdSeed(client) {
 
   // 3. borrower lead — keyed by (organization_id, email). Drop the prior row
   // (if any) and re-insert so the seeder is reset-safe.
+  //
+  // ORDER MATTERS: notes.borrower_id is ON DELETE SET NULL. Deleting the
+  // lead first orphans its notes (borrower_id → NULL), and the step-4
+  // cleanup keyed on the NEW lead id can then never match them — orphaned
+  // notes accumulate, and with the deterministic access token the step-4
+  // INSERT hits the UNIQUE constraint on access_token and the seed fails.
+  // The fixture org is dedicated to this suite, so delete ALL its notes
+  // before touching the lead.
+  await client.query(`DELETE FROM notes WHERE organization_id = $1`, [orgId]);
   await client.query(
     `DELETE FROM leads WHERE organization_id = $1 AND email = $2`,
     [orgId, BORROWER_EMAIL],
@@ -161,13 +170,13 @@ async function cmdSeed(client) {
   );
   const borrowerId = leadRows[0].id;
 
-  // 4. note — drop the prior sentinel-tagged row (matched via the lead) and
-  // re-insert. The access token is deterministic (derived from the sentinel):
-  // the note is deleted and re-inserted each cycle, so a fresh random token
-  // buys nothing, and a stable token eliminates the seeder/runner
-  // token-mismatch class where the credentials file doesn't match the DB.
-  // notes.access_token is UNIQUE; we can't UPSERT-on-token because the
-  // row is deleted first.
+  // 4. note — insert fresh. Prior fixture notes were already deleted in
+  // step 3 (before the lead, whose deletion would have orphaned them via
+  // ON DELETE SET NULL). The access token is deterministic (derived from
+  // the sentinel): the note is deleted and re-inserted each cycle, so a
+  // fresh random token buys nothing, and a stable token eliminates the
+  // seeder/runner token-mismatch class where the credentials file doesn't
+  // match the DB.
   //
   // `atr_exemption_code` is REQUIRED for an active note by the DB-level CHECK
   // `notes_atr_origination_gate`; without it this INSERT threw and the
@@ -178,10 +187,6 @@ async function cmdSeed(client) {
   // three codes would each assert something false here (there is no collateral
   // row to call raw_land, the borrower is a natural person, and nothing marks
   // the credit as business-purpose).
-  await client.query(
-    `DELETE FROM notes WHERE organization_id = $1 AND borrower_id = $2`,
-    [orgId, borrowerId],
-  );
   const accessToken = crypto
     .createHash("sha256")
     .update(`borrower-e2e-access-token:${SENTINEL}`)
