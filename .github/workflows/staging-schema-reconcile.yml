@@ -43,6 +43,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
+      # REMOTE_EXEC: the `node scripts/migrate.mjs --ddl-only` command in this
+      # job is exec'd into a running staging machine via the Machines API — it
+      # never runs on the GitHub runner, so the runner installs nothing and the
+      # workflowScriptsHaveTheirDeps gate exempts jobs carrying this marker.
+      # `pg` must instead resolve inside the deployed image: verified 2026-10-20
+      # against staging machine 2863744f11e5d8 — /app/scripts/migrate.mjs present
+      # and import("pg") resolves from /app.
+      REMOTE_EXEC: "true"
       FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
       STAGING_APP: ${{ vars.FLY_STAGING_APP || 'acreos-staging' }}
     steps:
