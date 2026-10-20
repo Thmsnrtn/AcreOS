@@ -24,6 +24,22 @@ import pg from "pg";
 // the real release_command touches prod.
 const DRY_RUN = process.argv.includes("--dry-run") || process.argv.includes("--check");
 
+// ── DDL-only mode ───────────────────────────────────────────────────────────
+// `--ddl-only` applies ONLY the schema statements (CREATE / ALTER / DROP /
+// DO) and skips the data statements (INSERT / UPDATE / DELETE — seed rows
+// and backfills). It exists for the nightly staging schema-reconcile
+// workflow (.github/workflows/staging-schema-reconcile.yml): staging's
+// fly.staging.toml sets release_command = "true", so nothing ever replays
+// this list against the staging database and its schema silently drifts
+// from the code (the 2026-10-20 borrower-cookie 500s were exactly that —
+// missing leads.outreach_language*/timezone and organizations columns).
+// The reconcile replays the DDL subset against staging, the same subset
+// the one-off manual repair applied, so drift self-heals nightly and any
+// non-benign failure turns the workflow red. Production never passes this
+// flag — its release_command runs the full list, seeds included, exactly
+// as before.
+const DDL_ONLY = process.argv.includes("--ddl-only");
+
 if (!process.env.DATABASE_URL) {
   console.error("[migrate] DATABASE_URL not set — aborting");
   process.exit(1);
@@ -12340,6 +12356,21 @@ END
 $mig0281$`,
 ];
 
+// The statement set this run executes. Default: everything (the production
+// release path). --ddl-only: schema statements only — classification is by
+// first keyword after any leading `--` comments. Measured 2026-10-20:
+// 2,013 statements = 1,427 CREATE, 411 ALTER, 19 DROP, 41 DO, and the only
+// data statements in the list are 102 INSERT, 10 UPDATE, 3 DELETE.
+const ACTIVE_STATEMENTS = DDL_ONLY
+  ? STATEMENTS.filter((stmt) => /^\s*(?:--[^\n]*\n\s*)*(CREATE|ALTER|DROP|DO)\b/i.test(stmt))
+  : STATEMENTS;
+if (DDL_ONLY) {
+  console.log(
+    `[migrate] --ddl-only: applying ${ACTIVE_STATEMENTS.length} schema statement(s); ` +
+      `skipping ${STATEMENTS.length - ACTIVE_STATEMENTS.length} data statement(s)`,
+  );
+}
+
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
 
 // Postgres RAISE NOTICE/WARNING arrives as out-of-band 'notice' events that
@@ -12456,11 +12487,11 @@ if (DRY_RUN) {
   // Validate the whole batch inside ONE transaction, then ROLLBACK. Nothing is
   // persisted; we only learn whether each statement is valid against the live
   // schema. A single unexpected failure fails the gate (exit 1).
-  console.log(`[migrate:dry-run] validating ${STATEMENTS.length} statement(s) against current schema (no changes will be committed)`);
+  console.log(`[migrate:dry-run] validating ${ACTIVE_STATEMENTS.length} statement(s) against current schema (no changes will be committed)`);
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    for (const stmt of STATEMENTS) {
+    for (const stmt of ACTIVE_STATEMENTS) {
       try {
         await client.query(stmt);
         // Inside an aborted-tx, subsequent statements error with 25P02; a clean
@@ -12493,7 +12524,7 @@ if (DRY_RUN) {
     await pool.end().catch(() => {});
   }
   console.log(
-    `[migrate:dry-run] complete — ${STATEMENTS.length - failures.length - skipped.length - unvalidatable.length} ok, ` +
+    `[migrate:dry-run] complete — ${ACTIVE_STATEMENTS.length - failures.length - skipped.length - unvalidatable.length} ok, ` +
       `${skipped.length} skipped (missing prereq), ${unvalidatable.length} not validated (non-transactional), ` +
       `${failures.length} would-fail`,
   );
@@ -12513,7 +12544,7 @@ if (DRY_RUN) {
 }
 
 try {
-  for (const stmt of STATEMENTS) {
+  for (const stmt of ACTIVE_STATEMENTS) {
     try {
       await pool.query(stmt);
       console.log(`[migrate] OK: ${stmt}`);

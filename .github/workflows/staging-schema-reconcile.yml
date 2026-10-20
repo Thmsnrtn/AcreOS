@@ -1,0 +1,146 @@
+# Nightly staging schema reconciliation.
+#
+# WHY THIS EXISTS: fly.staging.toml sets release_command = "true" — staging
+# never runs scripts/migrate.mjs, so its schema comes only from db:push at
+# image build and silently drifts from the live database over time. On
+# 2026-10-20 that drift (missing leads.outreach_language*/timezone and four
+# organizations columns) made every getLead() throw and 500'd the
+# borrower-cookie audit; the repair applied migrate.mjs's DDL subset to the
+# staging DB by hand. This workflow is that repair, automated (founder
+# approved option A, 2026-10-20).
+#
+# HOW: exec into a running staging machine via the Fly Machines API (the
+# machine already holds DATABASE_URL and the deployed code) and run
+# `node scripts/migrate.mjs --ddl-only` detached, then poll for its exit
+# code. --ddl-only applies schema statements only (CREATE/ALTER/DROP/DO) —
+# no seed/data statements ever run against staging from here.
+#
+# LOUD ON FAILURE, BY DESIGN: a non-zero migrate exit (any non-benign
+# statement failure) fails this workflow. There is deliberately no
+# dormancy guard — if FLY_API_TOKEN is missing this goes red, not quiet.
+#
+# STAGING ONLY. Production's release_command is untouched and never runs
+# with --ddl-only.
+
+name: Staging Schema Reconcile
+
+on:
+  schedule:
+    # 07:17 UTC nightly — ~2-3am US Eastern, clear of the audit windows.
+    - cron: "17 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-schema-reconcile
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    name: Reconcile staging schema (migrate.mjs --ddl-only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      STAGING_APP: ${{ vars.FLY_STAGING_APP || 'acreos-staging' }}
+    steps:
+      - name: Run DDL-only migrate on a staging machine and await its verdict
+        run: |
+          python3 - <<'PYEOF'
+          import json, os, sys, time, urllib.request, urllib.error
+
+          APP = os.environ.get("STAGING_APP") or "acreos-staging"
+          TOKEN = os.environ.get("FLY_API_TOKEN") or ""
+          if not TOKEN:
+              print("::error::FLY_API_TOKEN secret is not set — refusing to go quiet.")
+              sys.exit(1)
+
+          BASE = f"https://api.machines.dev/v1/apps/{APP}"
+
+          def call(method, path, body=None, timeout=90):
+              req = urllib.request.Request(BASE + path, method=method)
+              req.add_header("Authorization", f"Bearer {TOKEN}")
+              data = None
+              if body is not None:
+                  data = json.dumps(body).encode()
+                  req.add_header("Content-Type", "application/json")
+              with urllib.request.urlopen(req, data=data, timeout=timeout) as r:
+                  return json.loads(r.read().decode() or "{}")
+
+          def exec_cmd(mid, command, timeout=60):
+              out = call("POST", f"/machines/{mid}/exec",
+                         {"command": command, "timeout": timeout})
+              return out.get("exit_code", -1), (out.get("stdout") or ""), (out.get("stderr") or "")
+
+          machines = call("GET", "/machines")
+          if not isinstance(machines, list) or not machines:
+              print(f"::error::No machines found for app {APP}.")
+              sys.exit(1)
+          started = [m for m in machines if m.get("state") == "started"]
+          if not started:
+              mid = machines[0]["id"]
+              print(f"No started machine; starting {mid} ...")
+              call("POST", f"/machines/{mid}/start", {})
+              for _ in range(24):
+                  time.sleep(5)
+                  m = call("GET", f"/machines/{mid}")
+                  if m.get("state") == "started":
+                      started = [m]
+                      break
+          if not started:
+              print("::error::Could not get a started staging machine.")
+              sys.exit(1)
+          mid = started[0]["id"]
+          print(f"Using staging machine {mid}")
+
+          launch = (
+              "cd /app && rm -f /tmp/schema-reconcile.exit; "
+              "(node scripts/migrate.mjs --ddl-only > /tmp/schema-reconcile.log 2>&1; "
+              "echo $? > /tmp/schema-reconcile.exit) & echo launched"
+          )
+          rc, out, err = exec_cmd(mid, ["sh", "-c", launch])
+          if rc != 0:
+              print(f"::error::Failed to launch reconcile (exit {rc}): {out} {err}")
+              sys.exit(1)
+          print("Reconcile launched; polling for completion (up to 30 min) ...")
+
+          code = None
+          deadline = time.time() + 30 * 60
+          while time.time() < deadline:
+              time.sleep(30)
+              try:
+                  rc, out, _ = exec_cmd(mid, ["cat", "/tmp/schema-reconcile.exit"])
+              except Exception as e:
+                  print(f"poll error (retrying): {e}")
+                  continue
+              out = out.strip()
+              if rc == 0 and out.lstrip("-").isdigit():
+                  code = int(out)
+                  break
+
+          if code is None:
+              print("::error::Reconcile did not finish within 30 minutes.")
+              try:
+                  _, tail, _ = exec_cmd(mid, ["tail", "-n", "40", "/tmp/schema-reconcile.log"])
+                  print(tail)
+              except Exception:
+                  pass
+              sys.exit(1)
+
+          _, counts, _ = exec_cmd(mid, ["sh", "-c",
+              "grep -c '\\[migrate\\] OK' /tmp/schema-reconcile.log; "
+              "grep -c 'SKIPPED' /tmp/schema-reconcile.log; "
+              "grep -c '\\[migrate\\] FAILED' /tmp/schema-reconcile.log"])
+          _, tail, _ = exec_cmd(mid, ["tail", "-n", "40", "/tmp/schema-reconcile.log"])
+          print("── reconcile log tail ──")
+          print(tail)
+          print(f"── migrate exit code: {code}; OK/SKIPPED/FAILED counts: {counts.strip()!r}")
+          if code != 0:
+              print("::error::Staging schema reconcile FAILED — migrate.mjs --ddl-only exited "
+                    f"{code}. See the log tail above; the failing statement is in the full "
+                    "log at /tmp/schema-reconcile.log on the staging machine.")
+              sys.exit(1)
+          print("Staging schema reconcile OK.")
+          PYEOF
