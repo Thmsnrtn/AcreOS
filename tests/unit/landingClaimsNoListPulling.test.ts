@@ -17,6 +17,7 @@ import { describe, it, expect, vi } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { stripComments } from "../helpers/stripComments";
+import { stripHtmlComments } from "../helpers/stripHtmlComments";
 
 import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
 
@@ -35,15 +36,6 @@ function walk(dir: string, out: string[] = []): string[] {
 
 // Repeat to a fixpoint: one pass can join the halves of a nested or
 // split marker ("<!-<!---->-") into a new comment opener.
-function stripHtmlComments(s: string): string {
-  let prev: string;
-  do {
-    prev = s;
-    s = s.replace(/<!--[\s\S]*?-->/g, "");
-  } while (s !== prev);
-  return s;
-}
-
 function landingPopulation(): { file: string; text: string }[] {
   const files = [
     path.join(ROOT, "client/index.html"),
