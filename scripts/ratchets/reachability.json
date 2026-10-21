@@ -282,6 +282,11 @@
     },
     {
       "kind": "export",
+      "id": "server/services/mail/letterRender.ts::BROWSER_LAUNCH_TIMEOUT_MS",
+      "reason": "TEST-INTROSPECTION SEAM (2026-10-21). The cold-launch timeout renderLetterHtmlToPdf passes to puppeteer.launch in the same module. Exported so houseLetterRenderReal.test.ts can assert it exceeds puppeteer's 30 s default (what failed CI on main) and fits inside the test's own cold-launch budget. REVOCATION: if a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
       "id": "server/services/aiAllowance.ts::__resetAiAllowanceCacheForTests",
       "reason": "TEST SEAM (2026-10 cost efficiency). Clears the 30-second per-org allowance cache so aiAllowanceEnforcedEverywhere.test.ts can drive under/over-allowance states in one process. Production never needs to clear it: the TTL is the reset."
     },
