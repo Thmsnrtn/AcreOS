@@ -59,11 +59,16 @@ describe.runIf(Boolean(chrome))("letter HTML renders to a US-Letter PDF whose pa
   // a loaded CI runner that launch alone has taken >20 s. The per-letter
   // latency bound below then measures what a letter actually costs on the
   // running browser, which is what RENDER_TIMEOUT_MS bounds in the renderer.
+  const COLD_LAUNCH_BUDGET_MS = 120_000;
   beforeAll(async () => {
-    const { renderLetterHtmlToPdf } = await import("../../server/services/mail/letterRender");
+    const { renderLetterHtmlToPdf, BROWSER_LAUNCH_TIMEOUT_MS } = await import("../../server/services/mail/letterRender");
+    // The budget above only helps if the renderer's own launch timeout fits
+    // inside it and exceeds puppeteer's 30 s default, which is what failed.
+    expect(BROWSER_LAUNCH_TIMEOUT_MS).toBeGreaterThan(30_000);
+    expect(BROWSER_LAUNCH_TIMEOUT_MS).toBeLessThan(COLD_LAUNCH_BUDGET_MS);
     const pdf = await renderLetterHtmlToPdf(htmlOfPages(1));
     expect(await count(pdf)).toBe(1);
-  }, 120_000);
+  }, COLD_LAUNCH_BUDGET_MS);
 
   it.each([1, 2, 6, 7])("%i page(s) of HTML → a PDF of exactly that many pages", async (n) => {
     const { renderLetterHtmlToPdf } = await import("../../server/services/mail/letterRender");
