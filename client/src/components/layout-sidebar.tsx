@@ -600,7 +600,6 @@ const NAV_MODULES: NavModule[] = [
       { label: "Analytics", icon: TrendingUp, href: "/investor-analytics", description: "NOI / cap rate / DSCR / vacancy" },
       // The vertical's decision desk (decision-memos/2026-10-04-vertical-program.md).
       // A child behind the existing Rentals module, gated to its vertical — not a door.
-      { label: "Underwrite a rental", icon: Calculator, href: "/rentals/underwrite", description: "Run the numbers and record your call", businessTypeOnly: ["buy_and_hold"] },
     ],
   },
 

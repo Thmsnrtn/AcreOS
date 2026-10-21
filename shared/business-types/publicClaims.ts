@@ -62,7 +62,7 @@ const OD5 =
 
 /**
  * The verticals whose public claim is lowered to `beta` (thirteen at OD-5,
- * eleven after the 2026-10-04 releases below).
+ * twelve after the 2026-10-04 release below).
  *
  * `beta` is not a hedge chosen by feel: `MATURITY_REQUIRES` in `readiness.ts`
  * says `beta` demands evidenced `surfaced` and `core` demands `decided`. Every
@@ -78,8 +78,11 @@ const OD5 =
  * land_deal scenario and a decision under the land pack citing it, now with an
  * operator-chosen review date (evidence rule v2,
  * decision-memos/2026-10-04-vertical-program.md).
- * Released: `buy_and_hold`, 2026-10-04. Rentals → Underwrite a rental records a
- * `rental_acquisition` scenario and a decision under the buy_and_hold pack.
+ * NOT released: `buy_and_hold` (COO ruling 2026-10-21 under the founder's
+ * delegation). Its underwriting surface is held back on
+ * claude/buy-and-hold-underwriting until the vertical has end-to-end journey
+ * evidence in the Readiness Atlas; the 2026-10-20 founder decision lifted the
+ * stop rule for the LAND vertical only.
  */
 export const PUBLIC_CLAIM_DEMOTIONS: Partial<
   Record<BusinessTypeId, PublicClaimDemotion>
@@ -87,6 +90,7 @@ export const PUBLIC_CLAIM_DEMOTIONS: Partial<
   note_investor: { to: "beta", reason: OD5, decidedOn: "2026-08-17" },
   hybrid: { to: "beta", reason: OD5, decidedOn: "2026-08-17" },
   residential_wholesaler: { to: "beta", reason: OD5, decidedOn: "2026-08-17" },
+  buy_and_hold: { to: "beta", reason: OD5, decidedOn: "2026-08-17" },
   short_term_rental: { to: "beta", reason: OD5, decidedOn: "2026-08-17" },
   commercial: { to: "beta", reason: OD5, decidedOn: "2026-08-17" },
   creative_finance: { to: "beta", reason: OD5, decidedOn: "2026-08-17" },

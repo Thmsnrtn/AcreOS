@@ -3,6 +3,19 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-10-21 — #386 amended to land-only (COO ruling under the founder's delegation)
+
+- Land released; buy-and-hold is NOT. Its decision route
+  (`server/routes-buy-and-hold-underwriting.ts`), page
+  (`client/src/pages/rentals/underwrite-rental.tsx`), nav entry and spotlight
+  module are removed from #386 and kept intact on
+  `claude/buy-and-hold-underwriting` for a later PR gated on end-to-end journey
+  evidence in the Readiness Atlas. The `rental_acquisition` engine stays as a
+  calculator: it records nothing on its own, so buy-and-hold measures below
+  `decided` and the demotion law requires its `beta` claim.
+- `PUBLIC_CLAIM_DEMOTIONS` 11 → 12 entries (buy_and_hold restored); overclaim
+  baseline 12 (main 13); ladder entry `surfaced`.
+
 ## 2026-10-20 — V0 vertical program re-applied (staged, not committed)
 
 ### Staged on `claude/recover-v0-vertical-program`

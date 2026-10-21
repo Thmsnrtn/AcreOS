@@ -111,7 +111,9 @@ const evidence: VerticalEvidence = measured;
  * founder decision — queued as OD-5). Lower this in the commit that earns it,
  * whichever way it is earned.
  */
-const MATURITY_OVERCLAIM_BASELINE = 11;
+// 13 → 12 on 2026-10-21: land released. Buy-and-hold's decision route is held
+// back (claude/buy-and-hold-underwriting) until its journey is evidenced.
+const MATURITY_OVERCLAIM_BASELINE = 12;
 
 describe("the evidence scan is real (vacuity guards, first)", () => {
   it("found the workflow templates the engine defines", () => {
@@ -426,7 +428,7 @@ describe("no PUBLIC claim outruns the evidence (OD-5)", () => {
 describe("the Evidence Ladder states the same vertical truth (one rule, not two)", () => {
   // shared/governance/evidenceLadder.ts carries an entry per vertical whose claim
   // and caveat reach the founder (scorecard, outlook). It once restated the OD-5
-  // demotions by hand, so releasing land and buy-and-hold here would have left the
+  // demotions by hand, so releasing land here would have left the
   // ladder telling the founder both were "beta". Pinned against the SERIALIZED
   // entries and the MEASURED tier, not against the ladder's own helper.
   const decided = (id: BusinessTypeId) => readinessOf(BUSINESS_TYPES[id], evidence) === "decided";

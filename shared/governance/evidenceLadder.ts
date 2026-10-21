@@ -192,7 +192,7 @@ export const CAPABILITIES: readonly Capability[] = [
   verticalEntry("hybrid", "hybrid", "surfaced"),
   verticalEntry("fix_and_flip", "fix and flip", "decided"),
   verticalEntry("residential_wholesaler", "residential wholesaler", "surfaced"),
-  verticalEntry("buy_and_hold", "buy and hold", "decided"),
+  verticalEntry("buy_and_hold", "buy and hold", "surfaced"),
   verticalEntry("short_term_rental", "short term rental", "surfaced"),
   verticalEntry("commercial", "commercial", "surfaced"),
   verticalEntry("creative_finance", "creative finance", "surfaced"),
