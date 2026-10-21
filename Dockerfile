@@ -54,13 +54,17 @@ ENV NODE_ENV="production"
 #      the stdlib half; x/net is fixed in v0.60.0, but every gh release up
 #      to v2.102.0 still pins v0.58.0 — so 1.26.6 → 1.26.9 plus the
 #      x/net override. Drop an override once GH_VERSION's go.mod pins it.
+#      2026-10-21: red again with no commit on CVE-2026-111943 (HIGH, stdlib
+#      crypto/x509, fixed 1.26.10 / 1.27.3) in usr/bin/gh — the only finding
+#      in the image. 1.26.9 → 1.26.10 (golang:1.26.10-bookworm, published
+#      2026-10-21); no gh or dep change needed.
 #      GOTOOLCHAIN=local: gh's go.mod carries `toolchain go1.26.7`, and the
 #      default auto mode can build with THAT instead of this image's Go,
 #      silently undoing step 1 (seen locally: binary reported go1.26.7).
 # (Known residual: in-toto-golang v0.9.0 is vendored by gh upstream —
 # GHSA-pmwq-pjrm-6p5r, MEDIUM, below the image scan's CRITICAL/HIGH gate;
 # clears when gh bumps the dep.)
-FROM golang:1.26.9-bookworm AS gh-build
+FROM golang:1.26.10-bookworm AS gh-build
 ARG GH_VERSION=v2.99.0
 ARG GH_DEP_OVERRIDES="golang.org/x/net@v0.60.0"
 ENV GOTOOLCHAIN=local CGO_ENABLED=0
