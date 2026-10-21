@@ -7,6 +7,7 @@
 // ============================================================================
 
 import {
+  uuid,
   pgTable,
   text,
   integer,
@@ -178,7 +179,7 @@ export type InsertFcraAttestation = typeof fcraAttestations.$inferInsert;
 export const tenants = pgTable(
   "tenants",
   {
-    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
     organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
 
     // Identity
@@ -426,7 +427,7 @@ export type LeaseLiabilityModel = typeof LEASE_LIABILITY_MODELS[number];
 export const rentalLeases = pgTable(
   "rental_leases",
   {
-    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
     organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
     propertyId: integer("property_id").references(() => properties.id, { onDelete: "cascade" }).notNull(),
 
@@ -597,8 +598,8 @@ export const leaseTenants = pgTable(
   {
     id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
     organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
-    leaseId: varchar("lease_id").notNull(),
-    tenantId: varchar("tenant_id").notNull(),
+    leaseId: uuid("lease_id").notNull(),
+    tenantId: uuid("tenant_id").notNull(),
     rentSharePct: numeric("rent_share_pct").notNull().default("1"),  // 1.0 for joint, 0.5/0.5 etc for per_unit
     isPrimary: boolean("is_primary").notNull().default(true),
     // Glenn Okonkwo audit: joint-and-several liability requires EXPLICIT
@@ -640,7 +641,7 @@ export const leaseAddendums = pgTable(
   {
     id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
     organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
-    leaseId: varchar("lease_id").notNull(),
+    leaseId: uuid("lease_id").notNull(),
     kind: text("kind").$type<LeaseAddendumKind>().notNull(),
     title: text("title").notNull(),
     bodyMarkdown: text("body_markdown"),
@@ -667,9 +668,9 @@ export type InsertLeaseAddendum = typeof leaseAddendums.$inferInsert;
 export const rentCharges = pgTable(
   "rent_charges",
   {
-    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
     organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
-    leaseId: varchar("lease_id").notNull(),
+    leaseId: uuid("lease_id").notNull(),
 
     // The month the rent is charged for (always day 1).
     chargedForMonth: date("charged_for_month").notNull(),
@@ -737,12 +738,12 @@ export const rentPayments = pgTable(
   {
     id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
     organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
-    leaseId: varchar("lease_id").notNull(),
-    rentChargeId: varchar("rent_charge_id"),  // nullable — payment may not apply to a specific month yet
+    leaseId: uuid("lease_id").notNull(),
+    rentChargeId: uuid("rent_charge_id"),  // nullable — payment may not apply to a specific month yet
 
     // Source: 'tenant' | 'hap' (housing authority for Section 8)
     payorType: text("payor_type").notNull().default("tenant"),
-    payorTenantId: varchar("payor_tenant_id"),  // for joint leases — which tenant paid
+    payorTenantId: uuid("payor_tenant_id"),  // for joint leases — which tenant paid
 
     amountCents: bigint("amount_cents", { mode: "number" }).notNull(),
     receivedAt: date("received_at").notNull(),
@@ -896,8 +897,8 @@ export const maintenanceTickets = pgTable(
     id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
     organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
     propertyId: integer("property_id").references(() => properties.id, { onDelete: "cascade" }).notNull(),
-    leaseId: varchar("lease_id"),
-    submittedByTenantId: varchar("submitted_by_tenant_id"),
+    leaseId: uuid("lease_id"),
+    submittedByTenantId: uuid("submitted_by_tenant_id"),
 
     /**
      * The short-term-rental reservation whose checkout this ticket turns over
@@ -921,7 +922,7 @@ export const maintenanceTickets = pgTable(
     dispatchedAt: timestamp("dispatched_at", { withTimezone: true }),
     completedAt: timestamp("completed_at", { withTimezone: true }),
 
-    assignedContractorId: varchar("assigned_contractor_id"),  // FK to contractors (FF-3)
+    assignedContractorId: uuid("assigned_contractor_id"),  // FK to contractors (FF-3)
     repairNotes: text("repair_notes"),
     invoiceCents: bigint("invoice_cents", { mode: "number" }),
     invoicePaidAt: timestamp("invoice_paid_at", { withTimezone: true }),
@@ -961,11 +962,11 @@ export type InspectionKind = typeof INSPECTION_KINDS[number];
 export const moveInspections = pgTable(
   "move_inspections",
   {
-    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
     organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
     propertyId: integer("property_id").references(() => properties.id, { onDelete: "cascade" }).notNull(),
-    leaseId: varchar("lease_id"),
-    tenantId: varchar("tenant_id"),
+    leaseId: uuid("lease_id"),
+    tenantId: uuid("tenant_id"),
 
     kind: text("kind").$type<InspectionKind>().notNull(),
     inspectionDate: date("inspection_date").notNull(),
@@ -1012,14 +1013,14 @@ export const securityDeposits = pgTable(
   {
     id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
     organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
-    leaseId: varchar("lease_id").notNull(),
-    tenantId: varchar("tenant_id").notNull(),
+    leaseId: uuid("lease_id").notNull(),
+    tenantId: uuid("tenant_id").notNull(),
 
     heldCents: bigint("held_cents", { mode: "number" }).notNull(),
     receivedAt: date("received_at"),
 
     // Move-out reconciliation
-    moveOutInspectionId: varchar("move_out_inspection_id"),
+    moveOutInspectionId: uuid("move_out_inspection_id"),
     deductions: jsonb("deductions").$type<Array<{
       description: string;
       amountCents: number;
@@ -1310,7 +1311,7 @@ export const camReconciliations = pgTable(
     id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
     organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
     poolId: varchar("pool_id").references(() => camExpensePools.id, { onDelete: "cascade" }).notNull(),
-    leaseId: varchar("lease_id").references(() => rentalLeases.id, { onDelete: "cascade" }).notNull(),
+    leaseId: uuid("lease_id").references(() => rentalLeases.id, { onDelete: "cascade" }).notNull(),
     periodStart: date("period_start"),
     periodEnd: date("period_end"),
 
@@ -1370,7 +1371,7 @@ export const commercialSalesReports = pgTable(
   {
     id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
     organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
-    leaseId: varchar("lease_id").references(() => rentalLeases.id, { onDelete: "cascade" }).notNull(),
+    leaseId: uuid("lease_id").references(() => rentalLeases.id, { onDelete: "cascade" }).notNull(),
     periodStart: date("period_start").notNull(),
     periodEnd: date("period_end").notNull(),
     grossSalesCents: bigint("gross_sales_cents", { mode: "number" }).notNull(),
@@ -1410,7 +1411,7 @@ export const leaseRentSchedule = pgTable(
   {
     id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
     organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
-    leaseId: varchar("lease_id").references(() => rentalLeases.id, { onDelete: "cascade" }).notNull(),
+    leaseId: uuid("lease_id").references(() => rentalLeases.id, { onDelete: "cascade" }).notNull(),
     /** The month this step takes effect (always day 1) — the schedule key. */
     effectiveMonth: date("effective_month").notNull(),
     /**

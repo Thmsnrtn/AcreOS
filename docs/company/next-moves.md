@@ -3,6 +3,51 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-10-21 — Readiness packages 1–5 (implementation lane; Muse audits)
+
+### On branches with PRs, waiting on the CI queue and the COO's audit
+Nothing below is on main yet; every PR is a draft until its current head is green.
+
+- **#394 Package 1, customer journey.** One org per user under concurrent
+  first requests (advisory lock + in-flight coalescing), view-transition skips
+  handled, E2E-token traffic exempt from the per-user limiter. Full suite 18,074
+  green after one fix.
+- **#392 Package 2, CAM FKs.** lease_id typed from the live rental_leases.id;
+  the FK gate reads the db:push population too. **Package 4 builds on it.**
+- **#393 Package 3, desktop feel C2.** Harness auth fixed at the cause.
+- **#395 Package 5, refund posting.** postRefund no longer dies behind the GL
+  post; a failed GL post dead-letters as `gl_refund` and replays. Chart of
+  accounts seeded at org creation, at first GL use, and by
+  `scripts/backfill-chart-of-accounts.ts` (dry run by default). Full suite
+  18,072 green.
+- **Package 4, canonical uuid ids (this branch).** The 14 parents and their 40
+  child columns are uuid in shared/schema; KNOWN_DB_PUSH_MISMATCHES is gone;
+  the CAM wraps are removed; `CONVERGE_UUID_ID_FAMILIES` in migrate.mjs
+  converts a db:push-built database in place (no-op on prod). Measured on a
+  staging-shaped scratch DB: old db:push + new `migrate --ddl-only` exits 0,
+  14/14 parents uuid, 21 FKs kept, rows identical. Full suite 18,169 green.
+- **Main-fix PRs, ported into every PR:** #388 (follow-redirects + vite
+  advisories), #389 (entry chunk under budget), #390 (letter-render launch
+  timeout + reachability seam).
+- **#386** ships land_flipper only; buy_and_hold stays demoted on
+  `claude/buy-and-hold-underwriting`, gated on journey evidence.
+
+### Found, not fixed (needs a person)
+- **The Actions queue is saturated** (~320 queued runs, 173 for superseded
+  commits). This session's token gets 403 cancelling runs; cancel the
+  superseded ones from the Actions tab or grant `actions: write`.
+- **drizzle-kit push exits 0 when a statement fails.** Pushing the uuid schema
+  onto an unconverted varchar database fails "cannot be cast automatically to
+  type uuid", reports success, and changes nothing. Staging must converge
+  through `migrate.mjs --ddl-only` (the nightly reconcile) before any manual
+  db:push; noted in scripts/setup-staging.sh.
+
+### Top next moves
+1. Drain the PR train in the audited order once the queue clears; mark each
+   PR ready only when every check on its current head is green.
+2. After Package 4 merges, confirm the next staging-schema-reconcile run logs
+   `OK: DO $uuid_ids$` and staging's 14 parents read uuid.
+
 ## 2026-10-21 — Customer Journey Audit, next layer (issue #359), branch `claude/cj-journey-next-layer`
 
 ### What was wrong (each verified by running it locally against a production build)
