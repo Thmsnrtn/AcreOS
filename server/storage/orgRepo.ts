@@ -23,14 +23,14 @@ export const orgRepo = {
     return org;
   },
 
+  // ORDER BY id: owner_id is not unique, and without an order Postgres
+  // returns whichever row its scan meets first. An UPDATE writes a new
+  // tuple version at the end of the heap, so the "first" org of a user who
+  // owns several changed every time one of them was written — the same
+  // user flipped between an onboarded org and a fresh one from one request
+  // to the next (customer-journey audit, issue #359). The oldest org is the
+  // one the user was provisioned with.
   async getOrganizationByOwner(this: DatabaseStorage, ownerId: string): Promise<Organization | undefined> {
-    // ORDER BY id: owner_id is not unique, and without an order Postgres
-    // returns whichever row its scan meets first. An UPDATE writes a new
-    // tuple version at the end of the heap, so the "first" org of a user who
-    // owns several changed every time one of them was written — the same
-    // user flipped between an onboarded org and a fresh one from one request
-    // to the next (customer-journey audit, issue #359). The oldest org is the
-    // one the user was provisioned with.
     const [org] = await db
       .select()
       .from(organizations)
