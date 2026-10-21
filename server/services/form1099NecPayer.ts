@@ -29,7 +29,13 @@ import { maskOrgTin, resolveOrgTaxIdentity, type OrgTaxIdentitySource } from "./
  * generator keeps $600 and says in its response that the figure is unconfirmed.
  */
 export const NEC_THRESHOLD_CENTS = 60000;
-export const NEC_THRESHOLD_NEEDS_REVIEW = true;
+/**
+ * What the generator tells the operator about that figure, in its response:
+ * the review state as data rather than a boolean, so no caller branches on a
+ * constant. Set to null once the reviewer confirms the 2026 figure.
+ */
+export const NEC_THRESHOLD_REVIEW_NOTE: string | null =
+  "The $600 reporting threshold has not been confirmed for this tax year — confirm it with your tax professional.";
 
 export type PayerSource = OrgTaxIdentitySource;
 

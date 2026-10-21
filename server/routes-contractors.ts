@@ -34,14 +34,11 @@ import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { assertEntityBelongsToOrg } from "./utils/orgScope";
 import { generate1099NecPdf, type Nec1099Form } from "./services/form1099NecPdf";
-import { NEC_THRESHOLD_CENTS, NEC_THRESHOLD_NEEDS_REVIEW, resolve1099Payer } from "./services/form1099NecPayer";
+import { NEC_THRESHOLD_CENTS, NEC_THRESHOLD_REVIEW_NOTE, resolve1099Payer } from "./services/form1099NecPayer";
 import { clock } from "./utils/clock";
 
-// The 1099-NEC threshold lives in services/form1099NecPayer.ts with its
-// review note: the K13 tax reviewer must confirm the 2026 figure.
-const THRESHOLD_NOTE = NEC_THRESHOLD_NEEDS_REVIEW
-  ? "The $600 reporting threshold has not been confirmed for this tax year — confirm it with your tax professional."
-  : undefined;
+// The 1099-NEC threshold and its review note live in
+// services/form1099NecPayer.ts: the K13 tax reviewer must confirm the 2026 figure.
 
 const createContractorSchema = z.object({
   name: z.string().min(1).max(200),
@@ -256,7 +253,7 @@ export function registerContractorRoutes(app: Express): void {
         formCount: forms.length,
         forms,
         warning: "Recipient copies (Copy B). Paper IRS filing requires red-ink Copy A — use IRS FIRE / IRIS for electronic filing.",
-        ...(THRESHOLD_NOTE ? { thresholdNote: THRESHOLD_NOTE } : {}),
+        thresholdNote: NEC_THRESHOLD_REVIEW_NOTE,
       });
     } catch (err) {
       return Errors.internal(res, err);
