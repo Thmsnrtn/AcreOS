@@ -82,35 +82,99 @@ function resolveProjectMeta(testInfo: TestInfo): ProjectMeta {
 }
 
 async function seedTestAuth(page: Page, baseURL: string): Promise<void> {
-  const { hostname } = new URL(baseURL);
+  const target = new URL(baseURL);
   await page.context().addCookies([
     {
       name: "__session",
       value: "e2e-desktop-feel-bypass",
-      domain: hostname,
+      domain: target.hostname,
       path: "/",
-      httpOnly: true,
+      // NOT httpOnly. On a deployed target the SPA mounts the real
+      // ClerkProvider, and useAuth() only asks /api/auth/user who is signed in
+      // when it can SEE a `__session` cookie (hasAnyClerkSession reads
+      // document.cookie). An httpOnly cookie is invisible to it, so the app
+      // routed every page to /auth. Same shape as the customer-journey spec.
+      httpOnly: false,
       sameSite: "Lax",
     },
   ]);
-  // Token-gated bypass for Fly staging (parity with the customer-journey
-  // spec): the cookie alone is not a Clerk session, so without the token
-  // header the server cannot resolve the synthetic user — Clerk-JS then
-  // handshakes against the Clerk API with this origin as redirect_url,
-  // which Clerk rejects for the staging domain, and the audit ends up
-  // tabbing through Clerk's raw error JSON instead of the app. Present
-  // the shared secret on every /api/* request so the server-side bypass
-  // resolves the test identity (see server/auth/testAuth.ts).
+  // Token-gated bypass for Fly staging (server/auth/testAuth.ts). The token
+  // must ride on EVERY request to the target origin — the top-level document
+  // included — not only on /api/*. Measured 2026-10-21 (#361): with the token
+  // on /api/* alone, the document request for /today reached the server's
+  // global clerkMiddleware carrying a `__session` cookie and no token, which
+  // answered 307 to Clerk's handshake; Clerk refused it, and the browser
+  // rendered the refusal as raw JSON. Every contract then measured Chrome's
+  // JSON viewer instead of AcreOS — C2 failed on its empty container div on
+  // all 48 combos, and C1/C3-C7 passed against a page that was not the app.
+  //
+  // Scoped to the target ORIGIN, never to third parties: this is a shared
+  // secret, and the Clerk, Stripe and tile hosts the page talks to must
+  // never see it.
+  //
+  // Installed on the CONTEXT, not the page: the app's service worker fetches
+  // /api/leads, /api/properties and friends itself (network-then-cache), and
+  // a page-level route never sees a service worker's requests. Measured the
+  // same day: with page.route those two came back 401 dozens of times in 15s
+  // and the Today screen then hammered /api/today into its rate limit (250+
+  // 429s), so networkidle never arrived. With the context route: 0 × 401,
+  // 3 × /api/today.
   const e2eToken = process.env.E2E_TEST_AUTH_TOKEN;
   if (e2eToken) {
-    await page.route("**/api/**", async (route) => {
-      const headers = {
-        ...route.request().headers(),
-        "X-E2E-Auth-Token": e2eToken,
-      };
-      await route.continue({ headers });
-    });
+    await page.context().route(
+      (url) => url.origin === target.origin,
+      async (route) => {
+        const headers = {
+          ...route.request().headers(),
+          "X-E2E-Auth-Token": e2eToken,
+        };
+        await route.continue({ headers });
+      },
+    );
   }
+}
+
+/**
+ * Refuse to audit a page that is not the authenticated app.
+ *
+ * Every contract below reads whatever document is in the tab. When auth fails
+ * that document is a Clerk handshake error (raw JSON in Chrome's viewer) or the
+ * /auth sign-in screen, and the contracts then report on THAT: C2 blamed
+ * "unlabeled divs" that were Chrome's own JSON-viewer markup, while C1/C4/C5/
+ * C6/C7 passed over a page with no app in it. Neither result says anything
+ * about AcreOS. So the landing is asserted first, and an auth failure reads as
+ * an auth failure.
+ */
+async function assertOnAuthenticatedApp(
+  page: Page,
+  baseURL: string,
+  route: string,
+): Promise<void> {
+  const landed = new URL(page.url());
+  const target = new URL(baseURL);
+  const where = `${route} landed on ${landed.origin}${landed.pathname}`;
+  expect(
+    landed.origin,
+    `${where} — left the target origin (auth handshake redirect?)`,
+  ).toBe(target.origin);
+  expect(
+    landed.pathname.startsWith("/__clerk") ||
+      landed.pathname === "/auth" ||
+      landed.pathname.startsWith("/auth/"),
+    `${where} — not the authenticated app (Clerk handshake or sign-in page)`,
+  ).toBe(false);
+  const appShell = await page.evaluate(() => ({
+    contentType: document.contentType,
+    rootChildren: document.getElementById("root")?.childElementCount ?? 0,
+  }));
+  expect(
+    appShell.contentType,
+    `${where} — the document is not the SPA`,
+  ).toBe("text/html");
+  expect(
+    appShell.rootChildren,
+    `${where} — #root never mounted`,
+  ).toBeGreaterThan(0);
 }
 
 async function attachFinding(
@@ -175,6 +239,11 @@ for (const route of ROUTES_TO_AUDIT) {
         .locator('[data-testid="app-loading"]')
         .waitFor({ state: "detached", timeout: 15_000 })
         .catch(() => {});
+      await assertOnAuthenticatedApp(
+        page,
+        baseURL ?? "http://localhost:5000",
+        route,
+      );
     });
 
     // ── Contract 1 ──────────────────────────────────────────────────────
