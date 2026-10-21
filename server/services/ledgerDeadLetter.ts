@@ -19,6 +19,11 @@
  *      races a Stripe redelivery (or a half-applied prior attempt) is safe.
  *      Rows that keep failing past MAX_REPLAY_ATTEMPTS flip to `abandoned`.
  *
+ *   `gl_refund` is the one kind that is not a financial_ledger posting: the
+ *   recognition GL post of a Stripe refund (recognitionWorker), which used to
+ *   fail silently and take the ledger refund down with it (2026-10-21, G4).
+ *   It rides the same table, replay and alerting so it is never invisible.
+ *
  *   3. After each sweep the accumulation check raises through the ONE alert
  *      spine (Tier 1D): warning when pending entries accumulate, critical
  *      when anything is abandoned (money is provably missing from the ledger
@@ -36,10 +41,21 @@ import {
   type PostRefundArgs,
   type PostOpexArgs,
 } from "./financial-ledger";
+import { recordStripeChargeRefunded, type RecognitionRefund } from "./recognitionWorker";
 import { logger } from "../utils/logger";
 import { clock } from "../utils/clock";
 
-export type LedgerDeadLetterKind = "revenue" | "refund" | "opex";
+export type LedgerDeadLetterKind = "revenue" | "refund" | "opex" | "gl_refund";
+
+/**
+ * The dead-letter key of a failed recognition GL refund post. Distinct from
+ * the financial_ledger refund's `stripe:refund:<id>` key (external_event_id is
+ * unique), and stable per charge — recordStripeChargeRefunded is itself
+ * idempotent on `charge.refunded:<chargeId>`.
+ */
+export function glRefundDeadLetterId(chargeId: string): string {
+  return `gl:charge.refunded:${chargeId}`;
+}
 
 /** Replay attempts before a row is abandoned (≈ 8 hourly sweeps). */
 export const MAX_REPLAY_ATTEMPTS = 8;
@@ -53,7 +69,7 @@ export interface RecordDeadLetterArgs {
   externalEventId: string;
   organizationId: number | null;
   /** Verbatim args of the failed posting call. */
-  payload: PostRevenueArgs | PostRefundArgs | PostOpexArgs;
+  payload: PostRevenueArgs | PostRefundArgs | PostOpexArgs | RecognitionRefund;
   error: unknown;
 }
 
@@ -138,6 +154,9 @@ async function replayOne(row: LedgerDeadLetterRow): Promise<void> {
       return;
     case "opex":
       await postOpexSpent(payload as unknown as PostOpexArgs);
+      return;
+    case "gl_refund":
+      await recordStripeChargeRefunded(payload as unknown as RecognitionRefund);
       return;
     default:
       throw new Error(`unknown dead-letter kind "${row.kind}"`);

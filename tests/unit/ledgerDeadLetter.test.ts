@@ -73,6 +73,10 @@ const posting = vi.hoisted(() => ({
   postOpexSpent: vi.fn(async () => ({ row: null, inserted: true })),
 }));
 vi.mock("../../server/services/financial-ledger", () => posting);
+const recognition = vi.hoisted(() => ({
+  recordStripeChargeRefunded: vi.fn(async () => ({ posted: true, legs: 2 })),
+}));
+vi.mock("../../server/services/recognitionWorker", () => recognition);
 
 const raiseAlert = vi.hoisted(() => vi.fn(async () => ({ paged: true, findingRecorded: true, systemAlertWritten: true })));
 vi.mock("../../server/services/alertSpine", () => ({ raiseAlert }));
@@ -120,6 +124,7 @@ beforeEach(() => {
   posting.postRevenue.mockClear();
   posting.postRefund.mockClear();
   posting.postOpexSpent.mockClear();
+  recognition.recordStripeChargeRefunded.mockClear();
   posting.postRevenue.mockResolvedValue({ rows: [], inserted: true } as any);
   raiseAlert.mockClear();
 });
@@ -197,6 +202,22 @@ describe("runLedgerDeadLetterSweep — replay", () => {
     expect(posting.postRefund).toHaveBeenCalledTimes(1);
     expect(posting.postOpexSpent).toHaveBeenCalledTimes(1);
     expect(result.replayed).toBe(2);
+  });
+
+  it("dispatches a gl_refund row to the recognition GL refund post, payload as recorded", async () => {
+    const payload = {
+      chargeId: "ch_1",
+      organizationId: 7,
+      amountRefundedCents: 4900,
+      refundedAt: "2026-10-21T00:00:00.000Z",
+      description: "Stripe refund — charge ch_1",
+    };
+    state.pendingRows = [pendingRow({ id: 3, kind: "gl_refund", externalEventId: "gl:charge.refunded:ch_1", payload })];
+    const result = await runLedgerDeadLetterSweep();
+    expect(recognition.recordStripeChargeRefunded).toHaveBeenCalledWith(payload);
+    expect(posting.postRefund).not.toHaveBeenCalled();
+    expect(result.replayed).toBe(1);
+    expect(state.updates[0].set.status).toBe("replayed");
   });
 
   it("increments attempts on failure and abandons at MAX_REPLAY_ATTEMPTS", async () => {
