@@ -33,6 +33,15 @@ import { safeHttpsGet } from "./safeFetch";
 const LOB_LETTER_PAGE = { width: "8.5in", height: "11in" } as const;
 
 const RENDER_TIMEOUT_MS = 20_000;
+/**
+ * How long the one shared browser may take to come up. puppeteer's own default
+ * is 30 s, and a cold Chromium start on a loaded host has taken longer than
+ * that (CI on main, 2026-10-20: "Timed out after 30000 ms while waiting for the
+ * WS endpoint"), which refused the letter even though nothing was wrong with
+ * it. Paid once per browser, not per letter; a render still has
+ * RENDER_TIMEOUT_MS once the browser is up.
+ */
+export const BROWSER_LAUNCH_TIMEOUT_MS = 90_000;
 /** The largest letter HTML AcreOS will lay out. */
 export const MAX_HTML_BYTES = 512 * 1024;
 /** Renders in flight at once, across the whole process. */
@@ -69,6 +78,7 @@ async function browser(): Promise<Browser> {
       .launch({
         executablePath: chromiumPath(),
         headless: true,
+        timeout: BROWSER_LAUNCH_TIMEOUT_MS,
         args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu", "--no-zygote"],
       })
       .then((b) => {
