@@ -46,7 +46,10 @@ const CODE = stripComments(SRC);
 describe("the retry pass exists and is bounded", () => {
   it("vacuity guard: the runner still has its statement loop and skip bookkeeping", () => {
     expect(SRC.length).toBeGreaterThan(100000);
-    expect(SRC).toMatch(/for \(const stmt of STATEMENTS\)/);
+    // Since --ddl-only the runner iterates a filtered view (ACTIVE_STATEMENTS)
+    // instead of the full list; the retry bookkeeping the guard checks
+    // (skip list, single splice-drained retry, bounded loop) is unchanged.
+    expect(SRC).toMatch(/for \(const stmt of (ACTIVE_)?STATEMENTS\)/);
     expect(SRC).toMatch(/EXPECTED_FAILURE_PATTERNS/);
     expect(SRC).toMatch(/skipped\.push\(/);
   });

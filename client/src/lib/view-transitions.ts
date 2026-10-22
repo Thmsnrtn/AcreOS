@@ -32,7 +32,74 @@
  * competing ones.
  */
 
-type StartViewTransition = (callback: () => void) => unknown;
+/** The promises a `ViewTransition` exposes (structural — see below). */
+interface ViewTransitionLike {
+  ready?: Promise<unknown>;
+  finished?: Promise<unknown>;
+  updateCallbackDone?: Promise<unknown>;
+}
+
+type StartViewTransition = (callback: () => void) => ViewTransitionLike | undefined;
+
+/**
+ * The browser's own reasons for abandoning a transition's ANIMATION. Neither
+ * means the navigation failed — the update callback still runs, so the route
+ * still changes; only the cross-fade is dropped:
+ *   - AbortError "Transition was skipped": a second navigation started a new
+ *     transition before this one animated (a <Redirect> straight after a
+ *     <Link>, an onboarding step that navigates twice), or skipTransition().
+ *   - InvalidStateError "Transition was aborted because of invalid state":
+ *     Chromium's skip when the document is hidden or the viewport changes.
+ * Matched by DOMException name only, so an error thrown by our own update
+ * callback (anything else) is never mistaken for one.
+ */
+export function isExpectedTransitionSkip(err: unknown): boolean {
+  return (
+    typeof DOMException !== "undefined" &&
+    err instanceof DOMException &&
+    (err.name === "AbortError" || err.name === "InvalidStateError")
+  );
+}
+
+/**
+ * Observe the promises of a transition we started, so a skip does not escape
+ * as an unhandled rejection (the customer-journey audit recorded every
+ * journey ending in "uncaught page errors: Transition was skipped", issue
+ * #359 — this module started those transitions and discarded them).
+ *
+ *   - `updateCallbackDone` rejects only when the update callback (the
+ *     navigation itself) throws. That is a real defect: it is ALWAYS
+ *     reported, whatever its name.
+ *   - `ready` / `finished` reject on a skip (expected names: dropped) or
+ *     with the callback's error / a browser timeout (reported).
+ * Every rejection is consumed, and anything that is not an expected skip is
+ * re-reported exactly once through `reportError` — the browser's own
+ * uncaught-error path, so it still reaches window.onerror, Sentry and a
+ * test's pageerror — instead of depending on which of the three promises an
+ * engine happens to consider handled.
+ */
+export function observeTransition(transition: ViewTransitionLike | undefined): void {
+  if (!transition) return;
+  const { ready, finished, updateCallbackDone } = transition;
+  const reported = new Set<unknown>();
+  const surface = (err: unknown) => {
+    if (reported.has(err)) return;
+    reported.add(err);
+    const report = (globalThis as { reportError?: (e: unknown) => void }).reportError;
+    if (typeof report === "function") report(err);
+    else
+      setTimeout(() => {
+        throw err;
+      }, 0);
+  };
+  updateCallbackDone?.catch(surface);
+  const onLifecycleRejection = (err: unknown) => {
+    if (isExpectedTransitionSkip(err)) return;
+    surface(err);
+  };
+  ready?.catch(onLifecycleRejection);
+  finished?.catch(onLifecycleRejection);
+}
 
 // A structural view of `document` that does NOT extend `Document`. Extending it
 // would clash with the lib.dom `startViewTransition` declaration (non-optional,
@@ -66,15 +133,18 @@ export function withViewTransition(update: () => void): void {
     update();
     return;
   }
+  let transition: ViewTransitionLike | undefined;
   try {
-    (document as unknown as DocumentWithViewTransitions).startViewTransition!(
+    transition = (document as unknown as DocumentWithViewTransitions).startViewTransition!(
       update,
     );
   } catch {
     // Some engines throw if a transition is already in flight; fall back to a
     // plain synchronous update rather than dropping the navigation entirely.
     update();
+    return;
   }
+  observeTransition(transition);
 }
 
 let installed = false;

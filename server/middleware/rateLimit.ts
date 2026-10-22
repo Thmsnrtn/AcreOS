@@ -2,7 +2,7 @@ import type { Request, Response, NextFunction } from "express";
 import { getRedisClient } from "../utils/redis";
 import { getClientIp } from "../utils/clientIp";
 import { logger } from "../utils/logger";
-import { e2eTestAuthEnabled } from "../auth/testAuth";
+import { isE2eTestTraffic } from "../auth/testAuth";
 import { clock } from "../utils/clock";
 
 // ── Rate Limit Hit Monitoring ────────────────────────────────────────────────
@@ -219,8 +219,9 @@ export function createRateLimiter(
     // E2E harness: every spec shares one test user against one server, so
     // per-user limits self-block the suite (e.g. /ai's ~8-endpoint fan-out
     // × 6 device projects trips aiLimiter's 120/min and 429s the surface).
-    // e2eTestAuthEnabled() is hard-gated off on Fly — prod behavior unchanged.
-    if (e2eTestAuthEnabled()) {
+    // The blanket flag is hard-gated off on Fly, and the staging token is
+    // never set in production — prod behavior unchanged (testAuth.ts).
+    if (isE2eTestTraffic(req)) {
       return next();
     }
 

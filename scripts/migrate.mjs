@@ -24,10 +24,51 @@ import pg from "pg";
 // the real release_command touches prod.
 const DRY_RUN = process.argv.includes("--dry-run") || process.argv.includes("--check");
 
+// ── DDL-only mode ───────────────────────────────────────────────────────────
+// `--ddl-only` applies ONLY the schema statements (CREATE / ALTER / DROP /
+// DO) and skips the data statements (INSERT / UPDATE / DELETE — seed rows
+// and backfills). It exists for the nightly staging schema-reconcile
+// workflow (.github/workflows/staging-schema-reconcile.yml): staging's
+// fly.staging.toml sets release_command = "true", so nothing ever replays
+// this list against the staging database and its schema silently drifts
+// from the code (the 2026-10-20 borrower-cookie 500s were exactly that —
+// missing leads.outreach_language*/timezone and organizations columns).
+// The reconcile replays the DDL subset against staging, the same subset
+// the one-off manual repair applied, so drift self-heals nightly and any
+// non-benign failure turns the workflow red. Production never passes this
+// flag — its release_command runs the full list, seeds included, exactly
+// as before.
+const DDL_ONLY = process.argv.includes("--ddl-only");
+
 if (!process.env.DATABASE_URL) {
   console.error("[migrate] DATABASE_URL not set — aborting");
   process.exit(1);
 }
+
+/**
+ * Run a CREATE TABLE whose "lease_id" must reference "rental_leases"("id"),
+ * with lease_id typed to match whatever rental_leases.id actually is on THIS
+ * database. The two schema sources disagree: this file creates rental_leases.id
+ * as uuid, while shared/schema (what staging's db:push builds) declares it
+ * varchar. A hard-coded type is therefore wrong on one of them, and an FK
+ * between uuid and varchar "cannot be implemented": the table never exists.
+ * Measured: on a db:push-built database the three CAM tables below failed
+ * exactly that way (staging-schema-reconcile, 2026-10-20). Typing lease_id from
+ * the live column is right on a fresh build, on staging and on production,
+ * whichever type production turns out to have. The text keeps its literal
+ * `"lease_id" uuid` so the FK-type and mirror gates still read it.
+ */
+const leaseIdTypedToRentalLeases = (createTable) => `DO $lease_fk$
+DECLARE lease_id_type text := (
+  SELECT format_type(atttypid, atttypmod) FROM pg_attribute
+   WHERE attrelid = to_regclass('"rental_leases"') AND attname = 'id' AND NOT attisdropped);
+BEGIN
+  IF lease_id_type IS NULL THEN
+    RAISE EXCEPTION 'rental_leases.id not found; cannot type lease_id';
+  END IF;
+  EXECUTE replace($ddl$${createTable}$ddl$, '"lease_id" uuid', '"lease_id" ' || lease_id_type);
+END
+$lease_fk$`;
 
 const STATEMENTS = [
   // 0078 — mirror the existing trust-graduation stores into the ONLY Fly
@@ -8952,6 +8993,11 @@ $mig0262$`,
   // Prod-safe: CREATE TABLE IF NOT EXISTS no-ops on a table that already
   // exists, so this changes nothing for a live database either way.
   //
+  // 2026-10-21: the three CREATE TABLEs below now take lease_id's type from the
+  // live rental_leases.id (leaseIdTypedToRentalLeases, top of file), because
+  // staging's db:push builds it varchar and the reconcile failed on exactly
+  // this FK. The canonical type is still open:
+  //
   // STILL UNRESOLVED, and it needs one query nobody has been able to run:
   // shared/schema/rental.ts declares this whole family `varchar`, while this
   // file creates it as `uuid` — deliberately, per the acquired_notes note
@@ -8960,7 +9006,7 @@ $mig0262$`,
 
   // 2. cam_reconciliations — the frozen year-end CAM true-up statement. FK to
   // cam_expense_pools above (created first so the reference resolves).
-  `CREATE TABLE IF NOT EXISTS "cam_reconciliations" (
+  leaseIdTypedToRentalLeases(`CREATE TABLE IF NOT EXISTS "cam_reconciliations" (
     "id" varchar PRIMARY KEY DEFAULT gen_random_uuid(),
     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
     "pool_id" varchar NOT NULL REFERENCES "cam_expense_pools"("id") ON DELETE CASCADE,
@@ -8984,14 +9030,14 @@ $mig0262$`,
     "generated_at" timestamptz,
     "generated_by" text,
     "created_at" timestamptz NOT NULL DEFAULT now()
-  )`,
+  )`),
   // Org-LEADING + the dominant read: every lease's reconciliation for a pool.
   `CREATE INDEX IF NOT EXISTS "cam_reconciliations_org_pool_idx" ON "cam_reconciliations" ("organization_id", "pool_id")`,
   // One reconciliation per (pool, lease): re-generating a statement UPSERTs.
   `CREATE UNIQUE INDEX IF NOT EXISTS "cam_reconciliations_pool_lease_uk" ON "cam_reconciliations" ("pool_id", "lease_id")`,
 
   // 3. commercial_sales_reports — the tenant's reported gross sales, per period.
-  `CREATE TABLE IF NOT EXISTS "commercial_sales_reports" (
+  leaseIdTypedToRentalLeases(`CREATE TABLE IF NOT EXISTS "commercial_sales_reports" (
     "id" varchar PRIMARY KEY DEFAULT gen_random_uuid(),
     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
     "lease_id" uuid NOT NULL REFERENCES "rental_leases"("id") ON DELETE CASCADE,
@@ -9003,14 +9049,14 @@ $mig0262$`,
     "received_at" timestamptz,
     "notes" text,
     "created_at" timestamptz NOT NULL DEFAULT now()
-  )`,
+  )`),
   // Org-LEADING + the dominant read: a lease's sales history, by period.
   `CREATE INDEX IF NOT EXISTS "commercial_sales_reports_org_lease_period_idx" ON "commercial_sales_reports" ("organization_id", "lease_id", "period_start")`,
   // One report per (lease, period): a re-report UPSERTs (an amendment).
   `CREATE UNIQUE INDEX IF NOT EXISTS "commercial_sales_reports_lease_period_uk" ON "commercial_sales_reports" ("lease_id", "period_start", "period_end")`,
 
   // 4. lease_rent_schedule — the rent-escalation steps.
-  `CREATE TABLE IF NOT EXISTS "lease_rent_schedule" (
+  leaseIdTypedToRentalLeases(`CREATE TABLE IF NOT EXISTS "lease_rent_schedule" (
     "id" varchar PRIMARY KEY DEFAULT gen_random_uuid(),
     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
     "lease_id" uuid NOT NULL REFERENCES "rental_leases"("id") ON DELETE CASCADE,
@@ -9025,7 +9071,7 @@ $mig0262$`,
     "floor_pct_bps" integer,
     "ceiling_pct_bps" integer,
     "created_at" timestamptz NOT NULL DEFAULT now()
-  )`,
+  )`),
   // Org-LEADING + the dominant read: a lease's steps in effective order.
   `CREATE INDEX IF NOT EXISTS "lease_rent_schedule_org_lease_month_idx" ON "lease_rent_schedule" ("organization_id", "lease_id", "effective_month")`,
   // One step per (lease, effective_month): the schedule is unambiguous at every point in time.
@@ -12380,6 +12426,21 @@ END
 $mig0284$`,
 ];
 
+// The statement set this run executes. Default: everything (the production
+// release path). --ddl-only: schema statements only — classification is by
+// first keyword after any leading `--` comments. Measured 2026-10-20:
+// 2,013 statements = 1,427 CREATE, 411 ALTER, 19 DROP, 41 DO, and the only
+// data statements in the list are 102 INSERT, 10 UPDATE, 3 DELETE.
+const ACTIVE_STATEMENTS = DDL_ONLY
+  ? STATEMENTS.filter((stmt) => /^\s*(?:--[^\n]*\n\s*)*(CREATE|ALTER|DROP|DO)\b/i.test(stmt))
+  : STATEMENTS;
+if (DDL_ONLY) {
+  console.log(
+    `[migrate] --ddl-only: applying ${ACTIVE_STATEMENTS.length} schema statement(s); ` +
+      `skipping ${STATEMENTS.length - ACTIVE_STATEMENTS.length} data statement(s)`,
+  );
+}
+
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
 
 // Postgres RAISE NOTICE/WARNING arrives as out-of-band 'notice' events that
@@ -12496,11 +12557,11 @@ if (DRY_RUN) {
   // Validate the whole batch inside ONE transaction, then ROLLBACK. Nothing is
   // persisted; we only learn whether each statement is valid against the live
   // schema. A single unexpected failure fails the gate (exit 1).
-  console.log(`[migrate:dry-run] validating ${STATEMENTS.length} statement(s) against current schema (no changes will be committed)`);
+  console.log(`[migrate:dry-run] validating ${ACTIVE_STATEMENTS.length} statement(s) against current schema (no changes will be committed)`);
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    for (const stmt of STATEMENTS) {
+    for (const stmt of ACTIVE_STATEMENTS) {
       try {
         await client.query(stmt);
         // Inside an aborted-tx, subsequent statements error with 25P02; a clean
@@ -12533,7 +12594,7 @@ if (DRY_RUN) {
     await pool.end().catch(() => {});
   }
   console.log(
-    `[migrate:dry-run] complete — ${STATEMENTS.length - failures.length - skipped.length - unvalidatable.length} ok, ` +
+    `[migrate:dry-run] complete — ${ACTIVE_STATEMENTS.length - failures.length - skipped.length - unvalidatable.length} ok, ` +
       `${skipped.length} skipped (missing prereq), ${unvalidatable.length} not validated (non-transactional), ` +
       `${failures.length} would-fail`,
   );
@@ -12553,7 +12614,7 @@ if (DRY_RUN) {
 }
 
 try {
-  for (const stmt of STATEMENTS) {
+  for (const stmt of ACTIVE_STATEMENTS) {
     try {
       await pool.query(stmt);
       console.log(`[migrate] OK: ${stmt}`);

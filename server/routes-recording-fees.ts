@@ -8,6 +8,7 @@
 import { Router, type Request, type Response } from "express";
 import { getRecordingFees, estimateClosingCosts } from "./services/countyRecordingFees";
 import { sendError } from "./utils/errors";
+import { isPropertyClass, PROPERTY_CLASSES } from "@shared/regulatory/transferTax";
 
 const router = Router();
 
@@ -35,7 +36,15 @@ router.get("/closing", (req: Request, res: Response) => {
     return sendError(res, 400, "BAD_REQUEST", "price must be a positive number");
   }
 
-  const costs = estimateClosingCosts(purchasePrice, state, county);
+  // Optional: what is on the land. Graduated states (WA, CT, DC, HI, RI, ME,
+  // VT) and Miami-Dade estimate only when it is supplied; omitted = refuse.
+  const rawClass = req.query.propertyClass;
+  if (rawClass !== undefined && rawClass !== "" && !isPropertyClass(rawClass)) {
+    return sendError(res, 400, "BAD_REQUEST", `propertyClass must be one of: ${PROPERTY_CLASSES.join(", ")}`);
+  }
+  const costs = estimateClosingCosts(purchasePrice, state, county, {
+    propertyClass: isPropertyClass(rawClass) ? rawClass : undefined,
+  });
   res.json({ state: state.toUpperCase(), county, purchasePrice, ...costs });
 });
 

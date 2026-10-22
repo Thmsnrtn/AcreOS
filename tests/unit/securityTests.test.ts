@@ -65,9 +65,16 @@ vi.mock("../../server/db", () => {
       from: () => ({
         where: () => ({
           limit: () => Promise.resolve([]),
+          // The provisioning re-check inside the transaction reads the
+          // user's oldest org: .orderBy(asc(id)).limit(1). None yet here.
+          orderBy: () => ({ limit: () => Promise.resolve([]) }),
         }),
       }),
     }),
+    // The per-user advisory lock that serialises provisioning.
+    execute: async (_q: unknown) => {
+      return { rows: [] };
+    },
   };
   return {
     db: fakeTx,
