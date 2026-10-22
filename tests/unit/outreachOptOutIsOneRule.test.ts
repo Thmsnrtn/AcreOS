@@ -58,9 +58,48 @@ const OUTREACH_PATHS: Array<[file: string, mustCall: RegExp]> = [
   ["server/routes-today.ts", /leadHasOptedOut\(/],
   ["server/routes-pax-insights.ts", /leadHasOptedOut\(/],
   ["server/routes-dashboard.ts", /leadHasOptedOut\(/],
+  // Buyer blasts: the audience query (best-in-class audit 2026-10-20 — it
+  // emailed opted-out buyers once the composer became reachable).
+  ["server/routes-buyer-blasts.ts", /leadNotOptedOutSql\(\)/],
 ];
 
+/**
+ * Counterparty senders that are NOT outreach audiences, each with the reason.
+ * Every server file that sends `purpose: "counterparty"` mail must be in
+ * OUTREACH_PATHS or here — so a new bulk sender cannot ship outside the
+ * opt-out rule the way buyer blasts did.
+ */
+const COUNTERPARTY_NOT_OUTREACH: Record<string, string> = {
+  "server/services/emailService.ts": "the transport itself; it defines the purpose lanes",
+  "server/routes-communications.ts": "one email a user composes to one recipient (inbox reply / send)",
+  "server/routes-inbound-email.ts": "a reply on a thread the counterparty started",
+  "server/routes-deal-rooms.ts": "a deal-room invitation the operator sends to a named party",
+  "server/services/financeAgent.ts": "sends through communications.sendToLead, which is an OUTREACH_PATHS member",
+  "server/services/borrower/servicingWindDownBorrowerNotice.ts": "a legally required servicing notice to a borrower",
+  "server/services/borrower/portalPaymentPosting.ts": "a payment receipt to the borrower who paid",
+  "server/services/periodicStatements/delivery.ts": "a periodic loan statement owed to the borrower",
+};
+
+
 describe("every enumerated outreach path routes through the helper", () => {
+  it("every counterparty sender is either an enumerated outreach path or a named non-outreach sender", () => {
+    const walk = (dir: string, out: string[] = []): string[] => {
+      for (const name of readdirSync(dir)) {
+        const p = join(dir, name);
+        if (statSync(p).isDirectory()) walk(p, out);
+        else if (p.endsWith(".ts") && !p.endsWith(".test.ts")) out.push(p);
+      }
+      return out;
+    };
+    const senders = walk("server").filter((f) =>
+      /purpose:\s*["']counterparty["']/.test(stripComments(readFileSync(f, "utf8"))),
+    );
+    // Vacuity floor: the scan must actually find the senders it governs.
+    expect(senders.length).toBeGreaterThanOrEqual(12);
+    const listed = new Set([...OUTREACH_PATHS.map(([f]) => f), ...Object.keys(COUNTERPARTY_NOT_OUTREACH)]);
+    expect(senders.filter((f) => !listed.has(f.split("\\").join("/")))).toEqual([]);
+  });
+
   it.each(OUTREACH_PATHS)("%s", (file, mustCall) => {
     const src = stripComments(readFileSync(join(process.cwd(), file), "utf8"));
     expect(src, `${file} no longer calls the shared opt-out rule`).toMatch(mustCall);

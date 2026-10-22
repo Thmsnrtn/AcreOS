@@ -18,6 +18,8 @@ export interface CredentialField {
   placeholder: string;
   secret: boolean;
   helpText?: string;
+  /** A field the connect route will accept blank. Every other field is required. */
+  optional?: boolean;
 }
 
 export interface ConnectorDef {
@@ -68,6 +70,7 @@ export const CONNECTOR_REGISTRY: ConnectorDef[] = [
   // ── Communication ─────────────────────────────────────────────────────────
   {
     id: "gmail",
+    availability: "planned", // OAuth connector with NO OAuth flow: there is no consent/start or callback route for Pax connectors, so no access token can ever be obtained. Until 2026-10-20 the connect route accepted `{}` and answered "connected". See connectorCatalogIsHonest.test.ts (OAuth rule).
     name: "Gmail",
     description: "Search and send emails. Pax can read threads from leads and send follow-ups on your behalf.",
     icon: "Mail",
@@ -106,6 +109,7 @@ export const CONNECTOR_REGISTRY: ConnectorDef[] = [
         label: "Default Channel (optional)",
         placeholder: "#deals",
         secret: false,
+        optional: true,
       },
     ],
     capabilities: [
@@ -167,6 +171,7 @@ export const CONNECTOR_REGISTRY: ConnectorDef[] = [
   // ── Storage & Documents ───────────────────────────────────────────────────
   {
     id: "google_drive",
+    availability: "planned", // OAuth connector with NO OAuth flow: there is no consent/start or callback route for Pax connectors, so no access token can ever be obtained. Until 2026-10-20 the connect route accepted `{}` and answered "connected". See connectorCatalogIsHonest.test.ts (OAuth rule).
     name: "Google Drive",
     description: "Search, access, and upload property documents. Pax can organize your Drive by deal.",
     icon: "HardDrive",
@@ -225,6 +230,7 @@ export const CONNECTOR_REGISTRY: ConnectorDef[] = [
   // ── Productivity ─────────────────────────────────────────────────────────
   {
     id: "google_calendar",
+    availability: "planned", // OAuth connector with NO OAuth flow: there is no consent/start or callback route for Pax connectors, so no access token can ever be obtained. Until 2026-10-20 the connect route accepted `{}` and answered "connected". See connectorCatalogIsHonest.test.ts (OAuth rule).
     name: "Google Calendar",
     description: "Schedule showings, closings, and follow-ups. Pax can check your calendar and book appointments.",
     icon: "Calendar",
@@ -403,16 +409,61 @@ export function getConnector(id: string): ConnectorDef | undefined {
   return CONNECTOR_REGISTRY.find((c) => c.id === id);
 }
 
+/**
+ * Why the connect route must refuse these credentials, or null if they are
+ * acceptable.
+ *
+ * The connect route used to store whatever arrived — including `{}` or no
+ * credentials at all — and answer `status: "connected"`, so the panel told the
+ * customer "Pax can now use this integration" about a connector holding
+ * nothing. A connector is connectable only through its declared credential
+ * fields, and every non-optional field must be a non-blank string. A connector
+ * that declares no fields (every OAuth entry) has nothing a customer can paste,
+ * so it is refused here too — the only honest way to connect it is an OAuth
+ * flow, and none exists.
+ */
+export function credentialRefusal(
+  def: ConnectorDef,
+  credentials: Record<string, unknown> | undefined,
+): { reason: string; missing: string[] } | null {
+  const fields = def.credentialFields ?? [];
+  if (fields.length === 0) {
+    return {
+      reason: `${def.name} has no credential fields AcreOS can accept, so it cannot be connected here.`,
+      missing: [],
+    };
+  }
+  const missing = fields
+    .filter((f) => !f.optional)
+    .filter((f) => {
+      const v = credentials?.[f.key];
+      return typeof v !== "string" || v.trim() === "";
+    })
+    .map((f) => f.key);
+  if (missing.length > 0) {
+    return {
+      reason: `${def.name} needs ${missing.join(", ")} before it can be connected.`,
+      missing,
+    };
+  }
+  return null;
+}
+
+/** Connectors that are connected AND implemented — a stale row on a planned entry is not a capability. */
+function usableConnected(connectedIds: string[]): ConnectorDef[] {
+  return CONNECTOR_REGISTRY.filter(
+    (c) => connectedIds.includes(c.id) && c.availability !== "planned",
+  );
+}
+
 // Get all tool names exposed by connected connectors
 export function getConnectorTools(connectedIds: string[]): string[] {
-  return CONNECTOR_REGISTRY
-    .filter((c) => connectedIds.includes(c.id))
-    .flatMap((c) => c.tools);
+  return usableConnected(connectedIds).flatMap((c) => c.tools);
 }
 
 // Build a system-prompt summary of connected connectors
 export function buildConnectorContextBlock(connectedIds: string[]): string {
-  const connected = CONNECTOR_REGISTRY.filter((c) => connectedIds.includes(c.id));
+  const connected = usableConnected(connectedIds);
   if (connected.length === 0) return "";
 
   const lines = connected.map((c) =>

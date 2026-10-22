@@ -6,6 +6,10 @@
  * photos, tracks who opens, who replies, who books a walkthrough. […]
  * This is the single feature that flips me from $20 trial to $49/mo paying."
  *
+ * What it actually does (2026-10-20): EMAIL ONLY, on the org's own sending
+ * identity. There is no SMS lane and no open tracking; recipient statuses
+ * are logged by hand (PATCH below).
+ *
  * Endpoints:
  *   POST /api/properties/:id/blast-buyers
  *     Body: { subject, body, minMatchScore?, financingType?, dryRun? }
@@ -19,6 +23,7 @@
  */
 
 import { offerabilityRefusal } from "./services/listability";
+import { leadNotOptedOutSql } from "./services/leadContactability";
 import type { Express, Response } from "express";
 import { z } from "zod";
 import { and, asc, desc, eq, sql } from "drizzle-orm";
@@ -103,6 +108,9 @@ export function registerBuyerBlastRoutes(app: Express): void {
             eq(buyerPropertyMatches.propertyId, propertyId),
             // An inactive buyer profile is not an audience (DEFECT-0174).
             eq(buyerProfiles.isActive, true),
+            // A buyer who said stop (STOP reply, revocation, operator
+            // do-not-contact) is not an audience on any channel.
+            leadNotOptedOutSql(),
             sql`${buyerPropertyMatches.matchScore} >= ${minMatchScore}`,
           ))
           .orderBy(desc(buyerPropertyMatches.matchScore))

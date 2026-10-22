@@ -662,24 +662,24 @@ export async function syncPaymentsToQbo(
 }
 
 // ============================================
-// QUICKBOOKS OAUTH — initiate connection
+// QUICKBOOKS OAUTH — REFUSES (2026-10-20)
 // ============================================
+//
+// This used to build an Intuit consent URL whose redirect target
+// (`/api/integrations/qbo/callback`) is mounted nowhere, and no code anywhere
+// exchanges an authorization code for the access token `syncPaymentsToQbo`
+// requires. Handing a customer a consent URL for a flow that cannot complete
+// is a promise AcreOS cannot keep, so it refuses. Kept as a function (rather
+// than deleted) only so its existing caller fails loudly instead of compiling
+// against nothing; build the code exchange before un-refusing it.
 
-export function getQboOAuthUrl(orgId: number): string {
-  const clientId = process.env.QBO_CLIENT_ID;
-  const redirectUri = process.env.QBO_REDIRECT_URI || `${process.env.APP_URL}/api/integrations/qbo/callback`;
+const QBO_OAUTH_NOT_IMPLEMENTED =
+  "QuickBooks Online connection is not implemented: AcreOS has no OAuth code exchange " +
+  "for QuickBooks, so no access token can be obtained. Use the ledger export " +
+  "(GET /api/accounting/qbo-export) instead.";
 
-  if (!clientId) throw new Error("QBO_CLIENT_ID not configured");
-
-  const params = new URLSearchParams({
-    client_id: clientId,
-    response_type: "code",
-    scope: "com.intuit.quickbooks.accounting",
-    redirect_uri: redirectUri,
-    state: `org_${orgId}`,
-  });
-
-  return `https://appcenter.intuit.com/connect/oauth2?${params.toString()}`;
+export function getQboOAuthUrl(_orgId: number): string {
+  throw new Error(QBO_OAUTH_NOT_IMPLEMENTED);
 }
 
 // ============================================

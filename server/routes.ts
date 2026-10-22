@@ -500,13 +500,10 @@ export async function registerRoutes(
     try {
       const { healthCheckService } = await import("./services/healthCheck");
       const result = healthCheckService.getLastResults() || await healthCheckService.checkAll();
-      const services = (result.services || []).map((s: any) => ({
-        name: s.name,
-        status: s.status === "healthy" ? "operational" : s.status === "degraded" ? "degraded" : s.status === "unconfigured" ? "operational" : "outage",
-      }));
-      const overall = services.every((s: any) => s.status === "operational") ? "operational"
-        : services.some((s: any) => s.status === "outage") ? "outage" : "degraded";
-      res.json({ status: overall, services, lastChecked: result.timestamp });
+      // "unconfigured" is NOT "operational" — see services/publicStatus.ts.
+      const { projectPublicStatus } = await import("./services/publicStatus");
+      const { status, services } = projectPublicStatus(result.services || []);
+      res.json({ status, services, lastChecked: result.timestamp });
     } catch {
       res.json({ status: "unknown", services: [], lastChecked: clock.now() });
     }
