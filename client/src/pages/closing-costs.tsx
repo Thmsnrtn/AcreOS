@@ -8,16 +8,37 @@ import { DataProvenanceChip, type DataClassification } from "@/components/data-p
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { usd } from "@/lib/format";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DollarSign, MapPin, AlertCircle, Loader2 } from "lucide-react";
 
+/**
+ * The body of GET /api/recording-fees/closing (server/routes-recording-fees.ts
+ * spreads countyRecordingFees.estimateClosingCosts). The field names are the
+ * server's: this page used to read `transferTax` / `total`, which the route
+ * never sends, so both cards rendered from undefined.
+ */
 interface ClosingCostsResult {
   state: string;
   county: string;
   purchasePrice: number;
   recordingFee: number;
-  transferTax: number;
-  total: number;
+  /** null = the canonical table refused to estimate; see transferTaxRefusal. Never $0. */
+  transferTaxTotal: number | null;
+  transferTaxRefusal: string | null;
+  transferTaxExcludesLocal: string | null;
+  /** Sum of what WAS estimated. */
+  totalCost: number;
+  /** What totalCost leaves out, in words. */
+  totalExcludes: string[];
 }
+
+const PROPERTY_CLASS_OPTIONS = [
+  { value: "unspecified", label: "Not specified" },
+  { value: "vacant_land", label: "Vacant land" },
+  { value: "single_family_residence", label: "Single-family residence" },
+  { value: "other_residential", label: "Other residential (2–4 units)" },
+  { value: "nonresidential", label: "Nonresidential / commercial" },
+] as const;
 
 interface RecordingFeeInfo {
   state: string;
@@ -25,8 +46,11 @@ interface RecordingFeeInfo {
   recordingFeePerPage: number;
   typicalPages: number;
   estimatedRecordingFee: number;
-  transferTaxPer1000: number;
-  transferTaxPaidBy: "buyer" | "seller" | "split" | "none";
+  /** null when the tax is graduated, class-dependent or local-only — see transferTaxRule. */
+  transferTaxPer1000: number | null;
+  /** The statutory rule in words, with citation (shared/regulatory/transferTax.ts). */
+  transferTaxRule: string;
+  transferTaxPaidBy: "buyer" | "seller" | "split" | "varies" | "none";
   specialNotes: string[];
   source: "database" | "state_default" | "estimate";
   confidence: "high" | "medium" | "low";
@@ -51,19 +75,23 @@ export default function ClosingCostsPage() {
   const [state, setState] = useState("TX");
   const [county, setCounty] = useState("");
   const [price, setPrice] = useState("");
+  // What is on the land. Graduated states (WA, CT, DC, HI, RI, ME, VT) and
+  // Miami-Dade estimate only when this is stated; "Not specified" refuses.
+  const [propertyClass, setPropertyClass] = useState<string>("unspecified");
   const [result, setResult] = useState<ClosingCostsResult | null>(null);
   const [feeInfo, setFeeInfo] = useState<RecordingFeeInfo | null>(null);
   const [loading, setLoading] = useState(false);
   const stateId = useId();
   const countyId = useId();
   const priceId = useId();
+  const classId = useId();
 
   async function calculate() {
     if (!state || !county || !price) return;
     setLoading(true);
     try {
       const [closingRes, feeRes] = await Promise.all([
-        fetch(`/api/recording-fees/closing?state=${state}&county=${encodeURIComponent(county)}&price=${price}`).then(r => {
+        fetch(`/api/recording-fees/closing?state=${state}&county=${encodeURIComponent(county)}&price=${price}${propertyClass !== "unspecified" ? `&propertyClass=${propertyClass}` : ""}`).then(r => {
           if (!r.ok) throw new Error("Closing calc failed");
           return r.json();
         }),
@@ -151,6 +179,19 @@ export default function ClosingCostsPage() {
                 className="mt-1 tabular-nums"
               />
             </div>
+            <div>
+              <Label htmlFor={classId} className="text-xs">What is on the land</Label>
+              <Select value={propertyClass} onValueChange={setPropertyClass}>
+                <SelectTrigger id={classId} className="mt-1" data-testid="select-property-class">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PROPERTY_CLASS_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <Button
               type="submit"
               disabled={loading || !state || !county || !price}
@@ -184,13 +225,24 @@ export default function ClosingCostsPage() {
                   <DollarSign className="w-3.5 h-3.5" aria-hidden="true" />
                   <span className="text-xs">Transfer tax</span>
                 </dt>
-                <dd className="text-lg font-bold tabular-nums">{usd(result.transferTax)}</dd>
+                {result.transferTaxTotal === null ? (
+                  <dd className="text-xs text-muted-foreground" data-testid="closing-transfer-tax">
+                    Not estimated — {result.transferTaxRefusal ?? "confirm with your closing agent"}
+                  </dd>
+                ) : (
+                  <dd className="text-lg font-bold tabular-nums" data-testid="closing-transfer-tax">{usd(result.transferTaxTotal)}</dd>
+                )}
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
                 <dt className="text-xs text-muted-foreground mb-1">Total est.</dt>
-                <dd className="text-lg font-bold text-primary tabular-nums">{usd(result.total)}</dd>
+                <dd className="text-lg font-bold text-primary tabular-nums" data-testid="closing-total">{usd(result.totalCost)}</dd>
+                {result.totalExcludes.length > 0 && (
+                  <dd className="text-xs text-muted-foreground mt-1" data-testid="closing-total-excludes">
+                    Excludes {result.totalExcludes.join("; ")}
+                  </dd>
+                )}
               </CardContent>
             </Card>
           </dl>
@@ -216,13 +268,20 @@ export default function ClosingCostsPage() {
                 </div>
                 <div>
                   <dt className="text-muted-foreground">Transfer tax</dt>
-                  <dd className="font-medium tabular-nums">${feeInfo.transferTaxPer1000.toFixed(2)}/$1,000</dd>
+                  <dd className="font-medium tabular-nums">
+                    {feeInfo.transferTaxPer1000 === null
+                      ? "Varies — see the rule below"
+                      : `$${feeInfo.transferTaxPer1000.toFixed(2)}/$1,000`}
+                  </dd>
                 </div>
                 <div>
                   <dt className="text-muted-foreground">Paid by</dt>
                   <dd className="font-medium capitalize">{feeInfo.transferTaxPaidBy}</dd>
                 </div>
               </dl>
+              <p className="text-xs text-muted-foreground" data-testid="transfer-tax-rule">
+                {feeInfo.transferTaxRule}
+              </p>
               {feeInfo.specialNotes.length > 0 && (
                 <ul className="space-y-1" aria-label="Special notes for this county">
                   {feeInfo.specialNotes.map((note, i) => (
