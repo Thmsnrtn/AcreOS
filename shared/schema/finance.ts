@@ -137,7 +137,8 @@ export const ledgerDeadLetters = pgTable("ledger_dead_letters", {
   // Org the failed posting attributes to. Nullable to mirror financial_ledger
   // (platform-level postings aren't customer-attributable).
   organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "set null" }),
-  // Which posting function failed: revenue | refund | opex.
+  // Which posting function failed: revenue | refund | opex, or gl_refund
+  // (the recognition GL post of a Stripe refund — recognitionWorker).
   kind: text("kind").notNull(),
   // The idempotency anchor of the failed posting — also OUR dedupe key.
   externalEventId: text("external_event_id").notNull().unique(),

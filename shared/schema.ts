@@ -593,6 +593,14 @@ export const leads = pgTable("leads", {
   taxDelinquent: boolean("tax_delinquent"),
   estimatedValue: numeric("estimated_value"),
   acreage: numeric("acreage"),
+  // Migration 0286 — the county's ASSESSED value, as a list states it. A
+  // different fact from estimatedValue (a market estimate): an import maps
+  // "Assessed Value" / "Total Assessed" here and "Market Value" there, never
+  // one into the other (shared/leads/parcelFacts.ts). Amount owed and years
+  // delinquent are what the list says, null when it says nothing.
+  assessedValue: numeric("assessed_value", { precision: 14, scale: 2 }),
+  taxDelinquentAmount: numeric("tax_delinquent_amount", { precision: 12, scale: 2 }),
+  taxDelinquentYears: integer("tax_delinquent_years"),
 
   // Campaign attribution tracking
   sourceTrackingCode: text("source_tracking_code"), // Links to campaign.trackingCode

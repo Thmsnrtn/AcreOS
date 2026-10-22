@@ -26,7 +26,7 @@ const FEATURES: { cat: string; t: string; d: string; i: GlyphKind }[] = [
   { cat: "Reach", t: "Lead inbox with Pax drafts", d: "SMS, email, voicemail in one thread. One tap and Pax drafts the reply for your review.", i: "inbox" },
   { cat: "Close", t: "Offer composer", d: "Generate a written offer in one tap. Pax defends the price.", i: "doc" },
   { cat: "Close", t: "E-sign + escrow", d: "Send contracts, track signatures, hand off to title — without leaving the app.", i: "pen" },
-  { cat: "Service", t: "Note ledger", d: "Auto-pay, receipts, late notices, 1098s. Seller-finance back office.", i: "ledger" },
+  { cat: "Service", t: "Note ledger", d: "Auto-pay, receipts, late notices. Seller-finance back office.", i: "ledger" },
   { cat: "Operate", t: "Automation builder", d: "No-code workflows. Trigger anything off any event. Pause anything in one click.", i: "flow" },
   // The receipt row is what activity_log actually carries (server/services/
   // paxReceipts.ts → when · what · which record · how, pinned by
