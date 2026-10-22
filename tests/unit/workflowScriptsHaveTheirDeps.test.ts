@@ -18,6 +18,16 @@
  * must contain an install step. Following the import graph rather than the
  * entry file is the point: voice-lint.mjs itself imports nothing external; it
  * reaches TypeScript one hop away through scripts/lib/strip-comments.mjs.
+ *
+ * REMOTE-EXEC EXEMPTION: a job whose scripts run on a remote host (e.g. exec
+ * into a Fly machine via the Machines API) never touches the runner, so the
+ * runner installs nothing and the deps must live in the remote image — which
+ * no static gate can inspect. Such a job attests this explicitly with
+ * `REMOTE_EXEC: "true"` in its env (a YAML line, so it survives the comment
+ * strip). The marker is reviewable and per-job: the whole job is exempt, so
+ * a runner-side `node scripts/...` call added to such a job later would be
+ * silently exempt too. Keep remote-exec jobs to remote execution only, and
+ * re-verify the attestation against the target image whenever the steps change.
  */
 
 import { describe, expect, it, vi } from "vitest";
@@ -106,6 +116,10 @@ describe("a workflow installs what the scripts it runs import", () => {
     const offenders: string[] = [];
     for (const { rel, yaml } of workflows) {
       for (const job of jobsOf(yaml)) {
+        // Remote-exec jobs attest explicitly; their scripts run on the
+        // remote host, not the runner (see the doc header for why this
+        // exemption exists and what it obliges the author to verify).
+        if (/\bREMOTE_EXEC\s*:\s*['"]?true['"]?/.test(job.body)) continue;
         const scripts = [...job.body.matchAll(/\bnode\s+(scripts\/[A-Za-z0-9_./-]+\.m?js)/g)].map((m) => m[1]);
         if (scripts.length === 0) continue;
         const installs = /\bnpm\s+(ci|install|i)\b/.test(job.body);

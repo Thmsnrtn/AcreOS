@@ -77,6 +77,52 @@ export function resolveTestUserId(cookieHeader: string | undefined): string {
   return E2E_TEST_USER_ID;
 }
 
+export interface SyntheticTestProfile {
+  email: string;
+  firstName: string;
+  lastName: string;
+}
+
+/**
+ * The synthetic profile for an E2E test identity, mirroring what the E2E
+ * global setup seeds into its throwaway database
+ * (tests/e2e-mobile/global-setup.ts). Returns null for any id that is not
+ * a test identity.
+ *
+ * hydrateUser uses this when a request authenticated through the E2E
+ * bypass (blanket flag or staging token) resolves to an identity with no
+ * users row: Clerk has never heard of these ids, so the normal
+ * auto-provisioning call (clerkClient.users.getUser) throws a Clerk 404
+ * and EVERY authenticated request 404s with it. Provisioning the row
+ * locally keeps the bypass self-contained — the target database does not
+ * need the seed the CI global setup applies to its own Postgres.
+ */
+export function resolveSyntheticTestProfile(
+  userId: string,
+): SyntheticTestProfile | null {
+  if (userId === E2E_TEST_USER_ID) {
+    return { email: "e2e@acreos.test", firstName: "E2E", lastName: "Customer" };
+  }
+  if (userId === E2E_FOUNDER_USER_ID) {
+    return {
+      email: "founder-e2e@acreos.test",
+      firstName: "E2E",
+      lastName: "Founder",
+    };
+  }
+  if (userId.startsWith("e2e_persona_")) {
+    const slug = userId.slice("e2e_persona_".length);
+    if (slug) {
+      return {
+        email: `e2e-persona-${slug}@acreos.test`,
+        firstName: "E2E",
+        lastName: "Persona",
+      };
+    }
+  }
+  return null;
+}
+
 /** True only in a non-Fly environment with the explicit E2E flag set. */
 export function e2eTestAuthEnabled(): boolean {
   return process.env.E2E_TEST_AUTH === "1" && !process.env.FLY_APP_NAME;
@@ -143,4 +189,25 @@ export function e2eTokenAuthEnabled(req: { headers: Record<string, string | stri
     return true;
   }
   return false;
+}
+
+/**
+ * True when this request is E2E test traffic: the blanket local flag, or a
+ * valid staging token on the request. Silent (no per-call log line) — it is
+ * read by the rate limiters on every request.
+ *
+ * The limiters already skip the blanket flag because every spec shares ONE
+ * test user against one server, so a per-user budget throttles the suite
+ * rather than any abuser. The staging token path (e2eTokenAuthEnabled) was
+ * added later without the same exemption, and the customer-journey audit —
+ * nine viewports × two themes walking full page loads as that one user —
+ * spent the 300/min per-user budget and 429'd its own /today ("Slow down",
+ * Today stuck on "Loading AcreOS…"; measured locally 2026-10-21, issue #359).
+ * Production is unaffected: E2E_TEST_AUTH_TOKEN is never set there, so
+ * e2eTokenAuthValid() is false for every request.
+ */
+export function isE2eTestTraffic(req: { headers?: Record<string, string | string[] | undefined> }): boolean {
+  if (e2eTestAuthEnabled()) return true;
+  const token = req.headers?.["x-e2e-auth-token"];
+  return e2eTokenAuthValid(Array.isArray(token) ? token[0] : token);
 }

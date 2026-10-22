@@ -1,4 +1,4 @@
-app = 'acreos'
+app = 'acreos-staging'
 primary_region = 'iad'
 
 [build]
