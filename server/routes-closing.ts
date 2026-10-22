@@ -9,7 +9,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { storage, db } from "./storage";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
-import { generateClosingChecklist } from "./services/closingChecklistGenerator";
+import { generateClosingChecklist, dealIsSellerFinanced } from "./services/closingChecklistGenerator";
 import { dealChecklists } from "@shared/schema";
 import { eq, and, sql } from "drizzle-orm";
 import crypto from "crypto";
@@ -36,7 +36,7 @@ export function registerClosingRoutes(app: Express): void {
         return Errors.badRequest(res, "Closing date required to generate checklist");
       }
 
-      const isSellerFinanced = !!(deal as any).analysisResults?.interestRate;
+      const isSellerFinanced = dealIsSellerFinanced(deal);
       const result = await generateClosingChecklist(dealId, state, closingDate, isSellerFinanced);
 
       res.json({
@@ -176,7 +176,7 @@ export function registerClosingRoutes(app: Express): void {
       }
 
       // Seller-financed extras
-      const isSellerFinanced = !!(deal as any).analysisResults?.interestRate;
+      const isSellerFinanced = dealIsSellerFinanced(deal);
       if (isSellerFinanced) {
         try {
           const { generatePromissoryNote } = await import("./services/documents");

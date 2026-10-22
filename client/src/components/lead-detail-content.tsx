@@ -27,7 +27,9 @@ import {
   Shield,
   Users,
   History,
+  LandPlot,
 } from "lucide-react";
+import { parcelFactRows } from "@shared/leads/parcelFacts";
 import { format } from "date-fns";
 import { ActivityTimeline } from "@/components/activity-timeline";
 import { CustomFieldValuesEditor } from "@/components/custom-fields";
@@ -78,6 +80,7 @@ export function LeadDetailContent({
   const { data: userPermissions } = useUserPermissions();
   const { mutate: updateLead } = useUpdateLead();
   const { toast } = useToast();
+  const parcelFacts = parcelFactRows(lead);
   const [isAssigning, setIsAssigning] = useState(false);
 
   const leadName = `${lead.firstName} ${lead.lastName}`.trim();
@@ -212,6 +215,40 @@ export function LeadDetailContent({
                       {[lead.city, lead.state, lead.zip].filter(Boolean).join(", ")}
                     </p>
                   </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {(parcelFacts.length > 0 || lead.propertyAddress || lead.apn || lead.county) && (
+              <Card className="glass-panel" data-testid="card-lead-parcel">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <LandPlot className="w-4 h-4" aria-hidden="true" /> Parcel
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <dl className="space-y-3 text-sm">
+                    {lead.propertyAddress && (
+                      <div>
+                        <dt className="text-muted-foreground">Property address</dt>
+                        <dd className="font-medium">{lead.propertyAddress}</dd>
+                      </div>
+                    )}
+                    {(lead.apn || lead.county) && (
+                      <div className="flex justify-between gap-4">
+                        <dt className="text-muted-foreground">{lead.apn ? "APN" : "County"}</dt>
+                        <dd className="text-right tabular-nums">
+                          {[lead.apn, lead.county].filter(Boolean).join(" · ")}
+                        </dd>
+                      </div>
+                    )}
+                    {parcelFacts.map((f) => (
+                      <div key={f.key} className="flex justify-between gap-4" data-testid={`lead-fact-${f.key}`}>
+                        <dt className="text-muted-foreground">{f.label}</dt>
+                        <dd className="text-right font-medium tabular-nums">{f.value}</dd>
+                      </div>
+                    ))}
+                  </dl>
                 </CardContent>
               </Card>
             )}

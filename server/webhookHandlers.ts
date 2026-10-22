@@ -1450,15 +1450,40 @@ export class WebhookHandlers {
         }
       }
 
-      const { recordStripeChargeRefunded } = await import('./services/recognitionWorker');
-      await recordStripeChargeRefunded({
+      // The recognition GL post and the financial-ledger post below are
+      // INDEPENDENT, each with its own catch. They used to share this
+      // function's one try/catch, GL first: when the GL post threw (an org
+      // with no chart of accounts — every org on staging, 2026-10-21 G4 run),
+      // the catch swallowed it and postRefund never ran, so a full refund
+      // left the org netting the whole charge in financial_ledger with no
+      // dead letter and no alert. A GL failure is now dead-lettered as
+      // `gl_refund` and replayed hourly; the ledger post runs regardless.
+      const recognitionArgs = {
         chargeId: charge.id,
         organizationId: org.id,
         amountRefundedCents: charge.amount_refunded ?? 0,
         refundedAt: clock.now().toISOString(),
         invoiceId: typeof chargeInvoice === 'string' ? chargeInvoice : chargeInvoice?.id,
         description: `Stripe refund — charge ${charge.id}`,
-      });
+      };
+      try {
+        const { recordStripeChargeRefunded } = await import('./services/recognitionWorker');
+        await recordStripeChargeRefunded(recognitionArgs);
+      } catch (glErr) {
+        logger.error(
+          '[webhook] recognition GL refund post failed — dead-lettering; the financial-ledger refund still posts',
+          glErr instanceof Error ? glErr : undefined,
+          { metadata: { chargeId: charge.id, orgId: org.id } },
+        );
+        const { recordLedgerDeadLetter, glRefundDeadLetterId } = await import('./services/ledgerDeadLetter');
+        await recordLedgerDeadLetter({
+          kind: 'gl_refund',
+          externalEventId: glRefundDeadLetterId(charge.id),
+          organizationId: org.id,
+          payload: recognitionArgs,
+          error: glErr,
+        });
+      }
 
       // Pillar 1.5 — financial ledger refund debit against refund_reserve.
       // Idempotent by externalEventId; never propagates failure to Stripe.

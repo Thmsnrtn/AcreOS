@@ -49,7 +49,9 @@ export default function DoddFrankCheckerPage() {
   const interestId = useId();
   const dwellingId = useId();
   const constructedId = useId();
-  const residenceId = useId();
+  const atrId = useId();
+  const negAmId = useId();
+  const firstAdjustId = useId();
 
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ComplianceResult | null>(null);
@@ -58,8 +60,12 @@ export default function DoddFrankCheckerPage() {
     sellerType: "natural_person",
     hasDwelling: false,
     sellerConstructedDwelling: false,
-    isSellerResidence: false,
     rateType: "fixed",
+    // Exclusion elements left unanswered block a grant (12 CFR 1026.36(a)(4),
+    // (a)(5)); "unknown" is sent as omitted, never as a guessed yes/no.
+    abilityToRepayDetermined: "unknown" as "yes" | "no" | "unknown",
+    negativeAmortization: "unknown" as "yes" | "no" | "unknown",
+    firstRateAdjustmentMonths: "",
     interestRate: "0.08",
     balloonAfterMonths: "",
   });
@@ -76,6 +82,11 @@ export default function DoddFrankCheckerPage() {
           sellerFinancedDealsLast12Months: parseInt(form.sellerFinancedDealsLast12Months),
           interestRate: parseFloat(form.interestRate),
           balloonAfterMonths: form.balloonAfterMonths ? parseInt(form.balloonAfterMonths) : undefined,
+          abilityToRepayDetermined: form.abilityToRepayDetermined === "unknown" ? undefined : form.abilityToRepayDetermined === "yes",
+          negativeAmortization: form.negativeAmortization === "unknown" ? undefined : form.negativeAmortization === "yes",
+          firstRateAdjustmentMonths: form.rateType === "adjustable" && form.firstRateAdjustmentMonths
+            ? parseInt(form.firstRateAdjustmentMonths)
+            : undefined,
         }),
       });
       if (!res.ok) {
@@ -177,7 +188,6 @@ export default function DoddFrankCheckerPage() {
               {([
                 ["hasDwelling", dwellingId, "Property has a dwelling (house/manufactured home)"],
                 ["sellerConstructedDwelling", constructedId, "Seller constructed the dwelling"],
-                ["isSellerResidence", residenceId, "Property is seller's primary/secondary residence"],
               ] as const).map(([key, id, label]) => (
                 <div key={key} className="flex items-center justify-between gap-3">
                   <Label htmlFor={id} className="text-xs">{label}</Label>
@@ -189,6 +199,41 @@ export default function DoddFrankCheckerPage() {
                   />
                 </div>
               ))}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {([
+                ["abilityToRepayDetermined", atrId, "Good-faith ability-to-repay determination made?"],
+                ["negativeAmortization", negAmId, "Can payments fall below the interest due (negative amortization)?"],
+              ] as const).map(([key, id, label]) => (
+                <div key={key}>
+                  <Label htmlFor={id} className="text-xs">{label}</Label>
+                  <Select value={form[key]} onValueChange={v => set(key, v)}>
+                    <SelectTrigger id={id} className="mt-1" aria-label={label}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="unknown">Not answered yet</SelectItem>
+                      <SelectItem value="yes">Yes</SelectItem>
+                      <SelectItem value="no">No</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              ))}
+              {form.rateType === "adjustable" && (
+                <div>
+                  <Label htmlFor={firstAdjustId} className="text-xs">Months until the rate can first change</Label>
+                  <Input
+                    id={firstAdjustId}
+                    type="number"
+                    min={1}
+                    inputMode="numeric"
+                    value={form.firstRateAdjustmentMonths}
+                    onChange={e => set("firstRateAdjustmentMonths", e.target.value)}
+                    className="mt-1 tabular-nums"
+                  />
+                </div>
+              )}
             </div>
 
             <Button type="submit" disabled={loading} className="w-full">

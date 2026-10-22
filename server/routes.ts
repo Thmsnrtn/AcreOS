@@ -1498,6 +1498,7 @@ export async function registerRoutes(
   // Economics layer (Master Audit BI12/BK24) — compute/read versioned
   // deterministic scenarios. API surface only; no new customer nav entry.
   app.use('/api/scenarios', isAuthenticated, getOrCreateOrg, scenariosRouter);
+  // Vertical underwriting desks (decision-memos/2026-10-04-vertical-program.md).
   app.use('/api/exchange-1031', isAuthenticated, getOrCreateOrg, exchange1031Router);
   // FOUNDER-ONLY, and it was not. `client/src/App.tsx` gates the Dunning
   // Manager page behind FounderProtectedRoute with the note "the dunning API is
@@ -1607,6 +1608,18 @@ export async function registerRoutes(
   // per-route gate (validateBorrowerSession / isAuthenticated); only the
   // credential-exchange and cookie-gated statement routes are anonymous.
   registerBorrowerRoutes(app);
+
+  // Ops service API — machine-readable operations for the AI COO.
+  // Bearer-token auth (OPS_SERVICE_TOKEN), no Clerk session — so these must
+  // register BEFORE the '/api' isAuthenticated catch-all below, or the
+  // catch-all 401s every ops call before the handlers run (the same trap as
+  // the borrower portal above; while these sat at the tail of this function
+  // the ops ledger never accepted a write and the ledger-backed kill
+  // switches were unreachable). See routes-ops.ts, routes-ledger.ts,
+  // routes-killswitches.ts.
+  registerOpsRoutes(app);
+  registerLedgerRoutes(app);
+  registerKillSwitchRoutes(app);
 
   // EPIC Services: Seller Motivation, County Opportunity, Title Chain, Investor Network, Financial OS, Developer API
   app.use('/api', isAuthenticated, getOrCreateOrg, epicServicesRouter);
@@ -2584,11 +2597,6 @@ export async function registerRoutes(
   // Cost summary — /api/founder/cost-summary. Consolidated cost view for
   // the /founder/cost screen (AI spend + infra + per-org breakdown).
   registerFounderCostRoutes(app);
-  // Ops service API — machine-readable operations for the AI COO.
-  // GET-only, bearer-token auth (OPS_SERVICE_TOKEN). See routes-ops.ts.
-  registerOpsRoutes(app);
-  registerLedgerRoutes(app);
-  registerKillSwitchRoutes(app);
   // Domain-audit cockpit — /api/founder/audit-findings — the shared
   // continuous-audit substrate's founder "is it green?" read surface +
   // acknowledge/resolve. Founder-only. Company-level (no org scope).

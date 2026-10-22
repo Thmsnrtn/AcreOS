@@ -53,6 +53,7 @@ import {
   parseDncFlag,
   restoreZip,
 } from "@shared/leads/csvImportMapping";
+import { leadParcelFactsFromRow } from "@shared/leads/parcelFacts";
 import { clock } from "./utils/clock";
 
 // Partial update schema for PUT endpoints. The soft-delete fields are server-
@@ -1654,6 +1655,14 @@ export function registerLeadRoutes(app: Express): void {
     // A list's DNC column ("Y", "true", "1", "Federal DNC"). Import may set
     // do-not-contact; nothing on this path can grant consent.
     doNotContact: z.string().optional(),
+    // Parcel facts as the list wrote them ("12.5 ac", "$45,000", "Y"); read
+    // by shared/leads/parcelFacts.ts, which refuses what it cannot read.
+    acreage: z.string().optional(),
+    assessedValue: z.string().optional(),
+    estimatedValue: z.string().optional(),
+    taxDelinquent: z.string().optional(),
+    taxDelinquentAmount: z.string().optional(),
+    taxDelinquentYears: z.string().optional(),
   });
   const csvImportBodySchema = z.object({
     rows: z.array(csvImportRowSchema).min(1).max(CSV_IMPORT_MAX_ROWS_PER_REQUEST),
@@ -1831,6 +1840,8 @@ export function registerLeadRoutes(app: Express): void {
               // The parcel's situs, kept apart from the mailing block.
               propertyAddress: composePropertyAddress({ ...row, propertyZip: row.propertyZip ? restoreZip(row.propertyZip) : row.propertyZip }),
               apn: apn || null,
+              // Acreage, assessed vs estimated value, tax-delinquent status.
+              ...leadParcelFactsFromRow(row),
               source: "csv_import",
               status: "new",
               // Only ever true from a list flag; never consent.
@@ -1890,6 +1901,24 @@ export function registerLeadRoutes(app: Express): void {
       }
     },
   );
+
+  // A row from the tax-delinquent importer (client/src/components/
+  // tax-delinquent-importer.tsx) → the lead's parcel-fact columns. The list
+  // was imported AS a tax-delinquent list, so a row whose own columns say
+  // nothing about delinquency is still delinquent by the customer's
+  // declaration; an explicit "N" / "Current" in a delinquent column stays
+  // false.
+  function taxDelinquentListFacts(row: Record<string, unknown>) {
+    const facts = leadParcelFactsFromRow({
+      acreage: row.acreage,
+      assessedValue: row.assessed_value,
+      estimatedValue: row.market_value,
+      taxDelinquent: row.delinquent,
+      taxDelinquentAmount: row.taxes_owed,
+      taxDelinquentYears: row.years_delinquent,
+    });
+    return { ...facts, taxDelinquent: facts.taxDelinquent ?? true };
+  }
 
   // Tax Delinquent List Import (Phase 2.5)
   api.post("/api/leads/import/tax-delinquent", isAuthenticated, getOrCreateOrg, requirePermission("canImportData"), async (req, res) => {
@@ -1978,6 +2007,10 @@ export function registerLeadRoutes(app: Express): void {
               zip: "",
               apn: apn || null,
               county: typeof row.county === "string" && row.county.trim() ? row.county.trim() : null,
+              // The parcel facts, on the lead's own columns — they used to be
+              // written only into the notes text, where nothing can price,
+              // filter or sort on them.
+              ...taxDelinquentListFacts(row),
               source: "tax_delinquent",
               status: "new" as const,
               notes: [

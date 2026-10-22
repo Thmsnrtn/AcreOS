@@ -24,7 +24,7 @@ import { QueryErrorState } from "@/components/query-error-state";
 import { motion } from "framer-motion";
 import { staggerContainer, staggerItem } from "@/lib/animations";
 import { Verbs } from "@/lib/labels";
-import { format, differenceInDays } from "date-fns";
+import { format, differenceInDays, parseISO } from "date-fns";
 // jsPDF is dynamically imported inside generatePDF below — it's ~340KB
 // raw / 100KB brotli'd and only fires when a borrower actually downloads
 // a 1098/statement, so there's no reason to ship it on first paint of
@@ -989,14 +989,22 @@ function BorrowerDashboard({ data }: { data: BorrowerLoanData }) {
       y += 10;
       
       doc.setFontSize(12);
-      doc.text('Box 2 - Outstanding Mortgage Principal:', 14, y);
+      doc.text('Box 2 - Outstanding Principal (Jan 1):', 14, y);
       doc.setFontSize(14);
       doc.text(`$${data.principalBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 100, y);
       y += 10;
       
+      if (typeof data.refundOfOverpaidInterest === 'number' && data.refundOfOverpaidInterest > 0) {
+        doc.setFontSize(12);
+        doc.text('Box 4 - Refund of Overpaid Interest:', 14, y);
+        doc.setFontSize(14);
+        doc.text(`$${data.refundOfOverpaidInterest.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 100, y);
+        y += 10;
+      }
+
       doc.setFontSize(12);
       doc.text('Loan Origination Date:', 14, y);
-      doc.text(format(new Date(data.loanOriginationDate), 'MMM d, yyyy'), 100, y);
+      doc.text(format(parseISO(data.loanOriginationDate), 'MMM d, yyyy'), 100, y);
       y += 20;
       
       doc.setFontSize(8);

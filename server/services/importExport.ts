@@ -1,5 +1,6 @@
 import { neutraliseCsvFormula } from "@shared/csv/formulaSafe";
 import { parseDncFlag } from "@shared/leads/csvImportMapping";
+import { leadParcelFactsFromRow, parcelFactCellsFromRecord } from "@shared/leads/parcelFacts";
 import { z } from "zod";
 // Exports read the WHOLE book, never the 5000-row capped list (DEFECT-0170).
 import {
@@ -431,6 +432,12 @@ export async function importLeads(
         status: row.status || "new",
         source: row.source || "import",
         notes: row.notes || null,
+        // Acreage, assessed vs estimated value and tax-delinquent status, from
+        // the columns a county list uses ("Acres", "Total Assessed",
+        // "Delinquent Amount", ...) or the caller's field map.
+        ...leadParcelFactsFromRow(
+          parcelFactCellsFromRecord(rawRow, (h) => effectiveMap[h.toLowerCase()] ?? effectiveMap[h]),
+        ),
         ...(parseDncFlag(row.doNotContact) ? { doNotContact: true, optOutDate: clock.now(), optOutReason: "import_dnc_flag" } : {}),
       });
 
@@ -1669,6 +1676,14 @@ export function getExpectedColumns(entityType: "leads" | "properties" | "deals")
       // The parcel identity a lead import dedupes on (DEFECT-0140) — listed
       // so the import UI tells users these columns exist.
       "apn",
+      // Parcel facts (shared/leads/parcelFacts.ts). "Acres", "Assessed Value",
+      // "Market Value", "Delinquent Amount" etc. are recognised too.
+      "acreage",
+      "assessedValue",
+      "estimatedValue",
+      "taxDelinquent",
+      "taxDelinquentAmount",
+      "taxDelinquentYears",
       "type",
       "status",
       "source",

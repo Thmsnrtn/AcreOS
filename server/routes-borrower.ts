@@ -18,10 +18,10 @@ import {
   PAYOFF_DAY_COUNT_CONVENTION,
   PAYOFF_ENGINE_VERSION,
 } from "./services/notePaymentMath";
-// The 1098 tax-year window. Box 1 is interest RECEIVED in a calendar year, and
-// which calendar day an instant fell on is a question about the LENDER's zone —
-// see dayInZone's header for what answering it with the server's zone cost.
-import { dayInZone, resolveOrgTimeZone } from "./services/form1098Batch";
+// Which calendar day an instant fell on is a question about the LENDER's zone
+// — see dayInZone's header. The borrower's Form 1098 copy is derived by the
+// same generator the lender files from (borrowerCopy1098ForNote).
+import { borrowerCopy1098ForNote, dayInZone, resolveOrgTimeZone } from "./services/form1098Batch";
 import { quoteServicedNotePayoff } from "./services/notes/servicedNotePayoff";
 import { Errors, sendError } from "./utils/errors";
 
@@ -1893,46 +1893,36 @@ export function registerBorrowerRoutes(app: Express): void {
         // 1098 Interest Statement for tax year
         const taxYear = year ? Number(year) : clock.now().getFullYear() - 1;
 
-        // BUCKET BY THE LENDER'S CALENDAR DAY, NOT THE SERVER'S.
-        //
-        // This was `new Date(taxYear, 0, 1)` .. `new Date(taxYear, 11, 31,
-        // 23, 59, 59)` compared against a `timestamp`. Two defects in three
-        // lines. The boundaries were built in the SERVER's zone, so a borrower
-        // paying on 31 December at 16:00 Pacific — the tax-motivated year-end
-        // payment — had that interest reported in the following year, on a Box 1
-        // figure furnished under 26 U.S.C. §6050H. And the window CLOSED at
-        // 23:59:59 exactly, so a payment at 23:59:59.5 fell in neither year.
-        //
-        // Comparing ISO day strings against the org's own zone fixes both: the
-        // day is the lender's day, and `<=` on `YYYY-12-31` has no sub-second
-        // edge to fall through. It also makes this agree with the lender-side
-        // batch, which was already bucketing acquired notes by recorded day.
-        const orgTimeZone = await resolveOrgTimeZone(note.organizationId);
-        const firstDay = `${taxYear}-01-01`;
-        const lastDay = `${taxYear}-12-31`;
-
-        const yearPayments = allPayments.filter(p => {
-          if (p.status !== 'completed') return false;
-          const day = dayInZone(new Date(p.paymentDate), orgTimeZone);
-          return day !== null && day >= firstDay && day <= lastDay;
-        });
-        
-        const yearInterest = yearPayments.reduce((sum, p) => sum + Number(p.interestAmount || 0), 0);
-        
+        // ONE DERIVATION. This branch used to compute its own Box 1 and set
+        // Box 2 to `note.currentBalance` — today's balance, not the principal
+        // outstanding on January 1 that the IRS instructions require — so a
+        // borrower's copy could disagree with the form the lender files. It
+        // now renders exactly what the lender-side generator derives (Box 1
+        // bucketed by the lender's calendar day, Box 2 rolled back to Jan 1,
+        // Box 4 refunds), or that generator's reason for issuing none.
+        const copy = await borrowerCopy1098ForNote(note.organizationId, note.id, taxYear);
+        if (copy.kind === "unavailable") {
+          return Errors.unprocessable(res, copy.reason);
+        }
+        const f = copy.form;
+        const lenderAddressLine = [f.lenderAddress.line1, f.lenderAddress.city, f.lenderAddress.state, f.lenderAddress.zip]
+          .map((p) => (p ?? "").trim())
+          .filter(Boolean)
+          .join(", ");
         res.json({
           type: '1098',
           taxYear,
-          borrowerName: `${borrower.firstName} ${borrower.lastName}`,
-          borrowerAddress: borrower.address || '',
-          borrowerCity: borrower.city || '',
-          borrowerState: borrower.state || '',
-          borrowerZip: borrower.zip || '',
-          lenderName: org?.name || 'Lender',
-          lenderAddress: org?.settings?.companyAddress || '',
-          interestPaid: yearInterest,
-          principalBalance: Number(note.currentBalance),
-          originalPrincipal: Number(note.originalPrincipal),
-          loanOriginationDate: note.startDate,
+          borrowerName: f.borrowerName,
+          borrowerAddress: f.borrowerAddress.line1,
+          borrowerCity: f.borrowerAddress.city,
+          borrowerState: f.borrowerAddress.state,
+          borrowerZip: f.borrowerAddress.zip,
+          lenderName: f.lenderName,
+          lenderAddress: lenderAddressLine,
+          interestPaid: f.box1MortgageInterestReceivedCents / 100,
+          principalBalance: f.box2OutstandingMortgagePrincipalCents / 100,
+          refundOfOverpaidInterest: f.box4RefundOfOverpaidInterestCents / 100,
+          loanOriginationDate: f.box3MortgageOriginationDate,
         });
       } else {
         // Regular account statement
