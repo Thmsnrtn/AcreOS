@@ -3,6 +3,50 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-10-21 — Customer Journey Audit, next layer (issue #359), branch `claude/cj-journey-next-layer`
+
+### What was wrong (each verified by running it locally against a production build)
+- **One signup became several orgs.** A new user's first screen fires its
+  queries in parallel and each reached `getOrCreateOrg` with no org: 5 orgs in
+  23 ms for one user locally. `getOrganizationByOwner` had no ORDER BY, so an
+  UPDATE (finishing onboarding) moved the resolved org and the next request
+  landed in a fresh, un-onboarded one — /today bounced back into the wizard
+  ("no first-value CTA"). The same race ran the signup rate limit once per
+  request (5/email/hour), so a new user's own first page could 429 itself.
+  Fixed: per-process coalescing + per-user advisory lock with re-check, and
+  oldest-org resolution. Test: `tests/integration/orgProvisioningIsSingular.db.test.ts`.
+- **"Transition was skipped" page errors**: `client/src/lib/view-transitions.ts`
+  discarded the ViewTransition; skips now handled, real failures still
+  reported once. Test: `tests/unit/viewTransitionSkipIsHandled.test.ts`.
+- **The staging E2E token path was not exempt from the per-user rate limit**
+  (the local flag always was): one synthetic user walking 9×2 viewports spent
+  300/min and 429'd its own /today. `isE2eTestTraffic` now exempts both; never
+  true in production (no token there). Test: `tests/unit/e2eTokenTrafficSkipsUserRateLimit.test.ts`.
+- **Harness**: token now sent on every same-origin request (documents too —
+  without it a document gets Clerk's handshake redirect), service workers
+  blocked for CJ1 (SW-reissued /api requests lost the token), the consent
+  banner is answered, and the config no longer leaks the token as
+  `x-e2e-test-auth` to every origin.
+- **A decorative gate found on the way**: CJ1's "clickwrap" check matched the
+  cookie banner's "Privacy" text on bare /auth (sign-in, which has no
+  clickwrap). It now opens `/auth?mode=register` and reads the ToS checkbox.
+
+**Measured (local, production build, 12 Chromium projects, CI retries):**
+before 2 expected / 6 flaky / 4 red (15 attempts "no first-value CTA", 6
+click timeouts, 5 orgs for one user, 148 429s); after 12/12 passed on the
+first attempt, 1 org, 0 429s, 0 page errors.
+
+### Not verified here
+- WebKit (iPhone projects): no WebKit build in this sandbox. The "composer
+  missing on /ai" class is WebKit-only in CI; the next CI run is the check.
+
+### Top next moves
+1. Dispatch the audit on the branch; if iPhone stays red, read its
+   error-context artifact before changing anything.
+2. Count production users owning more than one org (counts only) — the race
+   predates this fix; merging duplicates is a founder decision (customer data).
+3. The consent banner covers the onboarding Continue button at 360 px — design call.
+
 ## 2026-10-19 — Open Fieldstone items closed (Muse)
 
 ### Shipped to main
