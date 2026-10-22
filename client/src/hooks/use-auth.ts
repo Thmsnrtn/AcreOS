@@ -59,6 +59,17 @@ async function fetchAppUser(): Promise<AuthUser | null> {
     return null;
   }
 
+  if (response.status === 404) {
+    // The session identity cannot be materialized server-side (no users
+    // row and no Clerk record — a synthetic or deleted identity).
+    // Throwing here leaves react-query settled-with-error and
+    // ProtectedRoute pins the "Loading AcreOS…" splash for as long as a
+    // __session cookie exists — an unrecoverable state. Treat it as a
+    // dead session, like 401: bounce to /auth.
+    authFailCount = Math.max(authFailCount + 1, 3);
+    return null;
+  }
+
   if (!response.ok) {
     throw new Error(`${response.status}: ${response.statusText}`);
   }

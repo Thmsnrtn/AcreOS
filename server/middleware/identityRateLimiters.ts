@@ -42,7 +42,7 @@ import type { Express, Request } from "express";
 import { getClerkAuth } from "../types/request";
 import { getClientIp } from "../utils/clientIp";
 import { createLimiterStore } from "./limiterRedisStore";
-import { e2eTestAuthEnabled } from "../auth/testAuth";
+import { isE2eTestTraffic } from "../auth/testAuth";
 import { BULK_EXPORT_DAILY_CAP } from "@shared/product-limits";
 
 /**
@@ -102,7 +102,7 @@ export function mountIdentityRateLimiters(app: Express): void {
       legacyHeaders: false,
       store: createLimiterStore(prefix),
       keyGenerator: identityRateLimitKey,
-      skip: () => e2eTestAuthEnabled(), // never on Fly — see server/auth/testAuth.ts
+      skip: (req) => isE2eTestTraffic(req), // test traffic only; never on production — see server/auth/testAuth.ts
       message: { message: "AI request limit reached. Please wait a moment." },
     });
   const ai120 = aiLimiter(120, "ai-user-120");
@@ -138,7 +138,7 @@ export function mountIdentityRateLimiters(app: Express): void {
     store: createLimiterStore("api-user"),
     keyGenerator: identityRateLimitKey,
     skip: (req) =>
-      e2eTestAuthEnabled() || // E2E suite hammers many routes as one user; never on Fly
+      isE2eTestTraffic(req) || // E2E suite hammers many routes as one user; see testAuth.ts
       req.originalUrl.startsWith("/api/auth/user") ||
       req.originalUrl.startsWith("/api/health"),
     message: { message: "Too many requests. Please slow down and try again shortly." },

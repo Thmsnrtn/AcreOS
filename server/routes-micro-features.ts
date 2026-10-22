@@ -18,6 +18,7 @@ import type { InsertLead } from "@shared/schema";
 import { Errors, sendError } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { estimateClosingCosts } from "./services/closingCostEstimator";
+import { isPropertyClass, PROPERTY_CLASSES } from "@shared/regulatory/transferTax";
 import { clock } from "./utils/clock";
 
 export function registerMicroFeatureRoutes(app: Express): void {
@@ -170,7 +171,10 @@ export function registerMicroFeatureRoutes(app: Express): void {
   // ─── Closing Cost Estimate (1e) ───────────────────────────────────
   app.get("/api/closing-costs/estimate", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const { state, county, salePrice, annualTax } = req.query;
+      const { state, county, salePrice, annualTax, propertyClass } = req.query;
+      if (propertyClass !== undefined && propertyClass !== "" && !isPropertyClass(propertyClass)) {
+        return Errors.badRequest(res, `propertyClass must be one of: ${PROPERTY_CLASSES.join(", ")}`);
+      }
 
       if (!state || !county || !salePrice) {
         return Errors.badRequest(res, "state, county, and salePrice are required");
@@ -186,7 +190,9 @@ export function registerMicroFeatureRoutes(app: Express): void {
         String(state),
         String(county),
         price,
-        tax && isFinite(tax) ? tax : undefined
+        tax && isFinite(tax) ? tax : undefined,
+        undefined,
+        isPropertyClass(propertyClass) ? propertyClass : undefined,
       );
 
       res.json(estimate);
