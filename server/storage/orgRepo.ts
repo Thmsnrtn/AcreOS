@@ -4,7 +4,7 @@
 // `this` therefore refers to the full DatabaseStorage instance and may
 // call methods from any sibling repo.
 
-import { sql, eq } from "drizzle-orm";
+import { sql, eq, asc } from "drizzle-orm";
 import { omitProtectedFields } from "../utils/updatePayload";
 import { db } from "../db";
 import { organizations, type Organization, type InsertOrganization } from "@shared/schema";
@@ -23,8 +23,20 @@ export const orgRepo = {
     return org;
   },
 
+  // ORDER BY id: owner_id is not unique, and without an order Postgres
+  // returns whichever row its scan meets first. An UPDATE writes a new
+  // tuple version at the end of the heap, so the "first" org of a user who
+  // owns several changed every time one of them was written — the same
+  // user flipped between an onboarded org and a fresh one from one request
+  // to the next (customer-journey audit, issue #359). The oldest org is the
+  // one the user was provisioned with.
   async getOrganizationByOwner(this: DatabaseStorage, ownerId: string): Promise<Organization | undefined> {
-    const [org] = await db.select().from(organizations).where(eq(organizations.ownerId, ownerId));
+    const [org] = await db
+      .select()
+      .from(organizations)
+      .where(eq(organizations.ownerId, ownerId))
+      .orderBy(asc(organizations.id))
+      .limit(1);
     return org;
   },
 

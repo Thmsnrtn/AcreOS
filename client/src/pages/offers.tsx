@@ -107,7 +107,6 @@ interface ContractPreview {
     notaryRequired: boolean;
     witnessCount: number;
     recordingOffice: string;
-    transferTaxPercent: number;
     transferTaxNotes: string;
     attorneyStateForClosing: boolean;
     practiceNotes: string;
