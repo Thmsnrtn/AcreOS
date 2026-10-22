@@ -46,6 +46,7 @@ export const flipMaoEngine: EngineSpec = {
   id: "flip_mao",
   version: FLIP_MAO_ENGINE_VERSION,
   label: "Fix & flip (MAO, net of closing and carry)",
+  verticals: ["fix_and_flip"],
   produces: [
     "max_allowable_offer",
     "rehab_with_contingency",

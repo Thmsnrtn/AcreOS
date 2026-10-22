@@ -1498,6 +1498,7 @@ export async function registerRoutes(
   // Economics layer (Master Audit BI12/BK24) — compute/read versioned
   // deterministic scenarios. API surface only; no new customer nav entry.
   app.use('/api/scenarios', isAuthenticated, getOrCreateOrg, scenariosRouter);
+  // Vertical underwriting desks (decision-memos/2026-10-04-vertical-program.md).
   app.use('/api/exchange-1031', isAuthenticated, getOrCreateOrg, exchange1031Router);
   // FOUNDER-ONLY, and it was not. `client/src/App.tsx` gates the Dunning
   // Manager page behind FounderProtectedRoute with the note "the dunning API is
