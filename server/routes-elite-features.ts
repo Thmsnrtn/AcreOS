@@ -32,7 +32,8 @@ import * as metaAdsService from "./services/metaAdsService";
 import * as listingSyndication from "./services/listingSyndication";
 import * as bookkeeping from "./services/bookkeeping";
 import * as vaManagement from "./services/vaManagement";
-import { getStateConfig, getDeedTypeLabel, getLandContractLabel, getRecordingEstimate, getTransferTaxAmount } from "./services/stateDocumentConfig";
+import { getStateConfig, getDeedTypeLabel, getLandContractLabel, getRecordingEstimate } from "./services/stateDocumentConfig";
+import { describeTransferTax, estimateTransferTax, isoDateOf, isPropertyClass, TRANSFER_TAX_TABLE_VERIFIED_AT } from "@shared/regulatory/transferTax";
 import { db } from "./db";
 import { properties, notes, organizations, generatedDocuments, organizationIntegrations } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
@@ -665,9 +666,20 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
 
   app.get("/api/state-documents/:state/transfer-tax", ...auth, (req: Request, res: Response) => {
     const salePrice = parseFloat(req.query.salePrice as string) || 0;
-    const tax = getTransferTaxAmount(req.params.state, salePrice);
-    const config = getStateConfig(req.params.state);
-    res.json({ state: req.params.state, salePrice, transferTax: tax, notes: config?.transferTaxNotes });
+    const county = typeof req.query.county === "string" ? req.query.county : undefined;
+    const propertyClass = isPropertyClass(req.query.propertyClass) ? req.query.propertyClass : undefined;
+    const est = estimateTransferTax(req.params.state, salePrice, { county, propertyClass, asOfIsoDate: isoDateOf(clock.now()) });
+    // transferTax is null (not 0) when the canonical table refuses to estimate.
+    res.json({
+      state: req.params.state,
+      salePrice,
+      transferTax: est.kind === "estimate" ? est.amountCents / 100 : est.kind === "none" ? 0 : null,
+      notes: describeTransferTax(req.params.state, county),
+      refusal: est.kind === "refused" ? est.reason : null,
+      excludesLocal: est.kind === "estimate" ? est.excludesLocal : null,
+      // When the canonical table's rates were last re-derived from statute.
+      tableVerifiedAt: TRANSFER_TAX_TABLE_VERIFIED_AT,
+    });
   });
 
   app.get("/api/state-documents", ...auth, (req: Request, res: Response) => {
