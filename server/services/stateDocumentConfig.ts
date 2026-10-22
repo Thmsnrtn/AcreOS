@@ -57,9 +57,9 @@ export interface StateDocumentConfig {
   recordingFeePerPage: number;
   recordingTimeline: string; // "Same day", "1-3 days", etc.
 
-  // Transfer tax
-  transferTaxPercent: number; // % of sale price (0 if none)
-  transferTaxNotes: string;
+  // Transfer tax: NOT here. It lives in shared/regulatory/transferTax.ts, the
+  // one table every caller reads (best-in-class audit 2026-10-20). This
+  // config held a second, hand-written percent that disagreed with it.
 
   // Attorney required?
   attorneyStateForClosing: boolean; // Some states require attorney for closing
@@ -89,7 +89,6 @@ export const STATE_DOCUMENT_CONFIGS: Record<string, StateDocumentConfig> = {
     recordingOffice: "County Probate Judge",
     recordingFeeBase: 18, recordingFeePerPage: 4,
     recordingTimeline: "Same day to 3 days",
-    transferTaxPercent: 0.1, transferTaxNotes: "$0.50 per $500 of value",
     attorneyStateForClosing: false,
     rightOfRedemptionDays: 0,
     grantingClause: "CONVEY AND WARRANT to",
@@ -109,7 +108,6 @@ export const STATE_DOCUMENT_CONFIGS: Record<string, StateDocumentConfig> = {
     recordingOffice: "County Recorder",
     recordingFeeBase: 30, recordingFeePerPage: 0,
     recordingTimeline: "Same day (e-recording available)",
-    transferTaxPercent: 0, transferTaxNotes: "No deed transfer tax in Arizona.",
     attorneyStateForClosing: false,
     rightOfRedemptionDays: 0,
     grantingClause: "does hereby CONVEY and WARRANT to",
@@ -129,7 +127,6 @@ export const STATE_DOCUMENT_CONFIGS: Record<string, StateDocumentConfig> = {
     recordingOffice: "County Recorder",
     recordingFeeBase: 15, recordingFeePerPage: 3,
     recordingTimeline: "Same day to next day",
-    transferTaxPercent: 0.055, transferTaxNotes: "$1.10 per $1,000 of value (county), cities may add more.",
     attorneyStateForClosing: false,
     rightOfRedemptionDays: 0,
     grantingClause: "GRANTS to",
@@ -149,7 +146,6 @@ export const STATE_DOCUMENT_CONFIGS: Record<string, StateDocumentConfig> = {
     recordingOffice: "County Clerk and Recorder",
     recordingFeeBase: 13, recordingFeePerPage: 5,
     recordingTimeline: "Same day",
-    transferTaxPercent: 0, transferTaxNotes: "No state transfer tax. Some counties have local documentary fees.",
     attorneyStateForClosing: false,
     rightOfRedemptionDays: 75,
     grantingClause: "CONVEYS AND WARRANTS to",
@@ -169,7 +165,6 @@ export const STATE_DOCUMENT_CONFIGS: Record<string, StateDocumentConfig> = {
     recordingOffice: "County Clerk of Court",
     recordingFeeBase: 10, recordingFeePerPage: 8.50,
     recordingTimeline: "Same day to next business day",
-    transferTaxPercent: 0.07, transferTaxNotes: "Documentary stamp tax $0.70 per $100 of consideration.",
     attorneyStateForClosing: false,
     rightOfRedemptionDays: 0,
     grantingClause: "GRANTS, BARGAINS AND SELLS to",
@@ -189,7 +184,6 @@ export const STATE_DOCUMENT_CONFIGS: Record<string, StateDocumentConfig> = {
     recordingOffice: "County Superior Court Clerk",
     recordingFeeBase: 25, recordingFeePerPage: 0,
     recordingTimeline: "Same day",
-    transferTaxPercent: 0.1, transferTaxNotes: "$1.00 per $1,000 of value.",
     attorneyStateForClosing: true,
     rightOfRedemptionDays: 0,
     grantingClause: "CONVEY with GENERAL WARRANTY to",
@@ -209,7 +203,6 @@ export const STATE_DOCUMENT_CONFIGS: Record<string, StateDocumentConfig> = {
     recordingOffice: "County Recorder",
     recordingFeeBase: 15, recordingFeePerPage: 5,
     recordingTimeline: "Same day",
-    transferTaxPercent: 0, transferTaxNotes: "No deed transfer tax in Idaho.",
     attorneyStateForClosing: false,
     rightOfRedemptionDays: 0,
     grantingClause: "CONVEYS AND WARRANTS to",
@@ -229,7 +222,6 @@ export const STATE_DOCUMENT_CONFIGS: Record<string, StateDocumentConfig> = {
     recordingOffice: "County Register of Deeds",
     recordingFeeBase: 30, recordingFeePerPage: 0,
     recordingTimeline: "Same day to 3 days",
-    transferTaxPercent: 0.075, transferTaxNotes: "State: $3.75 per $500. County: $0.55 per $500.",
     attorneyStateForClosing: false,
     rightOfRedemptionDays: 180,
     grantingClause: "CONVEYS AND WARRANTS to",
@@ -249,7 +241,6 @@ export const STATE_DOCUMENT_CONFIGS: Record<string, StateDocumentConfig> = {
     recordingOffice: "County Recorder of Deeds",
     recordingFeeBase: 24, recordingFeePerPage: 4,
     recordingTimeline: "1-3 days",
-    transferTaxPercent: 0, transferTaxNotes: "No state transfer tax in Missouri.",
     attorneyStateForClosing: false,
     rightOfRedemptionDays: 0,
     grantingClause: "GRANT, BARGAIN AND SELL to",
@@ -269,7 +260,6 @@ export const STATE_DOCUMENT_CONFIGS: Record<string, StateDocumentConfig> = {
     recordingOffice: "County Clerk",
     recordingFeeBase: 25, recordingFeePerPage: 0,
     recordingTimeline: "Same day",
-    transferTaxPercent: 0, transferTaxNotes: "No deed transfer tax in New Mexico.",
     attorneyStateForClosing: false,
     rightOfRedemptionDays: 0,
     grantingClause: "GRANTS AND WARRANTS to",
@@ -289,7 +279,6 @@ export const STATE_DOCUMENT_CONFIGS: Record<string, StateDocumentConfig> = {
     recordingOffice: "County Recorder",
     recordingFeeBase: 25, recordingFeePerPage: 0,
     recordingTimeline: "Same day",
-    transferTaxPercent: 0.0195, transferTaxNotes: "$1.95 per $500 of value.",
     attorneyStateForClosing: false,
     rightOfRedemptionDays: 0,
     grantingClause: "GRANTS to",
@@ -309,7 +298,6 @@ export const STATE_DOCUMENT_CONFIGS: Record<string, StateDocumentConfig> = {
     recordingOffice: "County Register of Deeds",
     recordingFeeBase: 26, recordingFeePerPage: 0,
     recordingTimeline: "Same day to next day",
-    transferTaxPercent: 0.02, transferTaxNotes: "$2.00 per $1,000 of consideration.",
     attorneyStateForClosing: true,
     rightOfRedemptionDays: 0,
     grantingClause: "CONVEYS AND WARRANTS to",
@@ -329,7 +317,6 @@ export const STATE_DOCUMENT_CONFIGS: Record<string, StateDocumentConfig> = {
     recordingOffice: "County Recorder",
     recordingFeeBase: 28, recordingFeePerPage: 8,
     recordingTimeline: "Same day to next day",
-    transferTaxPercent: 0.1, transferTaxNotes: "$1.00 per $1,000 of value (exempt if foreclosure).",
     attorneyStateForClosing: false,
     rightOfRedemptionDays: 0,
     grantingClause: "CONVEYS AND WARRANTS to",
@@ -349,7 +336,6 @@ export const STATE_DOCUMENT_CONFIGS: Record<string, StateDocumentConfig> = {
     recordingOffice: "County Clerk",
     recordingFeeBase: 96, recordingFeePerPage: 0,
     recordingTimeline: "Same day to 3 days",
-    transferTaxPercent: 0, transferTaxNotes: "No state transfer tax. Some cities have local taxes.",
     attorneyStateForClosing: false,
     rightOfRedemptionDays: 0,
     grantingClause: "CONVEYS AND WARRANTS to",
@@ -369,7 +355,6 @@ export const STATE_DOCUMENT_CONFIGS: Record<string, StateDocumentConfig> = {
     recordingOffice: "County Clerk",
     recordingFeeBase: 25, recordingFeePerPage: 4,
     recordingTimeline: "Same day to next day",
-    transferTaxPercent: 0, transferTaxNotes: "No deed transfer tax in Texas.",
     attorneyStateForClosing: false,
     rightOfRedemptionDays: 0,
     grantingClause: "GRANT, SELL AND CONVEY to",
@@ -389,7 +374,6 @@ export const STATE_DOCUMENT_CONFIGS: Record<string, StateDocumentConfig> = {
     recordingOffice: "County Auditor",
     recordingFeeBase: 203.50, recordingFeePerPage: 1,
     recordingTimeline: "Same day to 3 days",
-    transferTaxPercent: 1.1, transferTaxNotes: "Real Estate Excise Tax (REET): 1.1% on sales under $500K, up to 3% for higher values.",
     attorneyStateForClosing: false,
     rightOfRedemptionDays: 0,
     grantingClause: "CONVEYS AND WARRANTS to",
@@ -426,7 +410,6 @@ for (const [abbr, name] of DEFAULT_STATES) {
       recordingOffice: "County Recorder / Clerk",
       recordingFeeBase: 25, recordingFeePerPage: 5,
       recordingTimeline: "1-5 days",
-      transferTaxPercent: 0, transferTaxNotes: "Verify current transfer tax rates with county.",
       attorneyStateForClosing: false,
       rightOfRedemptionDays: 0,
       grantingClause: "CONVEYS AND WARRANTS to",
@@ -476,11 +459,6 @@ export function getRecordingEstimate(state: string, pageCount: number = 4): numb
   return config.recordingFeeBase + config.recordingFeePerPage * pageCount;
 }
 
-export function getTransferTaxAmount(state: string, salePrice: number): number {
-  const config = getStateConfig(state);
-  if (!config) return 0;
-  return salePrice * (config.transferTaxPercent / 100);
-}
 
 // Statute of limitations for debt collection (years)
 export const DEBT_COLLECTION_SOL: Record<string, number> = {

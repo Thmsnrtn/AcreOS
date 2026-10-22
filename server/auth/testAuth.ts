@@ -190,3 +190,24 @@ export function e2eTokenAuthEnabled(req: { headers: Record<string, string | stri
   }
   return false;
 }
+
+/**
+ * True when this request is E2E test traffic: the blanket local flag, or a
+ * valid staging token on the request. Silent (no per-call log line) — it is
+ * read by the rate limiters on every request.
+ *
+ * The limiters already skip the blanket flag because every spec shares ONE
+ * test user against one server, so a per-user budget throttles the suite
+ * rather than any abuser. The staging token path (e2eTokenAuthEnabled) was
+ * added later without the same exemption, and the customer-journey audit —
+ * nine viewports × two themes walking full page loads as that one user —
+ * spent the 300/min per-user budget and 429'd its own /today ("Slow down",
+ * Today stuck on "Loading AcreOS…"; measured locally 2026-10-21, issue #359).
+ * Production is unaffected: E2E_TEST_AUTH_TOKEN is never set there, so
+ * e2eTokenAuthValid() is false for every request.
+ */
+export function isE2eTestTraffic(req: { headers?: Record<string, string | string[] | undefined> }): boolean {
+  if (e2eTestAuthEnabled()) return true;
+  const token = req.headers?.["x-e2e-auth-token"];
+  return e2eTokenAuthValid(Array.isArray(token) ? token[0] : token);
+}

@@ -24,6 +24,7 @@
  */
 
 import { contractForDeedSummary } from "@shared/regulatory/sellerFinancingRules";
+import { describeTransferTax } from "@shared/regulatory/transferTax";
 
 export type WaterRightsSystem = "prior_appropriation" | "riparian" | "hybrid";
 export type SellerFinancingRisk = "low" | "medium" | "high";
@@ -50,6 +51,12 @@ export interface StateRegulatoryProfile {
   // Taxes
   propertyTaxRate?: string; // "0.5%-1.5%"
   agriculturalExemptionAvailable: boolean;
+  /**
+   * The statutory transfer-tax rule in words, with citation. NEVER stored on
+   * a profile: `getStateProfile` fills it from describeTransferTax() in
+   * shared/regulatory/transferTax.ts, the one table. The hand-typed strings
+   * that used to sit here were wrong for FL, AR and OK (audit 2026-10-20).
+   */
   transferTax?: string;
   // Land specific
   subdivisionRegulations: "strict" | "moderate" | "permissive";
@@ -78,7 +85,6 @@ const STATE_PROFILES: StateRegulatoryProfile[] = [
     environmentalDisclosureRequired: true,
     propertyTaxRate: "1.6%-2.5%",
     agriculturalExemptionAvailable: true,
-    transferTax: "none",
     subdivisionRegulations: "moderate",
     percolationTestRequired: false,
     practitionerNotes: "Texas is favorable for real estate investors. No state income tax. Ag exemption can dramatically reduce property taxes. Water rights are critical — always check Edwards Aquifer rules in Central TX.",
@@ -101,7 +107,6 @@ const STATE_PROFILES: StateRegulatoryProfile[] = [
     environmentalDisclosureRequired: true,
     propertyTaxRate: "0.8%-1.5%",
     agriculturalExemptionAvailable: true,
-    transferTax: "0.35% documentary stamp",
     subdivisionRegulations: "strict",
     percolationTestRequired: true,
     practitionerNotes: "Sinkhole disclosure is critical in Central FL. Wetland regulations are strict — always check SFWMD permits. Homestead exemption protects primary residence but not investment land. No state income tax.",
@@ -124,7 +129,6 @@ const STATE_PROFILES: StateRegulatoryProfile[] = [
     environmentalDisclosureRequired: false,
     propertyTaxRate: "0.7%-1.2%",
     agriculturalExemptionAvailable: true,
-    transferTax: "$1 per $1,000 of value",
     subdivisionRegulations: "moderate",
     percolationTestRequired: false,
     practitionerNotes: "Georgia uses Security Deeds (not mortgages) — important distinction. Non-judicial foreclosure is straightforward. Good land market in North GA mountains and South GA farmland.",
@@ -147,7 +151,6 @@ const STATE_PROFILES: StateRegulatoryProfile[] = [
     environmentalDisclosureRequired: true,
     propertyTaxRate: "0.6%-1.0%",
     agriculturalExemptionAvailable: true,
-    transferTax: "$2 per $1,000 — county may add $0.40",
     subdivisionRegulations: "moderate",
     percolationTestRequired: true,
     practitionerNotes: "Attorneys must close real estate in NC. Mountain land has strict subdivision rules. The Highlands/Cashiers area commands premium prices. Coastal land requires CAMA permits.",
@@ -170,7 +173,6 @@ const STATE_PROFILES: StateRegulatoryProfile[] = [
     environmentalDisclosureRequired: false,
     propertyTaxRate: "0.5%-0.8%",
     agriculturalExemptionAvailable: true,
-    transferTax: "$0.37 per $100 of value",
     subdivisionRegulations: "permissive",
     percolationTestRequired: false,
     practitionerNotes: "No state income tax makes TN attractive. Very permissive land use outside cities. East TN mountains are popular for recreational land. Low regulatory burden overall.",
@@ -193,7 +195,6 @@ const STATE_PROFILES: StateRegulatoryProfile[] = [
     environmentalDisclosureRequired: false,
     propertyTaxRate: "0.3%-0.5%",
     agriculturalExemptionAvailable: true,
-    transferTax: "$0.50 per $500 of value",
     subdivisionRegulations: "permissive",
     percolationTestRequired: false,
     practitionerNotes: "Alabama has some of the lowest property taxes in the US. Very favorable for real estate investors. Mineral rights often severed — always check title. Timber land is popular investment.",
@@ -216,10 +217,9 @@ const STATE_PROFILES: StateRegulatoryProfile[] = [
     environmentalDisclosureRequired: false,
     propertyTaxRate: "0.5%-1.0%",
     agriculturalExemptionAvailable: true,
-    transferTax: "none",
     subdivisionRegulations: "permissive",
     percolationTestRequired: false,
-    practitionerNotes: "Very low regulatory burden. No transfer tax. Heirs property is common issue — always check for heirship issues in rural areas. Delta farmland is valuable.",
+    practitionerNotes: "Very low regulatory burden. Heirs property is common issue — always check for heirship issues in rural areas. Delta farmland is valuable.",
     lastReviewed: "2026-01-01",
     riskScore: 3,
   },
@@ -239,7 +239,6 @@ const STATE_PROFILES: StateRegulatoryProfile[] = [
     environmentalDisclosureRequired: false,
     propertyTaxRate: "0.5%-0.8%",
     agriculturalExemptionAvailable: true,
-    transferTax: "$1.10 per $1,000",
     subdivisionRegulations: "permissive",
     percolationTestRequired: false,
     practitionerNotes: "Low regulatory state. Ozark and Ouachita mountain land very popular. Timber rights often valuable. Low taxes and no major regulatory barriers.",
@@ -262,10 +261,9 @@ const STATE_PROFILES: StateRegulatoryProfile[] = [
     environmentalDisclosureRequired: false,
     propertyTaxRate: "0.9%-1.4%",
     agriculturalExemptionAvailable: true,
-    transferTax: "none",
     subdivisionRegulations: "moderate",
     percolationTestRequired: false,
-    practitionerNotes: "No transfer tax. Beneficiary deed (like TOD) available. Strong Ozark recreational land market. Mark Twain National Forest proximity adds value.",
+    practitionerNotes: "Beneficiary deed (like TOD) available. Strong Ozark recreational land market. Mark Twain National Forest proximity adds value.",
     lastReviewed: "2026-01-01",
     riskScore: 3,
   },
@@ -285,10 +283,9 @@ const STATE_PROFILES: StateRegulatoryProfile[] = [
     environmentalDisclosureRequired: false,
     propertyTaxRate: "0.8%-1.2%",
     agriculturalExemptionAvailable: true,
-    transferTax: "none",
     subdivisionRegulations: "permissive",
     percolationTestRequired: false,
-    practitionerNotes: "No transfer tax. Water rights follow prior appropriation — check Oklahoma Water Resources Board. Oil and gas mineral rights are often severed. Tribal land issues in eastern OK.",
+    practitionerNotes: "Water rights follow prior appropriation — check Oklahoma Water Resources Board. Oil and gas mineral rights are often severed. Tribal land issues in eastern OK.",
     lastReviewed: "2026-01-01",
     riskScore: 4,
   },
@@ -464,7 +461,12 @@ export const regulatoryIntelligenceService = {
     // that used to sit in each profile were uncited, and Texas's said
     // "record within 14 days" where the statute says 30 (Tex. Prop. Code
     // § 5.076). An uncovered state says "not yet covered".
-    return { ...p, contractForDeedRestrictions: contractForDeedSummary(p.code) };
+    // Transfer tax likewise comes only from the canonical statute table.
+    return {
+      ...p,
+      contractForDeedRestrictions: contractForDeedSummary(p.code),
+      transferTax: describeTransferTax(p.code),
+    };
   },
 
   /**

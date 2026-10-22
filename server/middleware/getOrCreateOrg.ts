@@ -1,7 +1,7 @@
 import type { Request, Response, NextFunction, CookieOptions } from "express";
 import { storage, db } from "../storage";
 import { withTransaction } from "../db";
-import { and, eq, gt } from "drizzle-orm";
+import { and, asc, eq, gt, sql } from "drizzle-orm";
 import { organizations, teamMembers } from "@shared/schema";
 import { signupSignals } from "@shared/schema";
 import type { Organization } from "@shared/schema";
@@ -53,6 +53,9 @@ export const ACTIVE_ORG_COOKIE_OPTS: CookieOptions = {
  * already sets `req.isFounder` via the full `isFounderIdentity` check, which is
  * what authorization uses; this flag drives tier/limit treatment for the org.
  */
+
+/** Provisionings in flight on this process, by user id (see getOrCreateOrg). */
+const inflightProvisioning = new Map<string, Promise<void>>();
 
 /**
  * Middleware to get or create an organization for the authenticated user.
@@ -143,164 +146,209 @@ export async function getOrCreateOrg(req: Request, res: Response, next: NextFunc
     }
   }
 
+  // A signup's first screen fires its queries in parallel, and each of them
+  // arrives here with no org. Without coalescing, every one ran the signup
+  // rate limit (5 per email per hour — a new user's own first page could 429
+  // itself and burn its signup quota) and then created an org of its own
+  // (issue #359). Requests that find a provisioning already in flight on this
+  // process wait for it and take its result; the advisory lock in the
+  // transaction below covers requests on other machines.
   if (!org) {
-    // Phase 0 traffic-readiness — this is the REAL signup-completion path
-    // in this codebase. There is no /api/register handler; Clerk creates
-    // the user upstream, then the first authenticated request flows here
-    // and we provision the org. So the signup rate-limit + bot-signal
-    // capture must run on THIS branch — not on the (dead) /api/register
-    // mount the index.ts wiring used to advertise. See provisionUser
-    // below for the helper that encapsulates these checks.
-    const provisionResult = await provisionUser(req, res, {
-      userId,
-      userEmail,
-      isFounder,
-    });
-    if (provisionResult.shortCircuited) return;
+    const pending = inflightProvisioning.get(userId);
+    if (pending) {
+      await pending;
+      org = await storage.getOrganizationByOwner(userId);
+    }
+  }
 
-    // Phase 0 traffic-readiness — OFAC + sanctioned-country screening before
-    // we ever stand up the org. Founder bypasses (the check skips when
-    // isFounder=true is already known). Failure mode is fail-open: a downed
-    // sanctions table never blocks legitimate signups. See
-    // server/services/sanctionsList.ts.
-    if (!isFounder) {
-      try {
-        const { checkSignup } = await import("../services/sanctionsList");
-        const candidateName =
-          (user.firstName ? `${user.firstName} ${user.lastName ?? ""}`.trim() : "") || user.email || "";
-        const candidateCountry =
-          (user as { country?: string | null }).country ??
-          (req.headers["cf-ipcountry"] as string | undefined) ??
-          (req.headers["x-vercel-ip-country"] as string | undefined) ??
-          "";
-        const block = await checkSignup({ name: candidateName, country: candidateCountry });
-        if (block.matched) {
-          logger.warn("[getOrCreateOrg] signup blocked by sanctions check", {
-            source: "getOrCreateOrg",
-            metadata: {
-              userId,
-              email: userEmail,
-              reason: block.reason,
-              country: candidateCountry || null,
-            },
-          });
-          return res.status(403).json({
-            error: "SANCTIONS_BLOCK",
-            message: block.message,
-            statusCode: 403,
+  if (!org) {
+    let settleProvisioning!: () => void;
+    inflightProvisioning.set(userId, new Promise<void>((r) => (settleProvisioning = r)));
+    try {
+      // Phase 0 traffic-readiness — this is the REAL signup-completion path
+      // in this codebase. There is no /api/register handler; Clerk creates
+      // the user upstream, then the first authenticated request flows here
+      // and we provision the org. So the signup rate-limit + bot-signal
+      // capture must run on THIS branch — not on the (dead) /api/register
+      // mount the index.ts wiring used to advertise. See provisionUser
+      // below for the helper that encapsulates these checks.
+      const provisionResult = await provisionUser(req, res, {
+        userId,
+        userEmail,
+        isFounder,
+      });
+      if (provisionResult.shortCircuited) return;
+
+      // Phase 0 traffic-readiness — OFAC + sanctioned-country screening before
+      // we ever stand up the org. Founder bypasses (the check skips when
+      // isFounder=true is already known). Failure mode is fail-open: a downed
+      // sanctions table never blocks legitimate signups. See
+      // server/services/sanctionsList.ts.
+      if (!isFounder) {
+        try {
+          const { checkSignup } = await import("../services/sanctionsList");
+          const candidateName =
+            (user.firstName ? `${user.firstName} ${user.lastName ?? ""}`.trim() : "") || user.email || "";
+          const candidateCountry =
+            (user as { country?: string | null }).country ??
+            (req.headers["cf-ipcountry"] as string | undefined) ??
+            (req.headers["x-vercel-ip-country"] as string | undefined) ??
+            "";
+          const block = await checkSignup({ name: candidateName, country: candidateCountry });
+          if (block.matched) {
+            logger.warn("[getOrCreateOrg] signup blocked by sanctions check", {
+              source: "getOrCreateOrg",
+              metadata: {
+                userId,
+                email: userEmail,
+                reason: block.reason,
+                country: candidateCountry || null,
+              },
+            });
+            return res.status(403).json({
+              error: "SANCTIONS_BLOCK",
+              message: block.message,
+              statusCode: 403,
+            });
+          }
+        } catch (err) {
+          // Sanctions module unavailable: log + continue (fail open).
+          logger.warn("[getOrCreateOrg] sanctions screening unavailable — failing open", {
+            metadata: { error: err instanceof Error ? err.message : String(err) },
           });
         }
-      } catch (err) {
-        // Sanctions module unavailable: log + continue (fail open).
-        logger.warn("[getOrCreateOrg] sanctions screening unavailable — failing open", {
-          metadata: { error: err instanceof Error ? err.message : String(err) },
-        });
       }
-    }
 
-    // DEFECT-0021: Wrap org creation + team member creation in a transaction
-    // so we never end up with an org that has no owner team member.
-    const displayName = user.firstName || user.email || "User";
-    const slug = `org-${userId}-${clock.nowMs()}`;
-    const now = clock.now();
-    // Trial duration must match the landing page promise. Landing copy
-    // says "free for 14 days" (client/src/pages/landing/copy.ts hero.cta1)
-    // and the Stripe checkout path already passes `trial_period_days: 14`
-    // (server/routes-billing.ts:319). The in-app trial granted on org
-    // creation was 7 days — a Soren-P0 mismatch that broke the promise
-    // for any user who hit the app before billing.
-    const TRIAL_DURATION_DAYS = 14;
-    const trialEnds = new Date(now.getTime() + TRIAL_DURATION_DAYS * 24 * 60 * 60 * 1000);
+      // DEFECT-0021: Wrap org creation + team member creation in a transaction
+      // so we never end up with an org that has no owner team member.
+      const displayName = user.firstName || user.email || "User";
+      const slug = `org-${userId}-${clock.nowMs()}`;
+      const now = clock.now();
+      // Trial duration must match the landing page promise. Landing copy
+      // says "free for 14 days" (client/src/pages/landing/copy.ts hero.cta1)
+      // and the Stripe checkout path already passes `trial_period_days: 14`
+      // (server/routes-billing.ts:319). The in-app trial granted on org
+      // creation was 7 days — a Soren-P0 mismatch that broke the promise
+      // for any user who hit the app before billing.
+      const TRIAL_DURATION_DAYS = 14;
+      const trialEnds = new Date(now.getTime() + TRIAL_DURATION_DAYS * 24 * 60 * 60 * 1000);
 
-    org = await withTransaction(async (tx) => {
-      const [newOrg] = await tx.insert(organizations).values({
-        name: `${displayName}'s Organization`,
-        slug,
-        ownerId: userId,
-        subscriptionTier: isFounder ? "enterprise" : "free",
-        subscriptionStatus: "active",
-        trialStartedAt: isFounder ? null : now,
-        trialEndsAt: isFounder ? null : trialEnds,
-        trialUsed: isFounder ? true : false,
-        isFounder,
-        utmSource: null,
-        utmMedium: null,
-        utmCampaign: null,
-        utmContent: null,
-      }).returning();
+      // One org per signup, however many requests arrive at once. A new user's
+      // first screen fires its queries in parallel, and every one of them
+      // reached this branch having found no org — so each created one (four
+      // orgs, inside 70 ms, for one user, measured on the customer-journey
+      // audit, issue #359). The per-user advisory lock serialises the
+      // provisioning transactions, and the re-check inside it hands every
+      // request after the first the org the first one created.
+      const provisioned = await withTransaction(async (tx) => {
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`org_provision:${userId}`}))`);
+        const [alreadyProvisioned] = await tx
+          .select()
+          .from(organizations)
+          .where(eq(organizations.ownerId, userId))
+          .orderBy(asc(organizations.id))
+          .limit(1);
+        if (alreadyProvisioned) return { org: alreadyProvisioned, created: false };
 
-      // Add user as owner team member
-      await tx.insert(teamMembers).values({
-        organizationId: newOrg.id,
-        userId,
-        displayName,
-        role: "owner",
-        isActive: true,
+        const [newOrg] = await tx.insert(organizations).values({
+          name: `${displayName}'s Organization`,
+          slug,
+          ownerId: userId,
+          subscriptionTier: isFounder ? "enterprise" : "free",
+          subscriptionStatus: "active",
+          trialStartedAt: isFounder ? null : now,
+          trialEndsAt: isFounder ? null : trialEnds,
+          trialUsed: isFounder ? true : false,
+          isFounder,
+          utmSource: null,
+          utmMedium: null,
+          utmCampaign: null,
+          utmContent: null,
+        }).returning();
+
+        // Add user as owner team member
+        await tx.insert(teamMembers).values({
+          organizationId: newOrg.id,
+          userId,
+          displayName,
+          role: "owner",
+          isActive: true,
+        });
+
+        return { org: newOrg, created: true };
       });
+      org = provisioned.org;
 
-      return newOrg;
-    });
+      // Creation telemetry belongs to the request that created the org; a
+      // request that waited on the lock and found it reports nothing.
+      if (provisioned.created) {
+        if (isFounder) {
+          logger.info(`Founder organization created`, { source: "getOrCreateOrg", metadata: { email: userEmail } });
+        }
 
-    if (isFounder) {
-      logger.info(`Founder organization created`, { source: "getOrCreateOrg", metadata: { email: userEmail } });
+        // Phase 3 Week 14 — Activation telemetry. First (and only) org_created
+        // event for this organisation. Fire-and-forget; never blocks request.
+        try {
+          const { recordActivationEventAsync } = await import("../services/activation");
+          recordActivationEventAsync({
+            orgId: org.id,
+            userId,
+            eventName: "org_created",
+            eventValue: { isFounder, source: "getOrCreateOrg" },
+          });
+        } catch {
+          /* non-fatal; telemetry failures must not break org creation */
+        }
+
+        // Pillar E / E5 — Lifecycle firehose. Same event, unified table.
+        // Powers cohort retention + LTV endpoints. Fire-and-forget.
+        try {
+          const { recordLifecycleEvent } = await import("../services/lifecycleEvents");
+          void recordLifecycleEvent({
+            organizationId: org.id,
+            userId,
+            eventType: "signup.created",
+            stage: "signup",
+            metadata: { isFounder, source: "getOrCreateOrg" },
+            sourceTable: "organizations",
+            sourceId: String(org.id),
+          });
+        } catch {
+          /* non-fatal */
+        }
+
+        // S2 (Stage 2) — real sign-up starts the 30-day onboarding journey. This
+        // is the ONLY org-creation path real users take; startJourney was wired
+        // only to storage.createOrganization, which nothing calls, so no real
+        // customer ever got a journey. Idempotent; fire-and-forget; never blocks
+        // the request. The founder's own org is not a customer.
+        if (!isFounder) {
+          const newOrgId = org.id;
+          void import("../services/onboardingAutonomy")
+            .then(({ startJourney }) => startJourney(newOrgId))
+            .catch((err) =>
+              logger.warn(`[onboarding] startJourney failed for org ${newOrgId}: ${err instanceof Error ? err.message : String(err)}`),
+            );
+        }
+
+        // The default chart of accounts, for the same reason as startJourney:
+        // its only seeding call was in storage.createOrganization, which
+        // nothing calls, so no real org had a chart and every recognition GL
+        // post threw (2026-10-21 G4 run). Founder orgs get one too, so this
+        // sits outside the !isFounder guard. Idempotent; fire-and-forget. The
+        // GL path also seeds an empty chart on first use
+        // (recognitionWorker.resolveAccounts).
+        const seededOrgId = org.id;
+        void import("../services/chartOfAccountsSeed")
+          .then(({ seedChartOfAccountsForOrg }) => seedChartOfAccountsForOrg(seededOrgId))
+          .catch((err) =>
+            logger.warn(`[chartOfAccountsSeed] failed for org ${seededOrgId}: ${err instanceof Error ? err.message : String(err)}`),
+          );
+      }
+    } finally {
+      inflightProvisioning.delete(userId);
+      settleProvisioning();
     }
-
-    // Phase 3 Week 14 — Activation telemetry. First (and only) org_created
-    // event for this organisation. Fire-and-forget; never blocks request.
-    try {
-      const { recordActivationEventAsync } = await import("../services/activation");
-      recordActivationEventAsync({
-        orgId: org.id,
-        userId,
-        eventName: "org_created",
-        eventValue: { isFounder, source: "getOrCreateOrg" },
-      });
-    } catch {
-      /* non-fatal; telemetry failures must not break org creation */
-    }
-
-    // Pillar E / E5 — Lifecycle firehose. Same event, unified table.
-    // Powers cohort retention + LTV endpoints. Fire-and-forget.
-    try {
-      const { recordLifecycleEvent } = await import("../services/lifecycleEvents");
-      void recordLifecycleEvent({
-        organizationId: org.id,
-        userId,
-        eventType: "signup.created",
-        stage: "signup",
-        metadata: { isFounder, source: "getOrCreateOrg" },
-        sourceTable: "organizations",
-        sourceId: String(org.id),
-      });
-    } catch {
-      /* non-fatal */
-    }
-
-    // S2 (Stage 2) — real sign-up starts the 30-day onboarding journey. This
-    // is the ONLY org-creation path real users take; startJourney was wired
-    // only to storage.createOrganization, which nothing calls, so no real
-    // customer ever got a journey. Idempotent; fire-and-forget; never blocks
-    // the request. The founder's own org is not a customer.
-    if (!isFounder) {
-      const newOrgId = org.id;
-      void import("../services/onboardingAutonomy")
-        .then(({ startJourney }) => startJourney(newOrgId))
-        .catch((err) =>
-          logger.warn(`[onboarding] startJourney failed for org ${newOrgId}: ${err instanceof Error ? err.message : String(err)}`),
-        );
-    }
-
-    // The default chart of accounts, for the same reason as startJourney: its
-    // only seeding call was in storage.createOrganization, which nothing
-    // calls, so no real org had a chart and every recognition GL post threw
-    // (2026-10-21 G4 run). Idempotent; fire-and-forget. The GL path also
-    // seeds an empty chart on first use (recognitionWorker.resolveAccounts).
-    const seededOrgId = org.id;
-    void import("../services/chartOfAccountsSeed")
-      .then(({ seedChartOfAccountsForOrg }) => seedChartOfAccountsForOrg(seededOrgId))
-      .catch((err) =>
-        logger.warn(`[chartOfAccountsSeed] failed for org ${seededOrgId}: ${err instanceof Error ? err.message : String(err)}`),
-      );
   } else if (isFounder && !org.isFounder) {
     // Upgrade existing org to founder status
     await db

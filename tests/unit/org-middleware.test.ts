@@ -12,6 +12,7 @@ import type { Request, Response, NextFunction } from "express";
 // table they mean, and afterEach drains the fire-and-forget.
 const inserts: Array<{ table: string; vals: any }> = [];
 const insertsInto = (table: string) => inserts.filter((i) => i.table === table).map((i) => i.vals);
+const txExecutes: unknown[] = [];
 let nextOrgRow: any = { id: 2, name: "New Org", ownerId: "u" };
 
 // The S2 onboarding journey is started fire-and-forget for a new CUSTOMER org.
@@ -64,9 +65,17 @@ vi.mock("../../server/db", () => {
       from: () => ({
         where: () => ({
           limit: () => Promise.resolve([]),
+          // The provisioning re-check inside the transaction reads the
+          // user's oldest org: .orderBy(asc(id)).limit(1). None yet here.
+          orderBy: () => ({ limit: () => Promise.resolve([]) }),
         }),
       }),
     }),
+    // The per-user advisory lock that serialises provisioning.
+    execute: async (_q: unknown) => {
+        txExecutes.push(_q);
+      return { rows: [] };
+    },
   };
   return {
     db: fakeTx,
@@ -142,7 +151,13 @@ describe("getOrCreateOrg middleware", () => {
     nextOrgRow = { id: 2, name: "Jane's Organization", ownerId: "u2" };
 
     const { req, res, next } = mockReqRes({ id: "u2", email: "new@example.com", firstName: "Jane" });
+    txExecutes.length = 0;
     await getOrCreateOrg(req, res, next);
+
+    // Provisioning runs under the per-user advisory lock (one org per signup
+    // however many first requests race — tests/integration/
+    // orgProvisioningIsSingular.db.test.ts proves it against Postgres).
+    expect(txExecutes).toHaveLength(1);
 
     expect(insertsInto("organizations")[0]).toEqual(
       expect.objectContaining({
