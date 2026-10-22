@@ -1,4 +1,4 @@
-import { Target, TestTube, GitBranch } from "lucide-react";
+import { Target, TestTube, GitBranch, Send } from "lucide-react";
 import { useState, useEffect } from "react";
 import { PageShell } from "@/components/page-shell";
 import { DoorSections, DEALS_SECTIONS } from "@/components/door-sections";
@@ -7,32 +7,21 @@ import { CampaignsContent } from "@/components/campaigns-content";
 import { AbTestsContent } from "@/components/ab-tests-content";
 import { SequencesContent } from "@/components/sequences-content";
 import { LowBalanceAlert } from "@/components/low-balance-alert";
+import { BuyerBlastsPanel } from "@/pages/buyer-blasts";
+import { tabForLocation, type TabValue } from "@/lib/marketingHubTabs";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import "./today.css";
 
-type TabValue = "campaigns" | "ab-tests" | "sequences";
-
 export default function MarketingHub() {
   useDocumentTitle("Marketing hub");
-  const [activeTab, setActiveTab] = useState<TabValue>("campaigns");
+  const [activeTab, setActiveTab] = useState<TabValue>(() =>
+    tabForLocation(window.location.search, window.location.hash),
+  );
 
   useEffect(() => {
-    const hash = window.location.hash.replace("#", "");
-    if (hash === "ab-tests" || hash === "sequences") {
-      setActiveTab(hash as TabValue);
-    } else if (hash === "campaigns" || !hash) {
-      setActiveTab("campaigns");
-    }
-
     const handleHashChange = () => {
-      const newHash = window.location.hash.replace("#", "");
-      if (newHash === "ab-tests" || newHash === "sequences") {
-        setActiveTab(newHash as TabValue);
-      } else {
-        setActiveTab("campaigns");
-      }
+      setActiveTab(tabForLocation(window.location.search, window.location.hash));
     };
-
     window.addEventListener("hashchange", handleHashChange);
     return () => window.removeEventListener("hashchange", handleHashChange);
   }, []);
@@ -96,6 +85,14 @@ export default function MarketingHub() {
                 <GitBranch className="w-4 h-4" aria-hidden="true" />
                 Sequences
               </TabsTrigger>
+              <TabsTrigger
+                value="buyer-blasts"
+                className="flex items-center gap-2"
+                data-testid="tab-buyer-blasts"
+              >
+                <Send className="w-4 h-4" aria-hidden="true" />
+                Buyer blasts
+              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="campaigns" className="mt-6" data-testid="tab-content-campaigns">
@@ -108,6 +105,10 @@ export default function MarketingHub() {
             
           <TabsContent value="sequences" className="mt-6" data-testid="tab-content-sequences">
             <SequencesContent />
+          </TabsContent>
+
+          <TabsContent value="buyer-blasts" className="mt-6" data-testid="tab-content-buyer-blasts">
+            <BuyerBlastsPanel />
           </TabsContent>
         </Tabs>
       </div>

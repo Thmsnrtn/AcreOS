@@ -171,65 +171,29 @@ export function registerPlatformFeatureRoutes(app: Express): void {
     }
   });
 
-  // QuickBooks connect
-  app.get("/api/integrations/quickbooks/connect", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      if (!process.env.QBO_CLIENT_ID) {
-        return res.status(503).json({
-          error: "integration_not_configured",
-          message: "QuickBooks integration is not enabled on this deployment (QBO_CLIENT_ID is not set).",
-          statusCode: 503,
-        });
-      }
-      const org = req.organization;
-      const { getQboOAuthUrl } = await import("./services/bookkeeping");
-      const url = getQboOAuthUrl(org.id);
-      res.json({ url });
-    } catch (error) {
-      Errors.internal(res, error);
-    }
-  });
-
-  // QuickBooks callback
-  app.get("/api/integrations/quickbooks/callback", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const org = req.organization;
-      const { code, realmId } = req.query;
-
-      if (!code || !realmId) {
-        return Errors.badRequest(res, "Missing authorization code or realm ID");
-      }
-
-      // Store tokens (simplified — in prod, exchange code for tokens via Intuit OAuth)
-      await db.execute(sql`
-        INSERT INTO organization_integrations (organization_id, provider, credentials, is_enabled, created_at)
-        VALUES (${org.id}, 'quickbooks', ${JSON.stringify({ code, realmId, connectedAt: clock.now().toISOString() })}, true, NOW())
-        ON CONFLICT (organization_id, provider) DO UPDATE SET
-          credentials = EXCLUDED.credentials, is_enabled = true
-      `);
-
-      res.redirect("/settings/integrations?connected=quickbooks");
-    } catch (error) {
-      Errors.internal(res, error);
-    }
-  });
-
-  // QuickBooks sync
-  app.post("/api/integrations/quickbooks/sync", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const { syncPaymentsToQbo } = await import("./services/bookkeeping");
-      if (typeof syncPaymentsToQbo !== "function") {
-        return Errors.badRequest(res, "QuickBooks sync not available");
-      }
-      // TODO(tsc): syncPaymentsToQbo(orgId, tokens, fromDate) needs the org's
-      // stored QBO OAuth tokens; there is no exported loader yet, so the sync
-      // cannot be invoked. Surface a clear not-connected error rather than
-      // crashing on missing tokens.
-      return Errors.badRequest(res, "QuickBooks is not connected for this organization");
-    } catch (error) {
-      Errors.internal(res, error);
-    }
-  });
+  // QuickBooks connect / callback / sync — REFUSE (2026-10-20).
+  //
+  // These three routes were a flow that could not complete: the callback
+  // stored Intuit's one-time authorization CODE as if it were a credential
+  // ("simplified — in prod exchange code for tokens") and never exchanged it,
+  // and the sync route was a TODO that could never run because no access token
+  // is ever written. A customer could be walked through Intuit consent and land
+  // on "connected=quickbooks" holding nothing usable. There is no QuickBooks
+  // API integration; the honest path is the ledger export at
+  // GET /api/accounting/qbo-export (IIF or QBO-shaped JSON).
+  const QBO_REFUSAL =
+    "QuickBooks Online sync is not available: AcreOS has no QuickBooks token exchange, " +
+    "so it cannot connect to or write to your QuickBooks company. Export your ledger " +
+    "instead (Accounting → QuickBooks export, IIF or JSON) and import it in QuickBooks.";
+  app.get("/api/integrations/quickbooks/connect", isAuthenticated, (_req, res) =>
+    Errors.notImplemented(res, QBO_REFUSAL),
+  );
+  app.get("/api/integrations/quickbooks/callback", isAuthenticated, (_req, res) =>
+    Errors.notImplemented(res, QBO_REFUSAL),
+  );
+  app.post("/api/integrations/quickbooks/sync", isAuthenticated, (_req, res) =>
+    Errors.notImplemented(res, QBO_REFUSAL),
+  );
 
   // ─── Compliance Evolution ─────────────────────────────────────────
 

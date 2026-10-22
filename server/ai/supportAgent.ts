@@ -695,7 +695,7 @@ export const supportToolDefinitions = {
       properties: {
         fix_type: { 
           type: "string", 
-          enum: ["retry_payment", "send_update_payment_link", "cancel_pending_invoice"],
+          enum: ["retry_payment", "send_update_payment_link"],
           description: "Type of billing fix to apply" 
         },
         invoice_id: { type: "string", description: "Invoice ID for payment retry (if applicable)" },
@@ -1335,6 +1335,24 @@ export const APPLY_CREDIT_REFUSAL =
   "A credit on your AcreOS bill isn't something Pax can apply or queue — a person will review this. " +
   "Nothing was changed on your account.";
 
+/**
+ * The sentence for a request to VOID one of the customer's AcreOS invoices.
+ *
+ * Voiding an invoice forgives what the customer owes AcreOS — a concession on
+ * price exactly like a credit, and so the same founder-only hard-stop. Until
+ * 2026-10-20 `cancel_pending_invoice` passed a model-supplied invoice_id
+ * straight to `stripe.invoices.voidInvoice` with no check that the invoice
+ * was even this customer's. It is now model-unreachable, like apply_credit.
+ */
+export const VOID_INVOICE_REFUSAL =
+  "Cancelling an AcreOS invoice isn't something Pax can do or queue — a person will review this. " +
+  "Nothing was changed on your account.";
+
+/** True when a call asks to void an AcreOS invoice — the second model-unreachable billing fix. */
+function asksToVoidInvoice(toolName: string, args: Record<string, any>): boolean {
+  return toolName === "apply_billing_fix" && args?.fix_type === "cancel_pending_invoice";
+}
+
 /** True when a call is asking for the one billing fix the model may never reach. */
 function asksForCredit(toolName: string, args: Record<string, any>): boolean {
   return toolName === "apply_billing_fix" && args?.fix_type === "apply_credit";
@@ -1388,6 +1406,13 @@ export async function executeSupportTool(
         metadata: { ticketId: ticketId ?? null },
       });
       return { success: false as const, error: APPLY_CREDIT_REFUSAL };
+    }
+    if (asksToVoidInvoice(toolName, args)) {
+      logger.warn("[executeSupportTool] Refused cancel_pending_invoice — pricing hard-stop, routed to a person", {
+        orgId: org.id,
+        metadata: { ticketId: ticketId ?? null },
+      });
+      return { success: false as const, error: VOID_INVOICE_REFUSAL };
     }
 
     const trustedApproval = options?.trustedApproval === true;
@@ -4081,6 +4106,20 @@ export async function executeSupportTool(
                 return toolRefusal({ what: "The payment was not retried", why: "I need to know which invoice to retry", unlock: `Open ${PLACE_TEXT.plans}, find the unpaid invoice, and tell me its number` });
               }
               
+              // The invoice id is model-supplied. Before acting, prove it is
+              // THIS customer's invoice — otherwise a tap on "retry my
+              // payment" could charge against any invoice id the model named.
+              const target = await stripe.invoices.retrieve(invoice_id);
+              const targetCustomer =
+                typeof target.customer === "string" ? target.customer : target.customer?.id ?? null;
+              if (targetCustomer !== org.stripeCustomerId) {
+                logger.warn("[support-tool] retry_payment refused — invoice belongs to another customer", {
+                  orgId: org.id,
+                  metadata: { ticketId: ticketId ?? null },
+                });
+                return toolRefusal({ what: "The payment was not retried", why: "That invoice is not on this account", unlock: `Open ${PLACE_TEXT.plans}, find the unpaid invoice, and tell me its number` });
+              }
+
               const invoice = await stripe.invoices.pay(invoice_id);
               
               // Log to memory
@@ -4140,22 +4179,14 @@ export async function executeSupportTool(
             }
             
             case "cancel_pending_invoice": {
-              if (!invoice_id) {
-                return toolRefusal({ what: "The invoice was not cancelled", why: "I need to know which invoice to cancel", unlock: `Open ${PLACE_TEXT.plans}, find the invoice, and tell me its number` });
-              }
-              
-              const invoice = await stripe.invoices.voidInvoice(invoice_id);
-              
-              return {
-                success: true,
-                data: {
-                  invoiceVoided: true,
-                  invoiceId: invoice.id,
-                  message: "Invoice has been voided and will not be charged"
-                }
-              };
+              // Model-unreachable (2026-10-20): voiding an AcreOS invoice is a
+              // pricing concession, refused by the hard-stop guard at the top
+              // of executeSupportTool and absent from the fix_type enum. The
+              // label stays for the classification ratchets; the body refuses
+              // and touches nothing.
+              return { success: false as const, error: VOID_INVOICE_REFUSAL };
             }
-            
+
             default:
               return toolRefusal({ what: "No billing fix was made", why: "That is not one of the billing fixes I can run", unlock: "Reply here and a person on our team will look at it" });
           }

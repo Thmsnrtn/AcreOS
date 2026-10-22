@@ -218,9 +218,10 @@ const ARGS: Record<string, Record<string, unknown>> = {
   draft_offer: { dealId: 11, offerAmount: 25000 },
   schedule_followup: { title: "Follow up", entity_type: "lead", entity_id: 42, due_date: "2026-09-10" },
   schedule_follow_up: { entityType: "lead", entityId: 42, note: "Call back", followUpDate: "2026-09-10" },
-  create_calendar_event: { title: "Site visit", start: "2026-09-10T10:00:00Z", end: "2026-09-10T11:00:00Z" },
-  trigger_zapier: { hook_url: "https://hooks.zapier.com/x", payload: {} },
-  trigger_make: { hook_url: "https://hook.make.com/x", payload: {} },
+  // create_calendar_event / trigger_zapier / trigger_make left this population
+  // on 2026-10-20: they POST outward, so they are approval-required sends now
+  // (connectorOutboundWritesRequireApproval.test.ts), witnessed by the kernel's
+  // pax_sends audit rather than an unattended receipt.
 };
 
 const org = { id: 7, name: "Test Org", ownerId: "u-owner" } as any;
@@ -246,9 +247,13 @@ describe("the population is derived, non-empty, and fully fixtured", () => {
     expect(all.length).toBeGreaterThan(50);
     expect(PAUSE_SAFE_TOOLS.size).toBeGreaterThan(20);
     expect(APPROVAL_REQUIRED_TOOLS.size).toBeGreaterThanOrEqual(5);
-    expect(population.length).toBeGreaterThanOrEqual(15);
-    for (const known of ["update_lead_status", "create_lead", "create_task", "draft_offer", "trigger_zapier"]) {
+    expect(population.length).toBeGreaterThanOrEqual(14);
+    for (const known of ["update_lead_status", "create_lead", "create_task", "draft_offer", "create_deal"]) {
       expect(population, `${known} should be in the receipt population`).toContain(known);
+    }
+    // The outbound connector writes are sends now, not unattended record writes.
+    for (const send of ["trigger_zapier", "trigger_make", "create_calendar_event"]) {
+      expect(APPROVAL_REQUIRED_TOOLS.has(send), `${send} must be approval-required`).toBe(true);
     }
     // Neither excluded set leaks into the population.
     for (const name of population) {

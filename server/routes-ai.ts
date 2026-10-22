@@ -1284,7 +1284,7 @@ export function registerAIRoutes(app: Express): void {
         return Errors.validationFailed(res, parsed.error.issues);
       }
       const { credentials, settings } = parsed.data;
-      const { getConnector } = await import("./services/connectors/registry");
+      const { getConnector, credentialRefusal } = await import("./services/connectors/registry");
       const def = getConnector(connectorId);
       if (!def) return Errors.notFound(res, "Connector");
 
@@ -1306,10 +1306,16 @@ export function registerAIRoutes(app: Express): void {
         );
       }
 
+      // Refuse empty or missing credentials. This route used to store `{}`
+      // (or nothing) and answer `status: "connected"`, so the panel said
+      // "Pax can now use this integration" about a connector holding no key.
+      const refusal = credentialRefusal(def, credentials);
+      if (refusal) {
+        return Errors.badRequest(res, refusal.reason, { connectorId, missing: refusal.missing });
+      }
+
       const { encryptCredentials } = await import("./services/fieldEncryption");
-      const credentialsEncrypted = credentials
-        ? encryptCredentials(JSON.stringify(credentials), org.id)
-        : undefined;
+      const credentialsEncrypted = encryptCredentials(JSON.stringify(credentials), org.id);
       const instance = await storage.upsertPaxConnector(org.id, connectorId, {
         status: "connected",
         credentialsEncrypted,
