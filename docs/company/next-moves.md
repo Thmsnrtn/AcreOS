@@ -3,50 +3,60 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
-## 2026-10-21 — Readiness packages 1–5 (implementation lane; Muse audits)
+## 2026-10-21/22 — Readiness packages 1–5 and the PR train (implementation lane; Muse audits and merges)
 
-### On branches with PRs, waiting on the CI queue and the COO's audit
-Nothing below is on main yet; every PR is a draft until its current head is green.
+### Merged to main (main = 14748ed7 at 2026-10-22 03:40Z)
+#388 (follow-redirects + vite advisories), #389 (entry chunk under budget),
+#390 (letter-render launch timeout), #392 (Package 2, CAM FKs), #393
+(Package 3, desktop-feel harness auth), #394 (Package 1, one org per signup),
+#377 (transfer tax from statute), #391 (ops/ledger/kill-switch routes before
+the /api catch-all).
 
-- **#394 Package 1, customer journey.** One org per user under concurrent
-  first requests (advisory lock + in-flight coalescing), view-transition skips
-  handled, E2E-token traffic exempt from the per-user limiter. Full suite 18,074
-  green after one fix.
-- **#392 Package 2, CAM FKs.** lease_id typed from the live rental_leases.id;
-  the FK gate reads the db:push population too. **Package 4 builds on it.**
-- **#393 Package 3, desktop feel C2.** Harness auth fixed at the cause.
-- **#395 Package 5, refund posting.** postRefund no longer dies behind the GL
-  post; a failed GL post dead-letters as `gl_refund` and replays. Chart of
-  accounts seeded at org creation, at first GL use, and by
-  `scripts/backfill-chart-of-accounts.ts` (dry run by default). Full suite
-  18,072 green.
+### Refreshed onto main, waiting on CI and Muse (do NOT merge from this lane)
+- **#395 Package 5, refund posting** — head 8d3d8ed0, 17/17 green. #394's
+  restructure merged textually clean but put the chart-of-accounts seed
+  OUTSIDE `if (provisioned.created)`; moved inside, after the `!isFounder`
+  block (founders get charts). `chartOfAccountsSeedCallSite.test.ts` parses the
+  file and fails on git's auto-merged version. Muse verified the carry.
+- **#378, #380–#383, #385–#387** — each a merge of main with its port files
+  equal to main and ratchets set from `--measure` on the merged tree (as-any:
+  #378 → 1061, #381 → 1058; everything else at baseline). #382/#387
+  migrate.mjs checked line-by-line against the merge base (both sides kept).
+- **#379** — head 734c0f01 (merge of 14748ed7, as-any → 1062); draft, Muse
+  marks ready. **#384** stays held until #379 merges (stacked; routes-elite-
+  features.ts needs a semantic merge).
 - **Package 4, canonical uuid ids (this branch).** The 14 parents and their 40
-  child columns are uuid in shared/schema; KNOWN_DB_PUSH_MISMATCHES is gone;
-  the CAM wraps are removed; `CONVERGE_UUID_ID_FAMILIES` in migrate.mjs
-  converts a db:push-built database in place (no-op on prod). Measured on a
-  staging-shaped scratch DB: old db:push + new `migrate --ddl-only` exits 0,
-  14/14 parents uuid, 21 FKs kept, rows identical. Full suite 18,169 green.
-- **Main-fix PRs, ported into every PR:** #388 (follow-redirects + vite
-  advisories), #389 (entry chunk under budget), #390 (letter-render launch
-  timeout + reachability seam).
-- **#386** ships land_flipper only; buy_and_hold stays demoted on
-  `claude/buy-and-hold-underwriting`, gated on journey evidence.
+  child columns are uuid in shared/schema; KNOWN_DB_PUSH_MISMATCHES (38) is
+  gone; `CONVERGE_UUID_ID_FAMILIES` in migrate.mjs converts a db:push-built
+  database in place (no-op on prod). Evidence on 14748ed7: db:push of main vs
+  this branch into scratch DBs differs in exactly 54 columns, all varchar →
+  uuid (14 ids + 40 children), 738 tables / 656 FKs both sides; 0 of 648
+  schema-declared FK columns mismatched; full suite 18,284 green with realdb.
 
 ### Found, not fixed (needs a person)
-- **The Actions queue is saturated** (~320 queued runs, 173 for superseded
-  commits). This session's token gets 403 cancelling runs; cancel the
-  superseded ones from the Actions tab or grant `actions: write`.
-- **drizzle-kit push exits 0 when a statement fails.** Pushing the uuid schema
-  onto an unconverted varchar database fails "cannot be cast automatically to
-  type uuid", reports success, and changes nothing. Staging must converge
-  through `migrate.mjs --ddl-only` (the nightly reconcile) before any manual
-  db:push; noted in scripts/setup-staging.sh.
+- **npm's audit service is failing** (2026-10-22 ~02:35–03:20Z: 503, then 400
+  "this endpoint is being retired. Use the bulk advisory endpoint"). npm
+  Dependency Audit (and Security Gate with it) went red on #381, #382, #385;
+  the same gate passes locally once npm answers. Needs "Re-run failed jobs" —
+  this session's token gets 403.
+- **The audit gate reads an audit that never ran as "0 vulnerabilities"**
+  (`scripts/npm-audit-gate.mjs` never checks the report's error key). It went
+  red tonight only because the accepted list is non-empty; with an empty list
+  it would pass green over no scan. Security Gate then says "found critical
+  vulnerabilities" when none were found. Proposed to Muse as its own PR.
+- **drizzle-kit push exits 0 when a statement fails** — onto an unconverted
+  varchar database ("cannot be cast automatically to type uuid"), and onto a
+  database missing pgvector ("type vector does not exist"). Staging must
+  converge through `migrate.mjs --ddl-only` (the nightly reconcile) before any
+  manual db:push; noted in scripts/setup-staging.sh.
 
 ### Top next moves
-1. Drain the PR train in the audited order once the queue clears; mark each
-   PR ready only when every check on its current head is green.
+1. Muse merges the refreshed train; re-check each remaining PR with
+   `git merge-tree` after every merge, refresh only what conflicts.
 2. After Package 4 merges, confirm the next staging-schema-reconcile run logs
    `OK: DO $uuid_ids$` and staging's 14 parents read uuid.
+3. D1 (data sourcing: Regrid true cost, Florida bulk ETL, change-detection
+   poller) — waits for Muse's spec.
 
 ## 2026-10-21 — Customer Journey Audit, next layer (issue #359), branch `claude/cj-journey-next-layer`
 
