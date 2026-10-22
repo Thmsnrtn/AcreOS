@@ -50,7 +50,7 @@
 import { db } from "../db";
 import { notes, organizations, payments, properties, leads } from "@shared/schema";
 import { acquiredNotes, notePayments } from "@shared/schema/notes-vertical";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { jsPDF } from "jspdf";
 import {
   buildFire1098File,
@@ -1448,8 +1448,13 @@ export async function collectAcquiredCandidates(
  */
 export async function collectOriginatedCandidates(
   orgId: number,
+  onlyNoteIds?: number[],
 ): Promise<Form1098Candidate[]> {
-  const rows = await db.select().from(notes).where(eq(notes.organizationId, orgId));
+  const rows = await db.select().from(notes).where(
+    onlyNoteIds && onlyNoteIds.length > 0
+      ? and(eq(notes.organizationId, orgId), inArray(notes.id, onlyNoteIds))
+      : eq(notes.organizationId, orgId),
+  );
   if (rows.length === 0) return [];
 
   const noteIds = rows.map((r) => r.id);
@@ -1619,4 +1624,60 @@ export async function generate1098Batch(
     fireRecordCounts: fire?.recordCounts ?? { T: 0, A: 0, B: 0, C: 0, F: 0 },
     fireValidationErrors,
   };
+}
+
+// ─── Borrower copy (portal) ───────────────────────────────────────────────
+
+/**
+ * What the borrower portal may say about one note's Form 1098.
+ *
+ * The portal used to build its own "Form 1098" with Box 2 set to the note's
+ * CURRENT balance — not the principal outstanding on January 1 of the tax
+ * year that the IRS instructions require — and with none of the lender-side
+ * generator's refusals (best-in-class audit 2026-10-20, §3 P0 #4). The
+ * borrower now sees exactly what `deriveForm1098` would file, or the reason
+ * no form can be issued. One derivation, one truth.
+ */
+export type BorrowerCopy1098 =
+  | { kind: "form"; form: Form1098 }
+  | { kind: "unavailable"; reason: string };
+
+export interface BorrowerCopy1098Deps {
+  loadCandidate: () => Promise<Form1098Candidate | undefined>;
+  loadLender: () => Promise<LenderIdentity>;
+}
+
+export const BORROWER_1098_NOT_ISSUABLE =
+  "Your lender can't issue a Form 1098 for this loan and year from the records on hand yet. Contact your lender for your mortgage interest statement.";
+
+export async function borrowerCopy1098(
+  deps: BorrowerCopy1098Deps,
+  taxYear: number,
+): Promise<BorrowerCopy1098> {
+  const candidate = await deps.loadCandidate();
+  if (!candidate) return { kind: "unavailable", reason: BORROWER_1098_NOT_ISSUABLE };
+  let lender: LenderIdentity;
+  try {
+    lender = await deps.loadLender();
+  } catch (err) {
+    if (err instanceof TaxIdentityError) {
+      return { kind: "unavailable", reason: BORROWER_1098_NOT_ISSUABLE };
+    }
+    throw err;
+  }
+  const outcome = deriveForm1098(candidate, lender, taxYear);
+  if (outcome.kind === "form") return { kind: "form", form: outcome.form };
+  if (outcome.kind === "excluded") return { kind: "unavailable", reason: outcome.exclusion.reason };
+  return { kind: "unavailable", reason: BORROWER_1098_NOT_ISSUABLE };
+}
+
+/** Production wiring of `borrowerCopy1098` for one serviced note. */
+export function borrowerCopy1098ForNote(orgId: number, noteId: number, taxYear: number): Promise<BorrowerCopy1098> {
+  return borrowerCopy1098(
+    {
+      loadCandidate: async () => (await collectOriginatedCandidates(orgId, [noteId]))[0],
+      loadLender: () => resolveLenderIdentity(orgId),
+    },
+    taxYear,
+  );
 }
