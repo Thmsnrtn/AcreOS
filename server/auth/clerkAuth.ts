@@ -5,7 +5,7 @@ import { users } from "@shared/models/auth";
 import { eq } from "drizzle-orm";
 import { isFounderEmail, isFounderIdentity } from "../services/founder";
 import { logger } from "../utils/logger";
-import { e2eTestAuthEnabled, e2eTokenAuthEnabled, resolveTestUserId } from "./testAuth";
+import { e2eTestAuthEnabled, e2eTokenAuthEnabled, resolveSyntheticTestProfile, resolveTestUserId } from "./testAuth";
 import { sendError } from "../utils/errors";
 import { clock } from "../utils/clock";
 
@@ -231,11 +231,35 @@ async function hydrateUser(req: any, res: any, next: any) {
       // returned 500 for every request after the first due to the
       // users_clerk_user_id_unique constraint. ON CONFLICT DO NOTHING +
       // re-SELECT makes this idempotent and race-safe.
-      const clerkUser = await clerkClient.users.getUser(userId);
-      const primaryEmail = clerkUser.emailAddresses.find(
-        (e: any) => e.id === clerkUser.primaryEmailAddressId
-      );
-      const email = primaryEmail?.emailAddress?.toLowerCase() ?? null;
+      // E2E test identities are synthetic — Clerk has never heard of them,
+      // so getUser() throws a Clerk 404 and every authenticated request
+      // 404s with it (the customer-journey audit sat on the app splash for
+      // days this way: the seeded user lived only in CI's throwaway DB).
+      // When the identity arrived via the E2E bypass, provision from the
+      // synthetic profile instead. See server/auth/testAuth.ts.
+      const testProfile =
+        e2eTestAuthEnabled() || e2eTokenAuthEnabled(req)
+          ? resolveSyntheticTestProfile(userId)
+          : null;
+      let email: string | null;
+      let firstName: string | null;
+      let lastName: string | null;
+      let profileImageUrl: string | null;
+      if (testProfile) {
+        email = testProfile.email;
+        firstName = testProfile.firstName;
+        lastName = testProfile.lastName;
+        profileImageUrl = null;
+      } else {
+        const clerkUser = await clerkClient.users.getUser(userId);
+        const primaryEmail = clerkUser.emailAddresses.find(
+          (e: any) => e.id === clerkUser.primaryEmailAddressId
+        );
+        email = primaryEmail?.emailAddress?.toLowerCase() ?? null;
+        firstName = clerkUser.firstName ?? null;
+        lastName = clerkUser.lastName ?? null;
+        profileImageUrl = clerkUser.imageUrl ?? null;
+      }
 
       // Phase Zero-Three clickwrap (Beatrice audit 2026-06-01): every NEW
       // user row is stamped with ToS + Privacy acceptance at creation. The
@@ -252,9 +276,9 @@ async function hydrateUser(req: any, res: any, next: any) {
         .values({
           clerkUserId: userId,
           email,
-          firstName: clerkUser.firstName ?? null,
-          lastName: clerkUser.lastName ?? null,
-          profileImageUrl: clerkUser.imageUrl ?? null,
+          firstName,
+          lastName,
+          profileImageUrl,
           tosAcceptedAt: acceptedAt,
           privacyAcceptedAt: acceptedAt,
         })

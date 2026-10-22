@@ -10,34 +10,51 @@ interface ClosingCostsCardProps {
   county: string;
   salePrice: number;
   annualTax?: number;
+  /** What is on the land, when recorded. Graduated states estimate only with it. */
+  propertyClass?: "vacant_land" | "single_family_residence" | "other_residential" | "nonresidential";
 }
 
+/** Mirrors server/services/closingCostEstimator.ts ClosingCostEstimate. */
 interface CostEstimate {
   recordingFee: number;
-  transferTax: number;
+  /** null = not estimated (refused); never read as $0. */
+  transferTax: number | null;
   titleInsuranceEstimate: number;
   proratedTaxes: number;
   totalEstimated: number;
-  breakdown: { item: string; amount: number; source: string }[];
+  /** What totalEstimated leaves out, in words. */
+  totalExcludes: string[];
+  /** amount null = not estimated; the reason is in `source`. */
+  breakdown: { item: string; amount: number | null; source: string }[];
   disclaimer: string;
 }
 
 function fmt$(n: number): string {
-  if (!isFinite(n) || n == null) return "—";
+  if (n == null || !isFinite(n)) return "—";
   return `$${Math.round(n).toLocaleString()}`;
 }
 
-export function ClosingCostsCard({ state, county, salePrice, annualTax }: ClosingCostsCardProps) {
+/**
+ * The value shown for one breakdown line. A null amount is a refusal, and it
+ * says so with its reason — it is never formatted as "$0".
+ */
+function closingCostAmountLabel(item: { amount: number | null; source: string }): string {
+  if (item.amount === null) return `Not estimated — ${item.source.replace(/^Not estimated:\s*/, "")}`;
+  return fmt$(item.amount);
+}
+
+export function ClosingCostsCard({ state, county, salePrice, annualTax, propertyClass }: ClosingCostsCardProps) {
   const enabled = !!state && !!county && salePrice > 0;
 
   const { data, isLoading } = useQuery<CostEstimate>({
-    queryKey: ["/api/closing-costs/estimate", state, county, salePrice, annualTax],
+    queryKey: ["/api/closing-costs/estimate", state, county, salePrice, annualTax, propertyClass],
     queryFn: async () => {
       const params = new URLSearchParams({
         state,
         county,
         salePrice: String(salePrice),
         ...(annualTax ? { annualTax: String(annualTax) } : {}),
+        ...(propertyClass ? { propertyClass } : {}),
       });
       const res = await fetch(`/api/closing-costs/estimate?${params}`);
       if (!res.ok) throw new Error("Failed to estimate closing costs");
@@ -72,7 +89,7 @@ export function ClosingCostsCard({ state, county, salePrice, annualTax }: Closin
                 <li
                   key={i}
                   className="flex justify-between items-start text-sm"
-                  aria-label={`${item.item}: ${fmt$(item.amount)}, source: ${item.source}`}
+                  aria-label={`${item.item}: ${closingCostAmountLabel(item)}, source: ${item.source}`}
                 >
                   <div className="flex items-center gap-1" aria-hidden="true">
                     <span>{item.item}</span>
@@ -85,7 +102,13 @@ export function ClosingCostsCard({ state, county, salePrice, annualTax }: Closin
                       </TooltipContent>
                     </Tooltip>
                   </div>
-                  <span className="font-medium tabular-nums" aria-hidden="true">{fmt$(item.amount)}</span>
+                  <span
+                    className={item.amount === null ? "text-xs text-muted-foreground text-right max-w-[60%]" : "font-medium tabular-nums"}
+                    aria-hidden="true"
+                    data-testid="closing-cost-amount"
+                  >
+                    {closingCostAmountLabel(item)}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -95,6 +118,11 @@ export function ClosingCostsCard({ state, county, salePrice, annualTax }: Closin
                 {fmt$(data.totalEstimated)}
               </Badge>
             </div>
+            {data.totalExcludes.length > 0 && (
+              <p className="text-xs text-muted-foreground m-0" data-testid="closing-cost-total-excludes">
+                The total excludes: {data.totalExcludes.join("; ")}
+              </p>
+            )}
             <p className="text-[10px] text-muted-foreground leading-tight mt-2 m-0">
               {data.disclaimer}
             </p>

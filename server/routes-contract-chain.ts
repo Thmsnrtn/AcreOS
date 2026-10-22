@@ -50,6 +50,7 @@ import {
   type ContractRefusal,
 } from "./services/contracts/contractAssembly";
 import { clock } from "./utils/clock";
+import { propertyClassFromStructureType } from "@shared/regulatory/transferTax";
 
 /**
  * Every refusal leaves as HTTP 422 with the machine code in `details` so the
@@ -150,6 +151,9 @@ async function gatherAndAssemble(
       zip: property.zip,
       sizeAcres: property.sizeAcres,
       legalDescription: property.legalDescription,
+      // Transfer-tax class from the recorded structure type; unknown stays
+      // undefined so class-dependent states refuse instead of guessing.
+      propertyClass: propertyClassFromStructureType(property.structureType),
     },
     seller: seller
       ? {

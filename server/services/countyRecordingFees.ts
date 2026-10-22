@@ -10,72 +10,42 @@
  * Returns best-available estimate with source confidence.
  */
 
+import {
+  describeTransferTax,
+  estimateTransferTax,
+  isoDateOf,
+  per1000,
+  transferTaxRuleFor,
+  type CustomaryPayer,
+  type PropertyClass,
+} from "@shared/regulatory/transferTax";
+import { clock } from "../utils/clock";
+
 export interface RecordingFeeInfo {
   state: string;
   county: string;
   recordingFeePerPage: number; // USD per page
   typicalPages: number; // typical deed length in pages
   estimatedRecordingFee: number; // recordingFeePerPage * typicalPages
-  transferTaxRate: number; // as decimal (e.g. 0.001 = 0.1%)
-  transferTaxPer1000: number; // USD per $1,000 of sale price
-  transferTaxPaidBy: "buyer" | "seller" | "split" | "none";
+  /**
+   * USD per $1,000 of consideration when ONE statewide/county rate applies;
+   * null when the tax is graduated, class-dependent, local-only, or refused
+   * (see transferTaxRule for why).
+   */
+  transferTaxPer1000: number | null;
+  /** The statutory rule in words, with citation, from the canonical table. */
+  transferTaxRule: string;
+  transferTaxPaidBy: CustomaryPayer;
   specialNotes: string[];
   source: "database" | "state_default" | "estimate";
   confidence: "high" | "medium" | "low";
 }
 
-// State-level defaults (per $1,000 sale price)
-const STATE_TRANSFER_TAX: Record<string, { rate: number; paidBy: "buyer" | "seller" | "split" | "none" }> = {
-  AL: { rate: 0.50, paidBy: "seller" },
-  AZ: { rate: 0, paidBy: "none" },
-  AR: { rate: 3.30, paidBy: "seller" },
-  CA: { rate: 1.10, paidBy: "seller" },
-  CO: { rate: 0.01, paidBy: "seller" },
-  CT: { rate: 11.20, paidBy: "seller" },
-  DE: { rate: 4.00, paidBy: "split" },
-  FL: { rate: 0.70, paidBy: "seller" },
-  GA: { rate: 1.00, paidBy: "seller" },
-  HI: { rate: 1.25, paidBy: "seller" },
-  ID: { rate: 0, paidBy: "none" },
-  IL: { rate: 1.50, paidBy: "seller" },
-  IN: { rate: 0, paidBy: "none" },
-  IA: { rate: 1.60, paidBy: "seller" },
-  KS: { rate: 0, paidBy: "none" },
-  KY: { rate: 0.50, paidBy: "seller" },
-  LA: { rate: 0, paidBy: "none" },
-  ME: { rate: 2.20, paidBy: "split" },
-  MD: { rate: 5.00, paidBy: "split" },
-  MA: { rate: 4.56, paidBy: "seller" },
-  MI: { rate: 8.60, paidBy: "seller" },
-  MN: { rate: 3.30, paidBy: "seller" },
-  MS: { rate: 0, paidBy: "none" },
-  MO: { rate: 0, paidBy: "none" },
-  MT: { rate: 0, paidBy: "none" },
-  NE: { rate: 2.25, paidBy: "seller" },
-  NV: { rate: 1.95, paidBy: "seller" },
-  NH: { rate: 15.00, paidBy: "split" },
-  NJ: { rate: 4.00, paidBy: "seller" },
-  NM: { rate: 0, paidBy: "none" },
-  NY: { rate: 4.00, paidBy: "seller" },
-  NC: { rate: 2.00, paidBy: "seller" },
-  ND: { rate: 0, paidBy: "none" },
-  OH: { rate: 1.00, paidBy: "seller" },
-  OK: { rate: 0.75, paidBy: "seller" },
-  OR: { rate: 1.00, paidBy: "seller" },
-  PA: { rate: 10.00, paidBy: "split" },
-  RI: { rate: 4.56, paidBy: "seller" },
-  SC: { rate: 3.70, paidBy: "seller" },
-  SD: { rate: 0.50, paidBy: "seller" },
-  TN: { rate: 3.70, paidBy: "seller" },
-  TX: { rate: 0, paidBy: "none" },
-  UT: { rate: 0, paidBy: "none" },
-  VT: { rate: 12.50, paidBy: "seller" },
-  VA: { rate: 2.50, paidBy: "seller" },
-  WA: { rate: 17.78, paidBy: "seller" },
-  WV: { rate: 3.30, paidBy: "seller" },
-  WI: { rate: 3.00, paidBy: "seller" },
-  WY: { rate: 0, paidBy: "none" },
-};
+// Transfer tax is NOT in this file. It is read from
+// shared/regulatory/transferTax.ts, the one table every caller uses
+// (best-in-class audit 2026-10-20). This file's old STATE_TRANSFER_TAX map
+// was labelled "per $1,000" while holding per-$100 and per-$500 figures
+// (FL 0.70, NV 1.95, AL 0.50, …) and disagreed with the contract generator.
 
 // State-level recording fee defaults (per page)
 const STATE_RECORDING_FEE_PER_PAGE: Record<string, number> = {
@@ -92,13 +62,11 @@ const STATE_RECORDING_FEE_PER_PAGE: Record<string, number> = {
 const COUNTY_OVERRIDES: Record<string, Partial<RecordingFeeInfo>> = {
   "CA|Los Angeles": {
     recordingFeePerPage: 21,
-    transferTaxPer1000: 1.10,
-    specialNotes: ["LA City adds additional 4.5% transfer tax on sales over $5M"],
+    specialNotes: ["The City of Los Angeles levies its own transfer tax (plus Measure ULA above its thresholds) on top of the county rate"],
   },
   "CA|San Francisco": {
     recordingFeePerPage: 21,
-    transferTaxPer1000: 6.80,
-    specialNotes: ["SF has tiered transfer tax up to $24.75/$1,000 for sales over $25M"],
+    specialNotes: ["San Francisco levies its own tiered transfer tax in place of the county rate; confirm with the Assessor-Recorder"],
   },
   "TX|Harris": {
     recordingFeePerPage: 35,
@@ -108,10 +76,9 @@ const COUNTY_OVERRIDES: Record<string, Partial<RecordingFeeInfo>> = {
     recordingFeePerPage: 36,
     specialNotes: ["No state transfer tax in Texas"],
   },
-  "FL|Miami-Dade": {
-    transferTaxPer1000: 0.70,
-    specialNotes: ["Miami-Dade has additional $0.45/$1,000 surtax for most properties"],
-  },
+  // Miami-Dade's class-dependent rate is NOT restated here: transferTaxRule
+  // (describeTransferTax with the county) already carries it from the one
+  // table, and a second copy of a rate is how the tables drifted.
 };
 
 export function getRecordingFees(state: string, county: string): RecordingFeeInfo {
@@ -119,10 +86,13 @@ export function getRecordingFees(state: string, county: string): RecordingFeeInf
   const countyKey = `${stateUpper}|${county}`;
   const override = COUNTY_OVERRIDES[countyKey] || {};
 
-  const stateTax = STATE_TRANSFER_TAX[stateUpper] ?? { rate: 0, paidBy: "none" as const };
+  const rule = transferTaxRuleFor(stateUpper, county);
   const feePerPage = override.recordingFeePerPage ?? STATE_RECORDING_FEE_PER_PAGE[stateUpper] ?? 20;
   const typicalPages = 3;
-  const transferPer1000 = override.transferTaxPer1000 ?? stateTax.rate;
+  const transferPer1000 =
+    rule?.kind === "none" ? 0
+    : rule?.kind === "flat" && rule.rate ? per1000(rule.rate) + (rule.addOns ?? []).reduce((t, a) => t + per1000(a), 0)
+    : null;
 
   const source: RecordingFeeInfo["source"] = override.recordingFeePerPage
     ? "database"
@@ -139,9 +109,9 @@ export function getRecordingFees(state: string, county: string): RecordingFeeInf
     recordingFeePerPage: feePerPage,
     typicalPages,
     estimatedRecordingFee: feePerPage * typicalPages,
-    transferTaxRate: transferPer1000 / 1000,
     transferTaxPer1000: transferPer1000,
-    transferTaxPaidBy: (override.transferTaxPaidBy as any) ?? stateTax.paidBy,
+    transferTaxRule: describeTransferTax(stateUpper, county),
+    transferTaxPaidBy: rule?.customaryPayer ?? "varies",
     specialNotes: override.specialNotes ?? [],
     source,
     confidence,
@@ -150,39 +120,73 @@ export function getRecordingFees(state: string, county: string): RecordingFeeInf
 
 /**
  * Compute total estimated closing cost contribution for a buyer given purchase price.
+ *
+ * A refused transfer tax is null everywhere it appears — the total, the
+ * buyer's share and the seller's share leave it OUT and `totalExcludes` says
+ * so. A "varies" payer is not assigned to either side: the tax is in
+ * `unallocatedTransferTax`, not silently dropped from both.
  */
 export function estimateClosingCosts(
   purchasePrice: number,
   state: string,
-  county: string
+  county: string,
+  opts: { propertyClass?: PropertyClass; asOfIsoDate?: string } = {},
 ): {
   recordingFee: number;
-  transferTaxTotal: number;
-  buyerResponsibility: number;
-  sellerResponsibility: number;
+  /** null when the canonical table refuses to estimate (see transferTaxRefusal). */
+  transferTaxTotal: number | null;
+  /** Why the transfer tax was not estimated; null when it was (or there is none). */
+  transferTaxRefusal: string | null;
+  transferTaxExcludesLocal: string | null;
+  /** null when the transfer tax is refused (the share cannot be known). */
+  buyerResponsibility: number | null;
+  /** null when the transfer tax is refused. */
+  sellerResponsibility: number | null;
+  /** Transfer tax whose payer is negotiated ("varies"), in neither side's share; null when refused. */
+  unallocatedTransferTax: number | null;
+  /** Sum of what WAS estimated. */
   totalCost: number;
+  /** What totalCost leaves out, in words. Empty when complete. */
+  totalExcludes: string[];
   breakdown: RecordingFeeInfo;
 } {
   const info = getRecordingFees(state, county);
-  const transferTaxTotal = (purchasePrice / 1000) * info.transferTaxPer1000;
+  const est = estimateTransferTax(state, purchasePrice, {
+    county,
+    propertyClass: opts.propertyClass,
+    asOfIsoDate: opts.asOfIsoDate ?? isoDateOf(clock.now()),
+  });
+  // A refused estimate is null, never 0 — 0 would read as "no tax".
+  const transferTaxTotal: number | null =
+    est.kind === "estimate" ? est.amountCents / 100 : est.kind === "none" ? 0 : null;
   const recordingFee = info.estimatedRecordingFee;
 
   let buyerPct = 0;
   let sellerPct = 0;
+  let unallocatedPct = 0;
   if (info.transferTaxPaidBy === "buyer") buyerPct = 1;
   else if (info.transferTaxPaidBy === "seller") sellerPct = 1;
   else if (info.transferTaxPaidBy === "split") { buyerPct = 0.5; sellerPct = 0.5; }
+  else if (info.transferTaxPaidBy === "varies") unallocatedPct = 1;
+
+  const totalExcludes: string[] = [];
+  if (est.kind === "refused") totalExcludes.push(`Transfer tax — not estimated: ${est.reason}`);
+  else if (est.kind === "estimate" && est.excludesLocal) totalExcludes.push(`Local transfer taxes — ${est.excludesLocal}`);
 
   // Recording fee typically paid by buyer
-  const buyerResponsibility = recordingFee + transferTaxTotal * buyerPct;
-  const sellerResponsibility = transferTaxTotal * sellerPct;
+  const buyerResponsibility = transferTaxTotal === null ? null : Math.round(recordingFee + transferTaxTotal * buyerPct);
+  const sellerResponsibility = transferTaxTotal === null ? null : Math.round(transferTaxTotal * sellerPct);
 
   return {
     recordingFee,
     transferTaxTotal,
-    buyerResponsibility: Math.round(buyerResponsibility),
-    sellerResponsibility: Math.round(sellerResponsibility),
-    totalCost: Math.round(recordingFee + transferTaxTotal),
+    transferTaxRefusal: est.kind === "refused" ? est.reason : null,
+    transferTaxExcludesLocal: est.kind === "estimate" ? est.excludesLocal : null,
+    buyerResponsibility,
+    sellerResponsibility,
+    unallocatedTransferTax: transferTaxTotal === null ? null : Math.round(transferTaxTotal * unallocatedPct),
+    totalCost: Math.round(transferTaxTotal === null ? recordingFee : recordingFee + transferTaxTotal),
+    totalExcludes,
     breakdown: info,
   };
 }
