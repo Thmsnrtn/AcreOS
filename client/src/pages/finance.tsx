@@ -198,7 +198,6 @@ export default function FinancePage({ embedded = false }: { embedded?: boolean }
   const mayRecordPayments = financePermissions?.role === "owner" || financePermissions?.role === "admin";
   const recordPaymentFromList = useRecordPayment();
   const [isExporting, setIsExporting] = useState(false);
-  const [isQboSyncing, setIsQboSyncing] = useState(false);
   const { mutate: deleteNote, isPending: isDeleting } = useDeleteNote();
   const { toast } = useToast();
   const { data: portfolioSummary } = useQuery<{
@@ -239,24 +238,6 @@ export default function FinancePage({ embedded = false }: { embedded?: boolean }
     }
   };
 
-
-  const handleQboSync = async () => {
-    setIsQboSyncing(true);
-    try {
-      const res = await fetch('/api/bookkeeping/quickbooks/sync', { method: 'POST', credentials: 'include' });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Sync failed');
-      toast({ title: "QuickBooks sync complete", description: `Synced ${data.synced} payment(s)${data.errors > 0 ? `, ${data.errors} error(s)` : ''}.` });
-    } catch (err: any) {
-      toast({
-        title: "Couldn't sync to QuickBooks",
-        description: `${err?.message || "Sync couldn't complete"} — no records were changed.`,
-        variant: "destructive",
-      });
-    } finally {
-      setIsQboSyncing(false);
-    }
-  };
 
   const enrichedNotes: NoteWithDetails[] = (notes || []).map(note => ({
     ...note,
@@ -350,15 +331,10 @@ export default function FinancePage({ embedded = false }: { embedded?: boolean }
                 {isExporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" /> : <Download className="w-4 h-4 mr-2" aria-hidden="true" />}
                 Export CSV
               </Button>
-              <Button
-                variant="outline"
-                onClick={handleQboSync}
-                disabled={isQboSyncing}
-                data-testid="button-qbo-sync"
-              >
-                {isQboSyncing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" /> : <RefreshCw className="w-4 h-4 mr-2" aria-hidden="true" />}
-                Sync to QuickBooks
-              </Button>
+              {/* "Sync to QuickBooks" removed 2026-10-20: no route can obtain a
+                  QuickBooks access token (no OAuth code exchange exists), so the
+                  button could never succeed for any customer. The honest path is
+                  the ledger export at GET /api/accounting/qbo-export (IIF/JSON). */}
               {mayRecordPayments && (
                 <Button
                   variant="outline"

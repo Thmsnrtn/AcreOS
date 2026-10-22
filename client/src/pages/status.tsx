@@ -3,7 +3,7 @@ import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, CheckCircle2, AlertTriangle, XCircle, RefreshCw } from "lucide-react";
+import { ArrowLeft, CheckCircle2, AlertTriangle, XCircle, RefreshCw, MinusCircle } from "lucide-react";
 import { StatusDot } from "@/components/ui/status-dot";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryErrorState } from "@/components/query-error-state";
@@ -18,6 +18,9 @@ const STATUS_CONFIG: Record<string, { tone: Tone; icon: typeof CheckCircle2; lab
   degraded:    { tone: "amber", icon: AlertTriangle, label: "Degraded" },
   outage:      { tone: "red",   icon: XCircle, label: "Outage" },
   unknown:     { tone: "gray",  icon: AlertTriangle, label: "Unknown" },
+  // A service with no credentials on this deployment. Not "Operational" — it
+  // is not running at all — and not an outage either. Excluded from the overall.
+  not_configured: { tone: "gray", icon: MinusCircle, label: "Not configured" },
 };
 
 // Branded names need explicit casing — Tailwind's `capitalize` only
@@ -145,7 +148,7 @@ export default function StatusPage() {
                       </span>
                       <Badge variant="outline" className="gap-1.5">
                         <SvcIcon
-                          className={`w-3.5 h-3.5 ${service.status === "operational" ? "text-acr-pos" : service.status === "degraded" ? "text-acr-warn" : "text-acr-neg"}`}
+                          className={`w-3.5 h-3.5 ${svc.tone === "green" ? "text-acr-pos" : svc.tone === "amber" ? "text-acr-warn" : svc.tone === "gray" ? "text-muted-foreground" : "text-acr-neg"}`}
                           aria-hidden="true"
                         />
                         {svc.label}

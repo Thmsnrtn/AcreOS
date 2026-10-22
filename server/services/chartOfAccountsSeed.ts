@@ -107,9 +107,14 @@ export async function seedChartOfAccountsForOrg(
     isActive: true,
   }));
 
+  // ON CONFLICT on the (organization_id, account_number) unique index: two
+  // seeds racing past the count check above (org creation and the GL
+  // self-heal in recognitionWorker can both fire for a new org) produce one
+  // chart, not a unique-violation for the loser.
   const inserted = await db
     .insert(chartOfAccounts)
     .values(rows)
+    .onConflictDoNothing({ target: [chartOfAccounts.organizationId, chartOfAccounts.accountNumber] })
     .returning({ id: chartOfAccounts.id });
 
   logger.info("chartOfAccountsSeed.created", {

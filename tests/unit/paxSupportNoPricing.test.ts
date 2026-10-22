@@ -45,6 +45,10 @@ const H = vi.hoisted(() => ({
   proposePendingAction: vi.fn(async (input: any) => ({ id: 77, status: "pending", ...input })),
   stripeInvoicesPay: vi.fn(async () => ({ id: "in_1", status: "paid" })),
   stripeCustomersUpdate: vi.fn(async () => ({})),
+  stripeInvoicesVoid: vi.fn(async () => ({ id: "in_1", status: "void" })),
+  // The invoice's owner, as Stripe reports it. retry_payment must match it to
+  // org.stripeCustomerId before paying (2026-10-20).
+  stripeInvoicesRetrieve: vi.fn(async (id: string) => ({ id, customer: "cus_1" as string | { id: string } })),
   dbInsertValues: vi.fn(async () => undefined),
   recordPaxEffect: vi.fn(async () => ({ written: true })),
 }));
@@ -82,7 +86,7 @@ vi.mock("../../server/utils/logger", () => ({
 vi.mock("openai", () => ({ default: class {} }));
 vi.mock("stripe", () => ({
   default: class {
-    invoices = { pay: H.stripeInvoicesPay, voidInvoice: vi.fn() };
+    invoices = { pay: H.stripeInvoicesPay, voidInvoice: H.stripeInvoicesVoid, retrieve: H.stripeInvoicesRetrieve };
     customers = { update: H.stripeCustomersUpdate };
     billingPortal = { sessions: { create: vi.fn(async () => ({ url: "https://billing" })) } };
   },
@@ -94,7 +98,7 @@ vi.mock("../../server/services/propertyEnrichment.js", () => ({ propertyEnrichme
 vi.mock("../../server/services/complianceValidator", () => ({ validateCompliance: vi.fn() }));
 vi.mock("../../server/services/aiSpendGuard", () => ({ assertAiSpendAllowed: vi.fn(), recordExternalAiSpend: vi.fn(), meteredChatCompletion: (c: any, p: any, _m: unknown, o?: unknown) => c.chat.completions.create(p, o) }));
 
-import { executeSupportTool, supportToolDefinitions, APPLY_CREDIT_REFUSAL } from "../../server/ai/supportAgent";
+import { executeSupportTool, supportToolDefinitions, APPLY_CREDIT_REFUSAL, VOID_INVOICE_REFUSAL } from "../../server/ai/supportAgent";
 
 const org = { id: 7, name: "Test Org", ownerId: "u-owner", stripeCustomerId: "cus_1" } as any;
 const CREDIT = { fix_type: "apply_credit", amount_cents: 500, reason: "goodwill" };
@@ -219,5 +223,70 @@ describe("apply_credit — the source the model reads", () => {
     expect(guardAt).toBeGreaterThan(fnAt);
     expect(guardAt).toBeLessThan(readAt);
     expect(readAt).toBeLessThan(switchAt);
+  });
+});
+
+
+/**
+ * cancel_pending_invoice — voiding an AcreOS invoice is the same pricing
+ * concession as a credit (founder hard-stop). Until 2026-10-20 it passed a
+ * model-supplied invoice_id straight to stripe.invoices.voidInvoice, with no
+ * check the invoice was even this customer's.
+ */
+describe("cancel_pending_invoice — refused before any gate, everywhere", () => {
+  const VOID = { fix_type: "cancel_pending_invoice", invoice_id: "in_1", reason: "customer asked" };
+
+  it.each(matrix)("stance %s, pause %s: refuses; voidInvoice, memory and the kernel untouched", async (stance, pause) => {
+    setState(stance, pause);
+    const result = await executeSupportTool("apply_billing_fix", { ...VOID }, org, 12, { origin: "support", userId: "u-owner" });
+    expect(result.success).toBe(false);
+    expect(result.error).toBe(VOID_INVOICE_REFUSAL);
+    expect(H.stripeInvoicesVoid).not.toHaveBeenCalled();
+    expect(H.proposePendingAction).not.toHaveBeenCalled();
+    expect(H.getPaxControls).not.toHaveBeenCalled();
+  });
+
+  it("even the trusted replay of an old frozen row cannot void", async () => {
+    const result = await executeSupportTool("apply_billing_fix", { ...VOID }, org, 12, {
+      trustedApproval: true,
+      origin: "approval_replay",
+      userId: "u-owner",
+    });
+    expect(result.success).toBe(false);
+    expect(result.error).toBe(VOID_INVOICE_REFUSAL);
+    expect(H.stripeInvoicesVoid).not.toHaveBeenCalled();
+  });
+
+  it("the enum the model reads no longer offers it", () => {
+    const def = supportToolDefinitions.apply_billing_fix as any;
+    expect(def.parameters.properties.fix_type.enum).not.toContain("cancel_pending_invoice");
+  });
+});
+
+describe("retry_payment — only this customer's invoice", () => {
+  const RETRY = { fix_type: "retry_payment", invoice_id: "in_foreign", reason: "card updated" };
+  const replay = { trustedApproval: true, origin: "approval_replay" as const, userId: "u-owner" };
+
+  it("refuses an invoice owned by another Stripe customer and never pays it", async () => {
+    H.stripeInvoicesRetrieve.mockResolvedValueOnce({ id: "in_foreign", customer: "cus_SOMEONE_ELSE" });
+    const result = await executeSupportTool("apply_billing_fix", { ...RETRY }, org, 12, replay);
+    expect(result.success).toBe(false);
+    expect(H.stripeInvoicesRetrieve).toHaveBeenCalledWith("in_foreign");
+    expect(H.stripeInvoicesPay).not.toHaveBeenCalled();
+    expect(H.dbInsertValues).not.toHaveBeenCalled();
+  });
+
+  it("refuses an expanded customer object that is not this customer", async () => {
+    H.stripeInvoicesRetrieve.mockResolvedValueOnce({ id: "in_foreign", customer: { id: "cus_other" } });
+    const result = await executeSupportTool("apply_billing_fix", { ...RETRY }, org, 12, replay);
+    expect(result.success).toBe(false);
+    expect(H.stripeInvoicesPay).not.toHaveBeenCalled();
+  });
+
+  it("positive control: the customer's own invoice (expanded form) is paid", async () => {
+    H.stripeInvoicesRetrieve.mockResolvedValueOnce({ id: "in_mine", customer: { id: "cus_1" } });
+    const result = await executeSupportTool("apply_billing_fix", { ...RETRY, invoice_id: "in_mine" }, org, 12, replay);
+    expect(result.success).toBe(true);
+    expect(H.stripeInvoicesPay).toHaveBeenCalledWith("in_mine");
   });
 });
