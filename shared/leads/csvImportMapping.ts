@@ -23,6 +23,8 @@
  * non-empty value in column order wins — never the last column.
  */
 
+import { classifyParcelFactHeader } from "./parcelFacts";
+
 /** One request to /api/leads/csv-import carries at most this many rows. */
 export const CSV_IMPORT_MAX_ROWS_PER_REQUEST = 500;
 
@@ -45,6 +47,14 @@ export const CSV_IMPORT_TARGET_FIELDS = [
   { id: "email", label: "Email" },
   { id: "apn", label: "APN / Parcel number" },
   { id: "doNotContact", label: "Do-not-contact / DNC flag" },
+  // Parcel facts (shared/leads/parcelFacts.ts). The assessor's figure and a
+  // market estimate are different facts and land in different columns.
+  { id: "acreage", label: "Acreage (acres)" },
+  { id: "assessedValue", label: "Assessed value (county)" },
+  { id: "estimatedValue", label: "Estimated / market value" },
+  { id: "taxDelinquent", label: "Tax-delinquent flag" },
+  { id: "taxDelinquentAmount", label: "Delinquent amount / taxes owed" },
+  { id: "taxDelinquentYears", label: "Years delinquent" },
 ] as const;
 
 export type CsvImportTargetField = (typeof CSV_IMPORT_TARGET_FIELDS)[number]["id"];
@@ -54,6 +64,8 @@ type AddressKind = "mailing" | "property" | "bare";
 
 interface Classified {
   field: CsvImportTargetField;
+  /** A county "Land Value": the assessed value only when no assessed column exists. */
+  landValue?: boolean;
   /** Set for address parts, so suggestMapping can resolve a bare column. */
   part?: AddressPart;
   kind?: AddressKind;
@@ -104,6 +116,12 @@ function classify(header: string): Classified {
   if (has(/\b(first|given)\b/) && has(/\b(name|owner)\b/)) return { field: "firstName" };
   if (has(/\bsurname\b/) || (has(/\b(last|family)\b/) && has(/\b(name|owner)\b/))) return { field: "lastName" };
 
+  // Parcel facts before address parts and the APN: "State Assessed Value" is
+  // not a state, and "Parcel Acres" is not a parcel number.
+  const fact = classifyParcelFactHeader(h);
+  if (fact === "landValue") return { field: "skip", landValue: true };
+  if (fact) return { field: fact };
+
   // Address parts, with which place they describe.
   const kind: AddressKind = has(/\b(mail|mailing|owner)\b/)
     ? "mailing"
@@ -143,9 +161,11 @@ export function suggestMapping(headers: string[]): Record<string, CsvImportTarge
     if (c.part === "cityStateZip") ["city", "state", "zip"].forEach((p) => explicitMailing.add(p as AddressPart));
     else explicitMailing.add(c.part);
   }
+  const hasAssessed = classified.some(({ c }) => c.field === "assessedValue");
   const mapping: Record<string, CsvImportTargetField> = {};
   for (const { header, c } of classified) {
     let field = c.field;
+    if (c.landValue && !hasAssessed) field = "assessedValue";
     if (c.kind === "bare" && c.part) {
       const taken =
         c.part === "cityStateZip"
@@ -174,12 +194,15 @@ export function parseCsv(text: string): { headers: string[]; rows: string[][] } 
   for (let i = 0; i < text.length; i++) {
     const c = text[i];
     if (c === '"') {
-      // Treat "" inside quotes as literal "
+      // The quotes stay in the line: parseLine needs them to keep a quoted
+      // comma ("$45,000", "SMITH, JOHN") inside its cell. Stripping them here
+      // split every such cell in two and shifted the rest of the row.
       if (inQuotes && text[i + 1] === '"') {
-        buf += '"';
+        buf += '""';
         i++;
       } else {
         inQuotes = !inQuotes;
+        buf += '"';
       }
     } else if ((c === "\n" || c === "\r") && !inQuotes) {
       if (buf.length > 0 || lines.length === 0) lines.push(buf);

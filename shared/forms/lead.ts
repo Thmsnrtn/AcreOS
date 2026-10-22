@@ -207,6 +207,11 @@ export const insertLeadSchema = z.object({
   taxDelinquent: pgBoolean().nullable().optional(),
   estimatedValue: pgNumeric().nullable().optional(),    // numeric → string
   acreage: pgNumeric().nullable().optional(),           // numeric → string
+  // Migration 0286 — the county's assessed value (≠ estimatedValue) and the
+  // list's amount owed / years delinquent (shared/leads/parcelFacts.ts).
+  assessedValue: pgNumeric().nullable().optional(),     // numeric → string
+  taxDelinquentAmount: pgNumeric().nullable().optional(), // numeric → string
+  taxDelinquentYears: pgInteger().nullable().optional(),
 
   // ── Campaign attribution ──────────────────────────────────────────────────
   sourceTrackingCode: pgText().nullable().optional(),
