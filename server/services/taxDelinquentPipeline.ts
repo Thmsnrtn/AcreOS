@@ -26,12 +26,15 @@ import { splitOwnerName } from "@shared/parcel/ownerName";
 import { clock } from "../utils/clock";
 import { stampOwnerSuppression } from "./trust/ownerSuppression";
 import { hasWrittenSmsConsent } from "./leadContactability";
+import { leadParcelFactsFromRow, parcelFactCellsFromRecord, type LeadParcelFactColumns } from "@shared/leads/parcelFacts";
 
 // ─── Tax-delinquent payload convention ──────────────────────────────────────
-// The leads table has no apn/county/taxDelinquent/delinquentAmount/metadata/
-// propertyAddress columns. Tax-delinquent imports flag the lead with the
-// TAX_DELINQUENT_TAG in `tags` and stash the extra structured fields as JSON in
-// the `notes` column.
+// Tax-delinquent imports flag the lead with the TAX_DELINQUENT_TAG in `tags`
+// and stash the extra structured fields as JSON in the `notes` column. Since
+// migration 0286 the parcel facts — acreage, assessed / estimated value,
+// tax_delinquent, amount owed, years delinquent — ALSO land on the lead's own
+// columns (shared/leads/parcelFacts.ts), so the lead list and detail show
+// them; the payload below is still what getLeads reads.
 //
 // KNOWN DEBT (groundwork, no schema change this wave): JSON-in-notes makes
 // these fields unqueryable — dedup, state/county filtering, and equity math
@@ -85,6 +88,8 @@ export interface NormalizedDelinquentRecord {
   delinquentAmount?: number;
   delinquentYears?: number;
   acres?: number;
+  /** The lead's parcel-fact columns (shared/leads/parcelFacts.ts). */
+  facts: LeadParcelFactColumns;
   rawRow: RawDelinquentRecord;
 }
 
@@ -122,18 +127,6 @@ function findColumn(headers: string[], aliases: string[]): string | null {
   return null;
 }
 
-function parseAmount(val: string): number | undefined {
-  if (!val) return undefined;
-  const cleaned = val.replace(/[$,\s]/g, "");
-  const n = parseFloat(cleaned);
-  return isNaN(n) ? undefined : n;
-}
-
-function parseAcres(val: string): number | undefined {
-  if (!val) return undefined;
-  const n = parseFloat(val.replace(/[^0-9.]/g, ""));
-  return isNaN(n) ? undefined : n;
-}
 
 // ─── CSV Parser (no external dep) ────────────────────────────────────────────
 
@@ -202,6 +195,17 @@ function normalizeRecords(raw: RawDelinquentRecord[]): NormalizedDelinquentRecor
       const ownerName = ownerCol ? row[ownerCol]?.trim() : "";
       if (!apn || !ownerName) return null;
 
+      // The shared parsers (refuse, never 0): the alias columns found above
+      // win, and any other parcel-fact column ("Assessed Value", "Market
+      // Value", "Delinquent") is classified by its header.
+      const facts = leadParcelFactsFromRow({
+        ...parcelFactCellsFromRecord(row),
+        ...(acresCol ? { acreage: row[acresCol] } : {}),
+        ...(amountCol ? { taxDelinquentAmount: row[amountCol] } : {}),
+        ...(yearsCol ? { taxDelinquentYears: row[yearsCol] } : {}),
+      });
+      const num = (v: string | null) => (v === null ? undefined : Number(v));
+
       return {
         apn,
         ownerName,
@@ -209,9 +213,10 @@ function normalizeRecords(raw: RawDelinquentRecord[]): NormalizedDelinquentRecor
         city: cityCol ? row[cityCol]?.trim() : undefined,
         state: stateCol ? row[stateCol]?.trim() : undefined,
         zipCode: zipCol ? row[zipCol]?.trim() : undefined,
-        delinquentAmount: amountCol ? parseAmount(row[amountCol]) : undefined,
-        delinquentYears: yearsCol ? parseInt(row[yearsCol]) || undefined : undefined,
-        acres: acresCol ? parseAcres(row[acresCol]) : undefined,
+        delinquentAmount: num(facts.taxDelinquentAmount),
+        delinquentYears: facts.taxDelinquentYears ?? undefined,
+        acres: num(facts.acreage),
+        facts,
         rawRow: row,
       };
     })
@@ -364,9 +369,8 @@ export async function processTaxDelinquentImport(
     // surname, so "SMITH FAMILY TRUST" became first "SMITH FAMILY", last "TRUST").
     const { firstName, lastName } = splitOwnerName(rec.ownerName);
 
-    // leads has no createdBy/apn/propertyAddress/county/zipCode/taxDelinquent/
-    // delinquentAmount/metadata columns. Map to the real columns (address, zip)
-    // and stash the rest in the notes JSON payload, flagged via tags.
+    // Map to the real columns (address, zip, the parcel facts) and stash the
+    // rest in the notes JSON payload, flagged via tags.
     toInsert.push({
       organizationId: orgId,
       firstName,
@@ -375,6 +379,10 @@ export async function processTaxDelinquentImport(
       city: rec.city,
       state: rec.state || options.state,
       zip: rec.zipCode,
+      // The parcel facts on the lead's own columns. Imported AS a
+      // tax-delinquent list, so delinquent unless a column says otherwise.
+      ...rec.facts,
+      taxDelinquent: rec.facts.taxDelinquent ?? true,
       source: options.defaultSource || "tax_delinquent",
       status: "new",
       // Multi-factor import-time score. Marcus: "Real scoring needs
@@ -392,6 +400,9 @@ export async function processTaxDelinquentImport(
         delinquentAmount: rec.delinquentAmount?.toString(),
         delinquentYears: rec.delinquentYears,
         acres: rec.acres,
+        // A real assessed value from the list — what mapLeadToDelinquentRow
+        // reads as valueProvenance "assessed". Absent → absent, never invented.
+        ...(rec.facts.assessedValue !== null ? { propertyValueCents: Math.round(Number(rec.facts.assessedValue) * 100) } : {}),
         importedAt: clock.now().toISOString(),
       }),
       createdAt: clock.now(),
