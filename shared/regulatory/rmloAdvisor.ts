@@ -267,10 +267,10 @@ export function assessHabitualness(input: HabitualnessInput): HabitualnessOutput
       tier: "exempt_de_minimis",
       rmloLicensingPosture: "likely_exempt",
       rationale:
-        "≤1 loan per 12 months on the seller's own residence falls inside the federal 1-property-natural-person exemption (12 CFR 1026.36(a)(4)(ii)) and is generally below state habitualness triggers. Reg-Z still imposes disclosure obligations on the origination.",
+        "≤1 seller-financed loan per 12 months can fall inside the federal 1-property seller-financer exclusion (12 CFR 1026.36(a)(5)) and is generally below state habitualness triggers. Reg-Z still imposes disclosure obligations on the origination.",
       actions: [
         "Confirm the seller is a natural person, estate, or trust (entities do NOT qualify for the 1-property exemption).",
-        "Verify the note's terms — fixed-rate OR balloon ≥ 60 months, no negative amortization.",
+        "Verify the note's terms for 12 CFR 1026.36(a)(5): no negative amortization, and a fixed rate or one that cannot change for 5+ years. A balloon is permitted under this exclusion (it is NOT under the 3-property exclusion, which requires full amortization).",
         "Keep documentation of the exemption basis in the deal file.",
       ],
       stateNote,

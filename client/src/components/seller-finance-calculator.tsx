@@ -138,10 +138,11 @@ export default function SellerFinanceCalculator({
       : finalBalance
     : 0;
   const balloonYearsFromOrigination = hasBalloon ? balloonMonth / 12 : 0;
-  // Reg-Z's seller-finance natural-person exemption (12 CFR 1026.36(a)(4)(ii))
-  // disqualifies any balloon under 60 months. HOEPA high-cost mortgages
-  // (1026.32) prohibit balloons except for narrow bridge-loan carve-outs.
-  // We flag the under-5-year case so the operator sees it before close.
+  // Any balloon (of any length) means the note is not fully amortizing, which
+  // loses Reg-Z's 3-property seller-financer exclusion (12 CFR
+  // 1026.36(a)(4)(iii)(A)); the 1-property exclusion ((a)(5)) permits one.
+  // HOEPA high-cost mortgages (1026.32(d)(1)) prohibit balloons except for
+  // narrow bridge-loan carve-outs. The under-5-year case is flagged too.
   const balloonUnderFiveYears = hasBalloon && balloonMonth < 60;
 
   // Notify parent on value change
@@ -342,11 +343,12 @@ export default function SellerFinanceCalculator({
                       <span className="font-semibold">
                         Balloon under 5 years —{" "}
                       </span>
-                      A balloon payment due in fewer than 60 months
-                      disqualifies the federal seller-finance natural-person
-                      exemption (12 CFR 1026.36(a)(4)(ii)) AND is prohibited on
-                      HOEPA high-cost mortgages (12 CFR 1026.32(d)(1)). Confirm
-                      with counsel before originating.
+                      A note with any balloon is not fully amortizing, so it
+                      cannot use the federal 3-property seller-financer
+                      exclusion (12 CFR 1026.36(a)(4)); only the 1-property
+                      exclusion ((a)(5)) allows one. Balloons are also
+                      prohibited on HOEPA high-cost mortgages (12 CFR
+                      1026.32(d)(1)). Confirm with counsel before originating.
                     </p>
                   )}
                   <p className="text-micro text-muted-foreground italic pt-1">

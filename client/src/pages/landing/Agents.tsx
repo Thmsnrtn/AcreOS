@@ -72,7 +72,6 @@ const SURFACES = [
     bullets: [
       "Tracks loan payments + sends receipts",
       "Monitors title status across counties",
-      "Files 1098s and year-end statements",
       "Catches missed payments before the operator does",
     ],
     sample: {

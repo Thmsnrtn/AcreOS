@@ -531,6 +531,19 @@ export function buildClosingChecklist(
 }
 
 /**
+ * One answer to "is this deal seller-financed?" for every checklist caller.
+ * The deal's analysis carries the carried note's rate; a cash deal has none.
+ * The auto-generated checklist hard-coded `false` here (best-in-class audit
+ * 2026-10-20), so the note, deed-of-trust and Dodd-Frank items never
+ * appeared on the seller-financed deals they exist for.
+ */
+export function dealIsSellerFinanced(deal: { analysisResults?: unknown } | null | undefined): boolean {
+  const analysis = deal?.analysisResults as { interestRate?: unknown } | null | undefined;
+  const rate = analysis?.interestRate;
+  return typeof rate === "number" ? rate > 0 : !!rate;
+}
+
+/**
  * Generate and persist the closing checklist for a deal. Idempotent: a row
  * that already holds the closing items is returned unchanged.
  *

@@ -94,7 +94,7 @@ export const VERTICAL_CONTEXTS: Record<PaxVerticalContextKey, {
   note_originator: {
     noun: "Note Originator",
     domain:
-      "seller-financed origination — structuring a compliant note at closing: Dodd-Frank seller-financer exclusions (the 1-property natural-person and 3-property safe harbors, 12 CFR 1026.36(a)(4)), RMLO involvement, Reg-Z applicability, balloon restrictions, state usury caps",
+      "seller-financed origination — structuring a compliant note at closing: Dodd-Frank seller-financer exclusions (the 3-property exclusion, 12 CFR 1026.36(a)(4), which forbids any balloon, and the 1-property exclusion for a natural person, estate or trust, 12 CFR 1026.36(a)(5), which allows one), RMLO involvement, Reg-Z applicability, balloon restrictions, state usury caps",
     vocabularyNotes:
       "Use 'RMLO,' '3-property exemption,' '1-property natural-person exemption,' 'balloon,' 'usury cap,' 'business-purpose vs consumer-purpose,' 'SCRA,' 'HOEPA threshold.' Frame answers as a compliance posture plus a checklist, and always flag that posture output is not legal advice — verify with counsel.",
   },

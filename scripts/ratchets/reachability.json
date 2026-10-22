@@ -6,7 +6,7 @@
   "description": "REACHABILITY ratchet. `tsc`, the test suite and every existing lint gate check TYPES and BEHAVIOUR; nothing checked whether a thing is REACHED. CLAUDE.md names 'built but unwired' as this repo's single most common defect, and every instance (services/lateFees, services/respa/earlyIntervention, calculateFlipAnalysis, taxSaleAuctions/taxSaleListings, achMandateSetup/achAutopayRun, rental_units.kind='pad', routes-contract-chain.ts, the rent-roll importer's unitKind arg) shipped GREEN and was found hours later by a manual audit. This converts that recurring audit into CI. Every count is strictly down-only, and raising one requires explicit founder/Iris-CTO sign-off (see lastBumpNote for the exceptions actually invoked): exports in server/services|jobs with no production call site; pgTables with no writer; pgTables with no reader; routes-*.ts never mounted; exports the gate cannot assert on because their module is dynamically imported in a way that hides which exports are touched; and service/job files nothing imports at all. Family 1 is TWO rules, split 2026-08-20: `unreachedExports` is the accusation (nothing anywhere references the symbol) and `internalOnlyExports` is the narrower complaint (exported, but used only inside its own module — drop the keyword, keep the code). They are baselined apart because merged, the second buried the first four to one. The count of families is deliberately not stated here — it said 'four' for as long as there were four, and would have said it forever. THE CHEAPEST WAY TO SATISFY THIS GATE IS DELETION — the north star is a smaller codebase, and every reduction must be locked in by the commit that earned it (a stale-high baseline FAILS, same as `as-any`).",
   "baselines": {
     "unreachedExports": 417,
-    "internalOnlyExports": 1226,
+    "internalOnlyExports": 1222,
     "tablesNoWriter": 57,
     "tablesNoReader": 63,
     "unregisteredRoutes": 4,
@@ -479,6 +479,16 @@
       "kind": "export",
       "id": "server/services/offerLetterPdf.ts::OFFER_LETTER_STRINGS",
       "reason": "TEST-INTROSPECTION SEAM. The offer letter's English and Spanish strings, consumed inside its own module by generateOfferLetterPdf; exported so tests/unit/outreachTemplatesBilingual.test.ts can prove the Spanish letter has every English key, keeps the binding notice in English and carries the English-controls note, without parsing a PDF. REVOCATION: if another module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "server/services/form1098Batch.ts::borrowerCopy1098",
+      "reason": "TEST-INTROSPECTION SEAM (best-in-class audit, 2026-10-20). The borrower-portal Form 1098 derivation with injected loaders; production reaches it through borrowerCopy1098ForNote in the same module. Exported so borrowerPortal1098IsTheFiledForm.test.ts proves Box 2 is the Jan 1 principal without a database. REVOCATION: if a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "server/services/form1098Batch.ts::BORROWER_1098_NOT_ISSUABLE",
+      "reason": "TEST-INTROSPECTION SEAM (best-in-class audit, 2026-10-20). The borrower-facing refusal borrowerCopy1098 returns; the test asserts the exact text. REVOCATION: if a production module imports it, remove this entry."
     },
     {
       "kind": "export",
