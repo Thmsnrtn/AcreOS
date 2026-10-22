@@ -46,7 +46,7 @@
       "body": "Ohio R.C. §319.54 sets the state conveyance fee at $1 per $1,000 of consideration on most real-property transfers, with each county able to add a permissive fee up to $3 per $1,000 (most do). A flipper or note investor recording a sheriff’s deed pays the conveyance fee plus standard recording. Note assignments do not trigger the conveyance fee but do incur recording fees."
     }
   ],
-  "valueProp": "AcreOS runs Ohio note servicing mechanics-first: usury screening at creation, monthly Reg-Z periodic statements with recorded skip reasons, nightly delinquency aging with alerts only on real worsening, and a deterministic five-rung dunning ladder carrying the federal debt-collection notice automatically. Borrowers get a portal with payments on your own connected processor, ACH autopay, and payoff quotes recorded to a durable ledger; 1098s batch for IRS e-file. Ohio's judicial foreclosure is not automated — AcreOS tracks the loss-mitigation case file while the filings stay with your counsel.",
+  "valueProp": "AcreOS runs Ohio note servicing mechanics-first: usury screening at creation, monthly Reg-Z periodic statements with recorded skip reasons, nightly delinquency aging with alerts only on real worsening, and a deterministic five-rung dunning ladder carrying the federal debt-collection notice automatically. Borrowers get a portal with payments on your own connected processor, ACH autopay, and payoff quotes recorded to a durable ledger. Ohio's judicial foreclosure is not automated — AcreOS tracks the loss-mitigation case file while the filings stay with your counsel.",
   "faq": [
     {
       "q": "How long does an Ohio foreclosure take?",

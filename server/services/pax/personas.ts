@@ -294,7 +294,7 @@ const NOTES: VerticalPersona = {
   ],
   expertReferences: [
     "CFPB mortgage-servicing rules: 12 C.F.R. §1026.41 (periodic statements), §1026.36(c) (prompt crediting, suspense, late-fee non-pyramiding), §1024.39 (early intervention), §1024.17 (annual escrow analysis).",
-    "Dodd-Frank seller-financing exclusions — 12 CFR 1026.36(a)(4) 3-property and 1-property natural-person safe harbors; HPML / HOEPA pricing screens against FFIEC APOR.",
+    "Dodd-Frank seller-financing exclusions — 12 CFR 1026.36(a)(4) 3-property and 1026.36(a)(5) 1-property seller-financer exclusions; HPML / HOEPA pricing screens against FFIEC APOR.",
     "SCRA (Servicemembers Civil Relief Act): pre-foreclosure check + redemption tolling.",
     "IRS information returns for note interest (Forms 1098 / 1099-INT, Form 1096, Pub 1220 FIRE) — which applies, and whether the holder files at all, is for the investor's tax adviser; AcreOS withholds its 1099-INT output pending that review (DEFECT-0101).",
     "State servicer-licensing and usury landscape — verified per state with counsel.",
@@ -473,8 +473,8 @@ verified with their own attorney — never give legal advice (immutable #12).
 //     (receipt + ledger paper trail for tax time and disputes) and the four
 //     landlord templates (renewal countdown, triage, receipt, lease expiry);
 //   - doddFrankChecker: a manufactured home IS a dwelling under Reg-Z, the
-//     12 CFR 1026.36(a)(4) safe harbors are counted per 12 months, a balloon
-//     under 60 months breaks the natural-person exemption, and HOEPA's APR
+//     12 CFR 1026.36(a)(4)/(a)(5) exclusions are counted per 12 months, any
+//     balloon breaks the 3-property exclusion, and HOEPA's APR
 //     trigger runs tighter (APOR + 8.5%) for small loans secured by personal
 //     property, including chattel-titled manufactured homes — the analysis
 //     that governs lease-to-own POH conversions;
@@ -513,12 +513,12 @@ const MOBILE_HOMES: VerticalPersona = {
     "resident (on a TOH pad they own the home; you lease the ground)",
   ],
   exampleDealShape:
-    "Park operator runs the pads as lot leases on the rentals stack: each resident's lot lease is a term lease with monthly lot rent, a deposit, and a renewal date; every lot-rent payment posts to the ledger and emails the resident a receipt — the paper trail that settles disputes and carries tax season. Park infrastructure (water, sewer, roads, common areas) runs through maintenance dispatch to 1099-tracked vendors, with private wells and septic budgeted as capex rather than discovered as surprises. The strategic work is converting park-owned homes to tenant-owned: selling the home to the resident takes the operator out of the home-repair business and leaves clean lot rent — but the moment that sale is financed, a manufactured home is a dwelling, and the Dodd-Frank analysis applies: safe harbors counted per trailing 12 months, a balloon under five years breaking the natural-person exemption, and the high-cost APR trigger running tighter on small chattel loans. Sixty days before each lot lease ends, the renewal decision re-anchors lot rent to submarket inside the state's notice window.",
+    "Park operator runs the pads as lot leases on the rentals stack: each resident's lot lease is a term lease with monthly lot rent, a deposit, and a renewal date; every lot-rent payment posts to the ledger and emails the resident a receipt — the paper trail that settles disputes and carries tax season. Park infrastructure (water, sewer, roads, common areas) runs through maintenance dispatch to 1099-tracked vendors, with private wells and septic budgeted as capex rather than discovered as surprises. The strategic work is converting park-owned homes to tenant-owned: selling the home to the resident takes the operator out of the home-repair business and leaves clean lot rent — but the moment that sale is financed, a manufactured home is a dwelling, and the Dodd-Frank analysis applies: exclusions counted per trailing 12 months, any balloon payment taking the sale out of the 3-property exclusion (the 1-property exclusion allows a balloon but only for a natural person, estate or trust), and the high-cost APR trigger running tighter on small chattel loans. Sixty days before each lot lease ends, the renewal decision re-anchors lot rent to submarket inside the state's notice window.",
   commonMistakes: [
     "Inheriting deferred infrastructure — a private well or septic system without a capex budget reprices the whole park after close.",
     "Underestimating collection friction on POH inventory — home rent plus lot rent from the same struggling resident is two delinquencies wearing one name.",
     "Blurring lot rent and home rent into one number — the ground lease and the home are different assets with different legal postures; keep the ledger's charges on the lot lease and paper the home deal separately.",
-    "Financing a POH sale to a resident as if Dodd-Frank doesn't apply — a manufactured home is a dwelling; the safe harbors count per 12 months, a balloon under five years breaks the natural-person exemption, and small personal-property loans hit the high-cost APR trigger sooner.",
+    "Financing a POH sale to a resident as if Dodd-Frank doesn't apply — a manufactured home is a dwelling; the exclusions count per 12 months, any balloon takes the sale out of the 3-property exclusion (the 1-property one allows a balloon only for a natural person, estate or trust), and small personal-property loans hit the high-cost APR trigger sooner.",
     "Not verifying where the home's title lives — DMV/VIN-titled versus converted to real property changes what secures a home sale and where the paperwork records.",
     "Letting lot leases drift with no renewal moment — the 60-day countdown is where lot rent gets re-anchored to submarket; skip it and the rent roll quietly compounds below market.",
   ],
@@ -531,7 +531,7 @@ const MOBILE_HOMES: VerticalPersona = {
     "Seller-financed home sales in the trailing 12 months against the Dodd-Frank safe-harbor limits",
   ],
   expertReferences: [
-    "Dodd-Frank / Reg-Z seller-finance rules as they bite manufactured housing — 12 CFR 1026.36(a)(4) safe harbors; HOEPA's tighter APR trigger for small loans secured by personal property (chattel-titled homes).",
+    "Dodd-Frank / Reg-Z seller-finance rules as they bite manufactured housing — 12 CFR 1026.36(a)(4) and (a)(5) seller-financer exclusions; HOEPA's tighter APR trigger for small loans secured by personal property (chattel-titled homes).",
     "State titling regimes for manufactured homes — DMV/VIN title vs conversion to real property; verify per state before financing or selling a home.",
     "State landlord-tenant / MHP statutes on lot leases, deposits, notice windows, and lot-rent increases — attorney-reviewed state by state.",
     "Local submarket lot-rent surveys — the pricing anchor for renewal decisions.",
