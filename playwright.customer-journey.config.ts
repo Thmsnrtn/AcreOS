@@ -213,9 +213,12 @@ export default defineConfig({
     trace: "on-first-retry",
     screenshot: "on",
     video: "retain-on-failure",
-    extraHTTPHeaders: process.env.E2E_TEST_AUTH_TOKEN
-      ? { "x-e2e-test-auth": process.env.E2E_TEST_AUTH_TOKEN }
-      : undefined,
+    // No extraHTTPHeaders. This used to send the E2E token as
+    // `x-e2e-test-auth` — a header the server never reads (it reads
+    // `x-e2e-auth-token`, server/auth/testAuth.ts) — on EVERY request to EVERY
+    // origin, handing the secret to each third party the pages load. The spec
+    // presents the token itself, scoped to the target origin (seedTestAuth in
+    // signup-to-first-value.spec.ts), and only after the signed-out steps.
   },
   projects,
   // No webServer block when running against TARGET_URL — the CI runner

@@ -136,18 +136,31 @@ async function seedTestAuth(page: Page, baseURL: string): Promise<void> {
   // Token-gated bypass for Fly staging: the blanket E2E_TEST_AUTH bypass is
   // disabled on Fly by design, so CI presents a shared secret via header.
   // The server validates it with timing-safe comparison (see testAuth.ts).
-  // Use route interception (not setExtraHTTPHeaders) to guarantee the header
-  // is attached to every /api/* fetch, including ones fired before headers
-  // would apply or from service workers.
+  //
+  // Attached to EVERY request to the target origin — documents included, not
+  // only /api/**. The global Clerk middleware skips only when this header is
+  // present (server/routes.ts, e2eTokenAuthEnabled), so a document request
+  // carrying the synthetic __session cookie but no token is handed to Clerk,
+  // which answers with a handshake redirect the synthetic session cannot
+  // complete. Scoped to the target origin so the secret never reaches a third
+  // party (fonts, Clerk-JS, analytics). Context-level so the rule is the same
+  // for every page of the journey. Service workers are blocked for this suite
+  // (see test.use below) because a request a service worker re-issues is not
+  // reliably seen by route interception (page.route never; context.route on
+  // Chromium only).
   const e2eToken = process.env.E2E_TEST_AUTH_TOKEN;
   if (e2eToken) {
-    await page.route("**/api/**", async (route) => {
-      const headers = {
-        ...route.request().headers(),
-        "X-E2E-Auth-Token": e2eToken,
-      };
-      await route.continue({ headers });
-    });
+    const targetOrigin = new URL(baseURL).origin;
+    await page.context().route(
+      (url) => url.origin === targetOrigin,
+      async (route) => {
+        const headers = {
+          ...route.request().headers(),
+          "X-E2E-Auth-Token": e2eToken,
+        };
+        await route.continue({ headers });
+      },
+    );
   }
 }
 
@@ -179,6 +192,22 @@ async function assertNonBlank(
 // ────────────────────────────────────────────────────────────────────────────
 
 test.describe("CJ1: signup → onboarding → first value", () => {
+  // The synthetic identity is presented as an X-E2E-Auth-Token header added by
+  // route interception (seedTestAuth). A request the app's service worker
+  // re-issues (client/public/sw.js fetches CACHEABLE_API_ROUTES — /api/leads,
+  // /api/properties, /api/deals, … — itself) is not seen by page.route, and
+  // context.route sees service-worker requests on Chromium only, so on WebKit
+  // it would reach the server WITHOUT the header and 401. Measured locally on
+  // Chromium with page.route (2026-10-21): every /api/leads and /api/properties response on
+  // /today came back 401 with response.fromServiceWorker() === true, and
+  // Today rendered "Connection issue" retries instead of its data. Playwright
+  // documents the same limit and recommends blocking service workers whenever
+  // routing is used. This is a property of the HARNESS, not of the product: a
+  // real customer authenticates with cookies, which the service worker's
+  // fetch() carries. The service worker itself is exercised by
+  // playwright.offline.config.ts.
+  test.use({ serviceWorkers: "block" });
+
   test("walks landing → /auth → onboarding (5 steps) → /today → /ai → first-value action", async ({
     page,
     baseURL,
@@ -216,21 +245,49 @@ test.describe("CJ1: signup → onboarding → first value", () => {
         }
       }
       expect(ctaVisible, "landing primary CTA missing").toBe(true);
+      // Answer the cookie-consent banner the way a first-time visitor must:
+      // it is fixed to the bottom of the viewport and, on a 360px phone, sits
+      // over the onboarding wizard's Continue button — the journey's click on
+      // it timed out behind the banner (CI run 39503768857, Galaxy S20 /
+      // Pixel 5, "cookie-consent-banner … intercepts pointer events";
+      // reproduced locally 2026-10-21). A real user taps Decline or Accept
+      // first; Decline is the no-optional-cookies choice. The banner is a
+      // first-visit surface, so it is answered here, once, on the landing.
+      const declineCookies = page.locator('[data-testid="cookie-consent-decline"]');
+      await declineCookies.waitFor({ state: "visible", timeout: 5000 }).catch(() => {});
+      if (await declineCookies.isVisible().catch(() => false)) {
+        await declineCookies.click();
+        await expect(page.locator('[data-testid="cookie-consent-banner"]')).toHaveCount(0);
+      }
       stepDurations["landing"] = Date.now() - t0;
     });
 
     // ── Step 2: Navigate to /auth ───────────────────────────────────────
     await test.step("navigate to /auth (Clerk-fronted signup)", async () => {
       const t0 = Date.now();
-      await page.goto("/auth", { waitUntil: "domcontentloaded" });
+      // The SIGN-UP form (?mode=register). Bare /auth is sign-in, which has no
+      // clickwrap at all (client/src/pages/auth-page.tsx renders the ToS gate
+      // only in sign-up mode).
+      await page.goto("/auth?mode=register", { waitUntil: "domcontentloaded" });
       await page.waitForTimeout(800);
       await recordThemeProbe(page, testInfo, meta, "auth-form");
-      // Clickwrap contract — terms/privacy/agree text must be present.
-      const body = (
-        await page.evaluate(() => document.body?.innerText || "")
-      ).toLowerCase();
-      const hasClickwrap = /terms|privacy|agree/.test(body);
-      expect(hasClickwrap, "/auth missing clickwrap surface").toBe(true);
+      // Clickwrap contract — the required, default-unchecked ToS + Privacy
+      // checkbox that gates the Clerk <SignUp/> widget.
+      //
+      // This used to test the whole page's innerText for /terms|privacy|agree/.
+      // That matched the COOKIE-CONSENT BANNER ("…See our Privacy & Cookie
+      // Policy"), which shows on every first visit, on bare /auth (sign-in,
+      // which renders no clickwrap): the contract was green over a page with
+      // no clickwrap. Measured 2026-10-21 — once the journey answered the
+      // banner, the old check failed on every project. It now reads the
+      // control itself, not text anywhere on the page.
+      const tos = page.locator('[data-testid="checkbox-tos-accept"]');
+      await expect(tos, "/auth missing clickwrap surface").toBeVisible();
+      await expect(tos, "clickwrap must start unchecked").not.toBeChecked();
+      await expect(
+        page.locator('label[for="tos-accept"]'),
+        "clickwrap must name the Terms and the Privacy Policy",
+      ).toHaveText(/agree to the Terms of Service and Privacy Policy/i);
       stepDurations["auth-form"] = Date.now() - t0;
     });
 
@@ -330,6 +387,17 @@ test.describe("CJ1: signup → onboarding → first value", () => {
     await test.step("/ai (Pax) surface mounts with composer", async () => {
       const t0 = Date.now();
       await page.goto("/ai", { waitUntil: "domcontentloaded" });
+      // Settle on the Pax door's own heading before the blank-screen check,
+      // as steps 5 and 7 settle before theirs. b9d2d54a removed this step's
+      // fixed 1.2s wait in favour of waiting for the composer, but left the
+      // blank check reading the page at DOMContentLoaded — the app's
+      // "Loading AcreOS…" splash (34 chars) whenever the bundle is not
+      // already cached. If the heading never renders the check below still
+      // fails, so a genuinely blank /ai stays red.
+      await page
+        .locator('[data-testid="text-ai-hub-title"]')
+        .waitFor({ state: "visible", timeout: 15000 })
+        .catch(() => {});
       await recordThemeProbe(page, testInfo, meta, "pax-mount");
       await assertNonBlank(page, "pax-mount");
       // PaxPage lazy-loads CommandCenterPage behind AiChatGuard (waits on
