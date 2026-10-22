@@ -73,7 +73,7 @@ vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 const KNOWN_UNARBITRATED: Record<string, number> = {
   // No unique declared anywhere for the target columns.
   "server/jobs/countyAssessorIngest.ts onConflictDoUpdate county_markets(state,county)": 1,
-  "server/routes-platform-features.ts raw-sql organization_integrations(organization_id,provider)": 2,
+  "server/routes-platform-features.ts raw-sql organization_integrations(organization_id,provider)": 1,
   "server/services/buyerMatchingAI.ts onConflictDoUpdate pax_memory(organization_id,key,user_id)": 1,
   "server/services/voiceCallAI.ts onConflictDoUpdate pax_memory(organization_id,key,user_id)": 1,
   "server/services/paxRelationshipArc.ts raw-sql pax_memory(organization_id,key)": 1,
@@ -92,7 +92,10 @@ const KNOWN_UNARBITRATED: Record<string, number> = {
 // 12 → 11 on 2026-10-12: migration 0281 adds openrouter_model_catalog_model_id_unique
 // (with the other 16 declared-but-unenforced uniques), the arbiter
 // modelIntelligence.ts's catalog upsert had been missing.
-const KNOWN_UNARBITRATED_BASELINE = 11;
+// 11 → 10 on 2026-10-21: the false-claims sweep removed the QuickBooks OAuth
+// callback in routes-platform-features.ts, which wrote a placeholder
+// connection; its raw-SQL organization_integrations upsert went with it.
+const KNOWN_UNARBITRATED_BASELINE = 10;
 
 /**
  * Population floors (measured 2026-10-06). A parser that stops matching a shape
@@ -103,7 +106,7 @@ const FILES_SCANNED_FLOOR = 1300;
 const TARGETED_SITE_FLOOR: Record<ConflictSite["kind"], number> = {
   onConflictDoNothing: 38,
   onConflictDoUpdate: 72,
-  "raw-sql": 11,
+  "raw-sql": 10, // 11 → 10 on 2026-10-21 with the QuickBooks callback (see the baseline note)
 };
 // 32 -> 30 on 2026-10-09: the two monthly-allowance grants in
 // server/services/credits.ts (each an untargeted onConflictDoNothing on
@@ -203,7 +206,7 @@ describe("ON CONFLICT targets — every target has an arbiter in the shipped DDL
     expect(stale, "stale register entries — remove them and lower KNOWN_UNARBITRATED_BASELINE").toEqual([]);
     const total = Object.values(KNOWN_UNARBITRATED).reduce((a, b) => a + b, 0);
     expect(total).toBe(KNOWN_UNARBITRATED_BASELINE);
-    expect(KNOWN_UNARBITRATED_BASELINE).toBeLessThanOrEqual(11);
+    expect(KNOWN_UNARBITRATED_BASELINE).toBeLessThanOrEqual(10);
   });
 });
 
