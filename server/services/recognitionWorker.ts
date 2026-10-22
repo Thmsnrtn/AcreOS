@@ -51,6 +51,7 @@ import {
 import { and, eq, lte, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { clock } from "../utils/clock";
+import { seedChartOfAccountsForOrg } from "./chartOfAccountsSeed";
 
 // ─── Account-number constants ─────────────────────────────────────────────
 // These are the canonical numbers seeded by chartOfAccountsSeed.ts. The
@@ -97,13 +98,27 @@ interface AccountLookup {
  * first use so downstream orgs without recurring billing aren't polluted.
  */
 async function resolveAccounts(orgId: number): Promise<AccountLookup> {
-  const rows = await db
-    .select({
-      id: chartOfAccounts.id,
-      number: chartOfAccounts.accountNumber,
-    })
-    .from(chartOfAccounts)
-    .where(eq(chartOfAccounts.organizationId, orgId));
+  const readChart = () =>
+    db
+      .select({
+        id: chartOfAccounts.id,
+        number: chartOfAccounts.accountNumber,
+      })
+      .from(chartOfAccounts)
+      .where(eq(chartOfAccounts.organizationId, orgId));
+
+  let rows = await readChart();
+  // An org with NO chart at all was never seeded: the default chart's only
+  // seeding call sat in storage.createOrganization, which the real signup
+  // path (getOrCreateOrg) never calls, so no org on staging had one and every
+  // GL post threw (2026-10-21 G4 run). Seed it here, the same idempotent
+  // seed org creation now calls. An org with ANY accounts is left alone — a
+  // custom chart missing 1000/4000 still throws below rather than being
+  // topped up with defaults nobody asked for.
+  if (rows.length === 0) {
+    await seedChartOfAccountsForOrg(orgId);
+    rows = await readChart();
+  }
 
   const byNumber = new Map(rows.map((r) => [r.number, r.id]));
 

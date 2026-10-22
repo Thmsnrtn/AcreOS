@@ -84,6 +84,7 @@ export const multifamilyNoiEngine: EngineSpec = {
   id: "multifamily_noi",
   version: MULTIFAMILY_ENGINE_VERSION,
   label: "Operated asset (NOI, cap rate, DSCR)",
+  verticals: ["multifamily"],
   produces: [
     "annual_operating_expense",
     "annual_noi",

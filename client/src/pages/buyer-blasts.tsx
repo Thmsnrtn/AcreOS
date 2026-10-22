@@ -8,6 +8,9 @@
  * buyer_property_matches, sends an email + SMS with property card and
  * photos, tracks who opens, who replies, who books a walkthrough."
  *
+ * What it actually does (2026-10-20): email only, on the org's own sending
+ * identity; no SMS lane, no open tracking; responses are logged by hand.
+ *
  * This is the dashboard. Composer dialog: pick property → subject + body
  * → minMatchScore + financingType filters → dry-run preview → send.
  * Detail view shows per-recipient status with response-logging buttons.
@@ -99,6 +102,22 @@ export default function BuyerBlastsPage() {
 
 function BlastIndex() {
   useDocumentTitle("Buyer blasts — AcreOS");
+  return (
+    <PageShell label="Buyer blasts">
+      <BuyerBlastsPanel />
+    </PageShell>
+  );
+}
+
+/**
+ * The buyer-blast list + composer, without a page shell, so the Deals door's
+ * marketing hub can mount it as its "Buyer blasts" tab. /buyer-blasts
+ * redirects to /campaigns?channel=buyer-blasts; until 2026-10-20 that hub
+ * never read `?channel=` and had no such tab, so the redirect, the sidebar's
+ * Wholesale module and its "Buyer blasts" child all landed on generic
+ * Campaigns and this list and composer could not be reached at all.
+ */
+export function BuyerBlastsPanel() {
   const [, navigate] = useLocation();
   const [composerOpen, setComposerOpen] = useState(false);
 
@@ -114,7 +133,7 @@ function BlastIndex() {
   const blasts = data?.blasts ?? [];
 
   return (
-    <PageShell label="Buyer blasts">
+    <>
       <div className="flex items-start justify-between mb-6 gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
@@ -122,9 +141,8 @@ function BlastIndex() {
             Buyer blasts
           </h1>
           <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
-            One-click outreach to matched cash buyers per property. Dry-run preview
-            before send so you confirm who's receiving. Per-recipient response
-            tracking inline.
+            Email a property to the cash buyers matched to it. Preview who would
+            receive it before you send, then log each recipient's response.
           </p>
         </div>
         <Button onClick={() => setComposerOpen(true)} data-testid="new-blast-button">
@@ -138,8 +156,8 @@ function BlastIndex() {
       ) : blasts.length === 0 ? (
         <EmptyState
           icon={Send}
-          headline="Lock up a subject — blast your cash buyer list"
-          subtitle="The moment you lock up a subject property, Pax matches it against your cash buyer list, fires the email, and tracks opens + replies per recipient."
+          headline="Send a property to your matched cash buyers"
+          subtitle="Pick a property, preview which buyers on file match it, then send one email from your own address. Log each buyer's response here."
           cta={{
             label: "Blast a property",
             onClick: () => setComposerOpen(true),
@@ -185,7 +203,7 @@ function BlastIndex() {
       )}
 
       <ComposerDialog open={composerOpen} onOpenChange={setComposerOpen} />
-    </PageShell>
+    </>
   );
 }
 

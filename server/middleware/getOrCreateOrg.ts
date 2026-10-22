@@ -330,6 +330,20 @@ export async function getOrCreateOrg(req: Request, res: Response, next: NextFunc
               logger.warn(`[onboarding] startJourney failed for org ${newOrgId}: ${err instanceof Error ? err.message : String(err)}`),
             );
         }
+
+        // The default chart of accounts, for the same reason as startJourney:
+        // its only seeding call was in storage.createOrganization, which
+        // nothing calls, so no real org had a chart and every recognition GL
+        // post threw (2026-10-21 G4 run). Founder orgs get one too, so this
+        // sits outside the !isFounder guard. Idempotent; fire-and-forget. The
+        // GL path also seeds an empty chart on first use
+        // (recognitionWorker.resolveAccounts).
+        const seededOrgId = org.id;
+        void import("../services/chartOfAccountsSeed")
+          .then(({ seedChartOfAccountsForOrg }) => seedChartOfAccountsForOrg(seededOrgId))
+          .catch((err) =>
+            logger.warn(`[chartOfAccountsSeed] failed for org ${seededOrgId}: ${err instanceof Error ? err.message : String(err)}`),
+          );
       }
     } finally {
       inflightProvisioning.delete(userId);

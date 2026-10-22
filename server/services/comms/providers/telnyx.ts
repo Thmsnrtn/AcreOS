@@ -8,10 +8,14 @@
  * `comms.providers.enabled` setting can list "telnyx" the moment the
  * envvar lands.
  *
- * Every method throws `TELNYX_NOT_CONFIGURED` unless `TELNYX_API_KEY` is
- * set in the process env. `isConfigured()` is the single source of
- * truth — once true, the methods can be filled in with real Telnyx REST
- * calls without touching the router.
+ * Every method throws `TELNYX_NOT_CONFIGURED`. `isConfigured()` is the
+ * single source of truth the router reads, and it is FALSE until the
+ * methods are real: it used to return true the moment `TELNYX_API_KEY`
+ * was set, while every method still threw — so setting the key would have
+ * made the router pick Telnyx (it is the cheaper quote) for sends that
+ * could only fail. A provider is configured when it can send, not when a
+ * key exists. Flip `TELNYX_ADAPTER_IMPLEMENTED` in the same change that
+ * implements the methods (telnyxIsNotAvailableUntilImplemented.test.ts).
  *
  * TODO(revenue-trigger): activate at $3k MRR. See plan
  * /Users/user/.claude/plans/how-can-we-either-ticklish-ocean.md.
@@ -30,6 +34,9 @@ import {
 } from "../router";
 
 const TELNYX_DISABLED_ERROR = "TELNYX_NOT_CONFIGURED";
+
+/** No method below performs a Telnyx call yet. */
+const TELNYX_ADAPTER_IMPLEMENTED: boolean = false;
 
 function ensureConfigured(): void {
   if (!process.env.TELNYX_API_KEY) {
@@ -60,7 +67,7 @@ class TelnyxProvider implements CommsProvider {
   readonly name = "telnyx" as const;
 
   isConfigured(): boolean {
-    return !!process.env.TELNYX_API_KEY;
+    return TELNYX_ADAPTER_IMPLEMENTED && !!process.env.TELNYX_API_KEY;
   }
 
   async sendSms(_opts: SendSmsOpts): Promise<SendSmsResult> {

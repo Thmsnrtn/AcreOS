@@ -26,11 +26,20 @@ vi.mock("../../server/db", () => {
         return {
           values(rows: Row | Row[]) {
             const arr = Array.isArray(rows) ? rows : [rows];
-            return {
+            // ON CONFLICT DO NOTHING on (organization_id, account_number),
+            // as the real unique index chart_of_accounts_org_number_unique
+            // makes it: a row whose org already holds that number is skipped
+            // and not returned. Without the clause a duplicate would be a
+            // unique violation, so the mock refuses the bare insert path.
+            const write = (skipDuplicates: boolean) => ({
               returning(_proj?: any) {
                 const out: Row[] = [];
                 for (const r of arr) {
                   const orgRows = accountStore.get(r.organizationId) ?? [];
+                  if (orgRows.some((x) => x.accountNumber === r.accountNumber)) {
+                    if (skipDuplicates) continue;
+                    return Promise.reject(new Error("duplicate key value violates unique constraint"));
+                  }
                   const row = { id: `acc-${orgRows.length + 1}`, ...r };
                   orgRows.push(row);
                   accountStore.set(r.organizationId, orgRows);
@@ -38,7 +47,8 @@ vi.mock("../../server/db", () => {
                 }
                 return Promise.resolve(out);
               },
-            };
+            });
+            return { ...write(false), onConflictDoNothing: () => write(true) };
           },
         };
       },
