@@ -59,11 +59,16 @@ import { format } from "date-fns";
 import {
   getStateConfig,
   getDeedTypeLabel,
-  getTransferTaxAmount,
   getRecordingEstimate,
   type StateDocumentConfig,
 } from "../stateDocumentConfig";
 import { DISCLAIMER_DOCUMENT_TEMPLATE } from "../legalDisclaimers";
+import {
+  describeTransferTax,
+  estimateTransferTax,
+  isoDateOf,
+  type PropertyClass,
+} from "@shared/regulatory/transferTax";
 import { checkDisclosure, buildDisclosureMissingPayload } from "../disclosureRegistry";
 import type { HardStop } from "../autopilot/hardStops";
 import { clock } from "../../utils/clock";
@@ -252,6 +257,14 @@ export interface ContractPropertyInput {
   zip?: string | null;
   sizeAcres?: string | number | null;
   legalDescription?: string | null;
+  /**
+   * What is on the land, when known. Some states' transfer tax turns on it
+   * (WA brackets, CT, Miami-Dade's surtax); without it those states print
+   * the statutory rule and no dollar estimate. Production callers derive it
+   * from the property's recorded structureType via
+   * propertyClassFromStructureType() — never a guess.
+   */
+  propertyClass?: PropertyClass;
 }
 
 export interface AssignmentInput {
@@ -358,7 +371,7 @@ export interface AssembledContract {
     notaryRequired: boolean;
     witnessCount: number;
     recordingOffice: string;
-    transferTaxPercent: number;
+    /** The statutory transfer-tax rule, from shared/regulatory/transferTax.ts. */
     transferTaxNotes: string;
     attorneyStateForClosing: boolean;
     practiceNotes: string;
@@ -729,6 +742,14 @@ export function assembleContract(input: ContractAssemblyInput): ContractAssembly
   }
 
   // 4. Build the merged body.
+  const closingIso = deal.closingDate ? new Date(deal.closingDate as string | Date) : null;
+  const transferTaxContext: TransferTaxContext = {
+    county: county as string,
+    propertyClass: property.propertyClass,
+    // No valid closing date = today on the server clock, so a dated rule
+    // still refuses once it lapses (never "skip the date check").
+    asOfIsoDate: isoDateOf(closingIso && !isNaN(closingIso.getTime()) ? closingIso : clock.now()),
+  };
   const variables: Record<string, string> = {
     state,
     state_name: stateName,
@@ -763,8 +784,8 @@ export function assembleContract(input: ContractAssemblyInput): ContractAssembly
 
   const content =
     kind === "purchase_agreement"
-      ? renderPurchaseAgreement(variables, config, { legalDescription, advisories })
-      : renderAssignmentOfContract(variables, config, { advisories });
+      ? renderPurchaseAgreement(variables, config, { legalDescription, advisories, transferTax: transferTaxContext })
+      : renderAssignmentOfContract(variables, config, { advisories, transferTax: transferTaxContext });
 
   // 5. Statutory disclosure: never hand the signing rail a document it will
   //    (correctly) refuse to dispatch. Same registry the rail uses.
@@ -833,8 +854,7 @@ export function assembleContract(input: ContractAssemblyInput): ContractAssembly
         notaryRequired: config.notaryRequired,
         witnessCount: config.witnessCount,
         recordingOffice: config.recordingOffice,
-        transferTaxPercent: config.transferTaxPercent,
-        transferTaxNotes: config.transferTaxNotes,
+        transferTaxNotes: describeTransferTax(state, county),
         attorneyStateForClosing: config.attorneyStateForClosing,
         practiceNotes: config.practiceNotes,
       },
@@ -885,24 +905,38 @@ function disclaimerBlock(): string {
   return `<hr/><p><em>${esc(DISCLAIMER_DOCUMENT_TEMPLATE)}</em></p>`;
 }
 
+interface TransferTaxContext {
+  county: string;
+  propertyClass?: PropertyClass;
+  asOfIsoDate?: string;
+}
+
 function stateClosingBlock(
   config: StateDocumentConfig,
   stateName: string,
   purchasePriceRaw: number | null,
+  tt: TransferTaxContext,
 ): string {
-  const transferTax =
-    config.transferTaxPercent > 0 && purchasePriceRaw !== null
-      ? money(getTransferTaxAmount(config.state, purchasePriceRaw))
-      : null;
   const rows: string[] = [
     `<li><strong>Recording:</strong> the instrument of conveyance shall be recorded with the ${esc(config.recordingOffice)} of ${esc(config.state)} (estimated recording fee ${esc(money(getRecordingEstimate(config.state)) ?? "as quoted by the recording office")}).</li>`,
   ];
-  if (config.transferTaxPercent > 0) {
+  // One table (shared/regulatory/transferTax.ts). A dollar figure is printed
+  // only when that table can compute it from the facts on this deal; the
+  // statutory rule is always printed beside it, and any local taxes the
+  // figure excludes are named.
+  const rule = describeTransferTax(config.state, tt.county);
+  const est = purchasePriceRaw !== null
+    ? estimateTransferTax(config.state, purchasePriceRaw, tt)
+    : null;
+  if (est?.kind === "estimate") {
+    const excl = est.excludesLocal ? ` This estimate excludes ${esc(est.excludesLocal)}.` : "";
     rows.push(
-      `<li><strong>Transfer tax:</strong> ${esc(config.transferTaxNotes)}${transferTax ? ` — estimated ${esc(transferTax)} at the price stated above` : ""}.</li>`,
+      `<li><strong>Transfer tax:</strong> ${esc(rule)} Estimated ${esc(money(est.amountCents / 100) ?? "")} at the price stated above (estimate — confirm with the closing agent).${excl}</li>`,
     );
+  } else if (est?.kind === "refused") {
+    rows.push(`<li><strong>Transfer tax:</strong> ${esc(rule)} No estimate is stated: ${esc(est.reason)}</li>`);
   } else {
-    rows.push(`<li><strong>Transfer tax:</strong> ${esc(config.transferTaxNotes)}</li>`);
+    rows.push(`<li><strong>Transfer tax:</strong> ${esc(rule)}</li>`);
   }
   if (config.attorneyStateForClosing) {
     rows.push(
@@ -921,7 +955,7 @@ function priceNumber(formatted: string): number | null {
 function renderPurchaseAgreement(
   v: Record<string, string>,
   config: StateDocumentConfig,
-  extra: { legalDescription: string | null; advisories: string[] },
+  extra: { legalDescription: string | null; advisories: string[]; transferTax: TransferTaxContext },
 ): string {
   const legalDescSection = extra.legalDescription
     ? `<p><strong>Legal Description:</strong><br/>${esc(extra.legalDescription)}</p>`
@@ -948,7 +982,7 @@ ${legalDescSection}
 
 <h2>4. CLOSING</h2>
 <p>Closing shall occur on or before <strong>${esc(v.closing_date)}</strong>.</p>
-${stateClosingBlock(config, v.state_name, priceNumber(v.purchase_price))}
+${stateClosingBlock(config, v.state_name, priceNumber(v.purchase_price), extra.transferTax)}
 
 <h2>5. CONDITION AND DUE DILIGENCE</h2>
 <p>Buyer has inspected or has had the opportunity to inspect the Property. Seller shall disclose all matters affecting title, access, and use known to Seller.</p>
@@ -967,7 +1001,7 @@ ${disclaimerBlock()}`;
 function renderAssignmentOfContract(
   v: Record<string, string>,
   config: StateDocumentConfig,
-  extra: { advisories: string[] },
+  extra: { advisories: string[]; transferTax: TransferTaxContext },
 ): string {
   return `<h1>${esc(KIND_TITLE.assignment_of_contract)}</h1>
 <p>This Assignment of Real Estate Contract ("Assignment") is made as of <strong>${esc(v.today)}</strong> between:</p>
@@ -991,7 +1025,7 @@ function renderAssignmentOfContract(
 
 <h2>4. ASSIGNEE ACKNOWLEDGEMENT</h2>
 <p>Assignee acknowledges receipt of a copy of the Original Contract and accepts the Property in the condition described in it.</p>
-${stateClosingBlock(config, v.state_name, priceNumber(v.purchase_price))}
+${stateClosingBlock(config, v.state_name, priceNumber(v.purchase_price), extra.transferTax)}
 
 ${advisoryBlock(extra.advisories)}
 

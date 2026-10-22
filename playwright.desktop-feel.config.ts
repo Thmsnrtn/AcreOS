@@ -165,9 +165,13 @@ export default defineConfig({
     trace: "on-first-retry",
     screenshot: "on",
     video: "retain-on-failure",
-    extraHTTPHeaders: process.env.E2E_TEST_AUTH_TOKEN
-      ? { "x-e2e-test-auth": process.env.E2E_TEST_AUTH_TOKEN }
-      : undefined,
+    // No extraHTTPHeaders for the E2E token. The header that used to be set
+    // here was named `x-e2e-test-auth`, which the server never reads (it
+    // reads X-E2E-Auth-Token — server/auth/testAuth.ts), and extraHTTPHeaders
+    // goes to EVERY origin the page touches, so it shipped the shared secret
+    // to Clerk, Stripe and the tile hosts while authenticating nothing. The
+    // spec's seedTestAuth() attaches the right header, to the target origin
+    // only, on every request including the document.
   },
   projects,
   webServer: process.env.TARGET_URL
