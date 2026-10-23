@@ -87,13 +87,13 @@ const DAY_MS = 86_400_000;
  */
 export function overdueVsCadence(cadence: DocumentedCadence | null, lastEditAt: Date | null, now: Date): boolean | null {
   if (!cadence || !lastEditAt) return null;
-  const age = now.getTime() - lastEditAt.getTime();
+  const elapsedMs = now.getTime() - lastEditAt.getTime();
   switch (cadence.kind) {
     case "monthly":
-      return age > (31 + 7) * DAY_MS;
+      return elapsedMs > (31 + 7) * DAY_MS;
     case "semi_annual":
-      return age > (183 + 7) * DAY_MS;
+      return elapsedMs > (183 + 7) * DAY_MS;
     case "annual":
-      return age > (366 + 31) * DAY_MS;
+      return elapsedMs > (366 + 31) * DAY_MS;
   }
 }
