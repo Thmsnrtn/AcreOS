@@ -1,7 +1,7 @@
 /**
  * Regrid Provider — extracts from comps.ts and parcel.ts.
  * Uses BYOK pattern. Categories: parcel_data, comps, owner_info, valuation.
- * Tier: starter. Cost: 3–8 cents.
+ * Tier: starter. Cost: 10¢ (Standard) / 15¢ (Premium) per record returned.
  *
  * Bulk / incremental Regrid pulls (boundary-update sync) are owned by the
  * Wenzeslaus ETL orchestrator — see `server/services/etlHandlers.ts`
@@ -21,12 +21,33 @@ import type {
 } from "./types";
 import { clock } from "../../utils/clock";
 
-const CATEGORY_COSTS: Partial<Record<DataCategory, number>> = {
-  parcel_data: 3,
-  comps: 8,
-  owner_info: 5,
-  valuation: 5,
-};
+/**
+ * Regrid's published API price floor, in cents PER RECORD RETURNED — a call
+ * that returns no record is not billed. Source: Regrid API pricing
+ * (https://regrid.com/api), as stated in the D1 data-sourcing package
+ * 2026-10-22: 10¢/record Standard schema, 15¢/record Premium schema. The old
+ * table (3–8¢) sat below this floor, so every paid lookup was metered at less
+ * than it cost. Not re-read live from this container (the host is outside its
+ * network policy) — re-verify against the page when it changes.
+ */
+export const REGRID_CENTS_PER_RECORD = { standard: 10, premium: 15 } as const;
+
+/**
+ * Which schema each category reads. A bare parcel boundary + identity is the
+ * Standard schema; owner, valuation and the comps radius search read Premium
+ * fields (the comps search also returns several records per call — this is a
+ * per-record price, so a multi-record comps call costs a multiple of it).
+ */
+export const REGRID_CATEGORY_SCHEMA = {
+  parcel_data: "standard",
+  comps: "premium",
+  owner_info: "premium",
+  valuation: "premium",
+} as const satisfies Partial<Record<DataCategory, keyof typeof REGRID_CENTS_PER_RECORD>>;
+
+const CATEGORY_COSTS: Partial<Record<DataCategory, number>> = Object.fromEntries(
+  Object.entries(REGRID_CATEGORY_SCHEMA).map(([category, schema]) => [category, REGRID_CENTS_PER_RECORD[schema]]),
+);
 
 const SUPPORTED_CATEGORIES: DataCategory[] = ["parcel_data", "comps", "owner_info", "valuation"];
 
@@ -64,7 +85,8 @@ export const regridProvider: DataProvider = {
   minMonthlyCommitCents: 0,
 
   costPerLookupCents(category: DataCategory): number {
-    return CATEGORY_COSTS[category] ?? 5;
+    // An unlisted category is never priced below the published floor.
+    return CATEGORY_COSTS[category] ?? REGRID_CENTS_PER_RECORD.standard;
   },
 
   async isConfigured(organizationId?: number): Promise<boolean> {
@@ -95,7 +117,9 @@ export const regridProvider: DataProvider = {
     // lookupParcelByCoordinates/ByAPN fall back to free tiers (statewide/
     // county GIS, cache) before Regrid. When the answer came from a free
     // source, report zero cost — never bill a free hit as a Regrid call.
-    let answeredByFreeSource = false;
+    // Regrid bills per record RETURNED, so a call that found nothing is not
+    // billed either (D1a) — `notBilled` covers both.
+    let notBilled = false;
 
     // Delegate to existing comps/parcel services that already handle Regrid API
     switch (category) {
@@ -105,7 +129,7 @@ export const regridProvider: DataProvider = {
           const result = await lookupParcelByCoordinates(input.latitude, input.longitude, byokOpts);
           data = result.parcel ?? null;
           confidence = result.found ? 85 : 20;
-          answeredByFreeSource = result.found && result.source !== "regrid";
+          notBilled = !result.found || result.source !== "regrid";
         } else if (input.type === "apn") {
           const { lookupParcelByAPN } = await import("../parcel");
           // lookupParcelByAPN takes a combined "state/county" path, not
@@ -114,7 +138,7 @@ export const regridProvider: DataProvider = {
           const result = await lookupParcelByAPN(input.apn, stateCountyPath, undefined, byokOpts);
           data = result.parcel ?? null;
           confidence = result.found ? 90 : 20;
-          answeredByFreeSource = result.found && result.source !== "regrid";
+          notBilled = !result.found || result.source !== "regrid";
         } else {
           throw new Error(`Regrid parcel_data does not support input type: ${input.type}`);
         }
@@ -136,6 +160,7 @@ export const regridProvider: DataProvider = {
           );
           data = result.comps ?? [];
           confidence = (result as any).success ? 80 : 30;
+          notBilled = (result.comps ?? []).length === 0;
         } else {
           throw new Error(`Regrid comps does not support input type: ${input.type}`);
         }
@@ -149,7 +174,7 @@ export const regridProvider: DataProvider = {
           const result = await lookupParcelByCoordinates(input.latitude, input.longitude, byokOpts);
           data = result.parcel?.data ?? null;
           confidence = result.found ? 80 : 20;
-          answeredByFreeSource = result.found && result.source !== "regrid";
+          notBilled = !result.found || result.source !== "regrid";
         } else {
           throw new Error(`Regrid ${category} does not support input type: ${input.type}`);
         }
@@ -164,7 +189,7 @@ export const regridProvider: DataProvider = {
       provider: "regrid",
       category,
       confidence,
-      costCents: answeredByFreeSource ? 0 : this.costPerLookupCents(category),
+      costCents: notBilled ? 0 : this.costPerLookupCents(category),
       fetchedAt: clock.now(),
       cached: false,
       latencyMs: clock.nowMs() - start,
