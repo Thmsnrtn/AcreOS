@@ -52,7 +52,7 @@ export function createClerkProxyHandler(fetchImpl: typeof fetch = fetch) {
       // lives at acreos.io makes it answer with acreos.io-bound script
       // URLs; the browser's cross-origin script load is then denied
       // (WebKit) and Clerk JS never loads (issue #359).
-      const publicHost = req.get("host") || "acreos.io";
+      const publicHost = req.headers.host || "acreos.io";
       const publicOrigin = `https://${publicHost}`;
 
       // STR-011 root cause: /v1/client is per-session and MUST NOT be cached
