@@ -113,3 +113,86 @@ describe("clerk-proxy double-send guard", () => {
     expect(res.headersSent).toBe(true);
   });
 });
+
+/** Build a Response-like object carrying one Set-Cookie value. */
+function fakeUpstreamResponseWithCookie(cookie: string) {
+  return {
+    status: 200,
+    headers: {
+      getSetCookie: () => [cookie],
+      forEach: (_cb: (v: string, k: string) => void) => {},
+    },
+    arrayBuffer: async () => new TextEncoder().encode("{}").buffer,
+  } as unknown as Response;
+}
+
+describe("clerk-proxy public identity follows the request Host (issue #359)", () => {
+  beforeEach(() => {
+    delete (globalThis as any).__clerkCache;
+  });
+
+  function capturingFetch(response: Response) {
+    const calls: Array<{ url: string; init: any }> = [];
+    const fetchImpl = vi.fn(async (url: any, init: any) => {
+      calls.push({ url: String(url), init });
+      return response;
+    });
+    return { calls, fetchImpl: fetchImpl as unknown as typeof fetch };
+  }
+
+  it("tells FAPI the staging origin when the request host is staging", async () => {
+    const { calls, fetchImpl } = capturingFetch(fakeUpstreamResponse(200, "{}"));
+    const app = makeApp(fetchImpl);
+    const res = await request(app)
+      .post("/__clerk/v1/client/sessions/abc/tokens")
+      .set("Host", "acreos-staging.fly.dev")
+      .send({});
+    expect(res.status).toBe(200);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].init.headers["Clerk-Proxy-Url"]).toBe("https://acreos-staging.fly.dev/__clerk");
+    expect(calls[0].init.headers["x-forwarded-host"]).toBe("acreos-staging.fly.dev");
+  });
+
+  it("keeps the production identity byte-identical on the prod host", async () => {
+    const { calls, fetchImpl } = capturingFetch(fakeUpstreamResponse(200, "{}"));
+    const app = makeApp(fetchImpl);
+    const res = await request(app)
+      .post("/__clerk/v1/client/sessions/abc/tokens")
+      .set("Host", "acreos.io")
+      .send({});
+    expect(res.status).toBe(200);
+    expect(calls[0].init.headers["Clerk-Proxy-Url"]).toBe("https://acreos.io/__clerk");
+    expect(calls[0].init.headers["x-forwarded-host"]).toBe("acreos.io");
+  });
+
+  it("host-scopes Set-Cookie off the production domain (no domain attribute on staging)", async () => {
+    const { fetchImpl } = capturingFetch(
+      fakeUpstreamResponseWithCookie("__session=abc; Path=/; Domain=possible-emu-83.clerk.accounts.dev; HttpOnly"),
+    );
+    const app = makeApp(fetchImpl);
+    const res = await request(app)
+      .post("/__clerk/v1/client/sessions/abc/tokens")
+      .set("Host", "acreos-staging.fly.dev")
+      .send({});
+    expect(res.status).toBe(200);
+    const cookies = res.headers["set-cookie"] as any;
+    expect(cookies).toHaveLength(1);
+    expect(cookies[0]).not.toMatch(/domain=/i);
+    expect(cookies[0]).toContain("__session=abc");
+  });
+
+  it("keeps the shared .acreos.io cookie domain on the production host", async () => {
+    const { fetchImpl } = capturingFetch(
+      fakeUpstreamResponseWithCookie("__session=abc; Path=/; Domain=possible-emu-83.clerk.accounts.dev; HttpOnly"),
+    );
+    const app = makeApp(fetchImpl);
+    const res = await request(app)
+      .post("/__clerk/v1/client/sessions/abc/tokens")
+      .set("Host", "acreos.io")
+      .send({});
+    expect(res.status).toBe(200);
+    const cookies = res.headers["set-cookie"] as any;
+    expect(cookies).toHaveLength(1);
+    expect(cookies[0]).toMatch(/domain=\.acreos\.io/i);
+  });
+});
