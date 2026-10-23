@@ -14,6 +14,7 @@
 import logger from "../utils/logger";
 import type { BusinessType } from "./onboarding";
 import { clock } from "../utils/clock";
+import type { PropertyListing } from "@shared/schema";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -663,7 +664,7 @@ async function syndicateToFacebookMarketplace(listing: NormalizedListing, creds:
         custom_label_0: listing.state,
         custom_label_1: listing.county,
         custom_label_2: `${listing.acreage} acres`,
-        custom_label_3: listing.sellerFinancingAvailable ? "Seller Financing" : "Cash Only",
+        custom_label_3: listing.sellerFinancingAvailable ? "Seller Financing" : "",
       }),
     });
 
@@ -694,7 +695,7 @@ ${listing.sellerFinancingAvailable ? `SELLER FINANCING AVAILABLE
 • Down Payment: $${listing.downPaymentMin?.toLocaleString() || "Call for details"}
 • Monthly Payments: $${listing.monthlyPaymentMin?.toLocaleString() || "Call for details"}/month
 • Interest Rate: ${listing.interestRate || "Call"}%
-` : "Cash only."}
+` : ""}
 
 Property Details:
 • Acreage: ${listing.acreage} acres
@@ -844,7 +845,9 @@ export async function buildNormalizedListing(
     propertyId: property.id,
     organizationId: property.organizationId,
     title: property.name || `${acreage} Acres — ${property.county || ""} County, ${property.state || ""}`,
-    description: property.description || `${acreage} acre parcel in ${property.county || ""} County, ${property.state || ""}. ${property.zoning ? `Zoned ${property.zoning}.` : ""} Seller financing available with low down payment.`,
+    // Facts only: the fallback used to promise "Seller financing available
+    // with low down payment" on every listing, whatever the seller offered.
+    description: property.description || `${acreage} acre parcel in ${property.county || ""} County, ${property.state || ""}.${property.zoning ? ` Zoned ${property.zoning}.` : ""}`,
     askingPrice,
     pricePerAcre: acreage > 0 ? askingPrice / acreage : 0,
     acreage,
@@ -858,7 +861,8 @@ export async function buildNormalizedListing(
     propertyType: property.propertyType || "vacant land",
     zoning: property.zoning,
     photos: property.photos?.map((p: any) => p.url || p) || [],
-    sellerFinancingAvailable: true,
+    // Seller financing is offered only when the seller says so.
+    sellerFinancingAvailable: false,
     contactName: org?.name || "Real Estate Professional",
     contactPhone: org?.phone,
     contactEmail: org?.email,
@@ -866,4 +870,37 @@ export async function buildNormalizedListing(
     apn: property.apn,
     ...overrides,
   };
+}
+
+function parseOptionalNumber(v: string | null | undefined): number | undefined {
+  if (v === null || v === undefined || v === "") return undefined;
+  const n = parseFloat(v);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+/**
+ * What the customer wrote on the listing, as the overrides every channel
+ * publishes. Every publish path builds its NormalizedListing through this, so
+ * the title, description, photos and terms the seller entered are what reach
+ * the channel — the property record only fills what the listing left blank.
+ */
+export function listingContentForChannels(listing: PropertyListing): Partial<NormalizedListing> {
+  const content: Partial<NormalizedListing> = {
+    askingPrice: parseFloat(listing.askingPrice || "0"),
+    sellerFinancingAvailable: listing.sellerFinancingAvailable === true,
+  };
+  if (listing.title?.trim()) content.title = listing.title.trim();
+  if (listing.description?.trim()) content.description = listing.description.trim();
+  const photos = [...(listing.photos ?? [])]
+    .filter((p) => typeof p?.url === "string" && p.url.trim() !== "")
+    .sort((a, b) => Number(!!b.isPrimary) - Number(!!a.isPrimary) || (a.order ?? 0) - (b.order ?? 0))
+    .map((p) => p.url.trim());
+  if (photos.length > 0) content.photos = photos;
+  if (content.sellerFinancingAvailable) {
+    content.downPaymentMin = parseOptionalNumber(listing.downPaymentMin);
+    content.monthlyPaymentMin = parseOptionalNumber(listing.monthlyPaymentMin);
+    content.interestRate = parseOptionalNumber(listing.interestRate);
+    content.termYears = listing.termMonths ? Math.round(listing.termMonths / 12) : undefined;
+  }
+  return content;
 }

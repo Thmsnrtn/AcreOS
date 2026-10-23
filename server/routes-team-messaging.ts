@@ -1192,23 +1192,11 @@ export function registerTeamMessagingRoutes(app: Express): void {
           .where(eq(organizations.id, org.id));
 
         const normalizedListing =
-          await listingSyndication.buildNormalizedListing(property, orgRow, {
-            askingPrice: parseFloat(listing.askingPrice || "0"),
-            sellerFinancingAvailable:
-              listing.sellerFinancingAvailable || false,
-            downPaymentMin: listing.downPaymentMin
-              ? parseFloat(listing.downPaymentMin)
-              : undefined,
-            monthlyPaymentMin: listing.monthlyPaymentMin
-              ? parseFloat(listing.monthlyPaymentMin)
-              : undefined,
-            interestRate: listing.interestRate
-              ? parseFloat(listing.interestRate)
-              : undefined,
-            termYears: listing.termMonths
-              ? Math.round(listing.termMonths / 12)
-              : undefined,
-          });
+          await listingSyndication.buildNormalizedListing(
+            property,
+            orgRow,
+            listingSyndication.listingContentForChannels(listing),
+          );
 
         // ── Per-platform fan-out
         const simulated = shouldSimulate("listings", orgRow ?? null);

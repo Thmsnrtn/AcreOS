@@ -31,6 +31,13 @@ credential-triggered waves (KA–KD) and debt / deletion / consolidation waves
 (net LOC ≤ 0) run in the meantime. The scoreboard will then show plainly that
 the constraint is not engineering.
 
+**Scoped lift (founder decision 2026-10-20 #6, `founder-decisions-2026-10-20.md`).**
+The stop rule is lifted for the **land vertical only**, owner financing
+included: list building, CSV import that keeps acreage / value / tax-delinquent
+status, valuation beyond the AI fallback, road-access truth, and the land
+listing path. Every other vertical stays under the stop rule until land clears
+the best-in-class bar.
+
 ---
 
 ## §A What blocks each gate

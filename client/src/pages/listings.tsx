@@ -12,6 +12,7 @@ import { PageShell } from "@/components/page-shell";
 import { ListSkeleton } from "@/components/list-skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { PaymentCalculator } from "@/components/payment-calculator";
+import { photoUrlsFromText } from "@/lib/listingPhotos";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { usd } from "@/lib/format";
@@ -90,12 +91,12 @@ const listingFormSchema = z.object({
   description: z.string().optional(),
   askingPrice: z.string().min(1, "Asking price is required"),
   minimumPrice: z.string().optional(),
-  sellerFinancingAvailable: z.boolean().default(true),
+  sellerFinancingAvailable: z.boolean().default(false),
   downPaymentMin: z.string().optional(),
   monthlyPaymentMin: z.string().optional(),
   interestRate: z.string().optional(),
   termMonths: z.number().optional(),
-  photoUrl: z.string().optional(),
+  photoUrls: z.string().optional(),
   syndicationTargets: z.array(z.string()).default([]),
 });
 
@@ -140,7 +141,7 @@ export default function ListingsPage() {
 
   const createMutation = useMutation({
     mutationFn: async (data: ListingFormValues) => {
-      const photos = data.photoUrl ? [{ url: data.photoUrl, isPrimary: true, order: 0 }] : [];
+      const photos = photoUrlsFromText(data.photoUrls);
       return apiRequest("POST", "/api/listings", {
         propertyId: data.propertyId,
         title: data.title,
@@ -268,12 +269,12 @@ export default function ListingsPage() {
       description: "",
       askingPrice: "",
       minimumPrice: "",
-      sellerFinancingAvailable: true,
+      sellerFinancingAvailable: false,
       downPaymentMin: "",
       monthlyPaymentMin: "",
       interestRate: "9.9",
       termMonths: 60,
-      photoUrl: "",
+      photoUrls: "",
       syndicationTargets: [],
     },
   });
@@ -581,26 +582,22 @@ export default function ListingsPage() {
 
                   <FormField
                     control={form.control}
-                    name="photoUrl"
+                    name="photoUrls"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Photo URL (optional)</FormLabel>
-                        <div className="relative">
-                          <ImageIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
-                          <FormControl>
-                            <Input
-                              data-testid="input-photo-url"
-                              type="url"
-                              inputMode="url"
-                              autoCapitalize="none"
-                              autoCorrect="off"
-                              spellCheck={false}
-                              className="pl-9"
-                              placeholder="https://example.com/photo.jpg"
-                              {...field}
-                            />
-                          </FormControl>
-                        </div>
+                        <FormLabel>Photo URLs (optional, one per line — the first is the cover photo)</FormLabel>
+                        <FormControl>
+                          <Textarea
+                            data-testid="input-photo-urls"
+                            inputMode="url"
+                            autoCapitalize="none"
+                            autoCorrect="off"
+                            spellCheck={false}
+                            rows={4}
+                            placeholder={"https://example.com/photo-1.jpg\nhttps://example.com/photo-2.jpg"}
+                            {...field}
+                          />
+                        </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -923,7 +920,7 @@ export default function ListingsPage() {
 
                           <PaymentCalculator
                             listingPrice={parseFloat(listing.askingPrice?.toString() || "0")}
-                            sellerFinancingAvailable={listing.sellerFinancingAvailable ?? true}
+                            sellerFinancingAvailable={listing.sellerFinancingAvailable === true}
                             defaultDownPaymentPercent={listing.downPaymentMin ? parseFloat(listing.downPaymentMin.toString()) : 10}
                             defaultInterestRate={listing.interestRate ? parseFloat(listing.interestRate.toString()) : 9.9}
                             defaultTermMonths={listing.termMonths || 60}
@@ -1089,7 +1086,7 @@ export default function ListingsPage() {
             {selectedListing && (
               <PaymentCalculator
                 listingPrice={parseFloat(selectedListing.askingPrice?.toString() || "0")}
-                sellerFinancingAvailable={selectedListing.sellerFinancingAvailable ?? true}
+                sellerFinancingAvailable={selectedListing.sellerFinancingAvailable === true}
                 defaultDownPaymentPercent={selectedListing.downPaymentMin ? parseFloat(selectedListing.downPaymentMin.toString()) : 10}
                 defaultInterestRate={selectedListing.interestRate ? parseFloat(selectedListing.interestRate.toString()) : 9.9}
                 defaultTermMonths={selectedListing.termMonths || 60}

@@ -42,7 +42,11 @@ vi.mock("../../server/db", () => {
   return { db: { select, update, insert } };
 });
 vi.mock("../../server/utils/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
-vi.mock("../../server/services/listingSyndication", () => ({
+vi.mock("../../server/services/listingSyndication", async (importOriginal) => ({
+  // The real projection of a listing row onto channel content: it is pure,
+  // and these tests should see what sync actually hands the builder.
+  listingContentForChannels: (await importOriginal<typeof import("../../server/services/listingSyndication")>())
+    .listingContentForChannels,
   PLATFORMS: {
     land_com: { apiAvailable: true, connection: "customer_account" },
     landwatch: { apiAvailable: true, connection: "customer_account" },

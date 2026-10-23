@@ -11596,6 +11596,9 @@ END $$`,
   // 0282 — how a mail shipment is paid for (house mail lanes). Mirrors
   // migrations/0282_mail_shipment_funding_lane.sql.
   `ALTER TABLE "mail_shipments" ADD COLUMN IF NOT EXISTS "funding_lane" text`,
+  // 0285 — a new listing offers seller financing only when the seller says
+  // so. Mirrors migrations/0285_listing_seller_financing_default_off.sql.
+  `ALTER TABLE "property_listings" ALTER COLUMN "seller_financing_available" SET DEFAULT false`,
   // 0280 (W5b audit) — relabel rows the old "Add Demo Data" seeder created
   // unmarked, on the full fixture fingerprint, so the outcome metric and the
   // founder Letter aggregate stop counting them. Relabel only; idempotent.

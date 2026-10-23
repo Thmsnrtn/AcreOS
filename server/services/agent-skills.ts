@@ -1020,6 +1020,10 @@ const scoreBuyerSkill: Skill = {
 const generateAdCopyInputSchema = z.object({
   propertyId: z.number().describe("Property ID to generate ad copy for"),
   style: z.enum(["story", "features", "investment"]).describe("Ad copy style"),
+  sellerFinancingOffered: z
+    .boolean()
+    .optional()
+    .describe("True only when the seller has said they offer owner financing on this property"),
 });
 
 const generateAdCopySkill: Skill = {
@@ -1035,7 +1039,9 @@ const generateAdCopySkill: Skill = {
   ],
   execute: async (params, context) => {
     try {
-      const { propertyId, style } = generateAdCopyInputSchema.parse(params);
+      const { propertyId, style, sellerFinancingOffered } = generateAdCopyInputSchema.parse(params);
+      // Financing terms are the seller's offer, never a default of the copy.
+      const offersTerms = sellerFinancingOffered === true;
       
       const property = await storage.getProperty(context.organizationId, propertyId);
       if (!property) {
@@ -1057,35 +1063,29 @@ This isn't just property—it's your escape from the chaos. Whether you're dream
 
 ${property.roadAccess ? `✓ Easy ${property.roadAccess} road access` : ""}
 ${property.utilities ? "✓ Utilities available nearby" : ""}
-${property.zoning ? `✓ Zoned: ${property.zoning}` : ""}
-
-The best part? You can own this land with a small down payment and affordable monthly payments. No banks, no credit checks, no hassle.`;
+${property.zoning ? `✓ Zoned: ${property.zoning}` : ""}${offersTerms ? "\n\nThe seller offers owner financing — ask about the terms." : ""}`;
         callToAction = "Reply now to claim your piece of the American dream!";
       } else if (style === "features") {
-        headline = `${acreage.toFixed(2)} Acres in ${property.county || property.state || "Prime Location"} - Owner Financing Available`;
+        headline = `${acreage.toFixed(2)} Acres in ${property.county || property.state || "Prime Location"}${offersTerms ? " - Owner Financing Available" : ""}`;
         description = `Property Details:
 • Size: ${acreage.toFixed(2)} acres
 • Location: ${location || "Contact for details"}
 ${property.apn ? `• APN: ${property.apn}` : ""}
 ${property.roadAccess ? `• Road Access: ${property.roadAccess}` : ""}
 ${property.zoning ? `• Zoning: ${property.zoning}` : ""}
-${property.terrain ? `• Terrain: ${property.terrain}` : ""}
-
-Owner financing available with low down payment and easy monthly payments. No credit check required.`;
-        callToAction = "Contact us today for pricing and terms!";
+${property.terrain ? `• Terrain: ${property.terrain}` : ""}${offersTerms ? "\n\nOwner financing offered — ask about the terms." : ""}`;
+        callToAction = "Contact us today for pricing and details!";
       } else {
         headline = `Investment Opportunity: ${acreage.toFixed(2)} Acres - ${property.county || property.state}`;
         description = `Land investment opportunity in ${location || "growing area"}.
 
-${acreage.toFixed(2)} acres with strong appreciation potential. Land values in this area have been steadily increasing as development expands.
+${acreage.toFixed(2)} acres.
 
-Perfect for:
+Suited to:
 • Buy and hold investment
 • Future development
-• Portfolio diversification
-
-Owner financing terms available. Build equity while paying over time.`;
-        callToAction = "Inquire now for investment details and ROI projections!";
+• Portfolio diversification${offersTerms ? "\n\nOwner financing terms offered." : ""}`;
+        callToAction = "Inquire now for details!";
       }
 
       return {

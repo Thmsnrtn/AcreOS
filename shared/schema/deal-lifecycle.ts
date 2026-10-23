@@ -429,7 +429,7 @@ export const propertyListings = pgTable("property_listings", {
   askingPrice: numeric("asking_price").notNull(),
   minimumPrice: numeric("minimum_price"),
   
-  sellerFinancingAvailable: boolean("seller_financing_available").default(true),
+  sellerFinancingAvailable: boolean("seller_financing_available").default(false),
   downPaymentMin: numeric("down_payment_min"),
   monthlyPaymentMin: numeric("monthly_payment_min"),
   interestRate: numeric("interest_rate"),
