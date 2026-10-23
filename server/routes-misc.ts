@@ -8,6 +8,7 @@ import { alertingService } from "./services/alerting";
 import { usageMeteringService, creditService } from "./services/credits";
 import { callTranscripts } from "@shared/schema";
 import { requireAdminOrAbove } from "./utils/permissions";
+import { requireLadderFlag } from "./middleware/featureGate";
 import { registerAIOperationsRoutes } from "./routes-ai-operations";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
@@ -744,8 +745,13 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
   // INVESTOR VERIFICATION ROUTES (T82)
   // ============================================
 
+  // Investor profiles exist to populate the cross-org investor directory —
+  // a MARKETPLACE under the ~25-customer expansion ladder (founder decision
+  // 2026-10-20 #4). Every profile route is ladder-gated, fails closed.
+  const investorNetworkLadder = requireLadderFlag("feature_marketplace");
+
   // GET /api/investor-profiles/my — get or create own investor profile
-  api.get("/api/investor-profiles/my", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.get("/api/investor-profiles/my", isAuthenticated, getOrCreateOrg, investorNetworkLadder, async (req, res) => {
     try {
       const org = req.organization;
       const user = req.user;
@@ -763,7 +769,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
   });
 
   // POST /api/investor-profiles — create/update investor profile
-  api.post("/api/investor-profiles", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.post("/api/investor-profiles", isAuthenticated, getOrCreateOrg, investorNetworkLadder, async (req, res) => {
     try {
       const org = req.organization;
       const user = req.user;
@@ -825,7 +831,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
   });
 
   // POST /api/investor-profiles/verify — submit verification documents
-  api.post("/api/investor-profiles/verify", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.post("/api/investor-profiles/verify", isAuthenticated, getOrCreateOrg, investorNetworkLadder, async (req, res) => {
     try {
       const org = req.organization;
       const { verificationType, documentUrl, selfAttestation } = req.body;
@@ -862,7 +868,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
   });
 
   // GET /api/investor-profiles/directory — browse verified investors in marketplace
-  api.get("/api/investor-profiles/directory", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.get("/api/investor-profiles/directory", isAuthenticated, getOrCreateOrg, investorNetworkLadder, async (req, res) => {
     try {
       const { db: database } = await import("./db");
       const { investorProfiles } = await import("@shared/schema");

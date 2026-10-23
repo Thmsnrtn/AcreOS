@@ -22,8 +22,15 @@
 import { Router, type Request, type Response } from "express";
 import { Errors } from "./utils/errors";
 import { clock } from "./utils/clock";
+import { requireLadderFlag } from "./middleware/featureGate";
 
 const router = Router();
+
+// The investor network is a MARKETPLACE (founder decision 2026-10-20 #4): a
+// cross-org surface where orgs find and share deals with one another. It sits
+// behind the same expansion-ladder gate as /marketplace — no marketplace
+// before ~25 customers — founder bypass kept, no tier bypass, fails closed.
+router.use("/investor-network", requireLadderFlag("feature_marketplace"));
 
 function getUser(req: Request) { return req.user; }
 

@@ -1,9 +1,11 @@
 /**
  * D7 syndication channel model — pure derivation logic.
  *
- * Pins the honesty rules: unkeyed channels report the exact missing env
- * keys instead of faking "synced"; manual-only channels say so; real sync
- * errors surface; counts come from syndicationTargets records.
+ * Pins the honesty rules: a channel whose posting account (the org's OWN —
+ * founder decision 2026-10-20 #3) is not connected says so instead of
+ * faking "synced"; manual-only channels say so; real sync errors surface;
+ * counts come from syndicationTargets records. This used to pin which of
+ * AcreOS's own env keys were missing.
  */
 import { describe, it, expect } from "vitest";
 
@@ -15,10 +17,10 @@ vi.mock("../../server/db", () => ({ db: {} }));
 import {
   deriveChannelView,
   countTargets,
-  missingEnvKeys,
+  channelConnected,
   isKnownChannel,
 } from "../../server/services/syndicationChannels";
-import { PLATFORMS } from "../../server/services/listingSyndication";
+import { PLATFORMS, channelCredentialStore } from "../../server/services/listingSyndication";
 
 const landflip = PLATFORMS.landflip;
 const craigslist = PLATFORMS.craigslist;
@@ -31,19 +33,31 @@ describe("isKnownChannel", () => {
   });
 });
 
-describe("missingEnvKeys", () => {
-  it("lists exactly the absent keys", () => {
-    expect(missingEnvKeys(landflip, {} as NodeJS.ProcessEnv)).toEqual([
-      "LANDFLIP_API_KEY",
-      "LANDFLIP_MEMBER_ID",
-    ]);
-    expect(
-      missingEnvKeys(landflip, { LANDFLIP_API_KEY: "x", LANDFLIP_MEMBER_ID: "y" } as unknown as NodeJS.ProcessEnv),
-    ).toEqual([]);
+describe("channelConnected — the org's own account, never AcreOS env keys", () => {
+  it("a portal is not connected while no own-account credentials resolve, whatever AcreOS's env holds", async () => {
+    process.env.LANDFLIP_API_KEY = "platform-key";
+    process.env.LANDFLIP_MEMBER_ID = "platform-member";
+    try {
+      expect(await channelConnected(7, landflip)).toBe(false);
+    } finally {
+      delete process.env.LANDFLIP_API_KEY;
+      delete process.env.LANDFLIP_MEMBER_ID;
+    }
   });
 
-  it("keyless channels never report missing keys", () => {
-    expect(missingEnvKeys(craigslist, {} as NodeJS.ProcessEnv)).toEqual([]);
+  it("a portal is connected once the org's own credentials resolve", async () => {
+    const original = channelCredentialStore.resolve;
+    channelCredentialStore.resolve = async (orgId) => (orgId === 7 ? { apiKey: "own", memberId: "own" } : null);
+    try {
+      expect(await channelConnected(7, landflip)).toBe(true);
+      expect(await channelConnected(8, landflip)).toBe(false);
+    } finally {
+      channelCredentialStore.resolve = original;
+    }
+  });
+
+  it("a channel needing no account is always connected", async () => {
+    expect(await channelConnected(7, craigslist)).toBe(true);
   });
 });
 
@@ -51,22 +65,22 @@ describe("deriveChannelView", () => {
   const counts = { published: 3, pending: 2 };
 
   it("no state row → disabled", () => {
-    const v = deriveChannelView(landflip, undefined, counts, []);
+    const v = deriveChannelView(landflip, undefined, counts, false);
     expect(v.syncStatus).toBe("disabled");
     expect(v.enabled).toBe(false);
     expect(v.pendingCount).toBe(0); // disabled channels don't count pending
     expect(v.listingsPublished).toBe(3);
   });
 
-  it("enabled but unkeyed → error naming the missing keys, never synced", () => {
+  it("enabled but not connected → error saying it posts on your own account, never synced", () => {
     const v = deriveChannelView(
       landflip,
       { enabled: true, lastSyncAt: null, lastSyncError: null },
       counts,
-      ["LANDFLIP_API_KEY"],
+      false,
     );
     expect(v.syncStatus).toBe("error");
-    expect(v.errorMessage).toContain("LANDFLIP_API_KEY");
+    expect(v.errorMessage).toMatch(/your own LandFlip account/);
   });
 
   it("enabled manual-only channel → pending with honest manual message", () => {
@@ -74,7 +88,7 @@ describe("deriveChannelView", () => {
       craigslist,
       { enabled: true, lastSyncAt: null, lastSyncError: null },
       counts,
-      [],
+      true,
     );
     expect(v.syncStatus).toBe("pending");
     expect(v.errorMessage).toMatch(/manual/i);
@@ -85,7 +99,7 @@ describe("deriveChannelView", () => {
       landflip,
       { enabled: true, lastSyncAt: new Date("2026-07-13T00:00:00Z"), lastSyncError: "HTTP 503 from LandFlip" },
       counts,
-      [],
+      true,
     );
     expect(v.syncStatus).toBe("error");
     expect(v.errorMessage).toBe("HTTP 503 from LandFlip");
@@ -96,7 +110,7 @@ describe("deriveChannelView", () => {
       landflip,
       { enabled: true, lastSyncAt: new Date("2026-07-13T00:00:00Z"), lastSyncError: null },
       { published: 3, pending: 2 },
-      [],
+      true,
     );
     expect(v.syncStatus).toBe("pending");
     expect(v.pendingCount).toBe(2);
@@ -107,7 +121,7 @@ describe("deriveChannelView", () => {
       landflip,
       { enabled: true, lastSyncAt: new Date("2026-07-13T00:00:00Z"), lastSyncError: null },
       { published: 3, pending: 0 },
-      [],
+      true,
     );
     expect(v.syncStatus).toBe("synced");
     expect(v.lastSyncAt).toBe("2026-07-13T00:00:00.000Z");
@@ -118,7 +132,7 @@ describe("deriveChannelView", () => {
       landflip,
       { enabled: true, lastSyncAt: null, lastSyncError: null },
       { published: 0, pending: 0 },
-      [],
+      true,
     );
     expect(v.syncStatus).toBe("pending");
   });

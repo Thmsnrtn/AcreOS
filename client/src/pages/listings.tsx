@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { usePropertiesByIds } from "@/hooks/use-properties";
 import { PropertyCombobox } from "@/components/property-combobox";
-import { Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -328,7 +327,7 @@ export default function ListingsPage() {
         <div className="flex items-center justify-between gap-4 flex-wrap mb-6">
           <div>
             <h1 className="text-2xl font-bold" data-testid="text-page-title">Listings</h1>
-            <p className="text-muted-foreground">Manage property listings and syndication</p>
+            <p className="text-muted-foreground">Manage property listings and their copy</p>
           </div>
           <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
             <DialogTrigger asChild>
@@ -639,7 +638,7 @@ export default function ListingsPage() {
           <EmptyState
             icon={Building}
             headline="No listings live"
-            subtitle="Publish your first listing — Pax syndicates it to your active channels within 90 seconds and threads every inquiry back to the parcel."
+            subtitle="Create your first listing — AcreOS prepares the listing copy. Posting to Land.com or Facebook runs on your own account with each, which can't be connected yet; Craigslist gets ready-to-paste text."
             cta={{
               label: "Create listing",
               onClick: () => setIsCreateOpen(true),
@@ -948,7 +947,7 @@ export default function ListingsPage() {
               <DialogDescription>
                 {lastPublishResults
                   ? "Per-platform results from your last publish attempt."
-                  : "Select platforms to syndicate your listing to."}
+                  : "Choose channels. Craigslist returns ready-to-paste text; every other channel posts only on your own account with it, which AcreOS can't connect yet."}
               </DialogDescription>
             </DialogHeader>
             <form
@@ -959,12 +958,9 @@ export default function ListingsPage() {
               }}
             >
               <p className="text-xs text-muted-foreground" data-testid="text-publish-disclaimer">
-                Each platform requires partner credentials configured in{" "}
-                <Link href="/settings#integrations" className="underline hover:text-foreground">
-                  Settings → Integrations
-                </Link>
-                . Platforms without credentials will be returned as{" "}
-                <span className="font-medium">missing credentials</span> and skipped — no listing leaves your tenant.
+                Automatic posting runs on your own account with each channel, and AcreOS can&apos;t connect one yet. Every
+                channel except Craigslist comes back as{" "}
+                <span className="font-medium">not connected</span> and nothing is posted — post it there yourself.
               </p>
               <fieldset className="space-y-2 border-0 p-0 m-0">
                 <legend className="sr-only">Syndication platforms</legend>
@@ -985,7 +981,7 @@ export default function ListingsPage() {
                           <target.icon className="h-5 w-5 shrink-0" aria-hidden="true" />
                           <span className="truncate">{target.name}</span>
                           {needsKey && !lastResult && (
-                            <Badge variant="outline" className="text-xs">needs API key</Badge>
+                            <Badge variant="outline" className="text-xs">your account — can&apos;t connect yet</Badge>
                           )}
                           {inFlight && (
                             <span

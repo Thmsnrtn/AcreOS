@@ -331,7 +331,7 @@ describe("witnessed send — explicit human approval triggers the guarded send",
     expect((result.data as any)?.messageId).toBe("msg_witnessed_1");
     expect(checkSendRateLimit).toHaveBeenCalledWith(7, "email");
     // (T0-5: TCPA lookup is org-scoped — orgId first, then leadId.)
-    expect(checkTcpaBeforeSend).toHaveBeenCalledWith(7, 42);
+    expect(checkTcpaBeforeSend).toHaveBeenCalledWith(7, 42, "email");
     expect(sendEmail).toHaveBeenCalledTimes(1);
     expect(recordAutonomousSend).toHaveBeenCalledWith(7, "email", 42, expect.stringContaining("Following up on your land"));
     // The replay does not re-read the controls — a tap is the human acting.
@@ -353,7 +353,7 @@ describe("witnessed send — explicit human approval triggers the guarded send",
     expect(result.success).toBe(true);
     expect((result.data as any)?.messageId).toBe("sms_witnessed_1");
     expect(checkSendRateLimit).toHaveBeenCalledWith(7, "sms");
-    expect(checkTcpaBeforeSend).toHaveBeenCalledWith(7, 42);
+    expect(checkTcpaBeforeSend).toHaveBeenCalledWith(7, 42, "sms");
     // DEFECT-0104: a lead-addressed text is declared a solicitation, bound to the lead.
     expect(sendOrgSMS).toHaveBeenCalledWith(
       expect.objectContaining({

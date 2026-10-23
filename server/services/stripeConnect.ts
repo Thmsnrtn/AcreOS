@@ -144,25 +144,21 @@ export class StripeConnectService {
       throw new Error("Stripe is not configured. Please contact support to enable payment processing.");
     }
     
+    // STANDARD, not Express (founder decision 2026-10-20 #5, under the
+    // no-platform-money-custody hard stop). A Standard account is the
+    // customer's OWN Stripe account: they hold the Stripe relationship,
+    // dashboard, payout schedule, disputes and negative-balance liability.
+    // With Express the platform carries the dispute/negative-balance exposure
+    // and sets the payout schedule — a quieter form of standing in the money
+    // path, which "be the rail, not the provider" rules out. So: no
+    // platform-set payout schedule, no capabilities requested on the
+    // customer's behalf (Standard holders manage their own), no `transfers`
+    // (AcreOS never transfers to them — charges are direct), and no
+    // hard-coded land-investing product description for every vertical.
     const account = await stripe.accounts.create({
-      type: "express",
+      type: "standard",
       email,
-      business_profile: {
-        name: businessName,
-        product_description: "Land investment and seller financing services",
-      },
-      capabilities: {
-        card_payments: { requested: true },
-        transfers: { requested: true },
-        us_bank_account_ach_payments: { requested: true },
-      },
-      settings: {
-        payouts: {
-          schedule: {
-            interval: "daily",
-          },
-        },
-      },
+      ...(businessName ? { business_profile: { name: businessName } } : {}),
     });
 
     await this.saveConnectedAccount(organizationId, account.id);

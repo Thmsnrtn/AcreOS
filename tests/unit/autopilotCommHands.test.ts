@@ -26,7 +26,7 @@ vi.mock("../../server/services/autopilot/hands/counterpartyMatch", () => ({
 }));
 
 // Chainable drizzle-db mock for send-sms's consent lookup.
-const leadRowHolder: { row: any } = { row: { doNotContact: false, tcpaConsent: true } };
+const leadRowHolder: { row: any } = { row: { doNotContact: false, tcpaConsent: true, consentSource: "website" } };
 vi.mock("../../server/db", () => {
   const chain: any = {
     select: () => chain,
@@ -166,7 +166,7 @@ describe("send_email hand — suppression honored", () => {
 describe("send_sms hand — TCPA consent + quiet hours", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    leadRowHolder.row = { doNotContact: false, tcpaConsent: true };
+    leadRowHolder.row = { doNotContact: false, tcpaConsent: true, consentSource: "website" };
   });
 
   it("isQuietHour is true outside 8am–9pm", () => {
@@ -184,6 +184,23 @@ describe("send_sms hand — TCPA consent + quiet hours", () => {
     expect(r.output).toContain("not consented");
     expect(sendSMSToLead).not.toHaveBeenCalled();
   });
+
+  // Founder decision 2026-10-20 #1: a prospecting text needs WRITTEN consent.
+  // Mutation recorded: reverting the hand to `lead.tcpaConsent === false`
+  // turns both of these red (verbal is a grant; NULL is not `false`).
+  for (const row of [
+    { doNotContact: false, tcpaConsent: true, consentSource: "verbal" },
+    { doNotContact: false, tcpaConsent: true, consentSource: "admin_manual" },
+    { doNotContact: false, tcpaConsent: null, consentSource: "website" },
+  ]) {
+    it(`refuses a lead whose consent is not written (${row.tcpaConsent}/${row.consentSource}) and never sends`, async () => {
+      leadRowHolder.row = row;
+      const r = await executeHandWitnessed("send_sms", { organization_id: 1, lead_id: 9, message: "hi" }, "founder_1");
+      expect(r.success).toBe(false);
+      expect(r.output).toContain("in writing");
+      expect(sendSMSToLead).not.toHaveBeenCalled();
+    });
+  }
 
   it("sends to a consented lead via the witnessed path", async () => {
     (sendSMSToLead as any).mockResolvedValue({ success: true, messageId: "sms_1" });

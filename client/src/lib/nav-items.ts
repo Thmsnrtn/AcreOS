@@ -29,7 +29,6 @@ import {
   Webhook,
   Share2,
   Brain,
-  UserCheck,
   Shield,
   BarChart2,
   Database,
@@ -115,9 +114,10 @@ export const ALL_NAV_ITEMS: MasterNavItem[] = [
   { id: "goals",         label: "Goals & OKRs",    icon: Target,      href: "/goals",          description: "Track organizational goals and KPIs" },
   { id: "tax-optimizer", label: "Tax Optimizer",   icon: Receipt,     href: "/tax-optimizer",  description: "Capital gains and year-end tax planning" },
   { id: "webhooks",      label: "Webhooks",        icon: Webhook,     href: "/webhooks",       description: "Outbound webhook management" },
-  { id: "syndication",   label: "Syndication",     icon: Share2,      href: "/syndication",    description: "Publish listings to Land.com, LandWatch, etc." },
+  { id: "syndication",   label: "Syndication",     icon: Share2,      href: "/syndication",    description: "Listing copy per channel — posting runs on your own channel accounts, which can't be connected yet; Craigslist gets ready-to-paste text" },
   { id: "model-training",label: "Valuation Model", icon: Brain,       href: "/model-training", description: "AcreOS Market Value model training and insights" },
-  { id: "investor-network", label: "Investor Network", icon: UserCheck, href: "/investor-network", description: "Verified investor directory and profiles" },
+  // investor-network removed 2026-10-20: a marketplace under the ~25-customer
+  // ladder (founder decision #4) — frozen in shared/feature-freeze.ts.
   // Additional Pages
   { id: "avm-bulk",             label: "Bulk AVM",            icon: TrendingUp,  href: "/avm-bulk",             description: "Bulk AI valuations via CSV upload" },
   // marketplace-analytics + va-dashboard entries removed 2026-07-07 (WS1):

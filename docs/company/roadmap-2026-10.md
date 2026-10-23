@@ -909,3 +909,10 @@ shows 199 successes, zero failures and one lock skip across 55 jobs. The previou
 failing retraction job is absent from that bounded window, so recovery of that
 specific job is NOT proven. Paging and owner/delegation witnesses remain open.
 All 39 tickets and G0 remain incomplete.
+
+**Scoped lift (founder decision 2026-10-20 #6, `founder-decisions-2026-10-20.md`).**
+The stop rule is lifted for the **land vertical only**, owner financing
+included: list building, CSV import that keeps acreage / value / tax-delinquent
+status, valuation beyond the AI fallback, road-access truth, and the land
+listing path. Every other vertical stays under the stop rule until land clears
+the best-in-class bar.
