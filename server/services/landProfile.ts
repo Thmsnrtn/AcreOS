@@ -408,13 +408,14 @@ export function assembleLandProfile(
   }
 
   // ── Access flags ──────────────────────────────────────────────
-  // Road access: derived from transportation distance to nearest highway.
-  const hwMiles = enrichment?.transportation?.nearestHighwayMiles;
-  fields.roadAccess = field<boolean>(
-    typeof hwMiles === "number" ? hwMiles <= 1 : null,
-    prov["transportation"],
-    { fallbackSource: "Census TIGER", classification: "estimate", confidence: 60 }
-  );
+  // Road access: NOT DETERMINED HERE — deliberately left unset (a gap).
+  //
+  // This was `nearestHighwayMiles <= 1` published as the boolean "Road
+  // access: Yes". A highway a mile away says nothing about whether this
+  // parcel has legal ingress/egress — a landlocked tract can sit beside an
+  // interstate. Proximity is a measurement, not an access verdict; only a
+  // real landlocked / frontage check may populate this field.
+  // (nearestHighwayMiles stays on the enrichment result as the measurement.)
   // Water access: nearest stream/water body within reach.
   const waterMiles =
     enrichment?.water?.nearestStreamMiles ?? enrichment?.water?.nearestWaterBodyMiles;
@@ -503,6 +504,9 @@ function gapReason(
     // Sampling not attempted on this (sync/cached) path.
     return "not_looked_up";
   }
+  // Road access is never derived from the coordinate layers (proximity is
+  // not access) — it is "not looked up", not "no data at this location".
+  if (fieldKey === "roadAccess") return "not_looked_up";
   const category = FIELD_TO_CATEGORY[fieldKey];
   if (!enrichment) return "not_looked_up";
   if (category && errors[category]) return "lookup_failed";

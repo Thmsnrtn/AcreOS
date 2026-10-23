@@ -154,11 +154,12 @@ const SECONDARY_CHOICES: { value: BusinessType; label: string; description: stri
   // for "(waitlist)"/"(beta)" tags and checks them against the registry.
   { value: "fix_and_flip", label: "Fix & Flip", icon: Hammer, description: "Renovate-and-resell: rehab budgets and milestones, contractor tracking, and 70%-rule underwriting, on residential comps and valuations." },
   { value: "buy_and_hold", label: "Buy & Hold", icon: Key, description: "Build a long-term rental portfolio for passive income." },
-  // STR is core (Wave 5): AcreOS models nightly stays end-to-end — reservations
-  // ledger + channel-CSV import, occupancy/ADR/RevPAR, per-stay P&L, turnover
-  // scheduling, and operator-set nightly pricing. Honest about what stays out of
-  // scope: OTA channel sync (Airbnb, VRBO) and dynamic/market nightly pricing.
-  { value: "short_term_rental", label: "Short-Term Rental", icon: Palmtree, description: "Nightly-stay bookings, channel-CSV import, occupancy/ADR/RevPAR, per-stay P&L, turnovers, and your own nightly pricing. OTA channel sync (Airbnb, VRBO) and dynamic market pricing aren't built." },
+  // STR: the Bookings tab lists a property's recorded reservations and its
+  // occupancy/ADR/RevPAR. This description used to also promise channel-CSV
+  // import, per-stay P&L, turnovers and operator-set nightly pricing — API
+  // routes exist for those, but no screen a customer can reach delivers them,
+  // so the promise was removed (P1 sweep 2026-10-20), not reworded.
+  { value: "short_term_rental", label: "Short-Term Rental", icon: Palmtree, description: "Nightly-stay reservations with occupancy, ADR and RevPAR. OTA channel sync (Airbnb, VRBO) and dynamic market pricing aren't built." },
   { value: "multifamily", label: "Multifamily", icon: Building2, description: "Invest in apartment buildings and 5+ unit properties." },
   { value: "commercial", label: "Commercial", icon: Landmark, description: "Office, retail, industrial, and mixed-use investments." },
   { value: "creative_finance", label: "Creative Finance", icon: Lightbulb, description: "Subject-to, seller financing, wraps, and lease options." },

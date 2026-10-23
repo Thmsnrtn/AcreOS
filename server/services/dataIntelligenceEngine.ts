@@ -462,7 +462,10 @@ export function calculateOpportunityScore(inputs: Partial<OpportunityScoreInputs
     const roadDist = inputs.distanceToPrimaryRoad;
     if (roadDist <= 0.25) {
       marketScore += 5;
-      flags.push({ type: "positive", signal: "Excellent road access", impact: "Broadest buyer pool — accessible to all buyer types" });
+      // Distance to a road is proximity, not access: a landlocked tract can sit
+      // a few hundred feet from a highway. The score credits proximity; the
+      // flag must not tell the customer access exists.
+      flags.push({ type: "positive", signal: "Primary road within 0.25 mi (access not verified)", impact: "Close to a road — confirm frontage or a recorded easement before relying on access" });
     } else if (roadDist <= 1) {
       marketScore += 3;
     } else if (roadDist > 5) {
