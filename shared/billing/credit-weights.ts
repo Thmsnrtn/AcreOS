@@ -72,16 +72,17 @@ export const CREDIT_WEIGHTS: Record<CreditAction, number> = {
   // time via poolDebit, but these define the credit-pool sizing math and the
   // founder-recalibration anchor for each action.
   //
-  // D1a (2026-10-22) corrected the Regrid cost table to its published floor;
-  // parcel_lookup_paid (8 < 10¢), owner_lookup (8 < 15¢) and valuation_lookup
-  // (10 < 15¢) now sit BELOW what a Regrid-served lookup costs. They are left
-  // unchanged on purpose: these weights are what a customer's credit pool is
-  // debited, so re-basing them is a pricing change, and pricing is
-  // founder-gated. The re-base is a pending founder decision, not an oversight.
-  parcel_lookup_paid: 8, // below Regrid Standard 10¢/record — re-base pending founder decision
+  // D1a (2026-10-22) corrected the Regrid cost table to its published floor
+  // and exposed that the original weights (8/8/10) sat BELOW what a
+  // Regrid-served lookup costs. Founder decision 2026-10-23: re-based to
+  // true cost — parcel at Regrid Standard, owner + valuation at Regrid
+  // Premium — so a customer's pool is never debited less than the lookup
+  // costs us. No paying customers yet, so no live pool was sized on the
+  // old numbers.
+  parcel_lookup_paid: 10, // Regrid Standard 10¢/record returned
   comps_lookup: 20, // ATTOM comps up to 20¢ (≥ Regrid Premium 15¢/record for a one-record search)
-  owner_lookup: 8, // below Regrid Premium 15¢/record — re-base pending founder decision
-  valuation_lookup: 10, // ATTOM AVM 10¢; below Regrid Premium 15¢/record — re-base pending founder decision
+  owner_lookup: 15, // Regrid Premium 15¢/record returned
+  valuation_lookup: 15, // Regrid Premium 15¢/record returned
 };
 
 /**
