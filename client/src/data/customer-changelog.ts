@@ -172,7 +172,7 @@ export const CUSTOMER_CHANGELOG: CustomerChangelogEntry[] = [
         type: "added",
         title: "Portfolio P&L",
         body:
-          "A dedicated /portfolio-pnl view rolls up realized and unrealized gains across every parcel and seller-finance note — broken out by county, vintage, and acquisition channel.",
+          "A dedicated /portfolio-pnl view rolls up a year of sale proceeds, seller-finance interest income, acquisition cost, and net profit, with cash-on-cash return, an IRR estimate, and a quarterly breakdown.",
       },
       {
         type: "improved",

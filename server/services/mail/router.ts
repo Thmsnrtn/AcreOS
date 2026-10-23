@@ -8,7 +8,9 @@
  * Today only Lob is enabled. PostGrid activates as soon as POSTGRID_API_KEY
  * is set (pay-as-you-go, ~25% cheaper). EDDM / presort / lettrlabs are
  * scaffolded but DISABLED — they unlock at $1k / $5k MRR / premium-SKU
- * revenue triggers respectively. See the per-adapter TODO blocks.
+ * revenue triggers respectively. See the per-adapter TODO blocks. Until one
+ * of them is real, the products only they could deliver (handwritten,
+ * next-day, batch, EDDM) are refused here — see shared/outreach/mailOptions.ts.
  *
  * The router does NOT post to the financial ledger directly — adapters
  * own that (preserves the Pillar 1.6 hook already living inside the Lob
@@ -18,15 +20,12 @@
 
 import { logger } from "../../utils/logger";
 import { getSetting } from "../founderSettings";
+import { ALL_MAIL_PIECE_TYPES, ALL_MAIL_SPEEDS, undeliverableMailReason } from "@shared/outreach/mailOptions";
 
 // ── Public types ─────────────────────────────────────────────────────────────
 
-export type MailShipmentSpeed =
-  | "next_day"
-  | "standard"
-  | "batch_3d"
-  | "batch_weekly"
-  | "eddm_geo";
+/** The stored vocabulary (mailOptions.ts); only DELIVERABLE_MAIL_SPEEDS are accepted. */
+export type MailShipmentSpeed = (typeof ALL_MAIL_SPEEDS)[number];
 
 export interface MailPiece {
   recipient: {
@@ -207,6 +206,9 @@ export class MailRouter {
    * surface so the caller doesn't see noise.
    */
   async quote(shipment: MailShipment): Promise<ProviderQuote[]> {
+    // A product no provider delivers (handwritten, next-day, batch, EDDM) is
+    // never quoted: a quote is a price for something that will be mailed.
+    if (undeliverableMailReason(shipment.pieces.map((p) => p.pieceType), shipment.speed) !== null) return [];
     const enabled = await resolveEnabledProviders();
     const providers = await loadProviders();
     const quotes: ProviderQuote[] = [];
@@ -232,6 +234,12 @@ export class MailRouter {
    * the Lob baseline so the founder dashboard can render the win.
    */
   async route(shipment: MailShipment): Promise<RouteResult> {
+    // Refused before any provider is contacted, so nothing was billed and a
+    // pre-paid charge is returned (shared/outreach/mailOptions.ts).
+    const undeliverable = undeliverableMailReason(shipment.pieces.map((p) => p.pieceType), shipment.speed);
+    if (undeliverable !== null) {
+      throw Object.assign(new Error(`MailRouter.route: ${undeliverable}`), { providerNotBilled: true });
+    }
     const quotes = await this.quote(shipment);
     if (quotes.length === 0) {
       throw new Error(
@@ -317,7 +325,7 @@ export const mailRouter = new MailRouter();
 
 // ── Shared piece-cost helpers (used by Lob + PostGrid adapters) ──────────────
 
-export const PIECE_TYPES = ["postcard_4x6", "postcard_6x9", "letter_10", "handwritten"] as const;
+export const PIECE_TYPES = ALL_MAIL_PIECE_TYPES;
 export type PieceType = (typeof PIECE_TYPES)[number];
 
 /**
@@ -327,7 +335,7 @@ export type PieceType = (typeof PIECE_TYPES)[number];
  */
 export function averageCostCentsPerPiece(
   pieces: MailPiece[],
-  table: Record<PieceType, number>,
+  table: Partial<Record<PieceType, number>>,
 ): number {
   if (pieces.length === 0) return 0;
   const total = pieces.reduce((sum, p) => sum + (table[p.pieceType] ?? 0), 0);

@@ -34,9 +34,11 @@ import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { assertEntityBelongsToOrg } from "./utils/orgScope";
 import { generate1099NecPdf, type Nec1099Form } from "./services/form1099NecPdf";
+import { NEC_THRESHOLD_CENTS, NEC_THRESHOLD_REVIEW_NOTE, resolve1099Payer } from "./services/form1099NecPayer";
 import { clock } from "./utils/clock";
 
-const NEC_THRESHOLD_CENTS = 60000;  // $600.00 — IRS 1099-NEC threshold
+// The 1099-NEC threshold and its review note live in
+// services/form1099NecPayer.ts: the K13 tax reviewer must confirm the 2026 figure.
 
 const createContractorSchema = z.object({
   name: z.string().min(1).max(200),
@@ -189,10 +191,19 @@ export function registerContractorRoutes(app: Express): void {
       const [org] = await db.select().from(organizations).where(eq(organizations.id, orgId));
       if (!org) return Errors.notFound(res, "Organization");
 
-      const orgTaxAddress = (org as any).taxAddress ?? null;
-      const payerAddress = orgTaxAddress ?? {
-        line1: "(payer address not configured)", city: "—", state: "—", zip: "—",
-      };
+      // Never print a placeholder payer on a tax form: refuse until the
+      // payer's legal name, full tax address and a real TIN are on file.
+      // organizations.ein is ciphertext; the shared resolver decrypts it
+      // (the same one the Form 1098 lender block uses).
+      const payerResolution = resolve1099Payer(org);
+      if (!payerResolution.ok) {
+        return Errors.badRequest(
+          res,
+          `No 1099-NEC was generated: the payer's ${payerResolution.missing.join(", ")} ${payerResolution.missing.length === 1 ? "is" : "are"} not on file. A 1099-NEC cannot be issued with placeholder payer details.`,
+          { reason: "payer_details_missing", missing: payerResolution.missing },
+        );
+      }
+      const payer = payerResolution.payer;
 
       const rows = await db.execute(sql`
         SELECT c.id, c.name, c.business_name, c.legal_entity_name, c.email, c.address, c.tax_id_encrypted, c.tax_id_type,
@@ -216,12 +227,7 @@ export function registerContractorRoutes(app: Express): void {
       for (const r of eligible) {
         const form: Nec1099Form = {
           taxYear,
-          payer: {
-            name: (org as any).legalEntityName ?? org.name ?? "Payer",
-            address: payerAddress,
-            phone: (org as any).phone ?? undefined,
-            taxIdMasked: maskTaxId((org as any).ein ?? null, "ein"),
-          },
+          payer,
           recipient: {
             name: r.name,
             legalEntityName: r.legal_entity_name ?? r.business_name ?? undefined,
@@ -247,6 +253,7 @@ export function registerContractorRoutes(app: Express): void {
         formCount: forms.length,
         forms,
         warning: "Recipient copies (Copy B). Paper IRS filing requires red-ink Copy A — use IRS FIRE / IRIS for electronic filing.",
+        thresholdNote: NEC_THRESHOLD_REVIEW_NOTE,
       });
     } catch (err) {
       return Errors.internal(res, err);
