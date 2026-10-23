@@ -6,6 +6,7 @@
 // ============================================================================
 
 import {
+  uuid,
   pgTable,
   text,
   integer,
@@ -99,7 +100,7 @@ export type EarnestMoneyStatus = typeof EARNEST_MONEY_STATUSES[number];
 export const earnestMoneyHolds = pgTable(
   "earnest_money_holds",
   {
-    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
     organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
     dealId: integer("deal_id"),  // FK ref omitted — deals.id type inferred at insert; soft FK
     propertyId: integer("property_id").references(() => properties.id, { onDelete: "set null" }),
@@ -229,7 +230,7 @@ export type BuyerBlastStatus = typeof BUYER_BLAST_STATUSES[number];
 export const buyerBlasts = pgTable(
   "buyer_blasts",
   {
-    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
     organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
     propertyId: integer("property_id").references(() => properties.id, { onDelete: "cascade" }).notNull(),
     subject: text("subject").notNull(),
@@ -268,7 +269,7 @@ export const buyerBlastRecipients = pgTable(
   {
     id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
     organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
-    blastId: varchar("blast_id").references(() => buyerBlasts.id, { onDelete: "cascade" }).notNull(),
+    blastId: uuid("blast_id").references(() => buyerBlasts.id, { onDelete: "cascade" }).notNull(),
     buyerProfileId: integer("buyer_profile_id").references(() => buyerProfiles.id, { onDelete: "cascade" }).notNull(),
     matchScore: integer("match_score"), // copy from buyer_property_matches at send time
     email: text("email"),

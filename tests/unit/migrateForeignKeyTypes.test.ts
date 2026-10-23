@@ -284,22 +284,21 @@ describe("every foreign key in the corpus is implementable", () => {
 //
 // Everything above compares the SQL corpus against ITSELF, so it is green when
 // the corpus is self-consistent. Staging is not built from the corpus: its
-// release_command is `true` and its schema comes from `db:push`, which follows
-// shared/schema. Where shared/schema declares an FK target varchar and the SQL
-// declares the referencing column uuid, the SQL CREATE TABLE "cannot be
-// implemented" on a db:push-built database. Measured 2026-10-21: that is exactly
-// how staging-schema-reconcile failed on cam_reconciliations,
-// commercial_sales_reports and lease_rent_schedule, reproduced locally by
-// db:push + `migrate.mjs --ddl-only` (1,888 OK, 3 FAILED, exit 1).
+// schema comes from `db:push`, which follows shared/schema, and the nightly
+// staging-schema-reconcile then runs `migrate.mjs --ddl-only` on top. Where
+// shared/schema declares an FK target with a type the SQL's referencing column
+// cannot reference, that CREATE TABLE "cannot be implemented" on staging.
+// Measured 2026-10-21: exactly how the reconcile failed on cam_reconciliations,
+// commercial_sales_reports and lease_rent_schedule (db:push + --ddl-only:
+// 1,888 OK, 3 FAILED, exit 1), and 38 more FKs had the same shape.
 //
-// Those three now take lease_id's type from the live rental_leases.id
-// (leaseIdTypedToRentalLeases / `DO $lease_fk$`), which is right on both
-// populations. The others below are the same shape and survive on staging only
-// because db:push already created their tables, so their CREATE TABLE IF NOT
-// EXISTS never runs there. They are registered, not fixed: which type is
-// canonical (uuid as this corpus builds it, varchar as shared/schema declares it)
-// is the open decision in scripts/migrate.mjs, and it needs production's actual
-// column types. The register is exact and only shrinks; a NEW instance fails.
+// Decided (COO, Package 4): the canonical id type of those families is uuid,
+// which is what production has for all 14 parents. shared/schema now declares
+// them uuid, every one of the 41 FKs agrees, and no table is exempt: the
+// type-following DDL that once let three tables skip this check is gone, so
+// the check reads every SQL FK. An existing db:push-built database converges
+// through CONVERGE_UUID_ID_FAMILIES in scripts/migrate.mjs
+// (tests/integration/uuidIdConvergence.db.test.ts).
 
 import { getTableConfig, PgTable } from "drizzle-orm/pg-core";
 import * as drizzleSchema from "../../shared/schema";
@@ -317,115 +316,86 @@ function dbPushModel(): ColumnModel {
   return model;
 }
 
-/** Tables EVERY one of whose CREATE TABLEs types lease_id from the live column. */
-function typeFollowingTables(srcs: { name: string; sql: string }[]): Set<string> {
-  const created = new Map<string, number>();
-  const wrapped = new Map<string, number>();
-  for (const { sql } of srcs) {
-    for (const m of sql.matchAll(/CREATE TABLE (?:IF NOT EXISTS )?"?([a-z0-9_]+)"?\s*\(/gi)) {
-      created.set(m[1], (created.get(m[1]) ?? 0) + 1);
-    }
-    const shapes = [
-      /leaseIdTypedToRentalLeases\(`CREATE TABLE (?:IF NOT EXISTS )?"([a-z0-9_]+)"/g,
-      /DO \$lease_fk\$[\s\S]*?\$ddl\$CREATE TABLE (?:IF NOT EXISTS )?"([a-z0-9_]+)"/g,
-    ];
-    for (const re of shapes) for (const m of sql.matchAll(re)) wrapped.set(m[1], (wrapped.get(m[1]) ?? 0) + 1);
-  }
-  return new Set([...wrapped].filter(([t, n]) => n === created.get(t)).map(([t]) => t));
-}
-
 /** SQL FKs whose target column db:push builds with an incompatible type. */
-function dbPushMismatches(fks: ForeignKey[], model: ColumnModel, following: Set<string>): string[] {
+function dbPushMismatches(fks: ForeignKey[], model: ColumnModel): string[] {
   const out = new Set<string>();
   for (const fk of fks) {
     const target = model.get(fk.refTable)?.get(fk.refColumn);
-    if (!target || following.has(fk.table)) continue;
+    if (!target) continue;
     if (compatClass(target) !== compatClass(fk.type)) out.add(`${fk.table}.${fk.column}`);
   }
   return [...out].sort();
 }
 
-/** Known, pre-existing instances (2026-10-21). Exact; only shrinks. */
-const KNOWN_DB_PUSH_MISMATCHES = [
-  "account_ledger_entries.account_id",
-  "arv_calculations.rehab_id",
-  "bid_estimates.contractor_id",
-  "bid_estimates.rehab_id",
-  "buyer_blast_recipients.blast_id",
-  "chart_of_accounts.parent_account_id",
-  "construction_draws.rehab_id",
-  "contractor_payments.contractor_id",
-  "contractor_payments.rehab_id",
-  "contractor_payments.rehab_line_item_id",
-  "contractor_w9_documents.contractor_id",
-  "earnest_money_events.hold_id",
-  "lease_addendums.lease_id",
-  "lease_tenants.lease_id",
-  "lease_tenants.tenant_id",
-  "maintenance_tickets.assigned_contractor_id",
-  "maintenance_tickets.lease_id",
-  "maintenance_tickets.submitted_by_tenant_id",
-  "move_inspections.lease_id",
-  "move_inspections.tenant_id",
-  "note_assignments.note_id",
-  "note_loss_mit_actions.case_id",
-  "note_loss_mit_cases.note_id",
-  "note_ownership_of_record.note_id",
-  "note_ownership_splits.note_id",
-  "note_payments.note_id",
-  "permit_gates.checklist_id",
-  "quiet_title_steps.case_id",
-  "rehab_line_items.rehab_id",
-  "rehab_photos.line_item_id",
-  "rehab_photos.rehab_id",
-  "rent_charges.lease_id",
-  "rent_payments.lease_id",
-  "rent_payments.payor_tenant_id",
-  "rent_payments.rent_charge_id",
-  "security_deposits.lease_id",
-  "security_deposits.move_out_inspection_id",
-  "security_deposits.tenant_id",
+/** SQL FK columns that db:push builds, on the CHILD side, with a type the SQL FK cannot hold. */
+function dbPushChildMismatches(fks: ForeignKey[], model: ColumnModel): string[] {
+  const out = new Set<string>();
+  for (const fk of fks) {
+    const child = model.get(fk.table)?.get(fk.column);
+    if (!child) continue;
+    if (compatClass(child) !== compatClass(fk.type)) out.add(`${fk.table}.${fk.column} (${child} in shared/schema, ${fk.type} in SQL)`);
+  }
+  return [...out].sort();
+}
+
+/** The 14 parents whose canonical id type is uuid (production, 2026-10-21). */
+const UUID_ID_PARENTS = [
+  "acquired_notes", "buyer_blasts", "chart_of_accounts", "contractors", "earnest_money_holds",
+  "move_inspections", "note_loss_mit_cases", "permit_checklists", "quiet_title_cases",
+  "rehab_line_items", "rehabs", "rent_charges", "rental_leases", "tenants",
 ];
 
 describe("every SQL foreign key is implementable on a db:push-built database too", () => {
   const model = dbPushModel();
-  const following = typeFollowingTables(sources);
 
-  it("read the db:push schema and found the type-following tables (vacuity)", () => {
+  it("read the db:push schema and the SQL FKs into each uuid parent (vacuity)", () => {
     expect(model.size, "no pgTable read from shared/schema").toBeGreaterThan(300);
-    expect(model.get("rental_leases")?.get("id"), "rental_leases.id missing from the db:push model").toBeTruthy();
-    // Each of the three is wrapped in BOTH migrate.mjs and migrations/0222.
-    expect([...following].sort()).toEqual(["cam_reconciliations", "commercial_sales_reports", "lease_rent_schedule"]);
+    for (const p of UUID_ID_PARENTS) {
+      expect(model.get(p)?.get("id"), `${p}.id missing from the db:push model`).toBeTruthy();
+      // a parent no SQL FK references would make the agreement below vacuous for it
+      expect(foreignKeys.some((fk) => fk.refTable === p && fk.refColumn === "id"), `no SQL FK references ${p}.id`).toBe(true);
+    }
   });
 
-  it("adds no new uuid ↔ string FK against the db:push schema, and the register is exact", () => {
-    const found = dbPushMismatches(foreignKeys, model, following);
-    const added = found.filter((k) => !KNOWN_DB_PUSH_MISMATCHES.includes(k));
-    const stale = KNOWN_DB_PUSH_MISMATCHES.filter((k) => !found.includes(k));
+  it("declares uuid as the id type of all 14 parents in shared/schema (the decision)", () => {
+    const notUuid = UUID_ID_PARENTS.filter((p) => model.get(p)?.get("id") !== "uuid");
+    expect(notUuid, "canonical id type for these families is uuid — production has uuid").toEqual([]);
+  });
+
+  it("has no uuid ↔ string FK against the db:push schema", () => {
     expect(
-      added,
+      dbPushMismatches(foreignKeys, model),
       "these SQL FKs reference a column shared/schema declares with an incompatible type, so their " +
         "CREATE TABLE fails on staging (db:push) with \"foreign key constraint cannot be implemented\". " +
-        "Make the types agree, or type the column from the live target as leaseIdTypedToRentalLeases does.",
+        "Make the two types agree. Do not register or exempt it.",
     ).toEqual([]);
-    expect(stale, "fixed — remove from KNOWN_DB_PUSH_MISMATCHES").toEqual([]);
   });
 
-  it("goes red on the shape that broke staging (positive control)", () => {
-    const probe = parseCorpus([
-      {
-        name: "synthetic",
-        sql: `
-          CREATE TABLE IF NOT EXISTS "child" (
-            "id" varchar PRIMARY KEY,
-            "lease_id" uuid NOT NULL REFERENCES "rental_leases"("id") ON DELETE CASCADE
-          );
-        `,
-      },
-    ]);
-    // rental_leases.id is varchar in shared/schema: an unwrapped uuid FK is a finding…
-    expect(dbPushMismatches(probe.foreignKeys, model, new Set())).toEqual(["child.lease_id"]);
-    // …and a type-following one is not.
-    expect(dbPushMismatches(probe.foreignKeys, model, new Set(["child"]))).toEqual([]);
+  it("builds every SQL FK column with the SQL's type on the child side too", () => {
+    // A child column shared/schema declares varchar while the SQL FK is uuid is
+    // built varchar by db:push with no FK at all: the reference silently does
+    // not exist on staging. Measured 2026-10-21: 40 such columns before uuid
+    // (37 in the rental/rehab/notes/ledger families + the 3 CAM lease_ids).
+    expect(
+      dbPushChildMismatches(foreignKeys, model),
+      "shared/schema declares these FK columns with a type the SQL migration does not, so db:push builds them " +
+        "differently from every other database. Make shared/schema match the SQL.",
+    ).toEqual([]);
+  });
+
+  it("goes red when a parent's db:push type drifts back (positive control)", () => {
+    // Mutate the governed thing: rental_leases.id as staging's db:push built it before.
+    const drifted: ColumnModel = new Map([...model].map(([t, cols]) => [t, new Map(cols)]));
+    drifted.get("rental_leases")!.set("id", "varchar");
+    const found = dbPushMismatches(foreignKeys, drifted);
+    // every real SQL FK into rental_leases is now a finding, the CAM tables included
+    const expected = [...new Set(
+      foreignKeys.filter((fk) => fk.refTable === "rental_leases" && fk.refColumn === "id").map((fk) => `${fk.table}.${fk.column}`),
+    )].sort();
+    expect(expected.length).toBeGreaterThanOrEqual(10);
+    expect(found).toEqual(expected);
+    for (const cam of ["cam_reconciliations.lease_id", "commercial_sales_reports.lease_id", "lease_rent_schedule.lease_id"]) {
+      expect(found).toContain(cam);
+    }
   });
 });

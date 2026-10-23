@@ -46,31 +46,144 @@ if (!process.env.DATABASE_URL) {
 }
 
 /**
- * Run a CREATE TABLE whose "lease_id" must reference "rental_leases"("id"),
- * with lease_id typed to match whatever rental_leases.id actually is on THIS
- * database. The two schema sources disagree: this file creates rental_leases.id
- * as uuid, while shared/schema (what staging's db:push builds) declares it
- * varchar. A hard-coded type is therefore wrong on one of them, and an FK
- * between uuid and varchar "cannot be implemented": the table never exists.
- * Measured: on a db:push-built database the three CAM tables below failed
- * exactly that way (staging-schema-reconcile, 2026-10-20). Typing lease_id from
- * the live column is right on a fresh build, on staging and on production,
- * whichever type production turns out to have. The text keeps its literal
- * `"lease_id" uuid` so the FK-type and mirror gates still read it.
+ * Canonical id type for the rental, rehab, contractor, notes, ledger,
+ * quiet-title, permit, earnest-money and buyer-blast families is uuid
+ * (production is uuid for all 14 parents; COO decision, Package 4). shared/schema
+ * used to declare them varchar, so a db:push-built database (staging) has them
+ * varchar while every SQL FK in this file and migrations/*.sql is uuid.
+ *
+ * This statement converges such a database in place and is a no-op wherever
+ * the columns are already uuid (production, every fresh build). It runs first
+ * so the CREATE TABLEs below meet uuid parents. On a database that needs it:
+ *   1. refuses, naming table.column and the count, if any value in a column it
+ *      would convert is not a uuid — a value it cannot cast is never guessed at;
+ *   2. drops every FK that references one of the 14 parents (recording each
+ *      definition), converts the listed columns plus every child column of
+ *      those FKs with USING col::uuid, then re-creates every FK it dropped.
+ * The whole DO block is one transaction: it lands completely or not at all.
  */
-const leaseIdTypedToRentalLeases = (createTable) => `DO $lease_fk$
-DECLARE lease_id_type text := (
-  SELECT format_type(atttypid, atttypmod) FROM pg_attribute
-   WHERE attrelid = to_regclass('"rental_leases"') AND attname = 'id' AND NOT attisdropped);
+const CONVERGE_UUID_ID_FAMILIES = `DO $uuid_ids$
+DECLARE
+  parents text[] := ARRAY['chart_of_accounts', 'rehabs', 'rehab_line_items', 'contractors', 'acquired_notes', 'note_loss_mit_cases', 'quiet_title_cases', 'tenants', 'rental_leases', 'rent_charges', 'move_inspections', 'permit_checklists', 'earnest_money_holds', 'buyer_blasts'];
+  r record;
+  bad bigint;
 BEGIN
-  IF lease_id_type IS NULL THEN
-    RAISE EXCEPTION 'rental_leases.id not found; cannot type lease_id';
+  CREATE TEMP TABLE _uuid_cols (tbl text, col text) ON COMMIT DROP;
+  CREATE TEMP TABLE _uuid_fks (child text, conname text, def text) ON COMMIT DROP;
+
+  INSERT INTO _uuid_cols VALUES
+      ('chart_of_accounts','id'),
+      ('chart_of_accounts','parent_account_id'),
+      ('account_ledger_entries','account_id'),
+      ('rehabs','id'),
+      ('rehab_line_items','id'),
+      ('rehab_line_items','rehab_id'),
+      ('contractors','id'),
+      ('contractor_w9_documents','contractor_id'),
+      ('contractor_payments','contractor_id'),
+      ('contractor_payments','rehab_id'),
+      ('contractor_payments','rehab_line_item_id'),
+      ('construction_draws','rehab_id'),
+      ('bid_estimates','rehab_id'),
+      ('bid_estimates','contractor_id'),
+      ('arv_calculations','rehab_id'),
+      ('rehab_photos','rehab_id'),
+      ('rehab_photos','line_item_id'),
+      ('acquired_notes','id'),
+      ('note_payments','note_id'),
+      ('note_assignments','note_id'),
+      ('note_ownership_splits','note_id'),
+      ('note_loss_mit_cases','id'),
+      ('note_loss_mit_cases','note_id'),
+      ('note_loss_mit_actions','case_id'),
+      ('quiet_title_cases','id'),
+      ('quiet_title_steps','case_id'),
+      ('note_ownership_of_record','note_id'),
+      ('tenants','id'),
+      ('rental_leases','id'),
+      ('lease_tenants','lease_id'),
+      ('lease_tenants','tenant_id'),
+      ('lease_addendums','lease_id'),
+      ('rent_charges','id'),
+      ('rent_charges','lease_id'),
+      ('rent_payments','lease_id'),
+      ('rent_payments','rent_charge_id'),
+      ('rent_payments','payor_tenant_id'),
+      ('maintenance_tickets','lease_id'),
+      ('maintenance_tickets','submitted_by_tenant_id'),
+      ('maintenance_tickets','assigned_contractor_id'),
+      ('move_inspections','id'),
+      ('move_inspections','lease_id'),
+      ('move_inspections','tenant_id'),
+      ('security_deposits','lease_id'),
+      ('security_deposits','tenant_id'),
+      ('security_deposits','move_out_inspection_id'),
+      ('cam_reconciliations','lease_id'),
+      ('commercial_sales_reports','lease_id'),
+      ('lease_rent_schedule','lease_id'),
+      ('permit_checklists','id'),
+      ('permit_gates','checklist_id'),
+      ('earnest_money_holds','id'),
+      ('buyer_blasts','id'),
+      ('buyer_blast_recipients','blast_id');
+
+  -- every FK that references a parent; its child columns convert too
+  INSERT INTO _uuid_fks
+    SELECT c.conrelid::regclass::text, c.conname, pg_get_constraintdef(c.oid)
+      FROM pg_constraint c
+     WHERE c.contype = 'f'
+       AND c.confrelid IN (SELECT to_regclass(format('%I', p)) FROM unnest(parents) p);
+  INSERT INTO _uuid_cols
+    SELECT trim(both '"' from c.conrelid::regclass::text), a.attname
+      FROM pg_constraint c
+      JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY (c.conkey)
+     WHERE c.contype = 'f'
+       AND c.confrelid IN (SELECT to_regclass(format('%I', p)) FROM unnest(parents) p);
+
+  -- keep only columns that exist here and are still text-typed
+  DELETE FROM _uuid_cols u WHERE NOT EXISTS (
+    SELECT 1 FROM pg_attribute a
+     WHERE a.attrelid = to_regclass(format('%I', u.tbl)) AND a.attname = u.col
+       AND NOT a.attisdropped AND a.atttypid IN ('varchar'::regtype, 'text'::regtype));
+  IF NOT EXISTS (SELECT 1 FROM _uuid_cols) THEN
+    RETURN;
   END IF;
-  EXECUTE replace($ddl$${createTable}$ddl$, '"lease_id" uuid', '"lease_id" ' || lease_id_type);
+
+  FOR r IN SELECT DISTINCT tbl, col FROM _uuid_cols LOOP
+    EXECUTE format(
+      'SELECT count(*) FROM %I WHERE %I IS NOT NULL AND %I !~* %L',
+      r.tbl, r.col, r.col,
+      '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$') INTO bad;
+    IF bad > 0 THEN
+      RAISE EXCEPTION 'uuid id convergence refused: %.% has % non-uuid value(s)', r.tbl, r.col, bad;
+    END IF;
+  END LOOP;
+
+  FOR r IN SELECT child, conname FROM _uuid_fks LOOP
+    EXECUTE format('ALTER TABLE %s DROP CONSTRAINT %I', r.child, r.conname);
+  END LOOP;
+
+  FOR r IN SELECT DISTINCT tbl, col FROM _uuid_cols LOOP
+    IF r.col = 'id' THEN
+      EXECUTE format('ALTER TABLE %I ALTER COLUMN id DROP DEFAULT', r.tbl);
+      EXECUTE format('ALTER TABLE %I ALTER COLUMN id TYPE uuid USING id::uuid', r.tbl);
+      EXECUTE format('ALTER TABLE %I ALTER COLUMN id SET DEFAULT gen_random_uuid()', r.tbl);
+    ELSE
+      EXECUTE format('ALTER TABLE %I ALTER COLUMN %I TYPE uuid USING %I::uuid', r.tbl, r.col, r.col);
+    END IF;
+  END LOOP;
+
+  FOR r IN SELECT child, conname, def FROM _uuid_fks LOOP
+    EXECUTE format('ALTER TABLE %s ADD CONSTRAINT %I %s', r.child, r.conname, r.def);
+  END LOOP;
+
+  RAISE NOTICE 'uuid id convergence: converted % column(s), re-created % FK(s)',
+    (SELECT count(DISTINCT (tbl, col)) FROM _uuid_cols), (SELECT count(*) FROM _uuid_fks);
 END
-$lease_fk$`;
+$uuid_ids$`;
 
 const STATEMENTS = [
+  CONVERGE_UUID_ID_FAMILIES,
   // 0078 — mirror the existing trust-graduation stores into the ONLY Fly
   // release path. Rebuild CI also applies migrations/*.sql, which concealed
   // this omission: production deploys run this array alone. The Oct 13 live
@@ -9011,11 +9124,6 @@ $mig0262$`,
   // Prod-safe: CREATE TABLE IF NOT EXISTS no-ops on a table that already
   // exists, so this changes nothing for a live database either way.
   //
-  // 2026-10-21: the three CREATE TABLEs below now take lease_id's type from the
-  // live rental_leases.id (leaseIdTypedToRentalLeases, top of file), because
-  // staging's db:push builds it varchar and the reconcile failed on exactly
-  // this FK. The canonical type is still open:
-  //
   // STILL UNRESOLVED, and it needs one query nobody has been able to run:
   // shared/schema/rental.ts declares this whole family `varchar`, while this
   // file creates it as `uuid` — deliberately, per the acquired_notes note
@@ -9024,7 +9132,7 @@ $mig0262$`,
 
   // 2. cam_reconciliations — the frozen year-end CAM true-up statement. FK to
   // cam_expense_pools above (created first so the reference resolves).
-  leaseIdTypedToRentalLeases(`CREATE TABLE IF NOT EXISTS "cam_reconciliations" (
+  `CREATE TABLE IF NOT EXISTS "cam_reconciliations" (
     "id" varchar PRIMARY KEY DEFAULT gen_random_uuid(),
     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
     "pool_id" varchar NOT NULL REFERENCES "cam_expense_pools"("id") ON DELETE CASCADE,
@@ -9048,14 +9156,14 @@ $mig0262$`,
     "generated_at" timestamptz,
     "generated_by" text,
     "created_at" timestamptz NOT NULL DEFAULT now()
-  )`),
+  )`,
   // Org-LEADING + the dominant read: every lease's reconciliation for a pool.
   `CREATE INDEX IF NOT EXISTS "cam_reconciliations_org_pool_idx" ON "cam_reconciliations" ("organization_id", "pool_id")`,
   // One reconciliation per (pool, lease): re-generating a statement UPSERTs.
   `CREATE UNIQUE INDEX IF NOT EXISTS "cam_reconciliations_pool_lease_uk" ON "cam_reconciliations" ("pool_id", "lease_id")`,
 
   // 3. commercial_sales_reports — the tenant's reported gross sales, per period.
-  leaseIdTypedToRentalLeases(`CREATE TABLE IF NOT EXISTS "commercial_sales_reports" (
+  `CREATE TABLE IF NOT EXISTS "commercial_sales_reports" (
     "id" varchar PRIMARY KEY DEFAULT gen_random_uuid(),
     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
     "lease_id" uuid NOT NULL REFERENCES "rental_leases"("id") ON DELETE CASCADE,
@@ -9067,14 +9175,14 @@ $mig0262$`,
     "received_at" timestamptz,
     "notes" text,
     "created_at" timestamptz NOT NULL DEFAULT now()
-  )`),
+  )`,
   // Org-LEADING + the dominant read: a lease's sales history, by period.
   `CREATE INDEX IF NOT EXISTS "commercial_sales_reports_org_lease_period_idx" ON "commercial_sales_reports" ("organization_id", "lease_id", "period_start")`,
   // One report per (lease, period): a re-report UPSERTs (an amendment).
   `CREATE UNIQUE INDEX IF NOT EXISTS "commercial_sales_reports_lease_period_uk" ON "commercial_sales_reports" ("lease_id", "period_start", "period_end")`,
 
   // 4. lease_rent_schedule — the rent-escalation steps.
-  leaseIdTypedToRentalLeases(`CREATE TABLE IF NOT EXISTS "lease_rent_schedule" (
+  `CREATE TABLE IF NOT EXISTS "lease_rent_schedule" (
     "id" varchar PRIMARY KEY DEFAULT gen_random_uuid(),
     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
     "lease_id" uuid NOT NULL REFERENCES "rental_leases"("id") ON DELETE CASCADE,
@@ -9089,7 +9197,7 @@ $mig0262$`,
     "floor_pct_bps" integer,
     "ceiling_pct_bps" integer,
     "created_at" timestamptz NOT NULL DEFAULT now()
-  )`),
+  )`,
   // Org-LEADING + the dominant read: a lease's steps in effective order.
   `CREATE INDEX IF NOT EXISTS "lease_rent_schedule_org_lease_month_idx" ON "lease_rent_schedule" ("organization_id", "lease_id", "effective_month")`,
   // One step per (lease, effective_month): the schedule is unambiguous at every point in time.

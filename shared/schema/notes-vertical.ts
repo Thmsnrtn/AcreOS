@@ -11,6 +11,7 @@
 // ============================================================================
 
 import {
+  uuid,
   pgTable,
   text,
   integer,
@@ -50,7 +51,7 @@ import { organizations, properties, leads, taxSaleListings } from "../schema";
 export const acquiredNotes = pgTable(
   "acquired_notes",
   {
-    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
     organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
     // Underlying collateral (the land that secures the note). Optional for
     // notes that are pre-import (we don't yet have a property row) — the
@@ -288,7 +289,7 @@ export const notePayments = pgTable(
   "note_payments",
   {
     id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-    noteId: varchar("note_id").references(() => acquiredNotes.id, { onDelete: "cascade" }).notNull(),
+    noteId: uuid("note_id").references(() => acquiredNotes.id, { onDelete: "cascade" }).notNull(),
     // Denormalized for query speed on the yearly 1099 aggregation — we
     // want to filter by org + year without joining every time.
     organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
@@ -448,7 +449,7 @@ export const noteAssignments = pgTable(
   {
     id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
     organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
-    noteId: varchar("note_id").references(() => acquiredNotes.id, { onDelete: "cascade" }).notNull(),
+    noteId: uuid("note_id").references(() => acquiredNotes.id, { onDelete: "cascade" }).notNull(),
     // The party we are ASSIGNING to (the buyer of the note).
     assigneeName: text("assignee_name").notNull(),
     assigneeAddress: jsonb("assignee_address").$type<{
@@ -510,7 +511,7 @@ export const noteOwnershipSplits = pgTable(
   {
     id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
     organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
-    noteId: varchar("note_id").references(() => acquiredNotes.id, { onDelete: "cascade" }).notNull(),
+    noteId: uuid("note_id").references(() => acquiredNotes.id, { onDelete: "cascade" }).notNull(),
     // Either ref a lead row (preferred — TIN, address, contact info live
     // there) or supply free-form name/email for one-off LPs.
     investorLeadId: integer("investor_lead_id").references(() => leads.id, { onDelete: "set null" }),
@@ -565,9 +566,9 @@ export type LossMitStatus = typeof LOSS_MIT_STATUS[number];
 export const noteLossMitCases = pgTable(
   "note_loss_mit_cases",
   {
-    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
     organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
-    noteId: varchar("note_id").references(() => acquiredNotes.id, { onDelete: "cascade" }).notNull(),
+    noteId: uuid("note_id").references(() => acquiredNotes.id, { onDelete: "cascade" }).notNull(),
     status: text("status").$type<LossMitStatus>().notNull().default("open"),
     state: text("state"), // US 2-letter — drives timeline rules per jurisdiction
     daysPastDueAtOpen: integer("days_past_due_at_open"),
@@ -610,7 +611,7 @@ export const noteLossMitActions = pgTable(
   {
     id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
     organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
-    caseId: varchar("case_id").references(() => noteLossMitCases.id, { onDelete: "cascade" }).notNull(),
+    caseId: uuid("case_id").references(() => noteLossMitCases.id, { onDelete: "cascade" }).notNull(),
     actionType: text("action_type").$type<LossMitActionType>().notNull(),
     performedAt: timestamp("performed_at", { withTimezone: true }).defaultNow().notNull(),
     notes: text("notes"),
@@ -868,7 +869,7 @@ export type QuietTitleStatus = typeof QUIET_TITLE_STATUS[number];
 export const noteQuietTitleCases = pgTable(
   "quiet_title_cases",
   {
-    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
     organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
     // FK target uses uuid because tax_certificates.id is uuid in prod.
     certificateId: varchar("certificate_id").notNull(),
@@ -915,7 +916,7 @@ export const quietTitleSteps = pgTable(
   {
     id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
     organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
-    caseId: varchar("case_id").notNull(),
+    caseId: uuid("case_id").notNull(),
     stepKey: text("step_key").$type<QuietTitleStepKey>().notNull(),
     requiredByDate: date("required_by_date"),
     completedAt: timestamp("completed_at", { withTimezone: true }),
@@ -970,7 +971,7 @@ export const noteOwnershipOfRecord = pgTable(
     id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
     // The SERVICING org — the one doing the collection / remittance work.
     organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
-    noteId: varchar("note_id").references(() => acquiredNotes.id, { onDelete: "cascade" }).notNull(),
+    noteId: uuid("note_id").references(() => acquiredNotes.id, { onDelete: "cascade" }).notNull(),
     // The BENEFICIAL owner organization. May be the servicing org itself
     // (for self-serviced notes), an LP fund, an IRA custodian, or a trust.
     // Restrict-on-delete so a remittance history isn't orphaned by an

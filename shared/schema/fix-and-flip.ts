@@ -7,6 +7,7 @@
 // ============================================================================
 
 import {
+  uuid,
   pgTable,
   text,
   integer,
@@ -65,7 +66,7 @@ export type RehabStatus = typeof REHAB_STATUSES[number];
 export const rehabs = pgTable(
   "rehabs",
   {
-    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
     organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
     propertyId: integer("property_id").references(() => properties.id, { onDelete: "cascade" }).notNull(),
 
@@ -140,13 +141,13 @@ export type RehabLineCategory = typeof REHAB_LINE_CATEGORIES[number];
 export const rehabLineItems = pgTable(
   "rehab_line_items",
   {
-    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
     organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
     // Hard FK — migrations/0081_devon_ff_fk_alignment.sql installs the
     // matching ON DELETE CASCADE constraint on any drifted env (prod already
     // has it via scripts/migrate.mjs §808). Soft-FK orphan-row hazard for
     // the 1099-NEC roll-up — see Devon's Lens 20 notes.
-    rehabId: varchar("rehab_id").references((): any => rehabs.id, { onDelete: "cascade" }).notNull(),
+    rehabId: uuid("rehab_id").references((): any => rehabs.id, { onDelete: "cascade" }).notNull(),
 
     sequence: integer("sequence").notNull().default(0),
     category: text("category").$type<RehabLineCategory>().notNull(),
@@ -182,7 +183,7 @@ export type InsertRehabLineItem = typeof rehabLineItems.$inferInsert;
 export const contractors = pgTable(
   "contractors",
   {
-    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
     organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
 
     name: text("name").notNull(),
@@ -230,7 +231,7 @@ export const contractorW9Documents = pgTable(
     organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
     // Hard FK — wave-3 fixup (migrations/0088). CASCADE: the W-9 is meaningless
     // once its contractor subject is gone.
-    contractorId: varchar("contractor_id").references((): any => contractors.id, { onDelete: "cascade" }).notNull(),
+    contractorId: uuid("contractor_id").references((): any => contractors.id, { onDelete: "cascade" }).notNull(),
     storagePath: text("storage_path").notNull(),
     fileSizeBytes: integer("file_size_bytes"),
     mimeType: text("mime_type"),
@@ -256,13 +257,13 @@ export const contractorPayments = pgTable(
     // reportable receipts for that tax year. RESTRICT forces the operator to
     // confront payment history before destroying the contractor (the right
     // answer in practice is to set activeStatus='inactive' instead of delete).
-    contractorId: varchar("contractor_id").references((): any => contractors.id, { onDelete: "restrict" }).notNull(),
+    contractorId: uuid("contractor_id").references((): any => contractors.id, { onDelete: "restrict" }).notNull(),
     // SET NULL — a payment may be for non-rehab work, and a payment row
     // outlives the rehab it originally referenced. Without SET NULL, prior
     // rehab deletes would block, or worse, orphan rows that still summed
     // into the 1099-NEC total.
-    rehabId: varchar("rehab_id").references((): any => rehabs.id, { onDelete: "set null" }),
-    rehabLineItemId: varchar("rehab_line_item_id"),  // optional, intentionally soft
+    rehabId: uuid("rehab_id").references((): any => rehabs.id, { onDelete: "set null" }),
+    rehabLineItemId: uuid("rehab_line_item_id"),  // optional, intentionally soft
 
     amountCents: bigint("amount_cents", { mode: "number" }).notNull(),
     paidAt: date("paid_at").notNull(),
@@ -308,7 +309,7 @@ export const constructionDraws = pgTable(
     organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
     // Hard FK — draws cascade with the rehab. Migrations/0081 installs it
     // on drifted envs.
-    rehabId: varchar("rehab_id").references((): any => rehabs.id, { onDelete: "cascade" }).notNull(),
+    rehabId: uuid("rehab_id").references((): any => rehabs.id, { onDelete: "cascade" }).notNull(),
 
     sequence: integer("sequence").notNull(),
     label: text("label").notNull(),               // "Draw 1 (25%)"
@@ -351,8 +352,8 @@ export const bidEstimates = pgTable(
     //   rehab    → CASCADE   (bids belong to a single scope of work).
     //   contractor → SET NULL (bid history is post-mortem material: "why we
     //     picked GC A over GC B" must outlive the losing GC's row).
-    rehabId: varchar("rehab_id").references((): any => rehabs.id, { onDelete: "cascade" }).notNull(),
-    contractorId: varchar("contractor_id").references((): any => contractors.id, { onDelete: "set null" }),
+    rehabId: uuid("rehab_id").references((): any => rehabs.id, { onDelete: "cascade" }).notNull(),
+    contractorId: uuid("contractor_id").references((): any => contractors.id, { onDelete: "set null" }),
 
     totalCents: bigint("total_cents", { mode: "number" }).notNull(),
     submittedAt: date("submitted_at"),
@@ -395,7 +396,7 @@ export const arvCalculations = pgTable(
     propertyId: integer("property_id").references(() => properties.id, { onDelete: "cascade" }).notNull(),
     // SET NULL — an ARV survives the rehab being deleted (operator may
     // want to keep the comp record around for historical pricing).
-    rehabId: varchar("rehab_id").references((): any => rehabs.id, { onDelete: "set null" }),
+    rehabId: uuid("rehab_id").references((): any => rehabs.id, { onDelete: "set null" }),
 
     // Comps used — array of { mlsId/address, soldPrice, soldDate, sqft,
     // distanceMiles, conditionRating, adjustments: {key: cents}, finalAdjusted: cents }
@@ -468,10 +469,10 @@ export const rehabPhotos = pgTable(
   {
     id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
     organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
-    rehabId: varchar("rehab_id").references((): any => rehabs.id, { onDelete: "cascade" }).notNull(),
+    rehabId: uuid("rehab_id").references((): any => rehabs.id, { onDelete: "cascade" }).notNull(),
     // SET NULL — if a line item is deleted (scope swap), the photo evidence
     // still belongs to the rehab and the auditor still wants to see it.
-    lineItemId: varchar("line_item_id").references((): any => rehabLineItems.id, { onDelete: "set null" }),
+    lineItemId: uuid("line_item_id").references((): any => rehabLineItems.id, { onDelete: "set null" }),
 
     // Blob-storage pointer. We don't sign URLs at the DB layer; the read
     // route signs at fetch time so the column survives URL-schema changes.
