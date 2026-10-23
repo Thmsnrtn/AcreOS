@@ -765,6 +765,7 @@ const BASELINE_FUNCTION_UNUSED_ORG = new Set([
   "server/services/solene/verifyQueue.ts::enqueueMailShipmentVerify",
   "server/services/solene/verifyQueue.ts::enqueueVerifyDispatch",
   "server/services/solene/verifyQueue.ts::recordVerifyOutcome",
+  "server/services/taxDelinquentPipeline.ts::addToOutreach",
   "server/services/territoryService.ts::saveTerritoriesStore",
   "server/services/titleChainService.ts::runPostCloseAutomation",
   "server/services/webhookDispatcher.ts::saveWebhookEndpoints",
