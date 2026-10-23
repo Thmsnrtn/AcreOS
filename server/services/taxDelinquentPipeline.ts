@@ -694,6 +694,7 @@ export const taxDelinquentPipeline = {
   // pretending we have the data — same honesty as the rest of TD-1.
   async importFromCounty(_opts: { organizationId: number; stateCode?: string; county?: string; limit?: number }) {
     return {
+      available: false as const,
       imported: 0,
       errors: 0,
       message: "Per-county scraper not yet implemented. Use the CSV importer at /api/import/tax-delinquent for now.",
