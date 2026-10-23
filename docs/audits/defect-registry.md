@@ -7047,3 +7047,23 @@ audit of H3 (0225, 0227, 0229 OPEN); 0230–0235 slice H4 (0232, 0235 OPEN).
 
 All 12 P0 defects are fixed and deployed to production (acreos.fly.dev).
 9. **DEFECT-0012** -- Destructive migration without rollback
+
+### DEFECT-0289
+Title: Selects, menus and popovers inside a dialog or sheet rendered under its scrim and could not be tapped
+Severity: P1
+Status: FIXED (re-applied 2026-10-20 from stranded commit 59280cdc, where it was numbered DEFECT-0294 — renumbered because main had reused 0284–0288)
+Surfaced by lenses: W10.3 wedge E2E on CI (E2E Mobile, run 37333279550)
+Description: Dialogs and sheets were raised to `z-modal` (60) so the
+mobile bottom nav could not paint over their scrims, but the portalled
+popper primitives — select lists, dropdown and context menus, popovers,
+hover cards, menubars — stayed at `z-floating` (50). Radix portals that
+content to <body>, so anything opened from inside a dialog or sheet painted
+UNDER the modal's scrim, which intercepted every pointer event: no option
+in any Select inside any dialog or sheet could be chosen.
+Remediation plan: DONE. A `popover` layer (70) between modal and toast —
+`tailwind.config.ts`, `--z-popover` in `index.css`, `Z.POPOVER` in
+`client/src/lib/z-index.ts` — and the seven popper primitives moved onto it.
+Falsified by: `tests/unit/popperContentAboveModals.test.ts` (every z token a
+portalled popper primitive uses resolves above every z token the dialog and
+sheet use; red with select back at z-floating).
+Resolving commits: this PR (re-application of 59280cdc)
