@@ -26,20 +26,15 @@ vi.mock("../../server/services/comps", () => ({
   getComparableProperties: async () => ({ success: true, comps: h.comps }),
 }));
 
-import {
-  regridProvider,
-  REGRID_CENTS_PER_RECORD,
-  REGRID_CATEGORY_SCHEMA,
-} from "../../server/services/providers/regrid-provider";
+import { regridProvider } from "../../server/services/providers/regrid-provider";
+
+/** The published floor (REGRID_CENTS_PER_RECORD in regrid-provider.ts — source + date there). */
+const FLOOR = { standard: 10, premium: 15 };
 
 const at = { type: "coordinates" as const, latitude: 35, longitude: -86 };
 const ctx = { apiKeyOverride: "test-key" };
 
 describe("Regrid cost table is the published per-record floor", () => {
-  it("names the floor: 10¢ Standard, 15¢ Premium", () => {
-    expect(REGRID_CENTS_PER_RECORD).toEqual({ standard: 10, premium: 15 });
-  });
-
   it("prices each category at its schema's floor", () => {
     expect(regridProvider.costPerLookupCents("parcel_data")).toBe(10);
     expect(regridProvider.costPerLookupCents("comps")).toBe(15);
@@ -48,12 +43,12 @@ describe("Regrid cost table is the published per-record floor", () => {
   });
 
   it("covers every category the provider serves, and none is below the floor", () => {
+    expect(regridProvider.categories.length).toBeGreaterThanOrEqual(4); // vacuity floor
     for (const category of regridProvider.categories) {
-      expect(REGRID_CATEGORY_SCHEMA).toHaveProperty(category);
-      expect(regridProvider.costPerLookupCents(category)).toBeGreaterThanOrEqual(REGRID_CENTS_PER_RECORD.standard);
+      expect([FLOOR.standard, FLOOR.premium]).toContain(regridProvider.costPerLookupCents(category));
     }
     // An unlisted category falls back to the floor, never below it.
-    expect(regridProvider.costPerLookupCents("environmental")).toBe(REGRID_CENTS_PER_RECORD.standard);
+    expect(regridProvider.costPerLookupCents("environmental")).toBe(FLOOR.standard);
   });
 });
 

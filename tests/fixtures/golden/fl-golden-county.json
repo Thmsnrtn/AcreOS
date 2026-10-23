@@ -1,0 +1,14 @@
+{
+  "about": "D1 amendment A5 — the first golden county: five parcels whose values are recorded from the county property appraiser's own record (ground truth), against which the FL statewide normalizer is asserted in CI (tests/unit/flGoldenCounty.test.ts). A slot is filled ONLY from a live read: sourceAttributes copied from the FDOR statewide layer's response for that parcel, assessorVerified copied from the county appraiser's record, with who read it, when, and the record URL. Until all five are verified the county is NOT established and the harness says so; no value here may be estimated, recalled or invented.",
+  "state": "FL",
+  "county": null,
+  "countyNote": "Set to the county the first live dry run used (D1b). The D1 build container could not reach the FDOR or county hosts, so no county has been read yet.",
+  "status": "pending_verification",
+  "parcels": [
+    { "slot": 1, "sourceParcelId": null, "sourceAttributes": null, "assessorVerified": null, "verifiedBy": null, "verifiedOn": null, "assessorRecordUrl": null },
+    { "slot": 2, "sourceParcelId": null, "sourceAttributes": null, "assessorVerified": null, "verifiedBy": null, "verifiedOn": null, "assessorRecordUrl": null },
+    { "slot": 3, "sourceParcelId": null, "sourceAttributes": null, "assessorVerified": null, "verifiedBy": null, "verifiedOn": null, "assessorRecordUrl": null },
+    { "slot": 4, "sourceParcelId": null, "sourceAttributes": null, "assessorVerified": null, "verifiedBy": null, "verifiedOn": null, "assessorRecordUrl": null },
+    { "slot": 5, "sourceParcelId": null, "sourceAttributes": null, "assessorVerified": null, "verifiedBy": null, "verifiedOn": null, "assessorRecordUrl": null }
+  ]
+}

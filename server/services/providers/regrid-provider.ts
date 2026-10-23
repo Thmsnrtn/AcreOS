@@ -30,7 +30,7 @@ import { clock } from "../../utils/clock";
  * than it cost. Not re-read live from this container (the host is outside its
  * network policy) — re-verify against the page when it changes.
  */
-export const REGRID_CENTS_PER_RECORD = { standard: 10, premium: 15 } as const;
+const REGRID_CENTS_PER_RECORD = { standard: 10, premium: 15 } as const;
 
 /**
  * Which schema each category reads. A bare parcel boundary + identity is the
@@ -38,7 +38,7 @@ export const REGRID_CENTS_PER_RECORD = { standard: 10, premium: 15 } as const;
  * fields (the comps search also returns several records per call — this is a
  * per-record price, so a multi-record comps call costs a multiple of it).
  */
-export const REGRID_CATEGORY_SCHEMA = {
+const REGRID_CATEGORY_SCHEMA = {
   parcel_data: "standard",
   comps: "premium",
   owner_info: "premium",

@@ -11646,6 +11646,23 @@ END $$`,
   "parent_id"         integer,
   "metadata"          jsonb
 )`,
+  // 0287 — D1 data-sourcing foundation: demand-event columns on
+  // provider_lookup_log (A3), etl_runs.observation for the append-only
+  // metadata-snapshot series (A4), and the two D1 ETL jobs seeded INACTIVE.
+  // Mirrors migrations/0287_d1_data_sourcing_foundation.sql. Placed here, not
+  // at the end, so it does not collide with the train PRs appending 0283–0285
+  // below 0286; statement order does not matter (every table it touches is
+  // created far above).
+  `ALTER TABLE "provider_lookup_log" ADD COLUMN IF NOT EXISTS "intent_class" text`,
+  `ALTER TABLE "provider_lookup_log" ADD COLUMN IF NOT EXISTS "answering_layer" text`,
+  `ALTER TABLE "provider_lookup_log" ADD COLUMN IF NOT EXISTS "confidence_served" real`,
+  `CREATE INDEX IF NOT EXISTS "provider_lookup_org_demand_idx" ON "provider_lookup_log" ("organization_id", "created_at")`,
+  `ALTER TABLE "etl_runs" ADD COLUMN IF NOT EXISTS "observation" jsonb`,
+  `INSERT INTO "etl_jobs" ("job_name", "provider_name", "source_url", "watermark_column", "schedule", "is_active", "soft_delete_on_missing", "config")
+   VALUES
+     ('statewide_layer_metadata_v1', 'statewide_layer_metadata_v1', NULL, 'lastEditDate', '*/1440 * * * *', false, false, '{}'::jsonb),
+     ('fl_statewide_cadastral_v1', 'fl_statewide_cadastral_v1', 'https://services9.arcgis.com/Gh9awoU677aKree0/arcgis/rest/services/Florida_Statewide_Cadastral/FeatureServer/0', NULL, '*/1440 * * * *', false, false, '{"dryRun": true}'::jsonb)
+   ON CONFLICT ("job_name") DO NOTHING`,
   // 0281 — the 17 unique constraints shared/schema declares that no DDL here
   // ever created. Per constraint: no-op if absent table/column or the name
   // already exists (WARNING if that name is the wrong shape); lock_timeout 5s

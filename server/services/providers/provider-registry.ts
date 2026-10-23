@@ -19,6 +19,7 @@ import type {
   ProviderTier,
   ProviderHealthStatus,
 } from "./types";
+import { answeringLayerFor } from "@shared/openData/demandEvent";
 import { ProviderCircuitBreaker, type BreakerSnapshot } from "./circuit-breaker";
 import { dbBreakerStore } from "./circuit-breaker-store";
 // R1d BYO-data-keys: resolves the customer's own property-data vendor key so
@@ -256,6 +257,9 @@ class ProviderRegistry {
               organizationId,
               state,
               county,
+              intentClass: category,
+              answeringLayer: answeringLayerFor({ cached: true, listPriceCents: costCents, byokServed: false }),
+              confidenceServed: cached.confidence,
             })
             .catch(() => {});
           // A claimed half-open probe that made no vendor call is handed back.
@@ -329,6 +333,9 @@ class ProviderRegistry {
             organizationId,
             state,
             county,
+            intentClass: category,
+            answeringLayer: answeringLayerFor({ cached: false, listPriceCents: costCents, byokServed }),
+            confidenceServed: result.confidence,
           })
           .catch(() => {});
 
@@ -398,6 +405,10 @@ class ProviderRegistry {
             organizationId,
             state,
             county,
+            // A failed attempt is still demand: the org asked, this layer was
+            // tried, nothing was served (so no confidence).
+            intentClass: category,
+            answeringLayer: answeringLayerFor({ cached: false, listPriceCents: costCents, byokServed }),
           })
           .catch(() => {});
 
@@ -438,6 +449,9 @@ class ProviderRegistry {
           organizationId,
           state,
           county,
+          intentClass: category,
+          answeringLayer: "cache",
+          confidenceServed: bestStale.confidence,
         })
         .catch(() => {});
       return bestStale;
