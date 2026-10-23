@@ -23,6 +23,7 @@ import { providerLookupLog } from "@shared/schema";
 import { and, eq, gte, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { clock } from "../utils/clock";
+import type { AnsweringLayer } from "@shared/openData/demandEvent";
 
 export interface LookupRecord {
   providerName: string;
@@ -50,6 +51,15 @@ export interface LookupRecord {
    * stated honestly — never invented.
    */
   avoidedCostCents?: number;
+  /**
+   * Demand-event fields (D1 A3, shared/openData/demandEvent.ts). The registry
+   * sets them on every lookup it answers; a row with an organization and an
+   * answeringLayer IS that org's demand event.
+   */
+  intentClass?: string;
+  answeringLayer?: AnsweringLayer;
+  /** The provider's stated 0..100 confidence in the served answer. */
+  confidenceServed?: number;
 }
 
 /**
@@ -73,6 +83,9 @@ export async function recordLookup(record: LookupRecord): Promise<void> {
       county: record.county ?? null,
       cacheLane: record.cacheLane ?? null,
       avoidedCostCents: record.avoidedCostCents ?? 0,
+      intentClass: record.intentClass ?? null,
+      answeringLayer: record.answeringLayer ?? null,
+      confidenceServed: Number.isFinite(record.confidenceServed) ? record.confidenceServed! : null,
     });
   } catch (err: any) {
     logger.warn("[providerIntelligence] record failed (non-blocking)", {

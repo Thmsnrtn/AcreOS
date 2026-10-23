@@ -43,10 +43,10 @@ describe("data-lookup credit weights are non-zero and tracked", () => {
   });
 
   it("weights track the documented p90 provider costs", () => {
-    expect(CREDIT_WEIGHTS.parcel_lookup_paid).toBe(8);
+    expect(CREDIT_WEIGHTS.parcel_lookup_paid).toBe(10);
     expect(CREDIT_WEIGHTS.comps_lookup).toBe(20);
-    expect(CREDIT_WEIGHTS.owner_lookup).toBe(8);
-    expect(CREDIT_WEIGHTS.valuation_lookup).toBe(10);
+    expect(CREDIT_WEIGHTS.owner_lookup).toBe(15);
+    expect(CREDIT_WEIGHTS.valuation_lookup).toBe(15);
   });
 
   it("round-up deduction never undercounts a paid lookup (1 unit = ceil(weight))", () => {

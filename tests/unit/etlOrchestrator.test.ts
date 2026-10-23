@@ -573,3 +573,83 @@ describe("etlOrchestrator — DLQ + replay", () => {
     ]);
   });
 });
+
+// ─── D1 A4: finalize() observation → an append-only series of runs ─────────
+
+describe("etlOrchestrator — run observation (D1 A4)", () => {
+  beforeEach(() => {
+    hoisted.state.jobs.length = 0;
+    hoisted.state.runs.length = 0;
+    hoisted.state.dlq.length = 0;
+    hoisted.state.runSeq = 1;
+    hoisted.state.dlqSeq = 1;
+    _clearEtlHandlersForTest();
+  });
+
+  const seedJob = () =>
+    hoisted.state.jobs.push({
+      id: 1, jobName: "obs_job", providerName: "obs_provider", sourceUrl: null, watermarkColumn: null,
+      watermarkValue: null, schedule: "*/15 * * * *", isActive: true, softDeleteOnMissing: false,
+      lastSuccessAt: null, lastErrorAt: null, lastError: null, config: {}, createdAt: new Date(), updatedAt: new Date(),
+    });
+
+  it("writes what finalize() returns onto THAT run's row, built from the run's own state", async () => {
+    let poll = 0;
+    const handler: EtlProviderHandler = {
+      name: "obs_provider",
+      async *fetch(opts) {
+        poll += 1;
+        opts.runState!.seen = [`poll-${poll}`];
+        yield { externalId: "FL", updatedAt: null, payload: {} };
+      },
+      upsert: async () => ({ action: "unchanged" }),
+      finalize: async (opts) => ({ snapshots: opts.runState!.seen }),
+    };
+    registerEtlHandler("obs_provider", handler);
+    seedJob();
+
+    const first = await runJob(1);
+    const second = await runJob(1);
+
+    expect(first.observation).toEqual({ snapshots: ["poll-1"] });
+    expect(second.observation).toEqual({ snapshots: ["poll-2"] });
+    // Two rows, each holding its own observation: the first run's row was
+    // not overwritten by the second — the series is append-only.
+    expect(hoisted.state.runs).toHaveLength(2);
+    expect((hoisted.state.runs[0] as any).observation).toEqual({ snapshots: ["poll-1"] });
+    expect((hoisted.state.runs[1] as any).observation).toEqual({ snapshots: ["poll-2"] });
+  });
+
+  it("a finalize() that throws fails the run and records no observation", async () => {
+    const handler: EtlProviderHandler = {
+      name: "obs_provider",
+      async *fetch() {
+        yield { externalId: "x", updatedAt: null, payload: {} };
+      },
+      upsert: async () => ({ action: "unchanged" }),
+      finalize: async () => {
+        throw new Error("artifact build failed");
+      },
+    };
+    registerEtlHandler("obs_provider", handler);
+    seedJob();
+    const r = await runJob(1);
+    expect(r.status).toBe("failure");
+    expect(r.errorMessage).toBe("artifact build failed");
+    expect(r.observation).toBeNull();
+    expect((hoisted.state.runs[0] as any).observation).toBeNull();
+  });
+
+  it("a handler without finalize() records a null observation (existing jobs unchanged)", async () => {
+    const handler: EtlProviderHandler = {
+      name: "obs_provider",
+      async *fetch() {},
+      upsert: async () => ({ action: "unchanged" }),
+    };
+    registerEtlHandler("obs_provider", handler);
+    seedJob();
+    const r = await runJob(1);
+    expect(r.status).toBe("success");
+    expect(r.observation).toBeNull();
+  });
+});
