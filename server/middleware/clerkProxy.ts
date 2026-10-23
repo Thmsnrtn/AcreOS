@@ -35,6 +35,21 @@ export const CLERK_UPSTREAM_TIMEOUT_MS = 10_000;
  *
  * `fetchImpl` is injectable purely for tests; production uses global `fetch`.
  */
+/**
+ * True when a Location value points at a Clerk accounts host. Parsed, not
+ * substring-matched: "accounts.acreos.io" appearing inside a path or query
+ * of some other host must not trigger the rewrite (CodeQL: incomplete URL
+ * substring sanitization).
+ */
+function isAccountsHost(loc: string): boolean {
+  try {
+    const host = new URL(loc).hostname;
+    return host === "accounts.acreos.io" || host.endsWith(".accounts.acreos.io");
+  } catch {
+    return false;
+  }
+}
+
 export function createClerkProxyHandler(fetchImpl: typeof fetch = fetch) {
   return async function clerkProxyHandler(req: Request, res: Response): Promise<void> {
     // E2E test-auth: block the Clerk proxy so Clerk-JS fails to load and the
@@ -111,7 +126,7 @@ export function createClerkProxyHandler(fetchImpl: typeof fetch = fetch) {
           // (.acreos.io). Anywhere else (staging, previews) the cookie must be
           // host-scoped to the proxy's own host — a .acreos.io domain attribute
           // on a staging response is rejected and the session never sticks.
-          const rewritten = publicHost.endsWith("acreos.io")
+          const rewritten = publicHost === "acreos.io" || publicHost.endsWith(".acreos.io")
             ? raw.replace(/domain=[^;]+/gi, "domain=.acreos.io")
             : raw.replace(/;\s*domain=[^;]+/gi, "");
           res.appendHeader("Set-Cookie", rewritten);
@@ -125,7 +140,7 @@ export function createClerkProxyHandler(fetchImpl: typeof fetch = fetch) {
           let loc = value;
           if (loc.startsWith("/v1/") || loc.startsWith("/npm/")) loc = "/__clerk" + loc;
           if (loc.includes(CLERK_FAPI_HOST)) loc = loc.replace(CLERK_FAPI_ORIGIN, "/__clerk");
-          if (loc.includes("accounts.acreos.io")) loc = `${publicOrigin}/`;
+          if (isAccountsHost(loc)) loc = `${publicOrigin}/`;
           res.setHeader(key, loc);
           return;
         }
