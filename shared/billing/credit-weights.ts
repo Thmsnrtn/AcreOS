@@ -43,8 +43,10 @@ export type CreditAction =
   | "ai_turn_avg"
   // ── Paid data-lookup actions (Lena: close the margin leak) ──
   // Each fires only when a PAID provider serves a non-cached result. Free
-  // providers and cache hits debit 0 (no weight drawn). Weights track the
-  // 90th-percentile provider cost-to-us per lookup (Regrid 3–8¢, ATTOM 5–20¢).
+  // providers and cache hits debit 0 (no weight drawn). Weights are meant to
+  // track the 90th-percentile provider cost-to-us per lookup (Regrid 10¢
+  // Standard / 15¢ Premium per record returned — regrid-provider.ts
+  // REGRID_CENTS_PER_RECORD; ATTOM 5–20¢).
   | "parcel_lookup_paid"
   | "comps_lookup"
   | "owner_lookup"
@@ -69,10 +71,18 @@ export const CREDIT_WEIGHTS: Record<CreditAction, number> = {
   // FALLBACK weights; the registry passes the real costCents at deduction
   // time via poolDebit, but these define the credit-pool sizing math and the
   // founder-recalibration anchor for each action.
-  parcel_lookup_paid: 8, // Regrid parcel up to 8¢
-  comps_lookup: 20, // ATTOM comps up to 20¢
-  owner_lookup: 8, // Regrid/ATTOM owner up to 8¢
-  valuation_lookup: 10, // ATTOM AVM up to 10¢
+  //
+  // D1a (2026-10-22) corrected the Regrid cost table to its published floor
+  // and exposed that the original weights (8/8/10) sat BELOW what a
+  // Regrid-served lookup costs. Founder decision 2026-10-23: re-based to
+  // true cost — parcel at Regrid Standard, owner + valuation at Regrid
+  // Premium — so a customer's pool is never debited less than the lookup
+  // costs us. No paying customers yet, so no live pool was sized on the
+  // old numbers.
+  parcel_lookup_paid: 10, // Regrid Standard 10¢/record returned
+  comps_lookup: 20, // ATTOM comps up to 20¢ (≥ Regrid Premium 15¢/record for a one-record search)
+  owner_lookup: 15, // Regrid Premium 15¢/record returned
+  valuation_lookup: 15, // Regrid Premium 15¢/record returned
 };
 
 /**

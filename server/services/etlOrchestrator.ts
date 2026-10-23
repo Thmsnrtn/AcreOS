@@ -94,6 +94,13 @@ export interface EtlFetchOpts {
   sourceUrl?: string | null;
   /** Hard limit on records the orchestrator wants this run to fetch. */
   limit?: number;
+  /**
+   * Scratch space for ONE run, created fresh by runJob and handed to both
+   * fetch() and finalize(). A handler that builds something from the whole
+   * run (an artifact, a snapshot set) accumulates here — never on the handler
+   * object, which is a process-wide singleton shared by every run.
+   */
+  runState?: Record<string, unknown>;
 }
 
 /**
@@ -117,6 +124,13 @@ export interface EtlProviderHandler {
   upsert(record: EtlRecord, tx: DrizzleDb): Promise<{ action: UpsertAction }>;
   listExternalIds?(opts: EtlFetchOpts): Promise<string[]>;
   softDelete?(externalId: string, tx: DrizzleDb): Promise<void>;
+  /**
+   * Optional: called once after every record of a run was processed. What it
+   * returns is the run's OBSERVATION, written once to etl_runs.observation
+   * (D1 A4) — runs are never updated after completion, so one job's runs form
+   * an append-only series. Throwing fails the run.
+   */
+  finalize?(opts: EtlFetchOpts): Promise<Record<string, unknown> | null>;
 }
 
 const handlers = new Map<string, EtlProviderHandler>();
@@ -203,6 +217,8 @@ export interface RunJobResult {
   watermarkBefore: string | null;
   watermarkAfter: string | null;
   errorMessage?: string;
+  /** What finalize() returned (null when the handler has none or the run failed first). */
+  observation: Record<string, unknown> | null;
 }
 
 /**
@@ -247,12 +263,14 @@ export async function runJob(jobId: number): Promise<RunJobResult> {
 
   const seenIds = new Set<string>();
   let runError: unknown = null;
+  let observation: Record<string, unknown> | null = null;
 
   try {
     const fetchOpts: EtlFetchOpts = {
       since: watermarkBefore,
       config: job.config ?? {},
       sourceUrl: job.sourceUrl,
+      runState: {},
     };
 
     for await (const record of handler.fetch(fetchOpts)) {
@@ -325,6 +343,10 @@ export async function runJob(jobId: number): Promise<RunJobResult> {
         );
       }
     }
+
+    if (handler.finalize) {
+      observation = await handler.finalize(fetchOpts);
+    }
   } catch (err) {
     runError = err;
   }
@@ -351,6 +373,7 @@ export async function runJob(jobId: number): Promise<RunJobResult> {
         recordsFailed: stats.failed,
         errorMessage,
         watermarkAfter: maxWatermark,
+        observation,
       })
       .where(eq(etlRuns.id, runId));
 
@@ -388,6 +411,7 @@ export async function runJob(jobId: number): Promise<RunJobResult> {
     watermarkBefore,
     watermarkAfter: maxWatermark,
     errorMessage: errorMessage ?? undefined,
+    observation,
   };
 }
 
