@@ -18,6 +18,7 @@
 
 import { assessHeirsProperty, HEIRS_PROPERTY_WARNING, type HeirsAssessment } from "@shared/regulatory/heirsProperty";
 import { checkOutreachTemplate, refusesSend, type OutreachFinding } from "@shared/regulatory/ethicalOutreach";
+import { DELIVERABLE_MAIL_PIECE_TYPES, DELIVERABLE_MAIL_SPEEDS } from "@shared/outreach/mailOptions";
 import { OUTREACH_LANGUAGES, outreachLanguageForLead, type OutreachLanguage, type OutreachLanguageVerdict } from "@shared/outreach/outreachLanguage";
 import { limitsTierFor } from "@shared/billing/tier-limits";
 import type { Express, Response } from "express";
@@ -69,7 +70,10 @@ import { clock } from "./utils/clock";
 // ── Constants ───────────────────────────────────────────────────────────────
 
 const HOLD_WINDOW_MINUTES = 30;
-const PIECE_TYPES = ["postcard_4x6", "postcard_6x9", "letter_10", "handwritten"] as const;
+// Only what a provider actually delivers (shared/outreach/mailOptions.ts):
+// handwritten / next-day / batch / EDDM were offered and priced but mailed as
+// ordinary standard-class pieces, so they are refused at validation.
+const PIECE_TYPES = DELIVERABLE_MAIL_PIECE_TYPES;
 
 // W2.1 — the activation wedge. The free tier gets a small LIFETIME mail
 // allowance so "send your first mailer" is actually reachable before paying
@@ -105,7 +109,7 @@ async function freeTierPiecesUsed(organizationId: number, exec: Pick<typeof db, 
     );
   return agg?.used ?? 0;
 }
-const SPEEDS = ["next_day", "standard", "batch_3d", "batch_weekly", "eddm_geo"] as const;
+const SPEEDS = DELIVERABLE_MAIL_SPEEDS;
 
 /**
  * A piece a provider ACCEPTED — the only honest denominator for "sent" and
@@ -230,7 +234,7 @@ class AudienceRefusal extends Error {
 type PoolDebitResult = Awaited<ReturnType<typeof poolDebit>>;
 
 /** The pool refused the debit inside the queue transaction. */
-/** The house-mail spec a queued piece type prints as (the Lob adapter sends handwritten as a letter). */
+/** The house-mail spec a queued piece type prints as. */
 function queueSpecFor(pieceType: (typeof PIECE_TYPES)[number]): HouseMailSpec {
   if (pieceType === "postcard_4x6") return postcardSpec("4x6");
   if (pieceType === "postcard_6x9") return postcardSpec("6x9");
@@ -505,30 +509,25 @@ async function buildQuote(
   // Fall back to a hardcoded retail estimate (matches the Lob adapter's
   // LOB_COSTS table) so the composer can still render meaningful numbers
   // when no provider is configured locally. Production always has Lob.
-  const FALLBACK_PER_PIECE: Record<PieceType, number> = {
+  const FALLBACK_PER_PIECE: Partial<Record<PieceType, number>> = {
     postcard_4x6: 75,
     postcard_6x9: 95,
     letter_10: 120,
-    handwritten: 350,
   };
-  const FALLBACK_ETA: Record<MailShipmentSpeed, number> = {
-    next_day: 1,
+  const FALLBACK_ETA: Partial<Record<MailShipmentSpeed, number>> = {
     standard: 5,
-    batch_3d: 3,
-    batch_weekly: 7,
-    eddm_geo: 10,
   };
 
   const viable = quotes.filter((q) => q.meetsConstraints);
   const cheapest = viable.sort((a, b) => a.costPerPieceCents - b.costPerPieceCents)[0];
   const lobQuote = quotes.find((q) => q.provider === "lob");
 
-  const perPieceCents = cheapest?.costPerPieceCents ?? FALLBACK_PER_PIECE[pieceType];
-  const deliveryEtaDays = cheapest?.deliveryEtaDays ?? FALLBACK_ETA[speed];
+  const perPieceCents = cheapest?.costPerPieceCents ?? FALLBACK_PER_PIECE[pieceType] ?? 0;
+  const deliveryEtaDays = cheapest?.deliveryEtaDays ?? FALLBACK_ETA[speed] ?? 5;
   const provider = cheapest?.provider ?? "lob";
   const totalCents = perPieceCents * pieces.length;
   const lobBaselineCents =
-    (lobQuote?.costPerPieceCents ?? FALLBACK_PER_PIECE[pieceType]) * pieces.length;
+    (lobQuote?.costPerPieceCents ?? FALLBACK_PER_PIECE[pieceType] ?? 0) * pieces.length;
   const savedVsLobCents = Math.max(0, lobBaselineCents - totalCents);
 
   return {
@@ -748,7 +747,7 @@ export function registerOutreachMailRoutes(app: Express): void {
         // A house LETTER is charged per piece at send, after AcreOS renders and
         // counts it — not here, where its length is unknown. A house postcard
         // is pre-paid now.
-        const houseChargedAtSend = houseLane !== null && (pieceType.startsWith("letter") || pieceType === "handwritten");
+        const houseChargedAtSend = houseLane !== null && pieceType.startsWith("letter");
         if (houseChargedAtSend) houseLane = null;
 
         // W2.1 — free-tier lifetime cap. Checked BEFORE the pool debit so a

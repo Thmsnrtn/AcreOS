@@ -24,16 +24,23 @@ import type {
 import { averageCostCentsPerPiece, PartialMailSendError } from "../router";
 import { logger } from "../../../utils/logger";
 import { clock } from "../../../utils/clock";
+import { isDeliverablePieceType, undeliverableMailReason, type DeliverableMailPieceType } from "@shared/outreach/mailOptions";
 
 // Approximate Lob 2026 retail per-piece cost in cents (HTML templates).
 // Numbers used purely for routing decisions; the ledger reads its own
-// env-overridable table inside directMailService.
-const LOB_COSTS: Record<PieceType, number> = {
+// env-overridable table inside directMailService. Only what Lob actually
+// prints is priced: there is no Lob handwriting integration, so a
+// "handwritten" piece has no price and is refused (mailOptions.ts).
+const LOB_COSTS: Record<DeliverableMailPieceType, number> = {
   postcard_4x6: 75,
   postcard_6x9: 95,
   letter_10: 120,
-  handwritten: 350, // Lob handwriting integration premium
 };
+
+function lobPieceCost(pieceType: PieceType): number {
+  if (!isDeliverablePieceType(pieceType)) throw new Error(`Lob does not print "${pieceType}" pieces.`);
+  return LOB_COSTS[pieceType];
+}
 
 /**
  * PLATFORM AVAILABILITY PROBE — NOT a credential path.
@@ -73,22 +80,38 @@ export const lobAdapter: MailProvider = {
   },
 
   async quote(shipment: MailShipment): Promise<ProviderQuote> {
-    const costPerPieceCents = averageCostCentsPerPiece(shipment.pieces, LOB_COSTS);
-    // Lob handles every speed except the geo-aggregation EDDM lane.
-    const meetsConstraints = shipment.speed !== "eddm_geo";
+    // Lob mails standard-class postcards and printed letters, nothing else:
+    // no mail class is ever passed, so there is no next-day; no handwriting
+    // product; no aggregation or EDDM lane.
+    const undeliverable = undeliverableMailReason(shipment.pieces.map((p) => p.pieceType), shipment.speed);
+    if (undeliverable !== null) {
+      return {
+        provider: "lob",
+        costPerPieceCents: 0,
+        deliveryEtaDays: 0,
+        minVolume: 1,
+        meetsConstraints: false,
+        reasonIfNot: undeliverable,
+      };
+    }
     return {
       provider: "lob",
-      costPerPieceCents,
-      deliveryEtaDays: shipment.speed === "next_day" ? 1 : 5,
+      costPerPieceCents: averageCostCentsPerPiece(shipment.pieces, LOB_COSTS),
+      deliveryEtaDays: 5,
       minVolume: 1,
-      meetsConstraints,
-      reasonIfNot: meetsConstraints ? undefined : "Lob does not route EDDM geo carrier walks",
+      meetsConstraints: true,
     };
   },
 
   async send(shipment: MailShipment): Promise<ProviderSendResult> {
     if (!this.isConfigured()) {
       throw new Error("Lob is not configured (LOB_LIVE_API_KEY / LOB_TEST_API_KEY unset).");
+    }
+    // Refused before any piece: a handwritten piece would print as a plain
+    // letter, a next-day piece would mail standard class.
+    const undeliverable = undeliverableMailReason(shipment.pieces.map((p) => p.pieceType), shipment.speed);
+    if (undeliverable !== null) {
+      throw Object.assign(new Error(undeliverable), { providerNotBilled: true });
     }
 
     // Defer to the legacy directMailService so the existing Pillar 1.6
@@ -130,7 +153,7 @@ export const lobAdapter: MailProvider = {
           zip: piece.recipient.zip,
         };
 
-        if (piece.pieceType === "letter_10" || piece.pieceType === "handwritten") {
+        if (piece.pieceType === "letter_10") {
           const html = piece.vars?.htmlContent ?? piece.templateId ?? "";
           let lobId: string;
           try {
@@ -159,7 +182,7 @@ export const lobAdapter: MailProvider = {
             }
           }
           pieces.push({ providerPieceId: lobId, recipientRef: `${shipment.customerId}` });
-          totalCostCents += LOB_COSTS[piece.pieceType];
+          totalCostCents += lobPieceCost(piece.pieceType);
         } else {
           const size = piece.pieceType === "postcard_6x9" ? "6x9" : "4x6";
           const result = await directMail.sendPostcard({
@@ -173,7 +196,7 @@ export const lobAdapter: MailProvider = {
             housePrepaid: shipment.housePrepaid === true,
           });
           pieces.push({ providerPieceId: result.lobId, recipientRef: `${shipment.customerId}` });
-          totalCostCents += LOB_COSTS[piece.pieceType];
+          totalCostCents += lobPieceCost(piece.pieceType);
           if (shipment.housePrepaid && costsAcreOsNothing(result)) unbilledPieceCount++;
         }
       } catch (err) {

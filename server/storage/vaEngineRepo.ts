@@ -9,6 +9,7 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { omitProtectedFields } from "../utils/updatePayload";
 import { db } from "../db";
 import { stampOfferInsert, stampOfferUpdate } from "../services/offerTimestamps";
+import { assertOfferBatchCreatable } from "../services/offerBatchGate";
 import {
   marketingLists,
   offerBatches,
@@ -88,6 +89,9 @@ export const vaEngineRepo = {
   },
 
   async createOfferBatch(this: DatabaseStorage, data: InsertOfferBatch): Promise<OfferBatch> {
+    // Same refusal as offerBatchService.createOfferBatch: nothing processes a
+    // batch yet, so none is written (services/offerBatchGate.ts).
+    assertOfferBatchCreatable();
     const [created] = await db.insert(offerBatches).values(data).returning();
     return created;
   },

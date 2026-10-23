@@ -1,13 +1,13 @@
 /**
  * T117 — Market Watchlist Page
  *
- * Watch specific counties for market opportunities:
- *   - Tax delinquent new parcels
- *   - Price drops by threshold %
- *   - Demand score increases
- *   - Foreclosure filings
- *
- * Alerts surface here and can push to email/SMS.
+ * A saved list of counties to watch. Market alerts are NOT generated yet:
+ * marketWatchlist.triggerAlert has no production caller (nothing scans for
+ * tax-delinquent parcels, price drops, demand or foreclosures) and alerts are
+ * never emailed or pushed. So the page offers no alert-trigger or channel
+ * toggles — it used to, and they configured nothing. The only alert that can
+ * exist is a test alert, written to the in-app list below.
+ * (marketWatchlistAlertsAreReal.test.ts couples this to triggerAlert's call sites.)
  */
 import { useState, useId } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -19,7 +19,6 @@ import { EmptyState } from "@/components/empty-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { useDocumentTitle } from "@/hooks/use-document-title";
@@ -122,14 +121,6 @@ export default function MarketWatchlistPage() {
   const [newEntry, setNewEntry] = useState({
     state: "TX",
     county: "",
-    alertOnTaxDelinquent: true,
-    alertOnPriceDrop: true,
-    priceDropThresholdPct: 10,
-    alertOnDemandIncrease: true,
-    demandScoreThreshold: 70,
-    alertOnForeclosure: true,
-    emailAlert: true,
-    pushAlert: true,
   });
 
   const { data: watchlist, isLoading } = useQuery<WatchlistEntry[]>({
@@ -178,14 +169,14 @@ export default function MarketWatchlistPage() {
   const testMutation = useMutation({
     mutationFn: (id: string) => apiRequest("POST", `/api/market/watchlist/${id}/test`),
     onSuccess: () => {
-      toast({ title: "Test alert sent" });
+      toast({ title: "Test alert added", description: "It's in the Alerts tab. Nothing was emailed or pushed." });
       queryClient.invalidateQueries({ queryKey: ["/api/market/watchlist/alerts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/market/watchlist/unread"] });
     },
     onError: () =>
       toast({
         title: "Couldn't send test alert",
-        description: "Your alert config is unchanged. Check that email/push channels are enabled, then try again.",
+        description: "No test alert was added. Try again.",
         variant: "destructive",
       }),
   });
@@ -215,7 +206,7 @@ export default function MarketWatchlistPage() {
             <Eye className="w-6 h-6 text-primary" aria-hidden="true" /> Market watchlist
           </h1>
           <p className="text-muted-foreground text-sm md:text-base">
-            Monitor counties for deal opportunities, price drops, and tax delinquency events.
+            Keep a list of counties you're watching. Market alerts aren't generated yet — nothing monitors these counties for you.
           </p>
         </div>
         <Dialog open={addOpen} onOpenChange={setAddOpen}>
@@ -253,51 +244,10 @@ export default function MarketWatchlistPage() {
                 </div>
               </div>
 
-              <fieldset className="space-y-2">
-                <legend className="text-sm font-medium">Alert triggers</legend>
-                <ul className="space-y-2" aria-label="Alert triggers">
-                  {[
-                    { key: "alertOnTaxDelinquent", label: "New tax delinquent parcels" },
-                    { key: "alertOnPriceDrop", label: `Price drop ≥ ${newEntry.priceDropThresholdPct}%` },
-                    { key: "alertOnDemandIncrease", label: `Demand score ≥ ${newEntry.demandScoreThreshold}` },
-                    { key: "alertOnForeclosure", label: "Foreclosure filings" },
-                  ].map(({ key, label }) => {
-                    const switchId = `${key}-switch`;
-                    return (
-                      <li key={key} className="flex items-center gap-2">
-                        <Switch
-                          id={switchId}
-                          checked={(newEntry as any)[key]}
-                          onCheckedChange={v => setNewEntry(e => ({ ...e, [key]: v }))}
-                        />
-                        <Label htmlFor={switchId} className="text-sm cursor-pointer">{label}</Label>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </fieldset>
-
-              <fieldset className="space-y-2">
-                <legend className="text-sm font-medium">Notification channels</legend>
-                <ul className="space-y-2" aria-label="Notification channels">
-                  {[
-                    { key: "emailAlert", label: "Email alerts" },
-                    { key: "pushAlert", label: "Push notifications" },
-                  ].map(({ key, label }) => {
-                    const switchId = `${key}-switch`;
-                    return (
-                      <li key={key} className="flex items-center gap-2">
-                        <Switch
-                          id={switchId}
-                          checked={(newEntry as any)[key]}
-                          onCheckedChange={v => setNewEntry(e => ({ ...e, [key]: v }))}
-                        />
-                        <Label htmlFor={switchId} className="text-sm cursor-pointer">{label}</Label>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </fieldset>
+              <p className="text-xs text-muted-foreground" data-testid="text-watchlist-alerts-unavailable">
+                Market alerts aren't generated yet, so there are no alert triggers or email/push channels to set.
+                Watching a county saves it to this list.
+              </p>
 
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setAddOpen(false)}>{Verbs.CANCEL}</Button>
@@ -379,7 +329,7 @@ export default function MarketWatchlistPage() {
                               className="h-7 text-xs"
                               onClick={() => testMutation.mutate(entry.id)}
                               disabled={testMutation.isPending}
-                              aria-label={`Send test alert for ${label}`}
+                              aria-label={`Add a test alert for ${label}`}
                             >
                               <Send className="w-3 h-3 mr-1" aria-hidden="true" /> Test
                             </Button>
@@ -395,14 +345,6 @@ export default function MarketWatchlistPage() {
                             </Button>
                           </div>
                         </div>
-                        <ul className="flex flex-wrap gap-1 mt-2" aria-label={`Active alerts for ${label}`}>
-                          {entry.alertOnTaxDelinquent && <li><Badge variant="outline" className="text-xs">Tax delinq.</Badge></li>}
-                          {entry.alertOnPriceDrop && <li><Badge variant="outline" className="text-xs tabular-nums">Price ↓{entry.priceDropThresholdPct}%</Badge></li>}
-                          {entry.alertOnDemandIncrease && <li><Badge variant="outline" className="text-xs tabular-nums">Demand ≥{entry.demandScoreThreshold}</Badge></li>}
-                          {entry.alertOnForeclosure && <li><Badge variant="outline" className="text-xs">Foreclosure</Badge></li>}
-                          {entry.emailAlert && <li><Badge variant="secondary" className="text-xs">Email</Badge></li>}
-                          {entry.pushAlert && <li><Badge variant="secondary" className="text-xs">Push</Badge></li>}
-                        </ul>
                       </CardContent>
                     </Card>
                   </li>
@@ -433,7 +375,7 @@ export default function MarketWatchlistPage() {
               framed
               icon={Bell}
               headline="No alerts yet"
-              subtitle="Watch counties to receive market alerts."
+              subtitle="Market alerts aren't generated yet. Use Test on a watched county to see how an alert appears."
               cta={{ label: "Watch a county", onClick: () => setAddOpen(true) }}
               testId="empty-state-market-alerts"
             />

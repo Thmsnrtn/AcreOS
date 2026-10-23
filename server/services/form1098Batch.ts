@@ -66,7 +66,7 @@ import { TaxIdentityError, type PayerOrRecipientAddress } from "./bookkeeping";
 // see the reversal-link block below for why a second copy of that format here
 // would be a drift hazard rather than a convenience.
 import { reversalTransactionId as achReturnTransactionId } from "./achAutopay";
-import { decrypt as decryptField, isAnyEncryptedEnvelope } from "./fieldEncryption";
+import { decryptTin, isPlaceholderTin, resolveOrgTaxIdentity } from "./orgTaxIdentity";
 import { logger } from "../utils/logger";
 
 // ─── Constants ────────────────────────────────────────────────────────────
@@ -78,7 +78,6 @@ import { logger } from "../utils/logger";
 export const FORM_1098_THRESHOLD_CENTS = 60_000;
 
 /** TINs we must never emit — same placeholder set the 1099 path rejects. */
-const PLACEHOLDER_TINS = new Set(["00-0000000", "000-00-0000", "000000000"]);
 
 // ─── The reversal link (append-only ledgers) ──────────────────────────────
 //
@@ -490,26 +489,8 @@ function yearEndDay(taxYear: number): string {
 
 // ─── TIN helpers (never log, never surface) ───────────────────────────────
 
-function decryptTin(stored: string): string {
-  if (!isAnyEncryptedEnvelope(stored)) return stored;
-  try {
-    return decryptField(stored);
-  } catch {
-    // Deliberately opaque: a decrypt failure must not leak ciphertext or
-    // plaintext into an error. The caller treats "" as missing and refuses.
-    return "";
-  }
-}
-
-function isPlaceholderTin(tin: string): boolean {
-  const stripped = tin.replace(/[\s-]/g, "");
-  return (
-    !stripped ||
-    PLACEHOLDER_TINS.has(tin) ||
-    PLACEHOLDER_TINS.has(stripped) ||
-    /^0{8,9}$/.test(stripped)
-  );
-}
+// decryptTin / isPlaceholderTin live in ./orgTaxIdentity — the one TIN
+// authority shared with the 1099-NEC payer path.
 
 // ─── Pure derivation ──────────────────────────────────────────────────────
 
@@ -1215,46 +1196,38 @@ export async function resolveLenderIdentity(orgId: number): Promise<LenderIdenti
       { orgId },
     );
   }
-  const name = org.legalEntityName?.trim() || org.name?.trim();
-  if (!name) {
+  // One resolver for the org's own tax identity (shared with 1099-NEC).
+  // The 1098 path refuses on name / TIN only; address completeness is not
+  // gated here (unchanged behaviour).
+  const id = resolveOrgTaxIdentity(org);
+  if (!id.name) {
     throw new TaxIdentityError(
       "PAYER_NAME_MISSING",
       `Organization ${orgId} has no legal entity name — required on Form 1098 as RECIPIENT'S/LENDER'S name.`,
       { orgId },
     );
   }
-  if (!org.ein) {
+  if (id.problems.includes("TIN_MISSING")) {
     throw new TaxIdentityError(
       "PAYER_EIN_MISSING",
       `Organization ${orgId} has no EIN on file — required on Form 1098 as RECIPIENT'S TIN.`,
       { orgId },
     );
   }
-  const tin = decryptTin(org.ein);
-  if (isPlaceholderTin(tin)) {
+  if (id.problems.includes("TIN_PLACEHOLDER")) {
     throw new TaxIdentityError(
       "PAYER_EIN_MISSING",
       `Organization ${orgId} has a placeholder EIN on file — capture the real EIN before issuing Forms 1098.`,
       { orgId },
     );
   }
-  const tinTypeRaw = org.taxIdType;
-  const tinType: LenderIdentity["tinType"] =
-    tinTypeRaw === "SSN" || tinTypeRaw === "ITIN" ? tinTypeRaw : "EIN";
 
   return {
-    name,
-    address: {
-      line1: org.taxAddress?.line1 || "",
-      line2: org.taxAddress?.line2,
-      city: org.taxAddress?.city || "",
-      state: org.taxAddress?.state || "",
-      zip: org.taxAddress?.zip || "",
-      country: org.taxAddress?.country,
-    },
-    phone: org.taxAddress?.phone || "",
-    tin,
-    tinType,
+    name: id.name,
+    address: id.address,
+    phone: id.phone,
+    tin: id.tin,
+    tinType: id.tinType,
   };
 }
 

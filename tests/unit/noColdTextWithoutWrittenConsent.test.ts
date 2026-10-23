@@ -189,7 +189,6 @@ const READERS: Record<string, { n: number; role: Role; why: string }> = {
   "server/services/communications.ts::determinePreferredChannel": { n: 1, role: "sms", why: "channel picker (parameter type)" },
   "server/services/autonomyGuardrails.ts::checkTcpaBeforeSend": { n: 3, role: "sms", why: "select + call gate; sms via hasWrittenSmsConsent" },
   "server/services/autopilot/hands/send-sms.ts::handler": { n: 2, role: "sms", why: "select; decides via hasWrittenSmsConsent" },
-  "server/services/taxDelinquentPipeline.ts::addToOutreach": { n: 0, role: "sms", why: "express_consent label via hasWrittenSmsConsent (reads the whole row)" },
   "server/ai/tools.ts::executeTool": { n: 6, role: "sms", why: "send_sms/send_email build ConsentFlags for checkTcpaConsentFromLead; get_leads displays the raw flag beside reachability" },
   // ─ not SMS reachability ─
   "server/services/tcpaCompliance.ts::<module>": { n: 1, role: "other", why: "ConsentFlags type" },

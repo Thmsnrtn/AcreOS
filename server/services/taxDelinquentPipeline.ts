@@ -25,7 +25,6 @@ import { normalizeParcelRef, parcelKey } from "@shared/parcel/parcelRef";
 import { splitOwnerName } from "@shared/parcel/ownerName";
 import { clock } from "../utils/clock";
 import { stampOwnerSuppression } from "./trust/ownerSuppression";
-import { hasWrittenSmsConsent } from "./leadContactability";
 import { leadParcelFactsFromRow, parcelFactCellsFromRecord, type LeadParcelFactColumns } from "@shared/leads/parcelFacts";
 
 // ─── Tax-delinquent payload convention ──────────────────────────────────────
@@ -649,57 +648,27 @@ async function getLead(orgId: number, id: number): Promise<DelinquentLeadRow | n
   return result.leads.find((l) => l.id === id) ?? null;
 }
 
-interface AddToOutreachResult {
-  success: boolean;
-  leadId: number;
-  status: string;
-  consentState: "mail_only" | "inbound_engaged" | "express_consent";
-}
-
-async function addToOutreach(id: number, orgId: number): Promise<AddToOutreachResult> {
-  const [row] = await db
-    .select()
-    .from(leads)
-    .where(and(eq(leads.id, id), eq(leads.organizationId, orgId), sql`${leads.tags} @> ${JSON.stringify([TAX_DELINQUENT_TAG])}::jsonb`))
-    .limit(1);
-  if (!row) throw new Error("Lead not found");
-
-  // Marcus: "Add a consent-state column on /tax-delinquent: Mail-only /
-  // Inbound-engaged / Express-consent." Derive from existing tcpaConsent
-  // and lead activity. Without explicit consent the legal-safe default is
-  // mail-only (no TCPA risk; FDCPA mini-Miranda still applies on letter
-  // copy but that's a template concern).
-  // "Express consent" is the textable state, so it is decided by the text
-  // gate's own predicate (founder decision 2026-10-20 #1: WRITTEN consent).
-  const consentState: AddToOutreachResult["consentState"] =
-    hasWrittenSmsConsent(row) ? "express_consent" : "mail_only";
-
-  // Move the lead into 'contacted' status. The actual mailer / SMS / call
-  // queueing is a separate service that runs from the lead's status; we
-  // don't bypass TCPA here. Marcus's compliance-test concern: the mail-
-  // first cadence is the TCPA-safe default.
-  await db
-    .update(leads)
-    .set({ status: "contacted", updatedAt: clock.now() })
-    .where(eq(leads.id, id));
-
-  return { success: true, leadId: id, status: "contacted", consentState };
-}
+// There is no "add to outreach" here. The old addToOutreach set the lead's
+// status to "contacted" — a status claiming contact that never happened — and
+// the page toasted "Lead added to outreach sequence" when no sequence existed.
+// Outreach to these owners runs from the lead record and the mail composer.
 
 // Namespace export for route consumption
 export const taxDelinquentPipeline = {
   processTaxDelinquentImport,
   getLeads,
   getLead,
-  addToOutreach,
   // importFromCounty: scraper-driven pipeline. Wired in TD-6 (PDF OCR
   // + per-county scraper roster). For now, leave as a no-op rather than
-  // pretending we have the data — same honesty as the rest of TD-1.
+  // pretending we have the data — same honesty as the rest of TD-1. The
+  // route refuses on `available: false` rather than reporting an import.
   async importFromCounty(_opts: { organizationId: number; stateCode?: string; county?: string; limit?: number }) {
     return {
+      available: false as const,
       imported: 0,
       errors: 0,
-      message: "Per-county scraper not yet implemented. Use the CSV importer at /api/import/tax-delinquent for now.",
+      message:
+        "County import is not available: no per-county scraper exists, so nothing was imported. Upload the county's delinquency list as a CSV instead (POST /api/leads/import/tax-delinquent).",
     };
   },
 };

@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Express, Response } from "express";
 import { storage, db } from "./storage";
 import { z } from "zod";
 import { eq, and, desc } from "drizzle-orm";
@@ -647,6 +647,19 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
   // TAX OPTIMIZER ROUTES (T79)
   // ============================================
 
+  // A tax year the rate tables on file do not cover is refused (400, with the
+  // table years), never computed on stale brackets (taxOptimizer.ts).
+  async function refuseUncoveredTaxYear(res: Response, err: unknown): Promise<boolean> {
+    const { TaxTableNotOnFileError, TAX_TABLE_YEARS } = await import("./services/taxOptimizer");
+    if (!(err instanceof TaxTableNotOnFileError)) return false;
+    Errors.badRequest(res, err.message, {
+      reason: err.reason,
+      requestedYear: err.requestedYear,
+      tableYears: TAX_TABLE_YEARS,
+    });
+    return true;
+  }
+
   // GET /api/tax-optimizer/position — year-end tax position analysis
   api.get("/api/tax-optimizer/position", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
@@ -656,6 +669,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       const position = await taxOptimizerService.analyzeYearEndPosition(org.id, taxYear);
       res.json(position);
     } catch (err: any) {
+      if (await refuseUncoveredTaxYear(res, err)) return;
       logger.error("Tax optimizer error", err);
       Errors.internal(res, err);
     }
@@ -670,6 +684,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       const estimate = await taxOptimizerService.estimateDealTax(org.id, dealId);
       res.json(estimate);
     } catch (err: any) {
+      if (await refuseUncoveredTaxYear(res, err)) return;
       Errors.internal(res, err);
     }
   });
@@ -683,6 +698,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       const report = await taxOptimizerService.generateTaxPlanningReport(org.id, taxYear);
       res.json({ report, taxYear });
     } catch (err: any) {
+      if (await refuseUncoveredTaxYear(res, err)) return;
       Errors.internal(res, err);
     }
   });

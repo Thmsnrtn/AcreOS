@@ -23,6 +23,7 @@ import {
 import { eq, and, inArray } from "drizzle-orm";
 import { jobQueueService } from "./jobQueue";
 import { clock } from "../utils/clock";
+import { OFFER_BATCH_JOB_TYPE, assertOfferBatchCreatable } from "./offerBatchGate";
 
 // ─── Pricing Matrix ──────────────────────────────────────────────────────────
 
@@ -136,10 +137,18 @@ function computeOfferAmount(parcel: BatchParcel, config: BatchConfig): number | 
 
 // ─── Batch Processing ────────────────────────────────────────────────────────
 
+// The creation refusal (flag, error, job type) lives in ./offerBatchGate so
+// the storage-layer insert path is held to the same rule.
+export { OfferBatchUnavailableError } from "./offerBatchGate";
+
 export async function createOfferBatch(
   parcels: BatchParcel[],
   config: BatchConfig
 ): Promise<BatchResult> {
+  // Refused before any row is written: a batch nothing processes would sit
+  // "processing" forever with draft offers attached to it.
+  assertOfferBatchCreatable();
+
   // Create the batch record
   // TODO(tsc): offer_batches has no createdBy/metadata columns and `pricingMatrix` is a
   // notNull jsonb with a fixed shape. Map the rule-based config into the required shape;
@@ -222,7 +231,7 @@ export async function createOfferBatch(
 
   // Queue the async processing job
   const job = jobQueueService.addJob(
-    "process-offer-batch",
+    OFFER_BATCH_JOB_TYPE,
     {
       batchId,
       orgId: config.orgId,

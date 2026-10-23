@@ -114,7 +114,6 @@
   "server/services/solene/letterReply.ts::update::decisionsInboxItems": 1,
   "server/services/solene/verifyQueue.ts::update::importJobs": 2,
   "server/services/solene/verifyQueue.ts::update::mailShipments": 2,
-  "server/services/taxDelinquentPipeline.ts::update::leads": 1,
   "server/services/teamWebhookDispatcher.ts::update::orgIntegrationsSlack": 2,
   "server/services/territoryService.ts::update::organizationIntegrations": 1,
   "server/services/undoRegistry.ts::update::campaigns": 1,
