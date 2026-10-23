@@ -6,7 +6,7 @@ what shipped, what it measured, and the top next moves. Newest first.
 ## 2026-10-23 — Package D1, data-sourcing foundation (bucket-independent parts), branch `claude/d1-data-sourcing-foundation`
 
 ### What shipped
-- **D1a.** The Regrid cost table is at the published per-record floor (10¢ Standard / 15¢ Premium), and an empty answer or a free-source answer now costs 0. The **credit-weight re-base was stopped** (D1 stop condition): weights are what a customer's pool is debited, so changing them changes price. Three weights now sit below Regrid's cost (`parcel_lookup_paid` 8 < 10, `owner_lookup` 8 < 15, `valuation_lookup` 10 < 15). That's a founder decision.
+- **D1a.** The Regrid cost table is at the published per-record floor (10¢ Standard / 15¢ Premium), and an empty answer or a free-source answer now costs 0. The credit-weight re-base was held at first (D1 stop condition): weights are what a customer's pool is debited, so changing them changes price. The founder decided it on 2026-10-23 (`b576d53f`): `parcel_lookup_paid` 8→10, `owner_lookup` 8→15, `valuation_lookup` 10→15, so no lookup weight sits below Regrid's cost.
 - **A3.** `provider_lookup_log` gains `intent_class`, `answering_layer` and `confidence_served` (migration 0287), and the registry writes them on every path. A row with an org is that org's demand event. There's no reader yet.
 - **D1c + A4.** `statewide_layer_metadata_v1` makes two metadata calls per statewide layer and reports drift against the last poll, the last ingest and the documented cadence. The orchestrator's new `finalize()` writes `etl_runs.observation` once per run, so the runs form an append-only snapshot series.
 - **A2.** Every statewide row carries a dossier and a derived policy block. Every block is restrictive, because no terms were read.
@@ -19,13 +19,12 @@ what shipped, what it measured, and the top next moves. Newest first.
 - **Design docs not in the repo.** `files/data-sourcing-intelligence-*.md` weren't available, so the D1 package text was used. The assumptions (Layer names, §12 use-class mapping, §8 RCW section) are noted in the code.
 
 ### Next moves
-1. Founder: re-base the three lookup credit weights, or don't.
-2. In a session that can reach the hosts:
+1. In a session that can reach the hosts:
    - run the FL dry run on one county;
    - fill the five golden slots from the county appraiser;
    - read the nine terms pages into the dossiers;
    - arm the poller.
-3. D2 (TN county ingest) and D3 (delta ingest + `lastIngestedAt` per source).
+2. D2 (TN county ingest) and D3 (delta ingest + `lastIngestedAt` per source).
 
 ## 2026-10-21 — Customer Journey Audit, next layer (issue #359), branch `claude/cj-journey-next-layer`
 
