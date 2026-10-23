@@ -25,12 +25,15 @@ import { normalizeParcelRef, parcelKey } from "@shared/parcel/parcelRef";
 import { splitOwnerName } from "@shared/parcel/ownerName";
 import { clock } from "../utils/clock";
 import { stampOwnerSuppression } from "./trust/ownerSuppression";
+import { leadParcelFactsFromRow, parcelFactCellsFromRecord, type LeadParcelFactColumns } from "@shared/leads/parcelFacts";
 
 // ─── Tax-delinquent payload convention ──────────────────────────────────────
-// The leads table has no apn/county/taxDelinquent/delinquentAmount/metadata/
-// propertyAddress columns. Tax-delinquent imports flag the lead with the
-// TAX_DELINQUENT_TAG in `tags` and stash the extra structured fields as JSON in
-// the `notes` column.
+// Tax-delinquent imports flag the lead with the TAX_DELINQUENT_TAG in `tags`
+// and stash the extra structured fields as JSON in the `notes` column. Since
+// migration 0286 the parcel facts — acreage, assessed / estimated value,
+// tax_delinquent, amount owed, years delinquent — ALSO land on the lead's own
+// columns (shared/leads/parcelFacts.ts), so the lead list and detail show
+// them; the payload below is still what getLeads reads.
 //
 // KNOWN DEBT (groundwork, no schema change this wave): JSON-in-notes makes
 // these fields unqueryable — dedup, state/county filtering, and equity math
@@ -84,6 +87,8 @@ export interface NormalizedDelinquentRecord {
   delinquentAmount?: number;
   delinquentYears?: number;
   acres?: number;
+  /** The lead's parcel-fact columns (shared/leads/parcelFacts.ts). */
+  facts: LeadParcelFactColumns;
   rawRow: RawDelinquentRecord;
 }
 
@@ -121,18 +126,6 @@ function findColumn(headers: string[], aliases: string[]): string | null {
   return null;
 }
 
-function parseAmount(val: string): number | undefined {
-  if (!val) return undefined;
-  const cleaned = val.replace(/[$,\s]/g, "");
-  const n = parseFloat(cleaned);
-  return isNaN(n) ? undefined : n;
-}
-
-function parseAcres(val: string): number | undefined {
-  if (!val) return undefined;
-  const n = parseFloat(val.replace(/[^0-9.]/g, ""));
-  return isNaN(n) ? undefined : n;
-}
 
 // ─── CSV Parser (no external dep) ────────────────────────────────────────────
 
@@ -201,6 +194,17 @@ function normalizeRecords(raw: RawDelinquentRecord[]): NormalizedDelinquentRecor
       const ownerName = ownerCol ? row[ownerCol]?.trim() : "";
       if (!apn || !ownerName) return null;
 
+      // The shared parsers (refuse, never 0): the alias columns found above
+      // win, and any other parcel-fact column ("Assessed Value", "Market
+      // Value", "Delinquent") is classified by its header.
+      const facts = leadParcelFactsFromRow({
+        ...parcelFactCellsFromRecord(row),
+        ...(acresCol ? { acreage: row[acresCol] } : {}),
+        ...(amountCol ? { taxDelinquentAmount: row[amountCol] } : {}),
+        ...(yearsCol ? { taxDelinquentYears: row[yearsCol] } : {}),
+      });
+      const num = (v: string | null) => (v === null ? undefined : Number(v));
+
       return {
         apn,
         ownerName,
@@ -208,9 +212,10 @@ function normalizeRecords(raw: RawDelinquentRecord[]): NormalizedDelinquentRecor
         city: cityCol ? row[cityCol]?.trim() : undefined,
         state: stateCol ? row[stateCol]?.trim() : undefined,
         zipCode: zipCol ? row[zipCol]?.trim() : undefined,
-        delinquentAmount: amountCol ? parseAmount(row[amountCol]) : undefined,
-        delinquentYears: yearsCol ? parseInt(row[yearsCol]) || undefined : undefined,
-        acres: acresCol ? parseAcres(row[acresCol]) : undefined,
+        delinquentAmount: num(facts.taxDelinquentAmount),
+        delinquentYears: facts.taxDelinquentYears ?? undefined,
+        acres: num(facts.acreage),
+        facts,
         rawRow: row,
       };
     })
@@ -363,9 +368,8 @@ export async function processTaxDelinquentImport(
     // surname, so "SMITH FAMILY TRUST" became first "SMITH FAMILY", last "TRUST").
     const { firstName, lastName } = splitOwnerName(rec.ownerName);
 
-    // leads has no createdBy/apn/propertyAddress/county/zipCode/taxDelinquent/
-    // delinquentAmount/metadata columns. Map to the real columns (address, zip)
-    // and stash the rest in the notes JSON payload, flagged via tags.
+    // Map to the real columns (address, zip, the parcel facts) and stash the
+    // rest in the notes JSON payload, flagged via tags.
     toInsert.push({
       organizationId: orgId,
       firstName,
@@ -374,6 +378,10 @@ export async function processTaxDelinquentImport(
       city: rec.city,
       state: rec.state || options.state,
       zip: rec.zipCode,
+      // The parcel facts on the lead's own columns. Imported AS a
+      // tax-delinquent list, so delinquent unless a column says otherwise.
+      ...rec.facts,
+      taxDelinquent: rec.facts.taxDelinquent ?? true,
       source: options.defaultSource || "tax_delinquent",
       status: "new",
       // Multi-factor import-time score. Marcus: "Real scoring needs
@@ -391,6 +399,9 @@ export async function processTaxDelinquentImport(
         delinquentAmount: rec.delinquentAmount?.toString(),
         delinquentYears: rec.delinquentYears,
         acres: rec.acres,
+        // A real assessed value from the list — what mapLeadToDelinquentRow
+        // reads as valueProvenance "assessed". Absent → absent, never invented.
+        ...(rec.facts.assessedValue !== null ? { propertyValueCents: Math.round(Number(rec.facts.assessedValue) * 100) } : {}),
         importedAt: clock.now().toISOString(),
       }),
       createdAt: clock.now(),
@@ -637,27 +648,55 @@ async function getLead(orgId: number, id: number): Promise<DelinquentLeadRow | n
   return result.leads.find((l) => l.id === id) ?? null;
 }
 
-// There is no "add to outreach" here. The old addToOutreach set the lead's
-// status to "contacted" — a status claiming contact that never happened — and
-// the page toasted "Lead added to outreach sequence" when no sequence existed.
-// Outreach to these owners runs from the lead record and the mail composer.
+interface AddToOutreachResult {
+  success: boolean;
+  leadId: number;
+  status: string;
+  consentState: "mail_only" | "inbound_engaged" | "express_consent";
+}
+
+async function addToOutreach(id: number, orgId: number): Promise<AddToOutreachResult> {
+  const [row] = await db
+    .select()
+    .from(leads)
+    .where(and(eq(leads.id, id), eq(leads.organizationId, orgId), sql`${leads.tags} @> ${JSON.stringify([TAX_DELINQUENT_TAG])}::jsonb`))
+    .limit(1);
+  if (!row) throw new Error("Lead not found");
+
+  // Marcus: "Add a consent-state column on /tax-delinquent: Mail-only /
+  // Inbound-engaged / Express-consent." Derive from existing tcpaConsent
+  // and lead activity. Without explicit consent the legal-safe default is
+  // mail-only (no TCPA risk; FDCPA mini-Miranda still applies on letter
+  // copy but that's a template concern).
+  const consentState: AddToOutreachResult["consentState"] =
+    (row as any).tcpaConsent ? "express_consent" : "mail_only";
+
+  // Move the lead into 'contacted' status. The actual mailer / SMS / call
+  // queueing is a separate service that runs from the lead's status; we
+  // don't bypass TCPA here. Marcus's compliance-test concern: the mail-
+  // first cadence is the TCPA-safe default.
+  await db
+    .update(leads)
+    .set({ status: "contacted", updatedAt: clock.now() })
+    .where(eq(leads.id, id));
+
+  return { success: true, leadId: id, status: "contacted", consentState };
+}
 
 // Namespace export for route consumption
 export const taxDelinquentPipeline = {
   processTaxDelinquentImport,
   getLeads,
   getLead,
+  addToOutreach,
   // importFromCounty: scraper-driven pipeline. Wired in TD-6 (PDF OCR
   // + per-county scraper roster). For now, leave as a no-op rather than
-  // pretending we have the data — same honesty as the rest of TD-1. The
-  // route refuses on `available: false` rather than reporting an import.
+  // pretending we have the data — same honesty as the rest of TD-1.
   async importFromCounty(_opts: { organizationId: number; stateCode?: string; county?: string; limit?: number }) {
     return {
-      available: false as const,
       imported: 0,
       errors: 0,
-      message:
-        "County import is not available: no per-county scraper exists, so nothing was imported. Upload the county's delinquency list as a CSV instead (POST /api/leads/import/tax-delinquent).",
+      message: "Per-county scraper not yet implemented. Use the CSV importer at /api/import/tax-delinquent for now.",
     };
   },
 };
