@@ -286,7 +286,7 @@ export function BookingsPanel() {
                 <EmptyState
                   icon={CalendarCheck}
                   headline="No reservations recorded on this property yet"
-                  subtitle="Record a stay, or import your own Airbnb/VRBO CSV export. Until then, occupancy and ADR have nothing to measure."
+                  subtitle="Occupancy and ADR have nothing to measure until reservations are on file for this property."
                   framed
                   cta={{ label: "", _noOp: true }}
                   testId="bookings-empty"

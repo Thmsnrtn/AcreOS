@@ -201,6 +201,9 @@ const METHODOLOGY_LABELS: Record<string, string> = {
   baseline: 'Legacy flat-rate estimate (recorded before the honesty patch — treat with caution)',
 };
 
+/** Stored model versions that are not a modeled value (see GET /:propertyId). */
+const NOT_SERVABLE_AS_LATEST = new Set(['ai_market_estimate', 'regional_baseline', 'baseline']);
+
 router.get('/history/:propertyId', cacheResponse(300), async (req: Request, res: Response) => {
   try {
     const org = req.organization;
@@ -310,7 +313,13 @@ router.get('/:propertyId', cacheResponse(300), async (req: Request, res: Respons
       org.id.toString(),
       req.params.propertyId
     );
-    const latest = rows[0] as
+    // Legacy rows from the deleted LLM $/acre rung and the pre-honesty flat
+    // baseline are not modeled values; this chip would label them "AcreOS
+    // valuation model · modeled". Skip them — the history view still shows
+    // them under their honest METHODOLOGY_LABELS.
+    const latest = (rows as Array<{ modelVersion?: string }>).find(
+      (r) => !NOT_SERVABLE_AS_LATEST.has(r.modelVersion ?? ''),
+    ) as
       | { predictedValue?: unknown; confidenceScore?: unknown; createdAt?: unknown; modelVersion?: string }
       | undefined;
     if (!latest || !Number(latest.predictedValue)) {
@@ -341,11 +350,23 @@ router.get('/:propertyId', cacheResponse(300), async (req: Request, res: Respons
 // BULK VALUATIONS
 // =====================
 
+// Values the org's OWN properties (synchronously) and reports exactly what
+// happened. It takes no file: the request body is ignored. The client used
+// to upload a CSV here that this route never read, and was told valuation had
+// "started" for the CSV's rows.
 router.post('/bulk', async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    await acreOSValuation.generateBulkValuations(org.id.toString());
-    res.json({ success: true, message: 'Bulk valuation started for all owned properties' });
+    const counts = await acreOSValuation.generateBulkValuations(org.id.toString());
+    res.json({
+      success: true,
+      ...counts,
+      message:
+        `Valued ${counts.valuated} of ${counts.total} properties you own. ` +
+        `${counts.refused} refused (not enough comparable sales), ` +
+        `${counts.skipped} skipped (missing acreage/state/county or not fee-simple), ` +
+        `${counts.failed} failed.`,
+    });
   } catch (error: any) {
     if (handleLandStatusError(res, error)) return;
     Errors.badRequest(res, error.message);

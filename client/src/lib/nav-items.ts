@@ -119,7 +119,7 @@ export const ALL_NAV_ITEMS: MasterNavItem[] = [
   // investor-network removed 2026-10-20: a marketplace under the ~25-customer
   // ladder (founder decision #4) — frozen in shared/feature-freeze.ts.
   // Additional Pages
-  { id: "avm-bulk",             label: "Bulk AVM",            icon: TrendingUp,  href: "/avm-bulk",             description: "Bulk AI valuations via CSV upload" },
+  { id: "avm-bulk",             label: "Bulk AVM",            icon: TrendingUp,  href: "/avm-bulk",             description: "Run the AVM on every property you own" },
   // marketplace-analytics + va-dashboard entries removed 2026-07-07 (WS1):
   // both pages were archived 2026-06-01 with no App.tsx route, so the
   // command palette navigated straight to NotFound.

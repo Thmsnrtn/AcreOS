@@ -115,7 +115,6 @@ export default function RehabDetailPage() {
   const [newScope, setNewScope] = useState("");
   const [newBudget, setNewBudget] = useState("");
   const [templateKey, setTemplateKey] = useState("");
-  const [templateSqft, setTemplateSqft] = useState("1500");
 
   const detail = useQuery<RehabDetail>({
     queryKey: ["/api/rehabs", id],
@@ -211,16 +210,13 @@ export default function RehabDetailPage() {
     mutationFn: async () => {
       const res = await fetch(`/api/rehabs/${id}/seed-template`, {
         method: "POST", credentials: "include", headers: csrfHeader(),
-        body: JSON.stringify({
-          templateKey,
-          sqft: parseInt(templateSqft, 10) || 1500,
-        }),
+        body: JSON.stringify({ templateKey }),
       });
       if (!res.ok) throw new Error(`Failed (${res.status})`);
       return res.json();
     },
     onSuccess: (r: any) => {
-      toast({ title: `${r.inserted} line items added`, description: `Sized for ${r.sqft} sqft` });
+      toast({ title: `${r.inserted} line items added`, description: "Budgets start at $0 — enter your cost for each line." });
       queryClient.invalidateQueries({ queryKey: ["/api/rehabs", id] });
     },
     onError: (error) => {
@@ -302,7 +298,7 @@ export default function RehabDetailPage() {
               Seed from a scope template
             </CardTitle>
             <CardDescription>
-              Pre-populated line items so you don't start from a blank slate. Per-sqft items multiply by the sqft you enter.
+              A starting scope of line items so you don't begin from a blank slate. Budgets start at $0 — enter what each line costs in your market.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap items-end gap-2">
@@ -316,10 +312,6 @@ export default function RehabDetailPage() {
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-            <div className="w-32">
-              <Label className="text-xs" htmlFor="rehab-template-sqft">Sqft</Label>
-              <Input id="rehab-template-sqft" type="number" value={templateSqft} onChange={(e) => setTemplateSqft(e.target.value)} className="h-9" />
             </div>
             <Button disabled={!templateKey || seedTemplate.isPending} onClick={() => seedTemplate.mutate()}>
               Apply template

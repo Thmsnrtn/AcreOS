@@ -200,6 +200,11 @@ Notary Public</p>`,
           { name: "closing_date", description: "Date of execution", type: "date", required: true },
         ],
       },
+      // The ASSIGNOR is the original BUYER under the purchase contract (the
+      // wholesaler), never the property seller. This template labelled
+      // {{seller_name}} — auto-filled from the deal's seller lead — as the
+      // Assignor. Existing databases are corrected by migration 0284. The type
+      // "assignment" is gated by isAssignmentTemplate() in routes-doc-system.ts.
       {
         name: "Assignment Contract",
         type: "assignment",
@@ -210,12 +215,12 @@ Notary Public</p>`,
 
 <p>This Assignment of Real Estate Contract ("Assignment") is made and entered into as of <strong>{{closing_date}}</strong>, by and between:</p>
 
-<p><strong>ASSIGNOR:</strong> {{seller_name}}<br/>
-<strong>ASSIGNEE:</strong> {{buyer_name}}</p>
+<p><strong>ASSIGNOR:</strong> {{assignor_name}}<br/>
+<strong>ASSIGNEE:</strong> {{assignee_name}}</p>
 
 <h2>RECITALS</h2>
 
-<p>WHEREAS, Assignor entered into a Real Estate Purchase Agreement dated {{original_contract_date}} ("Original Contract") for the purchase of real property located at:</p>
+<p>WHEREAS, Assignor, as buyer, entered into a Real Estate Purchase Agreement dated {{original_contract_date}} with {{seller_name}}, as seller ("Original Contract"), for the purchase of real property located at:</p>
 
 <p><strong>Property Address:</strong> {{property_address}}<br/>
 <strong>Parcel Number:</strong> {{parcel_number}}<br/>
@@ -233,15 +238,16 @@ Notary Public</p>`,
 <h2>SIGNATURES</h2>
 
 <p>____________________________<br/>
-Assignor: {{seller_name}}<br/>
+Assignor: {{assignor_name}}<br/>
 Date: _____________</p>
 
 <p>____________________________<br/>
-Assignee: {{buyer_name}}<br/>
+Assignee: {{assignee_name}}<br/>
 Date: _____________</p>`,
         variables: [
-          { name: "buyer_name", description: "Full legal name of the assignee", type: "text", required: true },
-          { name: "seller_name", description: "Full legal name of the assignor", type: "text", required: true },
+          { name: "assignor_name", description: "Full legal name of the assignor — the original BUYER under the purchase contract", type: "text", required: true },
+          { name: "assignee_name", description: "Full legal name of the assignee — the party stepping into the buyer position under the original contract", type: "text", required: true },
+          { name: "seller_name", description: "Full legal name of the property seller under the original contract (not a party to this assignment)", type: "text", required: true },
           { name: "property_address", description: "Full street address of the property", type: "text", required: true },
           { name: "parcel_number", description: "APN/Parcel number", type: "text", required: true },
           { name: "county", description: "County where property is located", type: "text", required: true },

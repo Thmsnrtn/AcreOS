@@ -1,360 +1,115 @@
-// @ts-nocheck
-import { useState, useRef, useId } from "react";
+import { useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
-import { Label } from "@/components/ui/label";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Upload, Download, FileText, TrendingUp, AlertCircle, CheckCircle } from "lucide-react";
+import { TrendingUp, CheckCircle, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
-import { usd } from "@/lib/format";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { DisclaimerBanner } from "@/components/disclaimer-banner";
-import { DataProvenanceChip } from "@/components/data-provenance-chip";
 
-interface BulkResult {
-  address: string;
-  county: string;
-  state: string;
-  acreage: number;
-  avmValue: number;
-  pricePerAcre: number;
-  confidence: number;
-  confidenceLow: number;
-  confidenceHigh: number;
-  status: "success" | "error";
-  error?: string;
+/**
+ * Bulk AVM — values every property the org already OWNS in AcreOS.
+ *
+ * This page used to offer a CSV upload ("Required columns: address, county,
+ * state, acreage") and animate a setInterval progress bar to 90% while it
+ * waited. POST /api/avm/bulk never read the file: it valued the org's own
+ * properties. The upload, the column guide, the fake progress and the
+ * per-row results table it could never fill are gone; the page now says what
+ * the route does and shows the counts the route actually returns.
+ */
+export interface BulkValuationResponse {
+  success: boolean;
+  total: number;
+  valuated: number;
+  refused: number;
+  skipped: number;
+  failed: number;
+  message: string;
+}
+
+export function BulkValuationSummary({ data }: { data: BulkValuationResponse }) {
+  const rows: Array<{ label: string; value: number }> = [
+    { label: "Properties you own", value: data.total },
+    { label: "Valued", value: data.valuated },
+    { label: "Refused (not enough comparable sales)", value: data.refused },
+    { label: "Skipped (missing acreage/state/county, or not fee-simple)", value: data.skipped },
+    { label: "Failed", value: data.failed },
+  ];
+  return (
+    <Card data-testid="bulk-valuation-summary">
+      <CardContent className="pt-6 space-y-4">
+        <div className="flex items-start gap-3" role="status" aria-live="polite">
+          <CheckCircle className="h-5 w-5 text-acr-pos mt-0.5" aria-hidden="true" />
+          <p className="text-sm">{data.message}</p>
+        </div>
+        <dl className="grid grid-cols-1 sm:grid-cols-5 gap-4">
+          {rows.map((r) => (
+            <div key={r.label}>
+              <dd className="text-2xl font-bold tabular-nums">{r.value}</dd>
+              <dt className="text-xs text-muted-foreground">{r.label}</dt>
+            </div>
+          ))}
+        </dl>
+        <p className="text-xs text-muted-foreground">
+          Each valued property's estimate is on its AVM page under valuation history.
+        </p>
+      </CardContent>
+    </Card>
+  );
 }
 
 export default function AvmBulk() {
   useDocumentTitle("Bulk AVM valuation");
-  const fileInputId = useId();
-  const [file, setFile] = useState<File | null>(null);
-  const [results, setResults] = useState<BulkResult[]>([]);
-  // The /bulk endpoint is fire-and-forget (server/routes-avm.ts:336): it kicks off
-  // valuation for all owned properties and returns { success, message } — never a
-  // per-row results array. `started` drives an honest "queued" state instead.
-  const [started, setStarted] = useState(false);
-  const [startedMessage, setStartedMessage] = useState("");
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [sortField, setSortField] = useState<keyof BulkResult>("avmValue");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (f && (f.name.endsWith(".csv") || f.name.endsWith(".xlsx"))) {
-      setFile(f);
-    } else {
-      toast({ title: "Invalid file", description: "Please upload a CSV file.", variant: "destructive" });
-    }
-  };
-
-  const handleUploadAndProcess = async () => {
-    if (!file) return;
-    setIsProcessing(true);
-    setStarted(false);
-    setProgress(0);
-
-    const formData = new FormData();
-    formData.append("file", file);
-
-    try {
-      const progressInterval = setInterval(() => {
-        setProgress(p => Math.min(p + 5, 90));
-      }, 500);
-
-      const res = await fetch("/api/avm/bulk", {
-        method: "POST",
-        body: formData,
-        credentials: "include",
-      });
-
-      clearInterval(progressInterval);
-      setProgress(100);
-
-      if (!res.ok) throw new Error("Bulk valuation failed");
-      const data = await res.json();
-      // Async contract: the server queues valuations and returns { success, message }.
-      // There is no synchronous `results` array and no bulk-results poll endpoint, so
-      // surface the honest "started" state rather than reading data.results (which
-      // does not exist and previously crashed on data.results.length).
-      setStarted(true);
-      setStartedMessage(
-        data?.message ?? "Bulk valuation started for all owned properties.",
-      );
-      toast({
-        title: "Bulk valuation started",
-        description: "Results will populate as your properties are processed.",
-      });
-    } catch (err: any) {
+  const bulkMutation = useMutation({
+    mutationFn: async (): Promise<BulkValuationResponse> => {
+      const res = await apiRequest("POST", "/api/avm/bulk", {});
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["avm"] });
+    },
+    onError: (err: Error) =>
       toast({
         title: "Couldn't run bulk valuation",
-        description: `${err.message}. Your uploaded file is unchanged — try again, or check the CSV format.`,
+        description: `${err.message} — no properties were revalued.`,
         variant: "destructive",
-      });
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  const handleExport = () => {
-    if (!results.length) return;
-    const header = "Address,County,State,Acreage,AVM Value,Price/Acre,Confidence %,Low Estimate,High Estimate\n";
-    const rows = results.map(r =>
-      `"${r.address}","${r.county}","${r.state}",${r.acreage},${r.avmValue},${r.pricePerAcre},${r.confidence},${r.confidenceLow},${r.confidenceHigh}`
-    ).join("\n");
-    const blob = new Blob([header + rows], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `bulk-valuations-${Date.now()}.csv`;
-    a.click();
-  };
-
-  const sortedResults = [...results].sort((a, b) => {
-    const av = a[sortField] as any;
-    const bv = b[sortField] as any;
-    return sortDir === "asc" ? (av > bv ? 1 : -1) : (av < bv ? 1 : -1);
+      }),
   });
-
-  const toggleSort = (field: keyof BulkResult) => {
-    if (sortField === field) setSortDir(d => d === "asc" ? "desc" : "asc");
-    else { setSortField(field); setSortDir("desc"); }
-  };
-
-  const sortIndicator = (field: keyof BulkResult) =>
-    sortField === field ? (sortDir === "asc" ? "↑" : "↓") : "";
-  const ariaSort = (field: keyof BulkResult): "ascending" | "descending" | "none" =>
-    sortField === field ? (sortDir === "asc" ? "ascending" : "descending") : "none";
-
-  const successCount = results.filter(r => r.status === "success").length;
-  const errorCount = results.filter(r => r.status === "error").length;
-  const avgValue = results.length ? results.filter(r => r.status === "success").reduce((s, r) => s + r.avmValue, 0) / successCount : 0;
 
   return (
     <div className="p-6 space-y-6">
       <DisclaimerBanner type="avm" />
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold">Bulk AVM valuation</h1>
-          <p className="text-muted-foreground">Upload a CSV of properties to get instant valuations.</p>
-        </div>
-        {results.length > 0 && (
-          <Button onClick={handleExport} variant="outline" aria-label="Export results to CSV">
-            <Download className="h-4 w-4 mr-2" aria-hidden="true" /> Export CSV
-          </Button>
-        )}
+      <div>
+        <h1 className="text-2xl font-bold">Bulk AVM valuation</h1>
+        <p className="text-muted-foreground">
+          Run the AVM on every property you own in AcreOS. Properties without enough comparable sales are refused, not guessed.
+        </p>
       </div>
 
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Upload className="h-5 w-5" aria-hidden="true" /> Upload properties
+            <TrendingUp className="h-5 w-5" aria-hidden="true" /> Value my properties
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <Label
-            htmlFor={fileInputId}
-            className="border-2 border-dashed rounded-card p-8 text-center cursor-pointer hover:border-primary transition-colors block focus-within:ring-2 focus-within:ring-ring"
+        <CardContent>
+          <Button
+            onClick={() => bulkMutation.mutate()}
+            disabled={bulkMutation.isPending}
+            data-testid="button-run-bulk-valuation"
           >
-            <FileText className="h-10 w-10 mx-auto mb-3 text-muted-foreground" aria-hidden="true" />
-            <p className="font-medium">{file ? file.name : "Click to upload CSV"}</p>
-            <p className="text-sm text-muted-foreground mt-1">
-              Required columns: address, county, state, acreage.
-            </p>
-            <input
-              id={fileInputId}
-              ref={fileInputRef}
-              type="file"
-              accept=".csv"
-              className="sr-only"
-              onChange={handleFileChange}
-              aria-label="Upload CSV file"
-            />
-          </Label>
-
-          {file && (
-            <div className="flex items-center gap-3 flex-wrap">
-              <Badge variant="secondary">{file.name}</Badge>
-              <span className="text-sm text-muted-foreground tabular-nums">{(file.size / 1024).toFixed(1)} KB</span>
-              <Button onClick={handleUploadAndProcess} disabled={isProcessing}>
-                {isProcessing ? "Processing…" : "Run bulk valuation"}
-              </Button>
-            </div>
-          )}
-
-          {isProcessing && (
-            <div className="space-y-2" role="status" aria-live="polite">
-              <div className="flex justify-between text-sm">
-                <span>Processing properties…</span>
-                <span className="tabular-nums">{progress}%</span>
-              </div>
-              <Progress value={progress} aria-label={`Processing progress ${progress}%`} />
-            </div>
-          )}
+            {bulkMutation.isPending ? (
+              <><Loader2 className="h-4 w-4 mr-2 animate-spin" aria-hidden="true" />Valuing properties…</>
+            ) : (
+              "Value all my properties"
+            )}
+          </Button>
         </CardContent>
       </Card>
 
-      {started && (
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-start gap-3" role="status" aria-live="polite">
-              <CheckCircle className="h-5 w-5 text-acr-pos mt-0.5" aria-hidden="true" />
-              <div>
-                <p className="font-medium">Bulk valuation started</p>
-                <p className="text-sm text-muted-foreground">
-                  {startedMessage} Valuations run in the background — results will
-                  populate on each property as they finish processing.
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {results.length > 0 && (
-        <dl className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card>
-            <CardContent className="pt-6">
-              <dd className="text-2xl font-bold tabular-nums">{results.length}</dd>
-              <dt className="text-sm text-muted-foreground">Total properties</dt>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <dd className="text-2xl font-bold text-acr-pos flex items-center gap-1 tabular-nums">
-                <CheckCircle className="h-5 w-5" aria-hidden="true" /> {successCount}
-              </dd>
-              <dt className="text-sm text-muted-foreground">Successful</dt>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <dd className="text-2xl font-bold text-acr-neg flex items-center gap-1 tabular-nums">
-                <AlertCircle className="h-5 w-5" aria-hidden="true" /> {errorCount}
-              </dd>
-              <dt className="text-sm text-muted-foreground">Failed</dt>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <dd className="text-2xl font-bold tabular-nums">{usd(avgValue, { noCents: true })}</dd>
-              <dt className="text-sm text-muted-foreground">Avg AVM value</dt>
-            </CardContent>
-          </Card>
-        </dl>
-      )}
-
-      {results.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <TrendingUp className="h-5 w-5" aria-hidden="true" /> Valuation results
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div role="region" aria-label="Bulk valuation results" tabIndex={0}>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead scope="col">Address</TableHead>
-                    <TableHead scope="col">County/state</TableHead>
-                    <TableHead scope="col" aria-sort={ariaSort("acreage")}>
-                      <button
-                        type="button"
-                        className="font-semibold hover:underline"
-                        onClick={() => toggleSort("acreage")}
-                        aria-label={`Sort by acreage ${ariaSort("acreage") === "ascending" ? "descending" : "ascending"}`}
-                      >
-                        Acreage {sortIndicator("acreage")}
-                      </button>
-                    </TableHead>
-                    <TableHead scope="col" aria-sort={ariaSort("avmValue")}>
-                      <button
-                        type="button"
-                        className="font-semibold hover:underline"
-                        onClick={() => toggleSort("avmValue")}
-                        aria-label={`Sort by AVM value ${ariaSort("avmValue") === "ascending" ? "descending" : "ascending"}`}
-                      >
-                        AVM value {sortIndicator("avmValue")}
-                      </button>
-                    </TableHead>
-                    <TableHead scope="col" aria-sort={ariaSort("pricePerAcre")}>
-                      <button
-                        type="button"
-                        className="font-semibold hover:underline"
-                        onClick={() => toggleSort("pricePerAcre")}
-                        aria-label={`Sort by price per acre ${ariaSort("pricePerAcre") === "ascending" ? "descending" : "ascending"}`}
-                      >
-                        $/acre {sortIndicator("pricePerAcre")}
-                      </button>
-                    </TableHead>
-                    <TableHead scope="col" aria-sort={ariaSort("confidence")}>
-                      <button
-                        type="button"
-                        className="font-semibold hover:underline"
-                        onClick={() => toggleSort("confidence")}
-                        aria-label={`Sort by confidence ${ariaSort("confidence") === "ascending" ? "descending" : "ascending"}`}
-                      >
-                        Confidence {sortIndicator("confidence")}
-                      </button>
-                    </TableHead>
-                    <TableHead scope="col">Range</TableHead>
-                    <TableHead scope="col">Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {sortedResults.map((r, i) => (
-                    <TableRow key={i}>
-                      <TableCell className="font-medium max-w-[200px] truncate">{r.address}</TableCell>
-                      <TableCell>{r.county}, {r.state}</TableCell>
-                      <TableCell className="tabular-nums">{r.acreage?.toFixed(1)}</TableCell>
-                      <TableCell className="tabular-nums">{r.status === "success" ? usd(r.avmValue) : "—"}</TableCell>
-                      <TableCell className="tabular-nums">{r.status === "success" ? usd(r.pricePerAcre) : "—"}</TableCell>
-                      <TableCell>
-                        {r.status === "success" && (
-                          <DataProvenanceChip
-                            source="AVM"
-                            classification="estimate"
-                            confidence={r.confidence}
-                          />
-                        )}
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground tabular-nums">
-                        {r.status === "success" ? `${usd(r.confidenceLow, { noCents: true })} – ${usd(r.confidenceHigh, { noCents: true })}` : "—"}
-                      </TableCell>
-                      <TableCell>
-                        {r.status === "success"
-                          ? <CheckCircle className="h-4 w-4 text-acr-pos" aria-label="Success" />
-                          : <span className="text-xs text-acr-neg" role="alert">{r.error || "Failed"}</span>}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {!results.length && (
-        <Card>
-          <CardHeader><CardTitle>CSV format guide</CardTitle></CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground mb-3">Your CSV should have these columns (header row required):</p>
-            <pre className="bg-muted rounded p-3 font-mono text-sm overflow-x-auto">
-{`address,county,state,acreage
-"123 Rural Rd","Smith County","TX",45.5
-"456 Farm Lane","Johnson County","OK",120.0`}
-            </pre>
-            <p className="text-xs text-muted-foreground mt-2">Optional columns: apn, property_type, zoning.</p>
-          </CardContent>
-        </Card>
-      )}
+      {bulkMutation.data && <BulkValuationSummary data={bulkMutation.data} />}
     </div>
   );
 }

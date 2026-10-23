@@ -102,7 +102,10 @@ const MEASUREMENT_UNITS_KEY = "property-map-measurement-units";
 type LayerLoadStatus = "loading" | "ready" | "error";
 const OVERLAY_SOURCE_LABELS: Record<string, string> = {
   "fema-flood": "FEMA Flood Zones",
-  "zoning-land-use": "Zoning Districts",
+  // The raster at USGS_LAND_USE_URL is NLCD LAND COVER (forest / crop /
+  // developed …), not zoning. It was labelled "Zoning Districts", which a buyer
+  // reads as a legal land-use designation it is not.
+  "zoning-land-use": "Land cover (USGS NLCD)",
   "usda-cdl": "USDA Cropland",
   "usda-clu": "USDA Farm Units",
   "usgs-hillshade": "USGS Hillshade",
@@ -2935,13 +2938,13 @@ export function PropertyMap({
 
                       <div className="flex items-center gap-2">
                         <Checkbox
-                          id="zoning-districts"
+                          id="land-cover-nlcd"
                           checked={layerState.zoningDistricts}
                           onCheckedChange={(checked) => handleZoningToggle(!!checked)}
-                          data-testid="checkbox-zoning-districts"
+                          data-testid="checkbox-land-cover-nlcd"
                         />
-                        <Label htmlFor="zoning-districts" className="text-sm cursor-pointer text-muted-foreground flex-1">
-                          Zoning Districts
+                        <Label htmlFor="land-cover-nlcd" className="text-sm cursor-pointer text-muted-foreground flex-1">
+                          {OVERLAY_SOURCE_LABELS["zoning-land-use"]}
                         </Label>
                         {layerState.zoningDistricts && renderLayerStatusChip("zoning-land-use")}
                       </div>
