@@ -37,6 +37,7 @@ import {
   buildNormalizedListing,
   syndicateListing,
   canonicalPlatform,
+  customerAccountConnected,
   type LegacySyndicationPlatform,
   type PlatformConfig,
 } from "./listingSyndication";
@@ -79,9 +80,15 @@ export function isKnownChannel(id: string): id is LegacySyndicationPlatform {
   return id in PLATFORMS;
 }
 
-/** Env keys the channel needs but the process doesn't have. */
-export function missingEnvKeys(cfg: PlatformConfig, env: NodeJS.ProcessEnv = process.env): string[] {
-  return cfg.envKeys.filter((k) => !env[k]);
+/**
+ * Whether the channel can post for this org: a channel that needs the
+ * customer's own account is postable only once that account is connected
+ * (listingSyndication.customerAccountConnected — none can be yet). This
+ * replaced a check of AcreOS's own process.env keys (founder decision
+ * 2026-10-20 #3).
+ */
+export async function channelConnected(orgId: number, cfg: PlatformConfig): Promise<boolean> {
+  return customerAccountConnected(orgId, cfg.id);
 }
 
 interface ChannelCounts {
@@ -97,7 +104,7 @@ export function deriveChannelView(
   cfg: PlatformConfig,
   state: Pick<SyndicationChannelState, "enabled" | "lastSyncAt" | "lastSyncError"> | undefined,
   counts: ChannelCounts,
-  missingKeys: string[],
+  connected: boolean,
 ): SyndicationChannelView {
   const enabled = state?.enabled ?? false;
   const lastSyncAt = state?.lastSyncAt ? new Date(state.lastSyncAt).toISOString() : undefined;
@@ -112,9 +119,9 @@ export function deriveChannelView(
     // for me", but auto-sync can't run — say so instead of pretending.
     syncStatus = "pending";
     errorMessage = `${cfg.name} has no listing API — posts are generated for manual publishing.`;
-  } else if (missingKeys.length > 0) {
+  } else if (!connected) {
     syncStatus = "error";
-    errorMessage = `Not connected — missing ${missingKeys.join(", ")}. Connect it in Settings → Integrations.`;
+    errorMessage = `Not connected — automatic posting to ${cfg.name} runs on your own ${cfg.name} account, and AcreOS can't connect one yet.`;
   } else if (state?.lastSyncError) {
     syncStatus = "error";
     errorMessage = state.lastSyncError;
@@ -175,14 +182,14 @@ export async function getSyndicationSummary(orgId: number): Promise<SyndicationS
   const stateByChannel = new Map(states.map((s) => [s.channelId, s]));
   const counts = countTargets(listings);
 
-  const channels = Object.values(PLATFORMS).map((cfg) =>
+  const channels = await Promise.all(Object.values(PLATFORMS).map(async (cfg) =>
     deriveChannelView(
       cfg,
       stateByChannel.get(cfg.id),
       counts.get(cfg.id) ?? { published: 0, pending: 0 },
-      missingEnvKeys(cfg),
+      await channelConnected(orgId, cfg),
     ),
-  );
+  ));
 
   return {
     totalChannels: channels.length,
@@ -244,9 +251,8 @@ export async function syncChannels(
       outcomes.push({ channelId: id, attempted: 0, succeeded: 0, failed: 0, skippedReason: "manual-only channel (no API)" });
       continue;
     }
-    const missing = missingEnvKeys(cfg);
-    if (missing.length > 0) {
-      outcomes.push({ channelId: id, attempted: 0, succeeded: 0, failed: 0, skippedReason: `missing ${missing.join(", ")}` });
+    if (!(await channelConnected(orgId, cfg))) {
+      outcomes.push({ channelId: id, attempted: 0, succeeded: 0, failed: 0, skippedReason: "needs your own account connected, which AcreOS can't do yet" });
       continue;
     }
     syncable.push(id);

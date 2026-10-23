@@ -29,6 +29,7 @@
  */
 export const FROZEN_ROUTES: readonly string[] = [
   "/marketplace", // FREEZE — reactivate at G2 liquidity proof
+  "/investor-network", // FREEZE — a marketplace under the ~25-customer ladder (founder decision 2026-10-20 #4)
   "/capital-markets", // FREEZE — reactivate when note securitization is real (H4)
   "/vision-ai", // KILL — deletion scheduled H2
   "/negotiation", // KILL executed 2026-08-13 — page deleted; entry retained (see below)

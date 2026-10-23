@@ -34,6 +34,7 @@ type Lead = {
   phone: string | null;
   doNotContact: boolean;
   tcpaConsent: boolean;
+  consentSource?: string | null;
   timezone?: string;
 };
 
@@ -154,6 +155,8 @@ const lead = (id: number, over: Partial<Lead> = {}): Lead => ({
   phone: `+1512555010${id}`,
   doNotContact: false,
   tcpaConsent: true,
+  // written (web form) — a text needs WRITTEN consent (founder decision 2026-10-20 #1)
+  consentSource: "website",
   timezone: "America/Chicago",
   ...over,
 });

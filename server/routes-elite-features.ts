@@ -529,6 +529,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
       const result = await listingSyndication.takeDownListing(
         platform as Parameters<typeof listingSyndication.takeDownListing>[0],
         target.listingId,
+        org.id,
       );
       const updatedTargets = targets.map((t) =>
         t === target

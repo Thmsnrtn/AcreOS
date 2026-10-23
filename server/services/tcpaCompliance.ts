@@ -5,7 +5,7 @@ import { eq, and, ilike } from "drizzle-orm";
 import type { Lead } from "@shared/schema";
 import { logger } from "../utils/logger";
 import { clock } from "../utils/clock";
-import { leadHasOptedOut } from "./leadContactability";
+import { leadHasOptedOut, hasWrittenSmsConsent } from "./leadContactability";
 
 // ─── TCPA QUIET-HOURS NOTE ────────────────────────────────────────────────────
 // TCPA § 64.1200(c)(1) and most state mini-TCPAs require contact between
@@ -561,8 +561,14 @@ async function applyOptKeywordToLead(
  * partial lead must carry `optOutDate` too, or this reads an opted-out lead as
  * contactable (it read `doNotContact` alone until 2026-10; see
  * leadContactability.ts).
+ *
+ * `consentSource` decides `canSms`: it is hasWrittenSmsConsent (founder
+ * decision 2026-10-20 #1), the predicate the prospecting gate tcpaGateForSms
+ * runs. It is optional only because omitting it FAILS CLOSED — a caller that
+ * drops the source reads the lead as not textable, never as textable — so
+ * pass it whenever SMS is the question.
  */
-export type ConsentFlags = Pick<Lead, 'tcpaConsent' | 'doNotContact' | 'optOutDate'>;
+export type ConsentFlags = Pick<Lead, 'tcpaConsent' | 'doNotContact' | 'optOutDate'> & Partial<Pick<Lead, 'consentSource'>>;
 
 export function checkTcpaConsentFromLead(lead: ConsentFlags): TcpaCheckResult {
   if (leadHasOptedOut(lead)) {
@@ -576,14 +582,37 @@ export function checkTcpaConsentFromLead(lead: ConsentFlags): TcpaCheckResult {
     };
   }
 
+  // EMAIL IS NOT GATED ON TCPA CONSENT (founder decision 2026-10-20 #2).
+  // `tcpaConsent` is consent to be TEXTED or CALLED (47 U.S.C. § 227). Email
+  // runs on the CAN-SPAM opt-out model: reachable unless the person opted
+  // out — the do-not-contact / opt-out check above — or is on the email
+  // suppression list, which emailService enforces at its send chokepoint
+  // (filterSuppressed) along with the unsubscribe footer. This used to
+  // return canEmail: false here, so every imported lead was unreachable by
+  // email until someone ticked a box about texting.
   if (!lead.tcpaConsent) {
     return {
-      canEmail: false,
+      canEmail: true,
       canSms: false,
       canCall: false,
       canDirectMail: true,
       blocked: false,
-      reason: "TCPA/CAN-SPAM consent not provided - email, SMS and phone calls blocked. Direct mail allowed.",
+      reason: "No TCPA consent on record — SMS and phone calls blocked. Email (opt-out list enforced at send) and direct mail allowed.",
+    };
+  }
+
+  // A TCPA grant licenses a CALL; a TEXT needs the grant to be WRITTEN
+  // (founder decision 2026-10-20 #1). Same predicate as tcpaGateForSms, so
+  // every reader of canSms (Pax reachability, canSendViaChannel, campaign
+  // pre-filters) agrees with the gate that actually sends.
+  if (!hasWrittenSmsConsent(lead)) {
+    return {
+      canEmail: true,
+      canSms: false,
+      canCall: true,
+      canDirectMail: true,
+      blocked: false,
+      reason: `TCPA consent on record is not written (source: ${lead.consentSource ?? "unknown"}) — a text needs prior express written consent. Calls, email and direct mail allowed.`,
     };
   }
 
@@ -617,6 +646,17 @@ export async function checkTcpaConsent(leadId: number, organizationId: number): 
  * Full TCPA gate for SMS: checks consent + quiet hours.
  * Returns { allowed, reason } — gate at the send site.
  */
+// WRITTEN_SMS_CONSENT_SOURCES / hasWrittenSmsConsent / writtenSmsConsentSql
+// live in leadContactability.ts (no storage import, so the light readers —
+// autonomy guardrails, autopilot hands, Pax counts — can share them) and are
+// re-exported here, where the gate that enforces them lives.
+export { WRITTEN_SMS_CONSENT_SOURCES, hasWrittenSmsConsent, writtenSmsConsentSql } from "./leadContactability";
+
+/**
+ * The PROSPECTING (cold) text gate: written consent + not opted out + quiet
+ * hours. sendOrgSMS's "prospecting" purpose calls this for every lead at the
+ * number; servicing and reply texts have their own lawful bases and do not.
+ */
 export async function tcpaGateForSms(
   leadId: number,
   organizationId: number,
@@ -629,6 +669,12 @@ export async function tcpaGateForSms(
   // Prefer the lead's explicit IANA zone over area-code inference — the
   // leads.timezone column landed with roadmap W1.5 (migration 0190).
   const lead = await storage.getLead(organizationId, leadId).catch(() => null);
+  if (!lead || !hasWrittenSmsConsent(lead)) {
+    return {
+      allowed: false,
+      reason: `No written consent on record (source: ${lead?.consentSource ?? "unknown"}) — a cold text needs prior express written consent`,
+    };
+  }
   const recipientZone = lead?.timezone ?? null;
   const quietHours = isWithinQuietHours(phoneNumber, recipientZone ?? null);
   if (quietHours.blocked) {

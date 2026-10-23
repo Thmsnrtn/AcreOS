@@ -630,7 +630,7 @@ export class SequenceProcessorService {
         });
         return { status: "skipped", reason: "lead has no organizationId" };
       }
-      const tcpaGuard = await checkTcpaBeforeSend(orgId, lead.id);
+      const tcpaGuard = await checkTcpaBeforeSend(orgId, lead.id, "sms");
       if (!tcpaGuard.allowed) {
         logger.warn("[sequence-processor] SMS blocked by guardrail", {
           metadata: { leadId: lead.id, reason: tcpaGuard.reason },

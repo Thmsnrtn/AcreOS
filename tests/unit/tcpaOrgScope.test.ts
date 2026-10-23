@@ -54,10 +54,10 @@ beforeEach(() => {
 describe("checkTcpaBeforeSend — org scoping (T0-5)", () => {
   it("constrains the lookup by organization_id AND lead id", async () => {
     state.rows = [
-      { tcpaConsent: true, doNotContact: false, optOutDate: null, status: "new" },
+      { tcpaConsent: true, consentSource: "website", doNotContact: false, optOutDate: null, status: "new" },
     ];
 
-    const result = await checkTcpaBeforeSend(7, 42);
+    const result = await checkTcpaBeforeSend(7, 42, "sms");
     expect(result.allowed).toBe(true);
 
     // Render the captured WHERE expression and prove the org pin is in it.
@@ -72,7 +72,7 @@ describe("checkTcpaBeforeSend — org scoping (T0-5)", () => {
     // what an attacker-influenced lead_id from org B looks like to org A.
     state.rows = [];
 
-    const result = await checkTcpaBeforeSend(7, 999);
+    const result = await checkTcpaBeforeSend(7, 999, "sms");
     expect(result.allowed).toBe(false);
     expect(result.reason).toContain("not found");
   });
@@ -82,8 +82,20 @@ describe("checkTcpaBeforeSend — org scoping (T0-5)", () => {
       { tcpaConsent: true, doNotContact: true, optOutDate: null, status: "new" },
     ];
 
-    const result = await checkTcpaBeforeSend(7, 42);
+    const result = await checkTcpaBeforeSend(7, 42, "sms");
     expect(result.allowed).toBe(false);
     expect(result.reason).toContain("do-not-contact");
+  });
+
+  it("email does not require TCPA consent; SMS does (founder decision 2026-10-20 #2)", async () => {
+    state.rows = [{ tcpaConsent: false, doNotContact: false, optOutDate: null, status: "new" }];
+    expect((await checkTcpaBeforeSend(7, 42, "email")).allowed).toBe(true);
+    state.rows = [{ tcpaConsent: false, doNotContact: false, optOutDate: null, status: "new" }];
+    expect((await checkTcpaBeforeSend(7, 42, "sms")).allowed).toBe(false);
+  });
+
+  it("an opted-out lead is blocked on email too", async () => {
+    state.rows = [{ tcpaConsent: false, doNotContact: true, optOutDate: null, status: "new" }];
+    expect((await checkTcpaBeforeSend(7, 42, "email")).allowed).toBe(false);
   });
 });

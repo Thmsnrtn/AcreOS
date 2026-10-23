@@ -28,7 +28,8 @@ interface Platform {
   apiAvailable: boolean;
   requiresPartnerAccount: boolean;
   partnerSignupUrl: string;
-  envKeys: string[];
+  /** "customer_account": posts on your own account with the channel. */
+  connection: "customer_account" | "none";
 }
 
 interface Property {
@@ -42,22 +43,34 @@ interface Property {
   status?: string;
 }
 
+// The shape POST /api/listings/:id/syndicate returns
+// (listingSyndication.LegacySyndicationResult). This read `url`,
+// `externalId` and `requiresManualPost`, none of which the server sends, so
+// Craigslist's ready-to-paste text never rendered and its result read as a
+// bare "Success".
 interface SyndicationResult {
   platform: string;
   success: boolean;
-  externalId?: string;
-  url?: string;
+  listingId?: string;
+  listingUrl?: string;
+  deepLinkUrl?: string;
+  preformattedText?: string;
   error?: string;
-  requiresManualPost?: boolean;
-  exportData?: any;
+  requiresManualAction?: boolean;
+  manualInstructions?: string;
 }
+
+/** Posted means a channel returned a listing id — not "text was prepared". */
+const wasPosted = (r: SyndicationResult) => r.success && !r.requiresManualAction && Boolean(r.listingId);
 
 export default function SyndicationPage() {
   useDocumentTitle("Listing syndication");
   const { toast } = useToast();
   const searchId = useId();
   const [selectedPropertyId, setSelectedPropertyId] = useState<number | null>(null);
-  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(["land_com", "landwatch"]);
+  // Nothing pre-selected: this used to pre-select LandWatch, which has no
+  // adapter, and no channel can post until the org's own account connects.
+  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
   const [syndicating, setSyndicating] = useState(false);
   const [results, setResults] = useState<SyndicationResult[] | null>(null);
   const [propertySearch, setPropertySearch] = useState("");
@@ -109,7 +122,7 @@ export default function SyndicationPage() {
     if (!listing) {
       toast({
         title: "No listing for this property yet",
-        description: "Create a listing for it under Listings first; syndication sends that listing to each channel.",
+        description: "Create a listing for it under Listings first; each channel works from that listing.",
         variant: "destructive",
       });
       return;
@@ -126,11 +139,19 @@ export default function SyndicationPage() {
       });
       const data = await res.json();
       setResults(data.results || []);
-      const successCount = (data.results || []).filter((r: SyndicationResult) => r.success).length;
-      toast({ title: `Syndicated to ${successCount}/${(data.results || []).length} platforms` });
+      const all: SyndicationResult[] = data.results || [];
+      const posted = all.filter(wasPosted).length;
+      const pasteReady = all.filter((r) => r.success && r.requiresManualAction).length;
+      toast({
+        title: posted > 0 ? `Posted to ${posted} of ${all.length} channels` : "Nothing was posted",
+        description:
+          pasteReady > 0
+            ? "Ready-to-paste text is below. Other channels post only on your own account, which AcreOS can't connect yet."
+            : "These channels post only on your own account with them, which AcreOS can't connect yet.",
+      });
     } catch (err: any) {
       toast({
-        title: "Couldn't syndicate listing",
+        title: "Couldn't prepare the listing for these channels",
         description: `${err.message}. Your platform selection is unchanged. Some platforms may have partial state — check each platform's site directly to confirm.`,
         variant: "destructive",
       });
@@ -150,7 +171,10 @@ export default function SyndicationPage() {
     <PageShell label="Listing syndication">
       <div className="mb-6">
         <h1 className="text-2xl font-bold">Listing syndication</h1>
-        <p className="text-muted-foreground text-sm mt-0.5">Publish land listings to Land.com, LandWatch, LandFlip, and more.</p>
+        <p className="text-muted-foreground text-sm mt-0.5">
+          AcreOS prepares the listing copy. Posting to Land.com, Facebook and the other portals runs on your own account
+          with each, which can&apos;t be connected yet; Craigslist gets ready-to-paste text.
+        </p>
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-1 space-y-4">
@@ -220,7 +244,7 @@ export default function SyndicationPage() {
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-base">Platforms</CardTitle>
-              <CardDescription className="text-xs">Select where to publish.</CardDescription>
+              <CardDescription className="text-xs">Select channels.</CardDescription>
             </CardHeader>
             <CardContent>
               {platformsLoading ? (
@@ -253,11 +277,10 @@ export default function SyndicationPage() {
                         />
                         <div className="flex-1 min-w-0">
                           <Label htmlFor={platform.id} className="text-sm font-medium cursor-pointer">{platform.name}</Label>
-                          {platform.requiresPartnerAccount && (
-                            <Badge variant="outline" className="ml-1.5 text-xs py-0">Partner</Badge>
-                          )}
-                          {!platform.apiAvailable && (
-                            <Badge variant="secondary" className="ml-1.5 text-xs py-0">Export</Badge>
+                          {platform.connection === "customer_account" ? (
+                            <Badge variant="outline" className="ml-1.5 text-xs py-0">Your account</Badge>
+                          ) : (
+                            <Badge variant="secondary" className="ml-1.5 text-xs py-0">Paste text</Badge>
                           )}
                         </div>
                       </li>
@@ -269,14 +292,14 @@ export default function SyndicationPage() {
                 className="w-full mt-4"
                 onClick={syndicateProperty}
                 disabled={!selectedPropertyId || selectedPlatforms.length === 0 || syndicating || !listingsData}
-                aria-label={selectedProperty ? `Syndicate ${selectedProperty.address || `Property #${selectedProperty.id}`} to selected platforms` : "Syndicate listing to selected platforms"}
+                aria-label={selectedProperty ? `Prepare ${selectedProperty.address || `Property #${selectedProperty.id}`} for the selected channels` : "Prepare the listing for the selected channels"}
               >
                 {syndicating ? (
                   <Loader2 className="h-4 w-4 animate-spin mr-2" aria-hidden="true" />
                 ) : (
                   <Send className="h-4 w-4 mr-2" aria-hidden="true" />
                 )}
-                Syndicate listing
+                Prepare for channels
               </Button>
             </CardContent>
           </Card>
@@ -305,43 +328,57 @@ export default function SyndicationPage() {
           {results && (
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm">Syndication results</CardTitle>
+                <CardTitle className="text-sm">Channel results</CardTitle>
               </CardHeader>
               <CardContent>
-                <ul className="space-y-3" aria-label="Per-platform syndication results">
+                <ul className="space-y-3" aria-label="Per-channel results">
                   {results.map((r, i) => (
                     <li
                       key={i}
-                      className={`flex items-start gap-3 p-3 rounded-card ${r.success ? "bg-acr-pos-soft dark:bg-acr-pos-soft/10" : "bg-acr-neg-soft dark:bg-acr-neg-soft/10"}`}
+                      className={`flex items-start gap-3 p-3 rounded-card ${wasPosted(r) ? "bg-acr-pos-soft dark:bg-acr-pos-soft/10" : r.success ? "bg-acr-warn-soft dark:bg-acr-warn-soft/10" : "bg-acr-neg-soft dark:bg-acr-neg-soft/10"}`}
                       role={r.success ? undefined : "alert"}
                     >
-                      {r.success ? (
-                        <CheckCircle2 className="h-4 w-4 text-acr-pos flex-shrink-0 mt-0.5" aria-label="Success" />
+                      {wasPosted(r) ? (
+                        <CheckCircle2 className="h-4 w-4 text-acr-pos flex-shrink-0 mt-0.5" aria-label="Posted" />
+                      ) : r.success ? (
+                        <AlertTriangle className="h-4 w-4 text-acr-warn flex-shrink-0 mt-0.5" aria-label="Ready to post yourself" />
                       ) : (
-                        <XCircle className="h-4 w-4 text-acr-neg flex-shrink-0 mt-0.5" aria-label="Failure" />
+                        <XCircle className="h-4 w-4 text-acr-neg flex-shrink-0 mt-0.5" aria-label="Not posted" />
                       )}
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium">{r.platform}</p>
-                        {r.success ? (
-                          <div>
-                            {r.url && (
-                              <a
-                                href={r.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-xs text-acr-accent flex items-center gap-1 mt-0.5 hover:underline"
-                                aria-label={`View ${r.platform} listing in a new tab`}
-                              >
-                                View listing <ExternalLink className="h-3 w-3" aria-hidden="true" />
-                              </a>
-                            )}
-                            {r.requiresManualPost && (
-                              <p className="text-xs text-acr-warn dark:text-acr-warn mt-0.5">Export ready — manual posting required.</p>
-                            )}
-                            {r.externalId && <p className="text-xs text-muted-foreground mt-0.5 font-mono">ID: {r.externalId}</p>}
-                          </div>
-                        ) : (
-                          <p className="text-xs text-acr-neg mt-0.5">{r.error}</p>
+                        {!r.success && r.error && <p className="text-xs text-acr-neg mt-0.5">{r.error}</p>}
+                        {r.manualInstructions && <p className="text-xs text-muted-foreground mt-0.5">{r.manualInstructions}</p>}
+                        {r.listingUrl && (
+                          <a
+                            href={r.listingUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-acr-accent flex items-center gap-1 mt-0.5 hover:underline"
+                            aria-label={`View ${r.platform} listing in a new tab`}
+                          >
+                            View listing <ExternalLink className="h-3 w-3" aria-hidden="true" />
+                          </a>
+                        )}
+                        {r.listingId && <p className="text-xs text-muted-foreground mt-0.5 font-mono">ID: {r.listingId}</p>}
+                        {r.preformattedText && (
+                          <textarea
+                            readOnly
+                            value={r.preformattedText}
+                            aria-label={`Ready-to-paste text for ${r.platform}`}
+                            className="mt-2 w-full h-32 text-xs font-mono p-2 rounded-md border bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          />
+                        )}
+                        {r.deepLinkUrl && (
+                          <a
+                            href={r.deepLinkUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-acr-accent flex items-center gap-1 mt-1 hover:underline"
+                            aria-label={`Open ${r.platform} in a new tab to post it yourself`}
+                          >
+                            Open {r.platform} <ExternalLink className="h-3 w-3" aria-hidden="true" />
+                          </a>
                         )}
                       </div>
                     </li>
@@ -360,13 +397,13 @@ export default function SyndicationPage() {
                       <div>
                         <p className="font-medium text-sm">{platform.name}</p>
                         <p className="text-xs text-muted-foreground mt-0.5">
-                          {platform.apiAvailable ? "API integration" : "Export / deep-link"}
+                          {platform.connection === "customer_account" ? "Posts on your own account — not connectable yet" : "Ready-to-paste text"}
                         </p>
                       </div>
-                      {platform.apiAvailable ? (
-                        <Badge variant="default" className="text-xs">Live API</Badge>
+                      {platform.connection === "customer_account" ? (
+                        <Badge variant="outline" className="text-xs">Not connected</Badge>
                       ) : (
-                        <Badge variant="secondary" className="text-xs">Export</Badge>
+                        <Badge variant="secondary" className="text-xs">Paste text</Badge>
                       )}
                     </div>
                     {platform.requiresPartnerAccount && (
@@ -383,9 +420,9 @@ export default function SyndicationPage() {
                         </a>
                       </div>
                     )}
-                    {platform.envKeys.length > 0 && (
+                    {platform.connection === "customer_account" && (
                       <p className="text-xs text-muted-foreground mt-1">
-                        Requires: {platform.envKeys.join(", ")}.
+                        Posts on your own {platform.name} account, which AcreOS can't connect yet.
                       </p>
                     )}
                   </CardContent>

@@ -99,6 +99,7 @@ export const CONSTITUTION: readonly ConstitutionInvariant[] = [
       "hard-stop.ads-founder-only-rail",
       "rails.byo-not-refront",
       "rails.esign-ceremony-is-external",
+      "rails.customer-acts-on-own-accounts",
     ],
     enforcement: {
       kind: "ratchet-test",
@@ -241,8 +242,18 @@ export const CONSTITUTION: readonly ConstitutionInvariant[] = [
         "server/services/achMandateSetup.ts",
         "server/services/achAutopay.ts",
         "tests/unit/moneyCustodyHardStop.test.ts",
+        "server/services/stripeConnect.ts",
+        "tests/unit/sellerFinanceConnectAccountsAreStandard.test.ts",
       ],
       note:
+        "STANDARD ACCOUNTS (founder decision 2026-10-20 #5): the connected " +
+        "accounts customer money runs on are Stripe STANDARD accounts — the " +
+        "customer's own Stripe account, holding its own dashboard, payout " +
+        "schedule, disputes and negative-balance liability. Express (the old " +
+        "shape) left that liability and the payout schedule with the " +
+        "platform. sellerFinanceConnectAccountsAreStandard.test.ts drives " +
+        "createConnectedAccount and scans every server file for an Express " +
+        "or Custom accounts.create. " +
         "Three layers. (1) RUNTIME CHOKEPOINT: prepareCustomerMoneyCall() is " +
         "the only sanctioned way to build a customer-money Stripe call — it " +
         "sets the org's own `stripeAccount` scope and throws " +
@@ -389,8 +400,17 @@ export const CONSTITUTION: readonly ConstitutionInvariant[] = [
         "tests/unit/expansionLadder.test.ts",
         "server/middleware/featureGate.ts",
         "docs/company/roadmap-2026-07.md",
+        "tests/unit/investorNetworkIsAMarketplace.test.ts",
+        "shared/feature-freeze.ts",
       ],
       note:
+        "INVESTOR NETWORK (founder decision 2026-10-20 #4): /investor-network " +
+        "— a cross-org directory of verified investors with ratings, reviews " +
+        "and deal sharing — IS a marketplace. Its API (/api/investor-network/*, " +
+        "/api/investor-profiles/*) sits behind requireLadderFlag(" +
+        "\"feature_marketplace\"), the route is frozen, and no in-app link " +
+        "points at it; investorNetworkIsAMarketplace.test.ts drives the router " +
+        "with the ladder off and enumerates every profile registration. " +
         "Was prose-only, and the note claimed both surfaces were simply " +
         "'feature-flagged off'. Half true: the public API is genuinely " +
         "unmounted (registerPublicApiV1 has no caller), but the marketplace sat " +
@@ -852,6 +872,94 @@ export const CONSTITUTION: readonly ConstitutionInvariant[] = [
         "and scans every carrier call endpoint outside the adapters; unwiring " +
         "the router chokepoint, accepting any consent source, or ignoring a " +
         "revocation each go red (mutation-checked).",
+    },
+  },
+  {
+    id: "rails.no-cold-text-without-written-consent",
+    title: "No cold texting without written consent",
+    statement:
+      "A prospecting (cold) text is sent only to a person who gave prior express WRITTEN consent — a web form, a written form, a texted double opt-in or an IVR keypress — and has not revoked it. A verbal yes or an operator's unevidenced tick does not license a cold text.",
+    category: "rails",
+    source: "Founder decision 2026-10-20 #1 (standing); 47 C.F.R. § 64.1200(f)(9)",
+    enforcement: {
+      kind: "ratchet-test",
+      refs: [
+        "tests/unit/noColdTextWithoutWrittenConsent.test.ts",
+        "server/services/tcpaCompliance.ts",
+        "server/services/leadContactability.ts",
+        "server/services/smsService.ts",
+      ],
+      note:
+        "tcpaGateForSms — the gate sendOrgSMS's 'prospecting' purpose runs " +
+        "for every lead at the number — requires hasWrittenSmsConsent: the " +
+        "TCPA grant AND a source in WRITTEN_SMS_CONSENT_SOURCES. Servicing " +
+        "texts (borrower of record) and replies (an inbound in the last 24h) " +
+        "have their own lawful bases and are not cold texts. The test drives " +
+        "the real gate for every non-written source and every written one. " +
+        "ADOPTION: every reader that decides SMS reachability gives the " +
+        "gate's verdict — checkTcpaConsentFromLead.canSms (so canSendViaChannel " +
+        "and Pax's reachability), the channel picker, checkTcpaBeforeSend, the " +
+        "autopilot send_sms hand, and Pax's text count (writtenSmsConsentSql, " +
+        "built from the same constant). The test drives each over every source " +
+        "and enrols every server function naming tcpaConsent, by parse.",
+    },
+  },
+  {
+    id: "rails.email-consent-separate-from-sms",
+    title: "Email reachability never depends on SMS consent",
+    statement:
+      "TCPA consent governs texts and calls only. A lead's email reachability depends on whether they opted out (and the email suppression list), never on whether they consented to be texted.",
+    category: "rails",
+    source: "Founder decision 2026-10-20 #2; CAN-SPAM (15 U.S.C. § 7704) is an opt-out regime",
+    enforcement: {
+      kind: "ratchet-test",
+      refs: [
+        "tests/unit/tcpaCompliance.test.ts",
+        "tests/unit/tcpaOrgScope.test.ts",
+        "server/services/tcpaCompliance.ts",
+        "server/services/autonomyGuardrails.ts",
+      ],
+      note:
+        "checkTcpaConsentFromLead returns canEmail: true without a TCPA grant " +
+        "(opt-outs still block every channel); checkTcpaBeforeSend takes a " +
+        "REQUIRED channel and demands the grant only for sms/phone; the " +
+        "channel gate and requiresTcpaConsent are asserted to agree for every " +
+        "channel. Suppression and the unsubscribe footer stay enforced at " +
+        "emailService's send chokepoint. OPEN QUESTION FOR THE FOUNDER: an " +
+        "inbound SMS STOP still revokes every channel, email included " +
+        "(applyOptKeywordToLead) — the conservative reading. If STOP should " +
+        "revoke SMS only, that is a deliberate one-line change.",
+    },
+  },
+  {
+    id: "rails.customer-acts-on-own-accounts",
+    title: "Customers bring their own data and listing accounts",
+    statement:
+      "Any integration acting on a customer's behalf — posting, deleting or messaging as that customer in another system — uses the customer's own credentials and account, never an AcreOS account.",
+    category: "rails",
+    source: "Founder decision 2026-10-20 #3 (joins \"be the rail, not the provider\", founder ruling 2026-07-29)",
+    enforcement: {
+      kind: "ratchet-test",
+      refs: [
+        "tests/unit/customerActsOnOwnAccounts.test.ts",
+        "server/services/listingSyndication.ts",
+        "server/services/syndicationChannels.ts",
+      ],
+      note:
+        "Listing syndication read AcreOS's own environment credentials for every portal, " +
+        "and the Facebook path used META_ACCESS_TOKEN — the founder-only ads " +
+        "token — from a customer route. Credentials now come only from " +
+        "channelCredentialStore.resolve (the org's own account), which " +
+        "answers null until a per-org connect flow exists, so every API " +
+        "channel refuses honestly. The test sets every platform key and " +
+        "asserts no network call (mutation-checked: one env read goes red), " +
+        "enumerates the customer-acting files for credential-shaped env " +
+        "reads, and pins META_ACCESS_TOKEN to the founder-only ads service. " +
+        "SCOPE AS IMPLEMENTED: data lookups through AcreOS's own provider " +
+        "registry (ATTOM, Regrid, skip trace — credit-metered, BYOK where " +
+        "offered) are AcreOS supplying data, not acting as the customer, and " +
+        "are unchanged. If the decision is meant to cover those too, that is " +
+        "a registry-wide change for the founder to confirm.",
     },
   },
 ] as const;

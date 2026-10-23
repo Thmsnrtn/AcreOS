@@ -217,8 +217,10 @@ export default async function globalSetup() {
     );
 
     // 4b. Wedge-journey fixtures (tests/e2e-mobile/wedge-journey.spec.ts):
-    //   - a lead with a phone + express TCPA consent (the campaign send-sms
-    //     pre-filter drops anything less). The spec sets lead.timezone at
+    //   - a lead with a phone + express TCPA consent from a WRITTEN source
+    //     ('website', a web-form opt-in): a prospecting text needs prior
+    //     express written consent (founder decision 2026-10-20 #1), so the
+    //     campaign send-sms pre-filter drops anything less. The spec sets lead.timezone at
     //     runtime to a currently-daytime zone so quiet hours can't flake.
     //   - prepaid credits so the send's upfront credit debit succeeds.
     //   - org-level simulationMode so the "send" records a simulated action
@@ -229,7 +231,7 @@ export default async function globalSetup() {
       `INSERT INTO leads (organization_id, first_name, last_name, status, score, state, city,
                           phone, tcpa_consent, consent_date, consent_source)
        VALUES ($1, 'Wedge', 'Seller', 'new', 91, 'AZ', 'Wickenburg',
-               '+14805550142', true, now(), 'e2e_seed')`,
+               '+14805550142', true, now(), 'website')`,
       [orgId],
     );
     // 4b-ii. Email-reply fixture (tests/e2e-mobile/wedge-email-reply.spec.ts):
