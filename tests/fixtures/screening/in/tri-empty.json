@@ -1,0 +1,6 @@
+{
+  "synthetic": true,
+  "description": "Synthetic Envirofacts tri_facility body: an empty array.",
+  "shapeBasis": "DataSourceBroker.queryEpaData reads a JSON array of TRI facility rows",
+  "payload": []
+}

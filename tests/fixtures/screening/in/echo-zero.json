@@ -1,0 +1,6 @@
+{
+  "synthetic": true,
+  "description": "Synthetic ECHO get_facilities summary: zero facilities currently in violation.",
+  "shapeBasis": "DataSourceBroker.queryEpaData reads Results.CVRows",
+  "payload": { "Results": { "QueryRows": "0", "CVRows": "0" } }
+}

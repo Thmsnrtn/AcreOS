@@ -1,0 +1,6 @@
+{
+  "synthetic": true,
+  "description": "Synthetic FRS get_facilities body with no facilities.",
+  "shapeBasis": "DataSourceBroker.queryEpaFrs reads Results.FRSFacility",
+  "payload": { "Results": { "FRSFacility": [] } }
+}

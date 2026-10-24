@@ -1,0 +1,27 @@
+{
+  "synthetic": true,
+  "description": "Synthetic FRS get_facilities body: one citable facility, and one with no REGISTRY_ID, which must be rejected rather than silently dropped.",
+  "shapeBasis": "fields read by DataSourceBroker.queryEpaFrs: Results.FRSFacility[].{REGISTRY_ID,FACILITY_NAME,INTEREST_TYPES,CITY_NAME,STATE_CODE,LATITUDE83,LONGITUDE83}",
+  "payload": {
+    "Results": {
+      "FRSFacility": [
+        {
+          "REGISTRY_ID": "SYNTHETIC-FRS-1",
+          "FACILITY_NAME": "SYNTHETIC FORMER PLATING SHOP",
+          "INTEREST_TYPES": "RCRAINFO, NPDES",
+          "CITY_NAME": "SYNTHETIC CITY",
+          "STATE_CODE": "IN",
+          "LATITUDE83": "40.4300",
+          "LONGITUDE83": "-86.8753"
+        },
+        {
+          "REGISTRY_ID": "",
+          "FACILITY_NAME": "SYNTHETIC UNIDENTIFIED FACILITY",
+          "INTEREST_TYPES": "AIR",
+          "CITY_NAME": "SYNTHETIC CITY",
+          "STATE_CODE": "IN"
+        }
+      ]
+    }
+  }
+}

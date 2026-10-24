@@ -1,0 +1,8 @@
+{
+  "synthetic": true,
+  "description": "Synthetic Indiana parcel (a Tippecanoe County coordinate). Not a real parcel record.",
+  "parcelRef": "SYNTHETIC-IN-PARCEL-1",
+  "state": "IN",
+  "county": "Tippecanoe",
+  "centroid": { "lat": 40.4167, "lng": -86.8753 }
+}
