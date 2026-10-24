@@ -61,15 +61,13 @@ import {
   type PollDeps,
 } from "./openData/statewideLayerPoller";
 import {
-  FL_JOB,
-  buildDryRunArtifacts,
-  fetchFlCounty,
-  ingestOutcome,
-  type FlFetched,
-  type FlRunConfig,
-  type FlRunDeps,
-} from "./landData/flStatewideCadastral";
-import { bucketConfigFromEnv } from "./landData/openDataBucket";
+  buildCounty,
+  buildSpecFor,
+  statewideJobName,
+  type CountyBuildReport,
+  type CountyRunConfig,
+} from "./landData/statewideCadastral";
+import { bucketConfigFromEnv, recordReceipt, s3ClientFor, uploadFileAndConfirm } from "./landData/openDataBucket";
 import { recordProviderParcelFacts, coerceSaleDate } from "./data-cache/observation-log";
 import {
   registerEtlHandler,
@@ -1644,49 +1642,54 @@ const statewideLayerMetadataEtlHandler: EtlProviderHandler = {
   },
 };
 
-// ─── D1b: Florida statewide cadastral (dry run, no bucket writes) ──────────
-
-const liveFlDeps: FlRunDeps = { getJson: (url) => getGeoJson(url, 60_000) };
+// ─── D1b → D2a: statewide cadastral builds (streamed, dossier-gated upload) ─
 
 /**
- * fetch() pulls + normalizes the configured county (config.countyField /
- * countyValue — refused without both) into the run's own state; upsert writes
- * nothing (D1 has no store for the canonical rows); finalize() builds the
- * local GeoParquet + PMTiles and returns the dry-run report — receipts that
- * say uploaded:false, and an outcome that is never "ingested" without
- * bucket-confirmed receipts — as the run's observation.
+ * Bulk wave 1 (data-sourcing v2 §3): the seeded statewide layers. FL is the
+ * D1 golden source. IN and OH are wave-1 states with NO verified statewide
+ * layer in statewideParcelEndpoints.ts, so they have no job: a layer is
+ * verified live and seeded first (the discovery pipeline), never discovered
+ * at build time. TN and TX are county-by-county and have no statewide job.
  */
-const flStatewideCadastralEtlHandler: EtlProviderHandler = {
-  name: FL_JOB,
-  async *fetch(opts) {
-    const fetched = await fetchFlCounty((opts.config ?? {}) as FlRunConfig, liveFlDeps);
-    if (opts.runState) opts.runState.fl = fetched;
-    for (const r of fetched.records) {
-      yield { externalId: r.identity.sourceParcelId, updatedAt: null, payload: { parcelId: r.identity.sourceParcelId } };
-    }
-  },
-  async upsert() {
-    return { action: "unchanged" };
-  },
-  async finalize(opts) {
-    const fetched = opts.runState?.fl as FlFetched | undefined;
-    if (!fetched) return null;
-    const outDir = mkdtempSync(path.join(os.tmpdir(), "acreos-fl-dryrun-"));
-    const artifacts = await buildDryRunArtifacts(fetched.records, outDir, `FL ${fetched.county} (dry run)`);
-    return {
-      kind: "fl_statewide_cadastral_dry_run",
-      county: fetched.county,
-      countyField: fetched.countyField,
-      asOf: fetched.asOf,
-      conformance: fetched.conformance,
-      fetched: fetched.fetched,
-      normalized: fetched.records.length,
-      skippedNoId: fetched.skippedNoId,
-      artifacts,
-      outcome: ingestOutcome({ artifacts: artifacts.receipts, uploadReceipts: [], bucketConfigured: bucketConfigFromEnv() !== null }),
-    };
-  },
-};
+export const STATEWIDE_BUILD_STATES = ["FL", "NC", "WI", "AR", "MT"] as const;
+
+/**
+ * One handler per state. fetch() runs the whole streamed build — page →
+ * normalize → artifact write → release, so no county is ever held — and
+ * yields ONE record per county built (yielding every parcel would make the
+ * orchestrator hold a set of every parcel id). upsert writes nothing: the
+ * county's home is its artifacts + receipts; finalize() returns the build
+ * report (counts, peak RSS against the ceiling, gate, outcome) as the run's
+ * observation.
+ */
+function statewideCadastralEtlHandler(state: (typeof STATEWIDE_BUILD_STATES)[number]): EtlProviderHandler {
+  return {
+    name: statewideJobName(state),
+    async *fetch(opts) {
+      const config = (opts.config ?? {}) as CountyRunConfig;
+      const cfg = bucketConfigFromEnv();
+      const outDir = mkdtempSync(path.join(os.tmpdir(), `acreos-${state.toLowerCase()}-build-`));
+      const report = await buildCounty(buildSpecFor(state), config, {
+        getJson: (url) => getGeoJson(url, 60_000),
+        outDir,
+        bucketConfigured: cfg !== null,
+        objectStore: cfg ? () => s3ClientFor(cfg) : undefined,
+        upload: (client, corpusKey, objectKey, a) => uploadFileAndConfirm(client, corpusKey, objectKey, a),
+        recordReceipt,
+        today: clock.now().toISOString().slice(0, 10),
+      });
+      if (opts.runState) opts.runState.build = report;
+      yield { externalId: `${state}:${report.summary.county}`, updatedAt: null, payload: { normalized: report.summary.normalized } };
+    },
+    async upsert() {
+      return { action: "unchanged" };
+    },
+    async finalize(opts) {
+      const report = opts.runState?.build as CountyBuildReport | undefined;
+      return report ? (report as unknown as Record<string, unknown>) : null;
+    },
+  };
+}
 
 // ─── Bootstrap registration ─────────────────────────────────────────────────
 
@@ -1706,6 +1709,10 @@ export function registerReferenceEtlHandlers(): void {
   // D1: statewide-layer change detection (metadata only) and the FL dry-run
   // build. Both etl_jobs rows are seeded inactive (migration 0287).
   registerEtlHandler(statewideLayerMetadataEtlHandler.name, statewideLayerMetadataEtlHandler);
-  registerEtlHandler(flStatewideCadastralEtlHandler.name, flStatewideCadastralEtlHandler);
+  // D2a: one streamed statewide build per seeded wave-1 state (FL = D1's job).
+  for (const st of STATEWIDE_BUILD_STATES) {
+    const h = statewideCadastralEtlHandler(st);
+    registerEtlHandler(h.name, h);
+  }
   registered = true;
 }

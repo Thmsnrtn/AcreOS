@@ -20,21 +20,24 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("../../server/db", () => ({ db: {} }));
 vi.mock("../../server/utils/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
 
-import { fetchFlCounty } from "../../server/services/landData/flStatewideCadastral";
-import { STATEWIDE_PARCEL_ENDPOINTS } from "../../server/services/statewideParcelEndpoints";
+import { buildSpecFor, streamCounty } from "../../server/services/landData/statewideCadastral";
+import type { BulkParcelRecord } from "../../shared/landData/bulkParcelRecord";
 
-const MAPPED = Object.values(STATEWIDE_PARCEL_ENDPOINTS.find((e) => e.state === "FL")!.fieldMappings).filter((f): f is string => !!f);
+const FL_SPEC = buildSpecFor("FL");
+const MAPPED = Object.values(FL_SPEC.mapping).filter((f): f is string => !!f);
 
 /**
  * Run one parcel's recorded layer attributes through the SAME path the job
- * uses (fetchFlCounty): a one-feature layer carrying exactly those attributes.
+ * uses (streamCounty, the D2a streamed build): a one-feature layer carrying exactly those attributes.
  * The only synthetic parts are the object id and the county filter field the
  * harness pages by — neither is compared.
  */
 async function normalizeThroughPipeline(attrs: Record<string, unknown>) {
   const props = { ...attrs, OBJECTID: 1, GOLDEN_COUNTY: "GOLDEN" };
   const fields = Array.from(new Set(["OBJECTID", "GOLDEN_COUNTY", ...MAPPED, ...Object.keys(attrs)]));
-  const { records } = await fetchFlCounty(
+  const records: BulkParcelRecord[] = [];
+  await streamCounty(
+    FL_SPEC,
     { countyField: "GOLDEN_COUNTY", countyValue: "GOLDEN" },
     {
       async getJson(url) {
@@ -44,6 +47,9 @@ async function normalizeThroughPipeline(attrs: Record<string, unknown>) {
         const done = /OBJECTID > 1/.test(decodeURIComponent(url.replace(/\+/g, " ")));
         return { ok: true, status: 200, body: { features: done ? [] : [{ geometry: null, properties: props }] } };
       },
+    },
+    async (r) => {
+      records.push(r);
     },
   );
   return records[0] ?? null;

@@ -12561,6 +12561,16 @@ $mig0284$`,
   `ALTER TABLE "leads" ADD COLUMN IF NOT EXISTS "assessed_value" numeric(14,2)`,
   `ALTER TABLE "leads" ADD COLUMN IF NOT EXISTS "tax_delinquent_amount" numeric(12,2)`,
   `ALTER TABLE "leads" ADD COLUMN IF NOT EXISTS "tax_delinquent_years" integer`,
+  // 0288 — D2a bulk wave 1: the NC/WI/AR/MT streamed statewide builds,
+  // seeded INACTIVE with an empty config (a run must name the live layer's
+  // county field). Mirrors migrations/0288_d2a_statewide_wave1_jobs.sql.
+  `INSERT INTO "etl_jobs" ("job_name", "provider_name", "source_url", "watermark_column", "schedule", "is_active", "soft_delete_on_missing", "config")
+   VALUES
+     ('nc_statewide_cadastral_v1', 'nc_statewide_cadastral_v1', 'https://services.nconemap.gov/secure/rest/services/NC1Map_Parcels/MapServer/1', NULL, '*/1440 * * * *', false, false, '{}'::jsonb),
+     ('wi_statewide_cadastral_v1', 'wi_statewide_cadastral_v1', 'https://services3.arcgis.com/n6uYoouQZW75n5WI/arcgis/rest/services/Wisconsin_Statewide_Parcels_DB/FeatureServer/0', NULL, '*/1440 * * * *', false, false, '{}'::jsonb),
+     ('ar_statewide_cadastral_v1', 'ar_statewide_cadastral_v1', 'https://gis.arkansas.gov/arcgis/rest/services/FEATURESERVICES/Planning_Cadastre/FeatureServer/6', NULL, '*/1440 * * * *', false, false, '{}'::jsonb),
+     ('mt_statewide_cadastral_v1', 'mt_statewide_cadastral_v1', 'https://gisservicemt.gov/arcgis/rest/services/MSDI_Framework/Parcels/MapServer/0', NULL, '*/1440 * * * *', false, false, '{}'::jsonb)
+   ON CONFLICT ("job_name") DO NOTHING`,
 ];
 
 // The statement set this run executes. Default: everything (the production

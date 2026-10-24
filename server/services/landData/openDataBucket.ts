@@ -40,6 +40,8 @@ export interface ObjectStoreClient {
   /** bucketIdentity() of the bucket this client writes to — named on every receipt. */
   bucket: string;
   put(key: string, body: Buffer, contentType: string): Promise<{ etag: string | null }>;
+  /** Stream a file (bulk artifacts are too large to buffer); `bytes` is its size. */
+  putFile?(key: string, filePath: string, bytes: number, contentType: string): Promise<{ etag: string | null }>;
   headBytes(key: string): Promise<number | null>;
 }
 
@@ -55,6 +57,13 @@ export async function s3ClientFor(cfg: BucketConfig): Promise<ObjectStoreClient>
     bucket: bucketIdentity(cfg.endpoint, cfg.bucket),
     async put(key, body, contentType) {
       const r = await s3.send(new PutObjectCommand({ Bucket: cfg.bucket, Key: key, Body: body, ContentType: contentType }));
+      return { etag: r.ETag ?? null };
+    },
+    async putFile(key, filePath, bytes, contentType) {
+      const { createReadStream } = await import("node:fs");
+      const r = await s3.send(
+        new PutObjectCommand({ Bucket: cfg.bucket, Key: key, Body: createReadStream(filePath), ContentLength: bytes, ContentType: contentType }),
+      );
       return { etag: r.ETag ?? null };
     },
     async headBytes(key) {
@@ -87,6 +96,33 @@ export async function uploadAndConfirm(
     throw new Error(`bucket reports ${landed ?? "no"} bytes for ${objectKey}, expected ${body.length} — not ingested`);
   }
   return { corpusKey, objectKey, bytes: body.length, sha256, bucket: client.bucket, etag, uploadedAt: clock.now() };
+}
+
+/**
+ * The bulk-artifact upload (D2a): streams the file, then requires the bucket's
+ * HEAD byte count to equal the built artifact's. `artifact` carries the size
+ * and SHA-256 measured when it was built; the file is re-measured first so a
+ * file changed after build is refused rather than receipted under the old digest.
+ */
+export async function uploadFileAndConfirm(
+  client: ObjectStoreClient,
+  corpusKey: string,
+  objectKey: string,
+  artifact: { localPath: string; bytes: number; sha256: string; contentType: string },
+): Promise<UploadReceipt> {
+  if (!client.putFile) throw new Error("this object store cannot stream files — refusing to buffer a bulk artifact");
+  if (artifact.bytes === 0) throw new Error(`refusing to upload an empty object: ${objectKey}`);
+  const { fileDigest } = await import("./streamingArtifacts");
+  const now = await fileDigest(artifact.localPath);
+  if (now.bytes !== artifact.bytes || now.sha256 !== artifact.sha256) {
+    throw new Error(`${artifact.localPath} changed after it was built (${now.bytes} bytes, ${now.sha256}) — not uploaded`);
+  }
+  const { etag } = await client.putFile(objectKey, artifact.localPath, artifact.bytes, artifact.contentType);
+  const landed = await client.headBytes(objectKey);
+  if (landed !== artifact.bytes) {
+    throw new Error(`bucket reports ${landed ?? "no"} bytes for ${objectKey}, expected ${artifact.bytes} — not ingested`);
+  }
+  return { corpusKey, objectKey, bytes: artifact.bytes, sha256: artifact.sha256, bucket: client.bucket, etag, uploadedAt: clock.now() };
 }
 
 /**
