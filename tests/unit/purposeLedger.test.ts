@@ -19,6 +19,8 @@ import {
   PURPOSE_SURFACES,
   PurposeRequiredError,
   assertPurpose,
+  isReceipt,
+  recordPurpose,
   releaseSkipTraceResults,
   type PurposeEntry,
 } from "../../server/services/purposeLedger";
@@ -90,12 +92,38 @@ describe("stored results (skip_trace_result_read)", () => {
   });
 });
 
+/** A transaction stand-in whose insert confirms one row with `id`. */
+const fakeTx = (id: number) => ({ insert: () => ({ values: () => ({ returning: async () => [{ id }] }) }) });
+
+describe("a receipt is proof a row was written, not a shape", () => {
+  it("recordPurpose issues receipts isReceipt accepts; hand-typed and copied receipts are refused", async () => {
+    const issued = await recordPurpose({ organizationId: 1, actorUserId: "u1", surface: "skip_trace_call", purposeCode: "collection" }, fakeTx(9));
+    expect(issued).toEqual({ ledgerId: 9, surface: "skip_trace_call" });
+    expect(isReceipt(issued)).toBe(true);
+    expect(isReceipt({ ledgerId: 9, surface: "skip_trace_call" })).toBe(false);
+    expect(isReceipt({ ...issued })).toBe(false);
+    expect(Object.isFrozen(issued)).toBe(true);
+  });
+
+  it("no row confirmed, no receipt: recordPurpose throws and issues nothing", async () => {
+    const empty = { insert: () => ({ values: () => ({ returning: async () => [] }) }) };
+    await expect(recordPurpose({ organizationId: 1, actorUserId: "u1", surface: "skip_trace_call", purposeCode: "collection" }, empty)).rejects.toThrow(PurposeRequiredError);
+  });
+
+  it("an invalid purpose is refused before any write", async () => {
+    const insert = vi.fn();
+    await expect(recordPurpose({ organizationId: 1, actorUserId: "u1", surface: "skip_trace_call", purposeCode: null }, { insert })).rejects.toThrow(PurposeRequiredError);
+    expect(insert).not.toHaveBeenCalled();
+  });
+});
+
 describe("the chokepoints refuse without a receipt", () => {
   it("skipTracingService.trace() never calls a vendor without a skip_trace_call receipt", async () => {
     process.env.BATCH_SKIP_TRACING_API_KEY = "k";
     const fetchSpy = vi.spyOn(globalThis, "fetch");
     const { skipTracingService } = await import("../../server/services/skipTracingService");
-    for (const receipt of [undefined, null, { ledgerId: 0, surface: "skip_trace_call" }, { ledgerId: 5, surface: "skip_trace_result_read" }] as never[]) {
+    // The last entry is a well-formed receipt typed by hand: a shape is not proof a row was written.
+    for (const receipt of [undefined, null, { ledgerId: 0, surface: "skip_trace_call" }, { ledgerId: 5, surface: "skip_trace_result_read" }, { ledgerId: 5, surface: "skip_trace_call" }] as never[]) {
       const r = await skipTracingService.trace({ firstName: "A", lastName: "B", address: "1 Main", zip: "37402" }, 1, receipt);
       expect(r.success).toBe(false);
       expect(r.error).toMatch(/permissible purpose/);
@@ -122,9 +150,13 @@ describe("the chokepoints refuse without a receipt", () => {
     registry.register("owner_info" as never, provider as never, 10);
     const input = { type: "coordinates", lat: 35, lng: -86 } as never;
     expect(await registry.lookup("owner_info" as never, input, "free" as never, 1000)).toBeNull();
-    expect(await registry.lookup("owner_info" as never, input, "free" as never, 1000, undefined, { purpose: { ledgerId: 3, surface: "skip_trace_call" } })).toBeNull();
+    const issuedCall = await recordPurpose({ organizationId: 1, actorUserId: "u1", surface: "skip_trace_call", purposeCode: "collection" }, fakeTx(3));
+    expect(await registry.lookup("owner_info" as never, input, "free" as never, 1000, undefined, { purpose: issuedCall })).toBeNull();
+    // A hand-typed receipt for the RIGHT surface is refused too: no row was written for it.
+    expect(await registry.lookup("owner_info" as never, input, "free" as never, 1000, undefined, { purpose: { ledgerId: 3, surface: "owner_contact_lookup" } })).toBeNull();
     expect(provider.lookup).not.toHaveBeenCalled();
-    await registry.lookup("owner_info" as never, input, "free" as never, 1000, undefined, { purpose: { ledgerId: 3, surface: "owner_contact_lookup" } });
+    const issued = await recordPurpose({ organizationId: 1, actorUserId: "u1", surface: "owner_contact_lookup", purposeCode: "collection" }, fakeTx(4));
+    await registry.lookup("owner_info" as never, input, "free" as never, 1000, undefined, { purpose: issued });
     expect(provider.lookup).toHaveBeenCalledTimes(1);
   });
 

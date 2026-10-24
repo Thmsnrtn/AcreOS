@@ -53,6 +53,10 @@ const DIRECT_READ = new RegExp(
     String.raw`\bstorage\.(?:get|find|search|list)\w*(?:Lead|Leads|SkipTrace|SkipTraces)\w*\(`,
     String.raw`\b(?:ownerAddress|mailingAddress|ownerMailingAddress)\b`,
     String.raw`\bskipTracingService\.trace\(`,
+    // Raw SQL (upper-case keywords only, so prose such as "insights from leads"
+    // inside a prompt string is not a read): 17 sites on 2026-10-24, among them
+    // the global search in services/fullTextSearch.ts.
+    String.raw`\b(?:FROM|JOIN)\s+"?(?:leads|skip_traces|parcel_snapshots)"?\b`,
   ].join("|"),
 );
 
@@ -114,7 +118,7 @@ const DATA_ACCESS_LAYER = /^server\/(?:storage\/|storage\.ts$)/;
  * POST /search in routes-title-search.ts.
  */
 const RAW_PREFILTER =
-  /\.from\(\s*(?:\/\*[\s\S]*?\*\/\s*|\/\/[^\n]*\n\s*)*(?:leads|skipTraces|parcelSnapshots)\b|query\.(?:leads|skipTraces|parcelSnapshots)|storage\.\w*(?:Lead|SkipTrace)|ownerAddress|[mM]ailingAddress|skipTracingService/;
+  /\.from\(\s*(?:\/\*[\s\S]*?\*\/\s*|\/\/[^\n]*\n\s*)*(?:leads|skipTraces|parcelSnapshots)\b|query\.(?:leads|skipTraces|parcelSnapshots)|storage\.\w*(?:Lead|SkipTrace)|ownerAddress|[mM]ailingAddress|skipTracingService|\b(?:FROM|JOIN)\s+"?(?:leads|skip_traces|parcel_snapshots)\b/;
 
 /**
  * Projection-aware `.from(…)`: `db.select({ count: sql\`count(*)\` }).from(leads)`
@@ -531,6 +535,10 @@ type ProposedSurface =
 const DEBT: Record<string, ProposedSurface> = {
   // server/ai/executive.ts
   "server/ai/executive.ts model:processChatStream": "lead_contact_model",
+  // server/ai/supportAgent.ts
+  "server/ai/supportAgent.ts case:check_data_integrity": "review",
+  "server/ai/supportAgent.ts case:detect_data_integrity_issues": "review",
+  "server/ai/supportAgent.ts case:predict_user_issues": "review",
   // server/ai/tools.ts
   "server/ai/tools.ts case:create_properties_batch": "review",
   "server/ai/tools.ts case:create_property": "review",
@@ -563,6 +571,7 @@ const DEBT: Record<string, ProposedSurface> = {
   // server/routes-accounting.ts
   "server/routes-accounting.ts route:POST /1098-batch": "review",
   // server/routes-admin.ts
+  "server/routes-admin.ts route:GET /api/admin/beta-analytics": "review",
   "server/routes-admin.ts route:GET /api/founder/leading-indicators": "review",
   // server/routes-ai-draft.ts
   "server/routes-ai-draft.ts route:POST /draft-reply": "review",
@@ -646,7 +655,9 @@ const DEBT: Record<string, ProposedSurface> = {
   "server/routes-due-diligence.ts route:POST /:id/run": "review",
   // server/routes-enhancements.ts
   "server/routes-enhancements.ts route:GET /api/enhancements/aging-leads": "review",
+  "server/routes-enhancements.ts route:GET /api/enhancements/lead-duplicates": "lead_contact_read",
   "server/routes-enhancements.ts route:GET /api/enhancements/lead-score-explanation/:id": "review",
+  "server/routes-enhancements.ts route:GET /api/enhancements/signup-funnel": "review",
   // server/routes-epic-services.ts
   "server/routes-epic-services.ts route:GET /seller-motivation/:leadId": "review",
   "server/routes-epic-services.ts route:POST /seller-motivation/rescore-org": "review",
@@ -742,6 +753,7 @@ const DEBT: Record<string, ProposedSurface> = {
   "server/routes-pax-insights.ts route:GET /pax-suggestions": "review",
   // server/routes-platform-features.ts
   "server/routes-platform-features.ts route:GET /api/data/export": "lead_contact_bulk",
+  "server/routes-platform-features.ts route:GET /api/pipeline/attribution": "review",
   "server/routes-platform-features.ts route:POST /api/export/full": "lead_contact_bulk",
   // server/routes-privacy-dsar.ts
   "server/routes-privacy-dsar.ts route:POST /api/founder/dsar/:id/generate-export": "lead_contact_bulk",
@@ -760,6 +772,8 @@ const DEBT: Record<string, ProposedSurface> = {
   "server/routes-seller-intent.ts route:POST /:leadId/offer-range": "review",
   // server/routes-skip-tracing.ts
   "server/routes-skip-tracing.ts route:GET /stats": "review",
+  // server/routes-support-tickets.ts
+  "server/routes-support-tickets.ts route:POST /api/support/tickets/:id/messages": "review",
   // server/routes-tax-certificates.ts
   "server/routes-tax-certificates.ts route:POST /api/tax-certificates": "review",
   // server/routes-tax-delinquent.ts
@@ -781,6 +795,7 @@ const DEBT: Record<string, ProposedSurface> = {
   "server/routes-va-engine.ts route:GET /api/seller-communications/lead/:leadId": "lead_contact_read",
   // server/routes.ts
   "server/routes.ts route:GET /api/leads/deleted": "lead_contact_read",
+  "server/routes.ts route:GET /api/search": "lead_contact_read",
   "server/routes.ts route:POST /api/import/auto-delinquent": "review",
   "server/routes.ts route:POST /api/leads/:id/mark-contacted": "review",
   "server/routes.ts route:POST /api/leads/:id/record-contact": "review",
@@ -803,7 +818,7 @@ const DEBT: Record<string, ProposedSurface> = {
 };
 
 /** DEBT may only shrink. Lower this in the same commit that removes an entry. */
-const DEBT_BASELINE = 205;
+const DEBT_BASELINE = 214;
 
 /**
  * Every file holding a dispatch switch (≥10 snake_case case labels, raw count)
@@ -856,7 +871,7 @@ const ROUTE_MEMBERS: Record<string, number> = {
 /** Whole-population floors (measured 2026-10-24; a drop means the reader lost files or units). */
 const SCANNED_FILES_FLOOR = 160;
 const UNITS_FLOOR = 1500;
-const CANDIDATES_FLOOR = 210;
+const CANDIDATES_FLOOR = 220;
 
 const DISPATCH_TRIPWIRE = /\bcase\s+["'][a-z][a-z0-9]*_[a-z0-9_]+["']\s*:/g;
 
@@ -1069,6 +1084,8 @@ describe("purpose-ledger census — canaries (SYNTHETIC fixture tree)", () => {
       "row.mailingAddress",
       "row.ownerMailingAddress",
       "skipTracingService.trace(x)",
+      "sql`SELECT phone FROM leads WHERE id = ${id}`",
+      'sql`SELECT * FROM "skip_traces"`',
     ];
     for (const s of samples) {
       expect(readsDirect(s), `DIRECT_READ: ${s}`).toBe(true);

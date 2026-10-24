@@ -24,6 +24,11 @@
  *                            them without a purpose, so the first one cannot
  *                            arrive unrecorded.
  *
+ * These three are the LEDGERED surfaces. Every other place person-adjacent
+ * contact data leaves the server is derived from source and held, as debt
+ * that may only shrink, by tests/unit/purposeLedgerCensus.test.ts
+ * (docs/compliance/purpose-ledger-census.md).
+ *
  * Entity-graph person-edge reads (LLC → member/officer/agent): this codebase
  * has NO entity graph — no table or function holds person edges — so there is
  * no surface to wire. A test pins that no person-edge table exists: the first
@@ -119,12 +124,24 @@ export async function recordPurpose(e: PurposeEntry, tx?: unknown): Promise<Purp
     })
     .returning({ id: purposeLedger.id });
   if (!row) throw new PurposeRequiredError("the purpose ledger did not confirm the row — the lookup is refused");
-  return { ledgerId: row.id, surface: e.surface };
+  const receipt: PurposeReceipt = Object.freeze({ ledgerId: row.id, surface: e.surface });
+  ISSUED.add(receipt);
+  return receipt;
 }
 
-/** A receipt a chokepoint will accept: a real ledger row id on a known surface. */
+/**
+ * Receipts recordPurpose issued in this process. A receipt is proof that a
+ * row was written, not a shape: `{ ledgerId: 1, surface: "skip_trace_call" }`
+ * typed by hand (or a spread copy of a real one) is refused at every
+ * chokepoint, so no caller can reach a vendor by constructing one.
+ */
+const ISSUED = new WeakSet<object>();
+
+/** A receipt a chokepoint will accept: one recordPurpose issued, for a real row on a known surface. */
 export function isReceipt(r: unknown): r is PurposeReceipt {
-  return !!r && typeof (r as PurposeReceipt).ledgerId === "number" && (r as PurposeReceipt).ledgerId > 0 && (PURPOSE_SURFACES as readonly string[]).includes((r as PurposeReceipt).surface);
+  if (typeof r !== "object" || r === null || !ISSUED.has(r)) return false;
+  const { ledgerId, surface } = r as PurposeReceipt;
+  return typeof ledgerId === "number" && ledgerId > 0 && (PURPOSE_SURFACES as readonly string[]).includes(surface);
 }
 
 /** The person-adjacent part of a stored skip trace. */
