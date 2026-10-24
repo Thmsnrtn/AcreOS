@@ -56,6 +56,20 @@ function argStr(name: string): string | undefined {
   return i >= 0 ? process.argv[i + 1] : undefined;
 }
 
+/** Samples memory every 100 ms; reports the breakdown at the highest RSS seen (where the peak lives). */
+function peakSampler(): () => Record<string, number> {
+  let best = { rss: 0, heapUsed: 0, heapTotal: 0, external: 0, arrayBuffers: 0 };
+  const t = setInterval(() => {
+    const m = process.memoryUsage();
+    if (m.rss > best.rss) best = { rss: m.rss, heapUsed: m.heapUsed, heapTotal: m.heapTotal, external: m.external, arrayBuffers: m.arrayBuffers };
+  }, 100);
+  t.unref();
+  return () => {
+    clearInterval(t);
+    return Object.fromEntries(Object.entries(best).map(([k, v]) => [k, Math.round(v / 1048576)]));
+  };
+}
+
 function vmHwmMb(): number {
   const m = /VmHWM:\s+(\d+) kB/.exec(readFileSync("/proc/self/status", "utf8"));
   return m ? Math.round(Number(m[1]) / 1024) : -1;
@@ -82,6 +96,7 @@ async function statewideChild(parcels: number, which: Case): Promise<void> {
   const idOf = (oid: number) => `SYNTHETIC-${String((oid * 2_654_435_761) % 4_294_967_291).padStart(10, "0")}`;
   const dir = mkdtempSync(path.join(os.tmpdir(), "d2-sw-gate-"));
   const t0 = Date.now();
+  const peakAt = peakSampler();
   try {
     const report = await buildCounty(
       spec,
@@ -129,6 +144,7 @@ async function statewideChild(parcels: number, which: Case): Promise<void> {
         parquetMb: Math.round(report.artifacts.parquet.bytes / 1048576),
         peakRssSampledMb: report.summary.peakRssMb,
         vmHwmMb: vmHwmMb(),
+        peakBreakdownMb: peakAt(),
         seconds: Math.round((Date.now() - t0) / 1000),
       })}\n`,
     );
@@ -190,6 +206,7 @@ async function child(parcels: number, which: Case): Promise<void> {
   let counted = 0;
   const dir = mkdtempSync(path.join(os.tmpdir(), "d2-tn-gate-"));
   const t0 = Date.now();
+  const peakAt = peakSampler();
   try {
     const r = await buildTnCounty({ fips: "47165", county: "Sumner" }, source, {
       outDir: dir,
@@ -223,6 +240,7 @@ async function child(parcels: number, which: Case): Promise<void> {
         pmtilesMb: Math.round(r.pmtiles.bytes / 1048576),
         peakRssSampledMb: r.peakRssMb,
         vmHwmMb: vmHwmMb(),
+        peakBreakdownMb: peakAt(),
         heldByMutant: held.length,
         seconds: Math.round((Date.now() - t0) / 1000),
       })}\n`,

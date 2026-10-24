@@ -39,9 +39,9 @@ import type { AreaGeometry } from "./geometry";
 import type { ParquetColumnDef } from "./geoParquet";
 import { StreamingArtifactWriter, type BuiltArtifact, type StreamingArtifactResult } from "./streamingArtifacts";
 import type { ObjectStoreClient, UploadReceipt } from "./openDataBucket";
-import { createReadStream, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, mkdirSync, openSync, readSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { createInterface } from "node:readline";
+import { StringDecoder } from "node:string_decoder";
 
 /** The documented per-run RSS ceiling (also the TN county build's). The acceptance gates run a large county under a 512 MB cap. */
 export const RSS_CEILING_MB = 400;
@@ -458,6 +458,54 @@ function compareUtf8(a: string, b: string): number {
 }
 
 /**
+ * One run file, a line at a time, holding at most one READ_CHUNK of it.
+ * Deliberately synchronous and pull-based: readline's async iterator reads
+ * ahead without backpressure, and with one reader per run the merge then
+ * read every run ahead at once. Measured on the 400k-parcel TN gate
+ * (scripts/d2-tn-memory-gate.ts, 2026-10-24): readline merge 661 MB kernel
+ * peak (over the 512 MB cap); this reader with 1 MB chunks 488–497 MB; with
+ * 128 KB chunks 319 MB. Memory = one chunk + one pending line per run.
+ */
+class RunReader {
+  private static readonly READ_CHUNK = 128 * 1024;
+  private readonly fd: number;
+  private readonly decoder = new StringDecoder("utf8");
+  private readonly chunk = Buffer.alloc(RunReader.READ_CHUNK);
+  private pending = "";
+  private pos = 0;
+  private eof = false;
+  private closed = false;
+  constructor(file: string) {
+    this.fd = openSync(file, "r");
+  }
+  /** The next non-empty line, or null at end of file (the file is then closed). */
+  next(): string | null {
+    for (;;) {
+      const nl = this.pending.indexOf("\n", this.pos);
+      if (nl >= 0) {
+        const line = this.pending.slice(this.pos, nl);
+        this.pos = nl + 1;
+        if (line) return line;
+        continue;
+      }
+      const rest = this.pending.slice(this.pos);
+      this.pos = 0;
+      if (this.eof) {
+        this.pending = "";
+        if (!this.closed) closeSync(this.fd);
+        this.closed = true;
+        return rest ? rest : null;
+      }
+      const n = readSync(this.fd, this.chunk, 0, this.chunk.length, null);
+      if (n === 0) {
+        this.eof = true;
+        this.pending = rest + this.decoder.end();
+      } else this.pending = rest + this.decoder.write(this.chunk.subarray(0, n));
+    }
+  }
+}
+
+/**
  * Rows in, rows out ascending by `key` in UTF-8 byte order, holding at most
  * one run (`runChars` of serialized rows) in memory: each full run is sorted
  * (stably) and spilled to disk as NDJSON, then the runs are k-way merged one
@@ -511,19 +559,15 @@ export class ExternalSorter<R> {
       return;
     }
     this.spill();
-    const readers = this.runs.map((f) => createInterface({ input: createReadStream(f, { encoding: "utf8" }), crlfDelay: Infinity })[Symbol.asyncIterator]());
+    const readers = this.runs.map((f) => new RunReader(f));
     const heads: Array<{ row: R; k: string } | null> = [];
-    const pull = async (i: number) => {
-      for (;;) {
-        const n = await readers[i].next();
-        if (n.done) return null;
-        if (n.value) {
-          const row = JSON.parse(n.value) as R;
-          return { row, k: this.key(row) };
-        }
-      }
+    const pull = (i: number) => {
+      const line = readers[i].next();
+      if (line === null) return null;
+      const row = JSON.parse(line) as R;
+      return { row, k: this.key(row) };
     };
-    for (let i = 0; i < readers.length; i++) heads.push(await pull(i));
+    for (let i = 0; i < readers.length; i++) heads.push(pull(i));
     for (;;) {
       let best = -1;
       for (let i = 0; i < heads.length; i++) {
@@ -532,7 +576,7 @@ export class ExternalSorter<R> {
       }
       if (best < 0) break;
       const h = heads[best] as { row: R; k: string };
-      heads[best] = await pull(best);
+      heads[best] = pull(best);
       yield h.row;
     }
     this.cleanup();

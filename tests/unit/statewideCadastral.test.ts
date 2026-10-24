@@ -274,7 +274,9 @@ describe("streamed, bounded build: local artifacts and the receipt shape", () =>
       outDir: outDir(),
       bucketConfigured: false,
       today: "2026-10-24",
-      sortRunChars: 50_000, // force several spilled runs through the k-way merge
+      // ~1.5 KB rows: three spilled runs of ~300 KB each, so the merge runs AND
+      // lines straddle the merge reader's 128 KB read chunks.
+      sortRunChars: 300_000,
     });
     const back = await readGeoParquetRows<Record<string, unknown> & { geometry: never }>(report.artifacts.parquet.localPath);
     const got = back.rows.map((r) => r.source_parcel_id as string);
