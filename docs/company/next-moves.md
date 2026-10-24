@@ -3,36 +3,37 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
-## 2026-10-24 — Package D2, bulk wave 1 + identity/trust (partial), branch `claude/d2-bulk-wave1-identity-trust`
+## 2026-10-24 — Package D2, delivered per workstream on branch `claude/d2-bulk-wave1-identity-trust` (Muse audits each; nothing merged from this lane)
 
-### What shipped (Muse audits; nothing merged from this lane)
-- **D2a (code path only).** One statewide template, `server/services/landData/statewideCadastral.ts`, replaces the FL-only module. It streams page → normalize → spill-to-disk partitions (`streamingArtifacts.ts`). It uploads only when the state's dossier resolves every use class and the bucket confirms each object by HEAD bytes (`uploadFileAndConfirm`), so a run with no receipts is never reported as "ingested". The NC/WI/AR/MT jobs are seeded inactive (0288). IN, OH and TX refuse because their mappings are unseeded. Memory gate `scripts/d2-bounded-memory-gate.ts`, child capped at 448MB: 400k parcels peaked at 225MB, and a mutant that accumulates rows OOMs.
-- **D2d.** Self-healing adapters (`server/services/openData/adapterRemap.ts`). On schema drift the adapter proposes a remap. It promotes the remap only if the golden county re-queried live reproduces its assessor values, and logs the attempt on `etl_runs.observation` (also on failed runs, via `runState.failureObservation`). The golden fixture moved to `shared/landData/golden/fl-golden-county.json` (Nassau, established). A file marked established with fewer than five verified parcels now yields no ground truth.
-- **D2e.** `purpose_ledger` (0289) is append-only. DB triggers block UPDATE and DELETE, proven on real Postgres, and the DBA GUC is the only bypass. Without a purpose code there is no row, and without a row there is no read: `skipTracingService.trace` requires a receipt; skip-trace result reads are ledgered, and results are withheld where no purpose was recorded; the registry refuses `owner_info`/`skip_trace` without a receipt. Paid doors debit first and refund if the ledger write fails (compensation, not one transaction; held for COO). table-count 740 → 741.
-- **D2g.** `GET /api/ops/data` (ops token, read-only) serves:
-  - county coverage and statewide build status;
-  - paid fall-through per 1k lookups (vendor-billed only);
-  - warehouse-served lookups against the $0.001 target, with cost reported as "not measured";
-  - remap rates;
-  - purpose-ledger volume by surface.
+Worked as a fleet: one worktree agent per workstream (D2a–D2h) plus two spec tracks, file-disjoint, with every shared file (migrations, migrate.mjs, schema, etlHandlers, registry, ratchets, next-moves) changed only by the integrator. Each lane's claims were re-run centrally; reachability was fixed per landing, never by raising a baseline.
+
+### What shipped
+- **D2a.** Streamed statewide template (`statewideCadastral.ts`, `streamingArtifacts.ts`) with dossier-gated live upload (no receipts, no "ingested"). Bounded TN Comptroller loader, county by county with metros first and statewide refused (`tnComptrollerCounty.ts`; 400k parcels peak 310 MB under the 512 MB cap; accumulating mutants OOM). Rows are sorted by parcel id in UTF-8 order via a bounded external sort. The object key carries the digest, so a same-day rebuild can no longer overwrite a receipted object. TX refuses explicitly (`TX_BEACHHEAD_COUNTIES` is empty, with its reason). Dossier drafts for 9 states in `docs/land-data/dossiers/` (no terms read; network). The whole-county in-memory artifact path is deleted (pmtilesWriter, writeGeoParquet/readGeoParquet, uploadAndConfirm, persistLoadedCounty); tests were ported. `completeLoadedCounty` is now the one canonical way to complete a county load.
+- **D2b.** Pure release core in `server/services/landData/releases/`: content-addressed manifest id, `acreos-parcels vYYYY.MM.N` names, a bounded sort-merge diff, and an append-only promote/rollback pointer. 128 tests. STAGED: storage needs COO approval (+2 tables +1 column, or bucket-only).
+- **D2c.** `shared/landData/lineage.ts` + `apid.ts`: lineage classification (with an explicit `ambiguous` outcome), APIDs that are never reused, non-overlapping APN windows, and inheritance; a synthetic golden lineage case. 65 tests. STAGED: needs 3 tables, pending COO approval. Crosswalk defect fixed: a retired parcel key was re-minted for a split remainder.
+- **D2d.** Remap hardened against 20 drift shapes; six defects fixed (greedy assignment, degenerate proof, a throwing live read, duplicate golden parcels, unverified adoption, empty drift). Semantic JV→JV_HMSTD is rejected by golden. Wave-1 states have no golden county, so they never auto-promote.
+- **D2e.** Purpose ledger (0289, append-only, proven on real PG). Receipts are unforgeable (WeakSet). Census of 221 person-adjacent surfaces: 214 are in a shrink-only debt register.
+- **D2f.** Historical-use screening: verdict is adverse / no adverse in verified sources / inconclusive, never "clean"; a verified absence needs a positive control. Indiana end to end on fixtures. Entry point deliberately unwired (route/Pax tool held for COO).
+- **D2g.** `GET /api/ops/data`: paid fall-through no longer counts failed attempts as paid; coverage by state against a stated denominator; release inventory reads `not_built`; layer vocabulary derived from the writers.
+- **D2h.** `docs/land-data/d2h-research-verification.md`: 23 claims checked; only the PMTiles/GeoParquet format facts are confirmed at source.
+- **Spec tracks** (separate worktree branches, not on the D2 branch): D3 conflation-disagreement spec + prototype; vertical + Pax groundwork specs.
 
 ### Not done, and why
-- **No live runs.** This container's proxy denies the state GIS hosts, Regrid, USGS and ChatGPT, which blocks:
-  - live D2a builds;
-  - IN/OH/TN/TX discovery and the dossiers;
-  - D2f sources;
-  - D2h verification.
-- **D2b/D2c not started.** The design docs (v1, v2, Amendment 2) are not in the repo. Open questions:
-  - Do releases cover `parcel_snapshots` or the bucket artifacts?
-  - Does APID extend `shared/landData/parcelCrosswalk.ts`?
-  - ~3 new tables need approval.
-- **TN.** The comptroller loader (`scripts/land-data/build-tn-showcase.ts`) still accumulates a whole county and needs the streaming rewrite.
-- **TX.** No verified beachhead counties.
-- **D2h.** Needs the research content in the repo.
+- No live runs: the container's proxy denies state hosts, Regrid, USGS and ChatGPT.
+- D2b/D2c storage and D2f exposure wait on COO decisions (tables, routes).
+- The research, the design docs (v1/v2/Amendment 2) and vendor invoices are not in the repo (paths are proposed in D2h §3).
+
+### Escalations raised to the COO (not fixed here)
+- `server/ai/tools.ts` `get_lead_details` sends the lead row incl. encrypted `taxId`/`taxIdType` to the model provider (D2e P0).
+- `parcelDeltaDetector.ts:406` fires `owner_changed` when two sources disagree (D3 finding).
+- The Regrid ETL stores Regrid facts platform-wide with no org (`etlHandlers.ts:239-243`; D3 finding).
+- Holds proposed by D2h: TN bulk upload, NC bulk storage (G.S. 132-10). Also: FCRA consent cite (a)(3)→(a)(2), and confirm the Regrid price from the invoice.
+- `POST /api/skip-traces` makes a paid vendor call with no customer debit (pricing question, D2e).
 
 ### Next moves
-1. Muse: answer the D2b/D2c model questions, the network access, and the debit/ledger transaction choice.
-2. Bounded TN loader; then D2b releases, D2c APID/lineage, D2f one state end to end.
+1. Muse: audit each landed workstream; decide D2b/D2c tables, D2f exposure, D2e Option B (debit and ledger in one transaction), and the escalations above.
+2. A networked session: read state terms into the dossiers; record positive controls for the D2f adapters; establish a golden county per wave-1 state.
+3. D3 (conflation disagreement) is ready to start from its spec once D2b/D2c storage lands.
 
 ## 2026-10-23 — Package D1, data-sourcing foundation (bucket-independent parts), branch `claude/d1-data-sourcing-foundation`
 
