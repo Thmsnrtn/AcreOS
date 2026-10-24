@@ -3,6 +3,37 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-10-24 — Package D2, bulk wave 1 + identity/trust (partial), branch `claude/d2-bulk-wave1-identity-trust`
+
+### What shipped (Muse audits; nothing merged from this lane)
+- **D2a (code path only).** One statewide template, `server/services/landData/statewideCadastral.ts`, replaces the FL-only module. It streams page → normalize → spill-to-disk partitions (`streamingArtifacts.ts`). It uploads only when the state's dossier resolves every use class and the bucket confirms each object by HEAD bytes (`uploadFileAndConfirm`), so a run with no receipts is never reported as "ingested". The NC/WI/AR/MT jobs are seeded inactive (0288). IN, OH and TX refuse because their mappings are unseeded. Memory gate `scripts/d2-bounded-memory-gate.ts`, child capped at 448MB: 400k parcels peaked at 225MB, and a mutant that accumulates rows OOMs.
+- **D2d.** Self-healing adapters (`server/services/openData/adapterRemap.ts`). On schema drift the adapter proposes a remap. It promotes the remap only if the golden county re-queried live reproduces its assessor values, and logs the attempt on `etl_runs.observation` (also on failed runs, via `runState.failureObservation`). The golden fixture moved to `shared/landData/golden/fl-golden-county.json` (Nassau, established). A file marked established with fewer than five verified parcels now yields no ground truth.
+- **D2e.** `purpose_ledger` (0289) is append-only. DB triggers block UPDATE and DELETE, proven on real Postgres, and the DBA GUC is the only bypass. Without a purpose code there is no row, and without a row there is no read: `skipTracingService.trace` requires a receipt; skip-trace result reads are ledgered, and results are withheld where no purpose was recorded; the registry refuses `owner_info`/`skip_trace` without a receipt. Paid doors debit first and refund if the ledger write fails (compensation, not one transaction; held for COO). table-count 740 → 741.
+- **D2g.** `GET /api/ops/data` (ops token, read-only) serves:
+  - county coverage and statewide build status;
+  - paid fall-through per 1k lookups (vendor-billed only);
+  - warehouse-served lookups against the $0.001 target, with cost reported as "not measured";
+  - remap rates;
+  - purpose-ledger volume by surface.
+
+### Not done, and why
+- **No live runs.** This container's proxy denies the state GIS hosts, Regrid, USGS and ChatGPT, which blocks:
+  - live D2a builds;
+  - IN/OH/TN/TX discovery and the dossiers;
+  - D2f sources;
+  - D2h verification.
+- **D2b/D2c not started.** The design docs (v1, v2, Amendment 2) are not in the repo. Open questions:
+  - Do releases cover `parcel_snapshots` or the bucket artifacts?
+  - Does APID extend `shared/landData/parcelCrosswalk.ts`?
+  - ~3 new tables need approval.
+- **TN.** The comptroller loader (`scripts/land-data/build-tn-showcase.ts`) still accumulates a whole county and needs the streaming rewrite.
+- **TX.** No verified beachhead counties.
+- **D2h.** Needs the research content in the repo.
+
+### Next moves
+1. Muse: answer the D2b/D2c model questions, the network access, and the debit/ledger transaction choice.
+2. Bounded TN loader; then D2b releases, D2c APID/lineage, D2f one state end to end.
+
 ## 2026-10-23 — Package D1, data-sourcing foundation (bucket-independent parts), branch `claude/d1-data-sourcing-foundation`
 
 ### What shipped
@@ -11,7 +42,7 @@ what shipped, what it measured, and the top next moves. Newest first.
 - **D1c + A4.** `statewide_layer_metadata_v1` makes two metadata calls per statewide layer and reports drift against the last poll, the last ingest and the documented cadence. The orchestrator's new `finalize()` writes `etl_runs.observation` once per run, so the runs form an append-only snapshot series.
 - **A2.** Every statewide row carries a dossier and a derived policy block. Every block is restrictive, because no terms were read.
 - **D1b + A1.** `fl_statewide_cadastral_v1` refuses on a missing mapped field, an unbounded run, or an unverified county field. It writes canonical records with per-group provenance and decay class, GeoParquet and PMTiles locally, and `uploaded:false` receipts. It is never "ingested" without bucket-confirmed receipts and resolved use classes.
-- **A5.** `tests/fixtures/golden/fl-golden-county.json` has five honest pending slots, and a CI harness checks them.
+- **A5.** `tests/fixtures/golden/fl-golden-county.json` (moved in D2 to `shared/landData/golden/`) has five honest pending slots, and a CI harness checks them.
 - Both jobs are seeded **inactive**.
 
 ### Not done, and why

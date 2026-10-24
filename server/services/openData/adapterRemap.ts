@@ -57,7 +57,7 @@ const MIN_MARGIN = 0.15;
 
 const norm = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, "");
 
-function bigrams(s: string): string[] {
+function charPairs(s: string): string[] {
   const out: string[] = [];
   for (let i = 0; i < s.length - 1; i++) out.push(s.slice(i, i + 2));
   return out;
@@ -74,8 +74,8 @@ function similarity(a: string, b: string): number {
   // only a candidate: two such extensions are ambiguous, and any match must
   // reproduce the golden county before it is promoted.
   if (x.startsWith(y) || y.startsWith(x)) return 0.85;
-  const bx = bigrams(x);
-  const by = bigrams(y);
+  const bx = charPairs(x);
+  const by = charPairs(y);
   const pool = new Map<string, number>();
   for (const g of by) pool.set(g, (pool.get(g) ?? 0) + 1);
   let hits = 0;
@@ -162,7 +162,7 @@ export interface RemapVerification {
  * disambiguated by the attributes recorded with the golden parcel (e.g. the
  * county code) on fields the remap did not touch; still several = a failure.
  */
-export async function verifyRemap(
+async function verifyRemap(
   spec: StatewideBuildSpec,
   proposal: Extract<RemapProposal, { ok: true }>,
   deps: LayerDeps,

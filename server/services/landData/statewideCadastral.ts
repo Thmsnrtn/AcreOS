@@ -36,9 +36,9 @@ import { StreamingArtifactWriter, type BuiltArtifact, type StreamingArtifactResu
 import type { ObjectStoreClient, UploadReceipt } from "./openDataBucket";
 
 /** The documented per-run RSS ceiling. The acceptance gate runs a large county under a 512 MB cap. */
-export const RSS_CEILING_MB = 400;
+const RSS_CEILING_MB = 400;
 /** A run never pulls more than this many parcels (one county, however large). */
-export const MAX_PARCELS_PER_RUN = 1_500_000;
+const MAX_PARCELS_PER_RUN = 1_500_000;
 const PAGE_SIZE = 1000;
 
 /** The canonical fields the normalizer reads. A source maps the subset it carries. */
@@ -59,7 +59,7 @@ export interface StatewideBuildSpec {
 export const statewideJobName = (state: string) => `${state.toLowerCase()}_statewide_cadastral_v1`;
 
 /** The verified field map of a seed row, restricted to what the normalizer reads. */
-export function seedMapping(seed: StatewideParcelEndpointSeed): FieldMapping {
+function seedMapping(seed: StatewideParcelEndpointSeed): FieldMapping {
   const m: FieldMapping = {};
   for (const k of CANONICAL_FIELDS) {
     const v = seed.fieldMappings[k];
@@ -93,7 +93,7 @@ export interface Conformance {
   missing: string[];
 }
 
-export function checkConformance(spec: StatewideBuildSpec, layerFieldNames: readonly string[]): Conformance {
+function checkConformance(spec: StatewideBuildSpec, layerFieldNames: readonly string[]): Conformance {
   const have = new Set(layerFieldNames);
   const mapped = Object.values(spec.mapping).filter((f): f is string => !!f);
   const missing = mapped.filter((f) => !have.has(f));
@@ -205,7 +205,7 @@ export class SchemaDriftError extends Error {
   }
 }
 
-export async function readLayerMeta(spec: StatewideBuildSpec, deps: LayerDeps): Promise<LayerMeta> {
+async function readLayerMeta(spec: StatewideBuildSpec, deps: LayerDeps): Promise<LayerMeta> {
   const meta = await deps.getJson(`${spec.layerUrl}?f=json`);
   const body = meta.body as { fields?: Array<{ name: string; type: string; alias?: string }>; objectIdField?: string; editingInfo?: { lastEditDate?: number }; error?: { message?: string } } | null;
   if (!meta.ok || !body || body.error || !Array.isArray(body.fields)) {
@@ -325,7 +325,7 @@ export interface BulkRow {
   geometry: AreaGeometry;
 }
 
-export const BULK_SCHEMA: Record<keyof BulkRow, ParquetColumnDef> = {
+const BULK_SCHEMA: Record<keyof BulkRow, ParquetColumnDef> = {
   source_parcel_id: { type: "UTF8" },
   state: { type: "UTF8" },
   county: { type: "UTF8", optional: true },
@@ -343,7 +343,7 @@ export const BULK_SCHEMA: Record<keyof BulkRow, ParquetColumnDef> = {
  * The artifact row. Owner names are written only when the source's dossier
  * allows display — otherwise withheld (the D1 rule, now per state).
  */
-export function toBulkRow(r: BulkParcelRecord, ownerNamesAllowed: boolean): BulkRow | null {
+function toBulkRow(r: BulkParcelRecord, ownerNamesAllowed: boolean): BulkRow | null {
   if (!r.geometry) return null;
   const u = <T>(v: T | null): T | undefined => (v === null ? undefined : v);
   return {

@@ -88,8 +88,10 @@ const ROOT = path.resolve(__dirname, "../..");
  * pass the org to updateTeamMember.
  * 82 -> 81 (money/compliance honesty, merged 2026-10-09): mergeLeads passes
  * the org to updateLead (the merge now carries opt-outs across).
+ * 81 -> 78 (Package D2e, 2026-10-24): POST /api/skip-traces passes the org to
+ * every updateSkipTrace (the three it had, and the new purpose-refusal path).
  */
-const OMISSION_BASELINE = 81;
+const OMISSION_BASELINE = 78;
 
 /**
  * Call sites whose enclosing function never names an organization, so nothing

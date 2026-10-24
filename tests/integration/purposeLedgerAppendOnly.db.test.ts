@@ -51,7 +51,7 @@ describe.runIf(realDbAvailable)("purpose_ledger append-only — real database", 
 
   it("only the DBA retention GUC lets a row be removed", async () => {
     await client.query(`BEGIN`);
-    await client.query(`SET LOCAL acreos.allow_purpose_ledger_mutation = 'on'`);
+    await client.query("SET LOCAL acreos.allow_purpose_ledger_mutation = 'on'");
     const r = await client.query(`DELETE FROM purpose_ledger`);
     await client.query(`ROLLBACK`);
     expect(r.rowCount).toBe(1);

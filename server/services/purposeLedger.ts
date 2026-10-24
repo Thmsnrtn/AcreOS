@@ -26,8 +26,8 @@
  *
  * Entity-graph person-edge reads (LLC → member/officer/agent): this codebase
  * has NO entity graph — no table or function holds person edges — so there is
- * no surface to wire. ENTITY_GRAPH_PERSON_EDGE_SURFACES is empty on purpose and
- * pinned by a test: the first such surface must be added here.
+ * no surface to wire. A test pins that no person-edge table exists: the first
+ * one must add its surface to PURPOSE_SURFACES.
  *
  * Metering. A paid door (the two /api/skip-tracing routes) debits the credit
  * pool first and then writes the ledger row carrying the debit's event id and
@@ -46,9 +46,6 @@ import { purposeLedger } from "@shared/schema";
 
 export const PURPOSE_SURFACES = ["skip_trace_call", "skip_trace_result_read", "owner_contact_lookup"] as const;
 export type PurposeSurface = (typeof PURPOSE_SURFACES)[number];
-
-/** Entity-graph person-edge read surfaces. None exist in this codebase (see module doc). */
-export const ENTITY_GRAPH_PERSON_EDGE_SURFACES: readonly PurposeSurface[] = [];
 
 /**
  * Conservative default taxonomy — attorney-review input, not a declaration.
@@ -140,7 +137,7 @@ interface StoredTrace {
   attestationVersion?: string | null;
 }
 
-export const WITHHELD_NO_PURPOSE =
+const WITHHELD_NO_PURPOSE =
   "Results withheld: no permissible purpose was recorded when this trace was run. Run a new trace from a screen that asks for the purpose of use.";
 
 /**

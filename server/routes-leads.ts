@@ -2219,7 +2219,7 @@ export function registerLeadRoutes(app: Express): void {
         });
       } catch (err) {
         logger.warn("Skip trace refused: purpose ledger write failed", { metadata: { organizationId: org.id, leadId, error: err instanceof Error ? err.message : String(err) } });
-        const refused = await storage.updateSkipTrace(skipTrace.id, { status: "failed", costCents: 0, completedAt: clock.now() });
+        const refused = await storage.updateSkipTrace(skipTrace.id, { status: "failed", costCents: 0, completedAt: clock.now() }, org.id);
         return res.json(refused);
       }
 
@@ -2242,7 +2242,7 @@ export function registerLeadRoutes(app: Express): void {
             status: "no_results",
             provider: trace.source === "none" ? null : trace.source,
             completedAt: clock.now(),
-          });
+          }, org.id);
           return res.json(updated);
         }
 
@@ -2260,7 +2260,7 @@ export function registerLeadRoutes(app: Express): void {
           costCents: hasAny ? (trace.creditsUsed ?? 1) * creditCents : 0,
           results,
           completedAt: clock.now(),
-        });
+        }, org.id);
         return res.json(updated);
       } catch (err) {
         logger.error("Skip trace lookup failed", err instanceof Error ? err : undefined);
@@ -2268,7 +2268,7 @@ export function registerLeadRoutes(app: Express): void {
           status: "failed",
           costCents: 0,
           completedAt: clock.now(),
-        });
+        }, org.id);
         return res.json(failed);
       }
     } catch (err) {

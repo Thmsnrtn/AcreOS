@@ -129,11 +129,11 @@ vi.mock("../../server/services/purposeLedger", () => ({
 
 // Provider mock — per-test behavior via traceImpl.
 let traceImpl: (input: any, orgId?: number) => Promise<any>;
-const traceMock = vi.fn((input: any, orgId?: number) => traceImpl(input, orgId));
+const traceMock = vi.fn((input: any, orgId?: number, _purpose?: unknown) => traceImpl(input, orgId));
 
 vi.mock("../../server/services/skipTracingService", () => ({
   skipTracingService: {
-    trace: (...args: any[]) => traceMock(...(args as [any, number])),
+    trace: (...args: any[]) => traceMock(...(args as [any, number, unknown])),
     isConfigured: vi.fn(() => true),
   },
 }));

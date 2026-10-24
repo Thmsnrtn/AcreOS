@@ -51,10 +51,10 @@ import { encodeWkb, type ParquetColumnDef } from "./geoParquet";
  * pixels there. It is also the partition grain: a z14 tile is ~2.4 km at the
  * equator, so even dense suburban fabric stays well under the cap.
  */
-export const PARTITION_ZOOM = 14;
+const PARTITION_ZOOM = 14;
 export const MAX_ZOOM = 15;
 /** A partition denser than this is refused, not tiled — the refusal is the memory bound. */
-export const MAX_PARTITION_FEATURES = 30_000;
+const MAX_PARTITION_FEATURES = 30_000;
 const ROW_GROUP = 2_000;
 
 export interface StreamingArtifactOptions {

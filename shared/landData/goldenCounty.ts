@@ -39,10 +39,10 @@ export interface GoldenCounty {
   parcels: GoldenParcel[];
 }
 
-export const GOLDEN_SIZE = 5;
+const GOLDEN_SIZE = 5;
 
 /** Every golden county by state. A state absent here has no ground truth. */
-export const GOLDEN_COUNTIES: Readonly<Record<string, GoldenCounty>> = {
+const GOLDEN_COUNTIES: Readonly<Record<string, GoldenCounty>> = {
   FL: flGolden as unknown as GoldenCounty,
 };
 
@@ -62,10 +62,15 @@ export function isVerifiedParcel(p: GoldenParcel): boolean {
   );
 }
 
-/** The verified parcels of an ESTABLISHED golden county; empty otherwise. */
+/**
+ * The verified parcels of an ESTABLISHED golden county; empty otherwise. A
+ * file marked established with fewer than GOLDEN_SIZE verified parcels is not
+ * ground truth — nothing may be verified against it.
+ */
 export function verifiedParcels(g: GoldenCounty | null): GoldenParcel[] {
   if (!g || g.status !== "established") return [];
-  return g.parcels.filter(isVerifiedParcel);
+  const verified = g.parcels.filter(isVerifiedParcel);
+  return verified.length === GOLDEN_SIZE ? verified : [];
 }
 
 function recordValue(r: BulkParcelRecord, f: VerifiedField): string | number | null {

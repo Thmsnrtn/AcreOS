@@ -165,7 +165,7 @@ export type ParquetColumnDef = { type: "UTF8" | "DOUBLE" | "BYTE_ARRAY"; optiona
  * `geometry` must be one of them (BYTE_ARRAY, WKB-encoded here). Null/undefined
  * cells are written as absent, so every nullable column must be `optional`.
  */
-export async function writeGeoParquetRows<R extends { geometry: AreaGeometry }>(
+async function writeGeoParquetRows<R extends { geometry: AreaGeometry }>(
   filePath: string,
   schemaDef: Record<string, ParquetColumnDef>,
   rows: R[],

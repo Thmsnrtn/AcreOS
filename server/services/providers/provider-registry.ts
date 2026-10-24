@@ -139,7 +139,7 @@ export interface RegistryLookupOptions {
 }
 
 /** Categories whose answer is about a person (owner contact detail, skip trace). */
-export const PERSON_ADJACENT_CATEGORIES: ReadonlySet<DataCategory> = new Set<DataCategory>(["owner_info", "skip_trace"] as DataCategory[]);
+const PERSON_ADJACENT_CATEGORIES: ReadonlySet<DataCategory> = new Set<DataCategory>(["owner_info", "skip_trace"] as DataCategory[]);
 
 // ── Circuit breaker constants ─────────────────────────────────
 

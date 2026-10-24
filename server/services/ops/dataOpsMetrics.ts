@@ -18,13 +18,16 @@
  *   adapterRemaps  — per statewide job: runs, D2d remap attempts by outcome,
  *                    and the promotion rate (a source that remaps often is a
  *                    source to replace).
+ *   purposeLedger  — D2e person-adjacent lookups over the window by surface
+ *                    and permissible-purpose code (counts only — no actor,
+ *                    org or parcel leaves this read).
  *
  * The pure folds below are what the tests drive; loadDataOpsMetrics() is the
  * one production read.
  */
 
-export const WAREHOUSE_LOOKUP_TARGET_USD = 0.001;
-export const WAREHOUSE_LAYERS = ["open_data", "cache"] as const;
+const WAREHOUSE_LOOKUP_TARGET_USD = 0.001;
+const WAREHOUSE_LAYERS = ["open_data", "cache"] as const;
 
 export interface LayerCount {
   answeringLayer: string | null;
@@ -151,25 +154,26 @@ export interface DataOpsMetrics {
   fallThrough: FallThrough;
   warehouseCost: WarehouseCost;
   adapterRemaps: JobRemapRate[];
+  purposeLedger: { windowDays: number; bySurface: { surface: string; purposeCode: string; n: number }[] };
 }
 
 /** The production read (platform-wide aggregates; no tenant rows leave this function). */
 export async function loadDataOpsMetrics(now: Date, windowDays = 30): Promise<DataOpsMetrics> {
   const { sql, desc, eq, gte, like } = await import("drizzle-orm");
   const { unscopedForPlatformOps } = await import("../../utils/orgScopedDb");
-  const { countyDiscoveryQueue, etlJobs, etlRuns, providerLookupLog } = await import("@shared/schema");
+  const { countyDiscoveryQueue, etlJobs, etlRuns, providerLookupLog, purposeLedger } = await import("@shared/schema");
   const reason = "D2g data ops metrics: platform-wide aggregates for the ops API (read-only)";
   const since = new Date(now.getTime() - windowDays * 86_400_000);
-  const [countyRows, layerRows, runRows] = await Promise.all([
+  const [countyRows, layerRows, runRows, purposeRows] = await Promise.all([
     unscopedForPlatformOps(reason)
       .select({
         state: countyDiscoveryQueue.state,
-        status: sql<string>`COALESCE(${countyDiscoveryQueue.ownedStatus}, 'never_requested')`,
+        status: countyDiscoveryQueue.ownedStatus,
         counties: sql<number>`COUNT(*)::int`,
         parcelsStored: sql<number>`COALESCE(SUM(${countyDiscoveryQueue.ownedParcelsStored}), 0)::int`,
       })
       .from(countyDiscoveryQueue)
-      .groupBy(countyDiscoveryQueue.state, sql`COALESCE(${countyDiscoveryQueue.ownedStatus}, 'never_requested')`),
+      .groupBy(countyDiscoveryQueue.state, countyDiscoveryQueue.ownedStatus),
     unscopedForPlatformOps(reason)
       .select({ answeringLayer: providerLookupLog.answeringLayer, n: sql<number>`COUNT(*)::int` })
       .from(providerLookupLog)
@@ -182,14 +186,24 @@ export async function loadDataOpsMetrics(now: Date, windowDays = 30): Promise<Da
       .where(like(etlJobs.jobName, "%_statewide_cadastral_v1"))
       .orderBy(desc(etlRuns.startedAt))
       .limit(2000),
+    unscopedForPlatformOps(reason)
+      .select({ surface: purposeLedger.surface, purposeCode: purposeLedger.purposeCode, n: sql<number>`COUNT(*)::int` })
+      .from(purposeLedger)
+      .where(gte(purposeLedger.createdAt, since))
+      .groupBy(purposeLedger.surface, purposeLedger.purposeCode),
   ]);
   const fallThrough = foldFallThrough(layerRows as LayerCount[], windowDays);
   const runs = runRows as RunObservationRow[];
   return {
     asOf: now.toISOString(),
-    coverage: { counties: countyRows as DataOpsMetrics["coverage"]["counties"], statewideBuilds: foldStatewideBuilds(runs) },
+    coverage: {
+      // A county never requested has no owned status yet; say so rather than leave it null.
+      counties: countyRows.map((r) => ({ ...r, status: r.status ?? "never_requested" })),
+      statewideBuilds: foldStatewideBuilds(runs),
+    },
     fallThrough,
     warehouseCost: foldWarehouseCost(fallThrough),
     adapterRemaps: foldRemapRates(runs),
+    purposeLedger: { windowDays, bySurface: purposeRows as DataOpsMetrics["purposeLedger"]["bySurface"] },
   };
 }

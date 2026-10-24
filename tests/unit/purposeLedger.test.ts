@@ -15,11 +15,9 @@ vi.mock("../../server/services/trust/ownerSuppression", () => ({
 }));
 
 import {
-  ENTITY_GRAPH_PERSON_EDGE_SURFACES,
   PURPOSE_CODES,
   PURPOSE_SURFACES,
   PurposeRequiredError,
-  WITHHELD_NO_PURPOSE,
   assertPurpose,
   releaseSkipTraceResults,
   type PurposeEntry,
@@ -37,7 +35,6 @@ describe("the taxonomy and the surfaces", () => {
 
   it("three surfaces are enumerated; entity-graph person edges have none because no entity graph exists", () => {
     expect([...PURPOSE_SURFACES]).toEqual(["skip_trace_call", "skip_trace_result_read", "owner_contact_lookup"]);
-    expect(ENTITY_GRAPH_PERSON_EDGE_SURFACES).toEqual([]);
     // If a person-edge table ever lands, this fails and the surface must be enumerated.
     const schema = ["shared/schema.ts", ...["purpose-ledger", "deal-lifecycle", "parcel-data"].map((f) => `shared/schema/${f}.ts`)].map(read).join("\n");
     const tables = Array.from(stripComments(schema).matchAll(/pgTable\(\s*"([a-z_]+)"/g)).map((m) => m[1]);
@@ -76,7 +73,7 @@ describe("stored results (skip_trace_result_read)", () => {
     });
     expect(out[0].results).toEqual(traces[0].results);
     expect(out[1].results).toBeNull();
-    expect(out[1].resultsWithheld).toBe(WITHHELD_NO_PURPOSE);
+    expect(out[1].resultsWithheld).toMatch(/no permissible purpose was recorded/);
     expect(out[2].results).toBeNull();
     expect(out[2].resultsWithheld).toBeUndefined();
     expect(written).toEqual([expect.objectContaining({ organizationId: 7, actorUserId: "u9", surface: "skip_trace_result_read", purposeCode: "collection", skipTraceId: 1, leadId: 10 })]);

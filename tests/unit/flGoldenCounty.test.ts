@@ -19,7 +19,7 @@ vi.mock("../../server/utils/logger", () => ({ logger: { info: vi.fn(), warn: vi.
 
 import { buildSpecFor, streamCounty } from "../../server/services/landData/statewideCadastral";
 import type { BulkParcelRecord } from "../../shared/landData/bulkParcelRecord";
-import { GOLDEN_SIZE, goldenCountyFor, goldenMismatches, isVerifiedParcel, type GoldenParcel } from "../../shared/landData/goldenCounty";
+import { goldenCountyFor, goldenMismatches, isVerifiedParcel, verifiedParcels, type GoldenParcel } from "../../shared/landData/goldenCounty";
 
 const FL_SPEC = buildSpecFor("FL");
 const MAPPED = Object.values(FL_SPEC.mapping).filter((f): f is string => !!f);
@@ -63,8 +63,14 @@ describe("FL golden county (A5)", () => {
 
   it("its status is honest: 'established' only when all five are assessor-verified", () => {
     const verified = golden.parcels.filter(isVerifiedParcel).length;
-    expect(golden.status).toBe(verified === GOLDEN_SIZE ? "established" : "pending_verification");
+    expect(golden.status).toBe(verified === 5 ? "established" : "pending_verification");
     if (golden.status === "established") expect(golden.county).toBeTruthy();
+  });
+
+  it("FALSIFICATION: a file marked established with fewer than five verified parcels yields no ground truth", () => {
+    expect(verifiedParcels(golden).length).toBe(golden.status === "established" ? 5 : 0);
+    const short = { ...golden, status: "established" as const, parcels: golden.parcels.slice(0, 4) };
+    expect(verifiedParcels(short)).toEqual([]);
   });
 
   it("a slot is either fully verified or fully empty — never half-filled", () => {
