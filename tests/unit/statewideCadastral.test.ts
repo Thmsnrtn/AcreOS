@@ -221,7 +221,8 @@ describe("streamed, bounded build: local artifacts and the receipt shape", () =>
       const onDisk = readFileSync(a.localPath);
       expect(a.bytes).toBe(onDisk.length);
       expect(a.sha256).toBe(createHash("sha256").update(onDisk).digest("hex"));
-      expect(a.objectKey).toMatch(/^statewide\/mt\/fixture\/2026-10-24\/mt-fixture\.(parquet|pmtiles)$/);
+      expect(a.objectKey).toMatch(/^statewide\/mt\/fixture\/2026-10-24\/mt-fixture\.[0-9a-f]{16}\.(parquet|pmtiles)$/);
+      expect(a.objectKey).toContain(`.${a.sha256.slice(0, 16)}.`);
     }
     // The PMTiles header is a v3 archive whose tile count matches the build.
     const head = readFileSync(report.artifacts.pmtiles.localPath).subarray(0, 127);
@@ -259,6 +260,29 @@ describe("streamed, bounded build: local artifacts and the receipt shape", () =>
     w.discard();
     expect(() => statSync(w.parquetPath)).toThrow();
     void spec;
+  });
+
+  it("rows land in ascending source_parcel_id by UTF-8 byte order (not OBJECTID, not UTF-16), across spilled sort runs", async () => {
+    const spec = buildSpecFor("NC");
+    // Ids out of OBJECTID order, including a BMP private-use char vs an astral
+    // char: UTF-16 puts the emoji (0xD83D…) first, UTF-8 puts U+FFFD first.
+    const ids = ["SYN-\u{1F600}", "SYN-\uFFFD", "SYN-B", "SYN-a", "SYN-A", "SYN-10", "SYN-9", "SYN-é"];
+    const n = 600;
+    const idOf = (oid: number) => (oid <= ids.length ? ids[oid - 1] : `SYN-${String((oid * 7919) % 100_003).padStart(6, "0")}`);
+    const report = await buildCounty(spec, COUNTY, {
+      ...layer(spec, { count: n, over: (oid) => ({ [spec.mapping.apn as string]: idOf(oid) }) }),
+      outDir: outDir(),
+      bucketConfigured: false,
+      today: "2026-10-24",
+      sortRunChars: 50_000, // force several spilled runs through the k-way merge
+    });
+    const back = await readGeoParquetRows<Record<string, unknown> & { geometry: never }>(report.artifacts.parquet.localPath);
+    const got = back.rows.map((r) => r.source_parcel_id as string);
+    expect(got).toHaveLength(n);
+    const byUtf8 = [...got].sort((a, b) => Buffer.compare(Buffer.from(a, "utf8"), Buffer.from(b, "utf8")));
+    expect(got).toEqual(byUtf8);
+    expect(got.indexOf("SYN-\uFFFD")).toBeLessThan(got.indexOf("SYN-\u{1F600}"));
+    expect(new Set(got).size, "no row lost or duplicated by the merge").toBe(n);
   });
 
   it("refuses to emit empty artifacts", async () => {
@@ -355,6 +379,31 @@ describe("the live-upload path (streamed file, HEAD-confirmed)", () => {
     expect(report.outcome.status).toBe("ingested");
     expect(recorded).toHaveLength(2);
     expect(store.objects.get(report.artifacts.parquet.objectKey)?.length).toBe(report.artifacts.parquet.bytes);
+  });
+
+  it("FALSIFICATION: two same-day builds of one county with different bytes get different keys, and BOTH receipts still resolve", async () => {
+    const spec = buildSpecFor("NC");
+    const store = memoryStore();
+    const run = (count: number) =>
+      buildCounty(spec, COUNTY, {
+        ...layer(spec, { count }),
+        outDir: mkdtempSync(path.join(os.tmpdir(), "d2a-twice-")),
+        bucketConfigured: true,
+        objectStore: async () => store,
+        upload: (c, k, o, a) => uploadFileAndConfirm(c, k, o, a),
+        today: "2026-10-24",
+        sourceEntry: entryWith("NC", allowedDossier()),
+      });
+    const first = await run(40);
+    const second = await run(41);
+    if (first.outcome.status !== "ingested" || second.outcome.status !== "ingested") throw new Error("both builds must ingest");
+    const receipts = [...first.outcome.receipts, ...second.outcome.receipts];
+    expect(new Set(receipts.map((r) => r.objectKey)).size).toBe(4);
+    for (const r of receipts) {
+      const obj = store.objects.get(r.objectKey);
+      expect(obj?.length, r.objectKey).toBe(r.bytes);
+      expect(createHash("sha256").update(obj as Buffer).digest("hex"), r.objectKey).toBe(r.sha256);
+    }
   });
 
   it("FALSIFICATION: a bucket that lands fewer bytes yields no receipt and fails the run", async () => {

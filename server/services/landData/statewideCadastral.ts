@@ -16,6 +16,9 @@
  *  2. STREAMS the county: page → normalize → write → release. Nothing holds the
  *     county (streamingArtifacts.ts holds the memory bound); the run samples
  *     RSS every page and reports its peak against RSS_CEILING_MB;
+ *     rows reach the artifacts ascending by source_parcel_id in UTF-8 byte
+ *     order (the D2b release-diff order) through a bounded external sort
+ *     (ExternalSorter: sorted runs spilled to disk, k-way merged);
  *  3. DECIDES ingest from the dossier and the bucket, and uploads only then:
  *     a source whose four use classes are not all resolved, or whose policy
  *     forbids caching, is never uploaded — storing a copy in our bucket is
@@ -23,6 +26,8 @@
  *     configured bucket, each artifact is uploaded and HEAD-confirmed
  *     (uploadFileAndConfirm) and the run is "ingested" only with a receipt for
  *     every artifact's exact bytes. No receipts, no "ingested".
+ *     Object keys carry the artifact's digest, so a second same-day build
+ *     never overwrites bytes an earlier receipt vouched for.
  */
 
 import type { BulkParcelRecord, FieldGroup, GroupProvenance } from "@shared/landData/bulkParcelRecord";
@@ -34,9 +39,12 @@ import type { AreaGeometry } from "./geometry";
 import type { ParquetColumnDef } from "./geoParquet";
 import { StreamingArtifactWriter, type BuiltArtifact, type StreamingArtifactResult } from "./streamingArtifacts";
 import type { ObjectStoreClient, UploadReceipt } from "./openDataBucket";
+import { createReadStream, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import path from "node:path";
+import { createInterface } from "node:readline";
 
-/** The documented per-run RSS ceiling. The acceptance gate runs a large county under a 512 MB cap. */
-const RSS_CEILING_MB = 400;
+/** The documented per-run RSS ceiling (also the TN county build's). The acceptance gates run a large county under a 512 MB cap. */
+export const RSS_CEILING_MB = 400;
 /** A run never pulls more than this many parcels (one county, however large). */
 const MAX_PARCELS_PER_RUN = 1_500_000;
 const PAGE_SIZE = 1000;
@@ -69,11 +77,28 @@ function seedMapping(seed: StatewideParcelEndpointSeed): FieldMapping {
 }
 
 /**
+ * TX beachhead counties: EMPTY. Texas has no statewide layer seeded, and no
+ * TX county source has been verified live with its terms read, so there is
+ * no beachhead county to build. A county enters this list only with a
+ * verified endpoint and a read dossier — never to make TX look covered.
+ */
+const TX_BEACHHEAD_COUNTIES: readonly string[] = [];
+const TX_REFUSAL =
+  "refused: TX has no verified statewide layer and no verified beachhead county — the TX beachhead list is empty because no TX county source has been verified live with its terms read (the TxGIO StratMap compilation's terms are unread). Nothing is built for TX";
+
+/** Every TX build stops here until a beachhead county is verified; a listed county is the only one that could pass. */
+function refuseUnverifiedTx(state: string, county?: string): void {
+  if (state.toUpperCase() !== "TX") return;
+  if (!county || !TX_BEACHHEAD_COUNTIES.includes(county)) throw new Error(TX_REFUSAL);
+}
+
+/**
  * The build spec for a state, or a refusal. `mapping` overrides the seed's map
  * (the D2d promoted remap) — the seed stays the verified baseline.
  */
 export function buildSpecFor(state: string, mapping?: FieldMapping): StatewideBuildSpec {
   const st = state.toUpperCase();
+  refuseUnverifiedTx(st);
   const seed = STATEWIDE_PARCEL_ENDPOINTS.find((e) => e.state === st);
   if (!seed) {
     throw new Error(
@@ -243,6 +268,7 @@ export async function streamCounty(
   deps: LayerDeps,
   sink: (rec: BulkParcelRecord) => Promise<void>,
 ): Promise<CountyStreamSummary> {
+  refuseUnverifiedTx(spec.state, config.countyValue);
   const meta = await readLayerMeta(spec, deps);
   const conformance = checkConformance(spec, meta.fieldNames);
   if (!conformance.ok) throw new SchemaDriftError(spec.state, conformance.missing, meta.fields, spec.mapping);
@@ -406,6 +432,122 @@ export function buildOutcome(gate: IngestGate, artifacts: readonly BuiltArtifact
   return { status: "dry_run_only", reasons };
 }
 
+// ── Parcel order: a bounded external sort ────────────────────────────────
+
+/** A sorted run is spilled once its serialized rows pass this many characters. */
+const SORT_RUN_CHARS = 16 * 1024 * 1024;
+
+/**
+ * Code-point order — which IS UTF-8 byte order (Postgres COLLATE "C"), the
+ * order D2b's release diff reads. JS's default `<` compares UTF-16 code units
+ * and puts an astral character (a surrogate pair, 0xD800–0xDBFF) before
+ * U+E000–U+FFFF; UTF-8 puts it after. (A lone surrogate compares by its code
+ * unit here; Postgres text cannot hold one.)
+ */
+function compareUtf8(a: string, b: string): number {
+  let i = 0;
+  let j = 0;
+  while (i < a.length && j < b.length) {
+    const ca = a.codePointAt(i) as number;
+    const cb = b.codePointAt(j) as number;
+    if (ca !== cb) return ca < cb ? -1 : 1;
+    i += ca > 0xffff ? 2 : 1;
+    j += cb > 0xffff ? 2 : 1;
+  }
+  return i < a.length ? 1 : j < b.length ? -1 : 0;
+}
+
+/**
+ * Rows in, rows out ascending by `key` in UTF-8 byte order, holding at most
+ * one run (`runChars` of serialized rows) in memory: each full run is sorted
+ * (stably) and spilled to disk as NDJSON, then the runs are k-way merged one
+ * head row per run. Ties keep arrival order (run index, then position). Rows
+ * must survive JSON (undefined cells are dropped, which the parquet writer
+ * reads as absent). Use once: add()* → drain() → (cleanup on failure).
+ */
+export class ExternalSorter<R> {
+  private buf: Array<{ k: string; line: string }> = [];
+  private chars = 0;
+  private readonly runs: string[] = [];
+  constructor(
+    private readonly dir: string,
+    private readonly key: (row: R) => string,
+    private readonly runChars: number = SORT_RUN_CHARS,
+  ) {}
+
+  /** Runs spilled so far (0 = everything fit in one in-memory run). */
+  get spilledRuns(): number {
+    return this.runs.length;
+  }
+
+  add(row: R): void {
+    const line = JSON.stringify(row);
+    this.buf.push({ k: this.key(row), line });
+    this.chars += line.length;
+    if (this.chars >= this.runChars) this.spill();
+  }
+
+  private sortBuf(): void {
+    this.buf.sort((a, b) => compareUtf8(a.k, b.k)); // Array.prototype.sort is stable
+  }
+
+  private spill(): void {
+    if (this.buf.length === 0) return;
+    this.sortBuf();
+    mkdirSync(this.dir, { recursive: true });
+    const file = path.join(this.dir, `run-${this.runs.length}.ndjson`);
+    writeFileSync(file, `${this.buf.map((e) => e.line).join("\n")}\n`);
+    this.runs.push(file);
+    this.buf = [];
+    this.chars = 0;
+  }
+
+  async *drain(): AsyncIterable<R> {
+    if (this.runs.length === 0) {
+      this.sortBuf();
+      const all = this.buf;
+      this.buf = [];
+      for (const e of all) yield JSON.parse(e.line) as R;
+      return;
+    }
+    this.spill();
+    const readers = this.runs.map((f) => createInterface({ input: createReadStream(f, { encoding: "utf8" }), crlfDelay: Infinity })[Symbol.asyncIterator]());
+    const heads: Array<{ row: R; k: string } | null> = [];
+    const pull = async (i: number) => {
+      for (;;) {
+        const n = await readers[i].next();
+        if (n.done) return null;
+        if (n.value) {
+          const row = JSON.parse(n.value) as R;
+          return { row, k: this.key(row) };
+        }
+      }
+    };
+    for (let i = 0; i < readers.length; i++) heads.push(await pull(i));
+    for (;;) {
+      let best = -1;
+      for (let i = 0; i < heads.length; i++) {
+        const h = heads[i];
+        if (h && (best < 0 || compareUtf8(h.k, (heads[best] as { k: string }).k) < 0)) best = i;
+      }
+      if (best < 0) break;
+      const h = heads[best] as { row: R; k: string };
+      heads[best] = await pull(best);
+      yield h.row;
+    }
+    this.cleanup();
+  }
+
+  cleanup(): void {
+    rmSync(this.dir, { recursive: true, force: true });
+  }
+}
+
+/** Object key of a built artifact: the digest is IN the key, so a second same-day build never overwrites bytes an earlier receipt vouched for. */
+export function artifactObjectKey(prefix: string, stem: string, a: BuiltArtifact, ext: "parquet" | "pmtiles"): string {
+  return `${prefix}/${stem}.${a.sha256.slice(0, 16)}.${ext}`;
+}
+
 // ── The whole run ────────────────────────────────────────────────────────
 
 export interface CountyBuildDeps extends LayerDeps {
@@ -419,6 +561,8 @@ export interface CountyBuildDeps extends LayerDeps {
   today: string;
   /** The registry entry the gate reads; defaults to the statewide source registry. */
   sourceEntry?: StatewideSourceEntry;
+  /** Sort-run size in serialized characters (default SORT_RUN_CHARS). The memory gate's in-memory-sort mutant sets Infinity. */
+  sortRunChars?: number;
 }
 
 export interface CountyBuildReport {
@@ -453,24 +597,29 @@ export async function buildCounty(spec: StatewideBuildSpec, config: CountyRunCon
     },
     (row) => ({ parcel_id: row.source_parcel_id }),
   );
+  // Rows reach the writer ascending by source_parcel_id (UTF-8 byte order) —
+  // the order D2b's release diff reads — through a bounded external sort.
+  const sorter = new ExternalSorter<BulkRow>(path.join(deps.outDir, `.${stem}-sort`), (r) => r.source_parcel_id, deps.sortRunChars);
   await writer.open();
   let summary: CountyStreamSummary;
   let built: StreamingArtifactResult;
   try {
     summary = await streamCounty(spec, config, deps, async (rec) => {
       const row = toBulkRow(rec, gate.ownerNamesAllowed);
-      if (row) await writer.write(row);
+      if (row) sorter.add(row);
     });
+    for await (const row of sorter.drain()) await writer.write(row);
     built = await writer.finish();
   } catch (err) {
     writer.discard();
+    sorter.cleanup();
     throw err;
   }
   const rss = deps.rss ?? (() => process.memoryUsage().rss);
   summary.peakRssMb = Math.max(summary.peakRssMb, Math.round(rss() / 1048576));
   const prefix = `statewide/${spec.state.toLowerCase()}/${slug(countyLabel)}/${deps.today}`;
-  const parquet = { ...built.parquet, objectKey: `${prefix}/${stem}.parquet` };
-  const pmtiles = { ...built.pmtiles, objectKey: `${prefix}/${stem}.pmtiles` };
+  const parquet = { ...built.parquet, objectKey: artifactObjectKey(prefix, stem, built.parquet, "parquet") };
+  const pmtiles = { ...built.pmtiles, objectKey: artifactObjectKey(prefix, stem, built.pmtiles, "pmtiles") };
   const receipts: UploadReceipt[] = [];
   if (gate.upload) {
     if (!deps.objectStore || !deps.upload) throw new Error("gate allows upload but the run was given no object store — refusing to report a dry run as a build");
