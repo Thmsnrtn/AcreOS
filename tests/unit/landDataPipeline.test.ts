@@ -228,6 +228,8 @@ describe("parcel-id crosswalk", () => {
     const r = reconcileCrosswalk(prev, [half], mint);
     expect(r.assigned[0].how).toBe("new");
     expect(r.retired).toEqual(["TN-47041-A"]);
+    // The property, not the label: a retired key is never handed out again.
+    expect(r.assigned[0].parcelKey).not.toBe("TN-47041-A");
   });
 });
 
