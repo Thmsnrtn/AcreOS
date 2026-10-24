@@ -122,19 +122,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS "cam_expense_pools_org_property_kind_period_uk
 
 -- ── 2. cam_reconciliations — the frozen year-end CAM true-up statement ──────
 -- FK to cam_expense_pools (above) — created after it so the reference resolves.
--- lease_id takes the live type of rental_leases.id: uuid when this repo's DDL
--- built it, varchar when db:push did (staging). A hard-coded type fails as
--- "foreign key constraint cannot be implemented" on one of the two. Mirrors
--- leaseIdTypedToRentalLeases in scripts/migrate.mjs.
-DO $lease_fk$
-DECLARE lease_id_type text := (
-  SELECT format_type(atttypid, atttypmod) FROM pg_attribute
-   WHERE attrelid = to_regclass('"rental_leases"') AND attname = 'id' AND NOT attisdropped);
-BEGIN
-  IF lease_id_type IS NULL THEN
-    RAISE EXCEPTION 'rental_leases.id not found; cannot type lease_id';
-  END IF;
-  EXECUTE replace($ddl$CREATE TABLE IF NOT EXISTS "cam_reconciliations" (
+CREATE TABLE IF NOT EXISTS "cam_reconciliations" (
   "id" varchar PRIMARY KEY DEFAULT gen_random_uuid(),
   "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
   "pool_id" varchar NOT NULL REFERENCES "cam_expense_pools"("id") ON DELETE CASCADE,
@@ -159,9 +147,7 @@ BEGIN
   "generated_at" timestamptz,
   "generated_by" text,
   "created_at" timestamptz NOT NULL DEFAULT now()
-)$ddl$, '"lease_id" uuid', '"lease_id" ' || lease_id_type);
-END
-$lease_fk$;
+);
 -- Org-LEADING + the dominant read: every lease's reconciliation for a pool.
 CREATE INDEX IF NOT EXISTS "cam_reconciliations_org_pool_idx"
   ON "cam_reconciliations" ("organization_id", "pool_id");
@@ -171,19 +157,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS "cam_reconciliations_pool_lease_uk"
   ON "cam_reconciliations" ("pool_id", "lease_id");
 
 -- ── 3. commercial_sales_reports — the tenant's reported gross sales ─────────
--- lease_id takes the live type of rental_leases.id: uuid when this repo's DDL
--- built it, varchar when db:push did (staging). A hard-coded type fails as
--- "foreign key constraint cannot be implemented" on one of the two. Mirrors
--- leaseIdTypedToRentalLeases in scripts/migrate.mjs.
-DO $lease_fk$
-DECLARE lease_id_type text := (
-  SELECT format_type(atttypid, atttypmod) FROM pg_attribute
-   WHERE attrelid = to_regclass('"rental_leases"') AND attname = 'id' AND NOT attisdropped);
-BEGIN
-  IF lease_id_type IS NULL THEN
-    RAISE EXCEPTION 'rental_leases.id not found; cannot type lease_id';
-  END IF;
-  EXECUTE replace($ddl$CREATE TABLE IF NOT EXISTS "commercial_sales_reports" (
+CREATE TABLE IF NOT EXISTS "commercial_sales_reports" (
   "id" varchar PRIMARY KEY DEFAULT gen_random_uuid(),
   "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
   "lease_id" uuid NOT NULL REFERENCES "rental_leases"("id") ON DELETE CASCADE,
@@ -196,9 +170,7 @@ BEGIN
   "received_at" timestamptz,
   "notes" text,
   "created_at" timestamptz NOT NULL DEFAULT now()
-)$ddl$, '"lease_id" uuid', '"lease_id" ' || lease_id_type);
-END
-$lease_fk$;
+);
 -- Org-LEADING + the dominant read: a lease's sales history, by period.
 CREATE INDEX IF NOT EXISTS "commercial_sales_reports_org_lease_period_idx"
   ON "commercial_sales_reports" ("organization_id", "lease_id", "period_start");
@@ -208,19 +180,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS "commercial_sales_reports_lease_period_uk"
   ON "commercial_sales_reports" ("lease_id", "period_start", "period_end");
 
 -- ── 4. lease_rent_schedule — the rent-escalation steps ──────────────────────
--- lease_id takes the live type of rental_leases.id: uuid when this repo's DDL
--- built it, varchar when db:push did (staging). A hard-coded type fails as
--- "foreign key constraint cannot be implemented" on one of the two. Mirrors
--- leaseIdTypedToRentalLeases in scripts/migrate.mjs.
-DO $lease_fk$
-DECLARE lease_id_type text := (
-  SELECT format_type(atttypid, atttypmod) FROM pg_attribute
-   WHERE attrelid = to_regclass('"rental_leases"') AND attname = 'id' AND NOT attisdropped);
-BEGIN
-  IF lease_id_type IS NULL THEN
-    RAISE EXCEPTION 'rental_leases.id not found; cannot type lease_id';
-  END IF;
-  EXECUTE replace($ddl$CREATE TABLE IF NOT EXISTS "lease_rent_schedule" (
+CREATE TABLE IF NOT EXISTS "lease_rent_schedule" (
   "id" varchar PRIMARY KEY DEFAULT gen_random_uuid(),
   "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
   "lease_id" uuid NOT NULL REFERENCES "rental_leases"("id") ON DELETE CASCADE,
@@ -236,9 +196,7 @@ BEGIN
   "floor_pct_bps" integer,
   "ceiling_pct_bps" integer,
   "created_at" timestamptz NOT NULL DEFAULT now()
-)$ddl$, '"lease_id" uuid', '"lease_id" ' || lease_id_type);
-END
-$lease_fk$;
+);
 -- Org-LEADING + the dominant read: a lease's steps in effective order.
 CREATE INDEX IF NOT EXISTS "lease_rent_schedule_org_lease_month_idx"
   ON "lease_rent_schedule" ("organization_id", "lease_id", "effective_month");

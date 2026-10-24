@@ -9,6 +9,7 @@
 // ============================================================================
 
 import {
+  uuid,
   pgTable,
   text,
   serial,
@@ -66,14 +67,14 @@ import {
 export const chartOfAccounts = pgTable(
   "chart_of_accounts",
   {
-    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
     organizationId: integer("organization_id")
       .references(() => organizations.id, { onDelete: "cascade" })
       .notNull(),
     accountNumber: text("account_number").notNull(), // e.g. "1000", "4000-CASH"
     accountName: text("account_name").notNull(),
     accountType: text("account_type").notNull(), // asset|liability|equity|revenue|expense|contra_asset|contra_revenue
-    parentAccountId: varchar("parent_account_id"),
+    parentAccountId: uuid("parent_account_id"),
     isActive: boolean("is_active").default(true).notNull(),
     description: text("description"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
@@ -97,7 +98,7 @@ export const accountLedgerEntries = pgTable(
     organizationId: integer("organization_id")
       .references(() => organizations.id, { onDelete: "cascade" })
       .notNull(),
-    accountId: varchar("account_id")
+    accountId: uuid("account_id")
       .references(() => chartOfAccounts.id, { onDelete: "restrict" })
       .notNull(),
     // bigint mode "number" — JS numbers safely represent values up to

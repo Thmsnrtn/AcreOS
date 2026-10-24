@@ -59,6 +59,11 @@ if ! flyctl apps list 2>/dev/null | grep -q "$DB"; then
   echo "     uses db:push + the no-op release_command in fly.staging.toml.)"
 else
   echo "  pgvector Postgres '$DB' already exists — continuing"
+  echo "  → Re-pushing an EXISTING database built before the uuid id decision: run"
+  echo "      node scripts/migrate.mjs --ddl-only   (CONVERGE_UUID_ID_FAMILIES)"
+  echo "    first. drizzle-kit push cannot cast its varchar ids to uuid, and when that"
+  echo "    statement fails it still exits 0 with the columns unchanged (measured"
+  echo "    2026-10-21). The nightly staging-schema-reconcile runs that convergence."
 fi
 
 # ── 2. Fly secrets from .env.staging (values never leave your machine) ──────

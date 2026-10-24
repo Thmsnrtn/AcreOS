@@ -6,6 +6,7 @@
 // ============================================================================
 
 import {
+  uuid,
   pgTable,
   text,
   serial,
@@ -134,7 +135,7 @@ export type PermitGateStatus = typeof PERMIT_GATE_STATUSES[number];
 export const permitChecklists = pgTable(
   "permit_checklists",
   {
-    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
     organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
     parentParcelId: integer("parent_parcel_id").references(() => properties.id, { onDelete: "cascade" }).notNull(),
 
@@ -159,7 +160,7 @@ export const permitGates = pgTable(
   {
     id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
     organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
-    checklistId: varchar("checklist_id").notNull(),  // FK to permit_checklists, soft (uuid<>varchar)
+    checklistId: uuid("checklist_id").notNull(),  // FK to permit_checklists, declared in the SQL migration
 
     sequence: integer("sequence").notNull(),  // ordering — pre-app first, recording last
     gateKey: text("gate_key").notNull(),      // 'preliminary_plat', 'percolation_tests', etc.
