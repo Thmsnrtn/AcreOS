@@ -65,12 +65,14 @@ export function isVerifiedParcel(p: GoldenParcel): boolean {
 /**
  * The verified parcels of an ESTABLISHED golden county; empty otherwise. A
  * file marked established with fewer than GOLDEN_SIZE verified parcels is not
- * ground truth — nothing may be verified against it.
+ * ground truth — nothing may be verified against it. The five must be five
+ * DIFFERENT parcels: a slot repeating another's parcel id adds no evidence.
  */
 export function verifiedParcels(g: GoldenCounty | null): GoldenParcel[] {
   if (!g || g.status !== "established") return [];
   const verified = g.parcels.filter(isVerifiedParcel);
-  return verified.length === GOLDEN_SIZE ? verified : [];
+  const distinct = new Set(verified.map((p) => p.sourceParcelId)).size;
+  return verified.length === GOLDEN_SIZE && distinct === GOLDEN_SIZE ? verified : [];
 }
 
 function recordValue(r: BulkParcelRecord, f: VerifiedField): string | number | null {

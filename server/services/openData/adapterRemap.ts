@@ -54,6 +54,8 @@ const PROVEN_BY: Readonly<Record<CanonicalField, VerifiedField | "parcelId" | nu
 
 const MIN_SCORE = 0.75;
 const MIN_MARGIN = 0.15;
+/** A remapped field is provable only when the golden set verifies it on at least this many parcels (with ≥ 2 distinct values). */
+const MIN_PROOF_PARCELS = 3;
 
 const norm = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, "");
 
@@ -114,11 +116,17 @@ export function proposeRemap(drift: Pick<SchemaDriftError, "missing" | "liveFiel
   const fields: FieldProposal[] = [];
   const mapping: FieldMapping = { ...drift.mapping };
   const taken = new Set<string>();
+  // A "remap" that changes nothing would be promoted on a clean re-read and
+  // counted as a heal; there is nothing to propose.
+  if (drift.missing.length === 0) return { ok: false, why: "no mapped field is missing — nothing to remap", fields };
   for (const missingName of drift.missing) {
     const field = (CANONICAL_FIELDS as readonly CanonicalField[]).find((k) => drift.mapping[k] === missingName);
     if (!field) return { ok: false, why: `missing field ${missingName} is not one the normalizer maps`, fields };
+    // Scored against EVERY type-compatible live field, including ones an
+    // earlier missing field already claimed: removing a claimed candidate
+    // first would hide the very ambiguity the margin exists to catch.
     const scored = live
-      .filter((l) => typeFits(field, l) && !taken.has(l.name))
+      .filter((l) => typeFits(field, l))
       .map((l) => {
         const byName = similarity(missingName, l.name);
         const byAlias = l.alias ? similarity(missingName, l.alias) : 0;
@@ -133,6 +141,7 @@ export function proposeRemap(drift: Pick<SchemaDriftError, "missing" | "liveFiel
     if (best.score - second < MIN_MARGIN) {
       return { ok: false, why: `ambiguous: ${best.l.name} and ${scored[1]?.l.name} both match ${field} (${missingName})`, fields };
     }
+    if (taken.has(best.l.name)) return { ok: false, why: `contested: ${best.l.name} is the best match for more than one missing field (${missingName} among them)`, fields };
     fields.push({ field, from: missingName, to: best.l.name, score: Number(best.score.toFixed(3)), basis: best.basis });
     mapping[field] = best.l.name;
     taken.add(best.l.name);
@@ -174,9 +183,16 @@ async function verifyRemap(
     const proof = PROVEN_BY[f];
     if (proof === null) return true;
     if (proof === "parcelId") return false;
-    return !parcels.some((p) => p.assessorVerified && proof in p.assessorVerified);
+    // A proof must be able to tell a right column from a wrong one: enough
+    // parcels, and not one repeated value (a constant — or a value where the
+    // right and a wrong column happen to agree — certifies any column that
+    // also holds it).
+    const values = parcels.flatMap((p) => (p.assessorVerified && proof in p.assessorVerified ? [p.assessorVerified[proof]] : []));
+    return values.length < MIN_PROOF_PARCELS || new Set(values).size < 2;
   });
-  if (parcels.length === 0) return { ...base, passed: false, why: `${spec.state} has no established golden county — a remap cannot be verified`, unprovable };
+  if (parcels.length === 0) {
+    return { ...base, passed: false, why: `${spec.state} has no ground truth (no established golden county of five verified parcels) — a remap cannot be verified`, unprovable };
+  }
   if (unprovable.length > 0) return { ...base, passed: false, why: `the golden county verifies no value for ${unprovable.join(", ")} — that remap cannot be proven`, unprovable };
 
   const proposedSpec: StatewideBuildSpec = { ...spec, mapping: proposal.mapping };
@@ -186,7 +202,14 @@ async function verifyRemap(
   for (const p of parcels) {
     const where = `${apnField} = '${String(p.sourceParcelId).replace(/'/g, "''")}'`;
     const params = new URLSearchParams({ where, outFields: "*", returnGeometry: "false", f: "json" });
-    const res = await deps.getJson(`${spec.layerUrl}/query?${params}`);
+    let res: Awaited<ReturnType<LayerDeps["getJson"]>>;
+    try {
+      res = await deps.getJson(`${spec.layerUrl}/query?${params}`);
+    } catch (err) {
+      // A read that threw verified nothing — a failure of this parcel, never an escape from the heal.
+      checked.push({ slot: p.slot, sourceParcelId: p.sourceParcelId, found: 0, mismatches: [`live query failed (${err instanceof Error ? err.message : String(err)})`] });
+      continue;
+    }
     const body = res.body as { features?: Array<{ attributes: Record<string, unknown> }>; error?: { message?: string } } | null;
     if (!res.ok || !body || body.error) {
       checked.push({ slot: p.slot, sourceParcelId: p.sourceParcelId, found: 0, mismatches: [`live query failed (${body?.error?.message ?? `HTTP ${res.status}`})`] });
@@ -201,13 +224,19 @@ async function verifyRemap(
     const rec: BulkParcelRecord | null = normalizeFeature(proposedSpec, { attributes: feats[0].attributes, geometry: null }, { asOf: null, county: golden?.county ?? null });
     checked.push({ slot: p.slot, sourceParcelId: p.sourceParcelId, found: 1, mismatches: goldenMismatches(p, rec) });
   }
-  const failed = checked.filter((c) => c.mismatches.length > 0);
+  const failed = checked.filter((c) => c.mismatches.length > 0 || c.found !== 1);
+  // Fail closed on the population: a pass is every golden parcel read exactly once, never "no failures among what was read".
+  const complete = parcels.length > 0 && checked.length === parcels.length && new Set(checked.map((c) => c.slot)).size === parcels.length;
   return {
     goldenCounty: golden?.county ?? null,
     checked,
     unprovable,
-    passed: failed.length === 0,
-    why: failed.length === 0 ? `all ${checked.length} golden parcels reproduce their assessor-verified values through the proposed mapping` : `${failed.length} of ${checked.length} golden parcels do not reproduce ground truth`,
+    passed: complete && failed.length === 0,
+    why: !complete
+      ? `verification read ${checked.length} of ${parcels.length} golden parcels — an incomplete read is not a pass`
+      : failed.length === 0
+        ? `all ${checked.length} golden parcels reproduce their assessor-verified values through the proposed mapping`
+        : `${failed.length} of ${checked.length} golden parcels do not reproduce ground truth`,
   };
 }
 
@@ -248,7 +277,11 @@ export async function healDrift(spec: StatewideBuildSpec, drift: SchemaDriftErro
 export function activeMappingFromRuns(observations: ReadonlyArray<Record<string, unknown> | null>): FieldMapping | null {
   for (const o of observations) {
     const remap = (o?.remap ?? null) as RemapAttempt | null;
-    if (remap?.outcome === "promoted" && remap.mappingAfter) return remap.mappingAfter;
+    // Adopted only with its evidence: a "promoted" record whose verification did
+    // not pass is not a promotion, and a mapping with no parcel-id field would
+    // make every later run refuse in buildSpecFor before healing could run.
+    const apn = remap?.mappingAfter?.apn;
+    if (remap?.outcome === "promoted" && remap.verification?.passed === true && remap.mappingAfter && typeof apn === "string" && apn.length > 0) return remap.mappingAfter;
   }
   return null;
 }

@@ -1,0 +1,26 @@
+{
+  "synthetic": true,
+  "about": "SYNTHETIC drift fixture (D2d). The layer STRUCTURE is invented to simulate one drift shape of an ArcGIS layer against the FL seed field map; every VALUE is derived from the FL golden county's recorded attributes (shared/landData/golden/fl-golden-county.json) by the ops in values.derive — no value is invented.",
+  "shape": "type-change-renamed",
+  "drift": "JV renamed JV_TXT AND retyped double -> string: the only candidate is of the wrong type.",
+  "layer": {
+    "rename": {
+      "JV": "JV_TXT"
+    },
+    "retype": {
+      "JV_TXT": "esriFieldTypeString"
+    }
+  },
+  "values": {
+    "derive": {
+      "JV_TXT": {
+        "op": "string",
+        "of": "JV"
+      }
+    }
+  },
+  "expect": {
+    "outcome": "no_proposal",
+    "whyMatches": "no live field is a clear match"
+  }
+}

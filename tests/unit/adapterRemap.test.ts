@@ -85,6 +85,20 @@ describe("proposal — a clear, type-compatible match or nothing", () => {
     expect(!p.ok && p.why).toMatch(/ambiguous/);
   });
 
+  it("one live column is never proposed for TWO canonical fields (contested) — even when it is each one's sole candidate", () => {
+    // AV_NSD and JV both gone; JV_AV_NSD is the only numeric candidate for either.
+    const fields = liveFields({}, [field("JV_AV_NSD", "esriFieldTypeDouble")]).filter((f) => f.name !== "AV_NSD" && f.name !== "JV");
+    const p = proposeRemap(drift(fields));
+    expect(p.ok).toBe(false);
+    expect(!p.ok && p.why).toMatch(/^contested: JV_AV_NSD/);
+  });
+
+  it("an empty drift is no proposal — a 'remap' that changes nothing must not be promoted and counted as a heal", () => {
+    const p = proposeRemap({ missing: [], liveFields: liveFields(), mapping: FL.mapping });
+    expect(p.ok).toBe(false);
+    expect(!p.ok && p.why).toMatch(/nothing to remap/);
+  });
+
   it("a candidate of the wrong type is never proposed (a numeric field to a text column)", () => {
     const p = proposeRemap(drift(liveFields({ JV: ["J_V", "esriFieldTypeString"] })));
     expect(p.ok).toBe(false);
@@ -138,7 +152,11 @@ describe("verification against the golden county — promote only on a pass", ()
 });
 
 describe("the active mapping comes from the run series", () => {
-  const attempt = (outcome: RemapAttempt["outcome"], mv: string): Record<string, unknown> => ({ remap: { outcome, mappingAfter: outcome === "promoted" ? { ...FL.mapping, marketValue: mv } : null } });
+  // A promoted record carries its passing verification (what healDrift writes); one without it is never adopted
+  // (tests/unit/adapterRemapObservation.test.ts).
+  const attempt = (outcome: RemapAttempt["outcome"], mv: string): Record<string, unknown> => ({
+    remap: { outcome, mappingAfter: outcome === "promoted" ? { ...FL.mapping, marketValue: mv } : null, verification: outcome === "promoted" ? { passed: true } : null },
+  });
 
   it("the newest PROMOTED remap wins; rejected attempts and plain runs are skipped; none = the seed", () => {
     expect(activeMappingFromRuns([attempt("rejected", "X"), { kind: "statewide_cadastral_build" }, attempt("promoted", "JV_B"), attempt("promoted", "JV_A")])?.marketValue).toBe("JV_B");

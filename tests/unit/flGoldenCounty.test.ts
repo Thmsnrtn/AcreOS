@@ -73,6 +73,12 @@ describe("FL golden county (A5)", () => {
     expect(verifiedParcels(short)).toEqual([]);
   });
 
+  it("FALSIFICATION: five verified slots holding only four DISTINCT parcels yield no ground truth", () => {
+    const dup = { ...golden, status: "established" as const, parcels: [...golden.parcels.slice(0, 4), { ...golden.parcels[3], slot: 5 }] };
+    expect(dup.parcels.filter(isVerifiedParcel)).toHaveLength(5);
+    expect(verifiedParcels(dup)).toEqual([]);
+  });
+
   it("a slot is either fully verified or fully empty — never half-filled", () => {
     for (const p of golden.parcels) {
       const empty = [p.sourceParcelId, p.sourceAttributes, p.assessorVerified, p.verifiedBy, p.verifiedOn, p.assessorRecordUrl].every((v) => v === null);

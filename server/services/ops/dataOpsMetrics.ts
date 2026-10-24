@@ -325,6 +325,8 @@ export function foldRemapRates(rows: readonly RunObservationRow[]): JobRemapRate
     const remap = (r.observation?.remap ?? null) as { outcome?: string } | null;
     if (remap?.outcome) {
       j.attempts += 1;
+      // Rows arrive newest-first, so the first attempt seen is the latest.
+      if (j.latestOutcome === null) j.latestOutcome = remap.outcome;
       if (remap.outcome === "promoted") j.promoted += 1;
       else if (remap.outcome === "rejected") j.rejected += 1;
       else if (remap.outcome === "no_proposal") j.noProposal += 1;

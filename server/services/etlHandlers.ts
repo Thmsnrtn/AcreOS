@@ -1702,6 +1702,8 @@ function statewideCadastralEtlHandler(state: (typeof STATEWIDE_BUILD_STATES)[num
           if (opts.runState) opts.runState.failureObservation = { kind: "statewide_cadastral_drift", remap };
           throw err;
         }
+        // A promoted heal is recorded even if the rebuild below fails.
+        if (opts.runState) opts.runState.failureObservation = { kind: "statewide_cadastral_drift_rebuild_failed", remap };
         report = await buildCounty(buildSpecFor(state, remap.mappingAfter), config, deps());
       }
       if (opts.runState) opts.runState.build = { ...report, remap };

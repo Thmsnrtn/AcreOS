@@ -145,7 +145,7 @@ describe("adapter remap rates and statewide build status", () => {
   ];
   it("per job: runs, attempts by outcome, promotion rate", () => {
     const fl = foldRemapRates(rows).find((j) => j.jobName === "fl_statewide_cadastral_v1")!;
-    expect(fl).toMatchObject({ runs: 3, attempts: 2, promoted: 1, rejected: 1, noProposal: 0, promotionRate: 0.333 });
+    expect(fl).toMatchObject({ runs: 3, attempts: 2, promoted: 1, rejected: 1, noProposal: 0, promotionRate: 0.333, latestOutcome: "rejected" });
     expect(foldRemapRates(rows).find((j) => j.jobName === "nc_statewide_cadastral_v1")?.promotionRate).toBe(0);
   });
   it("latest build per job (rows newest first); a failed run reads 'failed', not its last good outcome", () => {

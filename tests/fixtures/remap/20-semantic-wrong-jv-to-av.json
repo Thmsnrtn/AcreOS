@@ -1,0 +1,36 @@
+{
+  "synthetic": true,
+  "about": "SYNTHETIC drift fixture (D2d). The layer STRUCTURE is invented to simulate one drift shape of an ArcGIS layer against the FL seed field map; every VALUE is derived from the FL golden county's recorded attributes (shared/landData/golden/fl-golden-county.json) by the ops in values.derive — no value is invented.",
+  "shape": "semantic-wrong-jv-to-av",
+  "drift": "JV (just/market value) removed; JV_HMSTD appears — type-compatible (double), a clean prefix extension of JV (similarity 0.85, sole candidate) — but it holds the ASSESSED (AV_NSD) values. On three of the five golden parcels AV == JV, so only slots 4 and 5 can tell them apart.",
+  "layer": {
+    "drop": [
+      "JV"
+    ],
+    "add": [
+      {
+        "name": "JV_HMSTD",
+        "type": "esriFieldTypeDouble"
+      }
+    ]
+  },
+  "values": {
+    "derive": {
+      "JV_HMSTD": {
+        "op": "copy",
+        "of": "AV_NSD"
+      }
+    }
+  },
+  "expect": {
+    "outcome": "rejected",
+    "proposed": {
+      "marketValue": "JV_HMSTD"
+    },
+    "mismatchField": "marketValueUsd",
+    "mismatchSlots": [
+      4,
+      5
+    ]
+  }
+}
