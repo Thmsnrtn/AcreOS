@@ -27,7 +27,7 @@
  *                  loader's readFileSync + parcels[] shape). PASS = it does NOT
  *                  complete under the cap.
  *   mutant-store   persists by accumulating every parcel (the pre-D2a owned[]
- *                  → one persistLoadedCounty call). PASS = it does NOT complete.
+ *                  → one whole-county save). PASS = it does NOT complete.
  *   statewide-build        the statewide buildCounty (NC spec, synthetic layer, parcel
  *                          ids scrambled against OBJECTID) through the bounded
  *                          external sort by source_parcel_id. PASS = completed,

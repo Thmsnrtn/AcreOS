@@ -1,25 +1,30 @@
 /**
  * W2 land-data pipeline — artifacts, loader, crosswalk, refusals, uploads.
  *
- *  - GeoParquet: written, read back, geometry identical, "geo" metadata valid.
- *  - PMTiles: written, read back with the `pmtiles` reader the client uses,
- *    a tile under a parcel decodes to MVT features carrying only gated facts.
+ *  - GeoParquet: written by the streaming writer (StreamingArtifactWriter —
+ *    the only artifact writer since D2a), read back, geometry identical,
+ *    "geo" metadata valid.
+ *  - PMTiles: same writer, read back with the `pmtiles` reader the client
+ *    uses, a tile under a parcel decodes to MVT features carrying only gated
+ *    facts.
  *  - Shapefile loader: the Lambert Conformal Conic inverse reproduces the
  *    EPSG Guidance Note 7-2 worked example; a polygon .shp/.dbf round-trips.
  *  - Crosswalk: a renumbered parcel keeps its key; a split gets a new one.
  *  - County pipeline: refusal before any fetch for each refusal reason;
  *    a page is keyed, faceted and saved.
- *  - Upload: no receipt unless the bucket confirms the byte count.
+ *  - Upload: the artifact is streamed from its file, and there is no receipt
+ *    unless the bucket confirms the byte count.
  */
 import { describe, expect, it, vi } from "vitest";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 vi.mock("../../server/db", () => ({ db: {} }));
 
-import { writeGeoParquet, readGeoParquet, encodeWkb, decodeWkb, type OwnedParcelRow } from "../../server/services/landData/geoParquet";
-import { buildPmtiles } from "../../server/services/landData/pmtilesWriter";
+import { readGeoParquetRows, encodeWkb, decodeWkb, type ParquetColumnDef } from "../../server/services/landData/geoParquet";
+import { StreamingArtifactWriter } from "../../server/services/landData/streamingArtifacts";
 import { lccInverse, readDbf, readShpPolygons } from "../../server/services/landData/shapefile";
 import { areaSqM, areaCentroid, type AreaGeometry } from "../../server/services/landData/geometry";
 import { reconcileCrosswalk, newParcelKey } from "@shared/landData/parcelCrosswalk";
@@ -30,33 +35,73 @@ import {
   MAX_CONCURRENT_COUNTIES,
   type EndpointView,
 } from "../../server/services/landData/countyPipeline";
-import { uploadAndConfirm, bucketConfigFromEnv, type ObjectStoreClient } from "../../server/services/landData/openDataBucket";
+import { uploadFileAndConfirm, bucketConfigFromEnv, type ObjectStoreClient } from "../../server/services/landData/openDataBucket";
 import type { ParcelContext } from "../../server/services/landData/computeParcelFacts";
 
 const root = path.resolve(__dirname, "../..");
 const fx = JSON.parse(readFileSync(path.join(root, "tests/fixtures/land-data/tn-accuracy-sample.json"), "utf8"));
 const sampleGeoms: AreaGeometry[] = fx.parcels.slice(0, 3).map((p: any) => p.geometry);
 
+interface FactRow {
+  parcel_key: string;
+  state: string;
+  county_fips: string;
+  county: string;
+  source_parcel_id: string;
+  source_name: string;
+  retrieved_on: string;
+  gis_acres: number;
+  deeded_acres: number | null;
+  facts_json: string;
+  truths_json: string;
+  geometry: AreaGeometry;
+}
+const FACT_SCHEMA: Record<string, ParquetColumnDef> = {
+  parcel_key: { type: "UTF8" },
+  state: { type: "UTF8" },
+  county_fips: { type: "UTF8" },
+  county: { type: "UTF8" },
+  source_parcel_id: { type: "UTF8" },
+  source_name: { type: "UTF8" },
+  retrieved_on: { type: "UTF8" },
+  gis_acres: { type: "DOUBLE" },
+  deeded_acres: { type: "DOUBLE", optional: true },
+  facts_json: { type: "UTF8" },
+  truths_json: { type: "UTF8" },
+  geometry: { type: "BYTE_ARRAY" },
+};
+const factRows = (): FactRow[] =>
+  sampleGeoms.map((g, i) => ({
+    parcel_key: `TN-47041-${i}`, state: "TN", county_fips: "47041", county: "DeKalb",
+    source_parcel_id: String(i), source_name: "TN Comptroller parcel download", retrieved_on: "2026-10-10",
+    gis_acres: areaSqM(g) / 4046.8564224, deeded_acres: i === 0 ? null : 5,
+    facts_json: JSON.stringify({ i }), truths_json: "[]", geometry: g,
+  }));
+async function writeArtifacts(dir: string, rows: FactRow[]) {
+  const w = new StreamingArtifactWriter<FactRow>(
+    { outDir: dir, stem: "t", schemaDef: FACT_SCHEMA, layerName: "parcels", tileName: "t", tileDescription: "t", attribution: "t" },
+    (r) => ({ parcel_key: r.parcel_key, access: "public_road_contact" }),
+  );
+  await w.open();
+  for (const r of rows) await w.write(r);
+  return w.finish();
+}
+
 describe("GeoParquet writer + loader", () => {
   it("round-trips rows and geometry exactly, with GeoParquet 1.1 metadata", async () => {
     const dir = mkdtempSync(path.join(tmpdir(), "w2-pq-"));
     try {
-      const rows: OwnedParcelRow[] = sampleGeoms.map((g, i) => ({
-        parcel_key: `TN-47041-${i}`, state: "TN", county_fips: "47041", county: "DeKalb",
-        source_parcel_id: String(i), source_name: "TN Comptroller parcel download", retrieved_on: "2026-10-10",
-        gis_acres: areaSqM(g) / 4046.8564224, deeded_acres: i === 0 ? null : 5,
-        facts_json: JSON.stringify({ i }), truths_json: "[]", geometry: g,
-      }));
-      const file = path.join(dir, "t.parquet");
-      await writeGeoParquet(file, rows);
-      const back = await readGeoParquet(file);
+      const rows = factRows();
+      const built = await writeArtifacts(dir, rows);
+      const back = await readGeoParquetRows<FactRow>(built.parquet.localPath);
       expect(back.rows).toHaveLength(3);
       expect(back.geo.version).toBe("1.1.0");
       expect(back.geo.primary_column).toBe("geometry");
       expect(back.geo.columns.geometry.encoding).toBe("WKB");
       back.rows.forEach((r, i) => {
         expect(r.geometry).toEqual(rows[i].geometry);
-        expect(r.deeded_acres).toBe(rows[i].deeded_acres);
+        // An absent optional cell reads back undefined; it was written from null.
+        expect(r.deeded_acres ?? null).toBe(rows[i].deeded_acres);
         expect(r.parcel_key).toBe(rows[i].parcel_key);
       });
     } finally {
@@ -72,37 +117,42 @@ describe("GeoParquet writer + loader", () => {
 
 describe("PMTiles writer + loader", () => {
   it("archive opens with the pmtiles reader and a tile decodes to MVT features", async () => {
-    const fc = {
-      type: "FeatureCollection" as const,
-      features: sampleGeoms.map((g, i) => ({ type: "Feature" as const, geometry: g, properties: { parcel_key: `k${i}`, access: "public_road_contact" } })),
-    };
-    const out = await buildPmtiles(fc, { layerName: "parcels", minZoom: 10, maxZoom: 14, name: "t", description: "t", attribution: "t" });
-    expect(out.tileCount).toBeGreaterThan(0);
-    const { PMTiles } = await import("pmtiles");
-    const bytes = out.bytes;
-    const arch = new PMTiles({
-      getKey: () => "t",
-      getBytes: async (o: number, l: number) => ({ data: bytes.buffer.slice(bytes.byteOffset + o, bytes.byteOffset + o + l) }),
-    } as any);
-    const h = await arch.getHeader();
-    expect([h.minZoom, h.maxZoom, h.tileType]).toEqual([10, 14, 1]);
-    const [cx, cy] = areaCentroid(sampleGeoms[0]);
-    const z = 14, n = 2 ** z;
-    const x = Math.floor(((cx + 180) / 360) * n);
-    const y = Math.floor(((1 - Math.log(Math.tan((cy * Math.PI) / 180) + 1 / Math.cos((cy * Math.PI) / 180)) / Math.PI) / 2) * n);
-    const tile = await arch.getZxy(z, x, y);
-    expect(tile?.data.byteLength).toBeGreaterThan(0);
-    const { VectorTile } = await import("@mapbox/vector-tile");
-    const pbf: any = await import("pbf");
-    const vt = new VectorTile(new (pbf.PbfReader ?? pbf.default)(new Uint8Array(tile!.data)));
-    expect(vt.layers.parcels.length).toBeGreaterThan(0);
-    expect(vt.layers.parcels.feature(0).properties.access).toBe("public_road_contact");
+    const dir = mkdtempSync(path.join(tmpdir(), "w2-pm-"));
+    try {
+      const out = await writeArtifacts(dir, factRows());
+      expect(out.tileCount).toBeGreaterThan(0);
+      const { PMTiles } = await import("pmtiles");
+      const bytes = readFileSync(out.pmtiles.localPath);
+      const arch = new PMTiles({
+        getKey: () => "t",
+        getBytes: async (o: number, l: number) => ({ data: bytes.buffer.slice(bytes.byteOffset + o, bytes.byteOffset + o + l) }),
+      } as any);
+      const h = await arch.getHeader();
+      // The streaming writer tiles at its partition grain, z14–15.
+      expect([h.minZoom, h.maxZoom, h.tileType]).toEqual([14, 15, 1]);
+      const [cx, cy] = areaCentroid(sampleGeoms[0]);
+      const z = 14, n = 2 ** z;
+      const x = Math.floor(((cx + 180) / 360) * n);
+      const y = Math.floor(((1 - Math.log(Math.tan((cy * Math.PI) / 180) + 1 / Math.cos((cy * Math.PI) / 180)) / Math.PI) / 2) * n);
+      const tile = await arch.getZxy(z, x, y);
+      expect(tile?.data.byteLength).toBeGreaterThan(0);
+      const { VectorTile } = await import("@mapbox/vector-tile");
+      const pbf: any = await import("pbf");
+      const vt = new VectorTile(new (pbf.PbfReader ?? pbf.default)(new Uint8Array(tile!.data)));
+      expect(vt.layers.parcels.length).toBeGreaterThan(0);
+      expect(vt.layers.parcels.feature(0).properties.access).toBe("public_road_contact");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("refuses to build an empty archive", async () => {
-    await expect(
-      buildPmtiles({ type: "FeatureCollection", features: [] }, { layerName: "p", minZoom: 1, maxZoom: 2, name: "", description: "", attribution: "" }),
-    ).rejects.toThrow(/empty/);
+    const dir = mkdtempSync(path.join(tmpdir(), "w2-pm0-"));
+    try {
+      await expect(writeArtifacts(dir, [])).rejects.toThrow(/empty/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 
@@ -292,16 +342,34 @@ describe("open-data bucket — no receipt without the bucket's confirmation", ()
     expect(bucketConfigFromEnv({ OPEN_DATA_BUCKET_ENDPOINT: "e", OPEN_DATA_BUCKET_NAME: "b", OPEN_DATA_BUCKET_ACCESS_KEY_ID: "k" })).toBeNull();
   });
 
+  const artifactFile = () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "w2-up-"));
+    const localPath = path.join(dir, "a.parquet");
+    writeFileSync(localPath, body);
+    return { dir, artifact: { localPath, bytes: body.length, sha256: createHash("sha256").update(body).digest("hex"), contentType: "application/octet-stream" } };
+  };
+
   it("returns a receipt with the SHA-256 when HEAD confirms the byte count", async () => {
-    const client: ObjectStoreClient = { bucket: "https://e/b", put: async () => ({ etag: '"x"' }), headBytes: async () => body.length };
-    const r = await uploadAndConfirm(client, "statewide-parcels-bulk", "tn/a.parquet", body, "application/octet-stream");
-    expect(r.bytes).toBe(body.length);
-    expect(r.sha256).toMatch(/^[0-9a-f]{64}$/);
-    expect(r.bucket).toBe("https://e/b");
+    const { dir, artifact } = artifactFile();
+    try {
+      const client: ObjectStoreClient = { bucket: "https://e/b", put: async () => ({ etag: null }), putFile: async () => ({ etag: '"x"' }), headBytes: async () => body.length };
+      const r = await uploadFileAndConfirm(client, "statewide-parcels-bulk", "tn/a.parquet", artifact);
+      expect(r.bytes).toBe(body.length);
+      expect(r.sha256).toMatch(/^[0-9a-f]{64}$/);
+      expect(r.sha256).toBe(artifact.sha256);
+      expect(r.bucket).toBe("https://e/b");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("throws (no receipt) when the bucket reports a different size", async () => {
-    const client: ObjectStoreClient = { bucket: "https://e/b", put: async () => ({ etag: null }), headBytes: async () => body.length - 1 };
-    await expect(uploadAndConfirm(client, "statewide-parcels-bulk", "tn/a.parquet", body, "x")).rejects.toThrow(/not ingested/);
+    const { dir, artifact } = artifactFile();
+    try {
+      const client: ObjectStoreClient = { bucket: "https://e/b", put: async () => ({ etag: null }), putFile: async () => ({ etag: null }), headBytes: async () => body.length - 1 };
+      await expect(uploadFileAndConfirm(client, "statewide-parcels-bulk", "tn/a.parquet", artifact)).rejects.toThrow(/not ingested/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

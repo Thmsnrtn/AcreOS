@@ -77,34 +77,16 @@ async function countyNamedBy(source: TnParcelSource): Promise<string | null> {
 }
 
 /**
- * Keep the county's parcels batch by batch; at the end mark its coverage row
- * complete and record each confirmed receipt. `complete` mirrors
- * ownedParcelStore's loadOwnedCounty + persistLoadedCounty for a county whose
- * parcels were saved in batches — INTEGRATION-D2a.md P1 proposes folding it
- * into ownedParcelStore.ts as the one canonical function.
+ * Keep the county's parcels batch by batch; at the end complete the county
+ * through ownedParcelStore's one canonical completeLoadedCounty (coverage row,
+ * confirmed receipts, IndexNow).
  */
 async function databaseStore(target: TnCountyTarget): Promise<TnCountyStore> {
-  const { saveOwnedParcels, normalizeCountyName } = await import("../../server/services/landData/ownedParcelStore");
+  const { saveOwnedParcels, completeLoadedCounty } = await import("../../server/services/landData/ownedParcelStore");
   const owned = { state: "TN", county: target.county, sourceName: TN_COMPTROLLER_DOWNLOAD.licenseSource, sourceUrl: TN_COMPTROLLER_DOWNLOAD.pageUrl };
   return {
     saveBatch: (parcels: OwnedParcelInput[]) => saveOwnedParcels(owned, parcels),
-    async complete(stored: number, receipts: UploadReceipt[]) {
-      const { db } = await import("../../server/db");
-      const { countyDiscoveryQueue } = await import("../../shared/schema");
-      const { and, eq } = await import("drizzle-orm");
-      const { clock } = await import("../../server/utils/clock");
-      const { recordReceipt } = await import("../../server/services/landData/openDataBucket");
-      const { announceCountyLoaded } = await import("../../server/services/publicCountyGuide");
-      const county = normalizeCountyName(target.county);
-      await db.insert(countyDiscoveryQueue).values({ state: "TN", county, status: "resolved", lastResult: `loaded from ${owned.sourceName}` }).onConflictDoNothing();
-      await db
-        .update(countyDiscoveryQueue)
-        .set({ ownedStatus: "complete", ownedRefusalReason: null, ownedParcelsStored: stored, ownedCompletedAt: clock.now(), updatedAt: clock.now() })
-        .where(and(eq(countyDiscoveryQueue.state, "TN"), eq(countyDiscoveryQueue.county, county)));
-      for (const r of receipts) await recordReceipt("TN", county, r);
-      await announceCountyLoaded("TN", target.county);
-      return { receiptsRecorded: receipts.length };
-    },
+    complete: (stored: number, receipts: UploadReceipt[]) => completeLoadedCounty(owned, stored, receipts),
   };
 }
 

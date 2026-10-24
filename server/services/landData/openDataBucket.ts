@@ -8,7 +8,6 @@
  * only evidence getCorporaStatus() accepts for "ingested".
  */
 
-import { createHash } from "node:crypto";
 import { OPEN_DATA_BUCKET_ENV_KEYS } from "@shared/openData/corporaManifest";
 import { bucketIdentity, type CorpusUploadReceipt } from "../openData/corporaStatus";
 import { logger } from "../../utils/logger";
@@ -75,27 +74,6 @@ export async function s3ClientFor(cfg: BucketConfig): Promise<ObjectStoreClient>
       }
     },
   };
-}
-
-/**
- * Upload one artifact and return a receipt ONLY if the bucket confirms the
- * full byte count. Throws otherwise — a half-landed object is not ingested.
- */
-export async function uploadAndConfirm(
-  client: ObjectStoreClient,
-  corpusKey: string,
-  objectKey: string,
-  body: Buffer,
-  contentType: string,
-): Promise<UploadReceipt> {
-  if (body.length === 0) throw new Error(`refusing to upload an empty object: ${objectKey}`);
-  const sha256 = createHash("sha256").update(body).digest("hex");
-  const { etag } = await client.put(objectKey, body, contentType);
-  const landed = await client.headBytes(objectKey);
-  if (landed !== body.length) {
-    throw new Error(`bucket reports ${landed ?? "no"} bytes for ${objectKey}, expected ${body.length} — not ingested`);
-  }
-  return { corpusKey, objectKey, bytes: body.length, sha256, bucket: client.bucket, etag, uploadedAt: clock.now() };
 }
 
 /**

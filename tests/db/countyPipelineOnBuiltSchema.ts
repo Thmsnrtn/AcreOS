@@ -102,7 +102,7 @@ globalThis.fetch = (async (input: RequestInfo | URL) => {
 async function main() {
   const { db, pool } = await import("../../server/db");
   const { enqueueCountyProcessing, runCountyPipelineTick } = await import("../../server/services/landData/countyPipeline");
-  const { OWNED_SNAPSHOT_SOURCE, persistLoadedCounty } = await import("../../server/services/landData/ownedParcelStore");
+  const { OWNED_SNAPSHOT_SOURCE, saveOwnedParcels, completeLoadedCounty } = await import("../../server/services/landData/ownedParcelStore");
   const { lookupParcelByCoordinates, TN_PARCELS_NOT_YET } = await import("../../server/services/parcel");
   const { getCorporaStatus, bucketIdentity } = await import("../../server/services/openData/corporaStatus");
   const { loadIngestReceipts } = await import("../../server/services/landData/openDataBucket");
@@ -225,11 +225,9 @@ async function main() {
       corpusKey: "statewide-parcels-bulk", objectKey: "tn/2026-10-11/tn-parcel-facts.parquet", bytes: 4096, sha256: "b".repeat(64),
       bucket: bucketIdentity(bucketEnv.OPEN_DATA_BUCKET_ENDPOINT, bucketEnv.OPEN_DATA_BUCKET_NAME), etag: null, uploadedAt: new Date(),
     };
-    const persisted = await persistLoadedCounty(
-      { state: "TN", county: "Comptroller Fixture", sourceName: "TN Comptroller parcel download", sourceUrl: "https://comptroller.tn.gov/" },
-      loadedParcels,
-      [receipt],
-    );
+    const loadTarget = { state: "TN", county: "Comptroller Fixture", sourceName: "TN Comptroller parcel download", sourceUrl: "https://comptroller.tn.gov/" };
+    const stored = await saveOwnedParcels(loadTarget, loadedParcels);
+    const persisted = { stored, ...(await completeLoadedCounty(loadTarget, stored, [receipt])) };
     check(persisted.stored === 3 && persisted.receiptsRecorded === 1, `the loader keeps the county's parcels and records its receipt (${JSON.stringify(persisted)})`);
     // Loading a county announces its new public guide to IndexNow (W3). That is
     // the ONLY outbound call the loader may make: it never reaches a parcel source.
