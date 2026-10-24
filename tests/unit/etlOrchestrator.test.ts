@@ -640,6 +640,24 @@ describe("etlOrchestrator — run observation (D1 A4)", () => {
     expect((hoisted.state.runs[0] as any).observation).toBeNull();
   });
 
+  it("D2d: a FAILED run keeps the observation its handler left at runState.failureObservation", async () => {
+    const handler: EtlProviderHandler = {
+      name: "obs_provider",
+      async *fetch(opts) {
+        opts.runState!.failureObservation = { kind: "statewide_cadastral_drift", remap: { outcome: "rejected" } };
+        throw new Error("STOP: the live layer no longer carries mapped field(s) JV");
+      },
+      upsert: async () => ({ action: "unchanged" }),
+      finalize: async () => ({ never: "reached" }),
+    };
+    registerEtlHandler("obs_provider", handler);
+    seedJob();
+    const r = await runJob(1);
+    expect(r.status).toBe("failure");
+    expect(r.observation).toEqual({ kind: "statewide_cadastral_drift", remap: { outcome: "rejected" } });
+    expect((hoisted.state.runs[0] as any).observation).toEqual(r.observation);
+  });
+
   it("a handler without finalize() records a null observation (existing jobs unchanged)", async () => {
     const handler: EtlProviderHandler = {
       name: "obs_provider",

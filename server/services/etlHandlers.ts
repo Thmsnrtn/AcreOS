@@ -61,12 +61,15 @@ import {
   type PollDeps,
 } from "./openData/statewideLayerPoller";
 import {
+  SchemaDriftError,
   buildCounty,
   buildSpecFor,
   statewideJobName,
+  type CountyBuildDeps,
   type CountyBuildReport,
   type CountyRunConfig,
 } from "./landData/statewideCadastral";
+import { healDrift, loadActiveMapping, type RemapAttempt } from "./openData/adapterRemap";
 import { bucketConfigFromEnv, recordReceipt, s3ClientFor, uploadFileAndConfirm } from "./landData/openDataBucket";
 import { recordProviderParcelFacts, coerceSaleDate } from "./data-cache/observation-log";
 import {
@@ -1661,6 +1664,13 @@ export const STATEWIDE_BUILD_STATES = ["FL", "NC", "WI", "AR", "MT"] as const;
  * county's home is its artifacts + receipts; finalize() returns the build
  * report (counts, peak RSS against the ceiling, gate, outcome) as the run's
  * observation.
+ *
+ * Schema drift (D2d): the build's STOP is handed to the self-healing adapter,
+ * which may promote a remap ONLY after the live layer reproduces the state's
+ * golden county through it. A promoted remap rebuilds once and is recorded in
+ * the observation (`remap`) — that record is what makes it the job's active
+ * mapping next run. Any other outcome re-throws the original refusal and keeps
+ * the attempt in the failed run's observation.
  */
 function statewideCadastralEtlHandler(state: (typeof STATEWIDE_BUILD_STATES)[number]): EtlProviderHandler {
   return {
@@ -1668,25 +1678,41 @@ function statewideCadastralEtlHandler(state: (typeof STATEWIDE_BUILD_STATES)[num
     async *fetch(opts) {
       const config = (opts.config ?? {}) as CountyRunConfig;
       const cfg = bucketConfigFromEnv();
-      const outDir = mkdtempSync(path.join(os.tmpdir(), `acreos-${state.toLowerCase()}-build-`));
-      const report = await buildCounty(buildSpecFor(state), config, {
+      const deps = (): CountyBuildDeps => ({
         getJson: (url) => getGeoJson(url, 60_000),
-        outDir,
+        outDir: mkdtempSync(path.join(os.tmpdir(), `acreos-${state.toLowerCase()}-build-`)),
         bucketConfigured: cfg !== null,
         objectStore: cfg ? () => s3ClientFor(cfg) : undefined,
         upload: (client, corpusKey, objectKey, a) => uploadFileAndConfirm(client, corpusKey, objectKey, a),
         recordReceipt,
         today: clock.now().toISOString().slice(0, 10),
       });
-      if (opts.runState) opts.runState.build = report;
+      // D2d: the active mapping is the latest PROMOTED remap in this job's run
+      // series, else the verified seed.
+      const spec = buildSpecFor(state, (await loadActiveMapping(statewideJobName(state))) ?? undefined);
+      let report: CountyBuildReport;
+      let remap: RemapAttempt | null = null;
+      try {
+        report = await buildCounty(spec, config, deps());
+      } catch (err) {
+        if (!(err instanceof SchemaDriftError)) throw err;
+        remap = await healDrift(spec, err, { getJson: (url) => getGeoJson(url, 60_000) }, clock.now());
+        if (remap.outcome !== "promoted" || !remap.mappingAfter) {
+          // The refusal stands, unchanged; the attempt is kept in the failed run's observation.
+          if (opts.runState) opts.runState.failureObservation = { kind: "statewide_cadastral_drift", remap };
+          throw err;
+        }
+        report = await buildCounty(buildSpecFor(state, remap.mappingAfter), config, deps());
+      }
+      if (opts.runState) opts.runState.build = { ...report, remap };
       yield { externalId: `${state}:${report.summary.county}`, updatedAt: null, payload: { normalized: report.summary.normalized } };
     },
     async upsert() {
       return { action: "unchanged" };
     },
     async finalize(opts) {
-      const report = opts.runState?.build as CountyBuildReport | undefined;
-      return report ? (report as unknown as Record<string, unknown>) : null;
+      const built = opts.runState?.build as (CountyBuildReport & { remap: RemapAttempt | null }) | undefined;
+      return built ? (built as unknown as Record<string, unknown>) : null;
     },
   };
 }

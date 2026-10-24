@@ -129,6 +129,11 @@ export interface EtlProviderHandler {
    * returns is the run's OBSERVATION, written once to etl_runs.observation
    * (D1 A4) — runs are never updated after completion, so one job's runs form
    * an append-only series. Throwing fails the run.
+   *
+   * A run that FAILS never reaches finalize(). A handler that observed
+   * something worth keeping before failing (e.g. a refused schema-drift remap,
+   * D2d) leaves it at `runState.failureObservation`; the orchestrator writes it
+   * to etl_runs.observation of the failed run, so the series records it too.
    */
   finalize?(opts: EtlFetchOpts): Promise<Record<string, unknown> | null>;
 }
@@ -265,13 +270,14 @@ export async function runJob(jobId: number): Promise<RunJobResult> {
   let runError: unknown = null;
   let observation: Record<string, unknown> | null = null;
 
+  const fetchOpts: EtlFetchOpts = {
+    since: watermarkBefore,
+    config: job.config ?? {},
+    sourceUrl: job.sourceUrl,
+    runState: {},
+  };
+
   try {
-    const fetchOpts: EtlFetchOpts = {
-      since: watermarkBefore,
-      config: job.config ?? {},
-      sourceUrl: job.sourceUrl,
-      runState: {},
-    };
 
     for await (const record of handler.fetch(fetchOpts)) {
       stats.read += 1;
@@ -349,6 +355,8 @@ export async function runJob(jobId: number): Promise<RunJobResult> {
     }
   } catch (err) {
     runError = err;
+    const fo = fetchOpts.runState?.failureObservation;
+    if (fo && typeof fo === "object") observation = fo as Record<string, unknown>;
   }
 
   const status: "success" | "failure" = runError ? "failure" : "success";

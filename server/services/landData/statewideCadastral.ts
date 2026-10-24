@@ -173,20 +173,47 @@ export interface LayerDeps {
   rss?(): number;
 }
 
+export interface LayerField {
+  name: string;
+  type: string;
+  alias: string | null;
+}
+
 export interface LayerMeta {
   fieldNames: string[];
+  fields: LayerField[];
   objectIdField: string | null;
   asOf: string | null;
 }
 
+/**
+ * The drift STOP, typed: the live layer no longer carries mapped field(s). It
+ * carries what the D2d adapter needs to propose a remap (the live field list);
+ * the build itself never acts on it.
+ */
+export class SchemaDriftError extends Error {
+  constructor(
+    readonly state: string,
+    readonly missing: string[],
+    readonly liveFields: LayerField[],
+    readonly mapping: FieldMapping,
+  ) {
+    super(
+      `STOP: the live ${state} layer no longer carries mapped field(s) ${missing.join(", ")} — the field map is out of date; mappings are not guessed`,
+    );
+    this.name = "SchemaDriftError";
+  }
+}
+
 export async function readLayerMeta(spec: StatewideBuildSpec, deps: LayerDeps): Promise<LayerMeta> {
   const meta = await deps.getJson(`${spec.layerUrl}?f=json`);
-  const body = meta.body as { fields?: Array<{ name: string; type: string }>; objectIdField?: string; editingInfo?: { lastEditDate?: number }; error?: { message?: string } } | null;
+  const body = meta.body as { fields?: Array<{ name: string; type: string; alias?: string }>; objectIdField?: string; editingInfo?: { lastEditDate?: number }; error?: { message?: string } } | null;
   if (!meta.ok || !body || body.error || !Array.isArray(body.fields)) {
     throw new Error(`${spec.state} layer metadata unavailable (${body?.error?.message ?? `HTTP ${meta.status}`}) — nothing built`);
   }
   return {
     fieldNames: body.fields.map((f) => f.name),
+    fields: body.fields.map((f) => ({ name: f.name, type: f.type, alias: typeof f.alias === "string" && f.alias.length > 0 ? f.alias : null })),
     objectIdField: body.objectIdField || body.fields.find((f) => f.type === "esriFieldTypeOID")?.name || null,
     asOf: typeof body.editingInfo?.lastEditDate === "number" ? new Date(body.editingInfo.lastEditDate).toISOString() : null,
   };
@@ -218,11 +245,7 @@ export async function streamCounty(
 ): Promise<CountyStreamSummary> {
   const meta = await readLayerMeta(spec, deps);
   const conformance = checkConformance(spec, meta.fieldNames);
-  if (!conformance.ok) {
-    throw new Error(
-      `STOP: the live ${spec.state} layer no longer carries mapped field(s) ${conformance.missing.join(", ")} — the field map is out of date; mappings are not guessed`,
-    );
-  }
+  if (!conformance.ok) throw new SchemaDriftError(spec.state, conformance.missing, meta.fields, spec.mapping);
   if (!config.countyField || !config.countyValue) {
     throw new Error("refused: a run is bounded to one county — set config.countyField and config.countyValue");
   }
