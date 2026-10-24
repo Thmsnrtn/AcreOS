@@ -12571,6 +12571,44 @@ $mig0284$`,
      ('ar_statewide_cadastral_v1', 'ar_statewide_cadastral_v1', 'https://gis.arkansas.gov/arcgis/rest/services/FEATURESERVICES/Planning_Cadastre/FeatureServer/6', NULL, '*/1440 * * * *', false, false, '{}'::jsonb),
      ('mt_statewide_cadastral_v1', 'mt_statewide_cadastral_v1', 'https://gisservicemt.gov/arcgis/rest/services/MSDI_Framework/Parcels/MapServer/0', NULL, '*/1440 * * * *', false, false, '{}'::jsonb)
    ON CONFLICT ("job_name") DO NOTHING`,
+  // 0289 — D2e: the append-only purpose ledger (person-adjacent lookups).
+  // Mirrors migrations/0289_d2e_purpose_ledger.sql.
+  `CREATE TABLE IF NOT EXISTS "purpose_ledger" (
+    "id" serial PRIMARY KEY,
+    "organization_id" integer NOT NULL REFERENCES "organizations"("id"),
+    "created_at" timestamp NOT NULL DEFAULT now(),
+    "actor_user_id" text NOT NULL,
+    "surface" text NOT NULL,
+    "purpose_code" text NOT NULL,
+    "justification" text,
+    "attestation_version" text,
+    "lead_id" integer,
+    "skip_trace_id" integer,
+    "apid" text,
+    "metering_ref" text,
+    "metadata" jsonb
+  )`,
+  `CREATE INDEX IF NOT EXISTS "purpose_ledger_org_created_idx" ON "purpose_ledger" ("organization_id", "created_at")`,
+  `CREATE OR REPLACE FUNCTION purpose_ledger_deny_mutation()
+   RETURNS trigger AS $$
+   BEGIN
+     IF current_setting('acreos.allow_purpose_ledger_mutation', true) = 'on' THEN
+       RETURN COALESCE(NEW, OLD);
+     END IF;
+     RAISE EXCEPTION 'purpose_ledger is append-only (UPDATE/DELETE denied)'
+       USING ERRCODE = 'restrict_violation';
+   END;
+   $$ LANGUAGE plpgsql`,
+  `DROP TRIGGER IF EXISTS purpose_ledger_no_update ON "purpose_ledger"`,
+  `CREATE TRIGGER purpose_ledger_no_update
+     BEFORE UPDATE ON "purpose_ledger"
+     FOR EACH ROW
+     EXECUTE FUNCTION purpose_ledger_deny_mutation()`,
+  `DROP TRIGGER IF EXISTS purpose_ledger_no_delete ON "purpose_ledger"`,
+  `CREATE TRIGGER purpose_ledger_no_delete
+     BEFORE DELETE ON "purpose_ledger"
+     FOR EACH ROW
+     EXECUTE FUNCTION purpose_ledger_deny_mutation()`,
 ];
 
 // The statement set this run executes. Default: everything (the production

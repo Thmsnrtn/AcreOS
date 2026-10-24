@@ -14101,6 +14101,8 @@ export * from "./schema/rental";
 // MIGRATION/ETL — extracted to ./schema/etl.ts
 // ============================================================================
 export * from "./schema/etl";
+// D2e — the append-only purpose ledger (person-adjacent lookups) — ./schema/purpose-ledger.ts
+export * from "./schema/purpose-ledger";
 
 // ============================================================================
 // FINANCIAL LEDGER + MAIL SHIPMENTS — extracted to ./schema/finance.ts

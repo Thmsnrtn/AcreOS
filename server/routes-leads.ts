@@ -30,6 +30,7 @@ import { logger } from "./utils/logger";
 import { DEFAULT_GRANT_SOURCE } from "./services/consentStamp";
 import type { ConsentSource } from "./services/consentEvents";
 import { Errors } from "./utils/errors";
+import { recordPurpose, releaseSkipTraceResults, type PurposeReceipt } from "./services/purposeLedger";
 import { omitSecretColumns } from "./utils/secretColumns";
 // ONE owner for the assigned-leads rule. It was hand-copied into five places
 // and missing from four write paths — see server/utils/assignedLeadGate.ts.
@@ -2091,23 +2092,41 @@ export function registerLeadRoutes(app: Express): void {
   // The WRITE three routes below was gated `tenant_pii_write`; these reads
   // were not, and reads are what exfiltrate. `tenant_pii_read` is denied to
   // member, va and viewer.
-  api.get("/api/skip-traces", isAuthenticated, getOrCreateOrg, requireScope("tenant_pii_read"), async (req, res) => {
-    const org = req.organization;
-    const traces = await storage.getSkipTraces(org.id);
-    res.json(traces);
+  // D2e: every released result is a purpose-ledger row (skip_trace_result_read,
+  // the purpose declared when the trace ran); a trace with no recorded purpose
+  // has its results withheld; a failed ledger write refuses the read.
+  api.get("/api/skip-traces", isAuthenticated, getOrCreateOrg, requireScope("tenant_pii_read"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const org = getOrganization(req);
+      const traces = await storage.getSkipTraces(org.id);
+      res.json(await releaseSkipTraceResults(org.id, getUserId(req), traces));
+    } catch (err) {
+      Errors.internal(res, err);
+    }
   });
 
-  api.get("/api/skip-traces/:id", isAuthenticated, getOrCreateOrg, requireScope("tenant_pii_read"), async (req, res) => {
-    const org = req.organization;
-    const trace = await storage.getSkipTrace(org.id, Number(req.params.id));
-    if (!trace) return Errors.notFound(res, "Skip trace");
-    res.json(trace);
+  api.get("/api/skip-traces/:id", isAuthenticated, getOrCreateOrg, requireScope("tenant_pii_read"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const org = getOrganization(req);
+      const trace = await storage.getSkipTrace(org.id, Number(req.params.id));
+      if (!trace) return Errors.notFound(res, "Skip trace");
+      const [released] = await releaseSkipTraceResults(org.id, getUserId(req), [trace]);
+      res.json(released);
+    } catch (err) {
+      Errors.internal(res, err);
+    }
   });
 
-  api.get("/api/skip-traces/lead/:leadId", isAuthenticated, getOrCreateOrg, requireScope("tenant_pii_read"), async (req, res) => {
-    const org = req.organization;
-    const trace = await storage.getSkipTraceByLead(org.id, Number(req.params.leadId));
-    res.json(trace || null);
+  api.get("/api/skip-traces/lead/:leadId", isAuthenticated, getOrCreateOrg, requireScope("tenant_pii_read"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const org = getOrganization(req);
+      const trace = await storage.getSkipTraceByLead(org.id, Number(req.params.leadId));
+      if (!trace) return res.json(null);
+      const [released] = await releaseSkipTraceResults(org.id, getUserId(req), [trace]);
+      res.json(released);
+    } catch (err) {
+      Errors.internal(res, err);
+    }
   });
 
   api.post("/api/skip-traces", isAuthenticated, getOrCreateOrg, requireScope("tenant_pii_write"), async (req: AuthenticatedRequest, res: Response) => {
@@ -2184,6 +2203,26 @@ export function registerLeadRoutes(app: Express): void {
       // REISkip via the registry). The service owns provider selection,
       // cross-customer caching, and the canonical ledger debit — so we
       // never charge here and never fabricate a contact.
+      // D2e: the purpose-ledger row for this lookup (no debit at this door —
+      // the service posts the provider cost). No row, no lookup.
+      let purpose: PurposeReceipt;
+      try {
+        purpose = await recordPurpose({
+          organizationId: org.id,
+          actorUserId: userId,
+          surface: "skip_trace_call",
+          purposeCode: purposeOfUse,
+          justification,
+          attestationVersion,
+          leadId,
+          skipTraceId: skipTrace.id,
+        });
+      } catch (err) {
+        logger.warn("Skip trace refused: purpose ledger write failed", { metadata: { organizationId: org.id, leadId, error: err instanceof Error ? err.message : String(err) } });
+        const refused = await storage.updateSkipTrace(skipTrace.id, { status: "failed", costCents: 0, completedAt: clock.now() });
+        return res.json(refused);
+      }
+
       try {
         const trace = await skipTracingService.trace(
           {
@@ -2195,6 +2234,7 @@ export function registerLeadRoutes(app: Express): void {
             zip: lead.zip ?? undefined,
           },
           org.id,
+          purpose,
         );
 
         if (!trace.success) {

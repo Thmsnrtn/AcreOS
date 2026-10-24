@@ -19,6 +19,10 @@
  *                          latest infra snapshot. The morning-brief payload.
  *   GET /api/ops/costs   — full cost breakdown (same sources as
  *                          /api/founder/cost-summary).
+ *   GET /api/ops/data    — D2g data-sourcing metrics: coverage, paid
+ *                          fall-through per 1k lookups, warehouse-served
+ *                          lookups vs the $0.001 target (cost not measured,
+ *                          said so), adapter remap rates (dataOpsMetrics.ts).
  *
  * SECURITY NOTES (read before touching):
  *   - This token grants read access to founder-level business data. Treat it
@@ -158,6 +162,18 @@ export function registerOpsRoutes(app: Express): void {
       });
     } catch (err) {
       logger.error("[/api/ops/summary] failed", err instanceof Error ? err : undefined);
+      return Errors.internal(res, err);
+    }
+  });
+
+  // D2g: data-sourcing ops metrics (read-only, platform aggregates).
+  app.get("/api/ops/data", opsServiceAuth, async (req: Request, res: Response) => {
+    try {
+      const days = Math.min(Math.max(Number(req.query.days ?? 30) || 30, 1), 365);
+      const { loadDataOpsMetrics } = await import("./services/ops/dataOpsMetrics");
+      return res.json(await loadDataOpsMetrics(clock.now(), days));
+    } catch (err) {
+      logger.error("[/api/ops/data] failed", err instanceof Error ? err : undefined);
       return Errors.internal(res, err);
     }
   });

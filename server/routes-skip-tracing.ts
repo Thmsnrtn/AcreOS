@@ -46,6 +46,7 @@ import { getOrganizationId, getUserId } from "./types/request";
 import { createRateLimiter } from "./middleware/rateLimit";
 import type { Lead, SkipTrace } from "@shared/schema";
 import { clock } from "./utils/clock";
+import { recordPurpose, type PurposeReceipt } from "./services/purposeLedger";
 
 const router = Router();
 
@@ -394,6 +395,26 @@ router.post("/trace/:leadId", skipTraceLimiter, async (req: AuthenticatedRequest
       }
     };
 
+    // D2e: the purpose ledger row for THIS lookup, carrying the debit it rode
+    // on. No row, no lookup: a failed write refunds and refuses.
+    let purpose: PurposeReceipt;
+    try {
+      purpose = await recordPurpose({
+        organizationId: orgId,
+        actorUserId: audit.attestingUserId,
+        surface: "skip_trace_call",
+        purposeCode: audit.purposeOfUse,
+        justification: audit.justification,
+        attestationVersion: audit.attestationVersion,
+        leadId,
+        meteringRef: `${traceKey}#${traceDebit.ledgerRowId ?? "no-debit"}`,
+      });
+    } catch (err) {
+      await refundTrace("Purpose ledger write failed — lookup refused");
+      logger.warn("[skip-trace] purpose ledger write failed; lookup refused", { metadata: { orgId, leadId, error: err instanceof Error ? err.message : String(err) } });
+      return Errors.serviceUnavailable(res, "This lookup could not be recorded, so it was not run. Nothing was charged.");
+    }
+
     let result: SkipTraceResult;
     try {
       result = await skipTracingService.trace({
@@ -403,7 +424,7 @@ router.post("/trace/:leadId", skipTraceLimiter, async (req: AuthenticatedRequest
         city: lead.city ?? undefined,
         state: lead.state ?? undefined,
         zip: lead.zip ?? undefined,
-      }, orgId);
+      }, orgId, purpose);
     } catch (err) {
       await refundTrace("Skip trace lookup failed");
       throw err;
@@ -503,6 +524,18 @@ router.post("/batch", skipTraceLimiter, async (req: AuthenticatedRequest, res: R
     // is how batch providers start dropping requests.
     for (const lead of batch) {
       try {
+        // D2e: one purpose-ledger row per lookup (a failed write fails this
+        // lead — counted below, so its unit is refunded).
+        const purpose = await recordPurpose({
+          organizationId: orgId,
+          actorUserId: audit.attestingUserId,
+          surface: "skip_trace_call",
+          purposeCode: audit.purposeOfUse,
+          justification: audit.justification,
+          attestationVersion: audit.attestationVersion,
+          leadId: lead.id,
+          meteringRef: `${batchKey}#${batchDebit.ledgerRowId ?? "no-debit"}`,
+        });
         const result = await skipTracingService.trace({
           firstName: lead.firstName,
           lastName: lead.lastName,
@@ -510,7 +543,7 @@ router.post("/batch", skipTraceLimiter, async (req: AuthenticatedRequest, res: R
           city: lead.city ?? undefined,
           state: lead.state ?? undefined,
           zip: lead.zip ?? undefined,
-        }, orgId);
+        }, orgId, purpose);
 
         if (!result.success) {
           failed++;

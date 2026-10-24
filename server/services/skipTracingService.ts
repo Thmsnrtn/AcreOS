@@ -1,5 +1,6 @@
 import { logger } from "../utils/logger";
 import { plainRefusal } from "@shared/refusal/plainRefusal";
+import { isReceipt, type PurposeReceipt } from "./purposeLedger";
 import { assertOwnerContactAllowed, ownerContactRefusal, stampOwnerSuppression } from "./trust/ownerSuppression";
 import {
   getCachedOrFetch,
@@ -25,7 +26,7 @@ import {
  *   const result = await skipTracingService.trace({
  *     firstName: "John", lastName: "Smith",
  *     address: "123 Main St", city: "Austin", state: "TX", zip: "78701",
- *   });
+ *   }, orgId, purposeReceipt); // receipt from recordPurpose() — required
  *
  *   // Returns phones, emails, relatives — ready to store on lead
  */
@@ -283,8 +284,13 @@ export const skipTracingService = {
    * Pass `organizationId` to debit opex_available on success. Without an
    * orgId the lookup still runs (e.g. internal tooling) but no ledger row
    * is written.
+   *
+   * D2e: `purpose` is the receipt of the purpose-ledger row the calling door
+   * wrote for THIS lookup (server/services/purposeLedger.ts). Without one the
+   * vendor is never called — no purpose, no read — so a future door cannot
+   * reach a skip-trace vendor unrecorded.
    */
-  async trace(input: SkipTraceInput, organizationId?: number): Promise<SkipTraceResult> {
+  async trace(input: SkipTraceInput, organizationId: number | undefined, purpose: PurposeReceipt | null | undefined): Promise<SkipTraceResult> {
     // Platform-wide owner opt-out (W5a) — said plainly here, before the
     // provider fallbacks below could turn the refusal into "not configured".
     const ownerRefusal = await ownerContactRefusal("skip_trace", { addressLine1: input.address, zip: input.zip });
@@ -297,6 +303,20 @@ export const skipTracingService = {
           what: "No contact details were looked up for this owner",
           why: "The owner asked AcreOS to stop all contact, and that request covers every account",
           unlock: "Leave this owner out of your outreach; there is nothing to override",
+        }),
+      };
+    }
+    // D2e — no purpose, no read (after the owner opt-out, which is the
+    // stronger, platform-wide refusal and says so in its own words).
+    if (!isReceipt(purpose) || purpose.surface !== "skip_trace_call") {
+      return {
+        success: false,
+        source: "none",
+        contacts: [],
+        error: plainRefusal({
+          what: "No contact details were looked up",
+          why: "A skip trace needs a recorded permissible purpose, and none was recorded for this lookup",
+          unlock: "Run the trace from a screen that asks for the purpose of use",
         }),
       };
     }
@@ -397,16 +417,6 @@ export const skipTracingService = {
           }),
       };
     }
-  },
-
-  /**
-   * Bulk trace — batch multiple records to minimize API calls and cost.
-   * Pass `organizationId` so each lookup goes through the cross-customer
-   * cache and posts its ledger row — omitting it silently bypassed both
-   * (the pre-2026-07 batch route did exactly that).
-   */
-  async traceBatch(inputs: SkipTraceInput[], organizationId?: number): Promise<SkipTraceResult[]> {
-    return Promise.all(inputs.map((input) => skipTracingService.trace(input, organizationId)));
   },
 
   /**

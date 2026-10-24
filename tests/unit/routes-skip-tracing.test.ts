@@ -120,6 +120,13 @@ vi.mock("../../server/services/creditPool", () => ({
   poolRefusalDetails: vi.fn(() => ({ reason: "pool_exhausted" })),
 }));
 
+// D2e purpose ledger — per-test behavior via recordPurposeImpl.
+let recordPurposeImpl: (e: any) => Promise<any>;
+const recordPurposeMock = vi.fn((e: any) => recordPurposeImpl(e));
+vi.mock("../../server/services/purposeLedger", () => ({
+  recordPurpose: (...args: any[]) => recordPurposeMock(args[0]),
+}));
+
 // Provider mock — per-test behavior via traceImpl.
 let traceImpl: (input: any, orgId?: number) => Promise<any>;
 const traceMock = vi.fn((input: any, orgId?: number) => traceImpl(input, orgId));
@@ -201,6 +208,8 @@ const providerMiss = (): SkipTraceResult => ({
 });
 
 beforeEach(() => {
+  recordPurposeMock.mockClear();
+  recordPurposeImpl = async () => ({ ledgerId: 101, surface: "skip_trace_call" });
   LEADS = [];
   TRACES = [];
   nextTraceId = 1;
@@ -316,6 +325,34 @@ describe("GET /api/skip-tracing/stats", () => {
 // ── POST /trace/:leadId ─────────────────────────────────────────────────────
 
 describe("POST /api/skip-tracing/trace/:leadId", () => {
+  it("D2e: writes ONE purpose-ledger row carrying the declared purpose and the debit, and hands its receipt to the vendor call", async () => {
+    LEADS = [lead(7)];
+    const res = await request(makeApp()).post("/api/skip-tracing/trace/7").send(FCRA_BODY);
+    expect(res.status).toBe(200);
+    expect(recordPurposeMock).toHaveBeenCalledTimes(1);
+    expect(recordPurposeMock.mock.calls[0][0]).toMatchObject({
+      surface: "skip_trace_call",
+      purposeCode: FCRA_BODY.purposeOfUse,
+      justification: FCRA_BODY.justification,
+      leadId: 7,
+      meteringRef: expect.stringMatching(/^skip:trace:\d+:7:\d+#/),
+    });
+    expect(traceMock.mock.calls[0][2]).toEqual({ ledgerId: 101, surface: "skip_trace_call" });
+  });
+
+  it("FALSIFICATION (D2e): a failed ledger write refunds the debit, calls no vendor and says so", async () => {
+    LEADS = [lead(7)];
+    recordPurposeImpl = async () => {
+      throw new Error("ledger down");
+    };
+    traceMock.mockClear();
+    refundPoolDebitMock.mockClear();
+    const res = await request(makeApp()).post("/api/skip-tracing/trace/7").send(FCRA_BODY);
+    expect(res.status).toBe(503);
+    expect(traceMock).not.toHaveBeenCalled();
+    expect(refundPoolDebitMock).toHaveBeenCalledTimes(1);
+  });
+
   it("persists the trace and writes contacts back onto the lead", async () => {
     LEADS = [lead(7)];
     const res = await request(makeApp()).post("/api/skip-tracing/trace/7").send(FCRA_BODY);
