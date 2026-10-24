@@ -59,6 +59,15 @@ interface TaxPosition {
   recommendations: TaxRecommendation[];
   installmentSaleOpportunities: InstallmentSale[];
   exchange1031Candidates: Exchange1031[];
+  disclaimer?: string;
+  /** The tax-table year and how every estimate was computed (server-stated). */
+  taxTable?: { year: number; basis: string };
+}
+
+/** The server refused: no tax tables on file for the requested year. */
+type TaxTableRefusal = Error & { reason: "tax_table_not_on_file"; tableYears?: number[] };
+function isTaxTableRefusal(err: unknown): err is TaxTableRefusal {
+  return err instanceof Error && (err as { reason?: unknown }).reason === "tax_table_not_on_file";
 }
 
 interface TaxTransaction {
@@ -154,10 +163,17 @@ export default function TaxOptimizerPage() {
   const { data: position, isLoading, error, refetch } = useQuery<TaxPosition>({
     queryKey: ["/api/tax-optimizer/position", taxYear],
     queryFn: () =>
-      fetch(`/api/tax-optimizer/position?year=${taxYear}`).then(r => {
-        if (!r.ok) throw new Error(`Failed to load tax position (${r.status})`);
+      fetch(`/api/tax-optimizer/position?year=${taxYear}`).then(async r => {
+        if (!r.ok) {
+          const body = await r.json().catch(() => ({}));
+          throw Object.assign(new Error(body?.message ?? `Failed to load tax position (${r.status})`), {
+            reason: body?.details?.reason,
+            tableYears: body?.details?.tableYears,
+          });
+        }
         return r.json();
       }),
+    retry: (count, err) => !isTaxTableRefusal(err) && count < 3,
   });
 
   // allow-no-invalidation: generated report renders from mutation.data — no cached query reads it
@@ -206,7 +222,12 @@ export default function TaxOptimizerPage() {
     );
   }
 
-  if (error) {
+  // A year with no tax tables on file is a refusal, not a failure: the page
+  // stays usable (year picker, the two panels that don't use rates) and shows
+  // no figures at all — never $0 placeholders.
+  const refusal = isTaxTableRefusal(error) ? error : null;
+
+  if (error && !refusal) {
     return (
       <PageShell label="Tax optimizer">
         <QueryErrorState
@@ -228,6 +249,11 @@ export default function TaxOptimizerPage() {
           <p className="text-muted-foreground text-sm mt-0.5">Capital gains analysis, 1031 exchanges, and year-end tax planning.</p>
           {/* Standing disclaimer — computed tax figures are informational, not tax advice */}
           <RequiredDisclaimer type="financial" className="mt-3" />
+          {p?.taxTable && (
+            <p className="text-xs text-muted-foreground mt-2 max-w-2xl" data-testid="text-tax-table-basis">
+              Tax table year <span className="tabular-nums">{p.taxTable.year}</span>. {p.taxTable.basis}
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <Label htmlFor={yearSelectId} className="sr-only">Tax year</Label>
@@ -246,7 +272,7 @@ export default function TaxOptimizerPage() {
           </Button>
           <Button
             onClick={() => reportMutation.mutate()}
-            disabled={reportMutation.isPending}
+            disabled={reportMutation.isPending || refusal !== null}
             aria-label={`Generate AI tax planning report for ${taxYear}`}
           >
             {reportMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" aria-hidden="true" /> : <FileText className="h-4 w-4 mr-2" aria-hidden="true" />}
@@ -255,6 +281,14 @@ export default function TaxOptimizerPage() {
         </div>
       </div>
 
+      {refusal ? (
+        <Card className="mb-6" role="status" data-testid="card-tax-table-refusal">
+          <CardContent className="pt-5 space-y-1">
+            <p className="text-sm font-medium">No tax estimate for <span className="tabular-nums">{taxYear}</span></p>
+            <p className="text-sm text-muted-foreground">{refusal.message}</p>
+          </CardContent>
+        </Card>
+      ) : (
       <dl className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <Card>
           <CardContent className="pt-5">
@@ -285,6 +319,7 @@ export default function TaxOptimizerPage() {
           </CardContent>
         </Card>
       </dl>
+      )}
 
       {reportMutation.data && (
         <Card className="mb-6 border-acr-accent dark:border-acr-accent" role="region" aria-label="AI tax planning report">
@@ -300,8 +335,9 @@ export default function TaxOptimizerPage() {
         </Card>
       )}
 
-      <Tabs defaultValue="recommendations">
+      <Tabs key={refusal ? "refused" : "position"} defaultValue={refusal ? "classification" : "recommendations"}>
         <TabsList>
+          {!refusal && (<>
           <TabsTrigger value="recommendations">
             Recommendations (<span className="tabular-nums">{p?.recommendations?.length || 0}</span>)
           </TabsTrigger>
@@ -314,6 +350,7 @@ export default function TaxOptimizerPage() {
           <TabsTrigger value="installment">
             Installment sales (<span className="tabular-nums">{p?.installmentSaleOpportunities?.length || 0}</span>)
           </TabsTrigger>
+          </>)}
           <TabsTrigger value="classification">
             Dealer vs. investor
           </TabsTrigger>
@@ -322,6 +359,7 @@ export default function TaxOptimizerPage() {
           </TabsTrigger>
         </TabsList>
 
+        {!refusal && (<>
         <TabsContent value="recommendations" className="mt-4">
           {!p?.recommendations?.length ? (
             <Card>
@@ -509,6 +547,8 @@ export default function TaxOptimizerPage() {
             </ul>
           )}
         </TabsContent>
+
+        </>)}
 
         <TabsContent value="classification" className="mt-4">
           <DealerClassificationPanel />

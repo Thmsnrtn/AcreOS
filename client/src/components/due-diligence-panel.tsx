@@ -56,6 +56,7 @@ import {
 } from "lucide-react";
 import { Verbs } from "@/lib/labels";
 import { DataProvenanceChip } from "@/components/data-provenance-chip";
+import type { DueDiligenceDossier } from "@shared/schema";
 
 interface DueDiligencePanelProps {
   propertyId: number;
@@ -96,6 +97,56 @@ const categoryLabels: Record<string, string> = {
   access: "Access",
   utilities: "Utilities",
 };
+
+type TitleStatusFinding = NonNullable<NonNullable<DueDiligenceDossier["findings"]>["titleStatus"]>;
+
+/**
+ * Title-search body. "Title appears clear" is a claim, so it renders ONLY for a
+ * VERIFIED finding whose source said `clear === true`. An unverified finding
+ * carries no liens/encumbrances arrays at all, and `!undefined?.length` read
+ * that silence as a clear title under a "Not verified" badge.
+ */
+export function TitleFindingsDetail({ title }: { title: TitleStatusFinding }) {
+  const liens = title.liens ?? [];
+  const encumbrances = title.encumbrances ?? [];
+  const verifiedClear = !title.unverified && title.clear === true && liens.length === 0 && encumbrances.length === 0;
+  return (
+    <div className="space-y-2 text-sm" data-testid="title-findings-detail">
+      {liens.length > 0 && (
+        <div>
+          <span className="font-medium">Liens:</span>
+          <ul className="list-disc list-inside text-muted-foreground">
+            {liens.map((lien, i) => (
+              <li key={i}>{lien}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {encumbrances.length > 0 && (
+        <div>
+          <span className="font-medium">Encumbrances:</span>
+          <ul className="list-disc list-inside text-muted-foreground">
+            {encumbrances.map((enc, i) => (
+              <li key={i}>{enc}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {verifiedClear ? (
+        <p className="text-muted-foreground">No liens or encumbrances found. Title appears clear.</p>
+      ) : title.unverified ? (
+        <p className="text-muted-foreground">Title has not been verified. Order a title report before relying on it.</p>
+      ) : null}
+      {!verifiedClear && (title.issues ?? []).length > 0 && (
+        <ul className="list-disc list-inside text-muted-foreground">
+          {(title.issues ?? []).map((issue, i) => (
+            <li key={i}>{issue}</li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
   const { data: checklist, isLoading } = useDueDiligenceChecklist(propertyId);
@@ -656,31 +707,7 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
                         </div>
                       </AccordionTrigger>
                       <AccordionContent>
-                        <div className="space-y-2 text-sm">
-                          {dossier.findings.titleStatus.liens && dossier.findings.titleStatus.liens.length > 0 && (
-                            <div>
-                              <span className="font-medium">Liens:</span>
-                              <ul className="list-disc list-inside text-muted-foreground">
-                                {dossier.findings.titleStatus.liens.map((lien, i) => (
-                                  <li key={i}>{lien}</li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-                          {dossier.findings.titleStatus.encumbrances && dossier.findings.titleStatus.encumbrances.length > 0 && (
-                            <div>
-                              <span className="font-medium">Encumbrances:</span>
-                              <ul className="list-disc list-inside text-muted-foreground">
-                                {dossier.findings.titleStatus.encumbrances.map((enc, i) => (
-                                  <li key={i}>{enc}</li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-                          {(!dossier.findings.titleStatus.liens?.length && !dossier.findings.titleStatus.encumbrances?.length) && (
-                            <p className="text-muted-foreground">No liens or encumbrances found. Title appears clear.</p>
-                          )}
-                        </div>
+                        <TitleFindingsDetail title={dossier.findings.titleStatus} />
                       </AccordionContent>
                     </AccordionItem>
                   )}

@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Express, Response } from "express";
 import { storage, db } from "./storage";
 import { z } from "zod";
 import { eq, and, desc } from "drizzle-orm";
@@ -8,6 +8,7 @@ import { alertingService } from "./services/alerting";
 import { usageMeteringService, creditService } from "./services/credits";
 import { callTranscripts } from "@shared/schema";
 import { requireAdminOrAbove } from "./utils/permissions";
+import { requireLadderFlag } from "./middleware/featureGate";
 import { registerAIOperationsRoutes } from "./routes-ai-operations";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
@@ -646,6 +647,19 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
   // TAX OPTIMIZER ROUTES (T79)
   // ============================================
 
+  // A tax year the rate tables on file do not cover is refused (400, with the
+  // table years), never computed on stale brackets (taxOptimizer.ts).
+  async function refuseUncoveredTaxYear(res: Response, err: unknown): Promise<boolean> {
+    const { TaxTableNotOnFileError, TAX_TABLE_YEARS } = await import("./services/taxOptimizer");
+    if (!(err instanceof TaxTableNotOnFileError)) return false;
+    Errors.badRequest(res, err.message, {
+      reason: err.reason,
+      requestedYear: err.requestedYear,
+      tableYears: TAX_TABLE_YEARS,
+    });
+    return true;
+  }
+
   // GET /api/tax-optimizer/position — year-end tax position analysis
   api.get("/api/tax-optimizer/position", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
@@ -655,6 +669,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       const position = await taxOptimizerService.analyzeYearEndPosition(org.id, taxYear);
       res.json(position);
     } catch (err: any) {
+      if (await refuseUncoveredTaxYear(res, err)) return;
       logger.error("Tax optimizer error", err);
       Errors.internal(res, err);
     }
@@ -669,6 +684,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       const estimate = await taxOptimizerService.estimateDealTax(org.id, dealId);
       res.json(estimate);
     } catch (err: any) {
+      if (await refuseUncoveredTaxYear(res, err)) return;
       Errors.internal(res, err);
     }
   });
@@ -682,6 +698,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       const report = await taxOptimizerService.generateTaxPlanningReport(org.id, taxYear);
       res.json({ report, taxYear });
     } catch (err: any) {
+      if (await refuseUncoveredTaxYear(res, err)) return;
       Errors.internal(res, err);
     }
   });
@@ -744,8 +761,13 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
   // INVESTOR VERIFICATION ROUTES (T82)
   // ============================================
 
+  // Investor profiles exist to populate the cross-org investor directory —
+  // a MARKETPLACE under the ~25-customer expansion ladder (founder decision
+  // 2026-10-20 #4). Every profile route is ladder-gated, fails closed.
+  const investorNetworkLadder = requireLadderFlag("feature_marketplace");
+
   // GET /api/investor-profiles/my — get or create own investor profile
-  api.get("/api/investor-profiles/my", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.get("/api/investor-profiles/my", isAuthenticated, getOrCreateOrg, investorNetworkLadder, async (req, res) => {
     try {
       const org = req.organization;
       const user = req.user;
@@ -763,7 +785,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
   });
 
   // POST /api/investor-profiles — create/update investor profile
-  api.post("/api/investor-profiles", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.post("/api/investor-profiles", isAuthenticated, getOrCreateOrg, investorNetworkLadder, async (req, res) => {
     try {
       const org = req.organization;
       const user = req.user;
@@ -825,7 +847,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
   });
 
   // POST /api/investor-profiles/verify — submit verification documents
-  api.post("/api/investor-profiles/verify", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.post("/api/investor-profiles/verify", isAuthenticated, getOrCreateOrg, investorNetworkLadder, async (req, res) => {
     try {
       const org = req.organization;
       const { verificationType, documentUrl, selfAttestation } = req.body;
@@ -862,7 +884,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
   });
 
   // GET /api/investor-profiles/directory — browse verified investors in marketplace
-  api.get("/api/investor-profiles/directory", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.get("/api/investor-profiles/directory", isAuthenticated, getOrCreateOrg, investorNetworkLadder, async (req, res) => {
     try {
       const { db: database } = await import("./db");
       const { investorProfiles } = await import("@shared/schema");

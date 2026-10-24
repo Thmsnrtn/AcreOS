@@ -243,6 +243,16 @@ function toAllocationCharge(c: LedgerCharge): OpenChargeForAllocation {
 // Page
 // ---------------------------------------------------------------------------
 
+/**
+ * Empty open-balances copy. Must hold whether the ledger is empty or every
+ * charge is paid — never "paid in full" (the aging read cannot see paid rows).
+ */
+export const RENT_ROLL_EMPTY_COPY = {
+  headline: "No unpaid rent charges",
+  subtitle:
+    "No rent charge on the ledger has an open balance — which is also what you see when no rent charges have been posted yet. This is not confirmation that rent was paid. Open a lease ledger to record a payment you received, or to check a deposit clock.",
+} as const;
+
 export default function RentRollPage() {
   useDocumentTitle("Rent roll — AcreOS");
   const [selectedLeaseId, setSelectedLeaseId] = useState<string | null>(null);
@@ -382,11 +392,17 @@ export default function RentRollPage() {
             <CardContent className="p-0">
               {charges.length === 0 ? (
                 <div className="p-4">
+                  {/* This said "Every recorded charge is paid in full" in a
+                      celebratory tone — rendered over an EMPTY ledger, since
+                      nothing posts rent charges on its own. /api/rent/aging
+                      returns only charges with an open balance, so this page
+                      cannot tell "all paid" from "nothing posted"; it says
+                      only what it knows. */}
                   <EmptyState
                     icon={Wallet}
-                    headline="No open balances"
-                    subtitle="Every recorded charge is paid in full. Open a lease ledger to record a payment you received, or to check a deposit clock."
-                    tone="celebratory"
+                    headline={RENT_ROLL_EMPTY_COPY.headline}
+                    subtitle={RENT_ROLL_EMPTY_COPY.subtitle}
+                    tone="default"
                     framed
                     cta={{
                       label: leases.length > 0 ? "Open a lease ledger" : "Set up a lease",

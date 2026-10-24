@@ -14,6 +14,7 @@
 import logger from "../utils/logger";
 import type { BusinessType } from "./onboarding";
 import { clock } from "../utils/clock";
+import type { PropertyListing } from "@shared/schema";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -359,7 +360,57 @@ export interface PlatformConfig {
   apiAvailable: boolean;
   requiresPartnerAccount: boolean;
   partnerSignupUrl: string;
-  envKeys: string[];
+  /**
+   * "customer_account": posting runs on the CUSTOMER's own account with the
+   * channel (founder decision 2026-10-20 #3 — customers bring their own
+   * listing accounts). "none": no account involved (Craigslist paste text).
+   * There are no platform credentials for any channel: the old `envKeys`
+   * read AcreOS's own process.env, so one AcreOS account would have posted
+   * every customer's listings — and Facebook used the founder's Meta ads
+   * token from a customer route.
+   */
+  connection: "customer_account" | "none";
+}
+
+/** The customer's own credentials for one listing channel. */
+export interface ChannelCredentials {
+  apiKey?: string;
+  brokerId?: string;
+  memberId?: string;
+  accessToken?: string;
+  pageId?: string;
+  catalogId?: string;
+}
+
+/**
+ * Resolves an org's OWN account credentials for a listing channel. No
+ * per-org listing-channel connect flow or credential store exists yet, so
+ * this answers null for every org and channel — and every API channel then
+ * refuses honestly instead of posting from an AcreOS account. A real connect
+ * flow replaces `resolve`; nothing else changes. (An object, not a bare
+ * function, so tests can drive the connected path.)
+ */
+export const channelCredentialStore = {
+  async resolve(_organizationId: number, _platform: LegacySyndicationPlatform): Promise<ChannelCredentials | null> {
+    return null;
+  },
+};
+
+export async function customerAccountConnected(organizationId: number, platform: LegacySyndicationPlatform): Promise<boolean> {
+  if (PLATFORMS[platform]?.connection === "none") return true;
+  return (await channelCredentialStore.resolve(organizationId, canonicalPlatform(platform))) !== null;
+}
+
+function channelNeedsCustomerAccount(listing: NormalizedListing, platform: LegacySyndicationPlatform, deepLinkUrl?: string): LegacySyndicationResult {
+  const name = PLATFORMS[platform].name;
+  return {
+    platform,
+    success: false,
+    error: `${name} is not connected to your own account`,
+    requiresManualAction: true,
+    deepLinkUrl: deepLinkUrl ?? PLATFORMS[platform].partnerSignupUrl,
+    manualInstructions: `Automatic posting to ${name} runs on your own ${name} account, and AcreOS can't connect one yet. Post this listing on ${name} yourself.`,
+  };
 }
 
 export const PLATFORMS: Record<LegacySyndicationPlatform, PlatformConfig> = {
@@ -369,7 +420,7 @@ export const PLATFORMS: Record<LegacySyndicationPlatform, PlatformConfig> = {
     apiAvailable: true,
     requiresPartnerAccount: true,
     partnerSignupUrl: "https://www.land.com/data-feed/",
-    envKeys: ["LANDCOM_API_KEY", "LANDCOM_BROKER_ID"],
+    connection: "customer_account",
   },
   landflip: {
     id: "landflip",
@@ -377,7 +428,7 @@ export const PLATFORMS: Record<LegacySyndicationPlatform, PlatformConfig> = {
     apiAvailable: true,
     requiresPartnerAccount: true,
     partnerSignupUrl: "https://www.landflip.com/list-land/",
-    envKeys: ["LANDFLIP_API_KEY", "LANDFLIP_MEMBER_ID"],
+    connection: "customer_account",
   },
   landsearch: {
     id: "landsearch",
@@ -385,7 +436,7 @@ export const PLATFORMS: Record<LegacySyndicationPlatform, PlatformConfig> = {
     apiAvailable: true,
     requiresPartnerAccount: true,
     partnerSignupUrl: "https://landsearch.com/partners",
-    envKeys: ["LANDSEARCH_API_KEY"],
+    connection: "customer_account",
   },
   facebook_marketplace: {
     id: "facebook_marketplace",
@@ -393,7 +444,7 @@ export const PLATFORMS: Record<LegacySyndicationPlatform, PlatformConfig> = {
     apiAvailable: true,
     requiresPartnerAccount: true,
     partnerSignupUrl: "https://www.facebook.com/business/help/1351675628644884",
-    envKeys: ["META_ACCESS_TOKEN", "META_PAGE_ID", "META_CATALOG_ID"],
+    connection: "customer_account",
   },
   craigslist: {
     id: "craigslist",
@@ -401,7 +452,7 @@ export const PLATFORMS: Record<LegacySyndicationPlatform, PlatformConfig> = {
     apiAvailable: false,
     requiresPartnerAccount: false,
     partnerSignupUrl: "https://craigslist.org/post",
-    envKeys: [],
+    connection: "none",
   },
   landwatch: {
     id: "landwatch",
@@ -409,7 +460,7 @@ export const PLATFORMS: Record<LegacySyndicationPlatform, PlatformConfig> = {
     apiAvailable: true,
     requiresPartnerAccount: true,
     partnerSignupUrl: "https://www.landwatch.com/advertise",
-    envKeys: ["LANDWATCH_API_KEY"],
+    connection: "customer_account",
   },
   lands_of_america: {
     id: "lands_of_america",
@@ -417,7 +468,7 @@ export const PLATFORMS: Record<LegacySyndicationPlatform, PlatformConfig> = {
     apiAvailable: true,
     requiresPartnerAccount: true,
     partnerSignupUrl: "https://www.landsofamerica.com/advertise/",
-    envKeys: ["LANDCOM_API_KEY", "LANDCOM_BROKER_ID"],
+    connection: "customer_account",
   },
 };
 
@@ -463,19 +514,11 @@ export interface LegacySyndicationResult {
   manualInstructions?: string;
 }
 
-async function syndicateToLandCom(listing: NormalizedListing): Promise<LegacySyndicationResult> {
-  const apiKey = process.env.LANDCOM_API_KEY;
-  const brokerId = process.env.LANDCOM_BROKER_ID;
+async function syndicateToLandCom(listing: NormalizedListing, creds: ChannelCredentials | null): Promise<LegacySyndicationResult> {
+  const apiKey = creds?.apiKey;
+  const brokerId = creds?.brokerId;
 
-  if (!apiKey || !brokerId) {
-    return {
-      platform: "land_com",
-      success: false,
-      error: "Land.com API credentials not configured",
-      requiresManualAction: true,
-      manualInstructions: "Go to land.com/settings to connect your Land.com account",
-    };
-  }
+  if (!apiKey || !brokerId) return channelNeedsCustomerAccount(listing, "land_com");
 
   try {
     const resp = await fetch("https://api.land.com/v2/listings", {
@@ -537,19 +580,16 @@ async function syndicateToLandCom(listing: NormalizedListing): Promise<LegacySyn
   }
 }
 
-async function syndicateToLandFlip(listing: NormalizedListing): Promise<LegacySyndicationResult> {
-  const apiKey = process.env.LANDFLIP_API_KEY;
-  const memberId = process.env.LANDFLIP_MEMBER_ID;
+async function syndicateToLandFlip(listing: NormalizedListing, creds: ChannelCredentials | null): Promise<LegacySyndicationResult> {
+  const apiKey = creds?.apiKey;
+  const memberId = creds?.memberId;
 
   if (!apiKey || !memberId) {
-    return {
-      platform: "landflip",
-      success: false,
-      error: "LandFlip credentials not configured",
-      requiresManualAction: true,
-      deepLinkUrl: `https://www.landflip.com/list-land/?prefill_price=${listing.askingPrice}&prefill_acres=${listing.acreage}&prefill_state=${listing.state}&prefill_county=${listing.county}`,
-      manualInstructions: "Add your LandFlip API key in Settings → Integrations to enable automatic syndication.",
-    };
+    return channelNeedsCustomerAccount(
+      listing,
+      "landflip",
+      `https://www.landflip.com/list-land/?prefill_price=${listing.askingPrice}&prefill_acres=${listing.acreage}&prefill_state=${listing.state}&prefill_county=${listing.county}`,
+    );
   }
 
   try {
@@ -595,20 +635,15 @@ async function syndicateToLandFlip(listing: NormalizedListing): Promise<LegacySy
   }
 }
 
-async function syndicateToFacebookMarketplace(listing: NormalizedListing): Promise<LegacySyndicationResult> {
-  const accessToken = process.env.META_ACCESS_TOKEN;
-  const pageId = process.env.META_PAGE_ID;
-  const catalogId = process.env.META_CATALOG_ID;
+async function syndicateToFacebookMarketplace(listing: NormalizedListing, creds: ChannelCredentials | null): Promise<LegacySyndicationResult> {
+  // The org's OWN Meta Page and catalog. This read META_ACCESS_TOKEN — the
+  // token for AcreOS's own ad account, which only the founder may reach
+  // (founder ruling 2026-08-13) — from a customer route.
+  const accessToken = creds?.accessToken;
+  const pageId = creds?.pageId;
+  const catalogId = creds?.catalogId;
 
-  if (!accessToken || !pageId || !catalogId) {
-    return {
-      platform: "facebook_marketplace",
-      success: false,
-      error: "Meta/Facebook credentials not configured",
-      requiresManualAction: true,
-      manualInstructions: "Add META_ACCESS_TOKEN, META_PAGE_ID, and META_CATALOG_ID in Settings → Integrations.",
-    };
-  }
+  if (!accessToken || !pageId || !catalogId) return channelNeedsCustomerAccount(listing, "facebook_marketplace");
 
   try {
     const resp = await fetch(`https://graph.facebook.com/v21.0/${catalogId}/products?access_token=${accessToken}`, {
@@ -629,7 +664,7 @@ async function syndicateToFacebookMarketplace(listing: NormalizedListing): Promi
         custom_label_0: listing.state,
         custom_label_1: listing.county,
         custom_label_2: `${listing.acreage} acres`,
-        custom_label_3: listing.sellerFinancingAvailable ? "Seller Financing" : "Cash Only",
+        custom_label_3: listing.sellerFinancingAvailable ? "Seller Financing" : "",
       }),
     });
 
@@ -660,7 +695,7 @@ ${listing.sellerFinancingAvailable ? `SELLER FINANCING AVAILABLE
 • Down Payment: $${listing.downPaymentMin?.toLocaleString() || "Call for details"}
 • Monthly Payments: $${listing.monthlyPaymentMin?.toLocaleString() || "Call for details"}/month
 • Interest Rate: ${listing.interestRate || "Call"}%
-` : "Cash only."}
+` : ""}
 
 Property Details:
 • Acreage: ${listing.acreage} acres
@@ -723,53 +758,33 @@ export async function syndicateListing(
 ): Promise<LegacySyndicationResult[]> {
   const results = await Promise.all(
     platforms.map(async (platform) => {
+      // The listing's OWN org's account for this channel — never AcreOS's.
+      const creds = PLATFORMS[platform]?.connection === "customer_account"
+        ? await channelCredentialStore.resolve(listing.organizationId, canonicalPlatform(platform))
+        : null;
       switch (platform) {
         case "land_com":
         case "lands_of_america":
-          return syndicateToLandCom(listing);
+          return syndicateToLandCom(listing, creds);
         case "landflip":
-          return syndicateToLandFlip(listing);
+          return syndicateToLandFlip(listing, creds);
         case "facebook_marketplace":
-          return syndicateToFacebookMarketplace(listing);
+          return syndicateToFacebookMarketplace(listing, creds);
         case "craigslist":
           return generateCraigslistPost(listing);
         default:
+          // LandWatch / LandSearch: no adapter exists. Say so plainly.
           return {
             platform,
             success: false,
-            error: `Platform "${platform}" not yet implemented`,
+            error: `AcreOS has no ${PLATFORMS[platform]?.name ?? platform} integration`,
             requiresManualAction: true,
+            deepLinkUrl: PLATFORMS[platform]?.partnerSignupUrl,
+            manualInstructions: `AcreOS can't post to ${PLATFORMS[platform]?.name ?? platform}. Post this listing there yourself.`,
           } as LegacySyndicationResult;
       }
     }),
   );
-
-  return results;
-}
-
-export async function updateSyndicatedListing(
-  listing: NormalizedListing,
-  platformListingIds: Record<LegacySyndicationPlatform, string>,
-): Promise<LegacySyndicationResult[]> {
-  const results: LegacySyndicationResult[] = [];
-
-  for (const [platform, listingId] of Object.entries(platformListingIds)) {
-    if (platform === "land_com" || platform === "lands_of_america") {
-      const apiKey = process.env.LANDCOM_API_KEY;
-      if (apiKey) {
-        try {
-          await fetch(`https://api.land.com/v2/listings/${listingId}`, {
-            method: "PUT",
-            headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ price: listing.askingPrice, description: listing.description }),
-          });
-          results.push({ platform: platform as LegacySyndicationPlatform, success: true, listingId });
-        } catch (err: any) {
-          results.push({ platform: platform as LegacySyndicationPlatform, success: false, error: err.message });
-        }
-      }
-    }
-  }
 
   return results;
 }
@@ -783,19 +798,22 @@ export async function updateSyndicatedListing(
 export async function takeDownListing(
   platform: LegacySyndicationPlatform,
   externalListingId: string,
+  organizationId: number,
 ): Promise<{ success: boolean; httpStatus?: number; error?: string }> {
   const id = encodeURIComponent(externalListingId);
+  // The take-down runs on the same customer-owned account the posting did.
+  const creds = await channelCredentialStore.resolve(organizationId, canonicalPlatform(platform));
   let url: string;
   let init: RequestInit;
   if (platform === "land_com") {
-    const apiKey = process.env.LANDCOM_API_KEY;
-    if (!apiKey) return { success: false, error: "Land.com not configured" };
+    const apiKey = creds?.apiKey;
+    if (!apiKey) return { success: false, error: "Land.com is not connected to your own account; take the listing down there yourself" };
     url = `https://api.land.com/v2/listings/${id}`;
     init = { method: "DELETE", headers: { Authorization: `Bearer ${apiKey}` } };
   } else if (platform === "facebook_marketplace") {
-    const token = process.env.META_ACCESS_TOKEN;
-    const catalogId = process.env.META_CATALOG_ID;
-    if (!token || !catalogId) return { success: false, error: "Meta not configured" };
+    const token = creds?.accessToken;
+    const catalogId = creds?.catalogId;
+    if (!token || !catalogId) return { success: false, error: "Facebook is not connected to your own account; take the listing down there yourself" };
     url = `https://graph.facebook.com/v21.0/${catalogId}/products/${id}?access_token=${token}`;
     init = { method: "DELETE" };
   } else {
@@ -827,7 +845,9 @@ export async function buildNormalizedListing(
     propertyId: property.id,
     organizationId: property.organizationId,
     title: property.name || `${acreage} Acres — ${property.county || ""} County, ${property.state || ""}`,
-    description: property.description || `${acreage} acre parcel in ${property.county || ""} County, ${property.state || ""}. ${property.zoning ? `Zoned ${property.zoning}.` : ""} Seller financing available with low down payment.`,
+    // Facts only: the fallback used to promise "Seller financing available
+    // with low down payment" on every listing, whatever the seller offered.
+    description: property.description || `${acreage} acre parcel in ${property.county || ""} County, ${property.state || ""}.${property.zoning ? ` Zoned ${property.zoning}.` : ""}`,
     askingPrice,
     pricePerAcre: acreage > 0 ? askingPrice / acreage : 0,
     acreage,
@@ -841,7 +861,8 @@ export async function buildNormalizedListing(
     propertyType: property.propertyType || "vacant land",
     zoning: property.zoning,
     photos: property.photos?.map((p: any) => p.url || p) || [],
-    sellerFinancingAvailable: true,
+    // Seller financing is offered only when the seller says so.
+    sellerFinancingAvailable: false,
     contactName: org?.name || "Real Estate Professional",
     contactPhone: org?.phone,
     contactEmail: org?.email,
@@ -849,4 +870,37 @@ export async function buildNormalizedListing(
     apn: property.apn,
     ...overrides,
   };
+}
+
+function parseOptionalNumber(v: string | null | undefined): number | undefined {
+  if (v === null || v === undefined || v === "") return undefined;
+  const n = parseFloat(v);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+/**
+ * What the customer wrote on the listing, as the overrides every channel
+ * publishes. Every publish path builds its NormalizedListing through this, so
+ * the title, description, photos and terms the seller entered are what reach
+ * the channel — the property record only fills what the listing left blank.
+ */
+export function listingContentForChannels(listing: PropertyListing): Partial<NormalizedListing> {
+  const content: Partial<NormalizedListing> = {
+    askingPrice: parseFloat(listing.askingPrice || "0"),
+    sellerFinancingAvailable: listing.sellerFinancingAvailable === true,
+  };
+  if (listing.title?.trim()) content.title = listing.title.trim();
+  if (listing.description?.trim()) content.description = listing.description.trim();
+  const photos = [...(listing.photos ?? [])]
+    .filter((p) => typeof p?.url === "string" && p.url.trim() !== "")
+    .sort((a, b) => Number(!!b.isPrimary) - Number(!!a.isPrimary) || (a.order ?? 0) - (b.order ?? 0))
+    .map((p) => p.url.trim());
+  if (photos.length > 0) content.photos = photos;
+  if (content.sellerFinancingAvailable) {
+    content.downPaymentMin = parseOptionalNumber(listing.downPaymentMin);
+    content.monthlyPaymentMin = parseOptionalNumber(listing.monthlyPaymentMin);
+    content.interestRate = parseOptionalNumber(listing.interestRate);
+    content.termYears = listing.termMonths ? Math.round(listing.termMonths / 12) : undefined;
+  }
+  return content;
 }

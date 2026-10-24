@@ -1,7 +1,7 @@
 import { emailService } from './emailService';
 import { smsService } from './smsService';
 import { storage } from '../storage';
-import { checkTcpaConsentFromLead, canSendViaChannel, checkTcpaConsent, hasCompleteMailingAddress } from './tcpaCompliance';
+import { checkTcpaConsentFromLead, canSendViaChannel, checkTcpaConsent, hasCompleteMailingAddress, hasWrittenSmsConsent } from './tcpaCompliance';
 import { frequencyGateForLead, describeFrequencySkip } from './compliance/contactFrequency';
 import { lobService, LobErrorType } from './lobService';
 import { randomUUID } from 'node:crypto';
@@ -409,10 +409,13 @@ export class CommunicationsService {
     return { subject: `Message from ${orgName}` };
   }
 
-  private determinePreferredChannel(lead: { email?: string | null; phone?: string | null; tcpaConsent?: boolean | null }): 'email' | 'sms' {
-    // Prefer email if available, SMS as fallback for TCPA-consented leads
+  determinePreferredChannel(lead: { email?: string | null; phone?: string | null; tcpaConsent?: boolean | null; consentSource?: string | null }): 'email' | 'sms' {
+    // Prefer email if available; SMS only as the fallback for a lead whose
+    // consent is WRITTEN — the same predicate tcpaGateForSms refuses on
+    // (founder decision 2026-10-20 #1), so the picker never chooses a
+    // channel the gate will then refuse.
     if (lead.email) return 'email';
-    if (lead.phone && smsService.isConfigured() && lead.tcpaConsent) return 'sms';
+    if (lead.phone && smsService.isConfigured() && hasWrittenSmsConsent(lead)) return 'sms';
     return 'email';
   }
 

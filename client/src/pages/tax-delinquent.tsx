@@ -1,5 +1,6 @@
 import { useState, useId } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "wouter";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -7,12 +8,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { usd } from "@/lib/format";
-import { AlertTriangle, DollarSign, Calendar, TrendingUp, Filter, Loader2, MapPin } from "lucide-react";
+import { AlertTriangle, DollarSign, Calendar, TrendingUp, Filter, MapPin } from "lucide-react";
 import { PageSkeleton } from "@/components/page-skeleton";
+import { TaxDelinquentImporter } from "@/components/tax-delinquent-importer";
 
 interface DelinquentLead {
   id: number;
@@ -42,8 +42,8 @@ const RISK_CONFIG = {
 
 export default function TaxDelinquentPage() {
   useDocumentTitle("Tax-delinquent pipeline");
-  const { toast } = useToast();
   const qc = useQueryClient();
+  const [importerOpen, setImporterOpen] = useState(false);
   const [stateFilter, setStateFilter] = useState("");
   const [riskFilter, setRiskFilter] = useState<string>("all");
   const stateFilterId = useId();
@@ -58,34 +58,14 @@ export default function TaxDelinquentPage() {
     },
   });
 
-  const importMutation = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/tax-delinquent/import"),
-    onSuccess: () => {
-      toast({ title: "Import started.", description: "Records will appear as the import completes." });
-      qc.invalidateQueries({ queryKey: ["/api/tax-delinquent"] });
-    },
-    onError: () =>
-      toast({
-        title: "Couldn't start import",
-        description: "No records were imported — your existing leads are unchanged.",
-        variant: "destructive",
-      }),
-  });
-
-  const contactMutation = useMutation({
-    mutationFn: (id: number) => apiRequest("POST", `/api/tax-delinquent/${id}/contact`),
-    onSuccess: () => {
-      // The lead's contacted/outreach state shows in this list — refresh it.
-      qc.invalidateQueries({ queryKey: ["/api/tax-delinquent"] });
-      toast({ title: "Lead added to outreach sequence." });
-    },
-    onError: () =>
-      toast({
-        title: "Couldn't add lead to outreach",
-        description: "The lead wasn't added — no outreach was sent. Try again.",
-        variant: "destructive",
-      }),
-  });
+  // Import is the real CSV importer (POST /api/leads/import/tax-delinquent),
+  // whose rows carry the tax_delinquent tag this list reads. There is no
+  // per-county scraper, so the page no longer offers a one-click "import"
+  // that imported nothing. Refresh this list when the importer closes.
+  const onImporterOpenChange = (open: boolean) => {
+    setImporterOpen(open);
+    if (!open) qc.invalidateQueries({ queryKey: ["/api/tax-delinquent"] });
+  };
 
   const leads = data?.leads ?? [];
   const critical = leads.filter(l => l.risk === "critical").length;
@@ -110,15 +90,11 @@ export default function TaxDelinquentPage() {
             Find motivated sellers through property tax delinquency records.
           </p>
         </div>
-        <Button
-          onClick={() => importMutation.mutate()}
-          disabled={importMutation.isPending}
-          className="min-h-11"
-        >
-          {importMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" aria-hidden="true" /> : null}
-          Import records
+        <Button onClick={() => setImporterOpen(true)} className="min-h-11">
+          Import county CSV
         </Button>
       </div>
+      <TaxDelinquentImporter open={importerOpen} onOpenChange={onImporterOpenChange} />
 
       <dl className="grid grid-cols-3 gap-3">
         <Card>
@@ -267,14 +243,10 @@ export default function TaxDelinquentPage() {
                           </div>
                         )}
                       </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="ml-3 flex-shrink-0 min-h-9"
-                        onClick={() => contactMutation.mutate(lead.id)}
-                        aria-label={`Add ${lead.ownerName} to outreach sequence`}
-                      >
-                        Contact
+                      <Button asChild size="sm" variant="outline" className="ml-3 flex-shrink-0 min-h-9">
+                        <Link href={`/leads/${lead.id}`} aria-label={`Open ${lead.ownerName}'s lead record`}>
+                          Open lead
+                        </Link>
                       </Button>
                     </div>
                   </CardContent>

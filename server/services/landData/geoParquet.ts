@@ -110,7 +110,7 @@ const SCHEMA_DEF = {
   geometry: { type: "BYTE_ARRAY" },
 } as const;
 
-function geoMetadata(rows: OwnedParcelRow[]): string {
+function geoMetadata(rows: Array<{ geometry: AreaGeometry }>): string {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   const types = new Set<string>();
   for (const r of rows) {
@@ -154,12 +154,30 @@ async function parquetLib(): Promise<ParquetLib> {
 }
 
 export async function writeGeoParquet(filePath: string, rows: OwnedParcelRow[]): Promise<void> {
+  await writeGeoParquetRows(filePath, SCHEMA_DEF, rows.map((r) => ({ ...r, deeded_acres: r.deeded_acres ?? undefined })));
+}
+
+/** A parquetjs-lite column definition (the subset the writers use). */
+export type ParquetColumnDef = { type: "UTF8" | "DOUBLE" | "BYTE_ARRAY"; optional?: boolean };
+
+/**
+ * Write any row shape as GeoParquet 1.1: `schemaDef` names every column,
+ * `geometry` must be one of them (BYTE_ARRAY, WKB-encoded here). Null/undefined
+ * cells are written as absent, so every nullable column must be `optional`.
+ */
+export async function writeGeoParquetRows<R extends { geometry: AreaGeometry }>(
+  filePath: string,
+  schemaDef: Record<string, ParquetColumnDef>,
+  rows: R[],
+): Promise<void> {
   const parquet = await parquetLib();
-  const schema = new parquet.ParquetSchema(SCHEMA_DEF);
+  const schema = new parquet.ParquetSchema(schemaDef);
   const writer = await parquet.ParquetWriter.openFile(schema, filePath);
   writer.setMetadata("geo", geoMetadata(rows));
   for (const r of rows) {
-    await writer.appendRow({ ...r, deeded_acres: r.deeded_acres ?? undefined, geometry: encodeWkb(r.geometry) });
+    const cells: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(r)) cells[k] = v === null ? undefined : v;
+    await writer.appendRow({ ...cells, geometry: encodeWkb(r.geometry) });
   }
   await writer.close();
 }
@@ -171,16 +189,24 @@ export interface LoadedGeoParquet {
 
 /** The loader: reads every row back and decodes the geometry. */
 export async function readGeoParquet(filePath: string): Promise<LoadedGeoParquet> {
+  const { geo, rows } = await readGeoParquetRows<OwnedParcelRow>(filePath);
+  return { geo, rows: rows.map((r) => ({ ...r, deeded_acres: r.deeded_acres ?? null })) };
+}
+
+/** Read any GeoParquet written by writeGeoParquetRows; absent cells come back undefined. */
+export async function readGeoParquetRows<R extends { geometry: AreaGeometry }>(
+  filePath: string,
+): Promise<{ geo: LoadedGeoParquet["geo"]; rows: R[] }> {
   const parquet = await parquetLib();
   const reader = await parquet.ParquetReader.openFile(filePath);
   const meta = reader.getMetadata();
   if (!meta.geo) throw new Error("not a GeoParquet file: no 'geo' metadata");
   const geo = JSON.parse(meta.geo);
   const cursor = reader.getCursor();
-  const rows: OwnedParcelRow[] = [];
+  const rows: R[] = [];
   for (let rec = await cursor.next(); rec; rec = await cursor.next()) {
-    const r = rec as unknown as Omit<OwnedParcelRow, "geometry"> & { geometry: Uint8Array };
-    rows.push({ ...r, deeded_acres: r.deeded_acres ?? null, geometry: decodeWkb(Buffer.from(r.geometry)) });
+    const r = rec as unknown as Omit<R, "geometry"> & { geometry: Uint8Array };
+    rows.push({ ...r, geometry: decodeWkb(Buffer.from(r.geometry)) } as unknown as R);
   }
   await reader.close();
   return { geo, rows };

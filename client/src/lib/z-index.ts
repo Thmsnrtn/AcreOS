@@ -56,6 +56,12 @@ export const Z = {
   COMMAND_PALETTE: 60,
   NEW_ITEM_MENU: 60,
 
+  // ── Popper content (z-popover) ────────────────────────────────────
+  // Select lists, menus, popovers and tooltips open FROM inside dialogs
+  // and sheets; at z-floating they painted under the z-modal scrim, which
+  // swallowed every tap (caught by the W10.3 wedge E2E).
+  POPOVER: 70,
+
   // ── Toasts above modals ───────────────────────────────────────────
   TOAST: 100,
 

@@ -185,7 +185,6 @@ const BASELINE_OFFENDERS = new Set([
   "portfolio_alerts",
   "price_recommendations",
   "property_listings",
-  "provider_lookup_log",
   "radar_configs",
   "recognition_runs",
   "refund_requests",

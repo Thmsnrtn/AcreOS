@@ -1218,31 +1218,13 @@ $mig0262$`,
    )`,
   'CREATE UNIQUE INDEX IF NOT EXISTS "county_timelines_state_county_uk" ON "county_subdivision_timelines" ("state", "county_name")',
 
-  // Brigid §7 seed: TN counties she actually works.
-  `INSERT INTO "county_subdivision_timelines"
-     ("state","county_name","p50_total_days","p90_total_days","pre_application_lead_days","sketch_plan_lead_days","preliminary_plat_lead_days","percolation_lead_days","final_plat_lead_days","recording_lead_days","percolation_season_note","typical_revision_rounds","source")
-     VALUES ('TN','Williamson',420,540,14,30,45,90,45,21,'TDEC tester April-May and Sept-Oct only — frozen / saturated ground blocks tests',3,'Williamson Co Planning + Brigid historicals 2024-2026')
-     ON CONFLICT ("state","county_name") DO NOTHING`,
-  `INSERT INTO "county_subdivision_timelines"
-     ("state","county_name","p50_total_days","p90_total_days","pre_application_lead_days","sketch_plan_lead_days","preliminary_plat_lead_days","percolation_lead_days","final_plat_lead_days","recording_lead_days","percolation_season_note","typical_revision_rounds","source")
-     VALUES ('TN','Hickman',120,180,7,14,21,120,21,14,'One TDEC tester serves three counties — queue is the bottleneck',2,'Hickman Co Planning')
-     ON CONFLICT ("state","county_name") DO NOTHING`,
-  `INSERT INTO "county_subdivision_timelines"
-     ("state","county_name","p50_total_days","p90_total_days","pre_application_lead_days","sketch_plan_lead_days","preliminary_plat_lead_days","percolation_lead_days","final_plat_lead_days","recording_lead_days","percolation_season_note","typical_revision_rounds","source")
-     VALUES ('TN','Maury',180,240,14,21,30,90,30,21,'TDEC seasonal window applies',2,'Maury Co Planning')
-     ON CONFLICT ("state","county_name") DO NOTHING`,
-  `INSERT INTO "county_subdivision_timelines"
-     ("state","county_name","p50_total_days","p90_total_days","pre_application_lead_days","sketch_plan_lead_days","preliminary_plat_lead_days","percolation_lead_days","final_plat_lead_days","recording_lead_days","percolation_season_note","typical_revision_rounds","source")
-     VALUES ('TN','Davidson',null,null,30,45,60,null,60,30,'Davidson restricts residential subdivisions in some districts — confirm zoning before bidding',4,'Metro Nashville Planning Dept')
-     ON CONFLICT ("state","county_name") DO NOTHING`,
-  `INSERT INTO "county_subdivision_timelines"
-     ("state","county_name","p50_total_days","p90_total_days","preliminary_plat_lead_days","percolation_lead_days","final_plat_lead_days","recording_lead_days","typical_revision_rounds","source")
-     VALUES ('TN','Rutherford',300,420,45,90,45,21,3,'Rutherford Co Planning — Brigid expansion estimate')
-     ON CONFLICT ("state","county_name") DO NOTHING`,
-  `INSERT INTO "county_subdivision_timelines"
-     ("state","county_name","p50_total_days","p90_total_days","preliminary_plat_lead_days","percolation_lead_days","final_plat_lead_days","recording_lead_days","typical_revision_rounds","source")
-     VALUES ('TN','Marshall',150,210,30,90,30,14,2,'Marshall Co Planning estimate')
-     ON CONFLICT ("state","county_name") DO NOTHING`,
+  // The six TN "county timeline" seed rows that stood here (Williamson,
+  // Hickman, Maury, Davidson, Rutherford, Marshall) were authored by "Brigid",
+  // an AI review persona — two of them even cited "Brigid historicals" /
+  // "Brigid expansion estimate" as their source, and the rest attributed the
+  // persona's numbers to county planning offices. /county-timelines and the
+  // carry-cost projector presented them as county data. Removed; 0283 at the
+  // end of this list deletes them from databases that already ran this seed.
 
   `CREATE TABLE IF NOT EXISTS "cc_r_templates" (
      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -9124,11 +9106,14 @@ $mig0262$`,
   // Prod-safe: CREATE TABLE IF NOT EXISTS no-ops on a table that already
   // exists, so this changes nothing for a live database either way.
   //
-  // STILL UNRESOLVED, and it needs one query nobody has been able to run:
-  // shared/schema/rental.ts declares this whole family `varchar`, while this
-  // file creates it as `uuid` — deliberately, per the acquired_notes note
-  // above ("Drizzle's varchar+gen_random_uuid() default created the column as
-  // uuid"). Both cannot be right about production. See OWNER_DECISIONS_PENDING.
+  // RESOLVED (Package 4, #397): uuid is the canonical id type. The question
+  // left open here was that shared/schema/rental.ts declared this family
+  // `varchar` while this file created it `uuid`. Production's 14 parent ids
+  // (rental_leases among them) are uuid; staging's are still varchar
+  // (rental_leases.id confirmed varchar 2026-10-23).
+  // rental.ts now declares them `uuid`, and CONVERGE_UUID_ID_FAMILIES (first
+  // in STATEMENTS) converts any database still on varchar, refusing — with
+  // table.column and count — if a value is not uuid-castable. Do not reopen.
 
   // 2. cam_reconciliations — the frozen year-end CAM true-up statement. FK to
   // cam_expense_pools above (created first so the reference resolves).
@@ -11722,6 +11707,9 @@ END $$`,
   // 0282 — how a mail shipment is paid for (house mail lanes). Mirrors
   // migrations/0282_mail_shipment_funding_lane.sql.
   `ALTER TABLE "mail_shipments" ADD COLUMN IF NOT EXISTS "funding_lane" text`,
+  // 0285 — a new listing offers seller financing only when the seller says
+  // so. Mirrors migrations/0285_listing_seller_financing_default_off.sql.
+  `ALTER TABLE "property_listings" ALTER COLUMN "seller_financing_available" SET DEFAULT false`,
   // 0280 (W5b audit) — relabel rows the old "Add Demo Data" seeder created
   // unmarked, on the full fixture fingerprint, so the outcome metric and the
   // founder Letter aggregate stop counting them. Relabel only; idempotent.
@@ -11754,6 +11742,23 @@ END $$`,
   "parent_id"         integer,
   "metadata"          jsonb
 )`,
+  // 0287 — D1 data-sourcing foundation: demand-event columns on
+  // provider_lookup_log (A3), etl_runs.observation for the append-only
+  // metadata-snapshot series (A4), and the two D1 ETL jobs seeded INACTIVE.
+  // Mirrors migrations/0287_d1_data_sourcing_foundation.sql. Placed here, not
+  // at the end, so it does not collide with the train PRs appending 0283–0285
+  // below 0286; statement order does not matter (every table it touches is
+  // created far above).
+  `ALTER TABLE "provider_lookup_log" ADD COLUMN IF NOT EXISTS "intent_class" text`,
+  `ALTER TABLE "provider_lookup_log" ADD COLUMN IF NOT EXISTS "answering_layer" text`,
+  `ALTER TABLE "provider_lookup_log" ADD COLUMN IF NOT EXISTS "confidence_served" real`,
+  `CREATE INDEX IF NOT EXISTS "provider_lookup_org_demand_idx" ON "provider_lookup_log" ("organization_id", "created_at")`,
+  `ALTER TABLE "etl_runs" ADD COLUMN IF NOT EXISTS "observation" jsonb`,
+  `INSERT INTO "etl_jobs" ("job_name", "provider_name", "source_url", "watermark_column", "schedule", "is_active", "soft_delete_on_missing", "config")
+   VALUES
+     ('statewide_layer_metadata_v1', 'statewide_layer_metadata_v1', NULL, 'lastEditDate', '*/1440 * * * *', false, false, '{}'::jsonb),
+     ('fl_statewide_cadastral_v1', 'fl_statewide_cadastral_v1', 'https://services9.arcgis.com/Gh9awoU677aKree0/arcgis/rest/services/Florida_Statewide_Cadastral/FeatureServer/0', NULL, '*/1440 * * * *', false, false, '{"dryRun": true}'::jsonb)
+   ON CONFLICT ("job_name") DO NOTHING`,
   // 0281 — the 17 unique constraints shared/schema declares that no DDL here
   // ever created. Per constraint: no-op if absent table/column or the name
   // already exists (WARNING if that name is the wrong shape); lock_timeout 5s
@@ -12492,6 +12497,70 @@ BEGIN
   PERFORM set_config('lock_timeout', prior_lock_timeout, true);
 END
 $mig0281$`,
+  // 0283 — delete the county-timeline rows seeded from an AI review persona
+  // ("Brigid"), not from any county. Two cite Brigid by name in "source"; the
+  // other four are the same persona seed attributed to planning offices, and
+  // are matched on their exact seeded (state, county, source) so an operator-
+  // entered row for the same county is never touched. Idempotent: a second run
+  // deletes nothing. Guarded so a fresh DB without the table is a no-op.
+  // Mirrors migrations/0283_county_timelines_drop_persona_seed.sql.
+  `DO $mig0283$
+BEGIN
+  IF to_regclass('"county_subdivision_timelines"') IS NULL THEN
+    RETURN;
+  END IF;
+  DELETE FROM "county_subdivision_timelines"
+   WHERE "source" ILIKE '%brigid%'
+      OR ("state", "county_name", "source") IN (
+        ('TN', 'Hickman', 'Hickman Co Planning'),
+        ('TN', 'Maury', 'Maury Co Planning'),
+        ('TN', 'Davidson', 'Metro Nashville Planning Dept'),
+        ('TN', 'Marshall', 'Marshall Co Planning estimate'));
+END
+$mig0283$`,
+  // 0284 — the seeded "Assignment Contract" system template named the deal's
+  // SELLER ({{seller_name}}) as the ASSIGNOR; the assignor is the original
+  // BUYER. seedSystemTemplates() only seeds an empty table, so existing rows
+  // are corrected here. Idempotent (matches only the uncorrected body) and
+  // guarded for a database without the table.
+  // Mirrors migrations/0284_assignment_template_assignor_label.sql.
+  `DO $mig0284$
+BEGIN
+  IF to_regclass('"document_templates"') IS NULL THEN
+    RETURN;
+  END IF;
+UPDATE "document_templates"
+   SET "content" = REPLACE(REPLACE(REPLACE(REPLACE(REPLACE("content",
+         '<strong>ASSIGNOR:</strong> {{seller_name}}', '<strong>ASSIGNOR:</strong> {{assignor_name}}'),
+         '<strong>ASSIGNEE:</strong> {{buyer_name}}', '<strong>ASSIGNEE:</strong> {{assignee_name}}'),
+         'Assignor: {{seller_name}}', 'Assignor: {{assignor_name}}'),
+         'Assignee: {{buyer_name}}', 'Assignee: {{assignee_name}}'),
+         'Assignor entered into a Real Estate Purchase Agreement dated {{original_contract_date}} ("Original Contract")',
+         'Assignor, as buyer, entered into a Real Estate Purchase Agreement dated {{original_contract_date}} with {{seller_name}}, as seller ("Original Contract")'),
+       "variables" = '[
+         {"name":"assignor_name","description":"Full legal name of the assignor — the original BUYER under the purchase contract","type":"text","required":true},
+         {"name":"assignee_name","description":"Full legal name of the assignee — the party stepping into the buyer position under the original contract","type":"text","required":true},
+         {"name":"seller_name","description":"Full legal name of the property seller under the original contract (not a party to this assignment)","type":"text","required":true},
+         {"name":"property_address","description":"Full street address of the property","type":"text","required":true},
+         {"name":"parcel_number","description":"APN/Parcel number","type":"text","required":true},
+         {"name":"county","description":"County where property is located","type":"text","required":true},
+         {"name":"state","description":"State where property is located","type":"text","required":true},
+         {"name":"purchase_price","description":"Original purchase price","type":"currency","required":true},
+         {"name":"assignment_fee","description":"Assignment fee amount","type":"currency","required":true},
+         {"name":"closing_date","description":"Date of assignment","type":"date","required":true},
+         {"name":"original_contract_date","description":"Date of original purchase contract","type":"date","required":true}
+       ]'::jsonb,
+       "updated_at" = now()
+ WHERE "is_system_template" = true
+   AND "content" LIKE '%<strong>ASSIGNOR:</strong> {{seller_name}}%';
+END
+$mig0284$`,
+// 0286 — a lead keeps the county's assessed value, the amount owed and the
+  // years delinquent from an imported list. Mirrors
+  // migrations/0286_leads_assessed_value.sql.
+  `ALTER TABLE "leads" ADD COLUMN IF NOT EXISTS "assessed_value" numeric(14,2)`,
+  `ALTER TABLE "leads" ADD COLUMN IF NOT EXISTS "tax_delinquent_amount" numeric(12,2)`,
+  `ALTER TABLE "leads" ADD COLUMN IF NOT EXISTS "tax_delinquent_years" integer`,
 ];
 
 // The statement set this run executes. Default: everything (the production

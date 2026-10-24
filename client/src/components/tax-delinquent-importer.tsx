@@ -10,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Verbs } from "@/lib/labels";
+import { classifyParcelFactHeader, type ParcelFactField } from "@shared/leads/parcelFacts";
 import { 
   Upload, 
   FileText, 
@@ -25,14 +26,32 @@ const TAX_DELINQUENT_COLUMNS = [
   { key: 'owner_name', label: 'Owner name', required: true },
   { key: 'mailing_address', label: 'Mailing address', required: false },
   { key: 'property_address', label: 'Property address', required: false },
-  { key: 'assessed_value', label: 'Assessed value', required: false },
+  { key: 'acreage', label: 'Acreage (acres)', required: false },
+  { key: 'assessed_value', label: 'Assessed value (county)', required: false },
+  { key: 'market_value', label: 'Estimated / market value', required: false },
+  { key: 'delinquent', label: 'Tax-delinquent flag', required: false },
   { key: 'taxes_owed', label: 'Taxes owed', required: false },
+  { key: 'years_delinquent', label: 'Years delinquent', required: false },
   { key: 'tax_year', label: 'Tax year', required: false },
   { key: 'county', label: 'County', required: false },
   { key: 'state', label: 'State', required: false },
 ];
 
 type ColumnMapping = Record<string, string>;
+
+// The parcel-fact columns are auto-mapped by the one shared header rule
+// (shared/leads/parcelFacts.ts), the same one the Smart CSV sheet and the
+// server importers use, so "Total Assessed", "Calc Acres" or "Delinquent
+// Amount" land on the right field instead of on nothing.
+const FACT_KEY: Record<ParcelFactField, string> = {
+  acreage: 'acreage',
+  assessedValue: 'assessed_value',
+  estimatedValue: 'market_value',
+  taxDelinquent: 'delinquent',
+  taxDelinquentAmount: 'taxes_owed',
+  taxDelinquentYears: 'years_delinquent',
+};
+const FACT_KEYS = new Set(Object.values(FACT_KEY));
 
 interface TaxDelinquentImporterProps {
   open: boolean;
@@ -94,13 +113,21 @@ export function TaxDelinquentImporter({ open, onOpenChange }: TaxDelinquentImpor
       setCsvHeaders(headers);
       
       const autoMapping: ColumnMapping = {};
+      let landValueHeader: string | undefined;
+      for (const h of headers) {
+        const fact = classifyParcelFactHeader(h);
+        if (fact === 'landValue') landValueHeader ??= h;
+        else if (fact && !autoMapping[FACT_KEY[fact]]) autoMapping[FACT_KEY[fact]] = h;
+      }
+      if (!autoMapping.assessed_value && landValueHeader) autoMapping.assessed_value = landValueHeader;
       TAX_DELINQUENT_COLUMNS.forEach(col => {
-        const match = headers.find(h => 
+        if (FACT_KEYS.has(col.key)) return;
+        const match = headers.find(h => classifyParcelFactHeader(h) === null && (
           h.toLowerCase().includes(col.key.replace(/_/g, ' ')) ||
           h.toLowerCase().includes(col.key.replace('_', '')) ||
           h.toLowerCase() === col.key.replace(/_/g, ' ') ||
           h.toLowerCase() === col.key
-        );
+        ));
         if (match) {
           autoMapping[col.key] = match;
         }

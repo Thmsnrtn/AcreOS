@@ -500,13 +500,10 @@ export async function registerRoutes(
     try {
       const { healthCheckService } = await import("./services/healthCheck");
       const result = healthCheckService.getLastResults() || await healthCheckService.checkAll();
-      const services = (result.services || []).map((s: any) => ({
-        name: s.name,
-        status: s.status === "healthy" ? "operational" : s.status === "degraded" ? "degraded" : s.status === "unconfigured" ? "operational" : "outage",
-      }));
-      const overall = services.every((s: any) => s.status === "operational") ? "operational"
-        : services.some((s: any) => s.status === "outage") ? "outage" : "degraded";
-      res.json({ status: overall, services, lastChecked: result.timestamp });
+      // "unconfigured" is NOT "operational" — see services/publicStatus.ts.
+      const { projectPublicStatus } = await import("./services/publicStatus");
+      const { status, services } = projectPublicStatus(result.services || []);
+      res.json({ status, services, lastChecked: result.timestamp });
     } catch {
       res.json({ status: "unknown", services: [], lastChecked: clock.now() });
     }
@@ -1498,6 +1495,7 @@ export async function registerRoutes(
   // Economics layer (Master Audit BI12/BK24) — compute/read versioned
   // deterministic scenarios. API surface only; no new customer nav entry.
   app.use('/api/scenarios', isAuthenticated, getOrCreateOrg, scenariosRouter);
+  // Vertical underwriting desks (decision-memos/2026-10-04-vertical-program.md).
   app.use('/api/exchange-1031', isAuthenticated, getOrCreateOrg, exchange1031Router);
   // FOUNDER-ONLY, and it was not. `client/src/App.tsx` gates the Dunning
   // Manager page behind FounderProtectedRoute with the note "the dunning API is

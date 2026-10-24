@@ -96,8 +96,12 @@ describe("assembleLandProfile — assembly", () => {
     expect(profile.agValuePerAcre?.value).toBe(4200);
     expect(profile.plss?.value).toContain("SEC 14");
 
-    // Access flags derived honestly from distances.
-    expect(profile.roadAccess?.value).toBe(true); // highway 0.4mi <= 1
+    // Road access is NOT a proximity verdict (P1-C 2026-10): a highway 0.4 mi
+    // away is a measurement, not legal access. This line used to pin
+    // `roadAccess === true` from `nearestHighwayMiles <= 1`; the invariant now
+    // is that proximity alone leaves access undetermined (a gap).
+    expect(profile.roadAccess).toBeUndefined();
+    expect(profile.gaps.find((g) => g.field === "roadAccess")?.reason).toBe("not_looked_up");
     expect(profile.waterAccess?.value).toBe(true); // stream 0.1mi <= 0.25
   });
 

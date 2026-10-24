@@ -4,7 +4,7 @@
  * Integrates PropStream / DataTree API for title due diligence.
  * Primary: PropStream API (https://api.propstream.com)
  * Fallback: ATTOM Property API (https://api.attomdata.com)
- * Development: returns mock data with realistic structure
+ * No provider configured: returns a refusal (nulls + "unverified"), never data
  *
  * Returns: lien details, deed chain, encumbrances, HOA status, owner info
  *
@@ -55,22 +55,34 @@ export interface TitleSearchResult {
   ownerMailingAddress?: string;
 
   // Liens and encumbrances
+  //
+  // `hasOpenLiens` is `true` only when a provider REPORTED an open lien. When
+  // none was reported it is `null`, never `false`: a provider's silence about
+  // liens is not an observation that there are none (the record may be
+  // incomplete, the call may not cover judgments / mechanic's liens, etc.).
   liens: LienRecord[];
   totalLienAmount: number;
-  hasOpenLiens: boolean;
+  hasOpenLiens: true | null;
 
   // Deed chain (most recent first)
   deedChain: DeedRecord[];
   lastSaleDate?: string;
   lastSalePrice?: number;
 
-  // HOA
-  hasHoa: boolean;
+  // HOA — `null` unless the provider explicitly reported HOA presence.
+  hasHoa: boolean | null;
   hoaName?: string;
   hoaFeeMonthly?: number;
 
   // Title clarity
-  titleClearStatus: "clear" | "encumbered" | "unknown";
+  //
+  // There is deliberately NO "clear" value. This is a public-records
+  // PRE-SCREEN; it cannot certify clear title, and it used to say "clear"
+  // whenever a provider simply returned no mortgage — asserting a negative
+  // from silence. "encumbered" = a provider reported an open lien / tax
+  // delinquency; everything else is "unverified" until a title commitment
+  // from a licensed underwriter says otherwise.
+  titleClearStatus: "encumbered" | "unverified";
   redFlags: string[]; // list of issues
 
   // Metadata
@@ -152,8 +164,8 @@ async function fetchFromPropstream(apn: string, state: string): Promise<TitleSea
     }
 
     const deedChain: DeedRecord[] = (prop.salesHistory || []).slice(0, 5).map((sale: any) => ({
-      grantee: sale.buyerName || "Unknown",
-      grantor: sale.sellerName || "Unknown",
+      grantee: sale.buyerName || null,
+      grantor: sale.sellerName || null,
       deedType: "warranty",
       recordedDate: sale.saleDate || "",
       saleAmount: sale.saleAmount,
@@ -176,14 +188,15 @@ async function fetchFromPropstream(apn: string, state: string): Promise<TitleSea
       ownerMailingAddress: prop.ownerMailingAddress,
       liens,
       totalLienAmount: liens.filter(l => l.status === "open").reduce((s, l) => s + l.amount, 0),
-      hasOpenLiens: openLiens.length > 0,
+      hasOpenLiens: openLiens.length > 0 ? true : null,
       deedChain,
       lastSaleDate: prop.lastSaleDate,
       lastSalePrice: prop.lastSaleAmount,
-      hasHoa: prop.hoaPresent ?? false,
+      // Only an explicit boolean from the provider is an observation.
+      hasHoa: typeof prop.hoaPresent === "boolean" ? prop.hoaPresent : null,
       hoaName: prop.hoaName,
       hoaFeeMonthly: prop.hoaFee,
-      titleClearStatus: openLiens.length === 0 && !prop.taxDelinquent ? "clear" : "encumbered",
+      titleClearStatus: openLiens.length > 0 || prop.taxDelinquent ? "encumbered" : "unverified",
       redFlags,
       source: "propstream",
       confidence: 0.9,
@@ -196,13 +209,19 @@ async function fetchFromPropstream(apn: string, state: string): Promise<TitleSea
 
 // ─── ATTOM Fallback ─────────────────────────────────────────────────────────
 
-async function fetchFromAttom(apn: string): Promise<TitleSearchResult | null> {
+async function fetchFromAttom(apn: string, fips?: string): Promise<TitleSearchResult | null> {
   const apiKey = process.env.ATTOM_API_KEY;
   if (!apiKey) return null;
+  // ATTOM keys a parcel by APN + county FIPS. This used to send the APN as
+  // `attomId` — ATTOM's own internal property id — so a numeric APN could
+  // resolve to an UNRELATED property and its owner/liens were shown for the
+  // customer's parcel. Without a FIPS code there is no correct ATTOM query
+  // for an APN, so we do not make one.
+  if (!fips) return null;
 
   try {
     const res = await fetch(
-      `https://api.attomdata.com/propertyapi/v1.0.0/property/detail?attomId=${encodeURIComponent(apn)}`,
+      `https://api.attomdata.com/propertyapi/v1.0.0/property/detail?apn=${encodeURIComponent(apn)}&fips=${encodeURIComponent(fips)}`,
       {
         headers: { apikey: apiKey, Accept: "application/json" },
         signal: AbortSignal.timeout(12000),
@@ -250,12 +269,14 @@ async function fetchFromAttom(apn: string): Promise<TitleSearchResult | null> {
       ownerOccupied: null,
       liens,
       totalLienAmount: liens.reduce((s, l) => s + l.amount, 0),
-      hasOpenLiens: liens.length > 0,
+      hasOpenLiens: liens.length > 0 ? true : null,
       deedChain,
       lastSaleDate: prop.sale?.saleTransDate,
       lastSalePrice: prop.sale?.saleAmt,
-      hasHoa: false,
-      titleClearStatus: liens.length === 0 ? "clear" : "encumbered",
+      // ATTOM's property/detail call does not report HOA presence.
+      hasHoa: null,
+      // No mortgage on this record is not "clear title" — it is silence.
+      titleClearStatus: liens.length > 0 ? "encumbered" : "unverified",
       redFlags: liens.length > 0 ? ["Open mortgage found — verify payoff amount"] : [],
       source: "attom",
       confidence: 0.65,
@@ -273,11 +294,11 @@ export const titleSearchService = {
    * Perform a title search for a given APN.
    * Tries PropStream → ATTOM → mock.
    */
-  async search(apn: string, state = ""): Promise<TitleSearchResult> {
+  async search(apn: string, state = "", fips?: string): Promise<TitleSearchResult> {
     const ps = await fetchFromPropstream(apn, state);
     if (ps) return ps;
 
-    const attom = await fetchFromAttom(apn);
+    const attom = await fetchFromAttom(apn, fips);
     if (attom) return attom;
 
     // NO PROVIDER CONFIGURED — REFUSE, DO NOT INVENT.
@@ -292,10 +313,11 @@ export const titleSearchService = {
       ownerOccupied: null,
       liens: [],
       totalLienAmount: 0,
-      hasOpenLiens: false,
+      // Nothing was searched, so nothing is asserted: null, not false.
+      hasOpenLiens: null,
       deedChain: [],
-      hasHoa: false,
-      titleClearStatus: "unknown",
+      hasHoa: null,
+      titleClearStatus: "unverified",
       redFlags: ["Title data unavailable — manual search required"],
       source: "mock",
       confidence: 0,

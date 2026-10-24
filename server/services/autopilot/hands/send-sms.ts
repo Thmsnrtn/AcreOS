@@ -20,7 +20,7 @@ import { leads } from "@shared/schema";
 import { sendSMSToLead } from "../../smsService";
 import { logger } from "../../../utils/logger";
 import { clock } from "../../../utils/clock";
-import { leadHasOptedOut } from "../../leadContactability";
+import { leadHasOptedOut, hasWrittenSmsConsent } from "../../leadContactability";
 
 const NAME = "send_sms";
 
@@ -41,16 +41,19 @@ async function handler(input: Record<string, unknown>): Promise<HandResult> {
 
     // Consent gate (defense in depth — the witnessed tap is the primary gate).
     const [lead] = await db
-      .select({ doNotContact: leads.doNotContact, optOutDate: leads.optOutDate, tcpaConsent: leads.tcpaConsent })
+      .select({ doNotContact: leads.doNotContact, optOutDate: leads.optOutDate, tcpaConsent: leads.tcpaConsent, consentSource: leads.consentSource })
       .from(leads)
       .where(and(eq(leads.organizationId, organizationId), eq(leads.id, leadId)))
       .limit(1);
     if (!lead) {
       return { success: false, output: `send_sms: lead ${leadId} not found in org ${organizationId}.`, durationMs: clock.nowMs() - started };
     }
-    if (leadHasOptedOut(lead) || lead.tcpaConsent === false) {
-      logger.info(`[autopilot/hands] send_sms refused — no TCPA consent for lead ${leadId}`);
-      return { success: false, output: `send_sms: lead ${leadId} has not consented to SMS (doNotContact / no TCPA consent); not sending.`, durationMs: clock.nowMs() - started };
+    // A prospecting text needs WRITTEN consent (founder decision 2026-10-20
+    // #1) — hasWrittenSmsConsent, the predicate tcpaGateForSms refuses on.
+    // This read `tcpaConsent === false`, which let a NULL grant through.
+    if (leadHasOptedOut(lead) || !hasWrittenSmsConsent(lead)) {
+      logger.info(`[autopilot/hands] send_sms refused — no written TCPA consent for lead ${leadId}`);
+      return { success: false, output: `send_sms: lead ${leadId} has not consented to SMS in writing (doNotContact / no written TCPA consent); not sending.`, durationMs: clock.nowMs() - started };
     }
 
     // Quiet-hours gate when a tz offset is supplied.

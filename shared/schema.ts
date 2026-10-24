@@ -593,6 +593,14 @@ export const leads = pgTable("leads", {
   taxDelinquent: boolean("tax_delinquent"),
   estimatedValue: numeric("estimated_value"),
   acreage: numeric("acreage"),
+  // Migration 0286 — the county's ASSESSED value, as a list states it. A
+  // different fact from estimatedValue (a market estimate): an import maps
+  // "Assessed Value" / "Total Assessed" here and "Market Value" there, never
+  // one into the other (shared/leads/parcelFacts.ts). Amount owed and years
+  // delinquent are what the list says, null when it says nothing.
+  assessedValue: numeric("assessed_value", { precision: 14, scale: 2 }),
+  taxDelinquentAmount: numeric("tax_delinquent_amount", { precision: 12, scale: 2 }),
+  taxDelinquentYears: integer("tax_delinquent_years"),
 
   // Campaign attribution tracking
   sourceTrackingCode: text("source_tracking_code"), // Links to campaign.trackingCode
@@ -10223,9 +10231,19 @@ export const providerLookupLog = pgTable("provider_lookup_log", {
   // only when the original cost is actually KNOWN (0 otherwise; never invented).
   cacheLane: text("cache_lane"),
   avoidedCostCents: integer("avoided_cost_cents").default(0),
+  // Demand events (migration 0287, D1 amendment A3). A row with an
+  // organization is one DEMAND EVENT: which org asked for what (intentClass),
+  // where (state/county), which layer answered (answeringLayer), how fast
+  // (latencyMs), what it cost AcreOS (costCents) and how confident the served
+  // answer was (confidenceServed, the provider's own 0..100). The shape is
+  // shared/openData/demandEvent.ts; reads are org-scoped only.
+  intentClass: text("intent_class"),
+  answeringLayer: text("answering_layer"),
+  confidenceServed: real("confidence_served"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (table) => [
   index("provider_lookup_provider_idx").on(table.providerName, table.createdAt),
+  index("provider_lookup_org_demand_idx").on(table.organizationId, table.createdAt),
   index("provider_lookup_category_idx").on(table.category, table.createdAt),
   index("provider_lookup_created_idx").on(table.createdAt),
   index("provider_lookup_county_idx").on(table.state, table.county, table.category),
@@ -10956,7 +10974,7 @@ export interface DealOpportunity {
   };
   signals: {
     motivation: string[]; // "tax delinquent", "out of state", "owned 20+ years"
-    environmental: string[]; // "no flood risk", "road access confirmed"
+    environmental: string[]; // "no flood risk", "mapped road nearby (access not verified)"
     market: string[]; // "county values rising 8% YoY"
     risks: string[]; // "wetlands adjacent", "no road access"
   };

@@ -1,10 +1,9 @@
 /**
  * Fix-and-flip vertical FF-2 — rehab budget builder.
  *
- * Devon §5.1: "A real rehabs table + rehab_line_items (category, scope,
- * vendor, budgeted, committed, spent, variance, photos). Templated
- * scopes — kitchen mid-grade, bath gut, roof tear-off & replace, exterior
- * paint — with default $/sqft so a new flipper can baseline."
+ * A rehabs table + rehab_line_items (category, scope, vendor, budgeted,
+ * committed, spent, variance, photos), with scope templates that seed the
+ * line items an operator then prices for their own market.
  *
  * Routes:
  *   GET    /api/rehabs                     — list rehabs for org
@@ -38,79 +37,92 @@ import { logger } from "./utils/logger";
 import { clock } from "./utils/clock";
 
 // ----------------------------------------------------------------------------
-// Scope templates — Devon §5.1: "Templated scopes — kitchen mid-grade, bath
-// gut, roof tear-off & replace, exterior paint — with default $/sqft so a
-// new flipper can baseline."
+// Scope templates — a STARTING SCOPE, not an estimate.
+//
+// These used to carry hardcoded Atlanta costs ("~$50-65K total at 1500 sqft
+// (Devon's typical project)" — Devon is a review persona) that were written
+// into the operator's budget as if they were estimates for THEIR market, a
+// "10% contingency reserve" line that was really a flat $6/sqft, and a silent
+// 1,500 sqft default. A template now seeds the line items (category + scope)
+// with a $0 budget; the operator enters what each line costs in their market.
+// No persona names, no market costs, no invented contingency.
 // ----------------------------------------------------------------------------
 
-interface ScopeTemplateLine {
+export interface ScopeTemplateLine {
   category: typeof REHAB_LINE_CATEGORIES[number];
   scope: string;
-  perSqftCents?: number;          // multiply by sqft for budget
-  fixedCents?: number;            // flat amount
 }
 
-interface ScopeTemplate {
+export interface ScopeTemplate {
   key: string;
   label: string;
   description: string;
   lines: ScopeTemplateLine[];
 }
 
-const SCOPE_TEMPLATES: ScopeTemplate[] = [
+const STARTING_SCOPE_NOTE = "Starting scope only — enter your own cost for each line.";
+
+export const SCOPE_TEMPLATES: ScopeTemplate[] = [
   {
-    key: "atlanta_starter_3br_2ba_1500sqft",
-    label: "Atlanta starter — 3BR/2BA ~1500 sqft",
-    description: "Entry-level rehab in Atlanta metro. ~$50-65K total at 1500 sqft (Devon's typical project).",
+    key: "full_house_starter_scope",
+    label: "Full-house starter scope (3BR/2BA)",
+    description: `Interior demo through punch list for a typical 3BR/2BA cosmetic rehab. ${STARTING_SCOPE_NOTE}`,
     lines: [
-      { category: "demolition",     scope: "Interior demo + dumpster", fixedCents: 280000 },
-      { category: "kitchen",        scope: "Kitchen — mid-grade gut", fixedCents: 1200000 },
-      { category: "bathroom",       scope: "2 bath gut & finish", fixedCents: 1400000 },
-      { category: "flooring",       scope: "LVP throughout", perSqftCents: 350 },
-      { category: "interior_paint", scope: "Interior paint", perSqftCents: 200 },
-      { category: "exterior_paint", scope: "Exterior paint + trim", fixedCents: 350000 },
-      { category: "hvac",           scope: "HVAC condenser + servicing", fixedCents: 450000 },
-      { category: "electrical",     scope: "Outlets + fixtures", fixedCents: 250000 },
-      { category: "plumbing",       scope: "Repairs + fixtures", fixedCents: 200000 },
-      { category: "trim_doors",     scope: "Doors + trim package", fixedCents: 350000 },
-      { category: "appliances",     scope: "Stainless appliance package", fixedCents: 280000 },
-      { category: "punch_list",     scope: "Punch list + cleaning", fixedCents: 150000 },
-      { category: "contingency",    scope: "10% contingency reserve", perSqftCents: 600 },
+      { category: "demolition",     scope: "Interior demo + dumpster" },
+      { category: "kitchen",        scope: "Kitchen — mid-grade gut" },
+      { category: "bathroom",       scope: "2 bath gut & finish" },
+      { category: "flooring",       scope: "LVP throughout" },
+      { category: "interior_paint", scope: "Interior paint" },
+      { category: "exterior_paint", scope: "Exterior paint + trim" },
+      { category: "hvac",           scope: "HVAC condenser + servicing" },
+      { category: "electrical",     scope: "Outlets + fixtures" },
+      { category: "plumbing",       scope: "Repairs + fixtures" },
+      { category: "trim_doors",     scope: "Doors + trim package" },
+      { category: "appliances",     scope: "Stainless appliance package" },
+      { category: "punch_list",     scope: "Punch list + cleaning" },
     ],
   },
   {
     key: "kitchen_midgrade",
     label: "Kitchen — mid-grade",
-    description: "Mid-grade kitchen rehab: cabinets, counters, appliances, backsplash, fixtures. ~$12K standalone.",
+    description: `Mid-grade kitchen rehab: cabinets, counters, appliances, backsplash, fixtures. ${STARTING_SCOPE_NOTE}`,
     lines: [
-      { category: "kitchen", scope: "Cabinets (mid-grade)", fixedCents: 600000 },
-      { category: "kitchen", scope: "Quartz countertops", fixedCents: 280000 },
-      { category: "kitchen", scope: "Tile backsplash", fixedCents: 90000 },
-      { category: "appliances", scope: "Stainless appliance package", fixedCents: 280000 },
-      { category: "plumbing", scope: "Sink + faucet", fixedCents: 50000 },
+      { category: "kitchen", scope: "Cabinets (mid-grade)" },
+      { category: "kitchen", scope: "Quartz countertops" },
+      { category: "kitchen", scope: "Tile backsplash" },
+      { category: "appliances", scope: "Stainless appliance package" },
+      { category: "plumbing", scope: "Sink + faucet" },
     ],
   },
   {
     key: "bath_gut",
     label: "Bath gut + finish",
-    description: "Full bathroom gut: tile, vanity, fixtures, tub or walk-in. ~$7K standalone.",
+    description: `Full bathroom gut: tile, vanity, fixtures, tub or walk-in. ${STARTING_SCOPE_NOTE}`,
     lines: [
-      { category: "demolition", scope: "Bath demo", fixedCents: 80000 },
-      { category: "plumbing", scope: "Rough-in + fixtures", fixedCents: 250000 },
-      { category: "bathroom", scope: "Tile floor + walls", fixedCents: 220000 },
-      { category: "bathroom", scope: "Vanity + counter + mirror", fixedCents: 120000 },
+      { category: "demolition", scope: "Bath demo" },
+      { category: "plumbing", scope: "Rough-in + fixtures" },
+      { category: "bathroom", scope: "Tile floor + walls" },
+      { category: "bathroom", scope: "Vanity + counter + mirror" },
     ],
   },
   {
     key: "roof_tear_off_replace",
     label: "Roof — tear-off + replace",
-    description: "Asphalt shingle tear-off and full replacement. ~$8-12K depending on sqft.",
+    description: `Asphalt shingle tear-off and full replacement. ${STARTING_SCOPE_NOTE}`,
     lines: [
-      { category: "roof", scope: "Tear-off + decking inspection", perSqftCents: 250 },
-      { category: "roof", scope: "Architectural shingle install", perSqftCents: 550 },
+      { category: "roof", scope: "Tear-off + decking inspection" },
+      { category: "roof", scope: "Architectural shingle install" },
     ],
   },
 ];
+
+/**
+ * The line items a template seeds. Budget is ALWAYS 0 — the operator prices
+ * each line. Exported so the seeding contract is testable without a DB.
+ */
+export function templateLineItems(tpl: ScopeTemplate): Array<{ category: ScopeTemplateLine["category"]; scope: string; budgetCents: 0 }> {
+  return tpl.lines.map((line) => ({ category: line.category, scope: line.scope, budgetCents: 0 }));
+}
 
 const TEMPLATES_BY_KEY = new Map(SCOPE_TEMPLATES.map((t) => [t.key, t]));
 
@@ -153,6 +165,7 @@ const lineItemUpdateSchema = lineItemSchema.partial();
 
 const seedTemplateSchema = z.object({
   templateKey: z.string(),
+  // Accepted for older clients and ignored: templates carry no per-sqft cost.
   sqft: z.coerce.number().int().nonnegative().optional(),
   replaceExisting: z.boolean().default(false),
 });
@@ -536,8 +549,6 @@ export function registerRehabRoutes(app: Express): void {
         .where(and(eq(rehabs.id, req.params.id), eq(rehabs.organizationId, orgId)));
       if (!r) return Errors.notFound(res, "Rehab");
 
-      const sqft = parsed.data.sqft ?? 1500;
-
       if (parsed.data.replaceExisting) {
         await db.delete(rehabLineItems)
           .where(and(eq(rehabLineItems.rehabId, r.id as string), eq(rehabLineItems.organizationId, orgId)));
@@ -546,23 +557,20 @@ export function registerRehabRoutes(app: Express): void {
       const [maxRow] = await db.execute(sql`SELECT COALESCE(MAX(sequence), -1) AS m FROM rehab_line_items WHERE rehab_id = ${r.id}`).then((res: any) => res.rows ?? []);
       let seq = (Number((maxRow as any)?.m) ?? -1) + 1;
 
-      const inserts = tpl.lines.map((line) => {
-        const budget = line.fixedCents ?? Math.round((line.perSqftCents ?? 0) * sqft);
-        return {
-          organizationId: orgId,
-          rehabId: r.id as string,
-          sequence: seq++,
-          category: line.category,
-          scope: line.scope,
-          budgetCents: budget,
-          committedCents: 0,
-          spentCents: 0,
-        };
-      });
+      const inserts = templateLineItems(tpl).map((line) => ({
+        organizationId: orgId,
+        rehabId: r.id as string,
+        sequence: seq++,
+        category: line.category,
+        scope: line.scope,
+        budgetCents: line.budgetCents,
+        committedCents: 0,
+        spentCents: 0,
+      }));
       const inserted = await db.insert(rehabLineItems).values(inserts).returning();
       await recomputeRehabSpend(orgId, r.id as string);
 
-      return res.status(201).json({ inserted: inserted.length, sqft });
+      return res.status(201).json({ inserted: inserted.length, budgetsEntered: false });
     } catch (err) {
       return Errors.internal(res, err);
     }

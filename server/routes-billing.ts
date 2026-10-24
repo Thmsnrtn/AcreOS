@@ -166,7 +166,7 @@ export function registerBillingRoutes(app: Express): void {
 
       // Data lookups: the provider registry's paid providers each publish
       // costPerLookupCents(category) (regrid / batchdata / attom category
-      // tables). Category costs range 3¢–20¢; we derive the allowance at the
+      // tables). Category costs range 3¢–20¢ (Regrid 10–15¢ per record since D1a); we derive the allowance at the
       // MAXIMUM published category cost across the paid providers, so the
       // included count can never cost more than budgeted regardless of which
       // lookup mix the customer actually uses (round down, never overpromise).

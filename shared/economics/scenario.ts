@@ -91,8 +91,12 @@ export interface ScenarioAssumption {
  * `unit` is mandatory. BI182 requires explicit units on every dimensional
  * value, and the failure it prevents is real — comparing a figure in cents with
  * one in dollars produces a number that looks plausible and is wrong by 100x.
+ *
+ * `ratio` is a FRACTION of a whole (0.07 = 7%). `multiple` is a times-figure
+ * (1.25× coverage, 8.3× rent). Both are dimensionless, but a 1.25 DSCR shown as
+ * "125%" reads as a return, so they are not the same unit.
  */
-export type MetricUnit = "cents" | "ratio" | "months" | "days" | "percent";
+export type MetricUnit = "cents" | "ratio" | "months" | "days" | "percent" | "multiple";
 
 export interface MetricSpec {
   id: string;
@@ -182,7 +186,7 @@ export const METRICS: readonly MetricSpec[] = [
   {
     id: "gross_rent_multiplier",
     label: "Gross rent multiplier",
-    unit: "ratio",
+    unit: "multiple",
     higherIsBetter: false,
   },
 
@@ -211,9 +215,21 @@ export const METRICS: readonly MetricSpec[] = [
     // the note metrics above are written under.
     id: "dscr",
     label: "Debt service coverage ratio",
-    unit: "ratio",
+    unit: "multiple",
     higherIsBetter: true,
   },
+
+  // ── Vertical program metrics (2026-10-04) ──
+  // Registered together, up front, so verticals built in parallel never edit
+  // this registry and cannot name one quantity two ways.
+  { id: "cash_required", label: "Cash required to close", unit: "cents", higherIsBetter: false },
+  { id: "cash_on_cash", label: "Cash-on-cash return", unit: "ratio", higherIsBetter: true },
+  { id: "effective_gross_income", label: "Effective gross income", unit: "cents", higherIsBetter: true },
+  { id: "annual_debt_service", label: "Annual debt service", unit: "cents", higherIsBetter: false },
+  { id: "assignment_fee", label: "Assignment fee", unit: "cents", higherIsBetter: true },
+  { id: "stabilized_value", label: "Value at market cap rate", unit: "cents", higherIsBetter: true },
+  { id: "gross_sellout", label: "Gross sell-out", unit: "cents", higherIsBetter: true },
+  { id: "discount_to_face", label: "Discount to face", unit: "ratio", higherIsBetter: true },
 ] as const;
 
 // `days` was added to MetricUnit the moment it was needed rather than deferred.
@@ -263,6 +279,23 @@ export interface EngineSpec {
   /** Metric ids this engine produces. Every one must be in METRICS. */
   produces: string[];
   /**
+   * The verticals whose core underwriting decision this engine computes.
+   *
+   * This is what makes a decision COUNT for a vertical (evidence rule v2,
+   * decision-memos/2026-10-04-vertical-program.md): a decision recorded under
+   * a vertical's strategy pack, citing a scenario from an engine that declares
+   * that vertical. Menu placement no longer decides ownership — the arithmetic
+   * does. The kit (`recordUnderwrittenDecision`) refuses at runtime a pack its
+   * engine does not declare. A route that calls the stores directly is NOT
+   * refused at runtime; for it the declaration binds only through the evidence
+   * gate, which credits a decision to no vertical its cited engine does not
+   * declare. New vertical routes use the kit.
+   *
+   * Absent or empty for engines that underwrite no vertical decision (note
+   * payoff is servicing arithmetic, not an acquisition call).
+   */
+  verticals?: readonly StrategyPackId[];
+  /**
    * The arithmetic. PURE — no I/O, no clock, no randomness. It also normalises
    * its own inputs and returns the exact set it consumed, so the persisted
    * `inputs` are what the engine actually used rather than whatever the caller
@@ -308,6 +341,7 @@ export const CORE_ENGINES: readonly EngineSpec[] = [
     id: LAND_DEAL_ENGINE_ID,
     version: LAND_DEAL_ENGINE_VERSION,
     label: "Land deal (buy, hold, resell)",
+    verticals: ["land_flipper"],
     produces: [
       "total_cost",
       "net_proceeds",

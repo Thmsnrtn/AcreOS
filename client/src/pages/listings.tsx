@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { usePropertiesByIds } from "@/hooks/use-properties";
 import { PropertyCombobox } from "@/components/property-combobox";
-import { Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -13,6 +12,7 @@ import { PageShell } from "@/components/page-shell";
 import { ListSkeleton } from "@/components/list-skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { PaymentCalculator } from "@/components/payment-calculator";
+import { photoUrlsFromText } from "@/lib/listingPhotos";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { usd } from "@/lib/format";
@@ -91,12 +91,12 @@ const listingFormSchema = z.object({
   description: z.string().optional(),
   askingPrice: z.string().min(1, "Asking price is required"),
   minimumPrice: z.string().optional(),
-  sellerFinancingAvailable: z.boolean().default(true),
+  sellerFinancingAvailable: z.boolean().default(false),
   downPaymentMin: z.string().optional(),
   monthlyPaymentMin: z.string().optional(),
   interestRate: z.string().optional(),
   termMonths: z.number().optional(),
-  photoUrl: z.string().optional(),
+  photoUrls: z.string().optional(),
   syndicationTargets: z.array(z.string()).default([]),
 });
 
@@ -141,7 +141,7 @@ export default function ListingsPage() {
 
   const createMutation = useMutation({
     mutationFn: async (data: ListingFormValues) => {
-      const photos = data.photoUrl ? [{ url: data.photoUrl, isPrimary: true, order: 0 }] : [];
+      const photos = photoUrlsFromText(data.photoUrls);
       return apiRequest("POST", "/api/listings", {
         propertyId: data.propertyId,
         title: data.title,
@@ -269,12 +269,12 @@ export default function ListingsPage() {
       description: "",
       askingPrice: "",
       minimumPrice: "",
-      sellerFinancingAvailable: true,
+      sellerFinancingAvailable: false,
       downPaymentMin: "",
       monthlyPaymentMin: "",
       interestRate: "9.9",
       termMonths: 60,
-      photoUrl: "",
+      photoUrls: "",
       syndicationTargets: [],
     },
   });
@@ -328,7 +328,7 @@ export default function ListingsPage() {
         <div className="flex items-center justify-between gap-4 flex-wrap mb-6">
           <div>
             <h1 className="text-2xl font-bold" data-testid="text-page-title">Listings</h1>
-            <p className="text-muted-foreground">Manage property listings and syndication</p>
+            <p className="text-muted-foreground">Manage property listings and their copy</p>
           </div>
           <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
             <DialogTrigger asChild>
@@ -582,26 +582,22 @@ export default function ListingsPage() {
 
                   <FormField
                     control={form.control}
-                    name="photoUrl"
+                    name="photoUrls"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Photo URL (optional)</FormLabel>
-                        <div className="relative">
-                          <ImageIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
-                          <FormControl>
-                            <Input
-                              data-testid="input-photo-url"
-                              type="url"
-                              inputMode="url"
-                              autoCapitalize="none"
-                              autoCorrect="off"
-                              spellCheck={false}
-                              className="pl-9"
-                              placeholder="https://example.com/photo.jpg"
-                              {...field}
-                            />
-                          </FormControl>
-                        </div>
+                        <FormLabel>Photo URLs (optional, one per line — the first is the cover photo)</FormLabel>
+                        <FormControl>
+                          <Textarea
+                            data-testid="input-photo-urls"
+                            inputMode="url"
+                            autoCapitalize="none"
+                            autoCorrect="off"
+                            spellCheck={false}
+                            rows={4}
+                            placeholder={"https://example.com/photo-1.jpg\nhttps://example.com/photo-2.jpg"}
+                            {...field}
+                          />
+                        </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -639,7 +635,7 @@ export default function ListingsPage() {
           <EmptyState
             icon={Building}
             headline="No listings live"
-            subtitle="Publish your first listing — Pax syndicates it to your active channels within 90 seconds and threads every inquiry back to the parcel."
+            subtitle="Create your first listing — AcreOS prepares the listing copy. Posting to Land.com or Facebook runs on your own account with each, which can't be connected yet; Craigslist gets ready-to-paste text."
             cta={{
               label: "Create listing",
               onClick: () => setIsCreateOpen(true),
@@ -924,7 +920,7 @@ export default function ListingsPage() {
 
                           <PaymentCalculator
                             listingPrice={parseFloat(listing.askingPrice?.toString() || "0")}
-                            sellerFinancingAvailable={listing.sellerFinancingAvailable ?? true}
+                            sellerFinancingAvailable={listing.sellerFinancingAvailable === true}
                             defaultDownPaymentPercent={listing.downPaymentMin ? parseFloat(listing.downPaymentMin.toString()) : 10}
                             defaultInterestRate={listing.interestRate ? parseFloat(listing.interestRate.toString()) : 9.9}
                             defaultTermMonths={listing.termMonths || 60}
@@ -948,7 +944,7 @@ export default function ListingsPage() {
               <DialogDescription>
                 {lastPublishResults
                   ? "Per-platform results from your last publish attempt."
-                  : "Select platforms to syndicate your listing to."}
+                  : "Choose channels. Craigslist returns ready-to-paste text; every other channel posts only on your own account with it, which AcreOS can't connect yet."}
               </DialogDescription>
             </DialogHeader>
             <form
@@ -959,12 +955,9 @@ export default function ListingsPage() {
               }}
             >
               <p className="text-xs text-muted-foreground" data-testid="text-publish-disclaimer">
-                Each platform requires partner credentials configured in{" "}
-                <Link href="/settings#integrations" className="underline hover:text-foreground">
-                  Settings → Integrations
-                </Link>
-                . Platforms without credentials will be returned as{" "}
-                <span className="font-medium">missing credentials</span> and skipped — no listing leaves your tenant.
+                Automatic posting runs on your own account with each channel, and AcreOS can&apos;t connect one yet. Every
+                channel except Craigslist comes back as{" "}
+                <span className="font-medium">not connected</span> and nothing is posted — post it there yourself.
               </p>
               <fieldset className="space-y-2 border-0 p-0 m-0">
                 <legend className="sr-only">Syndication platforms</legend>
@@ -985,7 +978,7 @@ export default function ListingsPage() {
                           <target.icon className="h-5 w-5 shrink-0" aria-hidden="true" />
                           <span className="truncate">{target.name}</span>
                           {needsKey && !lastResult && (
-                            <Badge variant="outline" className="text-xs">needs API key</Badge>
+                            <Badge variant="outline" className="text-xs">your account — can&apos;t connect yet</Badge>
                           )}
                           {inFlight && (
                             <span
@@ -1093,7 +1086,7 @@ export default function ListingsPage() {
             {selectedListing && (
               <PaymentCalculator
                 listingPrice={parseFloat(selectedListing.askingPrice?.toString() || "0")}
-                sellerFinancingAvailable={selectedListing.sellerFinancingAvailable ?? true}
+                sellerFinancingAvailable={selectedListing.sellerFinancingAvailable === true}
                 defaultDownPaymentPercent={selectedListing.downPaymentMin ? parseFloat(selectedListing.downPaymentMin.toString()) : 10}
                 defaultInterestRate={selectedListing.interestRate ? parseFloat(selectedListing.interestRate.toString()) : 9.9}
                 defaultTermMonths={selectedListing.termMonths || 60}

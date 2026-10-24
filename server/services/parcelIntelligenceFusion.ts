@@ -168,7 +168,7 @@ export interface LandIntelligenceReport {
     floodZone: { risk: string; zone: string | null; description: string };
     wetlands: { hasWetlands: boolean; acres: number; percent: number; risk: string };
     environmental: { superfundCount: number; nearestMiles: number | null; risk: string };
-    roadAccess: { hasAccess: boolean; roadType: string | null; risk: string };
+    roadAccess: { hasAccess: boolean | null; roadType: string | null; risk: string };
     soil: { classification: string | null; farmlandClass: string | null; risk: string };
     elevation: { feet: number | null; slope: string | null; risk: string };
   } | null;
@@ -326,7 +326,7 @@ export async function generateLandIntelligenceReport(
       facts: {
         flood_zone: dd.checks.floodZone.zone ?? undefined,
         wetlands_percent: dd.checks.wetlands.wetlandPercent ?? undefined,
-        road_access: dd.checks.roadAccess.roadType ?? (dd.checks.roadAccess.hasDirectRoadAccess ? "yes" : "none"),
+        road_access: dd.checks.roadAccess.roadType ?? (dd.checks.roadAccess.hasDirectRoadAccess === false ? "none" : undefined),
         soil_class: dd.checks.soil.dominantSoilName ?? undefined,
         elevation_feet: dd.checks.elevation.elevationFeet ?? undefined,
       },
@@ -412,8 +412,10 @@ function identifyDealKillers(
 
   if (!dd) return flags;
 
-  // Landlocked / No road access — absolute dealbreaker
-  if (dd.checks.roadAccess.risk === "critical" || !dd.checks.roadAccess.hasDirectRoadAccess) {
+  // Landlocked / No road access — absolute dealbreaker. Only when the map
+  // lookup actually found no road: an unanswered lookup (null) is an open
+  // question, and used to read as "landlocked" here.
+  if (dd.checks.roadAccess.risk === "critical" || dd.checks.roadAccess.hasDirectRoadAccess === false) {
     flags.push({
       type: "landlocked",
       severity: "dealbreaker",

@@ -87,6 +87,10 @@ const {
     sendGmail: vi.fn(async () => ({ success: true, data: {} })),
     sendSlackMessage: vi.fn(async () => ({ success: true, data: {} })),
     createStripePaymentLink: vi.fn(async () => ({ success: true, data: {} })),
+    // Outbound connector POSTs, approval-required since 2026-10-20.
+    triggerZapier: vi.fn(async () => ({ success: true, data: {} })),
+    triggerMake: vi.fn(async () => ({ success: true, data: {} })),
+    createCalendarEvent: vi.fn(async () => ({ success: true, data: {} })),
   },
 }));
 
@@ -186,6 +190,14 @@ const SEND_ARGS: Record<string, Record<string, unknown>> = {
   send_gmail: { to: "seller@example.com", subject: "s", body: "b" },
   send_slack_message: { channel: "#deals", message: "m" },
   create_stripe_payment_link: { amount_cents: 5000, description: "d" },
+  trigger_zapier: { data: { lead: "Stale Lead", phone: "+16175550142" } },
+  trigger_make: { data: { lead: "Stale Lead", email: "stale.lead@example.com" } },
+  create_calendar_event: {
+    title: "Walk the parcel",
+    startDateTime: "2026-11-01T15:00:00Z",
+    endDateTime: "2026-11-01T16:00:00Z",
+    attendees: ["seller@example.com"],
+  },
 };
 
 function setStance(stance: "ask_before_sending" | "ask_before_everything") {
@@ -208,7 +220,10 @@ const railCalls = () =>
   sendOrgSMS.mock.calls.length +
   connectors.sendGmail.mock.calls.length +
   connectors.sendSlackMessage.mock.calls.length +
-  connectors.createStripePaymentLink.mock.calls.length;
+  connectors.createStripePaymentLink.mock.calls.length +
+  connectors.triggerZapier.mock.calls.length +
+  connectors.triggerMake.mock.calls.length +
+  connectors.createCalendarEvent.mock.calls.length;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -316,7 +331,7 @@ describe("witnessed send — explicit human approval triggers the guarded send",
     expect((result.data as any)?.messageId).toBe("msg_witnessed_1");
     expect(checkSendRateLimit).toHaveBeenCalledWith(7, "email");
     // (T0-5: TCPA lookup is org-scoped — orgId first, then leadId.)
-    expect(checkTcpaBeforeSend).toHaveBeenCalledWith(7, 42);
+    expect(checkTcpaBeforeSend).toHaveBeenCalledWith(7, 42, "email");
     expect(sendEmail).toHaveBeenCalledTimes(1);
     expect(recordAutonomousSend).toHaveBeenCalledWith(7, "email", 42, expect.stringContaining("Following up on your land"));
     // The replay does not re-read the controls — a tap is the human acting.
@@ -338,7 +353,7 @@ describe("witnessed send — explicit human approval triggers the guarded send",
     expect(result.success).toBe(true);
     expect((result.data as any)?.messageId).toBe("sms_witnessed_1");
     expect(checkSendRateLimit).toHaveBeenCalledWith(7, "sms");
-    expect(checkTcpaBeforeSend).toHaveBeenCalledWith(7, 42);
+    expect(checkTcpaBeforeSend).toHaveBeenCalledWith(7, 42, "sms");
     // DEFECT-0104: a lead-addressed text is declared a solicitation, bound to the lead.
     expect(sendOrgSMS).toHaveBeenCalledWith(
       expect.objectContaining({

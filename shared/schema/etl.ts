@@ -181,6 +181,10 @@ export const etlRuns = pgTable("etl_runs", {
   errorMessage: text("error_message"),
   watermarkBefore: text("watermark_before"),
   watermarkAfter: text("watermark_after"),
+  // What the run observed (migration 0287, D1 A4), written once at completion
+  // by the handler's finalize(). Runs are never updated after completion, so
+  // a job's rows ordered by startedAt are an append-only observation series.
+  observation: jsonb("observation").$type<Record<string, unknown>>(),
 }, (table) => [
   index("etl_runs_job_started_idx").on(table.jobId, table.startedAt),
   index("etl_runs_status_idx").on(table.status),

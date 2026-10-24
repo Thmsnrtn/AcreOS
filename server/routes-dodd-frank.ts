@@ -22,6 +22,9 @@ router.post("/check", (req: Request, res: Response) => {
       rateType,
       balloonAfterMonths,
       interestRate,
+      firstRateAdjustmentMonths,
+      abilityToRepayDetermined,
+      negativeAmortization,
     } = req.body;
 
     if (sellerFinancedDealsLast12Months == null || !sellerType || hasDwelling == null || !rateType || interestRate == null) {
@@ -33,11 +36,14 @@ router.post("/check", (req: Request, res: Response) => {
       sellerType,
       hasDwelling,
       sellerConstructedDwelling: sellerConstructedDwelling ?? false,
-      isSellerResidence: isSellerResidence ?? false,
+      isSellerResidence,
       loanTermMonths: loanTermMonths ?? 60,
       rateType,
       balloonAfterMonths,
       interestRate,
+      firstRateAdjustmentMonths: typeof firstRateAdjustmentMonths === "number" ? firstRateAdjustmentMonths : undefined,
+      abilityToRepayDetermined: typeof abilityToRepayDetermined === "boolean" ? abilityToRepayDetermined : undefined,
+      negativeAmortization: typeof negativeAmortization === "boolean" ? negativeAmortization : undefined,
     });
 
     res.json(result);

@@ -57,7 +57,7 @@ export default function ListingSyndicationPage() {
   const syncAllMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/syndication/sync-all"),
     onSuccess: () => {
-      toast({ title: "Sync initiated for all channels." });
+      toast({ title: "Sync checked every channel.", description: "A channel posts only on your own account, which can't be connected yet — see each channel's status." });
       qc.invalidateQueries({ queryKey: ["/api/syndication"] });
     },
     onError: () =>
@@ -86,7 +86,7 @@ export default function ListingSyndicationPage() {
   const syncChannelMutation = useMutation({
     mutationFn: (channelId: string) => apiRequest("POST", `/api/syndication/channels/${channelId}/sync`),
     onSuccess: () => {
-      toast({ title: "Channel sync initiated." });
+      toast({ title: "Channel checked.", description: "It posts only on your own account, which can't be connected yet — see its status." });
       qc.invalidateQueries({ queryKey: ["/api/syndication"] });
     },
     onError: () =>
@@ -107,7 +107,7 @@ export default function ListingSyndicationPage() {
             Listing syndication
           </h1>
           <p className="text-muted-foreground text-sm md:text-base">
-            Publish listings to MLS, portals, and marketplaces from one place.
+            Channel status for your listings. Posting runs on your own account with each channel, which AcreOS can&apos;t connect yet; Craigslist posts are generated for you to paste.
           </p>
         </div>
         <Button
@@ -171,16 +171,16 @@ export default function ListingSyndicationPage() {
         <EmptyState
           icon={Globe}
           headline="No syndication channels"
-          subtitle="Connect MLS feeds, listing portals, or marketplaces to push your listings everywhere at once."
+          subtitle="No channels are set up. Posting to a portal runs on your own account with it, and AcreOS can't connect one yet."
           cta={{
-            label: "Browse channels",
-            onClick: () => { window.location.assign("/settings/integrations"); },
+            label: "Open listings",
+            onClick: () => { window.location.assign("/listings"); },
             "data-testid": "listing-syndication-browse",
           }}
           actionIcon={null}
           tips={[
-            "MLS connections require board credentials.",
-            "Portals like Zillow and Realtor.com sync automatically once connected.",
+            "Craigslist has no listing API — AcreOS prepares ready-to-paste text.",
+            "Land.com and Facebook post only on your own account with them, which can't be connected yet.",
           ]}
           testId="listing-syndication-empty"
         />

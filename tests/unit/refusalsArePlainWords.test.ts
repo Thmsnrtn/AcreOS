@@ -64,7 +64,7 @@ const read = (p: string) => fs.readFileSync(path.join(REPO_ROOT, p), "utf8");
 /** Builders whose outputs are verified below by calling them. */
 const REGISTERED_BUILDERS = new Set(["paxControlsRefusalMessage", "undeclaredSupportScopeMessage", "supportScopeRefusalMessage"]);
 /** Constants whose text is read from source and judged below. */
-const REGISTERED_CONSTANTS = new Set(["APPLY_CREDIT_REFUSAL"]);
+const REGISTERED_CONSTANTS = new Set(["APPLY_CREDIT_REFUSAL", "VOID_INVOICE_REFUSAL"]);
 /**
  * Text handed through from outside the population, counted per file. A role
  * worker's draft is frozen by the autopilot's hand registry, and when the
@@ -105,7 +105,7 @@ const UNCOVERED: Record<string, number> = {
   "server/services/agent-skills.ts": 68,
   "server/services/communications.ts": 19,
   "server/services/connectors/executor.ts": 14,
-  "server/services/listingSyndication.ts": 14,
+  "server/services/listingSyndication.ts": 11,
   "server/services/emailService.ts": 11,
   "server/services/smsService.ts": 8,
   "server/ai/vaService.ts": 6,
@@ -130,7 +130,7 @@ const UNCOVERED: Record<string, number> = {
 };
 
 /** The register's total — it may only go down. */
-const UNCOVERED_TOTAL_BASELINE = 222;
+const UNCOVERED_TOTAL_BASELINE = 219;
 
 /** A file holding this many refusal objects is a dispatch surface and must be named above. */
 const DISCOVERY_MIN = 3;
@@ -253,11 +253,11 @@ describe("registered builders say plain words for every input", () => {
       expect(judgeRefusal(t), t).toEqual({ plain: true, problems: [] });
     }
   });
-  it("APPLY_CREDIT_REFUSAL, read from its declaration", () => {
+  it.each(["APPLY_CREDIT_REFUSAL", "VOID_INVOICE_REFUSAL"])("%s, read from its declaration", (constName) => {
     const sf = parseSource("supportAgent.ts", read("server/ai/supportAgent.ts"));
     let text: string | null = null;
     const visit = (n: ts.Node) => {
-      if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name) && n.name.text === "APPLY_CREDIT_REFUSAL" && n.initializer) {
+      if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name) && n.name.text === constName && n.initializer) {
         const parts: string[] = [];
         const walk = (e: ts.Expression): void => {
           if (ts.isBinaryExpression(e)) { walk(e.left); walk(e.right); } else if (ts.isStringLiteral(e)) parts.push(e.text);
@@ -268,7 +268,7 @@ describe("registered builders say plain words for every input", () => {
       ts.forEachChild(n, visit);
     };
     visit(sf);
-    expect(text, "APPLY_CREDIT_REFUSAL not found").not.toBeNull();
+    expect(text, `${constName} not found`).not.toBeNull();
     expect(judgeRefusal(text!)).toEqual({ plain: true, problems: [] });
   });
 });

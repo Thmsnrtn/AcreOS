@@ -4,7 +4,14 @@
  * Linked from the public-page footer (P1-5) and surfaced during sales
  * conversations. Explains AcreOS's security posture in plain language:
  * encryption, authentication, sub-processors, vulnerability disclosure,
- * and where we are on SOC 2.
+ * and how to reach us.
+ *
+ * 2026-10-20: the SOC 2 "in flight / audited continuously" section and the
+ * "encrypted backups, rolling 30-day window, region-isolated bucket" claim
+ * were removed. Neither had evidence behind it: no auditor engagement exists,
+ * and the backup bucket is not provisioned (roadmap-2026-10 K3 / P0-05) — the
+ * dbBackup job only uploads when DB_BACKUP_S3_BUCKET is set. Do not restore
+ * either claim without the evidence; securityPageClaimsHaveEvidence.test.ts.
  *
  * Public, no auth required. Mirrors the layout pattern used by
  * /pricing, /privacy, /terms (top nav + content + shared footer).
@@ -90,7 +97,7 @@ const SUB_PROCESSORS: SubProcessor[] = [
   },
   {
     vendor: "AWS",
-    purpose: "Application hosting, object storage, backups",
+    purpose: "Application hosting and object storage",
     dataCategory: "All application data at rest",
     region: "United States (us-east-1)",
   },
@@ -99,7 +106,7 @@ const SUB_PROCESSORS: SubProcessor[] = [
 export default function SecurityPage() {
   usePageMeta(
     "Security",
-    "How AcreOS protects Land Investors' data — encryption at rest and in transit, MFA, sub-processors, vulnerability disclosure, and SOC 2 posture.",
+    "How AcreOS protects Land Investors' data — encryption at rest and in transit, MFA, sub-processors, and vulnerability disclosure.",
   );
 
   return (
@@ -108,7 +115,7 @@ export default function SecurityPage() {
       <OpenGraph
         url={`${SITE.url}/security`}
         title="Security · AcreOS"
-        description="How AcreOS protects Land Investors' data — encryption at rest and in transit, MFA, sub-processors, vulnerability disclosure, and SOC 2 posture."
+        description="How AcreOS protects Land Investors' data — encryption at rest and in transit, MFA, sub-processors, and vulnerability disclosure."
         type="website"
       />
       <JsonLd id="ld-security-webpage" data={securityPageSchema()} />
@@ -184,11 +191,9 @@ export default function SecurityPage() {
               </p>
             </div>
             <div>
-              <h3 className="font-semibold mb-1">Backups and isolation</h3>
+              <h3 className="font-semibold mb-1">Tenant isolation</h3>
               <p className="text-muted-foreground">
-                Backups are encrypted with the same standard, retained on a
-                rolling 30-day window, and stored in a region-isolated
-                bucket. Tenant data is logically isolated by organization;
+                Tenant data is logically isolated by organization;
                 every authenticated request is scoped to the caller's
                 organization at the database query layer.
               </p>
@@ -334,22 +339,14 @@ export default function SecurityPage() {
               Compliance posture
             </CardTitle>
             <CardDescription>
-              Where we are today, and what's next.
+              Privacy requests and data portability.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4 text-sm leading-relaxed text-muted-foreground">
             <div className="flex items-center gap-2 flex-wrap">
-              <Badge variant="secondary">SOC 2 Type 1 — in flight</Badge>
               <Badge variant="outline">CCPA-aligned</Badge>
               <Badge variant="outline">GDPR-aligned</Badge>
             </div>
-            <p>
-              AcreOS is actively pursuing SOC 2 Type 1 certification. Our
-              controls — access reviews, change management, vendor risk,
-              incident response — are mapped to the AICPA Trust Services
-              Criteria and audited continuously. Once Type 1 is issued we
-              roll directly into the Type 2 observation window.
-            </p>
             <p>
               We honor data-subject access, deletion, and portability
               requests under both CCPA and GDPR-style frameworks. Account

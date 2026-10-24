@@ -901,14 +901,21 @@ async function gatherAiQueue(
 // in-memory to its property's address. No extra round-trip; the caller already
 // has allDeals + allProperties loaded.
 interface BriefInputs {
-  paxReplies: number;       // pax-noticed/suggests count (proxy for "sellers replied")
+  // Each field is named for EXACTLY what it counts, and the brief may only
+  // describe it that way (best-in-class audit 2026-10-20, §3 P1 #13). The
+  // old names — paxReplies, curbSaves, netInflow30 — were proxies the
+  // templates then relabeled: Pax-sourced queue items read as "sellers wrote
+  // back overnight", active alerts as "you almost lost yesterday, saved",
+  // seller-finance NOTE lateness as landlords' "rents hadn't landed", and a
+  // 30-day PROJECTION as money that "cleared this month".
+  paxQueueItems: number;     // queue items whose source is Pax (any age)
   topCounter: string | null; // best Pax-priority headline if present
-  curbSaves: number;         // portfolio alerts touched today
-  lateNotes: number;
-  postedOvernight: number;   // completed payment rows in the last 24h (real rows)
-  netInflow30: number;       // projected 30-day net (from cash strip)
-  staleLeads: number;
-  pipelineValue: number;
+  openAlerts: number;        // active portfolio alerts
+  lateNotes: number;         // seller-finance notes in status late/delinquent
+  postedLast24h: number;     // completed payment rows in the last 24h (real rows)
+  noteIncomeDue30: number;   // scheduled payments on active notes due in the next 30 days
+  leadsUncontacted14d: number; // open leads with no contact in 14+ days
+  openDealsValue: number;    // value of open (not closed/cancelled) deals
   firstClosePrefix?: string | null; // e.g. "Since the 4218 Cactus deal — "
 }
 
@@ -962,68 +969,50 @@ function deriveFirstClosePrefix(
   return `Since the ${label} deal — `;
 }
 
-function composeBrief(persona: Persona | undefined, inputs: BriefInputs): string {
+export function composeBrief(persona: Persona | undefined, inputs: BriefInputs): string {
   const {
-    paxReplies,
+    paxQueueItems,
     topCounter,
-    curbSaves,
+    openAlerts,
     lateNotes,
-    postedOvernight,
-    netInflow30,
-    staleLeads,
-    pipelineValue,
+    postedLast24h,
+    noteIncomeDue30,
+    leadsUncontacted14d,
+    openDealsValue,
     firstClosePrefix,
   } = inputs;
   const money = (n: number) =>
     `$${Math.round(n).toLocaleString("en-US")}`;
-  // Loss-frame templates: every persona gets at least one verb that's only
-  // theirs (Chesky), and the second clause names what would have been LOST
-  // (Joanna's loss-frame) instead of a flat count. The topCounter, when
-  // present, is inlined as the deal headline rather than appended as a
-  // separate sentence, so the brief reads like one operator talking to
-  // another.
+  const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+  // The topCounter, when present, is inlined as the headline.
   const counterInline = topCounter ? ` — ${topCounter}` : "";
   const prefix = firstClosePrefix ?? "";
 
+  // Every clause states a count by what it IS. No persona gets a number
+  // relabeled as something it does not measure; a persona whose own data
+  // (e.g. rent) this route does not read gets the shared queue sentence.
+  const queue = `Pax has ${plural(paxQueueItems, "item")} in your queue${counterInline}.`;
   const body = (() => {
   switch (persona) {
-    case "wholesaler":
-      // Wholesalers don't have leads, they have a phone that won't stop ringing.
-      // Verbs: "wrote back", "almost lost", "saved".
-      return `${paxReplies} seller${paxReplies === 1 ? "" : "s"} wrote back overnight${counterInline}. ${curbSaves} you almost lost yesterday, saved.`;
     case "note_investor":
-      // Note investors have a tape that hits Tuesday morning.
-      // Verbs: "wobbled", "tape clears".
-      return `${lateNotes} note${lateNotes === 1 ? "" : "s"} wobbled overnight${counterInline} — the tape still clears ${money(netInflow30)} this month.`;
     case "note_originator":
-      // Originators draw new paper; their verb is "underwrote / funded".
-      return `${lateNotes} note${lateNotes === 1 ? "" : "s"} slipped overnight${counterInline} — funded paper still pencils ${money(netInflow30)} this month.`;
+      return `${plural(lateNotes, "note")} late or delinquent${counterInline} — ${money(noteIncomeDue30)} in note payments scheduled over the next 30 days.`;
     case "note_servicer":
-      // Servicers process payments; their verb is "posted".
-      // "{n} posted" is a COUNT of completed payment rows in the last 24h —
-      // never "Pax posted the rest" (Pax posts nothing; spec §6).
-      return `${lateNotes} payment${lateNotes === 1 ? "" : "s"} didn't post overnight${counterInline} — ${postedOvernight} posted, ${money(netInflow30)} cleared this month.`;
+      return `${plural(lateNotes, "note")} late or delinquent${counterInline} — ${plural(postedLast24h, "payment")} posted in the last 24 hours, ${money(noteIncomeDue30)} scheduled over the next 30 days.`;
     case "land_investor":
-      // Land investors hunt parcels; their verb is "surfaced".
-      return `Pax surfaced ${paxReplies} parcel${paxReplies === 1 ? "" : "s"} overnight${counterInline}. ${staleLeads} gone quiet, still warm.`;
-    case "fix_flipper":
-      // Flippers run jobs; their verb is "swung" (as in swinging hammers / jobs in flight).
-      return `${paxReplies} project update${paxReplies === 1 ? "" : "s"} swung in overnight${counterInline} — ${money(pipelineValue)} on the table this week.`;
-    case "landlord":
-      // Landlords collect rent; verb is "landed".
-      return `${lateNotes} rent${lateNotes === 1 ? "" : "s"} hadn't landed by 6am${counterInline} — ${money(netInflow30)} still pacing for the month.`;
     case "subdivider":
-      // Subdividers split parcels; verb is "splits".
-      return `${paxReplies} new split candidate${paxReplies === 1 ? "" : "s"} from Pax overnight${counterInline}. ${curbSaves} parcel${curbSaves === 1 ? "" : "s"} you almost let cool, kept warm.`;
     case "tax_delinquent":
-      // Tax-delinquent buyers chase the auction calendar; verb is "ticked over".
-      return `${paxReplies} delinquency${paxReplies === 1 ? "" : "s"} ticked over overnight${counterInline} — ${staleLeads} you'd lose to the redemption window, still in reach.`;
+      return `${queue} ${plural(leadsUncontacted14d, "lead")} not contacted in 14+ days.`;
+    case "fix_flipper":
+      return `${money(openDealsValue)} in open deals${counterInline}. Pax has ${plural(paxQueueItems, "item")} in your queue.`;
+    case "wholesaler":
+    case "landlord":
+      return `${queue} ${plural(openAlerts, "open alert")}.`;
     default:
-      // Neutral fallback if persona is missing or unrecognized.
-      if (paxReplies + curbSaves + lateNotes === 0) {
+      if (paxQueueItems + openAlerts + lateNotes === 0) {
         return "Quiet morning — nothing urgent from Pax. Good time to plan the next move.";
       }
-      return `${paxReplies} Pax signal${paxReplies === 1 ? "" : "s"} overnight${counterInline}. ${curbSaves} you almost lost yesterday, saved.`;
+      return `${queue} ${plural(openAlerts, "open alert")}.`;
   }
   })();
 
@@ -1069,20 +1058,22 @@ async function composeBriefWithPax(
 
   const system =
     `You are Pax, the AcreOS assistant. Write a single-sentence morning brief for ${personaLabel}. ` +
-    `Use only the numbers given — do not invent. Calm, specific, no exclamation marks, no emoji, no greeting. ` +
+    `Use only the numbers given — do not invent. Each number means exactly what its key says: never describe ` +
+    `it as replies, overnight activity, saves, rent, or money already received. ` +
+    `Calm, specific, no exclamation marks, no emoji, no greeting. ` +
     `Max 25 words. Tone: warm but exacting. ` +
     (prefix
       ? `Your sentence MUST start with this exact prefix verbatim: "${prefix}".`
       : `No prefix — start with the most material number.`);
 
   const user = JSON.stringify({
-    paxReplies: inputs.paxReplies,
+    paxQueueItems: inputs.paxQueueItems,
     topCounter: inputs.topCounter,
-    curbSaves: inputs.curbSaves,
-    lateNotes: inputs.lateNotes,
-    netInflow30: inputs.netInflow30,
-    staleLeads: inputs.staleLeads,
-    pipelineValue: inputs.pipelineValue,
+    openAlerts: inputs.openAlerts,
+    lateOrDelinquentSellerFinanceNotes: inputs.lateNotes,
+    notePaymentsScheduledNext30DaysUsd: inputs.noteIncomeDue30,
+    leadsNotContactedIn14Days: inputs.leadsUncontacted14d,
+    openDealsValueUsd: inputs.openDealsValue,
   });
 
   try {
@@ -1519,25 +1510,24 @@ router.get("/", async (req: AuthenticatedRequest, res: Response) => {
 
     // ── MorningBrief: persona-typed one-liner above the queue ──────────────
     // Inputs come from the same gather we just did — no extra round-trips.
-    const paxReplies = queue.filter((q) => q.source.startsWith("pax-")).length;
-    const curbSaves = alertItems.length;
+    const paxQueueItems = queue.filter((q) => q.source.startsWith("pax-")).length;
+    const openAlerts = alertItems.length;
     const topCounter =
       paxPriorities.length > 0 ? paxPriorities[0].title : null;
-    const netInflow30 = projected30; // 30-day projected note income
     // The brief's "since your first close" is about the customer's book, not
     // a sample parcel's deal.
     const firstClosePrefix = deriveFirstClosePrefix(realDeals, allProperties);
     const persona = req.user?.persona as Persona | undefined;
     const briefInputs: BriefInputs = {
-      paxReplies,
+      paxQueueItems,
       topCounter,
-      curbSaves,
+      openAlerts,
       lateNotes: lateCount,
-      postedOvernight,
-      netInflow30,
-      staleLeads: stalledLeads,
+      postedLast24h: postedOvernight,
+      noteIncomeDue30: projected30,
+      leadsUncontacted14d: stalledLeads,
       firstClosePrefix,
-      pipelineValue,
+      openDealsValue: pipelineValue,
     };
     // Try Pax-composed first (feature-flagged); fall back to the static template.
     // composeBriefWithPax returns null when the flag is off, on error, or on

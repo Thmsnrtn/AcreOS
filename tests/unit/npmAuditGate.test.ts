@@ -122,7 +122,7 @@ describe("the gate is the one security.yml runs, over the real register", () => 
   it("every entry in the real register is well-formed and reaches only dev packages in the real lockfile", () => {
     const accepted = JSON.parse(readFileSync(path.join(ROOT, "security/npm-audit-accepted.json"), "utf8")).accepted as AcceptedAdvisory[];
     const lock = JSON.parse(readFileSync(path.join(ROOT, "package-lock.json"), "utf8")).packages;
-    expect(accepted.length).toBeGreaterThan(0);
+    // An empty register is legitimate: no advisory currently needs an acceptance.
     // The register's own structure, judged against a report that still names each advisory.
     for (const a of accepted) {
       const r = { metadata: { vulnerabilities: {} }, vulnerabilities: { braces: { name: "braces", severity: "high", via: [advisory(a.advisory, "braces")] } } };

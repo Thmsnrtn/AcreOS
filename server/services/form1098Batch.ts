@@ -50,7 +50,7 @@
 import { db } from "../db";
 import { notes, organizations, payments, properties, leads } from "@shared/schema";
 import { acquiredNotes, notePayments } from "@shared/schema/notes-vertical";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { jsPDF } from "jspdf";
 import {
   buildFire1098File,
@@ -66,7 +66,7 @@ import { TaxIdentityError, type PayerOrRecipientAddress } from "./bookkeeping";
 // see the reversal-link block below for why a second copy of that format here
 // would be a drift hazard rather than a convenience.
 import { reversalTransactionId as achReturnTransactionId } from "./achAutopay";
-import { decrypt as decryptField, isAnyEncryptedEnvelope } from "./fieldEncryption";
+import { decryptTin, isPlaceholderTin, resolveOrgTaxIdentity } from "./orgTaxIdentity";
 import { logger } from "../utils/logger";
 
 // ─── Constants ────────────────────────────────────────────────────────────
@@ -78,7 +78,6 @@ import { logger } from "../utils/logger";
 export const FORM_1098_THRESHOLD_CENTS = 60_000;
 
 /** TINs we must never emit — same placeholder set the 1099 path rejects. */
-const PLACEHOLDER_TINS = new Set(["00-0000000", "000-00-0000", "000000000"]);
 
 // ─── The reversal link (append-only ledgers) ──────────────────────────────
 //
@@ -490,26 +489,8 @@ function yearEndDay(taxYear: number): string {
 
 // ─── TIN helpers (never log, never surface) ───────────────────────────────
 
-function decryptTin(stored: string): string {
-  if (!isAnyEncryptedEnvelope(stored)) return stored;
-  try {
-    return decryptField(stored);
-  } catch {
-    // Deliberately opaque: a decrypt failure must not leak ciphertext or
-    // plaintext into an error. The caller treats "" as missing and refuses.
-    return "";
-  }
-}
-
-function isPlaceholderTin(tin: string): boolean {
-  const stripped = tin.replace(/[\s-]/g, "");
-  return (
-    !stripped ||
-    PLACEHOLDER_TINS.has(tin) ||
-    PLACEHOLDER_TINS.has(stripped) ||
-    /^0{8,9}$/.test(stripped)
-  );
-}
+// decryptTin / isPlaceholderTin live in ./orgTaxIdentity — the one TIN
+// authority shared with the 1099-NEC payer path.
 
 // ─── Pure derivation ──────────────────────────────────────────────────────
 
@@ -1215,46 +1196,38 @@ export async function resolveLenderIdentity(orgId: number): Promise<LenderIdenti
       { orgId },
     );
   }
-  const name = org.legalEntityName?.trim() || org.name?.trim();
-  if (!name) {
+  // One resolver for the org's own tax identity (shared with 1099-NEC).
+  // The 1098 path refuses on name / TIN only; address completeness is not
+  // gated here (unchanged behaviour).
+  const id = resolveOrgTaxIdentity(org);
+  if (!id.name) {
     throw new TaxIdentityError(
       "PAYER_NAME_MISSING",
       `Organization ${orgId} has no legal entity name — required on Form 1098 as RECIPIENT'S/LENDER'S name.`,
       { orgId },
     );
   }
-  if (!org.ein) {
+  if (id.problems.includes("TIN_MISSING")) {
     throw new TaxIdentityError(
       "PAYER_EIN_MISSING",
       `Organization ${orgId} has no EIN on file — required on Form 1098 as RECIPIENT'S TIN.`,
       { orgId },
     );
   }
-  const tin = decryptTin(org.ein);
-  if (isPlaceholderTin(tin)) {
+  if (id.problems.includes("TIN_PLACEHOLDER")) {
     throw new TaxIdentityError(
       "PAYER_EIN_MISSING",
       `Organization ${orgId} has a placeholder EIN on file — capture the real EIN before issuing Forms 1098.`,
       { orgId },
     );
   }
-  const tinTypeRaw = org.taxIdType;
-  const tinType: LenderIdentity["tinType"] =
-    tinTypeRaw === "SSN" || tinTypeRaw === "ITIN" ? tinTypeRaw : "EIN";
 
   return {
-    name,
-    address: {
-      line1: org.taxAddress?.line1 || "",
-      line2: org.taxAddress?.line2,
-      city: org.taxAddress?.city || "",
-      state: org.taxAddress?.state || "",
-      zip: org.taxAddress?.zip || "",
-      country: org.taxAddress?.country,
-    },
-    phone: org.taxAddress?.phone || "",
-    tin,
-    tinType,
+    name: id.name,
+    address: id.address,
+    phone: id.phone,
+    tin: id.tin,
+    tinType: id.tinType,
   };
 }
 
@@ -1475,8 +1448,13 @@ export async function collectAcquiredCandidates(
  */
 export async function collectOriginatedCandidates(
   orgId: number,
+  onlyNoteIds?: number[],
 ): Promise<Form1098Candidate[]> {
-  const rows = await db.select().from(notes).where(eq(notes.organizationId, orgId));
+  const rows = await db.select().from(notes).where(
+    onlyNoteIds && onlyNoteIds.length > 0
+      ? and(eq(notes.organizationId, orgId), inArray(notes.id, onlyNoteIds))
+      : eq(notes.organizationId, orgId),
+  );
   if (rows.length === 0) return [];
 
   const noteIds = rows.map((r) => r.id);
@@ -1646,4 +1624,60 @@ export async function generate1098Batch(
     fireRecordCounts: fire?.recordCounts ?? { T: 0, A: 0, B: 0, C: 0, F: 0 },
     fireValidationErrors,
   };
+}
+
+// ─── Borrower copy (portal) ───────────────────────────────────────────────
+
+/**
+ * What the borrower portal may say about one note's Form 1098.
+ *
+ * The portal used to build its own "Form 1098" with Box 2 set to the note's
+ * CURRENT balance — not the principal outstanding on January 1 of the tax
+ * year that the IRS instructions require — and with none of the lender-side
+ * generator's refusals (best-in-class audit 2026-10-20, §3 P0 #4). The
+ * borrower now sees exactly what `deriveForm1098` would file, or the reason
+ * no form can be issued. One derivation, one truth.
+ */
+export type BorrowerCopy1098 =
+  | { kind: "form"; form: Form1098 }
+  | { kind: "unavailable"; reason: string };
+
+export interface BorrowerCopy1098Deps {
+  loadCandidate: () => Promise<Form1098Candidate | undefined>;
+  loadLender: () => Promise<LenderIdentity>;
+}
+
+export const BORROWER_1098_NOT_ISSUABLE =
+  "Your lender can't issue a Form 1098 for this loan and year from the records on hand yet. Contact your lender for your mortgage interest statement.";
+
+export async function borrowerCopy1098(
+  deps: BorrowerCopy1098Deps,
+  taxYear: number,
+): Promise<BorrowerCopy1098> {
+  const candidate = await deps.loadCandidate();
+  if (!candidate) return { kind: "unavailable", reason: BORROWER_1098_NOT_ISSUABLE };
+  let lender: LenderIdentity;
+  try {
+    lender = await deps.loadLender();
+  } catch (err) {
+    if (err instanceof TaxIdentityError) {
+      return { kind: "unavailable", reason: BORROWER_1098_NOT_ISSUABLE };
+    }
+    throw err;
+  }
+  const outcome = deriveForm1098(candidate, lender, taxYear);
+  if (outcome.kind === "form") return { kind: "form", form: outcome.form };
+  if (outcome.kind === "excluded") return { kind: "unavailable", reason: outcome.exclusion.reason };
+  return { kind: "unavailable", reason: BORROWER_1098_NOT_ISSUABLE };
+}
+
+/** Production wiring of `borrowerCopy1098` for one serviced note. */
+export function borrowerCopy1098ForNote(orgId: number, noteId: number, taxYear: number): Promise<BorrowerCopy1098> {
+  return borrowerCopy1098(
+    {
+      loadCandidate: async () => (await collectOriginatedCandidates(orgId, [noteId]))[0],
+      loadLender: () => resolveLenderIdentity(orgId),
+    },
+    taxYear,
+  );
 }

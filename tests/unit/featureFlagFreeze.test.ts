@@ -155,7 +155,10 @@ describe("FROZEN_ROUTES — code-enforced freeze", () => {
 
   it("covers exactly the deletion-ledger freeze/kill surfaces", () => {
     expect([...FROZEN_ROUTES].sort()).toEqual(
-      ["/capital-markets", "/marketplace", "/negotiation", "/vision-ai"].sort(),
+      // /investor-network: the deletion ledger's Marketplace row names the
+      // investor-verification satellite; founder decision 2026-10-20 #4
+      // confirmed the directory is a marketplace under the ladder.
+      ["/capital-markets", "/investor-network", "/marketplace", "/negotiation", "/vision-ai"].sort(),
     );
   });
 });

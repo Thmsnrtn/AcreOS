@@ -1,9 +1,9 @@
 /**
  * /county-timelines — subdivision approval lead times by county (SD-6).
  *
- * Brigid §7: "Williamson is fourteen months end-to-end. Hickman is four.
- * Maury is six. Davidson is a different planet. I bid acquisitions on the
- * carry cost of those timelines."
+ * The table's original six TN rows were seeded from an AI review persona and
+ * shown here as county data; migration 0283 deletes them. This page renders
+ * only what is on file, with each row's own source.
  */
 
 import { useState } from "react";
@@ -55,7 +55,8 @@ export default function CountyTimelinesPage() {
     },
   });
 
-  const filtered = (data?.timelines ?? []).filter((t) => {
+  const timelines = data?.timelines ?? [];
+  const filtered = timelines.filter((t) => {
     if (!filter) return true;
     const f = filter.toLowerCase();
     return t.state.toLowerCase().includes(f) || t.countyName.toLowerCase().includes(f);
@@ -69,9 +70,8 @@ export default function CountyTimelinesPage() {
           County subdivision timelines
         </h1>
         <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
-          Lead-time estimates for residential subdivision approval, county by
-          county. Refined from planning-office inputs and operator historicals.
-          Brigid bids acquisitions on these numbers.
+          Lead times for residential subdivision approval, county by county.
+          Each row shows its own source.
         </p>
       </div>
 
@@ -138,7 +138,9 @@ export default function CountyTimelinesPage() {
                   </tr>
                 ))}
                 {filtered.length === 0 && (
-                  <tr><td colSpan={8} className="px-2 py-6 text-center text-muted-foreground text-sm">No timelines match the filter.</td></tr>
+                  <tr><td colSpan={8} className="px-2 py-6 text-center text-muted-foreground text-sm" data-testid="county-timelines-empty">
+                    {timelines.length === 0 ? "No county timelines are on file yet." : "No timelines match the filter."}
+                  </td></tr>
                 )}
               </tbody>
             </table>

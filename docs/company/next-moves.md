@@ -3,6 +3,29 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-10-23 — Package D1, data-sourcing foundation (bucket-independent parts), branch `claude/d1-data-sourcing-foundation`
+
+### What shipped
+- **D1a.** The Regrid cost table is at the published per-record floor (10¢ Standard / 15¢ Premium), and an empty answer or a free-source answer now costs 0. The credit-weight re-base was held at first (D1 stop condition): weights are what a customer's pool is debited, so changing them changes price. The founder decided it on 2026-10-23 (`b576d53f`): `parcel_lookup_paid` 8→10, `owner_lookup` 8→15, `valuation_lookup` 10→15, so no lookup weight sits below Regrid's cost.
+- **A3.** `provider_lookup_log` gains `intent_class`, `answering_layer` and `confidence_served` (migration 0287), and the registry writes them on every path. A row with an org is that org's demand event. There's no reader yet.
+- **D1c + A4.** `statewide_layer_metadata_v1` makes two metadata calls per statewide layer and reports drift against the last poll, the last ingest and the documented cadence. The orchestrator's new `finalize()` writes `etl_runs.observation` once per run, so the runs form an append-only snapshot series.
+- **A2.** Every statewide row carries a dossier and a derived policy block. Every block is restrictive, because no terms were read.
+- **D1b + A1.** `fl_statewide_cadastral_v1` refuses on a missing mapped field, an unbounded run, or an unverified county field. It writes canonical records with per-group provenance and decay class, GeoParquet and PMTiles locally, and `uploaded:false` receipts. It is never "ingested" without bucket-confirmed receipts and resolved use classes.
+- **A5.** `tests/fixtures/golden/fl-golden-county.json` has five honest pending slots, and a CI harness checks them.
+- Both jobs are seeded **inactive**.
+
+### Not done, and why
+- **Not run against live data.** The build container's network policy denies the state and Regrid hosts, so none of the live parts ran: the FL dry run, the 5-parcel spot check, the golden-county values and the live poll. They need a session that can reach `services9.arcgis.com`, `geodata.floridagio.gov`, `floridarevenue.com` and the other statewide hosts.
+- **Design docs not in the repo.** `files/data-sourcing-intelligence-*.md` weren't available, so the D1 package text was used. The assumptions (Layer names, §12 use-class mapping, §8 RCW section) are noted in the code.
+
+### Next moves
+1. In a session that can reach the hosts:
+   - run the FL dry run on one county;
+   - fill the five golden slots from the county appraiser;
+   - read the nine terms pages into the dossiers;
+   - arm the poller.
+2. D2 (TN county ingest) and D3 (delta ingest + `lastIngestedAt` per source).
+
 ## 2026-10-21/22 — Readiness packages 1–5 and the PR train (implementation lane; Muse audits and merges)
 
 ### Merged to main (main = 14748ed7 at 2026-10-22 03:40Z)
@@ -32,6 +55,12 @@ the /api catch-all).
   this branch into scratch DBs differs in exactly 54 columns, all varchar →
   uuid (14 ids + 40 children), 738 tables / 656 FKs both sides; 0 of 648
   schema-declared FK columns mismatched; full suite 18,284 green with realdb.
+  Refreshed onto post-train main bd35343b (2026-10-24): `npm run check` exit 0
+  (no baseline moved), full suite 18,713 green, `db:build-from-repo` PASS on
+  a fresh Postgres 16 with the 14 ids and the CAM trio's `lease_id` (cam_reconciliations,
+  commercial_sales_reports, lease_rent_schedule) uuid with live FKs, and the
+  convergence test 4/4 against real Postgres. The stale "STILL UNRESOLVED"
+  note on the CAM block in migrate.mjs now records the resolution.
 
 ### Found, not fixed (needs a person)
 - **npm's audit service is failing** (2026-10-22 ~02:35–03:20Z: 503, then 400
@@ -101,6 +130,44 @@ first attempt, 1 org, 0 429s, 0 page errors.
 2. Count production users owning more than one org (counts only) — the race
    predates this fix; merging duplicates is a founder decision (customer data).
 3. The consent banner covers the onboarding Continue button at 360 px — design call.
+
+## 2026-10-21 — #386 amended to land-only (COO ruling under the founder's delegation)
+
+- Land released; buy-and-hold is NOT. Its decision route
+  (`server/routes-buy-and-hold-underwriting.ts`), page
+  (`client/src/pages/rentals/underwrite-rental.tsx`), nav entry and spotlight
+  module are removed from #386 and kept intact on
+  `claude/buy-and-hold-underwriting` for a later PR gated on end-to-end journey
+  evidence in the Readiness Atlas. The `rental_acquisition` engine stays as a
+  calculator: it records nothing on its own, so buy-and-hold measures below
+  `decided` and the demotion law requires its `beta` claim.
+- `PUBLIC_CLAIM_DEMOTIONS` 11 → 12 entries (buy_and_hold restored); overclaim
+  baseline 12 (main 13); ladder entry `surfaced`.
+
+## 2026-10-20 — V0 vertical program re-applied (staged, not committed)
+
+### Staged on `claude/recover-v0-vertical-program`
+- Stranded commit `6f6c65f4` (V0: evidence rule v2, underwriting kit, land and
+  buy-and-hold released) re-applied onto main. Its defects were renumbered
+  because main had issued 0285–0288 meanwhile: 0285 → **DEFECT-0290**,
+  0286 → **0291**, 0287 → **0292** (0289 reserved by another branch).
+- One vertical rule, not two: `shared/governance/evidenceLadder.ts` no longer
+  restates the OD-5 demotions by hand. Each vertical entry states one readiness
+  tier and its claim/caveat derive from it; `verticalReadiness.test.ts` pins the
+  ladder to the measured tier, the demotion map and the gradeable set
+  (mutation-checked). Land and buy-and-hold now read "closes the canonical loop";
+  subdivider carries "decided, not yet gradeable".
+- New wall-clock reads from the stranded commit converted to `clock`.
+
+**Measured:** targeted vitest 50 files (routeManifest run twice) / 776 test runs green; lint:reachability,
+clock-reads, no-fabrication, boundaries, browser-safe-shared, org-fetch exit 0.
+`npm run check`, the full suite and the build were NOT run (memory limits).
+
+### Top next moves
+1. Run `npm run check`, full `npm test` and `npm run build`, then an
+   independent audit of the re-applied wave before committing.
+2. DEFECT-0292 (acquisition-cost wording vs `total_cost`) is a founder-visible
+   product choice.
 
 ## 2026-10-19 — Open Fieldstone items closed (Muse)
 
@@ -227,3 +294,36 @@ Each needs: an independent review, a merge of current `main`, then a PR.
 
 - Current Lob prices for every mail spec (to confirm the house-mail cost table).
 - Whether to unify the two house-mail price lists, once real Lob prices are in.
+
+## 2026-10-20 — Lead imports keep the parcel facts (`claude/p4-csv-import-keeps-parcel-facts`, uncommitted)
+
+### Built (working tree, not committed)
+- **One parser module, every import path.** `shared/leads/parcelFacts.ts`
+  reads ACREAGE, ASSESSED value (county), ESTIMATED value (market) and
+  TAX-DELINQUENT status (flag, amount owed, years) — refuse-not-fabricate:
+  "N/A" / blank / garbage / a county 0 are null, never 0; a positive amount or
+  years count implies delinquent. Used by POST /api/leads/csv-import,
+  POST /api/leads/import/tax-delinquent, importLeads() (POST /api/leads/import,
+  /api/import/leads + its background job) and processTaxDelinquentImport();
+  header rule shared by the Smart CSV sheet and the tax-delinquent importer.
+- **Migration 0286** (+ migrate.mjs mirror): `leads.assessed_value`
+  numeric(14,2), `tax_delinquent_amount` numeric(12,2), `tax_delinquent_years`
+  integer. Assessed ≠ estimated, never one written into the other.
+- **Lead detail Parcel card**: property address, APN/county, acreage,
+  "Assessed value (county)" vs "Estimated value", tax delinquent / owed / years.
+- **Fixed on the way:** the Smart CSV sheet's `parseCsv` stripped quotes before
+  splitting cells, so any quoted comma ("$45,000", "SMITH, JOHN") split a cell
+  and shifted the row.
+
+**Measured:** new tests `leadImportKeepsParcelFacts` (44) +
+`leadCsvImportParcelFacts` (8); 31 related files / 556 tests green; 12
+mutations all red. Lints schema-migrate-mirror / schema / ghost-fields /
+measurement-defaults / reachability / no-fabrication / org-fetch exit 0;
+ratchet measure at baseline. NOT run: npm run check / tsc / full suite.
+
+### Next
+1. Run `npm run check` + full suite on a machine that can, then commit.
+2. processTaxDelinquentImport() still has no production route
+   (`/api/import/tax-delinquent` is named in a 404 hint but never mounted).
+3. The synchronous `/api/import/:entityType` path ignores a `fieldMap` the
+   job path honours (no client sends one today).

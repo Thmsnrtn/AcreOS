@@ -28,6 +28,34 @@ import { clock } from "../utils/clock";
 // Cost tracking, semantic caching, prompt versioning all flow through aiRouter.
 
 // ─── Tax Rate Tables ──────────────────────────────────────────────────────
+//
+// Every figure below is for TAX YEAR 2024 (single filer). The estimates also
+// use a flat 15% long-term / 24% short-term federal rate, not these brackets.
+// Presenting that as a position for any other tax year is a claim the code
+// cannot back, so a computation for a year the tables do not cover is REFUSED
+// (assertTaxTableCovers) — never silently computed on stale brackets. Adding
+// a year's tables means adding the year to TAX_TABLE_YEARS with its figures.
+
+/** The tax years whose rate tables are on file. */
+export const TAX_TABLE_YEARS: readonly number[] = [2024];
+/** How every estimate here is computed — returned with each estimate. */
+const TAX_ESTIMATE_BASIS =
+  "Flat 15% federal rate on long-term gains and 24% on short-term gains, plus 3.8% NIIT above the $200,000 single-filer threshold — 2024 single-filer figures. Not computed from your income or filing status.";
+
+export class TaxTableNotOnFileError extends Error {
+  readonly reason = "tax_table_not_on_file";
+  constructor(readonly requestedYear: number) {
+    super(
+      `No tax estimate for ${requestedYear}: the tax tables on file are for ${TAX_TABLE_YEARS.join(", ")} only, and estimating ${requestedYear} with them would present out-of-date rates as your position. Nothing was computed.`,
+    );
+    this.name = "TaxTableNotOnFileError";
+  }
+}
+
+/** Refuse any estimate for a tax year the tables on file do not cover. */
+function assertTaxTableCovers(taxYear: number): void {
+  if (!TAX_TABLE_YEARS.includes(taxYear)) throw new TaxTableNotOnFileError(taxYear);
+}
 
 const FEDERAL_LTCG_RATES = [
   { maxIncome: 47025, rate: 0 },      // Single 2024
@@ -93,6 +121,8 @@ export interface TaxPositionSummary {
    * framing. Always TAX_ADVISORY_COPY; render adjacent to every figure above.
    */
   disclaimer: string;
+  /** The tax-table year and the basis every estimate above was computed on. */
+  taxTable: { year: number; basis: string };
 }
 
 export interface TaxRecommendation {
@@ -164,6 +194,8 @@ class TaxOptimizerService {
     organizationId: number,
     taxYear: number
   ): Promise<TaxPositionSummary> {
+    // Refused before any read: no position on rates the tables do not cover.
+    assertTaxTableCovers(taxYear);
     const yearStart = new Date(taxYear, 0, 1);
     const yearEnd = new Date(taxYear, 11, 31);
 
@@ -326,6 +358,7 @@ class TaxOptimizerService {
       exchange1031Candidates,
       generatedAt: clock.now(),
       disclaimer: TAX_ADVISORY_COPY,
+      taxTable: { year: taxYear, basis: TAX_ESTIMATE_BASIS },
     };
   }
 
@@ -532,6 +565,8 @@ class TaxOptimizerService {
     estimatedNIIT: number;
     total: number;
     recommendations: string[];
+    disclaimer: string;
+    taxTable: { year: number; basis: string };
   }> {
     const [deal] = await db
       .select()
@@ -539,6 +574,10 @@ class TaxOptimizerService {
       .where(and(eq(deals.id, dealId), eq(deals.organizationId, organizationId)));
 
     if (!deal) throw new Error("Deal not found");
+
+    // The tax year this sale falls in: its closing year, else this year.
+    const taxYear = deal.closingDate ? new Date(deal.closingDate).getFullYear() : clock.now().getFullYear();
+    assertTaxTableCovers(taxYear);
 
     const salePrice = parseFloat((deal.acceptedAmount ?? deal.offerAmount ?? 0).toString());
     const analysisResults = deal.analysisResults as any;
@@ -568,6 +607,8 @@ class TaxOptimizerService {
       estimatedNIIT,
       total: estimatedFederalTax + estimatedNIIT,
       recommendations: recs,
+      disclaimer: TAX_ADVISORY_COPY,
+      taxTable: { year: taxYear, basis: TAX_ESTIMATE_BASIS },
     };
   }
 

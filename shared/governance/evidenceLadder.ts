@@ -54,6 +54,35 @@ export interface Capability {
   caveat?: string;
 }
 
+/**
+ * A vertical's ladder entry, derived from the one readiness fact it states.
+ *
+ * `decided`: a decision under the vertical's pack cites a scenario from an engine
+ * that declares the vertical (evidence rule v2, tests/support/verticalEvidence.ts).
+ * `surfaced`: real modules and workflow templates, but no such decision — which is
+ * why its public claim is demoted to beta (OD-5, shared/business-types/publicClaims.ts).
+ */
+function verticalEntry(
+  id: string,
+  name: string,
+  evidenced: "surfaced" | "decided",
+  opts: { notGradeable?: string } = {},
+): Capability {
+  const base = { id: `vertical.${id}`, level: "E1" as const, proof: { unit: ["tests/unit/verticalReadiness.test.ts"] } };
+  if (evidenced === "decided") {
+    return {
+      ...base,
+      claim: `The ${name} vertical closes the canonical loop (scenario → decision snapshot)`,
+      ...(opts.notGradeable ? { caveat: `decided, not yet gradeable: ${opts.notGradeable}` } : {}),
+    };
+  }
+  return {
+    ...base,
+    claim: `The ${name} vertical has real modules and workflow templates (evidenced 'surfaced')`,
+    caveat: "surfaced, not decided: the public claim is beta (OD-5)",
+  };
+}
+
 const RUN_YEAR = "tests/simulation/evidence/runs/simplat-year-2026-10.json";
 const RUN_REDTEAM = "tests/simulation/evidence/runs/simplat-redteam-2026-10.json";
 
@@ -152,109 +181,29 @@ export const CAPABILITIES: readonly Capability[] = [
   },
   // Every vertical, listed by hand (never generated from the registry, which would make
   // E1 automatic): a vertical added later with no entry here is never `core` publicly.
-  {
-    id: "vertical.land_flipper",
-    claim: "The land flipper vertical has real modules and workflow templates (evidenced 'surfaced')",
-    level: "E1",
-    proof: { unit: ["tests/unit/verticalReadiness.test.ts"] },
-    caveat: "surfaced, not decided: the public claim is beta (OD-5)",
-  },
-  {
-    id: "vertical.note_investor",
-    claim: "The note investor vertical has real modules and workflow templates (evidenced 'surfaced')",
-    level: "E1",
-    proof: { unit: ["tests/unit/verticalReadiness.test.ts"] },
-    caveat: "surfaced, not decided: the public claim is beta (OD-5)",
-  },
-  {
-    id: "vertical.hybrid",
-    claim: "The hybrid vertical has real modules and workflow templates (evidenced 'surfaced')",
-    level: "E1",
-    proof: { unit: ["tests/unit/verticalReadiness.test.ts"] },
-    caveat: "surfaced, not decided: the public claim is beta (OD-5)",
-  },
-  {
-    id: "vertical.fix_and_flip",
-    claim: "The fix and flip vertical closes the canonical loop (scenario → decision snapshot)",
-    level: "E1",
-    proof: { unit: ["tests/unit/verticalReadiness.test.ts"] },
-  },
-  {
-    id: "vertical.residential_wholesaler",
-    claim: "The residential wholesaler vertical has real modules and workflow templates (evidenced 'surfaced')",
-    level: "E1",
-    proof: { unit: ["tests/unit/verticalReadiness.test.ts"] },
-    caveat: "surfaced, not decided: the public claim is beta (OD-5)",
-  },
-  {
-    id: "vertical.buy_and_hold",
-    claim: "The buy and hold vertical has real modules and workflow templates (evidenced 'surfaced')",
-    level: "E1",
-    proof: { unit: ["tests/unit/verticalReadiness.test.ts"] },
-    caveat: "surfaced, not decided: the public claim is beta (OD-5)",
-  },
-  {
-    id: "vertical.short_term_rental",
-    claim: "The short term rental vertical has real modules and workflow templates (evidenced 'surfaced')",
-    level: "E1",
-    proof: { unit: ["tests/unit/verticalReadiness.test.ts"] },
-    caveat: "surfaced, not decided: the public claim is beta (OD-5)",
-  },
-  {
-    id: "vertical.commercial",
-    claim: "The commercial vertical has real modules and workflow templates (evidenced 'surfaced')",
-    level: "E1",
-    proof: { unit: ["tests/unit/verticalReadiness.test.ts"] },
-    caveat: "surfaced, not decided: the public claim is beta (OD-5)",
-  },
-  {
-    id: "vertical.creative_finance",
-    claim: "The creative finance vertical has real modules and workflow templates (evidenced 'surfaced')",
-    level: "E1",
-    proof: { unit: ["tests/unit/verticalReadiness.test.ts"] },
-    caveat: "surfaced, not decided: the public claim is beta (OD-5)",
-  },
-  {
-    id: "vertical.developer",
-    claim: "The developer vertical has real modules and workflow templates (evidenced 'surfaced')",
-    level: "E1",
-    proof: { unit: ["tests/unit/verticalReadiness.test.ts"] },
-    caveat: "surfaced, not decided: the public claim is beta (OD-5)",
-  },
-  {
-    id: "vertical.subdivider",
-    claim: "The subdivider vertical closes the canonical loop (scenario → decision snapshot)",
-    level: "E1",
-    proof: { unit: ["tests/unit/verticalReadiness.test.ts"] },
-  },
-  {
-    id: "vertical.tax_lien_deed",
-    claim: "The tax lien deed vertical has real modules and workflow templates (evidenced 'surfaced')",
-    level: "E1",
-    proof: { unit: ["tests/unit/verticalReadiness.test.ts"] },
-    caveat: "surfaced, not decided: the public claim is beta (OD-5)",
-  },
-  {
-    id: "vertical.multifamily",
-    claim: "The multifamily vertical has real modules and workflow templates (evidenced 'surfaced')",
-    level: "E1",
-    proof: { unit: ["tests/unit/verticalReadiness.test.ts"] },
-    caveat: "surfaced, not decided: the public claim is beta (OD-5)",
-  },
-  {
-    id: "vertical.mobile_home",
-    claim: "The mobile home vertical has real modules and workflow templates (evidenced 'surfaced')",
-    level: "E1",
-    proof: { unit: ["tests/unit/verticalReadiness.test.ts"] },
-    caveat: "surfaced, not decided: the public claim is beta (OD-5)",
-  },
-  {
-    id: "vertical.agent_investor",
-    claim: "The agent investor vertical has real modules and workflow templates (evidenced 'surfaced')",
-    level: "E1",
-    proof: { unit: ["tests/unit/verticalReadiness.test.ts"] },
-    caveat: "surfaced, not decided: the public claim is beta (OD-5)",
-  },
+  // Each entry states ONE fact — the readiness tier its evidence reaches — and the
+  // claim and caveat are derived from it (verticalEntry, above), so the ladder cannot
+  // say "beta" about a vertical the evidence rule v2 has released. That tier is
+  // pinned to the MEASURED one in verticalReadiness.test.ts, which also pins the
+  // public demotion map (PUBLIC_CLAIM_DEMOTIONS) to the same measurement: one rule,
+  // read in two places, never restated by hand.
+  verticalEntry("land_flipper", "land flipper", "decided"),
+  verticalEntry("note_investor", "note investor", "surfaced"),
+  verticalEntry("hybrid", "hybrid", "surfaced"),
+  verticalEntry("fix_and_flip", "fix and flip", "decided"),
+  verticalEntry("residential_wholesaler", "residential wholesaler", "surfaced"),
+  verticalEntry("buy_and_hold", "buy and hold", "surfaced"),
+  verticalEntry("short_term_rental", "short term rental", "surfaced"),
+  verticalEntry("commercial", "commercial", "surfaced"),
+  verticalEntry("creative_finance", "creative finance", "surfaced"),
+  verticalEntry("developer", "developer", "surfaced"),
+  verticalEntry("subdivider", "subdivider", "decided", {
+    notGradeable: "its lot-pricing lock records no scenario and no review date, so its decisions are never asked for an outcome (V2)",
+  }),
+  verticalEntry("tax_lien_deed", "tax lien deed", "surfaced"),
+  verticalEntry("multifamily", "multifamily", "surfaced"),
+  verticalEntry("mobile_home", "mobile home", "surfaced"),
+  verticalEntry("agent_investor", "agent investor", "surfaced"),
 ];
 
 export function evidenceRankOf(level: EvidenceLevel): number {

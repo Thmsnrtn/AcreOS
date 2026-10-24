@@ -56,6 +56,8 @@ interface ConnectorDef {
   credentialFields?: CredentialField[];
   setupUrl?: string;
   isPremium?: boolean;
+  /** "planned" = no adapter or no auth flow exists; the server refuses to connect it. */
+  availability?: "available" | "planned";
   instance: {
     id: number;
     status: string;
@@ -156,11 +158,6 @@ function ConnectDialog({
               )}
             </div>
           ))}
-          {connector.authType === "oauth" && (
-            <p className="text-xs text-muted-foreground">
-              This connector uses OAuth. Click Connect to be redirected to authorize access.
-            </p>
-          )}
           {connector.setupUrl && (
             <a
               href={connector.setupUrl}
@@ -223,9 +220,13 @@ export function PaxConnectorPanel({ open, onOpenChange }: PaxConnectorPanelProps
     return acc;
   }, {});
 
-  const connectingConnector = connectors.find((c) => c.id === connectingId);
+  const connectingConnector = connectors.find(
+    (c) => c.id === connectingId && c.availability !== "planned",
+  );
 
-  const connectedCount = connectors.filter((c) => c.instance?.status === "connected").length;
+  const connectedCount = connectors.filter(
+    (c) => c.availability !== "planned" && c.instance?.status === "connected",
+  ).length;
 
   return (
     <>
@@ -272,7 +273,11 @@ export function PaxConnectorPanel({ open, onOpenChange }: PaxConnectorPanelProps
                     </p>
                     <div className="space-y-2">
                       {group.map((connector) => {
-                        const isConnected = connector.instance?.status === "connected";
+                        const isPlanned = connector.availability === "planned";
+                        // A stale "connected" row on a planned connector is not a
+                        // working integration — never badge it Connected.
+                        const isConnected = !isPlanned && connector.instance?.status === "connected";
+                        const hasStoredRow = !!connector.instance && connector.instance.status !== "disconnected";
                         return (
                           <div
                             key={connector.id}
@@ -284,7 +289,11 @@ export function PaxConnectorPanel({ open, onOpenChange }: PaxConnectorPanelProps
                                 {connector.isPremium && (
                                   <Badge variant="secondary" className="text-micro h-4">Premium</Badge>
                                 )}
-                                <StatusBadge status={connector.instance?.status} />
+                                {isPlanned ? (
+                                  <Badge variant="outline" className="text-micro h-4">Not available yet</Badge>
+                                ) : (
+                                  <StatusBadge status={connector.instance?.status} />
+                                )}
                               </div>
                               <p className="text-[11px] text-muted-foreground leading-tight line-clamp-2">
                                 {connector.description}
@@ -296,7 +305,7 @@ export function PaxConnectorPanel({ open, onOpenChange }: PaxConnectorPanelProps
                               )}
                             </div>
                             <div className="flex items-center gap-1 shrink-0 pt-0.5">
-                              {isConnected ? (
+                              {isConnected || (isPlanned && hasStoredRow) ? (
                                 <Button
                                   variant="ghost"
                                   size="icon"
@@ -307,7 +316,7 @@ export function PaxConnectorPanel({ open, onOpenChange }: PaxConnectorPanelProps
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </Button>
-                              ) : (
+                              ) : isPlanned ? null : (
                                 <Button
                                   variant="outline"
                                   size="sm"

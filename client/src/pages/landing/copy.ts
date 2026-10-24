@@ -167,7 +167,7 @@ export const LANDING_COPY = {
       {
         n: 2,
         t: "AcreOS does the busy work",
-        b: "Lists pulled, replies drafted, your drips sent — overnight, from your own accounts. Every action is logged and reviewable.",
+        b: "Replies drafted, your drips sent — overnight, from your own accounts. Every action is logged and reviewable.",
       },
       {
         n: 3,

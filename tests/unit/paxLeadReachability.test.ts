@@ -82,10 +82,20 @@ describe("the shapes the oracle run got wrong", () => {
     expect(r.summary).toMatch(/not reachable by any channel/i);
   });
 
-  it("consent plus a phone makes text and call usable, and not mail or email", () => {
-    const r = leadReachabilityForPax(lead({ phone: "+15205550100", tcpaConsent: true }));
+  it("WRITTEN consent plus a phone makes text and call usable, and not mail or email", () => {
+    const r = leadReachabilityForPax(lead({ phone: "+15205550100", tcpaConsent: true, consentSource: "website" }));
     expect(r.usableNow).toEqual(["text", "call"]);
     expect(r.canEmail.why).toMatch(/email/i);
+  });
+
+  // Founder decision 2026-10-20 #1: a verbal / operator-ticked grant licenses
+  // a call, not a text — Pax must not promise the text the gate refuses.
+  it("a non-written grant plus a phone makes a call usable but NOT a text, and says why", () => {
+    for (const consentSource of ["verbal", "admin_manual", null]) {
+      const r = leadReachabilityForPax(lead({ phone: "+15205550100", tcpaConsent: true, consentSource }));
+      expect(r.usableNow).toEqual(["call"]);
+      expect(r.canText.why).toMatch(/written consent/i);
+    }
   });
 
   it("a complete address makes mail usable without consent; do-not-contact blocks it", () => {
@@ -107,7 +117,7 @@ describe("the shapes the oracle run got wrong", () => {
   it("the summary counts channels over a list", () => {
     const rows = [
       leadReachabilityForPax(lead({ phone: "1" })),
-      leadReachabilityForPax(lead({ phone: "1", tcpaConsent: true })),
+      leadReachabilityForPax(lead({ phone: "1", tcpaConsent: true, consentSource: "written" })),
       leadReachabilityForPax(lead(FULL_ADDR)),
     ];
     expect(summarizeReachabilityForPax(rows)).toEqual({

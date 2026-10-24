@@ -126,7 +126,8 @@ vi.mock("../../server/ai/validators", () => ({ validateAtlasOutput: vi.fn(), Atl
 vi.mock("openai", () => ({ default: class {} }));
 vi.mock("stripe", () => ({
   default: class {
-    invoices = { pay: H.stripeInvoicesPay, voidInvoice: vi.fn() };
+    // retrieve: the ownership check retry_payment runs before paying (2026-10-20).
+    invoices = { pay: H.stripeInvoicesPay, voidInvoice: vi.fn(), retrieve: vi.fn(async (id: string) => ({ id, customer: "cus_1" })) };
     customers = { update: H.stripeCustomersUpdate };
     billingPortal = { sessions: { create: vi.fn(async () => ({ url: "https://billing" })) } };
   },

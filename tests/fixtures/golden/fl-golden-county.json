@@ -1,0 +1,129 @@
+{
+  "about": "D1 amendment A5 — the first golden county: five parcels whose values are recorded from the county property appraiser's own record (ground truth), against which the FL statewide normalizer is asserted in CI (tests/unit/flGoldenCounty.test.ts). A slot is filled ONLY from a live read: sourceAttributes copied from the FDOR statewide layer's response for that parcel, assessorVerified copied from the county appraiser's record, with who read it, when, and the record URL. assessorVerified holds ONLY the fields where the appraiser's 2026 Certified values match the normalizer's output; fields where FDOR and the appraiser genuinely differ (ownerName on slots 1-2: FDOR truncates/stales names) are omitted rather than fudged — the test asserts each listed field exactly.",
+  "state": "FL",
+  "county": "Nassau",
+  "countyNote": "Nassau County, FL — set by the first live dry run (D1b), etl_runs id 4, 2026-10-23. CO_NO=55 per the FDOR DOR numbering.",
+  "status": "established",
+  "parcels": [
+    {
+      "slot": 1,
+      "sourceParcelId": "513N270700000S0000",
+      "sourceAttributes": {
+        "PARCEL_ID": "513N270700000S0000",
+        "OWN_NAME": "HEADWATERS AT LOFTON CREEK OWN",
+        "PHY_ADDR1": "HEADWATERS DR",
+        "PHY_CITY": "YULEE",
+        "AV_NSD": 100,
+        "JV": 100,
+        "SALE_PRC1": 0,
+        "S_LEGAL": "TRACT S",
+        "CO_NO": "55"
+      },
+      "assessorVerified": {
+        "situsAddress": "HEADWATERS DR",
+        "assessedValueUsd": 100,
+        "marketValueUsd": 100
+      },
+      "assessorNote": "Owner name differs: appraiser shows 'HEADWATERS AT LOFTON CREEK OWNERS ASSOCIATION INC' vs FDOR 'HEADWATERS AT LOFTON CREEK OWN' (truncated). Value fields match exactly (2026 Certified).",
+      "verifiedBy": "Muse",
+      "verifiedOn": "2026-10-23",
+      "assessorRecordUrl": "https://search.ncpafl.com/parcel/27%20N%203510700000S0000"
+    },
+    {
+      "slot": 2,
+      "sourceParcelId": "00SB30047E00370000",
+      "sourceAttributes": {
+        "PARCEL_ID": "00SB30047E00370000",
+        "OWN_NAME": "BISCH JEFFREY S",
+        "PHY_ADDR1": "96065 LAZY OAK WAY",
+        "PHY_CITY": "FERNANDINA BEACH",
+        "AV_NSD": 865964,
+        "JV": 865964,
+        "SALE_PRC1": 0,
+        "S_LEGAL": "LOT 37",
+        "CO_NO": "55"
+      },
+      "assessorVerified": {
+        "situsAddress": "96065 LAZY OAK WAY",
+        "assessedValueUsd": 865964,
+        "marketValueUsd": 865964
+      },
+      "assessorNote": "Owner name differs: appraiser shows 'BISCH JEFFREY S / VU JOANNA A' (two owners) vs FDOR 'BISCH JEFFREY S' (one). Value fields match exactly (2026 Certified).",
+      "verifiedBy": "Muse",
+      "verifiedOn": "2026-10-23",
+      "assessorRecordUrl": "https://search.ncpafl.com/parcel/30%20B%20S00047E00370000"
+    },
+    {
+      "slot": 3,
+      "sourceParcelId": "503N271004000U0000",
+      "sourceAttributes": {
+        "PARCEL_ID": "503N271004000U0000",
+        "OWN_NAME": "PULTE HOME COMPANY LLC",
+        "PHY_ADDR1": "DEL WEBB PKWY",
+        "PHY_CITY": "YULEE",
+        "AV_NSD": 100,
+        "JV": 100,
+        "SALE_PRC1": 0,
+        "S_LEGAL": "TRACT U",
+        "CO_NO": "55"
+      },
+      "assessorVerified": {
+        "ownerName": "PULTE HOME COMPANY LLC",
+        "situsAddress": "DEL WEBB PKWY",
+        "assessedValueUsd": 100,
+        "marketValueUsd": 100
+      },
+      "verifiedBy": "Muse",
+      "verifiedOn": "2026-10-23",
+      "assessorRecordUrl": "https://search.ncpafl.com/parcel/27%20N%203501004000U0000"
+    },
+    {
+      "slot": 4,
+      "sourceParcelId": "382N271270000I0000",
+      "sourceAttributes": {
+        "PARCEL_ID": "382N271270000I0000",
+        "OWN_NAME": "JEA",
+        "PHY_ADDR1": "85001 ST THOMAS ST",
+        "PHY_CITY": "YULEE",
+        "AV_NSD": 246026,
+        "JV": 404000,
+        "SALE_PRC1": 0,
+        "S_LEGAL": "TRACT I",
+        "CO_NO": "55"
+      },
+      "assessorVerified": {
+        "ownerName": "JEA",
+        "situsAddress": "85001 ST THOMAS ST",
+        "assessedValueUsd": 246026,
+        "marketValueUsd": 404000
+      },
+      "verifiedBy": "Muse",
+      "verifiedOn": "2026-10-23",
+      "assessorRecordUrl": "https://search.ncpafl.com/parcel/27%20N%202381270000I0000"
+    },
+    {
+      "slot": 5,
+      "sourceParcelId": "234N23202000540000",
+      "sourceAttributes": {
+        "PARCEL_ID": "234N23202000540000",
+        "OWN_NAME": "TROUILLE MIKE A & LINDSAY P",
+        "PHY_ADDR1": "SUNDBERG RD",
+        "PHY_CITY": "HILLIARD",
+        "AV_NSD": 5300,
+        "JV": 190000,
+        "SALE_PRC1": 0,
+        "S_LEGAL": "LOT 54",
+        "CO_NO": "55"
+      },
+      "assessorVerified": {
+        "ownerName": "TROUILLE MIKE A & LINDSAY P",
+        "situsAddress": "SUNDBERG RD",
+        "assessedValueUsd": 5300,
+        "marketValueUsd": 190000
+      },
+      "verifiedBy": "Muse",
+      "verifiedOn": "2026-10-23",
+      "assessorRecordUrl": "https://search.ncpafl.com/parcel/23%20N%20423202000540000"
+    }
+  ]
+}

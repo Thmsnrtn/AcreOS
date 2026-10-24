@@ -1192,23 +1192,11 @@ export function registerTeamMessagingRoutes(app: Express): void {
           .where(eq(organizations.id, org.id));
 
         const normalizedListing =
-          await listingSyndication.buildNormalizedListing(property, orgRow, {
-            askingPrice: parseFloat(listing.askingPrice || "0"),
-            sellerFinancingAvailable:
-              listing.sellerFinancingAvailable || false,
-            downPaymentMin: listing.downPaymentMin
-              ? parseFloat(listing.downPaymentMin)
-              : undefined,
-            monthlyPaymentMin: listing.monthlyPaymentMin
-              ? parseFloat(listing.monthlyPaymentMin)
-              : undefined,
-            interestRate: listing.interestRate
-              ? parseFloat(listing.interestRate)
-              : undefined,
-            termYears: listing.termMonths
-              ? Math.round(listing.termMonths / 12)
-              : undefined,
-          });
+          await listingSyndication.buildNormalizedListing(
+            property,
+            orgRow,
+            listingSyndication.listingContentForChannels(listing),
+          );
 
         // ── Per-platform fan-out
         const simulated = shouldSimulate("listings", orgRow ?? null);
@@ -1256,23 +1244,20 @@ export function registerTeamMessagingRoutes(app: Express): void {
               platform: p,
               status: "missing_credentials",
               error: "Marketplace syndication requires a Scale plan or higher",
-              manualInstructions: `Upgrade your plan to enable ${listingSyndication.PLATFORMS[p].name} syndication.`,
+              manualInstructions: `Channel publishing is on the Scale plan and up. Even there, ${listingSyndication.PLATFORMS[p].name} posts only on your own ${listingSyndication.PLATFORMS[p].name} account, which AcreOS can't connect yet — post this listing there yourself.`,
             });
             continue;
           }
 
-          // 3. Credential gate (env vars listed in PLATFORMS registry)
+          // 3. Account gate: an API channel posts on the org's OWN account
+          // (founder decision 2026-10-20 #3), never on AcreOS env keys.
           const cfg = listingSyndication.PLATFORMS[p];
-          const missingEnv = (cfg.envKeys || []).filter(
-            (k) => !process.env[k]
-          );
-          // Craigslist + any platform with no envKeys requires no creds
-          if (cfg.envKeys.length > 0 && missingEnv.length === cfg.envKeys.length) {
+          if (!(await listingSyndication.customerAccountConnected(org.id, p))) {
             earlyResults.push({
               platform: p,
               status: "missing_credentials",
-              error: `Missing env vars: ${missingEnv.join(", ")}`,
-              manualInstructions: `Add ${cfg.envKeys.join(", ")} in Settings → Integrations to enable ${cfg.name}.`,
+              error: `${cfg.name} is not connected to your own account`,
+              manualInstructions: `Automatic posting to ${cfg.name} runs on your own ${cfg.name} account, and AcreOS can't connect one yet. Post this listing on ${cfg.name} yourself.`,
             });
             continue;
           }

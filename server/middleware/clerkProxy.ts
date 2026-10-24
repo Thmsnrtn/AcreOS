@@ -35,6 +35,21 @@ export const CLERK_UPSTREAM_TIMEOUT_MS = 10_000;
  *
  * `fetchImpl` is injectable purely for tests; production uses global `fetch`.
  */
+/**
+ * True when a Location value points at a Clerk accounts host. Parsed, not
+ * substring-matched: "accounts.acreos.io" appearing inside a path or query
+ * of some other host must not trigger the rewrite (CodeQL: incomplete URL
+ * substring sanitization).
+ */
+function isAccountsHost(loc: string): boolean {
+  try {
+    const host = new URL(loc).hostname;
+    return host === "accounts.acreos.io" || host.endsWith(".accounts.acreos.io");
+  } catch {
+    return false;
+  }
+}
+
 export function createClerkProxyHandler(fetchImpl: typeof fetch = fetch) {
   return async function clerkProxyHandler(req: Request, res: Response): Promise<void> {
     // E2E test-auth: block the Clerk proxy so Clerk-JS fails to load and the
@@ -46,6 +61,14 @@ export function createClerkProxyHandler(fetchImpl: typeof fetch = fetch) {
     }
     try {
       const clerkPath = req.originalUrl.replace(/^\/__clerk/, "") || "/";
+
+      // The proxy's public identity is THIS request's host — never a
+      // hardcoded production origin. On staging, telling FAPI the proxy
+      // lives at acreos.io makes it answer with acreos.io-bound script
+      // URLs; the browser's cross-origin script load is then denied
+      // (WebKit) and Clerk JS never loads (issue #359).
+      const publicHost = req.headers.host || "acreos.io";
+      const publicOrigin = `https://${publicHost}`;
 
       // STR-011 root cause: /v1/client is per-session and MUST NOT be cached
       // across users. /v1/environment is safe to cache (instance-level / public).
@@ -63,7 +86,7 @@ export function createClerkProxyHandler(fetchImpl: typeof fetch = fetch) {
 
       const targetUrl = `${CLERK_FAPI_ORIGIN}${clerkPath}`;
       const fwdHeaders: Record<string, string> = {
-        "Clerk-Proxy-Url": "https://acreos.io/__clerk",
+        "Clerk-Proxy-Url": `${publicOrigin}/__clerk`,
         "Clerk-Secret-Key": process.env.CLERK_SECRET_KEY || "",
       };
       for (const key of ["content-type", "authorization", "cookie", "accept", "user-agent", "referer", "origin"]) {
@@ -71,7 +94,7 @@ export function createClerkProxyHandler(fetchImpl: typeof fetch = fetch) {
       }
       fwdHeaders["x-forwarded-for"] = req.ip || req.socket.remoteAddress || "";
       fwdHeaders["x-forwarded-proto"] = "https";
-      fwdHeaders["x-forwarded-host"] = "acreos.io";
+      fwdHeaders["x-forwarded-host"] = publicHost;
       let body: string | undefined;
       if (!["GET", "HEAD"].includes(req.method)) {
         const ct = (req.headers["content-type"] || "").toLowerCase();
@@ -99,7 +122,14 @@ export function createClerkProxyHandler(fetchImpl: typeof fetch = fetch) {
         const cookieNames = setCookies.map((c) => c.split("=")[0]);
         logger.info(`[clerk-proxy] ${req.method} ${clerkPath} -> Set-Cookie: ${cookieNames.join(", ")}`);
         for (const raw of setCookies) {
-          res.appendHeader("Set-Cookie", raw.replace(/domain=[^;]+/gi, "domain=.acreos.io"));
+          // On the production domain the cookie is shared across subdomains
+          // (.acreos.io). Anywhere else (staging, previews) the cookie must be
+          // host-scoped to the proxy's own host — a .acreos.io domain attribute
+          // on a staging response is rejected and the session never sticks.
+          const rewritten = publicHost === "acreos.io" || publicHost.endsWith(".acreos.io")
+            ? raw.replace(/domain=[^;]+/gi, "domain=.acreos.io")
+            : raw.replace(/;\s*domain=[^;]+/gi, "");
+          res.appendHeader("Set-Cookie", rewritten);
         }
       }
 
@@ -110,7 +140,7 @@ export function createClerkProxyHandler(fetchImpl: typeof fetch = fetch) {
           let loc = value;
           if (loc.startsWith("/v1/") || loc.startsWith("/npm/")) loc = "/__clerk" + loc;
           if (loc.includes(CLERK_FAPI_HOST)) loc = loc.replace(CLERK_FAPI_ORIGIN, "/__clerk");
-          if (loc.includes("accounts.acreos.io")) loc = "https://acreos.io/";
+          if (isAccountsHost(loc)) loc = `${publicOrigin}/`;
           res.setHeader(key, loc);
           return;
         }

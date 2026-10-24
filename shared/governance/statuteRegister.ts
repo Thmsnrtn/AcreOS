@@ -271,7 +271,7 @@ export const STATUTE_REGISTER: readonly StatuteEntry[] = [
   {
     id: "regz.seller-financer-exclusion",
     citation:
-      "12 C.F.R. §1026.36(a)(4)(i), §1026.36(a)(4)(ii); SAFE Act, 12 U.S.C. §5102; Dodd-Frank Title XIV",
+      "12 C.F.R. §1026.36(a)(4), §1026.36(a)(5); SAFE Act, 12 U.S.C. §5102; Dodd-Frank Title XIV",
     what: "A seller who finances a limited number of properties per 12-month period is excluded from the definition of loan originator (the 3-property and 1-property natural-person exclusions), and therefore from licensing obligations that otherwise attach.",
     codeSites: [
       "server/services/doddFrankChecker.ts",

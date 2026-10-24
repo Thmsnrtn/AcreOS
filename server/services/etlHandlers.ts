@@ -51,6 +51,25 @@ import {
 import { db } from "../db";
 import { logger } from "../utils/logger";
 import { fetchGeo } from "./providers/fetchGeo";
+import { mkdtempSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import {
+  STATEWIDE_METADATA_JOB,
+  pollAllStatewideLayers,
+  previousSnapshots,
+  type PollDeps,
+} from "./openData/statewideLayerPoller";
+import {
+  FL_JOB,
+  buildDryRunArtifacts,
+  fetchFlCounty,
+  ingestOutcome,
+  type FlFetched,
+  type FlRunConfig,
+  type FlRunDeps,
+} from "./landData/flStatewideCadastral";
+import { bucketConfigFromEnv } from "./landData/openDataBucket";
 import { recordProviderParcelFacts, coerceSaleDate } from "./data-cache/observation-log";
 import {
   registerEtlHandler,
@@ -1584,6 +1603,91 @@ export const blsQcewEmploymentEtlHandler: EtlProviderHandler & {
   },
 };
 
+// ─── D1c: statewide-layer change detection (metadata only) ─────────────────
+
+/** The live fetch both D1 jobs use: the hardened geo fetch, one request a second per host. */
+async function getGeoJson(url: string, timeoutMs: number): Promise<{ ok: boolean; status: number; body: unknown; etag: string | null }> {
+  const res = await fetchGeo(url, { timeoutMs, ratePerSec: 1, maxConcurrentPerHost: 1 });
+  let body: unknown = null;
+  try {
+    body = await res.json();
+  } catch {
+    body = null;
+  }
+  return { ok: res.ok, status: res.status, body, etag: res.headers?.get?.("etag") ?? null };
+}
+
+const livePollDeps: PollDeps = { getJson: (url) => getGeoJson(url, 30_000), now: () => clock.now() };
+
+/**
+ * fetch() polls every seeded statewide layer once (two metadata calls each,
+ * never a feature page), compares against the previous run's snapshots, and
+ * stashes the run's observation; upsert writes nothing — the snapshots' home
+ * is the run's observation, written once by finalize() (append-only series,
+ * D1 A4). lastIngested stays empty until D3 records confirmed per-source
+ * ingests, so changedSinceIngest reports null rather than a guess.
+ */
+const statewideLayerMetadataEtlHandler: EtlProviderHandler = {
+  name: STATEWIDE_METADATA_JOB,
+  async *fetch(opts) {
+    const observation = await pollAllStatewideLayers(livePollDeps, await previousSnapshots(), new Map());
+    if (opts.runState) opts.runState.observation = observation;
+    for (const s of observation.snapshots) {
+      yield { externalId: s.state, updatedAt: null, payload: { state: s.state, ok: s.ok } };
+    }
+  },
+  async upsert() {
+    return { action: "unchanged" };
+  },
+  async finalize(opts) {
+    return (opts.runState?.observation as Record<string, unknown> | undefined) ?? null;
+  },
+};
+
+// ─── D1b: Florida statewide cadastral (dry run, no bucket writes) ──────────
+
+const liveFlDeps: FlRunDeps = { getJson: (url) => getGeoJson(url, 60_000) };
+
+/**
+ * fetch() pulls + normalizes the configured county (config.countyField /
+ * countyValue — refused without both) into the run's own state; upsert writes
+ * nothing (D1 has no store for the canonical rows); finalize() builds the
+ * local GeoParquet + PMTiles and returns the dry-run report — receipts that
+ * say uploaded:false, and an outcome that is never "ingested" without
+ * bucket-confirmed receipts — as the run's observation.
+ */
+const flStatewideCadastralEtlHandler: EtlProviderHandler = {
+  name: FL_JOB,
+  async *fetch(opts) {
+    const fetched = await fetchFlCounty((opts.config ?? {}) as FlRunConfig, liveFlDeps);
+    if (opts.runState) opts.runState.fl = fetched;
+    for (const r of fetched.records) {
+      yield { externalId: r.identity.sourceParcelId, updatedAt: null, payload: { parcelId: r.identity.sourceParcelId } };
+    }
+  },
+  async upsert() {
+    return { action: "unchanged" };
+  },
+  async finalize(opts) {
+    const fetched = opts.runState?.fl as FlFetched | undefined;
+    if (!fetched) return null;
+    const outDir = mkdtempSync(path.join(os.tmpdir(), "acreos-fl-dryrun-"));
+    const artifacts = await buildDryRunArtifacts(fetched.records, outDir, `FL ${fetched.county} (dry run)`);
+    return {
+      kind: "fl_statewide_cadastral_dry_run",
+      county: fetched.county,
+      countyField: fetched.countyField,
+      asOf: fetched.asOf,
+      conformance: fetched.conformance,
+      fetched: fetched.fetched,
+      normalized: fetched.records.length,
+      skippedNoId: fetched.skippedNoId,
+      artifacts,
+      outcome: ingestOutcome({ artifacts: artifacts.receipts, uploadReceipts: [], bucketConfigured: bucketConfigFromEnv() !== null }),
+    };
+  },
+};
+
 // ─── Bootstrap registration ─────────────────────────────────────────────────
 
 let registered = false;
@@ -1599,5 +1703,9 @@ export function registerReferenceEtlHandlers(): void {
   registerEtlHandler(irsSoiMigrationEtlHandler.name, irsSoiMigrationEtlHandler);
   registerEtlHandler(censusBpsPermitsEtlHandler.name, censusBpsPermitsEtlHandler);
   registerEtlHandler(blsQcewEmploymentEtlHandler.name, blsQcewEmploymentEtlHandler);
+  // D1: statewide-layer change detection (metadata only) and the FL dry-run
+  // build. Both etl_jobs rows are seeded inactive (migration 0287).
+  registerEtlHandler(statewideLayerMetadataEtlHandler.name, statewideLayerMetadataEtlHandler);
+  registerEtlHandler(flStatewideCadastralEtlHandler.name, flStatewideCadastralEtlHandler);
   registered = true;
 }

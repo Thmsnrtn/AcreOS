@@ -78,7 +78,7 @@ globalThis.fetch = vi.fn(async (url: string) => {
   return { ok: h.fetchStatus >= 200 && h.fetchStatus < 300, status: h.fetchStatus } as Response;
 }) as unknown as typeof fetch;
 
-import { takeDownListing } from "../../server/services/listingSyndication";
+import { takeDownListing, channelCredentialStore } from "../../server/services/listingSyndication";
 import { offerabilityRefusal } from "../../server/services/listability";
 
 const target = (platform: string, status: string, listingId?: string) => ({ platform, status, listingId });
@@ -87,18 +87,20 @@ beforeEach(() => {
   h.updates.length = 0;
   h.fetchCalls.length = 0;
   h.fetchStatus = 200;
-  process.env.LANDCOM_API_KEY = "k";
+  // The org's OWN Land.com account (founder decision 2026-10-20 #3) — this
+  // used to set AcreOS's process.env.LANDCOM_API_KEY.
+  channelCredentialStore.resolve = async () => ({ apiKey: "k", brokerId: "b" });
 });
 
 describe("DEFECT-0173 — takeDownListing believes the provider, not fetch()", () => {
   it("an HTTP 500 is a failure that says the listing may still be live", async () => {
     h.fetchStatus = 500;
-    const r = await takeDownListing("land_com", "ext-1");
+    const r = await takeDownListing("land_com", "ext-1", 1);
     expect(r.success).toBe(false);
     expect(r.error).toMatch(/HTTP 500.*may still be live/);
   });
   it("a 2xx is a removal", async () => {
-    expect((await takeDownListing("land_com", "ext-1")).success).toBe(true);
+    expect((await takeDownListing("land_com", "ext-1", 1)).success).toBe(true);
   });
 });
 
