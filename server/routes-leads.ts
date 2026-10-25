@@ -30,7 +30,9 @@ import { logger } from "./utils/logger";
 import { DEFAULT_GRANT_SOURCE } from "./services/consentStamp";
 import type { ConsentSource } from "./services/consentEvents";
 import { Errors } from "./utils/errors";
-import { recordPurpose, releaseSkipTraceResults, type PurposeReceipt } from "./services/purposeLedger";
+import { releaseSkipTraceResults } from "./services/purposeLedger";
+import { fundSkipTraceLookups, type SkipTraceFunding } from "./services/skipTraceFunding";
+import { poolRefusalDetails, refundPoolDebit } from "./services/creditPool";
 import { omitSecretColumns } from "./utils/secretColumns";
 // ONE owner for the assigned-leads rule. It was hand-copied into five places
 // and missing from four write paths — see server/utils/assignedLeadGate.ts.
@@ -2200,28 +2202,38 @@ export function registerLeadRoutes(app: Express): void {
       });
 
       // Route through the real skip-tracing service (BatchSkipTracing /
-      // REISkip via the registry). The service owns provider selection,
-      // cross-customer caching, and the canonical ledger debit — so we
-      // never charge here and never fabricate a contact.
-      // D2e: the purpose-ledger row for this lookup (no debit at this door —
-      // the service posts the provider cost). No row, no lookup.
-      let purpose: PurposeReceipt;
+      // REISkip via the registry). The service owns provider selection and
+      // cross-customer caching, and records AcreOS's provider cost (opex) —
+      // it does NOT debit the customer. That is done here: ONE skip-trace
+      // credit and this lookup's purpose-ledger row commit in one transaction
+      // (D2e Option B). Before 2026-10-25 this door made the paid vendor call
+      // with no customer debit at all. No debit + row, no lookup.
+      const traceKey = `skip:traces:${org.id}:${leadId}:${skipTrace.id}`;
+      let funding: SkipTraceFunding;
       try {
-        purpose = await recordPurpose({
+        funding = await fundSkipTraceLookups({
           organizationId: org.id,
-          actorUserId: userId,
-          surface: "skip_trace_call",
-          purposeCode: purposeOfUse,
-          justification,
-          attestationVersion,
-          leadId,
-          skipTraceId: skipTrace.id,
+          isFounder: req.isFounder,
+          externalEventId: traceKey,
+          notes: `Skip trace lead ${leadId}`,
+          entries: [{ actorUserId: userId, purposeCode: purposeOfUse, justification, attestationVersion, leadId, skipTraceId: skipTrace.id }],
         });
       } catch (err) {
-        logger.warn("Skip trace refused: purpose ledger write failed", { metadata: { organizationId: org.id, leadId, error: err instanceof Error ? err.message : String(err) } });
+        logger.warn("Skip trace refused: debit + purpose ledger transaction failed", { metadata: { organizationId: org.id, leadId, error: err instanceof Error ? err.message : String(err) } });
         const refused = await storage.updateSkipTrace(skipTrace.id, { status: "failed", costCents: 0, completedAt: clock.now() }, org.id);
         return res.json(refused);
       }
+      if (funding.status === "refused") {
+        await storage.updateSkipTrace(skipTrace.id, { status: "failed", costCents: 0, completedAt: clock.now() }, org.id);
+        return Errors.limitExceeded(res, poolRefusalDetails("skip_trace", funding.debit));
+      }
+      const traceDebit = funding.debit;
+      const purpose = funding.receipts[0];
+      const refundTrace = async (reason: string) => {
+        if (traceDebit.debitedCents > 0) {
+          await refundPoolDebit({ organizationId: org.id, originalEventId: traceKey, amountCents: traceDebit.debitedCents, reason });
+        }
+      };
 
       try {
         const trace = await skipTracingService.trace(
@@ -2238,6 +2250,8 @@ export function registerLeadRoutes(app: Express): void {
         );
 
         if (!trace.success) {
+          // The customer got nothing: the credit goes back.
+          await refundTrace("Skip trace lookup failed (no provider result)");
           const updated = await storage.updateSkipTrace(skipTrace.id, {
             status: "no_results",
             provider: trace.source === "none" ? null : trace.source,
@@ -2251,19 +2265,19 @@ export function registerLeadRoutes(app: Express): void {
         // a source-asserted verification.
         const { results, hasAny } = mapSkipTraceResults(trace);
 
-        const creditCents = Number(process.env.SKIP_TRACE_CREDIT_CENTS ?? 20);
         const updated = await storage.updateSkipTrace(skipTrace.id, {
           status: hasAny ? "completed" : "no_results",
           provider: trace.source,
-          // Real cost only — the ledger debit was already posted by the
-          // service; this is the displayed unit cost, not a second charge.
-          costCents: hasAny ? (trace.creditsUsed ?? 1) * creditCents : 0,
+          // What the customer was actually charged for this lookup (0 for
+          // founder / BYOK) — the same rule as POST /api/skip-tracing/trace.
+          costCents: traceDebit.debitedCents,
           results,
           completedAt: clock.now(),
         }, org.id);
         return res.json(updated);
       } catch (err) {
         logger.error("Skip trace lookup failed", err instanceof Error ? err : undefined);
+        await refundTrace("Skip trace lookup failed");
         const failed = await storage.updateSkipTrace(skipTrace.id, {
           status: "failed",
           costCents: 0,

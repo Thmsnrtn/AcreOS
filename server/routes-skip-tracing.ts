@@ -38,7 +38,8 @@
 import { Router, type Response } from "express";
 import { skipTracingService, type SkipTraceResult } from "./services/skipTracingService";
 import { storage } from "./storage";
-import { poolDebit, refundPoolDebit, poolRefusalDetails } from "./services/creditPool";
+import { refundPoolDebit, poolRefusalDetails } from "./services/creditPool";
+import { fundSkipTraceLookups, type SkipTraceFunding } from "./services/skipTraceFunding";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import type { AuthenticatedRequest } from "./types/request";
@@ -46,7 +47,6 @@ import { getOrganizationId, getUserId } from "./types/request";
 import { createRateLimiter } from "./middleware/rateLimit";
 import type { Lead, SkipTrace } from "@shared/schema";
 import { clock } from "./utils/clock";
-import { recordPurpose, type PurposeReceipt } from "./services/purposeLedger";
 
 const router = Router();
 
@@ -369,20 +369,35 @@ router.post("/trace/:leadId", skipTraceLimiter, async (req: AuthenticatedRequest
     // BatchData call. cache hits inside skipTracingService still pay (we
     // charge the customer for the lookup, even when our cache absorbed the
     // provider hit — that's how the BatchData unit-economics math works).
+    // D2e Option B: the debit and this lookup's purpose-ledger row commit in
+    // ONE transaction — no row, no charge, and no lookup.
     const traceKey = `skip:trace:${orgId}:${leadId}:${clock.nowMs()}`;
-    const traceDebit = await poolDebit({
-      organizationId: orgId,
-      action: "skip_trace",
-      units: 1,
-      externalEventId: traceKey,
-      notes: `Skip trace lead ${leadId}`,
-      isFounder: req.isFounder,
-    });
+    let funding: SkipTraceFunding;
+    try {
+      funding = await fundSkipTraceLookups({
+        organizationId: orgId,
+        isFounder: req.isFounder,
+        externalEventId: traceKey,
+        notes: `Skip trace lead ${leadId}`,
+        entries: [{
+          actorUserId: audit.attestingUserId,
+          purposeCode: audit.purposeOfUse,
+          justification: audit.justification,
+          attestationVersion: audit.attestationVersion,
+          leadId,
+        }],
+      });
+    } catch (err) {
+      logger.warn("[skip-trace] debit + purpose ledger transaction failed; lookup refused", { metadata: { orgId, leadId, error: err instanceof Error ? err.message : String(err) } });
+      return Errors.serviceUnavailable(res, "This lookup could not be recorded, so it was not run. Nothing was charged.");
+    }
 
     // Tier 1I — pool refusals are surfaced, never swallowed.
-    if (!traceDebit.allowed) {
-      return Errors.limitExceeded(res, poolRefusalDetails("skip_trace", traceDebit));
+    if (funding.status === "refused") {
+      return Errors.limitExceeded(res, poolRefusalDetails("skip_trace", funding.debit));
     }
+    const traceDebit = funding.debit;
+    const purpose = funding.receipts[0];
 
     const refundTrace = async (reason: string) => {
       if (traceDebit.debitedCents > 0) {
@@ -394,26 +409,6 @@ router.post("/trace/:leadId", skipTraceLimiter, async (req: AuthenticatedRequest
         });
       }
     };
-
-    // D2e: the purpose ledger row for THIS lookup, carrying the debit it rode
-    // on. No row, no lookup: a failed write refunds and refuses.
-    let purpose: PurposeReceipt;
-    try {
-      purpose = await recordPurpose({
-        organizationId: orgId,
-        actorUserId: audit.attestingUserId,
-        surface: "skip_trace_call",
-        purposeCode: audit.purposeOfUse,
-        justification: audit.justification,
-        attestationVersion: audit.attestationVersion,
-        leadId,
-        meteringRef: `${traceKey}#${traceDebit.ledgerRowId ?? "no-debit"}`,
-      });
-    } catch (err) {
-      await refundTrace("Purpose ledger write failed — lookup refused");
-      logger.warn("[skip-trace] purpose ledger write failed; lookup refused", { metadata: { orgId, leadId, error: err instanceof Error ? err.message : String(err) } });
-      return Errors.serviceUnavailable(res, "This lookup could not be recorded, so it was not run. Nothing was charged.");
-    }
 
     let result: SkipTraceResult;
     try {
@@ -498,22 +493,36 @@ router.post("/batch", skipTraceLimiter, async (req: AuthenticatedRequest, res: R
       });
     }
 
-    // Debit exactly the number of leads this run will attempt. Failed
+    // Debit exactly the number of leads this run will attempt, and write one
+    // purpose-ledger row per lookup, in ONE transaction (D2e Option B): a
+    // ledger failure refuses the whole batch with nothing charged. Failed
     // lookups are refunded proportionally below.
     const batchKey = `skip:batch:${orgId}:${clock.nowMs()}`;
-    const batchDebit = await poolDebit({
-      organizationId: orgId,
-      action: "skip_trace",
-      units: batch.length,
-      externalEventId: batchKey,
-      notes: `Skip trace batch (${batch.length} untraced leads)`,
-      isFounder: req.isFounder,
-    });
+    let funding: SkipTraceFunding;
+    try {
+      funding = await fundSkipTraceLookups({
+        organizationId: orgId,
+        isFounder: req.isFounder,
+        externalEventId: batchKey,
+        notes: `Skip trace batch (${batch.length} untraced leads)`,
+        entries: batch.map((lead) => ({
+          actorUserId: audit.attestingUserId,
+          purposeCode: audit.purposeOfUse,
+          justification: audit.justification,
+          attestationVersion: audit.attestationVersion,
+          leadId: lead.id,
+        })),
+      });
+    } catch (err) {
+      logger.warn("[skip-trace] batch debit + purpose ledger transaction failed; batch refused", { metadata: { orgId, leads: batch.length, error: err instanceof Error ? err.message : String(err) } });
+      return Errors.serviceUnavailable(res, "This batch could not be recorded, so no lookup was run. Nothing was charged.");
+    }
 
     // Tier 1I — pool refusals are surfaced, never swallowed.
-    if (!batchDebit.allowed) {
-      return Errors.limitExceeded(res, poolRefusalDetails("skip_trace", batchDebit));
+    if (funding.status === "refused") {
+      return Errors.limitExceeded(res, poolRefusalDetails("skip_trace", funding.debit));
     }
+    const batchDebit = funding.debit;
 
     let traced = 0;
     let found = 0;
@@ -522,20 +531,10 @@ router.post("/batch", skipTraceLimiter, async (req: AuthenticatedRequest, res: R
     // Sequential on purpose: each trace is a paid provider call and the
     // upstream has its own rate limits — fanning out 100 parallel lookups
     // is how batch providers start dropping requests.
-    for (const lead of batch) {
+    for (const [i, lead] of batch.entries()) {
       try {
-        // D2e: one purpose-ledger row per lookup (a failed write fails this
-        // lead — counted below, so its unit is refunded).
-        const purpose = await recordPurpose({
-          organizationId: orgId,
-          actorUserId: audit.attestingUserId,
-          surface: "skip_trace_call",
-          purposeCode: audit.purposeOfUse,
-          justification: audit.justification,
-          attestationVersion: audit.attestationVersion,
-          leadId: lead.id,
-          meteringRef: `${batchKey}#${batchDebit.ledgerRowId ?? "no-debit"}`,
-        });
+        // D2e: this lookup's purpose row was written with the debit above.
+        const purpose = funding.receipts[i];
         const result = await skipTracingService.trace({
           firstName: lead.firstName,
           lastName: lead.lastName,

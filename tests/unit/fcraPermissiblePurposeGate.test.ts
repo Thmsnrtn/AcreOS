@@ -216,7 +216,7 @@ const H = vi.hoisted(() => {
   // Skip-trace provider double with per-test behavior. Default: honest
   // "no provider" failure (matches isConfigured() === false below). Tests
   // that need a hit set `traceState.impl`.
-  const traceState = { impl: null as null | (() => Promise<any>) };
+  const traceState = { impl: null as null | (() => Promise<any>), configured: false };
   const traceMock = vi.fn(async (..._args: any[]) =>
     traceState.impl
       ? traceState.impl()
@@ -229,7 +229,12 @@ const H = vi.hoisted(() => {
 vi.mock("../../server/utils/logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
-vi.mock("../../server/db", () => ({ db: H.dbMock }));
+vi.mock("../../server/db", () => ({
+  db: H.dbMock,
+  // D2e Option B: skipTraceFunding runs the debit + purpose rows through one
+  // transaction; the stand-in hands the same db double to the callback.
+  withTransaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(H.dbMock),
+}));
 vi.mock("../../server/storage", () => ({ storage: H.storageMock, db: H.dbMock }));
 vi.mock("../../server/auth", () => ({
   isAuthenticated: (_req: any, _res: any, next: any) => next(),
@@ -269,7 +274,7 @@ vi.mock("../../server/services/leadScoring", () => ({
 // PII, never charge. The routes-skip-tracing endpoints call trace() directly;
 // tests that exercise their success path set H.traceState.impl to a hit.
 vi.mock("../../server/services/skipTracingService", () => ({
-  skipTracingService: { trace: H.traceMock, isConfigured: () => false },
+  skipTracingService: { trace: H.traceMock, isConfigured: () => H.traceState.configured },
 }));
 vi.mock("../../server/middleware/rateLimit", () => ({
   createRateLimiter: () => (_req: any, _res: any, next: any) => next(),
@@ -418,6 +423,7 @@ beforeEach(() => {
   H.state.leadsList = [];
   H.state.storedTraces = [];
   H.traceState.impl = null;
+  H.traceState.configured = false;
   vi.clearAllMocks();
 });
 
@@ -709,6 +715,47 @@ describe("POST /api/skip-traces — §1681b(a)(3)(F) purpose gate on consumer-re
     expect(res.status).toBe(200);
     expect(res.body.status).toBe("unavailable"); // past the gate, honest about the missing vendor
     expect(H.storageMock.createSkipTrace).not.toHaveBeenCalled(); // no row, no cost, no fake PII
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+describe("POST /api/skip-traces — the paid vendor call is debited to the customer (P0, 2026-10-25)", () => {
+  const body = { leadId: 9, purposeOfUse: "collection", justification: "Locating debtor for collection of delinquent note #123" };
+
+  it("with a provider configured, ONE skip-trace unit is debited in the purpose-ledger transaction BEFORE the vendor call", async () => {
+    seedAnnualAttestation();
+    H.traceState.configured = true;
+    H.traceState.impl = async () => {
+      // The debit must already exist when the vendor is called.
+      expect(H.poolDebitMock).toHaveBeenCalledTimes(1);
+      return { success: true, source: "batch_skip_tracing", contacts: [{ type: "phone", value: "512-555-0100", confidence: 0.8, isPrimary: true }], creditsUsed: 1 };
+    };
+    const res = await request(app).post("/api/skip-traces").send(body);
+    expect(res.status).toBe(200);
+    expect(H.poolDebitMock).toHaveBeenCalledTimes(1);
+    expect(H.poolDebitMock.mock.calls[0][0]).toMatchObject({ organizationId: ORG_ID, action: "skip_trace", units: 1 });
+    expect(H.traceMock).toHaveBeenCalledTimes(1);
+    expect(H.state.tables["purpose_ledger"]).toHaveLength(1);
+    expect(H.refundPoolDebitMock).not.toHaveBeenCalled();
+  });
+
+  it("a refused debit means no vendor call and no purpose row", async () => {
+    seedAnnualAttestation();
+    H.traceState.configured = true;
+    H.poolDebitMock.mockResolvedValueOnce({ allowed: false, debitedCents: 0, remaining: 0, poolMonthly: 20_000, reason: "pool_exhausted" } as never);
+    const res = await request(app).post("/api/skip-traces").send(body);
+    expect(res.status).toBe(429);
+    expect(H.traceMock).not.toHaveBeenCalled();
+    expect(H.state.tables["purpose_ledger"] ?? []).toHaveLength(0);
+  });
+
+  it("a lookup that returns nothing gives the credit back", async () => {
+    seedAnnualAttestation();
+    H.traceState.configured = true;
+    const res = await request(app).post("/api/skip-traces").send(body);
+    expect(res.status).toBe(200);
+    expect(H.poolDebitMock).toHaveBeenCalledTimes(1);
+    expect(H.refundPoolDebitMock).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -1026,7 +1073,9 @@ describe("writer enumeration for consumer-report rows (action-anchored ratchet)"
     expect(statsStart).toBeGreaterThan(batchStart);
     for (const handler of [src.slice(traceStart, batchStart), src.slice(batchStart, statsStart)]) {
       const gateIdx = handler.indexOf("gateSkipTracePermitted");
-      const debitIdx = handler.indexOf("poolDebit");
+      // The debit is taken inside fundSkipTraceLookups (D2e Option B: debit +
+      // purpose rows in one transaction), so the gate must precede that call.
+      const debitIdx = handler.indexOf("fundSkipTraceLookups(");
       const persistIdx = handler.indexOf("persistTraceResult");
       expect(gateIdx).toBeGreaterThan(-1);
       expect(debitIdx).toBeGreaterThan(-1);

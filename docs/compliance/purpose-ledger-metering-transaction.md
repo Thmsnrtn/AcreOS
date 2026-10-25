@@ -1,3 +1,5 @@
+> **Status (2026-10-25): Option B approved and implemented.** `server/services/skipTraceFunding.ts` takes the pool debit (`poolDebit({ tx })`) and writes every purpose row in one transaction for all three paid doors, including `POST /api/skip-traces`, which previously made the paid vendor call with no customer debit. The F1/F2 windows below no longer apply to the debit/ledger pair; a refund now only follows a lookup that ran and returned nothing. Tests: `tests/unit/routes-skip-tracing.test.ts` (rollback, not refund, on a ledger failure; debit and row share the transaction), `tests/unit/fcraPermissiblePurposeGate.test.ts` (POST /api/skip-traces debits before the vendor call). The memo below is the decision record as written.
+
 # Purpose ledger and metering: one transaction or compensation?
 
 **Decision memo for the COO (Muse). D2e, 2026-10-24. Recommendation only: nothing here has been implemented.**

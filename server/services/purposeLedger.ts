@@ -34,12 +34,13 @@
  * no surface to wire. A test pins that no person-edge table exists: the first
  * one must add its surface to PURPOSE_SURFACES.
  *
- * Metering. A paid door (the two /api/skip-tracing routes) debits the credit
- * pool first and then writes the ledger row carrying the debit's event id and
- * ledger row; if the ledger write fails the debit is refunded and the lookup
- * refused. (Moving the debit into the ledger's own transaction would change a
- * metering path — held for the founder/COO, see the D2 report.) POST
- * /api/skip-traces and the result reads have no customer debit to join.
+ * Metering (D2e Option B, approved 2026-10-25). Every paid skip-trace door —
+ * the two /api/skip-tracing routes and POST /api/skip-traces — takes the
+ * credit-pool debit and writes its purpose rows in ONE transaction
+ * (server/services/skipTraceFunding.ts): a lookup that cannot be recorded is
+ * never charged, because the debit rolls back with the row. A refund is only
+ * for a lookup that ran and returned nothing. The result reads have no
+ * customer debit to join.
  *
  * The purpose taxonomy is the conservative default already collected at every
  * skip-trace door (the FCRA purposes, server/services/fcraAttestation.ts). It

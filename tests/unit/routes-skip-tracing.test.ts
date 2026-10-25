@@ -114,6 +114,24 @@ const poolDebitMock = vi.fn(async ({ units }: { units: number }) => ({
 }));
 const refundPoolDebitMock = vi.fn(async () => ({}));
 
+// D2e Option B: the debit and the purpose rows run in ONE transaction
+// (server/services/skipTraceFunding.ts). The stand-in records whether the
+// transaction committed or rolled back, so a test can tell a refund from a
+// rollback.
+const txState = { committed: 0, rolledBack: 0 };
+vi.mock("../../server/db", () => ({
+  db: {},
+  withTransaction: async (fn: (tx: unknown) => Promise<unknown>) => {
+    try {
+      const out = await fn({ tx: true });
+      txState.committed++;
+      return out;
+    } catch (err) {
+      txState.rolledBack++;
+      throw err;
+    }
+  },
+}));
 vi.mock("../../server/services/creditPool", () => ({
   poolDebit: (...args: any[]) => poolDebitMock(...(args as [any])),
   refundPoolDebit: (...args: any[]) => refundPoolDebitMock(...(args as [any])),
@@ -122,9 +140,9 @@ vi.mock("../../server/services/creditPool", () => ({
 
 // D2e purpose ledger — per-test behavior via recordPurposeImpl.
 let recordPurposeImpl: (e: any) => Promise<any>;
-const recordPurposeMock = vi.fn((e: any) => recordPurposeImpl(e));
+const recordPurposeMock = vi.fn((e: any, _tx?: unknown) => recordPurposeImpl(e));
 vi.mock("../../server/services/purposeLedger", () => ({
-  recordPurpose: (...args: any[]) => recordPurposeMock(args[0]),
+  recordPurpose: (...args: any[]) => recordPurposeMock(args[0], args[1]),
 }));
 
 // Provider mock — per-test behavior via traceImpl.
@@ -340,17 +358,35 @@ describe("POST /api/skip-tracing/trace/:leadId", () => {
     expect(traceMock.mock.calls[0][2]).toEqual({ ledgerId: 101, surface: "skip_trace_call" });
   });
 
-  it("FALSIFICATION (D2e): a failed ledger write refunds the debit, calls no vendor and says so", async () => {
+  it("FALSIFICATION (D2e Option B): a failed ledger write rolls the debit back in the same transaction — no refund needed, no vendor call", async () => {
     LEADS = [lead(7)];
     recordPurposeImpl = async () => {
       throw new Error("ledger down");
     };
     traceMock.mockClear();
     refundPoolDebitMock.mockClear();
+    txState.committed = 0;
+    txState.rolledBack = 0;
     const res = await request(makeApp()).post("/api/skip-tracing/trace/7").send(FCRA_BODY);
     expect(res.status).toBe(503);
+    expect(res.body.message).toMatch(/Nothing was charged/);
     expect(traceMock).not.toHaveBeenCalled();
-    expect(refundPoolDebitMock).toHaveBeenCalledTimes(1);
+    // The debit was taken inside the transaction that rolled back.
+    expect(poolDebitMock.mock.calls.at(-1)?.[0].tx).toEqual({ tx: true });
+    expect(txState.rolledBack).toBe(1);
+    expect(txState.committed).toBe(0);
+    expect(refundPoolDebitMock).not.toHaveBeenCalled();
+  });
+
+  it("D2e Option B: the debit and the purpose row are written through the same transaction", async () => {
+    LEADS = [lead(7)];
+    poolDebitMock.mockClear();
+    recordPurposeMock.mockClear();
+    const res = await request(makeApp()).post("/api/skip-tracing/trace/7").send(FCRA_BODY);
+    expect(res.status).toBe(200);
+    const debitTx = poolDebitMock.mock.calls[0][0].tx;
+    expect(debitTx).toEqual({ tx: true });
+    expect(recordPurposeMock.mock.calls[0][1]).toBe(debitTx);
   });
 
   it("persists the trace and writes contacts back onto the lead", async () => {
