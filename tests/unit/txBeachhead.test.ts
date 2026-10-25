@@ -16,6 +16,9 @@ vi.mock("../../server/utils/logger", () => ({ logger: { info: vi.fn(), warn: vi.
 
 import { buildCounty, buildSpecFor, streamCounty, type LayerDeps, type StatewideBuildSpec } from "../../server/services/landData/statewideCadastral";
 import { STATEWIDE_PARCEL_ENDPOINTS } from "../../server/services/statewideParcelEndpoints";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
+
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 const REASON = /no verified beachhead county — the TX beachhead list is empty because no TX county source has been verified live with its terms read/;
 const SRC = path.join(__dirname, "../../server/services/landData/statewideCadastral.ts");

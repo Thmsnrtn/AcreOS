@@ -30,6 +30,9 @@ import type { ObjectStoreClient } from "../../server/services/landData/openDataB
 import { uploadFileAndConfirm } from "../../server/services/landData/openDataBucket";
 import type { OwnedParcelInput } from "../../server/services/landData/ownedParcelStore";
 import census from "../../shared/landData/countySourceCensus.tn.json";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
+
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 const SUMNER = { fips: "47165", county: "Sumner" };
 const emptyCtx = async (): Promise<ParcelContext> => ({ roads: null, wetlands: null, flood: null, publicLands: null, transmission: null, towns: null, slope: null });

@@ -156,7 +156,7 @@ describe("PROOF canaries — a field verified only where right and wrong agree p
       const a = { ...(p.sourceAttributes ?? {}) };
       const v = a.OWN_NAME;
       delete a.OWN_NAME;
-      return { ...a, own_name: v };
+      return { ...a, own_name: v } as Record<string, unknown>;
     });
     const deps: LayerDeps = {
       async getJson(url) {

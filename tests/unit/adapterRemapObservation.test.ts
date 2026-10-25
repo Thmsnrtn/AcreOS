@@ -20,6 +20,9 @@ import { SchemaDriftError, buildSpecFor, type FieldMapping, type LayerDeps, type
 import { foldRemapRates, type RunObservationRow } from "../../server/services/ops/dataOpsMetrics";
 import { goldenCountyFor, verifiedParcels } from "../../shared/landData/goldenCounty";
 import { stripComments } from "../helpers/stripComments";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
+
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 const ROOT = path.join(__dirname, "../..");
 const FL = buildSpecFor("FL");

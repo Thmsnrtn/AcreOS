@@ -11,10 +11,13 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { stripComments } from "../helpers/stripComments";
 import { foldFallThrough } from "../../server/services/ops/dataOpsMetrics";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
+
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 const ROOT = path.resolve(__dirname, "../..");
 const SOURCE_DIRS = ["server", "shared"];

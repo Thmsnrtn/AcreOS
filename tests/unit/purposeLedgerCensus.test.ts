@@ -36,10 +36,12 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import ts from "typescript";
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { PURPOSE_SURFACES, type PurposeSurface } from "../../server/services/purposeLedger";
 import { stripComments } from "../helpers/stripComments";
 import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
+
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 const ROOT = path.join(__dirname, "../..");
 

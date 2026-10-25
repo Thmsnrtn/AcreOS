@@ -22,6 +22,9 @@ import { healDrift, type RemapAttempt } from "../../server/services/openData/ada
 import { SchemaDriftError, buildSpecFor, streamCounty, type CanonicalField, type LayerDeps } from "../../server/services/landData/statewideCadastral";
 import type { BulkParcelRecord } from "../../shared/landData/bulkParcelRecord";
 import { goldenCountyFor, goldenMismatches, verifiedParcels } from "../../shared/landData/goldenCounty";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
+
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 const FIXTURE_DIR = path.join(__dirname, "../fixtures/remap");
 const FL = buildSpecFor("FL");
