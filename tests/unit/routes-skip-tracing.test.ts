@@ -106,7 +106,7 @@ vi.mock("../../server/storage", () => ({
   },
 }));
 
-const poolDebitMock = vi.fn(async ({ units }: { units: number }) => ({
+const poolDebitMock = vi.fn(async ({ units }: { units: number; tx?: unknown }) => ({
   allowed: true,
   debitedCents: units * 20,
   remaining: 10_000,

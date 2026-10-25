@@ -31,7 +31,7 @@ describe.runIf(realDbAvailable)("deleteOrganization on an org that used skip tra
       await db.execute(sql`DELETE FROM organizations WHERE id = ${orgId}`).catch(() => undefined);
       // Test cleanup only: the DBA retention GUC is the one way through the trigger.
       await db.transaction(async (tx) => {
-        await tx.execute(sql`SET LOCAL acreos.allow_purpose_ledger_mutation = 'on'`);
+        await tx.execute(sql`SELECT set_config(${"acreos.allow_purpose_ledger_mutation"}, 'on', true)`);
         await tx.execute(sql`DELETE FROM purpose_ledger WHERE organization_id = ${orgId}`);
       });
     }
