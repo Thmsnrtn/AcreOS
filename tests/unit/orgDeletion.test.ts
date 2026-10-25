@@ -116,6 +116,14 @@ describe("deleteOrganization", () => {
     expect(state.deleteAttempts).not.toContain("audit_events");
   });
 
+  it("never sweeps the append-only purpose ledger — it is retained, and the org row still deletes", async () => {
+    state.rows = { leads: 2, purpose_ledger: 4 };
+    const result = await deleteOrganization(42);
+    expect(state.deleteAttempts).not.toContain("purpose_ledger");
+    expect(result.residualTables).toEqual([]);
+    expect(result.orgRowDeleted).toBe(true);
+  });
+
   it("reports permanently blocked tables as residuals, honestly", async () => {
     state.rows = { stuck_table: 5, blocker_child: 3 };
     // stuck_table blocked by blocker_child, and blocker_child ALSO blocked

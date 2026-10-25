@@ -12575,7 +12575,7 @@ $mig0284$`,
   // Mirrors migrations/0289_d2e_purpose_ledger.sql.
   `CREATE TABLE IF NOT EXISTS "purpose_ledger" (
     "id" serial PRIMARY KEY,
-    "organization_id" integer NOT NULL REFERENCES "organizations"("id"),
+    "organization_id" integer NOT NULL,
     "created_at" timestamp NOT NULL DEFAULT now(),
     "actor_user_id" text NOT NULL,
     "surface" text NOT NULL,

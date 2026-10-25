@@ -5,13 +5,14 @@
 -- on. APPEND-ONLY: UPDATE, DELETE and TRUNCATE raise restrict_violation
 -- unless the session sets the GUC acreos.allow_purpose_ledger_mutation = 'on'
 -- (retention pruning only). That GUC is an explicit, greppable opt-in, NOT a
--- privilege boundary: any role that can connect can set a custom GUC. The
--- organization FK does not cascade — a compliance record does not disappear
--- with its organization (which also means organization erasure must decide
--- what happens to these rows; see the D2 delivery report).
+-- privilege boundary: any role that can connect can set a custom GUC.
+-- organization_id has NO foreign key, by design: the ledger is retained under
+-- GDPR Art. 17(3)(b) when its organization is erased (orgDeletion.ts
+-- RETAINED_TABLES). An FK would either cascade-delete a compliance record or
+-- block deleteOrganization() from removing the organizations row.
 CREATE TABLE IF NOT EXISTS "purpose_ledger" (
   "id" serial PRIMARY KEY,
-  "organization_id" integer NOT NULL REFERENCES "organizations"("id"),
+  "organization_id" integer NOT NULL,
   "created_at" timestamp NOT NULL DEFAULT now(),
   "actor_user_id" text NOT NULL,
   "surface" text NOT NULL,

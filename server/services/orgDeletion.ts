@@ -26,6 +26,11 @@
  *   - financial_ledger: organizationId is SET NULL on org delete — the
  *     money spine stays intact for accounting/tax retention, detached
  *     from the tenant.
+ *   - purpose_ledger: append-only (UPDATE/DELETE/TRUNCATE triggers, 0289)
+ *     record of why each person-adjacent lookup was made — the evidence of
+ *     a permissible purpose (FCRA/GLBA/DPPA), retained under Art. 17(3)(b).
+ *     Its organization_id carries no FK, so the org row deletes cleanly;
+ *     the sweep never tries the DELETE the trigger would refuse.
  *
  * SAFETY: founder-gated at the route; requires the exact org name typed
  * back as confirmation; refuses founder-flagged orgs outright.
@@ -40,6 +45,7 @@ const RETAINED_TABLES = new Set<string>([
   "audit_events", // append-only trigger; 7-year floor; Art. 17(3)(b)
   "financial_ledger", // FK is SET NULL — accounting spine detaches, not deleted
   "mrr_snapshots", // platform-level aggregate, not tenant data
+  "purpose_ledger", // append-only permissible-purpose record (D2e); no FK to organizations; Art. 17(3)(b)
 ]);
 
 export interface OrgDeletionResult {
