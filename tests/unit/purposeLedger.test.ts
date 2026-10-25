@@ -157,7 +157,7 @@ describe("the chokepoints refuse without a receipt", () => {
     const issuedCall = await recordPurpose({ organizationId: 1, actorUserId: "u1", surface: "skip_trace_call", purposeCode: "collection" }, fakeTx(3));
     expect(await registry.lookup("owner_info" as never, input, "free" as never, 1000, undefined, { purpose: issuedCall })).toBeNull();
     // A hand-typed receipt for the RIGHT surface is refused too: no row was written for it.
-    expect(await registry.lookup("owner_info" as never, input, "free" as never, 1000, undefined, { purpose: { ledgerId: 3, surface: "owner_contact_lookup" } })).toBeNull();
+    expect(await registry.lookup("owner_info" as never, input, "free" as never, 1000, 1, { purpose: { ledgerId: 3, surface: "owner_contact_lookup", organizationId: 1 } })).toBeNull();
     expect(provider.lookup).not.toHaveBeenCalled();
     const issued = await recordPurpose({ organizationId: 1, actorUserId: "u1", surface: "owner_contact_lookup", purposeCode: "collection" }, fakeTx(4));
     // Another org — or no org — cannot spend org 1's receipt.

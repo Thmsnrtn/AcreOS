@@ -138,7 +138,7 @@ describe("skip-trace", () => {
   it("trace() says plainly the owner opted out, and calls no vendor", async () => {
     process.env.BATCH_SKIP_TRACING_API_KEY = "k";
     const { skipTracingService } = await import("../../server/services/skipTracingService");
-    const r = await skipTracingService.trace({ firstName: "Jane", lastName: "Owner", address: "123 North Main Street", zip: "37402" }, 1, { ledgerId: 1, surface: "skip_trace_call" });
+    const r = await skipTracingService.trace({ firstName: "Jane", lastName: "Owner", address: "123 North Main Street", zip: "37402" }, 1, { ledgerId: 1, surface: "skip_trace_call", organizationId: 1 });
     expect(r.success).toBe(false);
     expect(r.error).toMatch(/stop all contact/);
     expect(fetchSpy).not.toHaveBeenCalled();
