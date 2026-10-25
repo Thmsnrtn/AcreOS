@@ -1,5 +1,19 @@
 # INTEGRATION — D2b (dataset releases)
 
+> **Status 2026-10-25 — §2 and §3 APPLIED** (tables approved by Tom via Muse's
+> pre-merge fix list). Migration `0290_d2b_dataset_releases.sql` creates
+> `dataset_releases` and `dataset_release_pointer` (append-only triggers on
+> both) and adds `provider_lookup_log.served_release_id`; the one store is
+> `releases/releaseStore.ts`; `releases/releaseAssembly.ts` assembles a release
+> from the latest INGESTED county builds (job `acreos_parcels_release_assemble`,
+> seeded inactive); promote / rollback / inventory are founder routes behind
+> Controls (`/api/founder/autopilot/releases*`); `/api/ops/data` reads the real
+> inventory. Proven on a database built from the repo
+> (`releaseStore.realdb.test.ts`). **NOT applied: §4** (stamping served answers —
+> the column exists and nothing writes it yet). §5 was fixed in D2a; §6 open.
+>
+> The original proposal text follows unchanged.
+
 Proposals for the integrator and the COO. **Nothing here is applied.** The lane
 shipped only the pure core (`server/services/landData/releases/**`), its tests
 and fixtures, and these two docs. Spec: `docs/land-data/d2b-releases-spec.md`.

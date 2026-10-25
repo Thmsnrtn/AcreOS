@@ -3,6 +3,28 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-10-25 — D2 pre-merge fix list (Tom approved seven decisions via Muse); same branch, nothing merged
+
+### What shipped (follow-up commits on `claude/d2-bulk-wave1-identity-trust`, no history rewritten)
+- **Org erasure (merge blocker).** `purpose_ledger` keeps no FK to `organizations` and sits in `RETAINED_TABLES` (Art. 17(3)(b)). `deleteOrganization()` now finishes for an org with ledger rows. Proven against a real DB built from the repo, differentially against a ledger-free control org; re-adding the FK turns it red.
+- **P0a.** Pax `get_lead_details` strips `taxId`/`taxIdType` (`omitSecretColumns`), proven on the serialized tool result.
+- **P0b + D2e Option B.** `fundSkipTraceLookups` debits the pool and writes the purpose rows in ONE transaction, before any vendor call. `POST /api/skip-traces` is now funded: 429 on refusal, refund on a failed lookup.
+- **D2b wired.** Migration 0290, `releaseStore`, `releaseAssembly` (inactive job), founder promote/rollback/inventory behind Controls, and the real inventory in `/api/ops/data`.
+- **D2c wired.** Migration 0291 creates exactly 3 tables (the doc heading said two; its DDL has three). It adds `apidStore` and `releaseLineage` (inactive job; TN-only FIPS; refuses other states).
+- **Table count.** 741 → 746 (+2 D2b, +3 D2c), each approved.
+- **D2f.** Stays unwired.
+- **Real-DB proofs.** Every real-DB proof was falsified per index and trigger.
+
+### Escalations (open, not fixed here)
+- `deleteOrganization` never sweeps the two text-keyed tenant tables, `onboarding_funnel_metrics.org_id` and `pax_user_context.organization_id`: `text = integer` errors silently, so they are residual on EVERY erasure. Whether to delete or retain them is a customer-data-deletion decision.
+- `parcelDeltaDetector` fires `owner_changed` on source disagreement.
+- Regrid facts are stored with no org.
+- FCRA cite (a)(3)→(a)(2).
+- Confirm the Regrid price from the invoice.
+- D2h TN/NC holds.
+- A national Census county-FIPS reference (lineage is TN-only until then).
+- D2b §4 served-answer stamping: the `served_release_id` column exists, but nothing writes it.
+
 ## 2026-10-24 — Package D2, delivered per workstream on branch `claude/d2-bulk-wave1-identity-trust` (Muse audits each; nothing merged from this lane)
 
 Worked as a fleet: one worktree agent per workstream (D2a–D2h) plus two spec tracks, file-disjoint, with every shared file (migrations, migrate.mjs, schema, etlHandlers, registry, ratchets, next-moves) changed only by the integrator. Each lane's claims were re-run centrally; reachability was fixed per landing, never by raising a baseline.

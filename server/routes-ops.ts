@@ -171,7 +171,9 @@ export function registerOpsRoutes(app: Express): void {
     try {
       const days = Math.min(Math.max(Number(req.query.days ?? 30) || 30, 1), 365);
       const { loadDataOpsMetrics } = await import("./services/ops/dataOpsMetrics");
-      return res.json(await loadDataOpsMetrics(clock.now(), days));
+      // D2b: the release store is the inventory's reader (tables in 0290).
+      const { readReleaseInventory } = await import("./services/landData/releases/releaseStore");
+      return res.json(await loadDataOpsMetrics(clock.now(), days, () => readReleaseInventory()));
     } catch (err) {
       logger.error("[/api/ops/data] failed", err instanceof Error ? err : undefined);
       return Errors.internal(res, err);

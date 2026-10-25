@@ -42,10 +42,12 @@ export interface ObjectStoreClient {
   /** Stream a file (bulk artifacts are too large to buffer); `bytes` is its size. */
   putFile?(key: string, filePath: string, bytes: number, contentType: string): Promise<{ etag: string | null }>;
   headBytes(key: string): Promise<number | null>;
+  /** Stream an object down to a local file (D2c lineage reads release artifacts back); resolves to its byte count. */
+  getFile?(key: string, destPath: string): Promise<number>;
 }
 
 export async function s3ClientFor(cfg: BucketConfig): Promise<ObjectStoreClient> {
-  const { S3Client, PutObjectCommand, HeadObjectCommand } = await import("@aws-sdk/client-s3");
+  const { S3Client, PutObjectCommand, HeadObjectCommand, GetObjectCommand } = await import("@aws-sdk/client-s3");
   const s3 = new S3Client({
     region: "auto",
     endpoint: cfg.endpoint,
@@ -64,6 +66,14 @@ export async function s3ClientFor(cfg: BucketConfig): Promise<ObjectStoreClient>
         new PutObjectCommand({ Bucket: cfg.bucket, Key: key, Body: createReadStream(filePath), ContentLength: bytes, ContentType: contentType }),
       );
       return { etag: r.ETag ?? null };
+    },
+    async getFile(key, destPath) {
+      const r = await s3.send(new GetObjectCommand({ Bucket: cfg.bucket, Key: key }));
+      if (!r.Body) throw new Error(`bucket returned no body for ${key}`);
+      const { createWriteStream, statSync } = await import("node:fs");
+      const { pipeline } = await import("node:stream/promises");
+      await pipeline(r.Body as NodeJS.ReadableStream, createWriteStream(destPath));
+      return statSync(destPath).size;
     },
     async headBytes(key) {
       try {

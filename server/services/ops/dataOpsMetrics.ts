@@ -36,6 +36,7 @@
  */
 
 import type { AnsweringLayer } from "@shared/openData/demandEvent";
+import { parseReleaseName } from "../landData/releases/releaseName";
 
 const WAREHOUSE_LOOKUP_TARGET_USD = 0.001;
 
@@ -239,19 +240,17 @@ export function foldCoverageByState(rows: readonly CountyCoverageRow[]): StateCo
 
 // ─── Release inventory (D2b) ────────────────────────────────────────────────
 
-/** One warehouse release as D2b's store will describe it. Defined here until that store exists. */
+/** One warehouse release as D2b's store describes it (releaseStore.readReleaseInventory). */
 export interface ReleaseInventoryRow {
   releaseId: string;
-  /** vYYYY.MM.N */
-  name: string;
+  /** `acreos-parcels vYYYY.MM.N` once promoted; null for a release never promoted. */
+  name: string | null;
   createdAt: string;
   /** The promoted / current release. */
   current: boolean;
   countyCount: number;
   parcelCount: number;
 }
-
-const RELEASE_NAME = /^v\d{4}\.(0[1-9]|1[0-2])\.\d+$/;
 
 export type ReleaseInventory =
   | { status: "not_built"; why: string }
@@ -262,7 +261,7 @@ export type ReleaseInventory =
       current: ReleaseInventoryRow | null;
       /** More than one release flagged current — reported, never resolved by picking one. */
       currentConflict: boolean;
-      /** Names that are not vYYYY.MM.N. */
+      /** Assigned names the canonical parser (releaseName.parseReleaseName) rejects. */
       malformedNames: string[];
       /** Newest first. */
       releases: ReleaseInventoryRow[];
@@ -270,7 +269,7 @@ export type ReleaseInventory =
 
 export const RELEASE_INVENTORY_NOT_BUILT: ReleaseInventory = {
   status: "not_built",
-  why: "no release store exists yet (D2b)",
+  why: "no release reader was wired into this read",
 };
 
 export function foldReleaseInventory(rows: readonly ReleaseInventoryRow[]): ReleaseInventory {
@@ -281,7 +280,7 @@ export function foldReleaseInventory(rows: readonly ReleaseInventoryRow[]): Rele
     releaseCount: releases.length,
     current: current.length === 1 ? current[0] : null,
     currentConflict: current.length > 1,
-    malformedNames: releases.filter((r) => !RELEASE_NAME.test(r.name)).map((r) => r.name),
+    malformedNames: releases.flatMap((r) => (r.name !== null && parseReleaseName(r.name) === null ? [r.name] : [])),
     releases,
   };
 }

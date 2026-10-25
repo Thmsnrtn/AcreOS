@@ -74,11 +74,11 @@ the job has no runs.
 
 ## `releaseInventory`
 
-D2b warehouse releases. No release store exists yet, so the field reads
-`{ status: "not_built", why: "no release store exists yet (D2b)" }`. That is
-**never** an empty list, because an empty list would read as "zero releases".
-Once a reader is wired (`loadDataOpsMetrics(now, days, reader)`), the field
-becomes `status: "reported"` with:
+D2b warehouse releases, read from the release store (migration 0290,
+`releaseStore.readReleaseInventory`, wired in `routes-ops.ts`). A store with
+no releases reports `status: "reported", releaseCount: 0` — explicitly zero.
+`{ status: "not_built", … }` is returned only by a `loadDataOpsMetrics` call
+that was given no reader, and is never an empty list. The reported form has:
 
 - `releaseCount`
 - `releases` (newest first)

@@ -29,7 +29,7 @@ import { createHash } from "node:crypto";
 export const DATASET = "acreos-parcels";
 
 /** The manifest format version. A change to the shape is a new tag, never a reinterpretation. */
-const MANIFEST_FORMAT = "acreos-parcels/release-manifest@1";
+export const MANIFEST_FORMAT = "acreos-parcels/release-manifest@1";
 
 /** Hashed ahead of the canonical body, so a manifest id can never collide with any other sha256 we compute. */
 const DOMAIN_TAG = `${MANIFEST_FORMAT}\n`;

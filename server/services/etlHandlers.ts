@@ -1719,6 +1719,56 @@ function statewideCadastralEtlHandler(state: (typeof STATEWIDE_BUILD_STATES)[num
   };
 }
 
+// ─── D2b: dataset release assembly ─────────────────────────────────────────
+
+/**
+ * acreos_parcels_release_assemble (0290, seeded inactive): stores ONE release
+ * from the latest INGESTED county builds of every statewide job
+ * (releases/releaseAssembly.ts). Never promotes — that is a founder action.
+ * The run's observation is the assembly report: what entered, and every
+ * county that did not with its refusal.
+ */
+const acreosParcelsReleaseAssembleEtlHandler: EtlProviderHandler = {
+  name: "acreos_parcels_release_assemble",
+  async *fetch(opts) {
+    const { assembleAndStoreRelease } = await import("./landData/releases/releaseAssembly");
+    const report = await assembleAndStoreRelease("etl:acreos_parcels_release_assemble");
+    if (opts.runState) opts.runState.assembly = report;
+    yield { externalId: report.release?.releaseId ?? "no-release", updatedAt: null, payload: { included: report.included.length, excluded: report.excluded.length } };
+  },
+  async upsert() {
+    return { action: "unchanged" };
+  },
+  async finalize(opts) {
+    const report = opts.runState?.assembly as Record<string, unknown> | undefined;
+    return report ?? null;
+  },
+};
+
+/**
+ * acreos_parcels_lineage_apply (0291, seeded inactive): applies the CURRENT
+ * release's lineage to each county's persisted APID ledger
+ * (releases/releaseLineage.ts → apidStore.ts). Per-county refusals (no FIPS
+ * reference, digest mismatch, a ledger that would be unsound) are reported in
+ * the run's observation, never guessed past.
+ */
+const acreosParcelsLineageApplyEtlHandler: EtlProviderHandler = {
+  name: "acreos_parcels_lineage_apply",
+  async *fetch(opts) {
+    const { applyCurrentReleaseLineage } = await import("./landData/releases/releaseLineage");
+    const report = await applyCurrentReleaseLineage();
+    if (opts.runState) opts.runState.lineage = report;
+    yield { externalId: report.releaseId ?? "no-current-release", updatedAt: null, payload: { counties: report.counties.length, skipped: report.skipped } };
+  },
+  async upsert() {
+    return { action: "unchanged" };
+  },
+  async finalize(opts) {
+    const report = opts.runState?.lineage as Record<string, unknown> | undefined;
+    return report ?? null;
+  },
+};
+
 // ─── Bootstrap registration ─────────────────────────────────────────────────
 
 let registered = false;
@@ -1742,5 +1792,9 @@ export function registerReferenceEtlHandlers(): void {
     const h = statewideCadastralEtlHandler(st);
     registerEtlHandler(h.name, h);
   }
+  // D2b: release assembly from the ingested builds (seeded inactive, 0290).
+  registerEtlHandler(acreosParcelsReleaseAssembleEtlHandler.name, acreosParcelsReleaseAssembleEtlHandler);
+  // D2c: the current release's lineage into the APID ledger (seeded inactive, 0291).
+  registerEtlHandler(acreosParcelsLineageApplyEtlHandler.name, acreosParcelsLineageApplyEtlHandler);
   registered = true;
 }

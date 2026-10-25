@@ -1,5 +1,24 @@
 # INTEGRATION — lane D2c (APID + lineage)
 
+> **Status 2026-10-25 — §2 and §4 APPLIED** (tables approved by Tom via Muse's
+> pre-merge fix list). Migration `0291_d2c_parcel_apid_lineage.sql` creates
+> exactly the THREE tables §4's DDL defines — `parcel_apids`,
+> `parcel_apn_windows`, `parcel_lineage_events` (§4's heading says "two"; its
+> DDL has three; no third was invented and none was dropped). Deviations: no
+> `btree_gist` EXCLUDE (extension not guaranteed in production) — partial
+> unique indexes allow one open window per APN and per APID, and the writer
+> checks `ledgerViolations()` before every commit; `parcel_apids` gains
+> `parents` / `candidate_parents`; `parcel_lineage_events` is append-only by
+> trigger. The one store is `server/services/landData/apidStore.ts`;
+> `releases/releaseLineage.ts` applies the current release county by county
+> (job `acreos_parcels_lineage_apply`, seeded inactive). It REFUSES any county
+> without a FIPS reference — only TN has one in the repo
+> (`tnCountyBoundaries.json`) — and skips when the current pointer entry is a
+> rollback. Proven on a database built from the repo
+> (`apidStore.realdb.test.ts`). **NOT applied: §3** (crosswalk proposal).
+>
+> The original proposal text follows unchanged.
+
 Everything here is a PROPOSAL for the integrator. D2c added no table, no
 migration, and edited no shared file. New tables need COO approval (table-count
 ratchet is down-only).

@@ -10,7 +10,9 @@
  *     allow-list per table (a tenant column added to a select fails), every
  *     tenant-bearing table is read GROUPED, and the payload carries no tenant
  *     key;
- *   - release inventory reads not_built with no store — not an empty list.
+ *   - release inventory is served from the D2b release store (0290): a store
+ *     with no releases reads "reported, 0" — distinct from not_built, which
+ *     only an unwired read can return.
  */
 import express from "express";
 import request from "supertest";
@@ -99,6 +101,8 @@ beforeEach(() => {
   ];
   fake.rowsByTable.etl_runs = [{ jobName: "fl_statewide_cadastral_v1", status: "success", observation: { outcome: { status: "dry_run_only" }, summary: { county: "SYNTHETIC", normalized: 1, peakRssMb: 1 } } }];
   fake.rowsByTable.purpose_ledger = [{ surface: "skip_trace", purposeCode: "SYNTHETIC-PURPOSE", n: 3 }];
+  fake.rowsByTable.dataset_releases = [];
+  fake.rowsByTable.dataset_release_pointer = [];
 });
 afterEach(() => {
   delete process.env.OPS_SERVICE_TOKEN;
@@ -148,6 +152,9 @@ describe("GET /api/ops/data — only aggregates leave", () => {
     provider_lookup_log: ["answering_layer", "cached", "provider_name", "success"],
     etl_runs: ["job_name", "observation", "status"],
     purpose_ledger: ["purpose_code", "surface"],
+    // D2b release store — global platform tables (no tenant column).
+    dataset_releases: ["county_count", "created_at", "parcel_count", "release_id"],
+    dataset_release_pointer: ["action", "actor", "at", "previous_release_id", "reason", "release_id", "release_name", "seq"],
   };
   const TENANT_TABLES = ["county_discovery_queue", "provider_lookup_log", "purpose_ledger"];
 
@@ -155,7 +162,7 @@ describe("GET /api/ops/data — only aggregates leave", () => {
     process.env.OPS_SERVICE_TOKEN = TOKEN;
     const r = await request(app()).get("/api/ops/data").set("Authorization", `Bearer ${TOKEN}`);
     expect(r.status).toBe(200);
-    // Population floor: the four reads the load makes, each seen once.
+    // Population floor: the six reads the load makes, each seen once.
     expect(fake.queries.map((q) => q.table).sort()).toEqual(Object.keys(ALLOWED).sort());
     for (const q of fake.queries) {
       expect([...q.columns].sort(), `${q.table} projection`).toEqual(ALLOWED[q.table]);
@@ -181,10 +188,21 @@ describe("GET /api/ops/data — only aggregates leave", () => {
     }
   });
 
-  it("release inventory reads not_built with no store — never an empty list", async () => {
+  it("release inventory is read from the release store: an empty store reports zero releases, not not_built", async () => {
     process.env.OPS_SERVICE_TOKEN = TOKEN;
     const r = await request(app()).get("/api/ops/data").set("Authorization", `Bearer ${TOKEN}`);
-    expect(r.body.releaseInventory).toEqual({ status: "not_built", why: "no release store exists yet (D2b)" });
+    expect(r.body.releaseInventory).toMatchObject({ status: "reported", releaseCount: 0, current: null });
+  });
+
+  it("a stored, promoted release appears with its minted name and as current", async () => {
+    process.env.OPS_SERVICE_TOKEN = TOKEN;
+    const id = `sha256:${"a".repeat(64)}`;
+    fake.rowsByTable.dataset_releases = [{ releaseId: id, createdAt: new Date("2026-10-24T00:00:00Z"), countyCount: 2, parcelCount: 40 }];
+    fake.rowsByTable.dataset_release_pointer = [
+      { seq: 1, action: "promote", releaseId: id, releaseName: "acreos-parcels v2026.10.1", previousReleaseId: null, at: new Date("2026-10-24T01:00:00Z"), actor: "founder", reason: "first" },
+    ];
+    const r = await request(app()).get("/api/ops/data").set("Authorization", `Bearer ${TOKEN}`);
+    expect(r.body.releaseInventory).toMatchObject({ status: "reported", releaseCount: 1, current: { releaseId: id, name: "acreos-parcels v2026.10.1" }, malformedNames: [] });
   });
 
   it("coverage.byState is served from the same grouped rows", async () => {
@@ -199,8 +217,8 @@ describe("GET /api/ops/data — only aggregates leave", () => {
 describe("loadDataOpsMetrics — a wired release reader replaces not_built", () => {
   it("folds the reader's rows", async () => {
     const m = await loadDataOpsMetrics(new Date("2026-10-24T00:00:00Z"), 30, async () => [
-      { releaseId: "SYNTHETIC-1", name: "v2026.10.1", createdAt: "2026-10-01T00:00:00Z", current: true, countyCount: 3, parcelCount: 10 },
+      { releaseId: "SYNTHETIC-1", name: "acreos-parcels v2026.10.1", createdAt: "2026-10-01T00:00:00Z", current: true, countyCount: 3, parcelCount: 10 },
     ]);
-    expect(m.releaseInventory).toMatchObject({ status: "reported", releaseCount: 1, current: { name: "v2026.10.1" } });
+    expect(m.releaseInventory).toMatchObject({ status: "reported", releaseCount: 1, current: { name: "acreos-parcels v2026.10.1" } });
   });
 });

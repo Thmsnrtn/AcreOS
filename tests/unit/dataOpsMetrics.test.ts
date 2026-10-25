@@ -113,22 +113,28 @@ describe("coverage by state — a stated denominator, no invented totals", () =>
 });
 
 describe("release inventory (D2b)", () => {
-  const rel = (name: string, createdAt: string, current = false) => ({ releaseId: `SYNTHETIC-${name}`, name, createdAt, current, countyCount: 4, parcelCount: 1000 });
+  const rel = (name: string | null, createdAt: string, current = false) => ({ releaseId: `SYNTHETIC-${name}`, name, createdAt, current, countyCount: 4, parcelCount: 1000 });
   it("absent store reads not_built with its reason — not an empty list", () => {
-    expect(RELEASE_INVENTORY_NOT_BUILT).toEqual({ status: "not_built", why: "no release store exists yet (D2b)" });
+    expect(RELEASE_INVENTORY_NOT_BUILT).toEqual({ status: "not_built", why: "no release reader was wired into this read" });
     expect(RELEASE_INVENTORY_NOT_BUILT).not.toHaveProperty("releases");
   });
   it("with a store: newest first, the current release, malformed names reported", () => {
-    const inv = foldReleaseInventory([rel("v2026.09.1", "2026-09-02T00:00:00Z"), rel("v2026.10.2", "2026-10-20T00:00:00Z", true), rel("2026-10-3", "2026-10-22T00:00:00Z")]);
+    const inv = foldReleaseInventory([
+      rel("acreos-parcels v2026.09.1", "2026-09-02T00:00:00Z"),
+      rel("acreos-parcels v2026.10.2", "2026-10-20T00:00:00Z", true),
+      rel("2026-10-3", "2026-10-22T00:00:00Z"),
+      rel(null, "2026-10-23T00:00:00Z"),
+    ]);
     if (inv.status !== "reported") throw new Error("expected reported");
-    expect(inv.releaseCount).toBe(3);
-    expect(inv.releases.map((r) => r.name)).toEqual(["2026-10-3", "v2026.10.2", "v2026.09.1"]);
-    expect(inv.current?.name).toBe("v2026.10.2");
+    expect(inv.releaseCount).toBe(4);
+    expect(inv.releases.map((r) => r.name)).toEqual([null, "2026-10-3", "acreos-parcels v2026.10.2", "acreos-parcels v2026.09.1"]);
+    expect(inv.current?.name).toBe("acreos-parcels v2026.10.2");
     expect(inv.currentConflict).toBe(false);
+    // Read by the canonical parser; a never-promoted release (null name) is not malformed.
     expect(inv.malformedNames).toEqual(["2026-10-3"]);
   });
   it("two releases flagged current is a conflict, reported — never resolved by picking one", () => {
-    const inv = foldReleaseInventory([rel("v2026.10.1", "2026-10-01T00:00:00Z", true), rel("v2026.10.2", "2026-10-02T00:00:00Z", true)]);
+    const inv = foldReleaseInventory([rel("acreos-parcels v2026.10.1", "2026-10-01T00:00:00Z", true), rel("acreos-parcels v2026.10.2", "2026-10-02T00:00:00Z", true)]);
     expect(inv).toMatchObject({ status: "reported", current: null, currentConflict: true });
   });
   it("a store with no releases reports zero explicitly — distinct from not_built", () => {

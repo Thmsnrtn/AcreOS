@@ -2,6 +2,9 @@
  * Founder Autopilot — Trust Ledger control plane (founder HTTP surface).
  *
  *   GET  /api/founder/autopilot/trust-ledger            — every domain's standing
+ *   GET  /api/founder/autopilot/releases                — D2b dataset releases + pointer history
+ *   POST /api/founder/autopilot/releases/:id/promote    — make a stored release current (mints its name)
+ *   POST /api/founder/autopilot/releases/rollback       — return to a release that was current
  *   POST /api/founder/autopilot/domains/:domain/level   — sovereign override:
  *                                                          pause (→ observe) or
  *                                                          grant trust, with a reason
@@ -35,6 +38,65 @@ import {
 import { clock } from "./utils/clock";
 
 export function registerAutopilotRoutes(app: Express): void {
+  // ── D2b: dataset releases (Controls door) ─────────────────────────────
+  // The release store (migration 0290). Assembly stores releases; making one
+  // current — or rolling back — is this founder action, never automatic.
+  // Every move is one append-only pointer entry with an actor and a reason.
+  const releaseMove = z.object({ reason: z.string().trim().min(10, "say why (at least 10 characters)") });
+
+  app.get(
+    "/api/founder/autopilot/releases",
+    isAuthenticated,
+    requireFounder,
+    async (_req: AuthenticatedRequest, res: Response) => {
+      try {
+        const { readReleaseInventory, loadPointerHistory } = await import("./services/landData/releases/releaseStore");
+        const [releases, history] = await Promise.all([readReleaseInventory(), loadPointerHistory()]);
+        return res.json({ releases, history });
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  app.post(
+    "/api/founder/autopilot/releases/:releaseId/promote",
+    isAuthenticated,
+    requireFounder,
+    async (req: AuthenticatedRequest, res: Response) => {
+      const parsed = releaseMove.safeParse(req.body ?? {});
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+      try {
+        const { movePointer } = await import("./services/landData/releases/releaseStore");
+        const entry = await movePointer({ kind: "promote", releaseId: String(req.params.releaseId) }, { at: clock.now(), actor: getUserId(req), reason: parsed.data.reason });
+        logger.info("[releases] promoted", { metadata: { releaseId: entry.releaseId, releaseName: entry.releaseName, seq: entry.seq } });
+        return res.json(entry);
+      } catch (err) {
+        if (err instanceof Error && err.message.startsWith("refused:")) return Errors.badRequest(res, err.message);
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  app.post(
+    "/api/founder/autopilot/releases/rollback",
+    isAuthenticated,
+    requireFounder,
+    async (req: AuthenticatedRequest, res: Response) => {
+      const parsed = releaseMove.extend({ toReleaseId: z.string().optional() }).safeParse(req.body ?? {});
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+      try {
+        const { movePointer } = await import("./services/landData/releases/releaseStore");
+        const entry = await movePointer({ kind: "rollback", toReleaseId: parsed.data.toReleaseId }, { at: clock.now(), actor: getUserId(req), reason: parsed.data.reason });
+        logger.info("[releases] rolled back", { metadata: { releaseId: entry.releaseId, releaseName: entry.releaseName, seq: entry.seq } });
+        return res.json(entry);
+      } catch (err) {
+        if (err instanceof Error && err.message.startsWith("refused:")) return Errors.badRequest(res, err.message);
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
   // ── The weekly digest (founder decision 2026-10-10) ─────────────────────
   // What ran without asking this week (routine reversible ops/deploy moves and
   // routine support), each with an undo. Rendered behind the Decisions door.

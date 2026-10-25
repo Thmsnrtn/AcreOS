@@ -12614,6 +12614,140 @@ $mig0284$`,
      BEFORE TRUNCATE ON "purpose_ledger"
      FOR EACH STATEMENT
      EXECUTE FUNCTION purpose_ledger_deny_mutation()`,
+  // 0290 — D2b: immutable dataset releases, the append-only release pointer, provider_lookup_log.served_release_id, and the (inactive) release assembly job.
+  // Mirrors migrations/0290_d2b_dataset_releases.sql.
+  `CREATE TABLE IF NOT EXISTS "dataset_releases" (
+     "release_id" text PRIMARY KEY CHECK ("release_id" ~ '^sha256:[0-9a-f]{64}$'),
+     "dataset" text NOT NULL CHECK ("dataset" = 'acreos-parcels'),
+     "manifest_format" text NOT NULL,
+     "manifest" jsonb NOT NULL,
+     "county_count" integer NOT NULL CHECK ("county_count" > 0),
+     "parcel_count" bigint NOT NULL CHECK ("parcel_count" >= 0),
+     "artifact_bytes" bigint NOT NULL CHECK ("artifact_bytes" > 0),
+     "created_at" timestamp NOT NULL DEFAULT now(),
+     "created_by" text NOT NULL
+   )`,
+  `CREATE TABLE IF NOT EXISTS "dataset_release_pointer" (
+     "dataset" text NOT NULL,
+     "seq" integer NOT NULL CHECK ("seq" >= 1),
+     "action" text NOT NULL CHECK ("action" IN ('promote', 'rollback')),
+     "release_id" text NOT NULL REFERENCES "dataset_releases"("release_id"),
+     "release_name" text NOT NULL CHECK ("release_name" ~ '^acreos-parcels v[0-9]{4}\.(0[1-9]|1[0-2])\.[1-9][0-9]*$'),
+     "previous_release_id" text REFERENCES "dataset_releases"("release_id"),
+     "at" timestamp NOT NULL,
+     "actor" text NOT NULL CHECK (length(trim("actor")) > 0),
+     "reason" text NOT NULL CHECK (length(trim("reason")) > 0),
+     PRIMARY KEY ("dataset", "seq")
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "dataset_release_pointer_name_once"
+     ON "dataset_release_pointer" ("dataset", "release_name") WHERE "action" = 'promote'`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "dataset_release_pointer_promote_once"
+     ON "dataset_release_pointer" ("dataset", "release_id") WHERE "action" = 'promote'`,
+  `CREATE OR REPLACE FUNCTION dataset_release_deny_mutation()
+   RETURNS trigger AS $$
+   BEGIN
+     RAISE EXCEPTION '% is append-only (UPDATE/DELETE/TRUNCATE denied)', TG_TABLE_NAME
+       USING ERRCODE = 'restrict_violation';
+   END;
+   $$ LANGUAGE plpgsql`,
+  `DROP TRIGGER IF EXISTS dataset_releases_no_update ON "dataset_releases"`,
+  `CREATE TRIGGER dataset_releases_no_update BEFORE UPDATE ON "dataset_releases"
+     FOR EACH ROW EXECUTE FUNCTION dataset_release_deny_mutation()`,
+  `DROP TRIGGER IF EXISTS dataset_releases_no_delete ON "dataset_releases"`,
+  `CREATE TRIGGER dataset_releases_no_delete BEFORE DELETE ON "dataset_releases"
+     FOR EACH ROW EXECUTE FUNCTION dataset_release_deny_mutation()`,
+  `DROP TRIGGER IF EXISTS dataset_releases_no_truncate ON "dataset_releases"`,
+  `CREATE TRIGGER dataset_releases_no_truncate BEFORE TRUNCATE ON "dataset_releases"
+     FOR EACH STATEMENT EXECUTE FUNCTION dataset_release_deny_mutation()`,
+  `DROP TRIGGER IF EXISTS dataset_release_pointer_no_update ON "dataset_release_pointer"`,
+  `CREATE TRIGGER dataset_release_pointer_no_update BEFORE UPDATE ON "dataset_release_pointer"
+     FOR EACH ROW EXECUTE FUNCTION dataset_release_deny_mutation()`,
+  `DROP TRIGGER IF EXISTS dataset_release_pointer_no_delete ON "dataset_release_pointer"`,
+  `CREATE TRIGGER dataset_release_pointer_no_delete BEFORE DELETE ON "dataset_release_pointer"
+     FOR EACH ROW EXECUTE FUNCTION dataset_release_deny_mutation()`,
+  `DROP TRIGGER IF EXISTS dataset_release_pointer_no_truncate ON "dataset_release_pointer"`,
+  `CREATE TRIGGER dataset_release_pointer_no_truncate BEFORE TRUNCATE ON "dataset_release_pointer"
+     FOR EACH STATEMENT EXECUTE FUNCTION dataset_release_deny_mutation()`,
+  `ALTER TABLE "provider_lookup_log" ADD COLUMN IF NOT EXISTS "served_release_id" text`,
+  `INSERT INTO "etl_jobs" ("job_name", "provider_name", "source_url", "watermark_column", "schedule", "is_active", "soft_delete_on_missing", "config")
+   VALUES
+     ('acreos_parcels_release_assemble', 'acreos_parcels_release_assemble', 'internal://etl_runs/statewide_cadastral', NULL, '*/1440 * * * *', false, false, '{}'::jsonb)
+   ON CONFLICT ("job_name") DO NOTHING`,
+  // 0291 — D2c: APIDs (parcel_apids), APN validity windows (parcel_apn_windows), append-only lineage events (parcel_lineage_events), and the (inactive) lineage job.
+  // Mirrors migrations/0291_d2c_parcel_apid_lineage.sql.
+  `CREATE TABLE IF NOT EXISTS "parcel_apids" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "apid" text NOT NULL UNIQUE CHECK ("apid" ~ '^APID-[A-Z]{2}-[0-9]{5}-[0-9]{7,}$'),
+     "state" char(2) NOT NULL,
+     "county_fips" char(5) NOT NULL,
+     "seq" bigint NOT NULL CHECK ("seq" >= 1),
+     "status" text NOT NULL CHECK ("status" IN ('active', 'retired', 'held')),
+     "provisional" boolean NOT NULL DEFAULT false,
+     "parents" text[] NOT NULL DEFAULT '{}',
+     "candidate_parents" text[] NOT NULL DEFAULT '{}',
+     "minted_in_release" text NOT NULL,
+     "ended_in_release" text,
+     "created_at" timestamptz NOT NULL DEFAULT now(),
+     UNIQUE ("state", "county_fips", "seq"),
+     CHECK (("status" = 'active') = ("ended_in_release" IS NULL))
+   )`,
+  `CREATE TABLE IF NOT EXISTS "parcel_apn_windows" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "apid_id" uuid NOT NULL REFERENCES "parcel_apids"("id"),
+     "state" char(2) NOT NULL,
+     "county_fips" char(5) NOT NULL,
+     "apn" text NOT NULL,
+     "valid_from" integer NOT NULL,
+     "valid_to" integer,
+     "valid_from_release" text NOT NULL,
+     "valid_to_release" text,
+     CHECK ("valid_to" IS NULL OR "valid_to" > "valid_from"),
+     CHECK (("valid_to" IS NULL) = ("valid_to_release" IS NULL))
+   )`,
+  `CREATE INDEX IF NOT EXISTS "parcel_apn_windows_county_idx" ON "parcel_apn_windows" ("state", "county_fips")`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "parcel_apn_windows_one_open_per_apn"
+     ON "parcel_apn_windows" ("state", "county_fips", "apn") WHERE "valid_to" IS NULL`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "parcel_apn_windows_one_open_per_apid"
+     ON "parcel_apn_windows" ("apid_id") WHERE "valid_to" IS NULL`,
+  `CREATE TABLE IF NOT EXISTS "parcel_lineage_events" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "state" char(2) NOT NULL,
+     "county_fips" char(5) NOT NULL,
+     "release_id" text NOT NULL,
+     "release_ordinal" integer NOT NULL,
+     "kind" text NOT NULL CHECK ("kind" IN ('same', 'renumber', 'split', 'merge', 'condo', 'retired', 'new', 'ambiguous')),
+     "basis" text NOT NULL CHECK ("basis" IN ('geometry', 'id_only')),
+     "reason" text,
+     "previous_apids" text[] NOT NULL,
+     "next_apids" text[] NOT NULL,
+     "previous_apns" text[] NOT NULL,
+     "next_apns" text[] NOT NULL,
+     "evidence" jsonb NOT NULL,
+     "resolved_at" timestamptz,
+     "created_at" timestamptz NOT NULL DEFAULT now(),
+     CHECK (("kind" = 'ambiguous') = ("reason" IS NOT NULL))
+   )`,
+  `CREATE INDEX IF NOT EXISTS "parcel_lineage_events_county_idx" ON "parcel_lineage_events" ("state", "county_fips", "release_ordinal")`,
+  `CREATE OR REPLACE FUNCTION parcel_lineage_events_deny_mutation()
+   RETURNS trigger AS $$
+   BEGIN
+     RAISE EXCEPTION 'parcel_lineage_events is append-only (UPDATE/DELETE/TRUNCATE denied)'
+       USING ERRCODE = 'restrict_violation';
+   END;
+   $$ LANGUAGE plpgsql`,
+  `DROP TRIGGER IF EXISTS parcel_lineage_events_no_update ON "parcel_lineage_events"`,
+  `CREATE TRIGGER parcel_lineage_events_no_update BEFORE UPDATE ON "parcel_lineage_events"
+     FOR EACH ROW EXECUTE FUNCTION parcel_lineage_events_deny_mutation()`,
+  `DROP TRIGGER IF EXISTS parcel_lineage_events_no_delete ON "parcel_lineage_events"`,
+  `CREATE TRIGGER parcel_lineage_events_no_delete BEFORE DELETE ON "parcel_lineage_events"
+     FOR EACH ROW EXECUTE FUNCTION parcel_lineage_events_deny_mutation()`,
+  `DROP TRIGGER IF EXISTS parcel_lineage_events_no_truncate ON "parcel_lineage_events"`,
+  `CREATE TRIGGER parcel_lineage_events_no_truncate BEFORE TRUNCATE ON "parcel_lineage_events"
+     FOR EACH STATEMENT EXECUTE FUNCTION parcel_lineage_events_deny_mutation()`,
+  `INSERT INTO "etl_jobs" ("job_name", "provider_name", "source_url", "watermark_column", "schedule", "is_active", "soft_delete_on_missing", "config")
+   VALUES
+     ('acreos_parcels_lineage_apply', 'acreos_parcels_lineage_apply', 'internal://dataset_release_pointer', NULL, '*/1440 * * * *', false, false, '{}'::jsonb)
+   ON CONFLICT ("job_name") DO NOTHING`,
 ];
 
 // The statement set this run executes. Default: everything (the production

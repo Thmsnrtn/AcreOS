@@ -351,6 +351,13 @@ export interface BulkRow {
   geometry: AreaGeometry;
 }
 
+/**
+ * The artifact row schema + normalizer version a release manifest records
+ * (releaseManifest.mappingVersion). Bump it in the same change that alters
+ * BulkRow, BULK_SCHEMA or normalizeFeature.
+ */
+export const BULK_ROW_VERSION = "bulk-row@1";
+
 const BULK_SCHEMA: Record<keyof BulkRow, ParquetColumnDef> = {
   source_parcel_id: { type: "UTF8" },
   state: { type: "UTF8" },
