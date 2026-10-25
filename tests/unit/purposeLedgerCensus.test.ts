@@ -112,15 +112,15 @@ const MAX_CLOSURE_ROUNDS = 20;
 const DATA_ACCESS_LAYER = /^server\/(?:storage\/|storage\.ts$)/;
 
 /**
- * A cheap SUPERSET of DIRECT_READ on RAW text, so only files that can read
- * are stripped and parsed. Stripping can only remove a match — except a
- * comment between `.from(` and the table name, allowed for here. A canary
+ * A cheap SUPERSET of DIRECT_READ, run on the same comment-stripped text
+ * (tests/helpers/stripComments — the one shared lexer; no hand-rolled
+ * comment handling here), so only files that can read are parsed. A canary
  * pins one sample per DIRECT_READ alternative through this filter: the first
  * draft missed `ownerMailingAddress` (capital M) and silently dropped
  * POST /search in routes-title-search.ts.
  */
-const RAW_PREFILTER =
-  /\.from\(\s*(?:\/\*[\s\S]*?\*\/\s*|\/\/[^\n]*\n\s*)*(?:leads|skipTraces|parcelSnapshots)\b|query\.(?:leads|skipTraces|parcelSnapshots)|storage\.\w*(?:Lead|SkipTrace)|ownerAddress|[mM]ailingAddress|skipTracingService|\b(?:FROM|JOIN)\s+"?(?:leads|skip_traces|parcel_snapshots)\b/;
+const READ_PREFILTER =
+  /\.from\(\s*(?:leads|skipTraces|parcelSnapshots)\b|query\.(?:leads|skipTraces|parcelSnapshots)|storage\.\w*(?:Lead|SkipTrace)|ownerAddress|[mM]ailingAddress|skipTracingService|\b(?:FROM|JOIN)\s+"?(?:leads|skip_traces|parcel_snapshots)\b/;
 
 /**
  * Projection-aware `.from(…)`: `db.select({ count: sql\`count(*)\` }).from(leads)`
@@ -358,9 +358,9 @@ function runCensus(tree: Map<string, string>): Census {
     readers.set(name, s);
     return true;
   };
-  const prefilter = (raw: string) => RAW_PREFILTER.test(raw);
-  for (const [rel, raw] of tree) {
-    if (!prefilter(raw) || !readsDirect(strip(rel))) continue;
+  for (const rel of tree.keys()) {
+    const s = strip(rel);
+    if (!READ_PREFILTER.test(s) || !readsDirect(s)) continue;
     for (const f of fnsOf(rel)) if (readsDirect(f.text)) addReader(f.name, rel);
   }
   const callCache = new WeakMap<object, string[]>();
@@ -419,7 +419,7 @@ function runCensus(tree: Map<string, string>): Census {
   for (const [rel, raw] of tree) {
     const imps = rawImports.get(rel) ?? new Set<string>();
     const touches =
-      (prefilter(raw) && readsDirect(strip(rel))) ||
+      (READ_PREFILTER.test(strip(rel)) && readsDirect(strip(rel))) ||
       readerFiles.has(rel) ||
       /\bdispatchWebhookEvent\(/.test(raw) ||
       ([...imps].some((i) => readerFiles.has(i)) && anyReaderCall.test(raw) && readerReachedVia(rel, { text: strip(rel) }) !== null);
@@ -1073,7 +1073,7 @@ describe("purpose-ledger census — canaries (SYNTHETIC fixture tree)", () => {
     expect(verdict(c, { ledgered, covered: {}, debt: without })).toEqual([expect.stringContaining('NOT IN DEBT: "server/routes-fixture.ts route:GET /api/fixture/sync"')]);
   });
 
-  it("RAW_PREFILTER is a superset of DIRECT_READ: one sample per alternative passes both", () => {
+  it("READ_PREFILTER is a superset of DIRECT_READ: one sample per alternative passes both", () => {
     const samples = [
       "db.select().from(leads)",
       "db.select().from(skipTraces)",
@@ -1091,7 +1091,7 @@ describe("purpose-ledger census — canaries (SYNTHETIC fixture tree)", () => {
     ];
     for (const s of samples) {
       expect(readsDirect(s), `DIRECT_READ: ${s}`).toBe(true);
-      expect(RAW_PREFILTER.test(s), `RAW_PREFILTER: ${s}`).toBe(true);
+      expect(READ_PREFILTER.test(s), `READ_PREFILTER: ${s}`).toBe(true);
     }
   });
 });
