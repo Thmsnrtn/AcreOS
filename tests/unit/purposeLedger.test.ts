@@ -98,10 +98,13 @@ const fakeTx = (id: number) => ({ insert: () => ({ values: () => ({ returning: a
 describe("a receipt is proof a row was written, not a shape", () => {
   it("recordPurpose issues receipts isReceipt accepts; hand-typed and copied receipts are refused", async () => {
     const issued = await recordPurpose({ organizationId: 1, actorUserId: "u1", surface: "skip_trace_call", purposeCode: "collection" }, fakeTx(9));
-    expect(issued).toEqual({ ledgerId: 9, surface: "skip_trace_call" });
-    expect(isReceipt(issued)).toBe(true);
-    expect(isReceipt({ ledgerId: 9, surface: "skip_trace_call" })).toBe(false);
-    expect(isReceipt({ ...issued })).toBe(false);
+    expect(issued).toEqual({ ledgerId: 9, surface: "skip_trace_call", organizationId: 1 });
+    expect(isReceipt(issued, 1)).toBe(true);
+    expect(isReceipt({ ledgerId: 9, surface: "skip_trace_call", organizationId: 1 }, 1)).toBe(false);
+    expect(isReceipt({ ...issued }, 1)).toBe(false);
+    // Bound to its org: another org's lookup, or one naming no org, cannot spend it.
+    expect(isReceipt(issued, 2)).toBe(false);
+    expect(isReceipt(issued, undefined)).toBe(false);
     expect(Object.isFrozen(issued)).toBe(true);
   });
 
@@ -123,7 +126,8 @@ describe("the chokepoints refuse without a receipt", () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch");
     const { skipTracingService } = await import("../../server/services/skipTracingService");
     // The last entry is a well-formed receipt typed by hand: a shape is not proof a row was written.
-    for (const receipt of [undefined, null, { ledgerId: 0, surface: "skip_trace_call" }, { ledgerId: 5, surface: "skip_trace_result_read" }, { ledgerId: 5, surface: "skip_trace_call" }] as never[]) {
+    const otherOrgs = await recordPurpose({ organizationId: 2, actorUserId: "u1", surface: "skip_trace_call", purposeCode: "collection" }, fakeTx(6));
+    for (const receipt of [undefined, null, { ledgerId: 0, surface: "skip_trace_call" }, { ledgerId: 5, surface: "skip_trace_result_read" }, { ledgerId: 5, surface: "skip_trace_call", organizationId: 1 }, otherOrgs] as never[]) {
       const r = await skipTracingService.trace({ firstName: "A", lastName: "B", address: "1 Main", zip: "37402" }, 1, receipt);
       expect(r.success).toBe(false);
       expect(r.error).toMatch(/permissible purpose/);
@@ -156,7 +160,11 @@ describe("the chokepoints refuse without a receipt", () => {
     expect(await registry.lookup("owner_info" as never, input, "free" as never, 1000, undefined, { purpose: { ledgerId: 3, surface: "owner_contact_lookup" } })).toBeNull();
     expect(provider.lookup).not.toHaveBeenCalled();
     const issued = await recordPurpose({ organizationId: 1, actorUserId: "u1", surface: "owner_contact_lookup", purposeCode: "collection" }, fakeTx(4));
-    await registry.lookup("owner_info" as never, input, "free" as never, 1000, undefined, { purpose: issued });
+    // Another org — or no org — cannot spend org 1's receipt.
+    expect(await registry.lookup("owner_info" as never, input, "free" as never, 1000, 2, { purpose: issued })).toBeNull();
+    expect(await registry.lookup("owner_info" as never, input, "free" as never, 1000, undefined, { purpose: issued })).toBeNull();
+    expect(provider.lookup).not.toHaveBeenCalled();
+    await registry.lookup("owner_info" as never, input, "free" as never, 1000, 1, { purpose: issued });
     expect(provider.lookup).toHaveBeenCalledTimes(1);
   });
 
@@ -180,6 +188,7 @@ describe("append-only DDL (migration + mirror)", () => {
     for (const src of [read("migrations/0289_d2e_purpose_ledger.sql"), read("scripts/migrate.mjs")]) {
       expect(src).toMatch(/CREATE TRIGGER purpose_ledger_no_update\s+BEFORE UPDATE ON "purpose_ledger"/);
       expect(src).toMatch(/CREATE TRIGGER purpose_ledger_no_delete\s+BEFORE DELETE ON "purpose_ledger"/);
+      expect(src).toMatch(/CREATE TRIGGER purpose_ledger_no_truncate\s+BEFORE TRUNCATE ON "purpose_ledger"\s+FOR EACH STATEMENT/);
       expect(src).toMatch(/RAISE EXCEPTION 'purpose_ledger is append-only/);
     }
   });

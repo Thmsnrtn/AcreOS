@@ -86,6 +86,8 @@ export interface PurposeEntry {
 export interface PurposeReceipt {
   ledgerId: number;
   surface: PurposeSurface;
+  /** The organization the row was written for — a receipt only opens that org's lookups. */
+  organizationId: number;
 }
 
 type Inserter = { insert: (t: typeof purposeLedger) => { values: (v: Record<string, unknown>) => { returning: (r: { id: typeof purposeLedger.id }) => Promise<Array<{ id: number }>> } } };
@@ -124,7 +126,7 @@ export async function recordPurpose(e: PurposeEntry, tx?: unknown): Promise<Purp
     })
     .returning({ id: purposeLedger.id });
   if (!row) throw new PurposeRequiredError("the purpose ledger did not confirm the row — the lookup is refused");
-  const receipt: PurposeReceipt = Object.freeze({ ledgerId: row.id, surface: e.surface });
+  const receipt: PurposeReceipt = Object.freeze({ ledgerId: row.id, surface: e.surface, organizationId: e.organizationId });
   ISSUED.add(receipt);
   return receipt;
 }
@@ -137,11 +139,23 @@ export async function recordPurpose(e: PurposeEntry, tx?: unknown): Promise<Purp
  */
 const ISSUED = new WeakSet<object>();
 
-/** A receipt a chokepoint will accept: one recordPurpose issued, for a real row on a known surface. */
-export function isReceipt(r: unknown): r is PurposeReceipt {
+/**
+ * A receipt a chokepoint will accept: one recordPurpose issued, for a real row
+ * on a known surface, written for `forOrganization` — another org's receipt,
+ * or a lookup with no org named, is refused. (A receipt is not single-use: a
+ * caller that re-uses one for a second lookup re-uses the same recorded
+ * purpose; every door records one row per lookup.)
+ */
+export function isReceipt(r: unknown, forOrganization: number | undefined): r is PurposeReceipt {
   if (typeof r !== "object" || r === null || !ISSUED.has(r)) return false;
-  const { ledgerId, surface } = r as PurposeReceipt;
-  return typeof ledgerId === "number" && ledgerId > 0 && (PURPOSE_SURFACES as readonly string[]).includes(surface);
+  const { ledgerId, surface, organizationId } = r as PurposeReceipt;
+  return (
+    typeof ledgerId === "number" &&
+    ledgerId > 0 &&
+    (PURPOSE_SURFACES as readonly string[]).includes(surface) &&
+    forOrganization !== undefined &&
+    organizationId === forOrganization
+  );
 }
 
 /** The person-adjacent part of a stored skip trace. */

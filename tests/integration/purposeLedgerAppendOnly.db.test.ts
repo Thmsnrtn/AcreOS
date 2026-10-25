@@ -44,6 +44,13 @@ describe.runIf(realDbAvailable)("purpose_ledger append-only — real database", 
     expect(err?.code).toBe("23001");
   });
 
+  it("TRUNCATE is refused too (row triggers do not fire on TRUNCATE; a statement trigger does)", async () => {
+    const err = await client.query(`TRUNCATE purpose_ledger`).catch((e) => e);
+    expect(err?.code).toBe("23001");
+    const left = await client.query(`SELECT count(*)::int AS n FROM purpose_ledger`);
+    expect(left.rows[0].n).toBe(1);
+  });
+
   it("a NULL purpose code cannot be stored", async () => {
     const err = await client.query(`INSERT INTO purpose_ledger (organization_id, actor_user_id, surface, purpose_code) VALUES (1, 'u1', 'skip_trace_call', NULL)`).catch((e) => e);
     expect(err?.code).toBe("23502");

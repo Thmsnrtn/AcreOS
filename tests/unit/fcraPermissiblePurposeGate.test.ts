@@ -64,6 +64,8 @@ const H = vi.hoisted(() => {
     tables: {} as Record<string, any[]>,
     /** Leads served by storage.getLeads for the /api/skip-tracing/batch path. */
     leadsList: [] as any[],
+    /** Stored skip traces served by the GET /api/skip-traces* reads. */
+    storedTraces: [] as any[],
   };
 
   const tableName = (t: any) => t?.[Symbol.for("drizzle:Name")] ?? "";
@@ -142,11 +144,15 @@ const H = vi.hoisted(() => {
       values: (v: any) => {
         const name = tableName(table);
         const arr = (state.tables[name] ??= []);
-        const row = { id: `${name}-${arr.length + 1}`, ...rowDefaults(name), ...v };
-        arr.push(row);
+        // A multi-row values([...]) inserts each row, as SQL does.
+        const rows = (Array.isArray(v) ? v : [v]).map((one: any) => {
+          const row = { id: `${name}-${arr.length + 1}`, ...rowDefaults(name), ...one };
+          arr.push(row);
+          return row;
+        });
         CALLS.push(`insert:${name}`);
-        const p: any = Promise.resolve([{ ...row }]);
-        p.returning = () => Promise.resolve([{ ...row }]);
+        const p: any = Promise.resolve(rows.map((r: any) => ({ ...r })));
+        p.returning = () => Promise.resolve(rows.map((r: any) => ({ ...r })));
         return p;
       },
     }),
@@ -186,7 +192,9 @@ const H = vi.hoisted(() => {
       zip: null,
     })),
     getLeads: vi.fn(async () => state.leadsList),
-    getSkipTraces: vi.fn(async () => []),
+    getSkipTraces: vi.fn(async () => state.storedTraces),
+    getSkipTrace: vi.fn(async (_orgId: number, id: number) => state.storedTraces.find((t: any) => t.id === id)),
+    getSkipTraceByLead: vi.fn(async (_orgId: number, leadId: number) => state.storedTraces.find((t: any) => t.leadId === leadId)),
     createSkipTrace: vi.fn(async (data: any) => {
       CALLS.push("storage.createSkipTrace");
       return { id: 1, ...data };
@@ -408,6 +416,7 @@ beforeEach(() => {
   H.CALLS.length = 0;
   H.state.tables = {};
   H.state.leadsList = [];
+  H.state.storedTraces = [];
   H.traceState.impl = null;
   vi.clearAllMocks();
 });
@@ -700,6 +709,41 @@ describe("POST /api/skip-traces — §1681b(a)(3)(F) purpose gate on consumer-re
     expect(res.status).toBe(200);
     expect(res.body.status).toBe("unavailable"); // past the gate, honest about the missing vendor
     expect(H.storageMock.createSkipTrace).not.toHaveBeenCalled(); // no row, no cost, no fake PII
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+describe("GET /api/skip-traces* — stored results are released only under a recorded purpose, and the release is ledgered (D2e)", () => {
+  const RESULTS = { phones: [{ number: "512-555-0100", type: "mobile", verified: false }] };
+  const withPurpose = { id: 1, leadId: 10, results: RESULTS, purposeOfUse: "collection", justification: "collecting note #123 from the borrower", attestationVersion: "v1" };
+  const noPurpose = { id: 2, leadId: 11, results: RESULTS, purposeOfUse: null };
+  const ledger = () => H.state.tables["purpose_ledger"] ?? [];
+
+  it("GET /api/skip-traces: the purposed trace's results are served and ledgered; the unpurposed one is withheld", async () => {
+    H.state.storedTraces = [withPurpose, noPurpose];
+    const res = await request(app).get("/api/skip-traces");
+    expect(res.status).toBe(200);
+    expect(res.body[0].results).toEqual(RESULTS);
+    expect(res.body[1].results).toBeNull();
+    expect(res.body[1].resultsWithheld).toMatch(/no permissible purpose was recorded/);
+    expect(ledger()).toHaveLength(1);
+  });
+
+  it("GET /api/skip-traces/:id withholds a trace with no recorded purpose and writes nothing", async () => {
+    H.state.storedTraces = [noPurpose];
+    const res = await request(app).get("/api/skip-traces/2");
+    expect(res.status).toBe(200);
+    expect(res.body.results).toBeNull();
+    expect(res.body.resultsWithheld).toMatch(/no permissible purpose/);
+    expect(ledger()).toHaveLength(0);
+  });
+
+  it("GET /api/skip-traces/lead/:leadId serves a purposed trace and writes exactly one skip_trace_result_read row", async () => {
+    H.state.storedTraces = [withPurpose];
+    const res = await request(app).get("/api/skip-traces/lead/10");
+    expect(res.status).toBe(200);
+    expect(res.body.results).toEqual(RESULTS);
+    expect(ledger()).toEqual([expect.objectContaining({ surface: "skip_trace_result_read", purposeCode: "collection", skipTraceId: 1, leadId: 10, organizationId: ORG_ID })]);
   });
 });
 

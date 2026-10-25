@@ -12595,7 +12595,7 @@ $mig0284$`,
      IF current_setting('acreos.allow_purpose_ledger_mutation', true) = 'on' THEN
        RETURN COALESCE(NEW, OLD);
      END IF;
-     RAISE EXCEPTION 'purpose_ledger is append-only (UPDATE/DELETE denied)'
+     RAISE EXCEPTION 'purpose_ledger is append-only (UPDATE/DELETE/TRUNCATE denied)'
        USING ERRCODE = 'restrict_violation';
    END;
    $$ LANGUAGE plpgsql`,
@@ -12608,6 +12608,11 @@ $mig0284$`,
   `CREATE TRIGGER purpose_ledger_no_delete
      BEFORE DELETE ON "purpose_ledger"
      FOR EACH ROW
+     EXECUTE FUNCTION purpose_ledger_deny_mutation()`,
+  `DROP TRIGGER IF EXISTS purpose_ledger_no_truncate ON "purpose_ledger"`,
+  `CREATE TRIGGER purpose_ledger_no_truncate
+     BEFORE TRUNCATE ON "purpose_ledger"
+     FOR EACH STATEMENT
      EXECUTE FUNCTION purpose_ledger_deny_mutation()`,
 ];
 

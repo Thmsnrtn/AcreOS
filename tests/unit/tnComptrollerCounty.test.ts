@@ -23,7 +23,7 @@ import {
   type TnParcelSource,
   type TnSourceParcel,
 } from "../../server/services/landData/tnComptrollerCounty";
-import { TN_SELF_MAINTAINED_COUNTIES } from "../../server/services/landData/tnParcelSources";
+import { TN_SELF_MAINTAINED_COUNTIES, TN_COMPTROLLER_DOSSIER } from "../../server/services/landData/tnParcelSources";
 import { readGeoParquetRows } from "../../server/services/landData/geoParquet";
 import type { ParcelContext } from "../../server/services/landData/computeParcelFacts";
 import type { ObjectStoreClient } from "../../server/services/landData/openDataBucket";
@@ -31,6 +31,7 @@ import { uploadFileAndConfirm } from "../../server/services/landData/openDataBuc
 import type { OwnedParcelInput } from "../../server/services/landData/ownedParcelStore";
 import census from "../../shared/landData/countySourceCensus.tn.json";
 import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
+import { unresolvedUseClasses, type SourceDossier } from "@shared/openData/sourcePolicy";
 
 vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
@@ -157,6 +158,11 @@ function download(o: DirOpts): string {
 }
 
 const FIELDS = { mailingStateField: "SYN_MAILST", improvementValueField: "SYN_IMPVAL" };
+/** SYNTHETIC, test-only: a TN dossier with every use class resolved, so the upload path itself can be exercised. Not a finding. */
+const RESOLVED_FOR_TEST: SourceDossier = (() => {
+  const f = { status: "allowed" as const, evidence: "SYNTHETIC test finding — not read from any terms page", readOn: "2026-10-24" };
+  return { termsUrl: null, termsReadOn: "2026-10-24", useClasses: { internal: f, display: f, redistribution: f, resale: f }, attributionRequired: true, restrictions: [] };
+})();
 const baseDeps = (over: Partial<TnBuildDeps> = {}): TnBuildDeps => ({ outDir: tmp("tn-out-"), today: "2026-10-24", loadContext: emptyCtx, bucketConfigured: false, ...over });
 
 function memoryStore() {
@@ -326,7 +332,7 @@ describe("the bounded build", () => {
     const r = await buildTnCounty(
       SUMNER,
       comptrollerDirSource(download({ n: 40 }), FIELDS, "2026-10-24"),
-      baseDeps({ store: mem.store, bucketConfigured: true, objectStore: async () => client, upload: uploadFileAndConfirm }),
+      baseDeps({ store: mem.store, bucketConfigured: true, dossier: RESOLVED_FOR_TEST, objectStore: async () => client, upload: uploadFileAndConfirm }),
     );
     expect(r.outcome.status).toBe("ingested");
     expect([...objects.keys()].sort()).toEqual([
@@ -337,7 +343,22 @@ describe("the bounded build", () => {
   });
 
   it("a configured bucket with no object store refuses rather than reporting a local build as uploaded", async () => {
-    await expect(buildTnCounty(SUMNER, comptrollerDirSource(download({ n: 10 }), FIELDS, "2026-10-24"), baseDeps({ bucketConfigured: true }))).rejects.toThrow(/no object store/);
+    await expect(buildTnCounty(SUMNER, comptrollerDirSource(download({ n: 10 }), FIELDS, "2026-10-24"), baseDeps({ bucketConfigured: true, dossier: RESOLVED_FOR_TEST }))).rejects.toThrow(/no object store/);
+  });
+
+  it("the production dossier (every TN use class unresolved) uploads nothing even with a bucket — parcels are still kept", async () => {
+    expect(unresolvedUseClasses(TN_COMPTROLLER_DOSSIER)).toEqual(["internal", "display", "redistribution", "resale"]);
+    const upload = vi.fn();
+    const mem = memoryStore();
+    const r = await buildTnCounty(
+      SUMNER,
+      comptrollerDirSource(download({ n: 12 }), FIELDS, "2026-10-24"),
+      baseDeps({ store: mem.store, bucketConfigured: true, objectStore: async () => { throw new Error("must not be reached"); }, upload }),
+    );
+    expect(upload).not.toHaveBeenCalled();
+    expect(r.outcome.status).toBe("dry_run_only");
+    expect(r.upload).toMatch(/use classes unresolved/);
+    expect(mem.completed).toEqual([{ stored: 12, receipts: 0 }]);
   });
 
   it("refuses to emit empty artifacts (every parcel improved)", async () => {

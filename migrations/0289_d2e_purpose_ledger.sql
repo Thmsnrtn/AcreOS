@@ -2,10 +2,13 @@
 --
 -- One row per person-adjacent lookup: actor, organization, the permissible-
 -- purpose code declared, parcel/lead context, and the metering event it rode
--- on. APPEND-ONLY: UPDATE and DELETE raise restrict_violation unless a DBA
--- sets the session GUC acreos.allow_purpose_ledger_mutation = 'on' (retention
--- pruning only). The organization FK does not cascade — a compliance record
--- does not disappear with its organization.
+-- on. APPEND-ONLY: UPDATE, DELETE and TRUNCATE raise restrict_violation
+-- unless the session sets the GUC acreos.allow_purpose_ledger_mutation = 'on'
+-- (retention pruning only). That GUC is an explicit, greppable opt-in, NOT a
+-- privilege boundary: any role that can connect can set a custom GUC. The
+-- organization FK does not cascade — a compliance record does not disappear
+-- with its organization (which also means organization erasure must decide
+-- what happens to these rows; see the D2 delivery report).
 CREATE TABLE IF NOT EXISTS "purpose_ledger" (
   "id" serial PRIMARY KEY,
   "organization_id" integer NOT NULL REFERENCES "organizations"("id"),
@@ -29,7 +32,7 @@ BEGIN
   IF current_setting('acreos.allow_purpose_ledger_mutation', true) = 'on' THEN
     RETURN COALESCE(NEW, OLD);
   END IF;
-  RAISE EXCEPTION 'purpose_ledger is append-only (UPDATE/DELETE denied)'
+  RAISE EXCEPTION 'purpose_ledger is append-only (UPDATE/DELETE/TRUNCATE denied)'
     USING ERRCODE = 'restrict_violation';
 END;
 $$ LANGUAGE plpgsql;
@@ -44,4 +47,10 @@ DROP TRIGGER IF EXISTS purpose_ledger_no_delete ON "purpose_ledger";
 CREATE TRIGGER purpose_ledger_no_delete
   BEFORE DELETE ON "purpose_ledger"
   FOR EACH ROW
+  EXECUTE FUNCTION purpose_ledger_deny_mutation();
+
+DROP TRIGGER IF EXISTS purpose_ledger_no_truncate ON "purpose_ledger";
+CREATE TRIGGER purpose_ledger_no_truncate
+  BEFORE TRUNCATE ON "purpose_ledger"
+  FOR EACH STATEMENT
   EXECUTE FUNCTION purpose_ledger_deny_mutation();

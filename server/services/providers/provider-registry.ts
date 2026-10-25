@@ -183,7 +183,7 @@ class ProviderRegistry {
     organizationId?: number,
     opts?: RegistryLookupOptions
   ): Promise<LookupResult | null> {
-    if (PERSON_ADJACENT_CATEGORIES.has(category) && !(isReceipt(opts?.purpose) && opts?.purpose.surface === "owner_contact_lookup")) {
+    if (PERSON_ADJACENT_CATEGORIES.has(category) && !(isReceipt(opts?.purpose, organizationId) && opts?.purpose.surface === "owner_contact_lookup")) {
       logger.warn(`Refused ${category} lookup: no purpose-ledger receipt`, { source: "ProviderRegistry", metadata: { organizationId } });
       return null;
     }

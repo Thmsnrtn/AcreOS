@@ -43,7 +43,7 @@ Worked as a fleet: one worktree agent per workstream (D2a–D2h) plus two spec t
 - **D1c + A4.** `statewide_layer_metadata_v1` makes two metadata calls per statewide layer and reports drift against the last poll, the last ingest and the documented cadence. The orchestrator's new `finalize()` writes `etl_runs.observation` once per run, so the runs form an append-only snapshot series.
 - **A2.** Every statewide row carries a dossier and a derived policy block. Every block is restrictive, because no terms were read.
 - **D1b + A1.** `fl_statewide_cadastral_v1` refuses on a missing mapped field, an unbounded run, or an unverified county field. It writes canonical records with per-group provenance and decay class, GeoParquet and PMTiles locally, and `uploaded:false` receipts. It is never "ingested" without bucket-confirmed receipts and resolved use classes.
-- **A5.** `tests/fixtures/golden/fl-golden-county.json` (moved in D2 to `shared/landData/golden/`) has five honest pending slots, and a CI harness checks them.
+- **A5.** `tests/fixtures/golden/fl-golden-county.json` (moved in D2 to `shared/landData/golden/`; since established — five verified Nassau parcels) had five honest pending slots, and a CI harness checks them.
 - Both jobs are seeded **inactive**.
 
 ### Not done, and why

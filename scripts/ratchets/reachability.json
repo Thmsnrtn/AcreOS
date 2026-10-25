@@ -633,7 +633,7 @@
     {
       "kind": "export",
       "id": "server/services/landData/releases/releaseDiff.ts::ParcelStreamOrderError",
-      "reason": "STAGED D2b RELEASE CORE (2026-10-24). Pure, tested (128 tests, 21 mutations) and deliberately unwired: a release has nowhere to live until the COO approves its storage, and wiring a store without that approval would add tables the ratchet forbids. The refusal for unsorted or duplicate parcel input (D2a's ExternalSorter produces the required order). REVOCATION: remove when the release store lands (INTEGRATION-D2b \u00a72-\u00a73: dataset_releases + dataset_release_pointer, or the bucket-only alternative \u2014 held for COO table approval) and the assembly job / founder Controls promote action import it."
+      "reason": "STAGED D2b RELEASE CORE (2026-10-24). Pure, tested (128 tests, 21 mutations) and deliberately unwired: a release has nowhere to live until the COO approves its storage, and wiring a store without that approval would add tables the ratchet forbids. The refusal for unsorted or duplicate parcel input. D2a's ExternalSorter produces ascending UTF-8 order but keeps ties, and nothing dedupes source_parcel_id, so a county artifact with a repeated id makes its release diff refuse (fail-closed) until dedup lands with the release assembly. REVOCATION: remove when the release store lands (INTEGRATION-D2b \u00a72-\u00a73: dataset_releases + dataset_release_pointer, or the bucket-only alternative \u2014 held for COO table approval) and the assembly job / founder Controls promote action import it."
     },
     {
       "kind": "export",

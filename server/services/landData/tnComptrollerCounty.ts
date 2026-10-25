@@ -54,7 +54,8 @@ import { StreamingArtifactWriter, type BuiltArtifact } from "./streamingArtifact
 import { artifactObjectKey, buildOutcome, ExternalSorter, RSS_CEILING_MB, type BuildOutcome, type IngestGate } from "./statewideCadastral";
 import type { ObjectStoreClient, UploadReceipt } from "./openDataBucket";
 import type { OwnedParcelInput } from "./ownedParcelStore";
-import { TN_COMPTROLLER_DOWNLOAD, TN_PARCEL_FIELDS, TN_SELF_MAINTAINED_COUNTIES } from "./tnParcelSources";
+import { TN_COMPTROLLER_DOSSIER, TN_COMPTROLLER_DOWNLOAD, TN_PARCEL_FIELDS, TN_SELF_MAINTAINED_COUNTIES } from "./tnParcelSources";
+import { unresolvedUseClasses, type SourceDossier } from "@shared/openData/sourcePolicy";
 
 const PAGE_SIZE = 1000;
 const JOIN_BUCKETS = 64;
@@ -501,6 +502,8 @@ export interface TnBuildDeps {
   /** Context layers for one cell's bbox (production: loadParcelContext). */
   loadContext(bbox: [number, number, number, number], retrievedOn: string): Promise<ParcelContext>;
   bucketConfigured: boolean;
+  /** The use-class dossier the upload gate reads; production default TN_COMPTROLLER_DOSSIER (all unresolved). */
+  dossier?: SourceDossier;
   objectStore?: () => Promise<ObjectStoreClient>;
   upload?: (client: ObjectStoreClient, corpusKey: string, objectKey: string, a: BuiltArtifact) => Promise<UploadReceipt>;
   store?: TnCountyStore;
@@ -789,7 +792,9 @@ export async function buildTnCounty(target: TnCountyTarget, source: TnParcelSour
   const reasons: string[] = [];
   if (!mayPersist) reasons.push(`never — ${source.kind} artifacts are local proof only`);
   else if (!TN_COMPTROLLER_DOWNLOAD.mayStore) reasons.push("the Comptroller terms record does not allow storing a copy");
-  else if (!deps.bucketConfigured) reasons.push("skipped — OPEN_DATA_BUCKET_* not set (founder action: create the bucket and keys)");
+  else if (unresolvedUseClasses(deps.dossier ?? TN_COMPTROLLER_DOSSIER).length > 0) {
+    reasons.push(`TN use classes unresolved (${unresolvedUseClasses(deps.dossier ?? TN_COMPTROLLER_DOSSIER).join(", ")}) — nothing is uploaded until the dossier resolves them`);
+  } else if (!deps.bucketConfigured) reasons.push("skipped — OPEN_DATA_BUCKET_* not set (founder action: create the bucket and keys)");
   const gate: IngestGate = { upload: reasons.length === 0, ownerNamesAllowed: false, reasons };
   const receipts: UploadReceipt[] = [];
   if (gate.upload) {

@@ -308,7 +308,7 @@ export const skipTracingService = {
     }
     // D2e — no purpose, no read (after the owner opt-out, which is the
     // stronger, platform-wide refusal and says so in its own words).
-    if (!isReceipt(purpose) || purpose.surface !== "skip_trace_call") {
+    if (!isReceipt(purpose, organizationId) || purpose.surface !== "skip_trace_call") {
       return {
         success: false,
         source: "none",
