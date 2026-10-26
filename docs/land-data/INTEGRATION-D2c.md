@@ -3,8 +3,8 @@
 > **Status 2026-10-25 — §2 and §4 APPLIED** (tables approved by Tom via Muse's
 > pre-merge fix list). Migration `0291_d2c_parcel_apid_lineage.sql` creates
 > exactly the THREE tables §4's DDL defines — `parcel_apids`,
-> `parcel_apn_windows`, `parcel_lineage_events` (§4's heading says "two"; its
-> DDL has three; no third was invented and none was dropped). Deviations: no
+> `parcel_apn_windows`, `parcel_lineage_events` (§4's heading said "two" and
+> is now corrected; its DDL always had three; none was invented or dropped). Deviations: no
 > `btree_gist` EXCLUDE (extension not guaranteed in production) — partial
 > unique indexes allow one open window per APN and per APID, and the writer
 > checks `ledgerViolations()` before every commit; `parcel_apids` gains
@@ -15,7 +15,17 @@
 > without a FIPS reference — only TN has one in the repo
 > (`tnCountyBoundaries.json`) — and skips when the current pointer entry is a
 > rollback. Proven on a database built from the repo
-> (`apidStore.realdb.test.ts`). **NOT applied: §3** (crosswalk proposal).
+> (`apidStore.realdb.test.ts`).
+>
+> **Tracked follow-ups (2026-10-26, not applied in this pass):**
+> - **§3 crosswalk proposal** — not applied.
+> - **Non-TN lineage** — kept as a refusal, by design: APIDs are FIPS-scoped
+>   and the repo holds no national county FIPS reference (only TN's, in
+>   `tnCountyBoundaries.json`), so every other state's county is refused with a
+>   stated reason rather than given a guessed FIPS. Lifting it needs a national
+>   Census county FIPS reference.
+> - A county whose artifact repeats a `source_parcel_id` is refused
+>   (`duplicate_source_id`) — see INTEGRATION-D2b's dedupe follow-up.
 >
 > The original proposal text follows unchanged.
 
@@ -123,7 +133,7 @@ Full protection needs the APID ledger (or a `parcel_key` existence check in
   reusing the old number, two rows match and an arbitrary one is returned —
   exactly what APN validity windows prevent (`apidForApnAt` is point-in-time).
 
-## 4. DDL proposals (need COO approval — two new tables)
+## 4. DDL proposals (approved 2026-10-25 — three new tables)
 
 Row PKs are uuid per Package 4; `apid` is the public text id.
 

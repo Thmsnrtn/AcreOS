@@ -11,7 +11,7 @@
   ],
   "baselineCount": 746,
   "direction": "down",
-  "lastBumpNote": "2026-10-25: +3 for parcel_apids, parcel_apn_windows and parcel_lineage_events (D2c, migration 0291 \u2014 the three tables INTEGRATION-D2c.md \u00a74's DDL defines; its heading says \"two\") \u2014 Tom-approved 2026-10-25 via Muse's pre-merge fix list (\"D2c tables APPROVED\"). Previous: 2026-10-25 +2 for dataset_releases and dataset_release_pointer (D2b, migration 0290), same approval; the purpose_ledger +1 (741, D2e, 2026-10-24) is kept, also approved that day. Previous: 2026-10-16 +1 coo_ledger, Tom-approved.",
+  "lastBumpNote": "2026-10-25: +3 for parcel_apids, parcel_apn_windows and parcel_lineage_events (D2c, migration 0291 \u2014 the three tables INTEGRATION-D2c.md \u00a74's DDL defines; its heading said \"two\", corrected 2026-10-26) \u2014 Tom-approved 2026-10-25 via Muse's pre-merge fix list (\"D2c tables APPROVED\"). Previous: 2026-10-25 +2 for dataset_releases and dataset_release_pointer (D2b, migration 0290), same approval; the purpose_ledger +1 (741, D2e, 2026-10-24) is kept, also approved that day. Previous: 2026-10-16 +1 coo_ledger, Tom-approved.",
   "minima": {
     "files": 120
   },

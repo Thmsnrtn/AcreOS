@@ -9,8 +9,23 @@
 > seeded inactive); promote / rollback / inventory are founder routes behind
 > Controls (`/api/founder/autopilot/releases*`); `/api/ops/data` reads the real
 > inventory. Proven on a database built from the repo
-> (`releaseStore.realdb.test.ts`). **NOT applied: §4** (stamping served answers —
-> the column exists and nothing writes it yet). §5 was fixed in D2a; §6 open.
+> (`releaseStore.realdb.test.ts`).
+>
+> **Tracked follow-ups (2026-10-26, not implemented in this pass):**
+> - **§4 served-answer stamping.** `provider_lookup_log.served_release_id`
+>   exists (0290) but NOTHING writes it yet; every served answer still reads
+>   as a pre-release lane (null).
+> - **§6 parcel-diff input order / `source_parcel_id` dedupe.** Verified
+>   2026-10-26: nothing dedupes `source_parcel_id` — D2a's `ExternalSorter` is
+>   stable and keeps ties, and release assembly reads build metadata only. A
+>   county artifact with a repeated id is still assembled into a release;
+>   downstream it fails closed (lineage refuses the county with
+>   `duplicate_source_id`; the release diff refuses unsorted/duplicate input).
+>   Dedupe (and which row wins) is a follow-up.
+> - The release diff report, name audit and pointer-history audit exports stay
+>   unwired (reachability entries reclassified TRACKED FOLLOW-UP).
+>
+> §5 was fixed in D2a.
 >
 > The original proposal text follows unchanged.
 

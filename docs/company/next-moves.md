@@ -3,6 +3,43 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-10-26 — D2 consolidated audit fix list (Tom decided every open item); same branch, nothing merged
+
+### What shipped
+- **Org erasure deletes the text-keyed tenant tables** (Tom: delete, not retain). `deleteOrganization` now compares each tenant key in its own type (integer key → number, text key → its decimal string). It refuses to start when a key has a type it cannot match. Only an FK violation (23503) is retried; any other DELETE error throws `OrgErasureError` BEFORE the org row is deleted, and so does a failed `financial_ledger` detach. `onboarding_funnel_metrics` and `pax_user_context` rows are now erased. Proven on a database built from the repo (`orgErasureTextKeyedTables.realdb.test.ts`); the old integer comparison turns it red. Retention (1A) unchanged and re-verified: `financial_ledger` is detached, `purpose_ledger` is kept.
+- **D2e batch per lead (2A).** Each lead's debit and purpose row commit in that lead's own transaction, and its vendor call follows that commit. A refusal or ledger failure skips only that lead, and a failed lookup refunds only that lead's debit. If the pool refuses every lead, the response is 429 with nothing run. The single door is unchanged. Isolation tests are mutation-proven.
+- **FCRA citation.** written_consent is §1681b(a)(2); the other three are (a)(3). The enum is unchanged, and the real thrown message is pinned.
+- **Claim corrections** (verified against the repo before editing):
+  - D2c has 44 tests counted syntactically (19 + 18 + 7), and 65 at runtime (`it.each` expands lineageGolden to 28). Quote it as "44 tests, 65 cases".
+  - D2h has 22 numbered entries, not 23.
+  - D2d: wave-1 states other than FL never auto-promote; FL (Nassau) does.
+  - D2a: 310 MB is a lane-reported figure, not a measured one. The pinned bound is the 400 MB internal ceiling under the 512 MB gate cap.
+  - The D2h E1 guard is at `streamingArtifacts.ts:355-390`.
+  - The INTEGRATION-D2c §4 heading now says three tables.
+- **Close-out verification.**
+  - Migrations 0290 and 0291 are mirrored in `migrate.mjs`.
+  - The table count stands at 746, with approval notes.
+  - The new tables are in the tenancy lint's population and classified global (they have no tenant key).
+  - 14 D2b/D2c reachability entries said "STAGED pending table approval". They are reclassified as TRACKED FOLLOW-UP: the exports are still unreached, so the entries stay.
+  - **Release assembly does NOT dedupe `source_parcel_id`.** Downstream it fails closed (lineage refuses the county). This is a tracked follow-up.
+- **Evidence logs** are kept in `docs/evidence/2026-10-26/`.
+
+### Tracked only (not fixed)
+- D2b §4 served-answer stamping (`served_release_id` exists; nothing writes it).
+- D2c §3 crosswalk proposal.
+- `source_parcel_id` dedupe in release assembly.
+- Non-TN lineage: refused until there is a national county FIPS reference.
+- D2d disclosed gaps.
+- Cache `answeringLayer`.
+- D3 parcel-delta cross-source disagreement.
+- Regrid org-scoping policy.
+- An FCRA counsel ruling before skip-trace volume grows.
+- Regrid price verification before the first paying customer.
+- Human reads of the TN and NC terms before activation.
+- D2f go-live prerequisites.
+- D2a TN-47000 key reconcile (read-only count first).
+- Other `§1681b(a)(3)(F)` mentions outside `fcraAttestation.ts` (`ai/tools.ts`, `routes-leads.ts`, `statuteRegister.ts`, …) were left as they are; only the cited line was in scope.
+
 ## 2026-10-25 — D2 pre-merge fix list (Tom approved seven decisions via Muse); same branch, nothing merged
 
 ### What shipped (follow-up commits on `claude/d2-bulk-wave1-identity-trust`, no history rewritten)
@@ -30,14 +67,14 @@ what shipped, what it measured, and the top next moves. Newest first.
 Worked as a fleet: one worktree agent per workstream (D2a–D2h) plus two spec tracks, file-disjoint, with every shared file (migrations, migrate.mjs, schema, etlHandlers, registry, ratchets, next-moves) changed only by the integrator. Each lane's claims were re-run centrally; reachability was fixed per landing, never by raising a baseline.
 
 ### What shipped
-- **D2a.** Streamed statewide template (`statewideCadastral.ts`, `streamingArtifacts.ts`) with dossier-gated live upload (no receipts, no "ingested"). Bounded TN Comptroller loader, county by county with metros first and statewide refused (`tnComptrollerCounty.ts`; 400k parcels peak 310 MB under the 512 MB cap; accumulating mutants OOM). Rows are sorted by parcel id in UTF-8 order via a bounded external sort. The object key carries the digest, so a same-day rebuild can no longer overwrite a receipted object. TX refuses explicitly (`TX_BEACHHEAD_COUNTIES` is empty, with its reason). Dossier drafts for 9 states in `docs/land-data/dossiers/` (no terms read; network). The whole-county in-memory artifact path is deleted (pmtilesWriter, writeGeoParquet/readGeoParquet, uploadAndConfirm, persistLoadedCounty); tests were ported. `completeLoadedCounty` is now the one canonical way to complete a county load.
+- **D2a.** Streamed statewide template (`statewideCadastral.ts`, `streamingArtifacts.ts`) with dossier-gated live upload (no receipts, no "ingested"). Bounded TN Comptroller loader, county by county with metros first and statewide refused (`tnComptrollerCounty.ts`; bounded under an internal 400 MB RSS ceiling pinned in `tnComptrollerCounty.test.ts`, below the memory gate's 512 MB cap; accumulating mutants OOM in that gate. A 310 MB peak was reported from one lane run under fleet load and is not quoted as measured: that run was not reproduced centrally). Rows are sorted by parcel id in UTF-8 order via a bounded external sort. The object key carries the digest, so a same-day rebuild can no longer overwrite a receipted object. TX refuses explicitly (`TX_BEACHHEAD_COUNTIES` is empty, with its reason). Dossier drafts for 9 states in `docs/land-data/dossiers/` (no terms read; network). The whole-county in-memory artifact path is deleted (pmtilesWriter, writeGeoParquet/readGeoParquet, uploadAndConfirm, persistLoadedCounty); tests were ported. `completeLoadedCounty` is now the one canonical way to complete a county load.
 - **D2b.** Pure release core in `server/services/landData/releases/`: content-addressed manifest id, `acreos-parcels vYYYY.MM.N` names, a bounded sort-merge diff, and an append-only promote/rollback pointer. 128 tests. STAGED: storage needs COO approval (+2 tables +1 column, or bucket-only).
-- **D2c.** `shared/landData/lineage.ts` + `apid.ts`: lineage classification (with an explicit `ambiguous` outcome), APIDs that are never reused, non-overlapping APN windows, and inheritance; a synthetic golden lineage case. 65 tests. STAGED: needs 3 tables, pending COO approval. Crosswalk defect fixed: a retired parcel key was re-minted for a split remainder.
-- **D2d.** Remap hardened against 20 drift shapes; six defects fixed (greedy assignment, degenerate proof, a throwing live read, duplicate golden parcels, unverified adoption, empty drift). Semantic JV→JV_HMSTD is rejected by golden. Wave-1 states have no golden county, so they never auto-promote.
-- **D2e.** Purpose ledger (0289, append-only, proven on real PG). Receipts are unforgeable (WeakSet). Census of 221 person-adjacent surfaces: 214 are in a shrink-only debt register.
+- **D2c.** `shared/landData/lineage.ts` + `apid.ts`: lineage classification (with an explicit `ambiguous` outcome), APIDs that are never reused, non-overlapping APN windows, and inheritance; a synthetic golden lineage case. 44 tests counted syntactically (`apid.test.ts` 19, `lineage.test.ts` 18, `lineageGolden.test.ts` 7); 65 at runtime, because `lineageGolden`'s `it.each` expands to 28 (`docs/evidence/2026-10-26/d2c-d2d-suites.log`). STAGED: needs 3 tables, pending COO approval. Crosswalk defect fixed: a retired parcel key was re-minted for a split remainder.
+- **D2d.** Remap hardened against 20 drift shapes; six defects fixed (greedy assignment, degenerate proof, a throwing live read, duplicate golden parcels, unverified adoption, empty drift). Semantic JV→JV_HMSTD is rejected by golden. Wave-1 states other than FL have no golden county, so they never auto-promote; FL (Nassau, `shared/landData/golden/fl-golden-county.json`) is the golden county that does.
+- **D2e.** Purpose ledger (0289, append-only, proven on real PG — log kept 2026-10-26: `docs/evidence/2026-10-26/purposeLedgerAppendOnly.log`, run under ACREOS_REQUIRE_REAL_DB). Receipts are unforgeable (WeakSet). Census of 221 person-adjacent surfaces: 214 are in a shrink-only debt register.
 - **D2f.** Historical-use screening: verdict is adverse / no adverse in verified sources / inconclusive, never "clean"; a verified absence needs a positive control. Indiana end to end on fixtures. Entry point deliberately unwired (route/Pax tool held for COO).
 - **D2g.** `GET /api/ops/data`: paid fall-through no longer counts failed attempts as paid; coverage by state against a stated denominator; release inventory reads `not_built`; layer vocabulary derived from the writers.
-- **D2h.** `docs/land-data/d2h-research-verification.md`: 23 claims checked; only the PMTiles/GeoParquet format facts are confirmed at source.
+- **D2h.** `docs/land-data/d2h-research-verification.md`: 22 numbered entries checked (A1–A3, B1–B12, C1, D1–D3, E1, E2, E2a); only the PMTiles/GeoParquet format facts are confirmed at source.
 - **Spec tracks** (separate worktree branches, not on the D2 branch): D3 conflation-disagreement spec + prototype; vertical + Pax groundwork specs.
 
 ### Not done, and why
