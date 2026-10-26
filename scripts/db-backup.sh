@@ -56,8 +56,17 @@ STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 DUMP="$OUT/acreos-$STAMP.dump"
 MAN="$OUT/acreos-$STAMP.manifest.json"
 
-echo "[db-backup] dumping $PGDATABASE@$PGHOST:$PGPORT → $DUMP"
-pg_dump -Fc --no-owner --no-acl -f "$DUMP"
+# pg_dump of the SERVER's major version, never whatever is first on PATH
+# (scripts/lib/pg-client-for-server.sh: a newer pg_dump writes statements the
+# same-major restore target rejects).
+# shellcheck source=lib/pg-client-for-server.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib/pg-client-for-server.sh"
+SERVER_MAJOR="$(pg_server_major)" || { echo "[db-backup] FAIL — could not read the server version"; exit 1; }
+PG_DUMP="$(pg_tool_for_server pg_dump "$SERVER_MAJOR")" || { echo "[db-backup] FAIL — no pg_dump matching server major $SERVER_MAJOR (see above)"; exit 1; }
+SERVER_VERSION="$(psql -X -At -v ON_ERROR_STOP=1 -c "show server_version")"
+
+echo "[db-backup] dumping $PGDATABASE@$PGHOST:$PGPORT (server $SERVER_VERSION) with $("$PG_DUMP" --version) → $DUMP"
+"$PG_DUMP" -Fc --no-owner --no-acl -f "$DUMP"
 
 # Exact counts, every public table (the restore compares each one).
 COUNTS="$(psql -X -At -v ON_ERROR_STOP=1 <<'SQL'
@@ -73,10 +82,10 @@ SQL
 )"
 SHA="$(sha256sum "$DUMP" | cut -d' ' -f1)"
 TABLES="$(python3 -c 'import json,sys; print(len(json.loads(sys.argv[1])))' "$COUNTS")"
-python3 - "$MAN" "$SHA" "$STAMP" "$(pg_dump --version)" "$COUNTS" "$(basename "$DUMP")" <<'PY'
+python3 - "$MAN" "$SHA" "$STAMP" "$("$PG_DUMP" --version)" "$COUNTS" "$(basename "$DUMP")" "$SERVER_VERSION" <<'PY'
 import json, sys
-path, sha, stamp, ver, counts, dump = sys.argv[1:7]
-json.dump({"dump": dump, "sha256": sha, "createdAt": stamp, "pgDump": ver, "tables": json.loads(counts)}, open(path, "w"), indent=2, sort_keys=True)
+path, sha, stamp, ver, counts, dump, server = sys.argv[1:8]
+json.dump({"dump": dump, "sha256": sha, "createdAt": stamp, "pgDump": ver, "serverVersion": server, "tables": json.loads(counts)}, open(path, "w"), indent=2, sort_keys=True)
 PY
 echo "[db-backup] $TABLES tables counted; sha256 $SHA; manifest $MAN"
 [ "$TABLES" -gt 0 ] || { echo "[db-backup] FAIL — counted no tables in the public schema; refusing to call this a backup"; exit 1; }

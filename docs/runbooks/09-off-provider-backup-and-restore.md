@@ -44,6 +44,16 @@ count fails the restore, table by table.
 Promote the restored database the way runbook 07 describes (swap `DATABASE_URL`,
 restart, verify).
 
+## Client tools must match the server's major version
+
+Both scripts pick `pg_dump` / `pg_restore` of the **server's** major version
+(`scripts/lib/pg-client-for-server.sh`). They look in `PG_CLIENT_BIN_DIR`, then
+`/usr/lib/postgresql/<major>/bin`, then `PATH`, and refuse with the package to
+install (`postgresql-client-<major>`) when none matches. They never fall back to
+another major: a 17+ client writes and sends `SET transaction_timeout`, which a
+16 server rejects. That broke the CI round trip on 2026-10-26 with no change to
+this repository. The manifest records both `pgDump` and `serverVersion`.
+
 ## Proof that it works
 
 - CI: `scripts/ci/build-schema-from-repo.sh` step 10 backs up the freshly built schema and

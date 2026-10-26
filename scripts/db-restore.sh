@@ -64,8 +64,15 @@ eval "$(pgenv "$RESTORE_URL")"
 EXISTING="$(psql -X -At -v ON_ERROR_STOP=1 -c "select count(*) from pg_tables where schemaname = 'public'")"
 [ "$EXISTING" = "0" ] || { echo "[db-restore] FAIL — $TARGET_DB already has $EXISTING public tables; restore only into a fresh database"; exit 1; }
 
-# 3. restore
-pg_restore --no-owner --no-acl --exit-on-error -d "$PGDATABASE" "$DUMP"
+# 3. restore — with the pg_restore of the TARGET server's major version
+# (scripts/lib/pg-client-for-server.sh): a pg_restore >= 17 sends
+# `SET transaction_timeout`, which a 16 server rejects on the first statement.
+# shellcheck source=lib/pg-client-for-server.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib/pg-client-for-server.sh"
+SERVER_MAJOR="$(pg_server_major)" || { echo "[db-restore] FAIL — could not read the target server version"; exit 1; }
+PG_RESTORE="$(pg_tool_for_server pg_restore "$SERVER_MAJOR")" || { echo "[db-restore] FAIL — no pg_restore matching target server major $SERVER_MAJOR (see above)"; exit 1; }
+echo "[db-restore] restoring with $("$PG_RESTORE" --version) into server major $SERVER_MAJOR"
+"$PG_RESTORE" --no-owner --no-acl --exit-on-error -d "$PGDATABASE" "$DUMP"
 echo "[db-restore] pg_restore complete"
 
 # 4. prove it

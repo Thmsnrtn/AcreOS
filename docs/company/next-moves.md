@@ -3,6 +3,13 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-10-26 (later) — CI round trip red on 5f14b02d: client tools newer than the server
+
+- **What broke.** In CI run 40321419022, `build-schema` sub-check 10/10 failed on `pg_restore: ERROR: unrecognized configuration parameter "transaction_timeout"`. Nothing in the repo had changed: the same scripts passed on `5d11a766` the day before, and none of the dump/restore/workflow files had changed since 2026-10-11. `db-backup.sh` and `db-restore.sh` called whatever `pg_dump`/`pg_restore` came first on PATH. The runner's client tools moved past the `pgvector:pg16` service, and a 17+ client sends `SET transaction_timeout`, which 16 rejects.
+- **Fix at the source.** `scripts/lib/pg-client-for-server.sh` resolves `pg_dump`/`pg_restore` of the SERVER's major version and refuses a mismatch, naming the package to install. Both scripts use it, and the manifest records `serverVersion`. CI installs `postgresql-client-16` (falling back to the PGDG repository). The round-trip check is unchanged.
+- **Proof.** A local shim reporting "17" that sends `SET transaction_timeout`: the old scripts reproduce CI's exact error; the new ones resolve 16's tools and pass. The full `build-schema` run passes 10/10 with the shim on PATH. `offProviderBackupIsProvenInCi.test.ts` now pins the resolved call, and its credential check reads the `$PG_DUMP`/`$PG_RESTORE` calls. A bare-`pg_restore` mutant turns it red.
+- **Follow-up, not changed.** `server/jobs/dbBackup.ts` (the production backup job) still runs a bare `pg_dump`. It has the same hazard if the Fly image's client ever moves past the database's major version. It is a production path, so it is flagged here rather than changed in a CI fix.
+
 ## 2026-10-26 — D2 consolidated audit fix list (Tom decided every open item); same branch, nothing merged
 
 ### What shipped

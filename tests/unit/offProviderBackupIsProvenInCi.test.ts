@@ -29,7 +29,11 @@ describe("CI proves the round trip", () => {
 
   it("the restore refuses before writing: checksum, manifest, non-empty target; and compares every table", () => {
     const r = shellCode(read("scripts/db-restore.sh"));
-    const order = ["sha256 mismatch", "already has", "pg_restore --no-owner", "the restore does not match the backup"].map((k) => r.indexOf(k));
+    // The restore runs through "$PG_RESTORE" — the pg_restore of the target
+    // server's major version (scripts/lib/pg-client-for-server.sh), never a
+    // bare PATH lookup (2026-10-26: a PATH pg_restore >= 17 broke the round trip).
+    expect(r).not.toMatch(/^\s*pg_restore\s/m);
+    const order = ["sha256 mismatch", "already has", "pg_tool_for_server pg_restore", '"$PG_RESTORE" --no-owner', "the restore does not match the backup"].map((k) => r.indexOf(k));
     expect(order.every((i) => i > 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
     expect(r).toMatch(/no manifest at/);
@@ -38,8 +42,12 @@ describe("CI proves the round trip", () => {
   it("credentials never go on argv in the scripts (PG* env)", () => {
     for (const f of ["scripts/db-backup.sh", "scripts/db-restore.sh"]) {
       const s = shellCode(read(f));
-      expect(s).not.toMatch(/pg_dump[^\n]*\$DATABASE_URL/);
-      expect(s).not.toMatch(/pg_restore[^\n]*\$RESTORE_URL/);
+      // The calls go through the version-resolved "$PG_DUMP" / "$PG_RESTORE",
+      // so the predicate names those too — a lowercase-only match would read
+      // no call at all and pass vacuously.
+      expect(s).toMatch(/"\$PG_(DUMP|RESTORE)"/);
+      expect(s).not.toMatch(/(pg_dump|\$PG_DUMP)[^\n]*\$DATABASE_URL/);
+      expect(s).not.toMatch(/(pg_restore|\$PG_RESTORE)[^\n]*\$RESTORE_URL/);
       expect(s).toMatch(/PGPASSWORD/);
     }
     expect(stripComments(read("docs/runbooks/09-off-provider-backup-and-restore.md")).length).toBeGreaterThan(500);
