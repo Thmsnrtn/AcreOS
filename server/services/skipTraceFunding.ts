@@ -13,7 +13,10 @@
  *
  * One caller shape for every door: POST /api/skip-tracing/trace/:leadId,
  * POST /api/skip-tracing/batch, and POST /api/skip-traces (which made a paid
- * vendor call with no customer debit at all until this landed).
+ * vendor call with no customer debit at all until this landed). Every door
+ * funds ONE lookup per call: the batch door calls this once per lead, so each
+ * lead's debit and row commit (or roll back) on their own (D2e batch shape
+ * 2A, Tom-approved 2026-10-26).
  */
 
 import { poolDebit, type PoolDebitResult } from "./creditPool";

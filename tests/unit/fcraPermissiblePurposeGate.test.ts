@@ -931,9 +931,10 @@ describe("POST /api/skip-tracing/batch — gates ONCE, one purpose stamped on ev
       });
     }
 
-    // The debit happened once, after the gate, for exactly the attempted units.
-    expect(H.poolDebitMock).toHaveBeenCalledTimes(1);
-    expect(H.poolDebitMock.mock.calls[0][0].units).toBe(2);
+    // The debits happened after the gate — one unit per attempted lead, each
+    // in that lead's own transaction (D2e batch shape 2A).
+    expect(H.poolDebitMock).toHaveBeenCalledTimes(2);
+    expect(H.poolDebitMock.mock.calls.map((c: Array<{ units: number }>) => c[0].units)).toEqual([1, 1]);
   });
 });
 
