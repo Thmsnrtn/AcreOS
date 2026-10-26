@@ -20,6 +20,17 @@
  *      audit tables, exotic FK shapes) is returned to the caller and
  *      logged — never silently skipped.
  *
+ * The tenant key is compared in ITS OWN TYPE (2026-10-26). Some tables key
+ * the org as text (onboarding_funnel_metrics.org_id,
+ * pax_user_context.organization_id); `text = integer` is a Postgres error,
+ * which the FK-retry catch used to swallow, so those rows were never erased
+ * for any org. Now: an integer-family key is compared to the number, a
+ * text-family key to its decimal string, and a key of any other type is
+ * REFUSED before anything is deleted. Only a foreign-key violation (23503)
+ * is retried on the next pass; any other DELETE error stops the erasure
+ * loudly (OrgErasureError) BEFORE the organizations row is deleted, so the
+ * org stays visible and the erasure can be re-run once fixed.
+ *
  * Deliberate retentions (documented lawful basis, GDPR Art. 17(3)):
  *   - audit_events: append-only trigger (migration 0049), 7-year
  *     compliance floor — retained under Art. 17(3)(b) (legal obligation).
@@ -53,6 +64,8 @@ export interface OrgDeletionResult {
   deletedRowsByTable: Record<string, number>;
   /** Tables that still hold rows for the org after all passes — surfaced, not hidden. */
   residualTables: string[];
+  /** For each residual table, the foreign-key error that kept it blocked. */
+  residualReasons: Record<string, string>;
   orgRowDeleted: boolean;
   passes: number;
 }
@@ -87,11 +100,34 @@ interface TenantScopedTable {
   table: string;
   /** Which of TENANT_KEY_COLUMNS this table actually carries — one or both. */
   columns: string[];
+  /** The WHERE clause matching the org, each key compared in its own type. */
+  predicate: string;
 }
 
-async function tenantScopedTables(): Promise<TenantScopedTable[]> {
-  const res = await db.execute<{ table_name: string; column_name: string }>(sql`
-    SELECT c.table_name, c.column_name
+/** A DELETE step that could not run for a reason other than an FK still holding rows. */
+class OrgErasureError extends Error {
+  constructor(
+    message: string,
+    readonly failures: Record<string, string>,
+  ) {
+    super(message);
+    this.name = "OrgErasureError";
+  }
+}
+
+const INTEGER_KEY_TYPES = new Set(["smallint", "integer", "bigint", "numeric"]);
+const TEXT_KEY_TYPES = new Set(["text", "character varying", "character"]);
+
+/** `"col" = <orgId>` in the column's own type; null when no literal of that type can match. */
+function tenantKeyMatch(column: string, dataType: string, orgId: number): string | null {
+  if (INTEGER_KEY_TYPES.has(dataType)) return `"${column}" = ${orgId}`;
+  if (TEXT_KEY_TYPES.has(dataType)) return `"${column}" = '${orgId}'`;
+  return null;
+}
+
+async function tenantScopedTables(orgId: number): Promise<TenantScopedTable[]> {
+  const res = await db.execute<{ table_name: string; column_name: string; data_type: string }>(sql`
+    SELECT c.table_name, c.column_name, c.data_type
     FROM information_schema.columns c
     JOIN information_schema.tables t
       ON t.table_name = c.table_name AND t.table_schema = c.table_schema
@@ -101,16 +137,36 @@ async function tenantScopedTables(): Promise<TenantScopedTable[]> {
       AND c.table_name != 'organizations'
     ORDER BY c.table_name, c.column_name
   `);
-  const rows = (res as { rows?: Array<{ table_name: string; column_name: string }> }).rows ?? [];
-  const byTable = new Map<string, string[]>();
+  const rows = (res as { rows?: Array<{ table_name: string; column_name: string; data_type: string }> }).rows ?? [];
+  const byTable = new Map<string, { columns: string[]; matches: string[] }>();
+  const unmatchable: Record<string, string> = {};
   for (const r of rows) {
     if (RETAINED_TABLES.has(r.table_name)) continue;
-    const cols = byTable.get(r.table_name);
-    if (cols) cols.push(r.column_name);
-    else byTable.set(r.table_name, [r.column_name]);
+    const match = tenantKeyMatch(r.column_name, r.data_type, orgId);
+    if (!match) {
+      unmatchable[`${r.table_name}.${r.column_name}`] = `tenant key of type ${r.data_type} cannot be matched to an organization id`;
+      continue;
+    }
+    const entry = byTable.get(r.table_name) ?? { columns: [], matches: [] };
+    entry.columns.push(r.column_name);
+    entry.matches.push(match);
+    byTable.set(r.table_name, entry);
   }
-  return [...byTable].map(([table, columns]) => ({ table, columns }));
+  if (Object.keys(unmatchable).length > 0) {
+    throw new OrgErasureError(
+      `deleteOrganization: refusing to start — ${Object.keys(unmatchable).length} tenant key column(s) have a type the sweep cannot match: ${Object.keys(unmatchable).join(", ")}`,
+      unmatchable,
+    );
+  }
+  // `OR` rather than one fixed column: a table with both spellings must be
+  // cleared on both, and a table with only `org_id` must be visited at all.
+  return [...byTable].map(([table, e]) => ({ table, columns: e.columns, predicate: e.matches.join(" OR ") }));
 }
+
+const isForeignKeyViolation = (err: unknown): boolean => {
+  const e = err as { code?: string; cause?: { code?: string } } | null;
+  return (e?.code ?? e?.cause?.code) === "23503";
+};
 
 /**
  * Hard-delete every org-scoped row and the org itself. Destructive and
@@ -130,10 +186,14 @@ export async function deleteOrganization(orgId: number): Promise<OrgDeletionResu
   if (!orgRow) throw new Error(`deleteOrganization: org ${orgId} not found`);
   if (orgRow.is_founder) throw new Error(`deleteOrganization: refusing to delete a founder org`);
 
-  const tables = await tenantScopedTables();
-  const columnsByTable = new Map(tables.map((t) => [t.table, t.columns]));
+  const tables = await tenantScopedTables(orgId);
+  const predicateByTable = new Map(tables.map((t) => [t.table, t.predicate]));
   const deletedRowsByTable: Record<string, number> = {};
   const remaining = new Set(tables.map((t) => t.table));
+  /** Non-FK DELETE failures: never retried, never swallowed. */
+  const failures: Record<string, string> = {};
+  /** The last FK error per still-blocked table, so a residual carries its reason. */
+  const blockedBy: Record<string, string> = {};
   let passes = 0;
 
   // Multi-pass: each pass attempts every remaining table; FK-blocked deletes
@@ -143,32 +203,54 @@ export async function deleteOrganization(orgId: number): Promise<OrgDeletionResu
     passes++;
     let progressed = false;
     for (const table of [...remaining]) {
+      if (failures[table]) continue;
       try {
-        // Whichever spelling(s) this table carries. `OR` rather than one
-        // fixed column: a table with both must be cleared on both, and a
-        // table with only `org_id` was previously not visited at all.
-        const predicate = (columnsByTable.get(table) ?? ["organization_id"])
-          .map((c) => `"${c}" = ${orgId}`)
-          .join(" OR ");
+        const predicate = predicateByTable.get(table);
+        if (!predicate) throw new Error(`no tenant predicate for ${table}`);
         const res = await db.execute(sql.raw(
           `DELETE FROM "${table}" WHERE ${predicate}`,
         ));
         const count = (res as { rowCount?: number }).rowCount ?? 0;
         deletedRowsByTable[table] = (deletedRowsByTable[table] ?? 0) + count;
         remaining.delete(table);
+        delete blockedBy[table];
         progressed = true;
-      } catch {
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
         // FK-blocked (a child table still holds rows) — retry next pass.
+        // Anything else cannot succeed by retrying: record it, loudly.
+        if (isForeignKeyViolation(err)) blockedBy[table] = message;
+        else failures[table] = message;
       }
     }
     if (!progressed) break;
+  }
+
+  if (Object.keys(failures).length > 0) {
+    logger.error(
+      `[org-deletion] erasure for org ${orgId} STOPPED — ${Object.keys(failures).length} table(s) could not be deleted; the organizations row is kept so the erasure can be re-run`,
+      undefined,
+      { metadata: { failures, deletedRowsByTable } },
+    );
+    throw new OrgErasureError(
+      `deleteOrganization: ${Object.keys(failures).length} table(s) failed with a non-FK error (${Object.keys(failures).join(", ")}); the organizations row was NOT deleted`,
+      failures,
+    );
   }
 
   // Detach the retained financial spine (declared SET NULL, but assert it —
   // an FK left RESTRICT would otherwise block the org-row delete).
   try {
     await db.execute(sql`UPDATE financial_ledger SET organization_id = NULL WHERE organization_id = ${orgId}`);
-  } catch { /* column/table may not exist on minimal installs */ }
+  } catch (err) {
+    // Tolerated ONLY when the table or column does not exist (a minimal
+    // install); any other failure leaves the ledger attached — stop loudly.
+    const code = (err as { code?: string; cause?: { code?: string } } | null)?.code ?? (err as { cause?: { code?: string } } | null)?.cause?.code;
+    if (code !== "42P01" && code !== "42703") {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new OrgErasureError(`deleteOrganization: could not detach financial_ledger for org ${orgId}: ${message}`, { financial_ledger: message });
+    }
+  }
 
   let orgRowDeleted = false;
   try {
@@ -179,10 +261,12 @@ export async function deleteOrganization(orgId: number): Promise<OrgDeletionResu
   }
 
   const residualTables = [...remaining];
+  const residualReasons = Object.fromEntries(residualTables.map((t) => [t, blockedBy[t] ?? "unknown"]));
   const result: OrgDeletionResult = {
     orgId,
     deletedRowsByTable,
     residualTables,
+    residualReasons,
     orgRowDeleted,
     passes,
   };
@@ -200,7 +284,7 @@ export async function deleteOrganization(orgId: number): Promise<OrgDeletionResu
     logger.error(
       `[org-deletion] INCOMPLETE erasure for org ${orgId} — residuals must be resolved manually`,
       undefined,
-      { metadata: { residualTables, orgRowDeleted } },
+      { metadata: { residualTables, residualReasons, orgRowDeleted } },
     );
   }
 

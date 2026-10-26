@@ -102,9 +102,12 @@ describe("the sweep can see both spellings of the tenant key", () => {
 
   it("deletes on the column each table actually carries", () => {
     // A fixed `WHERE organization_id = …` against an org_id table errors, and
-    // the catch in the pass loop is silent — it would have looked like an
-    // FK-blocked retry and then like a residual.
-    expect(source).toMatch(/columnsByTable\.get\(table\)/);
+    // the catch in the pass loop was silent — it looked like an FK-blocked
+    // retry and then like a residual. The predicate is now built per table at
+    // enumeration, each key in its own type (tenantKeyMatch), and only an FK
+    // violation is retried (behaviour pinned in orgDeletion.test.ts).
+    expect(source).toMatch(/predicateByTable\.get\(table\)/);
+    expect(source).toMatch(/tenantKeyMatch\(r\.column_name, r\.data_type, orgId\)/);
     expect(source).toMatch(/DELETE FROM "\$\{table\}" WHERE \$\{predicate\}/);
     expect(source, "a table with both spellings must be cleared on both").toContain('.join(" OR ")');
   });

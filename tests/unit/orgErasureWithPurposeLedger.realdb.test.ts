@@ -38,11 +38,10 @@ describe.runIf(realDbAvailable)("deleteOrganization on an org that used skip tra
     await pool.end();
   });
 
-  // Residuals are compared against a CONTROL org with no ledger row: two
-  // text-keyed tables (onboarding_funnel_metrics.org_id, pax_user_context
-  // .organization_id) are never swept for ANY org today — `text = integer`
-  // errors — and whether erasure should delete them is a retention decision
-  // escalated separately. What this pins is that the ledger adds nothing.
+  // Residuals are compared against a CONTROL org with no ledger row, so the
+  // ledger is proven to add nothing; and both are now empty, because the
+  // text-keyed tables (onboarding_funnel_metrics, pax_user_context) are swept
+  // in their own key type (orgErasureTextKeyedTables.realdb.test.ts).
   it("removes the organizations row, adds no residual beyond a ledger-free org's, and keeps the purpose-ledger record", async () => {
     const { db } = await import("../../server/db");
     const { sql } = await import("drizzle-orm");
@@ -61,6 +60,8 @@ describe.runIf(realDbAvailable)("deleteOrganization on an org that used skip tra
     expect(result.orgRowDeleted).toBe(true);
     expect(result.residualTables).not.toContain("purpose_ledger");
     expect([...result.residualTables].sort()).toEqual([...baseline.residualTables].sort());
+    // Since the text-keyed tables are swept (2026-10-26), nothing is residual for either.
+    expect(result.residualTables).toEqual([]);
     const orgLeft = await db.execute(sql`SELECT count(*)::int AS n FROM organizations WHERE id = ${orgId}`);
     expect((orgLeft as unknown as { rows: Array<{ n: number }> }).rows[0].n).toBe(0);
     const kept = await db.execute(sql`SELECT count(*)::int AS n FROM purpose_ledger WHERE organization_id = ${orgId}`);
