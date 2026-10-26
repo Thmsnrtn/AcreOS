@@ -1,0 +1,24 @@
+# D2 real-database tests
+# tree 3e8c5946f69b4aad021b2b83bbdc0381ffc2f39e = the committed tree with docs/evidence/ excluded (parent commit 5d11a7669)
+# date 2026-10-26T11:36:24Z
+# cmd: ACREOS_REQUIRE_REAL_DB=1 ACREOS_REAL_DATABASE_URL=<same> npx vitest run tests/unit/orgErasureTextKeyedTables.realdb.test.ts tests/unit/orgErasureWithPurposeLedger.realdb.test.ts tests/unit/releaseStore.realdb.test.ts tests/unit/apidStore.realdb.test.ts --reporter=verbose
+
+
+ RUN  v4.1.11 /home/user/AcreOS
+
+ ✓ tests/unit/apidStore.realdb.test.ts > APID store — real database > first release mints; re-applying it is a no-op 3367ms
+ ✓ tests/unit/orgErasureTextKeyedTables.realdb.test.ts > deleteOrganization on text-keyed tenant tables — real database > deletes both tables' rows for the org, keeps the retained ledgers, and leaves no residual 3436ms
+ ✓ tests/unit/apidStore.realdb.test.ts > APID store — real database > a split retires the parent, mints two children, stores the event, and the reloaded ledger is sound 48ms
+ ✓ tests/unit/apidStore.realdb.test.ts > APID store — real database > the database itself refuses a second open window for an APN and any edit to a lineage event 20ms
+ ✓ tests/unit/orgErasureWithPurposeLedger.realdb.test.ts > deleteOrganization on an org that used skip trace — real database > removes the organizations row, adds no residual beyond a ledger-free org's, and keeps the purpose-ledger record 3723ms
+ ✓ tests/unit/releaseStore.realdb.test.ts > release store — real database > stores idempotently on content and verifies on load 1519ms
+ ✓ tests/unit/releaseStore.realdb.test.ts > release store — real database > refuses an invalid manifest before any write 3ms
+ ✓ tests/unit/releaseStore.realdb.test.ts > release store — real database > dataset_releases refuses UPDATE, DELETE and TRUNCATE 24ms
+ ✓ tests/unit/releaseStore.realdb.test.ts > release store — real database > promote mints the next name as one new entry; rollback returns to the release before it 63ms
+
+ Test Files  4 passed (4)
+      Tests  9 passed (9)
+   Start at  11:36:25
+   Duration  5.64s (transform 4.04s, setup 75ms, import 358ms, tests 12.24s, environment 1ms)
+
+exit 0

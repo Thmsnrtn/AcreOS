@@ -1,0 +1,155 @@
+# D2c apid/lineage/lineageGolden + D2d five adapterRemap files
+# tree 3e8c5946f69b4aad021b2b83bbdc0381ffc2f39e = the committed tree with docs/evidence/ excluded (parent commit 5d11a7669)
+# date 2026-10-26T11:36:31Z
+# cmd: npx vitest run tests/unit/apid.test.ts tests/unit/lineage.test.ts tests/unit/lineageGolden.test.ts tests/unit/adapterRemap.test.ts tests/unit/adapterRemapCanary.test.ts tests/unit/adapterRemapDriftShapes.test.ts tests/unit/adapterRemapNoGroundTruth.test.ts tests/unit/adapterRemapObservation.test.ts --reporter=verbose
+
+
+ RUN  v4.1.11 /home/user/AcreOS
+
+ ✓ tests/unit/apid.test.ts > APID format > round-trips and refuses malformed scope 8ms
+ ✓ tests/unit/apid.test.ts > applyRelease — identity follows lineage > first release mints one APID per record, in order 78ms
+ ✓ tests/unit/apid.test.ts > applyRelease — identity follows lineage > same and renumber keep the APID; renumber moves the APN window 39ms
+ ✓ tests/unit/apid.test.ts > applyRelease — identity follows lineage > split children get new APIDs whose parent is the retired parent — including the remainder that keeps the APN 28ms
+ ✓ tests/unit/apid.test.ts > applyRelease — identity follows lineage > merge: one new APID, both parents retired and linked 37ms
+ ✓ tests/unit/apid.test.ts > applyRelease — identity follows lineage > condo: the master record keeps the parent APID; units descend from it; a no-master conversion retires the parent 25ms
+ ✓ tests/unit/apid.test.ts > applyRelease — identity follows lineage > ambiguous: previous APIDs are HELD (not retired, not carried); next records get provisional APIDs with candidates only 32ms
+ ✓ tests/unit/apid.test.ts > applyRelease — identity follows lineage > retired → retired; an APN reused on different land gets a NEW APID 23ms
+ ✓ tests/unit/apid.test.ts > applyRelease — identity follows lineage > an unchanged release mints nothing and changes no window 48ms
+ ✓ tests/unit/apid.test.ts > APID is never reused > across four releases — including a county reusing a RETIRED APN — every APID is minted once and no ended APID returns 67ms
+ ✓ tests/unit/lineage.test.ts > classifyLineage — refusals and normalization > refuses a release that lists one id twice (never picks one) 7ms
+ ✓ tests/unit/lineage.test.ts > classifyLineage — refusals and normalization > ids are compared after the crosswalk's normalization 14ms
+ ✓ tests/unit/lineage.test.ts > classifyLineage — refusals and normalization > a ring with fewer than 3 points or non-finite coordinates is no geometry → id_only 1ms
+ ✓ tests/unit/lineage.test.ts > classifyLineage — refusals and normalization > an unclosed ring is closed, not refused 5ms
+ ✓ tests/unit/lineage.test.ts > classifyLineage — refusals and normalization > holes are subtracted: a donut and its hole are disjoint, and a filled donut is a merge 10ms
+ ✓ tests/unit/lineage.test.ts > classifyLineage — the thresholds are read, and the band is honest > raising `covers` above a drift's fraction turns same into ambiguous, never into a guess 7ms
+ ✓ tests/unit/lineage.test.ts > classifyLineage — the thresholds are read, and the band is honest > a sliver above `negligible` joins the group and makes it ambiguous 8ms
+ ✓ tests/unit/lineage.test.ts > classifyLineage — the thresholds are read, and the band is honest > children that overlap each other are not a split 12ms
+ ✓ tests/unit/lineage.test.ts > classifyLineage — the thresholds are read, and the band is honest > a merge whose parents leave a hole in the child is ambiguous (merge_coverage_short) 7ms
+ ✓ tests/unit/lineage.test.ts > classifyLineage — the thresholds are read, and the band is honest > a split child that also reaches into a neighbour is ambiguous, not a split 4ms
+ ✓ tests/unit/lineage.test.ts > classifyLineage — scale > a 30×30 block of unchanged parcels is 900 'same' events (the grid keeps it near-linear) 401ms
+ ✓ tests/unit/lineage.test.ts > inheritance — what a child takes from its parents > the rule table covers every kind but retired, and field values are never inherited 1ms
+ ✓ tests/unit/lineage.test.ts > inheritance — what a child takes from its parents > same and renumber carry identity and history from the previous record 7ms
+ ✓ tests/unit/lineage.test.ts > inheritance — what a child takes from its parents > split children are minted, with the parent as ancestor — even the one that keeps the parent's APN 1ms
+ ✓ tests/unit/lineage.test.ts > inheritance — what a child takes from its parents > a merged child has every parent as ancestor 1ms
+ ✓ tests/unit/lineage.test.ts > inheritance — what a child takes from its parents > condo: the record keeping the parent id continues it; the other units descend from it 1ms
+ ✓ tests/unit/lineage.test.ts > inheritance — what a child takes from its parents > ambiguous inherits nothing: provisional identity, candidates only, no ancestors 1ms
+ ✓ tests/unit/lineage.test.ts > inheritance — what a child takes from its parents > new inherits nothing; retired produces no plan 0ms
+ ✓ tests/unit/apid.test.ts > APID is never reused > the input ledger is never mutated 34ms
+ ✓ tests/unit/apid.test.ts > applyRelease refuses rather than guesses > a release that is not after the last one 23ms
+ ✓ tests/unit/apid.test.ts > applyRelease refuses rather than guesses > a previous snapshot that is not what the ledger holds open 20ms
+ ✓ tests/unit/apid.test.ts > applyRelease refuses rather than guesses > a release listing one APN twice 0ms
+ ✓ tests/unit/apid.test.ts > ledgerViolations catches each broken invariant (the checker is falsified, not trusted) > a sound ledger has none 17ms
+ ✓ tests/unit/apid.test.ts > ledgerViolations catches each broken invariant (the checker is falsified, not trusted) > overlapping windows for one APN 25ms
+ ✓ tests/unit/apid.test.ts > ledgerViolations catches each broken invariant (the checker is falsified, not trusted) > an APID minted twice / at or above nextSeq 22ms
+ ✓ tests/unit/apid.test.ts > ledgerViolations catches each broken invariant (the checker is falsified, not trusted) > a retired APID still naming an APN 15ms
+ ✓ tests/unit/apid.test.ts > ledgerViolations catches each broken invariant (the checker is falsified, not trusted) > an active APID with two open windows 17ms
+ ✓ tests/unit/adapterRemapObservation.test.ts > the attempts are what they claim (vacuity) > one real attempt of each outcome 5ms
+ ✓ tests/unit/adapterRemapObservation.test.ts > D2g's auto-remap rate reads exactly what the handler writes > success-with-heal, plain success, failed-rejected, failed-no-proposal, failed-with-no-observation → 5 runs, 3 attempts, 1/1/1, rate 0.2 2ms
+ ✓ tests/unit/adapterRemapObservation.test.ts > D2g's auto-remap rate reads exactly what the handler writes > source pin: the handler writes `remap` on both the success observation and the failed run's failureObservation, and finalize returns the build 151ms
+ ✓ tests/unit/lineageGolden.test.ts > lineage golden case — labelled synthetic, never real data > is marked synthetic and every id says SYNTHETIC 5ms
+ ✓ tests/unit/lineageGolden.test.ts > lineage golden case — labelled synthetic, never real data > states the thresholds it was computed under, and they are the production ones 1ms
+ ✓ tests/unit/lineageGolden.test.ts > lineage golden case — labelled synthetic, never real data > population: covers every lineage kind, with a floor on the case count 0ms
+ ✓ tests/unit/lineageGolden.test.ts > classifyLineage reproduces every hand-computed golden answer > same 25ms
+ ✓ tests/unit/lineageGolden.test.ts > classifyLineage reproduces every hand-computed golden answer > same_with_redigitizing_drift 3ms
+ ✓ tests/unit/lineageGolden.test.ts > classifyLineage reproduces every hand-computed golden answer > renumber 2ms
+ ✓ tests/unit/lineageGolden.test.ts > classifyLineage reproduces every hand-computed golden answer > split 19ms
+ ✓ tests/unit/lineageGolden.test.ts > classifyLineage reproduces every hand-computed golden answer > split_remainder_keeps_apn 4ms
+ ✓ tests/unit/lineageGolden.test.ts > classifyLineage reproduces every hand-computed golden answer > split_coverage_just_above_threshold 5ms
+ ✓ tests/unit/lineageGolden.test.ts > classifyLineage reproduces every hand-computed golden answer > split_coverage_just_short 4ms
+ ✓ tests/unit/lineageGolden.test.ts > classifyLineage reproduces every hand-computed golden answer > merge 3ms
+ ✓ tests/unit/lineageGolden.test.ts > classifyLineage reproduces every hand-computed golden answer > merge_of_noncontiguous_into_multipolygon 6ms
+ ✓ tests/unit/lineageGolden.test.ts > classifyLineage reproduces every hand-computed golden answer > split_into_multipolygon_child 5ms
+ ✓ tests/unit/lineageGolden.test.ts > classifyLineage reproduces every hand-computed golden answer > condo_conversion 3ms
+ ✓ tests/unit/lineageGolden.test.ts > classifyLineage reproduces every hand-computed golden answer > condo_conversion_master_keeps_id 7ms
+ ✓ tests/unit/lineageGolden.test.ts > classifyLineage reproduces every hand-computed golden answer > condo_dissolution 5ms
+ ✓ tests/unit/lineageGolden.test.ts > classifyLineage reproduces every hand-computed golden answer > condo_stack_renumbered_is_unpairable 3ms
+ ✓ tests/unit/lineageGolden.test.ts > classifyLineage reproduces every hand-computed golden answer > retired 1ms
+ ✓ tests/unit/lineageGolden.test.ts > classifyLineage reproduces every hand-computed golden answer > new 0ms
+ ✓ tests/unit/lineageGolden.test.ts > classifyLineage reproduces every hand-computed golden answer > apn_reused_for_different_land 5ms
+ ✓ tests/unit/lineageGolden.test.ts > classifyLineage reproduces every hand-computed golden answer > ambiguous_partial_overlap 5ms
+ ✓ tests/unit/lineageGolden.test.ts > classifyLineage reproduces every hand-computed golden answer > ambiguous_boundary_change 2ms
+ ✓ tests/unit/lineageGolden.test.ts > classifyLineage reproduces every hand-computed golden answer > ambiguous_replat_many_to_many 9ms
+ ✓ tests/unit/lineageGolden.test.ts > classifyLineage reproduces every hand-computed golden answer > shared_edge_sliver_is_ignored 6ms
+ ✓ tests/unit/lineageGolden.test.ts > classifyLineage reproduces every hand-computed golden answer > id_only_when_geometry_missing 1ms
+ ✓ tests/unit/lineageGolden.test.ts > classifyLineage reproduces every hand-computed golden answer > all cases in ONE release pair give exactly the per-case answers (nothing leaks between neighbours) 52ms
+ ✓ tests/unit/lineageGolden.test.ts > classifyLineage reproduces every hand-computed golden answer > every source id of both releases lands in exactly one event 48ms
+ ✓ tests/unit/lineageGolden.test.ts > classifyLineage reproduces every hand-computed golden answer > swapping the releases swaps parent and child: split ↔ merge, retired ↔ new 64ms
+ ✓ tests/unit/adapterRemapNoGroundTruth.test.ts > the golden registry (vacuity + explicit absences) > of all 50 states + DC, exactly HAS_GROUND_TRUTH have five verified golden parcels 3ms
+ ✓ tests/unit/adapterRemapNoGroundTruth.test.ts > the golden registry (vacuity + explicit absences) > population: every statewide build state is classified — has ground truth, or explicitly has none 143ms
+ ✓ tests/unit/adapterRemapNoGroundTruth.test.ts > NC — no ground truth, so no remap ever auto-promotes > has no golden county 0ms
+ ✓ tests/unit/adapterRemapNoGroundTruth.test.ts > NC — no ground truth, so no remap ever auto-promotes > a PERFECT proposal (the parcel-id field renamed only in case) is still rejected, with zero live reads 3ms
+ ✓ tests/unit/adapterRemapNoGroundTruth.test.ts > WI — no ground truth, so no remap ever auto-promotes > has no golden county 0ms
+ ✓ tests/unit/adapterRemapNoGroundTruth.test.ts > WI — no ground truth, so no remap ever auto-promotes > a PERFECT proposal (the parcel-id field renamed only in case) is still rejected, with zero live reads 1ms
+ ✓ tests/unit/adapterRemapNoGroundTruth.test.ts > AR — no ground truth, so no remap ever auto-promotes > has no golden county 0ms
+ ✓ tests/unit/adapterRemapNoGroundTruth.test.ts > AR — no ground truth, so no remap ever auto-promotes > a PERFECT proposal (the parcel-id field renamed only in case) is still rejected, with zero live reads 1ms
+ ✓ tests/unit/adapterRemapNoGroundTruth.test.ts > MT — no ground truth, so no remap ever auto-promotes > has no golden county 1ms
+ ✓ tests/unit/adapterRemapNoGroundTruth.test.ts > MT — no ground truth, so no remap ever auto-promotes > a PERFECT proposal (the parcel-id field renamed only in case) is still rejected, with zero live reads 0ms
+ ✓ tests/unit/adapterRemapNoGroundTruth.test.ts > IN — no ground truth, so no remap ever auto-promotes > has no golden county 0ms
+ ✓ tests/unit/adapterRemapNoGroundTruth.test.ts > IN — no ground truth, so no remap ever auto-promotes > a PERFECT proposal (the parcel-id field renamed only in case) is still rejected, with zero live reads 0ms
+ ✓ tests/unit/adapterRemapNoGroundTruth.test.ts > OH — no ground truth, so no remap ever auto-promotes > has no golden county 1ms
+ ✓ tests/unit/adapterRemapNoGroundTruth.test.ts > OH — no ground truth, so no remap ever auto-promotes > a PERFECT proposal (the parcel-id field renamed only in case) is still rejected, with zero live reads 0ms
+ ✓ tests/unit/adapterRemapDriftShapes.test.ts > drift-shape population (vacuity) > the golden set is five verified parcels 6ms
+ ✓ tests/unit/adapterRemapDriftShapes.test.ts > drift-shape population (vacuity) > every required shape has exactly one fixture, every fixture is a required shape, and all are labelled synthetic 2ms
+ ✓ tests/unit/adapterRemapDriftShapes.test.ts > drift-shape population (vacuity) > each fixture's expected outcome is reachable — the four outcomes are all exercised 0ms
+ ✓ tests/unit/adapterRemapDriftShapes.test.ts > drift shape: rename-punctuation > → promoted 5ms
+ ✓ tests/unit/adapterRemapDriftShapes.test.ts > drift shape: case-change > → promoted 2ms
+ ✓ tests/unit/adapterRemapDriftShapes.test.ts > drift shape: suffix-extension > → promoted 2ms
+ ✓ tests/unit/adapterRemapDriftShapes.test.ts > drift shape: prefix-extension > → promoted 2ms
+ ✓ tests/unit/adapterRemapDriftShapes.test.ts > drift shape: type-change-renamed > → no_proposal 6ms
+ ✓ tests/unit/adapterRemapDriftShapes.test.ts > drift shape: type-change-same-name > → no_drift 2ms
+ ✓ tests/unit/adapterRemapDriftShapes.test.ts > drift shape: field-split-ambiguous > → no_proposal 1ms
+ ✓ tests/unit/adapterRemapDriftShapes.test.ts > drift shape: field-split-one-similar > → rejected 1ms
+ ✓ tests/unit/adapterRemapDriftShapes.test.ts > drift shape: field-merge > → rejected 1ms
+ ✓ tests/unit/adapterRemapDriftShapes.test.ts > drift shape: field-dropped > → no_proposal 1ms
+ ✓ tests/unit/adapterRemapDriftShapes.test.ts > drift shape: two-candidate-renames > → no_proposal 1ms
+ ✓ tests/unit/adapterRemapDriftShapes.test.ts > drift shape: contested-candidate > → no_proposal 2ms
+ ✓ tests/unit/adapterRemapDriftShapes.test.ts > drift shape: alias-only-change > → no_drift 1ms
+ ✓ tests/unit/adapterRemapDriftShapes.test.ts > drift shape: alias-carries-old-name > → promoted 1ms
+ ✓ tests/unit/adapterRemapDriftShapes.test.ts > drift shape: alias-trap > → rejected 1ms
+ ✓ tests/unit/adapterRemapDriftShapes.test.ts > drift shape: field-reordering > → no_drift 1ms
+ ✓ tests/unit/adapterRemapDriftShapes.test.ts > drift shape: objectid-change > → no_drift 1ms
+ ✓ tests/unit/adapterRemapDriftShapes.test.ts > drift shape: objectid-alias-trap > → no_proposal 1ms
+ ✓ tests/unit/adapterRemapDriftShapes.test.ts > drift shape: objectid-as-integer-alias-trap > → rejected 1ms
+ ✓ tests/unit/adapterRemapDriftShapes.test.ts > drift shape: semantic-wrong-jv-to-av > → rejected 1ms
+ ✓ tests/unit/adapterRemapDriftShapes.test.ts > the semantically wrong remap (JV → a field holding assessed values) > is a confident proposal — type-compatible, similar, unambiguous — so only ground truth can stop it 1ms
+ ✓ tests/unit/adapterRemapDriftShapes.test.ts > the semantically wrong remap (JV → a field holding assessed values) > is REJECTED by golden verification: slots 4 and 5 (where AV ≠ JV) do not reproduce the assessor's market value 1ms
+ ✓ tests/unit/adapterRemapCanary.test.ts > control: the real golden county promotes a true rename (so every red below is the mutation's) > JV → JV_ with unchanged values is promoted after five live reads 6ms
+ ✓ tests/unit/adapterRemapCanary.test.ts > golden POPULATION canaries — fewer than the rule demands is no ground truth > no golden county at all → rejected with no ground truth, zero live reads, nothing checked 1ms
+ ✓ tests/unit/adapterRemapCanary.test.ts > golden POPULATION canaries — fewer than the rule demands is no ground truth > status pending_verification (five verified slots notwithstanding) → rejected with no ground truth, zero live reads, nothing checked 1ms
+ ✓ tests/unit/adapterRemapCanary.test.ts > golden POPULATION canaries — fewer than the rule demands is no ground truth > established with four slots (slot 5 dropped) → rejected with no ground truth, zero live reads, nothing checked 0ms
+ ✓ tests/unit/adapterRemapCanary.test.ts > golden POPULATION canaries — fewer than the rule demands is no ground truth > established with slot 5 emptied → rejected with no ground truth, zero live reads, nothing checked 1ms
+ ✓ tests/unit/adapterRemapCanary.test.ts > golden POPULATION canaries — fewer than the rule demands is no ground truth > established with five slots but only four distinct parcels (slot 5 duplicates slot 4) → rejected with no ground truth, zero live reads, nothing checked 0ms
+ ✓ tests/unit/adapterRemapCanary.test.ts > golden POPULATION canaries — fewer than the rule demands is no ground truth > the three slots where AV == JV only (the set that would certify JV → AV) → rejected with no ground truth, zero live reads, nothing checked 1ms
+ ✓ tests/unit/adapterRemapCanary.test.ts > PROOF canaries — a field verified only where right and wrong agree proves nothing > marketValue verified only on slots 1 and 3 (both 100, where AV == JV): JV → assessed-valued field is NOT promoted 1ms
+ ✓ tests/unit/adapterRemapCanary.test.ts > PROOF canaries — a field verified only where right and wrong agree proves nothing > a field verified on all five parcels but with ONE distinct value is degenerate — a constant column would pass (SYNTHETIC golden, labelled) 1ms
+ ✓ tests/unit/adapterRemapCanary.test.ts > PROOF canaries — a field verified only where right and wrong agree proves nothing > owner (verified on three slots with three distinct values in the real set) stays provable 1ms
+ ✓ tests/unit/adapterRemapCanary.test.ts > LIVE-READ canaries — a read that returned nothing is a failure, never a pass > every golden query returns zero features → rejected, five parcels checked, all found 0 0ms
+ ✓ tests/unit/adapterRemapCanary.test.ts > LIVE-READ canaries — a read that returned nothing is a failure, never a pass > every golden query returns a body with no features key → rejected 0ms
+ ✓ tests/unit/adapterRemapCanary.test.ts > LIVE-READ canaries — a read that returned nothing is a failure, never a pass > the layer answers with an ArcGIS error / HTTP 500 → rejected 0ms
+ ✓ tests/unit/adapterRemapCanary.test.ts > LIVE-READ canaries — a read that returned nothing is a failure, never a pass > the live read THROWS (timeout / network) → healDrift still resolves 'rejected' with the reason recorded — it never throws 1ms
+ ✓ tests/unit/adapterRemapCanary.test.ts > LIVE-READ canaries — a read that returned nothing is a failure, never a pass > a feature returned for a DIFFERENT parcel id than asked is a mismatch, not a pass 1ms
+ ✓ tests/unit/adapterRemap.test.ts > the golden set the adapter verifies against (vacuity) > FL's golden county is established with five verified parcels 4ms
+ ✓ tests/unit/adapterRemap.test.ts > proposal — a clear, type-compatible match or nothing > a field renamed only in punctuation/case is proposed (PARCEL_ID → PARCELID) 3ms
+ ✓ tests/unit/adapterRemap.test.ts > proposal — a clear, type-compatible match or nothing > a renamed field whose ALIAS still names the old field is proposed 1ms
+ ✓ tests/unit/adapterRemap.test.ts > proposal — a clear, type-compatible match or nothing > two equally good candidates are AMBIGUOUS — no proposal 1ms
+ ✓ tests/unit/adapterRemap.test.ts > proposal — a clear, type-compatible match or nothing > one live column is never proposed for TWO canonical fields (contested) — even when it is each one's sole candidate 1ms
+ ✓ tests/unit/adapterRemap.test.ts > proposal — a clear, type-compatible match or nothing > an empty drift is no proposal — a 'remap' that changes nothing must not be promoted and counted as a heal 0ms
+ ✓ tests/unit/adapterRemap.test.ts > proposal — a clear, type-compatible match or nothing > a candidate of the wrong type is never proposed (a numeric field to a text column) 0ms
+ ✓ tests/unit/adapterRemap.test.ts > verification against the golden county — promote only on a pass > a true rename (values unchanged) re-reads all five golden parcels and is PROMOTED 4ms
+ ✓ tests/unit/adapterRemap.test.ts > verification against the golden county — promote only on a pass > FALSIFICATION: a plausible-looking remap to a field holding DIFFERENT values is REJECTED 2ms
+ ✓ tests/unit/adapterRemap.test.ts > verification against the golden county — promote only on a pass > a remap of a field the golden set never verifies (legal description) cannot be promoted 1ms
+ ✓ tests/unit/adapterRemap.test.ts > verification against the golden county — promote only on a pass > a state with no established golden county never auto-remaps 1ms
+ ✓ tests/unit/adapterRemap.test.ts > verification against the golden county — promote only on a pass > a golden parcel missing from the live layer fails verification 1ms
+ ✓ tests/unit/adapterRemap.test.ts > the active mapping comes from the run series > the newest PROMOTED remap wins; rejected attempts and plain runs are skipped; none = the seed 0ms
+ ✓ tests/unit/adapterRemap.test.ts > the active mapping comes from the run series > the build refuses on drift with a typed error carrying the live field list (what healing reads) 2ms
+ ✓ tests/unit/adapterRemapObservation.test.ts > D2g's auto-remap rate reads exactly what the handler writes > population: healDrift has exactly one production call site (the statewide handler) — a second caller must be added to this contract 9277ms
+ ✓ tests/unit/adapterRemapObservation.test.ts > the active mapping is adopted only from a promoted remap WITH its passing evidence > a real promoted attempt, round-tripped through jsonb, becomes the active mapping; rejected / no-proposal never do 2ms
+ ✓ tests/unit/adapterRemapObservation.test.ts > the active mapping is adopted only from a promoted remap WITH its passing evidence > FALSIFICATION: a record that SAYS promoted but carries no passing verification is never adopted 1ms
+ ✓ tests/unit/adapterRemapObservation.test.ts > the active mapping is adopted only from a promoted remap WITH its passing evidence > a promoted mapping with no parcel-id field is never adopted (it would wedge every later run in buildSpecFor) 1ms
+
+ Test Files  8 passed (8)
+      Tests  140 passed (140)
+   Start at  11:36:32
+   Duration  10.82s (transform 1.05s, setup 135ms, import 3.57s, tests 11.04s, environment 1ms)
+
+exit 0
