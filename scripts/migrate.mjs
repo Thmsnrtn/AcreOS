@@ -12748,6 +12748,53 @@ $mig0284$`,
    VALUES
      ('acreos_parcels_lineage_apply', 'acreos_parcels_lineage_apply', 'internal://dataset_release_pointer', NULL, '*/1440 * * * *', false, false, '{}'::jsonb)
    ON CONFLICT ("job_name") DO NOTHING`,
+  // 0292 — V-Notes-1 N1: note_field_observations (append-only, org-private, leaves only with its note) and the first-class yield columns on acquired_notes.
+  // Mirrors migrations/0292_notes_v1_field_observations.sql.
+  `ALTER TABLE "acquired_notes" ADD COLUMN IF NOT EXISTS "balloon_amount_cents" bigint`,
+  `ALTER TABLE "acquired_notes" ADD COLUMN IF NOT EXISTS "balloon_date" date`,
+  `ALTER TABLE "acquired_notes" ADD COLUMN IF NOT EXISTS "remaining_term_months" integer`,
+  `CREATE TABLE IF NOT EXISTS "note_field_observations" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL,
+     "note_id" uuid NOT NULL REFERENCES "acquired_notes"("id") ON DELETE CASCADE,
+     "field" text NOT NULL CHECK ("field" ~ '^[a-zA-Z][a-zA-Z0-9_.]*$'),
+     "kind" text NOT NULL CHECK ("kind" IN ('value', 'searched_none')),
+     "value" jsonb,
+     "source" text NOT NULL CHECK ("source" IN ('note_tape', 'operator_correction', 'warehouse')),
+     "source_ref" jsonb NOT NULL,
+     "as_of" date,
+     "confidence" text NOT NULL CHECK ("confidence" IN ('high', 'medium', 'low')),
+     "confidence_basis" text NOT NULL CHECK (length(trim("confidence_basis")) > 0),
+     "decay_class" text NOT NULL CHECK ("decay_class" IN ('stable', 'years', 'about_a_year', 'months', 'continuous', 'event')),
+     "import_id" uuid,
+     "recorded_by" text NOT NULL CHECK (length(trim("recorded_by")) > 0),
+     "observed_at" timestamptz NOT NULL DEFAULT now(),
+     CONSTRAINT "note_field_observations_value_iff_kind" CHECK (("kind" = 'value') = ("value" IS NOT NULL))
+   )`,
+  `CREATE INDEX IF NOT EXISTS "note_field_observations_org_note_idx" ON "note_field_observations" ("organization_id", "note_id", "field", "observed_at")`,
+  `CREATE OR REPLACE FUNCTION note_field_observations_guard()
+   RETURNS trigger AS $$
+   BEGIN
+     IF TG_OP = 'DELETE' THEN
+       IF EXISTS (SELECT 1 FROM "acquired_notes" WHERE "id" = OLD."note_id") THEN
+         RAISE EXCEPTION 'note_field_observations rows leave only with their note (delete the note, not its history)'
+           USING ERRCODE = 'foreign_key_violation';
+       END IF;
+       RETURN OLD;
+     END IF;
+     RAISE EXCEPTION 'note_field_observations is append-only (% denied)', TG_OP
+       USING ERRCODE = 'restrict_violation';
+   END;
+   $$ LANGUAGE plpgsql`,
+  `DROP TRIGGER IF EXISTS note_field_observations_no_update ON "note_field_observations"`,
+  `CREATE TRIGGER note_field_observations_no_update BEFORE UPDATE ON "note_field_observations"
+     FOR EACH ROW EXECUTE FUNCTION note_field_observations_guard()`,
+  `DROP TRIGGER IF EXISTS note_field_observations_delete_with_note ON "note_field_observations"`,
+  `CREATE TRIGGER note_field_observations_delete_with_note BEFORE DELETE ON "note_field_observations"
+     FOR EACH ROW EXECUTE FUNCTION note_field_observations_guard()`,
+  `DROP TRIGGER IF EXISTS note_field_observations_no_truncate ON "note_field_observations"`,
+  `CREATE TRIGGER note_field_observations_no_truncate BEFORE TRUNCATE ON "note_field_observations"
+     FOR EACH STATEMENT EXECUTE FUNCTION note_field_observations_guard()`,
 ];
 
 // The statement set this run executes. Default: everything (the production

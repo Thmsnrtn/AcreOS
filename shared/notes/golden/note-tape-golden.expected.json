@@ -1,0 +1,41 @@
+{
+  "_comment": "Expected normalized output of note-tape-golden.csv, written by hand from the tape (SYNTHETIC). Money in integer cents, rates in basis points, dates ISO. Asserted end to end by tests/unit/noteTapeGolden.test.ts.",
+  "unmappedRequired": [],
+  "summary": { "totalRows": 5, "validCount": 3, "rejectedCount": 2, "documentsIncomplete": 1 },
+  "valid": [
+    {
+      "fileRow": 2, "noteNumber": "SYNTH-1001", "payerName": "SYNTHETIC Borrower One",
+      "originalPrincipalCents": 12000000, "currentBalanceCents": 8425000, "interestRateBps": 850, "termMonths": 360,
+      "paymentAmountCents": 92270, "paymentDueDay": 1, "originationDate": "2015-03-01", "maturityDate": "2045-03-01",
+      "acquisitionDate": "2026-09-15", "acquisitionPriceCents": 6150000, "status": "performing",
+      "remainingTermMonths": 221, "balloonAmountCents": null, "balloonDate": null, "paidThroughDate": "2026-09-30", "nextPaymentDate": null,
+      "collateral": { "apn": "SYNTH-0101-001", "state": "NC", "county": "Wake", "address": "1 Synthetic Ln" },
+      "documents": { "docNote": "present", "docSecurityInstrument": "present", "docAssignmentChain": "present", "docAllonges": "present", "docPaymentHistory": "present" },
+      "documentExceptionNote": null, "documentsIncomplete": false
+    },
+    {
+      "fileRow": 3, "noteNumber": "SYNTH-1002", "payerName": "SYNTHETIC Borrower Two",
+      "originalPrincipalCents": 4500000, "currentBalanceCents": 3891244, "interestRateBps": 1000, "termMonths": 180,
+      "paymentAmountCents": 48358, "paymentDueDay": 15, "originationDate": "2019-03-15", "maturityDate": "2034-03-15",
+      "acquisitionDate": "2026-09-15", "acquisitionPriceCents": 2200000, "status": "performing",
+      "remainingTermMonths": 90, "balloonAmountCents": 2000000, "balloonDate": "2029-03-15", "paidThroughDate": "2026-08-15", "nextPaymentDate": null,
+      "collateral": { "apn": null, "state": "TN", "county": "Davidson", "address": "2 Synthetic Ave" },
+      "documents": { "docNote": "present", "docSecurityInstrument": "present", "docAssignmentChain": "exception", "docPaymentHistory": "missing" },
+      "documentExceptionNote": "AOM from SYNTHETIC Bank to SYNTHETIC Trust unrecorded", "documentsIncomplete": true
+    },
+    {
+      "fileRow": 6, "noteNumber": "SYNTH-1005", "payerName": "SYNTHETIC Borrower Five",
+      "originalPrincipalCents": 7500000, "currentBalanceCents": 7045010, "interestRateBps": 900, "termMonths": 300,
+      "paymentAmountCents": 62940, "paymentDueDay": 10, "originationDate": "2023-06-10", "maturityDate": "2048-06-10",
+      "acquisitionDate": "2026-09-15", "acquisitionPriceCents": 5200000, "status": "default",
+      "remainingTermMonths": 264, "balloonAmountCents": null, "balloonDate": null, "paidThroughDate": "2026-04-10", "nextPaymentDate": null,
+      "collateral": { "apn": "SYNTH-0101-005", "state": "NC", "county": "Wake", "address": "5 Synthetic Ct" },
+      "documents": { "docNote": "present", "docSecurityInstrument": "present", "docAssignmentChain": "present", "docAllonges": "present", "docPaymentHistory": "missing" },
+      "documentExceptionNote": null, "documentsIncomplete": false
+    }
+  ],
+  "rejected": [
+    { "fileRow": 4, "fields": ["interestRate"] },
+    { "fileRow": 5, "fields": ["originationDate"] }
+  ]
+}

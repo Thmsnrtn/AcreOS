@@ -115,6 +115,11 @@ export const acquiredNotes = pgTable(
     // period behind. Without this, a partial payment silently resets the
     // clock and a note that is three periods down reads as current.
     paidThroughDate: date("paid_through_date"),
+    // First-class yield fields a note tape states (V-Notes-1 N1, 0292).
+    // Nullable on purpose: missing is null, never 0 and never derived.
+    balloonAmountCents: bigint("balloon_amount_cents", { mode: "number" }),
+    balloonDate: date("balloon_date"),
+    remainingTermMonths: integer("remaining_term_months"),
     // Contractual grace before a payment is late. Aging without it calls a
     // borrower delinquent on the day after the due date, which is wrong on
     // the face of nearly every note instrument and turns a normal payer

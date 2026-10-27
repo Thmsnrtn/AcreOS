@@ -1,0 +1,6 @@
+Loan #,Borrower,Orig Balance,UPB,Note Rate,Term,P&I,Due Day,Note Date,Maturity,Purchase Date,Purchase Price,Loan Status,Remaining Term,Balloon,Balloon Date,Paid Thru,APN,State,County,Property Address,Original Note,Mortgage/DOT,Assignments,Allonges,Pay History,Collateral Exceptions
+SYNTH-1001,SYNTHETIC Borrower One,"$120,000.00","$84,250.00",8.5%,360,922.70,1,2015-03-01,2045-03-01,2026-09-15,"$61,500.00",Performing,221,,,2026-09-30,SYNTH-0101-001,NC,Wake,1 Synthetic Ln,Yes,Yes,Yes,Yes,Yes,
+SYNTH-1002,SYNTHETIC Borrower Two,"45,000","38,912.44",10,180,483.58,15,3/15/2019,3/15/2034,9/15/2026,"22,000",current,90,"20,000.00",3/15/2029,8/15/2026,,TN,Davidson,2 Synthetic Ave,present,present,exception,,missing,AOM from SYNTHETIC Bank to SYNTHETIC Trust unrecorded
+SYNTH-1003,SYNTHETIC Borrower Three,"60,000","59,100.00",,240,510.00,5,2024-01-05,2044-01-05,2026-09-15,"40,000",late,,,,,SYNTH-0101-003,NC,Wake,3 Synthetic Rd,yes,yes,yes,,,
+SYNTH-1004,SYNTHETIC Borrower Four,"30,000","12,000.00",7.25,120,352.24,1,2020-02-30,2030-02-01,2026-09-15,"9,000",NPL,,,,,,,,,yes,no,yes,,,
+SYNTH-1005,SYNTHETIC Borrower Five,"75,000","70,450.10",9.0,300,629.40,10,2023-06-10,2048-06-10,2026-09-15,"52,000",Default,264,,,2026-04-10,SYNTH-0101-005,NC,Wake,5 Synthetic Ct,yes,yes,yes,yes,no,
