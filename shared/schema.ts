@@ -14111,6 +14111,7 @@ export * from "./schema/dataset-releases";
 // D2c — APIDs, APN validity windows, lineage events — ./schema/parcel-apid.ts
 export * from "./schema/parcel-apid";
 export * from "./schema/note-observations";
+export * from "./schema/note-events";
 
 // ============================================================================
 // FINANCIAL LEDGER + MAIL SHIPMENTS — extracted to ./schema/finance.ts

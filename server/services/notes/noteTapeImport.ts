@@ -242,6 +242,12 @@ export function validateNoteTape(opts: { sheet: ParsedSheet; mapping: NoteTapeMa
     const orig = v<string>("originationDate");
     const mat = v<string>("maturityDate");
     if (orig && mat && mat <= orig) errors.push({ field: "maturityDate", column: null, value: mat, message: `Maturity ${mat} is not after origination ${orig}`, fix: "check the maturity and origination dates against the note" });
+    // A dated term after maturity cannot be a real date on this note — it would
+    // register a calendar event the note can never reach.
+    for (const k of ["nextPaymentDate", "balloonDate", "rateAdjustmentDate"] as const) {
+      const d = v<string>(k);
+      if (d && mat && d > mat) errors.push({ field: k, column: stated[k]?.source.column ?? null, value: d, message: `${NOTE_TAPE_FIELD[k].label} ${d} is after maturity ${mat}`, fix: `check the ${NOTE_TAPE_FIELD[k].label.toLowerCase()} and maturity date against the note` });
+    }
     const docs: PreparedNote["documents"] = {};
     for (const k of ["docNote", "docSecurityInstrument", "docAssignmentChain", "docAllonges", "docPaymentHistory"] as const) {
       const s = v<DocumentState>(k);

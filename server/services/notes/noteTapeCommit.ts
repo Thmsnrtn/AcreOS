@@ -14,14 +14,18 @@
  *     A searched-but-unmatched reference is recorded as a verified absence
  *     (kind 'searched_none'), never linked; a note with no usable reference
  *     records nothing (never searched = unknown). properties is never touched.
+ *   - Each row also records its outcome event (the performance the tape
+ *     reports) and registers the dated terms it STATES on the forward calendar
+ *     (note_events, N3 — hooks only: nothing alerts or sends from them).
  *   - Org-private: every read and write carries the organization id.
  */
 
 import { randomUUID } from "node:crypto";
 import { and, desc, eq } from "drizzle-orm";
-import { acquiredNotes, noteFieldObservations, type InsertNoteFieldObservation } from "@shared/schema";
+import { acquiredNotes, noteEvents, noteFieldObservations, type InsertNoteFieldObservation } from "@shared/schema";
 import { NOTE_TAPE_FIELD, TAPE_CONFIDENCE, TAPE_CONFIDENCE_BASIS, type NoteTapeFieldKey } from "@shared/notes/noteTapeFields";
 import type { NoteTapeValidation, PreparedNote } from "./noteTapeImport";
+import { planNoteEvents } from "./noteEventsPlan";
 
 export interface CollateralResolution {
   searchedFor: { state: string; county: string; apn: string };
@@ -70,7 +74,7 @@ export type CommitNoteTapeResult =
       created: number;
       appendedToExisting: number;
       excludedRows: number[];
-      notes: Array<{ fileRow: number; noteId: string; noteNumber: string; created: boolean; collateral: "matched" | "unmatched" | "not_searched"; documentsIncomplete: boolean; differingFields: string[] }>;
+      notes: Array<{ fileRow: number; noteId: string; noteNumber: string; created: boolean; collateral: "matched" | "unmatched" | "not_searched"; documentsIncomplete: boolean; differingFields: string[]; calendarRegistered: string[] }>;
     };
 
 export async function commitNoteTape(a: CommitNoteTapeArgs): Promise<CommitNoteTapeResult> {
@@ -87,6 +91,7 @@ export async function commitNoteTape(a: CommitNoteTapeArgs): Promise<CommitNoteT
   for (const n of notes) collateral.set(n.fileRow, await resolveCollateral(n.collateral));
 
   const importId = randomUUID();
+  const importDate = new Date().toISOString().slice(0, 10);
   const { withTransaction } = await import("../../db");
   return withTransaction(async (tx) => {
     const out: Extract<CommitNoteTapeResult, { status: "committed" }>["notes"] = [];
@@ -170,7 +175,10 @@ export async function commitNoteTape(a: CommitNoteTapeArgs): Promise<CommitNoteT
         }
       }
       if (rows.length > 0) await tx.insert(noteFieldObservations).values(rows);
-      out.push({ fileRow: n.fileRow, noteId, noteNumber: n.noteNumber, created: !existing, collateral: res === null ? "not_searched" : res.parcelKey ? "matched" : "unmatched", documentsIncomplete: n.documentsIncomplete, differingFields: differing });
+      const events = planNoteEvents(n, { fileName: a.fileName, fileSha256: a.fileSha256, asOf: a.asOf, importDate });
+      await tx.insert(noteEvents).values(events.map((e) => ({ ...e, organizationId: a.organizationId, noteId, importId, recordedBy: a.actorUserId })));
+      const calendarRegistered = events.filter((e) => e.category === "calendar").map((e) => e.eventType);
+      out.push({ fileRow: n.fileRow, noteId, noteNumber: n.noteNumber, created: !existing, collateral: res === null ? "not_searched" : res.parcelKey ? "matched" : "unmatched", documentsIncomplete: n.documentsIncomplete, differingFields: differing, calendarRegistered });
     }
     return {
       status: "committed" as const,

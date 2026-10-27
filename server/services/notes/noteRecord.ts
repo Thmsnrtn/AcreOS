@@ -14,12 +14,15 @@
  *     reason — distinct from each other and from "found".
  *   - Every observation of a field is returned (oldest first), so N4 can show
  *     a disagreement with every value preserved.
+ *   - Outcome events and forward-calendar dates (N3, hooks only): every
+ *     performance report, oldest first, and the latest registration of each
+ *     calendar date — or why it is not on record. Nothing here schedules.
  *   - Org-private: a note outside the caller's organization is `null` (the
  *     route answers 404), and every observation read filters on the org.
  */
 
 import { and, asc, eq } from "drizzle-orm";
-import { acquiredNotes, noteFieldObservations, type NoteFieldObservation } from "@shared/schema";
+import { acquiredNotes, noteEvents, noteFieldObservations, NOTE_CALENDAR_EVENT_TYPES, type NoteEvent, type NoteFieldObservation } from "@shared/schema";
 import { CRITICAL_DOCUMENTS, NOTE_TAPE_FIELD, type DocumentState, type NoteTapeFieldKey } from "@shared/notes/noteTapeFields";
 
 export interface ObservationView {
@@ -65,6 +68,17 @@ export interface CollateralPicture {
   };
 }
 
+export interface NoteEventView {
+  eventType: string;
+  eventDate: string;
+  recurrence: "monthly" | null;
+  recurrenceUntil: string | null;
+  detail: Record<string, unknown>;
+  source: string;
+  sourceRef: Record<string, unknown>;
+  recordedAt: string;
+}
+
 export interface NoteRecord {
   noteId: string;
   terms: RecordedValue[];
@@ -79,7 +93,35 @@ export interface NoteRecord {
     gaps: string[];
   };
   collateral: CollateralPicture;
+  /** Payment performance as each source reported it, oldest first (kept for calibration). */
+  outcomes: NoteEventView[];
+  /** One entry per calendar date type: its latest registration, or why none is on record. */
+  calendar: Array<{ eventType: (typeof NOTE_CALENDAR_EVENT_TYPES)[number]; label: string; event: NoteEventView | null; reason: string | null }>;
 }
+
+const CALENDAR_LABEL: Record<(typeof NOTE_CALENDAR_EVENT_TYPES)[number], string> = {
+  payment_due: "Next payment due",
+  maturity: "Maturity",
+  balloon: "Balloon",
+  rate_adjustment: "Next rate adjustment",
+};
+const CALENDAR_ABSENT: Record<(typeof NOTE_CALENDAR_EVENT_TYPES)[number], string> = {
+  payment_due: "no import stated a next payment date; AcreOS does not derive one from the due day",
+  maturity: "no import stated a maturity date",
+  balloon: "no import stated a balloon date",
+  rate_adjustment: "no import stated a rate adjustment date (a fixed-rate note has none)",
+};
+
+const eventView = (e: NoteEvent): NoteEventView => ({
+  eventType: e.eventType,
+  eventDate: e.eventDate,
+  recurrence: e.recurrence ?? null,
+  recurrenceUntil: e.recurrenceUntil ?? null,
+  detail: e.detail,
+  source: e.source,
+  sourceRef: e.sourceRef,
+  recordedAt: e.recordedAt.toISOString(),
+});
 
 const TERM_FIELDS: Array<[NoteTapeFieldKey, keyof typeof acquiredNotes.$inferSelect]> = [
   ["noteNumber", "noteNumber"],
@@ -166,6 +208,18 @@ export async function buildNoteRecord(organizationId: number, noteId: string): P
       ? { ratio: note.acquisitionPriceCents / market, basis: `purchase price ÷ the collateral's market value on record (${collateral.parcel!.source.name})` }
       : { status: "not_on_record", reason: collateral.status === "matched" ? "the matched parcel carries no market value" : "no collateral value is on record for this note" };
 
+  const events = await db
+    .select()
+    .from(noteEvents)
+    .where(and(eq(noteEvents.organizationId, organizationId), eq(noteEvents.noteId, noteId)))
+    .orderBy(asc(noteEvents.recordedAt));
+  const outcomes = events.filter((e) => e.category === "outcome").map(eventView);
+  const calendar = NOTE_CALENDAR_EVENT_TYPES.map((t) => {
+    // The latest registration wins; earlier ones stay in the table.
+    const latestEvent = events.filter((e) => e.category === "calendar" && e.eventType === t).at(-1);
+    return { eventType: t, label: CALENDAR_LABEL[t], event: latestEvent ? eventView(latestEvent) : null, reason: latestEvent ? null : CALENDAR_ABSENT[t] };
+  });
+
   return {
     noteId,
     terms,
@@ -173,6 +227,8 @@ export async function buildNoteRecord(organizationId: number, noteId: string): P
     investmentToValue,
     documents: { entries, exceptionNote: (exception?.value as string | undefined) ?? null, complete: gaps.length === 0, gaps },
     collateral,
+    outcomes,
+    calendar,
   };
 }
 
