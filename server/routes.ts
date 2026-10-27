@@ -192,6 +192,7 @@ import { registerBorrowerRoutes } from "./routes-borrower";
 import { registerNoteRoutes } from "./routes-notes";
 import { registerNoteAcquisitionRoutes } from "./routes-note-acquisitions";
 import { registerNoteTapeRoutes } from "./routes-note-tape";
+import { registerNoteRecordRoutes } from "./routes-note-record";
 import { registerServicerRoutes } from "./routes-servicer";
 import { registerTaxCertificateRoutes } from "./routes-tax-certificates";
 import { registerTaxRuleRoutes } from "./routes-tax-rules";
@@ -2465,6 +2466,7 @@ export async function registerRoutes(
   // Note Investor vertical (Phase 5 §5) — pre-book diligence pipeline.
   registerNoteAcquisitionRoutes(app);
   registerNoteTapeRoutes(app);
+  registerNoteRecordRoutes(app);
   // Note Servicer (Pillar K — Ursa) — owners-of-record, remittances, licenses.
   registerServicerRoutes(app);
   // Tax-Delinquent vertical TD-2 — redemption-clock surface.
