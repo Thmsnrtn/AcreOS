@@ -61,6 +61,9 @@ function agingAsOf(asOf: Date) {
     firstPaymentDate: "2020-02-01",
     nextPaymentDate: MISSED_DUE_DATE,
     paidThroughDate: PAID_THROUGH,
+    balloonAmountCents: null,
+    balloonDate: null,
+    remainingTermMonths: null,
     gracePeriodDays: GRACE_DAYS,
     ...computeNoteDelinquency({
       nextPaymentDate: MISSED_DUE_DATE,

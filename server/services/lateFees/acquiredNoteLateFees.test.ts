@@ -68,6 +68,9 @@ function qualifyingAcquired(overrides: Partial<AcquiredNote> = {}): AcquiredNote
     // change to either can never leave the fixture behind.
     nextPaymentDate: MISSED_CYCLE_DUE,
     paidThroughDate: PAID_THROUGH,
+    balloonAmountCents: null,
+    balloonDate: null,
+    remainingTermMonths: null,
     gracePeriodDays: GRACE_DAYS,
     lateFeeCents: LATE_FEE_CENTS,
     // Derived by the same pure function the aging job uses, from this

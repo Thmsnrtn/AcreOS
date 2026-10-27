@@ -22,6 +22,7 @@ import { getOrganizationId, getUserId, type AuthenticatedRequest } from "./types
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { NOTE_TAPE_FIELDS, type NoteTapeFieldKey } from "@shared/notes/noteTapeFields";
+import { isCalendarDate } from "@shared/dates/calendar";
 import { readNoteTape, suggestNoteTapeMapping, validateNoteTape, assertNoRowLost, type NoteTapeMapping, type NoteTapeOverrides } from "./services/notes/noteTapeImport";
 
 const FIELD_KEYS = NOTE_TAPE_FIELDS.map((f) => f.key) as [NoteTapeFieldKey, ...NoteTapeFieldKey[]];
@@ -39,7 +40,7 @@ const baseBody = z.object({
 const commitBody = baseBody.extend({
   mapping: mappingSchema,
   excludeRows: z.array(z.number().int().min(2)).max(20_000).default([]),
-  asOf: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().default(null),
+  asOf: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((v) => isCalendarDate(v), "asOf must be a real calendar date").nullable().default(null),
 });
 
 function toOverrides(o: z.infer<typeof baseBody>["overrides"]): NoteTapeOverrides {

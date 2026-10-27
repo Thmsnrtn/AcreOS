@@ -79,8 +79,13 @@ function serverFiles(): string[] {
  * calls are usually written with (`db\n  .update(notes)`).
  */
 function writersOf(tables: string[]): string[] {
+  // `db` OR a transaction handle `tx`: a writer that runs inside
+  // withTransaction (as the note-tape commit does, and noteRepo's payment
+  // insert) writes through `tx.insert(...)`, which a db-only predicate never
+  // saw — measured 2026-10-27, it hid the only acquired_notes writer added
+  // since this test was written.
   const re = new RegExp(
-    String.raw`db\s*\.\s*(?:insert|update|delete)\s*\(\s*(?:${tables.join("|")})\s*\)`,
+    String.raw`\b(?:db|tx)\s*\.\s*(?:insert|update|delete)\s*\(\s*(?:${tables.join("|")})\s*\)`,
   );
   return serverFiles()
     .filter((abs) => re.test(stripComments(fs.readFileSync(abs, "utf8"))))
@@ -95,6 +100,14 @@ function writersOf(tables: string[]): string[] {
  * `note_payments` lowers it in the same commit; adding one fails.
  */
 const LEGACY_WRITERS: Record<string, string> = {
+  // The next two are NOT new writers. Both write through a transaction handle
+  // (`tx.insert(payments)` / `tx.update(notes)`), which the db-only predicate
+  // could not see; they predate this list and surfaced on 2026-10-27 when
+  // writersOf learned `tx`.
+  "server/services/borrower/portalPaymentPosting.ts":
+    "Posts a borrower-portal payment to the legacy book idempotently: the payments row and the note balance in one transaction.",
+  "server/webhookHandlers.ts":
+    "Reverses a refunded charge on the legacy ledger: reversal payments rows and the restored note principal in one transaction.",
   "server/routes-subdivisions.ts":
     "Creates a seller-financed note when a subdivision lot sells.",
   "server/services/achAutopay.ts":
