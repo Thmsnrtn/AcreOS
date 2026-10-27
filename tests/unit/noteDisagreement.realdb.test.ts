@@ -96,8 +96,9 @@ describe.runIf(realDbAvailable)("note disagreement and negative knowledge — re
     const { db } = await import("../../server/db");
     const { sql } = await import("drizzle-orm");
     const book = await db.execute(sql`SELECT current_balance_cents::bigint AS b, interest_rate_bps AS r FROM acquired_notes WHERE id = ${noteIds["SYNTH-1001"]}`);
-    expect((book as { rows: Array<{ b: string; r: number }> }).rows[0]).toMatchObject({ r: 850 });
-    expect(Number((book as { rows: Array<{ b: string }> }).rows[0].b)).toBe(8425000);
+    const [row] = book.rows as Array<{ b: string; r: number }>;
+    expect(row.r).toBe(850);
+    expect(Number(row.b)).toBe(8425000);
   });
 
   it("a later tape that fills a field the book holds blank is a disagreement too — the book says none, the source says a value", async () => {
