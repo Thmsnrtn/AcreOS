@@ -189,6 +189,7 @@ exports[`route manifest > snapshot: sorted manifest file paths (additions/remova
   "routes-needs-onboarding.ts",
   "routes-night-cap.ts",
   "routes-note-acquisitions.ts",
+  "routes-note-tape.ts",
   "routes-notes.ts",
   "routes-notifications.ts",
   "routes-observability-cost.ts",

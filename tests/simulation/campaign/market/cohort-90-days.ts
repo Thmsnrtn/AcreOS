@@ -444,6 +444,10 @@ async function noteBook(c: Ctx) {
     // Notes → Import (notes-import-dialog.tsx) — the investor's existing book
     const fd = new FormData();
     fd.append("file", new Blob(["borrowerFirstName,borrowerLastName,originalPrincipal,currentBalance,interestRate,termMonths,monthlyPayment\nAna,Owner,30000,24000,9,120,380.03\n"], { type: "text/csv" }), "notes.csv");
+    // These are originated-book columns. An omitted intent used to fall through
+    // to the acquired importer (the wrong table); acquired notes now go through
+    // the note-tape import, so the sim states the intent its columns match.
+    fd.append("intent", "originated");
     await act(c, "POST import/notes (Notes → Import)", client.call("POST", "/api/import/notes", undefined, { raw: fd as any }), { key: "notes-import" });
     // …so the book is keyed in by hand
     for (const l of c.leads.slice(0, 3)) {

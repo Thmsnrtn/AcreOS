@@ -44,7 +44,7 @@ const ITEMS = [
     // "Beanstalk" and "Note Servicing Center" appeared in this sentence and
     // NOWHERE else in client/, server/ or shared/ — there is no importer, no
     // preset and no integration for either. The CSV half is real and well
-    // built (importNotesFromCSV / importAcquiredNotesFromCSV, NOTE_COLUMN_MAP
+    // built (importNotesFromCSV for originated, the note-tape import for purchased; NOTE_COLUMN_MAP
     // served as columnHints, a user fieldMap, and a Reg-Z §1026.43 gate on
     // originated notes), so it is what the answer now describes.
     // "Migration support is included on a 30-min call" is an unbounded human

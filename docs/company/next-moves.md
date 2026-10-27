@@ -3,6 +3,25 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-10-27 — V-Notes-1 started (D2 merged as #412). N1 — note-tape import — on `claude/notes-v1-n1-import`
+
+- **Storage (founder-approved +2 tables).** `note_field_observations` (0292) holds every stated value with provenance, plus recorded absences. It is append-only and leaves only with its note. `note_events` lands with N3. The table count is now 747. Decision record: `docs/company/founder-decisions-2026-10-27-notes.md`.
+- **Importer.** `shared/notes/noteTapeFields.ts` (catalogue) and `server/services/notes/noteTapeImport.ts` (pure validator).
+  - Refusal before build: an unmapped required field refuses the whole file.
+  - Row errors carry the field, the cell and the fix. Nothing is coerced; missing is null.
+  - Targeted per-cell corrections are recorded as `operator_correction`.
+  - The document set (note, mortgage/DOT, assignment chain) must be mapped, and an exception must be recorded.
+  - Yield fields are first-class: three new nullable columns on `acquired_notes`.
+- **Commit.** `noteTapeCommit.ts` runs in one transaction.
+  - It refuses unless every row is valid or explicitly excluded.
+  - An existing loan number is never overwritten: values are appended and the differing fields are reported (N4's raw material).
+  - Collateral is resolved to an owned public-record parcel, and to an APID where a FIPS reference exists. Otherwise it is recorded as `searched_none`, or as nothing when there was no APN.
+- **Routes and UI.** `POST /api/note-tape/preview` and `POST /api/note-tape/commit` sit behind `canImportData`. `NoteTapeImport.tsx` is mounted in the existing notes import dialog (Finance door → notes tab, and `/notes?action=new`).
+- **Retired.** The old acquired branch of `POST /api/import/notes` (`importAcquiredNotesFromCSV`) wrote rate 0, term 360 and a derived maturity, and called any unknown status "performing". The branch now refuses, and the function is deleted.
+- **Golden note.** `shared/notes/golden/note-tape-golden.csv` plus a hand-written expected output, asserted end to end.
+- **Not in N1.** The note page (N2), events (N3), the disagreement panel (N4), and borrower TIN import (deliberately not imported).
+- **Spec gaps flagged.** The four design docs the spec cites (`files/platform-*.md`, the deepening doc) are not in the repo, so the nano-bar audit can only be run against what the spec itself states. The spec says the forward-calendar registry exists; it does not (`note_events` in N3 is that registry).
+
 ## 2026-10-27 — Delta audit on e398c3a3: the last gap, `source_parcel_id` dedupe in release assembly (founder: implement)
 
 - **Dedupe.** `assembleAndStoreRelease` now reads each included county's parquet back (digest-checked) and keeps ONE row per `source_parcel_id`.
