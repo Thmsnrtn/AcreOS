@@ -1549,8 +1549,13 @@ export async function executeTool(
         const { leadReachabilityForPax } = await import("../services/paxLeadReachability");
         const lead = await storage.getLead(org.id, args.lead_id);
         if (!lead) return toolRefusal({ what: "No lead with that number is in this account", why: "It may have been deleted, merged, or the number came from another list", unlock: "Search your leads by name or address to find the one you mean" });
+        // The registered secret columns (taxId ciphertext, taxIdType) never
+        // enter the model's context: the tool result goes to the model
+        // provider verbatim, and no response guard sits on that path.
+        const { omitSecretColumns } = await import("../utils/secretColumns");
+        const { leads: leadsTable } = await import("@shared/schema");
         return { success: true, data: {
-          ...lead,
+          ...omitSecretColumns(leadsTable, lead),
           name: `${lead.firstName} ${lead.lastName}`,
           reachability: leadReachabilityForPax(lead),
         }};

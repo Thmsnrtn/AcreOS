@@ -79,6 +79,20 @@ export function reconcileCrosswalk(
     grid.set(k, list);
   }
   const used = new Set<string>();
+  // A minted key must never equal a key this reconcile retires (or any key
+  // already in play). The minter is a pure function of the source id, so a
+  // remainder that keeps its id but changes shape would otherwise get its
+  // parent's key back. Limit: this sees only `previous` (the page's
+  // neighbourhood); a county reusing an id on land in another page still
+  // re-derives a retired key — the D2c APID ledger is the full answer.
+  const taken = new Set(previous.map((p) => p.parcelKey));
+  const mintFresh = (sourceId: string): string => {
+    const base = mint(sourceId);
+    let key = base;
+    for (let n = 2; taken.has(key); n++) key = `${base}~${n}`;
+    taken.add(key);
+    return key;
+  };
   const result: CrosswalkResult = { assigned: [], aliases: [], retired: [] };
   const pending: CrosswalkRecord[] = [];
 
@@ -108,7 +122,7 @@ export function reconcileCrosswalk(
         result.aliases.push({ parcelKey: match.parcelKey, previousSourceId: match.sourceId, newSourceId: rec.sourceId });
       }
     } else {
-      result.assigned.push({ sourceId: rec.sourceId, parcelKey: mint(rec.sourceId), how: "new" });
+      result.assigned.push({ sourceId: rec.sourceId, parcelKey: mintFresh(rec.sourceId), how: "new" });
     }
   }
   for (const p of previous) if (!used.has(p.parcelKey)) result.retired.push(p.parcelKey);

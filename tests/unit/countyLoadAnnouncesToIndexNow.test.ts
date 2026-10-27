@@ -1,7 +1,7 @@
 /**
  * Built-but-unwired guard (W3): when a county's parcels land, its new public
  * pages are announced to IndexNow. Checked by CALLING the Comptroller loader
- * (persistLoadedCounty), the path Tennessee arrives by. The on-demand
+ * (completeLoadedCounty), the path Tennessee arrives by. The on-demand
  * pipeline's completion branch makes the same call (countyPipeline.ts); it is
  * not exercised here.
  */
@@ -25,11 +25,11 @@ vi.mock("../../server/db", () => {
 vi.mock("../../server/services/publicCountyGuide", () => ({ announceCountyLoaded: h.announce }));
 vi.mock("../../server/services/landData/openDataBucket", () => ({ recordReceipt: h.recordReceipt }));
 
-import { persistLoadedCounty } from "../../server/services/landData/ownedParcelStore";
+import { completeLoadedCounty } from "../../server/services/landData/ownedParcelStore";
 
 describe("a loaded county is announced", () => {
-  it("persistLoadedCounty announces the county's guide and parcel pages", async () => {
-    await persistLoadedCounty({ state: "TN", county: "DeKalb County", sourceName: "TN Comptroller parcel download", sourceUrl: "https://example.test" }, [], []);
+  it("completeLoadedCounty announces the county's guide and parcel pages", async () => {
+    await completeLoadedCounty({ state: "TN", county: "DeKalb County", sourceName: "TN Comptroller parcel download", sourceUrl: "https://example.test" }, 0, []);
     expect(h.announce).toHaveBeenCalledWith("TN", "DeKalb County");
   });
 });

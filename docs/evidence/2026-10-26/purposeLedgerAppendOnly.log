@@ -1,0 +1,20 @@
+# purpose_ledger append-only on a real database
+# tree 3e8c5946f69b4aad021b2b83bbdc0381ffc2f39e = the committed tree with docs/evidence/ excluded (parent commit 5d11a7669)
+# date 2026-10-26T11:36:23Z
+# cmd: ACREOS_REQUIRE_REAL_DB=1 ACREOS_REAL_DATABASE_URL=<local PG16, schema built by npm run db:build-from-repo> npx vitest run tests/integration/purposeLedgerAppendOnly.db.test.ts --reporter=verbose
+
+
+ RUN  v4.1.11 /home/user/AcreOS
+
+ ✓ tests/integration/purposeLedgerAppendOnly.db.test.ts > purpose_ledger append-only — real database > UPDATE is refused with restrict_violation 3ms
+ ✓ tests/integration/purposeLedgerAppendOnly.db.test.ts > purpose_ledger append-only — real database > DELETE is refused with restrict_violation 1ms
+ ✓ tests/integration/purposeLedgerAppendOnly.db.test.ts > purpose_ledger append-only — real database > TRUNCATE is refused too (row triggers do not fire on TRUNCATE; a statement trigger does) 3ms
+ ✓ tests/integration/purposeLedgerAppendOnly.db.test.ts > purpose_ledger append-only — real database > a NULL purpose code cannot be stored 1ms
+ ✓ tests/integration/purposeLedgerAppendOnly.db.test.ts > purpose_ledger append-only — real database > only the DBA retention GUC lets a row be removed 2ms
+
+ Test Files  1 passed (1)
+      Tests  5 passed (5)
+   Start at  11:36:24
+   Duration  414ms (transform 60ms, setup 42ms, import 64ms, tests 50ms, environment 0ms)
+
+exit 0

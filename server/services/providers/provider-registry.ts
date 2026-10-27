@@ -19,6 +19,7 @@ import type {
   ProviderTier,
   ProviderHealthStatus,
 } from "./types";
+import { isReceipt, type PurposeReceipt } from "../purposeLedger";
 import { answeringLayerFor } from "@shared/openData/demandEvent";
 import { ProviderCircuitBreaker, type BreakerSnapshot } from "./circuit-breaker";
 import { dbBreakerStore } from "./circuit-breaker-store";
@@ -129,7 +130,16 @@ export interface RegistryLookupOptions {
    * registry must not debit it again post-hoc. Set by residentialComps.
    */
   poolPreDebited?: boolean;
+  /**
+   * D2e: the purpose-ledger receipt for a person-adjacent lookup. Required
+   * for PERSON_ADJACENT_CATEGORIES — without it the lookup is refused before
+   * any provider is called (no purpose, no read).
+   */
+  purpose?: PurposeReceipt;
 }
+
+/** Categories whose answer is about a person (owner contact detail, skip trace). */
+const PERSON_ADJACENT_CATEGORIES: ReadonlySet<DataCategory> = new Set<DataCategory>(["owner_info", "skip_trace"] as DataCategory[]);
 
 // ── Circuit breaker constants ─────────────────────────────────
 
@@ -173,6 +183,10 @@ class ProviderRegistry {
     organizationId?: number,
     opts?: RegistryLookupOptions
   ): Promise<LookupResult | null> {
+    if (PERSON_ADJACENT_CATEGORIES.has(category) && !(isReceipt(opts?.purpose, organizationId) && opts?.purpose.surface === "owner_contact_lookup")) {
+      logger.warn(`Refused ${category} lookup: no purpose-ledger receipt`, { source: "ProviderRegistry", metadata: { organizationId } });
+      return null;
+    }
     const candidates = this.getCandidates(category, input, orgTier, opts?.allowProviders);
     const { state, county } = extractStateCounty(input);
 

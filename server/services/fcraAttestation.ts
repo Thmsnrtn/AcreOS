@@ -83,7 +83,10 @@ export async function assertSkipTracePermitted(opts: {
   if (!opts.purposeOfUse || !SKIP_TRACE_PURPOSES.includes(opts.purposeOfUse as SkipTracePurposeOfUse)) {
     throw new SkipTracePurposeRequiredError(
       `Skip-trace requires purposeOfUse ∈ {${SKIP_TRACE_PURPOSES.join(", ")}}. ` +
-      `FCRA §1681b(a)(3) — operator must claim a permissible purpose at query time.`,
+      // The four purposes do not share one subsection: written_consent is the
+      // consumer's written instruction, 15 U.S.C. §1681b(a)(2); the other three
+      // are §1681b(a)(3) purposes.
+      `FCRA 15 U.S.C. §1681b(a)(2) (written_consent) or §1681b(a)(3) (collection, legitimate_business_need, account_review) — operator must claim a permissible purpose at query time.`,
     );
   }
   if (!opts.justification || opts.justification.trim().length < 10) {

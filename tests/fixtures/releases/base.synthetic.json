@@ -1,0 +1,40 @@
+{
+  "synthetic": true,
+  "note": "SYNTHETIC release manifest for D2b tests. No county, digest, bucket or count here is real: every sha256 is the digest of a label like 'SYNTHETIC alpha-parquet-v1', not of any file. Counties are deliberately listed out of canonical order and artifacts out of kind order.",
+  "manifest": {
+    "format": "acreos-parcels/release-manifest@1",
+    "dataset": "acreos-parcels",
+    "mappingVersion": "bulk-row@1",
+    "counties": [
+      {
+        "state": "WI",
+        "county": "synthetic charlie",
+        "parcelCount": 30,
+        "artifacts": [
+          { "kind": "parquet", "bucket": "synthetic-bucket", "objectKey": "statewide/wi/synthetic-charlie/2026-10-01/wi-synthetic-charlie.parquet", "bytes": 3000, "sha256": "1aa883513140f187d8b7fd97362283c52fa3582069412c80245d25b40754cfbd" }
+        ],
+        "source": { "job": "wi_statewide_cadastral_v1", "etlRunId": 3, "sourceAsOf": "2026-09-15T00:00:00.000Z", "layerUrl": "https://synthetic.invalid/wi/0", "fieldMappingDigest": "940e3345b346993acc7032d138ec3434793be02ad437f45e88d60ebd46576869" }
+      },
+      {
+        "state": "NC",
+        "county": "synthetic alpha",
+        "parcelCount": 100,
+        "artifacts": [
+          { "kind": "pmtiles", "bucket": "synthetic-bucket", "objectKey": "statewide/nc/synthetic-alpha/2026-10-01/nc-synthetic-alpha.pmtiles", "bytes": 9000, "sha256": "d41e89393e02ea5800029ba5fbf39ad320da5b2d42fc996f2165ce09fd7149e6" },
+          { "kind": "parquet", "bucket": "synthetic-bucket", "objectKey": "statewide/nc/synthetic-alpha/2026-10-01/nc-synthetic-alpha.parquet", "bytes": 10000, "sha256": "bc16a8e12e43560ca0db6b8c0e95134073162867ab878ccb607eb95c0310ed7b" }
+        ],
+        "source": { "job": "nc_statewide_cadastral_v1", "etlRunId": 1, "sourceAsOf": "2026-09-01T00:00:00.000Z", "layerUrl": "https://synthetic.invalid/nc/0", "fieldMappingDigest": "20621830ab4ad21bc4272d6ad0c95d3440379c83caa0c6e773def28e245e45b1" }
+      },
+      {
+        "state": "NC",
+        "county": "synthetic bravo",
+        "parcelCount": 50,
+        "artifacts": [
+          { "kind": "parquet", "bucket": "synthetic-bucket", "objectKey": "statewide/nc/synthetic-bravo/2026-10-01/nc-synthetic-bravo.parquet", "bytes": 5000, "sha256": "6236f22da6750ee39bd5c19a18998f46b6cd18ee688016676597101c71f5aa00" },
+          { "kind": "pmtiles", "bucket": "synthetic-bucket", "objectKey": "statewide/nc/synthetic-bravo/2026-10-01/nc-synthetic-bravo.pmtiles", "bytes": 4500, "sha256": "ef96ca4b3670d13d05cd0042568478921f40af548a64041fa7c5e37654264230" }
+        ],
+        "source": { "job": "nc_statewide_cadastral_v1", "etlRunId": 2, "sourceAsOf": "2026-09-01T00:00:00.000Z", "layerUrl": "https://synthetic.invalid/nc/0", "fieldMappingDigest": "20621830ab4ad21bc4272d6ad0c95d3440379c83caa0c6e773def28e245e45b1" }
+      }
+    ]
+  }
+}

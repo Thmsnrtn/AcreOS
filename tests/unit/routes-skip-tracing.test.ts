@@ -106,27 +106,60 @@ vi.mock("../../server/storage", () => ({
   },
 }));
 
-const poolDebitMock = vi.fn(async ({ units }: { units: number }) => ({
-  allowed: true,
-  debitedCents: units * 20,
-  remaining: 10_000,
-  poolMonthly: 20_000,
-}));
+/** Per-test: refuse the debit whose externalEventId matches (a pool refusal for one lead). */
+let refuseDebitIf: (externalEventId: string) => boolean = () => false;
+const poolDebitMock = vi.fn(async ({ units, externalEventId }: { units: number; tx?: unknown; externalEventId?: string }) =>
+  refuseDebitIf(externalEventId ?? "")
+    ? { allowed: false, debitedCents: 0, remaining: 0, poolMonthly: 20_000 }
+    : { allowed: true, debitedCents: units * 20, remaining: 10_000, poolMonthly: 20_000 },
+);
 const refundPoolDebitMock = vi.fn(async () => ({}));
 
+// D2e Option B: the debit and the purpose rows run in ONE transaction
+// (server/services/skipTraceFunding.ts). The stand-in records whether the
+// transaction committed or rolled back, so a test can tell a refund from a
+// rollback.
+const txState = { committed: 0, rolledBack: 0 };
+/** Commit / rollback / vendor-call order, so a test can prove each lookup follows its own commit. */
+let EVENTS: string[] = [];
+vi.mock("../../server/db", () => ({
+  db: {},
+  withTransaction: async (fn: (tx: unknown) => Promise<unknown>) => {
+    try {
+      const out = await fn({ tx: true });
+      txState.committed++;
+      EVENTS.push("commit");
+      return out;
+    } catch (err) {
+      txState.rolledBack++;
+      EVENTS.push("rollback");
+      throw err;
+    }
+  },
+}));
 vi.mock("../../server/services/creditPool", () => ({
   poolDebit: (...args: any[]) => poolDebitMock(...(args as [any])),
   refundPoolDebit: (...args: any[]) => refundPoolDebitMock(...(args as [any])),
   poolRefusalDetails: vi.fn(() => ({ reason: "pool_exhausted" })),
 }));
 
+// D2e purpose ledger — per-test behavior via recordPurposeImpl.
+let recordPurposeImpl: (e: any) => Promise<any>;
+const recordPurposeMock = vi.fn((e: any, _tx?: unknown) => recordPurposeImpl(e));
+vi.mock("../../server/services/purposeLedger", () => ({
+  recordPurpose: (...args: any[]) => recordPurposeMock(args[0], args[1]),
+}));
+
 // Provider mock — per-test behavior via traceImpl.
 let traceImpl: (input: any, orgId?: number) => Promise<any>;
-const traceMock = vi.fn((input: any, orgId?: number) => traceImpl(input, orgId));
+const traceMock = vi.fn((input: any, orgId?: number, _purpose?: unknown) => {
+  EVENTS.push(`trace:${input?.lastName}`);
+  return traceImpl(input, orgId);
+});
 
 vi.mock("../../server/services/skipTracingService", () => ({
   skipTracingService: {
-    trace: (...args: any[]) => traceMock(...(args as [any, number])),
+    trace: (...args: any[]) => traceMock(...(args as [any, number, unknown])),
     isConfigured: vi.fn(() => true),
   },
 }));
@@ -201,10 +234,16 @@ const providerMiss = (): SkipTraceResult => ({
 });
 
 beforeEach(() => {
+  recordPurposeMock.mockClear();
+  recordPurposeImpl = async () => ({ ledgerId: 101, surface: "skip_trace_call" });
   LEADS = [];
   TRACES = [];
   nextTraceId = 1;
   traceImpl = async () => providerHit();
+  refuseDebitIf = () => false;
+  EVENTS = [];
+  txState.committed = 0;
+  txState.rolledBack = 0;
   vi.clearAllMocks();
 });
 
@@ -316,6 +355,52 @@ describe("GET /api/skip-tracing/stats", () => {
 // ── POST /trace/:leadId ─────────────────────────────────────────────────────
 
 describe("POST /api/skip-tracing/trace/:leadId", () => {
+  it("D2e: writes ONE purpose-ledger row carrying the declared purpose and the debit, and hands its receipt to the vendor call", async () => {
+    LEADS = [lead(7)];
+    const res = await request(makeApp()).post("/api/skip-tracing/trace/7").send(FCRA_BODY);
+    expect(res.status).toBe(200);
+    expect(recordPurposeMock).toHaveBeenCalledTimes(1);
+    expect(recordPurposeMock.mock.calls[0][0]).toMatchObject({
+      surface: "skip_trace_call",
+      purposeCode: FCRA_BODY.purposeOfUse,
+      justification: FCRA_BODY.justification,
+      leadId: 7,
+      meteringRef: expect.stringMatching(/^skip:trace:\d+:7:\d+#/),
+    });
+    expect(traceMock.mock.calls[0][2]).toEqual({ ledgerId: 101, surface: "skip_trace_call" });
+  });
+
+  it("FALSIFICATION (D2e Option B): a failed ledger write rolls the debit back in the same transaction — no refund needed, no vendor call", async () => {
+    LEADS = [lead(7)];
+    recordPurposeImpl = async () => {
+      throw new Error("ledger down");
+    };
+    traceMock.mockClear();
+    refundPoolDebitMock.mockClear();
+    txState.committed = 0;
+    txState.rolledBack = 0;
+    const res = await request(makeApp()).post("/api/skip-tracing/trace/7").send(FCRA_BODY);
+    expect(res.status).toBe(503);
+    expect(res.body.message).toMatch(/Nothing was charged/);
+    expect(traceMock).not.toHaveBeenCalled();
+    // The debit was taken inside the transaction that rolled back.
+    expect(poolDebitMock.mock.calls.at(-1)?.[0].tx).toEqual({ tx: true });
+    expect(txState.rolledBack).toBe(1);
+    expect(txState.committed).toBe(0);
+    expect(refundPoolDebitMock).not.toHaveBeenCalled();
+  });
+
+  it("D2e Option B: the debit and the purpose row are written through the same transaction", async () => {
+    LEADS = [lead(7)];
+    poolDebitMock.mockClear();
+    recordPurposeMock.mockClear();
+    const res = await request(makeApp()).post("/api/skip-tracing/trace/7").send(FCRA_BODY);
+    expect(res.status).toBe(200);
+    const debitTx = poolDebitMock.mock.calls[0][0].tx;
+    expect(debitTx).toEqual({ tx: true });
+    expect(recordPurposeMock.mock.calls[0][1]).toBe(debitTx);
+  });
+
   it("persists the trace and writes contacts back onto the lead", async () => {
     LEADS = [lead(7)];
     const res = await request(makeApp()).post("/api/skip-tracing/trace/7").send(FCRA_BODY);
@@ -392,7 +477,7 @@ describe("POST /api/skip-tracing/trace/:leadId", () => {
 // ── POST /batch ─────────────────────────────────────────────────────────────
 
 describe("POST /api/skip-tracing/batch", () => {
-  it("traces ONLY untraced leads and debits exactly that many units", async () => {
+  it("traces ONLY untraced leads and debits exactly one unit per attempted lead", async () => {
     LEADS = [lead(1), lead(2), lead(3)];
     TRACES = [{ id: 1, leadId: 2, status: "completed" }]; // lead 2 already traced
 
@@ -403,8 +488,13 @@ describe("POST /api/skip-tracing/batch", () => {
     // The already-traced lead was never re-traced (no re-charge).
     const tracedNames = traceMock.mock.calls.map(([input]) => input.lastName);
     expect(tracedNames).toEqual(["Number1", "Number3"]);
-    expect(poolDebitMock).toHaveBeenCalledTimes(1);
-    expect(poolDebitMock.mock.calls[0][0].units).toBe(2);
+    // Per lead (D2e 2A): one debit of one unit per attempted lead, each under its own key.
+    expect(poolDebitMock).toHaveBeenCalledTimes(2);
+    expect(poolDebitMock.mock.calls.map(([a]) => a.units)).toEqual([1, 1]);
+    const keys = poolDebitMock.mock.calls.map(([a]) => (a as { externalEventId?: string }).externalEventId);
+    expect(new Set(keys).size).toBe(2);
+    expect(keys[0]).toMatch(/:1$/);
+    expect(keys[1]).toMatch(/:3$/);
   });
 
   it("advances past the first page on consecutive runs", async () => {
@@ -452,9 +542,76 @@ describe("POST /api/skip-tracing/batch", () => {
 
     const res = await request(makeApp()).post("/api/skip-tracing/batch").send(FCRA_BODY);
     expect(res.body).toMatchObject({ requested: 2, traced: 1, found: 1, failed: 1, untracedRemaining: 1 });
-    // Debited 2 units (40c) → refund half for the failed lookup.
+    // Per lead: exactly the failed lead's OWN debit (1 unit, 20c) is refunded, under its own key.
     expect(refundPoolDebitMock).toHaveBeenCalledTimes(1);
-    expect(refundPoolDebitMock.mock.calls[0][0].amountCents).toBe(20);
+    expect(refundPoolDebitMock.mock.calls[0][0]).toMatchObject({ amountCents: 20, originalEventId: expect.stringMatching(/:2$/) });
+    expect(res.body.creditPool.debitedCents).toBe(20);
+  });
+
+  // ── Per-lead isolation (D2e batch shape 2A, Tom-approved 2026-10-26) ──────
+
+  it("per lead: each lead's debit + purpose row commit in that lead's own transaction, and its vendor call follows that commit", async () => {
+    LEADS = [lead(1), lead(2), lead(3)];
+    const res = await request(makeApp()).post("/api/skip-tracing/batch").send(FCRA_BODY);
+    expect(res.status).toBe(200);
+    expect(EVENTS).toEqual(["commit", "trace:Number1", "commit", "trace:Number2", "commit", "trace:Number3"]);
+    // Each purpose row rode the transaction its own debit was taken in, one lead per row.
+    expect(recordPurposeMock.mock.calls.map(([e]) => e.leadId)).toEqual([1, 2, 3]);
+    recordPurposeMock.mock.calls.forEach(([e, tx], i) => {
+      expect(tx).toBe(poolDebitMock.mock.calls[i][0].tx);
+      expect(e.meteringRef).toMatch(new RegExp(`^skip:batch:${ORG_ID}:\\d+:${e.leadId}#`));
+    });
+  });
+
+  it("a ledger failure on one lead rolls back only that lead: no lookup for it, the others run", async () => {
+    LEADS = [lead(1), lead(2), lead(3)];
+    recordPurposeImpl = async (e) => {
+      if (e.leadId === 2) throw new Error("ledger down");
+      return { ledgerId: 100 + e.leadId, surface: "skip_trace_call" };
+    };
+    const res = await request(makeApp()).post("/api/skip-tracing/batch").send(FCRA_BODY);
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ requested: 3, traced: 2, failed: 0, unrecorded: 1 });
+    expect(traceMock.mock.calls.map(([i]) => i.lastName)).toEqual(["Number1", "Number3"]);
+    // Lead 2's debit was taken inside the transaction that rolled back — no debit without a row.
+    expect(EVENTS).toEqual(["commit", "trace:Number1", "rollback", "commit", "trace:Number3"]);
+    expect(refundPoolDebitMock).not.toHaveBeenCalled();
+    expect(res.body.creditPool.debitedCents).toBe(40);
+    expect(createSkipTraceMock.mock.calls.map(([r]) => r.leadId)).toEqual([1, 3]);
+  });
+
+  it("a pool refusal on one lead does not block the others, and writes no purpose row for it", async () => {
+    LEADS = [lead(1), lead(2), lead(3)];
+    refuseDebitIf = (key) => key.endsWith(":2");
+    const res = await request(makeApp()).post("/api/skip-tracing/batch").send(FCRA_BODY);
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ requested: 3, traced: 2, refused: 1 });
+    expect(traceMock.mock.calls.map(([i]) => i.lastName)).toEqual(["Number1", "Number3"]);
+    // No ledger row without a debit.
+    expect(recordPurposeMock.mock.calls.map(([e]) => e.leadId)).toEqual([1, 3]);
+    expect(res.body.creditPool.debitedCents).toBe(40);
+  });
+
+  it("a pool refusal for EVERY lead is a 429 with nothing run", async () => {
+    LEADS = [lead(1), lead(2)];
+    refuseDebitIf = () => true;
+    const res = await request(makeApp()).post("/api/skip-tracing/batch").send(FCRA_BODY);
+    expect(res.status).toBe(429);
+    expect(traceMock).not.toHaveBeenCalled();
+    expect(recordPurposeMock).not.toHaveBeenCalled();
+  });
+
+  it("a thrown lookup on one lead refunds only that lead and the rest still run", async () => {
+    LEADS = [lead(1), lead(2), lead(3)];
+    traceImpl = async (input) => {
+      if (input.lastName === "Number1") throw new Error("vendor exploded");
+      return providerHit();
+    };
+    const res = await request(makeApp()).post("/api/skip-tracing/batch").send(FCRA_BODY);
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ requested: 3, traced: 2, failed: 1 });
+    expect(refundPoolDebitMock).toHaveBeenCalledTimes(1);
+    expect(refundPoolDebitMock.mock.calls[0][0]).toMatchObject({ amountCents: 20, originalEventId: expect.stringMatching(/:1$/) });
   });
 
   it("rejects a non-positive limit", async () => {

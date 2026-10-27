@@ -10240,6 +10240,9 @@ export const providerLookupLog = pgTable("provider_lookup_log", {
   intentClass: text("intent_class"),
   answeringLayer: text("answering_layer"),
   confidenceServed: real("confidence_served"),
+  // D2b: the dataset release an AcreOS-owned answer came from (null = a
+  // pre-release lane; never the current pointer guessed onto an older row).
+  servedReleaseId: text("served_release_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (table) => [
   index("provider_lookup_provider_idx").on(table.providerName, table.createdAt),
@@ -14101,6 +14104,12 @@ export * from "./schema/rental";
 // MIGRATION/ETL — extracted to ./schema/etl.ts
 // ============================================================================
 export * from "./schema/etl";
+// D2e — the append-only purpose ledger (person-adjacent lookups) — ./schema/purpose-ledger.ts
+export * from "./schema/purpose-ledger";
+// D2b — immutable dataset releases + the release pointer — ./schema/dataset-releases.ts
+export * from "./schema/dataset-releases";
+// D2c — APIDs, APN validity windows, lineage events — ./schema/parcel-apid.ts
+export * from "./schema/parcel-apid";
 
 // ============================================================================
 // FINANCIAL LEDGER + MAIL SHIPMENTS — extracted to ./schema/finance.ts

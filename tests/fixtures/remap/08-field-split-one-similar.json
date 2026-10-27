@@ -1,0 +1,40 @@
+{
+  "synthetic": true,
+  "about": "SYNTHETIC drift fixture (D2d). The layer STRUCTURE is invented to simulate one drift shape of an ArcGIS layer against the FL seed field map; every VALUE is derived from the FL golden county's recorded attributes (shared/landData/golden/fl-golden-county.json) by the ops in values.derive — no value is invented.",
+  "shape": "field-split-one-similar",
+  "drift": "PHY_ADDR1 split into PHY_ADDR1_NUM (first token) + STREET (the rest): only the first half is name-similar, so it is proposed — and holds half an address.",
+  "layer": {
+    "drop": [
+      "PHY_ADDR1"
+    ],
+    "add": [
+      {
+        "name": "PHY_ADDR1_NUM",
+        "type": "esriFieldTypeString"
+      },
+      {
+        "name": "STREET",
+        "type": "esriFieldTypeString"
+      }
+    ]
+  },
+  "values": {
+    "derive": {
+      "PHY_ADDR1_NUM": {
+        "op": "firstToken",
+        "of": "PHY_ADDR1"
+      },
+      "STREET": {
+        "op": "restTokens",
+        "of": "PHY_ADDR1"
+      }
+    }
+  },
+  "expect": {
+    "outcome": "rejected",
+    "proposed": {
+      "address": "PHY_ADDR1_NUM"
+    },
+    "mismatchField": "situsAddress"
+  }
+}

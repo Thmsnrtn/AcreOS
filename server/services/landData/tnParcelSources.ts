@@ -24,6 +24,8 @@
  * Williamson — their status lives in the county source census.
  */
 
+import { unresolvedDossier, type SourceDossier } from "@shared/openData/sourcePolicy";
+
 export const TN_COMPTROLLER_DOWNLOAD = {
   licenseSource: "TN Comptroller parcel download",
   pageUrl:
@@ -33,6 +35,21 @@ export const TN_COMPTROLLER_DOWNLOAD = {
   joinField: "GISLINK",
   mayStore: true,
 } as const;
+
+/**
+ * The Comptroller download's use-class dossier — what UPLOADING a copy (to the
+ * open-data bucket, where it is redistributable) needs. Every class is
+ * unresolved: the 2026-10-10 quote ("can be used in a commercial
+ * application") supports keeping the county's parcels for AcreOS's own
+ * product, which the loader still does, but says nothing on display,
+ * redistribution or resale, and D2h §B2 found its cadence wording conflicting.
+ * Until a person re-reads the page and records each finding here, no TN
+ * artifact is uploaded (docs/land-data/dossiers/TN.md).
+ */
+export const TN_COMPTROLLER_DOSSIER: SourceDossier = unresolvedDossier(
+  TN_COMPTROLLER_DOWNLOAD.pageUrl,
+  "the 2026-10-10 terms quote covers commercial use of the shapefile, not storing, displaying, redistributing or reselling a copy — re-read the page and record each use class (D2h §B2)",
+);
 
 /** Counties the Comptroller does not maintain (from the download page). */
 export const TN_SELF_MAINTAINED_COUNTIES = [

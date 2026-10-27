@@ -1,0 +1,6 @@
+{
+  "synthetic": true,
+  "description": "Synthetic UST Finder returnCountOnly body: zero.",
+  "shapeBasis": "DataSourceBroker.queryEpaData reads {count}",
+  "payload": { "count": 0 }
+}

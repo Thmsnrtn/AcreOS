@@ -78,6 +78,24 @@ jobs:
       # The first execution of this path, 2026-09-04, found 37 columns declared
       # in shared/schema.ts that no DDL in the repo created — enough that
       # `db.select().from(properties)` failed on the database it built.
+      # The round trip (sub-check 10/10) dumps and restores with the client
+      # tools of the SERVER's major version (scripts/lib/pg-client-for-server.sh)
+      # and refuses a mismatch. The runner image's own client tools are not
+      # pinned and moved past the pg16 service on 2026-10-26 (pg_restore >= 17
+      # sends SET transaction_timeout, which 16 rejects), so install 16's.
+      - name: Install the PostgreSQL 16 client tools the service needs
+        run: |
+          sudo apt-get update -qq
+          if ! sudo apt-get install -y -qq --no-install-recommends postgresql-client-16; then
+            # Not in this image's repositories: add the PostgreSQL project's
+            # own apt repository (PGDG) and retry.
+            sudo apt-get install -y -qq --no-install-recommends postgresql-common
+            sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+            sudo apt-get install -y -qq --no-install-recommends postgresql-client-16
+          fi
+          /usr/lib/postgresql/16/bin/pg_dump --version
+          /usr/lib/postgresql/16/bin/pg_restore --version
+
       - name: Build the schema from this repo and verify it
         run: npm run db:build-from-repo
 

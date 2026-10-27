@@ -7,7 +7,9 @@
  *   - the on-demand county pipeline (countyPipeline.ts), paging a reviewed,
  *     storable ArcGIS county service;
  *   - the Tennessee Comptroller loader (scripts/land-data/build-tn-showcase.ts
- *     --comptroller), whose download's terms allow commercial use. That is how
+ *     --comptroller, bounded via tnComptrollerCounty.ts; it saves in batches and
+ *     finishes with completeLoadedCounty), whose download's terms allow
+ *     commercial use. That is how
  *     TN parcels arrive (founder decision 2026-10-11: the state's
  *     non-commercial public service is never used).
  *
@@ -113,15 +115,10 @@ export async function saveOwnedParcels(target: OwnedTarget, parcels: OwnedParcel
   return stored;
 }
 
-/**
- * Load a whole county from a file the founder downloaded (the Comptroller
- * loader): store its parcels and mark the county's coverage row complete, so
- * the county status the customer sees says the parcels are here.
- */
-async function loadOwnedCounty(target: OwnedTarget, parcels: OwnedParcelInput[]): Promise<number> {
+/** Mark a county's coverage row complete with the number of parcels kept. */
+async function markOwnedCountyComplete(target: OwnedTarget, stored: number): Promise<void> {
   const state = target.state.toUpperCase();
   const county = normalizeCountyName(target.county);
-  const stored = await saveOwnedParcels(target, parcels);
   await db
     .insert(countyDiscoveryQueue)
     .values({ state, county, status: "resolved", lastResult: `loaded from ${target.sourceName}` })
@@ -130,7 +127,6 @@ async function loadOwnedCounty(target: OwnedTarget, parcels: OwnedParcelInput[])
     .update(countyDiscoveryQueue)
     .set({ ownedStatus: "complete", ownedRefusalReason: null, ownedParcelsStored: stored, ownedCompletedAt: clock.now(), updatedAt: clock.now() })
     .where(and(eq(countyDiscoveryQueue.state, state), eq(countyDiscoveryQueue.county, county)));
-  return stored;
 }
 
 export interface OwnedParcelHit {
@@ -194,22 +190,23 @@ export async function ownedParcelAtPoint(lat: number, lng: number): Promise<Owne
 }
 
 /**
- * The Comptroller loader's one call (scripts/land-data/build-tn-showcase.ts
- * --comptroller): keep the county's parcels, then record each upload the
- * bucket confirmed against the county's coverage row — the receipts are what
- * getCorporaStatus() reads for "ingested".
+ * Complete a county whose parcels were kept — in batches by the bounded
+ * Comptroller loader (tnComptrollerCounty.ts via
+ * scripts/land-data/build-tn-showcase.ts): mark the coverage row complete with
+ * `stored`, record each bucket-confirmed receipt against it (what
+ * getCorporaStatus() reads for "ingested"), and tell IndexNow.
  */
-export async function persistLoadedCounty(
+export async function completeLoadedCounty(
   target: OwnedTarget,
-  parcels: OwnedParcelInput[],
+  stored: number,
   receipts: import("./openDataBucket").UploadReceipt[],
-): Promise<{ stored: number; receiptsRecorded: number }> {
-  const stored = await loadOwnedCounty(target, parcels);
+): Promise<{ receiptsRecorded: number }> {
+  await markOwnedCountyComplete(target, stored);
   const { recordReceipt } = await import("./openDataBucket");
   for (const r of receipts) await recordReceipt(target.state, normalizeCountyName(target.county), r);
   // The county now has a public guide and parcel pages: tell IndexNow
   // (best-effort; dormant without a key).
   const { announceCountyLoaded } = await import("../publicCountyGuide");
   await announceCountyLoaded(target.state, target.county);
-  return { stored, receiptsRecorded: receipts.length };
+  return { receiptsRecorded: receipts.length };
 }

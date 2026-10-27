@@ -1,0 +1,334 @@
+{
+  "synthetic": true,
+  "about": "SYNTHETIC golden lineage case (D2c). NOT real county data: every parcel id starts SYNTHETIC-, every shape is a hand-drawn rectangle, and no county, owner or value is represented. It pins shared/landData/lineage.ts classifyLineage() against hand-computed answers for every lineage event type and the ambiguous band. A real-county golden lineage case needs two verified releases of one county with an assessor-confirmed split/merge/renumber; none is on hand, so none is invented.",
+  "geometryEncoding": "Each case has its own origin. A rect [x0, y0, x1, y1] is in UNITS of 0.0001 degrees east/north of the case origin: lng = originLng + x * 0.0001, lat = originLat + y * 0.0001, expanded to a closed GeoJSON Polygon ring. 'rects' is a MultiPolygon of rects. null = the release carries no shape. Fractions are hand-computable because lineage.ts projects with ONE affine projection, which preserves area ratios.",
+  "unitDegrees": 0.0001,
+  "originLat": 30.0,
+  "originLngStart": -81.5,
+  "originLngStep": 0.01,
+  "thresholds": { "covers": 0.95, "negligible": 0.02, "sameFootprint": 0.98 },
+  "cases": [
+    {
+      "name": "same",
+      "note": "Identical 10x10 under the same id.",
+      "previous": [{ "sourceId": "SYNTHETIC-01-A", "geometry": { "rect": [0, 0, 10, 10] } }],
+      "next": [{ "sourceId": "SYNTHETIC-01-A", "geometry": { "rect": [0, 0, 10, 10] } }],
+      "expected": [
+        { "kind": "same", "previousIds": ["SYNTHETIC-01-A"], "nextIds": ["SYNTHETIC-01-A"], "basis": "geometry", "coverage": 1, "reason": null, "flags": [], "continuingId": null,
+          "overlaps": [{ "previousId": "SYNTHETIC-01-A", "nextId": "SYNTHETIC-01-A", "fractionOfPrevious": 1, "fractionOfNext": 1 }] }
+      ]
+    },
+    {
+      "name": "same_with_redigitizing_drift",
+      "note": "Top edge moved 0.3 units: intersection 100, next area 103 -> fractionOfNext 100/103 = 0.970874 >= covers.",
+      "previous": [{ "sourceId": "SYNTHETIC-02-A", "geometry": { "rect": [0, 0, 10, 10] } }],
+      "next": [{ "sourceId": "SYNTHETIC-02-A", "geometry": { "rect": [0, 0, 10, 10.3] } }],
+      "expected": [
+        { "kind": "same", "previousIds": ["SYNTHETIC-02-A"], "nextIds": ["SYNTHETIC-02-A"], "basis": "geometry", "coverage": 0.970874, "reason": null, "flags": [], "continuingId": null,
+          "overlaps": [{ "previousId": "SYNTHETIC-02-A", "nextId": "SYNTHETIC-02-A", "fractionOfPrevious": 1, "fractionOfNext": 0.970874 }] }
+      ]
+    },
+    {
+      "name": "renumber",
+      "note": "Same land, new id.",
+      "previous": [{ "sourceId": "SYNTHETIC-03-OLD", "geometry": { "rect": [0, 0, 10, 10] } }],
+      "next": [{ "sourceId": "SYNTHETIC-03-NEW", "geometry": { "rect": [0, 0, 10, 10] } }],
+      "expected": [
+        { "kind": "renumber", "previousIds": ["SYNTHETIC-03-OLD"], "nextIds": ["SYNTHETIC-03-NEW"], "basis": "geometry", "coverage": 1, "reason": null, "flags": [], "continuingId": null,
+          "overlaps": [{ "previousId": "SYNTHETIC-03-OLD", "nextId": "SYNTHETIC-03-NEW", "fractionOfPrevious": 1, "fractionOfNext": 1 }] }
+      ]
+    },
+    {
+      "name": "split",
+      "note": "10x10 -> 4x10 + 6x10. Children cover 0.4 + 0.6 = 1.0 of the parent.",
+      "previous": [{ "sourceId": "SYNTHETIC-04-P", "geometry": { "rect": [0, 0, 10, 10] } }],
+      "next": [
+        { "sourceId": "SYNTHETIC-04-C1", "geometry": { "rect": [0, 0, 4, 10] } },
+        { "sourceId": "SYNTHETIC-04-C2", "geometry": { "rect": [4, 0, 10, 10] } }
+      ],
+      "expected": [
+        { "kind": "split", "previousIds": ["SYNTHETIC-04-P"], "nextIds": ["SYNTHETIC-04-C1", "SYNTHETIC-04-C2"], "basis": "geometry", "coverage": 1, "reason": null, "flags": [], "continuingId": null,
+          "overlaps": [
+            { "previousId": "SYNTHETIC-04-P", "nextId": "SYNTHETIC-04-C1", "fractionOfPrevious": 0.4, "fractionOfNext": 1 },
+            { "previousId": "SYNTHETIC-04-P", "nextId": "SYNTHETIC-04-C2", "fractionOfPrevious": 0.6, "fractionOfNext": 1 }
+          ] }
+      ]
+    },
+    {
+      "name": "split_remainder_keeps_apn",
+      "note": "The remainder keeps the parent's APN. Still a split: the APN now names different (smaller) land, so it gets a new APID.",
+      "previous": [{ "sourceId": "SYNTHETIC-05-D", "geometry": { "rect": [0, 0, 10, 10] } }],
+      "next": [
+        { "sourceId": "SYNTHETIC-05-D", "geometry": { "rect": [0, 0, 7, 10] } },
+        { "sourceId": "SYNTHETIC-05-D-1", "geometry": { "rect": [7, 0, 10, 10] } }
+      ],
+      "expected": [
+        { "kind": "split", "previousIds": ["SYNTHETIC-05-D"], "nextIds": ["SYNTHETIC-05-D", "SYNTHETIC-05-D-1"], "basis": "geometry", "coverage": 1, "reason": null, "flags": [], "continuingId": null,
+          "overlaps": [
+            { "previousId": "SYNTHETIC-05-D", "nextId": "SYNTHETIC-05-D", "fractionOfPrevious": 0.7, "fractionOfNext": 1 },
+            { "previousId": "SYNTHETIC-05-D", "nextId": "SYNTHETIC-05-D-1", "fractionOfPrevious": 0.3, "fractionOfNext": 1 }
+          ] }
+      ]
+    },
+    {
+      "name": "split_coverage_just_above_threshold",
+      "note": "Children cover 0.5 + 0.46 = 0.96 >= covers (a 0.4-wide strip became road / unparcelled).",
+      "previous": [{ "sourceId": "SYNTHETIC-06-P", "geometry": { "rect": [0, 0, 10, 10] } }],
+      "next": [
+        { "sourceId": "SYNTHETIC-06-C1", "geometry": { "rect": [0, 0, 5, 10] } },
+        { "sourceId": "SYNTHETIC-06-C2", "geometry": { "rect": [5, 0, 9.6, 10] } }
+      ],
+      "expected": [
+        { "kind": "split", "previousIds": ["SYNTHETIC-06-P"], "nextIds": ["SYNTHETIC-06-C1", "SYNTHETIC-06-C2"], "basis": "geometry", "coverage": 0.96, "reason": null, "flags": [], "continuingId": null,
+          "overlaps": [
+            { "previousId": "SYNTHETIC-06-P", "nextId": "SYNTHETIC-06-C1", "fractionOfPrevious": 0.5, "fractionOfNext": 1 },
+            { "previousId": "SYNTHETIC-06-P", "nextId": "SYNTHETIC-06-C2", "fractionOfPrevious": 0.46, "fractionOfNext": 1 }
+          ] }
+      ]
+    },
+    {
+      "name": "split_coverage_just_short",
+      "note": "Children cover 0.5 + 0.44 = 0.94 < covers: 6% of the parent went nowhere. Ambiguous, not split.",
+      "previous": [{ "sourceId": "SYNTHETIC-07-P", "geometry": { "rect": [0, 0, 10, 10] } }],
+      "next": [
+        { "sourceId": "SYNTHETIC-07-C1", "geometry": { "rect": [0, 0, 5, 10] } },
+        { "sourceId": "SYNTHETIC-07-C2", "geometry": { "rect": [5, 0, 9.4, 10] } }
+      ],
+      "expected": [
+        { "kind": "ambiguous", "previousIds": ["SYNTHETIC-07-P"], "nextIds": ["SYNTHETIC-07-C1", "SYNTHETIC-07-C2"], "basis": "geometry", "coverage": null, "reason": "split_coverage_short", "flags": [], "continuingId": null,
+          "overlaps": [
+            { "previousId": "SYNTHETIC-07-P", "nextId": "SYNTHETIC-07-C1", "fractionOfPrevious": 0.5, "fractionOfNext": 1 },
+            { "previousId": "SYNTHETIC-07-P", "nextId": "SYNTHETIC-07-C2", "fractionOfPrevious": 0.44, "fractionOfNext": 1 }
+          ] }
+      ]
+    },
+    {
+      "name": "merge",
+      "note": "5x10 + 5x10 -> 10x10. Parents cover 0.5 + 0.5 = 1.0 of the child.",
+      "previous": [
+        { "sourceId": "SYNTHETIC-08-P1", "geometry": { "rect": [0, 0, 5, 10] } },
+        { "sourceId": "SYNTHETIC-08-P2", "geometry": { "rect": [5, 0, 10, 10] } }
+      ],
+      "next": [{ "sourceId": "SYNTHETIC-08-M", "geometry": { "rect": [0, 0, 10, 10] } }],
+      "expected": [
+        { "kind": "merge", "previousIds": ["SYNTHETIC-08-P1", "SYNTHETIC-08-P2"], "nextIds": ["SYNTHETIC-08-M"], "basis": "geometry", "coverage": 1, "reason": null, "flags": [], "continuingId": null,
+          "overlaps": [
+            { "previousId": "SYNTHETIC-08-P1", "nextId": "SYNTHETIC-08-M", "fractionOfPrevious": 1, "fractionOfNext": 0.5 },
+            { "previousId": "SYNTHETIC-08-P2", "nextId": "SYNTHETIC-08-M", "fractionOfPrevious": 1, "fractionOfNext": 0.5 }
+          ] }
+      ]
+    },
+    {
+      "name": "merge_of_noncontiguous_into_multipolygon",
+      "note": "Two 4x10 parcels with a 2-wide gap merge into one MultiPolygon parcel: 0.5 + 0.5.",
+      "previous": [
+        { "sourceId": "SYNTHETIC-09-P1", "geometry": { "rect": [0, 0, 4, 10] } },
+        { "sourceId": "SYNTHETIC-09-P2", "geometry": { "rect": [6, 0, 10, 10] } }
+      ],
+      "next": [{ "sourceId": "SYNTHETIC-09-M", "geometry": { "rects": [[0, 0, 4, 10], [6, 0, 10, 10]] } }],
+      "expected": [
+        { "kind": "merge", "previousIds": ["SYNTHETIC-09-P1", "SYNTHETIC-09-P2"], "nextIds": ["SYNTHETIC-09-M"], "basis": "geometry", "coverage": 1, "reason": null, "flags": [], "continuingId": null,
+          "overlaps": [
+            { "previousId": "SYNTHETIC-09-P1", "nextId": "SYNTHETIC-09-M", "fractionOfPrevious": 1, "fractionOfNext": 0.5 },
+            { "previousId": "SYNTHETIC-09-P2", "nextId": "SYNTHETIC-09-M", "fractionOfPrevious": 1, "fractionOfNext": 0.5 }
+          ] }
+      ]
+    },
+    {
+      "name": "split_into_multipolygon_child",
+      "note": "One child is two 2x10 end strips (MultiPolygon, area 40), the other the 6x10 middle: 0.4 + 0.6.",
+      "previous": [{ "sourceId": "SYNTHETIC-10-P", "geometry": { "rect": [0, 0, 10, 10] } }],
+      "next": [
+        { "sourceId": "SYNTHETIC-10-ENDS", "geometry": { "rects": [[0, 0, 2, 10], [8, 0, 10, 10]] } },
+        { "sourceId": "SYNTHETIC-10-MID", "geometry": { "rect": [2, 0, 8, 10] } }
+      ],
+      "expected": [
+        { "kind": "split", "previousIds": ["SYNTHETIC-10-P"], "nextIds": ["SYNTHETIC-10-ENDS", "SYNTHETIC-10-MID"], "basis": "geometry", "coverage": 1, "reason": null, "flags": [], "continuingId": null,
+          "overlaps": [
+            { "previousId": "SYNTHETIC-10-P", "nextId": "SYNTHETIC-10-ENDS", "fractionOfPrevious": 0.4, "fractionOfNext": 1 },
+            { "previousId": "SYNTHETIC-10-P", "nextId": "SYNTHETIC-10-MID", "fractionOfPrevious": 0.6, "fractionOfNext": 1 }
+          ] }
+      ]
+    },
+    {
+      "name": "condo_conversion",
+      "note": "One parcel becomes three unit records on its exact footprint. None keeps the parent id.",
+      "previous": [{ "sourceId": "SYNTHETIC-11-BLDG", "geometry": { "rect": [0, 0, 10, 10] } }],
+      "next": [
+        { "sourceId": "SYNTHETIC-11-U101", "geometry": { "rect": [0, 0, 10, 10] } },
+        { "sourceId": "SYNTHETIC-11-U102", "geometry": { "rect": [0, 0, 10, 10] } },
+        { "sourceId": "SYNTHETIC-11-U103", "geometry": { "rect": [0, 0, 10, 10] } }
+      ],
+      "expected": [
+        { "kind": "condo", "previousIds": ["SYNTHETIC-11-BLDG"], "nextIds": ["SYNTHETIC-11-U101", "SYNTHETIC-11-U102", "SYNTHETIC-11-U103"], "basis": "geometry", "coverage": 1, "reason": null, "flags": ["condo_stack"], "continuingId": null,
+          "overlaps": [
+            { "previousId": "SYNTHETIC-11-BLDG", "nextId": "SYNTHETIC-11-U101", "fractionOfPrevious": 1, "fractionOfNext": 1 },
+            { "previousId": "SYNTHETIC-11-BLDG", "nextId": "SYNTHETIC-11-U102", "fractionOfPrevious": 1, "fractionOfNext": 1 },
+            { "previousId": "SYNTHETIC-11-BLDG", "nextId": "SYNTHETIC-11-U103", "fractionOfPrevious": 1, "fractionOfNext": 1 }
+          ] }
+      ]
+    },
+    {
+      "name": "condo_conversion_master_keeps_id",
+      "note": "The master (common-element) record keeps the parent id on the same footprint; it continues the parent.",
+      "previous": [{ "sourceId": "SYNTHETIC-12-G", "geometry": { "rect": [0, 0, 10, 10] } }],
+      "next": [
+        { "sourceId": "SYNTHETIC-12-G", "geometry": { "rect": [0, 0, 10, 10] } },
+        { "sourceId": "SYNTHETIC-12-G-1", "geometry": { "rect": [0, 0, 10, 10] } },
+        { "sourceId": "SYNTHETIC-12-G-2", "geometry": { "rect": [0, 0, 10, 10] } }
+      ],
+      "expected": [
+        { "kind": "condo", "previousIds": ["SYNTHETIC-12-G"], "nextIds": ["SYNTHETIC-12-G", "SYNTHETIC-12-G-1", "SYNTHETIC-12-G-2"], "basis": "geometry", "coverage": 1, "reason": null, "flags": ["condo_stack"], "continuingId": "SYNTHETIC-12-G",
+          "overlaps": [
+            { "previousId": "SYNTHETIC-12-G", "nextId": "SYNTHETIC-12-G", "fractionOfPrevious": 1, "fractionOfNext": 1 },
+            { "previousId": "SYNTHETIC-12-G", "nextId": "SYNTHETIC-12-G-1", "fractionOfPrevious": 1, "fractionOfNext": 1 },
+            { "previousId": "SYNTHETIC-12-G", "nextId": "SYNTHETIC-12-G-2", "fractionOfPrevious": 1, "fractionOfNext": 1 }
+          ] }
+      ]
+    },
+    {
+      "name": "condo_dissolution",
+      "note": "A two-unit stack collapses to one record on the footprint: merge, flagged.",
+      "previous": [
+        { "sourceId": "SYNTHETIC-13-U1", "geometry": { "rect": [0, 0, 10, 10] } },
+        { "sourceId": "SYNTHETIC-13-U2", "geometry": { "rect": [0, 0, 10, 10] } }
+      ],
+      "next": [{ "sourceId": "SYNTHETIC-13-WHOLE", "geometry": { "rect": [0, 0, 10, 10] } }],
+      "expected": [
+        { "kind": "merge", "previousIds": ["SYNTHETIC-13-U1", "SYNTHETIC-13-U2"], "nextIds": ["SYNTHETIC-13-WHOLE"], "basis": "geometry", "coverage": 1, "reason": null, "flags": ["condo_stack", "condo_dissolution"], "continuingId": null,
+          "overlaps": [
+            { "previousId": "SYNTHETIC-13-U1", "nextId": "SYNTHETIC-13-WHOLE", "fractionOfPrevious": 1, "fractionOfNext": 1 },
+            { "previousId": "SYNTHETIC-13-U2", "nextId": "SYNTHETIC-13-WHOLE", "fractionOfPrevious": 1, "fractionOfNext": 1 }
+          ] }
+      ]
+    },
+    {
+      "name": "condo_stack_renumbered_is_unpairable",
+      "note": "Every unit of a stack renumbered. Units share one footprint, so geometry cannot say which old unit is which new one.",
+      "previous": [
+        { "sourceId": "SYNTHETIC-14-X1", "geometry": { "rect": [0, 0, 10, 10] } },
+        { "sourceId": "SYNTHETIC-14-X2", "geometry": { "rect": [0, 0, 10, 10] } }
+      ],
+      "next": [
+        { "sourceId": "SYNTHETIC-14-Y1", "geometry": { "rect": [0, 0, 10, 10] } },
+        { "sourceId": "SYNTHETIC-14-Y2", "geometry": { "rect": [0, 0, 10, 10] } }
+      ],
+      "expected": [
+        { "kind": "ambiguous", "previousIds": ["SYNTHETIC-14-X1", "SYNTHETIC-14-X2"], "nextIds": ["SYNTHETIC-14-Y1", "SYNTHETIC-14-Y2"], "basis": "geometry", "coverage": null, "reason": "condo_units_unpairable", "flags": ["condo_stack"], "continuingId": null,
+          "overlaps": [
+            { "previousId": "SYNTHETIC-14-X1", "nextId": "SYNTHETIC-14-Y1", "fractionOfPrevious": 1, "fractionOfNext": 1 },
+            { "previousId": "SYNTHETIC-14-X1", "nextId": "SYNTHETIC-14-Y2", "fractionOfPrevious": 1, "fractionOfNext": 1 },
+            { "previousId": "SYNTHETIC-14-X2", "nextId": "SYNTHETIC-14-Y1", "fractionOfPrevious": 1, "fractionOfNext": 1 },
+            { "previousId": "SYNTHETIC-14-X2", "nextId": "SYNTHETIC-14-Y2", "fractionOfPrevious": 1, "fractionOfNext": 1 }
+          ] }
+      ]
+    },
+    {
+      "name": "retired",
+      "note": "No counterpart in the next release.",
+      "previous": [{ "sourceId": "SYNTHETIC-15-GONE", "geometry": { "rect": [0, 0, 10, 10] } }],
+      "next": [],
+      "expected": [
+        { "kind": "retired", "previousIds": ["SYNTHETIC-15-GONE"], "nextIds": [], "basis": "geometry", "coverage": null, "reason": null, "flags": [], "continuingId": null, "overlaps": [] }
+      ]
+    },
+    {
+      "name": "new",
+      "note": "No counterpart in the previous release.",
+      "previous": [],
+      "next": [{ "sourceId": "SYNTHETIC-16-FRESH", "geometry": { "rect": [0, 0, 10, 10] } }],
+      "expected": [
+        { "kind": "new", "previousIds": [], "nextIds": ["SYNTHETIC-16-FRESH"], "basis": "geometry", "coverage": null, "reason": null, "flags": [], "continuingId": null, "overlaps": [] }
+      ]
+    },
+    {
+      "name": "apn_reused_for_different_land",
+      "note": "The county reused an APN on land 10 units away. The id does NOT carry identity: retired + new, both flagged.",
+      "previous": [{ "sourceId": "SYNTHETIC-17-R", "geometry": { "rect": [0, 0, 10, 10] } }],
+      "next": [{ "sourceId": "SYNTHETIC-17-R", "geometry": { "rect": [20, 0, 30, 10] } }],
+      "expected": [
+        { "kind": "retired", "previousIds": ["SYNTHETIC-17-R"], "nextIds": [], "basis": "geometry", "coverage": null, "reason": null, "flags": ["apn_reused_for_different_land"], "continuingId": null, "overlaps": [] },
+        { "kind": "new", "previousIds": [], "nextIds": ["SYNTHETIC-17-R"], "basis": "geometry", "coverage": null, "reason": null, "flags": ["apn_reused_for_different_land"], "continuingId": null, "overlaps": [] }
+      ]
+    },
+    {
+      "name": "ambiguous_partial_overlap",
+      "note": "Same id, shape shifted half its width: 0.5 / 0.5, inside the ambiguous band.",
+      "previous": [{ "sourceId": "SYNTHETIC-18-J", "geometry": { "rect": [0, 0, 10, 10] } }],
+      "next": [{ "sourceId": "SYNTHETIC-18-J", "geometry": { "rect": [5, 0, 15, 10] } }],
+      "expected": [
+        { "kind": "ambiguous", "previousIds": ["SYNTHETIC-18-J"], "nextIds": ["SYNTHETIC-18-J"], "basis": "geometry", "coverage": null, "reason": "partial_overlap", "flags": [], "continuingId": null,
+          "overlaps": [{ "previousId": "SYNTHETIC-18-J", "nextId": "SYNTHETIC-18-J", "fractionOfPrevious": 0.5, "fractionOfNext": 0.5 }] }
+      ]
+    },
+    {
+      "name": "ambiguous_boundary_change",
+      "note": "Same id, lost a tenth (10x10 -> 9x10): next is wholly inside previous but covers only 0.9 of it.",
+      "previous": [{ "sourceId": "SYNTHETIC-19-K", "geometry": { "rect": [0, 0, 10, 10] } }],
+      "next": [{ "sourceId": "SYNTHETIC-19-K", "geometry": { "rect": [0, 0, 9, 10] } }],
+      "expected": [
+        { "kind": "ambiguous", "previousIds": ["SYNTHETIC-19-K"], "nextIds": ["SYNTHETIC-19-K"], "basis": "geometry", "coverage": null, "reason": "boundary_change", "flags": [], "continuingId": null,
+          "overlaps": [{ "previousId": "SYNTHETIC-19-K", "nextId": "SYNTHETIC-19-K", "fractionOfPrevious": 0.9, "fractionOfNext": 1 }] }
+      ]
+    },
+    {
+      "name": "ambiguous_replat_many_to_many",
+      "note": "Two vertical halves re-platted into two horizontal halves: every pair 0.5 / 0.5.",
+      "previous": [
+        { "sourceId": "SYNTHETIC-20-W", "geometry": { "rect": [0, 0, 5, 10] } },
+        { "sourceId": "SYNTHETIC-20-E", "geometry": { "rect": [5, 0, 10, 10] } }
+      ],
+      "next": [
+        { "sourceId": "SYNTHETIC-20-S", "geometry": { "rect": [0, 0, 10, 5] } },
+        { "sourceId": "SYNTHETIC-20-N", "geometry": { "rect": [0, 5, 10, 10] } }
+      ],
+      "expected": [
+        { "kind": "ambiguous", "previousIds": ["SYNTHETIC-20-E", "SYNTHETIC-20-W"], "nextIds": ["SYNTHETIC-20-N", "SYNTHETIC-20-S"], "basis": "geometry", "coverage": null, "reason": "many_to_many", "flags": [], "continuingId": null,
+          "overlaps": [
+            { "previousId": "SYNTHETIC-20-E", "nextId": "SYNTHETIC-20-N", "fractionOfPrevious": 0.5, "fractionOfNext": 0.5 },
+            { "previousId": "SYNTHETIC-20-E", "nextId": "SYNTHETIC-20-S", "fractionOfPrevious": 0.5, "fractionOfNext": 0.5 },
+            { "previousId": "SYNTHETIC-20-W", "nextId": "SYNTHETIC-20-N", "fractionOfPrevious": 0.5, "fractionOfNext": 0.5 },
+            { "previousId": "SYNTHETIC-20-W", "nextId": "SYNTHETIC-20-S", "fractionOfPrevious": 0.5, "fractionOfNext": 0.5 }
+          ] }
+      ]
+    },
+    {
+      "name": "shared_edge_sliver_is_ignored",
+      "note": "The shared edge moved 0.1 east. Next Q overlaps previous R by 0.1x10 = 1: 1/100 of R and 1/101 of Q, both below negligible, so it is not a relationship and both parcels stay 'same'.",
+      "previous": [
+        { "sourceId": "SYNTHETIC-21-Q", "geometry": { "rect": [0, 0, 10, 10] } },
+        { "sourceId": "SYNTHETIC-21-R", "geometry": { "rect": [10, 0, 20, 10] } }
+      ],
+      "next": [
+        { "sourceId": "SYNTHETIC-21-Q", "geometry": { "rect": [0, 0, 10.1, 10] } },
+        { "sourceId": "SYNTHETIC-21-R", "geometry": { "rect": [10.1, 0, 20, 10] } }
+      ],
+      "expected": [
+        { "kind": "same", "previousIds": ["SYNTHETIC-21-Q"], "nextIds": ["SYNTHETIC-21-Q"], "basis": "geometry", "coverage": 0.990099, "reason": null, "flags": [], "continuingId": null,
+          "overlaps": [{ "previousId": "SYNTHETIC-21-Q", "nextId": "SYNTHETIC-21-Q", "fractionOfPrevious": 1, "fractionOfNext": 0.990099 }] },
+        { "kind": "same", "previousIds": ["SYNTHETIC-21-R"], "nextIds": ["SYNTHETIC-21-R"], "basis": "geometry", "coverage": 0.99, "reason": null, "flags": [], "continuingId": null,
+          "overlaps": [{ "previousId": "SYNTHETIC-21-R", "nextId": "SYNTHETIC-21-R", "fractionOfPrevious": 0.99, "fractionOfNext": 1 }] }
+      ]
+    },
+    {
+      "name": "id_only_when_geometry_missing",
+      "note": "No usable shape on a side: decided by id alone, and labelled id_only.",
+      "previous": [
+        { "sourceId": "SYNTHETIC-22-U", "geometry": null },
+        { "sourceId": "SYNTHETIC-22-V", "geometry": { "rect": [0, 0, 10, 10] } },
+        { "sourceId": "SYNTHETIC-22-W", "geometry": null }
+      ],
+      "next": [
+        { "sourceId": "SYNTHETIC-22-U", "geometry": null },
+        { "sourceId": "SYNTHETIC-22-V", "geometry": null },
+        { "sourceId": "SYNTHETIC-22-Z", "geometry": null }
+      ],
+      "expected": [
+        { "kind": "same", "previousIds": ["SYNTHETIC-22-U"], "nextIds": ["SYNTHETIC-22-U"], "basis": "id_only", "coverage": null, "reason": null, "flags": [], "continuingId": null, "overlaps": [] },
+        { "kind": "same", "previousIds": ["SYNTHETIC-22-V"], "nextIds": ["SYNTHETIC-22-V"], "basis": "id_only", "coverage": null, "reason": null, "flags": [], "continuingId": null, "overlaps": [] },
+        { "kind": "retired", "previousIds": ["SYNTHETIC-22-W"], "nextIds": [], "basis": "id_only", "coverage": null, "reason": null, "flags": [], "continuingId": null, "overlaps": [] },
+        { "kind": "new", "previousIds": [], "nextIds": ["SYNTHETIC-22-Z"], "basis": "id_only", "coverage": null, "reason": null, "flags": [], "continuingId": null, "overlaps": [] }
+      ]
+    }
+  ]
+}

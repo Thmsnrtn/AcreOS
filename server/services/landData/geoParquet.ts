@@ -1,12 +1,13 @@
 /**
- * GeoParquet writer and loader for the owned parcel-fact dataset.
+ * GeoParquet primitives for the owned parcel artifacts.
  *
  * GeoParquet 1.1: a Parquet file whose geometry column is WKB and whose file
  * key-value metadata carries a "geo" JSON document naming the primary column,
  * its encoding and geometry types (CRS omitted = OGC:CRS84, lon/lat WGS84).
- * Written with parquetjs-lite (already a dependency for the cold archive).
- * The loader reads it back and decodes the WKB, which is how the pipeline
- * proves an artifact before anything is uploaded or marked ingested.
+ * Files are WRITTEN by StreamingArtifactWriter (streamingArtifacts.ts, bounded
+ * memory, parquetjs-lite); this module holds the WKB codec, the column type and
+ * the read-back the tests and the TN build use to prove an artifact. (The
+ * whole-county in-memory writer/loader was retired in D2a.)
  */
 
 import type { AreaGeometry, Position } from "./geometry";
@@ -76,69 +77,8 @@ export function decodeWkb(buf: Buffer): AreaGeometry {
   throw new Error(`unsupported WKB geometry type ${t}`);
 }
 
-// ── Rows ───────────────────────────────────────────────────────────────────
-
-export interface OwnedParcelRow {
-  parcel_key: string;
-  state: string;
-  county_fips: string;
-  county: string;
-  source_parcel_id: string;
-  source_name: string;
-  retrieved_on: string;
-  gis_acres: number;
-  deeded_acres: number | null;
-  /** The full fact set (values, sources, confidence, method) as JSON. */
-  facts_json: string;
-  /** Data-truth warnings as JSON. */
-  truths_json: string;
-  geometry: AreaGeometry;
-}
-
-const SCHEMA_DEF = {
-  parcel_key: { type: "UTF8" },
-  state: { type: "UTF8" },
-  county_fips: { type: "UTF8" },
-  county: { type: "UTF8" },
-  source_parcel_id: { type: "UTF8" },
-  source_name: { type: "UTF8" },
-  retrieved_on: { type: "UTF8" },
-  gis_acres: { type: "DOUBLE" },
-  deeded_acres: { type: "DOUBLE", optional: true },
-  facts_json: { type: "UTF8" },
-  truths_json: { type: "UTF8" },
-  geometry: { type: "BYTE_ARRAY" },
-} as const;
-
-function geoMetadata(rows: Array<{ geometry: AreaGeometry }>): string {
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  const types = new Set<string>();
-  for (const r of rows) {
-    types.add(r.geometry.type);
-    const polys = r.geometry.type === "Polygon" ? [r.geometry.coordinates] : r.geometry.coordinates;
-    for (const p of polys) for (const ring of p) for (const [x, y] of ring) {
-      minX = Math.min(minX, x); minY = Math.min(minY, y); maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
-    }
-  }
-  return JSON.stringify({
-    version: "1.1.0",
-    primary_column: "geometry",
-    columns: {
-      geometry: {
-        encoding: "WKB",
-        geometry_types: Array.from(types).sort(),
-        bbox: rows.length ? [minX, minY, maxX, maxY] : undefined,
-      },
-    },
-  });
-}
-
 /** The slice of parquetjs-lite this module uses (the package ships no types). */
 interface ParquetLib {
-  ParquetSchema: new (def: unknown) => unknown;
-  ParquetWriter: {
-    openFile(schema: unknown, path: string): Promise<{ setMetadata(k: string, v: string): void; appendRow(r: unknown): Promise<void>; close(): Promise<void> }>;
-  };
   ParquetReader: {
     openFile(path: string): Promise<{
       getMetadata(): Record<string, string>;
@@ -153,50 +93,20 @@ async function parquetLib(): Promise<ParquetLib> {
   return mod.default ?? mod;
 }
 
-export async function writeGeoParquet(filePath: string, rows: OwnedParcelRow[]): Promise<void> {
-  await writeGeoParquetRows(filePath, SCHEMA_DEF, rows.map((r) => ({ ...r, deeded_acres: r.deeded_acres ?? undefined })));
-}
-
 /** A parquetjs-lite column definition (the subset the writers use). */
 export type ParquetColumnDef = { type: "UTF8" | "DOUBLE" | "BYTE_ARRAY"; optional?: boolean };
 
-/**
- * Write any row shape as GeoParquet 1.1: `schemaDef` names every column,
- * `geometry` must be one of them (BYTE_ARRAY, WKB-encoded here). Null/undefined
- * cells are written as absent, so every nullable column must be `optional`.
- */
-export async function writeGeoParquetRows<R extends { geometry: AreaGeometry }>(
-  filePath: string,
-  schemaDef: Record<string, ParquetColumnDef>,
-  rows: R[],
-): Promise<void> {
-  const parquet = await parquetLib();
-  const schema = new parquet.ParquetSchema(schemaDef);
-  const writer = await parquet.ParquetWriter.openFile(schema, filePath);
-  writer.setMetadata("geo", geoMetadata(rows));
-  for (const r of rows) {
-    const cells: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(r)) cells[k] = v === null ? undefined : v;
-    await writer.appendRow({ ...cells, geometry: encodeWkb(r.geometry) });
-  }
-  await writer.close();
+/** The GeoParquet 1.1 "geo" metadata document. */
+export interface GeoParquetMeta {
+  version: string;
+  primary_column: string;
+  columns: Record<string, { encoding: string; geometry_types: string[] }>;
 }
 
-export interface LoadedGeoParquet {
-  geo: { version: string; primary_column: string; columns: Record<string, { encoding: string; geometry_types: string[] }> };
-  rows: OwnedParcelRow[];
-}
-
-/** The loader: reads every row back and decodes the geometry. */
-export async function readGeoParquet(filePath: string): Promise<LoadedGeoParquet> {
-  const { geo, rows } = await readGeoParquetRows<OwnedParcelRow>(filePath);
-  return { geo, rows: rows.map((r) => ({ ...r, deeded_acres: r.deeded_acres ?? null })) };
-}
-
-/** Read any GeoParquet written by writeGeoParquetRows; absent cells come back undefined. */
+/** Read a GeoParquet file (as StreamingArtifactWriter writes it); absent cells come back undefined. */
 export async function readGeoParquetRows<R extends { geometry: AreaGeometry }>(
   filePath: string,
-): Promise<{ geo: LoadedGeoParquet["geo"]; rows: R[] }> {
+): Promise<{ geo: GeoParquetMeta; rows: R[] }> {
   const parquet = await parquetLib();
   const reader = await parquet.ParquetReader.openFile(filePath);
   const meta = reader.getMetadata();

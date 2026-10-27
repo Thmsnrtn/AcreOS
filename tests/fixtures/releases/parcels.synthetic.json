@@ -1,0 +1,26 @@
+{
+  "synthetic": true,
+  "note": "SYNTHETIC parcel rows for the D2b parcel-level diff. Ids are SYNTHETIC-*, situs labels and values are invented and belong to no parcel. Both sides are sorted by source_parcel_id in UTF-8 byte order. expected is written by hand from the labels.",
+  "from": [
+    { "source_parcel_id": "SYNTHETIC-0001", "state": "NC", "county": "synthetic alpha", "situs_address": "SYNTHETIC-SITUS-1", "assessed_value_usd": 1000 },
+    { "source_parcel_id": "SYNTHETIC-0002", "state": "NC", "county": "synthetic alpha", "situs_address": "SYNTHETIC-SITUS-2", "assessed_value_usd": 2000 },
+    { "source_parcel_id": "SYNTHETIC-0003", "state": "NC", "county": "synthetic alpha", "situs_address": "SYNTHETIC-SITUS-3", "assessed_value_usd": 3000 },
+    { "source_parcel_id": "SYNTHETIC-0004", "state": "NC", "county": "synthetic alpha", "situs_address": "SYNTHETIC-SITUS-4", "assessed_value_usd": 4000 },
+    { "source_parcel_id": "SYNTHETIC-0005", "state": "NC", "county": "synthetic alpha", "situs_address": "SYNTHETIC-SITUS-5", "assessed_value_usd": 5000 },
+    { "source_parcel_id": "SYNTHETIC-0006", "state": "NC", "county": "synthetic alpha", "situs_address": "SYNTHETIC-SITUS-6", "assessed_value_usd": 6000 }
+  ],
+  "to": [
+    { "source_parcel_id": "SYNTHETIC-0001", "state": "NC", "county": "synthetic alpha", "situs_address": "SYNTHETIC-SITUS-1", "assessed_value_usd": 1000 },
+    { "source_parcel_id": "SYNTHETIC-0002", "state": "NC", "county": "synthetic alpha", "situs_address": "SYNTHETIC-SITUS-2", "assessed_value_usd": 2500 },
+    { "source_parcel_id": "SYNTHETIC-0004", "state": "NC", "county": "synthetic alpha", "situs_address": "SYNTHETIC-SITUS-4", "assessed_value_usd": 4000 },
+    { "source_parcel_id": "SYNTHETIC-0006", "assessed_value_usd": 6000, "county": "synthetic alpha", "situs_address": "SYNTHETIC-SITUS-6", "state": "NC" },
+    { "source_parcel_id": "SYNTHETIC-0007", "state": "NC", "county": "synthetic alpha", "situs_address": "SYNTHETIC-SITUS-7", "assessed_value_usd": 7000 }
+  ],
+  "expected": {
+    "added": ["SYNTHETIC-0007"],
+    "removed": ["SYNTHETIC-0003", "SYNTHETIC-0005"],
+    "changed": ["SYNTHETIC-0002"],
+    "unchanged": 3,
+    "why": "0002's assessed value changed; 0006 is the same row with its keys in a different order, so it is UNCHANGED (fingerprints are canonical)."
+  }
+}
