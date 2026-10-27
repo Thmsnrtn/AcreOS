@@ -18,6 +18,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
+import type { BulkRow } from "../../server/services/landData/statewideCadastral";
 
 vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 vi.mock("../../server/utils/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
@@ -81,9 +82,9 @@ async function asBuilt(store: ReturnType<typeof fileStore>, rows: ReturnType<typ
   const { BULK_SCHEMA, artifactObjectKey } = await import("../../server/services/landData/statewideCadastral");
   const { uploadFileAndConfirm } = await import("../../server/services/landData/openDataBucket");
   const out = mkdtempSync(path.join(root, "build-"));
-  const w = new StreamingArtifactWriter(
+  const w = new StreamingArtifactWriter<BulkRow>(
     { outDir: out, stem, schemaDef: BULK_SCHEMA, layerName: "parcels", tileName: "t", tileDescription: "d", attribution: "a" },
-    (r: { source_parcel_id: string }) => ({ parcel_id: r.source_parcel_id }),
+    (r) => ({ parcel_id: r.source_parcel_id }),
   );
   await w.open();
   for (const r of rows) await w.write(r as never);
