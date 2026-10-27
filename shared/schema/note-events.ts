@@ -15,7 +15,7 @@ import { sql } from "drizzle-orm";
 import { check, date, index, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { acquiredNotes } from "./notes-vertical";
 
-export const NOTE_OUTCOME_EVENT_TYPES = ["performance_reported"] as const;
+const NOTE_OUTCOME_EVENT_TYPES = ["performance_reported"] as const;
 export const NOTE_CALENDAR_EVENT_TYPES = ["payment_due", "maturity", "balloon", "rate_adjustment"] as const;
 export type NoteEventCategory = "outcome" | "calendar";
 export type NoteEventType = (typeof NOTE_OUTCOME_EVENT_TYPES)[number] | (typeof NOTE_CALENDAR_EVENT_TYPES)[number];

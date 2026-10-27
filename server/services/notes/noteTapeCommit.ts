@@ -26,6 +26,7 @@ import { acquiredNotes, noteEvents, noteFieldObservations, type InsertNoteFieldO
 import { NOTE_TAPE_FIELD, TAPE_CONFIDENCE, TAPE_CONFIDENCE_BASIS, type NoteTapeFieldKey } from "@shared/notes/noteTapeFields";
 import type { NoteTapeValidation, PreparedNote } from "./noteTapeImport";
 import { planNoteEvents } from "./noteEventsPlan";
+import { clock } from "../../utils/clock";
 
 export interface CollateralResolution {
   searchedFor: { state: string; county: string; apn: string };
@@ -91,7 +92,7 @@ export async function commitNoteTape(a: CommitNoteTapeArgs): Promise<CommitNoteT
   for (const n of notes) collateral.set(n.fileRow, await resolveCollateral(n.collateral));
 
   const importId = randomUUID();
-  const importDate = new Date().toISOString().slice(0, 10);
+  const importDate = clock.now().toISOString().slice(0, 10);
   const { withTransaction } = await import("../../db");
   return withTransaction(async (tx) => {
     const out: Extract<CommitNoteTapeResult, { status: "committed" }>["notes"] = [];
