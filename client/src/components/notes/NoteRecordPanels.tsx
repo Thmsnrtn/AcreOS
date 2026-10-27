@@ -17,6 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { QueryErrorState } from "@/components/query-error-state";
 import { NOTE_TAPE_FIELD, type NoteTapeFieldKey } from "@shared/notes/noteTapeFields";
+import { formatDate, formatDateTime } from "@/lib/format";
 
 interface ObservationView {
   value: unknown;
@@ -98,7 +99,7 @@ function ProvenanceChip({ p, label }: { p: ObservationView | null; label: string
           )}
           <div><dt className="text-xs text-muted-foreground">As of</dt><dd>{p.asOf ?? "the tape states no as-of date"}</dd></div>
           <div><dt className="text-xs text-muted-foreground">Confidence</dt><dd>{p.confidence} — {p.confidenceBasis}</dd></div>
-          <div><dt className="text-xs text-muted-foreground">Recorded</dt><dd>{new Date(p.observedAt).toLocaleString()}</dd></div>
+          <div><dt className="text-xs text-muted-foreground">Recorded</dt><dd>{formatDateTime(p.observedAt)}</dd></div>
         </dl>
       </PopoverContent>
     </Popover>
@@ -237,7 +238,7 @@ export function NoteRecordPanels({ noteId }: { noteId: string }) {
                 <dt className="text-sm text-muted-foreground">Parcel</dt>
                 <dd className="text-sm">
                   APN {c.searchedFor?.apn}, {c.searchedFor?.county} County, {c.searchedFor?.state}
-                  <span className="ml-2 text-xs text-muted-foreground">source: {c.parcel.source.name}{c.parcel.source.retrievedAt ? `, retrieved ${new Date(c.parcel.source.retrievedAt).toLocaleDateString()}` : ""}</span>
+                  <span className="ml-2 text-xs text-muted-foreground">source: {c.parcel.source.name}{c.parcel.source.retrievedAt ? `, retrieved ${formatDate(c.parcel.source.retrievedAt)}` : ""}</span>
                 </dd>
               </div>
               <div className="py-1.5">
