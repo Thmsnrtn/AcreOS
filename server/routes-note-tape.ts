@@ -27,14 +27,17 @@ import { readNoteTape, suggestNoteTapeMapping, validateNoteTape, assertNoRowLost
 const FIELD_KEYS = NOTE_TAPE_FIELDS.map((f) => f.key) as [NoteTapeFieldKey, ...NoteTapeFieldKey[]];
 const fieldKey = z.enum(FIELD_KEYS);
 
+// partialRecord: a mapping names only the fields the tape has (zod 4's
+// z.record with an enum key demands EVERY key, which refused any real mapping).
+const mappingSchema = z.partialRecord(fieldKey, z.number().int().min(0).nullable());
 const baseBody = z.object({
   csv: z.string().min(1).max(5 * 1024 * 1024),
   fileName: z.string().trim().min(1).max(240),
-  mapping: z.record(fieldKey, z.number().int().min(0).nullable()).optional(),
-  overrides: z.record(z.string().regex(/^\d+$/), z.record(fieldKey, z.string().max(500))).optional(),
+  mapping: mappingSchema.optional(),
+  overrides: z.record(z.string().regex(/^\d+$/), z.partialRecord(fieldKey, z.string().max(500))).optional(),
 });
 const commitBody = baseBody.extend({
-  mapping: z.record(fieldKey, z.number().int().min(0).nullable()),
+  mapping: mappingSchema,
   excludeRows: z.array(z.number().int().min(2)).max(20_000).default([]),
   asOf: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().default(null),
 });

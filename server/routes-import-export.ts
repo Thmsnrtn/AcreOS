@@ -8,7 +8,7 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import {
   parseCSV, previewImport, importLeads, importProperties, importDeals,
-  importNotesFromCSV, importAcquiredNotesFromCSV, NOTE_COLUMN_MAP,
+  importNotesFromCSV, NOTE_COLUMN_MAP,
   exportLeadsToCSV, exportPropertiesToCSV, exportDealsToCSV, exportNotesToCSV,
   getLeadsData, getPropertiesData, getDealsData, getNotesData,
   createBackupZip, getExpectedColumns, type ExportFilters,
@@ -187,15 +187,19 @@ export function registerImportExportRoutes(app: Express): void {
         }
       }
 
-      // Intent fork — 'acquired' (default) targets acquired_notes; 'originated'
-      // targets the legacy notes table for self-originated paper. Note
-      // investors per persona walkthrough are 75%+ acquired, so default
-      // matches the dominant case.
+      // Intent fork. 'originated' targets the legacy notes table for
+      // self-originated paper. ACQUIRED notes are imported through the
+      // note-tape import (POST /api/note-tape/preview + /commit, V-Notes-1 N1),
+      // which refuses a missing term instead of inventing one — the acquired
+      // branch that used to live here wrote rate 0, term 360 and a derived
+      // maturity when the tape did not state them, and called any unknown
+      // status "performing". An omitted intent no longer defaults to it.
       const intent = req.body?.intent === "originated" ? "originated" : "acquired";
+      if (intent === "acquired") {
+        return Errors.badRequest(res, "Acquired notes are imported through the note-tape import (POST /api/note-tape/preview, then /api/note-tape/commit), which refuses missing terms instead of filling them in.");
+      }
 
-      const result = intent === "acquired"
-        ? await importAcquiredNotesFromCSV(data, org.id, userFieldMap)
-        : await importNotesFromCSV(data, org.id, userFieldMap);
+      const result = await importNotesFromCSV(data, org.id, userFieldMap);
 
       const user = req.user;
       const userId = user?.id || user?.id;
@@ -203,7 +207,7 @@ export function registerImportExportRoutes(app: Express): void {
         organizationId: org.id,
         userId,
         action: "import",
-        entityType: intent === "acquired" ? "acquired_notes" : "notes",
+        entityType: "notes",
         entityId: 0,
         changes: {
           before: {},

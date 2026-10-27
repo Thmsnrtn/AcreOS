@@ -23,6 +23,7 @@ import { queryClient } from "@/lib/queryClient";
 import { Verbs } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 import { useTerm } from "@/hooks/use-persona";
+import { NoteTapeImport } from "@/components/notes/NoteTapeImport";
 
 type ImportIntent = "acquired" | "originated";
 
@@ -241,7 +242,7 @@ export function NotesImportDialog({ open, onOpenChange }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+      <DialogContent className={cn("max-h-[85vh] overflow-y-auto", intent === "acquired" ? "max-w-4xl" : "max-w-2xl")}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Upload className="w-5 h-5 text-primary" aria-hidden="true" />
@@ -300,6 +301,13 @@ export function NotesImportDialog({ open, onOpenChange }: Props) {
               </div>
             </div>
 
+            {intent === "acquired" ? (
+              // Acquired notes go through the note-tape import (V-Notes-1 N1):
+              // refusal before build, row-level errors with fixes, provenance
+              // on every field. The old acquired path invented missing terms.
+              <NoteTapeImport onDone={() => handleClose()} />
+            ) : (
+            <>
             <button
               type="button"
               className="w-full border-2 border-dashed border-border rounded-xl p-10 text-center cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
@@ -331,6 +339,8 @@ export function NotesImportDialog({ open, onOpenChange }: Props) {
               <p>2. Upload the downloaded file here</p>
               <p>3. Review the field mapping in the next step</p>
             </div>
+            </>
+            )}
           </div>
         )}
 

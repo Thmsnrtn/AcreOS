@@ -32,7 +32,7 @@ export interface CollateralResolution {
 }
 
 /** null = not searchable (the tape gave no APN + state + county): unknown, never "not found". */
-export async function resolveCollateral(c: PreparedNote["collateral"]): Promise<CollateralResolution | null> {
+async function resolveCollateral(c: PreparedNote["collateral"]): Promise<CollateralResolution | null> {
   if (!c.apn || !c.state || !c.county) return null;
   const searchedFor = { state: c.state, county: c.county, apn: c.apn };
   const { findOwnedParcelRow } = await import("../landData/ownedParcelView");

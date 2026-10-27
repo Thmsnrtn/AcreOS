@@ -142,6 +142,12 @@ describe.runIf(realDbAvailable)("note-tape commit — real database", () => {
     expect(count(leaked)).toBe(0);
   });
 
+  // What this proves and what it does not: the sweep visits tables in name
+  // order, so acquired_notes goes first and the cascade removes the history;
+  // the sweep then finds no observation rows left. It would pass under either
+  // trigger error code. Robustness to the OTHER order rests on two separate
+  // proofs: a direct DELETE is refused with 23503 (asserted above), and the
+  // sweep retries a 23503 rather than stopping (tests/unit/orgDeletion.test.ts).
   it("deleteOrganization completes for an org holding imported notes, and their history leaves with them", async () => {
     const orgId = orgIds[1];
     const { deleteOrganization } = await import("../../server/services/orgDeletion");

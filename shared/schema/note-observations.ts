@@ -12,9 +12,9 @@ import { sql } from "drizzle-orm";
 import { check, date, index, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { acquiredNotes } from "./notes-vertical";
 
-export const NOTE_OBSERVATION_KINDS = ["value", "searched_none"] as const;
+const NOTE_OBSERVATION_KINDS = ["value", "searched_none"] as const;
 export type NoteObservationKind = (typeof NOTE_OBSERVATION_KINDS)[number];
-export const NOTE_OBSERVATION_SOURCES = ["note_tape", "operator_correction", "warehouse"] as const;
+const NOTE_OBSERVATION_SOURCES = ["note_tape", "operator_correction", "warehouse"] as const;
 export type NoteObservationSource = (typeof NOTE_OBSERVATION_SOURCES)[number];
 
 export const noteFieldObservations = pgTable(

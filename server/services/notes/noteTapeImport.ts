@@ -134,7 +134,7 @@ function parsePositiveInt(raw: string, min: number, max: number): Parsed<number>
   return { ok: true, value: n };
 }
 
-export function parseTapeDate(raw: string): Parsed<string> {
+function parseTapeDate(raw: string): Parsed<string> {
   const t = raw.trim();
   let y: number, m: number, d: number;
   let mt = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(t);
