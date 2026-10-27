@@ -8,6 +8,9 @@
  *   3. an incomplete document set says what is missing, by name;
  *   4. unmatched and never-searched collateral are two different empty
  *      states, each with the action attached;
+ *   6. (N4) sources that disagree are shown side by side with every source,
+ *      the book value marked and nothing picked; a field blank on a tape that
+ *      had the column reads differently from one no import ever stated.
  *   5. (N3) registered dates show with their recurrence, an unregistered one
  *      says why, and reported performance lists every report.
  * Mounted via react-dom/client with the app's real default query function
@@ -21,7 +24,7 @@ import { getQueryFn } from "../../client/src/lib/queryClient";
 import { NoteRecordPanels } from "../../client/src/components/notes/NoteRecordPanels";
 
 const tape = (row: number, column: string, raw: string) => ({ value: null, kind: "value", source: "note_tape", sourceRef: { fileName: "tape.csv", fileRow: row, column, raw }, asOf: "2026-09-30", confidence: "medium", basis: "stated on the seller's tape", decayClass: "months", observedAt: "2026-10-27T12:00:00.000Z" });
-const rv = (field: string, label: string, value: unknown, provenance: unknown) => ({ field, label, value, provenance, observations: provenance ? [provenance] : [] });
+const rv = (field: string, label: string, value: unknown, provenance: unknown, extra: Record<string, unknown> = {}) => ({ field, label, value, provenance, observations: provenance ? [provenance] : [], absence: value === null ? { status: "never_stated" } : null, disagreement: null, ...extra });
 
 const ev = (eventType: string, eventDate: string, extra: Record<string, unknown> = {}) => ({ eventType, eventDate, recurrence: null, recurrenceUntil: null, detail: {}, source: "note_tape", recordedAt: "2026-10-27T12:00:00.000Z", ...extra });
 const CALENDAR = [
@@ -35,11 +38,14 @@ const OUTCOMES = [
   ev("performance_reported", "2026-10-27", { detail: { status: "late", paidThroughDate: null, dateBasis: "the tape states no as-of date; dated by the import" } }),
 ];
 
-function record(collateral: unknown, documentsComplete: boolean, outcomes: unknown[] = OUTCOMES) {
+const DEFAULT_TERMS = [rv("currentBalance", "Unpaid principal balance", 8425000, tape(2, "UPB", "$84,250.00")), rv("interestRate", "Interest rate (%)", 850, null)];
+const DEFAULT_YIELD = [rv("balloonAmount", "Balloon amount", null, null)];
+
+function record(collateral: unknown, documentsComplete: boolean, outcomes: unknown[] = OUTCOMES, terms: unknown[] = DEFAULT_TERMS, yieldFields: unknown[] = DEFAULT_YIELD) {
   return {
     noteId: "n1",
-    terms: [rv("currentBalance", "Unpaid principal balance", 8425000, tape(2, "UPB", "$84,250.00")), rv("interestRate", "Interest rate (%)", 850, null)],
-    yieldFields: [rv("balloonAmount", "Balloon amount", null, null)],
+    terms,
+    yieldFields,
     investmentToValue: { status: "not_on_record", reason: "no collateral value is on record for this note" },
     documents: {
       entries: [{ field: "docAssignmentChain", label: "Assignment chain", critical: true, state: documentsComplete ? "present" : "exception", provenance: null }],
@@ -91,7 +97,7 @@ afterEach(() => {
 });
 
 describe("note record panels", () => {
-  it("each value has a provenance chip; a sourceless value says so; a blank yield field reads 'not on the tape'", async () => {
+  it("each value has a provenance chip; a sourceless value says so; a never-stated yield field says no import stated it", async () => {
     body = record(MATCHED, true);
     await mount();
     const bal = host.querySelector('[data-testid="note-record-currentBalance"]')!;
@@ -103,7 +109,7 @@ describe("note record panels", () => {
     expect(chip.getAttribute("aria-label")).toMatch(/^Source: Seller's note tape, as of (Sep 30, 2026|2026)$/);
     expect(bal.textContent).not.toMatch(/medium/);
     expect(host.querySelector('[data-testid="note-record-interestRate"]')!.textContent).toMatch(/no source recorded/);
-    expect(host.querySelector('[data-testid="note-record-balloonAmount"]')!.textContent).toMatch(/not on the tape/);
+    expect(host.querySelector('[data-testid="note-record-balloonAmount"]')!.textContent).toMatch(/no import has stated this/);
   });
 
   it("matched collateral shows value and source; liens, tax status and hazards read 'not searched'", async () => {
@@ -161,5 +167,39 @@ describe("note record panels", () => {
     body = record(MATCHED, true, []);
     await mount();
     expect(host.querySelector('[data-testid="note-outcomes-none"]')!.textContent).toMatch(/No import has reported/);
+  });
+
+  it("disagreeing sources are shown side by side with every source and the book value marked; nothing is picked", async () => {
+    const first = tape(2, "UPB", "$84,250.00");
+    const later = { ...tape(7, "Current UPB", "$83,900.00"), sourceRef: { fileName: "tape-oct.csv", fileRow: 7, column: "Current UPB", raw: "$83,900.00" } };
+    const bal = rv("currentBalance", "Unpaid principal balance", 8425000, first, { observations: [first, later], disagreement: { values: [{ value: 8425000, observations: [first] }, { value: 8390000, observations: [later] }], bookValueIs: 0 } });
+    body = record(MATCHED, true, OUTCOMES, [bal]);
+    await mount();
+    const panel = host.querySelector('[data-testid="note-record-disagreements"]')!;
+    expect(panel.textContent).toMatch(/Sources disagree on 1 term/);
+    expect(panel.textContent).toMatch(/has not picked one/);
+    const rows = panel.querySelectorAll('[data-testid="note-disagreement-currentBalance"] li');
+    expect(rows).toHaveLength(2);
+    expect(rows[0].textContent).toMatch(/\$84,250\.00/);
+    expect(rows[0].textContent).toMatch(/on the book/);
+    expect(rows[1].textContent).toMatch(/\$83,900\.00/);
+    expect(rows[1].textContent).not.toMatch(/on the book/);
+    expect(rows[1].querySelector('[data-testid="provenance-chip"]')).not.toBeNull();
+    expect(host.querySelector('[data-testid="note-record-currentBalance"] [data-testid="note-record-disagrees"]')).not.toBeNull();
+    act(() => root.unmount());
+    host.remove();
+
+    body = record(MATCHED, true);
+    await mount();
+    expect(host.querySelector('[data-testid="note-record-disagreements"]')).toBeNull();
+  });
+
+  it("blank on a tape that had the column reads differently from never stated", async () => {
+    const blank = rv("balloonAmount", "Balloon amount", null, null, { absence: { status: "blank_on_source", column: "Balloon", fileName: "tape.csv" } });
+    const never = rv("balloonDate", "Balloon date", null, null);
+    body = record(MATCHED, true, OUTCOMES, DEFAULT_TERMS, [blank, never]);
+    await mount();
+    expect(host.querySelector('[data-testid="note-record-balloonAmount"]')!.textContent).toMatch(/blank on the tape \(column “Balloon”\) — asked, nothing stated/);
+    expect(host.querySelector('[data-testid="note-record-balloonDate"]')!.textContent).toMatch(/no import has stated this/);
   });
 });

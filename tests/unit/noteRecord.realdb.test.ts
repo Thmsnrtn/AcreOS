@@ -59,7 +59,7 @@ describe.runIf(realDbAvailable)("note record — real database", () => {
     await pool.end();
   });
 
-  it("every term traces to its tape row and cell; a blank yield field is null with no provenance", async () => {
+  it("every term traces to its tape row and cell; a blank yield field is null with no provenance, recorded as blank on the tape", async () => {
     const { buildNoteRecord } = await import("../../server/services/notes/noteRecord");
     const r = (await buildNoteRecord(orgIds[0], noteIds["SYNTH-1001"]))!;
     const bal = r.terms.find((t) => t.field === "currentBalance")!;
@@ -67,7 +67,10 @@ describe.runIf(realDbAvailable)("note record — real database", () => {
     expect(bal.provenance).toMatchObject({ source: "note_tape", asOf: "2026-09-30", confidence: "medium", sourceRef: { fileRow: 2, column: "UPB", raw: "$84,250.00" } });
     expect(r.terms.every((t) => t.provenance !== null)).toBe(true);
     const balloon = r.yieldFields.find((t) => t.field === "balloonAmount")!;
-    expect(balloon).toMatchObject({ value: null, provenance: null, observations: [] });
+    // No value and no invented provenance; the only observation is the
+    // verified absence (N4): the tape's Balloon column was blank.
+    expect(balloon).toMatchObject({ value: null, provenance: null, absence: { status: "blank_on_source", column: "Balloon" } });
+    expect(balloon.observations.map((o) => o.kind)).toEqual(["searched_none"]);
     expect(r.yieldFields.find((t) => t.field === "remainingTermMonths")).toMatchObject({ value: 221, provenance: expect.objectContaining({ sourceRef: expect.objectContaining({ column: "Remaining Term" }) }) });
   });
 
