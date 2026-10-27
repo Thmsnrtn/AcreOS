@@ -18,7 +18,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { getQueryFn } from "../../client/src/lib/queryClient";
 import { NoteRecordPanels } from "../../client/src/components/notes/NoteRecordPanels";
 
-const tape = (row: number, column: string, raw: string) => ({ value: null, kind: "value", source: "note_tape", sourceRef: { fileName: "tape.csv", fileRow: row, column, raw }, asOf: "2026-09-30", confidence: "medium", confidenceBasis: "stated on the seller's tape", decayClass: "months", observedAt: "2026-10-27T12:00:00.000Z" });
+const tape = (row: number, column: string, raw: string) => ({ value: null, kind: "value", source: "note_tape", sourceRef: { fileName: "tape.csv", fileRow: row, column, raw }, asOf: "2026-09-30", confidence: "medium", basis: "stated on the seller's tape", decayClass: "months", observedAt: "2026-10-27T12:00:00.000Z" });
 const rv = (field: string, label: string, value: unknown, provenance: unknown) => ({ field, label, value, provenance, observations: provenance ? [provenance] : [] });
 
 function record(collateral: unknown, documentsComplete: boolean) {
@@ -81,7 +81,11 @@ describe("note record panels", () => {
     const bal = host.querySelector('[data-testid="note-record-currentBalance"]')!;
     expect(bal.textContent).toMatch(/\$84,250\.00/);
     expect(bal.querySelector('[data-testid="provenance-chip"]')?.getAttribute("aria-label")).toBe("Where Unpaid principal balance came from");
-    expect(bal.textContent).toMatch(/as of 2026-09-30/);
+    // Rendered by the canonical DataProvenanceChip, which shows a recent as-of
+    // as the house date and an older one as its year — either names the tape's date.
+    const chip = bal.querySelector('[data-testid="data-provenance-chip"]')!;
+    expect(chip.getAttribute("aria-label")).toMatch(/^Source: Seller's note tape, as of (Sep 30, 2026|2026)$/);
+    expect(bal.textContent).not.toMatch(/medium/);
     expect(host.querySelector('[data-testid="note-record-interestRate"]')!.textContent).toMatch(/no source recorded/);
     expect(host.querySelector('[data-testid="note-record-balloonAmount"]')!.textContent).toMatch(/not on the tape/);
   });

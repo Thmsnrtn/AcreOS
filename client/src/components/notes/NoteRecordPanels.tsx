@@ -18,6 +18,7 @@ import { EmptyState } from "@/components/empty-state";
 import { QueryErrorState } from "@/components/query-error-state";
 import { NOTE_TAPE_FIELD, type NoteTapeFieldKey } from "@shared/notes/noteTapeFields";
 import { formatDate, formatDateTime } from "@/lib/format";
+import { DataProvenanceChip } from "@/components/data-provenance-chip";
 
 interface ObservationView {
   value: unknown;
@@ -25,8 +26,8 @@ interface ObservationView {
   source: "note_tape" | "operator_correction" | "warehouse" | string;
   sourceRef: { fileName?: string; fileRow?: number; column?: string | null; raw?: string };
   asOf: string | null;
-  confidence: string;
-  confidenceBasis: string;
+  /** Why this observation can be relied on, in words (e.g. "stated on the seller's tape; not independently verified"). */
+  basis: string;
   observedAt: string;
 }
 interface RecordedValue { field: NoteTapeFieldKey; label: string; value: unknown; provenance: ObservationView | null; observations: ObservationView[] }
@@ -82,13 +83,14 @@ function ProvenanceChip({ p, label }: { p: ObservationView | null; label: string
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="inline-flex items-center rounded-full border px-2 py-0.5 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           aria-label={`Where ${label} came from`}
           data-testid="provenance-chip"
         >
-          {SOURCE_LABEL[p.source] ?? p.source}
-          {p.asOf ? ` · as of ${p.asOf}` : ""}
-          {` · ${p.confidence}`}
+          {/* The canonical chip, with no classification: a seller's tape is
+              not one of the four truth-states (shared/dataClassification.ts),
+              so none is claimed — the basis in the popover says what it is. */}
+          <DataProvenanceChip source={SOURCE_LABEL[p.source] ?? p.source} sourceAsOf={p.asOf} />
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-80 text-sm">
@@ -98,7 +100,7 @@ function ProvenanceChip({ p, label }: { p: ObservationView | null; label: string
             <div><dt className="text-xs text-muted-foreground">Where in the file</dt><dd>Row {p.sourceRef.fileRow}{p.sourceRef.column ? `, column “${p.sourceRef.column}”` : ""}{p.sourceRef.raw !== undefined ? `, cell “${p.sourceRef.raw}”` : ""}</dd></div>
           )}
           <div><dt className="text-xs text-muted-foreground">As of</dt><dd>{p.asOf ?? "the tape states no as-of date"}</dd></div>
-          <div><dt className="text-xs text-muted-foreground">Confidence</dt><dd>{p.confidence} — {p.confidenceBasis}</dd></div>
+          <div><dt className="text-xs text-muted-foreground">Basis</dt><dd>{p.basis}</dd></div>
           <div><dt className="text-xs text-muted-foreground">Recorded</dt><dd>{formatDateTime(p.observedAt)}</dd></div>
         </dl>
       </PopoverContent>

@@ -29,7 +29,8 @@ export interface ObservationView {
   sourceRef: Record<string, unknown>;
   asOf: string | null;
   confidence: string;
-  confidenceBasis: string;
+  /** Why this observation can be relied on, in words. */
+  basis: string;
   decayClass: string;
   observedAt: string;
 }
@@ -111,7 +112,7 @@ const view = (o: NoteFieldObservation): ObservationView => ({
   sourceRef: o.sourceRef,
   asOf: o.asOf,
   confidence: o.confidence,
-  confidenceBasis: o.confidenceBasis,
+  basis: o.confidenceBasis,
   decayClass: o.decayClass,
   observedAt: o.observedAt.toISOString(),
 });
