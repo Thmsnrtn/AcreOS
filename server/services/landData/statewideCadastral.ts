@@ -358,7 +358,8 @@ export interface BulkRow {
  */
 export const BULK_ROW_VERSION = "bulk-row@1";
 
-const BULK_SCHEMA: Record<keyof BulkRow, ParquetColumnDef> = {
+/** The artifact's parquet schema; release assembly rewrites a deduped county with it. */
+export const BULK_SCHEMA: Record<keyof BulkRow, ParquetColumnDef> = {
   source_parcel_id: { type: "UTF8" },
   state: { type: "UTF8" },
   county: { type: "UTF8", optional: true },

@@ -3,6 +3,17 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-10-27 — Delta audit on e398c3a3: the last gap, `source_parcel_id` dedupe in release assembly (founder: implement)
+
+- **Dedupe.** `assembleAndStoreRelease` now reads each included county's parquet back (digest-checked) and keeps ONE row per `source_parcel_id`.
+- **Which row wins.** The LAST copy in artifact order. That is the stable id sort over the source's `OBJECTID ASC` paging, so the highest source OBJECTID wins, i.e. the most recently inserted feature. There is no per-row edit date to judge recency, so this is stated as the deterministic rule. The rule is documented in the code header and in INTEGRATION-D2b.
+- **What the release names.** A county with a repeat gets a deduped artifact pair, uploaded and bucket-confirmed like a build's, and the release names that pair. A county without one is named exactly as built.
+- **Reporting.** Drops are reported in `AssemblyReport.deduped`.
+- **No unchecked release.** With no object store, assembly refuses to store a release it could not check.
+- **Downstream refusals stay** as defense in depth: lineage `duplicate_source_id` and the release diff.
+- **Proof.** `tests/unit/releaseAssemblyDedupe.test.ts` drives the real entrypoint on real artifacts in a file-backed bucket. The as-built artifact is refused by lineage; the stored release names the deduped pair (the later copy wins) and lineage accepts it. A no-dedupe mutant and a first-copy-wins mutant each turn it red.
+- **Docs cleaned.** The stale per-lane D2b/D2c "STAGED pending approval" lines in the 2026-10-24 entry now point to the 2026-10-25 wiring.
+
 ## 2026-10-26 (later) — CI round trip red on 5f14b02d: client tools newer than the server
 
 - **What broke.** In CI run 40321419022, `build-schema` sub-check 10/10 failed on `pg_restore: ERROR: unrecognized configuration parameter "transaction_timeout"`. Nothing in the repo had changed: the same scripts passed on `5d11a766` the day before, and none of the dump/restore/workflow files had changed since 2026-10-11. `db-backup.sh` and `db-restore.sh` called whatever `pg_dump`/`pg_restore` came first on PATH. The runner's client tools moved past the `pgvector:pg16` service, and a 17+ client sends `SET transaction_timeout`, which 16 rejects.
@@ -28,13 +39,13 @@ what shipped, what it measured, and the top next moves. Newest first.
   - The table count stands at 746, with approval notes.
   - The new tables are in the tenancy lint's population and classified global (they have no tenant key).
   - 14 D2b/D2c reachability entries said "STAGED pending table approval". They are reclassified as TRACKED FOLLOW-UP: the exports are still unreached, so the entries stay.
-  - **Release assembly does NOT dedupe `source_parcel_id`.** Downstream it fails closed (lineage refuses the county). This is a tracked follow-up.
+  - **Release assembly did NOT dedupe `source_parcel_id`.** Downstream it failed closed (lineage refused the county). Implemented 2026-10-27; see that entry.
 - **Evidence logs** are kept in `docs/evidence/2026-10-26/`.
 
 ### Tracked only (not fixed)
 - D2b §4 served-answer stamping (`served_release_id` exists; nothing writes it).
 - D2c §3 crosswalk proposal.
-- `source_parcel_id` dedupe in release assembly.
+- `source_parcel_id` dedupe in release assembly (done 2026-10-27).
 - Non-TN lineage: refused until there is a national county FIPS reference.
 - D2d disclosed gaps.
 - Cache `answeringLayer`.
@@ -75,8 +86,8 @@ Worked as a fleet: one worktree agent per workstream (D2a–D2h) plus two spec t
 
 ### What shipped
 - **D2a.** Streamed statewide template (`statewideCadastral.ts`, `streamingArtifacts.ts`) with dossier-gated live upload (no receipts, no "ingested"). Bounded TN Comptroller loader, county by county with metros first and statewide refused (`tnComptrollerCounty.ts`; bounded under an internal 400 MB RSS ceiling pinned in `tnComptrollerCounty.test.ts`, below the memory gate's 512 MB cap; accumulating mutants OOM in that gate. A 310 MB peak was reported from one lane run under fleet load and is not quoted as measured: that run was not reproduced centrally). Rows are sorted by parcel id in UTF-8 order via a bounded external sort. The object key carries the digest, so a same-day rebuild can no longer overwrite a receipted object. TX refuses explicitly (`TX_BEACHHEAD_COUNTIES` is empty, with its reason). Dossier drafts for 9 states in `docs/land-data/dossiers/` (no terms read; network). The whole-county in-memory artifact path is deleted (pmtilesWriter, writeGeoParquet/readGeoParquet, uploadAndConfirm, persistLoadedCounty); tests were ported. `completeLoadedCounty` is now the one canonical way to complete a county load.
-- **D2b.** Pure release core in `server/services/landData/releases/`: content-addressed manifest id, `acreos-parcels vYYYY.MM.N` names, a bounded sort-merge diff, and an append-only promote/rollback pointer. 128 tests. STAGED: storage needs COO approval (+2 tables +1 column, or bucket-only).
-- **D2c.** `shared/landData/lineage.ts` + `apid.ts`: lineage classification (with an explicit `ambiguous` outcome), APIDs that are never reused, non-overlapping APN windows, and inheritance; a synthetic golden lineage case. 44 tests counted syntactically (`apid.test.ts` 19, `lineage.test.ts` 18, `lineageGolden.test.ts` 7); 65 at runtime, because `lineageGolden`'s `it.each` expands to 28 (`docs/evidence/2026-10-26/d2c-d2d-suites.log`). STAGED: needs 3 tables, pending COO approval. Crosswalk defect fixed: a retired parcel key was re-minted for a split remainder.
+- **D2b.** Pure release core in `server/services/landData/releases/`: content-addressed manifest id, `acreos-parcels vYYYY.MM.N` names, a bounded sort-merge diff, and an append-only promote/rollback pointer. 128 tests. Storage was approved and wired on 2026-10-25 (migration 0290, `releaseStore`, `releaseAssembly`); see the 2026-10-25 entry above.
+- **D2c.** `shared/landData/lineage.ts` + `apid.ts`: lineage classification (with an explicit `ambiguous` outcome), APIDs that are never reused, non-overlapping APN windows, and inheritance; a synthetic golden lineage case. 44 tests counted syntactically (`apid.test.ts` 19, `lineage.test.ts` 18, `lineageGolden.test.ts` 7); 65 at runtime, because `lineageGolden`'s `it.each` expands to 28 (`docs/evidence/2026-10-26/d2c-d2d-suites.log`). Tables were approved and wired on 2026-10-25 (migration 0291, three tables, `apidStore`, `releaseLineage`); see the 2026-10-25 entry above. Crosswalk defect fixed: a retired parcel key was re-minted for a split remainder.
 - **D2d.** Remap hardened against 20 drift shapes; six defects fixed (greedy assignment, degenerate proof, a throwing live read, duplicate golden parcels, unverified adoption, empty drift). Semantic JV→JV_HMSTD is rejected by golden. Wave-1 states other than FL have no golden county, so they never auto-promote; FL (Nassau, `shared/landData/golden/fl-golden-county.json`) is the golden county that does.
 - **D2e.** Purpose ledger (0289, append-only, proven on real PG — log kept 2026-10-26: `docs/evidence/2026-10-26/purposeLedgerAppendOnly.log`, run under ACREOS_REQUIRE_REAL_DB). Receipts are unforgeable (WeakSet). Census of 221 person-adjacent surfaces: 214 are in a shrink-only debt register.
 - **D2f.** Historical-use screening: verdict is adverse / no adverse in verified sources / inconclusive, never "clean"; a verified absence needs a positive control. Indiana end to end on fixtures. Entry point deliberately unwired (route/Pax tool held for COO).
@@ -86,7 +97,7 @@ Worked as a fleet: one worktree agent per workstream (D2a–D2h) plus two spec t
 
 ### Not done, and why
 - No live runs: the container's proxy denies state hosts, Regrid, USGS and ChatGPT.
-- D2b/D2c storage and D2f exposure wait on COO decisions (tables, routes).
+- D2f exposure waits on a COO decision (route / Pax tool). D2b/D2c storage was decided and wired on 2026-10-25.
 - The research, the design docs (v1/v2/Amendment 2) and vendor invoices are not in the repo (paths are proposed in D2h §3).
 
 ### Escalations raised to the COO (not fixed here)

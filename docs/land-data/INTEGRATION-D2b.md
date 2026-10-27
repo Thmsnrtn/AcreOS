@@ -15,13 +15,35 @@
 > - **§4 served-answer stamping.** `provider_lookup_log.served_release_id`
 >   exists (0290) but NOTHING writes it yet; every served answer still reads
 >   as a pre-release lane (null).
-> - **§6 parcel-diff input order / `source_parcel_id` dedupe.** Verified
->   2026-10-26: nothing dedupes `source_parcel_id` — D2a's `ExternalSorter` is
->   stable and keeps ties, and release assembly reads build metadata only. A
->   county artifact with a repeated id is still assembled into a release;
->   downstream it fails closed (lineage refuses the county with
->   `duplicate_source_id`; the release diff refuses unsorted/duplicate input).
->   Dedupe (and which row wins) is a follow-up.
+>
+> **`source_parcel_id` dedupe: DONE in release assembly (founder decision
+> 2026-10-27).** D2a's `ExternalSorter` is stable and keeps ties, so a county
+> artifact can repeat a parcel id. `assembleAndStoreRelease`
+> (`releases/releaseAssembly.ts`, `dedupeCountyEntry`) now reads each included
+> county's parquet back, digest-checked, and keeps ONE row per
+> `source_parcel_id`.
+> - **Which row wins.** The LAST copy in artifact order. Artifact order is the
+>   stable id sort over the source's `OBJECTID ASC` paging, so the copy with
+>   the highest source OBJECTID wins. In an ArcGIS feature layer that is the
+>   most recently inserted record. The rows carry no per-row edit date
+>   (provenance holds one build-wide `asOf`), so this is the deterministic
+>   rule, not a judgement of which copy is correct.
+> - **What the release names.** A county with a repeated id gets a deduped
+>   parquet + PMTiles pair. It is written by the same writer and schema as a
+>   build, uploaded, and bucket-confirmed, and the release names that pair with
+>   the deduped `parcelCount`. A county without a repeat is named exactly as
+>   built.
+> - **Reporting.** Every drop is reported (`AssemblyReport.deduped`: county,
+>   rows dropped, repeated ids).
+> - **No unchecked release.** With no object store configured, assembly refuses
+>   to store a release it could not check.
+> - **Defense in depth stays.** Lineage still refuses `duplicate_source_id`, and
+>   the release diff still refuses unsorted or duplicate input.
+> - **Proof.** `tests/unit/releaseAssemblyDedupe.test.ts`: real artifacts; a
+>   no-dedupe mutant and a first-copy-wins mutant both turn it red.
+>
+> - **§6 parcel-diff input order** — the diff report itself stays a tracked
+>   follow-up (unwired).
 > - The release diff report, name audit and pointer-history audit exports stay
 >   unwired (reachability entries reclassified TRACKED FOLLOW-UP).
 >
