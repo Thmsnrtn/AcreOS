@@ -70,6 +70,24 @@ jobs:
       # test.yml and deploy.yml — migrations/*.sql, then the Fly
       # release_command, then its --dry-run, then the declared-vs-built column
       # mirror. ~20s against the postgres service this job already provisions.
+      # The backup/restore round trip in the schema build dumps and restores
+      # with the pg_dump/pg_restore tools of the SERVER's major version (scripts/lib/pg-client-for-server.sh)
+      # and refuses a mismatch. The runner image's own client tools are not
+      # pinned and moved past the pg16 service on 2026-10-26 (pg_restore >= 17
+      # sends SET transaction_timeout, which 16 rejects), so install 16's.
+      - name: Install the PostgreSQL 16 client tools the service needs
+        run: |
+          sudo apt-get update -qq
+          if ! sudo apt-get install -y -qq --no-install-recommends postgresql-client-16; then
+            # Not in this image's repositories: add the PostgreSQL project's
+            # own apt repository (PGDG) and retry.
+            sudo apt-get install -y -qq --no-install-recommends postgresql-common
+            sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+            sudo apt-get install -y -qq --no-install-recommends postgresql-client-16
+          fi
+          /usr/lib/postgresql/16/bin/pg_dump --version
+          /usr/lib/postgresql/16/bin/pg_restore --version
+
       - name: Build the schema from this repo and verify it
         run: npm run db:build-from-repo
 
