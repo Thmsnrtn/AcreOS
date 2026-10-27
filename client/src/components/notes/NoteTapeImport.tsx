@@ -21,6 +21,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { apiRequest } from "@/lib/queryClient";
+import { Verbs } from "@/lib/labels";
 import { NOTE_TAPE_FIELDS, type NoteTapeFieldKey, type NoteTapeGroup } from "@shared/notes/noteTapeFields";
 
 type Mapping = Partial<Record<NoteTapeFieldKey, number | null>>;
@@ -128,6 +129,7 @@ export function NoteTapeImport({ onDone }: { onDone?: () => void }) {
 
   const v = preview?.validation;
   const unresolved = useMemo(() => (v ? v.rejected.filter((r) => !excluded.has(r.fileRow)) : []), [v, excluded]);
+  const toImport = v ? v.valid.filter((n) => !excluded.has(n.fileRow)).length : 0;
   const canCommit = !!v && v.unmappedRequired.length === 0 && unresolved.length === 0 && v.valid.some((n) => !excluded.has(n.fileRow)) && busy === null;
 
   async function commit() {
@@ -340,7 +342,7 @@ export function NoteTapeImport({ onDone }: { onDone?: () => void }) {
               <div className="flex flex-wrap items-center gap-3">
                 <Button onClick={() => void commit()} disabled={!canCommit} data-testid="note-tape-commit">
                   {busy === "commit" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : <FileText className="mr-2 h-4 w-4" aria-hidden="true" />}
-                  Import {v.valid.filter((n) => !excluded.has(n.fileRow)).length} note{v.valid.filter((n) => !excluded.has(n.fileRow)).length === 1 ? "" : "s"}
+                  {Verbs.IMPORT} {toImport} note{toImport === 1 ? "" : "s"}
                 </Button>
                 {unresolved.length > 0 && <p className="text-sm text-muted-foreground">Fix or leave out {unresolved.length} row{unresolved.length === 1 ? "" : "s"} first — nothing is imported partially.</p>}
               </div>
