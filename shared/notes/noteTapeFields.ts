@@ -47,6 +47,8 @@ export type NoteTapeFieldKey =
   | "balloonDate"
   | "paidThroughDate"
   | "nextPaymentDate"
+  // forward-calendar only (N3): an observation and a calendar event, no acquired_notes column
+  | "rateAdjustmentDate"
   // collateral reference
   | "collateralApn"
   | "collateralState"
@@ -99,6 +101,7 @@ export const NOTE_TAPE_FIELDS: readonly NoteTapeFieldDef[] = [
   { key: "balloonDate", label: "Balloon date", group: "yield", kind: "date", required: false, decay: "stable", aliases: ["balloon date", "balloon due"], fix: DATE_FIX },
   { key: "paidThroughDate", label: "Paid-through date", group: "yield", kind: "date", required: false, decay: "months", aliases: ["paid through", "paid to date", "paid thru", "ptd"], fix: DATE_FIX },
   { key: "nextPaymentDate", label: "Next payment due", group: "yield", kind: "date", required: false, decay: "months", aliases: ["next due", "next due date", "next payment date", "ndd"], fix: DATE_FIX },
+  { key: "rateAdjustmentDate", label: "Next rate adjustment", group: "yield", kind: "date", required: false, decay: "months", aliases: ["next rate change", "rate change date", "next adjustment date", "rate adjustment date", "arm adjustment date", "next rate adjustment"], fix: DATE_FIX },
   { key: "collateralApn", label: "Collateral APN / parcel ID", group: "collateral", kind: "text", required: false, decay: "stable", aliases: ["apn", "parcel", "parcel id", "parcel number", "pin", "tax id"], fix: "the county parcel number of the property securing the note" },
   { key: "collateralState", label: "Collateral state", group: "collateral", kind: "state", required: false, decay: "stable", aliases: ["state", "property state", "st"], fix: "a two-letter state code such as NC" },
   { key: "collateralCounty", label: "Collateral county", group: "collateral", kind: "text", required: false, decay: "stable", aliases: ["county", "property county"], fix: "the county name, such as Wake" },

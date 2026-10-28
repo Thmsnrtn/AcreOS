@@ -58,6 +58,17 @@ interface NoteRecord {
       hazards: Absence;
     };
   };
+  outcomes: NoteEventView[];
+  calendar: Array<{ eventType: string; label: string; event: NoteEventView | null; reason: string | null }>;
+}
+interface NoteEventView {
+  eventType: string;
+  eventDate: string;
+  recurrence: "monthly" | null;
+  recurrenceUntil: string | null;
+  detail: Record<string, unknown>;
+  source: string;
+  recordedAt: string;
 }
 
 const usd = (c: number) => (c / 100).toLocaleString("en-US", { style: "currency", currency: "USD" });
@@ -274,6 +285,43 @@ export function NoteRecordPanels({ noteId }: { noteId: string }) {
           <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
           “Not searched” means nobody has looked yet — it is not a clean result.
         </p>
+      </Card>
+
+      <Card className="p-5" data-testid="note-record-events">
+        <h2 className="mb-1 text-sm font-semibold">Dates on record</h2>
+        <p className="mb-3 text-xs text-muted-foreground">Dates the imported terms state. Recorded only — nothing is scheduled or sent from them.</p>
+        <dl className="divide-y">
+          {data.calendar.map((d) => (
+            <div key={d.eventType} className="flex flex-wrap items-baseline justify-between gap-x-3 py-1.5" data-testid={`note-calendar-${d.eventType}`}>
+              <dt className="text-sm text-muted-foreground">{d.label}</dt>
+              <dd className="text-sm">
+                {d.event ? (
+                  <span className="tabular-nums">
+                    {d.event.eventDate}
+                    {d.event.recurrence === "monthly" && d.event.recurrenceUntil ? <span className="text-muted-foreground"> · then monthly through {d.event.recurrenceUntil}</span> : null}
+                    <span className="ml-2 text-xs text-muted-foreground">{SOURCE_LABEL[d.event.source] ?? d.event.source}</span>
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground">{d.reason}</span>
+                )}
+              </dd>
+            </div>
+          ))}
+        </dl>
+        <h3 className="mb-2 mt-4 text-sm font-semibold">Performance reported</h3>
+        {data.outcomes.length === 0 ? (
+          <p className="text-sm text-muted-foreground" data-testid="note-outcomes-none">No import has reported this note's payment performance.</p>
+        ) : (
+          <ul className="divide-y" data-testid="note-outcomes">
+            {data.outcomes.map((o, i) => (
+              <li key={`${o.recordedAt}-${i}`} className="py-1.5 text-sm">
+                <span className="tabular-nums">{o.eventDate}</span>: {String(o.detail.status ?? "").replace("_", " ")}
+                {typeof o.detail.paidThroughDate === "string" ? `, paid through ${o.detail.paidThroughDate}` : ", paid-through date not stated"}
+                <span className="ml-2 text-xs text-muted-foreground">{SOURCE_LABEL[o.source] ?? o.source}{typeof o.detail.dateBasis === "string" ? ` · dated by ${o.detail.dateBasis === "the tape's as-of date" ? "the tape's as-of" : "the import"}` : ""}</span>
+              </li>
+            ))}
+          </ul>
+        )}
       </Card>
     </div>
   );

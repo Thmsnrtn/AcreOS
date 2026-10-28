@@ -3,6 +3,15 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-10-27 — V-Notes-1 N3 — outcome and forward-calendar hooks — on `claude/notes-v1-n3-events` (stacked on N2)
+
+- **Storage.** `note_events` (migration 0293 + mirror) is the second of the founder-approved +2 tables, so the table count is now 748. It is append-only and org-private on the same terms as `note_field_observations`: a row leaves only with its note, so org erasure still completes (real-DB tested). CHECKs tie each event type to its category, and allow a recurrence only on a payment due that stays inside maturity.
+- **Outcome hook.** Each imported row records one `performance_reported` event (status, paid-through date, balance), dated by the tape's as-of, or by the import date with that said. No model reads it. It is raw material for V-Notes-2 calibration.
+- **Calendar hook.** Every imported row registers its maturity. Next payment due (monthly through maturity), balloon and next rate adjustment are registered only when the tape STATES them. A next due date is never derived from the due day. A new optional tape field, "Next rate adjustment", is stored as an observation and an event; it has no `acquired_notes` column.
+- **Validator.** A next due, balloon or rate-adjustment date after maturity now refuses its row and names the cell.
+- **Read.** The note record gains `outcomes` (every report, oldest first) and `calendar` (the latest registration per type, or why none is on record). The note page shows a "Dates on record" card: recorded only, nothing scheduled or sent.
+- **Not in N3.** Alerts, clocks, reminders and borrower comms (V-Notes-2, inside the consent rails). No calibration model. Posted servicing payments are not mirrored into outcome events: that would touch the payment-posting path, which is money-adjacent.
+
 ## 2026-10-27 — V-Notes-1 N2 — the note page record — on `claude/notes-v1-n2-note-page` (stacked on N1)
 
 - **Route.** `GET /api/notes/:id/record` (`server/routes-note-record.ts` + `services/notes/noteRecord.ts`). Owner/admin only; another org's note and a malformed id are the same 404.
