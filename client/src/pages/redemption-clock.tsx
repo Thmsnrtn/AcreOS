@@ -73,10 +73,12 @@ interface Certificate {
   redeemedAt: string | null;
   redeemedAmountCents: number | null;
   // Server-decorated:
-  currentRedemptionAmountCents: number;
-  currentInterestCents: number;
-  appliedRateBps: number;
+  // null when no redemption rule is encoded for the state — never a guess.
+  currentRedemptionAmountCents: number | null;
+  currentInterestCents: number | null;
+  appliedRateBps: number | null;
   modelUsed: string;
+  amountRefusalReason: string | null;
   preliminary: boolean;
   daysRemaining: number;
 }
@@ -106,6 +108,15 @@ function fmtUsd(cents: number): string {
 
 function fmtPct(bps: number): string {
   return `${(bps / 100).toFixed(2)}%`;
+}
+
+/** An amount AcreOS did not compute (no encoded rule) reads as such, with the reason. */
+function Uncomputed({ reason }: { reason: string | null }) {
+  return (
+    <span className="text-muted-foreground" title={reason ?? undefined} data-testid="redemption-amount-uncomputed">
+      not computed<span className="sr-only">{reason ? ` — ${reason}` : ""}</span>
+    </span>
+  );
 }
 
 function dayCellTone(days: number): string {
@@ -315,8 +326,8 @@ export default function RedemptionClockPage() {
                       Rate
                     </div>
                     <div className={`tabular-nums ${c.preliminary ? "text-acr-warn" : ""}`}>
-                      {fmtPct(c.appliedRateBps)}{c.preliminary && "*"}
-                      {c.preliminary && <span className="sr-only"> (preliminary rate — verify with the county clerk)</span>}
+                      {c.appliedRateBps === null ? <Uncomputed reason={c.amountRefusalReason} /> : <>{fmtPct(c.appliedRateBps)}{c.preliminary && "*"}</>}
+                      {c.preliminary && c.appliedRateBps !== null && <span className="sr-only"> (preliminary rate — verify with the county clerk)</span>}
                     </div>
                   </div>
                   <div>
@@ -330,7 +341,7 @@ export default function RedemptionClockPage() {
                       Interest
                     </div>
                     <div className="tabular-nums text-acr-pos">
-                      +{fmtUsd(c.currentInterestCents)}
+                      {c.currentInterestCents === null ? <Uncomputed reason={c.amountRefusalReason} /> : `+${fmtUsd(c.currentInterestCents)}`}
                     </div>
                   </div>
                 </div>
@@ -339,7 +350,7 @@ export default function RedemptionClockPage() {
                     Total redemption
                   </div>
                   <div className="text-base font-semibold tabular-nums">
-                    {fmtUsd(c.currentRedemptionAmountCents)}
+                    {c.currentRedemptionAmountCents === null ? <Uncomputed reason={c.amountRefusalReason} /> : fmtUsd(c.currentRedemptionAmountCents)}
                   </div>
                 </div>
               </Card>
@@ -390,13 +401,13 @@ export default function RedemptionClockPage() {
                       {c.daysRemaining < 0 ? `${Math.abs(c.daysRemaining)} overdue` : `${c.daysRemaining}`}
                     </td>
                     <td className="px-3 py-2.5 text-right font-mono text-xs">{fmtUsd(c.purchaseAmountCents)}</td>
-                    <td className="px-3 py-2.5 text-right font-mono text-xs text-acr-pos">+{fmtUsd(c.currentInterestCents)}</td>
-                    <td className="px-3 py-2.5 text-right font-mono font-semibold">{fmtUsd(c.currentRedemptionAmountCents)}</td>
+                    <td className="px-3 py-2.5 text-right font-mono text-xs text-acr-pos">{c.currentInterestCents === null ? <Uncomputed reason={c.amountRefusalReason} /> : `+${fmtUsd(c.currentInterestCents)}`}</td>
+                    <td className="px-3 py-2.5 text-right font-mono font-semibold">{c.currentRedemptionAmountCents === null ? <Uncomputed reason={c.amountRefusalReason} /> : fmtUsd(c.currentRedemptionAmountCents)}</td>
                     <td className="px-3 py-2.5 text-right text-xs">
                       <span className={c.preliminary ? "text-acr-warning" : ""}>
-                        {fmtPct(c.appliedRateBps)}
+                        {c.appliedRateBps === null ? <Uncomputed reason={c.amountRefusalReason} /> : fmtPct(c.appliedRateBps)}
                       </span>
-                      {c.preliminary && (
+                      {c.preliminary && c.appliedRateBps !== null && (
                         <span className="ml-0.5">
                           *<span className="sr-only"> (preliminary rate — verify with the county clerk)</span>
                         </span>
@@ -445,11 +456,16 @@ function CreateCertificateDialog({ open, onOpenChange }: { open: boolean; onOpen
   const [bidDownRate, setBidDownRate] = useState("");
   const [ownerOccupied, setOwnerOccupied] = useState(false);
   const [ownerName, setOwnerName] = useState("");
+  // Only when AcreOS has no rule to compute the deadline: the county's own
+  // deadline, and where it came from. The server refuses one without the other.
+  const [countyDeadline, setCountyDeadline] = useState("");
+  const [countyDeadlineSource, setCountyDeadlineSource] = useState("");
 
   const reset = () => {
     setState(""); setCounty(""); setApn(""); setCertificateNumber("");
     setSaleType("lien"); setSaleDate(""); setPurchase("");
     setBidDownRate(""); setOwnerOccupied(false); setOwnerName("");
+    setCountyDeadline(""); setCountyDeadlineSource("");
   };
 
   const submit = useMutation({
@@ -475,6 +491,8 @@ function CreateCertificateDialog({ open, onOpenChange }: { open: boolean; onOpen
           bidDownRateBps: bidDownBps,
           ownerName: ownerName.trim() || undefined,
           ownerOccupiedAtSale: ownerOccupied,
+          redemptionDeadline: countyDeadline.trim() || undefined,
+          redemptionDeadlineSource: countyDeadlineSource.trim() || undefined,
         }),
       });
       if (!res.ok) {
@@ -484,7 +502,7 @@ function CreateCertificateDialog({ open, onOpenChange }: { open: boolean; onOpen
       return res.json();
     },
     onSuccess: () => {
-      toast({ title: "Certificate added", description: "Redemption deadline computed and tracked." });
+      toast({ title: "Certificate added", description: "Its redemption deadline is now tracked." });
       queryClient.invalidateQueries({ queryKey: ["/api/tax-certificates"] });
       queryClient.invalidateQueries({ queryKey: ["/api/tax-certificates/dashboard/summary"] });
       reset();
@@ -567,6 +585,22 @@ function CreateCertificateDialog({ open, onOpenChange }: { open: boolean; onOpen
               Owner-occupied at sale (TX 24-mo redemption applies; some states differ)
             </Label>
           </div>
+          <fieldset className="space-y-2 rounded-md border border-border/60 p-3">
+            <legend className="px-1 text-xs font-medium">County redemption deadline</legend>
+            <p className="text-caption text-muted-foreground">
+              Only needed when AcreOS has no rule to compute the deadline for this state. AcreOS will not guess one — enter it from the county's certificate or notice.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label htmlFor="cert-county-deadline" className="text-xs">Deadline</Label>
+                <Input id="cert-county-deadline" type="date" value={countyDeadline} onChange={(e) => setCountyDeadline(e.target.value)} />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="cert-county-deadline-source" className="text-xs">Where it came from</Label>
+                <Input id="cert-county-deadline-source" placeholder="County certificate #, notice" value={countyDeadlineSource} onChange={(e) => setCountyDeadlineSource(e.target.value)} />
+              </div>
+            </div>
+          </fieldset>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => { reset(); onOpenChange(false); }}>{Verbs.CANCEL}</Button>

@@ -3,6 +3,32 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-10-28 — V-Tax-1 started (Notes V1 complete: N1–N4 merged, main `45ed282`). T0 — tax defaults refuse instead of inventing — on `claude/tax-v1-t0-refuse-defaults`
+
+- **Send gate re-verified.**
+  - Main is `45ed282`.
+  - The D2c tables (`parcel_apids`, `parcel_apn_windows`, `parcel_lineage_events`) are in migration 0291 on that head.
+  - Staging deploy run 40743046229 succeeded on `45ed282`.
+- **Map first.** Main already has nine tax-sale tables, two CSV importers, a redemption clock with a nightly job, quiet title and an auction worksheet.
+  - None of it records per-field provenance or resolves to an APID.
+  - Three rule stores disagree with each other.
+  - Four tables are dead: nothing reads or writes them.
+  - `note_events` cannot hold tax dates, because it requires an acquired note.
+  - The forward-calendar registry the package assumes still does not exist.
+- **Founder decisions** (`docs/company/founder-decisions-2026-10-28-tax.md`):
+  - Swap the four dead tables for four purpose-built ones; the table count stays 748.
+  - Fix the national defaults first, in their own PR.
+- **T0 fixes.**
+  - No 12% fallback: a state with no rule gets no amount, and the reason is stated.
+  - No owned-deed fabrication: a certificate with no computable deadline is refused unless the county's deadline is entered with its source.
+  - Quiet-title steps open undated, in procedure order.
+  - An unknown redemption period scores nothing in the county opportunity score.
+- **Left for T2.**
+  - GA/TX flat penalties are still shown beside annual rates. Annualised-return honesty belongs to T2.
+  - The nightly job still overwrites deadlines in the 10 encoded states.
+  - Quiet title has no status gate yet.
+  - SCRA tolling is still unimplemented; it is a founder decision, tracked in `statuteRegister`.
+
 ## 2026-10-27 — V-Notes-1 N4 — disagreement capture and negative knowledge — on `claude/notes-v1-n4-disagreement` (stacked on N3)
 
 - **Disagreement.** For each term and yield field, the note record returns every distinct value any import stated, each with all its sources, plus which value the book holds (`bookValueIs`). A source stating a value the book lacks also counts as a disagreement: a later tape fills a field the first left blank, and a re-import never updates the book row. Nothing is resolved, averaged or deleted.

@@ -317,10 +317,15 @@ export interface RedemptionAmountResult {
   monthsHeld: number;
   yearsHeld: number;
   principalCents: number;
-  interestCents: number;
-  totalRedemptionCents: number;
-  appliedRateBps: number;
-  modelUsed: StateRedemptionRule["interestModel"];
+  /** null when no rule is encoded for the state — never a guessed figure. */
+  interestCents: number | null;
+  /** null when no rule is encoded for the state — never a guessed figure. */
+  totalRedemptionCents: number | null;
+  /** null when no rule is encoded for the state. */
+  appliedRateBps: number | null;
+  modelUsed: StateRedemptionRule["interestModel"] | "no_rule";
+  /** Why there is no amount, in plain words; null when one was computed. */
+  refusalReason: string | null;
   // Set when the math is structurally non-trivial; the UI shows
   // an asterisk + "Verify with clerk before relying on this number".
   preliminary: boolean;
@@ -345,21 +350,23 @@ export function computeRedemptionAmount(input: ComputeAmountInput): RedemptionAm
   const monthsHeld = Math.max(0, daysHeld / 30.4375); // average month length
   const yearsHeld = monthsHeld / 12;
 
-  // Default fallback if state isn't in the rule table (TD-3 will reduce
-  // this to never-fired). 12% simple annual is the closest median rule.
+  // No rule encoded for the state: there is no amount. Until 2026-10-28 this
+  // returned 12% simple annual as "the closest median rule" — a national
+  // default the tax package forbids (founder decision 2026-10-28). Interest
+  // or penalty is set by each state's statute; without it AcreOS states no
+  // figure and says why, rather than inventing one.
   if (!rule) {
-    const fallbackRateBps = 1_200;
-    const interestCents = Math.round((input.purchaseAmountCents * fallbackRateBps / 10_000) * yearsHeld);
     return {
       asOfDate: input.asOfDate,
       daysHeld,
       monthsHeld,
       yearsHeld,
       principalCents: input.purchaseAmountCents,
-      interestCents,
-      totalRedemptionCents: input.purchaseAmountCents + interestCents,
-      appliedRateBps: fallbackRateBps,
-      modelUsed: "simple_annual",
+      interestCents: null,
+      totalRedemptionCents: null,
+      appliedRateBps: null,
+      modelUsed: "no_rule",
+      refusalReason: `AcreOS has no encoded redemption rule for ${input.state.toUpperCase()}, so it does not compute an amount. Get the redemption amount from the county.`,
       preliminary: true,
     };
   }
@@ -377,6 +384,7 @@ export function computeRedemptionAmount(input: ComputeAmountInput): RedemptionAm
       totalRedemptionCents: input.purchaseAmountCents,
       appliedRateBps: 0,
       modelUsed: "no_redemption",
+      refusalReason: null,
       preliminary: rule.attorneyReviewedAt === null,
     };
   }
@@ -442,6 +450,7 @@ export function computeRedemptionAmount(input: ComputeAmountInput): RedemptionAm
     totalRedemptionCents: input.purchaseAmountCents + interestCents,
     appliedRateBps,
     modelUsed: rule.interestModel,
+    refusalReason: null,
     preliminary: rule.attorneyReviewedAt === null,
   };
 }
