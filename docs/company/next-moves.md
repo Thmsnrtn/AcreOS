@@ -3,6 +3,16 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-10-27 — V-Notes-1 N2 — the note page record — on `claude/notes-v1-n2-note-page` (stacked on N1)
+
+- **Route.** `GET /api/notes/:id/record` (`server/routes-note-record.ts` + `services/notes/noteRecord.ts`). Owner/admin only; another org's note and a malformed id are the same 404.
+- **Provenance on every value.** Each term and yield field carries the observation that states it: tape file, row, cell, as-of, confidence. A value entered outside the import says "no source recorded".
+- **Investment-to-value** is purchase price ÷ the collateral's market value on record, shown only when both are known.
+- **Document set.** present / missing / exception / no record, with the critical gaps named.
+- **Collateral picture.** From the owned public-record parcel: value with its source and retrieval date, tax amount and year, APID or the reason there is none. Tax status, senior liens and hazards say "not searched" (no data model or lookup exists yet), never clean. Unmatched and never-searched are separate empty states, each with its next action.
+- **UI.** `NoteRecordPanels.tsx` on `/notes/:id`: terms first, documents and yield beside them, collateral second, the existing ledger below as the timeline. Provenance chips open to the tape row and cell.
+- **Not in N2.** The disagreement panel (N4; the record already returns every observation of a field). A live lien or hazard lookup (none exists; one would be a provider call and money-adjacent).
+
 ## 2026-10-27 — V-Notes-1 started (D2 merged as #412). N1 — note-tape import — on `claude/notes-v1-n1-import`
 
 - **Storage (founder-approved +2 tables).** `note_field_observations` (0292) holds every stated value with provenance, plus recorded absences. It is append-only and leaves only with its note. `note_events` lands with N3. The table count is now 747. Decision record: `docs/company/founder-decisions-2026-10-27-notes.md`.

@@ -38,6 +38,7 @@ import { NoteSplitsCard } from "@/components/note-splits-card";
 import { NoteComplianceCard } from "@/components/note-compliance-card";
 import { NoteLossMitCard } from "@/components/note-loss-mit-card";
 import { DataProvenanceChip } from "@/components/data-provenance-chip";
+import { NoteRecordPanels } from "@/components/notes/NoteRecordPanels";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { delinquencyIsDeterminable } from "@shared/notes/delinquency";
 
@@ -598,6 +599,10 @@ export default function NoteDetailPage() {
           )}
         </div>
       </div>
+
+      {/* V-Notes-1 N2: terms and status first, each value with its provenance;
+          the document set; then the collateral's data picture. */}
+      <NoteRecordPanels noteId={note.id} />
 
       {/* Top stat cards — the line Linnea's CPA cares about goes first.
           Acquisition price separated from face value is the basis story. */}
