@@ -3,6 +3,14 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-10-27 — V-Notes-1 N4 — disagreement capture and negative knowledge — on `claude/notes-v1-n4-disagreement` (stacked on N3)
+
+- **Disagreement.** For each term and yield field, the note record returns every distinct value any import stated, each with all its sources, plus which value the book holds (`bookValueIs`). A source stating a value the book lacks also counts as a disagreement: a later tape fills a field the first left blank, and a re-import never updates the book row. Nothing is resolved, averaged or deleted.
+- **On the page.** A "Sources disagree on N terms" panel sits above the terms. It lists every value with its provenance chip, marks the book value, and says AcreOS has not picked one. Each disagreeing row carries a "sources disagree" badge.
+- **Negative knowledge.** The import now records a `searched_none` observation for an optional field when the tape HAS the column but the cell is blank. The record distinguishes `blank_on_source` ("blank on the tape (column X) — asked, nothing stated") from `never_stated` (no import had the column). A later tape lacking the column does not erase the earlier "asked and blank". Collateral, liens, tax status and hazards already carried searched-none vs never-searched from N1/N2.
+- **Tests rewritten to the new truth, not deleted.** `noteTapeCommit.realdb` and `noteRecord.realdb` had pinned "a blank field has no row". They now pin that a blank is never a value: it is a searched-none row, and a field the tape has no column for still has no row.
+- **Not in N4.** Warehouse-vs-tape disagreement on a TERM: the warehouse holds no note terms, so there is nothing to compare yet. Collateral value comes only from the warehouse. Operator resolution of a disagreement (choosing a book value) is a write path the spec did not ask for.
+
 ## 2026-10-27 — V-Notes-1 N3 — outcome and forward-calendar hooks — on `claude/notes-v1-n3-events` (stacked on N2)
 
 - **Storage.** `note_events` (migration 0293 + mirror) is the second of the founder-approved +2 tables, so the table count is now 748. It is append-only and org-private on the same terms as `note_field_observations`: a row leaves only with its note, so org erasure still completes (real-DB tested). CHECKs tie each event type to its category, and allow a recurrence only on a payment due that stays inside maturity.

@@ -99,8 +99,12 @@ describe.runIf(realDbAvailable)("note-tape commit — real database", () => {
     expect(bal).toMatchObject({ kind: "value", value: 8425000, source: "note_tape", as_of: "2026-09-30", confidence: "medium" });
     expect(bal.source_ref).toMatchObject({ fileName: "golden.csv", fileSha256: sha256, fileRow: 2, column: "UPB", raw: "$84,250.00" });
     expect(rows.find((x) => x.field === "collateral.parcel")).toMatchObject({ kind: "value", source: "warehouse", value: expect.objectContaining({ parcelKey: `pk-${tag}`, apid: null }) });
-    // A field the tape left blank has no row at all (unknown), never a 0.
-    expect(rows.find((x) => x.field === "balloonAmount")).toBeUndefined();
+    // A field the tape left blank is never a value (never a 0): since N4 it is
+    // a verified absence — the tape had the column and the cell was blank.
+    const balloonRows = rows.filter((x) => x.field === "balloonAmount");
+    expect(balloonRows).toEqual([expect.objectContaining({ kind: "searched_none", value: null, source_ref: expect.objectContaining({ column: "Balloon", raw: "" }) })]);
+    // A field the tape has no column for has no row at all (never asked = unknown).
+    expect(rows.find((x) => x.field === "nextPaymentDate")).toBeUndefined();
     const unmatched = await db.execute(sql`SELECT kind, value FROM note_field_observations WHERE note_id = ${r.notes[2].noteId} AND field = 'collateral.parcel'`);
     expect((unmatched as unknown as { rows: unknown[] }).rows).toEqual([{ kind: "searched_none", value: null }]);
     const notSearched = await db.execute(sql`SELECT count(*)::int AS n FROM note_field_observations WHERE note_id = ${r.notes[1].noteId} AND field = 'collateral.parcel'`);

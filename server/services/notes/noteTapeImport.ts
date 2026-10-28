@@ -86,6 +86,12 @@ export interface PreparedNote {
   documentsIncomplete: boolean;
   /** Every field this row stated, its typed value and where it came from. */
   stated: Partial<Record<NoteTapeFieldKey, { value: TypedValue; source: CellSource }>>;
+  /**
+   * Optional fields the tape HAS a column for and leaves blank on this row —
+   * negative knowledge ("the tape was asked and says nothing"), distinct from
+   * a field the tape has no column for (never asked).
+   */
+  blankMapped: Array<{ field: NoteTapeFieldKey; column: string }>;
 }
 
 export interface NoteTapeValidation {
@@ -221,6 +227,7 @@ export function validateNoteTape(opts: { sheet: ParsedSheet; mapping: NoteTapeMa
     const fileRow = i + 2;
     const errors: NoteFieldError[] = [];
     const stated: PreparedNote["stated"] = {};
+    const blankMapped: PreparedNote["blankMapped"] = [];
     const rowOverrides = overrides[fileRow] ?? {};
     for (const def of NOTE_TAPE_FIELDS) {
       const corrected = rowOverrides[def.key];
@@ -230,6 +237,7 @@ export function validateNoteTape(opts: { sheet: ParsedSheet; mapping: NoteTapeMa
       const source: CellSource = { column, raw, origin: corrected !== undefined ? "operator_correction" : "tape" };
       if (raw.trim() === "") {
         if (def.required) errors.push({ field: def.key, column, value: raw, message: `${def.label} is blank — it is required and is never filled in for you`, fix: def.fix });
+        else if (column !== null) blankMapped.push({ field: def.key, column });
         continue;
       }
       const p = parseCell(def.key, raw);
@@ -296,6 +304,7 @@ export function validateNoteTape(opts: { sheet: ParsedSheet; mapping: NoteTapeMa
       documentExceptionNote: exceptionNote,
       documentsIncomplete,
       stated,
+      blankMapped,
     });
   });
   summary.validCount = valid.length;

@@ -12,8 +12,12 @@
  *     found, a note with no parcel id to search by, a lien search nobody ran
  *     and a hazard lookup nobody ran each come back as their own state with a
  *     reason — distinct from each other and from "found".
- *   - Every observation of a field is returned (oldest first), so N4 can show
- *     a disagreement with every value preserved.
+ *   - Every observation of a field is returned (oldest first). When sources
+ *     state different values, `disagreement` lists every value with its
+ *     sources (N4) — nothing is resolved; the book value stays the one first
+ *     recorded, and the record says which value that is.
+ *   - A missing value says WHY (N4 negative knowledge): blank on a tape that
+ *     had the column (asked, nothing stated) vs never stated by any import.
  *   - Outcome events and forward-calendar dates (N3, hooks only): every
  *     performance report, oldest first, and the latest registration of each
  *     calendar date — or why it is not on record. Nothing here schedules.
@@ -47,6 +51,19 @@ export interface RecordedValue {
   provenance: ObservationView | null;
   /** Every observation of this field, oldest first. */
   observations: ObservationView[];
+  /**
+   * Why there is no value, when there is none — negative knowledge (N4):
+   * 'blank_on_source' = an import had a column for it and the cell was blank
+   * (asked, nothing stated); 'never_stated' = no import has had a column for it.
+   */
+  absence: null | { status: "blank_on_source"; column: string | null; fileName: string | null } | { status: "never_stated" };
+  /**
+   * Sources that disagree (N4): every distinct stated value, each with every
+   * observation that stated it, oldest first. Nothing is resolved, averaged or
+   * overwritten — `value` above stays the book value, and `bookValueIs` says
+   * which of these it is.
+   */
+  disagreement: null | { values: Array<{ value: unknown; observations: ObservationView[] }>; bookValueIs: number | null };
 }
 
 export type Absence = { status: "not_on_record" | "never_searched"; reason: string };
@@ -185,7 +202,32 @@ export async function buildNoteRecord(organizationId: number, noteId: string): P
     // Money columns are bigint in number mode and dates are ISO strings on both
     // sides, so the comparison is direct.
     const match = all.find((o) => o.kind === "value" && JSON.stringify(o.value) === JSON.stringify(value));
-    return { field, label: NOTE_TAPE_FIELD[field].label, value, provenance: match ? view(match) : null, observations: all.map(view) };
+    // Distinct stated values, in the order first stated.
+    const groups = new Map<string, NoteFieldObservation[]>();
+    for (const o of all) if (o.kind === "value") groups.set(JSON.stringify(o.value), [...(groups.get(JSON.stringify(o.value)) ?? []), o]);
+    const distinct = [...groups.values()];
+    // Also a disagreement: a source states a value the book does not hold
+    // (e.g. a later tape fills a field the first tape left blank — the book
+    // row is never updated by a re-import, so the two differ).
+    const bookStated = groups.has(JSON.stringify(value));
+    const disagreement: RecordedValue["disagreement"] =
+      distinct.length > 1 || (distinct.length === 1 && !bookStated)
+        ? {
+            values: distinct.map((g) => ({ value: g[0].value, observations: g.map(view) })),
+            bookValueIs: (() => {
+              const i = [...groups.keys()].indexOf(JSON.stringify(value));
+              return i < 0 ? null : i;
+            })(),
+          }
+        : null;
+    const blank = all.filter((o) => o.kind === "searched_none").at(-1);
+    const absence: RecordedValue["absence"] =
+      value !== null
+        ? null
+        : blank
+          ? { status: "blank_on_source", column: (blank.sourceRef.column as string | undefined) ?? null, fileName: (blank.sourceRef.fileName as string | undefined) ?? null }
+          : { status: "never_stated" };
+    return { field, label: NOTE_TAPE_FIELD[field].label, value, provenance: match ? view(match) : null, observations: all.map(view), absence, disagreement };
   };
   const terms = TERM_FIELDS.map(recorded);
   const yieldFields = YIELD_FIELDS.map(recorded);

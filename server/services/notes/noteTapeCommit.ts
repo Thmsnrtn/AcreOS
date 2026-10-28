@@ -14,6 +14,9 @@
  *     A searched-but-unmatched reference is recorded as a verified absence
  *     (kind 'searched_none'), never linked; a note with no usable reference
  *     records nothing (never searched = unknown). properties is never touched.
+ *   - An optional field the tape has a column for but leaves blank is
+ *     recorded as a verified absence ('searched_none'): the tape was asked
+ *     and says nothing — distinct from a field it has no column for.
  *   - Each row also records its outcome event (the performance the tape
  *     reports) and registers the dated terms it STATES on the forward calendar
  *     (note_events, N3 — hooks only: nothing alerts or sends from them).
@@ -162,6 +165,24 @@ export async function commitNoteTape(a: CommitNoteTapeArgs): Promise<CommitNoteT
           confidence: TAPE_CONFIDENCE,
           confidenceBasis: corrected ? "corrected by the operator during import; the tape's own cell was not used" : TAPE_CONFIDENCE_BASIS,
           decayClass: NOTE_TAPE_FIELD[k].decay,
+          importId,
+          recordedBy: a.actorUserId,
+        });
+      }
+      // Negative knowledge: the tape has a column for the field and it is blank here.
+      for (const b of n.blankMapped) {
+        rows.push({
+          organizationId: a.organizationId,
+          noteId,
+          field: b.field,
+          kind: "searched_none",
+          value: null,
+          source: "note_tape",
+          sourceRef: { fileName: a.fileName, fileSha256: a.fileSha256, fileRow: n.fileRow, column: b.column, raw: "" },
+          asOf: a.asOf,
+          confidence: TAPE_CONFIDENCE,
+          confidenceBasis: "the tape has a column for this field and it is blank for this note",
+          decayClass: NOTE_TAPE_FIELD[b.field].decay,
           importId,
           recordedBy: a.actorUserId,
         });

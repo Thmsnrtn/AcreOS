@@ -9,7 +9,7 @@
  * and an empty collateral block says what to do next.
  */
 import { useQuery } from "@tanstack/react-query";
-import { FileWarning, Info, MapPinOff, SearchX } from "lucide-react";
+import { AlertTriangle, FileWarning, Info, MapPinOff, SearchX } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -30,7 +30,15 @@ interface ObservationView {
   basis: string;
   observedAt: string;
 }
-interface RecordedValue { field: NoteTapeFieldKey; label: string; value: unknown; provenance: ObservationView | null; observations: ObservationView[] }
+interface RecordedValue {
+  field: NoteTapeFieldKey;
+  label: string;
+  value: unknown;
+  provenance: ObservationView | null;
+  observations: ObservationView[];
+  absence: null | { status: "blank_on_source"; column: string | null; fileName: string | null } | { status: "never_stated" };
+  disagreement: null | { values: Array<{ value: unknown; observations: ObservationView[] }>; bookValueIs: number | null };
+}
 type Absence = { status: "not_on_record" | "never_searched"; reason: string };
 interface NoteRecord {
   noteId: string;
@@ -119,16 +127,54 @@ function ProvenanceChip({ p, label }: { p: ObservationView | null; label: string
   );
 }
 
+/** Why a value is missing — blank on a tape that had the column, or never stated. */
+function absenceText(r: RecordedValue, emptyText: string): string {
+  if (r.absence?.status === "blank_on_source") return `blank on the tape${r.absence.column ? ` (column “${r.absence.column}”)` : ""} — asked, nothing stated`;
+  return emptyText;
+}
+
 function ValueRow({ r, emptyText }: { r: RecordedValue; emptyText: string }) {
   const shown = r.value === null || r.value === undefined ? null : format(r.field, r.value);
   return (
     <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 py-1.5" data-testid={`note-record-${r.field}`}>
       <dt className="text-sm text-muted-foreground">{r.label}</dt>
       <dd className="flex flex-wrap items-center gap-2 text-sm">
-        {shown === null ? <span className="text-muted-foreground">{emptyText}</span> : <span className="font-medium tabular-nums">{shown}</span>}
+        {shown === null ? <span className="text-muted-foreground">{absenceText(r, emptyText)}</span> : <span className="font-medium tabular-nums">{shown}</span>}
         {shown !== null && <ProvenanceChip p={r.provenance} label={r.label} />}
+        {r.disagreement && <Badge variant="destructive" data-testid="note-record-disagrees">sources disagree</Badge>}
       </dd>
     </div>
+  );
+}
+
+/** N4 — every value each source stated for a field, side by side. Nothing is resolved. */
+function DisagreementPanel({ fields }: { fields: RecordedValue[] }) {
+  if (fields.length === 0) return null;
+  return (
+    <Card className="border-destructive/40 p-5" data-testid="note-record-disagreements">
+      <h2 className="mb-1 flex items-center gap-2 text-sm font-semibold">
+        <AlertTriangle className="h-4 w-4 text-destructive" aria-hidden="true" />
+        Sources disagree on {fields.length === 1 ? "1 term" : `${fields.length} terms`}
+      </h2>
+      <p className="mb-3 text-xs text-muted-foreground">Every value is kept with where it came from. AcreOS has not picked one: the book keeps the value first recorded until you correct it.</p>
+      <ul className="divide-y">
+        {fields.map((r) => (
+          <li key={r.field} className="py-2" data-testid={`note-disagreement-${r.field}`}>
+            <p className="mb-1 text-sm font-medium">{r.label}</p>
+            {r.disagreement!.bookValueIs === null && <p className="mb-1 text-xs text-muted-foreground">The book holds {r.value === null || r.value === undefined ? "no value" : format(r.field, r.value)} — no source on record states it.</p>}
+            <ul className="space-y-1">
+              {r.disagreement!.values.map((v, i) => (
+                <li key={i} className="flex flex-wrap items-center gap-2 text-sm">
+                  <span className="tabular-nums">{format(r.field, v.value)}</span>
+                  {v.observations.map((o, j) => <ProvenanceChip key={j} p={o} label={`${r.label} (${format(r.field, v.value)})`} />)}
+                  {r.disagreement!.bookValueIs === i && <Badge variant="outline">on the book</Badge>}
+                </li>
+              ))}
+            </ul>
+          </li>
+        ))}
+      </ul>
+    </Card>
   );
 }
 
@@ -168,8 +214,11 @@ export function NoteRecordPanels({ noteId }: { noteId: string }) {
   const c = data.collateral;
   const itv = data.investmentToValue;
 
+  const disagreeing = [...data.terms, ...data.yieldFields].filter((r) => r.disagreement);
+
   return (
     <div className="mb-6 space-y-4">
+      <DisagreementPanel fields={disagreeing} />
       <div className="grid gap-4 lg:grid-cols-2">
         <Card className="p-5" data-testid="note-record-terms">
           <h2 className="mb-1 text-sm font-semibold">Terms as recorded</h2>
@@ -183,7 +232,7 @@ export function NoteRecordPanels({ noteId }: { noteId: string }) {
           <Card className="p-5" data-testid="note-record-yield">
             <h2 className="mb-3 text-sm font-semibold">Yield fields</h2>
             <dl className="divide-y">
-              {data.yieldFields.map((r) => <ValueRow key={r.field} r={r} emptyText="not on the tape" />)}
+              {data.yieldFields.map((r) => <ValueRow key={r.field} r={r} emptyText="no import has stated this" />)}
               <div className="flex flex-wrap items-baseline justify-between gap-x-3 py-1.5" data-testid="note-record-itv">
                 <dt className="text-sm text-muted-foreground">Investment-to-value</dt>
                 <dd className="text-sm">

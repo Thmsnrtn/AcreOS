@@ -27,8 +27,8 @@ describe("golden note tape", () => {
   it("matches the hand-written expected output, row by row and field by field", () => {
     expect(out.unmappedRequired).toEqual(expected.unmappedRequired);
     expect(out.summary).toEqual(expected.summary);
-    // Project out provenance (`stated`) — compared separately below.
-    expect(out.valid.map(({ stated: _s, ...rest }) => rest)).toEqual(expected.valid);
+    // Project out provenance (`stated`) and negative knowledge (`blankMapped`) — compared separately below.
+    expect(out.valid.map(({ stated: _s, blankMapped: _b, ...rest }) => rest)).toEqual(expected.valid);
     expect(out.rejected.map((r) => ({ fileRow: r.fileRow, fields: r.errors.map((e) => e.field) }))).toEqual(expected.rejected);
     assertNoRowLost(out);
   });
@@ -78,5 +78,20 @@ describe("targeted fix", () => {
     const { sheet } = readNoteTape(`${header}\nX-1,SYNTHETIC,1000,900,8,120,10,1,2020-01-01,2030-01-01,2026-09-15,500,performing,yes,yes,exception\n`);
     const out = validateNoteTape({ sheet, mapping: suggestNoteTapeMapping(sheet.headers).mapping });
     expect(out.rejected[0].errors).toEqual([expect.objectContaining({ field: "docAssignmentChain", message: expect.stringMatching(/not recorded/) })]);
+  });
+});
+
+describe("golden note tape — negative knowledge", () => {
+  const { sheet } = readNoteTape(csv);
+  const out = validateNoteTape({ sheet, mapping: suggestNoteTapeMapping(sheet.headers).mapping });
+
+  it("an optional column the tape has but leaves blank is recorded as asked-and-blank; a column it lacks is not", () => {
+    const blanks = Object.fromEntries(out.valid.map((n) => [n.noteNumber, n.blankMapped.map((b) => `${b.field}:${b.column}`)]));
+    expect(blanks["SYNTH-1001"]).toEqual(["balloonAmount:Balloon", "balloonDate:Balloon Date", "docExceptionNote:Collateral Exceptions"]);
+    expect(blanks["SYNTH-1002"]).toEqual(expect.arrayContaining(["collateralApn:APN", "docAllonges:Allonges"]));
+    // The golden tape has no next-due column: never asked, so never recorded as blank.
+    for (const n of out.valid) expect(n.blankMapped.some((b) => b.field === "nextPaymentDate")).toBe(false);
+    // A required field is never in this list — a blank required cell refuses the row instead.
+    for (const n of out.valid) for (const b of n.blankMapped) expect(b.field).not.toMatch(/^(currentBalance|interestRate|maturityDate)$/);
   });
 });
