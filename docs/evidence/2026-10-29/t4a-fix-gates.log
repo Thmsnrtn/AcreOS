@@ -1,0 +1,24 @@
+# V-Tax-1 T4a fix — gates at the final head
+# head 1b2145ac7bf441388fcb7c1fd8ebc8248c6b7355 (the evidence file is committed on top of it)
+# date 2026-10-29T16:42:24Z
+
+head 1b2145ac7bf441388fcb7c1fd8ebc8248c6b7355
+check=0
+build=0
+dbbuild=0
+realdb=0
+vitest=0
+ALLDONE
+
+## db:build-from-repo (fresh database)
+[db-restore] pg_restore complete
+[db-restore] OK — 752 tables, 840 rows, every count matches the manifest
+[build-schema] PASS — the schema this repository describes is the schema it can build.
+
+## real-DB suites: ACREOS_REQUIRE_REAL_DB=1 npx vitest run tests/unit/*.realdb.test.ts (27 files, incl. the Notes suites: noteDisagreement.realdb.test.ts noteEvents.realdb.test.ts noteRecord.realdb.test.ts noteTapeCommit.realdb.test.ts )
+ Test Files  27 passed (27)
+      Tests  109 passed (109)
+
+## full vitest
+ Test Files  1541 passed | 38 skipped (1579)
+      Tests  19267 passed | 186 skipped (19453)
