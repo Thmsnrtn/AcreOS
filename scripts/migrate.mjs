@@ -12891,11 +12891,23 @@ $mig0284$`,
   `CREATE TRIGGER tax_lot_observations_no_truncate BEFORE TRUNCATE ON "tax_lot_observations"
      FOR EACH STATEMENT EXECUTE FUNCTION tax_lot_observations_guard()`,
   `DO $$
+   DECLARE
+     has_rows boolean;
    BEGIN
-     IF to_regclass('public.tax_sale_alerts') IS NOT NULL AND EXISTS (SELECT 1 FROM "tax_sale_alerts" LIMIT 1) THEN
+     IF to_regclass('public.tax_sale_alerts') IS NOT NULL THEN
+       EXECUTE 'SELECT EXISTS (SELECT 1 FROM "tax_sale_alerts" LIMIT 1)' INTO has_rows;
+     ELSE
+       has_rows := false;
+     END IF;
+     IF has_rows THEN
        RAISE EXCEPTION 'tax_sale_alerts holds rows; nothing is dropped (V-Tax-1 T1 retires it only when empty — escalate to the founder)';
      END IF;
-     IF to_regclass('public.lien_search_records') IS NOT NULL AND EXISTS (SELECT 1 FROM "lien_search_records" LIMIT 1) THEN
+     IF to_regclass('public.lien_search_records') IS NOT NULL THEN
+       EXECUTE 'SELECT EXISTS (SELECT 1 FROM "lien_search_records" LIMIT 1)' INTO has_rows;
+     ELSE
+       has_rows := false;
+     END IF;
+     IF has_rows THEN
        RAISE EXCEPTION 'lien_search_records holds rows; nothing is dropped (V-Tax-1 T1 retires it only when empty — escalate to the founder)';
      END IF;
      DROP TABLE IF EXISTS "tax_sale_alerts";
