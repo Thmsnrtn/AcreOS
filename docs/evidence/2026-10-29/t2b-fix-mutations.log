@@ -1,0 +1,44 @@
+# V-Tax-1 T2b fix batch — mutation evidence (audit 2026-10-29 fix list)
+# base commit 86d77e2663bf3320f73b965bf89b92d32c80d09b + the uncommitted fix batch (this log is committed with it)
+# date 2026-10-29T15:26:18Z
+# cmd per mutant: ACREOS_REQUIRE_REAL_DB=1 ACREOS_REAL_DATABASE_URL=<db built by db:build-from-repo> npx vitest run tests/unit/taxClock.realdb.test.ts
+# each mutant is applied alone, run, and reverted; CAUGHT = the suite went red
+
+BASELINE (no mutation): exit 0 — 10 passed (10)
+
+M1 case gate date-checks only 'active' again
+  file: server/routes-quiet-title.ts
+  result: CAUGHT (exit 1) — 1 ⎯⎯⎯⎯⎯⎯⎯
+  red: the case gate checks the date whatever the status says
+
+M2 PATCH to a held-deed status allowed while redeemable
+  file: server/routes-tax-certificates.ts
+  result: CAUGHT (exit 1) — 1 ⎯⎯⎯⎯⎯⎯⎯
+  red: a redeemable certificate cannot be PATCHed to a held deed, and a case still cannot open on it
+
+M3 petition filing skips the certificate date check
+  file: server/routes-quiet-title.ts
+  result: CAUGHT (exit 1) — 1 ⎯⎯⎯⎯⎯⎯⎯
+  red: the petition filing is refused on a certificate still redeemable, even when a case exists
+
+M4 petition filing writes no calendar event
+  file: server/routes-quiet-title.ts
+  result: CAUGHT (exit 1) — 1 ⎯⎯⎯⎯⎯⎯⎯
+  red: completing the petition filing puts it on the calendar citing the case, lifts the lock, and cannot be taken back
+
+M5 a filed petition can be un-filed
+  file: server/routes-quiet-title.ts
+  result: CAUGHT (exit 1) — 1 ⎯⎯⎯⎯⎯⎯⎯
+  red: completing the petition filing puts it on the calendar citing the case, lifts the lock, and cannot be taken back
+
+M6 an UNVERIFIED procedure is cited
+  file: server/services/tax/taxEvents.ts
+  result: CAUGHT (exit 1) — 1 ⎯⎯⎯⎯⎯⎯⎯
+  red: a computed deadline that the county's verified procedure states cites the procedure object
+
+M7 the procedure object is never cited
+  file: server/services/tax/taxEvents.ts
+  result: CAUGHT (exit 1) — 1 ⎯⎯⎯⎯⎯⎯⎯
+  red: a computed deadline that the county's verified procedure states cites the procedure object
+
+AFTER REVERT: exit 0 — 10 passed (10)
