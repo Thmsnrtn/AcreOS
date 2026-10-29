@@ -49,6 +49,7 @@ import { logger } from "./utils/logger";
 import { sendEmail } from "./services/emailService";
 import { clock } from "./utils/clock";
 import { routeParam } from "./utils/routeParams";
+import { refuseRedeemableDeedSpend } from "./services/tax/landExit";
 
 const blastBodySchema = z.object({
   subject: z.string().min(1).max(240),
@@ -88,6 +89,8 @@ export function registerBuyerBlastRoutes(app: Express): void {
         // parcel must not be re-offered from stale matches (DEFECT-0174).
         const notOfferable = offerabilityRefusal(prop.status);
         if (notOfferable) return Errors.badRequest(res, notOfferable);
+        // V-Tax-1 T4b: nor a parcel still held by a tax position (not yet marketable in AcreOS).
+        if (!(await refuseRedeemableDeedSpend(res, orgId, propertyId, "A buyer blast"))) return;
 
         // Pull matched buyers ≥ minMatchScore.
         const matches = await db

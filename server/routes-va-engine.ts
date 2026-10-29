@@ -16,6 +16,7 @@ import * as vaManagement from "./services/vaManagement";
 import { clock } from "./utils/clock";
 import { OfferBatchUnavailableError, assertOfferBatchCreatable } from "./services/offerBatchGate";
 import { routeParam } from "./utils/routeParams";
+import { refuseRedeemableDeedSpend } from "./services/tax/landExit";
 
 export async function registerVAEngineRoutes(app: Express): Promise<void> {
   const api = app;
@@ -508,6 +509,8 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
         ...req.body,
         organizationId: org.id,
       });
+      // V-Tax-1 T4b: no marketing a parcel still held by a tax position.
+      if (!(await refuseRedeemableDeedSpend(res, org.id, validated.propertyId ?? null, "An ad posting"))) return;
       const posting = await storage.createAdPosting(validated);
       res.status(201).json(posting);
     } catch (error: any) {
@@ -1427,6 +1430,9 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.post("/api/dd-assignments", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
+      // V-Tax-1 T4b: no due-diligence vendor spend on a parcel still held by a tax position.
+      const ddPropertyId = Number(req.body?.propertyId);
+      if (!(await refuseRedeemableDeedSpend(res, org.id, Number.isInteger(ddPropertyId) ? ddPropertyId : null, "A due-diligence assignment"))) return;
       const assignment = await storage.createDDAssignment({
         ...omitServerOwnedFields(req.body),
         organizationId: org.id,

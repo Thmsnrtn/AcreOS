@@ -26,6 +26,7 @@ import { inArray } from "drizzle-orm";
 import { wsServer } from "./websocket";
 import { clock } from "./utils/clock";
 import { routeParam } from "./utils/routeParams";
+import { refuseRedeemableDeedSpend } from "./services/tax/landExit";
 
 export function registerTeamMessagingRoutes(app: Express): void {
   const api = app;
@@ -1001,6 +1002,8 @@ export function registerTeamMessagingRoutes(app: Express): void {
       // Only land the org holds can be offered (DEFECT-0174).
       const notOfferable = offerabilityRefusal(property.status);
       if (notOfferable) return Errors.badRequest(res, notOfferable);
+      // V-Tax-1 T4b: nor land still held by a tax position (not yet marketable in AcreOS).
+      if (!(await refuseRedeemableDeedSpend(res, org.id, parsed.data.propertyId, "Listing this property"))) return;
       
       // Check if listing already exists for this property
       const existing = await storage.getPropertyListingByPropertyId(org.id, parsed.data.propertyId);
@@ -1186,6 +1189,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
         // must not publish after it sold (DEFECT-0174).
         const notOfferable = offerabilityRefusal(property.status);
         if (notOfferable) return Errors.badRequest(res, notOfferable);
+        if (!(await refuseRedeemableDeedSpend(res, org.id, property.id, "Publishing this listing"))) return;
 
         const [orgRow] = await db
           .select()

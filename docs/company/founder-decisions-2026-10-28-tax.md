@@ -58,6 +58,7 @@ workstreams build on honest ground. Each now refuses rather than inventing:
 - Leave them and build beside them: rejected, because the old surfaces would keep
   showing invented numbers next to the new ones.
 
+
 ## 3. T3a — an over-max bid: override with a stated reason (2026-10-29)
 
 Recorded from the founder's message on 2026-10-29, after the audit of #422:
@@ -69,3 +70,20 @@ Recorded from the founder's message on 2026-10-29, after the audit of #422:
 - **Rejected: absolute refusal** of any bid over the max.
 - The override path is not to be reworked. T3a's audit verdict stands as
   mergeable on spec once the T2b fix list lands and is re-audited.
+
+## 4. T4b — how an acquired tax parcel enters Land, and what the gate covers (2026-10-29)
+
+Asked via the session, answered by the founder:
+
+- **The exit is an operator action** — "Move to Land inventory" on the
+  certificate, available only once redemption has expired (deed held). It links an
+  existing org property with the same state/county/APN, or creates one as
+  `owned`, and the certificate's tax history goes with it. Nothing moves on a
+  status change alone. (Rejected: automatic creation at `deed_obtained`, which
+  writes a Land record the operator never confirmed.)
+- **The gate covers spend AND marketing.** Until the deed is marketable in AcreOS
+  (redemption expired and a quiet-title petition filed, or an attorney exception
+  recorded), feasibility / plat / due-diligence / rehab spend and the marketing
+  paths (listings, buyer blasts, ad postings, marketplace) are refused, through
+  one shared chokepoint, with a ratchet test that enumerates every gated route.
+  (Rejected: spend only; deferring T4b.)

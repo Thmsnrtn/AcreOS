@@ -31,6 +31,7 @@ import { logger } from "./utils/logger";
 import { emitPlanStatusChange } from "./services/subdivisionEvents";
 import { clock } from "./utils/clock";
 import { routeParam } from "./utils/routeParams";
+import { refuseRedeemableDeedSpend } from "./services/tax/landExit";
 
 const featureCollectionSchema = z.object({
   type: z.literal("FeatureCollection"),
@@ -167,6 +168,8 @@ export function registerSubdivisionPlanRoutes(app: Express): void {
           .from(properties)
           .where(and(eq(properties.id, parentId), eq(properties.organizationId, orgId)));
         if (!parent) return Errors.notFound(res, "Parcel");
+        // V-Tax-1 T4b: no plat spend on a parcel still held by a tax position.
+        if (!(await refuseRedeemableDeedSpend(res, orgId, parentId, "A subdivision plan"))) return;
 
         const summary = parsed.data.geojson ? summarizeGeojson(parsed.data.geojson) : { lotCount: 0, totalRoadFeet: 0, totalAcres: 0 };
 
@@ -212,6 +215,7 @@ export function registerSubdivisionPlanRoutes(app: Express): void {
             eq(subdivisionPlans.organizationId, orgId),
           ));
         if (!existing) return Errors.notFound(res, "Subdivision plan");
+        if (!(await refuseRedeemableDeedSpend(res, orgId, existing.parentParcelId, "Changing a subdivision plan"))) return;
 
         const updates: Record<string, unknown> = { updatedAt: clock.now() };
         if (parsed.data.name !== undefined) updates.name = parsed.data.name;

@@ -28,6 +28,7 @@ import { getOrganizationId } from "./types/request";
 import { BoundedMap } from "./utils/boundedMap";
 import { clock } from "./utils/clock";
 import { routeParam } from "./utils/routeParams";
+import { refuseRedeemableDeedSpend } from "./services/tax/landExit";
 
 /** The values `due_diligence_dossiers.priority` takes. */
 const DOSSIER_PRIORITIES = new Set(["urgent", "high", "normal", "low"]);
@@ -59,6 +60,8 @@ router.post("/request/:propertyId", isAuthenticated, getOrCreateOrg, async (req:
     // The service's third argument is the priority string, not the body.
     const requested = req.body?.priority;
     const priority = typeof requested === "string" && DOSSIER_PRIORITIES.has(requested) ? requested : undefined;
+    // V-Tax-1 T4b: no due-diligence spend on a parcel still held by a tax position.
+    if (!(await refuseRedeemableDeedSpend(res, org.id, propertyId, "A due-diligence dossier"))) return;
     const dossier = await dueDiligencePodService.requestDossier(org.id, propertyId, priority);
     res.status(201).json({ dossier });
   } catch (err: any) {
@@ -97,6 +100,8 @@ router.post("/:id/run", isAuthenticated, getOrCreateOrg, async (req: Request, re
   try {
     const id = parseInt(routeParam(req.params.id));
     if (isNaN(id)) return Errors.badRequest(res, "Invalid dossier ID");
+    const existing = await dueDiligencePodService.getDossier(id, getOrganizationId(req));
+    if (existing && !(await refuseRedeemableDeedSpend(res, getOrganizationId(req), existing.propertyId, "Running a due-diligence dossier"))) return;
     const dossier = await dueDiligencePodService.runDossierPod(id, getOrganizationId(req));
     res.json({ dossier });
   } catch (err: any) {

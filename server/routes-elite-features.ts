@@ -43,6 +43,7 @@ import { clock } from "./utils/clock";
 import { annualInterestReportContract, projectAnnualInterestReport } from "@shared/contracts";
 import { validateResponse } from "./utils/contractResponse";
 import { routeParam } from "./utils/routeParams";
+import { refuseRedeemableDeedSpend } from "./services/tax/landExit";
 
 const auth = [isAuthenticated, getOrCreateOrg];
 
@@ -464,6 +465,8 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
       // Only land the org holds can be syndicated (DEFECT-0174).
       const notOfferable = offerabilityRefusal(property.status);
       if (notOfferable) return Errors.badRequest(res, notOfferable);
+      // V-Tax-1 T4b: nor land still held by a tax position.
+      if (!(await refuseRedeemableDeedSpend(res, org.id, property.id, "Syndicating this listing"))) return;
 
       const [orgData] = await db.select().from(organizations).where(eq(organizations.id, org.id));
 

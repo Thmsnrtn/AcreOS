@@ -25,6 +25,7 @@ import { emitBuyerMatchCreated } from "./buyerEvents";
 import { clock } from "../utils/clock";
 
 import { meteredChatCompletion } from "./aiSpendGuard";
+import { heldPropertyIds, taxHoldRefusal } from "./tax/landExit";
 type ProfileType = "individual" | "investor" | "developer" | "builder";
 type MatchStatus = "pending" | "presented" | "interested" | "not_interested" | "purchased";
 
@@ -239,9 +240,10 @@ export class BuyerMatchingAIService {
 
     // The one offerability rule (DEFECT-0177): the same statuses a listing,
     // a syndication and a blast accept — not a second inline list.
+    const held = await heldPropertyIds(organizationId); // V-Tax-1 T4b: tax-held land is not offered
     const availableProperties = (
       await db.select().from(properties).where(eq(properties.organizationId, organizationId))
-    ).filter((p) => !offerabilityRefusal(p.status));
+    ).filter((p) => !offerabilityRefusal(p.status) && !held.has(p.id));
 
     const matchResults: PropertyMatchResult[] = [];
 
@@ -342,6 +344,9 @@ export class BuyerMatchingAIService {
     // offerable (DEFECT-0177), so it is refused before anything is written.
     const notOfferable = offerabilityRefusal(property.status);
     if (notOfferable) throw new BuyerMatchRefusal(notOfferable);
+    // V-Tax-1 T4b: nor land still held by a tax position (not yet marketable in AcreOS).
+    const taxHold = await taxHoldRefusal(organizationId, property.id, "Matching buyers to this property");
+    if (taxHold) throw new BuyerMatchRefusal(taxHold.message);
 
     const activeBuyers = await db.select().from(buyerProfiles)
       .where(and(

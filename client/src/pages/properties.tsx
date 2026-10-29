@@ -140,6 +140,7 @@ import { DataProvenanceChip } from "@/components/data-provenance-chip";
 import { usePersistedGisFilters } from "@/hooks/use-persisted-gis-filters";
 import { Bot } from "lucide-react";
 import { Verbs } from "@/lib/labels";
+import { PropertyTaxHistoryPanel } from "@/components/tax/PropertyTaxHistoryPanel";
 
 // `embedded` — mounted inside the /pipeline door's Properties tab
 // (pipeline.tsx), which already renders the app shell. See
@@ -2065,6 +2066,10 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                   )}
                 </div>
               </div>
+
+              {/* V-Tax-1 T4b: a parcel that came from a tax position carries its tax
+                  history; renders nothing for a property with none. */}
+              <PropertyTaxHistoryPanel propertyId={currentProperty.id} />
 
               {(() => {
                 // r7 Ingrid WF-R7-001: inline Distress Indicators section.

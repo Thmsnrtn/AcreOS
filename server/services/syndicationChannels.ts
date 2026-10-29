@@ -44,6 +44,7 @@ import {
 } from "./listingSyndication";
 import { logger } from "../utils/logger";
 import { clock } from "../utils/clock";
+import { heldPropertyIds } from "./tax/landExit";
 
 // ─── Client contract (mirrors listing-syndication.tsx) ──────────────────────
 
@@ -272,6 +273,7 @@ export async function syncChannels(
     ? await db.select().from(properties).where(and(eq(properties.organizationId, orgId), inArray(properties.id, propertyIds)))
     : [];
   const propById = new Map(props.map((p) => [p.id, p]));
+  const taxHeld = await heldPropertyIds(orgId);
 
   const perChannel = new Map<string, { succeeded: number; failed: number; firstError?: string }>(
     syncable.map((id) => [id, { succeeded: 0, failed: 0 }]),
@@ -284,6 +286,7 @@ export async function syncChannels(
     // the parcel was owned stays "active" after a sale, and sync-all then
     // offered sold land on every other channel.
     if (offerabilityRefusal(property.status)) continue;
+    if (taxHeld.has(property.id)) continue; // V-Tax-1 T4b: not yet marketable in AcreOS
 
     // Only push to channels where this listing isn't already live — and
     // never back onto a channel it was withdrawn or taken down from (a

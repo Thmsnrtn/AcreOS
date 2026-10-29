@@ -37,6 +37,7 @@ import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { clock } from "./utils/clock";
 import { routeParam } from "./utils/routeParams";
+import { refuseRedeemableDeedSpend } from "./services/tax/landExit";
 
 // ----------------------------------------------------------------------------
 // Validation
@@ -304,6 +305,8 @@ export function registerSubdivisionRoutes(app: Express): void {
           .from(properties)
           .where(and(eq(properties.id, parentId), eq(properties.organizationId, orgId)));
         if (!parent) return Errors.notFound(res, "Parent parcel");
+        // V-Tax-1 T4b: no lot split on a parcel still held by a tax position.
+        if (!(await refuseRedeemableDeedSpend(res, orgId, parentId, "Splitting the parcel into lots"))) return;
 
         const inheritedDefaults = parsed.data.inheritFromParent
           ? {
