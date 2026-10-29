@@ -122,7 +122,9 @@ export const taxEvents = pgTable(
     certificateId: uuid("certificate_id")
       .notNull()
       .references(() => taxCertificates.id, { onDelete: "cascade" }),
-    eventType: text("event_type").$type<"redemption_expiry" | "quiet_title_filed">().notNull(),
+    eventType: text("event_type")
+      .$type<"redemption_expiry" | "quiet_title_filed" | "subsequent_tax_paid" | "redemption_notice_recorded" | "foreclosure_filing_deadline">()
+      .notNull(),
     eventDate: date("event_date").notNull(),
     ruleCited: jsonb("rule_cited").$type<TaxRuleCited>().notNull(),
     detail: jsonb("detail").$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
