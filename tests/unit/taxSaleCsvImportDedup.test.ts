@@ -23,13 +23,16 @@ import {
   type ColumnMapping,
 } from "../../server/services/taxSaleCsvImport";
 
-const HEADERS = ["apn", "county", "state", "sale type", "total tax owed"];
+// Sale date and delinquent years are required columns since V-Tax-1 T1.
+const HEADERS = ["apn", "county", "state", "sale type", "total tax owed", "sale date", "delinquent years"];
 const MAPPING: ColumnMapping = {
   apn: 0,
   county: 1,
   state: 2,
   saleType: 3,
   totalTaxOwed: 4,
+  saleDate: 5,
+  delinquentYears: 6,
 };
 
 /** One CSV row in the shape HEADERS/MAPPING describe. */
@@ -39,6 +42,8 @@ const row = (apn: string, county: string, state = "TX"): string[] => [
   state,
   "lien",
   "1000",
+  "2026-11-04",
+  "2024",
 ];
 
 const validate = (

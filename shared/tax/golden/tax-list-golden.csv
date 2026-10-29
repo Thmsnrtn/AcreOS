@@ -1,0 +1,8 @@
+Parcel ID,County,State,Sale Type,Sale Date,Tax Years,Amount Due,Minimum Bid,Market Value,Situs Address,Owner
+SYNTH-T-0001,Travis,TX,Tax Deed,11/4/2026,"2022, 2023","$4,812.50","$4,812.50",,1 Synthetic Rd,SYNTHETIC Owner A
+SYNTH-T-0002,Travis,TX,deed,2026-11-04,2021-2023,,,"$85,000",,SYNTHETIC Owner B
+SYNTH-T-0003,Harris,TX,lien,2026-11-04,2024,$900.00,,,3 Synthetic Ave,
+SYNTH-T-0004,Travis,TX,deed,2026-02-30,2023,$100.00,,,,
+SYNTH-T-0005,Travis,TX,deed,2026-11-04,last year,$100.00,,,,
+SYNTH-T-0006,Travis,TX,deed,2026-11-04,2023,call clerk,,,,
+SYNTH-T-0001,Travis,TX,deed,2026-11-04,2023,$1.00,,,,

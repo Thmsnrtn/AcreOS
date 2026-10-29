@@ -30,32 +30,13 @@ import { NOTE_TAPE_FIELD, TAPE_CONFIDENCE, TAPE_CONFIDENCE_BASIS, type NoteTapeF
 import type { NoteTapeValidation, PreparedNote } from "./noteTapeImport";
 import { planNoteEvents } from "./noteEventsPlan";
 import { clock } from "../../utils/clock";
+import { resolveOwnedParcelRef, type ParcelRefResolution } from "../landData/resolveOwnedParcelRef";
 
-export interface CollateralResolution {
-  searchedFor: { state: string; county: string; apn: string };
-  parcelKey: string | null;
-  apid: string | null;
-  /** Why there is no parcel or no APID, in plain words. */
-  reason: string | null;
-}
+export type CollateralResolution = ParcelRefResolution;
 
 /** null = not searchable (the tape gave no APN + state + county): unknown, never "not found". */
-async function resolveCollateral(c: PreparedNote["collateral"]): Promise<CollateralResolution | null> {
-  if (!c.apn || !c.state || !c.county) return null;
-  const searchedFor = { state: c.state, county: c.county, apn: c.apn };
-  const { findOwnedParcelRow } = await import("../landData/ownedParcelView");
-  const row = await findOwnedParcelRow(c.state, c.county, c.apn);
-  if (!row) return { searchedFor, parcelKey: null, apid: null, reason: "no AcreOS-held public-record parcel has this county parcel id" };
-  const { countyFipsFor } = await import("../landData/releases/releaseLineage");
-  const fips = countyFipsFor(c.state, c.county);
-  if (!fips) return { searchedFor, parcelKey: row.parcelKey ?? null, apid: null, reason: `no county FIPS reference for ${c.state}, so no APID can be resolved` };
-  const { db } = await import("../../db");
-  const { loadCountyLedger } = await import("../landData/apidStore");
-  const { apidForApnAt } = await import("@shared/landData/apid");
-  const ledger = await loadCountyLedger(db, c.state, fips);
-  if (!ledger.lastRelease) return { searchedFor, parcelKey: row.parcelKey ?? null, apid: null, reason: "no parcel release has been applied for this county yet" };
-  const apid = apidForApnAt(ledger, c.apn, ledger.lastRelease.ordinal);
-  return { searchedFor, parcelKey: row.parcelKey ?? null, apid, reason: apid ? null : "the parcel id has no APID in the county's current release" };
+function resolveCollateral(c: PreparedNote["collateral"]): Promise<CollateralResolution | null> {
+  return resolveOwnedParcelRef(c);
 }
 
 export interface CommitNoteTapeArgs {

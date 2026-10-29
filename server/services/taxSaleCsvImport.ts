@@ -124,7 +124,7 @@ export function parseDelimited(text: string): ParsedSheet {
 // Field catalogue
 // ============================================================================
 
-export type LotFieldKind = "text" | "state" | "money" | "int" | "sale_type" | "source";
+export type LotFieldKind = "text" | "state" | "money" | "int" | "sale_type" | "source" | "date" | "years";
 
 export interface LotFieldDef {
   key: LotFieldKey;
@@ -141,6 +141,8 @@ export type LotFieldKey =
   | "county"
   | "state"
   | "saleType"
+  | "saleDate"
+  | "delinquentYears"
   | "totalTaxOwed"
   | "minimumBid"
   | "openingBid"
@@ -188,9 +190,27 @@ export const LOT_FIELDS: readonly LotFieldDef[] = [
     help: "lien · deed · redeemable_deed",
   },
   {
+    key: "saleDate",
+    label: "Sale date",
+    required: true,
+    kind: "date",
+    aliases: ["sale date", "auction date", "sale", "date of sale", "tax sale date"],
+    help: "YYYY-MM-DD or M/D/YYYY. Not needed when the list is imported into an auction that has a date — the auction's date is used and recorded as its source.",
+  },
+  {
+    key: "delinquentYears",
+    label: "Delinquent tax years",
+    required: true,
+    kind: "years",
+    aliases: ["delinquent years", "tax years", "years delinquent", "delinquent tax years", "tax year", "years"],
+    help: "One or more years: 2023 · 2022, 2023 · 2021-2023.",
+  },
+  {
+    // Optional since V-Tax-1 T1: "amount owed where the list states it". A
+    // list that does not state it records the amount as not stated — never 0.
     key: "totalTaxOwed",
     label: "Total tax owed",
-    required: true,
+    required: false,
     kind: "money",
     aliases: ["total tax owed", "tax owed", "taxes owed", "total due", "amount due", "total amount due", "delinquent tax", "total taxes"],
   },
@@ -348,7 +368,13 @@ export interface PreparedLot {
   county: string;
   state: string;
   saleType: TaxSaleLotSaleType;
-  totalTaxOwedCents: number;
+  /** The sale date the list states, or the auction's date when the list is imported into one (see saleDateSource). */
+  saleDate: string;
+  saleDateSource: "list" | "auction";
+  /** Sorted, distinct. */
+  delinquentYears: number[];
+  /** null when the list does not state it — never 0. */
+  totalTaxOwedCents: number | null;
   minimumBidCents: number | null;
   openingBidCents: number | null;
   assessedValueCents: number | null;
@@ -362,6 +388,14 @@ export interface PreparedLot {
   ownerName: string | null;
   acquisitionSource: TaxSaleLotAcquisitionSource | null;
   notes: string | null;
+  /** Every field this row stated: the column and the raw cell (provenance). */
+  stated: Partial<Record<LotFieldKey, { column: string; raw: string }>>;
+  /**
+   * Optional fields the list HAS a column for and leaves blank on this row —
+   * negative knowledge ("the list was asked and says nothing"), distinct
+   * from a field the list has no column for.
+   */
+  blankMapped: Array<{ field: LotFieldKey; column: string }>;
 }
 
 export interface ValidationOutcome {
@@ -373,7 +407,10 @@ export interface ValidationOutcome {
     rejectedCount: number;
     /** Distinct (state, county) pairs seen among valid rows. */
     jurisdictions: Array<{ state: string; county: string; count: number }>;
+    /** Sum of the amounts owed the list states (see taxOwedNotStatedCount). */
     totalTaxOwedCents: number;
+    /** Valid rows whose amount owed the list does not state. */
+    taxOwedNotStatedCount: number;
     minimumBidTotalCents: number;
   };
 }
@@ -451,6 +488,51 @@ export interface ValidateOptions {
   existingParcels?: readonly { apn: string; county: string; state: string }[];
   /** Fallback when the sheet has no acquisition-source column. */
   defaultAcquisitionSource?: TaxSaleLotAcquisitionSource;
+  /**
+   * The date of the auction the list is imported into, when it has one. A row
+   * that states no sale date takes it (recorded as sourced from the auction);
+   * a row that states one keeps its own.
+   */
+  auctionSaleDate?: string | null;
+}
+
+/** Strict calendar date: YYYY-MM-DD or M/D/YYYY. Never rolls an impossible date. */
+export function parseLotDate(raw: string): { date: string } | { error: string } {
+  const t = raw.trim();
+  let y: number, m: number, d: number;
+  let match = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(t);
+  if (match) {
+    [y, m, d] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  } else if ((match = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(t))) {
+    [m, d, y] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  } else {
+    return { error: `"${raw}" is not a date AcreOS can read (use YYYY-MM-DD or M/D/YYYY).` };
+  }
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) {
+    return { error: `"${raw}" is not a real calendar date.` };
+  }
+  return { date: `${String(y).padStart(4, "0")}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}` };
+}
+
+/** Delinquent years: "2023", "2022, 2023", "2022;2023", "2021-2023". Sorted, distinct. */
+export function parseDelinquentYears(raw: string): { years: number[] } | { error: string } {
+  const out = new Set<number>();
+  for (const part of raw.split(/[,;/]|\s+and\s+/i).map((p) => p.trim()).filter(Boolean)) {
+    const range = /^(\d{4})\s*[-–]\s*(\d{4})$/.exec(part);
+    if (range) {
+      const [a, b] = [Number(range[1]), Number(range[2])];
+      if (b < a || b - a > 50) return { error: `"${part}" is not a year range AcreOS can read.` };
+      for (let y = a; y <= b; y++) out.add(y);
+    } else if (/^\d{4}$/.test(part)) {
+      out.add(Number(part));
+    } else {
+      return { error: `"${part}" is not a tax year (expected e.g. 2023, or 2021-2023).` };
+    }
+  }
+  if (out.size === 0) return { error: `"${raw}" names no tax year.` };
+  for (const y of out) if (y < 1900 || y > 2100) return { error: `${y} is not a plausible tax year.` };
+  return { years: [...out].sort((a, b) => a - b) };
 }
 
 /**
@@ -584,6 +666,31 @@ export function validateLotRows(opts: ValidateOptions): ValidationOutcome {
       }
     }
 
+    // Sale date: the row's own, else the auction's (recorded as such), else refused.
+    const saleDateRaw = cell(row, "saleDate");
+    let saleDate: string | null = null;
+    let saleDateSource: "list" | "auction" = "list";
+    if (saleDateRaw) {
+      const d = parseLotDate(saleDateRaw);
+      if ("error" in d) errors.push({ field: "saleDate", column: colName("saleDate"), value: saleDateRaw, message: d.error });
+      else saleDate = d.date;
+    } else if (opts.auctionSaleDate) {
+      saleDate = opts.auctionSaleDate;
+      saleDateSource = "auction";
+    } else {
+      errors.push({ field: "saleDate", column: colName("saleDate"), value: saleDateRaw, message: "Sale date is required — the row states none and the list is not imported into an auction with a date. It is never assumed." });
+    }
+
+    const yearsRaw = cell(row, "delinquentYears");
+    let delinquentYears: number[] | null = null;
+    if (!yearsRaw) {
+      errors.push({ field: "delinquentYears", column: colName("delinquentYears"), value: yearsRaw, message: "Delinquent tax years are required." });
+    } else {
+      const y = parseDelinquentYears(yearsRaw);
+      if ("error" in y) errors.push({ field: "delinquentYears", column: colName("delinquentYears"), value: yearsRaw, message: y.error });
+      else delinquentYears = y.years;
+    }
+
     const sourceRaw = cell(row, "acquisitionSource");
     let acquisitionSource: TaxSaleLotAcquisitionSource | null = opts.defaultAcquisitionSource ?? null;
     if (sourceRaw) {
@@ -629,13 +736,28 @@ export function validateLotRows(opts: ValidateOptions): ValidationOutcome {
     if (apn) seenInFile.set(lotDedupKey({ apn, county, state }), fileRow);
 
     const orNull = (v: string): string | null => (v === "" ? null : v);
+    const stated: PreparedLot["stated"] = {};
+    const blankMapped: PreparedLot["blankMapped"] = [];
+    for (const f of LOT_FIELDS) {
+      const column = colName(f.key);
+      if (column === null) continue;
+      const raw = cell(row, f.key);
+      if (raw === "") {
+        if (!f.required) blankMapped.push({ field: f.key, column });
+      } else {
+        stated[f.key] = { column, raw };
+      }
+    }
     valid.push({
       fileRow,
       apn,
       county,
       state,
       saleType: saleType!,
-      totalTaxOwedCents: money.totalTaxOwed!,
+      saleDate: saleDate!,
+      saleDateSource,
+      delinquentYears: delinquentYears!,
+      totalTaxOwedCents: money.totalTaxOwed ?? null,
       minimumBidCents: money.minimumBid ?? null,
       openingBidCents: money.openingBid ?? null,
       assessedValueCents: money.assessedValue ?? null,
@@ -649,6 +771,8 @@ export function validateLotRows(opts: ValidateOptions): ValidationOutcome {
       ownerName: orNull(cell(row, "ownerName")),
       acquisitionSource,
       notes: orNull(cell(row, "notes")),
+      stated,
+      blankMapped,
     });
   });
 
@@ -668,7 +792,10 @@ export function validateLotRows(opts: ValidateOptions): ValidationOutcome {
       validCount: valid.length,
       rejectedCount: rejected.length,
       jurisdictions: Array.from(jurisdictionMap.values()).sort((a, b) => b.count - a.count),
-      totalTaxOwedCents: valid.reduce((s, l) => s + l.totalTaxOwedCents, 0),
+      // The sum of the amounts the list STATES; rows that state none are
+      // counted separately, never summed as 0.
+      totalTaxOwedCents: valid.reduce((s, l) => s + (l.totalTaxOwedCents ?? 0), 0),
+      taxOwedNotStatedCount: valid.filter((l) => l.totalTaxOwedCents === null).length,
       minimumBidTotalCents: valid.reduce((s, l) => s + (l.minimumBidCents ?? 0), 0),
     },
   };

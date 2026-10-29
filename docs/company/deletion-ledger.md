@@ -116,6 +116,23 @@ correctness risks across 2+ machines. Disposition:
 
 ## Executed deletions (log)
 
+- 2026-10-28 — **`tax_sale_alerts` and `lien_search_records` retired** (founder
+  decision 2026-10-28, `founder-decisions-2026-10-28-tax.md` §1; V-Tax-1 T1,
+  migration 0294).
+  - **Neither was ever used:** nothing in the repository read or wrote either
+    table. Each was referenced only by its own schema definition and the
+    statement that created it.
+  - **Replaced by:** `tax_county_watches` and `tax_lot_observations`. The table
+    count does not change.
+  - **Guarded drop:** the migration refuses to drop either table if it holds a
+    single row, and stops with an error so the founder can rule, because
+    customer data is never deleted by a migration.
+  - **Removed with them:** the per-boot `CREATE TABLE IF NOT EXISTS
+    "lien_search_records"` in `scripts/migrate.mjs`, so the table is not
+    recreated on every deploy.
+  - **Next:** T2 retires `county_redemption_rates` and
+    `auction_readiness_checklists` on the same terms.
+
 - 2026-08-18 — **`GET /api/enhancements/campaign-roi/:id` + `calculateCampaignROI`
   deleted** (founder picker ruling, this date). Found during the URL-id tenancy
   sweep, and it failed on three counts at once:
