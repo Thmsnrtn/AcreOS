@@ -3,6 +3,25 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-10-29 — V-Tax-1 T2a — procedure objects + county-verification gate + bidding lock — on `claude/tax-v1-t2-procedure-clock` (stacked on T1)
+
+- **T2 ships as two PRs, each net zero on tables.**
+  - T2a: procedure objects and the bidding lock.
+  - T2b: the clock and calendar (`tax_events`), 90/30/7 alerts, the redeemable-deed lock, the quiet-title gate, and flat-penalty honesty on the existing surfaces.
+- **Storage.** Migration 0295 adds `tax_procedure_objects`.
+  - It is versioned: UPDATE and TRUNCATE are refused, and a change is a new version. DELETE stays allowed so erasure completes.
+  - It is org-private: one organization's verification is never shown to another.
+  - It retires `county_redemption_rates` with the guarded, atomic drop. The table count stays 748.
+- **The procedure object** (`shared/tax/procedure.ts`) records instrument, bid method, interest or penalty, redemption period, notice, foreclosure / quiet-title path and subsequent taxes.
+  - Every field carries its source, its as-of date, state law or county practice, and its verification. AcreOS authors none of them.
+  - A source over 12 months old raises the stale-law banner. County practice is labelled "not state permission".
+- **The bidding lock (T2 [AUDIT]).** A county is biddable only with every required field, no stale field, and a county-verification task under 12 months old. Otherwise `POST …/bid-log` refuses `bid`/`won` with a 422 and the reasons, and records nothing.
+  - `passed`, `outbid` and `no_show` stay open.
+  - **Every county starts locked** until someone records its procedure and verifies it. This is the spec's intent; it will block bidding for existing users until they do.
+- **UI.** A procedure card on each county watch: standing, reasons, banner, every field with its provenance, and forms to record a version and complete the verification.
+- **Flat penalties** are described as "one-time, not an annual rate" (`describeReturn`).
+- **Not in T2a.** The clock, alerts, locks and quiet-title gate (T2b). Seeding procedure objects from the old state tables was not done: that would put AcreOS-authored "law" into a store whose whole point is sourced, verified fields.
+
 ## 2026-10-29 — V-Tax-1 T1 — tax-list import, county watches, triage — on `claude/tax-v1-t1-watch-triage` (stacked on T0)
 
 - **Storage (founder swap, net zero).**

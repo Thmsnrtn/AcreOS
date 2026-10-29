@@ -12914,6 +12914,48 @@ $mig0284$`,
      DROP TABLE IF EXISTS "lien_search_records";
    END;
    $$`,
+  // 0295 — V-Tax-1 T2a: tax_procedure_objects (sourced, dated, versioned; org-private); guarded atomic retirement of county_redemption_rates.
+  // Mirrors migrations/0295_tax_v1_procedure_objects.sql.
+  `CREATE TABLE IF NOT EXISTS "tax_procedure_objects" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL,
+     "state" text NOT NULL CHECK ("state" ~ '^[A-Z]{2}$'),
+     "county" text NOT NULL CHECK (length(trim("county")) > 0),
+     "version" integer NOT NULL CHECK ("version" >= 1),
+     "fields" jsonb NOT NULL,
+     "county_verification" jsonb,
+     "recorded_by" text NOT NULL CHECK (length(trim("recorded_by")) > 0),
+     "recorded_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "tax_procedure_objects_org_county_version_uidx" ON "tax_procedure_objects" ("organization_id", "state", lower("county"), "version")`,
+  `CREATE OR REPLACE FUNCTION tax_procedure_objects_guard()
+   RETURNS trigger AS $$
+   BEGIN
+     RAISE EXCEPTION 'tax_procedure_objects is versioned, never edited (% denied) — record a new version', TG_OP
+       USING ERRCODE = 'restrict_violation';
+   END;
+   $$ LANGUAGE plpgsql`,
+  `DROP TRIGGER IF EXISTS tax_procedure_objects_no_update ON "tax_procedure_objects"`,
+  `CREATE TRIGGER tax_procedure_objects_no_update BEFORE UPDATE ON "tax_procedure_objects"
+     FOR EACH ROW EXECUTE FUNCTION tax_procedure_objects_guard()`,
+  `DROP TRIGGER IF EXISTS tax_procedure_objects_no_truncate ON "tax_procedure_objects"`,
+  `CREATE TRIGGER tax_procedure_objects_no_truncate BEFORE TRUNCATE ON "tax_procedure_objects"
+     FOR EACH STATEMENT EXECUTE FUNCTION tax_procedure_objects_guard()`,
+  `DO $$
+   DECLARE
+     has_rows boolean;
+   BEGIN
+     IF to_regclass('public.county_redemption_rates') IS NOT NULL THEN
+       EXECUTE 'SELECT EXISTS (SELECT 1 FROM "county_redemption_rates" LIMIT 1)' INTO has_rows;
+     ELSE
+       has_rows := false;
+     END IF;
+     IF has_rows THEN
+       RAISE EXCEPTION 'county_redemption_rates holds rows; nothing is dropped (V-Tax-1 T2 retires it only when empty — escalate to the founder)';
+     END IF;
+     DROP TABLE IF EXISTS "county_redemption_rates";
+   END;
+   $$`,
 ];
 
 // The statement set this run executes. Default: everything (the production

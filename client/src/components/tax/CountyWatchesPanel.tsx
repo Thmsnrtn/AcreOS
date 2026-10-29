@@ -25,6 +25,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Verbs } from "@/lib/labels";
 import { RESOLVE_COST_LABEL, type ResolveCost } from "@shared/tax/triage";
+import { ProcedureCard } from "./ProcedureCard";
 
 interface Stated<T> { value: T; source: string; asOf: string | null }
 interface Watch {
@@ -193,7 +194,12 @@ export function CountyWatchesPanel() {
               <TermLine label={TERM_LABEL.auctionCadence} term={w.terms.auctionCadence} />
             </dl>
             {editing === w.id && <TermsForm watch={w} onDone={() => setEditing(null)} />}
-            {open === w.id && <TriageList watchId={w.id} />}
+            {open === w.id && (
+              <>
+                <ProcedureCard state={w.state} county={w.county} />
+                <TriageList watchId={w.id} />
+              </>
+            )}
           </li>
         ))}
       </ul>

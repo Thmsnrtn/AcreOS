@@ -197,6 +197,7 @@ import { registerServicerRoutes } from "./routes-servicer";
 import { registerTaxCertificateRoutes } from "./routes-tax-certificates";
 import { registerTaxRuleRoutes } from "./routes-tax-rules";
 import { registerTaxWatchRoutes } from "./routes-tax-watches";
+import { registerTaxProcedureRoutes } from "./routes-tax-procedures";
 import { registerQuietTitleRoutes } from "./routes-quiet-title";
 import { registerWholesalerRuleRoutes } from "./routes-wholesaler-rules";
 import { registerEarnestMoneyRoutes } from "./routes-earnest-money";
@@ -2476,6 +2477,8 @@ export async function registerRoutes(
   registerTaxRuleRoutes(app);
   // V-Tax-1 T1 — county watches + triage against the ignorance map.
   registerTaxWatchRoutes(app);
+  // V-Tax-1 T2a — sourced, dated, versioned county procedure objects.
+  registerTaxProcedureRoutes(app);
   // Tax-Delinquent vertical TD-6 — quiet-title workflow.
   registerQuietTitleRoutes(app);
   // Wholesaler vertical W-1 — per-state assignment-legality rules.

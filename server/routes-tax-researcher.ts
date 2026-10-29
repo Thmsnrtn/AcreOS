@@ -904,11 +904,27 @@ router.post('/listings/:id/bid-log', async (req: Request, res: Response) => {
     if (!parsed.success) return res.status(422).json({ error: parsed.error.flatten() });
 
     const [listing] = await drizzleDb
-      .select({ id: taxSaleListings.id })
+      .select({ id: taxSaleListings.id, state: taxSaleListings.state, county: taxSaleListings.county })
       .from(taxSaleListings)
       .where(and(eq(taxSaleListings.id, id), eq(taxSaleListings.organizationId, org.id)))
       .limit(1);
     if (!listing) return Errors.notFound(res, "Listing");
+
+    // BIDDING IS LOCKED for a county without a current, verified, unstale
+    // procedure object (V-Tax-1 T2 [AUDIT]: locked, not merely warned). Passing,
+    // being outbid and no-shows are records of what happened, not bids, and
+    // stay open.
+    if (parsed.data.action === "bid" || parsed.data.action === "won") {
+      const { countyBidStanding } = await import("./services/tax/taxProcedures");
+      const standing = await countyBidStanding(org.id, listing.state, listing.county, clock.now().toISOString().slice(0, 10));
+      if (!standing.biddable) {
+        return Errors.unprocessable(
+          res,
+          `Bidding is locked for ${listing.county} County, ${listing.state}: ${standing.lockReasons.map((r) => r.message).join(" ")}`,
+          { biddingLocked: true, lockReasons: standing.lockReasons },
+        );
+      }
+    }
 
     const userId = req.user?.id || req.user?.id || null;
 
