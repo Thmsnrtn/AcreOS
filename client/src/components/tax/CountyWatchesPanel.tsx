@@ -25,6 +25,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Verbs } from "@/lib/labels";
 import { RESOLVE_COST_LABEL, type ResolveCost } from "@shared/tax/triage";
+import { DISCARD_REASON_LABEL, type DiscardRecord } from "@shared/tax/maxBid";
 import { ProcedureCard } from "./ProcedureCard";
 
 interface Stated<T> { value: T; source: string; asOf: string | null }
@@ -40,6 +41,7 @@ interface Fact { key: string; label: string; state: FactState; resolve: null | {
 interface Triage {
   basis: string;
   lots: Array<{ listingId: number; apn: string; address: string | null; saleDate: string | null; delinquentYears: string[]; facts: Fact[]; unknownsInOrder: string[] }>;
+  discarded: Array<{ listingId: number; apn: string; address: string | null; discard: DiscardRecord }>;
 }
 
 const TERM_LABEL = { redemptionPeriodMonths: "Redemption period", saleType: "Sale type", auctionCadence: "Auction cadence" } as const;
@@ -114,7 +116,7 @@ function TriageList({ watchId }: { watchId: string }) {
   const q = useQuery<Triage>({ queryKey: [`/api/tax-watches/${watchId}/triage`] });
   if (q.isLoading) return <Skeleton className="mt-2 h-24" aria-label="Loading triage" />;
   if (q.isError || !q.data) return <QueryErrorState error={q.error} onRetry={() => void q.refetch()} isRetrying={q.isFetching} title="Triage could not be loaded" />;
-  if (q.data.lots.length === 0) return <p className="mt-2 text-sm text-muted-foreground">No lots from this county have been imported yet.</p>;
+  if (q.data.lots.length === 0 && q.data.discarded.length === 0) return <p className="mt-2 text-sm text-muted-foreground">No lots from this county have been imported yet.</p>;
   return (
     <div className="mt-2 space-y-3" data-testid={`watch-triage-${watchId}`}>
       <p className="text-xs text-muted-foreground">{q.data.basis}</p>
@@ -144,6 +146,18 @@ function TriageList({ watchId }: { watchId: string }) {
           </div>
         );
       })}
+      {q.data.discarded.length > 0 && (
+        <div data-testid={`watch-discarded-${watchId}`}>
+          <p className="text-sm font-medium">Discarded before bidding ({q.data.discarded.length})</p>
+          <ul className="mt-1 space-y-0.5 text-sm text-muted-foreground">
+            {q.data.discarded.map((d) => (
+              <li key={d.listingId} data-testid={`triage-discarded-${d.apn}`}>
+                APN {d.apn}{d.address ? ` · ${d.address}` : ""} — {DISCARD_REASON_LABEL[d.discard.reason]}{d.discard.note ? `: ${d.discard.note}` : ""}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

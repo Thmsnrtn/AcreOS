@@ -60,6 +60,34 @@ import { getStateRuleCoverage, UNREVIEWED_RULE_CAVEAT } from "./services/taxRule
 import { emitCertAcquired } from "./services/certificateEvents";
 import { isCalendarDate } from "@shared/dates/calendar";
 import { clock } from "./utils/clock";
+import { DISCARD_REASONS, DISCARD_REASON_LABEL, deriveMaxBid, type RightsStackInput } from "@shared/tax/maxBid";
+import { basisAfterManualMax, bidStanding, discardLot, recordMaxBid, reopenLot } from "./services/tax/bidDiscipline";
+
+// The rights stack as the operator states it (shared/tax/maxBid.ts). Each
+// amount is known-with-source, searched-with-none-found, or unknown; an
+// unknown line derives nothing, it is never read as zero.
+const stackSource = z.string().trim().min(1).max(500);
+const stackAsOf = z.string().refine(isCalendarDate, "as-of must be a calendar date (YYYY-MM-DD)");
+const stackAmountSchema = z.discriminatedUnion("status", [
+  z.object({ status: z.literal("known"), amountCents: z.number().int().nonnegative(), source: stackSource, asOf: stackAsOf }),
+  z.object({ status: z.literal("searched_none"), source: stackSource, asOf: stackAsOf }),
+  z.object({ status: z.literal("unknown") }),
+]);
+const rightsStackSchema: z.ZodType<RightsStackInput> = z.object({
+  value: stackAmountSchema,
+  survivingLiens: stackAmountSchema,
+  otherTaxes: stackAmountSchema,
+  costs: z
+    .array(z.object({ label: z.string().trim().min(1).max(200), amountCents: z.number().int().nonnegative(), source: stackSource }))
+    .max(30)
+    .nullable(),
+  requiredReturn: z
+    .discriminatedUnion("kind", [
+      z.object({ kind: z.literal("cents"), amountCents: z.number().int().nonnegative() }),
+      z.object({ kind: z.literal("pct_of_value"), bps: z.number().int().min(0).max(10_000) }),
+    ])
+    .nullable(),
+});
 
 const partnerSplitSchema = z.array(z.object({
   investorName: z.string().min(1).max(240),
@@ -869,10 +897,19 @@ router.patch('/listings/:id', async (req: Request, res: Response) => {
     }).safeParse(req.body);
     if (!parsed.success) return res.status(422).json({ error: parsed.error.flatten() });
 
-    const update = {
+    const update: Partial<typeof taxSaleListings.$inferInsert> = {
       ...parsed.data,
       updatedAt: clock.now(),
     };
+    if (parsed.data.maxBidCents !== undefined) {
+      const [current] = await drizzleDb
+        .select({ maxBidBasis: taxSaleListings.maxBidBasis })
+        .from(taxSaleListings)
+        .where(and(eq(taxSaleListings.id, id), eq(taxSaleListings.organizationId, org.id)))
+        .limit(1);
+      if (!current) return Errors.notFound(res, "Listing");
+      update.maxBidBasis = basisAfterManualMax(current.maxBidBasis ?? null, parsed.data.maxBidCents);
+    }
     const [row] = await drizzleDb
       .update(taxSaleListings)
       .set(update)
@@ -912,8 +949,16 @@ router.post('/listings/:id/bid-log', async (req: Request, res: Response) => {
       action: z.enum(AUCTION_BID_ACTIONS),
       amountCents: z.number().int().nonnegative().optional(),
       notes: z.string().max(2_000).optional(),
+      // Required to log a bid or win above the listing's max (V-Tax-1 T3a).
+      overMaxReason: z.string().trim().min(1).max(1_000).optional(),
     }).safeParse(req.body);
     if (!parsed.success) return res.status(422).json({ error: parsed.error.flatten() });
+    const isBid = parsed.data.action === "bid" || parsed.data.action === "won";
+    // A bid or win is measured against the max, so it needs the amount
+    // actually bid or paid. It is never filled in from the max.
+    if (isBid && !(parsed.data.amountCents && parsed.data.amountCents > 0)) {
+      return Errors.unprocessable(res, `Enter the amount you ${parsed.data.action === "won" ? "paid" : "bid"} — it is checked against your max and kept on the record.`, { amountRequired: true });
+    }
 
     const [listing] = await drizzleDb
       .select({ id: taxSaleListings.id, state: taxSaleListings.state, county: taxSaleListings.county })
@@ -926,7 +971,7 @@ router.post('/listings/:id/bid-log', async (req: Request, res: Response) => {
     // procedure object (V-Tax-1 T2 [AUDIT]: locked, not merely warned). Passing,
     // being outbid and no-shows are records of what happened, not bids, and
     // stay open.
-    if (parsed.data.action === "bid" || parsed.data.action === "won") {
+    if (isBid) {
       const { countyBidStanding } = await import("./services/tax/taxProcedures");
       const standing = await countyBidStanding(org.id, listing.state, listing.county, clock.now().toISOString().slice(0, 10));
       if (!standing.biddable) {
@@ -935,6 +980,36 @@ router.post('/listings/:id/bid-log', async (req: Request, res: Response) => {
           `Bidding is locked for ${listing.county} County, ${listing.state}: ${standing.lockReasons.map((r) => r.message).join(" ")}`,
           { biddingLocked: true, lockReasons: standing.lockReasons },
         );
+      }
+    }
+
+    // A DISCARDED lot is not bid on: the operator recorded why it was thrown
+    // out, and reopening it is a deliberate step, not a side effect of a tap.
+    let maxBidCentsAtAction: number | null = null;
+    let overMaxReason: string | null = null;
+    if (isBid) {
+      const standing = await bidStanding(org.id, id, parsed.data.amountCents!);
+      if (standing.status === "not_found") return Errors.notFound(res, "Listing");
+      if (standing.status === "discarded") {
+        const d = standing.discard;
+        return Errors.unprocessable(
+          res,
+          `You discarded this lot before the sale: ${DISCARD_REASON_LABEL[d.reason]}${d.note ? ` — ${d.note}` : ""}. Reopen it to bid.`,
+          { discarded: true, discard: d },
+        );
+      }
+      maxBidCentsAtAction = standing.maxBidCents;
+      // Over YOUR OWN max: flagged before the record is written, and recorded
+      // only with the reason you give for going over.
+      if (standing.against.status === "over") {
+        if (!parsed.data.overMaxReason) {
+          return Errors.unprocessable(
+            res,
+            `That is $${(standing.against.overByCents / 100).toFixed(2)} over your max of $${(standing.against.maxBidCents / 100).toFixed(2)}${standing.against.derived ? " (derived from your rights stack)" : " (your typed number — no basis recorded)"}. State why you are going over to record it.`,
+            { overMax: true, maxBidCents: standing.against.maxBidCents, overByCents: standing.against.overByCents, derived: standing.against.derived },
+          );
+        }
+        overMaxReason = parsed.data.overMaxReason;
       }
     }
 
@@ -949,6 +1024,8 @@ router.post('/listings/:id/bid-log', async (req: Request, res: Response) => {
         amountCents: parsed.data.amountCents ?? null,
         performedByUserId: userId,
         notes: parsed.data.notes ?? null,
+        maxBidCentsAtAction,
+        overMaxReason,
       })
       .returning();
 
@@ -992,14 +1069,94 @@ router.post('/listings/:id/bid-log', async (req: Request, res: Response) => {
         };
       }
     } else if (parsed.data.action === "outbid" || parsed.data.action === "passed") {
+      // A discarded lot keeps its status: the pass is recorded in the log, and
+      // the discard stays the lot's state until the operator reopens it.
       await drizzleDb
         .update(taxSaleListings)
         .set({ status: "lost", updatedAt: clock.now() })
-        .where(eq(taxSaleListings.id, id));
+        .where(and(eq(taxSaleListings.id, id), sql`(${taxSaleListings.discard} IS NULL OR ${taxSaleListings.discard}->'reopened' <> 'null'::jsonb)`));
     }
 
     res.status(201).json({ entry, certificate });
   } catch (err: any) {
+    Errors.internal(res, err);
+  }
+});
+
+// POST /tax-researcher/listings/:id/max-bid/screen — the derivation, not saved.
+// A SCREEN: arithmetic on the operator's stated stack, labelled as one.
+router.post('/listings/:id/max-bid/screen', async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (Number.isNaN(id)) return Errors.badRequest(res, "Invalid listing id");
+    const parsed = rightsStackSchema.safeParse(req.body);
+    if (!parsed.success) return Errors.validationFailed(res, parsed.error.flatten());
+    res.json({ screen: deriveMaxBid(parsed.data) });
+  } catch (err) {
+    Errors.internal(res, err);
+  }
+});
+
+// PUT /tax-researcher/listings/:id/max-bid — derive and RECORD the max bid with
+// its line items (the decision record). Refuses, naming the missing lines,
+// rather than derive from a stack with a gap in it.
+router.put('/listings/:id/max-bid', async (req: Request, res: Response) => {
+  try {
+    const org = req.organization;
+    const id = parseInt(req.params.id, 10);
+    if (Number.isNaN(id)) return Errors.badRequest(res, "Invalid listing id");
+    const parsed = rightsStackSchema.safeParse(req.body);
+    if (!parsed.success) return Errors.validationFailed(res, parsed.error.flatten());
+    const result = await recordMaxBid(org.id, id, parsed.data, req.user?.id ?? null);
+    if (result.status === "not_found") return Errors.notFound(res, "Listing");
+    if (result.status === "refused") {
+      return Errors.unprocessable(
+        res,
+        `No max bid derived — the stack is missing: ${result.screen.missing.map((m) => `${m.label} (${m.why})`).join("; ")}.`,
+        { missing: result.screen.missing },
+      );
+    }
+    res.json({ record: result.record });
+  } catch (err) {
+    Errors.internal(res, err);
+  }
+});
+
+// POST /tax-researcher/listings/:id/discard — throw a lot out before bidding,
+// with the reason recorded ("lots, ditches and few gems").
+router.post('/listings/:id/discard', async (req: Request, res: Response) => {
+  try {
+    const org = req.organization;
+    const id = parseInt(req.params.id, 10);
+    if (Number.isNaN(id)) return Errors.badRequest(res, "Invalid listing id");
+    const parsed = z
+      .object({ reason: z.enum(DISCARD_REASONS), note: z.string().trim().max(1_000).optional() })
+      .refine((b) => b.reason !== "other" || (b.note ?? "").length > 0, { message: "Say what the other reason is", path: ["note"] })
+      .safeParse(req.body);
+    if (!parsed.success) return Errors.validationFailed(res, parsed.error.flatten());
+    const result = await discardLot(org.id, id, parsed.data.reason, parsed.data.note || null, req.user?.id ?? null);
+    if (result.status === "not_found") return Errors.notFound(res, "Listing");
+    if (result.status === "already_discarded") return Errors.unprocessable(res, "This lot is already discarded.", { discard: result.discard });
+    res.json({ discard: result.discard });
+  } catch (err) {
+    Errors.internal(res, err);
+  }
+});
+
+// POST /tax-researcher/listings/:id/reopen — reopen a discarded lot; the
+// discard stays on record with who reopened it and why.
+router.post('/listings/:id/reopen', async (req: Request, res: Response) => {
+  try {
+    const org = req.organization;
+    const id = parseInt(req.params.id, 10);
+    if (Number.isNaN(id)) return Errors.badRequest(res, "Invalid listing id");
+    const parsed = z.object({ note: z.string().trim().max(1_000).optional() }).safeParse(req.body ?? {});
+    if (!parsed.success) return Errors.validationFailed(res, parsed.error.flatten());
+    const result = await reopenLot(org.id, id, parsed.data.note || null, req.user?.id ?? null);
+    if (result.status === "not_found") return Errors.notFound(res, "Listing");
+    if (result.status === "not_discarded") return Errors.unprocessable(res, "This lot is not discarded.");
+    res.json({ discard: result.discard });
+  } catch (err) {
     Errors.internal(res, err);
   }
 });
