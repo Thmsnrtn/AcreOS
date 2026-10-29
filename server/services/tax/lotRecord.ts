@@ -18,7 +18,7 @@
  *     and every read filters on the organization.
  */
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
-import { taxLotObservations, taxSaleListings, type TaxLotObservation } from "@shared/schema";
+import { taxCountyWatches, taxLotObservations, taxSaleListings, type TaxLotObservation } from "@shared/schema";
 import { recordedField, type ObservationView, type RecordedValue } from "@shared/provenance/fieldRecord";
 import { triageLot, type TriageFact } from "@shared/tax/triage";
 import { numericToCents } from "../taxSaleCsvImport";
@@ -106,7 +106,7 @@ export async function buildLotRecord(organizationId: number, listingId: number):
     const retrieved = snap?.fetchedAt ?? null;
     const warehouse = (field: LotRecordField, cents: number | null) => {
       if (cents === null) return;
-      byField.set(field, [
+      const merged: ObservationView[] = [
         ...(byField.get(field) ?? []),
         {
           value: cents,
@@ -119,7 +119,8 @@ export async function buildLotRecord(organizationId: number, listingId: number):
           decayClass: "about_a_year",
           observedAt: (retrieved ?? new Date(0)).toISOString(),
         },
-      ]);
+      ];
+      byField.set(field, merged.sort((a, b) => a.observedAt.localeCompare(b.observedAt))); // oldest first, as the field-record rule states
     };
     const toCents = (v: unknown) => (v === null || v === undefined || v === "" ? null : Math.round(Number(v) * 100));
     warehouse("marketValue", toCents(snap?.marketValue));
@@ -137,11 +138,21 @@ export async function buildLotRecord(organizationId: number, listingId: number):
   };
   const fields = LOT_RECORD_FIELDS.map((f) => recordedField(f, LABEL[f], book[f], byField.get(f) ?? []));
 
+  // The redemption period is a county term, stated (with its source) on the
+  // org's county watch — the same read the watch's own triage makes, so the
+  // lot record and the watch panel never disagree about whether it is stated.
+  const [watch] = await db
+    .select({ terms: taxCountyWatches.terms })
+    .from(taxCountyWatches)
+    .where(and(eq(taxCountyWatches.organizationId, organizationId), eq(taxCountyWatches.state, lot.state), sql`lower(${taxCountyWatches.county}) = lower(${lot.county})`))
+    .limit(1);
+  const period = watch?.terms.redemptionPeriodMonths;
+
   const { facts } = triageLot({
     parcel,
     listMarketValueCents: numericToCents(lot.marketValue),
     amountOwedCents: numericToCents(lot.totalTaxOwed),
-    redemptionPeriod: null,
+    redemptionPeriod: period ? { months: period.value, source: period.source } : null,
     survivingLiens: lot.maxBidBasis?.input.survivingLiens ?? null,
   });
 

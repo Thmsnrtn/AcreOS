@@ -10,7 +10,10 @@
  *   - a lien never searched is "unknown", and the rights stack refuses to
  *     derive a max bid from it;
  *   - a county value with the wrong type, or a future as-of, is refused;
- *   - another organization's lot is a 404, and its observations never appear.
+ *   - another organization's lot is a 404, and its observations never appear;
+ *   - the redemption period reads from the org's county watch: unknown until
+ *     it is stated there (another org's watch does not count), then known,
+ *     with the watch's source (audit 2026-10-29).
  */
 import express from "express";
 import request from "supertest";
@@ -76,6 +79,7 @@ describe.runIf(realDbAvailable)("lot tax record — real database", () => {
     const { sql } = await import("drizzle-orm");
     for (const id of orgIds) {
       await db.execute(sql`DELETE FROM tax_sale_listings WHERE organization_id = ${id}`).catch(() => undefined);
+      await db.execute(sql`DELETE FROM tax_county_watches WHERE organization_id = ${id}`).catch(() => undefined);
       await db.execute(sql`DELETE FROM organizations WHERE id = ${id}`).catch(() => undefined);
     }
     if (parcelId) await db.execute(sql`DELETE FROM parcel_snapshots WHERE id = ${parcelId}`).catch(() => undefined);
@@ -143,6 +147,19 @@ describe.runIf(realDbAvailable)("lot tax record — real database", () => {
       requiredReturn: { kind: "cents", amountCents: 0 },
     });
     expect(screen.body.screen).toMatchObject({ status: "refused", missing: [{ key: "survivingLiens" }] });
+  });
+
+  it("the redemption period is read from the org's county watch: unknown until stated there, then known with its source", async () => {
+    const { db } = await import("../../server/db");
+    const { taxCountyWatches } = await import("@shared/schema");
+    const period = (r: any) => r.facts.find((f: any) => f.key === "redemptionPeriod").state;
+    const stated = (source: string) => ({ redemptionPeriodMonths: { value: 36, source, asOf: today } });
+    // Another organization stating it for the same county does not count.
+    await db.insert(taxCountyWatches).values({ organizationId: orgIds[1], state: "TX", county, terms: stated("SYNTHETIC other org notice"), createdBy: "t4a" });
+    expect(period(await record())).toEqual({ status: "unknown", reason: "not stated on this county's watch" });
+    // The org's own watch (county matched case-insensitively, as the watch's own triage does).
+    await db.insert(taxCountyWatches).values({ organizationId: orgIds[0], state: "TX", county: county.toLowerCase(), terms: stated("SYNTHETIC county sale notice 2026"), createdBy: "t4a" });
+    expect(period(await record())).toEqual({ status: "known", value: "36 months", source: "SYNTHETIC county sale notice 2026" });
   });
 
   it("another organization's lot is a 404 and cannot be written", async () => {

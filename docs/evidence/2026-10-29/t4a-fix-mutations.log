@@ -1,0 +1,24 @@
+# V-Tax-1 T4a fix — mutation evidence (audit 2026-10-29)
+# base commit 6fcbbe214f841c6c4bcac5ab021076f04939fd9c + the uncommitted fix (this log is committed with it)
+# date 2026-10-29T16:10:18Z
+# cmd per mutant: ACREOS_REQUIRE_REAL_DB=1 ACREOS_REAL_DATABASE_URL=<db built by db:build-from-repo> npx vitest run tests/unit/taxLotRecord.realdb.test.ts
+# each mutant is applied alone, run, and reverted; CAUGHT = the suite went red
+
+BASELINE (no mutation): exit 0 — 8 passed (8)
+
+M1 the lot record passes no redemption period again
+  file: server/services/tax/lotRecord.ts
+  result: CAUGHT (exit 1) — 1 failed | 7 passed (8)
+  red: the redemption period is read from the org's county watch: unknown until stated there, then known with its source
+
+M2 the watch read drops the organization filter
+  file: server/services/tax/lotRecord.ts
+  result: CAUGHT (exit 1) — 1 failed | 7 passed (8)
+  red: the redemption period is read from the org's county watch: unknown until stated there, then known with its source
+
+M3 the county match is case-sensitive
+  file: server/services/tax/lotRecord.ts
+  result: CAUGHT (exit 1) — 1 failed | 7 passed (8)
+  red: the redemption period is read from the org's county watch: unknown until stated there, then known with its source
+
+AFTER REVERT: exit 0 — 8 passed (8)

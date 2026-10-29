@@ -3,6 +3,17 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-10-29 — V-Tax-1 T4a audit fix (#424, audited NOT YET MERGEABLE at `6fcbbe21`)
+
+- **Fix:** `buildLotRecord` read no county watch, so it always reported the redemption period "not stated on this county's watch". That was a false negative on the lot record, contradicting the watch panel beside it.
+  - It now reads the org's own watch for the lot's state and county, matched case-insensitively. It uses the same `terms.redemptionPeriodMonths` read as `buildWatchTriage`, and passes `{ months, source }` to `triageLot`.
+- **Trivial note from the audit, folded in:** the warehouse observations are now merged oldest first, which the field-record rule states.
+- **Evidence:** `docs/evidence/2026-10-29/t4a-fix-mutations.log` (3 mutants, all caught) and `t4a-fix-gates.log`.
+- **Next:**
+  - #424 still sits on T3b → T3a → T2b. T2b (#421) is in re-audit after its fix batch.
+  - The T2b bundle trim (≥5 KB) comes next.
+  - Each stacked branch gets main merged in as the PR below it lands.
+
 ## 2026-10-29 — V-Tax-1 T4a — disagreement capture and negative knowledge on the lot's tax record — on `claude/tax-v1-t4a-disagreement` (stacked on T3b)
 
 - **One rule, two verticals (addendum §2: reuse the Notes pattern).** N4's disagreement and negative-knowledge rule moved out of `buildNoteRecord` into `shared/provenance/fieldRecord.ts` (`recordedField`), unchanged.
