@@ -338,9 +338,9 @@ function QuietTitleDetail({ caseId }: { caseId: string }) {
             <div>
               <p className="text-sm font-semibold">Per-state rule preliminary.</p>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Step deadlines below are author-researched starting points, not
-                attorney-reviewed. Confirm with your {c.state} attorney before
-                relying on any specific date.
+                AcreOS does not set step deadlines: they come from {c.state}
+                statute and the court's calendar. Set each date from your
+                attorney or the procedure.
                 {stateRule.citation && <> Cite: <span className="italic">{stateRule.citation}</span>.</>}
               </p>
             </div>
@@ -424,7 +424,7 @@ function StepRow({ step }: { step: Step }) {
         <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
           <span className="flex items-center gap-1">
             <Calendar className="w-3 h-3" aria-hidden="true" />
-            Required by {formatDate(step.requiredByDate)}
+            {step.requiredByDate ? `Required by ${formatDate(step.requiredByDate)}` : "No date set — take it from your attorney or the court's procedure"}
           </span>
           {!isDone && days !== null && (
             <span className={days < 0 ? "text-acr-neg font-semibold" : days <= 7 ? "text-acr-warning" : ""}>

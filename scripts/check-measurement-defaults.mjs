@@ -334,7 +334,8 @@ const BASELINE = new Set([
   "server/services/confidenceCascadeV14.ts::request.confidenceThreshold ?? 75",
   "server/services/core-agents.ts::parsed.confidence || 0.8",
   "server/services/core-agents.ts::parsed.score || 8",
-  "server/services/dataIntelligenceEngine.ts::intel.countyRedemptionPeriodMonths ?? 12",
+  // dataIntelligenceEngine.ts::intel.countyRedemptionPeriodMonths ?? 12 was REMOVED 2026-10-28 —
+  // an unknown redemption period now scores nothing (V-Tax-1 T0, founder decision 2026-10-28).
   "server/services/founderTodo.ts::p.escalationRate ?? 100",
   "server/services/founderTwin.ts::existing.confidence || 0.5",
   "server/services/intent-router.ts::parsed.confidence || 0.8",

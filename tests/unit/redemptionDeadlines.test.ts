@@ -148,7 +148,11 @@ describe("amount models (spot pins on the encoded semantics)", () => {
     expect(amt.preliminary).toBe(true); // attorneyReviewedAt is null
   });
 
-  it("unknown-state fallback is labeled preliminary and uses the documented 12%", () => {
+  // Until 2026-10-28 an unknown state got a 12% "closest median rule" — a
+  // national default (founder decision 2026-10-28 removed it). The invariant
+  // this test pinned survives: an unknown state is never presented as
+  // computed. It now carries no figure at all, and says why.
+  it("an unknown state gets no amount and no rate — never a national default — and says why", () => {
     const amt = computeRedemptionAmount({
       state: "ZZ",
       saleDate: "2025-01-01",
@@ -156,7 +160,8 @@ describe("amount models (spot pins on the encoded semantics)", () => {
       purchaseAmountCents: 1_000_000,
     });
     expect(amt.preliminary).toBe(true);
-    expect(amt.appliedRateBps).toBe(1_200);
+    expect(amt).toMatchObject({ appliedRateBps: null, interestCents: null, totalRedemptionCents: null, modelUsed: "no_rule", principalCents: 1_000_000 });
+    expect(amt.refusalReason).toMatch(/no encoded redemption rule for ZZ/);
   });
 });
 

@@ -40,6 +40,7 @@ import {
   type CertEventRow,
 } from "./services/certificateEvents";
 import { clock } from "./utils/clock";
+import { isCalendarDate } from "@shared/dates/calendar";
 
 // Build the CertEventRow slice the workflow emitters need from a full
 // tax_certificates row. Real columns only — the `date` columns come back as
@@ -87,6 +88,14 @@ const createSchema = z.object({
   listingId: z.number().int().positive().optional(),
   propertyId: z.number().int().positive().optional(),
   notes: z.string().max(8_000).optional(),
+  // The county's own redemption deadline, for a state AcreOS has no encoded
+  // rule for (or whose deadline runs from an event AcreOS cannot date). Never
+  // used to override a computed deadline; always paired with where it came from.
+  redemptionDeadline: z.string().refine(isCalendarDate, "not a calendar date (YYYY-MM-DD)").optional(),
+  redemptionDeadlineSource: z.string().trim().min(3).max(500).optional(),
+}).refine((d) => (d.redemptionDeadline === undefined) === (d.redemptionDeadlineSource === undefined), {
+  message: "a redemption deadline you enter needs its source (e.g. the county's certificate or notice), and a source needs the deadline",
+  path: ["redemptionDeadlineSource"],
 });
 
 const patchSchema = z.object({
@@ -157,6 +166,7 @@ export function registerTaxCertificateRoutes(app: Express): void {
             currentInterestCents: amt.interestCents,
             appliedRateBps: amt.appliedRateBps,
             modelUsed: amt.modelUsed,
+            amountRefusalReason: amt.refusalReason,
             preliminary: amt.preliminary,
             daysRemaining,
           };
@@ -245,9 +255,43 @@ export function registerTaxCertificateRoutes(app: Express): void {
           scraTolling: data.scraTollingApplied,
         });
 
-        // No-redemption states (NC) get an immediate 'deed_obtained' status —
-        // the certificate effectively IS the deed at sale.
-        const initialStatus = deadline === null ? "deed_obtained" : "active";
+        // Three different situations, never conflated (founder decision
+        // 2026-10-28). Until then a null deadline — for ANY reason — recorded
+        // the certificate as 'deed_obtained' with the sale date as its
+        // deadline: a lien in any of the 41 states with no encoded rule was
+        // shown as an owned deed whose redemption period had already run.
+        //   1. The encoded rule says there is no redemption (NC): the
+        //      certificate is the deed; the sale date stands in the NOT NULL
+        //      column and the status says why.
+        //   2. A deadline was computed from the encoded rule.
+        //   3. No deadline can be computed (no rule, or one that runs from an
+        //      event AcreOS cannot date): only the county's own deadline,
+        //      entered with its source, is recorded — otherwise refuse.
+        const rule = STATE_REDEMPTION_RULES[data.state.toUpperCase()];
+        const noRedemption = rule?.interestModel === "no_redemption";
+        let recordedDeadline: string;
+        let notes = data.notes ?? null;
+        if (noRedemption) {
+          recordedDeadline = data.saleDate;
+        } else if (deadline !== null) {
+          recordedDeadline = deadline;
+        } else if (data.redemptionDeadline && data.redemptionDeadlineSource) {
+          if (data.redemptionDeadline < data.saleDate) {
+            return Errors.badRequest(res, "The redemption deadline you entered is before the sale date.");
+          }
+          recordedDeadline = data.redemptionDeadline;
+          const line = `Redemption deadline entered by the operator (AcreOS has no rule to compute it). Source: ${data.redemptionDeadlineSource}`;
+          notes = notes ? `${notes}\n${line}` : line;
+        } else {
+          return Errors.badRequest(
+            res,
+            rule
+              ? `The ${data.state.toUpperCase()} redemption deadline runs from an event AcreOS cannot date (${rule.deadlineAnchor.replace(/_/g, " ")}). Enter the deadline from the county's records, with its source.`
+              : `AcreOS has no encoded redemption rule for ${data.state.toUpperCase()}, so it cannot compute the deadline and will not guess one. Enter the deadline from the county's records, with its source.`,
+            { needs: ["redemptionDeadline", "redemptionDeadlineSource"] },
+          );
+        }
+        const initialStatus = noRedemption ? "deed_obtained" : "active";
 
         const [row] = await db
           .insert(taxCertificates)
@@ -267,12 +311,9 @@ export function registerTaxCertificateRoutes(app: Express): void {
             scraTollingApplied: data.scraTollingApplied ?? null,
             listingId: data.listingId ?? null,
             propertyId: data.propertyId ?? null,
-            // Stash 'sale_date' as the deadline placeholder for no-redemption
-            // states so the NOT NULL constraint is happy. The status flag
-            // is what differentiates.
-            redemptionDeadline: deadline ?? data.saleDate,
+            redemptionDeadline: recordedDeadline,
             status: initialStatus,
-            notes: data.notes ?? null,
+            notes,
           })
           .returning();
         if (!row) return Errors.internal(res, new Error("Insert returned no row"));
@@ -339,7 +380,10 @@ export function registerTaxCertificateRoutes(app: Express): void {
               purchaseAmountCents: row.purchaseAmountCents,
               bidDownRateBps: row.bidDownRateBps ?? undefined,
             });
-            update.redeemedAmountCents = amt.totalRedemptionCents;
+            // No encoded rule → no computed amount; the snapshot stays empty
+            // (unknown) rather than recording a guessed figure. The operator
+            // can PATCH the amount the county actually collected.
+            if (amt.totalRedemptionCents !== null) update.redeemedAmountCents = amt.totalRedemptionCents;
             if (!update.redeemedAt) update.redeemedAt = asOf;
           }
         }

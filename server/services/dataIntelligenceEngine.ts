@@ -797,10 +797,14 @@ export function scoreCounty(intel: Partial<CountyIntelligence>): CountyScore {
   else if (delinqParcels >= 200) opportunityDensity += 8;
   else if (delinqParcels >= 50) opportunityDensity += 4;
 
-  const redemptionMonths = intel.countyRedemptionPeriodMonths ?? 12;
-  if (redemptionMonths >= 24) opportunityDensity += 8; // More time = more motivated sellers
-  else if (redemptionMonths >= 12) opportunityDensity += 5;
-  else opportunityDensity += 2;
+  // An unknown redemption period scores nothing. It used to be read as 12
+  // months (a national default; founder decision 2026-10-28 removed those).
+  const redemptionMonths = intel.countyRedemptionPeriodMonths;
+  if (redemptionMonths !== null && redemptionMonths !== undefined) {
+    if (redemptionMonths >= 24) opportunityDensity += 8; // More time = more motivated sellers
+    else if (redemptionMonths >= 12) opportunityDensity += 5;
+    else opportunityDensity += 2;
+  }
 
   // Data Accessibility (0-20 pts)
   if (intel.hasGisPortal === true) {
