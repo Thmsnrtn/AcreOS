@@ -17,6 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { QueryErrorState } from "@/components/query-error-state";
 import { formatDate } from "@/lib/format";
 import type { Clock } from "@shared/tax/clock";
+import { CertificateLedgerPanel } from "./CertificateLedgerPanel";
 
 const usd = (c: number) => `$${(c / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const PHASE_LABEL: Record<Clock["phase"], string> = {
@@ -45,6 +46,9 @@ export function CertificateClockPanel({ certificateId, label, onClose }: { certi
       ) : (
         <ClockBody c={q.data} />
       )}
+      <div className="mt-4 border-t pt-4">
+        <CertificateLedgerPanel certificateId={certificateId} />
+      </div>
     </Card>
   );
 }

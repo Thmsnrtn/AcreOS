@@ -14,6 +14,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { getQueryFn } from "../../client/src/lib/queryClient";
 import { CertificateClockPanel } from "../../client/src/components/tax/CertificateClockPanel";
 import { redemptionClock } from "@shared/tax/clock";
+import { certificateLedger } from "@shared/tax/ledger";
 
 const CLOCK = redemptionClock({
   saleType: "redeemable_deed", status: "active", saleDate: "2026-04-01", redemptionDeadline: "2027-04-01",
@@ -29,7 +30,11 @@ afterEach(() => { act(() => root.unmount()); host.remove(); });
 
 describe("certificate clock panel", () => {
   it("countdown and cited rule first; the lock is taught with what clears it; a procedure mismatch is shown, not resolved", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(CLOCK), { status: 200, headers: { "Content-Type": "application/json" } })));
+    // Each URL gets its own body: the clock, and (V-Tax-1 T3b) the position
+    // record the panel shows under it.
+    const LEDGER = { ledger: certificateLedger({ purchaseAmountCents: 1_250_000, bidDownRateBps: null, redemptionDeadline: "2027-04-01", deadlineBasis: "SYNTHETIC", interest: { interestCents: null, asOfDate: "2026-12-31", refusalReason: "SYNTHETIC: no rule", preliminary: false }, subsequentTaxRule: null, events: [] }) };
+    const bodies: Record<string, unknown> = { "/api/tax-certificates/c1/clock": CLOCK, "/api/tax-certificates/c1/ledger": LEDGER };
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => new Response(JSON.stringify(bodies[url]), { status: bodies[url] ? 200 : 404, headers: { "Content-Type": "application/json" } })));
     host = document.createElement("div");
     document.body.appendChild(host);
     root = createRoot(host);
@@ -47,5 +52,7 @@ describe("certificate clock panel", () => {
     expect(host.querySelector('[data-testid="clock-capital"]')!.textContent).toBe("$12,500.00");
     expect(host.querySelector('[data-testid="clock-marketable"]')!.textContent).toMatch(/no.*still redeemable until 2027-04-01/);
     expect(host.querySelector('[data-testid="clock-procedure-mismatch"]')!.textContent).toMatch(/6-month redemption period .*does not match the deadline on record\. Both are shown/);
+    expect(host.querySelector('[data-testid="certificate-ledger-c1"]')).not.toBeNull();
+    expect(host.querySelector('[data-testid="ledger-interest"]')!.textContent).toMatch(/not computed — SYNTHETIC: no rule/);
   });
 });

@@ -15,6 +15,7 @@ import { dealRooms } from "./schema/marketplace";
 // source_ref. Type-only, so nothing here reaches the client bundle.
 import type { PaxAskOrigin, PaxAskSourceRef, PaxControls } from "./pax-controls";
 import type { MaxBidRecord, DiscardRecord } from "./tax/maxBid";
+import type { AuctionCalendarRecord, RegistrationRecord } from "./tax/auctionCalendar";
 import { CREDIT_PACK_CATALOG } from "./billing/credit-packs";
 import { TIER_LIMITS } from "./billing/tier-limits";
 import { TIER_PRICES_CENTS, type Tier } from "./billing/tier-pricing";
@@ -7159,6 +7160,12 @@ export const taxSaleAuctions = pgTable("tax_sale_auctions", {
     disclaimers?: string[];
   }>(),
   
+  // V-Tax-1 T3b (0298): the county's time zone as stated + local times and
+  // funds, and the bidder-registration stage gate. Shapes in
+  // shared/tax/auctionCalendar.ts.
+  calendar: jsonb("calendar").$type<AuctionCalendarRecord>(),
+  registration: jsonb("registration").$type<RegistrationRecord>(),
+
   sourceUrl: text("source_url"),
   lastScrapedAt: timestamp("last_scraped_at"),
   // 'manual_entry' for operator-created auctions — the only insert path that

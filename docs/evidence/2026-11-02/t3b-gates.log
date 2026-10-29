@@ -1,0 +1,52 @@
+V-Tax-1 T3b (#423) — gates log
+Branch: claude/tax-v1-t3b-calendar-ledger. Newest run first; earlier runs kept as history.
+Each exit code was read directly (redirect to a file, then $?), never through a pipe.
+Times are Eastern (EST).
+
+== Run 4 — rebased onto main b539f15d (2026-11-02, finished by 1:19 AM) ==
+Tree: T3b's single commit on b539f15d (main after #432, #433, #427, #428, #429, #431).
+node_modules: fresh `npm ci` against b539f15d's lockfile (vitest 4.1.12, from #427).
+
+Rebase conflicts:
+  scripts/migrate.mjs — main's 0300 block (note_field_observations.source gains 'edit')
+    and T3b's 0298 block (tax_sale_auctions.calendar/registration columns, widened
+    tax_events CHECK) were both appended at the end of the statement list. Both kept,
+    0298 before 0300 (numeric order). They touch different tables and each is
+    idempotent, so the order does not change the result. `node --check` passes.
+  docs/company/next-moves.md — merged on its own. T3b's entry moved to the top;
+    its heading now reads "rebased onto main b539f15d".
+No other file conflicted.
+
+  npm run check              exit 0
+  npm run build              exit 0
+  bundle budget              exit 0   PASS: total JS 9804 KB across 509 chunks (limit 9823 KB);
+                                      largest chunk vendor-map 1068 KB (limit 1090 KB)
+  db:build-from-repo         exit 0   fresh database acreos_t3bfinal3:
+                                      [trust-on-built-schema] PASS, [constraint-names] PASS,
+                                      [build-schema] PASS
+  real-DB suites             exit 0   27 files passed (27), 122 tests passed (122), 0 skipped
+                                      (ACREOS_REQUIRE_REAL_DB=1, so a missing database fails
+                                      rather than skips)
+  full vitest                exit 0   1552 files passed | 38 skipped (1590);
+                                      19325 tests passed | 199 skipped (19524); 0 failed
+
+== Run 3 — rebased onto main 4f4cbbd (2026-11-01, head 2e9795cd) ==
+Conflict: server/routes-tax-researcher.ts imports (kept main's routeParam import and
+T3b's calendar imports). T3b's nine new raw req.params reads wrapped in routeParam()
+(4 in routes-tax-researcher.ts, 5 in routes-tax-certificates.ts).
+routeParamRefusesArrays.test.ts: 5/5; unwrapping req.params.item turns it red (restored).
+  check 0 · build 0 · bundle 9804 KB / 9823 KB · db:build-from-repo PASS
+  real-DB 26 files, 106/106 · vitest 1542 files passed | 37 skipped, 19271 tests passed
+  PR CI on 2e9795cd: every check green.
+
+== Run 2 — rebased onto main 65983e7d (2026-11-01, head 091b50cc) ==
+The old T3a history dropped out (main has T3a as squash 15e3fdb). Conflict:
+docs/company/next-moves.md only.
+  check 0 · build 0 · bundle 9804 KB / 9823 KB · db:build-from-repo PASS
+  real-DB 26 files, 106/106 · vitest 1541 files passed | 37 skipped, 19266 tests passed
+  PR CI on 091b50cc: every check green.
+
+== Run 1 — original, stacked on T3a (2026-10-29, head f5f5842) ==
+  check 0 · vitest 1539 files passed, 0 failed · build 0 · db:build-from-repo PASS
+  real-DB 7 files, 38/38 (taxCalendarLedger.realdb 5/5)
+  11 mutation checks, all caught (listed in the PR description).
