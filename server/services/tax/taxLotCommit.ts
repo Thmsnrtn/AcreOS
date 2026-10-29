@@ -65,8 +65,8 @@ function typedValue(lot: PreparedLot, field: LotFieldKey): unknown {
   }
 }
 
-export const TAX_LIST_CONFIDENCE = "medium" as const;
-export const TAX_LIST_CONFIDENCE_BASIS = "stated on the tax list the operator imported; not independently verified";
+const TAX_LIST_CONFIDENCE = "medium" as const;
+const TAX_LIST_CONFIDENCE_BASIS = "stated on the tax list the operator imported; not independently verified";
 
 export interface CommitTaxLotListArgs {
   organizationId: number;

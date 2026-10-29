@@ -497,7 +497,7 @@ export interface ValidateOptions {
 }
 
 /** Strict calendar date: YYYY-MM-DD or M/D/YYYY. Never rolls an impossible date. */
-export function parseLotDate(raw: string): { date: string } | { error: string } {
+function parseLotDate(raw: string): { date: string } | { error: string } {
   const t = raw.trim();
   let y: number, m: number, d: number;
   let match = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(t);
@@ -516,7 +516,7 @@ export function parseLotDate(raw: string): { date: string } | { error: string } 
 }
 
 /** Delinquent years: "2023", "2022, 2023", "2022;2023", "2021-2023". Sorted, distinct. */
-export function parseDelinquentYears(raw: string): { years: number[] } | { error: string } {
+function parseDelinquentYears(raw: string): { years: number[] } | { error: string } {
   const out = new Set<number>();
   for (const part of raw.split(/[,;/]|\s+and\s+/i).map((p) => p.trim()).filter(Boolean)) {
     const range = /^(\d{4})\s*[-–]\s*(\d{4})$/.exec(part);
