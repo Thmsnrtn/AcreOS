@@ -47,8 +47,9 @@ if (!process.env.DATABASE_URL) {
 
 /**
  * Canonical id type for the rental, rehab, contractor, notes, ledger,
- * quiet-title, permit, earnest-money and buyer-blast families is uuid
- * (production is uuid for all 14 parents; COO decision, Package 4). shared/schema
+ * quiet-title, permit, earnest-money, buyer-blast and tax-certificate families
+ * is uuid (production is uuid for all 15 parents; COO decision, Package 4;
+ * tax_certificates joined in V-Tax-1 T2b, when tax_events gave it its first FK). shared/schema
  * used to declare them varchar, so a db:push-built database (staging) has them
  * varchar while every SQL FK in this file and migrations/*.sql is uuid.
  *
@@ -57,14 +58,14 @@ if (!process.env.DATABASE_URL) {
  * so the CREATE TABLEs below meet uuid parents. On a database that needs it:
  *   1. refuses, naming table.column and the count, if any value in a column it
  *      would convert is not a uuid — a value it cannot cast is never guessed at;
- *   2. drops every FK that references one of the 14 parents (recording each
+ *   2. drops every FK that references one of the 15 parents (recording each
  *      definition), converts the listed columns plus every child column of
  *      those FKs with USING col::uuid, then re-creates every FK it dropped.
  * The whole DO block is one transaction: it lands completely or not at all.
  */
 const CONVERGE_UUID_ID_FAMILIES = `DO $uuid_ids$
 DECLARE
-  parents text[] := ARRAY['chart_of_accounts', 'rehabs', 'rehab_line_items', 'contractors', 'acquired_notes', 'note_loss_mit_cases', 'quiet_title_cases', 'tenants', 'rental_leases', 'rent_charges', 'move_inspections', 'permit_checklists', 'earnest_money_holds', 'buyer_blasts'];
+  parents text[] := ARRAY['chart_of_accounts', 'rehabs', 'rehab_line_items', 'contractors', 'acquired_notes', 'note_loss_mit_cases', 'quiet_title_cases', 'tenants', 'rental_leases', 'rent_charges', 'move_inspections', 'permit_checklists', 'earnest_money_holds', 'buyer_blasts', 'tax_certificates'];
   r record;
   bad bigint;
 BEGIN
@@ -125,7 +126,9 @@ BEGIN
       ('permit_gates','checklist_id'),
       ('earnest_money_holds','id'),
       ('buyer_blasts','id'),
-      ('buyer_blast_recipients','blast_id');
+      ('buyer_blast_recipients','blast_id'),
+      ('tax_certificates','id'),
+      ('quiet_title_cases','certificate_id');
 
   -- every FK that references a parent; its child columns convert too
   INSERT INTO _uuid_fks

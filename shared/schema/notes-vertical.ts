@@ -663,7 +663,7 @@ export type TaxCertStatus = typeof TAX_CERT_STATUSES[number];
 export const taxCertificates = pgTable(
   "tax_certificates",
   {
-    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
     organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
     // Optional FK to the auction/listing that produced this certificate
     // (when bought via the in-platform auction worksheet — TD-4). Null
@@ -881,8 +881,8 @@ export const noteQuietTitleCases = pgTable(
   {
     id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
     organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
-    // FK target uses uuid because tax_certificates.id is uuid in prod.
-    certificateId: varchar("certificate_id").notNull(),
+    // tax_certificates.id is uuid in prod; the SQL column is uuid too.
+    certificateId: uuid("certificate_id").notNull(),
     state: text("state").notNull(),
     county: text("county").notNull(),
     apn: text("apn").notNull(),

@@ -101,7 +101,6 @@ export const USER_ENTERED_DATE_COLUMNS: ReadonlySet<string> = new Set([
   "tax_sale_auctions.registrationDeadline",
   "tax_sale_listings.bidDate",
   "tax_sale_listings.redemptionDeadline",
-  "auction_readiness_checklists.auctionDate",
   "marketplace_listings.expiresAt",
   "marketplace_transactions.closingDate",
   // compliance records an operator maintains

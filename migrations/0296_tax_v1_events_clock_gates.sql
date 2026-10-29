@@ -14,8 +14,9 @@
 CREATE TABLE IF NOT EXISTS "tax_events" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   "organization_id" integer NOT NULL,
-  -- uuid, matching tax_certificates.id as the database holds it (the ORM
-  -- declares that column varchar; the FK must match the real type).
+  -- uuid, matching tax_certificates.id (uuid in the SQL, in production, and
+  -- now in shared/schema; a db:push-built staging converges through
+  -- CONVERGE_UUID_ID_FAMILIES in scripts/migrate.mjs before this runs).
   "certificate_id" uuid NOT NULL REFERENCES "tax_certificates"("id") ON DELETE CASCADE,
   "event_type" text NOT NULL CHECK ("event_type" IN ('redemption_expiry', 'quiet_title_filed')),
   "event_date" date NOT NULL,
