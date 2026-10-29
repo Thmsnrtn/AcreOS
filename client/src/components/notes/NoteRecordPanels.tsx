@@ -9,16 +9,15 @@
  * and an empty collateral block says what to do next.
  */
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, FileWarning, Info, MapPinOff, SearchX } from "lucide-react";
+import { FileWarning, Info, MapPinOff, SearchX } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { QueryErrorState } from "@/components/query-error-state";
 import { NOTE_TAPE_FIELD, type NoteTapeFieldKey } from "@shared/notes/noteTapeFields";
-import { formatDate, formatDateTime } from "@/lib/format";
-import { DataProvenanceChip } from "@/components/data-provenance-chip";
+import { formatDate } from "@/lib/format";
+import { DisagreementPanel as SharedDisagreementPanel, ObservationChip } from "@/components/provenance/FieldRecord";
 
 interface ObservationView {
   value: unknown;
@@ -94,37 +93,7 @@ function format(field: NoteTapeFieldKey, v: unknown): string {
 }
 
 function ProvenanceChip({ p, label }: { p: ObservationView | null; label: string }) {
-  if (!p) {
-    return <span className="text-xs text-muted-foreground" data-testid="provenance-none">no source recorded</span>;
-  }
-  return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          className="inline-flex items-center rounded-full border px-2 py-0.5 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          aria-label={`Where ${label} came from`}
-          data-testid="provenance-chip"
-        >
-          {/* The canonical chip, with no classification: a seller's tape is
-              not one of the four truth-states (shared/dataClassification.ts),
-              so none is claimed — the basis in the popover says what it is. */}
-          <DataProvenanceChip source={SOURCE_LABEL[p.source] ?? p.source} sourceAsOf={p.asOf} />
-        </button>
-      </PopoverTrigger>
-      <PopoverContent className="w-80 text-sm">
-        <dl className="space-y-1.5">
-          <div><dt className="text-xs text-muted-foreground">Source</dt><dd>{SOURCE_LABEL[p.source] ?? p.source}{p.sourceRef.fileName ? ` — ${p.sourceRef.fileName}` : ""}</dd></div>
-          {p.sourceRef.fileRow !== undefined && (
-            <div><dt className="text-xs text-muted-foreground">Where in the file</dt><dd>Row {p.sourceRef.fileRow}{p.sourceRef.column ? `, column “${p.sourceRef.column}”` : ""}{p.sourceRef.raw !== undefined ? `, cell “${p.sourceRef.raw}”` : ""}</dd></div>
-          )}
-          <div><dt className="text-xs text-muted-foreground">As of</dt><dd>{p.asOf ?? "the tape states no as-of date"}</dd></div>
-          <div><dt className="text-xs text-muted-foreground">Basis</dt><dd>{p.basis}</dd></div>
-          <div><dt className="text-xs text-muted-foreground">Recorded</dt><dd>{formatDateTime(p.observedAt)}</dd></div>
-        </dl>
-      </PopoverContent>
-    </Popover>
-  );
+  return <ObservationChip p={p} label={label} sourceLabel={SOURCE_LABEL} asOfMissing="the tape states no as-of date" />;
 }
 
 /** Why a value is missing — blank on a tape that had the column, or never stated. */
@@ -149,33 +118,7 @@ function ValueRow({ r, emptyText }: { r: RecordedValue; emptyText: string }) {
 
 /** N4 — every value each source stated for a field, side by side. Nothing is resolved. */
 function DisagreementPanel({ fields }: { fields: RecordedValue[] }) {
-  if (fields.length === 0) return null;
-  return (
-    <Card className="border-destructive/40 p-5" data-testid="note-record-disagreements">
-      <h2 className="mb-1 flex items-center gap-2 text-sm font-semibold">
-        <AlertTriangle className="h-4 w-4 text-destructive" aria-hidden="true" />
-        Sources disagree on {fields.length === 1 ? "1 term" : `${fields.length} terms`}
-      </h2>
-      <p className="mb-3 text-xs text-muted-foreground">Every value is kept with where it came from. AcreOS has not picked one: the book keeps the value first recorded until you correct it.</p>
-      <ul className="divide-y">
-        {fields.map((r) => (
-          <li key={r.field} className="py-2" data-testid={`note-disagreement-${r.field}`}>
-            <p className="mb-1 text-sm font-medium">{r.label}</p>
-            {r.disagreement!.bookValueIs === null && <p className="mb-1 text-xs text-muted-foreground">The book holds {r.value === null || r.value === undefined ? "no value" : format(r.field, r.value)} — no source on record states it.</p>}
-            <ul className="space-y-1">
-              {r.disagreement!.values.map((v, i) => (
-                <li key={i} className="flex flex-wrap items-center gap-2 text-sm">
-                  <span className="tabular-nums">{format(r.field, v.value)}</span>
-                  {v.observations.map((o, j) => <ProvenanceChip key={j} p={o} label={`${r.label} (${format(r.field, v.value)})`} />)}
-                  {r.disagreement!.bookValueIs === i && <Badge variant="outline">on the book</Badge>}
-                </li>
-              ))}
-            </ul>
-          </li>
-        ))}
-      </ul>
-    </Card>
-  );
+  return <SharedDisagreementPanel fields={fields} noun="term" testIdPrefix="note" format={format} sourceLabel={SOURCE_LABEL} asOfMissing="the tape states no as-of date" />;
 }
 
 function AbsenceLine({ label, a }: { label: string; a: Absence }) {
