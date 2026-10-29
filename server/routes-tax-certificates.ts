@@ -23,6 +23,7 @@ import {
   taxCertificates,
   TAX_CERT_SALE_TYPES,
   TAX_CERT_STATUSES,
+  type TaxRuleCited,
 } from "@shared/schema";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId } from "./types/request";
@@ -64,6 +65,26 @@ function certEventRowFrom(row: typeof taxCertificates.$inferSelect): CertEventRo
     redeemedAmountCents: row.redeemedAmountCents ?? null,
   };
 }
+
+/** What a certificate's redemption deadline rests on, in words. */
+function deadlineBasisOf(rule: TaxRuleCited | null): string {
+  return rule?.kind === "county_record"
+    ? `entered from the county's records — ${rule.source}`
+    : rule?.kind === "preliminary_state_rule"
+      ? `computed by AcreOS from its encoded ${rule.state} rule${rule.citation ? ` (${rule.citation})` : ""} — preliminary, not attorney-reviewed; confirm with the county`
+      : rule?.kind === "procedure_object"
+        ? `the county procedure, version ${rule.version} — ${rule.source}, as of ${rule.asOf}`
+        : "on record from before AcreOS tracked where deadlines came from — confirm with the county";
+}
+
+const ledgerSource = z.string().trim().min(1).max(500);
+const ledgerDate = z.string().refine(isCalendarDate, "a calendar date (YYYY-MM-DD)");
+const ledgerEntrySchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("subsequent_tax_paid"), paidOn: ledgerDate, amountCents: z.number().int().positive(), taxYear: z.string().regex(/^\d{4}$/).nullable(), source: ledgerSource }),
+  // A notice the OPERATOR sent, outside AcreOS. AcreOS sends nothing.
+  z.object({ kind: z.literal("redemption_notice_recorded"), sentOn: ledgerDate, method: z.string().trim().min(1).max(200), note: z.string().trim().max(1_000).nullable(), source: ledgerSource }),
+  z.object({ kind: z.literal("foreclosure_filing_deadline"), date: ledgerDate, source: ledgerSource }),
+]);
 
 const addressSchema = z
   .object({
@@ -259,15 +280,7 @@ export function registerTaxCertificateRoutes(app: Express): void {
         const { redemptionClock } = await import("@shared/tax/clock");
         const today = clock.now().toISOString().slice(0, 10);
         const events = await latestTaxEvents(orgId, row.id);
-        const rule = events.redemption_expiry?.ruleCited ?? null;
-        const deadlineBasis =
-          rule?.kind === "county_record"
-            ? `entered from the county's records — ${rule.source}`
-            : rule?.kind === "preliminary_state_rule"
-              ? `computed by AcreOS from its encoded ${rule.state} rule${rule.citation ? ` (${rule.citation})` : ""} — preliminary, not attorney-reviewed; confirm with the county`
-              : rule?.kind === "procedure_object"
-                ? `the county procedure, version ${rule.version} — ${rule.source}, as of ${rule.asOf}`
-                : "on record from before AcreOS tracked where deadlines came from — confirm with the county";
+        const deadlineBasis = deadlineBasisOf(events.redemption_expiry?.ruleCited ?? null);
         const standing = await countyBidStanding(orgId, row.state, row.county, today);
         const period = standing.current?.fields.redemptionPeriodMonths;
         const [qt] = await db
@@ -300,6 +313,59 @@ export function registerTaxCertificateRoutes(app: Express): void {
         );
       } catch (err) {
         logger.error("taxCertificates.clock failed", err instanceof Error ? err : undefined);
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  // ── Ledger (V-Tax-1 T3b) ──────────────────────────────────────────────────
+  // GET: the position's ledger — lien amount, rate, deadline and its basis,
+  // subsequent taxes paid, interest (encoded states only), notices recorded,
+  // the foreclosure-filing deadline. POST: record one entry, with its source.
+  // A paid tax, a sent notice or a sale date in the future has not happened.
+  app.get(
+    "/api/tax-certificates/:id/ledger",
+    isAuthenticated,
+    getOrCreateOrg,
+    ownerOrAdmin,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const orgId = getOrganizationId(req);
+        const { latestTaxEvents } = await import("./services/tax/taxEvents");
+        const { buildCertificateLedger } = await import("./services/tax/certificateLedger");
+        const events = await latestTaxEvents(orgId, req.params.id);
+        const ledger = await buildCertificateLedger(orgId, req.params.id, deadlineBasisOf(events.redemption_expiry?.ruleCited ?? null));
+        if (!ledger) return Errors.notFound(res, "Certificate");
+        res.json({ ledger });
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  app.post(
+    "/api/tax-certificates/:id/ledger",
+    isAuthenticated,
+    getOrCreateOrg,
+    ownerOrAdmin,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const orgId = getOrganizationId(req);
+        const parsed = ledgerEntrySchema.safeParse(req.body);
+        if (!parsed.success) return Errors.validationFailed(res, parsed.error.flatten());
+        const e = parsed.data;
+        const today = clock.now().toISOString().slice(0, 10);
+        const happenedOn = e.kind === "subsequent_tax_paid" ? e.paidOn : e.kind === "redemption_notice_recorded" ? e.sentOn : null;
+        if (happenedOn && happenedOn > today) {
+          return Errors.unprocessable(res, "That date is in the future — record a payment or a notice once it has happened.");
+        }
+        const { recordLedgerEntry, buildCertificateLedger } = await import("./services/tax/certificateLedger");
+        const recorded = await recordLedgerEntry(orgId, req.params.id, e, req.user?.id ?? "unknown");
+        if (!recorded) return Errors.notFound(res, "Certificate");
+        const { latestTaxEvents } = await import("./services/tax/taxEvents");
+        const events = await latestTaxEvents(orgId, req.params.id);
+        res.json({ ledger: await buildCertificateLedger(orgId, req.params.id, deadlineBasisOf(events.redemption_expiry?.ruleCited ?? null)) });
+      } catch (err) {
         return Errors.internal(res, err);
       }
     },

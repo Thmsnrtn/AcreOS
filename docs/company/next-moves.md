@@ -3,6 +3,33 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-10-29 — V-Tax-1 T3b — the sale calendar in the county's time zone, registration as a stage gate, the position record — on `claude/tax-v1-t3b-calendar-ledger` (stacked on T3a)
+
+- **Storage.** Migration 0298 adds columns and a widened CHECK; the table count is unchanged.
+  - `tax_sale_auctions.calendar` and `registration` (jsonb).
+  - The `tax_events.event_type` CHECK is replaced in one statement to add `subsequent_tax_paid`, `redemption_notice_recorded` and `foreclosure_filing_deadline`.
+- **Calendar** (`shared/tax/auctionCalendar.ts`). AcreOS holds no county→zone map, and none was built.
+  - The county's IANA time zone is STATED by the operator with its source and as-of date.
+  - A time of day without a zone is refused (422). With no zone, no time is shown and no countdown is computed; the date shows alone, with why.
+  - Instants are computed from the county's wall-clock time in its zone, so a Phoenix 10:00 sale is 17:00Z. Tested across zones and a DST change, and with the process time zone set to Asia/Tokyo.
+  - A date-only registration deadline is called closed only once that date has ended everywhere.
+  - `GET` / `PUT /api/tax-researcher/auctions/:id/calendar`; the panel sits under the selected sale on the worksheet.
+- **Registration gate.** The checklist covers deposit, funds, entity documents, W-9 and registered as a bidder.
+  - Each item's requirement is stated per county, with its source. An unstated item is open, never assumed not required.
+  - "Registered as a bidder" can only be done, never waived.
+  - A bid or win on a lot in the sale is refused (422, open items named) until every item is done or stated not required. A lot outside any sale is not gated.
+  - **Every existing sale now starts gated**, the same posture as the T2a county lock. `PUT /api/tax-researcher/auctions/:id/registration/:item`.
+- **Position record** (`shared/tax/ledger.ts`, `GET`/`POST /api/tax-certificates/:id/ledger`, under the redemption clock). It shows:
+  - the lien amount, the rate, and the deadline with what it rests on;
+  - the subsequent taxes paid, with their receipts and total. Reimbursement is the county procedure's own `subsequentTaxRules` with its source, or "not stated"; AcreOS never adds the taxes in.
+  - interest, only where a rule is encoded, covering the certificate amount only;
+  - the notices the operator recorded (a record of what they sent outside AcreOS; nothing is sent);
+  - the foreclosure-filing deadline with its source (latest wins). There is no default, so `preForeclosureNoticeMonths` is not used.
+  - A future payment or notice date is refused.
+  - The UI says "Position record": "Ledger" is a founder codename (`no-founder-codenames-in-customer-jsx`).
+- **Escalation still open.** The `preForeclosureNoticeMonths: 1` national default (see T3a below).
+- **Next.** T4: disagreement capture, negative knowledge, and the cross-vertical exit to Land/Hold with full history.
+
 ## 2026-10-29 — V-Tax-1 T3a — bid discipline: max bid from the rights stack, over-max flag, pre-bid discards, Courthouse Mode recording again — on `claude/tax-v1-t3a-bid-discipline` (stacked on T2b)
 
 - **Storage.** Migration 0297 adds columns only; the table count is unchanged (founder decision 2026-10-28).

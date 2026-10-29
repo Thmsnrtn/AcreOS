@@ -1,0 +1,35 @@
+{
+  "_about": "V-Tax-1 T3b golden position record. SYNTHETIC. The expected output is written by hand from the input: subsequent taxes are listed and totalled in date order with their receipts; reimbursement reads the county procedure's own rule with its source; interest is not computed where no rule is encoded; the latest foreclosure-filing deadline registration wins.",
+  "input": {
+    "purchaseAmountCents": 481250,
+    "bidDownRateBps": null,
+    "redemptionDeadline": "2028-06-01",
+    "deadlineBasis": "entered from the county's records — SYNTHETIC treasurer letter",
+    "interest": { "interestCents": null, "asOfDate": "2026-10-29", "refusalReason": "AcreOS has no encoded redemption rule for OH — get the redemption amount from the county", "preliminary": false },
+    "subsequentTaxRule": { "value": "SYNTHETIC: subsequent taxes paid by the holder are added to the redemption amount", "source": "SYNTHETIC Rev. Code §1", "asOf": "2026-09-01", "version": 2 },
+    "events": [
+      { "eventType": "subsequent_tax_paid", "eventDate": "2027-02-10", "ruleCited": { "kind": "county_record", "source": "SYNTHETIC receipt #2027-44" }, "detail": { "amountCents": 51000, "taxYear": "2026" }, "recordedBy": "u", "recordedAt": "2027-02-11T10:00:00.000Z" },
+      { "eventType": "subsequent_tax_paid", "eventDate": "2026-12-01", "ruleCited": { "kind": "county_record", "source": "SYNTHETIC receipt #2026-12" }, "detail": { "amountCents": 49000, "taxYear": "2025" }, "recordedBy": "u", "recordedAt": "2026-12-02T10:00:00.000Z" },
+      { "eventType": "redemption_notice_recorded", "eventDate": "2027-03-01", "ruleCited": { "kind": "county_record", "source": "SYNTHETIC certified mail receipt 7019" }, "detail": { "method": "Certified mail", "note": "to the owner of record", "sentByOperator": true }, "recordedBy": "u", "recordedAt": "2027-03-01T10:00:00.000Z" },
+      { "eventType": "foreclosure_filing_deadline", "eventDate": "2028-12-01", "ruleCited": { "kind": "county_record", "source": "SYNTHETIC procedure v1" }, "detail": {}, "recordedBy": "u", "recordedAt": "2026-11-01T10:00:00.000Z" },
+      { "eventType": "foreclosure_filing_deadline", "eventDate": "2029-06-01", "ruleCited": { "kind": "county_record", "source": "SYNTHETIC procedure v2" }, "detail": {}, "recordedBy": "u", "recordedAt": "2027-01-05T10:00:00.000Z" },
+      { "eventType": "redemption_expiry", "eventDate": "2028-06-01", "ruleCited": { "kind": "county_record", "source": "SYNTHETIC treasurer letter" }, "detail": {}, "recordedBy": "u", "recordedAt": "2026-06-01T10:00:00.000Z" }
+    ]
+  },
+  "expected": {
+    "lienAmount": { "amountCents": 481250, "basis": "what you paid at the sale, as recorded on the certificate" },
+    "rate": { "text": "no won rate on record; the county procedure card states the return model" },
+    "redemptionDeadline": { "date": "2028-06-01", "basis": "entered from the county's records — SYNTHETIC treasurer letter" },
+    "subsequentTaxes": {
+      "payments": [
+        { "paidOn": "2026-12-01", "taxYear": "2025", "amountCents": 49000, "source": "SYNTHETIC receipt #2026-12" },
+        { "paidOn": "2027-02-10", "taxYear": "2026", "amountCents": 51000, "source": "SYNTHETIC receipt #2027-44" }
+      ],
+      "totalCents": 100000,
+      "reimbursement": { "status": "stated", "text": "SYNTHETIC: subsequent taxes paid by the holder are added to the redemption amount — county procedure v2, SYNTHETIC Rev. Code §1, as of 2026-09-01" }
+    },
+    "interest": { "status": "not_computed", "why": "AcreOS has no encoded redemption rule for OH — get the redemption amount from the county" },
+    "notices": [{ "sentOn": "2027-03-01", "method": "Certified mail", "note": "to the owner of record", "source": "SYNTHETIC certified mail receipt 7019" }],
+    "foreclosureFilingDeadline": { "status": "stated", "date": "2029-06-01", "basis": "SYNTHETIC procedure v2" }
+  }
+}

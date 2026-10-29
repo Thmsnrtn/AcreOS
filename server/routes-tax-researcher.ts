@@ -62,6 +62,25 @@ import { isCalendarDate } from "@shared/dates/calendar";
 import { clock } from "./utils/clock";
 import { DISCARD_REASONS, DISCARD_REASON_LABEL, deriveMaxBid, type RightsStackInput } from "@shared/tax/maxBid";
 import { basisAfterManualMax, bidStanding, discardLot, recordMaxBid, reopenLot } from "./services/tax/bidDiscipline";
+import { isLocalTime, isValidTimeZone, REGISTRATION_ITEMS, type AuctionCalendarRecord, type RegistrationItem } from "@shared/tax/auctionCalendar";
+import { auctionRegistrationGate, getAuctionCalendar, setAuctionCalendar, updateRegistrationItem } from "./services/tax/auctionCalendar";
+
+// The auction calendar as the operator states it (shared/tax/auctionCalendar.ts).
+// The county's time zone is STATED with its source — AcreOS has no
+// county→zone map and never guesses one.
+const calSource = z.string().trim().min(1).max(500);
+const calendarSchema: z.ZodType<AuctionCalendarRecord> = z.object({
+  timeZone: z
+    .object({ value: z.string().refine(isValidTimeZone, "an IANA time zone such as America/Chicago"), source: calSource, asOf: z.string().refine(isCalendarDate, "as-of must be a calendar date") })
+    .nullable(),
+  startTimeLocal: z.string().refine(isLocalTime, "local time as HH:MM").nullable(),
+  registrationDeadline: z
+    .object({ date: z.string().refine(isCalendarDate, "a calendar date"), timeLocal: z.string().refine(isLocalTime, "local time as HH:MM").nullable(), source: calSource })
+    .nullable(),
+  funds: z
+    .object({ depositCents: z.number().int().nonnegative().nullable(), form: z.string().trim().max(500).nullable(), source: calSource })
+    .nullable(),
+});
 
 // The rights stack as the operator states it (shared/tax/maxBid.ts). Each
 // amount is known-with-source, searched-with-none-found, or unknown; an
@@ -961,7 +980,7 @@ router.post('/listings/:id/bid-log', async (req: Request, res: Response) => {
     }
 
     const [listing] = await drizzleDb
-      .select({ id: taxSaleListings.id, state: taxSaleListings.state, county: taxSaleListings.county })
+      .select({ id: taxSaleListings.id, state: taxSaleListings.state, county: taxSaleListings.county, auctionId: taxSaleListings.auctionId })
       .from(taxSaleListings)
       .where(and(eq(taxSaleListings.id, id), eq(taxSaleListings.organizationId, org.id)))
       .limit(1);
@@ -979,6 +998,22 @@ router.post('/listings/:id/bid-log', async (req: Request, res: Response) => {
           res,
           `Bidding is locked for ${listing.county} County, ${listing.state}: ${standing.lockReasons.map((r) => r.message).join(" ")}`,
           { biddingLocked: true, lockReasons: standing.lockReasons },
+        );
+      }
+    }
+
+    // REGISTRATION is a stage gate (V-Tax-1 T3b): a lot in an auction is not
+    // bid on until every registration item is done or stated not required
+    // with its source. A lot outside any auction (over the counter, private)
+    // has no registration to gate on.
+    if (isBid && listing.auctionId) {
+      const reg = await auctionRegistrationGate(org.id, listing.auctionId);
+      if (reg && !reg.complete) {
+        const open = reg.items.filter((i) => i.state === "not_stated" || i.state === "required_open");
+        return Errors.unprocessable(
+          res,
+          `Registration for this sale is not complete: ${open.map((i) => `${i.label} (${i.why})`).join("; ")}.`,
+          { registrationIncomplete: true, open },
         );
       }
     }
@@ -1079,6 +1114,73 @@ router.post('/listings/:id/bid-log', async (req: Request, res: Response) => {
 
     res.status(201).json({ entry, certificate });
   } catch (err: any) {
+    Errors.internal(res, err);
+  }
+});
+
+// GET /tax-researcher/auctions/:id/calendar — the sale in the county's own time
+// zone, the registration deadline and countdown, and the registration gate.
+router.get('/auctions/:id/calendar', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const auctionId = parseInt(req.params.id, 10);
+    if (Number.isNaN(auctionId)) return Errors.badRequest(res, "Invalid auction id");
+    const result = await getAuctionCalendar(getOrganizationId(req), auctionId);
+    if (!result) return Errors.notFound(res, "Auction");
+    res.json(result);
+  } catch (err) {
+    Errors.internal(res, err);
+  }
+});
+
+// PUT /tax-researcher/auctions/:id/calendar — state the county's time zone (with
+// its source), the local start time, the registration deadline and the funds.
+router.put('/auctions/:id/calendar', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const auctionId = parseInt(req.params.id, 10);
+    if (Number.isNaN(auctionId)) return Errors.badRequest(res, "Invalid auction id");
+    const parsed = calendarSchema.safeParse(req.body);
+    if (!parsed.success) return Errors.validationFailed(res, parsed.error.flatten());
+    const b = parsed.data;
+    // A time of day without the county's zone is the defect this exists to stop.
+    if (!b.timeZone && (b.startTimeLocal || b.registrationDeadline?.timeLocal)) {
+      return Errors.unprocessable(res, "A time of day needs the county's time zone. State the zone, with where it came from, or give dates only.", { timeZoneRequired: true });
+    }
+    const result = await setAuctionCalendar(getOrganizationId(req), auctionId, b);
+    if (!result) return Errors.notFound(res, "Auction");
+    res.json(result);
+  } catch (err) {
+    Errors.internal(res, err);
+  }
+});
+
+// PUT /tax-researcher/auctions/:id/registration/:item — state whether the county
+// requires an item (with its source), or mark it done / not done.
+router.put('/auctions/:id/registration/:item', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const auctionId = parseInt(req.params.id, 10);
+    if (Number.isNaN(auctionId)) return Errors.badRequest(res, "Invalid auction id");
+    const item = req.params.item as RegistrationItem;
+    if (!(REGISTRATION_ITEMS as readonly string[]).includes(item)) return Errors.notFound(res, "Registration item");
+    const parsed = z
+      .discriminatedUnion("kind", [
+        z.object({
+          kind: z.literal("requirement"),
+          requirement: z
+            .object({ status: z.enum(["required", "not_required"]), source: calSource, asOf: z.string().refine(isCalendarDate, "as-of must be a calendar date") })
+            .nullable(),
+        }),
+        z.object({ kind: z.literal("done"), note: z.string().trim().max(500).nullable() }),
+        z.object({ kind: z.literal("undone") }),
+      ])
+      .safeParse(req.body);
+    if (!parsed.success) return Errors.validationFailed(res, parsed.error.flatten());
+    if (item === "bidder_registration" && parsed.data.kind === "requirement") {
+      return Errors.unprocessable(res, "Registering as a bidder is always required to bid; mark it done when you are registered.");
+    }
+    const standing = await updateRegistrationItem(getOrganizationId(req), auctionId, item, parsed.data, req.user?.id ?? null);
+    if (!standing) return Errors.notFound(res, "Auction");
+    res.json({ registration: standing });
+  } catch (err) {
     Errors.internal(res, err);
   }
 });

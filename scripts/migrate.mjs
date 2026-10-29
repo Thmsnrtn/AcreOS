@@ -13034,6 +13034,19 @@ $mig0284$`,
      END IF;
    END
    $$`,
+  // 0298 — V-Tax-1 T3b: tax_sale_auctions.calendar (county time zone as stated, local times, funds) and registration (stage gate); tax_events ledger types (subsequent_tax_paid, redemption_notice_recorded, foreclosure_filing_deadline). Columns + widened CHECK only.
+  // Mirrors migrations/0298_tax_v1_calendar_registration_ledger.sql.
+  `ALTER TABLE "tax_sale_auctions" ADD COLUMN IF NOT EXISTS "calendar" jsonb`,
+  `ALTER TABLE "tax_sale_auctions" ADD COLUMN IF NOT EXISTS "registration" jsonb`,
+  `DO $$
+   BEGIN
+     IF to_regclass('public.tax_events') IS NOT NULL THEN
+       ALTER TABLE "tax_events" DROP CONSTRAINT IF EXISTS "tax_events_event_type_check";
+       ALTER TABLE "tax_events" ADD CONSTRAINT "tax_events_event_type_check"
+         CHECK ("event_type" IN ('redemption_expiry', 'quiet_title_filed', 'subsequent_tax_paid', 'redemption_notice_recorded', 'foreclosure_filing_deadline'));
+     END IF;
+   END
+   $$`,
 ];
 
 // The statement set this run executes. Default: everything (the production
