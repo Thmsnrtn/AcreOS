@@ -18,12 +18,9 @@ import { z } from "zod";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { db } from "./db";
 import {
-  noteQuietTitleCases,
-  quietTitleSteps,
   taxCertificates,
   TAX_CERT_SALE_TYPES,
   TAX_CERT_STATUSES,
-  type TaxRuleCited,
 } from "@shared/schema";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId } from "./types/request";
@@ -66,16 +63,7 @@ function certEventRowFrom(row: typeof taxCertificates.$inferSelect): CertEventRo
   };
 }
 
-/** What a certificate's redemption deadline rests on, in words. */
-function deadlineBasisOf(rule: TaxRuleCited | null): string {
-  return rule?.kind === "county_record"
-    ? `entered from the county's records — ${rule.source}`
-    : rule?.kind === "preliminary_state_rule"
-      ? `computed by AcreOS from its encoded ${rule.state} rule${rule.citation ? ` (${rule.citation})` : ""} — preliminary, not attorney-reviewed; confirm with the county`
-      : rule?.kind === "procedure_object"
-        ? `the county procedure, version ${rule.version} — ${rule.source}, as of ${rule.asOf}`
-        : "on record from before AcreOS tracked where deadlines came from — confirm with the county";
-}
+import { deadlineBasisOf } from "./services/tax/certificateClock";
 
 const ledgerSource = z.string().trim().min(1).max(500);
 const ledgerDate = z.string().refine(isCalendarDate, "a calendar date (YYYY-MM-DD)");
@@ -275,42 +263,8 @@ export function registerTaxCertificateRoutes(app: Express): void {
           .where(and(eq(taxCertificates.id, req.params.id), eq(taxCertificates.organizationId, orgId)))
           .limit(1);
         if (!row) return Errors.notFound(res, "Certificate");
-        const { latestTaxEvents } = await import("./services/tax/taxEvents");
-        const { countyBidStanding } = await import("./services/tax/taxProcedures");
-        const { redemptionClock } = await import("@shared/tax/clock");
-        const today = clock.now().toISOString().slice(0, 10);
-        const events = await latestTaxEvents(orgId, row.id);
-        const deadlineBasis = deadlineBasisOf(events.redemption_expiry?.ruleCited ?? null);
-        const standing = await countyBidStanding(orgId, row.state, row.county, today);
-        const period = standing.current?.fields.redemptionPeriodMonths;
-        const [qt] = await db
-          .select({ id: noteQuietTitleCases.id, marketException: noteQuietTitleCases.marketException })
-          .from(noteQuietTitleCases)
-          .where(and(eq(noteQuietTitleCases.organizationId, orgId), eq(noteQuietTitleCases.certificateId, row.id)))
-          .limit(1);
-        let petitionFiledOn: string | null = null;
-        if (qt) {
-          const [filed] = await db
-            .select({ completedAt: quietTitleSteps.completedAt })
-            .from(quietTitleSteps)
-            .where(and(eq(quietTitleSteps.organizationId, orgId), eq(quietTitleSteps.caseId, qt.id), eq(quietTitleSteps.stepKey, "petition_filed")))
-            .limit(1);
-          petitionFiledOn = filed?.completedAt ? filed.completedAt.toISOString().slice(0, 10) : null;
-        }
-        res.json(
-          redemptionClock({
-            saleType: row.saleType,
-            status: row.status,
-            saleDate: row.saleDate as unknown as string,
-            redemptionDeadline: row.redemptionDeadline as unknown as string,
-            deadlineSource: row.deadlineSource ?? null,
-            deadlineBasis,
-            purchaseAmountCents: row.purchaseAmountCents,
-            today,
-            procedurePeriod: period && standing.current ? { months: period.value, source: period.source, asOf: period.asOf, version: standing.current.version } : null,
-            quietTitle: qt ? { petitionFiledOn, marketException: qt.marketException ?? null } : null,
-          }),
-        );
+        const { clockForCertificate } = await import("./services/tax/certificateClock");
+        res.json(await clockForCertificate(orgId, row));
       } catch (err) {
         logger.error("taxCertificates.clock failed", err instanceof Error ? err : undefined);
         return Errors.internal(res, err);
@@ -365,6 +319,59 @@ export function registerTaxCertificateRoutes(app: Express): void {
         const { latestTaxEvents } = await import("./services/tax/taxEvents");
         const events = await latestTaxEvents(orgId, req.params.id);
         res.json({ ledger: await buildCertificateLedger(orgId, req.params.id, deadlineBasisOf(events.redemption_expiry?.ruleCited ?? null)) });
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  // ── The exit to Land (V-Tax-1 T4b, founder decision 2026-10-29) ───────────
+  // An OPERATOR action, available only once the deed is held: links the org's
+  // property for the same parcel, or creates one as owned, and the
+  // certificate's tax history goes with it. Acreage is stated, never invented.
+  app.post(
+    "/api/tax-certificates/:id/move-to-land",
+    isAuthenticated,
+    getOrCreateOrg,
+    ownerOrAdmin,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const parsed = z
+          .object({
+            sizeAcres: z
+              .object({ value: z.string().regex(/^\d+(\.\d+)?$/).refine((v) => Number(v) > 0, "acreage must be positive"), source: z.string().trim().min(1).max(500) })
+              .nullable()
+              .optional(),
+          })
+          .safeParse(req.body ?? {});
+        if (!parsed.success) return Errors.validationFailed(res, parsed.error.flatten());
+        const { moveToLand } = await import("./services/tax/landExit");
+        const r = await moveToLand(getOrganizationId(req), req.params.id, req.user?.id ?? "unknown", { sizeAcres: parsed.data.sizeAcres ?? null });
+        if (r.status === "not_found") return Errors.notFound(res, "Certificate");
+        if (r.status === "not_ready") return Errors.unprocessable(res, `Not yet: ${r.reason}.`, { phase: r.phase });
+        if (r.status === "invalid_parcel") return Errors.unprocessable(res, r.reason);
+        if (r.status === "needs_acreage") return Errors.unprocessable(res, r.reason, { needsAcreage: true });
+        res.json(r);
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  // The tax history a Land property carries: each position's clock, calendar
+  // and bids, and what the positions have cost so far (an input to the next offer).
+  app.get(
+    "/api/properties/:id/tax-history",
+    isAuthenticated,
+    getOrCreateOrg,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const propertyId = parseInt(req.params.id, 10);
+        if (Number.isNaN(propertyId)) return Errors.badRequest(res, "Invalid property id");
+        const { propertyTaxHistory } = await import("./services/tax/landExit");
+        const history = await propertyTaxHistory(getOrganizationId(req), propertyId);
+        if (!history) return Errors.notFound(res, "Property");
+        res.json({ history });
       } catch (err) {
         return Errors.internal(res, err);
       }

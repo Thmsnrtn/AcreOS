@@ -41,6 +41,7 @@ import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { emitPermitGateApproved } from "./services/subdivisionEvents";
 import { clock } from "./utils/clock";
+import { refuseRedeemableDeedSpend } from "./services/tax/landExit";
 
 // ----------------------------------------------------------------------------
 // Templates — permit gate sequences per (state, county) Brigid actually works.
@@ -281,6 +282,8 @@ export function registerPermitTrackerRoutes(app: Express): void {
           .from(properties)
           .where(and(eq(properties.id, parentId), eq(properties.organizationId, orgId)));
         if (!parent) return Errors.notFound(res, "Parcel");
+        // V-Tax-1 T4b: no plat/permit spend on a parcel still held by a tax position.
+        if (!(await refuseRedeemableDeedSpend(res, orgId, parentId, "A permit checklist"))) return;
 
         const [checklist] = await db.insert(permitChecklists).values({
           organizationId: orgId,
@@ -353,6 +356,13 @@ export function registerPermitTrackerRoutes(app: Express): void {
           })
           .from(permitGates)
           .where(and(eq(permitGates.id, gateId), eq(permitGates.organizationId, orgId)));
+        if (beforeGate) {
+          const [cl] = await db
+            .select({ parentParcelId: permitChecklists.parentParcelId })
+            .from(permitChecklists)
+            .where(and(eq(permitChecklists.id, beforeGate.checklistId), eq(permitChecklists.organizationId, orgId)));
+          if (!(await refuseRedeemableDeedSpend(res, orgId, cl?.parentParcelId, "A permit step"))) return;
+        }
 
         // If status flipped to "submitted" and an expectedDays was set on the
         // template gate, auto-populate expected_return_at = submittedAt + Δ.

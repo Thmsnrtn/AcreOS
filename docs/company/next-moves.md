@@ -3,6 +3,38 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-10-29 — V-Tax-1 T4b — the tax → Land exit, and the redeemable-deed gate on spend and marketing — on `claude/tax-v1-t4b-land-exit` (stacked on T4a). V-Tax-1 is code-complete.
+
+- **Founder decisions (2026-10-29, recorded in `founder-decisions-2026-10-28-tax.md` §3).** The exit is an operator action, never automatic. The gate covers both spend AND marketing.
+- **The exit** (`POST /api/tax-certificates/:id/move-to-land`, `server/services/tax/landExit.ts`).
+  - It is available only at the clock's `deed_held` phase; still redeemable, or expired without a deed, is refused with why.
+  - It links the org's property for the same parcel, using lead conversion's `findParcelProperties`, now exported: one matcher. A property still in the acquisition pipeline becomes `owned`.
+  - Otherwise it creates one as `owned` with the price paid. The acreage comes from the lot's list, or the operator states it with its source; it is never invented (a missing acreage is a 422 `needsAcreage`).
+  - The move is recorded on the property's `activity_events` in the same transaction. A second move is a no-op.
+  - UI: `MoveToLandControl` under the clock.
+- **The gate** (`refuseRedeemableDeedSpend` / `taxHoldRefusal` / `heldPropertyIds`).
+  - "Held" is the clock's own answer, from the extracted `clockForCertificate`, which the clock route and the gate both use: not marketable (still redeemable, expired without a deed, or deed held without a quiet-title petition or attorney exception). Redeemed and cancelled positions hold nothing.
+  - **Spend gated:** subdivision plan create/update, permit checklist create, permit-step update, lot split, rehab create, rehab line items, rehab seed template, DD assignment, DD dossier request (both routers — the ratchet found the second) and dossier run.
+  - **Marketing gated:** listing create and publish, syndication, sync-all, buyer blasts, buyer matching (single and bulk), ad postings, and the marketplace listing. The marketplace had no offerability check at all; that is pre-existing and not fixed beyond the tax hold.
+  - **Not gated, by design:** the free public-data DD lookups (flood, wetlands, soil, environmental), which are reads, not spend.
+- **The ratchet** (`redeemableDeedGate.test.ts`) reads the population, not a list.
+  - Every route unit in `server/routes*.ts` that writes a spend table or service must call the gate or be EXEMPT with a reason.
+  - Every `offerabilityRefusal(` site must also check the tax hold.
+  - It has vacuity floors on files, units and call sites.
+- **The tax history on the property** (`GET /api/properties/:id/tax-history`, `PropertyTaxHistoryPanel` on the property detail):
+  - each position's clock, calendar and bids;
+  - the taught lock while held;
+  - what the position cost so far (purchase + subsequent taxes, with its basis), shown as an input to the next offer.
+- **Not done, stated plainly.**
+  - No offer calculator reads the tax cost yet. It is shown on the property, not wired into `calculateBlindOffer` or `POST /api/offers`.
+  - There is no single document store: the canon marks documents "conflated". Tax certificates have no document upload; quiet-title steps hold one S3 key.
+  - `properties` has no APID column. The exit matches by parcel ref, as lead conversion does.
+- **V-Tax-1 PR stack, all open.** #418 → #419 → #420 → #421 → #422 → #423 → #424 → T4b. Each retargets to main as the one before merges.
+- **Escalations still open.**
+  1. `preForeclosureNoticeMonths: 1` is a national default, used for 45 states. It needs the founder's call.
+  2. TX flat-first-period stacking (25% plus 50%) is a legal reading.
+  3. Security Scanning is red on main. It needs code-scanning access, or approval of the "make Trivy print" patch.
+
 ## 2026-10-29 — V-Tax-1 T4a — disagreement capture and negative knowledge on the lot's tax record — on `claude/tax-v1-t4a-disagreement` (stacked on T3b)
 
 - **One rule, two verticals (addendum §2: reuse the Notes pattern).** N4's disagreement and negative-knowledge rule moved out of `buildNoteRecord` into `shared/provenance/fieldRecord.ts` (`recordedField`), unchanged.
