@@ -16,6 +16,8 @@
  *     the order can be checked, not trusted.
  */
 
+import type { StackAmount } from "./maxBid";
+
 export type ResolveCost = "free_in_acreos" | "your_time" | "paid_outside";
 
 export const RESOLVE_COST_RANK: Record<ResolveCost, number> = { free_in_acreos: 1, your_time: 2, paid_outside: 3 };
@@ -64,6 +66,11 @@ export interface LotTriageInput {
   amountOwedCents: number | null;
   /** The county watch's stated redemption period, if any. */
   redemptionPeriod: { months: number; source: string } | null;
+  /**
+   * The lien line from the operator's recorded rights stack (V-Tax-1 T3a),
+   * if they recorded one. Absent = no lien search on record.
+   */
+  survivingLiens?: StackAmount | null;
 }
 
 const usd = (c: number) => `$${(c / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -112,7 +119,19 @@ export function triageLot(i: LotTriageInput): { facts: TriageFact[]; unknownsInO
     { how: "state it on the county watch from the county's sale notice or statute", cost: "your_time" },
   );
 
-  add("seniorLiens", "Senior liens", { status: "unknown", reason: "no lien search has been performed" }, { how: "order a title or lien search", cost: "paid_outside" });
+  // The operator's own search, as recorded on the rights stack. AcreOS reads
+  // which liens survive from that record; it does not decide it.
+  const liens = i.survivingLiens;
+  add(
+    "seniorLiens",
+    "Senior liens",
+    liens?.status === "known"
+      ? { status: "known", value: `${usd(liens.amountCents)} your search says survives the sale`, source: `${liens.source}, as of ${liens.asOf}` }
+      : liens?.status === "searched_none"
+        ? { status: "searched_none", reason: "your search found none that survive the sale", source: `${liens.source}, as of ${liens.asOf}` }
+        : { status: "unknown", reason: "no lien search has been performed" },
+    { how: "order a title or lien search", cost: "paid_outside" },
+  );
   add("occupancy", "Occupancy", { status: "unknown", reason: "not checked" }, { how: "a drive-by or the county's homestead records", cost: "your_time" });
   add("access", "Legal access / buildability", { status: "unknown", reason: "not checked" }, { how: "check road frontage and easements on the county map", cost: "your_time" });
 

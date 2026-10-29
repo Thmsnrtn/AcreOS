@@ -14,6 +14,7 @@ import { dealRooms } from "./schema/marketplace";
 // shapes behind organizations.pax_controls and pending_actions.origin /
 // source_ref. Type-only, so nothing here reaches the client bundle.
 import type { PaxAskOrigin, PaxAskSourceRef, PaxControls } from "./pax-controls";
+import type { MaxBidRecord, DiscardRecord } from "./tax/maxBid";
 import { CREDIT_PACK_CATALOG } from "./billing/credit-packs";
 import { TIER_LIMITS } from "./billing/tier-limits";
 import { TIER_PRICES_CENTS, type Tier } from "./billing/tier-pricing";
@@ -7300,6 +7301,11 @@ export const taxSaleListings = pgTable("tax_sale_listings", {
   walkAwayAboveCents: bigint("walk_away_above_cents", { mode: "number" }),
   walkAwayCondition: text("walk_away_condition"),
   partnerSplit: jsonb("partner_split").$type<Array<{ investorName: string; splitBps: number }>>(),
+  // V-Tax-1 T3a (0297): the rights-stack decision record behind maxBidCents
+  // (null = the max is the operator's bare number), and a pre-bid discard
+  // with its recorded reason. Shapes in shared/tax/maxBid.ts.
+  maxBidBasis: jsonb("max_bid_basis").$type<MaxBidRecord>(),
+  discard: jsonb("discard").$type<DiscardRecord>(),
 
   sourceUrl: text("source_url"),
   certificateNumber: text("certificate_number"),
