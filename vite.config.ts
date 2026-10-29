@@ -62,6 +62,35 @@ function chunkGraphPlugin(): Plugin {
   };
 }
 
+// jsPDF lazy-loads html2canvas (for doc.html()) and canvg, which carries its
+// own core-js (for doc.addSvgAsImage()). AcreOS draws its one PDF (the
+// borrower statement) with text and lines only, so those two chunks — about
+// 360 KB of the total-JS budget — could never load. When jsPDF imports them,
+// they resolve to a stub that throws, so a future doc.html() fails loudly
+// instead of quietly shipping the weight. dompurify, jsPDF's third optional
+// dependency, is NOT stubbed: isomorphic-dompurify uses it to sanitize mail
+// and assignment HTML. tests/unit/jspdfOptionalDepsStubbed.test.ts pins both.
+const JSPDF_UNUSED_OPTIONAL_DEPS = new Set(["html2canvas", "canvg"]);
+function jspdfUnusedOptionalDepsPlugin(): Plugin {
+  const STUB = "\0jspdf-unused-optional-dep";
+  return {
+    name: "acreos-jspdf-unused-optional-deps",
+    enforce: "pre",
+    resolveId(source, importer) {
+      if (JSPDF_UNUSED_OPTIONAL_DEPS.has(source) && importer && /node_modules[\\/]jspdf[\\/]/.test(importer)) return STUB;
+      return null;
+    },
+    load(id) {
+      if (id !== STUB) return null;
+      return [
+        `const unavailable = () => { throw new Error("jsPDF html()/addSvgAsImage() are not bundled in AcreOS (vite.config.ts jspdfUnusedOptionalDepsPlugin)"); };`,
+        `export default unavailable;`,
+        `export const Canvg = { from: unavailable, fromString: unavailable };`,
+      ].join("\n");
+    },
+  };
+}
+
 // Phase 8 Mo 12 — Beatriz §3 bundle-analyzer.
 // Enabled when ANALYZE=1 (CI / one-off `npm run build:analyze`).
 // In normal builds the plugin is excluded so the prod bundle is unaffected.
@@ -93,6 +122,7 @@ export default defineConfig({
   },
   plugins: [
     react(),
+    jspdfUnusedOptionalDepsPlugin(),
     chunkGraphPlugin(),
     // Pre-compress build output (gzip + brotli) so static-serve can deliver
     // already-compressed bytes. Sidesteps the HTTP/2 + `compression`
