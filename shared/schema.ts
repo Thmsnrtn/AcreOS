@@ -7355,28 +7355,9 @@ export const taxSaleListings = pgTable("tax_sale_listings", {
 // tax_sale_alerts was retired 2026-10-28 (V-Tax-1 T1, migration 0294): nothing
 // read or wrote it. County watches are tax_county_watches (shared/schema/tax-v1.ts).
 
-// Historical redemption rates by county - for prediction
-export const countyRedemptionRates = pgTable("county_redemption_rates", {
-  id: serial("id").primaryKey(),
-  
-  county: text("county").notNull(),
-  state: text("state").notNull(),
-  year: integer("year").notNull(),
-  
-  saleType: text("sale_type").notNull(), // lien, deed
-  
-  totalSales: integer("total_sales"),
-  totalRedemptions: integer("total_redemptions"),
-  redemptionRate: numeric("redemption_rate"),
-  
-  averageRedemptionMonths: numeric("average_redemption_months"),
-  averageTaxAmount: numeric("average_tax_amount"),
-  averagePropertyValue: numeric("average_property_value"),
-  
-  dataSource: text("data_source"),
-  
-  createdAt: timestamp("created_at").defaultNow(),
-});
+// county_redemption_rates was retired 2026-10-28 (V-Tax-1 T2a, migration 0295):
+// nothing read or wrote it. Per-county procedure (with its redemption period,
+// sourced and dated) is tax_procedure_objects (shared/schema/tax-v1.ts).
 
 export const insertTaxSaleAuctionSchema = createInsertSchema(taxSaleAuctions).omit({
   id: true,
@@ -7393,13 +7374,6 @@ export const insertTaxSaleListingSchema = createInsertSchema(taxSaleListings).om
 });
 export type InsertTaxSaleListing = z.infer<typeof insertTaxSaleListingSchema>;
 export type TaxSaleListing = typeof taxSaleListings.$inferSelect;
-
-export const insertCountyRedemptionRateSchema = createInsertSchema(countyRedemptionRates).omit({
-  id: true,
-  createdAt: true,
-});
-export type InsertCountyRedemptionRate = z.infer<typeof insertCountyRedemptionRateSchema>;
-export type CountyRedemptionRate = typeof countyRedemptionRates.$inferSelect;
 
 // ============================================
 // PHASE 3: DUE DILIGENCE, INTENT, PRICING, PATTERNS

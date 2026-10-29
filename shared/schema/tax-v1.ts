@@ -11,7 +11,12 @@
  *     'searched_none'). The Notes note_field_observations pattern applied to
  *     tax lots. Append-only by trigger; a row leaves only with its lot.
  *     Org-private.
+ *   - tax_procedure_objects (T2a, migration 0295): a county's tax-sale
+ *     procedure as an organization has recorded it — every field sourced,
+ *     dated, marked state law or county practice, and verification-stamped.
+ *     Versioned, never edited (UPDATE/TRUNCATE refused). Org-private.
  */
+import type { CountyVerification, ProcedureFields } from "../tax/procedure";
 import { sql } from "drizzle-orm";
 import { check, date, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { taxSaleListings } from "../schema";
@@ -80,3 +85,21 @@ export const taxLotObservations = pgTable(
 
 export type TaxLotObservation = typeof taxLotObservations.$inferSelect;
 export type InsertTaxLotObservation = typeof taxLotObservations.$inferInsert;
+
+export const taxProcedureObjects = pgTable(
+  "tax_procedure_objects",
+  {
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id").notNull(),
+    state: text("state").notNull(),
+    county: text("county").notNull(),
+    version: integer("version").notNull(),
+    fields: jsonb("fields").$type<ProcedureFields>().notNull(),
+    countyVerification: jsonb("county_verification").$type<CountyVerification | null>(),
+    recordedBy: text("recorded_by").notNull(),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("tax_procedure_objects_org_county_version_uidx").on(t.organizationId, t.state, sql`lower(${t.county})`, t.version)],
+);
+
+export type TaxProcedureObject = typeof taxProcedureObjects.$inferSelect;
