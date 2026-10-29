@@ -253,6 +253,8 @@ describe("population: writers that bypass the repository cannot store an arbitra
     "server/api-v1/properties.ts": "names-no-land-status",
     // Lead → deal: inserts the lead's parcel inside its transaction; land status stays the column default.
     "server/services/leads/convertLeadToDeal.ts": "names-no-land-status",
+    // Tax → Land exit (V-Tax-1 T4b): creates or marks the parcel owned; land status stays the column default.
+    "server/services/tax/landExit.ts": "names-no-land-status",
     // server/services/import.ts was deleted as unreferenced (#328).
   };
 

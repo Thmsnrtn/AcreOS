@@ -94,6 +94,11 @@ export async function moveToLand(organizationId: number, certificateId: string, 
       // becomes owned. One already owned, listed or sold keeps its status.
       if (["prospect", "due_diligence", "offer_sent", "under_contract"].includes(existing.status)) {
         await tx.update(properties).set({ status: "owned", updatedAt: houseClock.now() }).where(and(eq(properties.id, existing.id), eq(properties.organizationId, organizationId)));
+        // Every property-status writer withdraws listings for land that is no
+        // longer held; "owned" is held, so this withdraws nothing — the rule
+        // stays uniform for when it is not.
+        const { withdrawListingsForUnheldProperty } = await import("../listingWithdrawal");
+        await withdrawListingsForUnheldProperty(organizationId, existing.id, "owned");
       }
     } else {
       if (!acreage) return { status: "needs_acreage", reason: "the lot's list states no acreage — give the parcel's acreage and where it came from" } as const;
@@ -114,12 +119,13 @@ export async function moveToLand(organizationId: number, certificateId: string, 
       created = true;
     }
     await tx.update(taxCertificates).set({ propertyId, updatedAt: houseClock.now() }).where(and(eq(taxCertificates.id, cert.id), eq(taxCertificates.organizationId, organizationId)));
+    const saleKind = cert.saleType.replace(/_/g, " ");
     await tx.insert(activityEvents).values({
       organizationId,
       entityType: "property",
       entityId: propertyId,
       eventType: "tax_position_moved_to_land",
-      description: `Moved to Land from a tax ${cert.saleType.replace(/_/g, " ")} (${cert.county} County, ${cert.state}, APN ${cert.apn}); its tax history is attached.`,
+      description: `Moved to Land from a tax ${saleKind} (${cert.county} County, ${cert.state}, APN ${cert.apn}); its tax history is attached.`,
       metadata: { certificateId: cert.id, created, ...(created && acreage ? { acreageSource: acreage.source } : {}) },
       userId,
     });
@@ -138,7 +144,7 @@ export interface HeldPosition {
 }
 
 /** Positions on this property that are not yet marketable in AcreOS (empty = clear). */
-export async function heldPositions(organizationId: number, propertyId: number): Promise<HeldPosition[]> {
+async function heldPositions(organizationId: number, propertyId: number): Promise<HeldPosition[]> {
   const { db } = await import("../../db");
   const certs = await db
     .select()

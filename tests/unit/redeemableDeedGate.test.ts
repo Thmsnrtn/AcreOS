@@ -21,8 +21,10 @@
  */
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
-import { stripComments } from "../helpers/stripComments";
+import { describe, expect, it, vi } from "vitest";
+import { REPO_SWEEP_TIMEOUT_MS, stripComments } from "../helpers/stripComments";
+
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 const ROOT = path.join(__dirname, "../..");
 const read = (p: string) => stripComments(readFileSync(path.join(ROOT, p), "utf8"));
