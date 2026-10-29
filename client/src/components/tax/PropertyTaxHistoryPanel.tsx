@@ -64,10 +64,13 @@ export function PropertyTaxHistoryPanel({ propertyId }: { propertyId: number }) 
         <p className="text-xs text-muted-foreground">What the tax position cost so far — an input to your next offer</p>
         <p className="text-sm"><span className="font-medium tabular-nums">{usd(h.moneyIn.totalCents)}</span> <span className="text-xs text-muted-foreground">(purchase {usd(h.moneyIn.purchaseCents)} + subsequent taxes {usd(h.moneyIn.subsequentTaxesCents)}) — {h.moneyIn.basis}</span></p>
       </div>
-      {h.positions.map((p) => (
+      {h.positions.map((p) => {
+        const saleKind = p.saleType.replace(/_/g, " ");
+        const phaseLabel = p.clock.phase.replace(/_/g, " ");
+        return (
         <div key={p.certificateId} className="space-y-1 text-sm" data-testid={`property-tax-position-${p.certificateId}`}>
           <p className="font-medium">
-            {p.saleType.replace(/_/g, " ")} · sale {formatDate(p.saleDate)} · APN {p.apn} <Badge variant="outline">{p.clock.phase.replace(/_/g, " ")}</Badge>
+            {saleKind} · sale {formatDate(p.saleDate)} · APN {p.apn} <Badge variant="outline">{phaseLabel}</Badge>
           </p>
           <ol className="space-y-0.5 text-xs text-muted-foreground">
             {[
@@ -78,7 +81,8 @@ export function PropertyTaxHistoryPanel({ propertyId }: { propertyId: number }) 
               .map((x, i) => <li key={i}>{formatDate(x.at)} · {x.text}</li>)}
           </ol>
         </div>
-      ))}
+        );
+      })}
     </section>
   );
 }
