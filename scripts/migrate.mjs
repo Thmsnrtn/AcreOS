@@ -3375,24 +3375,9 @@ $mig0262$`,
   'CREATE INDEX IF NOT EXISTS "cma_reports_org_idx" ON "cma_reports" ("organization_id", "created_at")',
   'CREATE INDEX IF NOT EXISTS "cma_reports_property_idx" ON "cma_reports" ("property_id")',
 
-  `CREATE TABLE IF NOT EXISTS "auction_readiness_checklists" (
-     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-     "organization_id" integer NOT NULL,
-     "property_id" integer,
-     "auction_date" timestamptz,
-     "title_search_complete" boolean NOT NULL DEFAULT false,
-     "lien_search_complete" boolean NOT NULL DEFAULT false,
-     "occupancy_verified" boolean NOT NULL DEFAULT false,
-     "bid_strategy_documented" boolean NOT NULL DEFAULT false,
-     "funds_confirmed_cents" integer,
-     "redemption_risk_assessed" boolean NOT NULL DEFAULT false,
-     "domain_expert_signoff_at" timestamptz,
-     "domain_expert_signoff_by" text,
-     "notes" text,
-     "created_at" timestamptz NOT NULL DEFAULT now(),
-     "updated_at" timestamptz NOT NULL DEFAULT now()
-   )`,
-  'CREATE UNIQUE INDEX IF NOT EXISTS "auction_readiness_property_unique_idx" ON "auction_readiness_checklists" ("organization_id", "property_id")',
+  // auction_readiness_checklists was created here until 2026-10-29. Nothing
+  // ever read or wrote it; V-Tax-1 T2b retires it (guarded drop in 0296) —
+  // the bidder-registration checklist is T3's stage gate.
 
   // lien_search_records was created here until 2026-10-28. Nothing ever read
   // or wrote it; V-Tax-1 T1 retires it (guarded drop in 0294, below) and
@@ -12935,6 +12920,62 @@ $mig0284$`,
        RAISE EXCEPTION 'county_redemption_rates holds rows; nothing is dropped (V-Tax-1 T2 retires it only when empty — escalate to the founder)';
      END IF;
      DROP TABLE IF EXISTS "county_redemption_rates";
+   END;
+   $$`,
+  // 0296 — V-Tax-1 T2b: tax_events (calendar with rule cited; append-only, org-private), tax_certificates.deadline_source, quiet_title_cases.market_exception; guarded atomic retirement of auction_readiness_checklists.
+  // Mirrors migrations/0296_tax_v1_events_clock_gates.sql.
+  `CREATE TABLE IF NOT EXISTS "tax_events" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL,
+     "certificate_id" varchar NOT NULL REFERENCES "tax_certificates"("id") ON DELETE CASCADE,
+     "event_type" text NOT NULL CHECK ("event_type" IN ('redemption_expiry', 'quiet_title_filed')),
+     "event_date" date NOT NULL,
+     "rule_cited" jsonb NOT NULL,
+     "detail" jsonb NOT NULL DEFAULT '{}'::jsonb,
+     "recorded_by" text NOT NULL CHECK (length(trim("recorded_by")) > 0),
+     "recorded_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "tax_events_org_cert_idx" ON "tax_events" ("organization_id", "certificate_id", "event_type", "recorded_at")`,
+  `CREATE INDEX IF NOT EXISTS "tax_events_org_date_idx" ON "tax_events" ("organization_id", "event_date")`,
+  `CREATE OR REPLACE FUNCTION tax_events_guard()
+   RETURNS trigger AS $$
+   BEGIN
+     IF TG_OP = 'DELETE' THEN
+       IF EXISTS (SELECT 1 FROM "tax_certificates" WHERE "id" = OLD."certificate_id") THEN
+         RAISE EXCEPTION 'tax_events rows leave only with their certificate (delete the certificate, not its history)'
+           USING ERRCODE = 'foreign_key_violation';
+       END IF;
+       RETURN OLD;
+     END IF;
+     RAISE EXCEPTION 'tax_events is append-only (% denied)', TG_OP
+       USING ERRCODE = 'restrict_violation';
+   END;
+   $$ LANGUAGE plpgsql`,
+  `DROP TRIGGER IF EXISTS tax_events_no_update ON "tax_events"`,
+  `CREATE TRIGGER tax_events_no_update BEFORE UPDATE ON "tax_events"
+     FOR EACH ROW EXECUTE FUNCTION tax_events_guard()`,
+  `DROP TRIGGER IF EXISTS tax_events_delete_with_certificate ON "tax_events"`,
+  `CREATE TRIGGER tax_events_delete_with_certificate BEFORE DELETE ON "tax_events"
+     FOR EACH ROW EXECUTE FUNCTION tax_events_guard()`,
+  `DROP TRIGGER IF EXISTS tax_events_no_truncate ON "tax_events"`,
+  `CREATE TRIGGER tax_events_no_truncate BEFORE TRUNCATE ON "tax_events"
+     FOR EACH STATEMENT EXECUTE FUNCTION tax_events_guard()`,
+  `ALTER TABLE "tax_certificates" ADD COLUMN IF NOT EXISTS "deadline_source" text`,
+  `DO $$
+   BEGIN
+     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'tax_certificates_deadline_source_check') THEN
+       ALTER TABLE "tax_certificates" ADD CONSTRAINT "tax_certificates_deadline_source_check"
+         CHECK ("deadline_source" IS NULL OR "deadline_source" IN ('computed_preliminary', 'operator_entered'));
+     END IF;
+   END;
+   $$`,
+  `ALTER TABLE "quiet_title_cases" ADD COLUMN IF NOT EXISTS "market_exception" jsonb`,
+  `DO $$
+   BEGIN
+     IF to_regclass('public.auction_readiness_checklists') IS NOT NULL AND EXISTS (SELECT 1 FROM "auction_readiness_checklists" LIMIT 1) THEN
+       RAISE EXCEPTION 'auction_readiness_checklists holds rows; nothing is dropped (V-Tax-1 T2 retires it only when empty — escalate to the founder)';
+     END IF;
+     DROP TABLE IF EXISTS "auction_readiness_checklists";
    END;
    $$`,
 ];

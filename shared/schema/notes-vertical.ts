@@ -706,6 +706,11 @@ export const taxCertificates = pgTable(
     // every page load and to support backfill when rule attorney-review
     // dates shift.
     redemptionDeadline: date("redemption_deadline").notNull(),
+    // Where the deadline came from (0296): computed by AcreOS from an encoded
+    // preliminary rule, or entered by the operator from the county's records.
+    // NULL on rows created before 0296. The nightly refresh recomputes only a
+    // computed deadline, never an entered one.
+    deadlineSource: text("deadline_source").$type<"computed_preliminary" | "operator_entered">(),
     // Owner-occupied vs vacant: Marcus: "TX uses 6mo / 24mo redemption
     // depending on owner-occupied + agricultural; AL counts SCRA-tolling".
     ownerOccupiedAtSale: boolean("owner_occupied_at_sale"),
@@ -893,6 +898,10 @@ export const noteQuietTitleCases = pgTable(
     judgmentEnteredAt: date("judgment_entered_at"),
     judgmentRecordedAt: date("judgment_recorded_at"),
     summary: text("summary"),
+    // An attorney-reviewed exception to the marketability gate (0296):
+    // without it a deed is eligible to market in AcreOS only once its
+    // quiet-title petition is filed. AcreOS never declares title marketable.
+    marketException: jsonb("market_exception").$type<{ attorneyName: string; reason: string; recordedAt: string; recordedBy: string } | null>(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
