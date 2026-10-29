@@ -16,6 +16,7 @@
  */
 
 import { useState } from "react";
+import { CertificateClockPanel } from "@/components/tax/CertificateClockPanel";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   Clock,
@@ -150,6 +151,7 @@ export default function RedemptionClockPage() {
   const [statusFilter, setStatusFilter] = useState<string>("active");
   const [stateFilter, setStateFilter] = useState<string>("");
   const [createOpen, setCreateOpen] = useState(false);
+  const [clockFor, setClockFor] = useState<{ id: string; label: string } | null>(null);
   const { isMobile } = useIsMobile();
 
   const certsQuery = useQuery<ListResponse>({
@@ -195,6 +197,8 @@ export default function RedemptionClockPage() {
           Add certificate
         </Button>
       </div>
+
+      {clockFor && <CertificateClockPanel certificateId={clockFor.id} label={clockFor.label} onClose={() => setClockFor(null)} />}
 
       {/* Preliminary-math banner — Marcus's §8 deal-killer guard. */}
       {anyPreliminary && (
@@ -356,6 +360,7 @@ export default function RedemptionClockPage() {
                     </div>
                   </div>
                 </div>
+                <Button size="sm" variant="outline" className="mt-3 h-8 w-full text-xs" aria-label={`Open the redemption clock for APN ${c.apn}`} onClick={() => setClockFor({ id: c.id, label: `APN ${c.apn}, ${c.county} County, ${c.state}` })}>Clock</Button>
                 <div className="mt-3 pt-3 border-t border-border/40 flex items-baseline justify-between">
                   <div className="text-micro uppercase tracking-wide text-muted-foreground">
                     Total redemption
@@ -426,6 +431,7 @@ export default function RedemptionClockPage() {
                     </td>
                     <td className="px-3 py-2.5 text-xs">
                       <span className="capitalize">{STATUS_LABELS[c.status]}</span>
+                      <Button size="sm" variant="ghost" className="ml-2 h-7 px-2 text-xs" aria-label={`Open the redemption clock for APN ${c.apn}`} onClick={() => setClockFor({ id: c.id, label: `APN ${c.apn}, ${c.county} County, ${c.state}` })}>Clock</Button>
                     </td>
                   </tr>
                 ))}

@@ -7,8 +7,8 @@
   "baselines": {
     "unreachedExports": 414,
     "internalOnlyExports": 1226,
-    "tablesNoWriter": 54,
-    "tablesNoReader": 60,
+    "tablesNoWriter": 53,
+    "tablesNoReader": 59,
     "unregisteredRoutes": 4,
     "opaqueExports": 18,
     "moduleOrphans": 33,

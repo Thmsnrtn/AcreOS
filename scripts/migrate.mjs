@@ -12876,11 +12876,23 @@ $mig0284$`,
   `CREATE TRIGGER tax_lot_observations_no_truncate BEFORE TRUNCATE ON "tax_lot_observations"
      FOR EACH STATEMENT EXECUTE FUNCTION tax_lot_observations_guard()`,
   `DO $$
+   DECLARE
+     has_rows boolean;
    BEGIN
-     IF to_regclass('public.tax_sale_alerts') IS NOT NULL AND EXISTS (SELECT 1 FROM "tax_sale_alerts" LIMIT 1) THEN
+     IF to_regclass('public.tax_sale_alerts') IS NOT NULL THEN
+       EXECUTE 'SELECT EXISTS (SELECT 1 FROM "tax_sale_alerts" LIMIT 1)' INTO has_rows;
+     ELSE
+       has_rows := false;
+     END IF;
+     IF has_rows THEN
        RAISE EXCEPTION 'tax_sale_alerts holds rows; nothing is dropped (V-Tax-1 T1 retires it only when empty — escalate to the founder)';
      END IF;
-     IF to_regclass('public.lien_search_records') IS NOT NULL AND EXISTS (SELECT 1 FROM "lien_search_records" LIMIT 1) THEN
+     IF to_regclass('public.lien_search_records') IS NOT NULL THEN
+       EXECUTE 'SELECT EXISTS (SELECT 1 FROM "lien_search_records" LIMIT 1)' INTO has_rows;
+     ELSE
+       has_rows := false;
+     END IF;
+     IF has_rows THEN
        RAISE EXCEPTION 'lien_search_records holds rows; nothing is dropped (V-Tax-1 T1 retires it only when empty — escalate to the founder)';
      END IF;
      DROP TABLE IF EXISTS "tax_sale_alerts";
@@ -12915,8 +12927,15 @@ $mig0284$`,
   `CREATE TRIGGER tax_procedure_objects_no_truncate BEFORE TRUNCATE ON "tax_procedure_objects"
      FOR EACH STATEMENT EXECUTE FUNCTION tax_procedure_objects_guard()`,
   `DO $$
+   DECLARE
+     has_rows boolean;
    BEGIN
-     IF to_regclass('public.county_redemption_rates') IS NOT NULL AND EXISTS (SELECT 1 FROM "county_redemption_rates" LIMIT 1) THEN
+     IF to_regclass('public.county_redemption_rates') IS NOT NULL THEN
+       EXECUTE 'SELECT EXISTS (SELECT 1 FROM "county_redemption_rates" LIMIT 1)' INTO has_rows;
+     ELSE
+       has_rows := false;
+     END IF;
+     IF has_rows THEN
        RAISE EXCEPTION 'county_redemption_rates holds rows; nothing is dropped (V-Tax-1 T2 retires it only when empty — escalate to the founder)';
      END IF;
      DROP TABLE IF EXISTS "county_redemption_rates";
@@ -12927,7 +12946,7 @@ $mig0284$`,
   `CREATE TABLE IF NOT EXISTS "tax_events" (
      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
      "organization_id" integer NOT NULL,
-     "certificate_id" varchar NOT NULL REFERENCES "tax_certificates"("id") ON DELETE CASCADE,
+     "certificate_id" uuid NOT NULL REFERENCES "tax_certificates"("id") ON DELETE CASCADE,
      "event_type" text NOT NULL CHECK ("event_type" IN ('redemption_expiry', 'quiet_title_filed')),
      "event_date" date NOT NULL,
      "rule_cited" jsonb NOT NULL,
@@ -12971,8 +12990,15 @@ $mig0284$`,
    $$`,
   `ALTER TABLE "quiet_title_cases" ADD COLUMN IF NOT EXISTS "market_exception" jsonb`,
   `DO $$
+   DECLARE
+     has_rows boolean;
    BEGIN
-     IF to_regclass('public.auction_readiness_checklists') IS NOT NULL AND EXISTS (SELECT 1 FROM "auction_readiness_checklists" LIMIT 1) THEN
+     IF to_regclass('public.auction_readiness_checklists') IS NOT NULL THEN
+       EXECUTE 'SELECT EXISTS (SELECT 1 FROM "auction_readiness_checklists" LIMIT 1)' INTO has_rows;
+     ELSE
+       has_rows := false;
+     END IF;
+     IF has_rows THEN
        RAISE EXCEPTION 'auction_readiness_checklists holds rows; nothing is dropped (V-Tax-1 T2 retires it only when empty — escalate to the founder)';
      END IF;
      DROP TABLE IF EXISTS "auction_readiness_checklists";

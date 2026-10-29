@@ -14,7 +14,9 @@
 CREATE TABLE IF NOT EXISTS "tax_events" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   "organization_id" integer NOT NULL,
-  "certificate_id" varchar NOT NULL REFERENCES "tax_certificates"("id") ON DELETE CASCADE,
+  -- uuid, matching tax_certificates.id as the database holds it (the ORM
+  -- declares that column varchar; the FK must match the real type).
+  "certificate_id" uuid NOT NULL REFERENCES "tax_certificates"("id") ON DELETE CASCADE,
   "event_type" text NOT NULL CHECK ("event_type" IN ('redemption_expiry', 'quiet_title_filed')),
   "event_date" date NOT NULL,
   "rule_cited" jsonb NOT NULL,
@@ -70,8 +72,15 @@ ALTER TABLE "quiet_title_cases" ADD COLUMN IF NOT EXISTS "market_exception" json
 -- Retire auction_readiness_checklists: nothing in the repository reads or
 -- writes it. GUARDED and ATOMIC, exactly as 0294/0295.
 DO $$
+DECLARE
+  has_rows boolean;
 BEGIN
-  IF to_regclass('public.auction_readiness_checklists') IS NOT NULL AND EXISTS (SELECT 1 FROM "auction_readiness_checklists" LIMIT 1) THEN
+  IF to_regclass('public.auction_readiness_checklists') IS NOT NULL THEN
+    EXECUTE 'SELECT EXISTS (SELECT 1 FROM "auction_readiness_checklists" LIMIT 1)' INTO has_rows;
+  ELSE
+    has_rows := false;
+  END IF;
+  IF has_rows THEN
     RAISE EXCEPTION 'auction_readiness_checklists holds rows; nothing is dropped (V-Tax-1 T2 retires it only when empty — escalate to the founder)';
   END IF;
   DROP TABLE IF EXISTS "auction_readiness_checklists";

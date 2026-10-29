@@ -3,6 +3,29 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-10-29 — V-Tax-1 T2b — redemption clock, calendar, alerts, locks, quiet-title gate — on `claude/tax-v1-t2b-clock-gates` (stacked on T2a)
+
+- **Storage.** Migration 0296 adds `tax_events`: the tax calendar, where each redemption expiry carries the rule it rests on.
+  - It is append-only and leaves only with its certificate.
+  - The FK is `uuid`, because the DB's `tax_certificates.id` is uuid although the ORM says varchar.
+  - It also adds `tax_certificates.deadline_source` and `quiet_title_cases.market_exception`, and retires `auction_readiness_checklists`. The founder's four-for-four swap is complete; the table count is 748.
+- **Clock** (`shared/tax/clock.ts`, `GET /api/tax-certificates/:id/clock`). It covers:
+  - the countdown, the rule cited (AcreOS's preliminary rule, or the county record entered) and the 90/30/7 alert dates;
+  - the next action, and the "do not improve, do not market" lock with what clears it;
+  - the capital tied up, and marketability in AcreOS;
+  - a cross-check against the county procedure's stated period, where a mismatch is shown and never resolved.
+  - On the redemption-clock page it opens from a per-certificate "Clock" button.
+- **Nightly job.** It never overwrites a deadline the operator entered; until now it clobbered won-bid overrides in the 10 encoded states.
+  - A computed deadline it corrects is re-registered on the calendar.
+  - New one-shot 90- and 30-day alerts fire only the tightest threshold crossed. The daily 7-day alert and the workflow lanes are unchanged.
+- **Quiet title.**
+  - A case opens only once redemption has expired; redeemed and cancelled certificates are refused.
+  - An attorney-reviewed exception can be recorded with the attorney's name and the reason.
+  - Marketable in AcreOS means the deed is held AND the petition is filed or the exception is recorded. AcreOS never declares title marketable.
+- **Flat-penalty honesty.** The redemption-clock Rate column now reads "25.00% flat penalty", "x/mo" or "x/yr". The workflow templates' "statutory rate" now reads "20% penalty — one-time, not an annual rate" for GA and TX.
+- **Escalated, not fixed (attorney-gated legal reading).** Encoded TX `flat_first_period` adds the 50% second-period premium ON TOP OF the 25% (75% total) once past 6 months, and uses a 6-month first period even in the 24-month owner-occupied case. Whether that matches Tex. Tax Code §34.21 is a legal reading for the founder or an attorney.
+- **Guard correction.** The guarded drops in 0294–0296 check for rows through `EXECUTE` (see the deletion ledger), and the fix is ported to T1 and T2a.
+
 ## 2026-10-29 — V-Tax-1 T2a — procedure objects + county-verification gate + bidding lock — on `claude/tax-v1-t2-procedure-clock` (stacked on T1)
 
 - **T2 ships as two PRs, each net zero on tables.**

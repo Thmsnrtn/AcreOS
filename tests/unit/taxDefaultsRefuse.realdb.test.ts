@@ -115,7 +115,12 @@ describe.runIf(realDbAvailable)("tax defaults refuse instead of inventing — re
   });
 
   it("a quiet-title case opens with every step undated, listed in procedure order", async () => {
-    const res = await request(app).post("/api/quiet-title/cases").send({ certificateId: ohId, deedRecordationDate: "2027-04-01" });
+    // Since V-Tax-1 T2b a case opens only once redemption has expired, so this
+    // uses a certificate whose county deadline has passed (the OH one above
+    // was marked redeemed).
+    const expired = await request(app).post("/api/tax-certificates").send({ ...base, state: "OH", apn: `${tag}-OH-9`, saleDate: "2023-01-01", redemptionDeadline: "2024-01-01", redemptionDeadlineSource: "SYNTHETIC county certificate 9" });
+    expect(expired.status).toBe(201);
+    const res = await request(app).post("/api/quiet-title/cases").send({ certificateId: expired.body.certificate.id, deedRecordationDate: "2024-04-01" });
     expect(res.status).toBe(201);
     expect(res.body).toMatchObject({ stepCount: 10, stepDatesSet: false });
     const detail = await request(app).get(`/api/quiet-title/cases/${res.body.case.id}`);

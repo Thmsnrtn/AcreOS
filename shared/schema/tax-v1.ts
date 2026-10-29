@@ -21,7 +21,7 @@
  */
 import type { CountyVerification, ProcedureFields } from "../tax/procedure";
 import { sql } from "drizzle-orm";
-import { check, date, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid, varchar } from "drizzle-orm/pg-core";
+import { check, date, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { taxSaleListings } from "../schema";
 import { taxCertificates } from "./notes-vertical";
 
@@ -119,7 +119,7 @@ export const taxEvents = pgTable(
   {
     id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
     organizationId: integer("organization_id").notNull(),
-    certificateId: varchar("certificate_id")
+    certificateId: uuid("certificate_id")
       .notNull()
       .references(() => taxCertificates.id, { onDelete: "cascade" }),
     eventType: text("event_type").$type<"redemption_expiry" | "quiet_title_filed">().notNull(),
