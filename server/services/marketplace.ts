@@ -16,6 +16,7 @@ import {
 import { eq, and, desc, gte, or, sql, inArray } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { clock } from "../utils/clock";
+import { taxHoldRefusal } from "./tax/landExit";
 
 /**
  * The investor-profile columns a customer edits: the "Public info" and
@@ -116,6 +117,9 @@ export class MarketplaceService {
     if (!property) {
       throw new Error("Property not found or you don't have access");
     }
+    // V-Tax-1 T4b: no marketing land still held by a tax position.
+    const taxHold = await taxHoldRefusal(organizationId, propertyId, "Listing this property on the marketplace");
+    if (taxHold) throw new Error(taxHold.message);
     
     // Check if already listed
     const existing = await db.select()

@@ -174,6 +174,9 @@ export function registerAIOperationsRoutes(app: Express): void {
     try {
       const org = req.organization;
       const { propertyId, leadId, priorityLevel } = req.body;
+      // V-Tax-1 T4b: no due-diligence spend on a parcel still held by a tax position.
+      const { refuseRedeemableDeedSpend } = await import("./services/tax/landExit");
+      if (!(await refuseRedeemableDeedSpend(res, org.id, propertyId, "A due-diligence dossier"))) return;
       
       const { dueDiligencePodService } = await import("./services/dueDiligencePods");
       const dossier = await dueDiligencePodService.requestDossier(org.id, propertyId, priorityLevel || "normal", leadId);

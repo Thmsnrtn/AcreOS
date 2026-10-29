@@ -35,6 +35,7 @@ import { Errors } from "./utils/errors";
 import { emitRehabStatusChange } from "./services/rehabEvents";
 import { logger } from "./utils/logger";
 import { clock } from "./utils/clock";
+import { refuseRedeemableDeedSpend } from "./services/tax/landExit";
 
 // ----------------------------------------------------------------------------
 // Scope templates — a STARTING SCOPE, not an estimate.
@@ -310,6 +311,8 @@ export function registerRehabRoutes(app: Express): void {
         .from(properties)
         .where(and(eq(properties.id, parsed.data.propertyId), eq(properties.organizationId, orgId)));
       if (!prop) return Errors.notFound(res, "Property");
+      // V-Tax-1 T4b: no improvement spend on a parcel still held by a tax position.
+      if (!(await refuseRedeemableDeedSpend(res, orgId, parsed.data.propertyId, "A rehab"))) return;
 
       const [created] = await db.insert(rehabs).values({
         organizationId: orgId,
@@ -381,9 +384,10 @@ export function registerRehabRoutes(app: Express): void {
       const parsed = lineItemSchema.safeParse(req.body);
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
-      const [r] = await db.select({ id: rehabs.id }).from(rehabs)
+      const [r] = await db.select({ id: rehabs.id, propertyId: rehabs.propertyId }).from(rehabs)
         .where(and(eq(rehabs.id, req.params.id), eq(rehabs.organizationId, orgId)));
       if (!r) return Errors.notFound(res, "Rehab");
+      if (!(await refuseRedeemableDeedSpend(res, orgId, r.propertyId, "A rehab line item"))) return;
 
       const [maxRow] = await db.execute(sql`SELECT COALESCE(MAX(sequence), -1) AS m FROM rehab_line_items WHERE rehab_id = ${r.id}`).then((res: any) => res.rows ?? []);
       const seq = (Number((maxRow as any)?.m) ?? -1) + 1;
@@ -545,9 +549,10 @@ export function registerRehabRoutes(app: Express): void {
       const tpl = TEMPLATES_BY_KEY.get(parsed.data.templateKey);
       if (!tpl) return Errors.badRequest(res, `Unknown template ${parsed.data.templateKey}`);
 
-      const [r] = await db.select({ id: rehabs.id }).from(rehabs)
+      const [r] = await db.select({ id: rehabs.id, propertyId: rehabs.propertyId }).from(rehabs)
         .where(and(eq(rehabs.id, req.params.id), eq(rehabs.organizationId, orgId)));
       if (!r) return Errors.notFound(res, "Rehab");
+      if (!(await refuseRedeemableDeedSpend(res, orgId, r.propertyId, "Seeding a rehab budget"))) return;
 
       if (parsed.data.replaceExisting) {
         await db.delete(rehabLineItems)
