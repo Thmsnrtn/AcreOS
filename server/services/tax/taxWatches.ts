@@ -14,6 +14,7 @@
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { taxCountyWatches, taxLotObservations, taxSaleListings, type TaxCountyWatch, type TaxWatchTerms } from "@shared/schema";
 import { triageLot, TRIAGE_ORDER_BASIS, type TriageFact, type TriageFactKey } from "@shared/tax/triage";
+import { isDiscarded, type DiscardRecord } from "@shared/tax/maxBid";
 import { numericToCents } from "../taxSaleCsvImport";
 
 export async function listWatches(organizationId: number): Promise<Array<TaxCountyWatch & { lotCount: number }>> {
@@ -52,6 +53,8 @@ export interface WatchTriage {
     facts: TriageFact[];
     unknownsInOrder: TriageFactKey[];
   }>;
+  /** Lots the operator discarded before bidding, with the reason recorded. Out of the diligence order. */
+  discarded: Array<{ listingId: number; apn: string; address: string | null; discard: DiscardRecord }>;
 }
 
 export async function buildWatchTriage(organizationId: number, watchId: string): Promise<WatchTriage | null> {
@@ -82,7 +85,12 @@ export async function buildWatchTriage(organizationId: number, watchId: string):
   const { findOwnedParcelByKey } = await import("../landData/ownedParcelView");
   const period = watch.terms.redemptionPeriodMonths;
   const out: WatchTriage["lots"] = [];
+  const discarded: WatchTriage["discarded"] = [];
   for (const l of lots) {
+    if (isDiscarded(l.discard)) {
+      discarded.push({ listingId: l.id, apn: l.apn, address: l.address, discard: l.discard });
+      continue;
+    }
     const o = latestParcel.get(l.id);
     let parcel: Parameters<typeof triageLot>[0]["parcel"];
     if (!o) parcel = { status: "not_searched", reason: "the list gave no parcel id, state and county to search by" };
@@ -102,8 +110,9 @@ export async function buildWatchTriage(organizationId: number, watchId: string):
       listMarketValueCents: numericToCents(l.marketValue),
       amountOwedCents: numericToCents(l.totalTaxOwed),
       redemptionPeriod: period ? { months: period.value, source: period.source } : null,
+      survivingLiens: l.maxBidBasis?.input.survivingLiens ?? null,
     });
     out.push({ listingId: l.id, apn: l.apn, address: l.address, saleDate: l.saleDate ?? null, delinquentYears: l.taxYearsDelinquent ?? [], ...t });
   }
-  return { watch, basis: TRIAGE_ORDER_BASIS, lots: out };
+  return { watch, basis: TRIAGE_ORDER_BASIS, lots: out, discarded };
 }

@@ -1,0 +1,63 @@
+{
+  "_about": "V-Tax-1 T3a golden max-bid cases. SYNTHETIC. Each expected output is computed by hand from the input, line by line — the derivation must reproduce it exactly, basis text included. Case C refuses: a missing line is never zero.",
+  "cases": [
+    {
+      "name": "A — a full stack derives a max with every line's basis",
+      "input": {
+        "value": { "status": "known", "amountCents": 4000000, "source": "SYNTHETIC broker opinion", "asOf": "2026-10-01" },
+        "survivingLiens": { "status": "known", "amountCents": 650000, "source": "SYNTHETIC title search #T-1", "asOf": "2026-10-05" },
+        "otherTaxes": { "status": "searched_none", "source": "SYNTHETIC county treasurer", "asOf": "2026-10-05" },
+        "costs": [
+          { "label": "Quiet title", "amountCents": 250000, "source": "SYNTHETIC attorney quote" },
+          { "label": "Closing", "amountCents": 40000, "source": "SYNTHETIC title company quote" }
+        ],
+        "requiredReturn": { "kind": "pct_of_value", "bps": 2500 }
+      },
+      "expected": {
+        "status": "derived",
+        "maxBidCents": 2060000,
+        "leavesNothing": false,
+        "lines": [
+          { "key": "value", "sign": 1, "amountCents": 4000000, "basis": "SYNTHETIC broker opinion, as of 2026-10-01" },
+          { "key": "survivingLiens", "sign": -1, "amountCents": 650000, "basis": "SYNTHETIC title search #T-1, as of 2026-10-05" },
+          { "key": "otherTaxes", "sign": -1, "amountCents": 0, "basis": "searched, none found — SYNTHETIC county treasurer, as of 2026-10-05" },
+          { "key": "costs", "sign": -1, "amountCents": 290000, "basis": "Quiet title $2,500.00 (SYNTHETIC attorney quote); Closing $400.00 (SYNTHETIC title company quote)" },
+          { "key": "requiredReturn", "sign": -1, "amountCents": 1000000, "basis": "your stated 25.00% of the stated value" }
+        ]
+      }
+    },
+    {
+      "name": "B — a stack that leaves nothing derives 0 and says so",
+      "input": {
+        "value": { "status": "known", "amountCents": 1000000, "source": "SYNTHETIC county assessor", "asOf": "2026-09-30" },
+        "survivingLiens": { "status": "known", "amountCents": 900000, "source": "SYNTHETIC title search #T-2", "asOf": "2026-10-02" },
+        "otherTaxes": { "status": "known", "amountCents": 50000, "source": "SYNTHETIC county treasurer", "asOf": "2026-10-02" },
+        "costs": [],
+        "requiredReturn": { "kind": "cents", "amountCents": 200000 }
+      },
+      "expected": {
+        "status": "derived",
+        "maxBidCents": 0,
+        "leavesNothing": true,
+        "lines": [
+          { "key": "value", "sign": 1, "amountCents": 1000000, "basis": "SYNTHETIC county assessor, as of 2026-09-30" },
+          { "key": "survivingLiens", "sign": -1, "amountCents": 900000, "basis": "SYNTHETIC title search #T-2, as of 2026-10-02" },
+          { "key": "otherTaxes", "sign": -1, "amountCents": 50000, "basis": "SYNTHETIC county treasurer, as of 2026-10-02" },
+          { "key": "costs", "sign": -1, "amountCents": 0, "basis": "stated as none" },
+          { "key": "requiredReturn", "sign": -1, "amountCents": 200000, "basis": "your stated dollar return" }
+        ]
+      }
+    },
+    {
+      "name": "C — a lien search never run and costs never stated refuse, naming both",
+      "input": {
+        "value": { "status": "known", "amountCents": 4000000, "source": "SYNTHETIC broker opinion", "asOf": "2026-10-01" },
+        "survivingLiens": { "status": "unknown" },
+        "otherTaxes": { "status": "searched_none", "source": "SYNTHETIC county treasurer", "asOf": "2026-10-05" },
+        "costs": null,
+        "requiredReturn": { "kind": "cents", "amountCents": 500000 }
+      },
+      "expected": { "status": "refused", "missingKeys": ["survivingLiens", "costs"] }
+    }
+  ]
+}

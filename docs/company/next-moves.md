@@ -3,6 +3,39 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-10-29 — V-Tax-1 T3a — bid discipline: max bid from the rights stack, over-max flag, pre-bid discards, Courthouse Mode recording again — on `claude/tax-v1-t3a-bid-discipline` (stacked on T2b)
+
+- **Storage.** Migration 0297 adds columns only; the table count is unchanged (founder decision 2026-10-28).
+  - `tax_sale_listings.max_bid_basis`: the rights-stack decision record.
+  - `tax_sale_listings.discard`: the kill reason, CHECKed to the four reasons.
+  - `auction_bid_log.max_bid_cents_at_action` and `over_max_reason`. A CHECK means a reason can only exist beside the max it went over, on an amount that exceeded it.
+- **Max bid** (`shared/tax/maxBid.ts`). It is value − liens the operator's own search says survive − other taxes − costs − required return. Each line carries its source and as-of date.
+  - It is labelled a screen; the recorded line items are the decision record.
+  - A missing line refuses and names itself. "Searched, none found" is stated; "not searched" is missing, never 0.
+  - AcreOS does not decide which liens survive a sale; the line is named for what the operator recorded.
+  - The worksheet editor previews with the same function the server records with. A typed max that differs drops its basis and reads "your typed number — no basis recorded".
+  - Golden cases are in `shared/tax/golden/max-bid-golden.json`.
+- **Over-max.** A bid or win now needs the amount actually bid or paid.
+  - Over the max, it is flagged in the dialog BEFORE it is sent, and the server refuses it without a stated reason (422, nothing recorded). With a reason, it is recorded beside the max it exceeded.
+  - The worksheet Bid button used to log the max itself as the amount bid, so the check could never fire. The Won dialog pre-filled the max as "what you paid". Both are fixed.
+- **Discards.** A lot is discarded before bidding with one of: unbuildable, landlocked, contaminated, or other (with its reason).
+  - Bidding on it is refused; passes still record. Reopening keeps the discard on record and restores the prior status.
+  - Triage moves discarded lots out of the diligence order into their own list, and shows a recorded lien search instead of "no lien search has been performed".
+- **Courthouse Mode recorded nothing, ever.** It POSTed to `/api/auction-listings/:id/log-bid`, a route that never existed, toasted "Action queued — we'll sync" and advanced anyway. The service worker queued that same dead prefix.
+  - It now posts to the real bid log, and asks for what was paid on a win, with the over-max flag.
+  - It advances only when the action was recorded or queued by the service worker; a refusal stays on screen. Skip writes nothing.
+  - `sw.js` queues exactly the bid-log path (`OFFLINE_QUEUEABLE_PATTERNS`). A test fails if any queued prefix is not a mounted route.
+- **ORM fixed (T2b's note).** `tax_certificates.id` is uuid in shared/schema now, the 15th uuid id family.
+- **Escalated, not fixed — a national default (stop condition).** `preForeclosureNoticeMonths: 1` is the same value for 45 of 51 states in `shared/regulatory/taxLienStateRules.ts`.
+  - It reaches the cert workflow payloads (`stateForeclosureNoticeMonths`, `server/services/certificateEvents.ts`) and the state-rules text ("roughly 1 month of pre-foreclosure notice", `server/routes-tax-rules.ts`).
+  - The T0 remedy (refuse, don't present) would apply. It needs the founder's call, as T0's four did. T3b's foreclosure-filing deadline does not use it.
+- **Next.** T3b covers three things:
+  - the auction calendar in the county's own timezone. No county→zone mapping exists anywhere in the repo, and every tax date is UTC midnight today; the zone will be stated with its source, never guessed.
+  - the bidder-registration checklist as a stage gate on `tax_sale_auctions` (columns, no table);
+  - the certificate ledger (subsequent taxes paid, notices recorded, foreclosure-filing deadline) as `tax_events` types.
+
+  Then T4.
+
 ## 2026-10-29 — V-Tax-1 T2b — redemption clock, calendar, alerts, locks, quiet-title gate — on `claude/tax-v1-t2b-clock-gates` (stacked on T2a)
 
 - **Storage.** Migration 0296 adds `tax_events`: the tax calendar, where each redemption expiry carries the rule it rests on.

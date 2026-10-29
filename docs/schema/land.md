@@ -13,9 +13,7 @@ The wedge product. Most of AcreOS history lives here.
 | `comps` | Comparable sales for valuation. |
 | `mailers` | Direct-mail campaigns. |
 | `mailer_recipients` | Per-recipient mailer state. |
-| `auction_readiness_checklists` | Pre-close auction sign-offs (panel-300 #30). |
 | `cma_reports` | Comp-set composition + valuation low/mid/high (panel-300 #30). |
-| `lien_search_records` | Per-property lien-type registry (panel-300 #30). |
 
 ## FK relationships within Land
 
@@ -30,8 +28,6 @@ leads ←─ deals ─→ properties
 ## Cross-vertical join points
 
 - `properties.id` → `rental_leases.property_id` (BH)
-- `properties.id` → `auction_readiness_checklists.property_id`
-- `properties.id` → `lien_search_records.property_id`
 - `properties.id` → `cma_reports.property_id`
 - `deals.id` → `notes.deal_id` (NI seller-financing)
 - `deals.id` → `disclosure_timing_scheduled.deal_id` (panel-300 #10)
@@ -57,4 +53,7 @@ leads ←─ deals ─→ properties
 - FW-WENDELL-1 — note-ledger paranoia test exposed amortization
   drift (client/src/lib/amortization.ts).
 - panel-300 #30 — cma_reports + auction_readiness_checklists +
-  lien_search_records.
+  lien_search_records. The last two were never read or written and are
+  retired by V-Tax-1 (guarded drops in migrations 0294 and 0296; see the
+  deletion ledger). Bidder registration and lien searches live on the tax
+  surfaces now.

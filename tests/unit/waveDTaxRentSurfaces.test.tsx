@@ -638,8 +638,17 @@ describe("auction worksheet — a Won tap yields one certificate and decrements 
     expect(text()).toContain("AcreOS tracks this figure");
 
     await click(byTestId("button-won-11"));
-    // The dialog pre-fills the walk-away max; the operator confirms the figure.
-    expect(docTestId("input-won-amount-11")).not.toBeNull();
+    // The dialog opens EMPTY (V-Tax-1 T3a): what was paid is a fact only the
+    // operator has, so the max is never pre-filled as the amount paid, and
+    // nothing can be recorded until they type it.
+    const amountInput = docTestId("input-won-amount-11") as HTMLInputElement;
+    expect(amountInput).not.toBeNull();
+    expect(amountInput.value).toBe("");
+    expect((docTestId("button-confirm-won-11") as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(amountInput, String(BID_CENTS / 100));
+      amountInput.dispatchEvent(new Event("input", { bubbles: true }));
+    });
     await click(docTestId("button-confirm-won-11"));
 
     // Exactly one certificate, from one win POST.

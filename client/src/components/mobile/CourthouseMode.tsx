@@ -15,10 +15,15 @@
  * tap to next, no scrolling required. Replaces the `dayOfMode` table
  * row in `auction-worksheet.tsx` when on mobile.
  *
- * Offline strategy (v1): action mutations are fire-and-forget into
- * react-query's mutation queue; offline writes get retried by the SW
- * background-sync layer when connectivity returns. Bid log mutation
- * already exists at /api/auction-listings/:id/log-bid.
+ * Offline strategy: actions POST to the real bid log,
+ * /api/tax-researcher/listings/:id/bid-log, which the service worker queues
+ * when the network is down (OFFLINE_QUEUEABLE_PATTERNS in client/public/sw.js)
+ * and answers 202 { queued: true }. Only a recorded or queued action advances
+ * the card; a refusal (bidding locked, a discarded lot, over your max without
+ * a reason) stays on screen with the server's reason. V-Tax-1 T3a: this used
+ * to POST to /api/auction-listings/:id/log-bid, a route that never existed,
+ * toast "Action queued — we'll sync" on every failure and advance anyway, so
+ * nothing tapped here was ever recorded.
  *
  * Future: prefetch comp data for each listing on entry so the comp
  * lookup is offline-available. Out of scope for v1 scaffold.
@@ -39,7 +44,11 @@ import {
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { apiRequest } from "@/lib/queryClient";
+import { ApiError, apiRequest } from "@/lib/queryClient";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { MaxBidLine, OverMaxFlag, overMaxBlocks } from "@/components/tax/BidDiscipline";
+import { isDiscarded, type DiscardRecord, type MaxBidRecord } from "@shared/tax/maxBid";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
@@ -51,7 +60,10 @@ interface CourthouseListing {
   state: string;
   minimumBid?: string | number | null;
   assessedValue?: string | number | null;
+  marketValue?: string | null;
   maxBidCents?: number | null;
+  maxBidBasis?: MaxBidRecord | null;
+  discard?: DiscardRecord | null;
   walkAwayAboveCents?: number | null;
   status: "available" | "watching" | "won" | "lost" | "passed" | string;
 }
@@ -104,50 +116,66 @@ export function CourthouseMode({ listings, onAdvance }: CourthouseModeProps) {
   }, []);
 
   const actionable = useMemo(
-    () => listings.filter((l) => l.status !== "won" && l.status !== "lost"),
+    () => listings.filter((l) => l.status !== "won" && l.status !== "lost" && !isDiscarded(l.discard)),
     [listings],
   );
 
   const current = actionable[index];
+  const [wonOpen, setWonOpen] = useState(false);
+  const [paid, setPaid] = useState("");
+  const [overMaxReason, setOverMaxReason] = useState("");
+  const paidCents = (() => {
+    const t = paid.trim().replace(/[$,]/g, "");
+    const n = Number(t);
+    return t !== "" && Number.isFinite(n) && n > 0 ? Math.round(n * 100) : null;
+  })();
+
+  const advance = () => {
+    setWonOpen(false);
+    setPaid("");
+    setOverMaxReason("");
+    setIndex((i) => Math.min(actionable.length, i + 1));
+  };
 
   const mutation = useMutation({
-    mutationFn: async (vars: { listingId: number; action: BidAction }) => {
-      // Map UI actions to server-side terms. The auction-worksheet's
-      // existing bid log accepts these as the status update.
-      const statusByAction: Record<BidAction, string> = {
-        won: "won",
-        outbid: "lost",
-        pass: "passed",
-        skip: "watching",
-      };
-      const status = statusByAction[vars.action];
-      await apiRequest("POST", `/api/auction-listings/${vars.listingId}/log-bid`, {
+    mutationFn: async (vars: { listingId: number; action: "won" | "outbid" | "passed"; amountCents?: number; overMaxReason?: string }) => {
+      const res = await apiRequest("POST", `/api/tax-researcher/listings/${vars.listingId}/bid-log`, {
         action: vars.action,
-        status,
+        ...(vars.amountCents ? { amountCents: vars.amountCents } : {}),
+        ...(vars.overMaxReason ? { overMaxReason: vars.overMaxReason } : {}),
       });
+      const body = (await res.json().catch(() => null)) as { queued?: boolean; certificate?: { status?: string } | null } | null;
+      return { queued: res.status === 202 && body?.queued === true, certificate: body?.certificate ?? null };
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/auction-listings"] });
+    onSuccess: (r, vars) => {
+      if (r.queued) {
+        toast({ title: "Saved offline", description: "It will be recorded when you're back online. If it is refused then, you'll be told." });
+      } else if (vars.action === "won" && r.certificate?.status === "blocked") {
+        toast({ title: "Win recorded", description: "The certificate needs one more detail — finish it on the worksheet." });
+      }
+      qc.invalidateQueries({ queryKey: ["/api/tax-researcher/auction-worksheet"] });
       onAdvance?.();
+      advance();
     },
-    onError: (err: any) => {
-      // Don't block at-courthouse use on a network error — toast and
-      // advance anyway. The mutation persists in react-query's cache
-      // for the offline retry path.
-      toast({
-        title: "Action queued",
-        description:
-          (err?.message ?? "Network issue") +
-          " — we'll sync this bid when you're back online.",
-      });
+    onError: (err: unknown) => {
+      // Not recorded, and not queued: say so and stay on this lot.
+      const msg = err instanceof ApiError ? (err.body?.message ?? err.message) : err instanceof Error ? err.message : "Network issue";
+      toast({ title: "Not recorded", description: msg, variant: "destructive" });
     },
   });
 
   const commit = (action: BidAction) => {
-    if (!current) return;
-    mutation.mutate({ listingId: current.id, action });
-    // Optimistically advance — the user is moving fast.
-    setIndex((i) => Math.min(actionable.length, i + 1));
+    if (!current || mutation.isPending) return;
+    if (action === "skip") {
+      // Skipping is navigation: nothing is written for this lot.
+      advance();
+      return;
+    }
+    if (action === "won") {
+      setWonOpen(true);
+      return;
+    }
+    mutation.mutate({ listingId: current.id, action: action === "pass" ? "passed" : "outbid" });
   };
 
   if (actionable.length === 0) {
@@ -158,7 +186,7 @@ export function CourthouseMode({ listings, onAdvance }: CourthouseModeProps) {
         </div>
         <h2 className="text-base font-semibold mb-1">Auction complete</h2>
         <p className="text-sm text-muted-foreground max-w-xs">
-          You've logged every listing on the worksheet.
+          Every listing on the worksheet is won, lost or discarded.
         </p>
       </div>
     );
@@ -172,7 +200,7 @@ export function CourthouseMode({ listings, onAdvance }: CourthouseModeProps) {
         </div>
         <h2 className="text-base font-semibold mb-1">Worksheet cleared</h2>
         <p className="text-sm text-muted-foreground max-w-xs">
-          All {actionable.length} listings logged. {!online && "Pending bids will sync when online."}
+          You've worked through all {actionable.length} listings (skipped ones have nothing recorded). {!online && "Actions saved offline are recorded when you reconnect."}
         </p>
         <Button
           variant="outline"
@@ -197,7 +225,7 @@ export function CourthouseMode({ listings, onAdvance }: CourthouseModeProps) {
           )}
         >
           {online ? <Wifi className="h-3.5 w-3.5" /> : <WifiOff className="h-3.5 w-3.5" />}
-          {online ? "Online" : "Offline — bids will sync"}
+          {online ? "Online" : "Offline — actions are saved and recorded when you reconnect"}
         </span>
         <span className="text-muted-foreground tabular-nums">
           {index + 1} / {actionable.length}
@@ -239,9 +267,38 @@ export function CourthouseMode({ listings, onAdvance }: CourthouseModeProps) {
                 value={fmtCentsUsd(current.walkAwayAboveCents)}
               />
             </div>
+            <MaxBidLine listing={{ id: current.id, apn: current.apn, marketValue: current.marketValue ?? null, maxBidCents: current.maxBidCents ?? null, maxBidBasis: current.maxBidBasis ?? null }} />
           </Card>
         </motion.div>
       </AnimatePresence>
+
+      {wonOpen && (
+        <Card className="p-4 space-y-3" data-testid="courthouse-won-sheet">
+          <Label htmlFor="courthouse-paid" className="text-base">What you paid ($)</Label>
+          <Input id="courthouse-paid" inputMode="decimal" value={paid} onChange={(e) => setPaid(e.target.value)} className="h-12 text-lg" autoFocus />
+          <OverMaxFlag
+            listing={{ id: current.id, apn: current.apn, marketValue: current.marketValue ?? null, maxBidCents: current.maxBidCents ?? null, maxBidBasis: current.maxBidBasis ?? null }}
+            amountCents={paidCents}
+            reason={overMaxReason}
+            onReason={setOverMaxReason}
+          />
+          <div className="grid grid-cols-2 gap-3">
+            <Button variant="outline" className="h-12" onClick={() => setWonOpen(false)}>Back</Button>
+            <Button
+              className="h-12"
+              disabled={
+                mutation.isPending ||
+                paidCents === null ||
+                overMaxBlocks({ id: current.id, apn: current.apn, marketValue: null, maxBidCents: current.maxBidCents ?? null, maxBidBasis: current.maxBidBasis ?? null }, paidCents, overMaxReason)
+              }
+              onClick={() => mutation.mutate({ listingId: current.id, action: "won", amountCents: paidCents!, overMaxReason: overMaxReason.trim() || undefined })}
+              data-testid="courthouse-confirm-won"
+            >
+              {mutation.isPending ? "Recording…" : "Record win"}
+            </Button>
+          </div>
+        </Card>
+      )}
 
       {/* Four giant action buttons — thumb-zone optimized */}
       <div className="grid grid-cols-2 gap-3 mt-2">

@@ -43,6 +43,8 @@
  */
 
 import { useState, useEffect } from "react";
+import { BidDialog, DiscardControl, MaxBidLine, OverMaxFlag, RightsStackEditor, overMaxBlocks } from "@/components/tax/BidDiscipline";
+import { isDiscarded, type DiscardRecord, type MaxBidRecord } from "@shared/tax/maxBid";
 import { motion } from "framer-motion";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation, useSearch, Link } from "wouter";
@@ -117,6 +119,9 @@ interface Listing {
   partnerSplit: Array<{ investorName: string; splitBps: number }> | null;
   acquisitionSource: AcquisitionSource | null;
   notes: string | null;
+  // V-Tax-1 T3a: the max bid's rights-stack basis and any pre-bid discard.
+  maxBidBasis?: MaxBidRecord | null;
+  discard?: DiscardRecord | null;
 }
 
 // Marcus / Lens 17 ordering: highest-margin first. The filter chips render
@@ -490,7 +495,9 @@ function ListingRow({
   // won't invent the deadline, give me the date" prompt — vanished the instant
   // the win was recorded, which is precisely when the operator needs it.
   const [wonOpen, setWonOpen] = useState(false);
-  const isTerminal = listing.status === "won" || listing.status === "lost";
+  const [stackOpen, setStackOpen] = useState(false);
+  const discarded = isDiscarded(listing.discard);
+  const isTerminal = listing.status === "won" || listing.status === "lost" || discarded;
 
   return (
     <Card className={`p-4 ${isTerminal ? "opacity-60" : ""}`}>
@@ -539,6 +546,7 @@ function ListingRow({
             {dayOfMode && !isTerminal && (
               <BidActionsRow listing={listing} onWon={() => setWonOpen(true)} />
             )}
+            {!dayOfMode && listing.status !== "won" && listing.status !== "lost" && <DiscardControl listing={listing} />}
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3 text-xs">
@@ -550,6 +558,19 @@ function ListingRow({
 
           {expanded && (
             <>
+              <Separator className="my-3" />
+              <div className="space-y-2">
+                <MaxBidLine listing={listing} />
+                {stackOpen ? (
+                  <RightsStackEditor listing={listing} onDone={() => setStackOpen(false)} />
+                ) : (
+                  !isTerminal && (
+                    <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setStackOpen(true)} data-testid={`button-derive-max-${listing.id}`}>
+                      {listing.maxBidBasis ? "Revise the rights stack" : "Derive the max bid from the rights stack"}
+                    </Button>
+                  )
+                )}
+              </div>
               <Separator className="my-3" />
               {!editing ? (
                 <div className="space-y-2 text-xs">
@@ -734,9 +755,10 @@ function PartnerSplitEditor({
 function BidActionsRow({ listing, onWon }: { listing: Listing; onWon: () => void }) {
   const { toast } = useToast();
   const listingId = listing.id;
+  const [bidOpen, setBidOpen] = useState(false);
 
   const log = useMutation({
-    mutationFn: async (input: { action: "passed" | "bid" | "outbid"; amountCents?: number }) =>
+    mutationFn: async (input: { action: "passed" | "outbid" }) =>
       apiPost<{ entry: BidLogEntry }>(`/api/tax-researcher/listings/${listingId}/bid-log`, input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tax-researcher/auction-worksheet"] });
@@ -750,9 +772,12 @@ function BidActionsRow({ listing, onWon }: { listing: Listing; onWon: () => void
       <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => log.mutate({ action: "passed" })}>
         Pass
       </Button>
-      <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => log.mutate({ action: "bid", amountCents: listing.maxBidCents ?? undefined })}>
+      {/* A bid logs the amount actually bid, checked against the max before
+          it is written — never the max itself standing in for it. */}
+      <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setBidOpen(true)} data-testid={`button-bid-${listingId}`}>
         <Target className="w-3 h-3 mr-1" aria-hidden="true" /> Bid
       </Button>
+      <BidDialog listing={listing} open={bidOpen} onOpenChange={setBidOpen} />
       {/* Won opens the handoff dialog: the amount actually paid is a fact only
           the operator has, and it becomes the certificate's purchase amount. */}
       <Button
@@ -792,7 +817,9 @@ function WonBidDialog({
   onOpenChange: (v: boolean) => void;
 }) {
   const { toast } = useToast();
-  const [amount, setAmount] = useState(listing.maxBidCents ? String(listing.maxBidCents / 100) : "");
+  // Empty, never the max: what was paid is a fact only the operator has.
+  const [amount, setAmount] = useState("");
+  const [overMaxReason, setOverMaxReason] = useState("");
   const [ownerOccupied, setOwnerOccupied] = useState(false);
   const [deadline, setDeadline] = useState("");
   const [handoff, setHandoff] = useState<CertHandoff | null>(null);
@@ -812,8 +839,6 @@ function WonBidDialog({
   const amountCents = dollarsToCents(amount);
   const remaining = budget.data?.remainingCents ?? null;
   const overBudget = amountCents !== null && remaining !== null && amountCents > remaining;
-  const overMax =
-    amountCents !== null && listing.maxBidCents !== null && amountCents > listing.maxBidCents;
 
   const recordWin = useMutation({
     mutationFn: async () => {
@@ -822,7 +847,7 @@ function WonBidDialog({
       }
       return apiPost<{ entry: BidLogEntry; certificate: CertHandoff | null }>(
         `/api/tax-researcher/listings/${listing.id}/bid-log`,
-        { action: "won", amountCents },
+        { action: "won", amountCents, ...(overMaxReason.trim() ? { overMaxReason: overMaxReason.trim() } : {}) },
       );
     },
     onSuccess: (data) => {
@@ -908,12 +933,7 @@ function WonBidDialog({
               </p>
             </div>
 
-            {overMax && (
-              <p className="text-xs text-acr-warning" role="status">
-                This is above your pre-auction walk-away max of {centsExact(listing.maxBidCents)}. It
-                will be recorded, and the certificate will note it.
-              </p>
-            )}
+            <OverMaxFlag listing={listing} amountCents={amountCents} reason={overMaxReason} onReason={setOverMaxReason} />
             {overBudget && (
               <p className="text-xs text-acr-warning" role="status" data-testid="text-over-budget">
                 {centsExact(amountCents)} exceeds the {centsExact(Math.max(0, remaining ?? 0))} left
@@ -947,7 +967,7 @@ function WonBidDialog({
               </Button>
               <Button
                 onClick={() => recordWin.mutate()}
-                disabled={recordWin.isPending || amountCents === null || amountCents <= 0}
+                disabled={recordWin.isPending || amountCents === null || amountCents <= 0 || overMaxBlocks(listing, amountCents, overMaxReason)}
                 data-testid={`button-confirm-won-${listing.id}`}
               >
                 <Trophy className="w-3.5 h-3.5 mr-1.5" aria-hidden="true" />

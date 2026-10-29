@@ -28,6 +28,8 @@ const TRIAGE = {
     ],
     unknownsInOrder: ["marketValue", "seniorLiens"],
   }],
+  // V-Tax-1 T3a: lots discarded before bidding leave the order, with their reason.
+  discarded: [{ listingId: 2, apn: "SYNTH-2", address: null, discard: { reason: "landlocked", note: "SYNTHETIC: no frontage", discardedAt: "2026-10-29T00:00:00.000Z", discardedByUserId: "u", priorStatus: "available", reopened: null } }],
 };
 
 let routes: Record<string, unknown>;
@@ -66,6 +68,8 @@ describe("county watches panel", () => {
     expect([...items].map((li) => li.getAttribute("data-testid"))).toEqual(["triage-unknown-marketValue", "triage-unknown-seniorLiens"]);
     expect(items[1].textContent).toMatch(/order a title or lien search \(a paid search outside AcreOS; weight 5\/5\)/);
     expect(host.querySelector('[data-testid="triage-lot-SYNTH-1"]')!.textContent).toMatch(/Amount owed: \$900\.00 \(the tax list\)/);
+    expect(host.querySelector('[data-testid="triage-lot-SYNTH-2"]')).toBeNull();
+    expect(host.querySelector('[data-testid="triage-discarded-SYNTH-2"]')!.textContent).toMatch(/Landlocked \(no legal access\): SYNTHETIC: no frontage/);
   });
 
   it("with no watches, a taught empty state with its action", async () => {
