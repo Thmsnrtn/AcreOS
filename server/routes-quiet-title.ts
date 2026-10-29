@@ -85,11 +85,24 @@ export function registerQuietTitleRoutes(app: Express): void {
             state: taxCertificates.state,
             county: taxCertificates.county,
             apn: taxCertificates.apn,
+            status: taxCertificates.status,
+            redemptionDeadline: taxCertificates.redemptionDeadline,
           })
           .from(taxCertificates)
           .where(and(eq(taxCertificates.id, data.certificateId), eq(taxCertificates.organizationId, orgId)))
           .limit(1);
         if (!cert) return Errors.notFound(res, "Certificate");
+        // STATUS GATE (V-Tax-1 T2b): quiet title is for a deed whose
+        // redemption has run out. A certificate that is still redeemable,
+        // was redeemed, or was cancelled cannot open a case.
+        const today = clock.now().toISOString().slice(0, 10);
+        const deadline = cert.redemptionDeadline as unknown as string;
+        if (cert.status === "redeemed" || cert.status === "cancelled") {
+          return Errors.unprocessable(res, `This certificate is ${cert.status}; there is no deed to quiet title on.`, { status: cert.status });
+        }
+        if (cert.status === "active" && deadline >= today) {
+          return Errors.unprocessable(res, `Still redeemable until ${deadline}. A quiet-title case opens only once redemption has expired.`, { redeemableUntil: deadline });
+        }
 
         // Look up the state-rule citation (informational only — it sets no dates).
         const [rule] = await db
@@ -251,6 +264,44 @@ export function registerQuietTitleRoutes(app: Express): void {
       } catch (err) {
         logger.error("quietTitle.patch failed", err instanceof Error ? err : undefined);
         return Errors.internal(res, err);
+      }
+    },
+  );
+
+  // ── Attorney-reviewed marketability exception (V-Tax-1 T2b) ───────────────
+  // Without the quiet-title petition filed, a deed is not eligible to market
+  // in AcreOS — unless an attorney-reviewed exception is recorded, with the
+  // attorney's name and the reason. AcreOS records it; it never declares
+  // that title is marketable.
+  app.post(
+    "/api/quiet-title/cases/:id/market-exception",
+    isAuthenticated,
+    getOrCreateOrg,
+    ownerOrAdmin,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const orgId = getOrganizationId(req);
+        const parsed = z
+          .object({
+            attorneyName: z.string().trim().min(2).max(240),
+            reason: z.string().trim().min(10, "say why the attorney considers it marketable before the filing").max(2_000),
+          })
+          .strict()
+          .safeParse(req.body);
+        if (!parsed.success) return Errors.validationFailed(res, parsed.error.flatten());
+        const [c] = await db
+          .update(noteQuietTitleCases)
+          .set({
+            marketException: { ...parsed.data, recordedAt: clock.now().toISOString(), recordedBy: req.user?.id ?? "unknown" },
+            updatedAt: clock.now(),
+          })
+          .where(and(eq(noteQuietTitleCases.id, req.params.id), eq(noteQuietTitleCases.organizationId, orgId)))
+          .returning();
+        if (!c) return Errors.notFound(res, "Case");
+        res.json({ case: c });
+      } catch (err) {
+        logger.error("quietTitle.marketException failed", err instanceof Error ? err : undefined);
+        Errors.internal(res, err);
       }
     },
   );

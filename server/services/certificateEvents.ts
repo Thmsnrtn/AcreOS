@@ -36,6 +36,7 @@
 // that relationship.
 // ---------------------------------------------------------------------------
 
+import { STATE_REDEMPTION_RULES } from "./redemptionClock";
 import { emitCertEvent, emitDurableCertEvent } from "./workflow-engine";
 import type { OutboxExecutor } from "./workflowOutbox";
 import {
@@ -82,7 +83,12 @@ const ratePct = (
 ): string | null => {
   const bps = c.bidDownRateBps ?? rules?.statutoryYieldBps ?? null;
   if (bps == null) return null;
-  return `${bps / 100}%`;
+  // A flat penalty is a one-time percentage, never an annual rate (V-Tax-1
+  // T2b): GA's 20% and TX's 25% are penalties, and "statutory rate 20%" read
+  // as 20% a year. The won bid-down rate is always an annual rate.
+  const model = c.bidDownRateBps == null ? STATE_REDEMPTION_RULES[c.state.toUpperCase()]?.interestModel : undefined;
+  if (model === "flat_first_period" || model === "tiered_yearly") return `${bps / 100}% penalty — one-time, not an annual rate`;
+  return model === "monthly" ? `${bps / 100}% per month` : `${bps / 100}% per year`;
 };
 
 const dollars = (cents: number | null | undefined): number | null =>
