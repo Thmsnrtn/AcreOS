@@ -64,6 +64,31 @@ import { DISCARD_REASONS, DISCARD_REASON_LABEL, deriveMaxBid, type RightsStackIn
 import { basisAfterManualMax, bidStanding, discardLot, recordMaxBid, reopenLot } from "./services/tax/bidDiscipline";
 import { isLocalTime, isValidTimeZone, REGISTRATION_ITEMS, type AuctionCalendarRecord, type RegistrationItem } from "@shared/tax/auctionCalendar";
 import { auctionRegistrationGate, getAuctionCalendar, setAuctionCalendar, updateRegistrationItem } from "./services/tax/auctionCalendar";
+import { buildLotRecord, LOT_RECORD_FIELDS, recordCountyValue } from "./services/tax/lotRecord";
+
+// A value read from the county's own record, typed like the list's (V-Tax-1 T4).
+const countyCents = z.number().int().nonnegative();
+const countyValueSchema = z
+  .object({
+    field: z.enum(LOT_RECORD_FIELDS),
+    kind: z.enum(["value", "searched_none"]),
+    value: z.unknown().optional(),
+    reference: z.string().trim().min(1).max(500),
+    asOf: z.string().refine(isCalendarDate, "as-of must be a calendar date"),
+  })
+  .superRefine((b, ctx) => {
+    if (b.kind === "searched_none") {
+      if (b.value !== undefined && b.value !== null) ctx.addIssue({ code: "custom", path: ["value"], message: "a recorded absence carries no value" });
+      return;
+    }
+    const ok =
+      b.field === "saleDate"
+        ? typeof b.value === "string" && isCalendarDate(b.value)
+        : b.field === "delinquentYears"
+          ? z.array(z.number().int().min(1900).max(2200)).min(1).safeParse(b.value).success
+          : countyCents.safeParse(b.value).success;
+    if (!ok) ctx.addIssue({ code: "custom", path: ["value"], message: b.field === "saleDate" ? "a calendar date" : b.field === "delinquentYears" ? "a list of years" : "an amount in cents" });
+  });
 
 // The auction calendar as the operator states it (shared/tax/auctionCalendar.ts).
 // The county's time zone is STATED with its source — AcreOS has no
@@ -1180,6 +1205,40 @@ router.put('/auctions/:id/registration/:item', async (req: AuthenticatedRequest,
     const standing = await updateRegistrationItem(getOrganizationId(req), auctionId, item, parsed.data, req.user?.id ?? null);
     if (!standing) return Errors.notFound(res, "Auction");
     res.json({ registration: standing });
+  } catch (err) {
+    Errors.internal(res, err);
+  }
+});
+
+// GET /tax-researcher/listings/:id/record — the lot's tax page: every source of
+// each tax fact, their disagreements (all kept, none resolved), and what is
+// known, searched-and-absent, or never searched.
+router.get('/listings/:id/record', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (Number.isNaN(id)) return Errors.badRequest(res, "Invalid listing id");
+    const record = await buildLotRecord(getOrganizationId(req), id);
+    if (!record) return Errors.notFound(res, "Listing");
+    res.json({ record });
+  } catch (err) {
+    Errors.internal(res, err);
+  }
+});
+
+// POST /tax-researcher/listings/:id/county-values — a value read from the
+// county's own record, appended as its own observation. The list's value and
+// the book value are left as they are: a disagreement is shown, not resolved.
+router.post('/listings/:id/county-values', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (Number.isNaN(id)) return Errors.badRequest(res, "Invalid listing id");
+    const parsed = countyValueSchema.safeParse(req.body);
+    if (!parsed.success) return Errors.validationFailed(res, parsed.error.flatten());
+    if (parsed.data.asOf > clock.now().toISOString().slice(0, 10)) return Errors.unprocessable(res, "The as-of date is in the future — record what the county's record says today.");
+    const organizationId = getOrganizationId(req);
+    const ok = await recordCountyValue(organizationId, id, { ...parsed.data, value: parsed.data.value ?? null, userId: req.user?.id ?? "unknown" });
+    if (!ok) return Errors.notFound(res, "Listing");
+    res.json({ record: await buildLotRecord(organizationId, id) });
   } catch (err) {
     Errors.internal(res, err);
   }

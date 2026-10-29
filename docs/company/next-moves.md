@@ -3,6 +3,31 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-10-29 — V-Tax-1 T4a — disagreement capture and negative knowledge on the lot's tax record — on `claude/tax-v1-t4a-disagreement` (stacked on T3b)
+
+- **One rule, two verticals (addendum §2: reuse the Notes pattern).** N4's disagreement and negative-knowledge rule moved out of `buildNoteRecord` into `shared/provenance/fieldRecord.ts` (`recordedField`), unchanged.
+  - The note record and the new tax lot record both call it. A test pins that both do, and that neither keeps a grouping of its own.
+  - The Notes provenance chip and disagreement panel moved to `client/src/components/provenance/FieldRecord.tsx`, with Notes' test ids kept. The N4 real-DB suites pass unchanged, and a mutation in the shared rule turns `noteDisagreement.realdb` red.
+- **The lot's tax record** (`GET /api/tax-researcher/listings/:id/record`, `server/services/tax/lotRecord.ts`). Its sources are:
+  - the lot's own list observations;
+  - other sales' lists of the SAME parcel (same state, county and APN, this org only);
+  - values the operator read from the county;
+  - the matched public-record parcel's market and assessed value (the warehouse).
+
+  Every value is kept with its provenance. Where they differ, all are shown, the book value is named, and nothing is overwritten. Blank on the list reads differently from never stated.
+- **County values.** `POST …/listings/:id/county-values` appends an `operator_correction` observation (`statedBy: county_record`, with its reference).
+  - It is typed like the list's value. A wrong type, a value attached to an absence, or a future as-of is refused.
+  - The book row and the list's value are untouched.
+- **Negative knowledge.**
+  - The record carries the triage facts: known, searched-none or never-searched. A lien search never run is "unknown", never clean.
+  - The rights stack refuses to derive from it; the real-DB test drives both together.
+- **UI** (`LotRecordPanel`): in the expanded lot on the worksheet, disagreements come first, then each fact with its provenance chip, then searched / not searched, then the county-value form.
+- **Next.** T4b, the cross-vertical exit. The read-only map (2026-10-29) found:
+  - no tax position ever creates or links a `properties` row (`tax_certificates.property_id` is always null in practice; `tax_sale_listings.property_id` has no writer);
+  - the redemption lock and quiet-title gate are display-only;
+  - about ten feasibility/plat/DD/rehab/expense spend routes with no common chokepoint;
+  - no APID on `properties`.
+
 ## 2026-10-29 — V-Tax-1 T3b — the sale calendar in the county's time zone, registration as a stage gate, the position record — on `claude/tax-v1-t3b-calendar-ledger` (stacked on T3a)
 
 - **Storage.** Migration 0298 adds columns and a widened CHECK; the table count is unchanged.

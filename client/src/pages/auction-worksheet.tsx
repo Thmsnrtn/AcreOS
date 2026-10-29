@@ -45,6 +45,7 @@
 import { useState, useEffect } from "react";
 import { BidDialog, DiscardControl, MaxBidLine, OverMaxFlag, RightsStackEditor, overMaxBlocks } from "@/components/tax/BidDiscipline";
 import { AuctionCalendarPanel } from "@/components/tax/AuctionCalendarPanel";
+import { LotRecordPanel } from "@/components/tax/LotRecordPanel";
 import { isDiscarded, type DiscardRecord, type MaxBidRecord } from "@shared/tax/maxBid";
 import { motion } from "framer-motion";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -559,6 +560,8 @@ function ListingRow({
 
           {expanded && (
             <>
+              <Separator className="my-3" />
+              <LotRecordPanel listingId={listing.id} />
               <Separator className="my-3" />
               <div className="space-y-2">
                 <MaxBidLine listing={listing} />
