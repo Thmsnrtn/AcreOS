@@ -39,7 +39,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { db } from "../db";
 import { taxCertificates, systemAlerts } from "@shared/schema";
 import { computeRedemptionDeadline } from "../services/redemptionClock";
-import { deadlineRule, registerRedemptionExpiry } from "../services/tax/taxEvents";
+import { deadlineRuleFor, registerRedemptionExpiry } from "../services/tax/taxEvents";
 import {
   emitCertRedemptionApproaching,
   emitCertForeclosureEligible,
@@ -195,6 +195,7 @@ export async function runRedemptionClockRefresh(): Promise<RefreshResult> {
         //    the rule it rests on.
         if (recomputed !== storedIso) {
           const newDeadline = recomputed;
+          const ruleCited = await deadlineRuleFor(row.organizationId, { state: row.state, county: row.county, saleDate: saleIso, deadline: newDeadline }, "computed_preliminary");
           await db.transaction(async (tx) => {
             await tx
               .update(taxCertificates)
@@ -204,7 +205,7 @@ export async function runRedemptionClockRefresh(): Promise<RefreshResult> {
               organizationId: row.organizationId,
               certificateId: row.id,
               date: newDeadline,
-              ruleCited: deadlineRule(row.state, "computed_preliminary"),
+              ruleCited,
               recordedBy: "system:redemption-clock-refresh",
               detail: { replaced: storedIso },
             });

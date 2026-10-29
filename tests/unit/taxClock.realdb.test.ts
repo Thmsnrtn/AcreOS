@@ -54,6 +54,7 @@ describe.runIf(realDbAvailable)("redemption clock, calendar and gates — real d
     await db.execute(sql`DELETE FROM quiet_title_steps WHERE organization_id = ${h.org.id}`).catch(() => undefined);
     await db.execute(sql`DELETE FROM quiet_title_cases WHERE organization_id = ${h.org.id}`).catch(() => undefined);
     await db.execute(sql`DELETE FROM system_alerts WHERE organization_id = ${h.org.id}`).catch(() => undefined);
+    await db.execute(sql`DELETE FROM tax_procedure_objects WHERE organization_id = ${h.org.id}`).catch(() => undefined);
     await db.execute(sql`DELETE FROM tax_certificates WHERE organization_id = ${h.org.id}`).catch(() => undefined);
     await db.execute(sql`DELETE FROM organizations WHERE id = ${h.org.id}`).catch(() => undefined);
     await pool.end();
@@ -119,6 +120,83 @@ describe.runIf(realDbAvailable)("redemption clock, calendar and gates — real d
     expect((await request(app).post(`/api/quiet-title/cases/${qt.body.case.id}/market-exception`).send({ attorneyName: "SYNTHETIC Esq.", reason: "the title insurer will insure without the filing" })).status).toBe(200);
     clk = await request(app).get(`/api/tax-certificates/${held.body.certificate.id}/clock`);
     expect(clk.body).toMatchObject({ marketable: { eligible: true, reason: expect.stringMatching(/attorney-reviewed exception \(SYNTHETIC Esq\.\)/) }, lock: null });
+  });
+
+  // Audit 2026-10-29 (fix 1): PATCH status -> deed_obtained while redeemable,
+  // then open a case, used to pass the gate and lift the lock.
+  it("a redeemable certificate cannot be PATCHed to a held deed, and a case still cannot open on it", async () => {
+    for (const status of ["deed_obtained", "expired_to_deed"]) {
+      const p = await request(app).patch(`/api/tax-certificates/${gaId}`).send({ status });
+      expect(p.status).toBe(422);
+      expect(p.body.message).toMatch(/Still redeemable until .*The deed is not held until redemption has expired/);
+    }
+    const qt = await request(app).post("/api/quiet-title/cases").send({ certificateId: gaId, deedRecordationDate: today });
+    expect(qt.status).toBe(422);
+    expect((await request(app).get(`/api/tax-certificates/${gaId}/clock`)).body).toMatchObject({ phase: "redeemable", marketable: { eligible: false } });
+  });
+
+  it("the case gate checks the date whatever the status says", async () => {
+    const { db } = await import("../../server/db");
+    const { sql } = await import("drizzle-orm");
+    const res = await request(app).post("/api/tax-certificates").send({ state: "GA", county: "SYNTHETIC", apn: `${tag}-GA-S`, saleType: "redeemable_deed", saleDate: today, purchaseAmountCents: 1000 });
+    await db.execute(sql`UPDATE tax_certificates SET status = 'deed_obtained' WHERE id = ${res.body.certificate.id}`);
+    const qt = await request(app).post("/api/quiet-title/cases").send({ certificateId: res.body.certificate.id, deedRecordationDate: today });
+    expect(qt.status).toBe(422);
+    expect(qt.body.message).toMatch(/Still redeemable until/);
+  });
+
+  // Fix 2: the quiet_title_filed calendar leg is written, not just declared.
+  it("completing the petition filing puts it on the calendar citing the case, lifts the lock, and cannot be taken back", async () => {
+    const { db } = await import("../../server/db");
+    const { sql } = await import("drizzle-orm");
+    const held = await request(app).post("/api/tax-certificates").send({ state: "OH", county: "SYNTHETIC", apn: `${tag}-OH-F`, saleType: "deed", saleDate: "2023-01-01", purchaseAmountCents: 100_000, redemptionDeadline: "2024-01-01", redemptionDeadlineSource: "SYNTHETIC county certificate 14" });
+    const certId = held.body.certificate.id;
+    expect((await request(app).patch(`/api/tax-certificates/${certId}`).send({ status: "deed_obtained" })).status).toBe(200);
+    const qt = await request(app).post("/api/quiet-title/cases").send({ certificateId: certId, deedRecordationDate: "2024-02-01" });
+    expect(qt.status).toBe(201);
+    const [step] = (await db.execute(sql`SELECT id FROM quiet_title_steps WHERE case_id = ${qt.body.case.id} AND step_key = 'petition_filed'`)).rows as Array<{ id: string }>;
+    const done = await request(app).patch(`/api/quiet-title/steps/${step.id}`).send({ completed: true });
+    expect(done.status).toBe(200);
+    const filed = (await events(certId)).filter((e) => e.event_type === "quiet_title_filed");
+    expect(filed).toEqual([expect.objectContaining({ event_date: today, recorded_by: h.user.id, rule_cited: { kind: "county_record", source: expect.stringContaining(`quiet-title case ${qt.body.case.id}`) } })]);
+    expect((await request(app).get(`/api/tax-certificates/${certId}/clock`)).body).toMatchObject({ phase: "deed_held", marketable: { eligible: true }, lock: null });
+    // Completing again is a no-op on the calendar; un-filing is refused.
+    expect((await request(app).patch(`/api/quiet-title/steps/${step.id}`).send({ completed: true })).status).toBe(200);
+    expect((await events(certId)).filter((e) => e.event_type === "quiet_title_filed")).toHaveLength(1);
+    const undo = await request(app).patch(`/api/quiet-title/steps/${step.id}`).send({ completed: false });
+    expect(undo.status).toBe(422);
+    expect(undo.body.message).toMatch(/cannot be taken back/);
+  });
+
+  it("the petition filing is refused on a certificate still redeemable, even when a case exists", async () => {
+    const { db } = await import("../../server/db");
+    const res = await request(app).post("/api/tax-certificates").send({ state: "GA", county: "SYNTHETIC", apn: `${tag}-GA-P`, saleType: "redeemable_deed", saleDate: today, purchaseAmountCents: 1000 });
+    const certId = res.body.certificate.id;
+    // A case that predates the gate (or was made by any other path): the
+    // filing re-checks the certificate on its own.
+    const { noteQuietTitleCases, quietTitleSteps } = await import("@shared/schema");
+    const [c] = await db.insert(noteQuietTitleCases).values({ organizationId: h.org.id, certificateId: certId, state: "GA", county: "SYNTHETIC", apn: `${tag}-GA-P`, deedRecordationDate: today }).returning({ id: noteQuietTitleCases.id });
+    const [s] = await db.insert(quietTitleSteps).values({ organizationId: h.org.id, caseId: c.id, stepKey: "petition_filed" }).returning({ id: quietTitleSteps.id });
+    const r = await request(app).patch(`/api/quiet-title/steps/${s.id}`).send({ completed: true });
+    expect(r.status).toBe(422);
+    expect(r.body.message).toMatch(/Still redeemable until/);
+    expect((await events(certId)).filter((e) => e.event_type === "quiet_title_filed")).toEqual([]);
+  });
+
+  it("a computed deadline that the county's verified procedure states cites the procedure object", async () => {
+    const { recordProcedureVersion, recordCountyVerification } = await import("../../server/services/tax/taxProcedures");
+    const { STATE_REDEMPTION_RULES } = await import("../../server/services/redemptionClock");
+    const county = `SYN-${tag}`;
+    const field = <T,>(value: T) => ({ value, source: "SYNTHETIC county procedure §4", asOf: today, basis: "state_law" as const, verification: "confirmed_with_county" as const });
+    const fields = { instrument: field("deed" as never), bidMethod: field("premium bid"), returnModel: field("penalty" as never), redemptionPeriodMonths: field(STATE_REDEMPTION_RULES.GA.redemptionPeriodMonths) };
+    // Unverified: the date stays on AcreOS's preliminary rule.
+    await recordProcedureVersion(h.org.id, h.user.id, "GA", county, fields as never);
+    const before = await request(app).post("/api/tax-certificates").send({ state: "GA", county, apn: `${tag}-GA-V0`, saleType: "redeemable_deed", saleDate: today, purchaseAmountCents: 1000 });
+    expect((await events(before.body.certificate.id))[0].rule_cited.kind).toBe("preliminary_state_rule");
+    const verified = await recordCountyVerification(h.org.id, h.user.id, "GA", county, { completedOn: today, method: "SYNTHETIC call to the county treasurer" });
+    const res = await request(app).post("/api/tax-certificates").send({ state: "GA", county, apn: `${tag}-GA-V1`, saleType: "redeemable_deed", saleDate: today, purchaseAmountCents: 1000 });
+    expect((await events(res.body.certificate.id))[0].rule_cited).toEqual({ kind: "procedure_object", procedureId: verified!.id, version: verified!.version, field: "redemptionPeriodMonths", source: "SYNTHETIC county procedure §4", asOf: today });
+    expect((await request(app).get(`/api/tax-certificates/${res.body.certificate.id}/clock`)).body.deadlineBasis).toMatch(new RegExp(`the county procedure, version ${verified!.version} — SYNTHETIC county procedure §4`));
   });
 
   it("calendar rows are append-only and leave with their certificate", async () => {

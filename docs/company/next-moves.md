@@ -3,6 +3,20 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-10-29 — V-Tax-1 T2b audit fix batch (#421, audited NOT YET MERGEABLE at `86d77e26`)
+
+- **Fix 1, the quiet-title gate bypass.** Every route that could lift the lock now checks the county's deadline, not the status alone:
+  - the case-open gate checks the date whatever the status;
+  - a certificate PATCH to `deed_obtained` or `expired_to_deed` is refused while redemption is still running;
+  - completing `petition_filed` re-checks the certificate itself.
+- **Fix 2, `quiet_title_filed` is now written.** I chose to write it rather than remove it: T3b and T4b already read it.
+  - Completing `petition_filed` registers the event, citing the case, in the same transaction.
+  - A filed petition cannot be un-filed, because the calendar is append-only.
+  - A computed deadline cites the `procedure_object` when the county's verified procedure states the same period.
+- **Founder decision recorded:** T3a over-max bids keep the override with a stated reason. Absolute refusal is rejected (decisions doc §3).
+- **Evidence:** `docs/evidence/2026-10-29/t2b-fix-mutations.log` (7 mutants, all caught).
+- **Next:** Muse re-audits #421. Then T4a's fix (#424): the lot record must read the county watch's redemption period.
+
 ## 2026-10-29 — V-Tax-1 T2b — redemption clock, calendar, alerts, locks, quiet-title gate — on `claude/tax-v1-t2b-clock-gates` (stacked on T2a)
 
 - **Storage.** Migration 0296 adds `tax_events`: the tax calendar, where each redemption expiry carries the rule it rests on.

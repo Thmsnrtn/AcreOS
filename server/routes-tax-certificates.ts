@@ -394,12 +394,12 @@ export function registerTaxCertificateRoutes(app: Express): void {
         if (!row) return Errors.internal(res, new Error("Insert returned no row"));
         // Register the expiry on the tax calendar, citing what it rests on.
         if (!noRedemption) {
-          const { deadlineRule, registerRedemptionExpiry } = await import("./services/tax/taxEvents");
+          const { deadlineRuleFor, registerRedemptionExpiry } = await import("./services/tax/taxEvents");
           await registerRedemptionExpiry(db, {
             organizationId: orgId,
             certificateId: row.id,
             date: recordedDeadline,
-            ruleCited: deadlineRule(row.state, deadlineSource, data.redemptionDeadlineSource),
+            ruleCited: await deadlineRuleFor(orgId, { state: row.state, county: row.county, saleDate: row.saleDate as unknown as string, deadline: recordedDeadline }, deadlineSource, data.redemptionDeadlineSource),
             recordedBy: req.user?.id ?? "unknown",
           });
         }
@@ -439,11 +439,22 @@ export function registerTaxCertificateRoutes(app: Express): void {
         // payoff workflow lane (a status edit that was already "redeemed" is a
         // no-op in the emitter).
         const [preImage] = await db
-          .select({ status: taxCertificates.status })
+          .select({ status: taxCertificates.status, redemptionDeadline: taxCertificates.redemptionDeadline })
           .from(taxCertificates)
           .where(and(eq(taxCertificates.id, req.params.id), eq(taxCertificates.organizationId, orgId)))
           .limit(1);
-        const beforeStatus = preImage?.status ?? null;
+        if (!preImage) return Errors.notFound(res, "Certificate");
+        const beforeStatus = preImage.status;
+
+        // A deed is not held while the owner can still redeem (V-Tax-1 T2b):
+        // the clock reads deed_obtained / expired_to_deed as "deed held", and
+        // the quiet-title and redeemable-deed gates read the clock, so this
+        // status may not be asserted before the county's deadline has run.
+        const deadline = preImage.redemptionDeadline as unknown as string;
+        const today = clock.now().toISOString().slice(0, 10);
+        if ((parsed.data.status === "deed_obtained" || parsed.data.status === "expired_to_deed") && deadline >= today) {
+          return Errors.unprocessable(res, `Still redeemable until ${deadline}. The deed is not held until redemption has expired.`, { redeemableUntil: deadline });
+        }
 
         // If marking redeemed and amount not specified, snapshot the live
         // computed amount as of the redeemedAt date so the running total
