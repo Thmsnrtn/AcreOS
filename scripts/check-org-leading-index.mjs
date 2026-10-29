@@ -211,7 +211,6 @@ const BASELINE_OFFENDERS = new Set([
   "target_counties",
   "tasks",
   "tax_escrow_payments",
-  "tax_sale_alerts",
   // tax_sale_auctions + tax_sale_listings REMOVED 2026-07-30 (Wave D): both
   // tables got their first real insert path (manual + CSV lot-list entry) and
   // their first org-leading composite indexes in the same commit —
