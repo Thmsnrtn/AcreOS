@@ -53,8 +53,15 @@ CREATE TRIGGER tax_procedure_objects_no_truncate BEFORE TRUNCATE ON "tax_procedu
 -- dropped and the statement fails (customer data is never deleted by a
 -- migration; a table with rows escalates to the founder).
 DO $$
+DECLARE
+  has_rows boolean;
 BEGIN
-  IF to_regclass('public.county_redemption_rates') IS NOT NULL AND EXISTS (SELECT 1 FROM "county_redemption_rates" LIMIT 1) THEN
+  IF to_regclass('public.county_redemption_rates') IS NOT NULL THEN
+    EXECUTE 'SELECT EXISTS (SELECT 1 FROM "county_redemption_rates" LIMIT 1)' INTO has_rows;
+  ELSE
+    has_rows := false;
+  END IF;
+  IF has_rows THEN
     RAISE EXCEPTION 'county_redemption_rates holds rows; nothing is dropped (V-Tax-1 T2 retires it only when empty — escalate to the founder)';
   END IF;
   DROP TABLE IF EXISTS "county_redemption_rates";

@@ -92,15 +92,29 @@ CREATE TRIGGER tax_lot_observations_no_truncate BEFORE TRUNCATE ON "tax_lot_obse
 -- and the statement fails — customer data is never deleted by a migration
 -- (CLAUDE.md hard-stop); a table with rows escalates to the founder.
 --
+-- The row checks run through EXECUTE so PL/pgSQL never plans a query against
+-- a table that is already gone (every later boot re-runs this block).
 -- The checks and the drops are ONE statement on purpose. scripts/migrate.mjs
 -- logs a failed statement and runs the next one, so a guard in its own
 -- statement followed by a separate DROP would drop the table anyway.
 DO $$
+DECLARE
+  has_rows boolean;
 BEGIN
-  IF to_regclass('public.tax_sale_alerts') IS NOT NULL AND EXISTS (SELECT 1 FROM "tax_sale_alerts" LIMIT 1) THEN
+  IF to_regclass('public.tax_sale_alerts') IS NOT NULL THEN
+    EXECUTE 'SELECT EXISTS (SELECT 1 FROM "tax_sale_alerts" LIMIT 1)' INTO has_rows;
+  ELSE
+    has_rows := false;
+  END IF;
+  IF has_rows THEN
     RAISE EXCEPTION 'tax_sale_alerts holds rows; nothing is dropped (V-Tax-1 T1 retires it only when empty — escalate to the founder)';
   END IF;
-  IF to_regclass('public.lien_search_records') IS NOT NULL AND EXISTS (SELECT 1 FROM "lien_search_records" LIMIT 1) THEN
+  IF to_regclass('public.lien_search_records') IS NOT NULL THEN
+    EXECUTE 'SELECT EXISTS (SELECT 1 FROM "lien_search_records" LIMIT 1)' INTO has_rows;
+  ELSE
+    has_rows := false;
+  END IF;
+  IF has_rows THEN
     RAISE EXCEPTION 'lien_search_records holds rows; nothing is dropped (V-Tax-1 T1 retires it only when empty — escalate to the founder)';
   END IF;
   DROP TABLE IF EXISTS "tax_sale_alerts";
