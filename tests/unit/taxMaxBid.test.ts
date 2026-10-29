@@ -14,7 +14,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { bidAgainstMax, deriveMaxBid, isDiscarded, MAX_BID_SCREEN_LABEL, type MaxBidRecord, type RightsStackInput } from "@shared/tax/maxBid";
+import { bidAgainstMax, deriveMaxBid, isDiscarded, type MaxBidRecord, type RightsStackInput } from "@shared/tax/maxBid";
 import { triageLot } from "@shared/tax/triage";
 import { basisAfterManualMax } from "../../server/services/tax/bidDiscipline";
 
@@ -27,7 +27,7 @@ describe("golden max-bid cases", () => {
   for (const c of golden.cases) {
     it(c.name, () => {
       const out = deriveMaxBid(c.input);
-      expect(out.label).toBe(MAX_BID_SCREEN_LABEL);
+      expect(out.label).toMatch(/^A screen: .*Arithmetic on your inputs, not an appraisal; AcreOS does not decide which liens survive a sale\.$/);
       if (c.expected.status === "refused") {
         expect(out.status).toBe("refused");
         if (out.status === "refused") expect(out.missing.map((m) => m.key)).toEqual(c.expected.missingKeys);
