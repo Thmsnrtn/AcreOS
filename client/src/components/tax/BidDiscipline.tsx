@@ -58,11 +58,6 @@ function toCents(v: string): number | null {
   return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) : null;
 }
 
-function invalidate(listingId: number) {
-  queryClient.invalidateQueries({ queryKey: ["/api/tax-researcher/auction-worksheet"] });
-  queryClient.invalidateQueries({ queryKey: ["/api/tax-researcher/listings", listingId, "bid-log"] });
-}
-
 function errorMessage(err: unknown): string {
   if (err instanceof ApiError) return err.body?.message ?? err.message;
   return err instanceof Error ? err.message : "Something went wrong";
@@ -78,7 +73,7 @@ export function MaxBidLine({ listing }: { listing: BidDisciplineListing }) {
   if (!basis || basis.maxBidCents !== listing.maxBidCents) {
     return (
       <p className="text-xs" data-testid={`max-bid-bare-${listing.id}`}>
-        Max bid <span className="font-mono font-semibold">{usd(listing.maxBidCents)}</span>{" "}
+        Max bid <span className="tabular-nums font-semibold">{usd(listing.maxBidCents)}</span>{" "}
         <span className="text-acr-warning">— your typed number, no basis recorded.</span>
       </p>
     );
@@ -86,7 +81,7 @@ export function MaxBidLine({ listing }: { listing: BidDisciplineListing }) {
   return (
     <div className="text-xs space-y-1" data-testid={`max-bid-derived-${listing.id}`}>
       <p>
-        Max bid <span className="font-mono font-semibold">{usd(basis.maxBidCents)}</span> — derived from your rights stack
+        Max bid <span className="tabular-nums font-semibold">{usd(basis.maxBidCents)}</span> — derived from your rights stack
         {basis.leavesNothing ? <span className="text-acr-warning"> (the stack leaves nothing: any bid misses your required return)</span> : null}
       </p>
       <StackLines lines={basis.lines} />
@@ -102,7 +97,7 @@ function StackLines({ lines }: { lines: MaxBidRecord["lines"] }) {
         {lines.map((l) => (
           <tr key={l.key} className="align-top">
             <td className="pr-2">{l.label}</td>
-            <td className="pr-2 text-right font-mono tabular-nums whitespace-nowrap">{l.sign < 0 ? "−" : "+"}{usd(l.amountCents)}</td>
+            <td className="pr-2 text-right tabular-nums whitespace-nowrap">{l.sign < 0 ? "−" : "+"}{usd(l.amountCents)}</td>
             <td className="text-muted-foreground">{l.basis}</td>
           </tr>
         ))}
@@ -222,7 +217,8 @@ export function RightsStackEditor({ listing, onDone }: { listing: BidDisciplineL
     },
     onSuccess: () => {
       toast({ title: "Max bid recorded with its basis" });
-      invalidate(listing.id);
+      queryClient.invalidateQueries({ queryKey: ["/api/tax-researcher/auction-worksheet"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tax-researcher/listings", listing.id, "bid-log"] });
       onDone();
     },
     onError: (err) => toast({ title: "No max bid recorded", description: errorMessage(err), variant: "destructive" }),
@@ -294,7 +290,7 @@ export function RightsStackEditor({ listing, onDone }: { listing: BidDisciplineL
           </>
         ) : screen?.status === "derived" ? (
           <>
-            <p>Max bid <span className="font-mono font-semibold">{usd(screen.maxBidCents)}</span>{screen.leavesNothing ? <span className="text-acr-warning"> — the stack leaves nothing: any bid misses your required return</span> : null}</p>
+            <p>Max bid <span className="tabular-nums font-semibold">{usd(screen.maxBidCents)}</span>{screen.leavesNothing ? <span className="text-acr-warning"> — the stack leaves nothing: any bid misses your required return</span> : null}</p>
             <StackLines lines={screen.lines} />
           </>
         ) : null}
@@ -354,7 +350,8 @@ export function BidDialog({ listing, open, onOpenChange }: { listing: BidDiscipl
       }),
     onSuccess: () => {
       toast({ title: `Bid of ${usd(amountCents)} logged` });
-      invalidate(listing.id);
+      queryClient.invalidateQueries({ queryKey: ["/api/tax-researcher/auction-worksheet"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tax-researcher/listings", listing.id, "bid-log"] });
       setAmount("");
       setReason("");
       onOpenChange(false);
@@ -403,7 +400,8 @@ export function DiscardControl({ listing }: { listing: BidDisciplineListing }) {
     mutationFn: async () => apiRequest("POST", `/api/tax-researcher/listings/${listing.id}/discard`, { reason, ...(note.trim() ? { note: note.trim() } : {}) }),
     onSuccess: () => {
       toast({ title: "Lot discarded — reason recorded" });
-      invalidate(listing.id);
+      queryClient.invalidateQueries({ queryKey: ["/api/tax-researcher/auction-worksheet"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tax-researcher/listings", listing.id, "bid-log"] });
       setOpen(false);
     },
     onError: (err) => toast({ title: "Not discarded", description: errorMessage(err), variant: "destructive" }),
@@ -412,7 +410,8 @@ export function DiscardControl({ listing }: { listing: BidDisciplineListing }) {
     mutationFn: async () => apiRequest("POST", `/api/tax-researcher/listings/${listing.id}/reopen`, {}),
     onSuccess: () => {
       toast({ title: "Lot reopened — the discard stays on record" });
-      invalidate(listing.id);
+      queryClient.invalidateQueries({ queryKey: ["/api/tax-researcher/auction-worksheet"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tax-researcher/listings", listing.id, "bid-log"] });
     },
     onError: (err) => toast({ title: "Not reopened", description: errorMessage(err), variant: "destructive" }),
   });
