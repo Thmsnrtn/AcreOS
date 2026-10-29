@@ -315,6 +315,7 @@ export const ROUTE_MANIFEST: RouteManifestEntry[] = [
   { file: "routes-tax-delinquent.ts", mountPath: "/api/tax-delinquent", kind: "router", export: "default" },
   { file: "routes-tax-researcher.ts", mountPath: "/api/tax-researcher", kind: "router", export: "default" },
   { file: "routes-tax-rules.ts", mountPath: null, kind: "register", export: "registerTaxRuleRoutes" },
+  { file: "routes-tax-watches.ts", mountPath: null, kind: "register", export: "registerTaxWatchRoutes" },
   { file: "routes-team-improvement.ts", mountPath: null, kind: "register", export: "registerTeamImprovementRoutes" },
   { file: "routes-team-messaging.ts", mountPath: null, kind: "register", export: "registerTeamMessagingRoutes" },
   { file: "routes-team-readiness.ts", mountPath: null, kind: "register", export: "registerTeamReadinessRoutes" },

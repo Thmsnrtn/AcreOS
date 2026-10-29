@@ -93,6 +93,7 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { CourthouseMode } from "@/components/mobile/CourthouseMode";
+import { CountyWatchesPanel } from "@/components/tax/CountyWatchesPanel";
 import { Verbs } from "@/lib/labels";
 import { staggerContainer, staggerItem } from "@/lib/animations";
 
@@ -267,7 +268,10 @@ interface ImportSummary {
   validCount: number;
   rejectedCount: number;
   jurisdictions: Array<{ state: string; county: string; count: number }>;
+  /** Sum of the amounts owed the list states. */
   totalTaxOwedCents: number;
+  /** Valid rows whose amount owed the list does not state (never summed as 0). */
+  taxOwedNotStatedCount: number;
   minimumBidTotalCents: number;
 }
 
@@ -290,6 +294,9 @@ interface ImportCommit {
   committed: true;
   summary: ImportSummary & { insertedCount: number };
   insertedIds: number[];
+  importId: string | null;
+  parcels: { matched: number; unmatched: number; notSearched: number };
+  watchesCreated: Array<{ state: string; county: string }>;
   rejected: RowRejection[];
   rejectedTruncated: boolean;
   caveat: string;
@@ -385,7 +392,10 @@ export default function AuctionWorksheetPage() {
       {/* CSV lot-list import. Above the empty state on purpose: with no lots
           on the worksheet, importing the county list IS the next action. */}
       {!courthouseMode && (
-        <LotListImportCard defaultAuctionId={auctionId ? Number(auctionId) : null} />
+        <>
+          <LotListImportCard defaultAuctionId={auctionId ? Number(auctionId) : null} />
+          <CountyWatchesPanel />
+        </>
       )}
 
       {/* Source filter chips — high-margin sources lead. Hidden in
@@ -1441,6 +1451,7 @@ function LotListImportCard({ defaultAuctionId }: { defaultAuctionId: number | nu
       apiPost<ImportPreview>("/api/tax-researcher/imports/lot-list/preview", {
         csv: input.csv,
         auctionId,
+        ...(fileName ? { fileName } : {}),
         ...(input.mapping ? { mapping: input.mapping } : {}),
       }),
     onSuccess: (data) => {
@@ -1460,18 +1471,21 @@ function LotListImportCard({ defaultAuctionId }: { defaultAuctionId: number | nu
       apiPost<ImportCommit>("/api/tax-researcher/imports/lot-list/commit", {
         csv,
         auctionId,
+        ...(fileName ? { fileName } : {}),
         ...(mapping ? { mapping } : {}),
       }),
     onSuccess: (data) => {
       setResult(data);
       queryClient.invalidateQueries({ queryKey: ["/api/tax-researcher/auction-worksheet"] });
       queryClient.invalidateQueries({ queryKey: ["/api/tax-researcher/auctions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tax-watches"] });
+      const parcelLine = `Parcels: ${data.parcels.matched} matched, ${data.parcels.unmatched} searched with no match, ${data.parcels.notSearched} not searchable.`;
       toast({
         title: `${data.summary.insertedCount} lot${data.summary.insertedCount === 1 ? "" : "s"} imported`,
         description:
           data.summary.rejectedCount > 0
-            ? `${data.summary.rejectedCount} row${data.summary.rejectedCount === 1 ? "" : "s"} were rejected and NOT imported — the list below says why.`
-            : undefined,
+            ? `${data.summary.rejectedCount} row${data.summary.rejectedCount === 1 ? "" : "s"} were rejected and NOT imported — the list below says why. ${parcelLine}`
+            : parcelLine,
       });
     },
     onError: (err: any) =>
@@ -1685,10 +1699,15 @@ function LotListImportCard({ defaultAuctionId }: { defaultAuctionId: number | nu
                     </div>
                   </Card>
                   <Card className="p-3">
-                    <div className="text-xs text-muted-foreground">Tax owed (valid rows)</div>
+                    <div className="text-xs text-muted-foreground">Tax owed (as the list states it)</div>
                     <div className="text-lg tabular-nums">
                       {centsExact(preview.summary.totalTaxOwedCents)}
                     </div>
+                    {preview.summary.taxOwedNotStatedCount > 0 && (
+                      <div className="text-xs text-muted-foreground" data-testid="text-tax-owed-not-stated">
+                        {preview.summary.taxOwedNotStatedCount} row{preview.summary.taxOwedNotStatedCount === 1 ? "" : "s"} state no amount — not counted as $0
+                      </div>
+                    )}
                   </Card>
                 </div>
 

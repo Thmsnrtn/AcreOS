@@ -37,7 +37,7 @@ import {
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import type { AuthenticatedRequest } from "./types/request";
-import { getOrganizationId } from "./types/request";
+import { getOrganizationId, getUserId } from "./types/request";
 import {
   parseDelimited,
   suggestColumnMapping,
@@ -212,6 +212,10 @@ const importBodySchema = z.object({
   /** Operator-confirmed mapping. Omit on the first preview to get suggestions. */
   mapping: z.record(z.string(), z.number().int().nonnegative().nullable()).optional(),
   defaultAcquisitionSource: z.enum(TAX_SALE_LOT_ACQUISITION_SOURCES).optional(),
+  /** The file's name, recorded as the provenance of every stated value. */
+  fileName: z.string().trim().min(1).max(255).optional(),
+  /** The list's own "as of" date, when the operator states it. */
+  asOf: z.string().refine(isCalendarDate, "not a calendar date (YYYY-MM-DD)").nullable().optional(),
 });
 
 const LOT_FIELD_KEYS = new Set<string>(LOT_FIELDS.map((f) => f.key));
@@ -233,9 +237,23 @@ async function runImportValidation(
   const sheet = parseDelimited(body.csv);
   const suggestion = suggestColumnMapping(sheet.headers);
   const mapping = coerceMapping(body.mapping) ?? suggestion.mapping;
-  const unmappedRequired = LOT_FIELDS.filter((f) => f.required && mapping[f.key] == null).map(
-    (f) => f.key,
-  );
+
+  // A list imported into an auction with a date takes that date for any row
+  // that states none (recorded as sourced from the auction), so the sale-date
+  // column is not required then. The auction is read org-scoped; the stored
+  // calendar date is read as written (to_char), never shifted by a timezone.
+  let auctionSaleDate: string | null = null;
+  if (body.auctionId) {
+    const [auction] = await drizzleDb
+      .select({ date: sql<string | null>`to_char(${taxSaleAuctions.auctionDate}, 'YYYY-MM-DD')` })
+      .from(taxSaleAuctions)
+      .where(and(eq(taxSaleAuctions.id, body.auctionId), eq(taxSaleAuctions.organizationId, organizationId)))
+      .limit(1);
+    auctionSaleDate = auction?.date ?? null;
+  }
+  const unmappedRequired = LOT_FIELDS.filter(
+    (f) => f.required && mapping[f.key] == null && !(f.key === "saleDate" && auctionSaleDate),
+  ).map((f) => f.key);
 
   // Parcels already on this auction's worksheet — duplicates are reported, not
   // re-inserted and not silently skipped.
@@ -269,6 +287,7 @@ async function runImportValidation(
     mapping,
     existingParcels,
     defaultAcquisitionSource: body.defaultAcquisitionSource,
+    auctionSaleDate,
   });
   assertNoRowLost(outcome);
   return { sheet, suggestion, mapping, unmappedRequired, outcome };
@@ -347,12 +366,23 @@ router.post('/imports/lot-list/commit', async (req: AuthenticatedRequest, res: R
     }
 
     const { valid, rejected, summary } = result.outcome;
-    const inserted = valid.length > 0
-      ? await drizzleDb
-          .insert(taxSaleListings)
-          .values(valid.map((lot) => lotToListingRow(lot, organizationId, parsed.data.auctionId ?? null)))
-          .returning({ id: taxSaleListings.id, apn: taxSaleListings.apn })
-      : [];
+    // One transaction: the lots, every stated value with its file/row/cell,
+    // the blank-but-present columns, the parcel/APID match, and a county watch
+    // per county (services/tax/taxLotCommit.ts).
+    const { createHash } = await import("node:crypto");
+    const { commitTaxLotList } = await import("./services/tax/taxLotCommit");
+    const committed = valid.length > 0
+      ? await commitTaxLotList({
+          organizationId,
+          actorUserId: getUserId(req),
+          fileName: parsed.data.fileName ?? "tax-list.csv",
+          fileSha256: createHash("sha256").update(parsed.data.csv).digest("hex"),
+          asOf: parsed.data.asOf ?? null,
+          auctionId: parsed.data.auctionId ?? null,
+          lots: valid,
+        })
+      : null;
+    const inserted = committed?.lots.map((l) => ({ id: l.listingId, apn: l.apn })) ?? [];
 
     logger.info("[taxSale] lot-list import committed", {
       metadata: {
@@ -369,6 +399,13 @@ router.post('/imports/lot-list/commit', async (req: AuthenticatedRequest, res: R
       committed: true,
       summary: { ...summary, insertedCount: inserted.length },
       insertedIds: inserted.map((r) => r.id),
+      importId: committed?.importId ?? null,
+      parcels: {
+        matched: committed?.lots.filter((l) => l.parcel === "matched").length ?? 0,
+        unmatched: committed?.lots.filter((l) => l.parcel === "unmatched").length ?? 0,
+        notSearched: committed?.lots.filter((l) => l.parcel === "not_searched").length ?? 0,
+      },
+      watchesCreated: committed?.watchesCreated ?? [],
       // The full rejection list, so the operator can fix and re-import.
       rejected: rejected.slice(0, 500),
       rejectedTruncated: rejected.length > 500,
@@ -378,34 +415,6 @@ router.post('/imports/lot-list/commit', async (req: AuthenticatedRequest, res: R
     Errors.internal(res, err);
   }
 });
-
-function lotToListingRow(lot: PreparedLot, organizationId: number, auctionId: number | null) {
-  return {
-    organizationId,
-    auctionId,
-    apn: lot.apn,
-    county: lot.county,
-    state: lot.state,
-    saleType: lot.saleType,
-    acquisitionSource: lot.acquisitionSource ?? "auction",
-    totalTaxOwed: centsToNumeric(lot.totalTaxOwedCents)!,
-    minimumBid: centsToNumeric(lot.minimumBidCents),
-    openingBid: centsToNumeric(lot.openingBidCents),
-    assessedValue: centsToNumeric(lot.assessedValueCents),
-    marketValue: centsToNumeric(lot.marketValueCents),
-    address: lot.address,
-    city: lot.city,
-    zip: lot.zip,
-    legalDescription: lot.legalDescription,
-    acreage: lot.acreage,
-    propertyType: lot.propertyType,
-    ownerName: lot.ownerName,
-    notes: lot.notes,
-    status: "available" as const,
-    // Provenance: operator-supplied file, not a scrape. No sourceUrl to invent.
-    sourceUrl: null,
-  };
-}
 
 // POST /tax-researcher/auctions/:id/lots — add one lot by hand.
 router.post('/auctions/:id/lots', async (req: AuthenticatedRequest, res: Response) => {

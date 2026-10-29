@@ -3,6 +3,30 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-10-29 — V-Tax-1 T1 — tax-list import, county watches, triage — on `claude/tax-v1-t1-watch-triage` (stacked on T0)
+
+- **Storage (founder swap, net zero).**
+  - Migration 0294 adds `tax_county_watches` and `tax_lot_observations`; the observations table is append-only and leaves only with its lot.
+  - It retires `tax_sale_alerts` and `lien_search_records` with a guarded drop. The checks and the drops are ONE statement, because `migrate.mjs` runs the next statement after a failure.
+  - It was proven by hand that a retired table holding a row survives, and so does its empty sibling.
+  - `tax_sale_listings` gains `sale_date` and `import_id`, and `total_tax_owed` becomes nullable.
+  - The table count stays 748.
+- **Import (extended in place, not a parallel importer).**
+  - The existing lot-list import gains a sale date, which is required unless the list is imported into an auction with a date (that date is recorded with the auction as its source), and delinquent years, which are required.
+  - Amount owed becomes optional. Unstated is null, never 0, and is not summed.
+  - The commit is one transaction. It writes the lots, a provenance observation per stated cell (file, row, column, raw), a recorded blank for each optional column the list has but leaves blank, the parcel/APID match, and a county watch per county.
+  - Owner names are not copied into observations.
+- **One parcel resolver.** `landData/resolveOwnedParcelRef` is extracted from the note-tape commit, which now calls it, so "matched" means the same thing in Notes and Tax.
+- **Watches and triage.** Routes: `GET /api/tax-watches`, `PUT /api/tax-watches/:id/terms` and `GET /api/tax-watches/:id/triage`.
+  - A watch's terms are stated values with a source, or unknown.
+  - Triage (`shared/tax/triage.ts`) lists each lot's unknowns ordered by decision weight ÷ cost kind. It is labelled a screen. Costs are kinds, never dollars.
+  - The panel sits on the auction worksheet, behind the tax-delinquent door.
+- **Golden.** `shared/tax/golden/tax-list-golden.csv` plus its hand-written expected output.
+- **Not in T1.**
+  - Address-only lots: the APN stays required, which is stricter than the spec's "APN and/or address".
+  - A row-level all-or-nothing commit: rejected rows are reported and the valid ones import, as before. Required columns still refuse the whole file.
+  - Procedure objects and the clock (T2), bid discipline (T3), and the disagreement panel (T4).
+
 ## 2026-10-28 — V-Tax-1 started (Notes V1 complete: N1–N4 merged, main `45ed282`). T0 — tax defaults refuse instead of inventing — on `claude/tax-v1-t0-refuse-defaults`
 
 - **Send gate re-verified.**

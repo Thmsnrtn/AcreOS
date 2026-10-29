@@ -1,0 +1,57 @@
+{
+  "_comment": "Expected normalized output of tax-list-golden.csv, written by hand from the list (SYNTHETIC). Money in integer cents, dates ISO, delinquent years sorted. Asserted end to end by tests/unit/taxListGolden.test.ts.",
+  "mapping": { "apn": 0, "county": 1, "state": 2, "saleType": 3, "saleDate": 4, "delinquentYears": 5, "totalTaxOwed": 6, "minimumBid": 7, "marketValue": 8, "address": 9, "ownerName": 10 },
+  "summary": {
+    "totalRows": 7, "validCount": 3, "rejectedCount": 4,
+    "jurisdictions": [{ "state": "TX", "county": "Travis", "count": 2 }, { "state": "TX", "county": "Harris", "count": 1 }],
+    "totalTaxOwedCents": 571250, "taxOwedNotStatedCount": 1, "minimumBidTotalCents": 481250
+  },
+  "valid": [
+    {
+      "fileRow": 2, "apn": "SYNTH-T-0001", "county": "Travis", "state": "TX", "saleType": "deed",
+      "saleDate": "2026-11-04", "saleDateSource": "list", "delinquentYears": [2022, 2023],
+      "totalTaxOwedCents": 481250, "minimumBidCents": 481250, "openingBidCents": null, "assessedValueCents": null, "marketValueCents": null,
+      "address": "1 Synthetic Rd", "city": null, "zip": null, "legalDescription": null, "acreage": null, "propertyType": null,
+      "ownerName": "SYNTHETIC Owner A", "acquisitionSource": null, "notes": null,
+      "stated": {
+        "apn": { "column": "Parcel ID", "raw": "SYNTH-T-0001" }, "county": { "column": "County", "raw": "Travis" }, "state": { "column": "State", "raw": "TX" },
+        "saleType": { "column": "Sale Type", "raw": "Tax Deed" }, "saleDate": { "column": "Sale Date", "raw": "11/4/2026" }, "delinquentYears": { "column": "Tax Years", "raw": "2022, 2023" },
+        "totalTaxOwed": { "column": "Amount Due", "raw": "$4,812.50" }, "minimumBid": { "column": "Minimum Bid", "raw": "$4,812.50" },
+        "address": { "column": "Situs Address", "raw": "1 Synthetic Rd" }, "ownerName": { "column": "Owner", "raw": "SYNTHETIC Owner A" }
+      },
+      "blankMapped": [{ "field": "marketValue", "column": "Market Value" }]
+    },
+    {
+      "fileRow": 3, "apn": "SYNTH-T-0002", "county": "Travis", "state": "TX", "saleType": "deed",
+      "saleDate": "2026-11-04", "saleDateSource": "list", "delinquentYears": [2021, 2022, 2023],
+      "totalTaxOwedCents": null, "minimumBidCents": null, "openingBidCents": null, "assessedValueCents": null, "marketValueCents": 8500000,
+      "address": null, "city": null, "zip": null, "legalDescription": null, "acreage": null, "propertyType": null,
+      "ownerName": "SYNTHETIC Owner B", "acquisitionSource": null, "notes": null,
+      "stated": {
+        "apn": { "column": "Parcel ID", "raw": "SYNTH-T-0002" }, "county": { "column": "County", "raw": "Travis" }, "state": { "column": "State", "raw": "TX" },
+        "saleType": { "column": "Sale Type", "raw": "deed" }, "saleDate": { "column": "Sale Date", "raw": "2026-11-04" }, "delinquentYears": { "column": "Tax Years", "raw": "2021-2023" },
+        "marketValue": { "column": "Market Value", "raw": "$85,000" }, "ownerName": { "column": "Owner", "raw": "SYNTHETIC Owner B" }
+      },
+      "blankMapped": [{ "field": "totalTaxOwed", "column": "Amount Due" }, { "field": "minimumBid", "column": "Minimum Bid" }, { "field": "address", "column": "Situs Address" }]
+    },
+    {
+      "fileRow": 4, "apn": "SYNTH-T-0003", "county": "Harris", "state": "TX", "saleType": "lien",
+      "saleDate": "2026-11-04", "saleDateSource": "list", "delinquentYears": [2024],
+      "totalTaxOwedCents": 90000, "minimumBidCents": null, "openingBidCents": null, "assessedValueCents": null, "marketValueCents": null,
+      "address": "3 Synthetic Ave", "city": null, "zip": null, "legalDescription": null, "acreage": null, "propertyType": null,
+      "ownerName": null, "acquisitionSource": null, "notes": null,
+      "stated": {
+        "apn": { "column": "Parcel ID", "raw": "SYNTH-T-0003" }, "county": { "column": "County", "raw": "Harris" }, "state": { "column": "State", "raw": "TX" },
+        "saleType": { "column": "Sale Type", "raw": "lien" }, "saleDate": { "column": "Sale Date", "raw": "2026-11-04" }, "delinquentYears": { "column": "Tax Years", "raw": "2024" },
+        "totalTaxOwed": { "column": "Amount Due", "raw": "$900.00" }, "address": { "column": "Situs Address", "raw": "3 Synthetic Ave" }
+      },
+      "blankMapped": [{ "field": "minimumBid", "column": "Minimum Bid" }, { "field": "marketValue", "column": "Market Value" }, { "field": "ownerName", "column": "Owner" }]
+    }
+  ],
+  "rejected": [
+    { "fileRow": 5, "fields": ["saleDate"] },
+    { "fileRow": 6, "fields": ["delinquentYears"] },
+    { "fileRow": 7, "fields": ["totalTaxOwed"] },
+    { "fileRow": 8, "fields": ["apn"] }
+  ]
+}

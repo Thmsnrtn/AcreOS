@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, bigint, bigserial, boolean, timestamp, numeric, varchar, jsonb, index, uniqueIndex, date, real, doublePrecision, check, customType, primaryKey } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, bigint, bigserial, boolean, timestamp, numeric, varchar, jsonb, index, uniqueIndex, date, real, doublePrecision, check, customType, primaryKey, uuid } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
 import { createInsertSchema } from "./db/createInsertSchema";
 import { z } from "zod";
@@ -5692,30 +5692,9 @@ export const auctionReadinessChecklists = pgTable(
 );
 export type AuctionReadinessChecklist = typeof auctionReadinessChecklists.$inferSelect;
 
-export const lienSearchRecords = pgTable(
-  "lien_search_records",
-  {
-    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-    organizationId: integer("organization_id").notNull(),
-    propertyId: integer("property_id"),
-    lienType: text("lien_type").notNull(), // judgment | tax | mechanic | hoa | irs | child_support | other
-    lienHolder: text("lien_holder"),
-    lienAmountCents: integer("lien_amount_cents"),
-    recordedAt: timestamp("recorded_at", { withTimezone: true }),
-    releaseStatus: text("release_status").notNull().default("active"), // active | released | satisfied
-    sourceSystem: text("source_system"), // courthouse | lps | regrid | manual
-    rawData: jsonb("raw_data"),
-    notes: text("notes"),
-    discoveredAt: timestamp("discovered_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [
-    index("lien_search_property_type_idx").on(table.propertyId, table.lienType),
-    index("lien_search_org_idx").on(table.organizationId),
-    index("lien_search_status_idx").on(table.releaseStatus),
-  ],
-);
-export type LienSearchRecord = typeof lienSearchRecords.$inferSelect;
-export type InsertLienSearchRecord = typeof lienSearchRecords.$inferInsert;
+// lien_search_records was retired 2026-10-28 (V-Tax-1 T1, migration 0294):
+// nothing read or wrote it. tax_lot_observations records lien searches and
+// their absences instead.
 
 // ─── Panel-300 #25 — vendor adoption telemetry ───────────────────────────
 // Vendor-partners panel: 5 vendors (Stripe, Clerk, Lob, Sentry, Regrid)
@@ -7268,7 +7247,12 @@ export const taxSaleListings = pgTable("tax_sale_listings", {
   saleType: text("sale_type").notNull(), // lien, deed, redeemable_deed
   
   taxYearsDelinquent: text("tax_years_delinquent").array(),
-  totalTaxOwed: numeric("total_tax_owed").notNull(),
+  // NULLABLE since 0294: a list that does not state the amount owed records
+  // it as not stated, never as a figure.
+  totalTaxOwed: numeric("total_tax_owed"),
+  // The sale date the list states (0294), and the import that wrote the row.
+  saleDate: date("sale_date"),
+  importId: uuid("import_id"),
   penalties: numeric("penalties"),
   interest: numeric("interest"),
   fees: numeric("fees"),
@@ -7368,42 +7352,8 @@ export const taxSaleListings = pgTable("tax_sale_listings", {
   index("tax_sale_listings_org_status_idx").on(table.organizationId, table.status),
 ]);
 
-// Tax Sale Alerts - subscription to tax sale opportunities
-export const taxSaleAlerts = pgTable("tax_sale_alerts", {
-  id: serial("id").primaryKey(),
-  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
-  
-  name: text("name").notNull(),
-  isActive: boolean("is_active").default(true),
-  
-  criteria: jsonb("criteria").$type<{
-    states?: string[];
-    counties?: string[];
-    saleTypes?: TaxSaleType[];
-    minAssessedValue?: number;
-    maxAssessedValue?: number;
-    maxTaxOwed?: number;
-    minAcreage?: number;
-    maxAcreage?: number;
-    propertyTypes?: string[];
-    maxRedemptionRisk?: RedemptionRiskLevel;
-    minEstimatedRoi?: number;
-    auctionDateRange?: { start: string; end: string };
-  }>(),
-  
-  notificationPreferences: jsonb("notification_preferences").$type<{
-    email?: boolean;
-    sms?: boolean;
-    inApp?: boolean;
-    frequency?: "immediate" | "daily" | "weekly";
-  }>(),
-  
-  lastTriggeredAt: timestamp("last_triggered_at"),
-  triggerCount: integer("trigger_count").default(0),
-  
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
+// tax_sale_alerts was retired 2026-10-28 (V-Tax-1 T1, migration 0294): nothing
+// read or wrote it. County watches are tax_county_watches (shared/schema/tax-v1.ts).
 
 // Historical redemption rates by county - for prediction
 export const countyRedemptionRates = pgTable("county_redemption_rates", {
@@ -7443,14 +7393,6 @@ export const insertTaxSaleListingSchema = createInsertSchema(taxSaleListings).om
 });
 export type InsertTaxSaleListing = z.infer<typeof insertTaxSaleListingSchema>;
 export type TaxSaleListing = typeof taxSaleListings.$inferSelect;
-
-export const insertTaxSaleAlertSchema = createInsertSchema(taxSaleAlerts).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-});
-export type InsertTaxSaleAlert = z.infer<typeof insertTaxSaleAlertSchema>;
-export type TaxSaleAlert = typeof taxSaleAlerts.$inferSelect;
 
 export const insertCountyRedemptionRateSchema = createInsertSchema(countyRedemptionRates).omit({
   id: true,
@@ -14112,6 +14054,7 @@ export * from "./schema/dataset-releases";
 export * from "./schema/parcel-apid";
 export * from "./schema/note-observations";
 export * from "./schema/note-events";
+export * from "./schema/tax-v1";
 
 // ============================================================================
 // FINANCIAL LEDGER + MAIL SHIPMENTS — extracted to ./schema/finance.ts
