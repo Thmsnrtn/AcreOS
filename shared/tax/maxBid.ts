@@ -63,7 +63,7 @@ export const STACK_LINE_LABEL: Record<StackLineKey | "costs" | "requiredReturn",
   requiredReturn: "Your required return",
 };
 
-export const MAX_BID_SCREEN_LABEL =
+const MAX_BID_SCREEN_LABEL =
   "A screen: your stated value minus what you recorded ahead of you, your costs and your required return. Arithmetic on your inputs, not an appraisal; AcreOS does not decide which liens survive a sale.";
 
 export interface StackLineOut {
