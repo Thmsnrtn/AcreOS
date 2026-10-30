@@ -10,7 +10,7 @@ vi.mock("../../server/storage", () => ({ storage: { createProperty: h.createProp
 vi.mock("../../server/db", () => ({ db: {} }));
 vi.mock("../../server/utils/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
 
-import { importProperties, importRowError } from "../../server/services/importExport";
+import { importNotesFromCSV, importProperties, importRowError } from "../../server/services/importExport";
 
 const DUMP =
   'Failed query: insert into "properties" ("id", "organization_id", "apn", "size_acres") values (default, $1, $2, $3)\nparams: 7,A1,abc';
@@ -67,5 +67,14 @@ describe("import errors contain no SQL", () => {
     const r = await importProperties(rows, 1);
     expect(r.errorCount).toBe(501);
     expect(r.errors.every((e) => !bad.test(e.error))).toBe(true);
+  });
+
+  it("a fieldMap cannot address a reserved key (remote property injection)", async () => {
+    // Before: {"constructor": "originalPrincipal"} was honoured, so a cell under a
+    // column named "constructor" became the principal. It must be ignored.
+    const row = { borrowerFirstName: "Ann", constructor: "5000", "Start Date": "2026-01-01", "First Payment Date": "2026-02-01" } as Record<string, string>;
+    const r = await importNotesFromCSV([row], 1, { constructor: "originalPrincipal", __proto__: "originalPrincipal" } as Record<string, string>);
+    expect(r.errors[0].error).toMatch(/Original principal amount is required/);
+    expect(({} as Record<string, unknown>).originalPrincipal).toBeUndefined();
   });
 });
