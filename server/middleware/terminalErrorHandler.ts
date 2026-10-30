@@ -58,6 +58,13 @@ export function terminalErrorHandler(
   const parsed = Number(err?.status ?? err?.statusCode);
   const status = Number.isInteger(parsed) && parsed >= 400 && parsed <= 599 ? parsed : 500;
 
+  // A designed refusal that tells the caller when to come back (the per-org AI
+  // concurrency bound, the quota-unavailable refusal) carries it as a header.
+  const retryAfter = Number(err?.retryAfterSeconds);
+  if (Number.isFinite(retryAfter) && retryAfter > 0 && typeof res.setHeader === "function") {
+    res.setHeader("Retry-After", String(Math.ceil(retryAfter)));
+  }
+
   // 5xx goes through the same producers a handled failure uses, so an uncaught
   // throw and a deliberate `Errors.internal(...)` are indistinguishable to the
   // client — same code, same shape, same request id, same logging.
@@ -67,7 +74,16 @@ export function terminalErrorHandler(
         sendError(res, 502, "BAD_GATEWAY", devOnlyMessage(err) ?? upstreamMessage, undefined, undefined, true);
         return;
       case 503:
-        sendError(res, 503, "SERVICE_UNAVAILABLE", devOnlyMessage(err) ?? unavailableMessage, undefined, undefined, true);
+        // A named AI_* refusal keeps its code so the client can tell it apart.
+        sendError(
+          res,
+          503,
+          typeof err?.code === "string" && err.code.startsWith("AI_") ? err.code : "SERVICE_UNAVAILABLE",
+          devOnlyMessage(err) ?? unavailableMessage,
+          undefined,
+          undefined,
+          true,
+        );
         return;
       case 504:
         sendError(res, 504, "GATEWAY_TIMEOUT", devOnlyMessage(err) ?? timeoutMessage, undefined, undefined, true);

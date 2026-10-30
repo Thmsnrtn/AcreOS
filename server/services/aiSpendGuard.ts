@@ -46,6 +46,7 @@ import { ANTHROPIC_CACHE_MIN_CHARS } from "./promptCache";
 import { clock } from "../utils/clock";
 import { logger } from "../utils/logger";
 import { storedAiOrigin } from "./aiAllowanceRule";
+import { withAiConcurrencySlot } from "./aiConcurrency";
 
 /**
  * Throws AiCostCeilingExceededError (code AI_COST_CEILING_EXCEEDED) when the
@@ -280,6 +281,16 @@ export async function meteredChatCompletion(
   meta: MeteredCallMeta,
   options?: OpenAI.RequestOptions,
 ): Promise<OpenAI.ChatCompletion> {
+  // G10: the per-org in-flight bound, shared with routeAITask (one counter).
+  return withAiConcurrencySlot(meta.orgId, () => meteredChatCompletionUnbounded(client, params, meta, options));
+}
+
+async function meteredChatCompletionUnbounded(
+  client: ChatCompletionsClient,
+  params: OpenAI.ChatCompletionCreateParamsNonStreaming,
+  meta: MeteredCallMeta,
+  options?: OpenAI.RequestOptions,
+): Promise<OpenAI.ChatCompletion> {
   // The shared monthly AI allowance (founder decision 2026-10-08): past it, a
   // customer-triggered call runs on the org's OWN key — same model, mapped to
   // what their channel serves — or is refused recoverably (byok_required).
@@ -347,6 +358,16 @@ export interface AnthropicMessagesClient<R> {
  * at 1x here — a slight undercount on the first call of a 5-minute window.)
  */
 export async function meteredAnthropicMessage<R extends { id?: string; usage?: AnthropicUsageLike | null }>(
+  client: AnthropicMessagesClient<R>,
+  params: { model: string; system?: unknown; [k: string]: unknown },
+  meta: MeteredCallMeta,
+  options?: Record<string, unknown>,
+): Promise<R> {
+  // G10: the per-org in-flight bound, shared with routeAITask (one counter).
+  return withAiConcurrencySlot(meta.orgId, () => meteredAnthropicMessageUnbounded(client, params, meta, options));
+}
+
+async function meteredAnthropicMessageUnbounded<R extends { id?: string; usage?: AnthropicUsageLike | null }>(
   client: AnthropicMessagesClient<R>,
   params: { model: string; system?: unknown; [k: string]: unknown },
   meta: MeteredCallMeta,
