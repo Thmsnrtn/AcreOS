@@ -176,11 +176,27 @@ export async function getEffectiveCeilings(orgId: number): Promise<{
   monthlyCents: number;
   source: "platform_default" | "tier_default" | "founder_override";
 }> {
-  const [override] = await db
-    .select()
-    .from(aiCostCeilingOverrides)
-    .where(eq(aiCostCeilingOverrides.organizationId, orgId))
-    .limit(1);
+  // G10 (2026-10-30): the overrides lookup used to run OUTSIDE any try/catch, so
+  // a metering outage threw a raw DB error out of the gate before the guarded
+  // sum/read posture below was ever reached. An unreadable override table now
+  // falls back to the tier defaults (a founder override can only RAISE a
+  // ceiling, so ignoring an unreadable one is the conservative direction) and
+  // names what was unreadable.
+  let override:
+    | { dailyCeilingCents: number; monthlyCeilingCents: number | null }
+    | undefined;
+  try {
+    [override] = await db
+      .select()
+      .from(aiCostCeilingOverrides)
+      .where(eq(aiCostCeilingOverrides.organizationId, orgId))
+      .limit(1);
+  } catch (err) {
+    logger.warn(
+      "[aiCostCeiling] ai_cost_ceiling_overrides unreadable — falling back to tier default ceilings",
+      err instanceof Error ? err : undefined,
+    );
+  }
   if (override) {
     return {
       dailyCents: override.dailyCeilingCents,
