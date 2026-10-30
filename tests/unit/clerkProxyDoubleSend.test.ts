@@ -150,7 +150,10 @@ describe("clerk-proxy public identity follows the request Host (issue #359)", ()
     expect(res.status).toBe(200);
     expect(calls).toHaveLength(1);
     expect(calls[0].init.headers["Clerk-Proxy-Url"]).toBe("https://acreos-staging.fly.dev/__clerk");
-    expect(calls[0].init.headers["x-forwarded-host"]).toBe("acreos-staging.fly.dev");
+    // The public host travels ONLY in Clerk-Proxy-Url. Forwarding it as
+    // x-forwarded-host made FAPI 400 host_invalid on every request (the
+    // 2026-10-30 sign-in outage); clerkProxyForwardedHost.test.ts pins it.
+    expect(Object.keys(calls[0].init.headers).map((k) => k.toLowerCase())).not.toContain("x-forwarded-host");
   });
 
   it("keeps the production identity byte-identical on the prod host", async () => {
@@ -162,7 +165,7 @@ describe("clerk-proxy public identity follows the request Host (issue #359)", ()
       .send({});
     expect(res.status).toBe(200);
     expect(calls[0].init.headers["Clerk-Proxy-Url"]).toBe("https://acreos.io/__clerk");
-    expect(calls[0].init.headers["x-forwarded-host"]).toBe("acreos.io");
+    expect(Object.keys(calls[0].init.headers).map((k) => k.toLowerCase())).not.toContain("x-forwarded-host");
   });
 
   it("host-scopes Set-Cookie off the production domain (no domain attribute on staging)", async () => {

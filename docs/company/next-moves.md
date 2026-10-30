@@ -3,6 +3,26 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-10-30 — PROD OUTAGE: nobody can sign in. Clerk proxy fix on `claude/clerk-proxy-signin-fix` (staging only)
+
+- **Cause (proven in the founder's package):**
+  - `server/middleware/clerkProxy.ts` forwarded `x-forwarded-host` = the public host.
+  - FAPI attributes instances by that header, so `/__clerk/v1/environment` and `/v1/client` answered 400 `host_invalid` on prod and staging.
+  - The `<SignIn>` widget never got a form.
+- **Fix:** the header is no longer sent. `Clerk-Proxy-Url`, the secret-key handling, the publishable key and `/auth` are unchanged.
+- **Detection:**
+  - `clerk_proxy_health` probed the backing FAPI directly, which stayed 200 through the outage. It now goes through `<APP_URL>/__clerk/v1/environment` (`probeSignInProxy`).
+  - The ops watch, which runs every 30 minutes, gains a `sign_in` provider. Two failed probes in a row open ONE incident and page the founder once; the first good probe resolves it.
+- **Tests:**
+  - `clerkProxyForwardedHost.test.ts`: the fake FAPI 400s on any forwarded-host claim, and three mutants were caught.
+  - The real-DB harness `soleneStage2OnBuiltSchema` covers the sign-in incident lifecycle.
+- **Not verifiable from the session sandbox:** `clerk.com` and `*.clerk.accounts.dev` are blocked by the network policy. Staging (deployed from this branch) is the proof.
+- **Next:**
+  - staging `/__clerk/v1/environment` returns 200;
+  - the widget renders on staging `/auth`;
+  - Muse audits;
+  - prod deploy is a separate founder dispatch.
+
 ## 2026-10-30 — V-Tax-1 T2b bundle trim (#421; founder call: option 1, no ceiling change)
 
 - **Measured:** T2b with main (#426) merged was 9826.91 KB against the 9823 KB ceiling. With the trim it is **9765.14 KB**, PASS, 57.9 KB under. The ceiling is left at 9823 KB, as the founder said.

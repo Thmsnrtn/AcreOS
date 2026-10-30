@@ -22,6 +22,11 @@
  *   stripe         — a balance probe at most once per tick window, recorded
  *                    as job_health_logs `ops_probe:stripe`; failing once no
  *                    probe has succeeded for STRIPE_DOWN_PAGE_HOURS.
+ *   sign_in        — GET <APP_URL>/__clerk/v1/environment through the app's
+ *                    own Clerk proxy, at most once per tick window, recorded as
+ *                    `ops_probe:sign_in`; failing on SIGN_IN_FAILED_PROBES
+ *                    non-200s in a row. Added after the 2026-10-30 outage, when
+ *                    nobody could sign in and nothing paged.
  *
  * `decideTransitions` is pure; the reads/writes are thin and best-effort (a
  * failed read is "unknown", which never opens or closes anything).
@@ -33,7 +38,7 @@ import { logger } from "../../utils/logger";
 import { unscopedForPlatformOps } from "../../utils/orgScopedDb";
 import { clock } from "../../utils/clock";
 
-const OPS_PROVIDERS = ["model_provider", "email_provider", "stripe"] as const;
+const OPS_PROVIDERS = ["model_provider", "email_provider", "stripe", "sign_in"] as const;
 export type OpsProvider = (typeof OPS_PROVIDERS)[number];
 
 /** Ticks (30 min each) of all-failed model calls before an incident opens. */
@@ -52,6 +57,9 @@ const STRIPE_DOWN_PAGE_HOURS = 24;
 /** Job names the watch writes; reflex health ignores probes (they measure, they are not jobs). */
 const EMAIL_SEND_JOB = "email_send";
 const STRIPE_PROBE_JOB = "ops_probe:stripe";
+const SIGN_IN_PROBE_JOB = "ops_probe:sign_in";
+/** Consecutive failed sign-in probes (one per tick) before the founder is paged: one tick of debounce, not one blip. */
+const SIGN_IN_FAILED_PROBES = 2;
 
 /** Every ops incident title starts with this (the invariant watch reads incidents by it). */
 export const INCIDENT_TITLE_PREFIX = "[ops] ";
@@ -128,6 +136,17 @@ export function stripeReadingFrom(lastProbe: { ok: boolean; at: Date } | null, l
     return { provider: "stripe", failing: true, detail: `Stripe has been unreachable for ${Math.floor(hours)}h — billing reads and payment recovery cannot run` };
   }
   return { provider: "stripe", failing: null, detail: `Stripe unreachable for ${hours.toFixed(1)}h (paging at ${STRIPE_DOWN_PAGE_HOURS}h)` };
+}
+
+/** Pure: the sign-in reading from the latest probes, newest first. */
+export function signInReadingFrom(latest: Array<{ ok: boolean; detail: string | null }>): ProviderReading {
+  if (latest.length === 0) return { provider: "sign_in", failing: null, detail: "never probed" };
+  if (latest[0].ok) return { provider: "sign_in", failing: false, detail: "the sign-in proxy answered the last probe" };
+  const run = latest.slice(0, SIGN_IN_FAILED_PROBES);
+  if (run.length >= SIGN_IN_FAILED_PROBES && run.every((p) => !p.ok)) {
+    return { provider: "sign_in", failing: true, detail: `${latest[0].detail ?? "the sign-in proxy did not answer"} (${SIGN_IN_FAILED_PROBES} probes in a row) — nobody can sign in` };
+  }
+  return { provider: "sign_in", failing: null, detail: `one failed sign-in probe (paging at ${SIGN_IN_FAILED_PROBES} in a row)` };
 }
 
 // ── reads ────────────────────────────────────────────────────────────────────
@@ -232,6 +251,46 @@ async function readStripe(now: Date, probe?: () => Promise<boolean>): Promise<Pr
   }
 }
 
+/** Probe sign-in through the app's own proxy at most once per tick window; record it; read the latest probes. */
+async function readSignIn(now: Date, probe?: () => Promise<SignInProbeResult>): Promise<ProviderReading> {
+  try {
+    const [last] = await db
+      .select({ at: jobHealthLogs.runStartedAt })
+      .from(jobHealthLogs)
+      .where(eq(jobHealthLogs.jobName, SIGN_IN_PROBE_JOB))
+      .orderBy(desc(jobHealthLogs.runStartedAt))
+      .limit(1);
+    const due = !last || now.getTime() - last.at.getTime() >= (TICK_MINUTES - 1) * 60_000;
+    if (due) {
+      const r = await (probe ?? defaultSignInProbe)().catch((err): SignInProbeResult => ({ ok: false, detail: err instanceof Error ? err.message : String(err) }));
+      // ok === null: not probeable here (no APP_URL / test-auth) — nothing recorded, the reading stays unknown.
+      if (r.ok !== null) {
+        await db.insert(jobHealthLogs).values({ jobName: SIGN_IN_PROBE_JOB, runStartedAt: now, runCompletedAt: now, durationMs: 0, status: r.ok ? "success" : "failed", errorMessage: r.ok ? null : r.detail });
+      }
+    }
+    const latest = await db
+      .select({ status: jobHealthLogs.status, detail: jobHealthLogs.errorMessage })
+      .from(jobHealthLogs)
+      .where(eq(jobHealthLogs.jobName, SIGN_IN_PROBE_JOB))
+      .orderBy(desc(jobHealthLogs.runStartedAt))
+      .limit(SIGN_IN_FAILED_PROBES);
+    return signInReadingFrom(latest.map((l) => ({ ok: l.status === "success", detail: l.detail })));
+  } catch (err) {
+    logger.warn("[opsWatch] sign-in reading failed — unknown", err instanceof Error ? err : undefined);
+    return { provider: "sign_in", failing: null, detail: "unreadable" };
+  }
+}
+
+export interface SignInProbeResult {
+  ok: boolean | null;
+  detail: string;
+}
+
+async function defaultSignInProbe(): Promise<SignInProbeResult> {
+  const { probeSignInProxy } = await import("../../middleware/clerkProxy");
+  return probeSignInProxy();
+}
+
 async function defaultEmailProbe(): Promise<boolean> {
   const { emailService } = await import("../emailService");
   return (await emailService.getSendQuota()) != null;
@@ -258,6 +317,7 @@ const PROVIDER_NAMES: Record<OpsProvider, string> = {
   model_provider: "The AI model provider",
   email_provider: "Email (SES) delivery",
   stripe: "Stripe (billing)",
+  sign_in: "Sign-in (the Clerk proxy)",
 };
 
 export interface OpsWatchResult {
@@ -272,7 +332,7 @@ export interface OpsWatchResult {
  * opened incident. Called every tick by the continuous loop and by the Ops role
  * worker when the brain dispatches stabilize_reflexes. Never throws.
  */
-export async function runOpsWatch(opts: { now?: Date; stripeProbe?: () => Promise<boolean>; emailProbe?: () => Promise<boolean> } = {}): Promise<OpsWatchResult> {
+export async function runOpsWatch(opts: { now?: Date; stripeProbe?: () => Promise<boolean>; emailProbe?: () => Promise<boolean>; signInProbe?: () => Promise<SignInProbeResult> } = {}): Promise<OpsWatchResult> {
   const now = opts.now ?? clock.now();
   const result: OpsWatchResult = { readings: [], opened: [], resolved: [], paged: 0 };
   try {
@@ -281,6 +341,7 @@ export async function runOpsWatch(opts: { now?: Date; stripeProbe?: () => Promis
       readModel(now),
       readEmail(now, { incidentOpen: open.some((o) => o.provider === "email_provider"), probe: opts.emailProbe }),
       readStripe(now, opts.stripeProbe),
+      readSignIn(now, opts.signInProbe),
     ]);
     const t = decideTransitions(result.readings, open);
     for (const r of t.open) {
