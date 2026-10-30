@@ -53,6 +53,7 @@ import { runWithRestoredTraceContext } from "./utils/queueTraceContext";
 import { initSentry, Sentry } from "./utils/sentry";
 import { instanceId } from "./utils/jobRuntime";
 import { requireEncryptionKey } from "./utils/validateEnv";
+import { bootWorkerRuntimeSync, bootWorkerRuntimeAsync } from "./workerBoot";
 // Founder Autopilot — the Solene founder-ops dispatch consumer. Separate queue
 // (solene_dispatch_queue) from the outbox + the customer-facing decision
 // executor, so this never double-dispatches against either.
@@ -848,6 +849,12 @@ process.on("uncaughtException", (err) => crashExit("uncaughtException", err));
 // loudly, which is the intended fail-closed behavior.
 requireEncryptionKey();
 
+// What this process used to inherit by accident from evaluating
+// server/index.ts (providers, DB-stored credentials, realtime-alert Redis
+// publisher, env validation, PII console mask) — now explicit. See workerBoot.ts.
+bootWorkerRuntimeSync();
+const workerRuntimeReady = bootWorkerRuntimeAsync();
+
 logger.info(`[worker] booting — pollInterval=${POLL_INTERVAL_MS}ms batchSize=${BATCH_SIZE} handlers=${HANDLED_EVENT_TYPES.join(",")}`);
 
 void loop();
@@ -869,6 +876,7 @@ void import("./services/founderOrgDiagnostics")
 if (process.env.WORKER_DISABLE_SCHEDULED_JOBS !== "1") {
   void (async () => {
     try {
+      await workerRuntimeReady; // DB-stored credentials are in process.env before any job reads them
       const { runScheduledJobs } = await import("./jobs/runScheduledJobs");
       await runScheduledJobs();
       logger.info("[worker] scheduled jobs started");

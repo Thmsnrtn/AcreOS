@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { log } from "../index";
+import { log } from "../utils/log";
 import { db } from "../db";
 import { backgroundJobs } from "@shared/schema";
 import { eq, inArray } from "drizzle-orm";

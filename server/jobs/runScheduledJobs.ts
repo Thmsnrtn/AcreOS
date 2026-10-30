@@ -1,23 +1,15 @@
 /**
  * Scheduled-jobs registration — extracted from server/index.ts.
  *
- * Production runs the app process group with DISABLE_BACKGROUND_JOBS=1
- * (the gate that used to live around lines 1030-1735 of server/index.ts).
- * Before this extraction, the worker process (server/worker.ts) only
- * consumed outbox events, leaving ~70 start*Job calls dark — drip
- * campaigns, autonomous executor, onboarding sweeper, founder briefings,
- * churn engine, etc. all unscheduled in production. This module exports
- * `runScheduledJobs()` which both entrypoints can call (worker on every
- * deploy; app only when DISABLE_BACKGROUND_JOBS≠"1", e.g. single-machine
- * dev). Per-job locking via withJobLock keeps the cross-process behaviour
- * correct: whichever process acquires the Postgres-backed lock for a
- * given (jobName, ttl) tuple runs that tick.
- *
- * No behavioural change vs the inlined version — pure extraction. Each
- * job's comment block from the original index.ts is preserved verbatim.
+ * `runScheduledJobs()` is called from server/worker.ts (every deploy) and from
+ * server/index.ts only where jobPlacement.ts says the app runs the scheduler.
+ * Per-job locking via withJobLock keeps cross-process behaviour correct. The
+ * once-per-process guard lives in ./scheduledJobsBoot. Each job's comment block
+ * from the original index.ts is preserved verbatim.
  */
 
 import { db } from "../storage";
+import { claimScheduledJobsBoot, startJobLockJanitorJobs } from "./scheduledJobsBoot";
 import { sql, lt, eq } from "drizzle-orm";
 import { organizations, jobHealthLogs, agentEvents } from "@shared/schema";
 import { logger } from "../utils/logger";
@@ -3928,6 +3920,8 @@ function startBurnRateMonitorJob() {
 // comment so the "why this job exists" rationale stays inline.
 // ============================================================================
 export async function runScheduledJobs(): Promise<void> {
+  if (!claimScheduledJobsBoot()) return;
+  startJobLockJanitorJobs();
 
   // Start lead nurturing background job (every 15 minutes)
   startLeadNurturingJob();
