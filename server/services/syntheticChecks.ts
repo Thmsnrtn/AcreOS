@@ -23,7 +23,7 @@ import { db } from "../db";
 import { syntheticCheckRuns, stripeProcessedEvents } from "@shared/schema";
 import { desc } from "drizzle-orm";
 import { logger } from "../utils/logger";
-import { CLERK_FAPI_ORIGIN } from "../middleware/clerkProxy";
+import { probeSignInProxy } from "../middleware/clerkProxy";
 import { clock } from "../utils/clock";
 
 export type CheckStatus = "ok" | "degraded" | "failing";
@@ -101,19 +101,17 @@ async function checkStripeWebhookFreshness(): Promise<CheckResult> {
 }
 
 async function checkClerkProxyHealth(): Promise<CheckResult> {
-  const t = await timeIt(async () => {
-    // Ping clerk's environment endpoint to verify the proxy is alive.
-    // Same origin the proxy relays to (env-overridable) — single source of truth.
-    const upstream = `${CLERK_FAPI_ORIGIN}/v1/environment`;
-    const r = await fetch(upstream, { method: "GET" });
-    if (!r.ok) throw new Error(`clerk environment returned ${r.status}`);
-    return { ok: true };
-  });
+  // Through the app's own /__clerk proxy, as a browser reaches it — the
+  // backing FAPI answered 200 through the whole 2026-10-30 sign-in outage,
+  // because the defect was in what the proxy forwarded (probeSignInProxy).
+  const t = await timeIt(() => probeSignInProxy());
+  const p = t.result;
   return {
     checkKey: "clerk_proxy_health",
-    status: t.error ? "failing" : "ok",
+    status: t.error || !p || p.ok === false ? "failing" : p.ok === null ? "degraded" : "ok",
     latencyMs: t.latencyMs,
-    errorMessage: t.error,
+    errorMessage: t.error ?? (p && p.ok !== true ? p.detail : undefined),
+    metadata: p ? { status: p.status } : undefined,
   };
 }
 

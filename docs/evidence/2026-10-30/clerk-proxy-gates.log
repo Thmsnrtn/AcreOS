@@ -1,0 +1,42 @@
+# Prod sign-in outage — Clerk proxy fix: gates at the fix tree
+# base main 58d1a9b7b + the fix (this log is committed with it)
+# date 2026-10-30T18:48:03Z
+
+## verdicts (read from files with $?, never through a pipe)
+check=0
+build=0
+bundle=0
+dbbuild=0
+realdb=0
+check2=0
+vitest2=0
+(vitest=1 on the first full run: tests/unit/clerkProxyDoubleSend.test.ts pinned the defect — it asserted x-forwarded-host === the request host. Rewritten to the new truth (Clerk-Proxy-Url still follows the host; no x-forwarded-host is sent), not deleted. check2/vitest2 are the re-run at the final tree.)
+
+## bundle
+PASS: Bundle size OK (total JS: 9822 KB across 508 chunks)
+
+## db:build-from-repo — the ops-watch sign-in leg
+[stage2-on-built-schema] ok   ONE sign-in incident, opened on the second failed probe in a row (opened nothing / sign_in / nothing)
+[stage2-on-built-schema] ok   one good sign-in probe closed the incident
+[build-schema] PASS — the schema this repository describes is the schema it can build.
+
+## real-DB suites
+ Test Files  23 passed (23)
+      Tests  82 passed (82)
+
+## full vitest (final tree)
+ Test Files  1534 passed | 34 skipped (1568)
+      Tests  19217 passed | 159 skipped (19376)
+
+## mutants — tests/unit/clerkProxyForwardedHost.test.ts (fake FAPI 400s host_invalid on any forwarded-host claim but the frontend domain)
+clean: 7 passed (7)
+M1 fwdHeaders["x-forwarded-host"] = publicHost        -> CAUGHT, 4 failed | 3 passed
+M2 fwdHeaders["X-Forwarded-Host"] = publicHost        -> CAUGHT, 4 failed | 3 passed
+M3 fwdHeaders["forwarded"] = `host=${publicHost};…`   -> CAUGHT, 4 failed | 3 passed
+after revert: 7 passed (7)
+
+## staging BEFORE the fix (headless Chromium, https://acreos-staging.fly.dev/auth) — clerk-signin-staging-before.png
+form=false googleButtons=0 emailInputs=0; /__clerk responses: 200 clerk-js, 200 ui, 400 GET /v1/environment, 400 GET /v1/client
+
+## not verifiable from the session sandbox
+clerk.com (docs) and possible-emu-83.clerk.accounts.dev (header replay) are blocked by the environment network policy (gateway 403 to CONNECT). The staging deploy of this branch is the live proof.

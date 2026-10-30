@@ -377,13 +377,16 @@ async function main(): Promise<void> {
       await db.insert(jobHealthLogs).values({ jobName: "email_send", runStartedAt: new Date(now - m * 60_000), status: "failed", errorMessage: tag });
     }
     const { runOpsWatch } = await import("../../server/services/autopilot/opsWatch");
+    // Every pass names its sign-in probe: the default one GETs <APP_URL>/__clerk,
+    // which nothing answers here.
+    const signInUp = async () => ({ ok: true as const, detail: "stand-in: the sign-in proxy answered" });
     // the provider is still down: the probe fails, nothing closes, no second page
-    const w1 = await runOpsWatch({ stripeProbe: async () => true, emailProbe: async () => false });
-    const w2 = await runOpsWatch({ stripeProbe: async () => true, emailProbe: async () => false });
+    const w1 = await runOpsWatch({ signInProbe: signInUp, stripeProbe: async () => true, emailProbe: async () => false });
+    const w2 = await runOpsWatch({ signInProbe: signInUp, stripeProbe: async () => true, emailProbe: async () => false });
     const openEmail = await db.select().from(incidents).where(and(eq(incidents.title, "[ops] email_provider"), eq(incidents.status, "open")));
     check(w1.opened.includes("email_provider") && !w2.opened.includes("email_provider") && openEmail.length === 1, `ONE email incident across two passes (opened ${w1.opened.join(",")} then ${w2.opened.join(",") || "nothing"})`);
     // the provider answers again (no other email had to go out): the probe closes it
-    const w3 = await runOpsWatch({ stripeProbe: async () => true, emailProbe: async () => true });
+    const w3 = await runOpsWatch({ signInProbe: signInUp, stripeProbe: async () => true, emailProbe: async () => true });
     const closed = await db.select().from(incidents).where(eq(incidents.title, "[ops] email_provider"));
     check(w3.resolved.includes("email_provider") && closed.every((c) => c.status === "resolved"), "the provider answering the probe closed the incident (no send needed)");
     // the model provider: three ticks in a row of nothing but failed calls → ONE incident
@@ -392,14 +395,27 @@ async function main(): Promise<void> {
     for (const m of [100, 70, 40]) {
       for (let i = 0; i < 2; i++) await db.insert(agentLlmTraces).values({ agentCodename: tag, purpose: "deliberation", model: "x", userPrompt: tag, response: "", error: "500 stand-in failure", createdAt: new Date(Date.now() - m * 60_000) });
     }
-    const m1 = await runOpsWatch({ stripeProbe: async () => true, emailProbe: async () => true });
+    const m1 = await runOpsWatch({ signInProbe: signInUp, stripeProbe: async () => true, emailProbe: async () => true });
     check(m1.opened.includes("model_provider"), `three all-failed ticks of model calls opened the model incident (${JSON.stringify(m1.readings.find((r) => r.provider === "model_provider"))})`);
     await db.insert(agentLlmTraces).values({ agentCodename: tag, purpose: "deliberation", model: "x", userPrompt: tag, response: "ok" });
-    const m2 = await runOpsWatch({ stripeProbe: async () => true, emailProbe: async () => true });
+    const m2 = await runOpsWatch({ signInProbe: signInUp, stripeProbe: async () => true, emailProbe: async () => true });
     check(m2.resolved.includes("model_provider"), "one successful model call closed it");
     await db.delete(agentLlmTraces).where(eq(agentLlmTraces.agentCodename, tag));
+    // sign-in (the 2026-10-30 outage: nobody could sign in and nothing paged):
+    // one failed probe is a blip; the second in a row, a tick later, opens ONE
+    // incident; a third failing tick pages nothing more; one good probe closes it.
+    await db.delete(jobHealthLogs).where(eq(jobHealthLogs.jobName, "ops_probe:sign_in"));
+    const signInDown = async () => ({ ok: false as const, detail: "stand-in: /__clerk/v1/environment returned 400 host_invalid" });
+    const tick = (n: number) => new Date(Date.now() + n * 30 * 60_000);
+    const sig1 = await runOpsWatch({ now: tick(1), signInProbe: signInDown, stripeProbe: async () => true, emailProbe: async () => true });
+    const sig2 = await runOpsWatch({ now: tick(2), signInProbe: signInDown, stripeProbe: async () => true, emailProbe: async () => true });
+    const sig3 = await runOpsWatch({ now: tick(3), signInProbe: signInDown, stripeProbe: async () => true, emailProbe: async () => true });
+    const openSignIn = await db.select().from(incidents).where(and(eq(incidents.title, "[ops] sign_in"), eq(incidents.status, "open")));
+    check(!sig1.opened.includes("sign_in") && sig2.opened.includes("sign_in") && !sig3.opened.includes("sign_in") && openSignIn.length === 1, `ONE sign-in incident, opened on the second failed probe in a row (opened ${sig1.opened.join(",") || "nothing"} / ${sig2.opened.join(",") || "nothing"} / ${sig3.opened.join(",") || "nothing"})`);
+    const sig4 = await runOpsWatch({ now: tick(4), signInProbe: signInUp, stripeProbe: async () => true, emailProbe: async () => true });
+    check(sig4.resolved.includes("sign_in"), "one good sign-in probe closed the incident");
     await db.delete(incidents).where(like(incidents.title, "[ops] %"));
-    await db.delete(jobHealthLogs).where(inArray(jobHealthLogs.jobName, ["email_send", "ops_probe:stripe"]));
+    await db.delete(jobHealthLogs).where(inArray(jobHealthLogs.jobName, ["email_send", "ops_probe:stripe", "ops_probe:sign_in"]));
     if (t) {
       await db.delete(supportTicketMessages).where(eq(supportTicketMessages.ticketId, t.id));
       await db.delete(supportTickets).where(eq(supportTickets.id, t.id));
