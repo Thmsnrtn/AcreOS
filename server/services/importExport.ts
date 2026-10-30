@@ -9,7 +9,7 @@ import {
   readAllNotes,
   readAllProperties,
 } from "../storage/wholeBookReads";
-import { insertLeadSchema, insertPropertySchema, insertDealSchema, acquiredNotes, leads, activityLog } from "@shared/schema";
+import { insertLeadSchema, insertPropertySchema, insertDealSchema, leads, activityLog } from "@shared/schema";
 import { calculateMonthlyPayment } from "../storage/noteRepo";
 import { leadHasOptedOut } from "./leadContactability";
 import { and, eq, inArray, sql } from "drizzle-orm";
@@ -1538,10 +1538,14 @@ export async function importNotesFromCSV(
   };
 
   // Apply user's custom field map first, then fall back to the built-in NOTE_COLUMN_MAP
-  const effectiveMap: Record<string, string> = { ...NOTE_COLUMN_MAP };
+  // A null-prototype map, and no reserved key: `fieldMap` arrives from the request
+  // body, and a column named __proto__ / constructor must never address
+  // Object.prototype (CodeQL: remote property injection).
+  const effectiveMap: Record<string, string> = Object.assign(Object.create(null), NOTE_COLUMN_MAP);
   if (userFieldMap) {
     for (const [csvCol, acreosField] of Object.entries(userFieldMap)) {
-      if (acreosField) effectiveMap[csvCol] = acreosField;
+      if (!acreosField || typeof acreosField !== "string" || RESERVED_HEADER_NAMES.has(csvCol)) continue;
+      effectiveMap[csvCol] = acreosField;
     }
   }
 
