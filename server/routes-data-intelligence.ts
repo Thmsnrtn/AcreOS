@@ -61,6 +61,7 @@ import { assertFeeSimpleOrThrow, handleLandStatusError } from "./utils/landStatu
 import { Errors } from "./utils/errors";
 import type { AuthenticatedRequest } from "./types/request";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
@@ -76,7 +77,8 @@ router.get("/county-snapshot/:state/:county", async (req: Request, res: Response
     const { buildCountyOpportunityProfile, getCountyFips } = await import("./services/censusDataService");
     const { computeCountyOpportunityScore, generateCountyIntelligenceReport } = await import("./services/countyOpportunityScore");
     const { getPermitTrend } = await import("./services/openData/countyMarketSignals");
-    const { state, county } = req.params;
+    const state = routeParam(req.params.state);
+    const county = routeParam(req.params.county);
 
     // Ingested Census BPS annual data (county_building_permits) beats the
     // hardcoded placeholder — but only when both years actually exist.
@@ -160,7 +162,8 @@ router.get("/county-snapshot/:state/:county", async (req: Request, res: Response
 router.get("/land-value-trend/:state/:county", async (req: Request, res: Response) => {
   try {
     const { getCachedLandTrend } = await import("./services/usdaNassService");
-    const { state, county } = req.params;
+    const state = routeParam(req.params.state);
+    const county = routeParam(req.params.county);
     const trend = await getCachedLandTrend(state, county);
     res.json(trend);
   } catch (err: any) {
@@ -666,7 +669,8 @@ router.get("/state-land-rankings", async (req: Request, res: Response) => {
 router.get("/census-profile/:state/:county", async (req: Request, res: Response) => {
   try {
     const { buildCountyOpportunityProfile } = await import("./services/censusDataService");
-    const { state, county } = req.params;
+    const state = routeParam(req.params.state);
+    const county = routeParam(req.params.county);
     const metroMiles = req.query.metroMiles ? parseFloat(String(req.query.metroMiles)) : undefined;
     const profile = await buildCountyOpportunityProfile(state, county, metroMiles);
     res.json(profile);
@@ -720,7 +724,8 @@ router.get("/market-pulse", async (req: Request, res: Response) => {
 router.get("/market-pulse/:state/:county", async (req: Request, res: Response) => {
   try {
     const { generateCountyPulse, getWeeklyWisdom } = await import("./services/marketPulseEngine");
-    const { state, county } = req.params;
+    const state = routeParam(req.params.state);
+    const county = routeParam(req.params.county);
     const [snapshot, wisdom] = await Promise.all([
       generateCountyPulse(county, state),
       Promise.resolve(getWeeklyWisdom()),
@@ -836,7 +841,8 @@ router.post("/solar-potential", async (req: Request, res: Response) => {
 
 router.get("/county-disaster-history/:state/:county", async (req: Request, res: Response) => {
   try {
-    const { state, county } = req.params;
+    const state = routeParam(req.params.state);
+    const county = routeParam(req.params.county);
     const { getCountyDisasterHistory } = await import("./services/censusDataService");
     const result = await getCountyDisasterHistory(state, county);
     if (!result) return Errors.notFound(res, "disaster data");
@@ -853,7 +859,8 @@ router.get("/county-disaster-history/:state/:county", async (req: Request, res: 
 
 router.get("/county-migration-flows/:stateFips/:countyFips", async (req: Request, res: Response) => {
   try {
-    const { stateFips, countyFips } = req.params;
+    const stateFips = routeParam(req.params.stateFips);
+    const countyFips = routeParam(req.params.countyFips);
     const { getCountyMigrationFlows } = await import("./services/censusDataService");
     const result = await getCountyMigrationFlows(stateFips, countyFips);
     if (!result) return Errors.notFound(res, "migration flow data");
@@ -880,7 +887,8 @@ router.get("/county-migration-flows/:stateFips/:countyFips", async (req: Request
 router.get("/county-momentum/:state/:county", async (req: Request, res: Response) => {
   try {
     const { getCountyMomentum } = await import("./services/openData/countyMarketSignals");
-    const { state, county } = req.params;
+    const state = routeParam(req.params.state);
+    const county = routeParam(req.params.county);
 
     let stateFips: string;
     let countyFips: string;
@@ -925,8 +933,8 @@ router.get("/county-momentum/:state/:county", async (req: Request, res: Response
 
 router.get("/corroboration/:lat/:lng", async (req: Request, res: Response) => {
   try {
-    const lat = parseFloat(String(req.params.lat));
-    const lng = parseFloat(String(req.params.lng));
+    const lat = parseFloat(String(routeParam(req.params.lat)));
+    const lng = parseFloat(String(routeParam(req.params.lng)));
     if (!Number.isFinite(lat) || lat < -90 || lat > 90 || !Number.isFinite(lng) || lng < -180 || lng > 180) {
       return Errors.badRequest(res, "lat and lng path segments must be valid WGS84 coordinates");
     }
@@ -1103,7 +1111,7 @@ router.get("/data-freshness/:propertyId", async (req: Request, res: Response) =>
   try {
     const { storage } = await import("./storage");
     const org = req.organization;
-    const propertyId = parseInt(req.params.propertyId);
+    const propertyId = parseInt(routeParam(req.params.propertyId));
     const property = await storage.getProperty(org.id, propertyId);
     if (!property) return Errors.notFound(res, "Property");
     const { assessDataFreshness } = await import("./services/dataIntelligenceEngine");
@@ -1199,7 +1207,7 @@ router.get("/prospect/:leadId", async (req: Request, res: Response) => {
     const { calculateMotivationScore, getOutreachRecommendation, getEnrichmentPipeline } = await import("./services/prospectIntelligence");
     const { storage } = await import("./storage");
     const org = req.organization;
-    const leadId = parseInt(req.params.leadId);
+    const leadId = parseInt(routeParam(req.params.leadId));
     const lead = await storage.getLead(org.id, leadId);
     if (!lead) return Errors.notFound(res, "Lead");
 

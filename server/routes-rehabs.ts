@@ -35,6 +35,7 @@ import { Errors } from "./utils/errors";
 import { emitRehabStatusChange } from "./services/rehabEvents";
 import { logger } from "./utils/logger";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 // ----------------------------------------------------------------------------
 // Scope templates — a STARTING SCOPE, not an estimate.
@@ -236,7 +237,7 @@ export function registerRehabRoutes(app: Express): void {
       const [r] = await db
         .select()
         .from(rehabs)
-        .where(and(eq(rehabs.id, req.params.id), eq(rehabs.organizationId, orgId)));
+        .where(and(eq(rehabs.id, routeParam(req.params.id)), eq(rehabs.organizationId, orgId)));
       if (!r) return Errors.notFound(res, "Rehab");
 
       const items = await db
@@ -359,11 +360,11 @@ export function registerRehabRoutes(app: Express): void {
         const [prev] = await db
           .select({ status: rehabs.status })
           .from(rehabs)
-          .where(and(eq(rehabs.id, req.params.id), eq(rehabs.organizationId, orgId)));
+          .where(and(eq(rehabs.id, routeParam(req.params.id)), eq(rehabs.organizationId, orgId)));
         beforeStatus = prev?.status ?? null;
       }
       const [updated] = await db.update(rehabs).set(updates)
-        .where(and(eq(rehabs.id, req.params.id), eq(rehabs.organizationId, orgId)))
+        .where(and(eq(rehabs.id, routeParam(req.params.id)), eq(rehabs.organizationId, orgId)))
         .returning();
       if (!updated) return Errors.notFound(res, "Rehab");
       // Fire the flip lifecycle workflow on a real status transition
@@ -382,7 +383,7 @@ export function registerRehabRoutes(app: Express): void {
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
       const [r] = await db.select({ id: rehabs.id }).from(rehabs)
-        .where(and(eq(rehabs.id, req.params.id), eq(rehabs.organizationId, orgId)));
+        .where(and(eq(rehabs.id, routeParam(req.params.id)), eq(rehabs.organizationId, orgId)));
       if (!r) return Errors.notFound(res, "Rehab");
 
       const [maxRow] = await db.execute(sql`SELECT COALESCE(MAX(sequence), -1) AS m FROM rehab_line_items WHERE rehab_id = ${r.id}`).then((res: any) => res.rows ?? []);
@@ -424,7 +425,7 @@ export function registerRehabRoutes(app: Express): void {
         if (parsed.data[k] !== undefined) updates[k] = parsed.data[k];
       }
       const [updated] = await db.update(rehabLineItems).set(updates)
-        .where(and(eq(rehabLineItems.id, req.params.id), eq(rehabLineItems.organizationId, orgId)))
+        .where(and(eq(rehabLineItems.id, routeParam(req.params.id)), eq(rehabLineItems.organizationId, orgId)))
         .returning();
       if (!updated) return Errors.notFound(res, "Line item");
       await recomputeRehabSpend(orgId, updated.rehabId as string);
@@ -438,7 +439,7 @@ export function registerRehabRoutes(app: Express): void {
     try {
       const orgId = getOrganizationId(req);
       const [deleted] = await db.delete(rehabLineItems)
-        .where(and(eq(rehabLineItems.id, req.params.id), eq(rehabLineItems.organizationId, orgId)))
+        .where(and(eq(rehabLineItems.id, routeParam(req.params.id)), eq(rehabLineItems.organizationId, orgId)))
         .returning();
       if (!deleted) return Errors.notFound(res, "Line item");
       await recomputeRehabSpend(orgId, deleted.rehabId as string);
@@ -546,7 +547,7 @@ export function registerRehabRoutes(app: Express): void {
       if (!tpl) return Errors.badRequest(res, `Unknown template ${parsed.data.templateKey}`);
 
       const [r] = await db.select({ id: rehabs.id }).from(rehabs)
-        .where(and(eq(rehabs.id, req.params.id), eq(rehabs.organizationId, orgId)));
+        .where(and(eq(rehabs.id, routeParam(req.params.id)), eq(rehabs.organizationId, orgId)));
       if (!r) return Errors.notFound(res, "Rehab");
 
       if (parsed.data.replaceExisting) {

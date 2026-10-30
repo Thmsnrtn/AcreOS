@@ -23,6 +23,7 @@ import { Router, type Request, type Response } from "express";
 import { Errors } from "./utils/errors";
 import { clock } from "./utils/clock";
 import { requireLadderFlag } from "./middleware/featureGate";
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
@@ -48,7 +49,7 @@ router.get("/seller-motivation/:leadId", async (req: Request, res: Response) => 
     const [lead] = await db
       .select()
       .from(leads)
-      .where(and(eq(leads.id, parseInt(req.params.leadId)), eq(leads.organizationId, org.id)))
+      .where(and(eq(leads.id, parseInt(routeParam(req.params.leadId))), eq(leads.organizationId, org.id)))
       .limit(1);
 
     if (!lead) return Errors.notFound(res, "Lead");
@@ -157,7 +158,8 @@ router.get("/county-opportunity/:state/:county", async (req: Request, res: Respo
     const { eq, and } = await import("drizzle-orm");
     const { getCountyFips } = await import("./services/censusDataService");
     const { getPermitTrend } = await import("./services/openData/countyMarketSignals");
-    const { state, county } = req.params;
+    const state = routeParam(req.params.state);
+    const county = routeParam(req.params.county);
 
     // Fetch county market data
     const [marketData] = await db
@@ -294,7 +296,7 @@ router.get("/closing-checklist/:dealId", async (req: Request, res: Response) => 
     const [deal] = await db
       .select()
       .from(deals)
-      .where(and(eq(deals.id, parseInt(req.params.dealId)), eq(deals.organizationId, org.id)))
+      .where(and(eq(deals.id, parseInt(routeParam(req.params.dealId))), eq(deals.organizationId, org.id)))
       .limit(1);
 
     if (!deal) return Errors.notFound(res, "Deal");
@@ -371,7 +373,7 @@ router.get("/financial/tax-report/:year", async (req: Request, res: Response) =>
   try {
     const { generateTaxReport } = await import("./services/financialOSService");
     const org = req.organization;
-    const year = parseInt(req.params.year) || clock.now().getFullYear() - 1;
+    const year = parseInt(routeParam(req.params.year)) || clock.now().getFullYear() - 1;
     const report = await generateTaxReport(org.id, year);
     res.json(report);
   } catch (err: any) {

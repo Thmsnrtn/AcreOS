@@ -52,6 +52,7 @@ import { publishDealLifecycle } from "./services/dealLifecycleEvents";
 // status genuinely transitions — see services/wholesaleEvents.ts.
 import { emitContractSigned, emitAssignmentPending, type ContractSignedEvidence } from "./services/wholesaleEvents";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 /**
  * The evidence that a deal's purchase agreement was signed: a signed document
@@ -260,7 +261,7 @@ export function registerDealRoutes(app: Express): void {
   api.get("/api/deals/:id/track", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const dealId = Number(req.params.id);
+      const dealId = Number(routeParam(req.params.id));
       if (!Number.isFinite(dealId)) return Errors.badRequest(res, "Invalid deal id");
       const deal = await storage.getDeal(org.id, dealId);
       if (!deal) return Errors.notFound(res, "Deal");
@@ -348,7 +349,7 @@ export function registerDealRoutes(app: Express): void {
         return Errors.notFound(res, "CMA");
       }
 
-      const dealId = Number(req.params.id);
+      const dealId = Number(routeParam(req.params.id));
       if (!Number.isFinite(dealId)) return Errors.badRequest(res, "Invalid deal id");
 
       const deal = await storage.getDeal(orgId, dealId);
@@ -487,7 +488,7 @@ export function registerDealRoutes(app: Express): void {
   api.get("/api/deals/:id/assignments", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const dealId = Number(req.params.id);
+      const dealId = Number(routeParam(req.params.id));
       const deal = await storage.getDeal(org.id, dealId);
       if (!deal) return Errors.notFound(res, "Deal");
       const rows = await db
@@ -503,7 +504,7 @@ export function registerDealRoutes(app: Express): void {
   api.post("/api/deals/:id/assignments", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const dealId = Number(req.params.id);
+      const dealId = Number(routeParam(req.params.id));
       const deal = await storage.getDeal(org.id, dealId);
       if (!deal) return Errors.notFound(res, "Deal");
 
@@ -552,7 +553,7 @@ export function registerDealRoutes(app: Express): void {
   api.patch("/api/deals/:dealId/assignments/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = Number(req.params.id);
+      const id = Number(routeParam(req.params.id));
       const updateSchema = z.object({
         status: z.enum(CONTRACT_ASSIGNMENT_STATUSES).optional(),
         assignmentFeeCents: z.number().int().nonnegative().optional(),
@@ -620,7 +621,7 @@ export function registerDealRoutes(app: Express): void {
 
   api.get("/api/deals/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
-    const deal = await storage.getDeal(org.id, Number(req.params.id));
+    const deal = await storage.getDeal(org.id, Number(routeParam(req.params.id)));
     if (!deal) return Errors.notFound(res, "Deal");
     res.json(deal);
   });
@@ -741,7 +742,7 @@ export function registerDealRoutes(app: Express): void {
   api.put("/api/deals/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const dealId = Number(req.params.id);
+      const dealId = Number(routeParam(req.params.id));
       const existingDeal = await storage.getDeal(org.id, dealId);
       if (!existingDeal) return Errors.notFound(res, "Deal");
 
@@ -1227,7 +1228,7 @@ export function registerDealRoutes(app: Express): void {
   api.post("/api/deals/:id/enrich", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const dealId = Number(req.params.id);
+      const dealId = Number(routeParam(req.params.id));
       const parsed = enrichDealSchema.safeParse(req.body);
       if (!parsed.success) {
         return Errors.validationFailed(res, parsed.error.issues);
@@ -1306,7 +1307,7 @@ export function registerDealRoutes(app: Express): void {
         enrichmentResult,
       });
     } catch (err) {
-      logger.error("Manual deal enrichment failed", { dealId: req.params.id, error: String(err) });
+      logger.error("Manual deal enrichment failed", { dealId: routeParam(req.params.id), error: String(err) });
       Errors.internal(res, err instanceof Error ? err : new Error("Enrichment failed"));
     }
   });
@@ -1327,7 +1328,7 @@ export function registerDealRoutes(app: Express): void {
   
   api.get("/api/due-diligence/templates/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
-    const template = await storage.getDueDiligenceTemplate(org.id, Number(req.params.id));
+    const template = await storage.getDueDiligenceTemplate(org.id, Number(routeParam(req.params.id)));
     // 2026-06-10 (T0-2): the F-D39 org check landed on PUT/DELETE but this GET
     // was missed — cross-tenant read IDOR. 404 (not 403) so we never confirm
     // another org's template exists.
@@ -1386,7 +1387,7 @@ export function registerDealRoutes(app: Express): void {
       return Errors.validationFailed(res, parsed.error.issues);
     }
     // F-D39: refuse to mutate another org's template.
-    const existing = await storage.getDueDiligenceTemplate(org.id, Number(req.params.id));
+    const existing = await storage.getDueDiligenceTemplate(org.id, Number(routeParam(req.params.id)));
     if (!existing || existing.organizationId !== org.id) return Errors.notFound(res, "Template");
     // Map loose request items into the persisted DueDiligenceChecklistItem shape.
     const updates: Partial<{ name: string; items: DueDiligenceChecklistItem[]; isDefault: boolean }> = {};
@@ -1400,7 +1401,7 @@ export function registerDealRoutes(app: Express): void {
         required: item.priority === "required" || item.priority === "high",
       }));
     }
-    const template = await storage.updateDueDiligenceTemplate(org.id, Number(req.params.id), updates);
+    const template = await storage.updateDueDiligenceTemplate(org.id, Number(routeParam(req.params.id)), updates);
     if (!template) return Errors.notFound(res, "Template");
     res.json(template);
   });
@@ -1408,15 +1409,15 @@ export function registerDealRoutes(app: Express): void {
   api.delete("/api/due-diligence/templates/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
     // F-D39: refuse to delete another org's template.
-    const existing = await storage.getDueDiligenceTemplate(org.id, Number(req.params.id));
+    const existing = await storage.getDueDiligenceTemplate(org.id, Number(routeParam(req.params.id)));
     if (!existing || existing.organizationId !== org.id) return Errors.notFound(res, "Template");
-    await storage.deleteDueDiligenceTemplate(org.id, Number(req.params.id));
+    await storage.deleteDueDiligenceTemplate(org.id, Number(routeParam(req.params.id)));
     res.status(204).send();
   });
 
   api.get("/api/properties/:id/due-diligence", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
-    const propertyId = Number(req.params.id);
+    const propertyId = Number(routeParam(req.params.id));
     // F-D39: refuse to list another org's checklist.
     const property = await storage.getProperty(org.id, propertyId);
     if (!property) return Errors.notFound(res, "Property");
@@ -1436,7 +1437,7 @@ export function registerDealRoutes(app: Express): void {
         return Errors.validationFailed(res, parsed.error.issues);
       }
       const { templateId } = parsed.data;
-      const propertyId = Number(req.params.id);
+      const propertyId = Number(routeParam(req.params.id));
       // F-D39: both the property AND the template must belong to this org. Either
       // mismatch hides as 404 to avoid leaking which side was the cross-tenant ref.
       const property = await storage.getProperty(org.id, propertyId);
@@ -1463,7 +1464,7 @@ export function registerDealRoutes(app: Express): void {
   api.post("/api/properties/:id/due-diligence", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const propertyId = Number(req.params.id);
+      const propertyId = Number(routeParam(req.params.id));
       const parsed = createDueDiligenceItemSchema.safeParse(req.body);
       if (!parsed.success) {
         return Errors.validationFailed(res, parsed.error.issues);
@@ -1505,9 +1506,9 @@ export function registerDealRoutes(app: Express): void {
       updates.completedBy = userId;
     }
     // F-D39: org-scoped via parent property.
-    const existing = await getDueDiligenceItemOrgScoped(Number(req.params.id), org.id);
+    const existing = await getDueDiligenceItemOrgScoped(Number(routeParam(req.params.id)), org.id);
     if (!existing) return Errors.notFound(res, "Item");
-    const item = await storage.updateDueDiligenceItem(org.id, Number(req.params.id), updates);
+    const item = await storage.updateDueDiligenceItem(org.id, Number(routeParam(req.params.id)), updates);
     if (!item) return Errors.notFound(res, "Item");
     res.json(item);
   });
@@ -1515,9 +1516,9 @@ export function registerDealRoutes(app: Express): void {
   api.delete("/api/due-diligence/items/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
     // F-D39: org-scoped via parent property.
-    const existing = await getDueDiligenceItemOrgScoped(Number(req.params.id), org.id);
+    const existing = await getDueDiligenceItemOrgScoped(Number(routeParam(req.params.id)), org.id);
     if (!existing) return Errors.notFound(res, "Item");
-    await storage.deleteDueDiligenceItem(org.id, Number(req.params.id));
+    await storage.deleteDueDiligenceItem(org.id, Number(routeParam(req.params.id)));
     res.status(204).send();
   });
 
@@ -1529,7 +1530,7 @@ export function registerDealRoutes(app: Express): void {
     let paxCharge: import('./services/paxTurnFunding').PaxTurnCharge | null = null;
     try {
       const org = req.organization;
-      const propertyId = Number(req.params.id);
+      const propertyId = Number(routeParam(req.params.id));
       const analyzeSchema = z.object({
         message: z.string().min(1, "Message is required").max(10000),
         conversationHistory: z.array(z.object({
@@ -1711,7 +1712,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
   api.get("/api/due-diligence/:propertyId", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const propertyId = Number(req.params.propertyId);
+      const propertyId = Number(routeParam(req.params.propertyId));
       if (!Number.isSafeInteger(propertyId) || propertyId <= 0) {
         return Errors.badRequest(res, "propertyId must be a positive integer");
       }
@@ -1731,7 +1732,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
   api.put("/api/due-diligence/:propertyId", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const propertyId = Number(req.params.propertyId);
+      const propertyId = Number(routeParam(req.params.propertyId));
       if (!Number.isSafeInteger(propertyId) || propertyId <= 0) return Errors.badRequest(res, "propertyId must be a positive integer");
       // F-D39: verify property ownership before touching its checklist. Previously
       // getDueDiligenceChecklist(propertyId) returned any org's checklist as long
@@ -1758,7 +1759,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
   api.post("/api/due-diligence/:propertyId/lookup/flood-zone", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const propertyId = Number(req.params.propertyId);
+      const propertyId = Number(routeParam(req.params.propertyId));
       
       const property = await storage.getProperty(org.id, propertyId);
       if (!property) {
@@ -1792,7 +1793,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
   api.post("/api/due-diligence/:propertyId/lookup/wetlands", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const propertyId = Number(req.params.propertyId);
+      const propertyId = Number(routeParam(req.params.propertyId));
       
       const property = await storage.getProperty(org.id, propertyId);
       if (!property) {
@@ -1828,7 +1829,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
   api.post("/api/due-diligence/:propertyId/lookup/soil", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const propertyId = Number(req.params.propertyId);
+      const propertyId = Number(routeParam(req.params.propertyId));
       
       const property = await storage.getProperty(org.id, propertyId);
       if (!property) {
@@ -1864,7 +1865,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
   api.post("/api/due-diligence/:propertyId/lookup/environmental", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const propertyId = Number(req.params.propertyId);
+      const propertyId = Number(routeParam(req.params.propertyId));
       
       const property = await storage.getProperty(org.id, propertyId);
       if (!property) {
@@ -1910,7 +1911,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
     async (req: AuthenticatedRequest, res) => {
       try {
         const orgId = getOrganizationId(req);
-        const propertyId = Number(req.params.propertyId);
+        const propertyId = Number(routeParam(req.params.propertyId));
         if (!Number.isInteger(propertyId) || propertyId <= 0) {
           return Errors.badRequest(res, "Invalid property id");
         }
@@ -1973,7 +1974,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
   api.post("/api/due-diligence/:propertyId/lookup/tax", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const propertyId = Number(req.params.propertyId);
+      const propertyId = Number(routeParam(req.params.propertyId));
 
       const property = await storage.getProperty(org.id, propertyId);
       if (!property) {
@@ -2117,7 +2118,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
   api.get("/api/properties/:id/report", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const propertyId = Number(req.params.id);
+      const propertyId = Number(routeParam(req.params.id));
       const includeComps = req.query.comps === "true";
       const includeAI = req.query.ai === "true";
       
@@ -2143,7 +2144,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
   api.get("/api/properties/:id/report/pdf", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const propertyId = Number(req.params.id);
+      const propertyId = Number(routeParam(req.params.id));
       const includeComps = req.query.comps === "true";
       const includeAI = req.query.ai === "true";
       
@@ -2354,7 +2355,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
   api.get("/api/properties/:id/report/summary", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const propertyId = Number(req.params.id);
+      const propertyId = Number(routeParam(req.params.id));
       
       const { getQuickPropertySummary } = await import("./services/dueDiligence");
       const summary = await getQuickPropertySummary(org.id, propertyId);
@@ -2386,7 +2387,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
   
   api.get("/api/checklist-templates/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
-    const template = await storage.getChecklistTemplate(org.id, Number(req.params.id));
+    const template = await storage.getChecklistTemplate(org.id, Number(routeParam(req.params.id)));
     // 2026-06-10 (T0-2): same GET/PUT asymmetry as DD templates — the F-D39
     // org check covered PUT/DELETE but missed GET. 404 hides existence.
     if (!template || template.organizationId !== org.id) return Errors.notFound(res, "Template");
@@ -2412,9 +2413,9 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
   api.put("/api/checklist-templates/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
     // F-D39: refuse to mutate another org's checklist template.
-    const existing = await storage.getChecklistTemplate(org.id, Number(req.params.id));
+    const existing = await storage.getChecklistTemplate(org.id, Number(routeParam(req.params.id)));
     if (!existing || existing.organizationId !== org.id) return Errors.notFound(res, "Template");
-    const template = await storage.updateChecklistTemplate(org.id, Number(req.params.id), req.body);
+    const template = await storage.updateChecklistTemplate(org.id, Number(routeParam(req.params.id)), req.body);
     if (!template) return Errors.notFound(res, "Template");
     res.json(template);
   });
@@ -2422,9 +2423,9 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
   api.delete("/api/checklist-templates/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
     // F-D39: refuse to delete another org's checklist template.
-    const existing = await storage.getChecklistTemplate(org.id, Number(req.params.id));
+    const existing = await storage.getChecklistTemplate(org.id, Number(routeParam(req.params.id)));
     if (!existing || existing.organizationId !== org.id) return Errors.notFound(res, "Template");
-    await storage.deleteChecklistTemplate(org.id, Number(req.params.id));
+    await storage.deleteChecklistTemplate(org.id, Number(routeParam(req.params.id)));
     res.status(204).send();
   });
   
@@ -2434,7 +2435,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
   
   api.get("/api/deals/:id/checklist", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
-    const dealId = Number(req.params.id);
+    const dealId = Number(routeParam(req.params.id));
     // Task #2: Verify deal belongs to org before returning checklist (IDOR prevention)
     const deal = await storage.getDeal(org.id, dealId);
     if (!deal) return Errors.notFound(res, "Deal");
@@ -2456,7 +2457,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
   api.post("/api/deals/:id/checklist", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const dealId = Number(req.params.id);
+      const dealId = Number(routeParam(req.params.id));
       // Task #2: Verify deal belongs to org (IDOR prevention)
       const deal = await storage.getDeal(org.id, dealId);
       if (!deal) return Errors.notFound(res, "Deal");
@@ -2474,7 +2475,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
   api.patch("/api/deals/:id/checklist/items/:itemId", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const dealId = Number(req.params.id);
+      const dealId = Number(routeParam(req.params.id));
       // Task #2: Verify deal belongs to org (IDOR prevention)
       const deal = await storage.getDeal(org.id, dealId);
       if (!deal) return Errors.notFound(res, "Deal");
@@ -2486,7 +2487,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       // the wire interlock needs its evidence here too (DEFECT-0176).
       let sealed: ReturnType<typeof sealWireAttestation> = null;
       const current = checked !== undefined ? await storage.getDealChecklist(org.id, dealId) : undefined;
-      const item = current?.items.find((i) => i.id === req.params.itemId);
+      const item = current?.items.find((i) => i.id === routeParam(req.params.itemId));
       const isWire = item?.category === "fraud_gate";
       if (checked) {
         const refusal = item ? await fraudGateRefusal(org.id, dealId, item, verification) : null;
@@ -2497,7 +2498,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       const checklist = await storage.updateDealChecklistItem(
         org.id,
         dealId,
-        req.params.itemId,
+        routeParam(req.params.itemId),
         { checked, documentUrl, checkedBy: userId, verification: sealed ?? undefined }
       );
       // Title orders change only after the checklist write landed.
@@ -2511,7 +2512,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
   
   api.get("/api/deals/:id/stage-gate", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
-    const dealId = Number(req.params.id);
+    const dealId = Number(routeParam(req.params.id));
     // Task #2: Verify deal belongs to org (IDOR prevention)
     const deal = await storage.getDeal(org.id, dealId);
     if (!deal) return Errors.notFound(res, "Deal");
@@ -2525,7 +2526,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
   api.get("/api/deals/:id/report", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const dealId = Number(req.params.id);
+      const dealId = Number(routeParam(req.params.id));
       const includeComps = req.query.comps === "true";
       const includeAI = req.query.ai === "true";
       
@@ -2561,7 +2562,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
   api.patch("/api/deals/:id/stage", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { stage, force } = req.body;
-      const dealId = Number(req.params.id);
+      const dealId = Number(routeParam(req.params.id));
       const org = req.organization;
 
       const existingDeal = await storage.getDeal(org.id, dealId);
@@ -2668,7 +2669,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
   api.post("/api/deals/:id/offer-letter-pdf", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const deal = await storage.getDeal(org.id, Number(req.params.id));
+      const deal = await storage.getDeal(org.id, Number(routeParam(req.params.id)));
       if (!deal) return Errors.notFound(res, "Deal");
 
       // The deals table has no apn/propertyAddress — those live on the
@@ -2789,7 +2790,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
   // GET /api/deals/:dealId/handoffs — handoffs for a specific deal
   app.get("/api/deals/:dealId/handoffs", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const handoffs = await getHandoffsForDeal(req.organization.id, parseInt(req.params.dealId));
+      const handoffs = await getHandoffsForDeal(req.organization.id, parseInt(routeParam(req.params.dealId)));
       res.json(handoffs);
     } catch (err: any) {
       Errors.internal(res, err instanceof Error ? err : new Error(err.message));
@@ -2804,7 +2805,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
         return Errors.badRequest(res, "fromTeamMemberId, toTeamMemberId, fromRole, and toRole are required");
       }
       const handoff = await initiateHandoff(req.organization.id, {
-        dealId: parseInt(req.params.dealId),
+        dealId: parseInt(routeParam(req.params.dealId)),
         fromTeamMemberId,
         toTeamMemberId,
         fromRole,
@@ -2824,8 +2825,8 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       const { completed } = req.body;
       const handoff = await updateHandoffChecklist(
         req.organization.id,
-        req.params.handoffId,
-        req.params.itemId,
+        routeParam(req.params.handoffId),
+        routeParam(req.params.itemId),
         !!completed
       );
       res.json(handoff);
@@ -2837,7 +2838,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
   // POST /api/deals/handoffs/:handoffId/complete — complete the handoff
   app.post("/api/deals/handoffs/:handoffId/complete", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const handoff = await completeHandoff(req.organization.id, req.params.handoffId);
+      const handoff = await completeHandoff(req.organization.id, routeParam(req.params.handoffId));
       res.json(handoff);
     } catch (err: any) {
       Errors.badRequest(res, err.message);
@@ -2850,7 +2851,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
   app.post("/api/deals/:id/advance-stage", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res) => {
     try {
       const orgId = getOrganizationId(req);
-      const dealId = Number(req.params.id);
+      const dealId = Number(routeParam(req.params.id));
       if (isNaN(dealId)) return Errors.badRequest(res, "Invalid deal ID");
 
       const existingDeal = await storage.getDeal(orgId, dealId);
@@ -2912,7 +2913,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
   api.get("/api/deals/:id/dual-agency", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res) => {
     try {
       const orgId = getOrganizationId(req);
-      const dealId = parseInt(req.params.id, 10);
+      const dealId = parseInt(routeParam(req.params.id), 10);
       if (!Number.isInteger(dealId)) return Errors.badRequest(res, "Invalid deal id");
       const deal = await storage.getDeal(orgId, dealId);
       if (!deal) return Errors.notFound(res, "Deal");
@@ -2944,7 +2945,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
   api.put("/api/deals/:id/dual-agency", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res) => {
     try {
       const orgId = getOrganizationId(req);
-      const dealId = parseInt(req.params.id, 10);
+      const dealId = parseInt(routeParam(req.params.id), 10);
       if (!Number.isInteger(dealId)) return Errors.badRequest(res, "Invalid deal id");
       const parsed = dualAgencySchema.safeParse(req.body);
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);

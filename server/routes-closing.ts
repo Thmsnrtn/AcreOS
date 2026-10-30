@@ -14,6 +14,7 @@ import { dealChecklists } from "@shared/schema";
 import { eq, and, sql } from "drizzle-orm";
 import crypto from "crypto";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 export function registerClosingRoutes(app: Express): void {
 
@@ -21,7 +22,7 @@ export function registerClosingRoutes(app: Express): void {
   app.post("/api/deals/:id/closing-checklist", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const dealId = Number(req.params.id);
+      const dealId = Number(routeParam(req.params.id));
       const deal = await storage.getDeal(org.id, dealId);
       if (!deal) return Errors.notFound(res, "Deal");
 
@@ -56,7 +57,7 @@ export function registerClosingRoutes(app: Express): void {
   app.get("/api/deals/:id/closing-checklist", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const dealId = Number(req.params.id);
+      const dealId = Number(routeParam(req.params.id));
       const deal = await storage.getDeal(org.id, dealId);
       if (!deal) return Errors.notFound(res, "Deal");
 
@@ -82,8 +83,8 @@ export function registerClosingRoutes(app: Express): void {
   app.patch("/api/deals/:id/closing-checklist/:itemId", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const dealId = Number(req.params.id);
-      const itemId = req.params.itemId;
+      const dealId = Number(routeParam(req.params.id));
+      const itemId = routeParam(req.params.itemId);
       const { completed, note, verification } = req.body;
 
       const deal = await storage.getDeal(org.id, dealId);
@@ -138,7 +139,7 @@ export function registerClosingRoutes(app: Express): void {
   app.post("/api/deals/:id/closing-package", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const dealId = Number(req.params.id);
+      const dealId = Number(routeParam(req.params.id));
       const deal = await storage.getDeal(org.id, dealId);
       if (!deal) return Errors.notFound(res, "Deal");
 
@@ -209,7 +210,7 @@ export function registerClosingRoutes(app: Express): void {
   app.post("/api/deals/:id/share", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const dealId = Number(req.params.id);
+      const dealId = Number(routeParam(req.params.id));
       const deal = await storage.getDeal(org.id, dealId);
       if (!deal) return Errors.notFound(res, "Deal");
 
@@ -239,7 +240,7 @@ export function registerClosingRoutes(app: Express): void {
   // Public shared deal view (no auth required)
   app.get("/api/shared/deal/:token", async (req, res) => {
     try {
-      const { token } = req.params;
+      const token = routeParam(req.params.token);
 
       const result = await db.execute(sql`
         SELECT * FROM shared_deal_links

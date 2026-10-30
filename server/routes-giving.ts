@@ -30,6 +30,7 @@ import {
   setMemberGivingArea,
   upsertFoodBank,
 } from "./services/trust/givingService";
+import { routeParam } from "./utils/routeParams";
 
 const stateCode = z.string().trim().regex(/^[A-Za-z]{2}$/, "Two-letter state code");
 
@@ -73,7 +74,7 @@ export function registerGivingRoutes(app: Express): void {
   });
 
   app.post("/api/founder/giving/months/:id/approve", isAuthenticated, requireFounder, async (req: AuthenticatedRequest, res: Response) => {
-    const id = Number(req.params.id);
+    const id = Number(routeParam(req.params.id));
     if (!Number.isInteger(id)) return Errors.badRequest(res, "Invalid month id");
     const parsed = z.object({ amountCents: z.number().int() }).strict().safeParse(req.body);
     if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
@@ -93,7 +94,7 @@ export function registerGivingRoutes(app: Express): void {
   });
 
   app.post("/api/founder/giving/months/:id/decline", isAuthenticated, requireFounder, async (req: AuthenticatedRequest, res: Response) => {
-    const id = Number(req.params.id);
+    const id = Number(routeParam(req.params.id));
     if (!Number.isInteger(id)) return Errors.badRequest(res, "Invalid month id");
     try {
       if (!(await declineGivingMonth(id, getUserId(req)))) return Errors.badRequest(res, "That month is not awaiting a decision.");

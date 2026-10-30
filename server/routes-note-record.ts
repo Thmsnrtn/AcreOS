@@ -16,6 +16,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { requireRole } from "./middleware/roleGuard";
 import { getOrganizationId, type AuthenticatedRequest } from "./types/request";
 import { Errors } from "./utils/errors";
+import { routeParam } from "./utils/routeParams";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -23,7 +24,7 @@ export function registerNoteRecordRoutes(app: Express): void {
   app.get("/api/notes/:id/record", isAuthenticated, getOrCreateOrg, requireRole(["owner", "admin"]), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const organizationId = getOrganizationId(req);
-      const id = String(req.params.id);
+      const id = String(routeParam(req.params.id));
       // Not a uuid → not an acquired note; same answer as "not yours".
       if (!UUID.test(id)) return Errors.notFound(res, "Note");
       const { buildNoteRecord } = await import("./services/notes/noteRecord");

@@ -78,6 +78,7 @@ import "./services/founder-chat/tools";
 import { clock } from "./utils/clock";
 
 import { meteredChatCompletion } from "./services/aiSpendGuard";
+import { routeParam } from "./utils/routeParams";
 // Phase D — the chat client sends a structured pageContext (currentPath
 // plus already-resolved entity hints from useFounderChat/use-page-context).
 // All fields optional; the server's buildFounderToolContext re-derives
@@ -194,7 +195,7 @@ router.post("/threads", async (req: AuthenticatedRequest, res) => {
 
 router.get("/threads/:id/messages", async (req: AuthenticatedRequest, res) => {
   try {
-    const threadId = Number(req.params.id);
+    const threadId = Number(routeParam(req.params.id));
     if (!Number.isFinite(threadId)) return Errors.badRequest(res, "invalid thread id");
     const userId = getUserId(req);
     const [thread] = await db.select().from(aiConversations)
@@ -222,7 +223,7 @@ router.post("/confirm/:requestId", async (req: AuthenticatedRequest, res) => {
     const ctx = await buildFounderToolContext({
       founderUserId: userId, organizationId: orgId, threadId: 0,
     });
-    const result = await confirmPendingToolCall(req.params.requestId, ctx);
+    const result = await confirmPendingToolCall(routeParam(req.params.requestId), ctx);
     res.json({ result });
   } catch (err) {
     Errors.internal(res, err);
@@ -237,7 +238,7 @@ router.post("/cancel/:requestId", async (req: AuthenticatedRequest, res) => {
       founderUserId: userId, organizationId: orgId, threadId: 0,
     });
     const reason = typeof req.body?.reason === "string" ? req.body.reason : undefined;
-    const result = await cancelPendingToolCall(req.params.requestId, ctx, reason);
+    const result = await cancelPendingToolCall(routeParam(req.params.requestId), ctx, reason);
     res.json({ result });
   } catch (err) {
     Errors.internal(res, err);
@@ -272,7 +273,7 @@ router.post("/secret-paste/:requestId", async (req: AuthenticatedRequest, res) =
     const [row] = await db
       .select()
       .from(chatSecretPasteRequests)
-      .where(eq(chatSecretPasteRequests.id, req.params.requestId))
+      .where(eq(chatSecretPasteRequests.id, routeParam(req.params.requestId)))
       .limit(1);
 
     if (!row) return Errors.notFound(res, "Sealed paste request");

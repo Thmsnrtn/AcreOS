@@ -23,6 +23,7 @@ import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import type { AuthenticatedRequest } from "./types/request";
 import { getUserId } from "./types/request";
+import { routeParam } from "./utils/routeParams";
 
 export function registerFounderDlqRoutes(app: Express): void {
   /**
@@ -72,7 +73,7 @@ export function registerFounderDlqRoutes(app: Express): void {
     isAuthenticated,
     requireFounder,
     async (req: AuthenticatedRequest, res: Response) => {
-      const id = Number(req.params.id);
+      const id = Number(routeParam(req.params.id));
       if (!Number.isFinite(id) || id <= 0) {
         return Errors.badRequest(res, "Invalid DLQ id");
       }
@@ -135,7 +136,7 @@ export function registerFounderDlqRoutes(app: Express): void {
     isAuthenticated,
     requireFounder,
     async (req: AuthenticatedRequest, res: Response) => {
-      const id = Number(req.params.id);
+      const id = Number(routeParam(req.params.id));
       if (!Number.isFinite(id) || id <= 0) {
         return Errors.badRequest(res, "Invalid DLQ id");
       }

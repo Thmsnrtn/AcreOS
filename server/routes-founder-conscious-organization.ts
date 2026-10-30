@@ -22,6 +22,7 @@ import { resilienceTestingService } from "./services/resilienceTestingV10";
 import { realtimeNervousSystemService } from "./services/realtimeNervousSystemV10";
 import { adaptiveSurfaceService } from "./services/adaptiveSurfaceV10";
 import { Errors } from "./utils/errors";
+import { routeParam } from "./utils/routeParams";
 
 export function registerFounderV10Routes(app: Express) {
 
@@ -43,7 +44,7 @@ export function registerFounderV10Routes(app: Express) {
   // Get a specific scenario
   app.get("/api/founder/v10/scenarios/:id", async (req, res) => {
     try {
-      const scenario = await scenarioWarRoomService.getById(parseInt(req.params.id));
+      const scenario = await scenarioWarRoomService.getById(parseInt(routeParam(req.params.id)));
       res.json(scenario || null);
     } catch (err: any) { Errors.internal(res, err); }
   });
@@ -60,7 +61,7 @@ export function registerFounderV10Routes(app: Express) {
   // Get scenarios by type
   app.get("/api/founder/v10/scenarios/type/:type", async (req, res) => {
     try {
-      const scenarios = await scenarioWarRoomService.getByType(req.params.type);
+      const scenarios = await scenarioWarRoomService.getByType(routeParam(req.params.type));
       res.json(scenarios);
     } catch (err: any) { Errors.internal(res, err); }
   });
@@ -69,7 +70,7 @@ export function registerFounderV10Routes(app: Express) {
   app.post("/api/founder/v10/scenarios/:id/compare", async (req, res) => {
     try {
       const comparison = await scenarioWarRoomService.compareOutcome(
-        parseInt(req.params.id),
+        parseInt(routeParam(req.params.id)),
         req.body.actualOutcome,
       );
       res.json(comparison);
@@ -79,7 +80,7 @@ export function registerFounderV10Routes(app: Express) {
   // Get outcome comparisons for a scenario
   app.get("/api/founder/v10/scenarios/:id/comparisons", async (req, res) => {
     try {
-      const comparisons = await scenarioWarRoomService.getComparisons(parseInt(req.params.id));
+      const comparisons = await scenarioWarRoomService.getComparisons(parseInt(routeParam(req.params.id)));
       res.json(comparisons);
     } catch (err: any) { Errors.internal(res, err); }
   });
@@ -87,7 +88,7 @@ export function registerFounderV10Routes(app: Express) {
   // Archive a scenario
   app.post("/api/founder/v10/scenarios/:id/archive", async (req, res) => {
     try {
-      await scenarioWarRoomService.archive(parseInt(req.params.id));
+      await scenarioWarRoomService.archive(parseInt(routeParam(req.params.id)));
       res.json({ success: true });
     } catch (err: any) { Errors.internal(res, err); }
   });
@@ -112,7 +113,7 @@ export function registerFounderV10Routes(app: Express) {
   app.post("/api/founder/v10/learning/predictions/:id/measure", async (req, res) => {
     try {
       const result = await closedLoopLearningService.measureOutcome(
-        parseInt(req.params.id),
+        parseInt(routeParam(req.params.id)),
         { actualOutcome: req.body.actualOutcome, actualSuccess: req.body.actualSuccess },
       );
       res.json(result);
@@ -147,7 +148,7 @@ export function registerFounderV10Routes(app: Express) {
   // Get calibration stats for a specific agent
   app.get("/api/founder/v10/learning/calibration/:agent", async (req, res) => {
     try {
-      const stats = await closedLoopLearningService.getAgentCalibrationStats(req.params.agent);
+      const stats = await closedLoopLearningService.getAgentCalibrationStats(routeParam(req.params.agent));
       res.json(stats);
     } catch (err: any) { Errors.internal(res, err); }
   });
@@ -164,7 +165,7 @@ export function registerFounderV10Routes(app: Express) {
   // Get learnings for a specific agent
   app.get("/api/founder/v10/learning/propagations/agent/:agent", async (req, res) => {
     try {
-      const learnings = await closedLoopLearningService.getLearningsForAgent(req.params.agent);
+      const learnings = await closedLoopLearningService.getLearningsForAgent(routeParam(req.params.agent));
       res.json(learnings);
     } catch (err: any) { Errors.internal(res, err); }
   });
@@ -235,7 +236,7 @@ export function registerFounderV10Routes(app: Express) {
   // Run AI-driven calibration for a specific agent
   app.post("/api/founder/v10/calibration/agent/:codename", async (req, res) => {
     try {
-      const calibration = await agentSelfCalibrationService.analyzeAndCalibrate(req.params.codename);
+      const calibration = await agentSelfCalibrationService.analyzeAndCalibrate(routeParam(req.params.codename));
       res.json(calibration || { noCalibrationNeeded: true });
     } catch (err: any) { Errors.internal(res, err); }
   });
@@ -251,7 +252,7 @@ export function registerFounderV10Routes(app: Express) {
   // Get calibration history for an agent
   app.get("/api/founder/v10/calibration/agent/:codename/history", async (req, res) => {
     try {
-      const history = await agentSelfCalibrationService.getAgentHistory(req.params.codename);
+      const history = await agentSelfCalibrationService.getAgentHistory(routeParam(req.params.codename));
       res.json(history);
     } catch (err: any) { Errors.internal(res, err); }
   });
@@ -268,7 +269,7 @@ export function registerFounderV10Routes(app: Express) {
   // Approve a calibration
   app.post("/api/founder/v10/calibration/:id/approve", async (req, res) => {
     try {
-      await agentSelfCalibrationService.approve(parseInt(req.params.id));
+      await agentSelfCalibrationService.approve(parseInt(routeParam(req.params.id)));
       res.json({ success: true });
     } catch (err: any) { Errors.internal(res, err); }
   });
@@ -276,7 +277,7 @@ export function registerFounderV10Routes(app: Express) {
   // Revert a calibration
   app.post("/api/founder/v10/calibration/:id/revert", async (req, res) => {
     try {
-      await agentSelfCalibrationService.revert(parseInt(req.params.id));
+      await agentSelfCalibrationService.revert(parseInt(routeParam(req.params.id)));
       res.json({ success: true });
     } catch (err: any) { Errors.internal(res, err); }
   });
@@ -301,7 +302,7 @@ export function registerFounderV10Routes(app: Express) {
   app.post("/api/founder/v10/decisions/:id/replay", async (req, res) => {
     try {
       const replay = await ceoDecisionReplayService.replayDecision(
-        parseInt(req.params.id),
+        parseInt(routeParam(req.params.id)),
         req.body.outcomeData,
       );
       res.json(replay);
@@ -376,7 +377,7 @@ export function registerFounderV10Routes(app: Express) {
   // Get resilience tests by type
   app.get("/api/founder/v10/resilience/type/:type", async (req, res) => {
     try {
-      const tests = await resilienceTestingService.getByType(req.params.type);
+      const tests = await resilienceTestingService.getByType(routeParam(req.params.type));
       res.json(tests);
     } catch (err: any) { Errors.internal(res, err); }
   });
@@ -403,7 +404,7 @@ export function registerFounderV10Routes(app: Express) {
   // Get events by type
   app.get("/api/founder/v10/nervous-system/events/type/:type", async (req, res) => {
     try {
-      const events = await realtimeNervousSystemService.getEventsByType(req.params.type);
+      const events = await realtimeNervousSystemService.getEventsByType(routeParam(req.params.type));
       res.json(events);
     } catch (err: any) { Errors.internal(res, err); }
   });
@@ -411,7 +412,7 @@ export function registerFounderV10Routes(app: Express) {
   // Get events for a specific agent
   app.get("/api/founder/v10/nervous-system/events/agent/:codename", async (req, res) => {
     try {
-      const events = await realtimeNervousSystemService.getAgentEvents(req.params.codename);
+      const events = await realtimeNervousSystemService.getAgentEvents(routeParam(req.params.codename));
       res.json(events);
     } catch (err: any) { Errors.internal(res, err); }
   });

@@ -11,6 +11,7 @@ import { persistPhotoBytes, photoStorageAvailable, PHOTO_STORAGE_UNAVAILABLE_MES
 import { signedOrgObjectUrl } from "./services/documentStore";
 import { createHash } from "node:crypto";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 const fieldScoutRouter = Router();
 
@@ -176,7 +177,7 @@ fieldScoutRouter.post('/voice/transcribe', voiceUpload.single('audio'), async (r
 fieldScoutRouter.post('/leads/:id/photos', photoUpload.array('photos', 10), validatePhotos, async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const leadId = parseInt(req.params.id);
+    const leadId = parseInt(routeParam(req.params.id));
 
     if (isNaN(leadId)) {
       return Errors.badRequest(res, 'Invalid lead ID');

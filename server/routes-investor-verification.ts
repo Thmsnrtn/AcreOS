@@ -23,6 +23,7 @@ import { Errors } from './utils/errors';
 import type { AuthenticatedRequest } from './types/request';
 import { getOrganizationId } from './types/request';
 import { isAdminOrAbove } from './utils/permissions';
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
@@ -52,7 +53,7 @@ function refuse(res: Response, error: unknown, fallback: (message: string) => vo
 // GET /verifications/:investorId — get verification status
 router.get('/verifications/:investorId', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const investorProfileId = parseInt(req.params.investorId, 10);
+    const investorProfileId = parseInt(routeParam(req.params.investorId), 10);
     if (Number.isNaN(investorProfileId)) return Errors.badRequest(res, 'Invalid investor id');
     const verification = await investorVerificationService.getVerificationStatus(
       investorProfileId,
@@ -87,7 +88,7 @@ router.post('/verifications', async (req: AuthenticatedRequest, res: Response) =
 // POST /verifications/:id/documents — upload verification document
 router.post('/verifications/:id/documents', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const verificationId = parseInt(req.params.id, 10);
+    const verificationId = parseInt(routeParam(req.params.id), 10);
     if (Number.isNaN(verificationId)) return Errors.badRequest(res, 'Invalid verification id');
     const document = await investorVerificationService.uploadDocument(
       verificationId,
@@ -104,7 +105,7 @@ router.post('/verifications/:id/documents', async (req: AuthenticatedRequest, re
 // PATCH /verifications/:id/submit — submit for review
 router.patch('/verifications/:id/submit', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const verificationId = parseInt(req.params.id, 10);
+    const verificationId = parseInt(routeParam(req.params.id), 10);
     if (Number.isNaN(verificationId)) return Errors.badRequest(res, 'Invalid verification id');
     const verification = await investorVerificationService.submitForReview(
       verificationId,
@@ -124,7 +125,7 @@ router.patch('/verifications/:id/review', async (req: AuthenticatedRequest, res:
     if (!isAdmin(req)) {
       return Errors.forbidden(res, 'Admin access required');
     }
-    const verificationId = parseInt(req.params.id, 10);
+    const verificationId = parseInt(routeParam(req.params.id), 10);
     if (Number.isNaN(verificationId)) return Errors.badRequest(res, 'Invalid verification id');
     const { decision, notes } = req.body;
     if (!['approved', 'rejected', 'more_info_needed'].includes(decision)) {
@@ -147,7 +148,7 @@ router.patch('/verifications/:id/review', async (req: AuthenticatedRequest, res:
 // GET /verifications/:id/history — audit trail
 router.get('/verifications/:id/history', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const investorProfileId = parseInt(req.params.id, 10);
+    const investorProfileId = parseInt(routeParam(req.params.id), 10);
     if (Number.isNaN(investorProfileId)) return Errors.badRequest(res, 'Invalid id');
     const history = await investorVerificationService.getVerificationHistory(
       investorProfileId,
@@ -184,7 +185,7 @@ router.get('/admin/verifications', async (req: AuthenticatedRequest, res: Respon
 // POST /verifications/:id/accreditation — submit accreditation attestation
 router.post('/verifications/:id/accreditation', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const investorProfileId = parseInt(req.params.id, 10);
+    const investorProfileId = parseInt(routeParam(req.params.id), 10);
     if (Number.isNaN(investorProfileId)) return Errors.badRequest(res, 'Invalid id');
     const accreditation = await investorVerificationService.accreditationCheck(
       investorProfileId,

@@ -45,6 +45,7 @@ import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { getClerkAuth, type AuthenticatedRequest } from "./types/request";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 // ─── Clerk client (lazy, env-driven) ──────────────────────────────────────────
 const clerkClient = createClerkClient({
@@ -247,7 +248,7 @@ export function registerAdminRecoveryRoutes(app: Express): void {
       if (!parsed.success) {
         return Errors.validationFailed(res, parsed.error.issues);
       }
-      const targetUserId = req.params.id;
+      const targetUserId = routeParam(req.params.id);
       const body = parsed.data;
 
       try {
@@ -338,7 +339,7 @@ export function registerAdminRecoveryRoutes(app: Express): void {
       const areq = req as AuthenticatedRequest;
       if (!requireFounderForRecovery(areq, res)) return;
 
-      const targetUserId = req.params.id;
+      const targetUserId = routeParam(req.params.id);
 
       try {
         const [localUser] = await db
@@ -409,8 +410,8 @@ export function registerAdminRecoveryRoutes(app: Express): void {
       const areq = req as AuthenticatedRequest;
       if (!requireFounderForRecovery(areq, res)) return;
 
-      const targetUserId = req.params.id;
-      const sessionId = req.params.sid;
+      const targetUserId = routeParam(req.params.id);
+      const sessionId = routeParam(req.params.sid);
 
       try {
         const [localUser] = await db
@@ -483,7 +484,7 @@ export function registerAdminRecoveryRoutes(app: Express): void {
         return Errors.validationFailed(res, parsed.error.issues);
       }
       const { exceptCurrentAdminSessionId } = parsed.data;
-      const targetUserId = req.params.id;
+      const targetUserId = routeParam(req.params.id);
 
       try {
         const [localUser] = await db
@@ -581,7 +582,7 @@ export function registerAdminRecoveryRoutes(app: Express): void {
         return Errors.validationFailed(res, parsed.error.issues);
       }
       const { reason, untilDate } = parsed.data;
-      const orgId = Number.parseInt(req.params.id, 10);
+      const orgId = Number.parseInt(routeParam(req.params.id), 10);
       if (!Number.isFinite(orgId)) {
         return Errors.badRequest(res, "Invalid organization id");
       }
@@ -667,7 +668,7 @@ export function registerAdminRecoveryRoutes(app: Express): void {
         return Errors.validationFailed(res, parsed.error.issues);
       }
       const { newOwnerUserId, courtDocumentS3Key, justification } = parsed.data;
-      const orgId = Number.parseInt(req.params.id, 10);
+      const orgId = Number.parseInt(routeParam(req.params.id), 10);
       if (!Number.isFinite(orgId)) {
         return Errors.badRequest(res, "Invalid organization id");
       }
@@ -785,7 +786,7 @@ export function registerAdminRecoveryRoutes(app: Express): void {
       const areq = req as AuthenticatedRequest;
       if (!requireFounderForRecovery(areq, res)) return;
 
-      const targetUserId = req.params.id;
+      const targetUserId = routeParam(req.params.id);
 
       try {
         const [localUser] = await db

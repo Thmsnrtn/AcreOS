@@ -26,6 +26,7 @@ import {
 } from "./services/configManager";
 import { isFounderIdentity } from "./services/founder";
 import { Errors } from "./utils/errors";
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
@@ -161,7 +162,7 @@ router.post("/delete", requireFounder, async (req: Request, res: Response) => {
 
 router.post("/generate/:type", requireFounder, async (req: Request, res: Response) => {
   try {
-    const { type } = req.params;
+    const type = routeParam(req.params.type);
     let value: string;
     let key: string;
 
@@ -194,7 +195,7 @@ router.post("/generate/:type", requireFounder, async (req: Request, res: Respons
 // ─────────────────────────────────────────────────────────────────────────────
 
 router.post("/validate/:service", requireFounder, async (req: Request, res: Response) => {
-  const { service } = req.params;
+  const service = routeParam(req.params.service);
 
   try {
     switch (service) {
@@ -353,7 +354,7 @@ router.post("/validate/:service", requireFounder, async (req: Request, res: Resp
 // ─────────────────────────────────────────────────────────────────────────────
 
 router.post("/wire/:service", requireFounder, async (req: Request, res: Response) => {
-  const { service } = req.params;
+  const service = routeParam(req.params.service);
 
   try {
     switch (service) {

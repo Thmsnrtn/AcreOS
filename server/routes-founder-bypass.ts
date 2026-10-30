@@ -38,6 +38,7 @@ import {
 } from "@acreos/solene";
 import { DISPATCH_AGENT_ROLES } from "@shared/schema/solene-dispatch";
 import { auditFromRequest, AuditActions } from "./utils/auditLog";
+import { routeParam } from "./utils/routeParams";
 
 const dispatchBodySchema = z.object({
   agentRole: z.enum(DISPATCH_AGENT_ROLES),
@@ -103,7 +104,7 @@ export function registerFounderBypassRoutes(app: Express): void {
     isAuthenticated,
     requireFounder,
     async (req: AuthenticatedRequest, res: Response) => {
-      const id = Number.parseInt(req.params.id, 10);
+      const id = Number.parseInt(routeParam(req.params.id), 10);
       if (!Number.isFinite(id) || id <= 0) {
         return Errors.badRequest(res, "dispatch id must be a positive integer");
       }
@@ -174,7 +175,7 @@ export function registerFounderBypassRoutes(app: Express): void {
     isAuthenticated,
     requireFounder,
     async (req: AuthenticatedRequest, res: Response) => {
-      const dispatchId = Number.parseInt(req.params.dispatchId, 10);
+      const dispatchId = Number.parseInt(routeParam(req.params.dispatchId), 10);
       if (!Number.isFinite(dispatchId) || dispatchId <= 0) {
         return Errors.badRequest(
           res,

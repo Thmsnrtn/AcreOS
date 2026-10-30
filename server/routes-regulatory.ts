@@ -15,6 +15,7 @@ import { regulatoryIntelligenceService } from "./services/regulatoryIntelligence
 import { sendError, Errors } from "./utils/errors";
 import { z } from "zod";
 import { checkContractForDeed } from "@shared/regulatory/sellerFinancingRules";
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
@@ -25,7 +26,7 @@ router.get("/states", isAuthenticated, (_req, res) => {
 
 // Full profile for a specific state
 router.get("/states/:code", isAuthenticated, (req, res) => {
-  const profile = regulatoryIntelligenceService.getStateProfile(req.params.code);
+  const profile = regulatoryIntelligenceService.getStateProfile(routeParam(req.params.code));
   if (!profile) return sendError(res, 404, "NOT_FOUND", "State not found in regulatory database");
   res.json(profile);
 });
@@ -38,7 +39,7 @@ router.get("/alerts", isAuthenticated, (req, res) => {
 
 // Due diligence checklist by state
 router.get("/checklist/:state", isAuthenticated, (req, res) => {
-  const checklist = regulatoryIntelligenceService.getDueDiligenceChecklist(req.params.state);
+  const checklist = regulatoryIntelligenceService.getDueDiligenceChecklist(routeParam(req.params.state));
   if (!checklist) return sendError(res, 404, "NOT_FOUND", "State not found in regulatory database");
   res.json(checklist);
 });

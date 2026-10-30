@@ -25,6 +25,7 @@ import {
   syncChannels,
   isKnownChannel,
 } from "./services/syndicationChannels";
+import { routeParam } from "./utils/routeParams";
 
 const auth = [isAuthenticated, getOrCreateOrg];
 
@@ -52,7 +53,7 @@ export function registerSyndicationRoutes(app: Express): void {
 
   app.patch("/api/syndication/channels/:channelId", ...auth, async (req, res: Response) => {
     try {
-      const { channelId } = req.params;
+      const channelId = routeParam(req.params.channelId);
       if (!isKnownChannel(channelId)) return Errors.notFound(res, "Syndication channel");
 
       const parsed = toggleSchema.safeParse(req.body);
@@ -68,7 +69,7 @@ export function registerSyndicationRoutes(app: Express): void {
 
   app.post("/api/syndication/channels/:channelId/sync", ...auth, async (req, res: Response) => {
     try {
-      const { channelId } = req.params;
+      const channelId = routeParam(req.params.channelId);
       if (!isKnownChannel(channelId)) return Errors.notFound(res, "Syndication channel");
 
       const orgId = getOrganizationId(req as AuthenticatedRequest);

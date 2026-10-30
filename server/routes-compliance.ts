@@ -7,6 +7,7 @@ import { and, eq, desc } from 'drizzle-orm';
 import { logger } from './utils/logger';
 import { Errors, sendError } from "./utils/errors";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
@@ -37,7 +38,7 @@ router.get('/alerts', async (req: Request, res: Response) => {
 router.get('/properties/:id/alerts', async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const alerts = await complianceAI.getAlertsForProperty(org.id, parseInt(req.params.id));
+    const alerts = await complianceAI.getAlertsForProperty(org.id, parseInt(routeParam(req.params.id)));
     res.json({ alerts });
   } catch (err: any) {
     Errors.internal(res, err);
@@ -48,7 +49,7 @@ router.get('/properties/:id/alerts', async (req: Request, res: Response) => {
 router.get('/properties/:id/check', async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const result = await complianceAI.checkPropertyCompliance(org.id, parseInt(req.params.id));
+    const result = await complianceAI.checkPropertyCompliance(org.id, parseInt(routeParam(req.params.id)));
     res.json({ result });
   } catch (err: any) {
     Errors.internal(res, err);
@@ -59,10 +60,10 @@ router.get('/properties/:id/check', async (req: Request, res: Response) => {
 router.patch('/alerts/:id/acknowledge', async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const alertId = parseInt(req.params.id);
+    const alertId = parseInt(routeParam(req.params.id));
     // acknowledgeAlert(organizationId, alertId, userId) — all align with the
     // service: org id (number), alert id (string), user id (string).
-    await complianceAI.acknowledgeAlert(org.id, req.params.id, req.user.id);
+    await complianceAI.acknowledgeAlert(org.id, routeParam(req.params.id), req.user.id);
 
     try {
       const user = req.user;
@@ -89,7 +90,7 @@ router.patch('/alerts/:id/acknowledge', async (req: Request, res: Response) => {
 router.patch('/alerts/:id/resolve', async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const alertId = parseInt(req.params.id);
+    const alertId = parseInt(routeParam(req.params.id));
     const { resolution } = req.body;
     // Was `resolveAlert(alertId, resolution)` against a
     // `(organizationId, alertId)` signature — see the note on the service. The
@@ -224,7 +225,7 @@ router.get('/evidence-pack/:dealId', async (req: Request, res: Response) => {
   try {
     const org = req.organization;
     if (!org) return sendError(res, 401, "UNAUTHORIZED", 'No organization context');
-    const dealId = parseInt(req.params.dealId, 10);
+    const dealId = parseInt(routeParam(req.params.dealId), 10);
     if (!Number.isFinite(dealId)) {
       return sendError(res, 400, "BAD_REQUEST", 'Invalid dealId');
     }

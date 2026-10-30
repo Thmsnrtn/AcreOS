@@ -93,6 +93,7 @@ import {
   StatementPortalNotConfiguredError,
   STATEMENT_PORTAL_NOT_CONFIGURED_MESSAGE,
 } from "./utils/borrowerSessionSecret";
+import { routeParam } from "./utils/routeParams";
 
 // ─────────────────────────────────────────────────────────────────────
 // Borrower ACH autopay (Wave C — "money moves")
@@ -216,6 +217,8 @@ export function autopayStatusMessage(input: {
 // the /api/auth limiter fixed 2026-05-10. The accessToken is unauthenticated
 // but is a per-borrower secret, so using it as a key is a strict improvement.
 function borrowerPortalKey(req: Request): string {
+  // Read raw on purpose: a non-string (including an array) falls back to IP
+  // below, so this key function never refuses a request.
   const token = req.params?.accessToken || (req.body as { accessToken?: unknown } | undefined)?.accessToken;
   if (token && typeof token === "string" && token.length > 8) return `tok:${token}`;
   return getClientIp(req);
@@ -853,14 +856,14 @@ export function registerBorrowerRoutes(app: Express): void {
     logger.warn("Deprecated endpoint accessed: /api/portal/:accessToken/payment", {
       ip: clientIpOrNull(req),
       userAgent: req.headers["user-agent"],
-      accessToken: req.params.accessToken ? "[REDACTED]" : undefined,
+      accessToken: routeParam(req.params.accessToken) ? "[REDACTED]" : undefined,
     });
     
     // Set deprecation warning header
     res.setHeader("X-Deprecation-Warning", "This endpoint is deprecated. Use session-based auth at /api/borrower/payment instead.");
     
     try {
-      const { accessToken } = req.params;
+      const accessToken = routeParam(req.params.accessToken);
       const { amount } = req.body;
       
       if (!accessToken) {
@@ -940,7 +943,7 @@ export function registerBorrowerRoutes(app: Express): void {
   // Verify Stripe payment and create payment record
   api.post("/api/portal/:accessToken/verify-payment", sunsetMiddleware(), deprecatedPaymentRateLimiter, async (req, res) => {
     try {
-      const { accessToken } = req.params;
+      const accessToken = routeParam(req.params.accessToken);
       const { sessionId } = req.body;
       
       if (!accessToken || !sessionId) {
@@ -1590,7 +1593,7 @@ export function registerBorrowerRoutes(app: Express): void {
   // siblings carry — the only token-only write path with no retirement date.
   api.post("/api/portal/:accessToken/autopay", sunsetMiddleware(), deprecatedPaymentRateLimiter, async (req, res) => {
     try {
-      const { accessToken } = req.params;
+      const accessToken = routeParam(req.params.accessToken);
       const { enabled, email } = req.body;
       
       if (!accessToken) {
@@ -2045,7 +2048,7 @@ export function registerBorrowerRoutes(app: Express): void {
           .from(periodicStatements)
           .where(
             and(
-              eq(periodicStatements.id, req.params.statementId),
+              eq(periodicStatements.id, routeParam(req.params.statementId)),
               eq(periodicStatements.loanId, String(session.noteId)),
               eq(periodicStatements.organizationId, session.organizationId),
             ),
@@ -2162,7 +2165,7 @@ export function registerBorrowerRoutes(app: Express): void {
   api.post("/api/notes/:id/portal-link", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const org = getOrganization(req);
-      const noteId = Number(req.params.id);
+      const noteId = Number(routeParam(req.params.id));
       
       const note = await storage.getNote(org.id, noteId);
       if (!note) {

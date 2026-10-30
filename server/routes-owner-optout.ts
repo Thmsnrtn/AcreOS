@@ -16,6 +16,7 @@ import { z } from "zod";
 import { Errors } from "./utils/errors";
 import { createRateLimiter } from "./middleware/rateLimit";
 import { publicOwnerOptOutStatus, publicStatusOf, submitOwnerOptOut, verifyOwnerOptOut } from "./services/trust/ownerOptOut";
+import { routeParam } from "./utils/routeParams";
 
 const submitLimiter = createRateLimiter({ maxRequests: 5, windowMs: 60 * 60 * 1000 });
 const verifyLimiter = createRateLimiter({ maxRequests: 20, windowMs: 60 * 60 * 1000 });
@@ -72,7 +73,7 @@ export function registerPublicOwnerOptOutRoutes(app: Express): void {
   });
 
   app.get("/api/public/owner-optout/:ref", statusLimiter, async (req: Request, res: Response) => {
-    const ref = String(req.params.ref ?? "").slice(0, 64);
+    const ref = String(routeParam(req.params.ref) ?? "").slice(0, 64);
     try {
       const status = await publicStatusOf(ref);
       if (!status) return Errors.notFound(res, "Request");

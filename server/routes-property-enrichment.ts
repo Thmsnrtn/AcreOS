@@ -36,6 +36,7 @@ import {
 } from "./services/evidence/evidenceStore";
 import { isKnownPredicate, predicateById } from "@shared/evidence/claim";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
@@ -44,7 +45,7 @@ const router = Router();
 router.post("/:id/enrich", async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const propertyId = parseInt(req.params.id);
+    const propertyId = parseInt(routeParam(req.params.id));
     if (isNaN(propertyId)) return sendError(res, 400, "BAD_REQUEST", "Invalid property ID");
 
     // enrichProperty(organizationId, propertyId) — args were previously swapped.
@@ -95,7 +96,7 @@ router.post("/bulk-enrich", async (req: Request, res: Response) => {
 router.get("/:id/enrichment", async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const propertyId = parseInt(req.params.id);
+    const propertyId = parseInt(routeParam(req.params.id));
     if (isNaN(propertyId)) return sendError(res, 400, "BAD_REQUEST", "Invalid property ID");
 
     const [property] = await db
@@ -146,7 +147,7 @@ async function loadOwnedProperty(orgId: number, propertyId: number) {
 router.get("/:id/evidence", async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const propertyId = parseInt(req.params.id, 10);
+    const propertyId = parseInt(routeParam(req.params.id), 10);
     if (isNaN(propertyId)) return Errors.badRequest(res, "Invalid property ID");
 
     const when = parseAsOf(req.query.asOf);
@@ -209,10 +210,10 @@ router.get("/:id/evidence", async (req: Request, res: Response) => {
 router.get("/:id/evidence/:predicate", async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const propertyId = parseInt(req.params.id, 10);
+    const propertyId = parseInt(routeParam(req.params.id), 10);
     if (isNaN(propertyId)) return Errors.badRequest(res, "Invalid property ID");
 
-    const predicate = req.params.predicate;
+    const predicate = routeParam(req.params.predicate);
     if (!isKnownPredicate(predicate)) {
       // Refuse rather than return an empty lineage: an unregistered predicate
       // is a caller bug, and an empty answer would read as "no evidence".

@@ -52,6 +52,7 @@ function lateChargeClause(note: {
 
 import { Errors } from "./utils/errors";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 export function registerDocumentRoutes(app: Express): void {
   const api = app;
@@ -76,16 +77,16 @@ export function registerDocumentRoutes(app: Express): void {
         });
       }
       
-      const pdfBuffer = await generatePromissoryNote(Number(req.params.id), org.id);
+      const pdfBuffer = await generatePromissoryNote(Number(routeParam(req.params.id)), org.id);
       
       // Record usage after successful PDF generation
       await usageMeteringService.recordUsage(org.id, "pdf_generated", 1, {
         documentType: "promissory_note",
-        noteId: Number(req.params.id),
+        noteId: Number(routeParam(req.params.id)),
       });
       
       res.setHeader("Content-Type", "application/pdf");
-      res.setHeader("Content-Disposition", `attachment; filename="promissory-note-${req.params.id}.pdf"`);
+      res.setHeader("Content-Disposition", `attachment; filename="promissory-note-${routeParam(req.params.id)}.pdf"`);
       res.send(pdfBuffer);
     } catch (err: any) {
       logger.error("PDF generation error", err);
@@ -103,7 +104,7 @@ export function registerDocumentRoutes(app: Express): void {
       // Aniyah §2 — block deed auto-doc on Indian-Country / federal trust
       // parcels. Title transfers on these parcels require BIA approval
       // (25 CFR §152) and a generic warranty deed would be federally void.
-      const parcelForDeed = await storage.getProperty(org.id, Number(req.params.id));
+      const parcelForDeed = await storage.getProperty(org.id, Number(routeParam(req.params.id)));
       assertFeeSimpleOrThrow(parcelForDeed ?? null, "warranty-deed");
 
       // Credit pre-check for PDF generation (5 cents per document)
@@ -117,16 +118,16 @@ export function registerDocumentRoutes(app: Express): void {
         });
       }
       
-      const pdfBuffer = await generateWarrantyDeed(Number(req.params.id), org.id);
+      const pdfBuffer = await generateWarrantyDeed(Number(routeParam(req.params.id)), org.id);
       
       // Record usage after successful PDF generation
       await usageMeteringService.recordUsage(org.id, "pdf_generated", 1, {
         documentType: "warranty_deed",
-        propertyId: Number(req.params.id),
+        propertyId: Number(routeParam(req.params.id)),
       });
       
       res.setHeader("Content-Type", "application/pdf");
-      res.setHeader("Content-Disposition", `attachment; filename="warranty-deed-${req.params.id}.pdf"`);
+      res.setHeader("Content-Disposition", `attachment; filename="warranty-deed-${routeParam(req.params.id)}.pdf"`);
       res.send(pdfBuffer);
     } catch (err: any) {
       if (handleLandStatusError(res, err)) return;

@@ -76,6 +76,7 @@ import {
   type FlipDefaults,
 } from "./services/flipUnderwriting";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 // ── money boundary ─────────────────────────────────────────────────────────
 
@@ -700,7 +701,7 @@ export function registerFlipAnalyzerRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const orgId = getOrganizationId(req);
-        const propertyId = Number.parseInt(req.params.propertyId, 10);
+        const propertyId = Number.parseInt(routeParam(req.params.propertyId), 10);
         if (!Number.isFinite(propertyId)) return Errors.badRequest(res, "Invalid property id");
 
         const [prop] = await db

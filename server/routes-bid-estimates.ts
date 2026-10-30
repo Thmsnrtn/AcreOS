@@ -26,6 +26,7 @@ import { createUploadMiddleware, validateFileMiddleware } from "./middleware/fil
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 // FW-6: PDF estimate upload — 10MB cap. PDFs only.
 const pdfUpload = createUploadMiddleware({ maxSizeMB: 10, allowedTypes: ["pdf"] });
@@ -48,7 +49,7 @@ export function registerBidEstimateRoutes(app: Express): void {
   app.get("/api/rehabs/:id/bids", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const orgId = getOrganizationId(req);
-      const rehabId = req.params.id;
+      const rehabId = routeParam(req.params.id);
 
       const bids = await db.select()
         .from(bidEstimates)
@@ -105,7 +106,7 @@ export function registerBidEstimateRoutes(app: Express): void {
     try {
       const orgId = getOrganizationId(req);
       const userId = getUserId(req);
-      const rehabId = req.params.id;
+      const rehabId = routeParam(req.params.id);
       const parsed = bidSchema.safeParse(req.body);
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
@@ -141,7 +142,7 @@ export function registerBidEstimateRoutes(app: Express): void {
         if (parsed.data[k] !== undefined) updates[k] = parsed.data[k];
       }
       const [updated] = await db.update(bidEstimates).set(updates)
-        .where(and(eq(bidEstimates.id, req.params.id), eq(bidEstimates.organizationId, orgId)))
+        .where(and(eq(bidEstimates.id, routeParam(req.params.id)), eq(bidEstimates.organizationId, orgId)))
         .returning();
       if (!updated) return Errors.notFound(res, "Bid");
       return res.json({ bid: updated });
@@ -156,7 +157,7 @@ export function registerBidEstimateRoutes(app: Express): void {
       const orgId = getOrganizationId(req);
       const userId = getUserId(req);
       const [target] = await db.select().from(bidEstimates)
-        .where(and(eq(bidEstimates.id, req.params.id), eq(bidEstimates.organizationId, orgId)));
+        .where(and(eq(bidEstimates.id, routeParam(req.params.id)), eq(bidEstimates.organizationId, orgId)));
       if (!target) return Errors.notFound(res, "Bid");
 
       await db.transaction(async (tx) => {
@@ -192,7 +193,7 @@ export function registerBidEstimateRoutes(app: Express): void {
       try {
         const extracted = await extractBidEstimate(rawText, orgId);
         logger.info("[FF-5/CT-3] bid extracted", {
-          orgId, userId, rehabId: req.params.id,
+          orgId, userId, rehabId: routeParam(req.params.id),
           totalCents: extracted.totalCents,
           confidence: extracted.confidence,
           warningCount: extracted.warnings.length,
@@ -240,7 +241,7 @@ export function registerBidEstimateRoutes(app: Express): void {
         try {
           const extracted = await extractBidEstimate(pdfText, orgId);
           logger.info("[FF-5/FW-6] bid extracted from PDF", {
-            orgId, userId, rehabId: req.params.id,
+            orgId, userId, rehabId: routeParam(req.params.id),
             filename: file.originalname,
             pdfChars: pdfText.length,
             totalCents: extracted.totalCents,
@@ -266,7 +267,7 @@ export function registerBidEstimateRoutes(app: Express): void {
     try {
       const orgId = getOrganizationId(req);
       const [deleted] = await db.delete(bidEstimates)
-        .where(and(eq(bidEstimates.id, req.params.id), eq(bidEstimates.organizationId, orgId)))
+        .where(and(eq(bidEstimates.id, routeParam(req.params.id)), eq(bidEstimates.organizationId, orgId)))
         .returning({ id: bidEstimates.id });
       if (!deleted) return Errors.notFound(res, "Bid");
       return res.json({ deleted: true, id: deleted.id });

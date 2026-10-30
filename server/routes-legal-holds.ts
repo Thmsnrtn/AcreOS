@@ -29,6 +29,7 @@ import { auditFromRequest, AuditActions } from "./utils/auditLog";
 import { getActiveHoldSummary, orgHasActiveHold } from "./services/legalHold";
 import { getClerkAuth, type AuthenticatedRequest } from "./types/request";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 // ─── Validation schemas ─────────────────────────────────────────────────────
 const placeHoldSchema = z.object({
@@ -195,7 +196,7 @@ export function registerLegalHoldRoutes(app: Express): void {
       const [row] = await db
         .select()
         .from(legalHolds)
-        .where(eq(legalHolds.id, req.params.id))
+        .where(eq(legalHolds.id, routeParam(req.params.id)))
         .limit(1);
       if (!row) return Errors.notFound(res, "Legal hold");
       if (row.status !== "active" || row.releasedAt) {
@@ -265,7 +266,7 @@ export function registerLegalHoldRoutes(app: Express): void {
   app.get("/api/founder/legal-holds/banner/:orgId", isAuthenticated, async (req, res) => {
     const areq = req as AuthenticatedRequest;
     if (!requireFounder(areq, res)) return;
-    const orgId = Number(req.params.orgId);
+    const orgId = Number(routeParam(req.params.orgId));
     if (!Number.isFinite(orgId)) return Errors.badRequest(res, "Invalid orgId");
     try {
       const active = await orgHasActiveHold(orgId);

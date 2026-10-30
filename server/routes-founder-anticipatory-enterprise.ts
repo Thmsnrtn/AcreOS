@@ -16,6 +16,7 @@ import { type Express } from "express";
 import { agentNegotiationService } from "./services/agentNegotiationV11";
 import { revenueAttributionService } from "./services/revenueAttributionV11";
 import { Errors } from "./utils/errors";
+import { routeParam } from "./utils/routeParams";
 
 export function registerFounderV11Routes(app: Express) {
 
@@ -61,7 +62,7 @@ export function registerFounderV11Routes(app: Express) {
 
   app.get("/api/founder/v11/negotiations/:id", async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       if (!Number.isFinite(id)) {
         return Errors.badRequest(res, "Invalid negotiation id");
       }
@@ -72,7 +73,7 @@ export function registerFounderV11Routes(app: Express) {
 
   app.post("/api/founder/v11/negotiations/:id/override", async (req, res) => {
     try {
-      await agentNegotiationService.ceoOverride(parseInt(req.params.id), req.body.override);
+      await agentNegotiationService.ceoOverride(parseInt(routeParam(req.params.id)), req.body.override);
       res.json({ success: true });
     } catch (err: any) { Errors.internal(res, err); }
   });
@@ -111,12 +112,12 @@ export function registerFounderV11Routes(app: Express) {
   });
 
   app.get("/api/founder/v11/attribution/chain/:correlationId", async (req, res) => {
-    try { res.json(await revenueAttributionService.getChain(req.params.correlationId)); }
+    try { res.json(await revenueAttributionService.getChain(routeParam(req.params.correlationId))); }
     catch (err: any) { Errors.internal(res, err); }
   });
 
   app.get("/api/founder/v11/attribution/agent/:codename", async (req, res) => {
-    try { res.json(await revenueAttributionService.getAgentNodes(req.params.codename)); }
+    try { res.json(await revenueAttributionService.getAgentNodes(routeParam(req.params.codename))); }
     catch (err: any) { Errors.internal(res, err); }
   });
 

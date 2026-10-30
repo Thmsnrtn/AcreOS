@@ -15,6 +15,7 @@ import { Errors } from "./utils/errors";
 import { omitProtectedFields } from "./utils/updatePayload";
 import { getOrganizationId, type AuthenticatedRequest } from "./types/request";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 export function registerIntegrationRoutes(app: Express): void {
   const api = app;
@@ -57,7 +58,7 @@ export function registerIntegrationRoutes(app: Express): void {
   api.get("/api/integrations/:provider", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const { provider } = req.params;
+      const provider = routeParam(req.params.provider);
       
       const integration = await storage.getOrganizationIntegration(org.id, provider);
       
@@ -90,7 +91,7 @@ export function registerIntegrationRoutes(app: Express): void {
   api.post("/api/integrations/:provider", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const { provider } = req.params;
+      const provider = routeParam(req.params.provider);
       const { apiKey, settings } = req.body;
 
       if (!apiKey) {
@@ -145,7 +146,7 @@ export function registerIntegrationRoutes(app: Express): void {
   api.post("/api/integrations/:provider/test", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const { provider } = req.params;
+      const provider = routeParam(req.params.provider);
       
       const integration = await storage.getOrganizationIntegration(org.id, provider);
       
@@ -245,7 +246,7 @@ export function registerIntegrationRoutes(app: Express): void {
   api.delete("/api/integrations/:provider", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const { provider } = req.params;
+      const provider = routeParam(req.params.provider);
 
       await storage.deleteOrganizationIntegration(org.id, provider);
 
@@ -469,7 +470,7 @@ export function registerIntegrationRoutes(app: Express): void {
   api.post("/api/email-domains/:id/verify", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const domainId = Number(req.params.id);
+      const domainId = Number(routeParam(req.params.id));
       
       const domainRecord = await storage.getVerifiedEmailDomain(org.id, domainId);
       if (!domainRecord || domainRecord.organizationId !== org.id) {
@@ -542,7 +543,7 @@ export function registerIntegrationRoutes(app: Express): void {
   api.patch("/api/email-domains/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const domainId = Number(req.params.id);
+      const domainId = Number(routeParam(req.params.id));
       const { fromEmail, fromName, isDefault } = req.body;
       
       const domainRecord = await storage.getVerifiedEmailDomain(org.id, domainId);
@@ -590,7 +591,7 @@ export function registerIntegrationRoutes(app: Express): void {
   api.delete("/api/email-domains/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const domainId = Number(req.params.id);
+      const domainId = Number(routeParam(req.params.id));
 
       const domainRecord = await storage.getVerifiedEmailDomain(org.id, domainId);
       if (!domainRecord || domainRecord.organizationId !== org.id) {
@@ -804,7 +805,7 @@ export function registerIntegrationRoutes(app: Express): void {
   api.patch("/api/phone-numbers/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const phoneId = Number(req.params.id);
+      const phoneId = Number(routeParam(req.params.id));
       const { friendlyName, isDefault } = req.body;
 
       const phoneRecord = await storage.getProvisionedPhoneNumber(org.id, phoneId);
@@ -851,7 +852,7 @@ export function registerIntegrationRoutes(app: Express): void {
   api.delete("/api/phone-numbers/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const phoneId = Number(req.params.id);
+      const phoneId = Number(routeParam(req.params.id));
 
       const phoneRecord = await storage.getProvisionedPhoneNumber(org.id, phoneId);
       if (!phoneRecord || phoneRecord.organizationId !== org.id) {
@@ -1001,7 +1002,7 @@ export function registerIntegrationRoutes(app: Express): void {
   api.get("/api/ab-tests/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const testId = Number(req.params.id);
+      const testId = Number(routeParam(req.params.id));
 
       const result = await storage.getAbTestWithVariants(org.id, testId);
       if (!result) {
@@ -1018,7 +1019,7 @@ export function registerIntegrationRoutes(app: Express): void {
   api.post("/api/campaigns/:id/ab-test", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const campaignId = Number(req.params.id);
+      const campaignId = Number(routeParam(req.params.id));
       
       const campaign = await storage.getCampaign(org.id, campaignId);
       if (!campaign) {
@@ -1076,7 +1077,7 @@ export function registerIntegrationRoutes(app: Express): void {
   api.patch("/api/ab-tests/:id/start", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const testId = Number(req.params.id);
+      const testId = Number(routeParam(req.params.id));
       
       const result = await storage.getAbTestWithVariants(org.id, testId);
       if (!result) {
@@ -1107,7 +1108,7 @@ export function registerIntegrationRoutes(app: Express): void {
   api.patch("/api/ab-tests/:id/complete", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const testId = Number(req.params.id);
+      const testId = Number(routeParam(req.params.id));
       
       const result = await storage.getAbTestWithVariants(org.id, testId);
       if (!result) {
@@ -1184,7 +1185,7 @@ export function registerIntegrationRoutes(app: Express): void {
   api.patch("/api/ab-test-variants/:id/metrics", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const variantId = Number(req.params.id);
+      const variantId = Number(routeParam(req.params.id));
       // F-D39: variants reference an A/B test which is org-scoped — resolve and
       // gate so another org can't poison metrics on yours.
       const { abTestVariants } = await import("@shared/schema");
@@ -1224,7 +1225,7 @@ export function registerIntegrationRoutes(app: Express): void {
   api.post("/api/ab-tests/:id/variants", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const testId = Number(req.params.id);
+      const testId = Number(routeParam(req.params.id));
       
       const result = await storage.getAbTestWithVariants(org.id, testId);
       if (!result) {
@@ -1258,7 +1259,7 @@ export function registerIntegrationRoutes(app: Express): void {
   api.delete("/api/ab-tests/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const testId = Number(req.params.id);
+      const testId = Number(routeParam(req.params.id));
       
       const test = await storage.getAbTest(org.id, testId);
       if (!test) {
@@ -1276,7 +1277,7 @@ export function registerIntegrationRoutes(app: Express): void {
   api.post("/api/ab-tests/:id/apply-winner", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const testId = Number(req.params.id);
+      const testId = Number(routeParam(req.params.id));
       
       const result = await storage.getAbTestWithVariants(org.id, testId);
       if (!result) {
@@ -1328,7 +1329,7 @@ export function registerIntegrationRoutes(app: Express): void {
   api.get("/api/custom-fields/definitions/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = Number(req.params.id);
+      const id = Number(routeParam(req.params.id));
       const definition = await storage.getCustomFieldDefinition(org.id, id);
       if (!definition) {
         return Errors.notFound(res, "Custom field definition");
@@ -1375,7 +1376,7 @@ export function registerIntegrationRoutes(app: Express): void {
   api.patch("/api/custom-fields/definitions/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = Number(req.params.id);
+      const id = Number(routeParam(req.params.id));
 
       const existing = await storage.getCustomFieldDefinition(org.id, id);
       if (!existing) {
@@ -1408,7 +1409,7 @@ export function registerIntegrationRoutes(app: Express): void {
   api.delete("/api/custom-fields/definitions/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = Number(req.params.id);
+      const id = Number(routeParam(req.params.id));
 
       const existing = await storage.getCustomFieldDefinition(org.id, id);
       if (!existing) {
@@ -1441,8 +1442,8 @@ export function registerIntegrationRoutes(app: Express): void {
   // Custom Field Values
   api.get("/api/custom-fields/values/:entityType/:entityId", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const entityType = req.params.entityType;
-      const entityId = Number(req.params.entityId);
+      const entityType = routeParam(req.params.entityType);
+      const entityId = Number(routeParam(req.params.entityId));
       const values = await storage.getCustomFieldValues(entityType, entityId, getOrganizationId(req as AuthenticatedRequest));
       res.json(values);
     } catch (err: any) {
@@ -1509,7 +1510,7 @@ export function registerIntegrationRoutes(app: Express): void {
   api.get("/api/saved-views/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = Number(req.params.id);
+      const id = Number(routeParam(req.params.id));
       const view = await storage.getSavedView(org.id, id);
       if (!view) {
         return Errors.notFound(res, "Saved view");
@@ -1557,7 +1558,7 @@ export function registerIntegrationRoutes(app: Express): void {
   api.patch("/api/saved-views/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = Number(req.params.id);
+      const id = Number(routeParam(req.params.id));
 
       const existing = await storage.getSavedView(org.id, id);
       if (!existing) {
@@ -1590,7 +1591,7 @@ export function registerIntegrationRoutes(app: Express): void {
   api.delete("/api/saved-views/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = Number(req.params.id);
+      const id = Number(routeParam(req.params.id));
 
       const existing = await storage.getSavedView(org.id, id);
       if (!existing) {
@@ -1623,7 +1624,7 @@ export function registerIntegrationRoutes(app: Express): void {
   api.post("/api/saved-views/:id/set-default", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = Number(req.params.id);
+      const id = Number(routeParam(req.params.id));
 
       const existing = await storage.getSavedView(org.id, id);
       if (!existing) {

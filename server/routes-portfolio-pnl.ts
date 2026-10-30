@@ -12,6 +12,7 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { getPortfolioPnl } from "./services/portfolioPnl";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
@@ -40,7 +41,7 @@ router.get("/periods", isAuthenticated, getOrCreateOrg, (req: Request, res: Resp
 router.get("/:year", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const year = parseInt(req.params.year);
+    const year = parseInt(routeParam(req.params.year));
     if (isNaN(year) || year < 2000 || year > 2100) {
       return sendError(res, 400, "BAD_REQUEST", "Invalid year");
     }

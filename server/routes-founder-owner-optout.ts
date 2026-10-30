@@ -14,6 +14,7 @@ import { isAuthenticated, requireFounder } from "./auth";
 import type { AuthenticatedRequest } from "./types/request";
 import { Errors } from "./utils/errors";
 import { decideOwnerDeletion, listOwnerOptOutsForFounder, markMailCodeSent } from "./services/trust/ownerOptOut";
+import { routeParam } from "./utils/routeParams";
 
 export function registerFounderOwnerOptOutRoutes(app: Express): void {
   app.get("/api/founder/trust/owner-optouts", isAuthenticated, requireFounder, async (_req: AuthenticatedRequest, res: Response) => {
@@ -29,7 +30,7 @@ export function registerFounderOwnerOptOutRoutes(app: Express): void {
     isAuthenticated,
     requireFounder,
     async (req: AuthenticatedRequest, res: Response) => {
-      const id = Number(req.params.id);
+      const id = Number(routeParam(req.params.id));
       if (!Number.isInteger(id)) return Errors.badRequest(res, "Invalid request id");
       try {
         if (!(await markMailCodeSent(id))) return Errors.notFound(res, "Mail-code request");
@@ -45,8 +46,8 @@ export function registerFounderOwnerOptOutRoutes(app: Express): void {
     isAuthenticated,
     requireFounder,
     async (req: AuthenticatedRequest, res: Response) => {
-      const id = Number(req.params.id);
-      const orgId = Number(req.params.orgId);
+      const id = Number(routeParam(req.params.id));
+      const orgId = Number(routeParam(req.params.orgId));
       if (!Number.isInteger(id) || !Number.isInteger(orgId)) return Errors.badRequest(res, "Invalid id");
       const parsed = z.object({ approve: z.boolean(), note: z.string().trim().max(500).optional() }).strict().safeParse(req.body);
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);

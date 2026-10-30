@@ -6,6 +6,7 @@
 
 import { Router, type Request, type Response } from "express";
 import { Errors } from "./utils/errors";
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
@@ -28,7 +29,7 @@ router.get("/month/:monthKey", async (req: Request, res: Response) => {
     const org = req.organization;
     if (!org) return Errors.unauthorized(res);
     const { getCustomerLetter } = await import("./services/customerNarrative");
-    const letter = await getCustomerLetter(org.id, req.params.monthKey);
+    const letter = await getCustomerLetter(org.id, routeParam(req.params.monthKey));
     if (!letter) return Errors.notFound(res, "letter");
     res.json({ letter });
   } catch (err) {
@@ -69,7 +70,7 @@ router.post("/:monthKey/deliver", async (req: Request, res: Response) => {
     const org = req.organization;
     if (!org) return Errors.unauthorized(res);
     const { deliverCustomerLetter } = await import("./services/customerNarrative");
-    const result = await deliverCustomerLetter(org.id, req.params.monthKey);
+    const result = await deliverCustomerLetter(org.id, routeParam(req.params.monthKey));
     res.json(result);
   } catch (err) {
     Errors.internal(res, err);
@@ -82,7 +83,7 @@ router.post("/:monthKey/opened", async (req: Request, res: Response) => {
     const org = req.organization;
     if (!org) return Errors.unauthorized(res);
     const { markCustomerLetterOpened } = await import("./services/customerNarrative");
-    await markCustomerLetterOpened(org.id, req.params.monthKey);
+    await markCustomerLetterOpened(org.id, routeParam(req.params.monthKey));
     res.json({ ok: true });
   } catch (err) {
     Errors.internal(res, err);

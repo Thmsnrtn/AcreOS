@@ -36,6 +36,7 @@ import {
   type StandingOrderKind,
 } from "./services/autopilot/standingOrders";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 export function registerAutopilotRoutes(app: Express): void {
   // ── D2b: dataset releases (Controls door) ─────────────────────────────
@@ -68,7 +69,7 @@ export function registerAutopilotRoutes(app: Express): void {
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
       try {
         const { movePointer } = await import("./services/landData/releases/releaseStore");
-        const entry = await movePointer({ kind: "promote", releaseId: String(req.params.releaseId) }, { at: clock.now(), actor: getUserId(req), reason: parsed.data.reason });
+        const entry = await movePointer({ kind: "promote", releaseId: String(routeParam(req.params.releaseId)) }, { at: clock.now(), actor: getUserId(req), reason: parsed.data.reason });
         logger.info("[releases] promoted", { metadata: { releaseId: entry.releaseId, releaseName: entry.releaseName, seq: entry.seq } });
         return res.json(entry);
       } catch (err) {
@@ -119,7 +120,7 @@ export function registerAutopilotRoutes(app: Express): void {
     isAuthenticated,
     requireFounder,
     async (req: AuthenticatedRequest, res: Response) => {
-      const experienceId = Number(req.params.experienceId);
+      const experienceId = Number(routeParam(req.params.experienceId));
       if (!Number.isInteger(experienceId) || experienceId <= 0) return Errors.badRequest(res, "Invalid digest item");
       try {
         const { undoDigestItem } = await import("./services/autopilot/weeklyAutopilotDigest");
@@ -276,7 +277,7 @@ export function registerAutopilotRoutes(app: Express): void {
     isAuthenticated,
     requireFounder,
     async (req: AuthenticatedRequest, res: Response) => {
-      const domain = req.params.domain as AutopilotDomain;
+      const domain = routeParam(req.params.domain) as AutopilotDomain;
       const { level, reason } = (req.body ?? {}) as { level?: string; reason?: string };
 
       if (!AUTOPILOT_DOMAINS.includes(domain)) {
@@ -827,7 +828,7 @@ export function registerAutopilotRoutes(app: Express): void {
     isAuthenticated,
     requireFounder,
     async (req: AuthenticatedRequest, res: Response) => {
-      const id = Number(req.params.id);
+      const id = Number(routeParam(req.params.id));
       if (!Number.isInteger(id) || id <= 0) return Errors.badRequest(res, "Invalid id");
       try {
         const { cancelQueuedDispatch } = await import("./services/solene/dispatchQueue");
@@ -920,7 +921,7 @@ export function registerAutopilotRoutes(app: Express): void {
     isAuthenticated,
     requireFounder,
     async (req: AuthenticatedRequest, res: Response) => {
-      const id = Number(req.params.id);
+      const id = Number(routeParam(req.params.id));
       if (!Number.isInteger(id) || id <= 0) {
         return Errors.badRequest(res, "Invalid id");
       }
@@ -973,7 +974,7 @@ export function registerAutopilotRoutes(app: Express): void {
     isAuthenticated,
     requireFounder,
     async (req: AuthenticatedRequest, res: Response) => {
-      const id = Number(req.params.id);
+      const id = Number(routeParam(req.params.id));
       if (!Number.isInteger(id) || id <= 0) return Errors.badRequest(res, "Invalid id");
       try {
         const { approvePendingHand } = await import("./services/autopilot/pendingHands");
@@ -1009,7 +1010,7 @@ export function registerAutopilotRoutes(app: Express): void {
     isAuthenticated,
     requireFounder,
     async (req: AuthenticatedRequest, res: Response) => {
-      const id = Number(req.params.id);
+      const id = Number(routeParam(req.params.id));
       if (!Number.isInteger(id) || id <= 0) return Errors.badRequest(res, "Invalid id");
       try {
         const { rejectPendingHand } = await import("./services/autopilot/pendingHands");
@@ -1126,7 +1127,7 @@ export function registerAutopilotRoutes(app: Express): void {
     isAuthenticated,
     requireFounder,
     async (req: AuthenticatedRequest, res: Response) => {
-      const id = Number(req.params.id);
+      const id = Number(routeParam(req.params.id));
       if (!Number.isInteger(id) || id <= 0) return Errors.badRequest(res, "Invalid id");
       const reason = typeof req.body?.reason === "string" && req.body.reason.trim().length > 0
         ? req.body.reason.trim()

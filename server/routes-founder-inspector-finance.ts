@@ -64,6 +64,7 @@ import { logger } from "./utils/logger";
 import type { AuthenticatedRequest } from "./types/request";
 import { getUserId } from "./types/request";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 // ────────────────────────────────────────────────────────────────────────────
 // Canonical provider → source-table mapping (single source of truth for the
@@ -278,7 +279,7 @@ export function registerFounderInspectorFinanceRoutes(app: Express) {
     ...guards,
     async (req, res: Response) => {
       try {
-        const orgId = parseInt(req.params.id, 10);
+        const orgId = parseInt(routeParam(req.params.id), 10);
         if (!Number.isFinite(orgId)) return Errors.badRequest(res, "invalid org id");
         const days = parseDays(req.query.days, 30, 365);
         const since = new Date(clock.nowMs() - days * 24 * 60 * 60 * 1000);
@@ -518,7 +519,7 @@ export function registerFounderInspectorFinanceRoutes(app: Express) {
     ...guards,
     async (req, res: Response) => {
       try {
-        const orgId = parseInt(req.params.id, 10);
+        const orgId = parseInt(routeParam(req.params.id), 10);
         if (!Number.isFinite(orgId)) return Errors.badRequest(res, "invalid org id");
 
         const parsed = pauseChannelSchema.safeParse(req.body);
@@ -561,7 +562,7 @@ export function registerFounderInspectorFinanceRoutes(app: Express) {
     ...guards,
     async (req, res: Response) => {
       try {
-        const orgId = parseInt(req.params.id, 10);
+        const orgId = parseInt(routeParam(req.params.id), 10);
         if (!Number.isFinite(orgId)) return Errors.badRequest(res, "invalid org id");
 
         const parsed = throttleSchema.safeParse(req.body);
@@ -604,7 +605,7 @@ export function registerFounderInspectorFinanceRoutes(app: Express) {
     ...guards,
     async (req, res: Response) => {
       try {
-        const orgId = parseInt(req.params.id, 10);
+        const orgId = parseInt(routeParam(req.params.id), 10);
         if (!Number.isFinite(orgId)) return Errors.badRequest(res, "invalid org id");
 
         const parsed = draftEmailSchema.safeParse(req.body);
@@ -647,7 +648,7 @@ export function registerFounderInspectorFinanceRoutes(app: Express) {
     ...guards,
     async (req, res: Response) => {
       try {
-        const id = parseInt(req.params.id, 10);
+        const id = parseInt(routeParam(req.params.id), 10);
         if (!Number.isFinite(id)) return Errors.badRequest(res, "invalid ledger id");
 
         const [row] = await db
@@ -855,7 +856,7 @@ export function registerFounderInspectorFinanceRoutes(app: Express) {
     ...guards,
     async (req, res: Response) => {
       try {
-        const name = String(req.params.name ?? "").toLowerCase().trim();
+        const name = String(routeParam(req.params.name) ?? "").toLowerCase().trim();
         if (!SUPPORTED_PROVIDERS.includes(name as (typeof SUPPORTED_PROVIDERS)[number])) {
           return Errors.badRequest(res, `Unknown provider '${name}'`);
         }

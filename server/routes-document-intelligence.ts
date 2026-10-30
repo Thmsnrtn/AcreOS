@@ -8,6 +8,7 @@ import { getOrganizationId } from './types/request';
 import { usageLimitGate, aiByokThresholdGate } from './middleware/usageLimitGate';
 import { storage } from './storage';
 import { logger } from './utils/logger';
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
@@ -65,7 +66,7 @@ router.post('/documents/:id/process', ...aiMeter, async (req: Request, res: Resp
   try {
     await countAiTurn(req);
     const analysis = await documentIntelligenceService.processDocument(
-      parseInt(req.params.id),
+      parseInt(routeParam(req.params.id)),
       getOrganizationId(req),
     );
     res.json({ analysis });
@@ -88,7 +89,7 @@ router.get('/documents/:id/text', ...aiMeter, async (req: Request, res: Response
   try {
     await countAiTurn(req);
     const text = await documentIntelligenceService.extractText(
-      parseInt(req.params.id),
+      parseInt(routeParam(req.params.id)),
       getOrganizationId(req),
     );
     res.json({ text });
@@ -102,7 +103,7 @@ router.get('/documents/:id/key-terms', ...aiMeter, async (req: Request, res: Res
   try {
     await countAiTurn(req);
     const terms = await documentIntelligenceService.extractKeyTerms(
-      parseInt(req.params.id),
+      parseInt(routeParam(req.params.id)),
       getOrganizationId(req),
     );
     res.json({ terms });
@@ -116,7 +117,7 @@ router.get('/documents/:id/risks', ...aiMeter, async (req: Request, res: Respons
   try {
     await countAiTurn(req);
     const risks = await documentIntelligenceService.analyzeRisks(
-      parseInt(req.params.id),
+      parseInt(routeParam(req.params.id)),
       getOrganizationId(req),
     );
     res.json({ risks });
@@ -130,7 +131,7 @@ router.get('/documents/:id/summary', ...aiMeter, async (req: Request, res: Respo
   try {
     await countAiTurn(req);
     const summary = await documentIntelligenceService.generateDocumentSummary(
-      parseInt(req.params.id),
+      parseInt(routeParam(req.params.id)),
       getOrganizationId(req),
     );
     res.json({ summary });
@@ -143,7 +144,7 @@ router.get('/documents/:id/summary', ...aiMeter, async (req: Request, res: Respo
 router.get('/properties/:id/documents', async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const docs = await documentIntelligenceService.getDocumentsByProperty(org.id, parseInt(req.params.id));
+    const docs = await documentIntelligenceService.getDocumentsByProperty(org.id, parseInt(routeParam(req.params.id)));
     res.json({ documents: docs });
   } catch (err) {
     Errors.internal(res, err);
@@ -154,7 +155,7 @@ router.get('/properties/:id/documents', async (req: Request, res: Response) => {
 router.get('/deals/:id/documents', async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const docs = await documentIntelligenceService.getDocumentsByDeal(org.id, parseInt(req.params.id));
+    const docs = await documentIntelligenceService.getDocumentsByDeal(org.id, parseInt(routeParam(req.params.id)));
     res.json({ documents: docs });
   } catch (err) {
     Errors.internal(res, err);
@@ -182,7 +183,7 @@ router.post('/documents/:id/compare', ...aiMeter, async (req: Request, res: Resp
     await countAiTurn(req);
     const { compareDocumentId } = req.body;
     const diff = await documentIntelligenceService.compareDocumentVersions(
-      parseInt(req.params.id),
+      parseInt(routeParam(req.params.id)),
       parseInt(compareDocumentId),
       getOrganizationId(req),
     );

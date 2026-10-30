@@ -27,6 +27,7 @@ import {
   logKillSwitchEvent,
   type KillSwitchName,
 } from "./services/killSwitches";
+import { routeParam } from "./utils/routeParams";
 
 function opsServiceAuth(req: Request, res: Response, next: Function): void {
   const expected = process.env.OPS_SERVICE_TOKEN;
@@ -93,7 +94,7 @@ export function registerKillSwitchRoutes(app: Express): void {
   // Engage or release a switch
   app.post("/api/ops/kill-switches/:name", opsServiceAuth, async (req: Request, res: Response) => {
     try {
-      const name = req.params.name as KillSwitchName;
+      const name = routeParam(req.params.name) as KillSwitchName;
       if (!VALID_SWITCHES.includes(name)) {
         return Errors.badRequest(res, `Unknown switch: ${name}. Valid: ${VALID_SWITCHES.join(", ")}`);
       }

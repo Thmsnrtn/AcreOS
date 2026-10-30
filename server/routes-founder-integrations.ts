@@ -14,6 +14,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 // ─── Integration definitions ────────────────────────────────────────────────
 
@@ -173,7 +174,7 @@ export function registerFounderIntegrationsRoutes(app: Express) {
           return Errors.forbidden(res, "Integrations verification is restricted to founders");
         }
 
-        const { key } = req.params;
+        const key = routeParam(req.params.key);
         const def = INTEGRATIONS.find((i) => i.key === key);
 
         if (!def) {
@@ -206,7 +207,7 @@ export function registerFounderIntegrationsRoutes(app: Express) {
         });
       } catch (error) {
         logger.error(
-          `Failed to verify integration ${req.params.key}`,
+          `Failed to verify integration ${routeParam(req.params.key)}`,
           error instanceof Error ? error : undefined
         );
         return Errors.internal(res, error);

@@ -58,6 +58,7 @@ import {
 } from "@shared/leads/csvImportMapping";
 import { leadParcelFactsFromRow } from "@shared/leads/parcelFacts";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 // Partial update schema for PUT endpoints. The soft-delete fields are server-
 // owned: a lead is deleted and restored only through the dedicated paths
@@ -382,7 +383,7 @@ export function registerLeadRoutes(app: Express): void {
 
   api.get("/api/leads/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
-    const leadId = Number(req.params.id);
+    const leadId = Number(routeParam(req.params.id));
     if (isNaN(leadId)) return Errors.badRequest(res, "Invalid lead ID");
     const lead = await storage.getLead(org.id, leadId);
     if (!lead) return Errors.notFound(res, "Lead");
@@ -693,7 +694,7 @@ export function registerLeadRoutes(app: Express): void {
   api.put("/api/leads/:id", isAuthenticated, getOrCreateOrg, attachPermissionContext(), async (req, res) => {
     try {
       const org = req.organization;
-      const leadId = Number(req.params.id);
+      const leadId = Number(routeParam(req.params.id));
 
       const existingLead = await storage.getLead(org.id, leadId);
       if (!existingLead) return Errors.notFound(res, "Lead");
@@ -791,7 +792,7 @@ export function registerLeadRoutes(app: Express): void {
   
   api.delete("/api/leads/:id", isAuthenticated, getOrCreateOrg, requirePermission("canDeleteLeads"), attachPermissionContext(), async (req, res) => {
     const org = req.organization;
-    const leadId = Number(req.params.id);
+    const leadId = Number(routeParam(req.params.id));
     if (isNaN(leadId)) {
       return Errors.badRequest(res, "Invalid lead ID");
     }
@@ -829,7 +830,7 @@ export function registerLeadRoutes(app: Express): void {
   // Restore a soft-deleted lead
   api.patch("/api/leads/:id/restore", isAuthenticated, getOrCreateOrg, attachPermissionContext(), async (req, res) => {
     const org = req.organization;
-    const leadId = Number(req.params.id);
+    const leadId = Number(routeParam(req.params.id));
     if (isNaN(leadId)) {
       return Errors.badRequest(res, "Invalid lead ID");
     }
@@ -1032,7 +1033,7 @@ export function registerLeadRoutes(app: Express): void {
   
   api.get("/api/leads/:id/activities", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
-    const leadId = Number(req.params.id);
+    const leadId = Number(routeParam(req.params.id));
     // Task #2: Verify lead belongs to org (IDOR prevention)
     const lead = await storage.getLead(org.id, leadId);
     if (!lead) return Errors.notFound(res, "Lead");
@@ -1063,7 +1064,7 @@ export function registerLeadRoutes(app: Express): void {
       try {
         const org = (req as AuthenticatedRequest).organization;
         const userId = req.user?.id ?? null;
-        const leadId = Number(req.params.id);
+        const leadId = Number(routeParam(req.params.id));
         if (!Number.isFinite(leadId)) {
           return Errors.badRequest(res, "Invalid lead id");
         }
@@ -1134,7 +1135,7 @@ export function registerLeadRoutes(app: Express): void {
         });
       } catch (err) {
         logger.warn("Contact event log failed", {
-          leadId: req.params.id,
+          leadId: routeParam(req.params.id),
           error: (err as Error)?.message,
         });
         return Errors.internal(res, err as Error);
@@ -1145,7 +1146,7 @@ export function registerLeadRoutes(app: Express): void {
   api.get("/api/leads/:id/properties", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const leadId = Number(req.params.id);
+      const leadId = Number(routeParam(req.params.id));
       
       const lead = await storage.getLead(org.id, leadId);
       if (!lead) {
@@ -1172,7 +1173,7 @@ export function registerLeadRoutes(app: Express): void {
   api.get("/api/leads/:id/deal-state", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = getOrganization(req as AuthenticatedRequest);
-      const leadId = Number(req.params.id);
+      const leadId = Number(routeParam(req.params.id));
       if (!Number.isSafeInteger(leadId) || leadId <= 0) return Errors.badRequest(res, "Invalid lead ID");
       const lead = await storage.getLead(org.id, leadId);
       if (!lead || lead.deletedAt) return Errors.notFound(res, "Lead");
@@ -1202,7 +1203,7 @@ export function registerLeadRoutes(app: Express): void {
       try {
         const areq = req as AuthenticatedRequest;
         const org = getOrganization(areq);
-        const leadId = Number(req.params.id);
+        const leadId = Number(routeParam(req.params.id));
         if (!Number.isSafeInteger(leadId) || leadId <= 0) return Errors.badRequest(res, "Invalid lead ID");
 
         const lead = await storage.getLead(org.id, leadId);
@@ -1291,7 +1292,7 @@ export function registerLeadRoutes(app: Express): void {
   // Timeline endpoints for communication history
   api.get("/api/leads/:id/timeline", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
-    const leadId = Number(req.params.id);
+    const leadId = Number(routeParam(req.params.id));
     const eventTypes = req.query.eventTypes ? (req.query.eventTypes as string).split(",") : undefined;
     const includeDealChanges = req.query.includeDealChanges !== "false";
 
@@ -1340,7 +1341,7 @@ export function registerLeadRoutes(app: Express): void {
 
   api.get("/api/properties/:id/timeline", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
-    const propertyId = Number(req.params.id);
+    const propertyId = Number(routeParam(req.params.id));
     const eventTypes = req.query.eventTypes ? (req.query.eventTypes as string).split(",") : undefined;
     const events = await storage.getActivityEvents(org.id, "property", propertyId, eventTypes);
     res.json(events);
@@ -1348,7 +1349,7 @@ export function registerLeadRoutes(app: Express): void {
 
   api.get("/api/deals/:id/timeline", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
-    const dealId = Number(req.params.id);
+    const dealId = Number(routeParam(req.params.id));
     const eventTypes = req.query.eventTypes ? (req.query.eventTypes as string).split(",") : undefined;
     const events = await storage.getActivityEvents(org.id, "deal", dealId, eventTypes);
     res.json(events);
@@ -1356,7 +1357,7 @@ export function registerLeadRoutes(app: Express): void {
 
   api.post("/api/leads/:id/score", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
-    const leadId = Number(req.params.id);
+    const leadId = Number(routeParam(req.params.id));
     
     const lead = await storage.getLead(org.id, leadId);
     if (!lead) {
@@ -1378,7 +1379,7 @@ export function registerLeadRoutes(app: Express): void {
   
   api.post("/api/leads/:id/betty-score", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
-    const leadId = Number(req.params.id);
+    const leadId = Number(routeParam(req.params.id));
     const triggerSource = req.body.triggerSource || "manual";
     
     try {
@@ -1426,7 +1427,7 @@ export function registerLeadRoutes(app: Express): void {
 
   api.get("/api/leads/:id/score-history", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
-    const leadId = Number(req.params.id);
+    const leadId = Number(routeParam(req.params.id));
     const limit = Math.min(Number(req.query.limit) || 10, 50);
     
     try {
@@ -1461,7 +1462,7 @@ export function registerLeadRoutes(app: Express): void {
 
   api.post("/api/leads/:id/conversion", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
-    const leadId = Number(req.params.id);
+    const leadId = Number(routeParam(req.params.id));
     const { conversionType, campaignId, campaignType, touchNumber, dealValue, profitMargin } = req.body;
     
     if (!conversionType) {
@@ -1499,7 +1500,7 @@ export function registerLeadRoutes(app: Express): void {
       let paxCharge: PaxTurnCharge | null = null;
       try {
         const org = getOrganization(req);
-        const leadId = Number(req.params.id);
+        const leadId = Number(routeParam(req.params.id));
 
         const lead = await storage.getLead(org.id, leadId);
         if (!lead) {
@@ -2110,7 +2111,7 @@ export function registerLeadRoutes(app: Express): void {
   api.get("/api/skip-traces/:id", isAuthenticated, getOrCreateOrg, requireScope("tenant_pii_read"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const org = getOrganization(req);
-      const trace = await storage.getSkipTrace(org.id, Number(req.params.id));
+      const trace = await storage.getSkipTrace(org.id, Number(routeParam(req.params.id)));
       if (!trace) return Errors.notFound(res, "Skip trace");
       const [released] = await releaseSkipTraceResults(org.id, getUserId(req), [trace]);
       res.json(released);
@@ -2122,7 +2123,7 @@ export function registerLeadRoutes(app: Express): void {
   api.get("/api/skip-traces/lead/:leadId", isAuthenticated, getOrCreateOrg, requireScope("tenant_pii_read"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const org = getOrganization(req);
-      const trace = await storage.getSkipTraceByLead(org.id, Number(req.params.leadId));
+      const trace = await storage.getSkipTraceByLead(org.id, Number(routeParam(req.params.leadId)));
       if (!trace) return res.json(null);
       const [released] = await releaseSkipTraceResults(org.id, getUserId(req), [trace]);
       res.json(released);

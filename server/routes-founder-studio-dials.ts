@@ -30,6 +30,7 @@ import { CREDIT_WEIGHTS, type CreditAction } from "@shared/billing/credit-weight
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import type { AuthenticatedRequest } from "./types/request";
+import { routeParam } from "./utils/routeParams";
 
 // ────────────────────────────────────────────────────────────────────────────
 // Defaults — used as the seed value for a key the first time it's set, and
@@ -331,7 +332,7 @@ export function registerFounderStudioDialRoutes(app: Express) {
   });
 
   app.post("/api/founder/studio/credits/:action", ...guards, async (req, res: Response) => {
-    const action = req.params.action as CreditAction;
+    const action = routeParam(req.params.action) as CreditAction;
     if (!(action in CREDIT_WEIGHTS)) {
       return Errors.badRequest(res, `Unknown credit action '${action}'`);
     }

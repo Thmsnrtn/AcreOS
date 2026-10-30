@@ -22,10 +22,11 @@ import { requireRole } from "./middleware/roleGuard";
 import { getOrganizationId, getUserId, type AuthenticatedRequest } from "./types/request";
 import { Errors } from "./utils/errors";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 function place(req: AuthenticatedRequest): { state: string; county: string } | null {
-  const state = String(req.params.state ?? "").toUpperCase();
-  const county = String(req.params.county ?? "").trim();
+  const state = String(routeParam(req.params.state) ?? "").toUpperCase();
+  const county = String(routeParam(req.params.county) ?? "").trim();
   if (!/^[A-Z]{2}$/.test(state) || county.length === 0 || county.length > 120) return null;
   return { state, county };
 }

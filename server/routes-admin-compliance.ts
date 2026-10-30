@@ -36,7 +36,7 @@ import { secretEquals } from "./utils/secretEquals";
  * secret. The token-only path is required so .github/workflows/deploy.yml
  * can POST deploy rows without a human session.
  */
-function isAuthenticatedOrBotToken(req: Request, res: Response, next: NextFunction): void {
+function isAuthenticatedOrBotToken(req: Request, res: Response, next: NextFunction): ReturnType<typeof isAuthenticated> {
   const token = (req.header("x-deploy-bot-token") || "").trim();
   const expected = (process.env.DEPLOY_BOT_TOKEN || "").trim();
   if (secretEquals(token, expected)) {
@@ -48,7 +48,7 @@ function isAuthenticatedOrBotToken(req: Request, res: Response, next: NextFuncti
   return isAuthenticated(req as AuthenticatedRequest, res, next);
 }
 
-function requireFounderOrBot(req: Request, res: Response, next: NextFunction): void {
+function requireFounderOrBot(req: Request, res: Response, next: NextFunction): ReturnType<typeof requireFounder> {
   if ((req as Request & { isDeployBot?: boolean }).isDeployBot) return next();
   return requireFounder(req as AuthenticatedRequest, res, next);
 }

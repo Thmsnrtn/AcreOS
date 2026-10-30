@@ -3,6 +3,7 @@ import { Errors } from './utils/errors';
 import { acquisitionRadar } from './services/acquisitionRadar';
 import { sendError } from "./utils/errors";
 import { omitServerOwnedFields } from "./utils/updatePayload";
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
@@ -26,7 +27,7 @@ router.put('/config/:id', async (req: Request, res: Response) => {
     const org = req.organization;
     const config = await acquisitionRadar.updateConfig(
       org.id,
-      parseInt(req.params.id),
+      parseInt(routeParam(req.params.id)),
       // The config's id and tenant key are the server's; the body edits the rest.
       omitServerOwnedFields(req.body)
     );
@@ -105,7 +106,7 @@ router.patch('/opportunities/:id/status', async (req: Request, res: Response) =>
   try {
     const org = req.organization;
     const { status, reviewNotes } = req.body;
-    await acquisitionRadar.updateOpportunityStatus(parseInt(req.params.id), org.id, status, reviewNotes);
+    await acquisitionRadar.updateOpportunityStatus(parseInt(routeParam(req.params.id)), org.id, status, reviewNotes);
     res.json({ success: true });
   } catch (error: any) {
     sendError(res, 400, "BAD_REQUEST", error.message);

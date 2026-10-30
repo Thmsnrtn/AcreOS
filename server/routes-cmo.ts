@@ -48,6 +48,7 @@ import { omitProtectedFields } from "./utils/updatePayload";
 import { clock } from "./utils/clock";
 import { createInsertSchema } from "@shared/db/createInsertSchema";
 import { z } from "zod";
+import { routeParam } from "./utils/routeParams";
 
 const brandUpdateSchema = createInsertSchema(brandProfiles, {
   oneLiner: z.string().trim().min(1).max(1000),
@@ -187,7 +188,7 @@ export function registerCmoRoutes(app: Express) {
   });
 
   app.get("/api/founder/cmo/generation-jobs/:id", isAuthenticated, requireFounder, async (req: AuthenticatedRequest, res) => {
-    const rawId = req.params.id;
+    const rawId = routeParam(req.params.id);
     if (typeof rawId !== "string" || !/^[1-9]\d*$/.test(rawId) || !Number.isSafeInteger(Number(rawId)) || Number(rawId) > 2147483647)
       return Errors.badRequest(res, "Invalid generation request identity");
     try {

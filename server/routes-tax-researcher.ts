@@ -62,6 +62,7 @@ import { isCalendarDate } from "@shared/dates/calendar";
 import { clock } from "./utils/clock";
 import { DISCARD_REASONS, DISCARD_REASON_LABEL, deriveMaxBid, type RightsStackInput } from "@shared/tax/maxBid";
 import { basisAfterManualMax, bidStanding, discardLot, recordMaxBid, reopenLot } from "./services/tax/bidDiscipline";
+import { routeParam } from "./utils/routeParams";
 
 // The rights stack as the operator states it (shared/tax/maxBid.ts). Each
 // amount is known-with-source, searched-with-none-found, or unknown; an
@@ -448,7 +449,7 @@ router.post('/imports/lot-list/commit', async (req: AuthenticatedRequest, res: R
 router.post('/auctions/:id/lots', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const organizationId = getOrganizationId(req);
-    const auctionId = parseInt(req.params.id, 10);
+    const auctionId = parseInt(routeParam(req.params.id), 10);
     if (Number.isNaN(auctionId)) return Errors.badRequest(res, "Invalid auction id");
 
     const [auction] = await drizzleDb
@@ -517,7 +518,7 @@ router.post('/auctions/:id/lots', async (req: AuthenticatedRequest, res: Respons
 router.patch('/auctions/:id', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const organizationId = getOrganizationId(req);
-    const auctionId = parseInt(req.params.id, 10);
+    const auctionId = parseInt(routeParam(req.params.id), 10);
     if (Number.isNaN(auctionId)) return Errors.badRequest(res, "Invalid auction id");
 
     const parsed = auctionBodySchema.partial().extend({
@@ -566,7 +567,7 @@ router.patch('/auctions/:id', async (req: AuthenticatedRequest, res: Response) =
 router.get('/auctions/:id/session-budget', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const organizationId = getOrganizationId(req);
-    const auctionId = parseInt(req.params.id, 10);
+    const auctionId = parseInt(routeParam(req.params.id), 10);
     if (Number.isNaN(auctionId)) return Errors.badRequest(res, "Invalid auction id");
 
     const [auction] = await drizzleDb
@@ -850,7 +851,7 @@ async function handoffWonLotToCertificate(params: {
 router.post('/listings/:id/won-certificate', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const organizationId = getOrganizationId(req);
-    const listingId = parseInt(req.params.id, 10);
+    const listingId = parseInt(routeParam(req.params.id), 10);
     if (Number.isNaN(listingId)) return Errors.badRequest(res, "Invalid listing id");
 
     const parsed = z.object({
@@ -889,7 +890,7 @@ router.post('/listings/:id/won-certificate', async (req: AuthenticatedRequest, r
 router.patch('/listings/:id', async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(routeParam(req.params.id), 10);
     if (Number.isNaN(id)) return Errors.badRequest(res, "Invalid listing id");
     const parsed = z.object({
       maxBidCents: z.number().int().nonnegative().nullable().optional(),
@@ -931,7 +932,7 @@ router.patch('/listings/:id', async (req: Request, res: Response) => {
 router.get('/listings/:id/bid-log', async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(routeParam(req.params.id), 10);
     if (Number.isNaN(id)) return Errors.badRequest(res, "Invalid listing id");
     const rows = await drizzleDb
       .select()
@@ -948,7 +949,7 @@ router.get('/listings/:id/bid-log', async (req: Request, res: Response) => {
 router.post('/listings/:id/bid-log', async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(routeParam(req.params.id), 10);
     if (Number.isNaN(id)) return Errors.badRequest(res, "Invalid listing id");
     const parsed = z.object({
       action: z.enum(AUCTION_BID_ACTIONS),
@@ -1092,7 +1093,7 @@ router.post('/listings/:id/bid-log', async (req: Request, res: Response) => {
 // A SCREEN: arithmetic on the operator's stated stack, labelled as one.
 router.post('/listings/:id/max-bid/screen', async (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(routeParam(req.params.id), 10);
     if (Number.isNaN(id)) return Errors.badRequest(res, "Invalid listing id");
     const parsed = rightsStackSchema.safeParse(req.body);
     if (!parsed.success) return Errors.validationFailed(res, parsed.error.flatten());
@@ -1108,7 +1109,7 @@ router.post('/listings/:id/max-bid/screen', async (req: Request, res: Response) 
 router.put('/listings/:id/max-bid', async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(routeParam(req.params.id), 10);
     if (Number.isNaN(id)) return Errors.badRequest(res, "Invalid listing id");
     const parsed = rightsStackSchema.safeParse(req.body);
     if (!parsed.success) return Errors.validationFailed(res, parsed.error.flatten());
@@ -1132,7 +1133,7 @@ router.put('/listings/:id/max-bid', async (req: Request, res: Response) => {
 router.post('/listings/:id/discard', async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(routeParam(req.params.id), 10);
     if (Number.isNaN(id)) return Errors.badRequest(res, "Invalid listing id");
     const parsed = z
       .object({ reason: z.enum(DISCARD_REASONS), note: z.string().trim().max(1_000).optional() })
@@ -1153,7 +1154,7 @@ router.post('/listings/:id/discard', async (req: Request, res: Response) => {
 router.post('/listings/:id/reopen', async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(routeParam(req.params.id), 10);
     if (Number.isNaN(id)) return Errors.badRequest(res, "Invalid listing id");
     const parsed = z.object({ note: z.string().trim().max(1_000).optional() }).safeParse(req.body ?? {});
     if (!parsed.success) return Errors.validationFailed(res, parsed.error.flatten());

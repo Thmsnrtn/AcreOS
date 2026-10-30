@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import { marketPredictionService } from './services/marketPrediction';
 import { logger } from "./utils/logger";
 import { sendError } from "./utils/errors";
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
@@ -11,7 +12,8 @@ const router = Router();
  */
 router.get('/county/:state/:county', async (req: Request, res: Response) => {
   try {
-    const { state, county } = req.params;
+    const state = routeParam(req.params.state);
+    const county = routeParam(req.params.county);
     const prediction = await marketPredictionService.getPrediction({ state, county });
 
     if (!prediction) {
@@ -35,7 +37,7 @@ router.get('/county/:state/:county', async (req: Request, res: Response) => {
  */
 router.get('/property/:id/trajectory', async (req: Request, res: Response) => {
   try {
-    const propertyId = parseInt(req.params.id);
+    const propertyId = parseInt(routeParam(req.params.id));
     const trajectory = await marketPredictionService.getPropertyTrajectory(propertyId);
 
     if (!trajectory) {
@@ -75,7 +77,8 @@ router.get('/opportunity-windows', async (req: Request, res: Response) => {
  */
 router.get('/market-timing/:state/:county', async (req: Request, res: Response) => {
   try {
-    const { state, county } = req.params;
+    const state = routeParam(req.params.state);
+    const county = routeParam(req.params.county);
     const prediction = await marketPredictionService.getPrediction({ state, county });
 
     if (!prediction) {
@@ -107,7 +110,8 @@ router.get('/market-timing/:state/:county', async (req: Request, res: Response) 
  */
 router.post('/refresh/:state/:county', async (req: Request, res: Response) => {
   try {
-    const { state, county } = req.params;
+    const state = routeParam(req.params.state);
+    const county = routeParam(req.params.county);
     // getPrediction will regenerate if stale
     const prediction = await marketPredictionService.getPrediction({ state, county });
 

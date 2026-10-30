@@ -47,6 +47,7 @@ import {
   describeCalibration,
 } from "@shared/outcomes/calibration";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
@@ -225,7 +226,7 @@ router.get("/calibration", async (req: AuthenticatedRequest, res: Response) => {
  * route swallow `/api/decisions/anything`.
  */
 const numericIdOnly = (req: AuthenticatedRequest, _res: Response, next: NextFunction) => {
-  if (!/^\d+$/.test(String(req.params.id ?? ""))) return next("route");
+  if (!/^\d+$/.test(String(routeParam(req.params.id) ?? ""))) return next("route");
   next();
 };
 
@@ -233,7 +234,7 @@ const numericIdOnly = (req: AuthenticatedRequest, _res: Response, next: NextFunc
 router.get("/:id", numericIdOnly, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const organizationId = getOrganizationId(req);
-    const id = Number(req.params.id);
+    const id = Number(routeParam(req.params.id));
     const found = await getDecision(organizationId, id);
     if (!found) return Errors.notFound(res, "Decision");
     res.json({
@@ -296,7 +297,7 @@ router.post("/:id/outcomes", numericIdOnly, async (req: AuthenticatedRequest, re
     if (!parsed.success) return Errors.validationFailed(res, parsed.error);
 
     const stored = await recordOutcome(organizationId, {
-      decisionSnapshotId: Number(req.params.id),
+      decisionSnapshotId: Number(routeParam(req.params.id)),
       ...parsed.data,
     });
     res.json({ id: stored.id, observedAt: stored.observedAt, outcome: stored.body });
@@ -313,9 +314,9 @@ router.post("/:id/outcomes", numericIdOnly, async (req: AuthenticatedRequest, re
 router.get("/:id/outcomes", numericIdOnly, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const organizationId = getOrganizationId(req);
-    const list = await outcomesForDecision(organizationId, Number(req.params.id));
+    const list = await outcomesForDecision(organizationId, Number(routeParam(req.params.id)));
     res.json({
-      decisionSnapshotId: Number(req.params.id),
+      decisionSnapshotId: Number(routeParam(req.params.id)),
       outcomes: list.map((o) => ({
         id: o.id,
         observedAt: o.observedAt,
@@ -339,14 +340,14 @@ router.get("/:id/outcomes", numericIdOnly, async (req: AuthenticatedRequest, res
 router.get("/:subjectType/:subjectId", async (req: AuthenticatedRequest, res: Response) => {
   try {
     const organizationId = getOrganizationId(req);
-    const subjectType = req.params.subjectType;
+    const subjectType = routeParam(req.params.subjectType);
     if (!(DECISION_SUBJECT_TYPES as readonly string[]).includes(subjectType)) {
       return Errors.badRequest(
         res,
         `Unknown decision subject type: ${subjectType}`,
       );
     }
-    const subjectId = Number(req.params.subjectId);
+    const subjectId = Number(routeParam(req.params.subjectId));
     if (!Number.isInteger(subjectId) || subjectId <= 0) {
       return Errors.badRequest(res, "Invalid subject id");
     }

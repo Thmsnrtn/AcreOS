@@ -7,6 +7,7 @@ import { usageMeteringService, creditService } from "./services/credits";
 import { Errors, sendError } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { getOrganizationId, type AuthenticatedRequest } from "./types/request";
+import { routeParam } from "./utils/routeParams";
 
 export function registerCoreAIRoutes(app: Express): void {
   const api = app;
@@ -43,7 +44,7 @@ export function registerCoreAIRoutes(app: Express): void {
   api.get("/api/agents/skills/:agentType", isAuthenticated, async (req, res) => {
     try {
       const { getAgentSkills } = await import('./services/core-agents');
-      const agentType = req.params.agentType as any;
+      const agentType = routeParam(req.params.agentType) as any;
       const skills = getAgentSkills(agentType);
       
       if (!skills) {
@@ -61,7 +62,7 @@ export function registerCoreAIRoutes(app: Express): void {
     try {
       const org = req.organization;
       const user = req.user;
-      const { skillId } = req.params;
+      const skillId = routeParam(req.params.skillId);
       const { params, agentType } = req.body;
       
       const { executeAgentTask } = await import('./services/core-agents');
@@ -88,7 +89,7 @@ export function registerCoreAIRoutes(app: Express): void {
   api.get("/api/agents/:type", isAuthenticated, async (req, res) => {
     try {
       const { getAgentInfo } = await import('./services/core-agents');
-      const agentType = req.params.type as any;
+      const agentType = routeParam(req.params.type) as any;
       const info = getAgentInfo(agentType);
       
       if (!info) {
@@ -241,7 +242,7 @@ export function registerCoreAIRoutes(app: Express): void {
   api.get("/api/agents/memory/:agentType", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const { agentType } = req.params;
+      const agentType = routeParam(req.params.agentType);
       const limit = Math.min(100, parseInt(req.query.limit as string) || 50);
 
       const validTypes = ["research", "deals", "communications", "operations"];
@@ -273,7 +274,7 @@ export function registerCoreAIRoutes(app: Express): void {
   api.delete("/api/agents/memory/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = (req as AuthenticatedRequest).organization;
-      const memoryId = parseInt(req.params.id);
+      const memoryId = parseInt(routeParam(req.params.id));
       if (isNaN(memoryId)) {
         return Errors.badRequest(res, "Invalid memory ID");
       }
@@ -327,7 +328,7 @@ export function registerCoreAIRoutes(app: Express): void {
    */
   api.post("/api/pax/observations/:id/acknowledge", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const observationId = parseInt(req.params.id);
+      const observationId = parseInt(routeParam(req.params.id));
       if (isNaN(observationId)) {
         return Errors.badRequest(res, "Invalid observation ID");
       }
@@ -350,7 +351,7 @@ export function registerCoreAIRoutes(app: Express): void {
    */
   api.get("/api/pax/observations/:id/explain", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const observationId = parseInt(req.params.id);
+      const observationId = parseInt(routeParam(req.params.id));
       if (isNaN(observationId)) {
         return Errors.badRequest(res, "Invalid observation ID");
       }
@@ -372,7 +373,7 @@ export function registerCoreAIRoutes(app: Express): void {
    */
   api.post("/api/pax/observations/:id/dismiss", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const observationId = parseInt(req.params.id);
+      const observationId = parseInt(routeParam(req.params.id));
       if (isNaN(observationId)) {
         return Errors.badRequest(res, "Invalid observation ID");
       }

@@ -33,6 +33,7 @@ import { dispatchWebhookEvent } from "../services/publicWebhookDispatcher";
 import { clock } from "../utils/clock";
 import { stampOwnerSuppression } from "../services/trust/ownerSuppression";
 import { DEFAULT_GRANT_SOURCE, stampConsentForInsert, stampConsentForUpdate } from "../services/consentStamp";
+import { routeParam } from "../utils/routeParams";
 
 export const leadsV1Router = Router();
 
@@ -183,7 +184,7 @@ leadsV1Router.get(
   requireApiKey("leads:read"),
   async (req: Request, res: Response) => {
     const orgId = req.apiKeyOrganization!.id;
-    const id = Number.parseInt(req.params.id, 10);
+    const id = Number.parseInt(routeParam(req.params.id), 10);
     if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid id");
 
     try {
@@ -207,7 +208,7 @@ leadsV1Router.patch(
   idempotencyMiddleware,
   async (req: Request, res: Response) => {
     const orgId = req.apiKeyOrganization!.id;
-    const id = Number.parseInt(req.params.id, 10);
+    const id = Number.parseInt(routeParam(req.params.id), 10);
     if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid id");
 
     const parsed = updateLeadSchema.safeParse(req.body);

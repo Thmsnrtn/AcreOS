@@ -66,6 +66,7 @@ import { mintQrCode, qrRedirectUrl, qrSigningConfigured } from "./services/mail/
 import { assignTrackingNumberForMailShipment } from "./services/comms/tracking-pool";
 import { registerQrRedirectRoutes } from "./routes/public-qr-redirect";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
@@ -1066,7 +1067,7 @@ export function registerOutreachMailRoutes(app: Express): void {
     isAuthenticated,
     getOrCreateOrg,
     async (req: AuthenticatedRequest, res: Response) => {
-      const idParam = Number(req.params.shipmentId);
+      const idParam = Number(routeParam(req.params.shipmentId));
       if (!Number.isFinite(idParam) || idParam <= 0) {
         return Errors.badRequest(res, "Invalid shipment id");
       }
@@ -1222,7 +1223,7 @@ export function registerOutreachMailRoutes(app: Express): void {
     isAuthenticated,
     getOrCreateOrg,
     async (req: AuthenticatedRequest, res: Response) => {
-      const idParam = Number(req.params.id);
+      const idParam = Number(routeParam(req.params.id));
       if (!Number.isFinite(idParam) || idParam <= 0) {
         return Errors.badRequest(res, "Invalid shipment id");
       }
@@ -1292,7 +1293,7 @@ export function registerOutreachMailRoutes(app: Express): void {
     isAuthenticated,
     getOrCreateOrg,
     async (req: AuthenticatedRequest, res: Response) => {
-      const shipmentId = Number(req.params.shipmentId);
+      const shipmentId = Number(routeParam(req.params.shipmentId));
       if (!Number.isFinite(shipmentId) || shipmentId <= 0) {
         return Errors.badRequest(res, "Invalid shipment id");
       }
@@ -1411,7 +1412,7 @@ export function registerOutreachMailRoutes(app: Express): void {
     isAuthenticated,
     getOrCreateOrg,
     async (req: AuthenticatedRequest, res: Response) => {
-      const shipmentId = Number(req.params.shipmentId);
+      const shipmentId = Number(routeParam(req.params.shipmentId));
       if (!Number.isFinite(shipmentId) || shipmentId <= 0) {
         return Errors.badRequest(res, "Invalid shipment id");
       }
@@ -1633,7 +1634,7 @@ export function registerOutreachMailRoutes(app: Express): void {
     isAuthenticated,
     getOrCreateOrg,
     async (req: AuthenticatedRequest, res: Response) => {
-      const shipmentId = Number(req.params.shipmentId);
+      const shipmentId = Number(routeParam(req.params.shipmentId));
       if (!Number.isFinite(shipmentId) || shipmentId <= 0) {
         return Errors.badRequest(res, "Invalid shipment id");
       }

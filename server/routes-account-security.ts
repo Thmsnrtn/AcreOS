@@ -26,6 +26,7 @@ import type { AuthenticatedRequest } from "./types/request";
 import { getUserId, getOrganizationId, getClerkAuth } from "./types/request";
 import { Errors, sendError } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { routeParam } from "./utils/routeParams";
 
 let clerkClient: any = null;
 async function getClerk() {
@@ -132,7 +133,7 @@ export function registerAccountSecurityRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const userId = getUserId(req);
-        const sessionId = req.params.sid;
+        const sessionId = routeParam(req.params.sid);
         const [localUser] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
         if (!localUser?.clerkUserId) return Errors.notFound(res, "User");
 

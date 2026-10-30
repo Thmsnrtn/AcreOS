@@ -39,6 +39,7 @@ import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { tierForSubscriptionTier } from "@shared/billing/tier-pricing";
 import { BYOK_AI_CHANNELS, byokTierAllows } from "@shared/billing/byok-tiers";
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
@@ -221,7 +222,7 @@ router.post("/", async (req: AuthenticatedRequest, res: Response) => {
 router.delete("/:channel", async (req: AuthenticatedRequest, res: Response) => {
   try {
     const organizationId = getOrganizationId(req);
-    const channel = req.params.channel;
+    const channel = routeParam(req.params.channel);
     if (!requireByokTier(req, res, channel)) return;
     if (!BYOK_CHANNELS.includes(channel as ByokChannel)) {
       return Errors.badRequest(res, `Unknown channel: ${channel}`);

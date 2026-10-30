@@ -35,6 +35,7 @@ import {
 import { summarizeThread } from "./services/mailbox/threadSummary";
 import { getOrganizationId, getUserId, type AuthenticatedRequest } from "./types/request";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
@@ -220,7 +221,7 @@ router.get("/", async (req: AuthenticatedRequest, res: Response) => {
 router.delete("/:id", async (req: AuthenticatedRequest, res: Response) => {
   try {
     const organizationId = getOrganizationId(req);
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(routeParam(req.params.id), 10);
     if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid mailbox id");
 
     // Disconnecting another member's mailbox is an admin act: the linking
@@ -268,7 +269,7 @@ router.delete("/:id", async (req: AuthenticatedRequest, res: Response) => {
 // ── Read: list messages on-demand (nothing persisted) ───────────────────────
 router.get("/:id/messages", async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(routeParam(req.params.id), 10);
     if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid mailbox id");
 
     const usable = await loadUsableMailbox(req, res, id);
@@ -288,13 +289,13 @@ router.get("/:id/messages", async (req: AuthenticatedRequest, res: Response) => 
 // ── Read: full single message on-demand ─────────────────────────────────────
 router.get("/:id/messages/:messageId", async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(routeParam(req.params.id), 10);
     if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid mailbox id");
 
     const usable = await loadUsableMailbox(req, res, id);
     if (!usable) return;
 
-    const message = await getMessage(usable.account, req.params.messageId);
+    const message = await getMessage(usable.account, routeParam(req.params.messageId));
     res.json({ message });
   } catch (err) {
     if (handleMailboxError(res, err)) return;
@@ -305,13 +306,13 @@ router.get("/:id/messages/:messageId", async (req: AuthenticatedRequest, res: Re
 // ── Read: one-line Pax summary of a thread (on-demand, never persisted) ──────
 router.get("/:id/messages/:messageId/summary", async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(routeParam(req.params.id), 10);
     if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid mailbox id");
 
     const usable = await loadUsableMailbox(req, res, id);
     if (!usable) return;
 
-    const message = await getMessage(usable.account, req.params.messageId);
+    const message = await getMessage(usable.account, routeParam(req.params.messageId));
     const summary = await summarizeThread(message, `${getOrganizationId(req)}:${usable.account.emailAddress}`);
     res.json({ summary });
   } catch (err) {
@@ -333,7 +334,7 @@ const sendSchema = z.object({
 router.post("/:id/send", async (req: AuthenticatedRequest, res: Response) => {
   try {
     const organizationId = getOrganizationId(req);
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(routeParam(req.params.id), 10);
     if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid mailbox id");
 
     const parsed = sendSchema.safeParse(req.body);
@@ -371,7 +372,7 @@ const settingsSchema = z
 router.patch("/:id/settings", async (req: AuthenticatedRequest, res: Response) => {
   try {
     const organizationId = getOrganizationId(req);
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(routeParam(req.params.id), 10);
     if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid mailbox id");
 
     const parsed = settingsSchema.safeParse(req.body);

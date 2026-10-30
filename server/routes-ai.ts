@@ -25,6 +25,7 @@ import { logger } from "./utils/logger";
 import { createUploadMiddleware } from "./middleware/fileUploadSecurity";
 import { getOrganizationId, type AuthenticatedRequest } from "./types/request";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 /** Did the input filter remove part of the customer's `message`? */
 function inputRedactionFor(res: Response): { instructionProbe: boolean } | null {
@@ -131,7 +132,7 @@ export function registerAIRoutes(app: Express): void {
   
   api.get("/api/conversations/:id/messages", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
-    const conversationId = Number(req.params.id);
+    const conversationId = Number(routeParam(req.params.id));
     // F-D31 IDOR fix: gate messages by conversation ownership so a user can't
     // read another org's chat by guessing the conversation id.
     const conv = await storage.getConversation(org.id, conversationId);
@@ -146,7 +147,7 @@ export function registerAIRoutes(app: Express): void {
   // patch path small and obvious.
   api.patch("/api/conversations/:id", isAuthenticated, getOrCreateOrg, async (req: any, res) => {
     const org = req.organization;
-    const conversationId = Number(req.params.id);
+    const conversationId = Number(routeParam(req.params.id));
     const conv = await storage.getConversation(org.id, conversationId);
     if (!conv) return Errors.notFound(res, "Conversation");
 
@@ -202,7 +203,7 @@ export function registerAIRoutes(app: Express): void {
   // Get a specific conversation with messages
   api.get("/api/ai/conversations/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
-    const conversationId = parseInt(req.params.id);
+    const conversationId = parseInt(routeParam(req.params.id));
     const conversation = await storage.getAiConversation(org.id, conversationId);
     
     if (!conversation || conversation.organizationId !== org.id) {
@@ -216,7 +217,7 @@ export function registerAIRoutes(app: Express): void {
   // Get messages for a conversation (lightweight, for session restore)
   api.get("/api/ai/conversations/:id/messages", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
-    const conversationId = parseInt(req.params.id);
+    const conversationId = parseInt(routeParam(req.params.id));
     const limit = Math.min(parseInt((req.query.limit as string) ?? "20"), 50);
 
     const conversation = await storage.getAiConversation(org.id, conversationId);
@@ -682,7 +683,7 @@ export function registerAIRoutes(app: Express): void {
   // Delete a conversation
   api.delete("/api/ai/conversations/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
-    const conversationId = parseInt(req.params.id);
+    const conversationId = parseInt(routeParam(req.params.id));
     const conversation = await storage.getAiConversation(org.id, conversationId);
     
     if (!conversation || conversation.organizationId !== org.id) {
@@ -701,7 +702,7 @@ export function registerAIRoutes(app: Express): void {
   api.patch("/api/ai/conversations/:id/project", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const conversationId = parseInt(req.params.id);
+      const conversationId = parseInt(routeParam(req.params.id));
       const conversation = await storage.getAiConversation(org.id, conversationId);
       if (!conversation || conversation.organizationId !== org.id) {
         return Errors.notFound(res, "Conversation");
@@ -792,7 +793,7 @@ export function registerAIRoutes(app: Express): void {
       const { isActive, description } = parsed.data;
       // F-D31 IDOR fix: thread org.id so the storage layer's WHERE clause
       // refuses to update a file owned by a different org.
-      await storage.updateKnowledgeFile(parseInt(req.params.id), { isActive, description: description ?? undefined }, org.id);
+      await storage.updateKnowledgeFile(parseInt(routeParam(req.params.id)), { isActive, description: description ?? undefined }, org.id);
       res.json({ success: true });
     } catch (err: any) {
       Errors.internal(res, err);
@@ -803,7 +804,7 @@ export function registerAIRoutes(app: Express): void {
     try {
       const org = req.organization;
       // F-D31 IDOR fix.
-      await storage.deleteKnowledgeFile(parseInt(req.params.id), org.id);
+      await storage.deleteKnowledgeFile(parseInt(routeParam(req.params.id)), org.id);
       res.json({ success: true });
     } catch (err: any) {
       Errors.internal(res, err);
@@ -886,7 +887,7 @@ export function registerAIRoutes(app: Express): void {
       }
       const { name, description, isActive } = parsed.data;
       // F-D31 IDOR fix.
-      await storage.updatePaxProject(parseInt(req.params.id), { name, description: description ?? undefined, isActive }, org.id);
+      await storage.updatePaxProject(parseInt(routeParam(req.params.id)), { name, description: description ?? undefined, isActive }, org.id);
       res.json({ success: true });
     } catch (err: any) {
       Errors.internal(res, err);
@@ -897,7 +898,7 @@ export function registerAIRoutes(app: Express): void {
     try {
       const org = req.organization;
       // F-D31 IDOR fix.
-      await storage.deletePaxProject(parseInt(req.params.id), org.id);
+      await storage.deletePaxProject(parseInt(routeParam(req.params.id)), org.id);
       res.json({ success: true });
     } catch (err: any) {
       Errors.internal(res, err);
@@ -907,7 +908,7 @@ export function registerAIRoutes(app: Express): void {
   api.get("/api/ai/projects/:id/files", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const projectId = parseInt(req.params.id);
+      const projectId = parseInt(routeParam(req.params.id));
       // F-D31 IDOR fix: verify project belongs to this org before listing files.
       const project = await storage.getPaxProject(org.id, projectId);
       if (!project || project.organizationId !== org.id) {
@@ -930,7 +931,7 @@ export function registerAIRoutes(app: Express): void {
     try {
       const org = req.organization;
       const userId = req.user?.id ?? "unknown";
-      const projectId = parseInt(req.params.id);
+      const projectId = parseInt(routeParam(req.params.id));
       // F-D31 IDOR fix: refuse to write a file into another org's project.
       const project = await storage.getPaxProject(org.id, projectId);
       if (!project || project.organizationId !== org.id) {
@@ -956,7 +957,7 @@ export function registerAIRoutes(app: Express): void {
   api.delete("/api/ai/projects/:id/files/:fileId", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const projectId = parseInt(req.params.id);
+      const projectId = parseInt(routeParam(req.params.id));
       // F-D31 IDOR fix: verify the parent project belongs to this org before
       // deleting any child file (file id alone wouldn't reveal ownership).
       const project = await storage.getPaxProject(org.id, projectId);
@@ -966,7 +967,7 @@ export function registerAIRoutes(app: Express): void {
       // The org predicate goes to the DELETE itself (storage.deletePaxProjectFile
       // proves project ownership inside the statement) — verifying the parent
       // project here constrains the URL's project id, not the file's.
-      const deleted = await storage.deletePaxProjectFile(org.id, projectId, parseInt(req.params.fileId));
+      const deleted = await storage.deletePaxProjectFile(org.id, projectId, parseInt(routeParam(req.params.fileId)));
       if (!deleted) {
         return Errors.notFound(res, "File");
       }
@@ -1048,7 +1049,7 @@ export function registerAIRoutes(app: Express): void {
         updates.nextRunAt = computeNextRun(schedule, timezone ?? "America/New_York");
       }
       // F-D31 IDOR fix.
-      await storage.updatePaxScheduledTask(parseInt(req.params.id), updates, org.id);
+      await storage.updatePaxScheduledTask(parseInt(routeParam(req.params.id)), updates, org.id);
       res.json({ success: true });
     } catch (err: any) {
       Errors.internal(res, err);
@@ -1059,7 +1060,7 @@ export function registerAIRoutes(app: Express): void {
     try {
       const org = req.organization;
       // F-D31 IDOR fix.
-      await storage.deletePaxScheduledTask(parseInt(req.params.id), org.id);
+      await storage.deletePaxScheduledTask(parseInt(routeParam(req.params.id)), org.id);
       res.json({ success: true });
     } catch (err: any) {
       Errors.internal(res, err);
@@ -1070,7 +1071,7 @@ export function registerAIRoutes(app: Express): void {
     try {
       const org = req.organization;
       const tasks = await storage.getPaxScheduledTasks(org.id);
-      const task = tasks.find((t) => t.id === parseInt(req.params.id));
+      const task = tasks.find((t) => t.id === parseInt(routeParam(req.params.id)));
       if (!task) return Errors.notFound(res, "Task");
       const { executeTask } = await import("./services/paxScheduler");
       await executeTask(task, org);
@@ -1095,7 +1096,7 @@ export function registerAIRoutes(app: Express): void {
         return Errors.validationFailed(res, parsed.error.issues);
       }
       const { rating } = parsed.data;
-      const msgId = parseInt(req.params.id);
+      const msgId = parseInt(routeParam(req.params.id));
       const org = req.organization;
       const { aiMessages, aiConversations } = await import("@shared/schema");
       const { eq: _eq, and: _and, inArray: _inArray } = await import("drizzle-orm");
@@ -1146,7 +1147,7 @@ export function registerAIRoutes(app: Express): void {
   api.get("/api/ai/conversations/:id/export", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const convId = parseInt(req.params.id);
+      const convId = parseInt(routeParam(req.params.id));
       const format = (req.query.format as string) || "markdown";
       const { aiConversations, aiMessages: msgs } = await import("@shared/schema");
       const { eq: _eq, and: _and } = await import("drizzle-orm");
@@ -1232,7 +1233,7 @@ export function registerAIRoutes(app: Express): void {
         .set({ dismissedAt: clock.now() } as any)
         .where(
           _and(
-            _eq(paxNudges.id, parseInt(req.params.id)),
+            _eq(paxNudges.id, parseInt(routeParam(req.params.id))),
             _eq(paxNudges.organizationId, getOrganizationId(req as AuthenticatedRequest)),
           ),
         );
@@ -1278,7 +1279,7 @@ export function registerAIRoutes(app: Express): void {
   api.post("/api/ai/connectors/:id/connect", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const connectorId = req.params.id;
+      const connectorId = routeParam(req.params.id);
       const parsed = connectConnectorSchema.safeParse(req.body);
       if (!parsed.success) {
         return Errors.validationFailed(res, parsed.error.issues);
@@ -1331,7 +1332,7 @@ export function registerAIRoutes(app: Express): void {
   api.post("/api/ai/connectors/:id/test", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const connectorId = req.params.id;
+      const connectorId = routeParam(req.params.id);
       const instance = await storage.getPaxConnector(org.id, connectorId);
       if (!instance || instance.status !== "connected") {
         return Errors.badRequest(res, "Connector not connected");
@@ -1370,7 +1371,7 @@ export function registerAIRoutes(app: Express): void {
   api.delete("/api/ai/connectors/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      await storage.deletePaxConnector(org.id, req.params.id);
+      await storage.deletePaxConnector(org.id, routeParam(req.params.id));
       res.json({ success: true });
     } catch (err: any) {
       Errors.internal(res, err);
@@ -1660,7 +1661,7 @@ export function registerAIRoutes(app: Express): void {
   api.get("/api/va/agents/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const agentId = parseInt(req.params.id);
+      const agentId = parseInt(routeParam(req.params.id));
       const agent = await storage.getVaAgent(org.id, agentId);
       
       if (!agent) {
@@ -1686,7 +1687,7 @@ export function registerAIRoutes(app: Express): void {
   api.patch("/api/va/agents/:id", isAuthenticated, getOrCreateOrg, requireFounder, async (req, res) => {
     try {
       const org = req.organization;
-      const agentId = parseInt(req.params.id);
+      const agentId = parseInt(routeParam(req.params.id));
       const agent = await storage.getVaAgent(org.id, agentId);
 
       if (!agent) {
@@ -1739,7 +1740,7 @@ export function registerAIRoutes(app: Express): void {
       const org = req.organization;
       const user = req.user;
       const userId = user?.id || user.id;
-      const actionId = parseInt(req.params.id);
+      const actionId = parseInt(routeParam(req.params.id));
 
       const action = await storage.getVaAction(org.id, actionId);
       // F-D31 IDOR fix: refuse to approve another org's action. 404 (not 403)
@@ -1769,7 +1770,7 @@ export function registerAIRoutes(app: Express): void {
   api.post("/api/va/actions/:id/reject", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const actionId = parseInt(req.params.id);
+      const actionId = parseInt(routeParam(req.params.id));
       const parsed = rejectActionSchema.safeParse(req.body);
       if (!parsed.success) {
         return Errors.validationFailed(res, parsed.error.issues);
@@ -1798,7 +1799,7 @@ export function registerAIRoutes(app: Express): void {
     try {
       const { vaAgentService } = await import("./ai/vaService");
       const org = req.organization;
-      const agentType = req.params.type as any;
+      const agentType = routeParam(req.params.type) as any;
       const parsed = vaTaskSchema.safeParse(req.body);
       if (!parsed.success) {
         return Errors.validationFailed(res, parsed.error.issues);
@@ -1823,7 +1824,7 @@ export function registerAIRoutes(app: Express): void {
     try {
       const { vaAgentService } = await import("./ai/vaService");
       const org = req.organization;
-      const agentType = req.params.type as any;
+      const agentType = routeParam(req.params.type) as any;
       
       const status = await vaAgentService.getAgentStatus(org.id, agentType);
       res.json(status);
@@ -1837,7 +1838,7 @@ export function registerAIRoutes(app: Express): void {
     try {
       const { vaAgentService } = await import("./ai/vaService");
       const org = req.organization;
-      const actionId = parseInt(req.params.id);
+      const actionId = parseInt(routeParam(req.params.id));
 
       const action = await storage.getVaAction(org.id, actionId);
       // F-D31 IDOR fix: explicit org gate so a customer can't execute another
@@ -1895,7 +1896,7 @@ export function registerAIRoutes(app: Express): void {
   // Mark briefing as read
   api.post("/api/va/briefings/:id/read", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const briefingId = parseInt(req.params.id);
+      const briefingId = parseInt(routeParam(req.params.id));
       // Tenant-scoped: without the org key this returned (and flipped) another
       // organization's briefing by guessed id (2026-09-04).
       const updated = await storage.markBriefingRead(briefingId, getOrganizationId(req as AuthenticatedRequest));
@@ -2004,7 +2005,7 @@ export function registerAIRoutes(app: Express): void {
   api.get("/api/ai/scheduled-tasks/:id/runs", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const taskId = parseInt(req.params.id);
+      const taskId = parseInt(routeParam(req.params.id));
       const { paxScheduledTaskRuns } = await import("@shared/schema");
       const { desc: _desc, eq: _eq, and: _and } = await import("drizzle-orm");
       const runs = await db.select().from(paxScheduledTaskRuns)

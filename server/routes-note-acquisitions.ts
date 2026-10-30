@@ -27,6 +27,7 @@ import { requireRole } from "./middleware/roleGuard";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 const addressSchema = z
   .object({
@@ -134,7 +135,7 @@ export function registerNoteAcquisitionRoutes(app: Express): void {
         const [row] = await db
           .select()
           .from(noteAcquisitions)
-          .where(and(eq(noteAcquisitions.id, req.params.id), eq(noteAcquisitions.organizationId, orgId)))
+          .where(and(eq(noteAcquisitions.id, routeParam(req.params.id)), eq(noteAcquisitions.organizationId, orgId)))
           .limit(1);
         if (!row) return Errors.notFound(res, "Acquisition");
         return res.json({ acquisition: row });
@@ -194,7 +195,7 @@ export function registerNoteAcquisitionRoutes(app: Express): void {
         const [row] = await db
           .update(noteAcquisitions)
           .set(update)
-          .where(and(eq(noteAcquisitions.id, req.params.id), eq(noteAcquisitions.organizationId, orgId)))
+          .where(and(eq(noteAcquisitions.id, routeParam(req.params.id)), eq(noteAcquisitions.organizationId, orgId)))
           .returning();
         if (!row) return Errors.notFound(res, "Acquisition");
         return res.json({ acquisition: row });
@@ -223,7 +224,7 @@ export function registerNoteAcquisitionRoutes(app: Express): void {
         const [acq] = await db
           .select()
           .from(noteAcquisitions)
-          .where(and(eq(noteAcquisitions.id, req.params.id), eq(noteAcquisitions.organizationId, orgId)))
+          .where(and(eq(noteAcquisitions.id, routeParam(req.params.id)), eq(noteAcquisitions.organizationId, orgId)))
           .limit(1);
         if (!acq) return Errors.notFound(res, "Acquisition");
         if (acq.promotedToNoteId) {
@@ -257,9 +258,9 @@ export function registerNoteAcquisitionRoutes(app: Express): void {
         await db
           .update(noteAcquisitions)
           .set({ stage: "on_book", promotedToNoteId: note.id, updatedAt: clock.now() })
-          .where(eq(noteAcquisitions.id, req.params.id));
+          .where(eq(noteAcquisitions.id, routeParam(req.params.id)));
 
-        return res.status(201).json({ note: { ...note, payerEncryptedTin: undefined }, acquisitionId: req.params.id });
+        return res.status(201).json({ note: { ...note, payerEncryptedTin: undefined }, acquisitionId: routeParam(req.params.id) });
       } catch (err) {
         if (err instanceof Error && /unique/i.test(err.message)) {
           return Errors.badRequest(res, "Note number already in use for this organization");
@@ -281,7 +282,7 @@ export function registerNoteAcquisitionRoutes(app: Express): void {
         const orgId = getOrganizationId(req);
         const [row] = await db
           .delete(noteAcquisitions)
-          .where(and(eq(noteAcquisitions.id, req.params.id), eq(noteAcquisitions.organizationId, orgId)))
+          .where(and(eq(noteAcquisitions.id, routeParam(req.params.id)), eq(noteAcquisitions.organizationId, orgId)))
           .returning();
         if (!row) return Errors.notFound(res, "Acquisition");
         return res.json({ deleted: true });

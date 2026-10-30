@@ -10,6 +10,7 @@ import { refusePaxCredits } from "./utils/firstRunRefusals";
 import { paxTurnFunding, reservePaxTurn, settlePaxTurn, type PaxTurnCharge } from "./services/paxTurnFunding";
 import { paxTurnScope } from "./services/paxTurnContext";
 import { meteredChatCompletion } from "./services/aiSpendGuard";
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
@@ -237,7 +238,7 @@ router.post('/certifications/check', async (req: Request, res: Response) => {
  */
 router.get('/certifications/verify/:code', (req: Request, res: Response) => {
   try {
-    const cert = certificationService.verifyCertificate(req.params.code);
+    const cert = certificationService.verifyCertificate(routeParam(req.params.code));
     if (!cert) {
       return Errors.notFound(res, 'Certificate');
     }

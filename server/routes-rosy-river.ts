@@ -37,6 +37,7 @@ import {
   WEEKLY_BUDGET_CEILING_USD,
 } from "./services/rosyRiver";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 const PROPOSAL_DECISIONS = ["approve", "reject", "defer"] as const;
 const INBOX_STATUSES = ["pending", "approved", "rejected", "deferred", "auto_resolved"] as const;
@@ -146,7 +147,7 @@ export function registerRosyRiverRoutes(app: Express): void {
     requireFounder,
     async (req: AuthenticatedRequest, res: Response) => {
       try {
-        const taskId = parseInt(req.params.id, 10);
+        const taskId = parseInt(routeParam(req.params.id), 10);
         if (!Number.isFinite(taskId)) return Errors.badRequest(res, "Invalid id");
 
         const parsed = proposalDecisionSchema.safeParse(req.body);
@@ -295,7 +296,7 @@ export function registerRosyRiverRoutes(app: Express): void {
     requireFounder,
     async (req: AuthenticatedRequest, res: Response) => {
       try {
-        const id = parseInt(req.params.id, 10);
+        const id = parseInt(routeParam(req.params.id), 10);
         if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid id");
 
         const parsed = inboxUpdateSchema.safeParse(req.body);
