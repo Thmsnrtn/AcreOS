@@ -9,7 +9,9 @@ import {
   readAllNotes,
   readAllProperties,
 } from "../storage/wholeBookReads";
-import { insertLeadSchema, insertPropertySchema, insertDealSchema, acquiredNotes, leads } from "@shared/schema";
+import { insertLeadSchema, insertPropertySchema, insertDealSchema, acquiredNotes, leads, activityLog } from "@shared/schema";
+import { calculateMonthlyPayment } from "../storage/noteRepo";
+import { leadHasOptedOut } from "./leadContactability";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { storage } from "../storage";
 import { db } from "../db";
@@ -26,6 +28,67 @@ import { emitPropertyCreated, emitPropertyCreatedDurably } from "./propertyEvent
 import { emitDealCreated, emitDealCreatedDurably } from "./dealEvents";
 import { clock } from "../utils/clock";
 import { stripConsentForImport } from "./consentStamp";
+
+/**
+ * A persistence failure on an import path, as a field-level message. A raw
+ * driver error carries the whole statement — "Failed query: insert into
+ * "properties" (…) values (default, $1, …)" — which is the table's column list
+ * and its parameter placeholders handed to the API caller (G11 run, §P6). The
+ * row, the field and the fix are what the customer needs; the SQL is not.
+ * Errors this module throws itself ("sizeAcres: Size is required") are already
+ * field-level and pass through unchanged.
+ */
+const SQL_IN_MESSAGE = /Failed query:|\binsert\s+into\b|\bupdate\s+"|\bselect\s+.+\s+from\b|\bdelete\s+from\b|\$\d+\b|params:/i;
+
+function fieldFromColumn(column: unknown): string | null {
+  if (typeof column !== "string" || !/^[a-z_][a-z0-9_]*$/.test(column)) return null;
+  return column.replace(/_([a-z0-9])/g, (_m, c: string) => c.toUpperCase());
+}
+
+export function importRowError(err: unknown): string {
+  const message = err instanceof Error ? err.message : String(err);
+  const cause = (err as { cause?: unknown } | null)?.cause ?? err;
+  const pg = (cause ?? {}) as { code?: unknown; column?: unknown; constraint?: unknown };
+  const leaksSql = SQL_IN_MESSAGE.test(message) || typeof pg.code === "string";
+  if (!leaksSql) return message;
+  const field = fieldFromColumn(pg.column);
+  switch (pg.code) {
+    case "23502":
+      return `${field ?? "a required field"}: is required. Fix: fill this column in for the row.`;
+    case "22P02":
+    case "22003":
+      return `${field ?? "a numeric or date field"}: the value is not in the expected format. Fix: use a plain number (12.5) or an ISO date (2026-10-30) with no units or symbols.`;
+    case "22001":
+      return `${field ?? "a text field"}: the value is too long. Fix: shorten it.`;
+    case "23505":
+      return "this row duplicates a record that already exists. Fix: remove the duplicate row or change its identifying fields.";
+    case "23503":
+      return `${field ?? "a reference"}: points at a record that does not exist in this organization. Fix: correct the id or import the referenced record first.`;
+    case "23514":
+      return `${field ?? "a field"}: the value is not allowed. Fix: use one of the values the app offers for this field.`;
+    default:
+      return "this row could not be saved. Fix: check the row's values against the column guide and re-import it.";
+  }
+}
+
+/** A numeric cell: blank is "not stated"; anything else must be a plain number, or the row names the field. */
+function numericCell(field: string, raw: string | null | undefined): string | null {
+  const t = (raw ?? "").toString().trim();
+  if (t === "") return null;
+  if (!/^-?\d+(\.\d+)?$/.test(t)) {
+    throw new Error(`${field}: "${t}" is not a plain number. Fix: use digits only, such as 12.5 (no commas, units or $).`);
+  }
+  return t;
+}
+
+/** A date cell: blank is "not stated"; anything else must parse, or the row names the field. */
+function dateCell(field: string, raw: string | null | undefined): Date | null {
+  const t = (raw ?? "").toString().trim();
+  if (t === "") return null;
+  const iso = parseDate(t);
+  if (!iso) throw new Error(`${field}: "${t}" is not a date. Fix: use a date such as 2026-10-30 or 10/30/2026.`);
+  return new Date(`${iso}T00:00:00.000Z`);
+}
 
 export interface ImportResult {
   totalRows: number;
@@ -78,15 +141,22 @@ export interface ExportFilters {
 /** Header names that would address Object.prototype rather than a column. */
 const RESERVED_HEADER_NAMES = new Set(["__proto__", "constructor", "prototype"]);
 
+/** The uploaded text is not a CSV at all — the caller's fault, a 400, never a 500. */
+export class CsvInputError extends Error {}
+
 export function parseCSV(csvString: string): Array<Record<string, string>> {
   if (typeof csvString !== "string") {
-    throw new Error("CSV input must be text");
+    throw new CsvInputError("CSV input must be text");
   }
   const records = splitCsvRecords(csvString.replace(/^\uFEFF/, ""))
     .filter((cells) => cells.some((c) => c.trim().length > 0));
-  if (records.length < 2) {
-    throw new Error("CSV must have a header row and at least one data row");
+  if (records.length === 0) {
+    throw new CsvInputError("CSV is empty: it needs a header row");
   }
+  // A header and no rows is a valid file with nothing in it — exactly what an
+  // export of an empty book is. It reports 0 rows; it is not an error (G11
+  // Defect 1: re-importing the headers-only notes export returned a 500).
+  if (records.length === 1) return [];
 
   const headers = records[0].map((h) => h.trim());
   const data: Array<Record<string, string>> = [];
@@ -214,6 +284,10 @@ const PROPERTY_COLUMN_MAP: Record<string, string> = {
   sizeAcres: "sizeAcres",
   size_acres: "sizeAcres",
   "size acres": "sizeAcres",
+  // The header exportPropertiesToCSV writes — the user-facing name. G11 Defect 2:
+  // the export said "Size (Acres)", the map did not know it, and the app's own
+  // export re-imported 0/3.
+  "size (acres)": "sizeAcres",
   size: "sizeAcres",
   acres: "sizeAcres",
   zoning: "zoning",
@@ -231,6 +305,15 @@ const PROPERTY_COLUMN_MAP: Record<string, string> = {
   purchasePrice: "purchasePrice",
   purchase_price: "purchasePrice",
   "purchase price": "purchasePrice",
+  purchaseDate: "purchaseDate",
+  purchase_date: "purchaseDate",
+  "purchase date": "purchaseDate",
+  soldPrice: "soldPrice",
+  sold_price: "soldPrice",
+  "sold price": "soldPrice",
+  soldDate: "soldDate",
+  sold_date: "soldDate",
+  "sold date": "soldDate",
   listPrice: "listPrice",
   list_price: "listPrice",
   "list price": "listPrice",
@@ -260,6 +343,12 @@ const DEAL_COLUMN_MAP: Record<string, string> = {
   closingCosts: "closingCosts",
   closing_costs: "closingCosts",
   "closing costs": "closingCosts",
+  offerDate: "offerDate",
+  offer_date: "offerDate",
+  "offer date": "offerDate",
+  closingDate: "closingDate",
+  closing_date: "closingDate",
+  "closing date": "closingDate",
   titleCompany: "titleCompany",
   title_company: "titleCompany",
   "title company": "titleCompany",
@@ -269,6 +358,15 @@ const DEAL_COLUMN_MAP: Record<string, string> = {
   notes: "notes",
 };
 
+/**
+ * The ONE header → field resolver. normalizeRow reads cells through it, and the
+ * export/import header-drift tests resolve every exported header through it, so
+ * "an exported header is importable" is decided by the code that imports.
+ */
+function resolveImportHeader(columnMap: Record<string, string>, header: string): string | undefined {
+  return columnMap[header.toLowerCase()] || columnMap[header] || undefined;
+}
+
 function normalizeRow<T extends Record<string, string>>(
   row: Record<string, string>,
   columnMap: Record<string, string>
@@ -276,7 +374,7 @@ function normalizeRow<T extends Record<string, string>>(
   const normalized: Record<string, string> = {};
 
   for (const [key, value] of Object.entries(row)) {
-    const normalizedKey = columnMap[key.toLowerCase()] || columnMap[key] || key;
+    const normalizedKey = resolveImportHeader(columnMap, key) || key;
     normalized[normalizedKey] = value;
   }
 
@@ -460,8 +558,10 @@ export async function importLeads(
       // ─── History-preserving extras (Magdalena §1) ──────────────────────────
       const extras: { tags?: string[]; assignedTo?: number; createdAt?: Date } = {};
       if (row.tags) {
+        // The exporter joins tags with "; " — split on both, or a round trip
+        // turns two tags into one tag named "a; b".
         extras.tags = row.tags
-          .split(",")
+          .split(/[,;]/)
           .map((t) => t.trim())
           .filter((t) => t.length > 0);
       }
@@ -485,7 +585,7 @@ export async function importLeads(
       result.errors.push({
         row: i + 2,
         data: rawRow,
-        error: error instanceof Error ? error.message : String(error),
+        error: importRowError(error),
       });
     }
   }
@@ -584,7 +684,7 @@ export async function importLeads(
           result.errors.push({
             row: item.index + 2,
             data: csvData[item.index],
-            error: error instanceof Error ? error.message : String(error),
+            error: importRowError(error),
           });
         }
       }
@@ -627,13 +727,16 @@ export async function importProperties(
         terrain: row.terrain || null,
         roadAccess: row.roadAccess || null,
         status: row.status || "prospect",
-        assessedValue: row.assessedValue || null,
-        marketValue: row.marketValue || null,
-        purchasePrice: row.purchasePrice || null,
-        listPrice: row.listPrice || null,
+        assessedValue: numericCell("assessedValue", row.assessedValue),
+        marketValue: numericCell("marketValue", row.marketValue),
+        purchasePrice: numericCell("purchasePrice", row.purchasePrice),
+        purchaseDate: dateCell("purchaseDate", row.purchaseDate),
+        listPrice: numericCell("listPrice", row.listPrice),
+        soldPrice: numericCell("soldPrice", row.soldPrice),
+        soldDate: dateCell("soldDate", row.soldDate),
         description: row.description || null,
-        latitude: row.latitude || null,
-        longitude: row.longitude || null,
+        latitude: numericCell("latitude", row.latitude),
+        longitude: numericCell("longitude", row.longitude),
       });
 
       if (!parseResult.success) {
@@ -643,6 +746,7 @@ export async function importProperties(
         throw new Error(errorMessages);
       }
 
+      numericCell("sizeAcres", String(parseResult.data.sizeAcres));
       const createdProperty = await storage.createProperty({
         ...parseResult.data,
         sizeAcres: String(parseResult.data.sizeAcres),
@@ -659,7 +763,7 @@ export async function importProperties(
       result.errors.push({
         row: i + 2,
         data: rawRow,
-        error: error instanceof Error ? error.message : String(error),
+        error: importRowError(error),
       });
     }
   }
@@ -707,6 +811,8 @@ export async function importDeals(
         titleCompany: row.titleCompany || null,
         escrowNumber: row.escrowNumber || null,
         notes: row.notes || null,
+        offerDate: dateCell("offerDate", row.offerDate),
+        closingDate: dateCell("closingDate", row.closingDate),
       }, undefined, { source: "historical_import" });
 
       result.successCount++;
@@ -717,7 +823,7 @@ export async function importDeals(
       result.errors.push({
         row: i + 2,
         data: rawRow,
-        error: error instanceof Error ? error.message : String(error),
+        error: importRowError(error),
       });
     }
   }
@@ -725,7 +831,7 @@ export async function importDeals(
   return result;
 }
 
-function escapeCSV(value: any): string {
+export function escapeCSV(value: any): string {
   if (value === null || value === undefined) return "";
   const str = neutraliseCsvFormula(String(value));
   if (str.includes(",") || str.includes('"') || str.includes("\n") || str.includes("\r")) {
@@ -747,6 +853,60 @@ function formatCurrency(value: string | number | null | undefined): string {
   if (isNaN(num)) return "";
   return num.toFixed(2);
 }
+
+/**
+ * Export columns that carry the system's own bookkeeping, not data a user
+ * supplies — the importer deliberately does not read them. Anything else an
+ * exporter emits must resolve through the import map
+ * (tests/unit/exportHeadersAreImportable.test.ts), so the next header rename or
+ * omission fails in CI instead of in production (G11 Defects 2 and 3).
+ */
+const EXPORT_ONLY_HEADERS: Record<"leads" | "properties" | "deals" | "notes", readonly string[]> = {
+  leads: ["ID", "Score", "Last Contacted At", "Updated At"],
+  properties: ["ID", "Created At", "Updated At"],
+  deals: ["ID", "Created At", "Updated At"],
+  // Notes: Property ID / Borrower ID are keys in the source organization, and the
+  // export deliberately carries no borrower name or contact (that is lead data,
+  // exported with the leads), so a re-import refuses each row naming the borrower;
+  // Maturity Date and Next Payment Date are DERIVED by createNote from the start
+  // date, the term and the first payment date; payment method and auto-pay are
+  // not carried because automation needs the destination's own connected
+  // account ("be the rail").
+  notes: [
+    "ID", "Property ID", "Borrower ID", "Maturity Date", "Next Payment Date", "Down Payment",
+    "Down Payment Received", "Payment Method", "Auto Pay Enabled", "Created At", "Updated At",
+  ],
+};
+
+const LEAD_EXPORT_HEADERS = [
+  "ID",
+  "Type",
+  "First Name",
+  "Last Name",
+  "Email",
+  "Phone",
+  "Address",
+  "City",
+  "State",
+  "Zip",
+  "County",
+  "APN",
+  "Acreage",
+  "Assessed Value",
+  "Estimated Value",
+  "Tax Delinquent",
+  "Tax Delinquent Amount",
+  "Tax Delinquent Years",
+  "Do Not Contact",
+  "Status",
+  "Source",
+  "Notes",
+  "Tags",
+  "Score",
+  "Last Contacted At",
+  "Created At",
+  "Updated At",
+] as const;
 
 export async function exportLeadsToCSV(
   organizationId: number,
@@ -771,26 +931,7 @@ export async function exportLeadsToCSV(
     }
   }
 
-  const headers = [
-    "ID",
-    "Type",
-    "First Name",
-    "Last Name",
-    "Email",
-    "Phone",
-    "Address",
-    "City",
-    "State",
-    "Zip",
-    "Status",
-    "Source",
-    "Notes",
-    "Tags",
-    "Score",
-    "Last Contacted At",
-    "Created At",
-    "Updated At",
-  ];
+  const headers = LEAD_EXPORT_HEADERS;
 
   const rows = leads.map((lead) =>
     [
@@ -804,6 +945,17 @@ export async function exportLeadsToCSV(
       escapeCSV(lead.city),
       escapeCSV(lead.state),
       escapeCSV(lead.zip),
+      escapeCSV(lead.county),
+      escapeCSV(lead.apn),
+      escapeCSV(lead.acreage),
+      escapeCSV(lead.assessedValue),
+      escapeCSV(lead.estimatedValue),
+      // Unknown stays blank: a blank cell re-imports as "unknown", never as "No".
+      escapeCSV(lead.taxDelinquent === true ? "Yes" : lead.taxDelinquent === false ? "No" : ""),
+      escapeCSV(lead.taxDelinquentAmount),
+      escapeCSV(lead.taxDelinquentYears),
+      // Only a set flag is written; blank re-imports as "not flagged".
+      escapeCSV(leadHasOptedOut(lead) ? "Yes" : ""),
       escapeCSV(lead.status),
       escapeCSV(lead.source),
       escapeCSV(lead.notes),
@@ -817,6 +969,36 @@ export async function exportLeadsToCSV(
 
   return [headers.join(","), ...rows].join("\n");
 }
+
+const PROPERTY_EXPORT_HEADERS = [
+  "ID",
+  "APN",
+  "Legal Description",
+  "County",
+  "State",
+  "Address",
+  "City",
+  "Zip",
+  "Subdivision",
+  "Lot Number",
+  "Size (Acres)",
+  "Zoning",
+  "Terrain",
+  "Road Access",
+  "Status",
+  "Assessed Value",
+  "Market Value",
+  "Purchase Price",
+  "Purchase Date",
+  "List Price",
+  "Sold Price",
+  "Sold Date",
+  "Latitude",
+  "Longitude",
+  "Description",
+  "Created At",
+  "Updated At",
+] as const;
 
 export async function exportPropertiesToCSV(
   organizationId: number,
@@ -838,35 +1020,7 @@ export async function exportPropertiesToCSV(
     }
   }
 
-  const headers = [
-    "ID",
-    "APN",
-    "Legal Description",
-    "County",
-    "State",
-    "Address",
-    "City",
-    "Zip",
-    "Subdivision",
-    "Lot Number",
-    "Size (Acres)",
-    "Zoning",
-    "Terrain",
-    "Road Access",
-    "Status",
-    "Assessed Value",
-    "Market Value",
-    "Purchase Price",
-    "Purchase Date",
-    "List Price",
-    "Sold Price",
-    "Sold Date",
-    "Latitude",
-    "Longitude",
-    "Description",
-    "Created At",
-    "Updated At",
-  ];
+  const headers = PROPERTY_EXPORT_HEADERS;
 
   const rows = properties.map((property) =>
     [
@@ -880,7 +1034,7 @@ export async function exportPropertiesToCSV(
       escapeCSV(property.zip),
       escapeCSV(property.subdivision),
       escapeCSV(property.lotNumber),
-      escapeCSV(formatCurrency(property.sizeAcres)),
+      escapeCSV(property.sizeAcres),
       escapeCSV(property.zoning),
       escapeCSV(property.terrain),
       escapeCSV(property.roadAccess),
@@ -902,6 +1056,24 @@ export async function exportPropertiesToCSV(
 
   return [headers.join(","), ...rows].join("\n");
 }
+
+const DEAL_EXPORT_HEADERS = [
+  "ID",
+  "Property ID",
+  "Type",
+  "Status",
+  "Offer Amount",
+  "Offer Date",
+  "Counter Amount",
+  "Accepted Amount",
+  "Closing Date",
+  "Closing Costs",
+  "Title Company",
+  "Escrow Number",
+  "Notes",
+  "Created At",
+  "Updated At",
+] as const;
 
 export async function exportDealsToCSV(
   organizationId: number,
@@ -926,23 +1098,7 @@ export async function exportDealsToCSV(
     }
   }
 
-  const headers = [
-    "ID",
-    "Property ID",
-    "Type",
-    "Status",
-    "Offer Amount",
-    "Offer Date",
-    "Counter Amount",
-    "Accepted Amount",
-    "Closing Date",
-    "Closing Costs",
-    "Title Company",
-    "Escrow Number",
-    "Notes",
-    "Created At",
-    "Updated At",
-  ];
+  const headers = DEAL_EXPORT_HEADERS;
 
   const rows = deals.map((deal) =>
     [
@@ -967,6 +1123,32 @@ export async function exportDealsToCSV(
   return [headers.join(","), ...rows].join("\n");
 }
 
+const NOTE_EXPORT_HEADERS = [
+  "ID",
+  "Property ID",
+  "Borrower ID",
+  "Original Principal",
+  "Current Balance",
+  "Interest Rate",
+  "Term (Months)",
+  "Monthly Payment",
+  "Service Fee",
+  "Late Fee",
+  "Grace Period (Days)",
+  "Start Date",
+  "First Payment Date",
+  "Next Payment Date",
+  "Maturity Date",
+  "Status",
+  "Down Payment",
+  "Down Payment Received",
+  "Payment Method",
+  "Auto Pay Enabled",
+  "Notes",
+  "Created At",
+  "Updated At",
+] as const;
+
 export async function exportNotesToCSV(
   organizationId: number,
   filters?: ExportFilters
@@ -987,31 +1169,7 @@ export async function exportNotesToCSV(
     }
   }
 
-  const headers = [
-    "ID",
-    "Property ID",
-    "Borrower ID",
-    "Original Principal",
-    "Current Balance",
-    "Interest Rate",
-    "Term (Months)",
-    "Monthly Payment",
-    "Service Fee",
-    "Late Fee",
-    "Grace Period (Days)",
-    "Start Date",
-    "First Payment Date",
-    "Next Payment Date",
-    "Maturity Date",
-    "Status",
-    "Down Payment",
-    "Down Payment Received",
-    "Payment Method",
-    "Auto Pay Enabled",
-    "Notes",
-    "Created At",
-    "Updated At",
-  ];
+  const headers = NOTE_EXPORT_HEADERS;
 
   const rows = notes.map((note) =>
     [
@@ -1267,8 +1425,22 @@ export const NOTE_COLUMN_MAP: Record<string, string> = {
 
   "Grace Period": "gracePeriodDays",
   "grace period": "gracePeriodDays",
+  "Grace Period (Days)": "gracePeriodDays",
+  "grace period (days)": "gracePeriodDays",
   gracePeriodDays: "gracePeriodDays",
   grace_period_days: "gracePeriodDays",
+
+  // Originated notes: the two dates createNote cannot do without (G11 Defect 1).
+  // The importer reads them and refuses a row that lacks them — it never makes
+  // one up.
+  "Start Date": "startDate",
+  "start date": "startDate",
+  startDate: "startDate",
+  start_date: "startDate",
+  "First Payment Date": "firstPaymentDate",
+  "first payment date": "firstPaymentDate",
+  firstPaymentDate: "firstPaymentDate",
+  first_payment_date: "firstPaymentDate",
 
   Status: "status",
   status: "status",
@@ -1365,21 +1537,22 @@ export async function importNotesFromCSV(
     errors: [],
   };
 
+  // Apply user's custom field map first, then fall back to the built-in NOTE_COLUMN_MAP
+  const effectiveMap: Record<string, string> = { ...NOTE_COLUMN_MAP };
+  if (userFieldMap) {
+    for (const [csvCol, acreosField] of Object.entries(userFieldMap)) {
+      if (acreosField) effectiveMap[csvCol] = acreosField;
+    }
+  }
+
   for (let i = 0; i < csvData.length; i++) {
     const rawRow = csvData[i];
-
-    // Apply user's custom field map first, then fall back to the built-in NOTE_COLUMN_MAP
-    const effectiveMap: Record<string, string> = { ...NOTE_COLUMN_MAP };
-    if (userFieldMap) {
-      for (const [csvCol, acreosField] of Object.entries(userFieldMap)) {
-        if (acreosField) effectiveMap[csvCol] = acreosField;
-      }
-    }
-
     const row = normalizeRow<Record<string, string>>(rawRow, effectiveMap);
 
     try {
-      // Require at minimum a borrower name and a principal amount
+      // ── Validate the whole row BEFORE anything is written ────────────────
+      // Every refusal below names the column and the fix; none supplies a
+      // value the file did not state.
       const firstName = row.borrowerFirstName?.trim();
       const lastName = row.borrowerLastName?.trim();
       const principalRaw = row.originalPrincipal?.replace(/[$,\s]/g, "");
@@ -1391,17 +1564,51 @@ export async function importNotesFromCSV(
         throw new Error("Original principal amount is required and must be a number");
       }
 
+      // The two dates createNote builds the schedule and maturity from. A note
+      // with no start date has no schedule, and a made-up one would put a made-up
+      // maturity on a real loan.
+      const dateProblems: string[] = [];
+      const startIso = row.startDate?.trim() ? parseDate(row.startDate) : null;
+      if (!row.startDate?.trim()) {
+        dateProblems.push("Start Date is required; add a Start Date column (or map one with fieldMap) holding the date the note starts, such as 2026-01-01");
+      } else if (!startIso) {
+        dateProblems.push(`Start Date "${row.startDate.trim()}" is not a date; use a date such as 2026-01-01 or 1/1/2026`);
+      }
+      const firstPaymentIso = row.firstPaymentDate?.trim() ? parseDate(row.firstPaymentDate) : null;
+      if (!row.firstPaymentDate?.trim()) {
+        dateProblems.push("First Payment Date is required; add a First Payment Date column (or map one with fieldMap) holding the date the first payment is due");
+      } else if (!firstPaymentIso) {
+        dateProblems.push(`First Payment Date "${row.firstPaymentDate.trim()}" is not a date; use a date such as 2026-02-01 or 2/1/2026`);
+      }
+      if (dateProblems.length > 0) throw new Error(dateProblems.join("; "));
+
       const originalPrincipal = parseFloat(principalRaw);
       const currentBalance = row.currentBalance
         ? parseFloat(row.currentBalance.replace(/[$,\s]/g, ""))
         : originalPrincipal;
-      const interestRate = row.interestRate
+      const interestRateStated = !!row.interestRate?.trim();
+      const interestRate = interestRateStated
         ? parseFloat(row.interestRate.replace(/[%\s]/g, ""))
         : 0;
-      const termMonths = row.termMonths ? parseInt(row.termMonths, 10) : 120;
-      const monthlyPayment = row.monthlyPayment
-        ? parseFloat(row.monthlyPayment.replace(/[$,\s]/g, ""))
-        : null;
+      const termStated = !!row.termMonths?.trim();
+      const termMonths = termStated ? parseInt(row.termMonths, 10) : 120;
+      if (!Number.isFinite(currentBalance) || !Number.isFinite(interestRate) || !Number.isFinite(termMonths) || termMonths <= 0) {
+        throw new Error("Current Balance, Interest Rate and Term (Months) must be plain numbers; fix the cell or clear it");
+      }
+
+      // monthly_payment is NOT NULL. A stated payment is used as stated; when
+      // it is blank it is CALCULATED from the stated rate and term (the same
+      // amortization the schedule uses) — and refused when it cannot be.
+      let monthlyPayment: number;
+      if (row.monthlyPayment?.trim()) {
+        monthlyPayment = parseFloat(row.monthlyPayment.replace(/[$,\s]/g, ""));
+        if (!Number.isFinite(monthlyPayment)) throw new Error(`Monthly Payment "${row.monthlyPayment.trim()}" is not a number; use a dollar amount such as 922.70`);
+      } else if (interestRateStated && termStated) {
+        monthlyPayment = Math.round(calculateMonthlyPayment(originalPrincipal, interestRate, termMonths) * 100) / 100;
+      } else {
+        throw new Error("Monthly Payment is required; add a Monthly Payment column, or state both Interest Rate and Term (Months) so it can be calculated");
+      }
+
       const paymentDayOfMonth = row.paymentDayOfMonth
         ? parseInt(row.paymentDayOfMonth, 10)
         : 1;
@@ -1439,8 +1646,15 @@ export async function importNotesFromCSV(
         }
       }
 
+      // ── Write: the borrower lead and the note stand or fall together ─────
+      // storage.createLead / createNote take no transaction, so atomicity is
+      // validate-first (above) plus rollback here: if the note cannot be
+      // created, the lead THIS ROW made is removed with its activity entry, and
+      // lead.created fires only after the note exists. A failed row leaves no
+      // orphan borrower (G11 Defect 1).
+      let createdLead: Awaited<ReturnType<typeof storage.createLead>> | null = null;
       if (!borrowerId) {
-        const newLead = await storage.createLead({
+        createdLead = await storage.createLead({
           organizationId,
           type: "buyer",
           firstName: firstName || "",
@@ -1450,34 +1664,45 @@ export async function importNotesFromCSV(
           status: "active",
           source: "import",
         });
-        borrowerId = newLead.id;
-        // Wave B — note import creates a real borrower lead; that is a lead
-        // creation like any other and must fire the trigger.
-        emitLeadCreated(organizationId, newLead);
+        borrowerId = createdLead.id;
       }
 
-      await storage.createNote({
-        organizationId,
-        borrowerId,
-        originalPrincipal: String(originalPrincipal),
-        currentBalance: String(currentBalance),
-        interestRate: String(interestRate),
-        termMonths,
-        monthlyPayment: monthlyPayment ? String(monthlyPayment) : null,
-        paymentDayOfMonth,
-        serviceFee: String(serviceFee),
-        lateFeeAmount: String(lateFeeAmount),
-        gracePeriodDays,
-        status: normalizeNoteStatus(row.status || ""),
-        paymentMethod: "manual",
-        autoPayEnabled: false,
-        internalNotes: row.internalNotes || null,
-        // Reg-Z §1026.43 hard gate (Workstream A). Imported notes were
-        // originated before they entered AcreOS — flagged 'legacy' so the
-        // ATR origination gate accepts them. Servicing surfaces flag
-        // 'legacy' rows for retroactive review.
-        atrExemptionCode: "legacy",
-      } as any);
+      try {
+        await storage.createNote({
+          organizationId,
+          borrowerId,
+          originalPrincipal: String(originalPrincipal),
+          currentBalance: String(currentBalance),
+          interestRate: String(interestRate),
+          termMonths,
+          monthlyPayment: String(monthlyPayment),
+          paymentDayOfMonth,
+          startDate: new Date(`${startIso}T00:00:00.000Z`),
+          firstPaymentDate: new Date(`${firstPaymentIso}T00:00:00.000Z`),
+          serviceFee: String(serviceFee),
+          lateFeeAmount: String(lateFeeAmount),
+          gracePeriodDays,
+          status: normalizeNoteStatus(row.status || ""),
+          paymentMethod: "manual",
+          autoPayEnabled: false,
+          internalNotes: row.internalNotes || null,
+          // Reg-Z §1026.43 hard gate (Workstream A). Imported notes were
+          // originated before they entered AcreOS — flagged 'legacy' so the
+          // ATR origination gate accepts them. Servicing surfaces flag
+          // 'legacy' rows for retroactive review.
+          atrExemptionCode: "legacy",
+        } as any);
+      } catch (noteError) {
+        if (createdLead) {
+          await db.delete(activityLog).where(and(eq(activityLog.organizationId, organizationId), eq(activityLog.entityType, "lead"), eq(activityLog.entityId, createdLead.id)));
+          await db.delete(leads).where(and(eq(leads.organizationId, organizationId), eq(leads.id, createdLead.id)));
+        }
+        throw noteError;
+      }
+
+      // Wave B — note import creates a real borrower lead; that is a lead
+      // creation like any other and must fire the trigger.
+      if (createdLead) emitLeadCreated(organizationId, createdLead);
 
       result.successCount++;
     } catch (error) {
@@ -1485,7 +1710,7 @@ export async function importNotesFromCSV(
       result.errors.push({
         row: i + 2,
         data: rawRow,
-        error: error instanceof Error ? error.message : String(error),
+        error: importRowError(error),
       });
     }
   }
@@ -1513,15 +1738,37 @@ function parseMoneyToCents(raw: string | undefined | null): number | null {
   return Math.round(n * 100);
 }
 
+/**
+ * A calendar date, strictly: ISO (2026-10-30) or US (10/30/2026) and a day that
+ * exists. "2026-02-30" is refused, not rolled to March, and a bare number or a
+ * sentence is not a date.
+ */
 function parseDate(raw: string | undefined | null): string | null {
   if (!raw) return null;
-  const s = String(raw).trim();
-  if (!s) return null;
-  // Accept ISO (YYYY-MM-DD), US (MM/DD/YYYY), or anything Date.parse handles.
-  const d = new Date(s);
-  if (isNaN(d.getTime())) return null;
-  return d.toISOString().slice(0, 10);
+  const t = String(raw).trim();
+  let y: number, m: number, d: number;
+  let mt = /^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T ].*)?$/.exec(t);
+  if (mt) [y, m, d] = [Number(mt[1]), Number(mt[2]), Number(mt[3])];
+  else if ((mt = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(t))) [m, d, y] = [Number(mt[1]), Number(mt[2]), Number(mt[3])];
+  else return null;
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) return null;
+  return dt.toISOString().slice(0, 10);
 }
+
+/**
+ * The import maps and the export headers side by side, as ONE object: what the
+ * columns endpoint tells the import UI ("these are the headers our own export
+ * writes — they re-import"), and what tests/unit/exportHeadersAreImportable.test.ts
+ * resolves through the importer's own `resolveHeader` to keep the two from
+ * drifting (G11 Defects 2 and 3).
+ */
+export const IMPORT_EXPORT_CONTRACT = {
+  importMaps: { leads: LEAD_COLUMN_MAP, properties: PROPERTY_COLUMN_MAP, deals: DEAL_COLUMN_MAP, notes: NOTE_COLUMN_MAP },
+  exportHeaders: { leads: LEAD_EXPORT_HEADERS, properties: PROPERTY_EXPORT_HEADERS, deals: DEAL_EXPORT_HEADERS, notes: NOTE_EXPORT_HEADERS },
+  exportOnlyHeaders: EXPORT_ONLY_HEADERS,
+  resolveHeader: resolveImportHeader,
+} as const;
 
 export function getExpectedColumns(entityType: "leads" | "properties" | "deals"): string[] {
   if (entityType === "leads") {

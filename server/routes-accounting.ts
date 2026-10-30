@@ -38,6 +38,7 @@ import { outbox, organizations } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { clock } from "./utils/clock";
 import { routeParam } from "./utils/routeParams";
+import { getUserPermissionContext } from "./utils/permissions";
 
 const router = Router();
 
@@ -60,9 +61,25 @@ function requireFounder(req: AuthenticatedRequest, res: Response): boolean {
  * forms, their own investor statements). Trial balance + GL stay
  * founder-only because they're cross-org introspection.
  */
-function requireOrgOwnerOrAdmin(req: AuthenticatedRequest, res: Response): boolean {
+async function requireOrgOwnerOrAdmin(req: AuthenticatedRequest, res: Response): Promise<boolean> {
   if (req.isFounder) return true;
-  const role = (req.permissionContext as any)?.role as string | undefined;
+  const user = req.user;
+  const userId = getClerkAuth(req)?.userId ?? user?.clerkUserId ?? user?.id ?? null;
+  if (isFounderIdentity({ email: user?.email ?? null, userId })) return true;
+  // `req.permissionContext` is filled in by the viewer-read-only gate on
+  // MUTATING requests and by requirePermission — this router has neither on a
+  // GET, so reading the field alone gave every caller, the org's own owner
+  // included, a 403 (G11 Defect 5). Resolve the caller's membership the way
+  // requirePermission does, and cache it on the request. A caller with no
+  // active owner/admin membership still gets the 403.
+  let role = (req.permissionContext as { role?: string } | undefined)?.role;
+  if (role === undefined && user && req.organization) {
+    const context = await getUserPermissionContext(user, req.organization);
+    if (context) {
+      req.permissionContext = context;
+      role = context.role;
+    }
+  }
   if (role === "owner" || role === "admin") return true;
   Errors.forbidden(res, "Owner or admin role required");
   return false;
@@ -226,7 +243,7 @@ router.get("/qbo-export", async (req: AuthenticatedRequest, res: Response) => {
 // (form1099Refusal.ts). The middleware runs BEFORE the role gate so a refused
 // caller learns why the form is withheld rather than a bare 403.
 router.post("/1099-batch", requireQualified1099Output(), async (req: AuthenticatedRequest, res: Response) => {
-  if (!requireOrgOwnerOrAdmin(req, res)) return;
+  if (!(await requireOrgOwnerOrAdmin(req, res))) return;
   try {
     const org = getOrganization(req);
     const taxYear = parseInt((req.query.taxYear as string) ?? String(clock.now().getFullYear() - 1));
@@ -335,7 +352,7 @@ function sendTaxIdentityError(res: Response, err: unknown): boolean {
 // legitimately requires no form (under the $600 threshold, no interest
 // received, entity payer). A wrong tax form is worse than a missing one.
 router.post("/1098-batch", async (req: AuthenticatedRequest, res: Response) => {
-  if (!requireOrgOwnerOrAdmin(req, res)) return;
+  if (!(await requireOrgOwnerOrAdmin(req, res))) return;
   try {
     const org = getOrganization(req);
     const taxYear = parseInt(
@@ -371,7 +388,7 @@ router.post("/1098-batch", async (req: AuthenticatedRequest, res: Response) => {
 
 // ── GET /1099-batch/job/:outboxId — poll outbox status for async batch ───
 router.get("/1099-batch/job/:outboxId", async (req: AuthenticatedRequest, res: Response) => {
-  if (!requireOrgOwnerOrAdmin(req, res)) return;
+  if (!(await requireOrgOwnerOrAdmin(req, res))) return;
   try {
     const outboxId = parseInt(routeParam(req.params.outboxId), 10);
     if (Number.isNaN(outboxId)) return Errors.badRequest(res, "outboxId must be numeric");
@@ -398,7 +415,7 @@ router.get("/1099-batch/job/:outboxId", async (req: AuthenticatedRequest, res: R
 // batch generated before the DEFECT-0101 refusal carries the inverted
 // payer/recipient, so its download is withheld by the same refusal.
 router.get("/1099-batch/:jobId", requireQualified1099Output(), async (req: AuthenticatedRequest, res: Response) => {
-  if (!requireOrgOwnerOrAdmin(req, res)) return;
+  if (!(await requireOrgOwnerOrAdmin(req, res))) return;
   try {
     const org = getOrganization(req);
     const jobId = routeParam(req.params.jobId);
@@ -429,7 +446,7 @@ router.get("/1099-batch/:jobId", requireQualified1099Output(), async (req: Authe
 // ── GET /investor-income — preview per-LP income for a tax year ──────────
 // Read-only aggregation; surfaces what the batch generator would produce.
 router.get("/investor-income", async (req: AuthenticatedRequest, res: Response) => {
-  if (!requireOrgOwnerOrAdmin(req, res)) return;
+  if (!(await requireOrgOwnerOrAdmin(req, res))) return;
   try {
     const org = getOrganization(req);
     const taxYear = parseInt((req.query.taxYear as string) ?? String(clock.now().getFullYear() - 1));
@@ -450,7 +467,7 @@ router.get("/investor-income", async (req: AuthenticatedRequest, res: Response) 
 // downstream form-1099-vs-K-1 choice still belongs to the user's CPA
 // because pool legal structure determines it.
 router.post("/investor-statements", async (req: AuthenticatedRequest, res: Response) => {
-  if (!requireOrgOwnerOrAdmin(req, res)) return;
+  if (!(await requireOrgOwnerOrAdmin(req, res))) return;
   try {
     const org = getOrganization(req);
     const taxYear = parseInt((req.query.taxYear as string) ?? String(clock.now().getFullYear() - 1));

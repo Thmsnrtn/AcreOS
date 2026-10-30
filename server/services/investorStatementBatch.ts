@@ -104,6 +104,26 @@ export async function aggregateInvestorIncomeForYear(
   // they're 100% org-owned and the borrower 1099-INT covers the org's
   // bookkeeping. We only emit LP statements for notes that have at
   // least one split row with role='lp'.
+  // The year's interest is summed PER NOTE in a subquery and joined once. It
+  // used to be a window SUM over a join of splits x payments, so a note with k
+  // split rows counted every payment k times and each investor's income was
+  // overstated k-fold (G11: 3 splits, 3x the interest).
+  const yearInterest = db
+    .select({
+      noteId: notePayments.noteId,
+      interestCents: sql<number>`COALESCE(SUM(${notePayments.interestCents}), 0)::bigint`.as("year_interest_cents"),
+    })
+    .from(notePayments)
+    .where(
+      and(
+        eq(notePayments.organizationId, orgId),
+        sql`${notePayments.paymentDate} >= ${yearStart}`,
+        sql`${notePayments.paymentDate} <= ${yearEnd}`,
+      ),
+    )
+    .groupBy(notePayments.noteId)
+    .as("year_interest");
+
   const rows = await db
     .select({
       investorName: noteOwnershipSplits.investorName,
@@ -113,23 +133,14 @@ export async function aggregateInvestorIncomeForYear(
       noteId: acquiredNotes.id,
       noteNumber: acquiredNotes.noteNumber,
       payerName: acquiredNotes.payerName,
-      noteYearInterestCents: sql<number>`COALESCE(SUM(${notePayments.interestCents}) OVER (PARTITION BY ${acquiredNotes.id}), 0)::bigint`,
+      noteYearInterestCents: yearInterest.interestCents,
     })
     .from(noteOwnershipSplits)
     .innerJoin(acquiredNotes, eq(acquiredNotes.id, noteOwnershipSplits.noteId))
-    .leftJoin(
-      notePayments,
-      and(
-        eq(notePayments.noteId, acquiredNotes.id),
-        sql`${notePayments.paymentDate} >= ${yearStart}`,
-        sql`${notePayments.paymentDate} <= ${yearEnd}`,
-      ),
-    )
+    .leftJoin(yearInterest, eq(yearInterest.noteId, acquiredNotes.id))
     .where(eq(noteOwnershipSplits.organizationId, orgId));
 
-  // Dedup the rows (the join with note_payments multiplies). The window
-  // function makes noteYearInterestCents stable per note, so we can dedupe
-  // on (noteId, splitId-shaped-key).
+  // Dedup identical split rows for the same note/investor/share.
   const dedup = new Map<string, typeof rows[0]>();
   for (const r of rows) {
     const key = `${r.noteId}|${r.investorName}|${r.investorEmail ?? ""}|${r.percentageBps}`;
@@ -142,7 +153,7 @@ export async function aggregateInvestorIncomeForYear(
   for (const r of uniqueRows) {
     if (r.role === "org") continue; // Org's own slice doesn't generate LP statement
     const investorInterest = Math.round(
-      (Number(r.noteYearInterestCents) * r.percentageBps) / 10_000,
+      (Number(r.noteYearInterestCents ?? 0) * r.percentageBps) / 10_000,
     );
     if (investorInterest === 0) continue;
 
@@ -162,7 +173,7 @@ export async function aggregateInvestorIncomeForYear(
       noteId: r.noteId,
       noteNumber: r.noteNumber,
       payerName: r.payerName,
-      noteYearInterestCents: Number(r.noteYearInterestCents),
+      noteYearInterestCents: Number(r.noteYearInterestCents ?? 0),
       percentageBps: r.percentageBps,
       investorShareCents: investorInterest,
     });
