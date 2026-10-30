@@ -131,11 +131,15 @@ jobs:
         id: deploy
         run: |
           # --config fly.staging.toml: identical to fly.toml EXCEPT the
-          # release_command is a no-op `true`. Staging's schema is built by
-          # `npm run db:push` (full current schema from shared/schema.ts), so the
-          # incremental migrate.mjs seed layer is skipped — its founder-seed
-          # INSERTs (custom_autonomy_rules) FK-violate on a fresh staging DB and
-          # would abort the release. See tests/README-realism-mode.md.
+          # release_command is a no-op `true`. This deploy applies NO schema:
+          # nothing here (or in the Dockerfile) runs `db:push` or
+          # migrations/*.sql against staging. Staging's schema comes only from
+          # the Staging Schema Reconcile workflow (`node scripts/migrate.mjs
+          # --ddl-only` on a staging machine), which the schema-reconcile job
+          # below calls after every successful deploy, plus its nightly run.
+          # migrate.mjs's seed layer stays skipped on staging — its founder-seed
+          # INSERTs (custom_autonomy_rules) FK-violate on a staging DB and would
+          # abort a release. See tests/README-realism-mode.md.
           flyctl deploy \
             --app "${{ vars.FLY_STAGING_APP || 'acreos-staging' }}" \
             --config fly.staging.toml \
@@ -153,6 +157,20 @@ jobs:
           STAGING_URL="https://${APP_NAME}.fly.dev"
           echo "staging_url=${STAGING_URL}" >> "$GITHUB_OUTPUT"
           echo "Staging URL: ${STAGING_URL}"
+
+  # ── Schema reconcile + census, chained after every deploy ──────────────────
+  # The deploy above applies no schema. Without this job, schema reached
+  # staging only at the nightly 07:17 UTC reconcile — on 2026-10-28 note_events
+  # (0293) lagged a green deploy that way. This calls the reconcile workflow
+  # (migrate.mjs --ddl-only from the image just deployed, then the table census)
+  # and its result is this run's result: a failed reconcile or census turns the
+  # deploy run red. It is not in the rollback job's chain — rolling the image
+  # back would not undo DDL that already applied, and hides the failure.
+  schema-reconcile:
+    name: Reconcile staging schema (chained)
+    needs: deploy-staging
+    uses: ./.github/workflows/staging-schema-reconcile.yml
+    secrets: inherit
 
   # ── Health check ─────────────────────────────────────────────────────────────
   health-check:
@@ -226,7 +244,7 @@ jobs:
   # ── Comment deployment URL on PR ──────────────────────────────────────────────
   comment-pr:
     name: Comment Deployment URL
-    needs: [deploy-staging, health-check]
+    needs: [deploy-staging, health-check, schema-reconcile]
     runs-on: ubuntu-latest
     if: success() && github.event_name == 'push'
     permissions:

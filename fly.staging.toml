@@ -14,9 +14,14 @@ primary_region = 'iad'
     GIT_SHA = ""
 
 [deploy]
-  # Idempotent schema patch runs in a one-shot release VM before new
-  # machines take traffic. See scripts/migrate.mjs for details.
-  release_command = "true"  # staging: schema built via db:push (no founder seed inserts)
+  # Staging deploys apply NO schema: the release command is a no-op, and no
+  # deploy step runs `db:push` or migrations/*.sql. Staging's schema comes only
+  # from the Staging Schema Reconcile workflow
+  # (.github/workflows/staging-schema-reconcile.yml — `node scripts/migrate.mjs
+  # --ddl-only` on a staging machine), which staging.yml calls after every
+  # successful deploy and which also runs nightly. migrate.mjs's seed layer is
+  # never run here (its founder-seed INSERTs FK-violate on a staging DB).
+  release_command = "true"  # staging: no schema at deploy; see the reconcile workflow
 
 [env]
   NODE_ENV = 'production'

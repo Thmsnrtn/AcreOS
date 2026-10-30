@@ -3,6 +3,20 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-10-30 — Staging schema reconcile chained after every staging deploy, plus a table census — on `claude/reconcile-chain`
+
+- **Why.** Staging deploys apply no schema (`fly.staging.toml` `release_command = "true"`). The only schema path was the nightly 07:17 UTC reconcile. On 2026-10-28, `note_events` (0293) lagged a green deploy that way.
+- **Chain.** `staging.yml` gains a `schema-reconcile` job (`needs: deploy-staging`). It calls `staging-schema-reconcile.yml`, which now also takes `workflow_call`, so a failed reconcile or census turns the deploy run red. Rollback is deliberately not triggered by it, because rolling back the image would not undo DDL that already ran. The concurrency group `staging-schema-reconcile` moved to the job level so it holds for nightly, dispatched and chained runs alike.
+- **Census.** A new `census` job runs after the reconcile and calls `scripts/staging-schema-census.ts`.
+  - Physical: tables in staging's `public` schema (relkind r/p, no partitions). They are read SELECT-only on a staging machine, as names plus constraint and trigger counts.
+  - Declared: every `pgTable(` on a non-comment line under `shared/`, the table-count ratchet's own rule. The run fails if an occurrence has no name, if the total differs from the ratchet baseline, or if a barrel table goes unseen.
+  - Measured locally: 748 occurrences give 746 distinct names. `conversations` and `messages` are declared twice. The `shared/schema` barrel exports 743.
+  - Tolerance: 0 for declared-but-absent tables. Up to 21 undeclared tables are tolerated, all listed and none dropped; dropping them is a founder / deletion-ledger decision.
+  - It also checks that the newest `migrations/*.sql` block's tables are present with the triggers that file creates.
+- **Comments corrected** in `staging.yml`, `fly.staging.toml` and the reconcile header. None of them claims `db:push` any more.
+- **Gate.** `tests/unit/stagingSchemaReconcileChained.test.ts` parses the workflows. Nine mutations were each confirmed red.
+- **Next.** Pin the 21 undeclared residue by NAME once a census run has listed them, then lower the tolerance as the founder retires them.
+
 ## 2026-10-29 — V-Tax-1 T2a — procedure objects + county-verification gate + bidding lock — on `claude/tax-v1-t2-procedure-clock` (stacked on T1)
 
 - **T2 ships as two PRs, each net zero on tables.**
