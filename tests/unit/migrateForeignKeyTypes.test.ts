@@ -338,11 +338,11 @@ function dbPushChildMismatches(fks: ForeignKey[], model: ColumnModel): string[] 
   return [...out].sort();
 }
 
-/** The 14 parents whose canonical id type is uuid (production, 2026-10-21). */
+/** The 15 parents whose canonical id type is uuid (production, 2026-10-21; tax_certificates added V-Tax-1 T2b). */
 const UUID_ID_PARENTS = [
   "acquired_notes", "buyer_blasts", "chart_of_accounts", "contractors", "earnest_money_holds",
   "move_inspections", "note_loss_mit_cases", "permit_checklists", "quiet_title_cases",
-  "rehab_line_items", "rehabs", "rent_charges", "rental_leases", "tenants",
+  "rehab_line_items", "rehabs", "rent_charges", "rental_leases", "tax_certificates", "tenants",
 ];
 
 describe("every SQL foreign key is implementable on a db:push-built database too", () => {
@@ -357,7 +357,7 @@ describe("every SQL foreign key is implementable on a db:push-built database too
     }
   });
 
-  it("declares uuid as the id type of all 14 parents in shared/schema (the decision)", () => {
+  it("declares uuid as the id type of all 15 parents in shared/schema (the decision)", () => {
     const notUuid = UUID_ID_PARENTS.filter((p) => model.get(p)?.get("id") !== "uuid");
     expect(notUuid, "canonical id type for these families is uuid — production has uuid").toEqual([]);
   });

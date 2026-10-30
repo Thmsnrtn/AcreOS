@@ -39,6 +39,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { db } from "../db";
 import { taxCertificates, systemAlerts } from "@shared/schema";
 import { computeRedemptionDeadline } from "../services/redemptionClock";
+import { deadlineRuleFor, registerRedemptionExpiry } from "../services/tax/taxEvents";
 import {
   emitCertRedemptionApproaching,
   emitCertForeclosureEligible,
@@ -122,6 +123,7 @@ export async function runRedemptionClockRefresh(): Promise<RefreshResult> {
     redemptionDeadline: unknown;
     ownerOccupiedAtSale: boolean | null;
     scraTollingApplied: boolean | null;
+    deadlineSource: "computed_preliminary" | "operator_entered" | null;
   }>;
   try {
     rows = await db
@@ -139,6 +141,7 @@ export async function runRedemptionClockRefresh(): Promise<RefreshResult> {
         redemptionDeadline: taxCertificates.redemptionDeadline,
         ownerOccupiedAtSale: taxCertificates.ownerOccupiedAtSale,
         scraTollingApplied: taxCertificates.scraTollingApplied,
+        deadlineSource: taxCertificates.deadlineSource,
       })
       .from(taxCertificates)
       .where(eq(taxCertificates.status, "active"));
@@ -168,25 +171,82 @@ export async function runRedemptionClockRefresh(): Promise<RefreshResult> {
           : (row.redemptionDeadline as Date)?.toISOString?.().slice(0, 10);
       if (!saleIso || !storedIso) continue;
 
-      const recomputed = computeRedemptionDeadline({
-        state: row.state,
-        saleDate: saleIso,
-        ownerOccupied: row.ownerOccupiedAtSale ?? undefined,
-        scraTolling: row.scraTollingApplied ?? undefined,
-      });
-      // No-redemption states return null; if we'd previously stored
-      // a non-null deadline and now the rule says "no redemption", we
-      // don't touch the date column (the status column is what
-      // disambiguates, and it should already be deed_obtained).
-      if (recomputed === null) continue;
+      // A deadline the operator ENTERED from the county's records is never
+      // recomputed (V-Tax-1 T2b): until 2026-10-29 this job overwrote it with
+      // AcreOS's own preliminary rule every night. Only a deadline AcreOS
+      // computed (or one from before deadline_source existed) is refreshed.
+      let recomputed: string | null;
+      if (row.deadlineSource === "operator_entered") {
+        recomputed = storedIso;
+      } else {
+        recomputed = computeRedemptionDeadline({
+          state: row.state,
+          saleDate: saleIso,
+          ownerOccupied: row.ownerOccupiedAtSale ?? undefined,
+          scraTolling: row.scraTollingApplied ?? undefined,
+        });
+        // No-redemption states return null; if we'd previously stored
+        // a non-null deadline and now the rule says "no redemption", we
+        // don't touch the date column (the status column is what
+        // disambiguates, and it should already be deed_obtained).
+        if (recomputed === null) continue;
 
-      // 1. Persist any change.
-      if (recomputed !== storedIso) {
-        await db
-          .update(taxCertificates)
-          .set({ redemptionDeadline: recomputed, updatedAt: clock.now() })
-          .where(eq(taxCertificates.id, row.id));
-        result.deadlineChanged += 1;
+        // 1. Persist any change, and register it on the tax calendar with
+        //    the rule it rests on.
+        if (recomputed !== storedIso) {
+          const newDeadline = recomputed;
+          const ruleCited = await deadlineRuleFor(row.organizationId, { state: row.state, county: row.county, saleDate: saleIso, deadline: newDeadline }, "computed_preliminary");
+          await db.transaction(async (tx) => {
+            await tx
+              .update(taxCertificates)
+              .set({ redemptionDeadline: newDeadline, deadlineSource: "computed_preliminary", updatedAt: clock.now() })
+              .where(eq(taxCertificates.id, row.id));
+            await registerRedemptionExpiry(tx, {
+              organizationId: row.organizationId,
+              certificateId: row.id,
+              date: newDeadline,
+              ruleCited,
+              recordedBy: "system:redemption-clock-refresh",
+              detail: { replaced: storedIso },
+            });
+          });
+          result.deadlineChanged += 1;
+        }
+      }
+
+      // 1b. The 90- and 30-day alerts (V-Tax-1 T2: alerts at 90/30/7 days).
+      //     One in-app alert per certificate per deadline per threshold; the
+      //     7-day alert below repeats daily inside the last week.
+      // Only the tightest threshold crossed fires: a certificate first seen 20
+      // days out gets the 30-day alert, not the 90-day one as well.
+      const until = Math.ceil((new Date(recomputed).getTime() - today.getTime()) / 86_400_000);
+      const tightest = until < 0 ? null : ([30, 90] as const).find((d) => until <= d) ?? null;
+      for (const days of tightest === null ? [] : [tightest]) {
+        const marker = `redemption_clock_${days}d:${row.id}:${recomputed}`;
+        const [seen] = await db
+          .select({ id: systemAlerts.id })
+          .from(systemAlerts)
+          .where(and(eq(systemAlerts.organizationId, row.organizationId), sql`${systemAlerts.message} = ${marker}`))
+          .limit(1);
+        if (seen) continue;
+        await db.insert(systemAlerts).values({
+          type: `redemption_clock_${days}d`,
+          alertType: `redemption_clock_${days}d`,
+          organizationId: row.organizationId,
+          severity: "warning",
+          title: `Redemption window closes within ${days} days (${until} day(s))`,
+          message: marker,
+          relatedEntityType: "tax_certificate",
+          metadata: {
+            certificateId: row.id,
+            state: row.state,
+            redemptionDeadline: recomputed,
+            daysRemaining: until,
+            deadlineSource: row.deadlineSource,
+            summary: `Redemption window closes in ${until} day(s) (${recomputed}). ${row.deadlineSource === "operator_entered" ? "Deadline as entered from the county's records." : "Deadline computed by AcreOS from its preliminary state rule — confirm it with the county."}`,
+          },
+        });
+        result.alertsEmitted += 1;
       }
 
       // 2. Threshold-cross alert. Fire when:

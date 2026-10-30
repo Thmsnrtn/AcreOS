@@ -57,3 +57,15 @@ workstreams build on honest ground. Each now refuses rather than inventing:
 - Fix inside T2: rejected, because the defaults would stay live on main until then.
 - Leave them and build beside them: rejected, because the old surfaces would keep
   showing invented numbers next to the new ones.
+
+## 3. T3a — an over-max bid: override with a stated reason (2026-10-29)
+
+Recorded from the founder's message on 2026-10-29, after the audit of #422:
+
+- **Accept the override as built.** A bid over the derived max bid is refused
+  unless a reason is stated. With a stated reason it is recorded beside the max
+  it exceeded, with the reason (`auction_bid_log.max_bid_cents_at_action` and
+  `over_max_reason`).
+- **Rejected: absolute refusal** of any bid over the max.
+- The override path is not to be reworked. T3a's audit verdict stands as
+  mergeable on spec once the T2b fix list lands and is re-audited.

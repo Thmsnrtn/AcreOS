@@ -64,7 +64,7 @@ describe("emitCertAcquired", () => {
     expect(data.certificateAcquiredDate).toBe("2026-06-01");
     expect(data.redemptionEndsDate).toBe("2028-06-01");
     expect(data.stateRedemptionPeriodMonths).toBe(24); // FL redemptionPeriodMonths
-    expect(data.stateStatutoryRatePct).toBe("14.25%"); // the won bid-down rate
+    expect(data.stateStatutoryRatePct).toBe("14.25% per year"); // the won bid-down rate
     expect(data.state).toBe("FL");
     expect(data.saleType).toBe("tax_lien_certificate");
   });
@@ -72,7 +72,12 @@ describe("emitCertAcquired", () => {
   it("prefers the won rate, falls back to the state statutory rate, else null — never invented", () => {
     // No won rate → the FL statutory 1800 bps default.
     emitCertAcquired({ ...cert, bidDownRateBps: null });
-    expect(emitCertEvent.mock.calls[0][3].stateStatutoryRatePct).toBe("18%");
+    expect(emitCertEvent.mock.calls[0][3].stateStatutoryRatePct).toBe("18% per year");
+    emitCertEvent.mockClear();
+
+    // A flat-penalty state (GA's 20%) is labelled a one-time penalty, never "20%" read as a yearly rate.
+    emitCertAcquired({ ...cert, state: "GA", bidDownRateBps: null });
+    expect(emitCertEvent.mock.calls[0][3].stateStatutoryRatePct).toBe("20% penalty — one-time, not an annual rate");
     emitCertEvent.mockClear();
 
     // A deed state (TX) has no statutory yield and no won rate → null, not 0%.
@@ -104,7 +109,7 @@ describe("emitCertRedeemed", () => {
     expect(event).toBe("cert.redeemed");
     expect(data.redeemedDate).toBe("2027-01-15");
     expect(data.redemptionAmount).toBe(12_345); // cents → dollars, real column
-    expect(data.stateStatutoryRatePct).toBe("14.25%");
+    expect(data.stateStatutoryRatePct).toBe("14.25% per year");
   });
 
   it("does NOT fire on redeemed→redeemed, or when the post-image is not redeemed", () => {
