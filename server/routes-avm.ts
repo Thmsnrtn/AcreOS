@@ -297,10 +297,11 @@ router.post('/record-transaction', async (req: Request, res: Response) => {
 router.get('/:propertyId', cacheResponse(300), async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    if (!/^\d+$/.test(routeParam(req.params.propertyId))) {
+    const propertyIdParam = routeParam(req.params.propertyId);
+    if (!/^\d+$/.test(propertyIdParam)) {
       return Errors.notFound(res, 'Property');
     }
-    const propertyId = parseInt(routeParam(req.params.propertyId), 10);
+    const propertyId = parseInt(propertyIdParam, 10);
 
     const [prop] = await db
       .select({ sizeAcres: properties.sizeAcres })

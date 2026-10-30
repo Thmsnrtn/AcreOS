@@ -119,8 +119,9 @@ export function registerSeoHeadRoutes(app: Express): void {
 
   app.get("/compare/:slug", (req: Request, res: Response, next: NextFunction) => {
     try {
-      if (!/^acreos-vs-[a-z0-9-]+$/.test(routeParam(req.params.slug))) return next();
-      sendWithHead(res, next, headForCompare(routeParam(req.params.slug)));
+      const slug = routeParam(req.params.slug);
+      if (!/^acreos-vs-[a-z0-9-]+$/.test(slug)) return next();
+      sendWithHead(res, next, headForCompare(slug));
     } catch (err) {
       logger.warn("[seoHead] compare head failed — plain shell", err instanceof Error ? err : undefined);
       next();
