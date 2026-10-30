@@ -49,6 +49,24 @@ export class AIQuotaExceeded extends Error {
   }
 }
 
+/**
+ * Thrown when the quota cannot be CHECKED because metering is unreadable. A
+ * designed refusal, not a raw DB error: no spend occurs (the call is refused
+ * before the provider is reached) and the message never carries SQL. 503, not
+ * 429 — the org is not over its cap, the platform cannot tell. Chosen in the
+ * G10 spend-guard package (2026-10-30); the founder may overrule at merge.
+ */
+export class AIQuotaUnavailable extends Error {
+  readonly statusCode = 503;
+  readonly code = "AI_QUOTA_UNAVAILABLE";
+  readonly retryAfterSeconds = 30;
+
+  constructor() {
+    super("AI usage metering is temporarily unavailable, so the daily AI quota cannot be checked. Please try again shortly.");
+    this.name = "AIQuotaUnavailable";
+  }
+}
+
 /** UTC date in YYYY-MM-DD form — the partition key for ai_usage_daily.date. */
 export function todayUtc(): string {
   return clock.now().toISOString().slice(0, 10);
@@ -81,7 +99,15 @@ export async function sumTodayUsd(orgId: number): Promise<number> {
  */
 export async function checkQuota(orgId: number, capUsd: number): Promise<void> {
   if (!Number.isFinite(capUsd) || capUsd <= 0) return; // 0 = unlimited
-  const used = await sumTodayUsd(orgId);
+  let used: number;
+  try {
+    used = await sumTodayUsd(orgId);
+  } catch (err) {
+    logger.warn("[aiQuotaService] quota unreadable — refusing the call (designed refusal)", {
+      metadata: { orgId, detail: err instanceof Error ? err.message : String(err) },
+    });
+    throw new AIQuotaUnavailable();
+  }
   if (used >= capUsd) {
     throw new AIQuotaExceeded(used, capUsd);
   }
