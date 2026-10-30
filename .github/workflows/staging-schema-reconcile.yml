@@ -1,13 +1,18 @@
-# Nightly staging schema reconciliation.
+# Staging schema reconciliation — after EVERY staging deploy, and nightly.
 #
-# WHY THIS EXISTS: fly.staging.toml sets release_command = "true" — staging
-# never runs scripts/migrate.mjs, so its schema comes only from db:push at
-# image build and silently drifts from the live database over time. On
-# 2026-10-20 that drift (missing leads.outreach_language*/timezone and four
-# organizations columns) made every getLead() throw and 500'd the
-# borrower-cookie audit; the repair applied migrate.mjs's DDL subset to the
-# staging DB by hand. This workflow is that repair, automated (founder
-# approved option A, 2026-10-20).
+# WHY THIS EXISTS: staging deploys apply NO schema. fly.staging.toml sets
+# release_command = "true", so a deploy never runs scripts/migrate.mjs, no
+# workflow, Dockerfile step or release command runs `db:push` against
+# staging, and migrations/*.sql are never executed there. This workflow is
+# the only path by which schema reaches staging's database. On 2026-10-20
+# drift (missing leads.outreach_language*/timezone and four organizations
+# columns) made every getLead() throw and 500'd the borrower-cookie audit;
+# the repair applied migrate.mjs's DDL subset by hand, and this workflow
+# automated it nightly (founder approved option A, 2026-10-20). On
+# 2026-10-28 note_events (0293) still never landed: the nightly run was 77
+# minutes before the merge and the deploy went green regardless. So staging.yml
+# now CALLS this workflow (workflow_call) after every successful deploy, and
+# the census job below proves the result.
 #
 # HOW: exec into a running staging machine via the Fly Machines API (the
 # machine already holds DATABASE_URL and the deployed code) and run
@@ -19,6 +24,11 @@
 # statement failure) fails this workflow. There is deliberately no
 # dormancy guard — if FLY_API_TOKEN is missing this goes red, not quiet.
 #
+# CENSUS: after the reconcile, the census job reads staging's physical tables
+# (SELECT-only, on a staging machine) and compares them against the
+# declaration census (scripts/staging-schema-census.ts states the method and
+# the tolerance). A mismatch beyond tolerance fails this workflow, itemized.
+#
 # STAGING ONLY. Production's release_command is untouched and never runs
 # with --ddl-only.
 
@@ -29,18 +39,23 @@ on:
     # 07:17 UTC nightly — ~2-3am US Eastern, clear of the audit windows.
     - cron: "17 7 * * *"
   workflow_dispatch:
+  # Called by staging.yml after every successful staging deploy, so the
+  # deploy's own run goes red if the reconcile or the census fails.
+  workflow_call:
 
 permissions:
   contents: read
-
-concurrency:
-  group: staging-schema-reconcile
-  cancel-in-progress: false
 
 jobs:
   reconcile:
     name: Reconcile staging schema (migrate.mjs --ddl-only)
     runs-on: ubuntu-latest
+    # Job-level, not workflow-level, so the group holds whether this runs
+    # nightly, by dispatch, or called from staging.yml: two reconciles never
+    # run against staging at once.
+    concurrency:
+      group: staging-schema-reconcile
+      cancel-in-progress: false
     timeout-minutes: 45
     env:
       # REMOTE_EXEC: the `node scripts/migrate.mjs --ddl-only` command in this
@@ -152,3 +167,84 @@ jobs:
               sys.exit(1)
           print("Staging schema reconcile OK.")
           PYEOF
+
+  census:
+    name: Census — staging tables vs declarations
+    needs: reconcile
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      STAGING_APP: ${{ vars.FLY_STAGING_APP || 'acreos-staging' }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # SELECT-only. The query runs on a staging machine (which holds
+      # DATABASE_URL); only table names and per-table constraint/trigger
+      # counts come back — never rows. The runner never sees the database URL.
+      - name: Read staging's physical tables (SELECT-only)
+        run: |
+          python3 - <<'PYEOF'
+          import json, os, sys, time, urllib.request
+
+          APP = os.environ.get("STAGING_APP") or "acreos-staging"
+          TOKEN = os.environ.get("FLY_API_TOKEN") or ""
+          if not TOKEN:
+              print("::error::FLY_API_TOKEN secret is not set — refusing to go quiet.")
+              sys.exit(1)
+          BASE = f"https://api.machines.dev/v1/apps/{APP}"
+
+          def call(method, path, body=None, timeout=90):
+              req = urllib.request.Request(BASE + path, method=method)
+              req.add_header("Authorization", f"Bearer {TOKEN}")
+              data = None
+              if body is not None:
+                  data = json.dumps(body).encode()
+                  req.add_header("Content-Type", "application/json")
+              with urllib.request.urlopen(req, data=data, timeout=timeout) as r:
+                  return json.loads(r.read().decode() or "{}")
+
+          machines = call("GET", "/machines")
+          started = [m for m in machines if isinstance(machines, list) and m.get("state") == "started"]
+          if not started:
+              print(f"::error::No started staging machine for {APP} to read the census from.")
+              sys.exit(1)
+          mid = started[0]["id"]
+          print(f"Reading physical tables via staging machine {mid}")
+
+          sql = (
+              "SELECT c.relname AS t, "
+              "(SELECT count(*) FROM pg_constraint k WHERE k.conrelid = c.oid)::int AS k, "
+              "(SELECT count(*) FROM pg_trigger g WHERE g.tgrelid = c.oid AND NOT g.tgisinternal)::int AS g "
+              "FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "
+              "WHERE n.nspname = 'public' AND c.relkind IN ('r','p') AND NOT c.relispartition ORDER BY 1"
+          )
+          js = (
+              "const {Client}=require('/app/node_modules/pg');"
+              "const c=new Client({connectionString:process.env.DATABASE_URL});"
+              "c.connect().then(()=>c.query(" + json.dumps(sql) + "))"
+              ".then(r=>{const o=['COUNT '+r.rows.length];"
+              "for(const x of r.rows)o.push('T '+x.t+' '+x.k+' '+x.g);"
+              "process.stdout.write(o.join('\\n')+'\\n');return c.end()})"
+              ".catch(e=>{console.error(e.message);process.exit(1)})"
+          )
+          out = call("POST", f"/machines/{mid}/exec", {"command": ["node", "-e", js], "timeout": 60})
+          rc = out.get("exit_code", -1)
+          if rc != 0:
+              print(f"::error::Physical-table read failed on staging (exit {rc}): {out.get('stderr') or ''}")
+              sys.exit(1)
+          with open("staging-physical-tables.txt", "w") as f:
+              f.write(out.get("stdout") or "")
+          print((out.get("stdout") or "").splitlines()[0:1])
+          PYEOF
+
+      - name: Compare against the declaration census (fails loudly, itemized)
+        run: npx tsx scripts/staging-schema-census.ts --physical staging-physical-tables.txt
