@@ -3,6 +3,16 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-10-30 — Scheduler double-boot fix — on `claude/scheduler-double-boot-fix` (main `58d1a9b`)
+
+- **Root cause fixed.** `log` moved to `server/utils/log.ts`; `jobQueue.ts` and `dbBackup.ts` no longer import `server/index.ts`, so the worker stops booting a web server and a second `runScheduledJobs()`.
+- **Guards.** `runScheduledJobs` is once-per-process; `scheduleSelfRescheduling` refuses a second active registration of a name. Both log loudly with the duplicate call site.
+- **Janitor.** Moved out of `routes.ts` module scope into `scheduledJobsBoot.ts`, started by `runScheduledJobs`: one registration across both processes. Work and cadence unchanged.
+- **Run-now route.** Takes the scheduled path's lock (`etl:<jobName>`, 300s) under a fresh holder id per request. Contention returns the existing `skipped` shape (`reason: "locked"`), 200, no new status code. An unknown job id is now a 404 rather than a 500.
+- **Worker dependencies on `index.ts`, named and made explicit** in `server/workerBoot.ts`: provider registry, DB-stored credentials, realtime-alert Redis publisher, env/secret validation, PII console mask, test-auth guard, tracing. The replica role check was not carried over (warn-only, app boot).
+- **Ratchet.** `run-scheduled-jobs-linecount` lowered 5594 -> 5588.
+- **Not done.** Staging verification (2 poll days of `job_runs` counts, :5000 check, concurrent run-now) is still owed after deploy. No tables dropped, no cadences, TTLs or lock semantics changed.
+
 ## 2026-10-29 — V-Tax-1 T2a — procedure objects + county-verification gate + bidding lock — on `claude/tax-v1-t2-procedure-clock` (stacked on T1)
 
 - **T2 ships as two PRs, each net zero on tables.**
