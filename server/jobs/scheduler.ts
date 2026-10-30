@@ -245,6 +245,22 @@ export function scheduleSelfRescheduling(opts: SelfReschedulingOpts): () => void
     initialDelayMs = 0,
   } = opts;
 
+  // Duplicate-name refusal: a second ACTIVE registration of the same name in
+  // one process is a no-op (returns a cancel that does nothing — it must not
+  // cancel the loop that is legitimately running). Without this, each call
+  // creates another chained-setTimeout loop and the job ticks twice. A
+  // cancelled registration frees the name, so cancel-then-re-register works.
+  const existing = _runtimeStatus.get(name);
+  if (existing && !existing.cancelled) {
+    logger.error(
+      `[jobs:${name}] DUPLICATE REGISTRATION REFUSED — already scheduled in this process; ` +
+        "a second loop would double every tick. Find and remove the second caller.",
+      undefined,
+      { metadata: { jobName: name, callSite: (new Error().stack ?? "").split("\n").slice(2, 4).map((l) => l.trim()).join(" <- ") } },
+    );
+    return function cancelDuplicate() {};
+  }
+
   const status: JobRuntimeStatus = {
     name,
     lastRunStartedAt: null,
@@ -434,6 +450,8 @@ export function scheduleSelfRescheduling(opts: SelfReschedulingOpts): () => void
     logger.error(`[jobs:${name}] refusing to start — initialDelayMs is not a usable number`, undefined, {
       metadata: { initialDelayMs: String(initialDelayMs) },
     });
+    // Never started: free the name so it is not mistaken for a live loop.
+    status.cancelled = true;
     return function cancel() {
       status.cancelled = true;
     };

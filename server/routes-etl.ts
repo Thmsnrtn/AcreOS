@@ -10,11 +10,13 @@
  *   POST /api/founder/etl/dlq/:id/replay      — replay a single DLQ record
  */
 
+import crypto from "crypto";
 import type { Express } from "express";
 import { z } from "zod";
 import { desc, eq, like, sql } from "drizzle-orm";
 
 import { db } from "./db";
+import { storage } from "./storage";
 import { etlJobs, etlRuns, outboxDlq } from "@shared/schema";
 import { isAuthenticated } from "./auth";
 import { isFounderIdentity } from "./services/founder";
@@ -95,9 +97,30 @@ export function registerEtlRoutes(app: Express): void {
     const id = parseInt(req.params.id, 10);
     if (Number.isNaN(id)) return Errors.badRequest(res, "Invalid job id");
     try {
-      const result = await runJob(id);
-      logger.info(`[founder/etl] manual run job=${id} status=${result.status}`);
-      return res.json(result);
+      const [job] = await db.select().from(etlJobs).where(eq(etlJobs.id, id));
+      if (!job) return Errors.notFound(res, "ETL job");
+
+      // Same lock the scheduled path takes (runDueJobs: `etl:<jobName>`, 300s),
+      // so run-now cannot overlap a scheduled tick or another run-now. The
+      // holder id is fresh per request ON PURPOSE: acquireJobLock re-extends
+      // for the current holder, so reusing the process-wide ETL id would let a
+      // click sail through a tick running in this same process.
+      const lockName = `etl:${job.jobName}`;
+      const holderId = `etl-run-now-${crypto.randomUUID()}`;
+      const acquired = await storage.acquireJobLock(lockName, holderId, 300);
+      if (!acquired) {
+        // The codebase's lock-contention result is `skipped` (runDueJobs);
+        // there is no HTTP lock-refusal status, so none is invented here.
+        logger.info(`[founder/etl] manual run job=${id} skipped — lock held`);
+        return res.json({ status: "skipped", reason: "locked", jobId: id, jobName: job.jobName });
+      }
+      try {
+        const result = await runJob(id);
+        logger.info(`[founder/etl] manual run job=${id} status=${result.status}`);
+        return res.json(result);
+      } finally {
+        await storage.releaseJobLock(lockName, holderId);
+      }
     } catch (err) {
       return Errors.internal(res, err);
     }

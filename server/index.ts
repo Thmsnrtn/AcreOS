@@ -15,6 +15,7 @@ import { createServer } from "http";
 import { mountStripeWebhook } from "./stripeWebhookRoute";
 import { metricsHandler } from "./metrics";
 import { logger, requestLoggingMiddleware, errorLoggingMiddleware } from "./utils/logger";
+import { log } from "./utils/log";
 import { securityHeaders, corsMiddleware, requestTimeout, validateContentType, sanitizeQueryParams } from "./middleware/security";
 import { terminalErrorHandler } from "./middleware/terminalErrorHandler";
 import { installBodyParsers } from "./middleware/bodyParsing";
@@ -95,17 +96,6 @@ declare module "http" {
   interface IncomingMessage {
     rawBody: unknown;
   }
-}
-
-export function log(message: string, source = "express") {
-  const formattedTime = clock.now().toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: true,
-  });
-
-  logger.info(`${formattedTime} [${source}] ${message}`);
 }
 
 // Job-runtime primitives (instanceId, trackInterval, withJobLock) live in

@@ -19,7 +19,7 @@ import { promisify } from "util";
 import path from "path";
 import fs from "fs";
 import os from "os";
-import { log } from "../index";
+import { log } from "../utils/log";
 import { pgEnvFromDatabaseUrl } from "../utils/pgEnv";
 import { clock } from "../utils/clock";
 
