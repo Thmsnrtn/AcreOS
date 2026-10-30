@@ -13,6 +13,7 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { dealPatternCloningService } from "./services/dealPatternCloning";
 import { Errors } from "./utils/errors";
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
@@ -21,7 +22,7 @@ const router = Router();
 router.post("/extract/:dealId", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const dealId = parseInt(req.params.dealId);
+    const dealId = parseInt(routeParam(req.params.dealId));
     if (isNaN(dealId)) return Errors.badRequest(res, "Invalid deal ID");
     const pattern = await dealPatternCloningService.recordPatternFromClosedDeal(org.id, dealId);
     res.status(201).json({ pattern });
@@ -61,7 +62,7 @@ router.get("/performance", isAuthenticated, getOrCreateOrg, async (req: Request,
 // Derive insights from a pattern match
 router.post("/insights/:matchId", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
-    const matchId = parseInt(req.params.matchId);
+    const matchId = parseInt(routeParam(req.params.matchId));
     if (isNaN(matchId)) return Errors.badRequest(res, "Invalid match ID");
     // Get the match and derive insights
     const insights = await dealPatternCloningService.deriveInsights({ matchId } as any);
@@ -75,7 +76,7 @@ router.post("/insights/:matchId", isAuthenticated, getOrCreateOrg, async (req: R
 router.patch("/match/:matchId", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const matchId = parseInt(req.params.matchId);
+    const matchId = parseInt(routeParam(req.params.matchId));
     if (isNaN(matchId)) return Errors.badRequest(res, "Invalid match ID");
     const { outcome, helpedClose } = req.body;
     const updated = await dealPatternCloningService.updateMatchOutcome(

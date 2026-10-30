@@ -29,6 +29,7 @@ import { requireRole } from "./middleware/roleGuard";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 const reasonEnum = z.enum([
   "state_restriction",
@@ -103,7 +104,7 @@ export function registerDoubleCloseRoutes(app: Express): void {
         const [row] = await db
           .select()
           .from(doubleCloseDeals)
-          .where(and(eq(doubleCloseDeals.id, req.params.id), eq(doubleCloseDeals.organizationId, orgId)))
+          .where(and(eq(doubleCloseDeals.id, routeParam(req.params.id)), eq(doubleCloseDeals.organizationId, orgId)))
           .limit(1);
         if (!row) return Errors.notFound(res, "Double-close deal");
         // Compute net to wholesaler (B-C price minus A-B price minus
@@ -157,7 +158,7 @@ export function registerDoubleCloseRoutes(app: Express): void {
         const [row] = await db
           .update(doubleCloseDeals)
           .set({ ...parsed.data, updatedAt: clock.now() })
-          .where(and(eq(doubleCloseDeals.id, req.params.id), eq(doubleCloseDeals.organizationId, orgId)))
+          .where(and(eq(doubleCloseDeals.id, routeParam(req.params.id)), eq(doubleCloseDeals.organizationId, orgId)))
           .returning();
         if (!row) return Errors.notFound(res, "Double-close deal");
         return res.json({ deal: row });
@@ -179,7 +180,7 @@ export function registerDoubleCloseRoutes(app: Express): void {
         const orgId = getOrganizationId(req);
         const [row] = await db
           .delete(doubleCloseDeals)
-          .where(and(eq(doubleCloseDeals.id, req.params.id), eq(doubleCloseDeals.organizationId, orgId)))
+          .where(and(eq(doubleCloseDeals.id, routeParam(req.params.id)), eq(doubleCloseDeals.organizationId, orgId)))
           .returning();
         if (!row) return Errors.notFound(res, "Double-close deal");
         return res.json({ deleted: true });

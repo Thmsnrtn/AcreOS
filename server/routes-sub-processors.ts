@@ -24,6 +24,7 @@ import { Errors } from "./utils/errors";
 import { auditFromRequest, AuditActions } from "./utils/auditLog";
 import { getClerkAuth, type AuthenticatedRequest } from "./types/request";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 function requireFounder(req: AuthenticatedRequest, res: Response): boolean {
   const user = req.user;
@@ -108,7 +109,7 @@ export function registerSubProcessorRoutes(app: Express): void {
       const [existing] = await db
         .select()
         .from(dataProcessingAgreements)
-        .where(eq(dataProcessingAgreements.id, req.params.id))
+        .where(eq(dataProcessingAgreements.id, routeParam(req.params.id)))
         .limit(1);
       if (!existing) return Errors.notFound(res, "Sub-processor");
 

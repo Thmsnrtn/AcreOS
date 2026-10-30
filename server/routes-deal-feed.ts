@@ -15,6 +15,7 @@ import { Errors } from "./utils/errors";
 import { getTodaysFeed, generateDealFeed, recordInteraction } from "./services/dealFeedEngine";
 import { logger } from "./utils/logger";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
@@ -58,7 +59,7 @@ router.post("/refresh", isAuthenticated, getOrCreateOrg, async (req, res: Respon
 router.post("/:opportunityId/action", isAuthenticated, getOrCreateOrg, async (req, res: Response) => {
   try {
     const orgId = getOrganizationId(req as AuthenticatedRequest);
-    const { opportunityId } = req.params;
+    const opportunityId = routeParam(req.params.opportunityId);
     const { action, metadata } = req.body;
 
     if (!action || !["interested", "pass", "offer_sent", "deal_created"].includes(action)) {

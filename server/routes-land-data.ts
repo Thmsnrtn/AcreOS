@@ -33,6 +33,7 @@ import {
   type NationalDatasetCategory,
 } from "./services/providers/national-datasets-provider";
 import { providerRegistry } from "./services/providers/provider-registry";
+import { routeParam } from "./utils/routeParams";
 
 const countySchema = z.object({
   state: z.string().trim().length(2),
@@ -99,7 +100,7 @@ export function registerLandDataRoutes(app: Express) {
   });
 
   app.get("/api/land-data/parcels/:parcelKey", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
-    const key = String(req.params.parcelKey ?? "").slice(0, 200);
+    const key = String(routeParam(req.params.parcelKey) ?? "").slice(0, 200);
     if (!key) return Errors.badRequest(res, "A parcel key is required.");
     try {
       // Owned parcels are GLOBAL public-record rows (organization_id NULL):
@@ -138,7 +139,7 @@ export function registerLandDataRoutes(app: Express) {
   });
 
   app.get("/api/land-data/national/:category", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
-    const category = String(req.params.category) as NationalDatasetCategory;
+    const category = String(routeParam(req.params.category)) as NationalDatasetCategory;
     if (!(NATIONAL_DATASET_CATEGORIES as readonly string[]).includes(category)) {
       return Errors.badRequest(res, "Unknown dataset.", { allowed: NATIONAL_DATASET_CATEGORIES });
     }

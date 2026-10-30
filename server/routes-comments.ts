@@ -16,6 +16,7 @@ import { db } from "./db";
 import { entityComments, notifications, teamMembers } from "@shared/schema";
 import { eq, and, lt, desc } from "drizzle-orm";
 import { logger } from "./utils/logger";
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
@@ -47,7 +48,8 @@ function parseMentions(content: string): string[] {
 router.get("/:entityType/:entityId", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const org = req.organization;
-    const { entityType, entityId } = req.params;
+    const entityType = routeParam(req.params.entityType);
+    const entityId = routeParam(req.params.entityId);
     const cursor = req.query.cursor ? parseInt(req.query.cursor as string) : undefined;
 
     if (!VALID_ENTITY_TYPES.includes(entityType as typeof VALID_ENTITY_TYPES[number])) {
@@ -95,7 +97,8 @@ router.post("/:entityType/:entityId", isAuthenticated, getOrCreateOrg, async (re
     const org = req.organization;
     const user = req.user;
     const userId = (user as any)?.id ?? user?.id;
-    const { entityType, entityId } = req.params;
+    const entityType = routeParam(req.params.entityType);
+    const entityId = routeParam(req.params.entityId);
 
     if (!VALID_ENTITY_TYPES.includes(entityType as typeof VALID_ENTITY_TYPES[number])) {
       return Errors.badRequest(res, "invalid entity type");
@@ -183,7 +186,7 @@ router.delete("/:id", isAuthenticated, getOrCreateOrg, async (req: Authenticated
     const org = req.organization;
     const user = req.user;
     const userId = String((user as any)?.id ?? user?.id);
-    const commentId = parseInt(req.params.id);
+    const commentId = parseInt(routeParam(req.params.id));
 
     if (isNaN(commentId)) return Errors.badRequest(res, "invalid comment ID");
 

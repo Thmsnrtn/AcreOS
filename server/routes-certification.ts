@@ -12,6 +12,7 @@ import { Router, type Request, type Response } from "express";
 import { isAuthenticated } from "./auth";
 import { certificationService } from "./services/certification";
 import { Errors } from "./utils/errors";
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
@@ -26,15 +27,15 @@ function getUser(req: Request) {
  * feature_academy ladder flag until the rest of that entry is fixed.
  */
 function pathUserIsSessionUser(req: Request): boolean {
-  return String(req.params.userId) === String(req.user?.id);
+  return String(routeParam(req.params.userId)) === String(req.user?.id);
 }
 
 // Check and award certificate for course completion
 router.post("/check/:userId/:courseId", isAuthenticated, async (req: Request, res: Response) => {
   try {
     if (!pathUserIsSessionUser(req)) return Errors.forbidden(res);
-    const userId = parseInt(req.params.userId);
-    const courseId = parseInt(req.params.courseId);
+    const userId = parseInt(routeParam(req.params.userId));
+    const courseId = parseInt(routeParam(req.params.courseId));
     if (isNaN(userId) || isNaN(courseId)) {
       return Errors.badRequest(res, "Invalid userId or courseId");
     }
@@ -49,8 +50,8 @@ router.post("/check/:userId/:courseId", isAuthenticated, async (req: Request, re
 router.get("/certificate/:userId/:courseId", isAuthenticated, async (req: Request, res: Response) => {
   try {
     if (!pathUserIsSessionUser(req)) return Errors.forbidden(res);
-    const userId = parseInt(req.params.userId);
-    const courseId = parseInt(req.params.courseId);
+    const userId = parseInt(routeParam(req.params.userId));
+    const courseId = parseInt(routeParam(req.params.courseId));
     if (isNaN(userId) || isNaN(courseId)) {
       return Errors.badRequest(res, "Invalid userId or courseId");
     }
@@ -65,7 +66,7 @@ router.get("/certificate/:userId/:courseId", isAuthenticated, async (req: Reques
 router.get("/achievements/:userId", isAuthenticated, async (req: Request, res: Response) => {
   try {
     if (!pathUserIsSessionUser(req)) return Errors.forbidden(res);
-    const userId = parseInt(req.params.userId);
+    const userId = parseInt(routeParam(req.params.userId));
     if (isNaN(userId)) return Errors.badRequest(res, "Invalid user ID");
     const achievements = await certificationService.checkAchievements(userId);
     res.json({ achievements });
@@ -78,7 +79,7 @@ router.get("/achievements/:userId", isAuthenticated, async (req: Request, res: R
 router.get("/stats/:userId", isAuthenticated, async (req: Request, res: Response) => {
   try {
     if (!pathUserIsSessionUser(req)) return Errors.forbidden(res);
-    const userId = parseInt(req.params.userId);
+    const userId = parseInt(routeParam(req.params.userId));
     if (isNaN(userId)) return Errors.badRequest(res, "Invalid user ID");
     const stats = await certificationService.getLearningStats(userId);
     res.json({ stats });

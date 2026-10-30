@@ -31,6 +31,7 @@ import { Errors } from "./utils/errors";
 import { featureFlagService } from "./services/featureFlags";
 import { ddReportOffer, purchaseDdReport, purchasedDdReport } from "./services/parcelDdReport";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 function stripePriceId(): string | null {
   const v = process.env[FOUNDING_MEMBER_OFFER.stripePriceEnv];
@@ -133,7 +134,7 @@ export function registerAcquisitionOfferRoutes(app: Express): void {
 
   app.get("/api/land-data/parcels/:parcelKey/dd-report/offer", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      return res.json(await ddReportOffer(getOrganizationId(req), parcelKeyParam(req.params.parcelKey)));
+      return res.json(await ddReportOffer(getOrganizationId(req), parcelKeyParam(routeParam(req.params.parcelKey))));
     } catch (err) {
       return Errors.internal(res, err);
     }
@@ -141,7 +142,7 @@ export function registerAcquisitionOfferRoutes(app: Express): void {
 
   app.post("/api/land-data/parcels/:parcelKey/dd-report", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const r = await purchaseDdReport(getOrganizationId(req), parcelKeyParam(req.params.parcelKey));
+      const r = await purchaseDdReport(getOrganizationId(req), parcelKeyParam(routeParam(req.params.parcelKey)));
       if (!r.ok) {
         if (r.reason === "not_kept") return Errors.notFound(res, "Parcel");
         if (r.reason === "insufficient_credits") return Errors.paymentRequired(res, r.message, { reason: r.reason });
@@ -155,7 +156,7 @@ export function registerAcquisitionOfferRoutes(app: Express): void {
 
   app.get("/api/land-data/parcels/:parcelKey/dd-report", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const report = await purchasedDdReport(getOrganizationId(req), parcelKeyParam(req.params.parcelKey));
+      const report = await purchasedDdReport(getOrganizationId(req), parcelKeyParam(routeParam(req.params.parcelKey)));
       if (!report) return Errors.notFound(res, "Report");
       return res.json({ report });
     } catch (err) {

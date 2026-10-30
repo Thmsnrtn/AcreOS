@@ -18,6 +18,7 @@ import { customerAuditFromRequest, CustomerAuditActions } from "./utils/customer
 import { z } from "zod";
 import { lenderServicingPhase, subscriptionEndedPatch } from "./services/borrower/servicingPhase";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 export function registerBillingRoutes(app: Express): void {
   const api = app;
@@ -1037,7 +1038,7 @@ export function registerBillingRoutes(app: Express): void {
     try {
       const { stripeConnectService, CustomerMoneyRefusedError } = await import("./services/stripeConnect");
       const org = req.organization;
-      const noteId = Number(req.params.noteId);
+      const noteId = Number(routeParam(req.params.noteId));
 
       const note = await storage.getNote(org.id, noteId);
       if (!note) {

@@ -47,6 +47,7 @@ import { logger } from "./utils/logger";
 import { emailService } from "./services/emailService";
 import { costClass } from "./utils/costClass";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 const draftSchema = z.object({
   subject: z.string().min(1).max(255),
@@ -99,7 +100,7 @@ export function registerFounderLetterRoutes(app: Express): void {
     requireFounder,
     async (req: AuthenticatedRequest, res: Response) => {
       try {
-        const id = req.params.id;
+        const id = routeParam(req.params.id);
         const [updated] = await db
           .update(communityLetters)
           .set({ publishedAt: clock.now(), updatedAt: clock.now() })
@@ -123,7 +124,7 @@ export function registerFounderLetterRoutes(app: Express): void {
     requireFounder,
     async (req: AuthenticatedRequest, res: Response) => {
       try {
-        const id = req.params.id;
+        const id = routeParam(req.params.id);
         const [letter] = await db
           .select()
           .from(communityLetters)
@@ -225,7 +226,7 @@ export function registerFounderLetterRoutes(app: Express): void {
 
   async function getPublicFieldNote(req: Request, res: Response) {
     try {
-      const slug = req.params.slug;
+      const slug = routeParam(req.params.slug);
       const [row] = await db
         .select()
         .from(communityLetters)

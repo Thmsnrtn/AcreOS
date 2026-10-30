@@ -13,6 +13,7 @@ import { omitServerOwnedFields } from "./utils/updatePayload";
 import { logger } from "./utils/logger";
 import { addMonths } from "./utils/dateUtils";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 export function registerAnalyticsRoutes(app: Express): void {
   const api = app;
@@ -256,7 +257,7 @@ export function registerAnalyticsRoutes(app: Express): void {
   api.delete("/api/workspaces/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       
       const existing = await storage.getWorkspacePreset(org.id, id);
       if (!existing) {
@@ -294,7 +295,8 @@ export function registerAnalyticsRoutes(app: Express): void {
   api.get("/api/tasks/entity/:entityType/:entityId", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const { entityType, entityId } = req.params;
+      const entityType = routeParam(req.params.entityType);
+      const entityId = routeParam(req.params.entityId);
       
       const tasks = await storage.getTasksByEntity(org.id, entityType, parseInt(entityId));
       res.json(tasks);
@@ -308,7 +310,7 @@ export function registerAnalyticsRoutes(app: Express): void {
   api.put("/api/tasks/:id/complete", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       
       const existing = await storage.getTask(org.id, id);
       if (!existing) {
@@ -361,7 +363,7 @@ export function registerAnalyticsRoutes(app: Express): void {
   // PUT /api/notifications/:id/read - Mark notification as read
   api.put("/api/notifications/:id/read", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       // Tenant- and user-scoped. The repo grew both predicates in audit F-23-4
       // and F-17-1, but this call site never passed them — the fix was built and
       // left unwired (2026-09-04). routes-sovereign-integration.ts:158 shows the
@@ -714,7 +716,7 @@ export function registerAnalyticsRoutes(app: Express): void {
     try {
       const org = req.organization;
       const { getBatchStatus } = await import("./services/offerBatchService");
-      const batch = await getBatchStatus(parseInt(req.params.id, 10), org.id);
+      const batch = await getBatchStatus(parseInt(routeParam(req.params.id), 10), org.id);
       if (!batch) return Errors.notFound(res, "Batch");
       res.json(batch);
     } catch (err: any) {

@@ -146,7 +146,7 @@ function validateRequest<T extends z.ZodSchema>(schema: T) {
 
 function validateNumericParam(paramName: string) {
   return (req: Request, res: Response, next: NextFunction) => {
-    const value = req.params[paramName];
+    const value = routeParam(req.params[paramName]);
     const parsed = parseInt(value, 10);
     if (isNaN(parsed)) {
       return res.status(400).json({
@@ -163,6 +163,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
 import { getOrganizationId } from "./types/request";
+import { routeParam } from "./utils/routeParams";
 
 export function registerAIOperationsRoutes(app: Express): void {
   const router = createRouter();
@@ -187,7 +188,7 @@ export function registerAIOperationsRoutes(app: Express): void {
 
   router.get("/due-diligence/:id", isAuthenticated, getOrCreateOrg, validateNumericParam("id"), async (req, res) => {
     try {
-      const dossierId = parseInt(req.params.id);
+      const dossierId = parseInt(routeParam(req.params.id));
       
       const { dueDiligencePodService } = await import("./services/dueDiligencePods");
       // A SECOND router reading the same dossiers. The due-diligence router's
@@ -226,7 +227,7 @@ export function registerAIOperationsRoutes(app: Express): void {
   router.get("/intent/lead/:leadId", isAuthenticated, getOrCreateOrg, validateNumericParam("leadId"), async (req, res) => {
     try {
       const org = req.organization;
-      const leadId = parseInt(req.params.leadId);
+      const leadId = parseInt(routeParam(req.params.leadId));
       
       const { sellerIntentPredictorService } = await import("./services/sellerIntentPredictor");
       const predictions = await sellerIntentPredictorService.getLeadPredictions(org.id, leadId);
@@ -352,7 +353,7 @@ export function registerAIOperationsRoutes(app: Express): void {
   router.get("/patterns/match/:propertyId", isAuthenticated, getOrCreateOrg, validateNumericParam("propertyId"), async (req, res) => {
     try {
       const org = req.organization;
-      const propertyId = parseInt(req.params.propertyId);
+      const propertyId = parseInt(routeParam(req.params.propertyId));
       
       const { dealPatternCloningService } = await import("./services/dealPatternCloning");
       const matches = await dealPatternCloningService.findSimilarPatterns(org.id, propertyId);
@@ -392,7 +393,7 @@ export function registerAIOperationsRoutes(app: Express): void {
   router.get("/sequences/:sequenceId/analysis", isAuthenticated, getOrCreateOrg, validateNumericParam("sequenceId"), async (req, res) => {
     try {
       const org = req.organization;
-      const sequenceId = parseInt(req.params.sequenceId);
+      const sequenceId = parseInt(routeParam(req.params.sequenceId));
       
       const { sequenceOptimizerService } = await import("./services/sequenceOptimizer");
       const analysis = await sequenceOptimizerService.analyzeSequencePerformance(org.id, sequenceId);
@@ -425,7 +426,7 @@ export function registerAIOperationsRoutes(app: Express): void {
   router.get("/voice/:id", isAuthenticated, getOrCreateOrg, validateNumericParam("id"), async (req, res) => {
     try {
       const org = req.organization;
-      const leadId = parseInt(req.params.id);
+      const leadId = parseInt(routeParam(req.params.id));
       
       const { voiceCallAIService } = await import("./services/voiceCallAI");
       const transcripts = await voiceCallAIService.getCallsForLead(org.id, leadId);
@@ -478,7 +479,7 @@ export function registerAIOperationsRoutes(app: Express): void {
   router.patch("/portfolio/alerts/:id", isAuthenticated, getOrCreateOrg, validateNumericParam("id"), validateRequest(portfolioAlertUpdateSchema), async (req, res) => {
     try {
       const org = req.organization;
-      const alertId = parseInt(req.params.id);
+      const alertId = parseInt(routeParam(req.params.id));
       const { action, resolution, userId } = req.body;
       
       const { portfolioSentinelService } = await import("./services/portfolioSentinel");
@@ -536,7 +537,7 @@ export function registerAIOperationsRoutes(app: Express): void {
   router.get("/documents/:id", isAuthenticated, getOrCreateOrg, validateNumericParam("id"), async (req, res) => {
     try {
       const org = req.organization;
-      const propertyId = parseInt(req.params.id);
+      const propertyId = parseInt(routeParam(req.params.id));
       
       const { documentIntelligenceService } = await import("./services/documentIntelligence");
       const documents = await documentIntelligenceService.getDocumentsByProperty(org.id, propertyId);
@@ -686,7 +687,7 @@ export function registerAIOperationsRoutes(app: Express): void {
   router.get("/buyer-qualification/:id", isAuthenticated, getOrCreateOrg, validateNumericParam("id"), async (req, res) => {
     try {
       const org = req.organization;
-      const qualificationId = parseInt(req.params.id);
+      const qualificationId = parseInt(routeParam(req.params.id));
 
       const { buyerQualificationBotService } = await import("./services/buyerQualificationBot");
       const qualification = await buyerQualificationBotService.getQualificationById(
@@ -725,7 +726,7 @@ export function registerAIOperationsRoutes(app: Express): void {
   router.get("/disposition/property/:id", isAuthenticated, getOrCreateOrg, validateNumericParam("id"), async (req, res) => {
     try {
       const org = req.organization;
-      const propertyId = parseInt(req.params.id);
+      const propertyId = parseInt(routeParam(req.params.id));
       
       const { dispositionOptimizerService } = await import("./services/dispositionOptimizer");
       const recommendations = await dispositionOptimizerService.getRecommendationsByProperty(org.id, propertyId);

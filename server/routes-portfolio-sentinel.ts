@@ -18,6 +18,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { portfolioSentinelService } from "./services/portfolioSentinel";
 import { Errors } from "./utils/errors";
 import { getOrganizationId, type AuthenticatedRequest } from "./types/request";
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
@@ -56,7 +57,7 @@ router.get("/alerts/summary", isAuthenticated, getOrCreateOrg, async (req: Reque
 router.get("/property/:id", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const propertyId = parseInt(req.params.id);
+    const propertyId = parseInt(routeParam(req.params.id));
     if (isNaN(propertyId)) return Errors.badRequest(res, "Invalid property ID");
     const result = await portfolioSentinelService.monitorProperty(org.id, propertyId);
     res.json({ result });
@@ -69,7 +70,7 @@ router.get("/property/:id", isAuthenticated, getOrCreateOrg, async (req: Request
 router.get("/property/:id/alerts", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const propertyId = parseInt(req.params.id);
+    const propertyId = parseInt(routeParam(req.params.id));
     if (isNaN(propertyId)) return Errors.badRequest(res, "Invalid property ID");
     const alerts = await portfolioSentinelService.getPropertyAlerts(org.id, propertyId);
     res.json({ alerts });
@@ -93,7 +94,7 @@ router.post("/monitor", isAuthenticated, getOrCreateOrg, async (req: Request, re
 router.patch("/alerts/:id/ack", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
     const user = getUser(req);
-    const alertId = parseInt(req.params.id);
+    const alertId = parseInt(routeParam(req.params.id));
     if (isNaN(alertId)) return Errors.badRequest(res, "Invalid alert ID");
     // acknowledgeAlert writes to portfolio_alerts.acknowledged_by (integer).
     // TODO(tsc): user.id is a string user id; the column/service expect a
@@ -109,7 +110,7 @@ router.patch("/alerts/:id/ack", isAuthenticated, getOrCreateOrg, async (req: Req
 // Resolve an alert
 router.patch("/alerts/:id/resolve", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
-    const alertId = parseInt(req.params.id);
+    const alertId = parseInt(routeParam(req.params.id));
     if (isNaN(alertId)) return Errors.badRequest(res, "Invalid alert ID");
     const { resolution } = req.body;
     if (!resolution) return Errors.badRequest(res, "resolution is required");
@@ -124,7 +125,7 @@ router.patch("/alerts/:id/resolve", isAuthenticated, getOrCreateOrg, async (req:
 // Dismiss an alert
 router.patch("/alerts/:id/dismiss", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
-    const alertId = parseInt(req.params.id);
+    const alertId = parseInt(routeParam(req.params.id));
     if (isNaN(alertId)) return Errors.badRequest(res, "Invalid alert ID");
     const alert = await portfolioSentinelService.dismissAlert(getOrganizationId(req as AuthenticatedRequest), alertId);
     if (!alert) return Errors.notFound(res, "Alert");
@@ -137,7 +138,7 @@ router.patch("/alerts/:id/dismiss", isAuthenticated, getOrCreateOrg, async (req:
 // Get suggested actions for an alert
 router.get("/alerts/:id/suggest", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
-    const alertId = parseInt(req.params.id);
+    const alertId = parseInt(routeParam(req.params.id));
     if (isNaN(alertId)) return Errors.badRequest(res, "Invalid alert ID");
     const suggestions = await portfolioSentinelService.suggestActions(getOrganizationId(req as AuthenticatedRequest), alertId);
     res.json({ suggestions });

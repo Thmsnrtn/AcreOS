@@ -30,6 +30,7 @@ import { getPaxControls } from "./services/paxControls";
 import { PARKED_STATES } from "@shared/pax-controls";
 import { z } from "zod";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
@@ -460,7 +461,7 @@ function parsePendingActionId(raw: string): number | null {
 router.post("/pending-actions/:id/approve", async (req: AuthenticatedRequest, res) => {
   try {
     const org = getOrganization(req);
-    const pendingActionId = parsePendingActionId(req.params.id);
+    const pendingActionId = parsePendingActionId(routeParam(req.params.id));
     if (!pendingActionId) {
       return Errors.badRequest(res, "Invalid pending action id");
     }
@@ -536,7 +537,7 @@ router.post("/pending-actions/:id/approve", async (req: AuthenticatedRequest, re
 router.post("/pending-actions/:id/reject", async (req: AuthenticatedRequest, res) => {
   try {
     const org = getOrganization(req);
-    const pendingActionId = parsePendingActionId(req.params.id);
+    const pendingActionId = parsePendingActionId(routeParam(req.params.id));
     if (!pendingActionId) {
       return Errors.badRequest(res, "Invalid pending action id");
     }
@@ -570,7 +571,7 @@ const reviseSchema = z.object({ args: z.record(z.string(), z.unknown()) }).stric
 router.post("/pending-actions/:id/revise", async (req: AuthenticatedRequest, res) => {
   try {
     const org = getOrganization(req);
-    const pendingActionId = parsePendingActionId(req.params.id);
+    const pendingActionId = parsePendingActionId(routeParam(req.params.id));
     if (!pendingActionId) {
       return Errors.badRequest(res, "Invalid pending action id");
     }
@@ -793,7 +794,7 @@ router.get("/needs-you/count", async (req: AuthenticatedRequest, res) => {
 router.patch("/nudges/:nudgeId/snooze", async (req, res) => {
   try {
     const org = req.organization;
-    const nudgeId = parseInt(req.params.nudgeId);
+    const nudgeId = parseInt(routeParam(req.params.nudgeId));
     const { hours = 24 } = req.body; // default snooze 24 hours
 
     const snoozedUntil = new Date(clock.nowMs() + hours * 60 * 60 * 1000);
@@ -819,7 +820,7 @@ router.patch("/nudges/:nudgeId/snooze", async (req, res) => {
 router.patch("/nudges/:nudgeId/action", async (req, res) => {
   try {
     const org = req.organization;
-    const nudgeId = parseInt(req.params.nudgeId);
+    const nudgeId = parseInt(routeParam(req.params.nudgeId));
 
     await db.update(paxNudges)
       .set({

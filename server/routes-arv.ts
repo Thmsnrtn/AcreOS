@@ -27,6 +27,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 const compSchema = z.object({
   address: z.string().optional(),
@@ -100,7 +101,7 @@ export function registerArvRoutes(app: Express): void {
   app.get("/api/parcels/:id/arv", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const orgId = getOrganizationId(req);
-      const propId = parseInt(req.params.id, 10);
+      const propId = parseInt(routeParam(req.params.id), 10);
       if (!Number.isFinite(propId)) return Errors.badRequest(res, "Invalid parcel id");
 
       const [current] = await db.select().from(arvCalculations)
@@ -121,7 +122,7 @@ export function registerArvRoutes(app: Express): void {
   app.get("/api/parcels/:id/arv/history", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const orgId = getOrganizationId(req);
-      const propId = parseInt(req.params.id, 10);
+      const propId = parseInt(routeParam(req.params.id), 10);
       if (!Number.isFinite(propId)) return Errors.badRequest(res, "Invalid parcel id");
 
       const rows = await db.select().from(arvCalculations)
@@ -142,7 +143,7 @@ export function registerArvRoutes(app: Express): void {
     try {
       const orgId = getOrganizationId(req);
       const userId = getUserId(req);
-      const propId = parseInt(req.params.id, 10);
+      const propId = parseInt(routeParam(req.params.id), 10);
       if (!Number.isFinite(propId)) return Errors.badRequest(res, "Invalid parcel id");
 
       const parsed = calcSchema.safeParse(req.body);

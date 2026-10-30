@@ -41,6 +41,7 @@ import { db } from "./db";
 import { planProposals } from "@shared/schema/solene-plan-proposals";
 import { and, desc, eq } from "drizzle-orm";
 import { logger } from "./utils/logger";
+import { routeParam } from "./utils/routeParams";
 
 function clampLimit(raw: unknown): number {
   const n = Number(raw);
@@ -146,7 +147,7 @@ export function registerPlanProposalRoutes(app: Express): void {
     requireFounder,
     async (req: AuthenticatedRequest, res: Response) => {
       try {
-        const id = Number(req.params.id);
+        const id = Number(routeParam(req.params.id));
         if (!Number.isFinite(id) || !Number.isInteger(id) || id <= 0) {
           return Errors.badRequest(res, "invalid proposal id");
         }
@@ -169,7 +170,7 @@ export function registerPlanProposalRoutes(app: Express): void {
     requireFounder,
     async (req: AuthenticatedRequest, res: Response) => {
       try {
-        const id = Number(req.params.id);
+        const id = Number(routeParam(req.params.id));
         if (!Number.isFinite(id) || !Number.isInteger(id) || id <= 0) {
           return Errors.badRequest(res, "invalid proposal id");
         }
@@ -202,7 +203,7 @@ export function registerPlanProposalRoutes(app: Express): void {
       } catch (err) {
         logger.error("[plan-proposals] approve failed", {
           err: String(err),
-          id: req.params.id,
+          id: routeParam(req.params.id),
         });
         const msg = err instanceof Error ? err.message : String(err);
         if (msg.includes("not found")) return Errors.notFound(res, "Plan proposal");
@@ -222,7 +223,7 @@ export function registerPlanProposalRoutes(app: Express): void {
     requireFounder,
     async (req: AuthenticatedRequest, res: Response) => {
       try {
-        const id = Number(req.params.id);
+        const id = Number(routeParam(req.params.id));
         if (!Number.isFinite(id) || !Number.isInteger(id) || id <= 0) {
           return Errors.badRequest(res, "invalid proposal id");
         }
@@ -246,7 +247,7 @@ export function registerPlanProposalRoutes(app: Express): void {
       } catch (err) {
         logger.error("[plan-proposals] reject failed", {
           err: String(err),
-          id: req.params.id,
+          id: routeParam(req.params.id),
         });
         const msg = err instanceof Error ? err.message : String(err);
         if (msg.includes("not found")) return Errors.notFound(res, "Plan proposal");

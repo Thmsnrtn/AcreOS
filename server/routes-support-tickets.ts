@@ -13,6 +13,7 @@ import { notifyFounderOfTicket } from "./services/supportNotifications";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganization, getUserId } from "./types/request";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 export function registerSupportTicketRoutes(app: Express): void {
   const api = app;
@@ -90,7 +91,7 @@ export function registerSupportTicketRoutes(app: Express): void {
   api.get("/api/support/tickets/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization!;
-      const ticketId = parseInt(req.params.id);
+      const ticketId = parseInt(routeParam(req.params.id));
       const { getTicketMessages } = await import("./ai/supportAgent");
 
       const [ticket] = await db.select()
@@ -134,7 +135,7 @@ export function registerSupportTicketRoutes(app: Express): void {
     try {
       const org = req.organization!;
       const user = req.user;
-      const ticketId = parseInt(req.params.id);
+      const ticketId = parseInt(routeParam(req.params.id));
       const { message } = req.body;
       
       if (!message) {
@@ -220,7 +221,7 @@ export function registerSupportTicketRoutes(app: Express): void {
     async (req, res) => {
       try {
         const org = getOrganization(req as AuthenticatedRequest);
-        const ticketId = parseInt(req.params.id, 10);
+        const ticketId = parseInt(routeParam(req.params.id), 10);
         if (Number.isNaN(ticketId)) {
           return Errors.badRequest(res, "Invalid ticket id");
         }
@@ -268,7 +269,7 @@ export function registerSupportTicketRoutes(app: Express): void {
   api.post("/api/support/tickets/:id/close", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization!;
-      const ticketId = parseInt(req.params.id);
+      const ticketId = parseInt(routeParam(req.params.id));
       const { resolution, rating, feedback } = req.body;
 
       // Org-scope guard: a customer may only close their own org's tickets.
@@ -330,7 +331,7 @@ export function registerSupportTicketRoutes(app: Express): void {
   // the conversation summary before persisting the draft.
   api.post("/api/support/tickets/:id/resolve-human", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const ticketId = parseInt(req.params.id);
+      const ticketId = parseInt(routeParam(req.params.id));
       const org = req.organization;
       const user = req.user;
       const { resolution, rating, feedback, addToKnowledgeBase, publishable } = req.body;
@@ -512,7 +513,7 @@ export function registerSupportTicketRoutes(app: Express): void {
   // Get single knowledge base article
   api.get("/api/support/knowledge-base/:slug", async (req, res) => {
     try {
-      const { slug } = req.params;
+      const slug = routeParam(req.params.slug);
       
       const [article] = await db.select()
         .from(knowledgeBaseArticles)
@@ -537,7 +538,7 @@ export function registerSupportTicketRoutes(app: Express): void {
   // Mark article as helpful/not helpful
   api.post("/api/support/knowledge-base/:id/feedback", async (req, res) => {
     try {
-      const articleId = parseInt(req.params.id);
+      const articleId = parseInt(routeParam(req.params.id));
       const { helpful } = req.body;
       
       const [article] = await db.select()
@@ -696,7 +697,7 @@ export function registerSupportTicketRoutes(app: Express): void {
         return Errors.forbidden(res, "Founder access required");
       }
 
-      const articleId = parseInt(req.params.id);
+      const articleId = parseInt(routeParam(req.params.id));
       if (Number.isNaN(articleId)) {
         return Errors.badRequest(res, "Invalid article id");
       }
@@ -739,7 +740,7 @@ export function registerSupportTicketRoutes(app: Express): void {
         return Errors.forbidden(res, "Founder access required");
       }
 
-      const articleId = parseInt(req.params.id);
+      const articleId = parseInt(routeParam(req.params.id));
       if (Number.isNaN(articleId)) {
         return Errors.badRequest(res, "Invalid article id");
       }
@@ -880,7 +881,7 @@ export function registerSupportTicketRoutes(app: Express): void {
         return Errors.forbidden(res, "Founder access required");
       }
       
-      const ticketId = parseInt(req.params.id);
+      const ticketId = parseInt(routeParam(req.params.id));
       if (isNaN(ticketId)) {
         return Errors.badRequest(res, "Invalid ticket ID");
       }
@@ -1124,7 +1125,7 @@ ${Object.entries(byCategory).map(([cat, tix]) => `- ${cat}: ${tix.length} ticket
         return Errors.forbidden(res, "Founder access required");
       }
       
-      const ticketId = parseInt(req.params.id);
+      const ticketId = parseInt(routeParam(req.params.id));
       if (isNaN(ticketId)) {
         return Errors.badRequest(res, "Invalid ticket ID");
       }

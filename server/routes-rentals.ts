@@ -66,6 +66,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { Errors, sendError } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 // ----------------------------------------------------------------------------
 // Validation
@@ -595,7 +596,7 @@ export function registerRentalRoutes(app: Express): void {
     try {
       const orgId = getOrganizationId(req);
       const [t] = await db.select().from(tenants)
-        .where(and(eq(tenants.id, req.params.id), eq(tenants.organizationId, orgId)));
+        .where(and(eq(tenants.id, routeParam(req.params.id)), eq(tenants.organizationId, orgId)));
       if (!t) return Errors.notFound(res, "Tenant");
 
       const leaseLinks = await db.select({
@@ -715,7 +716,7 @@ export function registerRentalRoutes(app: Express): void {
           await assertScreeningPermitted({
             organizationId: orgId,
             userId,
-            tenantId: req.params.id,
+            tenantId: routeParam(req.params.id),
             requirePerLookupRow: true,
           });
         } catch (err: any) {
@@ -734,7 +735,7 @@ export function registerRentalRoutes(app: Express): void {
         if (parsed.data[k] !== undefined) updates[k] = parsed.data[k];
       }
       const [updated] = await db.update(tenants).set(updates)
-        .where(and(eq(tenants.id, req.params.id), eq(tenants.organizationId, orgId)))
+        .where(and(eq(tenants.id, routeParam(req.params.id)), eq(tenants.organizationId, orgId)))
         .returning();
       if (!updated) return Errors.notFound(res, "Tenant");
       return res.json({ tenant: updated });
@@ -838,7 +839,7 @@ export function registerRentalRoutes(app: Express): void {
 
       const [row] = await db.insert(tenantScreenings).values({
         organizationId: orgId,
-        tenantId: req.params.id,
+        tenantId: routeParam(req.params.id),
         propertyId,
         purposeOfUse,
         purposeJustification: justification,
@@ -870,7 +871,7 @@ export function registerRentalRoutes(app: Express): void {
         await assertScreeningPermitted({
           organizationId: orgId,
           userId,
-          tenantId: req.params.id,
+          tenantId: routeParam(req.params.id),
           requirePerLookupRow: true,
         });
       } catch (err: any) {
@@ -884,7 +885,7 @@ export function registerRentalRoutes(app: Express): void {
       const recent = await db.select().from(tenantScreenings)
         .where(and(
           eq(tenantScreenings.organizationId, orgId),
-          eq(tenantScreenings.tenantId, req.params.id),
+          eq(tenantScreenings.tenantId, routeParam(req.params.id)),
         ))
         .orderBy(desc(tenantScreenings.attestedAt))
         .limit(1);
@@ -908,10 +909,10 @@ export function registerRentalRoutes(app: Express): void {
       await db.update(tenants).set({
         status: "denied",
         updatedAt: clock.now(),
-      }).where(and(eq(tenants.id, req.params.id), eq(tenants.organizationId, orgId)));
+      }).where(and(eq(tenants.id, routeParam(req.params.id)), eq(tenants.organizationId, orgId)));
 
       logger.info("[FCRA] Adverse-action notice recorded (manual delivery required — no send rail)", {
-        orgId, userId, tenantId: req.params.id, templateVersion: ADVERSE_ACTION_TEMPLATE_VERSION,
+        orgId, userId, tenantId: routeParam(req.params.id), templateVersion: ADVERSE_ACTION_TEMPLATE_VERSION,
       });
       return res.status(201).json({
         screening: updated,
@@ -930,7 +931,7 @@ export function registerRentalRoutes(app: Express): void {
     try {
       const orgId = getOrganizationId(req);
       const [deleted] = await db.delete(tenants)
-        .where(and(eq(tenants.id, req.params.id), eq(tenants.organizationId, orgId)))
+        .where(and(eq(tenants.id, routeParam(req.params.id)), eq(tenants.organizationId, orgId)))
         .returning({ id: tenants.id });
       if (!deleted) return Errors.notFound(res, "Tenant");
       return res.json({ deleted: true, id: deleted.id });
@@ -960,7 +961,7 @@ export function registerRentalRoutes(app: Express): void {
     try {
       const orgId = getOrganizationId(req);
       const [l] = await db.select().from(rentalLeases)
-        .where(and(eq(rentalLeases.id, req.params.id), eq(rentalLeases.organizationId, orgId)));
+        .where(and(eq(rentalLeases.id, routeParam(req.params.id)), eq(rentalLeases.organizationId, orgId)));
       if (!l) return Errors.notFound(res, "Lease");
 
       const links = await db.select().from(leaseTenants)
@@ -1102,7 +1103,7 @@ export function registerRentalRoutes(app: Express): void {
       // disclosure is already attached or confirmed in this request.
       if (parsed.data.status !== undefined && LEAD_PAINT_GATED_STATUSES.has(parsed.data.status)) {
         const [existing] = await db.select().from(rentalLeases)
-          .where(and(eq(rentalLeases.id, req.params.id), eq(rentalLeases.organizationId, orgId)));
+          .where(and(eq(rentalLeases.id, routeParam(req.params.id)), eq(rentalLeases.organizationId, orgId)));
         if (!existing) return Errors.notFound(res, "Lease");
         const attached =
           existing.leadPaintDisclosureAttachedAt !== null ||
@@ -1130,7 +1131,7 @@ export function registerRentalRoutes(app: Express): void {
         updates.leadPaintDisclosureAttachedAt = clock.now();
       }
       const [updated] = await db.update(rentalLeases).set(updates)
-        .where(and(eq(rentalLeases.id, req.params.id), eq(rentalLeases.organizationId, orgId)))
+        .where(and(eq(rentalLeases.id, routeParam(req.params.id)), eq(rentalLeases.organizationId, orgId)))
         .returning();
       if (!updated) return Errors.notFound(res, "Lease");
       return res.json({ lease: updated });
@@ -1147,7 +1148,7 @@ export function registerRentalRoutes(app: Express): void {
 
       const [link] = await db.insert(leaseTenants).values({
         organizationId: orgId,
-        leaseId: req.params.id,
+        leaseId: routeParam(req.params.id),
         tenantId: parsed.data.tenantId,
         rentSharePct: String(parsed.data.rentSharePct),
         isPrimary: parsed.data.isPrimary,
@@ -1162,8 +1163,8 @@ export function registerRentalRoutes(app: Express): void {
     try {
       const orgId = getOrganizationId(req);
       const [deleted] = await db.delete(leaseTenants).where(and(
-        eq(leaseTenants.leaseId, req.params.id),
-        eq(leaseTenants.tenantId, req.params.tenantId),
+        eq(leaseTenants.leaseId, routeParam(req.params.id)),
+        eq(leaseTenants.tenantId, routeParam(req.params.tenantId)),
         eq(leaseTenants.organizationId, orgId),
       )).returning();
       if (!deleted) return Errors.notFound(res, "Lease tenant link");
@@ -1181,7 +1182,7 @@ export function registerRentalRoutes(app: Express): void {
 
       const [addendum] = await db.insert(leaseAddendums).values({
         organizationId: orgId,
-        leaseId: req.params.id,
+        leaseId: routeParam(req.params.id),
         kind: parsed.data.kind,
         title: parsed.data.title,
         bodyMarkdown: parsed.data.bodyMarkdown ?? null,
@@ -1288,7 +1289,7 @@ export function registerRentalRoutes(app: Express): void {
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
       const [parent] = await db.select().from(rentalLeases)
-        .where(and(eq(rentalLeases.id, req.params.id), eq(rentalLeases.organizationId, orgId)));
+        .where(and(eq(rentalLeases.id, routeParam(req.params.id)), eq(rentalLeases.organizationId, orgId)));
       if (!parent) return Errors.notFound(res, "Original lease");
 
       // Lead-paint gate applies to renewals too — the renewal is created
@@ -1537,7 +1538,7 @@ export function registerRentalRoutes(app: Express): void {
   app.get("/api/rentals/properties/:propertyId/units", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const orgId = getOrganizationId(req);
-      const propertyId = parseInt(req.params.propertyId, 10);
+      const propertyId = parseInt(routeParam(req.params.propertyId), 10);
       if (!Number.isFinite(propertyId)) return Errors.badRequest(res, "propertyId must be numeric");
 
       const [prop] = await db.select({ id: properties.id }).from(properties)
@@ -1576,7 +1577,7 @@ export function registerRentalRoutes(app: Express): void {
     try {
       const orgId = getOrganizationId(req);
       const userId = getUserId(req);
-      const propertyId = parseInt(req.params.propertyId, 10);
+      const propertyId = parseInt(routeParam(req.params.propertyId), 10);
       if (!Number.isFinite(propertyId)) return Errors.badRequest(res, "propertyId must be numeric");
 
       const parsed = unitCreateSchema.safeParse(req.body);
@@ -1640,7 +1641,7 @@ export function registerRentalRoutes(app: Express): void {
     try {
       const orgId = getOrganizationId(req);
       const userId = getUserId(req);
-      const propertyId = parseInt(req.params.propertyId, 10);
+      const propertyId = parseInt(routeParam(req.params.propertyId), 10);
       if (!Number.isFinite(propertyId)) return Errors.badRequest(res, "propertyId must be numeric");
 
       const parsed = unitBulkCreateSchema.safeParse(req.body);
@@ -1718,7 +1719,7 @@ export function registerRentalRoutes(app: Express): void {
       if (parsed.data.notes !== undefined) updates.notes = parsed.data.notes;
 
       const [updated] = await db.update(rentalUnits).set(updates)
-        .where(and(eq(rentalUnits.id, req.params.id), eq(rentalUnits.organizationId, orgId)))
+        .where(and(eq(rentalUnits.id, routeParam(req.params.id)), eq(rentalUnits.organizationId, orgId)))
         .returning();
       if (!updated) return Errors.notFound(res, "Rental unit");
 
@@ -1744,7 +1745,7 @@ export function registerRentalRoutes(app: Express): void {
       const userId = getUserId(req);
 
       const [unit] = await db.select().from(rentalUnits)
-        .where(and(eq(rentalUnits.id, req.params.id), eq(rentalUnits.organizationId, orgId)));
+        .where(and(eq(rentalUnits.id, routeParam(req.params.id)), eq(rentalUnits.organizationId, orgId)));
       if (!unit) return Errors.notFound(res, "Rental unit");
 
       // rental_leases.unit_id is ON DELETE SET NULL: deleting a leased unit

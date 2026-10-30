@@ -15,6 +15,7 @@ import { getOrganizationId } from "./types/request";
 import * as vaManagement from "./services/vaManagement";
 import { clock } from "./utils/clock";
 import { OfferBatchUnavailableError, assertOfferBatchCreatable } from "./services/offerBatchGate";
+import { routeParam } from "./utils/routeParams";
 
 export async function registerVAEngineRoutes(app: Express): Promise<void> {
   const api = app;
@@ -36,7 +37,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.get("/api/marketing-lists/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       const list = await storage.getMarketingListById(org.id, id);
       if (!list) {
         return Errors.notFound(res, "Marketing list");
@@ -66,7 +67,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.patch("/api/marketing-lists/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       const existing = await storage.getMarketingListById(org.id, id);
       if (!existing) {
         return Errors.notFound(res, "Marketing list");
@@ -82,7 +83,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.delete("/api/marketing-lists/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       const existing = await storage.getMarketingListById(org.id, id);
       if (!existing) {
         return Errors.notFound(res, "Marketing list");
@@ -113,7 +114,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.get("/api/offer-batches/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       const batch = await storage.getOfferBatchById(org.id, id);
       if (!batch) {
         return Errors.notFound(res, "Offer batch");
@@ -129,7 +130,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.get("/api/offer-batches/:id/offers", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       const batch = await storage.getOfferBatchById(org.id, id);
       if (!batch) {
         return Errors.notFound(res, "Offer batch");
@@ -170,7 +171,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.patch("/api/offer-batches/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       const existing = await storage.getOfferBatchById(org.id, id);
       if (!existing) {
         return Errors.notFound(res, "Offer batch");
@@ -186,7 +187,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.delete("/api/offer-batches/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       const existing = await storage.getOfferBatchById(org.id, id);
       if (!existing) {
         return Errors.notFound(res, "Offer batch");
@@ -232,7 +233,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.get("/api/offers/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       const offer = await storage.getOfferById(org.id, id);
       if (!offer) {
         return Errors.notFound(res, "Offer");
@@ -300,7 +301,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.patch("/api/offers/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       const existing = await storage.getOfferById(org.id, id);
       if (!existing) {
         return Errors.notFound(res, "Offer");
@@ -375,7 +376,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.delete("/api/offers/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       const existing = await storage.getOfferById(org.id, id);
       if (!existing) {
         return Errors.notFound(res, "Offer");
@@ -412,7 +413,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.get("/api/seller-communications/lead/:leadId", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const leadId = parseInt(req.params.leadId);
+      const leadId = parseInt(routeParam(req.params.leadId));
       // 2026-06-10 (T0-2 sweep): verify the lead belongs to this org —
       // previously any org's seller communications were readable by leadId.
       const lead = await storage.getLead(org.id, leadId);
@@ -428,7 +429,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.get("/api/seller-communications/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       const comm = await storage.getSellerCommunicationById(org.id, id);
       if (!comm) {
         return Errors.notFound(res, "Seller communication");
@@ -473,7 +474,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.get("/api/ad-postings/property/:propertyId", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const propertyId = parseInt(req.params.propertyId);
+      const propertyId = parseInt(routeParam(req.params.propertyId));
       // 2026-06-10 (T0-2 sweep): verify the property belongs to this org.
       const property = await storage.getProperty(org.id, propertyId);
       if (!property) return Errors.notFound(res, "Property");
@@ -488,7 +489,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.get("/api/ad-postings/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       const posting = await storage.getAdPostingById(org.id, id);
       if (!posting) {
         return Errors.notFound(res, "Ad posting");
@@ -518,7 +519,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.patch("/api/ad-postings/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       const existing = await storage.getAdPostingById(org.id, id);
       if (!existing) {
         return Errors.notFound(res, "Ad posting");
@@ -534,7 +535,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.delete("/api/ad-postings/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       const existing = await storage.getAdPostingById(org.id, id);
       if (!existing) {
         return Errors.notFound(res, "Ad posting");
@@ -565,7 +566,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.get("/api/buyer-prequalifications/lead/:leadId", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const leadId = parseInt(req.params.leadId);
+      const leadId = parseInt(routeParam(req.params.leadId));
       const prequal = await storage.getBuyerPrequalificationByLead(org.id, leadId);
       // 2026-06-10 (T0-2 sweep): 404 on cross-tenant prequalification —
       // never confirm another org's record exists.
@@ -582,7 +583,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.get("/api/buyer-prequalifications/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       const prequal = await storage.getBuyerPrequalificationById(org.id, id);
       if (!prequal) {
         return Errors.notFound(res, "Buyer prequalification");
@@ -612,7 +613,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.patch("/api/buyer-prequalifications/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       const existing = await storage.getBuyerPrequalificationById(org.id, id);
       if (!existing) {
         return Errors.notFound(res, "Buyer prequalification");
@@ -628,7 +629,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.delete("/api/buyer-prequalifications/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       const existing = await storage.getBuyerPrequalificationById(org.id, id);
       if (!existing) {
         return Errors.notFound(res, "Buyer prequalification");
@@ -659,7 +660,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.get("/api/collection-sequences/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       const sequence = await storage.getCollectionSequenceById(org.id, id);
       if (!sequence) {
         return Errors.notFound(res, "Collection sequence");
@@ -689,7 +690,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.patch("/api/collection-sequences/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       const existing = await storage.getCollectionSequenceById(org.id, id);
       if (!existing) {
         return Errors.notFound(res, "Collection sequence");
@@ -705,7 +706,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.delete("/api/collection-sequences/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       const existing = await storage.getCollectionSequenceById(org.id, id);
       if (!existing) {
         return Errors.notFound(res, "Collection sequence");
@@ -736,7 +737,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.get("/api/collection-enrollments/note/:noteId", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const noteId = parseInt(req.params.noteId);
+      const noteId = parseInt(routeParam(req.params.noteId));
       // 2026-06-10 (T0-2 sweep): verify the note belongs to this org.
       const note = await storage.getNote(org.id, noteId);
       if (!note) return Errors.notFound(res, "Note");
@@ -751,7 +752,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.get("/api/collection-enrollments/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       const enrollment = await storage.getCollectionEnrollmentById(org.id, id);
       if (!enrollment) {
         return Errors.notFound(res, "Collection enrollment");
@@ -781,7 +782,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.patch("/api/collection-enrollments/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       const existing = await storage.getCollectionEnrollmentById(org.id, id);
       if (!existing) {
         return Errors.notFound(res, "Collection enrollment");
@@ -830,7 +831,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/county-research/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       const research = await storage.getCountyResearchById(id);
       if (!research) {
         return Errors.notFound(res, "County research");
@@ -855,7 +856,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.patch("/api/county-research/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       const existing = await storage.getCountyResearchById(id);
       if (!existing) {
         return Errors.notFound(res, "County research");
@@ -897,7 +898,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.get("/api/buyer-reservations/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       const reservation = await storage.getBuyerReservationById(org.id, id);
       if (!reservation) {
         return Errors.notFound(res, "Buyer reservation");
@@ -918,7 +919,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.get("/api/buyer-reservations/by-property/:propertyId", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const propertyId = parseInt(req.params.propertyId);
+      const propertyId = parseInt(routeParam(req.params.propertyId));
       const reservations = await storage.getBuyerReservationsByProperty(org.id, propertyId);
       res.json(reservations);
     } catch (error: any) {
@@ -944,7 +945,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.patch("/api/buyer-reservations/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       const existing = await storage.getBuyerReservationById(org.id, id);
       if (!existing) {
         return Errors.notFound(res, "Buyer reservation");
@@ -960,7 +961,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.delete("/api/buyer-reservations/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       const success = await storage.deleteBuyerReservation(org.id, id);
       if (!success) {
         return Errors.notFound(res, "Buyer reservation");
@@ -990,7 +991,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.get("/api/escrow-checklists/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       const checklist = await storage.getEscrowChecklistById(org.id, id);
       if (!checklist) {
         return Errors.notFound(res, "Escrow checklist");
@@ -1005,7 +1006,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.get("/api/deals/:dealId/escrow-checklist", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const dealId = parseInt(req.params.dealId);
+      const dealId = parseInt(routeParam(req.params.dealId));
       const checklist = await storage.getEscrowChecklistByDeal(org.id, dealId);
       res.json(checklist);
     } catch (error: any) {
@@ -1031,7 +1032,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.patch("/api/escrow-checklists/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       const existing = await storage.getEscrowChecklistById(org.id, id);
       if (!existing) {
         return Errors.notFound(res, "Escrow checklist");
@@ -1047,7 +1048,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.delete("/api/escrow-checklists/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       const success = await storage.deleteEscrowChecklist(org.id, id);
       if (!success) {
         return Errors.notFound(res, "Escrow checklist");
@@ -1077,7 +1078,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.get("/api/closing-packets/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       const packet = await storage.getClosingPacketById(org.id, id);
       if (!packet) {
         return Errors.notFound(res, "Closing packet");
@@ -1092,7 +1093,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.get("/api/deals/:dealId/closing-packets", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const dealId = parseInt(req.params.dealId);
+      const dealId = parseInt(routeParam(req.params.dealId));
       const packets = await storage.getClosingPacketsByDeal(org.id, dealId);
       res.json(packets);
     } catch (error: any) {
@@ -1118,7 +1119,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.patch("/api/closing-packets/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       const existing = await storage.getClosingPacketById(org.id, id);
       if (!existing) {
         return Errors.notFound(res, "Closing packet");
@@ -1134,7 +1135,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.delete("/api/closing-packets/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       const success = await storage.deleteClosingPacket(org.id, id);
       if (!success) {
         return Errors.notFound(res, "Closing packet");
@@ -1175,7 +1176,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.get("/api/autopay-enrollments/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       const enrollment = await storage.getAutopayEnrollmentById(org.id, id);
       if (!enrollment) {
         return Errors.notFound(res, "Autopay enrollment");
@@ -1190,7 +1191,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.get("/api/notes/:noteId/autopay", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const noteId = parseInt(req.params.noteId);
+      const noteId = parseInt(routeParam(req.params.noteId));
       const enrollment = await storage.getAutopayEnrollmentByNote(org.id, noteId);
       res.json(enrollment);
     } catch (error: any) {
@@ -1216,7 +1217,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.patch("/api/autopay-enrollments/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       const existing = await storage.getAutopayEnrollmentById(org.id, id);
       if (!existing) {
         return Errors.notFound(res, "Autopay enrollment");
@@ -1232,7 +1233,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.delete("/api/autopay-enrollments/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       const success = await storage.deleteAutopayEnrollment(org.id, id);
       if (!success) {
         return Errors.notFound(res, "Autopay enrollment");
@@ -1316,7 +1317,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.get("/api/delinquency-escalations/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       const escalation = await storage.getDelinquencyEscalationById(org.id, id);
       if (!escalation) {
         return Errors.notFound(res, "Delinquency escalation");
@@ -1331,7 +1332,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.get("/api/notes/:noteId/delinquency", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const noteId = parseInt(req.params.noteId);
+      const noteId = parseInt(routeParam(req.params.noteId));
       const escalation = await storage.getDelinquencyEscalationByNote(org.id, noteId);
       res.json(escalation ? [escalation] : []);
     } catch (error: any) {
@@ -1357,7 +1358,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.patch("/api/delinquency-escalations/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       const existing = await storage.getDelinquencyEscalationById(org.id, id);
       if (!existing) {
         return Errors.notFound(res, "Delinquency escalation");
@@ -1399,7 +1400,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.get("/api/dd-assignments/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       const assignment = await storage.getDDAssignmentById(org.id, id);
       if (!assignment) {
         return Errors.notFound(res, "DD assignment");
@@ -1414,7 +1415,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.get("/api/properties/:propertyId/dd-assignments", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const propertyId = parseInt(req.params.propertyId);
+      const propertyId = parseInt(routeParam(req.params.propertyId));
       const assignments = await storage.getDDAssignmentsByProperty(org.id, propertyId);
       res.json(assignments);
     } catch (error: any) {
@@ -1440,7 +1441,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.patch("/api/dd-assignments/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       const existing = await storage.getDDAssignmentById(org.id, id);
       if (!existing) {
         return Errors.notFound(res, "DD assignment");
@@ -1456,7 +1457,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.delete("/api/dd-assignments/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       const success = await storage.deleteDDAssignment(org.id, id);
       if (!success) {
         return Errors.notFound(res, "DD assignment");
@@ -1486,7 +1487,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.get("/api/swot-reports/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       const report = await storage.getSwotReportById(org.id, id);
       if (!report) {
         return Errors.notFound(res, "SWOT report");
@@ -1501,7 +1502,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.get("/api/properties/:propertyId/swot-report", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const propertyId = parseInt(req.params.propertyId);
+      const propertyId = parseInt(routeParam(req.params.propertyId));
       const report = await storage.getSwotReportByProperty(org.id, propertyId);
       res.json(report);
     } catch (error: any) {
@@ -1527,7 +1528,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.patch("/api/swot-reports/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       const existing = await storage.getSwotReportById(org.id, id);
       if (!existing) {
         return Errors.notFound(res, "SWOT report");
@@ -1558,7 +1559,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.get("/api/go-nogo-memos/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       const memo = await storage.getGoNogoMemoById(org.id, id);
       if (!memo) {
         return Errors.notFound(res, "Go/No-Go memo");
@@ -1573,7 +1574,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.get("/api/properties/:propertyId/go-nogo-memo", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const propertyId = parseInt(req.params.propertyId);
+      const propertyId = parseInt(routeParam(req.params.propertyId));
       const memo = await storage.getGoNogoMemoByProperty(org.id, propertyId);
       res.json(memo);
     } catch (error: any) {
@@ -1599,7 +1600,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.patch("/api/go-nogo-memos/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       const existing = await storage.getGoNogoMemoById(org.id, id);
       if (!existing) {
         return Errors.notFound(res, "Go/No-Go memo");
@@ -1660,7 +1661,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.post("/api/writing-styles/:id/samples", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       const { context, content } = req.body;
       await writingStyleService.addSampleMessage(org.id, id, context || "general", content);
       res.json({ success: true });
@@ -1673,7 +1674,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.post("/api/writing-styles/:id/analyze", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       const analysis = await writingStyleService.analyzeWritingStyle(org.id, id);
       res.json(analysis);
     } catch (error: any) {
@@ -1685,7 +1686,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.post("/api/writing-styles/:id/generate", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       const { recipientName, topic, intent, propertyDetails, previousMessages } = req.body;
       const result = await writingStyleService.generateStyledResponse(org.id, id, {
         recipientName,
@@ -1705,7 +1706,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
     try {
       const org = req.organization;
       const user = req.user;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       const { limit } = req.body;
       const count = await writingStyleService.importMessagesFromConversations(
         org.id,
@@ -1722,7 +1723,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.delete("/api/writing-styles/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       // The org id is passed INTO the delete (it lands in the WHERE clause) —
       // not compared after the fact. A profile belonging to another tenant
       // matches nothing and reports "not found" rather than being destroyed.
@@ -1836,7 +1837,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   // reviewed" and "reviewed and rejected" stay distinguishable.
   api.post("/api/va/tasks/:id/verify", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const taskId = Number(req.params.id);
+      const taskId = Number(routeParam(req.params.id));
       if (!Number.isInteger(taskId)) {
         return Errors.badRequest(res, "task id must be an integer");
       }
@@ -2078,7 +2079,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const org = req.organization;
       const orgRecord = await storage.getOrganization(org.id);
       const workflows = orgRecord?.settings?.va_workflows ?? [];
-      const remaining = workflows.filter((w) => w.id !== req.params.id);
+      const remaining = workflows.filter((w) => w.id !== routeParam(req.params.id));
 
       // Say so rather than reporting a no-op as a deletion.
       if (remaining.length === workflows.length) {
@@ -2092,7 +2093,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
         },
       });
 
-      res.json({ success: true, deleted: req.params.id, remaining: remaining.length });
+      res.json({ success: true, deleted: routeParam(req.params.id), remaining: remaining.length });
     } catch (error: any) {
       logger.error("Delete workflow error", error);
       Errors.internal(res, error);

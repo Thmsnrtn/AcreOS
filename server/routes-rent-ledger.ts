@@ -143,6 +143,7 @@ import { emitRentReceived } from "./services/rentalEvents";
 import { emitReservationCheckout } from "./services/strEvents";
 import { isCalendarDate } from "@shared/dates/calendar";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 // ----------------------------------------------------------------------------
 // Validation
@@ -1053,7 +1054,7 @@ export function registerRentLedgerRoutes(app: Express): void {
     try {
       const orgId = getOrganizationId(req);
       const [lease] = await db.select().from(rentalLeases)
-        .where(and(eq(rentalLeases.id, req.params.id), eq(rentalLeases.organizationId, orgId)));
+        .where(and(eq(rentalLeases.id, routeParam(req.params.id)), eq(rentalLeases.organizationId, orgId)));
       if (!lease) return Errors.notFound(res, "Lease");
 
       const charges = await db.select().from(rentCharges)
@@ -1147,7 +1148,7 @@ export function registerRentLedgerRoutes(app: Express): void {
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
       const [lease] = await db.select().from(rentalLeases)
-        .where(and(eq(rentalLeases.id, req.params.id), eq(rentalLeases.organizationId, orgId)));
+        .where(and(eq(rentalLeases.id, routeParam(req.params.id)), eq(rentalLeases.organizationId, orgId)));
       if (!lease) return Errors.notFound(res, "Lease");
 
       // One "record this payment" = one ledger row (quality directive
@@ -1314,7 +1315,7 @@ export function registerRentLedgerRoutes(app: Express): void {
       if (refuseResidentialLateFeeForCommercial(req, res)) return;
       const orgId = getOrganizationId(req);
       const [charge] = await db.select().from(rentCharges)
-        .where(and(eq(rentCharges.id, req.params.id), eq(rentCharges.organizationId, orgId)));
+        .where(and(eq(rentCharges.id, routeParam(req.params.id)), eq(rentCharges.organizationId, orgId)));
       if (!charge) return Errors.notFound(res, "Rent charge");
 
       const [lease] = await db.select().from(rentalLeases)
@@ -1441,7 +1442,7 @@ export function registerRentLedgerRoutes(app: Express): void {
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
       const [charge] = await db.select().from(rentCharges)
-        .where(and(eq(rentCharges.id, req.params.id), eq(rentCharges.organizationId, orgId)));
+        .where(and(eq(rentCharges.id, routeParam(req.params.id)), eq(rentCharges.organizationId, orgId)));
       if (!charge) return Errors.notFound(res, "Rent charge");
 
       const [lease] = await db.select().from(rentalLeases)
@@ -1563,7 +1564,7 @@ export function registerRentLedgerRoutes(app: Express): void {
         notes: parsed.data.notes ?? null,
         updatedAt: clock.now(),
       })
-        .where(and(eq(rentCharges.id, req.params.id), eq(rentCharges.organizationId, orgId)))
+        .where(and(eq(rentCharges.id, routeParam(req.params.id)), eq(rentCharges.organizationId, orgId)))
         .returning();
       if (!updated) return Errors.notFound(res, "Rent charge");
 
@@ -1674,7 +1675,7 @@ export function registerRentLedgerRoutes(app: Express): void {
     try {
       const orgId = getOrganizationId(req);
       const [lease] = await db.select().from(rentalLeases)
-        .where(and(eq(rentalLeases.id, req.params.id), eq(rentalLeases.organizationId, orgId)));
+        .where(and(eq(rentalLeases.id, routeParam(req.params.id)), eq(rentalLeases.organizationId, orgId)));
       if (!lease) return Errors.notFound(res, "Lease");
 
       const [deposit] = await db.select().from(securityDeposits)
@@ -1748,7 +1749,7 @@ export function registerRentLedgerRoutes(app: Express): void {
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
       const [lease] = await db.select().from(rentalLeases)
-        .where(and(eq(rentalLeases.id, req.params.id), eq(rentalLeases.organizationId, orgId)));
+        .where(and(eq(rentalLeases.id, routeParam(req.params.id)), eq(rentalLeases.organizationId, orgId)));
       if (!lease) return Errors.notFound(res, "Lease");
 
       const outcome = await startDepositClock({
@@ -1787,7 +1788,7 @@ export function registerRentLedgerRoutes(app: Express): void {
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
       const [lease] = await db.select().from(rentalLeases)
-        .where(and(eq(rentalLeases.id, req.params.id), eq(rentalLeases.organizationId, orgId)));
+        .where(and(eq(rentalLeases.id, routeParam(req.params.id)), eq(rentalLeases.organizationId, orgId)));
       if (!lease) return Errors.notFound(res, "Lease");
 
       const [deposit] = await db.select().from(securityDeposits)
@@ -1932,7 +1933,7 @@ export function registerRentLedgerRoutes(app: Express): void {
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
       const [lease] = await db.select().from(rentalLeases)
-        .where(and(eq(rentalLeases.id, req.params.id), eq(rentalLeases.organizationId, orgId)));
+        .where(and(eq(rentalLeases.id, routeParam(req.params.id)), eq(rentalLeases.organizationId, orgId)));
       if (!lease) return Errors.notFound(res, "Lease");
 
       const updates: Partial<typeof rentalLeases.$inferInsert> = {
@@ -1956,7 +1957,7 @@ export function registerRentLedgerRoutes(app: Express): void {
   app.post("/api/properties/:propertyId/cam-pools", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const orgId = getOrganizationId(req);
-      const propertyId = Number(req.params.propertyId);
+      const propertyId = Number(routeParam(req.params.propertyId));
       if (!Number.isInteger(propertyId)) return Errors.badRequest(res, "Invalid property id");
       const parsed = camPoolSchema.safeParse(req.body ?? {});
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
@@ -2003,7 +2004,7 @@ export function registerRentLedgerRoutes(app: Express): void {
   app.get("/api/properties/:propertyId/cam-pools", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const orgId = getOrganizationId(req);
-      const propertyId = Number(req.params.propertyId);
+      const propertyId = Number(routeParam(req.params.propertyId));
       if (!Number.isInteger(propertyId)) return Errors.badRequest(res, "Invalid property id");
       const pools = await db.select().from(camExpensePools)
         .where(and(
@@ -2030,7 +2031,7 @@ export function registerRentLedgerRoutes(app: Express): void {
 
       const [pool] = await db.select({ id: camExpensePools.id }).from(camExpensePools)
         .where(and(
-          eq(camExpensePools.id, req.params.poolId),
+          eq(camExpensePools.id, routeParam(req.params.poolId)),
           eq(camExpensePools.organizationId, orgId),
         ));
       if (!pool) return Errors.notFound(res, "CAM pool");
@@ -2104,7 +2105,7 @@ export function registerRentLedgerRoutes(app: Express): void {
 
       const [pool] = await db.select().from(camExpensePools)
         .where(and(
-          eq(camExpensePools.id, req.params.poolId),
+          eq(camExpensePools.id, routeParam(req.params.poolId)),
           eq(camExpensePools.organizationId, orgId),
         ));
       if (!pool) return Errors.notFound(res, "CAM pool");
@@ -2268,7 +2269,7 @@ export function registerRentLedgerRoutes(app: Express): void {
       const orgId = getOrganizationId(req);
       const [pool] = await db.select({ id: camExpensePools.id }).from(camExpensePools)
         .where(and(
-          eq(camExpensePools.id, req.params.poolId),
+          eq(camExpensePools.id, routeParam(req.params.poolId)),
           eq(camExpensePools.organizationId, orgId),
         ));
       if (!pool) return Errors.notFound(res, "CAM pool");
@@ -2297,7 +2298,7 @@ export function registerRentLedgerRoutes(app: Express): void {
       }
 
       const [lease] = await db.select({ id: rentalLeases.id }).from(rentalLeases)
-        .where(and(eq(rentalLeases.id, req.params.id), eq(rentalLeases.organizationId, orgId)));
+        .where(and(eq(rentalLeases.id, routeParam(req.params.id)), eq(rentalLeases.organizationId, orgId)));
       if (!lease) return Errors.notFound(res, "Lease");
 
       const [saved] = await db.insert(commercialSalesReports).values({
@@ -2339,7 +2340,7 @@ export function registerRentLedgerRoutes(app: Express): void {
     try {
       const orgId = getOrganizationId(req);
       const [lease] = await db.select({ id: rentalLeases.id }).from(rentalLeases)
-        .where(and(eq(rentalLeases.id, req.params.id), eq(rentalLeases.organizationId, orgId)));
+        .where(and(eq(rentalLeases.id, routeParam(req.params.id)), eq(rentalLeases.organizationId, orgId)));
       if (!lease) return Errors.notFound(res, "Lease");
 
       const reports = await db.select().from(commercialSalesReports)
@@ -2372,7 +2373,7 @@ export function registerRentLedgerRoutes(app: Express): void {
       }
 
       const [lease] = await db.select().from(rentalLeases)
-        .where(and(eq(rentalLeases.id, req.params.id), eq(rentalLeases.organizationId, orgId)));
+        .where(and(eq(rentalLeases.id, routeParam(req.params.id)), eq(rentalLeases.organizationId, orgId)));
       if (!lease) return Errors.notFound(res, "Lease");
 
       // Sum the reported gross sales whose period falls inside the window. No
@@ -2461,7 +2462,7 @@ export function registerRentLedgerRoutes(app: Express): void {
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
       const [lease] = await db.select({ id: rentalLeases.id }).from(rentalLeases)
-        .where(and(eq(rentalLeases.id, req.params.id), eq(rentalLeases.organizationId, orgId)));
+        .where(and(eq(rentalLeases.id, routeParam(req.params.id)), eq(rentalLeases.organizationId, orgId)));
       if (!lease) return Errors.notFound(res, "Lease");
 
       const [saved] = await db.insert(leaseRentSchedule).values({
@@ -2507,7 +2508,7 @@ export function registerRentLedgerRoutes(app: Express): void {
     try {
       const orgId = getOrganizationId(req);
       const [lease] = await db.select({ id: rentalLeases.id }).from(rentalLeases)
-        .where(and(eq(rentalLeases.id, req.params.id), eq(rentalLeases.organizationId, orgId)));
+        .where(and(eq(rentalLeases.id, routeParam(req.params.id)), eq(rentalLeases.organizationId, orgId)));
       if (!lease) return Errors.notFound(res, "Lease");
 
       const steps = await db.select().from(leaseRentSchedule)
@@ -2537,7 +2538,7 @@ export function registerRentLedgerRoutes(app: Express): void {
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
       const [charge] = await db.select().from(rentCharges)
-        .where(and(eq(rentCharges.id, req.params.id), eq(rentCharges.organizationId, orgId)));
+        .where(and(eq(rentCharges.id, routeParam(req.params.id)), eq(rentCharges.organizationId, orgId)));
       if (!charge) return Errors.notFound(res, "Rent charge");
 
       const [lease] = await db.select().from(rentalLeases)
@@ -2587,7 +2588,7 @@ export function registerRentLedgerRoutes(app: Express): void {
     try {
       const orgId = getOrganizationId(req);
       const [lease] = await db.select().from(rentalLeases)
-        .where(and(eq(rentalLeases.id, req.params.id), eq(rentalLeases.organizationId, orgId)));
+        .where(and(eq(rentalLeases.id, routeParam(req.params.id)), eq(rentalLeases.organizationId, orgId)));
       if (!lease) return Errors.notFound(res, "Lease");
 
       const metrics = computePerSqftMetrics({
@@ -2622,7 +2623,7 @@ export function registerRentLedgerRoutes(app: Express): void {
   app.get("/api/properties/:propertyId/mobile-home/lot-rent-split", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const orgId = getOrganizationId(req);
-      const propertyId = Number(req.params.propertyId);
+      const propertyId = Number(routeParam(req.params.propertyId));
       if (!Number.isInteger(propertyId)) return Errors.badRequest(res, "Invalid property id");
 
       const [property] = await db.select({ id: properties.id }).from(properties)
@@ -2721,7 +2722,7 @@ export function registerRentLedgerRoutes(app: Express): void {
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
       const [unit] = await db.select({ id: rentalUnits.id }).from(rentalUnits)
-        .where(and(eq(rentalUnits.id, req.params.id), eq(rentalUnits.organizationId, orgId)));
+        .where(and(eq(rentalUnits.id, routeParam(req.params.id)), eq(rentalUnits.organizationId, orgId)));
       if (!unit) return Errors.notFound(res, "Rental unit");
 
       const [saved] = await db.insert(meterReads).values({
@@ -2755,7 +2756,7 @@ export function registerRentLedgerRoutes(app: Express): void {
     try {
       const orgId = getOrganizationId(req);
       const [unit] = await db.select({ id: rentalUnits.id }).from(rentalUnits)
-        .where(and(eq(rentalUnits.id, req.params.id), eq(rentalUnits.organizationId, orgId)));
+        .where(and(eq(rentalUnits.id, routeParam(req.params.id)), eq(rentalUnits.organizationId, orgId)));
       if (!unit) return Errors.notFound(res, "Rental unit");
 
       const utilityFilter = utilityKindEnum.safeParse(req.query.utilityKind);
@@ -2782,7 +2783,7 @@ export function registerRentLedgerRoutes(app: Express): void {
   app.post("/api/properties/:propertyId/utility-billback/generate", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const orgId = getOrganizationId(req);
-      const propertyId = Number(req.params.propertyId);
+      const propertyId = Number(routeParam(req.params.propertyId));
       if (!Number.isInteger(propertyId)) return Errors.badRequest(res, "Invalid property id");
       const parsed = utilityBillbackSchema.safeParse(req.body ?? {});
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
@@ -2925,7 +2926,7 @@ export function registerRentLedgerRoutes(app: Express): void {
   app.get("/api/properties/:propertyId/utility-bills", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const orgId = getOrganizationId(req);
-      const propertyId = Number(req.params.propertyId);
+      const propertyId = Number(routeParam(req.params.propertyId));
       if (!Number.isInteger(propertyId)) return Errors.badRequest(res, "Invalid property id");
 
       const utilityFilter = utilityKindEnum.safeParse(req.query.utilityKind);
@@ -2961,7 +2962,7 @@ export function registerRentLedgerRoutes(app: Express): void {
       if (parsed.data.chattelTitleNotes !== undefined) updates.chattelTitleNotes = parsed.data.chattelTitleNotes;
 
       const [updated] = await db.update(rentalUnits).set(updates)
-        .where(and(eq(rentalUnits.id, req.params.id), eq(rentalUnits.organizationId, orgId)))
+        .where(and(eq(rentalUnits.id, routeParam(req.params.id)), eq(rentalUnits.organizationId, orgId)))
         .returning();
       if (!updated) return Errors.notFound(res, "Rental unit");
 
@@ -3004,7 +3005,7 @@ export function registerRentLedgerRoutes(app: Express): void {
   app.post("/api/properties/:propertyId/reservations", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const orgId = getOrganizationId(req);
-      const propId = Number(req.params.propertyId);
+      const propId = Number(routeParam(req.params.propertyId));
       if (!Number.isInteger(propId)) return Errors.badRequest(res, "Invalid property id");
       const parsed = reservationRecordSchema.safeParse(req.body ?? {});
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
@@ -3067,7 +3068,7 @@ export function registerRentLedgerRoutes(app: Express): void {
   app.get("/api/properties/:propertyId/reservations", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const orgId = getOrganizationId(req);
-      const propId = Number(req.params.propertyId);
+      const propId = Number(routeParam(req.params.propertyId));
       if (!Number.isInteger(propId)) return Errors.badRequest(res, "Invalid property id");
 
       const [property] = await db.select({ id: properties.id }).from(properties)
@@ -3097,7 +3098,7 @@ export function registerRentLedgerRoutes(app: Express): void {
   app.post("/api/properties/:propertyId/reservations/import", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const orgId = getOrganizationId(req);
-      const propId = Number(req.params.propertyId);
+      const propId = Number(routeParam(req.params.propertyId));
       if (!Number.isInteger(propId)) return Errors.badRequest(res, "Invalid property id");
       const parsed = reservationImportSchema.safeParse(req.body ?? {});
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
@@ -3212,7 +3213,7 @@ export function registerRentLedgerRoutes(app: Express): void {
   app.get("/api/properties/:propertyId/str-metrics", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const orgId = getOrganizationId(req);
-      const propId = Number(req.params.propertyId);
+      const propId = Number(routeParam(req.params.propertyId));
       if (!Number.isInteger(propId)) return Errors.badRequest(res, "Invalid property id");
       const q = strMetricsQuerySchema.safeParse(req.query);
       if (!q.success) return Errors.validationFailed(res, q.error.issues);
@@ -3291,12 +3292,12 @@ export function registerRentLedgerRoutes(app: Express): void {
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
       const [current] = await db.select().from(reservations)
-        .where(and(eq(reservations.id, req.params.id), eq(reservations.organizationId, orgId)));
+        .where(and(eq(reservations.id, routeParam(req.params.id)), eq(reservations.organizationId, orgId)));
       if (!current) return Errors.notFound(res, "Reservation");
 
       const [updated] = await db.update(reservations)
         .set({ status: parsed.data.status, updatedAt: clock.now() })
-        .where(and(eq(reservations.id, req.params.id), eq(reservations.organizationId, orgId)))
+        .where(and(eq(reservations.id, routeParam(req.params.id)), eq(reservations.organizationId, orgId)))
         .returning();
 
       // Emit ONLY on a genuine transition into checked_out (not a re-save of an
@@ -3335,7 +3336,7 @@ export function registerRentLedgerRoutes(app: Express): void {
     try {
       const orgId = getOrganizationId(req);
       const [reservation] = await db.select().from(reservations)
-        .where(and(eq(reservations.id, req.params.id), eq(reservations.organizationId, orgId)));
+        .where(and(eq(reservations.id, routeParam(req.params.id)), eq(reservations.organizationId, orgId)));
       if (!reservation) return Errors.notFound(res, "Reservation");
 
       // The property's expense rows; the engine filters to OPERATING via noi.ts.
@@ -3390,7 +3391,7 @@ export function registerRentLedgerRoutes(app: Express): void {
     try {
       const orgId = getOrganizationId(req);
       const [reservation] = await db.select().from(reservations)
-        .where(and(eq(reservations.id, req.params.id), eq(reservations.organizationId, orgId)));
+        .where(and(eq(reservations.id, routeParam(req.params.id)), eq(reservations.organizationId, orgId)));
       if (!reservation) return Errors.notFound(res, "Reservation");
 
       const nights = stayNightsBetween(String(reservation.checkIn), String(reservation.checkOut));
@@ -3416,7 +3417,7 @@ export function registerRentLedgerRoutes(app: Express): void {
   app.post("/api/properties/:propertyId/turnovers/generate", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const orgId = getOrganizationId(req);
-      const propId = Number(req.params.propertyId);
+      const propId = Number(routeParam(req.params.propertyId));
       if (!Number.isInteger(propId)) return Errors.badRequest(res, "Invalid property id");
       const parsed = turnoverGenerateSchema.safeParse(req.body ?? {});
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
@@ -3491,7 +3492,7 @@ export function registerRentLedgerRoutes(app: Express): void {
   app.get("/api/properties/:propertyId/turnovers", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const orgId = getOrganizationId(req);
-      const propId = Number(req.params.propertyId);
+      const propId = Number(routeParam(req.params.propertyId));
       if (!Number.isInteger(propId)) return Errors.badRequest(res, "Invalid property id");
 
       const [property] = await db.select({ id: properties.id }).from(properties)

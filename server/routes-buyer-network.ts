@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import { Errors } from './utils/errors';
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
@@ -11,7 +12,7 @@ const router = Router();
 // GET /buyer-network/demand/:state — demand heatmap data for state
 router.get('/buyer-network/demand/:state', async (req: Request, res: Response) => {
   try {
-    const { state } = req.params;
+    const state = routeParam(req.params.state);
     if (!state || state.length !== 2) {
       return Errors.badRequest(res, 'state must be a 2-letter US state code');
     }
@@ -119,7 +120,7 @@ router.get('/buyer-network/matches/:propertyId', async (req: Request, res: Respo
     // Stub: run matching algorithm
     const matches: any[] = [];
     res.json({
-      propertyId: req.params.propertyId,
+      propertyId: routeParam(req.params.propertyId),
       matches,
       minScore: minScore ? parseFloat(minScore as string) : 0,
       fetchedAt: clock.now().toISOString(),

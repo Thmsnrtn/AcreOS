@@ -41,6 +41,7 @@ import {
 } from "./services/certificateEvents";
 import { clock } from "./utils/clock";
 import { isCalendarDate } from "@shared/dates/calendar";
+import { routeParam } from "./utils/routeParams";
 
 // Build the CertEventRow slice the workflow emitters need from a full
 // tax_certificates row. Real columns only — the `date` columns come back as
@@ -198,7 +199,7 @@ export function registerTaxCertificateRoutes(app: Express): void {
         const [row] = await db
           .select()
           .from(taxCertificates)
-          .where(and(eq(taxCertificates.id, req.params.id), eq(taxCertificates.organizationId, orgId)))
+          .where(and(eq(taxCertificates.id, routeParam(req.params.id)), eq(taxCertificates.organizationId, orgId)))
           .limit(1);
         if (!row) return Errors.notFound(res, "Certificate");
 
@@ -355,7 +356,7 @@ export function registerTaxCertificateRoutes(app: Express): void {
         const [preImage] = await db
           .select({ status: taxCertificates.status })
           .from(taxCertificates)
-          .where(and(eq(taxCertificates.id, req.params.id), eq(taxCertificates.organizationId, orgId)))
+          .where(and(eq(taxCertificates.id, routeParam(req.params.id)), eq(taxCertificates.organizationId, orgId)))
           .limit(1);
         const beforeStatus = preImage?.status ?? null;
 
@@ -369,7 +370,7 @@ export function registerTaxCertificateRoutes(app: Express): void {
           const [row] = await db
             .select()
             .from(taxCertificates)
-            .where(and(eq(taxCertificates.id, req.params.id), eq(taxCertificates.organizationId, orgId)))
+            .where(and(eq(taxCertificates.id, routeParam(req.params.id)), eq(taxCertificates.organizationId, orgId)))
             .limit(1);
           if (row) {
             const asOf = parsed.data.redeemedAt ?? clock.now().toISOString().slice(0, 10);
@@ -391,7 +392,7 @@ export function registerTaxCertificateRoutes(app: Express): void {
         const [row] = await db
           .update(taxCertificates)
           .set(update)
-          .where(and(eq(taxCertificates.id, req.params.id), eq(taxCertificates.organizationId, orgId)))
+          .where(and(eq(taxCertificates.id, routeParam(req.params.id)), eq(taxCertificates.organizationId, orgId)))
           .returning();
         if (!row) return Errors.notFound(res, "Certificate");
         // Fire the redeemed-payoff workflow lane ONLY on a genuine
@@ -418,7 +419,7 @@ export function registerTaxCertificateRoutes(app: Express): void {
         const [row] = await db
           .select()
           .from(taxCertificates)
-          .where(and(eq(taxCertificates.id, req.params.id), eq(taxCertificates.organizationId, orgId)))
+          .where(and(eq(taxCertificates.id, routeParam(req.params.id)), eq(taxCertificates.organizationId, orgId)))
           .limit(1);
         if (!row) return Errors.notFound(res, "Certificate");
 
@@ -448,7 +449,7 @@ export function registerTaxCertificateRoutes(app: Express): void {
         const orgId = getOrganizationId(req);
         const [row] = await db
           .delete(taxCertificates)
-          .where(and(eq(taxCertificates.id, req.params.id), eq(taxCertificates.organizationId, orgId)))
+          .where(and(eq(taxCertificates.id, routeParam(req.params.id)), eq(taxCertificates.organizationId, orgId)))
           .returning();
         if (!row) return Errors.notFound(res, "Certificate");
         return res.json({ deleted: true });

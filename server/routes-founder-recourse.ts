@@ -52,6 +52,7 @@ import {
   generateDraftReply,
 } from "./services/recourseDrafter";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 const sendSchema = z.object({
   // The founder's final, post-edit reply. Required — sending a blank reply
@@ -197,7 +198,7 @@ export function registerFounderRecourseRoutes(app: Express): void {
     isAuthenticated,
     requireFounder,
     async (req: AuthenticatedRequest, res: Response) => {
-      const id = Number.parseInt(req.params.id, 10);
+      const id = Number.parseInt(routeParam(req.params.id), 10);
       if (!Number.isFinite(id) || id <= 0) {
         return Errors.badRequest(res, "draft id must be a positive integer");
       }
@@ -239,7 +240,7 @@ export function registerFounderRecourseRoutes(app: Express): void {
     isAuthenticated,
     requireFounder,
     async (req: AuthenticatedRequest, res: Response) => {
-      const id = Number.parseInt(req.params.id, 10);
+      const id = Number.parseInt(routeParam(req.params.id), 10);
       if (!Number.isFinite(id) || id <= 0) {
         return Errors.badRequest(res, "draft id must be a positive integer");
       }
@@ -359,7 +360,7 @@ export function registerFounderRecourseRoutes(app: Express): void {
     isAuthenticated,
     requireFounder,
     async (req: AuthenticatedRequest, res: Response) => {
-      const id = Number.parseInt(req.params.id, 10);
+      const id = Number.parseInt(routeParam(req.params.id), 10);
       if (!Number.isFinite(id) || id <= 0) {
         return Errors.badRequest(res, "draft id must be a positive integer");
       }

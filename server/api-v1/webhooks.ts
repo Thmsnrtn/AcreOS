@@ -31,6 +31,7 @@ import {
   type PublicWebhookEventType,
 } from "../services/publicWebhookDispatcher";
 import { generateWebhookSecret } from "../services/apiKeys";
+import { routeParam } from "../utils/routeParams";
 
 export const webhooksV1Router = Router();
 
@@ -144,7 +145,7 @@ webhooksV1Router.delete(
   requireApiKey("webhooks:write"),
   async (req: Request, res: Response) => {
     const orgId = req.apiKeyOrganization!.id;
-    const id = Number.parseInt(req.params.id, 10);
+    const id = Number.parseInt(routeParam(req.params.id), 10);
     if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid id");
 
     try {

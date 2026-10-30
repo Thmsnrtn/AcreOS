@@ -21,6 +21,7 @@ import {
 } from "./services/propertyTaxService";
 import { Errors } from "./utils/errors";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
@@ -45,7 +46,7 @@ router.post("/escrow/setup", async (req: Request, res: Response) => {
 router.get("/escrow/:noteId", async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const noteId = parseInt(req.params.noteId);
+    const noteId = parseInt(routeParam(req.params.noteId));
     if (isNaN(noteId)) return Errors.badRequest(res, "Invalid note ID");
 
     const status = await getNoteEscrowStatus(noteId, org.id);
@@ -59,7 +60,7 @@ router.get("/escrow/:noteId", async (req: Request, res: Response) => {
 router.post("/escrow/:noteId/credit", async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const noteId = parseInt(req.params.noteId);
+    const noteId = parseInt(routeParam(req.params.noteId));
     if (isNaN(noteId)) return Errors.badRequest(res, "Invalid note ID");
 
     await creditMonthlyTaxEscrow(noteId, org.id);
@@ -72,7 +73,7 @@ router.post("/escrow/:noteId/credit", async (req: Request, res: Response) => {
 router.post("/escrow/:noteId/pay", async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const noteId = parseInt(req.params.noteId);
+    const noteId = parseInt(routeParam(req.params.noteId));
     if (isNaN(noteId)) return Errors.badRequest(res, "Invalid note ID");
 
     const { amountCents, taxYear, notes } = req.body;

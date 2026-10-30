@@ -35,6 +35,7 @@ import { autonomousAgentEngine, type AutonomyLevel, type ActionCategory } from "
 import { executeAgentTask, type CoreAgentType } from "./services/core-agents";
 import { Errors } from "./utils/errors";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 const CORE_AGENT_TYPES: CoreAgentType[] = ["research", "deals", "communications", "operations"];
 
@@ -103,7 +104,7 @@ export function registerAutonomousAgentRoutes(app: Express): void {
   router.get("/agents/:type", async (req, res) => {
     try {
       const org = req.organization;
-      const { type } = req.params;
+      const type = routeParam(req.params.type);
 
       if (!CORE_AGENT_TYPES.includes(type as CoreAgentType)) {
         return Errors.badRequest(res, "Invalid agent type");
@@ -120,7 +121,7 @@ export function registerAutonomousAgentRoutes(app: Express): void {
   router.put("/agents/:type/config", requireFounder, async (req, res) => {
     try {
       const org = req.organization;
-      const { type } = req.params;
+      const type = routeParam(req.params.type);
 
       if (!CORE_AGENT_TYPES.includes(type as CoreAgentType)) {
         return Errors.badRequest(res, "Invalid agent type");
@@ -218,7 +219,7 @@ export function registerAutonomousAgentRoutes(app: Express): void {
     try {
       const org = req.organization;
       const user = req.user;
-      const taskId = parseInt(req.params.id);
+      const taskId = parseInt(routeParam(req.params.id));
 
       const [task] = await db
         .select()

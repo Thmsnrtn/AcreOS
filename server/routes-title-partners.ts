@@ -51,6 +51,7 @@ import { titleOrders, titlePartners, deals } from "@shared/schema";
 import { encrypt, decrypt } from "./services/fieldEncryption";
 import { notificationDispatcher } from "./services/notificationDispatcher";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 // ─── Volume pricing tier → per-file price (USD) ──────────────────────────────
 
@@ -367,7 +368,7 @@ export function registerTitleOrderStatusWebhookRoute(app: Express) {
         }
         const body = parsed.data;
 
-        const orderId = Number(req.params.orderId);
+        const orderId = Number(routeParam(req.params.orderId));
         if (!Number.isFinite(orderId) || orderId <= 0) {
           return Errors.badRequest(res, "Invalid orderId");
         }

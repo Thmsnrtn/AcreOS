@@ -45,6 +45,7 @@ import {
 import type { AuthenticatedRequest } from "./types/request";
 import { refuseSeatPurchase } from "./utils/firstRunRefusals";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 // ─── Validation schemas ─────────────────────────────────────────────────────
 const upsertRuleSchema = z.object({
@@ -323,7 +324,7 @@ export function registerTeamReadinessRoutes(app: Express): void {
     async (req, res) => {
       try {
         const org = (req as AuthenticatedRequest).organization;
-        const id = Number.parseInt(req.params.id, 10);
+        const id = Number.parseInt(routeParam(req.params.id), 10);
         if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid rule id");
         const [deleted] = await db
           .delete(leadAssignmentRules)
@@ -456,7 +457,7 @@ export function registerTeamReadinessRoutes(app: Express): void {
     async (req, res) => {
       try {
         const org = (req as AuthenticatedRequest).organization;
-        const id = Number.parseInt(req.params.id, 10);
+        const id = Number.parseInt(routeParam(req.params.id), 10);
         if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid id");
         const [deleted] = await db
           .delete(orgIntegrationsSlack)
@@ -533,7 +534,7 @@ export function registerTeamReadinessRoutes(app: Express): void {
     async (req, res) => {
       try {
         const org = (req as AuthenticatedRequest).organization;
-        const id = Number.parseInt(req.params.id, 10);
+        const id = Number.parseInt(routeParam(req.params.id), 10);
         if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid id");
         const parsed = approvalDecisionSchema.safeParse(req.body);
         if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);

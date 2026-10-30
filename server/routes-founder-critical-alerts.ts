@@ -23,6 +23,7 @@ import { Errors } from "./utils/errors";
 import { getUserId } from "./types/request";
 import type { AuthenticatedRequest } from "./types/request";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
@@ -79,7 +80,7 @@ router.get("/", async (_req: AuthenticatedRequest, res: Response) => {
 
 router.post("/:id/ack", async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(routeParam(req.params.id), 10);
     if (isNaN(id)) return Errors.badRequest(res, "Invalid id");
     const userId = getUserId(req);
     const [row] = await db
@@ -96,7 +97,7 @@ router.post("/:id/ack", async (req: AuthenticatedRequest, res: Response) => {
 
 router.post("/:id/escalate", async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(routeParam(req.params.id), 10);
     if (isNaN(id)) return Errors.badRequest(res, "Invalid id");
     const target = typeof req.body?.target === "string" ? req.body.target : "primary_backup";
     const [row] = await db

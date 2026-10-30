@@ -23,6 +23,7 @@ import { FEATURE_FLAG_STATES, type FeatureFlagState } from "@shared/schema";
 import type { AuthenticatedRequest } from "./types/request";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
@@ -88,7 +89,7 @@ router.patch("/admin/:key", async (req: AuthenticatedRequest, res: Response) => 
     const update = parsed.data;
     if (Object.keys(update).length === 0) return Errors.badRequest(res, "Empty flag update");
 
-    const updated = await featureFlagService.setFlag(req.params.key, update as Partial<{
+    const updated = await featureFlagService.setFlag(routeParam(req.params.key), update as Partial<{
       state: FeatureFlagState;
       audience: { betaUserIds?: string[] };
       enabled: boolean;
@@ -96,7 +97,7 @@ router.patch("/admin/:key", async (req: AuthenticatedRequest, res: Response) => 
     if (!updated) return Errors.notFound(res, "Feature flag");
 
     logger.info("Feature flag updated", {
-      key: req.params.key,
+      key: routeParam(req.params.key),
       changedBy: ctx.userId,
       newState: updated.state,
     });

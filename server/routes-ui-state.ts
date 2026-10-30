@@ -30,6 +30,7 @@ import { getOrganizationId, getUserId } from "./types/request";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
@@ -66,7 +67,7 @@ router.get("/:key", async (req: AuthenticatedRequest, res: Response) => {
   try {
     const organizationId = getOrganizationId(req);
     const userId = getUserId(req);
-    const key = req.params.key;
+    const key = routeParam(req.params.key);
     if (!KEY_RE.test(key)) {
       return Errors.badRequest(res, "Invalid UI-state key");
     }
@@ -94,7 +95,7 @@ router.put("/:key", async (req: AuthenticatedRequest, res: Response) => {
   try {
     const organizationId = getOrganizationId(req);
     const userId = getUserId(req);
-    const key = req.params.key;
+    const key = routeParam(req.params.key);
     if (!KEY_RE.test(key)) {
       return Errors.badRequest(res, "Invalid UI-state key");
     }

@@ -100,7 +100,7 @@ function broadcastToDealRoom(req: Request | AuthenticatedRequest, dealRoomId: nu
 
 router.get('/:id', asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const dealRoom = await getDealRoomOrFail(parseInt(req.params.id), req, res);
+    const dealRoom = await getDealRoomOrFail(parseInt(routeParam(req.params.id)), req, res);
     if (!dealRoom) return;
     res.json({ dealRoom });
   } catch (error: any) {
@@ -112,7 +112,7 @@ router.get('/:id', asyncHandler(async (req: AuthenticatedRequest, res: Response)
 
 router.get('/:id/messages', asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const dealRoomId = parseInt(req.params.id);
+    const dealRoomId = parseInt(routeParam(req.params.id));
     // Verify org-scoped access before returning messages
     const dealRoom = await getDealRoomOrFail(dealRoomId, req, res);
     if (!dealRoom) return;
@@ -138,7 +138,7 @@ router.get('/:id/messages', asyncHandler(async (req: AuthenticatedRequest, res: 
 
 router.post('/:id/messages', asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const dealRoomId = parseInt(req.params.id);
+    const dealRoomId = parseInt(routeParam(req.params.id));
     // Verify org-scoped access before allowing message send
     const dealRoom = await getDealRoomOrFail(dealRoomId, req, res);
     if (!dealRoom) return;
@@ -176,7 +176,7 @@ router.post('/:id/messages', asyncHandler(async (req: AuthenticatedRequest, res:
 
 router.get('/:id/documents', asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const dealRoomId = parseInt(req.params.id);
+    const dealRoomId = parseInt(routeParam(req.params.id));
     // Verify org-scoped access before returning documents
     const dealRoom = await getDealRoomOrFail(dealRoomId, req, res);
     if (!dealRoom) return;
@@ -211,7 +211,7 @@ router.get('/:id/documents', asyncHandler(async (req: AuthenticatedRequest, res:
 
 router.post('/:id/documents', asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const dealRoomId = parseInt(req.params.id);
+    const dealRoomId = parseInt(routeParam(req.params.id));
     // Verify org-scoped access before allowing document upload
     const dealRoom = await getDealRoomOrFail(dealRoomId, req, res);
     if (!dealRoom) return;
@@ -297,12 +297,12 @@ router.post('/:id/documents', asyncHandler(async (req: AuthenticatedRequest, res
 
 router.get('/:id/documents/:docId/download', asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const dealRoomId = parseInt(req.params.id);
+    const dealRoomId = parseInt(routeParam(req.params.id));
     // Verify org-scoped access before allowing document download
     const dealRoom = await getDealRoomOrFail(dealRoomId, req, res);
     if (!dealRoom) return;
 
-    const docId = parseInt(req.params.docId);
+    const docId = parseInt(routeParam(req.params.docId));
 
     const results = await db
       .select()
@@ -340,7 +340,7 @@ router.get('/:id/documents/:docId/download', asyncHandler(async (req: Authentica
 
 router.post('/:id/participants', asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const dealRoomId = parseInt(req.params.id);
+    const dealRoomId = parseInt(routeParam(req.params.id));
     const dealRoom = await getDealRoomOrFail(dealRoomId, req, res);
     if (!dealRoom) return;
 
@@ -438,8 +438,8 @@ router.post('/:id/participants', asyncHandler(async (req: AuthenticatedRequest, 
 
 router.patch('/:id/participants/:userId', asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const dealRoomId = parseInt(req.params.id);
-    const { userId } = req.params;
+    const dealRoomId = parseInt(routeParam(req.params.id));
+    const userId = routeParam(req.params.userId);
     const { role } = req.body;
 
     const dealRoom = await getDealRoomOrFail(dealRoomId, req, res);
@@ -467,8 +467,8 @@ router.patch('/:id/participants/:userId', asyncHandler(async (req: Authenticated
 
 router.delete('/:id/participants/:userId', asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const dealRoomId = parseInt(req.params.id);
-    const { userId } = req.params;
+    const dealRoomId = parseInt(routeParam(req.params.id));
+    const userId = routeParam(req.params.userId);
 
     const dealRoom = await getDealRoomOrFail(dealRoomId, req, res);
     if (!dealRoom) return;
@@ -500,7 +500,7 @@ router.delete('/:id/participants/:userId', asyncHandler(async (req: Authenticate
 
 router.get('/:id/activity', asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const dealRoomId = parseInt(req.params.id);
+    const dealRoomId = parseInt(routeParam(req.params.id));
     // Verify org-scoped access before returning activity
     const dealRoom = await getDealRoomOrFail(dealRoomId, req, res);
     if (!dealRoom) return;
@@ -554,7 +554,7 @@ router.get('/:id/activity', asyncHandler(async (req: AuthenticatedRequest, res: 
 
 router.post('/:id/nda', asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const dealRoomId = parseInt(req.params.id);
+    const dealRoomId = parseInt(routeParam(req.params.id));
     const user = getUser(req);
     const dealRoom = await getDealRoomOrFail(dealRoomId, req, res);
     if (!dealRoom) return;
@@ -613,7 +613,7 @@ UNSIGNED DRAFT — to be executed through the parties' signing provider.
 
 router.post('/:id/notifications', asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const dealRoomId = parseInt(req.params.id);
+    const dealRoomId = parseInt(routeParam(req.params.id));
     const user = getUser(req);
     const dealRoom = await getDealRoomOrFail(dealRoomId, req, res);
     if (!dealRoom) return;
@@ -665,7 +665,7 @@ router.post('/:id/notifications', asyncHandler(async (req: AuthenticatedRequest,
 // Generates a slug (16 hex chars) and stamps publicShareEnabledAt. Idempotent;
 // re-calling returns the existing slug. Operator can opt out by deleting.
 router.post('/:id/share-link', asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const dealRoomId = parseInt(req.params.id);
+  const dealRoomId = parseInt(routeParam(req.params.id));
   if (isNaN(dealRoomId)) return Errors.badRequest(res, 'Invalid deal room ID');
   const dealRoom = await getDealRoomOrFail(dealRoomId, req, res);
   if (!dealRoom) return;
@@ -690,7 +690,7 @@ router.post('/:id/share-link', asyncHandler(async (req: AuthenticatedRequest, re
 
 // DELETE /deal-rooms/:id/share-link — operator revokes public sharing.
 router.delete('/:id/share-link', asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const dealRoomId = parseInt(req.params.id);
+  const dealRoomId = parseInt(routeParam(req.params.id));
   if (isNaN(dealRoomId)) return Errors.badRequest(res, 'Invalid deal room ID');
   const dealRoom = await getDealRoomOrFail(dealRoomId, req, res);
   if (!dealRoom) return;
@@ -713,10 +713,11 @@ export default router;
 import type { Express } from 'express';
 import { sql } from 'drizzle-orm';
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 export function registerPublicDealRoomRoute(app: Express): void {
   app.get('/api/public/deal-rooms/:slug', async (req: Request, res: Response) => {
     try {
-      const slug = req.params.slug;
+      const slug = routeParam(req.params.slug);
       if (!slug || !/^[a-f0-9]{16}$/.test(slug)) {
         return Errors.notFound(res, 'Deal room');
       }

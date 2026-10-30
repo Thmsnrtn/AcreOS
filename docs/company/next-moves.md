@@ -3,6 +3,31 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-10-30 — Express 5 params-typing compat (package 2026-10) — on `claude/express-params-compat`
+
+- **What it unblocks.** `@types/express` 5 (in the Dependabot bumps #406/#411) types every route parameter as `string | string[]`. On main with only that one package swapped to 5.0.6, tsc reported 919 errors: 917 from params, 2 not.
+- **Wildcard survey first.** There are four wildcard routes:
+  - `/api/v1/{*splat}` (routes.ts)
+  - `{*splat}` (static.ts and vite.ts)
+  - `/learn/*learnPath` (routes-seo-head.ts)
+  None of them reads its wildcard parameter; each uses `originalUrl` or `req.path`. There are no regex routes and no optional segments. Refusing arrays therefore breaks no flow.
+- **One helper.** `routeParam()` in `server/utils/routeParams.ts` returns a string unchanged. An array is logged and refused with a `RouteParamArrayError` (statusCode 400); it never takes the first element, joins, or coerces. A handler that catches the error itself returns its usual 500; only the terminal handler reads the 400. An undeclared key passes through as `undefined`, as before.
+- **Codemod.** Every `req.params` read in non-test `server/` code goes through the helper:
+  - 1,174 dotted/indexed reads and 85 destructured names were wrapped, across 192 files: 1,256 helper reads in all.
+  - One read was then reverted on purpose: `borrowerPortalKey` stays raw because it already falls back to the client IP for any non-string, so a refusal would have broken it. The gate lists it as the one explicit exception.
+  - `req.query` is untouched: none of the 919 errors involved it.
+- **Review.** An independent reviewer found the ltvTenancy regression assertion blinded by the wrapper. It is rewritten to match both forms, and it still refuses the defect.
+- **The 2 non-params errors.** These were the `unknown`→`void` errors in routes-admin-compliance; its wrappers now return `ReturnType<typeof isAuthenticated>`. The `Outcome` union error resolved through the codemod.
+- **Gate.** `routeParamRefusesArrays.test.ts` covers four things:
+  - array refusal, at unit level and over HTTP on Express 5;
+  - a population gate: no raw `req.params` read in server code, with file and read floors;
+  - a canary for each forbidden shape;
+  - mutation-tested by hand: making the helper return `value[0]` turned it red, and so did unwrapping one site.
+- **Not done / owed.**
+  - The bullmq `JobType "paused"` error does not reproduce on main (bullmq 5.79.2 still has `paused`). It belongs to the bullmq 6 bump in #406, where dropping `"paused"` from `getJobCounts` is a real behaviour change to decide then.
+  - The #406 extras are not touched: react-day-picker caption, Sentry `profilesSampleRate`, bullmq repeat.
+  - The #406/#411 rebase and re-audit are a separate, owed step.
+
 ## 2026-10-29 — V-Tax-1 T2a — procedure objects + county-verification gate + bidding lock — on `claude/tax-v1-t2-procedure-clock` (stacked on T1)
 
 - **T2 ships as two PRs, each net zero on tables.**

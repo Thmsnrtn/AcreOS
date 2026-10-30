@@ -21,6 +21,7 @@ import { requireRole } from "./middleware/roleGuard";
 import { getOrganizationId, type AuthenticatedRequest } from "./types/request";
 import { Errors } from "./utils/errors";
 import { isCalendarDate } from "@shared/dates/calendar";
+import { routeParam } from "./utils/routeParams";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -55,7 +56,7 @@ export function registerTaxWatchRoutes(app: Express): void {
 
   app.put("/api/tax-watches/:id/terms", ...guard, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const id = String(req.params.id);
+      const id = String(routeParam(req.params.id));
       if (!UUID.test(id)) return Errors.notFound(res, "Watch");
       const parsed = termsSchema.safeParse(req.body);
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.flatten());
@@ -70,7 +71,7 @@ export function registerTaxWatchRoutes(app: Express): void {
 
   app.get("/api/tax-watches/:id/triage", ...guard, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const id = String(req.params.id);
+      const id = String(routeParam(req.params.id));
       if (!UUID.test(id)) return Errors.notFound(res, "Watch");
       const { buildWatchTriage } = await import("./services/tax/taxWatches");
       const triage = await buildWatchTriage(getOrganizationId(req), id);

@@ -40,6 +40,7 @@ import {
 import { db } from "./db";
 import { soleneFounderAsks, FOUNDER_ASK_STATUSES, type SoleneFounderAskStatus } from "@shared/schema/solene-founder-collab";
 import { desc, eq, sql } from "drizzle-orm";
+import { routeParam } from "./utils/routeParams";
 
 const DEFAULT_LIST_LIMIT = 20;
 const MAX_LIST_LIMIT = 100;
@@ -135,7 +136,7 @@ export function registerFounderCollabRoutes(app: Express): void {
     isAuthenticated,
     requireFounder,
     async (req: AuthenticatedRequest, res: Response) => {
-      const id = Number(req.params.id);
+      const id = Number(routeParam(req.params.id));
       if (!Number.isInteger(id) || id <= 0) return Errors.badRequest(res, "Invalid refund id");
       const organizationId = Number(req.body?.organizationId);
       if (!Number.isInteger(organizationId) || organizationId <= 0) return Errors.badRequest(res, "organizationId required");
@@ -160,7 +161,7 @@ export function registerFounderCollabRoutes(app: Express): void {
     requireFounder,
     async (req: AuthenticatedRequest, res: Response) => {
       try {
-        const id = Number(req.params.id);
+        const id = Number(routeParam(req.params.id));
         if (!Number.isFinite(id) || id <= 0) {
           return Errors.badRequest(res, "Invalid ask id");
         }
@@ -187,7 +188,7 @@ export function registerFounderCollabRoutes(app: Express): void {
     requireFounder,
     async (req: AuthenticatedRequest, res: Response) => {
       try {
-        const id = Number(req.params.id);
+        const id = Number(routeParam(req.params.id));
         if (!Number.isFinite(id) || id <= 0) {
           return Errors.badRequest(res, "Invalid ask id");
         }
@@ -229,7 +230,7 @@ export function registerFounderCollabRoutes(app: Express): void {
     requireFounder,
     async (req: AuthenticatedRequest, res: Response) => {
       try {
-        const id = Number(req.params.id);
+        const id = Number(routeParam(req.params.id));
         if (!Number.isFinite(id) || id <= 0) {
           return Errors.badRequest(res, "Invalid ask id");
         }

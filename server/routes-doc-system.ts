@@ -23,6 +23,7 @@ import {
   type ParsedSigner,
 } from "./services/esign/signerRequest";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 /**
  * Answer a malformed signer list with a named 400. Lives at module scope, away
@@ -345,7 +346,7 @@ export function registerDocSystemRoutes(app: Express): void {
   api.get("/api/document-templates/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
 
       if (isNaN(id)) {
         return Errors.badRequest(res, "Invalid template ID");
@@ -398,7 +399,7 @@ export function registerDocSystemRoutes(app: Express): void {
   api.put("/api/document-templates/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       
       if (isNaN(id)) {
         return Errors.badRequest(res, "Invalid template ID");
@@ -441,7 +442,7 @@ export function registerDocSystemRoutes(app: Express): void {
   api.patch("/api/document-templates/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
 
       if (isNaN(id)) {
         return Errors.badRequest(res, "Invalid template ID");
@@ -484,7 +485,7 @@ export function registerDocSystemRoutes(app: Express): void {
   api.delete("/api/document-templates/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       
       if (isNaN(id)) {
         return Errors.badRequest(res, "Invalid template ID");
@@ -517,7 +518,7 @@ export function registerDocSystemRoutes(app: Express): void {
   api.post("/api/document-templates/:id/preview", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       
       if (isNaN(id)) {
         return Errors.badRequest(res, "Invalid template ID");
@@ -626,7 +627,7 @@ export function registerDocSystemRoutes(app: Express): void {
   api.get("/api/document-templates/:id/versions", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       
       if (isNaN(id)) {
         return Errors.badRequest(res, "Invalid template ID");
@@ -645,7 +646,7 @@ export function registerDocSystemRoutes(app: Express): void {
     try {
       const org = req.organization;
       const user = req.user;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       
       if (isNaN(id)) {
         return Errors.badRequest(res, "Invalid template ID");
@@ -685,7 +686,7 @@ export function registerDocSystemRoutes(app: Express): void {
   api.get("/api/generated-documents/:id/versions", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       
       if (isNaN(id)) {
         return Errors.badRequest(res, "Invalid document ID");
@@ -704,7 +705,7 @@ export function registerDocSystemRoutes(app: Express): void {
     try {
       const org = req.organization;
       const user = req.user;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       
       if (isNaN(id)) {
         return Errors.badRequest(res, "Invalid document ID");
@@ -739,7 +740,7 @@ export function registerDocSystemRoutes(app: Express): void {
   api.get("/api/documents/versions/:versionId", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const versionId = parseInt(req.params.versionId);
+      const versionId = parseInt(routeParam(req.params.versionId));
       
       if (isNaN(versionId)) {
         return Errors.badRequest(res, "Invalid version ID");
@@ -765,7 +766,7 @@ export function registerDocSystemRoutes(app: Express): void {
   api.post("/api/documents/versions/:versionId/restore", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const versionId = parseInt(req.params.versionId);
+      const versionId = parseInt(routeParam(req.params.versionId));
       
       if (isNaN(versionId)) {
         return Errors.badRequest(res, "Invalid version ID");
@@ -855,7 +856,7 @@ export function registerDocSystemRoutes(app: Express): void {
   api.get("/api/generated-documents/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       
       if (isNaN(id)) {
         return Errors.badRequest(res, "Invalid document ID");
@@ -950,7 +951,7 @@ export function registerDocSystemRoutes(app: Express): void {
   api.put("/api/generated-documents/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       
       if (isNaN(id)) {
         return Errors.badRequest(res, "Invalid document ID");
@@ -1114,7 +1115,7 @@ export function registerDocSystemRoutes(app: Express): void {
   api.get("/api/signatures/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       
       if (isNaN(id)) {
         return Errors.badRequest(res, "Invalid signature ID");
@@ -1136,7 +1137,7 @@ export function registerDocSystemRoutes(app: Express): void {
   api.get("/api/generated-documents/:id/signatures", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const documentId = parseInt(req.params.id);
+      const documentId = parseInt(routeParam(req.params.id));
       
       if (isNaN(documentId)) {
         return Errors.badRequest(res, "Invalid document ID");
@@ -1172,7 +1173,7 @@ export function registerDocSystemRoutes(app: Express): void {
   api.get("/api/generated-documents/:id/completion-certificate", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const documentId = parseInt(req.params.id);
+      const documentId = parseInt(routeParam(req.params.id));
       if (isNaN(documentId)) {
         return Errors.badRequest(res, "Invalid document ID");
       }
@@ -1239,7 +1240,7 @@ export function registerDocSystemRoutes(app: Express): void {
   api.get("/api/generated-documents/:id/sealed-pdf", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const documentId = parseInt(req.params.id);
+      const documentId = parseInt(routeParam(req.params.id));
       if (isNaN(documentId)) {
         return Errors.badRequest(res, "Invalid document ID");
       }
@@ -1267,7 +1268,7 @@ export function registerDocSystemRoutes(app: Express): void {
   api.post("/api/generated-documents/:id/request-signature", isAuthenticated, getOrCreateOrg, idempotencyMiddleware, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       
       if (isNaN(id)) {
         return Errors.badRequest(res, "Invalid document ID");
@@ -1412,7 +1413,7 @@ export function registerDocSystemRoutes(app: Express): void {
   api.post("/api/generated-documents/:id/send-for-signature", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       
       if (isNaN(id)) {
         return Errors.badRequest(res, "Invalid document ID");
@@ -1483,7 +1484,7 @@ export function registerDocSystemRoutes(app: Express): void {
   api.get("/api/document-packages/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       
       if (isNaN(id)) {
         return Errors.badRequest(res, "Invalid package ID");
@@ -1534,7 +1535,7 @@ export function registerDocSystemRoutes(app: Express): void {
   api.put("/api/document-packages/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       
       if (isNaN(id)) {
         return Errors.badRequest(res, "Invalid package ID");
@@ -1569,7 +1570,7 @@ export function registerDocSystemRoutes(app: Express): void {
   api.delete("/api/document-packages/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       
       if (isNaN(id)) {
         return Errors.badRequest(res, "Invalid package ID");
@@ -1591,7 +1592,7 @@ export function registerDocSystemRoutes(app: Express): void {
   api.post("/api/document-packages/:id/documents", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       
       if (isNaN(id)) {
         return Errors.badRequest(res, "Invalid package ID");
@@ -1634,8 +1635,8 @@ export function registerDocSystemRoutes(app: Express): void {
   api.delete("/api/document-packages/:id/documents/:docIndex", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
-      const docIndex = parseInt(req.params.docIndex);
+      const id = parseInt(routeParam(req.params.id));
+      const docIndex = parseInt(routeParam(req.params.docIndex));
       
       if (isNaN(id) || isNaN(docIndex)) {
         return Errors.badRequest(res, "Invalid package ID or document index");
@@ -1670,7 +1671,7 @@ export function registerDocSystemRoutes(app: Express): void {
     try {
       const org = req.organization;
       const user = req.user;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       
       if (isNaN(id)) {
         return Errors.badRequest(res, "Invalid package ID");
@@ -1803,7 +1804,7 @@ export function registerDocSystemRoutes(app: Express): void {
   api.get("/api/deals/:id/packages", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const dealId = parseInt(req.params.id);
+      const dealId = parseInt(routeParam(req.params.id));
       
       if (isNaN(dealId)) {
         return Errors.badRequest(res, "Invalid deal ID");
@@ -1821,7 +1822,7 @@ export function registerDocSystemRoutes(app: Express): void {
   api.get("/api/properties/:id/packages", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const propertyId = parseInt(req.params.id);
+      const propertyId = parseInt(routeParam(req.params.id));
       
       if (isNaN(propertyId)) {
         return Errors.badRequest(res, "Invalid property ID");

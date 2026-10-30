@@ -21,6 +21,7 @@ import type { AuthenticatedRequest } from "./types/request";
 import { getOrganization } from "./types/request";
 import { Errors } from "./utils/errors";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
@@ -66,7 +67,7 @@ router.get("/", async (req: AuthenticatedRequest, res: Response) => {
 router.post("/:id/read", async (req: AuthenticatedRequest, res: Response) => {
   try {
     const org = getOrganization(req);
-    const id = Number(req.params.id);
+    const id = Number(routeParam(req.params.id));
     if (!Number.isInteger(id) || id <= 0) {
       return Errors.badRequest(res, "Invalid alert id");
     }

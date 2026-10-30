@@ -36,6 +36,7 @@ import { assertEntityBelongsToOrg } from "./utils/orgScope";
 import { generate1099NecPdf, type Nec1099Form } from "./services/form1099NecPdf";
 import { NEC_THRESHOLD_CENTS, NEC_THRESHOLD_REVIEW_NOTE, resolve1099Payer } from "./services/form1099NecPayer";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 // The 1099-NEC threshold and its review note live in
 // services/form1099NecPayer.ts: the K13 tax reviewer must confirm the 2026 figure.
@@ -265,7 +266,7 @@ export function registerContractorRoutes(app: Express): void {
     try {
       const orgId = getOrganizationId(req);
       const [c] = await db.select().from(contractors)
-        .where(and(eq(contractors.id, req.params.id), eq(contractors.organizationId, orgId)));
+        .where(and(eq(contractors.id, routeParam(req.params.id)), eq(contractors.organizationId, orgId)));
       if (!c) return Errors.notFound(res, "Contractor");
 
       const payments = await db.select().from(contractorPayments)
@@ -329,7 +330,7 @@ export function registerContractorRoutes(app: Express): void {
         if (parsed.data[k] !== undefined) updates[k] = parsed.data[k];
       }
       const [updated] = await db.update(contractors).set(updates)
-        .where(and(eq(contractors.id, req.params.id), eq(contractors.organizationId, orgId)))
+        .where(and(eq(contractors.id, routeParam(req.params.id)), eq(contractors.organizationId, orgId)))
         .returning();
       if (!updated) return Errors.notFound(res, "Contractor");
       return res.json({ contractor: { ...updated, taxIdEncrypted: undefined } });
@@ -343,7 +344,7 @@ export function registerContractorRoutes(app: Express): void {
     try {
       const orgId = getOrganizationId(req);
       const [deleted] = await db.delete(contractors)
-        .where(and(eq(contractors.id, req.params.id), eq(contractors.organizationId, orgId)))
+        .where(and(eq(contractors.id, routeParam(req.params.id)), eq(contractors.organizationId, orgId)))
         .returning({ id: contractors.id });
       if (!deleted) return Errors.notFound(res, "Contractor");
       return res.json({ deleted: true, id: deleted.id });
@@ -360,7 +361,7 @@ export function registerContractorRoutes(app: Express): void {
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
       const [c] = await db.select({ id: contractors.id }).from(contractors)
-        .where(and(eq(contractors.id, req.params.id), eq(contractors.organizationId, orgId)));
+        .where(and(eq(contractors.id, routeParam(req.params.id)), eq(contractors.organizationId, orgId)));
       if (!c) return Errors.notFound(res, "Contractor");
 
       // Lens 48 — body-supplied rehab / rehab-line-item FKs must be in
@@ -404,7 +405,7 @@ export function registerContractorRoutes(app: Express): void {
       const orgId = getOrganizationId(req);
       const taxYear = req.query.taxYear ? parseInt(String(req.query.taxYear), 10) : null;
       const conditions = [
-        eq(contractorPayments.contractorId, req.params.id),
+        eq(contractorPayments.contractorId, routeParam(req.params.id)),
         eq(contractorPayments.organizationId, orgId),
       ];
       if (taxYear !== null) conditions.push(eq(contractorPayments.taxYear, taxYear));

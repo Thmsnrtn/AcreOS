@@ -76,7 +76,7 @@ describe("compliance reads name the organization", () => {
 
   it("both routes pass their own org, not a caller-supplied one", () => {
     const routes = code("server/routes-compliance.ts");
-    expect(routes).toContain("checkPropertyCompliance(org.id, parseInt(req.params.id))");
+    expect(routes).toContain("checkPropertyCompliance(org.id, parseInt(routeParam(req.params.id)))");
     expect(routes).toContain("generateDisclosure(org.id, parseInt(propertyId), disclosureType)");
     // `org` comes from getOrCreateOrg on the request, never from the body.
     expect(routes).toMatch(/const org = req\.organization;/);
@@ -125,7 +125,7 @@ describe("the land-credit backtest checks the parent it has", () => {
 
   it("the route passes its own org", () => {
     expect(code("server/routes-land-credit.ts")).toContain(
-      "landCredit.backtestScore(org.id, req.params.propertyId)",
+      "landCredit.backtestScore(org.id, routeParam(req.params.propertyId))",
     );
   });
 });

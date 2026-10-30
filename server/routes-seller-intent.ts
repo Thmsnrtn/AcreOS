@@ -22,6 +22,7 @@ import {
 } from "./services/sellerIntentPredictor";
 import { Errors } from "./utils/errors";
 import { getOrganizationId } from "./types/request";
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
@@ -55,7 +56,7 @@ router.get("/hot-leads", isAuthenticated, getOrCreateOrg, async (req: Request, r
 router.get("/:leadId", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const leadId = parseInt(req.params.leadId);
+    const leadId = parseInt(routeParam(req.params.leadId));
     if (isNaN(leadId)) return Errors.badRequest(res, "Invalid lead ID");
     const prediction = await sellerIntentPredictorService.predictIntent(org.id, leadId);
     res.json({ prediction });
@@ -68,7 +69,7 @@ router.get("/:leadId", isAuthenticated, getOrCreateOrg, async (req: Request, res
 router.get("/:leadId/urgency", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const leadId = parseInt(req.params.leadId);
+    const leadId = parseInt(routeParam(req.params.leadId));
     if (isNaN(leadId)) return Errors.badRequest(res, "Invalid lead ID");
     const signals = await sellerIntentPredictorService.analyzeUrgencySignals(org.id, leadId);
     res.json({ signals });
@@ -81,7 +82,7 @@ router.get("/:leadId/urgency", isAuthenticated, getOrCreateOrg, async (req: Requ
 router.get("/:leadId/financial", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const leadId = parseInt(req.params.leadId);
+    const leadId = parseInt(routeParam(req.params.leadId));
     if (isNaN(leadId)) return Errors.badRequest(res, "Invalid lead ID");
     const propertyId = req.query.propertyId ? parseInt(req.query.propertyId as string) : undefined;
     const signals = await sellerIntentPredictorService.analyzeFinancialSignals(org.id, leadId, propertyId);
@@ -95,7 +96,7 @@ router.get("/:leadId/financial", isAuthenticated, getOrCreateOrg, async (req: Re
 router.get("/:leadId/engagement", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const leadId = parseInt(req.params.leadId);
+    const leadId = parseInt(routeParam(req.params.leadId));
     if (isNaN(leadId)) return Errors.badRequest(res, "Invalid lead ID");
     const signals = await sellerIntentPredictorService.analyzeEngagementSignals(org.id, leadId);
     res.json({ signals });
@@ -108,7 +109,7 @@ router.get("/:leadId/engagement", isAuthenticated, getOrCreateOrg, async (req: R
 router.get("/:leadId/price-flexibility", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const leadId = parseInt(req.params.leadId);
+    const leadId = parseInt(routeParam(req.params.leadId));
     if (isNaN(leadId)) return Errors.badRequest(res, "Invalid lead ID");
     const signals = await sellerIntentPredictorService.analyzePriceFlexibility(org.id, leadId);
     res.json({ signals });
@@ -121,7 +122,7 @@ router.get("/:leadId/price-flexibility", isAuthenticated, getOrCreateOrg, async 
 router.post("/:leadId/approach", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const leadId = parseInt(req.params.leadId);
+    const leadId = parseInt(routeParam(req.params.leadId));
     if (isNaN(leadId)) return Errors.badRequest(res, "Invalid lead ID");
     // generateApproachRecommendation operates on computed signals; deriving the
     // recommendation for a lead goes through predictIntent, which produces and
@@ -141,7 +142,7 @@ router.post("/:leadId/approach", isAuthenticated, getOrCreateOrg, async (req: Re
 router.post("/:leadId/offer-range", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const leadId = parseInt(req.params.leadId);
+    const leadId = parseInt(routeParam(req.params.leadId));
     if (isNaN(leadId)) return Errors.badRequest(res, "Invalid lead ID");
     const { propertyId } = req.body;
     // Was `suggestOfferRange(leadId, propertyId)` against a
@@ -167,7 +168,7 @@ router.post("/:leadId/offer-range", isAuthenticated, getOrCreateOrg, async (req:
 // Record negotiation outcome (for model training)
 router.post("/:leadId/outcome", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
-    const leadId = parseInt(req.params.leadId);
+    const leadId = parseInt(routeParam(req.params.leadId));
     if (isNaN(leadId)) return Errors.badRequest(res, "Invalid lead ID");
     const { outcome } = req.body;
     if (!outcome) return Errors.badRequest(res, "outcome is required");

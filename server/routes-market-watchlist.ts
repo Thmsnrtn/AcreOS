@@ -18,6 +18,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { marketWatchlistService } from "./services/marketWatchlist";
 import { z } from "zod";
 import { sendError } from "./utils/errors";
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
@@ -54,14 +55,14 @@ router.post("/", isAuthenticated, getOrCreateOrg, async (req, res) => {
 
 router.patch("/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
   const org = req.organization;
-  const entry = await marketWatchlistService.updateEntry(org.id, req.params.id, req.body);
+  const entry = await marketWatchlistService.updateEntry(org.id, routeParam(req.params.id), req.body);
   if (!entry) return sendError(res, 404, "NOT_FOUND", "Watchlist entry not found");
   res.json(entry);
 });
 
 router.delete("/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
   const org = req.organization;
-  const removed = await marketWatchlistService.removeFromWatchlist(org.id, req.params.id);
+  const removed = await marketWatchlistService.removeFromWatchlist(org.id, routeParam(req.params.id));
   if (!removed) return sendError(res, 404, "NOT_FOUND", "Watchlist entry not found");
   res.json({ success: true });
 });
@@ -87,7 +88,7 @@ router.get("/unread", isAuthenticated, getOrCreateOrg, async (req, res) => {
 
 router.post("/:id/test", isAuthenticated, getOrCreateOrg, async (req, res) => {
   const org = req.organization;
-  const alert = await marketWatchlistService.testAlert(org.id, req.params.id);
+  const alert = await marketWatchlistService.testAlert(org.id, routeParam(req.params.id));
   if (!alert) return sendError(res, 404, "NOT_FOUND", "Watchlist entry not found");
   res.json(alert);
 });

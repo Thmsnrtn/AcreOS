@@ -59,6 +59,7 @@ import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { normalizeUnitLabel } from "./routes-rentals";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 const unitSchema = z.object({
   // `.trim()` is load-bearing, not tidiness. Migration 0219 backfilled
@@ -178,7 +179,7 @@ export function registerRentRollImportRoutes(app: Express): void {
   app.post("/api/parcels/:id/rent-roll/preview", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const orgId = getOrganizationId(req);
-      const propId = parseInt(req.params.id, 10);
+      const propId = parseInt(routeParam(req.params.id), 10);
       const parsed = rentRollSchema.safeParse(req.body);
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
@@ -205,7 +206,7 @@ export function registerRentRollImportRoutes(app: Express): void {
     try {
       const orgId = getOrganizationId(req);
       const userId = getUserId(req);
-      const propId = parseInt(req.params.id, 10);
+      const propId = parseInt(routeParam(req.params.id), 10);
       const parsed = rentRollSchema.safeParse(req.body);
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 

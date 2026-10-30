@@ -22,6 +22,7 @@ import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { runJob, replayDlqRecord } from "./services/etlOrchestrator";
 import { getClerkAuth, type AuthenticatedRequest } from "./types/request";
+import { routeParam } from "./utils/routeParams";
 
 function requireFounder(req: AuthenticatedRequest, res: any): boolean {
   const user = req.user;
@@ -73,7 +74,7 @@ export function registerEtlRoutes(app: Express): void {
   app.get("/api/founder/etl/jobs/:id/runs", isAuthenticated, async (req, res) => {
     const areq = req as AuthenticatedRequest;
     if (!requireFounder(areq, res)) return;
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(routeParam(req.params.id), 10);
     if (Number.isNaN(id)) return Errors.badRequest(res, "Invalid job id");
     try {
       const rows = await db
@@ -92,7 +93,7 @@ export function registerEtlRoutes(app: Express): void {
   app.post("/api/founder/etl/jobs/:id/run", isAuthenticated, async (req, res) => {
     const areq = req as AuthenticatedRequest;
     if (!requireFounder(areq, res)) return;
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(routeParam(req.params.id), 10);
     if (Number.isNaN(id)) return Errors.badRequest(res, "Invalid job id");
     try {
       const result = await runJob(id);

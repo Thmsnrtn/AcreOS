@@ -5,6 +5,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 export async function registerEnhancementRoutes(app: Express) {
 
@@ -40,7 +41,7 @@ export async function registerEnhancementRoutes(app: Express) {
   app.get("/api/enhancements/starter-counties/:state", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { suggestStarterCounties } = await import("./services/onboardingEnhancements");
-      const suggestions = suggestStarterCounties(req.params.state);
+      const suggestions = suggestStarterCounties(routeParam(req.params.state));
       res.json(suggestions);
     } catch (err) {
       Errors.internal(res, err);
@@ -81,7 +82,7 @@ export async function registerEnhancementRoutes(app: Express) {
       const { leads } = await import("@shared/schema");
       const { eq, and } = await import("drizzle-orm");
       const { db } = await import("./storage");
-      const lead = await db.query.leads.findFirst({ where: and(eq(leads.id, parseInt(req.params.id)), eq(leads.organizationId, org.id)) });
+      const lead = await db.query.leads.findFirst({ where: and(eq(leads.id, parseInt(routeParam(req.params.id))), eq(leads.organizationId, org.id)) });
       if (!lead) return Errors.notFound(res, "Lead");
       const { explainLeadScore } = await import("./services/crmEnhancements");
       res.json(explainLeadScore(lead));
@@ -135,7 +136,7 @@ export async function registerEnhancementRoutes(app: Express) {
     try {
       const org = (req as AuthenticatedRequest).organization;
       const { getPaymentCalendar } = await import("./services/financeEnhancements");
-      const calendar = await getPaymentCalendar(org.id, parseInt(req.params.year), parseInt(req.params.month));
+      const calendar = await getPaymentCalendar(org.id, parseInt(routeParam(req.params.year)), parseInt(routeParam(req.params.month)));
       res.json(calendar);
     } catch (err) {
       Errors.internal(res, err);

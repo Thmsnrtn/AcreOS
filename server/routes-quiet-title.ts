@@ -42,6 +42,7 @@ import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { clock } from "./utils/clock";
 import { isCalendarDate } from "@shared/dates/calendar";
+import { routeParam } from "./utils/routeParams";
 
 /**
  * Step deadlines are NOT invented. Until 2026-10-28 every case in every state
@@ -178,7 +179,7 @@ export function registerQuietTitleRoutes(app: Express): void {
         const [c] = await db
           .select()
           .from(noteQuietTitleCases)
-          .where(and(eq(noteQuietTitleCases.id, req.params.id), eq(noteQuietTitleCases.organizationId, orgId)))
+          .where(and(eq(noteQuietTitleCases.id, routeParam(req.params.id)), eq(noteQuietTitleCases.organizationId, orgId)))
           .limit(1);
         if (!c) return Errors.notFound(res, "Case");
         const steps = await db
@@ -244,7 +245,7 @@ export function registerQuietTitleRoutes(app: Express): void {
         const [row] = await db
           .update(noteQuietTitleCases)
           .set(update)
-          .where(and(eq(noteQuietTitleCases.id, req.params.id), eq(noteQuietTitleCases.organizationId, orgId)))
+          .where(and(eq(noteQuietTitleCases.id, routeParam(req.params.id)), eq(noteQuietTitleCases.organizationId, orgId)))
           .returning();
         if (!row) return Errors.notFound(res, "Case");
         return res.json({ case: row });
@@ -290,7 +291,7 @@ export function registerQuietTitleRoutes(app: Express): void {
         const [row] = await db
           .update(quietTitleSteps)
           .set(update)
-          .where(and(eq(quietTitleSteps.id, req.params.id), eq(quietTitleSteps.organizationId, orgId)))
+          .where(and(eq(quietTitleSteps.id, routeParam(req.params.id)), eq(quietTitleSteps.organizationId, orgId)))
           .returning();
         if (!row) return Errors.notFound(res, "Step");
         return res.json({ step: row });

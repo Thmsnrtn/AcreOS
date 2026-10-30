@@ -20,6 +20,7 @@ import { eventMeshService } from "./services/eventMeshV12";
 import { outcomeVerificationService } from "./services/outcomeVerificationV12";
 import { agentVersionControlService } from "./services/agentVersionControlV12";
 import { integrationFrameworkService } from "./services/integrationFrameworkV12";
+import { routeParam } from "./utils/routeParams";
 
 export function registerFounderV12Routes(app: Express) {
   // Defense-in-depth (2026-07 security sweep): these routes were protected
@@ -48,19 +49,19 @@ export function registerFounderV12Routes(app: Express) {
   });
 
   app.get("/api/founder/v12/runtime/:codename", async (req, res) => {
-    try { res.json(await agentLifecycleRuntimeService.getState(req.params.codename)); }
+    try { res.json(await agentLifecycleRuntimeService.getState(routeParam(req.params.codename))); }
     catch (err: any) { Errors.internal(res, err); }
   });
 
   app.post("/api/founder/v12/runtime/:codename/transition", async (req, res) => {
     try {
-      const state = await agentLifecycleRuntimeService.transitionState(req.params.codename, req.body.newState, req.body.context);
+      const state = await agentLifecycleRuntimeService.transitionState(routeParam(req.params.codename), req.body.newState, req.body.context);
       res.json(state);
     } catch (err: any) { Errors.internal(res, err); }
   });
 
   app.post("/api/founder/v12/runtime/:codename/heartbeat", async (req, res) => {
-    try { await agentLifecycleRuntimeService.heartbeat(req.params.codename); res.json({ success: true }); }
+    try { await agentLifecycleRuntimeService.heartbeat(routeParam(req.params.codename)); res.json({ success: true }); }
     catch (err: any) { Errors.internal(res, err); }
   });
 
@@ -70,7 +71,7 @@ export function registerFounderV12Routes(app: Express) {
   });
 
   app.post("/api/founder/v12/runtime/:codename/restart", async (req, res) => {
-    try { await agentLifecycleRuntimeService.restart(req.params.codename); res.json({ success: true }); }
+    try { await agentLifecycleRuntimeService.restart(routeParam(req.params.codename)); res.json({ success: true }); }
     catch (err: any) { Errors.internal(res, err); }
   });
 
@@ -92,12 +93,12 @@ export function registerFounderV12Routes(app: Express) {
   });
 
   app.post("/api/founder/v12/events/:eventId/ack", async (req, res) => {
-    try { await eventMeshService.acknowledge(req.params.eventId, req.body.subscriber); res.json({ success: true }); }
+    try { await eventMeshService.acknowledge(routeParam(req.params.eventId), req.body.subscriber); res.json({ success: true }); }
     catch (err: any) { Errors.internal(res, err); }
   });
 
   app.get("/api/founder/v12/events/unprocessed/:subscriber", async (req, res) => {
-    try { res.json(await eventMeshService.getUnprocessedEvents(req.params.subscriber)); }
+    try { res.json(await eventMeshService.getUnprocessedEvents(routeParam(req.params.subscriber))); }
     catch (err: any) { Errors.internal(res, err); }
   });
 
@@ -107,7 +108,7 @@ export function registerFounderV12Routes(app: Express) {
   });
 
   app.get("/api/founder/v12/events/channel/:channel", async (req, res) => {
-    try { res.json(await eventMeshService.getEventsByChannel(req.params.channel)); }
+    try { res.json(await eventMeshService.getEventsByChannel(routeParam(req.params.channel))); }
     catch (err: any) { Errors.internal(res, err); }
   });
 
@@ -145,7 +146,7 @@ export function registerFounderV12Routes(app: Express) {
   });
 
   app.post("/api/founder/v12/verification/:id/verify", async (req, res) => {
-    try { res.json(await outcomeVerificationService.verify(parseInt(req.params.id))); }
+    try { res.json(await outcomeVerificationService.verify(parseInt(routeParam(req.params.id)))); }
     catch (err: any) { Errors.internal(res, err); }
   });
 
@@ -160,7 +161,7 @@ export function registerFounderV12Routes(app: Express) {
   });
 
   app.get("/api/founder/v12/verification/agent/:codename", async (req, res) => {
-    try { res.json(await outcomeVerificationService.getAgentVerificationStats(req.params.codename)); }
+    try { res.json(await outcomeVerificationService.getAgentVerificationStats(routeParam(req.params.codename))); }
     catch (err: any) { Errors.internal(res, err); }
   });
 
@@ -187,27 +188,27 @@ export function registerFounderV12Routes(app: Express) {
   });
 
   app.post("/api/founder/v12/versions/:id/deploy", async (req, res) => {
-    try { res.json(await agentVersionControlService.deploy(parseInt(req.params.id), req.body.canaryWeight)); }
+    try { res.json(await agentVersionControlService.deploy(parseInt(routeParam(req.params.id)), req.body.canaryWeight)); }
     catch (err: any) { Errors.internal(res, err); }
   });
 
   app.post("/api/founder/v12/versions/:codename/rollback", async (req, res) => {
-    try { res.json(await agentVersionControlService.rollback(req.params.codename)); }
+    try { res.json(await agentVersionControlService.rollback(routeParam(req.params.codename))); }
     catch (err: any) { Errors.internal(res, err); }
   });
 
   app.post("/api/founder/v12/versions/:id/canary", async (req, res) => {
-    try { res.json(await agentVersionControlService.updateCanaryWeight(parseInt(req.params.id), req.body.weight)); }
+    try { res.json(await agentVersionControlService.updateCanaryWeight(parseInt(routeParam(req.params.id)), req.body.weight)); }
     catch (err: any) { Errors.internal(res, err); }
   });
 
   app.get("/api/founder/v12/versions/:codename", async (req, res) => {
-    try { res.json(await agentVersionControlService.getVersionHistory(req.params.codename)); }
+    try { res.json(await agentVersionControlService.getVersionHistory(routeParam(req.params.codename))); }
     catch (err: any) { Errors.internal(res, err); }
   });
 
   app.get("/api/founder/v12/versions/:codename/active", async (req, res) => {
-    try { res.json(await agentVersionControlService.getActiveVersion(req.params.codename)); }
+    try { res.json(await agentVersionControlService.getActiveVersion(routeParam(req.params.codename))); }
     catch (err: any) { Errors.internal(res, err); }
   });
 
@@ -239,7 +240,7 @@ export function registerFounderV12Routes(app: Express) {
   });
 
   app.post("/api/founder/v12/integrations/:id/rollback", async (req, res) => {
-    try { res.json(await integrationFrameworkService.rollbackExecution(parseInt(req.params.id))); }
+    try { res.json(await integrationFrameworkService.rollbackExecution(parseInt(routeParam(req.params.id)))); }
     catch (err: any) { Errors.internal(res, err); }
   });
 
@@ -264,7 +265,7 @@ export function registerFounderV12Routes(app: Express) {
       if (orgId !== null && !Number.isInteger(orgId)) {
         return Errors.badRequest(res, "orgId must be an integer when provided");
       }
-      await integrationFrameworkService.resetCircuitBreaker(req.params.service, orgId);
+      await integrationFrameworkService.resetCircuitBreaker(routeParam(req.params.service), orgId);
       res.json({ success: true });
     } catch (err: any) { Errors.internal(res, err); }
   });
