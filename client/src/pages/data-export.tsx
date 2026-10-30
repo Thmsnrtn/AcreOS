@@ -93,6 +93,14 @@ const EXPORT_OPTIONS: ExportOption[] = [
     formats: ["csv"],
   },
   {
+    id: "acquired-notes",
+    label: "Acquired notes",
+    description: "Notes you bought, in the note-tape column set — re-import through the note-tape import",
+    icon: Banknote,
+    endpoint: "/api/export/acquired-notes",
+    formats: ["csv", "json"],
+  },
+  {
     id: "activities",
     label: "Activity log",
     description: "Full audit trail of all user actions",

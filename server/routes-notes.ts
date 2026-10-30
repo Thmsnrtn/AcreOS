@@ -20,6 +20,7 @@ import {
   ACQUIRED_BOOK_ID,
   SELLER_FINANCE_BOOK_ID,
   acquiredNotes,
+  noteFieldObservations,
   notePayments,
   notePayoffQuotes,
   noteAssignments,
@@ -32,6 +33,7 @@ import {
   // Close & Carry bridge originates into THIS, distinct from acquiredNotes.
   notes as sellerFinanceNotes,
 } from "@shared/schema";
+import { NOTE_TAPE_FIELD } from "@shared/notes/noteTapeFields";
 import { renderAssignmentPdf } from "./services/noteAssignmentPdf";
 // §1024.17 annual escrow ANALYSIS (projection + surplus/shortage/deficiency).
 // Serves the seller-finance `notes` book only — the schema the analyzer reads.
@@ -1254,6 +1256,44 @@ async function retractCarriedDealSale(orgId: number, dealId: number): Promise<vo
   }
 }
 
+/**
+ * Columns a PATCH to an acquired note can change, mapped to the field name the
+ * provenance ledger uses for them (the note-tape field key where there is one,
+ * so an edit lands in the same series the import wrote). The payer's TIN is
+ * deliberately absent: it is encrypted at rest and never copied into a ledger.
+ */
+const EDIT_OBSERVED_COLUMNS: Record<string, string> = {
+  propertyId: "propertyId",
+  borrowerId: "borrowerId",
+  noteNumber: "noteNumber",
+  originalPrincipalCents: "originalPrincipal",
+  currentBalanceCents: "currentBalance",
+  interestRateBps: "interestRate",
+  termMonths: "termMonths",
+  paymentAmountCents: "paymentAmount",
+  paymentDueDay: "paymentDueDay",
+  originationDate: "originationDate",
+  maturityDate: "maturityDate",
+  acquisitionDate: "acquisitionDate",
+  acquisitionPriceCents: "acquisitionPrice",
+  status: "status",
+  payerName: "payerName",
+  payerAddress: "payerAddress",
+  payerTinType: "payerTinType",
+  originalLender: "originalLender",
+  insuranceStatus: "insuranceStatus",
+  insuranceCarrier: "insuranceCarrier",
+  insurancePolicyNumber: "insurancePolicyNumber",
+  insuranceExpiresAt: "insuranceExpiresAt",
+  insuranceAnnualPremiumCents: "insuranceAnnualPremium",
+  taxEscrowEnabled: "taxEscrowEnabled",
+  taxEscrowBalanceCents: "taxEscrowBalance",
+  taxDisbursementDueDate: "taxDisbursementDueDate",
+  taxDisbursementAmountCents: "taxDisbursementAmount",
+  taxAuthorityName: "taxAuthorityName",
+  notes: "notes",
+};
+
 export function registerNoteRoutes(app: Express): void {
   const ownerOrAdmin = requireRole(["owner", "admin"]);
 
@@ -1593,11 +1633,51 @@ export function registerNoteRoutes(app: Express): void {
         if (patch.taxAuthorityName !== undefined) update.taxAuthorityName = patch.taxAuthorityName ?? null;
         if (patch.notes !== undefined) update.notes = patch.notes ?? null;
 
-        const [row] = await db
-          .update(acquiredNotes)
-          .set(update)
-          .where(and(eq(acquiredNotes.id, id), eq(acquiredNotes.organizationId, orgId)))
-          .returning();
+        // The update and its provenance commit together. The ledger is
+        // append-only, so an edit adds a row beside the import-time one; reading
+        // the latest row for a field then gives the edited value, not the one the
+        // tape stated (G11 run 2, R9).
+        const actor = getUserId(req);
+        const row = await withTransaction(async (tx) => {
+          const [before] = await tx
+            .select()
+            .from(acquiredNotes)
+            .where(and(eq(acquiredNotes.id, id), eq(acquiredNotes.organizationId, orgId)))
+            .limit(1);
+          if (!before) return undefined;
+          const [after] = await tx
+            .update(acquiredNotes)
+            .set(update)
+            .where(and(eq(acquiredNotes.id, id), eq(acquiredNotes.organizationId, orgId)))
+            .returning();
+          const asOf = clock.now().toISOString().slice(0, 10);
+          const observations: Array<typeof noteFieldObservations.$inferInsert> = [];
+          for (const [column, observedField] of Object.entries(EDIT_OBSERVED_COLUMNS)) {
+            if (!(column in update)) continue;
+            const was = (before as Record<string, unknown>)[column];
+            const now = (after as Record<string, unknown>)[column];
+            if (JSON.stringify(was ?? null) === JSON.stringify(now ?? null)) continue;
+            const decayClass = observedField in NOTE_TAPE_FIELD ? NOTE_TAPE_FIELD[observedField as keyof typeof NOTE_TAPE_FIELD].decay : "months";
+            const base = {
+              organizationId: orgId,
+              noteId: id,
+              field: observedField,
+              source: "edit" as const,
+              sourceRef: { via: "PATCH /api/notes/:id", column },
+              asOf,
+              confidence: "high" as const,
+              decayClass,
+              recordedBy: actor,
+            };
+            if (now === null || now === undefined) {
+              observations.push({ ...base, kind: "searched_none", value: null, confidenceBasis: "the operator cleared this field on the note" });
+            } else {
+              observations.push({ ...base, kind: "value", value: now, confidenceBasis: "entered by the signed-in operator through the note edit" });
+            }
+          }
+          if (observations.length > 0) await tx.insert(noteFieldObservations).values(observations);
+          return after;
+        });
 
         if (!row) {
           return Errors.notFound(res, "Note");

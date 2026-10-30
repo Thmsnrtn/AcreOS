@@ -3,6 +3,36 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-10-30 — G11 fidelity fix — import/export round trip — on `claude/g11-fidelity-fix` (based on main `58d1a9b`, independent of the Tax branches)
+
+- **One PR, five defects plus three small items.** Gates log: `docs/evidence/2026-10-30/g11-fidelity-fix-gates.md`.
+- **1 Originated notes import.** The importer now reads Start Date and First Payment Date and refuses a row without them, naming the column. It never makes a date up.
+  - A row is validated whole before anything is written. If the note still fails, the borrower lead that row created is removed, and `lead.created` fires only after the note exists.
+  - A blank Monthly Payment is calculated only when both Interest Rate and Term are stated; otherwise the row is refused.
+  - A headers-only CSV now reports 0 rows. The 500 was `parseCSV` throwing on it. A file with no header at all is a 400.
+- **2 Properties.** `Size (Acres)` is in the import map and the exporter writes the raw acreage. `exportHeadersAreImportable.test.ts` resolves every exported header through the importer's own resolver. `EXPORT_ONLY_HEADERS` names the few the importer deliberately ignores.
+- **3 Leads.** The export now has County, APN, Acreage, Assessed and Estimated Value, the three tax-delinquency columns and Do Not Contact. Tags round-trip (the export joined with `; `, the import split on `,`).
+- **4 Acquired notes.** New `GET /api/export/acquired-notes` (csv or json), `acquired-notes.csv` in the export-everything ZIP, and a download entry on the data-export page.
+  - A dedicated endpoint, not an extension of `/api/export/notes`: three callers read the legacy shape (the data-export page, the ZIP, `routes-finance`), and the two books have different columns.
+  - Headers are the note-tape field labels. The re-import path is `POST /api/note-tape/preview` then `/commit`, and the golden bar holds field for field.
+  - A note that did not arrive through the tape has no document observations, so it exports blank document cells and the tape importer refuses it, naming the field.
+- **5 Investor-income 403.** The package called this a test-identity limit. It was not.
+  - `requireOrgOwnerOrAdmin` read `req.permissionContext`, which is only filled on mutating requests, so a genuine owner got a 403 on every GET.
+  - The gate now resolves the caller's membership (`getUserPermissionContext`) and honours the founder identity as `requireFounder` does. A member and a stranger still get 403. `testAuth.ts` is unchanged.
+- **Found while verifying Defect 5.** `aggregateInvestorIncomeForYear` multiplied each LP's interest by the note's split-row count (a window SUM over splits x payments). Three splits gave 3x the income, 225,000 where 75,000 is right. It now sums per note in a subquery. This feeds LP tax statements, so a reviewer should look at it first.
+- **PATCH provenance.** A PATCH to an acquired note now writes one `edit` observation per changed field, in the same transaction. This needs migration `0300`, which widens the source CHECK; no table is added. It uses `0300` because Tax PR #421 holds `0296`.
+- **Import errors.** `importRowError` maps driver errors to a field-level message. Applied to the lead, property, deal and note importers, the communications import, and job error text.
+- **Sweep.**
+  - Deals: headers resolve. Offer Date and Closing Date are now imported.
+  - Originated notes: the export still carries no borrower name or contact. It is lead data, and adding it would widen the purpose-ledger census (DEBT may only shrink). A re-import of that export now refuses each row naming the borrower, and no longer 500s.
+  - Communications: `leadEmail` was missing from the export, though the README told people to match on it. It is added.
+  - Payments and audit log: no re-import path, by design.
+- **Not done.**
+  - The staging round-trip demonstration (staging is not reachable from here); the real-database tests stand in.
+  - Leads invalid-numerics coercion is unchanged, as the package directed.
+  - Existing defaults in the originated importer (rate 0, term 120, payment day 1, grace 10) are untouched and still invent values; they are worth a separate decision.
+  - Needs a reviewer: the compensating-delete atomicity (storage takes no transaction) and the `parseCSV` change.
+
 ## 2026-10-29 — V-Tax-1 T2a — procedure objects + county-verification gate + bidding lock — on `claude/tax-v1-t2-procedure-clock` (stacked on T1)
 
 - **T2 ships as two PRs, each net zero on tables.**
