@@ -73,7 +73,9 @@ describe("import errors contain no SQL", () => {
     // Before: {"constructor": "originalPrincipal"} was honoured, so a cell under a
     // column named "constructor" became the principal. It must be ignored.
     const row = { borrowerFirstName: "Ann", constructor: "5000", "Start Date": "2026-01-01", "First Payment Date": "2026-02-01" } as Record<string, string>;
-    const r = await importNotesFromCSV([row], 1, { constructor: "originalPrincipal", __proto__: "originalPrincipal" } as Record<string, string>);
+    // Parsed from JSON, as in a request body: "__proto__" and "constructor" arrive as OWN keys.
+    const fieldMap = JSON.parse('{"constructor":"originalPrincipal","__proto__":"originalPrincipal"}') as Record<string, string>;
+    const r = await importNotesFromCSV([row], 1, fieldMap);
     expect(r.errors[0].error).toMatch(/Original principal amount is required/);
     expect(({} as Record<string, unknown>).originalPrincipal).toBeUndefined();
   });

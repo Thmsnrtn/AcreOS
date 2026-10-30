@@ -1540,14 +1540,15 @@ export async function importNotesFromCSV(
   // Apply user's custom field map first, then fall back to the built-in NOTE_COLUMN_MAP
   // A null-prototype map, and no reserved key: `fieldMap` arrives from the request
   // body, and a column named __proto__ / constructor must never address
-  // Object.prototype (CodeQL: remote property injection).
-  const effectiveMap: Record<string, string> = Object.assign(Object.create(null), NOTE_COLUMN_MAP);
-  if (userFieldMap) {
-    for (const [csvCol, acreosField] of Object.entries(userFieldMap)) {
-      if (!acreosField || typeof acreosField !== "string" || RESERVED_HEADER_NAMES.has(csvCol)) continue;
-      effectiveMap[csvCol] = acreosField;
-    }
-  }
+  // Object.prototype (CodeQL: remote property injection). The caller's entries are
+  // filtered first and merged in one step; no property is written by a
+  // caller-supplied name.
+  const callerEntries = userFieldMap
+    ? Object.entries(userFieldMap).filter(
+        ([csvCol, acreosField]) => !!acreosField && typeof acreosField === "string" && !RESERVED_HEADER_NAMES.has(csvCol),
+      )
+    : [];
+  const effectiveMap: Record<string, string> = Object.assign(Object.create(null), NOTE_COLUMN_MAP, Object.fromEntries(callerEntries));
 
   for (let i = 0; i < csvData.length; i++) {
     const rawRow = csvData[i];
