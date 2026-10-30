@@ -12,14 +12,12 @@ import { clock } from "../utils/clock";
 // ever changes (e.g. a new Clerk instance) — no code edit required. The default
 // is the current production instance's backing domain. Do NOT derive this from
 // the publishable key: that encodes the Cloudflare-blocked vanity domain.
-// syntheticChecks.ts imports both constants so the health probe always targets
-// the exact origin the proxy uses.
 const DEFAULT_CLERK_FAPI_ORIGIN = "https://possible-emu-83.clerk.accounts.dev";
-export const CLERK_FAPI_ORIGIN =
+const CLERK_FAPI_ORIGIN =
   process.env.CLERK_FAPI_ORIGIN?.trim().replace(/\/+$/, "") || DEFAULT_CLERK_FAPI_ORIGIN;
 // Hostname only — used to rewrite upstream Location headers back through /__clerk
 // regardless of which origin is configured.
-export const CLERK_FAPI_HOST = new URL(CLERK_FAPI_ORIGIN).host;
+const CLERK_FAPI_HOST = new URL(CLERK_FAPI_ORIGIN).host;
 
 // Bound the upstream call well below the 30s global requestTimeout wall
 // (server/middleware/security.ts). PROD BUG 2026-06-09: an un-timed fetch to
@@ -28,6 +26,34 @@ export const CLERK_FAPI_HOST = new URL(CLERK_FAPI_ORIGIN).host;
 // ERR_HTTP_HEADERS_SENT -> 500. A 10s abort returns a clean response from here
 // first, so there is never a late second send.
 export const CLERK_UPSTREAM_TIMEOUT_MS = 10_000;
+
+export interface SignInProxyProbe {
+  /** null = could not be probed here (no APP_URL, or test-auth mode blocks the proxy by design). */
+  ok: boolean | null;
+  status: number | null;
+  detail: string;
+}
+
+/**
+ * Probe sign-in the way a browser reaches it: GET <APP_URL>/__clerk/v1/environment,
+ * through this proxy. Probing the backing FAPI directly (what clerk_proxy_health
+ * did) answered 200 through the whole 2026-10-30 outage, because the defect was
+ * in what the proxy forwarded, so the probe must go through the proxy.
+ */
+export async function probeSignInProxy(fetchImpl: typeof fetch = fetch): Promise<SignInProxyProbe> {
+  if (e2eTestAuthEnabled()) return { ok: null, status: null, detail: "test-auth mode blocks the Clerk proxy by design" };
+  const base = process.env.APP_URL?.trim().replace(/\/+$/, "");
+  if (!base) return { ok: null, status: null, detail: "APP_URL is not set, so the public sign-in path cannot be probed" };
+  try {
+    const r = await fetchImpl(`${base}/__clerk/v1/environment`, { method: "GET", signal: AbortSignal.timeout(CLERK_UPSTREAM_TIMEOUT_MS) });
+    if (r.ok) return { ok: true, status: r.status, detail: "the sign-in proxy answered /v1/environment" };
+    const text = await r.text().catch(() => "");
+    const code = /"code"\s*:\s*"([a-z_]+)"/.exec(text)?.[1];
+    return { ok: false, status: r.status, detail: `${base}/__clerk/v1/environment returned ${r.status}${code ? ` ${code}` : ""}; the sign-in widget cannot load` };
+  } catch (err) {
+    return { ok: false, status: null, detail: `${base}/__clerk/v1/environment did not answer (${err instanceof Error ? err.message : String(err)})` };
+  }
+}
 
 /**
  * Factory for the /__clerk reverse-proxy handler. Extracted from routes.ts so
@@ -94,7 +120,13 @@ export function createClerkProxyHandler(fetchImpl: typeof fetch = fetch) {
       }
       fwdHeaders["x-forwarded-for"] = req.ip || req.socket.remoteAddress || "";
       fwdHeaders["x-forwarded-proto"] = "https";
-      fwdHeaders["x-forwarded-host"] = publicHost;
+      // NO x-forwarded-host (PROD OUTAGE 2026-10-30: nobody could sign in).
+      // FAPI attributes a request to its instance by that header when it is
+      // present, and the public host (acreos.io, acreos-staging.fly.dev) is
+      // not the instance's frontend domain, so every /v1/environment and
+      // /v1/client answered 400 host_invalid and the <SignIn> widget never
+      // got a form. The proxy's public identity travels in Clerk-Proxy-Url
+      // above; tests/unit/clerkProxyForwardedHost.test.ts pins the absence.
       let body: string | undefined;
       if (!["GET", "HEAD"].includes(req.method)) {
         const ct = (req.headers["content-type"] || "").toLowerCase();
