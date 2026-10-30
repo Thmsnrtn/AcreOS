@@ -20,6 +20,7 @@ import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import yaml from "js-yaml";
+import { stripYamlComments } from "../helpers/stripYamlComments";
 import {
   UNDECLARED_RESIDUE_TOLERANCE,
   censusVerdict,
@@ -87,20 +88,16 @@ describe("every staging deploy is followed by the schema reconcile", () => {
   });
 
   it("no comment or step still claims staging's schema comes from db:push", () => {
-    const comments = (rel: string) =>
-      read(rel)
-        .split("\n")
-        .filter((l) => /^\s*#|\s#\s/.test(l))
-        .join("\n");
+    // The whole file, comments included: the false claims lived in comments.
     for (const rel of [".github/workflows/staging.yml", "fly.staging.toml", RECONCILE]) {
-      const c = comments(rel);
-      expect(c, rel).not.toMatch(/schema (is |was )?built (by|via) `?(npm run )?db:push/i);
-      expect(c, rel).not.toMatch(/schema comes only from db:push/i);
+      const text = read(rel);
+      expect(text, rel).not.toMatch(/schema (is |was )?built (by|via) `?(npm run )?db:push/i);
+      expect(text, rel).not.toMatch(/schema comes only from db:push/i);
     }
     for (const [name, job] of Object.entries(load(".github/workflows/staging.yml").jobs)) {
       for (const s of job.steps ?? []) {
         // Shell comments inside `run:` are prose, not commands — the corrected comment names db:push.
-        const commands = (s.run ?? "").split("\n").filter((l) => !/^\s*#/.test(l)).join("\n");
+        const commands = stripYamlComments(s.run ?? "");
         expect(commands, `staging.yml ${name}`).not.toMatch(/db:push/);
       }
     }
