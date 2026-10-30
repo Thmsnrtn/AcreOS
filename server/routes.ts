@@ -343,55 +343,16 @@ import { eq, and, desc, sql, count, sum, gte, avg } from "drizzle-orm";
 // copy in this file used a different per-import instanceId, which meant
 // `storage.releaseJobLock(name, instanceId)` could never release a lock
 // held by the jobRuntime path during graceful shutdown.
-import { withJobLock } from "./utils/jobRuntime";
 import { secretEquals } from "./utils/secretEquals";
 import { clock } from "./utils/clock";
 
-// P0 #6 — Job-locks janitor migrated to scheduleSelfRescheduling
-// (Phase 3 Week 7-8). The borrower-session cleanup is bundled into the same
-// helper because they share the same correctness profile: idempotent
-// deletes that must never overlap themselves. Stuck/timed-out runs now
-// surface in `job_runs` and any terminal failure dead-letters to
-// `outbox_dlq` so on-call has a single inspection surface.
-//
-// Skipped under NODE_ENV=test so unit tests of routes.ts don't open a DB
-// pool.
-if (process.env.NODE_ENV !== "test") {
-  import("./jobs/scheduler").then(({ scheduleSelfRescheduling }) => {
-    // Clean expired borrower sessions every hour (with job lock)
-    scheduleSelfRescheduling({
-      name: "clean_borrower_sessions",
-      intervalMs: 60 * 60 * 1000,
-      initialDelayMs: 60 * 60 * 1000,
-      run: async () => {
-        await withJobLock("clean_borrower_sessions", 300, async () => {
-          try {
-            const cleaned = await storage.cleanExpiredBorrowerSessions();
-            if (cleaned > 0) {
-              logger.info(`Cleaned ${cleaned} expired borrower sessions`);
-            }
-            return cleaned;
-          } catch (err) {
-            logger.error("Error cleaning expired borrower sessions", err instanceof Error ? err : undefined);
-            return 0;
-          }
-        });
-      },
-    });
-
-    // Clean expired job locks every 5 minutes
-    scheduleSelfRescheduling({
-      name: "clean_expired_job_locks",
-      intervalMs: 5 * 60 * 1000,
-      initialDelayMs: 5 * 60 * 1000,
-      run: async () => {
-        await storage.cleanExpiredJobLocks();
-      },
-    });
-  }).catch((err) => {
-    logger.error("Failed to register job-lock janitor", err instanceof Error ? err : undefined);
-  });
-}
+// The job-locks janitor (clean_expired_job_locks) and the borrower-session
+// cleanup (clean_borrower_sessions) are registered from
+// server/jobs/scheduledJobsBoot.ts (`startJobLockJanitorJobs`, started by runScheduledJobs), NOT here. A
+// module-scope registration in this file fired in EVERY process that imports
+// routes — the app (index) and the worker (its IIFE calls registerRoutes) — so
+// each janitor ticked twice. runScheduledJobs runs under the placement rule
+// (server/jobs/jobPlacement.ts), which gives exactly one registration.
 
 export async function registerRoutes(
   httpServer: Server,
