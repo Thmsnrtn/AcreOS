@@ -11,7 +11,7 @@ through a pipe, after editing had finished.
 | `npm run check` (full `&&` chain) | exit 0 | First two runs failed `lint-reachability` (see below); fixed, third run green |
 | `npm run build` | exit 0 | |
 | Focused: reachabilityGate, aiCostCeilingFailOpen, aiConcurrencyCap, aiRouter, aiSpendGuard, aiCostCeilingDefault, aiRouterAllowanceAndOrigin | exit 0 — 7 files, 66 tests | |
-| `npm test` (full suite) | FULL_SUITE_RESULT | See "Full suite" |
+| `npm test` (full suite) | exit 0 — 1535 files passed, 34 skipped; 19,220 tests passed, 159 skipped, 0 failed | Run on the final code tree (head before this log edit: `c2a750f`). The earlier run had one failure (`reachabilityGate`), fixed by the allowlist entries |
 | Staging demonstration | NOT RUN | See "Not done" |
 | k6 / burst re-run of the four limiters | NOT RUN | See "Not done" |
 
