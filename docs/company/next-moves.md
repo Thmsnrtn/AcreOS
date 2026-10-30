@@ -3,6 +3,16 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-10-30 — V-Tax-1 T2b bundle trim (#421; founder call: option 1, no ceiling change)
+
+- **Measured:** T2b with main (#426) merged was 9826.91 KB against the 9823 KB ceiling. With the trim it is **9765.14 KB**, PASS, 57.9 KB under. The ceiling is left at 9823 KB, as the founder said.
+- **What was dead:** the client imported `COVERAGE_LABELS` from `shared/landData/countySourceCensus.ts`. That module builds the 95-county census from its JSON at load, so the whole JSON (about 62 KB minified) shipped in the maps chunk and was never read. The client renders coverage from `GET /api/land-data/coverage`.
+  - The types, labels and rule are now in `countyCoverage.ts`, with no data import. `countySourceCensus.ts` re-exports them, so no server code changed.
+  - The stale reachability entry for `deriveCoverage` is removed.
+- **Guard:** `clientNeverBundlesCensusData.test.ts` walks value imports transitively from every client file through `shared/`. Two mutants (a direct import, and a transitive one) were both caught.
+- **Evidence:** `docs/evidence/2026-10-30/t2b-bundle-trim.log`.
+- **Next:** Muse re-audits #421. Then T3a (#422), T3b (#423), T4a (#424, already accepted) and T4b (#425) each take main as the PR below them lands. The prod sign-in fix (Clerk proxy) is on its own branch.
+
 ## 2026-10-29 — V-Tax-1 T2b audit fix batch (#421, audited NOT YET MERGEABLE at `86d77e26`)
 
 - **Fix 1, the quiet-title gate bypass.** Every route that could lift the lock now checks the county's deadline, not the status alone:
