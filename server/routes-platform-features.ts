@@ -19,6 +19,7 @@ import { sql, eq, desc } from "drizzle-orm";
 import { countyReviews } from "@shared/schema";
 import { z } from "zod";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 export function registerPlatformFeatureRoutes(app: Express): void {
 
@@ -137,7 +138,7 @@ export function registerPlatformFeatureRoutes(app: Express): void {
   app.get("/api/deals/:id/opportunity-cost", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const dealId = Number(req.params.id);
+      const dealId = Number(routeParam(req.params.id));
       const deal = await storage.getDeal(org.id, dealId);
       if (!deal) return Errors.notFound(res, "Deal");
 
@@ -201,7 +202,7 @@ export function registerPlatformFeatureRoutes(app: Express): void {
   app.get("/api/deals/:id/aml-check", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const dealId = Number(req.params.id);
+      const dealId = Number(routeParam(req.params.id));
       const deal = await storage.getDeal(org.id, dealId);
       if (!deal) return Errors.notFound(res, "Deal");
 
@@ -218,7 +219,7 @@ export function registerPlatformFeatureRoutes(app: Express): void {
   // State disclosures
   app.get("/api/compliance/disclosures/:state", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const state = req.params.state.toUpperCase();
+      const state = routeParam(req.params.state).toUpperCase();
       const disclosures = getRequiredDisclosures(state);
       res.json({ state, disclosures });
     } catch (error) {
@@ -229,7 +230,7 @@ export function registerPlatformFeatureRoutes(app: Express): void {
   // Statute of limitations lookup
   app.get("/api/compliance/sol/:state", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const state = req.params.state.toUpperCase();
+      const state = routeParam(req.params.state).toUpperCase();
       const years = DEBT_COLLECTION_SOL[state] || 6;
       res.json({ state, years, source: DEBT_COLLECTION_SOL[state] ? "statute" : "default" });
     } catch (error) {
@@ -349,7 +350,7 @@ export function registerPlatformFeatureRoutes(app: Express): void {
   app.post("/api/evolution/subject-lines/:campaignId", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const campaignId = Number(req.params.campaignId);
+      const campaignId = Number(routeParam(req.params.campaignId));
       const { evolveSubjectLines } = await import("./services/contentEvolution");
       const result = await evolveSubjectLines(org.id, campaignId);
       res.json(result);
@@ -378,8 +379,8 @@ export function registerPlatformFeatureRoutes(app: Express): void {
   app.get("/api/county-intelligence/:state/:county", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const state = req.params.state;
-      const county = req.params.county;
+      const state = routeParam(req.params.state);
+      const county = routeParam(req.params.county);
 
       // Get network data for this county
       const { getCountyIntelligenceOverview } = await import("./services/dataNetworkVisibility");
@@ -523,7 +524,7 @@ export function registerPlatformFeatureRoutes(app: Express): void {
   app.get("/api/pipeline/disposition/:dealId", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const dealId = Number(req.params.dealId);
+      const dealId = Number(routeParam(req.params.dealId));
       const { recommendDisposition } = await import("./services/pipelineIntelligence");
       const recommendations = await recommendDisposition(org.id, dealId);
       res.json({ recommendations });
@@ -564,7 +565,7 @@ export function registerPlatformFeatureRoutes(app: Express): void {
 
   app.get("/api/export/status/:exportId", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const exportId = req.params.exportId;
+      const exportId = routeParam(req.params.exportId);
       // Since we generate synchronously, status is always ready
       res.json({
         exportId,
@@ -599,14 +600,14 @@ export function registerPlatformFeatureRoutes(app: Express): void {
   app.get("/api/environmental/water-rights/:state", isAuthenticated, async (req, res) => {
     try {
       const { getWaterRightsInfo } = await import("./services/environmentalIntelligence");
-      res.json(getWaterRightsInfo(req.params.state));
+      res.json(getWaterRightsInfo(routeParam(req.params.state)));
     } catch (error) { Errors.internal(res, error); }
   });
 
   app.get("/api/environmental/mineral-rights/:state", isAuthenticated, async (req, res) => {
     try {
       const { getMineralRightsInfo } = await import("./services/environmentalIntelligence");
-      res.json(getMineralRightsInfo(req.params.state));
+      res.json(getMineralRightsInfo(routeParam(req.params.state)));
     } catch (error) { Errors.internal(res, error); }
   });
 
@@ -682,7 +683,7 @@ export function registerPlatformFeatureRoutes(app: Express): void {
   app.get("/api/legal/adverse-possession/:state", isAuthenticated, async (req, res) => {
     try {
       const { getAdversePossessionInfo } = await import("./services/legalIntelligence");
-      res.json(getAdversePossessionInfo(req.params.state));
+      res.json(getAdversePossessionInfo(routeParam(req.params.state)));
     } catch (error) { Errors.internal(res, error); }
   });
 
@@ -697,7 +698,7 @@ export function registerPlatformFeatureRoutes(app: Express): void {
   app.get("/api/legal/tax-lien-context/:state", isAuthenticated, async (req, res) => {
     try {
       const { getTaxLienContext } = await import("./services/legalIntelligence");
-      res.json(getTaxLienContext(req.params.state));
+      res.json(getTaxLienContext(routeParam(req.params.state)));
     } catch (error) { Errors.internal(res, error); }
   });
 
@@ -833,7 +834,7 @@ export function registerPlatformFeatureRoutes(app: Express): void {
   app.get("/api/leads/:id/motivation-profile", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const leadId = Number(req.params.id);
+      const leadId = Number(routeParam(req.params.id));
       const { buildMotivationProfile, selectNegotiationStrategy, recommendOfferTier } = await import("./services/sellerPsychologyStrategy");
 
       const profile = await buildMotivationProfile(org.id, leadId);

@@ -37,6 +37,7 @@ import { db } from "./db";
 import { outbox, organizations } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
@@ -159,7 +160,7 @@ router.post("/general-ledger.pdf", async (req: AuthenticatedRequest, res: Respon
 router.get("/general-ledger.pdf/job/:jobId", async (req: AuthenticatedRequest, res: Response) => {
   if (!requireFounder(req, res)) return;
   try {
-    const jobId = parseInt(req.params.jobId, 10);
+    const jobId = parseInt(routeParam(req.params.jobId), 10);
     if (Number.isNaN(jobId)) return Errors.badRequest(res, "jobId must be numeric");
     const [row] = await db.select().from(outbox).where(eq(outbox.id, jobId)).limit(1);
     if (!row) return Errors.notFound(res, "Job");
@@ -372,7 +373,7 @@ router.post("/1098-batch", async (req: AuthenticatedRequest, res: Response) => {
 router.get("/1099-batch/job/:outboxId", async (req: AuthenticatedRequest, res: Response) => {
   if (!requireOrgOwnerOrAdmin(req, res)) return;
   try {
-    const outboxId = parseInt(req.params.outboxId, 10);
+    const outboxId = parseInt(routeParam(req.params.outboxId), 10);
     if (Number.isNaN(outboxId)) return Errors.badRequest(res, "outboxId must be numeric");
     const [row] = await db.select().from(outbox).where(eq(outbox.id, outboxId)).limit(1);
     if (!row || row.eventType !== "1099_batch_generate") return Errors.notFound(res, "Job");
@@ -400,7 +401,7 @@ router.get("/1099-batch/:jobId", requireQualified1099Output(), async (req: Authe
   if (!requireOrgOwnerOrAdmin(req, res)) return;
   try {
     const org = getOrganization(req);
-    const jobId = req.params.jobId;
+    const jobId = routeParam(req.params.jobId);
     // The org id goes INTO the lookup's WHERE clause. It used to be compared
     // after the fetch here, which meant the tenancy guard lived in this
     // handler rather than in the query — a second caller could forget it. A

@@ -25,6 +25,7 @@ import * as listingSyndication from "./services/listingSyndication";
 import { inArray } from "drizzle-orm";
 import { wsServer } from "./websocket";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 export function registerTeamMessagingRoutes(app: Express): void {
   const api = app;
@@ -143,7 +144,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
       const org = req.organization;
       const user = req.user;
       const userId = user?.id || user.id;
-      const conversationId = parseInt(req.params.id, 10);
+      const conversationId = parseInt(routeParam(req.params.id), 10);
       
       if (isNaN(conversationId)) {
         return Errors.badRequest(res, "Invalid conversation ID");
@@ -216,7 +217,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
       const org = req.organization;
       const user = req.user;
       const userId = user?.id || user.id;
-      const conversationId = parseInt(req.params.id, 10);
+      const conversationId = parseInt(routeParam(req.params.id), 10);
       
       if (isNaN(conversationId)) {
         return Errors.badRequest(res, "Invalid conversation ID");
@@ -330,7 +331,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
       const org = req.organization;
       const user = req.user;
       const userId = user?.id || user.id;
-      const conversationId = parseInt(req.params.id, 10);
+      const conversationId = parseInt(routeParam(req.params.id), 10);
       
       if (isNaN(conversationId)) {
         return Errors.badRequest(res, "Invalid conversation ID");
@@ -761,7 +762,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
   api.put("/api/offer-letters/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       
       if (isNaN(id)) {
         return Errors.badRequest(res, "Invalid offer letter ID");
@@ -789,7 +790,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
   api.delete("/api/offer-letters/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       
       if (isNaN(id)) {
         return Errors.badRequest(res, "Invalid offer letter ID");
@@ -812,7 +813,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
   api.post("/api/offer-letters/:id/send", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       
       if (isNaN(id)) {
         return Errors.badRequest(res, "Invalid offer letter ID");
@@ -877,7 +878,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
   api.put("/api/offer-templates/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       
       if (isNaN(id)) {
         return Errors.badRequest(res, "Invalid template ID");
@@ -905,7 +906,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
   api.delete("/api/offer-templates/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       
       if (isNaN(id)) {
         return Errors.badRequest(res, "Invalid template ID");
@@ -945,7 +946,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
   api.get("/api/listings/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       
       if (isNaN(id)) {
         return Errors.badRequest(res, "Invalid listing ID");
@@ -1023,7 +1024,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
   api.put("/api/listings/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       
       if (isNaN(id)) {
         return Errors.badRequest(res, "Invalid listing ID");
@@ -1062,7 +1063,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
   api.delete("/api/listings/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       
       if (isNaN(id)) {
         return Errors.badRequest(res, "Invalid listing ID");
@@ -1103,7 +1104,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
     async (req, res) => {
       try {
         const org = req.organization;
-        const id = parseInt(req.params.id);
+        const id = parseInt(routeParam(req.params.id));
 
         if (isNaN(id)) {
           return Errors.badRequest(res, "Invalid listing ID");
@@ -1410,11 +1411,11 @@ export function registerTeamMessagingRoutes(app: Express): void {
   api.post("/api/listings/:id/targets/:platform/confirm-removed", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       if (isNaN(id)) return Errors.badRequest(res, "Invalid listing ID");
       const listing = await storage.getPropertyListing(org.id, id);
       if (!listing) return Errors.notFound(res, "Listing");
-      const platform = listingSyndication.canonicalPlatform(req.params.platform);
+      const platform = listingSyndication.canonicalPlatform(routeParam(req.params.platform));
       const targets = listing.syndicationTargets ?? [];
       // Prefer the entry awaiting removal: a legacy alias row may sit beside it.
       const matches = targets
@@ -1446,7 +1447,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
   api.post("/api/listings/:id/unpublish", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       
       if (isNaN(id)) {
         return Errors.badRequest(res, "Invalid listing ID");
@@ -1589,7 +1590,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
       const org = req.organization;
       const user = req.user;
       const userId = user?.id || user.id;
-      const channelId = parseInt(req.params.id, 10);
+      const channelId = parseInt(routeParam(req.params.id), 10);
 
       const [channel] = await db
         .select()

@@ -39,6 +39,7 @@ import { organizations } from "@shared/schema";
 import { users } from "@shared/models/auth";
 import { sendRegisteredEmail } from "./services/emailRegistry";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 const resolveAppealSchema = z.object({
   decision: z.enum(["upheld", "reversed"]),
@@ -179,7 +180,7 @@ export function registerFounderAppealRoutes(app: Express): void {
     isAuthenticated,
     requireFounder,
     async (req: AuthenticatedRequest, res: Response) => {
-      const id = Number.parseInt(req.params.id, 10);
+      const id = Number.parseInt(routeParam(req.params.id), 10);
       if (!Number.isFinite(id) || id <= 0) {
         return Errors.badRequest(res, "appeal id must be a positive integer");
       }

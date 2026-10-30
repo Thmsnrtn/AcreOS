@@ -29,6 +29,7 @@ import { requireScope } from "./middleware/roleScope";
 import type { AuthenticatedRequest } from "./types/request";
 import { Errors } from "./utils/errors";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 const w2ExitSchema = z.object({
   monthlyW2IncomeCents: z.number().int().min(0),
@@ -198,7 +199,7 @@ export function registerFounderComplianceRoutes(app: Express): void {
     requireFounder,
     async (req: AuthenticatedRequest, res: Response) => {
       try {
-        const orgId = parseInt(req.params.orgId, 10);
+        const orgId = parseInt(routeParam(req.params.orgId), 10);
         if (isNaN(orgId)) return Errors.badRequest(res, "Invalid org ID");
         const { aggregateMultiVerticalPnL } = await import("./services/multiVerticalPnL");
         const pnl = await aggregateMultiVerticalPnL(orgId);
@@ -216,7 +217,7 @@ export function registerFounderComplianceRoutes(app: Express): void {
     requireFounder,
     async (req: AuthenticatedRequest, res: Response) => {
       try {
-        const orgId = parseInt(req.params.orgId, 10);
+        const orgId = parseInt(routeParam(req.params.orgId), 10);
         if (isNaN(orgId)) return Errors.badRequest(res, "Invalid org ID");
         const parsed = w2ExitSchema.safeParse(req.body);
         if (!parsed.success) return Errors.validationFailed(res, parsed.error.flatten());

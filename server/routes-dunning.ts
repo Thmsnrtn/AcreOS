@@ -15,6 +15,7 @@ import { Router, type Request, type Response } from "express";
 import { dunningService } from "./services/dunning";
 import { requireFounder } from "./auth";
 import { Errors } from "./utils/errors";
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
@@ -43,7 +44,7 @@ router.get("/cases", async (req: Request, res: Response) => {
 
 router.post("/:id/retry", async (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(routeParam(req.params.id));
     if (isNaN(id)) return Errors.badRequest(res, "Invalid ID");
     const result = await dunningService.retryPayment(id);
     res.json(result);
@@ -54,7 +55,7 @@ router.post("/:id/retry", async (req: Request, res: Response) => {
 
 router.post("/:id/cancel", async (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(routeParam(req.params.id));
     if (isNaN(id)) return Errors.badRequest(res, "Invalid ID");
     const result = await dunningService.cancelCase(id);
     res.json(result);
@@ -65,7 +66,7 @@ router.post("/:id/cancel", async (req: Request, res: Response) => {
 
 router.post("/:id/resolve", async (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(routeParam(req.params.id));
     if (isNaN(id)) return Errors.badRequest(res, "Invalid ID");
     const { notes } = req.body;
     const result = await dunningService.resolveCase(id, notes);

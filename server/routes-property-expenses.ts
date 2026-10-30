@@ -53,6 +53,7 @@ import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { isCalendarDate } from "@shared/dates/calendar";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 // ----------------------------------------------------------------------------
 // Validation
@@ -160,7 +161,7 @@ export function registerPropertyExpenseRoutes(app: Express): void {
       const orgId = getOrganizationId(req);
       const userId = getUserId(req);
 
-      const propertyId = await ownedPropertyId(orgId, req.params.id);
+      const propertyId = await ownedPropertyId(orgId, routeParam(req.params.id));
       if (propertyId === null) return Errors.notFound(res, "Property");
 
       const parsed = expenseCreateSchema.safeParse(req.body);
@@ -208,7 +209,7 @@ export function registerPropertyExpenseRoutes(app: Express): void {
     try {
       const orgId = getOrganizationId(req);
 
-      const propertyId = await ownedPropertyId(orgId, req.params.id);
+      const propertyId = await ownedPropertyId(orgId, routeParam(req.params.id));
       if (propertyId === null) return Errors.notFound(res, "Property");
 
       // Optional [from, to] window on incurredOn. A malformed date is a client
@@ -246,7 +247,7 @@ export function registerPropertyExpenseRoutes(app: Express): void {
       // Read the current row first: the unit-belongs-to-this-property check and
       // the category→isOperating derivation both need the row's propertyId.
       const [existing] = await db.select().from(propertyExpenses)
-        .where(and(eq(propertyExpenses.id, req.params.id), eq(propertyExpenses.organizationId, orgId)));
+        .where(and(eq(propertyExpenses.id, routeParam(req.params.id)), eq(propertyExpenses.organizationId, orgId)));
       if (!existing) return Errors.notFound(res, "Expense");
 
       const updates: Record<string, unknown> = { updatedAt: clock.now() };
@@ -278,7 +279,7 @@ export function registerPropertyExpenseRoutes(app: Express): void {
       if (parsed.data.notes !== undefined) updates.notes = parsed.data.notes;
 
       const [updated] = await db.update(propertyExpenses).set(updates)
-        .where(and(eq(propertyExpenses.id, req.params.id), eq(propertyExpenses.organizationId, orgId)))
+        .where(and(eq(propertyExpenses.id, routeParam(req.params.id)), eq(propertyExpenses.organizationId, orgId)))
         .returning();
       if (!updated) return Errors.notFound(res, "Expense");
 
@@ -296,7 +297,7 @@ export function registerPropertyExpenseRoutes(app: Express): void {
       const userId = getUserId(req);
 
       const [deleted] = await db.delete(propertyExpenses)
-        .where(and(eq(propertyExpenses.id, req.params.id), eq(propertyExpenses.organizationId, orgId)))
+        .where(and(eq(propertyExpenses.id, routeParam(req.params.id)), eq(propertyExpenses.organizationId, orgId)))
         .returning({ id: propertyExpenses.id });
       if (!deleted) return Errors.notFound(res, "Expense");
 
@@ -324,7 +325,7 @@ export function registerPropertyExpenseRoutes(app: Express): void {
       const orgId = getOrganizationId(req);
       const userId = getUserId(req);
 
-      const propertyId = await ownedPropertyId(orgId, req.params.id);
+      const propertyId = await ownedPropertyId(orgId, routeParam(req.params.id));
       if (propertyId === null) return Errors.notFound(res, "Property");
 
       const parsed = importMaintenanceSchema.safeParse(req.body ?? {});

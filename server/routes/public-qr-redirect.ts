@@ -42,6 +42,7 @@ import {
   scanSuppressionReason,
 } from "../services/mail/qrCodes";
 import { clock } from "../utils/clock";
+import { routeParam } from "../utils/routeParams";
 
 /**
  * Generous but finite. A real postcard campaign produces a trickle of scans
@@ -74,7 +75,7 @@ function landAnonymously(res: Response): void {
 
 export function registerQrRedirectRoutes(app: Express): void {
   app.get("/r/:code", scanLimiter, async (req: Request, res: Response) => {
-    const code = String(req.params.code ?? "").toLowerCase();
+    const code = String(routeParam(req.params.code) ?? "").toLowerCase();
 
     try {
       const parsed = parseQrCode(code);

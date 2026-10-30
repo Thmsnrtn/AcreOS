@@ -1,0 +1,46 @@
+# Express 5 params-typing compat — gates log (branch claude/express-params-compat, base origin/main 58d1a9b)
+# Every verdict below was read from a file and an echoed $? (never through a pipe). Times EDT, 2026-10-30.
+
+## Baseline reproduction: main + @types/express 5.0.6 (npm i --no-save; express-serve-static-core 5.1.3)
+tsc --noEmit (check:app): 919 errors across 151 files
+  params-caused (block mentions string[]): 917 ; not params: 2 (routes-admin-compliance.ts 48,53 TS2322 unknown->void)
+  req.query (ParsedQs) errors: 0
+  bullmq JobType 'paused': not reproduced (bullmq 5.79.2 JobType includes 'paused'; 6.4.0 does not)
+
+## Branch, with main's pinned @types/express 4.17.21 (package.json/package-lock.json unchanged)
+targeted vitest (5 files): exit 0 — Tests 43 passed (43)
+npm run check: exit 0
+  [check-tests-typecheck] PASS — 151 test type errors (baseline 151), 9084 files loaded (floor 6000)
+  [lint-reachability] unreached-exports: PASS — 414 (baseline 414)
+  [lint-reachability] unreached-exports (shared): PASS — 52 (baseline 52)
+  [lint-reachability] internal-only-exports: PASS — 1226 (baseline 1226)
+  [lint-reachability] internal-only-exports (shared): PASS — 420 (baseline 420)
+npm run build: exit 0
+npm test: exit 0
+   Test Files  1534 passed | 34 skipped (1568)
+        Tests  19215 passed | 159 skipped (19374)
+
+## Branch, with @types/express 5.0.6 swapped in (npm i --no-save)
+tsc --noEmit (check:app): exit 0, 0 errors
+check:tests: exit 0 — [check-tests-typecheck] PASS — 151 test type errors (baseline 151), 9084 files loaded (floor 6000)
+routeParamRefusesArrays.test.ts: exit 0 — Tests 5 passed (5)
+
+## Falsification (mutate the governed thing, watch the gate go red; both restored)
+# Run on the first version of the test, before the reviewer-driven edits (unexported error class, extra canaries).
+helper returns value[0] for arrays -> 2 tests red (refusal + HTTP)
+one site unwrapped (routes-bid-estimates.ts) -> population gate red: "server/routes-bid-estimates.ts: req.params.id;"
+
+## Cast / suppression proof (git diff -U0 vs origin/main; added == removed means only pre-existing casts on rewritten lines)
+  as string: removed=2 added=2
+  as any: removed=5 added=5
+  as unknown: removed=0 added=0
+  as never: removed=0 added=0
+  @ts-ignore: removed=0 added=0
+  @ts-expect-error: removed=0 added=0
+  @ts-nocheck: removed=0 added=0
+  eslint-disable: removed=0 added=0
+  ParamsDictionary: removed=0 added=0
+  declare module: removed=0 added=0
+
+## Edits after the measured runs
+# Comment-only (test header count), docs/company/next-moves.md, and this log. No code changed after the gates above.

@@ -25,6 +25,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 const drawSchema = z.object({
   label: z.string().min(1).max(120),
@@ -50,7 +51,7 @@ export function registerConstructionDrawRoutes(app: Express): void {
   app.get("/api/rehabs/:id/draws", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const orgId = getOrganizationId(req);
-      const rehabId = req.params.id;
+      const rehabId = routeParam(req.params.id);
 
       const [r] = await db.select({
         id: rehabs.id,
@@ -94,7 +95,7 @@ export function registerConstructionDrawRoutes(app: Express): void {
     try {
       const orgId = getOrganizationId(req);
       const userId = getUserId(req);
-      const rehabId = req.params.id;
+      const rehabId = routeParam(req.params.id);
       const parsed = drawSchema.safeParse(req.body);
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
@@ -131,7 +132,7 @@ export function registerConstructionDrawRoutes(app: Express): void {
   app.post("/api/rehabs/:id/draws/seed", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const orgId = getOrganizationId(req);
-      const rehabId = req.params.id;
+      const rehabId = routeParam(req.params.id);
       const parsed = seedSchema.safeParse(req.body);
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
@@ -179,7 +180,7 @@ export function registerConstructionDrawRoutes(app: Express): void {
         }
       }
       const [updated] = await db.update(constructionDraws).set(updates)
-        .where(and(eq(constructionDraws.id, req.params.id), eq(constructionDraws.organizationId, orgId)))
+        .where(and(eq(constructionDraws.id, routeParam(req.params.id)), eq(constructionDraws.organizationId, orgId)))
         .returning();
       if (!updated) return Errors.notFound(res, "Draw");
       return res.json({ draw: updated });
@@ -192,7 +193,7 @@ export function registerConstructionDrawRoutes(app: Express): void {
     try {
       const orgId = getOrganizationId(req);
       const [deleted] = await db.delete(constructionDraws)
-        .where(and(eq(constructionDraws.id, req.params.id), eq(constructionDraws.organizationId, orgId)))
+        .where(and(eq(constructionDraws.id, routeParam(req.params.id)), eq(constructionDraws.organizationId, orgId)))
         .returning({ id: constructionDraws.id });
       if (!deleted) return Errors.notFound(res, "Draw");
       return res.json({ deleted: true, id: deleted.id });

@@ -11,6 +11,7 @@ import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
 import { isAuthenticated, requireFounder } from "./auth";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 // ─── Lazy imports to avoid circular dependencies ───────────────────────────
 
@@ -106,7 +107,7 @@ export function registerSCPv2Routes(app: Express) {
    */
   app.get("/api/scp/v2/evolution/agent/:agent", async (req: Request, res: Response) => {
     try {
-      const { agent } = req.params;
+      const agent = routeParam(req.params.agent);
       const cv = await getConfigVersioning();
 
       const version = cv.getAgentVersion(agent);
@@ -131,7 +132,7 @@ export function registerSCPv2Routes(app: Express) {
         configs,
       });
     } catch (err: any) {
-      logger.error("Agent evolution detail error", { error: err, agent: req.params.agent });
+      logger.error("Agent evolution detail error", { error: err, agent: routeParam(req.params.agent) });
       Errors.internal(res, err);
     }
   });
@@ -142,7 +143,9 @@ export function registerSCPv2Routes(app: Express) {
    */
   app.get("/api/scp/v2/evolution/agent/:agent/diff/:fromVersion/:toVersion", async (req: Request, res: Response) => {
     try {
-      const { agent, fromVersion, toVersion } = req.params;
+      const agent = routeParam(req.params.agent);
+      const fromVersion = routeParam(req.params.fromVersion);
+      const toVersion = routeParam(req.params.toVersion);
       const cv = await getConfigVersioning();
 
       const log = cv.readEvolutionLog(agent);
@@ -189,8 +192,8 @@ export function registerSCPv2Routes(app: Express) {
   app.get("/api/scp/v2/golden-suite/:agent", async (req: Request, res: Response) => {
     try {
       const { getGoldenCases } = await getGoldenSuiteService();
-      const cases = await getGoldenCases(req.params.agent);
-      res.json({ agent: req.params.agent, cases, total: cases.length });
+      const cases = await getGoldenCases(routeParam(req.params.agent));
+      res.json({ agent: routeParam(req.params.agent), cases, total: cases.length });
     } catch (err: any) {
       Errors.internal(res, err);
     }

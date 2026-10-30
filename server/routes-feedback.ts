@@ -22,6 +22,7 @@ import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { getClientIp, clientIpOrNull } from "./utils/clientIp";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 // The FULL set the schema declares (shared/schema.ts feedbackSubmissions
 // comment). Until 2026-08-27 this enum held only the last three — but the
@@ -194,7 +195,7 @@ export function registerFeedbackRoutes(app: Express): void {
     requireFounder,
     async (req: AuthenticatedRequest, res: Response) => {
       try {
-        const id = parseInt(req.params.id, 10);
+        const id = parseInt(routeParam(req.params.id), 10);
         if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid id");
 
         const parsed = updateSchema.safeParse(req.body);

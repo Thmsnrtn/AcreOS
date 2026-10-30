@@ -12,6 +12,7 @@ import { db } from "./db";
 import { leads } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { Errors } from "./utils/errors";
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
@@ -20,7 +21,7 @@ const router = Router();
 router.post("/:id/enrich", async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const leadId = parseInt(req.params.id);
+    const leadId = parseInt(routeParam(req.params.id));
     if (isNaN(leadId)) return Errors.badRequest(res, "Invalid lead ID");
 
     const result = await enrichLead(org.id, leadId);
@@ -59,7 +60,7 @@ router.post("/bulk-enrich", async (req: Request, res: Response) => {
 router.get("/:id/completeness", async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const leadId = parseInt(req.params.id);
+    const leadId = parseInt(routeParam(req.params.id));
     if (isNaN(leadId)) return Errors.badRequest(res, "Invalid lead ID");
 
     const [lead] = await db

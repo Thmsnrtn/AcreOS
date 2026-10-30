@@ -32,6 +32,7 @@ import { logger } from "./utils/logger";
 import { auditFromRequest, AuditActions } from "./utils/auditLog";
 import { getClerkAuth, type AuthenticatedRequest } from "./types/request";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 // ─── Validation schemas ─────────────────────────────────────────────────────
 const dsarIntakeSchema = z.object({
@@ -192,7 +193,7 @@ export function registerDsarRoutes(app: Express): void {
       const [row] = await db
         .select()
         .from(dsarRequests)
-        .where(eq(dsarRequests.id, req.params.id))
+        .where(eq(dsarRequests.id, routeParam(req.params.id)))
         .limit(1);
       if (!row) return Errors.notFound(res, "DSAR request");
       return res.json({ request: row });
@@ -212,7 +213,7 @@ export function registerDsarRoutes(app: Express): void {
       const [row] = await db
         .select()
         .from(dsarRequests)
-        .where(eq(dsarRequests.id, req.params.id))
+        .where(eq(dsarRequests.id, routeParam(req.params.id)))
         .limit(1);
       if (!row) return Errors.notFound(res, "DSAR request");
 
@@ -248,7 +249,7 @@ export function registerDsarRoutes(app: Express): void {
       const [row] = await db
         .select()
         .from(dsarRequests)
-        .where(eq(dsarRequests.id, req.params.id))
+        .where(eq(dsarRequests.id, routeParam(req.params.id)))
         .limit(1);
       if (!row) return Errors.notFound(res, "DSAR request");
       if (row.requestType !== "access" && row.requestType !== "portability") {
@@ -294,7 +295,7 @@ export function registerDsarRoutes(app: Express): void {
       const [row] = await db
         .select()
         .from(dsarRequests)
-        .where(eq(dsarRequests.id, req.params.id))
+        .where(eq(dsarRequests.id, routeParam(req.params.id)))
         .limit(1);
       if (!row) return Errors.notFound(res, "DSAR request");
       if (row.requestType !== "erasure") {
@@ -341,7 +342,7 @@ export function registerDsarRoutes(app: Express): void {
       const [row] = await db
         .select()
         .from(dsarRequests)
-        .where(eq(dsarRequests.id, req.params.id))
+        .where(eq(dsarRequests.id, routeParam(req.params.id)))
         .limit(1);
       if (!row) return Errors.notFound(res, "DSAR request");
 

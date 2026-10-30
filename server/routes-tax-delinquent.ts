@@ -14,6 +14,7 @@
 import { Router, type Request, type Response } from "express";
 import { Errors, sendError } from "./utils/errors";
 import { taxDelinquentPipeline } from "./services/taxDelinquentPipeline";
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
@@ -59,7 +60,7 @@ router.post("/import", async (req: Request, res: Response) => {
 router.get("/:id", async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const id = parseInt(req.params.id);
+    const id = parseInt(routeParam(req.params.id));
     if (isNaN(id)) return sendError(res, 400, "BAD_REQUEST", "Invalid ID");
 
     const lead = await taxDelinquentPipeline.getLead(org.id, id);

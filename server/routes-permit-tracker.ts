@@ -41,6 +41,7 @@ import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { emitPermitGateApproved } from "./services/subdivisionEvents";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 // ----------------------------------------------------------------------------
 // Templates — permit gate sequences per (state, county) Brigid actually works.
@@ -213,7 +214,7 @@ export function registerPermitTrackerRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const orgId = getOrganizationId(req);
-        const parentId = parseInt(req.params.id, 10);
+        const parentId = parseInt(routeParam(req.params.id), 10);
         if (!Number.isFinite(parentId)) return Errors.badRequest(res, "Invalid parcel id");
 
         const checklists = await db
@@ -267,7 +268,7 @@ export function registerPermitTrackerRoutes(app: Express): void {
       try {
         const orgId = getOrganizationId(req);
         const userId = getUserId(req);
-        const parentId = parseInt(req.params.id, 10);
+        const parentId = parseInt(routeParam(req.params.id), 10);
         if (!Number.isFinite(parentId)) return Errors.badRequest(res, "Invalid parcel id");
 
         const parsed = createChecklistSchema.safeParse(req.body);
@@ -325,7 +326,7 @@ export function registerPermitTrackerRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const orgId = getOrganizationId(req);
-        const gateId = req.params.gateId;
+        const gateId = routeParam(req.params.gateId);
         if (!gateId) return Errors.badRequest(res, "Missing gate id");
 
         const parsed = updateGateSchema.safeParse(req.body);

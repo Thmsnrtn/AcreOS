@@ -41,6 +41,7 @@ import {
   OPPORTUNITY_KINDS,
   OPPORTUNITY_ORIGINS,
 } from "@shared/schema";
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
@@ -104,9 +105,9 @@ router.get(
     try {
       const organizationId = getOrganizationId(req);
       const ref = normalizeParcelRef({
-        state: req.params.state,
-        county: decodeURIComponent(req.params.county ?? ""),
-        apn: decodeURIComponent(req.params.apn ?? ""),
+        state: routeParam(req.params.state),
+        county: decodeURIComponent(routeParam(req.params.county) ?? ""),
+        apn: decodeURIComponent(routeParam(req.params.apn) ?? ""),
       });
       if (!ref.ok) {
         return Errors.badRequest(
@@ -148,7 +149,7 @@ const closeSchema = z.object({
 router.post("/:id/close", async (req: AuthenticatedRequest, res: Response) => {
   try {
     const organizationId = getOrganizationId(req);
-    const id = Number(req.params.id);
+    const id = Number(routeParam(req.params.id));
     if (!Number.isInteger(id) || id <= 0) {
       return Errors.badRequest(res, "Opportunity id must be a positive integer.");
     }

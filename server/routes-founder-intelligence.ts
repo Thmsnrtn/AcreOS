@@ -58,6 +58,7 @@ import { generateBriefingUpdates, generateHeadlineInsight } from "./services/aiB
 import { logger } from "./utils/logger";
 import { addMonths } from "./utils/dateUtils";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
@@ -1197,7 +1198,7 @@ function resolveChosenOption(
 
 router.post("/decisions-inbox/:id/approve", requireFounder, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(routeParam(req.params.id));
     const { chosenOption } = req.body ?? {};
 
     // Horizon A3 — letter-reply confirm cards resolve EXCLUSIVELY through
@@ -1285,7 +1286,7 @@ router.post("/decisions-inbox/:id/approve", requireFounder, async (req: Authenti
 
 router.post("/decisions-inbox/:id/reject", requireFounder, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(routeParam(req.params.id));
     const { reason } = req.body;
 
     // Fetch the decision item before rejecting so we can learn from it.
@@ -1375,7 +1376,7 @@ router.post("/decisions-inbox/:id/reject", requireFounder, async (req: Authentic
 
 router.post("/decisions-inbox/:id/defer", requireFounder, async (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(routeParam(req.params.id));
     const { hours } = req.body;
     await decisionsInboxService.defer(id, hours ?? 24);
     res.json({ success: true });
@@ -1387,7 +1388,7 @@ router.post("/decisions-inbox/:id/defer", requireFounder, async (req: Request, r
 
 router.post("/decisions-inbox/:id/override", requireFounder, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(routeParam(req.params.id));
     const { customAction, chosenOption } = req.body ?? {};
 
     // Fetch the decision item before overriding so we can learn from it.
@@ -1902,7 +1903,7 @@ router.get("/prompt-history/agents", requireFounder, async (_req: Request, res: 
 
 router.get("/prompt-evolutions/:id", requireFounder, async (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(routeParam(req.params.id), 10);
     if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid id");
     const { getPromptChange } = await import("./services/promptEvolutionMetaAgent");
     const row = await getPromptChange(id);
@@ -1924,7 +1925,7 @@ router.get("/prompt-evolutions/:id", requireFounder, async (req: Request, res: R
 
 router.post("/prompt-evolutions/:id/approve", requireFounder, async (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(routeParam(req.params.id), 10);
     if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid id");
     const { agentEvolutionEngine } = await import("./services/agentEvolutionEngine");
     const result = await agentEvolutionEngine.applyPromptChange(id);
@@ -1938,7 +1939,7 @@ router.post("/prompt-evolutions/:id/approve", requireFounder, async (req: Reques
 
 router.post("/prompt-evolutions/:id/reject", requireFounder, async (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(routeParam(req.params.id), 10);
     if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid id");
     const { rejectPromptChange } = await import("./services/promptEvolutionMetaAgent");
     await rejectPromptChange(id);
@@ -1987,7 +1988,7 @@ router.get("/letter/archive", requireFounder, async (_req: Request, res: Respons
 router.get("/letter/:monthKey", requireFounder, async (req: Request, res: Response) => {
   try {
     const { getLetterByMonth } = await import("./services/founderNarrative");
-    const letter = await getLetterByMonth(req.params.monthKey);
+    const letter = await getLetterByMonth(routeParam(req.params.monthKey));
     if (!letter) return Errors.notFound(res, "Letter not found for that month");
     res.json({ letter });
   } catch (err: any) {
@@ -2009,7 +2010,7 @@ router.post("/letter/generate", requireFounder, async (req: Request, res: Respon
 router.post("/letter/:monthKey/mark-delivered", requireFounder, async (req: Request, res: Response) => {
   try {
     const { markLetterDelivered } = await import("./services/founderNarrative");
-    await markLetterDelivered(req.params.monthKey);
+    await markLetterDelivered(routeParam(req.params.monthKey));
     res.json({ ok: true });
   } catch (err: any) {
     Errors.internal(res, err);
@@ -2029,13 +2030,13 @@ router.post("/letter/:monthKey/reply", requireFounder, async (req: Authenticated
       return Errors.badRequest(res, "replyText must be between 3 and 2000 characters");
     }
     const { getLetterByMonth } = await import("./services/founderNarrative");
-    const letter = await getLetterByMonth(req.params.monthKey);
+    const letter = await getLetterByMonth(routeParam(req.params.monthKey));
     if (!letter) return Errors.notFound(res, "Letter");
 
     const { handleLetterReply } = await import("./services/solene/letterReply");
     const result = await handleLetterReply({
       replyText,
-      monthKey: req.params.monthKey,
+      monthKey: routeParam(req.params.monthKey),
       pendingDecisionText: letter.pendingFounderDecision,
     });
     res.json(result);
@@ -2046,7 +2047,7 @@ router.post("/letter/:monthKey/reply", requireFounder, async (req: Authenticated
 
 router.post("/letter/reply/:itemId/confirm", requireFounder, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const itemId = parseInt(req.params.itemId);
+    const itemId = parseInt(routeParam(req.params.itemId));
     if (!Number.isInteger(itemId) || itemId <= 0) {
       return Errors.badRequest(res, "Invalid itemId");
     }
@@ -2087,7 +2088,7 @@ router.get("/strategic-proposals", requireFounder, async (_req: Request, res: Re
 router.get("/strategic-proposals/month/:monthKey", requireFounder, async (req: Request, res: Response) => {
   try {
     const { listSynthesizedForMonth } = await import("./services/strategicProposals");
-    const proposals = await listSynthesizedForMonth(req.params.monthKey);
+    const proposals = await listSynthesizedForMonth(routeParam(req.params.monthKey));
     res.json({ proposals });
   } catch (err: any) {
     Errors.internal(res, err);
@@ -2099,7 +2100,7 @@ async function handleStrategicProposalAction(
   res: Response,
   action: "approved" | "rejected",
 ) {
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt(routeParam(req.params.id), 10);
   if (!Number.isFinite(id)) {
     return Errors.badRequest(res, "Invalid id");
   }
@@ -2181,7 +2182,7 @@ router.get("/calibration/:agentCodename", requireFounder, async (req: Request, r
     const { computeCalibration } = await import("./services/calibration");
     const windowDays = parseInt((req.query.windowDays as string) ?? "60", 10);
     const report = await computeCalibration(
-      req.params.agentCodename,
+      routeParam(req.params.agentCodename),
       Number.isFinite(windowDays) ? windowDays : 60,
     );
     res.json(report);
@@ -2207,7 +2208,7 @@ router.post("/settings/:key", requireFounder, async (req: any, res: Response) =>
     const { setSetting } = await import("./services/founderSettings");
     const value = String(req.body?.value ?? "");
     const userId = req.permissionContext?.userId ?? "founder";
-    await setSetting(req.params.key, value, userId);
+    await setSetting(routeParam(req.params.key), value, userId);
     res.json({ ok: true });
   } catch (err: any) {
     Errors.badRequest(res, err.message);
@@ -2229,7 +2230,7 @@ router.get("/tool-proposals", requireFounder, async (req: Request, res: Response
 
 router.post("/tool-proposals/:id/resolve", requireFounder, async (req: any, res: Response) => {
   try {
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(routeParam(req.params.id), 10);
     if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid id");
     const { resolveToolProposal } = await import("./services/toolProposals");
     const status = req.body?.status as "approved" | "rejected" | "building" | "shipped";
@@ -2257,7 +2258,7 @@ router.get("/action-previews", requireFounder, async (_req: Request, res: Respon
 
 router.post("/action-previews/:id/cancel", requireFounder, async (req: any, res: Response) => {
   try {
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(routeParam(req.params.id), 10);
     if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid id");
     const { cancelPreview } = await import("./services/actionPreview");
     const userId = req.permissionContext?.userId ?? "founder";
@@ -2287,7 +2288,7 @@ router.get("/onboarding/journeys", requireFounder, async (_req: Request, res: Re
 
 router.get("/onboarding/journeys/:orgId", requireFounder, async (req: Request, res: Response) => {
   try {
-    const orgId = parseInt(req.params.orgId, 10);
+    const orgId = parseInt(routeParam(req.params.orgId), 10);
     if (!Number.isFinite(orgId)) return Errors.badRequest(res, "Invalid orgId");
     const { getJourneyDetail } = await import("./services/onboardingAutonomy");
     const detail = await getJourneyDetail(orgId);
@@ -2333,7 +2334,7 @@ router.post("/expansion/run-now", requireFounder, async (_req: Request, res: Res
 
 router.post("/expansion/:id/resolve", requireFounder, async (req: any, res: Response) => {
   try {
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(routeParam(req.params.id), 10);
     if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid id");
     const status = req.body?.status as any;
     if (!["approved", "rejected", "offered", "converted", "declined"].includes(status))
@@ -2419,7 +2420,7 @@ router.get("/traces", requireFounder, async (req: Request, res: Response) => {
 // GET /traces/:id — full trace including prompt + response text
 router.get("/traces/:id", requireFounder, async (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(routeParam(req.params.id), 10);
     if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid id");
     const { getTraceById } = await import("./services/agentLlmTraces");
     const trace = await getTraceById(id);
@@ -2479,7 +2480,7 @@ router.get("/experiments", requireFounder, async (_req: Request, res: Response) 
 
 router.get("/experiments/:id", requireFounder, async (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(routeParam(req.params.id), 10);
     if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid id");
     const { analyzeExperiment } = await import("./services/decisionExperiments");
     const analysis = await analyzeExperiment(id);
@@ -2502,7 +2503,7 @@ router.post("/experiments", requireFounder, async (req: Request, res: Response) 
 
 router.post("/experiments/:id/start", requireFounder, async (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(routeParam(req.params.id), 10);
     if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid id");
     const { startExperiment } = await import("./services/decisionExperiments");
     await startExperiment(id);
@@ -2514,7 +2515,7 @@ router.post("/experiments/:id/start", requireFounder, async (req: Request, res: 
 
 router.post("/experiments/:id/pause", requireFounder, async (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(routeParam(req.params.id), 10);
     const { pauseExperiment } = await import("./services/decisionExperiments");
     await pauseExperiment(id);
     res.json({ ok: true });
@@ -2525,7 +2526,7 @@ router.post("/experiments/:id/pause", requireFounder, async (req: Request, res: 
 
 router.post("/experiments/:id/complete", requireFounder, async (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(routeParam(req.params.id), 10);
     const { completeExperiment } = await import("./services/decisionExperiments");
     if (!req.body?.winningVariant) return Errors.badRequest(res, "winningVariant required");
     await completeExperiment(id, req.body.winningVariant, req.body.notes);
@@ -2537,7 +2538,7 @@ router.post("/experiments/:id/complete", requireFounder, async (req: Request, re
 
 router.post("/experiments/:id/abort", requireFounder, async (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(routeParam(req.params.id), 10);
     const { abortExperiment } = await import("./services/decisionExperiments");
     await abortExperiment(id, req.body?.notes);
     res.json({ ok: true });
@@ -2678,7 +2679,7 @@ router.get("/search", requireFounder, async (req: Request, res: Response) => {
 // "expand row" interaction on the founder decisions page.
 router.get("/decision-log/:id", requireFounder, async (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(routeParam(req.params.id), 10);
     if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid id");
     const [row] = await db
       .select()
@@ -2701,7 +2702,7 @@ router.get("/decision-log/:id", requireFounder, async (req: Request, res: Respon
 // the same thing, not that it rolls back the side effect.
 router.post("/decision-log/:id/reverse", requireFounder, async (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(routeParam(req.params.id), 10);
     if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid id");
     const { reason } = req.body as { reason?: string };
     const [row] = await db
@@ -2852,7 +2853,7 @@ router.get("/job-health", requireFounder, async (req: Request, res: Response) =>
 
 router.post("/job-health/:jobName/restart", requireFounder, async (req: Request, res: Response) => {
   // Async stub — actual restart logic would depend on job infrastructure
-  const { jobName } = req.params;
+  const jobName = routeParam(req.params.jobName);
   res.status(202).json({ accepted: true, jobName, message: "Restart signal queued (manual restart via PM2 or Fly.io restart command required)" });
 });
 
@@ -3201,7 +3202,7 @@ router.get("/company-agents", requireFounder, async (req: Request, res: Response
 
 router.patch("/company-agents/:codename/status", requireFounder, async (req: Request, res: Response) => {
   try {
-    const { codename } = req.params;
+    const codename = routeParam(req.params.codename);
     const { status } = req.body;
 
     if (!["active", "paused", "disabled"].includes(status)) {
@@ -3466,7 +3467,7 @@ router.get("/agent-goals", requireFounder, async (req: Request, res: Response) =
 
 router.patch("/agent-goals/:id", requireFounder, async (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(routeParam(req.params.id));
     const { action, priority, reason } = req.body;
 
     if (action === "cancel") {
@@ -3490,7 +3491,7 @@ router.patch("/agent-goals/:id", requireFounder, async (req: Request, res: Respo
 
 router.get("/agent-actions/:codename", requireFounder, async (req: Request, res: Response) => {
   try {
-    const { codename } = req.params;
+    const codename = routeParam(req.params.codename);
     const limit = parseInt(req.query.limit as string) || 50;
     const actions = await db.select()
       .from(agentActionLog)
@@ -3509,7 +3510,7 @@ router.get("/agent-actions/:codename", requireFounder, async (req: Request, res:
 
 router.get("/agent-trust-history/:codename", requireFounder, async (req: Request, res: Response) => {
   try {
-    const { codename } = req.params;
+    const codename = routeParam(req.params.codename);
     const history = await db.select()
       .from(trustEvolutionLog)
       .where(eq(trustEvolutionLog.agentCodename, codename))
@@ -3527,7 +3528,7 @@ router.get("/agent-trust-history/:codename", requireFounder, async (req: Request
 
 router.get("/company-agents/:codename/detail", requireFounder, async (req: Request, res: Response) => {
   try {
-    const { codename } = req.params;
+    const codename = routeParam(req.params.codename);
     const agent = await companyAgentService.getByCodename(codename);
     if (!agent) return Errors.notFound(res, "Agent");
 
@@ -3741,7 +3742,7 @@ router.get("/activity-timeline", requireFounder, async (req: Request, res: Respo
 
 router.post("/undo/:actionLogId", requireFounder, async (req: Request, res: Response) => {
   try {
-    const actionLogId = parseInt(req.params.actionLogId);
+    const actionLogId = parseInt(routeParam(req.params.actionLogId));
     if (isNaN(actionLogId)) {
       return Errors.badRequest(res, "Invalid actionLogId");
     }
@@ -3801,7 +3802,7 @@ router.post("/priorities", requireFounder, async (req: Request, res: Response) =
 
 router.delete("/priorities/:id", requireFounder, async (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(routeParam(req.params.id));
     if (isNaN(id)) {
       return Errors.badRequest(res, "Invalid priority id");
     }
@@ -3974,7 +3975,7 @@ router.get("/customer-health", requireFounder, async (req: Request, res: Respons
 // GET /api/founder/intelligence/customer-health/:orgId — Single customer health
 router.get("/customer-health/:orgId", requireFounder, async (req: Request, res: Response) => {
   try {
-    const orgId = parseInt(req.params.orgId);
+    const orgId = parseInt(routeParam(req.params.orgId));
     if (isNaN(orgId)) return Errors.badRequest(res, "Invalid org ID");
 
     const { getCustomerHealth } = await import("./services/customerHealthScoring");
@@ -4028,7 +4029,7 @@ router.post("/delegations", requireFounder, async (req: Request, res: Response) 
 router.delete("/delegations/:id", requireFounder, async (req: Request, res: Response) => {
   try {
     const { revokeDelegation } = await import("./services/temporaryDelegation");
-    const delegationId = Number.parseInt(req.params.id, 10);
+    const delegationId = Number.parseInt(routeParam(req.params.id), 10);
     if (!Number.isFinite(delegationId)) {
       return Errors.badRequest(res, "delegation id must be numeric");
     }
@@ -4053,7 +4054,7 @@ router.get("/reminders", requireFounder, async (req: Request, res: Response) => 
 router.delete("/reminders/:id", requireFounder, async (req: Request, res: Response) => {
   try {
     const { dismissReminder } = await import("./services/ceoReminders");
-    const success = await dismissReminder(req.params.id);
+    const success = await dismissReminder(routeParam(req.params.id));
     res.json({ success });
   } catch (err: any) {
     Errors.internal(res, err);
@@ -4073,7 +4074,7 @@ router.get(
   requireFounder,
   async (req: Request, res: Response) => {
     try {
-      const id = Number(req.params.id);
+      const id = Number(routeParam(req.params.id));
       if (!Number.isFinite(id) || id <= 0) {
         return Errors.badRequest(res, "Invalid action log id");
       }
@@ -4099,7 +4100,7 @@ router.get(
   requireFounder,
   async (req: Request, res: Response) => {
     try {
-      const decisionId = Number(req.params.decisionId);
+      const decisionId = Number(routeParam(req.params.decisionId));
       if (!Number.isFinite(decisionId) || decisionId <= 0) {
         return Errors.badRequest(res, "Invalid decision id");
       }

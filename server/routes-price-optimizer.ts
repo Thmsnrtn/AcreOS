@@ -15,6 +15,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { priceOptimizerService } from "./services/priceOptimizer";
 import { Errors } from "./utils/errors";
 import { getOrganizationId } from "./types/request";
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
@@ -23,7 +24,7 @@ const router = Router();
 router.post("/:propertyId/acquisition", async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const propertyId = parseInt(req.params.propertyId);
+    const propertyId = parseInt(routeParam(req.params.propertyId));
     if (isNaN(propertyId)) return Errors.badRequest(res, "Invalid propertyId");
 
     const { targetMargin } = req.body;
@@ -42,7 +43,7 @@ router.post("/:propertyId/acquisition", async (req: Request, res: Response) => {
 router.post("/:propertyId/disposition", async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const propertyId = parseInt(req.params.propertyId);
+    const propertyId = parseInt(routeParam(req.params.propertyId));
     if (isNaN(propertyId)) return Errors.badRequest(res, "Invalid propertyId");
 
     const { quickSale } = req.body;
@@ -61,7 +62,7 @@ router.post("/:propertyId/disposition", async (req: Request, res: Response) => {
 router.post("/:propertyId/counter", async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const propertyId = parseInt(req.params.propertyId);
+    const propertyId = parseInt(routeParam(req.params.propertyId));
     if (isNaN(propertyId)) return Errors.badRequest(res, "Invalid propertyId");
 
     const { currentOffer, sellerAsk } = req.body;
@@ -85,7 +86,7 @@ router.post("/:propertyId/counter", async (req: Request, res: Response) => {
 router.get("/:propertyId", async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const propertyId = parseInt(req.params.propertyId);
+    const propertyId = parseInt(routeParam(req.params.propertyId));
     if (isNaN(propertyId)) return Errors.badRequest(res, "Invalid propertyId");
 
     const recommendations = await priceOptimizerService.getPropertyRecommendations(org.id, propertyId);
@@ -98,7 +99,7 @@ router.get("/:propertyId", async (req: Request, res: Response) => {
 // Record actual price outcome for a recommendation
 router.post("/outcome/:id", async (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(routeParam(req.params.id));
     if (isNaN(id)) return Errors.badRequest(res, "Invalid recommendation id");
 
     const { actualPrice, accepted } = req.body;

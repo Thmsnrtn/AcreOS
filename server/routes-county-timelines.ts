@@ -38,6 +38,7 @@ import { getOrganizationId } from "./types/request";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { Errors } from "./utils/errors";
+import { routeParam } from "./utils/routeParams";
 
 const carrySchema = z.object({
   state: z.string().length(2),
@@ -81,8 +82,8 @@ export function registerCountyTimelineRoutes(app: Express): void {
           .select()
           .from(countySubdivisionTimelines)
           .where(and(
-            eq(countySubdivisionTimelines.state, req.params.state.toUpperCase()),
-            eq(countySubdivisionTimelines.countyName, req.params.county),
+            eq(countySubdivisionTimelines.state, routeParam(req.params.state).toUpperCase()),
+            eq(countySubdivisionTimelines.countyName, routeParam(req.params.county)),
           ));
         if (!row) return Errors.notFound(res, "County timeline");
         return res.json({ timeline: row });
@@ -99,7 +100,7 @@ export function registerCountyTimelineRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const orgId = getOrganizationId(req);
-        const parcelId = parseInt(req.params.id, 10);
+        const parcelId = parseInt(routeParam(req.params.id), 10);
         if (!Number.isFinite(parcelId)) return Errors.badRequest(res, "Invalid parcel id");
 
         const parsed = carrySchema.safeParse(req.body);

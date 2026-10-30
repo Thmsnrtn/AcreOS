@@ -22,6 +22,7 @@ import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import type { AuthenticatedRequest } from "./types/request";
 import { getUserId } from "./types/request";
+import { routeParam } from "./utils/routeParams";
 
 const QUARTER_RE = /^\d{4}-Q[1-4]$/;
 
@@ -48,7 +49,7 @@ export function registerFounderMarketReportRoutes(app: Express): void {
     isAuthenticated,
     requireFounder,
     async (req: AuthenticatedRequest, res: Response) => {
-      const quarter = String(req.params.quarter ?? "");
+      const quarter = String(routeParam(req.params.quarter) ?? "");
       if (!QUARTER_RE.test(quarter)) {
         return Errors.badRequest(res, "Quarter must look like 2026-Q2");
       }

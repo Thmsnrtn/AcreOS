@@ -40,6 +40,7 @@ import { sendOrgSMS, orgHasConnectedSmsIdentity } from "./services/smsService";
 import { salutationName } from "@shared/parcel/ownerName";
 import { CAMPAIGN_SEND_PRICE_CREDITS } from "./services/sendPricing";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 // Delivery-event statuses that record a send which did NOT happen. They are on
 // the timeline for the operator, but they are not deliveries, so they never
@@ -85,7 +86,7 @@ export function registerCampaignRoutes(app: Express): void {
 
   api.get("/api/campaigns/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
-    const campaign = await storage.getCampaign(org.id, Number(req.params.id));
+    const campaign = await storage.getCampaign(org.id, Number(routeParam(req.params.id)));
     if (!campaign) return Errors.notFound(res, "Campaign");
     res.json(campaign);
   });
@@ -139,7 +140,7 @@ export function registerCampaignRoutes(app: Express): void {
   // Get responses for a specific campaign
   api.get("/api/campaigns/:id/responses", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
-    const campaignId = Number(req.params.id);
+    const campaignId = Number(routeParam(req.params.id));
     const campaign = await storage.getCampaign(org.id, campaignId);
     if (!campaign) return Errors.notFound(res, "Campaign");
 
@@ -153,7 +154,7 @@ export function registerCampaignRoutes(app: Express): void {
   // its evidence can never disagree.
   api.get("/api/campaigns/:id/delivery-events", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
-    const campaignId = Number(req.params.id);
+    const campaignId = Number(routeParam(req.params.id));
     if (!Number.isFinite(campaignId)) return Errors.badRequest(res, "Invalid campaign ID");
     const campaign = await storage.getCampaign(org.id, campaignId);
     if (!campaign) return Errors.notFound(res, "Campaign");
@@ -190,7 +191,7 @@ export function registerCampaignRoutes(app: Express): void {
   // Get campaign analytics with response data
   api.get("/api/campaigns/:id/analytics", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
-    const campaignId = Number(req.params.id);
+    const campaignId = Number(routeParam(req.params.id));
     const campaign = await storage.getCampaign(org.id, campaignId);
     if (!campaign) return Errors.notFound(res, "Campaign");
 
@@ -341,7 +342,7 @@ export function registerCampaignRoutes(app: Express): void {
   // Get a specific response
   api.get("/api/responses/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
-    const response = await storage.getCampaignResponse(org.id, Number(req.params.id));
+    const response = await storage.getCampaignResponse(org.id, Number(routeParam(req.params.id)));
     // 2026-06-10 (T0-2 sweep): cross-tenant read IDOR — 404, never confirm
     // another org's response exists.
     if (!response || response.organizationId !== org.id) return Errors.notFound(res, "Response");
@@ -355,7 +356,7 @@ export function registerCampaignRoutes(app: Express): void {
       const validated = insertCampaignResponseSchema.partial().parse(req.body);
       // 2026-06-10 (T0-2 sweep): scope the write to this org so a foreign id
       // is a no-op that 404s.
-      const response = await storage.updateCampaignResponse(Number(req.params.id), validated, org.id);
+      const response = await storage.updateCampaignResponse(Number(routeParam(req.params.id)), validated, org.id);
       if (!response) return Errors.notFound(res, "Response");
       res.json(response);
     } catch (err) {
@@ -368,7 +369,7 @@ export function registerCampaignRoutes(app: Express): void {
   api.delete("/api/responses/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
     // 2026-06-10 (T0-2 sweep): org-scoped delete — a foreign id deletes nothing.
-    await storage.deleteCampaignResponse(Number(req.params.id), org.id);
+    await storage.deleteCampaignResponse(Number(routeParam(req.params.id)), org.id);
     res.status(204).send();
   });
 
@@ -386,7 +387,7 @@ export function registerCampaignRoutes(app: Express): void {
   // Get a specific target county
   api.get("/api/target-counties/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
-    const county = await storage.getTargetCounty(org.id, Number(req.params.id));
+    const county = await storage.getTargetCounty(org.id, Number(routeParam(req.params.id)));
     if (!county) return Errors.notFound(res, "Target county");
     res.json(county);
   });
@@ -414,7 +415,7 @@ export function registerCampaignRoutes(app: Express): void {
   api.put("/api/target-counties/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const county = await storage.getTargetCounty(org.id, Number(req.params.id));
+      const county = await storage.getTargetCounty(org.id, Number(routeParam(req.params.id)));
       if (!county) return Errors.notFound(res, "Target county");
       const validated = updateTargetCountySchema.parse(req.body);
       const updated = await storage.updateTargetCounty(county.id, validated);
@@ -428,7 +429,7 @@ export function registerCampaignRoutes(app: Express): void {
   // Delete a target county
   api.delete("/api/target-counties/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
-    const county = await storage.getTargetCounty(org.id, Number(req.params.id));
+    const county = await storage.getTargetCounty(org.id, Number(routeParam(req.params.id)));
     if (!county) return Errors.notFound(res, "Target county");
     
     await storage.deleteTargetCounty(county.id);
@@ -456,7 +457,7 @@ export function registerCampaignRoutes(app: Express): void {
   // Get a specific sequence with its steps
   api.get("/api/sequences/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
-    const sequence = await storage.getSequence(org.id, Number(req.params.id));
+    const sequence = await storage.getSequence(org.id, Number(routeParam(req.params.id)));
     if (!sequence) return Errors.notFound(res, "Sequence");
 
     const steps = await storage.getSequenceSteps(org.id, sequence.id);
@@ -485,7 +486,7 @@ export function registerCampaignRoutes(app: Express): void {
   api.put("/api/sequences/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const sequence = await storage.getSequence(org.id, Number(req.params.id));
+      const sequence = await storage.getSequence(org.id, Number(routeParam(req.params.id)));
       if (!sequence) return Errors.notFound(res, "Sequence");
       const validated = updateCampaignSequenceSchema.parse(req.body);
       const updated = await storage.updateSequence(org.id, sequence.id, validated);
@@ -499,7 +500,7 @@ export function registerCampaignRoutes(app: Express): void {
   // Delete a sequence
   api.delete("/api/sequences/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
-    const sequence = await storage.getSequence(org.id, Number(req.params.id));
+    const sequence = await storage.getSequence(org.id, Number(routeParam(req.params.id)));
     if (!sequence) return Errors.notFound(res, "Sequence");
     
     await storage.deleteSequence(org.id, sequence.id);
@@ -513,7 +514,7 @@ export function registerCampaignRoutes(app: Express): void {
   // Get steps for a sequence
   api.get("/api/sequences/:id/steps", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
-    const sequence = await storage.getSequence(org.id, Number(req.params.id));
+    const sequence = await storage.getSequence(org.id, Number(routeParam(req.params.id)));
     if (!sequence) return Errors.notFound(res, "Sequence");
 
     const steps = await storage.getSequenceSteps(org.id, sequence.id);
@@ -524,7 +525,7 @@ export function registerCampaignRoutes(app: Express): void {
   api.post("/api/sequences/:id/steps", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const sequence = await storage.getSequence(org.id, Number(req.params.id));
+      const sequence = await storage.getSequence(org.id, Number(routeParam(req.params.id)));
       if (!sequence) return Errors.notFound(res, "Sequence");
       
       const existingSteps = await storage.getSequenceSteps(org.id, sequence.id);
@@ -548,7 +549,7 @@ export function registerCampaignRoutes(app: Express): void {
   // reorder — registered BEFORE /api/sequences/:id/steps/:stepId so the literal path wins (2026-07-11 route-order sweep).
   api.put("/api/sequences/:id/steps/reorder", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
-    const sequence = await storage.getSequence(org.id, Number(req.params.id));
+    const sequence = await storage.getSequence(org.id, Number(routeParam(req.params.id)));
     if (!sequence) return Errors.notFound(res, "Sequence");
 
     const parsed = reorderStepsSchema.safeParse(req.body);
@@ -566,13 +567,13 @@ export function registerCampaignRoutes(app: Express): void {
   api.put("/api/sequences/:id/steps/:stepId", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const sequence = await storage.getSequence(org.id, Number(req.params.id));
+      const sequence = await storage.getSequence(org.id, Number(routeParam(req.params.id)));
       if (!sequence) return Errors.notFound(res, "Sequence");
       const validated = updateSequenceStepSchema.parse(req.body);
       // 2026-06-10 (T0-2 sweep): constrain to the org-checked sequence —
       // previously a foreign stepId under your own sequence id wrote
       // cross-tenant.
-      const step = await storage.updateSequenceStep(org.id, Number(req.params.stepId), validated, sequence.id);
+      const step = await storage.updateSequenceStep(org.id, Number(routeParam(req.params.stepId)), validated, sequence.id);
       if (!step) return Errors.notFound(res, "Step");
       res.json(step);
     } catch (err) {
@@ -584,11 +585,11 @@ export function registerCampaignRoutes(app: Express): void {
   // Delete a step
   api.delete("/api/sequences/:id/steps/:stepId", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
-    const sequence = await storage.getSequence(org.id, Number(req.params.id));
+    const sequence = await storage.getSequence(org.id, Number(routeParam(req.params.id)));
     if (!sequence) return Errors.notFound(res, "Sequence");
     
     // 2026-06-10 (T0-2 sweep): constrain to the org-checked sequence.
-    await storage.deleteSequenceStep(org.id, Number(req.params.stepId), sequence.id);
+    await storage.deleteSequenceStep(org.id, Number(routeParam(req.params.stepId)), sequence.id);
     res.status(204).send();
   });
 
@@ -605,7 +606,7 @@ export function registerCampaignRoutes(app: Express): void {
   // Get enrollments for a sequence
   api.get("/api/sequences/:id/enrollments", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
-    const sequence = await storage.getSequence(org.id, Number(req.params.id));
+    const sequence = await storage.getSequence(org.id, Number(routeParam(req.params.id)));
     if (!sequence) return Errors.notFound(res, "Sequence");
 
     const enrollments = await storage.getSequenceEnrollments(org.id, sequence.id);
@@ -627,7 +628,7 @@ export function registerCampaignRoutes(app: Express): void {
   api.post("/api/sequences/:id/enroll", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const sequence = await storage.getSequence(org.id, Number(req.params.id));
+      const sequence = await storage.getSequence(org.id, Number(routeParam(req.params.id)));
       if (!sequence) return Errors.notFound(res, "Sequence");
 
       const parsed = enrollLeadSchema.safeParse(req.body);
@@ -695,7 +696,7 @@ export function registerCampaignRoutes(app: Express): void {
       return Errors.validationFailed(res, parsed.error.issues);
     }
     const { reason } = parsed.data;
-    const owned = await getOwnedEnrollment(org.id, Number(req.params.id));
+    const owned = await getOwnedEnrollment(org.id, Number(routeParam(req.params.id)));
     if (!owned) return Errors.notFound(res, "Enrollment");
     const enrollment = await storage.pauseEnrollment(org.id, owned.id, reason || "Manually paused");
     res.json(enrollment);
@@ -704,7 +705,7 @@ export function registerCampaignRoutes(app: Express): void {
   // Resume an enrollment
   api.post("/api/enrollments/:id/resume", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
-    const owned = await getOwnedEnrollment(org.id, Number(req.params.id));
+    const owned = await getOwnedEnrollment(org.id, Number(routeParam(req.params.id)));
     if (!owned) return Errors.notFound(res, "Enrollment");
     const enrollment = await storage.resumeEnrollment(org.id, owned.id);
     res.json(enrollment);
@@ -713,7 +714,7 @@ export function registerCampaignRoutes(app: Express): void {
   // Cancel an enrollment
   api.post("/api/enrollments/:id/cancel", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
-    const owned = await getOwnedEnrollment(org.id, Number(req.params.id));
+    const owned = await getOwnedEnrollment(org.id, Number(routeParam(req.params.id)));
     if (!owned) return Errors.notFound(res, "Enrollment");
     const enrollment = await storage.cancelEnrollment(org.id, owned.id);
     res.json(enrollment);
@@ -722,7 +723,7 @@ export function registerCampaignRoutes(app: Express): void {
   // Get lead's enrollments
   api.get("/api/leads/:id/enrollments", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
-    const lead = await storage.getLead(org.id, Number(req.params.id));
+    const lead = await storage.getLead(org.id, Number(routeParam(req.params.id)));
     if (!lead) return Errors.notFound(res, "Lead");
 
     const enrollments = await storage.getLeadEnrollments(org.id, lead.id);
@@ -739,7 +740,7 @@ export function registerCampaignRoutes(app: Express): void {
       // and omitting it here let a caller edit any organization's campaign by
       // guessing its id (2026-09-04).
       const campaign = await storage.updateCampaign(
-        Number(req.params.id),
+        Number(routeParam(req.params.id)),
         validated,
         getOrganizationId(req as AuthenticatedRequest),
       );
@@ -758,7 +759,7 @@ export function registerCampaignRoutes(app: Express): void {
   api.post("/api/campaigns/:id/send-direct-mail", isAuthenticated, getOrCreateOrg, idempotencyMiddleware, async (req, res) => {
     try {
       const org = req.organization;
-      const campaignId = parseInt(req.params.id);
+      const campaignId = parseInt(routeParam(req.params.id));
       const sendMailSchema = z.object({
         pieceType: z.enum(['postcard_4x6', 'postcard_6x9', 'postcard_6x11', 'letter_1_page']),
         leadIds: z.array(z.number().int().positive()).min(1, "leadIds must be a non-empty array"),
@@ -1340,7 +1341,7 @@ export function registerCampaignRoutes(app: Express): void {
   api.post("/api/campaigns/:id/pre-send-check", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const campaignId = parseInt(req.params.id);
+      const campaignId = parseInt(routeParam(req.params.id));
       const { leadIds, pieceType } = req.body as { leadIds: number[]; pieceType?: string };
 
       if (!Array.isArray(leadIds) || leadIds.length === 0) {
@@ -1477,7 +1478,7 @@ export function registerCampaignRoutes(app: Express): void {
   api.get("/api/campaigns/:id/optimizations", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const campaignId = parseInt(req.params.id);
+      const campaignId = parseInt(routeParam(req.params.id));
       
       const campaign = await storage.getCampaign(org.id, campaignId);
       if (!campaign) {
@@ -1495,7 +1496,7 @@ export function registerCampaignRoutes(app: Express): void {
   api.get("/api/campaigns/:id/response-trend", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const campaignId = parseInt(req.params.id);
+      const campaignId = parseInt(routeParam(req.params.id));
 
       const campaign = await storage.getCampaign(org.id, campaignId);
       if (!campaign) {
@@ -1544,7 +1545,7 @@ export function registerCampaignRoutes(app: Express): void {
   api.post("/api/campaigns/:id/optimize", isAuthenticated, getOrCreateOrg, usageLimitGate("ai_requests"), aiByokThresholdGate(), async (req, res) => {
     try {
       const org = req.organization;
-      const campaignId = parseInt(req.params.id);
+      const campaignId = parseInt(routeParam(req.params.id));
 
       const campaign = await storage.getCampaign(org.id, campaignId);
       if (!campaign) {
@@ -1582,7 +1583,7 @@ export function registerCampaignRoutes(app: Express): void {
   api.put("/api/optimizations/:id/implement", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const optimizationId = parseInt(req.params.id);
+      const optimizationId = parseInt(routeParam(req.params.id));
       const { resultDelta } = req.body;
       // F-D39: refuse to mark another org's optimization as implemented.
       const { campaignOptimizations } = await import("@shared/schema");
@@ -1945,7 +1946,7 @@ export function registerCampaignRoutes(app: Express): void {
   api.post("/api/campaigns/:id/variants", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const campaignId = Number(req.params.id);
+      const campaignId = Number(routeParam(req.params.id));
 
       const campaign = await storage.getCampaign(org.id, campaignId);
       if (!campaign) return Errors.notFound(res, "Campaign");
@@ -1970,7 +1971,7 @@ export function registerCampaignRoutes(app: Express): void {
   api.get("/api/campaigns/:id/variants", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const campaignId = Number(req.params.id);
+      const campaignId = Number(routeParam(req.params.id));
 
       const campaign = await storage.getCampaign(org.id, campaignId);
       if (!campaign) return Errors.notFound(res, "Campaign");
@@ -2002,8 +2003,8 @@ export function registerCampaignRoutes(app: Express): void {
   api.post("/api/campaigns/:id/variants/:variantId/declare-winner", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const campaignId = Number(req.params.id);
-      const variantId = Number(req.params.variantId);
+      const campaignId = Number(routeParam(req.params.id));
+      const variantId = Number(routeParam(req.params.variantId));
 
       const campaign = await storage.getCampaign(org.id, campaignId);
       if (!campaign) return Errors.notFound(res, "Campaign");
@@ -2068,7 +2069,7 @@ export function registerCampaignRoutes(app: Express): void {
   api.get("/api/campaigns/:id/ab-analysis", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const campaignId = Number(req.params.id);
+      const campaignId = Number(routeParam(req.params.id));
 
       const campaign = await storage.getCampaign(org.id, campaignId);
       if (!campaign) return Errors.notFound(res, "Campaign");
@@ -2141,7 +2142,7 @@ export function registerCampaignRoutes(app: Express): void {
     try {
       const org = req.organization;
       const user = req.user;
-      const campaign = await storage.getCampaign(org.id, Number(req.params.id));
+      const campaign = await storage.getCampaign(org.id, Number(routeParam(req.params.id)));
       if (!campaign) return Errors.notFound(res, "Campaign");
 
       const userEmail = user.email || user?.email;
@@ -2188,7 +2189,7 @@ export function registerCampaignRoutes(app: Express): void {
   api.post("/api/campaigns/:id/send-email", isAuthenticated, getOrCreateOrg, idempotencyMiddleware, async (req, res) => {
     try {
       const org = req.organization;
-      const campaignId = parseInt(req.params.id);
+      const campaignId = parseInt(routeParam(req.params.id));
       // De-duplicated BEFORE anything is counted: a repeated id used to be
       // charged twice and then skipped by the in-loop dedup without a refund.
       const rawLeadIds = (req.body as { leadIds?: unknown }).leadIds;
@@ -2563,7 +2564,7 @@ export function registerCampaignRoutes(app: Express): void {
   api.post("/api/campaigns/:id/send-sms", isAuthenticated, getOrCreateOrg, idempotencyMiddleware, async (req, res) => {
     try {
       const org = req.organization;
-      const campaignId = parseInt(req.params.id);
+      const campaignId = parseInt(routeParam(req.params.id));
       const { leadIds } = req.body as { leadIds: number[] };
 
       if (!leadIds || leadIds.length === 0) {

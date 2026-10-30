@@ -16,10 +16,11 @@ import { getOrganizationId, getUserId, type AuthenticatedRequest } from "./types
 import { Errors } from "./utils/errors";
 import { fraudCheckForDeal, reportWireChange } from "./services/trust/fraudCheck";
 import { collateralWatchForOrg } from "./services/trust/collateralWatchService";
+import { routeParam } from "./utils/routeParams";
 
 export function registerTrustCheckRoutes(app: Express): void {
   app.get("/api/deals/:id/fraud-check", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
-    const dealId = Number(req.params.id);
+    const dealId = Number(routeParam(req.params.id));
     if (!Number.isInteger(dealId)) return Errors.badRequest(res, "Invalid deal id");
     try {
       const result = await fraudCheckForDeal(getOrganizationId(req), dealId);
@@ -31,7 +32,7 @@ export function registerTrustCheckRoutes(app: Express): void {
   });
 
   app.post("/api/deals/:id/fraud-check/wire-change", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
-    const dealId = Number(req.params.id);
+    const dealId = Number(routeParam(req.params.id));
     if (!Number.isInteger(dealId)) return Errors.badRequest(res, "Invalid deal id");
     const parsed = z.object({ note: z.string().trim().max(500).optional() }).strict().safeParse(req.body ?? {});
     if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);

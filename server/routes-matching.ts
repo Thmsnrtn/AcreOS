@@ -12,6 +12,7 @@
 import { Router, type Request, type Response } from "express";
 import { matchmaking } from "./services/matchmaking";
 import { Errors, sendError } from "./utils/errors";
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
@@ -39,7 +40,7 @@ router.get("/top-matches", async (req: Request, res: Response) => {
 
 router.get("/:propertyId/buyers", async (req: Request, res: Response) => {
   try {
-    const propertyId = parseInt(req.params.propertyId);
+    const propertyId = parseInt(routeParam(req.params.propertyId));
     if (isNaN(propertyId)) return Errors.badRequest(res, "Invalid property ID");
 
     const org = req.organization;
@@ -52,7 +53,7 @@ router.get("/:propertyId/buyers", async (req: Request, res: Response) => {
 
 router.post("/:id/notify", async (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(routeParam(req.params.id));
     if (isNaN(id)) return Errors.badRequest(res, "Invalid ID");
 
     const org = req.organization;

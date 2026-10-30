@@ -41,6 +41,7 @@ import { logger } from "./utils/logger";
 // create path, so it is the emit seam. Fire-and-forget — see rentalEvents.ts.
 import { emitMaintenanceRequestReceived } from "./services/rentalEvents";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 const ticketSchema = z.object({
   propertyId: z.coerce.number().int().positive(),
@@ -92,7 +93,7 @@ export function registerMaintenanceTicketRoutes(app: Express): void {
     try {
       const orgId = getOrganizationId(req);
       const [t] = await db.select().from(maintenanceTickets)
-        .where(and(eq(maintenanceTickets.id, req.params.id), eq(maintenanceTickets.organizationId, orgId)));
+        .where(and(eq(maintenanceTickets.id, routeParam(req.params.id)), eq(maintenanceTickets.organizationId, orgId)));
       if (!t) return Errors.notFound(res, "Ticket");
 
       // SEC (2026-09-04): scoped to the org. The parent ticket is
@@ -171,7 +172,7 @@ export function registerMaintenanceTicketRoutes(app: Express): void {
       if (parsed.data.status === "completed") updates.completedAt = clock.now();
 
       const [updated] = await db.update(maintenanceTickets).set(updates)
-        .where(and(eq(maintenanceTickets.id, req.params.id), eq(maintenanceTickets.organizationId, orgId)))
+        .where(and(eq(maintenanceTickets.id, routeParam(req.params.id)), eq(maintenanceTickets.organizationId, orgId)))
         .returning();
       if (!updated) return Errors.notFound(res, "Ticket");
       return res.json({ ticket: updated });
@@ -210,7 +211,7 @@ export function registerMaintenanceTicketRoutes(app: Express): void {
         dispatchedAt: clock.now(),
         updatedAt: clock.now(),
       }).where(and(
-        eq(maintenanceTickets.id, req.params.id),
+        eq(maintenanceTickets.id, routeParam(req.params.id)),
         eq(maintenanceTickets.organizationId, orgId),
       )).returning();
       if (!updated) return Errors.notFound(res, "Ticket");
@@ -237,7 +238,7 @@ export function registerMaintenanceTicketRoutes(app: Express): void {
         invoicePaidAt: parsed.data.invoicePaidAt ? new Date(parsed.data.invoicePaidAt) : null,
         updatedAt: clock.now(),
       }).where(and(
-        eq(maintenanceTickets.id, req.params.id),
+        eq(maintenanceTickets.id, routeParam(req.params.id)),
         eq(maintenanceTickets.organizationId, orgId),
       )).returning();
       if (!updated) return Errors.notFound(res, "Ticket");

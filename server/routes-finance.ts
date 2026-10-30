@@ -33,6 +33,7 @@ import {
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId, getUserId } from "./types/request";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 // Zod schema for note updates — only user-editable fields are allowed.
 // Sensitive fields (organizationId, currentBalance, interestRate, accessToken,
@@ -217,7 +218,7 @@ export function registerFinanceRoutes(app: Express): void {
 
   api.get("/api/notes/:id", isAuthenticated, getOrCreateOrg, async (req, res, next) => {
     const org = req.organization;
-    const id = Number(req.params.id);
+    const id = Number(routeParam(req.params.id));
     if (!Number.isFinite(id) || id <= 0) {
       // Not a numeric note id — fall through so LATER literal routes under
       // /api/notes/* (e.g. insurance-watch, registered by routes-notes.ts
@@ -342,7 +343,7 @@ export function registerFinanceRoutes(app: Express): void {
 
   api.put("/api/notes/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
-    const noteId = Number(req.params.id);
+    const noteId = Number(routeParam(req.params.id));
     if (isNaN(noteId)) {
       return Errors.badRequest(res, "Invalid note ID");
     }
@@ -479,7 +480,7 @@ export function registerFinanceRoutes(app: Express): void {
       try {
         const orgId = getOrganizationId(authedReq);
         const userId = getUserId(authedReq);
-        const noteId = Number(req.params.id);
+        const noteId = Number(routeParam(req.params.id));
         if (!Number.isFinite(noteId) || noteId <= 0) {
           return Errors.badRequest(res, "Invalid note ID");
         }
@@ -605,7 +606,7 @@ export function registerFinanceRoutes(app: Express): void {
 
   api.delete("/api/notes/:id", isAuthenticated, getOrCreateOrg, requirePermission("canDeleteNotes"), async (req, res) => {
     const org = req.organization;
-    const noteId = Number(req.params.id);
+    const noteId = Number(routeParam(req.params.id));
     if (isNaN(noteId)) {
       return Errors.badRequest(res, "Invalid note ID");
     }
@@ -651,7 +652,7 @@ export function registerFinanceRoutes(app: Express): void {
 
   api.get("/api/notes/:id/reminders", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
-    const noteId = Number(req.params.id);
+    const noteId = Number(routeParam(req.params.id));
     const note = await storage.getNote(org.id, noteId);
     if (!note) return Errors.notFound(res, "Note");
 
@@ -662,7 +663,7 @@ export function registerFinanceRoutes(app: Express): void {
   api.post("/api/notes/:id/send-reminder", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const noteId = Number(req.params.id);
+      const noteId = Number(routeParam(req.params.id));
       const { type = "due" } = req.body;
       
       const validTypes = ["upcoming", "due", "late", "final_warning"];
@@ -690,7 +691,7 @@ export function registerFinanceRoutes(app: Express): void {
   api.get("/api/notes/:id/schedule", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const noteId = Number(req.params.id);
+      const noteId = Number(routeParam(req.params.id));
       const note = await storage.getNote(org.id, noteId);
       if (!note) return Errors.notFound(res, "Note");
 
@@ -720,7 +721,7 @@ export function registerFinanceRoutes(app: Express): void {
   api.post("/api/notes/:id/schedule/generate", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const noteId = Number(req.params.id);
+      const noteId = Number(routeParam(req.params.id));
       const note = await storage.getNote(org.id, noteId);
       if (!note) return Errors.notFound(res, "Note");
 
@@ -782,7 +783,7 @@ export function registerFinanceRoutes(app: Express): void {
   api.get("/api/notes/:id/dunning", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const noteId = Number(req.params.id);
+      const noteId = Number(routeParam(req.params.id));
       const note = await storage.getNote(org.id, noteId);
       if (!note) return Errors.notFound(res, "Note");
 
@@ -829,7 +830,7 @@ export function registerFinanceRoutes(app: Express): void {
   api.post("/api/notes/:id/dunning", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const noteId = Number(req.params.id);
+      const noteId = Number(routeParam(req.params.id));
       const { action, stage, notes: actionNotes } = req.body;
       
       const note = await storage.getNote(org.id, noteId);
@@ -911,7 +912,7 @@ export function registerFinanceRoutes(app: Express): void {
   api.put("/api/payment-reminders/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const reminderId = Number(req.params.id);
+      const reminderId = Number(routeParam(req.params.id));
       // Task #2: IDOR prevention — verify reminder belongs to requesting org
       const [existing] = await db.select({ id: paymentReminders.id })
         .from(paymentReminders)
@@ -1570,7 +1571,7 @@ export function registerFinanceRoutes(app: Express): void {
   api.get("/api/notes/:id/schedule/pdf", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const noteId = Number(req.params.id);
+      const noteId = Number(routeParam(req.params.id));
       const note = await storage.getNote(org.id, noteId);
       if (!note) return Errors.notFound(res, "Note");
 
@@ -1661,7 +1662,7 @@ export function registerFinanceRoutes(app: Express): void {
       // posture — it does not reveal that the id exists elsewhere.
       const organizationId = getOrganizationId(req as AuthenticatedRequest);
       const snapshot = await ltvMonitorService.getLTVSnapshot(
-        parseInt(req.params.noteId),
+        parseInt(routeParam(req.params.noteId)),
         organizationId,
       );
       if (!snapshot) return Errors.notFound(res, "Note");

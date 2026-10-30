@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import { landCredit } from './services/landCredit';
 import { Errors } from './utils/errors';
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
@@ -14,7 +15,7 @@ router.post('/score/:propertyId', async (req: Request, res: Response) => {
     const org = req.organization;
     const score = await landCredit.calculateCreditScore(
       org.id.toString(),
-      req.params.propertyId
+      routeParam(req.params.propertyId)
     );
     res.json({ score });
   } catch (error) {
@@ -27,7 +28,7 @@ router.get('/property/:propertyId', async (req: Request, res: Response) => {
     const org = req.organization;
     const history = await landCredit.getScoreHistory(
       org.id.toString(),
-      req.params.propertyId
+      routeParam(req.params.propertyId)
     );
     res.json({ history });
   } catch (error) {
@@ -84,7 +85,7 @@ router.get('/drilldown/:propertyId', async (req: Request, res: Response) => {
   try {
     const org = req.organization;
     const drillDown = await landCredit.generateScoreDrillDown(
-      req.params.propertyId,
+      routeParam(req.params.propertyId),
       org.id.toString()
     );
     res.json(drillDown);
@@ -140,7 +141,7 @@ router.post('/personalize', async (req: Request, res: Response) => {
 router.get('/backtest/:propertyId', async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const result = await landCredit.backtestScore(org.id, req.params.propertyId);
+    const result = await landCredit.backtestScore(org.id, routeParam(req.params.propertyId));
     res.json(result);
   } catch (error) {
     Errors.internal(res, error);
@@ -155,11 +156,11 @@ router.get('/report/:propertyId', async (req: Request, res: Response) => {
   try {
     const org = req.organization;
     const pdf = await landCredit.generateLandCreditReport(
-      req.params.propertyId,
+      routeParam(req.params.propertyId),
       org.id.toString(),
     );
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `attachment; filename=land-credit-report-${req.params.propertyId}.pdf`);
+    res.setHeader("Content-Disposition", `attachment; filename=land-credit-report-${routeParam(req.params.propertyId)}.pdf`);
     res.send(pdf);
   } catch (error) {
     Errors.internal(res, error);

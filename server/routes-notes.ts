@@ -78,6 +78,7 @@ import {
   type PayoffQuoteInput,
 } from "./services/notePaymentMath";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 // ─── Schemas ─────────────────────────────────────────────────────────────────
 
@@ -1509,7 +1510,7 @@ export function registerNoteRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const orgId = getOrganizationId(req);
-        const id = req.params.id;
+        const id = routeParam(req.params.id);
         const [row] = await db
           .select()
           .from(acquiredNotes)
@@ -1549,7 +1550,7 @@ export function registerNoteRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const orgId = getOrganizationId(req);
-        const id = req.params.id;
+        const id = routeParam(req.params.id);
         const parsed = patchNoteSchema.safeParse(req.body);
         if (!parsed.success) {
           return Errors.validationFailed(res, parsed.error.flatten());
@@ -1620,7 +1621,7 @@ export function registerNoteRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const orgId = getOrganizationId(req);
-        const id = req.params.id;
+        const id = routeParam(req.params.id);
         // Confirm the note belongs to this org first.
         const [note] = await db
           .select({ id: acquiredNotes.id })
@@ -1671,7 +1672,7 @@ export function registerNoteRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const orgId = getOrganizationId(req);
-        const id = req.params.id;
+        const id = routeParam(req.params.id);
         const parsed = recordPaymentSchema.safeParse(req.body);
         if (!parsed.success) {
           return Errors.validationFailed(res, parsed.error.flatten());
@@ -2155,7 +2156,7 @@ export function registerNoteRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const orgId = getOrganizationId(req);
-        const id = req.params.id;
+        const id = routeParam(req.params.id);
 
         // Note row — opening principal, live current balance.
         const [note] = await db
@@ -2237,7 +2238,7 @@ export function registerNoteRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const orgId = getOrganizationId(req);
-        const id = req.params.id;
+        const id = routeParam(req.params.id);
         const method = (req.query.method === "constant_yield" ? "constant_yield" : "ratable") as
           | "ratable"
           | "constant_yield";
@@ -2296,7 +2297,7 @@ export function registerNoteRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const orgId = getOrganizationId(req);
-        const id = req.params.id;
+        const id = routeParam(req.params.id);
 
         const [note] = await db
           .select()
@@ -2351,7 +2352,7 @@ export function registerNoteRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const orgId = getOrganizationId(req);
-        const noteId = req.params.id;
+        const noteId = routeParam(req.params.id);
         const parsed = z.object({
           assigneeName: z.string().min(1).max(240),
           assigneeAddress: z.object({
@@ -2442,7 +2443,7 @@ export function registerNoteRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const orgId = getOrganizationId(req);
-        const noteId = req.params.id;
+        const noteId = routeParam(req.params.id);
         const rows = await db
           .select()
           .from(noteAssignments)
@@ -2483,7 +2484,7 @@ export function registerNoteRoutes(app: Express): void {
         const [row] = await db
           .update(noteAssignments)
           .set(update)
-          .where(and(eq(noteAssignments.id, req.params.id), eq(noteAssignments.organizationId, orgId)))
+          .where(and(eq(noteAssignments.id, routeParam(req.params.id)), eq(noteAssignments.organizationId, orgId)))
           .returning();
         if (!row) return Errors.notFound(res, "Assignment");
         return res.json({ assignment: row });
@@ -2510,7 +2511,7 @@ export function registerNoteRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const orgId = getOrganizationId(req);
-        const noteId = req.params.id;
+        const noteId = routeParam(req.params.id);
         const [row] = await db
           .select()
           .from(noteLossMitCases)
@@ -2536,7 +2537,7 @@ export function registerNoteRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const orgId = getOrganizationId(req);
-        const noteId = req.params.id;
+        const noteId = routeParam(req.params.id);
         const parsed = z.object({
           state: z.string().length(2).optional(),
           daysPastDueAtOpen: z.number().int().nonnegative().optional(),
@@ -2600,7 +2601,7 @@ export function registerNoteRoutes(app: Express): void {
         const [row] = await db
           .update(noteLossMitCases)
           .set(update)
-          .where(and(eq(noteLossMitCases.id, req.params.id), eq(noteLossMitCases.organizationId, orgId)))
+          .where(and(eq(noteLossMitCases.id, routeParam(req.params.id)), eq(noteLossMitCases.organizationId, orgId)))
           .returning();
         if (!row) return Errors.notFound(res, "Case");
         return res.json({ case: row });
@@ -2624,7 +2625,7 @@ export function registerNoteRoutes(app: Express): void {
           .from(noteLossMitActions)
           .where(and(
             eq(noteLossMitActions.organizationId, orgId),
-            eq(noteLossMitActions.caseId, req.params.id),
+            eq(noteLossMitActions.caseId, routeParam(req.params.id)),
           ))
           .orderBy(desc(noteLossMitActions.performedAt));
         return res.json({ actions: rows });
@@ -2654,7 +2655,7 @@ export function registerNoteRoutes(app: Express): void {
         const [c] = await db
           .select({ id: noteLossMitCases.id })
           .from(noteLossMitCases)
-          .where(and(eq(noteLossMitCases.id, req.params.id), eq(noteLossMitCases.organizationId, orgId)))
+          .where(and(eq(noteLossMitCases.id, routeParam(req.params.id)), eq(noteLossMitCases.organizationId, orgId)))
           .limit(1);
         if (!c) return Errors.notFound(res, "Case");
 
@@ -2664,7 +2665,7 @@ export function registerNoteRoutes(app: Express): void {
           .insert(noteLossMitActions)
           .values({
             organizationId: orgId,
-            caseId: req.params.id,
+            caseId: routeParam(req.params.id),
             actionType: parsed.data.actionType,
             performedAt: parsed.data.performedAt ? new Date(parsed.data.performedAt) : clock.now(),
             notes: parsed.data.notes ?? null,
@@ -2680,7 +2681,7 @@ export function registerNoteRoutes(app: Express): void {
           await db
             .update(noteLossMitCases)
             .set({ scraCheckedAt: clock.now(), scraActiveDuty: isActiveDuty, updatedAt: clock.now() })
-            .where(eq(noteLossMitCases.id, req.params.id));
+            .where(eq(noteLossMitCases.id, routeParam(req.params.id)));
         }
 
         return res.status(201).json({ action: row });
@@ -2746,7 +2747,7 @@ export function registerNoteRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const orgId = getOrganizationId(req);
-        const noteId = req.params.id;
+        const noteId = routeParam(req.params.id);
         const rows = await db
           .select()
           .from(noteOwnershipSplits)
@@ -2769,7 +2770,7 @@ export function registerNoteRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const orgId = getOrganizationId(req);
-        const noteId = req.params.id;
+        const noteId = routeParam(req.params.id);
         const parsed = z.object({
           investorLeadId: z.number().int().positive().optional(),
           investorName: z.string().min(1).max(240),
@@ -2819,7 +2820,7 @@ export function registerNoteRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const orgId = getOrganizationId(req);
-        const splitId = req.params.id;
+        const splitId = routeParam(req.params.id);
         const parsed = z.object({
           investorName: z.string().min(1).max(240).optional(),
           investorEmail: z.string().email().optional(),
@@ -2880,7 +2881,7 @@ export function registerNoteRoutes(app: Express): void {
         const orgId = getOrganizationId(req);
         const [row] = await db
           .delete(noteOwnershipSplits)
-          .where(and(eq(noteOwnershipSplits.id, req.params.id), eq(noteOwnershipSplits.organizationId, orgId)))
+          .where(and(eq(noteOwnershipSplits.id, routeParam(req.params.id)), eq(noteOwnershipSplits.organizationId, orgId)))
           .returning();
         if (!row) return Errors.notFound(res, "Split");
         return res.json({ deleted: true });
@@ -2914,7 +2915,7 @@ export function registerNoteRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const orgId = getOrganizationId(req);
-        const id = req.params.id;
+        const id = routeParam(req.params.id);
         const dateParam =
           (req.query.date as string | undefined) ?? clock.now().toISOString().slice(0, 10);
         let payoffDate: Date;
@@ -2968,7 +2969,7 @@ export function registerNoteRoutes(app: Express): void {
       try {
         const orgId = getOrganizationId(req);
         const userId = getUserId(req);
-        const id = req.params.id;
+        const id = routeParam(req.params.id);
         const parsed = createPayoffQuoteSchema.safeParse(req.body ?? {});
         if (!parsed.success) {
           return Errors.validationFailed(res, parsed.error.flatten());
@@ -3063,7 +3064,7 @@ export function registerNoteRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const orgId = getOrganizationId(req);
-        const id = req.params.id;
+        const id = routeParam(req.params.id);
         const rows = await db
           .select()
           .from(notePayoffQuotes)
@@ -3098,9 +3099,9 @@ export function registerNoteRoutes(app: Express): void {
           .from(notePayoffQuotes)
           .where(
             and(
-              eq(notePayoffQuotes.id, req.params.quoteId),
+              eq(notePayoffQuotes.id, routeParam(req.params.quoteId)),
               eq(notePayoffQuotes.organizationId, orgId),
-              eq(notePayoffQuotes.noteRef, req.params.id),
+              eq(notePayoffQuotes.noteRef, routeParam(req.params.id)),
             ),
           )
           .limit(1);
@@ -3122,7 +3123,7 @@ export function registerNoteRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const orgId = getOrganizationId(req);
-        const id = req.params.id;
+        const id = routeParam(req.params.id);
         const [note] = await db
           .select()
           .from(acquiredNotes)
@@ -3199,7 +3200,7 @@ export function registerNoteRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const orgId = getOrganizationId(req);
-        const noteId = Number(req.params.id);
+        const noteId = Number(routeParam(req.params.id));
         if (!Number.isInteger(noteId) || noteId <= 0) {
           return Errors.badRequest(
             res,
@@ -3287,7 +3288,7 @@ export function registerNoteRoutes(app: Express): void {
       try {
         const orgId = getOrganizationId(req);
         const userId = getUserId(req);
-        const dealId = Number(req.params.dealId);
+        const dealId = Number(routeParam(req.params.dealId));
         if (!Number.isInteger(dealId) || dealId <= 0) {
           return Errors.badRequest(res, "Invalid deal id");
         }
@@ -3404,7 +3405,7 @@ export function registerNoteRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const orgId = getOrganizationId(req);
-        const dealId = Number(req.params.dealId);
+        const dealId = Number(routeParam(req.params.dealId));
         if (!Number.isInteger(dealId) || dealId <= 0) {
           return Errors.badRequest(res, "Invalid deal id");
         }

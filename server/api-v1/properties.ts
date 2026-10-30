@@ -29,6 +29,7 @@ import {
 } from "./envelope";
 import { serializeProperty } from "./serializers";
 import { dispatchWebhookEvent } from "../services/publicWebhookDispatcher";
+import { routeParam } from "../utils/routeParams";
 
 export const propertiesV1Router = Router();
 
@@ -157,7 +158,7 @@ propertiesV1Router.get(
   requireApiKey("properties:read"),
   async (req: Request, res: Response) => {
     const orgId = req.apiKeyOrganization!.id;
-    const id = Number.parseInt(req.params.id, 10);
+    const id = Number.parseInt(routeParam(req.params.id), 10);
     if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid id");
 
     try {

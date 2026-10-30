@@ -45,6 +45,7 @@ import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { generateMonthlyRemittances } from "./services/servicerRemittance";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 const ownerTypeEnum = z.enum(NOTE_OWNER_OF_RECORD_TYPES);
 const licenseTypeEnum = z.enum(SERVICER_LICENSE_TYPES);
@@ -142,7 +143,7 @@ export function registerServicerRoutes(app: Express): void {
           .from(servicerRemittances)
           .where(
             and(
-              eq(servicerRemittances.id, req.params.id),
+              eq(servicerRemittances.id, routeParam(req.params.id)),
               eq(servicerRemittances.organizationId, orgId),
             ),
           )

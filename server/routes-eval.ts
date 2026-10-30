@@ -24,6 +24,7 @@ import { stampTraceContext } from "./utils/queueTraceContext";
 import { db } from "./db";
 import { outbox } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
@@ -60,7 +61,7 @@ router.get("/run/:outboxId", async (req: AuthenticatedRequest, res: Response) =>
     return Errors.forbidden(res, "Eval endpoints are founder-only");
   }
   try {
-    const outboxId = parseInt(req.params.outboxId, 10);
+    const outboxId = parseInt(routeParam(req.params.outboxId), 10);
     if (Number.isNaN(outboxId)) return Errors.badRequest(res, "outboxId must be numeric");
     const [row] = await db.select().from(outbox).where(eq(outbox.id, outboxId)).limit(1);
     if (!row || row.eventType !== "eval_run") return Errors.notFound(res, "Eval run");

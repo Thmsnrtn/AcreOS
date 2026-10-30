@@ -39,6 +39,7 @@ import {
   type ExternalWatchSource,
 } from "@shared/schema/external-watch";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 const DEFAULT_DAYS = 30;
 
@@ -119,7 +120,7 @@ export function registerExternalWatchRoutes(app: Express): void {
     requireFounder,
     async (req: AuthenticatedRequest, res: Response) => {
       try {
-        const id = parseInt(req.params.id, 10);
+        const id = parseInt(routeParam(req.params.id), 10);
         if (!Number.isFinite(id) || id <= 0) {
           return Errors.badRequest(res, "Invalid event id");
         }

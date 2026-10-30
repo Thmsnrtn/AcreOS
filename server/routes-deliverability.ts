@@ -48,6 +48,7 @@ import {
 } from "@shared/schema";
 import { eq, sql, gte, and } from "drizzle-orm";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 // ── Schemas ─────────────────────────────────────────────────────────────────
 
@@ -238,7 +239,7 @@ export function registerDeliverabilityRoutes(app: Express): void {
   // Mounted at the root because RFC 8058 expects a short URL that fits in
   // a header. No auth — the token IS the auth.
   app.get("/u/:token", async (req: Request, res: Response) => {
-    const token = String(req.params.token || "");
+    const token = String(routeParam(req.params.token) || "");
     const resolved = await resolveToken(token);
     if (!resolved) {
       // Friendly "already unsubscribed or invalid link" page.
@@ -273,7 +274,7 @@ export function registerDeliverabilityRoutes(app: Express): void {
   // to GET; mailbox providers POST to confirm the user clicked the
   // header button rather than a footer link.
   app.post("/u/:token", async (req: Request, res: Response) => {
-    const token = String(req.params.token || "");
+    const token = String(routeParam(req.params.token) || "");
     const resolved = await resolveToken(token);
     if (!resolved) {
       return Errors.notFound(res, "Unsubscribe token");

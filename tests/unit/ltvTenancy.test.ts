@@ -165,6 +165,6 @@ describe("the route hands the org down", () => {
     expect(
       handler,
       "the route resolves the note id with no organization argument",
-    ).not.toMatch(/getLTVSnapshot\(\s*parseInt\(req\.params\.noteId\)\s*\)/);
+    ).not.toMatch(/getLTVSnapshot\(\s*parseInt\(\s*(?:req\.params\.noteId|routeParam\(\s*req\.params\.noteId\s*\))\s*\)\s*\)/);
   });
 });

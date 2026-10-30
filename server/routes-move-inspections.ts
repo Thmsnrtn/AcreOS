@@ -35,6 +35,7 @@ import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { startDepositClock } from "./services/rental/depositClock";
 import { clock as appClock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 const checklistItemSchema = z.object({
   area: z.string(),
@@ -75,7 +76,7 @@ export function registerMoveInspectionRoutes(app: Express): void {
   app.get("/api/properties/:id/inspections", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const orgId = getOrganizationId(req);
-      const propId = parseInt(req.params.id, 10);
+      const propId = parseInt(routeParam(req.params.id), 10);
       const rows = await db.select().from(moveInspections)
         .where(and(eq(moveInspections.propertyId, propId), eq(moveInspections.organizationId, orgId)))
         .orderBy(desc(moveInspections.inspectionDate));
@@ -89,7 +90,7 @@ export function registerMoveInspectionRoutes(app: Express): void {
     try {
       const orgId = getOrganizationId(req);
       const [row] = await db.select().from(moveInspections)
-        .where(and(eq(moveInspections.id, req.params.id), eq(moveInspections.organizationId, orgId)));
+        .where(and(eq(moveInspections.id, routeParam(req.params.id)), eq(moveInspections.organizationId, orgId)));
       if (!row) return Errors.notFound(res, "Inspection");
       return res.json({ inspection: row });
     } catch (err) {
@@ -101,7 +102,7 @@ export function registerMoveInspectionRoutes(app: Express): void {
     try {
       const orgId = getOrganizationId(req);
       const userId = getUserId(req);
-      const propId = parseInt(req.params.id, 10);
+      const propId = parseInt(routeParam(req.params.id), 10);
       const parsed = inspectionSchema.safeParse(req.body);
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
@@ -140,7 +141,7 @@ export function registerMoveInspectionRoutes(app: Express): void {
         if (parsed.data[k] !== undefined) updates[k] = parsed.data[k];
       }
       const [updated] = await db.update(moveInspections).set(updates)
-        .where(and(eq(moveInspections.id, req.params.id), eq(moveInspections.organizationId, orgId)))
+        .where(and(eq(moveInspections.id, routeParam(req.params.id)), eq(moveInspections.organizationId, orgId)))
         .returning();
       if (!updated) return Errors.notFound(res, "Inspection");
       return res.json({ inspection: updated });
@@ -154,7 +155,7 @@ export function registerMoveInspectionRoutes(app: Express): void {
       const orgId = getOrganizationId(req);
       const [updated] = await db.update(moveInspections)
         .set({ tenantSignedAt: appClock.now(), updatedAt: appClock.now() })
-        .where(and(eq(moveInspections.id, req.params.id), eq(moveInspections.organizationId, orgId)))
+        .where(and(eq(moveInspections.id, routeParam(req.params.id)), eq(moveInspections.organizationId, orgId)))
         .returning();
       if (!updated) return Errors.notFound(res, "Inspection");
       return res.json({ inspection: updated });
@@ -168,7 +169,7 @@ export function registerMoveInspectionRoutes(app: Express): void {
       const orgId = getOrganizationId(req);
       const [updated] = await db.update(moveInspections)
         .set({ landlordSignedAt: appClock.now(), updatedAt: appClock.now() })
-        .where(and(eq(moveInspections.id, req.params.id), eq(moveInspections.organizationId, orgId)))
+        .where(and(eq(moveInspections.id, routeParam(req.params.id)), eq(moveInspections.organizationId, orgId)))
         .returning();
       if (!updated) return Errors.notFound(res, "Inspection");
       return res.json({ inspection: updated });
@@ -186,7 +187,7 @@ export function registerMoveInspectionRoutes(app: Express): void {
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
       const [insp] = await db.select().from(moveInspections)
-        .where(and(eq(moveInspections.id, req.params.id), eq(moveInspections.organizationId, orgId)));
+        .where(and(eq(moveInspections.id, routeParam(req.params.id)), eq(moveInspections.organizationId, orgId)));
       if (!insp) return Errors.notFound(res, "Inspection");
       if (insp.kind !== "move_out") return Errors.badRequest(res, "Only move-out inspections can reconcile deposits");
       if (!insp.leaseId) return Errors.badRequest(res, "Inspection is not linked to a lease");

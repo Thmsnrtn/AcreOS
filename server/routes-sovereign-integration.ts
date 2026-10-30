@@ -16,6 +16,7 @@ import { wsServer } from "./websocket";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 export function registerSovereignIntegrationRoutes(app: Express) {
   // ─── Phase A: Job Health ───────────────────────────────────────────────────
@@ -153,7 +154,7 @@ export function registerSovereignIntegrationRoutes(app: Express) {
       const orgId = areq.organization?.id;
       const userId = areq.user?.id;
       if (!orgId || !userId) return Errors.unauthorized(res);
-      const id = parseInt(req.params.id, 10);
+      const id = parseInt(routeParam(req.params.id), 10);
       if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid notification id");
       const { storage } = await import("./storage");
       const updated = await storage.markNotificationRead(id, orgId, String(userId));

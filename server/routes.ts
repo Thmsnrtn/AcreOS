@@ -346,6 +346,7 @@ import { eq, and, desc, sql, count, sum, gte, avg } from "drizzle-orm";
 import { withJobLock } from "./utils/jobRuntime";
 import { secretEquals } from "./utils/secretEquals";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 // P0 #6 — Job-locks janitor migrated to scheduleSelfRescheduling
 // (Phase 3 Week 7-8). The borrower-session cleanup is bundled into the same
@@ -723,9 +724,9 @@ export async function registerRoutes(
   // detail is the vendor inventory one row at a time. deep/replica delegate
   // with next() and carry their own founder gate in routes-enhancements.ts.
   app.get("/api/health/:service", isAuthenticated, getOrCreateOrg, requireFounder, async (req: AuthenticatedRequest, res: Response, next) => {
-    if (req.params.service === "deep" || req.params.service === "replica") return next();
+    if (routeParam(req.params.service) === "deep" || routeParam(req.params.service) === "replica") return next();
     const { healthCheckService } = await import("./services/healthCheck");
-    const service = await healthCheckService.checkService(req.params.service);
+    const service = await healthCheckService.checkService(routeParam(req.params.service));
     if (!service) {
       return Errors.notFound(res, "service");
     }
@@ -1108,7 +1109,7 @@ export async function registerRoutes(
   app.post("/api/leads/:id/mark-contacted", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const org = req.organization;
-      const leadId = Number(req.params.id);
+      const leadId = Number(routeParam(req.params.id));
       
       if (isNaN(leadId)) {
         return Errors.badRequest(res, "Invalid lead ID");
@@ -1198,7 +1199,7 @@ export async function registerRoutes(
   app.post("/api/leads/:id/record-contact", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const org = req.organization;
-      const leadId = Number(req.params.id);
+      const leadId = Number(routeParam(req.params.id));
       
       if (isNaN(leadId)) {
         return Errors.badRequest(res, "Invalid lead ID");
@@ -2036,7 +2037,7 @@ export async function registerRoutes(
         return Errors.badRequest(res, "enabled (boolean) is required");
       }
       const updated = await featureFlagService.setFlag(
-        req.params.key,
+        routeParam(req.params.key),
         { enabled },
         req.user?.id,
       );

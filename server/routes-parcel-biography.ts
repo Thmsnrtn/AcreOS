@@ -22,13 +22,14 @@ import type { AuthenticatedRequest } from "./types/request";
 import { getOrganization } from "./types/request";
 import { Errors } from "./utils/errors";
 import { getParcelBiography } from "./services/parcel-biography";
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
 router.get("/:propertyId", async (req: AuthenticatedRequest, res: Response) => {
   try {
     const org = getOrganization(req);
-    const propertyId = Number(req.params.propertyId);
+    const propertyId = Number(routeParam(req.params.propertyId));
     if (!Number.isInteger(propertyId) || propertyId <= 0) {
       return Errors.badRequest(res, "Invalid property id");
     }

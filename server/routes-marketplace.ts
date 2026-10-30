@@ -8,6 +8,7 @@ import { investorProfiles, organizations } from '@shared/schema';
 import { eq, desc } from 'drizzle-orm';
 import { Errors, sendError } from "./utils/errors";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
@@ -54,7 +55,7 @@ router.get('/listings/:id', asyncHandler(async (req: Request, res: Response) => 
   try {
     const org = req.organization;
     const listing = await marketplaceService.getListing(
-      parseInt(req.params.id),
+      parseInt(routeParam(req.params.id)),
       org.id
     );
     if (!listing) {
@@ -69,7 +70,7 @@ router.get('/listings/:id', asyncHandler(async (req: Request, res: Response) => 
 router.delete('/listings/:id', asyncHandler(async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const listing = await marketplaceService.deactivateListing(org.id, parseInt(req.params.id));
+    const listing = await marketplaceService.deactivateListing(org.id, parseInt(routeParam(req.params.id)));
     res.json({ listing, success: true });
   } catch (error: any) {
     Errors.badRequest(res, error.message ?? "Bad request");
@@ -111,14 +112,14 @@ router.post('/listings/:id/bids', asyncHandler(async (req: Request, res: Respons
 
     const bid = await marketplaceService.placeBid(
       org.id,
-      parseInt(req.params.id),
+      parseInt(routeParam(req.params.id)),
       { bidAmount, message, proposedTerms, bidType, partnershipSplit }
     );
 
     // Notify seller about new bid
     try {
       const { emailService } = await import('./services/emailService');
-      const listing = await marketplaceService.getListing(parseInt(req.params.id), org.id);
+      const listing = await marketplaceService.getListing(parseInt(routeParam(req.params.id)), org.id);
       if (listing) {
         const { storage: storageInst } = await import('./storage');
         const sellerOrgId = listing.listing?.sellerOrganizationId ?? (listing as any).sellerOrganizationId;
@@ -149,7 +150,7 @@ router.post('/listings/:id/bids', asyncHandler(async (req: Request, res: Respons
 router.get('/listings/:id/bids', asyncHandler(async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const listingId = parseInt(req.params.id);
+    const listingId = parseInt(routeParam(req.params.id));
     // Only the listing's seller reads every bid; any other org reads only the
     // bids it placed itself. A visible (public) listing is not a licence to
     // read competitors' bid amounts, terms and identities.
@@ -169,8 +170,8 @@ router.post('/listings/:id/accept/:bidId', asyncHandler(async (req: Request, res
     const org = req.organization;
     const result = await marketplaceService.acceptBid(
       org.id,
-      parseInt(req.params.id),
-      parseInt(req.params.bidId)
+      parseInt(routeParam(req.params.id)),
+      parseInt(routeParam(req.params.bidId))
     );
     res.json(result);
   } catch (error: any) {
@@ -183,7 +184,7 @@ router.post('/bids/:id/accept', asyncHandler(async (req: Request, res: Response)
     const org = req.organization;
     const result = await marketplaceService.respondToBid(
       org.id,
-      parseInt(req.params.id),
+      parseInt(routeParam(req.params.id)),
       'accept',
       { sellerResponse: req.body.message }
     );
@@ -198,7 +199,7 @@ router.post('/bids/:id/reject', asyncHandler(async (req: Request, res: Response)
     const org = req.organization;
     const result = await marketplaceService.respondToBid(
       org.id,
-      parseInt(req.params.id),
+      parseInt(routeParam(req.params.id)),
       'reject',
       { sellerResponse: req.body.reason }
     );
@@ -214,7 +215,7 @@ router.post('/bids/:id/counter', asyncHandler(async (req: Request, res: Response
     const { amount, message } = req.body;
     const result = await marketplaceService.respondToBid(
       org.id,
-      parseInt(req.params.id),
+      parseInt(routeParam(req.params.id)),
       'counter',
       { counterOffer: amount, sellerResponse: message }
     );
@@ -319,7 +320,7 @@ router.get('/matches', asyncHandler(async (req: Request, res: Response) => {
 router.get('/listings/:id/buyers', asyncHandler(async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const buyers = await matchmaking.findBuyersForListing(parseInt(req.params.id), org.id);
+    const buyers = await matchmaking.findBuyersForListing(parseInt(routeParam(req.params.id)), org.id);
     res.json({ buyers });
   } catch (error: any) {
     Errors.internal(res, error);
@@ -346,7 +347,7 @@ router.get('/deal-rooms/:id', asyncHandler(async (req: Request, res: Response) =
     const org = req.organization;
     const { dealRooms: drTable } = await import('@shared/schema');
     const { eq, or } = await import('drizzle-orm');
-    const results = await db.select().from(drTable).where(eq(drTable.id, parseInt(req.params.id))).limit(1);
+    const results = await db.select().from(drTable).where(eq(drTable.id, parseInt(routeParam(req.params.id)))).limit(1);
     if (results.length === 0) {
       return sendError(res, 404, "NOT_FOUND", 'Deal room not found');
     }
@@ -386,7 +387,7 @@ router.get('/investors', asyncHandler(async (req: Request, res: Response) => {
 
 router.get('/investors/:id', asyncHandler(async (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(routeParam(req.params.id));
     const results = await db
       .select({
         profile: investorProfiles,
@@ -452,7 +453,7 @@ router.patch('/investors/me', asyncHandler(async (req: Request, res: Response) =
 router.post('/listings/:id/upgrade', asyncHandler(async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const result = await marketplaceService.upgradeToPremium(org.id, parseInt(req.params.id));
+    const result = await marketplaceService.upgradeToPremium(org.id, parseInt(routeParam(req.params.id)));
     res.json({ result, success: true });
   } catch (error: any) {
     Errors.badRequest(res, error.message ?? "Bad request");

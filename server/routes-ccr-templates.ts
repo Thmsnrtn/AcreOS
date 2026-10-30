@@ -29,6 +29,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 const mergeFieldSchema = z.object({
   key: z.string().min(1).max(64),
@@ -148,7 +149,7 @@ export function registerCcrTemplateRoutes(app: Express): void {
           .select()
           .from(ccrTemplates)
           .where(and(
-            eq(ccrTemplates.id, req.params.id),
+            eq(ccrTemplates.id, routeParam(req.params.id)),
             or(isNull(ccrTemplates.organizationId), eq(ccrTemplates.organizationId, orgId)),
           ));
         if (!row) return Errors.notFound(res, "Template");
@@ -212,7 +213,7 @@ export function registerCcrTemplateRoutes(app: Express): void {
           .update(ccrTemplates)
           .set(updates)
           .where(and(
-            eq(ccrTemplates.id, req.params.id),
+            eq(ccrTemplates.id, routeParam(req.params.id)),
             eq(ccrTemplates.organizationId, orgId),
           ))
           .returning();
@@ -235,7 +236,7 @@ export function registerCcrTemplateRoutes(app: Express): void {
         const [row] = await db
           .delete(ccrTemplates)
           .where(and(
-            eq(ccrTemplates.id, req.params.id),
+            eq(ccrTemplates.id, routeParam(req.params.id)),
             eq(ccrTemplates.organizationId, orgId),
           ))
           .returning({ id: ccrTemplates.id });
@@ -262,7 +263,7 @@ export function registerCcrTemplateRoutes(app: Express): void {
           .select()
           .from(ccrTemplates)
           .where(and(
-            eq(ccrTemplates.id, req.params.id),
+            eq(ccrTemplates.id, routeParam(req.params.id)),
             or(isNull(ccrTemplates.organizationId), eq(ccrTemplates.organizationId, orgId)),
           ));
         if (!tpl) return Errors.notFound(res, "Template");

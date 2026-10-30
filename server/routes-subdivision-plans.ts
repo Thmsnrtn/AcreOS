@@ -30,6 +30,7 @@ import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { emitPlanStatusChange } from "./services/subdivisionEvents";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 const featureCollectionSchema = z.object({
   type: z.literal("FeatureCollection"),
@@ -93,7 +94,7 @@ export function registerSubdivisionPlanRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const orgId = getOrganizationId(req);
-        const parentId = parseInt(req.params.id, 10);
+        const parentId = parseInt(routeParam(req.params.id), 10);
         if (!Number.isFinite(parentId)) return Errors.badRequest(res, "Invalid parcel id");
 
         const plans = await db
@@ -135,7 +136,7 @@ export function registerSubdivisionPlanRoutes(app: Express): void {
           .select()
           .from(subdivisionPlans)
           .where(and(
-            eq(subdivisionPlans.id, req.params.planId),
+            eq(subdivisionPlans.id, routeParam(req.params.planId)),
             eq(subdivisionPlans.organizationId, orgId),
           ));
         if (!plan) return Errors.notFound(res, "Subdivision plan");
@@ -155,7 +156,7 @@ export function registerSubdivisionPlanRoutes(app: Express): void {
       try {
         const orgId = getOrganizationId(req);
         const userId = getUserId(req);
-        const parentId = parseInt(req.params.id, 10);
+        const parentId = parseInt(routeParam(req.params.id), 10);
         if (!Number.isFinite(parentId)) return Errors.badRequest(res, "Invalid parcel id");
 
         const parsed = createSchema.safeParse(req.body);
@@ -207,7 +208,7 @@ export function registerSubdivisionPlanRoutes(app: Express): void {
           .select()
           .from(subdivisionPlans)
           .where(and(
-            eq(subdivisionPlans.id, req.params.planId),
+            eq(subdivisionPlans.id, routeParam(req.params.planId)),
             eq(subdivisionPlans.organizationId, orgId),
           ));
         if (!existing) return Errors.notFound(res, "Subdivision plan");
@@ -273,7 +274,7 @@ export function registerSubdivisionPlanRoutes(app: Express): void {
         const [deleted] = await db
           .delete(subdivisionPlans)
           .where(and(
-            eq(subdivisionPlans.id, req.params.planId),
+            eq(subdivisionPlans.id, routeParam(req.params.planId)),
             eq(subdivisionPlans.organizationId, orgId),
           ))
           .returning({ id: subdivisionPlans.id });
