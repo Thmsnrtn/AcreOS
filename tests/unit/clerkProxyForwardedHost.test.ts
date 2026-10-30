@@ -16,6 +16,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import express from "express";
 import request from "supertest";
+import rateLimit from "express-rate-limit";
 
 const auth = vi.hoisted(() => ({ testAuth: false }));
 vi.mock("../../server/auth/testAuth", () => ({ e2eTestAuthEnabled: () => auth.testAuth }));
@@ -50,7 +51,9 @@ function fakeFapi() {
 
 function app(f: typeof fetch) {
   const a = express();
-  a.use("/__clerk", express.json(), createClerkProxyHandler(f));
+  // Rate-limited like any route that relays credentials (CodeQL: missing
+  // rate limiting); the limit is far above what this file sends.
+  a.use("/__clerk", rateLimit({ windowMs: 60_000, max: 1000, standardHeaders: true, legacyHeaders: false }), express.json(), createClerkProxyHandler(f));
   return a;
 }
 
