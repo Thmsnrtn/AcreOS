@@ -147,7 +147,8 @@ RUN npm install -g npm@latest && npm cache clean --force
 # undici (from package-lock.json) is unaffected.
 # RE-REVIEW: drop this step once an npm release vendors undici >= 6.29.1
 # (check: `npm pack npm@latest` and read package/node_modules/undici/package.json).
-RUN cd /tmp && npm pack undici@6.29.1 --silent && rm -rf /usr/local/lib/node_modules/npm/node_modules/undici && mkdir /usr/local/lib/node_modules/npm/node_modules/undici && tar -xzf undici-6.29.1.tgz -C /usr/local/lib/node_modules/npm/node_modules/undici --strip-components=1 && rm undici-6.29.1.tgz && npm --version
+# (--pack-destination, not `cd /tmp`: a RUN that cd's trips Trivy DS-0013.)
+RUN npm pack undici@6.29.1 --silent --pack-destination /tmp && rm -rf /usr/local/lib/node_modules/npm/node_modules/undici && mkdir /usr/local/lib/node_modules/npm/node_modules/undici && tar -xzf /tmp/undici-6.29.1.tgz -C /usr/local/lib/node_modules/npm/node_modules/undici --strip-components=1 && rm /tmp/undici-6.29.1.tgz && npm --version
 
 COPY --from=build /app /app
 
