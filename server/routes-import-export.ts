@@ -7,12 +7,13 @@ import { leads } from "@shared/schema";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import {
-  parseCSV, previewImport, importLeads, importProperties, importDeals,
+  parseCSV, CsvInputError, previewImport, importLeads, importProperties, importDeals,
   importNotesFromCSV, NOTE_COLUMN_MAP,
   exportLeadsToCSV, exportPropertiesToCSV, exportDealsToCSV, exportNotesToCSV,
   getLeadsData, getPropertiesData, getDealsData, getNotesData,
-  createBackupZip, getExpectedColumns, type ExportFilters,
+  createBackupZip, getExpectedColumns, IMPORT_EXPORT_CONTRACT, type ExportFilters,
 } from "./services/importExport";
+import { ACQUIRED_NOTES_EXPORT, exportAcquiredNotesToCSV, readAcquiredNotesForExport } from "./services/notes/acquiredNotesExport";
 import {
   createImportJob,
   createExportJob,
@@ -119,6 +120,9 @@ export function registerImportExportRoutes(app: Express): void {
         "gracePeriodDays", "status", "propertyAddress", "internalNotes",
       ],
       columnHints: NOTE_COLUMN_MAP,
+      // Acquired notes are not imported here: GET /api/export/acquired-notes writes
+      // these headers, and the note-tape import (preview + commit) reads them back.
+      acquiredNotesExportHeaders: ACQUIRED_NOTES_EXPORT.headers,
     });
   });
 
@@ -129,7 +133,8 @@ export function registerImportExportRoutes(app: Express): void {
         return Errors.badRequest(res, "Invalid entity type. Must be leads, properties, or deals.");
       }
       const columns = getExpectedColumns(entityType);
-      res.json({ columns });
+      // The headers our own export writes for this entity: they re-import as-is.
+      res.json({ columns, exportHeaders: IMPORT_EXPORT_CONTRACT.exportHeaders[entityType] });
     } catch (error: any) {
       Errors.internal(res, error);
     }
@@ -225,6 +230,7 @@ export function registerImportExportRoutes(app: Express): void {
 
       res.json(result);
     } catch (error: any) {
+      if (error instanceof CsvInputError) return Errors.badRequest(res, error.message);
       logger.error("[import/notes] Error", error);
       Errors.internal(res, error);
     }
@@ -405,7 +411,43 @@ export function registerImportExportRoutes(app: Express): void {
 
       res.json(result);
     } catch (error: any) {
+      if (error instanceof CsvInputError) return Errors.badRequest(res, error.message);
       logger.error("Import error", error);
+      Errors.internal(res, error);
+    }
+  });
+
+  // acquired-notes — registered BEFORE /api/export/:entityType so the literal path wins.
+  // The acquired book (acquired_notes: the paper an investor BOUGHT, imported
+  // through the note tape) has its own export: GET /api/export/notes reads the
+  // originated `notes` table and its CSV is a different shape, so the two books
+  // are not mixed in one file. The CSV is the note-tape's own column set — feed
+  // it back through POST /api/note-tape/preview + /commit to re-import it.
+  api.get("/api/export/acquired-notes", isAuthenticated, getOrCreateOrg, requirePermission("canExportData"), bulkExportLimiter, async (req, res) => {
+    try {
+      const org = req.organization;
+      const format = (req.query.format as string) || "csv";
+      if (!["csv", "json"].includes(format)) {
+        return Errors.badRequest(res, "Invalid format. Must be csv or json.");
+      }
+      await auditFromRequest(req, {
+        action: AuditActions.DATA_EXPORT,
+        target: { type: "export", id: org.id },
+        metadata: { entityType: "acquired-notes", format },
+      });
+      const date = clock.now().toISOString().split("T")[0];
+      if (format === "json") {
+        const data = await readAcquiredNotesForExport(org.id);
+        res.setHeader("Content-Type", "application/json");
+        res.setHeader("Content-Disposition", `attachment; filename="acquired-notes_export_${date}.json"`);
+        return res.send(JSON.stringify(data, null, 2));
+      }
+      const csv = await exportAcquiredNotesToCSV(org.id);
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", `attachment; filename="acquired-notes_export_${date}.csv"`);
+      res.send(csv);
+    } catch (error) {
+      logger.error("[export/acquired-notes] error", error instanceof Error ? error : undefined);
       Errors.internal(res, error);
     }
   });

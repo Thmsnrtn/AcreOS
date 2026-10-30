@@ -12956,6 +12956,22 @@ $mig0284$`,
      DROP TABLE IF EXISTS "county_redemption_rates";
    END;
    $$`,
+  // 0300 — G11 fidelity fix: note_field_observations.source gains 'edit' (a PATCH to an acquired note adds an observation row).
+  // Mirrors migrations/0300_note_observations_edit_source.sql.
+  `DO $mig0300$
+   BEGIN
+     IF NOT EXISTS (
+       SELECT 1 FROM pg_constraint
+       WHERE conrelid = 'note_field_observations'::regclass
+         AND contype = 'c'
+         AND pg_get_constraintdef(oid) LIKE '%''edit''%'
+     ) THEN
+       ALTER TABLE "note_field_observations" DROP CONSTRAINT IF EXISTS "note_field_observations_source_check";
+       ALTER TABLE "note_field_observations" ADD CONSTRAINT "note_field_observations_source_check"
+         CHECK ("source" IN ('note_tape', 'operator_correction', 'warehouse', 'edit'));
+     END IF;
+   END
+   $mig0300$`,
 ];
 
 // The statement set this run executes. Default: everything (the production

@@ -69,7 +69,9 @@ import {
   exportPropertiesToCSV,
   exportDealsToCSV,
   exportNotesToCSV,
+  importRowError,
 } from "./importExport";
+import { exportAcquiredNotesToCSV } from "./notes/acquiredNotesExport";
 
 import { DATA_IMPORT_JOB_MAX_ROWS } from "@shared/product-limits";
 import { clock } from "../utils/clock";
@@ -590,7 +592,7 @@ async function runImportJob(job: ImportJob): Promise<void> {
       .update(importJobs)
       .set({
         status: "failed",
-        errorMessage: err instanceof Error ? err.message : String(err),
+        errorMessage: importRowError(err),
         completedAt: clock.now(),
         payloadBytes: null,
       })
@@ -761,7 +763,7 @@ async function processCommunicationsImport(
         if (errorSamples.length < 100) {
           errorSamples.push({
             row: rowNumber,
-            error: err instanceof Error ? err.message : String(err),
+            error: importRowError(err),
           });
         }
       }
@@ -979,7 +981,8 @@ designed to be portable to other CRMs.
 - \`properties.csv\`       — properties + parcels
 - \`deals.csv\`            — acquisition / disposition deals
 - \`communications.csv\`   — email/SMS history (one row per message)
-- \`notes.csv\`            — CRM notes
+- \`notes.csv\`            — seller-financed (originated) notes
+- \`acquired-notes.csv\`   — acquired notes (paper you bought), in the note-tape column set; re-import it through the note-tape import
 - \`payments.csv\`         — note payments (servicing ledger + acquired-note ledger)
 - \`audit-log.csv\`        — audit-event timeline
 - \`files-manifest.csv\`   — every file on record, and whether its bytes are in this archive
@@ -1030,6 +1033,11 @@ async function runExportJob(job: ExportJob): Promise<void> {
       const csv = await exportNotesToCSV(orgId);
       archiveEntries.push({ name: "notes.csv", data: Buffer.from(csv, "utf8") });
       counts.notes = csv.split("\n").length - 1;
+    }
+    if (requestedTypes.has("acquired-notes")) {
+      const csv = await exportAcquiredNotesToCSV(orgId);
+      archiveEntries.push({ name: "acquired-notes.csv", data: Buffer.from(csv, "utf8") });
+      counts.acquiredNotes = csv.split("\n").length - 1;
     }
     if (requestedTypes.has("communications")) {
       const csv = await buildCommunicationsCsv(orgId);
@@ -1140,7 +1148,7 @@ async function runExportJob(job: ExportJob): Promise<void> {
       .update(exportJobs)
       .set({
         status: "failed",
-        errorMessage: err instanceof Error ? err.message : String(err),
+        errorMessage: importRowError(err),
         completedAt: clock.now(),
       })
       .where(eq(exportJobs.id, job.id));
@@ -1153,6 +1161,7 @@ async function buildCommunicationsCsv(orgId: number): Promise<string> {
       messageId: messages.id,
       conversationId: messages.conversationId,
       leadId: conversations.leadId,
+      leadEmail: leads.email,
       channel: conversations.channel,
       direction: messages.direction,
       sender: messages.sender,
@@ -1162,13 +1171,19 @@ async function buildCommunicationsCsv(orgId: number): Promise<string> {
     })
     .from(messages)
     .innerJoin(conversations, eq(messages.conversationId, conversations.id))
+    .leftJoin(leads, eq(conversations.leadId, leads.id))
     .where(eq(messages.organizationId, orgId))
     .orderBy(asc(messages.createdAt));
 
+  // `leadEmail` is the column POST /api/import/communications matches leads on
+  // (processCommunicationsImport). The export carried only the source
+  // organization's lead id, so the archive's own README sent people to a column
+  // the file did not have (G11 sweep).
   const headers = [
     "messageId",
     "conversationId",
     "leadId",
+    "leadEmail",
     "channel",
     "direction",
     "sender",
@@ -1183,6 +1198,7 @@ async function buildCommunicationsCsv(orgId: number): Promise<string> {
         r.messageId,
         r.conversationId,
         r.leadId,
+        csvEscape(r.leadEmail ?? ""),
         r.channel,
         r.direction,
         r.sender,
@@ -1220,7 +1236,7 @@ async function buildAuditLogCsv(orgId: number): Promise<string> {
 }
 
 /** Every entity the one-click full export carries by default. */
-export const FULL_EXPORT_ENTITY_TYPES = ["leads", "properties", "deals", "communications", "notes", "payments", "audit-log", "files-manifest"];
+export const FULL_EXPORT_ENTITY_TYPES = ["leads", "properties", "deals", "communications", "notes", "acquired-notes", "payments", "audit-log", "files-manifest"];
 
 /** Note payments: the servicing ledger (payments) and the acquired-note ledger (note_payments). */
 export async function buildPaymentsCsv(orgId: number): Promise<string> {

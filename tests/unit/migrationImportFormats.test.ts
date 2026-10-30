@@ -40,7 +40,7 @@ describe("verified presets", () => {
 
   it("AcreOS: the preset signature is a subset of the headers exportLeadsToCSV writes", () => {
     const src = fs.readFileSync(path.join(ROOT, "server/services/importExport.ts"), "utf8");
-    const block = /export async function exportLeadsToCSV[\s\S]*?const headers = \[([\s\S]*?)\];/.exec(src);
+    const block = /const LEAD_EXPORT_HEADERS = \[([\s\S]*?)\] as const;/.exec(src);
     expect(block, "found the exporter's header list").toBeTruthy();
     const written = [...block![1].matchAll(/"([^"]+)"/g)].map((m) => m[1].toLowerCase());
     expect(written.length).toBeGreaterThan(10);
