@@ -51,3 +51,28 @@ tests were run separately, against the Postgres above.
 ## Not run
 - The staging round-trip demonstration the package asks for: staging is not reachable from this session. The real-database tests above stand in; the staging re-run is still owed.
 - Security Scanning and the other `main`-only workflows: they run on the PR/merge, not here.
+
+## Delta: CodeQL fix (audit blocker, alert js/remote-property-injection)
+
+The audit found one blocker on head `d215041`: CodeQL alert #8135 at
+`importExport.ts` (a `fieldMap` key written to a plain object). Fixed in two
+commits: `087703f` (null-prototype map, reserved keys skipped, unused
+`acquiredNotes` import removed) and a follow-up that stops writing by a
+caller-supplied name at all (the caller's entries are filtered and merged with
+`Object.fromEntries`), because CodeQL did not treat the `RESERVED_HEADER_NAMES`
+check as a sanitizer and re-flagged the write on `087703f`. The test's
+`__proto__` literal (CodeQL "invalid prototype value") is now parsed from JSON,
+as it arrives in a request body.
+
+Nothing else in the diff changed.
+
+Gates at the new head (each read from a file; run sequentially):
+| Gate | Result |
+|---|---|
+| `npm run check` | exit 0 |
+| `npm test` | exit 0 |
+| `npm run build` | exit 0 |
+| Real-database acceptance (`g11FidelityFix.realdb`, 16 tests) + `importErrorsContainNoSql` + `exportHeadersAreImportable` | exit 0 |
+
+Falsification: with the reserved-key filter removed the new test
+(`a fieldMap cannot address a reserved key`) goes red; restored, green.
