@@ -3,6 +3,16 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-10-30 — G10 spend-guard fix — on `claude/g10-spend-guard-fix` (based on main `58d1a9b`)
+
+- **Ceiling gate fails open/closed by design.** The overrides lookup in `getEffectiveCeilings` is guarded: unreadable falls back to tier defaults with a warn naming the table. A customer call with a dead DB now returns allow from the gate itself; background (`failClosed`) is unchanged and still throws at the 70% bucket.
+- **Quota gate.** `checkQuota` under a metering outage throws a designed `AIQuotaUnavailable` (503, `AI_QUOTA_UNAVAILABLE`), no SQL in the message. 503 vs 429 is a call the founder may overrule.
+- **Concurrency bound.** Per-org cap of 5 AI tasks in flight (`server/services/aiConcurrency.ts`), one counter shared by `routeAITask` and the `aiSpendGuard` metered paths, released on every exit. The 6th gets 429 `AI_CONCURRENCY_EXCEEDED` with `Retry-After`. The value 5 is COO-proposed; the founder may overturn it.
+- **Known limits.** The counter is per instance, so the real bound is 5 × machines until a Redis-backed version exists. It applies to every org-attributed call, background and BYOK included. `getOrgQuotaCap` error → `cap = 0` (unlimited) is a known sharp edge, left alone per the package.
+- **Small addition outside the four named files:** `terminalErrorHandler` now sets `Retry-After` from `retryAfterSeconds` and keeps a named `AI_*` code on a 503.
+- **Not done:** the staging demonstration and the k6 burst re-run of the four limiters (no staging access or `k6` here). Gates log: `docs/evidence/2026-10-30/g10-spend-guard-fix-gates.md`.
+- **Next:** Muse audit; staging demonstration and burst re-run once the branch is on staging; Redis-backed cross-instance bound.
+
 ## 2026-10-29 — V-Tax-1 T4a audit fix (#424, audited NOT YET MERGEABLE at `6fcbbe21`)
 
 - **Fix:** `buildLotRecord` read no county watch, so it always reported the redemption period "not stated on this county's watch". That was a false negative on the lot record, contradicting the watch panel beside it.
