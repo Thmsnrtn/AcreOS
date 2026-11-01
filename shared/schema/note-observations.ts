@@ -14,7 +14,7 @@ import { acquiredNotes } from "./notes-vertical";
 
 const NOTE_OBSERVATION_KINDS = ["value", "searched_none"] as const;
 export type NoteObservationKind = (typeof NOTE_OBSERVATION_KINDS)[number];
-const NOTE_OBSERVATION_SOURCES = ["note_tape", "operator_correction", "warehouse"] as const;
+const NOTE_OBSERVATION_SOURCES = ["note_tape", "operator_correction", "warehouse", "edit"] as const;
 export type NoteObservationSource = (typeof NOTE_OBSERVATION_SOURCES)[number];
 
 export const noteFieldObservations = pgTable(
