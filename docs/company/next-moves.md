@@ -598,3 +598,9 @@ ratchet measure at baseline. NOT run: npm run check / tsc / full suite.
    (`/api/import/tax-delinquent` is named in a 404 hint but never mounted).
 3. The synchronous `/api/import/:entityType` path ignores a `fieldMap` the
    job path honours (no client sends one today).
+
+---
+
+### 2026-11-01 — Automated: Calibration routine fired (no data)
+
+Monthly cascade+autonomy calibration check ran. No snapshot file; no production-usage signals in last 30d. Logged to `docs/exhaustive-completion/calibration-log.md`, pushed branch `calibration-status-2026-11-01` (no PR — pure log entry per task spec). Routine self-gates; will check again 2026-12-01.
