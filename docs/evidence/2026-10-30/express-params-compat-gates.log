@@ -44,3 +44,42 @@ one site unwrapped (routes-bid-estimates.ts) -> population gate red: "server/rou
 
 ## Edits after the measured runs
 # Comment-only (test header count), docs/company/next-moves.md, and this log. No code changed after the gates above.
+
+## Follow-up commit f8b7d50 (after the runs above)
+# Hoisted routeParam() into a local at two guard-then-reuse sites (routes-seo-head /compare/:slug,
+# routes-avm /:propertyId), so the regex guard and the use share one value. This cleared the 2
+# js/polynomial-redos findings at server/services/seo/serverHead.ts:65 that CI's CodeQL raised on e7c9b24.
+# tsc, the affected tests, lint:route-shadowing, lint:org-fetch, lint:eslint-ratchet: all exit 0.
+
+## CodeQL full-scope comparison: main vs PR head (2026-10-30, local)
+# Why: CI's PR-run CodeQL counts were far below main's (high 120, medium 8, no critical, vs main's
+# critical 10, high 164, medium 34). This tests whether routeParam() hides taint from CodeQL.
+# Setup:
+#   CodeQL CLI 2.27.3, the version CI used.
+#   Suites javascript-security-extended.qls + javascript-security-and-quality.qls, matching CI's
+#   "security-extended,security-and-quality".
+#   Clean git worktrees (no dist/, no node_modules). Not diff-informed.
+#   Counted with the band script from security.yml's "Print CodeQL findings" step.
+main 58d1a9b:     CodeQL results by security severity: {'high': 164, 'critical': 10, 'medium': 34, 'none': 1414}
+PR head f8b7d50:  CodeQL results by security severity: {'high': 164, 'critical': 10, 'medium': 34, 'none': 1414}
+(band, ruleId, file) multiset over critical+high+medium: 208 findings each side; 0 only in PR; 0 only in main.
+# The local main numbers equal CI's main push run 40930898771 exactly, so the harness reproduces CI.
+
+## Control: CI pull_request runs are diff-limited
+# On pull_request events the CodeQL action runs queries with the PR's diff range:
+#   database run-queries ... --additional-packs=.../pr-diff-range --extension-packs=codeql-action/pr-diff-range
+#   (from PR #427's SAST log, job 124238432907)
+# This narrows results to the diff. Push runs on main are full-scope.
+PR #427 (lockfile-only vitest bump, no code change), CI job 124238432907:
+  CodeQL results by security severity: {'high': 117, 'medium': 2, 'none': 1414}   (no critical)
+  Its critical/high findings are a strict subset of main's: 0 only in #427; 57 only in main.
+# Conclusion: the low CodeQL counts on #432's PR runs come from diff-informed analysis, not from
+# routeParam(). On a full-scope run nothing is lost.
+
+## Mechanism check: CodeQL follows taint through the helper
+# Minimal repro: the same routeParam() source, fed into fetch(), pg.query() and res.send().
+# js/request-forgery, js/sql-injection and js/reflected-xss each flag BOTH the raw req.params form
+# and the routeParam(req.params.x) form. This still holds with 200 extra files and ~1,400 helper call sites.
+
+## Decision
+# No CodeQL model pack is added: CodeQL analyzes routeParam()'s body directly (founder decision 2026-11-01, option B).
