@@ -76,3 +76,23 @@ Gates at the new head (each read from a file; run sequentially):
 
 Falsification: with the reserved-key filter removed the new test
 (`a fieldMap cannot address a reserved key`) goes red; restored, green.
+
+## Delta: rebase onto main `4f4cbbd` (2026-11-01)
+
+Rebased the three commits onto main `4f4cbbd` (T2b, #434, T3a, #436 and #432
+had merged since `58d1a9b`). Conflicts, all additive, resolved by keeping both
+sides: `docs/company/next-moves.md` (both sections), `scripts/migrate.mjs`
+(main's 0296/0297 entries, then this PR's 0300), `server/routes-accounting.ts`
+(both imports: main's `routeParam`, this PR's `getUserPermissionContext`).
+#432's codemod survived: every `req.params` read in `routes-notes.ts`,
+`routes-accounting.ts` and `routes-import-export.ts` still goes through
+`routeParam()`. Migration 0300 has no number clash (main's newest is 0297).
+
+Gates at the rebased head, run sequentially after `npm ci` on main's lockfile
+and a rebuilt local database (main's 0296/0297 plus 0300):
+| Gate | Result |
+|---|---|
+| `npm run check` | exit 0 |
+| `npm test` | exit 0 |
+| `npm run build` | exit 0 |
+| Real-database acceptance (16) + `importErrorsContainNoSql` + `exportHeadersAreImportable` + `routeParamRefusesArrays` | exit 0 |
