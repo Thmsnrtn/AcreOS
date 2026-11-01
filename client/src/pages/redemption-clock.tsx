@@ -16,6 +16,7 @@
  */
 
 import { useState } from "react";
+import { CertificateClockPanel } from "@/components/tax/CertificateClockPanel";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   Clock,
@@ -110,6 +111,17 @@ function fmtPct(bps: number): string {
   return `${(bps / 100).toFixed(2)}%`;
 }
 
+/**
+ * The rate column, honest about what kind of number it is (V-Tax-1 T2b): a
+ * flat penalty (TX, GA) is one-time, never shown beside annual rates as if it
+ * were one; a monthly rate (IA) says so.
+ */
+function fmtReturn(bps: number, modelUsed: string): string {
+  if (modelUsed === "flat_first_period" || modelUsed === "tiered_yearly") return `${fmtPct(bps)} flat penalty`;
+  if (modelUsed === "monthly") return `${fmtPct(bps)}/mo`;
+  return `${fmtPct(bps)}/yr`;
+}
+
 /** An amount AcreOS did not compute (no encoded rule) reads as such, with the reason. */
 function Uncomputed({ reason }: { reason: string | null }) {
   return (
@@ -139,6 +151,7 @@ export default function RedemptionClockPage() {
   const [statusFilter, setStatusFilter] = useState<string>("active");
   const [stateFilter, setStateFilter] = useState<string>("");
   const [createOpen, setCreateOpen] = useState(false);
+  const [clockFor, setClockFor] = useState<{ id: string; label: string } | null>(null);
   const { isMobile } = useIsMobile();
 
   const certsQuery = useQuery<ListResponse>({
@@ -184,6 +197,8 @@ export default function RedemptionClockPage() {
           Add certificate
         </Button>
       </div>
+
+      {clockFor && <CertificateClockPanel certificateId={clockFor.id} label={clockFor.label} onClose={() => setClockFor(null)} />}
 
       {/* Preliminary-math banner — Marcus's §8 deal-killer guard. */}
       {anyPreliminary && (
@@ -326,7 +341,7 @@ export default function RedemptionClockPage() {
                       Rate
                     </div>
                     <div className={`tabular-nums ${c.preliminary ? "text-acr-warn" : ""}`}>
-                      {c.appliedRateBps === null ? <Uncomputed reason={c.amountRefusalReason} /> : <>{fmtPct(c.appliedRateBps)}{c.preliminary && "*"}</>}
+                      {c.appliedRateBps === null ? <Uncomputed reason={c.amountRefusalReason} /> : <>{fmtReturn(c.appliedRateBps, c.modelUsed)}{c.preliminary && "*"}</>}
                       {c.preliminary && c.appliedRateBps !== null && <span className="sr-only"> (preliminary rate — verify with the county clerk)</span>}
                     </div>
                   </div>
@@ -345,6 +360,7 @@ export default function RedemptionClockPage() {
                     </div>
                   </div>
                 </div>
+                <Button size="sm" variant="outline" className="mt-3 h-8 w-full text-xs" aria-label={`Open the redemption clock for APN ${c.apn}`} onClick={() => setClockFor({ id: c.id, label: `APN ${c.apn}, ${c.county} County, ${c.state}` })}>Clock</Button>
                 <div className="mt-3 pt-3 border-t border-border/40 flex items-baseline justify-between">
                   <div className="text-micro uppercase tracking-wide text-muted-foreground">
                     Total redemption
@@ -405,7 +421,7 @@ export default function RedemptionClockPage() {
                     <td className="px-3 py-2.5 text-right font-mono font-semibold">{c.currentRedemptionAmountCents === null ? <Uncomputed reason={c.amountRefusalReason} /> : fmtUsd(c.currentRedemptionAmountCents)}</td>
                     <td className="px-3 py-2.5 text-right text-xs">
                       <span className={c.preliminary ? "text-acr-warning" : ""}>
-                        {c.appliedRateBps === null ? <Uncomputed reason={c.amountRefusalReason} /> : fmtPct(c.appliedRateBps)}
+                        {c.appliedRateBps === null ? <Uncomputed reason={c.amountRefusalReason} /> : fmtReturn(c.appliedRateBps, c.modelUsed)}
                       </span>
                       {c.preliminary && c.appliedRateBps !== null && (
                         <span className="ml-0.5">
@@ -415,6 +431,7 @@ export default function RedemptionClockPage() {
                     </td>
                     <td className="px-3 py-2.5 text-xs">
                       <span className="capitalize">{STATUS_LABELS[c.status]}</span>
+                      <Button size="sm" variant="ghost" className="ml-2 h-7 px-2 text-xs" aria-label={`Open the redemption clock for APN ${c.apn}`} onClick={() => setClockFor({ id: c.id, label: `APN ${c.apn}, ${c.county} County, ${c.state}` })}>Clock</Button>
                     </td>
                   </tr>
                 ))}

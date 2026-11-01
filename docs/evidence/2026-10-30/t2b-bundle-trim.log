@@ -1,0 +1,26 @@
+# V-Tax-1 T2b — bundle trim (founder call 2026-10-30: option 1, trim dead weight elsewhere, ceiling unchanged at 9823 KB)
+# tree: claude/tax-v1-t2b-clock-gates with main (58d1a9b7, #426) merged + the trim
+# date 2026-10-30T15:35:07Z
+
+## What was dead
+shared/landData/countySourceCensus.ts builds COUNTY_SOURCE_CENSUS from countySourceCensus.tn.json at module load
+([tnCensus].map(...) — not provably pure, so never tree-shaken). The only client consumer,
+client/src/components/maps/LandCoveragePanel.tsx, imported COVERAGE_LABELS + two types from it, and renders the
+census it gets from GET /api/land-data/coverage — so the whole 95-county JSON shipped in the maps chunk and was never read.
+
+## Measured (npm run build, then node scripts/check-bundle-size.js with CI=1)
+before (T2b + main @ 58d1a9b7): 10062752 bytes = 9826.91 KB  -> FAIL (limit 9823 KB)
+after  (with the trim):           9999499 bytes = 9765.14 KB  -> PASS (limit 9823 KB)
+trimmed: 63253 bytes = 61.77 KB; the maps chunk no longer contains the census text (grep "Tennessee Comptroller of the Treasury": 0)
+
+## Guard: tests/unit/clientNeverBundlesCensusData.test.ts (transitive value-import walk from every client/src file through shared/)
+clean:                                         2 passed (2)
+M1 LandCoveragePanel imports countySourceCensus again (direct):        CAUGHT — 2 failed (2)
+M2 a shared module the client reaches imports the census (transitive): CAUGHT — 2 failed (2)
+(first clean run: the vacuity floor was set above the real root count, 922 > 1000 false; floor corrected to 800 — the rule test itself passed)
+
+## Gates at the final tree (verdicts from files, $?)
+npm run check: 0 (first run: lint-reachability flagged the allowlist entry for shared/landData/countySourceCensus.ts::deriveCoverage as STALE — deriveCoverage now lives in countyCoverage.ts and countySourceCensus.ts imports it, so the entry's own REVOCATION clause applied; the entry was removed, nothing raised)
+full vitest: 0 — Test Files  1536 passed | 35 skipped (1571)
+real-DB suites (tests/unit/*.realdb.test.ts): 0 — Test Files  24 passed (24), Tests  92 passed (92)
+npm run build: 0; node scripts/check-bundle-size.js (CI=1): 0 — PASS 9765 KB (limit 9823 KB)

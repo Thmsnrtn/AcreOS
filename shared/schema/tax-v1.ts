@@ -15,11 +15,15 @@
  *     procedure as an organization has recorded it — every field sourced,
  *     dated, marked state law or county practice, and verification-stamped.
  *     Versioned, never edited (UPDATE/TRUNCATE refused). Org-private.
+ *   - tax_events (T2b, migration 0296): the tax calendar — a certificate's
+ *     redemption expiry or quiet-title filing, each with the rule it cites.
+ *     Append-only; a row leaves only with its certificate. Org-private.
  */
 import type { CountyVerification, ProcedureFields } from "../tax/procedure";
 import { sql } from "drizzle-orm";
 import { check, date, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { taxSaleListings } from "../schema";
+import { taxCertificates } from "./notes-vertical";
 
 /** A value someone stated, with where it came from. */
 export interface StatedTerm<T> {
@@ -103,3 +107,32 @@ export const taxProcedureObjects = pgTable(
 );
 
 export type TaxProcedureObject = typeof taxProcedureObjects.$inferSelect;
+
+/** What a calendar date rests on. */
+export type TaxRuleCited =
+  | { kind: "procedure_object"; procedureId: string; version: number; field: string; source: string; asOf: string }
+  | { kind: "preliminary_state_rule"; state: string; citation: string | null; note: string }
+  | { kind: "county_record"; source: string };
+
+export const taxEvents = pgTable(
+  "tax_events",
+  {
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id").notNull(),
+    certificateId: uuid("certificate_id")
+      .notNull()
+      .references(() => taxCertificates.id, { onDelete: "cascade" }),
+    eventType: text("event_type").$type<"redemption_expiry" | "quiet_title_filed">().notNull(),
+    eventDate: date("event_date").notNull(),
+    ruleCited: jsonb("rule_cited").$type<TaxRuleCited>().notNull(),
+    detail: jsonb("detail").$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+    recordedBy: text("recorded_by").notNull(),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("tax_events_org_cert_idx").on(t.organizationId, t.certificateId, t.eventType, t.recordedAt),
+    index("tax_events_org_date_idx").on(t.organizationId, t.eventDate),
+  ],
+);
+
+export type TaxEvent = typeof taxEvents.$inferSelect;

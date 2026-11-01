@@ -718,12 +718,29 @@ async function handoffWonLotToCertificate(params: {
       ownerName: d.ownerName,
       ownerAddress: d.ownerAddress,
       redemptionDeadline: d.redemptionDeadline,
+      deadlineSource: built.deadlineSource === "operator_supplied" ? "operator_entered" : "computed_preliminary",
       ownerOccupiedAtSale: d.ownerOccupiedAtSale,
       notes: d.notes,
       status: "active",
     })
     .onConflictDoNothing()
     .returning({ id: taxCertificates.id, redemptionDeadline: taxCertificates.redemptionDeadline });
+  if (created) {
+    const { deadlineRuleFor, registerRedemptionExpiry } = await import("./services/tax/taxEvents");
+    await registerRedemptionExpiry(drizzleDb, {
+      organizationId: d.organizationId,
+      certificateId: created.id,
+      date: d.redemptionDeadline,
+      ruleCited: await deadlineRuleFor(
+        d.organizationId,
+        { state: d.state, county: d.county, saleDate: d.saleDate, deadline: d.redemptionDeadline },
+        built.deadlineSource === "operator_supplied" ? "operator_entered" : "computed_preliminary",
+        built.deadlineSource === "operator_supplied" ? built.deadlineBasis : undefined,
+      ),
+      recordedBy: "won-bid handoff",
+      detail: { listingId: d.listingId },
+    });
+  }
 
   if (!created) {
     // Lost the insert to the natural-key unique index: a certificate for this

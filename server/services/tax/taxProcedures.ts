@@ -59,7 +59,7 @@ export async function procedureHistory(organizationId: number, state: string, co
   return db.select().from(taxProcedureObjects).where(ref(organizationId, state, county)).orderBy(desc(taxProcedureObjects.version));
 }
 
-async function currentProcedure(organizationId: number, state: string, county: string): Promise<TaxProcedureObject | null> {
+export async function currentProcedure(organizationId: number, state: string, county: string): Promise<TaxProcedureObject | null> {
   return (await procedureHistory(organizationId, state, county))[0] ?? null;
 }
 

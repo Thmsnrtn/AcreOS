@@ -1,6 +1,6 @@
 /**
  * CONVERGE_UUID_ID_FAMILIES (scripts/migrate.mjs) converts a db:push-built
- * database — the 14 id families varchar, as shared/schema used to declare
+ * database — the 15 id families varchar, as shared/schema used to declare
  * them — to the canonical uuid, keeps every row and every FK, is a no-op on a
  * database that is already uuid, and refuses rather than guess when a value
  * is not a uuid. Against a REAL database, because the guarantees rest on
@@ -52,6 +52,12 @@ const STAGING_SHAPED = `
   CREATE TABLE earnest_money_events (
     id serial PRIMARY KEY,
     hold_id varchar NOT NULL REFERENCES earnest_money_holds(id) ON DELETE RESTRICT
+  );
+  -- the 15th parent (V-Tax-1 T2b): its first SQL FK is tax_events
+  CREATE TABLE tax_certificates (id varchar PRIMARY KEY DEFAULT gen_random_uuid());
+  CREATE TABLE tax_events (
+    id serial PRIMARY KEY,
+    certificate_id varchar NOT NULL REFERENCES tax_certificates(id) ON DELETE CASCADE
   );
 `;
 
@@ -108,8 +114,10 @@ describe.runIf(realDbAvailable)("uuid id convergence — real database", () => {
     await client.query(`INSERT INTO maintenance_tickets(assigned_contractor_id) VALUES ($1)`, [contractor]);
     // positional: earnest_money_events is SQL-only, absent from shared/schema
     await client.query(`INSERT INTO earnest_money_events VALUES (DEFAULT, $1)`, [hold]);
+    const cert = (await client.query(`INSERT INTO tax_certificates DEFAULT VALUES RETURNING id`)).rows[0].id;
+    await client.query(`INSERT INTO tax_events(certificate_id) VALUES ($1)`, [cert]);
     const before = await fks();
-    expect(before).toHaveLength(4);
+    expect(before).toHaveLength(5);
 
     await client.query(convergeStatement());
 
@@ -118,6 +126,7 @@ describe.runIf(realDbAvailable)("uuid id convergence — real database", () => {
       ["rent_charges", "id"], ["rent_charges", "lease_id"], ["lease_tenants", "lease_id"],
       ["lease_tenants", "tenant_id"], ["maintenance_tickets", "assigned_contractor_id"],
       ["earnest_money_events", "hold_id"],
+      ["tax_certificates", "id"], ["tax_events", "certificate_id"],
     ]) {
       expect(await typeOf(t, c), `${t}.${c}`).toBe("uuid");
     }
@@ -130,6 +139,7 @@ describe.runIf(realDbAvailable)("uuid id convergence — real database", () => {
     );
     expect(joined.rows).toEqual([{ lease, tenant }]);
     expect((await client.query(`SELECT hold_id::text AS h FROM earnest_money_events`)).rows).toEqual([{ h: hold }]);
+    expect((await client.query(`SELECT certificate_id::text AS c FROM tax_events`)).rows).toEqual([{ c: cert }]);
     // the default still mints ids, now as uuid
     const minted = (await client.query(`INSERT INTO rental_leases DEFAULT VALUES RETURNING id`)).rows[0].id;
     expect(minted).toMatch(/^[0-9a-f-]{36}$/);

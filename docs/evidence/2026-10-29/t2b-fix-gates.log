@@ -1,0 +1,45 @@
+# V-Tax-1 T2b fix batch — gates at the final head
+# head 0ce6c59edbae8ab0d867197ec8723a00a85d8f26 (the evidence files are committed on top of it)
+# date 2026-10-29T16:00:46Z
+
+head 0ce6c59edbae8ab0d867197ec8723a00a85d8f26
+check=0
+build=0
+dbbuild=0
+realdb=0
+converge=0
+vitest=0
+ALLDONE
+
+## db:build-from-repo (fresh database)
+[db-restore] pg_restore complete
+[db-restore] OK — 752 tables, 840 rows, every count matches the manifest
+[build-schema] PASS — the schema this repository describes is the schema it can build.
+
+## real-DB suites: ACREOS_REQUIRE_REAL_DB=1 npx vitest run tests/unit/*.realdb.test.ts
+ Test Files  24 passed (24)
+      Tests  92 passed (92)
+
+## full vitest
+ Test Files  1534 passed | 35 skipped (1569)
+      Tests  19211 passed | 169 skipped (19380)
+
+## convergence (verbose): DATABASE_URL=<same> npx vitest run tests/integration/uuidIdConvergence.db.test.ts tests/unit/migrateForeignKeyTypes.test.ts --reporter=verbose
+ ✓ tests/integration/uuidIdConvergence.db.test.ts > uuid id convergence — real database > converts every id family and child to uuid, keeping rows, defaults and FKs 81ms
+ ✓ tests/integration/uuidIdConvergence.db.test.ts > uuid id convergence — real database > is a no-op on a database that is already uuid (a second run, production, a fresh build) 12ms
+ ✓ tests/integration/uuidIdConvergence.db.test.ts > uuid id convergence — real database > refuses, naming the column, when a value is not a uuid — and changes nothing 37ms
+ ✓ tests/integration/uuidIdConvergence.db.test.ts > uuid id convergence — real database > does nothing on a database where none of the tables exist yet 11ms
+ ✓ tests/unit/migrateForeignKeyTypes.test.ts > the DDL parser actually parsed something (vacuity guards, first) > found tables across the corpus 1ms
+ ✓ tests/unit/migrateForeignKeyTypes.test.ts > the DDL parser actually parsed something (vacuity guards, first) > found foreign keys, and resolved a real share of them 0ms
+ ✓ tests/unit/migrateForeignKeyTypes.test.ts > the DDL parser actually parsed something (vacuity guards, first) > reports its own coverage, because unresolvable FKs are unchecked 1ms
+ ✓ tests/unit/migrateForeignKeyTypes.test.ts > the check fails on a real mismatch (positive control) > detects varchar → uuid, the exact shape that shipped 1ms
+ ✓ tests/unit/migrateForeignKeyTypes.test.ts > the check fails on a real mismatch (positive control) > accepts serial → integer, which is the same type spelled two ways 0ms
+ ✓ tests/unit/migrateForeignKeyTypes.test.ts > every foreign key in the corpus is implementable > has no type mismatch between a column and what it references 0ms
+ ✓ tests/unit/migrateForeignKeyTypes.test.ts > every SQL foreign key is implementable on a db:push-built database too > read the db:push schema and the SQL FKs into each uuid parent (vacuity) 1ms
+ ✓ tests/unit/migrateForeignKeyTypes.test.ts > every SQL foreign key is implementable on a db:push-built database too > declares uuid as the id type of all 15 parents in shared/schema (the decision) 0ms
+ ✓ tests/unit/migrateForeignKeyTypes.test.ts > every SQL foreign key is implementable on a db:push-built database too > has no uuid ↔ string FK against the db:push schema 1ms
+ ✓ tests/unit/migrateForeignKeyTypes.test.ts > every SQL foreign key is implementable on a db:push-built database too > builds every SQL FK column with the SQL's type on the child side too 1ms
+ ✓ tests/unit/migrateForeignKeyTypes.test.ts > every SQL foreign key is implementable on a db:push-built database too > goes red when a parent's db:push type drifts back (positive control) 2ms
+ Test Files  2 passed (2)
+      Tests  15 passed (15)
+exit 0

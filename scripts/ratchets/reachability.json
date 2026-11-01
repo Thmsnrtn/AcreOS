@@ -7,8 +7,8 @@
   "baselines": {
     "unreachedExports": 414,
     "internalOnlyExports": 1226,
-    "tablesNoWriter": 54,
-    "tablesNoReader": 60,
+    "tablesNoWriter": 53,
+    "tablesNoReader": 59,
     "unregisteredRoutes": 4,
     "opaqueExports": 18,
     "moduleOrphans": 33,
@@ -474,11 +474,6 @@
       "kind": "export",
       "id": "shared/landData/parcelTruths.ts::WESTERN_WATER_RIGHTS_DATABASES",
       "reason": "TEST SEAM (W2 land data, 2026-10-10). The checked state water-rights links parcelTruths reads; exported so landDataRegistries.test.ts verifies every entry has a URL and the warning links to it. REVOCATION: when a production module imports it, remove this entry."
-    },
-    {
-      "kind": "export",
-      "id": "shared/landData/countySourceCensus.ts::deriveCoverage",
-      "reason": "TEST SEAM (W2 land data, 2026-10-10). The coverage a census row may claim, derived from its sources. Production applies it inside its own module: COUNTY_SOURCE_CENSUS re-derives every row's coverage on load, so a hand-edited row cannot overclaim. Exported so landDataRegistries.test.ts pins each rule (storable only with permitted terms, verified-live, unverified, none). REVOCATION: when a production module imports it, remove this entry."
     },
     {
       "kind": "export",

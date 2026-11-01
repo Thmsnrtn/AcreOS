@@ -239,7 +239,13 @@ async function main() {
     check(hit.found === true && hit.source === "owned" && hit.parcel?.apn === "CF-1", `a TN point inside a kept parcel is answered from it (${hit.source} ${hit.parcel?.apn})`);
     const miss = await lookupParcelByCoordinates(36.2, -86.9);
     check(!miss.found && miss.error === TN_PARCELS_NOT_YET, "a TN point with no kept parcel gets the plain refusal");
-    check(fetched.length === 0, `TN coordinate lookups fetched nothing (saw ${fetched.length})`);
+    // Count only what a LOOKUP could have fetched. A county the pipeline
+    // completed earlier announces its guide to IndexNow fire-and-forget
+    // (countyPipeline.ts, `void ...announceCountyLoaded`), and that announce
+    // can land in this window: it is not the lookup's, and a lookup never
+    // announces. Any other URL is a lookup reaching a source, and is named.
+    const lookupFetches = fetched.filter((u) => !u.startsWith("https://api.indexnow.org/"));
+    check(lookupFetches.length === 0, `TN coordinate lookups fetched nothing (saw ${lookupFetches.join(", ") || "none"})`);
     const status = getCorporaStatus(bucketEnv, await loadIngestReceipts());
     check(status.find((c) => c.key === "statewide-parcels-bulk")?.ingestStatus === "ingested", "the recorded receipt makes the corpus 'ingested' for the bucket that confirmed it");
   } finally {

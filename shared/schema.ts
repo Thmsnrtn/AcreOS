@@ -5664,33 +5664,8 @@ export const cmaReports = pgTable(
 export type CmaReport = typeof cmaReports.$inferSelect;
 export type InsertCmaReport = typeof cmaReports.$inferInsert;
 
-export const auctionReadinessChecklists = pgTable(
-  "auction_readiness_checklists",
-  {
-    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-    organizationId: integer("organization_id").notNull(),
-    propertyId: integer("property_id"),
-    auctionDate: timestamp("auction_date", { withTimezone: true }),
-    titleSearchComplete: boolean("title_search_complete").notNull().default(false),
-    lienSearchComplete: boolean("lien_search_complete").notNull().default(false),
-    occupancyVerified: boolean("occupancy_verified").notNull().default(false),
-    bidStrategyDocumented: boolean("bid_strategy_documented").notNull().default(false),
-    fundsConfirmedCents: integer("funds_confirmed_cents"),
-    redemptionRiskAssessed: boolean("redemption_risk_assessed").notNull().default(false),
-    domainExpertSignoffAt: timestamp("domain_expert_signoff_at", { withTimezone: true }),
-    domainExpertSignoffBy: text("domain_expert_signoff_by"),
-    notes: text("notes"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [
-    uniqueIndex("auction_readiness_property_unique_idx").on(
-      table.organizationId,
-      table.propertyId,
-    ),
-  ],
-);
-export type AuctionReadinessChecklist = typeof auctionReadinessChecklists.$inferSelect;
+// auction_readiness_checklists was retired 2026-10-29 (V-Tax-1 T2b, migration
+// 0296): nothing read or wrote it. Bidder registration is T3's stage gate.
 
 // lien_search_records was retired 2026-10-28 (V-Tax-1 T1, migration 0294):
 // nothing read or wrote it. tax_lot_observations records lien searches and

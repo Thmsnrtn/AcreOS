@@ -135,6 +135,15 @@ correctness risks across 2+ machines. Disposition:
   - **2026-10-29, T2a:** `county_redemption_rates` retired (migration 0295) on
     the same terms. It is replaced by sourced redemption periods on
     `tax_procedure_objects`. `auction_readiness_checklists` follows in T2b.
+  - **2026-10-29, T2b:** `auction_readiness_checklists` retired (migration
+    0296) on the same terms. Its per-boot CREATE is removed from
+    `migrate.mjs`. That completes the founder's swap of four dead tables for
+    four purpose-built ones, with the table count unchanged.
+  - **Guard correction (2026-10-29):** the guarded drops in 0294–0296 now check
+    for rows through `EXECUTE`. PL/pgSQL plans a static `SELECT … FROM <table>`
+    even when `to_regclass` says the table is gone, so on every boot after the
+    drop the block errored and was logged as skipped. It was harmless, but it
+    was noise that hid real skips.
 
 - 2026-08-18 — **`GET /api/enhancements/campaign-roi/:id` + `calculateCampaignROI`
   deleted** (founder picker ruling, this date). Found during the URL-id tenancy

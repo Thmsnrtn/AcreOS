@@ -18,6 +18,8 @@ import { z } from "zod";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { db } from "./db";
 import {
+  noteQuietTitleCases,
+  quietTitleSteps,
   taxCertificates,
   TAX_CERT_SALE_TYPES,
   TAX_CERT_STATUSES,
@@ -233,6 +235,76 @@ export function registerTaxCertificateRoutes(app: Express): void {
     },
   );
 
+  // ── The redemption clock for one certificate (V-Tax-1 T2b) ─────────────────
+  // Deadline with the rule it rests on, countdown, the 90/30/7 alert dates,
+  // the next action, the improve/market lock with what clears it, the capital
+  // tied up, marketability in AcreOS, and a cross-check against the county's
+  // procedure object. Pure rule: shared/tax/clock.ts.
+  app.get(
+    "/api/tax-certificates/:id/clock",
+    isAuthenticated,
+    getOrCreateOrg,
+    ownerOrAdmin,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const orgId = getOrganizationId(req);
+        const [row] = await db
+          .select()
+          .from(taxCertificates)
+          .where(and(eq(taxCertificates.id, req.params.id), eq(taxCertificates.organizationId, orgId)))
+          .limit(1);
+        if (!row) return Errors.notFound(res, "Certificate");
+        const { latestTaxEvents } = await import("./services/tax/taxEvents");
+        const { countyBidStanding } = await import("./services/tax/taxProcedures");
+        const { redemptionClock } = await import("@shared/tax/clock");
+        const today = clock.now().toISOString().slice(0, 10);
+        const events = await latestTaxEvents(orgId, row.id);
+        const rule = events.redemption_expiry?.ruleCited ?? null;
+        const deadlineBasis =
+          rule?.kind === "county_record"
+            ? `entered from the county's records — ${rule.source}`
+            : rule?.kind === "preliminary_state_rule"
+              ? `computed by AcreOS from its encoded ${rule.state} rule${rule.citation ? ` (${rule.citation})` : ""} — preliminary, not attorney-reviewed; confirm with the county`
+              : rule?.kind === "procedure_object"
+                ? `the county procedure, version ${rule.version} — ${rule.source}, as of ${rule.asOf}`
+                : "on record from before AcreOS tracked where deadlines came from — confirm with the county";
+        const standing = await countyBidStanding(orgId, row.state, row.county, today);
+        const period = standing.current?.fields.redemptionPeriodMonths;
+        const [qt] = await db
+          .select({ id: noteQuietTitleCases.id, marketException: noteQuietTitleCases.marketException })
+          .from(noteQuietTitleCases)
+          .where(and(eq(noteQuietTitleCases.organizationId, orgId), eq(noteQuietTitleCases.certificateId, row.id)))
+          .limit(1);
+        let petitionFiledOn: string | null = null;
+        if (qt) {
+          const [filed] = await db
+            .select({ completedAt: quietTitleSteps.completedAt })
+            .from(quietTitleSteps)
+            .where(and(eq(quietTitleSteps.organizationId, orgId), eq(quietTitleSteps.caseId, qt.id), eq(quietTitleSteps.stepKey, "petition_filed")))
+            .limit(1);
+          petitionFiledOn = filed?.completedAt ? filed.completedAt.toISOString().slice(0, 10) : null;
+        }
+        res.json(
+          redemptionClock({
+            saleType: row.saleType,
+            status: row.status,
+            saleDate: row.saleDate as unknown as string,
+            redemptionDeadline: row.redemptionDeadline as unknown as string,
+            deadlineSource: row.deadlineSource ?? null,
+            deadlineBasis,
+            purchaseAmountCents: row.purchaseAmountCents,
+            today,
+            procedurePeriod: period && standing.current ? { months: period.value, source: period.source, asOf: period.asOf, version: standing.current.version } : null,
+            quietTitle: qt ? { petitionFiledOn, marketException: qt.marketException ?? null } : null,
+          }),
+        );
+      } catch (err) {
+        logger.error("taxCertificates.clock failed", err instanceof Error ? err : undefined);
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
   // ── Create ────────────────────────────────────────────────────────────────
   app.post(
     "/api/tax-certificates",
@@ -270,12 +342,14 @@ export function registerTaxCertificateRoutes(app: Express): void {
         const rule = STATE_REDEMPTION_RULES[data.state.toUpperCase()];
         const noRedemption = rule?.interestModel === "no_redemption";
         let recordedDeadline: string;
+        let deadlineSource: "computed_preliminary" | "operator_entered" = "computed_preliminary";
         let notes = data.notes ?? null;
         if (noRedemption) {
           recordedDeadline = data.saleDate;
         } else if (deadline !== null) {
           recordedDeadline = deadline;
         } else if (data.redemptionDeadline && data.redemptionDeadlineSource) {
+          deadlineSource = "operator_entered";
           if (data.redemptionDeadline < data.saleDate) {
             return Errors.badRequest(res, "The redemption deadline you entered is before the sale date.");
           }
@@ -312,11 +386,23 @@ export function registerTaxCertificateRoutes(app: Express): void {
             listingId: data.listingId ?? null,
             propertyId: data.propertyId ?? null,
             redemptionDeadline: recordedDeadline,
+            deadlineSource,
             status: initialStatus,
             notes,
           })
           .returning();
         if (!row) return Errors.internal(res, new Error("Insert returned no row"));
+        // Register the expiry on the tax calendar, citing what it rests on.
+        if (!noRedemption) {
+          const { deadlineRuleFor, registerRedemptionExpiry } = await import("./services/tax/taxEvents");
+          await registerRedemptionExpiry(db, {
+            organizationId: orgId,
+            certificateId: row.id,
+            date: recordedDeadline,
+            ruleCited: await deadlineRuleFor(orgId, { state: row.state, county: row.county, saleDate: row.saleDate as unknown as string, deadline: recordedDeadline }, deadlineSource, data.redemptionDeadlineSource),
+            recordedBy: req.user?.id ?? "unknown",
+          });
+        }
         // A certificate create IS the genuine cert.acquired event — fire the
         // acquired-kickoff workflow lane. Fire-and-forget; never blocks the 201.
         emitCertAcquired(certEventRowFrom(row));
@@ -353,11 +439,22 @@ export function registerTaxCertificateRoutes(app: Express): void {
         // payoff workflow lane (a status edit that was already "redeemed" is a
         // no-op in the emitter).
         const [preImage] = await db
-          .select({ status: taxCertificates.status })
+          .select({ status: taxCertificates.status, redemptionDeadline: taxCertificates.redemptionDeadline })
           .from(taxCertificates)
           .where(and(eq(taxCertificates.id, req.params.id), eq(taxCertificates.organizationId, orgId)))
           .limit(1);
-        const beforeStatus = preImage?.status ?? null;
+        if (!preImage) return Errors.notFound(res, "Certificate");
+        const beforeStatus = preImage.status;
+
+        // A deed is not held while the owner can still redeem (V-Tax-1 T2b):
+        // the clock reads deed_obtained / expired_to_deed as "deed held", and
+        // the quiet-title and redeemable-deed gates read the clock, so this
+        // status may not be asserted before the county's deadline has run.
+        const deadline = preImage.redemptionDeadline as unknown as string;
+        const today = clock.now().toISOString().slice(0, 10);
+        if ((parsed.data.status === "deed_obtained" || parsed.data.status === "expired_to_deed") && deadline >= today) {
+          return Errors.unprocessable(res, `Still redeemable until ${deadline}. The deed is not held until redemption has expired.`, { redeemableUntil: deadline });
+        }
 
         // If marking redeemed and amount not specified, snapshot the live
         // computed amount as of the redeemedAt date so the running total

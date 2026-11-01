@@ -29,7 +29,7 @@ import {
   COVERAGE_LABELS,
   type CountyCoverage,
   type StateCensus,
-} from "@shared/landData/countySourceCensus";
+} from "@shared/landData/countyCoverage";
 import tnBoundaries from "@shared/landData/tnCountyBoundaries.json";
 
 interface CoverageResponse {

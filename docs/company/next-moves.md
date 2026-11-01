@@ -3,6 +3,53 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-10-30 — V-Tax-1 T2b bundle trim (#421; founder call: option 1, no ceiling change)
+
+- **Measured:** T2b with main (#426) merged was 9826.91 KB against the 9823 KB ceiling. With the trim it is **9765.14 KB**, PASS, 57.9 KB under. The ceiling is left at 9823 KB, as the founder said.
+- **What was dead:** the client imported `COVERAGE_LABELS` from `shared/landData/countySourceCensus.ts`. That module builds the 95-county census from its JSON at load, so the whole JSON (about 62 KB minified) shipped in the maps chunk and was never read. The client renders coverage from `GET /api/land-data/coverage`.
+  - The types, labels and rule are now in `countyCoverage.ts`, with no data import. `countySourceCensus.ts` re-exports them, so no server code changed.
+  - The stale reachability entry for `deriveCoverage` is removed.
+- **Guard:** `clientNeverBundlesCensusData.test.ts` walks value imports transitively from every client file through `shared/`. Two mutants (a direct import, and a transitive one) were both caught.
+- **Evidence:** `docs/evidence/2026-10-30/t2b-bundle-trim.log`.
+- **Next:** Muse re-audits #421. Then T3a (#422), T3b (#423), T4a (#424, already accepted) and T4b (#425) each take main as the PR below them lands. The prod sign-in fix (Clerk proxy) is on its own branch.
+
+## 2026-10-29 — V-Tax-1 T2b audit fix batch (#421, audited NOT YET MERGEABLE at `86d77e26`)
+
+- **Fix 1, the quiet-title gate bypass.** Every route that could lift the lock now checks the county's deadline, not the status alone:
+  - the case-open gate checks the date whatever the status;
+  - a certificate PATCH to `deed_obtained` or `expired_to_deed` is refused while redemption is still running;
+  - completing `petition_filed` re-checks the certificate itself.
+- **Fix 2, `quiet_title_filed` is now written.** I chose to write it rather than remove it: T3b and T4b already read it.
+  - Completing `petition_filed` registers the event, citing the case, in the same transaction.
+  - A filed petition cannot be un-filed, because the calendar is append-only.
+  - A computed deadline cites the `procedure_object` when the county's verified procedure states the same period.
+- **Founder decision recorded:** T3a over-max bids keep the override with a stated reason. Absolute refusal is rejected (decisions doc §3).
+- **Evidence:** `docs/evidence/2026-10-29/t2b-fix-mutations.log` (7 mutants, all caught).
+- **Next:** Muse re-audits #421. Then T4a's fix (#424): the lot record must read the county watch's redemption period.
+
+## 2026-10-29 — V-Tax-1 T2b — redemption clock, calendar, alerts, locks, quiet-title gate — on `claude/tax-v1-t2b-clock-gates` (stacked on T2a)
+
+- **Storage.** Migration 0296 adds `tax_events`: the tax calendar, where each redemption expiry carries the rule it rests on.
+  - It is append-only and leaves only with its certificate.
+  - The FK is `uuid`, because the DB's `tax_certificates.id` is uuid although the ORM says varchar.
+  - It also adds `tax_certificates.deadline_source` and `quiet_title_cases.market_exception`, and retires `auction_readiness_checklists`. The founder's four-for-four swap is complete; the table count is 748.
+- **Clock** (`shared/tax/clock.ts`, `GET /api/tax-certificates/:id/clock`). It covers:
+  - the countdown, the rule cited (AcreOS's preliminary rule, or the county record entered) and the 90/30/7 alert dates;
+  - the next action, and the "do not improve, do not market" lock with what clears it;
+  - the capital tied up, and marketability in AcreOS;
+  - a cross-check against the county procedure's stated period, where a mismatch is shown and never resolved.
+  - On the redemption-clock page it opens from a per-certificate "Clock" button.
+- **Nightly job.** It never overwrites a deadline the operator entered; until now it clobbered won-bid overrides in the 10 encoded states.
+  - A computed deadline it corrects is re-registered on the calendar.
+  - New one-shot 90- and 30-day alerts fire only the tightest threshold crossed. The daily 7-day alert and the workflow lanes are unchanged.
+- **Quiet title.**
+  - A case opens only once redemption has expired; redeemed and cancelled certificates are refused.
+  - An attorney-reviewed exception can be recorded with the attorney's name and the reason.
+  - Marketable in AcreOS means the deed is held AND the petition is filed or the exception is recorded. AcreOS never declares title marketable.
+- **Flat-penalty honesty.** The redemption-clock Rate column now reads "25.00% flat penalty", "x/mo" or "x/yr". The workflow templates' "statutory rate" now reads "20% penalty — one-time, not an annual rate" for GA and TX.
+- **Escalated, not fixed (attorney-gated legal reading).** Encoded TX `flat_first_period` adds the 50% second-period premium ON TOP OF the 25% (75% total) once past 6 months, and uses a 6-month first period even in the 24-month owner-occupied case. Whether that matches Tex. Tax Code §34.21 is a legal reading for the founder or an attorney.
+- **Guard correction.** The guarded drops in 0294–0296 check for rows through `EXECUTE` (see the deletion ledger), and the fix is ported to T1 and T2a.
+
 ## 2026-10-29 — V-Tax-1 T2a — procedure objects + county-verification gate + bidding lock — on `claude/tax-v1-t2-procedure-clock` (stacked on T1)
 
 - **T2 ships as two PRs, each net zero on tables.**
