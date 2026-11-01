@@ -82,4 +82,4 @@ PR #427 (lockfile-only vitest bump, no code change), CI job 124238432907:
 # and the routeParam(req.params.x) form. This still holds with 200 extra files and ~1,400 helper call sites.
 
 ## Decision
-# No CodeQL model pack is added: CodeQL analyzes routeParam()'s body directly (founder decision 2026-11-01, option B).
+# No CodeQL model pack is added: CodeQL analyzes routeParam()'s body directly (founder decision 2026-10-31, option B).
