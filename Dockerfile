@@ -138,6 +138,18 @@ COPY --from=gh-build /go/bin/gh /usr/bin/gh
 # the build stage from package-lock.json).
 RUN npm install -g npm@latest && npm cache clean --force
 
+# npm's OWN vendored undici trails its CVE fixes: npm 12.2.1 (latest as of
+# 2026-10-30) still bundles undici 6.29.0, which carries 3 HIGH CVEs fixed in
+# 6.29.1 (CVE-2026-109383, CVE-2026-109869, CVE-2026-87018) and trips the
+# Trivy image gate. npm can't be dropped from the runtime image (the server
+# shells out to npm/npx — server/worker.ts, external-watch/npmWatch.ts,
+# codebaseMonitor.ts), so replace the vendored copy in place. The app's own
+# undici (from package-lock.json) is unaffected.
+# RE-REVIEW: drop this step once an npm release vendors undici >= 6.29.1
+# (check: `npm pack npm@latest` and read package/node_modules/undici/package.json).
+# (--pack-destination, not `cd /tmp`: a RUN that cd's trips Trivy DS-0013.)
+RUN npm pack undici@6.29.1 --silent --pack-destination /tmp && rm -rf /usr/local/lib/node_modules/npm/node_modules/undici && mkdir /usr/local/lib/node_modules/npm/node_modules/undici && tar -xzf /tmp/undici-6.29.1.tgz -C /usr/local/lib/node_modules/npm/node_modules/undici --strip-components=1 && rm /tmp/undici-6.29.1.tgz && npm --version
+
 COPY --from=build /app /app
 
 EXPOSE 5000
