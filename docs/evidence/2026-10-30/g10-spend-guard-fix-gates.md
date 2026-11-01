@@ -45,3 +45,16 @@ Newly unreachable exports from this change failed `lint-reachability` twice (+2,
 - **Staging demonstration** (dead-DB gate call and concurrency trip observed on staging): not run. This container has no staging credentials/URL and no way to run the branch on the pinned app machine short of a manual deploy of an unreviewed branch to shared staging, which was not authorised. The same behaviours are proven in-process by the tests above using the G10 run's dead-DB method.
 - **k6 burst re-run of the four limiters**: not run (no `k6` binary, no staging target). No rate limiter, limiter config or non-AI path was touched; the bound lives only inside the two AI entry points.
 - Redis-backed cross-instance enforcement, last-known-good cache behaviour, authenticated-tier enforcement: out of scope per the package.
+
+## Re-run after the rebase (2026-11-02)
+
+The branch was rebased onto main `9f35340`, then onto main `fbc4d09` (#427 vitest bump on top of #428), then onto main `b7558ad` (#429), then onto main `b539f15` (#431). The six commits carry identical patches, apart from context lines around the `next-moves.md` entry. `main` had moved 264 files, then 11 more (including the test runner itself), then 7 more, then 21 more, so every gate was re-run on the `b539f15` tree. Dependencies are unchanged since `fbc4d09`; `node_modules` is from a fresh `npm ci` there (vitest 4.1.12). Verdicts read from files with exit codes.
+
+| Gate | Result |
+|---|---|
+| `npm run check` (full chain) | exit 0 |
+| `npm run build` | exit 0 |
+| `npm test` | exit 0 — 1551 files passed, 37 skipped; 19,321 tests passed, 187 skipped, 0 failed |
+| G10 tests alone (`aiCostCeilingFailOpen`, `aiConcurrencyCap`) | exit 0 — 2 files, 10 tests passed |
+
+These supersede the pre-rebase numbers above (1535 files / 19,220 tests), which described the old base. Staging demonstration and the k6 burst re-run remain NOT RUN, for the reasons given above.
