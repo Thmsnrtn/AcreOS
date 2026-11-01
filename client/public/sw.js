@@ -67,9 +67,17 @@ const CACHEABLE_API_ROUTES = [
 const OFFLINE_QUEUEABLE_ROUTES = [
   '/api/leads',
   '/api/activity-feed',
-  '/api/auction-listings',
   '/api/conversations', // Inbox triage swipes — same use case
   '/api/field-scout/quick-add', // DriveMode quick-save (rural/dead-zone)
+];
+
+// Exact paths queued for replay where a prefix would catch too much.
+// V-Tax-1 T3a: CourthouseMode's bid log. The prefix '/api/auction-listings'
+// that used to stand here named a route that never existed, so no
+// courthouse tap was ever queued — or recorded. Only the bid-log POST is
+// queueable, not the rest of /api/tax-researcher/listings/*.
+const OFFLINE_QUEUEABLE_PATTERNS = [
+  /^\/api\/tax-researcher\/listings\/\d+\/bid-log$/,
 ];
 
 // A MULTIPART body is never queued (DEFECT-0164). The queue stores the body
@@ -81,7 +89,7 @@ const OFFLINE_QUEUEABLE_ROUTES = [
 function isOfflineQueueable(method, pathname, contentType) {
   if (!['POST', 'PUT', 'PATCH'].includes(method)) return false;
   if ((contentType || '').toLowerCase().startsWith('multipart/')) return false;
-  return OFFLINE_QUEUEABLE_ROUTES.some((r) => pathname.startsWith(r));
+  return OFFLINE_QUEUEABLE_ROUTES.some((r) => pathname.startsWith(r)) || OFFLINE_QUEUEABLE_PATTERNS.some((p) => p.test(pathname));
 }
 
 // ---------------------------------------------------------------------------

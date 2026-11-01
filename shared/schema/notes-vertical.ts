@@ -839,6 +839,11 @@ export const auctionBidLog = pgTable(
     performedAt: timestamp("performed_at", { withTimezone: true }).defaultNow().notNull(),
     performedByUserId: text("performed_by_user_id"),
     notes: text("notes"),
+    // V-Tax-1 T3a (0297): the max in force when this was logged, and the
+    // operator's stated reason for going over it (CHECK: only beside a
+    // snapshot, on an amount that exceeded it).
+    maxBidCentsAtAction: bigint("max_bid_cents_at_action", { mode: "number" }),
+    overMaxReason: text("over_max_reason"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [

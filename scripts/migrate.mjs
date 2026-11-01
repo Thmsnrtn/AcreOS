@@ -13007,6 +13007,33 @@ $mig0284$`,
      DROP TABLE IF EXISTS "auction_readiness_checklists";
    END;
    $$`,
+  // 0297 — V-Tax-1 T3a: bid discipline — tax_sale_listings.max_bid_basis (rights-stack decision record) and discard (kill reason), auction_bid_log max snapshot + over-max reason. Columns only.
+  // Mirrors migrations/0297_tax_v1_bid_discipline.sql.
+  `ALTER TABLE "tax_sale_listings" ADD COLUMN IF NOT EXISTS "max_bid_basis" jsonb`,
+  `ALTER TABLE "tax_sale_listings" ADD COLUMN IF NOT EXISTS "discard" jsonb`,
+  `DO $$
+   BEGIN
+     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'tax_sale_listings_discard_reason_check') THEN
+       ALTER TABLE "tax_sale_listings" ADD CONSTRAINT "tax_sale_listings_discard_reason_check"
+         CHECK ("discard" IS NULL OR ("discard"->>'reason') IN ('unbuildable', 'landlocked', 'contaminated', 'other'));
+     END IF;
+   END
+   $$`,
+  `ALTER TABLE "auction_bid_log" ADD COLUMN IF NOT EXISTS "max_bid_cents_at_action" bigint`,
+  `ALTER TABLE "auction_bid_log" ADD COLUMN IF NOT EXISTS "over_max_reason" text`,
+  `DO $$
+   BEGIN
+     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'auction_bid_log_over_max_reason_check') THEN
+       ALTER TABLE "auction_bid_log" ADD CONSTRAINT "auction_bid_log_over_max_reason_check"
+         CHECK ("over_max_reason" IS NULL OR (
+           length(trim("over_max_reason")) > 0
+           AND "max_bid_cents_at_action" IS NOT NULL
+           AND "amount_cents" IS NOT NULL
+           AND "amount_cents" > "max_bid_cents_at_action"
+         ));
+     END IF;
+   END
+   $$`,
 ];
 
 // The statement set this run executes. Default: everything (the production
