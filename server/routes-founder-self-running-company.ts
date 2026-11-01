@@ -19,6 +19,7 @@ import { autonomyScoreService } from "./services/autonomyScoreV14";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { getOrganizationId, type AuthenticatedRequest } from "./types/request";
 import { Errors } from "./utils/errors";
+import { routeParam } from "./utils/routeParams";
 
 export function registerFounderV14Routes(app: Express) {
   // Defense-in-depth (2026-07 security sweep): these routes were protected
@@ -46,56 +47,56 @@ export function registerFounderV14Routes(app: Express) {
   });
 
   app.get("/api/founder/v14/overrides/:orgId", async (req, res) => {
-    try { res.json(await feedbackLoopService.getOverrides(parseInt(req.params.orgId), req.query)); }
+    try { res.json(await feedbackLoopService.getOverrides(parseInt(routeParam(req.params.orgId)), req.query)); }
     catch (err: any) { Errors.internal(res, err); }
   });
 
   app.get("/api/founder/v14/overrides/:overrideId/details", async (req, res) => {
-    try { res.json(await feedbackLoopService.getOverrideDetails(req.params.overrideId)); }
+    try { res.json(await feedbackLoopService.getOverrideDetails(routeParam(req.params.overrideId))); }
     catch (err: any) { Errors.internal(res, err); }
   });
 
   // Learning extraction
   app.post("/api/founder/v14/learnings/:orgId/extract", async (req, res) => {
-    try { res.json(await feedbackLoopService.extractLearnings(parseInt(req.params.orgId))); }
+    try { res.json(await feedbackLoopService.extractLearnings(parseInt(routeParam(req.params.orgId)))); }
     catch (err: any) { Errors.internal(res, err); }
   });
 
   app.post("/api/founder/v14/learnings/:learningId/reinforce", async (req, res) => {
-    try { res.json(await feedbackLoopService.reinforceLearning(req.params.learningId)); }
+    try { res.json(await feedbackLoopService.reinforceLearning(routeParam(req.params.learningId))); }
     catch (err: any) { Errors.internal(res, err); }
   });
 
   // Propagation
   app.post("/api/founder/v14/learnings/:learningId/propagate", async (req, res) => {
-    try { res.json(await feedbackLoopService.propagateLearning(req.params.learningId)); }
+    try { res.json(await feedbackLoopService.propagateLearning(routeParam(req.params.learningId))); }
     catch (err: any) { Errors.internal(res, err); }
   });
 
   app.post("/api/founder/v14/learnings/:orgId/propagate-all", async (req, res) => {
-    try { res.json(await feedbackLoopService.propagateAllActive(parseInt(req.params.orgId))); }
+    try { res.json(await feedbackLoopService.propagateAllActive(parseInt(routeParam(req.params.orgId)))); }
     catch (err: any) { Errors.internal(res, err); }
   });
 
   // Learning management
   app.get("/api/founder/v14/learnings/:orgId", async (req, res) => {
-    try { res.json(await feedbackLoopService.getLearnings(parseInt(req.params.orgId), req.query)); }
+    try { res.json(await feedbackLoopService.getLearnings(parseInt(routeParam(req.params.orgId)), req.query)); }
     catch (err: any) { Errors.internal(res, err); }
   });
 
   app.post("/api/founder/v14/learnings/:learningId/retract", async (req, res) => {
-    try { res.json(await feedbackLoopService.retractLearning(req.params.learningId, req.body.reason)); }
+    try { res.json(await feedbackLoopService.retractLearning(routeParam(req.params.learningId), req.body.reason)); }
     catch (err: any) { Errors.internal(res, err); }
   });
 
   app.get("/api/founder/v14/learnings/:learningId/impact", async (req, res) => {
-    try { res.json(await feedbackLoopService.getLearningImpact(req.params.learningId)); }
+    try { res.json(await feedbackLoopService.getLearningImpact(routeParam(req.params.learningId))); }
     catch (err: any) { Errors.internal(res, err); }
   });
 
   // Analytics
   app.get("/api/founder/v14/overrides/:orgId/analytics", async (req, res) => {
-    try { res.json(await feedbackLoopService.getOverrideAnalytics(parseInt(req.params.orgId))); }
+    try { res.json(await feedbackLoopService.getOverrideAnalytics(parseInt(routeParam(req.params.orgId)))); }
     catch (err: any) { Errors.internal(res, err); }
   });
 
@@ -110,7 +111,7 @@ export function registerFounderV14Routes(app: Express) {
   });
 
   app.post("/api/founder/v14/cascade/:resolutionId/founder-resolve", async (req, res) => {
-    try { res.json(await confidenceCascadeService.resolveFounderEscalation(req.params.resolutionId, req.body.founderDecision)); }
+    try { res.json(await confidenceCascadeService.resolveFounderEscalation(routeParam(req.params.resolutionId), req.body.founderDecision)); }
     catch (err: any) { Errors.internal(res, err); }
   });
 
@@ -121,12 +122,12 @@ export function registerFounderV14Routes(app: Express) {
 
   // Monitoring
   app.get("/api/founder/v14/cascade/:orgId/resolutions", async (req, res) => {
-    try { res.json(await confidenceCascadeService.getResolutions(parseInt(req.params.orgId), req.query)); }
+    try { res.json(await confidenceCascadeService.getResolutions(parseInt(routeParam(req.params.orgId)), req.query)); }
     catch (err: any) { Errors.internal(res, err); }
   });
 
   app.get("/api/founder/v14/cascade/resolutions/:resolutionId", async (req, res) => {
-    try { res.json(await confidenceCascadeService.getResolutionDetails(req.params.resolutionId)); }
+    try { res.json(await confidenceCascadeService.getResolutionDetails(routeParam(req.params.resolutionId))); }
     catch (err: any) { Errors.internal(res, err); }
   });
 
@@ -136,19 +137,19 @@ export function registerFounderV14Routes(app: Express) {
       const dateRange = from && to
         ? { from: new Date(String(from)), to: new Date(String(to)) }
         : undefined;
-      res.json(await confidenceCascadeService.getCascadeEfficiency(parseInt(req.params.orgId), dateRange));
+      res.json(await confidenceCascadeService.getCascadeEfficiency(parseInt(routeParam(req.params.orgId)), dateRange));
     }
     catch (err: any) { Errors.internal(res, err); }
   });
 
   // Founder queue (THE inbox)
   app.get("/api/founder/v14/cascade/:orgId/queue", async (req, res) => {
-    try { res.json(await confidenceCascadeService.getFounderQueue(parseInt(req.params.orgId))); }
+    try { res.json(await confidenceCascadeService.getFounderQueue(parseInt(routeParam(req.params.orgId)))); }
     catch (err: any) { Errors.internal(res, err); }
   });
 
   app.get("/api/founder/v14/cascade/:orgId/agent/:codename/profile", async (req, res) => {
-    try { res.json(await confidenceCascadeService.getAgentCascadeProfile(parseInt(req.params.orgId), req.params.codename)); }
+    try { res.json(await confidenceCascadeService.getAgentCascadeProfile(parseInt(routeParam(req.params.orgId)), routeParam(req.params.codename))); }
     catch (err: any) { Errors.internal(res, err); }
   });
 
@@ -158,7 +159,7 @@ export function registerFounderV14Routes(app: Express) {
   });
 
   app.get("/api/founder/v14/cascade/:orgId/stats", async (req, res) => {
-    try { res.json(await confidenceCascadeService.getCascadeStats(parseInt(req.params.orgId))); }
+    try { res.json(await confidenceCascadeService.getCascadeStats(parseInt(routeParam(req.params.orgId)))); }
     catch (err: any) { Errors.internal(res, err); }
   });
 
@@ -199,65 +200,65 @@ export function registerFounderV14Routes(app: Express) {
   });
 
   app.post("/api/founder/v14/autonomy/dependency-events/:eventId/resolve", async (req, res) => {
-    try { res.json(await autonomyScoreService.resolveDependencyEvent(req.params.eventId)); }
+    try { res.json(await autonomyScoreService.resolveDependencyEvent(routeParam(req.params.eventId))); }
     catch (err: any) { Errors.internal(res, err); }
   });
 
   app.get("/api/founder/v14/autonomy/:orgId/dependency-events", async (req, res) => {
-    try { res.json(await autonomyScoreService.getDependencyEvents(parseInt(req.params.orgId), req.query)); }
+    try { res.json(await autonomyScoreService.getDependencyEvents(parseInt(routeParam(req.params.orgId)), req.query)); }
     catch (err: any) { Errors.internal(res, err); }
   });
 
   // Score calculation
   app.post("/api/founder/v14/autonomy/:orgId/calculate-daily", async (req, res) => {
-    try { res.json(await autonomyScoreService.calculateDailyScore(parseInt(req.params.orgId), req.body.date)); }
+    try { res.json(await autonomyScoreService.calculateDailyScore(parseInt(routeParam(req.params.orgId)), req.body.date)); }
     catch (err: any) { Errors.internal(res, err); }
   });
 
   app.get("/api/founder/v14/autonomy/:orgId/weekly", async (req, res) => {
-    try { res.json(await autonomyScoreService.calculateWeeklyScore(parseInt(req.params.orgId))); }
+    try { res.json(await autonomyScoreService.calculateWeeklyScore(parseInt(routeParam(req.params.orgId)))); }
     catch (err: any) { Errors.internal(res, err); }
   });
 
   // The Founder-Free Week Test
   app.get("/api/founder/v14/autonomy/:orgId/founder-free-simulation", async (req, res) => {
-    try { res.json(await autonomyScoreService.runFounderFreeSimulation(parseInt(req.params.orgId), req.query.days ? parseInt(req.query.days as string) : undefined)); }
+    try { res.json(await autonomyScoreService.runFounderFreeSimulation(parseInt(routeParam(req.params.orgId)), req.query.days ? parseInt(req.query.days as string) : undefined)); }
     catch (err: any) { Errors.internal(res, err); }
   });
 
   // Analytics
   app.get("/api/founder/v14/autonomy/:orgId/history", async (req, res) => {
-    try { res.json(await autonomyScoreService.getScoreHistory(parseInt(req.params.orgId), req.query.days ? parseInt(req.query.days as string) : undefined)); }
+    try { res.json(await autonomyScoreService.getScoreHistory(parseInt(routeParam(req.params.orgId)), req.query.days ? parseInt(req.query.days as string) : undefined)); }
     catch (err: any) { Errors.internal(res, err); }
   });
 
   app.get("/api/founder/v14/autonomy/:orgId/trend", async (req, res) => {
-    try { res.json(await autonomyScoreService.getAutonomyTrend(parseInt(req.params.orgId))); }
+    try { res.json(await autonomyScoreService.getAutonomyTrend(parseInt(routeParam(req.params.orgId)))); }
     catch (err: any) { Errors.internal(res, err); }
   });
 
   app.get("/api/founder/v14/autonomy/:orgId/agent-ranking", async (req, res) => {
-    try { res.json(await autonomyScoreService.getAgentAutonomyRanking(parseInt(req.params.orgId))); }
+    try { res.json(await autonomyScoreService.getAgentAutonomyRanking(parseInt(routeParam(req.params.orgId)))); }
     catch (err: any) { Errors.internal(res, err); }
   });
 
   app.get("/api/founder/v14/autonomy/:orgId/category-breakdown", async (req, res) => {
-    try { res.json(await autonomyScoreService.getCategoryBreakdown(parseInt(req.params.orgId))); }
+    try { res.json(await autonomyScoreService.getCategoryBreakdown(parseInt(routeParam(req.params.orgId)))); }
     catch (err: any) { Errors.internal(res, err); }
   });
 
   app.get("/api/founder/v14/autonomy/:orgId/bottlenecks", async (req, res) => {
-    try { res.json(await autonomyScoreService.getBottlenecks(parseInt(req.params.orgId))); }
+    try { res.json(await autonomyScoreService.getBottlenecks(parseInt(routeParam(req.params.orgId)))); }
     catch (err: any) { Errors.internal(res, err); }
   });
 
   app.get("/api/founder/v14/autonomy/:orgId/targets", async (req, res) => {
-    try { res.json(await autonomyScoreService.getTargets(parseInt(req.params.orgId))); }
+    try { res.json(await autonomyScoreService.getTargets(parseInt(routeParam(req.params.orgId)))); }
     catch (err: any) { Errors.internal(res, err); }
   });
 
   app.get("/api/founder/v14/autonomy/:orgId/stats", async (req, res) => {
-    try { res.json(await autonomyScoreService.getStats(parseInt(req.params.orgId))); }
+    try { res.json(await autonomyScoreService.getStats(parseInt(routeParam(req.params.orgId)))); }
     catch (err: any) { Errors.internal(res, err); }
   });
 

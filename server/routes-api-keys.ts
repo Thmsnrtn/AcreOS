@@ -36,6 +36,7 @@ import {
   type AuthenticatedRequest,
 } from "./types/request";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 const createKeySchema = z.object({
   name: z.string().min(1).max(100),
@@ -148,7 +149,7 @@ export function registerApiKeyRoutes(app: Express): void {
     async (req, res) => {
       const orgId = getOrganizationId(req as AuthenticatedRequest);
       const userId = getUserId(req as AuthenticatedRequest);
-      const id = Number.parseInt(req.params.id, 10);
+      const id = Number.parseInt(routeParam(req.params.id), 10);
       if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid id");
 
       try {
@@ -187,7 +188,7 @@ export function registerApiKeyRoutes(app: Express): void {
     adminGuard,
     async (req, res) => {
       const orgId = getOrganizationId(req as AuthenticatedRequest);
-      const id = Number.parseInt(req.params.id, 10);
+      const id = Number.parseInt(routeParam(req.params.id), 10);
       if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid id");
 
       try {

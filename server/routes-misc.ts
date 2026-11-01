@@ -26,6 +26,7 @@ import {
   sealIntegrationCredentials,
 } from "./services/integrationCredentials";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 const smsSendSchema = z.object({
   to: z.string().trim().min(7, "Phone number is required"),
@@ -63,7 +64,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
     try {
       const org = req.organization;
       const user = req.user;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       const { actionTaken } = req.body;
       // `id` is a raw URL segment. The org comes from getOrCreateOrg, exactly
       // as the GET /api/alerts sibling above already does — before 2026-08-16
@@ -80,7 +81,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
   api.post("/api/alerts/:id/dismiss", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       // Same raw URL segment, same org source, same reason as the acknowledge
       // sibling above — see dismissAlert's own header for why this one needed a
       // second pass.
@@ -95,7 +96,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
   api.get("/api/leads/:id/intent-score", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const leadId = parseInt(req.params.id);
+      const leadId = parseInt(routeParam(req.params.id));
       const score = await leadQualificationService.calculateLeadIntentScore(org.id, leadId);
       res.json(score);
     } catch (error: any) {
@@ -107,7 +108,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
   api.post("/api/leads/:id/analyze-message", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const leadId = parseInt(req.params.id);
+      const leadId = parseInt(routeParam(req.params.id));
       const { message, conversationId } = req.body;
       const signals = await leadQualificationService.analyzeMessageForSignals(
         org.id,
@@ -125,7 +126,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
   api.get("/api/leads/:id/suggested-response", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const leadId = parseInt(req.params.id);
+      const leadId = parseInt(routeParam(req.params.id));
       const { propertyId } = req.query;
       const response = await leadQualificationService.generateSuggestedResponse(
         org.id,
@@ -293,7 +294,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
     try {
       const org = req.organization;
       const user = req.user;
-      const leadId = parseInt(req.params.leadId);
+      const leadId = parseInt(routeParam(req.params.leadId));
       const { message } = req.body;
 
       if (!message) {
@@ -391,7 +392,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
   api.get("/api/jobs/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { jobQueueService } = await import("./services/jobQueue");
-      const job = jobQueueService.getJobStatus(req.params.id);
+      const job = jobQueueService.getJobStatus(routeParam(req.params.id));
       
       if (!job) {
         return Errors.notFound(res, "Job");
@@ -679,7 +680,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
   api.get("/api/tax-optimizer/deal/:dealId", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const dealId = parseInt(req.params.dealId);
+      const dealId = parseInt(routeParam(req.params.dealId));
       const { taxOptimizerService } = await import("./services/taxOptimizer");
       const estimate = await taxOptimizerService.estimateDealTax(org.id, dealId);
       res.json(estimate);

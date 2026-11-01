@@ -43,6 +43,7 @@ import type { ContentBlock } from "./services/solene/chat/openRouterClient";
 import type { ChatTier } from "@shared/schema/solene-chat-config";
 import { CHAT_TIERS } from "@shared/schema/solene-chat-config";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 // ============================================================================
 // Helpers
@@ -146,7 +147,7 @@ export function registerSoleneChatRoutes(app: Express): void {
     isAuthenticated,
     requireFounder,
     async (req: AuthenticatedRequest, res: Response) => {
-      const id = parseIdParam(req.params.id);
+      const id = parseIdParam(routeParam(req.params.id));
       if (id === null) {
         return Errors.badRequest(res, "Invalid conversation id");
       }
@@ -171,7 +172,7 @@ export function registerSoleneChatRoutes(app: Express): void {
     isAuthenticated,
     requireFounder,
     async (req: AuthenticatedRequest, res: Response) => {
-      const id = parseIdParam(req.params.id);
+      const id = parseIdParam(routeParam(req.params.id));
       if (id === null) {
         return Errors.badRequest(res, "Invalid conversation id");
       }
@@ -254,7 +255,7 @@ export function registerSoleneChatRoutes(app: Express): void {
     isAuthenticated,
     requireFounder,
     async (req: AuthenticatedRequest, res: Response) => {
-      const id = parseIdParam(req.params.id);
+      const id = parseIdParam(routeParam(req.params.id));
       if (id === null) {
         return Errors.badRequest(res, "Invalid conversation id");
       }
@@ -274,7 +275,7 @@ export function registerSoleneChatRoutes(app: Express): void {
     isAuthenticated,
     requireFounder,
     async (req: AuthenticatedRequest, res: Response) => {
-      const id = parseIdParam(req.params.id);
+      const id = parseIdParam(routeParam(req.params.id));
       if (id === null) {
         return Errors.badRequest(res, "Invalid conversation id");
       }
@@ -298,7 +299,7 @@ export function registerSoleneChatRoutes(app: Express): void {
     isAuthenticated,
     requireFounder,
     async (req: AuthenticatedRequest, res: Response) => {
-      const id = parseIdParam(req.params.id);
+      const id = parseIdParam(routeParam(req.params.id));
       if (id === null) {
         return Errors.badRequest(res, "Invalid conversation id");
       }

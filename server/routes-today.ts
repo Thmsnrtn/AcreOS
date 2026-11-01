@@ -45,6 +45,7 @@ import { leadHasOptedOut } from "./services/leadContactability";
 
 import { TERMINAL_LEAD_STATUSES } from "@shared/lifecycle/pipeline-status";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 const router = Router();
 
 const priorityRank: Record<string, number> = { high: 0, medium: 1, low: 2 };
@@ -1586,7 +1587,7 @@ router.patch("/queue/:id", async (req: AuthenticatedRequest, res: Response) => {
     const org = getOrganization(req);
     const orgId = org.id;
     const userId = getUserId(req);
-    const itemId = String(req.params.id ?? "").trim();
+    const itemId = String(routeParam(req.params.id) ?? "").trim();
     if (!itemId) {
       return Errors.badRequest(res, "A queue item id is required");
     }

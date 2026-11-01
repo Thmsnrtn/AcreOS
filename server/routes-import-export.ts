@@ -33,6 +33,7 @@ import rateLimit from "express-rate-limit";
 import { getClientIp, clientIpOrNull } from "./utils/clientIp";
 import { CSV_IMPORT_MAX_ROWS_PER_FILE, BULK_EXPORT_DAILY_CAP } from "@shared/product-limits";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 // Phase 4 Week 15-16 (Magdalena §1): the synchronous /api/import/:entityType
 // handler still rejects CSVs above this limit so legacy clients see a clear
@@ -124,7 +125,7 @@ export function registerImportExportRoutes(app: Express): void {
 
   api.get("/api/import/:entityType/columns", isAuthenticated, async (req, res) => {
     try {
-      const entityType = req.params.entityType as "leads" | "properties" | "deals";
+      const entityType = routeParam(req.params.entityType) as "leads" | "properties" | "deals";
       if (!["leads", "properties", "deals"].includes(entityType)) {
         return Errors.badRequest(res, "Invalid entity type. Must be leads, properties, or deals.");
       }
@@ -137,7 +138,7 @@ export function registerImportExportRoutes(app: Express): void {
 
   api.post("/api/import/:entityType/preview", isAuthenticated, getOrCreateOrg, requirePermission("canImportData"), upload.single("file"), validateCSV, async (req, res) => {
     try {
-      const entityType = req.params.entityType as "leads" | "properties" | "deals";
+      const entityType = routeParam(req.params.entityType) as "leads" | "properties" | "deals";
       if (!["leads", "properties", "deals"].includes(entityType)) {
         return Errors.badRequest(res, "Invalid entity type. Must be leads, properties, or deals.");
       }
@@ -321,7 +322,7 @@ export function registerImportExportRoutes(app: Express): void {
   api.post("/api/import/:entityType", isAuthenticated, getOrCreateOrg, requirePermission("canImportData"), uploadJobCsv.single("file"), validateCSV, async (req, res, next) => {
     try {
       const org = req.organization;
-      const entityType = req.params.entityType as "leads" | "properties" | "deals" | "notes" | "communications" | "documents";
+      const entityType = routeParam(req.params.entityType) as "leads" | "properties" | "deals" | "notes" | "communications" | "documents";
 
       // notes / communications / documents have dedicated handlers further
       // down in this file. `next('route')` skips remaining handlers on this
@@ -474,7 +475,7 @@ export function registerImportExportRoutes(app: Express): void {
   api.get("/api/export/:entityType", isAuthenticated, getOrCreateOrg, requirePermission("canExportData"), bulkExportLimiter, async (req, res) => {
     try {
       const org = req.organization;
-      const entityType = req.params.entityType as "leads" | "properties" | "deals" | "notes";
+      const entityType = routeParam(req.params.entityType) as "leads" | "properties" | "deals" | "notes";
       const format = (req.query.format as string) || "csv";
 
       // Tobiah §1 deprecation: tag every legacy response so clients migrate.
@@ -625,7 +626,7 @@ export function registerImportExportRoutes(app: Express): void {
     try {
       const orgId = req.organization!.id;
       const userId = req.user.id;
-      const leadId = parseInt(req.params.id, 10);
+      const leadId = parseInt(routeParam(req.params.id), 10);
       if (!Number.isFinite(leadId)) return Errors.badRequest(res, "Invalid lead ID");
       const parsed = consentPatchSchema.safeParse(req.body ?? {});
       if (!parsed.success) {
@@ -859,7 +860,7 @@ export function registerImportExportRoutes(app: Express): void {
   api.get("/api/import/jobs/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization!;
-      const id = parseInt(req.params.id, 10);
+      const id = parseInt(routeParam(req.params.id), 10);
       if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid job ID");
       const job = await getImportJob(org.id, id);
       if (!job) return Errors.notFound(res, "Job");
@@ -915,7 +916,7 @@ export function registerImportExportRoutes(app: Express): void {
   api.get("/api/export/jobs/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization!;
-      const id = parseInt(req.params.id, 10);
+      const id = parseInt(routeParam(req.params.id), 10);
       if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid job ID");
       const job = await getExportJob(org.id, id);
       if (!job) return Errors.notFound(res, "Job");
@@ -940,7 +941,7 @@ export function registerImportExportRoutes(app: Express): void {
     async (req, res) => {
       try {
         const org = req.organization!;
-        const id = parseInt(req.params.id, 10);
+        const id = parseInt(routeParam(req.params.id), 10);
         if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid job ID");
         const job = await getExportJob(org.id, id);
         if (!job) return Errors.notFound(res, "Job");
@@ -978,7 +979,7 @@ export function applyExportDeprecationHeaders(app: Express): void {
   app.use("/api/export/:entityType", (req, res, next) => {
     // Skip the new job-backed surfaces — they don't take a single :entityType
     // param value that overlaps with the legacy ones (e.g. /jobs).
-    const t = req.params.entityType;
+    const t = routeParam(req.params.entityType);
     if (t === "everything" || t === "jobs") return next();
     res.setHeader("X-Deprecation", "true");
     res.setHeader("X-Deprecation-Replacement", "POST /api/export/everything");

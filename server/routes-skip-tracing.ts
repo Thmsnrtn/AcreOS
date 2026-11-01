@@ -50,6 +50,7 @@ import { getOrganizationId, getUserId } from "./types/request";
 import { createRateLimiter } from "./middleware/rateLimit";
 import type { Lead, SkipTrace } from "@shared/schema";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
@@ -355,7 +356,7 @@ function toTraceResponse(lead: Lead, trace: SkipTraceResult, persisted: Persiste
 router.post("/trace/:leadId", skipTraceLimiter, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const orgId = getOrganizationId(req);
-    const leadId = parseInt(req.params.leadId);
+    const leadId = parseInt(routeParam(req.params.leadId));
     if (isNaN(leadId)) return Errors.badRequest(res, "Invalid lead ID");
 
     // FCRA §1681b gate FIRST — before the debit, before the provider, before

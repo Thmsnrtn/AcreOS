@@ -32,6 +32,7 @@ import { logger } from "./utils/logger";
 import { REVENUE_TRIGGER_LADDER, pendingScaleUpTriggers, trailing30dRevenueCents } from "./services/finance/scaleUpTriggers";
 import { liveMrrDetail } from "./services/finance/runwayModel";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
@@ -449,7 +450,7 @@ router.post("/triggers/:thresholdId/approve", async (req: AuthenticatedRequest, 
     if (!parsed.success) {
       return Errors.validationFailed(res, parsed.error.issues);
     }
-    const thresholdId = req.params.thresholdId;
+    const thresholdId = routeParam(req.params.thresholdId);
     const trigger = REVENUE_TRIGGER_LADDER.find((t) => t.thresholdId === thresholdId);
     if (!trigger) return Errors.notFound(res, "Trigger");
 

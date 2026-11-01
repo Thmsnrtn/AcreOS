@@ -34,6 +34,7 @@ import { requireRole } from "./middleware/roleGuard";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 export function registerBuyerAnalyticsRoutes(app: Express): void {
   const ownerOrAdmin = requireRole(["owner", "admin"]);
@@ -185,7 +186,7 @@ export function registerBuyerAnalyticsRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const orgId = getOrganizationId(req);
-        const id = parseInt(req.params.id, 10);
+        const id = parseInt(routeParam(req.params.id), 10);
         if (Number.isNaN(id)) return Errors.badRequest(res, "Invalid buyer id");
 
         // Deactivate sets `is_active` (DEFECT-0179). This used to stash only

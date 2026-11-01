@@ -26,6 +26,7 @@ import { logger } from "./utils/logger";
 import { assertEntityBelongsToOrg } from "./utils/orgScope";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId } from "./types/request";
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
@@ -37,7 +38,7 @@ const router = Router();
  * idempotent: true
  */
 async function gatePropertyParam(req: AuthenticatedRequest, res: Response): Promise<number | null> {
-  const propertyId = parseInt(req.params.propertyId, 10);
+  const propertyId = parseInt(routeParam(req.params.propertyId), 10);
   if (Number.isNaN(propertyId)) {
     Errors.badRequest(res, "Invalid property ID");
     return null;

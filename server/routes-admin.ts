@@ -49,6 +49,7 @@ import { sanitizePromptInline } from "./utils/sanitizePrompt";
 import { wrapUntrusted } from "./ai/untrustedEnvelope";
 import { clock } from "./utils/clock";
 import { meteredChatCompletion } from "./services/aiSpendGuard";
+import { routeParam } from "./utils/routeParams";
 // ── Zod validation schemas for admin endpoints ────────────────────────────────
 const createSupportCaseSchema = z.object({
   subject: z.string().min(1).max(500),
@@ -169,7 +170,7 @@ export function registerAdminRoutes(app: Express): void {
   api.get("/api/support/cases/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const caseId = parseInt(req.params.id);
+      const caseId = parseInt(routeParam(req.params.id));
       const supportCase = await storage.getSupportCase(org.id, caseId);
       
       if (!supportCase || supportCase.organizationId !== org.id) {
@@ -190,7 +191,7 @@ export function registerAdminRoutes(app: Express): void {
   api.post("/api/support/cases/:id/messages", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const caseId = parseInt(req.params.id);
+      const caseId = parseInt(routeParam(req.params.id));
       const parsed = supportCaseMessageSchema.safeParse(req.body);
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
       const { message } = parsed.data;
@@ -223,7 +224,7 @@ export function registerAdminRoutes(app: Express): void {
   api.post("/api/support/cases/:id/rate", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const caseId = parseInt(req.params.id);
+      const caseId = parseInt(routeParam(req.params.id));
       const parsed = supportCaseRatingSchema.safeParse(req.body);
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
       const { rating } = parsed.data;
@@ -247,7 +248,7 @@ export function registerAdminRoutes(app: Express): void {
   api.post("/api/support/cases/:id/resolve", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const caseId = parseInt(req.params.id);
+      const caseId = parseInt(routeParam(req.params.id));
 
       const supportCase = await storage.getSupportCase(org.id, caseId);
       if (!supportCase || supportCase.organizationId !== org.id) {
@@ -310,7 +311,7 @@ export function registerAdminRoutes(app: Express): void {
       const user = authReq.user;
       const userId = getUserId(authReq);
       const userEmail = user?.email || user.email;
-      const caseId = parseInt(req.params.id);
+      const caseId = parseInt(routeParam(req.params.id));
       const parsed = adminRespondSchema.safeParse(req.body);
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
       const { message, resolve } = parsed.data;
@@ -398,7 +399,7 @@ export function registerAdminRoutes(app: Express): void {
   api.get("/api/notes/:noteId/borrower-messages", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const noteId = parseInt(req.params.noteId);
+      const noteId = parseInt(routeParam(req.params.noteId));
       const note = await storage.getNote(org.id, noteId);
       if (!note) return Errors.notFound(res, "Note");
       const msgs = await storage.getBorrowerMessages(org.id, noteId);
@@ -414,7 +415,7 @@ export function registerAdminRoutes(app: Express): void {
   api.post("/api/notes/:noteId/borrower-messages/reply", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const noteId = parseInt(req.params.noteId);
+      const noteId = parseInt(routeParam(req.params.noteId));
       const parsed = z.object({ content: z.string().min(1).max(10000) }).safeParse(req.body);
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
       const { content } = parsed.data;
@@ -440,7 +441,7 @@ export function registerAdminRoutes(app: Express): void {
   api.get("/api/notes/:noteId/borrower-messages/unread-count", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const noteId = parseInt(req.params.noteId);
+      const noteId = parseInt(routeParam(req.params.noteId));
       const note = await storage.getNote(org.id, noteId);
       if (!note) return Errors.notFound(res, "Note");
       const count = await storage.countUnreadBorrowerMessages(noteId, "borrower");
@@ -521,7 +522,7 @@ export function registerAdminRoutes(app: Express): void {
       const user = authReq.user;
       const userId = getUserId(authReq);
       const userEmail = user?.email || user.email;
-      const requestId = parseInt(req.params.id);
+      const requestId = parseInt(routeParam(req.params.id));
 
       // R1 fix: gate on canonical founder identity, not org ownership.
       if (!isFounderIdentity({ email: userEmail, userId })) {
@@ -648,7 +649,7 @@ export function registerAdminRoutes(app: Express): void {
   // Apply this middleware on any route that accepts :orgId in URL path
   const crossOrgAdminGuard: RequestHandler = (req, res, next) => {
     const org = req.organization;
-    const paramOrgId = req.params.orgId ? parseInt(req.params.orgId, 10) : null;
+    const paramOrgId = routeParam(req.params.orgId) ? parseInt(routeParam(req.params.orgId), 10) : null;
     if (paramOrgId !== null && org && org.id !== paramOrgId) {
       logger.warn("Cross-org access attempt blocked", { orgId: org.id, requestedOrgId: paramOrgId, path: req.path });
       return Errors.forbidden(res, "Access denied: organization mismatch");
@@ -811,7 +812,7 @@ export function registerAdminRoutes(app: Express): void {
 
   api.put("/api/admin/alerts/:id/acknowledge", isAuthenticated, isFounderAdmin, async (req: AuthenticatedRequest, res) => {
     try {
-      const alertId = Number(req.params.id);
+      const alertId = Number(routeParam(req.params.id));
       if (!Number.isInteger(alertId) || alertId <= 0) return Errors.badRequest(res, "Invalid alert id");
       // The one acknowledgement rule (DEFECT-0135): only a NEW alert moves.
       // The repo method set "acknowledged" with no status predicate — a
@@ -831,7 +832,7 @@ export function registerAdminRoutes(app: Express): void {
 
   api.put("/api/admin/alerts/:id/resolve", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
-      const alertId = Number(req.params.id);
+      const alertId = Number(routeParam(req.params.id));
       const updated = await storage.resolveAlertForPlatformOps(alertId);
       res.json(updated);
     } catch (err: any) {
@@ -962,7 +963,7 @@ export function registerAdminRoutes(app: Express): void {
   api.get("/api/founder/gis-job/:jobId", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
       const { getValidationJob } = await import("./services/gisValidation");
-      const job = getValidationJob(req.params.jobId);
+      const job = getValidationJob(routeParam(req.params.jobId));
       
       if (!job) {
         return Errors.notFound(res, "Job");
@@ -1049,7 +1050,7 @@ export function registerAdminRoutes(app: Express): void {
   // honestly, never silently skipped.
   api.post("/api/admin/organizations/:id/delete", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
-      const orgId = parseInt(req.params.id, 10);
+      const orgId = parseInt(routeParam(req.params.id), 10);
       if (!Number.isFinite(orgId) || orgId <= 0) {
         return Errors.badRequest(res, "Invalid organization id");
       }
@@ -1253,7 +1254,7 @@ export function registerAdminRoutes(app: Express): void {
 
   api.patch("/api/admin/data-sources/:id", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
-      const sourceId = Number(req.params.id);
+      const sourceId = Number(routeParam(req.params.id));
       const parsedDsp = dataSourcePatchSchema.safeParse(req.body);
       if (!parsedDsp.success) return Errors.validationFailed(res, parsedDsp.error.issues);
       const { isEnabled, priority, notes } = parsedDsp.data;
@@ -1368,7 +1369,7 @@ export function registerAdminRoutes(app: Express): void {
 
   api.delete("/api/county-gis-endpoints/:id", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       const { countyGisEndpoints } = await import('@shared/schema');
       const { eq } = await import('drizzle-orm');
       await db.delete(countyGisEndpoints).where(eq(countyGisEndpoints.id, id));
@@ -1382,7 +1383,7 @@ export function registerAdminRoutes(app: Express): void {
   // Test a single GIS endpoint
   api.post("/api/county-gis-endpoints/:id/test", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       if (isNaN(id)) {
         return Errors.badRequest(res, "Invalid endpoint ID");
       }
@@ -1827,7 +1828,7 @@ export function registerAdminRoutes(app: Express): void {
   // Diagnose endpoint issues
   api.post("/api/county-gis-endpoints/:id/diagnose", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       if (isNaN(id)) {
         return Errors.badRequest(res, "Invalid endpoint ID");
       }
@@ -1973,7 +1974,7 @@ export function registerAdminRoutes(app: Express): void {
 
   api.post("/api/discovery/:id/validate", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       if (isNaN(id)) {
         return Errors.badRequest(res, "Invalid endpoint ID");
       }
@@ -2003,7 +2004,7 @@ export function registerAdminRoutes(app: Express): void {
 
   api.post("/api/discovery/:id/approve", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       if (isNaN(id)) {
         return Errors.badRequest(res, "Invalid endpoint ID");
       }
@@ -2018,7 +2019,7 @@ export function registerAdminRoutes(app: Express): void {
 
   api.post("/api/discovery/:id/reject", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       if (isNaN(id)) {
         return Errors.badRequest(res, "Invalid endpoint ID");
       }
@@ -2071,7 +2072,7 @@ export function registerAdminRoutes(app: Express): void {
 
   api.delete("/api/discovery/:id", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       if (isNaN(id)) {
         return Errors.badRequest(res, "Invalid endpoint ID");
       }
@@ -2121,7 +2122,7 @@ export function registerAdminRoutes(app: Express): void {
 
   api.patch("/api/data-sources/:id", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       if (isNaN(id)) {
         return Errors.badRequest(res, "Invalid data source ID");
       }
@@ -2146,7 +2147,7 @@ export function registerAdminRoutes(app: Express): void {
 
   api.delete("/api/data-sources/:id", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       if (isNaN(id)) {
         return Errors.badRequest(res, "Invalid data source ID");
       }
@@ -2167,7 +2168,7 @@ export function registerAdminRoutes(app: Express): void {
   // Test a single data source (using comprehensive validator)
   api.post("/api/data-sources/:id/test", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       if (isNaN(id)) {
         return Errors.badRequest(res, "Invalid data source ID");
       }
@@ -2463,7 +2464,7 @@ export function registerAdminRoutes(app: Express): void {
       const userId: string = user?.id || user?.id;
       if (!userId) return Errors.unauthorized(res);
 
-      const layerId = Number(req.params.layerId);
+      const layerId = Number(routeParam(req.params.layerId));
       const parsedPref = z.object({ enabled: z.boolean().optional(), opacity: z.coerce.number().min(0).max(1).optional() }).safeParse(req.body);
       if (!parsedPref.success) return Errors.validationFailed(res, parsedPref.error.issues);
       const { enabled, opacity } = parsedPref.data;
@@ -2620,7 +2621,7 @@ export function registerAdminRoutes(app: Express): void {
 
   api.put("/api/admin/ai-models/:id", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       const [updated] = await db.update(aiModelConfigs)
         .set({ ...omitProtectedFields(req.body), updatedAt: clock.now() })
         .where(eq(aiModelConfigs.id, id))
@@ -2635,7 +2636,7 @@ export function registerAdminRoutes(app: Express): void {
 
   api.delete("/api/admin/ai-models/:id", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       await db.delete(aiModelConfigs).where(eq(aiModelConfigs.id, id));
       const { invalidateDbModelCache } = await import('./services/aiRouter');
       invalidateDbModelCache();
@@ -2741,7 +2742,7 @@ export function registerAdminRoutes(app: Express): void {
 
   api.delete("/api/admin/queues/:queueName/failed", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
-      const { queueName } = req.params;
+      const queueName = routeParam(req.params.queueName);
       const redisUrl = process.env.REDIS_URL;
       if (!redisUrl) return Errors.badRequest(res, "Redis not configured");
 
@@ -2760,7 +2761,7 @@ export function registerAdminRoutes(app: Express): void {
 
   api.post("/api/admin/queues/:queueName/retry-failed", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
-      const { queueName } = req.params;
+      const queueName = routeParam(req.params.queueName);
       const redisUrl = process.env.REDIS_URL;
       if (!redisUrl) return Errors.badRequest(res, "Redis not configured");
 
@@ -3080,7 +3081,7 @@ export function registerAdminRoutes(app: Express): void {
 
   api.put("/api/founder/feature-flags/:key", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
-      const { key } = req.params;
+      const key = routeParam(req.params.key);
       const parsedFlag = z.object({ enabled: z.boolean() }).safeParse(req.body);
       if (!parsedFlag.success) return Errors.badRequest(res, "enabled must be a boolean");
       const { enabled } = parsedFlag.data;
@@ -3126,7 +3127,7 @@ export function registerAdminRoutes(app: Express): void {
 
   api.put("/api/founder/pricing/:tier", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
-      const { tier } = req.params;
+      const tier = routeParam(req.params.tier);
       const { displayPriceMonthly, displayPriceYearly, allowPromoCodes } = req.body;
       const updated = await storage.updatePricingConfig(tier, {
         ...(displayPriceMonthly !== undefined && { displayPriceMonthly }),
@@ -3143,7 +3144,7 @@ export function registerAdminRoutes(app: Express): void {
   // Create / activate a flash sale promo for a tier
   api.post("/api/founder/pricing/:tier/promo", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
-      const { tier } = req.params;
+      const tier = routeParam(req.params.tier);
       const parsedPromo = z.object({ promoLabel: z.string().min(1), promoDiscountPercent: z.coerce.number().min(1).max(100), promoEndsAt: z.string().datetime() }).safeParse(req.body);
       if (!parsedPromo.success) return Errors.validationFailed(res, parsedPromo.error.issues);
       const { promoLabel, promoDiscountPercent, promoEndsAt } = parsedPromo.data;
@@ -3171,7 +3172,7 @@ export function registerAdminRoutes(app: Express): void {
   // End / clear a promo for a tier
   api.delete("/api/founder/pricing/:tier/promo", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
-      const { tier } = req.params;
+      const tier = routeParam(req.params.tier);
       await storage.clearPricingPromo(tier);
       res.json({ success: true });
     } catch (err: any) {
@@ -3292,7 +3293,7 @@ export function registerAdminRoutes(app: Express): void {
   // Pause / resume a campaign
   api.put("/api/founder/growth/campaigns/:id/status", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       const parsedStatus = z.object({ status: z.enum(["active", "paused"]) }).safeParse(req.body);
       if (!parsedStatus.success) return Errors.badRequest(res, "status must be 'active' or 'paused'");
       const { status } = parsedStatus.data;
@@ -3316,7 +3317,7 @@ export function registerAdminRoutes(app: Express): void {
   // Sync campaign stats from Meta
   api.post("/api/founder/growth/campaigns/:id/sync", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       const campaign = await storage.getGrowthCampaign(id);
       if (!campaign || !campaign.externalCampaignId) {
         return Errors.notFound(res, "Campaign (or not yet live)");
@@ -3375,7 +3376,7 @@ export function registerAdminRoutes(app: Express): void {
   // Poll creative bundle status
   api.get("/api/founder/growth/creative-bundles/:id", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
-      const bundle = await storage.getAdCreativeBundle(req.params.id);
+      const bundle = await storage.getAdCreativeBundle(routeParam(req.params.id));
       if (!bundle) return Errors.notFound(res, "Bundle");
       res.json(bundle);
     } catch (err: any) {
@@ -3387,7 +3388,7 @@ export function registerAdminRoutes(app: Express): void {
   api.post("/api/founder/growth/creative-bundles/:id/regenerate-copy", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
       const { angle } = req.body;
-      const bundle = await storage.getAdCreativeBundle(req.params.id);
+      const bundle = await storage.getAdCreativeBundle(routeParam(req.params.id));
       if (!bundle || bundle.status !== "ready") return Errors.badRequest(res, "Bundle not ready");
 
       const { adCreativeService } = await import("./services/adCreativeService");
@@ -3411,7 +3412,7 @@ export function registerAdminRoutes(app: Express): void {
       const { name, dailyBudgetCents, targetCountries } = req.body;
       if (!name) return Errors.badRequest(res, "Campaign name is required");
 
-      const bundle = await storage.getAdCreativeBundle(req.params.id);
+      const bundle = await storage.getAdCreativeBundle(routeParam(req.params.id));
       if (!bundle) return Errors.notFound(res, "Bundle");
       if (bundle.status !== "ready") return Errors.badRequest(res, `Bundle is ${bundle.status}, not ready`);
 
@@ -3664,7 +3665,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   // over a row that was never touched.
   api.post("/api/monitor/alerts/:id/resolve", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const alertId = Number(req.params.id);
+      const alertId = Number(routeParam(req.params.id));
       if (!Number.isInteger(alertId) || alertId <= 0) {
         return Errors.badRequest(res, "Invalid alert id");
       }
@@ -3691,7 +3692,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   /** AI-draft a support reply for an escalated ticket */
   api.post("/api/founder/support/:ticketId/ai-draft", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
-      const ticketId = parseInt(req.params.ticketId);
+      const ticketId = parseInt(routeParam(req.params.ticketId));
       const [ticket] = await db.select().from(supportTickets).where(eq(supportTickets.id, ticketId)).limit(1);
       if (!ticket) return Errors.notFound(res, "Ticket");
 
@@ -3733,7 +3734,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   /** Send a reply to a support ticket and optionally resolve it */
   api.post("/api/founder/support/:ticketId/reply", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
-      const ticketId = parseInt(req.params.ticketId);
+      const ticketId = parseInt(routeParam(req.params.ticketId));
       const { message, resolve } = req.body;
       if (!message) return Errors.badRequest(res, "message is required");
 
@@ -3871,7 +3872,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   // POST /api/admin/churn-risk/:orgId/rescue — manually trigger rescue for an org
   api.post("/api/admin/churn-risk/:orgId/rescue", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
-      const orgId = Number(req.params.orgId);
+      const orgId = Number(routeParam(req.params.orgId));
       const { churnEngine } = await import("./services/churnEngine");
       const org = await storage.getOrganization(orgId);
       if (!org) return Errors.notFound(res, "Org");
@@ -3923,7 +3924,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   // POST /api/admin/pax-observations/:id/execute — execute the suggested action for an observation
   api.post("/api/admin/pax-observations/:id/execute", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
-      const obsId = Number(req.params.id);
+      const obsId = Number(routeParam(req.params.id));
       const [obs] = await db
         .select({ orgId: paxObservations.organizationId, metadata: paxObservations.metadata })
         .from(paxObservations)
@@ -4059,7 +4060,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   api.delete("/api/org/api-keys/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const keyId = parseInt(req.params.id);
+      const keyId = parseInt(routeParam(req.params.id));
       const [updated] = await db
         .update(orgApiKeys)
         .set({ isRevoked: true, updatedAt: clock.now() })
@@ -4100,7 +4101,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   api.get("/api/campaigns/:id/mail-attribution", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const campaignId = parseInt(req.params.id);
+      const campaignId = parseInt(routeParam(req.params.id));
 
       // Get mailing orders for this campaign
       const orders = await db
@@ -4390,7 +4391,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   api.delete("/api/ai/memory/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const memoryId = Number(req.params.id);
+      const memoryId = Number(routeParam(req.params.id));
       const { paxMemory } = await import("@shared/schema");
       await db.delete(paxMemory)
         .where(and(eq(paxMemory.id, memoryId), eq(paxMemory.organizationId, org.id)));
@@ -4523,7 +4524,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
     try {
       const { setAgentEnabled } = await import("./agents/index");
       const { enabled } = req.body as { enabled: boolean };
-      const success = setAgentEnabled(req.params.name, enabled);
+      const success = setAgentEnabled(routeParam(req.params.name), enabled);
       if (!success) return Errors.notFound(res, "Agent");
       res.json({ success: true });
     } catch (err: any) {
@@ -4587,7 +4588,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   // ── Tier Override (Section 10) ──
   app.post("/api/admin/organizations/:id/tier-override", isAuthenticated, getOrCreateOrg, isFounderAdmin, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const targetOrgId = parseInt(req.params.id);
+      const targetOrgId = parseInt(routeParam(req.params.id));
       const { tier, reason, expiresAt } = req.body;
       if (!tier || !reason) return Errors.badRequest(res, "tier and reason are required");
       const { organizations } = await import("@shared/schema");
@@ -4615,7 +4616,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   app.post("/api/admin/impersonate/:orgId", isAuthenticated, getOrCreateOrg, isFounderAdmin, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const org = getOrganization(req);
-      const targetOrgId = parseInt(req.params.orgId);
+      const targetOrgId = parseInt(routeParam(req.params.orgId));
       const { organizations } = await import("@shared/schema");
       const { eq } = await import("drizzle-orm");
       const target = await db.query.organizations.findFirst({ where: eq(organizations.id, targetOrgId) });
@@ -4645,7 +4646,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
 
   app.post("/api/admin/organizations/:id/features", isAuthenticated, getOrCreateOrg, isFounderAdmin, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const targetOrgId = parseInt(req.params.id);
+      const targetOrgId = parseInt(routeParam(req.params.id));
       const { features } = req.body;
       if (!features || typeof features !== "object") return Errors.badRequest(res, "features object required");
       const { organizations } = await import("@shared/schema");
@@ -4883,7 +4884,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
 
   app.put("/api/founder/knowledge-base/:id", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       if (isNaN(id)) return Errors.badRequest(res, "Invalid ID");
 
       const parsed = kbArticleSchema.partial().safeParse(req.body);
@@ -4903,7 +4904,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
 
   app.delete("/api/founder/knowledge-base/:id", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       if (isNaN(id)) return Errors.badRequest(res, "Invalid ID");
 
       const [deleted] = await db.delete(knowledgeBaseArticles)

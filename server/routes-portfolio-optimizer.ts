@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import { portfolioOptimizer } from './services/portfolioOptimizer';
 import { Errors } from './utils/errors';
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
@@ -121,7 +122,7 @@ router.patch('/recommendations/:id', async (req: Request, res: Response) => {
     const { status } = req.body;
     await portfolioOptimizer.updateRecommendationStatus(
       org.id,
-      parseInt(req.params.id),
+      parseInt(routeParam(req.params.id)),
       status
     );
     res.json({ success: true });

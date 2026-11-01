@@ -32,6 +32,7 @@ import { A2P_STATUSES } from "@shared/sms/a2p10dlc";
 import { OFFLINE_AREA_MAX_PARCELS } from "@shared/map/offlineSources";
 import { IMPORT_FORMAT_PRESETS } from "@shared/leads/importFormats";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 const PAX_LANGUAGES = ["auto", "en", "es"] as const;
 
@@ -49,7 +50,7 @@ export function registerGrowthRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const orgId = getOrganizationId(req);
-        const leadId = Number(req.params.id);
+        const leadId = Number(routeParam(req.params.id));
         if (!Number.isInteger(leadId) || leadId <= 0) return Errors.badRequest(res, "Invalid lead id");
         const parsed = languageBody.safeParse(req.body ?? {});
         if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
@@ -235,7 +236,7 @@ export function registerGrowthRoutes(app: Express): void {
     requirePermission("canDeleteLeads"),
     async (req: AuthenticatedRequest, res: Response) => {
       try {
-        const batchId = Number(req.params.id);
+        const batchId = Number(routeParam(req.params.id));
         if (!Number.isInteger(batchId) || batchId <= 0) return Errors.badRequest(res, "Invalid import id");
         const { undoImportBatch } = await import("./services/leads/importBatches");
         const out = await undoImportBatch(getOrganizationId(req), batchId, req.user?.id ?? null);

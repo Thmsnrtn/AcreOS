@@ -54,6 +54,7 @@ import {
   type TaxIdType,
 } from "@shared/taxIdentity";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 // Customer-safe slice of the organizations.settings jsonb blob. The Settings
 // page sends the whole current blob back with one key changed, so this schema
@@ -291,7 +292,7 @@ export function registerOrganizationRoutes(app: Express): void {
   // GET /api/playbooks/:id - Get playbook template details with steps
   api.get("/api/playbooks/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const { id } = req.params;
+      const id = routeParam(req.params.id);
       const org = req.organization;
 
       const template = PLAYBOOK_TEMPLATES_DATA.find(t => t.id === id);
@@ -321,7 +322,7 @@ export function registerOrganizationRoutes(app: Express): void {
 
   api.post("/api/playbooks/:id/start", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const { id } = req.params;
+      const id = routeParam(req.params.id);
       const org = req.organization;
       const parsed = startPlaybookSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -373,7 +374,7 @@ export function registerOrganizationRoutes(app: Express): void {
   // GET /api/playbooks/instances/:instanceId - Get specific playbook instance
   api.get("/api/playbooks/instances/:instanceId", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const { instanceId } = req.params;
+      const instanceId = routeParam(req.params.instanceId);
       const org = req.organization;
       
       const instance = await storage.getPlaybookInstanceById(org.id, parseInt(instanceId));
@@ -396,7 +397,8 @@ export function registerOrganizationRoutes(app: Express): void {
   // POST /api/playbooks/instances/:instanceId/steps/:stepId/complete - Mark step complete
   api.post("/api/playbooks/instances/:instanceId/steps/:stepId/complete", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const { instanceId, stepId } = req.params;
+      const instanceId = routeParam(req.params.instanceId);
+      const stepId = routeParam(req.params.stepId);
       const org = req.organization;
       
       const instance = await storage.getPlaybookInstanceById(org.id, parseInt(instanceId));
@@ -459,7 +461,8 @@ export function registerOrganizationRoutes(app: Express): void {
   // POST /api/playbooks/instances/:instanceId/steps/:stepId/uncomplete - Undo step completion
   api.post("/api/playbooks/instances/:instanceId/steps/:stepId/uncomplete", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const { instanceId, stepId } = req.params;
+      const instanceId = routeParam(req.params.instanceId);
+      const stepId = routeParam(req.params.stepId);
       const org = req.organization;
       
       const instance = await storage.getPlaybookInstanceById(org.id, parseInt(instanceId));
@@ -486,7 +489,7 @@ export function registerOrganizationRoutes(app: Express): void {
   // DELETE /api/playbooks/instances/:instanceId - Cancel/delete a playbook instance
   api.delete("/api/playbooks/instances/:instanceId", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const { instanceId } = req.params;
+      const instanceId = routeParam(req.params.instanceId);
       const org = req.organization;
       
       await storage.deletePlaybookInstance(org.id, parseInt(instanceId));
@@ -1146,7 +1149,7 @@ export function registerOrganizationRoutes(app: Express): void {
 
   api.patch("/api/team/:id/role", isAuthenticated, getOrCreateOrg, requireAdminOrAbove(), async (req, res) => {
     const org = req.organization;
-    const memberId = Number(req.params.id);
+    const memberId = Number(routeParam(req.params.id));
     const parsed = updateRoleSchema.safeParse(req.body);
     if (!parsed.success) {
       return Errors.validationFailed(res, parsed.error.issues);
@@ -1259,7 +1262,7 @@ export function registerOrganizationRoutes(app: Express): void {
     requireAdminOrAbove(),
     async (req, res) => {
       const org = req.organization;
-      const memberId = Number(req.params.id);
+      const memberId = Number(routeParam(req.params.id));
       const parsed = viewOnlyToggleSchema.safeParse(req.body);
       if (!parsed.success) {
         return Errors.validationFailed(res, parsed.error.issues);
@@ -1386,7 +1389,7 @@ export function registerOrganizationRoutes(app: Express): void {
     requireOwner(),
     async (req, res) => {
       const org = req.organization;
-      const { userId } = req.params;
+      const userId = routeParam(req.params.userId);
       if (!userId) return Errors.badRequest(res, "userId required");
 
       await storage.removeOrgCoOwner(org.id, userId);
@@ -1872,7 +1875,7 @@ export function registerOrganizationRoutes(app: Express): void {
     try {
       const org = (req as AuthenticatedRequest).organization;
       if (!org) return Errors.unauthorized(res);
-      const id = Number.parseInt(req.params.id, 10);
+      const id = Number.parseInt(routeParam(req.params.id), 10);
       if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid invitation id");
       const { organizationInvitations } = await import("@shared/schema");
       const [updated] = await db
@@ -2310,7 +2313,7 @@ export function registerOrganizationRoutes(app: Express): void {
       const { paidCents } = parsed.data;
       const updated = await recordCommissionPayment(
         req.organization.id,
-        req.params.id,
+        routeParam(req.params.id),
         paidCents
       );
       res.json(updated);
@@ -2324,7 +2327,7 @@ export function registerOrganizationRoutes(app: Express): void {
     try {
       const year = parseInt(req.query.year as string) || clock.now().getFullYear();
       const summaries = await getAgentCommissionSummaries(req.organization.id, year);
-      const summary = summaries.find(s => s.teamMemberId === parseInt(req.params.teamMemberId));
+      const summary = summaries.find(s => s.teamMemberId === parseInt(routeParam(req.params.teamMemberId)));
       if (!summary) return Errors.notFound(res, "Team member");
 
       const org = req.organization;

@@ -9,6 +9,7 @@ import { handleLandStatusError } from './utils/landStatus';
 import { poolDebit, refundPoolDebit, poolRefusalDetails } from './services/creditPool';
 import type { AuthenticatedRequest } from './types/request';
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
@@ -85,7 +86,7 @@ router.post('/generate', async (req: AuthenticatedRequest, res: Response) => {
 router.post('/property/:propertyId', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const org = req.organization;
-    const propertyId = parseInt(req.params.propertyId, 10);
+    const propertyId = parseInt(routeParam(req.params.propertyId), 10);
     if (Number.isNaN(propertyId)) {
       return Errors.badRequest(res, 'Invalid property id');
     }
@@ -209,14 +210,14 @@ router.get('/history/:propertyId', cacheResponse(300), async (req: Request, res:
     const org = req.organization;
     const rows = await acreOSValuation.getValuationHistory(
       org.id.toString(),
-      req.params.propertyId
+      routeParam(req.params.propertyId)
     );
 
     // Raw valuation_predictions rows don't match the client's render shape
     // (predictedValue vs estimatedValue, valueRange vs confidenceInterval),
     // so the estimate card silently rendered blanks on reload. Map here,
     // computing price/acre from the property's recorded acreage.
-    const propertyIdNum = parseInt(req.params.propertyId, 10);
+    const propertyIdNum = parseInt(routeParam(req.params.propertyId), 10);
     let acres: number | null = null;
     if (Number.isFinite(propertyIdNum)) {
       const [prop] = await db
@@ -296,10 +297,11 @@ router.post('/record-transaction', async (req: Request, res: Response) => {
 router.get('/:propertyId', cacheResponse(300), async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    if (!/^\d+$/.test(req.params.propertyId)) {
+    const propertyIdParam = routeParam(req.params.propertyId);
+    if (!/^\d+$/.test(propertyIdParam)) {
       return Errors.notFound(res, 'Property');
     }
-    const propertyId = parseInt(req.params.propertyId, 10);
+    const propertyId = parseInt(propertyIdParam, 10);
 
     const [prop] = await db
       .select({ sizeAcres: properties.sizeAcres })
@@ -311,7 +313,7 @@ router.get('/:propertyId', cacheResponse(300), async (req: Request, res: Respons
 
     const rows = await acreOSValuation.getValuationHistory(
       org.id.toString(),
-      req.params.propertyId
+      routeParam(req.params.propertyId)
     );
     // Legacy rows from the deleted LLM $/acre rung and the pre-honesty flat
     // baseline are not modeled values; this chip would label them "AcreOS

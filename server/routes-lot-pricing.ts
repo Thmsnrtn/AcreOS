@@ -38,6 +38,7 @@ import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { formatCents } from "@shared/finance/cents";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 const ruleSchema = z.object({
   attribute: z.string().min(1).max(64),
@@ -145,7 +146,7 @@ export function registerLotPricingRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const orgId = getOrganizationId(req);
-        const parentId = parseInt(req.params.id, 10);
+        const parentId = parseInt(routeParam(req.params.id), 10);
         if (!Number.isFinite(parentId)) return Errors.badRequest(res, "Invalid parcel id");
 
         const [r] = await db
@@ -172,7 +173,7 @@ export function registerLotPricingRoutes(app: Express): void {
       try {
         const orgId = getOrganizationId(req);
         const userId = getUserId(req);
-        const parentId = parseInt(req.params.id, 10);
+        const parentId = parseInt(routeParam(req.params.id), 10);
         if (!Number.isFinite(parentId)) return Errors.badRequest(res, "Invalid parcel id");
 
         const parsed = upsertSchema.safeParse(req.body);
@@ -229,7 +230,7 @@ export function registerLotPricingRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const orgId = getOrganizationId(req);
-        const parentId = parseInt(req.params.id, 10);
+        const parentId = parseInt(routeParam(req.params.id), 10);
         if (!Number.isFinite(parentId)) return Errors.badRequest(res, "Invalid parcel id");
 
         const [rules] = await db
@@ -272,7 +273,7 @@ export function registerLotPricingRoutes(app: Express): void {
       try {
         const orgId = getOrganizationId(req);
         const userId = getUserId(req);
-        const parentId = parseInt(req.params.id, 10);
+        const parentId = parseInt(routeParam(req.params.id), 10);
         if (!Number.isFinite(parentId)) return Errors.badRequest(res, "Invalid parcel id");
 
         // Allow operator-supplied overrides — { childParcelId: askingCents }.

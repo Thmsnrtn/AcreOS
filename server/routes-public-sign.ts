@@ -25,6 +25,7 @@ import { logger } from "./utils/logger";
 import { idempotencyMiddleware } from "./middleware/idempotency";
 import { loadSigningProgress, statusPatchFor } from "./services/esign/signingProgress";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 export function registerPublicSignRoutes(app: Express): void {
   // consent — registered BEFORE /api/public/sign/:docId so the literal path wins (2026-07-11 route-order sweep).
@@ -132,7 +133,7 @@ export function registerPublicSignRoutes(app: Express): void {
   // GET /api/public/sign/:docId?s={signerId}&t={token}
   app.get("/api/public/sign/:docId", async (req, res) => {
     try {
-      const docId = parseInt(req.params.docId, 10);
+      const docId = parseInt(routeParam(req.params.docId), 10);
       const signerId = String(req.query.s || "");
       const token = String(req.query.t || "");
       if (!Number.isFinite(docId) || !signerId || !token) {
@@ -209,7 +210,7 @@ export function registerPublicSignRoutes(app: Express): void {
   //   body: { s: signerId, t: token, signatureData, signatureType, consentGiven }
   app.post("/api/public/sign/:docId", idempotencyMiddleware, async (req, res) => {
     try {
-      const docId = parseInt(req.params.docId, 10);
+      const docId = parseInt(routeParam(req.params.docId), 10);
       const { s: signerId, t: token, signatureData, signatureType, consentGiven } = req.body || {};
       if (!Number.isFinite(docId) || !signerId || !token || !signatureData) {
         return Errors.badRequest(res, "Missing doc, signer, token, or signature data");

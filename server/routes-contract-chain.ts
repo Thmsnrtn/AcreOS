@@ -51,6 +51,7 @@ import {
 } from "./services/contracts/contractAssembly";
 import { clock } from "./utils/clock";
 import { propertyClassFromStructureType } from "@shared/regulatory/transferTax";
+import { routeParam } from "./utils/routeParams";
 
 /**
  * Every refusal leaves as HTTP 422 with the machine code in `details` so the
@@ -230,7 +231,7 @@ export function registerContractChainRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res) => {
       try {
         const org = getOrganization(req);
-        const dealId = Number(req.params.id);
+        const dealId = Number(routeParam(req.params.id));
         if (!Number.isInteger(dealId) || dealId <= 0) {
           return Errors.badRequest(res, "Invalid deal ID");
         }
@@ -300,7 +301,7 @@ export function registerContractChainRoutes(app: Express): void {
       try {
         const org = getOrganization(req);
         const userId = getUserId(req);
-        const dealId = Number(req.params.id);
+        const dealId = Number(routeParam(req.params.id));
         if (!Number.isInteger(dealId) || dealId <= 0) {
           return Errors.badRequest(res, "Invalid deal ID");
         }

@@ -26,6 +26,7 @@ import {
   type BreachAssessment,
 } from "./services/breachNotificationTrigger";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 /**
  * Breach-notification wiring (2026-08-16, founder ruling "Wire
@@ -264,7 +265,7 @@ export function registerIncidentRoutes(app: Express): void {
         if (!parsed.success) {
           return Errors.validationFailed(res, parsed.error.flatten());
         }
-        const id = req.params.id;
+        const id = routeParam(req.params.id);
         const now = clock.now();
 
         const patch: Record<string, unknown> = { updatedAt: now };

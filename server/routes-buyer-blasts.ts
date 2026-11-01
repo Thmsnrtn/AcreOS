@@ -48,6 +48,7 @@ import { hasWritableValues } from "./utils/patch";
 import { logger } from "./utils/logger";
 import { sendEmail } from "./services/emailService";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 const blastBodySchema = z.object({
   subject: z.string().min(1).max(240),
@@ -69,7 +70,7 @@ export function registerBuyerBlastRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const orgId = getOrganizationId(req);
-        const propertyId = parseInt(req.params.id, 10);
+        const propertyId = parseInt(routeParam(req.params.id), 10);
         if (Number.isNaN(propertyId)) return Errors.badRequest(res, "Invalid property id");
 
         const parsed = blastBodySchema.safeParse(req.body);
@@ -351,7 +352,7 @@ export function registerBuyerBlastRoutes(app: Express): void {
         const [blast] = await db
           .select()
           .from(buyerBlasts)
-          .where(and(eq(buyerBlasts.id, req.params.id), eq(buyerBlasts.organizationId, orgId)))
+          .where(and(eq(buyerBlasts.id, routeParam(req.params.id)), eq(buyerBlasts.organizationId, orgId)))
           .limit(1);
         if (!blast) return Errors.notFound(res, "Blast");
 
@@ -417,7 +418,7 @@ export function registerBuyerBlastRoutes(app: Express): void {
         const [row] = await db
           .update(buyerBlastRecipients)
           .set(update)
-          .where(and(eq(buyerBlastRecipients.id, req.params.id), eq(buyerBlastRecipients.organizationId, orgId)))
+          .where(and(eq(buyerBlastRecipients.id, routeParam(req.params.id)), eq(buyerBlastRecipients.organizationId, orgId)))
           .returning();
         if (!row) return Errors.notFound(res, "Recipient");
 

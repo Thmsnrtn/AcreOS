@@ -14,6 +14,7 @@ import { logger } from "./utils/logger";
 import { assertFeeSimpleOrThrow, handleLandStatusError } from "./utils/landStatus";
 import { Errors } from "./utils/errors";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 export function registerCRMExtrasRoutes(app: Express): void {
   const api = app;
@@ -201,7 +202,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
   api.put("/api/notification-preferences/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       // Task #2: IDOR prevention — verify notification preference belongs to requesting org
       const [existing] = await db.select({ id: notificationPreferences.id })
         .from(notificationPreferences)
@@ -306,7 +307,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
   api.get("/api/tasks/:id", isAuthenticated, getOrCreateOrg, async (req, res, next) => {
     try {
       const orgId = req.organization!.id;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       // Not a numeric id — this route does not own the request. Hand it to the
       // next matching registration (GET /api/tasks/my in routes-analytics.ts)
       // rather than binding NaN into an integer column. Until 2026-08-27 this
@@ -372,7 +373,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
     try {
       const orgId = req.organization!.id;
       const userId = req.user.id;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       
       const existingTask = await storage.getTask(orgId, id);
       if (!existingTask) {
@@ -420,7 +421,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
   api.delete("/api/tasks/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const orgId = req.organization!.id;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       
       const task = await storage.getTask(orgId, id);
       if (!task) {
@@ -454,7 +455,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
     try {
       const orgId = req.organization!.id;
       const userId = req.user.id;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       
       const existingTask = await storage.getTask(orgId, id);
       if (!existingTask) {

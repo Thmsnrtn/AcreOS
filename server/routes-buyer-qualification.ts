@@ -19,6 +19,7 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { buyerQualificationBotService } from "./services/buyerQualificationBot";
 import { Errors } from "./utils/errors";
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
@@ -39,7 +40,7 @@ const router = Router();
  * reading row 41 of another is not a tenancy check.
  */
 async function requireOwnedQualification(req: Request, res: Response) {
-  const id = parseInt(req.params.id);
+  const id = parseInt(routeParam(req.params.id));
   if (isNaN(id)) { Errors.badRequest(res, "Invalid qualification ID"); return null; }
   const org = req.organization;
   // The service is org-scoped as of 2026-08-18, so a foreign qualification

@@ -42,6 +42,7 @@ import { Errors, sendError } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { persistPhotoBytes, photoStorageAvailable, PHOTO_STORAGE_UNAVAILABLE_MESSAGE } from "./services/photoStorage";
 import { signedOrgObjectUrl } from "./services/documentStore";
+import { routeParam } from "./utils/routeParams";
 
 const photoUpload = createUploadMiddleware({ maxSizeMB: 10, allowedTypes: ["image"] });
 const validatePhotos = validateFileMiddleware(["image"]);
@@ -77,7 +78,7 @@ export function registerRehabPhotoRoutes(app: Express): void {
       try {
         const orgId = getOrganizationId(req);
         const userId = getUserId(req);
-        const rehabId = req.params.rehabId;
+        const rehabId = routeParam(req.params.rehabId);
         if (!rehabId) return Errors.badRequest(res, "Missing rehabId");
 
         // Confirm the rehab belongs to this org. Without this check, a
@@ -222,7 +223,7 @@ export function registerRehabPhotoRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const orgId = getOrganizationId(req);
-        const rehabId = req.params.rehabId;
+        const rehabId = routeParam(req.params.rehabId);
         if (!rehabId) return Errors.badRequest(res, "Missing rehabId");
 
         const rows = await db.select().from(rehabPhotos)

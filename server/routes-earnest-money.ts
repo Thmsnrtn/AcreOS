@@ -37,6 +37,7 @@ import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { assertEntityBelongsToOrg } from "./utils/orgScope";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 function addDaysIso(baseIso: string, days: number): string {
   const d = new Date(baseIso);
@@ -214,7 +215,7 @@ export function registerEarnestMoneyRoutes(app: Express): void {
           const [existing] = await db
             .select({ depositedAt: earnestMoneyHolds.depositedAt })
             .from(earnestMoneyHolds)
-            .where(and(eq(earnestMoneyHolds.id, req.params.id), eq(earnestMoneyHolds.organizationId, orgId)))
+            .where(and(eq(earnestMoneyHolds.id, routeParam(req.params.id)), eq(earnestMoneyHolds.organizationId, orgId)))
             .limit(1);
           if (existing) {
             derivedRefundableUntil = addDaysIso(
@@ -234,7 +235,7 @@ export function registerEarnestMoneyRoutes(app: Express): void {
         const [row] = await db
           .update(earnestMoneyHolds)
           .set(update)
-          .where(and(eq(earnestMoneyHolds.id, req.params.id), eq(earnestMoneyHolds.organizationId, orgId)))
+          .where(and(eq(earnestMoneyHolds.id, routeParam(req.params.id)), eq(earnestMoneyHolds.organizationId, orgId)))
           .returning();
         if (!row) return Errors.notFound(res, "EMD hold");
         return res.json({ hold: row });
@@ -273,7 +274,7 @@ export function registerEarnestMoneyRoutes(app: Express): void {
             const [row] = await db
               .select({ amountCents: earnestMoneyHolds.amountCents })
               .from(earnestMoneyHolds)
-              .where(and(eq(earnestMoneyHolds.id, req.params.id), eq(earnestMoneyHolds.organizationId, orgId)))
+              .where(and(eq(earnestMoneyHolds.id, routeParam(req.params.id)), eq(earnestMoneyHolds.organizationId, orgId)))
               .limit(1);
             dispositionCents = row?.amountCents ?? 0;
           }
@@ -287,7 +288,7 @@ export function registerEarnestMoneyRoutes(app: Express): void {
               notes: parsed.data.notes ?? undefined,
               updatedAt: clock.now(),
             })
-            .where(and(eq(earnestMoneyHolds.id, req.params.id), eq(earnestMoneyHolds.organizationId, orgId)))
+            .where(and(eq(earnestMoneyHolds.id, routeParam(req.params.id)), eq(earnestMoneyHolds.organizationId, orgId)))
             .returning();
           if (!row) return Errors.notFound(res, "EMD hold");
           return res.json({ hold: row });

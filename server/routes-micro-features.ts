@@ -20,6 +20,7 @@ import { logger } from "./utils/logger";
 import { estimateClosingCosts } from "./services/closingCostEstimator";
 import { isPropertyClass, PROPERTY_CLASSES } from "@shared/regulatory/transferTax";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 export function registerMicroFeatureRoutes(app: Express): void {
 
@@ -102,7 +103,7 @@ export function registerMicroFeatureRoutes(app: Express): void {
   app.get("/api/properties/:id/neighbors", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const propertyId = Number(req.params.id);
+      const propertyId = Number(routeParam(req.params.id));
       const property = await storage.getProperty(org.id, propertyId);
 
       if (!property) return Errors.notFound(res, "Property");
@@ -205,7 +206,8 @@ export function registerMicroFeatureRoutes(app: Express): void {
   app.get("/api/activity/:entityType/:entityId", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const { entityType, entityId } = req.params;
+      const entityType = routeParam(req.params.entityType);
+      const entityId = routeParam(req.params.entityId);
 
       const validTypes = ["lead", "deal", "property", "note"];
       if (!validTypes.includes(entityType)) {

@@ -22,6 +22,7 @@ import { and, desc, eq, isNull } from "drizzle-orm";
 import { isAuthenticated, requireFounder } from "./auth/clerkAuth";
 import { getSettingRow, setSetting, resetSetting, SettingsValidationError } from "./services/settings";
 import { sendError } from "./utils/errors";
+import { routeParam } from "./utils/routeParams";
 
 export function registerFounderStudioRoutes(app: Express) {
   // GET /api/founder/studio/dials — full catalog at global scope, grouped by category.
@@ -60,7 +61,7 @@ export function registerFounderStudioRoutes(app: Express) {
     isAuthenticated,
     requireFounder,
     async (req: Request, res: Response) => {
-      const key = req.params.key;
+      const key = routeParam(req.params.key);
       const globalRow = await getSettingRow(key, { scope: "global", scopeRef: null });
       if (!globalRow) {
         return sendError(res, 404, "NOT_FOUND", `unknown key '${key}'`);

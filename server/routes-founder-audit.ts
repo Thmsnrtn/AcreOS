@@ -32,6 +32,7 @@ import {
   acknowledgeFinding,
   resolveFinding,
 } from "./services/audit/domainAudit";
+import { routeParam } from "./utils/routeParams";
 
 // ─── Per-domain rollup ─────────────────────────────────────────────────────────
 
@@ -138,7 +139,7 @@ export function registerFounderAuditRoutes(app: Express): void {
     requireFounder,
     async (req: AuthenticatedRequest, res: Response) => {
       try {
-        const id = Number(req.params.id);
+        const id = Number(routeParam(req.params.id));
         if (!Number.isInteger(id) || id <= 0) {
           return Errors.badRequest(res, "Invalid finding id");
         }
@@ -162,7 +163,7 @@ export function registerFounderAuditRoutes(app: Express): void {
     requireFounder,
     async (req: AuthenticatedRequest, res: Response) => {
       try {
-        const id = Number(req.params.id);
+        const id = Number(routeParam(req.params.id));
         if (!Number.isInteger(id) || id <= 0) {
           return Errors.badRequest(res, "Invalid finding id");
         }

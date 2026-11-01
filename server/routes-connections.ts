@@ -20,6 +20,7 @@ import type { AuthenticatedRequest } from "./types/request";
 import { getUserId } from "./types/request";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { routeParam } from "./utils/routeParams";
 
 const fieldsBodySchema = z.object({
   values: z
@@ -53,7 +54,7 @@ export function registerConnectionsRoutes(app: Express): void {
         const { setConnectionField } = await import("./services/connections/platformConnections");
         const saved: Record<string, string | null> = {};
         for (const [field, value] of Object.entries(parsed.data.values)) {
-          const { fingerprint } = await setConnectionField(req.params.provider, field, value, getUserId(req));
+          const { fingerprint } = await setConnectionField(routeParam(req.params.provider), field, value, getUserId(req));
           saved[field] = fingerprint;
         }
         return res.json({ ok: true, saved });
@@ -71,7 +72,7 @@ export function registerConnectionsRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const { verifyProvider } = await import("./services/connections/platformConnections");
-        const result = await verifyProvider(req.params.provider);
+        const result = await verifyProvider(routeParam(req.params.provider));
         return res.json(result);
       } catch (err) {
         return Errors.internal(res, err);
@@ -86,7 +87,7 @@ export function registerConnectionsRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const { disconnectProvider } = await import("./services/connections/platformConnections");
-        const revoked = await disconnectProvider(req.params.provider, getUserId(req));
+        const revoked = await disconnectProvider(routeParam(req.params.provider), getUserId(req));
         return res.json({ ok: true, revoked });
       } catch (err) {
         return Errors.badRequest(res, err instanceof Error ? err.message : String(err));
@@ -102,10 +103,11 @@ export function registerConnectionsRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const { isOAuthProvider, startOAuth } = await import("./services/connections/connectionsOAuth");
-        if (!isOAuthProvider(req.params.provider)) {
-          return Errors.badRequest(res, `"${req.params.provider}" does not use an OAuth connect flow`);
+        const provider = routeParam(req.params.provider);
+        if (!isOAuthProvider(provider)) {
+          return Errors.badRequest(res, `"${provider}" does not use an OAuth connect flow`);
         }
-        const result = await startOAuth(req.params.provider, getUserId(req));
+        const result = await startOAuth(provider, getUserId(req));
         if (!result.ok) return Errors.badRequest(res, result.reason);
         return res.json({ url: result.url });
       } catch (err) {

@@ -35,6 +35,7 @@ import {
 } from "./services/seo/serverHead";
 import { finalizeShellHtml } from "./static";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 const SHELL_CACHE_TTL_MS = 60_000;
 let shellCache: { at: number; html: string } | null = null;
@@ -106,7 +107,7 @@ export function registerSeoHeadRoutes(app: Express): void {
           publishedAt: communityLetters.publishedAt,
         })
         .from(communityLetters)
-        .where(and(eq(communityLetters.slug, req.params.slug), isNotNull(communityLetters.publishedAt)))
+        .where(and(eq(communityLetters.slug, routeParam(req.params.slug)), isNotNull(communityLetters.publishedAt)))
         .limit(1);
       if (!note) return next(); // unknown slug → SPA renders its own not-found
       sendWithHead(res, next, headForFieldNote(note));
@@ -118,8 +119,9 @@ export function registerSeoHeadRoutes(app: Express): void {
 
   app.get("/compare/:slug", (req: Request, res: Response, next: NextFunction) => {
     try {
-      if (!/^acreos-vs-[a-z0-9-]+$/.test(req.params.slug)) return next();
-      sendWithHead(res, next, headForCompare(req.params.slug));
+      const slug = routeParam(req.params.slug);
+      if (!/^acreos-vs-[a-z0-9-]+$/.test(slug)) return next();
+      sendWithHead(res, next, headForCompare(slug));
     } catch (err) {
       logger.warn("[seoHead] compare head failed — plain shell", err instanceof Error ? err : undefined);
       next();
@@ -161,7 +163,9 @@ export function registerSeoHeadRoutes(app: Express): void {
 
   app.get("/p/:state/:county/:apn", (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { state, county, apn } = req.params;
+      const state = routeParam(req.params.state);
+      const county = routeParam(req.params.county);
+      const apn = routeParam(req.params.apn);
       // Sanitize: URL-shaped identifiers only; anything odd → plain shell.
       if (!/^[a-z]{2}$/i.test(state) || !/^[a-z0-9-]{1,60}$/i.test(county) || !/^[a-zA-Z0-9.-]{1,40}$/.test(apn)) {
         return next();

@@ -5,6 +5,7 @@ import {
 } from './services/cashFlowForecaster';
 import { Errors } from './utils/errors';
 import { getOrganizationId } from './types/request';
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
@@ -80,7 +81,7 @@ router.get('/portfolio/high-risk', async (req: Request, res: Response) => {
 
 router.get('/notes/:noteId/health', async (req: Request, res: Response) => {
   try {
-    const health = await cashFlowForecasterService.analyzePaymentHealth(parseInt(req.params.noteId), getOrganizationId(req));
+    const health = await cashFlowForecasterService.analyzePaymentHealth(parseInt(routeParam(req.params.noteId)), getOrganizationId(req));
     res.json({ health });
   } catch (error) {
     refuse(res, error);
@@ -89,8 +90,8 @@ router.get('/notes/:noteId/health', async (req: Request, res: Response) => {
 
 router.get('/notes/:noteId/risk-score', async (req: Request, res: Response) => {
   try {
-    const riskScore = await cashFlowForecasterService.calculatePaymentRiskScore(parseInt(req.params.noteId), getOrganizationId(req));
-    const riskFactors = await cashFlowForecasterService.identifyRiskFactors(parseInt(req.params.noteId), getOrganizationId(req));
+    const riskScore = await cashFlowForecasterService.calculatePaymentRiskScore(parseInt(routeParam(req.params.noteId)), getOrganizationId(req));
+    const riskFactors = await cashFlowForecasterService.identifyRiskFactors(parseInt(routeParam(req.params.noteId)), getOrganizationId(req));
     res.json({ riskScore, riskFactors });
   } catch (error) {
     refuse(res, error);
@@ -103,7 +104,7 @@ router.get('/notes/:noteId/risk-score', async (req: Request, res: Response) => {
 
 router.get('/forecast/:forecastId/insights', async (req: Request, res: Response) => {
   try {
-    const insights = await cashFlowForecasterService.generateInsights(parseInt(req.params.forecastId), getOrganizationId(req));
+    const insights = await cashFlowForecasterService.generateInsights(parseInt(routeParam(req.params.forecastId)), getOrganizationId(req));
     res.json({ insights });
   } catch (error) {
     refuse(res, error);

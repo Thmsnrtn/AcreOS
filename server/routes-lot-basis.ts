@@ -46,6 +46,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 const allocateSchema = z.object({
   method: z.enum(BASIS_ALLOCATION_METHODS),
@@ -81,7 +82,7 @@ export function registerLotBasisRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const orgId = getOrganizationId(req);
-        const parentId = parseInt(req.params.id, 10);
+        const parentId = parseInt(routeParam(req.params.id), 10);
         if (!Number.isFinite(parentId)) return Errors.badRequest(res, "Invalid parcel id");
 
         const allocs = await db
@@ -109,7 +110,7 @@ export function registerLotBasisRoutes(app: Express): void {
       try {
         const orgId = getOrganizationId(req);
         const userId = getUserId(req);
-        const parentId = parseInt(req.params.id, 10);
+        const parentId = parseInt(routeParam(req.params.id), 10);
         if (!Number.isFinite(parentId)) return Errors.badRequest(res, "Invalid parcel id");
 
         const parsed = allocateSchema.safeParse(req.body);
@@ -227,7 +228,7 @@ export function registerLotBasisRoutes(app: Express): void {
       try {
         const orgId = getOrganizationId(req);
         const userId = getUserId(req);
-        const childId = parseInt(req.params.childId, 10);
+        const childId = parseInt(routeParam(req.params.childId), 10);
         if (!Number.isFinite(childId)) return Errors.badRequest(res, "Invalid lot id");
 
         const parsed = realizeCogsSchema.safeParse(req.body);
@@ -356,7 +357,7 @@ export function registerLotBasisRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const orgId = getOrganizationId(req);
-        const parentId = parseInt(req.params.id, 10);
+        const parentId = parseInt(routeParam(req.params.id), 10);
         if (!Number.isFinite(parentId)) return Errors.badRequest(res, "Invalid parcel id");
 
         const parsedQuery = proFormaQuerySchema.safeParse(req.query);

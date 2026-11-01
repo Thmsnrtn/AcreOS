@@ -19,6 +19,7 @@ import {
   type AbTest,
 } from "./services/abTestEngine";
 import { Errors } from "./utils/errors";
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
@@ -53,22 +54,22 @@ router.post("/", async (req: Request, res: Response) => {
 });
 
 router.get("/:id", async (req: Request, res: Response) => {
-  const test = await getTest(req.params.id, req.organization.id);
+  const test = await getTest(routeParam(req.params.id), req.organization.id);
   if (!test) return Errors.notFound(res, "Test");
   res.json(test);
 });
 
 router.get("/:id/results", async (req: Request, res: Response) => {
-  const test = await getTest(req.params.id, req.organization.id);
+  const test = await getTest(routeParam(req.params.id), req.organization.id);
   if (!test) return Errors.notFound(res, "Test");
   const results = await getResults(test);
   res.json(results);
 });
 
 router.get("/:id/variant/:leadId", async (req: Request, res: Response) => {
-  const test = await getTest(req.params.id, req.organization.id);
+  const test = await getTest(routeParam(req.params.id), req.organization.id);
   if (!test) return Errors.notFound(res, "Test");
-  const leadId = parseInt(req.params.leadId);
+  const leadId = parseInt(routeParam(req.params.leadId));
   if (isNaN(leadId)) return Errors.badRequest(res, "Invalid lead ID");
   const variant = getVariant(test, leadId);
   res.json({ variant });

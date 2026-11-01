@@ -21,6 +21,7 @@ import {
   assertInboundEmailSecretsConfigured,
   isReplay,
 } from "./middleware/inboundEmailSignature";
+import { routeParam } from "./utils/routeParams";
 
 const inboundEmailSchema = z.object({
   from: z.string().email(),
@@ -95,7 +96,7 @@ export function registerInboundEmailRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res) => {
       try {
         const orgId = getOrganizationId(req);
-        const leadId = parseInt(req.params.leadId, 10);
+        const leadId = parseInt(routeParam(req.params.leadId), 10);
         if (isNaN(leadId)) return Errors.badRequest(res, "Invalid lead ID");
 
         const emails = await getLeadEmailThread(leadId, orgId);
@@ -149,7 +150,7 @@ export function registerInboundEmailRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res) => {
       try {
         const org = getOrganization(req);
-        const leadId = parseInt(req.params.leadId, 10);
+        const leadId = parseInt(routeParam(req.params.leadId), 10);
         if (isNaN(leadId)) return Errors.badRequest(res, "Invalid lead ID");
 
         const schema = z.object({

@@ -28,12 +28,13 @@ import {
 import { Errors } from "./utils/errors";
 import { monthlyRevenueCentsFor } from "@shared/billing/tier-pricing";
 import type { AuthenticatedRequest } from "./types/request";
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
 router.get("/:organizationId", async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const orgId = parseInt(req.params.organizationId, 10);
+    const orgId = parseInt(routeParam(req.params.organizationId), 10);
     if (isNaN(orgId)) return Errors.badRequest(res, "Invalid organizationId");
 
     const [org] = await db.select().from(organizations).where(eq(organizations.id, orgId)).limit(1);

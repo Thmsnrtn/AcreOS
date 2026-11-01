@@ -40,6 +40,7 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { Errors } from "./utils/errors";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 interface PropertyAnalytics {
   propertyId: number;
@@ -429,7 +430,7 @@ export function registerInvestorAnalyticsRoutes(app: Express): void {
   app.get("/api/properties/:id/t12", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const orgId = getOrganizationId(req);
-      const propId = parseInt(req.params.id, 10);
+      const propId = parseInt(routeParam(req.params.id), 10);
       if (!Number.isFinite(propId)) return Errors.badRequest(res, "Invalid property id");
       const t12 = await t12ForProperty(orgId, propId);
       return res.json(t12);
@@ -442,7 +443,7 @@ export function registerInvestorAnalyticsRoutes(app: Express): void {
   app.get("/api/properties/:id/analytics", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const orgId = getOrganizationId(req);
-      const propId = parseInt(req.params.id, 10);
+      const propId = parseInt(routeParam(req.params.id), 10);
       const opExBps = req.query.opExBps ? parseInt(String(req.query.opExBps), 10) : undefined;
       const debtMonthlyCents = req.query.debtMonthlyCents ? parseInt(String(req.query.debtMonthlyCents), 10) : undefined;
       const snapshot = await snapshotForProperty(orgId, propId, opExBps, debtMonthlyCents);

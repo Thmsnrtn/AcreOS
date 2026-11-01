@@ -23,6 +23,7 @@ import { Errors } from "./utils/errors";
 import { auditFromRequest, AuditActions } from "./utils/auditLog";
 import { logger } from "./utils/logger";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 const SLA_HOURS = 24;
 
@@ -155,7 +156,7 @@ export function registerPrivacyDsarRoutes(app: Express): void {
     requireFounder,
     async (req: AuthenticatedRequest, res: Response) => {
       try {
-        const id = req.params.id;
+        const id = routeParam(req.params.id);
         const userIdRaw = req.body?.userId;
         const userId = typeof userIdRaw === "number" ? userIdRaw : parseInt(String(userIdRaw ?? ""), 10);
         if (!Number.isFinite(userId)) {
@@ -206,7 +207,7 @@ export function registerPrivacyDsarRoutes(app: Express): void {
     requireFounder,
     async (req: AuthenticatedRequest, res: Response) => {
       try {
-        const id = req.params.id;
+        const id = routeParam(req.params.id);
         const { deliveryMethod, bytesDelivered, auditNotes } = req.body ?? {};
         const [updated] = await db
           .update(dsarRequestsLifecycle)

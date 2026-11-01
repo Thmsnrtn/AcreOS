@@ -50,6 +50,7 @@ import {
   computationalStates,
   type RuleCoverageTier,
 } from "./services/taxRuleCoverage";
+import { routeParam } from "./utils/routeParams";
 
 /** One jurisdiction, as the client sees it. */
 interface RuleRow {
@@ -257,7 +258,7 @@ export function registerTaxRuleRoutes(app: Express): void {
     getOrCreateOrg,
     async (req: AuthenticatedRequest, res: Response) => {
       try {
-        const state = (req.params.state ?? "").toUpperCase();
+        const state = (routeParam(req.params.state) ?? "").toUpperCase();
         const coverage = getStateRuleCoverage(state);
 
         // Refuse-not-fabricate: an unknown jurisdiction says so. There is no

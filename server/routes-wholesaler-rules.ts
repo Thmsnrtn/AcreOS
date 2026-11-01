@@ -21,6 +21,7 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { routeParam } from "./utils/routeParams";
 
 export function registerWholesalerRuleRoutes(app: Express): void {
   // List all states.
@@ -56,7 +57,7 @@ export function registerWholesalerRuleRoutes(app: Express): void {
     getOrCreateOrg,
     async (req: AuthenticatedRequest, res: Response) => {
       try {
-        const state = req.params.state.toUpperCase();
+        const state = routeParam(req.params.state).toUpperCase();
         const [row] = await db
           .select()
           .from(wholesalerStateRules)

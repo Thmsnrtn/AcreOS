@@ -42,6 +42,7 @@ import {
 } from "@shared/economics/scenario";
 import { ALL_ENGINES } from "./services/economics/engines";
 import { previewUnderwriting, underwritingInputsSchema } from "./services/underwriting/verticalDecision";
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
@@ -138,11 +139,11 @@ router.get(
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const organizationId = getOrganizationId(req);
-      const subjectType = req.params.subjectType;
+      const subjectType = routeParam(req.params.subjectType);
       if (!(SCENARIO_SUBJECT_TYPES as readonly string[]).includes(subjectType)) {
         return Errors.badRequest(res, `Unknown scenario subject type: ${subjectType}`);
       }
-      const subjectId = Number(req.params.subjectId);
+      const subjectId = Number(routeParam(req.params.subjectId));
       if (!Number.isInteger(subjectId) || subjectId <= 0) {
         return Errors.badRequest(res, "Invalid subject id");
       }

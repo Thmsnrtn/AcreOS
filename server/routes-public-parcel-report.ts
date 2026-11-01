@@ -48,6 +48,7 @@ import {
 import { esc, landFactsJsonLd, renderLandFactsHtml } from "./services/publicLandPages";
 import { DISCLAIMER_INFORMATIONAL_SCORE } from "./services/legalDisclaimers";
 import type { PublicParcelReport } from "@shared/schema";
+import { routeParam } from "./utils/routeParams";
 
 const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || "https://acreos.io";
 
@@ -101,9 +102,9 @@ router.get(
   sessionLimiter,
   async (req: Request, res: Response) => {
     const key = normalizeReportKey(
-      req.params.state,
-      req.params.county,
-      req.params.apn,
+      routeParam(req.params.state),
+      routeParam(req.params.county),
+      routeParam(req.params.apn),
     );
     if (!key) {
       return Errors.badRequest(
@@ -301,9 +302,9 @@ export function registerPublicParcelReportPages(app: Express): void {
     async (req: Request, res: Response) => {
       try {
         const key = normalizeReportKey(
-          req.params.state,
-          req.params.county,
-          req.params.apn,
+          routeParam(req.params.state),
+          routeParam(req.params.county),
+          routeParam(req.params.apn),
         );
         const report = key ? await getExistingReport(key) : null;
         if (!report) {
@@ -331,9 +332,9 @@ export function registerPublicParcelReportPages(app: Express): void {
         if (!shellPath) return next(); // dev — Vite serves the SPA shell
 
         const key = normalizeReportKey(
-          req.params.state,
-          req.params.county,
-          req.params.apn,
+          routeParam(req.params.state),
+          routeParam(req.params.county),
+          routeParam(req.params.apn),
         );
         // READ-ONLY: never generates. The SPA's API call does the generating;
         // a crawler fuzzing /p/... URLs gets noindex shells and zero DB rows.

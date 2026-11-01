@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import { whiteLabelService } from './services/whiteLabelService';
 import { Errors } from './utils/errors';
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
@@ -79,7 +80,7 @@ router.patch('/config', async (req: Request, res: Response) => {
  */
 router.post('/tenants/:id/suspend', async (req: Request, res: Response) => {
   try {
-    await whiteLabelService.suspendTenant(parseInt(req.params.id));
+    await whiteLabelService.suspendTenant(parseInt(routeParam(req.params.id)));
     res.json({ success: true });
   } catch (err) {
     Errors.badRequest(res, err instanceof Error ? err.message : 'Bad request');
@@ -156,7 +157,7 @@ router.get('/revenue-trend', async (req: Request, res: Response) => {
 router.get('/features/:feature', async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const feature = req.params.feature as any;
+    const feature = routeParam(req.params.feature) as any;
     const enabled = await whiteLabelService.isFeatureEnabled(org.id, feature);
     res.json({ feature, enabled });
   } catch (err) {

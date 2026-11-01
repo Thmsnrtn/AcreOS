@@ -39,6 +39,7 @@ import {
 import { countySlugOf, reportPath } from "./services/publicParcelReport";
 import { countyGuideJsonLd, esc, renderCountyGuideHtml } from "./services/publicLandPages";
 import { injectRootHtml } from "./routes-public-parcel-report";
+import { routeParam } from "./utils/routeParams";
 
 const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || "https://acreos.io";
 
@@ -151,7 +152,7 @@ export function registerPublicLandRoutes(app: Express): void {
 
   app.get("/api/public/land/county-guide/:state/:county", guideLimiter, async (req: Request, res: Response) => {
     try {
-      const guide = await getCountyGuide(req.params.state, req.params.county);
+      const guide = await getCountyGuide(routeParam(req.params.state), routeParam(req.params.county));
       if (!guide) return Errors.notFound(res, "County guide");
       return res.json({ guide });
     } catch (err) {
@@ -163,7 +164,7 @@ export function registerPublicLandRoutes(app: Express): void {
     try {
       const shellPath = resolveShellPath();
       if (!shellPath) return next(); // dev — Vite serves the SPA shell
-      const guide = await getCountyGuide(req.params.state, req.params.county);
+      const guide = await getCountyGuide(routeParam(req.params.state), routeParam(req.params.county));
       const raw = fs.readFileSync(shellPath, "utf-8");
       const nonce: string = res.locals.cspNonce || "";
       if (!guide) {
@@ -227,7 +228,7 @@ export function registerPublicLandRoutes(app: Express): void {
   });
 
   app.get("/sitemap-land-parcels-:page.xml", async (req: Request, res: Response) => {
-    const page = Number(req.params.page);
+    const page = Number(routeParam(req.params.page));
     if (!Number.isInteger(page) || page < 1 || page > 10_000) return Errors.notFound(res, "Sitemap page");
     try {
       const rows = await listIndexableParcels(page);

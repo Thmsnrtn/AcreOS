@@ -34,6 +34,7 @@ import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import * as cockpit from "./services/founder/lifeCockpit";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 // ─── Validation helpers ──────────────────────────────────────────────────────
 
@@ -190,7 +191,7 @@ export function registerFounderLifeCockpitRoutes(app: Express): void {
   // Download a stored draft as a transcription-ready self-file package (markdown).
   app.get(`${base}/tax/returns/:id/package`, ...guard, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const id = parseId(req.params.id);
+      const id = parseId(routeParam(req.params.id));
       if (id === null) return Errors.badRequest(res, "Invalid return id");
       const stored = await cockpit.getStoredDraft(getUserId(req), id);
       if (!stored) return Errors.notFound(res, "Tax draft");
@@ -208,7 +209,7 @@ export function registerFounderLifeCockpitRoutes(app: Express): void {
   // Update a stored draft's workflow status (draft | reviewed | filed).
   app.patch(`${base}/tax/returns/:id`, ...guard, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const id = parseId(req.params.id);
+      const id = parseId(routeParam(req.params.id));
       if (id === null) return Errors.badRequest(res, "Invalid return id");
       const status = String((req.body ?? {}).status ?? "");
       const ok = await cockpit.updateReturnStatus(getUserId(req), id, status);
@@ -329,7 +330,7 @@ export function registerFounderLifeCockpitRoutes(app: Express): void {
 
   app.get(`${base}/documents/:id/download`, ...guard, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const id = parseId(req.params.id);
+      const id = parseId(routeParam(req.params.id));
       if (id === null) return Errors.badRequest(res, "Invalid document id");
       const doc = await cockpit.getDocumentBytes(getUserId(req), id);
       if (!doc) return Errors.notFound(res, "Document");
@@ -346,7 +347,7 @@ export function registerFounderLifeCockpitRoutes(app: Express): void {
 
   app.delete(`${base}/documents/:id`, ...guard, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const id = parseId(req.params.id);
+      const id = parseId(routeParam(req.params.id));
       if (id === null) return Errors.badRequest(res, "Invalid document id");
       const ok = await cockpit.deleteDocument(getUserId(req), id);
       if (!ok) return Errors.notFound(res, "Document");
@@ -390,7 +391,7 @@ export function registerFounderLifeCockpitRoutes(app: Express): void {
 
   app.patch(`${base}/obligations/:id`, ...guard, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const id = parseId(req.params.id);
+      const id = parseId(routeParam(req.params.id));
       if (id === null) return Errors.badRequest(res, "Invalid obligation id");
       const b = req.body ?? {};
       if (b.obligationType !== undefined && !OBLIGATION_TYPES.has(String(b.obligationType))) {
@@ -415,7 +416,7 @@ export function registerFounderLifeCockpitRoutes(app: Express): void {
 
   app.delete(`${base}/obligations/:id`, ...guard, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const id = parseId(req.params.id);
+      const id = parseId(routeParam(req.params.id));
       if (id === null) return Errors.badRequest(res, "Invalid obligation id");
       const ok = await cockpit.deleteObligation(getUserId(req), id);
       if (!ok) return Errors.notFound(res, "Obligation");
@@ -478,7 +479,7 @@ export function registerFounderLifeCockpitRoutes(app: Express): void {
 
   app.patch(`${base}/income/:id`, ...guard, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const id = parseId(req.params.id);
+      const id = parseId(routeParam(req.params.id));
       if (id === null) return Errors.badRequest(res, "Invalid income source id");
       const b = req.body ?? {};
       if (b.sourceType !== undefined && !INCOME_TYPES.has(String(b.sourceType))) {
@@ -518,7 +519,7 @@ export function registerFounderLifeCockpitRoutes(app: Express): void {
 
   app.delete(`${base}/income/:id`, ...guard, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const id = parseId(req.params.id);
+      const id = parseId(routeParam(req.params.id));
       if (id === null) return Errors.badRequest(res, "Invalid income source id");
       const ok = await cockpit.deleteIncomeSource(getUserId(req), id);
       if (!ok) return Errors.notFound(res, "Income source");

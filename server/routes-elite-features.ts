@@ -42,6 +42,7 @@ import { Errors } from "./utils/errors";
 import { clock } from "./utils/clock";
 import { annualInterestReportContract, projectAnnualInterestReport } from "@shared/contracts";
 import { validateResponse } from "./utils/contractResponse";
+import { routeParam } from "./utils/routeParams";
 
 const auth = [isAuthenticated, getOrCreateOrg];
 
@@ -176,7 +177,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
   app.get("/api/notes/:id/tax-escrow", ...auth, async (req: Request, res: Response) => {
     try {
       const org = req.organization;
-      const noteId = parseInt(req.params.id);
+      const noteId = parseInt(routeParam(req.params.id));
       const status = await propertyTaxService.getNoteEscrowStatus(noteId, org.id);
       if (!status) return Errors.notFound(res, "Note");
       res.json(status);
@@ -188,7 +189,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
   app.post("/api/notes/:id/tax-escrow/enable", ...auth, async (req: Request, res: Response) => {
     try {
       const org = req.organization;
-      const noteId = parseInt(req.params.id);
+      const noteId = parseInt(routeParam(req.params.id));
       const { annualPropertyTax, nextTaxDueDate, countyTaxPortalUrl } = req.body;
       if (!annualPropertyTax || !nextTaxDueDate) {
         return Errors.badRequest(res, "annualPropertyTax and nextTaxDueDate required");
@@ -209,7 +210,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
   app.post("/api/notes/:id/tax-escrow/disable", ...auth, async (req: Request, res: Response) => {
     try {
       const org = req.organization;
-      await propertyTaxService.disableTaxEscrow(org.id, parseInt(req.params.id));
+      await propertyTaxService.disableTaxEscrow(org.id, parseInt(routeParam(req.params.id)));
       res.json({ success: true });
     } catch (err: any) {
       Errors.internal(res, err);
@@ -219,7 +220,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
   app.post("/api/notes/:id/tax-escrow/record-payment", ...auth, async (req: Request, res: Response) => {
     try {
       const org = req.organization;
-      const noteId = parseInt(req.params.id);
+      const noteId = parseInt(routeParam(req.params.id));
       const { taxYear, installment, amountPaid, paymentDate, countyConfirmationNumber, paymentMethod, notes: paymentNotes, receiptUrl, propertyId } = req.body;
       const result = await propertyTaxService.recordTaxPaymentFromEscrow(org.id, {
         noteId, propertyId, taxYear, installment, amountPaid: parseFloat(amountPaid),
@@ -264,7 +265,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
   app.post("/api/properties/:id/auto-due-diligence", ...auth, async (req: Request, res: Response) => {
     try {
       const org = req.organization;
-      const propertyId = parseInt(req.params.id);
+      const propertyId = parseInt(routeParam(req.params.id));
 
       const [property] = await db.select().from(properties)
         .where(and(eq(properties.id, propertyId), eq(properties.organizationId, org.id)));
@@ -366,10 +367,10 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
   // open is the half-applied rule this whole block is about.
   app.get("/api/founder/meta-ads/campaigns/:campaignId/stats", ...auth, requireFounder, async (req: Request, res: Response) => {
     try {
-      if (!metaAdsService.graphIdSegment(req.params.campaignId)) {
+      if (!metaAdsService.graphIdSegment(routeParam(req.params.campaignId))) {
         return Errors.badRequest(res, "campaignId must be a Meta Graph object id (digits)");
       }
-      const stats = await metaAdsService.getAdPerformance(req.params.campaignId);
+      const stats = await metaAdsService.getAdPerformance(routeParam(req.params.campaignId));
       res.json(stats);
     } catch (err: any) {
       Errors.internal(res, err);
@@ -436,7 +437,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
 
       // Load property from listing
       const { storage } = await import("./storage");
-      const listing = await storage.getPropertyListing(org.id, parseInt(req.params.id));
+      const listing = await storage.getPropertyListing(org.id, parseInt(routeParam(req.params.id)));
       if (!listing) return Errors.notFound(res, "Listing");
       // A withdrawn or sold listing is off the market; re-listing goes
       // through publish (DEFECT-0182).
@@ -647,28 +648,28 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
   // ============================================
 
   app.get("/api/state-documents/:state", ...auth, (req: Request, res: Response) => {
-    const config = getStateConfig(req.params.state);
+    const config = getStateConfig(routeParam(req.params.state));
     if (!config) return Errors.notFound(res, "State");
     res.json(config);
   });
 
   app.get("/api/state-documents/:state/recording-estimate", ...auth, (req: Request, res: Response) => {
     const pages = parseInt(req.query.pages as string) || 4;
-    const estimate = getRecordingEstimate(req.params.state, pages);
-    res.json({ state: req.params.state, estimatedFee: estimate, pageCount: pages });
+    const estimate = getRecordingEstimate(routeParam(req.params.state), pages);
+    res.json({ state: routeParam(req.params.state), estimatedFee: estimate, pageCount: pages });
   });
 
   app.get("/api/state-documents/:state/transfer-tax", ...auth, (req: Request, res: Response) => {
     const salePrice = parseFloat(req.query.salePrice as string) || 0;
     const county = typeof req.query.county === "string" ? req.query.county : undefined;
     const propertyClass = isPropertyClass(req.query.propertyClass) ? req.query.propertyClass : undefined;
-    const est = estimateTransferTax(req.params.state, salePrice, { county, propertyClass, asOfIsoDate: isoDateOf(clock.now()) });
+    const est = estimateTransferTax(routeParam(req.params.state), salePrice, { county, propertyClass, asOfIsoDate: isoDateOf(clock.now()) });
     // transferTax is null (not 0) when the canonical table refuses to estimate.
     res.json({
-      state: req.params.state,
+      state: routeParam(req.params.state),
       salePrice,
       transferTax: est.kind === "estimate" ? est.amountCents / 100 : est.kind === "none" ? 0 : null,
-      notes: describeTransferTax(req.params.state, county),
+      notes: describeTransferTax(routeParam(req.params.state), county),
       refusal: est.kind === "refused" ? est.reason : null,
       excludesLocal: est.kind === "estimate" ? est.excludesLocal : null,
       // When the canonical table's rates were last re-derived from statute.
@@ -773,7 +774,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
   // One task, or a 404 that does not confirm the row exists elsewhere.
   app.get("/api/va/tasks/:id", ...auth, async (req: Request, res: Response) => {
     try {
-      const id = Number(req.params.id);
+      const id = Number(routeParam(req.params.id));
       if (!Number.isInteger(id)) return Errors.badRequest(res, "task id must be an integer");
       res.json(await vaManagement.getTask(getOrganizationId(req), id));
     } catch (err: unknown) {
@@ -789,7 +790,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
   // organization, applies the patch, and derives the lifecycle stamps itself.
   app.put("/api/va/tasks/:id", ...auth, async (req: Request, res: Response) => {
     try {
-      const id = Number(req.params.id);
+      const id = Number(routeParam(req.params.id));
       if (!Number.isInteger(id)) return Errors.badRequest(res, "task id must be an integer");
       const parsed = updateVaTaskSchema.safeParse(req.body);
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);

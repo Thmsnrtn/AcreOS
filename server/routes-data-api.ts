@@ -16,6 +16,7 @@ import { logger } from "./utils/logger";
 import { addMonths } from "./utils/dateUtils";
 import { publicRecordTransaction } from "./services/acreOSValuation";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
@@ -56,7 +57,8 @@ async function requireApiKey(req: Request, res: Response, next: any) {
 // ── Benchmarks ─────────────────────────────────────────────────────────────────
 router.get("/benchmarks/:state/:propertyType", requireApiKey, async (req: Request, res: Response) => {
   try {
-    const { state, propertyType } = req.params;
+    const state = routeParam(req.params.state);
+    const propertyType = routeParam(req.params.propertyType);
     const { months = "12" } = req.query;
     const since = addMonths(clock.now(), -parseInt(months as string));
 
@@ -100,7 +102,7 @@ router.get("/benchmarks/:state/:propertyType", requireApiKey, async (req: Reques
 // ── Price Trends ───────────────────────────────────────────────────────────────
 router.get("/price-trends/:county", requireApiKey, async (req: Request, res: Response) => {
   try {
-    const { county } = req.params;
+    const county = routeParam(req.params.county);
     const { state } = req.query;
 
     // Column mapping: price_trends exposes periodStart and a single
@@ -131,7 +133,7 @@ router.get("/price-trends/:county", requireApiKey, async (req: Request, res: Res
 // ── Demand Data ────────────────────────────────────────────────────────────────
 router.get("/demand/:state", requireApiKey, async (req: Request, res: Response) => {
   try {
-    const { state } = req.params;
+    const state = routeParam(req.params.state);
     // Column mapping: demand_heatmaps tracks engagement counts, not buyer
     // budgets. activeBuyers→inquiryCount (best proxy); no avgBudget column;
     // freshness via createdAt.
@@ -211,7 +213,7 @@ router.delete("/keys/:id", ...founderOnly, async (req: Request, res: Response) =
   try {
     await db.update(systemApiKeys)
       .set({ isActive: false, updatedAt: clock.now() })
-      .where(eq(systemApiKeys.id, parseInt(req.params.id)));
+      .where(eq(systemApiKeys.id, parseInt(routeParam(req.params.id))));
     res.json({ success: true, message: "API key revoked" });
   } catch (err: any) {
     logger.error("Delete API key error", err);
@@ -222,7 +224,7 @@ router.delete("/keys/:id", ...founderOnly, async (req: Request, res: Response) =
 // ── API Key Usage Stats ───────────────────────────────────────────────────────
 router.get("/usage/:keyId", ...founderOnly, async (req: Request, res: Response) => {
   try {
-    const keyId = parseInt(req.params.keyId);
+    const keyId = parseInt(routeParam(req.params.keyId));
     const [key] = await db.select().from(systemApiKeys).where(eq(systemApiKeys.id, keyId)).limit(1);
 
     if (!key) return Errors.notFound(res, "API key");

@@ -11,6 +11,7 @@ import { Errors, sendError } from "./utils/errors";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { runPortfolioHealthJob, getActiveAlerts, dismissAlert } from "./services/portfolioHealth";
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
@@ -42,7 +43,7 @@ router.get("/alerts", async (req: Request, res: Response) => {
 router.delete("/alerts/:id", async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const alertId = parseInt(req.params.id);
+    const alertId = parseInt(routeParam(req.params.id));
     if (isNaN(alertId)) return sendError(res, 400, "BAD_REQUEST", "Invalid alert id");
 
     await dismissAlert(org.id, alertId);

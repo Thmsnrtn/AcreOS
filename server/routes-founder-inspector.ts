@@ -29,6 +29,7 @@ import { and, desc, eq, gte, sql, count } from "drizzle-orm";
 import { isAuthenticated, requireFounder } from "./auth/clerkAuth";
 import { sendError } from "./utils/errors";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 export function registerFounderInspectorRoutes(app: Express) {
   // Per-agent deep dive
@@ -37,7 +38,7 @@ export function registerFounderInspectorRoutes(app: Express) {
     isAuthenticated,
     requireFounder,
     async (req: Request, res: Response) => {
-      const codename = req.params.codename;
+      const codename = routeParam(req.params.codename);
       const days = Math.max(1, Math.min(180, parseInt(String(req.query.days ?? "30"), 10)));
       const cutoff = new Date(clock.nowMs() - days * 24 * 60 * 60 * 1000);
 
@@ -161,7 +162,7 @@ export function registerFounderInspectorRoutes(app: Express) {
     isAuthenticated,
     requireFounder,
     async (req: Request, res: Response) => {
-      const id = parseInt(req.params.id, 10);
+      const id = parseInt(routeParam(req.params.id), 10);
       if (!Number.isFinite(id)) return sendError(res, 400, "BAD_REQUEST", "invalid id");
 
       const item = await db.query.decisionsInboxItems.findFirst({

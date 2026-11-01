@@ -14,6 +14,7 @@ import { Errors } from "./utils/errors";
 
 import { TERMINAL_LEAD_STATUSES } from "@shared/lifecycle/pipeline-status";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 const serverStartTime = clock.nowMs();
 
 export function registerDashboardRoutes(app: Express): void {
@@ -460,7 +461,7 @@ export function registerDashboardRoutes(app: Express): void {
   api.delete("/api/alerts/:id/dismiss", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const alertId = parseInt(req.params.id);
+      const alertId = parseInt(routeParam(req.params.id));
       await dismissAlert(org.id, alertId);
       res.json({ success: true });
     } catch (err) {
@@ -545,7 +546,7 @@ export function registerDashboardRoutes(app: Express): void {
   api.delete("/api/goals/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const id = parseInt(req.params.id);
+      const id = parseInt(routeParam(req.params.id));
       await db.delete(goals).where(and(eq(goals.id, id), eq(goals.organizationId, org.id)));
       res.json({ success: true });
     } catch (err) {

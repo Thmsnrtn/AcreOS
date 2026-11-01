@@ -20,6 +20,7 @@ import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
 import { knowledgeBaseArticles } from "@shared/schema";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
+import { routeParam } from "./utils/routeParams";
 
 const MAX_PAGE_SIZE = 50;
 const DEFAULT_PAGE_SIZE = 20;
@@ -114,7 +115,7 @@ export function registerKnowledgeBaseRoutes(app: Express): void {
    */
   app.get("/api/kb/articles/:slug", async (req, res) => {
     try {
-      const slug = req.params.slug;
+      const slug = routeParam(req.params.slug);
       if (!slug || typeof slug !== "string") {
         return Errors.badRequest(res, "Missing slug");
       }

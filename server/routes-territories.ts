@@ -14,6 +14,7 @@ import { territories, teamMembers } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { Errors } from "./utils/errors";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 const router = Router();
 
@@ -61,7 +62,7 @@ router.post("/", async (req: Request, res: Response) => {
 router.put("/:id", async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const id = parseInt(req.params.id);
+    const id = parseInt(routeParam(req.params.id));
     if (isNaN(id)) return Errors.badRequest(res, "Invalid ID");
 
     const { name, description, stateCode, counties } = req.body;
@@ -88,7 +89,7 @@ router.put("/:id", async (req: Request, res: Response) => {
 router.delete("/:id", async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const id = parseInt(req.params.id);
+    const id = parseInt(routeParam(req.params.id));
     if (isNaN(id)) return Errors.badRequest(res, "Invalid ID");
 
     await db
@@ -104,7 +105,7 @@ router.delete("/:id", async (req: Request, res: Response) => {
 router.post("/:id/assign", async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const id = parseInt(req.params.id);
+    const id = parseInt(routeParam(req.params.id));
     const { userId } = req.body;
     if (isNaN(id)) return Errors.badRequest(res, "Invalid ID");
     if (!userId) return Errors.badRequest(res, "userId required");

@@ -25,6 +25,7 @@ import { emitPropertyCreated, emitPropertyStatusChanged } from "./services/prope
 import { readIntegrationCredentials } from "./services/integrationCredentials";
 import { CSV_IMPORT_MAX_ROWS_PER_FILE } from "@shared/product-limits";
 import { clock } from "./utils/clock";
+import { routeParam } from "./utils/routeParams";
 
 // Write schemas for POST / PUT / bulk-update. `land_status` is a free-text
 // column, so drizzle-zod's insert schema accepts ANY string for it; the
@@ -134,7 +135,7 @@ export function registerPropertyRoutes(app: Express): void {
     async (req, res) => {
       try {
         const org = req.organization;
-        const propertyId = parseInt(req.params.id, 10);
+        const propertyId = parseInt(routeParam(req.params.id), 10);
         if (!Number.isFinite(propertyId)) {
           return Errors.badRequest(res, "Invalid property id");
         }
@@ -247,7 +248,7 @@ export function registerPropertyRoutes(app: Express): void {
     async (req, res) => {
       try {
         const org = req.organization;
-        const id = Number(req.params.id);
+        const id = Number(routeParam(req.params.id));
         if (!Number.isFinite(id) || id <= 0) {
           return Errors.notFound(res, "Property");
         }
@@ -302,7 +303,7 @@ export function registerPropertyRoutes(app: Express): void {
 
   api.get("/api/properties/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
-    const id = Number(req.params.id);
+    const id = Number(routeParam(req.params.id));
     // STR-023 defense-in-depth: reject non-numeric :id even if a sibling
     // verb-style path isn't registered above.
     if (!Number.isFinite(id) || id <= 0) {
@@ -410,7 +411,7 @@ export function registerPropertyRoutes(app: Express): void {
   api.put("/api/properties/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const propertyId = Number(req.params.id);
+      const propertyId = Number(routeParam(req.params.id));
       const existingProperty = await storage.getProperty(org.id, propertyId);
       if (!existingProperty) return Errors.notFound(res, "Property");
 
@@ -520,7 +521,7 @@ export function registerPropertyRoutes(app: Express): void {
   api.patch("/api/properties/:id/land-status", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const propertyId = Number(req.params.id);
+      const propertyId = Number(routeParam(req.params.id));
 
       if (isNaN(propertyId)) {
         return Errors.badRequest(res, "Invalid property ID");
@@ -584,7 +585,7 @@ export function registerPropertyRoutes(app: Express): void {
   api.delete("/api/properties/:id", isAuthenticated, getOrCreateOrg, requirePermission("canDeleteProperties"), async (req, res) => {
     try {
       const org = req.organization;
-      const propertyId = Number(req.params.id);
+      const propertyId = Number(routeParam(req.params.id));
       
       if (isNaN(propertyId)) {
         return Errors.badRequest(res, "Invalid property ID");
@@ -783,7 +784,7 @@ export function registerPropertyRoutes(app: Express): void {
   api.get("/api/properties/:id/comps", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const property = await storage.getProperty(org.id, Number(req.params.id));
+      const property = await storage.getProperty(org.id, Number(routeParam(req.params.id)));
       
       if (!property) {
         return Errors.notFound(res, "Property");
@@ -1048,7 +1049,7 @@ export function registerPropertyRoutes(app: Express): void {
   api.get("/api/properties/:id/nearby", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const property = await storage.getProperty(org.id, Number(req.params.id));
+      const property = await storage.getProperty(org.id, Number(routeParam(req.params.id)));
       
       if (!property) {
         return Errors.notFound(res, "Property");
@@ -1100,7 +1101,7 @@ export function registerPropertyRoutes(app: Express): void {
       const { lookupParcelByAPN } = await import("./services/parcel");
       const org = req.organization;
       
-      const property = await storage.getProperty(org.id, Number(req.params.id));
+      const property = await storage.getProperty(org.id, Number(routeParam(req.params.id)));
       if (!property) {
         return Errors.notFound(res, "Property");
       }
@@ -1212,7 +1213,7 @@ export function registerPropertyRoutes(app: Express): void {
   api.post("/api/properties/:id/detect-land-status", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const propertyId = Number(req.params.id);
+      const propertyId = Number(routeParam(req.params.id));
       if (isNaN(propertyId)) return Errors.badRequest(res, "Invalid property ID");
 
       const property = await storage.getProperty(org.id, propertyId);
