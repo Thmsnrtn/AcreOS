@@ -63,7 +63,7 @@ export function PersonaSwitcher({ compact, className }: PersonaSwitcherProps) {
           type="button"
           whileTap={TAP_PRESS}
           transition={tapSpring}
-          aria-label={`Switch mode. Currently ${MODE_LABEL[mode]} mode.`}
+          aria-label={`Mode: ${MODE_LABEL[mode]} — switch mode`}
           data-testid="persona-switcher-trigger"
           style={{ minHeight: TOUCH_TARGET_PT }}
           className={cn(
