@@ -13,6 +13,7 @@ import { initAnalytics } from "./lib/analytics";
 import { capturePendingUtm } from "./lib/acquisition-utm";
 import { installCsrfFetchInterceptor } from "./lib/csrf-fetch";
 import { installClerkSessionRecovery } from "./lib/clerk-session-recovery";
+import { clerkProviderProxyProps } from "./lib/clerkDirect";
 import { installVersionCheck } from "./lib/version-check";
 import { applyUiFlagFromUrl } from "@/lib/featureFlags";
 
@@ -158,7 +159,7 @@ createRoot(document.getElementById("root")!).render(
   ) : (
     <ClerkProvider
       publishableKey={publishableKey}
-      proxyUrl="/__clerk"
+      {...clerkProviderProxyProps(runtimeEnv)}
       signInFallbackRedirectUrl="/today"
       signUpFallbackRedirectUrl="/onboarding-v2"
       appearance={{
