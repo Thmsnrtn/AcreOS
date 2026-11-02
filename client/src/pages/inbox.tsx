@@ -222,8 +222,8 @@ function EmailMessageRow({
           )}
           {!message.isRead && (
             // Semantic unread dot uses --acr-brand (not --primary) to stay
-            // theme-coherent. Aria-hidden since the row aria-label already
-            // announces unread state.
+            // theme-coherent. Aria-hidden: it carries no text of its own.
+            // The row name now comes from its visible content.
             <span className="w-2 h-2 rounded-full bg-[color:var(--acr-brand)] flex-shrink-0" aria-hidden="true" />
           )}
         </div>
