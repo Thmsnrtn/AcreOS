@@ -137,7 +137,7 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
 }
 
 // Runtime env injected by server into window.__ENV__ (for production builds
-// where VITE_* vars aren't available at Docker build time)
+// where VITE_* vars aren't available at Docker build time; CLERK_DIRECT="1" in __ENV__ omits the Clerk proxyUrl (direct mode), otherwise the proxy is unchanged.)
 const runtimeEnv = (window as any).__ENV__ || {};
 const publishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY || runtimeEnv.VITE_CLERK_PUBLISHABLE_KEY;
 
@@ -158,7 +158,7 @@ createRoot(document.getElementById("root")!).render(
   ) : (
     <ClerkProvider
       publishableKey={publishableKey}
-      proxyUrl="/__clerk"
+      {...(runtimeEnv.CLERK_DIRECT === "1" ? {} : { proxyUrl: "/__clerk" })}
       signInFallbackRedirectUrl="/today"
       signUpFallbackRedirectUrl="/onboarding-v2"
       appearance={{
