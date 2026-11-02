@@ -150,7 +150,7 @@ export function PageTopbar({ title: explicitTitle, crumbs }: PageTopbarProps = {
             size="sm"
             onClick={openCommandPalette}
             className="text-xs text-muted-foreground gap-2 h-8"
-            aria-label="Open command palette"
+            aria-label="Search ⌘K — open command palette"
           >
             <Command className="w-3.5 h-3.5" aria-hidden="true" />
             <span>Search</span>
