@@ -130,3 +130,12 @@ results quoted above; they were not re-executed in this session.
    isolation, slot release after failure).
 3. Record the observed statuses, headers, and counts here; until then,
    the post-merge live proof of PR #430 is outstanding, not established.
+## Update — 2026-11-02, second attempt (5:15–5:17 PM EST / 22:15–22:17 UTC): sign-in moved forward, then blocked at the app session
+
+- Clerk state verified first: DEVELOPMENT instance ins_3B29OsfrVfYjJYj3eAfSEvJoJgM; the Google social connection is "Used for sign-in" with shared credentials, and Apple is also listed. No Clerk change was needed, and production ins_3BcnsUIibMuH1u61VGSR6vqjm7f was not touched.
+- The widget now renders: https://staging.acreos.io/auth shows Google and Apple buttons plus the Email address field and Continue button, in Development mode.
+- Google OAuth itself completed twice: the account Thomas Norton (thmsnrtn@gmail.com) was chosen and consent to "AcreOS" was confirmed. Each time the browser reached /today briefly, then returned to /auth with no error shown; direct navigation to /today also redirected to /auth.
+- The Clerk dashboard corroborates the Clerk side: the dev user Thomas Norton (user_3Ba6NjSNJVqy91wtxb9pCUBPLNC, thmsnrtn@gmail.com, Google linked, user since March 28, 2026) shows "Last signed in November 2, 2026" and an active Chrome device "today at 5:14 PM". The failure is therefore downstream of Clerk: the staging app does not retain an authenticated session after a completed OAuth callback.
+- Staging health is unchanged and still degraded: https://staging.acreos.io/api/health returned {"overall":"degraded","timestamp":"2026-11-02T22:15:35.827Z","version":"1.0.0"}, and the Fly origin https://acreos-staging.fly.dev/api/health returned the same degraded result at 22:15:55 UTC, so this is not a custom-domain-only issue.
+- Per-leg verdicts, unchanged: (a) demo — NOT RUN; (b) k6 burst re-run — NOT RUN; (c) G10 adversarial re-run — NOT RUN. With no authenticated session, no live AI concurrency, quota, k6, or adversarial observation was possible in this session, and no #430 code was changed.
+- What unblocks it now: investigate why the staging app redirects an authenticated Clerk user from /today to /auth (app session handling and user/org lookup against the degraded staging backend), rather than re-running the same Google flow.
