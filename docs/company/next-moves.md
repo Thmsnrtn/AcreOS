@@ -3,6 +3,13 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-11-02 — Clerk FAPI origin default corrected — on `claude/clerk-fapi-origin` (off main `b539f15`)
+
+- **Change.** `server/middleware/clerkProxy.ts` default upstream origin `https://possible-emu-83.clerk.accounts.dev` -> `https://clerk.acreos.io`. `CLERK_FAPI_ORIGIN` still overrides it exactly as before (trimmed, trailing slashes dropped, empty = default).
+- **Why (founder-supplied evidence, not re-measured from this sandbox).** The emu host is a leftover in a different Clerk instance context: proxy-protocol calls there get 401 `proxy_request_invalid_secret_key` (different `auth_config` id). `clerk.acreos.io` is the app's real Frontend API host and answers the same calls 200 given the registered `Clerk-Proxy-Url` and the instance secret key. The Clerk domain `acreos.io` has `proxy_url` `https://acreos.io/__clerk`. The old "Cloudflare Error 1000" note was a DNS defect (the CNAME pointed at a Cloudflare-owned address); it now targets `frontend-api.clerk.services` and Error 1000 does not reproduce from a Fly machine.
+- **Gate.** `tests/unit/clerkProxyFapiOrigin.test.ts` asserts the URL actually fetched under each env. Mutants: emu default restored -> 4 failed; env override ignored -> 1 failed.
+- **No staging verification record** for this change exists in `docs/evidence/` (the 2026-10-30 `clerk-proxy-gates.log` is the x-forwarded-host fix). No Clerk or Fly config was changed.
+- **Next.** Merge, then deploy; prod presents the registered proxy URL, so `https://acreos.io/__clerk/v1/environment` should answer 200. The ops-watch `sign_in` probe will show it.
 ## 2026-11-02 — V-Tax-1 T4b audit fixes (#425, audited NOT YET MERGEABLE at `8d71515`) — rebased onto main `6defa32a`
 
 - **B3, rebase after T4a.** Done. T4b's two commits now sit on main `6defa32a`, with the same 29 files as before. The route-file conflicts were all #432's `routeParam` lines next to T4b's gate, and both are kept. The founder-decisions conflict was two "§3"s: main's T3a decision stays §3, and T4b's becomes §4, with its references updated.
