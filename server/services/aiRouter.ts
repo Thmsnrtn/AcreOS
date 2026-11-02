@@ -8,6 +8,7 @@ import { computeCostUsd } from "./aiCostRates";
 import { MODELS, priceFor, isKnownModel, OPENAI_DIRECT_MODELS, openAiModelIdFor } from "./models";
 import { ANTHROPIC_CACHE_MIN_CHARS } from "./promptCache";
 import { checkQuota, recordUsage, AIQuotaExceeded } from "./aiQuotaService";
+import { withAiConcurrencySlot } from "./aiConcurrency";
 import {
   recordAiCall as recordCascadeCall,
   complexityClassFromTaskType,
@@ -1182,6 +1183,16 @@ export function estimateCost(
 }
 
 export async function routeAITask(
+  task: AITask,
+  config: AIRouterConfig = {}
+): Promise<AIResponse> {
+  // G10: at most AI_ORG_CONCURRENCY_CAP tasks in flight per org. The slot is
+  // held for the whole task and released on every exit path; the counter is
+  // shared with aiSpendGuard's metered raw-call path (one counter per org).
+  return withAiConcurrencySlot(config.orgId, () => routeAITaskUnbounded(task, config));
+}
+
+async function routeAITaskUnbounded(
   task: AITask,
   config: AIRouterConfig = {}
 ): Promise<AIResponse> {

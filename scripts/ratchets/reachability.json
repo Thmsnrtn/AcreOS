@@ -282,6 +282,31 @@
     },
     {
       "kind": "export",
+      "id": "server/services/aiConcurrency.ts::aiConcurrencyInFlight",
+      "reason": "TEST-INTROSPECTION SEAM (G10, 2026-10-30). The per-org in-flight count withAiConcurrencySlot enforces in the same module; exported so aiConcurrencyCap.test.ts can assert the cap trips at 5 and that every slot is freed on success and on throw. REVOCATION: if a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "server/services/aiConcurrency.ts::__resetAiConcurrencyForTests",
+      "reason": "TEST SEAM (G10, 2026-10-30). Clears the in-memory per-org counter between tests, like __resetPlatformCeilingMrrCacheForTests in aiCostCeiling. REVOCATION: remove if no test needs it."
+    },
+    {
+      "kind": "export",
+      "id": "server/services/aiConcurrency.ts::AI_ORG_CONCURRENCY_CAP",
+      "reason": "TEST-INTROSPECTION SEAM (G10, 2026-10-30). The per-org cap withAiConcurrencySlot enforces in the same module; exported so aiConcurrencyCap.test.ts pins the value (5, COO-proposed, founder may overturn at merge). REVOCATION: if a second production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "server/services/aiConcurrency.ts::AIConcurrencyExceeded",
+      "reason": "CONTRACT TYPE (G10, 2026-10-30). The named 429 refusal (code AI_CONCURRENCY_EXCEEDED) withAiConcurrencySlot throws; exported so tests and callers can match it by class, as AIQuotaExceeded is. REVOCATION: if a production caller imports it, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "server/services/aiQuotaService.ts::AIQuotaUnavailable",
+      "reason": "CONTRACT TYPE (G10, 2026-10-30). The named 503 refusal (code AI_QUOTA_UNAVAILABLE) checkQuota throws when metering is unreadable; exported so tests and callers can match it by class, as AIQuotaExceeded is. REVOCATION: if a production caller imports it, remove this entry."
+    },
+    {
+      "kind": "export",
       "id": "server/services/autopilot/opsWatch.ts::stripeReadingFrom",
       "reason": "TEST-INTROSPECTION SEAM (Stage 2, 2026-10-07). Pure Stripe-down-for-a-day reading used by runOpsWatch in the same module; exported for the 24-hour threshold test. REVOCATION: if a second production module imports it, remove this entry."
     },
