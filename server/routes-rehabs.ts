@@ -355,17 +355,17 @@ export function registerRehabRoutes(app: Express): void {
       ] as const) {
         if (parsed.data[k] !== undefined) updates[k] = parsed.data[k];
       }
-      // Capture the pre-image status so the workflow emitter can detect a
-      // GENUINE status transition (audit Wave 1 — wire the fix-and-flip
-      // milestone loop). Only needed when status is actually being changed.
-      let beforeStatus: string | null = null;
-      if (parsed.data.status !== undefined) {
-        const [prev] = await db
-          .select({ status: rehabs.status })
-          .from(rehabs)
-          .where(and(eq(rehabs.id, routeParam(req.params.id)), eq(rehabs.organizationId, orgId)));
-        beforeStatus = prev?.status ?? null;
-      }
+      // The pre-image: its parcel for the V-Tax-1 T4b gate (an update is
+      // rehab spend as much as a create), and its status so the workflow
+      // emitter can detect a GENUINE status transition (audit Wave 1 — wire
+      // the fix-and-flip milestone loop).
+      const [prev] = await db
+        .select({ status: rehabs.status, propertyId: rehabs.propertyId })
+        .from(rehabs)
+        .where(and(eq(rehabs.id, routeParam(req.params.id)), eq(rehabs.organizationId, orgId)));
+      if (!prev) return Errors.notFound(res, "Rehab");
+      if (!(await refuseRedeemableDeedSpend(res, orgId, prev.propertyId, "A rehab update"))) return;
+      const beforeStatus: string | null = parsed.data.status !== undefined ? prev.status ?? null : null;
       const [updated] = await db.update(rehabs).set(updates)
         .where(and(eq(rehabs.id, routeParam(req.params.id)), eq(rehabs.organizationId, orgId)))
         .returning();
@@ -428,6 +428,12 @@ export function registerRehabRoutes(app: Express): void {
       ] as const) {
         if (parsed.data[k] !== undefined) updates[k] = parsed.data[k];
       }
+      // V-Tax-1 T4b: a line-item update is rehab spend on the rehab's parcel.
+      const [owner] = await db.select({ propertyId: rehabs.propertyId }).from(rehabLineItems)
+        .innerJoin(rehabs, eq(rehabs.id, rehabLineItems.rehabId))
+        .where(and(eq(rehabLineItems.id, routeParam(req.params.id)), eq(rehabLineItems.organizationId, orgId)));
+      if (!owner) return Errors.notFound(res, "Line item");
+      if (!(await refuseRedeemableDeedSpend(res, orgId, owner.propertyId, "A rehab line item update"))) return;
       const [updated] = await db.update(rehabLineItems).set(updates)
         .where(and(eq(rehabLineItems.id, routeParam(req.params.id)), eq(rehabLineItems.organizationId, orgId)))
         .returning();

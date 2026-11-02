@@ -14,7 +14,9 @@
  *      "may this property be offered?" rule) must also check the tax hold
  *      within the same few lines. A new marketing path that copies the
  *      offerability check without the tax gate fails.
- *   3. Vacuity: each spend marker is found at least once, each gated unit is
+ *   3. UPDATES: the four PATCH routes the 2026-11-01 audit found ungated are
+ *      pinned by name, and each must call the gate before its write.
+ *   4. Vacuity: each spend marker is found at least once, each gated unit is
  *      found by its registration, and the unit splitter reads a real number
  *      of route units — a parser that silently stops matching reads exactly
  *      like a clean population.
@@ -35,12 +37,26 @@ const SPEND_WRITES: Array<[string, RegExp]> = [
   ["permit checklist", /\.insert\(permitChecklists\)/],
   ["permit gate", /\.update\(permitGates\)/],
   ["lot split", /\.insert\(properties\)\.values\(inserts\)/],
-  ["rehab", /\.insert\(rehabs\)/],
-  ["rehab line items", /\.insert\(rehabLineItems\)/],
-  ["DD assignment", /\bcreateDDAssignment\(/],
+  ["rehab", /\.(insert|update)\(rehabs\)/],
+  ["rehab line items", /\.(insert|update)\(rehabLineItems\)/],
+  ["DD assignment", /\b(createDDAssignment|updateDDAssignment)\(/],
   ["DD dossier", /\b(requestDossier|runDossierPod)\(/],
   ["property listing", /\bcreatePropertyListing\(/],
-  ["ad posting", /\bcreateAdPosting\(/],
+  ["ad posting", /\b(createAdPosting|updateAdPosting)\(/],
+];
+
+/**
+ * UPDATE routes are spend too. Audit 2026-11-01 (B2): the markers above once
+ * matched creates only (`.insert(rehabs)`, `createAdPosting(` …), so these four
+ * PATCH routes wrote their spend tables with no gate and the population read
+ * as clean. The markers now match updates as well; these are also pinned by
+ * name, each with its write, so the gate must run BEFORE the write.
+ */
+const GATED_UPDATES: Array<[file: string, key: string, write: RegExp]> = [
+  ["server/routes-rehabs.ts", "PATCH /api/rehabs/:id", /\.update\(rehabs\)/],
+  ["server/routes-rehabs.ts", "PATCH /api/rehab-line-items/:id", /\.update\(rehabLineItems\)/],
+  ["server/routes-va-engine.ts", "PATCH /api/ad-postings/:id", /\bupdateAdPosting\(/],
+  ["server/routes-va-engine.ts", "PATCH /api/dd-assignments/:id", /\bupdateDDAssignment\(/],
 ];
 
 /** Units that write a spend table but are not spend on a parcel — each with why. */
@@ -71,6 +87,18 @@ describe("every spend route calls the redeemable-deed gate", () => {
       expect(writers.length, `no route unit writes ${label} — the marker went stale`).toBeGreaterThan(0);
       const ungated = writers.filter((u) => !GATE.test(u.body) && !EXEMPT[`${u.file} ${u.key}`]).map((u) => `${u.file} ${u.key}`);
       expect(ungated, `these routes spend on or market a parcel without the T4b gate — call refuseRedeemableDeedSpend before the write, or add an EXEMPT entry saying why`).toEqual([]);
+    });
+  }
+
+  for (const [file, key, write] of GATED_UPDATES) {
+    it(`${key}: found, writes its spend table, and calls the gate before the write`, () => {
+      const unit = all.find((u) => u.file === file && u.key === key);
+      expect(unit, `${file} ${key} is no longer registered — update GATED_UPDATES`).toBeDefined();
+      const w = unit!.body.search(write);
+      expect(w, `${key} no longer matches its write ${write} — the pin went stale`).toBeGreaterThanOrEqual(0);
+      const g = unit!.body.search(GATE);
+      expect(g, `${key} writes without the T4b gate`).toBeGreaterThanOrEqual(0);
+      expect(g, `${key} calls the gate only after its write`).toBeLessThan(w);
     });
   }
 

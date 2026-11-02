@@ -3,6 +3,18 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-11-02 — V-Tax-1 T4b audit fixes (#425, audited NOT YET MERGEABLE at `8d71515`) — rebased onto main `6defa32a`
+
+- **B3, rebase after T4a.** Done. T4b's two commits now sit on main `6defa32a`, with the same 29 files as before. The route-file conflicts were all #432's `routeParam` lines next to T4b's gate, and both are kept. The founder-decisions conflict was two "§3"s: main's T3a decision stays §3, and T4b's becomes §4, with its references updated.
+- **B1, the T2b PATCH-status bypass.** Closed by the rebase. The refusal at `routes-tax-certificates.ts` (a PATCH to `deed_obtained`/`expired_to_deed` while redeemable returns 422) comes from main's T2b squash `a5ba7a1` (#421). `taxClock.realdb` passes 10/10, and with the refusal removed its PATCH case goes red.
+- **B2, updates were ungated.**
+  - `PATCH /api/rehabs/:id`, `/api/rehab-line-items/:id`, `/api/ad-postings/:id` and `/api/dd-assignments/:id` wrote their spend tables with no gate. All four were ungated, and all four now call `refuseRedeemableDeedSpend`.
+  - The ad posting and DD assignment routes also check a parcel the body re-points them to.
+  - The ratchet's markers now match updates as well as creates. The four routes are also pinned by name, with the gate required BEFORE the write.
+  - `redeemableDeedGateUpdates.realdb` drives each route: refused on a held parcel with the row untouched, and allowed on a free one.
+  - Mutants: all four gates removed (HTTP 4/4 red, and the ratchet names all four routes); a gate moved after the write (the ordering pin goes red).
+- **Next.** Muse audits the new head; the founder merges.
+
 ## 2026-10-29 — V-Tax-1 T4b — the tax → Land exit, and the redeemable-deed gate on spend and marketing — on `claude/tax-v1-t4b-land-exit` (rebased onto main `6defa32a`). V-Tax-1 is code-complete.
 
 - **Founder decisions (2026-10-29, recorded in `founder-decisions-2026-10-28-tax.md` §4).** The exit is an operator action, never automatic. The gate covers both spend AND marketing.
