@@ -3,6 +3,13 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-11-02 — G5 upgrade-path proof workflow — on `claude/serene-cori-0u9h8n` (PR #438, unmerged)
+
+- **Built.** `.github/workflows/g5-proof.yml`: `workflow_dispatch` only, input `base_ref`. It builds `base_ref` with that ref's own `db:build-from-repo`, then upgrades it with the current `migrate.mjs`. It runs `--ddl-only` (the staging entry) and then the release_command, then `--dry-run`. It fresh-builds the current ref into a second database, diffs upgraded against fresh (census read plus normalized `pg_dump --schema-only`), and runs the real-DB suites on the upgraded database. No change to migrate.mjs, the schema or app code.
+- **Proved.** Run 41401168690, base `58d1a9b7` → current `833f88f2` (main `b539f15` plus the workflow). Base, upgraded and fresh each have 752 tables. Both upgraded-vs-fresh diffs are EMPTY. 7 `tests/db` scripts and 199/199 real-DB vitest tests (41 files) passed on the upgraded database. Evidence: `docs/evidence/2026-11-02/g5-upgrade-path-proof.md`.
+- **Caveat.** A dispatch is impossible until the file is on main: GitHub needs the workflow on the default branch, and the session token lacks Actions write. The proof ran through a temporary push trigger, which has since been reverted and is recorded in the evidence.
+- **Next.** Muse wires the G5 gate text. After merge, re-dispatch once from main as a true `workflow_dispatch` confirmation. Consider dispatching per migration-bearing merge against the last release SHA.
+
 ## 2026-11-02 — Clerk FAPI origin default corrected — on `claude/clerk-fapi-origin` (off main `b539f15`)
 
 - **Change.** `server/middleware/clerkProxy.ts` default upstream origin `https://possible-emu-83.clerk.accounts.dev` -> `https://clerk.acreos.io`. `CLERK_FAPI_ORIGIN` still overrides it exactly as before (trimmed, trailing slashes dropped, empty = default).
