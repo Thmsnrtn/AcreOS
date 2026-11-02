@@ -1216,7 +1216,7 @@ export function Sidebar() {
               type="button"
               onClick={() => window.dispatchEvent(new CustomEvent("acreos:open-command-palette"))}
               className="flex items-center gap-2 w-full px-3 py-2 rounded-card border border-sidebar-border bg-sidebar-accent/40 text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground active:bg-sidebar-accent active:text-sidebar-foreground transition-colors min-h-[44px] text-sm"
-              aria-label="Search or jump to anywhere (Cmd K)"
+              aria-label="Search or jump to ⌘K anywhere"
               data-tour="cmd-palette-trigger"
               data-testid="button-search-trigger"
             >
@@ -1231,7 +1231,7 @@ export function Sidebar() {
               type="button"
               onClick={() => useModals.getState().openQuickOffer()}
               className="flex items-center gap-2 w-full px-3 py-2 rounded-card border border-sidebar-border bg-sidebar-accent/40 text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground active:bg-sidebar-accent active:text-sidebar-foreground transition-colors min-h-[44px] text-sm"
-              aria-label="Quick offer (Cmd O)"
+              aria-label="Quick offer ⌘O"
               data-tour="quick-offer"
               data-testid="button-quick-offer-trigger"
             >
@@ -1331,7 +1331,7 @@ export function Sidebar() {
                     href={module.href}
                     className="flex items-center gap-2 flex-1 min-w-0 py-3 -my-3"
                     aria-current={active ? "page" : undefined}
-                    aria-label={module.label}
+
                     data-testid={`link-nav-${module.href.replace("/", "") || "dashboard"}`}
                   >
                     <module.icon
