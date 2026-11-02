@@ -44,6 +44,7 @@
 
 import { useState, useEffect } from "react";
 import { BidDialog, DiscardControl, MaxBidLine, OverMaxFlag, RightsStackEditor, overMaxBlocks } from "@/components/tax/BidDiscipline";
+import { AuctionCalendarPanel } from "@/components/tax/AuctionCalendarPanel";
 import { isDiscarded, type DiscardRecord, type MaxBidRecord } from "@shared/tax/maxBid";
 import { motion } from "framer-motion";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -1260,6 +1261,10 @@ function SaleBar({
               </div>
             )}
           </div>
+
+          <Separator className="my-4" />
+          <AuctionCalendarPanel auctionId={selected.id} />
+          <Separator className="my-4" />
 
           {budget.data?.remainingIsUpperBound && (
             <p className="text-xs text-acr-warning mt-2">
