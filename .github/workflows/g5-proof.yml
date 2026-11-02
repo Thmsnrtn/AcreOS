@@ -1,0 +1,312 @@
+# G5 upgrade-path proof — dispatch only.
+#
+# WHY THIS EXISTS: gate G5 has two halves. The fresh-install half (an empty
+# database built from this repo by `npm run db:build-from-repo`) is proven by
+# Test / the deploy gate on every commit. The upgrade-path half had no
+# executable route: nothing proved that a database built at an OLDER commit
+# upgrades cleanly to the code under test through scripts/migrate.mjs and
+# lands on the same schema as a fresh build. Production only ever takes the
+# upgrade path (fly.toml release_command = `node scripts/migrate.mjs`;
+# migrations/*.sql never run there), and staging takes its DDL subset
+# (`node scripts/migrate.mjs --ddl-only`, staging-schema-reconcile.yml).
+#
+# WHAT IT DOES (one job, scratch Postgres service, never a real database):
+#   1. checks out `base_ref` into a worktree and builds the "old install" with
+#      the BASE ref's own package.json `db:build-from-repo` script;
+#   2. snapshots that schema;
+#   3. runs the CURRENT `node scripts/migrate.mjs --ddl-only` (the staging
+#      reconcile entry) against it, snapshots it, then the CURRENT
+#      `node scripts/migrate.mjs` (the production release_command), snapshots
+#      it again;
+#   4. fresh-builds the current schema into a second database and snapshots it;
+#   5. asserts upgraded == fresh, after both normalizations below, for both
+#      upgraded snapshots, and prints every table count;
+#   6. runs the real-database suites against the upgraded database.
+#
+# NORMALIZATION (identical for every snapshot):
+#   - census: the staging census's own physical read — every relkind r/p,
+#     non-partition table in `public`, as `T <name> <constraints> <triggers>`
+#     (scripts/staging-schema-census.ts) — sorted;
+#   - DDL: `pg_dump --schema-only --no-owner --no-privileges` with comments,
+#     blank lines, SET / set_config lines and pg_dump's per-run
+#     \restrict tokens removed, whitespace trimmed, a trailing comma dropped
+#     (an ALTER-added column lands last in its CREATE TABLE on one path and
+#     mid-table on the other), then sorted.
+#
+# LOUD BY DESIGN: any migrate error, any non-empty diff, any failing test, and
+# ZERO tests executed each fail the run. No step continues on error.
+#
+# NOT A REQUIRED CHECK: workflow_dispatch only, so it never runs on a PR or a
+# push and cannot block the merge queue.
+
+name: G5 Upgrade-Path Proof
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_ref:
+        description: "Commit SHA or ref of the old install to upgrade FROM"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: g5-proof-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  upgrade-proof:
+    name: Upgrade base_ref -> this ref, compare with a fresh build
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    services:
+      postgres:
+        # Same image as the real-database suites (test.yml / deploy.yml /
+        # staging.yml): postgres 16 with pgvector, which shared/schema.ts needs
+        # for solene_embedded_records.
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: acreos
+          POSTGRES_PASSWORD: acreos
+          POSTGRES_DB: acreos_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      # The UPGRADED database is the job's database: the real-database suites
+      # run against it. The fresh build overrides DATABASE_URL on its own step.
+      DATABASE_URL: postgresql://acreos:acreos@localhost:5432/g5_upgraded
+      ACREOS_REAL_DATABASE_URL: postgresql://acreos:acreos@localhost:5432/g5_upgraded
+      ACREOS_REQUIRE_REAL_DB: "1"
+      FRESH_DATABASE_URL: postgresql://acreos:acreos@localhost:5432/g5_fresh
+      ADMIN_DATABASE_URL: postgresql://acreos:acreos@localhost:5432/postgres
+      SESSION_SECRET: test-session-secret-at-least-32-characters-long
+      APP_URL: http://localhost:5000
+      NODE_ENV: test
+      BASE_REF_INPUT: ${{ inputs.base_ref }}
+      BASE_TREE: ${{ github.workspace }}/../g5-base
+      SNAP_DIR: ${{ github.workspace }}/../g5-snapshots
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      # Same client install as test.yml: the runner image's own pg client tools
+      # are not pinned and moved past the pg16 service on 2026-10-26.
+      - name: Install the PostgreSQL 16 client tools the service needs
+        run: |
+          sudo apt-get update -qq
+          if ! sudo apt-get install -y -qq --no-install-recommends postgresql-client-16; then
+            sudo apt-get install -y -qq --no-install-recommends postgresql-common
+            sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+            sudo apt-get install -y -qq --no-install-recommends postgresql-client-16
+          fi
+          /usr/lib/postgresql/16/bin/pg_dump --version
+
+      - name: Resolve refs and create the two scratch databases
+        run: |
+          set -euo pipefail
+          if ! BASE_SHA="$(git rev-parse --verify "${BASE_REF_INPUT}^{commit}")"; then
+            echo "::error::base_ref '${BASE_REF_INPUT}' does not resolve to a commit in this repository."
+            exit 1
+          fi
+          HEAD_SHA="$(git rev-parse HEAD)"
+          if [ "$BASE_SHA" = "$HEAD_SHA" ]; then
+            echo "::error::base_ref resolves to the ref under test (${HEAD_SHA}); there is no upgrade to prove."
+            exit 1
+          fi
+          echo "BASE_SHA=$BASE_SHA" >> "$GITHUB_ENV"
+          echo "HEAD_SHA=$HEAD_SHA" >> "$GITHUB_ENV"
+          echo "base ref : ${BASE_REF_INPUT} -> ${BASE_SHA}"
+          echo "this ref : ${GITHUB_REF} -> ${HEAD_SHA}"
+          echo "commits between: $(git rev-list --count "${BASE_SHA}..${HEAD_SHA}")"
+          echo "migrations/*.sql changed between them:"
+          git diff --name-only "${BASE_SHA}" "${HEAD_SHA}" -- migrations | sed 's/^/  /' || true
+          for db in g5_upgraded g5_fresh; do
+            psql -X -v ON_ERROR_STOP=1 -d "$ADMIN_DATABASE_URL" -c "CREATE DATABASE ${db}"
+          done
+          mkdir -p "$SNAP_DIR"
+
+      - name: Write the snapshot helper (census read + normalized pg_dump)
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/g5-snapshot.sh" <<'SH'
+          #!/usr/bin/env bash
+          # g5-snapshot.sh <database-url> <label>  ->  $SNAP_DIR/<label>.census.txt, <label>.ddl.txt
+          set -euo pipefail
+          url="$1"; label="$2"
+          census_sql="SELECT c.relname AS t, \
+            (SELECT count(*) FROM pg_constraint k WHERE k.conrelid = c.oid)::int AS k, \
+            (SELECT count(*) FROM pg_trigger g WHERE g.tgrelid = c.oid AND NOT g.tgisinternal)::int AS g \
+            FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace \
+            WHERE n.nspname = 'public' AND c.relkind IN ('r','p') AND NOT c.relispartition ORDER BY 1"
+          rows="$(psql -X -At -F ' ' -v ON_ERROR_STOP=1 -d "$url" -c "$census_sql")"
+          n="$(printf '%s\n' "$rows" | grep -c . || true)"
+          { echo "COUNT $n"; printf '%s\n' "$rows" | grep . | sed 's/^/T /' | LC_ALL=C sort; } > "$SNAP_DIR/$label.census.txt"
+          /usr/lib/postgresql/16/bin/pg_dump --schema-only --no-owner --no-privileges -d "$url" > "$SNAP_DIR/$label.raw.sql"
+          sed -E \
+              -e '/^--/d' \
+              -e '/^[[:space:]]*$/d' \
+              -e '/^SET /d' \
+              -e '/^SELECT pg_catalog\.set_config/d' \
+              -e '/^\\(un)?restrict /d' \
+              -e 's/^[[:space:]]+//' \
+              -e 's/[[:space:]]+$//' \
+              -e 's/,$//' \
+              "$SNAP_DIR/$label.raw.sql" | LC_ALL=C sort > "$SNAP_DIR/$label.ddl.txt"
+          lines="$(wc -l < "$SNAP_DIR/$label.ddl.txt")"
+          if [ "$n" -lt 650 ] || [ "$lines" -lt 1000 ]; then
+            echo "::error::snapshot '$label' is implausibly small (${n} tables, ${lines} DDL lines) — refusing to compare it."
+            exit 1
+          fi
+          echo "[g5] snapshot ${label}: ${n} tables, ${lines} normalized DDL lines"
+          SH
+          chmod +x "$RUNNER_TEMP/g5-snapshot.sh"
+
+      # ── 1. The old install, built by the BASE ref's own scripts ──────────
+      - name: Check out base_ref into a worktree and install its dependencies
+        run: |
+          set -euo pipefail
+          git worktree add --detach "$BASE_TREE" "$BASE_SHA"
+          cd "$BASE_TREE"
+          if ! node -e 'process.exit(require("./package.json").scripts["db:build-from-repo"] ? 0 : 1)'; then
+            echo "::error::base ref ${BASE_SHA} has no db:build-from-repo script — pick its era's canonical build and extend this workflow; do not guess."
+            exit 1
+          fi
+          echo "base db:build-from-repo = $(node -p 'require("./package.json").scripts["db:build-from-repo"]')"
+          npm ci
+
+      - name: Build the base schema (base ref's npm run db:build-from-repo)
+        working-directory: ${{ env.BASE_TREE }}
+        run: npm run db:build-from-repo
+
+      - name: Snapshot the base schema
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/g5-snapshot.sh" "$DATABASE_URL" base
+          git worktree remove --force "$BASE_TREE"
+
+      # ── 2. Upgrade it with THIS ref's migrate.mjs ────────────────────────
+      - name: Install this ref's dependencies
+        run: npm ci
+
+      - name: Upgrade — node scripts/migrate.mjs --ddl-only (the staging reconcile entry)
+        run: node scripts/migrate.mjs --ddl-only
+
+      - name: Snapshot the upgraded schema (after --ddl-only)
+        run: '"$RUNNER_TEMP/g5-snapshot.sh" "$DATABASE_URL" upgraded-ddl-only'
+
+      - name: Upgrade — node scripts/migrate.mjs (the production release_command)
+        run: node scripts/migrate.mjs
+
+      - name: Upgrade — node scripts/migrate.mjs --dry-run on the upgraded database
+        run: node scripts/migrate.mjs --dry-run
+
+      - name: Snapshot the upgraded schema (after the release_command)
+        run: '"$RUNNER_TEMP/g5-snapshot.sh" "$DATABASE_URL" upgraded'
+
+      # ── 3. A fresh build of this ref, in its own database ────────────────
+      - name: Fresh-build this ref's schema (npm run db:build-from-repo, second database)
+        env:
+          DATABASE_URL: ${{ env.FRESH_DATABASE_URL }}
+          ACREOS_REAL_DATABASE_URL: ${{ env.FRESH_DATABASE_URL }}
+        run: npm run db:build-from-repo
+
+      - name: Snapshot the fresh schema
+        run: '"$RUNNER_TEMP/g5-snapshot.sh" "$FRESH_DATABASE_URL" fresh'
+
+      # ── 4. The verdict: upgraded == fresh ────────────────────────────────
+      - name: Assert upgraded schema == fresh schema
+        run: |
+          set -uo pipefail
+          cd "$SNAP_DIR"
+          count() { head -n1 "$1.census.txt" | awk '{print $2}'; }
+          echo "base ref    ${BASE_SHA}"
+          echo "current ref ${HEAD_SHA}"
+          echo "table count — base:                    $(count base)"
+          echo "table count — upgraded (--ddl-only):   $(count upgraded-ddl-only)"
+          echo "table count — upgraded (release_cmd):  $(count upgraded)"
+          echo "table count — fresh:                   $(count fresh)"
+          fail=0
+          for up in upgraded-ddl-only upgraded; do
+            for kind in census ddl; do
+              if diff -u "fresh.$kind.txt" "$up.$kind.txt" > "diff.$up.$kind.txt"; then
+                echo "[g5] ${up} vs fresh (${kind}): EMPTY DIFF"
+              else
+                echo "::error::[g5] ${up} vs fresh (${kind}): schemas DIFFER ($(grep -c '^[-+][^-+]' "diff.$up.$kind.txt") line(s)); '-' = fresh only, '+' = upgraded only"
+                cat "diff.$up.$kind.txt"
+                fail=1
+              fi
+            done
+          done
+          {
+            echo "## G5 upgrade-path proof"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| base ref | \`${BASE_SHA}\` |"
+            echo "| current ref | \`${HEAD_SHA}\` |"
+            echo "| base tables | $(count base) |"
+            echo "| upgraded tables (--ddl-only) | $(count upgraded-ddl-only) |"
+            echo "| upgraded tables (release_command) | $(count upgraded) |"
+            echo "| fresh tables | $(count fresh) |"
+            echo "| upgraded vs fresh diff | $([ "$fail" = 0 ] && echo EMPTY || echo NON-EMPTY) |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$fail"
+
+      # ── 5. The real-database suites, against the UPGRADED database ───────
+      - name: Real-database scripts on the upgraded database (tests/db/*OnBuiltSchema.ts)
+        run: |
+          set -euo pipefail
+          ran=0
+          for t in $(ls tests/db/*OnBuiltSchema.ts | LC_ALL=C sort); do
+            echo "[g5] npx tsx $t"
+            npx tsx "$t"
+            ran=$((ran + 1))
+          done
+          if [ "$ran" -eq 0 ]; then
+            echo "::error::no tests/db/*OnBuiltSchema.ts scripts were found — zero executed is a failure, not a pass."
+            exit 1
+          fi
+          echo "[g5] ${ran} real-database script(s) passed on the upgraded database"
+
+      - name: Real-database vitest suites on the upgraded database
+        env:
+          CI: true
+        run: |
+          set -uo pipefail
+          mapfile -t files < <(grep -rlE "from ['\"](\.\./)+helpers/realDb['\"]" tests --include='*.test.ts' | LC_ALL=C sort)
+          echo "[g5] ${#files[@]} vitest file(s) import tests/helpers/realDb"
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "::error::no real-database test files were found — zero executed is a failure, not a pass."
+            exit 1
+          fi
+          printf '  %s\n' "${files[@]}"
+          npx vitest run --reporter=verbose --reporter=json --outputFile="$RUNNER_TEMP/g5-vitest.json" "${files[@]}"
+          rc=$?
+          node -e '
+            const r = require(process.argv[1]);
+            console.log(`[g5] vitest: ${r.numTotalTests} total, ${r.numPassedTests} passed, ${r.numFailedTests} failed, ${r.numPendingTests + r.numTodoTests} skipped/todo, ${r.numTotalTestSuites} suites`);
+            if (r.numPassedTests === 0) { console.log("::error::zero real-database tests passed — that is a failure, never a pass."); process.exit(1); }
+            if (r.numFailedTests > 0 || r.numFailedTestSuites > 0) process.exit(1);
+          ' "$RUNNER_TEMP/g5-vitest.json"
+          verdict=$?
+          if [ "$rc" -ne 0 ] || [ "$verdict" -ne 0 ]; then
+            echo "::error::real-database suites failed on the upgraded database (vitest exit ${rc})."
+            exit 1
+          fi
