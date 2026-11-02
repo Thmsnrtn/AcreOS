@@ -63,7 +63,7 @@ export function FounderPulseStrip() {
         href="/founder/autopilot/control"
         data-testid="founder-pulse-strip"
         data-pulse-state="error"
-        aria-label="Autopilot heartbeat check failed. Opens Controls."
+        aria-label="Couldn't check the heartbeat just now — that's about this page, not the company. Opens Controls."
         className={cn(
           "flex items-center gap-2 rounded-card border px-3 py-2 min-h-[44px] text-xs transition-colors",
           "hover:bg-muted/40 active:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
