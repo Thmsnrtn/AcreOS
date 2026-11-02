@@ -78,7 +78,7 @@ function preCompressedAssets(distPath: string) {
  *  can read runtime env vars that weren't available at Vite build time. */
 function buildRuntimeEnvPayload(): string {
   const cfg: Record<string, string> = {};
-  if (process.env.VITE_CLERK_PUBLISHABLE_KEY) cfg.VITE_CLERK_PUBLISHABLE_KEY = process.env.VITE_CLERK_PUBLISHABLE_KEY;
+  if (process.env.VITE_CLERK_PUBLISHABLE_KEY) cfg.VITE_CLERK_PUBLISHABLE_KEY = process.env.VITE_CLERK_PUBLISHABLE_KEY; if (process.env.CLERK_DIRECT === "1") cfg.CLERK_DIRECT = "1"; // Staging direct mode: client omits the Clerk proxyUrl when this is "1"; unset elsewhere, so prod keeps the proxy.
   if (process.env.VITE_MAPBOX_TOKEN) cfg.VITE_MAPBOX_ACCESS_TOKEN = process.env.VITE_MAPBOX_TOKEN;
   if (process.env.VITE_MAPBOX_ACCESS_TOKEN) cfg.VITE_MAPBOX_ACCESS_TOKEN = process.env.VITE_MAPBOX_ACCESS_TOKEN;
   if (process.env.VITE_SENTRY_DSN) cfg.VITE_SENTRY_DSN = process.env.VITE_SENTRY_DSN;
