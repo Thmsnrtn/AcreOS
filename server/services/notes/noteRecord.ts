@@ -28,43 +28,12 @@
 import { and, asc, eq } from "drizzle-orm";
 import { acquiredNotes, noteEvents, noteFieldObservations, NOTE_CALENDAR_EVENT_TYPES, type NoteEvent, type NoteFieldObservation } from "@shared/schema";
 import { CRITICAL_DOCUMENTS, NOTE_TAPE_FIELD, type DocumentState, type NoteTapeFieldKey } from "@shared/notes/noteTapeFields";
+import { recordedField, type ObservationView, type RecordedValue } from "@shared/provenance/fieldRecord";
 
-export interface ObservationView {
-  value: unknown;
-  kind: "value" | "searched_none";
-  source: string;
-  sourceRef: Record<string, unknown>;
-  asOf: string | null;
-  confidence: string;
-  /** Why this observation can be relied on, in words. */
-  basis: string;
-  decayClass: string;
-  observedAt: string;
-}
-
-export interface RecordedValue {
-  field: string;
-  label: string;
-  /** The value on the book row (what the rest of AcreOS computes from). */
-  value: unknown;
-  /** The observation that states this value, or null when no source was recorded. */
-  provenance: ObservationView | null;
-  /** Every observation of this field, oldest first. */
-  observations: ObservationView[];
-  /**
-   * Why there is no value, when there is none — negative knowledge (N4):
-   * 'blank_on_source' = an import had a column for it and the cell was blank
-   * (asked, nothing stated); 'never_stated' = no import has had a column for it.
-   */
-  absence: null | { status: "blank_on_source"; column: string | null; fileName: string | null } | { status: "never_stated" };
-  /**
-   * Sources that disagree (N4): every distinct stated value, each with every
-   * observation that stated it, oldest first. Nothing is resolved, averaged or
-   * overwritten — `value` above stays the book value, and `bookValueIs` says
-   * which of these it is.
-   */
-  disagreement: null | { values: Array<{ value: unknown; observations: ObservationView[] }>; bookValueIs: number | null };
-}
+// The field record (provenance, disagreement, negative knowledge) is the
+// shared rule in shared/provenance/fieldRecord.ts — the tax lot record (V-Tax-1
+// T4) reads the same one. Re-exported so this module's callers are unchanged.
+export type { ObservationView, RecordedValue } from "@shared/provenance/fieldRecord";
 
 export type Absence = { status: "not_on_record" | "never_searched"; reason: string };
 
@@ -195,40 +164,8 @@ export async function buildNoteRecord(organizationId: number, noteId: string): P
   const byField = new Map<string, NoteFieldObservation[]>();
   for (const o of obs) byField.set(o.field, [...(byField.get(o.field) ?? []), o]);
 
-  const recorded = ([field, col]: [NoteTapeFieldKey, keyof typeof note]): RecordedValue => {
-    const all = byField.get(field) ?? [];
-    const value = note[col] ?? null;
-    // The observation that states the book value: the earliest one equal to it.
-    // Money columns are bigint in number mode and dates are ISO strings on both
-    // sides, so the comparison is direct.
-    const match = all.find((o) => o.kind === "value" && JSON.stringify(o.value) === JSON.stringify(value));
-    // Distinct stated values, in the order first stated.
-    const groups = new Map<string, NoteFieldObservation[]>();
-    for (const o of all) if (o.kind === "value") groups.set(JSON.stringify(o.value), [...(groups.get(JSON.stringify(o.value)) ?? []), o]);
-    const distinct = [...groups.values()];
-    // Also a disagreement: a source states a value the book does not hold
-    // (e.g. a later tape fills a field the first tape left blank — the book
-    // row is never updated by a re-import, so the two differ).
-    const bookStated = groups.has(JSON.stringify(value));
-    const disagreement: RecordedValue["disagreement"] =
-      distinct.length > 1 || (distinct.length === 1 && !bookStated)
-        ? {
-            values: distinct.map((g) => ({ value: g[0].value, observations: g.map(view) })),
-            bookValueIs: (() => {
-              const i = [...groups.keys()].indexOf(JSON.stringify(value));
-              return i < 0 ? null : i;
-            })(),
-          }
-        : null;
-    const blank = all.filter((o) => o.kind === "searched_none").at(-1);
-    const absence: RecordedValue["absence"] =
-      value !== null
-        ? null
-        : blank
-          ? { status: "blank_on_source", column: (blank.sourceRef.column as string | undefined) ?? null, fileName: (blank.sourceRef.fileName as string | undefined) ?? null }
-          : { status: "never_stated" };
-    return { field, label: NOTE_TAPE_FIELD[field].label, value, provenance: match ? view(match) : null, observations: all.map(view), absence, disagreement };
-  };
+  const recorded = ([field, col]: [NoteTapeFieldKey, keyof typeof note]): RecordedValue =>
+    recordedField(field, NOTE_TAPE_FIELD[field].label, note[col] ?? null, (byField.get(field) ?? []).map(view));
   const terms = TERM_FIELDS.map(recorded);
   const yieldFields = YIELD_FIELDS.map(recorded);
 
