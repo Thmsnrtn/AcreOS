@@ -45,23 +45,23 @@ describe("jsPDF's unbundled optional features are never called", () => {
     expect(consumers.map((f) => path.relative(ROOT, f))).toContain("client/src/pages/borrower-portal.tsx");
   });
 
-  it("no jsPDF consumer calls html() or addSvgAsImage()", () => {
-    const offenders = consumers.filter((f) => /\.html\s*\(|\baddSvgAsImage\s*\(/.test(stripComments(readFileSync(f, "utf8"))));
+  it("no jsPDF consumer calls html(), addSvgAsImage() or addImage(), or enables compression", () => {
+    const offenders = consumers.filter((f) => /\.html\s*\(|\baddSvgAsImage\s*\(|\baddImage\s*\(|compress(Pdf)?\s*:\s*true/.test(stripComments(readFileSync(f, "utf8"))));
     expect(
       offenders.map((f) => path.relative(ROOT, f)),
-      "jsPDF html()/addSvgAsImage() load html2canvas/canvg, which vite.config.ts stubs out — bundle them deliberately (and re-measure the budget) before calling them",
+      "jsPDF html()/addSvgAsImage()/addImage()/compression load html2canvas/canvg/fast-png/fflate, which vite.config.ts stubs out — bundle them deliberately (and re-measure the budget) before calling them",
     ).toEqual([]);
   });
 });
 
-describe("the stub covers exactly html2canvas and canvg, and only for jsPDF", () => {
+describe("the stub covers exactly html2canvas, canvg, fast-png and fflate, and only for jsPDF", () => {
   const config = stripComments(readFileSync(path.join(ROOT, "vite.config.ts"), "utf8"));
 
   it("names html2canvas and canvg, never dompurify", () => {
     const set = config.match(/JSPDF_UNUSED_OPTIONAL_DEPS\s*=\s*new Set\(\[([^\]]*)\]\)/);
     expect(set, "the stubbed-dependency set was not found").not.toBeNull();
     const names = [...set![1].matchAll(/["']([^"']+)["']/g)].map((m) => m[1]).sort();
-    expect(names).toEqual(["canvg", "html2canvas"]);
+    expect(names).toEqual(["canvg", "fast-png", "fflate", "html2canvas"]);
   });
 
   it("is registered as a plugin and keyed on jsPDF as the importer", () => {

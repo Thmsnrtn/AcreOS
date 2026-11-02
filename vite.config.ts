@@ -69,8 +69,17 @@ function chunkGraphPlugin(): Plugin {
 // they resolve to a stub that throws, so a future doc.html() fails loudly
 // instead of quietly shipping the weight. dompurify, jsPDF's third optional
 // dependency, is NOT stubbed: isomorphic-dompurify uses it to sanitize mail
-// and assignment HTML. tests/unit/jspdfOptionalDepsStubbed.test.ts pins both.
-const JSPDF_UNUSED_OPTIONAL_DEPS = new Set(["html2canvas", "canvg"]);
+// and assignment HTML. tests/unit/jspdfOptionalDepsStubbed.test.ts pins the stub list.
+// fast-png is the PNG decoder jsPDF uses only inside doc.addImage() with
+// PNG data. The borrower statement uses text and lines only and never
+// calls addImage, so fast-png (with its pako and iobuffer dependencies)
+// could never load either and is stubbed the same way.
+// fflate is stubbed too: jsPDF uses its zlibSync only to compress PDF
+// content streams when compression is enabled, and the borrower
+// statement uses the default (uncompressed) options and never enables
+// it, so zlibSync could never be called either. A future PDF that
+// enables compression must un-stub fflate and re-measure first.
+const JSPDF_UNUSED_OPTIONAL_DEPS = new Set(["html2canvas", "canvg", "fast-png", "fflate"]);
 function jspdfUnusedOptionalDepsPlugin(): Plugin {
   const STUB = "\0jspdf-unused-optional-dep";
   return {
@@ -83,9 +92,11 @@ function jspdfUnusedOptionalDepsPlugin(): Plugin {
     load(id) {
       if (id !== STUB) return null;
       return [
-        `const unavailable = () => { throw new Error("jsPDF html()/addSvgAsImage() are not bundled in AcreOS (vite.config.ts jspdfUnusedOptionalDepsPlugin)"); };`,
+        `const unavailable = () => { throw new Error("jsPDF html()/addSvgAsImage()/PNG addImage()/PDF compression are not bundled in AcreOS (vite.config.ts jspdfUnusedOptionalDepsPlugin)"); };`,
         `export default unavailable;`,
         `export const Canvg = { from: unavailable, fromString: unavailable };`,
+`export const decode = unavailable;`,
+`export const zlibSync = unavailable;`,
       ].join("\n");
     },
   };
