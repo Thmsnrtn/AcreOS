@@ -440,7 +440,7 @@ export function DecisionQueue({
                 size="sm"
                 className="gap-1 text-xs"
                 onClick={() => setConfirmClearOpen(true)}
-                aria-label={`Clear all ${clearable.length} decisions permanently`}
+                aria-label={`Clear queue — clear all ${clearable.length} decisions permanently`}
                 data-testid="button-clear-queue"
               >
                 <Trash2 className="w-3 h-3" aria-hidden="true" />
@@ -454,7 +454,7 @@ export function DecisionQueue({
                 size="sm"
                 className="gap-1 text-xs"
                 onClick={() => snoozeAll(clearable.map((v) => v.id))}
-                aria-label="Snooze all items for 24 hours"
+                aria-label="Clear queue — snooze all items for 24 hours"
                 data-testid="button-snooze-all-decisions"
               >
                 <EyeOff className="w-3 h-3" aria-hidden="true" />
@@ -643,7 +643,7 @@ export function DecisionQueue({
                               disabled={isResolving}
                               onClick={() => { lightImpact(); onResolve!(item.id, "snooze"); }}
                               data-testid={`decision-resolve-snooze-${item.id}`}
-                              aria-label={`Snooze "${item.title}" for 3 days`}
+                              aria-label={`Snooze 3d for "${item.title}"`}
                             >
                               <CalendarClock className="w-3.5 h-3.5" aria-hidden="true" />
                               Snooze 3d
@@ -693,7 +693,7 @@ export function DecisionQueue({
                                   href={`/ai?prefill=${encodeURIComponent(
                                     `Draft the follow-up for ${item.title} (${paxDraft.entityType} #${paxDraft.entityId}).`,
                                   )}`}
-                                  aria-label={`Ask Pax to draft the follow-up for "${item.title}"`}
+                                  aria-label={`Pax, draft the follow-up for "${item.title}"`}
                                 >
                                   <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />
                                   Pax, draft the follow-up
