@@ -48,6 +48,10 @@ on:
         description: "Commit SHA or ref of the old install to upgrade FROM"
         required: true
         type: string
+  # TEMPORARY (proof run only, reverted in the next commit): GitHub cannot
+  # dispatch a workflow that is not on the default branch.
+  push:
+    branches: [claude/serene-cori-0u9h8n]
 
 permissions:
   contents: read
@@ -91,7 +95,7 @@ jobs:
       SESSION_SECRET: test-session-secret-at-least-32-characters-long
       APP_URL: http://localhost:5000
       NODE_ENV: test
-      BASE_REF_INPUT: ${{ inputs.base_ref }}
+      BASE_REF_INPUT: ${{ inputs.base_ref || '58d1a9b7' }}
       BASE_TREE: ${{ github.workspace }}/../g5-base
       SNAP_DIR: ${{ github.workspace }}/../g5-snapshots
 
