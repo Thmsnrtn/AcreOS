@@ -1382,7 +1382,7 @@ export default function MapsPage() {
             size="sm"
             className="h-7 text-xs"
             data-testid="button-use-my-location"
-            aria-label="Use my location (Locate) to add a property"
+            aria-label="Use my location or Locate to add a property"
             onClick={async () => {
               if (!navigator.geolocation) {
                 toast({
