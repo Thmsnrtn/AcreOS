@@ -15,14 +15,15 @@ import ratelimit from "express-rate-limit";
 import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { auth } from "../../server/auth/testAuth";
 import { createClerkProxyHandler } from "../../server/middleware/clerkProxy";
 
-vi.mock("../../server/utils/logger", () => ({
-  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+
+const auth = vi.hoisted() => ({ testAuth: false }))
+  ;vi.mock("../../server/utils/logger", () => ({
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 vi.mock("../../server/auth/testAuth", () => ({
-  auth: { testAuth: false },
+  e2eTestAuthEnabled: () => auth.testAuth,
 }));
 
 const DEV_ORIGIN = "https://possible-emu-83.clerk.accounts.dev";
@@ -36,8 +37,9 @@ function fakeFapi() {
     return {
       ok: true,
       status: 200,
-      headers: new Map(),
+      headers: Object.assign(new Map(), { getSetCookie: () => [] }),
       text: async () => "{}",
+      arrayBuffer: async () => new TextEncoder().encode("{}"),
     } as unknown as Response;
   }) as unknown as typeof fetch;
   return { f, seen };
