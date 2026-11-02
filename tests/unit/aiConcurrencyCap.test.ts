@@ -20,6 +20,14 @@ const ORIGINAL_ENV = { ...process.env };
 
 async function load() {
   vi.resetModules();
+  // The router, spend guard and telemetry all log, and several of those writes
+  // are fire-and-forget. A real logger prints to the console after the test's
+  // last await, which vitest 4 reports as an unhandled EnvironmentTeardownError
+  // ("Closing rpc while onUserConsoleLog was pending") and fails the run even
+  // though every test passed. Nothing here asserts on log output.
+  vi.doMock("../../server/utils/logger", () => ({
+    logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() },
+  }));
   vi.doMock("../../server/services/aiCostCeiling", () => ({ assertWithinAiCostCeiling: vi.fn().mockResolvedValue(undefined) }));
   vi.doMock("../../server/services/intelligence/budget", () => ({
     categoryFor: () => "test",
@@ -77,7 +85,9 @@ describe("G10 — per-org AI concurrency cap", () => {
     process.env.AI_INTEGRATIONS_OPENROUTER_API_KEY = "test-key";
     process.env.AI_CASCADE_ENABLED = "false";
   });
-  afterEach(() => {
+  afterEach(async () => {
+    // Let fire-and-forget telemetry writes settle before the file finishes.
+    await new Promise((r) => setTimeout(r, 25));
     process.env = { ...ORIGINAL_ENV };
     vi.resetModules();
   });
