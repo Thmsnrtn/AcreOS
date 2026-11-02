@@ -42,6 +42,7 @@ Every verdict below was read from a status file (`cmd > out; echo $? > status`),
 - **Tolerance:**
   - Declared tables absent from staging: 0.
   - Undeclared tables present on staging: at most 21, the 2026-10-28 residue. All are listed on every run and none is dropped.
+    - *Follow-up 2026-11-02:* tightened to **19** (`claude/census-tolerance-19`). The census measured exactly 19, with the same names, after the #429 and #431 staging deploys.
   - Also checked: the newest migration block's tables (`0295_tax_v1_procedure_objects.sql` → `tax_procedure_objects`, 2 triggers) must be present with at least those triggers.
 
 ## Staging verification — NOT verified in this session
@@ -53,6 +54,7 @@ Every verdict below was read from a status file (`cmd > out; echo $? > status`),
   - That the census passes.
   - That the newest block landed (SELECT-only object check).
 - **Undeclared count:** the real number on staging is unmeasured. If it is not ≤ 21, the census goes red on its first run, by design. The fix is then a founder decision, not a higher tolerance.
+  - *Measured since:* 19, on both post-merge census runs (after #429 and after #431). The tolerance is now 19.
 - **Loud-failure path:** unproven on staging. No benign statement failure was simulated, because that cannot be done safely from here. Locally it is covered: the census refuses each failure mode in the unit tests. The reconcile job's non-zero-exit path is unchanged from the existing nightly workflow.
 - **Session limits:** this session also could not reach the Fly Machines API (the token was refused). So it could not read staging directly.
 

@@ -35,9 +35,11 @@
  * - Declared but physically ABSENT: tolerance 0. Each one is a table whose
  *   queries 500 on staging — the 0293 defect itself.
  * - Physically present but UNDECLARED: tolerated up to
- *   UNDECLARED_RESIDUE_TOLERANCE (21, the residue measured on staging
- *   2026-10-28). Those tables are left in place: dropping them is a separate
- *   founder / deletion-ledger decision, not this script's. Every one is listed
+ *   UNDECLARED_RESIDUE_TOLERANCE (19: the residue the staging census itself
+ *   measured on 2026-11-02, the same 19 names after the #429 and #431 deploys;
+ *   it was 21, from a 2026-10-28 count, until then). Those tables are left in
+ *   place: dropping them is a separate founder / deletion-ledger decision,
+ *   not this script's. Every one is listed
  *   on every run; a count above the tolerance fails. Lower the tolerance as the
  *   residue is retired — never raise it to get green.
  *
@@ -54,8 +56,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-/** Undeclared physical tables tolerated on staging (measured 2026-10-28). May only shrink. */
-export const UNDECLARED_RESIDUE_TOLERANCE = 21;
+/** Undeclared physical tables tolerated on staging (census-measured 2026-11-02: 19, twice). May only shrink. */
+export const UNDECLARED_RESIDUE_TOLERANCE = 19;
 /** A physical read below this is not an AcreOS database (or the read was truncated). */
 export const PHYSICAL_TABLE_FLOOR = 650;
 /** A declaration walk below this found almost nothing — a broken census, not a clean repo. */
