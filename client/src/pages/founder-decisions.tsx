@@ -1036,7 +1036,7 @@ function ClassCDefectsSection() {
           type="button"
           onClick={() => setOpen((v) => !v)}
           className="flex items-center justify-between w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
-          aria-label={`Class-C defects ${data?.total ?? 0} — toggle list`}
+          aria-label={`Class-C defects${data?.total ?? 0} — toggle list`}
           aria-expanded={open}
           data-testid="class-c-defects-toggle"
         >
