@@ -95,7 +95,7 @@ export function createClerkProxyHandler(fetchImpl: typeof fetch = fetch) {
       // (WebKit) and Clerk JS never loads (issue #359).
       const publicHost = req.headers.host || "acreos.io";
       // CLERK_PROXY_PUBLIC_ORIGIN overrides this when the instance cannot attribute the host (dev has no proxy URL); unset = host-derived.
-const publicOrigin = process.env.CLERK_PROXY_PUBLIC_ORIGIN?.trim().replace(/\/+$, "") || `https://${publicHost}`;
+const publicOrigin = process.env.CLERK_PROXY_PUBLIC_ORIGIN?.trim().replace(/\/+$/, "") || `https://${publicHost}`;
 
       // STR-011 root cause: /v1/client is per-session and MUST NOT be cached
       // across users. /v1/environment is safe to cache (instance-level / public).
