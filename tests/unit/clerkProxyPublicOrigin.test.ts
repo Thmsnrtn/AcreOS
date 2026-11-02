@@ -18,8 +18,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createClerkProxyHandler } from "../../server/middleware/clerkProxy";
 
 
-const auth = vi.hoisted() => ({ testAuth: false }))
-  ;vi.mock("../../server/utils/logger", () => ({
+const auth = vi.hoisted(() => ({ testAuth: false }));
+  vi.mock("../../server/utils/logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 vi.mock("../../server/auth/testAuth", () => ({
