@@ -20,7 +20,7 @@ import type { NextFunction, Response } from "express";
 import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { users } from "@shared/models/auth";
-import type { AuthenticatedRequest } from "../types/request";
+import { getClerkAuth, type AuthenticatedRequest } from "../types/request";
 import { logger } from "../utils/logger";
 
 export async function requirePaxDisclosure(
@@ -28,8 +28,12 @@ export async function requirePaxDisclosure(
   res: Response,
   next: NextFunction,
 ): Promise<void> {
-  const clerkUserId = (req as AuthenticatedRequest & { auth?: { userId?: string } })
-    .auth?.userId;
+  // Runs after isAuthenticated. The middleware verdict (getClerkAuth — the
+  // callable `req.auth` of @clerk/express 2.x) is preferred; when it carries
+  // no userId the session was established by hydrateUser's JWT fallback
+  // (always the case on a Clerk development instance), and req.user is the
+  // identity it hydrated. A signed-out middleware verdict is never final.
+  const clerkUserId = getClerkAuth(req)?.userId ?? req.user?.clerkUserId ?? undefined;
   if (!clerkUserId) {
     res.status(401).json({
       error: "Unauthorized",

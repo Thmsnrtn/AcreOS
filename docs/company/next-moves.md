@@ -3,6 +3,29 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-11-03 — Fix B: server auth reads @clerk/express 2.x's callable `req.auth` — on `claude/fix-b-clerk-auth-v2` (off main `29a1755`, PR open, unmerged)
+
+- **Change.** `getClerkAuth(req)` invokes the callable `req.auth` and normalizes `userId` / `sessionId` / `factorVerificationAge`. All reads go through it: the 6 direct reads, the MFA cast, the 21 existing call sites (unchanged), and **2 cast-form reads the census missed** (`requirePaxDisclosure`, `routes-pax-disclosure`). The E2E bypass installs the callable. The JWT fallback block is untouched.
+- **Production effects once deployed** (prod still runs on the fallback until the founder dispatches):
+  - Pax chat stops 401ing (`requirePaxDisclosure` saw no userId on every request).
+  - Per-user rate limits key by user, not IP.
+  - MFA gets the real FVA claim, so 2FA users who verified pass `/api/founder` and `/api/admin`.
+  - "Revoke other sessions" spares the current session.
+  - The login-anomaly memo runs per session.
+- **Proved.** Evidence: `docs/evidence/2026-11-03/fix-b-clerk-auth-v2-gates.md`.
+  - The new tests fail on main (the middleware path with no `CLERK_JWT_KEY` returns 401). The fallback-preservation tests pass on both main and the branch.
+  - 8 of 8 mutants caught.
+  - Gates: check exit 0; check:tests 151 = baseline; client bundle delta 0 KB; full vitest 2 failures, the same 2 date-dependent ones as on main.
+  - An independent audit found the change mergeable; its sweep findings are fixed.
+- **Follow-ups (not this package).**
+  1. Fallback-authenticated sessions (all of staging) carry no `sid` or `fva`, so on staging MFA still fails closed and "revoke others" still revokes the current session. Fixing that touches the frozen fallback block and needs its own package.
+  2. `server/websocket.ts:78` checks only the bare `__session` cookie name.
+  3. `toAuth()` runs on every helper call; it could be memoized per request.
+- **Next.**
+  1. Muse audits; the founder merges, which deploys staging only.
+  2. Staging proof per Rollout §3: Google sign-in → `/today` stays after a hard reload; `/api/auth/user` returns 200; sign out and back in; two helper-consuming surfaces return 200. Record it in `docs/evidence/`.
+  3. The prod deploy is a separate founder dispatch.
+
 ## 2026-11-02 — G5 upgrade-path proof workflow — on `claude/serene-cori-0u9h8n` (PR #438, unmerged)
 
 - **Built.** `.github/workflows/g5-proof.yml`: `workflow_dispatch` only, input `base_ref`. It builds `base_ref` with that ref's own `db:build-from-repo`, then upgrades it with the current `migrate.mjs`. It runs `--ddl-only` (the staging entry) and then the release_command, then `--dry-run`. It fresh-builds the current ref into a second database, diffs upgraded against fresh (census read plus normalized `pg_dump --schema-only`), and runs the real-DB suites on the upgraded database. No change to migrate.mjs, the schema or app code.

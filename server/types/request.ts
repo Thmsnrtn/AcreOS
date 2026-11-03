@@ -68,18 +68,57 @@ export function getOrganizationId(req: AuthenticatedRequest): number {
 }
 
 /**
- * Narrow view of Clerk's `req.auth` (populated by clerkMiddleware). Typed
- * locally rather than via a global augmentation because Clerk SDK versions
- * disagree on whether `auth` is a property or a callable.
+ * Narrow, normalized view of Clerk's auth state for a request — the one
+ * shape every server caller reads. Produced only by `getClerkAuth`.
+ *
+ * Fields map 1:1 from @clerk/express 2.x's auth object
+ * (`SignedInAuthObject | SignedOutAuthObject`, @clerk/backend 3.x), whose
+ * signed-out form carries `null` for each; `null` is normalized to
+ * `undefined` here so callers' `?.userId ?? …` chains are unchanged.
  */
 export interface ClerkRequestAuth {
   userId?: string;
   sessionId?: string;
+  /**
+   * `[firstFactorAgeMinutes, secondFactorAgeMinutes]`, `-1` for a factor
+   * never verified in this session; `null` when the instance does not emit
+   * the claim or the request is signed out. Read only by requireClerkMFA.
+   */
+  factorVerificationAge?: [number, number] | null;
 }
 
+/** The fields we read off whatever `req.auth` yields, before normalization. */
+interface RawClerkAuthFields {
+  userId?: string | null;
+  sessionId?: string | null;
+  factorVerificationAge?: [number, number] | null;
+}
+
+type RawClerkAuth = RawClerkAuthFields | ((options?: unknown) => RawClerkAuthFields | null | undefined);
+
 /**
- * Read Clerk's `req.auth` without an untyped request cast.
+ * Read Clerk's auth state for this request without an untyped request cast.
+ *
+ * @clerk/express 2.x installs `req.auth` as a FUNCTION (`req.auth()` returns
+ * the auth object); reading `req.auth.userId` off it is always `undefined`.
+ * This helper is the single normalization point:
+ *   - callable (`@clerk/express` 2.x, and the E2E test-auth bypass) → invoked;
+ *   - plain object (legacy shape, hand-built test requests) → read as-is;
+ *   - absent → `undefined`, exactly as before.
+ *
+ * A signed-out verdict yields an object with no `userId`. That is NOT final:
+ * hydrateUser still runs its `__session` JWT fallback when `userId` is absent
+ * (a Clerk development instance reports signed-out for every cross-origin
+ * API call — see server/auth/clerkAuth.ts).
  */
 export function getClerkAuth(req: Request): ClerkRequestAuth | undefined {
-  return (req as Request & { auth?: ClerkRequestAuth }).auth;
+  const raw = (req as Request & { auth?: RawClerkAuth | null }).auth;
+  if (raw === undefined || raw === null) return undefined;
+  const fields = typeof raw === "function" ? raw() : raw;
+  if (!fields) return undefined;
+  return {
+    userId: fields.userId ?? undefined,
+    sessionId: fields.sessionId ?? undefined,
+    factorVerificationAge: fields.factorVerificationAge ?? null,
+  };
 }

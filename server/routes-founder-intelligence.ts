@@ -17,7 +17,7 @@
 
 import { Router, type Request, type Response } from "express";
 import { SUBSCRIPTION_EVENT, classifyTierChange, tierRank } from "@shared/billing/subscriptionEventVocabulary";
-import type { AuthenticatedRequest } from "./types/request";
+import { getClerkAuth, type AuthenticatedRequest } from "./types/request";
 import { Errors, sendError } from "./utils/errors";
 import { db } from "./db";
 import { dbForReads } from "./db-replica";
@@ -65,7 +65,7 @@ const router = Router();
 // ── Auth guard ─────────────────────────────────────────────────────────────
 
 function requireFounder(req: any, res: any, next: any) {
-  const userId = req.auth?.userId ?? req.user?.clerkUserId ?? req.user?.id ?? null;
+  const userId = getClerkAuth(req)?.userId ?? req.user?.clerkUserId ?? req.user?.id ?? null;
   const userEmail = req.user?.email ?? null;
   if (!isFounderIdentity({ email: userEmail, userId })) {
     return Errors.notFound(res, "Resource");

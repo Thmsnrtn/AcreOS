@@ -36,7 +36,9 @@ async function statusesPast300(headers: Record<string, string>): Promise<Set<num
   const app = express();
   // The one identity every E2E spec shares.
   app.use((req: any, _res, next) => {
-    req.auth = { userId: "e2e_test_user" };
+    // The callable shape the isAuthenticated E2E bypass (and @clerk/express
+    // 2.x) installs — not a plain object.
+    req.auth = () => ({ userId: "e2e_test_user" });
     req.user = { id: "e2e-user-row" };
     next();
   });

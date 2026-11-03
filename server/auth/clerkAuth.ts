@@ -8,6 +8,7 @@ import { logger } from "../utils/logger";
 import { e2eTestAuthEnabled, e2eTokenAuthEnabled, resolveSyntheticTestProfile, resolveTestUserId } from "./testAuth";
 import { sendError } from "../utils/errors";
 import { clock } from "../utils/clock";
+import { getClerkAuth } from "../types/request";
 
 export { clerkMiddleware };
 
@@ -139,7 +140,9 @@ export function __setRevokedSidsForTests(sids: string[] | null): void {
  * (getOrCreateOrg, route handlers) can use req.user as before.
  */
 async function hydrateUser(req: any, res: any, next: any) {
-  let userId = req.auth?.userId;
+  // Middleware verdict first (getClerkAuth normalizes @clerk/express 2.x's
+  // callable `req.auth`). No userId → the JWT fallback below, unchanged.
+  let userId = getClerkAuth(req)?.userId;
 
   // Fallback: if clerkMiddleware couldn't verify (e.g., proxy/Cloudflare issues),
   // manually decode the __session JWT using CLERK_JWT_KEY.
@@ -312,7 +315,7 @@ async function hydrateUser(req: any, res: any, next: any) {
 
 /**
  * Drop-in replacement for the old Passport `isAuthenticated` middleware.
- * Checks req.auth.userId (populated by global clerkMiddleware) and
+ * Checks the clerkMiddleware verdict (`getClerkAuth(req)?.userId`) and
  * falls back to manual JWT verification. Returns 401 JSON for API
  * routes — never redirects.
  */
@@ -323,13 +326,16 @@ export const isAuthenticated: RequestHandler = (req: any, res, next) => {
   // so the suite can assert both sides of the founder gate.
   // See server/auth/testAuth.ts.
   if (e2eTestAuthEnabled() || e2eTokenAuthEnabled(req)) {
-    req.auth = { userId: resolveTestUserId(req.headers.cookie) };
+    // Install the same CALLABLE shape @clerk/express 2.x installs, so the
+    // suite exercises the shape production actually has.
+    const testUserId = resolveTestUserId(req.headers.cookie);
+    req.auth = () => ({ userId: testUserId });
     return hydrateUser(req, res, next);
   }
 
-  // clerkMiddleware already ran globally and populated req.auth
-  // Check if it found a valid session
-  if (req.auth?.userId) {
+  // clerkMiddleware already ran globally and installed req.auth (a callable
+  // in @clerk/express 2.x — read it through getClerkAuth). Signed in?
+  if (getClerkAuth(req)?.userId) {
     return hydrateUser(req, res, next);
   }
 
@@ -338,7 +344,7 @@ export const isAuthenticated: RequestHandler = (req: any, res, next) => {
   // BUG FIX (2026-05-31): the prior guard here used `/__session=([^;]+)/`
   // which only matched the bare `__session=` cookie name. Clerk in our
   // proxy config sets `__session_<instance-hash>=` (suffixed form).  When
-  // clerkMiddleware couldn't populate req.auth.userId, that regex found
+  // clerkMiddleware yielded no userId, that regex found
   // nothing even though a perfectly valid suffixed session JWT was present,
   // and we returned 401 immediately — bypassing hydrateUser entirely.
   //
@@ -371,7 +377,7 @@ export const requireFounder: RequestHandler = (req: any, res, next) => {
   }
 
   const user = req.user;
-  const userId = req.auth?.userId ?? user.clerkUserId ?? null;
+  const userId = getClerkAuth(req)?.userId ?? user.clerkUserId ?? null;
   if (!isFounderIdentity({ email: user.email, userId })) {
     return sendError(res, 404, "NOT_FOUND", "Not found");
   }

@@ -13,6 +13,12 @@
  * The Clerk SDK and the audit-event DB writer are both mocked. We assert
  * the middleware's response shape and `next()` behaviour, not the audit
  * write path (which is best-effort and never blocks).
+ *
+ * The whole matrix runs under BOTH `req.auth` shapes: the CALLABLE that
+ * @clerk/express 2.x actually installs (a signed-out request gets the
+ * SDK's signed-out object, userId/factorVerificationAge null), and the
+ * legacy plain object. Same inputs, same decision — and the callable run is
+ * the one production exercises (before Fix B it saw no userId and no FVA).
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -50,6 +56,19 @@ vi.mock("../../server/utils/logger", () => ({
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
+type AuthShape = "v2 callable" | "legacy object";
+let SHAPE: AuthShape = "v2 callable";
+
+function makeAuth(userId: string | null | undefined, fva: [number, number] | null) {
+  if (SHAPE === "v2 callable") {
+    const fields = userId
+      ? { userId, sessionId: "sess_1", factorVerificationAge: fva, isAuthenticated: true }
+      : { userId: null, sessionId: null, factorVerificationAge: null, isAuthenticated: false };
+    return () => fields;
+  }
+  return userId ? { userId, factorVerificationAge: fva } : undefined;
+}
+
 function makeReq(opts: {
   userId?: string | null;
   fva?: [number, number] | null;
@@ -57,9 +76,7 @@ function makeReq(opts: {
   method?: string;
 }): Request {
   return {
-    auth: opts.userId
-      ? { userId: opts.userId, factorVerificationAge: opts.fva ?? null }
-      : undefined,
+    auth: makeAuth(opts.userId, opts.fva ?? null),
     user: undefined,
     originalUrl: opts.url ?? "/api/admin/users",
     url: opts.url ?? "/api/admin/users",
@@ -93,8 +110,9 @@ async function loadMiddleware() {
 
 // ── Tests ────────────────────────────────────────────────────────────────────
 
-describe("requireClerkMFA", () => {
+describe.each<AuthShape>(["v2 callable", "legacy object"])("requireClerkMFA (req.auth: %s)", (shape) => {
   beforeEach(() => {
+    SHAPE = shape;
     vi.clearAllMocks();
     delete process.env.MFA_REQUIRED_FOR_ALL_USERS;
   });

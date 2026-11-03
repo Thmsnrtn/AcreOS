@@ -2,7 +2,7 @@
  * R4 — Clerk Native MFA Enforcement
  *
  * Replaces the broken in-house `require2FA` middleware. Reads MFA state
- * directly from the Clerk session JWT (`req.auth.factorVerificationAge`)
+ * directly from the Clerk session JWT (`factorVerificationAge`, via getClerkAuth)
  * and the user's Clerk profile (`twoFactorEnabled`).
  *
  * History: AcreOS shipped an in-house TOTP implementation that read
@@ -15,10 +15,10 @@
  * that path and moves to Clerk-native MFA.
  *
  * How Clerk surfaces MFA state to the server:
- *   - `req.auth.userId`              — Clerk user-id (populated by clerkMiddleware)
- *   - `req.auth.factorVerificationAge` — `[firstFactorAge, secondFactorAge]`
+ *   - `userId`                       — Clerk user-id (clerkMiddleware's `req.auth()`, via getClerkAuth)
+ *   - `factorVerificationAge`        — `[firstFactorAge, secondFactorAge]`
  *     where `secondFactorAge >= 0` means the user verified a second factor
- *     N seconds ago in the current session, and `secondFactorAge === -1`
+ *     N minutes ago in the current session, and `secondFactorAge === -1`
  *     means they have never verified a second factor in this session.
  *     `null` means the Clerk instance hasn't opted into the FVA claim;
  *     we treat that as "MFA not verified" (fail closed).
@@ -26,7 +26,7 @@
  *     the user has at least one MFA factor set up on their Clerk profile.
  *
  * Decision matrix (audit-logged on every call):
- *   1. No `req.auth.userId`            → 401
+ *   1. No Clerk userId                 → 401
  *   2. Clerk user has 2FA enabled
  *      AND second factor verified      → pass through
  *   3. Clerk user has 2FA enabled
@@ -47,6 +47,7 @@ import { createClerkClient } from "@clerk/express";
 import { chainAndInsertAuditEvent } from "../utils/auditEventsChain";
 import { logger } from "../utils/logger";
 import { sendError } from "../utils/errors";
+import { getClerkAuth } from "../types/request";
 
 // ─── Clerk client (lazy, env-driven) ─────────────────────────────────────────
 const clerkClient = createClerkClient({
@@ -78,9 +79,9 @@ function isHighTrustPath(path: string): boolean {
 type MfaDecision = "pass" | "blocked_mfa_required" | "blocked_setup_required" | "blocked_no_session";
 
 /**
- * Narrow read of fields we care about — avoids an untyped request cast while staying
- * resilient to differences between worktree TS versions of `req.auth` (some
- * Clerk express versions type it as a callable, others as a property).
+ * Narrow read of the fields we care about. Clerk's auth state is read via
+ * `getClerkAuth` (server/types/request.ts), the single normalization point
+ * for @clerk/express 2.x's callable `req.auth`.
  */
 interface MfaRequestShape {
   userId: string | null;
@@ -93,9 +94,9 @@ interface MfaRequestShape {
 }
 
 function readMfaRequestShape(req: Request): MfaRequestShape {
-  // Clerk's @clerk/express augments Express.Request#auth, but the type
-  // shape varies between SDK minor versions — we narrow defensively.
-  const auth = (req as Request & { auth?: { userId?: string; factorVerificationAge?: [number, number] | null } }).auth;
+  // getClerkAuth normalizes @clerk/express 2.x's callable `req.auth` (and
+  // the legacy object shape) to { userId, sessionId, factorVerificationAge }.
+  const auth = getClerkAuth(req);
   // hydrateUser populates req.user with our DB record — type via the
   // shared AuthenticatedRequest is not used here because this middleware
   // can also run before user-hydration on routes that haven't applied it.
@@ -155,7 +156,7 @@ export const requireClerkMFA: RequestHandler = async (req: Request, res: Respons
   }
 
   // 2. Read FVA from the verified Clerk session JWT. `factorVerificationAge`
-  //    is `[firstFactorAge, secondFactorAge]` in seconds; `-1` for never
+  //    is `[firstFactorAge, secondFactorAge]` in minutes; `-1` for never
   //    verified. `null` means the instance hasn't opted into the claim —
   //    treat as "not verified" so we fail closed on high-trust routes.
   const secondFactorVerified = Array.isArray(shape.fva) && shape.fva[1] >= 0;

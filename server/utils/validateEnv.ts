@@ -42,8 +42,8 @@ export function validateEnv(): void {
 
   // CLERK_JWT_KEY is a SOFT requirement (warning, not boot-fail): it is the
   // key hydrateUser (server/auth/clerkAuth.ts) uses to verify the __session
-  // cookie JWT when the inline clerkMiddleware path can't populate req.auth
-  // (our proxy/Cloudflare setup). Without it that fallback is skipped and,
+  // cookie JWT when the inline clerkMiddleware verdict carries no userId
+  // (our proxy/Cloudflare setup; any Clerk development instance). Without it that fallback is skipped and,
   // whenever the inline path fails, EVERY authenticated request 401s — the
   // SPA renders but all data calls are rejected (blank/failed doors). We warn
   // loudly rather than exit so a fresh/dev env without the proxy path can

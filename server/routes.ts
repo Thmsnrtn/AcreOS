@@ -625,7 +625,8 @@ export async function registerRoutes(
   // without a session, same as the other /api/trust/* endpoints.
   registerDataSourcesRoutes(app);
 
-  // Apply Clerk middleware globally — parses JWT tokens, makes req.auth available
+  // Apply Clerk middleware globally — parses JWT tokens and installs req.auth
+  // (a CALLABLE in @clerk/express 2.x: read it only via getClerkAuth(req)).
   // Pass publishableKey explicitly — Fly.io stores it as VITE_CLERK_PUBLISHABLE_KEY
   // but @clerk/express expects CLERK_PUBLISHABLE_KEY by default.
   const clerkPK = process.env.CLERK_PUBLISHABLE_KEY || process.env.VITE_CLERK_PUBLISHABLE_KEY;

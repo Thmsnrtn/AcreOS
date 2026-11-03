@@ -15,6 +15,7 @@
  */
 
 import { Router, type Request, type Response } from "express";
+import { getClerkAuth } from "./types/request";
 import crypto from "crypto";
 import {
   getConfigStatus,
@@ -33,7 +34,7 @@ const router = Router();
 // ── Auth guard ────────────────────────────────────────────────────────────────
 
 function requireFounder(req: any, res: any, next: any) {
-  const userId = req.auth?.userId ?? req.user?.clerkUserId ?? req.user?.id ?? null;
+  const userId = getClerkAuth(req)?.userId ?? req.user?.clerkUserId ?? req.user?.id ?? null;
   const email = req.user?.email ?? null;
   if (!isFounderIdentity({ email, userId })) {
     return Errors.notFound(res, "Resource");
