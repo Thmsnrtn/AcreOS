@@ -40,6 +40,26 @@ what shipped, what it measured, and the top next moves. Newest first.
   - 11 mutants, all red.
 - **Next.** Muse audits. When an acquired-note delete UI or route is wanted, build it as the soft delete Tom chose: `deleted_at` (migration 0301), read exclusion at the org-scoping layer, and restore. The guard fails any hard version first. Open question for Tom: should "acquired notes are soft-deleted" join the CLAUDE.md DO-NOT-DO list and `constitution.ts` as a standing rule?
 
+## 2026-11-03 — Per-channel consent grant rows — on `claude/consent-per-channel-grants` (off main `29a1755`, unmerged)
+
+- **Decision implemented.** Founder decision 2026-10-29 (G8 §B1), now recorded in `founder-decisions-2026-10-29-consent.md`. Consent grants are written as one `lead_consent_events` row per granted channel. The decision changes how grants are recorded, not who may be contacted.
+- **Writer sweep.** Before this change there were three bundled grant writers, all writing one row claiming sms + email + phone + direct_mail:
+  - `POST /api/leads`;
+  - `PATCH /api/leads/:id/consent` (`routes-import-export.ts`);
+  - the SMS opt-in keyword (`tcpaCompliance.ts`).
+
+  No direct inserts exist outside `consentEvents.ts`. Revocations (STOP, both paths) also write bundled rows; they are out of scope and untouched.
+- **Change.** `recordConsentGranted` now always writes one row per channel, in one INSERT. A bundled grant can no longer be written through it.
+  - All three writers pass `TCPA_CONSENT_CHANNELS` = sms + phone. This set is pinned equal to `requiresTcpaConsent`.
+  - Their only evidence is the `tcpaConsent` boolean, which covers texts and calls (2026-10-20 #2). This is an implementation reading, flagged in the decision file. Switching to four rows is one line.
+- **Send gates.** None changed. The only reader of channels is the AI-voice call gate, which keys on the newest phone row, and that row's content is unchanged; `consentGrantRowsPerChannel.test.ts` pins the verdict equivalence. `invariantWatch` reads only revocations.
+- **Gates.**
+  - New tests: unit 15 + real-DB 6.
+  - Six mutants, all caught (`docs/evidence/2026-11-03/consent-per-channel-gates.md`).
+  - Full results are in the PR body.
+- **Held, needs a decision (not changed — it would move the AI-voice gate).** The consent PATCH writes a fresh grant row on every call, including a re-assertion on an already-consented lead, using its own source mapping rather than the lead row's. Dedupe or source read-back would let an older written AI-voice grant become "newest" again and flip that gate.
+- **Next.** Muse audits. Then decide the PATCH re-assertion question above, and whether STOP should keep revoking every channel (open since 2026-10-20).
+
 ## 2026-11-02 — G5 upgrade-path proof workflow — on `claude/serene-cori-0u9h8n` (PR #438, unmerged)
 
 - **Built.** `.github/workflows/g5-proof.yml`: `workflow_dispatch` only, input `base_ref`. It builds `base_ref` with that ref's own `db:build-from-repo`, then upgrades it with the current `migrate.mjs`. It runs `--ddl-only` (the staging entry) and then the release_command, then `--dry-run`. It fresh-builds the current ref into a second database, diffs upgraded against fresh (census read plus normalized `pg_dump --schema-only`), and runs the real-DB suites on the upgraded database. No change to migrate.mjs, the schema or app code.

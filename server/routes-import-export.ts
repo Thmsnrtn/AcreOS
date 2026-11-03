@@ -695,13 +695,15 @@ export function registerImportExportRoutes(app: Express): void {
       }, orgId);
 
       // Evidence chain: every grant through this path is a per-lead row in
-      // lead_consent_events naming who attested it.
+      // lead_consent_events naming who attested it — one row per granted
+      // channel. `tcpaConsent` is consent to be texted or called, so the
+      // grant is sms + phone, never email or direct mail.
       if (tcpaConsent) {
-        const { recordConsentGranted } = await import("./services/consentEvents");
+        const { recordConsentGranted, TCPA_CONSENT_CHANNELS } = await import("./services/consentEvents");
         await recordConsentGranted({
           organizationId: orgId,
           leadId,
-          channels: ["sms", "email", "phone", "direct_mail"],
+          channels: TCPA_CONSENT_CHANNELS,
           source: CONSENT_EVENT_SOURCE[consentSource as string] ?? "admin_manual",
           ipAddress: clientIpOrNull(req),
           userAgent: (req.headers["user-agent"] as string) || null,

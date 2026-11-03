@@ -16,7 +16,7 @@
  */
 
 import { db } from "../db";
-import { leadConsentEvents } from "@shared/schema";
+import { leadConsentEvents, type NewLeadConsentEvent } from "@shared/schema";
 import { logger } from "../utils/logger";
 
 export type ConsentChannel = "sms" | "email" | "phone" | "direct_mail";
@@ -28,10 +28,27 @@ export type ConsentSource =
   | "inbound_stop"
   | "admin_manual";
 
+/**
+ * The channels a TCPA consent grant (`leads.tcpaConsent = true`) covers:
+ * consent to be TEXTED or CALLED (47 U.S.C. § 227). Email runs on the
+ * CAN-SPAM opt-out model and direct mail needs no consent (founder decision
+ * 2026-10-20 #2; `requiresTcpaConsent` in tcpaCompliance.ts, which this set
+ * is pinned equal to by test). A writer whose only evidence is that one
+ * boolean records a grant for these channels and no others: a grant row for
+ * email or direct mail would claim consent that was never captured.
+ */
+export const TCPA_CONSENT_CHANNELS: readonly ConsentChannel[] = ["sms", "phone"];
+
 export interface GrantConsentArgs {
   organizationId: number;
   leadId: number;
-  channels: ConsentChannel[];
+  /**
+   * Every channel this grant actually covers. One `lead_consent_events` row
+   * is written PER CHANNEL (founder decision 2026-10-29: per-channel grant
+   * rows), all from the same args, so each row names exactly one channel
+   * and the rows of one grant share their source and evidence.
+   */
+  channels: readonly ConsentChannel[];
   source: ConsentSource;
   consentText?: string | null;
   checkboxChecked?: boolean | null;
@@ -43,23 +60,43 @@ export interface GrantConsentArgs {
   metadata?: Record<string, unknown> | null;
 }
 
+/**
+ * Grant rows are per channel: a grant naming N channels writes N rows in one
+ * INSERT (one statement, so they share `created_at` and land or fail
+ * together), each carrying `channels: [thatChannel]`. A bundled grant row —
+ * one row claiming several channels — cannot be written through here.
+ * Historical bundled rows are evidence and are never rewritten.
+ */
+function grantRowsFor(args: GrantConsentArgs): NewLeadConsentEvent[] {
+  const channels = Array.from(new Set(args.channels));
+  return channels.map((channel) => ({
+    organizationId: args.organizationId,
+    leadId: args.leadId,
+    eventType: "granted",
+    channels: [channel],
+    source: args.source,
+    consentText: args.consentText ?? null,
+    checkboxChecked: args.checkboxChecked ?? null,
+    ipAddress: args.ipAddress ?? null,
+    userAgent: args.userAgent ?? null,
+    pageUrl: args.pageUrl ?? null,
+    recordedBy: args.recordedBy ?? null,
+    importBatchId: args.importBatchId ?? null,
+    metadata: (args.metadata as any) ?? null,
+  }));
+}
+
 export async function recordConsentGranted(args: GrantConsentArgs): Promise<void> {
-  try {
-    await db.insert(leadConsentEvents).values({
-      organizationId: args.organizationId,
-      leadId: args.leadId,
-      eventType: "granted",
-      channels: args.channels,
-      source: args.source,
-      consentText: args.consentText ?? null,
-      checkboxChecked: args.checkboxChecked ?? null,
-      ipAddress: args.ipAddress ?? null,
-      userAgent: args.userAgent ?? null,
-      pageUrl: args.pageUrl ?? null,
-      recordedBy: args.recordedBy ?? null,
-      importBatchId: args.importBatchId ?? null,
-      metadata: (args.metadata as any) ?? null,
+  const rows = grantRowsFor(args);
+  if (rows.length === 0) {
+    // A grant of no channel is no grant: nothing to evidence.
+    logger.warn("[consentEvents] grant with no channels — nothing recorded", {
+      metadata: { leadId: args.leadId, source: args.source },
     });
+    return;
+  }
+  try {
+    await db.insert(leadConsentEvents).values(rows);
   } catch (err: any) {
     logger.error("[consentEvents] grant insert failed", err, {
       metadata: { leadId: args.leadId, source: args.source },

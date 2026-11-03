@@ -83,7 +83,9 @@ vi.mock("../../server/middleware/fileUploadSecurity", () => ({
   createUploadMiddleware: () => ({ single: () => (_q: any, _s: any, n: any) => n(), array: () => (_q: any, _s: any, n: any) => n() }),
   validateFileMiddleware: () => (_q: any, _s: any, n: any) => n(),
 }));
-vi.mock("../../server/services/consentEvents", () => ({
+vi.mock("../../server/services/consentEvents", async (importOriginal) => ({
+  // The real module's constants (TCPA_CONSENT_CHANNELS) stay; only the write is captured.
+  ...(await importOriginal<typeof import("../../server/services/consentEvents")>()),
   recordConsentGranted: async (a: any) => {
     H.state.consentEvents.push(a);
   },
@@ -222,6 +224,8 @@ describe("PATCH /api/leads/:id/consent grants only express, per-lead consent", (
     expect(res.status).toBe(200);
     expect(H.state.consentUpdates).toEqual([expect.objectContaining({ id: 5, tcpaConsent: true, consentSource: "manual" })]);
     expect(H.state.consentEvents).toEqual([expect.objectContaining({ leadId: 5, organizationId: 7, recordedBy: "owner-1" })]);
+    // A tcpaConsent grant covers texts and calls only — never email or direct mail.
+    expect([...H.state.consentEvents[0].channels]).toEqual(["sms", "phone"]);
   });
 
   it("a written opt-in is accepted; opting out needs no source", async () => {

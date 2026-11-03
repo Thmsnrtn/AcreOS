@@ -540,11 +540,13 @@ async function applyOptKeywordToLead(
       metadata: { messageSid, phone, keyword: messageBody.trim(), inboundText: messageBody, channel: 'sms' },
     });
     try {
-      const { recordConsentGranted } = await import('./consentEvents');
+      // One row per granted channel: the keyword sets tcpaConsent, which is
+      // consent to be texted or called (sms + phone) — not email or mail.
+      const { recordConsentGranted, TCPA_CONSENT_CHANNELS } = await import('./consentEvents');
       await recordConsentGranted({
         organizationId,
         leadId: matched.id,
-        channels: ['sms', 'email', 'phone', 'direct_mail'],
+        channels: TCPA_CONSENT_CHANNELS,
         source: 'sms_double_optin',
         consentText: `Inbound consent keyword: "${messageBody.trim()}" (SID ${messageSid})`,
         checkboxChecked: null,
