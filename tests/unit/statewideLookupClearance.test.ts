@@ -24,6 +24,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { stripComments } from "../helpers/stripComments";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
 
 const h = vi.hoisted(() => ({
   fetches: [] as string[],
@@ -86,6 +87,9 @@ vi.mock("../../server/services/openData/statewideSourceRegistry", async (importO
     },
   };
 });
+
+// (c) walks every server file — a repo-wide sweep needs its declared budget.
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 import { lookupFromCountyGIS, lookupFromCountyGISByPoint, lookupParcelByCoordinates } from "../../server/services/parcel";
 import { countyGisProvider } from "../../server/services/providers/county-gis-provider";
