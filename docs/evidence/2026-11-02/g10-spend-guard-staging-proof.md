@@ -320,3 +320,67 @@ property 1015 and a 2,000¢ credit balance (partly consumed), the dev
 user's bootstrapped `users` row, and this record. No production system
 was touched; no app code was changed; both staged DB faults were
 reverted within seconds and verified restored.
+
+## Update — 2026-11-03 (06:13–06:14 UTC): refusal-contract defect CLOSED live (PR #448)
+
+Fourth run, after the error-shape fix (PR #448, merged as main
+`d4a3d9dbfb87cc5d4458765e9bd4e5de349c3b97`) reached staging. Staging was
+not touched until **Deploy to Staging run #1257** (id `41584941066`, head
+`d4a3d9db`) had finished — it completed **success at 06:12:45 UTC** and
+both started app machines carry that deploy's image. Method identical to
+the third attempt: the driver ran inside the started staging machine
+`7815642c33e248`, minting short-lived Clerk session tokens from the dev
+user's already-active session via the Clerk Backend API (values never
+printed), driving the app on `127.0.0.1:5000` with the CSRF pair primed
+from `GET /api/today` — so per-instance counting stays unambiguous even
+with a second machine started.
+
+Pre-flight, all live: `GET /api/auth/user` → 200 (Thomas Norton,
+thmsnrtn@gmail.com); `GET /api/org/ai-quota` → 200, cap $50/day armed,
+$0.044964 used / 5 calls (the third attempt's residue, intact);
+property 1015 present on org 79.
+
+### (a) Concurrency refusal — PASS; the designed contract is now delivered
+
+Burst of 8 concurrent `POST /api/realtime/ask` for org 79: exactly
+**5 admitted** (200, real provider replies, 1.6–3.5s) and exactly
+**3 refused** — now **HTTP 429**, body code **`AI_CONCURRENCY_EXCEEDED`**
+("Too many AI tasks are running at once for this organization
+(limit 5). Please retry shortly."), **`Retry-After: 2`**, refused in
+373–431ms, before any provider call. A single ask immediately after
+the burst → 200 (slots released). In the third attempt, these exact
+refusals were **500 `INTERNAL_ERROR`** with no `Retry-After`.
+
+### (b) Quota refusal — PASS; the designed contract is now delivered
+
+Same staged fault as the third attempt: on staging only,
+`ai_usage_daily` renamed aside (`ALTER TABLE … RENAME`), one
+`POST /api/properties/1015/analyze` fired. It was refused in **97ms** —
+now **HTTP 503**, body code **`AI_QUOTA_UNAVAILABLE`** ("AI usage
+metering is temporarily unavailable, so the daily AI quota cannot be
+checked. Please try again shortly."), **`Retry-After: 30`**, message
+free of SQL / database internals, and no spend: the table was renamed
+back immediately and verified (`to_regclass`: `ai_usage_daily` present,
+hold name absent), and the quota ledger after restore was unchanged
+from pre-fault ($0.044964 used, 5 calls — the refused call metered
+nothing). A follow-up analyze → **200 in ~15.0s** with a real reply,
+metered normally (6 calls, $0.059891 used). In the third attempt, this
+identical refusal was **500 `INTERNAL_ERROR`**.
+
+### Verdict
+
+**Both refusal demos PASS. The G10 proof's one open defect is now
+closed live on staging.** The refusals that `Errors.internal()`
+previously flattened to generic 500s now reach the client in the
+designed shape — 429 / `AI_CONCURRENCY_EXCEEDED` / `Retry-After: 2`
+for the concurrency cap, and 503 / `AI_QUOTA_UNAVAILABLE` /
+`Retry-After: 30` for the quota gate — with enforcement behaviour
+unchanged (cap admits exactly 5, refusals pre-provider, slots free
+cleanly, quota refusal spends nothing). With third-attempt enforcement
+and this contract proof together, the post-merge live proof of PR #430
+is complete and no item in this record remains open. No app code was
+changed in this assignment; production was not touched; the staged DB
+fault was reverted within seconds and verified restored; staging was
+left healthy (health still reads "degraded" — the known
+redis-unconfigured steady state — while every exercised path served
+normally).
