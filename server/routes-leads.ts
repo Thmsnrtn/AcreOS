@@ -529,15 +529,21 @@ export function registerLeadRoutes(app: Express): void {
       // consent the lead does not have would be a fabricated grant.
       if (inputAny.tcpaConsent === true && lead.tcpaConsent === true) {
         try {
-          const { recordConsentGranted } = await import("./services/consentEvents");
+          const { recordConsentGranted, TCPA_CONSENT_CHANNELS } = await import("./services/consentEvents");
           // The SAME source the lead row was stamped with (consentStamp.ts),
           // read back from the persisted row — the event used to default to
           // "website" while the row defaulted to "admin_manual", so one grant
           // carried two different sources.
+          //
+          // One row per granted channel (founder decision 2026-10-29). The
+          // create payload's only consent evidence is `tcpaConsent`, which is
+          // consent to be texted or called — so the grant is sms + phone.
+          // This used to write ONE row claiming all four channels, putting
+          // email and direct-mail grants on record that were never captured.
           await recordConsentGranted({
             organizationId: org.id,
             leadId: lead.id,
-            channels: ["sms", "email", "phone", "direct_mail"],
+            channels: TCPA_CONSENT_CHANNELS,
             source: (lead.consentSource ?? DEFAULT_GRANT_SOURCE) as ConsentSource,
             consentText: (req.body.consentText ?? req.body.consent_text ?? null) as string | null,
             checkboxChecked:
