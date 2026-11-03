@@ -37,7 +37,7 @@ vi.mock("../../server/utils/logger", () => ({ logger: { info: vi.fn(), warn: vi.
 vi.mock("../../server/services/providers/fetchGeo", () => ({
   fetchGeo: async (url: string) => {
     h.fetches.push(url);
-    const body = url.includes("app.regrid.com")
+    const body = new URL(url).host === "app.regrid.com"
       ? { results: [{ geometry: { type: "Polygon", coordinates: [[[0, 0], [0, 1], [1, 1], [0, 0]]] }, properties: { fields: { parcelnumb: "R-1", owner: "REGRID OWNER", lat: 1, lon: 1 } } }] }
       : { features: [{ attributes: { STATE_HOST_FEATURE: url.split("/")[2] }, geometry: { rings: [[[0, 0], [0, 1], [1, 1], [0, 0]]] } }] };
     return { ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body) };
@@ -160,7 +160,7 @@ describe("(a) an unresolved state's source serves nothing — the lookup falls t
     expect(r.found).toBe(true);
     expect(r.source).toBe("regrid");
     expect(touched("FL")).toBe(false);
-    expect(h.fetches.every((u) => u.includes("app.regrid.com"))).toBe(true);
+    expect(h.fetches.every((u) => host(u) === "app.regrid.com")).toBe(true);
   });
 
   it("with no Regrid licence the result is what an unseeded state gets: not found, nothing invented", async () => {
@@ -222,7 +222,7 @@ describe("(b) flipping a registry entry to cleared restores that source's result
     h.overrides.set("FL", "cleared");
     const r = await lookupParcelByCoordinates(POINT.FL.lat, POINT.FL.lng, { organizationId: 7 });
     expect(r.source).toBe("county_gis");
-    expect(h.fetches.some((u) => u.includes("app.regrid.com"))).toBe(false);
+    expect(h.fetches.some((u) => host(u) === "app.regrid.com")).toBe(false);
   });
 
   it("cleared: the APN path's statewide-row match is restored too", async () => {
