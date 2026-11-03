@@ -25,6 +25,20 @@ what shipped, what it measured, and the top next moves. Newest first.
   1. Muse audits; the founder merges, which deploys staging only.
   2. Staging proof per Rollout §3: Google sign-in → `/today` stays after a hard reload; `/api/auth/user` returns 200; sign out and back in; two helper-consuming surfaces return 200. Record it in `docs/evidence/`.
   3. The prod deploy is a separate founder dispatch.
+## 2026-11-03 — Acquired-note deletion guard (soft-delete package, reduced) — on `claude/acquired-notes-delete-guard` (unmerged)
+
+- **Decisions.** Tom chose soft-delete for acquired notes. The delete-path sweep then found no product path that deletes one, so per the working-session answer this ships only a guard: no migration (the census stays unchanged), no service, no route. Both decisions are in `founder-decisions-2026-11-03-notes.md`.
+- **Sweep.**
+  - Only org erasure (`deleteOrganization`) reaches the `acquired_notes` → ledger CASCADE. It is unchanged.
+  - `DELETE /api/notes/:id` is the legacy `notes` table.
+  - Settings "Clear data" never selects `acquired_notes`, because its property and lead FKs are SET NULL. This was proven by running it on a built DB.
+  - Two dev scripts tear down synthetic orgs (the test-borrower fixture and `sim-*`). They were reported and left unchanged.
+  - The full table is in `docs/evidence/2026-11-03/acquired-notes-delete-guard.md`.
+- **Guard.**
+  - `acquiredNotesDeletedOnlyByErasure.test.ts` scans the source population: direct SQL and Drizzle deletes, and registers for org-row deleters, `TRUNCATE … CASCADE` and computed-table deleters, with vacuity floors and canaries.
+  - `.realdb.test.ts` checks the live CASCADE parents and runs "Clear data", then erasure, on a note that has rows in both ledgers.
+  - 11 mutants, all red.
+- **Next.** Muse audits. When an acquired-note delete UI or route is wanted, build it as the soft delete Tom chose: `deleted_at` (migration 0301), read exclusion at the org-scoping layer, and restore. The guard fails any hard version first. Open question for Tom: should "acquired notes are soft-deleted" join the CLAUDE.md DO-NOT-DO list and `constitution.ts` as a standing rule?
 
 ## 2026-11-02 — G5 upgrade-path proof workflow — on `claude/serene-cori-0u9h8n` (PR #438, unmerged)
 

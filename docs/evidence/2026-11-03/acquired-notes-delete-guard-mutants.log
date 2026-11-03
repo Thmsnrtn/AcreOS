@@ -1,0 +1,13 @@
+M1 db.delete(acquiredNotes) in server/routes-notes.ts | exit=1 | Tests  1 failed | 35 passed (36) | failing: no code deletes or truncates acquired_notes directly (SQL or Drizzle);
+M2 aliased import + db.delete(an) in a new service | exit=1 | Tests  1 failed | 35 passed (36) | failing: no code deletes or truncates acquired_notes directly (SQL or Drizzle);
+M3 raw SQL DELETE FROM "acquired_notes" in a new script | exit=1 | Tests  1 failed | 35 passed (36) | failing: no code deletes or truncates acquired_notes directly (SQL or Drizzle);
+M4 unregistered DELETE FROM organizations in a new script | exit=1 | Tests  1 failed | 35 passed (36) | failing: only registered code deletes an organizations row (its FK cascades into acquired_notes);
+M5 unregistered computed-table DELETE in a new script | exit=1 | Tests  1 failed | 35 passed (36) | failing: only registered code deletes from a computed table name, and literal-list deleters never name acquired_notes;
+M6 acquired_notes added to dataRetention rules | exit=1 | Tests  1 failed | 35 passed (36) | failing: only registered code deletes from a computed table name, and literal-list deleters never name acquired_notes;
+M7 acquired_notes added to CLEAR_ROOT_TABLES | exit=1 | Tests  2 failed | 36 passed (38) | failing: Settings 'Clear data' leaves an acquired note and both ledgers untouched; org erasure removes all three;the Settings 'Clear data' roots do not include acquired_notes;
+M8 live DB: acquired_notes.property_id FK -> NO ACTION | exit=1 | Tests  1 failed | 1 passed (2) | failing: Settings 'Clear data' leaves an acquired note and both ledgers untouched; org erasure removes all three;
+M9 live DB: acquired_notes.property_id FK -> CASCADE | exit=1 | Tests  2 failed (2) | failing: Settings 'Clear data' leaves an acquired note and both ledgers untouched; org erasure removes all three;the only ON DELETE CASCADE parent of acquired_notes is organizations;
+M10 orgDeletion no longer deletes org row (stale register entry) | exit=1 | Tests  1 failed | 35 passed (36) | failing: only registered code deletes an organizations row (its FK cascades into acquired_notes);
+M11 DELETE FROM "acquired_notes" in a new migrations/*.sql (after switching to the shared tests/helpers/stripSqlComments) | exit=1 | Tests  1 failed | 35 passed (36) | failing: no code deletes or truncates acquired_notes directly (SQL or Drizzle);
+BASELINE restored | exit=0 | Tests  38 passed (38) | failing: 
+live acquired_notes_property_id_fkey confdeltype after restore: n (SET NULL)
