@@ -61,7 +61,7 @@ exit 0
 
 An earlier full run in the container's own zone (America/New_York) had 5 failures. Two were this branch's (a missing REPO_SWEEP_TIMEOUT_MS declaration, and an export used only in its module) and are fixed. The other three are time-zone dependent and fail identically on unmodified main 29a1755 under America/New_York: forecastIsContractNotAssumption, noteRecordPanels, serverOwnedTimestampsStayServerOwned.realdb. All three pass under TZ=UTC, which is what CI runs.
 
-## Mutants (consent-per-channel-mutants.log)
+## Mutants
 
 ```
 M1 (writer writes one bundled row): exit=1 Tests  7 failed | 29 passed (36)

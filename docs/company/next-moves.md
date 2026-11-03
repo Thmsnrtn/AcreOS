@@ -55,7 +55,7 @@ what shipped, what it measured, and the top next moves. Newest first.
 - **Send gates.** None changed. The only reader of channels is the AI-voice call gate, which keys on the newest phone row, and that row's content is unchanged; `consentGrantRowsPerChannel.test.ts` pins the verdict equivalence. `invariantWatch` reads only revocations.
 - **Gates.**
   - New tests: unit 15 + real-DB 6.
-  - Six mutants, all caught (`docs/evidence/2026-11-03/consent-per-channel-mutants.log`).
+  - Six mutants, all caught (`docs/evidence/2026-11-03/consent-per-channel-gates.md`).
   - Full results are in the PR body.
 - **Held, needs a decision (not changed — it would move the AI-voice gate).** The consent PATCH writes a fresh grant row on every call, including a re-assertion on an already-consented lead, using its own source mapping rather than the lead row's. Dedupe or source read-back would let an older written AI-voice grant become "newest" again and flip that gate.
 - **Next.** Muse audits. Then decide the PATCH re-assertion question above, and whether STOP should keep revoking every channel (open since 2026-10-20).
