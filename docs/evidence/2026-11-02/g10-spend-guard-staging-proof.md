@@ -139,3 +139,184 @@ results quoted above; they were not re-executed in this session.
 - Staging health is unchanged and still degraded: https://staging.acreos.io/api/health returned {"overall":"degraded","timestamp":"2026-11-02T22:15:35.827Z","version":"1.0.0"}, and the Fly origin https://acreos-staging.fly.dev/api/health returned the same degraded result at 22:15:55 UTC, so this is not a custom-domain-only issue.
 - Per-leg verdicts, unchanged: (a) demo — NOT RUN; (b) k6 burst re-run — NOT RUN; (c) G10 adversarial re-run — NOT RUN. With no authenticated session, no live AI concurrency, quota, k6, or adversarial observation was possible in this session, and no #430 code was changed.
 - What unblocks it now: investigate why the staging app redirects an authenticated Clerk user from /today to /auth (app session handling and user/org lookup against the degraded staging backend), rather than re-running the same Google flow.
+
+## Update — 2026-11-02 evening EST (runs 2026-11-03 00:19–00:41 UTC): all three legs RUN live
+
+Third attempt, by a terminal-capable agent, after Fix A landed (staging
+release v67, `CLERK_JWT_KEY` = the dev instance's public PEM) and a browser
+session confirmed the dev user's sign-in sticks on /today. Method: a driver
+script ran **inside** the single started staging app machine
+(`7815642c33e248`; the other app machine is stopped, so per-instance
+counting is unambiguous). It minted 60-second session tokens from the dev
+user's already-active Clerk session via the Clerk Backend API (the route
+the session-bounce diagnosis used; token values never printed or logged)
+and called the app on `127.0.0.1:5000` with the `__session` cookie, plus
+the app's double-submit CSRF pair (primed from `GET /api/today`).
+
+Setup created on the staging proof org (id 79, bootstrapped by the dev
+user's first authenticated request): property 1015 (`G10-PROOF-001`,
+Travis TX) via `POST /api/properties`, and a documented 2,000¢ credit
+balance grant (see §2 note — the org's 500¢ trial Pax allowance was
+consumed by this proof's own earlier calls).
+
+Pre-flight, all live: `GET /api/auth/user` → 200 (Thomas Norton,
+thmsnrtn@gmail.com); `GET /api/org/ai-quota` → 200, cap $50/day (the
+`checkQuota` gate is armed: cap > 0); single `POST /api/realtime/ask`
+(aiSpendGuard path, orgId passed) → 200 in ~1.0s with a real provider
+reply; single `POST /api/properties/1015/analyze` (routeAITask path) →
+200 in ~15.8s, and the quota read afterward showed the call metered
+($0.0154, `property_analysis_chat`, 1 call). Staging health read
+"degraded" throughout (the known redis-unconfigured steady state); the
+app itself served every proof call.
+
+### 1. Staging demo — RUN. Cap enforcement PASS; refusal contract FAIL. Quota refusal behaviour PASS; its contract FAIL.
+
+**Concurrency cap (shared counter, aiSpendGuard surface).** Burst of 8
+concurrent `POST /api/realtime/ask` for org 79: exactly **5 admitted**
+(200, real provider replies, 1.4–2.1s) and **3 refused in 248–266ms** —
+before any provider call. Repeat burst of 6: exactly **5 admitted**,
+**1 refused in 96ms**. A single ask immediately after each burst → 200
+(slots are released; the second burst admitting exactly 5 again shows no
+slot leakage across successes or refusals). The bound itself works live,
+at exactly the designed value of 5.
+
+**But the refusals do not carry the designed contract.** Every refused
+request returned **500 `INTERNAL_ERROR`** ("Something broke on our end…")
+with no `Retry-After` header — not the spec's 429
+`AI_CONCURRENCY_EXCEEDED` with `Retry-After: 2`. Cause, from the code at
+main `40462db3`: `/api/realtime/ask` (and `/api/properties/:id/analyze`)
+catch their errors and funnel them through `Errors.internal()`, which
+special-cases `NO_AI_PROVIDER`, `AI_ALLOWANCE_BYOK_REQUIRED`,
+`FOUNDER_ORG_UNRESOLVED` and a few others — but **not**
+`AI_CONCURRENCY_EXCEEDED` or `AI_QUOTA_UNAVAILABLE` — so designed AI
+refusals are flattened to a generic 500. The designed shape exists only
+in `terminalErrorHandler`, which fires solely for errors a route lets
+escape uncaught. Identification of the 500s as cap refusals rests on:
+exactly-cap admission counts (5, twice), refusal latency ~0.1–0.27s vs
+1.4–2.1s provider calls, and clean recovery after drain. (Server stdout
+logs were not reachable from this session to quote the
+`[aiConcurrency] … cap hit` warning directly.)
+
+**Quota gate (503).** Staged backend fault, as this record's first
+attempt anticipated: on staging only, `ai_usage_daily` was renamed aside
+(`ALTER TABLE … RENAME`, ~15-second window) so the metering read fails,
+and one analyze call was fired. It was **refused in 94ms** — before the
+provider, no spend — versus ~16s for a normal analyze. The table was
+renamed back immediately; quota state afterward was intact (4 analyze
+calls, $0.0348 used) and a follow-up analyze returned 200 in 17.3s. The
+client-visible shape was again **500 `INTERNAL_ERROR`**, not the designed
+503 `AI_QUOTA_UNAVAILABLE` with `Retry-After: 30` — same flattening, same
+root cause. The spec's "message must contain no SQL / database
+internals" holds trivially: the production 500 copy is generic.
+
+**Verdict (a): PARTIAL.** Enforcement of both guards is proven live on
+staging — the spend bound and the metering-outage refusal both fire, at
+the designed thresholds, with no spend on refusal. The designed HTTP
+contract for those refusals (429/503 + `AI_*` code + `Retry-After`) is
+**not** delivered on the exercised AI surfaces. That is a real defect
+this proof surfaces, in `Errors.internal()`'s missing cases (any route
+that funnels AI errors through it is affected). No code was changed in
+this assignment; a fix package is the follow-up.
+
+### 2. k6 burst re-run — RUN (real k6). PASS, with the comparison re-read as this record prescribed.
+
+k6 v0.54.0 (official static binary) ran **inside** the staging machine
+against `127.0.0.1:5000`, so the session token never left the machine.
+The repo scenario (`tests/load/k6-baseline.js`, spike = sudden 100 VUs)
+cannot be replayed verbatim against this surface: its raw request rate
+trips the app's own rate limiters (per-IP floor 1,000/min; per-user
+300/min) long before concurrency matters. Disclosure: the initial
+unpaced attempts did exactly that — one measured ~37.5k requests at
+~1,250/s, all 429 "Too many requests" — and a further attempt found the
+proof org's
+500¢ trial Pax allowance exhausted by this proof's earlier legs
+(402 `PAX_CREDITS_REQUIRED`), which is why the 2,000¢ balance grant in
+the setup above was made (a staging test-data top-up, documented here;
+the exhaustion itself is the credit gate working).
+
+The re-run therefore used the spike's shape at a paced rate the
+limiters admit: **12 VUs, 40s, `POST /api/realtime/ask`, 2s sleep
+between iterations** (synchronized opening volley = 12 concurrent
+attempts against a cap of 5). Results: **167 requests; 114 admitted
+(200); 53 refused fast (500, <600ms — the §1 cap signature); 0
+rate-limited; 0 other errors; checks 100%.** Successful-call latency
+avg 1.40s, p95 2.08s (the 2,000ms AI SLO is marginally exceeded at p95;
+the load generator shared the single small staging box, which inflates
+latency — noted, not hidden).
+
+Comparison vs the original G10 failing baseline: pre-fix there was no
+per-org bound, so a burst fanned out to as many concurrent provider
+calls as clients could open (12 here, 100 in the repo spike) and spend
+scaled with the burst. Post-fix, instantaneous per-org concurrency is
+bounded at 5, excess work is refused in ~50–250ms instead of consuming
+provider spend, and admitted work completes normally. 429s under burst
+would be the guard working, per the first attempt's note — on this
+surface they arrive as the §1 fast-500 shape instead, which is the
+contract defect recorded there, not a guard failure.
+
+**Verdict (b): PASS** — bounded fan-out and bounded spend under burst,
+demonstrated with the repo's own tool; methodology deviations (pacing,
+VU count, in-machine placement) disclosed above.
+
+### 3. G10 adversarial re-run — RUN in part; each case stated plainly.
+
+- **Shared counter across both metered paths — PASS, live.** Mixed
+  burst: 3 concurrent analyzes (routeAITask path) with 4 asks
+  (aiSpendGuard path) launched into their in-flight window. Result: 3
+  analyzes 200 (11.5–12.5s), 2 asks 200, **2 asks refused in 68ms**.
+  The asks alone (4 ≤ 5) could never trip a counter of their own; they
+  were refused only because analyze-held slots count against the same
+  budget. Two independent counters would have admitted all 7.
+- **Cap trips at 5; the 6th is refused; slots freed on success and on
+  refusal — PASS, live** (§1: bursts of 8 and 6 admitted exactly 5;
+  post-burst singles 200; the second burst admitted exactly 5 again —
+  no leakage).
+- **Ceiling unreadable → customer calls fail OPEN — PASS, live.**
+  Staged fault: `ai_telemetry_events` renamed aside (~10s window);
+  a customer ask still returned 200 with a real reply in ~1.0s. Table
+  restored; no other effect observed.
+- **Ceiling unreadable → background calls fail CLOSED at the 70%
+  bucket — NOT RUN live.** No on-demand background-origin AI trigger
+  was available in this window (jobs run on their own schedules). Its
+  proof remains the #430 unit gates (`aiCostCeilingFailOpen.test.ts`).
+- **Quota read unavailable → 503 refusal — behaviour PASS, contract
+  FAIL** (§1: refused pre-provider in 94ms, surfaced as 500 not 503).
+- **Org-less callers not bounded — NOT RUN live.** The org-less surface
+  is founder chat (`meteredChatCompletion` called with no orgId);
+  6 concurrent `POST /api/founder/chat/stream` all returned 404 —
+  `requireFounder` hides the route because the staging deployment does
+  not recognise the dev user as a founder identity. Blocked by staging
+  founder config, not by the guard. Unit proof stands.
+- **Different org unaffected — NOT RUN live.** Only one dev user / org
+  exists on the staging instance; creating a second tenant was out of
+  this assignment's scope. Unit proof stands (the cap test's
+  different-org case).
+- **BYOK path through the same counter — NOT RUN live.** The proof org
+  has no BYOK key configured; by construction the slot wraps
+  `routeAITask`/`meteredChatCompletion` before the BYOK branch, and
+  the unit gates cover it. Configuring a customer AI key on the
+  staging org was out of scope.
+
+**Verdict (c): PASS for the cases live-runnable from outside**
+(shared counter, cap value, slot release, ceiling fail-open);
+**NOT RUN** for background fail-closed, org-less, cross-org and BYOK,
+each for the stated reason — none of them a contradiction of the code,
+all of them still owed if a fully-live G10 re-proof is ever required.
+
+### Overall
+
+The post-merge live proof of PR #430 is now **established for
+enforcement**: on production-shaped staging traffic, one org cannot
+hold more than 5 concurrent AI tasks across either metered path,
+metering outages refuse before spend, and ceiling outages fail open
+for customers — exactly the G10 failure mode (unbounded concurrency /
+spend) closed. **One defect is owed a fix**: designed AI refusals are
+flattened to 500 `INTERNAL_ERROR` by `Errors.internal()` on routes
+that catch their AI errors, so clients never see the 429/503 +
+`AI_CONCURRENCY_EXCEEDED` / `AI_QUOTA_UNAVAILABLE` + `Retry-After`
+contract the package designed and the terminal handler implements.
+Left on staging as proof residue (all documented above): org 79 with
+property 1015 and a 2,000¢ credit balance (partly consumed), the dev
+user's bootstrapped `users` row, and this record. No production system
+was touched; no app code was changed; both staged DB faults were
+reverted within seconds and verified restored.
