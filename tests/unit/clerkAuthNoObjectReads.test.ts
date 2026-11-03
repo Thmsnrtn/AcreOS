@@ -10,14 +10,23 @@
  *
  * The forbidden behaviour is "consume Clerk's auth state without the
  * normalizer", so the rule forbids every spelling of it, not one identifier:
- *   1. any reference to `req.auth` / `(cast).auth` other than an assignment —
- *      a raw read, however it is later used;
+ *   1. any `.auth` read on any receiver (`req`, `request`, a cast, an alias,
+ *      a spread copy) other than an assignment target — a raw read, however
+ *      it is later used. Non-Clerk receivers are allowlisted BY NAME, each
+ *      checked by hand (Web Push keys, the rate-limit bucket config);
  *   2. a Clerk auth-object field read off ANY `.auth` member
  *      (`x.auth?.userId`, `(req as any).auth.sessionId`, …);
- *   3. `req["auth"]` / `req['auth']`;
- *   4. destructuring `auth` out of a request (`const { auth } = req`);
+ *   3. string-keyed access: `x["auth"]`, `Reflect.get(x, "auth")`, …;
+ *   4. destructuring `auth` — in a declaration or in a parameter list;
  *   5. an inline type literal that types `auth` as an object holding Clerk
- *      fields (`{ auth?: { userId?: string } }`) — the cast the census missed.
+ *      fields (`{ auth?: { userId?: string } }`) — the cast the census missed;
+ *   6. installing the OBJECT shape on a request (`req.auth = { … }`,
+ *      `Object.assign(req, { auth: { … } })`) — the pre-Fix-B test bypass,
+ *      which hid the break from the suite.
+ *
+ * Rules 1–6 were widened after an independent audit showed the first
+ * version (receiver `req` only) passing `request.auth`, `({ auth }) =>`,
+ * `Reflect.get(req, "auth")` and a reverted object-shape bypass.
  *
  * Population: every .ts/.js/.mjs/.cjs file under server/, comments stripped
  * with the real scanner (tests/helpers/stripComments). Allowlist: the helper's
@@ -46,20 +55,47 @@ const CLERK_AUTH_FIELDS = [
 ];
 const FIELDS = CLERK_AUTH_FIELDS.join("|");
 
-const RULES: Array<{ name: string; re: RegExp }> = [
-  // `req.auth` or `(…).auth` not immediately assigned (`=` but not `==`/`=>`).
-  { name: "raw req.auth read", re: /(?:\breq\b|\))\s*\??\.\s*auth\b(?!\s*=(?![=>]))/g },
+/**
+ * Receivers whose `.auth` is NOT Clerk's — each one checked by hand:
+ *   keys / subscription  — Web Push subscription key material (p256dh + auth)
+ *   RATE_LIMIT_CONFIGS   — the auth-route rate-limit bucket config
+ * Any other receiver's `.auth` read (request, r, a spread copy of req, …)
+ * is treated as Clerk's and must go through getClerkAuth.
+ */
+const NON_CLERK_AUTH_RECEIVERS = new Set(["keys", "subscription", "RATE_LIMIT_CONFIGS"]);
+
+const RULES: Array<{ name: string; re: RegExp; receiverGroup?: number }> = [
+  // Any `<receiver>.auth` / `(…).auth` that is not an assignment target
+  // (`=` but not `==`/`=>`): a raw read, however it is used afterwards.
+  {
+    name: "raw .auth read",
+    re: /(?:([A-Za-z_$][\w$]*)|\))\s*\??\.\s*auth\b(?!\s*=(?![=>]))/g,
+    receiverGroup: 1,
+  },
   { name: "Clerk field read off .auth", re: new RegExp(String.raw`\.\s*auth\s*\??\.\s*(?:${FIELDS})\b`, "g") },
-  { name: "req[\"auth\"] read", re: /\breq\s*\??\.?\s*\[\s*["'`]auth["'`]\s*\]/g },
-  { name: "auth destructured from a request", re: /\{[^{}]*\bauth\b[^{}]*\}\s*=\s*\(?\s*req\b/g },
+  // `x["auth"]`, `Reflect.get(x, "auth")`, `Object.getOwnPropertyDescriptor(x, "auth")`, …
+  { name: "string-keyed auth access", re: /\[\s*["'`]auth["'`]\s*\]|\b(?:Reflect\.get|Object\.getOwnPropertyDescriptor|_\.get|lodash\.get)\([^()]*["'`]auth["'`]/g },
+  // `const { auth } = request`, `let { auth: a, user } = r`, …
+  { name: "auth destructured in a declaration", re: /\b(?:const|let|var)\s*\{[^{}]*\bauth\b[^{}]*\}\s*=/g },
+  // `({ auth }) => …`, `function h({ auth }: Req) {…}`, `async ({ auth, user }, res) => …`.
+  // A parameter list is followed by `=>` or a body; an object-literal CALL
+  // argument (`push({ auth: … })`) is not, and must not match.
+  {
+    name: "auth destructured in a parameter",
+    re: /\(\s*\{[^{}]*\bauth\b[^{}]*\}\s*(?::[^(){}=]*)?\)\s*(?::[^={;]*)?(?:=>|\{)/g,
+  },
   { name: "inline auth object type", re: new RegExp(String.raw`\bauth\s*\??\s*:\s*\{[^{}]*\b(?:${FIELDS})\b`, "g") },
+  // Installing the OBJECT shape on a request (the pre-Fix-B test-auth bypass):
+  // `req.auth = { … }`, `Object.assign(req, { auth: { … } })`.
+  { name: "object-shaped req.auth installed", re: /\b(?:req|request)\s*\.\s*auth\s*=\s*\{|\bObject\.assign\(\s*(?:req|request)\b[^;]*?\bauth\s*:\s*\{/g },
 ];
 
 function findings(source: string): Array<{ rule: string; line: number; text: string }> {
   const stripped = stripComments(source);
   const out: Array<{ rule: string; line: number; text: string }> = [];
-  for (const { name, re } of RULES) {
+  for (const { name, re, receiverGroup } of RULES) {
     for (const m of stripped.matchAll(re)) {
+      if (receiverGroup !== undefined && NON_CLERK_AUTH_RECEIVERS.has(m[receiverGroup] ?? "")) continue;
       const line = stripped.slice(0, m.index).split("\n").length;
       out.push({ rule: name, line, text: stripped.split("\n")[line - 1].trim() });
     }
@@ -119,6 +155,18 @@ describe("canaries — each forbidden shape is flagged, each permitted one is no
     "destructure": "const { auth, user } = req;",
     "inline cast type": "const a = (req as { auth?: { userId?: string } });",
     "multi-line cast": "const id = (req as AuthenticatedRequest & { auth?: { userId?: string } })\n  .auth?.userId;",
+    // Audit-found evasions of the first version:
+    "other receiver aliased": "const a = request.auth; const id = a?.userId;",
+    "short receiver aliased": "const a = r.auth; use(a);",
+    "spread copy read": "const c = { ...req }; const a = c.auth;",
+    "destructure from request": "const { auth } = request;",
+    "destructure with rename": "let { auth: clerk, user } = r;",
+    "param destructure arrow": "app.get('/x', ({ auth }) => auth?.userId);",
+    "param destructure typed": "function h({ auth, user }: Req, res: Res) { return auth; }",
+    "Reflect.get": 'const a = Reflect.get(req, "auth");',
+    "descriptor read": 'const d = Object.getOwnPropertyDescriptor(req, "auth");',
+    "object bypass reverted": "req.auth = { userId: resolveTestUserId(req.headers.cookie) };",
+    "object installed via assign": "Object.assign(req, { auth: { userId: 'u1' } });",
   };
   for (const [name, code] of Object.entries(forbidden)) {
     it(`flags: ${name}`, () => {
@@ -135,6 +183,10 @@ describe("canaries — each forbidden shape is flagged, each permitted one is no
     "rate-limit config": "windowMs: RATE_LIMIT_CONFIGS.auth.windowMs,",
     "push keys": "VALUES (${keys.p256dh}, ${keys.auth})",
     "push subscription": "auth: subscription.auth,",
+    "health status assignment": 'services.auth = { status: "configured", latencyMs: 0 };',
+    "object literal with auth value": "const body = { endpoint, keys: { p256dh, auth: k } };",
+    "object-literal call argument": "checks.push({ key: 'auth', auth: probe.ok });",
+    "call argument inside if": "if (validate({ auth: token })) { go(); }",
   };
   for (const [name, code] of Object.entries(permitted)) {
     it(`permits: ${name}`, () => {
