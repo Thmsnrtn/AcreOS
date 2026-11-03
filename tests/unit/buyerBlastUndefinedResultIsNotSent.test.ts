@@ -11,6 +11,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { buyerBlastRecipients } from "@shared/schema";
 
+// The tax-hold gate (V-Tax-1 T4b) reads tax certificates; this suite's db is
+// mocked for another invariant, so no tax position holds the parcel here. The
+// gate itself is tested against a real database in taxLandExit.realdb.test.ts.
+vi.mock("../../server/services/tax/landExit", () => ({ refuseRedeemableDeedSpend: async () => true, taxHoldRefusal: async () => null, heldPropertyIds: async () => new Set<number>() }));
 vi.mock("../../server/utils/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
 
 const S = vi.hoisted(() => ({

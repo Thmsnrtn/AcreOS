@@ -36,6 +36,7 @@ import { emitRehabStatusChange } from "./services/rehabEvents";
 import { logger } from "./utils/logger";
 import { clock } from "./utils/clock";
 import { routeParam } from "./utils/routeParams";
+import { refuseRedeemableDeedSpend } from "./services/tax/landExit";
 
 // ----------------------------------------------------------------------------
 // Scope templates — a STARTING SCOPE, not an estimate.
@@ -311,6 +312,8 @@ export function registerRehabRoutes(app: Express): void {
         .from(properties)
         .where(and(eq(properties.id, parsed.data.propertyId), eq(properties.organizationId, orgId)));
       if (!prop) return Errors.notFound(res, "Property");
+      // V-Tax-1 T4b: no improvement spend on a parcel still held by a tax position.
+      if (!(await refuseRedeemableDeedSpend(res, orgId, parsed.data.propertyId, "A rehab"))) return;
 
       const [created] = await db.insert(rehabs).values({
         organizationId: orgId,
@@ -352,17 +355,17 @@ export function registerRehabRoutes(app: Express): void {
       ] as const) {
         if (parsed.data[k] !== undefined) updates[k] = parsed.data[k];
       }
-      // Capture the pre-image status so the workflow emitter can detect a
-      // GENUINE status transition (audit Wave 1 — wire the fix-and-flip
-      // milestone loop). Only needed when status is actually being changed.
-      let beforeStatus: string | null = null;
-      if (parsed.data.status !== undefined) {
-        const [prev] = await db
-          .select({ status: rehabs.status })
-          .from(rehabs)
-          .where(and(eq(rehabs.id, routeParam(req.params.id)), eq(rehabs.organizationId, orgId)));
-        beforeStatus = prev?.status ?? null;
-      }
+      // The pre-image: its parcel for the V-Tax-1 T4b gate (an update is
+      // rehab spend as much as a create), and its status so the workflow
+      // emitter can detect a GENUINE status transition (audit Wave 1 — wire
+      // the fix-and-flip milestone loop).
+      const [prev] = await db
+        .select({ status: rehabs.status, propertyId: rehabs.propertyId })
+        .from(rehabs)
+        .where(and(eq(rehabs.id, routeParam(req.params.id)), eq(rehabs.organizationId, orgId)));
+      if (!prev) return Errors.notFound(res, "Rehab");
+      if (!(await refuseRedeemableDeedSpend(res, orgId, prev.propertyId, "A rehab update"))) return;
+      const beforeStatus: string | null = parsed.data.status !== undefined ? prev.status ?? null : null;
       const [updated] = await db.update(rehabs).set(updates)
         .where(and(eq(rehabs.id, routeParam(req.params.id)), eq(rehabs.organizationId, orgId)))
         .returning();
@@ -382,9 +385,10 @@ export function registerRehabRoutes(app: Express): void {
       const parsed = lineItemSchema.safeParse(req.body);
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
-      const [r] = await db.select({ id: rehabs.id }).from(rehabs)
+      const [r] = await db.select({ id: rehabs.id, propertyId: rehabs.propertyId }).from(rehabs)
         .where(and(eq(rehabs.id, routeParam(req.params.id)), eq(rehabs.organizationId, orgId)));
       if (!r) return Errors.notFound(res, "Rehab");
+      if (!(await refuseRedeemableDeedSpend(res, orgId, r.propertyId, "A rehab line item"))) return;
 
       const [maxRow] = await db.execute(sql`SELECT COALESCE(MAX(sequence), -1) AS m FROM rehab_line_items WHERE rehab_id = ${r.id}`).then((res: any) => res.rows ?? []);
       const seq = (Number((maxRow as any)?.m) ?? -1) + 1;
@@ -424,6 +428,12 @@ export function registerRehabRoutes(app: Express): void {
       ] as const) {
         if (parsed.data[k] !== undefined) updates[k] = parsed.data[k];
       }
+      // V-Tax-1 T4b: a line-item update is rehab spend on the rehab's parcel.
+      const [owner] = await db.select({ propertyId: rehabs.propertyId }).from(rehabLineItems)
+        .innerJoin(rehabs, eq(rehabs.id, rehabLineItems.rehabId))
+        .where(and(eq(rehabLineItems.id, routeParam(req.params.id)), eq(rehabLineItems.organizationId, orgId)));
+      if (!owner) return Errors.notFound(res, "Line item");
+      if (!(await refuseRedeemableDeedSpend(res, orgId, owner.propertyId, "A rehab line item update"))) return;
       const [updated] = await db.update(rehabLineItems).set(updates)
         .where(and(eq(rehabLineItems.id, routeParam(req.params.id)), eq(rehabLineItems.organizationId, orgId)))
         .returning();
@@ -546,9 +556,10 @@ export function registerRehabRoutes(app: Express): void {
       const tpl = TEMPLATES_BY_KEY.get(parsed.data.templateKey);
       if (!tpl) return Errors.badRequest(res, `Unknown template ${parsed.data.templateKey}`);
 
-      const [r] = await db.select({ id: rehabs.id }).from(rehabs)
+      const [r] = await db.select({ id: rehabs.id, propertyId: rehabs.propertyId }).from(rehabs)
         .where(and(eq(rehabs.id, routeParam(req.params.id)), eq(rehabs.organizationId, orgId)));
       if (!r) return Errors.notFound(res, "Rehab");
+      if (!(await refuseRedeemableDeedSpend(res, orgId, r.propertyId, "Seeding a rehab budget"))) return;
 
       if (parsed.data.replaceExisting) {
         await db.delete(rehabLineItems)

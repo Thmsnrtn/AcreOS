@@ -16,6 +16,8 @@ import * as vaManagement from "./services/vaManagement";
 import { clock } from "./utils/clock";
 import { OfferBatchUnavailableError, assertOfferBatchCreatable } from "./services/offerBatchGate";
 import { routeParam } from "./utils/routeParams";
+import { refuseRedeemableDeedSpend } from "./services/tax/landExit";
+import type { InsertAdPosting, InsertDdAssignment } from "@shared/schema";
 
 export async function registerVAEngineRoutes(app: Express): Promise<void> {
   const api = app;
@@ -508,6 +510,8 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
         ...req.body,
         organizationId: org.id,
       });
+      // V-Tax-1 T4b: no marketing a parcel still held by a tax position.
+      if (!(await refuseRedeemableDeedSpend(res, org.id, validated.propertyId ?? null, "An ad posting"))) return;
       const posting = await storage.createAdPosting(validated);
       res.status(201).json(posting);
     } catch (error: any) {
@@ -524,7 +528,15 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       if (!existing) {
         return Errors.notFound(res, "Ad posting");
       }
-      const posting = await storage.updateAdPosting(org.id, id, omitProtectedFields(req.body));
+      // V-Tax-1 T4b: no marketing a parcel still held by a tax position —
+      // the posting's own parcel, and any parcel the update points it at.
+      const adPatch = omitProtectedFields<InsertAdPosting>(req.body);
+      if (!(await refuseRedeemableDeedSpend(res, org.id, existing.propertyId, "An ad posting update"))) return;
+      const adTarget = Number(adPatch.propertyId);
+      if (adPatch.propertyId !== undefined && adTarget !== existing.propertyId) {
+        if (!(await refuseRedeemableDeedSpend(res, org.id, Number.isInteger(adTarget) ? adTarget : null, "An ad posting update"))) return;
+      }
+      const posting = await storage.updateAdPosting(org.id, id, adPatch);
       res.json(posting);
     } catch (error: any) {
       logger.error("Update ad posting error", error);
@@ -1427,6 +1439,9 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   api.post("/api/dd-assignments", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
+      // V-Tax-1 T4b: no due-diligence vendor spend on a parcel still held by a tax position.
+      const ddPropertyId = Number(req.body?.propertyId);
+      if (!(await refuseRedeemableDeedSpend(res, org.id, Number.isInteger(ddPropertyId) ? ddPropertyId : null, "A due-diligence assignment"))) return;
       const assignment = await storage.createDDAssignment({
         ...omitServerOwnedFields(req.body),
         organizationId: org.id,
@@ -1446,7 +1461,15 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       if (!existing) {
         return Errors.notFound(res, "DD assignment");
       }
-      const assignment = await storage.updateDDAssignment(org.id, id, omitProtectedFields(req.body));
+      // V-Tax-1 T4b: no due-diligence vendor spend on a parcel still held by a
+      // tax position — the assignment's own parcel, and any it is moved to.
+      const ddPatch = omitProtectedFields<InsertDdAssignment>(req.body);
+      if (!(await refuseRedeemableDeedSpend(res, org.id, existing.propertyId, "A due-diligence assignment update"))) return;
+      const ddTarget = Number(ddPatch.propertyId);
+      if (ddPatch.propertyId !== undefined && ddTarget !== existing.propertyId) {
+        if (!(await refuseRedeemableDeedSpend(res, org.id, Number.isInteger(ddTarget) ? ddTarget : null, "A due-diligence assignment update"))) return;
+      }
+      const assignment = await storage.updateDDAssignment(org.id, id, ddPatch);
       res.json(assignment);
     } catch (error: any) {
       logger.error("Update DD assignment error", error);

@@ -43,11 +43,12 @@ import type { UsageLimitResult } from "../usageLimits";
 const LEAD_TO_DEAL_LOCK_NAMESPACE = 0x4c3244;
 
 /**
- * Properties in THIS org that are the same parcel as `ref`, oldest first. The
+ * Properties in THIS org that are the same parcel as `ref`, oldest first — the
+ * one parcel matcher (also the tax → Land exit, V-Tax-1 T4b). The
  * SQL pre-filter is a candidate match on the upper-cased, whitespace-collapsed
  * APN (the form parcelRef keeps); identity is then decided by `sameParcel`.
  */
-async function findParcelProperties(tx: PrimaryDb, orgId: number, ref: ParcelRef): Promise<Property[]> {
+export async function findParcelProperties(tx: PrimaryDb, orgId: number, ref: ParcelRef): Promise<Property[]> {
   const candidates = await tx
     .select()
     .from(properties)

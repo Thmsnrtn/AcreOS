@@ -18,6 +18,7 @@ import { QueryErrorState } from "@/components/query-error-state";
 import { formatDate } from "@/lib/format";
 import type { Clock } from "@shared/tax/clock";
 import { CertificateLedgerPanel } from "./CertificateLedgerPanel";
+import { MoveToLandControl } from "./MoveToLandControl";
 
 const usd = (c: number) => `$${(c / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const PHASE_LABEL: Record<Clock["phase"], string> = {
@@ -44,7 +45,10 @@ export function CertificateClockPanel({ certificateId, label, onClose }: { certi
       ) : q.isError || !q.data ? (
         <QueryErrorState error={q.error} onRetry={() => void q.refetch()} isRetrying={q.isFetching} title="The redemption clock could not be loaded" />
       ) : (
-        <ClockBody c={q.data} />
+        <>
+          <ClockBody c={q.data} />
+          {q.data.phase === "deed_held" && <div className="mt-4"><MoveToLandControl certificateId={certificateId} /></div>}
+        </>
       )}
       <div className="mt-4 border-t pt-4">
         <CertificateLedgerPanel certificateId={certificateId} />
