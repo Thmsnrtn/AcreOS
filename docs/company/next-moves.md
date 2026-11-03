@@ -135,6 +135,12 @@ what shipped, what it measured, and the top next moves. Newest first.
 - **Escalation still open.** The `preForeclosureNoticeMonths: 1` national default (see T3a below).
 - **Next.** T4: disagreement capture, negative knowledge, and the cross-vertical exit to Land/Hold with full history.
 
+## 2026-11-02 — Staging census undeclared tolerance tightened 21 → 19 — on `claude/census-tolerance-19` (off main `b539f15d`)
+
+- **Measured.** The staging census ran after the #429 deploy (`b7558ad`, job 125059956124) and after the #431 deploy (`b539f15d`, job 125087050582). Both times it found 765 physical tables and 746 declared, and listed **exactly 19** undeclared tables. The 19 names were identical between the two runs.
+- **Change.** `UNDECLARED_RESIDUE_TOLERANCE` in `scripts/staging-schema-census.ts` goes from 21 to 19, so any NEW undeclared table now fails the census. The census test derives its boundary cases from the constant (19 passes, 20 fails).
+- **Not done.** The 19 names are not pinned in code. A swap (one table retired, another added) would still pass on the count alone. The tables are left in place: dropping them is a founder / deletion-ledger decision.
+
 ## 2026-10-30 — Scheduler double-boot fix — on `claude/scheduler-double-boot-fix` (rebased onto main `b7558ad`; first built on `58d1a9b`)
 
 - **Root cause fixed.** `log` moved to `server/utils/log.ts`; `jobQueue.ts` and `dbBackup.ts` no longer import `server/index.ts`, so the worker stops booting a web server and a second `runScheduledJobs()`.
@@ -153,11 +159,11 @@ what shipped, what it measured, and the top next moves. Newest first.
   - Physical: tables in staging's `public` schema (relkind r/p, no partitions). They are read SELECT-only on a staging machine, as names plus constraint and trigger counts.
   - Declared: every `pgTable(` on a non-comment line under `shared/`, the table-count ratchet's own rule. The run fails if an occurrence has no name, if the total differs from the ratchet baseline, or if a barrel table goes unseen.
   - Measured locally: 748 occurrences give 746 distinct names. `conversations` and `messages` are declared twice. The `shared/schema` barrel exports 743.
-  - Tolerance: 0 for declared-but-absent tables. Up to 21 undeclared tables are tolerated, all listed and none dropped; dropping them is a founder / deletion-ledger decision.
+  - Tolerance: 0 for declared-but-absent tables. Up to 21 undeclared tables are tolerated, all listed and none dropped; dropping them is a founder / deletion-ledger decision. *(Tightened to 19 on 2026-11-02; see the entry at the top.)*
   - It also checks that the newest `migrations/*.sql` block's tables are present with the triggers that file creates.
 - **Comments corrected** in `staging.yml`, `fly.staging.toml` and the reconcile header. None of them claims `db:push` any more.
 - **Gate.** `tests/unit/stagingSchemaReconcileChained.test.ts` parses the workflows. Nine mutations were each confirmed red.
-- **Next.** Pin the 21 undeclared residue by NAME once a census run has listed them, then lower the tolerance as the founder retires them.
+- **Next.** Pin the 21 undeclared residue by NAME once a census run has listed them, then lower the tolerance as the founder retires them. *(2026-11-02: the census has listed them, 19 by name; the tolerance is now 19. Pinning the names is still open.)*
 ## 2026-10-30 — PROD OUTAGE: nobody can sign in. Clerk proxy fix on `claude/clerk-proxy-signin-fix` (staging only)
 
 - **Cause (proven in the founder's package):**
