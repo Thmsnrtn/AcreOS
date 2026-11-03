@@ -28,7 +28,8 @@
  *
  * ── WHAT IT FORBIDS, AND WHERE ───────────────────────────────────────────
  * Every non-test source file under the roots below (TS/JS/MJS/SQL; comments
- * stripped with the repo's real lexer, SQL `--` comments stripped too):
+ * stripped with the repo's shared strippers — stripComments for code,
+ * stripSqlComments for .sql):
  *   1. a literal SQL DELETE FROM / TRUNCATE naming acquired_notes;
  *   2. a Drizzle `.delete(<acquiredNotes>)`, including import / const aliases
  *      and `schema.acquiredNotes`;
@@ -53,6 +54,7 @@ import { describe, expect, it, vi } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { stripComments } from "../helpers/stripComments";
+import { stripSqlComments } from "../helpers/stripSqlComments";
 import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
 
 vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
@@ -122,31 +124,6 @@ type Kind = "sql-delete-acquired-notes" | "drizzle-delete-acquired-notes" | "org
 interface Finding {
   kind: Kind;
   excerpt: string;
-}
-
-function stripSqlComments(src: string): string {
-  // `--` to end of line and /* */ blocks, skipping single-quoted strings and dollar-quoted bodies' quotes.
-  let out = "";
-  let i = 0;
-  while (i < src.length) {
-    const c = src[i];
-    if (c === "'") {
-      const end = src.indexOf("'", i + 1);
-      const stop = end === -1 ? src.length : end + 1;
-      out += src.slice(i, stop);
-      i = stop;
-    } else if (c === "-" && src[i + 1] === "-") {
-      const nl = src.indexOf("\n", i);
-      i = nl === -1 ? src.length : nl;
-    } else if (c === "/" && src[i + 1] === "*") {
-      const end = src.indexOf("*/", i + 2);
-      i = end === -1 ? src.length : end + 2;
-    } else {
-      out += c;
-      i++;
-    }
-  }
-  return out;
 }
 
 const Q = `["\`]?`; // an optional identifier quote (or a template backtick around the name)

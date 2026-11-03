@@ -37,7 +37,7 @@ what shipped, what it measured, and the top next moves. Newest first.
 - **Guard.**
   - `acquiredNotesDeletedOnlyByErasure.test.ts` scans the source population: direct SQL and Drizzle deletes, and registers for org-row deleters, `TRUNCATE … CASCADE` and computed-table deleters, with vacuity floors and canaries.
   - `.realdb.test.ts` checks the live CASCADE parents and runs "Clear data", then erasure, on a note that has rows in both ledgers.
-  - 10 mutants, all red.
+  - 11 mutants, all red.
 - **Next.** Muse audits. When an acquired-note delete UI or route is wanted, build it as the soft delete Tom chose: `deleted_at` (migration 0301), read exclusion at the org-scoping layer, and restore. The guard fails any hard version first. Open question for Tom: should "acquired notes are soft-deleted" join the CLAUDE.md DO-NOT-DO list and `constitution.ts` as a standing rule?
 
 ## 2026-11-02 — G5 upgrade-path proof workflow — on `claude/serene-cori-0u9h8n` (PR #438, unmerged)

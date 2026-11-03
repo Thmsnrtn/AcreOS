@@ -41,7 +41,7 @@ That table is unrelated to notes.
 
 ## Mutation proof
 
-`acquired-notes-delete-guard-mutants.log`: 10 mutants, all red. Each was
+`acquired-notes-delete-guard-mutants.log`: 11 mutants, all red. Each was
 restored, and the baseline was 38/38 green.
 
 - Direct Drizzle delete in `routes-notes.ts`.
