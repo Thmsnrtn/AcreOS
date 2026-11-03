@@ -218,6 +218,17 @@ function limitExceededMessage(details: unknown): string {
  * response. Status codes are unchanged; only the human-readable
  * `message` is rewritten.
  */
+function resolveRetryAfter(error: unknown, fallbackSeconds: number): number {
+  const raw = (error as { retryAfterSeconds?: unknown }).retryAfterSeconds;
+  return typeof raw === "number" && Number.isFinite(raw) && raw > 0 ? Math.ceil(raw) : fallbackSeconds;
+}
+
+function setRetryAfter(res: Response, seconds: number): void {
+  if (typeof res.setHeader === "function") {
+    res.setHeader("Retry-After", String(seconds));
+  }
+}
+
 export const Errors = {
   notFound(res: Response, entity: string, opts?: ErrorOptions): void {
     const message = `We couldn't find that ${entity} — it may have been deleted, archived, or moved between organizations.`;
@@ -429,7 +440,31 @@ export const Errors = {
       );
       return;
     }
-    // The shared monthly AI allowance (founder decision 2026-10-08): past it,
+        // Spend-guard refusals (G10): a concurrency or quota refusal caught inside
+    // a route must keep its designed shape instead of collapsing to the
+    // generic 500 below. The terminal handler already maps these for uncaught
+    // throws; this mirrors that mapping for the route-level internal() path,
+    // including the Retry-After header clients use to back off.
+    if (
+      error instanceof Error &&
+      ((error as { code?: string }).code === "AI_CONCURRENCY_EXCEEDED" ||
+        error.name === "AIConcurrencyExceeded")
+    ) {
+      setRetryAfter(res, resolveRetryAfter(error, 2));
+      sendError(res, 429, "AI_CONCURRENCY_EXCEEDED", error.message, undefined, buildDocsUrl(opts));
+      return;
+    }
+    if (
+      error instanceof Error &&
+      ((error as { code?: string }).code === "AI_QUOTA_UNAVAILABLE" ||
+        error.name === "AIQuotaUnavailable")
+    ) {
+      setRetryAfter(res, resolveRetryAfter(error, 30));
+      sendError(res, 503, "AI_QUOTA_UNAVAILABLE", error.message, undefined, buildDocsUrl(opts));
+      return;
+    }
+
+// The shared monthly AI allowance (founder decision 2026-10-08): past it,
     // with no own AI key, a call is refused RECOVERABLY — 429 byok_required
     // with the path forward, never a 500. Shape-detected (utils does not
     // import services).
