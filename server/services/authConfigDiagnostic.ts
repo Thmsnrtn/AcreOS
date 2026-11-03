@@ -5,7 +5,8 @@
  *
  * Background: the server verifies a Clerk session two ways.
  *   1. `clerkMiddleware` (global) verifies inline using CLERK_SECRET_KEY.
- *   2. When that can't populate `req.auth` (our proxy/Cloudflare path),
+ *   2. When its verdict carries no userId (`getClerkAuth(req)` — e.g. our
+ *      proxy/Cloudflare path, or any Clerk development instance),
  *      `hydrateUser` falls back to verifying the `__session` cookie JWT
  *      against CLERK_JWT_KEY.
  * CLERK_JWT_KEY is NOT a boot-required key (validateEnv never checked it),

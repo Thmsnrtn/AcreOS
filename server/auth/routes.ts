@@ -13,6 +13,7 @@ import { recordSignupSignals, computeReqIpBucket } from "../middleware/botSignal
 import { createRateLimiter } from "../middleware/rateLimit";
 import { ipBucket } from "../middleware/authPathLimits";
 import { toAuthUserView } from "@shared/accountViews";
+import { getClerkAuth } from "../types/request";
 
 // Process-local set of userIds that have already emitted an auth.login
 // audit event. Cleared on process restart, which is acceptable: the audit
@@ -28,7 +29,7 @@ export function registerAuthRoutes(app: Express): void {
   app.get("/api/auth/user", isAuthenticated, (req: any, res) => {
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
     const user = req.user;
-    const userId = req.auth?.userId ?? user?.clerkUserId ?? null;
+    const userId = getClerkAuth(req)?.userId ?? user?.clerkUserId ?? null;
     const isFounder = isFounderIdentity({ email: user?.email, userId });
     // Phase 3 Week 11: emit auth.login on the first hit-after-sign-in for
     // each userId in this process. Subsequent polls are deduped by the
