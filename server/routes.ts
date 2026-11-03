@@ -360,7 +360,9 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
 
-  // Clerk proxy — Cloudflare blocks clerk.acreos.io (Error 1000). Handler is
+  // Clerk proxy — the browser reaches Clerk's Frontend API through /__clerk on
+  // our own host (registered proxy_url https://acreos.io/__clerk); the handler
+  // relays to clerk.acreos.io (see the origin note there). Handler is
   // extracted to server/middleware/clerkProxy.ts so its double-send guards and
   // 10s upstream timeout are unit-testable in isolation.
   app.use("/__clerk", express.urlencoded({ extended: false }), express.json(), createClerkProxyHandler());

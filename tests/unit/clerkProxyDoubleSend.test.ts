@@ -170,7 +170,7 @@ describe("clerk-proxy public identity follows the request Host (issue #359)", ()
 
   it("host-scopes Set-Cookie off the production domain (no domain attribute on staging)", async () => {
     const { fetchImpl } = capturingFetch(
-      fakeUpstreamResponseWithCookie("__session=abc; Path=/; Domain=possible-emu-83.clerk.accounts.dev; HttpOnly"),
+      fakeUpstreamResponseWithCookie("__session=abc; Path=/; Domain=clerk.acreos.io; HttpOnly"),
     );
     const app = makeApp(fetchImpl);
     const res = await request(app)
@@ -186,7 +186,7 @@ describe("clerk-proxy public identity follows the request Host (issue #359)", ()
 
   it("keeps the shared .acreos.io cookie domain on the production host", async () => {
     const { fetchImpl } = capturingFetch(
-      fakeUpstreamResponseWithCookie("__session=abc; Path=/; Domain=possible-emu-83.clerk.accounts.dev; HttpOnly"),
+      fakeUpstreamResponseWithCookie("__session=abc; Path=/; Domain=clerk.acreos.io; HttpOnly"),
     );
     const app = makeApp(fetchImpl);
     const res = await request(app)

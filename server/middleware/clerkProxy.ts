@@ -4,15 +4,30 @@ import { logger } from "../utils/logger";
 import { Errors } from "../utils/errors";
 import { clock } from "../utils/clock";
 
-// Clerk Frontend API origin we proxy to. Cloudflare blocks the vanity
-// clerk.acreos.io (Error 1000), so the browser talks to /__clerk and we relay
-// to the *.clerk.accounts.dev backing FAPI here.
+// Clerk Frontend API origin we proxy to. The browser talks to /__clerk on our
+// own host and we relay to this app's Frontend API host, clerk.acreos.io.
+// The Clerk domain acreos.io is configured with proxy_url
+// https://acreos.io/__clerk; the Clerk-Proxy-Url header below presents that
+// registered proxy URL (on prod), together with the instance secret key.
 //
-// Override with the CLERK_FAPI_ORIGIN env var if the instance's backing domain
-// ever changes (e.g. a new Clerk instance) — no code edit required. The default
-// is the current production instance's backing domain. Do NOT derive this from
-// the publishable key: that encodes the Cloudflare-blocked vanity domain.
-const DEFAULT_CLERK_FAPI_ORIGIN = "https://possible-emu-83.clerk.accounts.dev";
+// History (corrected 2026-11-02):
+// - The previous default, possible-emu-83.clerk.accounts.dev, was a leftover
+//   pointing at a DIFFERENT Clerk instance context. It rejects proxy-protocol
+//   requests with 401 proxy_request_invalid_secret_key, because its
+//   environment carries a different auth_config id than the one our secret
+//   key belongs to. clerk.acreos.io is this app's real Frontend API host and
+//   answers the same proxy-protocol calls with 200 when given the registered
+//   Clerk-Proxy-Url and the instance secret key.
+// - The old comment here said Cloudflare blocks clerk.acreos.io (Error 1000).
+//   That was a DNS defect, not a property of the host: the clerk.acreos.io
+//   CNAME pointed at a Cloudflare-owned address. It now correctly targets
+//   frontend-api.clerk.services, and Error 1000 does not reproduce from a Fly
+//   machine.
+//
+// Override with the CLERK_FAPI_ORIGIN env var if the instance's Frontend API
+// host ever changes (e.g. a new Clerk instance) — no code edit required.
+// tests/unit/clerkProxyFapiOrigin.test.ts pins the default and the override.
+const DEFAULT_CLERK_FAPI_ORIGIN = "https://clerk.acreos.io";
 const CLERK_FAPI_ORIGIN =
   process.env.CLERK_FAPI_ORIGIN?.trim().replace(/\/+$/, "") || DEFAULT_CLERK_FAPI_ORIGIN;
 // Hostname only — used to rewrite upstream Location headers back through /__clerk
