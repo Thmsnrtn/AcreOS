@@ -125,7 +125,6 @@ function MobileLeadRow({
               onOpen();
             }
           }}
-          aria-label={`Open lead ${fullName}`}
           className="flex min-h-11 items-start justify-between gap-3 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
         >
           <div className="min-w-0 flex-1">

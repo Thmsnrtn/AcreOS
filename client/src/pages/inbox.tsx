@@ -163,7 +163,7 @@ function EmailMessageRow({
 
   const senderLabel = message.senderName || message.senderEmail || "Unknown sender";
   const subjectLabel = message.subject || "(No subject)";
-  const rowAriaLabel = `${message.isRead ? "Read" : "Unread"} email from ${senderLabel}: ${subjectLabel}`;
+
 
   return (
     // The row itself is not a button: it holds the star and archive buttons,
@@ -184,7 +184,7 @@ function EmailMessageRow({
       <button
         type="button"
         data-testid={`button-open-email-${message.id}`}
-        aria-label={rowAriaLabel}
+
         aria-current={isSelected ? "true" : undefined}
         onClick={(e) => {
           e.stopPropagation();
@@ -222,8 +222,8 @@ function EmailMessageRow({
           )}
           {!message.isRead && (
             // Semantic unread dot uses --acr-brand (not --primary) to stay
-            // theme-coherent. Aria-hidden since the row aria-label already
-            // announces unread state.
+            // theme-coherent. Aria-hidden: it carries no text of its own.
+            // The row name now comes from its visible content.
             <span className="w-2 h-2 rounded-full bg-[color:var(--acr-brand)] flex-shrink-0" aria-hidden="true" />
           )}
         </div>
@@ -285,14 +285,14 @@ function SMSConversationRow({
 }) {
   const leadName = lead ? `${lead.firstName} ${lead.lastName}` : undefined;
   const contactLabel = leadName || lead?.phone || "Unknown";
-  const rowAriaLabel = `SMS conversation with ${contactLabel}`;
+
 
   return (
     <div
       data-testid={`sms-conversation-row-${conversation.id}`}
       role="button"
       tabIndex={0}
-      aria-label={rowAriaLabel}
+
       aria-current={isSelected ? "true" : undefined}
       onClick={onSelect}
       onKeyDown={(e) => handleRowKeyDown(e, onSelect)}
