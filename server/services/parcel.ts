@@ -19,6 +19,7 @@ import {
   statesForPoint,
   buildArcgisPointQueryParams,
 } from "./statewideParcelEndpoints";
+import { isClearedForLookup, statewideSource } from "./openData/statewideSourceRegistry";
 import { storage } from "../storage";
 import { logger } from '../utils/logger';
 import { recordProviderParcelFacts, coerceSaleDate } from "./data-cache/observation-log";
@@ -56,6 +57,19 @@ export interface ParcelLookupOptions {
   organizationId?: number;
   /** The org's own key, already resolved by the caller (the provider registry's BYOK override). Never the platform key. */
   regridApiKey?: string | null;
+}
+
+/**
+ * Founder decision 2026-11-03: a seeded STATEWIDE source (county = "*") may
+ * answer a lookup only when the registry clears it for point lookup
+ * (statewideSourceRegistry.ts, LOOKUP_CLEARANCE, which mirrors dossier
+ * register §8.4). A gated row is treated exactly as if it were not seeded,
+ * so the lookup falls through to the next source or to Regrid unchanged.
+ * Per-county rows are not statewide sources and pass untouched.
+ */
+function statewideRowMayServe(endpoint: { county: string; state: string }): boolean {
+  if (endpoint.county !== STATEWIDE_COUNTY) return true;
+  return isClearedForLookup(statewideSource(endpoint.state));
 }
 
 /** A source's owner field, or null. "Unknown" was written here, and read downstream as a name. */
@@ -390,8 +404,10 @@ export async function lookupFromCountyGIS(
         )
       );
     
-    // Find the endpoint matching the county (case-insensitive)
-    const matchingEndpoint = endpoints.find(e => 
+    // Find the endpoint matching the county (case-insensitive). A statewide
+    // row not cleared for lookup is invisible here, as if never seeded.
+    const matchingEndpoint = endpoints.find(e =>
+      statewideRowMayServe(e) &&
       e.county.toLowerCase().replace(/ county$/i, "").trim() === normalizedCounty
     );
     
@@ -617,6 +633,9 @@ export async function lookupFromCountyGISByPoint(
     // request — whatever row carries it. fetchGeo and the process fetch guard
     // refuse it too; this keeps the refusal out of the error counters.
     if (blockedOutboundSource(endpoint.baseUrl)) continue;
+    // Not cleared for point lookup (founder decision 2026-11-03): skipped
+    // before any request, as if never seeded.
+    if (!statewideRowMayServe(endpoint)) continue;
     try {
       const baseUrl = endpoint.baseUrl.replace(/\/$/, "");
       const layerId = endpoint.layerId || "0";

@@ -3,6 +3,30 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-11-03 — Statewide point lookup gated behind the license dossiers — on `claude/statewide-lookup-clearance-gate` (off main `519b62c`, PR open, unmerged)
+
+- **Founder decision (2026-11-03).** A seeded statewide source may serve point-lookup results ONLY when its register state is cleared for lookup. It is recorded in `founder-decisions-2026-11-03-lookup-gate.md`. It closes the LQ-13/LQ-14 finding: nine statewide rows answered live lookups, owner names included, ahead of Regrid, with no gate.
+- **Step 0 (verified against the tree).** The finding reproduced. On the platform key the order is cache → county_gis → Regrid. The function returned `outFields:*` (owner names in 7 of 9 states), and its only check was `blockedOutboundSource`. Two additions to the finding:
+  - a second caller, `county-gis-provider.ts`;
+  - an APN-path edge: a `county="*"` row matches when the county arg is `"*"`.
+- **Change.**
+  - `LOOKUP_CLEARANCE` was added to the EXISTING `statewideSourceRegistry.ts`; no parallel registry. It holds one explicit entry per seeded state and mirrors §8.4. All nine are gated.
+  - `isClearedForLookup()` is true only for `cleared` with every evidence field filled.
+  - `parcel.ts` `statewideRowMayServe()` gates the point path and the APN path. Both callers go through the point function.
+  - A row with no entry is gated (fail-closed).
+  - No migration. Bulk ingest, the dossiers and lookup persistence are untouched.
+- **Proved.** `tests/unit/statewideLookupClearance.test.ts`:
+  - (a) gated, per state: no request to the service, and fall-through to Regrid or to the next source;
+  - (b) a cleared override restores results, per state;
+  - (c) the ratchet: seeds ↔ entries both ways, the cleared set pinned (empty), and a reviewed list of every server reader of the statewide rows.
+  - Mutants caught: point gate removed, APN gate removed, predicate always true, entry deleted, gate inverted.
+- **Customer effect.** In FL, MT, NC, WA, NJ, AR, NY, WI and MD, coordinate lookups on the platform path now answer from Regrid, or return not-found when no Regrid key is configured.
+  - That is a paid call where the free row used to answer. Today there are no customers.
+- **Next.**
+  1. Independent audit of the PR; the founder merges.
+  2. Clear states one at a time as Option B lookup determinations land (the PR body lists the exact code change).
+  3. Still open from register §8.5: C-3 (whether callers persist lookup results downstream) and C-4 (whether deployed `county_gis_endpoints` rows match the seed file). The gate keys on the row's `state` and `county="*"`, so extra DB rows are gated too.
+
 ## 2026-11-03 — Fix B: server auth reads @clerk/express 2.x's callable `req.auth` — on `claude/fix-b-clerk-auth-v2` (off main `29a1755`, PR open, unmerged)
 
 - **Change.** `getClerkAuth(req)` invokes the callable `req.auth` and normalizes `userId` / `sessionId` / `factorVerificationAge`. All reads go through it: the 6 direct reads, the MFA cast, the 21 existing call sites (unchanged), and **2 cast-form reads the census missed** (`requirePaxDisclosure`, `routes-pax-disclosure`). The E2E bypass installs the callable. The JWT fallback block is untouched.
