@@ -1,5 +1,19 @@
 # AcreOS Vendor Inventory + Risk Tiering
 
+> **SUPERSEDED — NOT AN EVIDENCE SOURCE (2026-11-03, legal-run Leg 7 / LQ-06).**
+> The register of record for vendors and DPAs is
+> `files/legal-run-2026-11/LQ-06-vendor-dpa-register.md` (legal-run store,
+> DRAFT — PREPARED FOR ATTORNEY REVIEW). Under that register, **every DPA is
+> UNKNOWN until an executed instrument is obtained**; no "Yes" or review date
+> below is evidence of one, and each is struck accordingly. Three control
+> claims in this document were found false or unverified and are struck where
+> they appear: (1) `sanitizePrompt` described as PII redaction — it is a
+> prompt-injection sanitizer; (2) an Anthropic zero-retention agreement;
+> (3) an OpenAI no-training opt-out. Do not cite this file to a carrier,
+> customer, auditor or policy as evidence of any vendor control. This banner
+> makes no statement about whether any claim below was previously shared
+> with anyone; that question is counsel's.
+
 **Owners:** Kareem (SOC 2 / vendor management) + Brian (cyber underwriting)
 **Last reviewed:** 2026-05-27
 **Review cadence:** Quarterly (every 90 days)
@@ -31,26 +45,26 @@ review required at quarterly vendor-risk reviews.
 
 | Vendor | Tier | Purpose | Data classes | Has DPA? | Last DPA review | Cert / attestation | Notes |
 |---|---|---|---|---|---|---|---|
-| **Clerk** | T1 | Identity / authentication, MFA | Email, password hash, MFA secrets, session JWTs | Yes | 2026-04-15 | SOC 2 Type II | MFA enforced via `requireClerkMFA`. See `docs/policies/mfa-enforcement-policy.md`. |
-| **Stripe** | T1 | Payment processing, subscription billing | Cardholder name, last4, payment-method tokens, billing address | Yes | 2026-04-15 | PCI DSS Level 1, SOC 1+2 | We never see full card numbers (Stripe Elements tokenization). |
-| **Fly.io (Postgres)** | T1 | Production database hosting | All customer data at rest, encrypted | Yes | 2026-04-15 | SOC 2 Type II | Daily snapshots; PG encryption at rest. |
-| **AWS S3** | T1 | Document storage (contracts, esign artifacts) | Customer-uploaded documents | Yes (via AWS DPA) | 2026-04-15 | SOC 1/2/3, ISO 27001, PCI | SSE-S3 enabled; bucket-level access logging. |
-| **Anthropic (Claude API)** | T2 | Pax draft generation, compliance review | User prompts + responses (PII redacted by our `sanitizePrompt`) | Yes (zero-retention agreement on roadmap) | 2026-04-15 | SOC 2 Type II | We send prompt content through PII redaction first. |
-| **OpenAI** | T2 | Fallback model + embedding | User prompts + responses (PII redacted) | Yes (no-training opt-out enabled) | 2026-04-15 | SOC 2 Type II | API-mode opt-out of training set; verified per `docs/audits/lenses/097-099-ai-specialization.md`. |
-| **Twilio** | T2 | SMS (10DLC) + voice | Phone numbers, message bodies | Yes | 2026-04-15 | SOC 2 Type II, HIPAA-eligible | TCPA controls in our app layer. |
-| **SendGrid (Twilio)** | T2 | Transactional + marketing email | Email addresses, message bodies | Yes (via Twilio MSA) | 2026-04-15 | SOC 2 Type II | DMARC + SPF + DKIM all aligned. |
-| **Lob** | T2 | Physical mail (yellow letters) | Names + mailing addresses | Yes | 2026-04-15 | SOC 2 Type II | We send aggregated mailings; no payment data. |
-| **Mapbox** | T2 | Map tiles, geocoding | Parcel addresses (sent for geocoding) | Yes | 2026-04-15 | SOC 2 Type II | We could swap to MapLibre (self-host) if needed. |
-| **Sentry** | T3 | Error monitoring | Error stacks, breadcrumbs, scrubbed user context | Yes | 2026-04-15 | SOC 2 Type II, ISO 27001 | Server SDK drops 4xx + scrubs PII pre-send. |
-| **Cloudflare** | T3 (analytics) / T4 (CDN/DNS) | CDN, DNS, WAF, analytics | Aggregated traffic + WAF logs | Yes | 2026-04-15 | SOC 2 Type II, ISO 27001, PCI | DNSSEC enabled; WAF custom rules in setup. |
-| **Fly.io (compute)** | T4 | App + worker compute | Memory-resident PII (no persistence) | Yes | 2026-04-15 | SOC 2 Type II | Containers isolated per app; no shared tenancy. |
-| **GitHub** | T4 | Source code, CI/CD | Code, CI secrets (encrypted) | Yes | 2026-04-15 | SOC 2 Type II, ISO 27001 | Branch protection on `main`; signed commits encouraged. |
-| **Vercel** | T4 (marketing site only) | Marketing pages | None (static) | Yes | 2026-04-15 | SOC 2 Type II | Production app does **not** run on Vercel. |
-| **Cloudinary** | T2 | User-uploaded images | Uploaded images (may include identifying photos) | Yes | 2026-04-15 | SOC 2 Type II | Signed URL access only. |
-| **Supabase** | T4 | (Not currently in use for production data) | None | N/A | — | SOC 2 Type II | Listed for visibility — used by some adjacent tooling, not the production data plane. |
-| **Notion** | T5 | Internal docs | Internal-only | N/A | — | SOC 2 Type II | No customer data. |
-| **Slack** | T5 | Internal comms | Internal-only | N/A | — | SOC 2 Type II | No customer data; internal use only. |
-| **Linear** | T5 | Issue tracking | Internal-only | N/A | — | SOC 2 Type II | No customer data. |
+| **Clerk** | T1 | Identity / authentication, MFA | Email, password hash, MFA secrets, session JWTs | ~~Yes~~ **UNKNOWN** | ~~2026-04-15~~ **UNVERIFIED** | SOC 2 Type II | MFA enforced via `requireClerkMFA`. See `docs/policies/mfa-enforcement-policy.md`. |
+| **Stripe** | T1 | Payment processing, subscription billing | Cardholder name, last4, payment-method tokens, billing address | ~~Yes~~ **UNKNOWN** | ~~2026-04-15~~ **UNVERIFIED** | PCI DSS Level 1, SOC 1+2 | We never see full card numbers (Stripe Elements tokenization). |
+| **Fly.io (Postgres)** | T1 | Production database hosting | All customer data at rest, encrypted | ~~Yes~~ **UNKNOWN** | ~~2026-04-15~~ **UNVERIFIED** | SOC 2 Type II | Daily snapshots; PG encryption at rest. |
+| **AWS S3** | T1 | Document storage (contracts, esign artifacts) | Customer-uploaded documents | ~~Yes (via AWS DPA)~~ **UNKNOWN** | ~~2026-04-15~~ **UNVERIFIED** | SOC 1/2/3, ISO 27001, PCI | SSE-S3 enabled; bucket-level access logging. |
+| **Anthropic (Claude API)** | T2 | Pax draft generation, compliance review | User prompts + responses (~~PII redacted by our `sanitizePrompt`~~ — **FALSE: `sanitizePrompt` is a prompt-injection sanitizer, not PII redaction**) | ~~Yes (zero-retention agreement on roadmap)~~ **UNKNOWN** — zero-retention: **UNVERIFIED**, no instrument on file | ~~2026-04-15~~ **UNVERIFIED** | SOC 2 Type II | ~~We send prompt content through PII redaction first.~~ **UNVERIFIED / FALSE as written** — see the `sanitizePrompt` note in the data-classes cell. |
+| **OpenAI** | T2 | Fallback model + embedding | User prompts + responses (~~PII redacted~~ **UNVERIFIED**) | ~~Yes (no-training opt-out enabled)~~ **UNKNOWN** — no-training opt-out: **UNVERIFIED** | ~~2026-04-15~~ **UNVERIFIED** | SOC 2 Type II | ~~API-mode opt-out of training set; verified per~~ **UNVERIFIED** (the cited audit is not an executed opt-out instrument): `docs/audits/lenses/097-099-ai-specialization.md`. |
+| **Twilio** | T2 | SMS (10DLC) + voice | Phone numbers, message bodies | ~~Yes~~ **UNKNOWN** | ~~2026-04-15~~ **UNVERIFIED** | SOC 2 Type II, HIPAA-eligible | TCPA controls in our app layer. |
+| **SendGrid (Twilio)** | T2 | Transactional + marketing email | Email addresses, message bodies | ~~Yes (via Twilio MSA)~~ **UNKNOWN** | ~~2026-04-15~~ **UNVERIFIED** | SOC 2 Type II | DMARC + SPF + DKIM all aligned. |
+| **Lob** | T2 | Physical mail (yellow letters) | Names + mailing addresses | ~~Yes~~ **UNKNOWN** | ~~2026-04-15~~ **UNVERIFIED** | SOC 2 Type II | We send aggregated mailings; no payment data. |
+| **Mapbox** | T2 | Map tiles, geocoding | Parcel addresses (sent for geocoding) | ~~Yes~~ **UNKNOWN** | ~~2026-04-15~~ **UNVERIFIED** | SOC 2 Type II | We could swap to MapLibre (self-host) if needed. |
+| **Sentry** | T3 | Error monitoring | Error stacks, breadcrumbs, scrubbed user context | ~~Yes~~ **UNKNOWN** | ~~2026-04-15~~ **UNVERIFIED** | SOC 2 Type II, ISO 27001 | Server SDK drops 4xx + scrubs PII pre-send. |
+| **Cloudflare** | T3 (analytics) / T4 (CDN/DNS) | CDN, DNS, WAF, analytics | Aggregated traffic + WAF logs | ~~Yes~~ **UNKNOWN** | ~~2026-04-15~~ **UNVERIFIED** | SOC 2 Type II, ISO 27001, PCI | DNSSEC enabled; WAF custom rules in setup. |
+| **Fly.io (compute)** | T4 | App + worker compute | Memory-resident PII (no persistence) | ~~Yes~~ **UNKNOWN** | ~~2026-04-15~~ **UNVERIFIED** | SOC 2 Type II | Containers isolated per app; no shared tenancy. |
+| **GitHub** | T4 | Source code, CI/CD | Code, CI secrets (encrypted) | ~~Yes~~ **UNKNOWN** | ~~2026-04-15~~ **UNVERIFIED** | SOC 2 Type II, ISO 27001 | Branch protection on `main`; signed commits encouraged. |
+| **Vercel** | T4 (marketing site only) | Marketing pages | None (static) | ~~Yes~~ **UNKNOWN** | ~~2026-04-15~~ **UNVERIFIED** | SOC 2 Type II | Production app does **not** run on Vercel. |
+| **Cloudinary** | T2 | User-uploaded images | Uploaded images (may include identifying photos) | ~~Yes~~ **UNKNOWN** | ~~2026-04-15~~ **UNVERIFIED** | SOC 2 Type II | Signed URL access only. |
+| **Supabase** | T4 | (Not currently in use for production data) | None | N/A — **UNVERIFIED** | — | SOC 2 Type II | Listed for visibility — used by some adjacent tooling, not the production data plane. |
+| **Notion** | T5 | Internal docs | Internal-only | N/A — **UNVERIFIED** | — | SOC 2 Type II | No customer data. |
+| **Slack** | T5 | Internal comms | Internal-only | N/A — **UNVERIFIED** | — | SOC 2 Type II | No customer data; internal use only. |
+| **Linear** | T5 | Issue tracking | Internal-only | N/A — **UNVERIFIED** | — | SOC 2 Type II | No customer data. |
 
 > **Maintenance note for Kareem:** when adding a vendor, fill all columns
 > or mark them `—`. The "last DPA review" date is what carriers actually
@@ -121,13 +135,17 @@ Output a 1-page review note to `docs/audits/vendor-reviews/YYYY-MM-DD.md`.
 ## 7. Carrier-application answer (canonical)
 
 > **Q: Do you maintain a vendor inventory with risk tiering and DPAs?**
-> **A:** Yes. The canonical inventory is at `docs/vendor-inventory.md`,
+> **WITHDRAWN — do not use this answer.** The text below asserts signed
+> DPAs and per-vendor review dates that this repository cannot evidence
+> (see the SUPERSEDED banner at the top). Kept struck as history only.
+>
+> ~~**A:** Yes. The canonical inventory is at `docs/vendor-inventory.md`,
 > committed to source control and reviewed quarterly. Each vendor is
 > assigned a risk tier (T1 stores PII, T2 transports PII, T3 analytics,
 > T4 infrastructure, T5 internal tooling). All T1 and T2 vendors carry
 > SOC 2 Type II attestations and signed DPAs; DPA review cadence is
 > every 90 days for T1 and 180 days for T2. The last review date is
-> recorded per vendor.
+> recorded per vendor.~~
 
 ---
 
@@ -136,3 +154,4 @@ Output a 1-page review note to `docs/audits/vendor-reviews/YYYY-MM-DD.md`.
 | Date | Change |
 |---|---|
 | 2026-05-27 | Initial inventory authored with risk tiering. Kareem to extend with SOC 2 control mapping. |
+| 2026-11-03 | SUPERSEDED as an evidence source by the LQ-06 register. DPA column struck to UNKNOWN/UNVERIFIED; the three false/unverified control claims struck; §7 carrier answer withdrawn. Tier taxonomy and process sections left as historical text. |

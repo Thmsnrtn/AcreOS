@@ -5,6 +5,16 @@
 **Review cadence:** Annual + on any new data class
 **Audience:** SOC 2 Type II (CC6.5, C1.1), GDPR/CCPA compliance, customer DPA reviews.
 
+> **Corrected 2026-11-03 (legal-run Leg 7 / LQ-07 §6 item 6).** Four claims in
+> this policy contradicted the code and are corrected in place below: the
+> 365-day communications purge (no such rule exists), Datadog (not a vendor
+> AcreOS uses), §6's claim that every sweep short-circuits on a hold, and §5's
+> backup lifecycle stated as fact. Nothing else in the policy was re-verified
+> by this correction, and the policy as a whole remains DRAFT pending counsel
+> (LQ-03/LQ-04/LQ-07). The 30-day post-account-deletion promise in §3/§4 is
+> **not** corrected here: whether to build a closure timer or rewrite the
+> promise is an open founder/counsel decision (LQ-07 Q1).
+
 ---
 
 ## 1. Purpose
@@ -24,17 +34,17 @@ control.
 |---|---|---|---|
 | Customer account (`users`, `organizations`, `team_members`) | Lifetime of account + 30 days after deletion request | Hard-delete via DSAR fulfillment (`runbooks/gdpr-dsar-fulfilment.md`) | Legal hold pauses (`legal_holds` table; see `routes-legal-holds.ts`) |
 | Customer leads/properties/deals | Lifetime of account, then per DSAR | Hard-delete | Legal hold |
-| Communications (email/SMS body text) | 365 days | `server/jobs/dataRetention.ts` daily purge | Legal hold |
+| Communications (email/SMS body text) | ~~365 days~~ **No automatic time-based purge exists** (corrected 2026-11-03). Communications are deleted with the account, or on demand when the org runs the "communications" purge in its data-retention settings (`purgeOldCommunications`, `routes-import-export.ts`). | ~~`server/jobs/dataRetention.ts` daily purge~~ On-demand purge / account erasure | Legal hold — the on-demand purge deletes nothing while the org has an active hold |
 | Financial records (invoices, payments, 1099s) | **7 years** | Manual archive then hard-delete | IRS retention rules supersede |
 | Audit log (`audit_log`) | **7 years** | `server/storage.ts:purgeOldAuditLogs` after expiry, blocked by legal hold | Legal hold; chain integrity must be preserved if purged |
 | Audit events (`audit_events`) | **7 years**; never deleted | Append-only; manual archive only after 7 years | Legal hold |
 | Sub-processor disclosures | Lifetime + 7 years | Append-only ledger | n/a |
-| DB backups (S3) | 30 days | S3 lifecycle rule on `acreos-db-backups` bucket | n/a |
+| DB backups (S3) | 30 days **(intended; UNVERIFIED — see §5)** | S3 lifecycle rule on the backup bucket **(existence not verified)** | n/a |
 | Sentry events | 90 days (Sentry default) | Auto-expire by Sentry | n/a |
 | Stripe data (cards, customers) | Retained by Stripe per PCI requirements | We do not control Stripe retention | n/a |
 | Source control history | Indefinite | Git history is permanent | n/a |
 | CI/CD logs (GitHub Actions) | 90 days (GitHub default) | Auto-expire | n/a |
-| Application logs (Datadog) | 30 days | Auto-expire | n/a |
+| Application logs ~~(Datadog)~~ (corrected 2026-11-03: AcreOS does not use Datadog; application logs go to the hosting platform's log stream, Fly.io) | ~~30 days~~ **Not verified** | Platform log retention | n/a |
 | Field-encryption ciphertext | Lifetime of underlying record | Decrypted only on-demand; ciphertext purged with row | n/a |
 
 ## 4. Customer-controlled retention
@@ -47,18 +57,33 @@ notified of the hold and the data is queued for delete on hold release.
 
 ## 5. Backup retention
 
-Daily DB backups via `server/jobs/dbBackup.ts` to AWS S3 with AES-256
-server-side encryption. S3 lifecycle rule deletes objects older than
-30 days. Older backups are not recoverable — this is a documented
-trade-off: 30 days is enough for any plausible operational restore;
-longer retention extends the blast radius of a backup compromise.
+**Corrected 2026-11-03 — this section describes the intended design, not a
+verified fact.** `server/jobs/dbBackup.ts` is written to upload daily DB
+backups to AWS S3 with AES-256 server-side encryption when
+`DB_BACKUP_S3_BUCKET` is configured. Whether that bucket exists in
+production, and whether a lifecycle rule deleting objects after 30 days is
+set on it, has **not been verified** (a console / in-machine fact the founder
+owns). Until it is, this policy makes no statement that backups are deleted
+after 30 days or that older backups are unrecoverable. ~~S3 lifecycle rule
+deletes objects older than 30 days. Older backups are not recoverable.~~
 
 ## 6. Legal holds
 
-When a legal hold is in force for an organization (`legal_holds` table
-with `is_active = true`), every retention sweep short-circuits for that
-org. Implementation: `orgHasActiveHold()` in `server/storage.ts` is
-called by every purge function.
+**Corrected 2026-11-03 to describe behaviour as shipped.** The earlier text
+said every retention sweep short-circuits on a hold; two deletion paths did
+not check holds at all. A hold is active when its `legal_holds` row has
+`status = 'active'` and `released_at` is null (there is no `is_active`
+column). The check is `orgHasActiveHold()` / `getActiveHoldSummary()` in
+`server/services/legalHold.ts`. Per path:
+
+| Deletion path | Hold behaviour |
+|---|---|
+| Per-user GDPR erasure — `gdprService.anonymizeUser()` | Refuses (`LegalHoldViolationError`) if any of the user's orgs has an active hold. |
+| On-demand org purges — `purgeOldLeads`, `purgeOldDeals`, `purgeOldAuditLogs`, `purgeOldCommunications` | Delete nothing (return 0) while the org has an active hold. |
+| Bulk deletes — `routes-bulk.ts` | Held ids are filtered out (`filterOutHeldIds`). |
+| Nightly retention job — `server/jobs/dataRetention.ts` | Org-scoped tables: rows of an org with an active hold are excluded from the purge, and the kept count is logged at error level. If the hold lookup fails, org-scoped rules do not run that night. Tables with no org column (`job_health_logs`, `realtime_event_log`, `notification_history`) cannot be filtered by org; each has a written disposition in the job (`NON_ORG_SCOPED_RULE_DISPOSITIONS`). *Hold-blind before 2026-11-03.* |
+| Org erasure — `server/services/orgDeletion.ts` | Refuses before deleting anything if the org has an active hold (HTTP 423 at the founder route), logged and written to `audit_events`. *Hold-blind before 2026-11-03.* |
+| DSAR "Pipeline A" erasure (`routes-dsar.ts`) | Not implemented (returns 501); its future erasure path is part of the open DSAR reconciliation (LQ-11). |
 
 ## 7. Disposal
 
