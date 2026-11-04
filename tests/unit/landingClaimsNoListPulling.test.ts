@@ -7,10 +7,19 @@
  * CSV import — copy.ts's own truth-note withdrew the sibling claim).
  *
  * Coupled to the code: while no server route path names a list builder /
- * list pull, no file in the landing population may claim list pulling. The
- * population is ENUMERATED (index.html + landing.tsx + every file under
- * pages/landing/), comments stripped, with a floor so a renamed directory
+ * list pull, no file in the public population may claim list pulling. The
+ * population is ENUMERATED (index.html + landing.tsx + pricing.tsx + every
+ * file under pages/landing/, pages/compare/, pages/learn/, pages/tools/ and
+ * components/tools/), comments stripped, with a floor so a renamed directory
  * cannot empty it.
+ *
+ * 2026-11-03 (G12 public-copy truth fixes): the population was the landing
+ * alone, and the claim was still live on four public pages outside it — both
+ * /compare pages ("core list-pull + CRM loop"), every /learn/county page ("a
+ * <county> list pull arrives"), and the /tools/calculator CTA ("pulls the
+ * lists"). Third law: a rule installed on one directory is a claim about that
+ * directory. Every public marketing directory is now enumerated, and each
+ * must contribute at least one file.
  */
 
 import { describe, it, expect, vi } from "vitest";
@@ -36,11 +45,25 @@ function walk(dir: string, out: string[] = []): string[] {
 
 // Repeat to a fixpoint: one pass can join the halves of a nested or
 // split marker ("<!-<!---->-") into a new comment opener.
+/** Every public marketing directory. Each must contribute files (vacuity). */
+const PUBLIC_DIRS = [
+  "client/src/pages/landing",
+  "client/src/pages/compare",
+  "client/src/pages/learn",
+  "client/src/pages/tools",
+  "client/src/components/tools",
+] as const;
+
 function landingPopulation(): { file: string; text: string }[] {
   const files = [
     path.join(ROOT, "client/index.html"),
     path.join(ROOT, "client/src/pages/landing.tsx"),
-    ...walk(path.join(ROOT, "client/src/pages/landing")).filter((f) => /\.(tsx?|html)$/.test(f)),
+    path.join(ROOT, "client/src/pages/pricing.tsx"),
+    ...PUBLIC_DIRS.flatMap((d) => {
+      const found = walk(path.join(ROOT, d)).filter((f) => /\.(tsx?|html)$/.test(f));
+      expect(found.length, `${d} contributed no files — the population silently shrank`).toBeGreaterThan(0);
+      return found;
+    }),
   ];
   return files.map((file) => {
     const raw = readFileSync(file, "utf8");
@@ -70,19 +93,39 @@ function listBuilderRoutes(): string[] {
   return hits;
 }
 
-describe("landing copy claims no list pulling while no list builder exists", () => {
+describe("public copy claims no list pulling while no list builder exists", () => {
   it("the predicate catches the shapes it guards (canary)", () => {
-    for (const s of ["Pull lists, run comps", "Lists pulled, replies drafted", "pulls your county list", "a county list pull arrives"]) {
+    for (const s of [
+      "Pull lists, run comps",
+      "Lists pulled, replies drafted",
+      "pulls your county list",
+      "a county list pull arrives",
+      // the four shapes found live outside the landing on 2026-11-03
+      "the core list-pull + CRM loop",
+      "so a {placeName} list pull arrives",
+      "in one dashboard, pulls the lists, and runs the mail",
+    ]) {
       expect(s).toMatch(LIST_PULL_CLAIM);
     }
     expect("Bring your county list as a CSV").not.toMatch(LIST_PULL_CLAIM);
     expect("pulls comps, scores leads").not.toMatch(LIST_PULL_CLAIM);
   });
 
-  it("no landing file claims list pulling", { timeout: 120_000 }, () => {
+  it("no public marketing file claims list pulling", { timeout: 120_000 }, () => {
     const pop = landingPopulation();
-    expect(pop.length).toBeGreaterThanOrEqual(15); // population floor
-    expect(pop.map((p) => p.file)).toEqual(expect.arrayContaining(["client/index.html", "client/src/pages/landing.tsx", "client/src/pages/landing/copy.ts"]));
+    expect(pop.length).toBeGreaterThanOrEqual(30); // population floor
+    expect(pop.map((p) => p.file)).toEqual(
+      expect.arrayContaining([
+        "client/index.html",
+        "client/src/pages/landing.tsx",
+        "client/src/pages/landing/copy.ts",
+        "client/src/pages/pricing.tsx",
+        "client/src/pages/compare/acreos-vs-dealmachine.tsx",
+        "client/src/pages/compare/acreos-vs-propstream.tsx",
+        "client/src/pages/learn/county.tsx",
+        "client/src/components/tools/LandDealCalculator.tsx",
+      ]),
+    );
     if (listBuilderRoutes().length > 0) return; // a list builder exists; the claim may return
     const offenders = pop.filter((p) => LIST_PULL_CLAIM.test(p.text)).map((p) => `${p.file}: ${p.text.match(LIST_PULL_CLAIM)?.[0]}`);
     expect(offenders).toEqual([]);
