@@ -3,6 +3,27 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-11-03 — G12 public-copy truth fixes (list-pull, stale Pro price) — on `claude/public-copy-truth-fixes` (off main `f7f2e3f`, PR open, unmerged)
+
+- **Scope.** Public marketing/comparison copy only. No server code, in-app surfaces, legal docs or pricing changes.
+- **List-pull (5 live strings removed).** Both /compare matrix notes, the shared /compare intro ("pull county data, mail the right owners"), every /learn/county page, and the /tools/calculator CTA.
+  - Evidence that nothing pulls a list: no list-builder route; `countyAssessorIngestJob` has no caller; `fetchTaxDelinquentList` is a stub.
+  - Replacement copy says only what code proves: the capped free tier (`TIER_LIMITS.free`) and CSV import (`POST /api/leads/import`).
+- **The "$41 Pro" price.** No rendered public surface showed it; all three render from `TIER_PRICES_CENTS`.
+  - The stale price lived in the CI claim record (`audit-public-claims.ts`), whose hand-written source agreed with it. The record now reads $99/$990, and the source is derived from the registry.
+  - `$41` still renders correctly as **Starter** annual (round($490/12)).
+- **Sept-2025 withdrawn claim: not found.** No claim record is dated 2025-09. The records hold 2026-09-01 and 2026-09-29 withdrawals; none of their phrases is on a public surface, and 2026-09-29 is the list-pull withdrawal fixed above.
+- **Gates.**
+  - `landingClaimsNoListPulling` now reads compare, learn, tools, pricing, the routed public pages and llms.txt. It also learned the "pull county data" shape.
+  - New `publicPricingMatchesCanonical.test.tsx` renders landing Pricing and /pricing (both cadences), the JSON-LD and the Save-% badges against the decided tiers.
+  - 14 mutants caught.
+- **Not fixed (out of scope; for the founder).**
+  - `docs/marketing/*` drafts (blog, outreach emails, LinkedIn page copy) still say "Pro $41/mo billed annually". They are not served, but the LinkedIn text may be live on LinkedIn.
+  - `acreos-landing/` (a localhost-only prototype) still says "first list pulls overnight" and "90 seconds".
+  - Stale price comments: `tier-pricing.ts` header ($20/$49/$79), `landing/Pricing.tsx:10`, and `pricing.tsx:159`.
+  - Rounding: /pricing shows Pro annual as $83/mo against a $990 bill ($82.50).
+- **Next.** Independent audit of the PR, then the founder merges. Decide whether to correct the docs/marketing drafts and the LinkedIn page.
+
 ## 2026-11-03 — Statewide point lookup gated behind the license dossiers — on `claude/statewide-lookup-clearance-gate` (off main `519b62c`, PR open, unmerged)
 
 - **Founder decision (2026-11-03).** A seeded statewide source may serve point-lookup results ONLY when its register state is cleared for lookup. It is recorded in `founder-decisions-2026-11-03-lookup-gate.md`. It closes the LQ-13/LQ-14 finding: nine statewide rows answered live lookups, owner names included, ahead of Regrid, with no gate.
