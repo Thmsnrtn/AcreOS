@@ -145,8 +145,11 @@ describe.runIf(realDbAvailable)("buy-and-hold underwriting — real database", (
     const [d] = decisions;
     expect(s).toMatchObject({ id: res.body.scenarioId, engine_id: "rental_acquisition", strategy_pack_id: "buy_and_hold", subject_type: "property", subject_id: propA });
     expect(d).toMatchObject({ id: res.body.decisionId, strategy_pack_id: "buy_and_hold", kind: "acquire", subject_id: propA });
-    // The decision cites THIS scenario — read from the frozen row, not the response.
-    expect(JSON.stringify(d)).toContain(String(s.id));
+    // The decision cites THIS scenario, and only it — read from the frozen
+    // citation column, not the response.
+    expect(d.scenarios).toHaveLength(1);
+    expect(d.scenarios[0]).toMatchObject({ scenarioId: s.id, engineId: "rental_acquisition", engineVersion: s.engine_version });
+    expect(d.scenarios[0].predicted).toEqual(s.metrics);
     expect(new Date(d.review_due_at).getTime()).toBeGreaterThan(Date.now());
 
     const { computeScenario } = await import("@shared/economics/scenario");

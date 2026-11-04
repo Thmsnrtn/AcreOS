@@ -217,7 +217,7 @@ function statusTone(s: RentalUnitStatus): "default" | "secondary" | "outline" {
  * It only chooses which property's units are READ; an id from another org
  * reads nothing, because the units endpoint is org-scoped.
  */
-export function UnitsPanel({ initialPropertyId = null }: { initialPropertyId?: number | null } = {}) {
+export function UnitsPanel({ initialPropertyId = null }: { initialPropertyId?: number | null }) {
   const { toast } = useToast();
   const [propertyId, setPropertyId] = useState<string>(initialPropertyId ? String(initialPropertyId) : "");
   const [createOpen, setCreateOpen] = useState(false);

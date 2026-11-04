@@ -105,7 +105,15 @@ async function recordCall(kind: "acquire" | "offer" | "pass") {
   expect(q("underwrite-rental-recorded"), "the decision was not recorded").not.toBeNull();
 }
 
+const fetchCalls: Array<{ url: string; method: string }> = [];
+const realFetch = globalThis.fetch;
 beforeEach(() => {
+  fetchCalls.length = 0;
+  globalThis.fetch = vi.fn(async (url: any, init?: RequestInit) => {
+    fetchCalls.push({ url: String(url), method: (init?.method ?? "GET").toUpperCase() });
+    // An empty org: every list the rentals pages read comes back empty.
+    return new Response(JSON.stringify({ leases: [], units: [], count: 0 }), { status: 200, headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
   requests.length = 0;
   h.comboboxValues.length = 0;
   container = document.createElement("div");
@@ -115,6 +123,7 @@ beforeEach(() => {
 afterEach(async () => {
   await act(async () => root.unmount());
   container.remove();
+  globalThis.fetch = realFetch;
 });
 
 describe("8. the deep link opens the desk with the property preselected", () => {
@@ -144,13 +153,21 @@ describe("9. the acquire handoff is a link a human follows — for the same prop
     expect(q("underwrite-rental-next-step")?.textContent).toMatch(/Nothing has been created there yet/);
     expect(q("underwrite-rental-next-step")?.textContent).toMatch(/nothing from these numbers is copied/);
 
-    // The whole flow made exactly two writes: the preview (computes, persists
-    // nothing) and the decision. Following the link is a GET-only navigation.
+    // The whole flow made exactly two writes, both through apiRequest: the
+    // preview (computes, persists nothing) and the decision. Nothing went
+    // around it with a raw fetch, and the handoff is a plain href — no handler.
     const writes = requests.filter((r) => r.method !== "GET").map((r) => r.url);
     expect(new Set(writes)).toEqual(new Set(["/api/scenarios/preview", "/api/buy-and-hold/underwrite"]));
     expect(writes.filter((u) => u === "/api/buy-and-hold/underwrite")).toHaveLength(1);
-    act(() => link!.click());
+    expect(fetchCalls).toEqual([]);
+
+    // Follow it, as a person would: still no write of any kind.
+    await act(async () => {
+      link!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      await new Promise((r) => setTimeout(r, 20));
+    });
     expect(requests.filter((r) => r.method !== "GET").length).toBe(writes.length);
+    expect(fetchCalls.filter((c) => c.method !== "GET")).toEqual([]);
   });
 
   it.each(["offer", "pass"] as const)("%s: no pipeline step is offered", async (kind) => {
@@ -180,6 +197,30 @@ describe("9. the units surface the link opens only READS the carried property", 
     } finally {
       globalThis.fetch = realFetch;
     }
+  });
+});
+
+describe("9. /leases carries the deep-linked property into the Units tab", () => {
+  it.each([
+    ["tab=units&propertyId=7", 7],
+    ["tab=units", null],
+    ["tab=units&propertyId=abc", null],
+  ])("%s → UnitsPanel initialPropertyId %s", async (search, expected) => {
+    vi.resetModules();
+    const seen: Array<number | null | undefined> = [];
+    vi.doMock("../../client/src/components/rentals/units-panel", () => ({
+      UnitsPanel: (p: { initialPropertyId?: number | null }) => {
+        seen.push(p.initialPropertyId);
+        return React.createElement("div", { "data-testid": "units-panel-stub" });
+      },
+    }));
+    h.search = search;
+    const { default: LeasesPage } = await import("../../client/src/pages/leases");
+    await render(React.createElement(LeasesPage));
+    await settle();
+    expect(q("units-panel-stub"), "the Units tab did not open from ?tab=units").not.toBeNull();
+    expect(seen.at(-1)).toBe(expected);
+    vi.doUnmock("../../client/src/components/rentals/units-panel");
   });
 });
 
