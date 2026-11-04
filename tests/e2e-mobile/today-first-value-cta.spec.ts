@@ -69,9 +69,33 @@ async function onboard(page: Page, businessType: "note_investor" | "land_flipper
   if (businessType === "note_investor") await clickIfVisible(page, '[data-testid^="option-noterole-"]', 2_000);
   await page.locator('[data-testid="button-continue-workspace"]').click();
   await page.getByRole("button", { name: "Set up data later" }).click();
-  const finish = page.locator('[data-testid="button-go-to-today"], [data-testid="button-finish-onboarding"]').first();
+  // The vertical's own finish (e.g. the note book). Not "Go to Today instead":
+  // that button currently bounces a fresh user back to step 1 (reported in
+  // docs/evidence/2026-11-03/p0-front-door/README.md, not fixed here).
+  const finish = page.locator('[data-testid="button-finish-onboarding"]');
   await finish.waitFor({ state: "visible", timeout: 15_000 });
   await finish.click();
+  // Let the wizard's own client-side navigation land before this test
+  // navigates — a page.goto racing it is interrupted ("Navigation … is
+  // interrupted by another navigation to /money").
+  // The wizard can pass through more than one URL on the way (measured: a
+  // goto issued on the first non-wizard URL was still interrupted by the
+  // push to /money), so wait until the URL has held still for a second.
+  let last = "";
+  let stableSince = Date.now();
+  await expect
+    .poll(
+      () => {
+        const now = page.url();
+        if (now !== last) {
+          last = now;
+          stableSince = Date.now();
+        }
+        return !new URL(now).pathname.startsWith("/onboarding") && Date.now() - stableSince >= 1_000;
+      },
+      { timeout: 30_000, intervals: [250] },
+    )
+    .toBe(true);
   await expect
     .poll(async () => (await page.request.get("/api/me/needs-onboarding")).json(), { timeout: 15_000 })
     .toMatchObject({ needsOnboarding: false });
