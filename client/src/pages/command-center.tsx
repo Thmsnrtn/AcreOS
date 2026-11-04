@@ -7,6 +7,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { InPaxComposerDock, PAX_COMPOSER_PLACEHOLDER } from "@/components/pax/pax-composer-dock";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -1054,6 +1055,10 @@ export default function CommandCenterPage() {
                   </div>
                 </ScrollArea>
 
+                {/* On the Pax door this block renders in PaxPage's sticky
+                    composer dock (D11 fix 1) — same element, same state,
+                    laid out where the first screen can see it. */}
+                <InPaxComposerDock>
                 <div className="p-4 border-t border-border">
                   <div className="max-w-3xl mx-auto flex flex-col gap-2">
                     {/* Host 2 of 4: the pinned queue, desktop and mobile. */}
@@ -1136,7 +1141,7 @@ export default function CommandCenterPage() {
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
                         onKeyDown={handleKeyDown}
-                        placeholder={isImageMode ? "Describe the image…" : "Ask Pax anything…"}
+                        placeholder={isImageMode ? "Describe the image…" : PAX_COMPOSER_PLACEHOLDER}
                         className="flex-1 min-w-0 min-h-[44px] sm:min-h-[48px] max-h-32 resize-none"
                         disabled={isStreaming}
                         data-testid="input-message"
@@ -1186,6 +1191,7 @@ export default function CommandCenterPage() {
                     </div>
                   </div>
                 </div>
+                </InPaxComposerDock>
               </div>
             </div>
           )}

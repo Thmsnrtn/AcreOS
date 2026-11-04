@@ -409,6 +409,24 @@ test.describe("CJ1: signup → onboarding → first value", () => {
       expect(composerVisible, "Pax composer affordance missing on /ai").toBe(
         true,
       );
+      // isVisible() is true for a box ANYWHERE in the document — it passed
+      // with the composer 900px below a phone's fold (D11 fix 1, Step 0
+      // 2026-11-03). A person finds the composer only on the first screen:
+      // its whole box inside the viewport, with nothing painted over it.
+      const firstSight = await composer.evaluate((el) => {
+        const r = el.getBoundingClientRect();
+        const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        return {
+          inViewport: r.top >= 0 && r.bottom <= window.innerHeight,
+          topmost: !!hit && (hit === el || el.contains(hit)),
+          top: Math.round(r.top),
+          viewportHeight: window.innerHeight,
+        };
+      }).catch(() => null);
+      expect(
+        firstSight?.inViewport && firstSight?.topmost,
+        `Pax composer not on the first screen of /ai: ${JSON.stringify(firstSight)}`,
+      ).toBe(true);
       stepDurations["pax-mount"] = Date.now() - t0;
     });
 
