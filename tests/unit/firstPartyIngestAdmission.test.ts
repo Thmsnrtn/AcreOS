@@ -33,7 +33,7 @@ import {
   type StatewideBuildSpec,
 } from "../../server/services/landData/statewideCadastral";
 import { readGeoParquetRows } from "../../server/services/landData/geoParquet";
-import { stripComments } from "../helpers/stripComments";
+import { REPO_SWEEP_TIMEOUT_MS, stripComments } from "../helpers/stripComments";
 import {
   isClearedForLookup,
   statewideIngestAdmission,
@@ -41,6 +41,9 @@ import {
   type StatewideSourceEntry,
 } from "../../server/services/openData/statewideSourceRegistry";
 import { effectiveDossier, ingestAdmission, policyFromDossier, type SourceDossier } from "../../shared/openData/sourcePolicy";
+
+// The population pins strip every server/ file: a repo sweep declares its budget.
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 const TODAY = new Date("2026-11-03T21:00:00Z");
 const LAPSED = new Date("2027-06-30T00:00:00Z");
