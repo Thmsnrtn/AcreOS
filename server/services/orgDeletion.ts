@@ -45,11 +45,22 @@
  *
  * SAFETY: founder-gated at the route; requires the exact org name typed
  * back as confirmation; refuses founder-flagged orgs outright.
+ *
+ * LEGAL HOLD (2026-11-03, legal-run Leg 6.1 / LQ-07 §4.3): an org with ANY
+ * active legal hold is refused BEFORE a single row is touched, mirroring
+ * gdprService.anonymizeUser() — erasing an org destroys every resource the
+ * hold could cover, and `legal_holds` is itself a tenant table the sweep
+ * would otherwise delete first. The refusal throws LegalHoldViolationError
+ * (423 at the route), is logged at error level and written to audit_events.
+ * It is never a silent skip.
  */
 
 import { db } from "../db";
 import { sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { auditLog } from "../utils/auditLog";
+import { getActiveHoldSummary, LegalHoldViolationError } from "./legalHold";
+import { deleteAllOrgObjects, documentStoreConfigured } from "./documentStore";
 
 /** Tables the sweep must NOT touch, with the reason on the same line. */
 const RETAINED_TABLES = new Set<string>([
@@ -68,6 +79,12 @@ export interface OrgDeletionResult {
   residualReasons: Record<string, string>;
   orgRowDeleted: boolean;
   passes: number;
+  /**
+   * Stored document/photo BYTES (documentStore, S3 `org/<orgId>/`). "deleted"
+   * with a count when the store is configured; "store_not_configured" when it
+   * is dormant (no bytes can have been written through it while dormant).
+   */
+  documentBytes: { status: "deleted"; objectsDeleted: number } | { status: "store_not_configured" };
 }
 
 /**
@@ -186,6 +203,39 @@ export async function deleteOrganization(orgId: number): Promise<OrgDeletionResu
   if (!orgRow) throw new Error(`deleteOrganization: org ${orgId} not found`);
   if (orgRow.is_founder) throw new Error(`deleteOrganization: refusing to delete a founder org`);
 
+  const hold = await getActiveHoldSummary(orgId);
+  if (hold) {
+    logger.error(
+      `[org-deletion] erasure for org ${orgId} REFUSED — active legal hold ${hold.caseRef} (${hold.id}); nothing was deleted`,
+      undefined,
+      { metadata: { orgId, holdId: hold.id, caseRef: hold.caseRef, scope: hold.scope } },
+    );
+    await auditLog({
+      actor: { userId: null },
+      action: "org_erasure.refused_legal_hold",
+      target: { type: "organization", id: orgId },
+      metadata: { holdId: hold.id, caseRef: hold.caseRef, scope: hold.scope },
+    });
+    throw new LegalHoldViolationError(orgId, "organization", orgId, hold);
+  }
+
+  // Stored bytes first (Leg 6.4). Tenancy is in the S3 key, so the org prefix
+  // is all of this org's bytes regardless of which rows still reference them.
+  // A failure stops the erasure BEFORE any row is deleted, so it can re-run.
+  let documentBytes: OrgDeletionResult["documentBytes"];
+  if (documentStoreConfigured()) {
+    try {
+      documentBytes = { status: "deleted", ...(await deleteAllOrgObjects(orgId)) };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error(`[org-deletion] erasure for org ${orgId} STOPPED — stored document bytes could not be deleted; no rows were deleted`, err instanceof Error ? err : undefined);
+      throw new OrgErasureError(`deleteOrganization: document bytes for org ${orgId} could not be deleted: ${message}`, { document_store: message });
+    }
+  } else {
+    documentBytes = { status: "store_not_configured" };
+    logger.warn(`[org-deletion] org ${orgId}: document store not configured — no stored bytes to delete`);
+  }
+
   const tables = await tenantScopedTables(orgId);
   const predicateByTable = new Map(tables.map((t) => [t.table, t.predicate]));
   const deletedRowsByTable: Record<string, number> = {};
@@ -269,12 +319,14 @@ export async function deleteOrganization(orgId: number): Promise<OrgDeletionResu
     residualReasons,
     orgRowDeleted,
     passes,
+    documentBytes,
   };
 
   logger.info(`[org-deletion] org ${orgId} deletion completed`, {
     metadata: {
       orgRowDeleted,
       passes,
+      documentBytes,
       tablesCleared: Object.keys(deletedRowsByTable).length,
       rowsDeleted: Object.values(deletedRowsByTable).reduce((a, b) => a + b, 0),
       residualTables,

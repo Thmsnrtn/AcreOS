@@ -754,7 +754,11 @@ function startCustomerUnitEconomicsJob() {
 // Daily wall-clock 01:00 UTC.
 // ============================================================================
 function startApiTelemetryRollupJob() {
-  const ONE_HOUR_MS = 60 * 60 * 1000;
+  // Ticks every 5 minutes so the 01:00–01:05 window is hit every day. It
+  // used to tick hourly against the same 5-minute window, so it fired only
+  // when the process happened to boot in minutes :00–:04 — on most days it
+  // never ran (legal-run Leg 6.3). The job lock keeps it to one run a day.
+  const TICK_MS = 5 * 60 * 1000;
   const TTL_SECONDS = 50 * 60;
 
   log('Registering api_telemetry rollup + purge job (daily 01:00 UTC)', 'api-telemetry-rollup');
@@ -773,7 +777,7 @@ function startApiTelemetryRollupJob() {
         log(`api_telemetry rollup failed: ${err}`, 'api-telemetry-rollup');
       });
     }
-  }, ONE_HOUR_MS);
+  }, TICK_MS);
 }
 
 // ============================================================================

@@ -31,7 +31,30 @@ const state = {
   /** table → a non-FK error its DELETE throws */
   brokenTables: {} as Record<string, string>,
   deleteSql: [] as string[],
+  /** Leg 6.1: the org's active legal hold, if any. */
+  hold: null as null | { id: string; caseRef: string; scope: string; placedAt: Date },
+  /** Leg 6.4: document store configuration + byte deletion. */
+  storeConfigured: false,
+  storeFails: false,
+  byteDeletes: [] as number[],
+  /** Order of destructive steps, to prove bytes go before rows. */
+  order: [] as string[],
 };
+
+vi.mock("../../server/services/legalHold", async () => {
+  const actual = await vi.importActual<typeof import("../../server/services/legalHold")>("../../server/services/legalHold");
+  return { ...actual, getActiveHoldSummary: async () => state.hold };
+});
+vi.mock("../../server/utils/auditLog", () => ({ auditLog: vi.fn(async () => undefined) }));
+vi.mock("../../server/services/documentStore", () => ({
+  documentStoreConfigured: () => state.storeConfigured,
+  deleteAllOrgObjects: async (orgId: number) => {
+    state.order.push("bytes");
+    if (state.storeFails) throw new Error("AccessDenied");
+    state.byteDeletes.push(orgId);
+    return { objectsDeleted: 3 };
+  },
+}));
 
 vi.mock("../../server/utils/logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -66,6 +89,7 @@ vi.mock("../../server/db", () => ({
       if (m) {
         const table = m[1];
         state.deleteAttempts.push(table);
+        state.order.push(`rows:${table}`);
         state.deleteSql.push(q);
         if (state.brokenTables[table]) throw Object.assign(new Error(state.brokenTables[table]), { code: "42883" });
         const blockingChild = state.fkBlocks[table];
@@ -94,6 +118,70 @@ beforeEach(() => {
   state.keyTypes = {};
   state.brokenTables = {};
   state.deleteSql = [];
+  state.hold = null;
+  state.storeConfigured = false;
+  state.storeFails = false;
+  state.byteDeletes = [];
+  state.order = [];
+});
+
+describe("deleteOrganization — legal hold (legal-run Leg 6.1)", () => {
+  it("an org under an active legal hold is REFUSED with the hold error and nothing is deleted", async () => {
+    state.rows = { leads: 4, legal_holds: 1 };
+    state.storeConfigured = true;
+    state.hold = { id: "h-1", caseRef: "CASE-9", scope: "org_wide", placedAt: new Date() };
+    await expect(deleteOrganization(42)).rejects.toMatchObject({ name: "LegalHoldViolationError", code: "LEGAL_HOLD_ACTIVE" });
+    expect(state.deleteAttempts).toEqual([]);
+    expect(state.byteDeletes).toEqual([]);
+    expect(state.orgRowDeleted).toBe(false);
+    expect(state.ledgerDetached).toBe(false);
+    expect(state.rows.legal_holds).toBe(1);
+  });
+
+  it("the refusal is recorded in audit_events", async () => {
+    const { auditLog } = await import("../../server/utils/auditLog");
+    state.hold = { id: "h-2", caseRef: "CASE-10", scope: "lead_specific", placedAt: new Date() };
+    await expect(deleteOrganization(42)).rejects.toThrow(/CASE-10/);
+    expect(auditLog).toHaveBeenCalledWith(expect.objectContaining({
+      action: "org_erasure.refused_legal_hold",
+      target: { type: "organization", id: 42 },
+    }));
+  });
+
+  it("no hold: erasure proceeds exactly as before", async () => {
+    state.rows = { leads: 2 };
+    const result = await deleteOrganization(42);
+    expect(result.orgRowDeleted).toBe(true);
+    expect(result.deletedRowsByTable.leads).toBe(2);
+  });
+});
+
+describe("deleteOrganization — stored document bytes (legal-run Leg 6.4)", () => {
+  it("store configured: every object under the org prefix is deleted BEFORE any row, and the count is reported", async () => {
+    state.rows = { leads: 2, documents: 1 };
+    state.storeConfigured = true;
+    const result = await deleteOrganization(42);
+    expect(state.byteDeletes).toEqual([42]);
+    expect(state.order[0]).toBe("bytes");
+    expect(result.documentBytes).toEqual({ status: "deleted", objectsDeleted: 3 });
+  });
+
+  it("byte deletion fails: the erasure STOPS loudly before any row is deleted and the org row is kept", async () => {
+    state.rows = { leads: 2 };
+    state.storeConfigured = true;
+    state.storeFails = true;
+    await expect(deleteOrganization(42)).rejects.toMatchObject({ name: "OrgErasureError" });
+    expect(state.deleteAttempts).toEqual([]);
+    expect(state.orgRowDeleted).toBe(false);
+  });
+
+  it("store dormant: reported as store_not_configured, rows erased", async () => {
+    state.rows = { leads: 1 };
+    const result = await deleteOrganization(42);
+    expect(result.documentBytes).toEqual({ status: "store_not_configured" });
+    expect(state.byteDeletes).toEqual([]);
+    expect(result.orgRowDeleted).toBe(true);
+  });
 });
 
 describe("deleteOrganization", () => {

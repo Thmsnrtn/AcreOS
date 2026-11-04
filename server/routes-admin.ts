@@ -1085,6 +1085,17 @@ export function registerAdminRoutes(app: Express): void {
           : "Erasure complete. audit_events retained under GDPR Art. 17(3)(b); financial_ledger detached (org id nulled).",
       });
     } catch (err: any) {
+      // An active legal hold refuses the erasure before anything is deleted
+      // (orgDeletion.ts). Surface it as 423 with the case ref, not a 500.
+      if (err?.name === "LegalHoldViolationError") {
+        return Errors.legalHoldActive(res, err.message, {
+          holdId: err.hold?.id,
+          caseRef: err.hold?.caseRef,
+          scope: err.hold?.scope,
+          resourceType: err.resourceType,
+          resourceId: err.resourceId,
+        });
+      }
       logger.error("Org deletion error", err instanceof Error ? err : undefined);
       Errors.internal(res, err);
     }
