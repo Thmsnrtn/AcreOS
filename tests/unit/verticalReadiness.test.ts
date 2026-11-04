@@ -113,7 +113,10 @@ const evidence: VerticalEvidence = measured;
  */
 // 13 → 12 on 2026-10-21: land released. Buy-and-hold's decision route is held
 // back (claude/buy-and-hold-underwriting) until its journey is evidenced.
-const MATURITY_OVERCLAIM_BASELINE = 12;
+// 12 → 11 on 2026-11-03: buy-and-hold's decision desk re-mounted on main
+// (server/routes-buy-and-hold-underwriting.ts), so its measured evidence
+// reaches `decided`.
+const MATURITY_OVERCLAIM_BASELINE = 11;
 
 describe("the evidence scan is real (vacuity guards, first)", () => {
   it("found the workflow templates the engine defines", () => {
