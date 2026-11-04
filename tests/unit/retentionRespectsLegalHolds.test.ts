@@ -70,10 +70,13 @@ describe("api_telemetry_samples has ONE retention owner (Leg 6.3)", () => {
     const { readFileSync } = await import("node:fs");
     const { resolve } = await import("node:path");
     const { stripComments } = await import("../helpers/stripComments");
-    const src = stripComments(readFileSync(resolve(__dirname, "../../server/jobs/runScheduledJobs.ts"), "utf8"));
+    const src = stripComments(readFileSync(resolve(__dirname, "../../server/jobs/apiTelemetryRollupJob.ts"), "utf8"));
     const start = src.indexOf("function startApiTelemetryRollupJob");
     expect(start).toBeGreaterThan(-1);
-    const body = src.slice(start, src.indexOf("\n}\n", start));
+    const body = src.slice(start);
+    // and it is still started by the scheduler
+    const sched = stripComments(readFileSync(resolve(__dirname, "../../server/jobs/runScheduledJobs.ts"), "utf8"));
+    expect(sched).toMatch(/\n\s*startApiTelemetryRollupJob\(\);/);
     expect(body).toMatch(/getUTCHours\(\) === 1 && now\.getUTCMinutes\(\) < 5/);
     const m = /const TICK_MS = (\d+) \* 60 \* 1000;/.exec(body);
     expect(m, "rollup tick constant not found").not.toBeNull();
