@@ -13063,6 +13063,20 @@ $mig0284$`,
      END IF;
    END
    $mig0300$`,
+  // 0301 — E2 slice 1 leg 2: pax_morning_briefs (one sectioned brief per org per local day; dismiss is a stamp; archive + reopen on /today).
+  // Mirrors migrations/0301_pax_morning_briefs.sql.
+  `CREATE TABLE IF NOT EXISTS "pax_morning_briefs" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer NOT NULL REFERENCES "organizations" ("id") ON DELETE CASCADE,
+     "brief_date" text NOT NULL,
+     "headline" text,
+     "sections" jsonb NOT NULL,
+     "dismissed_at" timestamp,
+     "dismissed_by" text,
+     "created_at" timestamp NOT NULL DEFAULT now(),
+     "updated_at" timestamp NOT NULL DEFAULT now()
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "pax_morning_briefs_org_date_idx" ON "pax_morning_briefs" ("organization_id", "brief_date")`,
 ];
 
 // The statement set this run executes. Default: everything (the production

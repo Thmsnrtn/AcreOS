@@ -38,7 +38,7 @@ import { ReceiptsStrip, type ReceiptItem } from "@/components/today/ReceiptsStri
 import { trackEvent } from "@/lib/telemetry";
 import { CashStrip } from "@/components/today/CashStrip";
 import { TodayActivityFeed } from "@/components/today/ActivityFeed";
-import { MorningBrief } from "@/components/today/MorningBrief";
+import { MorningBrief, type BriefCard } from "@/components/today/MorningBrief";
 import { ParcelAlerts } from "@/components/today/ParcelAlerts";
 import { OutcomePrompt } from "@/components/today/OutcomePrompt";
 import { FirstDealCard } from "@/components/today/FirstDealCard";
@@ -49,6 +49,10 @@ import "./today.css";
 interface TodayPayload {
   queue: DecisionItem[];
   brief: string | null;
+  // E2 slice 1 leg 2: the sectioned brief (what changed / what needs you /
+  // what Pax prepared), its archive id and dismissal. Absent on an older
+  // server; the one-line `brief` above still renders then.
+  briefCard?: BriefCard | null;
   // Finishability (Tier 3C): real completions today (today_queue_state
   // "done" rows since the user's local midnight) + the day's total.
   progress?: { cleared: number; total: number };
@@ -774,7 +778,7 @@ export default function TodayPage() {
       {/* ── Morning brief — collapsed queue preamble (Tier 3C) ───────── */}
       {/* One-line disclosure directly above the queue, not a separate
           destination. Expands in place; Pax controls live behind it. */}
-      {!showEmptyState && !todayError && <MorningBrief brief={today?.brief ?? null} />}
+      {!showEmptyState && !todayError && <MorningBrief brief={today?.brief ?? null} card={today?.briefCard ?? null} />}
 
       {/* ── Receipts strip (Tier 3C) ─────────────────────────────────── */}
       {/* Completed events since the last visit, each traceable to real
