@@ -44,6 +44,18 @@ const DECIDED = [
 ] as const;
 
 const fmt = (n: number) => `$${n.toLocaleString("en-US")}`;
+/**
+ * The "Save N%" badge is a literal on both surfaces; N must be what the
+ * decided yearly prices actually save, and the same for every paid tier.
+ */
+const DECIDED_SAVE_PCT = (() => {
+  const pcts = new Set(
+    DECIDED.filter((t) => t.monthly > 0).map((t) => Math.round((1 - t.yearly / (12 * t.monthly)) * 100)),
+  );
+  expect(pcts.size, "paid tiers save different percentages — one badge cannot be true").toBe(1);
+  return [...pcts][0];
+})();
+
 /** Annual cadence shows the monthly equivalent of the yearly price. */
 const annualMonthly = (t: (typeof DECIDED)[number]) => (t.monthly === 0 ? 0 : Math.round(t.yearly / 12));
 
@@ -110,6 +122,7 @@ describe("landing Pricing section renders the decided tiers", () => {
     expect(texts(el, ".lp-tier-billed")).toEqual(
       DECIDED.map((t) => (t.monthly === 0 ? "Free forever" : `Billed ${fmt(t.yearly)} annually`)),
     );
+    expect(texts(el, ".lp-pricing-save")).toEqual([`Save ${DECIDED_SAVE_PCT}%`]);
   });
 
   it("monthly cadence", () => {
@@ -129,6 +142,9 @@ describe("/pricing page renders the decided tiers", () => {
     expect(priceSpans(el)).toEqual(DECIDED.map((t) => fmt(annualMonthly(t))));
     const yearLines = texts(el, "p").filter((s) => /\/year$/.test(s));
     expect(yearLines).toEqual(DECIDED.filter((t) => t.yearly > 0).map((t) => `${fmt(t.yearly)}/year`));
+    const saveBadges = texts(el, "div, span").filter((s) => /^Save \d+%$/.test(s));
+    expect(saveBadges.length, "no Save-% badge rendered — the check below would be vacuous").toBeGreaterThan(0);
+    expect([...new Set(saveBadges)]).toEqual([`Save ${DECIDED_SAVE_PCT}%`]);
   });
 
   it("monthly cadence", () => {

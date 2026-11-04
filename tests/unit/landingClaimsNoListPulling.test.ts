@@ -8,18 +8,21 @@
  *
  * Coupled to the code: while no server route path names a list builder /
  * list pull, no file in the public population may claim list pulling. The
- * population is ENUMERATED (index.html + landing.tsx + pricing.tsx + every
- * file under pages/landing/, pages/compare/, pages/learn/, pages/tools/ and
- * components/tools/), comments stripped, with a floor so a renamed directory
- * cannot empty it.
+ * population is ENUMERATED (index.html + llms.txt + the routed public pages in
+ * PUBLIC_FILES + every file under pages/landing/, pages/compare/,
+ * pages/learn/, pages/tools/ and components/tools/), comments stripped, with
+ * a floor so a renamed directory cannot empty it. Legal/ops pages (security,
+ * status, sub-processors, terms, privacy) are not marketing and not listed.
  *
  * 2026-11-03 (G12 public-copy truth fixes): the population was the landing
  * alone, and the claim was still live on four public pages outside it — both
  * /compare pages ("core list-pull + CRM loop"), every /learn/county page ("a
- * <county> list pull arrives"), and the /tools/calculator CTA ("pulls the
- * lists"). Third law: a rule installed on one directory is a claim about that
- * directory. Every public marketing directory is now enumerated, and each
- * must contribute at least one file.
+ * <county> list pull arrives"), the /tools/calculator CTA ("pulls the
+ * lists"), and the shared /compare intro ("pull county data, mail the right
+ * owners" — the same county-list sourcing in words the predicate did not
+ * know). Third law: a rule installed on one directory is a claim about that
+ * directory. The public marketing directories and routed public pages are
+ * now enumerated, each required to exist and contribute.
  */
 
 import { describe, it, expect, vi } from "vitest";
@@ -54,11 +57,26 @@ const PUBLIC_DIRS = [
   "client/src/components/tools",
 ] as const;
 
+/** Routed public (unauthenticated) marketing pages outside those directories. */
+const PUBLIC_FILES = [
+  "client/index.html",
+  "client/public/.well-known/llms.txt",
+  "client/src/pages/landing.tsx",
+  "client/src/pages/pricing.tsx",
+  "client/src/pages/why.tsx",
+  "client/src/pages/public-county-guide.tsx",
+  "client/src/pages/public-parcel-report.tsx",
+  "client/src/pages/glossary.tsx",
+  "client/src/pages/transparency.tsx",
+  "client/src/pages/changelog.tsx",
+  "client/src/pages/founding-member.tsx",
+  "client/src/pages/field-notes-archive.tsx",
+  "client/src/pages/field-note-detail.tsx",
+] as const;
+
 function landingPopulation(): { file: string; text: string }[] {
   const files = [
-    path.join(ROOT, "client/index.html"),
-    path.join(ROOT, "client/src/pages/landing.tsx"),
-    path.join(ROOT, "client/src/pages/pricing.tsx"),
+    ...PUBLIC_FILES.map((f) => path.join(ROOT, f)),
     ...PUBLIC_DIRS.flatMap((d) => {
       const found = walk(path.join(ROOT, d)).filter((f) => /\.(tsx?|html)$/.test(f));
       expect(found.length, `${d} contributed no files — the population silently shrank`).toBeGreaterThan(0);
@@ -67,12 +85,19 @@ function landingPopulation(): { file: string; text: string }[] {
   ];
   return files.map((file) => {
     const raw = readFileSync(file, "utf8");
-    return { file: path.relative(ROOT, file), text: file.endsWith(".html") ? stripHtmlComments(raw) : stripComments(raw) };
+    // .txt is prose with no comment syntax; read it whole.
+    const text = file.endsWith(".html") ? stripHtmlComments(raw) : file.endsWith(".txt") ? raw : stripComments(raw);
+    return { file: path.relative(ROOT, file), text };
   });
 }
 
-/** The claim, in its observed shapes: "Pull lists", "pulls your county list", "Lists pulled", "list pull". */
-const LIST_PULL_CLAIM = /\bpull(?:s|ed|ing)?\s+(?:[\w-]+\s+){0,2}lists?\b|\blists?\s+(?:are\s+|get\s+)?pulled\b|\blist[\s-]+pulls?\b/i;
+/**
+ * The claim, in its observed shapes: "Pull lists", "pulls your county list",
+ * "Lists pulled", "list pull", and "pull county data/records/owners" (the
+ * /compare intro's phrasing of the same sourcing claim, 2026-11-03).
+ */
+const LIST_PULL_CLAIM =
+  /\bpull(?:s|ed|ing)?\s+(?:[\w-]+\s+){0,2}lists?\b|\blists?\s+(?:are\s+|get\s+)?pulled\b|\blist[\s-]+pulls?\b|\bpull(?:s|ed|ing)?\s+(?:in\s+)?county\s+(?:data|records|owners?)\b/i;
 
 /** Any server route whose path names a list builder or list pull. */
 function listBuilderRoutes(): string[] {
@@ -104,22 +129,25 @@ describe("public copy claims no list pulling while no list builder exists", () =
       "the core list-pull + CRM loop",
       "so a {placeName} list pull arrives",
       "in one dashboard, pulls the lists, and runs the mail",
+      "built for one loop: pull county data, mail the right owners",
     ]) {
       expect(s).toMatch(LIST_PULL_CLAIM);
     }
     expect("Bring your county list as a CSV").not.toMatch(LIST_PULL_CLAIM);
     expect("pulls comps, scores leads").not.toMatch(LIST_PULL_CLAIM);
+    expect("import your county list, mail the right owners").not.toMatch(LIST_PULL_CLAIM);
   });
 
   it("no public marketing file claims list pulling", { timeout: 120_000 }, () => {
     const pop = landingPopulation();
-    expect(pop.length).toBeGreaterThanOrEqual(30); // population floor
+    expect(pop.length).toBeGreaterThanOrEqual(40); // population floor
     expect(pop.map((p) => p.file)).toEqual(
       expect.arrayContaining([
         "client/index.html",
         "client/src/pages/landing.tsx",
         "client/src/pages/landing/copy.ts",
         "client/src/pages/pricing.tsx",
+        "client/src/pages/compare/ComparisonPage.tsx",
         "client/src/pages/compare/acreos-vs-dealmachine.tsx",
         "client/src/pages/compare/acreos-vs-propstream.tsx",
         "client/src/pages/learn/county.tsx",
