@@ -7,7 +7,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { InPaxComposerDock, PAX_COMPOSER_PLACEHOLDER } from "@/components/pax/pax-composer-dock";
+import { createPortal } from "react-dom";
+import type { ReactNode } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -279,7 +280,26 @@ function PaxNeedsYouStrip() {
   );
 }
 
-export default function CommandCenterPage() {
+/**
+ * The composer's placeholder, in the UI design's own words (§3.1: the
+ * placeholder teaches by example). Pinned verbatim — a test that paraphrases
+ * it means the product copy drifted.
+ */
+const PAX_COMPOSER_PLACEHOLDER = "Ask about a note, a parcel, or what changed this week";
+
+/**
+ * Render the composer into PaxPage's sticky dock when one is provided
+ * (D11 fix 1, see components/pax/pax-composer-dock.tsx), otherwise in place.
+ * Takes the element as a prop rather than importing a shared module: this page
+ * is a lazy chunk loaded only from PaxPage, and a module both import gets
+ * folded into PaxPage's chunk, which then stops being a chunk fronted by
+ * pages/pax.tsx (scripts/check-route-closure.mjs).
+ */
+function InComposerDock({ dock, children }: { dock: HTMLElement | null | undefined; children: ReactNode }) {
+  return dock ? createPortal(children, dock) : <>{children}</>;
+}
+
+export default function CommandCenterPage({ composerDock }: { composerDock?: HTMLElement | null } = {}) {
   useDocumentTitle("Pax");
   const queryClient = useQueryClient();
   const { isMobile } = useIsMobile();
@@ -1058,7 +1078,7 @@ export default function CommandCenterPage() {
                 {/* On the Pax door this block renders in PaxPage's sticky
                     composer dock (D11 fix 1) — same element, same state,
                     laid out where the first screen can see it. */}
-                <InPaxComposerDock>
+                <InComposerDock dock={composerDock}>
                 <div className="p-4 border-t border-border">
                   <div className="max-w-3xl mx-auto flex flex-col gap-2">
                     {/* Host 2 of 4: the pinned queue, desktop and mobile. */}
@@ -1191,7 +1211,7 @@ export default function CommandCenterPage() {
                     </div>
                   </div>
                 </div>
-                </InPaxComposerDock>
+                </InComposerDock>
               </div>
             </div>
           )}

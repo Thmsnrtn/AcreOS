@@ -11,7 +11,9 @@
  *
  * The dock is a `position: sticky; bottom: …` slot rendered by PaxPage as a
  * child of the conversation region, whose top is inside the first screen on
- * every viewport. CommandCenterPage portals its composer block into the slot,
+ * every viewport. PaxPage hands the slot to CommandCenterPage as a prop and
+ * CommandCenterPage portals its composer block into it (it does not import
+ * this module — see the note on InComposerDock in command-center.tsx),
  * so the composer keeps all of its own state, handlers and behaviour — only
  * WHERE it is laid out changes. While the region extends past the viewport the
  * composer pins to the viewport bottom (above the mobile bottom nav when that
@@ -21,19 +23,7 @@
  * Sticky needs the page's `<main>` not to be a scroll container — PaxPage
  * passes `stickyToViewport` to PageShell for that (see page-shell.tsx).
  */
-import { createContext, useContext, type ReactNode } from "react";
-import { createPortal } from "react-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
-
-/**
- * The composer's placeholder, in the UI design's own words (§3.1: the
- * placeholder teaches by example). Pinned verbatim — a test that paraphrases
- * it means the product copy drifted.
- */
-export const PAX_COMPOSER_PLACEHOLDER = "Ask about a note, a parcel, or what changed this week";
-
-/** The dock element, once mounted. Null outside the Pax door. */
-export const PaxComposerDockContext = createContext<HTMLElement | null>(null);
 
 /**
  * Bottom offset that clears the fixed mobile bottom nav. Mirrors that nav's
@@ -58,11 +48,3 @@ export function PaxComposerDock({ onElement }: { onElement: (el: HTMLElement | n
   );
 }
 
-/**
- * Render `children` into the dock when the Pax door provides one, otherwise
- * in place (any other host keeps the old inline layout).
- */
-export function InPaxComposerDock({ children }: { children: ReactNode }) {
-  const dock = useContext(PaxComposerDockContext);
-  return dock ? createPortal(children, dock) : <>{children}</>;
-}

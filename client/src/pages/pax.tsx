@@ -22,7 +22,7 @@ import { EmptyState } from "@/components/empty-state";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { PaxOverflowMenu } from "@/components/pax/pax-overflow-menu";
 import { PaxDisclosureRail } from "@/components/pax/pax-disclosure-rail";
-import { PaxComposerDock, PaxComposerDockContext } from "@/components/pax/pax-composer-dock";
+import { PaxComposerDock } from "@/components/pax/pax-composer-dock";
 import { PullToRefresh } from "@/components/mobile/PullToRefresh";
 import { DURATIONS, EASINGS } from "@/lib/motion-tokens";
 import { staggerContainer, staggerItem } from "@/lib/animations";
@@ -619,9 +619,7 @@ export default function PaxPage() {
               chat). The editorial header above stays rendered regardless. */}
           <ErrorBoundary fallback={<ChatErrorFallback />}>
             <Suspense fallback={<ChatFallback />}>
-              <PaxComposerDockContext.Provider value={composerDock}>
-                <CommandCenterPage />
-              </PaxComposerDockContext.Provider>
+              <CommandCenterPage composerDock={composerDock} />
             </Suspense>
           </ErrorBoundary>
           {/* Sticky composer slot — pinned to the bottom of the screen while
