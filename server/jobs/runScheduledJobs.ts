@@ -773,8 +773,12 @@ function startApiTelemetryRollupJob() {
           `[api-telemetry-rollup] upserted=${r.rollupRowsUpserted} deleted=${r.sourceRowsDeleted} retentionDays=${r.retentionDays}`,
           'api-telemetry-rollup',
         );
+        jobSupervisor.notifyResult('api_telemetry_rollup', 24 * 60 * 60 * 1000, true);
       }).catch((err) => {
+        // The rollup is now the ONLY bound on api_telemetry_samples (Leg 6.3),
+        // so a failing run must reach the supervisor, not just the log.
         log(`api_telemetry rollup failed: ${err}`, 'api-telemetry-rollup');
+        jobSupervisor.notifyResult('api_telemetry_rollup', 24 * 60 * 60 * 1000, false, undefined, String(err));
       });
     }
   }, TICK_MS);
@@ -1584,7 +1588,16 @@ async function processDataRetentionJob() {
     const { runDataRetention } = await import("./dataRetention");
     const result = await runDataRetention();
     log(`Data retention: purged ${result.purged} total rows`, 'data-retention');
-    jobSupervisor.notifyResult('data_retention', 24 * 60 * 60 * 1000, true);
+    // A run where rules failed (including the fail-closed legal-hold case) is
+    // not a success — the supervisor must see it (legal-run Leg 6.2).
+    const ok = result.failures.length === 0;
+    jobSupervisor.notifyResult(
+      'data_retention',
+      24 * 60 * 60 * 1000,
+      ok,
+      undefined,
+      ok ? undefined : `${result.failures.length} rule(s) failed: ${result.failures.map((f) => f.label).join(', ')}`,
+    );
   } catch (err) {
     log(`Data retention job error: ${err}`, 'data-retention');
     jobSupervisor.notifyResult('data_retention', 24 * 60 * 60 * 1000, false, undefined, String(err));

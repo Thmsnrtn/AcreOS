@@ -1075,7 +1075,7 @@ export function registerAdminRoutes(app: Express): void {
       }
 
       const { deleteOrganization } = await import("./services/orgDeletion");
-      const result = await deleteOrganization(orgId);
+      const result = await deleteOrganization(orgId, { actorUserId: (req.user as { id?: string } | undefined)?.id ?? null });
 
       res.json({
         success: result.orgRowDeleted && result.residualTables.length === 0,

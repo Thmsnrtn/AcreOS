@@ -175,6 +175,15 @@ describe("deleteOrganization — stored document bytes (legal-run Leg 6.4)", () 
     expect(state.orgRowDeleted).toBe(false);
   });
 
+  it("a tenant key the sweep cannot match refuses the erasure BEFORE any byte is deleted", async () => {
+    state.rows = { leads: 1, weird: 1 };
+    state.keyTypes = { weird: "uuid" };
+    state.storeConfigured = true;
+    await expect(deleteOrganization(42)).rejects.toThrow(/refusing to start/);
+    expect(state.byteDeletes).toEqual([]);
+    expect(state.deleteAttempts).toEqual([]);
+  });
+
   it("store dormant: reported as store_not_configured, rows erased", async () => {
     state.rows = { leads: 1 };
     const result = await deleteOrganization(42);

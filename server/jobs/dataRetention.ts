@@ -188,6 +188,7 @@ export async function runDataRetention(): Promise<{
       const count = rowCountOf(result);
 
       if (rule.orgColumn && held && held.length > 0) {
+        try {
         const keptRes = await db.execute(
           sql`SELECT count(*)::int AS n FROM ${sql.identifier(rule.table)} WHERE ${sql.identifier(rule.column)} < ${cutoff}${
             rule.keepWhere ?? sql``
@@ -204,6 +205,13 @@ export async function runDataRetention(): Promise<{
             `[data-retention] HELD — kept ${rowsRetained} expired row(s) in ${rule.label} for ${held.length} org(s) under an active legal hold`,
             undefined,
             { metadata: { table: rule.table, heldOrgIds: held, rowsRetained } },
+          );
+        }
+        } catch (countErr) {
+          // The purge above already ran; only the REPORT of what the hold kept failed.
+          logger.error(
+            `[data-retention] ${rule.label}: purge ran, but counting the rows kept for held orgs FAILED`,
+            countErr instanceof Error ? countErr : undefined,
           );
         }
       }

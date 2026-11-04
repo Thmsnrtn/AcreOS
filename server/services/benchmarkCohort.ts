@@ -17,7 +17,7 @@
 export const BENCHMARK_MIN_SAMPLE = 10;
 
 export const BENCHMARK_NOTE_SERVED =
-  `Aggregated from closed public-record transactions. Figures are shown only when the cohort holds at least ${BENCHMARK_MIN_SAMPLE} transactions; individual transactions are never exposed.`;
+  `Aggregated from closed public-record transactions. Figures are shown only when the cohort holds at least ${BENCHMARK_MIN_SAMPLE} transactions.`;
 
 export const BENCHMARK_NOTE_INSUFFICIENT =
   `Insufficient data: this cohort holds fewer than ${BENCHMARK_MIN_SAMPLE} closed public-record transactions, so no average is shown. Figures are shown only at ${BENCHMARK_MIN_SAMPLE} or more.`;

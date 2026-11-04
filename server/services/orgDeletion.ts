@@ -189,7 +189,10 @@ const isForeignKeyViolation = (err: unknown): boolean => {
  * Hard-delete every org-scoped row and the org itself. Destructive and
  * irreversible — callers own the confirmation ceremony.
  */
-export async function deleteOrganization(orgId: number): Promise<OrgDeletionResult> {
+export async function deleteOrganization(
+  orgId: number,
+  opts: { actorUserId?: string | null } = {},
+): Promise<OrgDeletionResult> {
   if (!Number.isInteger(orgId) || orgId <= 0) {
     throw new Error(`deleteOrganization: invalid orgId ${orgId}`);
   }
@@ -211,7 +214,7 @@ export async function deleteOrganization(orgId: number): Promise<OrgDeletionResu
       { metadata: { orgId, holdId: hold.id, caseRef: hold.caseRef, scope: hold.scope } },
     );
     await auditLog({
-      actor: { userId: null },
+      actor: { userId: opts.actorUserId ?? null },
       action: "org_erasure.refused_legal_hold",
       target: { type: "organization", id: orgId },
       metadata: { holdId: hold.id, caseRef: hold.caseRef, scope: hold.scope },
@@ -219,9 +222,17 @@ export async function deleteOrganization(orgId: number): Promise<OrgDeletionResu
     throw new LegalHoldViolationError(orgId, "organization", orgId, hold);
   }
 
-  // Stored bytes first (Leg 6.4). Tenancy is in the S3 key, so the org prefix
-  // is all of this org's bytes regardless of which rows still reference them.
-  // A failure stops the erasure BEFORE any row is deleted, so it can re-run.
+  // Enumerate the tenant tables FIRST: it refuses to start on a tenant key it
+  // cannot match, and that refusal must come before anything irreversible —
+  // including the byte deletion below.
+  const tables = await tenantScopedTables(orgId);
+
+  // Stored bytes next (Leg 6.4), before any row. Tenancy is in the S3 key, so
+  // the org prefix is all of this org's bytes regardless of which rows still
+  // reference them. A failure stops the erasure before any row is deleted, so
+  // it can re-run. NOTE: on a VERSIONED bucket DeleteObjects without a
+  // VersionId only writes delete markers; the bucket must be unversioned (or
+  // carry a noncurrent-version expiry) for this to remove the bytes.
   let documentBytes: OrgDeletionResult["documentBytes"];
   if (documentStoreConfigured()) {
     try {
@@ -236,7 +247,6 @@ export async function deleteOrganization(orgId: number): Promise<OrgDeletionResu
     logger.warn(`[org-deletion] org ${orgId}: document store not configured — no stored bytes to delete`);
   }
 
-  const tables = await tenantScopedTables(orgId);
   const predicateByTable = new Map(tables.map((t) => [t.table, t.predicate]));
   const deletedRowsByTable: Record<string, number> = {};
   const remaining = new Set(tables.map((t) => t.table));

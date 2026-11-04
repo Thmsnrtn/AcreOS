@@ -71,7 +71,7 @@ deletes objects older than 30 days. Older backups are not recoverable.~~
 
 **Corrected 2026-11-03 to describe behaviour as shipped.** The earlier text
 said every retention sweep short-circuits on a hold; two deletion paths did
-not check holds at all. A hold is active when its `legal_holds` row has
+not check holds at all, and two more paths (below) still do not. A hold is active when its `legal_holds` row has
 `status = 'active'` and `released_at` is null (there is no `is_active`
 column). The check is `orgHasActiveHold()` / `getActiveHoldSummary()` in
 `server/services/legalHold.ts`. Per path:
@@ -84,6 +84,8 @@ column). The check is `orgHasActiveHold()` / `getActiveHoldSummary()` in
 | Nightly retention job — `server/jobs/dataRetention.ts` | Org-scoped tables: rows of an org with an active hold are excluded from the purge, and the kept count is logged at error level. If the hold lookup fails, org-scoped rules do not run that night. Tables with no org column (`job_health_logs`, `realtime_event_log`, `notification_history`) cannot be filtered by org; each has a written disposition in the job (`NON_ORG_SCOPED_RULE_DISPOSITIONS`). *Hold-blind before 2026-11-03.* |
 | Org erasure — `server/services/orgDeletion.ts` | Refuses before deleting anything if the org has an active hold (HTTP 423 at the founder route), logged and written to `audit_events`. *Hold-blind before 2026-11-03.* |
 | DSAR "Pipeline A" erasure (`routes-dsar.ts`) | Not implemented (returns 501); its future erasure path is part of the open DSAR reconciliation (LQ-11). |
+| Workspace "clear data" — `POST /api/clear-demo-data` → `clearOrganizationRecords()` (`server/services/orgDataClear.ts`) | **Does NOT check legal holds.** An org owner can delete the org's leads, properties, deals, notes, payments and `activity_log` while a hold is active. Known gap (found 2026-11-03), not yet fixed. |
+| Cold-storage archival — `server/jobs/archival.ts` | **Does NOT check legal holds.** It moves org rows to object storage and deletes them from the database. Off by default (`archival.enabled`). Known gap (found 2026-11-03), not yet fixed. |
 
 ## 7. Disposal
 
