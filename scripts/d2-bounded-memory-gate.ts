@@ -37,7 +37,8 @@ function vmHwmMb(): number {
 
 async function child(parcels: number): Promise<void> {
   const { buildCounty, buildSpecFor } = await import("../server/services/landData/statewideCadastral");
-  const spec = buildSpecFor("NC");
+  // WI: the one state admitted to ingest (first-party ingest package 2026-11-03); an unadmitted state is refused before any fetch.
+  const spec = buildSpecFor("WI");
   const mapped = Object.values(spec.mapping).filter((f): f is string => !!f);
   const m = spec.mapping;
   const SPACING = 0.0004; // ~40 m lots: dense suburban fabric
@@ -61,6 +62,8 @@ async function child(parcels: number): Promise<void> {
         outDir: dir,
         bucketConfigured: false,
         today: "2026-10-24",
+        // Admission judged at a fixed instant, so the gate does not start refusing on WI's reverifyBy.
+        now: new Date("2026-11-03T12:00:00Z"),
         async getJson(url) {
           if (url.endsWith("?f=json")) {
             return { ok: true, status: 200, body: { objectIdField: "OBJECTID", fields: ["OBJECTID", "CNTY", ...mapped].map((name) => ({ name, type: name === "OBJECTID" ? "esriFieldTypeOID" : "esriFieldTypeString" })) } };

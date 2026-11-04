@@ -46,6 +46,12 @@ export interface GroupProvenance {
   /** Why that confidence — a sentence a reviewer can check, never a bare label. */
   confidenceBasis: string;
   decayClass: DecayClass;
+  /**
+   * The publisher suppressed this group's value upstream (a statute or local
+   * opt-out) and the stored value is the literal it published. A reader must
+   * never treat it as a real value, and nothing may backfill it.
+   */
+  suppressedUpstream?: true;
 }
 
 export interface BulkParcelRecord {
