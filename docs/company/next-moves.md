@@ -3,6 +3,32 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-11-03 — Buy-and-hold release: desk ported + mounted, wiring as links — on `claude/buy-and-hold-release` (off main `f7f2e3f`, DRAFT PR, unmerged, 3 tests red by design)
+
+- **What shipped on the branch.**
+  - Ported (not merged — the held branch is 73 behind) the route, the page and the route test; the kit is byte-identical on both.
+  - The four mounts were applied by hand.
+  - Wiring is links only: the parcel page offers "Underwrite as a rental" (buy_and_hold orgs); after an `acquire`, the desk links to `/leases?tab=units&propertyId=…`. Nothing is created or copied.
+  - HOLD pins removed together. `MATURITY_OVERCLAIM_BASELINE` 12 → 11.
+  - `publicClaims.ts` and the evidence ladder are untouched.
+- **Blocker (the reason it is a draft).**
+  - `verticalReadiness.test.ts` measures evidence from source, so the mounted desk makes buy_and_hold `decided`.
+  - Three main assertions then REQUIRE lifting the beta demotion and flipping the ladder in the same commit. The package forbids both until the staging journey.
+  - Options A (lift now) / B (dated exemption until the Atlas row; recommended) / C (re-hold) are in `docs/evidence/2026-11-03/buy-and-hold-release.md`.
+  - Muse/Tom decide.
+- **Proved.** The evidence file has the full Step 0 table, gates, mutants and audit:
+  - real-DB route test (one scenario + one decision citing it, preview ≡ record, ownership guard writes nothing, cross-tenant 404 writes nothing, three declared assumptions, freeze integrity);
+  - wiring test;
+  - 10 mutants caught;
+  - check/lint/build/bundle green: 9,814 KB of 9,823;
+  - full vitest: 3 red = the blocker, plus 5 that fail identically on main here.
+- **Next.**
+  1. Decide A/B/C.
+  2. Muse audits; merge deploys staging only.
+  3. Leg 3 on staging: skip sample data; review "In 2 weeks", so the outcome leg completes ≥ 14 days later as a dated open leg.
+  4. The ladder flips only on the completed journey.
+  5. Founder: delete `claude/buy-and-hold-underwriting` after the staging proof.
+
 ## 2026-11-03 — Statewide point lookup gated behind the license dossiers — on `claude/statewide-lookup-clearance-gate` (off main `519b62c`, PR open, unmerged)
 
 - **Founder decision (2026-11-03).** A seeded statewide source may serve point-lookup results ONLY when its register state is cleared for lookup. It is recorded in `founder-decisions-2026-11-03-lookup-gate.md`. It closes the LQ-13/LQ-14 finding: nine statewide rows answered live lookups, owner names included, ahead of Regrid, with no gate.
