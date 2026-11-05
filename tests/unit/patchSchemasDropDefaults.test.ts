@@ -15,12 +15,16 @@
  *      to other verticals' lanes and are reported, not fixed here). A canary
  *      proves the scanner sees the shape.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import { stripComments } from "../helpers/stripComments";
 import { patchSchemaOf } from "../../server/utils/updatePayload";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
+
+// The population half walks every server file; its cost scales with the repo.
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 const ROOT = path.resolve(__dirname, "../..");
 
