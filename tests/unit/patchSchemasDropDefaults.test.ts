@@ -35,6 +35,20 @@ describe("patchSchemaOf", () => {
     expect(create.partial().parse({ name: "x" })).toEqual({ name: "x", budgetCents: 0, status: "planning" });
   });
 
+  it("defaults nested under nullable/optional, and prefaults, are removed too; object settings survive", () => {
+    const nested = z
+      .object({
+        a: z.string().default("d").nullable(),
+        b: z.number().prefault(5),
+        c: z.number().default(1).optional(),
+      })
+      .strict();
+    const patch = patchSchemaOf(nested);
+    expect(patch.parse({})).toEqual({});
+    expect(patch.parse({ a: null })).toEqual({ a: null });
+    expect(patch.safeParse({ zzz: 1 }).success, "strict() survives").toBe(false);
+  });
+
   it("patchSchemaOf leaves absent fields absent, and still validates present ones", () => {
     const patch = patchSchemaOf(create);
     expect(patch.parse({ name: "x" })).toEqual({ name: "x" });
@@ -42,6 +56,22 @@ describe("patchSchemaOf", () => {
     expect(patch.safeParse({ status: "sold" }).success).toBe(false);
   });
 });
+
+/**
+ * `.partial()` calls the scanner cannot resolve to a local `z.object({...})`
+ * definition: chained (`x.omit(...).partial()`), imported, or built with
+ * `.extend`. They are COUNTED, not assumed clean — the population law: a unit
+ * the gate cannot read is reported, never skipped.
+ */
+function unresolved(file: string, text: string): string[] {
+  const src = stripComments(text);
+  const out: string[] = [];
+  for (const m of src.matchAll(/(\w+|\))\s*\.\s*partial\(\s*\)/g)) {
+    const name = m[1];
+    if (name === ")" || !new RegExp(`(?:const|let)\\s+${name}\\s*=\\s*z\\.object\\(\\{`).test(src)) out.push(`${file}::${name === ")" ? "<chained>" : name}`);
+  }
+  return out;
+}
 
 /** Every `X.partial()` in a file whose local `X` definition contains `.default(`. */
 function offenders(file: string, text: string): string[] {
@@ -68,6 +98,8 @@ function serverFiles(dir: string): string[] {
  * update schemas with the same shape — each a PATCH that can reset a defaulted
  * field it was not sent. DOWN-ONLY: fix one, remove it here in the same commit.
  */
+const UNRESOLVED_BASELINE = 15;
+
 const KNOWN_OFFENDERS = [
   "server/api-v1/leads.ts::createLeadSchema",
   "server/routes-ccr-templates.ts::createSchema",
@@ -97,6 +129,13 @@ describe("population: update schemas that keep create-time defaults", () => {
 
   it("the fix-and-flip update routes carry none", () => {
     expect(found.filter((f) => /routes-(rehabs|construction-draws|bid-estimates|flip)/.test(f))).toEqual([]);
+  });
+
+  it("partial() calls the scanner cannot read are counted, not assumed clean", () => {
+    const u = files.flatMap((f) => unresolved(path.relative(ROOT, f).split(path.sep).join("/"), fs.readFileSync(f, "utf8")));
+    // MEASURED 2026-11-05. DOWN-ONLY: resolve one (or convert it to patchSchemaOf) and lower this.
+    expect(u.length, `unreadable partial() sites:\n${u.join("\n")}`).toBeLessThanOrEqual(UNRESOLVED_BASELINE);
+    expect(u.length, "the count dropped — lower UNRESOLVED_BASELINE").toBe(UNRESOLVED_BASELINE);
   });
 
   it("no NEW offender, and the known list is not stale", () => {

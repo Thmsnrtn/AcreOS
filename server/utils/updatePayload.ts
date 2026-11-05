@@ -93,10 +93,22 @@ export type WithoutServerOwned<T> = 0 extends 1 & T
  */
 export function patchSchemaOf<S extends z.ZodRawShape>(schema: z.ZodObject<S>) {
   const shape = Object.fromEntries(
-    Object.entries(schema.shape).map(([key, field]) => {
-      const inner = field instanceof z.ZodDefault ? (field.removeDefault() as z.ZodTypeAny) : (field as z.ZodTypeAny);
-      return [key, inner.optional()];
-    }),
+    Object.entries(schema.shape).map(([key, field]) => [key, dropDefaults(field as z.ZodTypeAny).optional()]),
   ) as { [K in keyof S]: z.ZodOptional<z.ZodTypeAny> };
-  return z.object(shape);
+  // `extend` keeps the object's own settings (strict, catchall); `z.object`
+  // would quietly drop them.
+  return schema.extend(shape);
+}
+
+/**
+ * Remove every default/prefault on a field, including one nested under
+ * `.nullable()` or `.optional()` — `z.string().default("d").nullable()` fills an
+ * absent key exactly as a top-level default does.
+ */
+function dropDefaults(field: z.ZodTypeAny): z.ZodTypeAny {
+  if (field instanceof z.ZodDefault) return dropDefaults(field.removeDefault() as z.ZodTypeAny);
+  if (field instanceof z.ZodPrefault) return dropDefaults(field.unwrap() as z.ZodTypeAny);
+  if (field instanceof z.ZodNullable) return dropDefaults(field.unwrap() as z.ZodTypeAny).nullable();
+  if (field instanceof z.ZodOptional) return dropDefaults(field.unwrap() as z.ZodTypeAny);
+  return field;
 }
