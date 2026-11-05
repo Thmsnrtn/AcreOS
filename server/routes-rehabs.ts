@@ -18,7 +18,7 @@
 
 import type { Express, Response } from "express";
 import { z } from "zod";
-import { and, eq, asc, desc, sql, isNull } from "drizzle-orm";
+import { and, eq, asc, desc, sql, isNull, inArray } from "drizzle-orm";
 import { db } from "./db";
 import {
   rehabs,
@@ -35,6 +35,13 @@ import { Errors } from "./utils/errors";
 import { emitRehabStatusChange } from "./services/rehabEvents";
 import { logger } from "./utils/logger";
 import { clock } from "./utils/clock";
+import {
+  ESTIMATE_EDITABLE_STATUS,
+  ESTIMATE_LOCK_MESSAGE,
+  projectVariance,
+  lineVariance,
+  varianceFlags,
+} from "@shared/rehab/variance";
 import { routeParam } from "./utils/routeParams";
 import { refuseRedeemableDeedSpend } from "./services/tax/landExit";
 import { patchSchemaOf } from "./utils/updatePayload";
@@ -195,6 +202,18 @@ async function recomputeRehabSpend(orgId: number, rehabId: string) {
 // Routes
 // ----------------------------------------------------------------------------
 
+/**
+ * Whether a rehab's line ESTIMATES are locked (§4.3): once it leaves planning,
+ * the estimate is the number variance is measured against, so changing it is a
+ * change order, not an edit. Org-scoped; null when the rehab is not this org's.
+ */
+async function estimateLockedFor(orgId: number, rehabId: string): Promise<boolean | null> {
+  const [r] = await db.select({ status: rehabs.status }).from(rehabs)
+    .where(and(eq(rehabs.id, rehabId), eq(rehabs.organizationId, orgId)));
+  if (!r) return null;
+  return r.status !== ESTIMATE_EDITABLE_STATUS;
+}
+
 export function registerRehabRoutes(app: Express): void {
   app.get("/api/rehab-scope-templates", isAuthenticated, async (_req: AuthenticatedRequest, res: Response) => {
     return res.json({
@@ -283,9 +302,24 @@ export function registerRehabRoutes(app: Express): void {
         ? holdingDaily * daysOnSite
         : null;
 
+      // Estimate → committed → actual, per line and rolled up, plus the facts
+      // worth flagging (fix-and-flip package, Leg 2). Computed from the lines;
+      // the rehab's own budget header is a separate figure and is not used here.
+      const varianceLines = items.map((it) => ({
+        id: String(it.id), category: it.category, scope: it.scope,
+        budgetCents: it.budgetCents, committedCents: it.committedCents, spentCents: it.spentCents,
+      }));
+      const estimateLocked = r.status !== ESTIMATE_EDITABLE_STATUS;
+
       return res.json({
         rehab: r,
         items,
+        variance: {
+          lines: varianceLines.map(lineVariance),
+          project: projectVariance(varianceLines),
+          flags: varianceFlags(varianceLines),
+        },
+        estimateLock: estimateLocked ? { locked: true, message: ESTIMATE_LOCK_MESSAGE } : { locked: false },
         totals: {
           budgetCents: totalBudget,
           committedCents: totalCommitted,
@@ -390,6 +424,12 @@ export function registerRehabRoutes(app: Express): void {
         .where(and(eq(rehabs.id, routeParam(req.params.id)), eq(rehabs.organizationId, orgId)));
       if (!r) return Errors.notFound(res, "Rehab");
       if (!(await refuseRedeemableDeedSpend(res, orgId, r.propertyId, "A rehab line item"))) return;
+      // A new line with an estimate after planning is a scope change. A $0-
+      // estimate line (an unplanned cost to track) is allowed: its spend then
+      // shows honestly as over its estimate.
+      if (parsed.data.budgetCents > 0 && (await estimateLockedFor(orgId, r.id as string))) {
+        return Errors.badRequest(res, ESTIMATE_LOCK_MESSAGE, { field: "budgetCents" });
+      }
 
       const [maxRow] = await db.execute(sql`SELECT COALESCE(MAX(sequence), -1) AS m FROM rehab_line_items WHERE rehab_id = ${r.id}`).then((res: any) => res.rows ?? []);
       const seq = (Number((maxRow as any)?.m) ?? -1) + 1;
@@ -430,11 +470,14 @@ export function registerRehabRoutes(app: Express): void {
         if (parsed.data[k] !== undefined) updates[k] = parsed.data[k];
       }
       // V-Tax-1 T4b: a line-item update is rehab spend on the rehab's parcel.
-      const [owner] = await db.select({ propertyId: rehabs.propertyId }).from(rehabLineItems)
+      const [owner] = await db.select({ propertyId: rehabs.propertyId, rehabId: rehabLineItems.rehabId, budgetCents: rehabLineItems.budgetCents }).from(rehabLineItems)
         .innerJoin(rehabs, eq(rehabs.id, rehabLineItems.rehabId))
         .where(and(eq(rehabLineItems.id, routeParam(req.params.id)), eq(rehabLineItems.organizationId, orgId)));
       if (!owner) return Errors.notFound(res, "Line item");
       if (!(await refuseRedeemableDeedSpend(res, orgId, owner.propertyId, "A rehab line item update"))) return;
+      if (parsed.data.budgetCents !== undefined && owner.budgetCents !== parsed.data.budgetCents && (await estimateLockedFor(orgId, owner.rehabId as string))) {
+        return Errors.badRequest(res, ESTIMATE_LOCK_MESSAGE, { field: "budgetCents" });
+      }
       const [updated] = await db.update(rehabLineItems).set(updates)
         .where(and(eq(rehabLineItems.id, routeParam(req.params.id)), eq(rehabLineItems.organizationId, orgId)))
         .returning();
@@ -449,6 +492,13 @@ export function registerRehabRoutes(app: Express): void {
   app.delete("/api/rehab-line-items/:id", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const orgId = getOrganizationId(req);
+      const [line] = await db.select({ rehabId: rehabLineItems.rehabId, budgetCents: rehabLineItems.budgetCents }).from(rehabLineItems)
+        .where(and(eq(rehabLineItems.id, routeParam(req.params.id)), eq(rehabLineItems.organizationId, orgId)));
+      if (!line) return Errors.notFound(res, "Line item");
+      // Deleting an estimated line rewrites the estimate as surely as editing it.
+      if (Number(line.budgetCents) > 0 && (await estimateLockedFor(orgId, line.rehabId as string))) {
+        return Errors.badRequest(res, ESTIMATE_LOCK_MESSAGE, { field: "budgetCents" });
+      }
       const [deleted] = await db.delete(rehabLineItems)
         .where(and(eq(rehabLineItems.id, routeParam(req.params.id)), eq(rehabLineItems.organizationId, orgId)))
         .returning();
@@ -499,6 +549,19 @@ export function registerRehabRoutes(app: Express): void {
 
       if (activeRehabs.length === 0) {
         return res.json({ hasData: false });
+      }
+
+      // Variance flags per project — facts from the lines, no threshold
+      // (fix-and-flip package, Leg 2 §4.4). Following one is a link, not a write.
+      const lineRows = await db
+        .select({
+          id: rehabLineItems.id, rehabId: rehabLineItems.rehabId, category: rehabLineItems.category, scope: rehabLineItems.scope,
+          budgetCents: rehabLineItems.budgetCents, committedCents: rehabLineItems.committedCents, spentCents: rehabLineItems.spentCents,
+        })
+        .from(rehabLineItems)
+        .where(and(eq(rehabLineItems.organizationId, orgId), inArray(rehabLineItems.rehabId, activeRehabs.map((r: any) => r.id))));
+      for (const r of activeRehabs as Array<Record<string, unknown>>) {
+        r.flags = varianceFlags(lineRows.filter((l) => l.rehabId === r.id).map((l) => ({ ...l, id: String(l.id) })));
       }
 
       const totalBudget = activeRehabs.reduce((s: number, r: any) => s + r.budgetCents, 0);
@@ -562,6 +625,9 @@ export function registerRehabRoutes(app: Express): void {
       if (!r) return Errors.notFound(res, "Rehab");
       if (!(await refuseRedeemableDeedSpend(res, orgId, r.propertyId, "Seeding a rehab budget"))) return;
 
+      if (parsed.data.replaceExisting && (await estimateLockedFor(orgId, r.id as string))) {
+        return Errors.badRequest(res, ESTIMATE_LOCK_MESSAGE, { field: "replaceExisting" });
+      }
       if (parsed.data.replaceExisting) {
         await db.delete(rehabLineItems)
           .where(and(eq(rehabLineItems.rehabId, r.id as string), eq(rehabLineItems.organizationId, orgId)));

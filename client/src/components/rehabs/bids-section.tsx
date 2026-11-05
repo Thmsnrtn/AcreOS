@@ -44,6 +44,8 @@ interface Bid {
   categoryBreakdown: Record<string, number>;
   isAccepted: boolean;
   rejectedAt: string | null;
+  /** This bid's category amounts beside the project's own estimates — arithmetic, not a verdict. */
+  vsEstimate: Array<{ category: string; bidCents: number; estimateCents: number; deltaCents: number; deltaPct: number | null }>;
 }
 
 interface MatrixRow {
@@ -214,8 +216,35 @@ export function BidsSection({ rehabId }: { rehabId: string }) {
     },
   });
 
+  // Accepting a bid writes nothing to the lines. Applying it is a separate,
+  // explicit act: each category's amount becomes that line's committed figure,
+  // and only where exactly one line carries the category (the server refuses
+  // the whole request otherwise, naming why).
+  const applyToLines = useMutation({
+    mutationFn: async (vars: { bidId: string; categories: string[] }) => {
+      const res = await fetch(`/api/bids/${vars.bidId}/apply-to-lines`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", ...csrf() },
+        body: JSON.stringify({ categories: vars.categories }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.message ?? `Failed (${res.status})`);
+      return body as { applied: Array<{ category: string }> };
+    },
+    onSuccess: (d) => {
+      toast({ title: `Committed amounts set on ${d.applied.length} line${d.applied.length === 1 ? "" : "s"}` });
+      queryClient.invalidateQueries({ queryKey: ["/api/rehabs", rehabId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/rehabs", rehabId, "bids"] });
+    },
+    onError: (err: Error) => toast({ title: "Nothing was applied", description: err.message, variant: "destructive" }),
+  });
+
   if (bidsQuery.isLoading) return <Skeleton className="h-32" />;
   const data = bidsQuery.data;
+  const accepted = data?.bids.find((b) => b.isAccepted) ?? null;
+  const estimateFor = (category: string) => data?.bids[0]?.vsEstimate.find((d) => d.category === category)?.estimateCents ?? 0;
+  const deltaFor = (bid: Bid, category: string) => bid.vsEstimate.find((d) => d.category === category) ?? null;
 
   return (
     <Card>
@@ -348,6 +377,7 @@ export function BidsSection({ rehabId }: { rehabId: string }) {
               <thead>
                 <tr className="text-xs text-muted-foreground border-b border-border">
                   <th className="px-2 py-2 text-left font-medium">Category</th>
+                  <th className="px-2 py-2 text-right font-medium">Your estimate</th>
                   {data.bids.map((b) => (
                     <th key={b.id} className="px-2 py-2 text-right font-medium">
                       <div className="flex flex-col items-end gap-1">
@@ -369,12 +399,27 @@ export function BidsSection({ rehabId }: { rehabId: string }) {
                 {data.matrix.map((row) => (
                   <tr key={row.category} className="border-b border-border/40">
                     <td className="px-2 py-1 font-medium">{row.category.replace(/_/g, " ")}</td>
+                    <td className="px-2 py-1 text-right text-muted-foreground" data-testid={`bid-estimate-${row.category}`}>
+                      {estimateFor(row.category) > 0 ? fmtUsd(estimateFor(row.category)) : "no estimate"}
+                    </td>
                     {row.cells.map((c) => {
                       const isMin = c.cents !== null && c.cents === row.minCents;
                       const isMax = c.cents !== null && c.cents === row.maxCents && row.minCents !== row.maxCents;
                       return (
                         <td key={c.bidId} className={`px-2 py-1 text-right ${isMin ? "text-acr-pos font-semibold" : isMax ? "text-acr-warning" : ""}`}>
                           {fmtUsd(c.cents)}
+                          {(() => {
+                            const bid = data.bids.find((b) => b.id === c.bidId);
+                            const d = bid ? deltaFor(bid, row.category) : null;
+                            if (!d || d.deltaPct === null) return null;
+                            return (
+                              <span className="block text-[11px] font-normal text-muted-foreground" data-testid={`bid-delta-${c.bidId}-${row.category}`}>
+                                {d.deltaPct > 0 ? "+" : d.deltaPct < 0 ? "−" : ""}
+                                {Math.abs(d.deltaPct)}% vs your estimate
+                                {d.deltaPct < 0 ? " — check it covers the same scope" : ""}
+                              </span>
+                            );
+                          })()}
                         </td>
                       );
                     })}
@@ -383,6 +428,7 @@ export function BidsSection({ rehabId }: { rehabId: string }) {
                 ))}
                 <tr className="border-t-2 border-border font-semibold">
                   <td className="px-2 py-2">Total</td>
+                  <td></td>
                   {data.bids.map((b) => (
                     <td key={b.id} className="px-2 py-2 text-right">{fmtUsd(b.totalCents)}</td>
                   ))}
@@ -390,6 +436,24 @@ export function BidsSection({ rehabId }: { rehabId: string }) {
                 </tr>
               </tbody>
             </table>
+            {accepted && Object.keys(accepted.categoryBreakdown ?? {}).length > 0 ? (
+              <div className="mt-3 flex flex-wrap items-center gap-3 rounded-card border border-border p-3" data-testid="bid-apply-to-lines">
+                <p className="text-sm">
+                  Set what's committed on your lines from {accepted.contractorName}'s accepted bid:{" "}
+                  {Object.entries(accepted.categoryBreakdown).map(([cat, cents]) => `${cat.replace(/_/g, " ")} ${fmtUsd(cents)}`).join(", ")}.
+                  Your estimates are not changed.
+                </p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={applyToLines.isPending}
+                  onClick={() => applyToLines.mutate({ bidId: accepted.id, categories: Object.keys(accepted.categoryBreakdown) })}
+                  data-testid="button-apply-bid-to-lines"
+                >
+                  {applyToLines.isPending ? "Applying…" : "Apply as committed"}
+                </Button>
+              </div>
+            ) : null}
           </div>
         )}
       </CardContent>

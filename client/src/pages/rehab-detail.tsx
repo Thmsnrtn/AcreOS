@@ -74,9 +74,33 @@ interface LineItem {
   notes: string | null;
 }
 
+interface LineVariance {
+  id: string;
+  estimateCents: number;
+  committedCents: number | null;
+  actualCents: number;
+  actualVsEstimateCents: number;
+  actualVsCommittedCents: number | null;
+}
+
 interface RehabDetail {
   rehab: Rehab;
   items: LineItem[];
+  /** Estimate → committed → actual (Leg 2). A null committed means nothing is committed. */
+  variance: {
+    lines: LineVariance[];
+    project: {
+      estimateCents: number;
+      committedCents: number;
+      committedLineCount: number;
+      uncommittedLineCount: number;
+      actualCents: number;
+      actualVsEstimateCents: number;
+      actualVsCommittedCents: number | null;
+    };
+    flags: Array<{ kind: string; fact: string }>;
+  };
+  estimateLock: { locked: boolean; message?: string };
   totals: {
     budgetCents: number;
     committedCents: number;
@@ -231,6 +255,7 @@ export default function RehabDetailPage() {
   if (!detail.data) return <PageShell label="Rehab"><Card><CardContent>Not found.</CardContent></Card></PageShell>;
 
   const { rehab, items, totals } = detail.data;
+  const data = detail.data;
   const spentPct = totals.budgetCents > 0 ? Math.min(100, Math.round((totals.spentCents / totals.budgetCents) * 100)) : 0;
   const arvMargin = rehab.arvCents !== null && rehab.purchasePriceCents !== null && rehab.budgetTotalCents !== null
     ? rehab.arvCents - rehab.purchasePriceCents - rehab.budgetTotalCents
@@ -344,13 +369,36 @@ export default function RehabDetailPage() {
       {/* Photo evidence — before/during/after, defect, lender_draw, tax */}
       <RehabPhotoGallery rehabId={id} />
 
+      {/* Variance flags — facts from the lines, no threshold (Leg 2 §4.4). */}
+      {data.variance.flags.length > 0 ? (
+        <Card className="mb-6" data-testid="rehab-variance-flags">
+          <CardHeader>
+            <CardTitle className="text-base">Over estimate</CardTitle>
+            <CardDescription>Where what's spent or committed has passed what you estimated.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ul className="m-0 list-none space-y-1 p-0 text-sm">
+              {data.variance.flags.map((f, i) => (
+                <li key={`${f.kind}-${i}`}>{f.fact}</li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      ) : null}
+
       {/* Line items */}
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Line items</CardTitle>
           <CardDescription>
-            Edit budget / committed / spent inline. Each cell auto-saves on blur.
+            Estimate is what you priced, committed is what a contractor agreed to, actual is what was spent.
+            Each cell saves on blur.
           </CardDescription>
+          {data.estimateLock.locked ? (
+            <p className="mt-2 rounded-card border border-border bg-muted/30 p-2 text-xs" role="status" data-testid="rehab-estimate-locked">
+              {data.estimateLock.message}
+            </p>
+          ) : null}
         </CardHeader>
         <CardContent className="p-0">
           <table className="w-full text-sm">
@@ -359,44 +407,56 @@ export default function RehabDetailPage() {
                 <th className="px-2 py-2 text-left font-medium">#</th>
                 <th className="px-2 py-2 text-left font-medium">Category</th>
                 <th className="px-2 py-2 text-left font-medium">Scope</th>
-                <th className="px-2 py-2 text-right font-medium">Budget</th>
+                <th className="px-2 py-2 text-right font-medium">Estimate</th>
                 <th className="px-2 py-2 text-right font-medium">Committed</th>
-                <th className="px-2 py-2 text-right font-medium">Spent</th>
-                <th className="px-2 py-2 text-right font-medium">Variance</th>
+                <th className="px-2 py-2 text-right font-medium">Actual</th>
+                <th className="px-2 py-2 text-right font-medium">Actual vs estimate</th>
+                <th className="px-2 py-2 text-right font-medium">Actual vs committed</th>
                 <th className="px-2 py-2"></th>
               </tr>
             </thead>
             <tbody>
               {items.map((it) => {
                 const variance = it.spentCents - it.budgetCents;
+                const v = data.variance.lines.find((l) => l.id === String(it.id));
                 return (
                   <tr key={it.id} className="border-b border-border/40">
                     <td className="px-2 py-1 text-xs text-muted-foreground">{it.sequence + 1}</td>
                     <td className="px-2 py-1"><Badge variant="outline" className="text-xs">{it.category.replace(/_/g, " ")}</Badge></td>
                     <td className="px-2 py-1">{it.scope}</td>
                     <td className="px-2 py-1 text-right">
-                      <CellInput
-                        label={`Budget for ${it.scope}`}
-                        defaultValue={(it.budgetCents / 100).toFixed(0)}
-                        onCommit={(v) => updateItem.mutate({ itemId: it.id, updates: { budgetCents: Math.round(parseFloat(v || "0") * 100) } as any })}
-                      />
+                      {data.estimateLock.locked ? (
+                        <span className="text-xs tabular-nums" title="Locked — the project has left planning" data-testid={`estimate-locked-${it.id}`}>
+                          {fmtUsdCents(it.budgetCents)}
+                        </span>
+                      ) : (
+                        <CellInput
+                          label={`Estimate for ${it.scope}`}
+                          defaultValue={(it.budgetCents / 100).toFixed(0)}
+                          onCommit={(v) => updateItem.mutate({ itemId: it.id, updates: { budgetCents: Math.round(parseFloat(v || "0") * 100) } as any })}
+                        />
+                      )}
                     </td>
                     <td className="px-2 py-1 text-right">
                       <CellInput
                         label={`Committed for ${it.scope}`}
-                        defaultValue={(it.committedCents / 100).toFixed(0)}
+                        placeholder="not committed"
+                        defaultValue={it.committedCents > 0 ? (it.committedCents / 100).toFixed(0) : ""}
                         onCommit={(v) => updateItem.mutate({ itemId: it.id, updates: { committedCents: Math.round(parseFloat(v || "0") * 100) } as any })}
                       />
                     </td>
                     <td className="px-2 py-1 text-right">
                       <CellInput
-                        label={`Spent on ${it.scope}`}
+                        label={`Actual spent on ${it.scope}`}
                         defaultValue={(it.spentCents / 100).toFixed(0)}
                         onCommit={(v) => updateItem.mutate({ itemId: it.id, updates: { spentCents: Math.round(parseFloat(v || "0") * 100) } as any })}
                       />
                     </td>
                     <td className={`px-2 py-1 text-right ${variance > 0 ? "text-acr-warning" : variance < 0 ? "text-acr-pos" : "text-muted-foreground"}`}>
                       {fmtUsdCents(variance)}
+                    </td>
+                    <td className="px-2 py-1 text-right text-muted-foreground" data-testid={`vs-committed-${it.id}`}>
+                      {v && v.actualVsCommittedCents !== null ? fmtUsdCents(v.actualVsCommittedCents) : "not committed"}
                     </td>
                     <td className="px-2 py-1 text-right">
                       <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => deleteItem.mutate(it.id)} aria-label="Delete line">
@@ -420,7 +480,7 @@ export default function RehabDetailPage() {
                 <td className="px-2 py-2 text-right">
                   <Input aria-label="New line item budget" type="number" value={newBudget} onChange={(e) => setNewBudget(e.target.value)} placeholder="0" className="h-8 text-right" />
                 </td>
-                <td colSpan={4}></td>
+                <td colSpan={5}></td>
                 <td className="px-2 py-2 text-right">
                   <Button size="sm" disabled={!newScope || !newBudget || addItem.isPending} onClick={() => addItem.mutate()}>
                     <PlusCircle className="w-4 h-4 mr-1" aria-hidden="true" /> Add
@@ -432,10 +492,20 @@ export default function RehabDetailPage() {
               <tr className="font-semibold border-t-2 border-border">
                 <td colSpan={3} className="px-2 py-2 text-right">Totals</td>
                 <td className="px-2 py-2 text-right">{fmtUsdCents(totals.budgetCents)}</td>
-                <td className="px-2 py-2 text-right">{fmtUsdCents(totals.committedCents)}</td>
+                <td className="px-2 py-2 text-right">
+                  {fmtUsdCents(data.variance.project.committedCents)}
+                  {data.variance.project.uncommittedLineCount > 0 ? (
+                    <span className="block text-[11px] font-normal text-muted-foreground">
+                      {data.variance.project.uncommittedLineCount} not committed
+                    </span>
+                  ) : null}
+                </td>
                 <td className="px-2 py-2 text-right">{fmtUsdCents(totals.spentCents)}</td>
                 <td className={`px-2 py-2 text-right ${totals.varianceCents > 0 ? "text-acr-warning" : totals.varianceCents < 0 ? "text-acr-pos" : ""}`}>
                   {fmtUsdCents(totals.varianceCents)}
+                </td>
+                <td className="px-2 py-2 text-right" data-testid="vs-committed-total">
+                  {data.variance.project.actualVsCommittedCents === null ? "not committed" : fmtUsdCents(data.variance.project.actualVsCommittedCents)}
                 </td>
                 <td></td>
               </tr>
@@ -451,6 +521,7 @@ function CellInput({
   defaultValue,
   onCommit,
   label,
+  placeholder,
 }: {
   defaultValue: string;
   onCommit: (v: string) => void;
@@ -460,12 +531,14 @@ function CellInput({
    * screen-reader user nothing about which line item or which column it is.
    */
   label: string;
+  placeholder?: string;
 }) {
   const [val, setVal] = useState(defaultValue);
   return (
     <Input
       aria-label={label}
       type="number"
+      placeholder={placeholder}
       value={val}
       onChange={(e) => setVal(e.target.value)}
       onBlur={() => { if (val !== defaultValue) onCommit(val); }}
