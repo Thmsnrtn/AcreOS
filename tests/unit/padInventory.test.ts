@@ -466,7 +466,9 @@ describe("the rent-roll paste — the importer's first driver", () => {
 
 describe("the surface adds no nav entry — the five doors are fixed", () => {
   it("is a TAB on the existing /leases surface", () => {
-    expect(LEASES_PAGE_CODE).toContain("<UnitsPanel />");
+    // Rendered inside the units tab; since 2026-11-03 it also receives the
+    // deep-linked property (`?propertyId=`) — still a tab, not a route.
+    expect(LEASES_PAGE_CODE).toMatch(/<UnitsPanel(\s+initialPropertyId=\{\w+\})?\s*\/>/);
     expect(LEASES_PAGE_CODE).toContain('<TabsTrigger value="units"');
     expect(LEASES_PAGE_CODE).toContain('<TabsTrigger value="leases"');
   });

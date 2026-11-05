@@ -25,6 +25,7 @@ import { startPendingActionExpiryJob } from "./pendingActionExpiryJob"; // S3 sl
 import { startWorkflowDelayResumeJob } from "./workflowDelayResume"; // S3 decomposition slice 2 (Wave B)
 import { startAchAutopayJob } from "./achAutopayRun"; // S3 decomposition slice 3 (Wave C — money moves)
 import { startAcquiredNoteAgingJob } from "./acquiredNoteAging"; // acquired-note delinquency sweep
+import { startApiTelemetryRollupJob } from "./apiTelemetryRollupJob"; // S3 slice (legal-run Leg 6.3)
 // Daily due/expiry detectors — extracted from this file into a cohesive
 // job-group (S3 decomposition). startLeaseExpiryDetectorJob is the net-new
 // buy_and_hold beta→core registration (audit Wave 1).
@@ -745,36 +746,6 @@ function startCustomerUnitEconomicsJob() {
   }).catch(err => log(`Unit economics scheduler import failed: ${err}`, 'unit-economics'));
 }
 
-// ============================================================================
-// Tahoe L14 follow-up — api_telemetry_samples nightly rollup + purge.
-//
-// 30-day rolling retention on api_telemetry_samples. Older rows are
-// aggregated into api_telemetry_rollup_monthly (UPSERT) then DELETEd from
-// the source. Idempotent — see server/services/apiTelemetryRollup.ts.
-// Daily wall-clock 01:00 UTC.
-// ============================================================================
-function startApiTelemetryRollupJob() {
-  const ONE_HOUR_MS = 60 * 60 * 1000;
-  const TTL_SECONDS = 50 * 60;
-
-  log('Registering api_telemetry rollup + purge job (daily 01:00 UTC)', 'api-telemetry-rollup');
-
-  trackInterval(() => {
-    const now = clock.now();
-    if (now.getUTCHours() === 1 && now.getUTCMinutes() < 5) {
-      void withJobLock('api_telemetry_rollup', TTL_SECONDS, async () => {
-        const { runApiTelemetryRollup } = await import('../services/apiTelemetryRollup');
-        const r = await runApiTelemetryRollup();
-        log(
-          `[api-telemetry-rollup] upserted=${r.rollupRowsUpserted} deleted=${r.sourceRowsDeleted} retentionDays=${r.retentionDays}`,
-          'api-telemetry-rollup',
-        );
-      }).catch((err) => {
-        log(`api_telemetry rollup failed: ${err}`, 'api-telemetry-rollup');
-      });
-    }
-  }, ONE_HOUR_MS);
-}
 
 // ============================================================================
 // Tahoe L6 — reserve-floor compliance check.
@@ -1580,7 +1551,16 @@ async function processDataRetentionJob() {
     const { runDataRetention } = await import("./dataRetention");
     const result = await runDataRetention();
     log(`Data retention: purged ${result.purged} total rows`, 'data-retention');
-    jobSupervisor.notifyResult('data_retention', 24 * 60 * 60 * 1000, true);
+    // A run where rules failed (including the fail-closed legal-hold case) is
+    // not a success — the supervisor must see it (legal-run Leg 6.2).
+    const ok = result.failures.length === 0;
+    jobSupervisor.notifyResult(
+      'data_retention',
+      24 * 60 * 60 * 1000,
+      ok,
+      undefined,
+      ok ? undefined : `${result.failures.length} rule(s) failed: ${result.failures.map((f) => f.label).join(', ')}`,
+    );
   } catch (err) {
     log(`Data retention job error: ${err}`, 'data-retention');
     jobSupervisor.notifyResult('data_retention', 24 * 60 * 60 * 1000, false, undefined, String(err));
