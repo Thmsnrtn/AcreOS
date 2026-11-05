@@ -112,26 +112,6 @@
     },
     {
       "kind": "export",
-      "id": "server/services/underwriting/verticalDecision.ts::recordUnderwrittenDecision",
-      "reason": "COO HOLD (2026-10-21, under the founder's delegation): buy_and_hold is not released until its end-to-end journey is evidenced in the Readiness Atlas. The decision route that called this (server/routes-buy-and-hold-underwriting.ts) and its page are held, intact, on claude/buy-and-hold-underwriting; the land-only #386 keeps the shared underwriting kit so that PR is a re-mount, not a rewrite. Not built-and-abandoned: staged and test-guarded (buyAndHoldStaysHeld.test.ts pins BOTH directions: the kit exists, and nothing mounts the route or links the page). REVOCATION: when the held route is mounted this entry goes STALE and the gate fails until it is removed."
-    },
-    {
-      "kind": "export",
-      "id": "server/services/underwriting/verticalDecision.ts::underwriteBodySchema",
-      "reason": "COO HOLD (2026-10-21, under the founder's delegation): buy_and_hold is not released until its end-to-end journey is evidenced in the Readiness Atlas. The decision route that called this (server/routes-buy-and-hold-underwriting.ts) and its page are held, intact, on claude/buy-and-hold-underwriting; the land-only #386 keeps the shared underwriting kit so that PR is a re-mount, not a rewrite. Not built-and-abandoned: staged and test-guarded (buyAndHoldStaysHeld.test.ts pins BOTH directions: the kit exists, and nothing mounts the route or links the page). REVOCATION: when the held route is mounted this entry goes STALE and the gate fails until it is removed."
-    },
-    {
-      "kind": "export",
-      "id": "server/services/underwriting/verticalDecision.ts::loadOrgProperty",
-      "reason": "COO HOLD (2026-10-21, under the founder's delegation): buy_and_hold is not released until its end-to-end journey is evidenced in the Readiness Atlas. The decision route that called this (server/routes-buy-and-hold-underwriting.ts) and its page are held, intact, on claude/buy-and-hold-underwriting; the land-only #386 keeps the shared underwriting kit so that PR is a re-mount, not a rewrite. Not built-and-abandoned: staged and test-guarded (buyAndHoldStaysHeld.test.ts pins BOTH directions: the kit exists, and nothing mounts the route or links the page). REVOCATION: when the held route is mounted this entry goes STALE and the gate fails until it is removed."
-    },
-    {
-      "kind": "export",
-      "id": "server/services/underwriting/verticalDecision.ts::describeProperty",
-      "reason": "COO HOLD (2026-10-21, under the founder's delegation): buy_and_hold is not released until its end-to-end journey is evidenced in the Readiness Atlas. The decision route that called this (server/routes-buy-and-hold-underwriting.ts) and its page are held, intact, on claude/buy-and-hold-underwriting; the land-only #386 keeps the shared underwriting kit so that PR is a re-mount, not a rewrite. Not built-and-abandoned: staged and test-guarded (buyAndHoldStaysHeld.test.ts pins BOTH directions: the kit exists, and nothing mounts the route or links the page). REVOCATION: when the held route is mounted this entry goes STALE and the gate fails until it is removed."
-    },
-    {
-      "kind": "export",
       "id": "shared/economics/fields/rentalAcquisition.ts::RENTAL_ACQUISITION_FIELDS",
       "reason": "COO HOLD (2026-10-21, under the founder's delegation): buy_and_hold is not released until its end-to-end journey is evidenced in the Readiness Atlas. The decision route that called this (server/routes-buy-and-hold-underwriting.ts) and its page are held, intact, on claude/buy-and-hold-underwriting; the land-only #386 keeps the shared underwriting kit so that PR is a re-mount, not a rewrite. Not built-and-abandoned: staged and test-guarded (buyAndHoldStaysHeld.test.ts pins BOTH directions: the kit exists, and nothing mounts the route or links the page). REVOCATION: when the held route is mounted this entry goes STALE and the gate fails until it is removed."
     },

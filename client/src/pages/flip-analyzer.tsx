@@ -64,6 +64,7 @@ import { RequiredDisclaimer } from "@/components/required-disclaimer";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ReviewDateChoice, reviewDueAtFromDays } from "@/components/decisions/ReviewDateChoice";
+import { FlipDecisionPanel } from "@/components/flip/FlipDecisionPanel";
 import {
   Card,
   CardContent,
@@ -143,6 +144,7 @@ interface SubjectResponse {
     rehabId: string | number | null;
   } | null;
   monthlyHoldingCostCents: number | null;
+  rehabProjectId: string | null;
   priceCandidates: {
     purchasePriceCents: number | null;
     listPriceCents: number | null;
@@ -1120,10 +1122,13 @@ export default function FlipAnalyzerPage() {
           <CardTitle className="flex items-center gap-2 text-base">
             <Calculator className="h-4 w-4 text-primary" aria-hidden="true" />
             Maximum allowable offer
+            <Badge variant="outline" className="ml-1 font-normal" data-testid="flip-mao-screen-label">
+              Screen — nothing recorded
+            </Badge>
           </CardTitle>
           <CardDescription>
             Every line below traces to an input above or to a rule, labelled
-            with which.
+            with which. Running it records nothing; record a decision below.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -1490,6 +1495,27 @@ export default function FlipAnalyzerPage() {
           ) : null}
         </CardContent>
       </Card>
+
+      {/* ── The decision — kit-recorded, with its evidence (§3.1–3.3) ───── */}
+      <FlipDecisionPanel
+        screenRun={!!maoQuery.data && !maoIsStale}
+        propertyId={propertyId}
+        arvCents={arvCents}
+        savedArvCents={subject?.arv?.arvCents ?? null}
+        rehabProjectId={subject?.rehabProjectId ?? null}
+        rehabFieldCents={rehabCents}
+        purchasePriceCents={priceCents}
+        feeCents={feeCents}
+        holdComparisonSeen={
+          rentalRequest && rentalQuery.data
+            ? {
+                purchasePriceCents: rentalRequest.purchasePriceCents,
+                monthlyRentCents: rentalRequest.monthlyRentCents,
+                monthlyExpensesCents: rentalRequest.monthlyExpensesCents ?? null,
+              }
+            : null
+        }
+      />
 
       {selectedProperty ? (
         <p className="mt-6 text-xs text-muted-foreground">

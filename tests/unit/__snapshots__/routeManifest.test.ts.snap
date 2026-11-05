@@ -110,6 +110,7 @@ exports[`route manifest > snapshot: sorted manifest file paths (additions/remova
   "routes-finance-ledger.ts",
   "routes-finance.ts",
   "routes-flip-analyzer.ts",
+  "routes-flip-decision.ts",
   "routes-founder-anticipatory-enterprise.ts",
   "routes-founder-appeals.ts",
   "routes-founder-audit.ts",

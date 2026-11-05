@@ -150,6 +150,7 @@ export const ROUTE_MANIFEST: RouteManifestEntry[] = [
   { file: "routes-finance.ts", mountPath: null, kind: "register", export: "registerFinanceRoutes" },
   { file: "routes-finance-ledger.ts", mountPath: "/api/founder/finance", kind: "router", export: "default" },
   { file: "routes-flip-analyzer.ts", mountPath: null, kind: "register", export: "registerFlipAnalyzerRoutes" },
+  { file: "routes-flip-decision.ts", mountPath: "/api/fix-and-flip", kind: "router", export: "default" },
   { file: "routes-founder-anticipatory-enterprise.ts", mountPath: null, kind: "register", export: "registerFounderV11Routes" },
   { file: "routes-founder-appeals.ts", mountPath: null, kind: "register", export: "registerFounderAppealRoutes" },
   { file: "routes-founder-audit.ts", mountPath: null, kind: "register", export: "registerFounderAuditRoutes" },
