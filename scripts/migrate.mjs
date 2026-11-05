@@ -13090,6 +13090,38 @@ $mig0284$`,
      END IF;
    END
    $mig0301$`,
+  // 0302 — Notes V2 Leg 1: note_events gains category 'delinquency' ('delinquency_stage_entered' ← 'aging_engine'; 'default_review_recorded' ← 'operator_recorded'; each bound both ways). Restates 0301. CHECKs only; triggers untouched.
+  // Mirrors migrations/0302_notes_v2_delinquency_ladder_events.sql.
+  `DO $mig0302$
+   BEGIN
+     IF NOT EXISTS (
+       SELECT 1 FROM pg_constraint
+       WHERE conrelid = 'note_events'::regclass
+         AND conname = 'note_events_source_matches_category'
+         AND pg_get_constraintdef(oid) LIKE '%aging_engine%'
+     ) THEN
+       ALTER TABLE "note_events" DROP CONSTRAINT IF EXISTS "note_events_category_check";
+       ALTER TABLE "note_events" ADD CONSTRAINT "note_events_category_check"
+         CHECK ("category" IN ('outcome', 'calendar', 'analysis', 'delinquency'));
+       ALTER TABLE "note_events" DROP CONSTRAINT IF EXISTS "note_events_source_check";
+       ALTER TABLE "note_events" ADD CONSTRAINT "note_events_source_check"
+         CHECK ("source" IN ('note_tape', 'operator_correction', 'workout_engine', 'aging_engine', 'operator_recorded'));
+       ALTER TABLE "note_events" DROP CONSTRAINT IF EXISTS "note_events_type_matches_category";
+       ALTER TABLE "note_events" ADD CONSTRAINT "note_events_type_matches_category" CHECK (
+         ("category" = 'outcome' AND "event_type" IN ('performance_reported'))
+         OR ("category" = 'calendar' AND "event_type" IN ('payment_due', 'maturity', 'balloon', 'rate_adjustment'))
+         OR ("category" = 'analysis' AND "event_type" IN ('workout_analysis_run'))
+         OR ("category" = 'delinquency' AND "event_type" IN ('delinquency_stage_entered', 'default_review_recorded'))
+       );
+       ALTER TABLE "note_events" DROP CONSTRAINT IF EXISTS "note_events_source_matches_category";
+       ALTER TABLE "note_events" ADD CONSTRAINT "note_events_source_matches_category" CHECK (
+         (("category" = 'analysis') = ("source" = 'workout_engine'))
+         AND (("event_type" = 'delinquency_stage_entered') = ("source" = 'aging_engine'))
+         AND (("event_type" = 'default_review_recorded') = ("source" = 'operator_recorded'))
+       );
+     END IF;
+   END
+   $mig0302$`,
 ];
 
 // The statement set this run executes. Default: everything (the production
