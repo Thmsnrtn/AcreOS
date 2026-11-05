@@ -111,6 +111,8 @@ describe.runIf(realDbAvailable)("rehab variance routes — real database", () =>
     expect(ambiguous.body.message).toMatch(/flooring: The project has 2 lines/);
     expect(await lines()).toEqual(before);
 
+    // A category the bid has no amount for, or the project has no line for, is refused too.
+    expect((await request(app).post(`/api/bids/${bidAccepted}/apply-to-lines`).send({ categories: ["roof"] })).body.message).toMatch(/roof: This bid has no amount/);
     const ok = await request(app).post(`/api/bids/${bidAccepted}/apply-to-lines`).send({ categories: ["kitchen", "interior_paint"] });
     expect(ok.status, JSON.stringify(ok.body)).toBe(200);
     const after = await lines();
@@ -120,6 +122,15 @@ describe.runIf(realDbAvailable)("rehab variance routes — real database", () =>
     expect(Number(byId[line.floor1].committed_cents)).toBe(0);
     // Estimates untouched by applying a bid.
     expect(after.map((l) => l.budget_cents)).toEqual(before.map((l) => l.budget_cents));
+
+    // A committed amount the operator already entered is not overwritten unless they say so.
+    await request(app).patch(`/api/rehab-line-items/${line.kitchen}`).send({ committedCents: 1_700_000 }).expect(200);
+    const keep = await request(app).post(`/api/bids/${bidAccepted}/apply-to-lines`).send({ categories: ["kitchen"] });
+    expect(keep.status).toBe(400);
+    expect(keep.body.message).toMatch(/already has \$17,000 committed/);
+    await request(app).post(`/api/bids/${bidAccepted}/apply-to-lines`).send({ categories: ["kitchen"], replaceCommitted: true }).expect(200);
+    const [{ committed_cents }] = await q<{ committed_cents: string }>("SELECT committed_cents FROM rehab_line_items WHERE id = $1", line.kitchen);
+    expect(Number(committed_cents)).toBe(1_650_000);
   });
 
   it("after the planning exit, every route that would rewrite the estimate refuses, naming change orders", async () => {
@@ -144,6 +155,20 @@ describe.runIf(realDbAvailable)("rehab variance routes — real database", () =>
     await request(app).patch(`/api/rehab-line-items/${line.floor1}`).send({ committedCents: 320_000, budgetCents: 300_000 }).expect(200);
     // An unplanned cost with a $0 estimate can still be tracked.
     await request(app).post(`/api/rehabs/${rehabId}/line-items`).send({ category: "other", scope: "Unplanned permit", budgetCents: 0, spentCents: 45_000 }).expect(201);
+
+    // The lock cannot be lifted by stepping back into planning, nor dodged by
+    // moving an estimated line to another category.
+    const back = await request(app).patch(`/api/rehabs/${rehabId}`).send({ status: "planning" });
+    expect(back.status).toBe(400);
+    expect(back.body.message).toMatch(/cannot go back/);
+    const moved = await request(app).patch(`/api/rehab-line-items/${line.kitchen}`).send({ category: "bathroom" });
+    expect(moved.status).toBe(400);
+    // A later stage is locked the same way.
+    await request(app).patch(`/api/rehabs/${rehabId}`).send({ status: "on_hold" }).expect(200);
+    expect((await request(app).patch(`/api/rehab-line-items/${line.kitchen}`).send({ budgetCents: 1 })).status).toBe(400);
+    await request(app).patch(`/api/rehabs/${rehabId}`).send({ status: "demo" }).expect(200);
+    const [{ status }] = await q<{ status: string }>("SELECT status FROM rehabs WHERE id = $1", rehabId);
+    expect(status).toBe("demo");
 
     const detail = await request(app).get(`/api/rehabs/${rehabId}`).expect(200);
     expect(detail.body.estimateLock.locked).toBe(true);

@@ -51,11 +51,12 @@ function detail() {
 }
 const BIDS = {
   bids: [
-    { id: "b1", contractorId: "c1", contractorName: "GC One", totalCents: 2_430_000, submittedAt: null, validUntil: null, categoryBreakdown: { kitchen: 1_650_000, flooring: 780_000 }, isAccepted: true, rejectedAt: null,
-      vsEstimate: [{ category: "flooring", bidCents: 780_000, estimateCents: 600_000, deltaCents: 180_000, deltaPct: 30 }, { category: "kitchen", bidCents: 1_650_000, estimateCents: 1_500_000, deltaCents: 150_000, deltaPct: 10 }] },
+    // b2 first on purpose: it does not cover flooring.
     { id: "b2", contractorId: "c2", contractorName: "GC Two", totalCents: 930_000, submittedAt: null, validUntil: null, categoryBreakdown: { kitchen: 930_000 }, isAccepted: false, rejectedAt: "2026-11-01",
       vsEstimate: [{ category: "kitchen", bidCents: 930_000, estimateCents: 1_500_000, deltaCents: -570_000, deltaPct: -38 }] },
-  ],
+    { id: "b1", contractorId: "c1", contractorName: "GC One", totalCents: 2_430_000, submittedAt: null, validUntil: null, categoryBreakdown: { kitchen: 1_650_000, flooring: 780_000 }, isAccepted: true, rejectedAt: null,
+      vsEstimate: [{ category: "flooring", bidCents: 780_000, estimateCents: 600_000, deltaCents: 180_000, deltaPct: 30 }, { category: "kitchen", bidCents: 1_650_000, estimateCents: 1_500_000, deltaCents: 150_000, deltaPct: 10 }] },
+      ],
   categories: ["flooring", "kitchen"],
   matrix: [
     { category: "flooring", cells: [{ bidId: "b1", contractorName: "GC One", cents: 780_000 }, { bidId: "b2", contractorName: "GC Two", cents: null }], minCents: 780_000, maxCents: 780_000, spreadCents: 0 },
@@ -129,6 +130,21 @@ describe("rehab page — three-way variance", () => {
     h.locked = true;
     await renderPage();
     expect(q("rehab-variance-flags")?.textContent).toMatch(/Kitchen: spent \$18,240 vs \$15,000 estimate/);
+  });
+
+  it("once locked: no delete on estimated lines, $0-only new lines, and planning is closed in the status list", async () => {
+    h.locked = true;
+    await renderPage();
+    expect(container.querySelector('button[aria-label="Delete line Kitchen"]')).toBeNull();
+    expect(q("new-line-estimate-locked")).not.toBeNull();
+    expect(container.querySelector('input[aria-label="New line item estimate"]')).toBeNull();
+  });
+
+  it("a bid category the FIRST bid does not cover still shows the project's estimate", async () => {
+    h.locked = true;
+    await renderPage();
+    // b1 (first) covers kitchen + flooring; reorder so the first bid lacks flooring.
+    expect(q("bid-estimate-flooring")?.textContent).toMatch(/6,000/);
   });
 
   it("bids show the estimate per category, an arithmetic delta, and the explicit apply act", async () => {

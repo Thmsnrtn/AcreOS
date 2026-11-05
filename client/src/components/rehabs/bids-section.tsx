@@ -220,13 +220,15 @@ export function BidsSection({ rehabId }: { rehabId: string }) {
   // explicit act: each category's amount becomes that line's committed figure,
   // and only where exactly one line carries the category (the server refuses
   // the whole request otherwise, naming why).
+  const [applyChosen, setApplyChosen] = useState<string[] | null>(null);
+  const [replaceCommitted, setReplaceCommitted] = useState(false);
   const applyToLines = useMutation({
-    mutationFn: async (vars: { bidId: string; categories: string[] }) => {
+    mutationFn: async (vars: { bidId: string; categories: string[]; replaceCommitted: boolean }) => {
       const res = await fetch(`/api/bids/${vars.bidId}/apply-to-lines`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json", ...csrf() },
-        body: JSON.stringify({ categories: vars.categories }),
+        body: JSON.stringify({ categories: vars.categories, replaceCommitted: vars.replaceCommitted }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body?.message ?? `Failed (${res.status})`);
@@ -243,7 +245,10 @@ export function BidsSection({ rehabId }: { rehabId: string }) {
   if (bidsQuery.isLoading) return <Skeleton className="h-32" />;
   const data = bidsQuery.data;
   const accepted = data?.bids.find((b) => b.isAccepted) ?? null;
-  const estimateFor = (category: string) => data?.bids[0]?.vsEstimate.find((d) => d.category === category)?.estimateCents ?? 0;
+  // The project's estimate for a category is the same whichever bid reports
+  // it; read it from any bid that covers the category, never just the first.
+  const estimateFor = (category: string) =>
+    data?.bids.flatMap((b) => b.vsEstimate).find((d) => d.category === category)?.estimateCents ?? 0;
   const deltaFor = (bid: Bid, category: string) => bid.vsEstimate.find((d) => d.category === category) ?? null;
 
   return (
@@ -437,22 +442,58 @@ export function BidsSection({ rehabId }: { rehabId: string }) {
               </tbody>
             </table>
             {accepted && Object.keys(accepted.categoryBreakdown ?? {}).length > 0 ? (
-              <div className="mt-3 flex flex-wrap items-center gap-3 rounded-card border border-border p-3" data-testid="bid-apply-to-lines">
-                <p className="text-sm">
-                  Set what's committed on your lines from {accepted.contractorName}'s accepted bid:{" "}
-                  {Object.entries(accepted.categoryBreakdown).map(([cat, cents]) => `${cat.replace(/_/g, " ")} ${fmtUsd(cents)}`).join(", ")}.
-                  Your estimates are not changed.
+              <fieldset className="mt-3 space-y-2 rounded-card border border-border p-3" data-testid="bid-apply-to-lines">
+                <legend className="px-1 text-sm font-medium">
+                  Set what's committed on your lines from {accepted.contractorName}'s accepted bid
+                </legend>
+                <p className="text-xs text-muted-foreground">
+                  Each category you tick becomes the committed amount on the one line in that category. Your estimates are
+                  not changed.
                 </p>
+                <div className="flex flex-wrap gap-3">
+                  {Object.entries(accepted.categoryBreakdown).map(([cat, cents]) => {
+                    const chosen = (applyChosen ?? Object.keys(accepted.categoryBreakdown)).includes(cat);
+                    return (
+                      <label key={cat} className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={chosen}
+                          onChange={(e) => {
+                            const cur = applyChosen ?? Object.keys(accepted.categoryBreakdown);
+                            setApplyChosen(e.target.checked ? [...cur, cat] : cur.filter((c) => c !== cat));
+                          }}
+                          data-testid={`bid-apply-category-${cat}`}
+                        />
+                        {cat.replace(/_/g, " ")} {fmtUsd(cents)}
+                      </label>
+                    );
+                  })}
+                </div>
+                <label className="flex items-center gap-2 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={replaceCommitted}
+                    onChange={(e) => setReplaceCommitted(e.target.checked)}
+                    data-testid="bid-apply-replace"
+                  />
+                  Replace committed amounts already entered on those lines
+                </label>
                 <Button
                   size="sm"
                   variant="outline"
-                  disabled={applyToLines.isPending}
-                  onClick={() => applyToLines.mutate({ bidId: accepted.id, categories: Object.keys(accepted.categoryBreakdown) })}
+                  disabled={applyToLines.isPending || (applyChosen ?? Object.keys(accepted.categoryBreakdown)).length === 0}
+                  onClick={() =>
+                    applyToLines.mutate({
+                      bidId: accepted.id,
+                      categories: applyChosen ?? Object.keys(accepted.categoryBreakdown),
+                      replaceCommitted,
+                    })
+                  }
                   data-testid="button-apply-bid-to-lines"
                 >
                   {applyToLines.isPending ? "Applying…" : "Apply as committed"}
                 </Button>
-              </div>
+              </fieldset>
             ) : null}
           </div>
         )}

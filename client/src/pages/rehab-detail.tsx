@@ -124,6 +124,12 @@ function fmtUsdCents(c: number | null | undefined): string {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(c / 100);
 }
 
+/** The server's own refusal text (e.g. the estimate lock's reason), not a bare status code. */
+async function serverMessage(res: Response): Promise<string> {
+  const body = await res.json().catch(() => null);
+  return typeof body?.message === "string" && body.message ? body.message : `Failed (${res.status})`;
+}
+
 function csrfHeader(): Record<string, string> {
   const m = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
   return { "Content-Type": "application/json", "x-csrf-token": decodeURIComponent(m?.[1] ?? "") };
@@ -145,7 +151,7 @@ export default function RehabDetailPage() {
     enabled: !!id,
     queryFn: async () => {
       const res = await fetch(`/api/rehabs/${id}`, { credentials: "include" });
-      if (!res.ok) throw new Error(`Failed (${res.status})`);
+      if (!res.ok) throw new Error(await serverMessage(res));
       return res.json();
     },
   });
@@ -154,7 +160,7 @@ export default function RehabDetailPage() {
     queryKey: ["/api/rehab-scope-templates"],
     queryFn: async () => {
       const res = await fetch("/api/rehab-scope-templates", { credentials: "include" });
-      if (!res.ok) throw new Error(`Failed (${res.status})`);
+      if (!res.ok) throw new Error(await serverMessage(res));
       return res.json();
     },
   });
@@ -162,7 +168,7 @@ export default function RehabDetailPage() {
   const updateRehab = useMutation({
     mutationFn: async (updates: Partial<Rehab>) => {
       const res = await fetch(`/api/rehabs/${id}`, { method: "PATCH", credentials: "include", headers: csrfHeader(), body: JSON.stringify(updates) });
-      if (!res.ok) throw new Error(`Failed (${res.status})`);
+      if (!res.ok) throw new Error(await serverMessage(res));
       return res.json();
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/rehabs", id] }),
@@ -183,7 +189,7 @@ export default function RehabDetailPage() {
           budgetCents: Math.round(parseFloat(newBudget || "0") * 100),
         }),
       });
-      if (!res.ok) throw new Error(`Failed (${res.status})`);
+      if (!res.ok) throw new Error(await serverMessage(res));
       return res.json();
     },
     onSuccess: () => {
@@ -203,7 +209,7 @@ export default function RehabDetailPage() {
         method: "PATCH", credentials: "include", headers: csrfHeader(),
         body: JSON.stringify(vars.updates),
       });
-      if (!res.ok) throw new Error(`Failed (${res.status})`);
+      if (!res.ok) throw new Error(await serverMessage(res));
       return res.json();
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/rehabs", id] }),
@@ -219,7 +225,7 @@ export default function RehabDetailPage() {
       const res = await fetch(`/api/rehab-line-items/${itemId}`, {
         method: "DELETE", credentials: "include", headers: csrfHeader(),
       });
-      if (!res.ok) throw new Error(`Failed (${res.status})`);
+      if (!res.ok) throw new Error(await serverMessage(res));
       return res.json();
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/rehabs", id] }),
@@ -236,7 +242,7 @@ export default function RehabDetailPage() {
         method: "POST", credentials: "include", headers: csrfHeader(),
         body: JSON.stringify({ templateKey }),
       });
-      if (!res.ok) throw new Error(`Failed (${res.status})`);
+      if (!res.ok) throw new Error(await serverMessage(res));
       return res.json();
     },
     onSuccess: (r: any) => {
@@ -274,7 +280,13 @@ export default function RehabDetailPage() {
               <SelectValue><Badge variant="outline">{rehab.status.replace(/_/g, " ")}</Badge></SelectValue>
             </SelectTrigger>
             <SelectContent>
-              {STATUSES.map((s) => <SelectItem key={s} value={s}>{s.replace(/_/g, " ")}</SelectItem>)}
+              {STATUSES.map((s) => (
+                // Once a project leaves planning it cannot return (the estimate lock, §4.3).
+                <SelectItem key={s} value={s} disabled={s === "planning" && data.estimateLock.locked}>
+                  {s.replace(/_/g, " ")}
+                  {s === "planning" && data.estimateLock.locked ? " (closed)" : ""}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
           {totals.daysOnSite !== null && (
@@ -426,8 +438,9 @@ export default function RehabDetailPage() {
                     <td className="px-2 py-1">{it.scope}</td>
                     <td className="px-2 py-1 text-right">
                       {data.estimateLock.locked ? (
-                        <span className="text-xs tabular-nums" title="Locked — the project has left planning" data-testid={`estimate-locked-${it.id}`}>
+                        <span className="text-xs tabular-nums" data-testid={`estimate-locked-${it.id}`}>
                           {fmtUsdCents(it.budgetCents)}
+                          <span className="sr-only"> — estimate locked; the project has left planning</span>
                         </span>
                       ) : (
                         <CellInput
@@ -459,9 +472,11 @@ export default function RehabDetailPage() {
                       {v && v.actualVsCommittedCents !== null ? fmtUsdCents(v.actualVsCommittedCents) : "not committed"}
                     </td>
                     <td className="px-2 py-1 text-right">
-                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => deleteItem.mutate(it.id)} aria-label="Delete line">
-                        <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
-                      </Button>
+                      {data.estimateLock.locked && it.budgetCents > 0 ? null : (
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => deleteItem.mutate(it.id)} aria-label={`Delete line ${it.scope}`}>
+                          <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+                        </Button>
+                      )}
                     </td>
                   </tr>
                 );
@@ -478,11 +493,15 @@ export default function RehabDetailPage() {
                 </td>
                 <td className="px-2 py-2"><Input aria-label="New line item scope" value={newScope} onChange={(e) => setNewScope(e.target.value)} placeholder="Scope description…" className="h-8" /></td>
                 <td className="px-2 py-2 text-right">
-                  <Input aria-label="New line item budget" type="number" value={newBudget} onChange={(e) => setNewBudget(e.target.value)} placeholder="0" className="h-8 text-right" />
+                  {data.estimateLock.locked ? (
+                    <span className="text-xs text-muted-foreground" data-testid="new-line-estimate-locked">$0 estimate (locked)</span>
+                  ) : (
+                    <Input aria-label="New line item estimate" type="number" value={newBudget} onChange={(e) => setNewBudget(e.target.value)} placeholder="0" className="h-8 text-right" />
+                  )}
                 </td>
                 <td colSpan={5}></td>
                 <td className="px-2 py-2 text-right">
-                  <Button size="sm" disabled={!newScope || !newBudget || addItem.isPending} onClick={() => addItem.mutate()}>
+                  <Button size="sm" disabled={!newScope || (!newBudget && !data.estimateLock.locked) || addItem.isPending} onClick={() => addItem.mutate()}>
                     <PlusCircle className="w-4 h-4 mr-1" aria-hidden="true" /> Add
                   </Button>
                 </td>
@@ -493,8 +512,8 @@ export default function RehabDetailPage() {
                 <td colSpan={3} className="px-2 py-2 text-right">Totals</td>
                 <td className="px-2 py-2 text-right">{fmtUsdCents(totals.budgetCents)}</td>
                 <td className="px-2 py-2 text-right">
-                  {fmtUsdCents(data.variance.project.committedCents)}
-                  {data.variance.project.uncommittedLineCount > 0 ? (
+                  {data.variance.project.committedLineCount === 0 ? "not committed" : fmtUsdCents(data.variance.project.committedCents)}
+                  {data.variance.project.committedLineCount > 0 && data.variance.project.uncommittedLineCount > 0 ? (
                     <span className="block text-[11px] font-normal text-muted-foreground">
                       {data.variance.project.uncommittedLineCount} not committed
                     </span>
@@ -506,6 +525,9 @@ export default function RehabDetailPage() {
                 </td>
                 <td className="px-2 py-2 text-right" data-testid="vs-committed-total">
                   {data.variance.project.actualVsCommittedCents === null ? "not committed" : fmtUsdCents(data.variance.project.actualVsCommittedCents)}
+                  {data.variance.project.actualVsCommittedCents !== null ? (
+                    <span className="block text-[11px] font-normal text-muted-foreground">committed lines only</span>
+                  ) : null}
                 </td>
                 <td></td>
               </tr>

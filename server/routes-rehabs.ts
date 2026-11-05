@@ -400,6 +400,16 @@ export function registerRehabRoutes(app: Express): void {
         .where(and(eq(rehabs.id, routeParam(req.params.id)), eq(rehabs.organizationId, orgId)));
       if (!prev) return Errors.notFound(res, "Rehab");
       if (!(await refuseRedeemableDeedSpend(res, orgId, prev.propertyId, "A rehab update"))) return;
+      // The estimate lock (§4.3) holds only if a project cannot step back into
+      // planning, re-price its lines, and step out again. Once it has left
+      // planning, it does not return.
+      if (parsed.data.status === ESTIMATE_EDITABLE_STATUS && prev.status !== ESTIMATE_EDITABLE_STATUS) {
+        return Errors.badRequest(
+          res,
+          "A project that has left planning cannot go back to it: its estimates are locked so variance is measured against what was planned. Scope changes after work starts are change orders.",
+          { field: "status" },
+        );
+      }
       const beforeStatus: string | null = parsed.data.status !== undefined ? prev.status ?? null : null;
       const [updated] = await db.update(rehabs).set(updates)
         .where(and(eq(rehabs.id, routeParam(req.params.id)), eq(rehabs.organizationId, orgId)))
@@ -470,12 +480,16 @@ export function registerRehabRoutes(app: Express): void {
         if (parsed.data[k] !== undefined) updates[k] = parsed.data[k];
       }
       // V-Tax-1 T4b: a line-item update is rehab spend on the rehab's parcel.
-      const [owner] = await db.select({ propertyId: rehabs.propertyId, rehabId: rehabLineItems.rehabId, budgetCents: rehabLineItems.budgetCents }).from(rehabLineItems)
+      const [owner] = await db.select({ propertyId: rehabs.propertyId, rehabId: rehabLineItems.rehabId, budgetCents: rehabLineItems.budgetCents, category: rehabLineItems.category }).from(rehabLineItems)
         .innerJoin(rehabs, eq(rehabs.id, rehabLineItems.rehabId))
         .where(and(eq(rehabLineItems.id, routeParam(req.params.id)), eq(rehabLineItems.organizationId, orgId)));
       if (!owner) return Errors.notFound(res, "Line item");
       if (!(await refuseRedeemableDeedSpend(res, orgId, owner.propertyId, "A rehab line item update"))) return;
-      if (parsed.data.budgetCents !== undefined && owner.budgetCents !== parsed.data.budgetCents && (await estimateLockedFor(orgId, owner.rehabId as string))) {
+      const changesEstimate =
+        (parsed.data.budgetCents !== undefined && owner.budgetCents !== parsed.data.budgetCents) ||
+        // Moving an estimated line to another category moves its estimate there.
+        (parsed.data.category !== undefined && parsed.data.category !== owner.category && Number(owner.budgetCents) > 0);
+      if (changesEstimate && (await estimateLockedFor(orgId, owner.rehabId as string))) {
         return Errors.badRequest(res, ESTIMATE_LOCK_MESSAGE, { field: "budgetCents" });
       }
       const [updated] = await db.update(rehabLineItems).set(updates)

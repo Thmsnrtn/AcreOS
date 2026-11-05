@@ -48,6 +48,8 @@ const updateSchema = bidSchema.partial();
 
 const applyToLinesSchema = z.object({
   categories: z.array(z.enum(REHAB_LINE_CATEGORIES)).min(1).max(REHAB_LINE_CATEGORIES.length),
+  /** Required to overwrite a committed amount the operator already entered on a line. */
+  replaceCommitted: z.boolean().default(false),
 });
 
 export function registerBidEstimateRoutes(app: Express): void {
@@ -219,7 +221,7 @@ export function registerBidEstimateRoutes(app: Express): void {
       if (!owner) return Errors.notFound(res, "Rehab");
       if (!(await refuseRedeemableDeedSpend(res, orgId, owner.propertyId, "Committing a bid to rehab lines"))) return;
       const breakdown = (bid.categoryBreakdown as Record<string, number>) ?? {};
-      const lines = await db.select({ id: rehabLineItems.id, category: rehabLineItems.category })
+      const lines = await db.select({ id: rehabLineItems.id, category: rehabLineItems.category, committedCents: rehabLineItems.committedCents })
         .from(rehabLineItems)
         .where(and(eq(rehabLineItems.rehabId, bid.rehabId as string), eq(rehabLineItems.organizationId, orgId)));
 
@@ -231,7 +233,9 @@ export function registerBidEstimateRoutes(app: Express): void {
         if (typeof amount !== "number") refused.push({ category, reason: "This bid has no amount for this category." });
         else if (matches.length === 0) refused.push({ category, reason: "The project has no line in this category." });
         else if (matches.length > 1) refused.push({ category, reason: `The project has ${matches.length} lines in this category — enter the committed amount on each line yourself.` });
-        else plan.push({ lineId: String(matches[0].id), category, committedCents: Math.round(amount) });
+        else if (!parsed.data.replaceCommitted && Number(matches[0].committedCents) > 0 && Number(matches[0].committedCents) !== Math.round(amount)) {
+          refused.push({ category, reason: `The line already has $${Math.round(Number(matches[0].committedCents) / 100).toLocaleString("en-US")} committed — choose to replace it if this bid supersedes it.` });
+        } else plan.push({ lineId: String(matches[0].id), category, committedCents: Math.round(amount) });
       }
       if (refused.length > 0) {
         return Errors.badRequest(res, `Nothing was applied. ${refused.map((r) => `${r.category}: ${r.reason}`).join(" ")}`, { refused });

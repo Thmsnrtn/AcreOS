@@ -60,7 +60,9 @@ export type VarianceFlag =
   | { kind: "line_actual_over_estimate"; lineId: string; category: string; scope: string; actualCents: number; estimateCents: number; fact: string }
   | { kind: "committed_over_estimate"; committedCents: number; estimateCents: number; fact: string };
 
-const usd = (cents: number) => `$${Math.round(cents / 100).toLocaleString("en-US")}`;
+/** Whole dollars when exact; cents shown when not, so a 40¢ overrun never reads "$15,000 vs $15,000". */
+const usd = (cents: number) =>
+  `$${(cents / 100).toLocaleString("en-US", { minimumFractionDigits: cents % 100 === 0 ? 0 : 2, maximumFractionDigits: 2 })}`;
 
 export function lineVariance(l: VarianceLineInput): LineVariance {
   const estimate = Number(l.budgetCents) || 0;

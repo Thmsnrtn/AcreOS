@@ -60,6 +60,10 @@ describe("variance flags are facts", () => {
     expect(varianceFlags([L("a", "roof", 1_000_000, 990_000, 990_000)])).toEqual([]);
   });
 
+  it("a cents-level overrun is shown in cents, never as '$15,000 vs $15,000'", () => {
+    expect(varianceFlags([L("a", "roof", 1_500_000, 0, 1_500_040)])[0].fact).toBe("roof scope: spent $15,000.40 vs $15,000 estimate");
+  });
+
   it("committed over estimate flags at the project level", () => {
     const flags = varianceFlags([L("a", "roof", 1_000_000, 1_200_000, 0)]);
     expect(flags.map((f) => f.kind)).toEqual(["committed_over_estimate"]);
