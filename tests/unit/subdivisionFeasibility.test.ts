@@ -135,7 +135,7 @@ describe("§8.3 test 10 — refuse per line; zero is a statement", () => {
   });
 
   it("malformed phases, phases that don't sum to the lots, and a zero pace are refused — never guessed", () => {
-    for (const bad of [{ phaseLotCounts: "4;4" }, { phaseLotCounts: "4,4" }, { absorptionLotsPerMonth: 0 }]) {
+    for (const bad of <Array<Record<string, string | number>>>[{ phaseLotCounts: "4;4" }, { phaseLotCounts: "4,4" }, { absorptionLotsPerMonth: 0 }]) {
       expect(() => subdivisionFeasibilityEngine.compute({ ...WIRE, ...bad }), JSON.stringify(bad)).toThrow(ScenarioEngineError);
     }
   });
@@ -235,7 +235,7 @@ describe("§8.3 tests 13–14 — engine registration, ownership, preview ≡ re
   });
 
   it("the timeline is declared as the OPERATOR's, never a county figure; omitted carry parts are declared, not absorbed", () => {
-    const a = subdivisionFeasibilityEngine.compute(WIRE).assumptions;
+    const a = subdivisionFeasibilityEngine.compute(WIRE).assumptions ?? [];
     expect(a.find((x) => x.key === "timeline")).toMatchObject({ origin: "user", basis: expect.stringMatching(/not a county figure/) });
     expect(a.find((x) => x.key === "debt_carry")).toMatchObject({ origin: "platform-default", value: "not entered — excluded" });
     expect(a.find((x) => x.key === "sales_pace")).toMatchObject({ origin: "user", basis: expect.stringMatching(/not a platform forecast/) });
@@ -280,7 +280,7 @@ describe("§8.3 test 13 — ownership guard (evidence rule v2): refused BEFORE a
 describe("audit 2026-11-05 — bounds, IRR range, cash-flow shape, phases, refusals", () => {
   it("BLOCKER fix: a pace, timeline or lot count that would loop without end is refused instantly", () => {
     const t0 = Date.now();
-    for (const bad of [{ absorptionLotsPerMonth: 1e-9 }, { timelineP50Days: 1e12 }, { lotCount: 10_000_001 }, { absorptionLotsPerMonth: 0.01, lotCount: 10 }]) {
+    for (const bad of <Array<Record<string, string | number>>>[{ absorptionLotsPerMonth: 1e-9 }, { timelineP50Days: 1e12 }, { lotCount: 10_000_001 }, { absorptionLotsPerMonth: 0.01, lotCount: 10 }]) {
       expect(() => subdivisionFeasibilityEngine.compute({ ...WIRE, ...bad }), JSON.stringify(bad)).toThrow(ScenarioEngineError);
     }
     expect(Date.now() - t0).toBeLessThan(1000);
@@ -342,7 +342,7 @@ describe("audit 2026-11-05 — bounds, IRR range, cash-flow shape, phases, refus
   });
 
   it("engine choices are declared as DERIVED, separately from what the operator stated", () => {
-    const a = subdivisionFeasibilityEngine.compute(WIRE).assumptions;
+    const a = subdivisionFeasibilityEngine.compute(WIRE).assumptions ?? [];
     for (const k of ["cost_timing", "sale_price_model", "sales_start", "carry_spread", "irr_timeline", "opportunity_cost_basis", "phase_allocation"]) {
       expect(a.find((x) => x.key === k)?.origin, k).toBe("derived");
     }
