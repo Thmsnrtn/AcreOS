@@ -192,6 +192,7 @@ exports[`route manifest > snapshot: sorted manifest file paths (additions/remova
   "routes-note-acquisitions.ts",
   "routes-note-record.ts",
   "routes-note-tape.ts",
+  "routes-note-workout.ts",
   "routes-notes.ts",
   "routes-notifications.ts",
   "routes-observability-cost.ts",
