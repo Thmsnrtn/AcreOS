@@ -13,11 +13,19 @@
  * (2026-10-22, design §5): FL annual (published each August), MT monthly,
  * AR semi-annual.
  *
- * DOSSIER. Every use class is UNRESOLVED today. The terms pages were not read
- * for this registry: the D1 build ran in a container whose network policy
- * does not reach the state hosts, and a use class is resolved only from the
- * terms' own words, never from a seed note. So every policy block is the
- * restrictive default, and the FL build ships dry-run-only (D1 license gate).
+ * DOSSIER. A state's use classes are UNRESOLVED unless RESOLVED_DOSSIERS below
+ * records findings read from the terms' own words, never from a seed note.
+ * The D1 build could not reach the state hosts, so D1 left every state
+ * unresolved; the first-party ingest package (2026-11-03) resolves WI, the
+ * Wave A pilot, from its publisher's schema documentation, re-read live. Every
+ * other state stays restrictive. The re-verification radar (reverifyBy) is
+ * applied each time an entry is read (statewideSource), so a lapsed dossier
+ * is restrictive everywhere without anyone editing this file.
+ *
+ * INGEST vs LOOKUP. A resolved dossier admits a source to BULK ingest
+ * (ingestAdmission, consulted before any fetch). It does NOT clear the source
+ * for live point lookup: that is LOOKUP_CLEARANCE, a separate decision,
+ * separately recorded. WI is admitted to ingest and remains GATED for lookup.
  *
  * LOOKUP. Separately, each entry carries its live point-lookup clearance
  * (LOOKUP_CLEARANCE below, founder decision 2026-11-03). parcel.ts reads it
@@ -26,11 +34,15 @@
 
 import { STATEWIDE_PARCEL_ENDPOINTS } from "../statewideParcelEndpoints";
 import {
+  effectiveDossier,
+  ingestAdmission,
   policyFromDossier,
   unresolvedDossier,
+  type IngestAdmission,
   type SourceDossier,
   type SourcePolicy,
 } from "@shared/openData/sourcePolicy";
+import { clock } from "../../utils/clock";
 
 export type DocumentedCadence =
   | { kind: "monthly" }
@@ -97,14 +109,33 @@ const LOOKUP_CLEARANCE: Readonly<Record<string, LookupClearance>> = Object.freez
   MD: gated("UNRESOLVED — no owner-name field; item-license evidence recorded in the seed only"),
 });
 
+/**
+ * A suppression the PUBLISHER applied upstream (a statute or a local opt-out),
+ * visible only as literal values in the layer. Ingest stores these values AS
+ * PUBLISHED; nothing may "repair" them from another source or an older
+ * vintage (first-party ingest package §5).
+ */
+export interface PublishedSuppression {
+  /** The layer fields that carry the suppression. */
+  fields: string[];
+  /** The literal values that mean "suppressed upstream". */
+  values: string[];
+  basis: string;
+}
+
 export interface StatewideSourceEntry {
   state: string;
   /** null = the program documents no cadence. Never guessed. */
   cadence: DocumentedCadence | null;
   cadenceSource: string | null;
+  /** The dossier as recorded (what a person read). */
+  recordedDossier: SourceDossier;
+  /** The dossier as the re-verification radar lets it stand when the entry was read. */
   dossier: SourceDossier;
-  /** Derived from the dossier — never set by hand. */
+  /** Derived from the effective dossier — never set by hand. */
   policy: SourcePolicy;
+  /** Owner (or other) values the publisher suppressed upstream; null when none is recorded. */
+  suppression: PublishedSuppression | null;
   /** Live point-lookup clearance (founder decision 2026-11-03). Gated unless cleared on evidence. */
   lookup: LookupClearance;
 }
@@ -144,21 +175,91 @@ const RESTRICTIONS: Record<string, string[]> = {
   WA: ["Owner names: design §8 records an RCW restriction on commercial use of owner-name lists — read the statute before any WA owner-name use."],
 };
 
-const STATEWIDE_SOURCE_REGISTRY: readonly StatewideSourceEntry[] = STATEWIDE_PARCEL_ENDPOINTS.map((ep) => {
-  const dossier = unresolvedDossier(ep.termsUrl ?? null, NOT_READ, RESTRICTIONS[ep.state] ?? []);
+/**
+ * RESOLVED DOSSIERS — findings read from each source's own terms. A state
+ * absent here is unresolved in every use class. Every determination is DRAFT —
+ * PREPARED FOR ATTORNEY REVIEW (dossier program 2026-11); reliance rides the
+ * attorney review at LLC / first customer. A resolved dossier admits BULK
+ * ingest only — it never clears live point lookup (LOOKUP_CLEARANCE).
+ */
+const WI_SCHEMA_DOC = "https://sco.wisc.edu/parcels/data/assets/V12/V12_Wisconsin_Statewide_Parcels_Schema_Documentation.pdf";
+const WI_WORDS =
+  '"The data is in the public domain." "There are no use restrictions." — V12 Wisconsin Statewide Parcels Schema Documentation (SCO / WLIP, Dept. of Administration), re-read 2026-11-03. Corroborated by the layer item\'s licenseInfo: "This data free for public consumption as of: 06/30/2026".';
+const wiAllowed = { status: "allowed" as const, evidence: WI_WORDS, readOn: "2026-11-03" };
+
+const RESOLVED_DOSSIERS: Readonly<Record<string, SourceDossier>> = Object.freeze({
+  // Wave A pilot (first-party ingest package §1, A1). Permitted, all classes.
+  WI: {
+    termsUrl: WI_SCHEMA_DOC,
+    termsReadOn: "2026-11-03",
+    useClasses: { internal: wiAllowed, display: wiAllowed, redistribution: wiAllowed, resale: wiAllowed },
+    // "There are no requirements for citing the Wisconsin statewide parcel layers within any reporting derived from this GIS layer" (same document).
+    attributionRequired: false,
+    restrictions: [
+      'Owner-name redaction is applied upstream and published as the literal "NOT AVAILABLE" in OWNERNME1/OWNERNME2 (the publisher describes Kenosha County as complete and eight other counties as partial — measured 2026-11-03: 64,144 of the 68,499 Kenosha rows; Wis. Stat. §757.07 judicial-privacy shielding per the WI pack). Stored as published; NEVER backfilled from any other source or vintage.',
+      "Determination is DRAFT — prepared for attorney review (dossier program 2026-11); mail use is not covered (counsel Q-12.3).",
+    ],
+    // The schema documentation: "The next release of the statewide parcel layer, V13, is tentatively scheduled for June 30, 2027."
+    reverifyBy: "2027-06-30",
+    reverifyTriggers: ["the V13 release (tentatively 2027-06-30) — a new layer is a new terms read", "any change to the schema documentation's terms or the item's licenseInfo"],
+  },
+});
+
+/** Publisher-side suppressions, per state (data, not comments). */
+const PUBLISHED_SUPPRESSION: Readonly<Record<string, PublishedSuppression>> = Object.freeze({
+  WI: {
+    fields: ["OWNERNME1", "OWNERNME2"],
+    values: ["NOT AVAILABLE"],
+    basis:
+      'V12 schema documentation: redacted owner names "should be attributed as \u201cNOT AVAILABLE\u201d within each redacted record\'s OWNERNME1 and/or OWNERNME2 field" (publisher: Kenosha complete, eight counties partial). Measured live 2026-11-03: 90,652 statewide, 64,144 of Kenosha\'s 68,499.',
+  },
+});
+
+interface RecordedEntry {
+  state: string;
+  cadence: DocumentedCadence | null;
+  cadenceSource: string | null;
+  recordedDossier: SourceDossier;
+  suppression: PublishedSuppression | null;
+  lookup: LookupClearance;
+}
+
+const STATEWIDE_SOURCE_REGISTRY: readonly RecordedEntry[] = STATEWIDE_PARCEL_ENDPOINTS.map((ep) => {
+  const recordedDossier = RESOLVED_DOSSIERS[ep.state] ?? unresolvedDossier(ep.termsUrl ?? null, NOT_READ, RESTRICTIONS[ep.state] ?? []);
   const c = CADENCES[ep.state];
   return {
     state: ep.state,
     cadence: c?.cadence ?? null,
     cadenceSource: c?.source ?? null,
-    dossier,
-    policy: policyFromDossier(dossier),
+    recordedDossier,
+    suppression: PUBLISHED_SUPPRESSION[ep.state] ?? null,
     lookup: LOOKUP_CLEARANCE[ep.state] ?? NO_LOOKUP_ENTRY,
   };
 });
 
-export function statewideSource(state: string): StatewideSourceEntry | undefined {
-  return STATEWIDE_SOURCE_REGISTRY.find((e) => e.state === state.toUpperCase());
+/** The recorded entry as the radar lets it stand at `now`. */
+function standing(e: RecordedEntry, now: Date): StatewideSourceEntry {
+  const dossier = effectiveDossier(e.recordedDossier, now);
+  return { ...e, dossier, policy: policyFromDossier(dossier) };
+}
+
+/** A state's registry entry, with the re-verification radar applied at `now`. */
+export function statewideSource(state: string, now: Date = clock.now()): StatewideSourceEntry | undefined {
+  const e = STATEWIDE_SOURCE_REGISTRY.find((x) => x.state === state.toUpperCase());
+  return e ? standing(e, now) : undefined;
+}
+
+/**
+ * May the statewide bulk build fetch this state at all? Only a seeded state
+ * whose effective dossier allows internal use. Checked BEFORE any request —
+ * an unseeded state, an unresolved one, or one whose re-verification lapsed
+ * is refused without a single fetch.
+ */
+export function statewideIngestAdmission(state: string, now: Date = clock.now(), entry?: StatewideSourceEntry): IngestAdmission {
+  const st = state.toUpperCase();
+  const e = entry ?? statewideSource(st, now);
+  if (!e) return { admitted: false, reasons: [`${st}: no seeded statewide source and no dossier — "unclear" = unshipped`] };
+  return ingestAdmission(st, e.dossier, now);
 }
 
 const DAY_MS = 86_400_000;

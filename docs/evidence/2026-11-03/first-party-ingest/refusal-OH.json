@@ -1,0 +1,9 @@
+{
+  "state": "OH",
+  "county": "X",
+  "refused": true,
+  "fetches": 0,
+  "reasons": [
+    "OH: no seeded statewide source and no dossier — \"unclear\" = unshipped"
+  ]
+}
