@@ -43,7 +43,14 @@ describe.runIf(realDbAvailable)("subdivision_screen_runs — real database", () 
       .returning();
     expect(run.id).toBeGreaterThan(0);
 
-    await expect(db.execute(sql`UPDATE subdivision_screen_runs SET triggered_count = 1 WHERE id = ${run.id}`)).rejects.toThrow(/append-only/);
+    // drizzle wraps the driver error ("Failed query: …"); the trigger's own code and message are on the cause.
+    const err = await db.execute(sql`UPDATE subdivision_screen_runs SET triggered_count = 1 WHERE id = ${run.id}`).then(
+      () => null,
+      (e: unknown) => e as { code?: string; message?: string; cause?: { code?: string; message?: string } },
+    );
+    expect(err, "the UPDATE must be refused").not.toBeNull();
+    expect(err?.code ?? err?.cause?.code).toBe("23001");
+    expect(err?.cause?.message ?? err?.message).toMatch(/append-only/);
     const [still] = (await db.execute(sql`SELECT triggered_count FROM subdivision_screen_runs WHERE id = ${run.id}`)).rows as Array<{ triggered_count: number }>;
     expect(still.triggered_count).toBe(0);
 
