@@ -73,6 +73,9 @@ describe("§8.3 test 9 — golden feasibility", () => {
   const r = computeFeasibility(GOLDEN);
 
   it("matches the hand arithmetic to the cent", () => {
+    expect(subdivisionFeasibilityEngine.compute(WIRE).metrics.find((m) => m.id === "project_cost_before_carry")?.value).toBe($(280_000));
+    // `total_cost` is NOT emitted: the outcome loop reads it as acquisition cost.
+    expect(subdivisionFeasibilityEngine.produces).not.toContain("total_cost");
     expect(r.hard.totalCents).toBe($(130_000));
     expect(r.soft.totalCents).toBe($(50_000));
     expect(r.totalCostBeforeCarry.cents).toBe($(280_000));
@@ -171,6 +174,17 @@ describe("§8.3 test 12 — sensitivity moves margin and IRR the right way, by t
   const cells = feasibilitySensitivity(GOLDEN);
   const at = (axis: string, change: number) => cells.find((c) => c.axis === axis && c.change === change)!;
 
+  it("IRR magnitude, not just direction: lot price +10% → 3.6482579 annual (solved independently)", () => {
+    expect(at("lot_price", 0.1).irrAnnual).toBeCloseTo(3.6482579, 5);
+  });
+
+  it("a refused section flows into every cell as null — no cell dresses a refused run as computed", () => {
+    const { roadsCents: _r, ...rest } = WIRE;
+    for (const c of feasibilitySensitivity(feasibilityInputsFromWire(rest))) {
+      expect([c.marginBeforeCarryCents, c.marginAfterCarryP50Cents, c.irrAnnual], c.label).toEqual([null, null, null]);
+    }
+  });
+
   it("lot price ±10% moves the before-carry margin by exactly ±40,000", () => {
     expect(at("lot_price", 0.1).marginBeforeCarryCents).toBe($(160_000));
     expect(at("lot_price", -0.1).marginBeforeCarryCents).toBe($(80_000));
@@ -260,5 +274,78 @@ describe("§8.3 test 13 — ownership guard (evidence rule v2): refused BEFORE a
     expect(stores.scenarios).toHaveLength(1);
     expect(stores.decisions).toHaveLength(1);
     expect(stores.scenarios[0]).toMatchObject({ engineId: "subdivision_feasibility", strategyPackId: "subdivider" });
+  });
+});
+
+describe("audit 2026-11-05 — bounds, IRR range, cash-flow shape, phases, refusals", () => {
+  it("BLOCKER fix: a pace, timeline or lot count that would loop without end is refused instantly", () => {
+    const t0 = Date.now();
+    for (const bad of [{ absorptionLotsPerMonth: 1e-9 }, { timelineP50Days: 1e12 }, { lotCount: 10_000_001 }, { absorptionLotsPerMonth: 0.01, lotCount: 10 }]) {
+      expect(() => subdivisionFeasibilityEngine.compute({ ...WIRE, ...bad }), JSON.stringify(bad)).toThrow(ScenarioEngineError);
+    }
+    expect(Date.now() - t0).toBeLessThan(1000);
+  });
+
+  it("long horizons keep their IRR: 60 lots at 0.5/month after 24 months (144 months) and the −25% pace cell (184 months), solved independently", () => {
+    const long = { ...WIRE, lotCount: 60, grossProceedsCents: $(600_000), absorptionLotsPerMonth: 0.5, timelineP50Days: 720, timelineP90Days: 720 };
+    const r = computeFeasibility(feasibilityInputsFromWire(long));
+    expect(r.cashFlowsCents).toHaveLength(145);
+    expect(r.irr.annual).toBeCloseTo(0.1096445, 5);
+    const slow = feasibilitySensitivity(feasibilityInputsFromWire(long)).find((c) => c.axis === "absorption_pace" && c.change === -0.25)!;
+    expect(slow.irrAnnual).toBeCloseTo(0.0886102, 5);
+  });
+
+  it("a pace that does not divide the lots: the last month takes the remainder; flows re-add to gross exactly", () => {
+    const r = computeFeasibility(feasibilityInputsFromWire({ ...WIRE, absorptionLotsPerMonth: 3, timelineP50Days: 45 }));
+    // 45 days → ceil to 2 entitlement months; 10 lots at 3/month → 4 sales months (3,3,3,1).
+    const f = r.cashFlowsCents!;
+    expect(f).toHaveLength(1 + 2 + 4);
+    expect(f.slice(3)).toEqual([$(120_000), $(120_000), $(120_000), $(40_000)]);
+    expect(f.slice(3).reduce((a, b) => a + b, 0)).toBe(WIRE.grossProceedsCents);
+    expect(-f.slice(1, 3).reduce((a, b) => a + b, 0)).toBe(r.carry.p50Cents);
+    for (const x of f) expect(Number.isInteger(x)).toBe(true);
+    expect(r.holdMonthsP50).toBe(6);
+  });
+
+  it("a project that does not recover its costs: IRR withheld with THAT reason", () => {
+    const r = computeFeasibility(feasibilityInputsFromWire({ ...WIRE, grossProceedsCents: $(100_000) }));
+    expect(r.irr).toEqual({ annual: null, refusedReason: "No IRR: the paced cash flows do not recover the project's costs." });
+  });
+
+  it("only a p90 stated: margins after p50 and the IRR are withheld; p90 computes", () => {
+    const { timelineP50Days: _a, ...p90only } = WIRE;
+    const r = computeFeasibility(feasibilityInputsFromWire(p90only));
+    expect(r.marginAfterCarryP50.cents).toBeNull();
+    expect(r.marginAfterCarryP90.cents).toBe($(117_000));
+    expect(r.irr.annual).toBeNull();
+  });
+
+  it("refused, never defaulted: p90 shorter than p50; a debt principal with no rate; an unknown input key", () => {
+    expect(() => subdivisionFeasibilityEngine.compute({ ...WIRE, timelineP90Days: 30 })).toThrow(/cannot be shorter/);
+    expect(() => subdivisionFeasibilityEngine.compute({ ...WIRE, debtPrincipalCents: $(50_000) })).toThrow(/no debt rate/);
+    expect(() => subdivisionFeasibilityEngine.compute({ ...WIRE, debtPrincipalCents: $(50_000), debtRatePct: 0 })).not.toThrow();
+    expect(() => subdivisionFeasibilityEngine.compute({ ...WIRE, sneaky: 1 })).toThrow(/Unknown input/);
+  });
+
+  it("the stored inputs are exactly the keys the engine consumed", () => {
+    const body = computeScenario({ subjectType: "property", subjectId: 1, label: "x", engineId: "subdivision_feasibility", inputs: WIRE }, ALL_ENGINES);
+    expect(Object.keys(body.inputs).sort()).toEqual(Object.keys(WIRE).sort());
+  });
+
+  it("phases: every column re-adds to its total exactly (1,000,001¢ over 1,1,1); per-phase carry is allocated", () => {
+    const r = computeFeasibility(feasibilityInputsFromWire({ ...WIRE, lotCount: 3, grossProceedsCents: 1_000_001, phaseLotCounts: "1,1,1", absorptionLotsPerMonth: 1 }));
+    const sum = (k: "grossProceedsCents" | "costBeforeCarryCents" | "carryP50Cents") => r.phases.reduce((a, p) => a + (p[k] as number), 0);
+    expect(sum("grossProceedsCents")).toBe(1_000_001);
+    expect(sum("costBeforeCarryCents")).toBe(r.totalCostBeforeCarry.cents);
+    expect(sum("carryP50Cents")).toBe(r.carry.p50Cents);
+    for (const p of r.phases) expect(p.marginAfterCarryP50Cents).toBe(p.grossProceedsCents - (p.costBeforeCarryCents as number) - (p.carryP50Cents as number));
+  });
+
+  it("engine choices are declared as DERIVED, separately from what the operator stated", () => {
+    const a = subdivisionFeasibilityEngine.compute(WIRE).assumptions;
+    for (const k of ["cost_timing", "sale_price_model", "sales_start", "carry_spread", "irr_timeline", "opportunity_cost_basis", "phase_allocation"]) {
+      expect(a.find((x) => x.key === k)?.origin, k).toBe("derived");
+    }
+    expect(a.find((x) => x.key === "sales_pace")).toMatchObject({ origin: "user", value: "5 lots/month" });
   });
 });

@@ -112,12 +112,45 @@ export interface FeasibilityResult {
   irr: { annual: number | null; refusedReason: string | null };
   /** The month-by-month cash flows the IRR solved over (month 0 first) — shown so the IRR can be checked; null when it was withheld. */
   cashFlowsCents: number[] | null;
-  phases: Array<{ phase: number; lots: number; grossProceedsCents: number; costBeforeCarryCents: number | null; marginBeforeCarryCents: number | null }>;
+  /** Per phase, allocated by lot count (largest remainder, so each column re-adds to its total exactly). */
+  phases: Array<{
+    phase: number;
+    lots: number;
+    grossProceedsCents: number;
+    costBeforeCarryCents: number | null;
+    marginBeforeCarryCents: number | null;
+    carryP50Cents: number | null;
+    marginAfterCarryP50Cents: number | null;
+  }>;
 }
 
 export class FeasibilityInputError extends Error {}
 
+/** Split whole cents across phases by lot share, largest remainder — the parts re-add to the total exactly. */
+function allocateByLots(totalCents: number, lots: readonly number[]): number[] {
+  const all = lots.reduce((a, b) => a + b, 0);
+  const exact = lots.map((n) => (totalCents * n) / all);
+  const floor = exact.map(Math.floor);
+  let left = totalCents - floor.reduce((a, b) => a + b, 0);
+  const order = exact.map((x, i) => [x - Math.floor(x), i] as const).sort((a, b) => b[0] - a[0] || a[1] - b[1]);
+  for (const [, i] of order) {
+    if (left <= 0) break;
+    floor[i] += 1;
+    left -= 1;
+  }
+  return floor;
+}
+
 const DAYS_PER_MONTH = 30;
+
+/**
+ * Hard bounds on what one run may ask the engine to model. The cash flows are
+ * one entry per month, so an unbounded pace or timeline is an unbounded loop
+ * (audit 2026-11-05). These are input-validation limits, not market figures.
+ */
+const MAX_LOTS = 10_000;
+const MAX_TIMELINE_DAYS = 3_650; // ten years to a recorded plat
+const MAX_HORIZON_MONTHS = 600; // entitlement + sell-out, fifty years
 
 function section(keys: readonly CostLineKey[], costs: FeasibilityInputs["costs"], notApplicable: CostLineKey | null, name: string): SectionResult {
   const lines: SectionResult["lines"] = keys.map((key) => {
@@ -137,25 +170,36 @@ function section(keys: readonly CostLineKey[], costs: FeasibilityInputs["costs"]
   return { totalCents: lines.reduce((a, l) => a + (l.cents ?? 0), 0), refusedReason: null, lines };
 }
 
-/** Monthly IRR by bisection on NPV; null when the flows have no sign change. */
-function monthlyIrr(flows: readonly number[]): number | null {
+/**
+ * Monthly IRR by bisection on NPV over [−50%, +1000%] per month — a range in
+ * which NPV stays finite for every horizon the bounds above allow (the earlier
+ * −99% floor underflowed past ~150 months and mislabelled long projects).
+ * Each failure carries its own reason.
+ */
+const IRR_LO = -0.5;
+const IRR_HI = 10;
+function monthlyIrr(flows: readonly number[]): { rate: number } | { refusedReason: string } {
   const npv = (r: number) => flows.reduce((a, cf, t) => a + cf / Math.pow(1 + r, t), 0);
-  let lo = -0.99;
-  let hi = 10;
+  const total = flows.reduce((a, b) => a + b, 0);
+  if (total <= 0) return { refusedReason: "No IRR: the paced cash flows do not recover the project's costs." };
+  let lo = IRR_LO;
+  let hi = IRR_HI;
   let fLo = npv(lo);
   const fHi = npv(hi);
-  if (!Number.isFinite(fLo) || !Number.isFinite(fHi) || fLo * fHi > 0) return null;
+  if (!Number.isFinite(fLo) || !Number.isFinite(fHi)) return { refusedReason: "No IRR: the cash flows could not be evaluated across the solvable range." };
+  if (fHi > 0) return { refusedReason: "No IRR reported: it is above 1,000% a month — check the inputs." };
+  if (fLo < 0) return { refusedReason: "No IRR reported: it is below −50% a month." };
   for (let i = 0; i < 200; i++) {
     const mid = (lo + hi) / 2;
     const f = npv(mid);
-    if (Math.abs(f) < 1e-7) return mid;
+    if (Math.abs(f) < 1e-6) return { rate: mid };
     if (fLo * f < 0) hi = mid;
     else {
       lo = mid;
       fLo = f;
     }
   }
-  return (lo + hi) / 2;
+  return { rate: (lo + hi) / 2 };
 }
 
 /** The month-by-month cash flows behind the IRR (month 0 first), or null without a timeline. */
@@ -166,13 +210,19 @@ function feasibilityCashFlows(
 ): number[] {
   const e = Math.ceil((inp.timelineP50Days as number) / DAYS_PER_MONTH);
   const flows: number[] = [-totalCostBeforeCarryCents];
-  for (let m = 1; m <= e; m++) flows.push(-carryP50Cents / e);
-  const avg = inp.grossProceedsCents / inp.lotCount;
-  let remaining = inp.lotCount;
-  while (remaining > 1e-9) {
-    const sold = Math.min(inp.absorptionLotsPerMonth, remaining);
-    flows.push(sold * avg);
-    remaining -= sold;
+  // Carry spread evenly over the entitlement months, whole cents, the last
+  // month taking the remainder so the months re-add to the carry exactly.
+  const perMonth = Math.floor(carryP50Cents / e);
+  for (let m = 1; m <= e; m++) flows.push(-(m === e ? carryP50Cents - perMonth * (e - 1) : perMonth));
+  // Lots at the stated pace, at the average lot price; cumulative proceeds are
+  // rounded to whole cents so the months re-add to gross proceeds exactly.
+  const months = Math.ceil(inp.lotCount / inp.absorptionLotsPerMonth - 1e-9);
+  let paid = 0;
+  for (let k = 1; k <= months; k++) {
+    const lotsSoFar = Math.min(inp.lotCount, k * inp.absorptionLotsPerMonth);
+    const cumulative = k === months ? inp.grossProceedsCents : Math.round((inp.grossProceedsCents * lotsSoFar) / inp.lotCount);
+    flows.push(cumulative - paid);
+    paid = cumulative;
   }
   return flows;
 }
@@ -181,7 +231,7 @@ function validate(inp: FeasibilityInputs): void {
   const bad = (m: string) => {
     throw new FeasibilityInputError(m);
   };
-  if (!Number.isInteger(inp.lotCount) || inp.lotCount < 1) bad("lotCount must be a whole number of lots, at least 1");
+  if (!Number.isInteger(inp.lotCount) || inp.lotCount < 1 || inp.lotCount > MAX_LOTS) bad(`lotCount must be a whole number of lots, 1 to ${MAX_LOTS}`);
   if (!(inp.absorptionLotsPerMonth > 0)) bad("absorptionLotsPerMonth must be a stated pace above 0");
   if (inp.landCostCents < 0 || inp.grossProceedsCents < 0) bad("land cost and gross proceeds cannot be negative");
   const na: CostLineKey = inp.wastewater === "sewer" ? "septicCents" : "sewerCents";
@@ -195,7 +245,16 @@ function validate(inp: FeasibilityInputs): void {
     const sum = inp.phaseLotCounts.reduce((a, b) => a + b, 0);
     if (sum !== inp.lotCount) bad(`the phases hold ${sum} lots but the run states ${inp.lotCount}`);
   }
-  for (const d of [inp.timelineP50Days, inp.timelineP90Days]) if (d !== null && !(d > 0)) bad("a stated timeline must be above 0 days");
+  for (const d of [inp.timelineP50Days, inp.timelineP90Days]) if (d !== null && !(d > 0 && d <= MAX_TIMELINE_DAYS)) bad(`a stated timeline must be 1 to ${MAX_TIMELINE_DAYS} days`);
+  if (inp.timelineP50Days !== null && inp.timelineP90Days !== null && inp.timelineP90Days < inp.timelineP50Days) {
+    bad("the slow-case (p90) timeline cannot be shorter than the typical (p50) one");
+  }
+  const sellOut = Math.ceil(inp.lotCount / inp.absorptionLotsPerMonth - 1e-9);
+  const entitlement = inp.timelineP50Days === null ? 0 : Math.ceil(inp.timelineP50Days / DAYS_PER_MONTH);
+  if (!(sellOut + entitlement <= MAX_HORIZON_MONTHS)) bad(`entitlement plus sell-out at this pace runs past ${MAX_HORIZON_MONTHS} months — check the pace`);
+  if (inp.debtPrincipalCents !== null && inp.debtPrincipalCents > 0 && inp.debtRatePct === null) {
+    bad("a debt principal was entered with no debt rate — enter the rate (0 is a valid entry), or clear the principal");
+  }
 }
 
 /** The feasibility run. Pure; every figure is reproducible from `inp`. */
@@ -250,16 +309,22 @@ export function computeFeasibility(inp: FeasibilityInputs): FeasibilityResult {
   } else {
     cashFlowsCents = feasibilityCashFlows(inp, totalCostBeforeCarry.cents, carry.p50Cents);
     const m = monthlyIrr(cashFlowsCents);
-    irr = m === null ? { annual: null, refusedReason: "No IRR: the cash flows never turn from negative to positive." } : { annual: Math.pow(1 + m, 12) - 1, refusedReason: null };
+    irr = "rate" in m ? { annual: Math.pow(1 + m.rate, 12) - 1, refusedReason: null } : { annual: null, refusedReason: m.refusedReason };
   }
 
   const phaseCounts = inp.phaseLotCounts ?? [inp.lotCount];
-  const phases = phaseCounts.map((lots, i) => {
-    const share = lots / inp.lotCount;
-    const proceeds = Math.round(inp.grossProceedsCents * share);
-    const cost = totalCostBeforeCarry.cents === null ? null : Math.round(totalCostBeforeCarry.cents * share);
-    return { phase: i + 1, lots, grossProceedsCents: proceeds, costBeforeCarryCents: cost, marginBeforeCarryCents: cost === null ? null : proceeds - cost };
-  });
+  const proceedsByPhase = allocateByLots(inp.grossProceedsCents, phaseCounts);
+  const costByPhase = totalCostBeforeCarry.cents === null ? null : allocateByLots(totalCostBeforeCarry.cents, phaseCounts);
+  const carryByPhase = carry.refusedReason || carry.p50Cents === null ? null : allocateByLots(carry.p50Cents, phaseCounts);
+  const phases = phaseCounts.map((lots, i) => ({
+    phase: i + 1,
+    lots,
+    grossProceedsCents: proceedsByPhase[i],
+    costBeforeCarryCents: costByPhase ? costByPhase[i] : null,
+    marginBeforeCarryCents: costByPhase ? proceedsByPhase[i] - costByPhase[i] : null,
+    carryP50Cents: carryByPhase ? carryByPhase[i] : null,
+    marginAfterCarryP50Cents: costByPhase && carryByPhase ? proceedsByPhase[i] - costByPhase[i] - carryByPhase[i] : null,
+  }));
 
   return {
     version: FEASIBILITY_ENGINE_VERSION,
@@ -276,7 +341,7 @@ export function computeFeasibility(inp: FeasibilityInputs): FeasibilityResult {
       marginBeforeCarry.cents === null ? { cents: null, refusedReason: marginBeforeCarry.refusedReason } : { cents: Math.round(marginBeforeCarry.cents / inp.lotCount), refusedReason: null },
     sellOutMonths,
     entitlementMonthsP50,
-    holdMonthsP50: entitlementMonthsP50 === null ? null : Math.round((entitlementMonthsP50 + inp.lotCount / inp.absorptionLotsPerMonth) * 10) / 10,
+    holdMonthsP50: entitlementMonthsP50 === null ? null : entitlementMonthsP50 + Math.ceil(inp.lotCount / inp.absorptionLotsPerMonth - 1e-9),
     irr,
     cashFlowsCents,
     phases,

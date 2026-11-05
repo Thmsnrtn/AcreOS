@@ -232,6 +232,10 @@ export const METRICS: readonly MetricSpec[] = [
   // Subdivision feasibility (subdivision-feasibility v1). The pro-forma's
   // withholding rule shapes these: a margin net of carry is null — never a
   // carry-free figure — when the run states no timeline.
+  // Project cost (land + hard + soft, before carry). Deliberately NOT
+  // `total_cost`: the outcome loop reads `total_cost` as "what it cost to
+  // acquire", and a whole-project cost there would be a false variance.
+  { id: "project_cost_before_carry", label: "Project cost before carry", unit: "cents", higherIsBetter: false },
   { id: "margin_before_carry", label: "Margin before carry", unit: "cents", higherIsBetter: true },
   { id: "margin_after_carry_p90", label: "Margin after carry (p90 timeline)", unit: "cents", higherIsBetter: true },
   { id: "margin_per_lot", label: "Margin per lot (before carry)", unit: "cents", higherIsBetter: true },

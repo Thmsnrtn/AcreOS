@@ -5,6 +5,10 @@
  *   POST /api/scenarios/preview                  — compute a vertical
  *                                                  underwriting scenario, persist
  *                                                  nothing
+ *   POST /api/scenarios/subdivision-feasibility/sensitivity
+ *                                                — the subdivision feasibility
+ *                                                  engine's sensitivity grid,
+ *                                                  persist nothing
  *   GET  /api/scenarios/engines                  — the deterministic engines and
  *                                                  the metrics each produces
  *   GET  /api/scenarios/:subjectType/:subjectId  — a subject's scenarios

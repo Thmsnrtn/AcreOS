@@ -46,8 +46,28 @@ function phases(inputs: Record<string, number | string>): number[] | null {
   return v.split(",").map((x) => Number(x.trim()));
 }
 
+/** Every key this engine reads. Any other key is refused, never stored as an input it did not consume. */
+const INPUT_KEYS: ReadonlySet<string> = new Set([
+  "landCostCents",
+  "lotCount",
+  "grossProceedsCents",
+  "absorptionLotsPerMonth",
+  "wastewater",
+  "phaseLotCounts",
+  ...HARD_LINES,
+  ...SOFT_LINES,
+  "timelineP50Days",
+  "timelineP90Days",
+  "holdingCostMonthlyCents",
+  "debtPrincipalCents",
+  "debtRatePct",
+  "opportunityCostPct",
+]);
+
 /** Normalise the wire inputs into the calculator's shape (shared by compute and the sensitivity route). */
 export function feasibilityInputsFromWire(inputs: Record<string, number | string>): FeasibilityInputs {
+  const unknown = Object.keys(inputs).filter((k) => !INPUT_KEYS.has(k));
+  if (unknown.length > 0) throw new ScenarioEngineError(`Unknown input${unknown.length === 1 ? "" : "s"} for subdivision feasibility: ${unknown.join(", ")}`);
   const costs: Partial<Record<CostLineKey, number | null>> = {};
   for (const k of [...HARD_LINES, ...SOFT_LINES]) costs[k] = optionalCents(inputs, k);
   return {
@@ -72,7 +92,7 @@ export const subdivisionFeasibilityEngine: EngineSpec = {
   version: FEASIBILITY_ENGINE_VERSION,
   label: "Subdivision feasibility (costs, carry over your timeline, absorption, IRR)",
   verticals: ["subdivider"],
-  produces: ["gross_sellout", "total_cost", "margin_before_carry", "profit", "margin_after_carry_p90", "margin_per_lot", "irr", "hold_months"],
+  produces: ["gross_sellout", "project_cost_before_carry", "margin_before_carry", "profit", "margin_after_carry_p90", "margin_per_lot", "irr", "hold_months"],
 
   compute(inputs) {
     const inp = feasibilityInputsFromWire(inputs);
@@ -84,41 +104,27 @@ export const subdivisionFeasibilityEngine: EngineSpec = {
       throw err;
     }
 
+    const timelineStated = inp.timelineP50Days !== null || inp.timelineP90Days !== null;
     const assumptions: ScenarioAssumption[] = [
-      {
-        key: "cost_timing",
-        value: "land, hard and soft costs at month 0",
-        origin: "derived",
-        basis: "The engine spends every entered cost up front; the IRR is computed on that timing.",
-      },
-      {
-        key: "sales_pace",
-        value: `${inp.absorptionLotsPerMonth} lots/month at the average lot price`,
-        origin: "user",
-        basis: "Your stated absorption pace — your market claim, not a platform forecast. Lots sell from the month after entitlement; the last month takes the remainder.",
-      },
-      {
-        key: "phasing",
-        value: inp.phaseLotCounts ? inp.phaseLotCounts.join(", ") + " lots" : "one phase",
-        origin: inp.phaseLotCounts ? "user" : "derived",
-        basis: inp.phaseLotCounts
-          ? "Your phases sell in order at the stated pace; costs and proceeds are allocated to phases by lot count."
-          : "No phases were entered, so the project is modelled as one phase.",
-      },
-      {
-        key: "wastewater",
-        value: inp.wastewater,
-        origin: "user",
-        basis: `A ${inp.wastewater} project: the ${inp.wastewater === "sewer" ? "septic" : "sewer"} cost line is not applicable (never costed at $0).`,
-      },
+      // ── What the operator stated ──
+      { key: "sales_pace", value: `${inp.absorptionLotsPerMonth} lots/month`, origin: "user", basis: "Your stated absorption pace — your market claim, not a platform forecast." },
+      { key: "wastewater", value: inp.wastewater, origin: "user", basis: `Your wastewater path: the ${inp.wastewater === "sewer" ? "septic" : "sewer"} cost line is not applicable (never costed at $0).` },
+      inp.phaseLotCounts
+        ? { key: "phasing", value: inp.phaseLotCounts.join(", ") + " lots", origin: "user", basis: "Your phases, sold in order at the stated pace." }
+        : { key: "phasing", value: "one phase", origin: "derived", basis: "No phases were entered, so the project is modelled as one phase." },
+      // ── How the engine models it (its choices, not the operator's) ──
+      { key: "cost_timing", value: "land, hard and soft costs at month 0", origin: "derived", basis: "Every entered cost is spent up front; the IRR is computed on that timing." },
+      { key: "sale_price_model", value: "average lot price", origin: "derived", basis: "Each lot sells at gross proceeds ÷ lots; the last sales month takes the remainder." },
+      { key: "phase_allocation", value: "by lot count", origin: "derived", basis: "Proceeds, costs and carry are allocated to phases by their share of the lots; phases do not change the cash flows." },
     ];
-    if (inp.timelineP50Days !== null || inp.timelineP90Days !== null) {
-      assumptions.push({
-        key: "timeline",
-        value: `p50 ${inp.timelineP50Days ?? "not stated"} days / p90 ${inp.timelineP90Days ?? "not stated"} days`,
-        origin: "user",
-        basis: "Your own timeline for this parcel — not a county figure. Carry is projected over it; carry during sell-out is not modelled (enter it as a cost line).",
-      });
+    if (timelineStated) {
+      assumptions.push(
+        { key: "timeline", value: `p50 ${inp.timelineP50Days ?? "not stated"} days / p90 ${inp.timelineP90Days ?? "not stated"} days`, origin: "user", basis: "Your own timeline for this parcel — not a county figure." },
+        { key: "sales_start", value: "the month after entitlement", origin: "derived", basis: "Lots start selling the month after your p50 timeline ends, which the cash flows round up to whole months." },
+        { key: "carry_spread", value: "even over the entitlement months", origin: "derived", basis: "Carry over the p50 timeline is spread evenly across its months; carry during sell-out is not modelled — enter it as a cost line." },
+        { key: "irr_timeline", value: "p50", origin: "derived", basis: "The IRR is computed on the p50 timeline only." },
+        { key: "opportunity_cost_basis", value: "land cost", origin: "derived", basis: "Opportunity cost, where a rate is entered, accrues on the land cost." },
+      );
     }
     if (out.carry.refusedReason === null) {
       if (inp.debtPrincipalCents === null) {
@@ -129,15 +135,16 @@ export const subdivisionFeasibilityEngine: EngineSpec = {
       }
     }
 
+    // Only the keys the engine consumed (unknown keys were refused above).
     const wire: Record<string, number | string> = {};
-    for (const [k, v] of Object.entries(inputs)) wire[k] = v;
+    for (const [k, v] of Object.entries(inputs)) if (INPUT_KEYS.has(k)) wire[k] = v;
 
     return {
       normalisedInputs: wire,
       assumptions,
       metrics: [
         metric("gross_sellout", out.grossProceeds.cents),
-        metric("total_cost", out.totalCostBeforeCarry.cents),
+        metric("project_cost_before_carry", out.totalCostBeforeCarry.cents),
         metric("margin_before_carry", out.marginBeforeCarry.cents),
         // `profit` is the margin after carry over the p50 timeline — WITHHELD
         // (null) when no timeline is stated, never the before-carry figure.
