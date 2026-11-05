@@ -2149,7 +2149,8 @@ export function registerLeadRoutes(app: Express): void {
       }
 
       // FW-WYNNE-1 (push-forward 2026-05-08): permissible-purpose gate.
-      // Wynne-Ohaegbu §1: skip-trace is FCRA-adjacent under §1681b(a)(3)(F).
+      // Wynne-Ohaegbu §1: skip-trace is FCRA-adjacent; permissible purposes are
+      // §1681b(a)(2) (written_consent) or §1681b(a)(3) (collection, legitimate_business_need, account_review).
       // Operator must claim purpose + justification at query time AND have
       // a current annual FCRA attestation. Persist both for class-action
       // defense audit trail.
