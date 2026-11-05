@@ -302,7 +302,7 @@ export const CONNECTOR_REGISTRY: ConnectorDef[] = [
     id: "batch_leads",
     availability: "planned", // Its one tool, batch_leads_skip_trace, is in FCRA_REFUSED_TOOLS
     // (server/ai/tools.ts) and refuses before the dispatch switch — skip trace is
-    // FCRA-adjacent under 1681b(a)(3)(F) and needs a permissible purpose plus a
+    // FCRA-adjacent and needs a permissible purpose (§1681b(a)(2) (written_consent) or §1681b(a)(3) (collection, legitimate_business_need, account_review)) plus a
     // governed provider path. Three of the four capabilities above ("Pull targeted
     // lists", "Get owner phone numbers", "Cross-reference properties") have no tool
     // at all. Marked planned so the connect route stops banking the customer's

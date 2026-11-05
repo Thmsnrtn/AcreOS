@@ -525,7 +525,7 @@ export const STATUTE_REGISTER: readonly StatuteEntry[] = [
   },
   {
     id: "fcra.permissible-purpose",
-    citation: "15 U.S.C. §1681b, §1681b(a)(3)(F)",
+    citation: "15 U.S.C. §1681b(a)(2), §1681b(a)(3)(A), §1681b(a)(3)(F)",
     what: "A consumer report may be obtained only for a permissible purpose, and a user must certify that purpose to the reporting agency.",
     codeSites: [
       "server/services/fcraAttestation.ts",
