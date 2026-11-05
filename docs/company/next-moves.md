@@ -36,6 +36,32 @@ what shipped, what it measured, and the top next moves. Newest first.
      - closing the lock's check-then-write race;
      - the 1099-NEC generator has no qualified-output gate (tax lane).
 
+## 2026-11-03 — Buy-and-hold release: desk ported + mounted, wiring as links — on `claude/buy-and-hold-release` (off main `f7f2e3f`, PR #458, unmerged; blocker resolved 2026-11-05 by Option B)
+
+- **What shipped on the branch.**
+  - Ported (not merged — the held branch is 73 behind) the route, the page and the route test; the kit is byte-identical on both.
+  - The four mounts were applied by hand.
+  - Wiring is links only: the parcel page offers "Underwrite as a rental" (buy_and_hold orgs); after an `acquire`, the desk links to `/leases?tab=units&propertyId=…`. Nothing is created or copied.
+  - HOLD pins removed together. `MATURITY_OVERCLAIM_BASELINE` 12 → 11.
+  - `publicClaims.ts` and the evidence ladder are untouched.
+- **Blocker (the reason it is a draft).**
+  - `verticalReadiness.test.ts` measures evidence from source, so the mounted desk makes buy_and_hold `decided`.
+  - Three main assertions then REQUIRE lifting the beta demotion and flipping the ladder in the same commit. The package forbids both until the staging journey.
+  - Options A (lift now) / B (dated exemption until the Atlas row; recommended) / C (re-hold) are in `docs/evidence/2026-11-03/buy-and-hold-release.md`.
+  - **Resolved 2026-11-05: Option B** (`founder-decisions-2026-11-05-buy-and-hold.md`). The register `HELD_PENDING_JOURNEY_PROOF` holds buy_and_hold at `beta` until 2026-12-31 at the latest; 6 mutants caught.
+- **Proved.** The evidence file has the full Step 0 table, gates, mutants and audit:
+  - real-DB route test (one scenario + one decision citing it, preview ≡ record, ownership guard writes nothing, cross-tenant 404 writes nothing, three declared assumptions, freeze integrity);
+  - wiring test;
+  - 10 mutants caught;
+  - check/lint/build/bundle green: 9,814 KB of 9,823;
+  - full vitest: 3 red = the blocker, plus 5 that fail identically on main here.
+- **Next.**
+  1. ~~Decide A/B/C~~ — B applied. The lift commit removes the demotion, flips the ladder and deletes the register entry together.
+  2. Muse audits; merge deploys staging only.
+  3. Leg 3 on staging: skip sample data; review "In 2 weeks", so the outcome leg completes ≥ 14 days later as a dated open leg.
+  4. The ladder flips only on the completed journey.
+  5. Founder: delete `claude/buy-and-hold-underwriting` after the staging proof.
+
 ## 2026-11-03 — G8 containment fixes — on `claude/g8-containment-fixes` (off main `f7f2e3f`, PR open, unmerged)
 
 - **Scope.** Two items from the G8 containment verification. Both reproduced on `f7f2e3f`.

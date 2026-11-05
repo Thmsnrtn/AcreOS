@@ -27,7 +27,7 @@
  *     regenerated sentence or confirm their own wording.
  *   - Render an uncomputable number as 0. A null metric shows "—".
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -105,6 +105,12 @@ export interface UnderwritingWorkbenchProps {
   describeChoice: (kind: DecisionKind, inputs: Record<string, number>, metrics: ScenarioMetric[]) => string;
   /** Optional: a property to start on (e.g. from a deep link). */
   initialPropertyId?: number | null;
+  /**
+   * Optional: what the recorded state offers next, given the call that was
+   * just recorded (e.g. buy-and-hold's acquire → set up the units). Navigation
+   * only — it runs after the record succeeded and must not write anything.
+   */
+  recordedNextStep?: (recorded: { decisionId: number; kind: DecisionKind; propertyId: number }) => ReactNode;
   testIdPrefix: string;
 }
 
@@ -116,6 +122,7 @@ export function UnderwritingWorkbench({
   headlineMetrics,
   describeChoice,
   initialPropertyId = null,
+  recordedNextStep,
   testIdPrefix,
 }: UnderwritingWorkbenchProps) {
   const [propertyId, setPropertyId] = useState<number | null>(initialPropertyId);
@@ -127,7 +134,7 @@ export function UnderwritingWorkbench({
   const [choiceInputsKey, setChoiceInputsKey] = useState<string | null>(null);
   const [rationale, setRationale] = useState("");
   const [reviewInDays, setReviewInDays] = useState<number | null | undefined>(undefined);
-  const [recorded, setRecorded] = useState<{ decisionId: number } | null>(null);
+  const [recorded, setRecorded] = useState<{ decisionId: number; kind: DecisionKind; propertyId: number } | null>(null);
 
   const { inputs, missing } = useMemo(() => wireInputs(fields, typed), [fields, typed]);
   const ready = missing.length === 0;
@@ -169,10 +176,12 @@ export function UnderwritingWorkbench({
         rationale: rationale.trim(),
         reviewDueAt: reviewDueAtFromDays(reviewInDays),
       });
-      return (await res.json()) as { decisionId: number; scenarioId: number };
+      const out = (await res.json()) as { decisionId: number; scenarioId: number };
+      // The call and property as SENT, so the recorded state describes what was frozen.
+      return { ...out, kind, propertyId: propertyId as number };
     },
     onSuccess: (d) => {
-      setRecorded({ decisionId: d.decisionId });
+      setRecorded({ decisionId: d.decisionId, kind: d.kind, propertyId: d.propertyId });
       // A new decision changes what Today's outcome prompt and Decision Memory show.
       queryClient.invalidateQueries({ queryKey: ["/api/decisions"] });
       queryClient.invalidateQueries({ queryKey: ["/api/decisions/due"] });
@@ -318,7 +327,9 @@ export function UnderwritingWorkbench({
               Recorded as decision #{recorded.decisionId}. The numbers and your reasoning are frozen
               against this property{reviewInDays ? ", and Today will ask how it went when it's due" : ""}.
             </p>
-          ) : (
+          ) : null}
+          {recorded && recordedNextStep ? recordedNextStep(recorded) : null}
+          {recorded ? null : (
             <>
               <fieldset>
                 <legend className="text-sm font-medium">Your call</legend>

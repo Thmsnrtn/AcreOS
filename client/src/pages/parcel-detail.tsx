@@ -49,6 +49,7 @@ import { QueryErrorState } from "@/components/query-error-state";
 import { EmptyState } from "@/components/empty-state";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useTerm } from "@/hooks/use-persona";
+import { useOrganization } from "@/hooks/use-organization";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { usd, formatDate } from "@/lib/format";
@@ -64,6 +65,7 @@ import {
   ShieldAlert,
   ExternalLink,
   Sparkles,
+  Calculator,
 } from "lucide-react";
 import type { Property, LandStatus } from "@shared/schema";
 import { buildBlindOfferPrefillSearch } from "@shared/blindOfferPrefill";
@@ -169,6 +171,10 @@ function ParcelDetailDesktop({ id }: { id: number | null }) {
   // /parcels/:id (route compat); the visible noun adapts.
   const propertyLabel = useTerm("entity.property");
   useDocumentTitle(id ? `${propertyLabel} #${id}` : propertyLabel);
+  // Buy-and-hold's decision desk is offered only to buy-and-hold orgs, the
+  // same gate as its sidebar child (businessTypeOnly: ["buy_and_hold"]).
+  const { data: organization } = useOrganization();
+  const businessType = (organization?.onboardingData as { businessType?: string } | null | undefined)?.businessType;
 
   const {
     data: property,
@@ -490,6 +496,16 @@ function ParcelDetailDesktop({ id }: { id: number | null }) {
               title="Generate offer"
               description="Calculate a blind offer based on current valuation + your strategy."
             />
+            {businessType === "buy_and_hold" ? (
+              // Property → desk: the buy-and-hold vertical's intake → underwrite
+              // step, with this property preselected. Navigation only.
+              <ActionLink
+                href={`/rentals/underwrite?propertyId=${property.id}`}
+                icon={Calculator}
+                title="Underwrite as a rental"
+                description="Run the rental numbers on your own inputs and record your call."
+              />
+            ) : null}
           </TabsContent>
         </Tabs>
       </div>
