@@ -101,6 +101,8 @@ export default function LeasesPage() {
   // ("no units modelled") points an operator straight here.
   const search = useSearch();
   const initialTab = new URLSearchParams(search).get("tab") === "units" ? "units" : "leases";
+  const deepLinkedProperty = Number(new URLSearchParams(search).get("propertyId"));
+  const initialUnitsProperty = Number.isInteger(deepLinkedProperty) && deepLinkedProperty > 0 ? deepLinkedProperty : null;
   const [tab, setTab] = useState<string>(initialTab);
   const [showCreate, setShowCreate] = useState(false);
   const [propertyId, setPropertyId] = useState("");
@@ -221,7 +223,7 @@ export default function LeasesPage() {
         </TabsList>
 
         <TabsContent value="units" className="mt-0">
-          <UnitsPanel />
+          <UnitsPanel initialPropertyId={initialUnitsProperty} />
         </TabsContent>
 
         <TabsContent value="expenses" className="mt-0">
