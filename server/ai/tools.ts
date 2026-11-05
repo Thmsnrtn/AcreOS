@@ -1455,7 +1455,8 @@ export async function executeTool(
     }
 
     // ── FCRA permissible-purpose gate (2026-08-19) ────────────────────────
-    // Skip-trace is FCRA-adjacent under §1681b(a)(3)(F). Its REST door
+    // Skip-trace is FCRA-adjacent; its permissible purposes are
+    // §1681b(a)(2) (written_consent) or §1681b(a)(3) (collection, legitimate_business_need, account_review). Its REST door
     // (`POST /api/skip-traces`) requires the operator to claim a purpose from a
     // closed enum, write a justification of at least ten characters, and hold a
     // current annual attestation — and it persists all three on a `skip_traces`

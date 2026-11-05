@@ -15,6 +15,7 @@ import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { addMonths } from "./utils/dateUtils";
 import { publicRecordTransaction } from "./services/acreOSValuation";
+import { shapeBenchmarks } from "./services/benchmarkCohort";
 import { clock } from "./utils/clock";
 import { routeParam } from "./utils/routeParams";
 
@@ -79,19 +80,14 @@ router.get("/benchmarks/:state/:propertyType", requireApiKey, async (req: Reques
       ))
       .limit(1);
 
-    const data = benchmarks[0] || {};
-
+    // The stated minimum is enforced, not just claimed: below
+    // BENCHMARK_MIN_SAMPLE no figure is served (a cohort of one used to be
+    // served as its own "average"). See services/benchmarkCohort.ts.
     res.json({
       state: state.toUpperCase(),
       propertyType,
       period: `${months}m`,
-      benchmarks: {
-        avgPricePerAcre: parseFloat(data.avgPricePerAcre as any || "0"),
-        avgAcreage: parseFloat(data.avgAcreage as any || "0"),
-        sampleSize: data.count || 0,
-        // Note: individual transaction data never exposed, only aggregates
-        dataPrivacyNote: "Aggregated from closed transactions. Min 10 transactions required to display.",
-      },
+      benchmarks: shapeBenchmarks(benchmarks[0]),
     });
   } catch (err: any) {
     logger.error("Benchmarks error", err);

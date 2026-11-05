@@ -233,8 +233,8 @@ export default function CountyLandingPage() {
           </h2>
           <p className="text-base leading-relaxed text-muted-foreground">
             AcreOS runs flood, soil, elevation, and wetlands checks on every
-            parcel from free government data — so a {placeName} list pull arrives
-            already screened on the diligence that kills resale. You only reach
+            parcel from free government data — so each {placeName} parcel is
+            screened on the diligence that kills resale. You only reach
             for paid data providers once your deal volume earns it.
           </p>
           <div className="flex flex-col sm:flex-row gap-3 mt-5">

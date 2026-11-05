@@ -12,6 +12,27 @@ what shipped, what it measured, and the top next moves. Newest first.
 - **Next.**
   1. Out of scope, flagged for later: touch 2 still says "Acquisition Radar". `/radar` is a redirect to `/deals/discover` (`AcquisitionRadarPage` archived 2026-06-01), so whether that claim holds needs a check.
 
+## 2026-11-03 — G12 public-copy truth fixes (list-pull, stale Pro price) — on `claude/public-copy-truth-fixes` (off main `f7f2e3f`, PR open, unmerged)
+
+- **Scope.** Public marketing/comparison copy only. No server code, in-app surfaces, legal docs or pricing changes.
+- **List-pull (5 live strings removed).** Both /compare matrix notes, the shared /compare intro ("pull county data, mail the right owners"), every /learn/county page, and the /tools/calculator CTA.
+  - Evidence that nothing pulls a list: no list-builder route; `countyAssessorIngestJob` has no caller; `fetchTaxDelinquentList` is a stub.
+  - Replacement copy says only what code proves: the capped free tier (`TIER_LIMITS.free`) and CSV import (`POST /api/leads/import`).
+- **The "$41 Pro" price.** No rendered public surface showed it; all three render from `TIER_PRICES_CENTS`.
+  - The stale price lived in the CI claim record (`audit-public-claims.ts`), whose hand-written source agreed with it. The record now reads $99/$990, and the source is derived from the registry.
+  - `$41` still renders correctly as **Starter** annual (round($490/12)).
+- **Sept-2025 withdrawn claim: not found.** No claim record is dated 2025-09. The records hold 2026-09-01 and 2026-09-29 withdrawals; none of their phrases is on a public surface, and 2026-09-29 is the list-pull withdrawal fixed above.
+- **Gates.**
+  - `landingClaimsNoListPulling` now reads compare, learn, tools, pricing, the routed public pages and llms.txt. It also learned the "pull county data" shape.
+  - New `publicPricingMatchesCanonical.test.tsx` renders landing Pricing and /pricing (both cadences), the JSON-LD and the Save-% badges against the decided tiers.
+  - 14 mutants caught.
+- **Not fixed (out of scope; for the founder).**
+  - `docs/marketing/*` drafts (blog, outreach emails, LinkedIn page copy) still say "Pro $41/mo billed annually". They are not served, but the LinkedIn text may be live on LinkedIn.
+  - `acreos-landing/` (a localhost-only prototype) still says "first list pulls overnight" and "90 seconds".
+  - Stale price comments: `tier-pricing.ts` header ($20/$49/$79), `landing/Pricing.tsx:10`, and `pricing.tsx:159`.
+  - Rounding: /pricing shows Pro annual as $83/mo against a $990 bill ($82.50).
+- **Next.** Independent audit of the PR, then the founder merges. Decide whether to correct the docs/marketing drafts and the LinkedIn page.
+
 ## 2026-11-03 — First-party parcel ingest (the Regrid exit ramp), Wave A pilot WI — on `claude/first-party-ingest-wave-a` (off main `f7f2e3f`, PR open, unmerged)
 
 - **Scope as dispatched.** Wave A only, WI first. AR excluded. The #452 gate is untouched: WI stays `gated`, `CLEARED_FOR_LOOKUP` stays `[]`, and `parcel.ts` is unchanged.
@@ -48,6 +69,35 @@ what shipped, what it measured, and the top next moves. Newest first.
   4. The DE adapter (geometry-only).
   5. Update the CT and MA packs, then build them.
   6. A WI golden county (§3.8) before any WI promotion.
+
+## 2026-11-03 — Legal-run build findings, unblocked legs — on `claude/legal-run-build-findings-2026-11` (off main `f7f2e3f`, one PR, unmerged)
+
+- **Shipped (per-leg commits).**
+  - **Leg 1:** the FCRA register citation spans (a)(2)/(a)(3)(A)/(a)(3)(F), and the umbrella comments are aligned. This is hygiene, not a mis-cite fix.
+  - **Leg 4:** the benchmarks endpoint enforces its stated 10-transaction minimum.
+  - **Leg 6:** legal holds now stop org erasure and the nightly purge (fail closed). `api_telemetry_samples` has a single retention owner: the rollup, whose hourly-vs-5-minute schedule bug is fixed and which now lives in its own file. Org erasure deletes the S3 bytes under `org/<id>/`.
+  - **Leg 7:** the vendor inventory is retired as evidence (every DPA is UNKNOWN), and the four contradicted retention-policy claims are corrected.
+  - **Leg 5:** disposition only; 0 of the 42 Tier A surfaces are wired, because every one needs a proposed taxonomy code.
+  - **Leg 2:** only the read-only export-completeness inventory.
+- **Stopped.**
+  - **Leg 3:** four contradictions at step 0, listed in the PR.
+    - dossiers are code, not database rows;
+    - no destination is specified for the radar's tasks;
+    - none of the four serve points carries statewide data today;
+    - the 3.4 internal-doc rejection necessarily un-seeds NY, which is a founder call.
+  - **Leg 8:** not touched (blocker-only by design).
+- **New findings for Tom.** Two deletion paths ignore legal holds and are now named in the policy's §6 table: `POST /api/clear-demo-data` → `clearOrganizationRecords()`, and `server/jobs/archival.ts` (off by default). Neither was in the package.
+- **Proved.**
+  - The real-Postgres test `retentionRespectsLegalHolds.realdb.test.ts` fails on the old tree.
+  - Unit mutants for every new gate are red.
+  - Full vitest: 4 failures. 3 are date/timezone and fail identically on main; the 4th (the reachability gate) is fixed in this branch.
+  - Gates run alone: `check:app`, the 33 lints and `build` are all exit 0. `check:tests` could not run in this 8 GB container (tsc was killed, exit 137), so CI is the verdict.
+- **Not proved.** The staging proofs for Legs 4 and 6 (no staging access), the per-leg auditor verdicts and CI.
+- **Next.**
+  1. Muse audits; the founder merges.
+  2. Run the staging proofs for Legs 4 and 6.
+  3. Decide NY's seed (Leg 3.4) and state where the radar's tasks go (3.3).
+  4. Wire hold checks into clear-demo-data and archival.
 
 ## 2026-11-03 — Statewide point lookup gated behind the license dossiers — on `claude/statewide-lookup-clearance-gate` (off main `519b62c`, PR open, unmerged)
 
