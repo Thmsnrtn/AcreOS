@@ -43,7 +43,16 @@ const result = runBuildabilityScreen(
   { floodplainShareMax: null, maxBuildableSlopePct: null },
   yieldEstimate,
 );
-const RUN = { id: 1, ruleVersion: result.version, createdAt: "2026-11-05T12:00:00Z", triggeredCount: 1, notDeterminableCount: result.notDeterminable.length, yieldEstimate, result };
+const RUN = {
+  id: 1,
+  ruleVersion: result.version,
+  createdAt: "2026-11-05T12:00:00Z",
+  triggeredCount: 1,
+  notDeterminableCount: result.notDeterminable.length,
+  yieldEstimate,
+  result,
+  reconciliationAtRun: reconcileWithDrawnPlans(yieldEstimate, [{ planId: "p1", name: "Plan A", lotCount: 12 }]),
+};
 
 let root: Root;
 let host: HTMLDivElement;
@@ -59,7 +68,7 @@ beforeEach(() => {
     }
     return {
       ok: true,
-      json: async () => ({ runs, latestReconciliation: runs.length ? reconcileWithDrawnPlans(yieldEstimate, [{ planId: "p1", name: "Plan A", lotCount: 12 }]) : [] }),
+      json: async () => ({ runs, latestReconciliation: runs.length ? reconcileWithDrawnPlans(yieldEstimate, [{ planId: "p1", name: "Plan A", lotCount: 9 }]) : [], truncated: false }),
     } as unknown as Response;
   });
   host = document.createElement("div");
@@ -97,6 +106,7 @@ describe("BuildabilityScreenSection", () => {
     runs = [];
     await render();
     expect(host.querySelector('[data-testid="screen-empty"]')?.textContent).toMatch(/Not yet screened/);
+    expect(host.querySelector('[data-testid="screen-empty-cta"]')).not.toBeNull();
     expect(host.textContent).not.toMatch(/\bbuildable\b(?! slope| acres| area)/i);
     const fields = [...host.querySelectorAll<HTMLInputElement | HTMLSelectElement>("input, select")];
     expect(fields.length).toBeGreaterThanOrEqual(30);
@@ -118,17 +128,30 @@ describe("BuildabilityScreenSection", () => {
     expect(flood).toMatch(/To resolve: FEMA flood map panel/);
     const y = host.querySelector('[data-testid="screen-yield"]')!.textContent!;
     expect(y).toContain("Yield, low: not computed");
-    expect(y).toContain("Plan A: drawn 12 lots vs estimated range up to 10 (low end not determinable)");
+    expect(y).toContain("Gross 13.5 ac — county GIS");
+    expect(y).toContain("At this run — Plan A: drawn 12 lots vs estimated range up to 10 (low end not determinable)");
+    expect(y).toContain("Today — Plan A: drawn 9 lots vs estimated range up to 10 (low end not determinable)");
   });
 
-  it("sends only recorded facts: a value without its source is not a fact; percentages as fractions", async () => {
+  it("a value without its source is REFUSED by field name (never silently dropped); fixed, the run sends percentages as fractions", async () => {
     runs = [];
     await render();
     setValue("bs-legalAccess", "recorded_access");
     setValue("bs-legalAccess-source", "deed book 1234");
-    setValue("bs-floodwayAcres", "2"); // no source → not sent as a fact
+    setValue("bs-floodwayAcres", "2"); // no source
+    setValue("bs-waterAvailable", "false"); // no source
+    const problems = () => host.querySelector('[data-testid="screen-problems"]')?.textContent ?? "";
+    expect(problems()).toContain("Floodway acres: add where this value comes from (its source), or clear the value.");
+    expect(problems()).toContain("Water available: add where this value comes from (its source), or clear the value.");
+    expect(host.querySelector<HTMLButtonElement>('[data-testid="screen-run-button"]')!.disabled).toBe(true);
+    setValue("bs-floodwayAcres", "");
+    setValue("bs-waterAvailable", "");
+    setValue("bs-min-lot", "1"); // no citation
+    expect(problems()).toContain("Minimum lot: add where you read it (its citation)");
+    setValue("bs-min-lot", "");
     setValue("bs-floodplain-pct", "20");
     setValue("bs-roads", "10");
+    expect(host.querySelector('[data-testid="screen-problems"]')).toBeNull();
     await act(async () => {
       host.querySelector<HTMLButtonElement>('[data-testid="screen-run-button"]')!.click();
     });

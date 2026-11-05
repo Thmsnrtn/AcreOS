@@ -138,7 +138,7 @@ describe("POST /api/parcels/:id/screen", () => {
   });
 
   it("appends ONE row computed by the shared modules, org-scoped, actor recorded", async () => {
-    state.readRows = [[{ id: 42, sizeAcres: "20" }]];
+    state.readRows = [[{ id: 42, sizeAcres: "20", parentParcelId: null }], [{ id: "p1", name: "Plan A", lotCount: 12 }]];
     const res = await call("POST", "/api/parcels/:id/screen", "42", BODY);
     expect(res.statusCode).toBe(200);
     expect(state.inserts).toHaveLength(1);
@@ -152,10 +152,20 @@ describe("POST /api/parcels/:id/screen", () => {
     expect(inputs.facts.grossAcres).toEqual({ value: 20, source: "the parcel record's acreage (no source recorded on it)", asOf: null });
     expect((row.values.result as any).triggered).toEqual(["septic"]);
     expect(rendered(state.reads[0].where)).toEqual(rendered(and(eq(properties.id, 42), eq(properties.organizationId, 7))));
+    // §4.2: the drawn counts as they stood at the run are FROZEN on the record (org-scoped read).
+    expect(inputs.drawnPlansAtRun).toEqual([{ planId: "p1", name: "Plan A", lotCount: 12 }]);
+    expect(rendered(state.reads[1].where)).toEqual(rendered(and(eq(subdivisionPlans.organizationId, 7), eq(subdivisionPlans.parentParcelId, 42))));
+  });
+
+  it("a child lot is refused (screen its parent); a non-numeric id is refused — both before anything is written", async () => {
+    state.readRows = [[{ id: 43, sizeAcres: "1", parentParcelId: 42 }]];
+    expect((await call("POST", "/api/parcels/:id/screen", "43", BODY)).statusCode).toBe(400);
+    expect((await call("POST", "/api/parcels/:id/screen", "42abc", BODY)).statusCode).toBe(400);
+    expect(state.inserts).toHaveLength(0);
   });
 
   it("§8.1 test 4: same facts twice → two rows, identical verdicts; a changed fact → a third whose changed verdict cites it", async () => {
-    for (let i = 0; i < 3; i++) state.readRows.push([{ id: 42, sizeAcres: "20" }]);
+    for (let i = 0; i < 3; i++) state.readRows.push([{ id: 42, sizeAcres: "20", parentParcelId: null }], []);
     await call("POST", "/api/parcels/:id/screen", "42", BODY);
     await call("POST", "/api/parcels/:id/screen", "42", BODY);
     const changed = { ...BODY, facts: { ...BODY.facts, sewerAvailable: { value: true, source: "utility letter 2026-11-04" } } };
@@ -197,9 +207,12 @@ describe("POST /api/parcels/:id/screen", () => {
 describe("GET /api/parcels/:id/screen-runs", () => {
   it("reads org-scoped runs and puts the newest run's estimate beside the drawn plans, writing nothing", async () => {
     const y = estimateLotYield({ grossAcres: { value: 13.5, source: "s", asOf: null }, floodwayAcres: { value: 0, source: "s", asOf: null }, easementAcres: { value: 0, source: "s", asOf: null }, unbuildableSlopeAcres: { value: 0, source: "s", asOf: null }, roadsRowFraction: 0.1, minimumLot: { acres: 1.2, citation: "c" }, targetLotAcres: 1.5 });
-    state.readRows = [[{ id: 9, yieldEstimate: y }], [{ id: "p1", name: "Plan A", lotCount: 12 }]];
+    // The run froze Plan A at 12; today it has been redrawn to 9. Both survive.
+    state.readRows = [[{ id: 9, yieldEstimate: y, inputs: { drawnPlansAtRun: [{ planId: "p1", name: "Plan A", lotCount: 12 }] } }], [{ id: "p1", name: "Plan A", lotCount: 9 }]];
     const res = await call("GET", "/api/parcels/:id/screen-runs", "42");
-    expect(res.body.latestReconciliation[0]).toMatchObject({ drawn: 12, estimateLow: 8, estimateHigh: 10, relation: "above_range" });
+    expect(res.body.runs[0].reconciliationAtRun[0]).toMatchObject({ drawn: 12, estimateLow: 8, estimateHigh: 10, relation: "above_range" });
+    expect(res.body.latestReconciliation[0]).toMatchObject({ drawn: 9, relation: "within_range" });
+    expect(res.body.truncated).toBe(false);
     expect(rendered(state.reads[0].where)).toEqual(rendered(and(eq(subdivisionScreenRuns.organizationId, 7), eq(subdivisionScreenRuns.parentParcelId, 42))));
     expect(rendered(state.reads[1].where)).toEqual(rendered(and(eq(subdivisionPlans.organizationId, 7), eq(subdivisionPlans.parentParcelId, 42))));
     expect(state.inserts).toHaveLength(0);
@@ -208,30 +221,57 @@ describe("GET /api/parcels/:id/screen-runs", () => {
   it("no runs: an empty history and no plan read", async () => {
     state.readRows = [[]];
     const res = await call("GET", "/api/parcels/:id/screen-runs", "42");
-    expect(res.body).toEqual({ runs: [], latestReconciliation: [] });
+    expect(res.body).toEqual({ runs: [], latestReconciliation: [], truncated: false });
     expect(state.reads).toHaveLength(1);
   });
 });
 
-describe("no update or delete path on a screen run, anywhere in server/", () => {
-  it("nothing in server/ updates or deletes subdivision_screen_runs (comments stripped)", () => {
-    const root = path.join(__dirname, "../../server");
-    const files: string[] = [];
-    const walk = (d: string) => {
-      for (const n of readdirSync(d)) {
-        const p = path.join(d, n);
-        if (statSync(p).isDirectory()) walk(p);
-        else if (p.endsWith(".ts") && !p.endsWith(".test.ts")) files.push(p);
-      }
-    };
-    walk(root);
-    expect(files.length).toBeGreaterThan(500);
+describe("no update or delete path on a screen run, anywhere in server/ or scripts/", () => {
+  const TABLE_REF = /\bsubdivisionScreenRuns\b|subdivision_screen_runs/;
+  // Any reference to the table in a write-shaped call: Drizzle update/delete
+  // (direct, aliased or via a schema namespace) or raw SQL in any quoting.
+  const WRITE_SHAPES = [
+    /\b(?:update|delete)\s*\(\s*(?:[\w$]+\.)?subdivisionScreenRuns\b/,
+    /\b(?:UPDATE|DELETE\s+FROM|TRUNCATE(?:\s+TABLE)?)\s+["`]?\$?\{?\s*(?:[\w$]+\.)?(?:subdivision_screen_runs|subdivisionScreenRuns)\b/i,
+  ];
+  const walk = (d: string, out: string[]) => {
+    for (const n of readdirSync(d)) {
+      const p = path.join(d, n);
+      if (statSync(p).isDirectory()) walk(p, out);
+      else if (/\.(?:ts|mjs|js)$/.test(p) && !/\.test\.ts$/.test(p)) out.push(p);
+    }
+    return out;
+  };
+  const files = [...walk(path.join(__dirname, "../../server"), []), ...walk(path.join(__dirname, "../../scripts"), [])];
+
+  it("no file updates, deletes or truncates the table (comments stripped)", () => {
+    expect(files.length).toBeGreaterThan(600);
     const offenders = files.filter((p) => {
       const src = stripComments(readFileSync(p, "utf8"));
-      return /\b(?:update|delete)\(\s*subdivisionScreenRuns\b/.test(src) || /(?:UPDATE|DELETE\s+FROM)\s+"?subdivision_screen_runs/i.test(src);
+      return TABLE_REF.test(src) && WRITE_SHAPES.some((re) => re.test(src));
     });
     expect(offenders).toEqual([]);
-    // Vacuity: the one writer is found by the same scan shape.
-    expect(files.filter((p) => /\binsert\(\s*subdivisionScreenRuns\b/.test(stripComments(readFileSync(p, "utf8")))).map((p) => path.relative(root, p))).toEqual(["routes-subdivision-screen.ts"]);
+  });
+
+  it("an import alias is caught: any module that imports the table under another name fails", () => {
+    const aliasers = files.filter((p) => /subdivisionScreenRuns\s+as\s+\w+/.test(stripComments(readFileSync(p, "utf8"))));
+    expect(aliasers).toEqual([]);
+  });
+
+  it("canaries: each write shape is detected", () => {
+    for (const src of [
+      "db.update(subdivisionScreenRuns).set({})",
+      "db.delete(schema.subdivisionScreenRuns)",
+      "sql`DELETE FROM ${subdivisionScreenRuns}`",
+      'db.execute(sql`UPDATE "subdivision_screen_runs" SET x = 1`)',
+      "TRUNCATE subdivision_screen_runs",
+    ]) {
+      expect(WRITE_SHAPES.some((re) => re.test(src)), src).toBe(true);
+    }
+  });
+
+  it("vacuity: the one writer is found, and it only inserts", () => {
+    const writers = files.filter((p) => /\binsert\(\s*subdivisionScreenRuns\b/.test(stripComments(readFileSync(p, "utf8"))));
+    expect(writers.map((p) => path.basename(p))).toEqual(["routes-subdivision-screen.ts"]);
   });
 });

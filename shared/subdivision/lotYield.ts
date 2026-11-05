@@ -167,7 +167,12 @@ export function estimateLotYield(inputs: LotYieldInputs): LotYieldEstimate {
   if (inputs.minimumLot && isNonNegative(inputs.minimumLot.acres) && inputs.minimumLot.acres > 0) {
     lots.push({ acres: inputs.minimumLot.acres, label: `stated minimum lot ${inputs.minimumLot.acres} ac (operator-stated; cited: ${inputs.minimumLot.citation})` });
   }
-  if (isNonNegative(inputs.targetLotAcres) && inputs.targetLotAcres > 0) {
+  // A stated minimum lot is a FLOOR: a target smaller than it cannot be cut,
+  // so it is never divided by (dividing by it would raise the high end past
+  // what the stated minimum allows, and could hide a sub-minimum parcel).
+  const minAcres = lots.length > 0 ? lots[0].acres : null;
+  const targetBelowMinimum = isNonNegative(inputs.targetLotAcres) && minAcres !== null && inputs.targetLotAcres < minAcres;
+  if (isNonNegative(inputs.targetLotAcres) && inputs.targetLotAcres > 0 && !targetBelowMinimum) {
     lots.push({ acres: inputs.targetLotAcres, label: `operator's target lot ${inputs.targetLotAcres} ac` });
   }
   if (lots.length === 0) {
@@ -197,6 +202,9 @@ export function estimateLotYield(inputs: LotYieldInputs): LotYieldEstimate {
     low: lowReason ? refused(lowReason) : ok(net(highAfter), `${afterDeductions.low.basis}, ${roadsNote}`),
   };
 
+  if (targetBelowMinimum) {
+    lots[0] = { ...lots[0], label: `${lots[0].label}; your target ${inputs.targetLotAcres} ac is below it and is not used` };
+  }
   const smallest = lots.reduce((a, b) => (b.acres < a.acres ? b : a));
   const largest = lots.reduce((a, b) => (b.acres > a.acres ? b : a));
   const yHigh = ok(wholeLots(netBuildable.high.value as number, smallest.acres), `net ${netBuildable.high.value} ac ÷ ${smallest.label}, whole lots`);

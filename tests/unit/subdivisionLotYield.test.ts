@@ -123,6 +123,13 @@ describe("§8.2 test 7 — a missing fact widens or refuses; a deduction is neve
     expect(e.yield.high.value).toBe(27);
   });
 
+  it("a target lot SMALLER than the stated minimum is never divided by (audit 2026-11-05): the minimum is a floor", () => {
+    // net 1.8 ac (gross 1.8, no deductions, no roads); minimum 1 ac; target 0.5 ac.
+    const e = estimateLotYield({ ...GOLDEN, grossAcres: fact(1.8), floodwayAcres: fact(0), easementAcres: fact(0), unbuildableSlopeAcres: fact(0), roadsRowFraction: 0, minimumLot: { acres: 1, citation: "regs" }, targetLotAcres: 0.5 });
+    expect([e.yield.low.value, e.yield.high.value]).toEqual([1, 1]);
+    expect(e.yield.high.basis).toMatch(/your target 0\.5 ac is below it and is not used/);
+  });
+
   it("deductions larger than the parcel floor at zero acres, zero lots — never negative", () => {
     const e = estimateLotYield({ ...GOLDEN, floodwayAcres: fact(50) });
     expect(e.netBuildable.high.value).toBe(0);

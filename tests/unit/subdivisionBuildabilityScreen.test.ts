@@ -170,6 +170,58 @@ describe("§8.1 test 3 — recorded facts fire and clear; no perc probability an
   });
 });
 
+describe("unknown is not clear — EXHAUSTIVELY: every fact a clear verdict REQUIRES, removed one at a time (audit 2026-11-05)", () => {
+  // Bases in which each listed fact is the ONLY route to the trigger's clear
+  // verdict; removing it must leave that trigger not clear.
+  const PERC_ONLY: ScreenFacts = { ...CLEAN, sewerAvailable: null }; // septic + utilities clear on the passed perc alone
+  const SEWER_ONLY: ScreenFacts = { ...CLEAN, percResult: null, sewerAvailable: f(true, "utility letter") };
+  const NO_FLOODPLAIN: ScreenFacts = { ...CLEAN, floodplainAcres: f(0, "FEMA panel") };
+  const CASES: ReadonlyArray<[string, ScreenFacts, keyof ScreenFacts, string]> = [
+    ["clean", CLEAN, "legalAccess", "no_legal_access"],
+    ["clean", CLEAN, "floodwayAcres", "flood"],
+    ["clean", CLEAN, "floodplainAcres", "flood"],
+    ["clean", CLEAN, "grossAcres", "flood"],
+    ["no floodplain", NO_FLOODPLAIN, "floodwayAcres", "flood"],
+    ["no floodplain", NO_FLOODPLAIN, "floodplainAcres", "flood"],
+    ["perc only", PERC_ONLY, "percResult", "septic"],
+    ["sewer only", SEWER_ONLY, "sewerAvailable", "septic"],
+    ["clean", CLEAN, "unresolvedEasementAcres", "unresolved_easement"],
+    ["clean", CLEAN, "maxSlopePct", "slope"],
+    ["clean", CLEAN, "waterAvailable", "no_water_or_wastewater_path"],
+    ["perc only", PERC_ONLY, "percResult", "no_water_or_wastewater_path"],
+    ["sewer only", SEWER_ONLY, "sewerAvailable", "no_water_or_wastewater_path"],
+  ];
+  for (const [name, base, fact, trigger] of CASES) {
+    it(`${name}: ${trigger} is clear with ${fact}, and NOT clear without it`, () => {
+      expect(verdictOf(runBuildabilityScreen(base, THRESHOLDS, YIELD), trigger).verdict).toBe("clear_on_evidence");
+      expect(verdictOf(runBuildabilityScreen({ ...base, [fact]: null }, THRESHOLDS, YIELD), trigger).verdict).not.toBe("clear_on_evidence");
+    });
+  }
+  it("slope and flood are not clear without their stated thresholds", () => {
+    expect(verdictOf(runBuildabilityScreen(CLEAN, { ...THRESHOLDS, maxBuildableSlopePct: null }, YIELD), "slope").verdict).not.toBe("clear_on_evidence");
+    expect(verdictOf(runBuildabilityScreen(CLEAN, { ...THRESHOLDS, floodplainShareMax: null }, YIELD), "flood").verdict).not.toBe("clear_on_evidence");
+  });
+
+  it("a sub-minimum parcel with a target BELOW the stated minimum still fires sub-minimum yield (audit 2026-11-05)", () => {
+    const y = estimateLotYield({ grossAcres: f(1.8), floodwayAcres: f(0), easementAcres: f(0), unbuildableSlopeAcres: f(0), roadsRowFraction: 0, minimumLot: { acres: 1, citation: "regs" }, targetLotAcres: 0.5 });
+    expect(verdictOf(runBuildabilityScreen(CLEAN, THRESHOLDS, y), "sub_minimum_yield").verdict).toBe("triggered");
+  });
+});
+
+describe("resolution paths are specific to what is missing (audit 2026-11-05)", () => {
+  it("a missing THRESHOLD resolves by stating it — free, now — not by ordering a survey", () => {
+    const r = runBuildabilityScreen(CLEAN, NO_THRESHOLDS, YIELD);
+    expect(verdictOf(r, "flood").resolution).toEqual({ action: "state your floodplain-share threshold for this run", cost: "free, now", owner: "you" });
+    expect(verdictOf(r, "slope").resolution).toEqual({ action: "state your slope build threshold for this run", cost: "free, now", owner: "you" });
+  });
+  it("a missing gross acreage (floodplain recorded) resolves by stating it", () => {
+    expect(verdictOf(runBuildabilityScreen({ ...CLEAN, grossAcres: null }, THRESHOLDS, YIELD), "flood").resolution?.action).toMatch(/^state the parcel's gross acreage/);
+  });
+  it("a missing FACT about the land keeps the trigger's priced path", () => {
+    expect(verdictOf(runBuildabilityScreen({ ...CLEAN, maxSlopePct: null }, THRESHOLDS, YIELD), "slope").resolution?.action).toMatch(/topographic survey/);
+  });
+});
+
 describe("§8.1 test 5 — every not-determinable verdict carries a priced resolution path", () => {
   it("each of the seven, when not determinable, names action, cost and owner", () => {
     for (const v of runBuildabilityScreen(NOTHING, NO_THRESHOLDS, null).verdicts) {

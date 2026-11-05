@@ -62,3 +62,17 @@ The screen run freezes the yield estimate that its sub-minimum-yield trigger rea
 - **Facts come from the operator.** Step 0 §2.5 found almost none of the trigger facts stored with provenance. v1 therefore reads every fact as the operator records it on the run, with its source and as-of, frozen verbatim. A value without a source is refused, not recorded. No enrichment or lookup is consulted (§7.3).
 - **Soil-rule septic infeasibility (§3.4's "stated infeasibility rule") is not built.** The septic trigger reads a recorded perc result or a sewer-availability fact. The perc-estimate slot is typed and always null, and the route refuses any value in it.
 - **The §3.5 portfolio chip is not built.** "Screen-stale-on-newer-facts" cannot be defined while facts live only on runs. The panel's run history is the v1 surface.
+
+## Independent audit (2026-11-05): findings and dispositions
+
+1. **Fixed: a target lot below the stated minimum hid the sub-minimum-yield trigger.** The stated minimum is now a floor: a smaller target is never divided by, and the basis says so. Tested in both the yield and screen suites.
+2. **Fixed: the panel silently dropped a value with no source.** Each field is now refused by name: a value with no source, a source with no value, or a number that does not parse. The run is disabled until the field is fixed or cleared. A minimum lot with no citation is refused the same way.
+3. **Fixed: resolution paths were the same whatever was missing.** A missing threshold or gross acreage now resolves as "state … for this run (free, now, you)". A missing fact about the land keeps its priced path.
+4. **Fixed: the "unknown is not clear" tests covered too little.** They now remove, one at a time, every fact a clear verdict requires, across the clean, perc-only, sewer-only and no-floodplain bases. Both mutants the auditor named go red.
+5. **Fixed: drawn counts were not frozen.** Each run freezes `drawnPlansAtRun` and returns `reconciliationAtRun`. The panel shows both "At this run" and "Today" lines.
+6. **Fixed: the no-write scan was narrow.** It now covers `server/` and `scripts/`, aliases, schema namespaces and raw SQL in any quoting, with a canary for each shape.
+7. **Fixed:** the gross acreage's source and every deduction's as-of now render; the empty and error states use `EmptyState` and `QueryErrorState`; and every "Source" and "As of" field carries a screen-reader label naming its fact.
+8. **Partly fixed (item 9):**
+   - Fixed: a strict numeric id (`42abc` is refused); a child lot is refused with "screen its parent"; and a cap of 50 runs, with a "showing the newest 50" notice.
+   - **Not done:** staleness against a stated as-of (free text in v1), and limiting the floodway trigger to the buildable area. The flood trigger stays conservative: any floodway acreage fires it.
+9. **For Muse to accept explicitly:** the §3.5 portfolio chip and the soil-rule septic infeasibility are not built.

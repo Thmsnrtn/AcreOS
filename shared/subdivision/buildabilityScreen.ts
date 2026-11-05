@@ -148,8 +148,15 @@ const RESOLUTIONS: Record<TriggerId, ResolutionPath> = {
 
 const ev = (fact: string, f: RecordedFact<unknown>): EvidenceItem => ({ fact, value: String(f.value), source: f.source, asOf: f.asOf });
 
-function verdict(id: TriggerId, v: Verdict, reason: string, evidence: EvidenceItem[]): TriggerVerdict {
-  return { id, label: LABELS[id], verdict: v, reason, evidence, resolution: v === "not_determinable" ? RESOLUTIONS[id] : null };
+/**
+ * A missing INPUT the operator supplies themselves (a threshold, an acreage)
+ * resolves by stating it — free, now — not by ordering a survey. The
+ * trigger's own priced path is for a missing FACT about the land.
+ */
+const stateIt = (what: string): ResolutionPath => ({ action: `state ${what} for this run`, cost: "free, now", owner: "you" });
+
+function verdict(id: TriggerId, v: Verdict, reason: string, evidence: EvidenceItem[], resolution?: ResolutionPath): TriggerVerdict {
+  return { id, label: LABELS[id], verdict: v, reason, evidence, resolution: v === "not_determinable" ? resolution ?? RESOLUTIONS[id] : null };
 }
 
 function access(f: ScreenFacts): TriggerVerdict {
@@ -177,8 +184,12 @@ function flood(f: ScreenFacts, t: ScreenThresholds): TriggerVerdict {
     return verdict("flood", "not_determinable", `not recorded: ${[!f.floodwayAcres && "floodway acres", !f.floodplainAcres && "floodplain acres"].filter(Boolean).join(", ")}`, e);
   }
   if (f.floodplainAcres.value === 0) return verdict("flood", "clear_on_evidence", "no floodway and no floodplain acres recorded", e);
-  if (!f.grossAcres || !(f.grossAcres.value > 0)) return verdict("flood", "not_determinable", "floodplain recorded but no gross acreage to take its share of", e);
-  if (t.floodplainShareMax === null) return verdict("flood", "not_determinable", "floodplain recorded but no floodplain-share threshold stated for this run", e);
+  if (!f.grossAcres || !(f.grossAcres.value > 0)) {
+    return verdict("flood", "not_determinable", "floodplain recorded but no gross acreage to take its share of", e, stateIt("the parcel's gross acreage, with its source,"));
+  }
+  if (t.floodplainShareMax === null) {
+    return verdict("flood", "not_determinable", "floodplain recorded but no floodplain-share threshold stated for this run", e, stateIt("your floodplain-share threshold"));
+  }
   const share = f.floodplainAcres.value / f.grossAcres.value;
   const pct = (n: number) => `${Math.round(n * 1000) / 10}%`;
   e.push({ fact: "your floodplain-share threshold for this run", value: pct(t.floodplainShareMax), source: "operator-stated", asOf: null });
@@ -211,7 +222,7 @@ function slope(f: ScreenFacts, t: ScreenThresholds): TriggerVerdict {
   const s = f.maxSlopePct;
   const e: EvidenceItem[] = s ? [ev("steepest buildable slope (%)", s)] : [];
   if (!s) return verdict("slope", "not_determinable", "no slope fact recorded", e);
-  if (t.maxBuildableSlopePct === null) return verdict("slope", "not_determinable", "slope recorded but no build threshold stated for this run", e);
+  if (t.maxBuildableSlopePct === null) return verdict("slope", "not_determinable", "slope recorded but no build threshold stated for this run", e, stateIt("your slope build threshold"));
   e.push({ fact: "your slope threshold for this run (%)", value: String(t.maxBuildableSlopePct), source: "operator-stated", asOf: null });
   return s.value > t.maxBuildableSlopePct
     ? verdict("slope", "triggered", `${s.value}% exceeds your stated ${t.maxBuildableSlopePct}%`, e)

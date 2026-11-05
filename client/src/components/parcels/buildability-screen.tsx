@@ -12,6 +12,8 @@
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { ShieldAlert } from "lucide-react";
+import { EmptyState } from "@/components/empty-state";
+import { QueryErrorState } from "@/components/query-error-state";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -20,7 +22,6 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { queryClient } from "@/lib/queryClient";
-import { Verbs } from "@/lib/labels";
 
 // ── Wire shapes (the server's ScreenResult / LotYieldEstimate, as stored) ──
 
@@ -46,7 +47,8 @@ interface RangeEnd {
 interface YieldEstimate {
   version: string;
   refusedReason: string | null;
-  deductions: Array<{ key: string; label: string; status: "stated" | "not_determinable"; acres: number | null; source: string | null; resolution: string | null }>;
+  grossAcres: { value: number; source: string; asOf: string | null } | null;
+  deductions: Array<{ key: string; label: string; status: "stated" | "not_determinable"; acres: number | null; source: string | null; asOf: string | null; resolution: string | null }>;
   yield: { low: RangeEnd; high: RangeEnd };
 }
 interface ScreenRun {
@@ -57,10 +59,12 @@ interface ScreenRun {
   notDeterminableCount: number;
   yieldEstimate: YieldEstimate;
   result: { headline: string; verdicts: TriggerVerdict[] };
+  reconciliationAtRun: Array<{ planId: string; statement: string }>;
 }
 interface RunsResponse {
   runs: ScreenRun[];
   latestReconciliation: Array<{ planId: string; statement: string }>;
+  truncated: boolean;
 }
 
 // ── Form drafts ──────────────────────────────────────────────────────────
@@ -96,11 +100,26 @@ const CHOICE_FACTS = [
 const csrf = () => decodeURIComponent(document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/)?.[1] || "");
 const num = (s: string): number | null => (s.trim() === "" || !Number.isFinite(Number(s)) ? null : Number(s));
 
-/** A fact is recorded only with both a value and its source. */
+/** A fact is recorded only with both a value and its source (the form refuses either alone first). */
 function recordedFact(d: Draft, parse: (v: string) => unknown) {
   const v = d.value.trim() === "" ? null : parse(d.value);
   if (v === null || v === undefined || !d.source.trim()) return null;
   return { value: v, source: d.source.trim(), asOf: d.asOf.trim() || null };
+}
+
+/**
+ * Row-level refusals, named by field: a value with no source, a source with no
+ * value, or a number that does not parse is NEVER silently dropped — the run
+ * waits until the operator fixes or clears it.
+ */
+function draftProblems(label: string, d: Draft, numeric: boolean): string[] {
+  const hasValue = d.value.trim() !== "";
+  const hasSource = d.source.trim() !== "";
+  const out: string[] = [];
+  if (hasValue && numeric && !(Number.isFinite(Number(d.value)) && Number(d.value) >= 0)) out.push(`${label}: "${d.value}" is not a number of 0 or more — fix it or clear it.`);
+  if (hasValue && !hasSource) out.push(`${label}: add where this value comes from (its source), or clear the value.`);
+  if (!hasValue && (hasSource || d.asOf.trim() !== "")) out.push(`${label}: a source was entered with no value — enter the value or clear the source.`);
+  return out;
 }
 
 const VERDICT_BADGE: Record<TriggerVerdict["verdict"], { text: string; variant: "destructive" | "secondary" | "outline" }> = {
@@ -112,7 +131,7 @@ const VERDICT_BADGE: Record<TriggerVerdict["verdict"], { text: string; variant: 
 const selectClass =
   "h-9 w-full rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
-function RunView({ run, reconciliation }: { run: ScreenRun; reconciliation: Array<{ planId: string; statement: string }> | null }) {
+function RunView({ run, today }: { run: ScreenRun; today: Array<{ planId: string; statement: string }> | null }) {
   const y = run.yieldEstimate;
   return (
     <div className="space-y-3" data-testid="screen-run">
@@ -147,13 +166,21 @@ function RunView({ run, reconciliation }: { run: ScreenRun; reconciliation: Arra
       </ul>
       <div className="border rounded-md p-2 text-sm space-y-1" data-testid="screen-yield">
         <p className="font-medium">Lot-yield estimate ({y.version})</p>
+        {y.grossAcres && (
+          <p className="text-xs">
+            Gross {y.grossAcres.value} ac — {y.grossAcres.source}
+            {y.grossAcres.asOf ? ` (as of ${y.grossAcres.asOf})` : ""}
+          </p>
+        )}
         {y.refusedReason ? (
           <p>Not estimated — {y.refusedReason}.</p>
         ) : (
           <>
             {y.deductions.map((d) => (
               <p key={d.key} className="text-xs">
-                {d.status === "stated" ? `− ${d.label}: ${d.acres} ac — ${d.source}` : `${d.label}: not determinable — to resolve: ${d.resolution}`}
+                {d.status === "stated"
+                  ? `− ${d.label}: ${d.acres} ac — ${d.source}${d.asOf ? ` (as of ${d.asOf})` : ""}`
+                  : `${d.label}: not determinable — to resolve: ${d.resolution}`}
               </p>
             ))}
             {(["low", "high"] as const).map((end) => {
@@ -167,10 +194,17 @@ function RunView({ run, reconciliation }: { run: ScreenRun; reconciliation: Arra
             })}
           </>
         )}
-        {reconciliation && reconciliation.length > 0 && (
-          <ul className="text-xs space-y-0.5 pt-1" aria-label="Drawn plans beside the estimate">
-            {reconciliation.map((p) => (
-              <li key={p.planId}>{p.statement}</li>
+        {run.reconciliationAtRun.length > 0 && (
+          <ul className="text-xs space-y-0.5 pt-1" aria-label="Drawn plans beside the estimate, as they stood at this run">
+            {run.reconciliationAtRun.map((p) => (
+              <li key={p.planId}>At this run — {p.statement}</li>
+            ))}
+          </ul>
+        )}
+        {today && today.length > 0 && (
+          <ul className="text-xs space-y-0.5" aria-label="Today's drawn plans beside this run's estimate">
+            {today.map((p) => (
+              <li key={p.planId}>Today — {p.statement}</li>
             ))}
           </ul>
         )}
@@ -199,6 +233,26 @@ export function BuildabilityScreenSection({ parentParcelId }: { parentParcelId: 
   const [minLot, setMinLot] = useState("");
   const [minLotCite, setMinLotCite] = useState("");
   const [targetLot, setTargetLot] = useState("");
+  const [formOpen, setFormOpen] = useState(false);
+
+  const problems = [
+    ...CHOICE_FACTS.flatMap((f) => draftProblems(f.label, choices[f.key], false)),
+    ...NUMERIC_FACTS.flatMap((f) => draftProblems(f.label, nums[f.key], true)),
+    ...(minLot.trim() !== "" && !minLotCite.trim() ? ["Minimum lot: add where you read it (its citation), or clear the value."] : []),
+    ...(minLot.trim() === "" && minLotCite.trim() ? ["Minimum lot: a citation was entered with no acreage — enter it or clear the citation."] : []),
+    ...[
+      ["Floodplain-share threshold", floodplainPct, 100],
+      ["Slope build threshold", slopeMax, null],
+      ["Roads / right-of-way allowance", roadsPct, 99.99],
+      ["Minimum lot", minLot, null],
+      ["Target lot size", targetLot, null],
+    ].flatMap(([label, v, max]) => {
+      const t = String(v).trim();
+      if (t === "") return [];
+      const n = Number(t);
+      return Number.isFinite(n) && n >= 0 && (max === null || n <= (max as number)) ? [] : [`${label}: "${t}" is not a valid number — fix it or clear it.`];
+    }),
+  ];
 
   const run = useMutation({
     mutationFn: async () => {
@@ -250,11 +304,15 @@ export function BuildabilityScreenSection({ parentParcelId }: { parentParcelId: 
   const shown = list.find((r) => r.id === selectedId) ?? list[0] ?? null;
   const isLatest = shown !== null && shown.id === list[0]?.id;
 
-  const draftInputs = (state: Record<string, Draft>, set: (s: Record<string, Draft>) => void, k: string) => (
+  const draftInputs = (state: Record<string, Draft>, set: (s: Record<string, Draft>) => void, k: string, label: string) => (
     <>
-      <Label htmlFor={`bs-${k}-source`} className="text-xs">Source</Label>
+      <Label htmlFor={`bs-${k}-source`} className="text-xs">
+        Source<span className="sr-only"> of {label}</span>
+      </Label>
       <Input id={`bs-${k}-source`} value={state[k].source} onChange={(e) => set({ ...state, [k]: { ...state[k], source: e.target.value } })} />
-      <Label htmlFor={`bs-${k}-asof`} className="text-xs">As of (optional)</Label>
+      <Label htmlFor={`bs-${k}-asof`} className="text-xs">
+        As of (optional)<span className="sr-only"> for {label}</span>
+      </Label>
       <Input id={`bs-${k}-asof`} value={state[k].asOf} onChange={(e) => set({ ...state, [k]: { ...state[k], asOf: e.target.value } })} />
     </>
   );
@@ -275,15 +333,10 @@ export function BuildabilityScreenSection({ parentParcelId }: { parentParcelId: 
         {runs.isLoading ? (
           <Skeleton className="h-24" />
         ) : runs.isError ? (
-          <p role="alert" className="text-sm">
-            Could not load this parcel&apos;s screen runs.{" "}
-            <Button size="sm" variant="outline" onClick={() => runs.refetch()}>
-              {Verbs.RETRY}
-            </Button>
-          </p>
+          <QueryErrorState error={runs.error as Error} onRetry={() => runs.refetch()} isRetrying={runs.isFetching} compact testId="screen-error" />
         ) : shown ? (
           <>
-            <RunView run={shown} reconciliation={isLatest ? runs.data?.latestReconciliation ?? null : null} />
+            <RunView run={shown} today={isLatest ? runs.data?.latestReconciliation ?? null : null} />
             {list.length > 1 && (
               <div>
                 <p className="text-xs font-medium mb-1">Run history</p>
@@ -301,17 +354,21 @@ export function BuildabilityScreenSection({ parentParcelId }: { parentParcelId: 
                     </li>
                   ))}
                 </ul>
+                {runs.data?.truncated && <p className="text-xs text-muted-foreground mt-1">Showing the newest 50 runs; older runs are kept.</p>}
               </div>
             )}
           </>
         ) : (
-          <p className="text-sm text-muted-foreground" data-testid="screen-empty">
-            Not yet screened. Record the facts you hold below and run the screen — anything you leave blank is listed as
-            not determinable, with what would resolve it.
-          </p>
+          <EmptyState
+            icon={ShieldAlert}
+            headline="Not yet screened"
+            subtitle="Record the facts you hold and run the screen. Anything you leave blank is listed as not determinable, with what would resolve it."
+            cta={{ label: "Record facts", onClick: () => setFormOpen(true), "data-testid": "screen-empty-cta" }}
+            testId="screen-empty"
+          />
         )}
 
-        <details className="border rounded-md p-3">
+        <details className="border rounded-md p-3" open={formOpen} onToggle={(e) => setFormOpen((e.currentTarget as HTMLDetailsElement).open)}>
           <summary className="cursor-pointer text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">
             Record facts and run the screen
           </summary>
@@ -332,7 +389,7 @@ export function BuildabilityScreenSection({ parentParcelId }: { parentParcelId: 
                     </option>
                   ))}
                 </select>
-                {draftInputs(choices, setChoices, f.key)}
+                {draftInputs(choices, setChoices, f.key, f.label)}
               </div>
             ))}
             {NUMERIC_FACTS.map((f) => (
@@ -344,7 +401,7 @@ export function BuildabilityScreenSection({ parentParcelId }: { parentParcelId: 
                   value={nums[f.key].value}
                   onChange={(e) => setNums({ ...nums, [f.key]: { ...nums[f.key], value: e.target.value } })}
                 />
-                {draftInputs(nums, setNums, f.key)}
+                {draftInputs(nums, setNums, f.key, f.label)}
               </div>
             ))}
             <div className="space-y-1">
@@ -371,7 +428,14 @@ export function BuildabilityScreenSection({ parentParcelId }: { parentParcelId: 
             </div>
           </div>
           <p className="text-xs text-muted-foreground pt-2">A fact counts as recorded only with its source.</p>
-          <Button size="sm" className="mt-2" onClick={() => run.mutate()} disabled={run.isPending} data-testid="screen-run-button">
+          {problems.length > 0 && (
+            <ul role="alert" className="text-sm text-destructive mt-2 space-y-0.5" data-testid="screen-problems">
+              {problems.map((p) => (
+                <li key={p}>{p}</li>
+              ))}
+            </ul>
+          )}
+          <Button size="sm" className="mt-2" onClick={() => run.mutate()} disabled={run.isPending || problems.length > 0} data-testid="screen-run-button">
             Run the screen
           </Button>
           {run.isError && (

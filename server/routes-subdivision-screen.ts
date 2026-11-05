@@ -29,7 +29,10 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { Errors } from "./utils/errors";
 import { routeParam } from "./utils/routeParams";
-import { estimateLotYield, reconcileWithDrawnPlans, type LotYieldEstimate, type LotYieldInputs } from "@shared/subdivision/lotYield";
+import { estimateLotYield, reconcileWithDrawnPlans, type DrawnPlan, type LotYieldEstimate, type LotYieldInputs } from "@shared/subdivision/lotYield";
+
+/** The history read returns at most this many runs, newest first, and says when there are more. */
+const RUN_HISTORY_CAP = 50;
 import { runBuildabilityScreen, type RecordedFact, type ScreenFacts } from "@shared/subdivision/buildabilityScreen";
 
 const source = z.string().trim().min(1).max(200);
@@ -87,16 +90,20 @@ export function registerSubdivisionScreenRoutes(app: Express): void {
       try {
         const orgId = getOrganizationId(req);
         const actorRef = getUserId(req);
-        const parentId = parseInt(routeParam(req.params.id), 10);
-        if (!Number.isFinite(parentId)) return Errors.badRequest(res, "Invalid parcel id");
+        const rawId = routeParam(req.params.id);
+        const parentId = /^\d+$/.test(rawId) ? Number(rawId) : NaN;
+        if (!Number.isSafeInteger(parentId)) return Errors.badRequest(res, "Invalid parcel id");
         const parsed = screenBodySchema.safeParse(req.body ?? {});
         if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
         const [parent] = await db
-          .select({ id: properties.id, sizeAcres: properties.sizeAcres })
+          .select({ id: properties.id, sizeAcres: properties.sizeAcres, parentParcelId: properties.parentParcelId })
           .from(properties)
           .where(and(eq(properties.id, parentId), eq(properties.organizationId, orgId)));
         if (!parent) return Errors.notFound(res, "Parcel");
+        if (parent.parentParcelId !== null && parent.parentParcelId !== undefined) {
+          return Errors.badRequest(res, "This parcel is a child lot — run the screen on its parent parcel");
+        }
 
         const b = parsed.data;
         const recordAcres = parent.sizeAcres === null || parent.sizeAcres === undefined ? NaN : Number(parent.sizeAcres);
@@ -134,6 +141,15 @@ export function registerSubdivisionScreenRoutes(app: Express): void {
         };
         const yieldEstimate = estimateLotYield(yieldInputs);
         const result = runBuildabilityScreen(facts, thresholds, yieldEstimate);
+        // §4.2: the run cites the estimate AND the drawn counts as they stood at
+        // the run — frozen here, so a later redraw cannot erase the disagreement.
+        const drawnPlansAtRun = (
+          await db
+            .select({ id: subdivisionPlans.id, name: subdivisionPlans.name, lotCount: subdivisionPlans.lotCount })
+            .from(subdivisionPlans)
+            .where(and(eq(subdivisionPlans.organizationId, orgId), eq(subdivisionPlans.parentParcelId, parentId)))
+            .orderBy(desc(subdivisionPlans.updatedAt))
+        ).map((p) => ({ planId: p.id, name: p.name, lotCount: p.lotCount }));
 
         const [run] = await db
           .insert(subdivisionScreenRuns)
@@ -141,7 +157,7 @@ export function registerSubdivisionScreenRoutes(app: Express): void {
             organizationId: orgId,
             parentParcelId: parentId,
             ruleVersion: result.version,
-            inputs: { facts, thresholds, yieldInputs } as unknown as Record<string, unknown>,
+            inputs: { facts, thresholds, yieldInputs, drawnPlansAtRun } as unknown as Record<string, unknown>,
             yieldEstimate: yieldEstimate as unknown as Record<string, unknown>,
             result: result as unknown as Record<string, unknown>,
             triggeredCount: result.triggered.length,
@@ -163,16 +179,24 @@ export function registerSubdivisionScreenRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const orgId = getOrganizationId(req);
-        const parentId = parseInt(routeParam(req.params.id), 10);
-        if (!Number.isFinite(parentId)) return Errors.badRequest(res, "Invalid parcel id");
-        const runs = await db
+        const rawId = routeParam(req.params.id);
+        const parentId = /^\d+$/.test(rawId) ? Number(rawId) : NaN;
+        if (!Number.isSafeInteger(parentId)) return Errors.badRequest(res, "Invalid parcel id");
+        const rows = await db
           .select()
           .from(subdivisionScreenRuns)
           .where(and(eq(subdivisionScreenRuns.organizationId, orgId), eq(subdivisionScreenRuns.parentParcelId, parentId)))
           .orderBy(desc(subdivisionScreenRuns.createdAt), desc(subdivisionScreenRuns.id))
-          .limit(50);
-        // §4.2: the newest run's frozen estimate beside today's drawn plans —
-        // both numbers shown, neither written. Plans are read org-scoped.
+          .limit(RUN_HISTORY_CAP + 1);
+        const truncated = rows.length > RUN_HISTORY_CAP;
+        const runs = rows.slice(0, RUN_HISTORY_CAP).map((r) => {
+          const frozen = ((r.inputs as { drawnPlansAtRun?: DrawnPlan[] }).drawnPlansAtRun ?? []) as DrawnPlan[];
+          // The disagreement AS IT STOOD at the run — reproducible from the record.
+          return { ...r, reconciliationAtRun: reconcileWithDrawnPlans(r.yieldEstimate as unknown as LotYieldEstimate, frozen) };
+        });
+        // §4.2: the newest run's frozen estimate beside TODAY's drawn plans (each
+        // run also carries its at-run reconciliation) — both numbers shown,
+        // neither written. Plans are read org-scoped.
         let latestReconciliation: ReturnType<typeof reconcileWithDrawnPlans> = [];
         if (runs.length > 0) {
           const plans = await db
@@ -185,7 +209,7 @@ export function registerSubdivisionScreenRoutes(app: Express): void {
             plans.map((p) => ({ planId: p.id, name: p.name, lotCount: p.lotCount })),
           );
         }
-        return res.json({ runs, latestReconciliation });
+        return res.json({ runs, latestReconciliation, truncated });
       } catch (err) {
         return Errors.internal(res, err);
       }
