@@ -409,6 +409,43 @@ test.describe("CJ1: signup → onboarding → first value", () => {
       expect(composerVisible, "Pax composer affordance missing on /ai").toBe(
         true,
       );
+      // Answer the first-visit "How Pax works" AI-disclosure dialog the way a
+      // first-time customer must, before asking whether the composer is the
+      // topmost thing on the first screen. AiDisclosureGate (app shell)
+      // mounts this non-closable dialog over /ai for every user without
+      // current-version consent, and the journey's synthetic user has none —
+      // so the topmost check below was measuring the dialog, not the
+      // composer (run 42104190391: 7 composer-topmost failures, every one with
+      // inViewport: true and the composer readable behind the dialog in the
+      // preserved screenshots). "Got it" records consent and leaves the user on
+      // /ai; "See what Pax may do" would navigate away. The dialog is a
+      // first-visit surface, so its absence is a no-op, not a failure — and
+      // if it arrives after this window, the topmost assertion still fails
+      // honestly. Clicked through the UI (as CJ1 answers the cookie banner),
+      // not pre-accepted via the API, so the consent path itself stays walked.
+      const disclosure = page.locator('[data-testid="ai-disclosure-dialog"]');
+      await disclosure.waitFor({ state: "visible", timeout: 5000 }).catch(() => {});
+      if (await disclosure.isVisible().catch(() => false)) {
+        await page.locator('[data-testid="ai-disclosure-got-it"]').click();
+        await expect(
+          disclosure,
+          "AI-disclosure dialog did not close after Got it (consent write failed?)",
+        ).toHaveCount(0, { timeout: 10_000 });
+        // The overlay animates out alongside the content and carries no
+        // testid; Radix's modal layer holds body pointer-events at "none"
+        // until the last layer unmounts, so that is the "modal fully gone"
+        // signal. Waiting on it settles the exit animation without a fixed
+        // sleep — it does not touch what the topmost check measures.
+        await page
+          .waitForFunction(() => document.body.style.pointerEvents !== "none", null, {
+            timeout: 5000,
+          })
+          .catch(() => {});
+        testInfo.annotations.push({
+          type: "info-ai-disclosure-acknowledged",
+          description: "first-visit 'How Pax works' dialog answered with Got it on /ai",
+        });
+      }
       // isVisible() is true for a box ANYWHERE in the document — it passed
       // with the composer 900px below a phone's fold (D11 fix 1, Step 0
       // 2026-11-03). A person finds the composer only on the first screen:

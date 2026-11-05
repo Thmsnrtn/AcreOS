@@ -3,6 +3,13 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-11-05 — CJ harness: answer the "How Pax works" dialog before composer assertions — on `claude/cj1-dismiss-ai-disclosure` (off main `c8fa715`, PR open, unmerged)
+
+- **Scope.** Harness only. The CJ audit was red three runs running. Decomposing run 42104190391 found 7 composer-topmost failures, the largest single cause. Each had `inViewport: true`. The first-visit AI-disclosure dialog (`AiDisclosureGate`, app shell) sat over /ai, so `elementFromPoint` hit the dialog.
+- **Change.** CJ1 step 6 now clicks "Got it" when the dialog shows, the way a first-time customer would. It waits for the dialog to unmount and the Radix modal layer to release, then runs the topmost check unchanged. If the dialog is absent, the step does nothing. No product code changed and no assertion was loosened.
+- **Out of scope, observed.** Load-timing flakes under the 18-way parallel walk, and the onboarding-bounce defect (its own package).
+- **Proof.** PROOF_PLACEHOLDER
+
 ## 2026-11-03 — Buy-and-hold release: desk ported + mounted, wiring as links — on `claude/buy-and-hold-release` (off main `f7f2e3f`, PR #458, unmerged; blocker resolved 2026-11-05 by Option B)
 
 - **What shipped on the branch.**
