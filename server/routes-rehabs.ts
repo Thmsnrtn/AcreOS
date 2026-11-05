@@ -573,7 +573,7 @@ export function registerRehabRoutes(app: Express): void {
           budgetCents: rehabLineItems.budgetCents, committedCents: rehabLineItems.committedCents, spentCents: rehabLineItems.spentCents,
         })
         .from(rehabLineItems)
-        .where(and(eq(rehabLineItems.organizationId, orgId), inArray(rehabLineItems.rehabId, activeRehabs.map((r: any) => r.id))));
+        .where(and(eq(rehabLineItems.organizationId, orgId), inArray(rehabLineItems.rehabId, activeRehabs.map((r: { id: string }) => r.id))));
       for (const r of activeRehabs as Array<Record<string, unknown>>) {
         r.flags = varianceFlags(lineRows.filter((l) => l.rehabId === r.id).map((l) => ({ ...l, id: String(l.id) })));
       }
