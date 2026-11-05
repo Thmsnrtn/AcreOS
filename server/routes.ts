@@ -194,6 +194,7 @@ import { registerNoteRoutes } from "./routes-notes";
 import { registerNoteAcquisitionRoutes } from "./routes-note-acquisitions";
 import { registerNoteTapeRoutes } from "./routes-note-tape";
 import { registerNoteRecordRoutes } from "./routes-note-record";
+import { registerNoteWorkoutRoutes } from "./routes-note-workout";
 import { registerServicerRoutes } from "./routes-servicer";
 import { registerTaxCertificateRoutes } from "./routes-tax-certificates";
 import { registerTaxRuleRoutes } from "./routes-tax-rules";
@@ -2436,6 +2437,7 @@ export async function registerRoutes(
   registerNoteAcquisitionRoutes(app);
   registerNoteTapeRoutes(app);
   registerNoteRecordRoutes(app);
+  registerNoteWorkoutRoutes(app);
   // Note Servicer (Pillar K — Ursa) — owners-of-record, remittances, licenses.
   registerServicerRoutes(app);
   // Tax-Delinquent vertical TD-2 — redemption-clock surface.
