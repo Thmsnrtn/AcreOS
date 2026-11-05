@@ -34,13 +34,14 @@ import type { BulkParcelRecord, FieldGroup, GroupProvenance } from "@shared/land
 import { FIELD_GROUP_DECAY, sourceNumber, sourceText } from "@shared/landData/bulkParcelRecord";
 import { unresolvedUseClasses } from "@shared/openData/sourcePolicy";
 import { STATEWIDE_PARCEL_ENDPOINTS, type StatewideParcelEndpointSeed } from "../statewideParcelEndpoints";
-import { statewideSource, type StatewideSourceEntry } from "../openData/statewideSourceRegistry";
+import { statewideIngestAdmission, statewideSource, type PublishedSuppression, type StatewideSourceEntry } from "../openData/statewideSourceRegistry";
 import type { AreaGeometry } from "./geometry";
 import type { ParquetColumnDef } from "./geoParquet";
 import { StreamingArtifactWriter, type BuiltArtifact, type StreamingArtifactResult } from "./streamingArtifacts";
 import type { ObjectStoreClient, UploadReceipt } from "./openDataBucket";
 import { closeSync, mkdirSync, openSync, readSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { clock } from "../../utils/clock";
 import { StringDecoder } from "node:string_decoder";
 
 /** The documented per-run RSS ceiling (also the TN county build's). The acceptance gates run a large county under a 512 MB cap. */
@@ -61,6 +62,8 @@ export interface StatewideBuildSpec {
   attribution: string;
   /** canonical field → the live layer's field name. `apn` is required. */
   mapping: FieldMapping;
+  /** Values the publisher suppressed upstream (registry); stored as published, flagged in provenance. */
+  suppression?: PublishedSuppression | null;
 }
 
 /** The ETL job name for a state's statewide build. */
@@ -107,7 +110,14 @@ export function buildSpecFor(state: string, mapping?: FieldMapping): StatewideBu
   }
   const m = mapping ?? seedMapping(seed);
   if (!m.apn) throw new Error(`refused: the ${st} field map names no parcel-id field — records could not be keyed`);
-  return { state: st, job: statewideJobName(st), layerUrl: `${seed.baseUrl.replace(/\/+$/, "")}/${seed.layerId}`, attribution: seed.attribution, mapping: m };
+  return {
+    state: st,
+    job: statewideJobName(st),
+    layerUrl: `${seed.baseUrl.replace(/\/+$/, "")}/${seed.layerId}`,
+    attribution: seed.attribution,
+    mapping: m,
+    suppression: statewideSource(st)?.suppression ?? null,
+  };
 }
 
 // ── Conformance (the drift stop condition) ───────────────────────────────
@@ -156,7 +166,12 @@ export function normalizeFeature(spec: StatewideBuildSpec, f: SourceFeature, ctx
     f.geometry && (f.geometry.type === "Polygon" || f.geometry.type === "MultiPolygon")
       ? { type: f.geometry.type as "Polygon" | "MultiPolygon", coordinates: f.geometry.coordinates }
       : null;
+  // Stored AS PUBLISHED: a value the publisher suppressed upstream (e.g. WI's
+  // "NOT AVAILABLE") is kept literally, never nulled and never repaired from
+  // another source or vintage; the ownership provenance records that it is a
+  // published suppression so no reader mistakes it for a name.
   const ownerName = sourceText(read("owner"));
+  const ownerSuppressed = ownerName !== null && (spec.suppression?.values ?? []).includes(ownerName);
   const situsAddress = sourceText(read("address"));
   const assessed = sourceNumber(read("assessedValue"));
   const market = sourceNumber(read("marketValue"));
@@ -174,7 +189,13 @@ export function normalizeFeature(spec: StatewideBuildSpec, f: SourceFeature, ctx
     provenance: {
       identity: group(spec, [m.apn], true, ctx.asOf, "identity", "the source's own parcel key"),
       geometry: group(spec, [], geometry !== null, ctx.asOf, "geometry", `${COMPILATION}; polygon as served (outSR 4326)`),
-      ownership: group(spec, [m.owner, m.address], ownerName !== null || situsAddress !== null, ctx.asOf, "ownership", COMPILATION),
+      ownership: ownerSuppressed
+        ? {
+            ...group(spec, [m.owner, m.address], true, ctx.asOf, "ownership", COMPILATION),
+            confidenceBasis: `owner name suppressed upstream by the publisher ("${ownerName}") — stored as published, never backfilled (${spec.suppression?.basis ?? "registry suppression"})`,
+            suppressedUpstream: true,
+          }
+        : group(spec, [m.owner, m.address], ownerName !== null || situsAddress !== null, ctx.asOf, "ownership", COMPILATION),
       tax: group(spec, [m.assessedValue], assessed !== null, ctx.asOf, "tax", `${COMPILATION}; the assessed value as the source states it`),
       valuation: group(spec, [m.marketValue], market !== null, ctx.asOf, "valuation", `${COMPILATION}; an appraised value is an estimate`),
       sale: group(spec, [m.lastSalePrice], sale !== null, ctx.asOf, "sale", `${COMPILATION}; most recent sale price on the roll`),
@@ -615,6 +636,19 @@ export interface CountyBuildDeps extends LayerDeps {
   sourceEntry?: StatewideSourceEntry;
   /** Sort-run size in serialized characters (default SORT_RUN_CHARS). The memory gate's in-memory-sort mutant sets Infinity. */
   sortRunChars?: number;
+  /** The instant the admission (and its re-verification radar) is judged at; defaults to now. */
+  now?: Date;
+}
+
+/** The build refused a source before any fetch: its dossier does not admit internal use. */
+export class IngestRefusedError extends Error {
+  constructor(
+    readonly state: string,
+    readonly reasons: string[],
+  ) {
+    super(`refused before any fetch: ${state} is not admitted to ingest — ${reasons.join("; ")}`);
+    this.name = "IngestRefusedError";
+  }
 }
 
 export interface CountyBuildReport {
@@ -634,7 +668,18 @@ const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(
  * the gate allows. Failures discard the partial artifacts.
  */
 export async function buildCounty(spec: StatewideBuildSpec, config: CountyRunConfig, deps: CountyBuildDeps): Promise<CountyBuildReport> {
-  const gate = ingestGate(spec.state, deps.bucketConfigured, config.dryRun === true, deps.sourceEntry ?? statewideSource(spec.state));
+  // Licensing-as-code at ingest (first-party ingest package §3.1): the source
+  // must be admitted for INTERNAL use before ANY request — not even a local
+  // dry run reads a source whose dossier does not land internal use allowed.
+  // TX keeps its own, more specific refusal (an empty beachhead list).
+  refuseUnverifiedTx(spec.state, config.countyValue);
+  // One instant for the whole run: admission and the upload gate judge the
+  // same effective dossier (the radar must not lapse between them).
+  const now = deps.now ?? clock.now();
+  const entry = deps.sourceEntry ?? statewideSource(spec.state, now);
+  const admission = statewideIngestAdmission(spec.state, now, entry);
+  if (!admission.admitted) throw new IngestRefusedError(spec.state, admission.reasons);
+  const gate = ingestGate(spec.state, deps.bucketConfigured, config.dryRun === true, entry);
   const countyLabel = config.countyValue ?? "";
   const stem = `${spec.state.toLowerCase()}-${slug(countyLabel) || "county"}`;
   const writer = new StreamingArtifactWriter<BulkRow>(
@@ -691,4 +736,49 @@ export async function buildCounty(spec: StatewideBuildSpec, config: CountyRunCon
     rssCeilingMb: RSS_CEILING_MB,
     overCeiling: summary.peakRssMb > RSS_CEILING_MB,
   };
+}
+
+// ── Count reconciliation (first-party ingest package §6.4, §9.2) ─────────
+
+export interface PublisherCount {
+  /** The publisher's own figure for this county, read BEFORE the fetch. */
+  count: number;
+  /** Where the figure came from (e.g. the layer's own count query, with its time). */
+  source: string;
+}
+
+export interface CountyReconciliation {
+  status: "reconciled" | "unexplained_delta" | "no_publisher_figure";
+  publisher: PublisherCount | null;
+  fetched: number;
+  stored: number;
+  rejected: { noParcelId: number; noGeometry: number };
+  /** publisher − fetched: a source-side change between the count and the fetch, or rows the fetch missed. */
+  sourceSideDelta: number | null;
+  notes: string[];
+}
+
+/**
+ * Rows in = rows stored + rows rejected-with-reason, and rows in = the
+ * publisher's own figure. A county with no publisher figure is reported as
+ * such — never reconciled against our own fetch and called a match.
+ */
+export function reconcileCountyBuild(
+  report: Pick<CountyBuildReport, "summary"> & { artifacts: { rowsWritten: number } },
+  publisher: PublisherCount | null,
+): CountyReconciliation {
+  const s = report.summary;
+  const stored = report.artifacts.rowsWritten;
+  const rejected = { noParcelId: s.skippedNoId, noGeometry: s.skippedNoGeometry };
+  const notes: string[] = [];
+  const internal = s.fetched === stored + rejected.noParcelId + rejected.noGeometry;
+  if (!internal) notes.push(`fetched ${s.fetched} ≠ stored ${stored} + rejected ${rejected.noParcelId + rejected.noGeometry} — rows lost inside the build`);
+  if (!publisher) {
+    notes.push("no publisher figure for this county — not reconciled (our own fetch is never its own reference)");
+    return { status: "no_publisher_figure", publisher: null, fetched: s.fetched, stored, rejected, sourceSideDelta: null, notes };
+  }
+  const sourceSideDelta = publisher.count - s.fetched;
+  if (sourceSideDelta !== 0) notes.push(`publisher ${publisher.count} vs fetched ${s.fetched} (Δ ${sourceSideDelta}) — re-count at the source to attribute it`);
+  const ok = internal && sourceSideDelta === 0;
+  return { status: ok ? "reconciled" : "unexplained_delta", publisher, fetched: s.fetched, stored, rejected, sourceSideDelta, notes };
 }

@@ -1,0 +1,9 @@
+{
+  "state": "NY",
+  "county": "X",
+  "refused": true,
+  "fetches": 0,
+  "reasons": [
+    "NY: internal use UNRESOLVED — terms not read for this dossier — the D1 build container's network policy does not reach the state host; resolve from the terms' own words"
+  ]
+}

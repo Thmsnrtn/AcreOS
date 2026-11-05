@@ -3,6 +3,43 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-11-03 — First-party parcel ingest (the Regrid exit ramp), Wave A pilot WI — on `claude/first-party-ingest-wave-a` (off main `f7f2e3f`, PR open, unmerged)
+
+- **Scope as dispatched.** Wave A only, WI first. AR excluded. The #452 gate is untouched: WI stays `gated`, `CLEARED_FOR_LOOKUP` stays `[]`, and `parcel.ts` is unchanged.
+- **Step 0.** Verdicts are in `docs/evidence/2026-11-03/first-party-ingest-step0-and-wi-pilot.md`.
+  - D1/D2 machinery has largely landed: the ETL template, releases, APID/lineage, the purpose ledger, the poller code and the honesty contract.
+  - Confidence is high/medium/low, not 0–1, and has no serving floor.
+  - Parcel lookup is not a ledgered surface.
+  - No staging access this session: no Fly token, and Actions paths are refused. The bucket and staging tables are **unverified**, so the build is **dry-run only**.
+  - The design-authority docs and dossier packs are not in the repo.
+- **Contradictions (legs stopped).**
+  - CT: the same item now serves the 2026 collection (1,320,686 vs the pack's 1,282,833 for 2025).
+  - MA: the pack's service URL is dead (MassGIS moved it 2026-04-02), and no publisher statewide total exists.
+  - Serving hookup: no store exists for a cleared statewide leg to answer from. Statewide builds write only bucket artifacts, the owned store is served ungated, and a new table needs a founder `table-count` bump. **Founder decision needed.**
+  - DE matches its pack and is next.
+- **Built.**
+  - Pre-fetch ingest admission (`ingestAdmission` / `statewideIngestAdmission` → `IngestRefusedError` in `buildCounty`).
+  - The re-verification radar (`reverifyBy`, `effectiveDossier`, applied on every registry read).
+  - `can_mail` decoupled from internal use.
+  - The WI dossier, from the V12 schema documentation re-read live.
+  - WI `NOT AVAILABLE` stored as published, with a `suppressedUpstream` flag.
+  - `reconcileCountyBuild`.
+  - `scripts/land-data/statewide-dry-run.ts`.
+- **Proved (live WI layer, dry run).**
+  - Pepin: 9,693 counted, 9,693 stored, reconciled.
+  - Kenosha: 68,499 counted, 68,499 stored, reconciled, with 64,144 "NOT AVAILABLE" stored and flagged. That equals the independent live count.
+  - Kenosha peak RSS was **442 MB, over the 400 MB ceiling** (measured under tsx). Measure the large counties on the worker before scheduling.
+  - 34 new tests; 8 mutants, all red. An independent audit's should-fixes are applied: one instant per run, a re-verify date is required, the job-level refusal is tested, and the population pins are in place.
+  - **Radar is tighten-on-date only.** `reverifyTriggers` (the V13 release, a terms change) is recorded but not yet wired to the poller.
+  - WI artifacts carry real owner names (internal use). Serving them waits on the §5 ledger; a parquet-reader pin holds that.
+- **Next.**
+  1. Muse audits; the founder merges (staging only).
+  2. Founder: the bucket probe (staging access, or run it), and the serving-store decision (a new table vs. gating the owned-store readers).
+  3. The post-merge §9 staging proof legs that do not need the bucket: live refusal (FL), gate-unchanged at a WI point.
+  4. The DE adapter (geometry-only).
+  5. Update the CT and MA packs, then build them.
+  6. A WI golden county (§3.8) before any WI promotion.
+
 ## 2026-11-03 — Statewide point lookup gated behind the license dossiers — on `claude/statewide-lookup-clearance-gate` (off main `519b62c`, PR open, unmerged)
 
 - **Founder decision (2026-11-03).** A seeded statewide source may serve point-lookup results ONLY when its register state is cleared for lookup. It is recorded in `founder-decisions-2026-11-03-lookup-gate.md`. It closes the LQ-13/LQ-14 finding: nine statewide rows answered live lookups, owner names included, ahead of Regrid, with no gate.
