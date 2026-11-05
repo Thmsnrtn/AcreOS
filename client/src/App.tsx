@@ -1732,7 +1732,7 @@ function Router() {
         {() => <Redirect to="/analytics" />}
       </Route>
       <Route path="/investor-network">
-        {() => <ProtectedRoute component={InvestorDirectoryPage} />}
+        {() => <FlaggedRoute route="/investor-network" component={InvestorDirectoryPage} />}
       </Route>
       <Route path="/regulatory-intel">
         {() => <ProtectedRoute component={RegulatoryIntelPage} />}

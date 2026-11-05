@@ -423,17 +423,23 @@ export default function NotesPage() {
   const searchString = useSearch();
   const actionFromUrl = new URLSearchParams(searchString).get("action");
   const [isImportOpen, setIsImportOpen] = useState(actionFromUrl === "new");
-  // Strip the action param after opening so back-nav doesn't re-trigger.
-  useEffect(() => {
-    if (actionFromUrl === "new") {
-      const params = new URLSearchParams(searchString);
-      params.delete("action");
-      const next = params.toString();
-      const url = next ? `/notes?${next}` : "/notes";
-      window.history.replaceState(null, "", url);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Strip the action param when the import CLOSES, not when it opens, so
+  // back-nav doesn't re-trigger it. Stripping on open lost the dialog on every
+  // in-app link to /notes?action=new on a phone (measured 2026-11-03, D11
+  // fix 2): during the route change this page is rendered once inside the
+  // outgoing page-transition layer and then mounted again in the incoming
+  // one; the first instance opened the dialog and stripped the param, so the
+  // instance that stays mounted read no `action` and rendered it closed. A
+  // full page load mounts once, which is why typing the URL worked.
+  const handleImportOpenChange = (open: boolean) => {
+    setIsImportOpen(open);
+    if (open) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("action") !== "new") return;
+    params.delete("action");
+    const next = params.toString();
+    window.history.replaceState(null, "", next ? `/notes?${next}` : "/notes");
+  };
 
   // Resolve persona for vocabulary lookups. When investorType is 'notes'
   // or 'both' the registry returns note-investor copy; otherwise it falls
@@ -472,7 +478,7 @@ export default function NotesPage() {
 
   return (
     <PageShell isLoading={false} label="Acquired notes">
-      <NotesImportDialog open={isImportOpen} onOpenChange={setIsImportOpen} />
+      <NotesImportDialog open={isImportOpen} onOpenChange={handleImportOpenChange} />
       <div className="flex items-start justify-between mb-6 gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight" data-testid="notes-page-title">

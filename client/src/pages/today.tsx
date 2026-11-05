@@ -42,6 +42,7 @@ import { MorningBrief } from "@/components/today/MorningBrief";
 import { ParcelAlerts } from "@/components/today/ParcelAlerts";
 import { OutcomePrompt } from "@/components/today/OutcomePrompt";
 import { FirstDealCard } from "@/components/today/FirstDealCard";
+import { FirstValueCta } from "@/components/today/FirstValueCta";
 import { getTodayLayout } from "@/components/today/TodayLayout";
 import "./today.css";
 
@@ -591,6 +592,7 @@ export default function TodayPage() {
               <>Here's what's on the horizon.</>
             )}
           </p>
+          <div className="flex flex-wrap gap-x-2">
           {pendingDecisionCount > 0 && (
             <button
               type="button"
@@ -619,6 +621,11 @@ export default function TodayPage() {
               <ArrowRight className="w-4 h-4" aria-hidden="true" />
             </button>
           )}
+          {/* First-value CTA (D11 fix 2) — in the hero, beside the greeting,
+              so a fresh user meets it on the first screen. Renders only for
+              a note investor with an empty book; see FirstValueCta.tsx. */}
+          <FirstValueCta />
+          </div>
         </div>
       </div>
 

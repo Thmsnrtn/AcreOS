@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { trackCanonicalEvent } from "@/lib/analytics";
 import { motion } from "framer-motion";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -22,6 +22,7 @@ import { EmptyState } from "@/components/empty-state";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { PaxOverflowMenu } from "@/components/pax/pax-overflow-menu";
 import { PaxDisclosureRail } from "@/components/pax/pax-disclosure-rail";
+import { PaxComposerDock } from "@/components/pax/pax-composer-dock";
 import { PullToRefresh } from "@/components/mobile/PullToRefresh";
 import { DURATIONS, EASINGS } from "@/lib/motion-tokens";
 import { staggerContainer, staggerItem } from "@/lib/animations";
@@ -526,6 +527,9 @@ export default function PaxPage() {
   useDocumentTitle("Pax");
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  // The composer dock (D11 fix 1): CommandCenterPage portals its composer
+  // into this sticky slot so the composer is on the first screen.
+  const [composerDock, setComposerDock] = useState<HTMLElement | null>(null);
 
   // ── Pull-to-refresh (mobile only) ──────────────────────────────────────
   // A pull at the top re-pulls the queries the Pax door renders: the monthly
@@ -562,7 +566,7 @@ export default function PaxPage() {
   // persona-architecture rule; PaxOverflowMenu gates the Agents entry behind
   // isFounder. Customers see Pax, not the dozen-agent roster underneath.
   return (
-    <PageShell label="Pax">
+    <PageShell label="Pax" stickyToViewport>
       {/* Pull-to-refresh wraps only the header + disclosure banner — the
           natural top-of-page pull zone — so it re-pulls Pax's sibling
           queries (usage cap / conversation list / health / queue) without
@@ -615,9 +619,13 @@ export default function PaxPage() {
               chat). The editorial header above stays rendered regardless. */}
           <ErrorBoundary fallback={<ChatErrorFallback />}>
             <Suspense fallback={<ChatFallback />}>
-              <CommandCenterPage />
+              <CommandCenterPage composerDock={composerDock} />
             </Suspense>
           </ErrorBoundary>
+          {/* Sticky composer slot — pinned to the bottom of the screen while
+              the conversation runs past it, at rest after the last message.
+              See pax-composer-dock.tsx. */}
+          <PaxComposerDock onElement={setComposerDock} />
           {/* Standing AI-disclosure rail — always present beneath the composer
               on the Pax door. "Tool, not advisor" (doctrine pillar #1 +
               customer immutable #7). Calm, non-dismissible, copy sourced from a
