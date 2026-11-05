@@ -162,6 +162,10 @@ describe.runIf(realDbAvailable)("flip decision desk — real database", () => {
     expect(assumption(s, "arv_high_cents")?.value).toBe(31_000_000);
     expect(assumption(s, "arv_comp_count")?.value).toBe(3);
     expect(assumption(s, "arv_comp_source")?.value).toBe("not recorded");
+    // Confidence is computed by the ARV calculator from its comps, not set by the operator.
+    expect(assumption(s, "arv_confidence")).toMatchObject({ value: "medium", origin: "derived" });
+    // The hold period is its own rule, with its own provenance.
+    expect(assumption(s, "rule_hold_months")).toMatchObject({ value: 6, origin: "platform-default" });
     expect(assumption(s, "rehab_source")?.value).toBe("operator_stated");
     // The rules' provenance, field by field: the one the org set is the
     // operator's; the rest say platform default on their face.
@@ -318,6 +322,57 @@ describe.runIf(realDbAvailable)("flip decision desk — real database", () => {
     expect((await rows(orgA)).scenarios).toHaveLength(0);
     await request(app).post("/api/fix-and-flip/decide").send(decide(propA, { reviewDueAt: null })).expect(200);
     expect((await rows(orgA)).decisions[0].review_due_at).toBeNull();
+  });
+
+  it("1b. another org's ARV row or rehab attached to this property id is never read", async () => {
+    const { db } = await import("../../server/db");
+    const { sql } = await import("drizzle-orm");
+    // Newer than A's own row, and a rehab for the same property id — both org B's.
+    await db.execute(sql`INSERT INTO arv_calculations (organization_id, property_id, arv_low_cents, arv_mid_cents, arv_high_cents, created_at) VALUES (${orgB}, ${propA}, 1, 99900000, 3, now() + interval '1 day')`);
+    const rb = await db.execute(sql`INSERT INTO rehabs (organization_id, property_id, name) VALUES (${orgB}, ${propA}, 'foreign') RETURNING id`);
+    const foreignRehab = (rb as unknown as { rows: Array<{ id: string }> }).rows[0].id;
+    await db.execute(sql`INSERT INTO rehab_line_items (organization_id, rehab_id, category, scope, budget_cents) VALUES (${orgB}, ${foreignRehab}, 'roof', 'foreign', 7700000)`);
+    try {
+      await request(await appFor(orgA)).post("/api/fix-and-flip/decide").send(decide(propA)).expect(200);
+      const [s] = (await rows(orgA)).scenarios;
+      expect(s.inputs.arvCents).toBe(30_000_000);
+      expect(assumption(s, "arv_calculation_id")?.value).toBe(arvRowId);
+      expect(assumption(s, "rehab_source")?.value).toBe("operator_stated");
+      expect(s.inputs.rehabEstimateCents).toBe(4_000_000);
+    } finally {
+      await db.execute(sql`DELETE FROM arv_calculations WHERE organization_id = ${orgB} AND property_id = ${propA}`);
+      await db.execute(sql`DELETE FROM rehabs WHERE id = ${foreignRehab}`);
+    }
+  });
+
+  it("1c. a calculation that changed since the preview is refused; a comp-median ARV is recorded as derived, not stated", async () => {
+    const app = await appFor(orgA);
+    const stale = await request(app).post("/api/fix-and-flip/decide").send(decide(propA, { arv: { source: "calculation", expectedArvCents: 29_000_000 } }));
+    expect(stale.status).toBe(400);
+    expect(stale.body.message).toMatch(/changed since you previewed/);
+    expect((await rows(orgA)).scenarios).toHaveLength(0);
+    await request(app).post("/api/fix-and-flip/decide").send(decide(propA, { arv: { source: "calculation", expectedArvCents: 30_000_000 } })).expect(200);
+    await request(app).post("/api/fix-and-flip/decide").send(decide(propA, { kind: "offer", feeCents: 500_000, arv: { source: "comp_median_unadjusted", arvCents: 29_100_000 } })).expect(200);
+    const [, s] = (await rows(orgA)).scenarios;
+    expect(assumption(s, "arv_source")).toMatchObject({ value: "comp_median_unadjusted", origin: "derived" });
+    expect(assumption(s, "arv_source")?.basis).toMatch(/not adjusted for condition/);
+    // A non-zero fee and the offer kind reach the engine and the record.
+    const { computeMao, resolveFlipDefaults } = await import("../../server/services/flipUnderwriting");
+    const r = computeMao({ arvCents: 29_100_000, rehabEstimateCents: 4_000_000, purchasePriceCents: 15_000_000, feeCents: 500_000, defaults: resolveFlipDefaults(RULES_WITH_HOLDING).values });
+    expect((s.metrics as Array<{ id: string; value: number | null }>).find((m) => m.id === "max_allowable_offer")?.value).toBe(r.maoCents);
+    expect((await rows(orgA)).decisions[1].kind).toBe("offer");
+  });
+
+  it("1d. the hold comparison is recorded as seen-not-chosen: its inputs as entered, its results as derived", async () => {
+    await request(await appFor(orgA)).post("/api/fix-and-flip/decide").send(decide(propA, { holdComparisonSeen: { monthlyRentCents: 240_000 } })).expect(200);
+    const [s] = (await rows(orgA)).scenarios;
+    expect(assumption(s, "hold_comparison_monthly_rent_cents")).toMatchObject({ value: 240_000, origin: "user" });
+    expect(assumption(s, "hold_comparison_expense_basis")).toMatchObject({ origin: "platform-default" });
+    expect(assumption(s, "hold_comparison_monthly_cash_flow_cents")?.origin).toBe("derived");
+    expect(assumption(s, "hold_comparison_cap_rate_pct")?.origin).toBe("derived");
+    // Without the price it was run at, it is refused.
+    const { purchasePriceCents: _p, ...noPrice } = decide(propA, { holdComparisonSeen: { monthlyRentCents: 240_000 } });
+    expect((await request(await appFor(orgA)).post("/api/fix-and-flip/decide").send(noPrice)).status).toBe(400);
   });
 
   it("7b. cross-tenant: org B's property posted by org A is a 404 with nothing written for either", async () => {

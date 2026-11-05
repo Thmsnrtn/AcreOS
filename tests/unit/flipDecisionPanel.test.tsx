@@ -27,9 +27,9 @@ vi.mock("../../client/src/lib/queryClient", () => ({
   apiRequest: vi.fn(async (method: string, url: string, body: any) => {
     h.posted.push({ method, url, body });
     let json: unknown = {};
-    if (url.startsWith("/api/rehabs/")) json = { totals: { budgetCents: 4_300_000 }, items: [{}, {}, {}] };
+    if (url.startsWith("/api/rehabs/")) json = { totals: { budgetCents: 4_300_000 }, items: [{ budgetCents: 2_500_000 }, { budgetCents: 1_800_000 }, { budgetCents: 0 }] };
     else if (url === "/api/flip-analyzer/mao")
-      json = { maoCents: 16_000_000, netProfitCents: h.netProfit, netRoiPct: h.netProfit === null ? null : 7.5, totalCashInCents: 21_000_000, rehabWithContingencyCents: 4_730_000, missing: [] };
+      json = { maoCents: 16_000_000, netProfitCents: h.netProfit, netRoiPct: h.netProfit === null ? null : 7.5, totalCashInCents: 21_000_000, rehabWithContingencyCents: 4_730_000, missing: h.netProfit === null ? ["Holding cost is not set, so net profit is not computed."] : [] };
     else if (url === "/api/fix-and-flip/decide") json = { decisionId: 77, scenarioId: 66 };
     return new Response(JSON.stringify(json), { status: 200, headers: { "Content-Type": "application/json" } });
   }),
@@ -51,6 +51,7 @@ async function render(props: Partial<FlipDecisionPanelProps>) {
     propertyId: 7,
     arvCents: 30_000_000,
     savedArvCents: 30_000_000,
+    arvFromCompMedian: false,
     rehabProjectId: null,
     rehabFieldCents: 4_000_000,
     purchasePriceCents: 15_000_000,
@@ -102,14 +103,15 @@ afterEach(async () => {
 describe("FlipDecisionPanel", () => {
   it("with a rehab project: previews and records on the scope total, and says it differs from the analyzer field", async () => {
     await render({ rehabProjectId: "rehab-1" });
-    expect(q("flip-decision-rehab-source")?.textContent).toMatch(/scope total \(3 lines\)/);
+    expect(q("flip-decision-rehab-source")?.textContent).toMatch(/scope total \(2 of 3 lines priced\)/);
     expect(q("flip-decision-rehab-differs")?.textContent).toMatch(/\$43,000/);
     const preview = h.posted.find((p) => p.url === "/api/flip-analyzer/mao")!;
     expect(preview.body.rehabEstimateCents).toBe(4_300_000);
     await answerAndRecord();
     const sent = h.posted.find((p) => p.url === "/api/fix-and-flip/decide")!.body;
-    expect(sent).not.toHaveProperty("operatorRehabEstimateCents");
-    expect(sent.arv).toEqual({ source: "calculation" });
+    // The previewed figures travel with the record, so a change since is refused.
+    expect(sent.operatorRehabEstimateCents).toBe(4_300_000);
+    expect(sent.arv).toEqual({ source: "calculation", expectedArvCents: 30_000_000 });
     expect(sent.reviewDueAt).toEqual(expect.any(String));
     expect(q("flip-decision-recorded")?.textContent).toMatch(/decision #77/);
   });
@@ -125,10 +127,29 @@ describe("FlipDecisionPanel", () => {
     expect(sent.kind).toBe("pass");
   });
 
+  it("a blank rehab field is not a $0 estimate: nothing previews, nothing records", async () => {
+    await render({ rehabFieldCents: null });
+    expect(q("flip-decision-rehab-missing")).not.toBeNull();
+    expect(h.posted.filter((p) => p.url === "/api/flip-analyzer/mao")).toEqual([]);
+    expect((q("flip-decision-record") as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("an ARV from the analyzer's comp median is sent, and labelled, as that — not as 'stated by you'", async () => {
+    await render({ arvCents: 29_100_000, arvFromCompMedian: true });
+    expect(q("flip-decision-arv-source")?.textContent).toMatch(/Comp median/);
+    await answerAndRecord("offer");
+    const sent = h.posted.find((p) => p.url === "/api/fix-and-flip/decide")!.body;
+    expect(sent.arv).toEqual({ source: "comp_median_unadjusted", arvCents: 29_100_000 });
+    expect(sent.kind).toBe("offer");
+  });
+
   it("an uncomputable net profit reads 'not computed', never $0", async () => {
     h.netProfit = null;
     await render({});
     expect(q("flip-decision-net-profit")?.textContent).toBe("not computed");
+    // The reason is named, and the net model is the headline (§3.3).
+    expect(q("flip-decision-missing")?.textContent).toMatch(/Holding cost is not set/);
+    expect(q("flip-decision-metrics")?.querySelector("dt")?.textContent).toBe("Net profit");
   });
 
   it("computes nothing until the operator has run the screen", async () => {

@@ -1502,8 +1502,9 @@ export default function FlipAnalyzerPage() {
         propertyId={propertyId}
         arvCents={arvCents}
         savedArvCents={subject?.arv?.arvCents ?? null}
+        arvFromCompMedian={arvBasisNote !== null}
         rehabProjectId={subject?.rehabProjectId ?? null}
-        rehabFieldCents={rehabCents}
+        rehabFieldCents={dollarsToCents(rehabField)}
         purchasePriceCents={priceCents}
         feeCents={feeCents}
         holdComparisonSeen={

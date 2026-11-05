@@ -44,6 +44,13 @@ interface MaoPreview {
   missing: string[];
 }
 
+type ArvSource = "calculation" | "operator_stated" | "comp_median_unadjusted";
+const ARV_LABEL: Record<ArvSource, string> = {
+  calculation: "Your saved ARV calculation",
+  operator_stated: "Stated by you — no saved calculation behind it",
+  comp_median_unadjusted: "Comp median $/sq ft from the analyzer — unadjusted, not a saved calculation",
+};
+
 export interface FlipDecisionPanelProps {
   /**
    * True once the operator has run the MAO screen above on the current inputs.
@@ -55,10 +62,12 @@ export interface FlipDecisionPanelProps {
   arvCents: number | null;
   /** The property's saved ARV calculation figure, when one exists. */
   savedArvCents: number | null;
+  /** True when the ARV field holds the analyzer's in-browser comp-median derivation, untouched. */
+  arvFromCompMedian: boolean;
   /** The property's rehab project, when one exists. */
   rehabProjectId: string | number | null;
-  /** The analyzer's rehab field, cents (used only when there is no project). */
-  rehabFieldCents: number;
+  /** The analyzer's rehab field, cents — null when blank (used only when there is no project). */
+  rehabFieldCents: number | null;
   purchasePriceCents: number | null;
   feeCents: number;
   /** The hold comparison the operator ran, at this price — recorded as seen-not-chosen. */
@@ -79,15 +88,17 @@ export function FlipDecisionPanel(p: FlipDecisionPanelProps) {
 
   // ARV: the saved calculation when the analyzer's field still holds its
   // figure; otherwise the operator is stating their own.
-  const arvSource: "calculation" | "operator_stated" | null =
+  const arvSource: ArvSource | null =
     p.arvCents === null || p.arvCents <= 0
       ? null
       : p.savedArvCents !== null && p.arvCents === p.savedArvCents
         ? "calculation"
-        : "operator_stated";
+        : p.arvFromCompMedian
+          ? "comp_median_unadjusted"
+          : "operator_stated";
 
   // Rehab: with a project, its scope total (line budgets summed) is the estimate.
-  const scope = useQuery<{ totals: { budgetCents: number }; items: unknown[] }>({
+  const scope = useQuery<{ totals: { budgetCents: number }; items: Array<{ budgetCents: number }> }>({
     queryKey: ["/api/rehabs", String(p.rehabProjectId)],
     queryFn: async () => (await apiRequest("GET", `/api/rehabs/${p.rehabProjectId}`)).json(),
     enabled: p.screenRun && p.rehabProjectId !== null,
@@ -95,6 +106,8 @@ export function FlipDecisionPanel(p: FlipDecisionPanelProps) {
   const rehabSource: "sow" | "operator_stated" = p.rehabProjectId !== null ? "sow" : "operator_stated";
   const rehabCents = rehabSource === "sow" ? (scope.data?.totals.budgetCents ?? null) : p.rehabFieldCents;
   const scopeLines = scope.data?.items.length ?? 0;
+  const scopePriced = scope.data?.items.filter((i) => Number(i.budgetCents) > 0).length ?? 0;
+  const rehabMissing = rehabSource === "operator_stated" && rehabCents === null;
   const scopeUnpriced = rehabSource === "sow" && scope.data !== undefined && (scopeLines === 0 || rehabCents === 0);
 
   const previewInputs =
@@ -129,8 +142,13 @@ export function FlipDecisionPanel(p: FlipDecisionPanelProps) {
       }
       const res = await apiRequest("POST", "/api/fix-and-flip/decide", {
         propertyId: previewInputs.propertyId,
-        arv: arvSource === "calculation" ? { source: "calculation" } : { source: "operator_stated", arvCents: previewInputs.arvCents },
-        ...(rehabSource === "operator_stated" ? { operatorRehabEstimateCents: previewInputs.rehabEstimateCents } : {}),
+        // The figures previewed travel with the record, so a calculation or a
+        // scope that changed since the preview is refused, not silently frozen.
+        arv:
+          arvSource === "calculation"
+            ? { source: "calculation", expectedArvCents: previewInputs.arvCents }
+            : { source: arvSource, arvCents: previewInputs.arvCents },
+        operatorRehabEstimateCents: previewInputs.rehabEstimateCents,
         ...(p.purchasePriceCents !== null ? { purchasePriceCents: p.purchasePriceCents } : {}),
         feeCents: p.feeCents,
         ...(p.holdComparisonSeen && p.holdComparisonSeen.purchasePriceCents === p.purchasePriceCents
@@ -201,7 +219,7 @@ export function FlipDecisionPanel(p: FlipDecisionPanelProps) {
                 <dd className="flex flex-wrap items-center gap-2">
                   <span className="tabular-nums">{usd(p.arvCents)}</span>
                   <Badge variant="outline" data-testid="flip-decision-arv-source">
-                    {arvSource === "calculation" ? "Your saved ARV calculation" : "Stated by you — no saved calculation behind it"}
+                    {ARV_LABEL[arvSource]}
                   </Badge>
                 </dd>
               </div>
@@ -210,22 +228,31 @@ export function FlipDecisionPanel(p: FlipDecisionPanelProps) {
                 <dd className="flex flex-wrap items-center gap-2">
                   {rehabSource === "sow" && scope.isLoading ? (
                     <Skeleton className="h-5 w-24" />
+                  ) : rehabMissing ? (
+                    <span className="text-muted-foreground">none entered</span>
                   ) : (
                     <span className="tabular-nums">{usd(rehabCents)}</span>
                   )}
                   <Badge variant="outline" data-testid="flip-decision-rehab-source">
-                    {rehabSource === "sow" ? `Your project's scope total (${scopeLines} lines)` : "Stated by you — no scope of work behind it"}
+                    {rehabSource === "sow"
+                      ? `Your project's scope total (${scopePriced} of ${scopeLines} lines priced)`
+                      : "Stated by you — no scope of work behind it"}
                   </Badge>
                 </dd>
               </div>
             </dl>
-            {rehabSource === "sow" && rehabCents !== null && rehabCents !== p.rehabFieldCents && !scopeUnpriced ? (
+            {rehabSource === "sow" && rehabCents !== null && p.rehabFieldCents !== null && rehabCents !== p.rehabFieldCents && !scopeUnpriced ? (
               <p className="text-xs text-muted-foreground" data-testid="flip-decision-rehab-differs">
                 This differs from the {usd(p.rehabFieldCents)} in the analyzer's rehab field. With a rehab project, its
                 priced scope lines are the estimate, so the decision uses {usd(rehabCents)}.
               </p>
             ) : null}
-            {scopeUnpriced ? (
+            {rehabMissing ? (
+              <p className="text-sm text-muted-foreground" data-testid="flip-decision-rehab-missing">
+                Enter your rehab estimate in the analyzer above — or create a rehab project for this property and price
+                its scope. A blank estimate is not recorded as $0.
+              </p>
+            ) : scopeUnpriced ? (
               <p className="text-sm text-muted-foreground" data-testid="flip-decision-scope-unpriced">
                 This property's rehab project has no priced scope lines yet. Price its lines on the project, and the
                 decision uses their total.
@@ -237,14 +264,15 @@ export function FlipDecisionPanel(p: FlipDecisionPanelProps) {
             ) : !preview.data ? (
               <Skeleton className="h-14" />
             ) : (
+              <>
               <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4" data-testid="flip-decision-metrics">
-                <div className="rounded-md border border-border p-2">
-                  <dt className="text-xs text-muted-foreground">MAO</dt>
-                  <dd className="font-semibold tabular-nums">{usd(preview.data.maoCents)}</dd>
-                </div>
                 <div className="rounded-md border border-border p-2">
                   <dt className="text-xs text-muted-foreground">Net profit</dt>
                   <dd className="font-semibold tabular-nums" data-testid="flip-decision-net-profit">{usd(preview.data.netProfitCents)}</dd>
+                </div>
+                <div className="rounded-md border border-border p-2">
+                  <dt className="text-xs text-muted-foreground">MAO</dt>
+                  <dd className="font-semibold tabular-nums">{usd(preview.data.maoCents)}</dd>
                 </div>
                 <div className="rounded-md border border-border p-2">
                   <dt className="text-xs text-muted-foreground">Net ROI</dt>
@@ -255,6 +283,14 @@ export function FlipDecisionPanel(p: FlipDecisionPanelProps) {
                   <dd className="font-semibold tabular-nums">{usd(preview.data.totalCashInCents)}</dd>
                 </div>
               </dl>
+              {preview.data.missing.length > 0 ? (
+                <ul className="m-0 list-none space-y-1 p-0 text-xs text-muted-foreground" data-testid="flip-decision-missing">
+                  {preview.data.missing.map((m) => (
+                    <li key={m}>{m}</li>
+                  ))}
+                </ul>
+              ) : null}
+              </>
             )}
 
             <fieldset>
