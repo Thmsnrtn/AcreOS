@@ -75,10 +75,11 @@ function vmHwmMb(): number {
   return m ? Math.round(Number(m[1]) / 1024) : -1;
 }
 
-/** The statewide template under the sort: a synthetic NC layer generated page by page. */
+/** The statewide template under the sort: a synthetic layer (WI field map) generated page by page. */
 async function statewideChild(parcels: number, which: Case): Promise<void> {
   const { buildCounty, buildSpecFor } = await import("../server/services/landData/statewideCadastral");
-  const spec = buildSpecFor("NC");
+  // WI: the one state admitted to ingest (first-party ingest package 2026-11-03); an unadmitted state is refused before any fetch.
+  const spec = buildSpecFor("WI");
   const mapped = Object.values(spec.mapping).filter((f): f is string => !!f);
   const m = spec.mapping;
   const SPACING = 0.0004;
@@ -105,6 +106,8 @@ async function statewideChild(parcels: number, which: Case): Promise<void> {
         outDir: dir,
         bucketConfigured: false,
         today: "2026-10-24",
+        // Admission judged at a fixed instant, so the gate does not start refusing on WI's reverifyBy.
+        now: new Date("2026-11-03T12:00:00Z"),
         sortRunChars: which === "statewide-sort-mutant" ? Infinity : undefined, // MUTANT: one in-memory run
         async getJson(url) {
           if (url.endsWith("?f=json")) {
