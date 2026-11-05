@@ -61,6 +61,35 @@ what shipped, what it measured, and the top next moves. Newest first.
   5. Update the CT and MA packs, then build them.
   6. A WI golden county (§3.8) before any WI promotion.
 
+## 2026-11-03 — Legal-run build findings, unblocked legs — on `claude/legal-run-build-findings-2026-11` (off main `f7f2e3f`, one PR, unmerged)
+
+- **Shipped (per-leg commits).**
+  - **Leg 1:** the FCRA register citation spans (a)(2)/(a)(3)(A)/(a)(3)(F), and the umbrella comments are aligned. This is hygiene, not a mis-cite fix.
+  - **Leg 4:** the benchmarks endpoint enforces its stated 10-transaction minimum.
+  - **Leg 6:** legal holds now stop org erasure and the nightly purge (fail closed). `api_telemetry_samples` has a single retention owner: the rollup, whose hourly-vs-5-minute schedule bug is fixed and which now lives in its own file. Org erasure deletes the S3 bytes under `org/<id>/`.
+  - **Leg 7:** the vendor inventory is retired as evidence (every DPA is UNKNOWN), and the four contradicted retention-policy claims are corrected.
+  - **Leg 5:** disposition only; 0 of the 42 Tier A surfaces are wired, because every one needs a proposed taxonomy code.
+  - **Leg 2:** only the read-only export-completeness inventory.
+- **Stopped.**
+  - **Leg 3:** four contradictions at step 0, listed in the PR.
+    - dossiers are code, not database rows;
+    - no destination is specified for the radar's tasks;
+    - none of the four serve points carries statewide data today;
+    - the 3.4 internal-doc rejection necessarily un-seeds NY, which is a founder call.
+  - **Leg 8:** not touched (blocker-only by design).
+- **New findings for Tom.** Two deletion paths ignore legal holds and are now named in the policy's §6 table: `POST /api/clear-demo-data` → `clearOrganizationRecords()`, and `server/jobs/archival.ts` (off by default). Neither was in the package.
+- **Proved.**
+  - The real-Postgres test `retentionRespectsLegalHolds.realdb.test.ts` fails on the old tree.
+  - Unit mutants for every new gate are red.
+  - Full vitest: 4 failures. 3 are date/timezone and fail identically on main; the 4th (the reachability gate) is fixed in this branch.
+  - Gates run alone: `check:app`, the 33 lints and `build` are all exit 0. `check:tests` could not run in this 8 GB container (tsc was killed, exit 137), so CI is the verdict.
+- **Not proved.** The staging proofs for Legs 4 and 6 (no staging access), the per-leg auditor verdicts and CI.
+- **Next.**
+  1. Muse audits; the founder merges.
+  2. Run the staging proofs for Legs 4 and 6.
+  3. Decide NY's seed (Leg 3.4) and state where the radar's tasks go (3.3).
+  4. Wire hold checks into clear-demo-data and archival.
+
 ## 2026-11-03 — Statewide point lookup gated behind the license dossiers — on `claude/statewide-lookup-clearance-gate` (off main `519b62c`, PR open, unmerged)
 
 - **Founder decision (2026-11-03).** A seeded statewide source may serve point-lookup results ONLY when its register state is cleared for lookup. It is recorded in `founder-decisions-2026-11-03-lookup-gate.md`. It closes the LQ-13/LQ-14 finding: nine statewide rows answered live lookups, owner names included, ahead of Regrid, with no gate.

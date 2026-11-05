@@ -304,11 +304,15 @@ AML pattern monitoring).
 
 ### H1. Do you have a vendor inventory?
 
+> **Note (2026-11-03):** the evidence file below is SUPERSEDED as an evidence source — see its banner and the LQ-06 register.
+
 **Current state:** **Yes.** `docs/vendor-inventory.md` with risk-tier model (T1 stores PII, T2 transports PII, T3 analytics, T4 infra, T5 internal).
 
 **Evidence:** `docs/vendor-inventory.md`
 
 ### H2. Do you have signed DPAs with PII-handling vendors?
+
+> **⚠ UNVERIFIED — evidence source retired (2026-11-03, legal-run Leg 7 / LQ-06).** `docs/vendor-inventory.md` is SUPERSEDED as an evidence source; under the LQ-06 register every DPA is UNKNOWN until an executed instrument is obtained. The answer below is not supported by any instrument in this repository. This note makes no statement about whether this answer was previously submitted to anyone (counsel's question).
 
 **Current state:** **Yes.** All T1 + T2 vendors (Clerk, Stripe, Fly.io, AWS, Anthropic, OpenAI, Twilio, SendGrid, Lob, Mapbox) carry signed DPAs.
 
