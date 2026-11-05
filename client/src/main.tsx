@@ -4,10 +4,6 @@ import App from "./App";
 import { clientLogger } from "@/lib/clientLogger";
 import "./fonts.css";
 import "./index.css";
-// i18n init — side-effect import. Registers `en` resources and configures
-// react-i18next before any component calls `useT()` / `useTranslation()`.
-// AcreOS is English-only today; see docs/i18n-guide.md for adding locales.
-import "@/lib/i18n/config";
 import { initClientSentry } from "./lib/sentry";
 import { initAnalytics } from "./lib/analytics";
 import { capturePendingUtm } from "./lib/acquisition-utm";
