@@ -45,6 +45,28 @@ Options (a decision for Muse / Tom):
 
 Recommendation: **B.** The source-measured `decided` is a fact about code; the public claim is meant to wait on journey evidence. An exemption makes that difference explicit instead of hiding it, and it removes itself in the one-line lift.
 
+## Resolution — Option B applied (2026-11-05)
+
+Founder decision relayed by Muse, recorded in `docs/company/founder-decisions-2026-11-05-buy-and-hold.md`.
+
+- **What changed.** `verticalReadiness.test.ts` gains `HELD_PENDING_JOURNEY_PROOF`, with exactly one entry: `buy_and_hold`, held since 2026-11-05, review by 2026-12-31. The three OD-5 / ladder assertions treat a held vertical as still-demoted.
+- **New guards.** A new block holds the entry to its own rules:
+  - it must measure `decided`;
+  - its demotion must stay `beta`;
+  - its ladder must not claim the loop;
+  - it must cite the decision file and be unexpired;
+  - the register is pinned to `["buy_and_hold"]`.
+- **Untouched.** `publicClaims.ts` and `evidenceLadder.ts`.
+- **Verified by running it.** The file is green (50 tests), and the claim pins are green.
+- **Mutation check.** 6 mutants, all caught:
+  - lift the demotion without removing the hold;
+  - flip the ladder;
+  - unmount the route (the hold goes stale);
+  - widen the register;
+  - expire `reviewBy`;
+  - point at a missing decision file.
+- **Gates.** `check:tests` 151 = baseline, `lint:ratchets` and `lint:no-fabrication` pass.
+
 ## Build gates (run here, 2026-11-03 ~23:00 ET; verdicts read from files, never through a pipe)
 
 | Gate | Result |
