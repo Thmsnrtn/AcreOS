@@ -54,6 +54,7 @@ const INPUT_LABEL: Record<string, { label: string; kind: "cents" | "bps" | "mont
   foreclosureTimelineMonths: { label: "Foreclosure timeline", kind: "months" },
 };
 
+const MUTED = "text-xs text-muted-foreground";
 const fmt = (v: number | null, kind: "cents" | "bps" | "months") =>
   v === null ? "—" : kind === "cents" ? dollars(v) : kind === "bps" ? `${(v / 100).toFixed(2)}%` : `${v} months`;
 
@@ -101,44 +102,54 @@ function CostEditor({ id, rows, onChange }: { id: string; rows: CostRow[]; onCha
   );
 }
 
-function Field({ id, label, value, onChange, hint }: { id: string; label: string; value: string; onChange: (v: string) => void; hint?: string }) {
-  return (
-    <div>
-      <Label htmlFor={id} className="text-xs">{label}</Label>
-      <Input id={id} inputMode="decimal" value={value} onChange={(e) => onChange(e.target.value)} />
-      {hint && <p className="mt-1 text-micro text-muted-foreground">{hint}</p>}
-    </div>
-  );
-}
+type FieldDef = { k: string; label: string; hint?: string };
+const TOP_FIELDS: FieldDef[] = [
+  { k: "discount", label: "Discount rate (% a year) — required", hint: "Set by you for this run. There is no default." },
+  { k: "arrears", label: "Arrears owed now ($)", hint: "AcreOS records no arrears amount; state it. 0 is a value." },
+  { k: "servicing", label: "Servicing cost per month ($)", hint: "0 is a value; blank is not stated." },
+  { k: "remaining", label: "Remaining term (months)", hint: "Used only if the note records none." },
+  { k: "value", label: "Collateral value basis ($)", hint: "Blank uses the parcel record's market value, when there is one." },
+];
+type ScenarioKey = "mod" | "forb" | "dil" | "fc" | "co";
+const SCENARIOS: Array<{ key: ScenarioKey; label: string; fields: FieldDef[]; costs?: boolean; note?: string }> = [
+  { key: "mod", label: "Modification", fields: [{ k: "modRate", label: "Modified rate (%)" }, { k: "modTerm", label: "Modified term (months)" }, { k: "modForbear", label: "Principal forbearance ($, no interest)" }, { k: "modReduce", label: "Principal reduction ($)" }] },
+  { key: "forb", label: "Forbearance / trial plan", fields: [{ k: "forbMonths", label: "Months" }, { k: "forbPayment", label: "Payment during window ($)" }] },
+  { key: "dil", label: "Deed-in-lieu", fields: [{ k: "dilTimeline", label: "Timeline (months)" }], costs: true },
+  {
+    key: "fc",
+    label: "Foreclosure",
+    fields: [{ k: "fcTimeline", label: "Timeline (months)" }, { k: "fcCitation", label: "Where the timeline comes from (optional)" }],
+    costs: true,
+    note: "AcreOS holds no cited per-state foreclosure timeline or cost data. Enter your own; the run labels them as entered by you.",
+  },
+  { key: "co", label: "Charge-off / hold for exit", fields: [{ k: "coRecovery", label: "Recovery ($, 0 is a value)" }, { k: "coHorizon", label: "Horizon (months)" }] },
+];
 
 function RunForm({ noteId, supersedes, onDone }: { noteId: string; supersedes: string | null; onDone: () => void }) {
   const { toast } = useToast();
-  const [f, setF] = useState({ discount: "", arrears: "", servicing: "", remaining: "", value: "" });
-  const [on, setOn] = useState({ mod: false, forb: false, dil: false, fc: false, co: false });
-  const [mod, setMod] = useState({ rate: "", term: "", treatment: "capitalize", forbear: "0", reduce: "0" });
-  const [forb, setForb] = useState({ months: "", payment: "" });
-  const [dil, setDil] = useState<{ timeline: string; costs: CostRow[] }>({ timeline: "", costs: [] });
-  const [fc, setFc] = useState<{ timeline: string; costs: CostRow[]; citation: string }>({ timeline: "", costs: [], citation: "" });
-  const [co, setCo] = useState({ recovery: "", horizon: "" });
+  const [v, setV] = useState<Record<string, string>>({ modForbear: "0", modReduce: "0" });
+  const [on, setOn] = useState<Record<ScenarioKey, boolean>>({ mod: false, forb: false, dil: false, fc: false, co: false });
+  const [treatment, setTreatment] = useState("capitalize");
+  const [costRows, setCostRows] = useState<Record<"dil" | "fc", CostRow[]>>({ dil: [], fc: [] });
+  const g = (k: string) => v[k] ?? "";
   const costs = (rows: CostRow[]) => rows.map((r) => ({ label: r.label, amountCents: toCents(r.amount) ?? -1, timing: r.timing }));
 
   const run = useMutation({
     mutationFn: async () => {
       const body = {
-        discountRateBps: toBps(f.discount),
-        arrearsCents: toCents(f.arrears),
-        servicingMonthlyCents: toCents(f.servicing),
-        remainingTermMonths: toInt(f.remaining),
-        collateralValueCents: toCents(f.value),
-        modification: on.mod ? { rateBps: toBps(mod.rate), termMonths: toInt(mod.term), arrearsTreatment: mod.treatment, principalForbearanceCents: toCents(mod.forbear), principalReductionCents: toCents(mod.reduce) } : null,
-        forbearance: on.forb ? { months: toInt(forb.months), reducedPaymentCents: toCents(forb.payment) } : null,
-        deedInLieu: on.dil ? { timelineMonths: toInt(dil.timeline), costs: costs(dil.costs), citation: null } : null,
-        foreclosure: on.fc ? { timelineMonths: toInt(fc.timeline), costs: costs(fc.costs), citation: fc.citation.trim() || null } : null,
-        chargeOffHold: on.co ? { recoveryCents: toCents(co.recovery), horizonMonths: toInt(co.horizon), costs: [] } : null,
+        discountRateBps: toBps(g("discount")),
+        arrearsCents: toCents(g("arrears")),
+        servicingMonthlyCents: toCents(g("servicing")),
+        remainingTermMonths: toInt(g("remaining")),
+        collateralValueCents: toCents(g("value")),
+        modification: on.mod ? { rateBps: toBps(g("modRate")), termMonths: toInt(g("modTerm")), arrearsTreatment: treatment, principalForbearanceCents: toCents(g("modForbear")), principalReductionCents: toCents(g("modReduce")) } : null,
+        forbearance: on.forb ? { months: toInt(g("forbMonths")), reducedPaymentCents: toCents(g("forbPayment")) } : null,
+        deedInLieu: on.dil ? { timelineMonths: toInt(g("dilTimeline")), costs: costs(costRows.dil), citation: null } : null,
+        foreclosure: on.fc ? { timelineMonths: toInt(g("fcTimeline")), costs: costs(costRows.fc), citation: g("fcCitation").trim() || null } : null,
+        chargeOffHold: on.co ? { recoveryCents: toCents(g("coRecovery")), horizonMonths: toInt(g("coHorizon")), costs: [] } : null,
         supersedesRunId: supersedes,
       };
-      const res = await apiRequest("POST", `/api/notes/${noteId}/workout-analyses`, body);
-      return res.json();
+      return (await apiRequest("POST", `/api/notes/${noteId}/workout-analyses`, body)).json();
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: [`/api/notes/${noteId}/workout-analyses`] });
@@ -147,91 +158,54 @@ function RunForm({ noteId, supersedes, onDone }: { noteId: string; supersedes: s
     onError: (e: unknown) => toast({ title: "The comparison was not recorded", description: e instanceof Error ? e.message : "Check each field and try again.", variant: "destructive" }),
   });
 
-  const toggle = (k: keyof typeof on, label: string) => (
-    <div className="flex items-center gap-2">
-      <Checkbox id={`wk-on-${k}`} checked={on[k]} onCheckedChange={(v) => setOn({ ...on, [k]: v === true })} />
-      <Label htmlFor={`wk-on-${k}`} className="text-sm font-medium">{label}</Label>
+  const field = (f: FieldDef) => (
+    <div key={f.k}>
+      <Label htmlFor={`wk-${f.k}`} className="text-xs">{f.label}</Label>
+      <Input id={`wk-${f.k}`} inputMode={f.k === "fcCitation" ? "text" : "decimal"} value={g(f.k)} onChange={(e) => setV({ ...v, [f.k]: e.target.value })} />
+      {f.hint && <p className="mt-1 text-micro text-muted-foreground">{f.hint}</p>}
     </div>
   );
 
   return (
-    <form
-      className="space-y-4 rounded-md border p-4"
-      data-testid="workout-run-form"
-      onSubmit={(e) => {
-        e.preventDefault();
-        run.mutate();
-      }}
-    >
-      {supersedes && <p className="text-xs text-muted-foreground">This run supersedes an earlier one. The earlier run is kept.</p>}
-      <div className="grid gap-3 sm:grid-cols-3">
-        <Field id="wk-discount" label="Discount rate (% a year) — required" value={f.discount} onChange={(v) => setF({ ...f, discount: v })} hint="Set by you for this run. There is no default." />
-        <Field id="wk-arrears" label="Arrears owed now ($)" value={f.arrears} onChange={(v) => setF({ ...f, arrears: v })} hint="AcreOS records no arrears amount; state it. 0 is a value." />
-        <Field id="wk-servicing" label="Servicing cost per month ($)" value={f.servicing} onChange={(v) => setF({ ...f, servicing: v })} hint="0 is a value; blank is not stated." />
-        <Field id="wk-remaining" label="Remaining term (months)" value={f.remaining} onChange={(v) => setF({ ...f, remaining: v })} hint="Used only if the note records none." />
-        <Field id="wk-value" label="Collateral value basis ($)" value={f.value} onChange={(v) => setF({ ...f, value: v })} hint="Blank uses the parcel record's market value, when there is one." />
-      </div>
+    <form className="space-y-4 rounded-md border p-4" data-testid="workout-run-form" onSubmit={(e) => { e.preventDefault(); run.mutate(); }}>
+      {supersedes && <p className={MUTED}>This run supersedes an earlier one. The earlier run is kept.</p>}
+      <div className="grid gap-3 sm:grid-cols-3">{TOP_FIELDS.map(field)}</div>
       <Separator />
-      <p className="text-xs text-muted-foreground">Hold / perform as-is is always compared. Add the scenarios you want beside it — each uses only what you state.</p>
-      <div className="space-y-3">
-        {toggle("mod", "Modification")}
-        {on.mod && (
-          <div className="grid gap-3 pl-6 sm:grid-cols-3">
-            <Field id="wk-mod-rate" label="Modified rate (%)" value={mod.rate} onChange={(v) => setMod({ ...mod, rate: v })} />
-            <Field id="wk-mod-term" label="Modified term (months)" value={mod.term} onChange={(v) => setMod({ ...mod, term: v })} />
-            <div>
-              <Label htmlFor="wk-mod-treatment" className="text-xs">Arrears</Label>
-              <Select value={mod.treatment} onValueChange={(v) => setMod({ ...mod, treatment: v })}>
-                <SelectTrigger id="wk-mod-treatment"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="capitalize">Capitalized</SelectItem>
-                  <SelectItem value="defer_to_maturity">Deferred to maturity</SelectItem>
-                  <SelectItem value="waive">Waived</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <Field id="wk-mod-forbear" label="Principal forbearance ($, no interest)" value={mod.forbear} onChange={(v) => setMod({ ...mod, forbear: v })} />
-            <Field id="wk-mod-reduce" label="Principal reduction ($)" value={mod.reduce} onChange={(v) => setMod({ ...mod, reduce: v })} />
+      <p className={MUTED}>Hold / perform as-is is always compared. Add the scenarios you want beside it — each uses only what you state.</p>
+      {SCENARIOS.map((sc) => (
+        <div key={sc.key} className="space-y-3">
+          <div className="flex items-center gap-2">
+            <Checkbox id={`wk-on-${sc.key}`} checked={on[sc.key]} onCheckedChange={(c) => setOn({ ...on, [sc.key]: c === true })} />
+            <Label htmlFor={`wk-on-${sc.key}`} className="text-sm font-medium">{sc.label}</Label>
           </div>
-        )}
-        {toggle("forb", "Forbearance / trial plan")}
-        {on.forb && (
-          <div className="grid gap-3 pl-6 sm:grid-cols-3">
-            <Field id="wk-forb-months" label="Months" value={forb.months} onChange={(v) => setForb({ ...forb, months: v })} />
-            <Field id="wk-forb-payment" label="Payment during window ($)" value={forb.payment} onChange={(v) => setForb({ ...forb, payment: v })} />
-          </div>
-        )}
-        {toggle("dil", "Deed-in-lieu")}
-        {on.dil && (
-          <div className="space-y-3 pl-6">
-            <Field id="wk-dil-timeline" label="Timeline (months)" value={dil.timeline} onChange={(v) => setDil({ ...dil, timeline: v })} />
-            <CostEditor id="wk-dil-cost" rows={dil.costs} onChange={(c) => setDil({ ...dil, costs: c })} />
-          </div>
-        )}
-        {toggle("fc", "Foreclosure")}
-        {on.fc && (
-          <div className="space-y-3 pl-6">
-            <p className="text-xs text-muted-foreground">AcreOS holds no cited per-state foreclosure timeline or cost data. Enter your own; the run labels them as entered by you.</p>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Field id="wk-fc-timeline" label="Timeline (months)" value={fc.timeline} onChange={(v) => setFc({ ...fc, timeline: v })} />
-              <div>
-                <Label htmlFor="wk-fc-citation" className="text-xs">Where the timeline comes from (optional)</Label>
-                <Input id="wk-fc-citation" value={fc.citation} onChange={(e) => setFc({ ...fc, citation: e.target.value })} placeholder="e.g. local counsel estimate, statute section" />
+          {on[sc.key] && (
+            <div className="space-y-3 pl-6">
+              {sc.note && <p className={MUTED}>{sc.note}</p>}
+              <div className="grid gap-3 sm:grid-cols-3">
+                {sc.fields.map(field)}
+                {sc.key === "mod" && (
+                  <div>
+                    <Label htmlFor="wk-mod-treatment" className="text-xs">Arrears</Label>
+                    <Select value={treatment} onValueChange={setTreatment}>
+                      <SelectTrigger id="wk-mod-treatment"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="capitalize">Capitalized</SelectItem>
+                        <SelectItem value="defer_to_maturity">Deferred to maturity</SelectItem>
+                        <SelectItem value="waive">Waived</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
               </div>
+              {sc.costs && (sc.key === "dil" || sc.key === "fc") && (
+                <CostEditor id={`wk-${sc.key}-cost`} rows={costRows[sc.key]} onChange={(c) => setCostRows({ ...costRows, [sc.key]: c })} />
+              )}
             </div>
-            <CostEditor id="wk-fc-cost" rows={fc.costs} onChange={(c) => setFc({ ...fc, costs: c })} />
-          </div>
-        )}
-        {toggle("co", "Charge-off / hold for exit")}
-        {on.co && (
-          <div className="grid gap-3 pl-6 sm:grid-cols-3">
-            <Field id="wk-co-recovery" label="Recovery ($, 0 is a value)" value={co.recovery} onChange={(v) => setCo({ ...co, recovery: v })} />
-            <Field id="wk-co-horizon" label="Horizon (months)" value={co.horizon} onChange={(v) => setCo({ ...co, horizon: v })} />
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      ))}
       <div className="flex gap-2">
-        <Button type="submit" disabled={run.isPending || f.discount.trim() === ""}>{run.isPending ? "Computing…" : "Compare and record"}</Button>
+        <Button type="submit" disabled={run.isPending || g("discount").trim() === ""}>{run.isPending ? "Computing…" : "Compare and record"}</Button>
         <Button type="button" variant="ghost" onClick={onDone}>{Verbs.CANCEL}</Button>
       </div>
     </form>
@@ -243,7 +217,7 @@ function InputRow({ k, p }: { k: string; p: InputProvenance }) {
   const meta = INPUT_LABEL[k];
   if (!meta) return null;
   return (
-    <tr className="border-b last:border-0" data-testid={`workout-input-${k}`}>
+    <tr className="border-b last:border-0">
       <td className="py-1 pr-3 text-sm">{meta.label}</td>
       <td className="py-1 pr-3 text-sm tabular-nums">{p.value === null ? <span className="text-muted-foreground">not stated</span> : fmt(p.value, meta.kind)}</td>
       <td className="py-1 text-xs text-muted-foreground">
@@ -268,11 +242,11 @@ function InputRow({ k, p }: { k: string; p: InputProvenance }) {
 function PathBlock({ p }: { p: PathResult }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="rounded-md border p-3" data-testid={`workout-path-${p.path}`}>
+    <div className="rounded-md border p-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <span className="font-medium">{p.label}</span>
         {p.status === "computed" ? (
-          <span className="tabular-nums" data-testid={`workout-npv-${p.path}`}>NPV {dollars(p.npvCents)}</span>
+          <span className="tabular-nums">NPV {dollars(p.npvCents)}</span>
         ) : (
           <span className="text-sm text-muted-foreground">{p.status === "not_stated" ? "Not stated" : "Not computed"}</span>
         )}
@@ -325,9 +299,9 @@ function Sensitivity({ result }: { result: WorkoutRunResult }) {
   if (rows.length === 0) return null;
   const label = (path: string) => result.paths.find((p) => p.path === path)?.label ?? path;
   return (
-    <div className="space-y-3" data-testid="workout-sensitivity">
+    <div className="space-y-3">
       <p className="text-sm font-medium">Sensitivity</p>
-      <p className="text-xs text-muted-foreground">{CONVENTIONS.sensitivity}.</p>
+      <p className={MUTED}>{CONVENTIONS.sensitivity}.</p>
       {rows.map((s) => {
         const tfs = [...new Set(s.cells.map((c) => c.timelineFactor))];
         const vfs = [...new Set(s.cells.map((c) => c.valueFactor))];
@@ -358,20 +332,20 @@ function Sensitivity({ result }: { result: WorkoutRunResult }) {
 function RunView({ run }: { run: RunWithReproduction }) {
   const r = run.result;
   return (
-    <div className="space-y-4" data-testid="workout-run">
+    <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
         <span>As of {formatDate(run.asOf)} · recorded {formatDateTime(run.recordedAt)}</span>
         <Badge variant="outline">{run.engineVersion}</Badge>
         <span>{run.lossMitCaseId ? "Made against the open loss-mit case" : "No loss-mit case was open"}</span>
         {run.supersedesRunId && <span>Supersedes an earlier run</span>}
         {run.reproduction && (
-          <Badge variant="outline" data-testid="workout-reproduction">
+          <Badge variant="outline">
             {run.reproduction.status === "reproduces" ? "Reproduces from its record" : run.reproduction.status === "differs" ? "Does not reproduce" : "Stored by another engine version"}
           </Badge>
         )}
       </div>
       {run.context.daysDelinquent !== null && (
-        <p className="text-xs text-muted-foreground">
+        <p className={MUTED}>
           Context at the time: {run.context.daysDelinquent} days past due on the note's aging record
           {run.context.paidThroughDate ? `, paid through ${formatDate(run.context.paidThroughDate)}` : ""}.
         </p>
@@ -380,12 +354,12 @@ function RunView({ run }: { run: RunWithReproduction }) {
         <caption className="mb-1 text-left text-sm font-medium">Inputs</caption>
         <tbody>{Object.entries(run.provenance).map(([k, p]) => <InputRow key={k} k={k} p={p} />)}</tbody>
       </table>
-      {run.context.citations.foreclosure && <p className="text-xs text-muted-foreground">Foreclosure timeline source, as you entered it: {run.context.citations.foreclosure}</p>}
+      {run.context.citations.foreclosure && <p className={MUTED}>Foreclosure timeline source, as you entered it: {run.context.citations.foreclosure}</p>}
       {r.status === "refused" ? (
         <p className="text-sm" role="alert">Not computed: {r.refusedFor.join(", ")} not available.</p>
       ) : (
         <>
-          <p className="text-xs text-muted-foreground">Paths are listed in a fixed order, not by value. {CONVENTIONS.discounting}; {CONVENTIONS.npv}.</p>
+          <p className={MUTED}>Paths are listed in a fixed order, not by value. {CONVENTIONS.discounting}; {CONVENTIONS.npv}.</p>
           <div className="space-y-2">{r.paths.map((p) => <PathBlock key={p.path} p={p} />)}</div>
           <Sensitivity result={r} />
         </>
@@ -407,7 +381,7 @@ export function NoteWorkoutAnalysisPanel({ noteId }: { noteId: string }) {
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <h2 className="flex items-center gap-2 text-base font-semibold"><Calculator className="h-4 w-4" aria-hidden="true" /> Workout comparison</h2>
-          <p className="text-xs text-muted-foreground">
+          <p className={MUTED}>
             Compares the scenarios you state, on this note's recorded terms. It is not advice, and running it changes nothing on the note or its loss-mit case.
           </p>
         </div>
