@@ -28,6 +28,15 @@ what shipped, what it measured, and the top next moves. Newest first.
   3. Leg 4: the pursue/pass desk.
   4. Staging proof after the merges.
 
+## 2026-11-03 — G8 containment fixes — on `claude/g8-containment-fixes` (off main `f7f2e3f`, PR open, unmerged)
+
+- **Scope.** Two items from the G8 containment verification. Both reproduced on `f7f2e3f`.
+- **(1) `/investor-network` render layer.** `App.tsx` rendered `InvestorDirectoryPage` through a bare `ProtectedRoute`, so the frozen route's entry in `FROZEN_ROUTES` was never consulted. A signed-in user with the direct URL got the directory UI; the APIs already 404'd. It now renders through `FlaggedRoute`, the same wrapper as `/marketplace` and `/capital-markets`. The existing test was green over the defect because it asserted list membership, not the wrapper.
+- **(2) Win-back touch-2 copy.** `server/jobs/growthAutomation.ts` advertised Marketplace (FREEZE), Satellite imagery (Vision AI, KILL 2026-08-01) and Voice AI (KILL 2026-08-01). The three lines are removed. One replacement was added: Offline field maps, which the Map door renders today (`maps.tsx` → `OfflineAreasPanel`). Schedule, recipients and sending logic are unchanged.
+- **Proved.** `investorNetworkIsAMarketplace.test.ts` now asserts that every frozen route App.tsx registers parses as `flagged`. The new `winBackCopyIsHonest.test.ts` parses every string and template literal in the job and forbids frozen/killed surface names. Both go red with the fixes reverted.
+- **Next.**
+  1. Out of scope, flagged for later: touch 2 still says "Acquisition Radar". `/radar` is a redirect to `/deals/discover` (`AcquisitionRadarPage` archived 2026-06-01), so whether that claim holds needs a check.
+
 ## 2026-11-03 — G12 public-copy truth fixes (list-pull, stale Pro price) — on `claude/public-copy-truth-fixes` (off main `f7f2e3f`, PR open, unmerged)
 
 - **Scope.** Public marketing/comparison copy only. No server code, in-app surfaces, legal docs or pricing changes.
@@ -85,6 +94,19 @@ what shipped, what it measured, and the top next moves. Newest first.
   4. The DE adapter (geometry-only).
   5. Update the CT and MA packs, then build them.
   6. A WI golden county (§3.8) before any WI promotion.
+
+## 2026-11-03 — P0 front-door fixes (D11) — on `claude/p0-front-door-fixes` (off main `f7f2e3f`, PR open, unmerged)
+
+- **Step 0** ran on a staging-shaped local build (no staging token in-session) with fresh tenants walked through onboarding (no data). Record: `docs/evidence/2026-11-03/p0-front-door/README.md`.
+- **Fix 1 (built).** The Pax composer was below the fold on 12/12 runs (top at 1,758 / 1,622 / 1,316px on phone / tablet / desktop) while `isVisible()` passed. It now portals into a sticky dock and sits on the first screen at 16/16 viewport × theme combinations, iPhone SE through QHD. PageShell gained an opt-in `stickyToViewport`; only Pax uses it. Placeholder pinned.
+- **Fix 2 (partial).** "Import your first tape" is built for a fresh note investor and opens the note-tape import. A `/notes?action=new` bug was found and fixed: the import opened closed on phones after any in-app link, because the page mounts twice across the transition layers. **"Add your first watch" is stopped**: the "watch" referent is unpinned (flagged market watchlist with email alerts vs. import-only tax county watches). Land investors get no pinned CTA from this package.
+- **Fix 3 (re-proof only).** 0 "Transition was skipped" page errors in 12 runs; reduced motion is respected.
+- **Finding (not fixed, stop condition).** The final onboarding step's "Go to Today instead" bounces a fresh user back to wizard step 1. The cause is a non-awaited `needs-onboarding` invalidation before `navigate` plus a stale `OnboardingGate` cache. This is also the live double navigation beneath the silenced transition skip. It is a one-line fix and the strongest next package.
+- **Next.**
+  1. Muse audits the PR; the founder merges, which deploys staging only.
+  2. Staging proof per the package's §1–5, plus the CJ run id + image for the Atlas row.
+  3. Package the onboarding bounce fix.
+  4. Decide what "watch" means for the second pinned CTA, and which personas get each form.
 
 ## 2026-11-03 — Legal-run build findings, unblocked legs — on `claude/legal-run-build-findings-2026-11` (off main `f7f2e3f`, one PR, unmerged)
 
