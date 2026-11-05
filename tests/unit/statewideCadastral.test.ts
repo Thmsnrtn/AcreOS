@@ -211,7 +211,8 @@ describe("streamed, bounded build: local artifacts and the receipt shape", () =>
   it("pages a 2,500-parcel county (3 pages) without holding it, and every artifact digest matches its bytes on disk", async () => {
     const spec = buildSpecFor("MT");
     const deps = layer(spec, { count: 2_500 });
-    const report = await buildCounty(spec, COUNTY, { ...deps, outDir: outDir(), bucketConfigured: false, today: "2026-10-24" });
+    // MT is unresolved, so the build is driven through an admitted test entry (the mechanics are the subject here).
+    const report = await buildCounty(spec, COUNTY, { ...deps, outDir: outDir(), bucketConfigured: false, today: "2026-10-24", sourceEntry: entryWith("MT", allowedDossier()) });
     expect(report.summary).toMatchObject({ fetched: 2_500, normalized: 2_500, pages: 3, skippedNoId: 0 });
     expect(report.artifacts.rowsWritten).toBe(2_500);
     expect(report.artifacts.rowsReadBack).toBe(2_500);
@@ -232,9 +233,9 @@ describe("streamed, bounded build: local artifacts and the receipt shape", () =>
     expect(head.readUInt8(96)).toBe(1); // clustered
   });
 
-  it("owner names are withheld from artifacts while the state's display use is unresolved", async () => {
+  it("owner names are withheld from artifacts while the state's display use is not allowed (internal admitted, display forbidden)", async () => {
     const spec = buildSpecFor("FL");
-    const report = await buildCounty(spec, COUNTY, { ...layer(spec, { count: 5 }), outDir: outDir(), bucketConfigured: false, today: "2026-10-24" });
+    const report = await buildCounty(spec, COUNTY, { ...layer(spec, { count: 5 }), outDir: outDir(), bucketConfigured: false, today: "2026-10-24", sourceEntry: entryWith("FL", allowedDossier()) });
     expect(report.gate.ownerNamesAllowed).toBe(false);
     const back = await readGeoParquetRows<Record<string, unknown> & { geometry: never }>(report.artifacts.parquet.localPath);
     expect(back.geo.primary_column).toBe("geometry");
@@ -274,6 +275,7 @@ describe("streamed, bounded build: local artifacts and the receipt shape", () =>
       outDir: outDir(),
       bucketConfigured: false,
       today: "2026-10-24",
+      sourceEntry: entryWith("NC", allowedDossier()),
       // ~1.5 KB rows: three spilled runs of ~300 KB each, so the merge runs AND
       // lines straddle the merge reader's 128 KB read chunks.
       sortRunChars: 300_000,
@@ -289,14 +291,16 @@ describe("streamed, bounded build: local artifacts and the receipt shape", () =>
 
   it("refuses to emit empty artifacts", async () => {
     const spec = buildSpecFor("NC");
-    await expect(buildCounty(spec, COUNTY, { ...layer(spec, { count: 0 }), outDir: outDir(), bucketConfigured: false, today: "2026-10-24" })).rejects.toThrow(/empty artifacts/);
+    await expect(
+      buildCounty(spec, COUNTY, { ...layer(spec, { count: 0 }), outDir: outDir(), bucketConfigured: false, today: "2026-10-24", sourceEntry: entryWith("NC", allowedDossier()) }),
+    ).rejects.toThrow(/empty artifacts/);
   });
 
   it("reports peak RSS against the documented ceiling", async () => {
     const spec = buildSpecFor("NC");
     let n = 100 * 1048576;
     const deps = layer(spec, { count: 1_200, rss: () => (n += 100 * 1048576) });
-    const report = await buildCounty(spec, COUNTY, { ...deps, outDir: outDir(), bucketConfigured: false, today: "2026-10-24" });
+    const report = await buildCounty(spec, COUNTY, { ...deps, outDir: outDir(), bucketConfigured: false, today: "2026-10-24", sourceEntry: entryWith("NC", allowedDossier()) });
     expect(report.summary.peakRssMb).toBeGreaterThan(report.rssCeilingMb);
     expect(report.overCeiling).toBe(true);
   });
@@ -306,17 +310,30 @@ describe("streamed, bounded build: local artifacts and the receipt shape", () =>
 
 const allowedDossier = (internal: "allowed" | "forbidden" = "allowed"): SourceDossier => {
   const f = (status: "allowed" | "forbidden") => ({ status, evidence: "synthetic terms text", readOn: "2026-10-24" });
-  return { termsUrl: "https://example.invalid/terms", termsReadOn: "2026-10-24", useClasses: { internal: f(internal), display: f("forbidden"), redistribution: f("forbidden"), resale: f("forbidden") }, attributionRequired: true, restrictions: [] };
+  return {
+    termsUrl: "https://example.invalid/terms",
+    termsReadOn: "2026-10-24",
+    useClasses: { internal: f(internal), display: f("forbidden"), redistribution: f("forbidden"), resale: f("forbidden") },
+    attributionRequired: true,
+    restrictions: [],
+    reverifyBy: "2099-01-01",
+  };
 };
 const entryWith = (state: string, d: SourceDossier): StatewideSourceEntry => ({ ...statewideSource(state)!, dossier: d, policy: policyFromDossier(d) });
 
 describe("the ingest gate: no resolved dossier, no upload; no receipts, no 'ingested'", () => {
-  it("every wave-1 state is dry-run only today — its use classes are unresolved even with the bucket live", () => {
-    for (const st of WAVE1_SEEDED) {
+  it("every wave-1 state but the WI pilot is unresolved today — no upload even with the bucket live; WI's resolved dossier opens the gate only with a bucket", () => {
+    for (const st of WAVE1_SEEDED.filter((s) => s !== "WI")) {
       const g = ingestGate(st, true);
       expect(g.upload, st).toBe(false);
       expect(g.reasons.join(" | ")).toMatch(/use classes unresolved/);
     }
+    // WI (first-party ingest package, Wave A pilot): every use class resolved
+    // from the publisher's own words. Upload still needs a configured bucket.
+    const wi = statewideSource("WI", new Date("2026-11-03T12:00:00Z"));
+    expect(ingestGate("WI", true, false, wi).upload).toBe(true);
+    expect(ingestGate("WI", false, false, wi).upload).toBe(false);
+    expect(ingestGate("WI", false, false, wi).reasons.join(" ")).toMatch(/object storage not configured/);
   });
 
   it("FALSIFICATION: a resolved dossier that forbids internal use still never uploads", () => {
