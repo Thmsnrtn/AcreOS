@@ -230,6 +230,7 @@ export const ROUTE_MANIFEST: RouteManifestEntry[] = [
   { file: "routes-note-acquisitions.ts", mountPath: null, kind: "register", export: "registerNoteAcquisitionRoutes" },
   { file: "routes-note-record.ts", mountPath: null, kind: "register", export: "registerNoteRecordRoutes" },
   { file: "routes-note-workout.ts", mountPath: null, kind: "register", export: "registerNoteWorkoutRoutes" },
+  { file: "routes-note-delinquency.ts", mountPath: null, kind: "register", export: "registerNoteDelinquencyRoutes" },
   { file: "routes-note-tape.ts", mountPath: null, kind: "register", export: "registerNoteTapeRoutes" },
   { file: "routes-notes.ts", mountPath: null, kind: "register", export: "registerNoteRoutes" },
   { file: "routes-notifications.ts", mountPath: "/api/notifications", kind: "router", export: "default" },
