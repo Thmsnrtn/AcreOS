@@ -9,9 +9,13 @@
  *
  * `omitProtectedFields` is the minimum seam every raw-body update site must
  * pass through. Where a zod insert schema exists, prefer
- * `schema.partial().parse(...)` — this helper is the floor, not the goal.
+ * `patchSchemaOf(schema).parse(...)` — this helper is the floor, not the goal.
+ * NOT `schema.partial()` when the schema carries `.default(...)`: under Zod 4 a
+ * partial keeps its defaults, so a PATCH that sends one field also writes every
+ * defaulted field it did not send (see `patchSchemaOf` below).
  */
 
+import { z } from "zod";
 import {
   isCopyableBodyKey,
   stripServerOwnedFields,
@@ -72,3 +76,27 @@ export type WithoutServerOwned<T> = 0 extends 1 & T
   : T extends object
     ? Omit<T, ServerOwnedRequestField>
     : Record<string, never>;
+
+/**
+ * The PATCH form of a create schema: every field optional, and every
+ * `.default(...)` REMOVED.
+ *
+ * `schema.partial()` is not that under Zod 4: a field declared
+ * `z.number().default(0)` stays `.default(0)` inside the partial, so a body
+ * that omits it parses AS 0 — and an update handler that copies every defined
+ * key then writes 0 over the stored value. Measured 2026-11-05 on
+ * PATCH /api/rehab-line-items/:id: saving only `spentCents` zeroed the line's
+ * budget and committed amounts; PATCH /api/rehabs/:id reset `status` to
+ * "planning"; PATCH /api/draws/:id reset `status` to "planned". An absent
+ * field in an update means "unchanged", never "the create-time default".
+ * tests/unit/patchSchemasDropDefaults.test.ts holds the population.
+ */
+export function patchSchemaOf<S extends z.ZodRawShape>(schema: z.ZodObject<S>) {
+  const shape = Object.fromEntries(
+    Object.entries(schema.shape).map(([key, field]) => {
+      const inner = field instanceof z.ZodDefault ? (field.removeDefault() as z.ZodTypeAny) : (field as z.ZodTypeAny);
+      return [key, inner.optional()];
+    }),
+  ) as { [K in keyof S]: z.ZodOptional<z.ZodTypeAny> };
+  return z.object(shape);
+}
