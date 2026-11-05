@@ -3,6 +3,15 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-11-03 — G8 containment fixes — on `claude/g8-containment-fixes` (off main `f7f2e3f`, PR open, unmerged)
+
+- **Scope.** Two items from the G8 containment verification. Both reproduced on `f7f2e3f`.
+- **(1) `/investor-network` render layer.** `App.tsx` rendered `InvestorDirectoryPage` through a bare `ProtectedRoute`, so the frozen route's entry in `FROZEN_ROUTES` was never consulted. A signed-in user with the direct URL got the directory UI; the APIs already 404'd. It now renders through `FlaggedRoute`, the same wrapper as `/marketplace` and `/capital-markets`. The existing test was green over the defect because it asserted list membership, not the wrapper.
+- **(2) Win-back touch-2 copy.** `server/jobs/growthAutomation.ts` advertised Marketplace (FREEZE), Satellite imagery (Vision AI, KILL 2026-08-01) and Voice AI (KILL 2026-08-01). The three lines are removed. One replacement was added: Offline field maps, which the Map door renders today (`maps.tsx` → `OfflineAreasPanel`). Schedule, recipients and sending logic are unchanged.
+- **Proved.** `investorNetworkIsAMarketplace.test.ts` now asserts that every frozen route App.tsx registers parses as `flagged`. The new `winBackCopyIsHonest.test.ts` parses every string and template literal in the job and forbids frozen/killed surface names. Both go red with the fixes reverted.
+- **Next.**
+  1. Out of scope, flagged for later: touch 2 still says "Acquisition Radar". `/radar` is a redirect to `/deals/discover` (`AcquisitionRadarPage` archived 2026-06-01), so whether that claim holds needs a check.
+
 ## 2026-11-03 — G12 public-copy truth fixes (list-pull, stale Pro price) — on `claude/public-copy-truth-fixes` (off main `f7f2e3f`, PR open, unmerged)
 
 - **Scope.** Public marketing/comparison copy only. No server code, in-app surfaces, legal docs or pricing changes.
