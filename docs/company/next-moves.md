@@ -3,6 +3,22 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-11-05 — Subdivision V1, Leg 3: feasibility engine — on `claude/subdivision-leg3-feasibility` (off main `4b2044b`, PR open, unmerged)
+
+- **Built.**
+  - `shared/subdivision/feasibility.ts` (subdivision-feasibility v1): refuse per line; carry over the operator-stated timeline, withheld without one; IRR paced by absorption; phases; a sensitivity grid.
+  - Engine `subdivision_feasibility`, the only engine declaring `subdivider`.
+  - Three registered metrics.
+  - `POST /api/scenarios/subdivision-feasibility/sensitivity`.
+  - Evidence: `docs/evidence/2026-11-05/subdivision-v1-leg3.md`.
+- **Proved.**
+  - 21 tests, with the golden case's IRR solved independently.
+  - 7 mutants, all red.
+  - The related batch passes (46 files, 656 tests); the gates pass; the bundle is unchanged.
+- **For Muse.**
+  1. §5.5 is not built, because there is no honest per-gate lead time. Pick (a) operator-stated per-gate leads or (b) elapsed time against the run's end-to-end timeline.
+  2. Leg 4 will be the first production adoption of the decision kit, which sits under the 2026-10-21 COO HOLD. Mounting the desk retires those reachability exemptions.
+
 ## 2026-11-03 — G12 public-copy truth fixes (list-pull, stale Pro price) — on `claude/public-copy-truth-fixes` (off main `f7f2e3f`, PR open, unmerged)
 
 - **Scope.** Public marketing/comparison copy only. No server code, in-app surfaces, legal docs or pricing changes.

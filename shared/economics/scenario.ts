@@ -229,6 +229,12 @@ export const METRICS: readonly MetricSpec[] = [
   { id: "assignment_fee", label: "Assignment fee", unit: "cents", higherIsBetter: true },
   { id: "stabilized_value", label: "Value at market cap rate", unit: "cents", higherIsBetter: true },
   { id: "gross_sellout", label: "Gross sell-out", unit: "cents", higherIsBetter: true },
+  // Subdivision feasibility (subdivision-feasibility v1). The pro-forma's
+  // withholding rule shapes these: a margin net of carry is null — never a
+  // carry-free figure — when the run states no timeline.
+  { id: "margin_before_carry", label: "Margin before carry", unit: "cents", higherIsBetter: true },
+  { id: "margin_after_carry_p90", label: "Margin after carry (p90 timeline)", unit: "cents", higherIsBetter: true },
+  { id: "margin_per_lot", label: "Margin per lot (before carry)", unit: "cents", higherIsBetter: true },
   { id: "discount_to_face", label: "Discount to face", unit: "ratio", higherIsBetter: true },
 ] as const;
 
