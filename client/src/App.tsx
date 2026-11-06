@@ -473,6 +473,7 @@ const LeasesPage = React.lazy(() => import("@/pages/leases"));
 const RentRollPage = React.lazy(() => import("@/pages/rent-roll"));
 const UnderwriteRentalPage = React.lazy(() => import("@/pages/rentals/underwrite-rental"));
 const UnderwriteWholesaleOfferPage = React.lazy(() => import("@/pages/wholesale/underwrite-offer"));
+const WholesaleBuyBoxPage = React.lazy(() => import("@/pages/wholesale/buy-box"));
 const MaintenancePage = React.lazy(() => import("@/pages/maintenance"));
 // InvestorAnalyticsPage archived 2026-06-01 — no direct callers.
 const InspectionDetailPage = React.lazy(() => import("@/pages/inspection-detail"));
@@ -1054,6 +1055,8 @@ function Router() {
       </Route>
       <Route path="/wholesale/underwrite">
         {() => <ProtectedRoute component={UnderwriteWholesaleOfferPage} />}
+      <Route path="/wholesale/buy-box">
+        {() => <ProtectedRoute component={WholesaleBuyBoxPage} />}
       </Route>
       <Route path="/double-close">
         {() => <ProtectedRoute component={DoubleClosePage} />}
