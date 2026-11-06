@@ -171,7 +171,7 @@ describe.runIf(realDbAvailable)("assignment compliance on offer paths — real d
         for (const ack of [false, true]) {
           const r = await gate(k, s, "under_contract", ack);
           expect(r.ok, `${s} ack=${ack}`).toBe(false);
-          expect((r as { body: { error: string } }).body.error).toBe("wholesaler_compliance_blocked");
+          expect(r.ok ? null : r.body.error).toBe("wholesaler_compliance_blocked");
         }
       }
     });
