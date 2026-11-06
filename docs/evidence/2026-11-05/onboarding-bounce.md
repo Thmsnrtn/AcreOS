@@ -47,7 +47,7 @@ M4 first survived. The wizard test's "while pending" check was vacuous because t
 - `npm run lint`: exit 0.
 - `npm run build`: exit 0. `scripts/check-bundle-size.js`: **9,816 KB of 9,823**. Main `c8fa715` built on the same machine: 9,815 KB. Delta +1 KB.
 - Named onboarding suites (146 tests, 8 files, all green): needsOnboarding 5, routes-onboarding 18, onboardingChecklist 30, onboardingVerticals 20, critical-path-render 60, onboardingGateStaleCache 7, onboardingWizardReleasesCompletedOrg 3, onboardingCompleteFlipsBeforeSeeding 3.
-- Full vitest: see the PR body. Measured after this file was written.
+- Full vitest (`npx vitest run`, exit 1): **1,578 files passed, 2 failed, 45 skipped. 19,664 tests passed, 2 failed, 228 skipped (19,894).** Both failures are unrelated to onboarding and fail identically on main `c8fa715` on this machine: `forecastIsContractNotAssumption.test.ts` "an active lease is scheduled rent…" (expected 3 forecast months, got 2) and `noteRecordPanels.test.tsx` "each value has a provenance chip…". Zero tests executed is not the case here.
 
 ## Proof still owed (coordinator, after merge + staging deploy)
 
