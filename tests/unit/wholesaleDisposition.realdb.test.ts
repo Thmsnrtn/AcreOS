@@ -82,7 +82,7 @@ const counts = async () => ({
 });
 const today = () => new Date().toISOString().slice(0, 10);
 
-async function decide(propertyId: number): Promise<number> {
+async function decide(propertyId: number, kind: "offer" | "pass" = "offer"): Promise<number> {
   const res = await request(await appFor(org))
     .post("/api/wholesale/underwrite")
     .send({
@@ -93,7 +93,7 @@ async function decide(propertyId: number): Promise<number> {
         arvBasis: "One renovated 3/2 sale two streets over.",
         feeBasis: "My floor for a full-kitchen rehab.",
       },
-      kind: "offer",
+      kind,
       choice: "Offer up to $156,000",
       rationale: "The buyer's number binds and the fee holds.",
       reviewDueAt: new Date(Date.now() + 30 * 86_400_000).toISOString(),
@@ -170,6 +170,18 @@ describe.runIf(realDbAvailable)("wholesale disposition packet + outcome — real
       expect(res.body.price.withinBuyerCeiling).toBe(false);
       await q`UPDATE deals SET accepted_amount = '140000', updated_at = now() WHERE id = ${ids.deal}`;
       expect((await packet(ids.prop)).body.price.buyerPriceCents).toBe(15_000_000);
+    });
+
+    it("4b. a pass prices nothing: a newer pass does not displace the offer, and a pass alone is refused", async () => {
+      const passId = await decide(ids.prop, "pass");
+      const res = await packet(ids.prop);
+      expect(res.status).toBe(200);
+      expect(res.body.decisionId).toBe(ids.decision);
+      expect(res.body.decisionId).not.toBe(passId);
+      await decide(ids.propNoDecision, "pass");
+      const passOnly = await packet(ids.propNoDecision);
+      expect(passOnly.status).toBe(409);
+      expect(passOnly.body.message).toMatch(/a pass prices nothing/);
     });
 
     it("4. refuses with no accepted contract price, with no wholesale decision, and across orgs", async () => {
