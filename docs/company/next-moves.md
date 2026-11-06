@@ -3,6 +3,23 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-11-05 — Onboarding bounce fix (gate stale-cache, wizard release, complete ordering) — on `claude/onboarding-bounce-fix` (off main `c8fa715`, PR open, unmerged; Muse audits first)
+
+- **What shipped on the branch.** Three legs, one PR. Full Step 0 table, mutants and gates: `docs/evidence/2026-11-05/onboarding-bounce.md`.
+  - Leg 1: `OnboardingGate` no longer redirects on a cached `needsOnboarding: true` while a refetch is in flight. It shows `PageLoader` and acts on the settled answer.
+  - Leg 2: `/onboarding-v2` releases an org whose status read settles `completed: true` to `/today` (replace). Step 1 never renders for it. It never releases on cached data or during its own finish/skip.
+  - Leg 3: `POST /complete` flips the completion flag before the sample-data seed. The response contract is unchanged.
+- **Step 0.**
+  - RC-1 reproduced: the pre-fix gate redirects synchronously from the stale value.
+  - RC-2 confirmed at component level.
+  - RC-3 latency not material: seeded vs unseeded median 54 vs 10 ms locally, ~33 extra round-trips, ~200–250 ms projected on staging. Leg 3 was built for durability (a hung or crashed seed left no completion record).
+- **Proved.**
+  - 13 new tests; 7 of them red on pre-fix code. 4 mutants caught.
+  - check exit 0, ratchet 151 = baseline, lint 0, build 0, bundle 9,816 KB of 9,823 (+1 KB vs main on the same machine).
+- **Next.**
+  1. Muse audits the PR; then merge, staging-only deploy.
+  2. Coordinator proof on staging: throttled fresh-user repro, direct loads in both directions, a CJ run with zero bounce signatures. If CJ is red only on harness buckets, report exactly that.
+
 ## 2026-11-05 — CJ harness: answer the "How Pax works" dialog before composer assertions — on `claude/cj1-dismiss-ai-disclosure` (off main `c8fa715`, PR open, unmerged)
 
 - **Scope.** Harness only. The CJ audit was red three runs running. Decomposing run 42104190391 found 7 composer-topmost failures, the largest single cause. Each had `inViewport: true`. The first-visit AI-disclosure dialog (`AiDisclosureGate`, app shell) sat over /ai, so `elementFromPoint` hit the dialog.
