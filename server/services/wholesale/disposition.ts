@@ -56,12 +56,19 @@ function centsOf(v: string | number | null | undefined): number | null {
   return Number.isFinite(n) && n > 0 ? Math.round(n * 100) : null;
 }
 
-/** The property's newest wholesale decision that cites a wholesale_mao scenario. */
-async function latestWholesaleDecision(organizationId: number, propertyId: number): Promise<RecordedDecision | null> {
+/**
+ * The property's newest wholesale OFFER decision citing a wholesale_mao
+ * scenario. A `pass` is a decision not to buy: it prices nothing, so it never
+ * feeds a packet.
+ */
+async function latestWholesaleOffer(organizationId: number, propertyId: number): Promise<RecordedDecision | null> {
   const history = await decisionsForSubject(organizationId, "property", propertyId);
   return (
     history.find(
-      (d) => d.body.strategyPackId === "residential_wholesaler" && d.body.scenarios.some((s) => s.engineId === "wholesale_mao"),
+      (d) =>
+        d.body.kind === "offer" &&
+        d.body.strategyPackId === "residential_wholesaler" &&
+        d.body.scenarios.some((s) => s.engineId === "wholesale_mao"),
     ) ?? null
   );
 }
@@ -123,8 +130,8 @@ export async function buildDispositionPacket(organizationId: number, propertyId:
     throw new DispositionRefusal("No accepted contract price on a deal for this property yet — a buyer price cannot be derived without one.");
   }
 
-  const decision = await latestWholesaleDecision(organizationId, propertyId);
-  if (!decision) throw new DispositionRefusal("Underwrite this property as a wholesale offer first — the packet's fee and buyer ceiling come from that decision.");
+  const decision = await latestWholesaleOffer(organizationId, propertyId);
+  if (!decision) throw new DispositionRefusal("Underwrite this property as a wholesale offer first — the packet's fee and buyer ceiling come from that offer decision (a pass prices nothing).");
   const scenario = await citedScenario(organizationId, decision);
   if (!scenario) throw new DispositionRefusal("The decision's scenario could not be read.");
 
