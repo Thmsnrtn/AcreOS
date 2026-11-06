@@ -3,6 +3,48 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-11-05 — CJ harness: answer the "How Pax works" dialog before composer assertions — on `claude/cj1-dismiss-ai-disclosure` (off main `c8fa715`, PR open, unmerged)
+
+- **Scope.** Harness only. The CJ audit was red three runs running. Decomposing run 42104190391 found 7 composer-topmost failures, the largest single cause. Each had `inViewport: true`. The first-visit AI-disclosure dialog (`AiDisclosureGate`, app shell) sat over /ai, so `elementFromPoint` hit the dialog.
+- **Change.** CJ1 step 6 now clicks "Got it" when the dialog shows, the way a first-time customer would. It waits for the dialog to unmount and the Radix modal layer to release, then runs the topmost check unchanged. If the dialog is absent, the step does nothing. No product code changed and no assertion was loosened.
+- **Out of scope, observed.** Load-timing flakes under the 18-way parallel walk, and the onboarding-bounce defect (its own package).
+- **Proof.**
+  - The workflow dispatch was REFUSED for the session token (HTTP 403, "Resource not accessible by integration"), so no CJ audit run exists on the branch yet. The founder dispatches: `gh workflow run customer-journey-audit.yml --ref claude/cj1-dismiss-ai-disclosure`.
+  - Local probe instead: production build, local PG, `E2E_TEST_AUTH=1`, Chromium, iPhone 12 dark plus desktop 1440 light. It ran step 6's logic on /ai with the seeded customer's consent cleared.
+  - Without dismissal, the composer measured `inViewport: true, topmost: false` (the defect, reproduced). With the step, `topmost: true`, still on /ai. With consent already recorded, the dialog was absent, nothing happened, and the check passed. 6/6.
+  - Not a CJ1 run: the config documents why a local CJ1 cannot pass (no signed-out landing). WebKit was not probed.
+- **Branch proof run 42137097255** (founder-dispatched on `eddc6e2`): CJ1 green on all 12 Chromium projects; red on the 6 WebKit iPhone projects.
+  - No failure snapshot showed the disclosure dialog: the disclosure fix held.
+  - 12 of 18 failed attempts were still composer-topmost. Every one had the iOS "Install AcreOS" sheet (`pwa-install-prompt.tsx`) over the composer. The sheet opens 4s after load, on iOS Safari only.
+  - 5 attempts were navigation-interrupted (onboarding bounce, out of scope). 1 was the "no first-value CTA" timing class (out of scope).
+- **Follow-up commit.** The same step now taps the sheet's X when it is open. The wait is bounded by the sheet's own 4s timer from the /ai load. Local WebKit probe: iPhone 12 and SE reproduce `topmost: false` with the sheet as the hit, and pass with the step. Pixel 5 and desktop Chromium never show the sheet.
+- **Second follow-up (founder-scoped into this PR).** Navigation settle-tolerance.
+  - Steps 3–7 use `gotoSettled()`. On a THROWN interruption only, it waits for the interrupting navigation to land, then re-issues the goto, at most 2 times. The interruption is WebKit "interrupted by another navigation" / "Frame load interrupted", or Chromium `net::ERR_ABORTED`.
+  - A goto that completes is never repeated.
+  - New landed-route assertions after the URL settles: step 4 must land on /onboarding-v2 or /today; steps 5 and 7 on /today, with step 7 also checked after the CTA poll; step 6 on /ai.
+  - So the onboarding bounce now fails by name at step 5 with the URL it reached, instead of surfacing later as a CTA miss.
+  - Local probe, iPhone 12, iPhone SE (WebKit) and Pixel 5 (Chromium), ×4 each: a stray navigation from the previous page kills a raw goto; `gotoSettled` lands /ai; an app bounce after a clean goto is not retried and lands /onboarding-v2. 36/36.
+  - The probe also caught a single re-issue being interrupted again on SE, which is why the helper waits for the interrupting target.
+- **Proof run 42143893610** on `a8da042`: the 12 Chromium projects and iPhone 14 Pro Max dark passed. 5 iPhone projects were red, 18 failed attempts in all.
+  - 0 composer-topmost failures and 0 goto-interruption deaths. 9 interruptions were annotated and recovered from.
+  - 12 attempts timed out at step 4: the install sheet opened over the wizard's "Go to Today" button, and the click waited behind it until the 240s test timeout.
+  - 6 attempts completed every step, then failed the final `pageErrors == []` contract. The errors were WebKit's "<url> due to access control checks" for the app's boot fetches, cancelled by the walk's own full-document `page.goto`. One of the 6 had no re-issued navigation.
+- **Third follow-up.** `page.addLocatorHandler` answers the install sheet whenever it blocks an action anywhere in the walk. The step-6 explicit dismissal stays, because the topmost check reads `elementFromPoint`, which never triggers a locator handler. Local WebKit probe: a click under the sheet hangs without the handler and succeeds with it on iPhone 12 and SE. Chromium never shows the sheet. 12/12.
+- **Proof run 42151652145** on `348b6d3`: every bucket except one was zero, and step 4 was clear. All 13 failed attempts failed only on the page-errors contract: 271 entries, all access-control shaped.
+  - The founder's decomposition of the traces settled it as a harness artefact. All /api/* requests returned 200 on the wire, the rejected instances never appear in the network log, and Chromium had 0 occurrences.
+  - The mechanism is context.route + route.continue({headers}) token injection racing WebKit's access-control check.
+- **Fourth follow-up (founder-directed): a network-corroborated page-error gate.** `tests/e2e-customer-journey/page-error-gate.ts`:
+  - It dismisses an access-control page error ONLY when it is on the walk's own origin AND the same host+path completed 2xx in the same attempt. The gate runs after every step has passed.
+  - Everything else still fails, including cross-origin errors, 4xx/5xx, no response, and unparseable messages.
+  - Dismissed entries become a `page-errors-corroborated` annotation carrying raw strings and statuses. `run-customer-journey-audit.mjs` always prints that section in the run markdown and JSON, even at zero. The timing attachment keeps the raw `pageErrors`.
+- **Proofs.**
+  - `tests/unit/cjPageErrorGate.test.ts`, 10 tests using the raw strings from the run. Three mutants are all caught: bare signature exclusion, dropping the same-origin check, and accepting any status of 200 or more.
+  - Live WebKit control (iPhone 12 and SE) produced REAL WebKit access-control errors through the spec's own listeners. A same-path 2xx was dismissed. Forced 500, revoked-token 401, no response and a genuine cross-origin CORS block all failed the gate.
+  - Chromium never raises the class.
+  - The `blob:` entry (`767f47f1-…`) has no network entry, so it still fails if it recurs.
+- **Unchanged.** Route checks, so the onboarding bounce stays visible.
+- **Next.** Founder dispatches proof run 4. The honesty proof needs a GREEN run whose report shows the class FIRED and was dismissed.
+
 ## 2026-11-05 — Fix-and-Flip V1: Leg 1 (#465), PATCH-defaults fix (#466), Leg 2 (stacked on #466) — all unmerged; Legs 3–4 held for Tom
 
 - **Step 0** (`docs/evidence/2026-11-05/fix-and-flip-step0.md`, branch `claude/fix-flip-step0`) stopped the package before build. Muse ruled on 2026-11-05:
