@@ -25,7 +25,13 @@ what shipped, what it measured, and the top next moves. Newest first.
   - So the onboarding bounce now fails by name at step 5 with the URL it reached, instead of surfacing later as a CTA miss.
   - Local probe, iPhone 12, iPhone SE (WebKit) and Pixel 5 (Chromium), ×4 each: a stray navigation from the previous page kills a raw goto; `gotoSettled` lands /ai; an app bounce after a clean goto is not retried and lands /onboarding-v2. 36/36.
   - The probe also caught a single re-issue being interrupted again on SE, which is why the helper waits for the interrupting target.
-- **Next.** Founder re-dispatches on the branch head. Expected: no composer-topmost and no goto-interruption failures. The product bounce, if it fires, fails at step 5 by name.
+- **Proof run 42143893610** on `a8da042`: the 12 Chromium projects and iPhone 14 Pro Max dark passed. 5 iPhone projects were red, 18 failed attempts in all.
+  - 0 composer-topmost failures and 0 goto-interruption deaths. 9 interruptions were annotated and recovered from.
+  - 12 attempts timed out at step 4: the install sheet opened over the wizard's "Go to Today" button, and the click waited behind it until the 240s test timeout.
+  - 6 attempts completed every step, then failed the final `pageErrors == []` contract. The errors were WebKit's "<url> due to access control checks" for the app's boot fetches, cancelled by the walk's own full-document `page.goto`. One of the 6 had no re-issued navigation.
+- **Third follow-up.** `page.addLocatorHandler` answers the install sheet whenever it blocks an action anywhere in the walk. The step-6 explicit dismissal stays, because the topmost check reads `elementFromPoint`, which never triggers a locator handler. Local WebKit probe: a click under the sheet hangs without the handler and succeeds with it on iPhone 12 and SE. Chromium never shows the sheet. 12/12.
+- **Open, founder decision.** The WebKit cancelled-fetch page errors were NOT touched; changing them means loosening the hard contract.
+- **Next.** Founder decides on the page errors, then re-dispatches.
 
 ## 2026-11-03 — Buy-and-hold release: desk ported + mounted, wiring as links — on `claude/buy-and-hold-release` (off main `f7f2e3f`, PR #458, unmerged; blocker resolved 2026-11-05 by Option B)
 

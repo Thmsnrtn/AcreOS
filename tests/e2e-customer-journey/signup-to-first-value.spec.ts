@@ -301,6 +301,28 @@ test.describe("CJ1: signup → onboarding → first value", () => {
     const meta = resolveProjectMeta(testInfo);
     await applyProjectTheme(page, meta);
     const ctx = attachErrorListeners(page);
+    // The iOS "Install AcreOS" sheet (pwa-install-prompt.tsx) opens 4s after
+    // ANY page load on real iOS Safari, so it can land on whatever screen the
+    // walk is on — not only /ai. Proof run 42137097255 met it over the Pax
+    // composer; run 42143893610 met it over the onboarding wizard's "Go to
+    // Today" button, where the click waited behind it until the 240s test
+    // timeout (12 WebKit iPhone attempts; no Chromium project shows the
+    // sheet). A person taps its X whenever it appears; this handler does the
+    // same before any click, fill or auto-waiting assertion it would block.
+    // Answered once, it stays dismissed for 7 days (localStorage), so it does
+    // not come back within the walk. Step 6 still answers it explicitly
+    // before the composer-topmost check, which reads elementFromPoint and so
+    // never triggers a locator handler.
+    await page.addLocatorHandler(
+      page.locator('aside[role="dialog"][aria-label="Install AcreOS"]'),
+      async () => {
+        await page.locator('[data-testid="button-dismiss-pwa"]').click();
+        testInfo.annotations.push({
+          type: "info-pwa-install-dismissed",
+          description: `first-visit iOS 'Install AcreOS' sheet dismissed on ${landedPath(page)} (blocking an action)`,
+        });
+      },
+    );
 
     const journeyStart = Date.now();
     const stepDurations: Record<string, number> = {};
