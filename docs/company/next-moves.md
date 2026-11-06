@@ -13,7 +13,12 @@ what shipped, what it measured, and the top next moves. Newest first.
   - Local probe instead: production build, local PG, `E2E_TEST_AUTH=1`, Chromium, iPhone 12 dark plus desktop 1440 light. It ran step 6's logic on /ai with the seeded customer's consent cleared.
   - Without dismissal, the composer measured `inViewport: true, topmost: false` (the defect, reproduced). With the step, `topmost: true`, still on /ai. With consent already recorded, the dialog was absent, nothing happened, and the check passed. 6/6.
   - Not a CJ1 run: the config documents why a local CJ1 cannot pass (no signed-out landing). WebKit was not probed.
-- **Next.** Founder dispatches the audit on the branch. Read the composer-topmost count separately from the load-timing flakes and the bounce.
+- **Branch proof run 42137097255** (founder-dispatched on `eddc6e2`): CJ1 green on all 12 Chromium projects; red on the 6 WebKit iPhone projects.
+  - No failure snapshot showed the disclosure dialog: the disclosure fix held.
+  - 12 of 18 failed attempts were still composer-topmost. Every one had the iOS "Install AcreOS" sheet (`pwa-install-prompt.tsx`) over the composer. The sheet opens 4s after load, on iOS Safari only.
+  - 5 attempts were navigation-interrupted (onboarding bounce, out of scope). 1 was the "no first-value CTA" timing class (out of scope).
+- **Follow-up commit.** The same step now taps the sheet's X when it is open. The wait is bounded by the sheet's own 4s timer from the /ai load. Local WebKit probe: iPhone 12 and SE reproduce `topmost: false` with the sheet as the hit, and pass with the step. Pixel 5 and desktop Chromium never show the sheet.
+- **Next.** Re-dispatch the audit on the branch head. Expected: composer-topmost clear on all 18 projects. The bounce and timing classes remain, outside this package.
 
 ## 2026-11-03 — Buy-and-hold release: desk ported + mounted, wiring as links — on `claude/buy-and-hold-release` (off main `f7f2e3f`, PR #458, unmerged; blocker resolved 2026-11-05 by Option B)
 

@@ -386,6 +386,7 @@ test.describe("CJ1: signup → onboarding → first value", () => {
     // ── Step 6: Pax surface mounts ──────────────────────────────────────
     await test.step("/ai (Pax) surface mounts with composer", async () => {
       const t0 = Date.now();
+      const aiNavigatedAt = Date.now();
       await page.goto("/ai", { waitUntil: "domcontentloaded" });
       // Settle on the Pax door's own heading before the blank-screen check,
       // as steps 5 and 7 settle before theirs. b9d2d54a removed this step's
@@ -444,6 +445,29 @@ test.describe("CJ1: signup → onboarding → first value", () => {
         testInfo.annotations.push({
           type: "info-ai-disclosure-acknowledged",
           description: "first-visit 'How Pax works' dialog answered with Got it on /ai",
+        });
+      }
+      // The other first-visit prompt over this screen: the iOS "Install
+      // AcreOS" sheet (pwa-install-prompt.tsx). It auto-opens 4s after each
+      // page load on real iOS Safari only, fixed just above the bottom nav, and
+      // stays dismissed for 7 days once answered. With the disclosure answered,
+      // the branch proof run (42137097255) showed it was the thing on top of
+      // the composer in all 12 composer-topmost failures, every one on the
+      // WebKit iPhone projects; no Chromium project ever shows it. A person on
+      // an iPhone taps its X; so does the walk. The wait is bounded by the
+      // sheet's own timer from the /ai load (not a fixed sleep), so the step
+      // costs little where the sheet never appears. If the timer is ever
+      // lengthened, the sheet lands after this window and the topmost check
+      // below fails honestly instead of passing over it.
+      const installSheet = page.locator('aside[role="dialog"][aria-label="Install AcreOS"]');
+      const installWindowMs = Math.max(1, 4000 + 1500 - (Date.now() - aiNavigatedAt));
+      await installSheet.waitFor({ state: "visible", timeout: installWindowMs }).catch(() => {});
+      if (await installSheet.isVisible().catch(() => false)) {
+        await page.locator('[data-testid="button-dismiss-pwa"]').click();
+        await expect(installSheet, "install sheet did not close after its X").toHaveCount(0);
+        testInfo.annotations.push({
+          type: "info-pwa-install-dismissed",
+          description: "first-visit iOS 'Install AcreOS' sheet dismissed on /ai",
         });
       }
       // isVisible() is true for a box ANYWHERE in the document — it passed
