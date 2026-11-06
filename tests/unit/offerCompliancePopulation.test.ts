@@ -66,7 +66,6 @@ const GATE = /\b(offerComplianceGate|unattendedOfferRefusal)\(/;
 const OFFER_EXEMPT: Record<string, string> = {
   "server/services/listability.ts#offerabilityRefusal": "the definition itself",
   "server/services/listingWithdrawal.ts#*": "taking a listing DOWN — withdrawing an offer is never restricted",
-  "server/services/buyerMatchingAI.ts#*": "internal match computation; nothing leaves the org (the blast that sends is gated)",
   "server/services/documents.ts#generatePropertyFlyer": "the definition itself; its route caller is gated",
 };
 const exempt = (file: string, unit: string) => OFFER_EXEMPT[`${file}#${unit}`] ?? OFFER_EXEMPT[`${file}#*`];
@@ -114,7 +113,7 @@ describe("every outward offer of a property passes the assignment compliance gat
     expect(ungated, "an offer path reaches buyers without the assignment compliance gate").toEqual([]);
   });
 
-  it("the gated set is exactly the six known offer surfaces (a new one must be added here on purpose)", () => {
+  it("the gated set is exactly the known offer surfaces (a new one must be added here on purpose)", () => {
     const gated = offerUnits.filter((u) => !exempt(u.file, u.name)).map((u) => `${u.file}#${u.name}`).sort();
     expect(gated).toEqual([
       "server/routes-buyer-blasts.ts#/api/properties/:id/blast-buyers",
@@ -122,6 +121,7 @@ describe("every outward offer of a property passes the assignment compliance gat
       "server/routes-elite-features.ts#/api/listings/:id/syndicate",
       "server/routes-team-messaging.ts#/api/listings",
       "server/routes-team-messaging.ts#/api/listings/:id/publish",
+      "server/services/buyerMatchingAI.ts#*unattributed*",
       "server/services/syndicationChannels.ts#syncChannels",
     ]);
   });
@@ -141,6 +141,20 @@ describe("every outward offer of a property passes the assignment compliance gat
     expect(u.map((x) => x.name)).toEqual(["/x", "/y"]);
     expect(GATE.test(u[0].body)).toBe(false);
     expect(GATE.test(u[1].body)).toBe(true);
+  });
+});
+
+describe("every buyer-match announcement is gated", () => {
+  it("each emitBuyerMatchCreated( call in server/ sits directly inside an unattendedOfferRefusal guard", () => {
+    const calls = files.flatMap(({ file, src }) =>
+      (src.match(/\bemitBuyerMatchCreated\(/g) ?? []).length > 0 && !file.endsWith("buyerEvents.ts") ? [{ file, src }] : [],
+    );
+    expect(calls.map((c) => c.file)).toEqual(["server/services/buyerMatchingAI.ts"]);
+    const src = calls[0].src;
+    const total = (src.match(/\bemitBuyerMatchCreated\(/g) ?? []).length;
+    const guarded = (src.match(/unattendedOfferRefusal\([^)]*\)\)\)\s*\{\s*emitBuyerMatchCreated\(/g) ?? []).length;
+    expect(total, "vacuity: the matcher announces from two branches").toBe(2);
+    expect(guarded).toBe(total);
   });
 });
 

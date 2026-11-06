@@ -27,7 +27,7 @@ import { realDbAvailable, useRealDb } from "../helpers/realDb";
 
 useRealDb("offerCompliance.realdb.test.ts");
 
-const sent = vi.hoisted(() => ({ emails: [] as Array<{ to: string }>, posts: [] as string[], flyers: 0 }));
+const sent = vi.hoisted(() => ({ emails: [] as Array<{ to: string }>, posts: [] as string[], flyers: 0, matchEmits: [] as number[] }));
 
 vi.mock("../../server/utils/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
 vi.mock("../../server/auth", () => ({ isAuthenticated: (_req: any, _res: any, next: any) => next() }));
@@ -52,6 +52,12 @@ vi.mock("../../server/services/documents", async (orig) => ({
 vi.mock("../../server/services/credits", () => ({
   usageMeteringService: { calculateCost: vi.fn(async () => 5), recordUsage: vi.fn(async () => undefined) },
   creditService: { hasEnoughCredits: vi.fn(async () => true), getBalance: vi.fn(async () => 1000) },
+}));
+vi.mock("../../server/services/buyerEvents", () => ({
+  // The event that emails a buyer about a fresh match (tpl_buyer_match_found).
+  emitBuyerMatchCreated: vi.fn((match: { propertyId: number }) => {
+    sent.matchEmits.push(match.propertyId);
+  }),
 }));
 vi.mock("../../server/services/emailService", () => ({
   sendEmail: vi.fn(async (msg: { to: string }) => {
@@ -477,6 +483,30 @@ describe.runIf(realDbAvailable)("assignment compliance on offer paths — real d
 
       const pass = await publish("txContract", { dryRun: true });
       expect(pass.status, JSON.stringify(pass.body)).not.toBe(409);
+    });
+  });
+
+  describe("H. a fresh buyer match (its event emails the buyer)", () => {
+    it("is announced for owned land and a pass state, never for an under-contract property in a block or warn state", async () => {
+      const { buyerMatchingAIService } = await import("../../server/services/buyerMatchingAI");
+      // Scoring is not under test: every buyer scores a match.
+      const spy = vi
+        .spyOn(buyerMatchingAIService, "calculateMatchScore")
+        .mockReturnValue({ score: 90, factors: {} as never, reasons: [], concerns: [] });
+      const [lead] = await q`INSERT INTO leads (organization_id, first_name, last_name, email, type) VALUES (${org}, 'New', 'Buyer', ${`${tag}-new@example.test`}, 'buyer') RETURNING id`;
+      await q`INSERT INTO buyer_profiles (organization_id, lead_id, is_active, financial_info) VALUES (${org}, ${lead.id}, true, '{"financingType":"cash"}'::jsonb)`;
+      sent.matchEmits.length = 0;
+      for (const key of ["ilContract", "caContract", "wyContract", "txContract", "ilOwned"]) {
+        await buyerMatchingAIService.matchPropertyToBuyers(org, prop[key]);
+      }
+      spy.mockRestore();
+      // The new buyer's match row is written for every property (internal)...
+      const rows = await q`SELECT property_id FROM buyer_property_matches WHERE organization_id = ${org} AND buyer_profile_id IN (SELECT id FROM buyer_profiles WHERE lead_id = ${lead.id})`;
+      expect(rows.length).toBe(5);
+      // ...but only the offerable-without-ack properties are ever announced
+      // (once per buyer newly matched to them).
+      expect(sent.matchEmits.length).toBeGreaterThan(0);
+      expect([...new Set(sent.matchEmits)].sort()).toEqual([prop.txContract, prop.ilOwned].sort());
     });
   });
 
