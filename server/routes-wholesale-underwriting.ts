@@ -24,6 +24,7 @@ import { getOrganizationId, getUserId } from "./types/request";
 import { Errors } from "./utils/errors";
 import { ScenarioEngineError, type ScenarioAssumption } from "@shared/economics/scenario";
 import { clock } from "./utils/clock";
+import { isCalendarDate } from "@shared/dates/calendar";
 import {
   describeProperty,
   loadOrgProperty,
@@ -37,6 +38,7 @@ const compSchema = z.object({
   soldOn: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, "soldOn must be YYYY-MM-DD")
+    .refine((d) => isCalendarDate(d), "That date does not exist")
     .refine((d) => Date.parse(`${d}T00:00:00Z`) <= clock.nowMs(), { message: "A comp's sale date cannot be in the future." }),
 });
 

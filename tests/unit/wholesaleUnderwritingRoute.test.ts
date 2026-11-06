@@ -158,6 +158,7 @@ describe("POST /api/wholesale/underwrite", () => {
     ["no evidence at all", { evidence: undefined }],
     ["no comps", { evidence: { ...evidence, comps: [] } }],
     ["a comp sold in the future", { evidence: { ...evidence, comps: [{ ...evidence.comps[0], soldOn: "2099-01-01" }] } }],
+    ["a comp sold on a day that does not exist", { evidence: { ...evidence, comps: [{ ...evidence.comps[0], soldOn: "2026-02-30" }] } }],
     ["a comp with no price", { evidence: { ...evidence, comps: [{ ...evidence.comps[0], soldPriceCents: 0 }] } }],
     ["no ARV basis", { evidence: { ...evidence, arvBasis: "" } }],
     ["no fee basis", { evidence: { ...evidence, feeBasis: "short" } }],
