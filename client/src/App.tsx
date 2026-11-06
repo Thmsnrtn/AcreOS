@@ -1055,6 +1055,7 @@ function Router() {
       </Route>
       <Route path="/wholesale/underwrite">
         {() => <ProtectedRoute component={UnderwriteWholesaleOfferPage} />}
+      </Route>
       <Route path="/wholesale/buy-box">
         {() => <ProtectedRoute component={WholesaleBuyBoxPage} />}
       </Route>
