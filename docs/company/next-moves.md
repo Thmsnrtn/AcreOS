@@ -30,8 +30,20 @@ what shipped, what it measured, and the top next moves. Newest first.
   - 12 attempts timed out at step 4: the install sheet opened over the wizard's "Go to Today" button, and the click waited behind it until the 240s test timeout.
   - 6 attempts completed every step, then failed the final `pageErrors == []` contract. The errors were WebKit's "<url> due to access control checks" for the app's boot fetches, cancelled by the walk's own full-document `page.goto`. One of the 6 had no re-issued navigation.
 - **Third follow-up.** `page.addLocatorHandler` answers the install sheet whenever it blocks an action anywhere in the walk. The step-6 explicit dismissal stays, because the topmost check reads `elementFromPoint`, which never triggers a locator handler. Local WebKit probe: a click under the sheet hangs without the handler and succeeds with it on iPhone 12 and SE. Chromium never shows the sheet. 12/12.
-- **Open, founder decision.** The WebKit cancelled-fetch page errors were NOT touched; changing them means loosening the hard contract.
-- **Next.** Founder decides on the page errors, then re-dispatches.
+- **Proof run 42151652145** on `348b6d3`: every bucket except one was zero, and step 4 was clear. All 13 failed attempts failed only on the page-errors contract: 271 entries, all access-control shaped.
+  - The founder's decomposition of the traces settled it as a harness artefact. All /api/* requests returned 200 on the wire, the rejected instances never appear in the network log, and Chromium had 0 occurrences.
+  - The mechanism is context.route + route.continue({headers}) token injection racing WebKit's access-control check.
+- **Fourth follow-up (founder-directed): a network-corroborated page-error gate.** `tests/e2e-customer-journey/page-error-gate.ts`:
+  - It dismisses an access-control page error ONLY when it is on the walk's own origin AND the same host+path completed 2xx in the same attempt. The gate runs after every step has passed.
+  - Everything else still fails, including cross-origin errors, 4xx/5xx, no response, and unparseable messages.
+  - Dismissed entries become a `page-errors-corroborated` annotation carrying raw strings and statuses. `run-customer-journey-audit.mjs` always prints that section in the run markdown and JSON, even at zero. The timing attachment keeps the raw `pageErrors`.
+- **Proofs.**
+  - `tests/unit/cjPageErrorGate.test.ts`, 10 tests using the raw strings from the run. Three mutants are all caught: bare signature exclusion, dropping the same-origin check, and accepting any status of 200 or more.
+  - Live WebKit control (iPhone 12 and SE) produced REAL WebKit access-control errors through the spec's own listeners. A same-path 2xx was dismissed. Forced 500, revoked-token 401, no response and a genuine cross-origin CORS block all failed the gate.
+  - Chromium never raises the class.
+  - The `blob:` entry (`767f47f1-…`) has no network entry, so it still fails if it recurs.
+- **Unchanged.** Route checks, so the onboarding bounce stays visible.
+- **Next.** Founder dispatches proof run 4. The honesty proof needs a GREEN run whose report shows the class FIRED and was dismissed.
 
 ## 2026-11-03 — Buy-and-hold release: desk ported + mounted, wiring as links — on `claude/buy-and-hold-release` (off main `f7f2e3f`, PR #458, unmerged; blocker resolved 2026-11-05 by Option B)
 

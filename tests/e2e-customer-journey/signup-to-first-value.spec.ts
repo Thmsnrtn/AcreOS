@@ -36,6 +36,7 @@ import {
   type TestInfo,
   type ConsoleMessage,
 } from "@playwright/test";
+import { gatePageErrors, pathKey } from "./page-error-gate";
 
 // ────────────────────────────────────────────────────────────────────────────
 // Project metadata + theme contract — mirrors customer-surface-journeys.spec.ts
@@ -105,10 +106,27 @@ const IGNORED_ERRORS: RegExp[] = [
 interface JourneyContext {
   consoleErrors: string[];
   pageErrors: string[];
+  /** host+path → a 2xx status seen in this attempt (page-error-gate.ts corroboration). */
+  ok2xx: Map<string, number>;
 }
 
 function attachErrorListeners(page: Page): JourneyContext {
-  const ctx: JourneyContext = { consoleErrors: [], pageErrors: [] };
+  const ctx: JourneyContext = { consoleErrors: [], pageErrors: [], ok2xx: new Map() };
+  // Every 2xx the page received, by host + path. The page-error gate reads
+  // this to corroborate WebKit's harness-induced access-control errors; it is
+  // never consulted for any other kind of page error.
+  page.on("response", (r) => {
+    const status = r.status();
+    if (status < 200 || status >= 300) return;
+    try {
+      const u = new URL(r.url());
+      if (u.protocol === "http:" || u.protocol === "https:") {
+        ctx.ok2xx.set(pathKey(u.host, u.pathname), status);
+      }
+    } catch {
+      /* unparseable URL: never corroborates anything */
+    }
+  });
   page.on("console", (m: ConsoleMessage) => {
     if (m.type() !== "error") return;
     const txt = m.text();
@@ -648,6 +666,27 @@ test.describe("CJ1: signup → onboarding → first value", () => {
 
     // ── Step 8: Record total journey duration ───────────────────────────
     const totalElapsed = Date.now() - journeyStart;
+    // Decided here, after every step above has passed (a failed step ends the
+    // test before this line). See page-error-gate.ts for exactly what may be
+    // dismissed: same-origin "due to access control checks" errors whose path
+    // completed 2xx in this attempt — the WebKit harness artefact measured in
+    // proof run 42151652145. Everything else still fails the contract below.
+    const pageErrorVerdict = gatePageErrors(
+      ctx.pageErrors,
+      ctx.ok2xx,
+      new URL(baseURL!).host,
+    );
+    if (pageErrorVerdict.corroborated.length > 0) {
+      // The class stays visible: count + every raw string + the status that
+      // corroborated it. scripts/run-customer-journey-audit.mjs prints these.
+      testInfo.annotations.push({
+        type: "page-errors-corroborated",
+        description: JSON.stringify({
+          count: pageErrorVerdict.corroborated.length,
+          entries: pageErrorVerdict.corroborated,
+        }),
+      });
+    }
     testInfo.attachments.push({
       name: `journey-timing-${meta.baseDevice}-${meta.colorScheme}`,
       contentType: "application/json",
@@ -658,7 +697,10 @@ test.describe("CJ1: signup → onboarding → first value", () => {
             totalMs: totalElapsed,
             stepDurations,
             consoleErrors: ctx.consoleErrors,
+            // Raw, unfiltered (after IGNORED_ERRORS) — the gate's input.
             pageErrors: ctx.pageErrors,
+            pageErrorsCorroborated: pageErrorVerdict.corroborated,
+            pageErrorsFailing: pageErrorVerdict.failing,
           },
           null,
           2,
@@ -667,10 +709,11 @@ test.describe("CJ1: signup → onboarding → first value", () => {
     });
 
     // Hard contract on page errors — any uncaught exception during the
-    // canonical journey is a P0.
+    // canonical journey is a P0. Only network-corroborated WebKit
+    // access-control artefacts (above) are excluded.
     expect(
-      ctx.pageErrors,
-      `uncaught page errors during journey: ${ctx.pageErrors.join(" || ")}`,
+      pageErrorVerdict.failing,
+      `uncaught page errors during journey: ${pageErrorVerdict.failing.join(" || ")}`,
     ).toEqual([]);
   });
 });
