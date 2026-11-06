@@ -18,7 +18,14 @@ what shipped, what it measured, and the top next moves. Newest first.
   - 12 of 18 failed attempts were still composer-topmost. Every one had the iOS "Install AcreOS" sheet (`pwa-install-prompt.tsx`) over the composer. The sheet opens 4s after load, on iOS Safari only.
   - 5 attempts were navigation-interrupted (onboarding bounce, out of scope). 1 was the "no first-value CTA" timing class (out of scope).
 - **Follow-up commit.** The same step now taps the sheet's X when it is open. The wait is bounded by the sheet's own 4s timer from the /ai load. Local WebKit probe: iPhone 12 and SE reproduce `topmost: false` with the sheet as the hit, and pass with the step. Pixel 5 and desktop Chromium never show the sheet.
-- **Next.** Re-dispatch the audit on the branch head. Expected: composer-topmost clear on all 18 projects. The bounce and timing classes remain, outside this package.
+- **Second follow-up (founder-scoped into this PR).** Navigation settle-tolerance.
+  - Steps 3–7 use `gotoSettled()`. On a THROWN interruption only, it waits for the interrupting navigation to land, then re-issues the goto, at most 2 times. The interruption is WebKit "interrupted by another navigation" / "Frame load interrupted", or Chromium `net::ERR_ABORTED`.
+  - A goto that completes is never repeated.
+  - New landed-route assertions after the URL settles: step 4 must land on /onboarding-v2 or /today; steps 5 and 7 on /today, with step 7 also checked after the CTA poll; step 6 on /ai.
+  - So the onboarding bounce now fails by name at step 5 with the URL it reached, instead of surfacing later as a CTA miss.
+  - Local probe, iPhone 12, iPhone SE (WebKit) and Pixel 5 (Chromium), ×4 each: a stray navigation from the previous page kills a raw goto; `gotoSettled` lands /ai; an app bounce after a clean goto is not retried and lands /onboarding-v2. 36/36.
+  - The probe also caught a single re-issue being interrupted again on SE, which is why the helper waits for the interrupting target.
+- **Next.** Founder re-dispatches on the branch head. Expected: no composer-topmost and no goto-interruption failures. The product bounce, if it fires, fails at step 5 by name.
 
 ## 2026-11-03 — Buy-and-hold release: desk ported + mounted, wiring as links — on `claude/buy-and-hold-release` (off main `f7f2e3f`, PR #458, unmerged; blocker resolved 2026-11-05 by Option B)
 

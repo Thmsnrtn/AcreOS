@@ -123,6 +123,92 @@ function attachErrorListeners(page: Page): JourneyContext {
   return ctx;
 }
 
+// ────────────────────────────────────────────────────────────────────────────
+// Settle-tolerant in-app navigation (WebKit)
+// ────────────────────────────────────────────────────────────────────────────
+//
+// WebKit rejects page.goto() when another navigation starts before the new
+// document commits ("Navigation to /ai is interrupted by another navigation to
+// /today", "Frame load interrupted"); Chromium lets the later one win quietly.
+// Branch proof run 42137097255: 5 of the 18 failed iPhone attempts died this
+// way (/ai→/today, /onboarding-v2→/today, /onboarding-v2→itself), before any
+// assertion of the step had run. Chromium reports the same race as
+// "net::ERR_ABORTED" (measured locally with a held-back document and a stray
+// location.assign from the previous page), so it is matched too.
+//
+// An interruption BEFORE the requested document commits cannot come from that
+// document: its scripts have not run. It is a navigation the PREVIOUS page
+// started (a wizard exit, a redirect still in flight). So on an interruption,
+// and only then, this waits for that navigation to land and re-issues the goto
+// (bounded, see MAX_REISSUES).
+//
+// What it never does: retry a goto that completed. If the app itself sends
+// the walk somewhere else — the onboarding bounce, /today landing back on the
+// wizard — the goto resolves cleanly, nothing is retried, and the step's
+// landed-route assertion fails with the URL it actually reached. Past the
+// re-issue bound, an interruption fails the step exactly as before.
+const NAV_INTERRUPTED = /interrupted by another navigation|Frame load interrupted|net::ERR_ABORTED/i;
+
+async function settleUrl(page: Page, quietMs = 750, timeoutMs = 10_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  let last = page.url();
+  let stableSince = Date.now();
+  while (Date.now() < deadline) {
+    await page.waitForTimeout(150);
+    const now = page.url();
+    if (now !== last) {
+      last = now;
+      stableSince = Date.now();
+    } else if (Date.now() - stableSince >= quietMs) {
+      break;
+    }
+  }
+  await page.waitForLoadState("domcontentloaded").catch(() => {});
+}
+
+/**
+ * page.goto(path) that survives navigation interruptions, returning the time
+ * the final goto was issued (timers the app starts on load, like the iOS
+ * install sheet, run from that document). The caller asserts the landed route.
+ *
+ * After an interruption it waits for the INTERRUPTING navigation to commit
+ * (WebKit names its target; the URL alone can look quiet while that document
+ * is still loading — measured on iPhone SE, where a single re-issue was
+ * interrupted again by the same stray navigation), then for the URL to go
+ * quiet, then re-issues. At most MAX_REISSUES re-issues, and only ever after a
+ * thrown interruption: a goto that completes is never repeated.
+ */
+const MAX_REISSUES = 2;
+
+async function gotoSettled(page: Page, path: string, testInfo: TestInfo): Promise<number> {
+  for (let attempt = 0; ; attempt++) {
+    const issuedAt = Date.now();
+    try {
+      await page.goto(path, { waitUntil: "domcontentloaded" });
+      return issuedAt;
+    } catch (err) {
+      const msg = String((err as Error)?.message ?? err);
+      if (!NAV_INTERRUPTED.test(msg) || attempt >= MAX_REISSUES) throw err;
+      const target = /another navigation to "([^"]+)"/.exec(msg)?.[1];
+      if (target) {
+        await page
+          .waitForURL(target, { waitUntil: "domcontentloaded", timeout: 10_000 })
+          .catch(() => {});
+      }
+      await settleUrl(page);
+      testInfo.annotations.push({
+        type: "info-nav-interrupted",
+        description: `goto ${path} interrupted (${msg.split("\n")[0]}); settled at ${page.url()}; re-issue ${attempt + 1}/${MAX_REISSUES}`,
+      });
+    }
+  }
+}
+
+/** The landed pathname, for route assertions that name where the walk actually is. */
+function landedPath(page: Page): string {
+  return new URL(page.url()).pathname;
+}
+
 async function seedTestAuth(page: Page, baseURL: string): Promise<void> {
   const { hostname } = new URL(baseURL);
   await page.context().addCookies([
@@ -298,7 +384,7 @@ test.describe("CJ1: signup → onboarding → first value", () => {
       // Visit /today — the test-auth bypass resolves the synthetic
       // session and the SPA will either land on /today (if onboarding
       // completed flag is true in seed) or redirect to /onboarding-v2.
-      await page.goto("/today", { waitUntil: "domcontentloaded" });
+      await gotoSettled(page, "/today", testInfo);
       await page.waitForTimeout(1000);
       const url = page.url();
       // Accept EITHER outcome — fresh-signup seed flips orgs.onboarding_completed=true
@@ -314,8 +400,15 @@ test.describe("CJ1: signup → onboarding → first value", () => {
     // ── Step 4: Walk onboarding wizard (5 steps) ────────────────────────
     await test.step("onboarding wizard renders + walks steps 1-5", async () => {
       const t0 = Date.now();
-      await page.goto("/onboarding-v2", { waitUntil: "domcontentloaded" });
+      await gotoSettled(page, "/onboarding-v2", testInfo);
       await page.waitForTimeout(1000);
+      await settleUrl(page);
+      // The wizard, or /today for a seed user who is already onboarded (the
+      // else-branch below) — never anywhere else.
+      expect(
+        ["/onboarding-v2", "/today"],
+        `onboarding step landed on ${page.url()}`,
+      ).toContain(landedPath(page));
       await recordThemeProbe(page, testInfo, meta, "onboarding-step-1");
       // The wizard exists — first step's "Workspace" form should be visible.
       const orgNameInput = page.locator('[data-testid="input-org-name"]');
@@ -376,8 +469,12 @@ test.describe("CJ1: signup → onboarding → first value", () => {
     // ── Step 5: Land on /today ──────────────────────────────────────────
     await test.step("post-onboarding /today route renders", async () => {
       const t0 = Date.now();
-      await page.goto("/today", { waitUntil: "domcontentloaded" });
+      await gotoSettled(page, "/today", testInfo);
       await page.waitForTimeout(1000);
+      // After onboarding, /today must STAY /today. A bounce back into the
+      // wizard (the known onboarding-bounce defect) fails here, by name.
+      await settleUrl(page);
+      expect(landedPath(page), `post-onboarding /today landed on ${page.url()}`).toBe("/today");
       await recordThemeProbe(page, testInfo, meta, "today");
       await assertNonBlank(page, "today");
       stepDurations["today"] = Date.now() - t0;
@@ -386,8 +483,7 @@ test.describe("CJ1: signup → onboarding → first value", () => {
     // ── Step 6: Pax surface mounts ──────────────────────────────────────
     await test.step("/ai (Pax) surface mounts with composer", async () => {
       const t0 = Date.now();
-      const aiNavigatedAt = Date.now();
-      await page.goto("/ai", { waitUntil: "domcontentloaded" });
+      const aiNavigatedAt = await gotoSettled(page, "/ai", testInfo);
       // Settle on the Pax door's own heading before the blank-screen check,
       // as steps 5 and 7 settle before theirs. b9d2d54a removed this step's
       // fixed 1.2s wait in favour of waiting for the composer, but left the
@@ -399,6 +495,7 @@ test.describe("CJ1: signup → onboarding → first value", () => {
         .locator('[data-testid="text-ai-hub-title"]')
         .waitFor({ state: "visible", timeout: 15000 })
         .catch(() => {});
+      expect(landedPath(page), `Pax step landed on ${page.url()}`).toBe("/ai");
       await recordThemeProbe(page, testInfo, meta, "pax-mount");
       await assertNonBlank(page, "pax-mount");
       // PaxPage lazy-loads CommandCenterPage behind AiChatGuard (waits on
@@ -500,7 +597,9 @@ test.describe("CJ1: signup → onboarding → first value", () => {
       // exposes some 'next action' affordance" — Add property, Send
       // pax message, Import deal — which is the same load-bearing UX
       // assertion as the funnel-step instrumentation (D2-D).
-      await page.goto("/today", { waitUntil: "domcontentloaded" });
+      await gotoSettled(page, "/today", testInfo);
+      await settleUrl(page);
+      expect(landedPath(page), `first-value step landed on ${page.url()}`).toBe("/today");
       await expect
         .poll(
           async () => {
@@ -519,6 +618,9 @@ test.describe("CJ1: signup → onboarding → first value", () => {
           },
         )
         .toBe(true);
+      // The CTA text must have been read on /today, not on a page the walk was
+      // bounced to while polling (the wizard also says "import").
+      expect(landedPath(page), `first-value CTA read on ${page.url()}`).toBe("/today");
       stepDurations["first-value-cta"] = Date.now() - t0;
     });
 
