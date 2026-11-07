@@ -3,6 +3,22 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-11-05 — Subdivision V1, Leg 3: feasibility engine — on `claude/subdivision-leg3-feasibility` (off main `4b2044b`, PR open, unmerged)
+
+- **Built.**
+  - `shared/subdivision/feasibility.ts` (subdivision-feasibility v1): refuse per line; carry over the operator-stated timeline, withheld without one; IRR paced by absorption; phases; a sensitivity grid.
+  - Engine `subdivision_feasibility`, the only engine declaring `subdivider`.
+  - Three registered metrics.
+  - `POST /api/scenarios/subdivision-feasibility/sensitivity`.
+  - Evidence: `docs/evidence/2026-11-05/subdivision-v1-leg3.md`.
+- **Proved.**
+  - 21 tests, with the golden case's IRR solved independently.
+  - 7 mutants, all red.
+  - The related batch passes (46 files, 656 tests); the gates pass; the bundle is unchanged.
+- **For Muse.**
+  1. §5.5 is not built, because there is no honest per-gate lead time. Pick (a) operator-stated per-gate leads or (b) elapsed time against the run's end-to-end timeline.
+  2. Leg 4 will be the first production adoption of the decision kit, which sits under the 2026-10-21 COO HOLD. Mounting the desk retires those reachability exemptions.
+
 ## 2026-11-07 — E2E: first-value CTA URL check gets the spec's own 15 s budget — `claude/e2e-first-value-cta-url-timeout`, unmerged
 
 - **Why.** `today-first-value-cta.spec.ts` (from #460) failed Mobile navigation smoke on #471 and then on #465, both times on the desktop-1440 variant and all 3 tries. Both PRs are unrelated, and the same code also passed.
@@ -76,6 +92,20 @@ what shipped, what it measured, and the top next moves. Newest first.
   1. Audit the PR; founder merges.
   2. Check whether the churn email's "Atlas AI — automatically finds deals overnight" holds against what ships.
   3. Decide whether to clean `contextProfile.ts`.
+
+## 2026-11-05 — Buy-and-hold beta demotion LIFTED (founder decision) — `claude/buy-and-hold-lift`, PR #471, unmerged
+
+- **Why.** Leg 3's post-merge staging journey passed all 7 steps on the `c8fa715` deploy (`postmerge-458-journey-proof-2026-11-05.md`, COO side), and the founder called the lift.
+- **What changed, in one commit, as the decision file prescribes.**
+  - `PUBLIC_CLAIM_DEMOTIONS.buy_and_hold` removed.
+  - Evidence-ladder entry flipped `surfaced` → `decided`.
+  - The `HELD_PENDING_JOURNEY_PROOF` entry deleted; the register is pinned EMPTY, and the `isHeld` exemption is gone from all three OD-5 assertions.
+  - The landing demotion-count pin went 12 → 11.
+  - An addendum was added to `founder-decisions-2026-11-05-buy-and-hold.md`.
+- **Proved.** Three mutants caught: demotion back (4 red), ladder reverted (3 red), hold re-added (pin red). `npm run check` exits 0.
+- **Next.**
+  1. Muse audits #471. Do not merge from the session.
+  2. Founder: delete `claude/buy-and-hold-underwriting` (item 5 below) now that the proof is in.
 
 ## 2026-11-03 — Buy-and-hold release: desk ported + mounted, wiring as links — on `claude/buy-and-hold-release` (off main `f7f2e3f`, PR #458, unmerged; blocker resolved 2026-11-05 by Option B)
 
