@@ -243,7 +243,7 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     //   - 4 registered route modules (routes-rentals, routes-rent-ledger,
     //     routes-rent-roll-import, routes-maintenance-tickets — routes.ts);
     //   - routed pages /rent-roll /tenants /leases /maintenance
-    //     /investor-analytics (App.tsx) behind the dedicated "Rentals"
+    //     (App.tsx) behind the dedicated "Rentals"
     //     sidebar module (layout-sidebar id "landlord", businessTypeOnly
     //     buy_and_hold).
     // Rent operations do NOT touch the residential-comps data plane, so
@@ -268,7 +268,7 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
       "tpl_landlord_rent_received_receipt",
       "tpl_lease_expiring",
     ],
-    spotlightModules: ["rent-roll", "tenants", "leases", "maintenance", "investor-analytics"],
+    spotlightModules: ["rent-roll", "tenants", "leases", "maintenance"],
     // Honest, and UNCHANGED by the beta→core flip: no dedicated integration is
     // wired yet — the rent ledger is manual-entry (Stripe ACH explicitly out of
     // scope per routes-rent-ledger.ts) and no screening-bureau provider exists in
@@ -311,7 +311,7 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     ],
     // The real Rentals surfaces this businessType reaches (V1 gate; same
     // children as buy_and_hold in layout-sidebar.tsx).
-    spotlightModules: ["rent-roll", "tenants", "leases", "maintenance", "investor-analytics"],
+    spotlightModules: ["rent-roll", "tenants", "leases", "maintenance"],
   },
   commercial: {
     id: "commercial",
@@ -366,7 +366,6 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
       "tenants",
       "leases",
       "maintenance",
-      "investor-analytics",
       "deals",
       "properties",
     ],
@@ -600,7 +599,7 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
       "tpl_lease_expiring",
       "tpl_multifamily_unit_turn",
     ],
-    spotlightModules: ["rent-roll", "tenants", "leases", "maintenance", "investor-analytics"],
+    spotlightModules: ["rent-roll", "tenants", "leases", "maintenance"],
   },
   mobile_home: {
     id: "mobile_home",
@@ -670,7 +669,7 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
       "tpl_lease_expiring",
       "tpl_mobile_home_lot_rent_receipt",
     ],
-    spotlightModules: ["rent-roll", "tenants", "leases", "maintenance", "investor-analytics"],
+    spotlightModules: ["rent-roll", "tenants", "leases", "maintenance"],
   },
   agent_investor: {
     id: "agent_investor",
