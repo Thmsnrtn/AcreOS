@@ -3,6 +3,31 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-11-05 — Subdivision V1, Legs 1–2: buildability screen + lot-yield estimate — on `claude/subdivision-legs1-2-screen-yield` (off main `da74f12`, PR open, unmerged)
+
+- **Step 0.** Verdicts are in `docs/evidence/2026-11-05/subdivision-v1-step0.md`. Four premise contradictions were reported:
+  - the county-timeline seeds were deleted in 0283;
+  - the standalone screen record had no honest store;
+  - the decision vocabulary has no `defer`;
+  - no perc result is stored anywhere.
+
+  Staging row counts are unverified (no staging access).
+- **Rulings** (`founder-decisions-2026-11-05-subdivision.md`): Tom approved +1 table `subdivision_screen_runs` (0301; `table-count` 748 to 749). Muse ruled that `defer` is dropped and that timelines are operator-stated per run.
+- **Built.**
+  - `shared/subdivision/lotYield.ts` (lot-yield v1) and `buildabilityScreen.ts` (buildability-screen v1): seven triggers, three verdicts, and a headline that never says "buildable". The perc-estimate slot is always null.
+  - `POST /api/parcels/:id/screen` (appends a run) and `GET …/screen-runs` (history, plus the newest estimate beside the drawn plans).
+  - The screen panel on the Subdivision tab. The database refuses UPDATE on runs.
+- **Proved.**
+  - New tests: 18 for yield, 15 for the screen, 9 for the routes, 3 for the panel, and 1 real-DB test that runs in CI.
+  - 9 + 4 mutants, all red.
+  - check:app, every lint and the ratchets pass; the 34-file related batch passes; the build passes.
+  - Bundle 9,808 KB (+10 KB).
+- **Next.**
+  1. Muse audits.
+  2. Leg 3: the feasibility engine with operator-stated timelines.
+  3. Leg 4: the pursue/pass desk.
+  4. Staging proof after the merges.
+
 ## 2026-11-05 — 1099-NEC output gate — on `claude/nec-1099-qualified-gate` (off main `07de793`, PR open, unmerged)
 
 - **Scope.** `POST /api/contractors/1099-nec-batch` now refuses until the NEC threshold is confirmed (founder decision 2026-11-05, `founder-decisions-2026-11-05-nec.md`). The INT generator, its dormant code and the $600 figure are untouched.

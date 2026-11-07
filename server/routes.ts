@@ -212,6 +212,7 @@ import { registerLotBasisRoutes } from "./routes-lot-basis";
 import { registerLotPricingRoutes } from "./routes-lot-pricing";
 import { registerCountyTimelineRoutes } from "./routes-county-timelines";
 import { registerSubdivisionPlanRoutes } from "./routes-subdivision-plans";
+import { registerSubdivisionScreenRoutes } from "./routes-subdivision-screen";
 import { registerCcrTemplateRoutes } from "./routes-ccr-templates";
 import { registerRehabRoutes } from "./routes-rehabs";
 import { registerRehabPhotoRoutes } from "./routes-rehab-photos";
@@ -2472,6 +2473,8 @@ export async function registerRoutes(
   registerCountyTimelineRoutes(app);
   // Subdivider vertical SD-7 — subdivision plans (GeoJSON storage + A/B).
   registerSubdivisionPlanRoutes(app);
+  // Subdivision V1 Leg 1 — the buildability screen (append-only runs, migration 0301).
+  registerSubdivisionScreenRoutes(app);
   // Subdivider vertical SD-8 — CC&R / covenant template library.
   registerCcrTemplateRoutes(app);
   // Fix-and-flip vertical FF-2 — rehab budget builder.

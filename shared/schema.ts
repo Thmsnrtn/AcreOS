@@ -13990,6 +13990,8 @@ export * from "./schema/wholesale";
 // SUBDIVISION VERTICAL — extracted to ./schema/subdivision.ts
 // ============================================================================
 export * from "./schema/subdivision";
+// Subdivision V1 Leg 1 — the buildability screen's append-only run record (migration 0301) — ./schema/subdivision-screen-runs.ts
+export * from "./schema/subdivision-screen-runs";
 
 // ============================================================================
 // FIX-AND-FLIP VERTICAL — extracted to ./schema/fix-and-flip.ts
