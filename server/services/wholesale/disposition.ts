@@ -235,8 +235,13 @@ export async function recordWholesaleOutcome(
     if (!row || row.propertyId !== propertyId) throw new DispositionRefusal("Double-close", 404);
     if (row.status !== "both_closed") throw new DispositionRefusal(`That double-close is ${row.status}, not both_closed.`, 409);
     if (row.bcSidePurchasePriceCents === null) throw new DispositionRefusal("The double-close has no B-C price recorded, so its spread is unknown.", 409);
-    realizedFeeCents = Number(row.bcSidePurchasePriceCents) - Number(row.aSidePurchasePriceCents) - Number(row.transactionalFunderFeeCents ?? 0);
-    detail = row.transactionalFunderFeeCents === null ? "double-closed (no funder fee recorded)" : "double-closed, net of the funder's fee";
+    // An unrecorded funder fee is UNKNOWN, not zero: counting it as 0 would
+    // grade a gross spread as the realised fee. Record 0 when there was no funder.
+    if (row.transactionalFunderFeeCents === null) {
+      throw new DispositionRefusal("Record the transactional funder's fee on the double-close first (0 if there was no funder) — the realised fee is the spread net of it.", 409);
+    }
+    realizedFeeCents = Number(row.bcSidePurchasePriceCents) - Number(row.aSidePurchasePriceCents) - Number(row.transactionalFunderFeeCents);
+    detail = "double-closed, net of the funder's fee";
   } else {
     realizedFeeCents = null;
     detail = "walked away";

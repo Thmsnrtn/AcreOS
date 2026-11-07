@@ -222,6 +222,20 @@ describe.runIf(realDbAvailable)("wholesale disposition packet + outcome — real
       expect(profit!.delta).toBe(250_000);
     });
 
+    it("6b. double close with NO funder fee recorded is refused (unknown is not zero) — writing nothing", async () => {
+      const [dc] = await q`INSERT INTO double_close_deals (organization_id, property_id, a_seller_name, a_side_purchase_price_cents, bc_side_purchase_price_cents, status)
+        VALUES (${org}, ${ids.prop}, 'Sam Seller', 14000000, 15500000, 'both_closed') RETURNING id`;
+      const before = await counts();
+      const res = await outcome(ids.decision, { exit: "double_close", doubleCloseId: dc.id, closedOn: today() });
+      expect(res.status).toBe(409);
+      expect(res.body.message).toMatch(/funder's fee/);
+      expect(await counts()).toEqual(before);
+      await q`UPDATE double_close_deals SET transactional_funder_fee_cents = 0 WHERE id = ${dc.id}`;
+      const ok = await outcome(ids.decision, { exit: "double_close", doubleCloseId: dc.id, closedOn: today() });
+      expect(ok.status).toBe(200);
+      expect(ok.body.realizedFeeCents).toBe(1_500_000);
+    });
+
     it("6. double close: spread net of the funder fee; refused unless both_closed", async () => {
       const [dc] = await q`INSERT INTO double_close_deals (organization_id, property_id, a_seller_name, a_side_purchase_price_cents, bc_side_purchase_price_cents, transactional_funder_fee_cents, status)
         VALUES (${org}, ${ids.prop}, 'Sam Seller', 14000000, 15500000, 150000, 'a_side_closed') RETURNING id`;
