@@ -4,14 +4,11 @@ import App from "./App";
 import { clientLogger } from "@/lib/clientLogger";
 import "./fonts.css";
 import "./index.css";
-// i18n init — side-effect import. Registers `en` resources and configures
-// react-i18next before any component calls `useT()` / `useTranslation()`.
-// AcreOS is English-only today; see docs/i18n-guide.md for adding locales.
-import "@/lib/i18n/config";
 import { initClientSentry } from "./lib/sentry";
 import { initAnalytics } from "./lib/analytics";
 import { capturePendingUtm } from "./lib/acquisition-utm";
 import { installCsrfFetchInterceptor } from "./lib/csrf-fetch";
+import { shouldReloadForChunkFailure } from "./lib/chunkReload";
 import { installClerkSessionRecovery } from "./lib/clerk-session-recovery";
 import { clerkProviderProxyProps } from "./lib/clerkDirect";
 import { installVersionCheck } from "./lib/version-check";
@@ -38,13 +35,28 @@ installClerkSessionRecovery();
 // infinite reload loop by tagging sessionStorage with a per-window cap.
 if (typeof window !== "undefined") {
   const RELOAD_KEY = "acreos:chunk-reloaded-at";
+  // A navigation away aborts in-flight dynamic imports; that abort is not a
+  // stale bundle and must never reload the page being left (lib/chunkReload).
+  // beforeunload also fires for a navigation that is then cancelled, so the
+  // mark expires: a real departure ends the page first; a cancelled one must
+  // not disable the self-heal for the rest of the page's life.
+  let unloading = false;
+  let unloadingTimer: ReturnType<typeof setTimeout> | undefined;
+  const markUnloading = () => {
+    unloading = true;
+    clearTimeout(unloadingTimer);
+    unloadingTimer = setTimeout(() => { unloading = false; }, 5_000);
+  };
+  window.addEventListener("pagehide", markUnloading);
+  window.addEventListener("beforeunload", markUnloading);
+  window.addEventListener("pageshow", () => { unloading = false; });
   const handle = (msg: string) => {
-    if (!/Failed to fetch dynamically imported module|Loading (?:CSS )?chunk|Importing a module script failed|MIME type of "text\/html"/i.test(msg)) {
-      return;
-    }
+    let lastReloadAt = 0;
     try {
-      const last = Number(sessionStorage.getItem(RELOAD_KEY) || 0);
-      if (Date.now() - last < 10_000) return; // already reloaded recently
+      lastReloadAt = Number(sessionStorage.getItem(RELOAD_KEY) || 0);
+    } catch { /* sessionStorage unavailable — treat as never reloaded */ }
+    if (!shouldReloadForChunkFailure({ message: msg, unloading, lastReloadAt, now: Date.now() })) return;
+    try {
       sessionStorage.setItem(RELOAD_KEY, String(Date.now()));
     } catch { /* sessionStorage unavailable — still reload */ }
     window.location.reload();
