@@ -138,6 +138,14 @@ router.post("/complete", async (req: Request, res: Response) => {
       }
     }
 
+    // Flip the durable completion flag BEFORE the slowest, most failure-prone
+    // work (onboarding bounce, 2026-11-05, RC-3). It used to be the last
+    // write, behind the sample-data seed, so a seed that hung or a process
+    // that died mid-seed left an org that had finished the wizard with no
+    // completion record. Ordering only: a seed failure is still reported as
+    // incomplete ("sample data", success: false), exactly as before.
+    await onboardingService.completeOnboarding(org.id);
+
     // Opt-in sample data via the idempotent persona-aware seeder (replaces
     // the old inline non-idempotent seeding that lived in completeOnboarding).
     // `seedSampleData` defaults to true to preserve the prior behavior of
@@ -160,7 +168,6 @@ router.post("/complete", async (req: Request, res: Response) => {
       }
     }
 
-    await onboardingService.completeOnboarding(org.id);
     res.json({
       success: incomplete.length === 0,
       completed: true,
