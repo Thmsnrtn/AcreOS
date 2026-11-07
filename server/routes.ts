@@ -82,6 +82,7 @@ import propertyEnrichmentRouter from "./routes-property-enrichment";
 import decisionsRouter from "./routes-decisions";
 import opportunitiesRouter from "./routes-opportunities";
 import scenariosRouter from "./routes-scenarios";
+import flipDecisionRouter from "./routes-flip-decision";
 import buyAndHoldUnderwritingRouter from "./routes-buy-and-hold-underwriting";
 import exchange1031Router from "./routes-exchange-1031";
 import dunningRouter from "./routes-dunning";
@@ -1466,6 +1467,7 @@ export async function registerRoutes(
   // deterministic scenarios. API surface only; no new customer nav entry.
   app.use('/api/scenarios', isAuthenticated, getOrCreateOrg, scenariosRouter);
   // Vertical underwriting desks (decision-memos/2026-10-04-vertical-program.md).
+  app.use('/api/fix-and-flip', isAuthenticated, getOrCreateOrg, flipDecisionRouter);
   app.use('/api/buy-and-hold', isAuthenticated, getOrCreateOrg, buyAndHoldUnderwritingRouter);
   app.use('/api/exchange-1031', isAuthenticated, getOrCreateOrg, exchange1031Router);
   // FOUNDER-ONLY, and it was not. `client/src/App.tsx` gates the Dunning
