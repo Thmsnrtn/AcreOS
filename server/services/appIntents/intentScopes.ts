@@ -59,8 +59,8 @@ export const INTENT_META: Record<string, { door: CustomerDoor; scope: Scope | nu
   propstream_comps: { door: "map", scope: "deal_read" },
   // tenant_pii_write, NOT deal_read — corrected 2026-08-19. The SAME operation
   // through its REST door (`POST /api/skip-traces`, routes-leads.ts) requires
-  // `tenant_pii_write` plus a purpose, a justification and a current FCRA
-  // §1681b(a)(3)(F) attestation, and persists a `skip_traces` row explicitly
+  // `tenant_pii_write` plus a purpose (FCRA §1681b(a)(2) (written_consent) or §1681b(a)(3) (collection, legitimate_business_need, account_review)),
+  // a justification and a current annual FCRA attestation, and persists a `skip_traces` row explicitly
   // for "class-action defense audit trail". Declared here as `deal_read`, the
   // weakest scope in the ladder, it was reachable by `member`, `va`, `viewer`
   // and `intern` — none of whom hold `tenant_pii_write`. A consumer-report

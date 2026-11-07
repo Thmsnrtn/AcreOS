@@ -15,9 +15,10 @@
 // this table for historical windows and UNIONs the current-tick Map for
 // up-to-the-second numbers.
 //
-// Retention: open question. Default is no automatic purge — the table is
-// small (one row per (route, bucket-minute)). A nightly purge job can be
-// added once we have a year of data.
+// Retention: server/services/apiTelemetryRollup.ts is the single owner —
+// rows older than API_TELEMETRY_RETENTION_DAYS (default 30) are rolled up
+// into api_telemetry_rollup_monthly and then deleted, nightly at 01:00 UTC.
+// jobs/dataRetention.ts does not touch this table (legal-run Leg 6.3).
 // ============================================================================
 
 import {

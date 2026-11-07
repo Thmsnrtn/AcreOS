@@ -15,6 +15,7 @@ import request from "supertest";
 import { readFileSync } from "node:fs";
 import { stripComments } from "../helpers/stripComments";
 import { FROZEN_ROUTES } from "@shared/feature-freeze";
+import { clientRoutes } from "../helpers/clientRoutes";
 
 vi.mock("../../server/services/featureFlags", () => ({
   featureFlagService: { isEnabled: vi.fn(async () => false) },
@@ -61,6 +62,23 @@ describe("the investor network is behind the marketplace ladder", () => {
       expect(middle, `${verb.toUpperCase()} ${path}`).toContain("investorNetworkLadder");
     }
     expect(src).toMatch(/const investorNetworkLadder = requireLadderFlag\("feature_marketplace"\)/);
+  });
+
+  it("every frozen route the router registers renders through FlaggedRoute", () => {
+    // FROZEN_ROUTES is only consulted by FlaggedRoute (via isRouteEnabled).
+    // /investor-network sat in FROZEN_ROUTES while App.tsx rendered it through
+    // a bare ProtectedRoute, so a signed-in non-founder with the direct URL got
+    // the directory UI. Membership in the list proved nothing about the render
+    // layer — this asserts the wrapper, over every frozen route App.tsx parses.
+    const routes = clientRoutes();
+    const frozenRegistered = routes.filter((r) => FROZEN_ROUTES.includes(r.path));
+    // Vacuity: the three frozen siblings that still have a <Route>.
+    expect(frozenRegistered.map((r) => r.path).sort()).toEqual(
+      expect.arrayContaining(["/capital-markets", "/investor-network", "/marketplace"]),
+    );
+    for (const r of frozenRegistered) {
+      expect(r.kind, `${r.path} (App.tsx:${r.line}) bypasses the freeze`).toBe("flagged");
+    }
   });
 
   it("the client route is frozen and no in-app link points at it", () => {
