@@ -292,6 +292,7 @@ exports[`route manifest > snapshot: sorted manifest file paths (additions/remova
   "routes-voice-learning.ts",
   "routes-well-known.ts",
   "routes-white-label.ts",
+  "routes-wholesale-disposition.ts",
   "routes-wholesale-underwriting.ts",
   "routes-wholesaler-dashboard.ts",
   "routes-wholesaler-rules.ts",
