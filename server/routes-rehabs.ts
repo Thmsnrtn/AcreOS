@@ -37,6 +37,7 @@ import { logger } from "./utils/logger";
 import { clock } from "./utils/clock";
 import { routeParam } from "./utils/routeParams";
 import { refuseRedeemableDeedSpend } from "./services/tax/landExit";
+import { patchSchemaOf } from "./utils/updatePayload";
 
 // ----------------------------------------------------------------------------
 // Scope templates — a STARTING SCOPE, not an estimate.
@@ -149,7 +150,7 @@ const createRehabSchema = z.object({
   lenderRateBps: z.coerce.number().int().nonnegative().optional(),
 });
 
-const updateRehabSchema = createRehabSchema.partial().omit({ propertyId: true });
+const updateRehabSchema = patchSchemaOf(createRehabSchema).omit({ propertyId: true });
 
 const lineItemSchema = z.object({
   category: z.enum(REHAB_LINE_CATEGORIES),
@@ -163,7 +164,7 @@ const lineItemSchema = z.object({
   notes: z.string().optional().nullable(),
 });
 
-const lineItemUpdateSchema = lineItemSchema.partial();
+const lineItemUpdateSchema = patchSchemaOf(lineItemSchema);
 
 const seedTemplateSchema = z.object({
   templateKey: z.string(),
