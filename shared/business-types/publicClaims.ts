@@ -78,11 +78,11 @@ const OD5 =
  * land_deal scenario and a decision under the land pack citing it, now with an
  * operator-chosen review date (evidence rule v2,
  * decision-memos/2026-10-04-vertical-program.md).
- * NOT released: `buy_and_hold` (COO ruling 2026-10-21 under the founder's
- * delegation). Its underwriting surface is held back on
- * claude/buy-and-hold-underwriting until the vertical has end-to-end journey
- * evidence in the Readiness Atlas; the 2026-10-20 founder decision lifted the
- * stop rule for the LAND vertical only.
+ * Released: `buy_and_hold`, 2026-11-05, by founder decision after its
+ * post-merge staging journey proof (Leg 3) passed on the c8fa715 deploy. Its
+ * underwriting desk (server/routes-buy-and-hold-underwriting.ts) records a
+ * rental_acquisition scenario and a decision under the buy_and_hold pack citing
+ * it. docs/company/founder-decisions-2026-11-05-buy-and-hold.md, addendum.
  */
 export const PUBLIC_CLAIM_DEMOTIONS: Partial<
   Record<BusinessTypeId, PublicClaimDemotion>
@@ -90,7 +90,6 @@ export const PUBLIC_CLAIM_DEMOTIONS: Partial<
   note_investor: { to: "beta", reason: OD5, decidedOn: "2026-08-17" },
   hybrid: { to: "beta", reason: OD5, decidedOn: "2026-08-17" },
   residential_wholesaler: { to: "beta", reason: OD5, decidedOn: "2026-08-17" },
-  buy_and_hold: { to: "beta", reason: OD5, decidedOn: "2026-08-17" },
   short_term_rental: { to: "beta", reason: OD5, decidedOn: "2026-08-17" },
   commercial: { to: "beta", reason: OD5, decidedOn: "2026-08-17" },
   creative_finance: { to: "beta", reason: OD5, decidedOn: "2026-08-17" },
