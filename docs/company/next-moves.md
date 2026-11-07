@@ -62,6 +62,19 @@ what shipped, what it measured, and the top next moves. Newest first.
 - **Unchanged.** Route checks, so the onboarding bounce stays visible.
 - **Next.** Founder dispatches proof run 4. The honesty proof needs a GREEN run whose report shows the class FIRED and was dismissed.
 
+## 2026-11-05 — DEFECT-455-1: last two "Acquisition Radar" lines out of growth email copy — on `claude/defect-455-1-acquisition-radar-copy` (PR open, unmerged)
+
+- **Scope.** Copy only. `server/jobs/growthAutomation.ts`: removed the "Acquisition Radar" bullet from win-back touch 2 (`runWinBackEngine`) and from the churn re-engagement email (`runChurnRiskInterventions`). No logic, schedule, recipient or send change. The job has zero recorded sends.
+- **Proved.** `winBackCopyIsHonest.test.ts` now forbids `/acquisition[\s-]*radar/i` across every literal in the job. Red with both lines restored, and red with a hyphenated variant reintroduced in the churn email only.
+- **Other live references (reported, not fixed).**
+  - `server/services/contextProfile.ts` still names Acquisition Radar in `suggestedModules` (wholesaler, auction_hunter) and a quick action linking to `/radar`. Served by the context-profile API; `useContextProfile` has no client consumer found.
+  - `server/services/agentOrchestration.ts` names agent sessions `Acquisition Radar - <county>` — an internal session label, not advertising.
+  - The client changelog entry (2026-02-26) is historical and stays.
+- **Next.**
+  1. Audit the PR; founder merges.
+  2. Check whether the churn email's "Atlas AI — automatically finds deals overnight" holds against what ships.
+  3. Decide whether to clean `contextProfile.ts`.
+
 ## 2026-11-03 — Buy-and-hold release: desk ported + mounted, wiring as links — on `claude/buy-and-hold-release` (off main `f7f2e3f`, PR #458, unmerged; blocker resolved 2026-11-05 by Option B)
 
 - **What shipped on the branch.**
