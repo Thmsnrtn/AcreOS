@@ -28,6 +28,15 @@ what shipped, what it measured, and the top next moves. Newest first.
   3. Leg 4: the pursue/pass desk.
   4. Staging proof after the merges.
 
+## 2026-11-05 — 1099-NEC output gate — on `claude/nec-1099-qualified-gate` (off main `07de793`, PR open, unmerged)
+
+- **Scope.** `POST /api/contractors/1099-nec-batch` now refuses until the NEC threshold is confirmed (founder decision 2026-11-05, `founder-decisions-2026-11-05-nec.md`). The INT generator, its dormant code and the $600 figure are untouched.
+- **Mechanism.** `requireQualified1099Output(form)` — one gate, one flag per form (`QUALIFIED_1099_GATES`). INT keeps `tax.1099int.direction_reviewed`, its message and details byte-identical (default arg, so INT call sites are unchanged). NEC reads `tax.1099nec.threshold_confirmed` and refuses with NEC-specific text (`reason: nec_threshold_unconfirmed`).
+- **Proved.** `nec1099QualifiedOutputGate.test.ts` drives the real route: 422, no org read, no batch query, no PDF, no "generated" log; INT flag does not open NEC and vice versa; fails closed; founder passes. Four mutants caught (gate removed, NEC reading the INT flag, NEC carrying INT text, a route-local divergent flag).
+- **Next.**
+  1. Decide whether the GET preview (contractors "over $600" + `thresholdCents`) should also be gated — flagged in the PR, not done.
+  2. When K13 confirms the figure: set `NEC_THRESHOLD_CENTS`, null `NEC_THRESHOLD_REVIEW_NOTE`, then turn the NEC flag on.
+
 ## 2026-11-05 — CJ harness: answer the "How Pax works" dialog before composer assertions — on `claude/cj1-dismiss-ai-disclosure` (off main `c8fa715`, PR open, unmerged)
 
 - **Scope.** Harness only. The CJ audit was red three runs running. Decomposing run 42104190391 found 7 composer-topmost failures, the largest single cause. Each had `inViewport: true`. The first-visit AI-disclosure dialog (`AiDisclosureGate`, app shell) sat over /ai, so `elementFromPoint` hit the dialog.
@@ -69,6 +78,19 @@ what shipped, what it measured, and the top next moves. Newest first.
   - The `blob:` entry (`767f47f1-…`) has no network entry, so it still fails if it recurs.
 - **Unchanged.** Route checks, so the onboarding bounce stays visible.
 - **Next.** Founder dispatches proof run 4. The honesty proof needs a GREEN run whose report shows the class FIRED and was dismissed.
+
+## 2026-11-05 — DEFECT-455-1: last two "Acquisition Radar" lines out of growth email copy — on `claude/defect-455-1-acquisition-radar-copy` (PR open, unmerged)
+
+- **Scope.** Copy only. `server/jobs/growthAutomation.ts`: removed the "Acquisition Radar" bullet from win-back touch 2 (`runWinBackEngine`) and from the churn re-engagement email (`runChurnRiskInterventions`). No logic, schedule, recipient or send change. The job has zero recorded sends.
+- **Proved.** `winBackCopyIsHonest.test.ts` now forbids `/acquisition[\s-]*radar/i` across every literal in the job. Red with both lines restored, and red with a hyphenated variant reintroduced in the churn email only.
+- **Other live references (reported, not fixed).**
+  - `server/services/contextProfile.ts` still names Acquisition Radar in `suggestedModules` (wholesaler, auction_hunter) and a quick action linking to `/radar`. Served by the context-profile API; `useContextProfile` has no client consumer found.
+  - `server/services/agentOrchestration.ts` names agent sessions `Acquisition Radar - <county>` — an internal session label, not advertising.
+  - The client changelog entry (2026-02-26) is historical and stays.
+- **Next.**
+  1. Audit the PR; founder merges.
+  2. Check whether the churn email's "Atlas AI — automatically finds deals overnight" holds against what ships.
+  3. Decide whether to clean `contextProfile.ts`.
 
 ## 2026-11-03 — Buy-and-hold release: desk ported + mounted, wiring as links — on `claude/buy-and-hold-release` (off main `f7f2e3f`, PR #458, unmerged; blocker resolved 2026-11-05 by Option B)
 

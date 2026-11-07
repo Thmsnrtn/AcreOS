@@ -45,6 +45,14 @@ vi.mock("../../server/middleware/getOrCreateOrg", () => ({
 }));
 vi.mock("../../server/middleware/roleGuard", () => ({ requireRole: () => (_q: unknown, _s: unknown, n: () => void) => n() }));
 vi.mock("../../server/services/form1099NecPdf", () => ({ generate1099NecPdf: h.generate }));
+// The route is withheld behind the 1099-NEC threshold determination
+// (nec1099QualifiedOutputGate.test.ts proves the refusal). These tests pin the
+// payer block of a QUALIFIED generation, so the NEC flag is on — and only it.
+vi.mock("../../server/services/featureFlags", () => ({
+  featureFlagService: { isEnabled: async (key: string) => key === "tax.1099nec.threshold_confirmed" },
+  buildFlagContext: () => ({ isFounder: false }),
+}));
+vi.mock("../../server/services/founder", () => ({ isFounderEmail: () => false }));
 vi.mock("../../server/utils/logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
