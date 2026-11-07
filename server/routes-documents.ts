@@ -7,6 +7,7 @@ import { usageMeteringService, creditService } from "./services/credits";
 import { logger } from "./utils/logger";
 import { assertFeeSimpleOrThrow, handleLandStatusError } from "./utils/landStatus";
 import { noteGracePeriodDays } from "@shared/notes/delinquency";
+import { offerComplianceGate, sendComplianceRefusal } from "./services/wholesale/offerCompliance";
 
 /**
  * The LATE CHARGES clause of a generated promissory note.
@@ -263,6 +264,20 @@ export function registerDocumentRoutes(app: Express): void {
       if (!propertyId) {
         return Errors.badRequest(res, "propertyId is required");
       }
+
+      // Assignment compliance (Leg 3): a flyer markets the property. One held
+      // only under an assignable contract is gated by its state's rule; a warn
+      // needs the operator's recorded acknowledgement.
+      const flyerProperty = await storage.getProperty(org.id, Number(propertyId));
+      if (!flyerProperty) return Errors.notFound(res, "Property");
+      const compliance = await offerComplianceGate({
+        organizationId: org.id,
+        userId: req.user?.id ? String(req.user.id) : null,
+        property: { id: flyerProperty.id, status: flyerProperty.status, state: flyerProperty.state },
+        surface: "property_flyer",
+        acknowledged: req.body?.ackComplianceWarning === true,
+      });
+      if (!compliance.ok) return sendComplianceRefusal(res, compliance.status, compliance.body);
       
       // Credit pre-check for PDF generation (5 cents per document)
       const pdfCost = await usageMeteringService.calculateCost("pdf_generated", 1);
