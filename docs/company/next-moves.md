@@ -67,6 +67,20 @@ what shipped, what it measured, and the top next moves. Newest first.
   2. Check whether the churn email's "Atlas AI — automatically finds deals overnight" holds against what ships.
   3. Decide whether to clean `contextProfile.ts`.
 
+## 2026-11-05 — Buy-and-hold beta demotion LIFTED (founder decision) — `claude/buy-and-hold-lift`, PR #471, unmerged
+
+- **Why.** Leg 3's post-merge staging journey passed all 7 steps on the `c8fa715` deploy (`postmerge-458-journey-proof-2026-11-05.md`, COO side), and the founder called the lift.
+- **What changed, in one commit, as the decision file prescribes.**
+  - `PUBLIC_CLAIM_DEMOTIONS.buy_and_hold` removed.
+  - Evidence-ladder entry flipped `surfaced` → `decided`.
+  - The `HELD_PENDING_JOURNEY_PROOF` entry deleted; the register is pinned EMPTY, and the `isHeld` exemption is gone from all three OD-5 assertions.
+  - The landing demotion-count pin went 12 → 11.
+  - An addendum was added to `founder-decisions-2026-11-05-buy-and-hold.md`.
+- **Proved.** Three mutants caught: demotion back (4 red), ladder reverted (3 red), hold re-added (pin red). `npm run check` exits 0.
+- **Next.**
+  1. Muse audits #471. Do not merge from the session.
+  2. Founder: delete `claude/buy-and-hold-underwriting` (item 5 below) now that the proof is in.
+
 ## 2026-11-03 — Buy-and-hold release: desk ported + mounted, wiring as links — on `claude/buy-and-hold-release` (off main `f7f2e3f`, PR #458, unmerged; blocker resolved 2026-11-05 by Option B)
 
 - **What shipped on the branch.**
