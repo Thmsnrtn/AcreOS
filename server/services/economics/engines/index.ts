@@ -29,6 +29,7 @@ import { rentalReturnsEngine } from "./rentalReturns";
 import { multifamilyNoiEngine } from "./multifamilyNoi";
 import { rentalAcquisitionEngine } from "./rentalAcquisition";
 import { subdivisionFeasibilityEngine } from "./subdivisionFeasibility";
+import { notePricingEngine } from "./notePricing";
 
 export const ALL_ENGINES: readonly EngineSpec[] = [
   ...CORE_ENGINES,
@@ -38,4 +39,5 @@ export const ALL_ENGINES: readonly EngineSpec[] = [
   multifamilyNoiEngine,
   rentalAcquisitionEngine,
   subdivisionFeasibilityEngine,
+  notePricingEngine,
 ];
