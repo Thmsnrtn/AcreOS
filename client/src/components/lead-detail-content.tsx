@@ -42,6 +42,7 @@ import { ScoreBreakdownCard, TcpaConsentBadge, TcpaConsentToggle } from "@/pages
 import { StatusBadge, type StatusKind } from "@/components/StatusBadge";
 import { LeadOutreachLanguage } from "@/components/growth/LeadOutreachLanguage";
 import { MakeDealAction } from "@/components/leads/MakeDealAction";
+import { ClickToCallAction } from "@/components/leads/ClickToCallAction";
 import type { Lead } from "@shared/schema";
 
 const LEAD_STATUS_KIND: Record<string, StatusKind> = {
@@ -195,6 +196,11 @@ export function LeadDetailContent({
                           {lead.phone}
                         </a>
                       </dd>
+                      {userPermissions?.permissions.canEditLeads && (
+                        <dd className="mt-2">
+                          <ClickToCallAction leadId={lead.id} leadName={leadName} />
+                        </dd>
+                      )}
                     </div>
                   )}
                 </dl>

@@ -63,11 +63,24 @@ export interface InitiateCallOpts {
   statusCallbackUrl?: string;
   feature?: string;
   externalEventId?: string;
+  /**
+   * Click-to-call bridge. The provider rings `ringFirst` — the operator's own
+   * verified phone — and, when they answer, dials `to` with the same caller
+   * ID. `to` stays the COUNTERPARTY, so every gate below (voice consent, owner
+   * opt-out) keeps asking about the person actually being called.
+   */
+  bridge?: {
+    ringFirst: string;
+    /** Status callback for the counterparty leg (the dialled call). */
+    counterpartyStatusCallbackUrl?: string;
+  };
 }
 
 export interface InitiateCallResult {
   sid: string;
   statusCallbackUrl?: string;
+  /** True when simulation mode recorded the call instead of placing it. */
+  simulated?: boolean;
 }
 
 export interface RentNumberOpts {
@@ -247,7 +260,12 @@ export class CommsRouter {
     let lastErr: unknown;
     for (const name of enabled) {
       const provider = this.registry.get(name);
-      if (!provider || !provider.isConfigured()) continue;
+      // No isConfigured() filter here: a call is always to a counterparty, so
+      // it runs only on the org's OWN connected identity, which the adapter
+      // resolves per org (and refuses without). isConfigured() reports the
+      // PLATFORM account, which a call never uses — filtering on it would skip
+      // a BYO-connected org whenever the platform keys are disconnected.
+      if (!provider) continue;
       try {
         const result = await provider.initiateCall(opts);
         return { ...result, provider: name };

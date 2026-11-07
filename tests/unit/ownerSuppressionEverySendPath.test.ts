@@ -36,6 +36,9 @@ const REGISTER: Record<string, Member[]> = {
   // ── SMS / voice: the carrier adapter AND the router that dispatches to it.
   "server/services/comms/router.ts": [{ channel: "sms", count: 1 }, { channel: "voice", count: 1 }],
   "server/services/comms/providers/twilio.ts": [{ channel: "sms", count: 1 }, { channel: "voice", count: 1 }],
+  // Click-to-call (W3.9): dispatches through the router; re-checks the
+  // counterparty right before dialling.
+  "server/services/clickToCall.ts": [{ channel: "voice", count: 1 }],
   // ── Email: SES (every system and counterparty send), the org's own
   //    Gmail/Outlook mailbox, and the Gmail connector.
   "server/services/emailService.ts": [{ channel: "email", count: 1 }],

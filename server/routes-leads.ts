@@ -1048,6 +1048,44 @@ export function registerLeadRoutes(app: Express): void {
     res.json(activities);
   });
 
+  // ── Click-to-call (W3.9) — on the org's OWN Twilio, gated, logged ──────
+  // GET is the pre-dial verdict (spends nothing, writes nothing); POST re-runs
+  // every gate, scrubs the number and places one bridge call that rings the
+  // operator first. Both refuse honestly; see server/services/clickToCall.ts.
+  api.get("/api/leads/:id/call", isAuthenticated, getOrCreateOrg, requirePermission("canEditLeads"), async (req, res) => {
+    try {
+      const areq = req as AuthenticatedRequest;
+      const leadId = Number(routeParam(req.params.id));
+      if (!Number.isInteger(leadId)) return Errors.badRequest(res, "Invalid lead id");
+      const org = getOrganization(areq);
+      const lead = await storage.getLead(org.id, leadId);
+      if (!lead) return Errors.notFound(res, "Lead");
+      if (assertAssignedLeadWritable(areq, res, lead)) return;
+      const { evaluateCallGate } = await import("./services/clickToCall");
+      res.json(await evaluateCallGate({ organizationId: org.id, leadId, userId: getUserId(areq) }));
+    } catch (err) {
+      return Errors.internal(res, err as Error);
+    }
+  });
+
+  api.post("/api/leads/:id/call", isAuthenticated, getOrCreateOrg, requirePermission("canEditLeads"), idempotencyMiddleware, async (req, res) => {
+    try {
+      const areq = req as AuthenticatedRequest;
+      const leadId = Number(routeParam(req.params.id));
+      if (!Number.isInteger(leadId)) return Errors.badRequest(res, "Invalid lead id");
+      const org = getOrganization(areq);
+      const lead = await storage.getLead(org.id, leadId);
+      if (!lead) return Errors.notFound(res, "Lead");
+      if (assertAssignedLeadWritable(areq, res, lead)) return;
+      const { placeLeadCall } = await import("./services/clickToCall");
+      const result = await placeLeadCall({ organizationId: org.id, leadId, userId: getUserId(areq) });
+      if (!result.placed) return Errors.unprocessable(res, result.reason, { code: result.code, simulated: result.simulated === true });
+      res.json(result);
+    } catch (err) {
+      return Errors.internal(res, err as Error);
+    }
+  });
+
   // POST /api/leads/:id/contact-event — Hank fix.
   // Tap-to-call/text was a raw `tel:`/`sms:` href, so MorningBrief's
   // "Nd since contact" chip, the stale-lead signal, and the lead-score

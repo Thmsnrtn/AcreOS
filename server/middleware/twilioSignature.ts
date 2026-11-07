@@ -375,3 +375,48 @@ export async function verifyInboundTwilioSms(req: Request, res: Response, next: 
   });
   return sendError(res, 401, "UNAUTHORIZED", 'Invalid Twilio signature');
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Call status callbacks (click-to-call): verify with the org's OWN token.
+//
+// A click-to-call is placed on the org's own Twilio account, so Twilio signs
+// its status callbacks with THAT account's auth token. The callback URL names
+// the org (`:orgId`); the request is accepted only when its signature verifies
+// with that org's own token AND the posted AccountSid is that org's account.
+// A callback signed by org A's token therefore cannot be accepted on org B's
+// URL, and nothing is ever verified with the platform token. No token → reject.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface VerifiedTwilioCallCallback {
+  organizationId: number;
+}
+
+export async function verifyOrgTwilioCallCallback(req: Request, res: Response, next: NextFunction) {
+  const signature = req.headers['x-twilio-signature'];
+  const organizationId = Number(req.params?.orgId);
+  if (typeof signature !== 'string' || !signature) {
+    return sendError(res, 401, "UNAUTHORIZED", 'Missing Twilio signature');
+  }
+  if (!Number.isInteger(organizationId) || organizationId <= 0) {
+    return sendError(res, 401, "UNAUTHORIZED", 'Invalid Twilio signature');
+  }
+  let secret: { accountSid: string; authToken: string } | null;
+  try {
+    const { orgTwilioWebhookSecret } = await import('../services/comms/providers/twilio');
+    secret = await orgTwilioWebhookSecret(organizationId);
+  } catch (err) {
+    logger.error('[TwilioSignature] Could not read the organization\'s Twilio identity — rejecting call callback', err instanceof Error ? err : undefined);
+    return sendError(res, 503, "SERVICE_UNAVAILABLE", 'Twilio signature verification unavailable');
+  }
+  if (!secret || !twilioSignatureMatches(twilioSigningPayload(req), signature, secret.authToken)) {
+    logger.warn('[TwilioSignature] Call status callback failed verification', {
+      metadata: { detail: { path: req.originalUrl } },
+    });
+    return sendError(res, 401, "UNAUTHORIZED", 'Invalid Twilio signature');
+  }
+  if (String(req.body?.AccountSid ?? '') !== secret.accountSid) {
+    return sendError(res, 403, "FORBIDDEN", 'Callback is not from this organization\'s Twilio account');
+  }
+  res.locals.twilioCallCallback = { organizationId } satisfies VerifiedTwilioCallCallback;
+  next();
+}

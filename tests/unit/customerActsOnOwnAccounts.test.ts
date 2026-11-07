@@ -71,6 +71,8 @@ describe("population: customer-acting integration files read no platform credent
   const CUSTOMER_ACTING_FILES = [
     "server/services/listingSyndication.ts",
     "server/services/syndicationChannels.ts",
+    // Click-to-call (W3.9): places a call as the customer, on their own Twilio.
+    "server/services/clickToCall.ts",
   ];
   const ALLOWED_ENV = new Set(["APP_URL", "NODE_ENV"]);
 
