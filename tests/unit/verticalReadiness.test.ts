@@ -116,7 +116,10 @@ const evidence: VerticalEvidence = measured;
 // 12 → 11 on 2026-11-03: buy-and-hold's decision desk re-mounted on main
 // (server/routes-buy-and-hold-underwriting.ts), so its measured evidence
 // reaches `decided`.
-const MATURITY_OVERCLAIM_BASELINE = 11;
+// 11 → 10 on 2026-11-05: the wholesale decision desk mounted
+// (server/routes-wholesale-underwriting.ts, engine wholesale_mao), so
+// residential_wholesaler's measured evidence reaches `decided`.
+const MATURITY_OVERCLAIM_BASELINE = 10;
 
 /**
  * HELD PENDING JOURNEY PROOF (founder decision 2026-11-05, Option B —
@@ -145,6 +148,11 @@ const HELD_PENDING_JOURNEY_PROOF: Partial<Record<BusinessTypeId, { heldSince: st
     heldSince: "2026-11-05",
     reviewBy: "2026-12-31",
     decision: "docs/company/founder-decisions-2026-11-05-buy-and-hold.md",
+  },
+  residential_wholesaler: {
+    heldSince: "2026-11-05",
+    reviewBy: "2026-12-31",
+    decision: "docs/company/founder-decisions-2026-11-05-wholesale.md",
   },
 };
 const isHeld = (id: string) => id in HELD_PENDING_JOURNEY_PROOF;
@@ -506,7 +514,7 @@ describe("held pending journey proof — code-decided, claim still beta, and dat
   it("the register is exactly the founder-decided set", () => {
     // Adding a vertical here bypasses OD-5 for it. That is a founder decision,
     // so the set is pinned and widening it fails until this line is changed.
-    expect(held.map(([id]) => id)).toEqual(["buy_and_hold"]);
+    expect(held.map(([id]) => id)).toEqual(["buy_and_hold", "residential_wholesaler"]);
   });
 
   it.each(held)("%s measures `decided` — a hold over an unclosed vertical is stale", (id) => {

@@ -3,6 +3,45 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-11-05/06 — Wholesale vertical build-out, Legs 1–5 — PRs #474 (L1), #476 (L2), #475 (L3), #477 (L4, stacked on L1), Leg 5 stack PR; all unmerged, Muse audits first
+
+- **What shipped (one branch per leg, off main `c8fa715`).**
+  - **L1 #474 — `wholesale_mao` engine + desk.**
+    - offer = min(seller-side MAO, buyer-side MAO) − the labelled fee. Both sides use `computeMao`, with no defaults.
+    - `POST /api/wholesale/underwrite` goes through the kit, with comp/ARV/fee evidence frozen as user assumptions.
+    - `residential_wholesaler` is now held at beta in `HELD_PENDING_JOURNEY_PROOF` (review by 2026-12-31). Baseline 11 → 10.
+  - **L2 #476 — versioned buy box + triage.** One append-only table, `wholesale_buy_boxes` (0301; coordinator-approved). Table-count 748 → 749. Triage uses named reasons; unknowns are never counted; stale candidates retire.
+  - **L3 #475 — compliance gate on every offer path.**
+    - Covers the blast, listing create/publish/syndicate, the flyer, the channel sync, and buyer-match announcements.
+    - Acknowledgements are recorded in `audit_log`, and the action is refused if the write fails.
+    - The existing document gates now record acks too.
+  - **L4 #477 — disposition packet + outcome.**
+    - The packet price is re-derived at draft time, and a pass decision never prices one.
+    - The packet goes out only through the blast lane.
+    - The outcome fee is read from the signed assignment or the double-close record and graded through `recordOutcome`.
+  - **L5 (stack) — staging walk script + local rehearsal.** The script is `docs/evidence/2026-11-05/wholesale-journey-walk.md`; the rehearsal test is `wholesaleJourney.realdb.test.ts`.
+- **Proved here.**
+  - Every leg has falsifying tests that fail on pre-leg code, and both-directions tests on every gate.
+  - Real-DB tests ran against a local Postgres 16 built from the repo.
+  - An independent audit found two real defects, both fixed: buyer-match emails were ungated, and a pass decision priced the packet.
+- **Not proved / not run.**
+  - Staging: no credentials in-session, so the staging rows of `wholesaler_state_rules` are unverified (the repo seed holds 13 states).
+  - `check:tests`: OOM-killed in the 8 GB sandbox; CI must verify it.
+- **Blocking decision: bundle.**
+  - Each leg alone is ≤ 9,823 KB. The full stack is **9,828 KB**, 5 KB over a ceiling that only goes down.
+  - Recommended: a separate bundle-trim PR before the last leg lands (the precedent is the 2026-11-02 jsPDF stubs). The alternative is a founder-approved ceiling change.
+- **Findings left open (in the PRs).**
+  - The gate keys on the operator-set `under_contract` status. A property mislabelled `listed` bypasses it.
+  - There is no ack UI on listing create/publish/syndicate or the flyer. These fail closed with a named 409 in warn states.
+  - The wholesale outcome endpoint has no client caller yet; Today's generic prompt still records a typed fee.
+  - The dormant marketplace `createListing` is ungated (it sits behind a ladder flag).
+  - A null funder fee is counted as 0 in a double-close spread (the summary says so).
+  - The engine can emit a negative MAO; it should refuse instead.
+  - On staging, an IL assignment on the contract chain is refused earlier with `STATE_NOT_CONFIGURED` (no reviewed IL template).
+- **Next.**
+  1. Muse audits the five PRs. Decide the bundle question. Merge in order L1 → L3 → L2 → L4 (retarget #477 to main).
+  2. Staging deploys; run the walk script; write the Atlas row.
+  3. The founder decides the beta lift, in its own PR: delete the register entry, lift the demotion and flip the ladder together.
 ## 2026-11-05 — 1099-NEC output gate — on `claude/nec-1099-qualified-gate` (off main `07de793`, PR open, unmerged)
 
 - **Scope.** `POST /api/contractors/1099-nec-batch` now refuses until the NEC threshold is confirmed (founder decision 2026-11-05, `founder-decisions-2026-11-05-nec.md`). The INT generator, its dormant code and the $600 figure are untouched.

@@ -22,6 +22,7 @@ import { logger } from "../utils/logger";
 // fresh-insert branch below (never on the update-existing branch, or a re-run
 // re-fires) — see services/buyerEvents.ts.
 import { emitBuyerMatchCreated } from "./buyerEvents";
+import { unattendedOfferRefusal } from "./wholesale/offerCompliance";
 import { clock } from "../utils/clock";
 
 import { meteredChatCompletion } from "./aiSpendGuard";
@@ -310,10 +311,16 @@ export class BuyerMatchingAIService {
         // buyer.match_created. The update-existing branch above deliberately
         // does not, so a re-run of the matcher never re-fires.
         const matchedProperty = propertiesById.get(result.propertyId);
-        emitBuyerMatchCreated(inserted, {
-          propertyAddress: matchedProperty?.address ?? null,
-          ...buyerContact,
-        });
+        // Assignment compliance (Leg 3): the event emails the buyer, so it is an
+        // outward offer. Nobody is present to acknowledge a warn, so a property
+        // under contract in a block OR warn state is matched (internal) but not
+        // announced.
+        if (matchedProperty && !(await unattendedOfferRefusal(matchedProperty))) {
+          emitBuyerMatchCreated(inserted, {
+            propertyAddress: matchedProperty.address ?? null,
+            ...buyerContact,
+          });
+        }
       }
     }
 
@@ -427,10 +434,13 @@ export class BuyerMatchingAIService {
         // does not, so a re-run of the matcher never re-fires.
         const matchedBuyer = buyersById.get(result.buyerProfileId);
         const contact = await this.resolveBuyerContact(organizationId, matchedBuyer);
-        emitBuyerMatchCreated(inserted, {
-          propertyAddress: property.address ?? null,
-          ...contact,
-        });
+        // Assignment compliance (Leg 3): see the buyer-side branch above.
+        if (!(await unattendedOfferRefusal(property))) {
+          emitBuyerMatchCreated(inserted, {
+            propertyAddress: property.address ?? null,
+            ...contact,
+          });
+        }
       }
     }
 
