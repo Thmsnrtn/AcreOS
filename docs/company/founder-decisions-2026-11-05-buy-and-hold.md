@@ -39,3 +39,26 @@ one entry is `buy_and_hold`.
 
 **Not decided here:** lifting the `beta` claim. That stays Tom's call, on the
 Atlas evidence, after Leg 3.
+
+## Addendum — 2026-11-05: the hold is lifted
+
+**Decision:** the founder lifted the buy-and-hold `beta` demotion on
+2026-11-05. The founder made this call; it was relayed in the build session
+and carried out as §1 prescribes ("How the hold ends").
+
+- **Evidence:** Leg 3's post-merge staging journey proof passed all 7 steps on
+  the `c8fa715` deploy, on a fresh org: activate → intake → underwrite with a
+  recorded decision → the decision persists → pipeline/units → review due →
+  outcome recorded. The record is `postmerge-458-journey-proof-2026-11-05.md`,
+  kept on the COO side (not in this repo). This meets the register's condition
+  inside its 2026-12-31 `reviewBy` window.
+- **What changed, in one commit:**
+  - `PUBLIC_CLAIM_DEMOTIONS.buy_and_hold` removed
+    (`shared/business-types/publicClaims.ts`);
+  - the buy_and_hold evidence-ladder entry flipped from "surfaced" to "decided"
+    (`shared/governance/evidenceLadder.ts`);
+  - the buy_and_hold entry deleted from `HELD_PENDING_JOURNEY_PROOF`
+    (`tests/unit/verticalReadiness.test.ts`). The register is now pinned empty,
+    and the OD-5 assertions hold with no exemption: reinstating the demotion or
+    a hold fails the gate until a new founder decision changes it.
+- **Not changed:** product code, pricing, and every other vertical.
