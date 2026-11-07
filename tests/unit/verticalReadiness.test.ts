@@ -139,15 +139,17 @@ const MATURITY_OVERCLAIM_BASELINE = 11;
  *   - it expires: after `reviewBy` the gate fails until the founder lifts the
  *     claim on the Atlas row or re-dates the hold;
  *   - the register is pinned: adding a vertical here is a founder decision.
+ *
+ * LIFTED 2026-11-05 (founder decision, addendum to the file above): buy_and_hold's
+ * post-merge staging journey proof passed, so its demotion was removed, its
+ * ladder entry flipped to "decided" and its entry here deleted, in one commit.
+ * The register is now EMPTY and pinned empty, and nothing below consults it:
+ * the OD-5 assertions ("no demotion is stale", "covers exactly", the ladder
+ * agreement) hold with no exemption at all. A future hold therefore needs a new
+ * founder decision AND a deliberate re-wiring of the exemption — it cannot come
+ * back by adding a line here.
  */
-const HELD_PENDING_JOURNEY_PROOF: Partial<Record<BusinessTypeId, { heldSince: string; reviewBy: string; decision: string }>> = {
-  buy_and_hold: {
-    heldSince: "2026-11-05",
-    reviewBy: "2026-12-31",
-    decision: "docs/company/founder-decisions-2026-11-05-buy-and-hold.md",
-  },
-};
-const isHeld = (id: string) => id in HELD_PENDING_JOURNEY_PROOF;
+const HELD_PENDING_JOURNEY_PROOF: Partial<Record<BusinessTypeId, { heldSince: string; reviewBy: string; decision: string }>> = {};
 
 describe("the evidence scan is real (vacuity guards, first)", () => {
   it("found the workflow templates the engine defines", () => {
@@ -438,9 +440,7 @@ describe("no PUBLIC claim outruns the evidence (OD-5)", () => {
     // pointing the other way.
     const stale = Object.keys(PUBLIC_CLAIM_DEMOTIONS).filter((id) => {
       const meta = BUSINESS_TYPES[id as BusinessTypeId];
-      // A vertical held pending its journey proof keeps its demotion on
-      // purpose; the held-register block below holds it to its own rules.
-      return readinessOf(meta, evidence) === "decided" && !isHeld(id);
+      return readinessOf(meta, evidence) === "decided";
     });
     expect(
       stale,
@@ -455,7 +455,7 @@ describe("no PUBLIC claim outruns the evidence (OD-5)", () => {
     // neither a vertical missing (an overclaim) nor an extra one (an
     // understatement) can pass.
     const cannotShowCore = BUSINESS_TYPE_IDS.filter(
-      (id) => readinessOf(BUSINESS_TYPES[id], evidence) !== "decided" || isHeld(id),
+      (id) => readinessOf(BUSINESS_TYPES[id], evidence) !== "decided",
     ).sort();
     expect(Object.keys(PUBLIC_CLAIM_DEMOTIONS).sort()).toEqual(cannotShowCore);
   });
@@ -475,9 +475,8 @@ describe("the Evidence Ladder states the same vertical truth (one rule, not two)
   });
 
   it("a ladder entry claims the loop exactly when the measurement says `decided`", () => {
-    // A held vertical's ladder waits for the journey proof, like its claim.
     const disagree = BUSINESS_TYPE_IDS.filter(
-      (id) => /closes the canonical loop/.test(entry(id)?.claim ?? "") !== (decided(id) && !isHeld(id)),
+      (id) => /closes the canonical loop/.test(entry(id)?.claim ?? "") !== decided(id),
     ).map((id) => `${id}: ladder "${entry(id)?.claim}", measured ${readinessOf(BUSINESS_TYPES[id], evidence)}`);
     expect(disagree).toEqual([]);
   });
@@ -499,40 +498,32 @@ describe("the Evidence Ladder states the same vertical truth (one rule, not two)
   });
 });
 
-describe("held pending journey proof — code-decided, claim still beta, and dated", () => {
+describe("held pending journey proof — the register is empty since the 2026-11-05 lift", () => {
   const entry = (id: string) => CAPABILITIES.find((c) => c.id === `vertical.${id}`);
-  const held = Object.entries(HELD_PENDING_JOURNEY_PROOF) as Array<[BusinessTypeId, { heldSince: string; reviewBy: string; decision: string }]>;
 
-  it("the register is exactly the founder-decided set", () => {
-    // Adding a vertical here bypasses OD-5 for it. That is a founder decision,
-    // so the set is pinned and widening it fails until this line is changed.
-    expect(held.map(([id]) => id)).toEqual(["buy_and_hold"]);
+  it("the register is pinned empty — a new hold is a new founder decision", () => {
+    // buy_and_hold's hold ended on 2026-11-05. Nothing above consults this
+    // register any more, so an entry here would exempt nothing; adding one
+    // fails here first, and reinstating the exemption is a visible code change.
+    expect(Object.keys(HELD_PENDING_JOURNEY_PROOF)).toEqual([]);
   });
 
-  it.each(held)("%s measures `decided` — a hold over an unclosed vertical is stale", (id) => {
-    expect(BUSINESS_TYPE_IDS).toContain(id);
-    expect(readinessOf(BUSINESS_TYPES[id], evidence)).toBe("decided");
+  it("buy_and_hold is released: measured `decided`, no public demotion, and the ladder claims the loop", () => {
+    // The lifted state, pinned by name so that reinstating the demotion or
+    // reverting the ladder entry fails here as well as in the OD-5 rules above.
+    expect(readinessOf(BUSINESS_TYPES.buy_and_hold, evidence)).toBe("decided");
+    expect(PUBLIC_CLAIM_DEMOTIONS.buy_and_hold).toBeUndefined();
+    expect(entry("buy_and_hold"), "no ladder entry for buy_and_hold").toBeDefined();
+    expect(entry("buy_and_hold")!.claim).toMatch(/closes the canonical loop/);
+    expect(entry("buy_and_hold")!.caveat ?? "").not.toMatch(/public claim is beta/);
   });
 
-  it.each(held)("%s keeps its public demotion at `beta` — lifting it ends the hold", (id) => {
-    expect(PUBLIC_CLAIM_DEMOTIONS[id]?.to).toBe("beta");
-  });
-
-  it.each(held)("%s's ladder entry does not claim the loop until the journey proof", (id) => {
-    expect(entry(id), `no ladder entry for ${id}`).toBeDefined();
-    expect(entry(id)!.claim).not.toMatch(/closes the canonical loop/);
-  });
-
-  it.each(held)("%s is dated, cites its decision, and has not expired", (id, h) => {
-    expect(h.heldSince).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    expect(h.reviewBy).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    expect(h.reviewBy > h.heldSince).toBe(true);
-    expect(fs.existsSync(path.resolve(__dirname, "../..", h.decision)), h.decision).toBe(true);
-    expect(
-      Date.now() < Date.parse(`${h.reviewBy}T23:59:59Z`),
-      `${id}'s hold expired on ${h.reviewBy}. Run the journey proof and lift the claim on the Atlas row, ` +
-        "or have the founder re-date the hold — do not move the date to get green.",
-    ).toBe(true);
+  it("the lift is recorded in the founder decision file", () => {
+    const doc = fs.readFileSync(
+      path.resolve(__dirname, "../..", "docs/company/founder-decisions-2026-11-05-buy-and-hold.md"),
+      "utf8",
+    );
+    expect(doc).toMatch(/## Addendum — 2026-11-05: the hold is lifted/);
   });
 });
 
