@@ -138,7 +138,14 @@ test.describe("Today's first-value call to action", () => {
 
       // Activate it as a person does — an in-app navigation, not a page load.
       await cta.click();
-      await expect(page).toHaveURL(/\/notes(\?|$)/);
+      // The in-app navigation's pushState runs inside a View Transition's
+      // update callback (client/src/lib/view-transitions.ts), i.e. after the
+      // old page is captured. On a loaded CI runner that took ~5.1 s at
+      // desktop width (trace, PR #465 run 42341097494: click done 274.866 s,
+      // URL still /today at 274.937 s, /notes?action=new at 279.954 s), past
+      // expect's default 5 s. Same budget as the file-picker check below; the
+      // assertion itself is unchanged: the URL must reach /notes.
+      await expect(page).toHaveURL(/\/notes(\?|$)/, { timeout: 15_000 });
       await expect(
         page.locator('[data-testid="note-tape-file"]'),
         "the note-tape import (its file picker) is open after the in-app navigation",

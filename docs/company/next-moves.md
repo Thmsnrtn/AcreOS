@@ -3,6 +3,16 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-11-07 — E2E: first-value CTA URL check gets the spec's own 15 s budget — `claude/e2e-first-value-cta-url-timeout`, unmerged
+
+- **Why.** `today-first-value-cta.spec.ts` (from #460) failed Mobile navigation smoke on #471 and then on #465, both times on the desktop-1440 variant and all 3 tries. Both PRs are unrelated, and the same code also passed.
+- **Root cause, from the CI trace** (#465 run 42341097494):
+  - The click finished at 274.866 s.
+  - The URL was still `/today` at 274.937 s and was `/notes?action=new` by 279.954 s, about 5.1 s after the click. The default `expect` timeout is 5 s.
+  - In-app `pushState` runs inside a View Transition's update callback (`client/src/lib/view-transitions.ts`), so on a loaded runner the URL lands late.
+- **Change.** `toHaveURL(/\/notes(\?|$)/, { timeout: 15_000 })`, the same budget as the file-picker check that follows it. The assertion is otherwise unchanged. Locally the spec passes 3/3.
+- **Next.** Muse audits it. If ~5 s in-app navigations under load ever show up on real devices, that is a View Transitions perf question, not a test question.
+
 ## 2026-11-05 — 1099-NEC output gate — on `claude/nec-1099-qualified-gate` (off main `07de793`, PR open, unmerged)
 
 - **Scope.** `POST /api/contractors/1099-nec-batch` now refuses until the NEC threshold is confirmed (founder decision 2026-11-05, `founder-decisions-2026-11-05-nec.md`). The INT generator, its dormant code and the $600 figure are untouched.
