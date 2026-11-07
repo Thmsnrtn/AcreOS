@@ -83,7 +83,7 @@ what shipped, what it measured, and the top next moves. Newest first.
   2. Check whether the churn email's "Atlas AI — automatically finds deals overnight" holds against what ships.
   3. Decide whether to clean `contextProfile.ts`.
 
-## 2026-11-05 — Buy-and-hold beta demotion LIFTED (founder decision) — `claude/buy-and-hold-lift`, PR #471, unmerged
+## 2026-11-05 — Buy-and-hold beta demotion LIFTED (founder decision) — PR #471, MERGED 2026-11-07 (squash `ba92b5e`)
 
 - **Why.** Leg 3's post-merge staging journey passed all 7 steps on the `c8fa715` deploy (`postmerge-458-journey-proof-2026-11-05.md`, COO side), and the founder called the lift.
 - **What changed, in one commit, as the decision file prescribes.**
@@ -94,8 +94,15 @@ what shipped, what it measured, and the top next moves. Newest first.
   - An addendum was added to `founder-decisions-2026-11-05-buy-and-hold.md`.
 - **Proved.** Three mutants caught: demotion back (4 red), ladder reverted (3 red), hold re-added (pin red). `npm run check` exits 0.
 - **Next.**
-  1. Muse audits #471. Do not merge from the session.
-  2. Founder: delete `claude/buy-and-hold-underwriting` (item 5 below) now that the proof is in.
+  1. ~~Muse audits #471.~~ Merged 2026-11-07. Muse is running the post-merge staging proof of the lift.
+  2. The Atlas row is finalised in `docs/evidence/2026-11-03/buy-and-hold-release.md` ("Atlas row — final").
+  3. **Parked:** delete `claude/buy-and-hold-underwriting` (item 5 below) only after Muse confirms the post-merge staging proof (COO direction 2026-11-07).
+  4. **For Muse/Tom — public copy outside the app still says beta or roadmap.** The landing follows `PUBLIC_CLAIM_DEMOTIONS` automatically; these hand-written drafts do not, and none was edited, since public claims are a founder/COO call:
+     - `docs/marketing/linkedin-org-page-setup.md` (lines 8, 43, 66, 146, 196: beta);
+     - `docs/marketing/x-threads/01-six-tabs-one-thread.md:35` (roadmap);
+     - `docs/marketing/x-threads/03-beta-is-on-the-page.md:51`;
+     - `docs/marketing/blog/the-buy-box-defined-six-filters.md:129,140`;
+     - `docs/internal/marketing-os/05-current-state.md:61` (roadmap).
 
 ## 2026-11-03 — Buy-and-hold release: desk ported + mounted, wiring as links — on `claude/buy-and-hold-release` (off main `f7f2e3f`, PR #458, unmerged; blocker resolved 2026-11-05 by Option B)
 
