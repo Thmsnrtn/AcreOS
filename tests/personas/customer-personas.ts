@@ -618,7 +618,7 @@ const SEEDS: PersonaSeed[] = [
     device: "ipad-portrait",
     tier: "free",
     businessType: "short_term_rental",
-    narrative: "Airbnb operator; STR is now CORE — a reservations ledger (record + channel-CSV import), occupancy/ADR/RevPAR, per-stay P&L off the measured expense axis, idempotent turnover-cleaning tasks on the reservation.checkout emitter, and operator-set nightly pricing — every number refusing rather than fabricating (ADR null with zero booked nights, opex line null without measured expenses, expected revenue null without a set rate), all behind the Rentals doors' Bookings tab. OTA channel sync and dynamic/market pricing are disclosed out of scope.",
+    narrative: "Airbnb operator; on the Rentals doors' Bookings tab they record a stay by hand, see occupancy/ADR/RevPAR, change a stay's status (checking out fires the reservation.checkout workflow trigger) and open a per-stay P&L off the measured expense axis — every number refusing rather than fabricating (ADR null with zero booked nights, net null while a fee or the operating expenses are unrecorded). The channel-CSV importer and turnover generation have API routes but no screen yet; the per-stay pricing route was deleted (W2-STR). OTA channel sync and dynamic/market pricing are out of scope.",
     goals: ["Reach Today + Finance", "See honest roadmap framing", "Reach the shared Rentals module", "No crash on suppressed modules"],
     expect: {
       financeHero: "projectPnl",
