@@ -20,6 +20,15 @@ what shipped, what it measured, and the top next moves. Newest first.
   1. Muse audits the PR; then merge, staging-only deploy.
   2. Coordinator proof on staging: throttled fresh-user repro, direct loads in both directions, a CJ run with zero bounce signatures. If CJ is red only on harness buckets, report exactly that.
 
+## 2026-11-05 — 1099-NEC output gate — on `claude/nec-1099-qualified-gate` (off main `07de793`, PR open, unmerged)
+
+- **Scope.** `POST /api/contractors/1099-nec-batch` now refuses until the NEC threshold is confirmed (founder decision 2026-11-05, `founder-decisions-2026-11-05-nec.md`). The INT generator, its dormant code and the $600 figure are untouched.
+- **Mechanism.** `requireQualified1099Output(form)` — one gate, one flag per form (`QUALIFIED_1099_GATES`). INT keeps `tax.1099int.direction_reviewed`, its message and details byte-identical (default arg, so INT call sites are unchanged). NEC reads `tax.1099nec.threshold_confirmed` and refuses with NEC-specific text (`reason: nec_threshold_unconfirmed`).
+- **Proved.** `nec1099QualifiedOutputGate.test.ts` drives the real route: 422, no org read, no batch query, no PDF, no "generated" log; INT flag does not open NEC and vice versa; fails closed; founder passes. Four mutants caught (gate removed, NEC reading the INT flag, NEC carrying INT text, a route-local divergent flag).
+- **Next.**
+  1. Decide whether the GET preview (contractors "over $600" + `thresholdCents`) should also be gated — flagged in the PR, not done.
+  2. When K13 confirms the figure: set `NEC_THRESHOLD_CENTS`, null `NEC_THRESHOLD_REVIEW_NOTE`, then turn the NEC flag on.
+
 ## 2026-11-05 — CJ harness: answer the "How Pax works" dialog before composer assertions — on `claude/cj1-dismiss-ai-disclosure` (off main `c8fa715`, PR open, unmerged)
 
 - **Scope.** Harness only. The CJ audit was red three runs running. Decomposing run 42104190391 found 7 composer-topmost failures, the largest single cause. Each had `inViewport: true`. The first-visit AI-disclosure dialog (`AiDisclosureGate`, app shell) sat over /ai, so `elementFromPoint` hit the dialog.
