@@ -10,6 +10,10 @@
  * customer-facing message (CLAUDE.md DO-NOT-DO: "Fabrication is never
  * acceptable").
  *
+ * DEFECT-455-1: touch 2 and the churn re-engagement email still named
+ * "Acquisition Radar", whose page was archived 2026-06-01 (/radar redirects to
+ * /deals/discover). Both lines are removed and the name is pinned below.
+ *
  * PARSED, NOT SCANNED. Every string and template literal in the job is read
  * with the TypeScript parser, so the comment above — and any comment in the
  * job recording why a claim was removed — is never part of the population.
@@ -51,6 +55,10 @@ const NOT_SHIPPING: Array<{ verdict: string; claim: RegExp }> = [
   { verdict: "Capital markets — FREEZE (H4)", claim: /capital markets/i },
   { verdict: "Vision AI — KILL 2026-08-01", claim: /satellite imagery|vision ai|property condition analysis/i },
   { verdict: "Voice AI — KILL 2026-08-01", claim: /voice ai|call transcription|sentiment analysis/i },
+  {
+    verdict: "Acquisition Radar — page archived 2026-06-01, /radar redirects to /deals/discover, module dark",
+    claim: /acquisition[\s-]*radar/i,
+  },
 ];
 
 describe("growth_automation email copy advertises only what ships", () => {
