@@ -27,7 +27,8 @@
  * vertical (e.g. /lead-scoring on the subdivider row) (parity); remove the <VerticalSurfaces /> mount from today.tsx (call site);
  * export an unused helper from the registry (call site).
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
 import fs from "node:fs";
 import path from "node:path";
 import ts from "typescript";
@@ -39,6 +40,10 @@ import {
 import { resolveHiddenRoutes, type OrgInvestorType } from "../../client/src/lib/sidebar-hidden-routes";
 import { isFrozenRoute } from "../../shared/feature-freeze";
 import { BUSINESS_TYPE_TO_INVESTOR_TYPE } from "../../shared/models/persona-mapping";
+
+// Walks every client/src file (call sites) and parses App.tsx + the sidebar;
+// its cost scales with the repo, so the budget is declared, not inherited.
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 const ROOT = path.resolve(__dirname, "../..");
 const CLIENT = path.join(ROOT, "client/src");

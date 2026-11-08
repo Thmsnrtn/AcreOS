@@ -31,7 +31,7 @@ import {
 } from "@/lib/today-vertical-surfaces";
 
 export function VerticalSurfaces() {
-  const isMobile = useIsMobile();
+  const { isMobile } = useIsMobile();
   const { data: organization } = useOrganization();
   const hidden = useHiddenRoutes();
   const { isRouteEnabled, isLoading: flagsLoading } = useFeatureFlags();

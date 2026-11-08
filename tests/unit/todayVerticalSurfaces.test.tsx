@@ -8,7 +8,9 @@
  * the real component with the shell hooks stubbed — not a source scan.
  *
  * MUTATION PROBES (each went RED, then restored):
- *   · drop the `!isMobile` gate          → "desktop renders nothing" fails;
+ *   · drop the `!isMobile` gate, or bind the hook's whole return value
+ *     (`const isMobile = useIsMobile()`, an always-truthy object)
+ *                                        → "desktop renders nothing" fails;
  *   · drop the TODAY_HELD_CLUSTERS filter → "flipper is held" fails;
  *   · drop the isRouteHidden filter      → "hidden link is not offered" fails;
  *   · drop the isRouteEnabled filter     → "flag-disabled link" fails.
@@ -33,7 +35,12 @@ vi.mock("wouter", () => ({
     </a>
   ),
 }));
-vi.mock("@/hooks/use-mobile", () => ({ useIsMobile: () => state.isMobile }));
+// The real hook returns an object ({ isMobile, isTablet, … }); mock that
+// shape, so a caller that binds the whole return value (always truthy) fails
+// the desktop case instead of passing it.
+vi.mock("@/hooks/use-mobile", () => ({
+  useIsMobile: () => ({ isMobile: state.isMobile, isTablet: false, isKeyboardOpen: false }),
+}));
 vi.mock("@/hooks/use-organization", () => ({ useOrganization: () => ({ data: state.org }) }));
 vi.mock("@/hooks/use-hidden-routes", () => ({ useHiddenRoutes: () => state.hidden }));
 vi.mock("@/hooks/use-feature-flags", () => ({
