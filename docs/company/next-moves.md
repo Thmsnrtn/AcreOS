@@ -3,11 +3,11 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
-## 2026-11-06 — merge statuses reconciled against git at main `07de7936`
+## 2026-11-06 — merge statuses reconciled against git at main `bae005a5`
 
 - **What changed.** Every merge status stated below was checked against the GitHub API (`merged_at`) and `git merge-base --is-ancestor <merge commit> origin/main`. The stale ones ("PR open", "unmerged", "uncommitted", "nothing merged", "waiting on CI and Muse") now read "PR #N, MERGED <date>", in US Eastern (so #421 is 2026-10-31). Only status wording was edited, plus a Status column on the 2026-10-18 branch table. "Next" and "owed" bullets stay as written, so some still say "Muse audits; the founder merges" about PRs that have since merged: trust the heading.
-- **Every PR branch named in an entry below has merged**, except `claude/buy-and-hold-underwriting` (the held branch; it has no PR). #406 and #411, the Dependabot bumps named in the 2026-10-30 Express 5 entry, were closed unmerged.
-- **Open PRs at this snapshot** (19; base `main` unless noted; none has an entry below yet). Refresh with `gh api "repos/Thmsnrtn/AcreOS/pulls?state=open&per_page=100" --jq '.[]|"\(.number) \(.draft) \(.head.ref) \(.title)"'`.
+- **Every PR branch named in an entry below has merged**, except `claude/buy-and-hold-underwriting` (the held branch; it has no PR). #406 and #411, the Dependabot bumps named in the 2026-10-30 Express 5 entry, were closed unmerged. Refresh 2 (merged main `bae005a5` into this branch): #464, #466, #468, #469, #470, #471, #473 and #484 merged since the first pass and left the open table; the stale statuses on the entries main added (#473, #464, #484, #468, #469, #471) got the same treatment.
+- **Open PRs at this snapshot** (14, excluding S0 itself; base `main` unless noted; none has an entry below yet). Refresh with `gh api "repos/Thmsnrtn/AcreOS/pulls?state=open&per_page=100" --jq '.[]|"\(.number) \(.draft) \(.head.ref) \(.title)"'`.
 
 | PR | Branch | What | Draft? |
 |---|---|---|---|
@@ -16,20 +16,67 @@ what shipped, what it measured, and the top next moves. Newest first.
 | #461 | `claude/notes-v2-leg2-workout-npv` | Notes V2 Leg 2: workout NPV comparison (acquired book) + founder decisions 2026-11-05 | no |
 | #462 | `claude/subdivision-legs1-2-screen-yield` | Subdivision V1 Legs 1–2: buildability screen + lot-yield estimate (+1 table, founder-approved) | no |
 | #463 | `claude/notes-v2-leg1-delinquency-ladder` | Notes V2 Leg 1: delinquency ladder (evidence only; default review operator-recorded); base is #461's branch | no |
-| #464 | `claude/subdivision-leg3-feasibility` | Subdivision V1 Leg 3: feasibility engine (operator-stated timeline, refuse-per-line, IRR + sensitivity) | no |
 | #465 | `claude/fix-flip-leg1-decision` | Fix-and-flip Leg 1: record the flip decision through the kit, with its evidence | no |
-| #466 | `claude/rehab-line-patch-keeps-unsent-fields` | Fix: a rehab, line or draw PATCH no longer resets fields it was not sent | no |
-| #467 | `claude/fix-flip-leg2-variance` | Fix-and-flip Leg 2: three-way rehab variance, estimate lock, fact flags, bid deltas (title says stacked on #466) | no |
-| #468 | `claude/nec-1099-qualified-gate` | Gate 1099-NEC batch generation behind its own qualified determination | no |
-| #469 | `claude/defect-455-1-acquisition-radar-copy` | fix(copy): remove last "Acquisition Radar" claims from growth email (DEFECT-455-1) | no |
-| #470 | `claude/bundle-trim-unused-i18n` | Bundle trim: stop shipping the unused i18next bootstrap (9,815 → 9,765 KB) | no |
-| #471 | `claude/buy-and-hold-lift` | Lift the buy-and-hold beta demotion (founder decision 2026-11-05, Leg 3 proven) | no |
-| #473 | `claude/onboarding-bounce-fix` | Onboarding bounce: gate acts on settled answer, wizard releases completed orgs, /complete flips flag before seeding | no |
+| #467 | `claude/fix-flip-leg2-variance` | Fix-and-flip Leg 2: three-way rehab variance, estimate lock, fact flags, bid deltas (title says stacked on #466, now merged) | no |
 | #474 | `claude/wholesale-leg1-mao-engine` | Wholesale Leg 1: wholesale_mao engine + decision desk (held at beta pending the journey walk) | yes |
 | #475 | `claude/wholesale-leg3-compliance-gate` | Wholesale Leg 3: assignment compliance on every offer path, with recorded acknowledgements | yes |
 | #476 | `claude/wholesale-leg2-buy-box` | Wholesale Leg 2: versioned buy box (one append-only table, approved) + candidate triage | yes |
-| #477 | `claude/wholesale-leg4-disposition` | Wholesale Leg 4: disposition packet (price re-derived at draft time) + outcome record; base is #474's branch | yes |
+| #477 | `claude/wholesale-leg4-disposition` | Wholesale Leg 4: disposition packet (price re-derived at draft time) + outcome record | yes |
 | #478 | `claude/wholesale-leg5-journey` | Wholesale Leg 5: journey walk script + local rehearsal on the integrated L1–L4 stack (bundle decision needed) | yes |
+| #483 | `claude/w2-mobile-home` | W2-MHP: mobile-home park — light up pad home record + meter reads; stop split/billback; Pax stops offering unreachable screens | no |
+| #485 | `claude/buy-and-hold-atlas-row` | Buy-and-hold lift: finalise the Atlas row; next-moves marks #471 merged (docs only) | no |
+
+## 2026-11-05 — Onboarding bounce fix (gate stale-cache, wizard release, complete ordering) — on `claude/onboarding-bounce-fix` (off main `c8fa715`, PR #473, MERGED 2026-11-07)
+
+- **What shipped on the branch.** Three legs, one PR. Full Step 0 table, mutants and gates: `docs/evidence/2026-11-05/onboarding-bounce.md`.
+  - Leg 1: `OnboardingGate` no longer redirects on a cached `needsOnboarding: true` while a refetch is in flight. It shows `PageLoader` and acts on the settled answer.
+  - Leg 2: `/onboarding-v2` releases an org whose status read settles `completed: true` to `/today` (replace). Step 1 never renders for it. It never releases on cached data or during its own finish/skip.
+  - Leg 3: `POST /complete` flips the completion flag before the sample-data seed. The response contract is unchanged.
+- **Step 0.**
+  - RC-1 reproduced: the pre-fix gate redirects synchronously from the stale value.
+  - RC-2 confirmed at component level.
+  - RC-3 latency not material: seeded vs unseeded median 54 vs 10 ms locally, ~33 extra round-trips, ~200–250 ms projected on staging. Leg 3 was built for durability (a hung or crashed seed left no completion record).
+- **Proved.**
+  - 13 new tests; 7 of them red on pre-fix code. 4 mutants caught.
+  - check exit 0, ratchet 151 = baseline, lint 0, build 0, bundle 9,816 KB of 9,823 (+1 KB vs main on the same machine).
+- **Next.**
+  1. Muse audits the PR; then merge, staging-only deploy.
+  2. Coordinator proof on staging: throttled fresh-user repro, direct loads in both directions, a CJ run with zero bounce signatures. If CJ is red only on harness buckets, report exactly that.
+
+## 2026-11-05 — Subdivision V1, Leg 3: feasibility engine — on `claude/subdivision-leg3-feasibility` (off main `4b2044b`, PR #464, MERGED 2026-11-07)
+
+- **Built.**
+  - `shared/subdivision/feasibility.ts` (subdivision-feasibility v1): refuse per line; carry over the operator-stated timeline, withheld without one; IRR paced by absorption; phases; a sensitivity grid.
+  - Engine `subdivision_feasibility`, the only engine declaring `subdivider`.
+  - Three registered metrics.
+  - `POST /api/scenarios/subdivision-feasibility/sensitivity`.
+  - Evidence: `docs/evidence/2026-11-05/subdivision-v1-leg3.md`.
+- **Proved.**
+  - 21 tests, with the golden case's IRR solved independently.
+  - 7 mutants, all red.
+  - The related batch passes (46 files, 656 tests); the gates pass; the bundle is unchanged.
+- **For Muse.**
+  1. §5.5 is not built, because there is no honest per-gate lead time. Pick (a) operator-stated per-gate leads or (b) elapsed time against the run's end-to-end timeline.
+  2. Leg 4 will be the first production adoption of the decision kit, which sits under the 2026-10-21 COO HOLD. Mounting the desk retires those reachability exemptions.
+
+## 2026-11-07 — E2E: first-value CTA URL check gets the spec's own 15 s budget — `claude/e2e-first-value-cta-url-timeout`, PR #484, MERGED 2026-11-07
+
+- **Why.** `today-first-value-cta.spec.ts` (from #460) failed Mobile navigation smoke on #471 and then on #465, both times on the desktop-1440 variant and all 3 tries. Both PRs are unrelated, and the same code also passed.
+- **Root cause, from the CI trace** (#465 run 42341097494):
+  - The click finished at 274.866 s.
+  - The URL was still `/today` at 274.937 s and was `/notes?action=new` by 279.954 s, about 5.1 s after the click. The default `expect` timeout is 5 s.
+  - In-app `pushState` runs inside a View Transition's update callback (`client/src/lib/view-transitions.ts`), so on a loaded runner the URL lands late.
+- **Change.** `toHaveURL(/\/notes(\?|$)/, { timeout: 15_000 })`, the same budget as the file-picker check that follows it. The assertion is otherwise unchanged. Locally the spec passes 3/3.
+- **Next.** Muse audits it. If ~5 s in-app navigations under load ever show up on real devices, that is a View Transitions perf question, not a test question.
+
+## 2026-11-05 — 1099-NEC output gate — on `claude/nec-1099-qualified-gate` (off main `07de793`, PR #468, MERGED 2026-11-06)
+
+- **Scope.** `POST /api/contractors/1099-nec-batch` now refuses until the NEC threshold is confirmed (founder decision 2026-11-05, `founder-decisions-2026-11-05-nec.md`). The INT generator, its dormant code and the $600 figure are untouched.
+- **Mechanism.** `requireQualified1099Output(form)` — one gate, one flag per form (`QUALIFIED_1099_GATES`). INT keeps `tax.1099int.direction_reviewed`, its message and details byte-identical (default arg, so INT call sites are unchanged). NEC reads `tax.1099nec.threshold_confirmed` and refuses with NEC-specific text (`reason: nec_threshold_unconfirmed`).
+- **Proved.** `nec1099QualifiedOutputGate.test.ts` drives the real route: 422, no org read, no batch query, no PDF, no "generated" log; INT flag does not open NEC and vice versa; fails closed; founder passes. Four mutants caught (gate removed, NEC reading the INT flag, NEC carrying INT text, a route-local divergent flag).
+- **Next.**
+  1. Decide whether the GET preview (contractors "over $600" + `thresholdCents`) should also be gated — flagged in the PR, not done.
+  2. When K13 confirms the figure: set `NEC_THRESHOLD_CENTS`, null `NEC_THRESHOLD_REVIEW_NOTE`, then turn the NEC flag on.
 
 ## 2026-11-05 — CJ harness: answer the "How Pax works" dialog before composer assertions — on `claude/cj1-dismiss-ai-disclosure` (off main `c8fa715`, PR #472, MERGED 2026-11-06)
 
@@ -72,6 +119,33 @@ what shipped, what it measured, and the top next moves. Newest first.
   - The `blob:` entry (`767f47f1-…`) has no network entry, so it still fails if it recurs.
 - **Unchanged.** Route checks, so the onboarding bounce stays visible.
 - **Next.** Founder dispatches proof run 4. The honesty proof needs a GREEN run whose report shows the class FIRED and was dismissed.
+
+## 2026-11-05 — DEFECT-455-1: last two "Acquisition Radar" lines out of growth email copy — on `claude/defect-455-1-acquisition-radar-copy` (PR #469, MERGED 2026-11-06)
+
+- **Scope.** Copy only. `server/jobs/growthAutomation.ts`: removed the "Acquisition Radar" bullet from win-back touch 2 (`runWinBackEngine`) and from the churn re-engagement email (`runChurnRiskInterventions`). No logic, schedule, recipient or send change. The job has zero recorded sends.
+- **Proved.** `winBackCopyIsHonest.test.ts` now forbids `/acquisition[\s-]*radar/i` across every literal in the job. Red with both lines restored, and red with a hyphenated variant reintroduced in the churn email only.
+- **Other live references (reported, not fixed).**
+  - `server/services/contextProfile.ts` still names Acquisition Radar in `suggestedModules` (wholesaler, auction_hunter) and a quick action linking to `/radar`. Served by the context-profile API; `useContextProfile` has no client consumer found.
+  - `server/services/agentOrchestration.ts` names agent sessions `Acquisition Radar - <county>` — an internal session label, not advertising.
+  - The client changelog entry (2026-02-26) is historical and stays.
+- **Next.**
+  1. Audit the PR; founder merges.
+  2. Check whether the churn email's "Atlas AI — automatically finds deals overnight" holds against what ships.
+  3. Decide whether to clean `contextProfile.ts`.
+
+## 2026-11-05 — Buy-and-hold beta demotion LIFTED (founder decision) — `claude/buy-and-hold-lift`, PR #471, MERGED 2026-11-07
+
+- **Why.** Leg 3's post-merge staging journey passed all 7 steps on the `c8fa715` deploy (`postmerge-458-journey-proof-2026-11-05.md`, COO side), and the founder called the lift.
+- **What changed, in one commit, as the decision file prescribes.**
+  - `PUBLIC_CLAIM_DEMOTIONS.buy_and_hold` removed.
+  - Evidence-ladder entry flipped `surfaced` → `decided`.
+  - The `HELD_PENDING_JOURNEY_PROOF` entry deleted; the register is pinned EMPTY, and the `isHeld` exemption is gone from all three OD-5 assertions.
+  - The landing demotion-count pin went 12 → 11.
+  - An addendum was added to `founder-decisions-2026-11-05-buy-and-hold.md`.
+- **Proved.** Three mutants caught: demotion back (4 red), ladder reverted (3 red), hold re-added (pin red). `npm run check` exits 0.
+- **Next.**
+  1. Muse audits #471. Do not merge from the session.
+  2. Founder: delete `claude/buy-and-hold-underwriting` (item 5 below) now that the proof is in.
 
 ## 2026-11-03 — Buy-and-hold release: desk ported + mounted, wiring as links — on `claude/buy-and-hold-release` (off main `f7f2e3f`, PR #458, MERGED 2026-11-05; blocker resolved 2026-11-05 by Option B)
 

@@ -35,6 +35,7 @@ import { logger } from "./utils/logger";
 import { assertEntityBelongsToOrg } from "./utils/orgScope";
 import { generate1099NecPdf, type Nec1099Form } from "./services/form1099NecPdf";
 import { NEC_THRESHOLD_CENTS, NEC_THRESHOLD_REVIEW_NOTE, resolve1099Payer } from "./services/form1099NecPayer";
+import { requireQualified1099Output } from "./services/form1099Refusal";
 import { clock } from "./utils/clock";
 import { routeParam } from "./utils/routeParams";
 
@@ -183,7 +184,11 @@ export function registerContractorRoutes(app: Express): void {
   });
 
   // 1099-NEC batch generate — emit one PDF per ready contractor, base64-encoded.
-  app.post("/api/contractors/1099-nec-batch", isAuthenticated, getOrCreateOrg, requireRole(["owner", "admin"]), async (req: AuthenticatedRequest, res: Response) => {
+  // Withheld until a qualified tax reviewer confirms the reporting threshold
+  // (founder decision 2026-11-05): the same gate as 1099-INT, reading the NEC
+  // determination's own flag. It runs BEFORE the role gate, as on the INT
+  // routes, so a refused caller learns why the form is withheld.
+  app.post("/api/contractors/1099-nec-batch", isAuthenticated, getOrCreateOrg, requireQualified1099Output("1099-NEC"), requireRole(["owner", "admin"]), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const orgId = getOrganizationId(req);
       const userId = getUserId(req);
