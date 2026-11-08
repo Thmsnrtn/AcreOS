@@ -13,8 +13,12 @@ needed.
   - Tiny escape hatch — `t("key", { defaultValue: "…" })` lets us migrate
     incrementally without breaking surfaces that haven't been touched yet.
   - ~12kb gzipped including the en bundle.
-- **Bootstrap:** `client/src/lib/i18n/config.ts` — single-file init,
-  imported once from `main.tsx` as a side effect.
+- **Bootstrap:** `client/src/lib/i18n/config.ts` — single-file init.
+  **Not currently imported** (2026-11-05 bundle trim): nothing called `useT()`
+  or `useTranslation()`, so shipping i18next cost ~50 KB for no caller. The
+  first component that adopts `useT()` must add `import "@/lib/i18n/config";`
+  back to `main.tsx` — `tests/unit/i18nInitNotShipped.test.ts` fails until it
+  does.
 - **Hook:** `client/src/lib/i18n/useT.ts` — thin wrapper that returns a
   TypeScript-narrowed `t` function.
 - **Locale bundles:** `client/src/lib/i18n/locales/<lang>.json` — nested
