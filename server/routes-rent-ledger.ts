@@ -82,6 +82,7 @@ import {
 import {
   parseLateFeeRuleRow,
   proposeLateFee,
+  netOfLateFeesAlreadyCharged,
   type LateFeeProposal,
   type LateFeeRuleData,
 } from "@shared/rental/lateFeeProposal";
@@ -885,6 +886,22 @@ export function proposeLateFeeForUnitCount(args: {
   return stamp(exact);
 }
 
+/**
+ * The CHARGEABLE proposal for one charge: the unit-aware total the rule allows,
+ * net of the late fees already on that charge. Every proposal this file serves
+ * or charges goes through here — the per-charge read, the org-wide queue and
+ * the apply — so a second confirmation can never stack past the cap.
+ * `lateFeeAlreadyChargedCents` is required so no caller can forget it.
+ */
+function chargeableLateFeeProposal(
+  args: Parameters<typeof proposeLateFeeForUnitCount>[0] & { lateFeeAlreadyChargedCents: number },
+): UnitAwareLateFeeProposal {
+  return netOfLateFeesAlreadyCharged(
+    proposeLateFeeForUnitCount(args),
+    args.lateFeeAlreadyChargedCents,
+  );
+}
+
 /** The seeded rule for a state, or null when the jurisdiction is not encoded. */
 async function lateFeeRuleForState(state: string): Promise<LateFeeRule | null> {
   const [rule] = await db
@@ -897,20 +914,21 @@ async function lateFeeRuleForState(state: string): Promise<LateFeeRule | null> {
 /** Propose (never charge) a late fee for one overdue charge. */
 async function proposalForCharge(args: {
   organizationId: number;
-  charge: Pick<typeof rentCharges.$inferSelect, "id" | "dueDate">;
+  charge: Pick<typeof rentCharges.$inferSelect, "id" | "dueDate" | "lateFeeCents">;
   lease: Pick<typeof rentalLeases.$inferSelect, "id" | "propertyId" | "monthlyRentCents" | "state">;
   asOf: Date;
 }): Promise<{ proposal: UnitAwareLateFeeProposal; rule: LateFeeRule | null; daysLate: number }> {
   const rule = await lateFeeRuleForState(args.lease.state);
   const units = await unitCountForProperty(args.organizationId, args.lease.propertyId);
   const daysLate = daysOverdue(String(args.charge.dueDate), args.asOf) ?? 0;
-  const proposal = proposeLateFeeForUnitCount({
+  const proposal = chargeableLateFeeProposal({
     rule: rule ? parseLateFeeRuleRow(rule) : null,
     monthlyRentCents: args.lease.monthlyRentCents,
     daysLate,
     units,
     state: args.lease.state,
     leaseDerivedFloor: units.leaseDerivedFloor,
+    lateFeeAlreadyChargedCents: args.charge.lateFeeCents,
   });
   return { proposal, rule, daysLate };
 }
@@ -1383,7 +1401,7 @@ export function registerRentLedgerRoutes(app: Express): void {
         }
         const rule = rulesByState.get(stateKey) ?? null;
         const daysLate = daysOverdue(String(charge.dueDate), asOf) ?? 0;
-        const proposal = proposeLateFeeForUnitCount({
+        const proposal = chargeableLateFeeProposal({
           rule: rule ? parseLateFeeRuleRow(rule) : null,
           monthlyRentCents: lease.monthlyRentCents,
           daysLate,
@@ -1394,6 +1412,7 @@ export function registerRentLedgerRoutes(app: Express): void {
             ?? { count: 1, basis: "lease_derived_floor" as const },
           leaseDerivedFloor: unitsByProperty.get(lease.propertyId)?.leaseDerivedFloor,
           state: lease.state,
+          lateFeeAlreadyChargedCents: charge.lateFeeCents,
         });
         proposals.push({
           rentChargeId: charge.id,
