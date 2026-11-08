@@ -207,7 +207,6 @@ function usd(cents: number): string {
   return `${cents < 0 ? "−" : ""}$${s}`;
 }
 const pctBps = (bps: number) => `${(bps / 100).toFixed(2)}%`;
-const pctRatio = (r: number) => `${(r * 100).toFixed(2)}%`;
 
 const CENTS_KEYS: ReadonlySet<string> = new Set(["upbCents", "paymentCents", "collateralValueCents", "seniorLienBalanceCents"]);
 function show(key: string, v: unknown): string {
