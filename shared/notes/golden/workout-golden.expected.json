@@ -1,0 +1,142 @@
+{
+  "inputs": {
+    "asOf": "2026-11-01",
+    "discountRateBps": 1200,
+    "note": {
+      "upbCents": 1000000,
+      "rateBps": 900,
+      "paymentCents": 87453,
+      "remainingTermMonths": 12,
+      "arrearsCents": 174906
+    },
+    "collateralValueCents": 1200000,
+    "servicingMonthlyCents": 2500,
+    "modification": {
+      "rateBps": 600,
+      "termMonths": 12,
+      "arrearsTreatment": "capitalize",
+      "principalForbearanceCents": 100000,
+      "principalReductionCents": 50000
+    },
+    "forbearance": {
+      "months": 3,
+      "reducedPaymentCents": 30000
+    },
+    "deedInLieu": {
+      "timelineMonths": 3,
+      "costs": [
+        {
+          "label": "DIL legal and title",
+          "amountCents": 150000,
+          "timing": "upfront"
+        },
+        {
+          "label": "Taxes and insurance",
+          "amountCents": 10000,
+          "timing": "monthly"
+        }
+      ]
+    },
+    "foreclosure": {
+      "timelineMonths": 9,
+      "costs": [
+        {
+          "label": "Attorney and filing",
+          "amountCents": 400000,
+          "timing": "upfront"
+        },
+        {
+          "label": "Carrying costs",
+          "amountCents": 15000,
+          "timing": "monthly"
+        },
+        {
+          "label": "Sale costs",
+          "amountCents": 72000,
+          "timing": "at_resolution"
+        }
+      ]
+    },
+    "chargeOffHold": {
+      "recoveryCents": 300000,
+      "horizonMonths": 6,
+      "costs": []
+    }
+  },
+  "modifiedPaymentCents": 88210,
+  "npvCents": {
+    "hold_perform": 1129310,
+    "modification": 1053419,
+    "forbearance": 1120078,
+    "deed_in_lieu": 986783,
+    "foreclosure": 506845,
+    "charge_off_hold": 282614
+  },
+  "discountedLines": {
+    "hold_perform": {
+      "1": 257286,
+      "2": 83279,
+      "3": 82455,
+      "4": 81638,
+      "5": 80830,
+      "6": 80030,
+      "7": 79237,
+      "8": 78453,
+      "9": 77676,
+      "10": 76907,
+      "11": 76145,
+      "12": 75374
+    },
+    "modification": {
+      "1": 84861,
+      "2": 84021,
+      "3": 83189,
+      "4": 82366,
+      "5": 81550,
+      "6": 80743,
+      "7": 79943,
+      "8": 79152,
+      "9": 78368,
+      "10": 77592,
+      "11": 76824,
+      "12": 164810
+    },
+    "forbearance": {
+      "1": 27228,
+      "2": 26958,
+      "3": 26691,
+      "4": 249719,
+      "5": 80830,
+      "6": 80030,
+      "7": 79237,
+      "8": 78453,
+      "9": 77676,
+      "10": 76907,
+      "11": 76145,
+      "12": 240204
+    },
+    "deed_in_lieu": {
+      "1": -158416,
+      "2": -9803,
+      "3": 1155002
+    },
+    "foreclosure": {
+      "1": -410891,
+      "2": -14704,
+      "3": -14559,
+      "4": -14415,
+      "5": -14272,
+      "6": -14131,
+      "7": -13991,
+      "8": -13852,
+      "9": 1017660
+    },
+    "charge_off_hold": {
+      "6": 282614
+    }
+  },
+  "sensitivity": {
+    "foreclosure_value1.2_timeline1.25": 674617,
+    "deed_in_lieu_value0.8_timeline0.75": 772865
+  }
+}

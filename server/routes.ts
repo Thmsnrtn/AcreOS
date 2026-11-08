@@ -82,6 +82,7 @@ import propertyEnrichmentRouter from "./routes-property-enrichment";
 import decisionsRouter from "./routes-decisions";
 import opportunitiesRouter from "./routes-opportunities";
 import scenariosRouter from "./routes-scenarios";
+import flipDecisionRouter from "./routes-flip-decision";
 import buyAndHoldUnderwritingRouter from "./routes-buy-and-hold-underwriting";
 import wholesaleUnderwritingRouter from "./routes-wholesale-underwriting";
 import wholesaleDispositionRouter from "./routes-wholesale-disposition";
@@ -196,6 +197,7 @@ import { registerNoteRoutes } from "./routes-notes";
 import { registerNoteAcquisitionRoutes } from "./routes-note-acquisitions";
 import { registerNoteTapeRoutes } from "./routes-note-tape";
 import { registerNoteRecordRoutes } from "./routes-note-record";
+import { registerNoteWorkoutRoutes } from "./routes-note-workout";
 import { registerServicerRoutes } from "./routes-servicer";
 import { registerTaxCertificateRoutes } from "./routes-tax-certificates";
 import { registerTaxRuleRoutes } from "./routes-tax-rules";
@@ -1468,6 +1470,7 @@ export async function registerRoutes(
   // deterministic scenarios. API surface only; no new customer nav entry.
   app.use('/api/scenarios', isAuthenticated, getOrCreateOrg, scenariosRouter);
   // Vertical underwriting desks (decision-memos/2026-10-04-vertical-program.md).
+  app.use('/api/fix-and-flip', isAuthenticated, getOrCreateOrg, flipDecisionRouter);
   app.use('/api/buy-and-hold', isAuthenticated, getOrCreateOrg, buyAndHoldUnderwritingRouter);
   app.use('/api/wholesale', isAuthenticated, getOrCreateOrg, wholesaleUnderwritingRouter);
   app.use('/api/wholesale', isAuthenticated, getOrCreateOrg, wholesaleDispositionRouter);
@@ -2440,6 +2443,7 @@ export async function registerRoutes(
   registerNoteAcquisitionRoutes(app);
   registerNoteTapeRoutes(app);
   registerNoteRecordRoutes(app);
+  registerNoteWorkoutRoutes(app);
   // Note Servicer (Pillar K — Ursa) — owners-of-record, remittances, licenses.
   registerServicerRoutes(app);
   // Tax-Delinquent vertical TD-2 — redemption-clock surface.
