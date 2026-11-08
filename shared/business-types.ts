@@ -650,6 +650,14 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     // operator-supplied/dash) or autonomous POH-to-resident financed-sale
     // execution (legal-signing/Reg-Z, routed through the existing chokepoint +
     // counsel). 2026-08 founder promote decision (Wave 5).
+    //
+    // 2026-11-06 (W2-MHP — REACHABILITY, not maturity): of the three, only the
+    // RECORD half has a screen — a pad's "Home & meters" dialog on the Units
+    // tab writes home_ownership + chattel_* and records/lists meter reads. The
+    // split and billback engines + routes have NO client caller and are stopped
+    // for a founder call (the split's rent_component input has no writer; the
+    // billback needs read-period and provenance rules before any screen), so
+    // the Pax voice no longer offers them. `maturity` is untouched (OD-5).
     maturity: "core",
     // All four landlord templates genuinely apply to lot-lease operations
     // (lot leases renew, lot rent hits the ledger, park infrastructure

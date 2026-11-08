@@ -1,3 +1,4 @@
+import { Link } from "wouter";
 import { motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { okOrThrow, listFrom } from "@/lib/fetch-honesty";
@@ -304,6 +305,8 @@ interface FlipperDashboard {
     spentCents: number;
     spentPct: number;
     arvCents: number | null;
+    /** Variance facts from the project's lines (Leg 2) — no threshold. */
+    flags?: Array<{ kind: string; fact: string }>;
   }>;
   totals?: {
     totalBudgetCents: number;
@@ -359,6 +362,16 @@ function FlipperWidgets() {
                 <div key={rehab.id}>
                   <p className="text-xs font-medium mb-1">{rehab.name} <span className="text-muted-foreground">· {rehab.status.replace(/_/g, " ")}</span></p>
                   <BudgetBar label={`$${spentDollars.toLocaleString()} / $${budgetDollars.toLocaleString()}`} spent={spentDollars} budget={budgetDollars} />
+                  {rehab.flags && rehab.flags.length > 0 ? (
+                    <Link
+                      href={`/rehabs/${rehab.id}`}
+                      className="mt-1 block text-xs text-acr-warning underline-offset-2 hover:underline focus-visible:underline"
+                      data-testid={`flipper-flag-${rehab.id}`}
+                    >
+                      {rehab.flags[0].fact}
+                      {rehab.flags.length > 1 ? ` (+${rehab.flags.length - 1} more)` : ""}
+                    </Link>
+                  ) : null}
                 </div>
               );
             })}

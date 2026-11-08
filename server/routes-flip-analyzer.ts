@@ -437,6 +437,10 @@ export function registerFlipAnalyzerRoutes(app: Express): void {
               }
             : null,
           rulesAreCustomised: resolved.isCustomised,
+          // A bare MAO run is a SCREEN: nothing is recorded and no decision
+          // exists (fix-and-flip package §3.3). A decision is made only at
+          // POST /api/fix-and-flip/decide, with its evidence and review date.
+          recordKind: "screen" as const,
         });
       } catch (err) {
         return Errors.internal(res, err);
@@ -761,6 +765,10 @@ export function registerFlipAnalyzerRoutes(app: Express): void {
                   }
                 : null,
           monthlyHoldingCostCents: rehab?.holdingCostMonthlyCents ?? null,
+          // The property's rehab project, whether or not its budget header is
+          // set: the decision desk uses the project's priced scope lines as
+          // the rehab estimate whenever a project exists.
+          rehabProjectId: rehab?.id ?? null,
           priceCandidates: {
             purchasePriceCents: decimalDollarsToCents(prop.purchasePrice),
             listPriceCents: decimalDollarsToCents(prop.listPrice),
