@@ -1,7 +1,7 @@
 // ============================================================================
 // SHARED/SCHEMA/PAX-MORNING-BRIEFS.TS
 // ----------------------------------------------------------------------------
-// 0301 — E2 slice 1 (Pax core), leg 2 — the morning brief archive.
+// 0303 — E2 slice 1 (Pax core), leg 2 — the morning brief archive.
 //
 // One row per org per local day: the sectioned brief GET /api/today composed
 // from real state (what changed / what needs you / what Pax prepared), kept so
@@ -11,7 +11,7 @@
 // day's row is refreshed while that day lasts; dismissal is a stamp, never a
 // deletion. Org-scoped; rows go with the org (CASCADE), like today_queue_state.
 //
-// Mirrors migrations/0301_pax_morning_briefs.sql + scripts/migrate.mjs.
+// Mirrors migrations/0303_pax_morning_briefs.sql + scripts/migrate.mjs.
 // ============================================================================
 
 import { pgTable, serial, integer, text, jsonb, timestamp, uniqueIndex } from "drizzle-orm/pg-core";

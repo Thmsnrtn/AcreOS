@@ -13063,8 +13063,8 @@ $mig0284$`,
      END IF;
    END
    $mig0300$`,
-  // 0301 — E2 slice 1 leg 2: pax_morning_briefs (one sectioned brief per org per local day; dismiss is a stamp; archive + reopen on /today).
-  // Mirrors migrations/0301_pax_morning_briefs.sql.
+  // 0303 — E2 slice 1 leg 2: pax_morning_briefs (one sectioned brief per org per local day; dismiss is a stamp; archive + reopen on /today).
+  // Mirrors migrations/0303_pax_morning_briefs.sql.
   `CREATE TABLE IF NOT EXISTS "pax_morning_briefs" (
      "id" serial PRIMARY KEY,
      "organization_id" integer NOT NULL REFERENCES "organizations" ("id") ON DELETE CASCADE,

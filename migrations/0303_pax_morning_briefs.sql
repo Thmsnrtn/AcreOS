@@ -1,5 +1,5 @@
 -- ============================================================================
--- 0301 — E2 slice 1 (Pax core), leg 2: the morning brief archive.
+-- 0303 — E2 slice 1 (Pax core), leg 2: the morning brief archive.
 --
 -- GET /api/today composes a sectioned morning brief from real state — what
 -- changed, what needs you, what Pax prepared (server/services/

@@ -71,7 +71,7 @@ Branch: `claude/e2-slice1-pax-brief`, off main `f7f2e3f`. Built 2026-11-03 (EST)
 - **`server/routes-today-briefs.ts`** (new). `GET /api/today/briefs`, `GET /:id`, `POST /:id/dismiss` and `POST /:id/restore`, all org-scoped; another org's id gets a 404. Dismissal is a stamp, never a deletion, and is org-wide (the UI says so).
   - It is mounted ahead of `/api/today` **without `todayGuard`**, because these routes call no model. The AI budget must not be able to refuse a dismissal, and browsing the archive must not use up the page's 10-per-minute burst cap.
   - It is listed in `routeManifest.ts`.
-- **Schema.** `pax_morning_briefs` is declared in `shared/schema/pax-morning-briefs.ts` (barrel-exported; the monolith count is unchanged). It comes with `migrations/0301_pax_morning_briefs.sql` and its mirror in `scripts/migrate.mjs`. The table-count ratchet goes from 748 to 749, **pending approval**.
+- **Schema.** `pax_morning_briefs` is declared in `shared/schema/pax-morning-briefs.ts` (barrel-exported; the monolith count is unchanged). It comes with `migrations/0303_pax_morning_briefs.sql` (renumbered from 0301 on 2026-11-08: Muse assigned 0301 to Notes V2, #461) and its mirror in `scripts/migrate.mjs`. The table-count ratchet goes from 748 to 749, **approved 2026-11-07 under Tom's full-readiness mandate** (Muse, PR #459 audit).
 - **UI.** `MorningBrief.tsx`:
   - The headline line works as before.
   - Expanding it shows the three sections. Each "none" line names exactly what was counted, and an unreadable section says so. It also shows "Counted from your records at …", and the controls link, "Past briefs" and "Dismiss for the team today" (failures show a toast).

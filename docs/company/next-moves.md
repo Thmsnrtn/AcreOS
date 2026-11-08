@@ -276,7 +276,7 @@ what shipped, what it measured, and the top next moves. Newest first.
   - Three deterministic sections from real rows, with provenance, under the unchanged headline.
   - Unreadable inputs are shown as unreadable, never as zero.
   - Dismiss, restore, archive and reopen, through `routes-today-briefs.ts`, which is mounted without `todayGuard`.
-  - `pax_morning_briefs`: migration 0301, table-count 749, **needs Tom's yes**.
+  - `pax_morning_briefs`: migration 0303 (renumbered from 0301; #461 holds 0301), table-count 749, **approved 2026-11-07 under Tom's full-readiness mandate** (Muse, PR #459 audit).
   - The position on /today is unchanged, so P0's first-value CTA is not displaced.
 - **Proved.** A realdb suite through the mounted routers, a pure composer suite with send, kernel-write and model-name sweeps, and 15 of 15 mutants red. An independent audit found 8 issues; all are fixed or flagged (see the evidence file). The gates are in the PR body.
 - **Next.**
