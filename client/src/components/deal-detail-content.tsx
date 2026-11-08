@@ -34,6 +34,7 @@ import { ListSkeleton } from "@/components/list-skeleton";
 import { ActivityTimeline } from "@/components/activity-timeline";
 import { DealNextAction } from "@/components/deals/DealNextAction";
 import { AssignmentPanel } from "@/components/deals/AssignmentPanel";
+import { DealPurchaseAgreementSection } from "@/components/deals/DealPurchaseAgreementSection";
 import { CmaPanel } from "@/components/deals/CmaPanel";
 import { CustomFieldValuesEditor } from "@/components/custom-fields";
 import { DealJourney } from "@/components/ui/deal-journey";
@@ -206,7 +207,10 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
   const { data: dealPackages, isLoading: packagesLoading, isError: packagesError } = useQuery<DocumentPackage[]>({
     queryKey: ["/api/document-packages", "deal", deal.id],
     queryFn: async () => {
-      const response = await fetch(`/api/document-packages/deal/${deal.id}`, { credentials: 'include' });
+      // GET /api/deals/:id/packages (routes-doc-system.ts). This fetched
+      // /api/document-packages/deal/:id, which no server route matches, so the
+      // tab always showed "No document packages" behind an error toast.
+      const response = await fetch(`/api/deals/${deal.id}/packages`, { credentials: 'include' });
       if (!response.ok) throw new Error(`Failed to load document packages (${response.status})`);
       return response.json();
     },
@@ -709,6 +713,13 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
             </TabsContent>
 
             <TabsContent value="documents" className="space-y-4 md:space-y-6">
+              {/* The deal's purchase agreement: the same review → draft →
+                  send chain as the Contracts tab of /offers, opened from the
+                  deal itself. The server decides eligibility and names gaps. */}
+              <DealPurchaseAgreementSection
+                dealId={deal.id}
+                dealLabel={`Deal #${deal.id} · ${deal.property?.address ?? `Property #${deal.propertyId}`}`}
+              />
               {/* W6.1 — the wholesaler's assignment-of-contract flow. Renders
                   only for wholesaler orgs (or when assignment records already
                   exist on this deal) — the panel self-gates. */}
