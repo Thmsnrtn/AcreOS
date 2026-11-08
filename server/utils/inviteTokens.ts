@@ -77,3 +77,13 @@ export function tokenMatchesRow(
   }
   return false;
 }
+
+/**
+ * The invitation URL for a plaintext token. ONE builder for the link the
+ * inviter copies and the link the email carries, so the two cannot drift
+ * (the accept page reads `?invite=`). The token is base64url, already
+ * URL-safe.
+ */
+export function buildInviteLink(baseUrl: string, token: string): string {
+  return `${baseUrl.replace(/\/+$/, "")}/auth?invite=${token}`;
+}

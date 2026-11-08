@@ -1,6 +1,12 @@
 /**
  * TeamInviteCard — invite a seat, see pending invites, revoke pending invites.
  * Added in cycle 12 to unblock Maya T01/T02/T04 and Dolores E01 (bulk seat).
+ *
+ * Copy rule: say only what the server reported. Creating an invitation tries
+ * to email it and reports one status per invite (sent / not_configured /
+ * suppressed / failed). The stored invite keeps only a hash of its token, so a
+ * link can be shown just once, right after it is created or replaced; a lost
+ * link is replaced with "New link", never recovered.
  */
 import { useId, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -23,7 +29,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { UserPlus, X, Upload } from "lucide-react";
+import { UserPlus, X, Upload, RefreshCw, Link2 } from "lucide-react";
+import type { TeamInviteDeliveryStatus } from "@shared/teamInviteDelivery";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, ApiError } from "@/lib/queryClient";
 import { CopyButton } from "@/components/ui/copy-button";
@@ -33,11 +40,42 @@ interface Invitation {
   id: number;
   email: string;
   role: string;
-  token: string;
   status: string;
   createdAt: string;
   expiresAt: string;
-  link?: string;
+}
+
+/** Response item from POST /api/organization/invitations. */
+interface CreatedInvitation {
+  id: number;
+  email: string;
+  expiresAt: string;
+  link: string;
+  delivery: TeamInviteDeliveryStatus;
+}
+
+/** A link the inviter can copy right now (kept in memory only). */
+interface ShareEntry {
+  id: number;
+  email: string;
+  link: string;
+  delivery: TeamInviteDeliveryStatus | null;
+}
+
+/** The sentence under an invite's address, per outcome. */
+function deliveryLine(delivery: TeamInviteDeliveryStatus | null): string {
+  switch (delivery) {
+    case "sent":
+      return "Emailed.";
+    case "not_configured":
+      return "Not emailed: email delivery isn't set up on this server. Send them this link yourself.";
+    case "suppressed":
+      return "Not emailed: AcreOS can't email this address. Send them this link yourself.";
+    case "failed":
+      return "Not emailed: sending failed. Use Resend email, or send them this link yourself.";
+    default:
+      return "New link ready. Nothing was emailed; send it to them yourself.";
+  }
 }
 
 export function TeamInviteCard() {
@@ -47,6 +85,7 @@ export function TeamInviteCard() {
   const [role, setRole] = useState<string>("member");
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkText, setBulkText] = useState("");
+  const [shared, setShared] = useState<Record<number, ShareEntry>>({});
   const inviteFormId = useId();
   const bulkTextareaId = useId();
 
@@ -62,14 +101,31 @@ export function TeamInviteCard() {
       const res = await apiRequest("POST", "/api/organization/invitations", body);
       return res.json();
     },
-    onSuccess: (data: { created: number; invitations: Invitation[] }) => {
-      toast({
-        title: `Invited ${data.created} member${data.created === 1 ? "" : "s"}`,
-        description:
-          data.invitations[0]?.link
-            ? "Copy the invite link from the pending list below."
-            : undefined,
+    onSuccess: (data: { created: number; invitations: CreatedInvitation[] }) => {
+      const sent = data.invitations.filter((i) => i.delivery === "sent").length;
+      const notSent = data.invitations.length - sent;
+      setShared((prev) => {
+        const next = { ...prev };
+        for (const i of data.invitations) {
+          if (i.delivery !== "sent") next[i.id] = { id: i.id, email: i.email, link: i.link, delivery: i.delivery };
+        }
+        return next;
       });
+      if (notSent === 0) {
+        toast({
+          title: sent === 1 ? "Invitation emailed" : `${sent} invitations emailed`,
+        });
+      } else if (sent === 0) {
+        toast({
+          title: data.created === 1 ? "Invitation created, not emailed" : `${data.created} invitations created, not emailed`,
+          description: "Copy the link below and send it yourself.",
+        });
+      } else {
+        toast({
+          title: `${sent} emailed, ${notSent} not emailed`,
+          description: "Copy the links below for the ones that weren't emailed.",
+        });
+      }
       setEmail("");
       setBulkText("");
       setBulkOpen(false);
@@ -91,7 +147,11 @@ export function TeamInviteCard() {
     mutationFn: async (id: number) => {
       await apiRequest("DELETE", `/api/organization/invitations/${id}`);
     },
-    onSuccess: () => {
+    onSuccess: (_d, id) => {
+      setShared((prev) => {
+        const { [id]: _gone, ...rest } = prev;
+        return rest;
+      });
       toast({ title: "Invitation revoked" });
       qc.invalidateQueries({ queryKey: ["/api/organization/invitations"] });
     },
@@ -101,6 +161,47 @@ export function TeamInviteCard() {
         description: `${err.message} — try again in a moment.`,
         variant: "destructive",
       }),
+  });
+
+  const regenerateMutation = useMutation({
+    mutationFn: async (vars: { id: number; sendEmail: boolean }) => {
+      const res = await apiRequest("POST", `/api/organization/invitations/${vars.id}/regenerate`, {
+        sendEmail: vars.sendEmail,
+      });
+      return (await res.json()) as {
+        invitation: { id: number; email: string; link: string; delivery: TeamInviteDeliveryStatus | null };
+      };
+    },
+    onSuccess: ({ invitation }) => {
+      if (invitation.delivery === "sent") {
+        setShared((prev) => {
+          const { [invitation.id]: _gone, ...rest } = prev;
+          return rest;
+        });
+        toast({
+          title: "Email sent with a new link",
+          description: "The previous link no longer works.",
+        });
+      } else {
+        setShared((prev) => ({
+          ...prev,
+          [invitation.id]: { id: invitation.id, email: invitation.email, link: invitation.link, delivery: invitation.delivery },
+        }));
+        toast({
+          title: invitation.delivery === null ? "New link ready" : "New link ready, not emailed",
+          description: "The previous link no longer works. Copy the new one below.",
+        });
+      }
+      qc.invalidateQueries({ queryKey: ["/api/organization/invitations"] });
+    },
+    onError: (err: Error) => {
+      if (err instanceof ApiError && err.refusal) return;
+      toast({
+        title: "Couldn't make a new link",
+        description: `${err.message} — the previous link still works.`,
+        variant: "destructive",
+      });
+    },
   });
 
   const roleOptions: Array<{ value: string; label: string }> = [
@@ -141,7 +242,7 @@ export function TeamInviteCard() {
           Invite team members
         </CardTitle>
         <CardDescription>
-          Send an invitation by email. Admins can paste a CSV for bulk invites.
+          Invite teammates by email address. AcreOS emails each invitation when email delivery is set up; if not, you get a link to send them yourself. Admins can paste a CSV for bulk invites.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
@@ -244,6 +345,31 @@ export function TeamInviteCard() {
           </div>
         )}
 
+        {Object.keys(shared).length > 0 && (
+          <div className="space-y-2" data-testid="panel-share-links">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-medium">Links to send yourself</h3>
+              <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setShared({})}>
+                Dismiss
+              </Button>
+            </div>
+            <div className="rounded-md border divide-y">
+              {Object.values(shared).map((e) => (
+                <div key={e.id} className="flex items-center gap-3 p-3 text-sm" data-testid={`row-share-${e.id}`}>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium truncate">{e.email}</p>
+                    <p className="text-xs text-muted-foreground">{deliveryLine(e.delivery)}</p>
+                  </div>
+                  <CopyButton value={e.link} successMessage="Invite link copied" label="Copy link" className="h-8" />
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              These links are shown now only. If you lose one, use New link on the pending invitation.
+            </p>
+          </div>
+        )}
+
         {pending.length > 0 && (
           <div className="space-y-2">
             <h3 className="text-xs font-medium">Pending invitations</h3>
@@ -257,20 +383,37 @@ export function TeamInviteCard() {
                   <div className="flex-1 min-w-0">
                     <p className="font-medium truncate">{inv.email}</p>
                     <p className="text-xs text-muted-foreground">
-                      Invited {shortDate(inv.createdAt)} · Expires {shortDate(inv.expiresAt)}
+                      Invited {shortDate(inv.createdAt)} ·{" "}
+                      {new Date(inv.expiresAt).getTime() < Date.now() ? "Expired" : "Expires"} {shortDate(inv.expiresAt)}
                     </p>
                   </div>
                   <Badge variant="outline" className="uppercase text-micro">
                     {inv.role}
                   </Badge>
-                  {inv.link && (
-                    <CopyButton
-                      value={inv.link}
-                      successMessage="Invite link copied"
-                      label="Copy link"
-                      className="h-8"
-                    />
-                  )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8"
+                    onClick={() => regenerateMutation.mutate({ id: inv.id, sendEmail: true })}
+                    disabled={regenerateMutation.isPending}
+                    aria-label={`Resend email to ${inv.email} with a new link`}
+                    data-testid={`button-resend-${inv.id}`}
+                  >
+                    <RefreshCw className="w-3 h-3 mr-1" aria-hidden="true" />
+                    Resend email
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8"
+                    onClick={() => regenerateMutation.mutate({ id: inv.id, sendEmail: false })}
+                    disabled={regenerateMutation.isPending}
+                    aria-label={`Make a new link for ${inv.email}`}
+                    data-testid={`button-newlink-${inv.id}`}
+                  >
+                    <Link2 className="w-3 h-3 mr-1" aria-hidden="true" />
+                    New link
+                  </Button>
                   <Button
                     size="sm"
                     variant="ghost"

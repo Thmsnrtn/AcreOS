@@ -3042,10 +3042,10 @@ export async function executeSupportTool(
             estimatedTime: "3-5 minutes",
             steps: [
               { step: 1, action: `Open ${PLACE_TEXT.invite}`, path: "/settings" },
-              { step: 2, action: "Click 'Invite Member'", element: "button-invite" },
-              { step: 3, action: "Enter email address", tip: "They'll receive an invitation email" },
+              { step: 2, action: "Find the 'Invite team members' card", element: "input-invite-email" },
+              { step: 3, action: "Enter email address", tip: "AcreOS emails the invitation when email delivery is set up; otherwise you get a link to send them yourself" },
               { step: 4, action: "Assign role", options: ["Admin", "Member", "Viewer"], tip: "Roles determine what they can access" },
-              { step: 5, action: "Send invitation", expectedResult: "Member appears in pending invites" },
+              { step: 5, action: "Click Send invite", element: "button-send-invite", expectedResult: "Member appears in pending invites, with Resend email and New link if they need it" },
               { step: 6, action: "Manage existing members", tip: "Click on member to edit role or remove" }
             ],
             proTips: skill_level !== "beginner" ? ["Use Admin role sparingly", "Set up team dashboards for performance tracking"] : []
