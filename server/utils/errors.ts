@@ -510,6 +510,12 @@ export const Errors = {
       sendError(res, 400, "INVALID_LAND_STATUS", error.message);
       return;
     }
+    // A property write naming a parent parcel outside the caller's
+    // organization (utils/parentParcel.ts) is the caller's input: 400.
+    if (error instanceof Error && error.name === "ParentParcelNotFoundError") {
+      sendError(res, 400, "INVALID_PARENT_PARCEL", error.message);
+      return;
+    }
     // In production we never leak the raw error to the client — it goes
     // to the logger so SRE can correlate via the request ID we surface
     // alongside the message. In dev we keep the underlying message so
