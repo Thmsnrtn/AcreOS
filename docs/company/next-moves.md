@@ -157,6 +157,39 @@ what shipped, what it measured, and the top next moves. Newest first.
      - `docs/marketing/blog/the-buy-box-defined-six-filters.md:129,140`;
      - `docs/internal/marketing-os/05-current-state.md:61` (roadmap).
 
+## 2026-11-05 — Fix-and-Flip V1: Leg 1 (#465), PATCH-defaults fix (#466), Leg 2 (stacked on #466) — all unmerged; Legs 3–4 held for Tom
+
+- **Step 0** (`docs/evidence/2026-11-05/fix-and-flip-step0.md`, branch `claude/fix-flip-step0`) stopped the package before build. Muse ruled on 2026-11-05:
+  - evidence rides as scenario assumptions (option a);
+  - a NEW kit desk, with the draft offer untouched;
+  - Leg 2 starts in parallel;
+  - Legs 3–4 and change orders wait on Tom's §9.3 bundle.
+  - Two ruling premises were wrong and are stated in the PRs: there is no `POST /api/flip-decisions` (the live recorder is `POST /api/flip-analyzer/offer`), and accepting a bid wrote nothing to the lines.
+- **#465 Leg 1.**
+  - What it adds: `POST /api/fix-and-flip/decide` through `recordUnderwrittenDecision` (`flip_mao` / `fix_and_flip`). Every input is server-resolved. The evidence (ARV row id + low/mid/high + count, the scope source, each rule's provenance, the hold comparison seen) is frozen as assumptions.
+  - UI: the analyzer's MAO card says "Screen — nothing recorded", and a decision panel sits beside the draft offer.
+  - Proof: 22 mutants caught; full vitest 19,805 passed (the 5 local-only env failures also fail on main); bundle 9,807 KB.
+- **#466 Fix (live data loss).** Zod 4 `.partial()` keeps defaults, so:
+  - saving a rehab line's "spent" zeroed its budget and committed amounts;
+  - a rehab PATCH reset status to planning;
+  - a draw PATCH reset status to planned.
+
+  `patchSchemaOf` fixes the three FF routes. A population gate lists **8 other routes with the same shape** (rentals ×3, move-inspections, double-close, ccr-templates, tax-researcher, api-v1 leads). They are reported for their lanes and held down-only.
+- **Leg 2 (stacked on #466).**
+  - Three-way variance (not-committed ≠ $0).
+  - Explicit apply-accepted-bid-to-lines act.
+  - Estimate lock after planning, including no return to planning and no category moves.
+  - Fact flags with no threshold; arithmetic bid deltas.
+  - No migration. 21 mutants caught.
+- **Next.**
+  1. Muse audits #466, then Leg 2, then #465.
+  2. Tom's answer on the §9.3 bundle (transition log, baseline, change orders, realized columns) unblocks Legs 3–4.
+  3. Leg 5's staging proof waits on 1–4.
+  4. Product calls reported, not made:
+     - the rehab header budget vs the line estimates (two "budgets");
+     - closing the lock's check-then-write race;
+     - the 1099-NEC generator has no qualified-output gate (tax lane).
+
 ## 2026-11-03 — Buy-and-hold release: desk ported + mounted, wiring as links — on `claude/buy-and-hold-release` (off main `f7f2e3f`, PR #458, unmerged; blocker resolved 2026-11-05 by Option B)
 
 - **What shipped on the branch.**
