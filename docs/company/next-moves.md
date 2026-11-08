@@ -3,11 +3,11 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
-## 2026-11-06 — merge statuses reconciled against git at main `fd984d84`
+## 2026-11-06 — merge statuses reconciled against git at main `6b8240fa`
 
 - **What changed.** Every merge status stated below was checked against the GitHub API (`merged_at`) and `git merge-base --is-ancestor <merge commit> origin/main`. The stale ones ("PR open", "unmerged", "uncommitted", "nothing merged", "waiting on CI and Muse") now read "PR #N, MERGED <date>", in US Eastern (so #421 is 2026-10-31). Only status wording was edited, plus a Status column on the 2026-10-18 branch table. "Next" and "owed" bullets stay as written, so some still say "Muse audits; the founder merges" about PRs that have since merged: trust the heading.
-- **Every PR branch named in an entry below has merged**, except `claude/buy-and-hold-underwriting` (the held branch; it has no PR). #406 and #411, the Dependabot bumps named in the 2026-10-30 Express 5 entry, were closed unmerged. Refresh 2 (merged main into this branch): #464, #466, #468, #469, #470, #471, #473 and #484 merged since the first pass, and #461, #465, #483 and #485 after that, and all left the open table; the stale statuses on the entries main added (#473, #464, #484, #468, #469, #471) got the same treatment.
-- **Open PRs at this snapshot** (10, excluding S0 itself; base `main` unless noted; none has an entry below yet). Refresh with `gh api "repos/Thmsnrtn/AcreOS/pulls?state=open&per_page=100" --jq '.[]|"\(.number) \(.draft) \(.head.ref) \(.title)"'`.
+- **Every PR branch named in an entry below has merged**, except `claude/buy-and-hold-underwriting` (the held branch; it has no PR). #406 and #411, the Dependabot bumps named in the 2026-10-30 Express 5 entry, were closed unmerged. Refresh 2 (merged main into this branch): #464, #466, #468, #469, #470, #471, #473 and #484 merged since the first pass, and #461, #465, #466, #467, #483 and #485 after that, and all left the open table; the stale statuses on the entries main added (#473, #464, #484, #468, #469, #471) got the same treatment.
+- **Open PRs at this snapshot** (13, excluding S0 itself; base `main` unless noted; none has an entry below yet). Refresh with `gh api "repos/Thmsnrtn/AcreOS/pulls?state=open&per_page=100" --jq '.[]|"\(.number) \(.draft) \(.head.ref) \(.title)"'`.
 
 | PR | Branch | What | Draft? |
 |---|---|---|---|
@@ -15,12 +15,15 @@ what shipped, what it measured, and the top next moves. Newest first.
 | #459 | `claude/e2-slice1-pax-brief` | E2 slice 1 (Pax core): step-0 stop report + leg 2 sectioned morning brief (legs 1/5 stopped, 3/4 held) | no |
 | #462 | `claude/subdivision-legs1-2-screen-yield` | Subdivision V1 Legs 1–2: buildability screen + lot-yield estimate (+1 table, founder-approved) | no |
 | #463 | `claude/notes-v2-leg1-delinquency-ladder` | Notes V2 Leg 1: delinquency ladder (evidence only; default review operator-recorded) | no |
-| #467 | `claude/fix-flip-leg2-variance` | Fix-and-flip Leg 2: three-way rehab variance, estimate lock, fact flags, bid deltas (title says stacked on #466, now merged) | no |
-| #474 | `claude/wholesale-leg1-mao-engine` | Wholesale Leg 1: wholesale_mao engine + decision desk (held at beta pending the journey walk) | yes |
+| #474 | `claude/wholesale-leg1-mao-engine` | Wholesale Leg 1: wholesale_mao engine + decision desk (held at beta pending the journey walk) | no |
 | #475 | `claude/wholesale-leg3-compliance-gate` | Wholesale Leg 3: assignment compliance on every offer path, with recorded acknowledgements | yes |
 | #476 | `claude/wholesale-leg2-buy-box` | Wholesale Leg 2: versioned buy box (one append-only table, approved) + candidate triage | yes |
 | #477 | `claude/wholesale-leg4-disposition` | Wholesale Leg 4: disposition packet (price re-derived at draft time) + outcome record | yes |
 | #478 | `claude/wholesale-leg5-journey` | Wholesale Leg 5: journey walk script + local rehearsal on the integrated L1–L4 stack (bundle decision needed) | yes |
+| #486 | `claude/w2-agent-investor` | W2-AGENT: agent-investor light-up/delete — agency disclosure record lit, two uncalled commission routes deleted, no default rates shown as the org's own | no |
+| #487 | `claude/w1-land-first-offer-cta` | W1.5 Land first-offer CTA on Today | no |
+| #488 | `claude/w4-note-merge-plan-pricing-engine` | W4.11 [DRAFT]: B10 note-model merge proposal + note pricing engine (recording stopped) | yes |
+| #489 | `claude/next-moves-ff-merged` | next-moves: Fix-and-Flip Legs 1–2, #466, #484, #458 merged; §9.3 routing recorded (docs only) | no |
 
 ## 2026-11-05 — Notes V2 Leg 2: workout NPV comparison — on `claude/notes-v2-leg2-workout-npv` (off main `4b2044b`, PR #461, MERGED 2026-11-08)
 
@@ -175,6 +178,39 @@ what shipped, what it measured, and the top next moves. Newest first.
      - `docs/marketing/x-threads/03-beta-is-on-the-page.md:51`;
      - `docs/marketing/blog/the-buy-box-defined-six-filters.md:129,140`;
      - `docs/internal/marketing-os/05-current-state.md:61` (roadmap).
+
+## 2026-11-05 — Fix-and-Flip V1: Leg 1 (#465), PATCH-defaults fix (#466), Leg 2 (stacked on #466) — all MERGED (#466 2026-11-07, #465 and #467 2026-11-08); Legs 3–4 held for Tom
+
+- **Step 0** (`docs/evidence/2026-11-05/fix-and-flip-step0.md`, branch `claude/fix-flip-step0`) stopped the package before build. Muse ruled on 2026-11-05:
+  - evidence rides as scenario assumptions (option a);
+  - a NEW kit desk, with the draft offer untouched;
+  - Leg 2 starts in parallel;
+  - Legs 3–4 and change orders wait on Tom's §9.3 bundle.
+  - Two ruling premises were wrong and are stated in the PRs: there is no `POST /api/flip-decisions` (the live recorder is `POST /api/flip-analyzer/offer`), and accepting a bid wrote nothing to the lines.
+- **#465 Leg 1.**
+  - What it adds: `POST /api/fix-and-flip/decide` through `recordUnderwrittenDecision` (`flip_mao` / `fix_and_flip`). Every input is server-resolved. The evidence (ARV row id + low/mid/high + count, the scope source, each rule's provenance, the hold comparison seen) is frozen as assumptions.
+  - UI: the analyzer's MAO card says "Screen — nothing recorded", and a decision panel sits beside the draft offer.
+  - Proof: 22 mutants caught; full vitest 19,805 passed (the 5 local-only env failures also fail on main); bundle 9,807 KB.
+- **#466 Fix (live data loss).** Zod 4 `.partial()` keeps defaults, so:
+  - saving a rehab line's "spent" zeroed its budget and committed amounts;
+  - a rehab PATCH reset status to planning;
+  - a draw PATCH reset status to planned.
+
+  `patchSchemaOf` fixes the three FF routes. A population gate lists **8 other routes with the same shape** (rentals ×3, move-inspections, double-close, ccr-templates, tax-researcher, api-v1 leads). They are reported for their lanes and held down-only.
+- **Leg 2 (stacked on #466).**
+  - Three-way variance (not-committed ≠ $0).
+  - Explicit apply-accepted-bid-to-lines act.
+  - Estimate lock after planning, including no return to planning and no category moves.
+  - Fact flags with no threshold; arithmetic bid deltas.
+  - No migration. 21 mutants caught.
+- **Next.**
+  1. Muse audits #466, then Leg 2, then #465.
+  2. Tom's answer on the §9.3 bundle (transition log, baseline, change orders, realized columns) unblocks Legs 3–4.
+  3. Leg 5's staging proof waits on 1–4.
+  4. Product calls reported, not made:
+     - the rehab header budget vs the line estimates (two "budgets");
+     - closing the lock's check-then-write race;
+     - the 1099-NEC generator has no qualified-output gate (tax lane).
 
 ## 2026-11-03 — Buy-and-hold release: desk ported + mounted, wiring as links — on `claude/buy-and-hold-release` (off main `f7f2e3f`, PR #458, MERGED 2026-11-05; blocker resolved 2026-11-05 by Option B)
 
