@@ -246,18 +246,15 @@ function todayIso(): string {
  * Every read a ledger write can change: balances, the fee proposals (org-wide
  * and per charge), rent due, and the lease ledgers. Keys match by first
  * element, so "/api/leases" also refreshes every ["/api/leases", id, "ledger"].
+ * Each mutation invalidates these inline (`acreos/use-mutation-must-invalidate`).
  */
-function invalidateRentLedger() {
-  for (const key of [
-    "/api/rent/aging",
-    "/api/rent/late-fee-proposals",
-    "/api/rent-charges",
-    "/api/rent-charges/scheduled-preview",
-    "/api/leases",
-  ]) {
-    queryClient.invalidateQueries({ queryKey: [key] });
-  }
-}
+const RENT_LEDGER_KEYS = [
+  "/api/rent/aging",
+  "/api/rent/late-fee-proposals",
+  "/api/rent-charges",
+  "/api/rent-charges/scheduled-preview",
+  "/api/leases",
+] as const;
 
 function postureTone(p: string): "default" | "secondary" | "outline" | "destructive" {
   if (p === "eviction_filed") return "destructive";
@@ -803,13 +800,13 @@ function RentDueSection() {
         { leaseId, throughDate: preview.data?.throughDate },
       ),
     onSuccess: (r) => {
-      invalidateRentLedger();
+      for (const key of RENT_LEDGER_KEYS) queryClient.invalidateQueries({ queryKey: [key] });
       toast({
         title: `Posted ${r.inserted} rent charge${r.inserted === 1 ? "" : "s"} (${centsExact(r.insertedTotalCents)}) to the ledger`,
       });
     },
     onError: (err: Error) => {
-      invalidateRentLedger();
+      for (const key of RENT_LEDGER_KEYS) queryClient.invalidateQueries({ queryKey: [key] });
       toast({
         title: "Couldn't post the charges",
         description: `${err.message} Nothing is posted twice — trying again posts only what is missing.`,
@@ -1173,7 +1170,9 @@ function PostureSelect({ charge }: { charge: LedgerCharge }) {
   const record = useMutation({
     mutationFn: (legalPosture: string) =>
       apiPost(`/api/rent-charges/${charge.id}/legal-posture`, { legalPosture }),
-    onSuccess: () => invalidateRentLedger(),
+    onSuccess: () => {
+      for (const key of RENT_LEDGER_KEYS) queryClient.invalidateQueries({ queryKey: [key] });
+    },
     onError: (err: Error) =>
       toast({ title: "Couldn't record the posture", description: err.message, variant: "destructive" }),
   });
@@ -1292,7 +1291,7 @@ function RecordPaymentForm({
       setPostedLines(res.done);
       setAmount("");
       setAcceptPartial(false);
-      invalidateRentLedger();
+      for (const key of RENT_LEDGER_KEYS) queryClient.invalidateQueries({ queryKey: [key] });
       toast({
         title: res.replayed
           ? "This payment was already recorded"
@@ -1303,7 +1302,7 @@ function RecordPaymentForm({
       // One request: it either landed whole or not at all. Refresh anyway so
       // the ledger shows the server's truth; the key is kept, so trying again
       // cannot record it twice.
-      invalidateRentLedger();
+      for (const key of RENT_LEDGER_KEYS) queryClient.invalidateQueries({ queryKey: [key] });
       toast({
         title: "Couldn't record the payment",
         description: `${err.message} Nothing was recorded twice — you can try again.`,
@@ -1733,7 +1732,7 @@ function LateFeeProposalDialog({
       );
     },
     onSuccess: (res) => {
-      invalidateRentLedger();
+      for (const key of RENT_LEDGER_KEYS) queryClient.invalidateQueries({ queryKey: [key] });
       if (!res.charged) {
         setConfirmed(false);
         toast({ title: "Nothing was charged", description: res.explanation });
