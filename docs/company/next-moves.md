@@ -3,28 +3,50 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
-## 2026-11-06 — merge statuses reconciled against git at main `bae005a5`
+## 2026-11-06 — merge statuses reconciled against git at main `fd984d84`
 
 - **What changed.** Every merge status stated below was checked against the GitHub API (`merged_at`) and `git merge-base --is-ancestor <merge commit> origin/main`. The stale ones ("PR open", "unmerged", "uncommitted", "nothing merged", "waiting on CI and Muse") now read "PR #N, MERGED <date>", in US Eastern (so #421 is 2026-10-31). Only status wording was edited, plus a Status column on the 2026-10-18 branch table. "Next" and "owed" bullets stay as written, so some still say "Muse audits; the founder merges" about PRs that have since merged: trust the heading.
-- **Every PR branch named in an entry below has merged**, except `claude/buy-and-hold-underwriting` (the held branch; it has no PR). #406 and #411, the Dependabot bumps named in the 2026-10-30 Express 5 entry, were closed unmerged. Refresh 2 (merged main `bae005a5` into this branch): #464, #466, #468, #469, #470, #471, #473 and #484 merged since the first pass and left the open table; the stale statuses on the entries main added (#473, #464, #484, #468, #469, #471) got the same treatment.
-- **Open PRs at this snapshot** (14, excluding S0 itself; base `main` unless noted; none has an entry below yet). Refresh with `gh api "repos/Thmsnrtn/AcreOS/pulls?state=open&per_page=100" --jq '.[]|"\(.number) \(.draft) \(.head.ref) \(.title)"'`.
+- **Every PR branch named in an entry below has merged**, except `claude/buy-and-hold-underwriting` (the held branch; it has no PR). #406 and #411, the Dependabot bumps named in the 2026-10-30 Express 5 entry, were closed unmerged. Refresh 2 (merged main into this branch): #464, #466, #468, #469, #470, #471, #473 and #484 merged since the first pass, and #461, #465, #483 and #485 after that, and all left the open table; the stale statuses on the entries main added (#473, #464, #484, #468, #469, #471) got the same treatment.
+- **Open PRs at this snapshot** (10, excluding S0 itself; base `main` unless noted; none has an entry below yet). Refresh with `gh api "repos/Thmsnrtn/AcreOS/pulls?state=open&per_page=100" --jq '.[]|"\(.number) \(.draft) \(.head.ref) \(.title)"'`.
 
 | PR | Branch | What | Draft? |
 |---|---|---|---|
 | #453 | `claude/b1-slice1-step0` | P2 B1 slice 1: step-0 inventory + stop report (both build legs blocked) | yes |
 | #459 | `claude/e2-slice1-pax-brief` | E2 slice 1 (Pax core): step-0 stop report + leg 2 sectioned morning brief (legs 1/5 stopped, 3/4 held) | no |
-| #461 | `claude/notes-v2-leg2-workout-npv` | Notes V2 Leg 2: workout NPV comparison (acquired book) + founder decisions 2026-11-05 | no |
 | #462 | `claude/subdivision-legs1-2-screen-yield` | Subdivision V1 Legs 1–2: buildability screen + lot-yield estimate (+1 table, founder-approved) | no |
-| #463 | `claude/notes-v2-leg1-delinquency-ladder` | Notes V2 Leg 1: delinquency ladder (evidence only; default review operator-recorded); base is #461's branch | no |
-| #465 | `claude/fix-flip-leg1-decision` | Fix-and-flip Leg 1: record the flip decision through the kit, with its evidence | no |
+| #463 | `claude/notes-v2-leg1-delinquency-ladder` | Notes V2 Leg 1: delinquency ladder (evidence only; default review operator-recorded) | no |
 | #467 | `claude/fix-flip-leg2-variance` | Fix-and-flip Leg 2: three-way rehab variance, estimate lock, fact flags, bid deltas (title says stacked on #466, now merged) | no |
 | #474 | `claude/wholesale-leg1-mao-engine` | Wholesale Leg 1: wholesale_mao engine + decision desk (held at beta pending the journey walk) | yes |
 | #475 | `claude/wholesale-leg3-compliance-gate` | Wholesale Leg 3: assignment compliance on every offer path, with recorded acknowledgements | yes |
 | #476 | `claude/wholesale-leg2-buy-box` | Wholesale Leg 2: versioned buy box (one append-only table, approved) + candidate triage | yes |
 | #477 | `claude/wholesale-leg4-disposition` | Wholesale Leg 4: disposition packet (price re-derived at draft time) + outcome record | yes |
 | #478 | `claude/wholesale-leg5-journey` | Wholesale Leg 5: journey walk script + local rehearsal on the integrated L1–L4 stack (bundle decision needed) | yes |
-| #483 | `claude/w2-mobile-home` | W2-MHP: mobile-home park — light up pad home record + meter reads; stop split/billback; Pax stops offering unreachable screens | no |
-| #485 | `claude/buy-and-hold-atlas-row` | Buy-and-hold lift: finalise the Atlas row; next-moves marks #471 merged (docs only) | no |
+
+## 2026-11-05 — Notes V2 Leg 2: workout NPV comparison — on `claude/notes-v2-leg2-workout-npv` (off main `4b2044b`, PR #461, MERGED 2026-11-08)
+
+- **Built.** One pure engine (`shared/notes/workoutEngine.ts`, `workout-engine v1`). It compares six paths on one input snapshot:
+  - each path in a fixed order, with line-item cash flows and a sensitivity grid;
+  - no recommendation, rank or score.
+- **Run records.** Runs append to `note_events` as category `analysis`. Migration 0301 widens the CHECKs only; there is no new table.
+  - Every run keeps its full snapshot and the provenance of each input.
+  - The record names the open loss-mit case, and the run writes nothing else.
+- **Surfaces.** Routes `/api/notes/:id/workout-analyses`, and a panel on the note page.
+- **Inputs AcreOS does not hold.** Foreclosure timeline and cost are operator-entered: the repo holds no cited mortgage-foreclosure data. Arrears are operator-stated: AcreOS records no arrears amount.
+- **Proved.**
+  - The golden case matches independent Python Decimal arithmetic to the cent.
+  - Snapshot reproduction holds after the note is edited.
+  - Cross-tenant reads are refused, and the write set is exact.
+  - Four engine/service mutants are caught.
+  - The founder-decisions entry for 2026-11-05 (B1 Option A, Leg 1 ruling, Leg 3 ruling) rides in this PR.
+  - Evidence: `docs/evidence/2026-11-05/notes-v2-leg2-workout-npv.md`.
+- **Gates that only CI can verify.**
+  - `check:tests`: tsc is OOM-killed on an 8 GB container.
+  - The full vitest count: the 2-core container cannot finish the run.
+  - Bundle: 9,816 / 9,823 KB (+18 KB). **7 KB of headroom is left.**
+- **Next.**
+  1. Muse audits; on merge, run the staging proof per §10.
+  2. Leg 1 (ladder; default review is an operator act) must stack on this PR or rebase after it, because both legs redefine the same `note_events` CHECKs.
+  3. Leg 3: the Step 0 census is done. Its schema questions go to Muse/Tom before build (see the report in the session).
 
 ## 2026-11-05 — Onboarding bounce fix (gate stale-cache, wizard release, complete ordering) — on `claude/onboarding-bounce-fix` (off main `c8fa715`, PR #473, MERGED 2026-11-07)
 
@@ -133,7 +155,7 @@ what shipped, what it measured, and the top next moves. Newest first.
   2. Check whether the churn email's "Atlas AI — automatically finds deals overnight" holds against what ships.
   3. Decide whether to clean `contextProfile.ts`.
 
-## 2026-11-05 — Buy-and-hold beta demotion LIFTED (founder decision) — `claude/buy-and-hold-lift`, PR #471, MERGED 2026-11-07
+## 2026-11-05 — Buy-and-hold beta demotion LIFTED (founder decision) — PR #471, MERGED 2026-11-07 (squash `ba92b5e`)
 
 - **Why.** Leg 3's post-merge staging journey passed all 7 steps on the `c8fa715` deploy (`postmerge-458-journey-proof-2026-11-05.md`, COO side), and the founder called the lift.
 - **What changed, in one commit, as the decision file prescribes.**
@@ -144,8 +166,15 @@ what shipped, what it measured, and the top next moves. Newest first.
   - An addendum was added to `founder-decisions-2026-11-05-buy-and-hold.md`.
 - **Proved.** Three mutants caught: demotion back (4 red), ladder reverted (3 red), hold re-added (pin red). `npm run check` exits 0.
 - **Next.**
-  1. Muse audits #471. Do not merge from the session.
-  2. Founder: delete `claude/buy-and-hold-underwriting` (item 5 below) now that the proof is in.
+  1. ~~Muse audits #471.~~ Merged 2026-11-07. Muse is running the post-merge staging proof of the lift.
+  2. The Atlas row is finalised in `docs/evidence/2026-11-03/buy-and-hold-release.md` ("Atlas row — final").
+  3. **Parked:** delete `claude/buy-and-hold-underwriting` (item 5 below) only after Muse confirms the post-merge staging proof (COO direction 2026-11-07).
+  4. **For Muse/Tom — public copy outside the app still says beta or roadmap.** The landing follows `PUBLIC_CLAIM_DEMOTIONS` automatically; these hand-written drafts do not, and none was edited, since public claims are a founder/COO call:
+     - `docs/marketing/linkedin-org-page-setup.md` (lines 8, 43, 66, 146, 196: beta);
+     - `docs/marketing/x-threads/01-six-tabs-one-thread.md:35` (roadmap);
+     - `docs/marketing/x-threads/03-beta-is-on-the-page.md:51`;
+     - `docs/marketing/blog/the-buy-box-defined-six-filters.md:129,140`;
+     - `docs/internal/marketing-os/05-current-state.md:61` (roadmap).
 
 ## 2026-11-03 — Buy-and-hold release: desk ported + mounted, wiring as links — on `claude/buy-and-hold-release` (off main `f7f2e3f`, PR #458, MERGED 2026-11-05; blocker resolved 2026-11-05 by Option B)
 
