@@ -13063,6 +13063,33 @@ $mig0284$`,
      END IF;
    END
    $mig0300$`,
+  // 0301 — Notes V2 Leg 2: note_events gains category 'analysis' (event type 'workout_analysis_run', source 'workout_engine', bound both ways). CHECKs only; triggers untouched.
+  // Mirrors migrations/0301_notes_v2_workout_analysis_events.sql.
+  `DO $mig0301$
+   BEGIN
+     IF NOT EXISTS (
+       SELECT 1 FROM pg_constraint
+       WHERE conrelid = 'note_events'::regclass
+         AND conname = 'note_events_source_matches_category'
+     ) THEN
+       ALTER TABLE "note_events" DROP CONSTRAINT IF EXISTS "note_events_category_check";
+       ALTER TABLE "note_events" ADD CONSTRAINT "note_events_category_check"
+         CHECK ("category" IN ('outcome', 'calendar', 'analysis'));
+       ALTER TABLE "note_events" DROP CONSTRAINT IF EXISTS "note_events_source_check";
+       ALTER TABLE "note_events" ADD CONSTRAINT "note_events_source_check"
+         CHECK ("source" IN ('note_tape', 'operator_correction', 'workout_engine'));
+       ALTER TABLE "note_events" DROP CONSTRAINT IF EXISTS "note_events_type_matches_category";
+       ALTER TABLE "note_events" ADD CONSTRAINT "note_events_type_matches_category" CHECK (
+         ("category" = 'outcome' AND "event_type" IN ('performance_reported'))
+         OR ("category" = 'calendar' AND "event_type" IN ('payment_due', 'maturity', 'balloon', 'rate_adjustment'))
+         OR ("category" = 'analysis' AND "event_type" IN ('workout_analysis_run'))
+       );
+       ALTER TABLE "note_events" ADD CONSTRAINT "note_events_source_matches_category" CHECK (
+         ("category" = 'analysis') = ("source" = 'workout_engine')
+       );
+     END IF;
+   END
+   $mig0301$`,
   // 0303 — E2 slice 1 leg 2: pax_morning_briefs (one sectioned brief per org per local day; dismiss is a stamp; archive + reopen on /today).
   // Mirrors migrations/0303_pax_morning_briefs.sql.
   `CREATE TABLE IF NOT EXISTS "pax_morning_briefs" (
