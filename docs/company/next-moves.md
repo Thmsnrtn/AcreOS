@@ -3,6 +3,49 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-11-05 — Notes V2 Leg 2: workout NPV comparison — on `claude/notes-v2-leg2-workout-npv` (off main `4b2044b`, PR open, unmerged)
+
+- **Built.** One pure engine (`shared/notes/workoutEngine.ts`, `workout-engine v1`). It compares six paths on one input snapshot:
+  - each path in a fixed order, with line-item cash flows and a sensitivity grid;
+  - no recommendation, rank or score.
+- **Run records.** Runs append to `note_events` as category `analysis`. Migration 0301 widens the CHECKs only; there is no new table.
+  - Every run keeps its full snapshot and the provenance of each input.
+  - The record names the open loss-mit case, and the run writes nothing else.
+- **Surfaces.** Routes `/api/notes/:id/workout-analyses`, and a panel on the note page.
+- **Inputs AcreOS does not hold.** Foreclosure timeline and cost are operator-entered: the repo holds no cited mortgage-foreclosure data. Arrears are operator-stated: AcreOS records no arrears amount.
+- **Proved.**
+  - The golden case matches independent Python Decimal arithmetic to the cent.
+  - Snapshot reproduction holds after the note is edited.
+  - Cross-tenant reads are refused, and the write set is exact.
+  - Four engine/service mutants are caught.
+  - The founder-decisions entry for 2026-11-05 (B1 Option A, Leg 1 ruling, Leg 3 ruling) rides in this PR.
+  - Evidence: `docs/evidence/2026-11-05/notes-v2-leg2-workout-npv.md`.
+- **Gates that only CI can verify.**
+  - `check:tests`: tsc is OOM-killed on an 8 GB container.
+  - The full vitest count: the 2-core container cannot finish the run.
+  - Bundle: 9,816 / 9,823 KB (+18 KB). **7 KB of headroom is left.**
+- **Next.**
+  1. Muse audits; on merge, run the staging proof per §10.
+  2. Leg 1 (ladder; default review is an operator act) must stack on this PR or rebase after it, because both legs redefine the same `note_events` CHECKs.
+  3. Leg 3: the Step 0 census is done. Its schema questions go to Muse/Tom before build (see the report in the session).
+
+## 2026-11-05 — Onboarding bounce fix (gate stale-cache, wizard release, complete ordering) — on `claude/onboarding-bounce-fix` (off main `c8fa715`, PR open, unmerged; Muse audits first)
+
+- **What shipped on the branch.** Three legs, one PR. Full Step 0 table, mutants and gates: `docs/evidence/2026-11-05/onboarding-bounce.md`.
+  - Leg 1: `OnboardingGate` no longer redirects on a cached `needsOnboarding: true` while a refetch is in flight. It shows `PageLoader` and acts on the settled answer.
+  - Leg 2: `/onboarding-v2` releases an org whose status read settles `completed: true` to `/today` (replace). Step 1 never renders for it. It never releases on cached data or during its own finish/skip.
+  - Leg 3: `POST /complete` flips the completion flag before the sample-data seed. The response contract is unchanged.
+- **Step 0.**
+  - RC-1 reproduced: the pre-fix gate redirects synchronously from the stale value.
+  - RC-2 confirmed at component level.
+  - RC-3 latency not material: seeded vs unseeded median 54 vs 10 ms locally, ~33 extra round-trips, ~200–250 ms projected on staging. Leg 3 was built for durability (a hung or crashed seed left no completion record).
+- **Proved.**
+  - 13 new tests; 7 of them red on pre-fix code. 4 mutants caught.
+  - check exit 0, ratchet 151 = baseline, lint 0, build 0, bundle 9,816 KB of 9,823 (+1 KB vs main on the same machine).
+- **Next.**
+  1. Muse audits the PR; then merge, staging-only deploy.
+  2. Coordinator proof on staging: throttled fresh-user repro, direct loads in both directions, a CJ run with zero bounce signatures. If CJ is red only on harness buckets, report exactly that.
+
 ## 2026-11-05 — Subdivision V1, Leg 3: feasibility engine — on `claude/subdivision-leg3-feasibility` (off main `4b2044b`, PR open, unmerged)
 
 - **Built.**
@@ -18,6 +61,16 @@ what shipped, what it measured, and the top next moves. Newest first.
 - **For Muse.**
   1. §5.5 is not built, because there is no honest per-gate lead time. Pick (a) operator-stated per-gate leads or (b) elapsed time against the run's end-to-end timeline.
   2. Leg 4 will be the first production adoption of the decision kit, which sits under the 2026-10-21 COO HOLD. Mounting the desk retires those reachability exemptions.
+
+## 2026-11-07 — E2E: first-value CTA URL check gets the spec's own 15 s budget — `claude/e2e-first-value-cta-url-timeout`, unmerged
+
+- **Why.** `today-first-value-cta.spec.ts` (from #460) failed Mobile navigation smoke on #471 and then on #465, both times on the desktop-1440 variant and all 3 tries. Both PRs are unrelated, and the same code also passed.
+- **Root cause, from the CI trace** (#465 run 42341097494):
+  - The click finished at 274.866 s.
+  - The URL was still `/today` at 274.937 s and was `/notes?action=new` by 279.954 s, about 5.1 s after the click. The default `expect` timeout is 5 s.
+  - In-app `pushState` runs inside a View Transition's update callback (`client/src/lib/view-transitions.ts`), so on a loaded runner the URL lands late.
+- **Change.** `toHaveURL(/\/notes(\?|$)/, { timeout: 15_000 })`, the same budget as the file-picker check that follows it. The assertion is otherwise unchanged. Locally the spec passes 3/3.
+- **Next.** Muse audits it. If ~5 s in-app navigations under load ever show up on real devices, that is a View Transitions perf question, not a test question.
 
 ## 2026-11-05 — 1099-NEC output gate — on `claude/nec-1099-qualified-gate` (off main `07de793`, PR open, unmerged)
 
@@ -83,7 +136,7 @@ what shipped, what it measured, and the top next moves. Newest first.
   2. Check whether the churn email's "Atlas AI — automatically finds deals overnight" holds against what ships.
   3. Decide whether to clean `contextProfile.ts`.
 
-## 2026-11-05 — Buy-and-hold beta demotion LIFTED (founder decision) — `claude/buy-and-hold-lift`, PR #471, unmerged
+## 2026-11-05 — Buy-and-hold beta demotion LIFTED (founder decision) — PR #471, MERGED 2026-11-07 (squash `ba92b5e`)
 
 - **Why.** Leg 3's post-merge staging journey passed all 7 steps on the `c8fa715` deploy (`postmerge-458-journey-proof-2026-11-05.md`, COO side), and the founder called the lift.
 - **What changed, in one commit, as the decision file prescribes.**
@@ -94,8 +147,48 @@ what shipped, what it measured, and the top next moves. Newest first.
   - An addendum was added to `founder-decisions-2026-11-05-buy-and-hold.md`.
 - **Proved.** Three mutants caught: demotion back (4 red), ladder reverted (3 red), hold re-added (pin red). `npm run check` exits 0.
 - **Next.**
-  1. Muse audits #471. Do not merge from the session.
-  2. Founder: delete `claude/buy-and-hold-underwriting` (item 5 below) now that the proof is in.
+  1. ~~Muse audits #471.~~ Merged 2026-11-07. Muse is running the post-merge staging proof of the lift.
+  2. The Atlas row is finalised in `docs/evidence/2026-11-03/buy-and-hold-release.md` ("Atlas row — final").
+  3. **Parked:** delete `claude/buy-and-hold-underwriting` (item 5 below) only after Muse confirms the post-merge staging proof (COO direction 2026-11-07).
+  4. **For Muse/Tom — public copy outside the app still says beta or roadmap.** The landing follows `PUBLIC_CLAIM_DEMOTIONS` automatically; these hand-written drafts do not, and none was edited, since public claims are a founder/COO call:
+     - `docs/marketing/linkedin-org-page-setup.md` (lines 8, 43, 66, 146, 196: beta);
+     - `docs/marketing/x-threads/01-six-tabs-one-thread.md:35` (roadmap);
+     - `docs/marketing/x-threads/03-beta-is-on-the-page.md:51`;
+     - `docs/marketing/blog/the-buy-box-defined-six-filters.md:129,140`;
+     - `docs/internal/marketing-os/05-current-state.md:61` (roadmap).
+
+## 2026-11-05 — Fix-and-Flip V1: Leg 1 (#465), PATCH-defaults fix (#466), Leg 2 (stacked on #466) — all unmerged; Legs 3–4 held for Tom
+
+- **Step 0** (`docs/evidence/2026-11-05/fix-and-flip-step0.md`, branch `claude/fix-flip-step0`) stopped the package before build. Muse ruled on 2026-11-05:
+  - evidence rides as scenario assumptions (option a);
+  - a NEW kit desk, with the draft offer untouched;
+  - Leg 2 starts in parallel;
+  - Legs 3–4 and change orders wait on Tom's §9.3 bundle.
+  - Two ruling premises were wrong and are stated in the PRs: there is no `POST /api/flip-decisions` (the live recorder is `POST /api/flip-analyzer/offer`), and accepting a bid wrote nothing to the lines.
+- **#465 Leg 1.**
+  - What it adds: `POST /api/fix-and-flip/decide` through `recordUnderwrittenDecision` (`flip_mao` / `fix_and_flip`). Every input is server-resolved. The evidence (ARV row id + low/mid/high + count, the scope source, each rule's provenance, the hold comparison seen) is frozen as assumptions.
+  - UI: the analyzer's MAO card says "Screen — nothing recorded", and a decision panel sits beside the draft offer.
+  - Proof: 22 mutants caught; full vitest 19,805 passed (the 5 local-only env failures also fail on main); bundle 9,807 KB.
+- **#466 Fix (live data loss).** Zod 4 `.partial()` keeps defaults, so:
+  - saving a rehab line's "spent" zeroed its budget and committed amounts;
+  - a rehab PATCH reset status to planning;
+  - a draw PATCH reset status to planned.
+
+  `patchSchemaOf` fixes the three FF routes. A population gate lists **8 other routes with the same shape** (rentals ×3, move-inspections, double-close, ccr-templates, tax-researcher, api-v1 leads). They are reported for their lanes and held down-only.
+- **Leg 2 (stacked on #466).**
+  - Three-way variance (not-committed ≠ $0).
+  - Explicit apply-accepted-bid-to-lines act.
+  - Estimate lock after planning, including no return to planning and no category moves.
+  - Fact flags with no threshold; arithmetic bid deltas.
+  - No migration. 21 mutants caught.
+- **Next.**
+  1. Muse audits #466, then Leg 2, then #465.
+  2. Tom's answer on the §9.3 bundle (transition log, baseline, change orders, realized columns) unblocks Legs 3–4.
+  3. Leg 5's staging proof waits on 1–4.
+  4. Product calls reported, not made:
+     - the rehab header budget vs the line estimates (two "budgets");
+     - closing the lock's check-then-write race;
+     - the 1099-NEC generator has no qualified-output gate (tax lane).
 
 ## 2026-11-03 — Buy-and-hold release: desk ported + mounted, wiring as links — on `claude/buy-and-hold-release` (off main `f7f2e3f`, PR #458, unmerged; blocker resolved 2026-11-05 by Option B)
 

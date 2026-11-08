@@ -66,16 +66,17 @@ describe("buildVerticalPromptAppendix", () => {
     // two gaps that remain open are pinned right after it.
     expect(out).toContain("AcreOS models pad inventory");
     expect(out).not.toContain("no lot/pad inventory model");
-    // REWRITTEN at the Wave 5 core flip (not deleted): the two lines below used
-    // to pin "no chattel-title tracking" / "no utilities pass-through" — true
-    // while the home side was unbuilt. Wave 5 built it (record-only chattel
-    // fields; the submeter/RUBS billback engine), so the SAME invariant (the
-    // rendered prompt carries the appendix's capability honesty in the operator's
-    // own words) is pinned to the new truth: the voice states the home side is
-    // real and refuses only the honest residuals (verification / comps / sale).
+    // REWRITTEN twice, never deleted. These lines pinned "no chattel-title
+    // tracking" / "no utilities pass-through", then (Wave 5) the split and the
+    // billback as offered — though no client file called either route. W2-MHP
+    // (2026-11-06) lit up the home RECORD (a pad's "Home & meters" dialog) and
+    // stopped the split and billback, so the SAME invariant (the rendered prompt
+    // carries the appendix's capability honesty in the operator's own words)
+    // pins the record as offered and the other two as not computed.
     const flat = out.replace(/\s+/g, " ");
-    expect(flat).toMatch(/home-vs-lot rent split/i);
-    expect(flat).toMatch(/utilities pass-through is billed/i);
+    expect(flat).toMatch(/chattel titles are RECORDED/i);
+    expect(flat).toMatch(/does not compute the lot-vs-home rent split or a utility billback/i);
+    expect(flat).not.toMatch(/utilities pass-through is billed/i);
     expect(flat).toMatch(/never imply title verification/i);
     expect(out).not.toContain("no chattel-title tracking");
   });
