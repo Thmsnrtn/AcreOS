@@ -3,7 +3,7 @@ import { storage } from "./storage";
 import { z } from "zod";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
-import { insertTaskSchema, deals, leads, organizations } from "@shared/schema";
+import { deals, leads } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, gte, lte, count, sql, desc } from "drizzle-orm";
 import { getOrganizationId, getUserId, type AuthenticatedRequest } from "./types/request";
