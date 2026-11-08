@@ -1,6 +1,6 @@
 /**
  * wholesale_buy_boxes — the residential wholesaler's buy box, versioned
- * (wholesale package Leg 2; migration 0301; the one table the package
+ * (wholesale package Leg 2; migration 0305; the one table the package
  * pre-named, approved 2026-11-05).
  *
  * The operator's OWN criteria for which of their OWN candidates they would

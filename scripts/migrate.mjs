@@ -13063,8 +13063,8 @@ $mig0284$`,
      END IF;
    END
    $mig0300$`,
-  // 0301 — Wholesale Leg 2: wholesale_buy_boxes (the operator's buy box, versioned; append-only, org-private, leaves only with its org).
-  // Mirrors migrations/0301_wholesale_buy_boxes.sql.
+  // 0305 — Wholesale Leg 2: wholesale_buy_boxes (the operator's buy box, versioned; append-only, org-private, leaves only with its org).
+  // Mirrors migrations/0305_wholesale_buy_boxes.sql.
   `CREATE TABLE IF NOT EXISTS "wholesale_buy_boxes" (
      "id" serial PRIMARY KEY,
      "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,

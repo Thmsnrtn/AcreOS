@@ -1,4 +1,4 @@
--- 0301 — Wholesale package Leg 2: the operator's buy box, versioned.
+-- 0305 — Wholesale package Leg 2: the operator's buy box, versioned.
 --
 -- The ONE table the wholesale package pre-named, approved 2026-11-05 by the
 -- coordinator under the founder's full-readiness directive

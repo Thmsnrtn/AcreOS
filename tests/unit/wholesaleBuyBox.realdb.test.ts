@@ -1,6 +1,6 @@
 /**
  * The buy-box table and routes (Leg 2) against a REAL database built from this
- * repository, migration 0301 included. FALSIFYING: on pre-leg main the table,
+ * repository, migration 0305 included. FALSIFYING: on pre-leg main the table,
  * the routes and the module do not exist.
  *
  *   1. saving twice makes versions 1 and 2; GET returns 2 as current with both;
