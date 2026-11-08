@@ -67,7 +67,7 @@ import { MembershipGivingPanel } from "@/components/settings/MembershipGivingPan
 import { StripeConnectSettings, SeatManagement } from "@/pages/settings/billing-sections";
 import { AvailablePlansError } from "@/components/billing/AvailablePlansError";
 import { CheckoutReturnHandler } from "@/components/billing/CheckoutReturnHandler";
-import { ApiKeyManager, ActivityLogPanel } from "@/pages/settings/developer-sections";
+import { ActivityLogPanel } from "@/pages/settings/developer-sections";
 import { ReferralSettings, PrivacyDataSettings } from "@/pages/settings/account-sections";
 import { GoalsSettings } from "@/pages/settings/organization-sections";
 // ThemeSettings (dialog quick-picker) is intended for top-bar mount in Phase E;
@@ -123,7 +123,7 @@ function currentTierKey(stored: string | null | undefined): TierKey {
 //                                         custom fields + import/export)
 // integrations     →  integrations       (Pax & connections: Pax card, BYOK link, providers)
 // automations      →  integrations       (legacy hash — /workflows is the one editor)
-// developer        →  integrations       (API keys + audit log)
+// developer        →  integrations       (audit log)
 // ai               →  integrations       (AI cost + provider settings)
 // ai-tasks         →  integrations       (legacy hash — scheduled prompts live on /settings/pax)
 //
@@ -1628,9 +1628,6 @@ export default function Settings() {
                     </Button>
                   </CardContent>
                 </Card>
-
-                {/* API Key Management */}
-                <ApiKeyManager />
 
                 {/* Activity Audit Log */}
                 <ActivityLogPanel />

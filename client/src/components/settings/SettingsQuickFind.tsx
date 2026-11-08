@@ -50,7 +50,6 @@ const CATALOG: SettingsEntry[] = [
   { label: "Email notifications", description: "What we email you about", tab: "notifications", keywords: "email notification alert digest weekly" },
   { label: "SMS alerts", description: "Critical text notifications", tab: "notifications", keywords: "sms text phone alert critical mobile" },
   { label: "Push notifications", description: "Browser + PWA pushes", tab: "notifications", keywords: "push browser pwa desktop notification" },
-  { label: "API keys", description: "Manage org API keys", tab: "integrations", keywords: "api key token developer rest webhook scope" },
   { label: PAX_SETTINGS_COPY.quickFind.byok.label, description: PAX_SETTINGS_COPY.quickFind.byok.description, tab: "integrations", keywords: "byok own keys twilio sendgrid lob openai anthropic openrouter attom regrid key credentials", href: "/settings/byok" },
   { label: "Stripe Connect", description: "Contractor payouts", tab: "integrations", keywords: "stripe connect payout contractor ach payment" },
   { label: "Webhooks", description: "Outbound event subscriptions", tab: "integrations", keywords: "webhook outbound event subscription endpoint url" },
@@ -183,7 +182,7 @@ export function SettingsQuickFind({ onJump }: SettingsQuickFindProps) {
         >
           {results.length === 0 ? (
             <li className="px-3 py-3 text-sm text-muted-foreground">
-              No settings match "{query}". Try theme, 2fa, billing, api keys…
+              No settings match "{query}". Try theme, 2fa, billing, webhooks…
             </li>
           ) : (
             results.map((entry, idx) => (

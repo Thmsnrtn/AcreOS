@@ -20,7 +20,6 @@ import {
   founderAdAccounts,
   systemActivity,
   computeSla,
-  orgApiKeys,
   auditLog,
   mailingOrderPieces,
   mailingOrders,
@@ -34,7 +33,6 @@ import {
 import { seedDemoDataForOrg } from "./services/onboarding/demoDataSeeder";
 import type { LookupCategory } from "./services/data-source-broker";
 import { benchmarkFor, BENCHMARK_KEYS } from "./services/benchmarks";
-import crypto from "crypto";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { requirePermission } from "./utils/permissions";
@@ -3999,90 +3997,13 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
 
   // ============================================
 
-  // ─── Org API Keys ───────────────────────────────────────────────────────────
-  // Per-organization API keys for external integrations.
-
-  // GET /api/org/api-keys — list keys (masked)
-  api.get("/api/org/api-keys", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const org = req.organization;
-      const rows = await db
-        .select({
-          id: orgApiKeys.id,
-          name: orgApiKeys.name,
-          keyPrefix: orgApiKeys.keyPrefix,
-          scope: orgApiKeys.scope,
-          expiresAt: orgApiKeys.expiresAt,
-          lastUsedAt: orgApiKeys.lastUsedAt,
-          isRevoked: orgApiKeys.isRevoked,
-          createdAt: orgApiKeys.createdAt,
-        })
-        .from(orgApiKeys)
-        .where(and(eq(orgApiKeys.organizationId, org.id), eq(orgApiKeys.isRevoked, false)))
-        .orderBy(desc(orgApiKeys.createdAt));
-      res.json(rows);
-    } catch (err: any) {
-      Errors.internal(res, err);
-    }
-  });
-
-  // POST /api/org/api-keys — create key (returns full key ONCE)
-  api.post("/api/org/api-keys", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const org = req.organization;
-      const user = req.user;
-      const userId = user?.id || user?.id;
-      const parsedKey = z.object({ name: z.string().min(1).max(100), scope: z.enum(["read", "write", "admin"]).optional(), expiresInDays: z.number().int().positive().nullable().optional() }).safeParse(req.body);
-      if (!parsedKey.success) return Errors.validationFailed(res, parsedKey.error.issues);
-      const { name, scope = "read", expiresInDays } = parsedKey.data;
-      if (!name || !name.trim()) {
-        return Errors.badRequest(res, "Name is required");
-      }
-
-      // Generate: "acos_" + 32 random hex chars
-      const rawKey = "acos_" + crypto.randomBytes(20).toString("hex");
-      const keyHash = crypto.createHash("sha256").update(rawKey).digest("hex");
-      const keyPrefix = rawKey.slice(0, 12); // "acos_" + 7 chars
-
-      const expiresAt = expiresInDays
-        ? new Date(clock.nowMs() + expiresInDays * 24 * 60 * 60 * 1000)
-        : null;
-
-      const [row] = await db
-        .insert(orgApiKeys)
-        .values({
-          organizationId: org.id,
-          name: name.trim(),
-          keyHash,
-          keyPrefix,
-          scope: scope || "read",
-          expiresAt,
-          createdBy: null, // team member id lookup not needed here
-        })
-        .returning();
-
-      res.json({ ...row, key: rawKey });
-    } catch (err: any) {
-      Errors.internal(res, err);
-    }
-  });
-
-  // DELETE /api/org/api-keys/:id — revoke key
-  api.delete("/api/org/api-keys/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const org = req.organization;
-      const keyId = parseInt(routeParam(req.params.id));
-      const [updated] = await db
-        .update(orgApiKeys)
-        .set({ isRevoked: true, updatedAt: clock.now() })
-        .where(and(eq(orgApiKeys.id, keyId), eq(orgApiKeys.organizationId, org.id)))
-        .returning({ id: orgApiKeys.id });
-      if (!updated) return Errors.notFound(res, "Key");
-      res.json({ message: "Key revoked" });
-    } catch (err: any) {
-      Errors.internal(res, err);
-    }
-  });
+  // ─── Org API Keys — retired 2026-11-08 (W3.6-B) ─────────────────────────────
+  // GET/POST/DELETE /api/org/api-keys served only the Settings → Integrations
+  // "API keys" card. The keys it minted were accepted by no endpoint, and the
+  // expansion ladder defers customer-issued API keys to ~50 customers (the same
+  // call as founder ruling 2026-08-15 on /developer/api-keys). The org_api_keys
+  // table and any existing rows are left untouched (deleting customer data is a
+  // founder hard-stop); the W3.6-B PR proposes the deletion-ledger row.
 
   // ─── Activity / Audit Log ───────────────────────────────────────────────────
   // GET /api/org/activity-log — last 50 entries for this org.
