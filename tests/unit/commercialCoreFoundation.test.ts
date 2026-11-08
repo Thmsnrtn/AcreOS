@@ -29,6 +29,7 @@ import { describe, it, expect } from "vitest";
 import fs from "fs";
 import path from "path";
 import { getBusinessType } from "../../shared/business-types";
+import { stripComments } from "../helpers/stripComments";
 
 const ROOT = path.resolve(__dirname, "../..");
 
@@ -37,6 +38,9 @@ function read(rel: string): string {
 }
 
 const ledger = read("server/routes-rent-ledger.ts");
+// Code only: a deletion leaves a comment recording what went, and a predicate
+// about what the code DOES must not read that record as the code.
+const ledgerCode = stripComments(ledger);
 const schema = read("shared/schema/rental.ts");
 
 describe("commercial is CORE — every roadmap-for-core capability is now delivered", () => {
@@ -97,15 +101,26 @@ describe("every new table has a real reader AND a real writer (no orphan tables)
 
 describe("the CRUD is operator data-entry behind existing mounted routes (no new nav/route surface)", () => {
   it("adds the commercial-term writer + the four tables' endpoints", () => {
-    expect(ledger).toContain('app.patch("/api/leases/:id/commercial-terms"');
-    expect(ledger).toContain('app.post("/api/properties/:propertyId/cam-pools"');
-    expect(ledger).toContain('app.get("/api/properties/:propertyId/cam-pools"');
-    expect(ledger).toContain('app.post("/api/cam-pools/:poolId/reconciliations"');
-    expect(ledger).toContain('app.get("/api/cam-pools/:poolId/reconciliations"');
-    expect(ledger).toContain('app.post("/api/leases/:id/sales-reports"');
-    expect(ledger).toContain('app.get("/api/leases/:id/sales-reports"');
-    expect(ledger).toContain('app.post("/api/leases/:id/rent-schedule"');
-    expect(ledger).toContain('app.get("/api/leases/:id/rent-schedule"');
+    expect(ledgerCode).toContain('app.patch("/api/leases/:id/commercial-terms"');
+    expect(ledgerCode).toContain('app.post("/api/properties/:propertyId/cam-pools"');
+    expect(ledgerCode).toContain('app.get("/api/properties/:propertyId/cam-pools"');
+    // REWRITTEN (W2-COMMERCIAL), not deleted: the reconciliation table's writer
+    // is now the engine's generate route — the Stage-1 typed-in writer below is gone.
+    expect(ledgerCode).toContain('app.post("/api/cam-pools/:poolId/reconciliations/generate"');
+    expect(ledgerCode).toContain('app.get("/api/cam-pools/:poolId/reconciliations"');
+    expect(ledgerCode).toContain('app.post("/api/leases/:id/sales-reports"');
+    expect(ledgerCode).toContain('app.get("/api/leases/:id/sales-reports"');
+    expect(ledgerCode).toContain('app.post("/api/leases/:id/rent-schedule"');
+    expect(ledgerCode).toContain('app.get("/api/leases/:id/rent-schedule"');
+  });
+
+  it("the Stage-1 operator-entered reconciliation writer is deleted (W2-COMMERCIAL)", () => {
+    // The full literal WITH its closing quote: the surviving
+    // ".../reconciliations/generate" registration contains the deleted path as a
+    // prefix, so a check without the quote would stay green with the writer back.
+    expect(ledgerCode).not.toMatch(/app\.post\(\s*"\/api\/cam-pools\/:poolId\/reconciliations"/);
+    // …and the provenance only that writer stamped is produced nowhere.
+    expect(ledgerCode).not.toContain('generatedBy: "operator_entered"');
   });
 
   it("does NOT introduce a new route file (routes-rent-ledger.ts is already mounted)", () => {
@@ -115,13 +130,16 @@ describe("the CRUD is operator data-entry behind existing mounted routes (no new
 });
 
 describe("honesty — Stage 1 stores facts, it does not fabricate the engines' numbers", () => {
-  it("the reconciliation writer stamps operator_entered provenance and leaves engine columns null", () => {
-    expect(ledger).toContain('generatedBy: "operator_entered"');
-    // The engine-computed snapshot columns are explicitly null until the
-    // reconciliation engine (a later stage) fills them — not invented here.
-    expect(ledger).toMatch(/statementMarkdown:\s*null/);
-    expect(ledger).toMatch(/byCategoryCents:\s*null/);
-    expect(ledger).toMatch(/coverageComplete:\s*null/);
+  it("the ONLY reconciliation writer is the engine, and it freezes the engine's own statement", () => {
+    // REWRITTEN (W2-COMMERCIAL), not deleted. This pinned the Stage-1 writer's
+    // honesty (operator_entered provenance, engine columns null) while it was the
+    // only writer. The invariant it protected — no reconciliation row carries
+    // money figures the engine did not compute — now holds structurally: there is
+    // exactly one insert into cam_reconciliations, stamped "engine", carrying the
+    // renderer's statement. (Behaviour: commercialLightUpRoutes.test.ts.)
+    expect(ledgerCode.match(/\.insert\(camReconciliations\)/g) ?? []).toHaveLength(1);
+    expect(ledgerCode).toContain('generatedBy: "engine"');
+    expect(ledgerCode).toContain("renderCamStatementMarkdown(result,");
   });
 
   it("money math is DELEGATED to the pure tested engine, not hand-rolled in the route", () => {

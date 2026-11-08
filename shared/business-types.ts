@@ -348,6 +348,11 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     // commercial late fee is contractual). All of it lives behind the existing
     // Rentals doors — no new nav, no money movement (compute/record/propose only,
     // never a posted charge on AcreOS's account). 2026-08 founder promote decision (Wave 4).
+    // REACHABILITY (W2-COMMERCIAL, 2026-11-06): none of the above had a screen
+    // until the Leases → Commercial tab (commercial-panel.tsx), which now reaches
+    // commercial terms, $/sqft, escalation steps and CAM pools + reconciliation.
+    // Percentage rent (sales reports) and the contractual late-fee proposal STILL
+    // have no screen — held for a product decision, see the W2 report.
     maturity: "core",
     // Landlord templates whose mechanics genuinely apply to commercial
     // base-rent operations: maintenance triage, rent-received receipt, and

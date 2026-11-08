@@ -1330,7 +1330,12 @@ export const camReconciliations = pgTable(
     recoverableShareCents: bigint("recoverable_share_cents", { mode: "number" }),
     /** What the tenant was actually billed in estimates over the period. */
     estimatedBilledCents: bigint("estimated_billed_cents", { mode: "number" }),
-    /** How estimatedBilled was determined: 'from_charges' (summed rent_charges) or 'lease_estimate'. */
+    /**
+     * How estimatedBilled was determined: 'from_charges' (summed rent_charges) or
+     * 'operator_stated' (the landlord's own total, entered at generation). Rows
+     * frozen before 2026-11-06 may carry the retired 'lease_estimate' / 'none' /
+     * 'operator_entered' — kept as recorded, never produced again.
+     */
     estimatedBilledBasis: text("estimated_billed_basis"),
     /** recoverableShare − estimatedBilled: positive = tenant owes, negative = credit due. */
     deltaCents: bigint("delta_cents", { mode: "number" }),

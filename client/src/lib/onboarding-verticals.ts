@@ -160,12 +160,12 @@ export const VERTICAL_ONBOARDING: Record<BusinessType, VerticalOnboardingCopy> =
     noun: "leases",
     dataTitle: ["Set up your", "lease book."],
     dataSub:
-      "Your job is signed leases and collected base rent. Load sample data to see the workspace live, then bring in your leases. Honest note: CAM/NNN pass-throughs aren't modeled yet.",
+      "Your job is signed leases and collected base rent. Load sample data to see the workspace live, then bring in your leases. CAM reconciliation, rent steps and $/sqft live on the Leases → Commercial tab; percentage rent isn't modeled yet.",
     finish: {
       path: "/leases",
       cta: "Open your leases →",
       blurb:
-        "The lease book tracks terms, base-rent charges, expirations, and maintenance — the core commercial loop, with CAM/NNN on the roadmap.",
+        "The lease book tracks terms, base-rent charges, expirations, and maintenance — the core commercial loop — plus CAM reconciliation, rent steps and $/sqft on its Commercial tab.",
     },
   },
   creative_finance: {

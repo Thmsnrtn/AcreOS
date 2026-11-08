@@ -158,7 +158,7 @@ const REGISTRY: Array<{
       id: "commercial",
       title: "Commercial surfaces",
       description:
-        "Term leases, base-rent ledger, maintenance dispatch on the shared rentals stack — plus deal pipeline and property inventory. No CAM / percentage-rent modeling yet.",
+        "Term leases, base-rent ledger, maintenance dispatch on the shared rentals stack — plus deal pipeline and property inventory. CAM reconciliation, rent steps and $/sqft are on the Leases → Commercial tab; percentage rent is not modeled yet.",
       priority: 25,
       links: [
         { label: "Rent roll", href: "/rent-roll" },
