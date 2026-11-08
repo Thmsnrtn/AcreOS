@@ -1,0 +1,650 @@
+[
+  {
+    "vp": "phone",
+    "theme": "light",
+    "motion": "no-preference",
+    "pageErrors": [],
+    "transitionSkippedErrors": [],
+    "consoleErrors": 2,
+    "probeErrors": [],
+    "vtLog": [
+      {
+        "label": "after-onboarding-click",
+        "url": "http://localhost:5000/today",
+        "vt": {
+          "started": 2,
+          "finished": 2,
+          "skipped": [],
+          "other": []
+        }
+      },
+      {
+        "label": "cj-goto-path",
+        "url": "http://localhost:5000/today",
+        "vt": {
+          "started": 0,
+          "finished": 0,
+          "skipped": [],
+          "other": []
+        }
+      },
+      {
+        "label": "door-walk",
+        "url": "http://localhost:5000/today",
+        "vt": {
+          "started": 8,
+          "finished": 8,
+          "skipped": [],
+          "other": []
+        }
+      },
+      {
+        "label": "rapid-and-redirects",
+        "url": "http://localhost:5000/ai",
+        "vt": {
+          "started": 16,
+          "finished": 16,
+          "skipped": [
+            "Transition was skipped. New ViewTransition started @/deals",
+            "Transition was skipped. New ViewTransition started @/pax",
+            "Transition was skipped. New ViewTransition started @/ai",
+            "Transition was skipped. New ViewTransition started @/dashboard",
+            "Transition was skipped. New ViewTransition started @/today"
+          ],
+          "other": []
+        }
+      }
+    ]
+  },
+  {
+    "vp": "phone",
+    "theme": "light",
+    "motion": "reduce",
+    "pageErrors": [],
+    "transitionSkippedErrors": [],
+    "consoleErrors": 2,
+    "probeErrors": [],
+    "vtLog": [
+      {
+        "label": "after-onboarding-click",
+        "url": "http://localhost:5000/today",
+        "vt": {
+          "started": 0,
+          "finished": 0,
+          "skipped": [],
+          "other": []
+        }
+      },
+      {
+        "label": "cj-goto-path",
+        "url": "http://localhost:5000/today",
+        "vt": {
+          "started": 0,
+          "finished": 0,
+          "skipped": [],
+          "other": []
+        }
+      },
+      {
+        "label": "door-walk",
+        "url": "http://localhost:5000/today",
+        "vt": {
+          "started": 0,
+          "finished": 0,
+          "skipped": [],
+          "other": []
+        }
+      },
+      {
+        "label": "rapid-and-redirects",
+        "url": "http://localhost:5000/ai",
+        "vt": {
+          "started": 0,
+          "finished": 0,
+          "skipped": [],
+          "other": []
+        }
+      }
+    ]
+  },
+  {
+    "vp": "phone",
+    "theme": "dark",
+    "motion": "no-preference",
+    "pageErrors": [],
+    "transitionSkippedErrors": [],
+    "consoleErrors": 2,
+    "probeErrors": [],
+    "vtLog": [
+      {
+        "label": "after-onboarding-click",
+        "url": "http://localhost:5000/today",
+        "vt": {
+          "started": 2,
+          "finished": 2,
+          "skipped": [],
+          "other": []
+        }
+      },
+      {
+        "label": "cj-goto-path",
+        "url": "http://localhost:5000/today",
+        "vt": {
+          "started": 0,
+          "finished": 0,
+          "skipped": [],
+          "other": []
+        }
+      },
+      {
+        "label": "door-walk",
+        "url": "http://localhost:5000/today",
+        "vt": {
+          "started": 8,
+          "finished": 8,
+          "skipped": [],
+          "other": []
+        }
+      },
+      {
+        "label": "rapid-and-redirects",
+        "url": "http://localhost:5000/ai",
+        "vt": {
+          "started": 16,
+          "finished": 16,
+          "skipped": [
+            "Transition was skipped. New ViewTransition started @/deals",
+            "Transition was skipped. New ViewTransition started @/pax",
+            "Transition was skipped. New ViewTransition started @/ai",
+            "Transition was skipped. New ViewTransition started @/dashboard",
+            "Transition was skipped. New ViewTransition started @/dashboard"
+          ],
+          "other": []
+        }
+      }
+    ]
+  },
+  {
+    "vp": "phone",
+    "theme": "dark",
+    "motion": "reduce",
+    "pageErrors": [],
+    "transitionSkippedErrors": [],
+    "consoleErrors": 2,
+    "probeErrors": [],
+    "vtLog": [
+      {
+        "label": "after-onboarding-click",
+        "url": "http://localhost:5000/today",
+        "vt": {
+          "started": 0,
+          "finished": 0,
+          "skipped": [],
+          "other": []
+        }
+      },
+      {
+        "label": "cj-goto-path",
+        "url": "http://localhost:5000/today",
+        "vt": {
+          "started": 0,
+          "finished": 0,
+          "skipped": [],
+          "other": []
+        }
+      },
+      {
+        "label": "door-walk",
+        "url": "http://localhost:5000/today",
+        "vt": {
+          "started": 0,
+          "finished": 0,
+          "skipped": [],
+          "other": []
+        }
+      },
+      {
+        "label": "rapid-and-redirects",
+        "url": "http://localhost:5000/ai",
+        "vt": {
+          "started": 0,
+          "finished": 0,
+          "skipped": [],
+          "other": []
+        }
+      }
+    ]
+  },
+  {
+    "vp": "tablet",
+    "theme": "light",
+    "motion": "no-preference",
+    "pageErrors": [],
+    "transitionSkippedErrors": [],
+    "consoleErrors": 2,
+    "probeErrors": [],
+    "vtLog": [
+      {
+        "label": "after-onboarding-click",
+        "url": "http://localhost:5000/today",
+        "vt": {
+          "started": 2,
+          "finished": 2,
+          "skipped": [],
+          "other": []
+        }
+      },
+      {
+        "label": "cj-goto-path",
+        "url": "http://localhost:5000/today",
+        "vt": {
+          "started": 0,
+          "finished": 0,
+          "skipped": [],
+          "other": []
+        }
+      },
+      {
+        "label": "door-walk",
+        "url": "http://localhost:5000/today",
+        "vt": {
+          "started": 8,
+          "finished": 8,
+          "skipped": [],
+          "other": []
+        }
+      },
+      {
+        "label": "rapid-and-redirects",
+        "url": "http://localhost:5000/ai",
+        "vt": {
+          "started": 16,
+          "finished": 16,
+          "skipped": [
+            "Transition was skipped. New ViewTransition started @/deals",
+            "Transition was skipped. New ViewTransition started @/pax",
+            "Transition was skipped. New ViewTransition started @/ai",
+            "Transition was skipped. New ViewTransition started @/dashboard",
+            "Transition was skipped. New ViewTransition started @/dashboard"
+          ],
+          "other": []
+        }
+      }
+    ]
+  },
+  {
+    "vp": "tablet",
+    "theme": "light",
+    "motion": "reduce",
+    "pageErrors": [],
+    "transitionSkippedErrors": [],
+    "consoleErrors": 2,
+    "probeErrors": [],
+    "vtLog": [
+      {
+        "label": "after-onboarding-click",
+        "url": "http://localhost:5000/today",
+        "vt": {
+          "started": 0,
+          "finished": 0,
+          "skipped": [],
+          "other": []
+        }
+      },
+      {
+        "label": "cj-goto-path",
+        "url": "http://localhost:5000/today",
+        "vt": {
+          "started": 0,
+          "finished": 0,
+          "skipped": [],
+          "other": []
+        }
+      },
+      {
+        "label": "door-walk",
+        "url": "http://localhost:5000/today",
+        "vt": {
+          "started": 0,
+          "finished": 0,
+          "skipped": [],
+          "other": []
+        }
+      },
+      {
+        "label": "rapid-and-redirects",
+        "url": "http://localhost:5000/ai",
+        "vt": {
+          "started": 0,
+          "finished": 0,
+          "skipped": [],
+          "other": []
+        }
+      }
+    ]
+  },
+  {
+    "vp": "tablet",
+    "theme": "dark",
+    "motion": "no-preference",
+    "pageErrors": [],
+    "transitionSkippedErrors": [],
+    "consoleErrors": 2,
+    "probeErrors": [],
+    "vtLog": [
+      {
+        "label": "after-onboarding-click",
+        "url": "http://localhost:5000/today",
+        "vt": {
+          "started": 2,
+          "finished": 2,
+          "skipped": [],
+          "other": []
+        }
+      },
+      {
+        "label": "cj-goto-path",
+        "url": "http://localhost:5000/today",
+        "vt": {
+          "started": 0,
+          "finished": 0,
+          "skipped": [],
+          "other": []
+        }
+      },
+      {
+        "label": "door-walk",
+        "url": "http://localhost:5000/today",
+        "vt": {
+          "started": 8,
+          "finished": 8,
+          "skipped": [],
+          "other": []
+        }
+      },
+      {
+        "label": "rapid-and-redirects",
+        "url": "http://localhost:5000/ai",
+        "vt": {
+          "started": 16,
+          "finished": 16,
+          "skipped": [
+            "Transition was skipped. New ViewTransition started @/deals",
+            "Transition was skipped. New ViewTransition started @/pax",
+            "Transition was skipped. New ViewTransition started @/ai",
+            "Transition was skipped. New ViewTransition started @/dashboard",
+            "Transition was skipped. New ViewTransition started @/dashboard"
+          ],
+          "other": []
+        }
+      }
+    ]
+  },
+  {
+    "vp": "tablet",
+    "theme": "dark",
+    "motion": "reduce",
+    "pageErrors": [],
+    "transitionSkippedErrors": [],
+    "consoleErrors": 2,
+    "probeErrors": [],
+    "vtLog": [
+      {
+        "label": "after-onboarding-click",
+        "url": "http://localhost:5000/today",
+        "vt": {
+          "started": 0,
+          "finished": 0,
+          "skipped": [],
+          "other": []
+        }
+      },
+      {
+        "label": "cj-goto-path",
+        "url": "http://localhost:5000/today",
+        "vt": {
+          "started": 0,
+          "finished": 0,
+          "skipped": [],
+          "other": []
+        }
+      },
+      {
+        "label": "door-walk",
+        "url": "http://localhost:5000/today",
+        "vt": {
+          "started": 0,
+          "finished": 0,
+          "skipped": [],
+          "other": []
+        }
+      },
+      {
+        "label": "rapid-and-redirects",
+        "url": "http://localhost:5000/ai",
+        "vt": {
+          "started": 0,
+          "finished": 0,
+          "skipped": [],
+          "other": []
+        }
+      }
+    ]
+  },
+  {
+    "vp": "desktop",
+    "theme": "light",
+    "motion": "no-preference",
+    "pageErrors": [],
+    "transitionSkippedErrors": [],
+    "consoleErrors": 2,
+    "probeErrors": [],
+    "vtLog": [
+      {
+        "label": "after-onboarding-click",
+        "url": "http://localhost:5000/today",
+        "vt": {
+          "started": 2,
+          "finished": 2,
+          "skipped": [],
+          "other": []
+        }
+      },
+      {
+        "label": "cj-goto-path",
+        "url": "http://localhost:5000/today",
+        "vt": {
+          "started": 0,
+          "finished": 0,
+          "skipped": [],
+          "other": []
+        }
+      },
+      {
+        "label": "door-walk",
+        "url": "http://localhost:5000/today",
+        "vt": {
+          "started": 8,
+          "finished": 8,
+          "skipped": [],
+          "other": []
+        }
+      },
+      {
+        "label": "rapid-and-redirects",
+        "url": "http://localhost:5000/ai",
+        "vt": {
+          "started": 16,
+          "finished": 16,
+          "skipped": [
+            "Transition was skipped. New ViewTransition started @/deals",
+            "Transition was skipped. New ViewTransition started @/pax",
+            "Transition was skipped. New ViewTransition started @/ai",
+            "Transition was skipped. New ViewTransition started @/dashboard",
+            "Transition was skipped. New ViewTransition started @/dashboard"
+          ],
+          "other": []
+        }
+      }
+    ]
+  },
+  {
+    "vp": "desktop",
+    "theme": "light",
+    "motion": "reduce",
+    "pageErrors": [],
+    "transitionSkippedErrors": [],
+    "consoleErrors": 2,
+    "probeErrors": [],
+    "vtLog": [
+      {
+        "label": "after-onboarding-click",
+        "url": "http://localhost:5000/today",
+        "vt": {
+          "started": 0,
+          "finished": 0,
+          "skipped": [],
+          "other": []
+        }
+      },
+      {
+        "label": "cj-goto-path",
+        "url": "http://localhost:5000/today",
+        "vt": {
+          "started": 0,
+          "finished": 0,
+          "skipped": [],
+          "other": []
+        }
+      },
+      {
+        "label": "door-walk",
+        "url": "http://localhost:5000/today",
+        "vt": {
+          "started": 0,
+          "finished": 0,
+          "skipped": [],
+          "other": []
+        }
+      },
+      {
+        "label": "rapid-and-redirects",
+        "url": "http://localhost:5000/ai",
+        "vt": {
+          "started": 0,
+          "finished": 0,
+          "skipped": [],
+          "other": []
+        }
+      }
+    ]
+  },
+  {
+    "vp": "desktop",
+    "theme": "dark",
+    "motion": "no-preference",
+    "pageErrors": [],
+    "transitionSkippedErrors": [],
+    "consoleErrors": 1,
+    "probeErrors": [],
+    "vtLog": [
+      {
+        "label": "after-onboarding-click",
+        "url": "http://localhost:5000/today",
+        "vt": {
+          "started": 2,
+          "finished": 2,
+          "skipped": [],
+          "other": []
+        }
+      },
+      {
+        "label": "cj-goto-path",
+        "url": "http://localhost:5000/today",
+        "vt": {
+          "started": 0,
+          "finished": 0,
+          "skipped": [],
+          "other": []
+        }
+      },
+      {
+        "label": "door-walk",
+        "url": "http://localhost:5000/today",
+        "vt": {
+          "started": 8,
+          "finished": 8,
+          "skipped": [],
+          "other": []
+        }
+      },
+      {
+        "label": "rapid-and-redirects",
+        "url": "http://localhost:5000/ai",
+        "vt": {
+          "started": 16,
+          "finished": 16,
+          "skipped": [
+            "Transition was skipped. New ViewTransition started @/deals",
+            "Transition was skipped. New ViewTransition started @/pax",
+            "Transition was skipped. New ViewTransition started @/ai",
+            "Transition was skipped. New ViewTransition started @/dashboard",
+            "Transition was skipped. New ViewTransition started @/dashboard"
+          ],
+          "other": []
+        }
+      }
+    ]
+  },
+  {
+    "vp": "desktop",
+    "theme": "dark",
+    "motion": "reduce",
+    "pageErrors": [],
+    "transitionSkippedErrors": [],
+    "consoleErrors": 2,
+    "probeErrors": [],
+    "vtLog": [
+      {
+        "label": "after-onboarding-click",
+        "url": "http://localhost:5000/today",
+        "vt": {
+          "started": 0,
+          "finished": 0,
+          "skipped": [],
+          "other": []
+        }
+      },
+      {
+        "label": "cj-goto-path",
+        "url": "http://localhost:5000/today",
+        "vt": {
+          "started": 0,
+          "finished": 0,
+          "skipped": [],
+          "other": []
+        }
+      },
+      {
+        "label": "door-walk",
+        "url": "http://localhost:5000/today",
+        "vt": {
+          "started": 0,
+          "finished": 0,
+          "skipped": [],
+          "other": []
+        }
+      },
+      {
+        "label": "rapid-and-redirects",
+        "url": "http://localhost:5000/ai",
+        "vt": {
+          "started": 0,
+          "finished": 0,
+          "skipped": [],
+          "other": []
+        }
+      }
+    ]
+  }
+]
