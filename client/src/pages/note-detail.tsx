@@ -39,6 +39,7 @@ import { NoteComplianceCard } from "@/components/note-compliance-card";
 import { NoteLossMitCard } from "@/components/note-loss-mit-card";
 import { DataProvenanceChip } from "@/components/data-provenance-chip";
 import { NoteRecordPanels } from "@/components/notes/NoteRecordPanels";
+import { NoteWorkoutAnalysisPanel } from "@/components/notes/NoteWorkoutAnalysisPanel";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { delinquencyIsDeterminable } from "@shared/notes/delinquency";
 
@@ -820,6 +821,9 @@ export default function NoteDetailPage() {
 
       {/* Loss-mit case file — auto-prominent when status is late/default. */}
       <NoteLossMitCard noteId={note.id} currentNoteStatus={note.status} />
+
+      {/* V-Notes-2 Leg 2: workout comparison — a record of stated scenarios, never a recommendation. */}
+      <NoteWorkoutAnalysisPanel noteId={note.id} />
 
       {/* Compliance — hazard insurance + property-tax escrow. */}
       <NoteComplianceCard

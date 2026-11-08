@@ -602,12 +602,16 @@ describe("the Pax mobile-homes voice matches what the product does", () => {
     expect(flat).not.toMatch(/never imply the platform models pads/i);
   });
 
-  it("offers the home side (split + billback) while refusing verification / comps / sale execution", () => {
-    // REWRITTEN at the flip: chattel titles and utilities pass-through are now
-    // real (record-only titles; submeter/RUBS billback), so the voice offers
-    // them and refuses only the honest residuals.
-    expect(flat).toMatch(/home-vs-lot rent split/i);
-    expect(flat).toMatch(/utilities pass-through is billed/i);
+  it("offers the reachable home record, discloses the split + billback, refuses verification / comps / sale", () => {
+    // REWRITTEN again (W2-MHP, 2026-11-06), not deleted. Wave 5 had the voice
+    // offer the split and the billback while no client file called either
+    // route. The home RECORD is now reachable (a pad's "Home & meters" dialog
+    // on the Units tab), so the voice offers that and says the split and the
+    // billback are not computed in the product.
+    expect(flat).toMatch(/chattel titles are RECORDED/i);
+    expect(flat).toMatch(/"Home & meters"/);
+    expect(flat).toMatch(/does not compute the lot-vs-home rent split or a utility billback/i);
+    expect(flat).not.toMatch(/utilities pass-through is billed/i);
     expect(flat).toMatch(/never imply title verification/i);
   });
 

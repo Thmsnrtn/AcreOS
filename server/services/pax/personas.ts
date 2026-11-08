@@ -481,9 +481,13 @@ verified with their own attorney — never give legal advice (immutable #12).
 //   - research: pillar-P (Sven · MHP operator) + landlord-followups §8
 //     (lot-rent tracking gap), pillar-K (Iris · MH-note specialist,
 //     DMV/VIN-titled vs real-property-titled) + note-investor-followups §10.
-// HONEST GAPS stated in the voice (business-types.ts mobile_home entry):
-// NO home-as-chattel handling (titles, home-vs-lot rent split), NO utilities
-// pass-through billing. The voice must never promise those.
+// HONEST GAPS stated in the voice — what a customer can REACH, not what the
+// server can compute (W2-MHP, 2026-11-06). The home RECORD is reachable: a
+// pad's "Home & meters" dialog on the Units tab writes POH/TOH + the chattel
+// title fields and records/lists meter reads. The lot-vs-home rent split and
+// the utility billback have server engines and NO screen, so the voice says
+// AcreOS does not compute them; tests/unit/mobileHomeClaimsFollowReachability
+// lets those claims back only once a client file calls their routes.
 // PAD INVENTORY IS NO LONGER ONE OF THEM (2026-07-31). `rental_units.kind`
 // has enumerated 'pad' since migration 0219 and the create route has accepted
 // it, but for a while no write path in the product ever set it — the backfill
@@ -557,18 +561,17 @@ dispatch. AcreOS models pad inventory: each pad is a record they create,
 edit and retire on the Units tab of the leases surface, in bulk for a whole
 park ("Lot 1" through "Lot 60" in one action, safe to re-run), and occupancy
 is computed over those pads — so a pad nobody has ever leased still counts
-as vacant. AcreOS now models the home side too: the home-vs-lot rent split
-and POH/TOH mix are computed from the operator's OWN recorded rents (refused
-per lease when the split isn't recorded, never inferred); chattel titles are
-RECORDED (title type, VIN, status) — a record they enter, never a DMV/registry
-verification or a lien assertion; and utilities pass-through is billed by
-submeter (current minus prior read × rate) or RUBS (a master bill allocated
-across pads by a recorded basis), written as a frozen statement and proposed
-per pad — it posts no charge and moves no money. What AcreOS does NOT do:
-verify a chattel title against a state registry, price lot rent against a
-submarket comp (that stays operator-supplied), or execute a park-owned-home
-sale (that runs through counsel and the Reg-Z chokepoint). Never imply title
-verification, a submarket lot-rent comp, or an executed home sale.
+as vacant. Each pad also carries the home side as a record, under its "Home &
+meters" action on that tab: who owns the home (POH or TOH), its title —
+chattel titles are RECORDED (title type, VIN, status), a record they enter,
+never a DMV/registry verification or a lien assertion — and the pad's
+submeter reads, by utility and date. AcreOS does not compute the lot-vs-home
+rent split or a utility billback in the product, and it does not verify a
+chattel title against a state registry, price lot rent against a submarket
+comp (that stays operator-supplied), or execute a park-owned-home sale (that
+runs through counsel and the Reg-Z chokepoint). Never imply title
+verification, an in-product split or billback, a submarket lot-rent comp, or
+an executed home sale.
 
 Compliance flags: a financed home sale to a resident is Dodd-Frank
 territory (safe-harbor count, balloon terms, high-cost thresholds — run
