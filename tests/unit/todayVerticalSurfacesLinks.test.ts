@@ -236,14 +236,14 @@ const WIDGETS_FILE = path.join(CLIENT, "components/dashboard/type-specific-widge
 
 /**
  * FENCED — exports of type-specific-widgets.tsx that nothing calls. The file
- * was never mounted (no mount in any sampled today.tsx or dashboard.tsx), and
- * its retirement is held only because PR #467 (Fix-and-flip Leg 2) is editing
- * FlipperWidgets in it. May only shrink; delete the file and this register
- * once #467 lands (see reports/w2-today-surfaces.md).
+ * was never mounted (no mount in any sampled today.tsx or dashboard.tsx). Its
+ * retirement is held for the live Fix-and-flip lane, whose #467 (merged
+ * 2026-11-08) added a flag link inside FlipperWidgets. May only shrink: delete
+ * the file and this register together (see reports/w2-today-surfaces.md).
  */
 const FENCED_UNCALLED: Record<string, string> = {
-  TypeSpecificWidgets: "retirement held for PR #467",
-  TypeSpecificWidgetsProps: "retirement held for PR #467",
+  TypeSpecificWidgets: "retirement held for the Fix-and-flip lane (#467)",
+  TypeSpecificWidgetsProps: "retirement held for the Fix-and-flip lane (#467)",
 };
 const FENCED_BASELINE = 2;
 

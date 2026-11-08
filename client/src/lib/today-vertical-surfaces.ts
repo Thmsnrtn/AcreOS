@@ -237,7 +237,7 @@ export function resolveVerticalSurfaces(input: VerticalSurfacesInput): VerticalS
  */
 export const TODAY_HELD_CLUSTERS: Readonly<Record<string, string>> = {
   flipper:
-    "Fix-and-flip lane (PR #467) is building this vertical's own dashboard surface in type-specific-widgets.tsx; its Today row is that lane's call.",
+    "Fix-and-flip lane (live; #465/#467 merged) shaped this vertical's own dashboard widget in type-specific-widgets.tsx, which nothing mounts; where flipper attention lives on Today is that lane's call.",
 };
 
 // Exported for test introspection only (the link tests read every entry).
