@@ -92,7 +92,7 @@ Branch: `claude/e2-slice1-pax-brief`, off main `f7f2e3f`. Built 2026-11-03 (EST)
 | Dismissal is org-wide | Yes, by design (row per org per day) | UI says "for your team today" |
 | Archive and dismiss sat behind `todayGuard` (10/min plus the AI daily budget); no `onError` | Yes (`routes.ts` mount) | Separate router mounted without the guard; toast on error |
 | Sweep missed direct kernel-table writes; weak headline assertion; test order dependency | Yes | `KERNEL_TABLE_WRITE` sweep with canaries; headline pinned to the template's shape; the dismiss test is self-contained |
-| Table-count +1 not approved | Yes | Flagged; needs Tom's yes |
+| Table-count +1 not approved | Yes | **Approved 2026-11-07 under Tom's full-readiness mandate** (Muse, PR #459 audit); recorded in the ratchet note |
 
 ## Proof
 
