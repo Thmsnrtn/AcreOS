@@ -392,18 +392,23 @@ describe("mobile_homes — deepened to production (wave V4 of ruling #11)", () =
     expect(haystack).toMatch(/receipt/i);
   });
 
-  it("states pad inventory AND the home side as REAL (Wave 5), refusing only verification / comps / sale", () => {
-    // REWRITTEN at the Wave 5 core flip (not deleted): the two home-side gaps
-    // this used to pin — no chattel-title tracking, no utilities pass-through —
-    // are now BUILT (record-only chattel fields; the submeter/RUBS billback
-    // engine), so the voice offers them. Per the wave rule, the assertions that
-    // pinned the stub are rewritten to the new truth so the invariant survives:
-    // the voice now states the home side is real and refuses only the honest
-    // residuals (verification, comps, executed sale).
+  it("states pad inventory AND the REACHABLE home side, disclosing the split and billback it does not compute", () => {
+    // REWRITTEN twice, never deleted. Wave 5 flipped this from "no chattel-title
+    // tracking, no utilities pass-through" to offering the split and the
+    // billback — but no client file called either route, so the voice promised
+    // screens a customer could not reach. W2-MHP (2026-11-06) lit up the RECORD
+    // half (a pad's "Home & meters" dialog: POH/TOH, title, meter reads) and
+    // stopped the other two, so the invariant — the voice states what the
+    // product does, in the operator's words — now pins: the record is offered,
+    // the split and the billback are disclosed as not computed.
+    // tests/unit/mobileHomeClaimsFollowReachability.test.ts derives the same
+    // rule from the client's real callers.
     const flat = p.systemPromptAppendix.replace(/\s+/g, " ");
-    expect(flat).toMatch(/home-vs-lot rent split/i);
-    expect(flat).toMatch(/utilities pass-through is billed/i);
     expect(flat).toMatch(/chattel titles are RECORDED/i);
+    expect(flat).toMatch(/submeter reads, by utility and date/i);
+    expect(flat).toMatch(/does not compute the lot-vs-home rent split or a utility billback/i);
+    expect(flat).not.toMatch(/utilities pass-through is billed/i);
+    expect(flat).not.toMatch(/split and POH\/TOH mix are computed/i);
 
     // Pad inventory prose is unchanged and must not regress.
     expect(flat).toMatch(/AcreOS models pad inventory/i);
@@ -414,10 +419,12 @@ describe("mobile_homes — deepened to production (wave V4 of ruling #11)", () =
     expect(flat).not.toMatch(/nothing in AcreOS creates one today/i);
     expect(flat).not.toMatch(/treat the pad inventory as absent/i);
 
-    // The never-imply enumeration now guards the residuals, not the home side.
+    // The never-imply enumeration guards the residuals — now including an
+    // in-product split or billback — never the pads or the home record.
     expect(flat).toMatch(/never imply title verification/i);
+    expect(flat).toMatch(/in-product split or billback/i);
     expect(flat).not.toMatch(/never imply the platform models pads/i);
-    // The home side is no longer disclosed as absent.
+    // The home RECORD is not disclosed as absent: it is reachable.
     expect(flat).not.toMatch(/no chattel-title tracking/i);
     expect(flat).not.toMatch(/no utilities pass-through billing yet/i);
   });

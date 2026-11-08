@@ -123,6 +123,11 @@ Leg 3 runs on staging after merge → deploy → reconcile, which this PR must n
 - pick "In 2 weeks" (the smallest review offset), so the outcome leg completes ≥14 days after the decision is recorded and stands as a dated open leg until then;
 - Today's outcome prompt needs `hasAnyData` (one property suffices).
 
-## Atlas row (draft — becomes evidence only when Leg 3 passes)
+## Atlas row (draft, 2026-11-03 — superseded by "Atlas row — final" below)
 
 > **buy_and_hold** — decision desk mounted (`/rentals/underwrite`, `POST /api/buy-and-hold/underwrite`) on the shared kit; engine `rental_acquisition` declares the vertical; omitted inputs are declared assumptions (origin + basis), never $0; property → desk and acquire → units are links only. Journey on staging: _pending Leg 3_ (activation via `/onboarding-v2`, intake, underwrite, decision persisted citing the scenario, pipeline exercised with data, outcome appended). Public claim: **beta** (unchanged; lifting is Tom's call on this row).
+
+## Atlas row — final (2026-11-07)
+
+> **buy_and_hold** — decision desk mounted (`/rentals/underwrite`, `POST /api/buy-and-hold/underwrite`) on the shared kit; engine `rental_acquisition` declares the vertical; omitted inputs are declared assumptions (origin + basis), never $0; property → desk and acquire → units are links only. **Journey on staging: passed, 7/7 steps**, on the `c8fa715` deploy with a fresh org: activate → intake → underwrite with a recorded decision → persists → pipeline/units → review due → outcome recorded. Record: `postmerge-458-journey-proof-2026-11-05.md` (COO side, not in this repo; result as reported by Muse/the founder 2026-11-05). **Public claim: no longer demoted.** Lifted by founder decision 2026-11-05 (`docs/company/founder-decisions-2026-11-05-buy-and-hold.md`, addendum), merged in #471 (`ba92b5e`); evidence ladder `decided`. A post-merge staging proof of the lift itself is being run by Muse; it is not recorded here until it reports.
+
