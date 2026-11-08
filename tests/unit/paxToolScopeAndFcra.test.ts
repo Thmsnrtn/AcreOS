@@ -8,8 +8,8 @@
  * The REST door (`POST /api/skip-traces`, routes-leads.ts) requires
  * `requireScope("tenant_pii_write")` — a scope `member`, `va`, `viewer` and
  * `intern` do NOT hold — plus a purpose from a closed enum, a justification of
- * at least ten characters, and a current annual FCRA §1681b(a)(3)(F)
- * attestation, all persisted on a `skip_traces` row whose stated reason for
+ * at least ten characters (purposes per FCRA §1681b(a)(2) (written_consent) or §1681b(a)(3) (collection, legitimate_business_need, account_review)),
+ * and a current annual FCRA attestation, all persisted on a `skip_traces` row whose stated reason for
  * existing is "class-action defense audit trail".
  *
  * The Pax door (`ai/tools.ts` → `connectors/executor.batchLeadsSkipTrace`)

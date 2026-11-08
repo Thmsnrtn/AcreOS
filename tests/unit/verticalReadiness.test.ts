@@ -113,7 +113,43 @@ const evidence: VerticalEvidence = measured;
  */
 // 13 → 12 on 2026-10-21: land released. Buy-and-hold's decision route is held
 // back (claude/buy-and-hold-underwriting) until its journey is evidenced.
-const MATURITY_OVERCLAIM_BASELINE = 12;
+// 12 → 11 on 2026-11-03: buy-and-hold's decision desk re-mounted on main
+// (server/routes-buy-and-hold-underwriting.ts), so its measured evidence
+// reaches `decided`.
+const MATURITY_OVERCLAIM_BASELINE = 11;
+
+/**
+ * HELD PENDING JOURNEY PROOF (founder decision 2026-11-05, Option B —
+ * docs/company/founder-decisions-2026-11-05-buy-and-hold.md).
+ *
+ * This file measures evidence FROM SOURCE: a mounted decision writer makes a
+ * vertical `decided`. The public claim, though, waits on JOURNEY evidence — the
+ * scripted staging run in the Readiness Atlas. Between the two, a vertical can
+ * be code-`decided` and still deliberately `beta`. This register names that
+ * state explicitly instead of letting the OD-5 rules below force the lift in
+ * the same commit as the mount.
+ *
+ * It is not a waiver. Every entry is held to all of these, and each one fails
+ * loudly:
+ *   - it must MEASURE `decided` (an entry for an unclosed vertical is stale);
+ *   - its public demotion must still exist and be `beta` (lifting it ends the
+ *     hold, and the entry must go with it);
+ *   - its ladder entry must NOT claim the loop (the ladder flips only on the
+ *     journey proof, in the same commit that deletes the entry);
+ *   - it expires: after `reviewBy` the gate fails until the founder lifts the
+ *     claim on the Atlas row or re-dates the hold;
+ *   - the register is pinned: adding a vertical here is a founder decision.
+ *
+ * LIFTED 2026-11-05 (founder decision, addendum to the file above): buy_and_hold's
+ * post-merge staging journey proof passed, so its demotion was removed, its
+ * ladder entry flipped to "decided" and its entry here deleted, in one commit.
+ * The register is now EMPTY and pinned empty, and nothing below consults it:
+ * the OD-5 assertions ("no demotion is stale", "covers exactly", the ladder
+ * agreement) hold with no exemption at all. A future hold therefore needs a new
+ * founder decision AND a deliberate re-wiring of the exemption — it cannot come
+ * back by adding a line here.
+ */
+const HELD_PENDING_JOURNEY_PROOF: Partial<Record<BusinessTypeId, { heldSince: string; reviewBy: string; decision: string }>> = {};
 
 describe("the evidence scan is real (vacuity guards, first)", () => {
   it("found the workflow templates the engine defines", () => {
@@ -459,6 +495,35 @@ describe("the Evidence Ladder states the same vertical truth (one rule, not two)
       return says !== is;
     });
     expect(disagree).toEqual([]);
+  });
+});
+
+describe("held pending journey proof — the register is empty since the 2026-11-05 lift", () => {
+  const entry = (id: string) => CAPABILITIES.find((c) => c.id === `vertical.${id}`);
+
+  it("the register is pinned empty — a new hold is a new founder decision", () => {
+    // buy_and_hold's hold ended on 2026-11-05. Nothing above consults this
+    // register any more, so an entry here would exempt nothing; adding one
+    // fails here first, and reinstating the exemption is a visible code change.
+    expect(Object.keys(HELD_PENDING_JOURNEY_PROOF)).toEqual([]);
+  });
+
+  it("buy_and_hold is released: measured `decided`, no public demotion, and the ladder claims the loop", () => {
+    // The lifted state, pinned by name so that reinstating the demotion or
+    // reverting the ladder entry fails here as well as in the OD-5 rules above.
+    expect(readinessOf(BUSINESS_TYPES.buy_and_hold, evidence)).toBe("decided");
+    expect(PUBLIC_CLAIM_DEMOTIONS.buy_and_hold).toBeUndefined();
+    expect(entry("buy_and_hold"), "no ladder entry for buy_and_hold").toBeDefined();
+    expect(entry("buy_and_hold")!.claim).toMatch(/closes the canonical loop/);
+    expect(entry("buy_and_hold")!.caveat ?? "").not.toMatch(/public claim is beta/);
+  });
+
+  it("the lift is recorded in the founder decision file", () => {
+    const doc = fs.readFileSync(
+      path.resolve(__dirname, "../..", "docs/company/founder-decisions-2026-11-05-buy-and-hold.md"),
+      "utf8",
+    );
+    expect(doc).toMatch(/## Addendum — 2026-11-05: the hold is lifted/);
   });
 });
 

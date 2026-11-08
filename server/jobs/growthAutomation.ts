@@ -293,10 +293,7 @@ async function runWinBackEngine(): Promise<{ sent: number }> {
           <h2 style="color:#1e3a5f;">Product Update for ${contact.name}</h2>
           <p>It's been about a month since you left AcreOS. We wanted to share what we've been building:</p>
           <ul style="line-height:1.8;color:#374151;">
-            <li><strong>Marketplace</strong> — buy and sell land notes peer-to-peer</li>
-            <li><strong>Acquisition Radar</strong> — AI county scoring for deal sourcing</li>
-            <li><strong>Satellite imagery</strong> — automated property condition analysis</li>
-            <li><strong>Voice AI</strong> — call transcription + sentiment analysis</li>
+            <li><strong>Offline field maps</strong> — save the area around a parcel before a field visit</li>
           </ul>
           <p>The platform is genuinely different from what you saw. If timing just wasn't right before, we'd love another shot.</p>
           <div style="text-align:center;margin:24px 0;">
@@ -539,7 +536,6 @@ async function runChurnRiskInterventions(): Promise<{ reengaged: number; alerted
             <p>Here are a few things you might not have tried yet:</p>
             <ul style="line-height:1.8;color:#374151;">
               <li><strong>Atlas AI</strong> — automatically finds deals overnight</li>
-              <li><strong>Acquisition Radar</strong> — AI-scored counties for deal sourcing</li>
               <li><strong>Automated follow-ups</strong> — never let a lead go cold</li>
             </ul>
             <div style="text-align:center;margin:24px 0;">

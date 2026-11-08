@@ -36,6 +36,7 @@ import {
   type TestInfo,
   type ConsoleMessage,
 } from "@playwright/test";
+import { gatePageErrors, pathKey } from "./page-error-gate";
 
 // ────────────────────────────────────────────────────────────────────────────
 // Project metadata + theme contract — mirrors customer-surface-journeys.spec.ts
@@ -105,10 +106,27 @@ const IGNORED_ERRORS: RegExp[] = [
 interface JourneyContext {
   consoleErrors: string[];
   pageErrors: string[];
+  /** host+path → a 2xx status seen in this attempt (page-error-gate.ts corroboration). */
+  ok2xx: Map<string, number>;
 }
 
 function attachErrorListeners(page: Page): JourneyContext {
-  const ctx: JourneyContext = { consoleErrors: [], pageErrors: [] };
+  const ctx: JourneyContext = { consoleErrors: [], pageErrors: [], ok2xx: new Map() };
+  // Every 2xx the page received, by host + path. The page-error gate reads
+  // this to corroborate WebKit's harness-induced access-control errors; it is
+  // never consulted for any other kind of page error.
+  page.on("response", (r) => {
+    const status = r.status();
+    if (status < 200 || status >= 300) return;
+    try {
+      const u = new URL(r.url());
+      if (u.protocol === "http:" || u.protocol === "https:") {
+        ctx.ok2xx.set(pathKey(u.host, u.pathname), status);
+      }
+    } catch {
+      /* unparseable URL: never corroborates anything */
+    }
+  });
   page.on("console", (m: ConsoleMessage) => {
     if (m.type() !== "error") return;
     const txt = m.text();
@@ -121,6 +139,92 @@ function attachErrorListeners(page: Page): JourneyContext {
     ctx.pageErrors.push(msg);
   });
   return ctx;
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Settle-tolerant in-app navigation (WebKit)
+// ────────────────────────────────────────────────────────────────────────────
+//
+// WebKit rejects page.goto() when another navigation starts before the new
+// document commits ("Navigation to /ai is interrupted by another navigation to
+// /today", "Frame load interrupted"); Chromium lets the later one win quietly.
+// Branch proof run 42137097255: 5 of the 18 failed iPhone attempts died this
+// way (/ai→/today, /onboarding-v2→/today, /onboarding-v2→itself), before any
+// assertion of the step had run. Chromium reports the same race as
+// "net::ERR_ABORTED" (measured locally with a held-back document and a stray
+// location.assign from the previous page), so it is matched too.
+//
+// An interruption BEFORE the requested document commits cannot come from that
+// document: its scripts have not run. It is a navigation the PREVIOUS page
+// started (a wizard exit, a redirect still in flight). So on an interruption,
+// and only then, this waits for that navigation to land and re-issues the goto
+// (bounded, see MAX_REISSUES).
+//
+// What it never does: retry a goto that completed. If the app itself sends
+// the walk somewhere else — the onboarding bounce, /today landing back on the
+// wizard — the goto resolves cleanly, nothing is retried, and the step's
+// landed-route assertion fails with the URL it actually reached. Past the
+// re-issue bound, an interruption fails the step exactly as before.
+const NAV_INTERRUPTED = /interrupted by another navigation|Frame load interrupted|net::ERR_ABORTED/i;
+
+async function settleUrl(page: Page, quietMs = 750, timeoutMs = 10_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  let last = page.url();
+  let stableSince = Date.now();
+  while (Date.now() < deadline) {
+    await page.waitForTimeout(150);
+    const now = page.url();
+    if (now !== last) {
+      last = now;
+      stableSince = Date.now();
+    } else if (Date.now() - stableSince >= quietMs) {
+      break;
+    }
+  }
+  await page.waitForLoadState("domcontentloaded").catch(() => {});
+}
+
+/**
+ * page.goto(path) that survives navigation interruptions, returning the time
+ * the final goto was issued (timers the app starts on load, like the iOS
+ * install sheet, run from that document). The caller asserts the landed route.
+ *
+ * After an interruption it waits for the INTERRUPTING navigation to commit
+ * (WebKit names its target; the URL alone can look quiet while that document
+ * is still loading — measured on iPhone SE, where a single re-issue was
+ * interrupted again by the same stray navigation), then for the URL to go
+ * quiet, then re-issues. At most MAX_REISSUES re-issues, and only ever after a
+ * thrown interruption: a goto that completes is never repeated.
+ */
+const MAX_REISSUES = 2;
+
+async function gotoSettled(page: Page, path: string, testInfo: TestInfo): Promise<number> {
+  for (let attempt = 0; ; attempt++) {
+    const issuedAt = Date.now();
+    try {
+      await page.goto(path, { waitUntil: "domcontentloaded" });
+      return issuedAt;
+    } catch (err) {
+      const msg = String((err as Error)?.message ?? err);
+      if (!NAV_INTERRUPTED.test(msg) || attempt >= MAX_REISSUES) throw err;
+      const target = /another navigation to "([^"]+)"/.exec(msg)?.[1];
+      if (target) {
+        await page
+          .waitForURL(target, { waitUntil: "domcontentloaded", timeout: 10_000 })
+          .catch(() => {});
+      }
+      await settleUrl(page);
+      testInfo.annotations.push({
+        type: "info-nav-interrupted",
+        description: `goto ${path} interrupted (${msg.split("\n")[0]}); settled at ${page.url()}; re-issue ${attempt + 1}/${MAX_REISSUES}`,
+      });
+    }
+  }
+}
+
+/** The landed pathname, for route assertions that name where the walk actually is. */
+function landedPath(page: Page): string {
+  return new URL(page.url()).pathname;
 }
 
 async function seedTestAuth(page: Page, baseURL: string): Promise<void> {
@@ -215,6 +319,28 @@ test.describe("CJ1: signup → onboarding → first value", () => {
     const meta = resolveProjectMeta(testInfo);
     await applyProjectTheme(page, meta);
     const ctx = attachErrorListeners(page);
+    // The iOS "Install AcreOS" sheet (pwa-install-prompt.tsx) opens 4s after
+    // ANY page load on real iOS Safari, so it can land on whatever screen the
+    // walk is on — not only /ai. Proof run 42137097255 met it over the Pax
+    // composer; run 42143893610 met it over the onboarding wizard's "Go to
+    // Today" button, where the click waited behind it until the 240s test
+    // timeout (12 WebKit iPhone attempts; no Chromium project shows the
+    // sheet). A person taps its X whenever it appears; this handler does the
+    // same before any click, fill or auto-waiting assertion it would block.
+    // Answered once, it stays dismissed for 7 days (localStorage), so it does
+    // not come back within the walk. Step 6 still answers it explicitly
+    // before the composer-topmost check, which reads elementFromPoint and so
+    // never triggers a locator handler.
+    await page.addLocatorHandler(
+      page.locator('aside[role="dialog"][aria-label="Install AcreOS"]'),
+      async () => {
+        await page.locator('[data-testid="button-dismiss-pwa"]').click();
+        testInfo.annotations.push({
+          type: "info-pwa-install-dismissed",
+          description: `first-visit iOS 'Install AcreOS' sheet dismissed on ${landedPath(page)} (blocking an action)`,
+        });
+      },
+    );
 
     const journeyStart = Date.now();
     const stepDurations: Record<string, number> = {};
@@ -298,7 +424,7 @@ test.describe("CJ1: signup → onboarding → first value", () => {
       // Visit /today — the test-auth bypass resolves the synthetic
       // session and the SPA will either land on /today (if onboarding
       // completed flag is true in seed) or redirect to /onboarding-v2.
-      await page.goto("/today", { waitUntil: "domcontentloaded" });
+      await gotoSettled(page, "/today", testInfo);
       await page.waitForTimeout(1000);
       const url = page.url();
       // Accept EITHER outcome — fresh-signup seed flips orgs.onboarding_completed=true
@@ -314,8 +440,15 @@ test.describe("CJ1: signup → onboarding → first value", () => {
     // ── Step 4: Walk onboarding wizard (5 steps) ────────────────────────
     await test.step("onboarding wizard renders + walks steps 1-5", async () => {
       const t0 = Date.now();
-      await page.goto("/onboarding-v2", { waitUntil: "domcontentloaded" });
+      await gotoSettled(page, "/onboarding-v2", testInfo);
       await page.waitForTimeout(1000);
+      await settleUrl(page);
+      // The wizard, or /today for a seed user who is already onboarded (the
+      // else-branch below) — never anywhere else.
+      expect(
+        ["/onboarding-v2", "/today"],
+        `onboarding step landed on ${page.url()}`,
+      ).toContain(landedPath(page));
       await recordThemeProbe(page, testInfo, meta, "onboarding-step-1");
       // The wizard exists — first step's "Workspace" form should be visible.
       const orgNameInput = page.locator('[data-testid="input-org-name"]');
@@ -376,8 +509,12 @@ test.describe("CJ1: signup → onboarding → first value", () => {
     // ── Step 5: Land on /today ──────────────────────────────────────────
     await test.step("post-onboarding /today route renders", async () => {
       const t0 = Date.now();
-      await page.goto("/today", { waitUntil: "domcontentloaded" });
+      await gotoSettled(page, "/today", testInfo);
       await page.waitForTimeout(1000);
+      // After onboarding, /today must STAY /today. A bounce back into the
+      // wizard (the known onboarding-bounce defect) fails here, by name.
+      await settleUrl(page);
+      expect(landedPath(page), `post-onboarding /today landed on ${page.url()}`).toBe("/today");
       await recordThemeProbe(page, testInfo, meta, "today");
       await assertNonBlank(page, "today");
       stepDurations["today"] = Date.now() - t0;
@@ -386,7 +523,7 @@ test.describe("CJ1: signup → onboarding → first value", () => {
     // ── Step 6: Pax surface mounts ──────────────────────────────────────
     await test.step("/ai (Pax) surface mounts with composer", async () => {
       const t0 = Date.now();
-      await page.goto("/ai", { waitUntil: "domcontentloaded" });
+      const aiNavigatedAt = await gotoSettled(page, "/ai", testInfo);
       // Settle on the Pax door's own heading before the blank-screen check,
       // as steps 5 and 7 settle before theirs. b9d2d54a removed this step's
       // fixed 1.2s wait in favour of waiting for the composer, but left the
@@ -398,6 +535,7 @@ test.describe("CJ1: signup → onboarding → first value", () => {
         .locator('[data-testid="text-ai-hub-title"]')
         .waitFor({ state: "visible", timeout: 15000 })
         .catch(() => {});
+      expect(landedPath(page), `Pax step landed on ${page.url()}`).toBe("/ai");
       await recordThemeProbe(page, testInfo, meta, "pax-mount");
       await assertNonBlank(page, "pax-mount");
       // PaxPage lazy-loads CommandCenterPage behind AiChatGuard (waits on
@@ -409,6 +547,84 @@ test.describe("CJ1: signup → onboarding → first value", () => {
       expect(composerVisible, "Pax composer affordance missing on /ai").toBe(
         true,
       );
+      // Answer the first-visit "How Pax works" AI-disclosure dialog the way a
+      // first-time customer must, before asking whether the composer is the
+      // topmost thing on the first screen. AiDisclosureGate (app shell)
+      // mounts this non-closable dialog over /ai for every user without
+      // current-version consent, and the journey's synthetic user has none —
+      // so the topmost check below was measuring the dialog, not the
+      // composer (run 42104190391: 7 composer-topmost failures, every one with
+      // inViewport: true and the composer readable behind the dialog in the
+      // preserved screenshots). "Got it" records consent and leaves the user on
+      // /ai; "See what Pax may do" would navigate away. The dialog is a
+      // first-visit surface, so its absence is a no-op, not a failure — and
+      // if it arrives after this window, the topmost assertion still fails
+      // honestly. Clicked through the UI (as CJ1 answers the cookie banner),
+      // not pre-accepted via the API, so the consent path itself stays walked.
+      const disclosure = page.locator('[data-testid="ai-disclosure-dialog"]');
+      await disclosure.waitFor({ state: "visible", timeout: 5000 }).catch(() => {});
+      if (await disclosure.isVisible().catch(() => false)) {
+        await page.locator('[data-testid="ai-disclosure-got-it"]').click();
+        await expect(
+          disclosure,
+          "AI-disclosure dialog did not close after Got it (consent write failed?)",
+        ).toHaveCount(0, { timeout: 10_000 });
+        // The overlay animates out alongside the content and carries no
+        // testid; Radix's modal layer holds body pointer-events at "none"
+        // until the last layer unmounts, so that is the "modal fully gone"
+        // signal. Waiting on it settles the exit animation without a fixed
+        // sleep — it does not touch what the topmost check measures.
+        await page
+          .waitForFunction(() => document.body.style.pointerEvents !== "none", null, {
+            timeout: 5000,
+          })
+          .catch(() => {});
+        testInfo.annotations.push({
+          type: "info-ai-disclosure-acknowledged",
+          description: "first-visit 'How Pax works' dialog answered with Got it on /ai",
+        });
+      }
+      // The other first-visit prompt over this screen: the iOS "Install
+      // AcreOS" sheet (pwa-install-prompt.tsx). It auto-opens 4s after each
+      // page load on real iOS Safari only, fixed just above the bottom nav, and
+      // stays dismissed for 7 days once answered. With the disclosure answered,
+      // the branch proof run (42137097255) showed it was the thing on top of
+      // the composer in all 12 composer-topmost failures, every one on the
+      // WebKit iPhone projects; no Chromium project ever shows it. A person on
+      // an iPhone taps its X; so does the walk. The wait is bounded by the
+      // sheet's own timer from the /ai load (not a fixed sleep), so the step
+      // costs little where the sheet never appears. If the timer is ever
+      // lengthened, the sheet lands after this window and the topmost check
+      // below fails honestly instead of passing over it.
+      const installSheet = page.locator('aside[role="dialog"][aria-label="Install AcreOS"]');
+      const installWindowMs = Math.max(1, 4000 + 1500 - (Date.now() - aiNavigatedAt));
+      await installSheet.waitFor({ state: "visible", timeout: installWindowMs }).catch(() => {});
+      if (await installSheet.isVisible().catch(() => false)) {
+        await page.locator('[data-testid="button-dismiss-pwa"]').click();
+        await expect(installSheet, "install sheet did not close after its X").toHaveCount(0);
+        testInfo.annotations.push({
+          type: "info-pwa-install-dismissed",
+          description: "first-visit iOS 'Install AcreOS' sheet dismissed on /ai",
+        });
+      }
+      // isVisible() is true for a box ANYWHERE in the document — it passed
+      // with the composer 900px below a phone's fold (D11 fix 1, Step 0
+      // 2026-11-03). A person finds the composer only on the first screen:
+      // its whole box inside the viewport, with nothing painted over it.
+      const firstSight = await composer.evaluate((el) => {
+        const r = el.getBoundingClientRect();
+        const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        return {
+          inViewport: r.top >= 0 && r.bottom <= window.innerHeight,
+          topmost: !!hit && (hit === el || el.contains(hit)),
+          top: Math.round(r.top),
+          viewportHeight: window.innerHeight,
+        };
+      }).catch(() => null);
+      expect(
+        firstSight?.inViewport && firstSight?.topmost,
+        `Pax composer not on the first screen of /ai: ${JSON.stringify(firstSight)}`,
+      ).toBe(true);
       stepDurations["pax-mount"] = Date.now() - t0;
     });
 
@@ -421,7 +637,9 @@ test.describe("CJ1: signup → onboarding → first value", () => {
       // exposes some 'next action' affordance" — Add property, Send
       // pax message, Import deal — which is the same load-bearing UX
       // assertion as the funnel-step instrumentation (D2-D).
-      await page.goto("/today", { waitUntil: "domcontentloaded" });
+      await gotoSettled(page, "/today", testInfo);
+      await settleUrl(page);
+      expect(landedPath(page), `first-value step landed on ${page.url()}`).toBe("/today");
       await expect
         .poll(
           async () => {
@@ -440,11 +658,35 @@ test.describe("CJ1: signup → onboarding → first value", () => {
           },
         )
         .toBe(true);
+      // The CTA text must have been read on /today, not on a page the walk was
+      // bounced to while polling (the wizard also says "import").
+      expect(landedPath(page), `first-value CTA read on ${page.url()}`).toBe("/today");
       stepDurations["first-value-cta"] = Date.now() - t0;
     });
 
     // ── Step 8: Record total journey duration ───────────────────────────
     const totalElapsed = Date.now() - journeyStart;
+    // Decided here, after every step above has passed (a failed step ends the
+    // test before this line). See page-error-gate.ts for exactly what may be
+    // dismissed: same-origin "due to access control checks" errors whose path
+    // completed 2xx in this attempt — the WebKit harness artefact measured in
+    // proof run 42151652145. Everything else still fails the contract below.
+    const pageErrorVerdict = gatePageErrors(
+      ctx.pageErrors,
+      ctx.ok2xx,
+      new URL(baseURL!).host,
+    );
+    if (pageErrorVerdict.corroborated.length > 0) {
+      // The class stays visible: count + every raw string + the status that
+      // corroborated it. scripts/run-customer-journey-audit.mjs prints these.
+      testInfo.annotations.push({
+        type: "page-errors-corroborated",
+        description: JSON.stringify({
+          count: pageErrorVerdict.corroborated.length,
+          entries: pageErrorVerdict.corroborated,
+        }),
+      });
+    }
     testInfo.attachments.push({
       name: `journey-timing-${meta.baseDevice}-${meta.colorScheme}`,
       contentType: "application/json",
@@ -455,7 +697,10 @@ test.describe("CJ1: signup → onboarding → first value", () => {
             totalMs: totalElapsed,
             stepDurations,
             consoleErrors: ctx.consoleErrors,
+            // Raw, unfiltered (after IGNORED_ERRORS) — the gate's input.
             pageErrors: ctx.pageErrors,
+            pageErrorsCorroborated: pageErrorVerdict.corroborated,
+            pageErrorsFailing: pageErrorVerdict.failing,
           },
           null,
           2,
@@ -464,10 +709,11 @@ test.describe("CJ1: signup → onboarding → first value", () => {
     });
 
     // Hard contract on page errors — any uncaught exception during the
-    // canonical journey is a P0.
+    // canonical journey is a P0. Only network-corroborated WebKit
+    // access-control artefacts (above) are excluded.
     expect(
-      ctx.pageErrors,
-      `uncaught page errors during journey: ${ctx.pageErrors.join(" || ")}`,
+      pageErrorVerdict.failing,
+      `uncaught page errors during journey: ${pageErrorVerdict.failing.join(" || ")}`,
     ).toEqual([]);
   });
 });

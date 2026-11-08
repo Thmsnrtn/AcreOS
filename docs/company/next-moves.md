@@ -3,6 +3,262 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-11-05 — Onboarding bounce fix (gate stale-cache, wizard release, complete ordering) — on `claude/onboarding-bounce-fix` (off main `c8fa715`, PR open, unmerged; Muse audits first)
+
+- **What shipped on the branch.** Three legs, one PR. Full Step 0 table, mutants and gates: `docs/evidence/2026-11-05/onboarding-bounce.md`.
+  - Leg 1: `OnboardingGate` no longer redirects on a cached `needsOnboarding: true` while a refetch is in flight. It shows `PageLoader` and acts on the settled answer.
+  - Leg 2: `/onboarding-v2` releases an org whose status read settles `completed: true` to `/today` (replace). Step 1 never renders for it. It never releases on cached data or during its own finish/skip.
+  - Leg 3: `POST /complete` flips the completion flag before the sample-data seed. The response contract is unchanged.
+- **Step 0.**
+  - RC-1 reproduced: the pre-fix gate redirects synchronously from the stale value.
+  - RC-2 confirmed at component level.
+  - RC-3 latency not material: seeded vs unseeded median 54 vs 10 ms locally, ~33 extra round-trips, ~200–250 ms projected on staging. Leg 3 was built for durability (a hung or crashed seed left no completion record).
+- **Proved.**
+  - 13 new tests; 7 of them red on pre-fix code. 4 mutants caught.
+  - check exit 0, ratchet 151 = baseline, lint 0, build 0, bundle 9,816 KB of 9,823 (+1 KB vs main on the same machine).
+- **Next.**
+  1. Muse audits the PR; then merge, staging-only deploy.
+  2. Coordinator proof on staging: throttled fresh-user repro, direct loads in both directions, a CJ run with zero bounce signatures. If CJ is red only on harness buckets, report exactly that.
+
+## 2026-11-05 — Subdivision V1, Leg 3: feasibility engine — on `claude/subdivision-leg3-feasibility` (off main `4b2044b`, PR open, unmerged)
+
+- **Built.**
+  - `shared/subdivision/feasibility.ts` (subdivision-feasibility v1): refuse per line; carry over the operator-stated timeline, withheld without one; IRR paced by absorption; phases; a sensitivity grid.
+  - Engine `subdivision_feasibility`, the only engine declaring `subdivider`.
+  - Three registered metrics.
+  - `POST /api/scenarios/subdivision-feasibility/sensitivity`.
+  - Evidence: `docs/evidence/2026-11-05/subdivision-v1-leg3.md`.
+- **Proved.**
+  - 21 tests, with the golden case's IRR solved independently.
+  - 7 mutants, all red.
+  - The related batch passes (46 files, 656 tests); the gates pass; the bundle is unchanged.
+- **For Muse.**
+  1. §5.5 is not built, because there is no honest per-gate lead time. Pick (a) operator-stated per-gate leads or (b) elapsed time against the run's end-to-end timeline.
+  2. Leg 4 will be the first production adoption of the decision kit, which sits under the 2026-10-21 COO HOLD. Mounting the desk retires those reachability exemptions.
+
+## 2026-11-07 — E2E: first-value CTA URL check gets the spec's own 15 s budget — `claude/e2e-first-value-cta-url-timeout`, unmerged
+
+- **Why.** `today-first-value-cta.spec.ts` (from #460) failed Mobile navigation smoke on #471 and then on #465, both times on the desktop-1440 variant and all 3 tries. Both PRs are unrelated, and the same code also passed.
+- **Root cause, from the CI trace** (#465 run 42341097494):
+  - The click finished at 274.866 s.
+  - The URL was still `/today` at 274.937 s and was `/notes?action=new` by 279.954 s, about 5.1 s after the click. The default `expect` timeout is 5 s.
+  - In-app `pushState` runs inside a View Transition's update callback (`client/src/lib/view-transitions.ts`), so on a loaded runner the URL lands late.
+- **Change.** `toHaveURL(/\/notes(\?|$)/, { timeout: 15_000 })`, the same budget as the file-picker check that follows it. The assertion is otherwise unchanged. Locally the spec passes 3/3.
+- **Next.** Muse audits it. If ~5 s in-app navigations under load ever show up on real devices, that is a View Transitions perf question, not a test question.
+
+## 2026-11-05 — 1099-NEC output gate — on `claude/nec-1099-qualified-gate` (off main `07de793`, PR open, unmerged)
+
+- **Scope.** `POST /api/contractors/1099-nec-batch` now refuses until the NEC threshold is confirmed (founder decision 2026-11-05, `founder-decisions-2026-11-05-nec.md`). The INT generator, its dormant code and the $600 figure are untouched.
+- **Mechanism.** `requireQualified1099Output(form)` — one gate, one flag per form (`QUALIFIED_1099_GATES`). INT keeps `tax.1099int.direction_reviewed`, its message and details byte-identical (default arg, so INT call sites are unchanged). NEC reads `tax.1099nec.threshold_confirmed` and refuses with NEC-specific text (`reason: nec_threshold_unconfirmed`).
+- **Proved.** `nec1099QualifiedOutputGate.test.ts` drives the real route: 422, no org read, no batch query, no PDF, no "generated" log; INT flag does not open NEC and vice versa; fails closed; founder passes. Four mutants caught (gate removed, NEC reading the INT flag, NEC carrying INT text, a route-local divergent flag).
+- **Next.**
+  1. Decide whether the GET preview (contractors "over $600" + `thresholdCents`) should also be gated — flagged in the PR, not done.
+  2. When K13 confirms the figure: set `NEC_THRESHOLD_CENTS`, null `NEC_THRESHOLD_REVIEW_NOTE`, then turn the NEC flag on.
+
+## 2026-11-05 — CJ harness: answer the "How Pax works" dialog before composer assertions — on `claude/cj1-dismiss-ai-disclosure` (off main `c8fa715`, PR open, unmerged)
+
+- **Scope.** Harness only. The CJ audit was red three runs running. Decomposing run 42104190391 found 7 composer-topmost failures, the largest single cause. Each had `inViewport: true`. The first-visit AI-disclosure dialog (`AiDisclosureGate`, app shell) sat over /ai, so `elementFromPoint` hit the dialog.
+- **Change.** CJ1 step 6 now clicks "Got it" when the dialog shows, the way a first-time customer would. It waits for the dialog to unmount and the Radix modal layer to release, then runs the topmost check unchanged. If the dialog is absent, the step does nothing. No product code changed and no assertion was loosened.
+- **Out of scope, observed.** Load-timing flakes under the 18-way parallel walk, and the onboarding-bounce defect (its own package).
+- **Proof.**
+  - The workflow dispatch was REFUSED for the session token (HTTP 403, "Resource not accessible by integration"), so no CJ audit run exists on the branch yet. The founder dispatches: `gh workflow run customer-journey-audit.yml --ref claude/cj1-dismiss-ai-disclosure`.
+  - Local probe instead: production build, local PG, `E2E_TEST_AUTH=1`, Chromium, iPhone 12 dark plus desktop 1440 light. It ran step 6's logic on /ai with the seeded customer's consent cleared.
+  - Without dismissal, the composer measured `inViewport: true, topmost: false` (the defect, reproduced). With the step, `topmost: true`, still on /ai. With consent already recorded, the dialog was absent, nothing happened, and the check passed. 6/6.
+  - Not a CJ1 run: the config documents why a local CJ1 cannot pass (no signed-out landing). WebKit was not probed.
+- **Branch proof run 42137097255** (founder-dispatched on `eddc6e2`): CJ1 green on all 12 Chromium projects; red on the 6 WebKit iPhone projects.
+  - No failure snapshot showed the disclosure dialog: the disclosure fix held.
+  - 12 of 18 failed attempts were still composer-topmost. Every one had the iOS "Install AcreOS" sheet (`pwa-install-prompt.tsx`) over the composer. The sheet opens 4s after load, on iOS Safari only.
+  - 5 attempts were navigation-interrupted (onboarding bounce, out of scope). 1 was the "no first-value CTA" timing class (out of scope).
+- **Follow-up commit.** The same step now taps the sheet's X when it is open. The wait is bounded by the sheet's own 4s timer from the /ai load. Local WebKit probe: iPhone 12 and SE reproduce `topmost: false` with the sheet as the hit, and pass with the step. Pixel 5 and desktop Chromium never show the sheet.
+- **Second follow-up (founder-scoped into this PR).** Navigation settle-tolerance.
+  - Steps 3–7 use `gotoSettled()`. On a THROWN interruption only, it waits for the interrupting navigation to land, then re-issues the goto, at most 2 times. The interruption is WebKit "interrupted by another navigation" / "Frame load interrupted", or Chromium `net::ERR_ABORTED`.
+  - A goto that completes is never repeated.
+  - New landed-route assertions after the URL settles: step 4 must land on /onboarding-v2 or /today; steps 5 and 7 on /today, with step 7 also checked after the CTA poll; step 6 on /ai.
+  - So the onboarding bounce now fails by name at step 5 with the URL it reached, instead of surfacing later as a CTA miss.
+  - Local probe, iPhone 12, iPhone SE (WebKit) and Pixel 5 (Chromium), ×4 each: a stray navigation from the previous page kills a raw goto; `gotoSettled` lands /ai; an app bounce after a clean goto is not retried and lands /onboarding-v2. 36/36.
+  - The probe also caught a single re-issue being interrupted again on SE, which is why the helper waits for the interrupting target.
+- **Proof run 42143893610** on `a8da042`: the 12 Chromium projects and iPhone 14 Pro Max dark passed. 5 iPhone projects were red, 18 failed attempts in all.
+  - 0 composer-topmost failures and 0 goto-interruption deaths. 9 interruptions were annotated and recovered from.
+  - 12 attempts timed out at step 4: the install sheet opened over the wizard's "Go to Today" button, and the click waited behind it until the 240s test timeout.
+  - 6 attempts completed every step, then failed the final `pageErrors == []` contract. The errors were WebKit's "<url> due to access control checks" for the app's boot fetches, cancelled by the walk's own full-document `page.goto`. One of the 6 had no re-issued navigation.
+- **Third follow-up.** `page.addLocatorHandler` answers the install sheet whenever it blocks an action anywhere in the walk. The step-6 explicit dismissal stays, because the topmost check reads `elementFromPoint`, which never triggers a locator handler. Local WebKit probe: a click under the sheet hangs without the handler and succeeds with it on iPhone 12 and SE. Chromium never shows the sheet. 12/12.
+- **Proof run 42151652145** on `348b6d3`: every bucket except one was zero, and step 4 was clear. All 13 failed attempts failed only on the page-errors contract: 271 entries, all access-control shaped.
+  - The founder's decomposition of the traces settled it as a harness artefact. All /api/* requests returned 200 on the wire, the rejected instances never appear in the network log, and Chromium had 0 occurrences.
+  - The mechanism is context.route + route.continue({headers}) token injection racing WebKit's access-control check.
+- **Fourth follow-up (founder-directed): a network-corroborated page-error gate.** `tests/e2e-customer-journey/page-error-gate.ts`:
+  - It dismisses an access-control page error ONLY when it is on the walk's own origin AND the same host+path completed 2xx in the same attempt. The gate runs after every step has passed.
+  - Everything else still fails, including cross-origin errors, 4xx/5xx, no response, and unparseable messages.
+  - Dismissed entries become a `page-errors-corroborated` annotation carrying raw strings and statuses. `run-customer-journey-audit.mjs` always prints that section in the run markdown and JSON, even at zero. The timing attachment keeps the raw `pageErrors`.
+- **Proofs.**
+  - `tests/unit/cjPageErrorGate.test.ts`, 10 tests using the raw strings from the run. Three mutants are all caught: bare signature exclusion, dropping the same-origin check, and accepting any status of 200 or more.
+  - Live WebKit control (iPhone 12 and SE) produced REAL WebKit access-control errors through the spec's own listeners. A same-path 2xx was dismissed. Forced 500, revoked-token 401, no response and a genuine cross-origin CORS block all failed the gate.
+  - Chromium never raises the class.
+  - The `blob:` entry (`767f47f1-…`) has no network entry, so it still fails if it recurs.
+- **Unchanged.** Route checks, so the onboarding bounce stays visible.
+- **Next.** Founder dispatches proof run 4. The honesty proof needs a GREEN run whose report shows the class FIRED and was dismissed.
+
+## 2026-11-05 — DEFECT-455-1: last two "Acquisition Radar" lines out of growth email copy — on `claude/defect-455-1-acquisition-radar-copy` (PR open, unmerged)
+
+- **Scope.** Copy only. `server/jobs/growthAutomation.ts`: removed the "Acquisition Radar" bullet from win-back touch 2 (`runWinBackEngine`) and from the churn re-engagement email (`runChurnRiskInterventions`). No logic, schedule, recipient or send change. The job has zero recorded sends.
+- **Proved.** `winBackCopyIsHonest.test.ts` now forbids `/acquisition[\s-]*radar/i` across every literal in the job. Red with both lines restored, and red with a hyphenated variant reintroduced in the churn email only.
+- **Other live references (reported, not fixed).**
+  - `server/services/contextProfile.ts` still names Acquisition Radar in `suggestedModules` (wholesaler, auction_hunter) and a quick action linking to `/radar`. Served by the context-profile API; `useContextProfile` has no client consumer found.
+  - `server/services/agentOrchestration.ts` names agent sessions `Acquisition Radar - <county>` — an internal session label, not advertising.
+  - The client changelog entry (2026-02-26) is historical and stays.
+- **Next.**
+  1. Audit the PR; founder merges.
+  2. Check whether the churn email's "Atlas AI — automatically finds deals overnight" holds against what ships.
+  3. Decide whether to clean `contextProfile.ts`.
+
+## 2026-11-05 — Buy-and-hold beta demotion LIFTED (founder decision) — `claude/buy-and-hold-lift`, PR #471, unmerged
+
+- **Why.** Leg 3's post-merge staging journey passed all 7 steps on the `c8fa715` deploy (`postmerge-458-journey-proof-2026-11-05.md`, COO side), and the founder called the lift.
+- **What changed, in one commit, as the decision file prescribes.**
+  - `PUBLIC_CLAIM_DEMOTIONS.buy_and_hold` removed.
+  - Evidence-ladder entry flipped `surfaced` → `decided`.
+  - The `HELD_PENDING_JOURNEY_PROOF` entry deleted; the register is pinned EMPTY, and the `isHeld` exemption is gone from all three OD-5 assertions.
+  - The landing demotion-count pin went 12 → 11.
+  - An addendum was added to `founder-decisions-2026-11-05-buy-and-hold.md`.
+- **Proved.** Three mutants caught: demotion back (4 red), ladder reverted (3 red), hold re-added (pin red). `npm run check` exits 0.
+- **Next.**
+  1. Muse audits #471. Do not merge from the session.
+  2. Founder: delete `claude/buy-and-hold-underwriting` (item 5 below) now that the proof is in.
+
+## 2026-11-03 — Buy-and-hold release: desk ported + mounted, wiring as links — on `claude/buy-and-hold-release` (off main `f7f2e3f`, PR #458, unmerged; blocker resolved 2026-11-05 by Option B)
+
+- **What shipped on the branch.**
+  - Ported (not merged — the held branch is 73 behind) the route, the page and the route test; the kit is byte-identical on both.
+  - The four mounts were applied by hand.
+  - Wiring is links only: the parcel page offers "Underwrite as a rental" (buy_and_hold orgs); after an `acquire`, the desk links to `/leases?tab=units&propertyId=…`. Nothing is created or copied.
+  - HOLD pins removed together. `MATURITY_OVERCLAIM_BASELINE` 12 → 11.
+  - `publicClaims.ts` and the evidence ladder are untouched.
+- **Blocker (the reason it is a draft).**
+  - `verticalReadiness.test.ts` measures evidence from source, so the mounted desk makes buy_and_hold `decided`.
+  - Three main assertions then REQUIRE lifting the beta demotion and flipping the ladder in the same commit. The package forbids both until the staging journey.
+  - Options A (lift now) / B (dated exemption until the Atlas row; recommended) / C (re-hold) are in `docs/evidence/2026-11-03/buy-and-hold-release.md`.
+  - **Resolved 2026-11-05: Option B** (`founder-decisions-2026-11-05-buy-and-hold.md`). The register `HELD_PENDING_JOURNEY_PROOF` holds buy_and_hold at `beta` until 2026-12-31 at the latest; 6 mutants caught.
+- **Proved.** The evidence file has the full Step 0 table, gates, mutants and audit:
+  - real-DB route test (one scenario + one decision citing it, preview ≡ record, ownership guard writes nothing, cross-tenant 404 writes nothing, three declared assumptions, freeze integrity);
+  - wiring test;
+  - 10 mutants caught;
+  - check/lint/build/bundle green: 9,814 KB of 9,823;
+  - full vitest: 3 red = the blocker, plus 5 that fail identically on main here.
+- **Next.**
+  1. ~~Decide A/B/C~~ — B applied. The lift commit removes the demotion, flips the ladder and deletes the register entry together.
+  2. Muse audits; merge deploys staging only.
+  3. Leg 3 on staging: skip sample data; review "In 2 weeks", so the outcome leg completes ≥ 14 days later as a dated open leg.
+  4. The ladder flips only on the completed journey.
+  5. Founder: delete `claude/buy-and-hold-underwriting` after the staging proof.
+
+## 2026-11-03 — G8 containment fixes — on `claude/g8-containment-fixes` (off main `f7f2e3f`, PR open, unmerged)
+
+- **Scope.** Two items from the G8 containment verification. Both reproduced on `f7f2e3f`.
+- **(1) `/investor-network` render layer.** `App.tsx` rendered `InvestorDirectoryPage` through a bare `ProtectedRoute`, so the frozen route's entry in `FROZEN_ROUTES` was never consulted. A signed-in user with the direct URL got the directory UI; the APIs already 404'd. It now renders through `FlaggedRoute`, the same wrapper as `/marketplace` and `/capital-markets`. The existing test was green over the defect because it asserted list membership, not the wrapper.
+- **(2) Win-back touch-2 copy.** `server/jobs/growthAutomation.ts` advertised Marketplace (FREEZE), Satellite imagery (Vision AI, KILL 2026-08-01) and Voice AI (KILL 2026-08-01). The three lines are removed. One replacement was added: Offline field maps, which the Map door renders today (`maps.tsx` → `OfflineAreasPanel`). Schedule, recipients and sending logic are unchanged.
+- **Proved.** `investorNetworkIsAMarketplace.test.ts` now asserts that every frozen route App.tsx registers parses as `flagged`. The new `winBackCopyIsHonest.test.ts` parses every string and template literal in the job and forbids frozen/killed surface names. Both go red with the fixes reverted.
+- **Next.**
+  1. Out of scope, flagged for later: touch 2 still says "Acquisition Radar". `/radar` is a redirect to `/deals/discover` (`AcquisitionRadarPage` archived 2026-06-01), so whether that claim holds needs a check.
+
+## 2026-11-03 — G12 public-copy truth fixes (list-pull, stale Pro price) — on `claude/public-copy-truth-fixes` (off main `f7f2e3f`, PR open, unmerged)
+
+- **Scope.** Public marketing/comparison copy only. No server code, in-app surfaces, legal docs or pricing changes.
+- **List-pull (5 live strings removed).** Both /compare matrix notes, the shared /compare intro ("pull county data, mail the right owners"), every /learn/county page, and the /tools/calculator CTA.
+  - Evidence that nothing pulls a list: no list-builder route; `countyAssessorIngestJob` has no caller; `fetchTaxDelinquentList` is a stub.
+  - Replacement copy says only what code proves: the capped free tier (`TIER_LIMITS.free`) and CSV import (`POST /api/leads/import`).
+- **The "$41 Pro" price.** No rendered public surface showed it; all three render from `TIER_PRICES_CENTS`.
+  - The stale price lived in the CI claim record (`audit-public-claims.ts`), whose hand-written source agreed with it. The record now reads $99/$990, and the source is derived from the registry.
+  - `$41` still renders correctly as **Starter** annual (round($490/12)).
+- **Sept-2025 withdrawn claim: not found.** No claim record is dated 2025-09. The records hold 2026-09-01 and 2026-09-29 withdrawals; none of their phrases is on a public surface, and 2026-09-29 is the list-pull withdrawal fixed above.
+- **Gates.**
+  - `landingClaimsNoListPulling` now reads compare, learn, tools, pricing, the routed public pages and llms.txt. It also learned the "pull county data" shape.
+  - New `publicPricingMatchesCanonical.test.tsx` renders landing Pricing and /pricing (both cadences), the JSON-LD and the Save-% badges against the decided tiers.
+  - 14 mutants caught.
+- **Not fixed (out of scope; for the founder).**
+  - `docs/marketing/*` drafts (blog, outreach emails, LinkedIn page copy) still say "Pro $41/mo billed annually". They are not served, but the LinkedIn text may be live on LinkedIn.
+  - `acreos-landing/` (a localhost-only prototype) still says "first list pulls overnight" and "90 seconds".
+  - Stale price comments: `tier-pricing.ts` header ($20/$49/$79), `landing/Pricing.tsx:10`, and `pricing.tsx:159`.
+  - Rounding: /pricing shows Pro annual as $83/mo against a $990 bill ($82.50).
+- **Next.** Independent audit of the PR, then the founder merges. Decide whether to correct the docs/marketing drafts and the LinkedIn page.
+
+## 2026-11-03 — First-party parcel ingest (the Regrid exit ramp), Wave A pilot WI — on `claude/first-party-ingest-wave-a` (off main `f7f2e3f`, PR open, unmerged)
+
+- **Scope as dispatched.** Wave A only, WI first. AR excluded. The #452 gate is untouched: WI stays `gated`, `CLEARED_FOR_LOOKUP` stays `[]`, and `parcel.ts` is unchanged.
+- **Step 0.** Verdicts are in `docs/evidence/2026-11-03/first-party-ingest-step0-and-wi-pilot.md`.
+  - D1/D2 machinery has largely landed: the ETL template, releases, APID/lineage, the purpose ledger, the poller code and the honesty contract.
+  - Confidence is high/medium/low, not 0–1, and has no serving floor.
+  - Parcel lookup is not a ledgered surface.
+  - No staging access this session: no Fly token, and Actions paths are refused. The bucket and staging tables are **unverified**, so the build is **dry-run only**.
+  - The design-authority docs and dossier packs are not in the repo.
+- **Contradictions (legs stopped).**
+  - CT: the same item now serves the 2026 collection (1,320,686 vs the pack's 1,282,833 for 2025).
+  - MA: the pack's service URL is dead (MassGIS moved it 2026-04-02), and no publisher statewide total exists.
+  - Serving hookup: no store exists for a cleared statewide leg to answer from. Statewide builds write only bucket artifacts, the owned store is served ungated, and a new table needs a founder `table-count` bump. **Founder decision needed.**
+  - DE matches its pack and is next.
+- **Built.**
+  - Pre-fetch ingest admission (`ingestAdmission` / `statewideIngestAdmission` → `IngestRefusedError` in `buildCounty`).
+  - The re-verification radar (`reverifyBy`, `effectiveDossier`, applied on every registry read).
+  - `can_mail` decoupled from internal use.
+  - The WI dossier, from the V12 schema documentation re-read live.
+  - WI `NOT AVAILABLE` stored as published, with a `suppressedUpstream` flag.
+  - `reconcileCountyBuild`.
+  - `scripts/land-data/statewide-dry-run.ts`.
+- **Proved (live WI layer, dry run).**
+  - Pepin: 9,693 counted, 9,693 stored, reconciled.
+  - Kenosha: 68,499 counted, 68,499 stored, reconciled, with 64,144 "NOT AVAILABLE" stored and flagged. That equals the independent live count.
+  - Kenosha peak RSS was **442 MB, over the 400 MB ceiling** (measured under tsx). Measure the large counties on the worker before scheduling.
+  - 34 new tests; 8 mutants, all red. An independent audit's should-fixes are applied: one instant per run, a re-verify date is required, the job-level refusal is tested, and the population pins are in place.
+  - **Radar is tighten-on-date only.** `reverifyTriggers` (the V13 release, a terms change) is recorded but not yet wired to the poller.
+  - WI artifacts carry real owner names (internal use). Serving them waits on the §5 ledger; a parquet-reader pin holds that.
+- **Next.**
+  1. Muse audits; the founder merges (staging only).
+  2. Founder: the bucket probe (staging access, or run it), and the serving-store decision (a new table vs. gating the owned-store readers).
+  3. The post-merge §9 staging proof legs that do not need the bucket: live refusal (FL), gate-unchanged at a WI point.
+  4. The DE adapter (geometry-only).
+  5. Update the CT and MA packs, then build them.
+  6. A WI golden county (§3.8) before any WI promotion.
+
+## 2026-11-03 — P0 front-door fixes (D11) — on `claude/p0-front-door-fixes` (off main `f7f2e3f`, PR open, unmerged)
+
+- **Step 0** ran on a staging-shaped local build (no staging token in-session) with fresh tenants walked through onboarding (no data). Record: `docs/evidence/2026-11-03/p0-front-door/README.md`.
+- **Fix 1 (built).** The Pax composer was below the fold on 12/12 runs (top at 1,758 / 1,622 / 1,316px on phone / tablet / desktop) while `isVisible()` passed. It now portals into a sticky dock and sits on the first screen at 16/16 viewport × theme combinations, iPhone SE through QHD. PageShell gained an opt-in `stickyToViewport`; only Pax uses it. Placeholder pinned.
+- **Fix 2 (partial).** "Import your first tape" is built for a fresh note investor and opens the note-tape import. A `/notes?action=new` bug was found and fixed: the import opened closed on phones after any in-app link, because the page mounts twice across the transition layers. **"Add your first watch" is stopped**: the "watch" referent is unpinned (flagged market watchlist with email alerts vs. import-only tax county watches). Land investors get no pinned CTA from this package.
+- **Fix 3 (re-proof only).** 0 "Transition was skipped" page errors in 12 runs; reduced motion is respected.
+- **Finding (not fixed, stop condition).** The final onboarding step's "Go to Today instead" bounces a fresh user back to wizard step 1. The cause is a non-awaited `needs-onboarding` invalidation before `navigate` plus a stale `OnboardingGate` cache. This is also the live double navigation beneath the silenced transition skip. It is a one-line fix and the strongest next package.
+- **Next.**
+  1. Muse audits the PR; the founder merges, which deploys staging only.
+  2. Staging proof per the package's §1–5, plus the CJ run id + image for the Atlas row.
+  3. Package the onboarding bounce fix.
+  4. Decide what "watch" means for the second pinned CTA, and which personas get each form.
+
+## 2026-11-03 — Legal-run build findings, unblocked legs — on `claude/legal-run-build-findings-2026-11` (off main `f7f2e3f`, one PR, unmerged)
+
+- **Shipped (per-leg commits).**
+  - **Leg 1:** the FCRA register citation spans (a)(2)/(a)(3)(A)/(a)(3)(F), and the umbrella comments are aligned. This is hygiene, not a mis-cite fix.
+  - **Leg 4:** the benchmarks endpoint enforces its stated 10-transaction minimum.
+  - **Leg 6:** legal holds now stop org erasure and the nightly purge (fail closed). `api_telemetry_samples` has a single retention owner: the rollup, whose hourly-vs-5-minute schedule bug is fixed and which now lives in its own file. Org erasure deletes the S3 bytes under `org/<id>/`.
+  - **Leg 7:** the vendor inventory is retired as evidence (every DPA is UNKNOWN), and the four contradicted retention-policy claims are corrected.
+  - **Leg 5:** disposition only; 0 of the 42 Tier A surfaces are wired, because every one needs a proposed taxonomy code.
+  - **Leg 2:** only the read-only export-completeness inventory.
+- **Stopped.**
+  - **Leg 3:** four contradictions at step 0, listed in the PR.
+    - dossiers are code, not database rows;
+    - no destination is specified for the radar's tasks;
+    - none of the four serve points carries statewide data today;
+    - the 3.4 internal-doc rejection necessarily un-seeds NY, which is a founder call.
+  - **Leg 8:** not touched (blocker-only by design).
+- **New findings for Tom.** Two deletion paths ignore legal holds and are now named in the policy's §6 table: `POST /api/clear-demo-data` → `clearOrganizationRecords()`, and `server/jobs/archival.ts` (off by default). Neither was in the package.
+- **Proved.**
+  - The real-Postgres test `retentionRespectsLegalHolds.realdb.test.ts` fails on the old tree.
+  - Unit mutants for every new gate are red.
+  - Full vitest: 4 failures. 3 are date/timezone and fail identically on main; the 4th (the reachability gate) is fixed in this branch.
+  - Gates run alone: `check:app`, the 33 lints and `build` are all exit 0. `check:tests` could not run in this 8 GB container (tsc was killed, exit 137), so CI is the verdict.
+- **Not proved.** The staging proofs for Legs 4 and 6 (no staging access), the per-leg auditor verdicts and CI.
+- **Next.**
+  1. Muse audits; the founder merges.
+  2. Run the staging proofs for Legs 4 and 6.
+  3. Decide NY's seed (Leg 3.4) and state where the radar's tasks go (3.3).
+  4. Wire hold checks into clear-demo-data and archival.
+
 ## 2026-11-03 — E2 slice 1 (Pax core): step 0 stopped three legs; leg 2, the morning brief, built as an extend — on `claude/e2-slice1-pax-brief` (off main `f7f2e3f`, PR open, unmerged)
 
 - **Step 0 contradicted the spec's "missing" checklist.**
