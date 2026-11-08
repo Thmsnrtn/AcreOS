@@ -27,6 +27,10 @@ import { mayChangeOrganizationType, withoutOrgLevelKeys } from "./middleware/rol
 import { getOrganizationId, type AuthenticatedRequest } from "./types/request";
 import { seedSampleDataForOrg } from "./services/onboarding/sampleSeeder";
 import { clock } from "./utils/clock";
+import { refuseClosedSignupType, isSignupTrimOn, recordSignupWaitlist } from "./services/signupTrim";
+import { createRateLimiter } from "./middleware/rateLimit";
+import { z } from "zod";
+import { isSignupWaitlistBusinessType } from "@shared/business-types/signupTrim";
 
 const router = Router();
 
@@ -60,6 +64,10 @@ router.post("/complete", async (req: Request, res: Response) => {
     const businessType: BusinessType | undefined =
       providedBusinessType ??
       (isBusinessType(formData.investorType) ? formData.investorType : undefined);
+
+    // Signup trim (W1.4): a new signup may not complete onto a type that is not
+    // open yet. Runs before any write.
+    if (await refuseClosedSignupType(req as AuthenticatedRequest, res, businessType, "complete")) return;
 
     const orgName = formData.orgName || body.orgName;
     const inviteEmails = formData.inviteEmails || body.inviteEmails || [];
@@ -383,6 +391,7 @@ router.patch("/progress", async (req: Request, res: Response) => {
   try {
     const org = req.organization;
     const { step, ...rawStepData } = req.body;
+    if (await refuseClosedSignupType(req as AuthenticatedRequest, res, rawStepData.businessType, "progress")) return;
     // The organization's type and name are not a member's to set by
     // spreading them into progress (audit of 224a5c0).
     const stepData = (await mayChangeOrganizationType(org.id, req.user?.id, org.ownerId ?? null))
@@ -424,6 +433,45 @@ router.patch("/progress", async (req: Request, res: Response) => {
     }
 
     res.json({ saved: true, step });
+  } catch (err) {
+    Errors.internal(res, err);
+  }
+});
+
+// Signup trim (W1.4): "tell me when <type> opens". Lands in the founder's
+// feedback inbox (/founder/feedback) as a feature_request; see
+// services/signupTrim.ts. Idempotent per user and type, and rate limited.
+const waitlistLimiter = createRateLimiter(
+  { maxRequests: 20, windowMs: 60 * 60 * 1000 },
+  (req: Request) => `signup-waitlist:${req.user?.id ?? "anon"}`,
+);
+const waitlistSchema = z.object({ type: z.string().trim().min(1).max(60) });
+
+router.post("/waitlist", waitlistLimiter, async (req: Request, res: Response) => {
+  try {
+    const parsed = waitlistSchema.safeParse(req.body);
+    if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+    const { type } = parsed.data;
+    if (!isSignupWaitlistBusinessType(type)) {
+      return Errors.unprocessable(res, "That isn't a waitlist option. Pick it directly, or choose an investor type from the list.", {
+        reason: "not_a_waitlist_type",
+      });
+    }
+    if (!(await isSignupTrimOn())) {
+      return Errors.unprocessable(res, "Every investor type is open right now, so there is no waitlist to join.", {
+        reason: "no_waitlist_active",
+      });
+    }
+    const { user, organization: org } = req as AuthenticatedRequest;
+    const name = [user.firstName, user.lastName].filter(Boolean).join(" ") || null;
+    const result = await recordSignupWaitlist({
+      userId: user.id,
+      email: user.email ?? null,
+      name,
+      organizationId: org.id,
+      type,
+    });
+    res.json({ ok: true, status: result.status, type });
   } catch (err) {
     Errors.internal(res, err);
   }
