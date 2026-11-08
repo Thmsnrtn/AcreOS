@@ -3,6 +3,32 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-11-05 — Notes V2 Leg 2: workout NPV comparison — on `claude/notes-v2-leg2-workout-npv` (off main `4b2044b`, PR open, unmerged)
+
+- **Built.** One pure engine (`shared/notes/workoutEngine.ts`, `workout-engine v1`). It compares six paths on one input snapshot:
+  - each path in a fixed order, with line-item cash flows and a sensitivity grid;
+  - no recommendation, rank or score.
+- **Run records.** Runs append to `note_events` as category `analysis`. Migration 0301 widens the CHECKs only; there is no new table.
+  - Every run keeps its full snapshot and the provenance of each input.
+  - The record names the open loss-mit case, and the run writes nothing else.
+- **Surfaces.** Routes `/api/notes/:id/workout-analyses`, and a panel on the note page.
+- **Inputs AcreOS does not hold.** Foreclosure timeline and cost are operator-entered: the repo holds no cited mortgage-foreclosure data. Arrears are operator-stated: AcreOS records no arrears amount.
+- **Proved.**
+  - The golden case matches independent Python Decimal arithmetic to the cent.
+  - Snapshot reproduction holds after the note is edited.
+  - Cross-tenant reads are refused, and the write set is exact.
+  - Four engine/service mutants are caught.
+  - The founder-decisions entry for 2026-11-05 (B1 Option A, Leg 1 ruling, Leg 3 ruling) rides in this PR.
+  - Evidence: `docs/evidence/2026-11-05/notes-v2-leg2-workout-npv.md`.
+- **Gates that only CI can verify.**
+  - `check:tests`: tsc is OOM-killed on an 8 GB container.
+  - The full vitest count: the 2-core container cannot finish the run.
+  - Bundle: 9,816 / 9,823 KB (+18 KB). **7 KB of headroom is left.**
+- **Next.**
+  1. Muse audits; on merge, run the staging proof per §10.
+  2. Leg 1 (ladder; default review is an operator act) must stack on this PR or rebase after it, because both legs redefine the same `note_events` CHECKs.
+  3. Leg 3: the Step 0 census is done. Its schema questions go to Muse/Tom before build (see the report in the session).
+
 ## 2026-11-05 — Onboarding bounce fix (gate stale-cache, wizard release, complete ordering) — on `claude/onboarding-bounce-fix` (off main `c8fa715`, PR open, unmerged; Muse audits first)
 
 - **What shipped on the branch.** Three legs, one PR. Full Step 0 table, mutants and gates: `docs/evidence/2026-11-05/onboarding-bounce.md`.
