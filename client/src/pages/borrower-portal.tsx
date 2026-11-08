@@ -16,7 +16,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { DollarSign, Calendar, CreditCard, CheckCircle, Clock, AlertTriangle, Building, Phone, Mail, Shield, Loader2, FileText, Download, MapPin, CalendarDays, RefreshCw, Calculator, ChevronDown, MessageSquare, Send } from "lucide-react";
+import { DollarSign, Calendar, CreditCard, CheckCircle, AlertTriangle, Building, Shield, Loader2, FileText, Download, MapPin, RefreshCw, Calculator, ChevronDown, MessageSquare, Send } from "lucide-react";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
