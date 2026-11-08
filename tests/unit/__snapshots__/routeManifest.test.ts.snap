@@ -209,6 +209,7 @@ exports[`route manifest > snapshot: sorted manifest file paths (additions/remova
   "routes-pax-calibration.ts",
   "routes-pax-context.ts",
   "routes-pax-controls.ts",
+  "routes-pax-core.ts",
   "routes-pax-disclosure.ts",
   "routes-pax-insights.ts",
   "routes-pax-quality.ts",

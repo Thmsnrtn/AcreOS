@@ -248,6 +248,7 @@ export const ROUTE_MANIFEST: RouteManifestEntry[] = [
   { file: "routes-pax-calibration.ts", mountPath: null, kind: "register", export: "registerPaxCalibrationRoutes" },
   { file: "routes-pax-context.ts", mountPath: null, kind: "register", export: "registerPaxContextRoutes" },
   { file: "routes-pax-disclosure.ts", mountPath: "/api/pax", kind: "router", export: "default" },
+  { file: "routes-pax-core.ts", mountPath: "/api/pax/core", kind: "router", export: "default" },
   { file: "routes-pax-controls.ts", mountPath: "/api/pax", kind: "router", export: "default" },
   { file: "routes-pax-insights.ts", mountPath: "/api/pax", kind: "router", export: "default" },
   { file: "routes-pax-quality.ts", mountPath: null, kind: "register", export: "registerPaxQualityRoutes" },

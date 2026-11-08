@@ -22,6 +22,7 @@
  * with retry — a failed read is not a stance, so the page never shows one.
  */
 
+import { PaxCoreSettings } from "@/components/pax/pax-core-settings";
 import React from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
@@ -656,6 +657,9 @@ export function PaxControls() {
           </div>
         </CardContent>
       </Card>
+
+      {/* ── E2 slice 1: what Pax does on its own, rails, shadow, memory, ledger ── */}
+      <PaxCoreSettings canEdit={data.canChangeStance} />
 
       {/* ── 6. Never ────────────────────────────────────────────────────── */}
       <Card className="rounded-card" data-testid="pax-never-card">

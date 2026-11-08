@@ -61,6 +61,8 @@ export interface BriefCard {
   headline: string | null;
   sections: BriefSections;
   dismissed: boolean;
+  /** The Pax Pause (stand-down). Absent on an older server. */
+  standDown?: { active: boolean; until: string | null };
 }
 
 interface ArchiveRow {
@@ -322,6 +324,12 @@ export function MorningBrief({ brief, card }: MorningBriefProps) {
       </button>
       {expanded && (
         <div id={contentId} className="px-4 pb-4 md:px-3.5 md:pb-3.5 space-y-3">
+          {card?.standDown?.active && (
+            <p className="text-sm text-acr-ink-2" data-testid="text-brief-stand-down">
+              Pax is paused{card.standDown.until ? ` until ${formatDateTime(card.standDown.until)}` : ""}: no summary line,
+              no prepared work and no shadow entries until it resumes. The counts below are read from your records.
+            </p>
+          )}
           {headline && (
             <p className="text-[15px] leading-relaxed text-acr-ink-2 max-w-prose">
               {headline}

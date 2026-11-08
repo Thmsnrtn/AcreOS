@@ -594,6 +594,39 @@ export const UNATTENDED_PATHS: readonly UnattendedPath[] = [
     customerVisible: true,
   },
   {
+    // E2 slice 1 — prepared work (packets) and the shadow entries that stand
+    // in for it. The stand-down is this Pause: while it holds, nothing is
+    // prepared and no shadow entry accrues (server/services/paxCore.ts).
+    id: "prepared_work",
+    label: "Work Pax prepares for your review",
+    file: "server/services/paxCore.ts",
+    fn: "preparePacket",
+    stance: {
+      ask_before_sending: "prepares it for you to approve or dismiss",
+      ask_before_everything: "prepares it for you to approve or dismiss",
+    },
+    whilePaused: "nothing prepared, and no shadow entries, until the pause lifts",
+    pauseStops: true,
+    pausedReason: "stood_down",
+    switch: paxSwitch,
+    customerVisible: true,
+  },
+  {
+    // E2 slice 1 — the morning brief's one-line summary (only when the
+    // composed summary is enabled). The sections under it are reads of your
+    // records and still show.
+    id: "brief_summary",
+    label: "The summary line on your morning brief",
+    file: "server/routes-today.ts",
+    fn: "composeBriefWithPax",
+    stance: { ask_before_sending: "writes it", ask_before_everything: "writes it" },
+    whilePaused: "not written — the brief shows its counts only",
+    pauseStops: true,
+    pausedReason: null,
+    switch: null,
+    customerVisible: true,
+  },
+  {
     id: "founder_lane",
     label: "Founder-run items for your workspace",
     file: "server/services/autonomousDecisionExecutor.ts",

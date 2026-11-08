@@ -39,6 +39,7 @@ import { trackEvent } from "@/lib/telemetry";
 import { CashStrip } from "@/components/today/CashStrip";
 import { TodayActivityFeed } from "@/components/today/ActivityFeed";
 import { MorningBrief, type BriefCard } from "@/components/today/MorningBrief";
+import { PaxPacketPane, PACKETS_KEY, packetHref } from "@/components/pax/packet-pane";
 import { ParcelAlerts } from "@/components/today/ParcelAlerts";
 import { OutcomePrompt } from "@/components/today/OutcomePrompt";
 import { FirstDealCard } from "@/components/today/FirstDealCard";
@@ -222,7 +223,25 @@ export default function TodayPage() {
     inlineAction: { kind: "navigate" },
     ask,
   }));
-  const decisionItems: DecisionItem[] = [...paxAskItems, ...(today?.queue ?? [])];
+  // ── Prepared by Pax (E2 slice 1 §3) ─────────────────────────────────────────
+  // Packets Pax prepared wait here for approve / dismiss. A row is a plain
+  // link to `?packet=ID`, which opens the packet pane over Today; Back closes
+  // it. Approving executes nothing by itself (server/services/paxCore.ts).
+  const { data: packetData } = useQuery<{ packets: Array<{ id: number; title: string; kind: string }> }>({
+    queryKey: PACKETS_KEY,
+  });
+  const packetItems: DecisionItem[] = (packetData?.packets ?? []).map((p): DecisionItem => ({
+    id: `pax-packet-${p.id}`,
+    source: "pax-packet",
+    priority: "medium",
+    title: p.title,
+    description: "Pax prepared this for you — review it to approve or dismiss.",
+    actionLabel: "Review",
+    actionUrl: packetHref("/today", p.id),
+    rank: -1,
+    inlineAction: { kind: "navigate" },
+  }));
+  const decisionItems: DecisionItem[] = [...paxAskItems, ...packetItems, ...(today?.queue ?? [])];
   const decisionQueueLoading = todayLoading;
   // THE BADGE IS THE LENGTH OF THE LIST IT SITS ABOVE.
   //
@@ -786,6 +805,8 @@ export default function TodayPage() {
       {/* One-line disclosure directly above the queue, not a separate
           destination. Expands in place; Pax controls live behind it. */}
       {!showEmptyState && !todayError && <MorningBrief brief={today?.brief ?? null} card={today?.briefCard ?? null} />}
+      {/* The packet pane (E2 slice 1 §4): opens over Today from `?packet=`. */}
+      <PaxPacketPane />
 
       {/* ── Receipts strip (Tier 3C) ─────────────────────────────────── */}
       {/* Completed events since the last visit, each traceable to real

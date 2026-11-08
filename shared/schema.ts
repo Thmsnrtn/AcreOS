@@ -14049,6 +14049,11 @@ export * from "./schema/pax-user-context";
 export * from "./schema/pax-morning-briefs";
 
 // ============================================================================
+// E2 slice 1 legs 1, 3, 5 — business memory, packets, rails, trust ledger (0302)
+// ============================================================================
+export * from "./schema/pax-core";
+
+// ============================================================================
 // SOLENE — self-audit ledger (operating-discipline drift detection)
 // ============================================================================
 export * from "./schema/solene-audit";

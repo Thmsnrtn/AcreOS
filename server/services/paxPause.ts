@@ -51,11 +51,17 @@
  *     executing, without advancing nextRunAt or counting a retry.
  *   - server/services/financeAgent.ts — nothing is prepared while paused
  *     (`pax_paused`); a prepared reminder always waits for a tap anyway.
+ *   - server/services/paxCore.ts (preparePacket) — the stand-down: nothing
+ *     is prepared and no shadow entry accrues while paused (E2 slice 1).
+ *   - server/routes-today.ts (composeBriefWithPax) — no brief summary line
+ *     while paused; the brief's counts still show (E2 slice 1).
  *   - server/routes-ai-draft.ts — inbox reply drafts keep drafting (a draft is
  *     not an action); the org's `inboxDrafts` switch is what it reads.
  *
  *   Read-only consumers (display or attribution; enforce nothing)
  *   - server/routes-pax-controls.ts — the Settings page reads ORG truth.
+ *   - server/routes-pax-core.ts — Settings → Pax reports the stand-down
+ *     beside presets and rails (E2 slice 1); it enforces nothing.
  *   - server/routes-pax-insights.ts — approve / revise: a tap is the human
  *     acting; the state is read for attribution only.
  *   - server/services/paxAskExecutors.ts — stance attribution on the ask

@@ -36,6 +36,7 @@ import whiteLabelRouter from "./routes-white-label";
 import realtimeRouter from "./routes-realtime";
 import paxInsightsRouter from "./routes-pax-insights";
 import paxControlsRouter from "./routes-pax-controls";
+import paxCoreRouter from "./routes-pax-core";
 import todayRouter from "./routes-today";
 import todayBriefsRouter from "./routes-today-briefs";
 import parcelAlertsRouter from "./routes-parcel-alerts";
@@ -1383,6 +1384,10 @@ export async function registerRoutes(
   // resolution (isAuthenticated + getOrCreateOrg). The pre-program
   // /api/me/autonomy surface (routes-autonomy.ts) is gone; its org-pause read
   // is GET /api/pax/controls now.
+  // E2 slice 1 Pax core (memory, prepared work, rails, presets, ledger) —
+  // AHEAD of the /api/pax mounts so paxChatGuard never runs for it; no route
+  // here calls a model (routes-pax-core.ts header).
+  app.use('/api/pax/core', isAuthenticated, getOrCreateOrg, paxCoreRouter);
   app.use('/api/pax', isAuthenticated, getOrCreateOrg, paxControlsRouter);
   app.use('/api/pax', isAuthenticated, getOrCreateOrg, paxChatGuard, paxInsightsRouter);
   // Consolidated Today-screen payload (queue + cash + meta) — one round-trip

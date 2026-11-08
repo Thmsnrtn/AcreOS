@@ -163,6 +163,12 @@ vi.mock("../../server/ai/validators", () => ({
   validateAtlasOutput: vi.fn(),
   AtlasOutputType: {},
 }));
+// E2 slice 1: remember_fact proposes through paxCore; its outcome is switchable.
+const proposeMemoryFromChat = vi.hoisted(() => vi.fn());
+vi.mock("../../server/services/paxCore", () => ({
+  proposeMemoryFromChat,
+  memoryCategoryFrom: (c: unknown) => (typeof c === "string" ? c : "other"),
+}));
 
 import { executeTool, PAUSE_SAFE_TOOLS, toolDefinitions } from "../../server/ai/tools";
 import { formatPaxTime, PAX_CONTROLS_LABEL } from "../../shared/pax-glossary";
@@ -416,8 +422,14 @@ interface BookkeepingExemption {
 const BOOKKEEPING: Record<string, Record<string, BookkeepingExemption>> = {
   "server/ai/tools.ts": {
     remember_fact: {
-      tables: ["paxMemory"],
-      reason: "Conversation-scoped memory, not a record of the customer's business.",
+      // E2 slice 1: it no longer writes memory. It prepares a memory PROPOSAL
+      // through paxCore.proposeMemoryFromChat → preparePacket (pax_packets +
+      // pax_trust_ledger), never a customer record, and that choke point
+      // enforces the stand-down itself (UNATTENDED_PATHS "prepared_work",
+      // pinned by paxPauseCoverage). The case body writes no table, which
+      // morningBriefSections.test.ts's remember_fact sweep pins.
+      tables: [],
+      reason: "Suggests a memory for the user to approve; writes nothing itself.",
     },
   },
   "server/ai/supportAgent.ts": {
@@ -481,7 +493,8 @@ describe.each(SWITCHES)("pauseSafeToolsAreSafe: $file", ({ file, allowlist, floo
     if (file === "server/ai/tools.ts") {
       expect(STORAGE_WRITE.test(bodies.get("update_lead_status")!)).toBe(true);
       STORAGE_WRITE.lastIndex = 0;
-      expect(DB_WRITE.test(bodies.get("remember_fact")!)).toBe(true);
+      // draft_offer still writes inline (remember_fact stopped writing in E2 slice 1).
+      expect(DB_WRITE.test(bodies.get("draft_offer")!)).toBe(true);
       DB_WRITE.lastIndex = 0;
     }
   });
@@ -548,3 +561,45 @@ describe("pauseSafeToolsAreSafe is falsifiable", () => {
     expect(allowlistLiteral(src, "PAUSE_SAFE_TOOLS")).not.toContain("draft_offer");
   });
 });
+
+describe("remember_fact (E2 slice 1) — suggests, never saves, and says which", () => {
+  const SAVED_CLAIM = /\b(remembered|saved it|i(?:'| ha)ve saved|stored)\b/i;
+
+  it("prepares a proposal for THIS org (never a model-supplied one) and says it is waiting for approval", async () => {
+    proposeMemoryFromChat.mockResolvedValue({ status: "prepared", packet: { id: 55 } });
+    const result = await executeTool("remember_fact", { fact: "I buy in Maine", category: "buy_box", organizationId: 999 }, org);
+    expect(proposeMemoryFromChat).toHaveBeenCalledTimes(1);
+    expect(proposeMemoryFromChat.mock.calls[0][0]).toEqual({ organizationId: 7, content: "I buy in Maine", category: "buy_box" });
+    expect(result.data).toMatchObject({ saved: false, suggested: true, packetId: 55 });
+    expect(result.data.message).toMatch(/approve/);
+    expect(result.data.message).not.toMatch(SAVED_CLAIM);
+  });
+
+  it.each([
+    [{ status: "not_prepared", reason: "rail_revoked" }, /rails/],
+    [{ status: "shadow", ledgerId: 1, reason: "watch_only" }, /Watch only/],
+    [{ status: "not_prepared", reason: "settings_unreadable" }, /could not be read/],
+    [{ status: "stood_down", checkFailed: false }, /paused/],
+  ])("outcome %o is reported as nothing suggested or saved", async (outcome, words) => {
+    proposeMemoryFromChat.mockResolvedValue(outcome);
+    const result = await executeTool("remember_fact", { fact: "x", category: "other" }, org);
+    expect(result.data).toMatchObject({ saved: false, suggested: false });
+    expect(result.data.message).toMatch(words);
+    expect(result.data.message).not.toMatch(SAVED_CLAIM);
+  });
+
+  it("while paused it still reaches the choke point (pause-safe), which stands it down", async () => {
+    setPaused();
+    proposeMemoryFromChat.mockResolvedValue({ status: "stood_down", checkFailed: false });
+    const result = await executeTool("remember_fact", { fact: "x", category: "other" }, org);
+    expect(proposeMemoryFromChat).toHaveBeenCalledTimes(1);
+    expect(result.data).toMatchObject({ saved: false, suggested: false });
+  });
+
+  it("refuses an empty fact without calling the choke point", async () => {
+    const result = await executeTool("remember_fact", { fact: "   ", category: "other" }, org);
+    expect(proposeMemoryFromChat).not.toHaveBeenCalled();
+    expect(result.success).toBe(false);
+  });
+});
+

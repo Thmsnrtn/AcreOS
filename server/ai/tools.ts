@@ -871,14 +871,14 @@ export const toolDefinitions = {
 
   remember_fact: {
     name: "remember_fact",
-    description: "Permanently remember an important fact, preference, decision, or insight for this organization. Use proactively when the user states preferences, makes key decisions, or shares important context that should persist across conversations.",
+    description: "SUGGEST remembering an important fact about this organization's business (buy box, portfolio, a counterparty, a document, an outcome, writing style). Nothing is saved by this tool: it prepares a suggestion the user approves or dismisses on Today. Tell the user it is a suggestion waiting for their approval — never that it was remembered. Use when the user states a durable preference, decision or piece of context.",
     parameters: {
       type: "object",
       properties: {
-        fact: { type: "string", description: "The fact or preference to remember, written as a clear statement" },
+        fact: { type: "string", description: "The fact to suggest remembering, written as a clear statement" },
         category: {
           type: "string",
-          enum: ["preference", "insight", "decision", "contact"],
+          enum: ["buy_box", "portfolio", "counterparty", "document", "outcome", "style", "other"],
           description: "Category of the memory"
         },
       },
@@ -895,7 +895,7 @@ export const toolDefinitions = {
         query: { type: "string", description: "Topic or keyword to search remembered facts" },
         category: {
           type: "string",
-          enum: ["preference", "insight", "decision", "contact"],
+          enum: ["buy_box", "portfolio", "counterparty", "document", "outcome", "style", "other"],
           description: "Optional category to filter by"
         },
         limit: { type: "number", description: "Max facts to return (default 10)" },
@@ -3176,32 +3176,91 @@ export async function executeTool(
       // ── Memory tools ─────────────────────────────────────────────────────────
 
       case "remember_fact": {
-        const { paxMemory } = await import("@shared/schema");
-        const { db } = await import("../db");
-        await db.insert(paxMemory).values({
+        // E2 slice 1: Pax never writes memory silently. This prepares a
+        // memory PROPOSAL (a packet) the user approves or dismisses; nothing
+        // is saved here. The result says exactly which of the four outcomes
+        // happened — never "remembered".
+        const fact = typeof args.fact === "string" ? args.fact.trim() : "";
+        if (!fact) {
+          return toolRefusal({ what: "Nothing was suggested", why: "There was no fact to remember", unlock: "Say what Pax should remember" });
+        }
+        const { proposeMemoryFromChat, memoryCategoryFrom } = await import("../services/paxCore");
+        const outcome = await proposeMemoryFromChat({
           organizationId: org.id,
-          userId: "pax",
-          memoryType: args.category || "insight",
-          key: args.fact?.slice(0, 100) || "remembered_fact",
-          value: { content: args.fact },
-          importance: 8,
-          source: "pax_explicit_memory",
-        } as any);
-        return { success: true, data: { remembered: args.fact } };
+          content: fact.slice(0, 2000),
+          category: memoryCategoryFrom(args.category),
+        });
+        switch (outcome.status) {
+          case "prepared":
+            return {
+              success: true,
+              data: {
+                saved: false,
+                suggested: true,
+                packetId: outcome.packet.id,
+                message: "Suggested for your memory — it is waiting on Today for you to approve or dismiss. Nothing is saved until you approve it.",
+              },
+            };
+          case "shadow":
+          case "not_prepared":
+            return {
+              success: true,
+              data: {
+                saved: false,
+                suggested: false,
+                message:
+                  outcome.reason === "settings_unreadable"
+                    ? "Your Pax settings could not be read, so nothing was suggested or saved."
+                    : outcome.reason === "watch_only"
+                      ? "Pax is set to Watch only, so it did not suggest or save this. You can add it yourself in Settings → Pax → Memory."
+                      : "Memory suggestions are turned off in your Pax rails, so nothing was suggested or saved. You can add it yourself in Settings → Pax → Memory.",
+              },
+            };
+          case "stood_down":
+            return {
+              success: true,
+              data: { saved: false, suggested: false, message: "Pax is paused, so nothing was suggested or saved." },
+            };
+        }
+        return toolRefusal({
+          what: "Nothing was suggested or saved",
+          why: "Pax could not tell what happened to the suggestion",
+          unlock: "Try again, or add it yourself in Settings → Pax → Memory",
+        });
       }
 
       case "recall_facts": {
-        const { paxMemory: pm } = await import("@shared/schema");
+        // Business memory first (what the user wrote or approved), then the
+        // older conversation memory Pax kept before slice 1. Both are DATA.
+        const { paxMemory: pm, paxBusinessMemory: bm } = await import("@shared/schema");
         const { db: _db } = await import("../db");
-        const { ilike, and: _and, eq: _eq } = await import("drizzle-orm");
-        const conditions: any[] = [_eq(pm.organizationId, org.id)];
-        if (args.category) conditions.push(_eq(pm.memoryType, args.category));
+        const { ilike, and: _and, eq: _eq, desc: _desc } = await import("drizzle-orm");
+        const limit = Math.min(Math.max(Number(args.limit) || 10, 1), 25);
+        const bmConditions: any[] = [_eq(bm.organizationId, org.id)];
+        if (args.category) {
+          const { memoryCategoryFrom: toCategory } = await import("../services/paxCore");
+          bmConditions.push(_eq(bm.category, toCategory(args.category)));
+        }
+        if (args.query) bmConditions.push(ilike(bm.content, `%${args.query}%`));
+        const business = await _db.select().from(bm)
+          .where(_and(...bmConditions))
+          .orderBy(_desc(bm.updatedAt))
+          .limit(limit);
+        const conditions: any[] = [_eq(pm.organizationId, org.id), _eq(pm.userId, "pax")];
         if (args.query) conditions.push(ilike(pm.key, `%${args.query}%`));
-        const facts = await _db.select().from(pm)
+        const legacy = business.length >= limit || args.category ? [] : await _db.select().from(pm)
           .where(_and(...conditions))
-          .limit(args.limit || 10)
+          .limit(limit - business.length)
           .orderBy(pm.updatedAt);
-        return { success: true, data: { facts: facts.map(f => ({ category: f.memoryType, fact: (f.value as any)?.content || f.key, remembered: f.createdAt })) } };
+        return {
+          success: true,
+          data: {
+            facts: [
+              ...business.map(f => ({ category: f.category, fact: f.content, remembered: f.createdAt, source: "business_memory" })),
+              ...legacy.map(f => ({ category: f.memoryType, fact: (f.value as any)?.content || f.key, remembered: f.createdAt, source: "earlier_conversation" })),
+            ],
+          },
+        };
       }
 
       // ── Sub-agent tool ────────────────────────────────────────────────────────

@@ -194,7 +194,8 @@ const KERNEL_TABLE_WRITE = /\.(insert|update|delete)\(\s*(pendingActions|paxSend
 
 /** A model identifier (D15 — the actor is Pax; the model is never named). */
 const MODEL_ID =
-  /\b(gpt-?\d|o\d-|claude|anthropic|openai|deepseek|llama|gemini|mistral|qwen|openrouter|sonnet|opus|haiku|grok)\b/i;
+  // No trailing \b: "gpt-4o" has none between the 4 and the o (a canary caught it).
+  /\b(gpt-?\d[\w.-]*|o\d-[\w-]+|claude|anthropic|openai|deepseek|llama|gemini|mistral|qwen|openrouter|sonnet|opus|haiku|grok)/i;
 
 describe("sweeps — the brief acts on nothing and names no model", () => {
   for (const member of POPULATION) {
@@ -219,6 +220,7 @@ describe("sweeps — the brief acts on nothing and names no model", () => {
     expect(stripComments(`await db.insert( paxSends ).values(row);`)).toMatch(KERNEL_TABLE_WRITE);
     expect(stripComments(`await db.select().from(pendingActions);`)).not.toMatch(KERNEL_TABLE_WRITE);
     expect(stripComments(`const label = "deepseek-chat";`)).toMatch(MODEL_ID);
+    expect(stripComments(`const m = "gpt-4o";`)).toMatch(MODEL_ID);
     // and a comment naming them is the record, not the defect
     expect(stripComments(`// emailService was never imported here (deepseek)\nconst x = 1;`)).not.toMatch(ACTS_ON_THE_WORLD);
   });

@@ -47,6 +47,7 @@ export type DecisionSource =
   | "pax-suggests"
   | "pax-noticed"
   | "pax-ask"
+  | "pax-packet"
   | "ai-queue"
   | "portfolio-alert";
 
@@ -55,6 +56,7 @@ const sourcePillStyles: Record<DecisionSource, string> = {
   "pax-suggests": "bg-acr-pos-soft text-acr-pos-soft-ink",
   "pax-noticed": "bg-acr-brand-soft text-acr-brand-soft-ink",
   "pax-ask": "bg-acr-warn-soft text-acr-warn-soft-ink",
+  "pax-packet": "bg-acr-brand-soft text-acr-brand-soft-ink",
   "ai-queue": "bg-primary/10 text-primary",
   "portfolio-alert": "bg-acr-warn-soft text-acr-warn-soft-ink",
 };
@@ -64,6 +66,7 @@ const sourcePillLabel: Record<DecisionSource, string> = {
   "pax-suggests": "Pax",
   "pax-noticed": "Pax",
   "pax-ask": "Pax",
+  "pax-packet": "Pax prepared",
   "ai-queue": "AI queue",
   "portfolio-alert": "Alert",
 };
@@ -73,6 +76,7 @@ const sourceIcon: Record<DecisionSource, LucideIcon> = {
   "pax-suggests": Sparkles,
   "pax-noticed": Sparkles,
   "pax-ask": Sparkles,
+  "pax-packet": Sparkles,
   "ai-queue": GitBranch,
   "portfolio-alert": AlertTriangle,
 };

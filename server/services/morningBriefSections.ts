@@ -9,9 +9,9 @@
  *
  *   changed   — what moved in the last 24 hours
  *   needsYou  — deadlines and things waiting on the user
- *   prepared  — what Pax prepared that waits for a tap (the approval
- *               kernel's live pending_actions rows — the ONLY store of
- *               Pax-prepared work today; nothing here prepares anything)
+ *   prepared  — what Pax prepared that waits for you: prepared packets
+ *               (pax_packets) and the approval kernel's live asks
+ *               (pending_actions). Nothing here prepares anything.
  *
  * PURE: no database, no model, no clock. The route gathers the counts (it
  * already reads every one of them for the queue and the cash strip) and hands
@@ -53,6 +53,8 @@ export interface BriefSectionInputs {
   // ── prepared (approval kernel, live pending_actions) ──
   /** Live asks awaiting a tap (approvalKernel.countPendingActionsByTool), keyed by tool name. */
   pendingAsksByTool: Readonly<Record<string, number>>;
+  /** Pax-prepared packets awaiting approve / dismiss (pax_packets, status prepared). */
+  packetsPrepared?: number;
   /**
    * Sections whose inputs could NOT be read (a failed query). A failed read is
    * not a zero: the section is reported unreadable, never "nothing here".
@@ -176,8 +178,16 @@ export function composeBriefSections(inputs: BriefSectionInputs): BriefSections 
 
   // Sorted by tool name so the order is stable whatever order the database
   // grouped them in.
-  const prepared = keep(
-    Object.keys(inputs.pendingAsksByTool)
+  const packets = inputs.packetsPrepared ?? 0;
+  const prepared = keep([
+    item(
+      "prepared-packets",
+      packets,
+      `${packets} ${packets === 1 ? "item" : "items"} Pax prepared, waiting for you to approve or dismiss`,
+      "/today",
+      "pax_packets",
+    ),
+    ...Object.keys(inputs.pendingAsksByTool)
       .sort()
       .map((tool) => {
         const n = inputs.pendingAsksByTool[tool] ?? 0;
@@ -192,7 +202,7 @@ export function composeBriefSections(inputs: BriefSectionInputs): BriefSections 
           "pending_actions",
         );
       }),
-  );
+  ]);
 
   const unreadable = (["changed", "needsYou", "prepared"] as const).filter((k) =>
     (inputs.unreadable ?? []).includes(k),

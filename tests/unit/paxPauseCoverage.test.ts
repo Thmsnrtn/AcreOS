@@ -250,6 +250,19 @@ const EXPECTATIONS: Record<UnattendedPathId, Expectation> = {
     kind: "switch_read",
     reads: [AGGREGATOR_CALL, ".inboxDrafts"],
   },
+  prepared_work: {
+    // The choke point: every packet and every shadow entry is made after it.
+    kind: "pause_gate",
+    fn: "export async function preparePacket<",
+    gate: "getPaxPauseState(params.organizationId)",
+    before: "getAutonomySettings(params.organizationId)",
+  },
+  brief_summary: {
+    kind: "pause_gate",
+    fn: "async function composeBriefWithPax(",
+    gate: "getPaxPauseState(orgId)",
+    before: "routeAITask(",
+  },
   founder_lane: {
     kind: "pause_gate",
     fn: "async function processInboxItem(",
@@ -285,6 +298,8 @@ const PAUSE_DEFINITION = "server/services/paxPause.ts";
  * here that EXISTS must consult the state, and a file that consults it
  * without being here fails.
  *   - routes-pax-controls.ts: the Settings page reads ORG truth (wave 1 C).
+ *   - routes-pax-core.ts: reports the stand-down (the Pause) beside presets
+ *     and rails (E2 slice 1); preparePacket() is the enforcing member.
  *   - routes-pax-insights.ts: approve / revise routes — a tap is the human
  *     acting; the state is read for attribution only.
  *   - paxAskExecutors.ts: stance attribution on the ask receipt (seam 5).
@@ -294,6 +309,8 @@ const PAUSE_DEFINITION = "server/services/paxPause.ts";
  */
 const PAUSE_READ_ONLY_CONSUMERS = [
   "server/routes-pax-controls.ts",
+  // E2 slice 1: reports the stand-down state on Settings → Pax; enforces nothing.
+  "server/routes-pax-core.ts",
   "server/routes-pax-insights.ts",
   "server/services/paxAskExecutors.ts",
   "server/jobs/pendingActionExpiryJob.ts",
