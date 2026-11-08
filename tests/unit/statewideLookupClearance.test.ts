@@ -289,6 +289,7 @@ describe("(c) ratchet — the gate cannot be bypassed by future seeding", () => 
     "server/routes-land-data.ts": "lists program metadata (state, host, attribution) — no parcel attributes",
     "server/services/landData/countyPipeline.ts": "BULK county ingest — refuses a statewide row without a verified county field (TN only, URL-blocked); out of point-lookup scope",
     "server/routes-permit-tracker.ts": "false positive: a permit-template wildcard (state/county \"*\"), not a parcel source",
+    "server/services/landData/listBuilder.ts": "the county list builder (W10.3 v0) — calls isClearedForLookup(statewideSource(state)) for every state it evaluates, before any source is asked to count (behaviour: countyListBuilder.test.ts)",
   };
   const READS_STATEWIDE = [
     /\bSTATEWIDE_PARCEL_ENDPOINTS\b/,
@@ -316,5 +317,11 @@ describe("(c) ratchet — the gate cannot be bypassed by future seeding", () => 
   it("the gate is applied by parcel.ts on both lookup paths (per-member vacuity)", () => {
     const src = stripComments(readFileSync(join(ROOT, "server/services/parcel.ts"), "utf8"));
     expect(src.match(/statewideRowMayServe\(/g)?.length ?? 0).toBeGreaterThanOrEqual(3); // definition + point + APN
+  });
+
+  it("the gate is applied by the county list builder too (per-member vacuity)", () => {
+    const src = stripComments(readFileSync(join(ROOT, "server/services/landData/listBuilder.ts"), "utf8"));
+    expect(src).toMatch(/isClearedForLookup\(\s*entry\s*\)/);
+    expect(src).toMatch(/statewideSource\(\s*state\s*,\s*now\s*\)/);
   });
 });
