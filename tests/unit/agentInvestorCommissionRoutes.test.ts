@@ -23,6 +23,8 @@ import path from "node:path";
 import { stripComments } from "../helpers/stripComments";
 import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
 
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
+
 const H = vi.hoisted(() => {
   process.env.ENCRYPTION_KEY ||= "0".repeat(64);
   process.env.FIELD_ENCRYPTION_KEY ||= "0".repeat(64);
@@ -248,6 +250,5 @@ describe("GET /api/commissions and POST /api/commissions are deleted", () => {
       expect([...siblingSeenIn].sort()).toEqual(["client", "server"]);
       expect(offenders).toEqual([]);
     },
-    REPO_SWEEP_TIMEOUT_MS,
   );
 });

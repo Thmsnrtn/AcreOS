@@ -26,9 +26,12 @@ import fs from "node:fs";
 import path from "node:path";
 import ts from "typescript";
 import { stripComments } from "../helpers/stripComments";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
 
 import { CommissionScopeNote } from "../../client/src/pages/finance-commissions";
 import { CommissionTiers, type CommissionConfigResponse } from "../../client/src/pages/commissions";
+
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 const ROOT = path.resolve(__dirname, "../..");
 const read = (rel: string) => stripComments(fs.readFileSync(path.join(ROOT, rel), "utf8"));
@@ -166,7 +169,6 @@ describe("the commission scope note", () => {
         ).toEqual([]);
       }
     },
-    60_000,
   );
 });
 
