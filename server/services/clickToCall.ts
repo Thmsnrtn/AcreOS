@@ -75,7 +75,7 @@ interface GateContext {
 }
 
 /** A US number as E.164, or null when it is not a dialable US number. */
-export function usE164(phone: string | null | undefined): string | null {
+function usE164(phone: string | null | undefined): string | null {
   const d = (phone ?? "").replace(/\D/g, "");
   if (d.length === 10) return `+1${d}`;
   if (d.length === 11 && d.startsWith("1")) return `+${d}`;
@@ -88,20 +88,25 @@ function mask(phone: string): string {
 
 const refuse = (code: CallGateCode, reason: string): CallGateVerdict => ({ allowed: false, code, reason });
 
+interface ClerkUserPhones {
+  primaryPhoneNumberId?: string | null;
+  phoneNumbers?: Array<{ id: string; phoneNumber: string; verification?: { status?: string } | null }>;
+}
+
 /**
  * The operator's own verified phone, from their sign-in account (Clerk). Only
  * a number Clerk reports as VERIFIED counts: the first leg must ring a phone
  * the operator proved they control, never a number typed into a form.
  */
-export async function operatorVerifiedPhone(userId: string): Promise<string | null> {
+async function operatorVerifiedPhone(userId: string): Promise<string | null> {
   const [u] = await db.select({ clerkUserId: users.clerkUserId }).from(users).where(eq(users.id, userId)).limit(1);
   if (!u?.clerkUserId) return null;
   const { clerkClient } = await import("@clerk/express");
-  const cu: any = await clerkClient.users.getUser(u.clerkUserId);
+  const cu = (await clerkClient.users.getUser(u.clerkUserId)) as unknown as ClerkUserPhones;
   const verified = (Array.isArray(cu?.phoneNumbers) ? cu.phoneNumbers : []).filter(
-    (p: any) => p?.verification?.status === "verified" && usE164(p?.phoneNumber),
+    (p) => p?.verification?.status === "verified" && usE164(p?.phoneNumber),
   );
-  const primary = verified.find((p: any) => p.id === cu?.primaryPhoneNumberId) ?? verified[0];
+  const primary = verified.find((p) => p.id === cu?.primaryPhoneNumberId) ?? verified[0];
   return primary ? usE164(primary.phoneNumber) : null;
 }
 
@@ -110,7 +115,7 @@ export async function operatorVerifiedPhone(userId: string): Promise<string | nu
  * The in-repo fixture list holds only reserved fictional numbers, so it
  * checks no real number: it counts only under the test runner.
  */
-export function dncScrubAvailableForCalls(): boolean {
+function dncScrubAvailableForCalls(): boolean {
   const provider = getConfiguredDncProvider();
   if (!provider) return false;
   if (provider.name === "fixture" && process.env.NODE_ENV !== "test") return false;
@@ -118,7 +123,7 @@ export function dncScrubAvailableForCalls(): boolean {
 }
 
 /** The consent verdict for one lead: written consent, not opted out. */
-export function callConsentVerdict(lead: Lead): { allowed: boolean; reason?: string } {
+function callConsentVerdict(lead: Lead): { allowed: boolean; reason?: string } {
   if (leadHasOptedOut(lead)) return { allowed: false, reason: "This lead has opted out of contact (do not contact)." };
   if (!checkTcpaConsentFromLead(lead).canCall) {
     return { allowed: false, reason: "This lead has no calling consent on record." };
@@ -232,7 +237,7 @@ export interface PlaceCallResult {
 }
 
 /** Callback URL for one leg. The org and lead are bound by Twilio's signature over it. */
-export function callStatusCallbackUrl(base: string, organizationId: number, leadId: number, leg: "operator" | "lead"): string {
+function callStatusCallbackUrl(base: string, organizationId: number, leadId: number, leg: "operator" | "lead"): string {
   return `${base.replace(/\/+$/, "")}/api/webhooks/twilio/call-status/${organizationId}/${leadId}/${leg}`;
 }
 
@@ -358,12 +363,10 @@ export async function recordCallStatus(input: {
   const lead = await storage.getLead(organizationId, leadId);
   if (!lead) return { written: false };
   const events: ActivityEvent[] = await storage.getActivityEvents(organizationId, "lead", leadId, ["call_made", "call_not_placed"]);
-  const ours = events.some((e) => (e.metadata as Record<string, unknown> | null)?.callSid === parentSid && (e.metadata as any)?.status === "initiated");
+  const meta = (e: ActivityEvent) => (e.metadata ?? {}) as Record<string, unknown>;
+  const ours = events.some((e) => meta(e).callSid === parentSid && meta(e).status === "initiated");
   if (!ours) return { written: false };
-  const already = events.some((e) => {
-    const m = e.metadata as Record<string, unknown> | null;
-    return m?.callSid === parentSid && m?.leg === leg && m?.status !== "initiated";
-  });
+  const already = events.some((e) => meta(e).callSid === parentSid && meta(e).leg === leg && meta(e).status !== "initiated");
   if (already) return { written: false };
   const duration = Number(body.CallDuration);
   const callDuration = leg === "lead" && status === "completed" && Number.isFinite(duration) ? duration : undefined;

@@ -197,7 +197,7 @@ function xmlEscape(v: string): string {
  * with the org's own number as caller ID. No <Say>, no recording — the
  * operator hears the lead's phone ring, and nothing is recorded.
  */
-export function bridgeTwiml(counterparty: string, callerId: string, statusCallbackUrl?: string): string {
+function bridgeTwiml(counterparty: string, callerId: string, statusCallbackUrl?: string): string {
   const cb = statusCallbackUrl
     ? ` statusCallbackEvent="completed" statusCallback="${xmlEscape(statusCallbackUrl)}" statusCallbackMethod="POST"`
     : "";
@@ -313,11 +313,11 @@ class TwilioProvider implements CommsProvider {
     // checked against the person being called, here as well as in the router.
     await assertOwnerContactAllowed("voice", { phone: opts.to });
     const { shouldSimulate, recordSimulatedAction } = await import("../../../utils/simulationMode");
-    let org: any = null;
+    let org: { id?: number; settings?: unknown } | null = null;
     if (opts.organizationId != null) {
       try {
         const { storage } = await import("../../../storage");
-        org = await storage.getOrganization(opts.organizationId);
+        org = (await storage.getOrganization(opts.organizationId)) ?? null;
       } catch {}
     }
     if (shouldSimulate("voice", org)) {

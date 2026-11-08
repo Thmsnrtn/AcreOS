@@ -83,7 +83,7 @@ vi.mock("../../server/services/compliance/contactFrequency", () => ({
   },
 }));
 
-const { evaluateCallGate, placeLeadCall, recordCallStatus, callConsentVerdict } = await import("../../server/services/clickToCall");
+const { evaluateCallGate, placeLeadCall, recordCallStatus } = await import("../../server/services/clickToCall");
 const { verifyOrgTwilioCallCallback } = await import("../../server/middleware/twilioSignature");
 const { isCsrfExemptPath } = await import("../../server/middleware/csrf");
 
@@ -359,10 +359,15 @@ describe("structure", () => {
     expect(misc).toMatch(/api\.post\("\/api\/webhooks\/twilio\/call-status\/:orgId\/:leadId\/:leg", verifyOrgTwilioCallCallback,/);
   });
 
-  it("the call consent step agrees with the cold-text gate's predicate over every source", () => {
+  it("the gate's consent step agrees with the cold-text predicate over every source", async () => {
+    const { hasWrittenSmsConsent } = await import("../../server/services/tcpaCompliance");
+    const verdicts = new Set<boolean>();
     for (const source of ["website", "written", "sms_double_optin", "phone_ivr", "verbal", "manual", "imported", null]) {
-      const l: any = lead({ consentSource: source });
-      expect(callConsentVerdict(l).allowed, String(source)).toBe(["website", "written", "sms_double_optin", "phone_ivr"].includes(String(source)));
+      H.leads = [lead({ consentSource: source })];
+      const v = await evaluateCallGate({ organizationId: ORG, leadId: 5, userId: "u1" });
+      expect(v.allowed, String(source)).toBe(hasWrittenSmsConsent({ tcpaConsent: true, consentSource: source }));
+      verdicts.add(v.allowed);
     }
+    expect([...verdicts].sort()).toEqual([false, true]); // not vacuous
   });
 });

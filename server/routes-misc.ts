@@ -1120,7 +1120,7 @@ export async function registerTwilioWebhookRoutes(app: Express): Promise<void> {
       const { organizationId } = res.locals.twilioCallCallback as { organizationId: number };
       const { recordCallStatus } = await import("./services/clickToCall");
       await recordCallStatus({ organizationId, leadId, leg, body: (req.body ?? {}) as Record<string, unknown> });
-      res.status(204).end();
+      res.sendStatus(204);
     } catch (err) {
       return Errors.internal(res, err as Error);
     }
