@@ -223,6 +223,18 @@ describe("refusals: nothing reaches the network, and the attempt is logged with 
   });
 });
 
+describe("the carrier adapter itself has no platform fallback", () => {
+  it("platform Twilio fully keyed, org has no identity → the router refuses and nothing reaches Twilio", async () => {
+    Object.assign(process.env, { TWILIO_ACCOUNT_SID: "ACplatform", TWILIO_AUTH_TOKEN: "platform-token", TWILIO_PHONE_NUMBER: "+18005550000" });
+    const { commsRouter } = await import("../../server/services/comms/router");
+    await import("../../server/services/comms/providers/twilio");
+    await expect(
+      commsRouter.initiateCall({ to: "+15125550111", voice: { kind: "human" }, organizationId: 8, preferredProvider: "twilio", bridge: { ringFirst: OPERATOR } }),
+    ).rejects.toThrow(/no connected \(BYO\) Twilio identity/);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
 describe("all gates pass", () => {
   it("exactly one Twilio request, on the org's own account, ringing the operator first, caller ID = the org's number", async () => {
     const r = await place();
