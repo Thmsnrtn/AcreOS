@@ -356,7 +356,7 @@ describe("the body on screen is this deal's, and the draft is what was reviewed"
 // ── 3. the hand-off ─────────────────────────────────────────────────────────
 
 /** Document state with the per-run identity (ids, clocks) taken out. */
-function comparable(doc: Record<string, any>) {
+function comparable(doc: Record<string, any>): Record<string, any> {
   const { id: _id, createdAt: _c, sentAt: _s, expiresAt: _e, variables, signers, ...rest } = doc;
   const { contract_chain_reviewed_at: _at, ...vars } = variables ?? {};
   return {
