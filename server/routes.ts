@@ -2473,7 +2473,7 @@ export async function registerRoutes(
   registerCountyTimelineRoutes(app);
   // Subdivider vertical SD-7 — subdivision plans (GeoJSON storage + A/B).
   registerSubdivisionPlanRoutes(app);
-  // Subdivision V1 Leg 1 — the buildability screen (append-only runs, migration 0301).
+  // Subdivision V1 Leg 1 — the buildability screen (append-only runs, migration 0304).
   registerSubdivisionScreenRoutes(app);
   // Subdivider vertical SD-8 — CC&R / covenant template library.
   registerCcrTemplateRoutes(app);

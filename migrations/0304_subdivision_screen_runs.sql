@@ -1,4 +1,4 @@
--- 0301 — Subdivision V1 Leg 1: subdivision_screen_runs (the buildability
+-- 0304 (renumbered from 0301 on 2026-11-08; #461 holds 0301) — Subdivision V1 Leg 1: subdivision_screen_runs (the buildability
 -- screen's append-only run record). Founder decision 2026-11-05 (Tom): +1
 -- table approved, the package §9.1 fence lifted for this table only.
 -- APPEND-ONLY: UPDATE is refused in the database. DELETE is left to

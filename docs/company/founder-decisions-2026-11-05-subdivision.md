@@ -21,7 +21,7 @@ disagreement mechanism. Re-running the screen after the facts change keeps
 both verdicts visible. A live projection, the other option offered, would
 have lost that.
 
-**Effect.** Migration 0301 adds the table, and its database trigger refuses
+**Effect.** Migration 0304 (numbered 0301 when decided; renumbered 2026-11-08 to sit behind #461, #463 and #459) adds the table, and its database trigger refuses
 UPDATE. The `table-count` ratchet goes from 748 to 749.
 
 ## 2. The desk records pursue or pass, never "defer"

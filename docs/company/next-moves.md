@@ -12,7 +12,7 @@ what shipped, what it measured, and the top next moves. Newest first.
   - no perc result is stored anywhere.
 
   Staging row counts are unverified (no staging access).
-- **Rulings** (`founder-decisions-2026-11-05-subdivision.md`): Tom approved +1 table `subdivision_screen_runs` (0301; `table-count` 748 to 749). Muse ruled that `defer` is dropped and that timelines are operator-stated per run.
+- **Rulings** (`founder-decisions-2026-11-05-subdivision.md`): Tom approved +1 table `subdivision_screen_runs` (0304, renumbered from 0301; `table-count` 748 to 749). Muse ruled that `defer` is dropped and that timelines are operator-stated per run.
 - **Built.**
   - `shared/subdivision/lotYield.ts` (lot-yield v1) and `buildabilityScreen.ts` (buildability-screen v1): seven triggers, three verdicts, and a headline that never says "buildable". The perc-estimate slot is always null.
   - `POST /api/parcels/:id/screen` (appends a run) and `GET …/screen-runs` (history, plus the newest estimate beside the drawn plans).

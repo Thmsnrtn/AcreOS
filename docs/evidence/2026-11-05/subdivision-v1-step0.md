@@ -49,7 +49,7 @@ Package: `claude-package-subdivision-v1` (Muse, 2026-11-05). Head checked: **mai
 ## Rulings received (2026-11-05)
 
 Recorded in `docs/company/founder-decisions-2026-11-05-subdivision.md`.
-- **Q1, screen storage: Tom approved +1 table, `subdivision_screen_runs`** (append-only, migration 0301). `table-count` goes from 748 to 749.
+- **Q1, screen storage: Tom approved +1 table, `subdivision_screen_runs`** (append-only, migration 0301 — renumbered 0304 on 2026-11-08, behind #461 0301, #463 0302 and #459 0303). `table-count` goes from 748 to 749.
 - **Q2, defer: dropped** (Muse). The desk records `pursue` or `pass`; `DECISION_KINDS` is unchanged.
 - **Q3, timelines: operator-stated per run** (Muse). The global table stays empty. The §0/§2.8 premise correction is recorded.
 

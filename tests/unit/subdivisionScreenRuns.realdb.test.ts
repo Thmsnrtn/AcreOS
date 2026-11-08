@@ -1,6 +1,6 @@
 /**
  * Subdivision V1, Leg 1 — subdivision_screen_runs against a REAL database
- * built from this repository (migration 0301). What a mock cannot prove:
+ * built from this repository (migration 0304). What a mock cannot prove:
  *   - the database itself refuses UPDATE on a run (append-only, trigger);
  *   - organization erasure still removes the org's runs (DELETE is left to
  *     erasure; the organization_id FK cascades);

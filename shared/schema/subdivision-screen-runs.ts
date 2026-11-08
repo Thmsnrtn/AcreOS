@@ -1,7 +1,7 @@
 // ============================================================================
 // SHARED/SCHEMA/SUBDIVISION-SCREEN-RUNS.TS — the buildability screen's record.
 // ----------------------------------------------------------------------------
-// Subdivision V1, Leg 1 (package 2026-11-05 §3.3); migration 0301.
+// Subdivision V1, Leg 1 (package 2026-11-05 §3.3); migration 0304.
 // Founder decision 2026-11-05 (~07:39 EST, Tom): +1 table, approved — the
 // §9.1 fence lifted for this table only. Step 0 showed no existing store could
 // hold a screen run honestly (scenarios are numeric economics; decision
@@ -14,7 +14,7 @@
 // rule version, the actor and the time. Re-running after facts change INSERTS
 // a new row; a verdict that changes between runs shows both — the
 // disagreement record is the point (Tom's rationale on record). There is no
-// UPDATE path in the store, and migration 0301 refuses UPDATE in the database.
+// UPDATE path in the store, and migration 0304 refuses UPDATE in the database.
 // DELETE is left to organization erasure (deleteOrganization sweeps every
 // organization_id table); no product path deletes a run.
 //

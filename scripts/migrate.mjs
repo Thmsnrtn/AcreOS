@@ -13063,8 +13063,8 @@ $mig0284$`,
      END IF;
    END
    $mig0300$`,
-  // 0301 — Subdivision V1 Leg 1: subdivision_screen_runs, the buildability screen's append-only run record (founder decision 2026-11-05, +1 table approved).
-  // Mirrors migrations/0301_subdivision_screen_runs.sql.
+  // 0304 — Subdivision V1 Leg 1: subdivision_screen_runs, the buildability screen's append-only run record (founder decision 2026-11-05, +1 table approved).
+  // Mirrors migrations/0304_subdivision_screen_runs.sql.
   `CREATE TABLE IF NOT EXISTS "subdivision_screen_runs" (
      "id" serial PRIMARY KEY,
      "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
