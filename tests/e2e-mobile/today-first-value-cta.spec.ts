@@ -200,7 +200,11 @@ test.describe("Today's first-value call to action", () => {
     // In-app navigation. WebKit's page.url() can lag history.pushState, so
     // assert the destination DOM first and read the location in-page.
     await cta.click();
-    await expect(page.getByText("County selection").first()).toBeVisible({ timeout: 20_000 });
+    // The stepper's text label is `hidden md:block`, so key on the step
+    // button's aria-label, which is on screen at every width.
+    await expect(page.getByRole("button", { name: /Step 1 of 5: County selection \(current\)/ })).toBeVisible({
+      timeout: 20_000,
+    });
     expect(await page.evaluate(() => location.pathname)).toBe("/blind-offer-wizard");
 
     // Past first value: one real deal at offer_sent on a real parcel.

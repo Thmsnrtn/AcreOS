@@ -2,7 +2,7 @@
  * orgHasMadeAnOffer on a REAL Postgres (skips without ACREOS_REAL_DATABASE_URL).
  * Offers that count, offers that do not, sample lineage, soft-delete, org scope.
  */
-import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, vi, afterAll } from "vitest";
 import { useRealDb, realDbAvailable } from "../helpers/realDb";
 
 useRealDb("firstOffer.realdb.test.ts");
