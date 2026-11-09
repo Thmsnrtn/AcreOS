@@ -29,6 +29,7 @@ import { seedSampleDataForOrg } from "./services/onboarding/sampleSeeder";
 import { clock } from "./utils/clock";
 import { refuseClosedSignupType, isSignupTrimOn, recordSignupWaitlist } from "./services/signupTrim";
 import { createRateLimiter } from "./middleware/rateLimit";
+import { csrfProtection } from "./middleware/csrf";
 import { z } from "zod";
 import { isSignupWaitlistBusinessType } from "@shared/business-types/signupTrim";
 
@@ -447,7 +448,13 @@ const waitlistLimiter = createRateLimiter(
 );
 const waitlistSchema = z.object({ type: z.string().trim().min(1).max(60) });
 
-router.post("/waitlist", waitlistLimiter, async (req: Request, res: Response) => {
+//
+// csrfProtection is chained here as well as running globally
+// (`app.use("/api", csrfProtection)` in server/routes.ts, mounted before this
+// router). The global pass already covers this route; naming it at the route
+// makes the protection visible to static analysis and keeps it if the router
+// is ever mounted elsewhere. Running the double-submit check twice is harmless.
+router.post("/waitlist", csrfProtection, waitlistLimiter, async (req: Request, res: Response) => {
   try {
     const parsed = waitlistSchema.safeParse(req.body);
     if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);

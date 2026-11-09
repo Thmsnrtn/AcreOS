@@ -10,6 +10,7 @@
  */
 import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
 import express from "express";
+import cookieParser from "cookie-parser";
 import request from "supertest";
 import { feedbackSubmissions } from "@shared/schema";
 
@@ -79,6 +80,9 @@ describe("signup trim on the server", () => {
   beforeAll(() => {
     app = express();
     app.use(express.json());
+    // Deliberately NO global csrfProtection here: the waitlist route must
+    // refuse a tokenless post on its own (see "CSRF" below).
+    app.use(cookieParser());
     app.use(
       "/api/onboarding",
       (req, _res, next) => {
@@ -154,7 +158,34 @@ describe("signup trim on the server", () => {
   });
 
   describe("waitlist capture", () => {
-    const join = (type: unknown) => request(app).post("/api/onboarding/waitlist").send({ type });
+    const CSRF = "test-csrf-token";
+    const join = (type: unknown) =>
+      request(app)
+        .post("/api/onboarding/waitlist")
+        .set("Cookie", `csrf_token=${CSRF}`)
+        .set("x-csrf-token", CSRF)
+        .send({ type });
+
+    it("CSRF: a post without the double-submit token is refused and writes nothing", async () => {
+      h.userId = "wl-user-csrf";
+      const none = await request(app).post("/api/onboarding/waitlist").send({ type: "developer" });
+      expect(none.status).toBe(403);
+      const cookieOnly = await request(app)
+        .post("/api/onboarding/waitlist")
+        .set("Cookie", `csrf_token=${CSRF}`)
+        .send({ type: "developer" });
+      expect(cookieOnly.status).toBe(403);
+      const mismatched = await request(app)
+        .post("/api/onboarding/waitlist")
+        .set("Cookie", `csrf_token=${CSRF}`)
+        .set("x-csrf-token", "something-else")
+        .send({ type: "developer" });
+      expect(mismatched.status).toBe(403);
+      expect(h.feedbackRows).toHaveLength(0);
+      // ...and the same request WITH a matching token goes through.
+      expect((await join("developer")).status).toBe(200);
+      expect(h.feedbackRows).toHaveLength(1);
+    });
 
     it("persists a feature_request in the feedback inbox with the caller's identity", async () => {
       h.userId = "wl-user-a";
