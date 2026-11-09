@@ -24,6 +24,7 @@ import {
 } from "./services/esign/signerRequest";
 import { clock } from "./utils/clock";
 import { routeParam } from "./utils/routeParams";
+import { SELLER_FOLLOW_UP_DRAFT_TYPE } from "./services/wholesale/sellerFollowUps";
 
 /**
  * Answer a malformed signer list with a named 400. Lives at module scope, away
@@ -964,6 +965,15 @@ export function registerDocSystemRoutes(app: Express): void {
 
       const { name, content, status, signers } = req.body;
 
+      // §6.2 / §7.6: a seller follow-up draft is created, never edited. A
+      // correction is a new draft that supersedes it by reference.
+      if (
+        existing.type === SELLER_FOLLOW_UP_DRAFT_TYPE &&
+        (content !== undefined || name !== undefined || signers !== undefined)
+      ) {
+        return Errors.unprocessable(res, "A seller follow-up draft cannot be edited — create a new draft that supersedes it.");
+      }
+
       // R2: signed documents are immutable. Reject any update that
       // touches content-bearing fields once the document has reached
       // a frozen status. Renames + status transitions remain allowed
@@ -1279,6 +1289,12 @@ export function registerDocSystemRoutes(app: Express): void {
         return Errors.notFound(res, "Document");
       }
 
+      // §6.2: a seller follow-up draft is prepared text, not a signable
+      // document. Refused before any signer or link is written.
+      if (document.type === SELLER_FOLLOW_UP_DRAFT_TYPE) {
+        return Errors.unprocessable(res, "A follow-up draft is not a signable document.");
+      }
+
       if (document.status !== "draft") {
         return Errors.badRequest(res, "Document has already been sent or signed");
       }
@@ -1422,6 +1438,12 @@ export function registerDocSystemRoutes(app: Express): void {
       const document = await storage.getGeneratedDocument(org.id, id);
       if (!document) {
         return Errors.notFound(res, "Document");
+      }
+
+      // §6.2: a seller follow-up draft is prepared text, not a signable
+      // document. Refused before any signer or link is written.
+      if (document.type === SELLER_FOLLOW_UP_DRAFT_TYPE) {
+        return Errors.unprocessable(res, "A follow-up draft is not a signable document.");
       }
 
       if (document.status !== "draft") {
