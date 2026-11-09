@@ -26,7 +26,7 @@ import { clock } from "../utils/clock";
 import { validateUrl, SSRFBlockedError } from "../middleware/fileUploadSecurity";
 
 /** Same per-request bound as the customer webhook dispatcher. */
-export const TEAM_WEBHOOK_TIMEOUT_MS = 10_000;
+const TEAM_WEBHOOK_TIMEOUT_MS = 10_000;
 
 export type TeamEventKey =
   | "deal_closed"

@@ -52,10 +52,10 @@ vi.mock("../../server/storage", () => ({
   },
 }));
 
-import {
-  dispatchTeamEvent,
-  TEAM_WEBHOOK_TIMEOUT_MS,
-} from "../../server/services/teamWebhookDispatcher";
+import { dispatchTeamEvent } from "../../server/services/teamWebhookDispatcher";
+
+/** The customer webhook dispatcher's per-request bound. */
+const TIMEOUT_MS = 10_000;
 
 const fetchMock = vi.fn();
 
@@ -139,11 +139,7 @@ describe("dispatchTeamEvent — outbound URL check", () => {
 });
 
 describe("dispatchTeamEvent — request timeout", () => {
-  it("uses the customer webhook dispatcher's bound", () => {
-    expect(TEAM_WEBHOOK_TIMEOUT_MS).toBe(10_000);
-  });
-
-  it("aborts a request that does not answer and resolves with the timeout recorded", async () => {
+  it("aborts a request that does not answer within 10s and resolves with the timeout recorded", async () => {
     vi.useFakeTimers();
     fetchMock.mockImplementation(
       (_url: string, init: RequestInit) =>
@@ -156,7 +152,7 @@ describe("dispatchTeamEvent — request timeout", () => {
     const run = dispatchTeamEvent(7, "deal_closed", EVENT).then(() => {
       settled = true;
     });
-    await vi.advanceTimersByTimeAsync(TEAM_WEBHOOK_TIMEOUT_MS - 1);
+    await vi.advanceTimersByTimeAsync(TIMEOUT_MS - 1);
     expect(settled).toBe(false);
     await vi.advanceTimersByTimeAsync(2);
     await run;
