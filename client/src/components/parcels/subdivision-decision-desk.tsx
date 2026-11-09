@@ -133,6 +133,7 @@ export function SubdivisionDecisionDeskSection({ parentParcelId }: { parentParce
   const [reviewDays, setReviewDays] = useState<number | null | undefined>(undefined);
   const set = (k: string, v: string) => setForm({ ...form, [k]: v });
 
+  // allow-no-invalidation: preview computes only and records nothing — result is read from mutation state, no cached reads change
   const preview = useMutation({ mutationFn: () => post<Preview>("/api/scenarios/preview", { engineId: "subdivision_feasibility", inputs: buildInputs(form) }) });
   const record = useMutation({
     mutationFn: () =>
