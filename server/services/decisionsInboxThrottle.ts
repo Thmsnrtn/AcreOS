@@ -9,9 +9,9 @@
  * PREFER `raiseIfAllowed(input, insertFn)`. It holds the advisory lock across
  * decide → insert → record, so (a) a failed insert leaves NO state and the next
  * run retries, and (b) two concurrent full sequences for the same subject yield
- * exactly one card. The split pair `shouldRaiseCard` / `recordRaised` stays
- * exported for pure tests and unusual call sites, but by itself it does NOT
- * close the decide→record race.
+ * exactly one card. The split pair `shouldRaiseCard` / `recordRaised` (the
+ * ThrottleApi that `createThrottle` returns) serves pure tests and unusual
+ * call sites, but by itself it does NOT close the decide→record race.
  *
  * Semantics (status-blind — this module never reads decisions_inbox_items):
  *   no state                         → allow  new_subject
@@ -49,7 +49,7 @@ export const CRITICAL_COOLDOWN_MS = 7 * DAY_MS;
 /** Max standard cards per producer per UTC day. Critical bypasses. */
 export const STANDARD_DAILY_CAP = 3;
 /** Process-local fail-open fallback capacity. */
-export const MEMORY_FALLBACK_CAP = 5_000;
+const MEMORY_FALLBACK_CAP = 5_000;
 
 export const SUBJECT_KEY_PREFIX = "inbox_throttle.v1.";
 export const DAY_KEY_PREFIX = "inbox_throttle.day.";
@@ -89,7 +89,7 @@ export interface ThrottleVerdict {
 }
 
 export interface SubjectState {
-  /** sha1(conditionKey).slice(0,16) */
+  /** sha256(conditionKey).slice(0,16) */
   c: string;
   /** ISO time of last raise */
   at: string;
@@ -156,14 +156,14 @@ export function canonicalSetJson(items: readonly unknown[]): string {
 }
 
 export function hash16(s: string): string {
-  return createHash("sha1").update(s).digest("hex").slice(0, 16);
+  return createHash("sha256").update(s).digest("hex").slice(0, 16);
 }
 
-export function utcDay(now: Date): string {
+function utcDay(now: Date): string {
   return now.toISOString().slice(0, 10);
 }
 
-export function cooldownMs(cls: ThrottleClass): number {
+function cooldownMs(cls: ThrottleClass): number {
   return cls === "critical" ? CRITICAL_COOLDOWN_MS : STANDARD_COOLDOWN_MS;
 }
 
@@ -441,7 +441,7 @@ function dbStore(tx: Tx): ThrottleStore {
   };
 }
 
-export const dbThrottleBackend: ThrottleBackend = {
+const dbThrottleBackend: ThrottleBackend = {
   async withLock(producer, subjectHash, fn) {
     return db.transaction(async (tx) => {
       // Fixed order (subject, then producer-day) so locks cannot deadlock.
@@ -458,8 +458,5 @@ export const dbThrottleBackend: ThrottleBackend = {
 
 const defaultThrottle = createThrottle({ backend: dbThrottleBackend });
 
-export const shouldRaiseCard = (input: ThrottleInput): Promise<ThrottleVerdict> =>
-  defaultThrottle.shouldRaiseCard(input);
-export const recordRaised = (input: ThrottleInput): Promise<void> => defaultThrottle.recordRaised(input);
 export const raiseIfAllowed = <T>(input: ThrottleInput, insertFn: () => Promise<T>): Promise<RaiseOutcome<T>> =>
   defaultThrottle.raiseIfAllowed(input, insertFn);
