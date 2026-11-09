@@ -263,6 +263,7 @@ exports[`route manifest > snapshot: sorted manifest file paths (additions/remova
   "routes-soren-seo.ts",
   "routes-sovereign-integration.ts",
   "routes-sub-processors.ts",
+  "routes-subdivision-decision.ts",
   "routes-subdivision-plans.ts",
   "routes-subdivision-screen.ts",
   "routes-subdivisions.ts",

@@ -309,6 +309,7 @@ export const ROUTE_MANIFEST: RouteManifestEntry[] = [
   { file: "routes-soren-seo.ts", mountPath: null, kind: "register", export: "registerSorenSeoRoutes" },
   { file: "routes-sovereign-integration.ts", mountPath: null, kind: "register", export: "registerSovereignIntegrationRoutes" },
   { file: "routes-sub-processors.ts", mountPath: null, kind: "register", export: "registerSubProcessorRoutes" },
+  { file: "routes-subdivision-decision.ts", mountPath: null, kind: "register", export: "registerSubdivisionDecisionRoutes" },
   { file: "routes-subdivision-plans.ts", mountPath: null, kind: "register", export: "registerSubdivisionPlanRoutes" },
   { file: "routes-subdivision-screen.ts", mountPath: null, kind: "register", export: "registerSubdivisionScreenRoutes" },
   { file: "routes-subdivisions.ts", mountPath: null, kind: "register", export: "registerSubdivisionRoutes" },
