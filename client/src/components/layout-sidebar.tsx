@@ -557,6 +557,8 @@ const NAV_MODULES: NavModule[] = [
     businessTypeOnly: ["residential_wholesaler"],
     children: [
       // 2026-05-11 — buyer-blasts is now a channel-tab inside /campaigns.
+      { label: "Buy box", icon: Target, href: "/wholesale/buy-box", description: "Your criteria, and your candidates scored against them" },
+      { label: "Underwrite an offer", icon: Calculator, href: "/wholesale/underwrite", description: "Your ceiling, your buyer's, less your fee — record your call" },
       { label: "Buyer blasts", icon: Send, href: "/campaigns?channel=buyer-blasts", description: "One-click outreach to matched cash buyers" },
       { label: "Buyer analytics", icon: TrendingUp, href: "/buyer-analytics", description: "Per-blast funnel + freshness" },
       { label: "Earnest money", icon: Banknote, href: "/earnest-money", description: "EMD inspection-period timer + at-risk view" },
@@ -569,13 +571,13 @@ const NAV_MODULES: NavModule[] = [
   // Imelda §7: "AcreOS is an acquisition platform with a landlord persona
   // painted on the wall. […] If those six items ship in the next 12
   // months, I'd cancel Buildium." We've shipped tenants, leases, rent
-  // ledger, maintenance, inspections, analytics. Surface them.
+  // ledger, maintenance, inspections. Surface them.
   {
     id: "landlord",
     label: "Rentals",
     icon: Home,
     href: "/rent-roll",
-    description: "Tenants, leases, rent roll, maintenance, analytics",
+    description: "Tenants, leases, rent roll, maintenance",
     // V1 (founder ruling #11): short_term_rental / multifamily / mobile_home
     // all derive the landlord persona (persona-mapping.ts) — they run the
     // same leases/rent-roll/maintenance/tenants model, so the module gate
@@ -597,7 +599,11 @@ const NAV_MODULES: NavModule[] = [
       { label: "Tenants", icon: Users, href: "/tenants", description: "Tenant CRM (separate from acquisition leads)" },
       { label: "Leases", icon: FileText, href: "/leases", description: "Lease lineage w/ renewal-as-addendum" },
       { label: "Maintenance", icon: Hammer, href: "/maintenance", description: "Ticket queue → contractor dispatch" },
-      { label: "Analytics", icon: TrendingUp, href: "/investor-analytics", description: "NOI / cap rate / DSCR / vacancy" },
+      // Analytics entry removed 2026-11-06 (nav honesty): its route has only
+      // redirected to the generic /analytics since the 2026-06-01 page cut, and
+      // that page shows none of the NOI / cap rate / DSCR / vacancy the entry
+      // promised. The page that computes them (pages/investor-analytics.tsx) is
+      // not mounted. Re-add the entry in the same change that mounts it.
       // The vertical's decision desk (decision-memos/2026-10-04-vertical-program.md).
       // A child behind the existing Rentals module, gated to its vertical — not a door.
       { label: "Underwrite a rental", icon: Calculator, href: "/rentals/underwrite", description: "Run the numbers and record your call", businessTypeOnly: ["buy_and_hold"] },

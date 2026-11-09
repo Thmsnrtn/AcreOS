@@ -347,18 +347,16 @@ const BASELINE = new Set([
   // window to compare against" looks like.
 
   // ── RULE D REGISTER (added 2026-09-04) ────────────────────────────────────
-  // Both entries are DECISIONS presented as such, which is the line rule D
-  // draws. They are here rather than exempted in code so the judgement is
-  // reviewable, and so that a fourth commission tier or a fourth scenario
-  // arrives as a gate failure someone has to look at.
+  // The entry is a DECISION presented as such, which is the line rule D
+  // draws. It is here rather than exempted in code so the judgement is
+  // reviewable, and so that a fourth scenario arrives as a gate failure
+  // someone has to look at.
   //
-  // commissionService.DEFAULT_CONFIG.tiers — a commission SCHEDULE, and an
-  // overridable one: getCommissionConfig reads a per-org stored config and
-  // falls back to this. A commission rate is set by the company, never observed.
-  "server/services/commissionService.ts::ratePercent: 3.0 (labelled row)",
-  "server/services/commissionService.ts::ratePercent: 4.0 (labelled row)",
-  "server/services/commissionService.ts::ratePercent: 5.0 (labelled row)",
-  "server/services/commissionService.ts::ratePercent: 6.0 (labelled row)",
+  // (commissionService's built-in 3/4/5/6% tier schedule left this register
+  // 2026-11-06, W2-AGENT: no customer could override it, so every read
+  // surface showed it as the org's own rates. It was deleted rather than kept;
+  // an org with no saved rates now reads as unconfigured.)
+  //
   // dealUnderwriting.analyzeScenarios — base/bull/bear SCENARIOS, each row
   // named as one, and every field overridable through input.customScenarios. A
   // scenario is a stated assumption the reader can see and change; that is the

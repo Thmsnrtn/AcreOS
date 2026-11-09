@@ -103,19 +103,21 @@ export interface AgentCommissionSummary {
 // Config storage (JSON blob in organizationIntegrations)
 // ---------------------------------------------------------------------------
 
-const DEFAULT_CONFIG: CommissionConfig = {
-  tiers: [
-    { minDeals: 0,  ratePercent: 3.0, label: "Standard" },
-    { minDeals: 5,  ratePercent: 4.0, label: "Silver"   },
-    { minDeals: 10, ratePercent: 5.0, label: "Gold"     },
-    { minDeals: 20, ratePercent: 6.0, label: "Platinum" },
-  ],
-  trackingPeriod: "annual",
-};
-
+/**
+ * The org's OWN saved commission tiers, or null when none are saved.
+ *
+ * There is deliberately NO default schedule. This used to fall back to a
+ * built-in 3% / 4% / 5% / 6% "Standard…Platinum" ladder, and every read surface
+ * rendered it as if the org had set it: the Tier config tab listed those rates,
+ * each agent card wore a "Standard (3%)" badge and the statement printed it.
+ * A commission rate is a term the org sets, never one AcreOS observes — so,
+ * like getSplitConfig, an unconfigured org gets null and every caller refuses
+ * or says "not configured". A saved config with no tier carries no rate either,
+ * so it reads as unconfigured instead of crashing tier resolution.
+ */
 export async function getCommissionConfig(
   organizationId: number
-): Promise<CommissionConfig> {
+): Promise<CommissionConfig | null> {
   const [row] = await db
     .select()
     .from(organizationIntegrations)
@@ -127,21 +129,20 @@ export async function getCommissionConfig(
     )
     .limit(1);
 
-  if (!row?.credentials) return DEFAULT_CONFIG;
+  if (!row?.credentials) return null;
   // Sealed at rest (readSealedStore also reads the pre-2026-10-10 plain shape).
   const store = readSealedStore<{ config?: CommissionConfig }>(row, organizationId, "commission config");
-  return store?.config ?? DEFAULT_CONFIG;
+  const config = store?.config;
+  return config && Array.isArray(config.tiers) && config.tiers.length > 0 ? config : null;
 }
 
 /**
  * Whether the org has EXPLICITLY configured commission tiers (i.e. an
  * organizationIntegrations row with provider='commission_config' exists).
  *
- * `getCommissionConfig` intentionally falls back to DEFAULT_CONFIG so read
- * surfaces always render, but the deal-close auto-record path must NOT act on
- * that default — recording a commission when the org never opted in would
- * fabricate a number. This is the honest gate: only true once a real config
- * has been saved.
+ * The deal-close auto-record path checks this before recording — with no
+ * saved config there is no rate, and recording anyway would fabricate a
+ * commission. (getCommissionConfig itself returns null in that case too.)
  */
 export async function hasCommissionConfig(
   organizationId: number
@@ -356,6 +357,10 @@ export async function recordDealCommission(
   closedAt: Date = clock.now()
 ): Promise<CommissionRecord> {
   const config = await getCommissionConfig(organizationId);
+  if (!config) {
+    // Refuse rather than record at an assumed rate.
+    throw new Error("No commission rates are saved for this workspace; no commission was recorded.");
+  }
   const records = await getCommissionRecordsStore(organizationId);
 
   // Count deals closed by this agent in the current tracking period
@@ -480,7 +485,7 @@ export async function recordCommissionPayment(
 // Queries
 // ---------------------------------------------------------------------------
 
-export async function getCommissionRecords(
+async function getCommissionRecords(
   organizationId: number,
   options: {
     teamMemberId?: number;
@@ -552,7 +557,8 @@ export async function getAgentCommissionSummaries(
       (sum, r) => sum + r.paidCents,
       0
     );
-    const currentTier = resolveCommissionTier(config, ytdDeals);
+    // No saved rates → no tier. Never a default tier shown as the agent's.
+    const currentTier = config ? resolveCommissionTier(config, ytdDeals) : null;
     // Net-of-split YTD — derived from the persisted split fields. When no record
     // carried a split (no split config was ever saved) this stays 0 and
     // ytdSplitApplied is false: an honest "no split to report", never invented.
@@ -603,7 +609,9 @@ export function generateCommissionStatement(
   lines.push(`Deals Closed:         ${summary.ytdDeals}`);
   lines.push(`Total Sale Volume:    ${fmt(summary.ytdSaleVolumeCents)}`);
   lines.push(
-    `Current Tier:         ${summary.currentTier?.label ?? "N/A"} @ ${summary.currentTier?.ratePercent ?? 0}%`
+    summary.currentTier
+      ? `Current Tier:         ${summary.currentTier.label} @ ${summary.currentTier.ratePercent}%`
+      : `Current Tier:         not configured (no commission rates saved)`
   );
   lines.push(`Total Owed:           ${fmt(summary.ytdOwedCents)}`);
   lines.push(`Total Paid:           ${fmt(summary.ytdPaidCents)}`);

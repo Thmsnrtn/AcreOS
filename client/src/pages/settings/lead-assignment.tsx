@@ -1,15 +1,21 @@
 /**
  * Settings → Lead Assignment Rules — Phase 5 §5 Part B (team readiness).
  *
- * Admins configure how new /api/leads land on team members. Rules apply
- * in priority order (lowest = first); each rule can be:
+ * Admins configure which teammate gets a lead added from the Leads list
+ * (POST /api/leads — the only intake path that runs the rules; imports, Pax
+ * and the other paths do not, and the copy says so). Rules apply in priority
+ * order (lowest = first); each rule can be:
  *   • round_robin — distributes leads across weighted assignees.
  *   • territory   — matches lead.state / lead.county before assigning.
  *   • random      — weighted-random pick.
  *
  * The "Test with sample lead" panel calls /api/team-readiness/lead-
  * assignment-rules/test so admins can confirm the rule fires before a
- * real lead arrives.
+ * real lead arrives. The test is a dry run: it takes no round-robin turn.
+ *
+ * Reached from Settings → Organization (LeadRoutingCard) and Settings
+ * QuickFind; the rules endpoint, labels and scope copy live in
+ * @/lib/lead-routing so the card and this page agree.
  */
 
 import { useState } from "react";
@@ -36,31 +42,13 @@ import { useDocumentTitle } from "@/hooks/use-document-title";
 import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
 import { Trash2, Plus, FlaskConical, ArrowUp, ArrowDown, Users } from "lucide-react";
 import { Verbs } from "@/lib/labels";
-
-// C1 legibility: the enum is the API contract; the label is what a person
-// reads. Never render the enum.
-const RULE_TYPE_LABEL: Record<string, string> = {
-  round_robin: "Take turns",
-  territory: "By location",
-  random: "Random (weighted)",
-};
-
-interface WeightedAssignee {
-  teamMemberId: number;
-  weight: number;
-}
-
-interface Rule {
-  id: number;
-  organizationId: number;
-  name: string;
-  ruleType: "round_robin" | "territory" | "random";
-  priority: number;
-  territoryFilter?: { states?: string[]; counties?: string[] } | null;
-  weightedAssignees?: WeightedAssignee[] | null;
-  isDefault: boolean;
-  isActive: boolean;
-}
+import {
+  LEAD_ASSIGNMENT_RULES_API,
+  LEAD_ROUTING_SCOPE,
+  RULE_TYPE_LABEL,
+  fetchLeadRoutingRules,
+  type LeadRoutingRule as Rule,
+} from "@/lib/lead-routing";
 
 interface TeamMember {
   id: number;
@@ -94,12 +82,8 @@ export default function LeadAssignmentSettingsPage() {
     error: rulesError,
     refetch: refetchRules,
   } = useQuery<Rule[]>({
-    queryKey: ["/api/team-readiness/lead-assignment-rules"],
-    queryFn: async () => {
-      const res = await apiRequest("GET", "/api/team-readiness/lead-assignment-rules");
-      const json = await res.json();
-      return json.rules;
-    },
+    queryKey: [LEAD_ASSIGNMENT_RULES_API],
+    queryFn: fetchLeadRoutingRules,
   });
 
   const { data: members = [] } = useQuery<TeamMember[]>({
@@ -156,12 +140,18 @@ export default function LeadAssignmentSettingsPage() {
   });
 
   const handleTest = async () => {
-    const res = await apiRequest("POST", "/api/team-readiness/lead-assignment-rules/test", {
-      state: testState || undefined,
-      county: testCounty || undefined,
-    });
-    const json = await res.json();
-    setTestResult(json.teamMemberId);
+    try {
+      const res = await apiRequest("POST", "/api/team-readiness/lead-assignment-rules/test", {
+        state: testState || undefined,
+        county: testCounty || undefined,
+      });
+      const json = await res.json();
+      setTestResult(json.teamMemberId);
+    } catch (error) {
+      // A failed test is not "no rule matched" — say it failed.
+      setTestResult(undefined);
+      toast({ title: getErrorTitle(error), description: getErrorMessage(error), variant: "destructive" });
+    }
   };
 
   const memberLabel = (id: number) => {
@@ -175,7 +165,10 @@ export default function LeadAssignmentSettingsPage() {
         <div>
           <h1 className="text-hero">Lead assignment rules</h1>
           <p className="text-sm text-muted-foreground">
-            Auto-assign new leads to team members. Rules apply top-down — first match wins.
+            Decide which teammate gets a new lead. Rules apply top-down — the first match wins.
+          </p>
+          <p className="text-sm text-muted-foreground" data-testid="text-lead-routing-scope">
+            {LEAD_ROUTING_SCOPE}
           </p>
         </div>
 
@@ -184,7 +177,7 @@ export default function LeadAssignmentSettingsPage() {
             <div>
               <CardTitle>Rules</CardTitle>
               <CardDescription className="mt-1">
-                When a new lead arrives, the first matching rule decides which teammate gets it.
+                When someone adds a lead from the Leads list, the first matching rule decides which teammate gets it.
               </CardDescription>
             </div>
             <Button onClick={() => setDraft(blankRule())} size="sm">
@@ -226,7 +219,7 @@ export default function LeadAssignmentSettingsPage() {
               <EmptyState
                 icon={Users}
                 headline="No assignment rules yet"
-                subtitle="New leads stay unassigned until you add a rule. Create one to route incoming leads by round-robin, territory, or weighted-random."
+                subtitle="Leads added from the Leads list stay unassigned until you add a rule. Create one to route them by taking turns, by location, or weighted random."
                 cta={{
                   label: "New rule",
                   onClick: () => setDraft(blankRule()),
@@ -441,8 +434,11 @@ export default function LeadAssignmentSettingsPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <FlaskConical className="h-4 w-4" /> Test with a sample lead
+              <FlaskConical className="h-4 w-4" aria-hidden="true" /> Test with a sample lead
             </CardTitle>
+            <CardDescription>
+              Shows who would get a lead from this state and county. A test does not use up anyone's turn.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="grid grid-cols-2 gap-4">

@@ -587,8 +587,6 @@ const DEBT: Record<string, ProposedSurface> = {
   "server/routes-ai.ts route:POST /api/va/briefings/generate": "review",
   // server/routes-analytics.ts
   "server/routes-analytics.ts route:GET /api/analytics/cohort-dashboard": "review",
-  "server/routes-analytics.ts route:GET /api/analytics/team-kpi": "review",
-  "server/routes-analytics.ts route:GET /api/analytics/team-leaderboard": "review",
   // server/routes-borrower.ts
   "server/routes-borrower.ts route:GET /api/borrower/payoff-quote": "review",
   "server/routes-borrower.ts route:GET /api/borrower/periodic-statements/:statementId/pdf": "review",
@@ -828,7 +826,12 @@ const DEBT: Record<string, ProposedSurface> = {
 };
 
 /** DEBT may only shrink. Lower this in the same commit that removes an entry. */
-const DEBT_BASELINE = 216;
+// 214 → 212 (2026-11-06, W2-TEAM): GET /api/analytics/team-kpi and
+// GET /api/analytics/team-leaderboard deleted — no client caller.
+// 212 → 214 (2026-11-09, W3.9 #502): GET/POST /api/leads/:id/call held as
+// "review" pending a PURPOSE_SURFACES code for an operator-placed call
+// (attorney-review decision). Needs Muse/Tom sign-off — see the entries.
+const DEBT_BASELINE = 214;
 
 /**
  * Every file holding a dispatch switch (≥10 snake_case case labels, raw count)
@@ -881,7 +884,9 @@ const ROUTE_MEMBERS: Record<string, number> = {
 /** Whole-population floors (measured 2026-10-24; a drop means the reader lost files or units). */
 const SCANNED_FILES_FLOOR = 160;
 const UNITS_FLOOR = 1500;
-const CANDIDATES_FLOOR = 220;
+// 220 → 219 (2026-11-06, W2-TEAM): measured 221 → 219 by deleting the two
+// candidate routes GET /api/analytics/team-kpi and /team-leaderboard.
+const CANDIDATES_FLOOR = 219;
 
 const DISPATCH_TRIPWIRE = /\bcase\s+["'][a-z][a-z0-9]*_[a-z0-9_]+["']\s*:/g;
 

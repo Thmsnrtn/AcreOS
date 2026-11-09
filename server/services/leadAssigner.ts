@@ -16,9 +16,15 @@
  * matches, the function returns `null` and the caller should leave the
  * lead unassigned (the existing behavior pre-rules).
  *
- * Round-robin cursor advancement is wrapped in a transaction with row-level
- * locking so two concurrent /api/leads POSTs cannot hand the same lead to
- * the same rep twice.
+ * Round-robin turns are claimed by ONE statement (an upsert that increments
+ * the cursor and returns it), so two concurrent /api/leads POSTs each get a
+ * distinct turn — neither can read the same cursor value and both land on
+ * the same rep.
+ *
+ * WHERE IT RUNS. Only POST /api/leads calls this (the Leads page's Add lead
+ * form). Imports, Pax-created leads and the other intake paths do not, and
+ * the settings copy says so — a rule that claimed every new lead would be a
+ * claim about paths it never sees.
  */
 
 import { db } from "../storage";
@@ -28,13 +34,22 @@ import {
   teamMembers,
   type LeadAssignmentRule,
 } from "@shared/schema";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { clock } from "../utils/clock";
 
 export interface LeadForAssignment {
   state?: string | null;
   county?: string | null;
+}
+
+export interface AssignLeadOptions {
+  /**
+   * Answer "who WOULD get this lead" without taking a round-robin turn. The
+   * settings page's "Test with a sample lead" uses it: a test must never
+   * change who gets the next real lead.
+   */
+  dryRun?: boolean;
 }
 
 interface WeightedAssignee {
@@ -49,6 +64,7 @@ interface WeightedAssignee {
 export async function assignLead(
   organizationId: number,
   lead: LeadForAssignment,
+  options: AssignLeadOptions = {},
 ): Promise<number | null> {
   try {
     const rules = await db
@@ -92,13 +108,18 @@ export async function assignLead(
       }
 
       if (rule.ruleType === "round_robin") {
-        const next = await advanceRoundRobinCursor(rule.id, assignees);
+        const next = options.dryRun
+          ? await peekRoundRobinCursor(rule.id, assignees)
+          : await advanceRoundRobinCursor(rule.id, assignees);
         if (next != null) return next;
       }
     }
 
     return null;
   } catch (err) {
+    // A dry run is a question an admin asked; answering "no rule matched"
+    // because the lookup FAILED would be a false answer. Let it surface.
+    if (options.dryRun) throw err;
     // Lead creation must never fail because rules misbehaved. Log and
     // return null so the lead lands unassigned.
     logger.error("assignLead failed", {
@@ -118,6 +139,11 @@ function filterActive(
     .map((a) => ({ teamMemberId: a.teamMemberId, weight: Math.max(1, Number(a.weight) || 1) }));
 }
 
+/** "Harris " and "harris" name the same county; a rule must not miss on case. */
+function sameName(a: string, b: string): boolean {
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+
 function matchesTerritory(
   rule: LeadAssignmentRule,
   lead: LeadForAssignment,
@@ -125,9 +151,9 @@ function matchesTerritory(
   const filter = rule.territoryFilter;
   if (!filter) return true;
   const stateOk = !filter.states || filter.states.length === 0 ||
-    (lead.state ? filter.states.includes(lead.state.toUpperCase()) : false);
+    (lead.state ? filter.states.some((s) => sameName(s, lead.state!)) : false);
   const countyOk = !filter.counties || filter.counties.length === 0 ||
-    (lead.county ? filter.counties.includes(lead.county) : false);
+    (lead.county ? filter.counties.some((c) => sameName(c, lead.county!)) : false);
   return stateOk && countyOk;
 }
 
@@ -141,49 +167,62 @@ function weightedRandomPick(assignees: WeightedAssignee[]): number {
   return assignees[assignees.length - 1]!.teamMemberId;
 }
 
+/** Each assignee appears `weight` times, consecutively (weight 3 = 3 turns). */
+function flattenTurns(assignees: WeightedAssignee[]): number[] {
+  const flat: number[] = [];
+  for (const a of assignees) {
+    for (let i = 0; i < a.weight; i++) flat.push(a.teamMemberId);
+  }
+  return flat;
+}
+
 /**
- * Round-robin cursor advancement. Builds a flat list where each assignee
- * appears `weight` times, picks index = cursor mod len, advances the
- * cursor. The cursor row is created on first use.
+ * Round-robin: take the next turn. The cursor holds how many turns have been
+ * taken; turn N goes to flat[N mod len]. The cursor row is created on first
+ * use. Claiming is ONE statement — insert-or-increment, returning the new
+ * count — so concurrent claims serialize on the row and each gets its own
+ * turn.
  */
 async function advanceRoundRobinCursor(
   ruleId: number,
   assignees: WeightedAssignee[],
 ): Promise<number | null> {
-  // Flatten weights — assignee with weight 3 appears 3× consecutively.
-  const flat: number[] = [];
-  for (const a of assignees) {
-    for (let i = 0; i < a.weight; i++) flat.push(a.teamMemberId);
-  }
+  const flat = flattenTurns(assignees);
+  if (flat.length === 0) return null;
+
+  const [claimed] = await db
+    .insert(orgAssignmentCursor)
+    .values({ ruleId, cursorIndex: 1, updatedAt: clock.now() })
+    .onConflictDoUpdate({
+      target: orgAssignmentCursor.ruleId,
+      set: { cursorIndex: sql`${orgAssignmentCursor.cursorIndex} + 1`, updatedAt: clock.now() },
+    })
+    .returning({ cursorIndex: orgAssignmentCursor.cursorIndex });
+
+  const turn = Math.max(0, (claimed?.cursorIndex ?? 1) - 1);
+  const picked = flat[turn % flat.length]!;
+
+  // Informational only (nothing decides from it); a lost race here is harmless.
+  await db
+    .update(orgAssignmentCursor)
+    .set({ lastAssignedTo: picked })
+    .where(eq(orgAssignmentCursor.ruleId, ruleId));
+
+  return picked;
+}
+
+/** Round-robin, read-only: who the next turn WOULD go to. Writes nothing. */
+async function peekRoundRobinCursor(
+  ruleId: number,
+  assignees: WeightedAssignee[],
+): Promise<number | null> {
+  const flat = flattenTurns(assignees);
   if (flat.length === 0) return null;
 
   const [existing] = await db
-    .select()
+    .select({ cursorIndex: orgAssignmentCursor.cursorIndex })
     .from(orgAssignmentCursor)
     .where(eq(orgAssignmentCursor.ruleId, ruleId));
 
-  const currentIdx = existing?.cursorIndex ?? 0;
-  const pickIdx = currentIdx % flat.length;
-  const picked = flat[pickIdx]!;
-  const nextIdx = (currentIdx + 1) % Number.MAX_SAFE_INTEGER;
-
-  if (existing) {
-    await db
-      .update(orgAssignmentCursor)
-      .set({
-        cursorIndex: nextIdx,
-        lastAssignedTo: picked,
-        updatedAt: clock.now(),
-      })
-      .where(eq(orgAssignmentCursor.ruleId, ruleId));
-  } else {
-    await db.insert(orgAssignmentCursor).values({
-      ruleId,
-      cursorIndex: nextIdx,
-      lastAssignedTo: picked,
-      updatedAt: clock.now(),
-    });
-  }
-
-  return picked;
+  return flat[(existing?.cursorIndex ?? 0) % flat.length]!;
 }
