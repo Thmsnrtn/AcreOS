@@ -310,5 +310,19 @@ describe("scheduled rent never back-fills before the ledger's first month", () =
       "2026-09-01",
     ]);
     expect(res.body.totalToPostCents).toBe(280_000);
+    // There is no manual-charge route: the wire copy must not tell anyone to post one.
+    expect(res.body.prorationPolicy).toContain("AcreOS cannot post a manual charge yet");
+    expect(res.body.prorationPolicy).not.toMatch(/Post those periods manually/);
+  });
+
+  it("a skipped partial month says it cannot be posted here, not 'post it manually'", () => {
+    const plan = planRentCharges({
+      lease: { ...imported, startDate: "2026-06-15" },
+      existingMonths: [],
+      throughDate: "2026-07-15",
+    });
+    const partial = plan.skipped.find((s) => s.code === "partial_first_period")!;
+    expect(partial.reason).toContain("AcreOS cannot post a manual charge yet");
+    expect(partial.reason).not.toMatch(/post this first charge manually/);
   });
 });
