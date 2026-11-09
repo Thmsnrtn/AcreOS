@@ -102,6 +102,77 @@ function jspdfUnusedOptionalDepsPlugin(): Plugin {
   };
 }
 
+// zod v4's classic schemas carry a `.toJSONSchema()` method (and the
+// `~standard` jsonSchema factories), which drag core/to-json-schema.js —
+// the whole JSON Schema generator — into the client bundle. Nothing in
+// client/src, shared/ or packages/ calls toJSONSchema() in any form
+// (tests/unit/zodJsonSchemaStubbed.test.ts pins that), so the generator
+// resolves to a stub whose entry points throw if ever invoked: a future
+// caller fails loudly instead of quietly shipping the weight.
+//
+// json-schema-processors.js is deliberately NOT stubbed. classic/schemas.js
+// reads processors.aggregateChecks(inst) inside the DERIVED PUBLIC
+// ACCESSORS on live schema instances — ZodString.format / .minLength /
+// .maxLength, ZodNumber.minValue / .maxValue / .format — so stubbing that
+// module would break real schema API, not just JSON Schema generation.
+// Only the generator entry points go: the standalone z.toJSONSchema()
+// (which lives in the processors module) reaches processSchema in the
+// stubbed module and throws there, which is the same loud failure.
+//
+// The stub is matched two ways, because zod reaches the generator through
+// two specifier shapes: classic/schemas.js imports
+// "../core/to-json-schema.js" (the Set below), while core's own modules
+// (json-schema-processors.js, json-schema-generator.js, core/index.js)
+// import/re-export the sibling "./to-json-schema.js". The relative branch
+// resolves the specifier against the importer's directory and stubs only
+// when the resolved path is zod's v4 core generator itself. That is safe
+// for the processors module for the same reason: aggregateChecks — the
+// one processors export live code paths reach — only folds check metadata
+// from the schema def/bag and never calls the generator functions it
+// imports (initializeContext / processSchema / extractDefs / finalize /
+// handleUnrepresentable); those run solely inside the per-type processors
+// during an actual generation, which nothing performs.
+const ZOD_UNUSED_JSON_SCHEMA_MODULES = new Set(["core/to-json-schema.js"]);
+function zodJsonSchemaUnusedPlugin(): Plugin {
+  const STUB = "\0zod-unused-json-schema";
+  return {
+    name: "acreos-zod-json-schema-unused",
+    enforce: "pre",
+    resolveId(source, importer) {
+      if (!importer || !/node_modules[\\/]zod[\\/]/.test(importer)) return null;
+      const normalized = source.replace(/\\/g, "/");
+      for (const mod of ZOD_UNUSED_JSON_SCHEMA_MODULES) {
+        if (normalized.endsWith(mod)) return STUB;
+      }
+      if (normalized.startsWith(".")) {
+        const importerDir = importer.replace(/\\/g, "/").split("/").slice(0, -1).join("/");
+        const resolved = `${importerDir}/${normalized.replace(/^\.\//, "")}`;
+        if (resolved.endsWith("zod/v4/core/to-json-schema.js")) return STUB;
+      }
+      return null;
+    },
+    load(id) {
+      if (id !== STUB) return null;
+      return [
+        `const unavailable = () => { throw new Error("zod JSON Schema generation (toJSONSchema) is not bundled in AcreOS (vite.config.ts zodJsonSchemaUnusedPlugin)"); };`,
+        // The two factories are invoked when .toJSONSchema() is called and
+        // when a schema's "~standard" property is READ, so they must return
+        // the throwing function rather than throw themselves — reading
+        // "~standard" (e.g. a resolver checking ~standard.validate) keeps
+        // working; only generating a JSON Schema throws.
+        `export const createToJSONSchemaMethod = () => unavailable;`,
+        `export const createStandardJSONSchemaMethod = () => unavailable;`,
+        `export const initializeContext = unavailable;`,
+        `export const handleUnrepresentable = unavailable;`,
+        `export const processSchema = unavailable;`,
+        `export const process = unavailable;`,
+        `export const extractDefs = unavailable;`,
+        `export const finalize = unavailable;`,
+      ].join("\n");
+    },
+  };
+}
+
 // Phase 8 Mo 12 — Beatriz §3 bundle-analyzer.
 // Enabled when ANALYZE=1 (CI / one-off `npm run build:analyze`).
 // In normal builds the plugin is excluded so the prod bundle is unaffected.
@@ -134,6 +205,7 @@ export default defineConfig({
   plugins: [
     react(),
     jspdfUnusedOptionalDepsPlugin(),
+    zodJsonSchemaUnusedPlugin(),
     chunkGraphPlugin(),
     // Pre-compress build output (gzip + brotli) so static-serve can deliver
     // already-compressed bytes. Sidesteps the HTTP/2 + `compression`
