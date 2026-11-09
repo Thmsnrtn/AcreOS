@@ -1,5 +1,4 @@
 import type { Express } from "express";
-import crypto from "crypto";
 import { storage } from "./storage";
 import { db } from "./db";
 import { z } from "zod";
@@ -17,6 +16,14 @@ import {
 } from "./services/disclosureRegistry";
 import { idempotencyMiddleware } from "./middleware/idempotency";
 import { loadSigningProgress, statusPatchFor, type RosterSigner } from "./services/esign/signingProgress";
+import {
+  allHashesMatchNow,
+  assessDocumentIntegrity,
+  hashDocumentContent,
+  hashMatchesNow,
+  integrityStatement,
+  signatureIntegrity,
+} from "./services/esign/contentIntegrity";
 import {
   parseSignerRequest,
   SignerRequestError,
@@ -1050,15 +1057,12 @@ export function registerDocSystemRoutes(app: Express): void {
       // this signature is created. Combined with the immutability guard on
       // PUT /api/generated-documents/:id, this provides tamper-evidence:
       // any subsequent mutation of the content will not match the stored hash.
+      // The public signing route records the same hash through the same
+      // function (services/esign/contentIntegrity.ts).
       let documentContentHash: string | null = null;
       if (documentId) {
         const targetDoc = await storage.getGeneratedDocument(org.id, documentId);
-        if (targetDoc?.content) {
-          documentContentHash = crypto
-            .createHash("sha256")
-            .update(targetDoc.content)
-            .digest("hex");
-        }
+        documentContentHash = hashDocumentContent(targetDoc?.content);
       }
 
       const signature = await storage.createSignature({
@@ -1184,33 +1188,34 @@ export function registerDocSystemRoutes(app: Express): void {
       }
 
       const signatures = await storage.getDocumentSignatures(org.id, documentId);
-      const currentContentHash = document.content
-        ? crypto.createHash("sha256").update(document.content).digest("hex")
-        : null;
+      // One verdict, shared with the sealed PDF (services/esign/contentIntegrity.ts).
+      const integrity = assessDocumentIntegrity(document.content, signatures);
+      const currentContentHash = integrity.currentContentHash;
 
-      // Tamper detection: every signature captures the doc's hash at sign
-      // time. If any signature's captured hash differs from the current
-      // content hash, the document was mutated post-signature (a route-level
-      // and DB-trigger guard SHOULD make this impossible — this check is
-      // belt-and-suspenders).
-      const tamperEvidence = signatures.map((sig: any) => ({
-        signatureId: sig.id,
-        signerName: sig.signerName,
-        signerEmail: sig.signerEmail,
-        signerRole: sig.signerRole,
-        signedAt: sig.createdAt,
-        ipAddress: sig.ipAddress,
-        userAgent: sig.userAgent,
-        consentGiven: sig.consentGiven,
-        consentText: sig.consentText,
-        capturedContentHash: sig.documentContentHash,
-        currentContentHash,
-        hashMatchesNow: !!sig.documentContentHash
-          && sig.documentContentHash === currentContentHash,
-      }));
-
-      const allHashesMatch = tamperEvidence.length > 0
-        && tamperEvidence.every((s) => s.hashMatchesNow);
+      // Tamper detection: a signature records the doc's hash at sign time. If
+      // a recorded hash differs from the current content hash, the document
+      // was mutated post-signature (a route-level and DB-trigger guard SHOULD
+      // make this impossible — this check is belt-and-suspenders). A signature
+      // that recorded no hash cannot be checked: its `integrity` is
+      // "not_recorded" and its `hashMatchesNow` is null, never false.
+      const tamperEvidence = signatures.map((sig: any) => {
+        const sigIntegrity = signatureIntegrity(sig.documentContentHash, currentContentHash);
+        return {
+          signatureId: sig.id,
+          signerName: sig.signerName,
+          signerEmail: sig.signerEmail,
+          signerRole: sig.signerRole,
+          signedAt: sig.createdAt,
+          ipAddress: sig.ipAddress,
+          userAgent: sig.userAgent,
+          consentGiven: sig.consentGiven,
+          consentText: sig.consentText,
+          capturedContentHash: sig.documentContentHash ?? null,
+          currentContentHash,
+          integrity: sigIntegrity,
+          hashMatchesNow: hashMatchesNow(sigIntegrity),
+        };
+      });
 
       return res.json({
         documentId: document.id,
@@ -1219,7 +1224,9 @@ export function registerDocSystemRoutes(app: Express): void {
         documentStatus: document.status,
         currentContentHash,
         signatureCount: signatures.length,
-        allSignatureHashesMatchCurrentContent: allHashesMatch,
+        integrityStatus: integrity.status,
+        integrityStatement: integrityStatement(integrity).text,
+        allSignatureHashesMatchCurrentContent: allHashesMatchNow(integrity.status),
         signatures: tamperEvidence,
         certificateGeneratedAt: clock.now().toISOString(),
         certificateAuthority: "AcreOS",
@@ -1257,6 +1264,9 @@ export function registerDocSystemRoutes(app: Express): void {
       res.setHeader("Content-Disposition", `attachment; filename="signed-document-${documentId}.pdf"`);
       res.setHeader("X-Document-Sha256", sealed.sha256);
       res.setHeader("X-Document-Integrity-Verified", String(sealed.allHashesMatch));
+      // verified | mismatch | not_recorded | no_signatures — "not verified" is
+      // not the same finding as "tampered".
+      res.setHeader("X-Document-Integrity-Status", sealed.integrityStatus);
       return res.send(sealed.pdf);
     } catch (error) {
       logger.error("Sealed PDF error", error instanceof Error ? error : undefined);

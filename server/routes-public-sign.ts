@@ -24,6 +24,7 @@ import { Errors, sendError } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { idempotencyMiddleware } from "./middleware/idempotency";
 import { loadSigningProgress, statusPatchFor } from "./services/esign/signingProgress";
+import { hashDocumentContent } from "./services/esign/contentIntegrity";
 import { clock } from "./utils/clock";
 import { routeParam } from "./utils/routeParams";
 
@@ -297,6 +298,11 @@ export function registerPublicSignRoutes(app: Express): void {
         consentGiven: consentGiven !== false,
         consentText:
           "I agree that this electronic signature is legally binding and has the same legal effect as a handwritten signature.",
+        // The content this signer is signing, as read for this request, hashed
+        // exactly as the operator route and every integrity reader hash it.
+        // Without it the sealed PDF and the completion certificate have nothing
+        // to check this signature against.
+        documentContentHash: hashDocumentContent(doc.content),
       });
 
       // Re-derive from the signatures table now that this signature exists.
