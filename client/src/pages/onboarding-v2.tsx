@@ -50,6 +50,9 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
 import { Button } from "@/components/ui/button";
+import { SignupWaitlist } from "@/components/onboarding/SignupWaitlist";
+import { useFeatureFlags } from "@/hooks/use-feature-flags";
+import { SIGNUP_TRIM_FLAG_KEY } from "@shared/business-types/signupTrim";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -279,6 +282,9 @@ export default function OnboardingV2() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const reduced = useReducedMotionPreference();
+  // Signup trim (W1.4): ON unless the founder turned the flag off.
+  const { isFlagEnabled } = useFeatureFlags();
+  const signupTrimOn = isFlagEnabled(SIGNUP_TRIM_FLAG_KEY);
 
   // Step state
   const [stepIndex, setStepIndex] = useState(0);
@@ -405,6 +411,12 @@ export default function OnboardingV2() {
     if (prefill.businessType) setBusinessType(prefill.businessType);
     if (prefill.noteRole) setNoteRole(prefill.noteRole);
   }, [onboardingStatus]);
+
+  // Trim ON: the three open types, plus the type the org ALREADY has when it is
+  // not one of them (an existing org re-running setup keeps its own type).
+  const storedType = resolveWizardPrefill(onboardingStatus?.data).businessType;
+  const heldChoice = signupTrimOn ? SECONDARY_CHOICES.find((c) => c.value === storedType) : undefined;
+  const visibleCoreChoices = heldChoice ? [...CORE_CHOICES, heldChoice] : CORE_CHOICES;
 
   // ── Mutations ─────────────────────────────────────────────────────────────
 
@@ -975,7 +987,7 @@ export default function OnboardingV2() {
                     className="ob2-type-cards"
                     aria-labelledby="ob2-biztype-label"
                   >
-                    {CORE_CHOICES.map(({ value, label, description, icon: Icon }) => (
+                    {visibleCoreChoices.map(({ value, label, description, icon: Icon }) => (
                       <label
                         key={value}
                         htmlFor={`ob2-type-${value}`}
@@ -998,59 +1010,67 @@ export default function OnboardingV2() {
                       </label>
                     ))}
                   </RadioGroup>
-                  {/* Secondary verticals — collapsed by default. Auto-opens
-                      if the user previously selected one (e.g. coming back
-                      to edit) so their selection is always visible. */}
-                  <details
-                    style={{ marginTop: 12 }}
-                    open={SECONDARY_BUSINESS_TYPES.has(businessType) || showAllInvestorTypes}
-                    onToggle={(e) =>
-                      setShowAllInvestorTypes((e.target as HTMLDetailsElement).open)
-                    }
-                    data-testid="details-show-all-investor-types"
-                  >
-                    <summary
-                      className="ob2-hint"
-                      style={{ cursor: "pointer", userSelect: "none", marginBottom: 8 }}
-                      data-testid="summary-show-all-investor-types"
+                  {signupTrimOn ? (
+                    <SignupWaitlist choices={SECONDARY_CHOICES} />
+                  ) : (
+                    <>
+                    {/* Secondary verticals — collapsed by default. Auto-opens
+                        if the user previously selected one (e.g. coming back
+                        to edit) so their selection is always visible. */}
+                    <details
+                      style={{ marginTop: 12 }}
+                      open={SECONDARY_BUSINESS_TYPES.has(businessType) || showAllInvestorTypes}
+                      onToggle={(e) =>
+                        setShowAllInvestorTypes((e.target as HTMLDetailsElement).open)
+                      }
+                      data-testid="details-show-all-investor-types"
                     >
-                      Show all investor types (beta verticals)
-                    </summary>
-                    <RadioGroup
-                      value={businessType}
-                      onValueChange={(v) => {
-                      typeTouchedRef.current = true;
-                      setBusinessType(v as BusinessType);
-                    }}
-                      className="ob2-type-cards"
-                      aria-labelledby="ob2-biztype-label"
-                    >
-                      {SECONDARY_CHOICES.map(({ value, label, description, icon: Icon }) => (
-                        <label
-                          key={value}
-                          htmlFor={`ob2-type-${value}`}
-                          className={cn(
-                            "ob2-type-card",
-                            businessType === value && "ob2-type-card--on",
-                          )}
-                          data-testid={`option-${value}`}
-                        >
-                          <RadioGroupItem
-                            value={value}
-                            id={`ob2-type-${value}`}
-                            className="sr-only"
-                          />
-                          <span className="ob2-type-card-glyph" aria-hidden="true">
-                            <Icon className="w-4 h-4" />
-                          </span>
-                          <span className="ob2-type-card-title">{label}</span>
-                          <span className="ob2-type-card-desc">{description}</span>
-                        </label>
-                      ))}
-                    </RadioGroup>
-                  </details>
+                      <summary
+                        className="ob2-hint"
+                        style={{ cursor: "pointer", userSelect: "none", marginBottom: 8 }}
+                        data-testid="summary-show-all-investor-types"
+                      >
+                        Show all investor types (beta verticals)
+                      </summary>
+                      <RadioGroup
+                        value={businessType}
+                        onValueChange={(v) => {
+                        typeTouchedRef.current = true;
+                        setBusinessType(v as BusinessType);
+                      }}
+                        className="ob2-type-cards"
+                        aria-labelledby="ob2-biztype-label"
+                      >
+                        {SECONDARY_CHOICES.map(({ value, label, description, icon: Icon }) => (
+                          <label
+                            key={value}
+                            htmlFor={`ob2-type-${value}`}
+                            className={cn(
+                              "ob2-type-card",
+                              businessType === value && "ob2-type-card--on",
+                            )}
+                            data-testid={`option-${value}`}
+                          >
+                            <RadioGroupItem
+                              value={value}
+                              id={`ob2-type-${value}`}
+                              className="sr-only"
+                            />
+                            <span className="ob2-type-card-glyph" aria-hidden="true">
+                              <Icon className="w-4 h-4" />
+                            </span>
+                            <span className="ob2-type-card-title">{label}</span>
+                            <span className="ob2-type-card-desc">{description}</span>
+                          </label>
+                        ))}
+                      </RadioGroup>
+                    </details>
+                    </>
+                  )}
                   <p className="ob2-hint">
-                    Land Flipper is primary. More verticals can be changed in Settings.
+                    {signupTrimOn
+                      ? "Land Flipper is primary. You can change your choice later in Settings."
+                      : "Land Flipper is primary. More verticals can be changed in Settings."}
                   </p>
                 </motion.div>
 
