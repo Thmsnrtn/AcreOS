@@ -14,9 +14,9 @@
     "**/*.test.tsx",
     "**/*.spec.ts"
   ],
-  "baselineCount": 134,
+  "baselineCount": 133,
   "direction": "down",
-  "lastBumpNote": "135 -> 134 on 2026-11-07 (W2-TEAM): `req.organization || req.organization` in the deleted analytics team-leaderboard route; measured with npm run lint:ratchets on the rebased tree (main 0abcce71 measured 135).",
+  "lastBumpNote": "134 -> 133 on 2026-11-09: merge of origin/main (7a477ce4) into claude/w3-retire-inert-api-keys (PR #504). Disjoint: main's W2-TEAM removal plus this branch's one `v || v` in the deleted API-key routes; measured 133 on the merged tree. PREVIOUS: 135 -> 134 on 2026-11-07 (W2-TEAM): `req.organization || req.organization` in the deleted analytics team-leaderboard route; measured with npm run lint:ratchets on the rebased tree (main 0abcce71 measured 135).",
   "minima": {
     "files": 1900
   },
