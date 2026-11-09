@@ -22,6 +22,7 @@ import { logger } from "../utils/logger";
 
 import { ACTIVE_DEAL_STATUSES } from "@shared/lifecycle/pipeline-status";
 import { clock } from "../utils/clock";
+import { raiseIfAllowed, canonicalJson } from "./decisionsInboxThrottle";
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 interface Proposal {
@@ -195,7 +196,27 @@ class AgentInitiativeEngine {
   async enqueueProposal(orgId: number, proposal: Proposal, trustScore: number): Promise<boolean> {
     const inputJson = JSON.stringify(proposal.actionInput, Object.keys(proposal.actionInput).sort());
     const key = `initiative:${orgId}:${proposal.agentCodename}:${proposal.action}:${inputJson}`;
-    return db.transaction(async (tx) => {
+    const blocked = trustAuthorityEscalation.isActionAllowed(trustScore, proposal.action) ? "low_confidence" : "insufficient_trust";
+    // Generator throttle (STEP0-DESIGN). The WHOLE original transaction (lock +
+    // open-card dedupe + card insert + agent_events insert) is the insertFn, so
+    // the card and its event stay atomic and throttle state is recorded only
+    // after that transaction commits. An open-card dedupe hit rolls the (empty)
+    // transaction back via a sentinel so nothing is recorded for it.
+    class OpenCardExists extends Error {}
+    try {
+      const outcome = await raiseIfAllowed(
+        {
+          producer: "agent_initiative",
+          subjectKey: canonicalJson({
+            orgId,
+            agent: proposal.agentCodename,
+            action: proposal.action,
+            input: proposal.actionInput,
+          }),
+          conditionKey: canonicalJson({ type: proposal.type, autoExecuteBlocked: blocked }),
+          class: "standard",
+        },
+        () => db.transaction(async (tx) => {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${key}))`);
       const [existing] = await tx.select({ id: decisionsInboxItems.id }).from(decisionsInboxItems).where(and(
         eq(decisionsInboxItems.organizationId, orgId),
@@ -205,8 +226,7 @@ class AgentInitiativeEngine {
         inArray(decisionsInboxItems.status, ["pending", "deferred"]),
         sql`${decisionsInboxItems.actionPayload}->'actionInput' = ${JSON.stringify(proposal.actionInput)}::jsonb`,
       )).limit(1);
-      if (existing) return false;
-      const blocked = trustAuthorityEscalation.isActionAllowed(trustScore, proposal.action) ? "low_confidence" : "insufficient_trust";
+      if (existing) throw new OpenCardExists();
       await tx.insert(decisionsInboxItems).values({
         itemType: "agent_initiative",
         riskLevel: proposal.type === "risk" ? "high" : "medium",
@@ -226,7 +246,13 @@ class AgentInitiativeEngine {
         payload: { ...proposal, trustScore, autoExecuteBlocked: blocked },
       });
       return true;
-    });
+    }),
+      );
+      return outcome.inserted && outcome.result === true;
+    } catch (err) {
+      if (err instanceof OpenCardExists) return false;
+      throw err;
+    }
   }
 
   /**

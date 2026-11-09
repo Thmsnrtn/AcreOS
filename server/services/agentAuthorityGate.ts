@@ -20,6 +20,7 @@ import { HARD_STOP_LANE_COVERAGE } from "./autopilot/hardStops";
 import { companyAgents, agentActionLog, decisionsInboxItems } from "@shared/schema";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { clock } from "../utils/clock";
+import { raiseIfAllowed, canonicalJson, type ThrottleInput } from "./decisionsInboxThrottle";
 
 // ─── Trust thresholds per authority level ────────────────────────────────────
 
@@ -338,16 +339,37 @@ async function enqueueAuthorityQuestion(
   card: typeof decisionsInboxItems.$inferInsert,
   action: string,
   metadata: Partial<ActionExecution>,
+  auth: { effectiveLevel: number; allowed: boolean },
 ): Promise<void> {
+  // Generator throttle (STEP0-DESIGN), applied to BOTH branches. The subject is
+  // computed defensively: un-deduped skill/goal callers never serialized their
+  // input before, so an unserializable input must fail open to the plain insert.
+  let throttleInput: ThrottleInput | null = null;
+  try {
+    const q = { action, input: JSON.parse(JSON.stringify(metadata.input ?? {})), relatedGoalId: metadata.relatedGoalId ?? null };
+    throttleInput = {
+      producer: "agent_authority",
+      subjectKey: canonicalJson({ owner: card.ownerAgentCodename, itemType: card.itemType, question: q }),
+      conditionKey: canonicalJson({ effectiveLevel: auth.effectiveLevel, allowed: auth.allowed }),
+      class: "standard",
+    };
+  } catch {
+    throttleInput = null;
+  }
   if (metadata.actionType !== "proactive" && metadata.actionType !== "reaction") {
-    await db.insert(decisionsInboxItems).values(card);
+    const plainInsert = () => db.insert(decisionsInboxItems).values(card);
+    if (throttleInput) await raiseIfAllowed(throttleInput, plainInsert);
+    else await plainInsert();
     return;
   }
   const inputJson = JSON.stringify(metadata.input ?? {});
   const subject = { action, input: JSON.parse(inputJson), relatedGoalId: metadata.relatedGoalId ?? null };
   const subjectJson = JSON.stringify(subject);
   const lockPrefix = `authority:${card.ownerAgentCodename}:${card.itemType}:`;
-  await db.transaction(async (tx) => {
+  // Open-card dedupe hit rolls the empty transaction back via this sentinel so
+  // the throttle records nothing for a card it did not raise.
+  class OpenCardExists extends Error {}
+  const dedupedInsert = () => db.transaction(async (tx) => {
     // PostgreSQL's canonical JSONB text gives reordered/nested object keys the
     // same lock as well as the same equality predicate. Arrays remain ordered.
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${lockPrefix} || ${subjectJson}::jsonb::text))`);
@@ -358,9 +380,16 @@ async function enqueueAuthorityQuestion(
       inArray(decisionsInboxItems.status, ["pending", "deferred"]),
       sql`${decisionsInboxItems.contextBundle}->'authorityQuestion' = ${subjectJson}::jsonb`,
     )).limit(1);
-    if (existing) return;
+    if (existing) throw new OpenCardExists();
     await tx.insert(decisionsInboxItems).values({ ...card, contextBundle: { authorityQuestion: subject } });
   });
+  try {
+    if (throttleInput) await raiseIfAllowed(throttleInput, dedupedInsert);
+    else await dedupedInsert();
+  } catch (err) {
+    if (err instanceof OpenCardExists) return;
+    throw err;
+  }
 }
 
 /**
@@ -403,7 +432,7 @@ export async function executeWithAuthority(
       recommendedActionLabel: `${codename}: ${action}`,
       ownerAgentCodename: codename,
       status: "pending",
-    }, action, metadata);
+    }, action, metadata, auth);
 
     return { success: false, escalated: true, logId };
   }
@@ -426,7 +455,7 @@ export async function executeWithAuthority(
       recommendedActionLabel: `${codename} recommends: ${action}`,
       ownerAgentCodename: codename,
       status: "pending",
-    }, action, metadata);
+    }, action, metadata, auth);
 
     return { success: false, escalated: true, logId };
   }

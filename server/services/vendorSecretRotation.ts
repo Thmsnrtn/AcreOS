@@ -28,6 +28,7 @@ import { db } from "../db";
 import { agentEvents, decisionsInboxItems } from "@shared/schema";
 import { logger } from "../utils/logger";
 import { clock } from "../utils/clock";
+import { raiseIfAllowed } from "./decisionsInboxThrottle";
 
 const ROTATION_WARNING_DAYS = parseInt(process.env.VENDOR_SECRET_WARNING_DAYS ?? "30", 10);
 const AUTO_ROTATE = process.env.VENDOR_SECRET_AUTO_ROTATE !== "false";
@@ -345,7 +346,16 @@ export async function runVendorSecretRotationWatcher(): Promise<{
         },
       });
 
-      await db.insert(decisionsInboxItems).values({
+      // Generator throttle (STEP0-DESIGN): one card per vendor per status;
+      // warning→expired is a material change and lands immediately.
+      await raiseIfAllowed(
+        {
+          producer: "vendor_secret_rotation",
+          subjectKey: f.vendor,
+          conditionKey: f.status,
+          class: f.status === "expired" ? "critical" : "standard",
+        },
+        () => db.insert(decisionsInboxItems).values({
         itemType: "vendor_secret_rotation",
         riskLevel: f.status === "expired" ? "critical" : "high",
         urgencyScore: f.status === "expired" ? 100 : 80,
@@ -363,7 +373,8 @@ export async function runVendorSecretRotationWatcher(): Promise<{
         status: "pending",
         ownerAgentCodename: "vendor_secret_rotation",
         sophieConfidenceScore: 95,
-      });
+      }),
+      );
     }
   } catch (err) {
     logger.error("[vendor-secret-rotation] failed to surface findings", err as Error);
