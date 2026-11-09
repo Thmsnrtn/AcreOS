@@ -140,7 +140,12 @@ export async function generateSealedDocumentPdf(input: SealedDocInput): Promise<
   const sigs = await db
     .select()
     .from(signaturesTable)
-    .where(eq(signaturesTable.documentId, input.documentId))
+    .where(
+      and(
+        eq(signaturesTable.documentId, input.documentId),
+        eq(signaturesTable.organizationId, input.organizationId),
+      ),
+    )
     .orderBy(asc(signaturesTable.createdAt));
 
   const contentSha256 = document.content
