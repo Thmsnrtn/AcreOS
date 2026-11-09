@@ -505,3 +505,125 @@ export const rehabPhotos = pgTable(
 export type RehabPhoto = typeof rehabPhotos.$inferSelect;
 export type InsertRehabPhoto = typeof rehabPhotos.$inferInsert;
 
+// ============================================================================
+// FIX-AND-FLIP LEG 3 — TIMELINE TRUTH (migration 0306)
+// ----------------------------------------------------------------------------
+// Three tables, pre-named and approved 2026-11-09 (founder §9.3 approval,
+// recorded in docs/company/next-moves.md):
+//
+//   1. rehab_baselines            — what the operator planned at kickoff: the
+//                                   planned start, listing, hold length, monthly
+//                                   holding cost and the planned date of
+//                                   ENTERING each status phase. A revision is a
+//                                   NEW row pointing at the baseline it
+//                                   supersedes; the original (supersedesId
+//                                   NULL) is never updated.
+//   2. rehab_status_transitions   — the status log. One row per move, plus the
+//                                   creation record (fromStatus NULL).
+//   3. rehab_holding_cost_entries — recorded holding costs (taxes, insurance,
+//                                   utilities, interest, HOA, other), each an
+//                                   immutable fact.
+//
+// APPEND-ONLY. migrations/0306 installs a per-table guard: UPDATE and TRUNCATE
+// are refused; DELETE is allowed only inside the organization's ON DELETE
+// CASCADE, so an org stays erasable while its timeline cannot be rewritten.
+// A holding-cost correction is a NEW negative entry whose note says what it
+// corrects — never an edit.
+// ============================================================================
+
+export const rehabBaselines = pgTable(
+  "rehab_baselines",
+  {
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+    rehabId: uuid("rehab_id").references(() => rehabs.id, { onDelete: "cascade" }).notNull(),
+    // The baseline this revision replaces. NULL on the original — the one row
+    // per rehab that is never rewritten. Self-FK, no referential action: the
+    // guard already refuses every delete path except the organization's own
+    // cascade, which removes an org's baselines in one statement.
+    supersedesId: uuid("supersedes_id").references((): any => rehabBaselines.id),
+
+    plannedStartDate: date("planned_start_date"),
+    plannedListingDate: date("planned_listing_date"),
+    plannedHoldMonths: integer("planned_hold_months"),
+    plannedHoldingMonthlyCents: bigint("planned_holding_monthly_cents", { mode: "number" }),
+
+    // One entry per rehab status phase: the date the operator planned to ENTER
+    // that phase. [{ phase: "demo", plannedDate: "2026-11-16" }, …]
+    phasePlans: jsonb("phase_plans").$type<{ phase: string; plannedDate: string }[]>().notNull().default([]),
+
+    recordedBy: text("recorded_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("rehab_baselines_org_rehab_created_idx").on(table.organizationId, table.rehabId, table.createdAt),
+  ],
+);
+
+export type RehabBaseline = typeof rehabBaselines.$inferSelect;
+export type InsertRehabBaseline = typeof rehabBaselines.$inferInsert;
+
+export const rehabStatusTransitions = pgTable(
+  "rehab_status_transitions",
+  {
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+    rehabId: uuid("rehab_id").references(() => rehabs.id, { onDelete: "cascade" }).notNull(),
+
+    // NULL = the creation record (the rehab was opened in toStatus).
+    fromStatus: text("from_status").$type<RehabStatus>(),
+    toStatus: text("to_status").$type<RehabStatus>().notNull(),
+
+    transitionedAt: timestamp("transitioned_at", { withTimezone: true }).defaultNow().notNull(),
+    recordedBy: text("recorded_by"),
+  },
+  (table) => [
+    index("rehab_status_transitions_org_rehab_at_idx").on(table.organizationId, table.rehabId, table.transitionedAt),
+  ],
+);
+
+export type RehabStatusTransition = typeof rehabStatusTransitions.$inferSelect;
+export type InsertRehabStatusTransition = typeof rehabStatusTransitions.$inferInsert;
+
+// Holding-cost categories. The SQL CHECK in migrations/0306 pins the column to
+// this exact set — change one, change both.
+export const REHAB_HOLDING_CATEGORIES = [
+  "taxes",
+  "insurance",
+  "utilities",
+  "interest",
+  "hoa",
+  "other",
+] as const;
+export type RehabHoldingCategory = typeof REHAB_HOLDING_CATEGORIES[number];
+
+export const rehabHoldingCostEntries = pgTable(
+  "rehab_holding_cost_entries",
+  {
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+    rehabId: uuid("rehab_id").references(() => rehabs.id, { onDelete: "cascade" }).notNull(),
+
+    entryDate: date("entry_date").notNull(),
+    category: text("category").$type<RehabHoldingCategory>().notNull(),
+    // Never zero (SQL CHECK). A NEGATIVE entry is a correction — its note says
+    // what it corrects; the original entry is never edited.
+    amountCents: bigint("amount_cents", { mode: "number" }).notNull(),
+    note: text("note"),
+
+    recordedBy: text("recorded_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("rehab_holding_cost_entries_org_rehab_date_idx").on(table.organizationId, table.rehabId, table.entryDate),
+    check(
+      "rehab_holding_cost_entries_category_check",
+      sql`${table.category} IN ('taxes', 'insurance', 'utilities', 'interest', 'hoa', 'other')`,
+    ),
+    check("rehab_holding_cost_entries_amount_nonzero", sql`${table.amountCents} <> 0`),
+  ],
+);
+
+export type RehabHoldingCostEntry = typeof rehabHoldingCostEntries.$inferSelect;
+export type InsertRehabHoldingCostEntry = typeof rehabHoldingCostEntries.$inferInsert;
+

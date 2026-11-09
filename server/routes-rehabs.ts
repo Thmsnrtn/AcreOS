@@ -14,6 +14,8 @@
  *   PATCH  /api/rehab-line-items/:id       — update line item
  *   DELETE /api/rehab-line-items/:id       — delete line item
  *   POST   /api/rehabs/:id/seed-template   — apply a scope template
+ *   POST   /api/rehabs/:id/baselines       — record a kickoff baseline (append-only)
+ *   POST   /api/rehabs/:id/holding-entries — record a holding-cost entry (append-only)
  */
 
 import type { Express, Response } from "express";
@@ -26,6 +28,12 @@ import {
   REHAB_STATUSES,
   REHAB_LINE_CATEGORIES,
   properties,
+  rehabBaselines,
+  type RehabStatus,
+  rehabStatusTransitions,
+  rehabHoldingCostEntries,
+  REHAB_HOLDING_CATEGORIES,
+  scenarios,
 } from "@shared/schema";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId, getUserId } from "./types/request";
@@ -42,6 +50,13 @@ import {
   lineVariance,
   varianceFlags,
 } from "@shared/rehab/variance";
+import {
+  originalBaseline,
+  phaseVariances,
+  listingVarianceDays,
+  holdingComparison,
+} from "@shared/rehab/timeline";
+import type { BaselineLike, TransitionLike } from "@shared/rehab/timeline";
 import { routeParam } from "./utils/routeParams";
 import { refuseRedeemableDeedSpend } from "./services/tax/landExit";
 import { patchSchemaOf } from "./utils/updatePayload";
@@ -181,8 +196,65 @@ const seedTemplateSchema = z.object({
 });
 
 // ----------------------------------------------------------------------------
+// Leg 3 — timeline truth (kickoff baselines + holding-cost entries)
+//
+// Both are append-only at the database (migrations/0306 installs the guard):
+// a revised baseline is a NEW row that supersedes the previous one, and a
+// wrong holding entry is corrected by a NEW negative entry whose note says
+// what it corrects. There is deliberately no PATCH and no DELETE route for
+// either — an edit would rewrite the denominator variance is measured against.
+// ----------------------------------------------------------------------------
+
+const dateOnly = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected a YYYY-MM-DD date");
+
+const phasePlanSchema = z.object({
+  phase: z.enum(REHAB_STATUSES),
+  plannedDate: dateOnly,
+});
+
+const baselineSchema = z.object({
+  plannedStartDate: dateOnly.optional(),
+  plannedListingDate: dateOnly.optional(),
+  plannedHoldMonths: z.coerce.number().int().positive().optional(),
+  plannedHoldingMonthlyCents: z.coerce.number().int().nonnegative().optional(),
+  // May be empty: a baseline can record only the dates the operator knows.
+  phasePlans: z.array(phasePlanSchema).max(REHAB_STATUSES.length).optional(),
+});
+
+const holdingEntrySchema = z.object({
+  entryDate: dateOnly,
+  category: z.enum(REHAB_HOLDING_CATEGORIES),
+  // Never zero (the table enforces the same). A NEGATIVE amount is a
+  // correction — its note says what it corrects; the original is never edited.
+  amountCents: z.coerce
+    .number()
+    .int()
+    .refine((n) => n !== 0, "amountCents must be non-zero (a correction is a negative entry)"),
+  note: z.string().max(2000).optional(),
+});
+
+// ----------------------------------------------------------------------------
 // Helpers
 // ----------------------------------------------------------------------------
+
+/** A scenario input as a number; null when absent, blank or not numeric. */
+function numberOrNull(value: unknown): number | null {
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value === "string" && value.trim() !== "") {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+/** Where a scenario assumption came from ("user", "strategy-pack-default", …). */
+function assumptionOrigin(
+  assumptions: ReadonlyArray<{ key: string; origin: string }> | null | undefined,
+  key: string,
+): string | null {
+  const found = (assumptions ?? []).find((a) => a && a.key === key);
+  return found ? String(found.origin) : null;
+}
 
 async function recomputeRehabSpend(orgId: number, rehabId: string) {
   const [agg] = await db.execute(sql`
@@ -311,6 +383,70 @@ export function registerRehabRoutes(app: Express): void {
       }));
       const estimateLocked = r.status !== ESTIMATE_EDITABLE_STATUS;
 
+      // ── Timeline truth (fix-and-flip package, Leg 3) ────────────────────
+      // Reading only: the append-only rows are loaded exactly as written and
+      // compared, never reconciled into a projection that could disagree with
+      // them. No read below writes anything.
+      const baselines = await db
+        .select()
+        .from(rehabBaselines)
+        .where(and(eq(rehabBaselines.rehabId, r.id as string), eq(rehabBaselines.organizationId, orgId)))
+        .orderBy(asc(rehabBaselines.createdAt));
+
+      const transitions = await db
+        .select()
+        .from(rehabStatusTransitions)
+        .where(and(eq(rehabStatusTransitions.rehabId, r.id as string), eq(rehabStatusTransitions.organizationId, orgId)))
+        .orderBy(asc(rehabStatusTransitions.transitionedAt));
+
+      const holdingEntries = await db
+        .select()
+        .from(rehabHoldingCostEntries)
+        .where(and(eq(rehabHoldingCostEntries.rehabId, r.id as string), eq(rehabHoldingCostEntries.organizationId, orgId)))
+        .orderBy(asc(rehabHoldingCostEntries.entryDate), asc(rehabHoldingCostEntries.createdAt));
+
+      const baselinesForMath: BaselineLike[] = baselines.map((b) => ({
+        id: String(b.id),
+        supersedesId: b.supersedesId ? String(b.supersedesId) : null,
+        plannedStartDate: b.plannedStartDate ?? null,
+        plannedListingDate: b.plannedListingDate ?? null,
+        plannedHoldMonths: b.plannedHoldMonths ?? null,
+        plannedHoldingMonthlyCents: b.plannedHoldingMonthlyCents ?? null,
+        phasePlans: b.phasePlans ?? [],
+        recordedBy: b.recordedBy,
+        createdAt: b.createdAt instanceof Date ? b.createdAt.toISOString() : String(b.createdAt),
+      }));
+      const transitionsForMath: TransitionLike[] = transitions.map((t) => ({
+        fromStatus: t.fromStatus ?? null,
+        toStatus: t.toStatus,
+        transitionedAt: t.transitionedAt instanceof Date ? t.transitionedAt.toISOString() : String(t.transitionedAt),
+      }));
+      const original = originalBaseline(baselinesForMath);
+      const entriesTotalCents = holdingEntries.reduce((sum, e) => sum + (Number(e.amountCents) || 0), 0);
+
+      // The latest flip_mao scenario for this rehab's property — the holding
+      // assumption the operator's own underwriting used, with its provenance.
+      const [latestScenario] = await db
+        .select({ inputs: scenarios.inputs, assumptions: scenarios.assumptions })
+        .from(scenarios)
+        .where(and(
+          eq(scenarios.organizationId, orgId),
+          eq(scenarios.subjectType, "property"),
+          eq(scenarios.subjectId, r.propertyId),
+          eq(scenarios.engineId, "flip_mao"),
+        ))
+        .orderBy(desc(scenarios.computedAt))
+        .limit(1);
+
+      const scenarioBlock = latestScenario
+        ? {
+            holdMonths: numberOrNull(latestScenario.inputs?.["holdMonths"]),
+            monthlyHoldingCostCents: numberOrNull(latestScenario.inputs?.["monthlyHoldingCostCents"]),
+            holdMonthsOrigin: assumptionOrigin(latestScenario.assumptions, "rule_hold_months"),
+            monthlyOrigin: assumptionOrigin(latestScenario.assumptions, "holdingCost"),
+          }
+        : null;
+
       return res.json({
         rehab: r,
         items,
@@ -320,6 +456,25 @@ export function registerRehabRoutes(app: Express): void {
           flags: varianceFlags(varianceLines),
         },
         estimateLock: estimateLocked ? { locked: true, message: ESTIMATE_LOCK_MESSAGE } : { locked: false },
+        timeline: {
+          baselines: baselines.map((b) => ({
+            ...b,
+            isOriginal: original !== null && original.id === String(b.id),
+          })),
+          transitions,
+          holdingEntries,
+          schedule: {
+            phases: phaseVariances(original, transitionsForMath),
+            listingVarianceDays: listingVarianceDays(original, r.actualListingDate ?? null, transitionsForMath),
+          },
+          holding: holdingComparison({
+            scenario: scenarioBlock,
+            baseline: original,
+            entriesTotalCents,
+            elapsedDays: daysOnSite,
+            meterAccruedCents: accruedHoldingCents,
+          }),
+        },
         totals: {
           budgetCents: totalBudget,
           committedCents: totalCommitted,
@@ -368,6 +523,16 @@ export function registerRehabRoutes(app: Express): void {
         lenderRateBps: parsed.data.lenderRateBps ?? null,
       }).returning();
 
+      // The status log's creation record (Leg 3): fromStatus is null because
+      // the rehab did not move — it opened in this status.
+      await db.insert(rehabStatusTransitions).values({
+        organizationId: orgId,
+        rehabId: created.id,
+        fromStatus: null,
+        toStatus: created.status,
+        recordedBy: userId,
+      });
+
       logger.info("[FF-2] rehab created", { orgId, userId, rehabId: created.id, propertyId: parsed.data.propertyId });
       return res.status(201).json({ rehab: created });
     } catch (err) {
@@ -415,6 +580,19 @@ export function registerRehabRoutes(app: Express): void {
         .where(and(eq(rehabs.id, routeParam(req.params.id)), eq(rehabs.organizationId, orgId)))
         .returning();
       if (!updated) return Errors.notFound(res, "Rehab");
+      // Append the status log for a GENUINE move (Leg 3): beforeStatus is null
+      // when the patch did not touch status, and an unchanged status is not a
+      // transition. Recorded before the workflow fires, so the log and the
+      // workflow react to the same move.
+      if (beforeStatus !== null && beforeStatus !== updated.status) {
+        await db.insert(rehabStatusTransitions).values({
+          organizationId: orgId,
+          rehabId: updated.id,
+          fromStatus: beforeStatus as RehabStatus,
+          toStatus: updated.status,
+          recordedBy: getUserId(req),
+        });
+      }
       // Fire the flip lifecycle workflow on a real status transition
       // (fire-and-forget; a workflow failure never fails the rehab write).
       emitRehabStatusChange(beforeStatus, updated);
@@ -664,6 +842,80 @@ export function registerRehabRoutes(app: Express): void {
       await recomputeRehabSpend(orgId, r.id as string);
 
       return res.status(201).json({ inserted: inserted.length, budgetsEntered: false });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // ── Leg 3: kickoff baselines (append-only) ────────────────────────────
+  //
+  // A baseline is what the operator planned at kickoff. Revising it is a NEW
+  // row that points at the one it supersedes — never an edit. There is no
+  // update route and no delete route, and migrations/0306 refuses both by
+  // trigger, so the denominator variance is measured against cannot move.
+  app.post("/api/rehabs/:id/baselines", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const parsed = baselineSchema.safeParse(req.body);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+
+      const [r] = await db.select({ id: rehabs.id }).from(rehabs)
+        .where(and(eq(rehabs.id, routeParam(req.params.id)), eq(rehabs.organizationId, orgId)));
+      if (!r) return Errors.notFound(res, "Rehab");
+
+      // The revision chain hangs off the rehab's latest baseline. The first
+      // baseline has none — it is the original.
+      const [previous] = await db
+        .select({ id: rehabBaselines.id })
+        .from(rehabBaselines)
+        .where(and(eq(rehabBaselines.rehabId, r.id), eq(rehabBaselines.organizationId, orgId)))
+        .orderBy(desc(rehabBaselines.createdAt))
+        .limit(1);
+
+      const [baseline] = await db.insert(rehabBaselines).values({
+        organizationId: orgId,
+        rehabId: r.id,
+        supersedesId: previous?.id ?? null,
+        plannedStartDate: parsed.data.plannedStartDate ?? null,
+        plannedListingDate: parsed.data.plannedListingDate ?? null,
+        plannedHoldMonths: parsed.data.plannedHoldMonths ?? null,
+        plannedHoldingMonthlyCents: parsed.data.plannedHoldingMonthlyCents ?? null,
+        phasePlans: parsed.data.phasePlans ?? [],
+        recordedBy: getUserId(req),
+      }).returning();
+
+      return res.json({ baseline });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // ── Leg 3: recorded holding-cost entries (append-only) ────────────────
+  //
+  // Only recorded costs live here; the monthly figure on the rehab is a plan,
+  // not spend, and the daily meter is an accrual, not a ledger. A correction is
+  // a NEW negative entry whose note says what it corrects.
+  app.post("/api/rehabs/:id/holding-entries", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const parsed = holdingEntrySchema.safeParse(req.body);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+
+      const [r] = await db.select({ id: rehabs.id }).from(rehabs)
+        .where(and(eq(rehabs.id, routeParam(req.params.id)), eq(rehabs.organizationId, orgId)));
+      if (!r) return Errors.notFound(res, "Rehab");
+
+      const [entry] = await db.insert(rehabHoldingCostEntries).values({
+        organizationId: orgId,
+        rehabId: r.id,
+        entryDate: parsed.data.entryDate,
+        category: parsed.data.category,
+        amountCents: parsed.data.amountCents,
+        note: parsed.data.note ?? null,
+        recordedBy: getUserId(req),
+      }).returning();
+
+      return res.json({ entry });
     } catch (err) {
       return Errors.internal(res, err);
     }
