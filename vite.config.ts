@@ -6,6 +6,7 @@ import { execSync } from "child_process";
 import { visualizer } from "rollup-plugin-visualizer";
 import viteCompression from "vite-plugin-compression";
 import type { Plugin } from "vite";
+import { buildLearnContentIndex } from "./scripts/learn-content-index.mjs";
 
 // Writes the client chunk graph Rollup actually produced — for every chunk:
 // its file, the source module it fronts (facade), the chunks it imports
@@ -173,6 +174,96 @@ function zodJsonSchemaUnusedPlugin(): Plugin {
   };
 }
 
+// The /learn article bodies (content/learn/**/*.json, ~132 KB of prose)
+// are data, not code. Bundling them as JS modules (the old eager
+// import.meta.glob in client/src/pages/learn/registry.ts) put every byte
+// inside the bundle gate's summed total (scripts/check-bundle-size.js
+// counts every emitted .js file), so the corpus now ships as static JSON
+// the two article pages fetch on demand, and only a metadata index —
+// path keys, slugs, names, headline, and each body's URL — is generated
+// into the bundle as the virtual module below. The hub, the cross-links
+// and the not-found decision read the index synchronously, exactly as
+// they read the bundled registry before; the article body arrives by
+// fetch and renders the identical page. The enumeration lives in
+// scripts/learn-content-index.mjs (pinned by its .test.mjs); this plugin
+// is only the Vite wiring: it resolves the virtual module, copies each
+// body VERBATIM into dist/public/learn-content/ at build end (the
+// production static server serves it from there; fetch().json() yields
+// the same object the bundle used to carry), and serves the same URLs
+// from disk under the dev server so dev behaviour is unchanged.
+const LEARN_CONTENT_VIRTUAL_ID = "virtual:acreos-learn-content";
+function learnContentPlugin(): Plugin {
+  const RESOLVED = "\0" + LEARN_CONTENT_VIRTUAL_ID;
+  const rootDir = path.resolve(import.meta.dirname);
+  const contentDir = path.join(rootDir, "content", "learn");
+  let outDir = path.resolve(rootDir, "dist/public");
+  const readIndex = () => buildLearnContentIndex(contentDir);
+  return {
+    name: "acreos-learn-content",
+    resolveId(id) {
+      return id === LEARN_CONTENT_VIRTUAL_ID ? RESOLVED : null;
+    },
+    load(id) {
+      if (id !== RESOLVED) return null;
+      const { articles, counties } = readIndex();
+      for (const entry of [...articles, ...counties]) {
+        this.addWatchFile(path.join(rootDir, entry.sourcePath));
+      }
+      const publicArticles = articles.map((a) => ({
+        pathKey: a.pathKey,
+        vertical: a.vertical,
+        stateSlug: a.stateSlug,
+        stateName: a.stateName,
+        headline: a.headline,
+        url: a.url,
+      }));
+      const publicCounties = counties.map((c) => ({
+        pathKey: c.pathKey,
+        stateSlug: c.stateSlug,
+        stateName: c.stateName,
+        countySlug: c.countySlug,
+        countyName: c.countyName,
+        url: c.url,
+      }));
+      return [
+        `export const LEARN_ARTICLES = ${JSON.stringify(publicArticles)};`,
+        `export const LEARN_COUNTIES = ${JSON.stringify(publicCounties)};`,
+      ].join("\n");
+    },
+    configResolved(config) {
+      outDir = config.build.outDir;
+    },
+    configureServer(server) {
+      const { articles, counties } = readIndex();
+      const files = new Map(
+        [...articles, ...counties].map((entry) => [
+          entry.url,
+          path.join(rootDir, entry.sourcePath),
+        ]),
+      );
+      server.middlewares.use((req, res, next) => {
+        const file = files.get((req.url ?? "").split("?")[0]);
+        if (!file) return next();
+        res.setHeader("Content-Type", "application/json");
+        const stream = fs.createReadStream(file);
+        stream.on("error", () => {
+          res.statusCode = 404;
+          res.end();
+        });
+        stream.pipe(res);
+      });
+    },
+    closeBundle() {
+      const { articles, counties } = readIndex();
+      for (const entry of [...articles, ...counties]) {
+        const dest = path.join(outDir, entry.url.replace(/^\//, ""));
+        fs.mkdirSync(path.dirname(dest), { recursive: true });
+        fs.copyFileSync(path.join(rootDir, entry.sourcePath), dest);
+      }
+    },
+  };
+}
+
 // Phase 8 Mo 12 — Beatriz §3 bundle-analyzer.
 // Enabled when ANALYZE=1 (CI / one-off `npm run build:analyze`).
 // In normal builds the plugin is excluded so the prod bundle is unaffected.
@@ -206,6 +297,7 @@ export default defineConfig({
     react(),
     jspdfUnusedOptionalDepsPlugin(),
     zodJsonSchemaUnusedPlugin(),
+    learnContentPlugin(),
     chunkGraphPlugin(),
     // Pre-compress build output (gzip + brotli) so static-serve can deliver
     // already-compressed bytes. Sidesteps the HTTP/2 + `compression`
