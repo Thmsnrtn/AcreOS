@@ -353,7 +353,7 @@ export function createThrottle(deps: { backend: ThrottleBackend; now?: () => Dat
     try {
       now = getNow(input);
     } catch {
-      now = new Date();
+      now = clock.now();
     }
     const st: { inserted: boolean; result?: T; insertFailure: { error: unknown } | null } = {
       inserted: false,
