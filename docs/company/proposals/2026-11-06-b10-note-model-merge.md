@@ -249,9 +249,19 @@ subject exists. Options for Tom:
 
 **Surface (follow-up 2).** The natural home for a bid desk is the pipeline page
 `/notes/pipeline/:id` (Finance door), which is not in the Notes V2 lane; a re-price
-desk on `/notes/:id` waits for #461/#463 to merge. Until a decision route exists the
-engine is reachable only through `POST /api/scenarios/preview`, which no client calls
-with this engine: **unmounted pending the founder's subject-key decision.**
+desk on `/notes/:id` waits for #461/#463 to merge. **Nothing can record a note
+scenario or decision until the founder's subject-key decision.** The engine declares
+`subjectKind: "note"`, and `recordScenario`, the only writer of the `scenarios`
+table, refuses it on every subject type before it computes or inserts.
+`POST /api/scenarios` answers 422 `scenario_subject_mismatch`, and the kit throws
+before either write (`tests/unit/scenarioSubjectGuard.test.ts`). Because it is
+registered, it is listed by `GET /api/scenarios/engines` and computed by
+`POST /api/scenarios/preview`, which records nothing. No client calls either with
+this engine.
+*Correction 2026-11-08:* the first draft said the engine was reachable "only through
+preview". The independent audit found that `POST /api/scenarios` would also have
+RECORDED it against an integer property, opportunity or deal id. The guard above
+closes that path.
 
 **Other findings (follow-ups, not fixed here).** `computeYields`
 (`routes-notes.ts:896`) projects YTM-at-acquisition from the ORIGINAL `termMonths`

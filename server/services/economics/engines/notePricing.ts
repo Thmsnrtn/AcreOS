@@ -34,11 +34,15 @@
  * Declares `note_investor`: a decision under that pack counts only when it
  * cites a scenario from this engine (evidence rule v2), and the kit's ownership
  * guard refuses this engine for every other pack — nothing here special-cases
- * the guard. NOTHING RECORDS A NOTE DECISION YET: the kit's stores key a
- * subject by an integer id, and every note is keyed by a uuid (see
- * docs/company/proposals/2026-11-06-b10-note-model-merge.md §B). Until that is
- * decided, this engine is reachable only through the generic, record-nothing
- * POST /api/scenarios/preview.
+ * the guard. NOTHING RECORDS A NOTE SCENARIO OR DECISION: the kit's stores key
+ * a subject by an integer id, and every note is keyed by a uuid (see
+ * docs/company/proposals/2026-11-06-b10-note-model-merge.md §B). So the engine
+ * declares `subjectKind: "note"`. `recordScenario`, the only writer of the
+ * scenarios table, refuses it on every subject type before it computes or
+ * inserts: POST /api/scenarios answers 422 scenario_subject_mismatch, and the
+ * kit throws before either write. Being registered, it IS listed by
+ * GET /api/scenarios/engines and computed by POST /api/scenarios/preview,
+ * which records nothing and which no client calls with this engine.
  */
 import { ScenarioEngineError, metric, type EngineSpec, type ScenarioAssumption } from "@shared/economics/scenario";
 import { NOTE_PRICING_ENGINE_ID, NOTE_PRICING_ENGINE_VERSION, priceNote, type NoteFact } from "@shared/calculators/notePricing";
@@ -61,6 +65,7 @@ export const notePricingEngine: EngineSpec = {
   version: NOTE_PRICING_ENGINE_VERSION,
   label: "Note pricing (price at your target yield, max bid, discount to UPB)",
   verticals: ["note_investor"],
+  subjectKind: "note",
   produces: ["max_allowable_offer", "discount_to_face", "total_cost", "profit"],
 
   compute(inputs) {

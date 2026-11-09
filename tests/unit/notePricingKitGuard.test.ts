@@ -6,7 +6,10 @@
  * The stores are mocked: this pins the guard (which runs BEFORE any write) and
  * the generic preview path only. It asserts nothing about what subject a note
  * decision would be keyed by — that is exactly what blocks recording today
- * (the stores key subjects by integer; notes are uuid-keyed).
+ * (the stores key subjects by integer; notes are uuid-keyed). With the REAL
+ * store, the guard lets note_pricing through, then recordScenario refuses
+ * it before either write (subjectKind "note"). That is pinned in
+ * tests/unit/scenarioSubjectGuard.test.ts.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -67,7 +70,7 @@ describe("the kit's ownership guard, for note_pricing", () => {
     expect(h.calls).toEqual([]);
   });
 
-  it("lets note_pricing through under note_investor (positive control: the guard is not refusing everything)", async () => {
+  it("the ownership guard lets note_pricing through under note_investor (positive control; the mocked store hides the real store's subject refusal)", async () => {
     await recordUnderwrittenDecision(9, input({}));
     expect(h.calls).toEqual(["scenario", "decision"]);
   });
