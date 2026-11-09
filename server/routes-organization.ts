@@ -14,7 +14,7 @@ import { onboardingService, type BusinessType } from "./services/onboarding";
 import { BUSINESS_TYPES } from "@shared/models/persona-mapping";
 import { activityLogger } from "./services/activityLogger";
 import { getAllUsageLimits, TIER_LIMITS, type SubscriptionTier } from "./services/usageLimits";
-import { getUserPermissionContext, resolveViewOnlyAssignedLeads, ROLES, type UserPermissionContext } from "./utils/permissions";
+import { getUserPermissionContext, resolveViewOnlyAssignedLeads, ROLES, getRoleLabel, type UserPermissionContext } from "./utils/permissions";
 import {
   getCommissionConfig,
   saveCommissionConfig,
@@ -40,7 +40,9 @@ import {
   inviteTokenLast4,
   redactToken,
   tokenMatchesRow,
+  buildInviteLink,
 } from "./utils/inviteTokens";
+import type { TeamInviteDeliveryStatus } from "@shared/teamInviteDelivery";
 import { checkInviteCreateLimit, checkInviteAcceptLimit } from "./services/inviteRateLimit";
 import { refuseSeatInvite, refuseSeatPurchase } from "./utils/firstRunRefusals";
 import { seatRuleFor } from "@shared/billing/seats";
@@ -1668,6 +1670,16 @@ export function registerOrganizationRoutes(app: Express): void {
       .default("member"),
   });
 
+  const regenerateInvitationSchema = z.object({ sendEmail: z.boolean().optional() });
+
+  // How long an invitation link works, from creation or from a new link.
+  const INVITE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
+
+  // Who the invitation email says it is from: the profile name, else the
+  // account email. The mailer falls back to a neutral phrase when both are empty.
+  const inviterNameOf = (u: { firstName?: string | null; lastName?: string | null; email?: string | null } | undefined): string =>
+    [u?.firstName, u?.lastName].filter(Boolean).join(" ").trim() || u?.email || "";
+
   const bulkInvitationSchema = z.object({
     invites: z.array(createInvitationSchema).min(1).max(200),
   });
@@ -1762,7 +1774,7 @@ export function registerOrganizationRoutes(app: Express): void {
       }
 
       const { organizationInvitations } = await import("@shared/schema");
-      const expiresAt = new Date(clock.nowMs() + 14 * 24 * 60 * 60 * 1000); // 14 days
+      const expiresAt = new Date(clock.nowMs() + INVITE_TTL_MS);
 
       // Generate one plaintext token per invite, persist only the hash +
       // last4. The plaintext lives in memory just long enough to build the
@@ -1847,9 +1859,26 @@ export function registerOrganizationRoutes(app: Express): void {
         } catch { /* non-fatal */ }
       }
 
-      // The plaintext token is returned to the caller exactly once so the
-      // UI / email-template layer can compose the invite link. After this
-      // response, the only persisted reference is the SHA-256 hash.
+      // Email each invitee through the system mail lane. The rows exist from
+      // here on, so the mailer never throws: it reports a status per invite
+      // (sent / not_configured / suppressed / failed) and the UI words each.
+      const { sendTeamInviteEmails } = await import("./services/teamInviteEmail");
+      const delivered = await sendTeamInviteEmails({
+        organization: org,
+        inviterName: inviterNameOf(req.user),
+        invites: rows.map((r, idx) => ({
+          invitationId: r.id,
+          email: r.email,
+          roleLabel: getRoleLabel(r.role),
+          token: prepared[idx].plaintext,
+          expiresAt: r.expiresAt,
+        })),
+      });
+      const deliveryById = new Map<number, TeamInviteDeliveryStatus>(delivered.map((d) => [d.invitationId, d.status]));
+
+      // The plaintext token is returned to the caller exactly once; after this
+      // response the only persisted reference is the SHA-256 hash. A lost link
+      // is replaced with POST .../:id/regenerate, never recovered.
       const origin = (req.headers.origin as string) || `https://${req.headers.host}`;
       res.status(201).json({
         created: rows.length,
@@ -1860,7 +1889,8 @@ export function registerOrganizationRoutes(app: Express): void {
           token: prepared[idx].plaintext,
           tokenLast4: prepared[idx].values.inviteTokenLast4,
           expiresAt: r.expiresAt,
-          link: `${origin}/auth?invite=${prepared[idx].plaintext}`,
+          link: buildInviteLink(origin, prepared[idx].plaintext),
+          delivery: deliveryById.get(r.id) ?? "failed",
         })),
       });
     } catch (err) {
@@ -1897,6 +1927,114 @@ export function registerOrganizationRoutes(app: Express): void {
         metadata: { stage: "invitation_revoked", email: updated.email },
       });
       res.json({ ok: true, id });
+    } catch (err) {
+      Errors.internal(res, err);
+    }
+  });
+
+  // POST /api/organization/invitations/:id/regenerate — a fresh link for a
+  // pending invitation, optionally emailed.
+  //
+  // Only a hash of the token is stored, so the original link cannot be shown
+  // again. Rotating replaces it: the old link stops working (a legacy plaintext
+  // copy is cleared too) and the expiry window restarts. Only a row that is
+  // already `pending` can be rotated: those already hold a seat, so this can
+  // never add one. A revoked, accepted or expired invitation needs a fresh
+  // invite, which goes through the seat check.
+  api.post("/api/organization/invitations/:id/regenerate", isAuthenticated, getOrCreateOrg, requireAdminOrAbove(), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const org = req.organization;
+      if (!org) return Errors.unauthorized(res);
+      const id = Number.parseInt(routeParam(req.params.id), 10);
+      if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid invitation id");
+      const parsed = regenerateInvitationSchema.safeParse(req.body ?? {});
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+      const sendEmail = parsed.data.sendEmail === true;
+
+      // An emailed new link is one more email, so it counts against the same
+      // per-org daily invite budget. Checked BEFORE rotating, so a refusal
+      // leaves the existing link working.
+      if (sendEmail) {
+        const rl = await checkInviteCreateLimit(org.id, 1);
+        if (!rl.allowed) {
+          res.setHeader("Retry-After", String(rl.retryAfterSeconds));
+          return Errors.limitExceeded(res, {
+            limit: rl.limit,
+            windowSeconds: 24 * 60 * 60,
+            retryAfterSeconds: rl.retryAfterSeconds,
+            message: "Too many invites created for this organization in the last 24 hours",
+          }, { docsSlug: "limit-invites-per-day" });
+        }
+      }
+
+      const { organizationInvitations } = await import("@shared/schema");
+      const plaintext = generateInviteToken();
+      const [row] = await db
+        .update(organizationInvitations)
+        .set({
+          token: null,
+          inviteTokenHash: hashInviteToken(plaintext),
+          inviteTokenLast4: inviteTokenLast4(plaintext),
+          expiresAt: new Date(clock.nowMs() + INVITE_TTL_MS),
+        })
+        .where(and(
+          eq(organizationInvitations.id, id),
+          eq(organizationInvitations.organizationId, org.id),
+          eq(organizationInvitations.status, "pending"),
+        ))
+        .returning();
+      if (!row) {
+        const [existing] = await db
+          .select({ status: organizationInvitations.status })
+          .from(organizationInvitations)
+          .where(and(eq(organizationInvitations.id, id), eq(organizationInvitations.organizationId, org.id)));
+        if (!existing) return Errors.notFound(res, "Invitation");
+        return Errors.unprocessable(res, `This invitation is ${existing.status}, so it can't get a new link. Invite them again to send a fresh one.`);
+      }
+
+      let delivery: TeamInviteDeliveryStatus | null = null;
+      if (sendEmail) {
+        const { sendTeamInviteEmails } = await import("./services/teamInviteEmail");
+        const [outcome] = await sendTeamInviteEmails({
+          organization: org,
+          inviterName: inviterNameOf(req.user),
+          invites: [{
+            invitationId: row.id,
+            email: row.email,
+            roleLabel: getRoleLabel(row.role),
+            token: plaintext,
+            expiresAt: row.expiresAt,
+            reissued: true,
+          }],
+        });
+        delivery = outcome?.status ?? "failed";
+      }
+
+      await auditFromRequest(req, {
+        action: AuditActions.ORG_MEMBER_ADDED,
+        target: { type: "organization", id: org.id },
+        metadata: { stage: "invitation_reissued", invitationId: row.id, email: row.email, role: row.role, emailed: delivery === "sent" },
+      });
+      void customerAuditFromRequest(req, {
+        organizationId: org.id,
+        action: CustomerAuditActions.MEMBER_INVITED,
+        category: "members",
+        targetLabel: `Invitation #${row.id}`,
+        metadata: { stage: "invitation_reissued", email: row.email, role: row.role },
+      });
+
+      const origin = (req.headers.origin as string) || `https://${req.headers.host}`;
+      res.json({
+        invitation: {
+          id: row.id,
+          email: row.email,
+          role: row.role,
+          expiresAt: row.expiresAt,
+          tokenLast4: row.inviteTokenLast4,
+          link: buildInviteLink(origin, plaintext),
+          delivery,
+        },
+      });
     } catch (err) {
       Errors.internal(res, err);
     }

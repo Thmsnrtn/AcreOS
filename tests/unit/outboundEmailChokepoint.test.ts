@@ -99,6 +99,7 @@ const REGISTER: Record<string, [number, SendClass]> = {
   "server/services/revenueProtection.ts": [3, "system-mail"],
   "server/services/sequenceProcessor.ts": [1, "system-mail"],
   "server/services/solene/pagerService.ts": [1, "system-mail"],
+  "server/services/teamInviteEmail.ts": [1, "system-mail"],
   "server/services/workflow-engine.ts": [2, "system-mail"],
   // The borrower payment receipt moved here from webhookHandlers on
   // 2026-09-27 (DEFECT-0096): one posting rule for both writers, one receipt
