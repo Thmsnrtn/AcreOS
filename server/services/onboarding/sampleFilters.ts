@@ -10,7 +10,7 @@
  * lead, first deal and first closed deal.
  */
 import { sql, type SQL } from "drizzle-orm";
-import { deals, leads, notes, payments, properties } from "@shared/schema";
+import { deals, leads, notes, offers, payments, properties } from "@shared/schema";
 import { SAMPLE_APN_PREFIX, SAMPLE_LEAD_SOURCE } from "./sampleSeeder";
 
 const SAMPLE_APN_LIKE = `${SAMPLE_APN_PREFIX}%`;
@@ -23,6 +23,10 @@ export const realProperty = (): SQL =>
 
 export const realDeal = (): SQL =>
   sql`NOT EXISTS (SELECT 1 FROM ${properties} WHERE ${properties.id} = ${deals.propertyId} AND ${properties.apn} LIKE ${SAMPLE_APN_LIKE})`;
+
+/** An offer on neither a sample parcel nor a sample lead. */
+export const realOffer = (): SQL =>
+  sql`NOT EXISTS (SELECT 1 FROM ${properties} WHERE ${properties.id} = ${offers.propertyId} AND ${properties.apn} LIKE ${SAMPLE_APN_LIKE}) AND NOT EXISTS (SELECT 1 FROM ${leads} WHERE ${leads.id} = ${offers.leadId} AND coalesce(${leads.source}, '') IN (${SAMPLE_LEAD_SOURCE}, 'sample'))`;
 
 export const realNote = (): SQL =>
   sql`NOT EXISTS (SELECT 1 FROM ${properties} WHERE ${properties.id} = ${notes.propertyId} AND ${properties.apn} LIKE ${SAMPLE_APN_LIKE})`;
