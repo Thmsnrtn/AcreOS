@@ -34,8 +34,12 @@ import {
 } from "@shared/schema";
 import { eq, and, count, inArray } from "drizzle-orm";
 import crypto from "crypto";
-import { orgHasActiveHold, LegalHoldViolationError } from "./legalHold";
+import { getActiveHoldsForOrg, assertNotUnderLegalHold, LegalHoldViolationError } from "./legalHold";
 import { clock } from "../utils/clock";
+import { DSAR_DOMAINS, type DsarSubjectKind } from "@shared/privacy/dsarDomains";
+// Type-only: dsarActionGate lands in PKG-1 session A2 (design §2). The gate is
+// the only producer of a DsarSubject, so erasure cannot be reached around it.
+import type { DsarSubject } from "./privacy/dsarActionGate";
 
 /** Safety limit to prevent unbounded memory usage on very large accounts */
 const MAX_EXPORT_RECORDS = 100_000;
@@ -74,6 +78,32 @@ type DeletionReport = {
   leadsAnonymized: number;
   userAnonymized: boolean;
 };
+
+/** What `eraseLeadSubject` changed on the lead row (PKG-1 §3). */
+export type LeadErasureReport = {
+  organizationId: number;
+  leadId: number;
+  erasedAt: string;
+  /** Lead columns overwritten with a placeholder / null / doNotContact=true. */
+  fieldsAnonymized: string[];
+  /** Lead rows updated — 1 on success. */
+  leadsAnonymized: number;
+};
+
+/**
+ * A DSAR erasure refused BY NAME (PKG-1 §3). The route maps it to 422 with
+ * `details.reason === reason`; nothing has been written when it is thrown.
+ */
+export class DsarErasureRefusedError extends Error {
+  constructor(
+    public readonly reason: "SUBJECT_ALREADY_ERASED" | "RETENTION_REQUIRED_LOAN_RECORDS",
+    message: string,
+    public readonly details: Record<string, unknown> = {},
+  ) {
+    super(message);
+    this.name = "DsarErasureRefusedError";
+  }
+}
 
 /**
  * Export all personal data for a user (GDPR Article 15 — Right of Access).
@@ -150,17 +180,22 @@ export async function anonymizeUser(userId: string): Promise<DeletionReport> {
   // overrides erasure" carve-out (Art. 17(3)(b/e)). Operators must release
   // the hold (or carve out the user via scoped erasure outside the
   // automated pipeline) before this path can run.
+  //
+  // PKG-1 C-5: the error names the FIRST REAL active hold (id, caseRef,
+  // scope) so the 423 tells the operator which case blocks it — it used to
+  // carry a fabricated `{ id: "(see legal_holds)", caseRef: "active" }`.
+  // Strictness is unchanged: ANY active hold in ANY member org blocks.
   const memberships = await db
-    .select({ orgId: teamMembers.organizationId, id: teamMembers.id })
+    .select({ orgId: teamMembers.organizationId })
     .from(teamMembers)
     .where(eq(teamMembers.userId, userId));
-  const teamMemberIds = memberships.map((m) => m.id);
   for (const { orgId } of memberships) {
-    if (await orgHasActiveHold(orgId)) {
+    const [hold] = await getActiveHoldsForOrg(orgId);
+    if (hold) {
       throw new LegalHoldViolationError(orgId, "user", userId, {
-        id: "(see legal_holds)",
-        caseRef: "active",
-        scope: "org_wide_or_user_specific",
+        id: hold.id,
+        caseRef: hold.caseRef,
+        scope: hold.scope,
       });
     }
   }
@@ -180,10 +215,12 @@ export async function anonymizeUser(userId: string): Promise<DeletionReport> {
   // 3. Delete support tickets
   const deletedTickets = await db.delete(supportTickets).where(eq(supportTickets.userId, userId)).returning({ id: supportTickets.id });
 
-  // 4. Delete tasks assigned to user (tasks.assignedTo is a numeric teamMembers.id)
-  const deletedTasks = teamMemberIds.length > 0
-    ? await db.delete(tasks).where(inArray(tasks.assignedTo, teamMemberIds)).returning({ id: tasks.id })
-    : [];
+  // 4. REMOVED (PKG-1 C-5): this step deleted every task assigned to the
+  // user. Tasks are the organization's own business records, not the
+  // subject's personal data — once the users row is anonymized (step 7) a
+  // teamMembers.id reference identifies no one. The count stays in the
+  // report shape, truthfully zero.
+  const deletedTasks: { id: number }[] = [];
 
   // 5. Sessions: the `sessions` table was dropped 2026-08-01 (founder ruling —
   // Clerk JWT auth, no session store, zero rows ever written; even here it was
@@ -204,22 +241,19 @@ export async function anonymizeUser(userId: string): Promise<DeletionReport> {
     .returning({ id: aiConversations.id })
     .catch(() => [] as { id: number }[]);
 
-  // 6. Anonymize leads assigned to user (keep for business records but strip PII).
-  // leads.assignedTo is a numeric teamMembers.id.
-  const userLeads = teamMemberIds.length > 0
-    ? await db.select({ id: leads.id }).from(leads).where(inArray(leads.assignedTo, teamMemberIds))
-    : [];
-  for (const lead of userLeads) {
-    await db.update(leads).set({
-      firstName: "[Deleted]",
-      lastName: "[User]",
-      email: `deleted-${lead.id}@gdpr-deleted.invalid`,
-      phone: null,
-      notes: null,
-    }).where(eq(leads.id, lead.id));
-  }
+  // 6. REMOVED (PKG-1 C-5): this step anonymized every lead ASSIGNED to the
+  // user. Those leads are third parties' personal data and the org's
+  // records — the org is their controller, not this user — and they include
+  // borrower leads that 1099-INT/1098 read (bookkeeping.ts, form1098Batch.ts),
+  // so erasing a team member silently rewrote tax-form recipients
+  // (DEFECT-0101 fence). A lead is erased only as its OWN DSAR subject, via
+  // eraseLeadSubject. `leadsAnonymized` stays in the report, truthfully zero.
+  const leadsAnonymized = 0;
 
-  // 7. Anonymize user account
+  // 7. Anonymize user account. This MUST stay LAST: the anonymized email is
+  // the idempotency marker isUserDeleted() reads. A crash before this line
+  // leaves the subject NOT erased, so a retry is allowed rather than locked
+  // out. There is deliberately no transaction — the ordering is the guarantee.
   await db.update(users).set({
     email: anonEmail,
     firstName: anonName,
@@ -239,8 +273,168 @@ export async function anonymizeUser(userId: string): Promise<DeletionReport> {
       aiMemory: deletedAiMemory.length,
       aiConversations: deletedAiConversations.length,
     },
-    leadsAnonymized: userLeads.length,
+    leadsAnonymized,
     userAnonymized: true,
+  };
+}
+
+/** Lead columns erasure overwrites — the one field set (PKG-1 §3 lead step 3). */
+const LEAD_ERASURE_FIELDS = [
+  "firstName",
+  "lastName",
+  "email",
+  "phone",
+  "notes",
+  "address",
+  "city",
+  "zip",
+  "doNotContact",
+] as const;
+
+/**
+ * Anonymize a lead's contact fields — the identity anchor (PKG-1 §3). The
+ * field set and the `deleted-${id}@gdpr-deleted.invalid` marker are the ones
+ * the old anonymizeUser step 6 used, extended with the address fields and
+ * doNotContact = true.
+ *
+ * Deviation from design §3 (code facts): `leads` has NO mailingAddress /
+ * mailingCity / mailingZip columns (shared/schema.ts leads table), so only
+ * address / city / zip are nulled — all three are nullable. `state`,
+ * `propertyAddress` and the parcel fields describe the parcel, not the
+ * person, and are left as the org's record. firstName/lastName are NOT NULL,
+ * hence placeholders. `taxId` is never written (borrowers are refused before
+ * this runs). `deletedAt` is never set — soft-deleting would hide the lead
+ * from the org's own records and is a separate decision.
+ *
+ * Only called after the caller has loaded the lead scoped to its org.
+ */
+async function anonymizeLeadContactFields(leadId: number): Promise<number> {
+  const updated = await db.update(leads).set({
+    firstName: "[Deleted]",
+    lastName: "[User]",
+    email: `deleted-${leadId}@gdpr-deleted.invalid`,
+    phone: null,
+    notes: null,
+    address: null,
+    city: null,
+    zip: null,
+    doNotContact: true,
+  }).where(eq(leads.id, leadId)).returning({ id: leads.id });
+  return updated.length;
+}
+
+/** A lead is erased when its email carries the per-id erasure marker. */
+export function isLeadErased(lead: { id: number; email: string | null }): boolean {
+  return lead.email === `deleted-${lead.id}@gdpr-deleted.invalid`;
+}
+
+/**
+ * Erase an account-less lead subject in ONE organization (PKG-1 §3).
+ *
+ * Order — every refusal happens before the first write:
+ *   1. legal hold (org_wide or lead_specific) → LegalHoldViolationError naming the hold;
+ *   2. borrower on ANY note in the org, any status → RETENTION_REQUIRED_LOAN_RECORDS (S-1);
+ *   3. already erased → SUBJECT_ALREADY_ERASED;
+ *   4. anonymize the contact fields.
+ */
+export async function eraseLeadSubject(organizationId: number, leadId: number): Promise<LeadErasureReport> {
+  await assertNotUnderLegalHold(organizationId, "lead", leadId);
+
+  const borrowerNotes = await db
+    .select({ id: notes.id })
+    .from(notes)
+    .where(and(eq(notes.borrowerId, leadId), eq(notes.organizationId, organizationId)));
+  if (borrowerNotes.length > 0) {
+    const noteIds = borrowerNotes.map((n) => n.id);
+    throw new DsarErasureRefusedError(
+      "RETENTION_REQUIRED_LOAN_RECORDS",
+      `This person is the borrower on note(s) ${noteIds.map((id) => `#${id}`).join(", ")} — loan, 1099-INT and 1098 records require their identity to be retained (GDPR Art. 17(3)(b)). Erasure is refused; the export is available. Founder/counsel ruling S-1 pending.`,
+      { noteIds },
+    );
+  }
+
+  const [lead] = await db
+    .select({ id: leads.id, email: leads.email })
+    .from(leads)
+    .where(and(eq(leads.id, leadId), eq(leads.organizationId, organizationId)));
+  if (!lead) throw new Error(`Lead ${leadId} not found in organization ${organizationId}`);
+  if (isLeadErased(lead)) {
+    throw new DsarErasureRefusedError(
+      "SUBJECT_ALREADY_ERASED",
+      "This subject was already erased; nothing was changed.",
+    );
+  }
+
+  const leadsAnonymized = await anonymizeLeadContactFields(leadId);
+
+  return {
+    organizationId,
+    leadId,
+    erasedAt: clock.now().toISOString(),
+    fieldsAnonymized: [...LEAD_ERASURE_FIELDS],
+    leadsAnonymized,
+  };
+}
+
+/** Domains erasure RETAINS for a subject kind — derived from the registry, never hand-written. */
+function retainedDomainsFor(kind: DsarSubjectKind): Array<{ domain: string; reason: string }> {
+  const retained: Array<{ domain: string; reason: string }> = [];
+  for (const d of DSAR_DOMAINS) {
+    if (d.decision === "export" && d.subjectKind === kind && d.erasure.action === "retain") {
+      retained.push({ domain: d.domain, reason: d.erasure.reason ?? "" });
+    }
+  }
+  return retained;
+}
+
+/**
+ * Execute a DSAR erasure for a gated subject (PKG-1 §3). Takes a DsarSubject,
+ * which only gateDsarAction produces, so this cannot be reached around the
+ * verification gate.
+ *
+ * Idempotency is proved by the SUBJECT'S OWN state (not the DSAR record), and
+ * is checked first: an already-erased subject is refused by name.
+ */
+export async function eraseDsarSubject(subject: DsarSubject): Promise<{
+  report: DeletionReport | LeadErasureReport;
+  retained: Array<{ domain: string; reason: string }>;
+  operatorFollowUps: string[];
+}> {
+  if (subject.kind === "user") {
+    if (await isUserDeleted(subject.userId)) {
+      throw new DsarErasureRefusedError(
+        "SUBJECT_ALREADY_ERASED",
+        "This subject was already erased; nothing was changed.",
+      );
+    }
+    const report = await anonymizeUser(subject.userId);
+    return {
+      report,
+      retained: retainedDomainsFor("user"),
+      // S-3: the Clerk identity is an external system; this action makes no
+      // external call. The founder deletes it out-of-band.
+      operatorFollowUps: [
+        `Delete the Clerk identity for user ${subject.userId} out-of-band — this erasure anonymized the AcreOS users row only; the Clerk user was not deleted (S-3).`,
+      ],
+    };
+  }
+
+  const [lead] = await db
+    .select({ id: leads.id, email: leads.email })
+    .from(leads)
+    .where(and(eq(leads.id, subject.leadId), eq(leads.organizationId, subject.organizationId)));
+  if (!lead) throw new Error(`Lead ${subject.leadId} not found in organization ${subject.organizationId}`);
+  if (isLeadErased(lead)) {
+    throw new DsarErasureRefusedError(
+      "SUBJECT_ALREADY_ERASED",
+      "This subject was already erased; nothing was changed.",
+    );
+  }
+  const report = await eraseLeadSubject(subject.organizationId, subject.leadId);
+  return {
+    report,
+    retained: retainedDomainsFor("lead"),
+    operatorFollowUps: [],
   };
 }
 
