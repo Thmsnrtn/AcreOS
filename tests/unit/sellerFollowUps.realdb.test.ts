@@ -25,7 +25,8 @@
  * DOC-SYSTEM GUARDS
  *   7. PUT content / name / signers → 422, row unchanged; PUT status-only is
  *      not refused by the guard; request-signature and send-for-signature →
- *      422; an ordinary generated document is still editable (type-scoped).
+ *      422; POST /api/signatures → 422, no signature row, status still draft;
+ *      an ordinary generated document is still editable (type-scoped).
  * NO SENDS
  *   8. a two-layer net over the email and SMS services — prototype spies on
  *      EmailService/SmsService send methods (including EmailService's private
@@ -167,6 +168,7 @@ const list = async (dealId: number, organizationId = org) =>
 const docCount = async (o = org) => (await q`SELECT count(*)::int AS n FROM generated_documents WHERE organization_id = ${o}`)[0].n as number;
 const bothCounts = async () => ({ org: await docCount(org), other: await docCount(other) });
 const docRow = async (id: number) => (await q`SELECT * FROM generated_documents WHERE id = ${id}`)[0];
+const sigCount = async (documentId: number) => (await q`SELECT count(*)::int AS n FROM signatures WHERE document_id = ${documentId}`)[0].n as number;
 
 function sendsRecorded(): string[] {
   return [
@@ -567,6 +569,34 @@ describe.runIf(realDbAvailable)("seller follow-up drafts (§6.2) — real databa
       }
       expect(await docRow(draftId)).toEqual(before);
       expect(await bothCounts()).toEqual(docs);
+    });
+
+    it("POST /api/signatures on a follow-up draft → 422, no signature row, status still draft", async () => {
+      const before = await docRow(draftId);
+      expect(before.status).toBe("draft");
+      const body = {
+        documentId: draftId,
+        signerName: "Casey Operator",
+        signerEmail: "casey@example.invalid",
+        signatureData: "data:image/png;base64,iVBORw0KGgo=",
+        signatureType: "drawn",
+      };
+      const res = await (await docSystem()).post("/api/signatures").send(body);
+      expect(res.status, JSON.stringify(res.body)).toBe(422);
+      expect(res.body.message).toMatch(/not a signable document/);
+      expect(await sigCount(draftId)).toBe(0);
+      const after = await docRow(draftId);
+      expect(after).toEqual(before);
+      expect(after.status).toBe("draft");
+      // Type-scoped: the same request against the ordinary document is NOT
+      // refused by the type guard — it reaches the self-signature check,
+      // which refuses it there (the mocked session carries no email) and
+      // still writes nothing.
+      const ordinaryBefore = await docRow(ordinaryId);
+      const probe = await (await docSystem()).post("/api/signatures").send({ ...body, documentId: ordinaryId });
+      expect(probe.status, JSON.stringify(probe.body)).toBe(403);
+      expect(await sigCount(ordinaryId)).toBe(0);
+      expect(await docRow(ordinaryId)).toEqual(ordinaryBefore);
     });
 
     it("another org cannot reach the draft through the doc-system at all", async () => {

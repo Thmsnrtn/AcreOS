@@ -1029,6 +1029,15 @@ export function registerDocSystemRoutes(app: Express): void {
         return Errors.badRequest(res, "Signer name and signature data are required");
       }
 
+      // §6.2: a seller follow-up draft is prepared text, not a signable
+      // document. Refused before any signature is written.
+      if (documentId) {
+        const targetDoc = await storage.getGeneratedDocument(org.id, documentId);
+        if (targetDoc?.type === SELLER_FOLLOW_UP_DRAFT_TYPE) {
+          return Errors.unprocessable(res, "A follow-up draft is not a signable document.");
+        }
+      }
+
       // ── An operator may sign for themselves, never for a counterparty ─────
       // This route took `signerName`, `signerEmail` and `signatureData` from
       // the request body behind nothing but `isAuthenticated`, so any member of

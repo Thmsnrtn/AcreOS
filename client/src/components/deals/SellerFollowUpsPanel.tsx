@@ -36,6 +36,7 @@ import { ApiError, apiRequest, fetchJsonArray } from "@/lib/queryClient";
 import { useOrganization } from "@/hooks/use-organization";
 import { useToast } from "@/hooks/use-toast";
 import { formatDateTime } from "@/lib/format";
+import { Verbs } from "@/lib/labels";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -471,7 +472,7 @@ export function SellerFollowUpsPanel({ dealId }: { dealId: number }) {
                       data-testid={`button-copy-follow-up-${d.id}`}
                     >
                       <Copy className="mr-2 h-3.5 w-3.5" aria-hidden="true" />
-                      Copy
+                      {Verbs.COPY}
                     </Button>
                     {d.supersededBy === null && followUpTemplates.length > 0 && (
                       <Button
