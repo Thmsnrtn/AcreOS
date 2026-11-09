@@ -34,6 +34,7 @@ import {
   rehabHoldingCostEntries,
   REHAB_HOLDING_CATEGORIES,
   scenarios,
+  rehabChangeOrders,
 } from "@shared/schema";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId, getUserId } from "./types/request";
@@ -60,6 +61,17 @@ import type { BaselineLike, TransitionLike } from "@shared/rehab/timeline";
 import { routeParam } from "./utils/routeParams";
 import { refuseRedeemableDeedSpend } from "./services/tax/landExit";
 import { patchSchemaOf } from "./utils/updatePayload";
+import {
+  approvedAmountByLine,
+  approvedScheduleDays,
+  effectiveEstimateCents,
+  projectChangeOrderTotals,
+} from "@shared/rehab/changeOrders";
+import type { ChangeOrderLike } from "@shared/rehab/changeOrders";
+import { gradeRealized } from "@shared/rehab/realized";
+import type { ScenarioAssumption } from "@shared/economics/scenario";
+import { recordDecision, decisionsForSubject } from "./services/decisions/decisionStore";
+import { UnavailableScenarioError } from "./services/economics/scenarioStore";
 
 // ----------------------------------------------------------------------------
 // Scope templates — a STARTING SCOPE, not an estimate.
@@ -256,6 +268,114 @@ function assumptionOrigin(
   return found ? String(found.origin) : null;
 }
 
+const usd = (cents: number) =>
+  `$${(Math.round(cents) / 100).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+
+const iso = (d: Date | string | null | undefined): string | null =>
+  d == null ? null : d instanceof Date ? d.toISOString() : String(d);
+
+/** ISO date (UTC day) `days` after a YYYY-MM-DD date; null when unparseable. */
+function addDaysUtc(dateStr: string, days: number): string | null {
+  const ms = Date.parse(dateStr);
+  if (!Number.isFinite(ms)) return null;
+  return new Date(ms + days * 86_400_000).toISOString().slice(0, 10);
+}
+
+/** The recorded-facts + grading block, shared by the GET and the realized POST. */
+function realizedBlock(
+  r: typeof rehabs.$inferSelect,
+  inputs: {
+    rehabSpentCents: number;
+    rehabLineCount: number;
+    holdingEntriesTotalCents: number;
+    holdingEntryCount: number;
+    scenario: {
+      inputs: Record<string, unknown> | null;
+      metrics: Array<{ id: string; value: number | null }>;
+    } | null;
+  },
+) {
+  const sc = inputs.scenario;
+  const metric = (id: string): number | null =>
+    numberOrNull(sc?.metrics.find((m) => m.id === id)?.value);
+  // The forecast-side absolutes, built once: fed to gradeRealized AND returned.
+  const scenarioFacts = sc
+    ? {
+        arvCents: numberOrNull(sc.inputs?.["arvCents"]),
+        profitCents: metric("profit"),
+        roiRatio: metric("roi"),
+        holdMonths: numberOrNull(sc.inputs?.["holdMonths"]),
+      }
+    : null;
+  if (
+    r.realizedRecordedAt == null ||
+    r.realizedSalePriceCents == null ||
+    r.realizedSellingCostsCents == null ||
+    r.realizedClosingDate == null
+  ) {
+    return { facts: null, grading: null, scenario: scenarioFacts };
+  }
+  const facts = {
+    salePriceCents: Number(r.realizedSalePriceCents),
+    sellingCostsCents: Number(r.realizedSellingCostsCents),
+    closingDate: String(r.realizedClosingDate),
+  };
+  return {
+    facts: {
+      ...facts,
+      recordedBy: r.realizedRecordedBy ?? null,
+      recordedAt: iso(r.realizedRecordedAt),
+    },
+    grading: gradeRealized({
+      facts,
+      purchasePriceCents: r.purchasePriceCents ?? null,
+      rehabSpentCents: inputs.rehabSpentCents,
+      rehabLineCount: inputs.rehabLineCount,
+      holdingEntriesTotalCents: inputs.holdingEntriesTotalCents,
+      holdingEntryCount: inputs.holdingEntryCount,
+      startedAt: r.startedAt ? String(r.startedAt) : null,
+      scenario: scenarioFacts,
+    }),
+    scenario: scenarioFacts,
+  };
+}
+
+/** The latest flip_mao scenario row for a property (id, inputs, assumptions, metrics). */
+async function latestFlipScenario(orgId: number, propertyId: number) {
+  const [row] = await db
+    .select({
+      id: scenarios.id,
+      inputs: scenarios.inputs,
+      assumptions: scenarios.assumptions,
+      metrics: scenarios.metrics,
+    })
+    .from(scenarios)
+    .where(and(
+      eq(scenarios.organizationId, orgId),
+      eq(scenarios.subjectType, "property"),
+      eq(scenarios.subjectId, propertyId),
+      eq(scenarios.engineId, "flip_mao"),
+    ))
+    .orderBy(desc(scenarios.computedAt))
+    .limit(1);
+  return row ?? null;
+}
+
+function changeOrderLike(o: typeof rehabChangeOrders.$inferSelect): ChangeOrderLike {
+  return {
+    id: String(o.id),
+    lineItemId: String(o.lineItemId),
+    description: o.description,
+    amountCents: Number(o.amountCents),
+    scheduleImpactDays: o.scheduleImpactDays,
+    status: o.status,
+    decidedBy: o.decidedBy ?? null,
+    decidedAt: iso(o.decidedAt),
+    recordedBy: o.recordedBy,
+    createdAt: iso(o.createdAt) as string,
+  };
+}
+
 async function recomputeRehabSpend(orgId: number, rehabId: string) {
   const [agg] = await db.execute(sql`
     SELECT COALESCE(SUM(spent_cents), 0) AS spent
@@ -405,6 +525,14 @@ export function registerRehabRoutes(app: Express): void {
         .where(and(eq(rehabHoldingCostEntries.rehabId, r.id as string), eq(rehabHoldingCostEntries.organizationId, orgId)))
         .orderBy(asc(rehabHoldingCostEntries.entryDate), asc(rehabHoldingCostEntries.createdAt));
 
+      const changeOrderRows = await db
+        .select()
+        .from(rehabChangeOrders)
+        .where(and(eq(rehabChangeOrders.rehabId, r.id as string), eq(rehabChangeOrders.organizationId, orgId)))
+        .orderBy(asc(rehabChangeOrders.createdAt));
+      const ordersForMath = changeOrderRows.map(changeOrderLike);
+      const approvedByLine = approvedAmountByLine(ordersForMath);
+
       const baselinesForMath: BaselineLike[] = baselines.map((b) => ({
         id: String(b.id),
         supersedesId: b.supersedesId ? String(b.supersedesId) : null,
@@ -426,17 +554,7 @@ export function registerRehabRoutes(app: Express): void {
 
       // The latest flip_mao scenario for this rehab's property — the holding
       // assumption the operator's own underwriting used, with its provenance.
-      const [latestScenario] = await db
-        .select({ inputs: scenarios.inputs, assumptions: scenarios.assumptions })
-        .from(scenarios)
-        .where(and(
-          eq(scenarios.organizationId, orgId),
-          eq(scenarios.subjectType, "property"),
-          eq(scenarios.subjectId, r.propertyId),
-          eq(scenarios.engineId, "flip_mao"),
-        ))
-        .orderBy(desc(scenarios.computedAt))
-        .limit(1);
+      const latestScenario = await latestFlipScenario(orgId, r.propertyId);
 
       const scenarioBlock = latestScenario
         ? {
@@ -447,12 +565,57 @@ export function registerRehabRoutes(app: Express): void {
           }
         : null;
 
+      const changeOrderTotals = projectChangeOrderTotals(varianceLines, ordersForMath);
+      const approvedDays = approvedScheduleDays(ordersForMath);
+      const adjustedPlannedListingDate =
+        original?.plannedListingDate && approvedDays !== 0
+          ? addDaysUtc(original.plannedListingDate, approvedDays)
+          : null;
+
+      const exitDecisions = (await decisionsForSubject(orgId, "property", r.propertyId))
+        .filter((d) =>
+          d.body.strategyPackId === "fix_and_flip" &&
+          d.body.assumptions.some((a) => a.key === "exit_kind"))
+        .map((d) => {
+          const kindA = d.body.assumptions.find((a) => a.key === "exit_kind");
+          const priceA = d.body.assumptions.find((a) => a.key === "exit_expected_price_cents");
+          return {
+            id: d.id,
+            decidedAt: d.decidedAt.toISOString(),
+            kind: d.body.kind,
+            exitKind: kindA ? String(kindA.value) : null,
+            choice: d.body.choice,
+            rationale: d.body.rationale,
+            expectedPriceCents: priceA ? numberOrNull(priceA.value) : null,
+            reviewDueAt: iso(d.body.reviewDueAt),
+          };
+        });
+
+      const realized = realizedBlock(r, {
+        rehabSpentCents: totalSpent,
+        rehabLineCount: items.length,
+        holdingEntriesTotalCents: entriesTotalCents,
+        holdingEntryCount: holdingEntries.length,
+        scenario: latestScenario,
+      });
+
       return res.json({
         rehab: r,
         items,
         variance: {
-          lines: varianceLines.map(lineVariance),
-          project: projectVariance(varianceLines),
+          lines: varianceLines.map((l) => {
+            const approved = approvedByLine.get(l.id) ?? 0;
+            return {
+              ...lineVariance(l),
+              approvedChangeOrderCents: approved,
+              effectiveEstimateCents: effectiveEstimateCents(l.budgetCents, approved),
+            };
+          }),
+          project: {
+            ...projectVariance(varianceLines),
+            approvedChangeOrderCents: changeOrderTotals.approvedChangeOrderCents,
+            effectiveEstimateCents: changeOrderTotals.effectiveEstimateCents,
+          },
           flags: varianceFlags(varianceLines),
         },
         estimateLock: estimateLocked ? { locked: true, message: ESTIMATE_LOCK_MESSAGE } : { locked: false },
@@ -466,6 +629,8 @@ export function registerRehabRoutes(app: Express): void {
           schedule: {
             phases: phaseVariances(original, transitionsForMath),
             listingVarianceDays: listingVarianceDays(original, r.actualListingDate ?? null, transitionsForMath),
+            approvedChangeOrderDays: approvedDays,
+            adjustedPlannedListingDate,
           },
           holding: holdingComparison({
             scenario: scenarioBlock,
@@ -475,6 +640,9 @@ export function registerRehabRoutes(app: Express): void {
             meterAccruedCents: accruedHoldingCents,
           }),
         },
+        changeOrders: { orders: changeOrderRows, totals: changeOrderTotals },
+        exit: { decisions: exitDecisions },
+        realized,
         totals: {
           budgetCents: totalBudget,
           committedCents: totalCommitted,
@@ -916,6 +1084,275 @@ export function registerRehabRoutes(app: Express): void {
       }).returning();
 
       return res.json({ entry });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // ── Leg 4: change orders (decided once) ───────────────────────────────
+  const changeOrderSchema = z.object({
+    lineItemId: z.string().uuid(),
+    description: z.string().trim().min(1).max(500),
+    amountCents: z.number().int().refine((n) => n !== 0, {
+      message: "A change order of $0 adjusts nothing — price the change, or don't record it.",
+    }),
+    scheduleImpactDays: z.number().int().min(-730).max(3650).default(0),
+  });
+
+  app.post("/api/rehabs/:id/change-orders", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const parsed = changeOrderSchema.safeParse(req.body);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+
+      const [r] = await db.select({ id: rehabs.id }).from(rehabs)
+        .where(and(eq(rehabs.id, routeParam(req.params.id)), eq(rehabs.organizationId, orgId)));
+      if (!r) return Errors.notFound(res, "Rehab");
+
+      const [line] = await db.select({ id: rehabLineItems.id }).from(rehabLineItems)
+        .where(and(
+          eq(rehabLineItems.id, parsed.data.lineItemId),
+          eq(rehabLineItems.rehabId, r.id),
+          eq(rehabLineItems.organizationId, orgId),
+        ));
+      if (!line) return Errors.notFound(res, "Line item");
+
+      const [changeOrder] = await db.insert(rehabChangeOrders).values({
+        organizationId: orgId,
+        rehabId: r.id,
+        lineItemId: line.id,
+        description: parsed.data.description,
+        amountCents: parsed.data.amountCents,
+        scheduleImpactDays: parsed.data.scheduleImpactDays,
+        status: "proposed",
+        recordedBy: getUserId(req),
+      }).returning();
+
+      return res.json({ changeOrder });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  const decideSchema = z.object({ decision: z.enum(["approved", "rejected"]) });
+
+  app.post("/api/rehabs/:id/change-orders/:orderId/decide", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const parsed = decideSchema.safeParse(req.body);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+
+      const [r] = await db.select({ id: rehabs.id }).from(rehabs)
+        .where(and(eq(rehabs.id, routeParam(req.params.id)), eq(rehabs.organizationId, orgId)));
+      if (!r) return Errors.notFound(res, "Rehab");
+
+      const [order] = await db.select().from(rehabChangeOrders)
+        .where(and(
+          eq(rehabChangeOrders.id, routeParam(req.params.orderId)),
+          eq(rehabChangeOrders.rehabId, r.id),
+          eq(rehabChangeOrders.organizationId, orgId),
+        ));
+      if (!order) return Errors.notFound(res, "Change order");
+
+      const alreadyDecided = (o: { status: string; decidedBy: string | null; decidedAt: Date | null }) =>
+        Errors.badRequest(
+          res,
+          `This change order was already ${o.status}${o.decidedBy ? ` by ${o.decidedBy}` : ""}${o.decidedAt ? ` on ${o.decidedAt.toISOString()}` : ""}; a change order is decided once.`,
+        );
+      if (order.status !== "proposed") return alreadyDecided(order);
+
+      const [updated] = await db.update(rehabChangeOrders)
+        .set({ status: parsed.data.decision, decidedBy: getUserId(req), decidedAt: clock.now() })
+        .where(and(
+          eq(rehabChangeOrders.id, order.id),
+          eq(rehabChangeOrders.rehabId, r.id),
+          eq(rehabChangeOrders.organizationId, orgId),
+          eq(rehabChangeOrders.status, "proposed"),
+        ))
+        .returning();
+      if (!updated) {
+        // Lost the race: someone decided it between our read and our write.
+        const [now] = await db.select().from(rehabChangeOrders)
+          .where(and(eq(rehabChangeOrders.id, order.id), eq(rehabChangeOrders.organizationId, orgId)));
+        return now ? alreadyDecided(now) : Errors.notFound(res, "Change order");
+      }
+
+      return res.json({ changeOrder: updated });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // ── Leg 4: the exit decision (recorded through the decision store) ────
+  const exitDecisionSchema = z.object({
+    exitKind: z.enum(["sell", "hold", "wholesale"]),
+    expectedPriceCents: z.number().int().positive().nullable(),
+    rationale: z.string().trim().min(10).max(2000),
+    // Required-nullable, as the underwriting kit's reviewDueAt: a past date
+    // would be due the instant it was recorded.
+    reviewDueAt: z
+      .string()
+      .datetime()
+      .nullable()
+      .refine((d) => d === null || new Date(d).getTime() > clock.nowMs(), {
+        message: "A review date must be in the future.",
+      }),
+  });
+
+  const EXIT_STATUSES: readonly string[] = ["listed", "under_contract", "closed"];
+
+  app.post("/api/rehabs/:id/exit-decision", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const userId = getUserId(req);
+      const parsed = exitDecisionSchema.safeParse(req.body);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+      const body = parsed.data;
+
+      const [r] = await db.select().from(rehabs)
+        .where(and(eq(rehabs.id, routeParam(req.params.id)), eq(rehabs.organizationId, orgId)));
+      if (!r) return Errors.notFound(res, "Rehab");
+
+      if (!EXIT_STATUSES.includes(r.status)) {
+        return Errors.badRequest(
+          res,
+          `The exit decision is recorded at the operator's act from the listing onward; this project is "${r.status}".`,
+          { field: "status" },
+        );
+      }
+
+      const price = body.expectedPriceCents;
+      if ((body.exitKind === "sell" || body.exitKind === "wholesale") && price === null) {
+        return Errors.badRequest(
+          res,
+          `The asking/expected price as stated is part of the exit record for a ${body.exitKind}; state it, or choose hold.`,
+          { field: "expectedPriceCents" },
+        );
+      }
+
+      const kind = body.exitKind === "hold" ? "hold" : "dispose";
+      const choice =
+        body.exitKind === "sell"
+          ? `Sell — asking ${usd(price as number)}`
+          : body.exitKind === "wholesale"
+            ? `Wholesale — assign the contract, expected ${usd(price as number)}`
+            : `Hold as a rental${price !== null ? ` — expected value ${usd(price)}` : ""}`;
+
+      const assumptions: ScenarioAssumption[] = [
+        { key: "exit_kind", value: body.exitKind, origin: "user", basis: `The exit the operator chose for this project: ${body.exitKind}.` },
+        ...(price !== null
+          ? [{ key: "exit_expected_price_cents", value: price, unit: "cents", origin: "user" as const, basis: "The asking/expected price as stated by the operator." }]
+          : []),
+        { key: "exit_rehab_id", value: String(r.id), origin: "derived", basis: "The rehab project this exit was recorded on." },
+        { key: "exit_status_at_record", value: r.status, origin: "derived", basis: "The project's status when the exit was recorded." },
+      ];
+
+      const scenario = await latestFlipScenario(orgId, r.propertyId);
+      const scenarioIds = scenario ? [scenario.id] : [];
+
+      try {
+        const recorded = await recordDecision(
+          orgId,
+          {
+            subjectType: "property",
+            subjectId: r.propertyId,
+            kind,
+            choice,
+            rationale: body.rationale,
+            actorType: "user",
+            actorRef: userId,
+            authority: "org_member:flip_exit",
+            strategyPackId: "fix_and_flip",
+            strategyPackVersion: null,
+            assumptions,
+            alternatives: [],
+            reviewDueAt: body.reviewDueAt ? new Date(body.reviewDueAt) : null,
+          },
+          clock.now(),
+          scenarioIds,
+        );
+        return res.json({
+          decisionId: recorded.id,
+          kind,
+          exitKind: body.exitKind,
+          choice,
+          reviewDueAt: body.reviewDueAt ? new Date(body.reviewDueAt).toISOString() : null,
+          recordKind: "decision",
+        });
+      } catch (err) {
+        if (err instanceof UnavailableScenarioError) return Errors.badRequest(res, err.message);
+        return Errors.internal(res, err);
+      }
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // ── Leg 4: realized economics (written once, at close) ────────────────
+  const realizedSchema = z.object({
+    salePriceCents: z.number().int().min(0),
+    sellingCostsCents: z.number().int().min(0),
+    closingDate: dateOnly.refine((d) => Number.isFinite(Date.parse(d)) && new Date(d).toISOString().slice(0, 10) === d, {
+      message: "Expected a real calendar date (YYYY-MM-DD)",
+    }),
+  });
+
+  app.post("/api/rehabs/:id/realized", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const parsed = realizedSchema.safeParse(req.body);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+
+      const [r] = await db.select().from(rehabs)
+        .where(and(eq(rehabs.id, routeParam(req.params.id)), eq(rehabs.organizationId, orgId)));
+      if (!r) return Errors.notFound(res, "Rehab");
+
+      if (r.status !== "closed") {
+        return Errors.badRequest(
+          res,
+          `Realized economics are recorded at close, when the outcome is a fact; this project is "${r.status}".`,
+          { field: "status" },
+        );
+      }
+      if (r.realizedRecordedAt) {
+        return Errors.badRequest(
+          res,
+          `Realized economics were already recorded (sale price ${r.realizedSalePriceCents != null ? usd(Number(r.realizedSalePriceCents)) : "not stated"}, selling costs ${r.realizedSellingCostsCents != null ? usd(Number(r.realizedSellingCostsCents)) : "not stated"}, closing ${r.realizedClosingDate ?? "not stated"}, recorded ${iso(r.realizedRecordedAt)}); recorded facts are not edited.`,
+        );
+      }
+
+      const [updated] = await db.update(rehabs)
+        .set({
+          realizedSalePriceCents: parsed.data.salePriceCents,
+          realizedSellingCostsCents: parsed.data.sellingCostsCents,
+          realizedClosingDate: parsed.data.closingDate,
+          realizedRecordedBy: getUserId(req),
+          realizedRecordedAt: clock.now(),
+        })
+        .where(and(
+          eq(rehabs.id, r.id),
+          eq(rehabs.organizationId, orgId),
+          sql`${rehabs.realizedRecordedAt} IS NULL`,
+        ))
+        .returning();
+      if (!updated) {
+        return Errors.badRequest(res, "Realized economics were already recorded; recorded facts are not edited.");
+      }
+
+      const items = await db.select().from(rehabLineItems)
+        .where(and(eq(rehabLineItems.rehabId, r.id), eq(rehabLineItems.organizationId, orgId)));
+      const holding = await db.select().from(rehabHoldingCostEntries)
+        .where(and(eq(rehabHoldingCostEntries.rehabId, r.id), eq(rehabHoldingCostEntries.organizationId, orgId)));
+      const scenario = await latestFlipScenario(orgId, r.propertyId);
+
+      const realized = realizedBlock(updated, {
+        rehabSpentCents: items.reduce((sum, i) => sum + i.spentCents, 0),
+        rehabLineCount: items.length,
+        holdingEntriesTotalCents: holding.reduce((sum, e) => sum + (Number(e.amountCents) || 0), 0),
+        holdingEntryCount: holding.length,
+        scenario,
+      });
+      return res.json({ realized });
     } catch (err) {
       return Errors.internal(res, err);
     }
