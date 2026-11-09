@@ -9,9 +9,9 @@
     "**/*.test.ts",
     "**/*.spec.ts"
   ],
-  "baselineCount": 2632,
+  "baselineCount": 2630,
   "direction": "down",
-  "lastBumpNote": "2638 -> 2632 on 2026-11-07 (W2-TEAM): six `(x: any)` callbacks in the deleted analytics team-KPI route; measured with npm run lint:ratchets on the rebased tree (main 0abcce71 measured 2638).",
+  "lastBumpNote": "2638 -> 2630 on 2026-11-08: merge of origin/main (aec512f) into claude/w2-team (PR #494 conflict resolution). Disjoint reductions from the 2638 base: main went 2638 -> 2636 via PR #486 (W2-AGENT); this branch went 2638 -> 2632 on 2026-11-07 (W2-TEAM) with the six `(x: any)` callbacks in the deleted analytics team-KPI route. Measured 2630 on the merged tree with node scripts/ratchet.mjs --measure. PRIOR NOTE \u2014 2638 -> 2632 on 2026-11-07 (W2-TEAM): six `(x: any)` callbacks in the deleted analytics team-KPI route; measured with npm run lint:ratchets on the rebased tree (main 0abcce71 measured 2638).",
   "minima": {
     "files": 1100
   },

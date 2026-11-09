@@ -574,7 +574,7 @@ const SEEDS: PersonaSeed[] = [
 
   // ── BUY-AND-HOLD RENTALS (beta — promoted roadmap → beta in ruling #11
   //    wave V1; the dedicated Rentals module is live: rent roll, tenants,
-  //    leases, maintenance, investor analytics) × 1
+  //    leases, maintenance) × 1
   {
     slug: "rental-landlord",
     displayName: "Lena — buy-and-hold rentals",
@@ -586,7 +586,7 @@ const SEEDS: PersonaSeed[] = [
     goals: ["Open the rent roll", "Find tenants + leases", "File a maintenance ticket", "See rental vocabulary + project P&L on Finance"],
     expect: {
       financeHero: "projectPnl",
-      modulesVisible: ["/rent-roll", "/tenants", "/leases", "/maintenance", "/investor-analytics", "/deals", "/money"],
+      modulesVisible: ["/rent-roll", "/tenants", "/leases", "/maintenance", "/deals", "/money"],
       modulesHidden: ["/notes"],
       // "Rental" is entity.property (the Map door's Rental inventory strip);
       // the Deals door's landlord word is the terminal stage, "Leased".
