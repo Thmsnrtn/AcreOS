@@ -6,6 +6,7 @@ import { execSync } from "child_process";
 import { visualizer } from "rollup-plugin-visualizer";
 import viteCompression from "vite-plugin-compression";
 import type { Plugin } from "vite";
+import { rechartsSharedBabelHelpersPlugin } from "./script/vite-shared-babel-helpers";
 
 // Writes the client chunk graph Rollup actually produced — for every chunk:
 // its file, the source module it fronts (facade), the chunks it imports
@@ -130,6 +131,15 @@ export default defineConfig({
     // Belt-and-suspenders: ensure `import.meta.env.VITE_GIT_SHA` is
     // available even when Vite's loadEnv hasn't picked up the var.
     "import.meta.env.VITE_GIT_SHA": JSON.stringify(GIT_SHA),
+    // Sentry's ESM packages guard every internal debug-log statement with
+    // `__SENTRY_DEBUG__` (DEBUG_BUILD). Those statements only ever print when
+    // Sentry.init is passed `debug: true`, which client/src/lib/sentry.ts
+    // never does, so defining the flag false drops code that could not run.
+    // This is the same switch Sentry's own bundler plugin exposes as
+    // bundleSizeOptimizations.excludeDebugStatements.
+    // tests/unit/sentryDebugStatementsStripped.test.ts pins the pair: the
+    // define stays false only while no Sentry.init passes debug.
+    __SENTRY_DEBUG__: "false",
   },
   plugins: [
     react(),
@@ -158,6 +168,9 @@ export default defineConfig({
       deleteOriginFile: false,
       disable: false,
     }),
+    // recharts inlines the same Babel helpers into ~100 of its files; emit
+    // them once (byte-identical copies only — see the plugin's header).
+    rechartsSharedBabelHelpersPlugin(),
     // Bundle analyzer — only active in --analyze mode. Emits
     // `dist/bundle-stats.html` (treemap) so we can identify the
     // largest chunks. Run `ANALYZE=1 npm run build` then open the file.
