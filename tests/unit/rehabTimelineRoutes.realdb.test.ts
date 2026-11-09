@@ -139,7 +139,7 @@ describe.runIf(realDbAvailable)("rehab timeline routes — real database", () =>
   it("3. creating a rehab writes the log's creation record (from_status null)", async () => {
     const app = await appFor(orgA);
     const res = await request(app).post("/api/rehabs").send({ propertyId: propA2, name: "C" });
-    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
 
     const rows = await q<{ from_status: string | null; to_status: string }>(
       "SELECT from_status, to_status FROM rehab_status_transitions WHERE rehab_id = $1",
