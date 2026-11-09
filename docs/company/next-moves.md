@@ -25,6 +25,27 @@ what shipped, what it measured, and the top next moves. Newest first.
 | #488 | `claude/w4-note-merge-plan-pricing-engine` | W4.11 [DRAFT]: B10 note-model merge proposal + note pricing engine (recording stopped) | yes |
 | #489 | `claude/next-moves-ff-merged` | next-moves: Fix-and-Flip Legs 1–2, #466, #484, #458 merged; §9.3 routing recorded (docs only) | no |
 
+## 2026-11-05 — Notes V2 Leg 1: delinquency ladder — on `claude/notes-v2-leg1-delinquency-ladder` (PR #463, retargeted to main after #461 merged as `fd984d8`; open, unmerged)
+
+- **Built.** Stage entries (current / past due under 30 / 30 / 60 / 90+) are recorded by the aging sweep. They go on `note_events` as category `delinquency` (migration 0302 widens the CHECKs only, restates 0301, and adds no table) inside the status transaction.
+  - Default review is an operator act, recorded once and never derived (ruling 1).
+  - Plus the escalation evidence bundle, extend-and-pretend from recorded payments, the note-page panel, and buckets on the notes list.
+- **Proved.**
+  - The real sweep against a real DB hits the boundary days, is idempotent, and records no stage for unknown notes or terminal notes.
+  - The no-sends fence holds at the module boundary, both runtime spies and the static import scan.
+  - The default-review ruling and cross-tenant refusal hold.
+  - Four mutants are caught.
+  - Evidence: `docs/evidence/2026-11-05/notes-v2-leg1-delinquency-ladder.md`.
+- **Found on the way.**
+  - `GET /api/notes/:noteId/delinquency` is the originated book's route, so the ladder lives at `/delinquency-ladder`.
+  - The bundle is the first reader of `respa_outreach_events` (`tablesNoReader` 59 → 58).
+- **Bundle: 9,823 / 9,823 KB with zero headroom** after trimming both panels. The next client change anywhere fails CI until a trim makes room.
+- **Next.**
+  1. Muse audits #461, then this PR.
+  2. Retarget this PR to main after #461 merges; CI's bundle check runs only on PRs into main.
+  3. Staging proof per §10.
+  4. Muse confirms the 1–29 day stage, or folds it into current.
+
 ## 2026-11-05 — Notes V2 Leg 2: workout NPV comparison — on `claude/notes-v2-leg2-workout-npv` (off main `4b2044b`, PR #461, MERGED 2026-11-08)
 
 - **Built.** One pure engine (`shared/notes/workoutEngine.ts`, `workout-engine v1`). It compares six paths on one input snapshot:
