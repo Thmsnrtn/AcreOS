@@ -695,6 +695,14 @@ const DEBT: Record<string, ProposedSurface> = {
   "server/routes-leads.ts route:GET /api/leads": "lead_contact_read",
   "server/routes-leads.ts route:GET /api/leads/:id": "lead_contact_read",
   "server/routes-leads.ts route:GET /api/leads/:id/activities": "review",
+  // W3.9 click-to-call (2026-11-09). GET is the pre-dial verdict: it reads the
+  // lead to gate (consent, opt-out, quiet hours) and returns NO contact field.
+  // POST hands the lead's number to the org's OWN Twilio to dial it. Neither
+  // can be ledgered yet: PURPOSE_SURFACES has no code for an operator-placed
+  // call, and choosing one (and its purpose taxonomy) is an attorney-review
+  // decision, not a build one. Held here, flagged for Muse/Tom on PR #502.
+  "server/routes-leads.ts route:GET /api/leads/:id/call": "review",
+  "server/routes-leads.ts route:POST /api/leads/:id/call": "review",
   "server/routes-leads.ts route:GET /api/leads/:id/deal-state": "review",
   "server/routes-leads.ts route:GET /api/leads/:id/properties": "review",
   "server/routes-leads.ts route:GET /api/leads/aging": "review",
@@ -820,7 +828,10 @@ const DEBT: Record<string, ProposedSurface> = {
 /** DEBT may only shrink. Lower this in the same commit that removes an entry. */
 // 214 → 212 (2026-11-06, W2-TEAM): GET /api/analytics/team-kpi and
 // GET /api/analytics/team-leaderboard deleted — no client caller.
-const DEBT_BASELINE = 212;
+// 212 → 214 (2026-11-09, W3.9 #502): GET/POST /api/leads/:id/call held as
+// "review" pending a PURPOSE_SURFACES code for an operator-placed call
+// (attorney-review decision). Needs Muse/Tom sign-off — see the entries.
+const DEBT_BASELINE = 214;
 
 /**
  * Every file holding a dispatch switch (≥10 snake_case case labels, raw count)

@@ -26,6 +26,9 @@ export const ACTIVITY_EVENT_TYPES = {
   mail_delivered: { name: "Direct Mail Delivered", icon: "Package", color: "green" },
   call_made: { name: "Call Made", icon: "PhoneOutgoing", color: "blue" },
   call_received: { name: "Call Received", icon: "PhoneIncoming", color: "green" },
+  // Click-to-call (W3.9): a call a gate refused, or one that ended before the
+  // lead was dialled — never shown as "Call Made", because none was.
+  call_not_placed: { name: "Call Not Placed", icon: "PhoneOutgoing", color: "amber" },
   note_added: { name: "Note Added", icon: "StickyNote", color: "yellow" },
   stage_changed: { name: "Stage Changed", icon: "ArrowRightCircle", color: "purple" },
   payment_received: { name: "Payment Received", icon: "DollarSign", color: "green" },

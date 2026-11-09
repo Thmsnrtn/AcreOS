@@ -46,7 +46,10 @@ export type SimulatedCategory =
   // the repo: `createLandListingCampaign` POSTs a `daily_budget` to
   // graph.facebook.com against the PLATFORM ad account. It had no category and
   // therefore no kill-switch, so a dev, CI or staging boot could buy ads.
-  | "ads";
+  | "ads"
+  // Outbound phone calls (click-to-call on the org's own Twilio). A dev,
+  // CI or staging boot with SIMULATION_MODE=true must never ring a phone.
+  | "voice";
 
 /**
  * Bare process-env read of the global kill-switch. Tests should set
@@ -80,6 +83,7 @@ const GLOBAL_SIM_CATEGORIES: ReadonlySet<SimulatedCategory> = new Set([
   // Spend rails default to simulated. Ads is the one category where the
   // absence of a default would be paid for in real money per hour.
   "ads",
+  "voice",
 ]);
 
 /**

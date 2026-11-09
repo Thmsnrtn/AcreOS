@@ -132,6 +132,17 @@ const MUST_REACH_VERIFIER: Case[] = [
   },
   {
     method: "POST",
+    path: "/api/webhooks/twilio/call-status/:orgId/:leadId/:leg",
+    url: "/api/webhooks/twilio/call-status/1/1/lead",
+    // A well-formed lead-leg "completed" status with no X-Twilio-Signature:
+    // verifyOrgTwilioCallCallback refuses before it reads any org's identity.
+    send: (r) => r.type("form").send("AccountSid=ACx&CallSid=CAchild&ParentCallSid=CAx&CallStatus=completed&CallDuration=5"),
+    refusedByVerifier: (res, logs) =>
+      res.status === 401 && logs.some((l) => l.includes("[TwilioSignature] Call status callback missing X-Twilio-Signature header")),
+    why: "Twilio signature (the org's OWN token, named by :orgId) + AccountSid binding",
+  },
+  {
+    method: "POST",
     path: "/api/webhooks/lob",
     send: (r) => r.set("Content-Type", "application/json").send(JSON.stringify({ event_type: { id: "postcard.unknown_kind" }, reference_id: "psc_x" })),
     refusedByVerifier: (res, logs) => res.status === 401 && logs.some((l) => l.includes("[lob-webhook] rejected unverified post")),
@@ -229,8 +240,8 @@ const MUST_REACH_VERIFIER: Case[] = [
  */
 const KNOWN_SHADOWED = new Set<string>();
 
-/** The population floor: Twilio x3 + the six moved + the Meta lead-ads pair. */
-const POPULATION_FLOOR = 11;
+/** The population floor: Twilio x4 (incl. click-to-call status) + the six moved + the Meta lead-ads pair. */
+const POPULATION_FLOOR = 12;
 
 const isProviderCallbackPath = (p: string) => /^\/api\/webhooks\/./.test(p) || /\/webhook$/.test(p);
 /** A concrete path a route pattern matches, for asking a `use` layer whether it applies. */
