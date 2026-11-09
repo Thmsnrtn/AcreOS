@@ -1046,6 +1046,13 @@ export function registerDocSystemRoutes(app: Express): void {
         );
       }
 
+      // The document is resolved under the caller's organization BEFORE any
+      // write: a documentId that is not one of this org's documents is
+      // refused, and no signature row is written against it.
+      if (documentId && !(await storage.getGeneratedDocument(org.id, documentId))) {
+        return Errors.notFound(res, "Document");
+      }
+
       // R2: capture a SHA-256 hash of the document content at the moment
       // this signature is created. Combined with the immutability guard on
       // PUT /api/generated-documents/:id, this provides tamper-evidence:
