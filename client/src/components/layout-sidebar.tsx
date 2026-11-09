@@ -557,6 +557,7 @@ const NAV_MODULES: NavModule[] = [
     businessTypeOnly: ["residential_wholesaler"],
     children: [
       // 2026-05-11 — buyer-blasts is now a channel-tab inside /campaigns.
+      { label: "Buy box", icon: Target, href: "/wholesale/buy-box", description: "Your criteria, and your candidates scored against them" },
       { label: "Underwrite an offer", icon: Calculator, href: "/wholesale/underwrite", description: "Your ceiling, your buyer's, less your fee — record your call" },
       { label: "Buyer blasts", icon: Send, href: "/campaigns?channel=buyer-blasts", description: "One-click outreach to matched cash buyers" },
       { label: "Buyer analytics", icon: TrendingUp, href: "/buyer-analytics", description: "Per-blast funnel + freshness" },

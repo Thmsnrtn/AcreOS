@@ -84,6 +84,7 @@ import opportunitiesRouter from "./routes-opportunities";
 import scenariosRouter from "./routes-scenarios";
 import flipDecisionRouter from "./routes-flip-decision";
 import buyAndHoldUnderwritingRouter from "./routes-buy-and-hold-underwriting";
+import wholesaleBuyBoxRouter from "./routes-wholesale-buy-box";
 import wholesaleUnderwritingRouter from "./routes-wholesale-underwriting";
 import exchange1031Router from "./routes-exchange-1031";
 import dunningRouter from "./routes-dunning";
@@ -1471,6 +1472,8 @@ export async function registerRoutes(
   // Vertical underwriting desks (decision-memos/2026-10-04-vertical-program.md).
   app.use('/api/fix-and-flip', isAuthenticated, getOrCreateOrg, flipDecisionRouter);
   app.use('/api/buy-and-hold', isAuthenticated, getOrCreateOrg, buyAndHoldUnderwritingRouter);
+  // Wholesale Leg 2 — the operator's versioned buy box and candidate triage.
+  app.use('/api/wholesale', isAuthenticated, getOrCreateOrg, wholesaleBuyBoxRouter);
   app.use('/api/wholesale', isAuthenticated, getOrCreateOrg, wholesaleUnderwritingRouter);
   app.use('/api/exchange-1031', isAuthenticated, getOrCreateOrg, exchange1031Router);
   // FOUNDER-ONLY, and it was not. `client/src/App.tsx` gates the Dunning
