@@ -910,10 +910,35 @@ describe("rent roll — allocation, deposit clock and late-fee proposal", () => 
     window.history.pushState({}, "", "/rent-roll");
     installFetch(
       rentHandler(({ url, method }) => {
+        // W2-RENT: the dialog shows the SERVER's proposal (unit-count aware, net of
+        // fees already charged) instead of computing its own, and echoes it back.
+        if (url === `/api/rent-charges/${JULY_ID}/late-fee-proposal` && method === "GET") {
+          return {
+            body: {
+              proposal: {
+                status: "proposed",
+                proposedFeeCents: 7_000,
+                uncappedFeeCents: 7_000,
+                capCents: 7_000,
+                capped: false,
+                graceDays: 2,
+                daysLate: 10,
+                state: "TX",
+                citation: "Tex. Prop. Code §92.019",
+                unitBranch: "conservative_unknown",
+                explanation:
+                  "10 days late (2-day grace) → proposed fee $70.00. Rule: Tex. Prop. Code §92.019. Requires operator confirmation before it is charged.",
+                requiresOperatorConfirmation: true,
+              },
+              requiresOperatorConfirmation: true,
+            },
+          };
+        }
         if (url === `/api/rent-charges/${JULY_ID}/apply-late-fee` && method === "POST") {
           return {
             body: {
               feeCents: 7_000,
+              charged: true,
               explanation: "TX rule: cap 5%, 2d grace; 10d late → $70.00 fee.",
               rule: { state: "TX" },
               daysLate: 10,
@@ -927,8 +952,8 @@ describe("rent roll — allocation, deposit clock and late-fee proposal", () => 
     await mount(React.createElement(RentRollPage));
     await click(byTestId(`button-propose-fee-${JULY_ID}`));
 
-    // 10 days late, 2-day grace, 5% small-property cap on $1,400.00 rent. The
-    // unit count is unknown, so the LOWER cap branch is proposed: $70.00.
+    // The figure shown is the one the server proposes — read, not recomputed.
+    expect(calls.some((c) => c.url === `/api/rent-charges/${JULY_ID}/late-fee-proposal`)).toBe(true);
     expect(docTestId("text-proposed-fee")!.textContent).toBe("$70.00");
     expect(docTestId("text-fee-explanation")!.textContent).toContain("proposed fee $70.00");
     expect(docText()).toContain("Requires operator confirmation");
@@ -947,6 +972,8 @@ describe("rent roll — allocation, deposit clock and late-fee proposal", () => 
 
     const feePosts = calls.filter((c) => c.url.includes("apply-late-fee") && c.method === "POST");
     expect(feePosts).toHaveLength(1);
+    // The confirmation echoes the exact figure shown; the server refuses a moved one.
+    expect(feePosts[0].body).toEqual({ confirmFeeCents: 7_000 });
     expect(docTestId("late-fee-applied")!.textContent).toContain("$70.00 charged");
   });
 });
