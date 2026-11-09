@@ -341,7 +341,7 @@ describe.runIf(realDbAvailable)("Leg 3 activation gate — real database", () =>
       (e: unknown) => e as { refusals: Array<{ check: string }> },
     );
     expect(refusal).not.toBeNull();
-    expect(refusal!.refusals.map((x) => x.check)).toEqual(
+    expect(refusal!.refusals.map((x: { check: string }) => x.check)).toEqual(
       expect.arrayContaining([expect.stringMatching(/count_a4|rmlo_required/)]),
     );
     // The cure: a COMPLETE rmlo_engagement record for this note.
