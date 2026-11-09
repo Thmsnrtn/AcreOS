@@ -13,8 +13,9 @@
 // builder's own view of it.
 // ============================================================================
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { REPO_SWEEP_TIMEOUT_MS } from "../tests/helpers/sweepBudget";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -22,6 +23,8 @@ import {
   buildLearnContentIndex,
   LEARN_CONTENT_URL_PREFIX,
 } from "./learn-content-index.mjs";
+
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const CONTENT_DIR = path.join(ROOT, "content", "learn");
