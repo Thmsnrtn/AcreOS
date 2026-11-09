@@ -57,6 +57,7 @@ import {
   holdingComparison,
 } from "@shared/rehab/timeline";
 import type { BaselineLike, TransitionLike } from "@shared/rehab/timeline";
+import { isCalendarDate } from "@shared/dates/calendar";
 import { routeParam } from "./utils/routeParams";
 import { refuseRedeemableDeedSpend } from "./services/tax/landExit";
 import { patchSchemaOf } from "./utils/updatePayload";
@@ -205,7 +206,10 @@ const seedTemplateSchema = z.object({
 // either — an edit would rewrite the denominator variance is measured against.
 // ----------------------------------------------------------------------------
 
-const dateOnly = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected a YYYY-MM-DD date");
+const dateOnly = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "Expected a YYYY-MM-DD date")
+  .refine((v) => isCalendarDate(v), "Not a real calendar date");
 
 const phasePlanSchema = z.object({
   phase: z.enum(REHAB_STATUSES),
