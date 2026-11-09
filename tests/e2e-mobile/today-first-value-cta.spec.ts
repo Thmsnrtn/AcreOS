@@ -10,7 +10,8 @@
  *     real note-tape import (its file picker is on screen), not on a list
  *     page with a closed dialog;
  *   - once a note is on the book the CTA is gone;
- *   - a fresh land investor's Today is unchanged (no tape CTA).
+ *   - a fresh land investor is presented "Make your first offer" (opens the
+ *     blind-offer wizard) until a real offer exists; never the tape CTA.
  *
  * Each run is a brand-new tenant: the `e2e-persona-<slug>` session cookie
  * resolves to a stable, distinct user that auto-provisions its own org
@@ -25,6 +26,7 @@ import { test, expect, type Page } from "@playwright/test";
 import pg from "pg";
 
 const PINNED_CTA = "Import your first tape";
+const LAND_CTA = "Make your first offer";
 const CTA = '[data-testid="button-first-value-cta"]';
 
 async function freshTenant(page: Page, baseURL: string, slug: string) {
@@ -179,13 +181,52 @@ test.describe("Today's first-value call to action", () => {
     });
   }
 
-  test("fresh land investor — Today carries no tape CTA", async ({ page, baseURL }) => {
-    test.setTimeout(120_000);
+  test("fresh land investor → \"Make your first offer\" opens the blind-offer wizard; gone once an offer is on the book; no tape CTA", async ({
+    page,
+    baseURL,
+  }) => {
+    test.setTimeout(180_000);
     await freshTenant(page, baseURL!, `fv-land-${Date.now()}`);
     await onboard(page, "land_flipper");
     await page.goto("/today", { waitUntil: "domcontentloaded" });
+    const cta = page.locator(CTA);
+    await cta.waitFor({ state: "visible", timeout: 20_000 });
+    await page.evaluate(() => window.scrollTo(0, 0));
+    const box = await ctaBox(page);
+    expect(box?.text).toBe(LAND_CTA);
+    expect(box?.text, "a land investor is never offered the tape import").not.toBe(PINNED_CTA);
+    expect(box?.inViewport, `the CTA is on the first screen (${JSON.stringify(box)})`).toBe(true);
+
+    // In-app navigation. WebKit's page.url() can lag history.pushState, so
+    // assert the destination DOM first and read the location in-page.
+    await cta.click();
+    // The stepper's text label is `hidden md:block`, so key on the step
+    // button's aria-label, which is on screen at every width.
+    await expect(page.getByRole("button", { name: /Step 1 of 5: County selection \(current\)/ })).toBeVisible({
+      timeout: 20_000,
+    });
+    expect(await page.evaluate(() => location.pathname)).toBe("/blind-offer-wizard");
+
+    // Past first value: one real deal at offer_sent on a real parcel.
+    const orgId = await page.evaluate(async () => (await (await fetch("/api/organization")).json()).id as number);
+    const db = new pg.Client({ connectionString: process.env.DATABASE_URL });
+    await db.connect();
+    try {
+      const prop = await db.query(
+        `INSERT INTO properties (organization_id, apn, county, state, size_acres)
+         VALUES ($1, 'E2E-FIRST-OFFER-1', 'Travis', 'TX', '5') RETURNING id`,
+        [orgId],
+      );
+      await db.query(
+        `INSERT INTO deals (organization_id, property_id, type, status) VALUES ($1, $2, 'acquisition', 'offer_sent')`,
+        [orgId, prop.rows[0].id],
+      );
+    } finally {
+      await db.end();
+    }
+    await page.goto("/today", { waitUntil: "domcontentloaded" });
     await page.locator('[data-testid="text-today-title"]').waitFor({ state: "visible", timeout: 20_000 });
     await page.waitForTimeout(2_000);
-    await expect(page.locator(CTA)).toHaveCount(0);
+    await expect(page.locator(CTA), "a user who has made an offer is not presented the CTA").toHaveCount(0);
   });
 });

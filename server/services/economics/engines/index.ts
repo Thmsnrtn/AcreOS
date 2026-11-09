@@ -28,6 +28,7 @@ import { flipMaoEngine } from "./flipMao";
 import { rentalReturnsEngine } from "./rentalReturns";
 import { multifamilyNoiEngine } from "./multifamilyNoi";
 import { rentalAcquisitionEngine } from "./rentalAcquisition";
+import { wholesaleMaoEngine } from "./wholesaleMao";
 import { subdivisionFeasibilityEngine } from "./subdivisionFeasibility";
 import { notePricingEngine } from "./notePricing";
 
@@ -38,6 +39,7 @@ export const ALL_ENGINES: readonly EngineSpec[] = [
   rentalReturnsEngine,
   multifamilyNoiEngine,
   rentalAcquisitionEngine,
+  wholesaleMaoEngine,
   subdivisionFeasibilityEngine,
   notePricingEngine,
 ];
