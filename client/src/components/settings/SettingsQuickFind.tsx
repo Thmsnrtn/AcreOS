@@ -4,6 +4,7 @@ import { useLocation } from "wouter";
 import { PAX_CONTROLS_PATH, PAX_SETTINGS_COPY } from "@shared/pax-glossary";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { LEAD_ROUTING_PATH } from "@/lib/lead-routing";
 
 /**
  * SettingsQuickFind — a single search input that maps the user's intent to
@@ -39,6 +40,7 @@ const CATALOG: SettingsEntry[] = [
   { label: "Active sessions", description: "Revoke other browser sessions", tab: "security", keywords: "sessions devices logout revoke browser" },
   { label: "Password", description: "Change account password", tab: "security", keywords: "password change reset login" },
   { label: "Team members", description: "Invite + role + view-only", tab: "organization", keywords: "team members invite role admin user seat" },
+  { label: "Lead routing", description: "Who gets a lead added from the Leads list", tab: "organization", keywords: "lead routing assignment assign rules round robin take turns territory location distribute va rep teammate", href: LEAD_ROUTING_PATH },
   { label: "Co-owners", description: "Org co-owner / shared workspace", tab: "organization", keywords: "co-owner co owner shared organization owner ownership" },
   { label: "Org goals", description: "Set revenue / lead targets", tab: "organization", keywords: "goals revenue targets lead deal metrics okr" },
   { label: "Org profile", description: "Company name, branding", tab: "organization", keywords: "company organization brand logo name" },
