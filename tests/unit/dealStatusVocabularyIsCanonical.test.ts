@@ -29,6 +29,7 @@
  * idempotent: true — pure source reads, no DB.
  */
 
+import { OFFER_MADE_DEAL_STATUSES } from "../../shared/growth/firstOffer";
 import { describe, expect, it, vi } from "vitest";
 import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
 import fs from "node:fs";
@@ -87,6 +88,7 @@ const CANONICAL_PROJECTIONS: Record<string, readonly string[]> = {
   ADMINISTRATIVE_DEAL_STATUSES,
   CLOSED_DEAL_STATUSES,
   RESOLVED_DEAL_STATUSES,
+  OFFER_MADE_DEAL_STATUSES, // shared/growth/firstOffer.ts, derived from ALL_FUNNEL_DEAL_STATUSES
 };
 
 const ROOT = path.resolve(__dirname, "../..");

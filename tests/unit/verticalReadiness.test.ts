@@ -116,7 +116,10 @@ const evidence: VerticalEvidence = measured;
 // 12 → 11 on 2026-11-03: buy-and-hold's decision desk re-mounted on main
 // (server/routes-buy-and-hold-underwriting.ts), so its measured evidence
 // reaches `decided`.
-const MATURITY_OVERCLAIM_BASELINE = 11;
+// 11 → 10 on 2026-11-05: the wholesale decision desk mounted
+// (server/routes-wholesale-underwriting.ts, engine wholesale_mao), so
+// residential_wholesaler's measured evidence reaches `decided`.
+const MATURITY_OVERCLAIM_BASELINE = 10;
 
 /**
  * HELD PENDING JOURNEY PROOF (founder decision 2026-11-05, Option B —
@@ -148,8 +151,21 @@ const MATURITY_OVERCLAIM_BASELINE = 11;
  * agreement) hold with no exemption at all. A future hold therefore needs a new
  * founder decision AND a deliberate re-wiring of the exemption — it cannot come
  * back by adding a line here.
+ *
+ * RE-WIRED 2026-11-07 for residential_wholesaler, as the paragraph above
+ * requires: a founder decision (docs/company/founder-decisions-2026-11-05-wholesale.md,
+ * confirmed by the coordinator) AND the exemption visibly restored at the three
+ * OD-5 sites below (`isHeld`). The wholesale package's Leg 5 staging walk is
+ * the proof that ends it, in its own lift PR — the same path buy_and_hold took.
  */
-const HELD_PENDING_JOURNEY_PROOF: Partial<Record<BusinessTypeId, { heldSince: string; reviewBy: string; decision: string }>> = {};
+const HELD_PENDING_JOURNEY_PROOF: Partial<Record<BusinessTypeId, { heldSince: string; reviewBy: string; decision: string }>> = {
+  residential_wholesaler: {
+    heldSince: "2026-11-05",
+    reviewBy: "2026-12-31",
+    decision: "docs/company/founder-decisions-2026-11-05-wholesale.md",
+  },
+};
+const isHeld = (id: string) => id in HELD_PENDING_JOURNEY_PROOF;
 
 describe("the evidence scan is real (vacuity guards, first)", () => {
   it("found the workflow templates the engine defines", () => {
@@ -440,7 +456,9 @@ describe("no PUBLIC claim outruns the evidence (OD-5)", () => {
     // pointing the other way.
     const stale = Object.keys(PUBLIC_CLAIM_DEMOTIONS).filter((id) => {
       const meta = BUSINESS_TYPES[id as BusinessTypeId];
-      return readinessOf(meta, evidence) === "decided";
+      // A vertical held pending its journey proof keeps its demotion on
+      // purpose; the held-register block below holds it to its own rules.
+      return readinessOf(meta, evidence) === "decided" && !isHeld(id);
     });
     expect(
       stale,
@@ -455,7 +473,7 @@ describe("no PUBLIC claim outruns the evidence (OD-5)", () => {
     // neither a vertical missing (an overclaim) nor an extra one (an
     // understatement) can pass.
     const cannotShowCore = BUSINESS_TYPE_IDS.filter(
-      (id) => readinessOf(BUSINESS_TYPES[id], evidence) !== "decided",
+      (id) => readinessOf(BUSINESS_TYPES[id], evidence) !== "decided" || isHeld(id),
     ).sort();
     expect(Object.keys(PUBLIC_CLAIM_DEMOTIONS).sort()).toEqual(cannotShowCore);
   });
@@ -476,7 +494,8 @@ describe("the Evidence Ladder states the same vertical truth (one rule, not two)
 
   it("a ladder entry claims the loop exactly when the measurement says `decided`", () => {
     const disagree = BUSINESS_TYPE_IDS.filter(
-      (id) => /closes the canonical loop/.test(entry(id)?.claim ?? "") !== decided(id),
+      // A held vertical's ladder waits for the journey proof, like its claim.
+      (id) => /closes the canonical loop/.test(entry(id)?.claim ?? "") !== (decided(id) && !isHeld(id)),
     ).map((id) => `${id}: ladder "${entry(id)?.claim}", measured ${readinessOf(BUSINESS_TYPES[id], evidence)}`);
     expect(disagree).toEqual([]);
   });
@@ -498,14 +517,42 @@ describe("the Evidence Ladder states the same vertical truth (one rule, not two)
   });
 });
 
-describe("held pending journey proof — the register is empty since the 2026-11-05 lift", () => {
+describe("held pending journey proof — code-decided, claim still beta, and dated", () => {
   const entry = (id: string) => CAPABILITIES.find((c) => c.id === `vertical.${id}`);
+  const held = Object.entries(HELD_PENDING_JOURNEY_PROOF) as Array<[BusinessTypeId, { heldSince: string; reviewBy: string; decision: string }]>;
 
-  it("the register is pinned empty — a new hold is a new founder decision", () => {
-    // buy_and_hold's hold ended on 2026-11-05. Nothing above consults this
-    // register any more, so an entry here would exempt nothing; adding one
-    // fails here first, and reinstating the exemption is a visible code change.
-    expect(Object.keys(HELD_PENDING_JOURNEY_PROOF)).toEqual([]);
+  it("the register is exactly the founder-decided set", () => {
+    // Adding a vertical here bypasses OD-5 for it. That is a founder decision,
+    // so the set is pinned and widening it fails until this line is changed.
+    // buy_and_hold left it on 2026-11-05 (lifted); residential_wholesaler
+    // joined under its own decision file.
+    expect(held.map(([id]) => id)).toEqual(["residential_wholesaler"]);
+  });
+
+  it.each(held)("%s measures `decided` — a hold over an unclosed vertical is stale", (id) => {
+    expect(BUSINESS_TYPE_IDS).toContain(id);
+    expect(readinessOf(BUSINESS_TYPES[id], evidence)).toBe("decided");
+  });
+
+  it.each(held)("%s keeps its public demotion at `beta` — lifting it ends the hold", (id) => {
+    expect(PUBLIC_CLAIM_DEMOTIONS[id]?.to).toBe("beta");
+  });
+
+  it.each(held)("%s's ladder entry does not claim the loop until the journey proof", (id) => {
+    expect(entry(id), `no ladder entry for ${id}`).toBeDefined();
+    expect(entry(id)!.claim).not.toMatch(/closes the canonical loop/);
+  });
+
+  it.each(held)("%s is dated, cites its decision, and has not expired", (id, h) => {
+    expect(h.heldSince).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(h.reviewBy).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(h.reviewBy > h.heldSince).toBe(true);
+    expect(fs.existsSync(path.resolve(__dirname, "../..", h.decision)), h.decision).toBe(true);
+    expect(
+      Date.now() < Date.parse(`${h.reviewBy}T23:59:59Z`),
+      `${id}'s hold expired on ${h.reviewBy}. Run the journey proof and lift the claim on the Atlas row, ` +
+        "or have the founder re-date the hold — do not move the date to get green.",
+    ).toBe(true);
   });
 
   it("buy_and_hold is released: measured `decided`, no public demotion, and the ladder claims the loop", () => {
