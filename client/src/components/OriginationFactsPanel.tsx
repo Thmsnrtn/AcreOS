@@ -195,11 +195,6 @@ export function OriginationFactsPanel({ noteId }: { noteId: number }) {
     setSeededFor(seedKey);
   }
 
-  const invalidate = () => {
-    void queryClient.invalidateQueries({ queryKey: countKey });
-    void queryClient.invalidateQueries({ queryKey: recordsKey });
-  };
-
   const factsMutation = useMutation({
     mutationFn: () =>
       postJson<{ record: OriginationRecord }>(`/api/notes/${noteId}/origination-facts`, {
@@ -220,7 +215,8 @@ export function OriginationFactsPanel({ noteId }: { noteId: number }) {
       }),
     onSuccess: () => {
       toast({ title: "Origination facts recorded" });
-      invalidate();
+      void queryClient.invalidateQueries({ queryKey: countKey });
+      void queryClient.invalidateQueries({ queryKey: recordsKey });
     },
     onError: (err: Error) => {
       toast({ title: "Couldn't record origination facts", description: err.message, variant: "destructive" });
@@ -246,7 +242,8 @@ export function OriginationFactsPanel({ noteId }: { noteId: number }) {
     onSuccess: (data) => {
       setRmloOutcome({ complete: data.complete, statement: data.completenessStatement });
       toast({ title: "RMLO engagement recorded" });
-      invalidate();
+      void queryClient.invalidateQueries({ queryKey: countKey });
+      void queryClient.invalidateQueries({ queryKey: recordsKey });
     },
     onError: (err: Error) => {
       toast({ title: "Couldn't record RMLO engagement", description: err.message, variant: "destructive" });
