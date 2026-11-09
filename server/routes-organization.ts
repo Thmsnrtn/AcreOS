@@ -18,9 +18,7 @@ import { getUserPermissionContext, resolveViewOnlyAssignedLeads, ROLES, type Use
 import {
   getCommissionConfig,
   saveCommissionConfig,
-  getCommissionRecords,
   getAgentCommissionSummaries,
-  recordDealCommission,
   recordCommissionPayment,
   generateCommissionStatement,
   getSplitConfigSummary,
@@ -2131,11 +2129,13 @@ export function registerOrganizationRoutes(app: Express): void {
   // Commission Tracking (T54)
   // -----------------------------------------------------------------------
 
-  // GET /api/commissions/config — get tier configuration
+  // GET /api/commissions/config — the org's saved tier configuration.
+  // `configured` is false and `config` null when no rates are saved: no
+  // default schedule is ever served as if it were the org's own.
   api.get("/api/commissions/config", isAuthenticated, getOrCreateOrg, requireAdminOrAbove(), async (req, res) => {
     try {
       const config = await getCommissionConfig(req.organization.id);
-      res.json(config);
+      res.json({ configured: config !== null, config });
     } catch (err: any) {
       Errors.internal(res, err);
     }
@@ -2254,50 +2254,13 @@ export function registerOrganizationRoutes(app: Express): void {
     }
   });
 
-  // GET /api/commissions — list records, optional filters
-  api.get("/api/commissions", isAuthenticated, getOrCreateOrg, requireAdminOrAbove(), async (req, res) => {
-    try {
-      const { teamMemberId, dealId, status, fromDate, toDate } = req.query;
-      const records = await getCommissionRecords(req.organization.id, {
-        teamMemberId: teamMemberId ? parseInt(teamMemberId as string) : undefined,
-        dealId: dealId ? parseInt(dealId as string) : undefined,
-        status: status as any,
-        fromDate: fromDate ? new Date(fromDate as string) : undefined,
-        toDate: toDate ? new Date(toDate as string) : undefined,
-      });
-      res.json(records);
-    } catch (err: any) {
-      Errors.internal(res, err);
-    }
-  });
-
-  // POST /api/commissions — manually record a commission
-  const recordCommissionSchema = z.object({
-    teamMemberId: z.number().int().positive(),
-    dealId: z.number().int().positive(),
-    salePriceCents: z.number().int().positive(),
-    closedAt: z.string().optional(),
-  });
-
-  api.post("/api/commissions", isAuthenticated, getOrCreateOrg, requireAdminOrAbove(), async (req, res) => {
-    try {
-      const parsed = recordCommissionSchema.safeParse(req.body);
-      if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.issues);
-      }
-      const { teamMemberId, dealId, salePriceCents, closedAt } = parsed.data;
-      const record = await recordDealCommission(
-        req.organization.id,
-        teamMemberId,
-        dealId,
-        salePriceCents,
-        closedAt ? new Date(closedAt) : undefined
-      );
-      res.status(201).json(record);
-    } catch (err: any) {
-      Errors.internal(res, err);
-    }
-  });
+  // GET /api/commissions (filtered record list) and POST /api/commissions
+  // (manual record) were deleted in W2-AGENT (2026-11-06): no client, tool or
+  // job ever called either. The list duplicated the records every summary
+  // already carries; the manual record booked a commission at a built-in
+  // default rate when the org had saved none, and took deal and team-member
+  // ids it never checked. Commissions are recorded only by the deal-close seam
+  // (routes-deals.ts), and only once the org's own rates are saved.
 
   // POST /api/commissions/:id/pay — record a payment against a commission
   const commissionPaymentSchema = z.object({

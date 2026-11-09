@@ -70,7 +70,6 @@ import type { LateFeeRule, RentalUnitStatus } from "@shared/schema";
 import {
   computeStrMetrics,
   windowNights,
-  computeNightlyRateExpectation,
   type StrReservationInput,
 } from "@shared/rental/strMetrics";
 import {
@@ -82,6 +81,7 @@ import {
 import {
   parseLateFeeRuleRow,
   proposeLateFee,
+  netOfLateFeesAlreadyCharged,
   type LateFeeProposal,
   type LateFeeRuleData,
 } from "@shared/rental/lateFeeProposal";
@@ -397,7 +397,9 @@ const utilityBillbackSchema = z
 // `channel` is a recorded LABEL, not a live OTA sync. There is no
 // market/dynamic suggested nightly rate (residential-comps hard-stop + no
 // vendor). Cents fields are nullable — an unrecorded amount stays unset, never
-// a fabricated 0.
+// a fabricated 0. The writers no longer take a per-stay "set nightly rate": its
+// only reader, the pricing route, was deleted 2026-11-06 (W2-STR; see the STR
+// route block below), so the column is left unwritten rather than fed.
 const reservationChannelEnum = z.enum(RESERVATION_CHANNELS);
 const reservationStatusEnum = z.enum(RESERVATION_STATUSES);
 const strCentsField = z.coerce.number().int().min(0).nullable().optional();
@@ -414,10 +416,6 @@ const reservationRecordSchema = z.object({
   cleaningFeeCents: strCentsField,
   taxesCents: strCentsField,
   payoutCents: strCentsField,
-  // The operator's OWN set nightly rate (STR Wave B) — recorded, never a
-  // market/suggested rate. Nullable: an unset rate makes the pricing helper
-  // refuse (null), never a back-filled comp.
-  nightlyRateCents: strCentsField,
   status: reservationStatusEnum.optional(),
   notes: z.string().max(2000).nullable().optional(),
 });
@@ -442,8 +440,6 @@ const reservationImportRowSchema = z.object({
   cleaningFeeCents: strCentsField,
   taxesCents: strCentsField,
   payoutCents: strCentsField,
-  /** The operator's OWN set nightly rate (STR Wave B) — recorded, nullable. */
-  nightlyRateCents: strCentsField,
 });
 
 const reservationImportSchema = z.object({
@@ -885,6 +881,22 @@ export function proposeLateFeeForUnitCount(args: {
   return stamp(exact);
 }
 
+/**
+ * The CHARGEABLE proposal for one charge: the unit-aware total the rule allows,
+ * net of the late fees already on that charge. Every proposal this file serves
+ * or charges goes through here — the per-charge read, the org-wide queue and
+ * the apply — so a second confirmation can never stack past the cap.
+ * `lateFeeAlreadyChargedCents` is required so no caller can forget it.
+ */
+function chargeableLateFeeProposal(
+  args: Parameters<typeof proposeLateFeeForUnitCount>[0] & { lateFeeAlreadyChargedCents: number },
+): UnitAwareLateFeeProposal {
+  return netOfLateFeesAlreadyCharged(
+    proposeLateFeeForUnitCount(args),
+    args.lateFeeAlreadyChargedCents,
+  );
+}
+
 /** The seeded rule for a state, or null when the jurisdiction is not encoded. */
 async function lateFeeRuleForState(state: string): Promise<LateFeeRule | null> {
   const [rule] = await db
@@ -897,20 +909,21 @@ async function lateFeeRuleForState(state: string): Promise<LateFeeRule | null> {
 /** Propose (never charge) a late fee for one overdue charge. */
 async function proposalForCharge(args: {
   organizationId: number;
-  charge: Pick<typeof rentCharges.$inferSelect, "id" | "dueDate">;
+  charge: Pick<typeof rentCharges.$inferSelect, "id" | "dueDate" | "lateFeeCents">;
   lease: Pick<typeof rentalLeases.$inferSelect, "id" | "propertyId" | "monthlyRentCents" | "state">;
   asOf: Date;
 }): Promise<{ proposal: UnitAwareLateFeeProposal; rule: LateFeeRule | null; daysLate: number }> {
   const rule = await lateFeeRuleForState(args.lease.state);
   const units = await unitCountForProperty(args.organizationId, args.lease.propertyId);
   const daysLate = daysOverdue(String(args.charge.dueDate), args.asOf) ?? 0;
-  const proposal = proposeLateFeeForUnitCount({
+  const proposal = chargeableLateFeeProposal({
     rule: rule ? parseLateFeeRuleRow(rule) : null,
     monthlyRentCents: args.lease.monthlyRentCents,
     daysLate,
     units,
     state: args.lease.state,
     leaseDerivedFloor: units.leaseDerivedFloor,
+    lateFeeAlreadyChargedCents: args.charge.lateFeeCents,
   });
   return { proposal, rule, daysLate };
 }
@@ -1383,7 +1396,7 @@ export function registerRentLedgerRoutes(app: Express): void {
         }
         const rule = rulesByState.get(stateKey) ?? null;
         const daysLate = daysOverdue(String(charge.dueDate), asOf) ?? 0;
-        const proposal = proposeLateFeeForUnitCount({
+        const proposal = chargeableLateFeeProposal({
           rule: rule ? parseLateFeeRuleRow(rule) : null,
           monthlyRentCents: lease.monthlyRentCents,
           daysLate,
@@ -1394,6 +1407,7 @@ export function registerRentLedgerRoutes(app: Express): void {
             ?? { count: 1, basis: "lease_derived_floor" as const },
           leaseDerivedFloor: unitsByProperty.get(lease.propertyId)?.leaseDerivedFloor,
           state: lease.state,
+          lateFeeAlreadyChargedCents: charge.lateFeeCents,
         });
         proposals.push({
           rentChargeId: charge.id,
@@ -2990,15 +3004,28 @@ export function registerRentLedgerRoutes(app: Express): void {
   //   GET   /api/properties/:propertyId/str-metrics          — occupancy / ADR / RevPAR (engine call site)
   //   PATCH /api/reservations/:id/status                     — status transition; fires reservation.checkout
   //   GET   /api/reservations/:id/pnl                        — per-stay P&L (Wave B; refuse-not-fabricate)
-  //   GET   /api/reservations/:id/pricing                    — operator-set nightly-rate expectation (Wave B)
   //   POST  /api/properties/:propertyId/turnovers/generate   — create a cleaning ticket per checkout (Wave B, idempotent)
   //   GET   /api/properties/:propertyId/turnovers            — list a property's turnover tasks (Wave B)
   //
+  // REACHED (W2-STR, 2026-11-06): the Bookings tab on /leases
+  // (client/src/components/rentals/bookings-panel.tsx) calls the record writer,
+  // the list, the metrics, the status transition and the per-stay P&L. The
+  // importer and the two turnover routes still have no screen — held for a
+  // product decision, not deleted (see the W2-STR report).
+  //
+  // DELETED 2026-11-06 (W2-STR): GET /api/reservations/:id/pricing, the
+  // "operator-set nightly-rate expectation". Its variance compared rate × nights
+  // with the GROSS booking, and the gross carries the pass-through cleaning fee
+  // and taxes — so a stay booked exactly at the operator's rate read as booked
+  // ABOVE it. The achieved nightly rate is the ADR the Bookings tab already
+  // shows. reservations.nightly_rate_cents stays in the schema (no migrations
+  // this wave) with no writer and no reader.
+  //
   // RECORD-ONLY (be the rail, not the provider): nothing here moves money — the
-  // per-stay P&L TOTALS recorded facts and a nightly rate is the operator's OWN
-  // recorded figure. NO OTA vendor API and NO market/dynamic suggested nightly
-  // rate — every number comes ONLY from the operator's own recorded amounts, and
-  // a missing input REFUSES (null / unavailable line) rather than fabricating.
+  // per-stay P&L TOTALS recorded facts. NO OTA vendor API and NO market/dynamic
+  // suggested nightly rate — every number comes ONLY from the operator's own
+  // recorded amounts, and a missing input REFUSES (null / unavailable line)
+  // rather than fabricating.
   // ══════════════════════════════════════════════════════════════════════════
 
   // ── Record a reservation (writer) ─────────────────────────────────────────
@@ -3028,13 +3055,39 @@ export function registerRentLedgerRoutes(app: Express): void {
         if (!unit) return Errors.badRequest(res, "unitId does not belong to this property");
       }
 
+      // Same-stay guard — the importer's natural key (property + dates +
+      // channel + guest). The unique index below cannot see a stay recorded
+      // with no unit or no channel (NULLs are distinct in it), which is how the
+      // Bookings form records one, so without this a re-entered stay would be
+      // counted twice in every occupancy and revenue figure. A CANCELLED stay
+      // does not block: there is no edit route, so cancelling a mis-entered
+      // stay and recording it again is how an operator corrects one.
+      const guestName = parsed.data.guestName?.trim() || null;
+      const channel = parsed.data.channel ?? null;
+      const [sameStay] = await db.select({ id: reservations.id }).from(reservations)
+        .where(and(
+          eq(reservations.organizationId, orgId),
+          eq(reservations.propertyId, propId),
+          eq(reservations.checkIn, parsed.data.checkIn),
+          eq(reservations.checkOut, parsed.data.checkOut),
+          channel == null ? isNull(reservations.channel) : eq(reservations.channel, channel),
+          guestName == null ? isNull(reservations.guestName) : eq(reservations.guestName, guestName),
+          inArray(reservations.status, RESERVATION_STATUSES.filter((s) => s !== "cancelled")),
+        ));
+      if (sameStay) {
+        return Errors.badRequest(
+          res,
+          "This stay is already recorded on this property (same dates, channel and guest). To correct it, mark it cancelled and record it again.",
+        );
+      }
+
       const nights = windowNights(parsed.data.checkIn, parsed.data.checkOut);
       const [saved] = await db.insert(reservations).values({
         organizationId: orgId,
         propertyId: propId,
         unitId: parsed.data.unitId ?? null,
-        guestName: parsed.data.guestName ?? null,
-        channel: parsed.data.channel ?? null,
+        guestName,
+        channel,
         checkIn: parsed.data.checkIn,
         checkOut: parsed.data.checkOut,
         nights: nights ?? null,
@@ -3043,7 +3096,6 @@ export function registerRentLedgerRoutes(app: Express): void {
         cleaningFeeCents: parsed.data.cleaningFeeCents ?? null,
         taxesCents: parsed.data.taxesCents ?? null,
         payoutCents: parsed.data.payoutCents ?? null,
-        nightlyRateCents: parsed.data.nightlyRateCents ?? null,
         status: parsed.data.status ?? "booked",
         notes: parsed.data.notes ?? null,
       })
@@ -3171,7 +3223,6 @@ export function registerRentLedgerRoutes(app: Express): void {
             cleaningFeeCents: row.cleaningFeeCents ?? null,
             taxesCents: row.taxesCents ?? null,
             payoutCents: row.payoutCents ?? null,
-            nightlyRateCents: row.nightlyRateCents ?? null,
             status: "booked",
             notes: "Imported from operator's channel CSV export.",
           })
@@ -3353,17 +3404,23 @@ export function registerRentLedgerRoutes(app: Express): void {
           eq(propertyExpenses.propertyId, reservation.propertyId),
         ));
 
-      const stayNights =
-        stayNightsBetween(String(reservation.checkIn), String(reservation.checkOut)) ?? 0;
-      const allocation = allocateStayOperatingExpense({
-        expenseRows: expenseRows.map((r) => ({
-          category: r.category,
-          amountCents: Number(r.amountCents),
-          isOperating: r.isOperating,
-          incurredOn: String(r.incurredOn),
-        })),
-        stayNights,
-      });
+      // A stay whose nights cannot be derived carries NO operating-expense share:
+      // the allocation is refused (null) — and the net with it — rather than
+      // computed over a substituted 0 nights, which would read as a recorded $0
+      // of overhead and overstate the stay's margin. The writers refuse a
+      // check-out on or before the check-in, so this guards a row no screen makes.
+      const stayNights = stayNightsBetween(String(reservation.checkIn), String(reservation.checkOut));
+      const allocation = stayNights == null
+        ? null
+        : allocateStayOperatingExpense({
+          expenseRows: expenseRows.map((r) => ({
+            category: r.category,
+            amountCents: Number(r.amountCents),
+            isOperating: r.isOperating,
+            incurredOn: String(r.incurredOn),
+          })),
+          stayNights,
+        });
 
       const pnlReservation: StayPnlReservationInput = {
         grossBookingCents: reservation.grossBookingCents ?? null,
@@ -3373,35 +3430,10 @@ export function registerRentLedgerRoutes(app: Express): void {
       };
       const pnl = computeStayPnl({
         reservation: pnlReservation,
-        allocatedOperatingExpenseCents: allocation.allocatedOperatingExpenseCents,
+        allocatedOperatingExpenseCents: allocation?.allocatedOperatingExpenseCents ?? null,
       });
 
       return res.json({ reservationId: reservation.id, stayNights, pnl, allocation });
-    } catch (err) {
-      return Errors.internal(res, err);
-    }
-  });
-
-  // ── Operator-set nightly-rate expectation (reader, STR Wave B) ─────────────
-  // expectedRevenue = the operator's OWN set nightly rate × the stay's nights,
-  // and its variance vs the recorded gross booking. NOT a market/dynamic
-  // suggested rate (residential-comps hard-stop + no vendor). REFUSES (null) when
-  // the operator has not set a rate — never a back-filled comp.
-  app.get("/api/reservations/:id/pricing", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const orgId = getOrganizationId(req);
-      const [reservation] = await db.select().from(reservations)
-        .where(and(eq(reservations.id, routeParam(req.params.id)), eq(reservations.organizationId, orgId)));
-      if (!reservation) return Errors.notFound(res, "Reservation");
-
-      const nights = stayNightsBetween(String(reservation.checkIn), String(reservation.checkOut));
-      const pricing = computeNightlyRateExpectation({
-        nightlyRateCents: reservation.nightlyRateCents ?? null,
-        nights,
-        grossBookingCents: reservation.grossBookingCents ?? null,
-      });
-
-      return res.json({ reservationId: reservation.id, pricing });
     } catch (err) {
       return Errors.internal(res, err);
     }
