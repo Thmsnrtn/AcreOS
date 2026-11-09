@@ -406,14 +406,33 @@ describe("4 — every lead-id route is inside the gate's population", () => {
     "GET /api/v1/leads/:id": "public API v1 (requireApiKey)",
     "PATCH /api/v1/leads/:id": "public API v1 (requireApiKey)",
   };
+  /**
+   * Lead-keyed paths that are PROVIDER CALLBACKS: no session and no team
+   * member, authenticated by the provider's signature. Like the API-key routes
+   * they are outside a per-member gate by construction; each must name its
+   * signature verifier in its own registration (checked below), so an entry
+   * cannot cover a route that dropped it.
+   */
+  const SIGNED_PROVIDER_CALLBACKS: Record<string, { verifier: string; why: string }> = {
+    "POST /api/webhooks/twilio/call-status/:orgId/:leadId/:leg": {
+      verifier: "verifyOrgTwilioCallCallback",
+      why: "click-to-call status from the org's OWN Twilio account (signature with that org's token + AccountSid); writes only to a call AcreOS started for that lead",
+    },
+  };
   const outsideGate = (r: Reg) => {
     const k = `${r.method.toUpperCase()} ${r.full}`;
-    return k in READS_NO_LEAD_DATA || k in ORG_API_KEY_ROUTES;
+    return k in READS_NO_LEAD_DATA || k in ORG_API_KEY_ROUTES || k in SIGNED_PROVIDER_CALLBACKS;
   };
 
   it("every exemption names a registration that exists", () => {
     const keys = new Set(regs.map((r) => `${r.method.toUpperCase()} ${r.full}`));
-    for (const k of [...Object.keys(READS_NO_LEAD_DATA), ...Object.keys(ORG_API_KEY_ROUTES)]) expect(keys.has(k), k).toBe(true);
+    for (const k of [...Object.keys(READS_NO_LEAD_DATA), ...Object.keys(ORG_API_KEY_ROUTES), ...Object.keys(SIGNED_PROVIDER_CALLBACKS)]) expect(keys.has(k), k).toBe(true);
+    for (const [k, { verifier }] of Object.entries(SIGNED_PROVIDER_CALLBACKS)) {
+      const r = regs.find((x) => `${x.method.toUpperCase()} ${x.full}` === k)!;
+      expect(r.full.startsWith("/api/webhooks/"), k).toBe(true);
+      expect(r.argText, k).toMatch(new RegExp(`\\b${verifier}\\b`));
+      expect(r.argText, `${k} carries a session, so it is not a provider callback`).not.toMatch(/\b(?:isAuthenticated|getOrCreateOrg)\b/);
+    }
     for (const k of Object.keys(ORG_API_KEY_ROUTES)) {
       const r = regs.find((x) => `${x.method.toUpperCase()} ${x.full}` === k)!;
       expect(r.argText, k).toMatch(/requireApiKey\(/);

@@ -24,6 +24,9 @@ const H = vi.hoisted(() => ({
   touches: [] as any[],
   clerkPhones: [] as any[],
   users: [{ clerkUserId: "user_c" }] as any[],
+  // The status callback's id-only existence read (the mock ignores where();
+  // the org/lead binding is proven by the org-scoped event lookup).
+  leadIdRows: (): any[] => H.leads.map((l: any) => ({ id: l.id })),
 }));
 
 vi.mock("../../server/utils/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
@@ -36,7 +39,7 @@ vi.mock("../../server/db", async () => {
     return c;
   };
   const db: any = {
-    select: () => ({ from: (t: any) => chain(() => (t === schema.users ? H.users : [])) }),
+    select: () => ({ from: (t: any) => chain(() => (t === schema.users ? H.users : t === schema.leads ? H.leadIdRows() : [])) }),
     insert: () => ({ values: () => ({ returning: async () => [], then: (ok: any) => Promise.resolve().then(ok) }) }),
   };
   return { db };

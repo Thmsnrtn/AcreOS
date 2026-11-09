@@ -11,6 +11,7 @@ import {
   trackingNumberAssignments,
 } from '@shared/schema';
 import { readIntegrationCredentials } from '../services/integrationCredentials';
+import { routeParam } from '../utils/routeParams';
 
 /**
  * Middleware to verify Twilio webhook request signatures.
@@ -393,9 +394,17 @@ export interface VerifiedTwilioCallCallback {
 
 export async function verifyOrgTwilioCallCallback(req: Request, res: Response, next: NextFunction) {
   const signature = req.headers['x-twilio-signature'];
-  const organizationId = Number(req.params?.orgId);
   if (typeof signature !== 'string' || !signature) {
+    logger.warn('[TwilioSignature] Call status callback missing X-Twilio-Signature header', {
+      metadata: { detail: { path: req.originalUrl } },
+    });
     return sendError(res, 401, "UNAUTHORIZED", 'Missing Twilio signature');
+  }
+  let organizationId: number;
+  try {
+    organizationId = Number(routeParam(req.params.orgId ?? ''));
+  } catch {
+    return sendError(res, 401, "UNAUTHORIZED", 'Invalid Twilio signature');
   }
   if (!Number.isInteger(organizationId) || organizationId <= 0) {
     return sendError(res, 401, "UNAUTHORIZED", 'Invalid Twilio signature');

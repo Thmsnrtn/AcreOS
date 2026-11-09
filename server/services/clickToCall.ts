@@ -31,8 +31,8 @@
  * so the pre-dial verdict never spends a lookup.
  */
 import { storage, db } from "../storage";
-import { users, type Lead, type ActivityEvent } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { users, leads, type Lead, type ActivityEvent } from "@shared/schema";
+import { and, eq } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { commsRouter } from "./comms/router";
 import { orgByoTwilioNumber } from "./comms/providers/twilio";
@@ -360,7 +360,13 @@ export async function recordCallStatus(input: {
   if (!parentSid) return { written: false };
   const text = leg === "lead" ? LEAD_LEG_TEXT[status] : OPERATOR_LEG_TEXT[status];
   if (!text) return { written: false }; // operator "completed" → the lead leg reports the outcome
-  const lead = await storage.getLead(organizationId, leadId);
+  // Existence only: the callback needs no contact field, so it reads the id
+  // and nothing else (a status callback is not a person-adjacent read).
+  const [lead] = await db
+    .select({ id: leads.id })
+    .from(leads)
+    .where(and(eq(leads.organizationId, organizationId), eq(leads.id, leadId)))
+    .limit(1);
   if (!lead) return { written: false };
   const events: ActivityEvent[] = await storage.getActivityEvents(organizationId, "lead", leadId, ["call_made", "call_not_placed"]);
   const meta = (e: ActivityEvent) => (e.metadata ?? {}) as Record<string, unknown>;
