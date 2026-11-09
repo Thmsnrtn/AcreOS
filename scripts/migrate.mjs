@@ -13157,6 +13157,45 @@ $mig0284$`,
   `DROP TRIGGER IF EXISTS wholesale_buy_boxes_no_truncate ON "wholesale_buy_boxes"`,
   `CREATE TRIGGER wholesale_buy_boxes_no_truncate BEFORE TRUNCATE ON "wholesale_buy_boxes"
      FOR EACH STATEMENT EXECUTE FUNCTION wholesale_buy_boxes_guard()`,
+  // 0307 — Notes V2 Leg 3: note_origination_records (origination facts / RMLO engagement / activation gate-passed / threshold release / ATR-write audit records for the originated book; append-only, org-private; note_id ON DELETE SET NULL, the only UPDATE admitted). PROVISIONAL — Tom-approval pending.
+  // Mirrors migrations/0307_notes_v2_seller_finance_gate_records.sql.
+  `CREATE TABLE IF NOT EXISTS "note_origination_records" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL,
+     "note_id" integer REFERENCES "notes"("id") ON DELETE SET NULL,
+     "note_id_at_record" integer NOT NULL,
+     "kind" text NOT NULL CHECK ("kind" IN ('origination_facts', 'rmlo_engagement', 'activation_gate_passed', 'threshold_release', 'atr_determination_written')),
+     "detail" jsonb NOT NULL,
+     "supersedes_id" uuid REFERENCES "note_origination_records"("id"),
+     "recorded_by" text NOT NULL CHECK (length(trim("recorded_by")) > 0),
+     "recorded_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "note_origination_records_org_kind_idx" ON "note_origination_records" ("organization_id", "kind", "recorded_at")`,
+  `CREATE INDEX IF NOT EXISTS "note_origination_records_org_note_idx" ON "note_origination_records" ("organization_id", "note_id")`,
+  `CREATE OR REPLACE FUNCTION note_origination_records_guard()
+   RETURNS trigger AS $$
+   BEGIN
+     IF TG_OP = 'UPDATE' THEN
+       IF OLD."note_id" IS NOT NULL
+          AND NEW."note_id" IS NULL
+          AND (to_jsonb(NEW) - 'note_id') = (to_jsonb(OLD) - 'note_id')
+          AND NOT EXISTS (SELECT 1 FROM "notes" WHERE "id" = OLD."note_id") THEN
+         RETURN NEW;
+       END IF;
+     END IF;
+     RAISE EXCEPTION 'note_origination_records is append-only (% denied; a correction is a new row that supersedes)', TG_OP
+       USING ERRCODE = 'restrict_violation';
+   END;
+   $$ LANGUAGE plpgsql`,
+  `DROP TRIGGER IF EXISTS note_origination_records_no_update ON "note_origination_records"`,
+  `CREATE TRIGGER note_origination_records_no_update BEFORE UPDATE ON "note_origination_records"
+     FOR EACH ROW EXECUTE FUNCTION note_origination_records_guard()`,
+  `DROP TRIGGER IF EXISTS note_origination_records_no_truncate ON "note_origination_records"`,
+  `CREATE TRIGGER note_origination_records_no_truncate BEFORE TRUNCATE ON "note_origination_records"
+     FOR EACH STATEMENT EXECUTE FUNCTION note_origination_records_guard()`,
+  `DROP TRIGGER IF EXISTS note_origination_records_no_delete ON "note_origination_records"`,
+  `CREATE TRIGGER note_origination_records_no_delete BEFORE DELETE ON "note_origination_records"
+     FOR EACH ROW EXECUTE FUNCTION note_origination_records_guard()`,
 ];
 
 // The statement set this run executes. Default: everything (the production
