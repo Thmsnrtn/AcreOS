@@ -953,8 +953,8 @@ function refuseResidentialLateFeeForCommercial(req: AuthenticatedRequest, res: R
       409,
       "LATE_FEE_NOT_APPLICABLE_COMMERCIAL",
       "State statutory late-fee rules are residential and do not bind a commercial lease — a " +
-        "commercial late fee is set by the lease, not by statute. Enter it as a manual charge " +
-        "instead of proposing one from the residential statute surface.",
+        "commercial late fee is set by the lease, not by statute. AcreOS cannot post a manual charge yet; " +
+        "record it at the figure the lease specifies on your own books.",
     );
     return true;
   }
@@ -1029,7 +1029,7 @@ export function registerRentLedgerRoutes(app: Express): void {
         // somebody. They come back per-lease as `skipped`, to post by hand.
         prorationPolicy:
           "Partial first/final periods are never generated — AcreOS does not hold the lease's " +
-          "proration convention and will not invent one. Post those periods manually at the agreed amount.",
+          "proration convention and will not invent one. AcreOS cannot post a manual charge yet, so record those periods at the agreed amount on your own books.",
       });
     } catch (err) {
       return Errors.internal(res, err);

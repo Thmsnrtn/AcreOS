@@ -378,6 +378,10 @@ describe("Proposed fee column (late-fee-proposals)", () => {
     await mountPage();
     expect(calls.some((c) => c.url === "/api/rent/late-fee-proposals")).toBe(false);
     expect(byTestId(`proposed-fee-${JULY_ID}`)).toBeNull();
+    // No manual-charge route exists, so the note must not send them to one.
+    const note = byTestId("commercial-late-fee-note")!.textContent ?? "";
+    expect(note).toMatch(/not available yet/);
+    expect(note).not.toMatch(/(enter|post)[^.]*as a manual charge/i);
   });
 });
 
