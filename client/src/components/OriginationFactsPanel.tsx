@@ -176,7 +176,7 @@ export function OriginationFactsPanel({ noteId }: { noteId: number }) {
   const seedKey = latestFacts ? latestFacts.id : countQuery.data ? "count" : null;
   if (seedKey !== null && seededFor !== seedKey) {
     const d = (latestFacts?.detail ?? {}) as Record<string, unknown>;
-    setSellerKeyText((latestFacts ? (d.sellerKey as string | null) ?? "" : countQuery.data?.sellerKey ?? "") ?? "");
+    setSellerKeyText(latestFacts ? (d.sellerKey as string | null) ?? "" : countQuery.data?.sellerKey ?? "");
     if (latestFacts) {
       setSellerType((d.sellerType as (typeof SELLER_TYPES)[number]) ?? "unanswered");
       setDwellingSecured((d.dwellingSecured as TriState) ?? "unanswered");
@@ -253,7 +253,8 @@ export function OriginationFactsPanel({ noteId }: { noteId: number }) {
     },
   });
 
-  const counts = countQuery.data?.counts;
+  const countData = countQuery.data;
+  const counts = countData?.counts;
 
   return (
     <Card>
@@ -276,7 +277,7 @@ export function OriginationFactsPanel({ noteId }: { noteId: number }) {
             <p className="text-xs text-muted-foreground flex items-center gap-2">
               <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" /> Counting…
             </p>
-          ) : countQuery.isError || !counts ? (
+          ) : countQuery.isError || !countData || !counts ? (
             <p className="text-xs text-acr-neg flex items-center gap-2" role="alert">
               <AlertTriangle className="w-3.5 h-3.5" aria-hidden="true" /> Couldn't load the counts for this note.
             </p>
@@ -310,13 +311,13 @@ export function OriginationFactsPanel({ noteId }: { noteId: number }) {
               </dl>
               <p className="text-xs text-muted-foreground">
                 Consummation date counted from:{" "}
-                {countQuery.data.consummationDateSource === "origination_facts"
+                {countData.consummationDateSource === "origination_facts"
                   ? "the origination facts record"
                   : "the note's start date"}{" "}
-                ({countQuery.data.consummationDate}).
-                {countQuery.data.includesThisNote ? " This note is included in these counts." : ""}
+                ({countData.consummationDate}).
+                {countData.includesThisNote ? " This note is included in these counts." : ""}
               </p>
-              <p className="text-xs text-muted-foreground italic">{countQuery.data.sellerKeyLimitation}</p>
+              <p className="text-xs text-muted-foreground italic">{countData.sellerKeyLimitation}</p>
             </>
           )}
         </section>

@@ -17,12 +17,18 @@
  *  - noteId absent → the typed `sellerFinancedDealsLast12Months` stands,
  *    `countSource: "hypothetical"`.
  * Every other request and response field is unchanged.
+ *
+ * Guard: a request carrying a `noteId` reads real book counts, so it takes the
+ * same `requireRole(["owner", "admin"])` guard as the counter GET in
+ * routes-note-origination.ts; the typed/hypothetical path stays open to any
+ * authenticated org member.
  */
 
-import { Router, type Response } from "express";
+import { Router, type NextFunction, type Request, type Response } from "express";
 import { z } from "zod";
 import { checkDoddFrankCompliance } from "./services/doddFrankChecker";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
+import { requireRole } from "./middleware/roleGuard";
 import { db } from "./db";
 import { storage } from "./storage";
 import { getOrganizationId, type AuthenticatedRequest } from "./types/request";
@@ -70,7 +76,16 @@ async function bookCount(organizationId: number, noteId: number) {
   };
 }
 
-router.post("/check", getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+const bookCountRoleGuard = requireRole(["owner", "admin"]);
+
+/** The noteId (book-count) branch requires owner/admin; the typed path does not. */
+function requireRoleWhenNoteId(req: Request, res: Response, next: NextFunction) {
+  const noteId = req.body?.noteId;
+  if (noteId === undefined || noteId === null) return next();
+  return bookCountRoleGuard(req, res, next);
+}
+
+router.post("/check", getOrCreateOrg, requireRoleWhenNoteId, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const {
       noteId: rawNoteId,

@@ -155,7 +155,7 @@ export default function DoddFrankCheckerPage() {
                   <SelectItem value="hypothetical">Hypothetical — I'll type the count myself</SelectItem>
                   {(bookNotes ?? []).map((n) => (
                     <SelectItem key={n.id} value={String(n.id)}>
-                      Note #{n.id} — {n.borrowerName}
+                      Note #{n.id} — {n.borrowerId ? `Borrower #${n.borrowerId}` : "Unassigned borrower"}
                     </SelectItem>
                   ))}
                 </SelectContent>
