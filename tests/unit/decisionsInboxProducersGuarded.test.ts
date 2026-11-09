@@ -222,7 +222,7 @@ describe("decisions inbox producers are all guarded or explicitly exempt", () =>
 
     // discovery canaries: an insert inside a comment is not an insert; raw SQL and namespace-qualified table are
     expect(analyse("d1.ts", `// db.insert(decisionsInboxItems)\n`).inserts).toBe(0);
-    expect(analyse("d2.ts", "await db.execute(sql`INSERT INTO decisions_inbox_items (a) VALUES (1)`);").inserts).toBe(1);
+    expect(analyse("d2.ts", "await db.execute(sql`INSERT INTO decisions_inbox_items (organization_id) VALUES (1)`);").inserts).toBe(1);
     expect(analyse("d3.ts", `await db.insert(schema.decisionsInboxItems).values({});`).inserts).toBe(1);
 
     // classification the real test applies: inserts>0 && guardCalls<inserts → fails the guarded rule
