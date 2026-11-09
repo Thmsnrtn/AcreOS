@@ -49,10 +49,10 @@ import dispositionRouter from "./routes-disposition";
 import sellerIntentRouter from "./routes-seller-intent";
 import portfolioSentinelRouter from "./routes-portfolio-sentinel";
 import portfolioPnlRouter from "./routes-portfolio-pnl";
-// Commission routes are the direct, zod-validated, admin-scoped, client-bound
-// handlers in routes-organization.ts (GET/PUT /config, GET /summaries, GET /,
-// POST /, POST /:id/pay, GET /statement/:teamMemberId — the exact paths
-// client/src/pages/commissions.tsx calls). The former standalone
+// Commission routes are the direct, zod-validated, admin-scoped handlers in
+// routes-organization.ts (client/src/pages/commissions.tsx calls GET /config,
+// GET /summaries, POST /:id/pay and GET /statement/:teamMemberId; GET / and
+// POST / were deleted 2026-11-06, W2-AGENT, with no caller). The former standalone
 // routes-commissions.ts router was a duplicate mount at the same base with a
 // swapped-argument recordDealCommission bug and un-called paths (/agents,
 // /deal, /:id/payment); removed 2026-08 (Wave 2 pass C) so there is a single
