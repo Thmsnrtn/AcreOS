@@ -290,14 +290,24 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     //   - turnover/cleaning scheduling (reuses maintenance_tickets, category
     //     'cleaning'): a turnover task per recorded checkout, idempotent — a
     //     deterministic function of checkout dates, no external data.
-    //   - operator-set nightly pricing (reservations.nightly_rate_cents): the
-    //     operator's OWN nightly rate and the expected-vs-actual variance; null
-    //     when unset — NEVER a market/suggested rate.
+    //   - operator-set nightly pricing — DELETED 2026-11-06 (W2-STR). Its
+    //     variance compared rate × nights with the GROSS booking, which carries
+    //     the pass-through cleaning fee and taxes, so a stay booked at the
+    //     operator's own rate read as booked above it; ADR is the achieved rate.
     // Plus Wave A's reservations ledger, occupancy/ADR/RevPAR, and the live
     // reservation.checkout emitter/template. Behind the existing Rentals doors,
     // record-only money, integrations []. Core does NOT claim OTA channel-manager
     // sync (external vendor) or market/dynamic nightly pricing (residential-comps
     // hard-stop + no nightly-rate vendor). 2026-08 founder promote decision (Wave 5).
+    //
+    // REACHABLE TODAY (W2-STR, 2026-11-06): the Bookings tab on /leases records
+    // a stay by hand, lists stays, computes occupancy/ADR/RevPAR, changes a
+    // stay's status (checked out fires reservation.checkout) and shows the
+    // per-stay P&L. The channel-CSV importer and turnover generation have routes
+    // but no screen yet (held for a product decision). Measured readiness is
+    // `surfaced` (no scenario/decision loop) and the PUBLIC claim is demoted to
+    // beta (publicClaims.ts, OD-5); whether to relabel `maturity` here is the
+    // founder's call, not a code change.
     maturity: "core",
     // The landlord templates that apply to nightly stays (maintenance triage,
     // rent-received receipt) plus the genuinely-STR turnover-cleaning template,
