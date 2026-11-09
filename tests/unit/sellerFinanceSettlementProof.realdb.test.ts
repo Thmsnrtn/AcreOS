@@ -97,7 +97,6 @@ describeReal("seller-finance settlement proof (real DB)", () => {
         password: "not-a-real-hash",
         firstName: "Pkg",
         lastName: "Three",
-        organizationId: orgId,
       })
       .returning();
     userId = user.id;
@@ -233,7 +232,7 @@ describeReal("seller-finance settlement proof (real DB)", () => {
       await db.delete(schema.notes).where(eq(schema.notes.organizationId, orgId));
       await db.delete(schema.leads).where(eq(schema.leads.organizationId, orgId));
       await db.delete(schema.organizationIntegrations).where(eq(schema.organizationIntegrations.organizationId, orgId));
-      await db.delete(schema.users).where(eq(schema.users.organizationId, orgId));
+      await db.delete(schema.users).where(eq(schema.users.id, userId));
       await db.delete(schema.organizations).where(eq(schema.organizations.id, orgId));
     }
     if (org2Id) {
@@ -275,7 +274,7 @@ describeReal("seller-finance settlement proof (real DB)", () => {
     const payload = JSON.stringify(event);
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
     const signature = stripe.webhooks.generateTestHeaderString({ payload, secret: WEBHOOK_SECRET });
-    return { payload, signature };
+    return { payload: Buffer.from(payload), signature };
   }
 
   it("leg 1: a signed paid checkout posts one payment with the hand-computed split and moves the note", async () => {
