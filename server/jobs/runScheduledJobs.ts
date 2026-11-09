@@ -707,6 +707,35 @@ function startGateWatcherJob() {
 }
 
 // ============================================================================
+// PKG-4 (LQ-22) — /investor-network tripwire: daily 08:00 UTC pass counting
+// paying customers toward the ~25-customer marketplace ladder and verifying
+// the freeze is still in force (route frozen + ladder flag off for
+// non-founders). The report persists to founder_settings
+// (lq22_tripwire.latest) for the ops watch; every pass logs its one-line
+// summary either way. Observation only — the freeze is enforced by
+// requireLadderFlag, never by this job.
+// ============================================================================
+function startLq22TripwireJob() {
+  const ONE_HOUR = 60 * 60 * 1000;
+  const TTL_SECONDS = 30 * 60;
+
+  log('Registering LQ-22 tripwire job (daily 08:00 UTC)', 'lq22-tripwire');
+
+  trackInterval(() => {
+    const now = clock.now();
+    if (now.getUTCHours() === 8) {
+      import('../services/lq22Tripwire').then(({ runLq22TripwireCheck }) => {
+        withJobLock('lq22_tripwire_daily', TTL_SECONDS, async () => {
+          await runLq22TripwireCheck();
+        }).catch(err => {
+          log(`LQ-22 tripwire run failed: ${err}`, 'lq22-tripwire');
+        });
+      }).catch(err => log(`LQ-22 tripwire import failed: ${err}`, 'lq22-tripwire'));
+    }
+  }, ONE_HOUR);
+}
+
+// ============================================================================
 // Wave 10: Self-Tuning Cost Optimizer — daily, self-rescheduling
 // Analyses last 30 days of AI usage + MRR + Fly estimate, generates
 // recommendations, auto-applies safe changes (prompt-cache, log-volume),
@@ -3985,6 +4014,10 @@ export async function runScheduledJobs(): Promise<void> {
   // roadmap items detect their own moment and become one-tap founder
   // Decisions (or auto-execute where the studio dial says autoApprove).
   startGateWatcherJob();
+
+  // PKG-4 (LQ-22) — /investor-network tripwire (daily 08:00 UTC): count
+  // paying customers toward the ~25 ladder + verify the freeze holds.
+  startLq22TripwireJob();
 
   // Horizon A5 — doctrine corpus ingest (daily 03:00 UTC): the repo's
   // doctrine dirs → 'doctrine' embedding namespace, hash-skip on unchanged.
