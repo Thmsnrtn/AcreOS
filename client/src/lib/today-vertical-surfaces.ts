@@ -77,6 +77,9 @@ const REGISTRY: Array<{
         { label: "Rent roll", href: "/rent-roll" },
         { label: "Tenants", href: "/tenants" },
         { label: "Leases", href: "/leases" },
+        // No Analytics link (nav honesty, 2026-11-06): its route only redirects
+        // to the generic analytics page, which shows none of the rental
+        // metrics the card promised. Restore it with the page that earns it.
         { label: "Maintenance", href: "/maintenance" },
       ],
     },
