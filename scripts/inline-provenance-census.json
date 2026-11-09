@@ -141,7 +141,6 @@
     "client/src/components/founder/SwipeDecisionCard.tsx": 1,
     "client/src/components/layout-sidebar.tsx": 1,
     "client/src/components/maps/ParcelFactsPanel.tsx": 2,
-    "client/src/components/modals/quick-offer-modal.tsx": 4,
     "client/src/components/parcels/arv-calculator.tsx": 5,
     "client/src/components/parcels/land-snapshot.tsx": 1,
     "client/src/components/parcels/parcel-biography.tsx": 3,
