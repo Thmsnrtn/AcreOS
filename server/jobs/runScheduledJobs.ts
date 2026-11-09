@@ -36,6 +36,8 @@ import { startForecastingMonthlyJob } from "./forecastingJobs";
 import { startTrustJobs } from "./trustJobs";
 import { seedFounderDecisionCardsOnStartup } from "./seedFounderDecisionCards";
 import { runDecisionExecutorTickBounded, AUTONOMOUS_DECISION_EXECUTOR_MAX_USD_PER_TICK, AUTONOMOUS_DECISION_EXECUTOR_MAX_DECISIONS_PER_TICK } from "./decisionExecutorTick";
+import { startGateWatcherJob } from "./gateWatcherJobs"; // S3 slice (extracted 2026-11-08)
+import { startLq22TripwireJob } from "./lq22TripwireJobs"; // PKG-4 (LQ-22) tripwire
 import { clock } from "../utils/clock";
 
 // Auto-seed county GIS endpoints on startup
@@ -670,67 +672,6 @@ function startConnectionsSweepJob() {
           log(`Connections sweep run failed: ${err}`, 'connections-sweep');
         });
       }).catch(err => log(`Connections sweep import failed: ${err}`, 'connections-sweep'));
-    }
-  }, ONE_HOUR);
-}
-
-// ============================================================================
-// Launch-Week WS4 — Gate-Watcher (the self-birthing roadmap). Daily 09:00 UTC.
-// Evaluates every machine-encoded roadmap gate (mature-machine §4 autonomy
-// switch schedule + phase triggers: Phase-1 runbook at $200 MRR held 30d,
-// Sentry rung at $500, Telnyx eval at $3k, switch eligibility at 25 paying).
-// A ripened gate raises a one-tap founder Decision via founderCollab, or
-// auto-executes ONLY where the studio revenue-trigger dial already says
-// autoApprove. Hard-stops never auto-execute. Every evaluation is logged and
-// persisted to the Story surface; dedup state lives in founder_settings, so a
-// duplicate tick (second machine acquiring the lock later in the hour) is a
-// no-op.
-// ============================================================================
-function startGateWatcherJob() {
-  const ONE_HOUR = 60 * 60 * 1000;
-  const TTL_SECONDS = 30 * 60;
-
-  log('Registering gate watcher job (daily 09:00 UTC)', 'gate-watcher');
-
-  trackInterval(() => {
-    const now = clock.now();
-    if (now.getUTCHours() === 9) {
-      import('../services/autopilot/gateWatcher').then(({ runGateWatch }) => {
-        withJobLock('gate_watcher_daily', TTL_SECONDS, async () => {
-          await runGateWatch();
-        }).catch(err => {
-          log(`Gate watcher run failed: ${err}`, 'gate-watcher');
-        });
-      }).catch(err => log(`Gate watcher import failed: ${err}`, 'gate-watcher'));
-    }
-  }, ONE_HOUR);
-}
-
-// ============================================================================
-// PKG-4 (LQ-22) — /investor-network tripwire: daily 08:00 UTC pass counting
-// paying customers toward the ~25-customer marketplace ladder and verifying
-// the freeze is still in force (route frozen + ladder flag off for
-// non-founders). The report persists to founder_settings
-// (lq22_tripwire.latest) for the ops watch; every pass logs its one-line
-// summary either way. Observation only — the freeze is enforced by
-// requireLadderFlag, never by this job.
-// ============================================================================
-function startLq22TripwireJob() {
-  const ONE_HOUR = 60 * 60 * 1000;
-  const TTL_SECONDS = 30 * 60;
-
-  log('Registering LQ-22 tripwire job (daily 08:00 UTC)', 'lq22-tripwire');
-
-  trackInterval(() => {
-    const now = clock.now();
-    if (now.getUTCHours() === 8) {
-      import('../services/lq22Tripwire').then(({ runLq22TripwireCheck }) => {
-        withJobLock('lq22_tripwire_daily', TTL_SECONDS, async () => {
-          await runLq22TripwireCheck();
-        }).catch(err => {
-          log(`LQ-22 tripwire run failed: ${err}`, 'lq22-tripwire');
-        });
-      }).catch(err => log(`LQ-22 tripwire import failed: ${err}`, 'lq22-tripwire'));
     }
   }, ONE_HOUR);
 }
@@ -4015,8 +3956,6 @@ export async function runScheduledJobs(): Promise<void> {
   // Decisions (or auto-execute where the studio dial says autoApprove).
   startGateWatcherJob();
 
-  // PKG-4 (LQ-22) — /investor-network tripwire (daily 08:00 UTC): count
-  // paying customers toward the ~25 ladder + verify the freeze holds.
   startLq22TripwireJob();
 
   // Horizon A5 — doctrine corpus ingest (daily 03:00 UTC): the repo's
