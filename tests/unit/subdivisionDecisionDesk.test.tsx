@@ -18,6 +18,12 @@ import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { SubdivisionDecisionDeskSection } from "../../client/src/components/parcels/subdivision-decision-desk";
 import { formatDate } from "../../client/src/lib/format";
+import type { CriticalPathResult } from "../../shared/subdivision/criticalPath";
+
+/** The computed critical path's position union, taken from the real result
+ *  type — the COMPUTED fixture below pins a single literal, so cases typed
+ *  off the fixture itself would accept only that one position. */
+type CriticalPathPosition = Extract<CriticalPathResult, { state: "computed" }>["position"];
 
 const RUN = {
   id: 9,
@@ -256,7 +262,7 @@ describe("the entitlement path (§5.5) — rendered as the server computed it", 
 
   it("computed: each position has its own words; a negative overrun reads 'within'; a withheld projection carries its reason", async () => {
     deskPayload.decisions = [DECISION];
-    const cases: Array<[typeof COMPUTED.position, string]> = [
+    const cases: Array<[CriticalPathPosition, string]> = [
       ["within_p50", "within the p50 window"],
       ["between_p50_p90", "past p50, within p90"],
       ["past_p90", "past the p90 date"],
