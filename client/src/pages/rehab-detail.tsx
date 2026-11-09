@@ -44,6 +44,11 @@ const STATUSES = [
   "finishes", "punch_list", "listed", "under_contract", "closed", "on_hold",
 ] as const;
 
+/** Must match REHAB_HOLDING_CATEGORIES in shared/schema/fix-and-flip.ts. */
+const HOLDING_CATEGORIES = [
+  "taxes", "insurance", "utilities", "interest", "hoa", "other",
+] as const;
+
 interface Rehab {
   id: string;
   propertyId: number;
@@ -83,6 +88,71 @@ interface LineVariance {
   actualVsCommittedCents: number | null;
 }
 
+interface TimelineBaseline {
+  id: string;
+  supersedesId: string | null;
+  plannedStartDate: string | null;
+  plannedListingDate: string | null;
+  plannedHoldMonths: number | null;
+  plannedHoldingMonthlyCents: number | null;
+  phasePlans: { phase: string; plannedDate: string }[];
+  recordedBy: string;
+  createdAt: string;
+  isOriginal: boolean;
+}
+
+interface TimelineTransition {
+  id: string;
+  fromStatus: string | null;
+  toStatus: string;
+  transitionedAt: string;
+}
+
+interface TimelineHoldingEntry {
+  id: string;
+  entryDate: string;
+  category: string;
+  amountCents: number;
+  note: string | null;
+  createdAt: string;
+}
+
+/** Leg 3 — plan vs recorded, computed server-side and rendered as returned. */
+interface RehabTimeline {
+  baselines: TimelineBaseline[];
+  transitions: TimelineTransition[];
+  holdingEntries: TimelineHoldingEntry[];
+  schedule: {
+    phases: Array<{
+      phase: string;
+      plannedDate: string | null;
+      actualDate: string | null;
+      varianceDays: number | null;
+    }>;
+    listingVarianceDays: number | null;
+  };
+  holding: {
+    scenario: null | {
+      holdMonths: number | null;
+      monthlyHoldingCostCents: number | null;
+      assumedTotalCents: number | null;
+      holdMonthsOrigin: string | null;
+      monthlyOrigin: string | null;
+    };
+    baselinePlan: null | {
+      plannedHoldMonths: number | null;
+      plannedHoldingMonthlyCents: number | null;
+      plannedTotalCents: number | null;
+    };
+    actuals: {
+      entriesTotalCents: number;
+      elapsedDays: number | null;
+      meterAccruedCents: number | null;
+    };
+    disagreement: { spendPastScenario: boolean; timePastScenario: boolean };
+  };
+}
+
 interface RehabDetail {
   rehab: Rehab;
   items: LineItem[];
@@ -110,6 +180,8 @@ interface RehabDetail {
     daysOnSite: number | null;
     accruedHoldingCents: number | null;
   };
+  /** Plan vs recorded: append-only baselines, the status log, holding entries. */
+  timeline: RehabTimeline;
 }
 
 interface ScopeTemplate {
@@ -135,6 +207,77 @@ function csrfHeader(): Record<string, string> {
   return { "Content-Type": "application/json", "x-csrf-token": decodeURIComponent(m?.[1] ?? "") };
 }
 
+/** "rough_ins" → "Rough ins"; HOA keeps its capitals. */
+function humanize(value: string): string {
+  if (value === "hoa") return "HOA";
+  const spaced = value.replace(/_/g, " ");
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
+/** Where a scenario assumption came from — the operator's rule or the platform's. */
+function originLabel(origin: string | null): string | null {
+  if (origin === null) return null;
+  if (origin === "user") return "your rule";
+  if (origin === "platform-default") return "platform default";
+  return origin;
+}
+
+/** "Hold length: your rule · Monthly: platform default" — only parts present. */
+function provenanceLine(holdMonthsOrigin: string | null, monthlyOrigin: string | null): string {
+  const hold = originLabel(holdMonthsOrigin);
+  const monthly = originLabel(monthlyOrigin);
+  return [
+    hold ? `Hold length: ${hold}` : null,
+    monthly ? `Monthly: ${monthly}` : null,
+  ].filter((part): part is string => part !== null).join(" · ");
+}
+
+/** "3 months × $1,200/mo = $3,600", with unrecorded parts named rather than zero. */
+function holdLine(months: number | null, monthlyCents: number | null, totalCents: number | null): string {
+  const monthsText = months === null ? "Hold length not recorded" : `${months} ${months === 1 ? "month" : "months"}`;
+  const monthlyText = monthlyCents === null ? "monthly holding not recorded" : `${fmtUsdCents(monthlyCents)}/mo`;
+  const base = `${monthsText} × ${monthlyText}`;
+  return totalCents === null ? base : `${base} = ${fmtUsdCents(totalCents)}`;
+}
+
+function varianceLabel(days: number | null): string {
+  if (days === null) return "—";
+  if (days > 0) return `+${days} days`;
+  if (days < 0) return `${days} days`;
+  return "on plan";
+}
+
+function varianceClass(days: number | null): string {
+  if (days === null || days === 0) return "text-muted-foreground";
+  return days > 0 ? "text-acr-warning" : "text-acr-pos";
+}
+
+/** A labelled form field — one wrapper for every input in the Leg 3 forms. */
+function Field({ label, htmlFor, children }: { label: string; htmlFor?: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <Label htmlFor={htmlFor} className="text-xs">{label}</Label>
+      {children}
+    </div>
+  );
+}
+
+/** One labelled figure in the holding comparison — scenario, plan, or actual. */
+function Figure({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-card border border-border p-3">
+      <div className="text-xs text-muted-foreground">{title}</div>
+      {children}
+    </div>
+  );
+}
+
+function listingVarianceLabel(days: number): string {
+  if (days === 0) return "Listing was on plan";
+  const n = Math.abs(days);
+  return `Listing ran ${n} ${n === 1 ? "day" : "days"} ${days > 0 ? "late" : "early"}`;
+}
+
 export default function RehabDetailPage() {
   useDocumentTitle("Rehab — AcreOS");
   const [match, params] = useRoute("/rehabs/:id");
@@ -145,6 +288,20 @@ export default function RehabDetailPage() {
   const [newScope, setNewScope] = useState("");
   const [newBudget, setNewBudget] = useState("");
   const [templateKey, setTemplateKey] = useState("");
+
+  // Baseline form (Leg 3). Everything is optional — a baseline can record only
+  // the dates the operator knows.
+  const [baselineStart, setBaselineStart] = useState("");
+  const [baselineListing, setBaselineListing] = useState("");
+  const [baselineHoldMonths, setBaselineHoldMonths] = useState("");
+  const [baselineMonthly, setBaselineMonthly] = useState("");
+  const [phaseDates, setPhaseDates] = useState<Record<string, string>>({});
+
+  // Holding-cost form (Leg 3).
+  const [entryDate, setEntryDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [entryCategory, setEntryCategory] = useState("taxes");
+  const [entryAmount, setEntryAmount] = useState("");
+  const [entryNote, setEntryNote] = useState("");
 
   const detail = useQuery<RehabDetail>({
     queryKey: ["/api/rehabs", id],
@@ -256,12 +413,100 @@ export default function RehabDetailPage() {
     },
   });
 
+  // A revision is a NEW baseline row — the server points it at the previous
+  // one and the original is never rewritten.
+  const recordBaseline = useMutation({
+    mutationFn: async () => {
+      const body: Record<string, unknown> = {};
+      if (baselineStart) body.plannedStartDate = baselineStart;
+      if (baselineListing) body.plannedListingDate = baselineListing;
+      if (baselineHoldMonths) body.plannedHoldMonths = Math.trunc(Number(baselineHoldMonths));
+      if (baselineMonthly) body.plannedHoldingMonthlyCents = Math.round(parseFloat(baselineMonthly) * 100);
+      const plans = STATUSES.filter((phase) => phaseDates[phase]).map((phase) => ({ phase, plannedDate: phaseDates[phase] }));
+      if (plans.length > 0) body.phasePlans = plans;
+
+      const res = await fetch(`/api/rehabs/${id}/baselines`, {
+        method: "POST", credentials: "include", headers: csrfHeader(),
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(await serverMessage(res));
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/rehabs", id] });
+      setBaselineStart("");
+      setBaselineListing("");
+      setBaselineHoldMonths("");
+      setBaselineMonthly("");
+      setPhaseDates({});
+    },
+    onError: (error) => {
+      const title = getErrorTitle(error);
+      const description = getErrorMessage(error);
+      toast({ title, description, variant: "destructive" });
+    },
+  });
+
+  // Holding entries are facts: a correction is a NEW negative entry whose note
+  // says what it corrects (the server refuses a zero amount too).
+  const addHoldingEntry = useMutation({
+    mutationFn: async () => {
+      const amount = parseFloat(entryAmount);
+      const cents = Number.isFinite(amount) ? Math.round(amount * 100) : 0;
+      if (cents === 0) {
+        throw new Error("Enter a non-zero amount. A correction is a negative entry whose note says what it corrects.");
+      }
+      const body: Record<string, unknown> = { entryDate, category: entryCategory, amountCents: cents };
+      if (entryNote.trim()) body.note = entryNote.trim();
+
+      const res = await fetch(`/api/rehabs/${id}/holding-entries`, {
+        method: "POST", credentials: "include", headers: csrfHeader(),
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(await serverMessage(res));
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/rehabs", id] });
+      setEntryAmount("");
+      setEntryNote("");
+    },
+    onError: (error) => {
+      const title = getErrorTitle(error);
+      const description = getErrorMessage(error);
+      toast({ title, description, variant: "destructive" });
+    },
+  });
+
   if (!id) return <PageShell label="Rehab"><Card><CardContent>Invalid id</CardContent></Card></PageShell>;
   if (detail.isLoading) return <PageShell label="Rehab"><Skeleton className="h-32" /></PageShell>;
   if (!detail.data) return <PageShell label="Rehab"><Card><CardContent>Not found.</CardContent></Card></PageShell>;
 
   const { rehab, items, totals } = detail.data;
   const data = detail.data;
+  // A partial payload (an older fixture, or a client cached before Leg 3) must
+  // still render: a missing timeline reads as an empty one, never a crash.
+  const timeline: RehabTimeline = data.timeline ?? {
+    baselines: [],
+    transitions: [],
+    holdingEntries: [],
+    schedule: { phases: [], listingVarianceDays: null },
+    holding: {
+      scenario: null,
+      baselinePlan: null,
+      actuals: { entriesTotalCents: 0, elapsedDays: null, meterAccruedCents: null },
+      disagreement: { spendPastScenario: false, timePastScenario: false },
+    },
+  };
+  const originalBaseline = timeline.baselines.find((b) => b.isOriginal) ?? null;
+  const scenarioHold = timeline.holding.scenario;
+  const baselinePlan = timeline.holding.baselinePlan;
+  const holdActuals = timeline.holding.actuals;
+  const scenarioProvenance = scenarioHold
+    ? provenanceLine(scenarioHold.holdMonthsOrigin, scenarioHold.monthlyOrigin)
+    : "";
+  const entryAmountParsed = parseFloat(entryAmount);
+  const entryAmountValid = Number.isFinite(entryAmountParsed) && Math.round(entryAmountParsed * 100) !== 0;
   const spentPct = totals.budgetCents > 0 ? Math.min(100, Math.round((totals.spentCents / totals.budgetCents) * 100)) : 0;
   const arvMargin = rehab.arvCents !== null && rehab.purchasePriceCents !== null && rehab.budgetTotalCents !== null
     ? rehab.arvCents - rehab.purchasePriceCents - rehab.budgetTotalCents
@@ -397,6 +642,243 @@ export default function RehabDetailPage() {
           </CardContent>
         </Card>
       ) : null}
+
+      {/* Timeline & holding — kickoff baselines, the status log and recorded
+          carry (Leg 3). Plan, scenario and actual are shown side by side and
+          never merged: a plan is not spend, and an accrual is not a ledger. */}
+      <Card className="mb-6" data-testid="rehab-timeline">
+        <CardHeader>
+          <CardTitle className="text-base">Timeline &amp; holding</CardTitle>
+          <CardDescription>
+            Plan vs recorded: baselines, the status log, and holding costs.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-8">
+          {/* Baseline */}
+          <section aria-labelledby="rehab-baseline-heading">
+            <h2 id="rehab-baseline-heading" className="text-sm font-medium">Kickoff baseline</h2>
+            {timeline.baselines.length === 0 ? (
+              <p className="mt-1 text-sm text-muted-foreground">
+                No kickoff baseline recorded yet. Variance is measured against the plan you started with — record it to see plan vs actual.
+              </p>
+            ) : originalBaseline ? (
+              <div className="mt-2 space-y-1">
+                <div className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
+                  <div>
+                    <div className="text-xs text-muted-foreground">Planned start</div>
+                    <div className="text-sm tabular-nums">{originalBaseline.plannedStartDate ?? "—"}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">Planned listing</div>
+                    <div className="text-sm tabular-nums">{originalBaseline.plannedListingDate ?? "—"}</div>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Recorded {originalBaseline.createdAt.slice(0, 10)}
+                </p>
+                {timeline.baselines.length > 1 ? (
+                  <p className="text-xs text-muted-foreground">
+                    Revised {timeline.baselines.length - 1} {timeline.baselines.length - 1 === 1 ? "time" : "times"} since.
+                    Variance is still measured against the original baseline.
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+
+            {/* Baseline form */}
+            <form
+              className="mt-4 space-y-3"
+              onSubmit={(e) => { e.preventDefault(); recordBaseline.mutate(); }}
+            >
+              <h3 className="text-sm font-medium">
+                {timeline.baselines.length > 0 ? "Record a revised baseline" : "Record baseline"}
+              </h3>
+              <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                {([
+                  ["baseline-start", "Planned start", "date", baselineStart, setBaselineStart, {}],
+                  ["baseline-listing", "Planned listing", "date", baselineListing, setBaselineListing, {}],
+                  ["baseline-hold-months", "Planned hold (months)", "number", baselineHoldMonths, setBaselineHoldMonths, { min: 1, step: 1 }],
+                  ["baseline-monthly", "Planned monthly holding ($)", "number", baselineMonthly, setBaselineMonthly, { min: 0, step: "0.01" }],
+                ] as const).map(([id, label, type, value, set, extra]) => (
+                  <Field key={id} label={label} htmlFor={id}>
+                    <Input id={id} type={type} value={value} onChange={(e) => set(e.target.value)} className="h-9" {...extra} />
+                  </Field>
+                ))}
+              </div>
+
+              <div>
+                <div className="text-xs text-muted-foreground">Planned entry date per phase — leave a phase blank if you have not planned it.</div>
+                <div className="mt-1 grid grid-cols-2 gap-2 md:grid-cols-3">
+                  {STATUSES.map((phase) => (
+                    <Field key={phase} label={humanize(phase)} htmlFor={`phase-date-${phase}`}>
+                      <Input id={`phase-date-${phase}`} type="date" value={phaseDates[phase] ?? ""} onChange={(e) => setPhaseDates((d) => ({ ...d, [phase]: e.target.value }))} className="h-9" />
+                    </Field>
+                  ))}
+                </div>
+              </div>
+
+              <Button type="submit" size="sm" disabled={recordBaseline.isPending}>
+                {timeline.baselines.length > 0 ? "Record revision" : "Record baseline"}
+              </Button>
+            </form>
+          </section>
+
+          {/* Schedule: planned vs recorded */}
+          {originalBaseline ? (
+            <section aria-labelledby="rehab-schedule-heading">
+              <h2 id="rehab-schedule-heading" className="text-sm font-medium">Schedule: planned vs recorded</h2>
+              <table className="mt-2 w-full text-sm">
+                <thead>
+                  <tr className="text-xs text-muted-foreground border-b border-border bg-muted/30">
+                    <th className="px-2 py-2 text-left font-medium">Phase</th>
+                    <th className="px-2 py-2 text-left font-medium">Planned</th>
+                    <th className="px-2 py-2 text-left font-medium">Actual</th>
+                    <th className="px-2 py-2 text-right font-medium">Variance</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {timeline.schedule.phases.map((p) => (
+                    <tr key={p.phase} className="border-b border-border/40">
+                      <td className="px-2 py-1">{humanize(p.phase)}</td>
+                      <td className="px-2 py-1 tabular-nums">{p.plannedDate ?? "—"}</td>
+                      <td className={`px-2 py-1 tabular-nums ${p.actualDate === null ? "text-muted-foreground" : ""}`}>
+                        {p.actualDate ?? "not recorded"}
+                      </td>
+                      <td className={`px-2 py-1 text-right tabular-nums ${varianceClass(p.varianceDays)}`}>
+                        {varianceLabel(p.varianceDays)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {timeline.schedule.phases.length === 0 ? (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  No phases planned or recorded yet — a phase appears here once the baseline plans it or the status log enters it.
+                </p>
+              ) : null}
+              {timeline.schedule.listingVarianceDays !== null ? (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {listingVarianceLabel(timeline.schedule.listingVarianceDays)}
+                </p>
+              ) : null}
+            </section>
+          ) : null}
+
+          {/* Holding: scenario vs plan vs recorded */}
+          <section aria-labelledby="rehab-holding-heading">
+            <h2 id="rehab-holding-heading" className="text-sm font-medium">Holding: scenario vs plan vs recorded</h2>
+            <div className="mt-2 grid gap-3 md:grid-cols-3">
+              <Figure title="MAO scenario assumed">
+                {scenarioHold === null ? (
+                  <p className="mt-1 text-sm text-muted-foreground">No MAO decision recorded for this property yet.</p>
+                ) : (
+                  <>
+                    <div className="mt-1 text-sm">
+                      {holdLine(scenarioHold.holdMonths, scenarioHold.monthlyHoldingCostCents, scenarioHold.assumedTotalCents)}
+                    </div>
+                    {scenarioProvenance ? (
+                      <div className="mt-1 text-xs text-muted-foreground">{scenarioProvenance}</div>
+                    ) : null}
+                  </>
+                )}
+              </Figure>
+
+              <Figure title="Baseline plan">
+                {baselinePlan === null ? (
+                  <p className="mt-1 text-sm text-muted-foreground">No baseline recorded.</p>
+                ) : (
+                  <div className="mt-1 text-sm">
+                    {holdLine(baselinePlan.plannedHoldMonths, baselinePlan.plannedHoldingMonthlyCents, baselinePlan.plannedTotalCents)}
+                  </div>
+                )}
+              </Figure>
+
+              <Figure title="Recorded actuals to date">
+                <div className="mt-1 text-sm">
+                  {fmtUsdCents(holdActuals.entriesTotalCents)} across {timeline.holdingEntries.length} recorded{" "}
+                  {timeline.holdingEntries.length === 1 ? "entry" : "entries"}
+                  {holdActuals.elapsedDays !== null ? ` · ${holdActuals.elapsedDays} days on site` : ""}
+                </div>
+                {holdActuals.meterAccruedCents !== null ? (
+                  <div className="mt-2 text-xs text-muted-foreground">
+                    Meter accrual (monthly rate × days elapsed — an accrual, not recorded spend): {fmtUsdCents(holdActuals.meterAccruedCents)}
+                  </div>
+                ) : null}
+              </Figure>
+            </div>
+
+            {timeline.holding.disagreement.spendPastScenario ? (
+              <p className="mt-3 text-sm" data-testid="rehab-timeline-spend-past-scenario">
+                Recorded holding spend has passed what the MAO scenario assumed. The scenario is unchanged.
+              </p>
+            ) : null}
+            {timeline.holding.disagreement.timePastScenario ? (
+              <p className="mt-1 text-sm" data-testid="rehab-timeline-time-past-scenario">
+                Time on site has passed the hold the MAO scenario assumed.
+              </p>
+            ) : null}
+          </section>
+
+          {/* Recorded holding costs */}
+          <section aria-labelledby="rehab-holding-entries-heading">
+            <h2 id="rehab-holding-entries-heading" className="text-sm font-medium">Holding costs recorded</h2>
+            {timeline.holdingEntries.length === 0 ? (
+              <p className="mt-1 text-sm text-muted-foreground">
+                No holding costs recorded yet — add taxes, insurance, utilities, interest or HOA as they are paid.
+              </p>
+            ) : (
+              <table className="mt-2 w-full text-sm">
+                <thead>
+                  <tr className="text-xs text-muted-foreground border-b border-border bg-muted/30">
+                    <th className="px-2 py-2 text-left font-medium">Date</th>
+                    <th className="px-2 py-2 text-left font-medium">Category</th>
+                    <th className="px-2 py-2 text-right font-medium">Amount</th>
+                    <th className="px-2 py-2 text-left font-medium">Note</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {timeline.holdingEntries.map((entry) => (
+                    <tr key={entry.id} className="border-b border-border/40">
+                      <td className="px-2 py-1 tabular-nums">{entry.entryDate}</td>
+                      <td className="px-2 py-1">
+                        {humanize(entry.category)}
+                      </td>
+                      <td className={`px-2 py-1 text-right tabular-nums ${entry.amountCents < 0 ? "text-acr-pos" : ""}`}>
+                        {fmtUsdCents(entry.amountCents)}
+                      </td>
+                      <td className="px-2 py-1 text-xs text-muted-foreground">{entry.note ?? ""}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+
+            {/* Add holding cost */}
+            <form
+              className="mt-4 space-y-3"
+              onSubmit={(e) => { e.preventDefault(); addHoldingEntry.mutate(); }}
+            >
+              <h3 className="text-sm font-medium">Add holding cost</h3>
+              <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                <Field label="Date" htmlFor="holding-date"><Input id="holding-date" type="date" required value={entryDate} onChange={(e) => setEntryDate(e.target.value)} className="h-9" /></Field>
+                <Field label="Category">
+                  <select aria-label="Holding-cost category" value={entryCategory} onChange={(e) => setEntryCategory(e.target.value)} className="h-9 w-full rounded-md border border-input bg-background px-2 text-xs">
+                    {HOLDING_CATEGORIES.map((c) => <option key={c} value={c}>{humanize(c)}</option>)}
+                  </select>
+                </Field>
+                <Field label="Amount ($)" htmlFor="holding-amount"><Input id="holding-amount" type="number" step="0.01" required value={entryAmount} onChange={(e) => setEntryAmount(e.target.value)} aria-describedby="holding-amount-hint" className="h-9" /></Field>
+                <Field label="Note (optional)" htmlFor="holding-note"><Input id="holding-note" value={entryNote} onChange={(e) => setEntryNote(e.target.value)} placeholder="What this covers…" className="h-9" /></Field>
+              </div>
+              <p id="holding-amount-hint" className="text-xs text-muted-foreground">
+                May be negative for a correction — its note says what it corrects. Zero is not a cost.
+              </p>
+              <Button type="submit" size="sm" disabled={!entryAmountValid || addHoldingEntry.isPending}>
+                Add holding cost
+              </Button>
+            </form>
+          </section>
+        </CardContent>
+      </Card>
 
       {/* Line items */}
       <Card>
