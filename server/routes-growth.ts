@@ -13,6 +13,7 @@
  *                          POST  /api/sms/a2p-registration/self-report
  *   Map door               GET   /api/maps/offline-pack
  *   Today door             GET   /api/today/first-deal
+ *                          GET   /api/today/first-offer
  *   Finance door           GET   /api/finance/outcome
  *
  * Every query is scoped to the caller's organization.
@@ -306,6 +307,16 @@ export function registerGrowthRoutes(app: Express): void {
       const step = await firstDealStepForOrg(getOrganizationId(req));
       if (!step) return Errors.notFound(res, "Organization");
       return res.json(step);
+    } catch (err) {
+      return Errors.internal(res, err as Error);
+    }
+  });
+
+  // ── Today: has this org made an offer yet? (first-offer CTA) ─────────────
+  app.get("/api/today/first-offer", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { orgHasMadeAnOffer } = await import("./services/growth/firstOffer");
+      return res.json({ madeAnOffer: await orgHasMadeAnOffer(getOrganizationId(req)) });
     } catch (err) {
       return Errors.internal(res, err as Error);
     }

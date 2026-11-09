@@ -264,7 +264,7 @@ const CommissionsPage = React.lazy(() => import("@/pages/commissions"));
 const FinanceCommissionsPage = React.lazy(() => import("@/pages/finance-commissions"));
 // TeamLeaderboardPage archived 2026-06-01 — no sidebar entry, no callers.
 // Phase 5 §5 — team-readiness pages.
-const TeamManagerDashboardPage = React.lazy(() => import("@/pages/team-manager-dashboard"));
+// TeamManagerDashboardPage deleted 2026-11-06 (W2-TEAM) — duplicated Analytics → Team; /team/dashboard redirects there.
 const TeamOfferApprovalsPage = React.lazy(() => import("@/pages/team-offer-approvals"));
 const LeadAssignmentSettingsPage = React.lazy(() => import("@/pages/settings/lead-assignment"));
 const UnderwritingSettingsPage = React.lazy(() => import("@/pages/settings/underwriting"));
@@ -472,6 +472,7 @@ const TenantsPage = React.lazy(() => import("@/pages/tenants"));
 const LeasesPage = React.lazy(() => import("@/pages/leases"));
 const RentRollPage = React.lazy(() => import("@/pages/rent-roll"));
 const UnderwriteRentalPage = React.lazy(() => import("@/pages/rentals/underwrite-rental"));
+const WholesaleBuyBoxPage = React.lazy(() => import("@/pages/wholesale/buy-box"));
 const UnderwriteWholesaleOfferPage = React.lazy(() => import("@/pages/wholesale/underwrite-offer"));
 const MaintenancePage = React.lazy(() => import("@/pages/maintenance"));
 // InvestorAnalyticsPage archived 2026-06-01 — no direct callers.
@@ -961,7 +962,8 @@ function Router() {
       </Route>
       {/* Phase 5 §5 — team-readiness routes. */}
       <Route path="/team/dashboard">
-        {() => <ProtectedRoute component={TeamManagerDashboardPage} />}
+        {/* 2026-11-06 W2-TEAM — the per-rep page duplicated Analytics → Team. */}
+        {() => <Redirect to="/analytics#team" />}
       </Route>
       <Route path="/team/offer-approvals">
         {() => <ProtectedRoute component={TeamOfferApprovalsPage} />}
@@ -1060,6 +1062,9 @@ function Router() {
       </Route>
       <Route path="/earnest-money">
         {() => <ProtectedRoute component={EarnestMoneyPage} />}
+      </Route>
+      <Route path="/wholesale/buy-box">
+        {() => <ProtectedRoute component={WholesaleBuyBoxPage} />}
       </Route>
       <Route path="/wholesale/underwrite">
         {() => <ProtectedRoute component={UnderwriteWholesaleOfferPage} />}

@@ -66,13 +66,15 @@ const REGISTRY: Array<{
     cluster: {
       id: "landlord",
       title: "Landlord surfaces",
-      description: "Tenants, leases, rent roll, maintenance, portfolio analytics.",
+      description: "Tenants, leases, rent roll, maintenance.",
       priority: 20,
       links: [
         { label: "Rent roll", href: "/rent-roll" },
         { label: "Maintenance", href: "/maintenance" },
         { label: "Leases", href: "/leases" },
-        { label: "Analytics", href: "/investor-analytics" },
+        // No Analytics link (nav honesty, 2026-11-06): its route only redirects
+        // to the generic analytics page, which shows none of the rental
+        // metrics the card promised. Restore it with the page that earns it.
       ],
     },
   },
