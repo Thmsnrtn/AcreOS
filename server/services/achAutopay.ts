@@ -129,6 +129,7 @@ import {
   type AchReturnCode,
 } from "./actumProcessing";
 import { clock } from "../utils/clock";
+import { recordPostedPaymentApplication } from "./paymentApplication";
 
 // ───────────────────────────────────────────────────────────────────────────
 // Policy constants
@@ -1321,6 +1322,26 @@ export const dbAchAutopayStore: AchAutopayStore = {
         }
       }
 
+      // The Reg-Z application breakdown, in the SAME transaction (D4):
+      // mirror the split this settlement just recorded on the payment row,
+      // so the periodic-statement generator can describe the payment
+      // instead of refusing the borrower's statement for the cycle. This
+      // rail collects no fee (lateFeeCents is 0 by the rule above); the
+      // payoff residue is received-but-unapplied.
+      await recordPostedPaymentApplication(tx, {
+        organizationId: note.organizationId,
+        loanId: String(note.id),
+        loanType: "note",
+        paymentId: String(row.id),
+        receivedAt: settledAt,
+        appliedAt: settledAt,
+        appliedToPrincipalCents: split.principalCents,
+        appliedToInterestCents: split.interestCents,
+        appliedToEscrowCents: 0,
+        appliedToFeesCents: lateFeeCents,
+        appliedToSuspenseCents: split.residueCents,
+      });
+
       return { paymentId: row.id, created: true, remainingBalanceCents };
     });
 
@@ -1416,6 +1437,27 @@ export const dbAchAutopayStore: AchAutopayStore = {
           throw new Error(`Optimistic lock conflict reversing note ${original.noteId}`);
         }
       }
+
+      // The reversal's own application breakdown, negative, in the SAME
+      // transaction (D4): the reversal row is itself a 'completed' posting,
+      // so without a mirror row the statement generator would refuse the
+      // return cycle's statement as undescribed money movement. The
+      // original payment's breakdown stays in its own cycle — it described
+      // money that did move then; this row nets the return in the cycle it
+      // happened, and the year-to-date sums net to the truth across both.
+      await recordPostedPaymentApplication(tx, {
+        organizationId: original.organizationId,
+        loanId: String(original.noteId),
+        loanType: "note",
+        paymentId: String(reversal.id),
+        receivedAt: returnedAt,
+        appliedAt: returnedAt,
+        appliedToPrincipalCents: -principalCents,
+        appliedToInterestCents: -interestCents,
+        appliedToEscrowCents: 0,
+        appliedToFeesCents: -lateFeeCents,
+        appliedToSuspenseCents: 0,
+      });
 
       return { reversalPaymentId: reversal.id, created: true };
     });

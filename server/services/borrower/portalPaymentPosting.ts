@@ -54,6 +54,7 @@ import {
   outstandingServicedLateFeesCents,
 } from "../notes/servicedLateFees";
 import { clock } from "../../utils/clock";
+import { recordPostedPaymentApplication } from "../paymentApplication";
 
 // ─────────────────────────────────────────────────────────────────────
 // Workflow payment events (Wave B — "wire the engine")
@@ -463,6 +464,28 @@ export async function postServicedNotePayment(
     if (updated.length === 0) {
       throw new Error(`Optimistic lock conflict on note ${note.id} — concurrent update detected`);
     }
+
+    // The Reg-Z application breakdown, in the SAME transaction (D4): the
+    // periodic-statement generator sums `payment_applications` only, and
+    // refuses the borrower's statement when a posted payment has no row
+    // there. Mirror the split this rule just recorded on the payment row —
+    // principal / interest from the split, the collected late fee as fees,
+    // and the payoff residue as unapplied (it was received and applied to
+    // nothing). The buckets sum to the payment amount, as the table's
+    // invariant requires.
+    await recordPostedPaymentApplication(tx, {
+      organizationId: note.organizationId,
+      loanId: String(note.id),
+      loanType: "note",
+      paymentId: String(row.id),
+      receivedAt: paymentDate,
+      appliedAt: paymentDate,
+      appliedToPrincipalCents: split.principalCents,
+      appliedToInterestCents: split.interestCents,
+      appliedToEscrowCents: 0,
+      appliedToFeesCents: lateFeeCents,
+      appliedToSuspenseCents: split.residueCents,
+    });
 
     return { row, created: true, remainingBalanceCents: newBalanceCents } as const;
   });
