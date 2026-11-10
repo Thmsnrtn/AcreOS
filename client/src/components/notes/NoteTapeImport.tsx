@@ -23,6 +23,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { apiRequest } from "@/lib/queryClient";
 import { Verbs } from "@/lib/labels";
 import { NOTE_TAPE_FIELDS, type NoteTapeFieldKey, type NoteTapeGroup } from "@shared/notes/noteTapeFields";
+import { priceForTargetYield, pricingInputFromTapeRow } from "@shared/notes/notePriceYield";
 
 type Mapping = Partial<Record<NoteTapeFieldKey, number | null>>;
 type Overrides = Record<string, Partial<Record<NoteTapeFieldKey, string>>>;
@@ -35,6 +36,10 @@ interface PreparedNote {
   payerName: string;
   currentBalanceCents: number;
   interestRateBps: number;
+  paymentAmountCents: number;
+  remainingTermMonths: number | null;
+  balloonAmountCents: number | null;
+  balloonDate: string | null;
   maturityDate: string;
   status: string;
   documentsIncomplete: boolean;
@@ -51,6 +56,18 @@ interface Preview {
     summary: { totalRows: number; validCount: number; rejectedCount: number; documentsIncomplete: number };
   };
 }
+/** The price (cents) that earns the tape-wide hurdle on one row — blank, with the reason on hover, where the tape does not state enough to price it. */
+function PriceAtTargetCell({ row, targetPct, asOf }: { row: PreparedNote; targetPct: number; asOf: string | null }) {
+  const built = pricingInputFromTapeRow(row, asOf);
+  const priced = built.ok ? priceForTargetYield(built.input, targetPct * 100) : null;
+  const why = !built.ok ? built.reason : priced && !priced.ok ? priced.message : null;
+  return (
+    <TableCell className="text-right tabular-nums" data-testid="note-tape-price-at-target">
+      {priced && priced.ok ? money(priced.priceCents) : <span className="text-muted-foreground" title={why ?? undefined}>— <span className="sr-only">{why}</span></span>}
+    </TableCell>
+  );
+}
+
 interface Committed {
   status: "committed";
   created: number;
@@ -70,6 +87,9 @@ async function readJson<T>(res: Response): Promise<T> {
 export function NoteTapeImport({ onDone }: { onDone?: () => void }) {
   const [file, setFile] = useState<{ name: string; text: string } | null>(null);
   const [asOf, setAsOf] = useState("");
+  const [targetPct, setTargetPct] = useState("");
+  const targetParsed = Number(targetPct.replace(/[%,\s]/g, ""));
+  const target = targetPct.trim() !== "" && Number.isFinite(targetParsed) && targetParsed > 0 ? targetParsed : null;
   const [preview, setPreview] = useState<Preview | null>(null);
   const [mapping, setMapping] = useState<Mapping>({});
   const [overrides, setOverrides] = useState<Overrides>({});
@@ -307,6 +327,14 @@ export function NoteTapeImport({ onDone }: { onDone?: () => void }) {
               )}
 
               {v.valid.length > 0 && (
+                <div className="space-y-2">
+                <div className="flex flex-wrap items-end gap-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="note-tape-target-yield">Target yield (%) — price per row</Label>
+                    <Input id="note-tape-target-yield" className="h-8 w-32" inputMode="decimal" value={targetPct} onChange={(e) => setTargetPct(e.target.value)} placeholder="e.g. 12" data-testid="note-tape-target-yield" />
+                  </div>
+                  <p className="pb-1 text-xs text-muted-foreground">On each note's stated terms only; a row the tape does not fully state is left blank.</p>
+                </div>
                 <div className="overflow-x-auto rounded-md border">
                   <Table>
                     <TableHeader>
@@ -319,6 +347,7 @@ export function NoteTapeImport({ onDone }: { onDone?: () => void }) {
                         <TableHead>Maturity</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>Documents</TableHead>
+                        {target !== null && <TableHead className="text-right">Price @ {targetPct.trim()}%</TableHead>}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -332,10 +361,12 @@ export function NoteTapeImport({ onDone }: { onDone?: () => void }) {
                           <TableCell>{n.maturityDate}</TableCell>
                           <TableCell>{n.status.replace("_", " ")}</TableCell>
                           <TableCell>{n.documentsIncomplete ? <Badge variant="destructive">incomplete</Badge> : <Badge variant="secondary">complete</Badge>}</TableCell>
+                          {target !== null && <PriceAtTargetCell row={n} targetPct={target} asOf={asOf || null} />}
                         </TableRow>
                       ))}
                     </TableBody>
                   </Table>
+                </div>
                 </div>
               )}
 
