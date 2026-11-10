@@ -18,6 +18,7 @@ import { Loader2, MapPin, X } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Verbs } from "@/lib/labels";
 import {
   useParcelLookup,
   isParcelNotCovered,
@@ -119,7 +120,7 @@ export function ParcelOwnerCard({ pick, onClose, onResolved, compact, className 
           The lookup failed — this isn't the same as "no coverage". Try again.
         </p>
         <Button type="button" size="sm" variant="outline" onClick={() => mutate(parcelLookupRequestFor(pick))}>
-          Retry
+          {Verbs.RETRY}
         </Button>
       </div>
     );
