@@ -7,6 +7,7 @@ import { addMonths } from "../utils/dateUtils";
 import { formatPaxTime, PAX_LABELS } from "@shared/pax-glossary";
 import { countPaxEffects } from "./paxReceiptsReader";
 import { clock } from "../utils/clock";
+import { assertWritablePatch } from "../utils/patch";
 
 /** Absolute base for the digest's deep links (same source as dunning.ts). */
 const APP_URL = process.env.APP_URL || "https://app.acreos.io";
@@ -98,9 +99,12 @@ export class DigestService {
     if (!existing) {
       return enabled ? this.createSubscription(userId, organizationId, 'weekly') : undefined;
     }
+    const patch = enabled
+      ? { emailEnabled: true, frequency: 'weekly' as const }
+      : { emailEnabled: false };
     const [updated] = await db
       .update(digestSubscriptions)
-      .set(enabled ? { emailEnabled: true, frequency: 'weekly' } : { emailEnabled: false })
+      .set(assertWritablePatch(patch, "digestSubscriptions.setWeeklyDigest"))
       .where(
         and(
           eq(digestSubscriptions.userId, userId),

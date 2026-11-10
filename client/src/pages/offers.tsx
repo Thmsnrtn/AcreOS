@@ -1802,7 +1802,7 @@ export default function OffersPage() {
           <ConfirmDialog
             open={pendingBulkSend}
             onOpenChange={(open) => { if (!open) setPendingBulkSend(false); }}
-            title={`Send ${selectedOffers.length} offer${selectedOffers.length === 1 ? "" : "s"}?`}
+            title={`Queue ${selectedOffers.length} offer${selectedOffers.length === 1 ? "" : "s"}?`}
             description={(() => {
               const draftCount = selectedOffers.filter((id) => {
                 const o = offerLetters?.find(o => o.id === id);
@@ -1815,7 +1815,7 @@ export default function OffersPage() {
               }, 0);
               return `Queues ${draftCount} draft offer${draftCount === 1 ? "" : "s"} totaling ${usd(totalCents)}. Already-queued offers in the selection are skipped. This only marks them as queued — nothing is mailed or emailed to the seller yet, so you will need to deliver them yourself.`;
             })()}
-            confirmLabel={`Send ${selectedOffers.length}`}
+            confirmLabel={`Queue ${selectedOffers.length}`}
             variant="default"
             onConfirm={() => {
               handleSendSelected();
