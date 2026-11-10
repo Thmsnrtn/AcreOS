@@ -230,8 +230,8 @@ export const DSAR_DOMAINS: readonly DsarDomainDecision[] = [
  * the repo's own drizzle getTableConfig and shared/data-classification.ts —
  * (a) a column name satisfying looksLikePII, (b) an FK to leads.id/users.id or
  * a lead_id/borrower_id/user_id column, (c) a CLASSIFICATION_REGISTRY entry of
- * pii/sensitive_financial — minus every table named in DSAR_DOMAINS. 136
- * candidates at measurement (DSAR_CANDIDATE_FLOOR); these 120 are undecided.
+ * pii/sensitive_financial — minus every table named in DSAR_DOMAINS. 138
+ * candidates at measurement (DSAR_CANDIDATE_FLOOR); these 122 are undecided.
  * The coverage test re-derives the set at runtime, so this list cannot go
  * stale in either direction. Deciding a table = add it to a DSAR_DOMAINS
  * entry and delete it here; never add a name here to make the test pass.
