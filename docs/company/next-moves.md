@@ -3,6 +3,13 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-11-10 — PKG-6a: price-figure truth for prose surfaces (detection only)
+
+- **Built.** `tests/unit/publicCopyPrices.test.ts` + `tests/helpers/priceClaimScanner.ts`: scans docs/marketing/**, content/{marketing,emails,outreach,business,blog}/** and the compare/FAQ TSX for dollar figures beside a plan name, diffed against figures derived from `tier-pricing.ts` (annual-equivalent tolerance: whole dollar within $0.50, decimals within $0.01). Register of 23 mismatches + 1 plan-less figure + 10 comment-debt entries + 1 plan-content finding; none fixed here.
+- **Debt to pay (separate PR).** 17× "Pro $41/mo billed annually" in 7 docs/marketing files (Starter's figure); `$20/$49`-era prices in content/business/{acquire-listing,investor-brief}.md and **content/emails/onboarding-sequence.md** (customer-facing); copy.ts "Pro unlocks the full Pax assistant" vs pricing-copy.ts Starter "Full Pax assistant".
+- **Blind spots.** content/business/competitive-teardown.md excluded (competitor tiers share plan names; its AcreOS line "$49/mo for full Pro access" is stale); content/strategy/** and docs/*.md not scanned.
+- **Open.** `publicPricingMatchesCanonical.test.tsx` fails on this VM with or without this change (two React copies via jsdom resolving from ../freebuff-walkdoc), so its clean-pass could not be re-measured here.
+
 ## 2026-11-10 — PKG-5c: AI-disclaimer surfaces wired (existing copy only)
 
 - **Changed.** 12 surfaces now mount the existing `RequiredDisclaimer type="ai"` (no copy touched): Pax rail, Pax page, HelpPanel ticket thread, property-analysis chat, DecisionQueue (once per queue, not per card), inbox draft reply, offer generator, deal-detail (price recommendation + negotiation script), deal feed, due-diligence dossier, portfolio, portfolio optimizer. Registry: `shared/governance/aiDisclaimerSurfaces.ts` (present / added with `before` none|partial / covered-by-host / not-advice / founder-only); ratchet + canary: `tests/unit/aiDisclaimerSurfaces.test.ts` (also sweeps client/src for unregistered `/api/ai|pax/` callers).
