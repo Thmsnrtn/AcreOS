@@ -1138,7 +1138,7 @@ export function registerLeadRoutes(app: Express): void {
             description: `Lead responded by ${channel === "phone" ? "phone" : "text"} (logged outcome: ${outcome})`,
             metadata: { channel, method, source: "tap-to-call", outcome, at: now.toISOString() },
             performedBy: userId ? Number(userId) || null : null,
-          } as any);
+          });
           await pauseSequencesOnResponse(org.id, leadId);
         }
 
