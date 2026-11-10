@@ -200,7 +200,7 @@ async function generateNudgesForOrg(org: Organization): Promise<void> {
         .where(and(
           eq(paxNudges.organizationId, orgId),
           isNull(paxNudges.dismissedAt),
-          gte(paxNudges.createdAt as any, cutoff),
+          gte(paxNudges.createdAt, cutoff),
         ));
       alreadyLive = new Set(live.map((r) => String(r.category)));
     } catch {

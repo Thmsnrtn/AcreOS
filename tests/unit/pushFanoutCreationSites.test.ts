@@ -71,6 +71,20 @@ describe("push fan-out: population", () => {
     expect(src).toContain("sendPushToOrg(");
     expect(src).not.toMatch(/sendPushToPerson|sendPushToUser/);
   });
+
+  it("the helper gates the fan-out on stored preferences (founder decision 2026-11-10: respect mute)", () => {
+    const src = read(DEFINITION);
+    // The mute gate is wired: the family's preference event id resolves the
+    // per-user stored prefs before dispatch.
+    expect(src).toContain("ORG_PUSH_FAMILY_EVENT_ID[event.family]");
+    expect(src).toContain("getPushEligibility(");
+    expect(src).toContain("ORG_PUSH_FAMILY_DEFAULT_ON");
+    // Every family has a mapped preference event — a family without one
+    // would fan out ungated.
+    expect(src).toMatch(/pax_nudge: "pax\.needs_you"/);
+    expect(src).toMatch(/redemption_alert: "deal\.closing_reminder"/);
+    expect(src).toMatch(/ladder_ready: "finance\.payment_missed"/);
+  });
 });
 
 describe("push fan-out: ordering at each creation point", () => {
