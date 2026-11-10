@@ -14019,6 +14019,7 @@ export * from "./schema/parcel-apid";
 export * from "./schema/note-observations";
 export * from "./schema/note-events";
 export * from "./schema/wholesale-buy-boxes";
+export * from "./schema/note-origination-records";
 export * from "./schema/tax-v1";
 
 // ============================================================================
@@ -14045,6 +14046,11 @@ export * from "./schema/pax-audit";
 // PHASE D1 — per-user Pax context (vertical / experience / goals / geo)
 // ============================================================================
 export * from "./schema/pax-user-context";
+
+// ============================================================================
+// E2 slice 1 leg 2 — the morning brief archive (migration 0303)
+// ============================================================================
+export * from "./schema/pax-morning-briefs";
 
 // ============================================================================
 // SOLENE — self-audit ledger (operating-discipline drift detection)

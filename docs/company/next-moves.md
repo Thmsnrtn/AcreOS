@@ -49,6 +49,26 @@ what shipped, what it measured, and the top next moves. Newest first.
   2. Leg 3 (#464) merged 2026-11-07 (`0abcce7`).
   3. Leg 4: the pursue/pass desk.
   4. Staging proof after the merges.
+## 2026-11-05 — Notes V2 Leg 1: delinquency ladder — on `claude/notes-v2-leg1-delinquency-ladder` (PR #463, retargeted to main after #461 merged as `fd984d8`; open, unmerged)
+
+- **Built.** Stage entries (current / past due under 30 / 30 / 60 / 90+) are recorded by the aging sweep. They go on `note_events` as category `delinquency` (migration 0302 widens the CHECKs only, restates 0301, and adds no table) inside the status transaction.
+  - Default review is an operator act, recorded once and never derived (ruling 1).
+  - Plus the escalation evidence bundle, extend-and-pretend from recorded payments, the note-page panel, and buckets on the notes list.
+- **Proved.**
+  - The real sweep against a real DB hits the boundary days, is idempotent, and records no stage for unknown notes or terminal notes.
+  - The no-sends fence holds at the module boundary, both runtime spies and the static import scan.
+  - The default-review ruling and cross-tenant refusal hold.
+  - Four mutants are caught.
+  - Evidence: `docs/evidence/2026-11-05/notes-v2-leg1-delinquency-ladder.md`.
+- **Found on the way.**
+  - `GET /api/notes/:noteId/delinquency` is the originated book's route, so the ladder lives at `/delinquency-ladder`.
+  - The bundle is the first reader of `respa_outreach_events` (`tablesNoReader` 59 → 58).
+- **Bundle: 9,823 / 9,823 KB with zero headroom** after trimming both panels. The next client change anywhere fails CI until a trim makes room.
+- **Next.**
+  1. Muse audits #461, then this PR.
+  2. Retarget this PR to main after #461 merges; CI's bundle check runs only on PRs into main.
+  3. Staging proof per §10.
+  4. Muse confirms the 1–29 day stage, or folds it into current.
 
 ## 2026-11-05 — Notes V2 Leg 2: workout NPV comparison — on `claude/notes-v2-leg2-workout-npv` (off main `4b2044b`, PR #461, MERGED 2026-11-08)
 
@@ -379,6 +399,32 @@ what shipped, what it measured, and the top next moves. Newest first.
   2. Run the staging proofs for Legs 4 and 6.
   3. Decide NY's seed (Leg 3.4) and state where the radar's tasks go (3.3).
   4. Wire hold checks into clear-demo-data and archival.
+
+## 2026-11-03 — E2 slice 1 (Pax core): step 0 stopped three legs; leg 2, the morning brief, built as an extend — on `claude/e2-slice1-pax-brief` (PR #459, open)
+
+- **Step 0 contradicted the spec's "missing" checklist.**
+  - **Memory exists:** `pax_memory`, with a panel and silent model writes.
+  - **A brief exists:** `MorningBrief` / `composeBrief`.
+  - **`routes-pax-controls.ts` is the rails, stance and stand-down home:** stances tied to founder rulings, an org-wide Pause with a coverage ratchet, and receipts.
+  - The full rulings table and the conflicts are in `docs/evidence/2026-11-03/e2-slice1-pax-brief.md`.
+- **Leg 1 (memory): STOPPED.** "Pax never writes memory silently" contradicts `remember_fact`, `save_user_memory` and `paxMemoryTriggers`. A new table would be a parallel implementation. Needs a decision: make `pax_memory` the business memory and route model writes through proposals, or keep them separate and say why.
+- **Leg 5 (presets, rails, ledger, stand-down): STOPPED** on the spec's own stop condition.
+  - The default "Prepare-only" preset conflicts with the live default stance `ask_before_sending`, under which chat record writes run with no tap.
+  - Stand-down vs Pause: the Pause is time-limited and doesn't stop drafts.
+  - Trust ledger vs receipts: pause and controls events are already receipted.
+- **Legs 3 + 4 (packets, pane): HELD.** The packet lifecycle writes to the §5 ledger, and the only defined producers are legs 1 and 5. Built now, they would be unwired.
+- **Leg 2 (brief): built.**
+  - Three deterministic sections from real rows, with provenance, under the unchanged headline.
+  - Unreadable inputs are shown as unreadable, never as zero.
+  - Dismiss, restore, archive and reopen, through `routes-today-briefs.ts`, which is mounted without `todayGuard`.
+  - `pax_morning_briefs`: migration 0303 (renumbered from 0301; #461 holds 0301), table-count 749, **approved 2026-11-07 under Tom's full-readiness mandate** (Muse, PR #459 audit).
+  - The position on /today is unchanged, so P0's first-value CTA is not displaced.
+- **Proved.** A realdb suite through the mounted routers, a pure composer suite with send, kernel-write and model-name sweeps, and 15 of 15 mutants red. An independent audit found 8 issues; all are fixed or flagged (see the evidence file). The gates are in the PR body.
+- **Next.**
+  1. Muse audits and merges (the +1 table is approved under the mandate, 2026-11-07).
+  2. The leg-1 and leg-5 decisions (owner: Tom or Muse). Then legs 3 and 4 can be built on the decided ledger.
+  3. After merge: staging proof of the brief (it renders from staging state; dismiss, archive and reopen; cross-org 404), recorded in `docs/evidence/`. That becomes the brief's Atlas row.
+  4. When P0 lands, rebase over it.
 
 ## 2026-11-03 — Statewide point lookup gated behind the license dossiers — on `claude/statewide-lookup-clearance-gate` (off main `519b62c`, PR #452, MERGED 2026-11-03)
 

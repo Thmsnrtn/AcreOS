@@ -129,6 +129,7 @@ import {
   type AchReturnCode,
 } from "./actumProcessing";
 import { clock } from "../utils/clock";
+import { nextServicedStatus } from "@shared/notes/servicedStatus";
 
 // ───────────────────────────────────────────────────────────────────────────
 // Policy constants
@@ -1308,7 +1309,9 @@ export const dbAchAutopayStore: AchAutopayStore = {
             // A settlement on a note the lender has since accelerated leaves
             // it defaulted; reinstatement is the lender's call (the same
             // rule as postServicedNotePayment — audit of the fourth follow-up).
-            status: remainingBalanceCents <= 0 ? "paid_off" : locked.status === "defaulted" ? "defaulted" : "active",
+            // A settlement never consummates a pending note. One rule for
+            // every payment path: shared/notes/servicedStatus.ts.
+            status: nextServicedStatus(locked.status, remainingBalanceCents),
             nextPaymentDate: nextDue,
             amortizationSchedule: updatedSchedule,
             version: (locked.version ?? 1) + 1,

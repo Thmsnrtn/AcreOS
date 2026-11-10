@@ -37,6 +37,7 @@ import realtimeRouter from "./routes-realtime";
 import paxInsightsRouter from "./routes-pax-insights";
 import paxControlsRouter from "./routes-pax-controls";
 import todayRouter from "./routes-today";
+import todayBriefsRouter from "./routes-today-briefs";
 import parcelAlertsRouter from "./routes-parcel-alerts";
 import parcelBiographyRouter from "./routes-parcel-biography";
 // Voice AI deleted 2026-08-01 (deletion-ledger row: Voice / AI voice, founder-authorized drop).
@@ -198,6 +199,8 @@ import { registerNoteAcquisitionRoutes } from "./routes-note-acquisitions";
 import { registerNoteTapeRoutes } from "./routes-note-tape";
 import { registerNoteRecordRoutes } from "./routes-note-record";
 import { registerNoteWorkoutRoutes } from "./routes-note-workout";
+import { registerNoteDelinquencyRoutes } from "./routes-note-delinquency";
+import { registerNoteOriginationRoutes } from "./routes-note-origination";
 import { registerServicerRoutes } from "./routes-servicer";
 import { registerTaxCertificateRoutes } from "./routes-tax-certificates";
 import { registerTaxRuleRoutes } from "./routes-tax-rules";
@@ -1391,6 +1394,10 @@ export async function registerRoutes(
   app.use('/api/pax', isAuthenticated, getOrCreateOrg, paxChatGuard, paxInsightsRouter);
   // Consolidated Today-screen payload (queue + cash + meta) — one round-trip
   // replacing the ~6 parallel fetches the Today page used to fan out.
+  // The morning brief archive (E2 slice 1 leg 2) — AHEAD of /api/today and
+  // without todayGuard: it calls no model, so the AI budget must not be able
+  // to refuse a dismissal (routes-today-briefs.ts header).
+  app.use('/api/today/briefs', isAuthenticated, getOrCreateOrg, todayBriefsRouter);
   app.use('/api/today', isAuthenticated, getOrCreateOrg, todayGuard, todayRouter);
   // Iyari #5 — Parcel alerts (owner-change / tax-status deltas) surfaced behind
   // the Today door. Detector writes them; this router is read + mark-read only.
@@ -2446,6 +2453,8 @@ export async function registerRoutes(
   registerNoteTapeRoutes(app);
   registerNoteRecordRoutes(app);
   registerNoteWorkoutRoutes(app);
+  registerNoteDelinquencyRoutes(app);
+  registerNoteOriginationRoutes(app);
   // Note Servicer (Pillar K — Ursa) — owners-of-record, remittances, licenses.
   registerServicerRoutes(app);
   // Tax-Delinquent vertical TD-2 — redemption-clock surface.
