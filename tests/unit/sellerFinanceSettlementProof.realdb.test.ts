@@ -86,7 +86,7 @@ describeReal("seller-finance settlement proof (real DB)", () => {
 
     const [org] = await db
       .insert(schema.organizations)
-      .values({ name: `PKG3 Proof ${suffix}`, slug: `pkg3-proof-${suffix}` })
+      .values({ name: `PKG3 Proof ${suffix}`, slug: `pkg3-proof-${suffix}`, ownerId: `pkg3-owner-${suffix}` })
       .returning();
     orgId = org.id;
 
@@ -133,7 +133,7 @@ describeReal("seller-finance settlement proof (real DB)", () => {
 
     const [org2] = await db
       .insert(schema.organizations)
-      .values({ name: `PKG3 Proof Other ${suffix}`, slug: `pkg3-proof-other-${suffix}` })
+      .values({ name: `PKG3 Proof Other ${suffix}`, slug: `pkg3-proof-other-${suffix}`, ownerId: `pkg3-owner-other-${suffix}` })
       .returning();
     org2Id = org2.id;
 
