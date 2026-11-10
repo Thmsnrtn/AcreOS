@@ -3,6 +3,12 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-11-10 — PKG-6b: SES suppression path verified; suppression-write failures now fail the webhook
+
+- **Changed.** `suppress()` / `recordSoftBounce()` no longer swallow DB errors; `ingestSesNotification` rethrows; the route calls new `releaseReplay()` (snsVerification.ts) when ingest throws, so SNS's retry of the same MessageId is processed rather than deduped. Successful ingests still dedupe.
+- **Tests.** `sesSuppressionRoute.test.ts` (no DB: 401, retry arc, dedupe, eventType format-gap pin) and `sesSuppressionPath.realdb.test.ts` (real chain + SES mock). The realdb file SKIPPED locally (no Postgres); it has not been run.
+- **Open.** (1) Production event format (`notificationType` vs event-destination `eventType`) is unverifiable from the repo; dual-format acceptance is a design call, not built. (2) A multi-recipient soft-bounce notification that fails midway and is retried re-counts strikes for recipients already written. (3) The SubscriptionConfirmation failure path has the same replay trap and was not touched. (4) Full `tsc` OOM-killed on this VM; not verified here.
+
 ## 2026-11-06 — merge statuses reconciled against git at main `6b8240fa`
 
 - **What changed.** Every merge status stated below was checked against the GitHub API (`merged_at`) and `git merge-base --is-ancestor <merge commit> origin/main`. The stale ones ("PR open", "unmerged", "uncommitted", "nothing merged", "waiting on CI and Muse") now read "PR #N, MERGED <date>", in US Eastern (so #421 is 2026-10-31). Only status wording was edited, plus a Status column on the 2026-10-18 branch table. "Next" and "owed" bullets stay as written, so some still say "Muse audits; the founder merges" about PRs that have since merged: trust the heading.

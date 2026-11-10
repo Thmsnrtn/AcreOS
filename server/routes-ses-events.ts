@@ -36,6 +36,7 @@ import {
   parseSnsEnvelope,
   confirmSubscription,
   isReplay,
+  releaseReplay,
 } from "./middleware/snsVerification";
 import {
   suppress,
@@ -179,11 +180,13 @@ export async function ingestSesNotification(
 
   let suppressed = 0;
   let softStrikes = 0;
-  let skipped = 0;
+  // Failed writes are NOT counted or skipped: they propagate so the route
+  // fails, SNS retries, and the suppression is not silently lost.
+  const skipped = 0;
 
   for (const action of actions) {
     const email = action.email.toLowerCase();
-    try {
+    {
       if (action.softBounce) {
         const result = await recordSoftBounce(email, action.reason, { organizationId: orgId });
         softStrikes++;
@@ -216,13 +219,6 @@ export async function ingestSesNotification(
           await alertFounderOnComplaint({ email, organizationId: orgId, reason: action.reason });
         }
       }
-    } catch (err) {
-      logger.error(
-        "[ses-events] failed to apply suppression",
-        err instanceof Error ? err : new Error(String(err)),
-        { metadata: { email, type } },
-      );
-      skipped++;
     }
   }
 
@@ -307,6 +303,9 @@ export function registerSesEventRoutes(app: Express): void {
         logger.info("[ses-events] processed SES notification", { metadata: result });
         return res.json({ ok: true, ...result });
       } catch (err) {
+        // Release the replay claim so SNS's retry of this MessageId is
+        // processed instead of deduped (which would lose the suppression).
+        releaseReplay(`ses-sns:${msg.MessageId}`);
         return Errors.internal(res, err);
       }
     },
