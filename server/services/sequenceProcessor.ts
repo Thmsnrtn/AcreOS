@@ -18,6 +18,7 @@ import { logger } from '../utils/logger';
 import { getPaxControls, paxControlsRefusalMessage } from "./paxControls";
 import { recordPaxEffect } from "./paxReceipts";
 import { clock } from "../utils/clock";
+import { isResponseActivityType } from "./leadResponse";
 
 type EnrollmentWithDetails = SequenceEnrollment & { sequence: CampaignSequence; lead: Lead };
 
@@ -295,7 +296,7 @@ export class SequenceProcessorService {
       const activities = await storage.getLeadActivities(orgId, leadId);
       const responseActivities = activities.filter(
         a => 
-          (a.type === "email_reply" || a.type === "sms_reply" || a.type === "call" || a.type === "response") &&
+          isResponseActivityType(a.type) &&
           a.createdAt && new Date(a.createdAt) > cutoffDate
       );
       

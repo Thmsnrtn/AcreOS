@@ -58,6 +58,7 @@ import {
 } from "@shared/leads/csvImportMapping";
 import { leadParcelFactsFromRow } from "@shared/leads/parcelFacts";
 import { clock } from "./utils/clock";
+import { callOutcomeIsResponse, pauseSequencesOnResponse } from "./services/leadResponse";
 import { routeParam } from "./utils/routeParams";
 
 // Partial update schema for PUT endpoints. The soft-delete fields are server-
@@ -1122,6 +1123,24 @@ export function registerLeadRoutes(app: Express): void {
           },
           performedBy: userId ? Number(userId) || null : null,
         } as any);
+
+        // 3) Stop-on-reply (gap slice 1). A logged outcome where a human on
+        //    the lead's side engaged (hot/warm/cold — see
+        //    RESPONSE_CALL_OUTCOMES; no_answer / wrong_number are NOT a
+        //    response) also writes a RESPONSE_SOURCES row and pauses the
+        //    lead's active drip enrollments. The `${channel}_outcome` row
+        //    above is kept as-is: it is the timeline entry for every outcome.
+        if (callOutcomeIsResponse(outcome)) {
+          await storage.createLeadActivity({
+            leadId,
+            organizationId: org.id,
+            type: `${channel}_response`,
+            description: `Lead responded by ${channel === "phone" ? "phone" : "text"} (logged outcome: ${outcome})`,
+            metadata: { channel, method, source: "tap-to-call", outcome, at: now.toISOString() },
+            performedBy: userId ? Number(userId) || null : null,
+          } as any);
+          await pauseSequencesOnResponse(org.id, leadId);
+        }
 
         logger.info("Lead contact event logged", {
           leadId,
