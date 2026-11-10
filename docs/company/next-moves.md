@@ -3,6 +3,12 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-11-10 — PKG-5c: AI-disclaimer surfaces wired (existing copy only)
+
+- **Changed.** 12 surfaces now mount the existing `RequiredDisclaimer type="ai"` (no copy touched): Pax rail, Pax page, HelpPanel ticket thread, property-analysis chat, DecisionQueue (once per queue, not per card), inbox draft reply, offer generator, deal-detail (price recommendation + negotiation script), deal feed, due-diligence dossier, portfolio, portfolio optimizer. Registry: `shared/governance/aiDisclaimerSurfaces.ts` (present / added with `before` none|partial / covered-by-host / not-advice / founder-only); ratchet + canary: `tests/unit/aiDisclaimerSurfaces.test.ts` (also sweeps client/src for unregistered `/api/ai|pax/` callers).
+- **Counsel flags (flags only).** ToS §7 vs terms.tsx §3 numbering; LQ-03 scope; client "ai" copy is shorter than server `DISCLAIMER_AI`. Listed in the registry.
+- **Open.** `npm run check:tests` not run (OOM on this VM). 16 tests in inboxLeadPopulationUi / paxAskCardIsAnswerable / todaySkeletonsMatchTheirContent fail identically on the clean branch (pre-existing, not investigated).
+
 ## 2026-11-10 — PKG-6b: SES suppression path verified; suppression-write failures now fail the webhook
 
 - **Changed.** `suppress()` / `recordSoftBounce()` no longer swallow DB errors; `ingestSesNotification` rethrows; the route calls new `releaseReplay()` (snsVerification.ts) when ingest throws, so SNS's retry of the same MessageId is processed rather than deduped. Successful ingests still dedupe.
