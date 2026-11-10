@@ -56,7 +56,7 @@ export const DOCUMENT_OBJECT_KINDS: readonly DocumentObjectKindDef[] = [
   { kind: "note", segment: "notes", column: "acquiredNoteId", entityLabel: "Note", idType: "uuid", timelineEntityType: null },
 ] as const;
 
-export function documentObjectKindDef(kind: DocumentObjectKind): DocumentObjectKindDef {
+function documentObjectKindDef(kind: DocumentObjectKind): DocumentObjectKindDef {
   const def = DOCUMENT_OBJECT_KINDS.find((d) => d.kind === kind);
   if (!def) throw new Error(`unknown document object kind '${kind}'`);
   return def;
