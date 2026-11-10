@@ -248,6 +248,20 @@ describe("a NULL column is today's behaviour, not an error", () => {
       leadScoring: true,
       borrowerReminders: true,
       inboxDrafts: true,
+      // PX-2: the rails ARE today's behaviour — record changes run and are
+      // receipted, sends ask (see paxRailsPopulation.test.ts for the
+      // composition proof that these equal today's outcomes).
+      rails: {
+        records: {
+          leads: "act_and_report",
+          properties: "act_and_report",
+          deals: "act_and_report",
+          tasks: "act_and_report",
+          follow_ups: "act_and_report",
+          account: "act_and_report",
+        },
+        sends: "ask",
+      },
     });
   });
 });

@@ -3,6 +3,13 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-11-10 — PX-2: per-capability rails v1 — on `claude/px2-capability-rails` (stacked on PX-1)
+
+- Rails live INSIDE the existing controls, not as a new stance (founder ruling 2026-11-10 §6.5 Q4): one level per record domain (leads, properties, deals, tasks, follow-ups, plus `account` for the support switch's system fixes) and one for sends. Levels weakest → strongest: watch, draft, ask, act_and_report; sends are capped at ask by type (`PaxSendsRailLevel`) and clamped at read.
+- ONE decision, `decidePaxCall` (`server/services/paxRails.ts`), composes pause ∧ stance ∧ rail for both dispatch switches; a rail only narrows. Old stored rows (no `rails`) and NULL read as today's defaults (record changes act_and_report, sends ask) — no silent change.
+- PATCH `/api/pax/controls` takes `rails` (422 on unknown domain/level or sends above ask); `/settings/pax` renders the rails card from the tool registry. Proof: `tests/unit/paxRailsPopulation.test.ts`.
+- Proof (driver-run): paxRailsPopulation + stance/page suites 85/85, neighbour batch 203/203, census 22/22, scoped tsc clean in changed files (one real TS2322 in the PATCH merge found and fixed in round 1), reachability PASS all 11 at baseline. CI is the completing proof. Still open: whether `draft` should differ from `ask` in the queue (today both park a pending action).
+
 ## 2026-11-10 — PX-1: Pax browser make-safe — on `claude/px1-browser-make-safe`
 
 - `browse_web` now writes a Pax receipt (host, URL without query, turn) through `recordPaxEffect` on every lane that can browse; records created in a turn after a browse carry `source: web:<host>` provenance (tagged in due-diligence notes).
