@@ -218,7 +218,7 @@ describe.runIf(realDbAvailable)("LQ-11 DSAR drill (real database, real routes)",
         countyTaxPortalUrl: portal,
       } as any).returning())).id as number;
     const property = async (organizationId: number, sellerId: number, apn: string) =>
-      (await one(db.insert(S.properties).values({ organizationId, apn, county: "Travis", state: "TX", sellerId } as any).returning())).id as number;
+      (await one(db.insert(S.properties).values({ organizationId, apn, county: "Travis", state: "TX", sizeAcres: "1.25", sellerId } as any).returning())).id as number;
     const consent = async (organizationId: number, leadId: number, consentText: string) =>
       db.insert(S.leadConsentEvents).values({ organizationId, leadId, eventType: "granted", channels: ["sms"], source: "written", consentText } as any);
 
