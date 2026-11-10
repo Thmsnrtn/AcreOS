@@ -651,11 +651,11 @@ export type InsertRehabHoldingCostEntry = typeof rehabHoldingCostEntries.$inferI
 // ============================================================================
 
 // The SQL CHECK in migrations/0307 pins the status column to this exact set.
-export const REHAB_CHANGE_ORDER_STATUSES = ["proposed", "approved", "rejected"] as const;
+const REHAB_CHANGE_ORDER_STATUSES = ["proposed", "approved", "rejected"] as const;
 export type RehabChangeOrderStatus = typeof REHAB_CHANGE_ORDER_STATUSES[number];
 
 // How a flip exits (Leg 4 §6.1).
-export const REHAB_EXIT_KINDS = ["sell", "hold", "wholesale"] as const;
+const REHAB_EXIT_KINDS = ["sell", "hold", "wholesale"] as const;
 export type RehabExitKind = typeof REHAB_EXIT_KINDS[number];
 
 export const rehabChangeOrders = pgTable(
