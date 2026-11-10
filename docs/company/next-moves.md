@@ -25,6 +25,27 @@ what shipped, what it measured, and the top next moves. Newest first.
 | #488 | `claude/w4-note-merge-plan-pricing-engine` | W4.11 [DRAFT]: B10 note-model merge proposal + note pricing engine (recording stopped) | yes |
 | #489 | `claude/next-moves-ff-merged` | next-moves: Fix-and-Flip Legs 1–2, #466, #484, #458 merged; §9.3 routing recorded (docs only) | no |
 
+## 2026-11-05 — Notes V2 Leg 1: delinquency ladder — on `claude/notes-v2-leg1-delinquency-ladder` (PR #463, retargeted to main after #461 merged as `fd984d8`; open, unmerged)
+
+- **Built.** Stage entries (current / past due under 30 / 30 / 60 / 90+) are recorded by the aging sweep. They go on `note_events` as category `delinquency` (migration 0302 widens the CHECKs only, restates 0301, and adds no table) inside the status transaction.
+  - Default review is an operator act, recorded once and never derived (ruling 1).
+  - Plus the escalation evidence bundle, extend-and-pretend from recorded payments, the note-page panel, and buckets on the notes list.
+- **Proved.**
+  - The real sweep against a real DB hits the boundary days, is idempotent, and records no stage for unknown notes or terminal notes.
+  - The no-sends fence holds at the module boundary, both runtime spies and the static import scan.
+  - The default-review ruling and cross-tenant refusal hold.
+  - Four mutants are caught.
+  - Evidence: `docs/evidence/2026-11-05/notes-v2-leg1-delinquency-ladder.md`.
+- **Found on the way.**
+  - `GET /api/notes/:noteId/delinquency` is the originated book's route, so the ladder lives at `/delinquency-ladder`.
+  - The bundle is the first reader of `respa_outreach_events` (`tablesNoReader` 59 → 58).
+- **Bundle: 9,823 / 9,823 KB with zero headroom** after trimming both panels. The next client change anywhere fails CI until a trim makes room.
+- **Next.**
+  1. Muse audits #461, then this PR.
+  2. Retarget this PR to main after #461 merges; CI's bundle check runs only on PRs into main.
+  3. Staging proof per §10.
+  4. Muse confirms the 1–29 day stage, or folds it into current.
+
 ## 2026-11-05 — Notes V2 Leg 2: workout NPV comparison — on `claude/notes-v2-leg2-workout-npv` (off main `4b2044b`, PR #461, MERGED 2026-11-08)
 
 - **Built.** One pure engine (`shared/notes/workoutEngine.ts`, `workout-engine v1`). It compares six paths on one input snapshot:
@@ -190,7 +211,8 @@ what shipped, what it measured, and the top next moves. Newest first.
 - **#465 Leg 1.**
   - What it adds: `POST /api/fix-and-flip/decide` through `recordUnderwrittenDecision` (`flip_mao` / `fix_and_flip`). Every input is server-resolved. The evidence (ARV row id + low/mid/high + count, the scope source, each rule's provenance, the hold comparison seen) is frozen as assumptions.
   - UI: the analyzer's MAO card says "Screen — nothing recorded", and a decision panel sits beside the draft offer.
-  - Proof: 22 mutants caught; full vitest 19,805 passed (the 5 local-only env failures also fail on main); bundle 9,807 KB.
+  - Proof: 22 mutants caught; full vitest 19,805 passed (the 5 local-only env failures also fail on main); bundle 9,807 KB at first push.
+  - Bundle history: 9,825 KB > the 9,823 KB ceiling after main grew. The ceiling did not move (COO ruling 2026-11-06: down-only). It passed at 9,775 KB once the #470 i18n trim landed.
 - **#466 Fix (live data loss).** Zod 4 `.partial()` keeps defaults, so:
   - saving a rehab line's "spent" zeroed its budget and committed amounts;
   - a rehab PATCH reset status to planning;
@@ -203,16 +225,23 @@ what shipped, what it measured, and the top next moves. Newest first.
   - Estimate lock after planning, including no return to planning and no category moves.
   - Fact flags with no threshold; arithmetic bid deltas.
   - No migration. 21 mutants caught.
+- **Merged.** #466 on 2026-11-07; #465 on 2026-11-08 (`b6e1a612`); #467 on 2026-11-08 (`6b8240fa`).
+  - Main `6b8240fa`: all 18 workflow runs green or intentionally skipped (incl. Security Scanning, Deploy to Staging). JS total measured 9,804 KB on that exact tree (locally; ceiling 9,823).
+  - Post-merge verification of legs 1–5 was done by Muse (COO, 2026-11-08).
+  - A late bring-current commit `c1c50a37` sits on the closed #467 branch. It is tree-identical to main `6b8240fa` and harmless.
 - **Next.**
-  1. Muse audits #466, then Leg 2, then #465.
-  2. Tom's answer on the §9.3 bundle (transition log, baseline, change orders, realized columns) unblocks Legs 3–4.
-  3. Leg 5's staging proof waits on 1–4.
-  4. Product calls reported, not made:
+  1. **§9.3 routing (Muse → Tom).** Tom must approve any new table or migration.
+     - Pre-named: the change-orders table (§4.2) and the realized-economics columns on `rehabs` (Leg 4).
+     - The pre-named pair is already covered by Muse's mandate yes on the F&F schema bundle (2026-11-07 full-readiness mandate); the live ask is only the not-pre-named items.
+     - Not pre-named: Leg 3's status-transition log and baseline record, plus a holding-spend record if actual holding cost is wanted.
+     - Do not build Legs 3–4 until this routes.
+  2. Leg 5's staging proof for Legs 3–4 waits on them. The authenticated staging journey proof for Legs 1–2 is still owed — folded into the CJ-expansion fix-and-flip walk.
+  3. Product calls reported, not made:
      - the rehab header budget vs the line estimates (two "budgets");
      - closing the lock's check-then-write race;
      - the 1099-NEC generator has no qualified-output gate (tax lane).
 
-## 2026-11-03 — Buy-and-hold release: desk ported + mounted, wiring as links — on `claude/buy-and-hold-release` (off main `f7f2e3f`, PR #458, MERGED 2026-11-05; blocker resolved 2026-11-05 by Option B)
+## 2026-11-03 — Buy-and-hold release: desk ported + mounted, wiring as links — on `claude/buy-and-hold-release` (off main `f7f2e3f`, PR #458, MERGED 2026-11-05; blocker resolved 2026-11-05 by Option B); the hold was lifted in #471 (see the 2026-11-05 lift entry)
 
 - **What shipped on the branch.**
   - Ported (not merged — the held branch is 73 behind) the route, the page and the route test; the kit is byte-identical on both.

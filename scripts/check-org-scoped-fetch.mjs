@@ -711,7 +711,6 @@ const BASELINE_FUNCTION_UNUSED_ORG = new Set([
   "server/services/agentPromotionGate.ts::addSimulationRequirement",
   "server/services/andrei/supportResolverCalibration.ts::gradeAutoResolvedTicket",
   "server/services/atlasMemory.ts::storeMemory",
-  "server/services/atrSafeHarbor.ts::persistAtrDetermination",
   "server/services/autonomousDecisionExecutor.ts::processInboxItem",
   "server/services/autopilot/hands/registry.ts::executeHandWitnessed",
   "server/services/byok/key-vault.ts::getByokCredential",
