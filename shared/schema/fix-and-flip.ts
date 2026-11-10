@@ -77,6 +77,15 @@ export const rehabs = pgTable(
     actualListingDate: date("actual_listing_date"),
     closedAt: date("closed_at"),
 
+    // Realized economics — Fix-and-Flip Leg 4 §6.2 (migration 0307). What the
+    // exit actually produced, as recorded by the operator. All NULL until the
+    // operator records the outcome; never inferred.
+    realizedSalePriceCents: bigint("realized_sale_price_cents", { mode: "number" }),
+    realizedSellingCostsCents: bigint("realized_selling_costs_cents", { mode: "number" }),
+    realizedClosingDate: date("realized_closing_date"),
+    realizedRecordedBy: text("realized_recorded_by"),
+    realizedRecordedAt: timestamp("realized_recorded_at", { withTimezone: true }),
+
     // Financial summary — Devon §4: "Real basis = purchase + closing +
     // materials + labor + permits + holding (utilities/taxes/insurance/
     // interest) + selling. None of that is itemized in a basis schedule
@@ -626,4 +635,59 @@ export const rehabHoldingCostEntries = pgTable(
 
 export type RehabHoldingCostEntry = typeof rehabHoldingCostEntries.$inferSelect;
 export type InsertRehabHoldingCostEntry = typeof rehabHoldingCostEntries.$inferInsert;
+
+// ============================================================================
+// FIX-AND-FLIP LEG 4 — CHANGE ORDERS + REALIZED ECONOMICS (migration 0307)
+// ----------------------------------------------------------------------------
+// One table, approved 2026-11-09 (founder §9.3 approval): rehab_change_orders
+// (§4.2) — a priced change to a line item's scope, proposed and then decided.
+// The realized-economics columns on `rehabs` (§6.2) add no table.
+//
+// A change order is a fact once recorded. migrations/0307 installs a guard:
+// the ONLY permitted UPDATE is the single decision move (proposed → approved
+// or rejected, stamping decided_by/decided_at, every other column unchanged);
+// any other UPDATE and TRUNCATE are refused; DELETE is allowed only inside
+// the organization's ON DELETE CASCADE.
+// ============================================================================
+
+// The SQL CHECK in migrations/0307 pins the status column to this exact set.
+const REHAB_CHANGE_ORDER_STATUSES = ["proposed", "approved", "rejected"] as const;
+export type RehabChangeOrderStatus = typeof REHAB_CHANGE_ORDER_STATUSES[number];
+
+// How a flip exits (Leg 4 §6.1).
+const REHAB_EXIT_KINDS = ["sell", "hold", "wholesale"] as const;
+export type RehabExitKind = typeof REHAB_EXIT_KINDS[number];
+
+export const rehabChangeOrders = pgTable(
+  "rehab_change_orders",
+  {
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+    rehabId: uuid("rehab_id").references(() => rehabs.id, { onDelete: "cascade" }).notNull(),
+    lineItemId: uuid("line_item_id").references(() => rehabLineItems.id, { onDelete: "cascade" }).notNull(),
+
+    description: text("description").notNull(),
+    // Never zero (SQL CHECK) — a zero order adjusts nothing. NEGATIVE = a
+    // priced scope reduction.
+    amountCents: bigint("amount_cents", { mode: "number" }).notNull(),
+    // May be negative — a scope cut can shorten the project.
+    scheduleImpactDays: integer("schedule_impact_days").notNull().default(0),
+
+    status: text("status").$type<RehabChangeOrderStatus>().notNull().default("proposed"),
+    decidedBy: text("decided_by"),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+
+    recordedBy: text("recorded_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("rehab_change_orders_org_rehab_created_idx").on(table.organizationId, table.rehabId, table.createdAt),
+    index("rehab_change_orders_org_line_item_idx").on(table.organizationId, table.lineItemId),
+    check("rehab_change_orders_amount_nonzero", sql`${table.amountCents} <> 0`),
+    check("rehab_change_orders_status_check", sql`${table.status} IN ('proposed', 'approved', 'rejected')`),
+  ],
+);
+
+export type RehabChangeOrder = typeof rehabChangeOrders.$inferSelect;
+export type InsertRehabChangeOrder = typeof rehabChangeOrders.$inferInsert;
 
