@@ -62,6 +62,10 @@ function validPayload() {
     qmClassification: "non_qm",
     attestedBy: "Casey Operator",
     attestedByUserId: 12,
+    // The stored payload's stamp: persistAtrDetermination writes attestedAt
+    // at record time, and the gate refuses an undated determination — a
+    // fixture standing in for a stored determination carries the date.
+    attestedAt: "2026-07-01T00:00:00.000Z",
     attestationText:
       "I certify that I have made a reasonable and good faith determination that the consumer has a reasonable ability to repay this loan according to its terms, based on consideration of the eight factors enumerated in 12 CFR 1026.43(c)(2), and that the factors have been verified using reasonably reliable third-party records as required by 12 CFR 1026.43(c)(3). The supporting documentation is retained in the consumer credit transaction file in accordance with 12 CFR 1026.25(c)(3).",
   };
@@ -106,17 +110,6 @@ describe.runIf(realDbAvailable)("Leg 3 counter + gate — real database", () => 
       orgIds.push((org as { id: number }).id);
     }
     [orgA, orgB] = orgIds;
-  });
-
-  afterAll(async () => {
-    const { db, pool } = await import("../../server/db");
-    const { sql } = await import("drizzle-orm");
-    for (const id of orgIds) {
-      await db.execute(sql`DELETE FROM note_origination_records WHERE organization_id = ${id}`).catch(() => undefined);
-      await db.execute(sql`DELETE FROM notes WHERE organization_id = ${id}`).catch(() => undefined);
-      await db.execute(sql`DELETE FROM organizations WHERE id = ${id}`).catch(() => undefined);
-    }
-    await pool.end();
   });
 
   it("§7.3-12 window edges: 12 months minus a day counts; exactly 12 months and plus a day do not (rolling)", async () => {
@@ -435,4 +428,20 @@ describe.runIf(realDbAvailable)("Leg 3 activation gate — real database", () =>
       .where(eq(noteOriginationRecords.id, rec.id));
     expect(still.recordedBy).not.toBe("tampered");
   });
+});
+
+// File-level cleanup, after BOTH describes: the gate describe reuses the
+// orgs the counter describe seeds, so the shared pool must stay open until
+// every suite in this file has run — ending it in the first describe's
+// afterAll leaves the second describe talking to a dead pool.
+afterAll(async () => {
+  if (!realDbAvailable) return;
+  const { db, pool } = await import("../../server/db");
+  const { sql } = await import("drizzle-orm");
+  for (const id of orgIds) {
+    await db.execute(sql`DELETE FROM note_origination_records WHERE organization_id = ${id}`).catch(() => undefined);
+    await db.execute(sql`DELETE FROM notes WHERE organization_id = ${id}`).catch(() => undefined);
+    await db.execute(sql`DELETE FROM organizations WHERE id = ${id}`).catch(() => undefined);
+  }
+  await pool.end();
 });
