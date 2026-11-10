@@ -757,6 +757,7 @@ const DEBT: Record<string, ProposedSurface> = {
   "server/routes-platform-features.ts route:POST /api/export/full": "lead_contact_bulk",
   // server/routes-privacy-dsar.ts
   "server/routes-privacy-dsar.ts route:GET /api/founder/dsar/:id/subject-candidates": "lead_contact_bulk",
+  "server/routes-privacy-dsar.ts route:POST /api/founder/dsar/:id/execute-erasure": "lead_contact_bulk",
   "server/routes-privacy-dsar.ts route:POST /api/founder/dsar/:id/generate-export": "lead_contact_bulk",
   // server/routes-properties.ts
   "server/routes-properties.ts route:GET /api/properties/:id/report.pdf": "review",
