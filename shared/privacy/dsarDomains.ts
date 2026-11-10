@@ -24,9 +24,9 @@ export type DsarExclusionBasis =
   | "hash_only"             // stores only a one-way hash of an identifier
   | "secret_material";      // credentials/tokens — never exported
 
-export type DsarErasureAction = "anonymize" | "delete" | "retain";
+type DsarErasureAction = "anonymize" | "delete" | "retain";
 
-export type DsarDomainDecision =
+type DsarDomainDecision =
   | {
       domain: string;
       decision: "export";

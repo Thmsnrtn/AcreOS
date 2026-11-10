@@ -37,4 +37,4 @@ export const DSAR_IDENTITY_POSTURE = {
     "is the strictest plausible default, pending counsel's identity-verification standard (Q-C1/Q-C2/Q-C3).",
 } as const;
 
-export type DsarVerificationMethod = (typeof DSAR_IDENTITY_POSTURE.acceptedMethods)[number];
+type DsarVerificationMethod = (typeof DSAR_IDENTITY_POSTURE.acceptedMethods)[number];

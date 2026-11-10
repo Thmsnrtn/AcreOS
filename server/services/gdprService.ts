@@ -2,7 +2,9 @@
  * T174 — GDPR Data Service
  *
  * Handles GDPR/CCPA data requests:
- * - Data export: compile all personal data for a user into a JSON archive
+ * - Data export: delegated to the declared DSAR domain registry
+ *   (shared/privacy/dsarDomains.ts) via privacy/dsarExporters.ts
+ *   buildSubjectExport — for user AND lead subjects (PKG-1 §4)
  * - Data deletion: permanently delete all personal data for a user
  * - Anonymization: replace personal data with hashed/anonymized values
  *
@@ -21,47 +23,34 @@ import { db } from "../db";
 import {
   users,
   leads,
-  agentEvents,
-  agentMemory,
   aiConversations,
   teamMessages,
   supportTickets,
   notes,
-  deals,
-  properties,
-  tasks,
   teamMembers,
 } from "@shared/schema";
-import { eq, and, count, inArray } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import crypto from "crypto";
 import { getActiveHoldsForOrg, assertNotUnderLegalHold, LegalHoldViolationError } from "./legalHold";
 import { clock } from "../utils/clock";
 import { DSAR_DOMAINS, type DsarSubjectKind } from "@shared/privacy/dsarDomains";
-// Type-only: dsarActionGate lands in PKG-1 session A2 (design §2). The gate is
-// the only producer of a DsarSubject, so erasure cannot be reached around it.
+// Type-only: the gate is the only producer of a DsarSubject for the founder
+// routes, so erasure cannot be reached around it.
 import type { DsarSubject } from "./privacy/dsarActionGate";
+import { buildSubjectExport, type DsarSubjectExport } from "./privacy/dsarExporters";
 
-/** Safety limit to prevent unbounded memory usage on very large accounts */
-const MAX_EXPORT_RECORDS = 100_000;
+/**
+ * Safety limit per export domain. privacy/dsarExporters.ts holds a
+ * module-private mirror of this value (it enforces the cap); keep the two equal.
+ */
+export const MAX_EXPORT_RECORDS = 100_000;
 
-type GdprExportData = {
-  exportedAt: string;
-  user: Record<string, any>;
-  leads: any[];
-  deals: any[];
-  properties: any[];
-  tasks: any[];
-  messages: any[];
-  supportTickets: any[];
-  totalRecords: {
-    leads: number;
-    deals: number;
-    properties: number;
-    tasks: number;
-    messages: number;
-    supportTickets: number;
-  };
-};
+/**
+ * The refusal past the cap (413 via Errors.internal's name mapping). Lives in
+ * privacy/dsarExporters.ts — the module that enforces it — and is re-exported
+ * here so existing imports keep one class and there is no import cycle.
+ */
+export { ExportTooLargeError } from "./privacy/dsarExporters";
 
 type DeletionReport = {
   userId: string;
@@ -106,63 +95,42 @@ export class DsarErasureRefusedError extends Error {
 }
 
 /**
- * Export all personal data for a user (GDPR Article 15 — Right of Access).
+ * Resolve a user subject for the registry export: the account row plus the
+ * organizations the user is a member of (teamMembers).
  */
-export async function exportUserData(userId: string): Promise<GdprExportData> {
-  const [user] = await db.select().from(users).where(eq(users.id, userId));
+async function resolveUserSubject(userId: string): Promise<Extract<DsarSubject, { kind: "user" }>> {
+  const [user] = await db
+    .select({ id: users.id, email: users.email })
+    .from(users)
+    .where(eq(users.id, userId));
   if (!user) throw new Error(`User ${userId} not found`);
-
-  // Redact sensitive internal fields before export
-  const { password, ...safeUser } = user as Record<string, unknown>;
-
-  // leads/deals/tasks.assignedTo are numeric teamMembers.id values, not the
-  // user's (string) id. Resolve this user's team-member ids first.
-  // TODO(tsc): properties has no assignedTo column and is therefore not
-  // exportable per-user; it is reported as empty.
-  const teamMemberRows = await db
-    .select({ id: teamMembers.id })
+  const memberships = await db
+    .select({ organizationId: teamMembers.organizationId })
     .from(teamMembers)
     .where(eq(teamMembers.userId, userId));
-  const teamMemberIds = teamMemberRows.map((t) => t.id);
-
-  const emptyIfNoTeam = <T,>(q: Promise<T[]>): Promise<T[]> =>
-    teamMemberIds.length > 0 ? q : Promise.resolve([] as T[]);
-
-  // Fetch all records (with safety cap) and total counts in parallel
-  const [
-    userLeads, userDeals, userTasks, userMessages, userTickets,
-    leadCount, dealCount, taskCount, messageCount, ticketCount,
-  ] = await Promise.all([
-    emptyIfNoTeam(db.select().from(leads).where(inArray(leads.assignedTo, teamMemberIds)).limit(MAX_EXPORT_RECORDS)),
-    emptyIfNoTeam(db.select().from(deals).where(inArray(deals.assignedTo, teamMemberIds)).limit(MAX_EXPORT_RECORDS)),
-    emptyIfNoTeam(db.select().from(tasks).where(inArray(tasks.assignedTo, teamMemberIds)).limit(MAX_EXPORT_RECORDS)),
-    db.select().from(teamMessages).where(eq(teamMessages.senderId, userId)).limit(MAX_EXPORT_RECORDS),
-    db.select().from(supportTickets).where(eq(supportTickets.userId, userId)).limit(MAX_EXPORT_RECORDS),
-    emptyIfNoTeam(db.select({ count: count() }).from(leads).where(inArray(leads.assignedTo, teamMemberIds))),
-    emptyIfNoTeam(db.select({ count: count() }).from(deals).where(inArray(deals.assignedTo, teamMemberIds))),
-    emptyIfNoTeam(db.select({ count: count() }).from(tasks).where(inArray(tasks.assignedTo, teamMemberIds))),
-    db.select({ count: count() }).from(teamMessages).where(eq(teamMessages.senderId, userId)),
-    db.select({ count: count() }).from(supportTickets).where(eq(supportTickets.userId, userId)),
-  ]);
-
   return {
-    exportedAt: clock.now().toISOString(),
-    user: safeUser,
-    leads: userLeads,
-    deals: userDeals,
-    properties: [],
-    tasks: userTasks,
-    messages: userMessages,
-    supportTickets: userTickets,
-    totalRecords: {
-      leads: leadCount[0]?.count ?? 0,
-      deals: dealCount[0]?.count ?? 0,
-      properties: 0,
-      tasks: taskCount[0]?.count ?? 0,
-      messages: messageCount[0]?.count ?? 0,
-      supportTickets: ticketCount[0]?.count ?? 0,
-    },
+    kind: "user",
+    userId: user.id,
+    email: user.email ?? "",
+    organizationIds: Array.from(new Set(memberships.map((m) => m.organizationId))),
   };
+}
+
+/**
+ * Export all personal data for a user (GDPR Article 15 — Right of Access).
+ *
+ * PKG-1 §4: delegates to the declared registry. The old inline fan-out is
+ * gone — including the hard-coded empty `properties` (now an explicit
+ * `properties_user` exclusion: no column links a property to a user) and the
+ * assigned leads/deals/tasks reads (now the `assigned_records` exclusion:
+ * third parties' data and the org's own records).
+ *
+ * NOT identity-gated: the founder DSAR routes call gateDsarAction and
+ * buildSubjectExport directly. Callers of this function own the
+ * authorization decision.
+ */
+export async function exportUserData(userId: string): Promise<DsarSubjectExport> {
+  return buildSubjectExport(await resolveUserSubject(userId));
 }
 
 /**
@@ -170,7 +138,8 @@ export async function exportUserData(userId: string): Promise<GdprExportData> {
  * Soft-deletion: replaces PII with hashed/placeholder values.
  * Business records (deals, notes with legal significance) are retained.
  */
-export async function anonymizeUser(userId: string): Promise<DeletionReport> {
+// Module-private: the only production caller is eraseDsarSubject (PKG-1), which the DSAR gate feeds.
+async function anonymizeUser(userId: string): Promise<DeletionReport> {
   const [user] = await db.select().from(users).where(eq(users.id, userId));
   if (!user) throw new Error(`User ${userId} not found`);
 
@@ -306,9 +275,10 @@ const LEAD_ERASURE_FIELDS = [
  * this runs). `deletedAt` is never set — soft-deleting would hide the lead
  * from the org's own records and is a separate decision.
  *
- * Only called after the caller has loaded the lead scoped to its org.
+ * Carries its own org scope: the update is filtered by `organizationId` as
+ * well as `leadId`.
  */
-async function anonymizeLeadContactFields(leadId: number): Promise<number> {
+async function anonymizeLeadContactFields(organizationId: number, leadId: number): Promise<number> {
   const updated = await db.update(leads).set({
     firstName: "[Deleted]",
     lastName: "[User]",
@@ -319,7 +289,7 @@ async function anonymizeLeadContactFields(leadId: number): Promise<number> {
     city: null,
     zip: null,
     doNotContact: true,
-  }).where(eq(leads.id, leadId)).returning({ id: leads.id });
+  }).where(and(eq(leads.id, leadId), eq(leads.organizationId, organizationId))).returning({ id: leads.id });
   return updated.length;
 }
 
@@ -337,7 +307,7 @@ export function isLeadErased(lead: { id: number; email: string | null }): boolea
  *   3. already erased → SUBJECT_ALREADY_ERASED;
  *   4. anonymize the contact fields.
  */
-export async function eraseLeadSubject(organizationId: number, leadId: number): Promise<LeadErasureReport> {
+async function eraseLeadSubject(organizationId: number, leadId: number): Promise<LeadErasureReport> {
   await assertNotUnderLegalHold(organizationId, "lead", leadId);
 
   const borrowerNotes = await db
@@ -365,7 +335,7 @@ export async function eraseLeadSubject(organizationId: number, leadId: number): 
     );
   }
 
-  const leadsAnonymized = await anonymizeLeadContactFields(leadId);
+  const leadsAnonymized = await anonymizeLeadContactFields(organizationId, leadId);
 
   return {
     organizationId,
