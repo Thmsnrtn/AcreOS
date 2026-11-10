@@ -1,8 +1,8 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, ApiError } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
-interface ParcelLookupRequest {
+export interface ParcelLookupRequest {
   apn?: string;
   lat?: number;
   lng?: number;
@@ -10,7 +10,7 @@ interface ParcelLookupRequest {
   county?: string;
 }
 
-interface ParcelData {
+export interface ParcelData {
   apn: string;
   boundary: {
     type: "Polygon" | "MultiPolygon";
@@ -30,7 +30,20 @@ interface ParcelData {
     acres?: number;
     county?: string;
     state?: string;
+    assessedValue?: number | string;
+    marketValue?: number | string;
+    lastSalePrice?: number | string;
+    lastSaleDate?: string | number;
   };
+}
+
+/**
+ * True when the lookup endpoint answered "no parcel record" (404): the chain
+ * has no coverage for this parcel/point. Callers render that as an honest
+ * "not covered" state, not as a failure.
+ */
+export function isParcelNotCovered(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 404;
 }
 
 export function useParcelLookup() {
@@ -47,6 +60,9 @@ export function useParcelLookup() {
       return res.json();
     },
     onError: (error: Error) => {
+      // "No coverage" is an answer, not a failure — the caller renders it
+      // in place, so no destructive toast on top of it.
+      if (isParcelNotCovered(error)) return;
       toast({
         title: "Couldn't look up parcel",
         description: `${error.message} — your existing property records are unchanged.`,
