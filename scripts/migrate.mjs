@@ -13157,8 +13157,8 @@ $mig0284$`,
   `DROP TRIGGER IF EXISTS wholesale_buy_boxes_no_truncate ON "wholesale_buy_boxes"`,
   `CREATE TRIGGER wholesale_buy_boxes_no_truncate BEFORE TRUNCATE ON "wholesale_buy_boxes"
      FOR EACH STATEMENT EXECUTE FUNCTION wholesale_buy_boxes_guard()`,
-  // 0307 — Notes V2 Leg 3: note_origination_records (origination facts / RMLO engagement / activation gate-passed / threshold release / ATR-write audit records for the originated book; append-only, org-private; note_id ON DELETE SET NULL, the only UPDATE admitted). PROVISIONAL — Tom-approval pending.
-  // Mirrors migrations/0307_notes_v2_seller_finance_gate_records.sql.
+  // 0308 — Notes V2 Leg 3: note_origination_records (origination facts / RMLO engagement / activation gate-passed / threshold release / ATR-write audit records for the originated book; append-only, org-private; note_id ON DELETE SET NULL, the only UPDATE admitted). PROVISIONAL — Tom-approval pending.
+  // Mirrors migrations/0308_notes_v2_seller_finance_gate_records.sql.
   `CREATE TABLE IF NOT EXISTS "note_origination_records" (
      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
      "organization_id" integer NOT NULL,
@@ -13196,6 +13196,182 @@ $mig0284$`,
   `DROP TRIGGER IF EXISTS note_origination_records_no_delete ON "note_origination_records"`,
   `CREATE TRIGGER note_origination_records_no_delete BEFORE DELETE ON "note_origination_records"
      FOR EACH ROW EXECUTE FUNCTION note_origination_records_guard()`,
+  // 0306 — Fix-and-Flip Leg 3: rehab_baselines, rehab_status_transitions and rehab_holding_cost_entries (timeline truth; append-only, org-private, each leaves only with its org).
+  // Mirrors migrations/0306_ff_leg3_timeline_holding.sql.
+  `CREATE TABLE IF NOT EXISTS "rehab_baselines" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "rehab_id" uuid NOT NULL REFERENCES "rehabs"("id") ON DELETE CASCADE,
+     "supersedes_id" uuid REFERENCES "rehab_baselines"("id"),
+     "planned_start_date" date,
+     "planned_listing_date" date,
+     "planned_hold_months" integer,
+     "planned_holding_monthly_cents" bigint,
+     "phase_plans" jsonb NOT NULL DEFAULT '[]'::jsonb,
+     "recorded_by" text NOT NULL,
+     "created_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "rehab_baselines_org_rehab_created_idx" ON "rehab_baselines" ("organization_id", "rehab_id", "created_at")`,
+  `CREATE OR REPLACE FUNCTION rehab_baselines_guard()
+   RETURNS trigger AS $$
+   BEGIN
+     IF TG_OP = 'DELETE' THEN
+       IF EXISTS (SELECT 1 FROM "organizations" WHERE "id" = OLD."organization_id") THEN
+         RAISE EXCEPTION 'rehab_baselines rows leave only with their organization (record a superseding baseline instead)'
+           USING ERRCODE = 'foreign_key_violation';
+       END IF;
+       RETURN OLD;
+     END IF;
+     RAISE EXCEPTION 'rehab_baselines is append-only (% denied)', TG_OP
+       USING ERRCODE = 'restrict_violation';
+   END;
+   $$ LANGUAGE plpgsql`,
+  `DROP TRIGGER IF EXISTS rehab_baselines_no_update ON "rehab_baselines"`,
+  `CREATE TRIGGER rehab_baselines_no_update BEFORE UPDATE ON "rehab_baselines"
+     FOR EACH ROW EXECUTE FUNCTION rehab_baselines_guard()`,
+  `DROP TRIGGER IF EXISTS rehab_baselines_delete_with_org ON "rehab_baselines"`,
+  `CREATE TRIGGER rehab_baselines_delete_with_org BEFORE DELETE ON "rehab_baselines"
+     FOR EACH ROW EXECUTE FUNCTION rehab_baselines_guard()`,
+  `DROP TRIGGER IF EXISTS rehab_baselines_no_truncate ON "rehab_baselines"`,
+  `CREATE TRIGGER rehab_baselines_no_truncate BEFORE TRUNCATE ON "rehab_baselines"
+     FOR EACH STATEMENT EXECUTE FUNCTION rehab_baselines_guard()`,
+  `CREATE TABLE IF NOT EXISTS "rehab_status_transitions" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "rehab_id" uuid NOT NULL REFERENCES "rehabs"("id") ON DELETE CASCADE,
+     "from_status" text,
+     "to_status" text NOT NULL,
+     "transitioned_at" timestamptz NOT NULL DEFAULT now(),
+     "recorded_by" text
+   )`,
+  `CREATE INDEX IF NOT EXISTS "rehab_status_transitions_org_rehab_at_idx" ON "rehab_status_transitions" ("organization_id", "rehab_id", "transitioned_at")`,
+  `CREATE OR REPLACE FUNCTION rehab_status_transitions_guard()
+   RETURNS trigger AS $$
+   BEGIN
+     IF TG_OP = 'DELETE' THEN
+       IF EXISTS (SELECT 1 FROM "organizations" WHERE "id" = OLD."organization_id") THEN
+         RAISE EXCEPTION 'rehab_status_transitions rows leave only with their organization (a transition is a fact, never rewritten)'
+           USING ERRCODE = 'foreign_key_violation';
+       END IF;
+       RETURN OLD;
+     END IF;
+     RAISE EXCEPTION 'rehab_status_transitions is append-only (% denied)', TG_OP
+       USING ERRCODE = 'restrict_violation';
+   END;
+   $$ LANGUAGE plpgsql`,
+  `DROP TRIGGER IF EXISTS rehab_status_transitions_no_update ON "rehab_status_transitions"`,
+  `CREATE TRIGGER rehab_status_transitions_no_update BEFORE UPDATE ON "rehab_status_transitions"
+     FOR EACH ROW EXECUTE FUNCTION rehab_status_transitions_guard()`,
+  `DROP TRIGGER IF EXISTS rehab_status_transitions_delete_with_org ON "rehab_status_transitions"`,
+  `CREATE TRIGGER rehab_status_transitions_delete_with_org BEFORE DELETE ON "rehab_status_transitions"
+     FOR EACH ROW EXECUTE FUNCTION rehab_status_transitions_guard()`,
+  `DROP TRIGGER IF EXISTS rehab_status_transitions_no_truncate ON "rehab_status_transitions"`,
+  `CREATE TRIGGER rehab_status_transitions_no_truncate BEFORE TRUNCATE ON "rehab_status_transitions"
+     FOR EACH STATEMENT EXECUTE FUNCTION rehab_status_transitions_guard()`,
+  `CREATE TABLE IF NOT EXISTS "rehab_holding_cost_entries" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "rehab_id" uuid NOT NULL REFERENCES "rehabs"("id") ON DELETE CASCADE,
+     "entry_date" date NOT NULL,
+     "category" text NOT NULL CONSTRAINT "rehab_holding_cost_entries_category_check"
+       CHECK ("category" IN ('taxes', 'insurance', 'utilities', 'interest', 'hoa', 'other')),
+     "amount_cents" bigint NOT NULL CONSTRAINT "rehab_holding_cost_entries_amount_nonzero"
+       CHECK ("amount_cents" <> 0),
+     "note" text,
+     "recorded_by" text NOT NULL,
+     "created_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "rehab_holding_cost_entries_org_rehab_date_idx" ON "rehab_holding_cost_entries" ("organization_id", "rehab_id", "entry_date")`,
+  `CREATE OR REPLACE FUNCTION rehab_holding_cost_entries_guard()
+   RETURNS trigger AS $$
+   BEGIN
+     IF TG_OP = 'DELETE' THEN
+       IF EXISTS (SELECT 1 FROM "organizations" WHERE "id" = OLD."organization_id") THEN
+         RAISE EXCEPTION 'rehab_holding_cost_entries rows leave only with their organization (record a correcting entry instead)'
+           USING ERRCODE = 'foreign_key_violation';
+       END IF;
+       RETURN OLD;
+     END IF;
+     RAISE EXCEPTION 'rehab_holding_cost_entries is append-only (% denied)', TG_OP
+       USING ERRCODE = 'restrict_violation';
+   END;
+   $$ LANGUAGE plpgsql`,
+  `DROP TRIGGER IF EXISTS rehab_holding_cost_entries_no_update ON "rehab_holding_cost_entries"`,
+  `CREATE TRIGGER rehab_holding_cost_entries_no_update BEFORE UPDATE ON "rehab_holding_cost_entries"
+     FOR EACH ROW EXECUTE FUNCTION rehab_holding_cost_entries_guard()`,
+  `DROP TRIGGER IF EXISTS rehab_holding_cost_entries_delete_with_org ON "rehab_holding_cost_entries"`,
+  `CREATE TRIGGER rehab_holding_cost_entries_delete_with_org BEFORE DELETE ON "rehab_holding_cost_entries"
+     FOR EACH ROW EXECUTE FUNCTION rehab_holding_cost_entries_guard()`,
+  `DROP TRIGGER IF EXISTS rehab_holding_cost_entries_no_truncate ON "rehab_holding_cost_entries"`,
+  `CREATE TRIGGER rehab_holding_cost_entries_no_truncate BEFORE TRUNCATE ON "rehab_holding_cost_entries"
+     FOR EACH STATEMENT EXECUTE FUNCTION rehab_holding_cost_entries_guard()`,
+  // 0307 — Fix-and-Flip Leg 4: rehab_change_orders (§4.2; decision-only updates, org-private, leaves only with its org) and the realized-economics columns on rehabs (§6.2).
+  // Mirrors migrations/0307_ff_leg4_exit_realized_change_orders.sql (provisional number).
+  `CREATE TABLE IF NOT EXISTS "rehab_change_orders" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "rehab_id" uuid NOT NULL REFERENCES "rehabs"("id") ON DELETE CASCADE,
+     "line_item_id" uuid NOT NULL REFERENCES "rehab_line_items"("id") ON DELETE CASCADE,
+     "description" text NOT NULL,
+     "amount_cents" bigint NOT NULL CONSTRAINT "rehab_change_orders_amount_nonzero"
+       CHECK ("amount_cents" <> 0),
+     "schedule_impact_days" integer NOT NULL DEFAULT 0,
+     "status" text NOT NULL DEFAULT 'proposed' CONSTRAINT "rehab_change_orders_status_check"
+       CHECK ("status" IN ('proposed', 'approved', 'rejected')),
+     "decided_by" text,
+     "decided_at" timestamptz,
+     "recorded_by" text NOT NULL,
+     "created_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "rehab_change_orders_org_rehab_created_idx" ON "rehab_change_orders" ("organization_id", "rehab_id", "created_at")`,
+  `CREATE INDEX IF NOT EXISTS "rehab_change_orders_org_line_item_idx" ON "rehab_change_orders" ("organization_id", "line_item_id")`,
+  `CREATE OR REPLACE FUNCTION rehab_change_orders_guard()
+   RETURNS trigger AS $$
+   BEGIN
+     IF TG_OP = 'DELETE' THEN
+       IF EXISTS (SELECT 1 FROM "organizations" WHERE "id" = OLD."organization_id") THEN
+         RAISE EXCEPTION 'rehab_change_orders rows leave only with their organization (a change order is a fact, never deleted)'
+           USING ERRCODE = 'foreign_key_violation';
+       END IF;
+       RETURN OLD;
+     END IF;
+     IF TG_OP = 'UPDATE' THEN
+       IF OLD."status" = 'proposed'
+          AND NEW."status" IN ('approved', 'rejected')
+          AND NEW."decided_by" IS NOT NULL
+          AND NEW."decided_at" IS NOT NULL
+          AND NEW."id" IS NOT DISTINCT FROM OLD."id"
+          AND NEW."organization_id" IS NOT DISTINCT FROM OLD."organization_id"
+          AND NEW."rehab_id" IS NOT DISTINCT FROM OLD."rehab_id"
+          AND NEW."line_item_id" IS NOT DISTINCT FROM OLD."line_item_id"
+          AND NEW."description" IS NOT DISTINCT FROM OLD."description"
+          AND NEW."amount_cents" IS NOT DISTINCT FROM OLD."amount_cents"
+          AND NEW."schedule_impact_days" IS NOT DISTINCT FROM OLD."schedule_impact_days"
+          AND NEW."recorded_by" IS NOT DISTINCT FROM OLD."recorded_by"
+          AND NEW."created_at" IS NOT DISTINCT FROM OLD."created_at" THEN
+         RETURN NEW;
+       END IF;
+       RAISE EXCEPTION 'rehab_change_orders permits only the decision update (proposed to approved/rejected, decided_by and decided_at set, nothing else changed)'
+         USING ERRCODE = 'restrict_violation';
+     END IF;
+     RAISE EXCEPTION 'rehab_change_orders is append-only (% denied)', TG_OP
+       USING ERRCODE = 'restrict_violation';
+   END;
+   $$ LANGUAGE plpgsql`,
+  `DROP TRIGGER IF EXISTS rehab_change_orders_no_update ON "rehab_change_orders"`,
+  `CREATE TRIGGER rehab_change_orders_no_update BEFORE UPDATE ON "rehab_change_orders"
+     FOR EACH ROW EXECUTE FUNCTION rehab_change_orders_guard()`,
+  `DROP TRIGGER IF EXISTS rehab_change_orders_delete_with_org ON "rehab_change_orders"`,
+  `CREATE TRIGGER rehab_change_orders_delete_with_org BEFORE DELETE ON "rehab_change_orders"
+     FOR EACH ROW EXECUTE FUNCTION rehab_change_orders_guard()`,
+  `DROP TRIGGER IF EXISTS rehab_change_orders_no_truncate ON "rehab_change_orders"`,
+  `CREATE TRIGGER rehab_change_orders_no_truncate BEFORE TRUNCATE ON "rehab_change_orders"
+     FOR EACH STATEMENT EXECUTE FUNCTION rehab_change_orders_guard()`,
+  `ALTER TABLE "rehabs" ADD COLUMN IF NOT EXISTS "realized_sale_price_cents" bigint`,
+  `ALTER TABLE "rehabs" ADD COLUMN IF NOT EXISTS "realized_selling_costs_cents" bigint`,
+  `ALTER TABLE "rehabs" ADD COLUMN IF NOT EXISTS "realized_closing_date" date`,
+  `ALTER TABLE "rehabs" ADD COLUMN IF NOT EXISTS "realized_recorded_by" text`,
+  `ALTER TABLE "rehabs" ADD COLUMN IF NOT EXISTS "realized_recorded_at" timestamptz`,
 ];
 
 // The statement set this run executes. Default: everything (the production

@@ -1,4 +1,4 @@
--- 0307 — Notes V2 Leg 3: note_origination_records, the append-only audit
+-- 0308 — Notes V2 Leg 3: note_origination_records, the append-only audit
 -- record of the seller-finance counter and ATR activation gate for the
 -- ORIGINATED book (the `notes` table).
 --

@@ -439,7 +439,7 @@ describe("evaluateClaimedExclusion (shared element rule)", () => {
 describe("record detail shapes (migration 0307 vocabulary)", () => {
   it("has a schema for exactly the kinds the schema module and migration 0307's CHECK allow", () => {
     expect(Object.keys(ORIGINATION_RECORD_DETAIL_SCHEMAS).sort()).toEqual([...NOTE_ORIGINATION_RECORD_KINDS].sort());
-    const sql = readFileSync("migrations/0307_notes_v2_seller_finance_gate_records.sql", "utf8");
+    const sql = readFileSync("migrations/0308_notes_v2_seller_finance_gate_records.sql", "utf8");
     const m = sql.match(/"kind" IN \(([^)]*)\)/);
     expect(m).not.toBeNull();
     const kinds = m![1].split(",").map((s) => s.trim().replace(/^'|'$/g, ""));
