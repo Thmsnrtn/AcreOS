@@ -376,6 +376,32 @@ what shipped, what it measured, and the top next moves. Newest first.
   3. Decide NY's seed (Leg 3.4) and state where the radar's tasks go (3.3).
   4. Wire hold checks into clear-demo-data and archival.
 
+## 2026-11-03 — E2 slice 1 (Pax core): step 0 stopped three legs; leg 2, the morning brief, built as an extend — on `claude/e2-slice1-pax-brief` (PR #459, open)
+
+- **Step 0 contradicted the spec's "missing" checklist.**
+  - **Memory exists:** `pax_memory`, with a panel and silent model writes.
+  - **A brief exists:** `MorningBrief` / `composeBrief`.
+  - **`routes-pax-controls.ts` is the rails, stance and stand-down home:** stances tied to founder rulings, an org-wide Pause with a coverage ratchet, and receipts.
+  - The full rulings table and the conflicts are in `docs/evidence/2026-11-03/e2-slice1-pax-brief.md`.
+- **Leg 1 (memory): STOPPED.** "Pax never writes memory silently" contradicts `remember_fact`, `save_user_memory` and `paxMemoryTriggers`. A new table would be a parallel implementation. Needs a decision: make `pax_memory` the business memory and route model writes through proposals, or keep them separate and say why.
+- **Leg 5 (presets, rails, ledger, stand-down): STOPPED** on the spec's own stop condition.
+  - The default "Prepare-only" preset conflicts with the live default stance `ask_before_sending`, under which chat record writes run with no tap.
+  - Stand-down vs Pause: the Pause is time-limited and doesn't stop drafts.
+  - Trust ledger vs receipts: pause and controls events are already receipted.
+- **Legs 3 + 4 (packets, pane): HELD.** The packet lifecycle writes to the §5 ledger, and the only defined producers are legs 1 and 5. Built now, they would be unwired.
+- **Leg 2 (brief): built.**
+  - Three deterministic sections from real rows, with provenance, under the unchanged headline.
+  - Unreadable inputs are shown as unreadable, never as zero.
+  - Dismiss, restore, archive and reopen, through `routes-today-briefs.ts`, which is mounted without `todayGuard`.
+  - `pax_morning_briefs`: migration 0303 (renumbered from 0301; #461 holds 0301), table-count 749, **approved 2026-11-07 under Tom's full-readiness mandate** (Muse, PR #459 audit).
+  - The position on /today is unchanged, so P0's first-value CTA is not displaced.
+- **Proved.** A realdb suite through the mounted routers, a pure composer suite with send, kernel-write and model-name sweeps, and 15 of 15 mutants red. An independent audit found 8 issues; all are fixed or flagged (see the evidence file). The gates are in the PR body.
+- **Next.**
+  1. Muse audits and merges (the +1 table is approved under the mandate, 2026-11-07).
+  2. The leg-1 and leg-5 decisions (owner: Tom or Muse). Then legs 3 and 4 can be built on the decided ledger.
+  3. After merge: staging proof of the brief (it renders from staging state; dismiss, archive and reopen; cross-org 404), recorded in `docs/evidence/`. That becomes the brief's Atlas row.
+  4. When P0 lands, rebase over it.
+
 ## 2026-11-03 — Statewide point lookup gated behind the license dossiers — on `claude/statewide-lookup-clearance-gate` (off main `519b62c`, PR #452, MERGED 2026-11-03)
 
 - **Founder decision (2026-11-03).** A seeded statewide source may serve point-lookup results ONLY when its register state is cleared for lookup. It is recorded in `founder-decisions-2026-11-03-lookup-gate.md`. It closes the LQ-13/LQ-14 finding: nine statewide rows answered live lookups, owner names included, ahead of Regrid, with no gate.

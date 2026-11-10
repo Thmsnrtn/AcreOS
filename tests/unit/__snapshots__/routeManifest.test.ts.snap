@@ -286,6 +286,7 @@ exports[`route manifest > snapshot: sorted manifest file paths (additions/remova
   "routes-territories.ts",
   "routes-title-partners.ts",
   "routes-title-search.ts",
+  "routes-today-briefs.ts",
   "routes-today.ts",
   "routes-transparency.ts",
   "routes-trust-checks.ts",

@@ -14046,6 +14046,11 @@ export * from "./schema/pax-audit";
 export * from "./schema/pax-user-context";
 
 // ============================================================================
+// E2 slice 1 leg 2 — the morning brief archive (migration 0303)
+// ============================================================================
+export * from "./schema/pax-morning-briefs";
+
+// ============================================================================
 // SOLENE — self-audit ledger (operating-discipline drift detection)
 // ============================================================================
 export * from "./schema/solene-audit";
