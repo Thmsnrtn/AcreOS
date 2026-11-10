@@ -36,6 +36,7 @@ import { DealNextAction } from "@/components/deals/DealNextAction";
 import { AssignmentPanel } from "@/components/deals/AssignmentPanel";
 import { CmaPanel } from "@/components/deals/CmaPanel";
 import { AgencyDisclosurePanel } from "@/components/deals/AgencyDisclosurePanel";
+import { DocumentsPanel } from "@/components/documents-panel";
 import { CustomFieldValuesEditor } from "@/components/custom-fields";
 import { DealJourney } from "@/components/ui/deal-journey";
 import { FraudCheckPanel } from "@/components/deals/FraudCheckPanel";
@@ -717,6 +718,14 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
                   only for wholesaler orgs (or when assignment records already
                   exist on this deal) — the panel self-gates. */}
               <AssignmentPanel dealId={deal.id} propertyId={deal.propertyId} />
+
+              {/* Slice 5 (docs/docstore-design-2026-11.md §9) — the customer's
+                  OWN PDFs on this deal (PSA, title commitment, deed). Sits
+                  above the generated packages because `uploaded_documents` is
+                  the mirror of `generated_documents`: what the customer
+                  brought, versus what AcreOS produced. */}
+              <DocumentsPanel objectType="deal" objectId={deal.id} />
+
               <div className="flex items-center justify-between gap-3">
                 <h3 className="font-medium text-sm md:text-base">Document packages</h3>
                 <Button aria-label="Copy link" asChild size="sm" className="min-h-[44px]" data-testid="button-create-package-from-deal">
