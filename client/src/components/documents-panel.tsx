@@ -64,6 +64,12 @@ interface DocumentListResponse {
    * period when it was), but their bytes cannot be served right now.
    */
   storageAvailable: boolean;
+  /**
+   * The server's own sentence for the unconfigured store (design §9 —
+   * DOCUMENT_STORAGE_UNAVAILABLE_MESSAGE), present only when
+   * `storageAvailable` is false. Preferred verbatim over the local fallback.
+   */
+  storageMessage?: string | null;
   documents: UploadedDocumentRow[];
 }
 
@@ -74,10 +80,11 @@ const SEGMENT: Record<DocumentObjectType, "deals" | "properties" | "notes"> = {
 };
 
 /**
- * What the panel can say about an unconfigured store BEFORE the server has
- * given it a message. The list response carries only the boolean; the server's
- * own sentence (DOCUMENT_STORAGE_UNAVAILABLE_MESSAGE) arrives on the 503 body
- * of an upload attempt, and is preferred verbatim the moment we have it.
+ * Last-resort wording for an unconfigured store, used only when the server
+ * has given us no sentence of its own. The server's own sentence
+ * (DOCUMENT_STORAGE_UNAVAILABLE_MESSAGE) normally arrives WITH the list
+ * response (`storageMessage`, design §9), or on the 503 body of an upload
+ * attempt — both are preferred verbatim over this local paraphrase.
  */
 const STORAGE_UNAVAILABLE_FALLBACK =
   "Document storage isn't connected yet, so files can't be uploaded or downloaded here. " +
@@ -202,7 +209,8 @@ export function DocumentsPanel({ objectType, objectId, className = "" }: Documen
   // Unknown (still loading / errored) is not "unavailable" — only an explicit
   // false from the server disables the control.
   const storageUnavailable = data?.storageAvailable === false;
-  const storageNotice = serverStorageMessage ?? STORAGE_UNAVAILABLE_FALLBACK;
+  const storageNotice =
+    serverStorageMessage ?? data?.storageMessage ?? STORAGE_UNAVAILABLE_FALLBACK;
   const uploadDisabled = storageUnavailable || uploadMutation.isPending;
 
   const submitFile = (file: File | undefined | null) => {

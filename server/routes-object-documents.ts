@@ -65,6 +65,21 @@ function optionalTextField(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+/**
+ * The download filename as it may appear inside a Content-Disposition
+ * quoted-string. `fileName` is the uploader's own `originalname`, stored
+ * verbatim: a `"` would corrupt the quoted-string, and CR/LF would make
+ * setHeader throw ERR_INVALID_CHAR — either way one crafted upload name
+ * breaks that file's download for the whole org, permanently. Control
+ * characters, `"` and `\` become `_`; a name that sanitises to nothing
+ * downloads as "document.pdf". Clean names pass through byte-identical
+ * (the round-trip test pins the header for one).
+ */
+function contentDispositionFileName(fileName: string): string {
+  const cleaned = fileName.replace(/[\u0000-\u001f\u007f"\\]/g, "_").trim();
+  return cleaned.length > 0 ? cleaned : "document.pdf";
+}
+
 export function registerObjectDocumentRoutes(app: Express): void {
   for (const def of DOCUMENT_OBJECT_KINDS) {
     registerForKind(app, def);
@@ -154,6 +169,7 @@ function registerForKind(app: Express, def: DocumentObjectKindDef): void {
       if (!parent) return Errors.notFound(res, def.entityLabel);
 
       const documents = await listObjectDocuments(orgId, def.kind, parent);
+      const storageAvailable = documentStorageAvailable();
 
       return res.json({
         objectType: def.kind,
@@ -162,7 +178,13 @@ function registerForKind(app: Express, def: DocumentObjectKindDef): void {
         // False while storage isn't configured: rows whose bytes cannot
         // currently be served must SAY so rather than render a download
         // button that 503s.
-        storageAvailable: documentStorageAvailable(),
+        storageAvailable,
+        // Design §9: while the store is unconfigured the panel's notice
+        // carries the server's OWN sentence, not a client-side paraphrase —
+        // so the list response carries it alongside the boolean.
+        ...(storageAvailable
+          ? {}
+          : { storageMessage: DOCUMENT_STORAGE_UNAVAILABLE_MESSAGE }),
         documents,
       });
     } catch (err) {
@@ -202,8 +224,14 @@ function registerForKind(app: Express, def: DocumentObjectKindDef): void {
 
         res.setHeader("Content-Type", document.contentType);
         res.setHeader("Content-Length", String(bytes.length));
-        res.setHeader("Content-Disposition", `attachment; filename="${document.fileName}"`);
-        return res.status(200).send(bytes);
+        res.setHeader(
+          "Content-Disposition",
+          `attachment; filename="${contentDispositionFileName(document.fileName)}"`,
+        );
+        // Bare res.send: 200 is the default, and every precedent download in
+        // routes-documents.ts sends this way (the res-status-raw ratchet
+        // counts the explicit .status(200) as a raw-status occurrence).
+        return res.send(bytes);
       } catch (err) {
         logger.error("[docstore] document download error", err as Error);
         return Errors.internal(res, err);

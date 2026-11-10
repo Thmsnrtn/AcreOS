@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { index, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { check, index, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { acquiredNotes, deals, organizations, properties } from "../schema";
 
 export const uploadedDocuments = pgTable(
@@ -24,6 +24,17 @@ export const uploadedDocuments = pgTable(
     index("uploaded_documents_org_deal_idx").on(table.organizationId, table.dealId, table.createdAt),
     index("uploaded_documents_org_property_idx").on(table.organizationId, table.propertyId, table.createdAt),
     index("uploaded_documents_org_note_idx").on(table.organizationId, table.acquiredNoteId, table.createdAt),
+    // The migration's CHECKs, mirrored in drizzle (the sibling convention —
+    // note-origination-records.ts declares its checks the same way) so a
+    // drizzle-kit-push database enforces what migrations/0309 enforces.
+    check("uploaded_documents_file_name_check", sql`length(trim(file_name)) > 0`),
+    check("uploaded_documents_byte_size_check", sql`byte_size > 0`),
+    check("uploaded_documents_storage_ref_check", sql`storage_ref LIKE 's3://%'`),
+    check("uploaded_documents_uploaded_by_check", sql`length(trim(uploaded_by)) > 0`),
+    check(
+      "uploaded_documents_exactly_one_parent",
+      sql`num_nonnulls(deal_id, property_id, acquired_note_id) = 1`,
+    ),
   ],
 );
 
