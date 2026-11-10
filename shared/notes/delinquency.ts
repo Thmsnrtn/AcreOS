@@ -107,3 +107,44 @@ export function noteGracePeriodDays(
   if (gracePeriodDays < 0) return null;
   return Math.floor(gracePeriodDays);
 }
+
+// ── The delinquency ladder (V-Notes-2 Leg 1) ────────────────────────────────
+//
+// ONE stage definition, shared by the aging sweep that records stage entries,
+// the note page, the escalation bundle and the portfolio list. A predicate that
+// decides what may be claimed about a borrower lives in exactly one place.
+//
+// The ladder is FACTUAL: each stage is a day band over the aging chain's own
+// `daysDelinquent` (server/services/notes/acquiredNoteSchedule.ts is the one
+// derivation; nothing here re-derives a date). Default review is NOT a stage:
+// it is an operator act, recorded with its actor and time, and no aging run
+// ever creates it (founder decision 2026-11-05, ruling 1).
+//
+// Days 1–29 are their own stage. The spec's table named `current` (0 days) and
+// the first band at 30; a note ten days past due is not current, so it is
+// recorded as past due rather than left at whatever it was before.
+
+export const LADDER_STAGES = ["current", "past_due_under_30", "stage_30", "stage_60", "stage_90_plus"] as const;
+export type LadderStage = (typeof LADDER_STAGES)[number];
+
+export const LADDER_STAGE_LABEL: Record<LadderStage, string> = {
+  current: "Current",
+  past_due_under_30: "Past due, under 30 days",
+  stage_30: "30–59 days",
+  stage_60: "60–89 days",
+  stage_90_plus: "90+ days",
+};
+
+/** The ladder stage for a determinable note's days past due. */
+export function ladderStageFor(daysDelinquent: number): LadderStage {
+  if (!Number.isFinite(daysDelinquent) || daysDelinquent <= 0) return "current";
+  if (daysDelinquent < 30) return "past_due_under_30";
+  if (daysDelinquent < 60) return "stage_30";
+  if (daysDelinquent < 90) return "stage_60";
+  return "stage_90_plus";
+}
+
+/** True at 30+ days — the stages an escalation bundle is assembled for. */
+export function ladderStageEscalates(stage: LadderStage): boolean {
+  return stage === "stage_30" || stage === "stage_60" || stage === "stage_90_plus";
+}

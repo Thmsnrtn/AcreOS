@@ -84,7 +84,7 @@ vi.mock("../../server/services/workflow-engine", async (importOriginal) => {
   };
 });
 
-import { outbox } from "@shared/schema";
+import { noteEvents, outbox } from "@shared/schema";
 import { acquiredNotes } from "@shared/schema/notes-vertical";
 import { runAcquiredNoteAgingSweep, type AgingNoteRow } from "../../server/jobs/acquiredNoteAging";
 import { drainWorkflowTrigger, stageWorkflowEvent } from "../../server/services/workflowOutbox";
@@ -127,11 +127,17 @@ describe("DEFECT-0114 — the aging sweep stages its hand-off on the status tran
     h.rows = [note()]; // performing → late
     const summary = await runAcquiredNoteAgingSweep({ asOf: ASOF });
     expect(summary.transitioned).toBe(1);
-    const ops = h.txCalls.map((c) => [c.op, c.table === outbox ? "outbox" : c.table === acquiredNotes ? "acquired_notes" : "?"]);
+    const ops = h.txCalls.map((c) => [c.op, c.table === outbox ? "outbox" : c.table === acquiredNotes ? "acquired_notes" : c.table === noteEvents ? "note_events" : "?"]);
+    // Notes V2 Leg 1: the delinquency-ladder stage entry rides the SAME
+    // transaction as the status write it describes (performing → late at 15
+    // days past due enters 'past_due_under_30'), so it commits or rolls back
+    // with it. Still nothing outside the transaction.
     expect(ops).toEqual([
       ["update", "acquired_notes"],
       ["insert", "outbox"],
+      ["insert", "note_events"],
     ]);
+    expect(h.txCalls[2].values).toMatchObject({ category: "delinquency", eventType: "delinquency_stage_entered", source: "aging_engine", detail: { stage: "past_due_under_30", priorStage: null } });
     const staged = h.txCalls[1].values as { eventType: string; payload: Record<string, any> };
     expect(staged.eventType).toBe("workflow_trigger");
     expect(staged.payload).toMatchObject({
