@@ -3,6 +3,13 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-11-10 — PKG-5a/5b: paid conversions by source/campaign (D6), on `claude/pkg5-ads-stripe-api`
+
+- **Built.** `/api/founder/customers` gains an additive `paidBySource` field: distinct paying orgs from the 90-day signup window, grouped by `utm_source` + `utm_campaign` (missing source = `direct`, missing campaign = `null`; nothing dropped). "Paying" mirrors `liveMrrDetail` (status exactly `active`, positive monthly-equivalent price), so trials, free and past_due are not conversions. Server-only; no table, migration or client change. Existing fields and the founder gate are unchanged.
+- **Proved.** `tests/unit/founderCustomersPaidBySource.test.ts`; a mutant that counts trials turns it red.
+- **Docs.** The PKG-5a/5b runbook and creative pack live in the goal files, not this repo.
+- **Next.** The founder page does not render `paidBySource` yet (client change not in this slice); read it from the API until then.
+
 ## 2026-11-06 — merge statuses reconciled against git at main `6b8240fa`
 
 - **What changed.** Every merge status stated below was checked against the GitHub API (`merged_at`) and `git merge-base --is-ancestor <merge commit> origin/main`. The stale ones ("PR open", "unmerged", "uncommitted", "nothing merged", "waiting on CI and Muse") now read "PR #N, MERGED <date>", in US Eastern (so #421 is 2026-10-31). Only status wording was edited, plus a Status column on the 2026-10-18 branch table. "Next" and "owed" bullets stay as written, so some still say "Muse audits; the founder merges" about PRs that have since merged: trust the heading.
