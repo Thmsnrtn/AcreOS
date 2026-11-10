@@ -19,6 +19,7 @@ import { getPaxControls, paxControlsRefusalMessage } from "./paxControls";
 import { recordPaxEffect } from "./paxReceipts";
 import { clock } from "../utils/clock";
 import { isResponseActivityType } from "./leadResponse";
+import { leadReplyToAddress } from "./leadReplyTo";
 
 type EnrollmentWithDetails = SequenceEnrollment & { sequence: CampaignSequence; lead: Lead };
 
@@ -568,6 +569,9 @@ export class SequenceProcessorService {
           subject,
           html: content,
           text: content.replace(/<[^>]*>/g, ""),
+          // Thread the reply back through the inbound seam: it resolves to the
+          // lead, lands on the timeline and (slice 1) stops this sequence.
+          replyTo: await leadReplyToAddress(lead.id, lead.organizationId),
           // Deal mail: sequence outreach to a lead — org identity required.
           organizationId: lead.organizationId,
           purpose: 'counterparty',

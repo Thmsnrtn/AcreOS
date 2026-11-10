@@ -6,6 +6,7 @@ import { getSystemContext, formatContextForAI, invalidateContextCache } from "..
 import { lookupParcelByAPN } from "../services/parcel";
 import { generateOfferSuggestions, generateOfferLetter } from "../services/aiOfferService";
 import { emailService } from "../services/emailService";
+import { leadReplyToAddress } from "../services/leadReplyTo";
 import { smsService, sendOrgSMS } from "../services/smsService";
 import { getComparableProperties } from "../services/comps";
 import {
@@ -2438,6 +2439,8 @@ export async function executeTool(
           subject: args.subject,
           html: htmlContent,
           text: textContent,
+          // Lead-addressed sends thread replies back through the inbound seam.
+          replyTo: args.lead_id ? await leadReplyToAddress(args.lead_id, org.id) : undefined,
           organizationId: org.id,
           // Deal mail: Pax emailing a customer's lead — org identity required.
           purpose: 'counterparty',
