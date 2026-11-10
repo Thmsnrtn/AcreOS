@@ -397,6 +397,14 @@ describe.runIf(realDbAvailable)("Leg 3 activation gate — real database", () =>
         threshold: "creditor_1026_2_a_17_v",
         sellerKey,
         calendarYear: 2026,
+        // Counter evidence, as the founder route records it server-side
+        // (routes-note-origination.ts): countSellerFinance's Track B counts
+        // at release time — 5 here: the five consummated dwelling-consumer
+        // deals seeded above (Jan–May 2026) fall in both the rolling
+        // 12-month window and the calendar year. The gate's strict detail
+        // schema refuses a release whose detail omits them.
+        rollingCount: 5,
+        calendarYearCount: 5,
         decisionRef: `${tag}-counsel-note`,
       },
       recordedBy: FOUNDER,
