@@ -3,6 +3,14 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-11-10 — PX-1: Pax browser make-safe — on `claude/px1-browser-make-safe`
+
+- `browse_web` now writes a Pax receipt (host, URL without query, turn) through `recordPaxEffect` on every lane that can browse; records created in a turn after a browse carry `source: web:<host>` provenance (tagged in due-diligence notes).
+- `create_properties_batch` / `create_lead` refuse web-sourced rows past a small cap (5 per turn) unless every browsed host is on the cleared-source list (env `BROWSE_WEB_CLEARED_SOURCE_HOSTS`, empty by default — fail-closed; the licence gate and dossiers stay authoritative). Falsified locally: disabling the fence turns 6 of the new tests red.
+- `browseWeb` honours robots.txt (the `acreos` group, else `*`) and a per-org/per-host rate limit.
+- Proof (driver-run): browseMakeSafe 17/17 + seven neighbouring suites 159/159 + purpose-ledger census and sweep-budget 22/22; scoped tsc 0 diagnostics in changed files; reachability PASS all 11 at baseline (10 helpers unexported, 9 TEST-SEAM allowlist entries with revocation notes). Full suite is CI's completing proof.
+- Next: PX-2 per-capability rails stacks on this branch.
+
 ## 2026-11-06 — merge statuses reconciled against git at main `6b8240fa`
 
 - **What changed.** Every merge status stated below was checked against the GitHub API (`merged_at`) and `git merge-base --is-ancestor <merge commit> origin/main`. The stale ones ("PR open", "unmerged", "uncommitted", "nothing merged", "waiting on CI and Muse") now read "PR #N, MERGED <date>", in US Eastern (so #421 is 2026-10-31). Only status wording was edited, plus a Status column on the 2026-10-18 branch table. "Next" and "owed" bullets stay as written, so some still say "Muse audits; the founder merges" about PRs that have since merged: trust the heading.

@@ -27,6 +27,51 @@
   "allowlist": [
     {
       "kind": "export",
+      "id": "server/services/webSourceFence.ts::WEB_SOURCED_ROW_CAP",
+      "reason": "TEST SEAM (PX-1 browser make-safe, 2026-11-10). The web-sourced row cap browseMakeSafe.test.ts pins at the boundary (at-cap passes, cap+1 refuses); production reaches the behaviour through checkWebSourcedRows / recordBrowseReceipt / checkRobots / takeBrowseVisit. REVOCATION: if a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "server/services/webSourceFence.ts::CLEARED_SOURCE_ENV",
+      "reason": "TEST SEAM (PX-1 browser make-safe, 2026-11-10). The cleared-source env var name browseMakeSafe.test.ts sets to prove the cleared-host path; production reaches the behaviour through checkWebSourcedRows / recordBrowseReceipt / checkRobots / takeBrowseVisit. REVOCATION: if a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "server/services/webSourceFence.ts::resetBrowseRegistryForTests",
+      "reason": "TEST SEAM (PX-1 browser make-safe, 2026-11-10). The per-turn browse registry reset browseMakeSafe.test.ts calls between cases; production reaches the behaviour through checkWebSourcedRows / recordBrowseReceipt / checkRobots / takeBrowseVisit. REVOCATION: if a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "server/services/browseRobots.ts::parseRobotsTxt",
+      "reason": "TEST SEAM (PX-1 browser make-safe, 2026-11-10). The robots.txt parser browseMakeSafe.test.ts pins against acreos-group and wildcard fixtures; production reaches the behaviour through checkWebSourcedRows / recordBrowseReceipt / checkRobots / takeBrowseVisit. REVOCATION: if a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "server/services/browseRobots.ts::isPathAllowedByRobots",
+      "reason": "TEST SEAM (PX-1 browser make-safe, 2026-11-10). The robots path-allowance rule browseMakeSafe.test.ts pins; production reaches the behaviour through checkWebSourcedRows / recordBrowseReceipt / checkRobots / takeBrowseVisit. REVOCATION: if a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "server/services/browseRobots.ts::resetBrowseGuardsForTests",
+      "reason": "TEST SEAM (PX-1 browser make-safe, 2026-11-10). The robots/rate-limit guard reset browseMakeSafe.test.ts calls between cases; production reaches the behaviour through checkWebSourcedRows / recordBrowseReceipt / checkRobots / takeBrowseVisit. REVOCATION: if a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "server/services/browseRobots.ts::BROWSE_RATE_MAX_VISITS",
+      "reason": "TEST SEAM (PX-1 browser make-safe, 2026-11-10). The per-host visit cap browseMakeSafe.test.ts drives to the refusal boundary; production reaches the behaviour through checkWebSourcedRows / recordBrowseReceipt / checkRobots / takeBrowseVisit. REVOCATION: if a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "server/services/browseRobots.ts::BROWSE_RATE_WINDOW_MS",
+      "reason": "TEST SEAM (PX-1 browser make-safe, 2026-11-10). The rate-limit window browseMakeSafe.test.ts advances the clock across; production reaches the behaviour through checkWebSourcedRows / recordBrowseReceipt / checkRobots / takeBrowseVisit. REVOCATION: if a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "server/services/browseRobots.ts::ROBOTS_FAILURE_TTL_MS",
+      "reason": "TEST SEAM (PX-1 browser make-safe, 2026-11-10). The robots-fetch failure TTL browseMakeSafe.test.ts pins; production reaches the behaviour through checkWebSourcedRows / recordBrowseReceipt / checkRobots / takeBrowseVisit. REVOCATION: if a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
       "id": "shared/notes/sellerFinanceGate.ts::ORIGINATION_RECORD_DETAIL_SCHEMAS",
       "reason": "TEST SEAM (Notes V2 Leg 3, 2026-11-09). The kind -> detail-schema contract map for the append-only note_origination_records (migration 0307); production code validates each kind through its named schema at its own write site, and sellerFinanceGate.test.ts enumerates this map to prove every record kind's fixture parses and every stored detail is validated by exactly one schema. REVOCATION: if a production module imports the map (e.g. a generic record writer), remove this entry."
     },
