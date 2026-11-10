@@ -46,11 +46,21 @@ let vapidConfigured = false;
 async function getWebPush(): Promise<any> {
   if (webPush) return webPush;
   try {
-    // TODO(tsc): `web-push` is an optional runtime dependency not present in the build's
-    // type graph. Use an indirected specifier so tsc doesn't statically require it; the
-    // try/catch already degrades gracefully when the package is absent.
+    // `web-push` is now a declared dependency, but the import stays indirected on
+    // purpose: (1) it has no bundled types and `@types/web-push` may not be in the
+    // type graph, so a static import risks TS7016 under strict; (2) the try/catch
+    // keeps the "unconfigured/absent → logged no-op, never throws" contract.
     const webPushModule = "web-push";
-    webPush = await import(webPushModule);
+    const loaded: any = await import(webPushModule);
+    // `web-push` is CommonJS. Depending on the runtime/bundler its methods are
+    // either named exports on the namespace or live on `.default`. Probe the
+    // named export first (never touch `.default` unless needed — a strict test
+    // mock throws on an undefined `default`).
+    webPush = typeof loaded.setVapidDetails === "function" ? loaded : loaded.default;
+    if (!webPush || typeof webPush.setVapidDetails !== "function") {
+      webPush = null;
+      throw new Error("web-push module has no setVapidDetails");
+    }
     const subject = process.env.VAPID_SUBJECT || `mailto:${process.env.SENDGRID_FROM_EMAIL || "noreply@acreos.io"}`;
     const publicKey = process.env.VAPID_PUBLIC_KEY;
     const privateKey = process.env.VAPID_PRIVATE_KEY;
@@ -313,7 +323,12 @@ export async function sendPushToPerson(
 export async function sendPushToOrg(
   organizationId: number,
   payload: PushPayload
-): Promise<{ sent: number; failed: number }> {
+): Promise<PushResult> {
+  // Unconfigured is a clean no-op: no subscription query, nothing counted as a
+  // failed delivery. (Org-scoped by construction: the lookup filters on
+  // organization_id.)
+  if (!(await pushConfigured())) return { status: "not_configured", sent: 0, failed: 0 };
+
   const subscriptions = await getSubscriptionsForOrg(organizationId);
   let sent = 0;
   let failed = 0;
@@ -325,7 +340,7 @@ export async function sendPushToOrg(
     })
   );
 
-  return { sent, failed };
+  return { status: classify(sent, failed), sent, failed };
 }
 
 // ---------------------------------------------------------------------------

@@ -3,6 +3,13 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-11-10 — Gap slice 7: push revival — on `claude/gap7-push-revival`
+
+- Added `web-push` (`^3.6.7`, lockfile synced) + VAPID vars in `.env.example`; fixed the client subscribe body (was `{subscription}`, route wants `{endpoint,keys}` → 422); mounted the existing hook as a "Push on this device" switch in `notification-preferences.tsx`; `/sw.js` handles `push` + `notificationclick`.
+- Fan-out through one helper (`server/services/orgPushFanout.ts`, org-scoped, never throws): urgent (priority 1) Pax nudges, the 7-day redemption alert (once-per-cert-per-day dedupe), ladder-ready cards (`ensureLadderRung` only). 30/90-day redemption alerts and non-urgent nudges deliberately do not push.
+- Proof (driver-run): orgPushFanout 11/11 + pushFanoutCreationSites 9/9 + pushDispatchSemantics 9/9 + census/budget 22/22; scoped tsc 0 diagnostics in changed files; reachability PASS all 11 (unreachedExports baseline measured DOWN 414 → 413: `sendPushToOrg` gained its first real consumer). Full suite is CI's completing proof.
+- Still open: per-user notification preferences (`globalMute`, per-event Push toggle) are NOT consulted by the org fan-out — a founder decision is owed on whether global mute should silence push.
+
 ## 2026-11-06 — merge statuses reconciled against git at main `6b8240fa`
 
 - **What changed.** Every merge status stated below was checked against the GitHub API (`merged_at`) and `git merge-base --is-ancestor <merge commit> origin/main`. The stale ones ("PR open", "unmerged", "uncommitted", "nothing merged", "waiting on CI and Muse") now read "PR #N, MERGED <date>", in US Eastern (so #421 is 2026-10-31). Only status wording was edited, plus a Status column on the 2026-10-18 branch table. "Next" and "owed" bullets stay as written, so some still say "Muse audits; the founder merges" about PRs that have since merged: trust the heading.
