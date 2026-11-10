@@ -27,6 +27,46 @@
   "allowlist": [
     {
       "kind": "export",
+      "id": "shared/security/authAnomaly.ts::evaluateAuthEvents",
+      "reason": "Export evaluateAuthEvents. STAGED SEAM, DETECTION HALF (PKG-6c, 2026-11-10). Pure auth-anomaly checker with no production caller by design: there is no in-repo sign-in failure signal (Clerk hosts the credential step; auth_fail_attempts is dead schema), and a feed needs a webhook source, table and route, all fenced. It is run from the ops side per docs/security/auth-anomaly-alerting.md once Clerk's failure events are confirmed. REVOCATION: when a production module imports it, remove this entry (the gate fails STALE then)."
+    },
+    {
+      "kind": "export",
+      "id": "shared/security/authAnomaly.ts::IDENTIFIER_BURST_MIN_FAILURES",
+      "reason": "Export IDENTIFIER_BURST_MIN_FAILURES. STAGED SEAM, DETECTION HALF (PKG-6c, 2026-11-10). Pure auth-anomaly checker with no production caller by design: there is no in-repo sign-in failure signal (Clerk hosts the credential step; auth_fail_attempts is dead schema), and a feed needs a webhook source, table and route, all fenced. It is run from the ops side per docs/security/auth-anomaly-alerting.md once Clerk's failure events are confirmed. REVOCATION: when a production module imports it, remove this entry (the gate fails STALE then)."
+    },
+    {
+      "kind": "export",
+      "id": "shared/security/authAnomaly.ts::IDENTIFIER_BURST_WINDOW_MS",
+      "reason": "Export IDENTIFIER_BURST_WINDOW_MS. STAGED SEAM, DETECTION HALF (PKG-6c, 2026-11-10). Pure auth-anomaly checker with no production caller by design: there is no in-repo sign-in failure signal (Clerk hosts the credential step; auth_fail_attempts is dead schema), and a feed needs a webhook source, table and route, all fenced. It is run from the ops side per docs/security/auth-anomaly-alerting.md once Clerk's failure events are confirmed. REVOCATION: when a production module imports it, remove this entry (the gate fails STALE then)."
+    },
+    {
+      "kind": "export",
+      "id": "shared/security/authAnomaly.ts::IP_BURST_MIN_FAILURES",
+      "reason": "Export IP_BURST_MIN_FAILURES. STAGED SEAM, DETECTION HALF (PKG-6c, 2026-11-10). Pure auth-anomaly checker with no production caller by design: there is no in-repo sign-in failure signal (Clerk hosts the credential step; auth_fail_attempts is dead schema), and a feed needs a webhook source, table and route, all fenced. It is run from the ops side per docs/security/auth-anomaly-alerting.md once Clerk's failure events are confirmed. REVOCATION: when a production module imports it, remove this entry (the gate fails STALE then)."
+    },
+    {
+      "kind": "export",
+      "id": "shared/security/authAnomaly.ts::IP_BURST_MIN_DISTINCT_IDENTIFIERS",
+      "reason": "Export IP_BURST_MIN_DISTINCT_IDENTIFIERS. STAGED SEAM, DETECTION HALF (PKG-6c, 2026-11-10). Pure auth-anomaly checker with no production caller by design: there is no in-repo sign-in failure signal (Clerk hosts the credential step; auth_fail_attempts is dead schema), and a feed needs a webhook source, table and route, all fenced. It is run from the ops side per docs/security/auth-anomaly-alerting.md once Clerk's failure events are confirmed. REVOCATION: when a production module imports it, remove this entry (the gate fails STALE then)."
+    },
+    {
+      "kind": "export",
+      "id": "shared/security/authAnomaly.ts::IP_BURST_WINDOW_MS",
+      "reason": "Export IP_BURST_WINDOW_MS. STAGED SEAM, DETECTION HALF (PKG-6c, 2026-11-10). Pure auth-anomaly checker with no production caller by design: there is no in-repo sign-in failure signal (Clerk hosts the credential step; auth_fail_attempts is dead schema), and a feed needs a webhook source, table and route, all fenced. It is run from the ops side per docs/security/auth-anomaly-alerting.md once Clerk's failure events are confirmed. REVOCATION: when a production module imports it, remove this entry (the gate fails STALE then)."
+    },
+    {
+      "kind": "export",
+      "id": "shared/security/authAnomaly.ts::SUCCESS_AFTER_BURST_WINDOW_MS",
+      "reason": "Export SUCCESS_AFTER_BURST_WINDOW_MS. STAGED SEAM, DETECTION HALF (PKG-6c, 2026-11-10). Pure auth-anomaly checker with no production caller by design: there is no in-repo sign-in failure signal (Clerk hosts the credential step; auth_fail_attempts is dead schema), and a feed needs a webhook source, table and route, all fenced. It is run from the ops side per docs/security/auth-anomaly-alerting.md once Clerk's failure events are confirmed. REVOCATION: when a production module imports it, remove this entry (the gate fails STALE then)."
+    },
+    {
+      "kind": "export",
+      "id": "shared/security/authAnomaly.ts::subnetOf",
+      "reason": "Export subnetOf. STAGED SEAM, DETECTION HALF (PKG-6c, 2026-11-10). Pure auth-anomaly checker with no production caller by design: there is no in-repo sign-in failure signal (Clerk hosts the credential step; auth_fail_attempts is dead schema), and a feed needs a webhook source, table and route, all fenced. It is run from the ops side per docs/security/auth-anomaly-alerting.md once Clerk's failure events are confirmed. REVOCATION: when a production module imports it, remove this entry (the gate fails STALE then)."
+    },
+    {
+      "kind": "export",
       "id": "server/services/mail/letterRender.ts::rendersInFlight",
       "reason": "TEST-INTROSPECTION SEAM (house mail audit, 2026-10-18). How many letter renders are running; houseLetterRenderReal.test.ts samples it during a burst to prove the global semaphore holds renders to MAX_CONCURRENT_RENDERS. REVOCATION: if a production module imports it, remove this entry."
     },
