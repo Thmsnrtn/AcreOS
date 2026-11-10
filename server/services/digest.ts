@@ -82,6 +82,40 @@ export class DigestService {
     return sub;
   }
 
+  /**
+   * Opt-in switch behind the Settings "Weekly digest" toggle.
+   *
+   * ON  → create the subscription (weekly) if the user has none; otherwise
+   *       re-enable the existing row and put it back on the weekly cadence.
+   * OFF → disable email on the existing row (kept, not deleted, so lastSentAt
+   *       survives and a later re-enable doesn't instantly resend). No row +
+   *       OFF is already "not subscribed" — nothing is created.
+   *
+   * Never creates a row on OFF: a digest is opt-in only.
+   */
+  async setWeeklyDigest(userId: string, organizationId: number, enabled: boolean) {
+    const existing = await this.getSubscription(userId, organizationId);
+    if (!existing) {
+      return enabled ? this.createSubscription(userId, organizationId, 'weekly') : undefined;
+    }
+    const [updated] = await db
+      .update(digestSubscriptions)
+      .set(enabled ? { emailEnabled: true, frequency: 'weekly' } : { emailEnabled: false })
+      .where(
+        and(
+          eq(digestSubscriptions.userId, userId),
+          eq(digestSubscriptions.organizationId, organizationId)
+        )
+      )
+      .returning();
+    return updated;
+  }
+
+  /** True only when a row exists, email is on, and the cadence is weekly. */
+  isWeeklyDigestOn(sub: { emailEnabled: boolean | null; frequency: string } | undefined): boolean {
+    return !!sub && sub.emailEnabled === true && sub.frequency === 'weekly';
+  }
+
   // updateSubscription deleted 2026-08-29 — zero callers, adversarially verified (rule-1 register close-out).
 
   async getSubscriptionsNeedingDigest(frequency: string): Promise<Array<{ userId: string; organizationId: number }>> {

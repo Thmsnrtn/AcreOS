@@ -674,9 +674,8 @@ export async function syncPaymentsToQbo(
 // against nothing; build the code exchange before un-refusing it.
 
 const QBO_OAUTH_NOT_IMPLEMENTED =
-  "QuickBooks Online connection is not implemented: AcreOS has no OAuth code exchange " +
-  "for QuickBooks, so no access token can be obtained. Use the ledger export " +
-  "(GET /api/accounting/qbo-export) instead.";
+  "QuickBooks Online connection is not available yet, so nothing was connected. " +
+  "You can still download your notes as a CSV with Export CSV on the Finance page.";
 
 export function getQboOAuthUrl(_orgId: number): string {
   throw new Error(QBO_OAUTH_NOT_IMPLEMENTED);

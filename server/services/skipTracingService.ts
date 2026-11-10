@@ -425,4 +425,21 @@ export const skipTracingService = {
   isConfigured(): boolean {
     return !!(process.env.BATCH_SKIP_TRACING_API_KEY || process.env.REISKIP_API_KEY);
   },
+
+  /**
+   * Org-aware availability: platform env keys OR the org's own BYOK
+   * BatchSkipTracing credential — the same resolution `trace()` uses
+   * (traceViaBatchSkipTracing → getEffectiveCredential). Used by callers
+   * that pre-check availability so a BYO-keyed org is not told "unavailable".
+   */
+  async isConfiguredForOrg(organizationId: number): Promise<boolean> {
+    if (this.isConfigured()) return true;
+    try {
+      const { getEffectiveCredential } = await import("./byok/toggle");
+      const eff = await getEffectiveCredential(organizationId, "batch_skiptracing");
+      return !!eff.credential;
+    } catch {
+      return false;
+    }
+  },
 };
