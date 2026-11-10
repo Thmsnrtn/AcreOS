@@ -30,6 +30,33 @@
  * process-local Map (cap 5,000) bounds flooding during a guard outage and can
  * never block a first raise. The only error `raiseIfAllowed` propagates is the
  * one thrown by the caller's own `insertFn`.
+ *
+ * D-5 composition shapes (added when the two dedupe producers' pre-existing
+ * pinned suites were reconciled with this wiring — those suites are the
+ * contract, and they exposed three structural conflicts):
+ * (1) `raiseIfAllowed` accepts a caller-managed transaction ({ tx }): the
+ * dedupe producers (agentInitiativeEngine, agentAuthorityGate) open their
+ * transaction FIRST — their advisory lock and dedupe check — then run the
+ * whole decide → insert → record sequence on that one handle. Wrapping
+ * their insertFn in a second transaction held a second connection while the
+ * producer's own transaction waited for one, and the pg pool starved under
+ * concurrency. The store's writes are raw-SQL upserts over whichever handle
+ * they are given, never drizzle builder inserts, so this module's
+ * bookkeeping never appears inside a producer's own counted insert
+ * sequence.
+ * (2) agentAuthorityGate's plain (non-deduped) branch is pinned
+ * transaction-free by its pre-existing suite, so that one call site uses
+ * the split pair served by a LOCKLESS direct-store backend (the
+ * `shouldRaiseCard` / `recordRaised` facades below): decide and record run
+ * straight on the shared db handle and never open a transaction. The
+ * split-pair race caveat above applies to that branch only; every other
+ * call site uses a locked composition.
+ * One producer-specific reconciliation lives at the authority gate's deduped
+ * call site, not here: a question the founder has already ANSWERED may be
+ * asked again (that producer's long-standing contract), so the gate checks
+ * for an answered card before consulting the throttle. The throttle guards
+ * first raises and unanswered repeats; this module's semantics are
+ * unchanged.
  */
 
 import { createHash } from "node:crypto";
@@ -116,6 +143,19 @@ export interface ThrottleBackend {
    * always in that order) for the duration. Rejects if the backend fails.
    */
   withLock<T>(producer: string, subjectHash: string, fn: (store: ThrottleStore) => Promise<T>): Promise<T>;
+  /**
+   * Optional: run `fn` under the same advisory locks, taken on the CALLER's
+   * already-open transaction instead of a fresh one (the { tx } composition —
+   * see the header's D-5 note). Backends that cannot do this omit it, and
+   * raiseIfAllowed then fails open rather than nesting a transaction.
+   */
+  withTxLock?<T>(tx: Tx, producer: string, subjectHash: string, fn: (store: ThrottleStore) => Promise<T>): Promise<T>;
+}
+
+/** Options for raiseIfAllowed's caller-transaction composition. */
+interface RaiseOptions {
+  /** The caller's open transaction: decide → insert → record all run on it. */
+  tx?: Tx;
 }
 
 export interface RaiseOutcome<T> {
@@ -282,7 +322,7 @@ async function recordInStore(store: ThrottleStore, input: ThrottleInput, now: Da
 export interface ThrottleApi {
   shouldRaiseCard(input: ThrottleInput): Promise<ThrottleVerdict>;
   recordRaised(input: ThrottleInput): Promise<void>;
-  raiseIfAllowed<T>(input: ThrottleInput, insertFn: () => Promise<T>): Promise<RaiseOutcome<T>>;
+  raiseIfAllowed<T>(input: ThrottleInput, insertFn: () => Promise<T>, opts?: RaiseOptions): Promise<RaiseOutcome<T>>;
   /** Test hook: clear the process-local fallback map. */
   _resetMemoryFallback(): void;
 }
@@ -348,7 +388,11 @@ export function createThrottle(deps: { backend: ThrottleBackend; now?: () => Dat
     }
   }
 
-  async function raiseIfAllowed<T>(input: ThrottleInput, insertFn: () => Promise<T>): Promise<RaiseOutcome<T>> {
+  async function raiseIfAllowed<T>(
+    input: ThrottleInput,
+    insertFn: () => Promise<T>,
+    opts?: RaiseOptions,
+  ): Promise<RaiseOutcome<T>> {
     let now: Date;
     try {
       now = getNow(input);
@@ -359,27 +403,35 @@ export function createThrottle(deps: { backend: ThrottleBackend; now?: () => Dat
       inserted: false,
       insertFailure: null,
     };
+    // The decide → insert → record sequence, run against whichever store the
+    // backend hands us: a fresh locked transaction, or the caller's own
+    // transaction under the same locks (the { tx } composition).
+    const runWith = async (store: ThrottleStore): Promise<RaiseOutcome<T>> => {
+      const verdict = await decideInStore(store, input, now);
+      if (!verdict.allow) {
+        logger.info("[inboxThrottle] card suppressed", {
+          metadata: { producer: input.producer, reason: verdict.reason, class: input.class },
+        });
+        return { verdict, inserted: false };
+      }
+      try {
+        st.result = await insertFn();
+        st.inserted = true;
+      } catch (error) {
+        st.insertFailure = { error };
+        throw error; // lock releases, nothing recorded
+      }
+      memNote(input, now);
+      await recordInStore(store, input, now);
+      return { verdict, inserted: true, result: st.result };
+    };
     try {
       const h = hash16(input.subjectKey);
-      return await backend.withLock(input.producer, h, async (store): Promise<RaiseOutcome<T>> => {
-        const verdict = await decideInStore(store, input, now);
-        if (!verdict.allow) {
-          logger.info("[inboxThrottle] card suppressed", {
-            metadata: { producer: input.producer, reason: verdict.reason, class: input.class },
-          });
-          return { verdict, inserted: false };
-        }
-        try {
-          st.result = await insertFn();
-          st.inserted = true;
-        } catch (error) {
-          st.insertFailure = { error };
-          throw error; // lock releases, nothing recorded
-        }
-        memNote(input, now);
-        await recordInStore(store, input, now);
-        return { verdict, inserted: true, result: st.result };
-      });
+      if (opts?.tx) {
+        if (!backend.withTxLock) throw new Error("throttle backend cannot run on a caller transaction");
+        return await backend.withTxLock(opts.tx, input.producer, h, runWith);
+      }
+      return await backend.withLock(input.producer, h, runWith);
     } catch (err) {
       // The producer's own insert failure is the producer's to handle.
       if (st.insertFailure) throw st.insertFailure.error;
@@ -406,7 +458,10 @@ export function createThrottle(deps: { backend: ThrottleBackend; now?: () => Dat
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
-function dbStore(tx: Tx): ThrottleStore {
+/** The slice of a db/transaction handle the store uses. */
+type StoreHandle = Pick<Tx, "select" | "execute">;
+
+function dbStore(tx: StoreHandle): ThrottleStore {
   const subjectKey = (p: string, h: string) => `${SUBJECT_KEY_PREFIX}${p}.${h}`;
   const dayKey = (p: string, d: string) => `${DAY_KEY_PREFIX}${p}.${d}`;
   const readValue = async (key: string): Promise<string | null> => {
@@ -416,14 +471,16 @@ function dbStore(tx: Tx): ThrottleStore {
       .where(eq(founderSettings.key, key));
     return rows[0]?.value ?? null;
   };
+  // Writes are raw-SQL upserts over the given handle, NOT drizzle builder
+  // inserts (same row shape as the gateWatcher direct upsert): a producer
+  // whose pinned suite counts its own insert(...).values() sequence must
+  // never see this module's bookkeeping as an extra write inside its flow,
+  // and .execute exists on every handle shape (db, tx, and the suites'
+  // transaction stubs alike).
   const upsert = async (key: string, value: string, description: string) => {
-    await tx
-      .insert(founderSettings)
-      .values({ key, value, valueType: "json", description, category: "general", updatedBy: UPDATED_BY })
-      .onConflictDoUpdate({
-        target: founderSettings.key,
-        set: { value, updatedAt: clock.now(), updatedBy: UPDATED_BY },
-      });
+    await tx.execute(
+      sql`INSERT INTO founder_settings (key, value, value_type, description, category, updated_by) VALUES (${key}, ${value}, 'json', ${description}, 'general', ${UPDATED_BY}) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = ${clock.now()}, updated_by = EXCLUDED.updated_by`,
+    );
   };
   return {
     async readSubject(p, h) {
@@ -441,14 +498,37 @@ function dbStore(tx: Tx): ThrottleStore {
   };
 }
 
+async function takeThrottleLocks(handle: StoreHandle, producer: string, subjectHash: string): Promise<void> {
+  // Fixed order (subject, then producer-day) so locks cannot deadlock.
+  await handle.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`inbox_throttle:${producer}:${subjectHash}`}))`);
+  await handle.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`inbox_throttle:${producer}:day`}))`);
+}
+
 const dbThrottleBackend: ThrottleBackend = {
   async withLock(producer, subjectHash, fn) {
     return db.transaction(async (tx) => {
-      // Fixed order (subject, then producer-day) so locks cannot deadlock.
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`inbox_throttle:${producer}:${subjectHash}`}))`);
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`inbox_throttle:${producer}:day`}))`);
+      await takeThrottleLocks(tx, producer, subjectHash);
       return fn(dbStore(tx));
     });
+  },
+  async withTxLock(tx, producer, subjectHash, fn) {
+    await takeThrottleLocks(tx, producer, subjectHash);
+    return fn(dbStore(tx));
+  },
+};
+
+/**
+ * Lockless backend over the shared db handle. Backs the split-pair facades
+ * for the one call site that may not open a transaction (agentAuthorityGate's
+ * plain branch — see the header's D-5 note). Never used by raiseIfAllowed's
+ * locked composition.
+ */
+const dbDirectBackend: ThrottleBackend = {
+  async withLock(_producer, _subjectHash, fn) {
+    // The store uses only .select/.execute, which the shared db handle
+    // provides exactly as a transaction handle does; the cast bridges the
+    // two handles' session generics, nothing behavioural.
+    return fn(dbStore(db as unknown as Tx));
   },
 };
 
@@ -458,5 +538,20 @@ const dbThrottleBackend: ThrottleBackend = {
 
 const defaultThrottle = createThrottle({ backend: dbThrottleBackend });
 
-export const raiseIfAllowed = <T>(input: ThrottleInput, insertFn: () => Promise<T>): Promise<RaiseOutcome<T>> =>
-  defaultThrottle.raiseIfAllowed(input, insertFn);
+export const raiseIfAllowed = <T>(
+  input: ThrottleInput,
+  insertFn: () => Promise<T>,
+  opts?: RaiseOptions,
+): Promise<RaiseOutcome<T>> => defaultThrottle.raiseIfAllowed(input, insertFn, opts);
+
+/**
+ * The split pair over the LOCKLESS direct store — only for the one call site
+ * whose pre-existing producer contract forbids opening a transaction
+ * (agentAuthorityGate's plain branch; see the header's D-5 note). Every other
+ * producer uses the locked raiseIfAllowed composition above.
+ */
+const unlatchedThrottle = createThrottle({ backend: dbDirectBackend });
+
+export const shouldRaiseCard = (input: ThrottleInput): Promise<ThrottleVerdict> => unlatchedThrottle.shouldRaiseCard(input);
+
+export const recordRaised = (input: ThrottleInput): Promise<void> => unlatchedThrottle.recordRaised(input);

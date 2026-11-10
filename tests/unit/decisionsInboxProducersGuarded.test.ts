@@ -104,6 +104,43 @@ export function analyse(fileName: string, source: string): FileFacts {
       }
     }
   }
+  // Dynamic imports of the throttle module bind guard locals the same way:
+  // schemaDriftDetector lazy-imports it because the production-CommonJS
+  // service-graph harness cannot resolve it statically (D-5d). Only the real
+  // import() call shape counts — a comment, a string, or a dynamic import of
+  // any other module binds nothing (canaries below).
+  const dynamicSpecifier = (e: ts.Expression | undefined): string | null => {
+    if (!e) return null;
+    if (ts.isAwaitExpression(e)) return dynamicSpecifier(e.expression);
+    if (
+      ts.isCallExpression(e) &&
+      e.expression.kind === ts.SyntaxKind.ImportKeyword &&
+      e.arguments.length === 1 &&
+      ts.isStringLiteralLike(e.arguments[0])
+    ) {
+      return e.arguments[0].text;
+    }
+    return null;
+  };
+  const collectDynamic = (n: ts.Node): void => {
+    if (ts.isVariableDeclaration(n) && n.initializer) {
+      const spec = dynamicSpecifier(n.initializer);
+      if (spec && THROTTLE_MODULE.test(spec)) {
+        if (ts.isObjectBindingPattern(n.name)) {
+          for (const el of n.name.elements) {
+            const importedName = el.propertyName ? el.propertyName.getText(sf) : ts.isIdentifier(el.name) ? el.name.text : "";
+            if (GUARD_NAMES.has(importedName) && ts.isIdentifier(el.name)) {
+              guardLocals.add(el.name.text);
+            }
+          }
+        } else if (ts.isIdentifier(n.name)) {
+          nsLocals.add(n.name.text);
+        }
+      }
+    }
+    ts.forEachChild(n, collectDynamic);
+  };
+  collectDynamic(sf);
   let inserts = 0;
   let guardCalls = 0;
   const visit = (n: ts.Node) => {
@@ -228,5 +265,20 @@ describe("decisions inbox producers are all guarded or explicitly exempt", () =>
     // classification the real test applies: inserts>0 && guardCalls<inserts → fails the guarded rule
     const unguarded = analyse("u.ts", `${imp}// raiseIfAllowed(i, fn)\n${insert}`);
     expect(unguarded.guardCalls).toBeLessThan(Math.max(1, unguarded.inserts));
+
+    // dynamic imports (schemaDriftDetector's D-5d shape): destructured and
+    // namespace bindings count as guards; another module's dynamic import,
+    // or the text of one sitting in a comment, binds nothing
+    const dyn = analyse("dyn.ts", `export async function f(): Promise<void> {\n  const { raiseIfAllowed } = await import("./decisionsInboxThrottle");\n  await raiseIfAllowed(i, () => ${expr});\n}`);
+    expect(dyn).toEqual({ inserts: 1, guardCalls: 1 });
+
+    const dynNs = analyse("dynns.ts", `export async function f(): Promise<void> {\n  const throttle = await import("./decisionsInboxThrottle");\n  await throttle.raiseIfAllowed(i, () => ${expr});\n}`);
+    expect(dynNs).toEqual({ inserts: 1, guardCalls: 1 });
+
+    const dynOther = analyse("dyno.ts", `export async function f(): Promise<void> {\n  const { raiseIfAllowed } = await import("./someOtherModule");\n  await raiseIfAllowed(i, () => ${expr});\n}`);
+    expect(dynOther.guardCalls).toBe(0);
+
+    const dynComment = analyse("dync.ts", `// const { raiseIfAllowed } = await import("./decisionsInboxThrottle");\n${insert}`);
+    expect(dynComment).toEqual({ inserts: 1, guardCalls: 0 });
   });
 });

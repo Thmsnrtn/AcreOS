@@ -18,9 +18,9 @@
 import { db } from "../db";
 import { HARD_STOP_LANE_COVERAGE } from "./autopilot/hardStops";
 import { companyAgents, agentActionLog, decisionsInboxItems } from "@shared/schema";
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, notInArray, sql } from "drizzle-orm";
 import { clock } from "../utils/clock";
-import { raiseIfAllowed, canonicalJson, type ThrottleInput } from "./decisionsInboxThrottle";
+import { raiseIfAllowed, shouldRaiseCard, recordRaised, canonicalJson, type ThrottleInput } from "./decisionsInboxThrottle";
 
 // ─── Trust thresholds per authority level ────────────────────────────────────
 
@@ -341,9 +341,12 @@ async function enqueueAuthorityQuestion(
   metadata: Partial<ActionExecution>,
   auth: { effectiveLevel: number; allowed: boolean },
 ): Promise<void> {
-  // Generator throttle (STEP0-DESIGN), applied to BOTH branches. The subject is
-  // computed defensively: un-deduped skill/goal callers never serialized their
-  // input before, so an unserializable input must fail open to the plain insert.
+  // Generator throttle (STEP0-DESIGN), applied to BOTH branches — through the
+  // lockless split pair on the plain branch and the caller-transaction
+  // composition on the deduped branch (see decisionsInboxThrottle's D-5 note).
+  // The subject is computed defensively: un-deduped skill/goal callers never
+  // serialized their input before, so an unserializable input must fail open
+  // to the plain insert.
   let throttleInput: ThrottleInput | null = null;
   try {
     const q = { action, input: JSON.parse(JSON.stringify(metadata.input ?? {})), relatedGoalId: metadata.relatedGoalId ?? null };
@@ -357,35 +360,65 @@ async function enqueueAuthorityQuestion(
     throttleInput = null;
   }
   if (metadata.actionType !== "proactive" && metadata.actionType !== "reaction") {
+    // PLAIN branch — pinned transaction-free by this producer's pre-existing
+    // suite (D-5a): the throttle is consulted through its lockless split pair
+    // (shouldRaiseCard / recordRaised over the direct store), which never
+    // opens a transaction. Suppression still applies; only the lock is gone.
     const plainInsert = () => db.insert(decisionsInboxItems).values(card);
-    if (throttleInput) await raiseIfAllowed(throttleInput, plainInsert);
-    else await plainInsert();
+    if (throttleInput) {
+      const verdict = await shouldRaiseCard(throttleInput);
+      if (verdict.allow) {
+        await plainInsert();
+        await recordRaised(throttleInput);
+      }
+    } else await plainInsert();
     return;
   }
   const inputJson = JSON.stringify(metadata.input ?? {});
   const subject = { action, input: JSON.parse(inputJson), relatedGoalId: metadata.relatedGoalId ?? null };
   const subjectJson = JSON.stringify(subject);
   const lockPrefix = `authority:${card.ownerAgentCodename}:${card.itemType}:`;
-  // Open-card dedupe hit rolls the empty transaction back via this sentinel so
-  // the throttle records nothing for a card it did not raise.
+  // Open-card dedupe hit rolls the transaction back via this sentinel, thrown
+  // before the throttle is consulted, so the throttle records nothing for a
+  // card it did not raise.
   class OpenCardExists extends Error {}
   const dedupedInsert = () => db.transaction(async (tx) => {
     // PostgreSQL's canonical JSONB text gives reordered/nested object keys the
     // same lock as well as the same equality predicate. Arrays remain ordered.
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${lockPrefix} || ${subjectJson}::jsonb::text))`);
-    const [existing] = await tx.select({ id: decisionsInboxItems.id }).from(decisionsInboxItems).where(and(
+    const findCard = (answered: boolean) => tx.select({ id: decisionsInboxItems.id }).from(decisionsInboxItems).where(and(
       isNull(decisionsInboxItems.organizationId),
       eq(decisionsInboxItems.ownerAgentCodename, card.ownerAgentCodename!),
       eq(decisionsInboxItems.itemType, card.itemType),
-      inArray(decisionsInboxItems.status, ["pending", "deferred"]),
+      answered
+        ? notInArray(decisionsInboxItems.status, ["pending", "deferred"])
+        : inArray(decisionsInboxItems.status, ["pending", "deferred"]),
       sql`${decisionsInboxItems.contextBundle}->'authorityQuestion' = ${subjectJson}::jsonb`,
     )).limit(1);
+    const [existing] = await findCard(false);
     if (existing) throw new OpenCardExists();
-    await tx.insert(decisionsInboxItems).values({ ...card, contextBundle: { authorityQuestion: subject } });
+    const insertCard = () => tx.insert(decisionsInboxItems).values({ ...card, contextBundle: { authorityQuestion: subject } });
+    if (!throttleInput) {
+      await insertCard();
+      return;
+    }
+    // A question the founder has already answered may be asked again — this
+    // producer's long-standing contract (authorityQueueDedup.realdb). The
+    // throttle guards first raises and unanswered repeats; an answered
+    // question re-arms one re-ask, and the open-card dedupe above keeps it
+    // to one open card at a time.
+    const [answered] = await findCard(true);
+    if (answered) {
+      await insertCard();
+      return;
+    }
+    // Decide, insert and record all ride THIS transaction (the throttle's
+    // { tx } composition): no second connection is held while the card
+    // insert runs.
+    await raiseIfAllowed(throttleInput, insertCard, { tx });
   });
   try {
-    if (throttleInput) await raiseIfAllowed(throttleInput, dedupedInsert);
-    else await dedupedInsert();
+    await dedupedInsert();
   } catch (err) {
     if (err instanceof OpenCardExists) return;
     throw err;

@@ -18,7 +18,7 @@ import { agentEvents, decisionsInboxItems } from "@shared/schema";
 import { is, sql, getTableName, getTableColumns } from "drizzle-orm";
 import { PgTable, getTableConfig } from "drizzle-orm/pg-core";
 import { logger } from "../utils/logger";
-import { raiseIfAllowed, canonicalJson, canonicalSetJson } from "./decisionsInboxThrottle";
+
 export interface SchemaFinding {
   kind: "missing_table" | "missing_column" | "orphan_column";
   table: string;
@@ -141,6 +141,12 @@ export async function runSchemaDriftJob(): Promise<{ findings: SchemaFinding[] }
 
     // Generator throttle (STEP0-DESIGN): same missing-set + orphan bucket does
     // not re-raise a card every run, whatever happened to the last card.
+    // Lazy import, like ./founder above (D-5d): this module is loaded by the
+    // production-CommonJS service-graph harness
+    // (productionServiceInitialization), whose require resolves only a small
+    // set of sibling services — a static import of the throttle (which pulls
+    // in the wider service graph) fails there with "Cannot find module".
+    const { raiseIfAllowed, canonicalJson, canonicalSetJson } = await import("./decisionsInboxThrottle");
     await raiseIfAllowed(
       {
         producer: "schema_drift",

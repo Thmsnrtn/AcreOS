@@ -197,58 +197,64 @@ class AgentInitiativeEngine {
     const inputJson = JSON.stringify(proposal.actionInput, Object.keys(proposal.actionInput).sort());
     const key = `initiative:${orgId}:${proposal.agentCodename}:${proposal.action}:${inputJson}`;
     const blocked = trustAuthorityEscalation.isActionAllowed(trustScore, proposal.action) ? "low_confidence" : "insufficient_trust";
-    // Generator throttle (STEP0-DESIGN). The WHOLE original transaction (lock +
-    // open-card dedupe + card insert + agent_events insert) is the insertFn, so
-    // the card and its event stay atomic and throttle state is recorded only
-    // after that transaction commits. An open-card dedupe hit rolls the (empty)
-    // transaction back via a sentinel so nothing is recorded for it.
+    // Generator throttle (STEP0-DESIGN), composed through the caller's
+    // transaction (decisionsInboxThrottle's { tx } shape, D-5c): this
+    // transaction opens FIRST — advisory lock, then the open-card dedupe —
+    // and the throttle's decide → insert → record runs on the SAME handle, so
+    // the card, its agent_events row and the throttle state commit or roll
+    // back together and no second connection is ever held while the inserts
+    // run. A dedupe hit throws the sentinel before the throttle is consulted,
+    // so nothing is recorded for a card the throttle did not raise.
     class OpenCardExists extends Error {}
     try {
-      const outcome = await raiseIfAllowed(
-        {
-          producer: "agent_initiative",
-          subjectKey: canonicalJson({
-            orgId,
-            agent: proposal.agentCodename,
-            action: proposal.action,
-            input: proposal.actionInput,
-          }),
-          conditionKey: canonicalJson({ type: proposal.type, autoExecuteBlocked: blocked }),
-          class: "standard",
-        },
-        () => db.transaction(async (tx) => {
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${key}))`);
-      const [existing] = await tx.select({ id: decisionsInboxItems.id }).from(decisionsInboxItems).where(and(
-        eq(decisionsInboxItems.organizationId, orgId),
-        eq(decisionsInboxItems.itemType, "agent_initiative"),
-        eq(decisionsInboxItems.ownerAgentCodename, proposal.agentCodename),
-        eq(decisionsInboxItems.recommendedAction, proposal.action),
-        inArray(decisionsInboxItems.status, ["pending", "deferred"]),
-        sql`${decisionsInboxItems.actionPayload}->'actionInput' = ${JSON.stringify(proposal.actionInput)}::jsonb`,
-      )).limit(1);
-      if (existing) throw new OpenCardExists();
-      await tx.insert(decisionsInboxItems).values({
-        itemType: "agent_initiative",
-        riskLevel: proposal.type === "risk" ? "high" : "medium",
-        urgencyScore: Math.round(proposal.confidence * 100),
-        sophieAnalysis: proposal.description,
-        sophieConfidenceScore: Math.round(proposal.confidence * 100),
-        recommendedAction: proposal.action,
-        recommendedActionLabel: proposal.title,
-        actionPayload: { action: proposal.action, actionInput: proposal.actionInput, proposalType: proposal.type, estimatedImpact: proposal.estimatedImpact },
-        organizationId: orgId,
-        ownerAgentCodename: proposal.agentCodename,
-        status: "pending",
-        contextBundle: { reasoning: proposal.reasoning, estimatedImpact: proposal.estimatedImpact, trustScore, autoExecuteBlocked: blocked },
+      return await db.transaction(async (tx) => {
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${key}))`);
+        const [existing] = await tx.select({ id: decisionsInboxItems.id }).from(decisionsInboxItems).where(and(
+          eq(decisionsInboxItems.organizationId, orgId),
+          eq(decisionsInboxItems.itemType, "agent_initiative"),
+          eq(decisionsInboxItems.ownerAgentCodename, proposal.agentCodename),
+          eq(decisionsInboxItems.recommendedAction, proposal.action),
+          inArray(decisionsInboxItems.status, ["pending", "deferred"]),
+          sql`${decisionsInboxItems.actionPayload}->'actionInput' = ${JSON.stringify(proposal.actionInput)}::jsonb`,
+        )).limit(1);
+        if (existing) throw new OpenCardExists();
+        const outcome = await raiseIfAllowed(
+          {
+            producer: "agent_initiative",
+            subjectKey: canonicalJson({
+              orgId,
+              agent: proposal.agentCodename,
+              action: proposal.action,
+              input: proposal.actionInput,
+            }),
+            conditionKey: canonicalJson({ type: proposal.type, autoExecuteBlocked: blocked }),
+            class: "standard",
+          },
+          async () => {
+            await tx.insert(decisionsInboxItems).values({
+              itemType: "agent_initiative",
+              riskLevel: proposal.type === "risk" ? "high" : "medium",
+              urgencyScore: Math.round(proposal.confidence * 100),
+              sophieAnalysis: proposal.description,
+              sophieConfidenceScore: Math.round(proposal.confidence * 100),
+              recommendedAction: proposal.action,
+              recommendedActionLabel: proposal.title,
+              actionPayload: { action: proposal.action, actionInput: proposal.actionInput, proposalType: proposal.type, estimatedImpact: proposal.estimatedImpact },
+              organizationId: orgId,
+              ownerAgentCodename: proposal.agentCodename,
+              status: "pending",
+              contextBundle: { reasoning: proposal.reasoning, estimatedImpact: proposal.estimatedImpact, trustScore, autoExecuteBlocked: blocked },
+            });
+            await tx.insert(agentEvents).values({
+              organizationId: orgId, eventType: "initiative_proposal", eventSource: "agent",
+              payload: { ...proposal, trustScore, autoExecuteBlocked: blocked },
+            });
+            return true;
+          },
+          { tx },
+        );
+        return outcome.inserted && outcome.result === true;
       });
-      await tx.insert(agentEvents).values({
-        organizationId: orgId, eventType: "initiative_proposal", eventSource: "agent",
-        payload: { ...proposal, trustScore, autoExecuteBlocked: blocked },
-      });
-      return true;
-    }),
-      );
-      return outcome.inserted && outcome.result === true;
     } catch (err) {
       if (err instanceof OpenCardExists) return false;
       throw err;
