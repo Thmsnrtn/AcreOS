@@ -231,7 +231,15 @@ describe.runIf(realDbAvailable)("Leg 3 counter + gate — real database", () => 
       .where(eq(noteOriginationRecords.noteIdAtRecord, (created as { id: number }).id));
     expect(recs).toHaveLength(1);
     expect(recs[0].noteId).toBeNull(); // the FK nulled the pointer; the snapshot stands
-    const after = await count(orgA, `${tag} orphan llc`);
+    // R8 dates the orphan by its snapshot's activatedAt — and activation
+    // happened at wall-clock now, AFTER this suite's fixed 2026-06-15
+    // reference date, at which the counter (per its documented window rule)
+    // does not count a deal dated after the reference. Count the post-delete
+    // state as of the activation's own wall date instead, derived from the
+    // gate-passed snapshot itself with the counter's own date helper.
+    const { wallDateOf } = await import("../../server/services/notes/sellerFinanceCounter");
+    const activatedOn = wallDateOf((recs[0].detail as { activatedAt: string }).activatedAt);
+    const after = await count(orgA, `${tag} orphan llc`, activatedOn);
     expect(after.trackA).toBe(1);
     expect(after.orphanedActivationIds).toEqual([(created as { id: number }).id]);
   });
@@ -398,8 +406,34 @@ describe.runIf(realDbAvailable)("Leg 3 activation gate — real database", () =>
     await expect(r.updateNote.call(noLog, pendingId, { status: "active" }, orgA)).rejects.toMatchObject({
       refusals: expect.arrayContaining([expect.objectContaining({ check: "creditor_threshold" })]),
     });
-    // The matching release (normalized key stored in the detail) cures it.
+    // The matching release (normalized key stored in the detail) cures the
+    // creditor_threshold refusal — and ONLY that refusal: this 6th deal is
+    // also a no-claim consumer deal at dwelling count >= 4, which
+    // independently trips rmlo_required (shared/notes/sellerFinanceGate.ts),
+    // and only a complete RMLO record cures that check.
     await db.insert(noteOriginationRecords).values(release(`${tag} threshold llc`) as never);
+    const stillRefused = await r.updateNote.call(noLog, pendingId, { status: "active" }, orgA).then(
+      () => null,
+      (e: unknown) => e as { refusals: Array<{ check: string }> },
+    );
+    expect(stillRefused).not.toBeNull();
+    const remaining = stillRefused!.refusals.map((x: { check: string }) => x.check);
+    expect(remaining).toContain("rmlo_required");
+    expect(remaining).not.toContain("creditor_threshold");
+    // The cure for rmlo_required: a COMPLETE rmlo_engagement record for
+    // this note — the same shape that cures §5.2.1 above.
+    await db.insert(noteOriginationRecords).values({
+      organizationId: orgA,
+      noteId: pendingId,
+      noteIdAtRecord: pendingId,
+      kind: "rmlo_engagement",
+      detail: {
+        originatorName: "Licensed Originator LLC",
+        licenceIdentifierAsStated: "NMLS# 123456 (as stated by the originator)",
+        engagementDate: "2026-05-01",
+      },
+      recordedBy: `${tag}-op`,
+    } as never);
     const ok = await r.updateNote.call(noLog, pendingId, { status: "active" }, orgA);
     expect((ok as { status: string }).status).toBe("active");
   });
@@ -415,13 +449,37 @@ describe.runIf(realDbAvailable)("Leg 3 activation gate — real database", () =>
       .where(eq(noteOriginationRecords.organizationId, orgA))
       .limit(1);
     expect(rec).toBeDefined();
-    await expect(
+    // drizzle wraps the driver error in a "Failed query: …" message; the
+    // guard's own text ('note_origination_records is append-only …') lives
+    // in the error's .cause chain. Assert against the whole chain — the
+    // message plus every cause — so the assertion still fails if an
+    // operation ever succeeds, or is refused for any reason other than the
+    // 0307 guard itself.
+    const chainText = (e: unknown): string => {
+      const parts: string[] = [];
+      let cur: unknown = e;
+      while (cur instanceof Error) {
+        parts.push(cur.message);
+        cur = (cur as { cause?: unknown }).cause;
+      }
+      if (parts.length === 0 && e !== null && e !== undefined) parts.push(String(e));
+      return parts.join("\n");
+    };
+    const expectGuardRefusal = async (op: Promise<unknown>): Promise<void> => {
+      const err = await op.then(
+        () => null,
+        (e: unknown) => e,
+      );
+      expect(err).not.toBeNull();
+      const text = chainText(err);
+      expect(text).toMatch(/append-only/);
+      expect(text).toMatch(/note_origination_records/);
+    };
+    await expectGuardRefusal(
       db.execute(sql`UPDATE note_origination_records SET recorded_by = 'tampered' WHERE id = ${rec.id}`),
-    ).rejects.toThrow(/append-only/);
-    await expect(db.execute(sql`DELETE FROM note_origination_records WHERE id = ${rec.id}`)).rejects.toThrow(
-      /append-only/,
     );
-    await expect(db.execute(sql`TRUNCATE note_origination_records`)).rejects.toThrow(/append-only/);
+    await expectGuardRefusal(db.execute(sql`DELETE FROM note_origination_records WHERE id = ${rec.id}`));
+    await expectGuardRefusal(db.execute(sql`TRUNCATE note_origination_records`));
     const [still] = await db
       .select()
       .from(noteOriginationRecords)
