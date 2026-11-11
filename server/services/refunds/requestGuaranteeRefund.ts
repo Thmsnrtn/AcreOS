@@ -16,9 +16,9 @@
  *
  * The customer names neither a charge nor an amount; the server picks both.
  */
-import { and, eq, gte, inArray, isNotNull } from "drizzle-orm";
+import { and, eq, gte, inArray, isNotNull, sql } from "drizzle-orm";
 import { refundRequests, creditTransactions, systemAlerts, type RefundRequest } from "@shared/schema";
-import { db } from "../../db";
+import { db, withTransaction } from "../../db";
 import { logger } from "../../utils/logger";
 import { clock } from "../../utils/clock";
 import type { AuditActor } from "../../utils/auditLog";
@@ -161,16 +161,20 @@ export async function requestGuaranteeRefund(
   const paymentIntentId = typeof charge.payment_intent === "string" ? charge.payment_intent : charge.payment_intent?.id ?? null;
 
   // The same charge may already have a request: never a duplicate row for it.
-  const [existing] = await db
-    .select()
-    .from(refundRequests)
-    .where(and(eq(refundRequests.organizationId, org.id), eq(refundRequests.stripeChargeId, charge.id), inArray(refundRequests.status, [...OPEN_STATUSES])))
-    .limit(1);
-  if (existing) {
+  const openRowFor = (conn: Pick<typeof db, "select">) =>
+    conn
+      .select()
+      .from(refundRequests)
+      .where(and(eq(refundRequests.organizationId, org.id), eq(refundRequests.stripeChargeId, charge.id), inArray(refundRequests.status, [...OPEN_STATUSES])))
+      .limit(1);
+  const alreadyOpen = (existing: RefundRequest): RefundIntakeResult => {
     if (existing.status === "processed") return responseFor(existing, "processed", REFUND_COPY.alreadyProcessed);
     if (existing.status === "pending") return responseFor(existing, "pending", REFUND_COPY.alreadyOpen);
     return responseFor(existing, "processing", REFUND_COPY.alreadyOpen);
-  }
+  };
+  // Fast path; the authoritative check is repeated under the lock at insert.
+  const [existing] = await openRowFor(db);
+  if (existing) return alreadyOpen(existing);
 
   // E6 facts (this org's own rows).
   const [consumed] = await db
@@ -204,27 +208,38 @@ export async function requestGuaranteeRefund(
   }
 
   const createdAt = clock.now();
-  const [row] = await db
-    .insert(refundRequests)
-    .values({
-      organizationId: org.id,
-      userId: input.userId ?? undefined,
-      stripeChargeId: charge.id,
-      stripePaymentIntentId: paymentIntentId ?? undefined,
-      amountCents,
-      reason: input.reason,
-      status: "pending",
-      autoApproved: false,
-      eligibility: eligibilityRecord(eligibility, {
-        firstCharge: { chargeId: charge.id, via: target.via, createdAt: new Date(charge.created * 1000).toISOString() },
-        ...(velocity ? { velocity } : {}),
-      }),
-      brake,
-      createdAt, // explicit: dueAt is createdAt + SLA exactly, not a second clock read
-      dueAt: new Date(createdAt.getTime() + REFUND_DECISION_SLA_HOURS * 60 * 60 * 1000),
-      attempts: 0,
-    })
-    .returning();
+  // Check + insert under the same advisory lock the executor's claim takes on
+  // the charge, so racing intakes serialize: the second one sees the first's
+  // row and takes the already-open path (no duplicate queue item or alert).
+  const inserted = await withTransaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`refund_charge:${charge.id}`}))`);
+    const [open] = await openRowFor(tx);
+    if (open) return { open } as const;
+    const [created] = await tx
+      .insert(refundRequests)
+      .values({
+        organizationId: org.id,
+        userId: input.userId ?? undefined,
+        stripeChargeId: charge.id,
+        stripePaymentIntentId: paymentIntentId ?? undefined,
+        amountCents,
+        reason: input.reason,
+        status: "pending",
+        autoApproved: false,
+        eligibility: eligibilityRecord(eligibility, {
+          firstCharge: { chargeId: charge.id, via: target.via, createdAt: new Date(charge.created * 1000).toISOString() },
+          ...(velocity ? { velocity } : {}),
+        }),
+        brake,
+        createdAt, // explicit: dueAt is createdAt + SLA exactly, not a second clock read
+        dueAt: new Date(createdAt.getTime() + REFUND_DECISION_SLA_HOURS * 60 * 60 * 1000),
+        attempts: 0,
+      })
+      .returning();
+    return { row: created } as const;
+  });
+  if ("open" in inserted) return alreadyOpen(inserted.open);
+  const row = inserted.row;
 
   if (eligibility.eligible && brake === null) {
     const result = await executeRefundRequest(

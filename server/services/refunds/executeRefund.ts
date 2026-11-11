@@ -71,6 +71,21 @@ export type ExecuteRefundResult =
   /** The refund may have gone out; claim kept, founder asked. */
   | { outcome: "uncertain"; reason: string };
 
+/**
+ * A Stripe API error that definitively means the refund was NOT created: a
+ * typed Stripe error (the repo's convention — `error.type`, as in
+ * healthCheck.ts) of a rejection kind, carrying a 4xx status. Connection,
+ * timeout, 5xx, idempotency-conflict (409) and unknown errors are NOT
+ * definitive — Stripe may have acted — and stay "uncertain".
+ */
+const DEFINITIVE_STRIPE_REJECTIONS = new Set(["StripeCardError", "StripeInvalidRequestError", "StripeAuthenticationError", "StripePermissionError", "StripeRateLimitError"]);
+function isDefinitiveStripeRejection(err: unknown): boolean {
+  const e = err as { type?: unknown; statusCode?: unknown } | null;
+  if (!e || typeof e.type !== "string" || !e.type.startsWith("Stripe")) return false;
+  if (!DEFINITIVE_STRIPE_REJECTIONS.has(e.type)) return false;
+  return typeof e.statusCode === "number" && e.statusCode >= 400 && e.statusCode < 500 && e.statusCode !== 409;
+}
+
 const errText = (err: unknown) => (err instanceof Error ? err.message : String(err)).slice(0, 500);
 
 function retryDelayMs(attempts: number): number {
@@ -109,7 +124,17 @@ async function claim(row: RefundRequest, processedBy: string): Promise<ClaimResu
     if (busy) return { kind: "busy" } as const;
     const claimed = await tx
       .update(refundRequests)
-      .set(assertWritablePatch(processedBy === "auto" ? { status: "processing", autoApproved: true } : { status: "processing" }, "refundRequests.claim"))
+      .set(
+        assertWritablePatch(
+          {
+            status: "processing",
+            ...(processedBy === "auto" ? { autoApproved: true } : {}),
+            // The claim time: the sweep's stuck-processing check reads it (the table has no updatedAt).
+            eligibility: withExecution(row.eligibility, { claimedAt: clock.now().toISOString() }),
+          },
+          "refundRequests.claim",
+        ),
+      )
       .where(and(eq(refundRequests.id, row.id), eq(refundRequests.organizationId, row.organizationId), eq(refundRequests.status, "pending")))
       .returning({ id: refundRequests.id });
     return claimed.length > 0 ? ({ kind: "claimed" } as const) : ({ kind: "lost" } as const);
@@ -188,7 +213,7 @@ async function markUncertain(row: RefundRequest, why: string, orgName: string, s
       .set({ status: "uncertain", brake: "B6", lastError: why.slice(0, 500), ...(stripeRefundId ? { stripeRefundId } : {}) })
       .where(and(eq(refundRequests.id, row.id), eq(refundRequests.organizationId, row.organizationId)));
   } catch (err) {
-    logger.error(`[Refund] could not mark refund request #${row.id} uncertain — it stays 'processing' (the sweep lists it)`, err instanceof Error ? err : undefined);
+    logger.error(`[Refund] could not mark refund request #${row.id} uncertain — it stays 'processing' (the SLA sweep raises a critical refund_stuck alert once the claim is over an hour old)`, err instanceof Error ? err : undefined);
   }
   await raiseRefundPipelineAlert({
     type: "refund_uncertain",
@@ -220,7 +245,7 @@ async function markUncertain(row: RefundRequest, why: string, orgName: string, s
 }
 
 /** The downstream bundle — unchanged from the inline auto block. Returns the failures that mattered. */
-async function runBundle(row: RefundRequest, refundId: string, args: ExecuteRefundArgs, stripe: { subscriptions: { cancel(id: string): Promise<unknown> } }): Promise<{ errors: string[]; orgName: string }> {
+async function runBundle(row: RefundRequest, refundId: string | null, args: ExecuteRefundArgs, stripe: { subscriptions: { cancel(id: string): Promise<unknown> } }): Promise<{ errors: string[]; orgName: string }> {
   const errors: string[] = [];
   const org = await storage.getOrganization(row.organizationId).catch((err: unknown) => {
     errors.push(`organization read failed: ${errText(err)}`);
@@ -319,7 +344,8 @@ async function runBundle(row: RefundRequest, refundId: string, args: ExecuteRefu
  */
 export async function completeProcessedRefund(
   row: RefundRequest,
-  refundId: string,
+  /** null only on the founder's resolve-uncertain path when no Stripe refund id was recorded or supplied — never a made-up id. */
+  refundId: string | null,
   args: ExecuteRefundArgs,
   stripe: { subscriptions: { cancel(id: string): Promise<unknown> } },
   orgName: string,
@@ -337,7 +363,7 @@ export async function completeProcessedRefund(
       type: "refund_followup_incomplete",
       severity: "critical",
       title: `Refund processed, follow-up incomplete: request #${row.id}`,
-      message: `Refund ${refundId} went out and is recorded, but: ${bundle.errors.join("; ")}. Check the org's tier and subscription by hand.`,
+      message: `Refund ${refundId ?? "(id not recorded)"} went out and is recorded, but: ${bundle.errors.join("; ")}. Check the org's tier and subscription by hand.`,
       organizationId: row.organizationId,
       requestId: row.id,
     });
@@ -421,6 +447,10 @@ export async function executeRefundRequest(args: ExecuteRefundArgs, deps: Execut
     const refund = await stripe.refunds.create({ charge: row.stripeChargeId }, { idempotencyKey: `refund_request:${row.id}` });
     refundId = refund.id;
   } catch (err) {
+    // Stripe said no, in so many words: nothing was refunded. Back to the queue
+    // like any pre-call failure (the row is still "processing", which is what
+    // releaseForRetry's update requires).
+    if (isDefinitiveStripeRejection(err)) return releaseForRetry(row, err);
     const why = `refund call failed or timed out — Stripe may or may not have refunded: ${errText(err)}`;
     logger.error(`[Refund] refund request #${row.id}: ${why}`);
     await markUncertain(row, why, orgName);

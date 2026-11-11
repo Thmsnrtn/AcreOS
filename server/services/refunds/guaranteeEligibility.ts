@@ -139,7 +139,7 @@ export function evaluateGuaranteeEligibility(input: GuaranteeEligibilityInput): 
 
   if (abuse === "attested_clear") verdicts.E5 = pass("a human attested the account clear of the §5A abuse exclusion");
   else if (abuse === "no_recorded_exclusion")
-    verdicts.E5 = pass("nothing recorded excludes the org — NOT an automated determination: no abuse-termination flag exists, the founder queue is where a human can still apply the exclusion");
+    verdicts.E5 = pass("nothing recorded excludes the org — NOT an automated determination: no abuse-termination flag exists in the product, so guarantee refunds process without an exclusion check until such a flag exists");
   else if (abuse === "excluded") verdicts.E5 = fail("the §5A abuse/fraud/material-breach exclusion applies");
   else verdicts.E5 = fail("abuse exclusion unattested — a human must confirm or clear it");
 

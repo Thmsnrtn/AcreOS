@@ -503,6 +503,33 @@ describe("failure discipline (copied from apply_refund)", () => {
     expect(stripe.refundsCreate).toHaveBeenCalledTimes(1);
   });
 
+  it("9c. a definitive Stripe rejection (StripeCardError-style 402) means nothing was refunded: back to the queue, attempts + 1, NO uncertain alert", async () => {
+    st.charges = [charge("ch_first", 9900, 5)];
+    stripe.refundsCreate.mockRejectedValueOnce(Object.assign(new Error("Your card was declined."), { type: "StripeCardError", statusCode: 402, code: "card_declined" }));
+    const r = await intake();
+    expect(r).toMatchObject({ kind: "recorded", status: "pending", message: REFUND_COPY.retrying });
+    expect(refunds()[0]).toMatchObject({ status: "pending", attempts: 1, lastError: "Your card was declined.", autoApproved: true });
+    expect(new Date(refunds()[0].eligibility.execution.nextAttemptAt).getTime()).toBeGreaterThan(Date.now());
+    expect(alertsOfType("refund_uncertain")).toHaveLength(0);
+    expect(spies.askFounder).not.toHaveBeenCalled();
+    expect(stripe.subscriptionsCancel).not.toHaveBeenCalled();
+  });
+
+  it("9d. a connection error, a 5xx and a 409 idempotency conflict stay UNCERTAIN exactly as before", async () => {
+    for (const [i, e] of [
+      { type: "StripeConnectionError", message: "socket hang up" },
+      { type: "StripeAPIError", statusCode: 503, message: "upstream" },
+      { type: "StripeInvalidRequestError", statusCode: 409, message: "request in progress" },
+    ].entries()) {
+      st.tables = {};
+      st.charges = [charge(`ch_${i}`, 9900, 5)];
+      stripe.refundsCreate.mockRejectedValueOnce(Object.assign(new Error(e.message), e));
+      await intake();
+      expect(refunds()[0], e.type).toMatchObject({ status: "uncertain", brake: "B6" });
+    }
+    expect(alertsOfType("refund_uncertain")).toHaveLength(3);
+  });
+
   it("when the founder ask itself fails the failure is logged as an error and the row + alert still list the item", async () => {
     st.charges = [charge("ch_first", 9900, 5)];
     stripe.refundsCreate.mockRejectedValueOnce(new Error("timeout"));
@@ -537,6 +564,17 @@ describe("10. concurrent duplicate requests: exactly one processes", () => {
     const results = [a, b].map((x) => (x.kind === "recorded" ? x.status : x.kind));
     expect(results.filter((s) => s === "processed")).toHaveLength(1);
     expect(spies.auditLog).toHaveBeenCalledTimes(1);
+  });
+
+  it("10b. two concurrent intakes for the same charge create exactly ONE row (check + insert under the charge lock) and one queue alert", async () => {
+    st.charges = [charge("ch_first", 9900, 31)]; // B5: queued, so no executor involved
+    const seam = { stripe: fakeStripe() as never };
+    const [a, b] = await Promise.all([intake("not for me", seam), intake("not for me", seam)]);
+    expect(refunds()).toHaveLength(1);
+    expect(st.writes.filter((w) => w.op === "insert" && w.table === "refund_requests")).toHaveLength(1);
+    expect(a).toMatchObject({ kind: "recorded", requestId: refunds()[0].id });
+    expect(b).toMatchObject({ kind: "recorded", requestId: refunds()[0].id });
+    expect(alertsOfType("refund_request")).toHaveLength(1);
   });
 
   it("two executors on the SAME row → one claims, the loser observes processing/processed and stops", async () => {
@@ -749,6 +787,30 @@ describe("founder queue actions", () => {
     expect(await approveRefundRequest(id, "f")).toMatchObject({ result: { outcome: "not_claimable", status: "denied" } });
   });
 
+  it("deny: when the customer email fails the denial stands AND the founder gets a refund_deny_notice_failed alert", async () => {
+    const id = await queued();
+    spies.sendEmail.mockRejectedValueOnce(new Error("smtp down"));
+    const out = await denyRefundRequest(id, "founder_9", "Outside the window");
+    expect(out).toEqual({ found: true, denied: true, status: "denied" });
+    expect(refunds()[0].status).toBe("denied");
+    expect(alertsOfType("refund_deny_notice_failed")).toEqual([expect.objectContaining({ severity: "warning", relatedEntityId: id, message: expect.stringMatching(/NOT notified|not notified|Tell the customer/) })]);
+  });
+
+  it("deny: a delivered email raises no notice-failed alert", async () => {
+    const id = await queued();
+    await denyRefundRequest(id, "founder_9", "Outside the window");
+    expect(alertsOfType("refund_deny_notice_failed")).toHaveLength(0);
+  });
+
+  it("resolve-uncertain 'refunded' with no refund id anywhere records none — no invented id reaches the row or the audit", async () => {
+    st.tables["refund_requests"] = [{ id: 1, organizationId: 7, stripeChargeId: "ch_x", amountCents: 9900, status: "uncertain", brake: "B6", attempts: 0, createdAt: new Date(), reason: "r" }];
+    const out = await resolveUncertainRefundRequest(1, "founder_9", { outcome: "refunded", note: "saw it" });
+    expect(out).toMatchObject({ resolved: true, status: "processed" });
+    expect(refunds()[0].stripeRefundId ?? null).toBeNull();
+    expect(JSON.stringify([refunds()[0], spies.auditLog.mock.calls])).not.toContain("unrecorded");
+    expect(spies.auditLog).toHaveBeenCalledWith(expect.objectContaining({ metadata: expect.objectContaining({ stripeRefundId: null }) }));
+  });
+
   it("resolve-uncertain 'refunded' records the finding, marks processed and runs the follow-up that never ran", async () => {
     st.charges = [charge("ch_first", 9900, 5)];
     st.failUpdate = (table, v) => table === "refund_requests" && v.status === "processed";
@@ -867,5 +929,64 @@ describe("SLA sweep", () => {
     expect((await runRefundSlaSweep(t + 25 * 60 * 60 * 1000)).uncertainListed).toBe(1);
     expect(alertsOfType("refund_uncertain")).toHaveLength(2);
     expect(stripe.refundsCreate).not.toHaveBeenCalled();
+  });
+
+  describe("stuck processing (D2)", () => {
+    const HOUR = 60 * 60 * 1000;
+    const processing = (over: Row): Row => pendingRow({ status: "processing", autoApproved: true, brake: null, dueAt: new Date(t + DAY_MS), ...over });
+
+    it("a processing row claimed over an hour ago raises a critical refund_stuck alert, re-announced at most daily, never mutated", async () => {
+      st.tables["refund_requests"] = [processing({ id: 11, eligibility: { execution: { claimedAt: new Date(t - 2 * HOUR).toISOString() } } })];
+      const before = JSON.stringify(refunds()[0].status);
+      expect((await runRefundSlaSweep(t)).stuckProcessing).toBe(1);
+      expect(alertsOfType("refund_stuck")).toEqual([expect.objectContaining({ severity: "critical", relatedEntityId: 11 })]);
+      expect((await runRefundSlaSweep(t + HOUR)).stuckProcessing).toBe(1);
+      expect(alertsOfType("refund_stuck")).toHaveLength(1); // deduped within the day
+      await runRefundSlaSweep(t + 25 * HOUR);
+      expect(alertsOfType("refund_stuck")).toHaveLength(2);
+      // Post-call state is unknown: never requeued, never touched, never refunded.
+      expect(JSON.stringify(refunds()[0].status)).toBe(before);
+      expect(refunds()[0].status).toBe("processing");
+      expect(refunds()[0].attempts).toBe(0);
+      expect(stripe.refundsCreate).not.toHaveBeenCalled();
+    });
+
+    it("falls back to createdAt when no claim stamp exists", async () => {
+      st.tables["refund_requests"] = [processing({ id: 12, createdAt: new Date(t - 3 * HOUR) })];
+      expect((await runRefundSlaSweep(t)).stuckProcessing).toBe(1);
+    });
+
+    it("a fresh processing row (the executor mid-run) is NOT alerted", async () => {
+      st.tables["refund_requests"] = [processing({ id: 13, createdAt: new Date(t - 5 * 60 * 1000), eligibility: { execution: { claimedAt: new Date(t - 60 * 1000).toISOString() } } })];
+      expect((await runRefundSlaSweep(t)).stuckProcessing).toBe(0);
+      expect(alertsOfType("refund_stuck")).toHaveLength(0);
+    });
+
+    it("an OLD pending row claimed just now by a founder approval is judged on the claim stamp, not createdAt", async () => {
+      st.tables["refund_requests"] = [processing({ id: 14, autoApproved: false, createdAt: new Date(t - 10 * DAY_MS), eligibility: { execution: { claimedAt: new Date(t - 30 * 1000).toISOString() } } })];
+      expect((await runRefundSlaSweep(t)).stuckProcessing).toBe(0);
+    });
+
+    it("the executor's claim stamps claimedAt", async () => {
+      st.charges = [charge("ch_first", 9900, 31)];
+      await intake(); // queued B5
+      stripe.refundsCreate.mockImplementationOnce(async () => {
+        expect(refunds()[0].status).toBe("processing");
+        expect(typeof refunds()[0].eligibility.execution.claimedAt).toBe("string");
+        return { id: "re_1" };
+      });
+      await approveRefundRequest(refunds()[0].id, "f");
+      expect(stripe.refundsCreate).toHaveBeenCalledTimes(1);
+    });
+
+    it("the founder queue lists a stuck processing row flagged stuck=true, and omits a fresh one", async () => {
+      st.tables["refund_requests"] = [
+        processing({ id: 15, eligibility: { execution: { claimedAt: new Date(t - 2 * HOUR).toISOString() } } }),
+        processing({ id: 16, stripeChargeId: "ch_y", eligibility: { execution: { claimedAt: new Date(t - 60 * 1000).toISOString() } } }),
+      ];
+      const q = await listFounderRefundQueue(100, t);
+      expect(q.map((x) => x.id)).toEqual([15]);
+      expect(q[0]).toMatchObject({ status: "processing", stuck: true });
+    });
   });
 });

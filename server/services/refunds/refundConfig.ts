@@ -40,3 +40,10 @@ export const GUARANTEE_REFUND_VELOCITY = {
   /** Automatic guarantee refund dollars allowed in the window, in cents ($5,000). */
   maxCents: 500_000,
 } as const;
+
+/**
+ * A claimed ("processing") refund request whose claim is older than this is
+ * stuck — the executor died mid-run, and the post-call state is unknown. The
+ * SLA sweep alerts on it (never requeues it) and the founder queue flags it.
+ */
+export const REFUND_STUCK_PROCESSING_AFTER_HOURS = 1;

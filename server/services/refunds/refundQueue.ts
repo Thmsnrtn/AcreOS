@@ -21,7 +21,7 @@ import { storage } from "../../storage";
 import { unscopedForPlatformOps } from "../../utils/orgScopedDb";
 import type { AuditActor } from "../../utils/auditLog";
 import { executeRefundRequest, completeProcessedRefund, withExecution, type ExecuteRefundResult } from "./executeRefund";
-import { REFUND_ESCALATION_AFTER_DUE_HOURS, REFUND_MAX_AUTO_ATTEMPTS } from "./refundConfig";
+import { REFUND_ESCALATION_AFTER_DUE_HOURS, REFUND_MAX_AUTO_ATTEMPTS, REFUND_STUCK_PROCESSING_AFTER_HOURS } from "./refundConfig";
 import { raiseRefundPipelineAlert } from "./refundAlerts";
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -53,6 +53,27 @@ export interface FounderQueueItem {
   attempts: number;
   lastError: string | null;
   autoApproved: boolean | null;
+  /** A "processing" claim older than the stuck threshold: the executor died mid-run; outcome unknown. */
+  stuck: boolean;
+}
+
+/**
+ * When the executor claimed the row. The table has no updatedAt, so the claim
+ * stamps `eligibility.execution.claimedAt`; a row claimed before that stamp
+ * existed falls back to createdAt (an over-estimate of age — it errs toward
+ * alerting, never toward hiding).
+ */
+function claimedAtMs(r: RefundRequest): number | null {
+  const at = (r.eligibility as { execution?: { claimedAt?: string } } | null)?.execution?.claimedAt;
+  const t = at ? new Date(at).getTime() : r.createdAt ? new Date(r.createdAt).getTime() : NaN;
+  return Number.isFinite(t) ? t : null;
+}
+
+/** A processing row whose claim is past the stuck threshold. Pure. */
+function isStuckProcessing(r: RefundRequest, nowMs: number): boolean {
+  if (r.status !== "processing") return false;
+  const t = claimedAtMs(r);
+  return t !== null && nowMs - t >= REFUND_STUCK_PROCESSING_AFTER_HOURS * HOUR_MS;
 }
 
 const toItem = (r: RefundRequest, nowMs: number): FounderQueueItem => ({
@@ -71,17 +92,18 @@ const toItem = (r: RefundRequest, nowMs: number): FounderQueueItem => ({
   attempts: r.attempts ?? 0,
   lastError: r.lastError ?? null,
   autoApproved: r.autoApproved ?? null,
+  stuck: isStuckProcessing(r, nowMs),
 });
 
-/** Pending + uncertain, oldest first. */
+/** Pending + uncertain + stuck-processing, oldest first. A fresh "processing" row is the executor mid-run and is not listed. */
 export async function listFounderRefundQueue(limit = 100, nowMs = clock.nowMs()): Promise<FounderQueueItem[]> {
   const rows = await unscopedForPlatformOps(QUEUE_REASON)
     .select()
     .from(refundRequests)
-    .where(inArray(refundRequests.status, ["pending", "uncertain"]))
+    .where(inArray(refundRequests.status, ["pending", "uncertain", "processing"]))
     .orderBy(asc(refundRequests.createdAt))
     .limit(limit);
-  return rows.map((r) => toItem(r, nowMs));
+  return rows.filter((r) => r.status !== "processing" || isStuckProcessing(r, nowMs)).map((r) => toItem(r, nowMs));
 }
 
 async function loadRow(id: number): Promise<RefundRequest | null> {
@@ -143,6 +165,14 @@ export async function denyRefundRequest(id: number, founderId: string, reason: s
   } catch (err) {
     // The row says denied either way; say that the customer was not emailed.
     logger.error(`[Refund] refund request #${row.id} denied but the customer could NOT be notified`, err instanceof Error ? err : undefined);
+    await raiseRefundPipelineAlert({
+      type: "refund_deny_notice_failed",
+      severity: "warning",
+      title: `Refund request #${row.id} denied — customer NOT notified`,
+      message: `The denial stands, but the notification email to org #${row.organizationId} failed (${err instanceof Error ? err.message.slice(0, 300) : String(err).slice(0, 300)}). Tell the customer by hand.`,
+      organizationId: row.organizationId,
+      requestId: row.id,
+    });
   }
   return { found: true, denied: true, status: "denied" };
 }
@@ -185,7 +215,7 @@ export async function resolveUncertainRefundRequest(
       const { getUncachableStripeClient } = await import("../../stripeClient");
       const stripe = await getUncachableStripeClient();
       const org = await storage.getOrganization(row.organizationId);
-      const done = await completeProcessedRefund(row, refundId ?? "unrecorded", { requestId: row.id, organizationId: row.organizationId, processedBy: founderId, trigger: "founder" }, stripe, org?.name ?? `#${row.organizationId}`);
+      const done = await completeProcessedRefund(row, refundId, { requestId: row.id, organizationId: row.organizationId, processedBy: founderId, trigger: "founder" }, stripe, org?.name ?? `#${row.organizationId}`);
       followUpErrors = done.bundleErrors;
     } catch (err) {
       followUpErrors = [`follow-up could not run: ${err instanceof Error ? err.message : String(err)}`];
@@ -212,9 +242,10 @@ export interface RefundSweepResult {
   reminded: number;
   escalated: number;
   uncertainListed: number;
+  stuckProcessing: number;
 }
 
-type Execution = { remindedAt?: string; escalatedAt?: string; exhaustedAlertedAt?: string; uncertainNoticeAt?: string; nextAttemptAt?: string };
+type Execution = { remindedAt?: string; escalatedAt?: string; exhaustedAlertedAt?: string; uncertainNoticeAt?: string; stuckNoticeAt?: string; nextAttemptAt?: string };
 const executionOf = (r: RefundRequest): Execution => {
   const e = (r.eligibility as { execution?: Execution } | null)?.execution;
   return e && typeof e === "object" ? e : {};
@@ -229,13 +260,35 @@ async function stamp(r: RefundRequest, patch: Record<string, unknown>): Promise<
 }
 
 export async function runRefundSlaSweep(nowMs = clock.nowMs()): Promise<RefundSweepResult> {
-  const out: RefundSweepResult = { retried: 0, retryProcessed: 0, retryExhausted: 0, reminded: 0, escalated: 0, uncertainListed: 0 };
-  const rows = await unscopedForPlatformOps(QUEUE_REASON).select().from(refundRequests).where(inArray(refundRequests.status, ["pending", "uncertain"])).orderBy(asc(refundRequests.createdAt)).limit(500);
+  const out: RefundSweepResult = { retried: 0, retryProcessed: 0, retryExhausted: 0, reminded: 0, escalated: 0, uncertainListed: 0, stuckProcessing: 0 };
+  const rows = await unscopedForPlatformOps(QUEUE_REASON).select().from(refundRequests).where(inArray(refundRequests.status, ["pending", "uncertain", "processing"])).orderBy(asc(refundRequests.createdAt)).limit(500);
   const nowIso = new Date(nowMs).toISOString();
 
   for (const r of rows) {
     try {
       const exec = executionOf(r);
+
+      if (r.status === "processing") {
+        // Claimed but never finished: the executor died mid-run and whether the
+        // refund went out is unknown. NEVER requeued, NEVER status-changed here —
+        // a human checks Stripe. Fresh claims are the executor at work: skipped.
+        if (!isStuckProcessing(r, nowMs)) continue;
+        out.stuckProcessing++;
+        logger.error(`[Refund] refund request #${r.id} (org #${r.organizationId}, ${r.stripeChargeId}) stuck in processing since ${new Date(claimedAtMs(r) ?? 0).toISOString()}`);
+        const last = exec.stuckNoticeAt ? new Date(exec.stuckNoticeAt).getTime() : 0;
+        if (nowMs - last >= 24 * HOUR_MS) {
+          await raiseRefundPipelineAlert({
+            type: "refund_stuck",
+            severity: "critical",
+            title: `Refund request #${r.id} is stuck in processing`,
+            message: `It was claimed over ${REFUND_STUCK_PROCESSING_AFTER_HOURS}h ago and never finished; the executor likely died mid-run, so it is UNKNOWN whether ${r.stripeChargeId} was refunded. It will not be retried automatically. Check the charge on Stripe, then approve, deny or resolve it.`,
+            organizationId: r.organizationId,
+            requestId: r.id,
+          });
+          await stamp(r, { stuckNoticeAt: nowIso });
+        }
+        continue;
+      }
 
       if (r.status === "uncertain") {
         // Listed until resolved: logged every sweep, re-announced daily.
