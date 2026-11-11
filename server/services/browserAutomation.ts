@@ -14,6 +14,7 @@ import {
   resolveAndCheckBrowseHost,
   evaluateBrowseRequest,
 } from "./browseRequestGate";
+import { isPrivateIPv4 as isPrivateIpv4, isPrivateIPv6 as isPrivateIpv6 } from "../middleware/fileUploadSecurity";
 
 // ── Chromium launch hardening (R-14 / F-1) ──────────────────────────────────
 // Operator escape hatch: ONLY the exact value "1" re-opens the no-sandbox
@@ -757,6 +758,13 @@ export interface BrowseWebResult {
 // R-14: the pattern and DNS checks now live in ./browseRequestGate (pure,
 // fail-closed, testable); the local names are kept so browseWeb's pre-flight
 // call sites read unchanged.
+//
+// browseWeb ALSO applies the canonical private-address helpers (imported
+// above from fileUploadSecurity) directly — to the literal host and to every
+// address the DNS check resolved — as its own final check before Chromium
+// launches. This file is the one that navigates, so its pre-flight does not
+// rest solely on the gate's internals: if the gate's checks are ever
+// bypassed or change, a private destination is still rejected here.
 const resolveAndCheckHost = resolveAndCheckBrowseHost;
 const isBlockedUrl = isBlockedBrowseUrl;
 
@@ -783,6 +791,29 @@ export async function browseWeb(url: string, options?: {
   }
   
   const parsed = new URL(url);
+
+  // Direct private-address check on the literal host, with the canonical
+  // helpers: a dotted-quad host is judged by isPrivateIpv4, a bracketed /
+  // colon host by isPrivateIpv6. The gate's pattern check blocks these too;
+  // browseWeb applies the rule itself because it is the navigating consumer.
+  const literalHost = parsed.hostname.toLowerCase();
+  const isPrivateLiteralHost =
+    literalHost.startsWith("[") || literalHost.includes(":")
+      ? isPrivateIpv6(literalHost)
+      : /^\d+\.\d+\.\d+\.\d+$/.test(literalHost) && isPrivateIpv4(literalHost);
+  if (isPrivateLiteralHost) {
+    return {
+      success: false,
+      url,
+      title: "",
+      content: "",
+      links: [],
+      tables: [],
+      error: "Access to internal/private networks is not allowed",
+      loadTimeMs: clock.nowMs() - startTime,
+    };
+  }
+
   const dnsCheck = await resolveAndCheckHost(parsed.hostname);
   if (!dnsCheck.allowed) {
     return {
@@ -796,7 +827,27 @@ export async function browseWeb(url: string, options?: {
       loadTimeMs: clock.nowMs() - startTime,
     };
   }
-  
+
+  // Re-validate every resolved address with the canonical helpers before
+  // launching Chromium: these are the addresses this navigation will
+  // actually reach, and browseWeb rejects a private one itself rather than
+  // trusting that the gate's internals never change.
+  for (const addr of dnsCheck.resolvedAddresses ?? []) {
+    const isPrivateResolved = addr.includes(":") ? isPrivateIpv6(addr) : isPrivateIpv4(addr);
+    if (isPrivateResolved) {
+      return {
+        success: false,
+        url,
+        title: "",
+        content: "",
+        links: [],
+        tables: [],
+        error: `DNS resolved to private/internal address: ${addr}`,
+        loadTimeMs: clock.nowMs() - startTime,
+      };
+    }
+  }
+
   try {
     browser = await launchBrowser();
     const page = await browser.newPage();
