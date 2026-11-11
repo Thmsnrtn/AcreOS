@@ -3,6 +3,13 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-11-10 — Gap slice 6: click-any-parcel owner lookup — on `claude/gap6-parcel-owner-lookup`
+
+- A map parcel click (`nearby-parcels-fill`) and SinglePropertyMap taps now open the new `ParcelOwnerCard`, which runs the existing `POST /api/parcels/lookup` chain (cache → county GIS → BYO-Regrid); DriveMode enables it with the compact card and feeds a resolved county/state back so the overlay can draw.
+- Honest uncovered state: a 404 renders "Owner lookup isn't covered here" — no toast, no invented owner; a null owner says the source names none; a real failure shows an error with retry and is never labelled not-covered.
+- No server, gate, registry, dossier, migration or census change — the lookup route already carries its purpose-ledger entry. Statewide and paid sources stay shut.
+- Proof (driver-run): parcelOwnerCard 8/8 + parcelClickOwnerLookup 6/6 + neighbouring map suites 121/121 + census/budget 22/22; scoped tsc 0 new diagnostics (A/B against pristine main); reachability PASS all 11 at baseline. Full suite is CI's completing proof.
+
 ## 2026-11-06 — merge statuses reconciled against git at main `6b8240fa`
 
 - **What changed.** Every merge status stated below was checked against the GitHub API (`merged_at`) and `git merge-base --is-ancestor <merge commit> origin/main`. The stale ones ("PR open", "unmerged", "uncommitted", "nothing merged", "waiting on CI and Muse") now read "PR #N, MERGED <date>", in US Eastern (so #421 is 2026-10-31). Only status wording was edited, plus a Status column on the 2026-10-18 branch table. "Next" and "owed" bullets stay as written, so some still say "Muse audits; the founder merges" about PRs that have since merged: trust the heading.

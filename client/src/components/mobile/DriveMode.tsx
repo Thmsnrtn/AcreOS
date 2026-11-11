@@ -19,7 +19,7 @@
  * later — this is the minimum that proves the loop on the phone.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, MapPin, Camera, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -111,6 +111,15 @@ export function DriveMode() {
   const [recent, setRecent] = useState<SavedLead[]>([]);
   const [pendingPhotoLeadId, setPendingPhotoLeadId] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  // County/state learned from a tap-a-parcel owner lookup. The nearby-parcels
+  // overlay needs both; we only learn them from a real lookup result (a tap),
+  // never guess them from GPS, so the overlay appears after the first covered tap.
+  const [region, setRegion] = useState<{ state?: string; county?: string }>({});
+  const onParcelResolved = useCallback((r: { state?: string; county?: string }) => {
+    setRegion((prev) =>
+      prev.state === r.state && prev.county === r.county ? prev : { state: r.state, county: r.county },
+    );
+  }, []);
 
   // The save button is the centerpiece — disabled until we have a fix or
   // while the request is in flight. Tapping fires haptic + POSTs the
@@ -204,19 +213,30 @@ export function DriveMode() {
   // render. SinglePropertyMap requires a boundary; we hand it a tiny
   // bounding-box around the current point so the map renders the right
   // area at street level.
-  const mapCentroid = fix ? { lat: fix.lat, lng: fix.lng } : null;
-  const mapBoundary = fix
-    ? {
-        type: "Polygon" as const,
-        coordinates: [[
-          [fix.lng - 0.0005, fix.lat - 0.0005],
-          [fix.lng + 0.0005, fix.lat - 0.0005],
-          [fix.lng + 0.0005, fix.lat + 0.0005],
-          [fix.lng - 0.0005, fix.lat + 0.0005],
-          [fix.lng - 0.0005, fix.lat - 0.0005],
-        ]],
-      }
-    : null;
+  // Memoised on the fix: the map rebuilds whenever its boundary identity
+  // changes, and an owner-card update must not tear the map down.
+  const fixLat = fix?.lat;
+  const fixLng = fix?.lng;
+  const mapCentroid = useMemo(
+    () => (fixLat != null && fixLng != null ? { lat: fixLat, lng: fixLng } : null),
+    [fixLat, fixLng],
+  );
+  const mapBoundary = useMemo(
+    () =>
+      fixLat != null && fixLng != null
+        ? {
+            type: "Polygon" as const,
+            coordinates: [[
+              [fixLng - 0.0005, fixLat - 0.0005],
+              [fixLng + 0.0005, fixLat - 0.0005],
+              [fixLng + 0.0005, fixLat + 0.0005],
+              [fixLng - 0.0005, fixLat + 0.0005],
+              [fixLng - 0.0005, fixLat - 0.0005],
+            ]],
+          }
+        : null,
+    [fixLat, fixLng],
+  );
 
   return (
     <div
@@ -261,7 +281,11 @@ export function DriveMode() {
             centroid={mapCentroid}
             height="100%"
             enable3DTerrain={false}
-            showNearbyParcels={false}
+            showNearbyParcels={true}
+            state={region.state}
+            county={region.county}
+            onParcelResolved={onParcelResolved}
+            compactOwnerCard
           />
         ) : (
           <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
