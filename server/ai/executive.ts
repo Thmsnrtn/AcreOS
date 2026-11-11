@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { detachedFromPaxTurn } from "../services/paxTurnContext";
+import { randomUUID } from "node:crypto";
 import { db } from "../db";
 import { eq, desc, and } from "drizzle-orm";
 // APPROVAL_REQUIRED_TOOLS is no longer consulted here — the Tier 1A approval
@@ -1224,6 +1225,9 @@ export async function processChat(
     userId,
     origin: options.origin ?? "chat",
     scheduledTask: options.scheduledTask ?? null,
+    // One id per turn (PX-1): links a browse to the records made after it in
+    // THIS turn (web provenance + the web-sourced row cap).
+    turnId: randomUUID(),
   };
   // Map "assistant" to "executive" and fallback to executive for unknown roles
   const roleStr = agentRole as string;
@@ -1752,6 +1756,7 @@ export async function* processChatStream(
     userId,
     origin: options.origin ?? "chat",
     scheduledTask: options.scheduledTask ?? null,
+    turnId: randomUUID(),
   };
   // Map "assistant" to "executive" and fallback to executive for unknown roles
   const roleStr = agentRole as string;

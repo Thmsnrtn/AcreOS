@@ -21,6 +21,20 @@
 //      IS the actual spend so far), but coverageComplete is false so the frozen
 //      statement can say "based on N/M months of recorded expenses" instead of
 //      presenting a partial year as a settled annual true-up.
+//   4. A missing input REFUSES; it is never defaulted (W2-COMMERCIAL, 2026-11-06,
+//      when this engine first got a screen). What the tenant was billed in CAM
+//      estimates comes from the ledger's recorded CAM charges or the landlord's
+//      own stated figure — never an assumed $0 and never the lease's monthly
+//      estimate × the pool's months (neither is a record of what was billed). An
+//      unrecorded or gross lease type refuses (a gross lease reimburses no CAM).
+//      A lease whose term does not span the whole pool period refuses, and so
+//      does an annual base-year stop on a pool that is not twelve months: both
+//      would need the lease's proration clause, which AcreOS does not hold — the
+//      same rule the rent-charge generator follows for partial periods.
+//   5. One expense recovers once. A lease already reconciled in another pool of
+//      the same property whose period overlaps this one and shares a recoverable
+//      category would be billed twice for the same spend — refused
+//      (findCamDoubleRecovery).
 //
 // The result is a FROZEN snapshot: server/routes-rent-ledger.ts writes it once at
 // generation with these exact inputs, and never recomputes on read, so a later
@@ -57,8 +71,15 @@ export interface CamLeaseInput {
   rentableSqft: number | null;
   /** The modified-gross base-year expense stop the landlord absorbs before recovery. */
   camBaseYearStopCents: number | null;
-  /** Bears on whether a base-year stop applies. */
+  /**
+   * Whether the lease reimburses CAM at all, and whether a base-year stop
+   * applies. 'gross' (rent is all-in) and null (not recorded) both refuse.
+   */
   leaseType: "gross" | "nnn" | "modified_gross" | null;
+  /** The lease term, YYYY-MM-DD. It must span the whole pool period, or the engine refuses. */
+  termStart: string;
+  /** Null = open-ended (month-to-month) — covers any period end. */
+  termEnd: string | null;
 }
 
 export interface CamReconciliationResult {
@@ -76,8 +97,8 @@ export interface CamReconciliationResult {
   totalRentableSqftUsed: number | null;
   /** This lease's recoverable share (× admin fee, − base-year stop), or null when refused. */
   recoverableShareCents: number | null;
-  /** What the tenant was billed in estimates over the period (an input, echoed back). */
-  estimatedBilledCents: number;
+  /** What the tenant was billed in estimates over the period (an input, echoed back; null = not known, refused). */
+  estimatedBilledCents: number | null;
   /** recoverableShare − estimatedBilled: positive = tenant owes, negative = credit. Null when refused. */
   deltaCents: number | null;
   /** Distinct YYYY-MM buckets in the period carrying a recoverable operating row. */
@@ -116,14 +137,17 @@ export function monthsInPeriod(periodStart: string, periodEnd: string): number {
  * recorded or asserted fact, never a guess: sum the ACTUAL recoverable operating
  * spend → gross it up (operator's asserted %) → take the lease's pro-rata share →
  * subtract the modified-gross base-year stop → add the admin fee → subtract what
- * was estimated-billed to get the delta. If the pro-rata share cannot be derived
- * the whole thing refuses rather than bill a fabricated share.
+ * was estimated-billed to get the delta. If any input the bill depends on is
+ * missing — the lease type, a term covering the period, the pro-rata share, a
+ * stop that fits the period, or what was billed — the whole thing refuses rather
+ * than bill on a guess. The pool actual is still reported on a refusal.
  */
 export function computeCamReconciliation(args: {
   pool: CamPoolInput;
   lease: CamLeaseInput;
   rows: MeasurableExpenseRow[];
-  estimatedBilledCents: number;
+  /** From the ledger or the landlord's own statement (resolveCamEstimatedBilled); null refuses. */
+  estimatedBilledCents: number | null;
 }): CamReconciliationResult {
   const { pool, lease, rows, estimatedBilledCents } = args;
 
@@ -157,7 +181,51 @@ export function computeCamReconciliation(args: {
       ? Math.round(poolActualCents * (1 + pool.grossUpPct / 100))
       : poolActualCents;
 
-  // 3. Pro-rata share — derived from the lease's fixed share, else from sqft,
+  // Every refusal still reports the pool actual honestly; it refuses only what
+  // depends on the missing input — the share, the delta, and so the bill.
+  const refuse = (refusedReason: string): CamReconciliationResult => ({
+    poolActualCents,
+    byCategoryCents,
+    grossedUpPoolCents,
+    proRataBps: null,
+    proRataBasis: null,
+    leasedSqftUsed: null,
+    totalRentableSqftUsed: null,
+    recoverableShareCents: null,
+    estimatedBilledCents,
+    deltaCents: null,
+    coverageMonths,
+    periodMonths,
+    coverageComplete,
+    refusedReason,
+  });
+
+  // 3. Does CAM apply to this lease, over this whole period? An unrecorded lease
+  //    type is not assumed to be net; a gross lease reimburses nothing.
+  if (lease.leaseType == null) {
+    return refuse(
+      "This lease's type (NNN, modified gross or gross) is not recorded. Only a lease that " +
+        "reimburses operating costs carries a CAM reconciliation — record the lease type first.",
+    );
+  }
+  if (lease.leaseType === "gross") {
+    return refuse(
+      "This is a gross lease: the rent is all-in and the tenant reimburses no CAM, so there is " +
+        "nothing to reconcile.",
+    );
+  }
+  const termStart = String(lease.termStart).slice(0, 10);
+  const termEnd = lease.termEnd ? String(lease.termEnd).slice(0, 10) : null;
+  if (termStart > pool.periodStart || (termEnd !== null && termEnd < pool.periodEnd)) {
+    return refuse(
+      `This lease runs ${termStart} to ${termEnd ?? "open-ended"}, which does not cover the whole ` +
+        `pool period ${pool.periodStart} to ${pool.periodEnd}. A partial-period CAM share depends on ` +
+        "the lease's proration clause, which AcreOS does not hold — refusing rather than bill a full " +
+        "period's share. Define a pool whose period falls inside the lease term to reconcile those months.",
+    );
+  }
+
+  // 4. Pro-rata share — derived from the lease's fixed share, else from sqft,
   //    else REFUSED. No fabricated denominator.
   let proRataBps: number | null = null;
   let proRataBasis: "lease_fixed" | "sqft" | null = null;
@@ -182,29 +250,37 @@ export function computeCamReconciliation(args: {
   }
 
   if (proRataBps === null) {
-    return {
-      poolActualCents,
-      byCategoryCents,
-      grossedUpPoolCents,
-      proRataBps: null,
-      proRataBasis: null,
-      leasedSqftUsed: null,
-      totalRentableSqftUsed: null,
-      recoverableShareCents: null,
-      estimatedBilledCents,
-      deltaCents: null,
-      coverageMonths,
-      periodMonths,
-      coverageComplete,
-      refusedReason:
-        "Cannot determine this lease's CAM pro-rata share: set the lease's fixed CAM share (camProRataBps), " +
+    return refuse(
+      "Cannot determine this lease's CAM pro-rata share: set the lease's fixed CAM share (camProRataBps), " +
         "or set both the lease's rentable sqft and the pool's total rentable sqft. Refusing to bill a fabricated share.",
-    };
+    );
   }
 
-  // 4. Share, then modified-gross base-year stop, then admin fee.
+  // 5. An ANNUAL base-year stop fits a twelve-month pool only. Applying a whole
+  //    year's stop to a shorter period (or splitting it) is a proration the lease
+  //    decides, not this engine.
+  const stopApplies = lease.leaseType === "modified_gross" && lease.camBaseYearStopCents != null;
+  if (stopApplies && periodMonths !== 12) {
+    return refuse(
+      `This lease's base-year stop is an annual figure and the pool period is ${periodMonths} ` +
+        "month(s). AcreOS will not prorate the stop — that is a lease term it does not hold. " +
+        "Reconcile this lease against a twelve-month pool.",
+    );
+  }
+
+  // 6. What was billed must be a record — the ledger's CAM charges or the
+  //    landlord's own stated total — never an assumed $0 or estimate × months.
+  if (estimatedBilledCents == null) {
+    return refuse(
+      "AcreOS has no record of the CAM estimates billed to this tenant for the period: no CAM " +
+        "charges are on the ledger and no billed total was entered. Enter the total CAM estimates you " +
+        "billed for the period (0 if you billed none) — refusing to assume a figure.",
+    );
+  }
+
+  // 7. Share, then modified-gross base-year stop, then admin fee.
   let share = grossedUpPoolCents * (proRataBps / 10000);
-  if (lease.leaseType === "modified_gross" && lease.camBaseYearStopCents != null) {
+  if (stopApplies && lease.camBaseYearStopCents != null) {
     // The landlord absorbs recovery up to the base-year stop; the tenant reimburses
     // only the excess. Never negative.
     share = Math.max(0, share - lease.camBaseYearStopCents);
@@ -234,29 +310,114 @@ export function computeCamReconciliation(args: {
 }
 
 /**
+ * Where the estimated-billed figure came from. There are exactly two sources of
+ * a RECORD of what the tenant was billed; anything else is an assumption, and an
+ * assumption here is the tenant's bill.
+ */
+export type CamBilledBasis = "from_charges" | "operator_stated";
+
+/**
+ * What the tenant was billed in CAM estimates over the period, and its source:
+ *   - the ledger's recorded CAM charges, when there are any ("from_charges");
+ *   - else the landlord's own stated total ("operator_stated");
+ *   - else NOTHING — cents null, and computeCamReconciliation refuses.
+ * The earlier fallbacks — an assumed $0, or the lease's monthly estimate × the
+ * pool's months — are gone: neither is a record of what was billed, and the
+ * second also counted months the lease never covered. A stated total that
+ * disagrees with the ledger is a conflict, never silently overridden either way.
+ */
+export function resolveCamEstimatedBilled(args: {
+  ledgerCamChargeCents: readonly number[];
+  statedCents: number | null;
+}): { cents: number | null; basis: CamBilledBasis | null; conflict: string | null } {
+  const { ledgerCamChargeCents, statedCents } = args;
+  if (ledgerCamChargeCents.length > 0) {
+    const ledgerCents = ledgerCamChargeCents.reduce((s, c) => s + Math.round(Number(c)), 0);
+    if (statedCents != null && statedCents !== ledgerCents) {
+      return {
+        cents: null,
+        basis: null,
+        conflict:
+          `The ledger records ${formatCents(ledgerCents)} of CAM charges for this period, but the ` +
+          `billed total entered is ${formatCents(statedCents)}. AcreOS reconciles against the ledger — ` +
+          "clear the entered total, or correct the ledger.",
+      };
+    }
+    return { cents: ledgerCents, basis: "from_charges", conflict: null };
+  }
+  if (statedCents != null) return { cents: statedCents, basis: "operator_stated", conflict: null };
+  return { cents: null, basis: null, conflict: null };
+}
+
+/** The slice of a pool definition the double-recovery check reads. */
+export interface CamPoolScope {
+  poolKind: string;
+  periodStart: string;
+  periodEnd: string;
+  recoverableCategories: readonly string[];
+}
+
+/**
+ * Rule 5 — one expense recovers once. Given the pool being reconciled and the
+ * OTHER pools (same property) this lease already has a reconciliation in, return
+ * a refusal when any of them overlaps this period AND shares a recoverable
+ * category: that spend would be in both pool actuals, and the tenant billed for
+ * it twice. Null when there is no overlap.
+ */
+export function findCamDoubleRecovery(
+  pool: CamPoolScope,
+  reconciledElsewhere: readonly CamPoolScope[],
+): string | null {
+  const mine = new Set(pool.recoverableCategories);
+  for (const other of reconciledElsewhere) {
+    const overlaps = other.periodStart <= pool.periodEnd && other.periodEnd >= pool.periodStart;
+    if (!overlaps) continue;
+    const shared = other.recoverableCategories.find((c) => mine.has(c));
+    if (shared) {
+      return (
+        `This lease is already reconciled in the ${other.poolKind} pool for ${other.periodStart} to ` +
+        `${other.periodEnd}, which also recovers "${shared}" over overlapping months. Reconciling it ` +
+        "here too would bill the same expense twice — remove the category from one pool's definition " +
+        "or reconcile the lease in one pool only."
+      );
+    }
+  }
+  return null;
+}
+
+/** Human label for how the estimated-billed figure was determined. */
+function billedBasisLabel(basis: CamBilledBasis | null | undefined): string {
+  switch (basis) {
+    case "from_charges": return " (from recorded CAM charges)";
+    case "operator_stated": return " (as stated by the landlord; not recorded on the AcreOS ledger)";
+    default: return "";
+  }
+}
+
+/**
  * Render the frozen reconciliation as the operator-facing statement text. Pure so
  * the ONE piece of honesty that matters here — the thin-coverage caveat — is
  * decided in a testable place and cannot be dropped at a call site. A refused
  * reconciliation renders its refusal, never a fabricated statement.
  */
-/** Human label for how the estimated-billed figure was determined. */
-function billedBasisLabel(basis: string | undefined): string {
-  switch (basis) {
-    case "from_charges": return " (from recorded CAM charges)";
-    case "lease_estimate": return " (from the lease's monthly CAM estimate)";
-    case "none": return " (none recorded)";
-    default: return "";
-  }
-}
-
 export function renderCamStatementMarkdown(
   result: CamReconciliationResult,
-  ctx: { periodStart: string; periodEnd: string; poolKind: string; estimatedBilledBasis?: string },
+  ctx: {
+    periodStart: string;
+    periodEnd: string;
+    poolKind: string;
+    estimatedBilledBasis?: CamBilledBasis | null;
+  },
 ): string {
-  if (result.refusedReason) {
+  if (
+    result.refusedReason ||
+    result.recoverableShareCents == null ||
+    result.estimatedBilledCents == null ||
+    result.deltaCents == null
+  ) {
     return (
       `## CAM reconciliation — could not be produced\n\n` +
-      `${result.refusedReason}\n`
+      `${result.refusedReason ?? "A required input is missing."}\n`
     );
   }
   const lines: string[] = [];
@@ -271,11 +432,11 @@ export function renderCamStatementMarkdown(
     ? ` (${result.leasedSqftUsed} of ${result.totalRentableSqftUsed} rentable sqft)`
     : " (fixed by lease)";
   lines.push(`- Your pro-rata share: ${((result.proRataBps ?? 0) / 100).toFixed(2)}%${basisNote}`);
-  lines.push(`- Recoverable share: ${formatCents(result.recoverableShareCents ?? 0)}`);
+  lines.push(`- Recoverable share: ${formatCents(result.recoverableShareCents)}`);
   lines.push(
     `- Estimated CAM billed over the period: ${formatCents(result.estimatedBilledCents)}${billedBasisLabel(ctx.estimatedBilledBasis)}`,
   );
-  const delta = result.deltaCents ?? 0;
+  const delta = result.deltaCents;
   lines.push(
     `- **${delta >= 0 ? "Balance due" : "Credit due to tenant"}: ${formatCents(Math.abs(delta))}**`,
   );
