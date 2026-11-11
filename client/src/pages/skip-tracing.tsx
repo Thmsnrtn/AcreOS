@@ -20,6 +20,7 @@ import { DataProvenanceChip } from "@/components/data-provenance-chip";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { useDocumentTitle } from "@/hooks/use-document-title";
+import { SKIP_TRACE_PURPOSES, MIN_JUSTIFICATION_CHARS } from "@/lib/skip-trace-purposes";
 import { Search, User, Phone, Mail, MapPin, Loader2, CheckCircle2, AlertCircle, AlertTriangle, ShieldCheck } from "lucide-react";
 
 /**
@@ -78,20 +79,9 @@ interface BatchTraceResponse {
  */
 const toChipConfidence = (confidence: number) => Math.round(confidence * 100);
 
-/**
- * FCRA §1681b permissible purposes accepted by the server's skip-trace gate
- * (SKIP_TRACE_PURPOSES in server/services/fcraAttestation.ts). Both POST
- * endpoints REQUIRE purposeOfUse + a ≥10-char justification — traces without
- * them are refused, so the buttons stay disabled until both are provided.
- */
-const SKIP_TRACE_PURPOSES = [
-  { value: "collection", label: "Collection of a debt owed by this person" },
-  { value: "legitimate_business_need", label: "Legitimate business need — transaction initiated by this person" },
-  { value: "written_consent", label: "Written consent from this person" },
-  { value: "account_review", label: "Review of an existing account" },
-] as const;
-
-const MIN_JUSTIFICATION_CHARS = 10;
+// Purpose vocabulary lives in a shared module (also used by the lead-page
+// skip-trace panel). Both POST endpoints REQUIRE purposeOfUse + a ≥10-char
+// justification, so the buttons stay disabled until both are provided.
 
 export default function SkipTracingPage() {
   useDocumentTitle("Skip tracing");

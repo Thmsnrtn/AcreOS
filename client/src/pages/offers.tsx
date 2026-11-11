@@ -820,7 +820,10 @@ export default function OffersPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/offer-letters'] });
-      toast({ title: "Offer queued.", description: "The offer letter has been queued for sending." });
+      toast({
+        title: "Offer marked as queued.",
+        description: "It has not been sent. Nothing is mailed or emailed to the seller yet.",
+      });
     },
     onError: (error: any) => {
       toast({
@@ -1786,7 +1789,7 @@ export default function OffersPage() {
               const property = properties?.find(p => p.id === pendingSendOffer.propertyId);
               const who = lead ? `${lead.firstName} ${lead.lastName}` : "the lead";
               const where = property?.address || "the property";
-              return `Queues a ${usd(Number(pendingSendOffer.offerAmount))} offer to ${who} for ${where}. Delivery method: ${pendingSendOffer.deliveryMethod?.replace(/_/g, " ") || "direct mail"}. Once queued, this represents your written commitment to the seller at this price.`;
+              return `Queues a ${usd(Number(pendingSendOffer.offerAmount))} offer to ${who} for ${where}. Delivery method: ${pendingSendOffer.deliveryMethod?.replace(/_/g, " ") || "direct mail"}. This only marks the offer as queued — nothing is mailed or emailed to the seller yet, so you will need to deliver it yourself.`;
             })()}
             confirmLabel="Queue offer"
             variant="default"
@@ -1799,7 +1802,7 @@ export default function OffersPage() {
           <ConfirmDialog
             open={pendingBulkSend}
             onOpenChange={(open) => { if (!open) setPendingBulkSend(false); }}
-            title={`Send ${selectedOffers.length} offer${selectedOffers.length === 1 ? "" : "s"}?`}
+            title={`Queue ${selectedOffers.length} offer${selectedOffers.length === 1 ? "" : "s"}?`}
             description={(() => {
               const draftCount = selectedOffers.filter((id) => {
                 const o = offerLetters?.find(o => o.id === id);
@@ -1810,9 +1813,9 @@ export default function OffersPage() {
                 if (o?.status === "draft") return sum + Number(o.offerAmount);
                 return sum;
               }, 0);
-              return `Queues ${draftCount} draft offer${draftCount === 1 ? "" : "s"} totaling ${usd(totalCents)} for delivery. Already-sent offers in the selection are skipped. Once queued, each represents your written commitment to the seller at the listed price.`;
+              return `Queues ${draftCount} draft offer${draftCount === 1 ? "" : "s"} totaling ${usd(totalCents)}. Already-queued offers in the selection are skipped. This only marks them as queued — nothing is mailed or emailed to the seller yet, so you will need to deliver them yourself.`;
             })()}
-            confirmLabel={`Send ${selectedOffers.length}`}
+            confirmLabel={`Queue ${selectedOffers.length}`}
             variant="default"
             onConfirm={() => {
               handleSendSelected();

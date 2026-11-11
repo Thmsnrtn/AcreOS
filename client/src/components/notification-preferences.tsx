@@ -30,6 +30,7 @@ import { cn } from "@/lib/utils";
 
 const SCHEMA_QUERY_KEY = ["/api/notifications/preferences/schema"] as const;
 const PREFS_QUERY_KEY = ["/api/notifications/preferences"] as const;
+const DIGEST_QUERY_KEY = ["/api/notifications/digest-subscription"] as const;
 
 type Channel = "inApp" | "email" | "sms" | "push";
 
@@ -122,6 +123,30 @@ export function NotificationPreferences() {
     persist({ ...localPrefs, overrides: nextOverrides });
   };
 
+  // Weekly digest email — opt-in, backed by the digest subscription the
+  // weekly job reads (separate from the per-event matrix above).
+  const { data: digestSub, isLoading: digestLoading } = useQuery<{ enabled: boolean }>({
+    queryKey: DIGEST_QUERY_KEY,
+  });
+  const digestMutation = useMutation({
+    mutationFn: async (enabled: boolean) => {
+      const res = await apiRequest("PUT", "/api/notifications/digest-subscription", { enabled });
+      if (!res.ok) throw new Error("Failed to update weekly digest");
+      return res.json() as Promise<{ enabled: boolean }>;
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData(DIGEST_QUERY_KEY, data);
+      queryClient.invalidateQueries({ queryKey: DIGEST_QUERY_KEY });
+    },
+    onError: () => {
+      toast({
+        title: "Couldn't update the weekly digest",
+        description: "Your setting is unchanged. Try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const toggleGlobalMute = (value: boolean) => {
     if (!localPrefs) return;
     persist({ ...localPrefs, globalMute: value });
@@ -190,6 +215,23 @@ export function NotificationPreferences() {
             onCheckedChange={toggleGlobalMute}
             data-testid="notification-global-mute"
             aria-label="Pause all notifications"
+          />
+        </div>
+
+        {/* Weekly digest — opt-in email summary, off until switched on. */}
+        <div className="flex items-start justify-between gap-4 rounded-card border px-4 py-3">
+          <div className="space-y-0.5">
+            <p className="text-sm font-medium">Weekly digest email</p>
+            <p className="text-xs text-muted-foreground">
+              A once-a-week summary of leads, campaigns, payments and what Pax did. Off until you turn it on.
+            </p>
+          </div>
+          <Switch
+            checked={digestSub?.enabled ?? false}
+            onCheckedChange={(v) => digestMutation.mutate(v)}
+            disabled={digestLoading || digestMutation.isPending}
+            data-testid="notification-weekly-digest"
+            aria-label="Weekly digest email"
           />
         </div>
 

@@ -7,6 +7,7 @@ import { addMonths } from "../utils/dateUtils";
 import { formatPaxTime, PAX_LABELS } from "@shared/pax-glossary";
 import { countPaxEffects } from "./paxReceiptsReader";
 import { clock } from "../utils/clock";
+import { assertWritablePatch } from "../utils/patch";
 
 /** Absolute base for the digest's deep links (same source as dunning.ts). */
 const APP_URL = process.env.APP_URL || "https://app.acreos.io";
@@ -80,6 +81,43 @@ export class DigestService {
       })
       .returning();
     return sub;
+  }
+
+  /**
+   * Opt-in switch behind the Settings "Weekly digest" toggle.
+   *
+   * ON  → create the subscription (weekly) if the user has none; otherwise
+   *       re-enable the existing row and put it back on the weekly cadence.
+   * OFF → disable email on the existing row (kept, not deleted, so lastSentAt
+   *       survives and a later re-enable doesn't instantly resend). No row +
+   *       OFF is already "not subscribed" — nothing is created.
+   *
+   * Never creates a row on OFF: a digest is opt-in only.
+   */
+  async setWeeklyDigest(userId: string, organizationId: number, enabled: boolean) {
+    const existing = await this.getSubscription(userId, organizationId);
+    if (!existing) {
+      return enabled ? this.createSubscription(userId, organizationId, 'weekly') : undefined;
+    }
+    const patch = enabled
+      ? { emailEnabled: true, frequency: 'weekly' as const }
+      : { emailEnabled: false };
+    const [updated] = await db
+      .update(digestSubscriptions)
+      .set(assertWritablePatch(patch, "digestSubscriptions.setWeeklyDigest"))
+      .where(
+        and(
+          eq(digestSubscriptions.userId, userId),
+          eq(digestSubscriptions.organizationId, organizationId)
+        )
+      )
+      .returning();
+    return updated;
+  }
+
+  /** True only when a row exists, email is on, and the cadence is weekly. */
+  isWeeklyDigestOn(sub: { emailEnabled: boolean | null; frequency: string } | undefined): boolean {
+    return !!sub && sub.emailEnabled === true && sub.frequency === 'weekly';
   }
 
   // updateSubscription deleted 2026-08-29 — zero callers, adversarially verified (rule-1 register close-out).

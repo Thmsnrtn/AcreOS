@@ -2180,7 +2180,9 @@ export function registerLeadRoutes(app: Express): void {
       // Truth-immutable: skip-trace MUST resolve through a real provider.
       // If no skip-trace provider is configured, return an honest
       // "unavailable" state and record NO cost — never fabricate PII.
-      if (!skipTracingService.isConfigured()) {
+      // BYOK-aware: an org's own BatchSkipTracing key counts, exactly as it
+      // does inside skipTracingService.trace().
+      if (!(await skipTracingService.isConfiguredForOrg(org.id))) {
         logger.warn("Skip trace requested but no provider configured", {
           source: "routes-leads",
           metadata: { organizationId: org.id, leadId },
