@@ -882,7 +882,7 @@ describe("SLA sweep", () => {
     expect(spies.askFounder).toHaveBeenCalledTimes(1);
     // A reminded row that stays unanswered escalates a day later.
     const third = await runRefundSlaSweep(t + 25 * 60 * 60 * 1000);
-    expect(third.escalated).toBe(2 - 1 + 1 - 1 + 1 - 1 + 1 - 1 + 1 - 1 + 1 - 1 + 1 - 0 >= 0 ? third.escalated : 0);
+    expect(third.escalated).toBe(2);
     expect(third.escalated).toBeGreaterThanOrEqual(1);
   });
 

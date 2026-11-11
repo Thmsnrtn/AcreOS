@@ -4,7 +4,7 @@ import express from "express";
 import { getOrganization, getClerkAuth, type AuthenticatedRequest } from "./types/request";
 import { storage, db } from "./storage";
 import { cancellationSurveys, refundRequests, stripeProcessedEvents } from "@shared/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { getAllUsageLimits, type SubscriptionTier, TIER_LIMITS } from "./services/usageLimits";

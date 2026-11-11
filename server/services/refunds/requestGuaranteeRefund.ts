@@ -238,7 +238,13 @@ export async function requestGuaranteeRefund(
       .returning();
     return { row: created } as const;
   });
-  if ("open" in inserted) return alreadyOpen(inserted.open);
+  if ("open" in inserted) {
+    // The transaction only takes this branch when it found the open row, so
+    // the row is present by construction; assert it rather than assume it.
+    const open = inserted.open;
+    if (!open) throw new Error("refund intake: open-row branch returned without a row");
+    return alreadyOpen(open);
+  }
   const row = inserted.row;
 
   if (eligibility.eligible && brake === null) {

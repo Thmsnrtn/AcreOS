@@ -351,7 +351,7 @@ export async function completeProcessedRefund(
   orgName: string,
   deps: ExecuteRefundDeps = {},
 ): Promise<{ bundleErrors: string[]; credits: CreditsSettlementOutcome }> {
-  let bundle: { errors: string[]; orgName: string } = { errors: [], orgName };
+  let bundle: { errors: string[]; orgName: string };
   try {
     bundle = await runBundle(row, refundId, args, stripe);
   } catch (err) {
