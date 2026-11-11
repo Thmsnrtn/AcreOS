@@ -3,6 +3,13 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-11-10 — Gap slice 4: note price ↔ yield, on `claude/gap4-note-price-yield` (UNVERIFIED — built with no shell)
+
+- **Built.** `shared/notes/notePriceYield.ts`: `priceForTargetYield`, `yieldForPrice`, `scheduledCashFlows`, `pricingInputFromTapeRow` (pure, cents/bps, computeYields' monthly-IRR → (1+r)^12−1 convention, typed refusals). Surfaces: a price↔yield card on `/notes/pipeline/:id` and a tape-wide target-yield input with a per-row "Price @ target" column in the note-tape preview. No table, migration or route.
+- **Not run.** This session had no working shell: no tests, typecheck, bundle check or commit. Run `tests/unit/notePriceYield.test.ts`, `npm run check` and the bundle gate (it had zero headroom on 2026-11-05) first.
+- **Omitted on purpose.** The pipeline list cards: the acquisition payload has no payment amount or balloon, so the affordance lives on the detail page where the buyer types the payment. The pipeline row is a link, not a place for a form.
+- **Next.** Driver gates; then Muse audit of the schedule model (negative-amortization and balloon-tolerance rulings are the builder's, flagged in BUILD-NOTES.md).
+
 ## 2026-11-06 — merge statuses reconciled against git at main `6b8240fa`
 
 - **What changed.** Every merge status stated below was checked against the GitHub API (`merged_at`) and `git merge-base --is-ancestor <merge commit> origin/main`. The stale ones ("PR open", "unmerged", "uncommitted", "nothing merged", "waiting on CI and Muse") now read "PR #N, MERGED <date>", in US Eastern (so #421 is 2026-10-31). Only status wording was edited, plus a Status column on the 2026-10-18 branch table. "Next" and "owed" bullets stay as written, so some still say "Muse audits; the founder merges" about PRs that have since merged: trust the heading.

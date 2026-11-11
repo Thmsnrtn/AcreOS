@@ -27,6 +27,36 @@
   "allowlist": [
     {
       "kind": "export",
+      "id": "shared/notes/notePriceYield.ts::scheduledCashFlows",
+      "reason": "TEST SEAM (gap slice 4, note price-to-yield, 2026-11-10). The pure pricing module's stream builder; production consumes it through priceForTargetYield/yieldForPrice, and tests/unit/notePriceYield.test.ts drives it directly to verify the scheduled stream (amortizing, balloon, capitalizing) against known amortization tables. REVOCATION: if a production module imports it directly, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "shared/notes/notePriceYield.ts::presentValueOfFlows",
+      "reason": "TEST SEAM (gap slice 4, 2026-11-10). Present-value helper of the pure pricing module, used internally by both public functions; exported so the unit tests can pin the discounting itself against hand-computed annuity values. REVOCATION: if a production module imports it directly, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "shared/notes/notePriceYield.ts::monthlyFromAnnualYield",
+      "reason": "TEST SEAM (gap slice 4, 2026-11-10). Annual-to-monthly yield conversion, the inverse of the (1+r)^12 - 1 convention computeYields uses; exported so the round-trip tests can assert the convention directly. REVOCATION: if a production module imports it directly, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "shared/notes/notePriceYield.ts::annualFromMonthlyYield",
+      "reason": "TEST SEAM (gap slice 4, 2026-11-10). Monthly-to-annual yield conversion mirroring computeYields; exported so the round-trip tests can assert the convention directly. REVOCATION: if a production module imports it directly, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "shared/notes/notePriceYield.ts::calendarMonthsBetween",
+      "reason": "TEST SEAM (gap slice 4, 2026-11-10). Month arithmetic used internally by pricingInputFromTapeRow to derive remaining term from a maturity date; exported so its edge cases (month-end, year rollover) are unit-testable in isolation. REVOCATION: if a production module imports it directly, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "shared/notes/notePriceYield.ts::MAX_REMAINING_TERM_MONTHS",
+      "reason": "TEST SEAM (gap slice 4, 2026-11-10). The schedule-length ceiling the pricing functions refuse beyond; exported so the refusal boundary is pinnable by the unit tests and readable next to the refusal message. REVOCATION: if a production module imports it directly, remove this entry."
+    },
+    {
+      "kind": "export",
       "id": "shared/notes/sellerFinanceGate.ts::ORIGINATION_RECORD_DETAIL_SCHEMAS",
       "reason": "TEST SEAM (Notes V2 Leg 3, 2026-11-09). The kind -> detail-schema contract map for the append-only note_origination_records (migration 0307); production code validates each kind through its named schema at its own write site, and sellerFinanceGate.test.ts enumerates this map to prove every record kind's fixture parses and every stored detail is validated by exactly one schema. REVOCATION: if a production module imports the map (e.g. a generic record writer), remove this entry."
     },

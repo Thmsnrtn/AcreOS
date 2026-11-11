@@ -32,6 +32,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/empty-state";
+import { NotePriceYield } from "@/components/notes/NotePriceYield";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
@@ -276,6 +277,18 @@ export default function NoteAcquisitionDetailPage() {
           hint={acq.bpoReceivedAt ? `Received ${formatDate(acq.bpoReceivedAt)}` : undefined}
         />
       </div>
+
+      {/* Pre-purchase pricing: price for a target yield / yield for a price.
+          Omitted until the acquisition carries a balance and a rate. */}
+      {!acq.promotedToNoteId && (
+        <NotePriceYield
+          key={`${acq.proposedFaceValueCents}-${acq.interestRateBps}-${acq.termMonths}`}
+          balanceCents={acq.proposedFaceValueCents}
+          rateBps={acq.interestRateBps}
+          termMonths={acq.termMonths}
+          priceCents={acq.proposedAcquisitionPriceCents}
+        />
+      )}
 
       {/* Diligence checklist */}
       <Card className="mb-6">
