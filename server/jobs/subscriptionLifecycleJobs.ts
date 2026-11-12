@@ -4,7 +4,8 @@
  *   - the yearly-plan pre-renewal notice (daily 10:00 UTC).
  *
  * The yearly-plan pre-renewal notice: Cal. Bus. & Prof.
- * Code § 17602(b)(2): 15–45 days before a yearly renewal. Thin scheduler over
+ * Code § 17602(b)(2): 15–45 days before a yearly renewal; 940 CMR
+ * 38.05(4): 5–30 days before the cancel-by date. Thin scheduler over
  * runAnnualRenewalNotices (server/services/annualRenewalNotice.ts), which sends
  * once per org and renewal period (idempotency-keyed, so a re-run replays
  * rather than re-sends). Registered by runScheduledJobs() — worker process only.

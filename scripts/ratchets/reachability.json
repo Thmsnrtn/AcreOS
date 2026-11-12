@@ -467,6 +467,16 @@
     },
     {
       "kind": "export",
+      "id": "shared/billing/autoRenewalTerms.ts::MA_ANNUAL_NOTICE_MIN_DAYS",
+      "reason": "TEST-INTROSPECTION SEAM (P1-14 / TAIL-B3, 2026-11-12). The statutory lower bound (940 CMR 38.05(4): written renewal notice no fewer than 5 days before the cancel-by date); maAnnualRenewalNoticeDue in the same module enforces it, and autoRenewalCompliance.test.ts pins the Massachusetts window inside it. REVOCATION: if a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "shared/billing/autoRenewalTerms.ts::MA_ANNUAL_NOTICE_MAX_DAYS",
+      "reason": "TEST-INTROSPECTION SEAM (P1-14 / TAIL-B3, 2026-11-12). The statutory upper bound (940 CMR 38.05(4): no more than 30 days before the cancel-by date). Nothing in production needs it, because the job sends inside 5–30 days via the predicate; autoRenewalCompliance.test.ts asserts the bound. REVOCATION: if a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
       "id": "shared/regulatory/sellerFinancingRules.ts::COVERED_STATES",
       "reason": "TEST-INTROSPECTION SEAM (W1a, 2026-10-09). The states the contract-for-deed checker answers for; contractForDeedRulesAreCited.test.ts asserts every member carries a statute citation and that no uncovered state gets an answer. REVOCATION: if a production module imports it, remove this entry."
     },
