@@ -13990,6 +13990,8 @@ export * from "./schema/wholesale";
 // SUBDIVISION VERTICAL — extracted to ./schema/subdivision.ts
 // ============================================================================
 export * from "./schema/subdivision";
+// Subdivision V1 Leg 1 — the buildability screen's append-only run record (migration 0304) — ./schema/subdivision-screen-runs.ts
+export * from "./schema/subdivision-screen-runs";
 
 // ============================================================================
 // FIX-AND-FLIP VERTICAL — extracted to ./schema/fix-and-flip.ts
@@ -14016,6 +14018,8 @@ export * from "./schema/dataset-releases";
 export * from "./schema/parcel-apid";
 export * from "./schema/note-observations";
 export * from "./schema/note-events";
+export * from "./schema/wholesale-buy-boxes";
+export * from "./schema/note-origination-records";
 export * from "./schema/tax-v1";
 
 // ============================================================================
@@ -14042,6 +14046,11 @@ export * from "./schema/pax-audit";
 // PHASE D1 — per-user Pax context (vertical / experience / goals / geo)
 // ============================================================================
 export * from "./schema/pax-user-context";
+
+// ============================================================================
+// E2 slice 1 leg 2 — the morning brief archive (migration 0303)
+// ============================================================================
+export * from "./schema/pax-morning-briefs";
 
 // ============================================================================
 // SOLENE — self-audit ledger (operating-discipline drift detection)

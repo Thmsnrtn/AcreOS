@@ -103,6 +103,7 @@ function controls(overrides: Record<string, unknown> = {}): Controls {
     canChangeStance: true,
     canResume: true,
     switches: { leadScoring: true, borrowerReminders: true, inboxDrafts: true },
+    rails: { records: { leads: "act_and_report", properties: "act_and_report", deals: "act_and_report", tasks: "act_and_report", follow_ups: "act_and_report", account: "act_and_report" }, sends: "ask" },
     rightNow: { waiting: 0, changedTodayOnItsOwn: 0, rulesRunning: { workflows: 0, sequences: 0, scheduledPrompts: 0 } },
     runsOnItsOwn: {
       workflows: { active: 0, live: 0, lastRanAt: null },

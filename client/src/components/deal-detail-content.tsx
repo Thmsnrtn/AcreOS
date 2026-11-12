@@ -36,6 +36,7 @@ import { DealNextAction } from "@/components/deals/DealNextAction";
 import { AssignmentPanel } from "@/components/deals/AssignmentPanel";
 import { SellerFollowUpsPanel } from "@/components/deals/SellerFollowUpsPanel";
 import { CmaPanel } from "@/components/deals/CmaPanel";
+import { AgencyDisclosurePanel } from "@/components/deals/AgencyDisclosurePanel";
 import { CustomFieldValuesEditor } from "@/components/custom-fields";
 import { DealJourney } from "@/components/ui/deal-journey";
 import { FraudCheckPanel } from "@/components/deals/FraudCheckPanel";
@@ -700,6 +701,9 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
                   </CardContent>
                 </Card>
               )}
+
+              {/* Agency disclosure record (agent_investor only) — self-gates. */}
+              <AgencyDisclosurePanel dealId={deal.id} />
 
               <Card className="shadow-acr-1">
                 <CardContent className="pt-6">

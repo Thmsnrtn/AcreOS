@@ -40,6 +40,7 @@ import { NoteLossMitCard } from "@/components/note-loss-mit-card";
 import { DataProvenanceChip } from "@/components/data-provenance-chip";
 import { NoteRecordPanels } from "@/components/notes/NoteRecordPanels";
 import { NoteWorkoutAnalysisPanel } from "@/components/notes/NoteWorkoutAnalysisPanel";
+import { NoteDelinquencyLadderPanel } from "@/components/notes/NoteDelinquencyLadderPanel";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { delinquencyIsDeterminable } from "@shared/notes/delinquency";
 
@@ -820,6 +821,9 @@ export default function NoteDetailPage() {
       <NoteBasisSchedule noteId={note.id} />
 
       {/* Loss-mit case file — auto-prominent when status is late/default. */}
+      {/* V-Notes-2 Leg 1: delinquency ladder — evidence and record only; contacts no one. */}
+      <NoteDelinquencyLadderPanel noteId={note.id} />
+
       <NoteLossMitCard noteId={note.id} currentNoteStatus={note.status} />
 
       {/* V-Notes-2 Leg 2: workout comparison — a record of stated scenarios, never a recommendation. */}

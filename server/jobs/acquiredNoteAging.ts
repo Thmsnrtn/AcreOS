@@ -87,6 +87,7 @@ import {
   flagEarlyIntervention,
 } from "../services/respa/earlyIntervention";
 import { emitDurablePaymentEvent } from "../services/workflow-engine";
+import { recordLadderStageIfEntered } from "../services/notes/delinquencyLadder";
 import type { OutboxExecutor } from "../services/workflowOutbox";
 import { clock } from "../utils/clock";
 
@@ -351,6 +352,8 @@ export interface AcquiredNoteAgingSummary {
   lateFeeAdvisories: number;
   /** Notes whose facts could not produce a due date — surfaced, not hidden. */
   undeterminable: number;
+  /** Delinquency-ladder stage entries recorded this run (evidence rows only). */
+  ladderStagesRecorded: number;
   errors: number;
   organizations: number;
 }
@@ -362,6 +365,7 @@ const EMPTY_SUMMARY = (): AcquiredNoteAgingSummary => ({
   earlyInterventionFlagged: 0,
   lateFeeAdvisories: 0,
   undeterminable: 0,
+  ladderStagesRecorded: 0,
   errors: 0,
   organizations: 0,
 });
@@ -453,6 +457,7 @@ export async function runAcquiredNoteAgingSweep(options?: {
     orgs.add(note.organizationId);
     try {
       const plan = planNoteAging(note, asOf);
+      let ladderStage: string | null = null;
 
       // The note states no grace period, so this sweep measured it against
       // ZERO days. The instruments generated for the same note decline to
@@ -485,6 +490,13 @@ export async function runAcquiredNoteAgingSweep(options?: {
           if (plan.transition && !plan.skipReason) {
             await emitAgingTransitionEvent(note, plan, tx);
           }
+          // Delinquency ladder (Notes V2 Leg 1): a stage ENTRY, recorded on
+          // this same transaction so it commits or rolls back with the status
+          // write it describes. Reads this plan's own daysDelinquent (no second
+          // derivation), writes one note_events row or nothing, sends nothing,
+          // and never records default review (an operator act). Refuses
+          // undeterminable and terminal notes itself.
+          ladderStage = await recordLadderStageIfEntered({ note, plan, asOf }, tx);
         });
         summary.updated++;
       }
@@ -498,6 +510,14 @@ export async function runAcquiredNoteAgingSweep(options?: {
         if (plan.nextPaymentDate === null) summary.undeterminable++;
         continue;
       }
+
+      // Delinquency ladder (Notes V2 Leg 1), for a note whose stored aging did
+      // not change this run (its stage can still differ from the last one
+      // recorded, e.g. the first run after the ladder began recording). When
+      // the aging DID change, the entry was written inside the status
+      // transaction above. Undeterminable notes never reach this line.
+      if (!plan.changed) ladderStage = await recordLadderStageIfEntered({ note, plan, asOf });
+      if (ladderStage) summary.ladderStagesRecorded++;
 
       if (plan.transition) {
         summary.transitioned++;

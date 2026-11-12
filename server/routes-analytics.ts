@@ -3,7 +3,7 @@ import { storage } from "./storage";
 import { z } from "zod";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
-import { insertTaskSchema, teamMembers, deals, leads, organizations } from "@shared/schema";
+import { deals, leads } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, gte, lte, count, sql, desc } from "drizzle-orm";
 import { getOrganizationId, getUserId, type AuthenticatedRequest } from "./types/request";
@@ -159,53 +159,6 @@ export function registerAnalyticsRoutes(app: Express): void {
       res.json(metrics);
     } catch (error: any) {
       logger.error("Get conversion metrics error", error);
-      Errors.internal(res, error);
-    }
-  });
-
-  // GET /api/analytics/team-kpi - Team performance KPIs
-  api.get("/api/analytics/team-kpi", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const org = req.organization;
-      const now = clock.now();
-      const thirtyDaysAgo = clock.now();
-      thirtyDaysAgo.setDate(now.getDate() - 30);
-
-      const [deals, leads] = await Promise.all([
-        storage.getDeals(org.id),
-        storage.getLeads(org.id),
-      ]);
-
-      // W3.4: "won" was never a written deal status — dead branch removed
-      // (the canonical terminal-success status is "closed").
-      const recentDeals = deals.filter((d: any) => {
-        const closed = d.closedAt || d.updatedAt || d.createdAt;
-        return closed && new Date(closed) >= thirtyDaysAgo && d.status === "closed";
-      });
-
-      const recentLeads = leads.filter((l: any) => {
-        const worked = l.updatedAt || l.createdAt;
-        return worked && new Date(worked) >= thirtyDaysAgo;
-      });
-
-      const totalRevenue = recentDeals.reduce((sum: number, d: any) => sum + (d.purchasePrice || d.salePrice || 0), 0);
-
-      const conversionRate = leads.length > 0
-        ? ((deals.filter((d: any) => d.status === "closed").length / leads.length) * 100).toFixed(1)
-        : "0.0";
-
-      const kpis = [
-        { label: "Deals Closed (30d)", value: String(recentDeals.length) },
-        { label: "Avg Deal Cycle Time", value: "—" },
-        { label: "Leads Worked (30d)", value: String(recentLeads.length) },
-        { label: "Revenue Generated", value: new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(totalRevenue) },
-        { label: "Conversion Rate", value: `${conversionRate}%` },
-        { label: "Avg Offer Accepted %", value: "—" },
-      ];
-
-      res.json({ kpis });
-    } catch (error: any) {
-      logger.error("Get team KPI error", error);
       Errors.internal(res, error);
     }
   });
@@ -397,85 +350,12 @@ export function registerAnalyticsRoutes(app: Express): void {
 
   // ============================================
 
-  // -----------------------------------------------------------------------
-  // Team Performance Leaderboard (T56)
-  // -----------------------------------------------------------------------
-
-  api.get("/api/analytics/team-leaderboard", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const org = req.organization || req.organization;
-      const orgId: number = org.id;
-
-      const since = req.query.since
-        ? new Date(req.query.since as string)
-        : new Date(clock.now().getFullYear(), clock.now().getMonth(), 1); // MTD default
-
-      // Fetch all active team members
-      const members = await db
-        .select()
-        .from(teamMembers)
-        .where(and(eq(teamMembers.organizationId, orgId), eq(teamMembers.isActive, true)));
-
-      // All deals this period
-      const allDeals = await db
-        .select()
-        .from(deals)
-        .where(and(eq(deals.organizationId, orgId), gte(deals.createdAt, since)));
-
-      // All leads assigned during this period
-      const allLeads = await db
-        .select()
-        .from(leads)
-        .where(and(eq(leads.organizationId, orgId), gte(leads.createdAt, since)));
-
-      const leaderboard = members.map((m) => {
-        const memberDeals = allDeals.filter(
-          (d) => d.assignedTo === m.id
-        );
-        const closedDeals = memberDeals.filter((d) => d.status === "closed");
-        const activeDeals = memberDeals.filter(
-          (d) => !["closed", "dead", "cancelled"].includes(d.status || "")
-        );
-        const offersOut = memberDeals.filter((d) =>
-          ["offer_sent", "countered"].includes(d.status || "")
-        );
-        const revenueGenerated = closedDeals.reduce(
-          (sum, d) => sum + Number(d.acceptedAmount || 0),
-          0
-        );
-        const memberLeads = allLeads.filter(
-          (l) => String(l.assignedTo) === m.userId
-        );
-
-        return {
-          teamMemberId: m.id,
-          displayName: m.displayName || m.email || `Member ${m.id}`,
-          email: m.email,
-          role: m.role,
-          leadsAssigned: memberLeads.length,
-          offersOut: offersOut.length,
-          dealsUnderContract: activeDeals.length,
-          dealsClosed: closedDeals.length,
-          revenueGenerated,
-          score:
-            closedDeals.length * 10 +
-            activeDeals.length * 3 +
-            offersOut.length * 2 +
-            memberLeads.length,
-        };
-      });
-
-      // Sort descending by score
-      leaderboard.sort((a, b) => b.score - a.score);
-
-      res.json({
-        since: since.toISOString(),
-        leaderboard,
-      });
-    } catch (err: any) {
-      Errors.internal(res, err);
-    }
-  });
+  // GET /api/analytics/team-leaderboard and GET /api/analytics/team-kpi were
+  // deleted 2026-11-06 (W2-TEAM): no client caller (their pages were archived
+  // 2026-06-01), an invented ranking score, a hardcoded "—" KPI, revenue read
+  // from columns deals does not have, and lead counts that compared a team-
+  // member id to a user id. The live team dashboard is GET /api/team/performance
+  // (Analytics → Team). Do not re-add them.
 
   // GET /api/analytics/cohorts lives in server/routes-cohort-analysis.ts:24
   // (mounted at routes.ts:2262) — the single code path. The duplicate here was
