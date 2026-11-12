@@ -19,6 +19,7 @@ import { LIST_READ_CAP, capListRead } from "./listCap";
 import { assertWritablePatch } from "../utils/patch";
 import { clock } from "../utils/clock";
 import { recordPostedPaymentApplication } from "../services/paymentApplication";
+import { nextServicedStatus } from "@shared/notes/servicedStatus";
 
 // Amortization helpers — co-located with notes since they're only used
 // inside createNote. Original implementations lived in server/storage.ts
@@ -62,6 +63,52 @@ export function calculateMonthlyPayment(principal: number, annualRate: number, t
   return Number(payment.toFixed(2));
 }
 
+/** The would-be row, as the activation gate reads it. A draft has no id yet. */
+function gateNoteFromDraft(noteData: InsertNote): import("../services/notes/originationGate").GateNote {
+  return {
+    id: null,
+    owningEntity: noteData.owningEntity,
+    startDate: new Date(noteData.startDate),
+    atrDetermination: noteData.atrDetermination,
+    atrDeterminationCompleted: noteData.atrDeterminationCompleted,
+    atrExemptionCode: noteData.atrExemptionCode,
+  };
+}
+
+/**
+ * The pre-Leg-3 check, kept for a status → 'active' move that is NOT a first
+ * activation (a cure or reactivation from late / delinquent / defaulted /
+ * paid_off …), and for a row that does not exist (fails closed). Unchanged
+ * semantics: an ATR flag or a recognized code on file (the update's own
+ * values override the stored ones), else ATR_DETERMINATION_REQUIRED.
+ */
+function assertCureHasAtrBasis(
+  existing: { atrDeterminationCompleted: boolean | null; atrExemptionCode: string | null } | undefined,
+  updates: Partial<InsertNote>,
+): void {
+  const willHaveAtr =
+    updates.atrDeterminationCompleted === true ||
+    (updates.atrDeterminationCompleted === undefined && existing?.atrDeterminationCompleted === true);
+  // drizzle-zod widens `updates.atrExemptionCode` to unknown (same gap that
+  // requires the cast in updateNote's setValues). Narrow to string before the
+  // membership check.
+  const proposedExemptionRaw = updates.atrExemptionCode ?? existing?.atrExemptionCode ?? null;
+  const proposedExemption = typeof proposedExemptionRaw === "string" ? proposedExemptionRaw : null;
+  const willHaveExemption =
+    proposedExemption !== null &&
+    ["raw_land", "business_purpose", "commercial_borrower", "legacy"].includes(proposedExemption);
+  if (!willHaveAtr && !willHaveExemption) {
+    const err: Error & { code?: string } = new Error(
+      "Cannot transition note.status to 'active' without an ATR determination or exemption code. " +
+        "Per Reg Z §1026.43(c), creditors must make an ATR determination at or before consummation. " +
+        "Call persistAtrDetermination first, or set atrExemptionCode to one of: " +
+        "raw_land, business_purpose, commercial_borrower.",
+    );
+    err.code = "ATR_DETERMINATION_REQUIRED";
+    throw err;
+  }
+}
+
 export const noteRepo = {
   // Notes (Financing)
   async getNotes(this: DatabaseStorage, orgId: number): Promise<Note[]> {
@@ -86,41 +133,67 @@ export const noteRepo = {
     return note;
   },
 
-  async createNote(this: DatabaseStorage, noteData: InsertNote): Promise<Note> {
-    // Reg-Z §1026.43 hard gate (Workstream A).
+  async createNote(
+    this: DatabaseStorage,
+    noteData: InsertNote,
+    opts?: {
+      /**
+       * The CSV book-import entry marker (ruling R1). ONLY importNotesFromCSV
+       * (server/services/importExport.ts) sets it: it is the one path allowed
+       * to land `legacy` — grandfathering the pre-0099 book by construction.
+       */
+      viaImport?: boolean;
+      /** recorded_by on the activation_gate_passed record (the session user, when a route has one). */
+      recordedBy?: string;
+    },
+  ): Promise<Note> {
+    // Reg-Z §1026.43 hard gate (Workstream A), now the Notes V2 Leg 3
+    // activation gate (server/services/notes/originationGate.ts).
     //
-    // A note row may not be inserted with status='active' unless either
-    //   (a) atrDeterminationCompleted=true (ATR determination on file), or
-    //   (b) atrExemptionCode is one of the recognized exemption codes.
+    // A note row inserted with status='active' must pass the gate for the
+    // would-be row: an ATR determination that is ON RECORD (a payload that
+    // passes validateAtrDetermination, with the completed flag exactly true —
+    // the bare flag alone no longer passes, founder decision 2026-11-05 §3.2)
+    // or an exemption code the facts support, plus the seller-scoped counter
+    // and creditor-threshold checks. A draft has no id, so it cannot have an
+    // origination-facts or RMLO record of its own: no exclusion is claimed on
+    // create and the terms checks do not fire. On a pass, the note and its
+    // activation_gate_passed record are written in ONE transaction.
     //
     // The DB CHECK constraint (notes_atr_origination_gate, migration 0099)
-    // backstops this at the data layer — this app-layer guard exists so the
-    // failure surfaces as an actionable error before the round-trip and so
-    // any new insert path inherits the same gate without needing the DB error.
+    // still backstops the ATR half at the data layer.
     //
-    // 'legacy' is permitted on create so CSV / spreadsheet imports of
-    // pre-AcreOS originated notes can land — the ATR analysis happened
-    // before the loan tape ever reached us. Servicing surfaces still flag
-    // 'legacy' for retroactive review; it is not evidence of compliance.
-    const hasAtr = noteData.atrDeterminationCompleted === true;
-    // drizzle-zod widens the `$type<...>` enum-or-null column to unknown in
-    // InsertNote (same gap that requires the cast in `insertValues` below).
-    // Narrow to string before the membership check.
-    const exemptionCode =
-      typeof noteData.atrExemptionCode === "string" ? noteData.atrExemptionCode : null;
-    const hasExemption =
-      exemptionCode !== null &&
-      ["raw_land", "business_purpose", "commercial_borrower", "legacy"].includes(exemptionCode);
+    // 'legacy' (ruling R1) may only be newly written by the CSV book import
+    // (opts.viaImport) — on ANY status, because a stored legacy code skips the
+    // activation gate later (updateNote), so a pending legacy draft would be a
+    // gate-free route to 'active'. Imported legacy rows never reach the gate.
+    // Servicing surfaces still flag 'legacy' for retroactive review; it is not
+    // evidence of compliance.
     const requestedStatus = noteData.status ?? "active";
-    if (requestedStatus === "active" && !hasAtr && !hasExemption) {
-      const err: Error & { code?: string } = new Error(
-        "Cannot create note with status='active' without an ATR determination or exemption code. " +
-          "Per Reg Z §1026.43(c), creditors must make an ATR determination at or before consummation. " +
-          "Either pass atrDeterminationCompleted=true (after calling persistAtrDetermination) or " +
-          "set atrExemptionCode to one of: raw_land, business_purpose, commercial_borrower.",
+    let gate: typeof import("../services/notes/originationGate") | null = null;
+    let activationInstant: Date | null = null;
+    if (noteData.atrExemptionCode === "legacy" && opts?.viaImport !== true) {
+      const { ActivationRefused } = await import("../services/notes/originationGate");
+      throw new ActivationRefused([
+        {
+          check: "legacy_claimed",
+          element: "exemptionCode",
+          message:
+            "The legacy exemption code is reserved for notes imported from the pre-gate book. It cannot be claimed for a new note.",
+          curingFact:
+            "Record an ability-to-repay determination under 12 CFR 1026.43(c), or a raw_land, business_purpose or commercial_borrower exemption the recorded facts support.",
+        },
+      ]);
+    }
+    const grandfatheredImport = noteData.atrExemptionCode === "legacy" && opts?.viaImport === true;
+    if (requestedStatus === "active" && !grandfatheredImport) {
+      gate = await import("../services/notes/originationGate");
+      activationInstant = clock.now();
+      // Count-independent refusals (ATR basis, unknown codes, bare flag)
+      // are decided here, before any database round-trip.
+      gate.preflightActivation(
+        gate.impliedGateFacts(noteData.organizationId, gateNoteFromDraft(noteData), activationInstant.toISOString()).facts,
       );
-      err.code = "ATR_DETERMINATION_REQUIRED";
-      throw err;
     }
 
     // Calculate amortization if not provided
@@ -165,7 +238,28 @@ export const noteRepo = {
       accessToken,
       updatedAt: clock.now(),
     };
-    const [newNote] = await db.insert(notes).values(insertValues).returning();
+    let newNote: Note;
+    if (gate !== null && activationInstant !== null) {
+      const activeGate = gate;
+      const instant = activationInstant;
+      newNote = await withTransaction(async (tx) => {
+        const detail = await activeGate.evaluateActivation(tx, {
+          organizationId: noteData.organizationId,
+          note: gateNoteFromDraft(noteData),
+          activationInstant: instant,
+        });
+        const [row] = await tx.insert(notes).values(insertValues).returning();
+        await activeGate.recordActivationGatePassed(tx, {
+          organizationId: noteData.organizationId,
+          noteId: row.id,
+          recordedBy: opts?.recordedBy?.trim() || "system:noteRepo.createNote",
+          detail,
+        });
+        return row;
+      });
+    } else {
+      [newNote] = await db.insert(notes).values(insertValues).returning();
+    }
 
     await this.logActivity({
       organizationId: noteData.organizationId,
@@ -178,47 +272,38 @@ export const noteRepo = {
     return newNote;
   },
 
-  async updateNote(this: DatabaseStorage, id: number, updates: Partial<InsertNote>, organizationId?: number): Promise<Note> {
+  async updateNote(
+    this: DatabaseStorage,
+    id: number,
+    updates: Partial<InsertNote>,
+    organizationId?: number,
+    opts?: { /** recorded_by on the activation_gate_passed record. */ recordedBy?: string },
+  ): Promise<Note> {
     const conditions = [eq(notes.id, id)];
     if (organizationId) conditions.push(eq(notes.organizationId, organizationId));
 
-    // Reg-Z §1026.43 hard gate on status transitions to 'active' (Workstream A).
-    //
-    // If the caller is moving status -> 'active', verify the row has an ATR
-    // determination on file (or has a valid exemption code) BEFORE we hit the
-    // DB CHECK constraint. This produces a clean, actionable error instead of
-    // a Postgres 23514 violation.
-    if (updates.status === "active") {
-      const [existing] = await db
-        .select({
-          atrDeterminationCompleted: notes.atrDeterminationCompleted,
-          atrExemptionCode: notes.atrExemptionCode,
-        })
+    // Ruling R1: `legacy` can never be newly claimed on an update — a stored
+    // legacy code skips the activation gate, so writing one onto a pending
+    // note would be a gate-free route to 'active'. (The PUT route's strict
+    // schema already excludes every ATR field; this closes the repo method.)
+    if (updates.atrExemptionCode === "legacy") {
+      const [stored] = await db
+        .select({ atrExemptionCode: notes.atrExemptionCode })
         .from(notes)
         .where(and(...conditions))
         .limit(1);
-      const willHaveAtr =
-        updates.atrDeterminationCompleted === true ||
-        (updates.atrDeterminationCompleted === undefined && existing?.atrDeterminationCompleted === true);
-      // drizzle-zod widens `updates.atrExemptionCode` to unknown (same gap
-      // that requires the cast in setValues below). Narrow to string before
-      // the membership check.
-      const proposedExemptionRaw =
-        updates.atrExemptionCode ?? existing?.atrExemptionCode ?? null;
-      const proposedExemption =
-        typeof proposedExemptionRaw === "string" ? proposedExemptionRaw : null;
-      const willHaveExemption =
-        proposedExemption !== null &&
-        ["raw_land", "business_purpose", "commercial_borrower", "legacy"].includes(proposedExemption);
-      if (!willHaveAtr && !willHaveExemption) {
-        const err: Error & { code?: string } = new Error(
-          "Cannot transition note.status to 'active' without an ATR determination or exemption code. " +
-            "Per Reg Z §1026.43(c), creditors must make an ATR determination at or before consummation. " +
-            "Call persistAtrDetermination first, or set atrExemptionCode to one of: " +
-            "raw_land, business_purpose, commercial_borrower.",
-        );
-        err.code = "ATR_DETERMINATION_REQUIRED";
-        throw err;
+      if (stored?.atrExemptionCode !== "legacy") {
+        const { ActivationRefused } = await import("../services/notes/originationGate");
+        throw new ActivationRefused([
+          {
+            check: "legacy_claimed",
+            element: "exemptionCode",
+            message:
+              "The legacy exemption code is reserved for notes imported from the pre-gate book. It cannot be newly claimed on an existing note.",
+            curingFact:
+              "Record an ability-to-repay determination under 12 CFR 1026.43(c), or a raw_land, business_purpose or commercial_borrower exemption the recorded facts support.",
+          },
+        ]);
       }
     }
 
@@ -233,6 +318,57 @@ export const noteRepo = {
       atrExemptionCode: updates.atrExemptionCode as typeof notes.$inferInsert["atrExemptionCode"],
       updatedAt: clock.now(),
     };
+
+    // Reg-Z §1026.43 hard gate on status transitions to 'active'.
+    //
+    // FIRST activation (stored 'pending' → 'active') runs the Notes V2 Leg 3
+    // activation gate on the would-be row, inside the same transaction as the
+    // UPDATE (the row is locked FOR UPDATE; the activation_gate_passed record
+    // commits or rolls back with it). A stored 'legacy' code is grandfathered
+    // (R1) and skips the gate. Any other prior status moving to 'active' is a
+    // servicing cure or reactivation, not a consummation: it keeps the
+    // pre-Leg-3 check (an ATR flag or a recognized code on file) so the
+    // failure is an actionable error instead of a Postgres 23514 violation.
+    if (updates.status === "active") {
+      return withTransaction(async (tx) => {
+        const [existing] = await tx
+          .select()
+          .from(notes)
+          .where(and(...conditions))
+          .limit(1)
+          .for("update");
+        if (existing && existing.status === "pending") {
+          const effectiveCode = updates.atrExemptionCode !== undefined ? updates.atrExemptionCode : existing.atrExemptionCode;
+          if (!(effectiveCode === "legacy" && existing.atrExemptionCode === "legacy")) {
+            const { assertActivationAllowed } = await import("../services/notes/originationGate");
+            await assertActivationAllowed(tx, {
+              organizationId: existing.organizationId,
+              note: {
+                id: existing.id,
+                owningEntity: updates.owningEntity !== undefined ? updates.owningEntity : existing.owningEntity,
+                startDate: updates.startDate !== undefined ? new Date(updates.startDate) : existing.startDate,
+                atrDetermination: updates.atrDetermination !== undefined ? updates.atrDetermination : existing.atrDetermination,
+                atrDeterminationCompleted:
+                  updates.atrDeterminationCompleted !== undefined
+                    ? updates.atrDeterminationCompleted
+                    : existing.atrDeterminationCompleted,
+                atrExemptionCode: effectiveCode,
+              },
+              recordedBy: opts?.recordedBy?.trim() || "system:noteRepo.updateNote",
+              activationInstant: clock.now(),
+            });
+          }
+        } else {
+          assertCureHasAtrBasis(existing, updates);
+        }
+        const [updated] = await tx.update(notes)
+          .set(setValues)
+          .where(and(...conditions))
+          .returning();
+        return updated;
+      });
+    }
+
     const [updated] = await db.update(notes)
       .set(setValues)
       .where(and(...conditions))
@@ -333,7 +469,12 @@ export const noteRepo = {
             .update(notes)
             .set({
               currentBalance: String(Math.max(0, newBalance)),
-              status: newBalance <= 0 ? "paid_off" : "active",
+              // One rule for every payment path (shared/notes/servicedStatus.ts):
+              // a payment never consummates a pending note, and a defaulted
+              // note stays defaulted until paid off. Math.ceil keeps the sign of
+              // the dollar balance exactly (a sub-cent positive residual stays
+              // positive; NaN stays NaN), so only the helper's rule changes.
+              status: nextServicedStatus(note.status, Math.ceil(newBalance * 100)),
               version: (note.version ?? 1) + 1,
               updatedAt: clock.now(),
             })

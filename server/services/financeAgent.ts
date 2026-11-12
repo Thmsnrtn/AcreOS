@@ -417,6 +417,30 @@ export class FinanceAgentService {
       witnessed: false,
     });
 
+    // Phone push (autonomy gap slice 7): the rung is ready and waits for the
+    // lender's tap. ensureLadderRung is the single creation point for ladder
+    // rows, and it is idempotent (the `existing` guard above returns before
+    // here), so this fires once per note/rung/period. Org-scoped to the note's
+    // org; best-effort (`pushOrgEvent` never throws). The body names the note
+    // number only — no borrower name or amount on a lock screen.
+    // Loaded lazily so this module's import graph (and every suite that mocks
+    // its collaborators) is unchanged; the outer catch is belt-and-braces for a
+    // failed module load — the reminder row above is already committed.
+    try {
+      const { pushOrgEvent } = await import("./orgPushFanout");
+      await pushOrgEvent(note.organizationId, {
+        family: "ladder_ready",
+        title: "Borrower reminder ready for your tap",
+        body: `A ${String(rung.stage).replace(/_/g, " ")} reminder for note #${note.id} is prepared and waits for your approval. Nothing has been sent.`,
+        url: "/finance",
+        tag: `ladder-${note.id}-${rung.stage}`,
+      });
+    } catch (err) {
+      logger.warn("[FinanceAgent] ladder-ready push skipped", {
+        metadata: { organizationId: note.organizationId, error: err instanceof Error ? err.message : String(err) },
+      });
+    }
+
     return { created: true, stage: rung.stage, idempotencyKey };
   }
 
