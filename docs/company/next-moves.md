@@ -18,6 +18,13 @@ what shipped, what it measured, and the top next moves. Newest first.
 - Proof (driver-run): browseMakeSafe 17/17 + seven neighbouring suites 159/159 + purpose-ledger census and sweep-budget 22/22; scoped tsc 0 diagnostics in changed files; reachability PASS all 11 at baseline (10 helpers unexported, 9 TEST-SEAM allowlist entries with revocation notes). Full suite is CI's completing proof.
 - Next: PX-2 per-capability rails stacks on this branch.
 
+## 2026-11-10 — PKG-5a/5b: paid conversions by source/campaign (D6), on `claude/pkg5-ads-stripe-api`
+
+- **Built.** `/api/founder/customers` gains an additive `paidBySource` field: distinct paying orgs from the 90-day signup window, grouped by `utm_source` + `utm_campaign` (missing source = `direct`, missing campaign = `null`; nothing dropped). "Paying" mirrors `liveMrrDetail` (status exactly `active`, positive monthly-equivalent price), so trials, free and past_due are not conversions. Server-only; no table, migration or client change. Existing fields and the founder gate are unchanged.
+- **Proved.** `tests/unit/founderCustomersPaidBySource.test.ts`; a mutant that counts trials turns it red.
+- **Docs.** The PKG-5a/5b runbook and creative pack live in the goal files, not this repo.
+- **Next.** The founder page does not render `paidBySource` yet (client change not in this slice); read it from the API until then.
+
 ## 2026-11-06 — merge statuses reconciled against git at main `6b8240fa`
 
 - **What changed.** Every merge status stated below was checked against the GitHub API (`merged_at`) and `git merge-base --is-ancestor <merge commit> origin/main`. The stale ones ("PR open", "unmerged", "uncommitted", "nothing merged", "waiting on CI and Muse") now read "PR #N, MERGED <date>", in US Eastern (so #421 is 2026-10-31). Only status wording was edited, plus a Status column on the 2026-10-18 branch table. "Next" and "owed" bullets stay as written, so some still say "Muse audits; the founder merges" about PRs that have since merged: trust the heading.
@@ -40,6 +47,30 @@ what shipped, what it measured, and the top next moves. Newest first.
 | #488 | `claude/w4-note-merge-plan-pricing-engine` | W4.11 [DRAFT]: B10 note-model merge proposal + note pricing engine (recording stopped) | yes |
 | #489 | `claude/next-moves-ff-merged` | next-moves: Fix-and-Flip Legs 1–2, #466, #484, #458 merged; §9.3 routing recorded (docs only) | no |
 
+## 2026-11-05 — Subdivision V1, Legs 1–2: buildability screen + lot-yield estimate — on `claude/subdivision-legs1-2-screen-yield` (off main `da74f12`, PR open, unmerged)
+
+- **Step 0.** Verdicts are in `docs/evidence/2026-11-05/subdivision-v1-step0.md`. Four premise contradictions were reported:
+  - the county-timeline seeds were deleted in 0283;
+  - the standalone screen record had no honest store;
+  - the decision vocabulary has no `defer`;
+  - no perc result is stored anywhere.
+
+  Staging row counts are unverified (no staging access).
+- **Rulings** (`founder-decisions-2026-11-05-subdivision.md`): Tom approved +1 table `subdivision_screen_runs` (0304, renumbered from 0301; `table-count` 748 to 749). Muse ruled that `defer` is dropped and that timelines are operator-stated per run.
+- **Built.**
+  - `shared/subdivision/lotYield.ts` (lot-yield v1) and `buildabilityScreen.ts` (buildability-screen v1): seven triggers, three verdicts, and a headline that never says "buildable". The perc-estimate slot is always null.
+  - `POST /api/parcels/:id/screen` (appends a run) and `GET …/screen-runs` (history, plus the newest estimate beside the drawn plans).
+  - The screen panel on the Subdivision tab. The database refuses UPDATE on runs.
+- **Proved.**
+  - New tests: 18 for yield, 15 for the screen, 9 for the routes, 3 for the panel, and 1 real-DB test that runs in CI.
+  - 9 + 4 mutants, all red.
+  - check:app, every lint and the ratchets pass; the 34-file related batch passes; the build passes.
+  - Bundle: 9,775 KB against a 9,823 KB ceiling (+10 KB over main), after #470 trimmed main to 9,765 KB.
+- **Next.**
+  1. Muse audits.
+  2. Leg 3 (#464) merged 2026-11-07 (`0abcce7`).
+  3. Leg 4: the pursue/pass desk.
+  4. Staging proof after the merges.
 ## 2026-11-05 — Notes V2 Leg 1: delinquency ladder — on `claude/notes-v2-leg1-delinquency-ladder` (PR #463, retargeted to main after #461 merged as `fd984d8`; open, unmerged)
 
 - **Built.** Stage entries (current / past due under 30 / 30 / 60 / 90+) are recorded by the aging sweep. They go on `note_events` as category `delinquency` (migration 0302 widens the CHECKs only, restates 0301, and adds no table) inside the status transaction.
