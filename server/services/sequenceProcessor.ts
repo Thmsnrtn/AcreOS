@@ -18,6 +18,8 @@ import { logger } from '../utils/logger';
 import { getPaxControls, paxControlsRefusalMessage } from "./paxControls";
 import { recordPaxEffect } from "./paxReceipts";
 import { clock } from "../utils/clock";
+import { isResponseActivityType } from "./leadResponse";
+import { leadReplyToAddress } from "./leadReplyTo";
 
 type EnrollmentWithDetails = SequenceEnrollment & { sequence: CampaignSequence; lead: Lead };
 
@@ -295,7 +297,7 @@ export class SequenceProcessorService {
       const activities = await storage.getLeadActivities(orgId, leadId);
       const responseActivities = activities.filter(
         a => 
-          (a.type === "email_reply" || a.type === "sms_reply" || a.type === "call" || a.type === "response") &&
+          isResponseActivityType(a.type) &&
           a.createdAt && new Date(a.createdAt) > cutoffDate
       );
       
@@ -567,6 +569,9 @@ export class SequenceProcessorService {
           subject,
           html: content,
           text: content.replace(/<[^>]*>/g, ""),
+          // Thread the reply back through the inbound seam: it resolves to the
+          // lead, lands on the timeline and (slice 1) stops this sequence.
+          replyTo: await leadReplyToAddress(lead.id, lead.organizationId),
           // Deal mail: sequence outreach to a lead — org identity required.
           organizationId: lead.organizationId,
           purpose: 'counterparty',

@@ -54,6 +54,7 @@ import {
   outstandingServicedLateFeesCents,
 } from "../notes/servicedLateFees";
 import { clock } from "../../utils/clock";
+import { nextServicedStatus } from "@shared/notes/servicedStatus";
 
 // ─────────────────────────────────────────────────────────────────────
 // Workflow payment events (Wave B — "wire the engine")
@@ -447,8 +448,9 @@ export async function postServicedNotePayment(
         // defaulted: a payment on it is money toward a cure, and whether the
         // loan is reinstated is the lender's decision — silently flipping it
         // to active re-armed autopay, reminders and the fee sweep (audit of
-        // the fourth follow-up).
-        status: newBalanceCents <= 0 ? "paid_off" : lockedNote.status === "defaulted" ? "defaulted" : "active",
+        // the fourth follow-up). A payment never consummates a pending
+        // note. One rule for every payment path: shared/notes/servicedStatus.ts.
+        status: nextServicedStatus(lockedNote.status, newBalanceCents),
         version: (lockedNote.version ?? 1) + 1,
         updatedAt: clock.now(),
       })

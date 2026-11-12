@@ -45,3 +45,10 @@ lot_pricing_calc
 - SD-1, SD-2 (subdivision plan, lots, CC&R).
 - subdivision_plans.attorneyReviewedAt added with attorney review
   workflow.
+- Subdivision V1 Leg 1 (migration 0304, founder decision 2026-11-05):
+  `subdivision_screen_runs` — the buildability screen's append-only run
+  record. One row per run: the facts as the operator recorded them (source,
+  as-of), the thresholds they stated, the lot-yield estimate (lot-yield v1)
+  and the seven trigger verdicts (buildability-screen v1). UPDATE is refused
+  in the database; DELETE only through organization erasure.
+  `parent_parcel_id` is not a foreign key, so a run survives its parcel.
