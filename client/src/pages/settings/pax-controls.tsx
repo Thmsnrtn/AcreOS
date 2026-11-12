@@ -60,7 +60,24 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { formatDateTime, formatRelative } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { OFFERED_STANCES, STANCE_LABELS, UNATTENDED_PATHS, type PaxStance } from "@shared/pax-controls";
+import {
+  OFFERED_STANCES,
+  PAX_RAIL_LEVEL_LABELS,
+  PAX_RAIL_LEVEL_SENTENCES,
+  PAX_RAIL_LEVELS,
+  PAX_RECORD_DOMAINS,
+  PAX_RECORD_DOMAIN_LABELS,
+  PAX_SENDS_RAIL_LEVELS,
+  PAX_TOOL_DOMAINS,
+  PAX_TOOL_GROUPS,
+  STANCE_LABELS,
+  UNATTENDED_PATHS,
+  type PaxRailLevel,
+  type PaxRails,
+  type PaxRecordDomain,
+  type PaxSendsRailLevel,
+  type PaxStance,
+} from "@shared/pax-controls";
 import {
   PAX_GROUP_COPY,
   PAX_LABELS,
@@ -68,6 +85,7 @@ import {
   PAX_PAGE_COPY,
   PAX_PAUSE_COPY,
   PAX_PAUSE_OPTIONS,
+  PAX_RAIL_COPY,
   PAX_RECEIPT_WORDS,
   PAX_STANCE_COPY,
   type PaxPauseOption,
@@ -93,6 +111,8 @@ export interface PaxControlsResponse {
   canChangeStance: boolean;
   canResume: boolean;
   switches: { leadScoring: boolean; borrowerReminders: boolean; inboxDrafts: boolean };
+  /** PX-2 per-capability rails; the server always sends it, the page tolerates its absence. */
+  rails?: PaxRails;
   rightNow: {
     waiting: number;
     changedTodayOnItsOwn: number;
@@ -302,7 +322,13 @@ export function PaxControls() {
       toast({ title: PAX_PAGE_COPY.couldNotResume, description: serverMessage(error), variant: "destructive" }),
   });
 
-  type Patch = Partial<{ stance: PaxStance; leadScoring: boolean; borrowerReminders: boolean; inboxDrafts: boolean }>;
+  type Patch = Partial<{
+    stance: PaxStance;
+    leadScoring: boolean;
+    borrowerReminders: boolean;
+    inboxDrafts: boolean;
+    rails: { records?: Partial<Record<PaxRecordDomain, PaxRailLevel>>; sends?: PaxSendsRailLevel };
+  }>;
   // allow-no-invalidation: settle() writes the fresh controls object into
   // CONTROLS_KEY with setQueryData and invalidates the receipts feed; the
   // rule cannot follow the useCallback helper.
@@ -320,6 +346,12 @@ export function PaxControls() {
         toast({ title: PAX_PAGE_COPY.switchToast(PAX_PAGE_COPY.borrowerReminders, body.borrowerReminders) });
       if (body.inboxDrafts !== undefined)
         toast({ title: PAX_PAGE_COPY.switchToast(PAX_PAGE_COPY.inboxDrafts, body.inboxDrafts) });
+      if (body.rails?.sends)
+        toast({ title: PAX_RAIL_COPY.changed(PAX_RAIL_COPY.sendsLabel, PAX_RAIL_LEVEL_LABELS[body.rails.sends]) });
+      for (const d of PAX_RECORD_DOMAINS) {
+        const level = body.rails?.records?.[d];
+        if (level) toast({ title: PAX_RAIL_COPY.changed(PAX_RECORD_DOMAIN_LABELS[d], PAX_RAIL_LEVEL_LABELS[level]) });
+      }
     },
     onError: (error: unknown) =>
       toast({ title: PAX_PAGE_COPY.couldNotChange, description: serverMessage(error), variant: "destructive" }),
@@ -533,6 +565,21 @@ export function PaxControls() {
         </CardContent>
       </Card>
 
+      {/* ── 2b. Rails — what Pax may do on each kind of record (PX-2) ───── */}
+      {data.rails && (
+        <RailsCard
+          rails={data.rails}
+          stance={stance}
+          canEdit={canEdit}
+          onRecord={(domain, level) => {
+            const records: Partial<Record<PaxRecordDomain, PaxRailLevel>> = {};
+            records[domain] = level;
+            patch.mutate({ rails: { records } });
+          }}
+          onSends={(level) => patch.mutate({ rails: { sends: level } })}
+        />
+      )}
+
       {/* ── 3. What runs on its own ─────────────────────────────────────── */}
       <Card className="rounded-card mb-4" data-testid="pax-runs-card">
         <CardHeader>
@@ -683,6 +730,142 @@ export function PaxControls() {
 }
 
 export default PaxControls;
+
+// ── Rails (PX-2) ───────────────────────────────────────────────────────────
+
+/**
+ * Rendered FROM the registry, not from a list typed here: the record rows are
+ * the domains PAX_TOOL_DOMAINS actually assigns a tool to (under the
+ * changes_records group), the sends row exists because PAX_TOOL_GROUPS has a
+ * sends tool, and the information rows come from PAX_TOOL_GROUPS (looks &
+ * drafts) and UNATTENDED_PATHS (rules). A rail can narrow the stance above,
+ * never widen it — the server enforces that; this page only offers the levels.
+ */
+function RailsCard({
+  rails,
+  stance,
+  canEdit,
+  onRecord,
+  onSends,
+}: {
+  rails: PaxRails;
+  stance: PaxStance;
+  canEdit: boolean;
+  onRecord: (domain: PaxRecordDomain, level: PaxRailLevel) => void;
+  onSends: (level: PaxSendsRailLevel) => void;
+}) {
+  const groups = new Set<string>(Object.values(PAX_TOOL_GROUPS));
+  const domainsWithTools = new Set<string>(Object.values(PAX_TOOL_DOMAINS));
+  const recordDomains = groups.has("changes_records")
+    ? PAX_RECORD_DOMAINS.filter((d) => domainsWithTools.has(d))
+    : [];
+  const ruleRows = UNATTENDED_PATHS.filter((p) => p.customerVisible && p.switch !== null);
+
+  return (
+    <Card className="rounded-card mb-4" data-testid="pax-rails-card">
+      <CardHeader>
+        <CardTitle className="text-section-h2">{PAX_RAIL_COPY.title}</CardTitle>
+        <CardDescription>{PAX_RAIL_COPY.intro}</CardDescription>
+      </CardHeader>
+      <CardContent className="divide-y p-0">
+        {recordDomains.map((d) => (
+          <RailRow
+            key={d}
+            testId={`rail-row-${d}`}
+            label={PAX_RECORD_DOMAIN_LABELS[d]}
+            level={rails.records[d]}
+            levels={PAX_RAIL_LEVELS}
+            disabled={!canEdit}
+            onChange={(l) => onRecord(d, l)}
+          />
+        ))}
+        {groups.has("sends") && (
+          <RailRow
+            testId="rail-row-sends"
+            label={PAX_RAIL_COPY.sendsLabel}
+            level={rails.sends}
+            levels={PAX_SENDS_RAIL_LEVELS}
+            disabled={!canEdit}
+            note={PAX_RAIL_COPY.sendsCeiling}
+            onChange={(l) => {
+              if ((PAX_SENDS_RAIL_LEVELS as readonly PaxRailLevel[]).includes(l)) onSends(l as PaxSendsRailLevel);
+            }}
+          />
+        )}
+        {groups.has("looks_and_drafts") && (
+          <RunRow
+            testId="rail-info-looks-and-drafts"
+            label={PAX_RAIL_COPY.alwaysOnLabel}
+            line={PAX_RAIL_COPY.alwaysOnLine}
+          />
+        )}
+        <div className="px-4 py-3" data-testid="rail-info-runs-rules">
+          <div className="text-sm font-medium">{PAX_RAIL_COPY.runsRulesLabel}</div>
+          <div className="text-xs text-muted-foreground">{PAX_RAIL_COPY.runsRulesLine}</div>
+          <ul className="mt-1.5 space-y-0.5">
+            {ruleRows.map((p) => (
+              <li key={p.id} className="text-xs" data-testid={`rail-rule-${p.id}`}>
+                <span className="font-medium">{p.label}</span>
+                <span className="text-muted-foreground"> — {p.stance[stance]}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function RailRow({
+  testId,
+  label,
+  level,
+  levels,
+  disabled,
+  note,
+  onChange,
+}: {
+  testId: string;
+  label: string;
+  level: PaxRailLevel;
+  levels: readonly PaxRailLevel[];
+  disabled: boolean;
+  note?: string;
+  onChange: (level: PaxRailLevel) => void;
+}) {
+  return (
+    <div className="px-4 py-3" data-testid={testId}>
+      <div className="text-sm font-medium">{label}</div>
+      <ToggleGroup
+        type="single"
+        value={level}
+        onValueChange={(v) => {
+          if (v && v !== level && levels.includes(v as PaxRailLevel)) onChange(v as PaxRailLevel);
+        }}
+        disabled={disabled}
+        aria-label={label}
+        className="justify-start flex-wrap gap-2 mt-1.5"
+        data-testid={`${testId}-control`}
+      >
+        {levels.map((l) => (
+          <ToggleGroupItem
+            key={l}
+            value={l}
+            variant="outline"
+            className={cn(TAP, "px-4 data-[state=on]:bg-acr-brand-soft data-[state=on]:text-acr-brand-soft-ink")}
+            data-testid={`${testId}-${l}`}
+          >
+            {PAX_RAIL_LEVEL_LABELS[l]}
+          </ToggleGroupItem>
+        ))}
+      </ToggleGroup>
+      <div className="text-xs text-muted-foreground mt-1" data-testid={`${testId}-sentence`}>
+        {PAX_RAIL_LEVEL_SENTENCES[level]}
+      </div>
+      {note && <div className="text-xs text-muted-foreground mt-0.5">{note}</div>}
+    </div>
+  );
+}
 
 // ── Rows ───────────────────────────────────────────────────────────────────
 

@@ -5,7 +5,7 @@
   "direction": "down",
   "description": "REACHABILITY ratchet. `tsc`, the test suite and every existing lint gate check TYPES and BEHAVIOUR; nothing checked whether a thing is REACHED. CLAUDE.md names 'built but unwired' as this repo's single most common defect, and every instance (services/lateFees, services/respa/earlyIntervention, calculateFlipAnalysis, taxSaleAuctions/taxSaleListings, achMandateSetup/achAutopayRun, rental_units.kind='pad', routes-contract-chain.ts, the rent-roll importer's unitKind arg) shipped GREEN and was found hours later by a manual audit. This converts that recurring audit into CI. Every count is strictly down-only, and raising one requires explicit founder/Iris-CTO sign-off (see lastBumpNote for the exceptions actually invoked): exports in server/services|jobs with no production call site; pgTables with no writer; pgTables with no reader; routes-*.ts never mounted; exports the gate cannot assert on because their module is dynamically imported in a way that hides which exports are touched; and service/job files nothing imports at all. Family 1 is TWO rules, split 2026-08-20: `unreachedExports` is the accusation (nothing anywhere references the symbol) and `internalOnlyExports` is the narrower complaint (exported, but used only inside its own module \u2014 drop the keyword, keep the code). They are baselined apart because merged, the second buried the first four to one. The count of families is deliberately not stated here \u2014 it said 'four' for as long as there were four, and would have said it forever. THE CHEAPEST WAY TO SATISFY THIS GATE IS DELETION \u2014 the north star is a smaller codebase, and every reduction must be locked in by the commit that earned it (a stale-high baseline FAILS, same as `as-any`).",
   "baselines": {
-    "unreachedExports": 414,
+    "unreachedExports": 413,
     "internalOnlyExports": 1224,
     "tablesNoWriter": 53,
     "tablesNoReader": 58,
@@ -794,6 +794,16 @@
       "kind": "export",
       "id": "server/services/landData/propertyPassport.ts::assemblePropertyPassport",
       "reason": "PROPERTY PASSPORT ASSEMBLY, slice 1 (Data Intelligence Amendment 3 \u00a73.5/\u00a75, 2026-11-09). The pure passport assembly layer lands ahead of its first production caller on purpose: this slice is the assembly plus its gate and ignorance tests only, and the route or Pax surface that will call it is a later package. tests/unit/propertyPassport.test.ts is its only consumer today. REVOCATION: if a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "server/services/orgPushFanout.ts::ORG_PUSH_FAMILY_DEFAULT_ON",
+      "reason": "TEST-INTROSPECTION SEAM (gap slice 7 respect-mute fix, 2026-11-10). The set of fan-out families whose no-override default stays push ON (today only pax_nudge: its mapped schema event pax.needs_you defaults push off from before the lane was proven, but slice 7 shipped urgent-nudge push live, so the family default preserves the shipped behaviour while globalMute and explicit overrides still rule). Production consumes it in-module at the single pushOrgEvent gate; pushFanoutCreationSites.test.ts pins its presence so the gate cannot silently lose the family default. REVOCATION: if a second production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "server/services/orgPushFanout.ts::ORG_PUSH_FAMILY_EVENT_ID",
+      "reason": "TEST-INTROSPECTION SEAM (gap slice 7 respect-mute fix, 2026-11-10). The fan-out family to notification-preference event id map the pushOrgEvent mute gate resolves through (founder decision 2026-11-10: RESPECT MUTE). Production consumes it in-module at the single pushOrgEvent gate; pushFanoutCreationSites.test.ts pins ORG_PUSH_FAMILY_EVENT_ID[event.family] in the source so the gate cannot silently lose the family mapping. REVOCATION: if a second production module imports it, remove this entry."
     },
     {
       "kind": "export",

@@ -6,6 +6,7 @@ import { getSystemContext, formatContextForAI, invalidateContextCache } from "..
 import { lookupParcelByAPN } from "../services/parcel";
 import { generateOfferSuggestions, generateOfferLetter } from "../services/aiOfferService";
 import { emailService } from "../services/emailService";
+import { leadReplyToAddress } from "../services/leadReplyTo";
 import { smsService, sendOrgSMS } from "../services/smsService";
 import { getComparableProperties } from "../services/comps";
 import {
@@ -32,6 +33,8 @@ import {
 // switches and the pause folded into one call, failing CLOSED. The pause
 // primitive (server/services/paxPause.ts) is consulted through it.
 import { getPaxControls, paxControlsRefusalMessage, type PaxControlsState } from "../services/paxControls";
+// Per-capability rails (PX-2): the one decision both dispatch switches consult.
+import { decidePaxCall, paxRailWatchRefusalMessage } from "../services/paxRails";
 import { recordPaxEffect } from "../services/paxReceipts";
 // PX-1 (register P-4): browse receipts, per-turn `web:<host>` provenance and
 // the web-sourced row cap — browse is never a side channel around the licence gate.
@@ -1377,9 +1380,25 @@ export async function executeTool(
     //   - at "Ask before everything", every non-pause-safe tool — record
     //     writes included, and the customer's own chat commands included
     //     (founder decision 4: uniform, no asterisk).
+    //
+    // Per-capability rails (PX-2): the ONE decision — pause ∧ stance ∧ rail —
+    // comes from decidePaxCall (server/services/paxRails.ts). A rail only
+    // NARROWS: Watch refuses the write in plain words; Draft and Ask park it.
+    // The two original conditions stay as the floor, so a rail can never turn
+    // an ask into a run.
+    const railDecision = controls ? decidePaxCall(controls, toolName) : null;
+    if (railDecision?.kind === "refuse" && railDecision.why === "rail_watch") {
+      logger.info("[executeTool] Refused — the rail for this kind of change is on Watch", {
+        orgId: org.id,
+        metadata: { toolName, origin },
+      });
+      return { success: false, error: paxRailWatchRefusalMessage(toolName) };
+    }
     const requiresAsk =
       kernelApprovalRequiredTools.has(toolName) ||
-      (controls?.stance === "ask_before_everything" && !pauseSafe);
+      (controls?.stance === "ask_before_everything" && !pauseSafe) ||
+      railDecision?.kind === "ask" ||
+      railDecision?.kind === "draft";
     if (requiresAsk && !trustedApproval) {
       const pending = await proposePendingAction({
         organizationId: org.id,
@@ -2487,6 +2506,8 @@ export async function executeTool(
           subject: args.subject,
           html: htmlContent,
           text: textContent,
+          // Lead-addressed sends thread replies back through the inbound seam.
+          replyTo: args.lead_id ? await leadReplyToAddress(args.lead_id, org.id) : undefined,
           organizationId: org.id,
           // Deal mail: Pax emailing a customer's lead — org identity required.
           purpose: 'counterparty',
