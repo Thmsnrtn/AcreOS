@@ -1974,6 +1974,8 @@ export function registerAIRoutes(app: Express): void {
       const { Readable } = await import("stream");
       const audioStream = Readable.from(file.buffer);
       (audioStream as any).name = file.originalname || "audio.webm";
+      // AI_SPEND_EXEMPTION: whisper_transcription — deliberately unmetered;
+      // see server/services/aiSpendExemptions.ts (P1-5 R2).
       const transcription = await client.audio.transcriptions.create({
         file: audioStream as any,
         model: "whisper-1",

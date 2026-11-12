@@ -241,6 +241,8 @@ Make each variant distinctly different. These will run as A/B tests so they must
 
     for (const spec of IMAGE_SPECS) {
       try {
+        // AI_SPEND_EXEMPTION: dalle_image_generation — deliberately unmetered;
+        // see server/services/aiSpendExemptions.ts (P1-5 R2).
         const response = await openai.images.generate({
           model: "dall-e-3",
           prompt: spec.prompt,

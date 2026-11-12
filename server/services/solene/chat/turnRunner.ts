@@ -134,6 +134,54 @@ function actualCost(opts: {
   );
 }
 
+/**
+ * P1-5 / I-5 R3 — the Solene chat telemetry bridge. This runner CHECKS
+ * the platform ceiling before every turn (§4 below), but until P1-5 its
+ * spend was written only to solene_capital_events, which the ceiling
+ * never sums — the gate could never trip because of this path. Every
+ * completed turn now also writes an ai_telemetry_events row (org-null:
+ * founder chat is nobody's allowance and no org's ceiling, but it IS
+ * platform spend on the shared keys). Failed turns record their partial
+ * usage, or the R5 floor estimate when no usage arrived. Fire-and-
+ * forget: telemetry must never break a founder chat turn.
+ */
+function recordSoleneChatTelemetry(input: {
+  model: string;
+  provider: ProviderTag | null;
+  inputTokens: number;
+  outputTokens: number;
+  cachedReadTokens: number;
+  success: boolean;
+  errorMessage?: string | null;
+  inputChars?: number;
+}): void {
+  void (async () => {
+    try {
+      const { recordExternalAiSpend } = await import("../../aiSpendGuard");
+      const hasUsage = input.inputTokens > 0 || input.outputTokens > 0 || input.cachedReadTokens > 0;
+      let estimatedCostCentsOverride: number | undefined;
+      if (!input.success && !hasUsage && (input.inputChars ?? 0) > 0) {
+        const { estimateFailedCallCostCents } = await import("../../aiCostRates");
+        estimatedCostCentsOverride = Math.max(1, Math.round(estimateFailedCallCostCents(input.model, input.inputChars ?? 0)));
+      }
+      recordExternalAiSpend({
+        orgId: null,
+        taskType: "solene_chat",
+        model: input.model,
+        provider: input.provider ?? "unknown",
+        promptTokens: input.inputTokens + input.cachedReadTokens,
+        completionTokens: input.outputTokens,
+        cachedInputTokens: input.cachedReadTokens,
+        success: input.success,
+        errorMessage: input.errorMessage ?? null,
+        ...(estimatedCostCentsOverride !== undefined ? { estimatedCostCentsOverride } : {}),
+      });
+    } catch {
+      // Swallowed — see docblock.
+    }
+  })();
+}
+
 // ============================================================================
 // runTurn
 // ============================================================================
@@ -240,7 +288,9 @@ export async function* runTurn(
   // set, else max($15/day, 75% of paying MRR / 30)). Without this, founder
   // chat could quietly blow past the daily budget — Tom's $30/day surprise
   // surfaced in the 2026-06-05 audit. Founder org id is unknown at this
-  // layer, so we use the platform-only ceiling path (orgId=null).
+  // layer, so we use the platform-only ceiling path (orgId=null). Since
+  // P1-5 R3 the turns' own spend lands in the sum this check reads
+  // (recordSoleneChatTelemetry), so the gate can trip because of this path.
   try {
     const { assertWithinAiCostCeiling } = await import("../../aiCostCeiling");
     await assertWithinAiCostCeiling(null);
@@ -401,6 +451,18 @@ export async function* runTurn(
     }
 
     if (streamErrored) {
+      // P1-5 R3+R5: a failed turn still spent what it streamed — record
+      // the partial usage (or the floor estimate) into the ceiling's sum.
+      recordSoleneChatTelemetry({
+        model: route.model,
+        provider: providerUsed,
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+        cachedReadTokens: usage.cachedReadTokens,
+        success: false,
+        errorMessage: streamErrorMessage ?? "stream_errored",
+        inputChars: userText.length,
+      });
       // Persist an assistant error row so refetched history reflects the failed
       // turn (and the client's lastTurnFailed banner can fire) instead of
       // leaving only the user bubble forever. This is the persistence the file
@@ -497,6 +559,17 @@ export async function* runTurn(
       turnCost,
       `solene_chat tier=${route.tier} model=${route.model} conv=${input.conversationId} in=${usage.inputTokens} out=${usage.outputTokens} cached=${usage.cachedReadTokens}`,
     );
+
+    // P1-5 R3: the same spend into ai_telemetry_events, where the
+    // platform ceiling this runner checks actually sums it.
+    recordSoleneChatTelemetry({
+      model: route.model,
+      provider: providerUsed,
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+      cachedReadTokens: usage.cachedReadTokens,
+      success: true,
+    });
 
     // Push the assistant turn onto the upstream history for the next loop.
     messages = [

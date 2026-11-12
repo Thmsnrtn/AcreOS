@@ -84,6 +84,13 @@ export const AI_COST_RATES: Record<string, AICostRate> = {
   // ── Direct OpenAI (fallback path) ────────────────────────────────────────
   "gpt-4o":      { input: 2.50, output: 10.00 },
   "gpt-4o-mini": { input: 0.15, output: 0.60 },
+
+  // ── Embeddings (P1-5 / I-5 R2, 2026-11-12) ───────────────────────────────
+  // text-embedding-3-small: $0.02 / 1M input tokens, no output tokens.
+  // Metered via aiSpendGuard.meteredEmbeddingsCreate; before P1-5 these
+  // calls were wholly unmetered (gateway ratchet baseline).
+  "text-embedding-3-small":       { input: 0.02, output: 0 },
+  "openai/text-embedding-3-small": { input: 0.02, output: 0 },
 };
 
 /**
@@ -186,6 +193,36 @@ export function computeCostUsd(
  */
 export function knownModels(): string[] {
   return Object.keys(AI_COST_RATES);
+}
+
+/**
+ * FAILED-CALL FLOOR ESTIMATE (P1-5 / I-5 R5, 2026-11-12) — the named
+ * estimate recorded when a paid attempt FAILS and the provider returns no
+ * usage block.
+ *
+ * Before P1-5 every metered path recorded a failed attempt at $0, so any
+ * tokens the provider billed on a timed-out / mid-stream-failed /
+ * retried attempt were invisible to every ceiling that sums
+ * ai_telemetry_events. $0 was a lie in the optimistic direction.
+ *
+ * The floor: the attempt's INPUT is priced in full — the provider
+ * received and processed the prompt before failing — with input tokens
+ * estimated from the request's character length via the same padded
+ * CHARS_PER_TOKEN the pre-call predictor uses. Output is priced at 0:
+ * generation length after a failure is unknowable, and inventing output
+ * tokens would fabricate spend in the other direction. The result is a
+ * deliberate FLOOR, named here so no reader mistakes it for a measured
+ * actual: real usage wins whenever an error carries it (the gateway
+ * checks that first); this estimate applies only when it does not.
+ *
+ * Returns cents (fractional) — callers rounding for a ledger column
+ * should Math.max(1, Math.round(...)) when the request was non-empty, so
+ * a real attempt never rounds back down to the $0 this replaces.
+ */
+export function estimateFailedCallCostCents(model: string, inputChars: number): number {
+  if (!Number.isFinite(inputChars) || inputChars <= 0) return 0;
+  const inputTokens = estimateTokensFromChars(inputChars);
+  return computeCostUsd(model, inputTokens, 0) * 100;
 }
 
 // ============================================================================

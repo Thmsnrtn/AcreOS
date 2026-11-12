@@ -27,6 +27,15 @@ vi.mock("../../server/utils/logger", () => ({
   },
 }));
 
+// P1-5 R2: embeddings now route through aiSpendGuard.meteredEmbeddingsCreate,
+// which consults the cost ceiling first. This suite's subject is batching
+// behaviour, so the gate is mocked open (the gate itself is proven in the
+// aiMeteredEmbeddings / aiBackgroundSubCeiling suites).
+vi.mock("../../server/services/aiCostCeiling", () => ({
+  assertWithinAiCostCeiling: vi.fn(async () => {}),
+  AiCostCeilingExceededError: class extends Error {},
+}));
+
 const FAKE_EMB = new Array(1536).fill(0.1);
 
 describe("Pillar 9.4 — generateQueryEmbeddingsBatch", () => {
