@@ -870,7 +870,11 @@ export async function browseWeb(url: string, options?: {
       content: "",
       links: [],
       tables: [],
-      error: "Access to internal/private networks is not allowed",
+      error: plainRefusal({
+        what: "The page was not opened",
+        why: "That link names an internal or private network address directly, and I never open those",
+        unlock: "Ask about a public website address instead",
+      }),
       loadTimeMs: clock.nowMs() - startTime,
     };
   }
@@ -903,7 +907,11 @@ export async function browseWeb(url: string, options?: {
         content: "",
         links: [],
         tables: [],
-        error: `DNS resolved to private/internal address: ${addr}`,
+        error: plainRefusal({
+          what: "The page was not opened",
+          why: `That website's name resolves to a private or internal address (${addr}), and I never open those`,
+          unlock: "Ask about a public website address instead",
+        }),
         loadTimeMs: clock.nowMs() - startTime,
       };
     }
