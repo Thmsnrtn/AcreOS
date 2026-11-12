@@ -542,6 +542,7 @@ const DEBT: Record<string, ProposedSurface> = {
   "server/ai/supportAgent.ts case:detect_data_integrity_issues": "review",
   "server/ai/supportAgent.ts case:predict_user_issues": "review",
   // server/ai/tools.ts
+  "server/ai/tools.ts case:browse_search": "review",
   "server/ai/tools.ts case:create_properties_batch": "review",
   "server/ai/tools.ts case:create_property": "review",
   "server/ai/tools.ts case:draft_outreach_message": "lead_contact_model",
@@ -820,7 +821,12 @@ const DEBT: Record<string, ProposedSurface> = {
 /** DEBT may only shrink. Lower this in the same commit that removes an entry. */
 // 214 → 212 (2026-11-06, W2-TEAM): GET /api/analytics/team-kpi and
 // GET /api/analytics/team-leaderboard deleted — no client caller.
-const DEBT_BASELINE = 212;
+// 212 → 213 (2026-11-12, PX-7): one NEW surface honestly registered as DEBT —
+// the browse_search dispatch case in server/ai/tools.ts. This is the census's
+// growth path for new surface, not a rise to excuse existing debt. (PX-3's
+// sibling branch raises 212 → 214 for its two new routes; whichever lands
+// second rebases this number by the combined delta.)
+const DEBT_BASELINE = 213;
 
 /**
  * Every file holding a dispatch switch (≥10 snake_case case labels, raw count)

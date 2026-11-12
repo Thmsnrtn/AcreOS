@@ -72,6 +72,41 @@
     },
     {
       "kind": "export",
+      "id": "server/services/paxBrowseSearch.ts::parseSearchSteps",
+      "reason": "TEST SEAM (PX-7 browser rung 2, 2026-11-12). The closed step language's parser: runPaxSearchSession calls it on every session, and paxBrowseSearchSteps.test.ts drives it directly with hostile step lists (unknown kind, extra key, first step not open, over the step bound) to prove nothing outside the five kinds is representable. REVOCATION: if a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "server/services/paxBrowseSearch.ts::registrableDomainOf",
+      "reason": "TEST SEAM (PX-7 browser rung 2, 2026-11-12). The registrable-domain approximation behind the one-site-per-session rule; sessionHostsAllowed calls it, and paxBrowseSearchSteps.test.ts pins its narrow-by-design answers (co.uk, .us locality domains, www). REVOCATION: if a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "server/services/paxBrowseSearch.ts::sessionHostsAllowed",
+      "reason": "TEST SEAM (PX-7 browser rung 2, 2026-11-12). The one-site-per-session rule (one host, every host on the org's my-sites list, or one registrable domain); runPaxSearchSession applies it to every navigation and to every redirect the browser is asked to follow, and paxBrowseSearchSteps.test.ts pins it directly. REVOCATION: if a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "server/services/paxBrowseSearch.ts::judgeSearchForm",
+      "reason": "TEST SEAM (PX-7 browser rung 2, 2026-11-12). The mechanical search-form judge (GET only, never a password, hidden, textarea or disabled input, refuse rather than guess); runPaxSearchSession calls it for every search step, and paxBrowseSearchSteps.test.ts enumerates its qualifying and disqualifying forms. REVOCATION: if a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "server/services/paxBrowseSearch.ts::findNextLink",
+      "reason": "TEST SEAM (PX-7 browser rung 2, 2026-11-12). The next-page finder (rel=next, then the next-text patterns); runPaxSearchSession calls it for every next_page step, and paxBrowseSearchSteps.test.ts pins the patterns it accepts and the links it must not take. REVOCATION: if a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "server/services/paxBrowseSearch.ts::resolveResultLink",
+      "reason": "TEST SEAM (PX-7 browser rung 2, 2026-11-12). The open_result index bound (only links the model was shown, http(s) only); runPaxSearchSession calls it for every open_result step, and paxBrowseSearchSteps.test.ts pins the boundary. REVOCATION: if a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "server/services/paxBrowseSearch.ts::detectChallenge",
+      "reason": "TEST SEAM (PX-7 browser rung 2, 2026-11-12). The CAPTCHA / bot-wall detector; runPaxSearchSession calls it on every page loaded, and paxBrowseSearchSteps.test.ts drives it with fixture HTML for each marker family and with the look-alikes that must not trip it (an invisible reCAPTCHA, a plain 404). REVOCATION: if a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
       "id": "server/services/leadResponse.ts::RESPONSE_SOURCES",
       "reason": "POPULATION CONTRACT + TEST SEAM (gap slice 1, stop-on-reply, 2026-11-10). The canonical list of lead-activity types that count as a seller response. Production consumes it through isResponseActivityType (sequenceProcessor.checkLeadResponded) so no second hard-coded list exists; the constant itself is exported so tests/unit/leadResponseSources.test.ts can enumerate it and prove every member is written by a real inbound seam. REVOCATION: if a production module imports the list directly, remove this entry."
     },

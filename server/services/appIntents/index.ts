@@ -71,7 +71,7 @@ function roleAllowList(role: string): string[] {
       ...CORE, ...MEMORY,
       "get_properties", "get_property_details", "get_leads", "create_property",
       "update_property", "run_comps_analysis", "run_comps", "research_property",
-      "calculate_roi", "browse_web",
+      "calculate_roi", "browse_web", "browse_search",
     ],
     documents: [
       ...CORE,

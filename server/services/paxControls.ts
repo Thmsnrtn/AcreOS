@@ -41,13 +41,17 @@ import { getPaxPauseState } from "./paxPause";
 import {
   OFFERED_STANCES,
   PAX_CONTROLS_DEFAULTS,
+  PAX_MY_SITES_MAX,
   PAX_RAIL_LEVELS,
   PAX_RECORD_DOMAINS,
+  PAX_SITE_LABEL_MAX,
   STANCE_RULINGS,
   clampSendsLevel,
   defaultPaxRails,
+  normalizeSiteHost,
   type PaxControls,
   type PaxRails,
+  type PaxSiteEntry,
   type PaxStance,
 } from "@shared/pax-controls";
 import { PAX_PAUSE_COPY } from "@shared/pax-glossary";
@@ -85,6 +89,8 @@ const CLOSED: Readonly<PaxControls> = {
   borrowerReminders: false,
   inboxDrafts: false,
   rails: closedRails(),
+  // PX-7: nothing listed = no search runs on a listed site.
+  mySites: [],
 };
 
 /** The org's `timezone` column default (shared/schema.ts). */
@@ -123,6 +129,22 @@ const storedRailsSchema = z
   })
   .strict();
 
+/**
+ * PX-7. `mySites` is OPTIONAL in the stored row — every row written before
+ * PX-7 has none and reads as []. Each entry is strict { host, label }, and a
+ * stored host must ALREADY be a normalised bare host: a scheme, a path,
+ * credentials or an unnormalised value is a parse failure (→ the whole column
+ * fails closed), never something quietly rewritten into a host that then gets
+ * searched.
+ */
+const storedMySiteEntry = z
+  .object({
+    host: z.string().refine((h) => normalizeSiteHost(h) === h, { message: "not a bare normalised host" }),
+    label: z.string().min(1).max(PAX_SITE_LABEL_MAX),
+  })
+  .strict();
+const storedMySitesSchema = z.array(storedMySiteEntry).max(PAX_MY_SITES_MAX);
+
 const storedPaxControls = z
   .object({
     stance: z.enum(OFFERED_STANCES),
@@ -130,8 +152,21 @@ const storedPaxControls = z
     borrowerReminders: z.boolean(),
     inboxDrafts: z.boolean(),
     rails: storedRailsSchema.optional(),
+    mySites: storedMySitesSchema.optional(),
   })
   .strict();
+
+/** The stored `mySites` (or its absence) → a complete list; absence is empty, never "everything". */
+function resolveStoredMySites(stored: z.infer<typeof storedMySitesSchema> | undefined): PaxSiteEntry[] {
+  const seen = new Set<string>();
+  const out: PaxSiteEntry[] = [];
+  for (const s of stored ?? []) {
+    if (seen.has(s.host)) continue;
+    seen.add(s.host);
+    out.push({ host: s.host, label: s.label });
+  }
+  return out;
+}
 
 /** The stored `rails` (or its absence) → a complete PaxRails, sends clamped to the ceiling. */
 function resolveStoredRails(stored: z.infer<typeof storedRailsSchema> | undefined): PaxRails {
@@ -176,11 +211,15 @@ export async function getPaxControls(orgId: number): Promise<PaxControlsState> {
     } else {
       if (row.timezone) timezone = row.timezone;
       if (row.paxControls == null) {
-        controls = { ...PAX_CONTROLS_DEFAULTS, rails: defaultPaxRails() };
+        controls = { ...PAX_CONTROLS_DEFAULTS, rails: defaultPaxRails(), mySites: [] };
       } else {
         const parsed = storedPaxControls.safeParse(row.paxControls);
         if (parsed.success) {
-          controls = { ...parsed.data, rails: resolveStoredRails(parsed.data.rails) };
+          controls = {
+            ...parsed.data,
+            rails: resolveStoredRails(parsed.data.rails),
+            mySites: resolveStoredMySites(parsed.data.mySites),
+          };
         } else {
           // The one runtime moment a stance nobody offers is met. The line
           // names what IS offered and the ruling that bounds it, so whoever
