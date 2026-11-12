@@ -179,7 +179,7 @@ const SINGLE_FAMILY_RENTALS: VerticalPersona = {
   expertReferences: [
     "FCRA (15 U.S.C. §1681b): permissible-purpose attestation per screening lookup + adverse-action notice duties on denial.",
     "Federal lead-paint disclosure (24 C.F.R. §35.92) on pre-1978 housing.",
-    "State landlord-tenant statutes — late-fee caps, grace periods, security-deposit return deadlines, and vacate-notice windows; attorney-reviewed, cited state by state.",
+    "State landlord-tenant statutes — late-fee caps, grace periods, security-deposit return deadlines, and vacate-notice windows; cited state by state.",
     "HUD Section 8 / HAP mechanics — the housing-authority portion vs tenant portion, two payors on two schedules.",
     "County records + residential comps/AVM data for market-rent and value support.",
   ],
@@ -412,7 +412,7 @@ const MULTI_FAMILY: VerticalPersona = {
     "Cap rate / DSCR on the building as a whole",
   ],
   expertReferences: [
-    "State landlord-tenant statutes with unit-count-forked late-fee caps, grace periods, and notice windows — attorney-reviewed, cited state by state.",
+    "State landlord-tenant statutes with unit-count-forked late-fee caps, grace periods, and notice windows — cited state by state.",
     "Federal lead-paint disclosure (24 C.F.R. §35.92) — pre-1978 buildings, per-unit exposure.",
     "FCRA (15 U.S.C. §1681b) screening discipline — a permissible-purpose attestation per lookup, adverse action on every denial.",
     "HUD Section 8 / HAP mechanics applied per unit.",
@@ -537,7 +537,7 @@ const MOBILE_HOMES: VerticalPersona = {
   expertReferences: [
     "Dodd-Frank / Reg-Z seller-finance rules as they bite manufactured housing — 12 CFR 1026.36(a)(4) and (a)(5) seller-financer exclusions; HOEPA's tighter APR trigger for small loans secured by personal property (chattel-titled homes).",
     "State titling regimes for manufactured homes — DMV/VIN title vs conversion to real property; verify per state before financing or selling a home.",
-    "State landlord-tenant / MHP statutes on lot leases, deposits, notice windows, and lot-rent increases — attorney-reviewed state by state.",
+    "State landlord-tenant / MHP statutes on lot leases, deposits, notice windows, and lot-rent increases — cited state by state.",
     "Local submarket lot-rent surveys — the pricing anchor for renewal decisions.",
   ],
   systemPromptAppendix: `
@@ -641,7 +641,7 @@ const WHOLESALING: VerticalPersona = {
     "EMD at risk (dollars in escrow with refundable-until dates ≤ 7 days out)",
   ],
   expertReferences: [
-    "State real-estate commission / license-act rules on assignment-for-fee and marketing-without-ownership — attorney-reviewed, cited state by state; several states have legislation pending.",
+    "State real-estate commission / license-act rules on assignment-for-fee and marketing-without-ownership — cited state by state; several states have legislation pending.",
     "TCPA (47 U.S.C. § 227; 47 C.F.R. § 64.1200): quiet hours, DNC / litigator scrubs, and consent records for cold outreach.",
     "Title-company / escrow practice for back-to-back closings and transactional funding on non-assignable deals.",
     "County records + comp/AVM data for defensible ARV support.",

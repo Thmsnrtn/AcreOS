@@ -196,7 +196,7 @@ export function LandCoveragePanel() {
 
       {coverage.data!.statewidePrograms.length > 0 && (
         <div className="space-y-1">
-          <p className="text-xs font-medium">Statewide programs (live lookups)</p>
+          <p className="text-xs font-medium">Statewide programs (not yet cleared for lookups)</p>
           <ul className="text-xs text-muted-foreground">
             {coverage.data!.statewidePrograms.map((p) => (
               <li key={p.state}>
