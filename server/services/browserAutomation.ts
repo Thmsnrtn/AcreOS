@@ -10,6 +10,13 @@ import { execSync } from "child_process";
 import { logger } from "../utils/logger";
 import { isPrivateIPv4 as isPrivateIpv4, isPrivateIPv6 as isPrivateIpv6 } from "../middleware/fileUploadSecurity";
 import { clock } from "../utils/clock";
+import { plainRefusal } from "@shared/refusal/plainRefusal";
+import {
+  checkRobots,
+  takeBrowseVisit,
+  ROBOTS_MAX_BYTES,
+  type RobotsFetchResult,
+} from "./browseRobots";
 // DNS resolution for SSRF protection
 const dnsResolve4 = (host: string): Promise<string[]> => {
   return new Promise((resolve, reject) => {
@@ -712,6 +719,12 @@ export interface BrowseWebResult {
   screenshot?: string;
   error?: string;
   loadTimeMs: number;
+  /** PX-1: the site's robots.txt disallows this path for automated visitors; nothing was fetched. */
+  robotsDisallowed?: boolean;
+  /** PX-1: robots.txt could not be read (server error / timeout), so the visit was refused rather than guessed. */
+  robotsUnverified?: boolean;
+  /** PX-1: too many visits to this host by this org in the window; nothing was fetched. */
+  rateLimited?: boolean;
 }
 
 // ── ONE IMPLEMENTATION OF "IS THIS ADDRESS REACHABLE" ───────────────────────
@@ -835,10 +848,55 @@ function isBlockedUrl(urlString: string): { blocked: boolean; reason?: string } 
   }
 }
 
-export async function browseWeb(url: string, options?: { 
-  extractTables?: boolean; 
+/** How long the robots.txt fetch may take before the site counts as unverified. */
+const ROBOTS_FETCH_TIMEOUT_MS = 5000;
+/** Redirect hops followed for robots.txt — each hop re-passes the SSRF checks. */
+const ROBOTS_MAX_REDIRECTS = 3;
+
+/**
+ * The network half of the robots check. It passes the SAME address checks as
+ * the page itself, on every redirect hop (redirects are followed by hand so a
+ * robots.txt cannot bounce us to an internal address). 4xx → no rules; anything
+ * else that is not a readable 2xx → "error" (the caller refuses — fail-closed).
+ */
+async function fetchRobotsTxt(robotsUrl: string): Promise<RobotsFetchResult> {
+  try {
+    let current = robotsUrl;
+    for (let hop = 0; hop <= ROBOTS_MAX_REDIRECTS; hop++) {
+      const blocked = isBlockedUrl(current);
+      if (blocked.blocked) return { status: "error" };
+      const dns = await resolveAndCheckHost(new URL(current).hostname);
+      if (!dns.allowed) return { status: "error" };
+
+      const res = await fetch(current, {
+        redirect: "manual",
+        signal: AbortSignal.timeout(ROBOTS_FETCH_TIMEOUT_MS),
+        headers: { "User-Agent": "acreos-browse (+robots-check)", Accept: "text/plain,*/*;q=0.5" },
+      });
+      if (res.status >= 300 && res.status < 400) {
+        const loc = res.headers.get("location");
+        if (!loc) return { status: "error" };
+        current = new URL(loc, current).toString();
+        continue;
+      }
+      if (res.status >= 400 && res.status < 500) return { status: "none" };
+      if (!res.ok) return { status: "error" };
+      const body = await res.text();
+      return { status: "ok", body: body.slice(0, ROBOTS_MAX_BYTES) };
+    }
+    return { status: "error" };
+  } catch (err) {
+    logger.info("[browse_web] robots.txt could not be read", { metadata: { robotsUrl, err: err instanceof Error ? err.name : "error" } });
+    return { status: "error" };
+  }
+}
+
+export async function browseWeb(url: string, options?: {
+  extractTables?: boolean;
   captureScreenshot?: boolean;
   waitMs?: number;
+  /** Who is browsing — the per-org half of the visit rate limit. Absent = limited per host alone. */
+  orgId?: number;
 }): Promise<BrowseWebResult> {
   const startTime = clock.nowMs();
   let browser: Browser | null = null;
@@ -871,7 +929,63 @@ export async function browseWeb(url: string, options?: {
       loadTimeMs: clock.nowMs() - startTime,
     };
   }
-  
+
+  // PX-1 — honour the site's robots.txt before anything is fetched.
+  const robots = await checkRobots(parsed, fetchRobotsTxt, clock.nowMs());
+  if (robots === "disallowed") {
+    return {
+      success: false,
+      url,
+      title: "",
+      content: "",
+      links: [],
+      tables: [],
+      error: plainRefusal({
+        what: "The page was not opened",
+        why: "That website's robots.txt asks automated visitors to stay out of this page",
+        unlock: "Open it yourself in your browser, or ask about a different page",
+      }),
+      loadTimeMs: clock.nowMs() - startTime,
+      robotsDisallowed: true,
+    };
+  }
+  if (robots === "unverified") {
+    return {
+      success: false,
+      url,
+      title: "",
+      content: "",
+      links: [],
+      tables: [],
+      error: plainRefusal({
+        what: "The page was not opened",
+        why: "I could not read that website's rules for automated visitors, so I did not guess",
+        unlock: "Try again in a minute, or open it yourself in your browser",
+      }),
+      loadTimeMs: clock.nowMs() - startTime,
+      robotsUnverified: true,
+    };
+  }
+
+  // PX-1 — pace visits: a limit per org per host.
+  if (!takeBrowseVisit(options?.orgId, parsed.hostname, clock.nowMs()).allowed) {
+    return {
+      success: false,
+      url,
+      title: "",
+      content: "",
+      links: [],
+      tables: [],
+      error: plainRefusal({
+        what: "The page was not opened",
+        why: "There have been a lot of visits to this website in the last few minutes, and I pace them so it is not overloaded",
+        unlock: "Wait a few minutes and ask again",
+      }),
+      loadTimeMs: clock.nowMs() - startTime,
+      rateLimited: true,
+    };
+  }
+
   try {
     browser = await launchBrowser();
     const page = await browser.newPage();

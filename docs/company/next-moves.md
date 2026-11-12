@@ -3,6 +3,21 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-11-10 — PX-1: Pax browser make-safe — on `claude/px1-browser-make-safe`
+
+- `browse_web` now writes a Pax receipt (host, URL without query, turn) through `recordPaxEffect` on every lane that can browse; records created in a turn after a browse carry `source: web:<host>` provenance (tagged in due-diligence notes).
+- `create_properties_batch` / `create_lead` refuse web-sourced rows past a small cap (5 per turn) unless every browsed host is on the cleared-source list (env `BROWSE_WEB_CLEARED_SOURCE_HOSTS`, empty by default — fail-closed; the licence gate and dossiers stay authoritative). Falsified locally: disabling the fence turns 6 of the new tests red.
+- `browseWeb` honours robots.txt (the `acreos` group, else `*`) and a per-org/per-host rate limit.
+- Proof (driver-run): browseMakeSafe 17/17 + seven neighbouring suites 159/159 + purpose-ledger census and sweep-budget 22/22; scoped tsc 0 diagnostics in changed files; reachability PASS all 11 at baseline (10 helpers unexported, 9 TEST-SEAM allowlist entries with revocation notes). Full suite is CI's completing proof.
+- Next: PX-2 per-capability rails stacks on this branch.
+
+## 2026-11-10 — PKG-5a/5b: paid conversions by source/campaign (D6), on `claude/pkg5-ads-stripe-api`
+
+- **Built.** `/api/founder/customers` gains an additive `paidBySource` field: distinct paying orgs from the 90-day signup window, grouped by `utm_source` + `utm_campaign` (missing source = `direct`, missing campaign = `null`; nothing dropped). "Paying" mirrors `liveMrrDetail` (status exactly `active`, positive monthly-equivalent price), so trials, free and past_due are not conversions. Server-only; no table, migration or client change. Existing fields and the founder gate are unchanged.
+- **Proved.** `tests/unit/founderCustomersPaidBySource.test.ts`; a mutant that counts trials turns it red.
+- **Docs.** The PKG-5a/5b runbook and creative pack live in the goal files, not this repo.
+- **Next.** The founder page does not render `paidBySource` yet (client change not in this slice); read it from the API until then.
+
 ## 2026-11-06 — merge statuses reconciled against git at main `6b8240fa`
 
 - **What changed.** Every merge status stated below was checked against the GitHub API (`merged_at`) and `git merge-base --is-ancestor <merge commit> origin/main`. The stale ones ("PR open", "unmerged", "uncommitted", "nothing merged", "waiting on CI and Muse") now read "PR #N, MERGED <date>", in US Eastern (so #421 is 2026-10-31). Only status wording was edited, plus a Status column on the 2026-10-18 branch table. "Next" and "owed" bullets stay as written, so some still say "Muse audits; the founder merges" about PRs that have since merged: trust the heading.
@@ -25,6 +40,30 @@ what shipped, what it measured, and the top next moves. Newest first.
 | #488 | `claude/w4-note-merge-plan-pricing-engine` | W4.11 [DRAFT]: B10 note-model merge proposal + note pricing engine (recording stopped) | yes |
 | #489 | `claude/next-moves-ff-merged` | next-moves: Fix-and-Flip Legs 1–2, #466, #484, #458 merged; §9.3 routing recorded (docs only) | no |
 
+## 2026-11-05 — Subdivision V1, Legs 1–2: buildability screen + lot-yield estimate — on `claude/subdivision-legs1-2-screen-yield` (off main `da74f12`, PR open, unmerged)
+
+- **Step 0.** Verdicts are in `docs/evidence/2026-11-05/subdivision-v1-step0.md`. Four premise contradictions were reported:
+  - the county-timeline seeds were deleted in 0283;
+  - the standalone screen record had no honest store;
+  - the decision vocabulary has no `defer`;
+  - no perc result is stored anywhere.
+
+  Staging row counts are unverified (no staging access).
+- **Rulings** (`founder-decisions-2026-11-05-subdivision.md`): Tom approved +1 table `subdivision_screen_runs` (0304, renumbered from 0301; `table-count` 748 to 749). Muse ruled that `defer` is dropped and that timelines are operator-stated per run.
+- **Built.**
+  - `shared/subdivision/lotYield.ts` (lot-yield v1) and `buildabilityScreen.ts` (buildability-screen v1): seven triggers, three verdicts, and a headline that never says "buildable". The perc-estimate slot is always null.
+  - `POST /api/parcels/:id/screen` (appends a run) and `GET …/screen-runs` (history, plus the newest estimate beside the drawn plans).
+  - The screen panel on the Subdivision tab. The database refuses UPDATE on runs.
+- **Proved.**
+  - New tests: 18 for yield, 15 for the screen, 9 for the routes, 3 for the panel, and 1 real-DB test that runs in CI.
+  - 9 + 4 mutants, all red.
+  - check:app, every lint and the ratchets pass; the 34-file related batch passes; the build passes.
+  - Bundle: 9,775 KB against a 9,823 KB ceiling (+10 KB over main), after #470 trimmed main to 9,765 KB.
+- **Next.**
+  1. Muse audits.
+  2. Leg 3 (#464) merged 2026-11-07 (`0abcce7`).
+  3. Leg 4: the pursue/pass desk.
+  4. Staging proof after the merges.
 ## 2026-11-05 — Notes V2 Leg 1: delinquency ladder — on `claude/notes-v2-leg1-delinquency-ladder` (PR #463, retargeted to main after #461 merged as `fd984d8`; open, unmerged)
 
 - **Built.** Stage entries (current / past due under 30 / 30 / 60 / 90+) are recorded by the aging sweep. They go on `note_events` as category `delinquency` (migration 0302 widens the CHECKs only, restates 0301, and adds no table) inside the status transaction.
@@ -375,6 +414,32 @@ what shipped, what it measured, and the top next moves. Newest first.
   2. Run the staging proofs for Legs 4 and 6.
   3. Decide NY's seed (Leg 3.4) and state where the radar's tasks go (3.3).
   4. Wire hold checks into clear-demo-data and archival.
+
+## 2026-11-03 — E2 slice 1 (Pax core): step 0 stopped three legs; leg 2, the morning brief, built as an extend — on `claude/e2-slice1-pax-brief` (PR #459, open)
+
+- **Step 0 contradicted the spec's "missing" checklist.**
+  - **Memory exists:** `pax_memory`, with a panel and silent model writes.
+  - **A brief exists:** `MorningBrief` / `composeBrief`.
+  - **`routes-pax-controls.ts` is the rails, stance and stand-down home:** stances tied to founder rulings, an org-wide Pause with a coverage ratchet, and receipts.
+  - The full rulings table and the conflicts are in `docs/evidence/2026-11-03/e2-slice1-pax-brief.md`.
+- **Leg 1 (memory): STOPPED.** "Pax never writes memory silently" contradicts `remember_fact`, `save_user_memory` and `paxMemoryTriggers`. A new table would be a parallel implementation. Needs a decision: make `pax_memory` the business memory and route model writes through proposals, or keep them separate and say why.
+- **Leg 5 (presets, rails, ledger, stand-down): STOPPED** on the spec's own stop condition.
+  - The default "Prepare-only" preset conflicts with the live default stance `ask_before_sending`, under which chat record writes run with no tap.
+  - Stand-down vs Pause: the Pause is time-limited and doesn't stop drafts.
+  - Trust ledger vs receipts: pause and controls events are already receipted.
+- **Legs 3 + 4 (packets, pane): HELD.** The packet lifecycle writes to the §5 ledger, and the only defined producers are legs 1 and 5. Built now, they would be unwired.
+- **Leg 2 (brief): built.**
+  - Three deterministic sections from real rows, with provenance, under the unchanged headline.
+  - Unreadable inputs are shown as unreadable, never as zero.
+  - Dismiss, restore, archive and reopen, through `routes-today-briefs.ts`, which is mounted without `todayGuard`.
+  - `pax_morning_briefs`: migration 0303 (renumbered from 0301; #461 holds 0301), table-count 749, **approved 2026-11-07 under Tom's full-readiness mandate** (Muse, PR #459 audit).
+  - The position on /today is unchanged, so P0's first-value CTA is not displaced.
+- **Proved.** A realdb suite through the mounted routers, a pure composer suite with send, kernel-write and model-name sweeps, and 15 of 15 mutants red. An independent audit found 8 issues; all are fixed or flagged (see the evidence file). The gates are in the PR body.
+- **Next.**
+  1. Muse audits and merges (the +1 table is approved under the mandate, 2026-11-07).
+  2. The leg-1 and leg-5 decisions (owner: Tom or Muse). Then legs 3 and 4 can be built on the decided ledger.
+  3. After merge: staging proof of the brief (it renders from staging state; dismiss, archive and reopen; cross-org 404), recorded in `docs/evidence/`. That becomes the brief's Atlas row.
+  4. When P0 lands, rebase over it.
 
 ## 2026-11-03 — Statewide point lookup gated behind the license dossiers — on `claude/statewide-lookup-clearance-gate` (off main `519b62c`, PR #452, MERGED 2026-11-03)
 
