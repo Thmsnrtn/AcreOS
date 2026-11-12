@@ -9,6 +9,35 @@ what shipped, what it measured, and the top next moves. Newest first.
 - **Measured.** 87 new tests pass locally (critical path 27, decide route 21, outcome loop 6, desk panel 20, desk read route 13); fence suites pass unmodified; ratchets all pass, table-count measured 750 = baseline (no new table, §9.1 held); reachability and date-format lints pass at baseline. `check:app`/`check:tests` and the bundle figure are CI's on this head (both abort under this VM's memory contention; the stack's tree predates the bundle-headroom merge, so Build is expected to read over until the branch is brought current at merge).
 - **Next.** Muse audits; lands after #462 in the cascade (bring-current → CI re-settle → merge → §10 steps 5–7 staging proof). The `vertical.subdivider` notGradeable caveat is NOT removed here — §9.6, Tom's call on the proof.
 
+## 2026-11-10 — Gap slice 7: push revival — on `claude/gap7-push-revival`
+
+- Added `web-push` (`^3.6.7`, lockfile synced) + VAPID vars in `.env.example`; fixed the client subscribe body (was `{subscription}`, route wants `{endpoint,keys}` → 422); mounted the existing hook as a "Push on this device" switch in `notification-preferences.tsx`; `/sw.js` handles `push` + `notificationclick`.
+- Fan-out through one helper (`server/services/orgPushFanout.ts`, org-scoped, never throws): urgent (priority 1) Pax nudges, the 7-day redemption alert (once-per-cert-per-day dedupe), ladder-ready cards (`ensureLadderRung` only). 30/90-day redemption alerts and non-urgent nudges deliberately do not push.
+- Proof (driver-run): orgPushFanout 11/11 + pushFanoutCreationSites 9/9 + pushDispatchSemantics 9/9 + census/budget 22/22; scoped tsc 0 diagnostics in changed files; reachability PASS all 11 (unreachedExports baseline measured DOWN 414 → 413: `sendPushToOrg` gained its first real consumer). Full suite is CI's completing proof.
+- Still open: per-user notification preferences (`globalMute`, per-event Push toggle) are NOT consulted by the org fan-out — a founder decision is owed on whether global mute should silence push.
+
+## 2026-11-10 — PX-2: per-capability rails v1 — on `claude/px2-capability-rails` (stacked on PX-1)
+
+- Rails live INSIDE the existing controls, not as a new stance (founder ruling 2026-11-10 §6.5 Q4): one level per record domain (leads, properties, deals, tasks, follow-ups, plus `account` for the support switch's system fixes) and one for sends. Levels weakest → strongest: watch, draft, ask, act_and_report; sends are capped at ask by type (`PaxSendsRailLevel`) and clamped at read.
+- ONE decision, `decidePaxCall` (`server/services/paxRails.ts`), composes pause ∧ stance ∧ rail for both dispatch switches; a rail only narrows. Old stored rows (no `rails`) and NULL read as today's defaults (record changes act_and_report, sends ask) — no silent change.
+- PATCH `/api/pax/controls` takes `rails` (422 on unknown domain/level or sends above ask); `/settings/pax` renders the rails card from the tool registry. Proof: `tests/unit/paxRailsPopulation.test.ts`.
+- Proof (driver-run): paxRailsPopulation + stance/page suites 85/85, neighbour batch 203/203, census 22/22, scoped tsc clean in changed files (one real TS2322 in the PATCH merge found and fixed in round 1), reachability PASS all 11 at baseline. CI is the completing proof. Still open: whether `draft` should differ from `ask` in the queue (today both park a pending action).
+
+## 2026-11-10 — PX-1: Pax browser make-safe — on `claude/px1-browser-make-safe`
+
+- `browse_web` now writes a Pax receipt (host, URL without query, turn) through `recordPaxEffect` on every lane that can browse; records created in a turn after a browse carry `source: web:<host>` provenance (tagged in due-diligence notes).
+- `create_properties_batch` / `create_lead` refuse web-sourced rows past a small cap (5 per turn) unless every browsed host is on the cleared-source list (env `BROWSE_WEB_CLEARED_SOURCE_HOSTS`, empty by default — fail-closed; the licence gate and dossiers stay authoritative). Falsified locally: disabling the fence turns 6 of the new tests red.
+- `browseWeb` honours robots.txt (the `acreos` group, else `*`) and a per-org/per-host rate limit.
+- Proof (driver-run): browseMakeSafe 17/17 + seven neighbouring suites 159/159 + purpose-ledger census and sweep-budget 22/22; scoped tsc 0 diagnostics in changed files; reachability PASS all 11 at baseline (10 helpers unexported, 9 TEST-SEAM allowlist entries with revocation notes). Full suite is CI's completing proof.
+- Next: PX-2 per-capability rails stacks on this branch.
+
+## 2026-11-10 — PKG-5a/5b: paid conversions by source/campaign (D6), on `claude/pkg5-ads-stripe-api`
+
+- **Built.** `/api/founder/customers` gains an additive `paidBySource` field: distinct paying orgs from the 90-day signup window, grouped by `utm_source` + `utm_campaign` (missing source = `direct`, missing campaign = `null`; nothing dropped). "Paying" mirrors `liveMrrDetail` (status exactly `active`, positive monthly-equivalent price), so trials, free and past_due are not conversions. Server-only; no table, migration or client change. Existing fields and the founder gate are unchanged.
+- **Proved.** `tests/unit/founderCustomersPaidBySource.test.ts`; a mutant that counts trials turns it red.
+- **Docs.** The PKG-5a/5b runbook and creative pack live in the goal files, not this repo.
+- **Next.** The founder page does not render `paidBySource` yet (client change not in this slice); read it from the API until then.
+
 ## 2026-11-06 — merge statuses reconciled against git at main `6b8240fa`
 
 - **What changed.** Every merge status stated below was checked against the GitHub API (`merged_at`) and `git merge-base --is-ancestor <merge commit> origin/main`. The stale ones ("PR open", "unmerged", "uncommitted", "nothing merged", "waiting on CI and Muse") now read "PR #N, MERGED <date>", in US Eastern (so #421 is 2026-10-31). Only status wording was edited, plus a Status column on the 2026-10-18 branch table. "Next" and "owed" bullets stay as written, so some still say "Muse audits; the founder merges" about PRs that have since merged: trust the heading.
