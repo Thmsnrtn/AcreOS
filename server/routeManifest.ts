@@ -313,6 +313,7 @@ export const ROUTE_MANIFEST: RouteManifestEntry[] = [
   { file: "routes-sovereign-integration.ts", mountPath: null, kind: "register", export: "registerSovereignIntegrationRoutes" },
   { file: "routes-sub-processors.ts", mountPath: null, kind: "register", export: "registerSubProcessorRoutes" },
   { file: "routes-subdivision-plans.ts", mountPath: null, kind: "register", export: "registerSubdivisionPlanRoutes" },
+  { file: "routes-subdivision-screen.ts", mountPath: null, kind: "register", export: "registerSubdivisionScreenRoutes" },
   { file: "routes-subdivisions.ts", mountPath: null, kind: "register", export: "registerSubdivisionRoutes" },
   { file: "routes-subscription.ts", mountPath: null, kind: "register", export: "registerSubscriptionRoutes" },
   { file: "routes-support-customer-context.ts", mountPath: "/api/admin/support/customer-context", kind: "router", export: "default" },

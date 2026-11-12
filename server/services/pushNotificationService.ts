@@ -46,11 +46,29 @@ let vapidConfigured = false;
 async function getWebPush(): Promise<any> {
   if (webPush) return webPush;
   try {
-    // TODO(tsc): `web-push` is an optional runtime dependency not present in the build's
-    // type graph. Use an indirected specifier so tsc doesn't statically require it; the
-    // try/catch already degrades gracefully when the package is absent.
+    // `web-push` is now a declared dependency, but the import stays indirected on
+    // purpose: (1) it has no bundled types and `@types/web-push` may not be in the
+    // type graph, so a static import risks TS7016 under strict; (2) the try/catch
+    // keeps the "unconfigured/absent → logged no-op, never throws" contract.
     const webPushModule = "web-push";
-    webPush = await import(webPushModule);
+    // Structural shape of the loaded module: just the two places
+    // `setVapidDetails` can live (named export, or `.default` on the CJS
+    // namespace). Typed structurally so no `any` annotation is needed for an
+    // untyped package.
+    interface WebPushModuleLike {
+      setVapidDetails?: unknown;
+      default?: { setVapidDetails?: unknown } | null;
+    }
+    const loaded: WebPushModuleLike = await import(webPushModule);
+    // `web-push` is CommonJS. Depending on the runtime/bundler its methods are
+    // either named exports on the namespace or live on `.default`. Probe the
+    // named export first (never touch `.default` unless needed — a strict test
+    // mock throws on an undefined `default`).
+    webPush = typeof loaded.setVapidDetails === "function" ? loaded : loaded.default;
+    if (!webPush || typeof webPush.setVapidDetails !== "function") {
+      webPush = null;
+      throw new Error("web-push module has no setVapidDetails");
+    }
     const subject = process.env.VAPID_SUBJECT || `mailto:${process.env.SENDGRID_FROM_EMAIL || "noreply@acreos.io"}`;
     const publicKey = process.env.VAPID_PUBLIC_KEY;
     const privateKey = process.env.VAPID_PRIVATE_KEY;
@@ -307,14 +325,47 @@ export async function sendPushToPerson(
   return { status: classify(sent, failed), sent, failed };
 }
 
+export interface SendPushToOrgOptions {
+  /**
+   * Per-recipient gate, consulted once per fan-out with every subscribed
+   * user id. A user the gate resolves to `false` for is skipped — their
+   * devices are not attempted and count as neither sent nor failed. A user
+   * ABSENT from the map is not refused (the caller that owns the preference
+   * semantics decides what absence means). If the gate itself throws, the
+   * fan-out proceeds ungated and logs: a broken preference read must not
+   * silently mute an org (and the org fan-out's contract is never-throw).
+   */
+  mayPushToUser?: (userIds: string[]) => Promise<Map<string, boolean>>;
+}
+
 /**
  * Send a push notification to all users in an org.
  */
 export async function sendPushToOrg(
   organizationId: number,
-  payload: PushPayload
-): Promise<{ sent: number; failed: number }> {
-  const subscriptions = await getSubscriptionsForOrg(organizationId);
+  payload: PushPayload,
+  options?: SendPushToOrgOptions
+): Promise<PushResult> {
+  // Unconfigured is a clean no-op: no subscription query, nothing counted as a
+  // failed delivery. (Org-scoped by construction: the lookup filters on
+  // organization_id.)
+  if (!(await pushConfigured())) return { status: "not_configured", sent: 0, failed: 0 };
+
+  let subscriptions = await getSubscriptionsForOrg(organizationId);
+
+  if (options?.mayPushToUser && subscriptions.length > 0) {
+    try {
+      const eligibility = await options.mayPushToUser([
+        ...new Set(subscriptions.map((s) => s.userId)),
+      ]);
+      subscriptions = subscriptions.filter((s) => eligibility.get(s.userId) !== false);
+    } catch (err) {
+      logger.warn("[PushNotifications] recipient gate failed — sending ungated", {
+        metadata: { error: err instanceof Error ? err.message : String(err) },
+      });
+    }
+  }
+
   let sent = 0;
   let failed = 0;
 
@@ -325,7 +376,7 @@ export async function sendPushToOrg(
     })
   );
 
-  return { sent, failed };
+  return { status: classify(sent, failed), sent, failed };
 }
 
 // ---------------------------------------------------------------------------

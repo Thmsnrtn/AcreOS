@@ -20,6 +20,8 @@ import { logger } from "../utils/logger";
 // The ONE reader of the org's Pax controls (AUTONOMY_SPEC.md §4.2) — stance
 // and pause in one call, failing CLOSED. The pause primitive is read through it.
 import { getPaxControls, paxControlsRefusalMessage, type PaxControlsState } from "../services/paxControls";
+// Per-capability rails (PX-2): the one decision both dispatch switches consult.
+import { decidePaxCall, paxRailWatchRefusalMessage } from "../services/paxRails";
 import {
   supportScopeFor,
   undeclaredSupportScopeMessage,
@@ -1483,9 +1485,23 @@ export async function executeSupportTool(
     //   - at "Ask before everything", every non-pause-safe case.
     // The frozen row replays through executeSupportTool with
     // { trustedApproval: true } after the customer taps (paxAskExecutors).
+    //
+    // Per-capability rails (PX-2): the SAME decision executeTool consults
+    // (server/services/paxRails.ts). A rail only narrows — it can never lift a
+    // tool out of ALWAYS_ASK_SUPPORT_TOOLS or past the stance.
+    const railDecision = controls ? decidePaxCall(controls, toolName) : null;
+    if (railDecision?.kind === "refuse" && railDecision.why === "rail_watch") {
+      logger.info("[executeSupportTool] Refused — the rail for this kind of change is on Watch", {
+        orgId: org.id,
+        metadata: { toolName, origin, ticketId: ticketId ?? null },
+      });
+      return { success: false, error: paxRailWatchRefusalMessage(toolName) };
+    }
     const requiresAsk =
       ALWAYS_ASK_SUPPORT_TOOLS.has(toolName) ||
-      (controls?.stance === "ask_before_everything" && !pauseSafe);
+      (controls?.stance === "ask_before_everything" && !pauseSafe) ||
+      railDecision?.kind === "ask" ||
+      railDecision?.kind === "draft";
     if (requiresAsk && !trustedApproval) {
       const pending = await proposePendingAction({
         organizationId: org.id,

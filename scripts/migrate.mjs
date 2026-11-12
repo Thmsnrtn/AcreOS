@@ -13090,6 +13090,35 @@ $mig0284$`,
      END IF;
    END
    $mig0301$`,
+  // 0304 — Subdivision V1 Leg 1: subdivision_screen_runs, the buildability screen's append-only run record (founder decision 2026-11-05, +1 table approved).
+  // Mirrors migrations/0304_subdivision_screen_runs.sql.
+  `CREATE TABLE IF NOT EXISTS "subdivision_screen_runs" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "parent_parcel_id" integer NOT NULL,
+     "rule_version" text NOT NULL,
+     "inputs" jsonb NOT NULL,
+     "yield_estimate" jsonb NOT NULL,
+     "result" jsonb NOT NULL,
+     "triggered_count" integer NOT NULL,
+     "not_determinable_count" integer NOT NULL,
+     "actor_ref" text NOT NULL,
+     "created_at" timestamp NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "subdivision_screen_runs_org_parent_idx"
+     ON "subdivision_screen_runs" ("organization_id", "parent_parcel_id", "created_at")`,
+  `CREATE OR REPLACE FUNCTION subdivision_screen_runs_deny_update()
+   RETURNS trigger AS $$
+   BEGIN
+     RAISE EXCEPTION 'subdivision_screen_runs is append-only (UPDATE denied) — re-run the screen to record a new run'
+       USING ERRCODE = 'restrict_violation';
+   END;
+   $$ LANGUAGE plpgsql`,
+  `DROP TRIGGER IF EXISTS subdivision_screen_runs_no_update ON "subdivision_screen_runs"`,
+  `CREATE TRIGGER subdivision_screen_runs_no_update
+     BEFORE UPDATE ON "subdivision_screen_runs"
+     FOR EACH ROW
+     EXECUTE FUNCTION subdivision_screen_runs_deny_update()`,
   // 0303 — E2 slice 1 leg 2: pax_morning_briefs (one sectioned brief per org per local day; dismiss is a stamp; archive + reopen on /today).
   // Mirrors migrations/0303_pax_morning_briefs.sql.
   `CREATE TABLE IF NOT EXISTS "pax_morning_briefs" (

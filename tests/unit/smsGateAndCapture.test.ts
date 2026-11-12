@@ -25,6 +25,14 @@ vi.mock("../../server/utils/logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
+// Stop-on-reply seam: the real helper lazily loads the whole sequence
+// processor; the spy records that the writer called it without that weight.
+const pauseSequencesOnResponse = vi.hoisted(() => vi.fn(async (_orgId: number, _leadId: number) => undefined));
+vi.mock("../../server/services/leadResponse", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../server/services/leadResponse")>();
+  return { ...actual, pauseSequencesOnResponse };
+});
+
 // Comms router — capture routed sends.
 const ROUTED: Array<{ to: string; body: string }> = [];
 vi.mock("../../server/services/comms/router", () => ({
@@ -411,6 +419,25 @@ describe("handleIncomingSMS — response capture (W1.4)", () => {
     expect(r.success).toBe(true);
     expect(r.leadId).toBe(4);
     expect(LEAD_UPDATES.some((p) => p.status === "responded")).toBe(true);
+  });
+
+  it("a matched inbound writes an sms_received (RESPONSE_SOURCES) activity and pauses the lead's drips", async () => {
+    LEADS = [{ id: 4, phone: "5551234567" }];
+    CONVERSATIONS = [{ id: 20, organizationId: 1, leadId: 4, channel: "sms" }];
+    await handleIncomingSMS(1, "+15551234567", "+15550001111", "call me", "SM_in_resp");
+    const row = TOUCH_WRITES.find((w) => w.type === "sms_received");
+    expect(row).toBeDefined();
+    expect(row.leadId).toBe(4);
+    expect(row.organizationId).toBe(1);
+    expect(pauseSequencesOnResponse).toHaveBeenCalledWith(1, 4);
+  });
+
+  it("an unmatched inbound and a STOP record no response and pause nothing", async () => {
+    LEADS = [{ id: 4, phone: "5559999999" }];
+    await handleIncomingSMS(1, "+15551234567", "+15550001111", "who is this", "SM_in_unm");
+    await handleIncomingSMS(1, "+15551234567", "+15550001111", "STOP", "SM_stop_unm2");
+    expect(TOUCH_WRITES.some((w) => w.type === "sms_received")).toBe(false);
+    expect(pauseSequencesOnResponse).not.toHaveBeenCalled();
   });
 
   it("a STOP from a number matching NO lead is recorded, so a later reply can see it", async () => {

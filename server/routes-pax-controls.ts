@@ -23,8 +23,12 @@
  *                     truth either way, so a member who resumes while a
  *                     teammate still holds a pause sees "Paused", not a lie.
  *   PATCH /controls   { stance?, leadScoring?, borrowerReminders?,
- *                     inboxDrafts? } — zod .strict(): any other key, or a
- *                     stance outside OFFERED_STANCES, is 422. Cannot touch
+ *                     inboxDrafts?, rails?: { records?: {<domain>: level},
+ *                     sends?: watch|draft|ask } } — zod .strict(): any other
+ *                     key, a stance outside OFFERED_STANCES, an unknown rail
+ *                     domain/level, or a sends rail above ask, is 422. A
+ *                     PATCH that omits `rails` keeps the stored ones; one that
+ *                     names some keeps the rest (PX-2). Cannot touch
  *                     pausedUntil (the pause has its own two routes above;
  *                     routes-autonomy.ts's shallow-merge clobber is gone
  *                     with that file). Owner / admin only.
@@ -65,7 +69,13 @@ import {
   type Organization,
 } from "@shared/schema";
 import { isLiveWorkflowTriggerEvent } from "@shared/workflow-live-triggers";
-import { OFFERED_STANCES, type PaxControls } from "@shared/pax-controls";
+import {
+  OFFERED_STANCES,
+  PAX_RAIL_LEVELS,
+  PAX_SENDS_RAIL_LEVELS,
+  type PaxControls,
+  type PaxSendsRailLevel,
+} from "@shared/pax-controls";
 import { PAX_LABELS, PAX_PAUSE_COPY } from "@shared/pax-glossary";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganization, getOrganizationId, getUserId } from "./types/request";
@@ -368,6 +378,8 @@ async function buildControls(
       borrowerReminders: state.borrowerReminders,
       inboxDrafts: state.inboxDrafts,
     },
+    // PX-2: the per-capability rails (always complete — a pre-PX-2 row reads as today's defaults).
+    rails: { records: { ...state.rails.records }, sends: state.rails.sends },
     rightNow: { waiting, changedTodayOnItsOwn, rulesRunning },
     runsOnItsOwn,
     // Convenience for the page: the glossary lines, printed in the ORG zone.
@@ -596,12 +608,43 @@ router.post("/resume", async (req: AuthenticatedRequest, res: Response) => {
  * `pausedUntil`, a `level`, a `pax: {…}` — anything the model does not
  * offer — is 422, and a stance outside OFFERED_STANCES is 422.
  */
+const railLevelSchema = z.enum(PAX_RAIL_LEVELS);
+
+/**
+ * The sends rail is capped at ask: `act_and_report` is a 422 here (and is
+ * unrepresentable in PaxSendsRailLevel). The refinement reads the same
+ * PAX_SENDS_RAIL_LEVELS list the page offers, so the two cannot disagree.
+ */
+const sendsRailLevelSchema = railLevelSchema.refine(
+  (l): l is PaxSendsRailLevel => PAX_SENDS_RAIL_LEVELS.some((allowed) => allowed === l),
+  { message: "Sends cannot go past ask" },
+);
+
+/** A PATCH names only the rails it changes; an unknown domain is 422 (.strict). */
+const railsPatchSchema = z
+  .object({
+    records: z
+      .object({
+        leads: railLevelSchema.optional(),
+        properties: railLevelSchema.optional(),
+        deals: railLevelSchema.optional(),
+        tasks: railLevelSchema.optional(),
+        follow_ups: railLevelSchema.optional(),
+        account: railLevelSchema.optional(),
+      })
+      .strict()
+      .optional(),
+    sends: sendsRailLevelSchema.optional(),
+  })
+  .strict();
+
 const controlsPatchSchema = z
   .object({
     stance: z.enum(OFFERED_STANCES).optional(),
     leadScoring: z.boolean().optional(),
     borrowerReminders: z.boolean().optional(),
     inboxDrafts: z.boolean().optional(),
+    rails: railsPatchSchema.optional(),
   })
   .strict();
 
@@ -612,6 +655,21 @@ const storedControlsSchema = z
     leadScoring: z.boolean(),
     borrowerReminders: z.boolean(),
     inboxDrafts: z.boolean(),
+    rails: z
+      .object({
+        records: z
+          .object({
+            leads: railLevelSchema,
+            properties: railLevelSchema,
+            deals: railLevelSchema,
+            tasks: railLevelSchema,
+            follow_ups: railLevelSchema,
+            account: railLevelSchema,
+          })
+          .strict(),
+        sends: sendsRailLevelSchema,
+      })
+      .strict(),
   })
   .strict();
 
@@ -636,8 +694,16 @@ router.patch("/controls", async (req: AuthenticatedRequest, res: Response) => {
       leadScoring: current.leadScoring,
       borrowerReminders: current.borrowerReminders,
       inboxDrafts: current.inboxDrafts,
+      rails: { records: { ...current.rails.records }, sends: current.rails.sends },
     };
-    const next = storedControlsSchema.safeParse({ ...before, ...parsed.data });
+    // A PATCH that omits `rails` keeps the stored ones; one that names some
+    // keeps the rest (the same field-by-field merge the switches get).
+    const { rails: railsPatch, ...scalarPatch } = parsed.data;
+    const mergedRails = {
+      records: { ...before.rails.records, ...(railsPatch?.records ?? {}) },
+      sends: railsPatch?.sends ?? before.rails.sends,
+    };
+    const next = storedControlsSchema.safeParse({ ...before, ...scalarPatch, rails: mergedRails });
     if (!next.success) return Errors.validationFailed(res, next.error.issues);
 
     await db
