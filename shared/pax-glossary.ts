@@ -236,6 +236,62 @@ export const PAX_GROUP_COPY = {
 } as const;
 
 /**
+ * Per-capability rails (PX-2, register P-1; founder ruling 2026-11-10 §6.5 Q4:
+ * a refinement INSIDE the existing stance, never a new stance). Keys of
+ * `levels` ARE the stored rail levels and keys of `domains` ARE the stored
+ * record domains — shared/pax-controls.ts derives its label maps from here
+ * and its types force one entry per level / domain.
+ */
+export const PAX_RAIL_COPY = {
+  title: "What Pax may do on each kind of record",
+  intro:
+    "Your stance above still decides first. These rails can only make Pax more careful for one kind of record — never less careful than your stance.",
+  levels: {
+    watch: {
+      label: "Watch",
+      sentence: "Pax looks but does not change anything.",
+    },
+    draft: {
+      label: "Draft",
+      sentence: "Pax prepares the change and holds it for you. Nothing is written until you tap.",
+    },
+    ask: {
+      label: "Ask",
+      sentence: "Pax proposes each change and waits for your tap.",
+    },
+    act_and_report: {
+      label: "Act and report",
+      sentence: "Pax makes the change and leaves a receipt.",
+    },
+  },
+  domains: {
+    leads: { label: "Leads" },
+    properties: { label: "Properties" },
+    deals: { label: "Deals" },
+    tasks: { label: "Tasks" },
+    follow_ups: { label: "Follow-ups" },
+    account: { label: "Account fixes" },
+  },
+  sendsLabel: "Sends to people",
+  sendsCeiling: "Sends never go past Ask. Pax never sends what it wrote without your tap.",
+  alwaysOnLabel: "Looks & drafts",
+  alwaysOnLine: "Always on — never gated, and it keeps working while paused.",
+  runsRulesLabel: "Runs your rules",
+  runsRulesLine: "Not a rail. Each rule keeps its own switch, listed under what runs on its own below.",
+  /** Toast after a rail changes: "Leads — Ask". */
+  changed(areaLabel: string, levelLabel: string): string {
+    return `${areaLabel} — ${levelLabel}`;
+  },
+  /** The refusal when a rail is on Watch (same shape as the pause refusal). */
+  watchRefusal(areaLabel: string): string {
+    return (
+      `Pax is set to Watch for ${areaLabel.toLowerCase()}, so this wasn't done. ` +
+      `Change it under ${PAX_CONTROLS_LABEL}. Looking, drafting and anything you approve still work.`
+    );
+  },
+} as const;
+
+/**
  * The fixed Never list — facts, each with the gate that makes it a fact
  * (spec §2). A line is listed ONLY while its gate exists; the pricing line
  * ("change what you pay AcreOS") is appended by wave 1 A together with
