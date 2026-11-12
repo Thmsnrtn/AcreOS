@@ -12,7 +12,7 @@
  *   DELETE /api/contractors/:id                          — delete
  *   POST   /api/contractors/:id/payments                 — record payment
  *   GET    /api/contractors/:id/payments?taxYear=        — list payments
- *   GET    /api/contractors/1099-nec-batch?taxYear=YYYY  — preview batch
+ *   GET    /api/contractors/1099-nec-batch?taxYear=YYYY  — preview batch (gated like generation, Tap #10)
  *   POST   /api/contractors/1099-nec-batch?taxYear=YYYY  — generate PDFs
  */
 
@@ -132,8 +132,13 @@ export function registerContractorRoutes(app: Express): void {
   // 1099-NEC batch routes — registered BEFORE /api/contractors/:id so the
   // literal path wins; the :id matcher was capturing "1099-nec-batch" and
   // 404ing the whole 1099 surface (2026-07-11 full-app sweep).
-  // 1099-NEC batch preview — list contractors over $600 for the year.
-  app.get("/api/contractors/1099-nec-batch", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+  // 1099-NEC batch preview — list contractors over the reporting threshold
+  // for the year. Gated by the same refusal discipline as generation
+  // (founder decision 2026-11-10, Tap #10): the preview applies the
+  // unconfirmed threshold and names who is over it, so it is withheld until
+  // the NEC determination exists — the gate runs in the same position as on
+  // the POST route, before the handler computes anything.
+  app.get("/api/contractors/1099-nec-batch", isAuthenticated, getOrCreateOrg, requireQualified1099Output("1099-NEC"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const orgId = getOrganizationId(req);
       const parsedYear = parseInt(String(req.query.taxYear ?? clock.now().getFullYear()), 10);

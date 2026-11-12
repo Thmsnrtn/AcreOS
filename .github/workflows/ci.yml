@@ -9,10 +9,60 @@ on:
   # production ships only a SHA this workflow passed on.
   workflow_call:
 
+# CI efficiency package (2026-11-11): a superseded head's run cancels itself
+# instead of occupying the account's concurrent-job slots behind the new
+# head. The group is keyed by ref (a PR's ref is stable across its pushes).
+# workflow_call runs (the deploy gate) get a per-run group: a called gate
+# must never be cancelled by, or cancel, an unrelated run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'workflow_call' && github.run_id || github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  # ── 0. Change scope ───────────────────────────────────────────────────────
+  # Docs-only pull requests skip the heavy jobs below: a PR that touches
+  # nothing but markdown / docs cannot change what the suites measure, and
+  # the skipped checks report as SKIPPED (a by-design skip in settlement
+  # counting), never as absent. Only pull_request events can be docs-only —
+  # pushes to main and the deploy gate's workflow_call always run
+  # everything, and any doubt (no diff, odd event) resolves to a FULL run.
+  changes:
+    name: Change scope
+    runs-on: ubuntu-latest
+    outputs:
+      docs_only: ${{ steps.scope.outputs.docs_only }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Classify the change set
+        id: scope
+        run: |
+          echo "docs_only=false" >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "event=${{ github.event_name }} — full run"
+            exit 0
+          fi
+          files=$(git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}" || true)
+          if [ -z "$files" ]; then
+            echo "no diff available — full run"
+            exit 0
+          fi
+          echo "changed files:"
+          echo "$files"
+          nondocs=$(echo "$files" | grep -vE '\.(md|mdx)$' | grep -vE '^docs/' || true)
+          if [ -z "$nondocs" ]; then
+            echo "docs_only=true" >> "$GITHUB_OUTPUT"
+            echo "docs-only change set — heavy jobs will skip"
+          else
+            echo "non-docs files present — full run"
+          fi
+
   # ── 1. Lint & Type-check ────────────────────────────────────────────────────
   lint-and-typecheck:
     name: Lint & Type Check
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -73,30 +123,12 @@ jobs:
       - name: Sitemap freshness check
         run: node scripts/generate-sitemap.mjs --check
 
-      # Blocking test gate — the SAME `npx vitest run` the deploy gate
-      # (deploy.yml) runs. This is the line that decides whether CI is green:
-      # if the 6349-test suite passes, CI passes. Kept plain (no --coverage)
-      # so CI and deploy can never disagree on the test signal.
-      - name: Run tests (blocking — matches deploy gate)
-        run: npx vitest run
-        env:
-          CI: true
-
-      # Coverage is a BLOCKING RATCHET (2026-07-07). The old `lines: 50`
-      # threshold was aspirational (measured global coverage: 18.22%) so this
-      # step was permanently red behind continue-on-error — zero signal. The
-      # thresholds in vitest.config.ts now sit just UNDER measured coverage:
-      # a global floor plus per-file floors on the money/send/compliance
-      # paths (creditPool, webhookHandlers, dunning, smsService,
-      # directMailService, publicParcelReport). Green today; a red here means
-      # a change dropped coverage on code that moves money or sends messages.
-      # Raise floors as real coverage rises — never lower them.
-      - name: Coverage ratchet (blocking)
-        run: npm run test:coverage
-        env:
-          NODE_OPTIONS: --max-old-space-size=6144
-          CI: true
-
+      # The two test executions that used to run serially at the end of this
+      # job — the plain blocking suite and the coverage ratchet — are now the
+      # parallel `tests` and `coverage` jobs below (CI efficiency package,
+      # 2026-11-11). Measured 2026-11-11, this job ran 60–84 min with those
+      # two steps as ~45–70 of it; the gates themselves are unchanged, only
+      # their placement: same commands, same env, same thresholds.
       - name: Build
         run: npm run build
         env:
@@ -130,11 +162,82 @@ jobs:
   # duplicate compute when green, zero signal when red. Coverage owner:
   # .github/workflows/security.yml.
 
+  # ── 2. Blocking test suite, sharded ───────────────────────────────────────
+  # The SAME plain `npx vitest run` the deploy gate runs — kept plain (no
+  # --coverage) so CI and deploy can never disagree on the test signal —
+  # partitioned by test file across three runners via vitest's --shard.
+  # The union of the three shards is the full suite; nothing is dropped.
+  # This workflow provisions no database (unchanged): the real-database
+  # suites skip here by design and are owned, with a real DB, by test.yml.
+  tests:
+    name: Run tests (shard ${{ matrix.shard }}/3)
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests (blocking — matches deploy gate)
+        run: npx vitest run --shard=${{ matrix.shard }}/3
+        env:
+          CI: true
+
+  # ── 3. Coverage ratchet ───────────────────────────────────────────────────
+  # Coverage is a BLOCKING RATCHET (2026-07-07). The old `lines: 50`
+  # threshold was aspirational (measured global coverage: 18.22%) so this
+  # step was permanently red behind continue-on-error — zero signal. The
+  # thresholds in vitest.config.ts now sit just UNDER measured coverage:
+  # a global floor plus per-file floors on the money/send/compliance
+  # paths (creditPool, webhookHandlers, dunning, smsService,
+  # directMailService, publicParcelReport). Green today; a red here means
+  # a change dropped coverage on code that moves money or sends messages.
+  # Raise floors as real coverage rises — never lower them.
+  #
+  # The ratchet still runs WHOLE over the full suite (it is a global
+  # measurement — sharding it would change what it measures). It moved to
+  # its own job so it runs in parallel with, not behind, the lint job.
+  coverage:
+    name: Coverage ratchet (blocking)
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Coverage ratchet (blocking)
+        run: npm run test:coverage
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+          CI: true
+
   # ── 6. Build & Container Image ──────────────────────────────────────────────
   build:
     name: Build
     runs-on: ubuntu-latest
-    needs: [lint-and-typecheck]
+    needs: [changes, lint-and-typecheck, tests, coverage]
+    if: needs.changes.outputs.docs_only != 'true'
 
     steps:
       - uses: actions/checkout@v7

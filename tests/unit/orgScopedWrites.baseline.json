@@ -48,7 +48,6 @@
   "server/services/apiQueue.ts::delete::apiJobs": 2,
   "server/services/apiQueue.ts::update::apiJobs": 1,
   "server/services/atlasMemory.ts::update::agentMemory": 1,
-  "server/services/atrSafeHarbor.ts::update::notes": 1,
   "server/services/autonomousAgentEngine.ts::update::vaAgents": 3,
   "server/services/autonomousDecisionExecutor.ts::update::decisionsInboxItems": 20,
   "server/services/autonomousDecisionExecutor.ts::update::featureRequests": 1,
