@@ -746,6 +746,8 @@ const DEBT: Record<string, ProposedSurface> = {
   // server/routes-pax-controls.ts
   "server/routes-pax-controls.ts route:GET /controls": "review",
   "server/routes-pax-controls.ts route:PATCH /controls": "review",
+  "server/routes-pax-controls.ts route:PATCH /controls/my-override": "review",
+  "server/routes-pax-controls.ts route:POST /controls/reset-rails": "review",
   "server/routes-pax-controls.ts route:POST /pause": "review",
   "server/routes-pax-controls.ts route:POST /resume": "review",
   // server/routes-pax-insights.ts
@@ -820,7 +822,10 @@ const DEBT: Record<string, ProposedSurface> = {
 /** DEBT may only shrink. Lower this in the same commit that removes an entry. */
 // 214 → 212 (2026-11-06, W2-TEAM): GET /api/analytics/team-kpi and
 // GET /api/analytics/team-leaderboard deleted — no client caller.
-const DEBT_BASELINE = 212;
+// 212 → 214 (2026-11-12, PX-3): two NEW routes honestly registered as DEBT —
+// PATCH /controls/my-override and POST /controls/reset-rails. This is the
+// census's growth path for new surface, not a rise to excuse existing debt.
+const DEBT_BASELINE = 214;
 
 /**
  * Every file holding a dispatch switch (≥10 snake_case case labels, raw count)

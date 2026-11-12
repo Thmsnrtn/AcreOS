@@ -42,11 +42,15 @@ import {
   OFFERED_STANCES,
   PAX_CONTROLS_DEFAULTS,
   PAX_RAIL_LEVELS,
+  PAX_LIMIT_KEYS,
   PAX_RECORD_DOMAINS,
   STANCE_RULINGS,
   clampSendsLevel,
+  defaultPaxLimits,
   defaultPaxRails,
   type PaxControls,
+  type PaxLimits,
+  type PaxMemberOverride,
   type PaxRails,
   type PaxStance,
 } from "@shared/pax-controls";
@@ -79,12 +83,19 @@ function closedRails(): PaxRails {
   return { records, sends: "watch" };
 }
 
+/** Every cap at 0 — the closed state allows nothing (checkFailed already refuses all). */
+function closedLimits(): PaxLimits {
+  return { asksPerDay: 0, creditSpendPerDay: 0, browseCallsPerDay: 0, batchRowsPerDay: 0 };
+}
+
 const CLOSED: Readonly<PaxControls> = {
   stance: FAIL_CLOSED_STANCE,
   leadScoring: false,
   borrowerReminders: false,
   inboxDrafts: false,
   rails: closedRails(),
+  limits: closedLimits(),
+  members: {},
 };
 
 /** The org's `timezone` column default (shared/schema.ts). */
@@ -123,6 +134,33 @@ const storedRailsSchema = z
   })
   .strict();
 
+/**
+ * PX-3. A stored cap is a whole number ≥ 0 or null (= no cap). A negative, a
+ * fractional or a non-number value is a PARSE FAILURE (fail closed), never a
+ * silently-coerced cap. Keys are optional so a member's limits may name only
+ * the caps they narrow; an unknown key is a parse failure (.strict).
+ */
+const storedLimitValue = z.number().int().min(0).nullable();
+const storedLimitsSchema = z
+  .object({
+    asksPerDay: storedLimitValue.optional(),
+    creditSpendPerDay: storedLimitValue.optional(),
+    browseCallsPerDay: storedLimitValue.optional(),
+    batchRowsPerDay: storedLimitValue.optional(),
+  })
+  .strict();
+
+/** One member's override: rails validated exactly like the org's, limits like the org's. */
+const storedMemberOverrideSchema = z
+  .object({
+    rails: storedRailsSchema.optional(),
+    limits: storedLimitsSchema.optional(),
+  })
+  .strict();
+
+/** userId → override. Not an object (an array, a string) or any bad value → parse failure. */
+const storedMembersSchema = z.record(z.string().min(1), storedMemberOverrideSchema);
+
 const storedPaxControls = z
   .object({
     stance: z.enum(OFFERED_STANCES),
@@ -130,8 +168,53 @@ const storedPaxControls = z
     borrowerReminders: z.boolean(),
     inboxDrafts: z.boolean(),
     rails: storedRailsSchema.optional(),
+    limits: storedLimitsSchema.optional(),
+    members: storedMembersSchema.optional(),
   })
   .strict();
+
+/** The stored `limits` (or its absence) → a complete PaxLimits; a missing key is no cap. */
+function resolveStoredLimits(stored: z.infer<typeof storedLimitsSchema> | undefined): PaxLimits {
+  const limits = defaultPaxLimits();
+  for (const k of PAX_LIMIT_KEYS) limits[k] = stored?.[k] ?? null;
+  return limits;
+}
+
+/**
+ * The stored `members` (or its absence) → userId → override, keeping only what
+ * was stored (an override is partial by nature). Sends are clamped to the
+ * ceiling exactly like resolveStoredRails. Built with fromEntries so a
+ * `__proto__` key becomes an own property, never a prototype.
+ */
+function resolveStoredMembers(
+  stored: z.infer<typeof storedMembersSchema> | undefined,
+): Readonly<Record<string, PaxMemberOverride>> {
+  if (!stored) return {};
+  return Object.fromEntries(
+    Object.entries(stored).map(([userId, o]): [string, PaxMemberOverride] => {
+      const out: PaxMemberOverride = {};
+      if (o.rails) {
+        const records: NonNullable<NonNullable<PaxMemberOverride["rails"]>["records"]> = {};
+        for (const d of PAX_RECORD_DOMAINS) {
+          const level = o.rails.records?.[d];
+          if (level !== undefined) records[d] = level;
+        }
+        out.rails = {};
+        if (o.rails.records) out.rails.records = records;
+        if (o.rails.sends !== undefined) out.rails.sends = clampSendsLevel(o.rails.sends);
+      }
+      if (o.limits) {
+        const limits: Partial<PaxLimits> = {};
+        for (const k of PAX_LIMIT_KEYS) {
+          const v = o.limits[k];
+          if (v !== undefined) limits[k] = v;
+        }
+        out.limits = limits;
+      }
+      return [userId, out];
+    }),
+  );
+}
 
 /** The stored `rails` (or its absence) → a complete PaxRails, sends clamped to the ceiling. */
 function resolveStoredRails(stored: z.infer<typeof storedRailsSchema> | undefined): PaxRails {
@@ -176,11 +259,19 @@ export async function getPaxControls(orgId: number): Promise<PaxControlsState> {
     } else {
       if (row.timezone) timezone = row.timezone;
       if (row.paxControls == null) {
-        controls = { ...PAX_CONTROLS_DEFAULTS, rails: defaultPaxRails() };
+        controls = { ...PAX_CONTROLS_DEFAULTS, rails: defaultPaxRails(), limits: defaultPaxLimits(), members: {} };
       } else {
         const parsed = storedPaxControls.safeParse(row.paxControls);
         if (parsed.success) {
-          controls = { ...parsed.data, rails: resolveStoredRails(parsed.data.rails) };
+          controls = {
+            stance: parsed.data.stance,
+            leadScoring: parsed.data.leadScoring,
+            borrowerReminders: parsed.data.borrowerReminders,
+            inboxDrafts: parsed.data.inboxDrafts,
+            rails: resolveStoredRails(parsed.data.rails),
+            limits: resolveStoredLimits(parsed.data.limits),
+            members: resolveStoredMembers(parsed.data.members),
+          };
         } else {
           // The one runtime moment a stance nobody offers is met. The line
           // names what IS offered and the ruling that bounds it, so whoever

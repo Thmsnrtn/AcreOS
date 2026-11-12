@@ -292,6 +292,74 @@ export const PAX_RAIL_COPY = {
 } as const;
 
 /**
+ * Daily limits, per-member narrowing and the rails reset (PX-3, register P-1).
+ * Keys of `labels` ARE the stored limit keys (shared/pax-controls.ts PaxLimits);
+ * keys of `refusals` / `deniedLine` are the limit kinds paxLimits.ts reports
+ * (asks, credits, browse, batchRows). Every refusal is whole sentences with a
+ * way forward — tests/unit/refusalsArePlainWords.test.ts judges each one
+ * through paxLimitRefusalMessage.
+ */
+export const PAX_LIMIT_COPY = {
+  title: "Daily limits",
+  intro:
+    "Cap how much Pax may do in one day. Leave a box blank for no limit. When Pax reaches a cap it stops and tells you; nothing is cut short halfway.",
+  resetNote: "Counts start again at midnight in your workspace's time zone.",
+  placeholder: "No limit",
+  labels: {
+    asksPerDay: "Asks Pax may put in front of you",
+    creditSpendPerDay: "Credits Pax's approved sends may cost",
+    browseCallsPerDay: "Web pages Pax may open",
+    batchRowsPerDay: "Records Pax may add in a batch",
+  },
+  save: "Save limits",
+  saved: "Daily limits saved",
+  adminHint: "Ask an owner to change the daily limits.",
+  /** The refusal each cap gives, by kind. Built by paxLimitRefusalMessage. */
+  refusals: {
+    asks:
+      "Pax has reached your daily limit for asks, so this wasn't done. Your count starts again at midnight, or you can raise the limit under " +
+      `${PAX_CONTROLS_LABEL}.`,
+    credits:
+      "This send would take Pax past your daily limit for credits, so it wasn't put in front of you. Your count starts again at midnight, or you can raise the limit under " +
+      `${PAX_CONTROLS_LABEL}.`,
+    browse:
+      "Pax has reached your daily limit for opening web pages, so the page wasn't opened. Your count starts again at midnight, or you can raise the limit under " +
+      `${PAX_CONTROLS_LABEL}.`,
+    batchRows:
+      "Adding these records would take Pax past your daily limit for batch additions, so none of them were added. Your count starts again at midnight, or you can raise the limit under " +
+      `${PAX_CONTROLS_LABEL}.`,
+  },
+  /** The receipt line for a stopped attempt, in the customer's words. */
+  deniedLine: {
+    asks: "Stopped at the daily limit for asks",
+    credits: "Stopped at the daily limit for credits",
+    browse: "Stopped at the daily limit for web pages",
+    batchRows: "Stopped at the daily limit for batch additions",
+  },
+  // Your own narrower settings
+  memberTitle: "Your own narrower settings",
+  memberIntro:
+    "Make Pax more careful when it acts for you. These can only narrow what the workspace allows — a choice that is wider than the workspace's has no effect.",
+  memberLimitNote: "A number above the workspace's limit has no effect; the smaller one always applies.",
+  memberApplies: "What applies to you right now",
+  memberNoLimit: "no limit",
+  memberSave: "Save my settings",
+  memberSaved: "Your narrower settings saved",
+  memberClear: "Clear my narrower settings",
+  memberCleared: "Your narrower settings cleared",
+  memberCouldNotSave: "Could not save your settings",
+  // Reset all rails
+  resetButton: "Reset all rails",
+  resetConfirm: "Tap again to reset",
+  resetCancel: "Keep my settings",
+  resetWhat:
+    "Resets every rail to its starting level, removes every daily limit, and clears everyone's own narrower settings.",
+  resetWhatNot: "Does not change your stance, the three switches, or a pause.",
+  resetDone: "Rails, limits and everyone's narrower settings reset",
+  couldNotReset: "Could not reset the rails",
+} as const;
+
+/**
  * The fixed Never list — facts, each with the gate that makes it a fact
  * (spec §2). A line is listed ONLY while its gate exists; the pricing line
  * ("change what you pay AcreOS") is appended by wave 1 A together with

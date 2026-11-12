@@ -36,6 +36,8 @@ import { getPaxControls, paxControlsRefusalMessage, type PaxControlsState } from
 // Per-capability rails (PX-2): the one decision both dispatch switches consult.
 import { decidePaxCall, paxRailWatchRefusalMessage } from "../services/paxRails";
 import { recordPaxEffect } from "../services/paxReceipts";
+// PX-3 (register P-1): daily limits, judged against the caller's EFFECTIVE controls.
+import { checkPaxLimit, paxLimitRefusalMessage, recordPaxLimitDenied } from "../services/paxLimits";
 // PX-1 (register P-4): browse receipts, per-turn `web:<host>` provenance and
 // the web-sourced row cap — browse is never a side channel around the licence gate.
 import {
@@ -44,7 +46,7 @@ import {
   recordBrowseReceipt,
   type WebFenceVerdict,
 } from "../services/webSourceFence";
-import type { PaxAskOrigin, PaxAskSourceRef } from "@shared/pax-controls";
+import { effectiveControlsForMember, type PaxAskOrigin, type PaxAskSourceRef } from "@shared/pax-controls";
 // The permission ladder, reachable without an Express request. `intentScopes`
 // is a TYPE-ONLY leaf so importing it here is not the cycle that importing
 // `appIntents/catalog` would be (catalog imports executeTool from this file).
@@ -1348,8 +1350,18 @@ export async function executeTool(
     // two cases the controls never gate: a pause-safe tool (looks and drafts
     // are never gated, never counted, and keep working while paused) and the
     // human-approved replay (a tap is the human acting, not Pax).
-    const controls: PaxControlsState | null =
+    //
+    // PX-3: the controls this call is judged by are the EFFECTIVE ones — the
+    // org's rails and limits narrowed by the calling member's own override
+    // (effectiveControlsForMember). An unidentified caller (a scheduled run,
+    // an inbound signal) acts under the org's own grant, unchanged. Every
+    // consumer of `controls` below (rails, limits, receipts' stance) sees this
+    // one narrowed state.
+    const orgControls: PaxControlsState | null =
       !pauseSafe && !trustedApproval ? await getPaxControls(org.id) : null;
+    const controls: PaxControlsState | null = orgControls
+      ? effectiveControlsForMember(orgControls, options?.userId)
+      : null;
 
     // A failed read is not a stance. When the controls could not be verified
     // NOTHING proceeds — not even as an ask, because an ask row minted under
@@ -1400,6 +1412,30 @@ export async function executeTool(
       railDecision?.kind === "ask" ||
       railDecision?.kind === "draft";
     if (requiresAsk && !trustedApproval) {
+      // PX-3 — daily limits, immediately before an ask is parked: the asks cap
+      // for any tool, plus the credit cap for a priced send (the quote Pax
+      // gives is the amount judged). A denial parks nothing and leaves a receipt.
+      if (controls) {
+        const askLimit = await checkPaxLimit({
+          orgId: org.id,
+          limits: controls.limits,
+          toolName,
+          args,
+          stage: "ask",
+          timezone: controls.timezone,
+        });
+        if (!askLimit.allowed) {
+          await recordPaxLimitDenied({
+            orgId: org.id,
+            toolName,
+            verdict: askLimit,
+            origin,
+            stance: controls.stance,
+            userId: options?.userId ?? null,
+          });
+          return { success: false, error: paxLimitRefusalMessage(askLimit.kind) };
+        }
+      }
       const pending = await proposePendingAction({
         organizationId: org.id,
         toolName,
@@ -2230,6 +2266,33 @@ export async function executeTool(
           return toolRefusal({ what: "No properties were created", why: "The request did not include any parcels", unlock: "Paste the APNs with their county and state, and I will add them" });
         }
 
+        // PX-3 — the daily batch-rows cap, judged BEFORE anything is created and
+        // BEFORE the web fence below: checkWebSourcedRows RESERVES turn rows when
+        // it allows, so a call this cap refuses must not have consumed them.
+        // Refused whole, never truncated. (No controls on a human-approved
+        // replay — a tap is the human acting.)
+        if (controls) {
+          const batchLimit = await checkPaxLimit({
+            orgId: org.id,
+            limits: controls.limits,
+            toolName,
+            args,
+            stage: "run",
+            timezone: controls.timezone,
+          });
+          if (!batchLimit.allowed) {
+            await recordPaxLimitDenied({
+              orgId: org.id,
+              toolName,
+              verdict: batchLimit,
+              origin,
+              stance: controls.stance,
+              userId: options?.userId ?? null,
+            });
+            return { success: false, error: paxLimitRefusalMessage(batchLimit.kind) };
+          }
+        }
+
         // PX-1 — the bulk fence. A batch made after a page was read this turn is
         // web-sourced: more than the cap is refused WHOLE (never truncated) unless
         // every source host is on the cleared list (empty by default).
@@ -2309,8 +2372,12 @@ export async function executeTool(
             results,
             successCount,
             failCount,
-            boundaryCount
-          } 
+            boundaryCount,
+            // The generic post-dispatch receipt records this as `after`, which is
+            // what the daily batch-rows cap counts (paxLimits.batchRowsSince) —
+            // one receipt, no second write.
+            after: { rowsCreated: successCount },
+          }
         };
       }
 
@@ -2892,6 +2959,37 @@ export async function executeTool(
             metadata: { orgId: org.id, reason: policy.reason },
           });
           return toolRefusal({ what: "The page was not opened", why: "That website is not on the list of sites I may visit", unlock: "Open it yourself in your browser, or ask about a public records site instead" });
+        }
+
+        // PX-3 — the daily web-pages cap. browse_web is pause-safe, so the
+        // dispatch read above skipped the controls; this is the one read the cap
+        // needs, judged on the caller's EFFECTIVE limits. Placed after the SSRF and
+        // domain checks (those refuse without a visit) and before the browser is
+        // touched, so a denied visit opens nothing and notes nothing in the turn.
+        if (!trustedApproval) {
+          const browseControls = effectiveControlsForMember(await getPaxControls(org.id), options?.userId);
+          if (browseControls.checkFailed) {
+            return { success: false, error: paxControlsRefusalMessage(browseControls) };
+          }
+          const browseLimit = await checkPaxLimit({
+            orgId: org.id,
+            limits: browseControls.limits,
+            toolName,
+            args,
+            stage: "run",
+            timezone: browseControls.timezone,
+          });
+          if (!browseLimit.allowed) {
+            await recordPaxLimitDenied({
+              orgId: org.id,
+              toolName,
+              verdict: browseLimit,
+              origin,
+              stance: browseControls.stance,
+              userId: options?.userId ?? null,
+            });
+            return { success: false, error: paxLimitRefusalMessage(browseLimit.kind) };
+          }
         }
 
         const browserAutomation = await import("../services/browserAutomation");

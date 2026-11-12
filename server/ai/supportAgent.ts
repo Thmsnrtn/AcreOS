@@ -30,7 +30,9 @@ import {
 import { userHasScope } from "../middleware/roleScope";
 import { proposePendingAction, pendingActionArtifact } from "../services/approvalKernel";
 import { recordPaxEffect } from "../services/paxReceipts";
-import { ALWAYS_ASK_SUPPORT_TOOLS } from "@shared/pax-controls";
+// PX-3 (register P-1): daily limits, judged against the caller's EFFECTIVE controls.
+import { checkPaxLimit, paxLimitRefusalMessage, recordPaxLimitDenied } from "../services/paxLimits";
+import { ALWAYS_ASK_SUPPORT_TOOLS, effectiveControlsForMember } from "@shared/pax-controls";
 import type { ExecuteToolOptions } from "./tools";
 import { getUserPermissionContext } from "../utils/permissions";
 import { toTeamMemberView, teamViewerSeesEmails, type ViewerRole } from "@shared/accountViews";
@@ -1465,8 +1467,15 @@ export async function executeSupportTool(
     // pause-safe tools (read-only lookups, drafts, the support system's own
     // bookkeeping, escalation to a human — pausing the machine must never
     // block reaching a person) and the human-approved replay.
-    const controls: PaxControlsState | null =
+    //
+    // PX-3: judged on the EFFECTIVE controls — the org's rails and limits
+    // narrowed by the calling member's own override, exactly as executeTool does
+    // (an unidentified caller acts under the org's own grant, unchanged).
+    const orgControls: PaxControlsState | null =
       !pauseSafe && !trustedApproval ? await getPaxControls(org.id) : null;
+    const controls: PaxControlsState | null = orgControls
+      ? effectiveControlsForMember(orgControls, options?.userId)
+      : null;
 
     // A failed read is not a stance: nothing proceeds, not even as an ask.
     if (controls?.checkFailed) {
@@ -1503,6 +1512,30 @@ export async function executeSupportTool(
       railDecision?.kind === "ask" ||
       railDecision?.kind === "draft";
     if (requiresAsk && !trustedApproval) {
+      // PX-3 — the daily asks cap, immediately before an ask is parked. Support
+      // fixes are not send-priced (sendPricing.paxSendCost names no support
+      // tool), so only the asks cap applies on this switch.
+      if (controls) {
+        const askLimit = await checkPaxLimit({
+          orgId: org.id,
+          limits: controls.limits,
+          toolName,
+          args,
+          stage: "ask",
+          timezone: controls.timezone,
+        });
+        if (!askLimit.allowed) {
+          await recordPaxLimitDenied({
+            orgId: org.id,
+            toolName,
+            verdict: askLimit,
+            origin,
+            stance: controls.stance,
+            userId: options?.userId ?? null,
+          });
+          return { success: false, error: paxLimitRefusalMessage(askLimit.kind) };
+        }
+      }
       const pending = await proposePendingAction({
         organizationId: org.id,
         toolName,

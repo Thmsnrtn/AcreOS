@@ -536,3 +536,134 @@ describe("source contracts (the deletions this page replaced)", () => {
     expect(PAX_FIXED_RULES.textHours).toBe("8 am–9 pm");
   });
 });
+
+// ── 8. Daily limits, own narrower settings, reset all rails (PX-3) ─────────
+
+describe("PX-3: limits card, member card, reset button — glossary copy only", () => {
+  const NO_CAPS = { asksPerDay: null, creditSpendPerDay: null, browseCallsPerDay: null, batchRowsPerDay: null };
+  const ORG_RAILS = {
+    records: { leads: "ask", properties: "act_and_report", deals: "act_and_report", tasks: "act_and_report", follow_ups: "act_and_report", account: "act_and_report" },
+    sends: "ask",
+  };
+  const px3 = (overrides: Record<string, unknown> = {}) =>
+    controls({
+      rails: ORG_RAILS,
+      limits: { ...NO_CAPS, asksPerDay: 10 },
+      members: {},
+      effective: { rails: { ...ORG_RAILS, records: { ...ORG_RAILS.records, leads: "draft" } }, limits: { ...NO_CAPS, asksPerDay: 4 } },
+      ...overrides,
+    });
+
+  it("renders the limits card with the glossary title, intro and one labelled input per cap", async () => {
+    const { PAX_LIMIT_COPY } = await import("../../shared/pax-glossary");
+    const { PAX_LIMIT_KEYS } = await import("../../shared/pax-controls");
+    serve(() => px3());
+    await mount();
+    const card = q('[data-testid="pax-limits-card"]');
+    expect(card, "limits card missing").not.toBeNull();
+    expect(card!.textContent).toContain(PAX_LIMIT_COPY.title);
+    expect(card!.textContent).toContain(PAX_LIMIT_COPY.intro);
+    expect(PAX_LIMIT_KEYS).toHaveLength(4);
+    for (const k of PAX_LIMIT_KEYS) {
+      const input = q(`[data-testid="limit-${k}"]`) as HTMLInputElement | null;
+      expect(input, `input for ${k}`).not.toBeNull();
+      expect(card!.textContent).toContain(PAX_LIMIT_COPY.labels[k]);
+      expect(container.querySelector(`label[for="limit-${k}"]`), `label for ${k}`).not.toBeNull();
+    }
+    // The stored cap is shown; an uncapped one is blank (placeholder "No limit").
+    expect((q('[data-testid="limit-asksPerDay"]') as HTMLInputElement).value).toBe("10");
+    expect((q('[data-testid="limit-browseCallsPerDay"]') as HTMLInputElement).value).toBe("");
+  });
+
+  it("a member sees the limits disabled with the admin hint", async () => {
+    const { PAX_LIMIT_COPY } = await import("../../shared/pax-glossary");
+    serve(() => px3({ canChangeStance: false }));
+    await mount();
+    expect((q('[data-testid="limit-asksPerDay"]') as HTMLInputElement).disabled).toBe(true);
+    expect(q('[data-testid="button-save-limits"]')).toBeNull();
+    expect(text('[data-testid="pax-limits-read-only"]')).toBe(PAX_LIMIT_COPY.adminHint);
+    expect(q('[data-testid="button-reset-rails"]'), "a member must not be offered the reset").toBeNull();
+  });
+
+  it("the member card offers no rail wider than the org's, and shows what applies from `effective`", async () => {
+    const { PAX_LIMIT_COPY } = await import("../../shared/pax-glossary");
+    serve(() => px3({ canChangeStance: false }));
+    await mount();
+    const card = q('[data-testid="pax-member-card"]');
+    expect(card, "member card missing").not.toBeNull();
+    expect(card!.textContent).toContain(PAX_LIMIT_COPY.memberTitle);
+    // Org leads rail = ask: watch, draft, ask are offered; act_and_report is not.
+    for (const l of ["watch", "draft", "ask"]) {
+      expect(q(`[data-testid="member-rail-leads-${l}"]`), `leads ${l}`).not.toBeNull();
+    }
+    expect(q('[data-testid="member-rail-leads-act_and_report"]'), "wider than the org").toBeNull();
+    // Sends stop at ask (the ceiling); the org's sends rail is ask.
+    expect(q('[data-testid="member-rail-sends-act_and_report"]')).toBeNull();
+    // Properties is act_and_report at the org: the member may pick any level.
+    expect(q('[data-testid="member-rail-properties-act_and_report"]')).not.toBeNull();
+    // What applies is the server's `effective` (4), not the org's 10.
+    expect(text('[data-testid="member-applies-asksPerDay"]')).toContain("4");
+    expect(text('[data-testid="member-applies-browseCallsPerDay"]')).toContain(PAX_LIMIT_COPY.memberNoLimit);
+    expect(text('[data-testid="pax-member-limit-note"]')).toBe(PAX_LIMIT_COPY.memberLimitNote);
+    expect(q('[data-testid="button-clear-my-override"]')!.textContent).toBe(PAX_LIMIT_COPY.memberClear);
+  });
+
+  it("Clear my narrower settings PATCHes only the caller's own override route with nulls", async () => {
+    const calls: Array<{ method: string; url: string; body?: unknown }> = [];
+    serve(
+      () => px3(),
+      (method, url, body) => {
+        if (url === "/api/pax/controls/my-override") {
+          calls.push({ method, url, body });
+          return json(px3());
+        }
+        return undefined;
+      },
+    );
+    await mount();
+    await click(q('[data-testid="button-clear-my-override"]'));
+    expect(calls).toEqual([{ method: "PATCH", url: "/api/pax/controls/my-override", body: { rails: null, limits: null } }]);
+  });
+
+  it("Reset all rails is two-step: the first tap asks, the second POSTs reset-rails; the copy says what resets and what does not", async () => {
+    const { PAX_LIMIT_COPY } = await import("../../shared/pax-glossary");
+    const posts: string[] = [];
+    serve(
+      () => px3(),
+      (method, url) => {
+        if (method === "POST" && url === "/api/pax/controls/reset-rails") {
+          posts.push(url);
+          return json(px3());
+        }
+        return undefined;
+      },
+    );
+    await mount();
+    const btn = q('[data-testid="button-reset-rails"]');
+    expect(btn!.textContent).toBe(PAX_LIMIT_COPY.resetButton);
+    expect(text('[data-testid="rail-reset"]')).toContain(PAX_LIMIT_COPY.resetWhat);
+    expect(text('[data-testid="rail-reset-keeps"]')).toBe(PAX_LIMIT_COPY.resetWhatNot);
+    await click(btn);
+    expect(posts, "one tap must not reset anything").toEqual([]);
+    expect(q('[data-testid="button-reset-rails"]')!.textContent).toBe(PAX_LIMIT_COPY.resetConfirm);
+    await click(q('[data-testid="button-reset-rails"]'));
+    expect(posts).toEqual(["/api/pax/controls/reset-rails"]);
+    expect(toasts.map((t) => t.title)).toContain(PAX_LIMIT_COPY.resetDone);
+  });
+
+  it("a response without limits (an older server) renders no PX-3 cards and does not crash", async () => {
+    serve(() => controls());
+    await mount();
+    expect(q('[data-testid="pax-limits-card"]')).toBeNull();
+    expect(q('[data-testid="pax-member-card"]')).toBeNull();
+  });
+
+  it("the page types none of the PX-3 copy inline (glossary only)", async () => {
+    const { PAX_LIMIT_COPY } = await import("../../shared/pax-glossary");
+    const page = read(PAGE_REL);
+    for (const s of [PAX_LIMIT_COPY.title, PAX_LIMIT_COPY.memberTitle, PAX_LIMIT_COPY.resetButton, PAX_LIMIT_COPY.memberClear, PAX_LIMIT_COPY.labels.asksPerDay]) {
+      expect(page, `"${s}" is typed inline`).not.toContain(`"${s}"`);
+      expect(page).not.toContain(`>${s}<`);
+    }
+  });
+});
