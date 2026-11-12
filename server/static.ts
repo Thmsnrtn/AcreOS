@@ -17,6 +17,16 @@ import { sendError } from "./utils/errors";
  * Verified by curl after deploy: `curl -sI -H 'Accept-Encoding: br' …`
  * should return `content-encoding: br` for /assets/*.js | .css.
  */
+/** Same non-immutable treatment for .html, /sw.js and /learn-content/*. */
+function setNoCacheHeaders(res: Response) {
+  res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
+}
+
+/** /learn-content/* files are unhashed, so they must never get the 1y immutable cache. */
+const isLearnContentPath = (urlPath: string) => /^\/learn-content\//.test(urlPath);
+
 function preCompressedAssets(distPath: string) {
   const CONTENT_TYPES: Record<string, string> = {
     ".js": "text/javascript; charset=utf-8",
@@ -61,6 +71,8 @@ function preCompressedAssets(distPath: string) {
         const isHashedAsset = /\/assets\//.test(requested);
         if (process.env.NODE_ENV === "production" && isHashedAsset) {
           res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+        } else if (isLearnContentPath(requested)) {
+          setNoCacheHeaders(res);
         }
         const stream = fs.createReadStream(cmpPath);
         stream.on("error", () => res.end());
@@ -142,8 +154,8 @@ export function resolveShellPath(): string | null {
   return fs.existsSync(indexPath) ? indexPath : null;
 }
 
-export function serveStatic(app: Express) {
-  const distPath = path.resolve(__dirname, "public");
+// `distPath` is overridable only so tests can mount the real middleware on a fixture dist.
+export function serveStatic(app: Express, distPath = path.resolve(__dirname, "public")) {
   if (!fs.existsSync(distPath)) {
     throw new Error(
       `Could not find the build directory: ${distPath}, make sure to build the client first`,
@@ -202,18 +214,18 @@ export function serveStatic(app: Express) {
     setHeaders: (res, filePath) => {
       // HTML files should never be cached — they reference hashed asset URLs
       if (filePath.endsWith(".html")) {
-        res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-        res.setHeader("Pragma", "no-cache");
-        res.setHeader("Expires", "0");
+        setNoCacheHeaders(res);
+      }
+      // Learn content is unhashed and refreshed in place — never immutable.
+      if (isLearnContentPath("/" + path.relative(distPath, filePath).split(path.sep).join("/"))) {
+        setNoCacheHeaders(res);
       }
       // Service worker file must NOT be cached as immutable. Browsers check
       // /sw.js on every page load to detect SW updates; a 1-year immutable
       // cache pins users to whatever SW they first installed and prevents
       // bug fixes from propagating. See PERFORMANCE-DIAGNOSTIC.md §4.
       if (filePath.endsWith("/sw.js") || filePath.endsWith("\\sw.js")) {
-        res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-        res.setHeader("Pragma", "no-cache");
-        res.setHeader("Expires", "0");
+        setNoCacheHeaders(res);
       }
     },
   }));

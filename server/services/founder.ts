@@ -24,12 +24,24 @@ const FOUNDER_EMAILS = [
 ];
 
 // Founder Clerk user IDs (comma-separated). Identity-stable across email changes.
-const FOUNDER_USER_IDS = new Set(
-  (process.env.FOUNDER_USER_IDS || "")
-    .split(",")
-    .map((id) => id.trim())
-    .filter(Boolean)
-);
+//
+// Resolved LAZILY per call — never frozen into a module-level Set at import.
+// A security-relevant identity check must not depend on which module happened
+// to import this file first or on when the env was populated relative to that
+// import (PR #529 D6: a frozen Set made the seller-finance gate's founder
+// release honour-or-refuse depend on test-file load order). The set is tiny
+// and this is not a hot path, so parse per call; behaviour when
+// FOUNDER_USER_IDS is set before process start (the production case) is
+// identical to the old frozen parse — same splitting, trimming and
+// empty-filtering.
+function founderUserIdSet(): Set<string> {
+  return new Set(
+    (process.env.FOUNDER_USER_IDS || "")
+      .split(",")
+      .map((id) => id.trim())
+      .filter(Boolean)
+  );
+}
 
 /**
  * Get all founder emails (for services that need to send to founders)
@@ -54,7 +66,7 @@ export function getPrimaryFounderEmail(): string | null {
  * because this runs on the alert-delivery hot path and must never block an alert.
  */
 export async function getFounderUserIds(): Promise<string[]> {
-  const ids = new Set<string>(FOUNDER_USER_IDS);
+  const ids = founderUserIdSet();
   try {
     const { db } = await import("../db");
     const { users } = await import("@shared/schema");
@@ -89,7 +101,7 @@ export function isFounderEmail(email: string | undefined | null): boolean {
  */
 export function isFounderUserId(userId: string | undefined | null): boolean {
   if (!userId) return false;
-  return FOUNDER_USER_IDS.has(userId);
+  return founderUserIdSet().has(userId);
 }
 
 /**
@@ -165,7 +177,7 @@ export async function resolveFounderOrganization(): Promise<FounderOrgResolution
     const { users, organizations } = await import("@shared/schema");
     const { inArray } = await import("drizzle-orm");
 
-    const founderIds = new Set<string>(FOUNDER_USER_IDS);
+    const founderIds = founderUserIdSet();
     if (FOUNDER_EMAILS.length > 0) {
       const rows = await db
         .select({ id: users.id, email: users.email })

@@ -260,8 +260,19 @@ const deprecatedPaymentRateLimiter = createRateLimiter({ maxRequests: 10, window
 const BORROWER_PORTAL_SUNSET_DATE =
   process.env.BORROWER_PORTAL_SUNSET_DATE || "2026-07-04";
 
-// Successor URI advertised in the Link header per RFC 8594 §3.
-const BORROWER_PORTAL_SUCCESSOR = "/portal/v2";
+// Successor URI advertised in the Link header per RFC 8594 §3, and named in the
+// 410 message below. It MUST be a page the client router actually declares:
+// "/portal" is the registered public landing for the session-based portal
+// (client/src/App.tsx), which tells a borrower to use the link in their payment
+// reminder email or ask their lender. This used to say "/portal/v2", a route
+// that has never existed (it only param-matched the token route, so a borrower
+// who followed it landed on a failed sign-in). Pinned by
+// tests/unit/borrowerPortalSunsetPointsAtARealPortal.test.ts.
+const BORROWER_PORTAL_SUCCESSOR = "/portal";
+
+/** The 410 body text. Built from the constant so the message and the Link header cannot drift apart. */
+const BORROWER_PORTAL_SUNSET_MESSAGE =
+  `This endpoint is no longer available. Use the link in your payment reminder email to open your borrower portal (${BORROWER_PORTAL_SUCCESSOR}), or contact your lender for a new link.`;
 
 function sunsetMiddleware(sunsetDateStr: string = BORROWER_PORTAL_SUNSET_DATE) {
   // Parse once at middleware-construction time. Date parsing of an
@@ -288,7 +299,7 @@ function sunsetMiddleware(sunsetDateStr: string = BORROWER_PORTAL_SUNSET_DATE) {
         res,
         410,
         "endpoint_sunset",
-        "This endpoint is no longer available. Please use the new portal at /portal/v2.",
+        BORROWER_PORTAL_SUNSET_MESSAGE,
         { sunsetDate: sunsetDate.toISOString() },
       );
     }

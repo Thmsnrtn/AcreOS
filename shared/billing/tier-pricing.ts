@@ -159,11 +159,11 @@ export const VERTICAL_PACKS: Record<VerticalPackKey, VerticalPack> = {
   note_investor: {
     key: "note_investor",
     displayName: "Note Investor",
-    tagline: "Amortization, payment ledger, 1098/1099-INT, portfolio dashboard",
+    tagline: "Amortization, payment ledger, 1098 reporting, portfolio dashboard",
     features: [
       "Amortization schedules",
       "Payment ledger",
-      "1098 / 1099-INT reporting",
+      "1098 reporting",
       "Portfolio dashboard",
     ],
     businessTypeId: "note_investor",

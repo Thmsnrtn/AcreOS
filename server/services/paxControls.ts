@@ -41,8 +41,13 @@ import { getPaxPauseState } from "./paxPause";
 import {
   OFFERED_STANCES,
   PAX_CONTROLS_DEFAULTS,
+  PAX_RAIL_LEVELS,
+  PAX_RECORD_DOMAINS,
   STANCE_RULINGS,
+  clampSendsLevel,
+  defaultPaxRails,
   type PaxControls,
+  type PaxRails,
   type PaxStance,
 } from "@shared/pax-controls";
 import { PAX_PAUSE_COPY } from "@shared/pax-glossary";
@@ -67,11 +72,19 @@ export interface PaxControlsState extends PaxControls {
 /** The stricter of the two offered stances — where every failure lands. */
 const FAIL_CLOSED_STANCE: PaxStance = "ask_before_everything";
 
+/** Every rail at its weakest — the closed state widens nothing. */
+function closedRails(): PaxRails {
+  const records = defaultPaxRails().records;
+  for (const d of PAX_RECORD_DOMAINS) records[d] = "watch";
+  return { records, sends: "watch" };
+}
+
 const CLOSED: Readonly<PaxControls> = {
   stance: FAIL_CLOSED_STANCE,
   leadScoring: false,
   borrowerReminders: false,
   inboxDrafts: false,
+  rails: closedRails(),
 };
 
 /** The org's `timezone` column default (shared/schema.ts). */
@@ -82,14 +95,53 @@ const FALLBACK_TIMEZONE = "America/New_York";
  * does not know about is a parse failure, not a silent passenger — the
  * autonomy matrix's inert fields are the precedent for passengers.
  */
+const storedRailLevel = z.enum(PAX_RAIL_LEVELS);
+
+/**
+ * PX-2. `rails` is OPTIONAL in the stored row — every org's row written before
+ * PX-2 has none and must keep parsing (reads as defaultPaxRails()). Inside it
+ * the keys are strict (an unknown domain is a parse failure → fail closed) but
+ * each domain is optional so a row written before a domain existed still
+ * parses. The stored `sends` level accepts the full level list ON PURPOSE: a
+ * hand-edited `act_and_report` there is clamped to `ask` by resolveStoredRails
+ * rather than failing the whole row (the PATCH route is what refuses it).
+ */
+const storedRailsSchema = z
+  .object({
+    records: z
+      .object({
+        leads: storedRailLevel.optional(),
+        properties: storedRailLevel.optional(),
+        deals: storedRailLevel.optional(),
+        tasks: storedRailLevel.optional(),
+        follow_ups: storedRailLevel.optional(),
+        account: storedRailLevel.optional(),
+      })
+      .strict()
+      .optional(),
+    sends: storedRailLevel.optional(),
+  })
+  .strict();
+
 const storedPaxControls = z
   .object({
     stance: z.enum(OFFERED_STANCES),
     leadScoring: z.boolean(),
     borrowerReminders: z.boolean(),
     inboxDrafts: z.boolean(),
+    rails: storedRailsSchema.optional(),
   })
   .strict();
+
+/** The stored `rails` (or its absence) → a complete PaxRails, sends clamped to the ceiling. */
+function resolveStoredRails(stored: z.infer<typeof storedRailsSchema> | undefined): PaxRails {
+  const rails = defaultPaxRails();
+  for (const d of PAX_RECORD_DOMAINS) {
+    rails.records[d] = stored?.records?.[d] ?? rails.records[d];
+  }
+  rails.sends = stored?.sends ? clampSendsLevel(stored.sends) : rails.sends;
+  return rails;
+}
 
 /** Log-safe rendering of a rejected value: bounded, never thrown. */
 function describeStored(value: unknown): string {
@@ -124,11 +176,11 @@ export async function getPaxControls(orgId: number): Promise<PaxControlsState> {
     } else {
       if (row.timezone) timezone = row.timezone;
       if (row.paxControls == null) {
-        controls = { ...PAX_CONTROLS_DEFAULTS };
+        controls = { ...PAX_CONTROLS_DEFAULTS, rails: defaultPaxRails() };
       } else {
         const parsed = storedPaxControls.safeParse(row.paxControls);
         if (parsed.success) {
-          controls = parsed.data;
+          controls = { ...parsed.data, rails: resolveStoredRails(parsed.data.rails) };
         } else {
           // The one runtime moment a stance nobody offers is met. The line
           // names what IS offered and the ruling that bounds it, so whoever

@@ -6,6 +6,7 @@ import { execSync } from "child_process";
 import { visualizer } from "rollup-plugin-visualizer";
 import viteCompression from "vite-plugin-compression";
 import type { Plugin } from "vite";
+import { buildLearnContentIndex } from "./scripts/learn-content-index.mjs";
 
 // Writes the client chunk graph Rollup actually produced — for every chunk:
 // its file, the source module it fronts (facade), the chunks it imports
@@ -102,6 +103,167 @@ function jspdfUnusedOptionalDepsPlugin(): Plugin {
   };
 }
 
+// zod v4's classic schemas carry a `.toJSONSchema()` method (and the
+// `~standard` jsonSchema factories), which drag core/to-json-schema.js —
+// the whole JSON Schema generator — into the client bundle. Nothing in
+// client/src, shared/ or packages/ calls toJSONSchema() in any form
+// (tests/unit/zodJsonSchemaStubbed.test.ts pins that), so the generator
+// resolves to a stub whose entry points throw if ever invoked: a future
+// caller fails loudly instead of quietly shipping the weight.
+//
+// json-schema-processors.js is deliberately NOT stubbed. classic/schemas.js
+// reads processors.aggregateChecks(inst) inside the DERIVED PUBLIC
+// ACCESSORS on live schema instances — ZodString.format / .minLength /
+// .maxLength, ZodNumber.minValue / .maxValue / .format — so stubbing that
+// module would break real schema API, not just JSON Schema generation.
+// Only the generator entry points go: the standalone z.toJSONSchema()
+// (which lives in the processors module) reaches processSchema in the
+// stubbed module and throws there, which is the same loud failure.
+//
+// The stub is matched two ways, because zod reaches the generator through
+// two specifier shapes: classic/schemas.js imports
+// "../core/to-json-schema.js" (the Set below), while core's own modules
+// (json-schema-processors.js, json-schema-generator.js, core/index.js)
+// import/re-export the sibling "./to-json-schema.js". The relative branch
+// resolves the specifier against the importer's directory and stubs only
+// when the resolved path is zod's v4 core generator itself. That is safe
+// for the processors module for the same reason: aggregateChecks — the
+// one processors export live code paths reach — only folds check metadata
+// from the schema def/bag and never calls the generator functions it
+// imports (initializeContext / processSchema / extractDefs / finalize /
+// handleUnrepresentable); those run solely inside the per-type processors
+// during an actual generation, which nothing performs.
+const ZOD_UNUSED_JSON_SCHEMA_MODULES = new Set(["core/to-json-schema.js"]);
+function zodJsonSchemaUnusedPlugin(): Plugin {
+  const STUB = "\0zod-unused-json-schema";
+  return {
+    name: "acreos-zod-json-schema-unused",
+    enforce: "pre",
+    resolveId(source, importer) {
+      if (!importer || !/node_modules[\\/]zod[\\/]/.test(importer)) return null;
+      const normalized = source.replace(/\\/g, "/");
+      for (const mod of ZOD_UNUSED_JSON_SCHEMA_MODULES) {
+        if (normalized.endsWith(mod)) return STUB;
+      }
+      if (normalized.startsWith(".")) {
+        const importerDir = importer.replace(/\\/g, "/").split("/").slice(0, -1).join("/");
+        const resolved = `${importerDir}/${normalized.replace(/^\.\//, "")}`;
+        if (resolved.endsWith("zod/v4/core/to-json-schema.js")) return STUB;
+      }
+      return null;
+    },
+    load(id) {
+      if (id !== STUB) return null;
+      return [
+        `const unavailable = () => { throw new Error("zod JSON Schema generation (toJSONSchema) is not bundled in AcreOS (vite.config.ts zodJsonSchemaUnusedPlugin)"); };`,
+        // The two factories are invoked when .toJSONSchema() is called and
+        // when a schema's "~standard" property is READ, so they must return
+        // the throwing function rather than throw themselves — reading
+        // "~standard" (e.g. a resolver checking ~standard.validate) keeps
+        // working; only generating a JSON Schema throws.
+        `export const createToJSONSchemaMethod = () => unavailable;`,
+        `export const createStandardJSONSchemaMethod = () => unavailable;`,
+        `export const initializeContext = unavailable;`,
+        `export const handleUnrepresentable = unavailable;`,
+        `export const processSchema = unavailable;`,
+        `export const process = unavailable;`,
+        `export const extractDefs = unavailable;`,
+        `export const finalize = unavailable;`,
+      ].join("\n");
+    },
+  };
+}
+
+// The /learn article bodies (content/learn/**/*.json, ~132 KB of prose)
+// are data, not code. Bundling them as JS modules (the old eager
+// import.meta.glob in client/src/pages/learn/registry.ts) put every byte
+// inside the bundle gate's summed total (scripts/check-bundle-size.js
+// counts every emitted .js file), so the corpus now ships as static JSON
+// the two article pages fetch on demand, and only a metadata index —
+// path keys, slugs, names, headline, and each body's URL — is generated
+// into the bundle as the virtual module below. The hub, the cross-links
+// and the not-found decision read the index synchronously, exactly as
+// they read the bundled registry before; the article body arrives by
+// fetch and renders the identical page. The enumeration lives in
+// scripts/learn-content-index.mjs (pinned by its .test.mjs); this plugin
+// is only the Vite wiring: it resolves the virtual module, copies each
+// body VERBATIM into dist/public/learn-content/ at build end (the
+// production static server serves it from there; fetch().json() yields
+// the same object the bundle used to carry), and serves the same URLs
+// from disk under the dev server so dev behaviour is unchanged.
+const LEARN_CONTENT_VIRTUAL_ID = "virtual:acreos-learn-content";
+function learnContentPlugin(): Plugin {
+  const RESOLVED = "\0" + LEARN_CONTENT_VIRTUAL_ID;
+  const rootDir = path.resolve(import.meta.dirname);
+  const contentDir = path.join(rootDir, "content", "learn");
+  let outDir = path.resolve(rootDir, "dist/public");
+  const readIndex = () => buildLearnContentIndex(contentDir);
+  return {
+    name: "acreos-learn-content",
+    resolveId(id) {
+      return id === LEARN_CONTENT_VIRTUAL_ID ? RESOLVED : null;
+    },
+    load(id) {
+      if (id !== RESOLVED) return null;
+      const { articles, counties } = readIndex();
+      for (const entry of [...articles, ...counties]) {
+        this.addWatchFile(path.join(rootDir, entry.sourcePath));
+      }
+      const publicArticles = articles.map((a) => ({
+        pathKey: a.pathKey,
+        vertical: a.vertical,
+        stateSlug: a.stateSlug,
+        stateName: a.stateName,
+        headline: a.headline,
+        url: a.url,
+      }));
+      const publicCounties = counties.map((c) => ({
+        pathKey: c.pathKey,
+        stateSlug: c.stateSlug,
+        stateName: c.stateName,
+        countySlug: c.countySlug,
+        countyName: c.countyName,
+        url: c.url,
+      }));
+      return [
+        `export const LEARN_ARTICLES = ${JSON.stringify(publicArticles)};`,
+        `export const LEARN_COUNTIES = ${JSON.stringify(publicCounties)};`,
+      ].join("\n");
+    },
+    configResolved(config) {
+      outDir = config.build.outDir;
+    },
+    configureServer(server) {
+      const { articles, counties } = readIndex();
+      const files = new Map(
+        [...articles, ...counties].map((entry) => [
+          entry.url,
+          path.join(rootDir, entry.sourcePath),
+        ]),
+      );
+      server.middlewares.use((req, res, next) => {
+        const file = files.get((req.url ?? "").split("?")[0]);
+        if (!file) return next();
+        res.setHeader("Content-Type", "application/json");
+        const stream = fs.createReadStream(file);
+        stream.on("error", () => {
+          res.statusCode = 404;
+          res.end();
+        });
+        stream.pipe(res);
+      });
+    },
+    closeBundle() {
+      const { articles, counties } = readIndex();
+      for (const entry of [...articles, ...counties]) {
+        const dest = path.join(outDir, entry.url.replace(/^\//, ""));
+        fs.mkdirSync(path.dirname(dest), { recursive: true });
+        fs.copyFileSync(path.join(rootDir, entry.sourcePath), dest);
+      }
+    },
+  };
+}
+
 // Phase 8 Mo 12 — Beatriz §3 bundle-analyzer.
 // Enabled when ANALYZE=1 (CI / one-off `npm run build:analyze`).
 // In normal builds the plugin is excluded so the prod bundle is unaffected.
@@ -134,6 +296,8 @@ export default defineConfig({
   plugins: [
     react(),
     jspdfUnusedOptionalDepsPlugin(),
+    zodJsonSchemaUnusedPlugin(),
+    learnContentPlugin(),
     chunkGraphPlugin(),
     // Pre-compress build output (gzip + brotli) so static-serve can deliver
     // already-compressed bytes. Sidesteps the HTTP/2 + `compression`

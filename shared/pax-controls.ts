@@ -29,6 +29,7 @@ import {
   PAX_CONTROLS_LABEL,
   PAX_CONTROLS_PATH,
   PAX_NEVER_LIST,
+  PAX_RAIL_COPY,
   PAX_STANCE_COPY,
 } from "./pax-glossary";
 
@@ -62,11 +63,126 @@ export const STANCE_LABELS: Readonly<Record<PaxStance, string>> = {
   ask_before_everything: PAX_STANCE_COPY.ask_before_everything.label,
 };
 
+// ── Per-capability rails (PX-2) ─────────────────────────────────────────────
+
+/**
+ * The rail levels, weakest → strongest. THE one place the level ids are named
+ * (founder ruling 2026-11-10 §6.5 Q4: rails refine the stance, they are not a
+ * new stance). The design doc calls the top level "act-with-approval"; the
+ * stored id is `act_and_report` — it runs the change and leaves a receipt,
+ * which is exactly what "Ask before sending" does for record changes today.
+ */
+export const PAX_RAIL_LEVELS = ["watch", "draft", "ask", "act_and_report"] as const;
+
+export type PaxRailLevel = (typeof PAX_RAIL_LEVELS)[number];
+
+/**
+ * The sends rail's level type: `act_and_report` is UNREPRESENTABLE. A send is
+ * never Pax acting on its own (founder decision 1, 2026-09-02) — the cap is in
+ * the type, and clampSendsLevel() repeats it at runtime for hand-edited jsonb.
+ */
+export type PaxSendsRailLevel = Exclude<PaxRailLevel, "act_and_report">;
+
+export const PAX_SENDS_RAIL_LEVELS: readonly PaxSendsRailLevel[] = PAX_RAIL_LEVELS.filter(
+  (l): l is PaxSendsRailLevel => l !== "act_and_report",
+);
+
+/** The most a sends rail may be. */
+export const PAX_SENDS_RAIL_CEILING: PaxSendsRailLevel = "ask";
+
+/** Strength of a level: its index in PAX_RAIL_LEVELS (watch 0 … act_and_report 3). */
+function railLevelRank(level: PaxRailLevel): number {
+  return PAX_RAIL_LEVELS.indexOf(level);
+}
+
+/** The weaker of two levels — how a rail composes with a stance cap. */
+export function weakerRailLevel(a: PaxRailLevel, b: PaxRailLevel): PaxRailLevel {
+  return railLevelRank(a) <= railLevelRank(b) ? a : b;
+}
+
+/**
+ * The record domains a record-changing tool belongs to. Every changes_records
+ * tool maps to exactly one (TOOL_REGISTRY below; the population test fails an
+ * unclassified one). `account` holds the support switch's system fixes
+ * (alerts, job state, data-integrity repairs) that touch none of the other
+ * five — see BUILD-NOTES PX-2 for why it exists.
+ */
+export const PAX_RECORD_DOMAINS = [
+  "leads",
+  "properties",
+  "deals",
+  "tasks",
+  "follow_ups",
+  "account",
+] as const;
+
+export type PaxRecordDomain = (typeof PAX_RECORD_DOMAINS)[number];
+
+export interface PaxRails {
+  /** One level per record domain. */
+  records: Record<PaxRecordDomain, PaxRailLevel>;
+  /** The sends group — capped at `ask` by type. */
+  sends: PaxSendsRailLevel;
+}
+
+/** Glossary-derived labels — the page renders these, never its own strings. */
+export const PAX_RAIL_LEVEL_LABELS: Readonly<Record<PaxRailLevel, string>> = {
+  watch: PAX_RAIL_COPY.levels.watch.label,
+  draft: PAX_RAIL_COPY.levels.draft.label,
+  ask: PAX_RAIL_COPY.levels.ask.label,
+  act_and_report: PAX_RAIL_COPY.levels.act_and_report.label,
+};
+
+export const PAX_RAIL_LEVEL_SENTENCES: Readonly<Record<PaxRailLevel, string>> = {
+  watch: PAX_RAIL_COPY.levels.watch.sentence,
+  draft: PAX_RAIL_COPY.levels.draft.sentence,
+  ask: PAX_RAIL_COPY.levels.ask.sentence,
+  act_and_report: PAX_RAIL_COPY.levels.act_and_report.sentence,
+};
+
+export const PAX_RECORD_DOMAIN_LABELS: Readonly<Record<PaxRecordDomain, string>> = {
+  leads: PAX_RAIL_COPY.domains.leads.label,
+  properties: PAX_RAIL_COPY.domains.properties.label,
+  deals: PAX_RAIL_COPY.domains.deals.label,
+  tasks: PAX_RAIL_COPY.domains.tasks.label,
+  follow_ups: PAX_RAIL_COPY.domains.follow_ups.label,
+  account: PAX_RAIL_COPY.domains.account.label,
+};
+
+/**
+ * What a missing `rails` key means — today's live behaviour. Under the default
+ * stance (ask_before_sending) record changes run and are receipted, which is
+ * `act_and_report` for every domain; sends always wait for a tap, which is
+ * `ask`. Fresh copy per call so no caller can mutate the shared default.
+ */
+export function defaultPaxRails(): PaxRails {
+  return {
+    records: {
+      leads: "act_and_report",
+      properties: "act_and_report",
+      deals: "act_and_report",
+      tasks: "act_and_report",
+      follow_ups: "act_and_report",
+      account: "act_and_report",
+    },
+    sends: "ask",
+  };
+}
+
+/** Defence in depth for hand-edited jsonb: a stored sends level above ask reads as ask. */
+export function clampSendsLevel(level: PaxRailLevel): PaxSendsRailLevel {
+  return railLevelRank(level) > railLevelRank(PAX_SENDS_RAIL_CEILING)
+    ? PAX_SENDS_RAIL_CEILING
+    : (level as PaxSendsRailLevel);
+}
+
 // ── The stored column ───────────────────────────────────────────────────────
 
 /**
  * `organizations.pax_controls` (jsonb, migration 0250). The three switches
- * are the org-level "runs on its own" toggles from spec §3a.3.
+ * are the org-level "runs on its own" toggles from spec §3a.3. `rails` (PX-2)
+ * is optional IN THE DATABASE — a row written before PX-2 has none and reads
+ * as the defaults — but always present on the object the reader returns.
  */
 export interface PaxControls {
   stance: PaxStance;
@@ -76,18 +192,22 @@ export interface PaxControls {
   borrowerReminders: boolean;
   /** Draft a reply when a message is opened (routes-ai-draft.ts). */
   inboxDrafts: boolean;
+  /** Per-capability rails — may only NARROW what the stance allows. */
+  rails: PaxRails;
 }
 
 /**
  * What a NULL column means. These EQUAL today's live behaviour — the deploy
  * that adds the column changes nothing silently (spec §4.1; founder
- * question 5).
+ * question 5). The rails are today's behaviour too (defaultPaxRails): record
+ * changes act-and-report, sends ask.
  */
 export const PAX_CONTROLS_DEFAULTS: Readonly<PaxControls> = {
   stance: DEFAULT_STANCE,
   leadScoring: true,
   borrowerReminders: true,
   inboxDrafts: true,
+  rails: defaultPaxRails(),
 };
 
 // ── Asks ("Waiting for your tap") ───────────────────────────────────────────
@@ -155,6 +275,8 @@ interface ToolEntry {
   dispatch: PaxToolDispatch;
   /** For refused tools: the Never line that explains the refusal. */
   neverLine?: NeverLineId;
+  /** For changes_records tools ONLY: the one record domain it belongs to (PX-2 rails). */
+  domain?: PaxRecordDomain;
 }
 
 /**
@@ -177,6 +299,14 @@ const tools = (
   group: PaxToolGroup,
   dispatch: PaxToolDispatch,
 ): Array<[string, ToolEntry]> => names.map((n) => [n, { group, dispatch }]);
+
+/** changes_records tools carry their domain — the only way to register one. */
+const recordTools = (
+  domain: PaxRecordDomain,
+  names: readonly string[],
+  dispatch: PaxToolDispatch,
+): Array<[string, ToolEntry]> =>
+  names.map((n) => [n, { group: "changes_records", dispatch, domain }]);
 
 /**
  * EVERY top-level case label of BOTH dispatch switches, plus the two names
@@ -242,26 +372,16 @@ const TOOL_REGISTRY: Readonly<Record<string, ToolEntry>> = Object.fromEntries([
     "looks_and_drafts",
     "executeTool",
   ),
-  ...tools(
-    [
-      "update_lead_status",
-      "create_lead",
-      "create_property",
-      "update_property",
-      "create_properties_batch",
-      "create_deal",
-      "update_deal",
-      "create_task",
-      "update_task",
-      "complete_task",
-      "generate_offer_letter",
-      "draft_offer",
-      "schedule_followup",
-      "schedule_follow_up",
-    ],
-    "changes_records",
+  // Record changes, each in exactly one domain (PX-2 rails).
+  ...recordTools("leads", ["update_lead_status", "create_lead"], "executeTool"),
+  ...recordTools("properties", ["create_property", "update_property", "create_properties_batch"], "executeTool"),
+  ...recordTools(
+    "deals",
+    ["create_deal", "update_deal", "generate_offer_letter", "draft_offer"],
     "executeTool",
   ),
+  ...recordTools("tasks", ["create_task", "update_task", "complete_task"], "executeTool"),
+  ...recordTools("follow_ups", ["schedule_followup", "schedule_follow_up"], "executeTool"),
   // APPROVAL_REQUIRED_TOOLS (server/services/approvalKernel.ts) — may only grow.
   ...tools(
     [
@@ -357,21 +477,20 @@ const TOOL_REGISTRY: Readonly<Record<string, ToolEntry>> = Object.fromEntries([
   // coordinates, job state). send_proactive_warning and
   // schedule_proactive_outreach write a system alert row — a record, not a
   // message to a counterparty.
-  ...tools(
+  ...recordTools("follow_ups", ["create_followup_task", "schedule_proactive_outreach"], "executeSupportTool"),
+  ...recordTools("properties", ["enrich_property_coordinates"], "executeSupportTool"),
+  ...recordTools(
+    "account",
     [
       "fix_common_issue",
-      "create_followup_task",
       "send_proactive_warning",
-      "schedule_proactive_outreach",
       "apply_bulk_fix",
       "fix_data_integrity_issue",
       "apply_self_healing_fix",
       "resolve_alert",
       "retry_failed_jobs",
       "unlock_stuck_jobs",
-      "enrich_property_coordinates",
     ],
-    "changes_records",
     "executeSupportTool",
   ),
   // Billing fixes — the spec's "Sends to people" row (§2).
@@ -386,6 +505,17 @@ export const PAX_TOOL_GROUPS: Readonly<Record<string, PaxToolGroup>> = Object.fr
 /** Group for a tool name, or null when the name is not a classified tool. */
 export function groupForTool(toolName: string): PaxToolGroup | null {
   return TOOL_REGISTRY[toolName]?.group ?? null;
+}
+
+/** tool → record domain, for changes_records tools only. */
+export const PAX_TOOL_DOMAINS: Readonly<Record<string, PaxRecordDomain>> = Object.fromEntries(
+  Object.entries(TOOL_REGISTRY).flatMap(([name, entry]) => (entry.domain ? [[name, entry.domain]] : [])),
+);
+
+/** Record domain for a tool name, or null when it is not a classified record change. */
+export function domainForTool(toolName: string): PaxRecordDomain | null {
+  const entry = TOOL_REGISTRY[toolName];
+  return entry?.group === "changes_records" ? (entry.domain ?? null) : null;
 }
 
 /** Which switch replays a tool name after a tap, or null when unknown. */

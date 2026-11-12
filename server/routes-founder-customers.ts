@@ -10,6 +10,9 @@
  *   - churnedLast30d     : how many cancelled in the last 30 days
  *   - topUtmSources      : where the last 90 days of signups came from,
  *                          counted by users.acquisitionUtm.utm_source
+ *   - paidBySource       : of the last 90 days of signups, the orgs that are
+ *                          paying NOW, grouped by utm_source + utm_campaign
+ *                          (runbook §5: cost per PAYING customer per campaign)
  *   - recentSignups      : last 20 user rows with their org + persona +
  *                          city/state (best-effort from organizations
  *                          .taxAddress) + UTM source
@@ -35,6 +38,8 @@ import type { AuthenticatedRequest } from "./types/request";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { clock } from "./utils/clock";
+import { monthlyRevenueCentsFor } from "@shared/billing/tier-pricing";
+import type { BillingInterval } from "@shared/billing/tier-pricing";
 
 const RECENT_SIGNUPS_LIMIT = 20;
 const TRIAL_WINDOW_DAYS = 14;
@@ -62,6 +67,70 @@ const ACTIVE_STATUSES = ["active", "trialing", "past_due"] as const;
  * real cancellation TIMESTAMP we persist, so we key the churn window on it.
  */
 // (SUBSCRIPTION_EVENT.cancel, shared/billing/subscriptionEventVocabulary.ts.)
+
+/** One owner-user/org pair as read for the paid-by-source split. */
+export type PaidConversionRow = {
+  organizationId: number;
+  tier: string | null;
+  status: string | null;
+  interval: string | null;
+  utm: { utm_source?: unknown; utm_campaign?: unknown } | null;
+};
+
+/**
+ * "Paying" — MIRRORS `liveMrrDetail()` in
+ * server/services/finance/runwayModel.ts (the single source the runway, MRR
+ * snapshot job, gate watcher and revenue agent all share; LQ-22): the org's
+ * subscription_status is exactly "active" (so `trialing`, `past_due`, free and
+ * cancelled are NOT paying) AND its monthly-equivalent price from
+ * `monthlyRevenueCentsFor` is positive. Deliberately NOT ACTIVE_STATUSES above,
+ * which includes trialing and would count trials as conversions.
+ * liveMrrDetail is a whole-table loop, not an importable predicate, so the
+ * semantics are mirrored here over the shared price helper.
+ * "Mirrors liveMrrDetail" is scoped to this PREDICATE only: the route query
+ * additionally excludes founder orgs (isFounder = false), per this endpoint's
+ * convention, which liveMrrDetail does not do here.
+ */
+export function isPayingOrg(r: Pick<PaidConversionRow, "tier" | "status" | "interval">): boolean {
+  if (r.status !== "active") return false;
+  return monthlyRevenueCentsFor(r.tier, (r.interval as BillingInterval) ?? "monthly") > 0;
+}
+
+function utmValue(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const t = v.trim();
+  return t === "" ? null : t;
+}
+
+/**
+ * Distinct paying orgs grouped by utm_source + utm_campaign. A missing source
+ * is "direct" (same convention as topUtmSources); a missing campaign is
+ * `null`. Nothing is dropped: a paid org with no UTM lands in
+ * {source:"direct", campaign:null}. An org counts once however many rows
+ * (users) point at it; first row wins its attribution.
+ */
+export function groupPaidBySource(
+  rows: PaidConversionRow[],
+): Array<{ source: string; campaign: string | null; paidOrgs: number }> {
+  const seen = new Set<number>();
+  const buckets = new Map<string, { source: string; campaign: string | null; paidOrgs: number }>();
+  for (const r of rows) {
+    if (!isPayingOrg(r) || seen.has(r.organizationId)) continue;
+    seen.add(r.organizationId);
+    const source = utmValue(r.utm?.utm_source) ?? "direct";
+    const campaign = utmValue(r.utm?.utm_campaign);
+    const key = JSON.stringify([source, campaign]);
+    const b = buckets.get(key);
+    if (b) b.paidOrgs++;
+    else buckets.set(key, { source, campaign, paidOrgs: 1 });
+  }
+  return [...buckets.values()].sort(
+    (a, b) =>
+      b.paidOrgs - a.paidOrgs ||
+      a.source.localeCompare(b.source) ||
+      (a.campaign ?? "").localeCompare(b.campaign ?? ""),
+  );
+}
 
 type TaxAddress = {
   city?: string;
@@ -166,6 +235,32 @@ export function registerFounderCustomersRoutes(app: Express) {
           count: r.count,
         }));
 
+        // ── Paid conversions by source + campaign (same 90d signup window) ─
+        // Owner-user → org (the file's acquisition join). Status/price
+        // filtering happens in isPayingOrg so it matches liveMrrDetail.
+        const paidCandidateRows = await db
+          .select({
+            organizationId: organizations.id,
+            tier: organizations.subscriptionTier,
+            status: organizations.subscriptionStatus,
+            interval: organizations.billingInterval,
+            utm: users.acquisitionUtm,
+          })
+          .from(users)
+          .innerJoin(organizations, eq(organizations.ownerId, users.id))
+          .where(
+            and(
+              isNotNull(users.createdAt),
+              gte(users.createdAt, utmCutoff),
+              eq(organizations.isFounder, false),
+            ),
+          );
+        // paidBySource is the CANONICAL paying definition (status exactly
+        // "active" + positive price). The pre-existing paidOrgCount field above
+        // uses a looser definition (ACTIVE_STATUSES, incl. trialing/past_due),
+        // so the two will not sum or reconcile.
+        const paidBySource = groupPaidBySource(paidCandidateRows as PaidConversionRow[]);
+
         // ── Recent signups (last 20, latest first) ────────────────────────
         // We join users → organizations via organizations.ownerId =
         // users.id. Org owner is the canonical "this person represents
@@ -216,6 +311,7 @@ export function registerFounderCustomersRoutes(app: Express) {
           trialOrgCount,
           churnedLast30d,
           topUtmSources,
+          paidBySource,
           recentSignups,
         });
       } catch (error) {

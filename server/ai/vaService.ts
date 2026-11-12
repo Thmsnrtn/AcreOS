@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { randomUUID } from "node:crypto";
 import { storage } from "../storage";
 import { validateLeadTransition } from "@shared/lifecycle/pipeline-status";
 import { toolDefinitions, executeTool, type ToolName } from "./tools";
@@ -692,6 +693,8 @@ ${USER_DATA_SYSTEM_CLAUSE}`;
     let assistantMessage = response.choices[0].message;
 
     let toolIterations = 0;
+    // One id per VA run (PX-1): links a browse to the records made after it.
+    const vaTurnId = randomUUID();
     while (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
       if (++toolIterations > MAX_TOOL_ITERATIONS) {
         logger.warn(`[va] Tool-calling loop exceeded ${MAX_TOOL_ITERATIONS} iterations — breaking`);
@@ -704,7 +707,7 @@ ${USER_DATA_SYSTEM_CLAUSE}`;
         if ('function' in toolCall) {
           const args = JSON.parse(toolCall.function.arguments);
           toolsUsed.push(toolCall.function.name);
-          const result = await executeTool(toolCall.function.name, args, org, { origin: "chat" });
+          const result = await executeTool(toolCall.function.name, args, org, { origin: "chat", turnId: vaTurnId });
 
           toolResults.push({
             role: "tool",

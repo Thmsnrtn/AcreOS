@@ -8,6 +8,7 @@ import { randomUUID } from 'node:crypto';
 import { classifyExisting, requestHash, type ClaimVerdict } from './actions/outwardAction';
 import type { OutwardActionStatus } from '@shared/schema';
 import { logger } from "../utils/logger";
+import { leadReplyToAddress } from "./leadReplyTo";
 
 export interface CommunicationOptions {
   leadId: number;
@@ -275,6 +276,8 @@ export class CommunicationsService {
             to: lead.email,
             subject: subjectOrRefusal.subject,
             html: `<p>${options.message}</p>`,
+            // Thread the reply back through the inbound seam (resolves to the lead).
+            replyTo: await leadReplyToAddress(options.leadId, options.organizationId),
             // Deal mail: must carry the org's own identity (this call previously
             // omitted organizationId entirely, so lead outreach silently went
             // out as platform @acreos.io — the exact leak the counterparty
