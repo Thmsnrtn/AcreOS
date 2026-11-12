@@ -66,7 +66,7 @@ export function UsageLimitBanner() {
   const topResource = (critical[0] || approaching[0]);
 
   // Lens 3 (Pricing Coherence): the banner quotes the same diff the 429 toast
-  // does — "Upgrade to Pro for 500 leads (vs. your 50 cap) at $49/mo" — so a
+  // does — "Upgrade to Pro for 500 leads (vs. your 50 cap) at $99/mo" — so a
   // user who clicks Upgrade isn't surprised by the upsell math.
   const nextTier = nextPaidTier(data.tier);
   const resourceKey = topResource.resource as ResourceType;

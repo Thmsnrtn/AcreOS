@@ -11,9 +11,9 @@
  * Canonical tier names (renamed 2026-05-11 to match the customer-facing
  * pricing page; old names retained as aliases for the
  * `organizations.subscription_tier` column so historical rows still resolve):
- *   - starter ($20 / mo, $200 / yr) — 1 investor, replaces the spreadsheet
- *   - pro     ($49 / mo, $490 / yr) — partnerships and small teams
- *   - scale   ($79 / mo, $790 / yr) — full-time multi-state operations
+ *   - starter ($49 / mo, $490 / yr) — 1 investor, replaces the spreadsheet
+ *   - pro     ($99 / mo, $990 / yr) — partnerships and small teams
+ *   - scale   ($199 / mo, $1,990 / yr) — full-time multi-state operations
  *
  * Legacy `organizations.subscription_tier` values that we still recognise:
  * "solo" (now starter), "operator" (now pro), "empire" (now scale). All

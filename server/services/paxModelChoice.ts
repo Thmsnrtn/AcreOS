@@ -22,7 +22,7 @@ export const PAX_MODEL_OPUS = MODELS.OPUS;
 
 export const MONTHLY_SOFT_CAP_PRO = 1000;
 // 2026-07-07 cost audit: was 500. At 500 Opus turns + 5,500 Sonnet turns the
-// Scale tier's worst-case platform-key AI COGS (~$90) exceeded its $79 price —
+// Scale tier's worst-case platform-key AI COGS (~$90) exceeded its $199 price —
 // underwater at full utilization (tier-limits.ts margin notes). 200 keeps a
 // real Opus window for the heavy-reasoning turns while capping the expensive
 // exposure; the task-type floor router (server/ai/paxModelTier.ts) still
@@ -32,7 +32,7 @@ export const MONTHLY_SOFT_CAP_SCALE = 200;
 // Pax messages in a month, Scale serves Haiku until the 6,000-turn BYOK
 // threshold moves the org onto its own key. Bounds worst-case Scale AI COGS
 // at roughly $4.50 (Opus window) + ~$38 (Sonnet window) + ~$12 (Haiku tail)
-// ≈ $54 on a $79 plan — above water at absolute full utilization, where the
+// ≈ $54 on a $199 plan — above water at absolute full utilization, where the
 // previous shape was not.
 export const MONTHLY_HAIKU_FLOOR_SCALE = 3000;
 

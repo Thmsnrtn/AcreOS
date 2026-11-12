@@ -12,7 +12,7 @@ beatrice-reviewed: YES — see "Compliance gate notes" below. No fiduciary advic
 truth-engine:
   - sources:
       - { name: "client/src/pages/landing/copy.ts (Pax: monitors pipeline overnight; pulls comps, scores leads, drafts replies, books follow-ups, services notes; every action shown with the data it used)", ref: "/Users/user/AcreOS/AcreOS/client/src/pages/landing/copy.ts#L108" }
-      - { name: "client/src/pages/landing/copy.ts (Pro $41/mo billed annually; full Pax; unlimited counties; BYOK)", ref: "/Users/user/AcreOS/AcreOS/client/src/pages/landing/copy.ts#L133" }
+      - { name: "client/src/pages/landing/copy.ts (Pro $82.50/mo billed annually ($990/yr); full Pax; unlimited counties; BYOK)", ref: "/Users/user/AcreOS/AcreOS/client/src/pages/landing/copy.ts#L133" }
       - { name: "server/services/cmo/brandProfiles.ts (three-step mechanic: define buy-box / AcreOS does busy work / operator makes calls)", ref: "/Users/user/AcreOS/AcreOS/server/services/cmo/brandProfiles.ts#L142" }
       - { name: "server/services/preMailDedupe.ts (pre-mail dedupe scanner: skips owned parcels, recent mail within 90 days, returned-to-sender, do-not-contact)", ref: "/Users/user/AcreOS/AcreOS/server/services/preMailDedupe.ts" }
       - { name: "server/services/directMailService.ts (Lob send; postcard pricing; expected delivery date)", ref: "/Users/user/AcreOS/AcreOS/server/services/directMailService.ts" }
@@ -101,7 +101,7 @@ The operator is done in twenty minutes. The work that used to take three hours o
 
 ## H2: The pricing the mechanic implies
 
-The full Pax assistant — overnight monitoring, comp-engine access, mail drafting, reply drafting, note servicing — ships with the Pro plan at $41 per month billed annually. Unlimited counties on the buy-box. Bring-your-own-key for the parcel-data and skip-trace costs every operator already pays; AcreOS does not mark up those external costs. The pricing is on the public landing page; there is no "contact us" wall.
+The full Pax assistant — overnight monitoring, comp-engine access, mail drafting, reply drafting, note servicing — ships with the Pro plan at $82.50 per month billed annually ($990/yr). Unlimited counties on the buy-box. Bring-your-own-key for the parcel-data and skip-trace costs every operator already pays; AcreOS does not mark up those external costs. The pricing is on the public landing page; there is no "contact us" wall.
 
 The Free plan keeps the operator's data, buy-box, and audit log read-only. Pax is paused. The platform is honest about which features need the paid plan and which do not.
 
@@ -118,7 +118,7 @@ The work is the same work it always was. The judgment stays with the operator. T
 ## Sources
 
 1. `client/src/pages/landing/copy.ts` — Pax mechanics: "monitors the pipeline overnight: pulls comps, scores leads, drafts replies, books follow-ups, services notes. Every action is shown with the data it used. Nothing happens behind your back." (Landing `agents.sub` block.)
-2. `client/src/pages/landing/copy.ts` (line 133) — Pricing: Pro at $41/mo billed annually; unlimited counties; BYOK for parcel and skip-trace data costs.
+2. `client/src/pages/landing/copy.ts` (line 133) — Pricing: Pro at $82.50/mo billed annually ($990/yr); unlimited counties; BYOK for parcel and skip-trace data costs.
 3. `server/services/cmo/brandProfiles.ts` (line 142) — Three-step mechanic: define the buy-box / AcreOS does the busy work / operator makes the calls.
 4. `server/services/preMailDedupe.ts` — Pre-mail dedupe scanner: skips owned parcels, recipients mailed in the last 90 days, returned-to-sender addresses, and do-not-contact flagged leads.
 5. `server/services/directMailService.ts` — Direct-mail send pipeline (Lob); expected delivery date; per-piece audit trail.
