@@ -155,6 +155,13 @@ export async function denyRefundRequest(id: number, founderId: string, reason: s
     if (owner?.email) {
       const body = `Thank you for asking. After reviewing your refund request we are not able to refund this charge.\n\n${reason.trim()}\n\nIf you think we have this wrong, reply to this email and we will look again.\n\n— The AcreOS Team`;
       await emailService.sendEmail({
+        // The deny write above is atomic on status=pending, so this notice
+        // is reached at most once per request; the key covers the crash
+        // window between the write and the send, keyed on the request's
+        // durable identity and org-scoped so the claim engages.
+        purpose: "system", // AcreOS to its own customer about their own billing
+        organizationId: row.organizationId,
+        idempotencyKey: `refund_request:${row.id}:denied_notice`,
         to: owner.email,
         subject: "Your AcreOS refund request",
         html: `<h2>Your refund request</h2>${body.split("\n\n").map((p) => `<p>${p.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</p>`).join("")}`,

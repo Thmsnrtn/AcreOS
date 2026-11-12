@@ -311,6 +311,13 @@ async function runBundle(row: RefundRequest, refundId: string | null, args: Exec
     const [owner] = await db.select({ email: users.email }).from(users).where(eq(users.id, org.ownerId)).limit(1);
     if (owner?.email) {
       await emailService.sendEmail({
+        // One confirmation per refund request, however the executor is
+        // retried: the key is the request's durable identity (the same root
+        // as the Stripe idempotency key), org-scoped so the outward-action
+        // claim engages.
+        purpose: "system", // AcreOS to its own customer about their own billing
+        organizationId: org.id,
+        idempotencyKey: `refund_request:${row.id}:processed_notice`,
         to: owner.email,
         subject: "Your AcreOS refund has been processed",
         html: `<h2>Refund Processed</h2><p>Your refund of <strong>$${(row.amountCents / 100).toFixed(2)}</strong> has been processed. It should appear on your statement within 5-10 business days.</p><p>— The AcreOS Team</p>`,
