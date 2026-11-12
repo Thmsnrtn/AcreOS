@@ -797,6 +797,26 @@
     },
     {
       "kind": "export",
+      "id": "server/services/openData/fieldClearanceRegistry.ts::FIELD_CLEARANCE_REGISTRY",
+      "reason": "FIELD-LEVEL SERVING DETERMINATIONS REGISTRY (register I-6, P1-6, 2026-11-12). The transcription of the dossier program's written per-field/per-class determinations (14 written-green counties + 9 state objects, all DRAFT for attorney review). It is deliberately NOT wired into the live lookup gate in this package \u2014 the gate never loosens and LOOKUP_CLEARANCE still governs live serving; the registry is the machinery the reviewed per-source enablement (a later package) will consume, and tests/unit/fieldLevelServing.test.ts pins every record's servable fields and class statuses so widening a record without a new written determination fails CI. REVOCATION: if a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "server/services/openData/fieldClearanceRegistry.ts::fieldClearanceRecordFor",
+      "reason": "FIELD-LEVEL SERVING DETERMINATIONS REGISTRY (register I-6, P1-6, 2026-11-12). The exact-match record lookup over FIELD_CLEARANCE_REGISTRY (no wildcard widening, no neighbouring-county inference); its only consumer today is tests/unit/fieldLevelServing.test.ts, which pins the fail-closed shapes (unknown county, wrong object key). Same posture as the registry entry above: determinations, not live clearances. REVOCATION: if a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "server/services/openData/fieldClearanceRegistry.ts::fieldClearanceFor",
+      "reason": "FIELD-LEVEL SERVING DETERMINATIONS REGISTRY (register I-6, P1-6, 2026-11-12). The per-field answer entry point over the determinations registry \u2014 the API a future reviewed per-source enablement calls to learn what a determination permits on a surface. Proven today by tests/unit/fieldLevelServing.test.ts (14/14 counties serve something on display, 13/14 on paid lookup). Deliberately uncalled by production in this package: wiring it live is the enablement package's reviewed change, not this one's. REVOCATION: if a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "shared/openData/fieldClearance.ts::LOOKUP_USE_CLASSES",
+      "reason": "FIELD-LEVEL SERVING TAXONOMY (register I-6, P1-6, 2026-11-12). The canonical runtime enumeration of the lookup use classes (internal / display / redistribution / resale / lookupDisplay); the LookupUseClass type is derived from it and production code passes the literals, so the list itself has no production importer yet. It is the taxonomy's public enumeration for the surfaces that will iterate the classes (demand wiring P1-7, coverage reporting P1-8). REVOCATION: if a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
       "id": "server/services/orgPushFanout.ts::ORG_PUSH_FAMILY_DEFAULT_ON",
       "reason": "TEST-INTROSPECTION SEAM (gap slice 7 respect-mute fix, 2026-11-10). The set of fan-out families whose no-override default stays push ON (today only pax_nudge: its mapped schema event pax.needs_you defaults push off from before the lane was proven, but slice 7 shipped urgent-nudge push live, so the family default preserves the shipped behaviour while globalMute and explicit overrides still rule). Production consumes it in-module at the single pushOrgEvent gate; pushFanoutCreationSites.test.ts pins its presence so the gate cannot silently lose the family default. REVOCATION: if a second production module imports it, remove this entry."
     },
