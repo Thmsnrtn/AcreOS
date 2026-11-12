@@ -365,6 +365,56 @@ describe("pushOrgEvent — stored preferences gate the fan-out (founder decision
     expect(sentEndpoints()).toEqual(["https://push.example/new"]);
   });
 
+  it("borrower_message: its own event governs — push off for finance.borrower_message skips it, a payment-missed mute does not", async () => {
+    // S-05 (P1-4b): the borrower-message family maps to its OWN schema event.
+    const bmEvent = { ...event, family: "borrower_message" as const, url: "/notes/9" };
+    subscriptionRows = [
+      sub(1, 7, "uBmOff", "https://push.example/bm-off"),
+      sub(2, 7, "uPmOff", "https://push.example/pm-off"),
+      sub(3, 7, "uOk", "https://push.example/ok"),
+    ];
+    acceptingEndpoints.add("https://push.example/bm-off");
+    acceptingEndpoints.add("https://push.example/pm-off");
+    acceptingEndpoints.add("https://push.example/ok");
+    prefRows = [
+      prefRow("uBmOff", { overrides: { "finance.borrower_message": { push: false } } }),
+      prefRow("uPmOff", { overrides: { "finance.payment_missed": { push: false } } }),
+      prefRow("uOk", {}),
+    ];
+    await loadService();
+    const { pushOrgEvent } = await import("../../server/services/orgPushFanout");
+
+    // uBmOff refused borrower messages specifically → skipped. uPmOff muted
+    // only a payment alert → still receives the borrower message (no stored
+    // preference keeps the schema default, push ON). uOk receives.
+    expect(await pushOrgEvent(7, bmEvent)).toBe(true);
+    expect(sentEndpoints().sort()).toEqual([
+      "https://push.example/ok",
+      "https://push.example/pm-off",
+    ]);
+
+    // And the mirror: the borrower-message mute does not leak into the
+    // ladder family — uBmOff receives a ladder push, uPmOff does not.
+    sendNotificationSpy.mockClear();
+    expect(await pushOrgEvent(7, event)).toBe(true);
+    expect(sentEndpoints().sort()).toEqual([
+      "https://push.example/bm-off",
+      "https://push.example/ok",
+    ]);
+  });
+
+  it("borrower_message: a globally muted user gets no borrower-message push", async () => {
+    const bmEvent = { ...event, family: "borrower_message" as const, url: "/notes/9" };
+    subscriptionRows = [sub(1, 7, "uMuted", "https://push.example/muted")];
+    acceptingEndpoints.add("https://push.example/muted");
+    prefRows = [prefRow("uMuted", { globalMute: true })];
+    await loadService();
+    const { pushOrgEvent } = await import("../../server/services/orgPushFanout");
+
+    expect(await pushOrgEvent(7, bmEvent)).toBe(false);
+    expect(sendNotificationSpy).not.toHaveBeenCalled();
+  });
+
   it("when the only subscriber is muted, pushOrgEvent resolves false (nothing buzzed)", async () => {
     subscriptionRows = [sub(1, 7, "uMuted", "https://push.example/muted")];
     acceptingEndpoints.add("https://push.example/muted");

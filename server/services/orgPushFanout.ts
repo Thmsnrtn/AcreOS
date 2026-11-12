@@ -30,7 +30,7 @@ import { logger } from "../utils/logger";
 import { sendPushToOrg, type PushPayload } from "./pushNotificationService";
 import { notificationPrefsService } from "./notificationPreferences";
 
-export type OrgPushFamily = "pax_nudge" | "redemption_alert" | "ladder_ready";
+export type OrgPushFamily = "pax_nudge" | "redemption_alert" | "ladder_ready" | "borrower_message";
 
 /**
  * The fan-out family for an event, mapped to the `notificationPreferences`
@@ -44,6 +44,9 @@ export type OrgPushFamily = "pax_nudge" | "redemption_alert" | "ladder_ready";
  *    (a hard deadline days away on the user's own position). There is no
  *    tax-certificate event in the schema — adding one is a deliberate
  *    product act, not a drive-by in a fan-out fix.
+ *  - `borrower_message` → `finance.borrower_message`: the schema event added
+ *    deliberately with the S-05 wire (P1-4b) — a borrower's portal message
+ *    is its own preference, not a payment alert's.
  * A user's explicit push override for the mapped id is honoured either way;
  * with no override, the schema's `defaultChannels.push` for that id decides
  * (all three currently default push ON, matching the pre-fix behaviour for
@@ -66,6 +69,10 @@ export const ORG_PUSH_FAMILY_EVENT_ID: Record<OrgPushFamily, string> = {
   pax_nudge: "pax.needs_you",
   redemption_alert: "deal.closing_reminder",
   ladder_ready: "finance.payment_missed",
+  // S-05 (P1-4b): a borrower portal message maps to its OWN schema event,
+  // added with this wire — muting a payment alert must not silently mute a
+  // borrower's message, and muting borrower messages must not mute alerts.
+  borrower_message: "finance.borrower_message",
 };
 
 /**

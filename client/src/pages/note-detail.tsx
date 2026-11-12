@@ -39,6 +39,7 @@ import { NoteComplianceCard } from "@/components/note-compliance-card";
 import { NoteLossMitCard } from "@/components/note-loss-mit-card";
 import { DataProvenanceChip } from "@/components/data-provenance-chip";
 import { NoteRecordPanels } from "@/components/notes/NoteRecordPanels";
+import { BorrowerMessagesPanel } from "@/components/notes/BorrowerMessagesPanel";
 import { NoteWorkoutAnalysisPanel } from "@/components/notes/NoteWorkoutAnalysisPanel";
 import { NoteDelinquencyLadderPanel } from "@/components/notes/NoteDelinquencyLadderPanel";
 import { formatDate, formatDateTime } from "@/lib/format";
@@ -605,6 +606,11 @@ export default function NoteDetailPage() {
       {/* V-Notes-1 N2: terms and status first, each value with its provenance;
           the document set; then the collateral's data picture. */}
       <NoteRecordPanels noteId={note.id} />
+
+      {/* S-05 (P1-4b): the borrower's portal messages, surfaced where the
+          lender works the note — before this panel no client called the
+          lender message routes and borrower messages were a dead letter. */}
+      <BorrowerMessagesPanel noteId={note.id} />
 
       {/* Top stat cards — the line Linnea's CPA cares about goes first.
           Acquisition price separated from face value is the basis story. */}
