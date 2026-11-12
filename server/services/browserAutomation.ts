@@ -8,8 +8,13 @@ import { eq, and, desc, isNull, or } from "drizzle-orm";
 import puppeteer, { Browser, Page } from "puppeteer-core";
 import { execSync } from "child_process";
 import { logger } from "../utils/logger";
-import { isPrivateIPv4 as isPrivateIpv4, isPrivateIPv6 as isPrivateIpv6 } from "../middleware/fileUploadSecurity";
 import { clock } from "../utils/clock";
+import {
+  isBlockedBrowseUrl,
+  resolveAndCheckBrowseHost,
+  evaluateBrowseRequest,
+} from "./browseRequestGate";
+import { isPrivateIPv4 as isPrivateIpv4, isPrivateIPv6 as isPrivateIpv6 } from "../middleware/fileUploadSecurity";
 import { plainRefusal } from "@shared/refusal/plainRefusal";
 import {
   checkRobots,
@@ -17,26 +22,50 @@ import {
   ROBOTS_MAX_BYTES,
   type RobotsFetchResult,
 } from "./browseRobots";
-// DNS resolution for SSRF protection
-const dnsResolve4 = (host: string): Promise<string[]> => {
-  return new Promise((resolve, reject) => {
-    const dns = require("dns");
-    dns.resolve4(host, (err: Error | null, addresses: string[]) => {
-      if (err) reject(err);
-      else resolve(addresses);
-    });
-  });
-};
+// NOTE (merge of R-14 + PX-1): main's in-file dnsResolve4 / resolveAndCheckHost /
+// isBlockedUrl implementations are NOT carried over — R-14 replaced them with
+// aliases to browseRequestGate (see below), which PX-1's fetchRobotsTxt binds to.
 
-const dnsResolve6 = (host: string): Promise<string[]> => {
-  return new Promise((resolve, reject) => {
-    const dns = require("dns");
-    dns.resolve6(host, (err: Error | null, addresses: string[]) => {
-      if (err) reject(err);
-      else resolve(addresses);
-    });
-  });
-};
+// ── Chromium launch hardening (R-14 / F-1) ──────────────────────────────────
+// Operator escape hatch: ONLY the exact value "1" re-opens the no-sandbox
+// launch. Lives here (not in the gate module) because it is launch policy.
+export function isChromiumSandboxDisabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.ACREOS_CHROMIUM_NO_SANDBOX === "1";
+}
+
+const BROWSER_ENV_ALLOWLIST = [
+  "PATH",
+  "HOME",
+  "USER",
+  "LOGNAME",
+  "LANG",
+  "LC_ALL",
+  "LC_CTYPE",
+  "TZ",
+  "XDG_RUNTIME_DIR",
+  "XDG_CONFIG_HOME",
+  "XDG_CACHE_HOME",
+  "TMPDIR",
+  "PUPPETEER_EXECUTABLE_PATH",
+  "PUPPETEER_SKIP_DOWNLOAD",
+  "PUPPETEER_CACHE_DIR",
+  "CHROME_BIN",
+  "CHROMIUM_FLAGS",
+] as const;
+
+// Allowlist ONLY — Chromium (which renders attacker-influenced pages) must not
+// inherit FIELD_ENCRYPTION_KEY, DATABASE_URL or any other app secret.
+export function scrubbedBrowserEnv(source: NodeJS.ProcessEnv = process.env): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const key of BROWSER_ENV_ALLOWLIST) {
+    const value = source[key];
+    if (typeof value === "string" && value !== "") out[key] = value;
+  }
+  // Chromium needs a writable HOME to create its profile dir; the runtime user
+  // is `node`, whose home is /home/node.
+  if (!out.HOME) out.HOME = "/home/node";
+  return out;
+}
 
 let chromiumPath: string | null = null;
 
@@ -92,17 +121,19 @@ async function launchBrowser(): Promise<Browser> {
   const executablePath = getChromiumPath();
   logger.info(`[browser-automation] Launching browser from: ${executablePath}`);
   
+  const args = ["--disable-dev-shm-usage", "--disable-gpu"];
+  if (isChromiumSandboxDisabled()) {
+    logger.warn(
+      "[browser-automation] ACREOS_CHROMIUM_NO_SANDBOX=1 — Chromium sandbox DISABLED by operator choice; the R-14/F-1 exposure is re-opened",
+    );
+    args.push("--no-sandbox", "--disable-setuid-sandbox");
+  }
+
   return puppeteer.launch({
     executablePath,
     headless: true,
-    args: [
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--disable-dev-shm-usage",
-      "--disable-gpu",
-      "--single-process",
-      "--no-zygote",
-    ],
+    args,
+    env: scrubbedBrowserEnv(),
   });
 }
 
@@ -740,113 +771,18 @@ export interface BrowseWebResult {
 // below read unchanged, and so a future reader sees that the definition is
 // somewhere else on purpose.
 
-async function resolveAndCheckHost(hostname: string): Promise<{ allowed: boolean; reason?: string }> {
-  try {
-    const parsed = new URL(`http://${hostname}`);
-    const host = parsed.hostname;
-    
-    const ipv4Match = host.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
-    if (ipv4Match) {
-      if (isPrivateIpv4(host)) {
-        return { allowed: false, reason: "Resolved to private IPv4 address" };
-      }
-      return { allowed: true };
-    }
-
-    // Resolve hostname via DNS and validate all resolved IPs
-    try {
-      const ipv4Addresses = await dnsResolve4(host);
-      for (const addr of ipv4Addresses) {
-        if (isPrivateIpv4(addr)) {
-          logger.warn(`[SSRF] DNS resolved ${host} to private IPv4 ${addr}`);
-          return { allowed: false, reason: `DNS resolved to private/internal IPv4 address: ${addr}` };
-        }
-      }
-    } catch {
-      // No IPv4 records is fine — check IPv6 next
-    }
-
-    try {
-      const ipv6Addresses = await dnsResolve6(host);
-      for (const addr of ipv6Addresses) {
-        if (isPrivateIpv6(addr)) {
-          logger.warn(`[SSRF] DNS resolved ${host} to private IPv6 ${addr}`);
-          return { allowed: false, reason: `DNS resolved to private/internal IPv6 address: ${addr}` };
-        }
-      }
-    } catch {
-      // No IPv6 records is fine
-    }
-
-    return { allowed: true };
-  } catch (err) {
-    logger.warn(`[SSRF] DNS check error for ${hostname}`, { metadata: { detail: err } });
-    return { allowed: false, reason: "DNS resolution failed — blocking as a precaution" };
-  }
-}
-
-function isBlockedUrl(urlString: string): { blocked: boolean; reason?: string } {
-  try {
-    const parsed = new URL(urlString);
-    const hostname = parsed.hostname.toLowerCase();
-    
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-      return { blocked: true, reason: "Only HTTP/HTTPS URLs are allowed" };
-    }
-    
-    if (hostname.startsWith("[") || hostname.includes(":")) {
-      return { blocked: true, reason: "IPv6 addresses are not allowed" };
-    }
-    
-    const ipv4Match = hostname.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
-    if (ipv4Match && isPrivateIpv4(hostname)) {
-      return { blocked: true, reason: "Access to internal/private networks is not allowed" };
-    }
-    
-    if (/^\d+$/.test(hostname)) {
-      return { blocked: true, reason: "Numeric IP formats are not allowed" };
-    }
-    if (/^0x[0-9a-f]+$/i.test(hostname)) {
-      return { blocked: true, reason: "Hex IP formats are not allowed" };
-    }
-    if (/^0[0-7]+$/.test(hostname)) {
-      return { blocked: true, reason: "Octal IP formats are not allowed" };
-    }
-    
-    const shortIpv4 = hostname.match(/^(\d+)\.(\d+)$/);
-    if (shortIpv4) {
-      return { blocked: true, reason: "Shorthand IPv4 formats are not allowed" };
-    }
-    const threePartIpv4 = hostname.match(/^(\d+)\.(\d+)\.(\d+)$/);
-    if (threePartIpv4) {
-      return { blocked: true, reason: "Shorthand IPv4 formats are not allowed" };
-    }
-    
-    if (/^0\d+\./.test(hostname) || /\.0\d+\./.test(hostname) || /\.0\d+$/.test(hostname)) {
-      return { blocked: true, reason: "Octal IPv4 formats are not allowed" };
-    }
-    
-    const blockedPatterns = [
-      /^localhost$/i,
-      /\.localhost$/i,
-      /\.local$/i,
-      /\.internal$/i,
-      /^metadata\./i,
-      /^instance-data\./i,
-      /\.metadata\.google\.internal$/i,
-    ];
-    
-    for (const pattern of blockedPatterns) {
-      if (pattern.test(hostname)) {
-        return { blocked: true, reason: "Access to internal/private networks is not allowed" };
-      }
-    }
-    
-    return { blocked: false };
-  } catch {
-    return { blocked: true, reason: "Invalid URL format" };
-  }
-}
+// R-14: the pattern and DNS checks now live in ./browseRequestGate (pure,
+// fail-closed, testable); the local names are kept so browseWeb's pre-flight
+// call sites read unchanged.
+//
+// browseWeb ALSO applies the canonical private-address helpers (imported
+// above from fileUploadSecurity) directly — to the literal host and to every
+// address the DNS check resolved — as its own final check before Chromium
+// launches. This file is the one that navigates, so its pre-flight does not
+// rest solely on the gate's internals: if the gate's checks are ever
+// bypassed or change, a private destination is still rejected here.
+const resolveAndCheckHost = resolveAndCheckBrowseHost;
+const isBlockedUrl = isBlockedBrowseUrl;
 
 /** How long the robots.txt fetch may take before the site counts as unverified. */
 const ROBOTS_FETCH_TIMEOUT_MS = 5000;
@@ -916,6 +852,33 @@ export async function browseWeb(url: string, options?: {
   }
   
   const parsed = new URL(url);
+
+  // Direct private-address check on the literal host, with the canonical
+  // helpers: a dotted-quad host is judged by isPrivateIpv4, a bracketed /
+  // colon host by isPrivateIpv6. The gate's pattern check blocks these too;
+  // browseWeb applies the rule itself because it is the navigating consumer.
+  const literalHost = parsed.hostname.toLowerCase();
+  const isPrivateLiteralHost =
+    literalHost.startsWith("[") || literalHost.includes(":")
+      ? isPrivateIpv6(literalHost)
+      : /^\d+\.\d+\.\d+\.\d+$/.test(literalHost) && isPrivateIpv4(literalHost);
+  if (isPrivateLiteralHost) {
+    return {
+      success: false,
+      url,
+      title: "",
+      content: "",
+      links: [],
+      tables: [],
+      error: plainRefusal({
+        what: "The page was not opened",
+        why: "That link names an internal or private network address directly, and I never open those",
+        unlock: "Ask about a public website address instead",
+      }),
+      loadTimeMs: clock.nowMs() - startTime,
+    };
+  }
+
   const dnsCheck = await resolveAndCheckHost(parsed.hostname);
   if (!dnsCheck.allowed) {
     return {
@@ -930,6 +893,29 @@ export async function browseWeb(url: string, options?: {
     };
   }
 
+  // Re-validate every resolved address with the canonical helpers before
+  // launching Chromium: these are the addresses this navigation will
+  // actually reach, and browseWeb rejects a private one itself rather than
+  // trusting that the gate's internals never change.
+  for (const addr of dnsCheck.resolvedAddresses ?? []) {
+    const isPrivateResolved = addr.includes(":") ? isPrivateIpv6(addr) : isPrivateIpv4(addr);
+    if (isPrivateResolved) {
+      return {
+        success: false,
+        url,
+        title: "",
+        content: "",
+        links: [],
+        tables: [],
+        error: plainRefusal({
+          what: "The page was not opened",
+          why: `That website's name resolves to a private or internal address (${addr}), and I never open those`,
+          unlock: "Ask about a public website address instead",
+        }),
+        loadTimeMs: clock.nowMs() - startTime,
+      };
+    }
+  }
   // PX-1 — honour the site's robots.txt before anything is fetched.
   const robots = await checkRobots(parsed, fetchRobotsTxt, clock.nowMs());
   if (robots === "disallowed") {
@@ -994,30 +980,30 @@ export async function browseWeb(url: string, options?: {
     await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
     
     await page.setRequestInterception(true);
+    // FAIL CLOSED (R-14 / F-2): the only path to request.continue() is a
+    // positive "continue" from evaluateBrowseRequest. Any error — including
+    // continue() itself failing — ends in abort, never in continue.
+    // Residual: Chromium re-resolves the host after this check and
+    // puppeteer-core interception cannot pin the connection to the addresses
+    // validated here, so a DNS-rebinding window remains (PX-10 closes it).
     page.on("request", async (request) => {
-      const reqUrl = request.url();
-      const check = isBlockedUrl(reqUrl);
-      if (check.blocked) {
-        logger.info(`[browse_web] Blocked request (URL pattern): ${reqUrl}`);
-        await request.abort("blockedbyclient");
-        return;
-      }
-      
+      let reqUrl = "";
       try {
-        const parsed = new URL(reqUrl);
-        const hostname = parsed.hostname;
-        
-        const dnsCheck = await resolveAndCheckHost(hostname);
-        if (!dnsCheck.allowed) {
-          logger.info(`[browse_web] Blocked request (DNS resolve): ${reqUrl} - ${dnsCheck.reason}`);
-          await request.abort("blockedbyclient");
+        reqUrl = request.url();
+        const decision = await evaluateBrowseRequest(reqUrl);
+        if (decision.action === "continue") {
+          await request.continue();
           return;
         }
-        
-        await request.continue();
+        logger.info(`[browse_web] Blocked request: ${reqUrl} - ${decision.reason}`);
+        await request.abort("blockedbyclient");
       } catch (err) {
-        logger.info(`[browse_web] Request check error, allowing: ${reqUrl}`);
-        await request.continue();
+        logger.warn(`[browse_web] Request handler error, blocking: ${reqUrl}`);
+        try {
+          await request.abort("blockedbyclient");
+        } catch {
+          // already handled (e.g. continue() raced) — nothing left to abort
+        }
       }
     });
     
