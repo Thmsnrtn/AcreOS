@@ -86,6 +86,7 @@ import {
   outstandingServicedLateFeesCents,
 } from "./services/notes/servicedLateFees";
 import { lenderServicingPhase, servicingEndedBorrowerMessage } from "./services/borrower/servicingPhase";
+import { notifyLenderOfBorrowerMessage } from "./services/borrowerMessageNotify";
 import { getClientIp, clientIpOrNull } from "./utils/clientIp";
 import { clock } from "./utils/clock";
 import {
@@ -2165,6 +2166,17 @@ export function registerBorrowerRoutes(app: Express): void {
         senderType: "borrower",
         content: sanitized,
         readAt: null,
+      });
+      // S-05 (P1-4b): the lender is told a borrower wrote — push (mute-gated)
+      // + an in-app notification row. Before this wire the message was a
+      // dead letter: no client called the lender read routes and nothing
+      // notified anyone. The notify service never throws, so a notification
+      // failure cannot fail the borrower's send.
+      await notifyLenderOfBorrowerMessage({
+        orgId: note.organizationId,
+        noteId: session.noteId,
+        messageId: msg.id,
+        content: sanitized,
       });
       res.status(201).json(msg);
     } catch (err) {

@@ -163,6 +163,16 @@ export const NOTIFICATION_SCHEMA: NotificationCategory[] = [
         description: "When a buyer makes the final payment on a note you hold",
         defaultChannels: { email: true, sms: false, push: true, inApp: true },
       },
+      {
+        // S-05 (P1-4b): borrower portal messages were a dead letter — the
+        // lender was never told. This event is the per-user toggle the
+        // borrower-message notification (push + in-app) consults; a stored
+        // refusal (global mute or this event's push/inApp off) is honoured.
+        id: "finance.borrower_message",
+        label: "A borrower messages you",
+        description: "When a borrower sends a message through their portal on a note you hold",
+        defaultChannels: { email: false, sms: false, push: true, inApp: true },
+      },
     ],
   },
   {

@@ -141,7 +141,11 @@ export function NotificationCenter() {
 
   const getEntityLink = (notification: Notification): string | null => {
     if (!notification.entityType || !notification.entityId) return null;
-    
+
+    // S-05 (P1-4b): a borrower-message notification lands on the note itself,
+    // where the lender inbox panel renders the thread.
+    if (notification.entityType === "note") return `/notes/${notification.entityId}`;
+
     const links: Record<string, string> = {
       lead: `/leads`,
       property: `/properties`,
