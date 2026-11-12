@@ -6,6 +6,7 @@ import { logger } from "../utils/logger";
 import { activityLogger } from "./activityLogger";
 import { wsServer } from "../websocket";
 import { clock } from "../utils/clock";
+import { pauseSequencesOnResponse } from "./leadResponse";
 
 const HMAC_SECRET = process.env.INBOUND_EMAIL_HMAC_SECRET
   || process.env.SESSION_SECRET
@@ -174,6 +175,11 @@ export async function processInboundEmail(payload: InboundEmailPayload): Promise
       description: `Inbound email from ${payload.from}: ${payload.subject || "(no subject)"}`,
       metadata: { emailId: stored.id, from: payload.from, subject: payload.subject },
     });
+
+    // Stop-on-reply (gap slice 1): `email_received` is a RESPONSE_SOURCES
+    // member, so the row above is what checkLeadResponded reads; pausing the
+    // lead's active drip enrollments is what actually stops the next step.
+    await pauseSequencesOnResponse(lead.organizationId, leadId);
 
     logger.info("Inbound email processed", { leadId, emailId: stored.id });
     return { success: true, leadId };

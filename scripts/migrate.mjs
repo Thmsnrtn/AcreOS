@@ -13090,6 +13090,49 @@ $mig0284$`,
      END IF;
    END
    $mig0301$`,
+  // 0304 — Subdivision V1 Leg 1: subdivision_screen_runs, the buildability screen's append-only run record (founder decision 2026-11-05, +1 table approved).
+  // Mirrors migrations/0304_subdivision_screen_runs.sql.
+  `CREATE TABLE IF NOT EXISTS "subdivision_screen_runs" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "parent_parcel_id" integer NOT NULL,
+     "rule_version" text NOT NULL,
+     "inputs" jsonb NOT NULL,
+     "yield_estimate" jsonb NOT NULL,
+     "result" jsonb NOT NULL,
+     "triggered_count" integer NOT NULL,
+     "not_determinable_count" integer NOT NULL,
+     "actor_ref" text NOT NULL,
+     "created_at" timestamp NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "subdivision_screen_runs_org_parent_idx"
+     ON "subdivision_screen_runs" ("organization_id", "parent_parcel_id", "created_at")`,
+  `CREATE OR REPLACE FUNCTION subdivision_screen_runs_deny_update()
+   RETURNS trigger AS $$
+   BEGIN
+     RAISE EXCEPTION 'subdivision_screen_runs is append-only (UPDATE denied) — re-run the screen to record a new run'
+       USING ERRCODE = 'restrict_violation';
+   END;
+   $$ LANGUAGE plpgsql`,
+  `DROP TRIGGER IF EXISTS subdivision_screen_runs_no_update ON "subdivision_screen_runs"`,
+  `CREATE TRIGGER subdivision_screen_runs_no_update
+     BEFORE UPDATE ON "subdivision_screen_runs"
+     FOR EACH ROW
+     EXECUTE FUNCTION subdivision_screen_runs_deny_update()`,
+  // 0303 — E2 slice 1 leg 2: pax_morning_briefs (one sectioned brief per org per local day; dismiss is a stamp; archive + reopen on /today).
+  // Mirrors migrations/0303_pax_morning_briefs.sql.
+  `CREATE TABLE IF NOT EXISTS "pax_morning_briefs" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer NOT NULL REFERENCES "organizations" ("id") ON DELETE CASCADE,
+     "brief_date" text NOT NULL,
+     "headline" text,
+     "sections" jsonb NOT NULL,
+     "dismissed_at" timestamp,
+     "dismissed_by" text,
+     "created_at" timestamp NOT NULL DEFAULT now(),
+     "updated_at" timestamp NOT NULL DEFAULT now()
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "pax_morning_briefs_org_date_idx" ON "pax_morning_briefs" ("organization_id", "brief_date")`,
   // 0302 — Notes V2 Leg 1: note_events gains category 'delinquency' ('delinquency_stage_entered' ← 'aging_engine'; 'default_review_recorded' ← 'operator_recorded'; each bound both ways). Restates 0301. CHECKs only; triggers untouched.
   // Mirrors migrations/0302_notes_v2_delinquency_ladder_events.sql.
   `DO $mig0302$
@@ -13157,6 +13200,45 @@ $mig0284$`,
   `DROP TRIGGER IF EXISTS wholesale_buy_boxes_no_truncate ON "wholesale_buy_boxes"`,
   `CREATE TRIGGER wholesale_buy_boxes_no_truncate BEFORE TRUNCATE ON "wholesale_buy_boxes"
      FOR EACH STATEMENT EXECUTE FUNCTION wholesale_buy_boxes_guard()`,
+  // 0308 — Notes V2 Leg 3: note_origination_records (origination facts / RMLO engagement / activation gate-passed / threshold release / ATR-write audit records for the originated book; append-only, org-private; note_id ON DELETE SET NULL, the only UPDATE admitted). PROVISIONAL — Tom-approval pending.
+  // Mirrors migrations/0308_notes_v2_seller_finance_gate_records.sql.
+  `CREATE TABLE IF NOT EXISTS "note_origination_records" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL,
+     "note_id" integer REFERENCES "notes"("id") ON DELETE SET NULL,
+     "note_id_at_record" integer NOT NULL,
+     "kind" text NOT NULL CHECK ("kind" IN ('origination_facts', 'rmlo_engagement', 'activation_gate_passed', 'threshold_release', 'atr_determination_written')),
+     "detail" jsonb NOT NULL,
+     "supersedes_id" uuid REFERENCES "note_origination_records"("id"),
+     "recorded_by" text NOT NULL CHECK (length(trim("recorded_by")) > 0),
+     "recorded_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "note_origination_records_org_kind_idx" ON "note_origination_records" ("organization_id", "kind", "recorded_at")`,
+  `CREATE INDEX IF NOT EXISTS "note_origination_records_org_note_idx" ON "note_origination_records" ("organization_id", "note_id")`,
+  `CREATE OR REPLACE FUNCTION note_origination_records_guard()
+   RETURNS trigger AS $$
+   BEGIN
+     IF TG_OP = 'UPDATE' THEN
+       IF OLD."note_id" IS NOT NULL
+          AND NEW."note_id" IS NULL
+          AND (to_jsonb(NEW) - 'note_id') = (to_jsonb(OLD) - 'note_id')
+          AND NOT EXISTS (SELECT 1 FROM "notes" WHERE "id" = OLD."note_id") THEN
+         RETURN NEW;
+       END IF;
+     END IF;
+     RAISE EXCEPTION 'note_origination_records is append-only (% denied; a correction is a new row that supersedes)', TG_OP
+       USING ERRCODE = 'restrict_violation';
+   END;
+   $$ LANGUAGE plpgsql`,
+  `DROP TRIGGER IF EXISTS note_origination_records_no_update ON "note_origination_records"`,
+  `CREATE TRIGGER note_origination_records_no_update BEFORE UPDATE ON "note_origination_records"
+     FOR EACH ROW EXECUTE FUNCTION note_origination_records_guard()`,
+  `DROP TRIGGER IF EXISTS note_origination_records_no_truncate ON "note_origination_records"`,
+  `CREATE TRIGGER note_origination_records_no_truncate BEFORE TRUNCATE ON "note_origination_records"
+     FOR EACH STATEMENT EXECUTE FUNCTION note_origination_records_guard()`,
+  `DROP TRIGGER IF EXISTS note_origination_records_no_delete ON "note_origination_records"`,
+  `CREATE TRIGGER note_origination_records_no_delete BEFORE DELETE ON "note_origination_records"
+     FOR EACH ROW EXECUTE FUNCTION note_origination_records_guard()`,
   // 0306 — Fix-and-Flip Leg 3: rehab_baselines, rehab_status_transitions and rehab_holding_cost_entries (timeline truth; append-only, org-private, each leaves only with its org).
   // Mirrors migrations/0306_ff_leg3_timeline_holding.sql.
   `CREATE TABLE IF NOT EXISTS "rehab_baselines" (
@@ -13266,6 +13348,73 @@ $mig0284$`,
   `DROP TRIGGER IF EXISTS rehab_holding_cost_entries_no_truncate ON "rehab_holding_cost_entries"`,
   `CREATE TRIGGER rehab_holding_cost_entries_no_truncate BEFORE TRUNCATE ON "rehab_holding_cost_entries"
      FOR EACH STATEMENT EXECUTE FUNCTION rehab_holding_cost_entries_guard()`,
+  // 0307 — Fix-and-Flip Leg 4: rehab_change_orders (§4.2; decision-only updates, org-private, leaves only with its org) and the realized-economics columns on rehabs (§6.2).
+  // Mirrors migrations/0307_ff_leg4_exit_realized_change_orders.sql (provisional number).
+  `CREATE TABLE IF NOT EXISTS "rehab_change_orders" (
+     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "rehab_id" uuid NOT NULL REFERENCES "rehabs"("id") ON DELETE CASCADE,
+     "line_item_id" uuid NOT NULL REFERENCES "rehab_line_items"("id") ON DELETE CASCADE,
+     "description" text NOT NULL,
+     "amount_cents" bigint NOT NULL CONSTRAINT "rehab_change_orders_amount_nonzero"
+       CHECK ("amount_cents" <> 0),
+     "schedule_impact_days" integer NOT NULL DEFAULT 0,
+     "status" text NOT NULL DEFAULT 'proposed' CONSTRAINT "rehab_change_orders_status_check"
+       CHECK ("status" IN ('proposed', 'approved', 'rejected')),
+     "decided_by" text,
+     "decided_at" timestamptz,
+     "recorded_by" text NOT NULL,
+     "created_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "rehab_change_orders_org_rehab_created_idx" ON "rehab_change_orders" ("organization_id", "rehab_id", "created_at")`,
+  `CREATE INDEX IF NOT EXISTS "rehab_change_orders_org_line_item_idx" ON "rehab_change_orders" ("organization_id", "line_item_id")`,
+  `CREATE OR REPLACE FUNCTION rehab_change_orders_guard()
+   RETURNS trigger AS $$
+   BEGIN
+     IF TG_OP = 'DELETE' THEN
+       IF EXISTS (SELECT 1 FROM "organizations" WHERE "id" = OLD."organization_id") THEN
+         RAISE EXCEPTION 'rehab_change_orders rows leave only with their organization (a change order is a fact, never deleted)'
+           USING ERRCODE = 'foreign_key_violation';
+       END IF;
+       RETURN OLD;
+     END IF;
+     IF TG_OP = 'UPDATE' THEN
+       IF OLD."status" = 'proposed'
+          AND NEW."status" IN ('approved', 'rejected')
+          AND NEW."decided_by" IS NOT NULL
+          AND NEW."decided_at" IS NOT NULL
+          AND NEW."id" IS NOT DISTINCT FROM OLD."id"
+          AND NEW."organization_id" IS NOT DISTINCT FROM OLD."organization_id"
+          AND NEW."rehab_id" IS NOT DISTINCT FROM OLD."rehab_id"
+          AND NEW."line_item_id" IS NOT DISTINCT FROM OLD."line_item_id"
+          AND NEW."description" IS NOT DISTINCT FROM OLD."description"
+          AND NEW."amount_cents" IS NOT DISTINCT FROM OLD."amount_cents"
+          AND NEW."schedule_impact_days" IS NOT DISTINCT FROM OLD."schedule_impact_days"
+          AND NEW."recorded_by" IS NOT DISTINCT FROM OLD."recorded_by"
+          AND NEW."created_at" IS NOT DISTINCT FROM OLD."created_at" THEN
+         RETURN NEW;
+       END IF;
+       RAISE EXCEPTION 'rehab_change_orders permits only the decision update (proposed to approved/rejected, decided_by and decided_at set, nothing else changed)'
+         USING ERRCODE = 'restrict_violation';
+     END IF;
+     RAISE EXCEPTION 'rehab_change_orders is append-only (% denied)', TG_OP
+       USING ERRCODE = 'restrict_violation';
+   END;
+   $$ LANGUAGE plpgsql`,
+  `DROP TRIGGER IF EXISTS rehab_change_orders_no_update ON "rehab_change_orders"`,
+  `CREATE TRIGGER rehab_change_orders_no_update BEFORE UPDATE ON "rehab_change_orders"
+     FOR EACH ROW EXECUTE FUNCTION rehab_change_orders_guard()`,
+  `DROP TRIGGER IF EXISTS rehab_change_orders_delete_with_org ON "rehab_change_orders"`,
+  `CREATE TRIGGER rehab_change_orders_delete_with_org BEFORE DELETE ON "rehab_change_orders"
+     FOR EACH ROW EXECUTE FUNCTION rehab_change_orders_guard()`,
+  `DROP TRIGGER IF EXISTS rehab_change_orders_no_truncate ON "rehab_change_orders"`,
+  `CREATE TRIGGER rehab_change_orders_no_truncate BEFORE TRUNCATE ON "rehab_change_orders"
+     FOR EACH STATEMENT EXECUTE FUNCTION rehab_change_orders_guard()`,
+  `ALTER TABLE "rehabs" ADD COLUMN IF NOT EXISTS "realized_sale_price_cents" bigint`,
+  `ALTER TABLE "rehabs" ADD COLUMN IF NOT EXISTS "realized_selling_costs_cents" bigint`,
+  `ALTER TABLE "rehabs" ADD COLUMN IF NOT EXISTS "realized_closing_date" date`,
+  `ALTER TABLE "rehabs" ADD COLUMN IF NOT EXISTS "realized_recorded_by" text`,
+  `ALTER TABLE "rehabs" ADD COLUMN IF NOT EXISTS "realized_recorded_at" timestamptz`,
 ];
 
 // The statement set this run executes. Default: everything (the production

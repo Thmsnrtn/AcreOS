@@ -118,9 +118,10 @@ export function usePushNotifications() {
         applicationServerKey: urlBase64ToUint8Array(publicKey) as BufferSource,
       });
 
-      await apiRequest("POST", "/api/push/subscribe", {
-        subscription: subscription.toJSON(),
-      });
+      // The route (POST /api/push/subscribe) validates `{ endpoint, keys: { p256dh, auth } }`
+      // at the TOP level — exactly the shape of PushSubscription.toJSON(). Wrapping it
+      // as `{ subscription }` made every subscribe a 422 and nothing was ever stored.
+      await apiRequest("POST", "/api/push/subscribe", subscription.toJSON());
 
       setState(prev => ({ ...prev, isSubscribed: true, isLoading: false, isConfigured: true }));
       toast({

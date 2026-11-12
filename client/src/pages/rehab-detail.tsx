@@ -86,6 +86,66 @@ interface LineVariance {
   actualCents: number;
   actualVsEstimateCents: number;
   actualVsCommittedCents: number | null;
+  approvedChangeOrderCents?: number;
+  effectiveEstimateCents?: number;
+}
+
+interface ChangeOrder {
+  id: string;
+  lineItemId: string;
+  description: string;
+  amountCents: number;
+  scheduleImpactDays: number;
+  status: "proposed" | "approved" | "rejected";
+  decidedBy: string | null;
+  decidedAt: string | null;
+  recordedBy: string;
+  createdAt: string;
+}
+
+interface ChangeOrdersPayload {
+  orders: ChangeOrder[];
+  totals: {
+    originalEstimateCents: number;
+    approvedChangeOrderCents: number;
+    effectiveEstimateCents: number;
+    approvedCount: number;
+    proposedCount: number;
+    rejectedCount: number;
+  };
+}
+
+type ExitKind = "sell" | "hold" | "wholesale";
+
+interface ExitDecision {
+  id: string;
+  decidedAt: string;
+  kind: string;
+  exitKind: ExitKind;
+  choice: string;
+  rationale: string;
+  expectedPriceCents: number | null;
+  reviewDueAt: string | null;
+}
+
+interface RealizedPayload {
+  facts: null | { salePriceCents: number; sellingCostsCents: number; closingDate: string; recordedBy: string; recordedAt: string };
+  grading: null | {
+    holdDays: number | null;
+    investedCents: number | null;
+    investedParts: { purchaseCents: number | null; rehabSpentCents: number | null; holdingRecordedCents: number | null };
+    realizedNetCents: number | null;
+    netMissing: string[];
+    realizedRoiRatio: number | null;
+    deltas: {
+      saleVsArvCents: number | null;
+      holdDaysVsScenarioDays: number | null;
+      netVsScenarioProfitCents: number | null;
+      roiVsScenarioRatio: number | null;
+    };
+  };
+  /** The frozen Leg 1 scenario the grading used; null = no recorded flip scenario. */
+  scenario: null | { arvCents: number | null; profitCents: number | null; roiRatio: number | null; holdMonths: number | null };
 }
 
 interface TimelineBaseline {
@@ -130,6 +190,8 @@ interface RehabTimeline {
       varianceDays: number | null;
     }>;
     listingVarianceDays: number | null;
+    approvedChangeOrderDays?: number;
+    adjustedPlannedListingDate?: string | null;
   };
   holding: {
     scenario: null | {
@@ -167,6 +229,8 @@ interface RehabDetail {
       actualCents: number;
       actualVsEstimateCents: number;
       actualVsCommittedCents: number | null;
+      approvedChangeOrderCents?: number;
+      effectiveEstimateCents?: number;
     };
     flags: Array<{ kind: string; fact: string }>;
   };
@@ -182,6 +246,10 @@ interface RehabDetail {
   };
   /** Plan vs recorded: append-only baselines, the status log, holding entries. */
   timeline: RehabTimeline;
+  /** Priced, approved scope changes (Leg 4). Optional: an older payload has none. */
+  changeOrders?: ChangeOrdersPayload;
+  exit?: { decisions: ExitDecision[] };
+  realized?: RealizedPayload;
 }
 
 interface ScopeTemplate {
@@ -195,6 +263,33 @@ function fmtUsdCents(c: number | null | undefined): string {
   if (c === null || c === undefined) return "—";
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(c / 100);
 }
+
+/** "+$1,200" / "−$300" — the sign is part of the fact. */
+function fmtSignedUsdCents(c: number): string {
+  if (c < 0) return `−${fmtUsdCents(-c)}`;
+  return `+${fmtUsdCents(c)}`;
+}
+
+function scheduleImpactLabel(days: number): string {
+  if (days === 0) return "no schedule impact";
+  const n = Math.abs(days);
+  return `${days > 0 ? "+" : "−"}${n} ${n === 1 ? "day" : "days"}`;
+}
+
+function fmtSignedDays(days: number): string {
+  const n = Math.abs(days);
+  return `${days < 0 ? "−" : "+"}${n} ${n === 1 ? "day" : "days"}`;
+}
+
+function fmtPct1(ratio: number): string {
+  return `${(ratio * 100).toFixed(1)}%`;
+}
+
+const EXIT_KIND_LABELS: Record<ExitKind, string> = {
+  sell: "Sell",
+  hold: "Hold as a rental",
+  wholesale: "Wholesale",
+};
 
 /** The server's own refusal text (e.g. the estimate lock's reason), not a bare status code. */
 async function serverMessage(res: Response): Promise<string> {
@@ -302,6 +397,24 @@ export default function RehabDetailPage() {
   const [entryCategory, setEntryCategory] = useState("taxes");
   const [entryAmount, setEntryAmount] = useState("");
   const [entryNote, setEntryNote] = useState("");
+
+  // Change-order propose form (Leg 4).
+  const [coLine, setCoLine] = useState("");
+  const [coDescription, setCoDescription] = useState("");
+  const [coAmount, setCoAmount] = useState("");
+  const [coDays, setCoDays] = useState("0");
+
+  // Exit-decision form (Leg 4).
+  const [exitKind, setExitKind] = useState<ExitKind>("sell");
+  const [exitPrice, setExitPrice] = useState("");
+  const [exitRationale, setExitRationale] = useState("");
+  const [exitReviewMode, setExitReviewMode] = useState<"none" | "date">("none");
+  const [exitReviewDate, setExitReviewDate] = useState("");
+
+  // Realized-facts form (Leg 4).
+  const [realSale, setRealSale] = useState("");
+  const [realCosts, setRealCosts] = useState("");
+  const [realClosing, setRealClosing] = useState("");
 
   const detail = useQuery<RehabDetail>({
     queryKey: ["/api/rehabs", id],
@@ -478,6 +591,113 @@ export default function RehabDetailPage() {
     },
   });
 
+  // A change order prices a scope change; the original estimate is never edited.
+  const proposeChangeOrder = useMutation({
+    mutationFn: async (lineItemId: string) => {
+      const dollars = parseFloat(coAmount);
+      const cents = Number.isFinite(dollars) ? Math.round(dollars * 100) : 0;
+      if (cents === 0) {
+        throw new Error("Enter a non-zero amount. A $0 change order adjusts nothing; a negative amount is a priced reduction.");
+      }
+      const days = Math.trunc(Number(coDays || "0"));
+      const res = await fetch(`/api/rehabs/${id}/change-orders`, {
+        method: "POST", credentials: "include", headers: csrfHeader(),
+        body: JSON.stringify({
+          lineItemId,
+          description: coDescription.trim(),
+          amountCents: cents,
+          scheduleImpactDays: Number.isFinite(days) ? days : 0,
+        }),
+      });
+      if (!res.ok) throw new Error(await serverMessage(res));
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/rehabs", id] });
+      setCoDescription("");
+      setCoAmount("");
+      setCoDays("0");
+    },
+    onError: (error) => {
+      toast({ title: getErrorTitle(error), description: getErrorMessage(error), variant: "destructive" });
+    },
+  });
+
+  const decideChangeOrder = useMutation({
+    mutationFn: async (vars: { orderId: string; decision: "approved" | "rejected" }) => {
+      const res = await fetch(`/api/rehabs/${id}/change-orders/${vars.orderId}/decide`, {
+        method: "POST", credentials: "include", headers: csrfHeader(),
+        body: JSON.stringify({ decision: vars.decision }),
+      });
+      if (!res.ok) throw new Error(await serverMessage(res));
+      return res.json();
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/rehabs", id] }),
+    onError: (error) => {
+      toast({ title: getErrorTitle(error), description: getErrorMessage(error), variant: "destructive" });
+    },
+  });
+
+  // Both keys are always sent: null is an answer ("no price", "no review date").
+  const recordExitDecision = useMutation({
+    mutationFn: async () => {
+      let expectedPriceCents: number | null = null;
+      if (exitPrice.trim() !== "") {
+        const dollars = parseFloat(exitPrice);
+        if (!Number.isFinite(dollars)) throw new Error("Enter the expected price as a number of dollars.");
+        expectedPriceCents = Math.round(dollars * 100);
+      }
+      const reviewDueAt = exitReviewMode === "date" && exitReviewDate
+        ? new Date(`${exitReviewDate}T00:00:00.000Z`).toISOString()
+        : null;
+      const res = await fetch(`/api/rehabs/${id}/exit-decision`, {
+        method: "POST", credentials: "include", headers: csrfHeader(),
+        body: JSON.stringify({ exitKind, expectedPriceCents, rationale: exitRationale.trim(), reviewDueAt }),
+      });
+      if (!res.ok) throw new Error(await serverMessage(res));
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/rehabs", id] });
+      setExitPrice("");
+      setExitRationale("");
+      setExitReviewMode("none");
+      setExitReviewDate("");
+    },
+    onError: (error) => {
+      toast({ title: getErrorTitle(error), description: getErrorMessage(error), variant: "destructive" });
+    },
+  });
+
+  const recordRealized = useMutation({
+    mutationFn: async () => {
+      const sale = parseFloat(realSale);
+      const costs = parseFloat(realCosts);
+      if (!Number.isFinite(sale) || !Number.isFinite(costs)) {
+        throw new Error("Enter the sale price and the selling costs as dollar amounts.");
+      }
+      const res = await fetch(`/api/rehabs/${id}/realized`, {
+        method: "POST", credentials: "include", headers: csrfHeader(),
+        body: JSON.stringify({
+          salePriceCents: Math.round(sale * 100),
+          sellingCostsCents: Math.round(costs * 100),
+          closingDate: realClosing,
+        }),
+      });
+      if (!res.ok) throw new Error(await serverMessage(res));
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/rehabs", id] });
+      setRealSale("");
+      setRealCosts("");
+      setRealClosing("");
+    },
+    onError: (error) => {
+      toast({ title: getErrorTitle(error), description: getErrorMessage(error), variant: "destructive" });
+    },
+  });
+
   if (!id) return <PageShell label="Rehab"><Card><CardContent>Invalid id</CardContent></Card></PageShell>;
   if (detail.isLoading) return <PageShell label="Rehab"><Skeleton className="h-32" /></PageShell>;
   if (!detail.data) return <PageShell label="Rehab"><Card><CardContent>Not found.</CardContent></Card></PageShell>;
@@ -505,6 +725,32 @@ export default function RehabDetailPage() {
   const scenarioProvenance = scenarioHold
     ? provenanceLine(scenarioHold.holdMonthsOrigin, scenarioHold.monthlyOrigin)
     : "";
+  const changeOrders: ChangeOrdersPayload = data.changeOrders ?? {
+    orders: [],
+    totals: {
+      originalEstimateCents: totals.budgetCents,
+      approvedChangeOrderCents: 0,
+      effectiveEstimateCents: totals.budgetCents,
+      approvedCount: 0,
+      proposedCount: 0,
+      rejectedCount: 0,
+    },
+  };
+  const exitDecisions = data.exit?.decisions ?? [];
+  const latestExit = exitDecisions[0] ?? null;
+  const realized: RealizedPayload = data.realized ?? { facts: null, grading: null, scenario: null };
+  const grading = realized.grading;
+  const scenario = realized.scenario;
+  const rehabListedOrLater = ["listed", "under_contract", "closed"].includes(rehab.status);
+  const coLineId = coLine || (items[0] ? String(items[0].id) : "");
+  const coAmountParsed = parseFloat(coAmount);
+  const coAmountValid = Number.isFinite(coAmountParsed) && Math.round(coAmountParsed * 100) !== 0;
+  const exitPriceNeeded = exitKind !== "hold";
+  const exitPriceValid = exitPrice.trim() === ""
+    ? !exitPriceNeeded
+    : Number.isFinite(parseFloat(exitPrice));
+  const exitFormValid = exitPriceValid && exitRationale.trim() !== "" && (exitReviewMode === "none" || exitReviewDate !== "");
+  const realFormValid = Number.isFinite(parseFloat(realSale)) && Number.isFinite(parseFloat(realCosts)) && realClosing !== "";
   const entryAmountParsed = parseFloat(entryAmount);
   const entryAmountValid = Number.isFinite(entryAmountParsed) && Math.round(entryAmountParsed * 100) !== 0;
   const spentPct = totals.budgetCents > 0 ? Math.min(100, Math.round((totals.spentCents / totals.budgetCents) * 100)) : 0;
@@ -761,6 +1007,13 @@ export default function RehabDetailPage() {
                   {listingVarianceLabel(timeline.schedule.listingVarianceDays)}
                 </p>
               ) : null}
+              {(timeline.schedule.approvedChangeOrderDays ?? 0) > 0 ? (
+                <p className="mt-2 text-xs text-muted-foreground" data-testid="rehab-schedule-change-order-days">
+                  Approved change orders add {timeline.schedule.approvedChangeOrderDays} days — planned listing{" "}
+                  {originalBaseline.plannedListingDate ?? "not recorded"} →{" "}
+                  {timeline.schedule.adjustedPlannedListingDate ?? "not derivable"} (adjusted)
+                </p>
+              ) : null}
             </section>
           ) : null}
 
@@ -880,6 +1133,300 @@ export default function RehabDetailPage() {
         </CardContent>
       </Card>
 
+      {/* Change orders — a scope change after work starts is priced and
+          approved before the work it covers starts (Leg 4). The original
+          estimate is never edited to absorb it. */}
+      <Card className="mb-6" data-testid="rehab-change-orders">
+        <CardHeader>
+          <CardTitle className="text-base">Change orders</CardTitle>
+          {changeOrders.orders.length > 0 ? (
+            <CardDescription data-testid="rehab-change-orders-totals">
+              Original estimate {fmtUsdCents(changeOrders.totals.originalEstimateCents)} · approved change orders{" "}
+              {fmtSignedUsdCents(changeOrders.totals.approvedChangeOrderCents)} · effective estimate{" "}
+              {fmtUsdCents(changeOrders.totals.effectiveEstimateCents)}
+            </CardDescription>
+          ) : (
+            <CardDescription>
+              A scope change after work starts is priced (amount and schedule impact) and approved before the work it covers starts.
+              The original estimate is never edited to absorb it.
+            </CardDescription>
+          )}
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {changeOrders.orders.length > 0 ? (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-xs text-muted-foreground border-b border-border bg-muted/30">
+                  <th className="px-2 py-2 text-left font-medium">Description</th>
+                  <th className="px-2 py-2 text-left font-medium">Line</th>
+                  <th className="px-2 py-2 text-right font-medium">Amount</th>
+                  <th className="px-2 py-2 text-left font-medium">Schedule</th>
+                  <th className="px-2 py-2 text-left font-medium">Status</th>
+                  <th className="px-2 py-2 text-left font-medium">Recorded</th>
+                  <th className="px-2 py-2"><span className="sr-only">Decide</span></th>
+                </tr>
+              </thead>
+              <tbody>
+                {changeOrders.orders.map((o) => {
+                  const line = items.find((it) => String(it.id) === String(o.lineItemId));
+                  return (
+                    <tr key={o.id} className="border-b border-border/40 align-top" data-testid={`change-order-${o.id}`}>
+                      <td className="px-2 py-1">{o.description}</td>
+                      <td className="px-2 py-1 text-xs text-muted-foreground">{line ? line.scope : "line no longer listed"}</td>
+                      <td className="px-2 py-1 text-right tabular-nums">{fmtSignedUsdCents(o.amountCents)}</td>
+                      <td className="px-2 py-1 text-xs">{scheduleImpactLabel(o.scheduleImpactDays)}</td>
+                      <td className="px-2 py-1">
+                        <Badge variant={o.status === "approved" ? "default" : "secondary"}>
+                          {o.status === "proposed" ? "Proposed" : o.status === "approved" ? "Approved" : "Rejected"}
+                        </Badge>
+                        {o.status !== "proposed" ? (
+                          <div className="mt-1 text-[11px] text-muted-foreground">
+                            by {o.decidedBy ?? "—"}{o.decidedAt ? ` · ${o.decidedAt.slice(0, 10)}` : ""}
+                          </div>
+                        ) : null}
+                      </td>
+                      <td className="px-2 py-1 text-xs text-muted-foreground tabular-nums">{o.createdAt.slice(0, 10)}</td>
+                      <td className="px-2 py-1 text-right">
+                        {o.status === "proposed" ? (
+                          <div className="flex justify-end gap-1">
+                            <Button size="sm" disabled={decideChangeOrder.isPending}
+                              onClick={() => decideChangeOrder.mutate({ orderId: o.id, decision: "approved" })}>Approve</Button>
+                            <Button size="sm" variant="outline" disabled={decideChangeOrder.isPending}
+                              onClick={() => decideChangeOrder.mutate({ orderId: o.id, decision: "rejected" })}>Reject</Button>
+                          </div>
+                        ) : null}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          ) : null}
+
+          {items.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Add a line item first — a change order prices a change to a line.</p>
+          ) : (
+            <form
+              className="space-y-3"
+              onSubmit={(e) => { e.preventDefault(); proposeChangeOrder.mutate(coLineId); }}
+            >
+              <h3 className="text-sm font-medium">Propose a change order</h3>
+              <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                <Field label="Line" htmlFor="co-line">
+                  <select id="co-line" value={coLineId} onChange={(e) => setCoLine(e.target.value)} className="h-9 w-full rounded-md border border-input bg-background px-2 text-xs">
+                    {items.map((it) => <option key={it.id} value={String(it.id)}>{it.sequence}. {it.scope}</option>)}
+                  </select>
+                </Field>
+                <Field label="Description" htmlFor="co-description">
+                  <Input id="co-description" required value={coDescription} onChange={(e) => setCoDescription(e.target.value)} className="h-9" />
+                </Field>
+                <Field label="Amount ($)" htmlFor="co-amount">
+                  <Input id="co-amount" type="number" step="0.01" required value={coAmount} onChange={(e) => setCoAmount(e.target.value)} aria-describedby="co-amount-hint" className="h-9" />
+                </Field>
+                <Field label="Schedule impact (days)" htmlFor="co-days">
+                  <Input id="co-days" type="number" step={1} value={coDays} onChange={(e) => setCoDays(e.target.value)} className="h-9" />
+                </Field>
+              </div>
+              <p id="co-amount-hint" className="text-xs text-muted-foreground">
+                A $0 order adjusts nothing. A negative amount is a priced reduction.
+              </p>
+              <Button type="submit" size="sm" disabled={!coAmountValid || coDescription.trim() === "" || proposeChangeOrder.isPending}>
+                Propose change order
+              </Button>
+            </form>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Exit & outcome — the exit decision, then the realized facts and what
+          they were graded against (Leg 4). The panel grades a forecast, never
+          the operator. */}
+      <Card className="mb-6" data-testid="rehab-exit-outcome">
+        <CardHeader>
+          <CardTitle className="text-base">Exit &amp; outcome</CardTitle>
+          <CardDescription>The exit you chose, and what the close recorded against the forecast.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-8">
+          <section aria-labelledby="rehab-exit-heading">
+            <h2 id="rehab-exit-heading" className="text-sm font-medium">Exit decision</h2>
+            {latestExit ? (
+              <div className="mt-2 rounded-card border border-border p-3 text-sm" data-testid="rehab-exit-latest">
+                <div className="font-medium">{latestExit.choice}</div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  {EXIT_KIND_LABELS[latestExit.exitKind] ?? latestExit.exitKind}
+                  {latestExit.expectedPriceCents !== null ? ` · expected price ${fmtUsdCents(latestExit.expectedPriceCents)}` : ""}
+                </div>
+                <p className="mt-2">{latestExit.rationale}</p>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Recorded {latestExit.decidedAt.slice(0, 10)} ·{" "}
+                  {latestExit.reviewDueAt ? `review ${latestExit.reviewDueAt.slice(0, 10)}` : "no review date set"}
+                </p>
+                {exitDecisions.length > 1 ? (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {exitDecisions.length - 1} earlier exit {exitDecisions.length - 1 === 1 ? "decision" : "decisions"}.
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+
+            {latestExit?.exitKind === "hold" ? (
+              <p className="mt-3 text-sm">
+                <a
+                  href={`/rentals/underwrite?propertyId=${rehab.propertyId}`}
+                  className="underline underline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+                  data-testid="rehab-exit-rentals-link"
+                >
+                  Underwrite this property as a rental →
+                </a>
+                <span className="mt-1 block text-xs text-muted-foreground">
+                  Following it creates nothing — no unit, lease, or tenant is made by the exit decision.
+                </span>
+              </p>
+            ) : null}
+
+            {rehabListedOrLater ? (
+              <form
+                className="mt-4 space-y-3"
+                onSubmit={(e) => { e.preventDefault(); recordExitDecision.mutate(); }}
+              >
+                <h3 className="text-sm font-medium">Record an exit decision</h3>
+                <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                  <Field label="Exit" htmlFor="exit-kind">
+                    <select id="exit-kind" value={exitKind} onChange={(e) => setExitKind(e.target.value as ExitKind)} className="h-9 w-full rounded-md border border-input bg-background px-2 text-xs">
+                      {(Object.keys(EXIT_KIND_LABELS) as ExitKind[]).map((k) => <option key={k} value={k}>{EXIT_KIND_LABELS[k]}</option>)}
+                    </select>
+                  </Field>
+                  <Field label={exitPriceNeeded ? "Expected price ($)" : "Expected price ($, optional)"} htmlFor="exit-price">
+                    <Input id="exit-price" type="number" min={0} step="0.01" value={exitPrice} onChange={(e) => setExitPrice(e.target.value)} required={exitPriceNeeded} className="h-9" />
+                  </Field>
+                  <Field label="Review" htmlFor="exit-review-mode">
+                    <select id="exit-review-mode" value={exitReviewMode} onChange={(e) => setExitReviewMode(e.target.value as "none" | "date")} className="h-9 w-full rounded-md border border-input bg-background px-2 text-xs">
+                      <option value="none">No set date</option>
+                      <option value="date">Review on a date</option>
+                    </select>
+                  </Field>
+                  {exitReviewMode === "date" ? (
+                    <Field label="Review date" htmlFor="exit-review-date">
+                      <Input id="exit-review-date" type="date" required value={exitReviewDate} onChange={(e) => setExitReviewDate(e.target.value)} className="h-9" />
+                    </Field>
+                  ) : null}
+                </div>
+                <Field label="Rationale" htmlFor="exit-rationale">
+                  <textarea id="exit-rationale" required rows={3} value={exitRationale} onChange={(e) => setExitRationale(e.target.value)}
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+                </Field>
+                <Button type="submit" size="sm" disabled={!exitFormValid || recordExitDecision.isPending}>
+                  Record exit decision
+                </Button>
+              </form>
+            ) : (
+              <p className="mt-2 text-sm text-muted-foreground">The exit decision is recorded once the project is listed.</p>
+            )}
+          </section>
+
+          <section aria-labelledby="rehab-realized-heading">
+            <h2 id="rehab-realized-heading" className="text-sm font-medium">Realized outcome</h2>
+            {rehab.status !== "closed" ? (
+              <p className="mt-1 text-sm text-muted-foreground">
+                Realized economics are recorded at close, when the outcome is a fact.
+              </p>
+            ) : realized.facts === null ? (
+              <form
+                className="mt-2 space-y-3"
+                onSubmit={(e) => { e.preventDefault(); recordRealized.mutate(); }}
+              >
+                <p className="text-xs text-muted-foreground">
+                  Record what the close actually was. Recorded facts are not edited afterwards.
+                </p>
+                <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
+                  <Field label="Sale price ($)" htmlFor="realized-sale">
+                    <Input id="realized-sale" type="number" min={0} step="0.01" required value={realSale} onChange={(e) => setRealSale(e.target.value)} className="h-9" />
+                  </Field>
+                  <Field label="Selling costs ($)" htmlFor="realized-costs">
+                    <Input id="realized-costs" type="number" min={0} step="0.01" required value={realCosts} onChange={(e) => setRealCosts(e.target.value)} className="h-9" />
+                  </Field>
+                  <Field label="Closing date" htmlFor="realized-closing">
+                    <Input id="realized-closing" type="date" required value={realClosing} onChange={(e) => setRealClosing(e.target.value)} className="h-9" />
+                  </Field>
+                </div>
+                <Button type="submit" size="sm" disabled={!realFormValid || recordRealized.isPending}>
+                  Record realized facts
+                </Button>
+              </form>
+            ) : (
+              <div className="mt-2 space-y-4">
+                <div className="rounded-card border border-border p-3 text-sm" data-testid="rehab-realized-facts">
+                  <div>Sale price {fmtUsdCents(realized.facts.salePriceCents)} · selling costs {fmtUsdCents(realized.facts.sellingCostsCents)} · closed {realized.facts.closingDate}</div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    Recorded by {realized.facts.recordedBy} on {realized.facts.recordedAt.slice(0, 10)}. Recorded facts are not edited.
+                  </div>
+                  {grading ? (
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {grading.holdDays !== null
+                        ? `actual hold: ${grading.holdDays} days (derived from the recorded start and closing dates)`
+                        : "hold days not derivable — no start date recorded"}
+                    </div>
+                  ) : null}
+                </div>
+
+                {grading ? (
+                  <div className="space-y-1 text-sm" data-testid="rehab-realized-grading">
+                    {grading.realizedNetCents !== null ? (
+                      <>
+                        <div className="font-medium">
+                          Realized net {grading.realizedNetCents < 0 ? "−" : ""}{fmtUsdCents(Math.abs(grading.realizedNetCents))}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          sale {fmtUsdCents(realized.facts.salePriceCents)} − selling costs {fmtUsdCents(realized.facts.sellingCostsCents)} −
+                          purchase {fmtUsdCents(grading.investedParts.purchaseCents)} − rehab spent {fmtUsdCents(grading.investedParts.rehabSpentCents)} −
+                          recorded holding {fmtUsdCents(grading.investedParts.holdingRecordedCents)}
+                        </div>
+                      </>
+                    ) : (
+                      <div>A realized net is not computed — {grading.netMissing.join(", ")} not recorded.</div>
+                    )}
+                    {grading.realizedRoiRatio !== null ? <div>Realized ROI {fmtPct1(grading.realizedRoiRatio)}</div> : null}
+                    {grading.deltas.saleVsArvCents !== null ? (
+                      <div>
+                        Sold {fmtUsdCents(realized.facts.salePriceCents)}
+                        {scenario?.arvCents != null ? ` vs ${fmtUsdCents(scenario.arvCents)} ARV in the recorded scenario` : " vs the recorded scenario ARV"}
+                        : {fmtSignedUsdCents(grading.deltas.saleVsArvCents)}
+                      </div>
+                    ) : null}
+                    {grading.deltas.holdDaysVsScenarioDays !== null ? (
+                      <div>
+                        Held {grading.holdDays ?? "—"} days
+                        {scenario?.holdMonths != null ? ` vs the scenario's ${scenario.holdMonths}-month hold` : " vs the scenario's hold"}
+                        : {fmtSignedDays(grading.deltas.holdDaysVsScenarioDays)}
+                      </div>
+                    ) : null}
+                    {grading.deltas.netVsScenarioProfitCents !== null ? (
+                      <div>
+                        Net vs the scenario's profit
+                        {scenario?.profitCents != null ? ` of ${fmtUsdCents(scenario.profitCents)}` : ""}
+                        : {fmtSignedUsdCents(grading.deltas.netVsScenarioProfitCents)}
+                      </div>
+                    ) : null}
+                    {grading.deltas.roiVsScenarioRatio !== null ? (
+                      <div>
+                        ROI vs the scenario's
+                        {scenario?.roiRatio != null ? ` ${fmtPct1(scenario.roiRatio)}` : ""}
+                        : {grading.deltas.roiVsScenarioRatio < 0 ? "−" : "+"}{Math.abs(grading.deltas.roiVsScenarioRatio * 100).toFixed(1)} percentage points
+                      </div>
+                    ) : null}
+                    {Object.values(grading.deltas).every((d) => d === null) ? (
+                      <p className="text-muted-foreground">
+                        No recorded flip scenario to grade against — the forecast side of this panel is the scenario recorded with the flip decision.
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            )}
+          </section>
+        </CardContent>
+      </Card>
+
       {/* Line items */}
       <Card>
         <CardHeader>
@@ -931,6 +1478,11 @@ export default function RehabDetailPage() {
                           onCommit={(v) => updateItem.mutate({ itemId: it.id, updates: { budgetCents: Math.round(parseFloat(v || "0") * 100) } as any })}
                         />
                       )}
+                      {v && (v.approvedChangeOrderCents ?? 0) !== 0 ? (
+                        <span className="block text-[11px] text-muted-foreground" data-testid={`estimate-change-orders-${it.id}`}>
+                          {fmtSignedUsdCents(v.approvedChangeOrderCents ?? 0)} approved change orders → {fmtUsdCents(v.effectiveEstimateCents)} effective
+                        </span>
+                      ) : null}
                     </td>
                     <td className="px-2 py-1 text-right">
                       <CellInput

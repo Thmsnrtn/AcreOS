@@ -39,6 +39,7 @@ import { shouldSimulate, recordSimulatedAction } from "./utils/simulationMode";
 import { sendOrgSMS, orgHasConnectedSmsIdentity } from "./services/smsService";
 import { salutationName } from "@shared/parcel/ownerName";
 import { CAMPAIGN_SEND_PRICE_CREDITS } from "./services/sendPricing";
+import { leadReplyToAddress } from "./services/leadReplyTo";
 import { clock } from "./utils/clock";
 import { routeParam } from "./utils/routeParams";
 
@@ -2447,6 +2448,8 @@ export function registerCampaignRoutes(app: Express): void {
               to: lead.email!,
               subject,
               html,
+              // Lead-threaded: a reply resolves to the lead via the inbound seam.
+              replyTo: await leadReplyToAddress(lead.id, org.id),
               organizationId: org.id,
               isCampaignEmail: true,
               // Deal mail: campaign send to a customer's lead — org identity required.

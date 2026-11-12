@@ -10,7 +10,16 @@
  * Coverage here, in four layers:
  *  A. The repo-layer refusal itself (createNote / updateNote), via the
  *     established scripted-db-mock pattern (see
- *     server/storage/dealRepo.lifecycle.test.ts).
+ *     server/storage/dealRepo.lifecycle.test.ts). Leg 3 (2026-11-09)
+ *     moved the gate into these two seams
+ *     (server/services/notes/originationGate.ts): an active create or a
+ *     pending -> active transition without a basis — a completed
+ *     determination (a bare completed-flag next to NO payload refuses on
+ *     every path, founder decision 2026-11-05 §3.2), a recorded
+ *     exemption code, or a stored 'legacy' row — throws and no write
+ *     happens. 'legacy' is refused from every caller except the CSV
+ *     import's viaImport marker (ruling R1). The Leg 3 real-DB
+ *     counterpart is tests/unit/sellerFinanceCounter.realdb.test.ts.
  *  B. Honest-refusal shape: named error code, statutory citation, the
  *     exemption checklist, and the routes' 422 + regulatoryCite surface.
  *  C. The evidence trail: validateAtrDetermination (pure) +
@@ -20,8 +29,10 @@
  *     is enumerated and pinned (comment-stripped source assertions), and a
  *     filesystem scan ratchets the set of direct-insert sites so a NEW
  *     ungated insert path fails this test. The DB CHECK constraint
- *     (migration 0099) — the only defense on the payment-side status flips —
- *     is pinned against silent removal.
+ *     (migration 0099) is pinned against silent removal — a backstop now,
+ *     not the only defense: the payment-side status flips route through
+ *     shared/notes/servicedStatus.ts and every status writer is
+ *     census-pinned by tests/unit/statusTransitionCensus.test.ts.
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -49,18 +60,44 @@ vi.mock("../../server/db", () => {
   const s = h.state;
   const nextSelect = () => Promise.resolve(s.selectRows.shift() ?? []);
   const nextUpdate = () => Promise.resolve(s.updateRows.shift() ?? []);
+  // The Leg 3 gate's queries chain .orderBy / .for("update") off .where —
+  // the chain returns itself for those, and every terminal (.limit or the
+  // bare await) shifts the next scripted row set. Subquery builders
+  // (notExists etc.) receive this chain object and are never executed by
+  // the mock, which is exactly the surface the gate's DB-free refusals and
+  // scripted-row allows exercise; counter/gate behaviour against real SQL
+  // lives in sellerFinanceCounter.realdb.test.ts.
+  const selectChain = (): Record<string, unknown> => {
+    // .limit() is not always terminal: the gate's row fetch chains
+    // .limit(1).for("update"), so the limited chain stays thenable AND
+    // carries .for — either consumption shifts the next scripted row set.
+    const limited: Record<string, unknown> = {
+      for: (..._o: unknown[]) => nextSelect(),
+      then: (
+        onOk: (rows: unknown[]) => unknown,
+        onErr?: (e: unknown) => unknown,
+      ) => nextSelect().then(onOk, onErr),
+    };
+    const chain: Record<string, unknown> = {
+      from: (_t: unknown) => chain,
+      where: (_w: unknown) => chain,
+      limit: (_n: number) => limited,
+      orderBy: (..._o: unknown[]) => chain,
+      groupBy: (..._o: unknown[]) => chain,
+      for: (..._o: unknown[]) => chain,
+      then: (
+        onOk: (rows: unknown[]) => unknown,
+        onErr?: (e: unknown) => unknown,
+      ) => nextSelect().then(onOk, onErr),
+    };
+    return chain;
+  };
   const db = {
-    select: (_cols?: unknown) => ({
-      from: (_t: unknown) => ({
-        where: (_w: unknown) => ({
-          limit: (_n: number) => nextSelect(),
-          then: (
-            onOk: (rows: unknown[]) => unknown,
-            onErr?: (e: unknown) => unknown,
-          ) => nextSelect().then(onOk, onErr),
-        }),
-      }),
-    }),
+    select: (_cols?: unknown) => selectChain(),
+    // The gate takes a transaction-scoped advisory lock before counting
+    // (tx.execute(sql`SELECT pg_advisory_xact_lock(...)`)); the lock is a
+    // no-op against the scripted mock.
+    execute: (_q?: unknown) => Promise.resolve([]),
     insert: (_t: unknown) => ({
       values: (v: unknown) => {
         s.insertValues.push(v);
@@ -213,31 +250,79 @@ describe("noteRepo.createNote — §1026.43(c) origination gate", () => {
     expect(s.insertValues).toHaveLength(0);
   });
 
-  it("allows status='active' with atrDeterminationCompleted=true and persists the flag on the row", async () => {
-    s.insertRows.push([{ id: 41 }]);
-    await noteRepo.createNote.call(
-      repoThis,
-      baseNote({ status: "active", atrDeterminationCompleted: true }),
+  it("refuses status='active' with atrDeterminationCompleted=true but NO determination payload — the bare flag no longer passes", async () => {
+    // Founder decision 2026-11-05 §3.2 (docs/company/founder-decisions-
+    // 2026-11-05-b1-notes-v2.md): §5.4's new ATR record was cancelled in
+    // favour of the existing notes.atr_determination record, and the bare
+    // completed flag — the only thing this call carries — is closed on
+    // every path. Pre-Leg-3 this test asserted the opposite (the flag
+    // alone activated); that contract is exactly what Leg 3 removed.
+    const err = await expectAtrRefusal(
+      noteRepo.createNote.call(
+        repoThis,
+        baseNote({ status: "active", atrDeterminationCompleted: true }),
+      ),
     );
-    expect(s.insertValues).toHaveLength(1);
-    const inserted = s.insertValues[0] as Record<string, unknown>;
-    expect(inserted.status).toBe("active");
-    expect(inserted.atrDeterminationCompleted).toBe(true);
-    expect(logActivity).toHaveBeenCalledTimes(1);
+    expect(err.message).toContain("1026.43(c)");
+    expect(s.insertValues).toHaveLength(0);
   });
 
-  it.each(["raw_land", "business_purpose", "commercial_borrower", "legacy"])(
-    "allows status='active' with recognized exemption code '%s' and persists it as evidence",
+  it.each(["raw_land", "business_purpose", "commercial_borrower"])(
+    "allows status='active' with recognized exemption code '%s' — gate passes and writes its activation record",
     async (code) => {
-      s.insertRows.push([{ id: 42 }]);
+      // The gate's selects (counter population, orphan records, threshold
+      // releases) all read an empty book; the note insert and the
+      // activation_gate_passed insert are the two writes.
+      s.selectRows.push([], [], [], []);
+      s.insertRows.push([{ id: 42 }], [{ id: "rec-1" }]);
       await noteRepo.createNote.call(
         repoThis,
         baseNote({ status: "active", atrExemptionCode: code }),
       );
-      const inserted = s.insertValues[0] as Record<string, unknown>;
-      expect(inserted.atrExemptionCode).toBe(code);
+      const noteInsert = s.insertValues.find(
+        (v) => (v as Record<string, unknown>).atrExemptionCode === code,
+      ) as Record<string, unknown>;
+      expect(noteInsert).toBeDefined();
+      expect(noteInsert.status).toBe("active");
+      const gateRecord = s.insertValues.find(
+        (v) => (v as Record<string, unknown>).kind === "activation_gate_passed",
+      ) as Record<string, unknown>;
+      expect(gateRecord, "a passed gate writes its append-only record").toBeDefined();
+      expect(gateRecord.noteIdAtRecord).toBe(42);
     },
   );
+
+  it("refuses the 'legacy' code on create WITHOUT the import marker — any status (ruling R1)", async () => {
+    for (const status of ["active", "pending"]) {
+      let caught: unknown;
+      try {
+        await noteRepo.createNote.call(
+          repoThis,
+          baseNote({ status, atrExemptionCode: "legacy" }),
+        );
+      } catch (e) {
+        caught = e;
+      }
+      const err = caught as Error & { code?: string; refusals?: { check: string }[] };
+      expect(err, `legacy on a ${status} create must refuse`).toBeInstanceOf(Error);
+      expect(err.code).toBe("ACTIVATION_REFUSED");
+      expect(err.refusals?.[0]?.check).toBe("legacy_claimed");
+    }
+    expect(s.insertValues).toHaveLength(0);
+  });
+
+  it("allows 'legacy' ONLY through the import marker (opts.viaImport) — the CSV grandfathering path", async () => {
+    s.insertRows.push([{ id: 44 }]);
+    await noteRepo.createNote.call(
+      repoThis,
+      baseNote({ status: "active", atrExemptionCode: "legacy" }),
+      { viaImport: true },
+    );
+    expect(s.insertValues).toHaveLength(1);
+    const inserted = s.insertValues[0] as Record<string, unknown>;
+    expect(inserted.status).toBe("active");
+    expect(inserted.atrExemptionCode).toBe("legacy");
+  });
 
   it("allows status='pending' with no ATR — the gate guards ACTIVATION, not drafting", async () => {
     s.insertRows.push([{ id: 43 }]);
@@ -252,8 +337,30 @@ describe("noteRepo.createNote — §1026.43(c) origination gate", () => {
 // ════════════════════════════════════════════════════════════════════════════
 
 describe("noteRepo.updateNote — §1026.43(c) activation gate", () => {
+  // The gate now runs inside a transaction against the stored row, the
+  // note's origination records and the seller counter. The scripted mock
+  // serves the stored row first, then empty sets for every gate read (an
+  // empty book, no facts record, no RMLO record, no threshold release);
+  // behaviour against real SQL lives in sellerFinanceCounter.realdb.test.ts.
+  const storedRow = (overrides: Record<string, unknown> = {}) => ({
+    id: 5,
+    organizationId: 1,
+    status: "pending",
+    owningEntity: null,
+    startDate: new Date("2026-01-01T00:00:00Z"),
+    atrDetermination: null,
+    atrDeterminationCompleted: false,
+    atrExemptionCode: null,
+    ...overrides,
+  });
+  const scriptGateReads = (row: Record<string, unknown>) => {
+    s.selectRows.push([row], [], [], [], [], []);
+    s.insertRows.push([{ id: "rec-gate" }]);
+    s.updateRows.push([{ id: 5, status: "active" }]);
+  };
+
   it("refuses status→'active' when the stored row has neither ATR nor exemption — no UPDATE issued", async () => {
-    s.selectRows.push([{ atrDeterminationCompleted: false, atrExemptionCode: null }]);
+    scriptGateReads(storedRow());
     const err = await expectAtrRefusal(
       noteRepo.updateNote.call(repoThis, 5, { status: "active" }, 1),
     );
@@ -270,34 +377,52 @@ describe("noteRepo.updateNote — §1026.43(c) activation gate", () => {
   });
 
   it("allows status→'active' when the stored row already has a completed ATR determination", async () => {
-    s.selectRows.push([{ atrDeterminationCompleted: true, atrExemptionCode: null }]);
-    s.updateRows.push([{ id: 5, status: "active" }]);
+    // A STORED determination is the input PLUS the attestedAt stamp
+    // persistAtrDetermination writes — and the gate requires that stamp
+    // to be at or before the activation (12 CFR 1026.43(c)).
+    scriptGateReads(
+      storedRow({
+        atrDeterminationCompleted: true,
+        atrDetermination: { ...validAtrInput(), attestedAt: "2026-01-01T00:00:00.000Z" },
+      }),
+    );
     await noteRepo.updateNote.call(repoThis, 5, { status: "active" }, 1);
     expect(s.updateSets).toHaveLength(1);
     expect((s.updateSets[0] as Record<string, unknown>).status).toBe("active");
+    // The passed gate wrote its append-only record in the same transaction.
+    expect(
+      s.insertValues.some(
+        (v) => (v as Record<string, unknown>).kind === "activation_gate_passed",
+      ),
+    ).toBe(true);
   });
 
   it("allows status→'active' when the stored row carries a valid exemption code", async () => {
-    s.selectRows.push([{ atrDeterminationCompleted: false, atrExemptionCode: "raw_land" }]);
-    s.updateRows.push([{ id: 5, status: "active" }]);
+    scriptGateReads(storedRow({ atrExemptionCode: "raw_land" }));
     await noteRepo.updateNote.call(repoThis, 5, { status: "active" }, 1);
     expect(s.updateSets).toHaveLength(1);
   });
 
-  it("allows status→'active' when the update itself carries atrDeterminationCompleted=true", async () => {
-    s.selectRows.push([{ atrDeterminationCompleted: false, atrExemptionCode: null }]);
-    s.updateRows.push([{ id: 5, status: "active" }]);
-    await noteRepo.updateNote.call(
-      repoThis,
-      5,
-      { status: "active", atrDeterminationCompleted: true },
-      1,
+  it("refuses when the update carries atrDeterminationCompleted=true but NO determination payload — the bare flag is closed on every path", async () => {
+    // Pre-Leg-3 this update activated. Founder decision 2026-11-05 §3.2:
+    // the flag alone is not a determination, on the update path exactly
+    // as on create.
+    scriptGateReads(storedRow());
+    await expectAtrRefusal(
+      noteRepo.updateNote.call(
+        repoThis,
+        5,
+        { status: "active", atrDeterminationCompleted: true },
+        1,
+      ),
     );
-    expect(s.updateSets).toHaveLength(1);
+    expect(s.updateSets).toHaveLength(0);
   });
 
   it("refuses when the update explicitly sets atrDeterminationCompleted=false, even if the row had true", async () => {
-    s.selectRows.push([{ atrDeterminationCompleted: true, atrExemptionCode: null }]);
+    scriptGateReads(
+      storedRow({ atrDeterminationCompleted: true, atrDetermination: validAtrInput() }),
+    );
     await expectAtrRefusal(
       noteRepo.updateNote.call(
         repoThis,
@@ -310,7 +435,7 @@ describe("noteRepo.updateNote — §1026.43(c) activation gate", () => {
   });
 
   it("refuses an invalid exemption code supplied in the update", async () => {
-    s.selectRows.push([{ atrDeterminationCompleted: false, atrExemptionCode: null }]);
+    scriptGateReads(storedRow());
     await expectAtrRefusal(
       noteRepo.updateNote.call(
         repoThis,
@@ -347,16 +472,22 @@ describe("refusal shape — named reason, citation, actionable checklist", () =>
     }
   });
 
-  it("routes-finance surfaces every ATR_DETERMINATION_REQUIRED as 422 with the regulatory cite", () => {
+  it("routes-finance surfaces every activation refusal as 422 with the regulatory cite, through ONE shared helper", () => {
     const src = strippedSource("server/routes-finance.ts");
-    const marker = 'e?.code === "ATR_DETERMINATION_REQUIRED"';
-    const chunks = src.split(marker);
-    // Three catch sites: POST /api/notes, PUT /api/notes/:id, POST /api/notes/:id/originate.
-    expect(chunks.length - 1).toBe(3);
-    for (const after of chunks.slice(1)) {
-      expect(after.slice(0, 200)).toContain("res.status(422)");
-    }
-    expect(src).toContain('regulatoryCite: "12 CFR §1026.43(c)"');
+    // Leg 3 consolidated the three per-route catch blocks into a single
+    // helper (founder-decision §5.4 amendment: the refusal surface is one
+    // mapping, not three copies that can drift). The pin now counts the
+    // helper's call sites — create, update, originate — and the shape
+    // inside the one definition.
+    const defs = src.split("function sendActivationRefusal").length - 1;
+    expect(defs).toBe(1);
+    const calls = src.split("sendActivationRefusal(res, e").length - 1;
+    expect(calls).toBe(3);
+    const def = src.slice(src.indexOf("function sendActivationRefusal"));
+    const defBody = def.slice(0, def.indexOf("\n}\n") + 3);
+    expect(defBody).toContain("sendError(res, 422, e.code, e.message");
+    expect(defBody).toContain('regulatoryCite: "12 CFR §1026.43(c)"');
+    expect(defBody).toContain("refusals: e.refusals.map");
   });
 });
 
@@ -541,20 +672,30 @@ describe("caller-path completeness — no ungated door into the notes table", ()
     expect(block).not.toContain('status: "active"');
   });
 
-  it("POST /api/notes downgrades to 'pending' unless active was requested WITH ATR/exemption", () => {
+  it("POST /api/notes drops every client-supplied ATR field, and only a claimed basis reaches the gate as 'active'", () => {
     const src = strippedSource("server/routes-finance.ts");
+    // The determination is never taken from a create body (founder
+    // decision 2026-11-05 §3.2): the three ATR fields are destructured
+    // OUT of req.body before the insert schema parses it, so neither the
+    // payload nor the bare flag can be asserted by a caller.
+    expect(src).toContain("atrDetermination: _droppedAtrDetermination");
+    expect(src).toContain("atrDeterminationCompleted: _droppedAtrFlag");
+    expect(src).toContain("atrDeterminationCompletedAt: _droppedAtrAt");
+    // 'active' WITH a claimed basis (an exemption code, or the dropped
+    // determination fields) goes to the gated repo seam as 'active' and
+    // the gate decides — a bare flag refuses there, never downgrades.
+    // 'active' with NO basis claimed lands 'pending': the Finance form
+    // sends 'active' by default with no ATR fields, and nothing may
+    // activate on that branch.
     expect(src).toMatch(
-      /const resolvedStatus = callerSuppliedActiveWithAtr \? "active" : "pending"/,
+      /const resolvedStatus = req\.body\?\.status === "active" && claimsAtrBasis \? "active" : "pending"/,
     );
     const def = src.slice(
-      src.indexOf("const callerSuppliedActiveWithAtr"),
+      src.indexOf("const claimsAtrBasis"),
       src.indexOf("const resolvedStatus"),
     );
-    expect(def).toContain('req.body.status === "active"');
-    expect(def).toContain("req.body.atrDeterminationCompleted === true");
-    for (const code of ["raw_land", "business_purpose", "commercial_borrower"]) {
-      expect(def).toContain(code);
-    }
+    expect(def).toContain("req.body?.atrExemptionCode !== undefined");
+    expect(def).toContain("req.body?.atrDeterminationCompleted !== undefined");
     // And the route funnels through the gated repo seam, not a raw insert.
     expect(src).toContain("storage.createNote(");
   });
@@ -587,6 +728,19 @@ describe("caller-path completeness — no ungated door into the notes table", ()
     const at = src.indexOf("await storage.createNote({");
     expect(at).toBeGreaterThan(-1);
     expect(src.slice(at, at + 1500)).toContain('atrExemptionCode: "legacy"');
+    // Ruling R1 (Leg 3): the import call is the ONE createNote caller
+    // allowed to land 'legacy', and it must say so with the marker —
+    // noteRepo refuses the code from every other caller, on any status.
+    expect(src.slice(at, at + 2500)).toContain("{ viaImport: true }");
+  });
+
+  it("RATCHET: importExport is the only viaImport caller in server/", () => {
+    const offenders: string[] = [];
+    for (const file of walkTs(path.join(ROOT, "server"))) {
+      const src = stripComments(fs.readFileSync(file, "utf8"));
+      if (/viaImport: true/.test(src)) offenders.push(path.relative(ROOT, file));
+    }
+    expect(offenders).toEqual(["server/services/importExport.ts"]);
   });
 
   // The demo seeder moved out of routes-admin.ts into its own service (W5b
