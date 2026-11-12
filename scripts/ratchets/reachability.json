@@ -27,6 +27,21 @@
   "allowlist": [
     {
       "kind": "export",
+      "id": "server/jobs/autonomousDealMachine.ts::overnightActivityForOrg",
+      "reason": "TEST SEAM (P1-15 cross-tenant quarantine, 2026-11-12). Quarantine fence #1 of the autonomous deal machine: extracts ONE org's overnight-activity slice from a platform run row's result; production reaches it through sendEnhancedMorningBriefings in the same module, and autonomousDealMachineTenantFence.test.ts + autonomousDealMachineTenantQuarantine.realdb.test.ts pin it directly (poisoned aggregate never returned, another org's slice never returned, legacy aggregate-only row yields zeros). REVOCATION: if a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "server/jobs/autonomousDealMachine.ts::ZERO_OVERNIGHT_ACTIVITY",
+      "reason": "TEST SEAM (P1-15 cross-tenant quarantine, 2026-11-12). The fail-closed zero shape overnightActivityForOrg returns when a run row carries no slice for the requesting org; the two P1-15 quarantine tests assert against it by identity of value. Production reaches it through overnightActivityForOrg in the same module. REVOCATION: if a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "server/jobs/autonomousDealMachine.ts::runAutoFollowUpEngine",
+      "reason": "TEST SEAM (P1-15 cross-tenant quarantine, 2026-11-12). The deal machine's follow-up engine, whose campaign enrolment is quarantined inside the function (no enrolment without a tap, either offered Pax stance); production reaches it through runAutonomousDealMachine in the same module, and the P1-15 quarantine tests invoke it directly to prove it enrols nothing. REVOCATION: if a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
       "id": "server/services/webSourceFence.ts::WEB_SOURCED_ROW_CAP",
       "reason": "TEST SEAM (PX-1 browser make-safe, 2026-11-10). The web-sourced row cap browseMakeSafe.test.ts pins at the boundary (at-cap passes, cap+1 refuses); production reaches the behaviour through checkWebSourcedRows / recordBrowseReceipt / checkRobots / takeBrowseVisit. REVOCATION: if a production module imports it, remove this entry."
     },

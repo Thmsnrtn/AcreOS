@@ -52,11 +52,110 @@ import { emailService } from "../services/emailService";
 import { getRelevantMemories, formatMemoriesForContext } from "../services/atlasMemory";
 import { logger } from "../utils/logger";
 import { orgMayActFilter } from "../services/orgOperating";
+import { getPaxControls, type PaxControlsState } from "../services/paxControls";
 import { splitOwnerName } from "@shared/parcel/ownerName";
 import { clock } from "../utils/clock";
 
 export const AUTONOMOUS_DEAL_MACHINE_QUEUE = "autonomous-deal-machine";
 export const MORNING_BRIEFING_QUEUE = "morning-briefing-enhanced";
+
+// ---------------------------------------------------------------------------
+// TENANT QUARANTINE (P1-15 / TAIL-A2, CR-033 lineage)
+//
+// This engine was safe only by accident: its BullMQ registration path has no
+// caller, so the overnight run never produced the platform-wide
+// `background_jobs` row its briefing sender reads. Safety must not depend on
+// nobody wiring it — the briefing sender IS wired (runScheduledJobs calls it
+// at 13 UTC), so the fences live inside this module's own data access:
+//
+//   1. `background_jobs` has no organizationId column and the run row's
+//      `result` is a cross-org aggregate by construction. A briefing may only
+//      ever show the slice recorded under its OWN org id
+//      (`overnightActivityForOrg`). A row with no per-org slice for the
+//      requesting org yields ZEROS — the aggregate is never a fallback.
+//   2. The follow-up engine may not enrol leads into a sending campaign
+//      without a tap (`followUpEnrolmentQuarantined`): every offered Pax
+//      stance is ask-before-sending and this engine creates no
+//      pending_actions tap, so enrolment is refused for every org.
+//   3. Every other read/write below is filtered by the org id the engine was
+//      invoked for. `scrapedDeals` is the one deliberate exception: it is a
+//      platform source pool with no org column and no writer in this repo —
+//      it is not tenant data, and every lead derived from it is stamped with
+//      the invoking org's id (the dedup read is org-filtered too).
+//
+// Do not weaken these fences as part of wiring this engine to a caller; a
+// future wiring inherits them.
+// ---------------------------------------------------------------------------
+
+/** One org's overnight activity — the only shape a briefing may show. */
+export interface OvernightActivity {
+  newDealsFound: number;
+  hotDealsFound: number;
+  leadsAutoEnrolled: number;
+  followUpsScheduled: number;
+}
+
+export const ZERO_OVERNIGHT_ACTIVITY: OvernightActivity = {
+  newDealsFound: 0,
+  hotDealsFound: 0,
+  leadsAutoEnrolled: 0,
+  followUpsScheduled: 0,
+};
+
+function activityCount(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? Math.floor(value)
+    : 0;
+}
+
+/**
+ * Test seam / quarantine fence #1: extract ONE org's overnight activity from
+ * a machine-run row's `result`. Returns the org's own recorded slice, or
+ * zeros when the row carries no slice for that org (including every legacy
+ * aggregate-only row). The platform aggregate fields are never returned:
+ * showing them to any org would read every other org's totals into its
+ * briefing. REVOCATION: none — this is production data access, exported so
+ * the quarantine test can pin it directly.
+ */
+export function overnightActivityForOrg(
+  result: unknown,
+  orgId: number
+): OvernightActivity {
+  if (!result || typeof result !== "object") return { ...ZERO_OVERNIGHT_ACTIVITY };
+  const perOrg = (result as Record<string, unknown>).perOrg;
+  if (!perOrg || typeof perOrg !== "object") return { ...ZERO_OVERNIGHT_ACTIVITY };
+  const slice = (perOrg as Record<string, unknown>)[String(orgId)];
+  if (!slice || typeof slice !== "object") return { ...ZERO_OVERNIGHT_ACTIVITY };
+  const s = slice as Record<string, unknown>;
+  return {
+    newDealsFound: activityCount(s.newDealsFound),
+    hotDealsFound: activityCount(s.hotDealsFound),
+    leadsAutoEnrolled: activityCount(s.leadsAutoEnrolled),
+    followUpsScheduled: activityCount(s.followUpsScheduled),
+  };
+}
+
+/**
+ * Quarantine fence #2: whether the follow-up engine's campaign enrolment is
+ * quarantined for an org with these controls. Enrolment into an active
+ * sending campaign is an unattended send-path commitment; both offered
+ * stances (`ask_before_sending`, `ask_before_everything`) require a tap
+ * before sending, and this engine creates no pending_actions tap — so
+ * enrolment is quarantined under every stance that exists today. A future
+ * stance that permits unattended sends, or a real tap mechanism, changes
+ * THIS function deliberately and nowhere else.
+ */
+function followUpEnrolmentQuarantined(controls: PaxControlsState): boolean {
+  // Both offered stances require a tap before sending, and this engine
+  // creates no tap — so both quarantine enrolment. (An unrecognised stored
+  // stance never reaches here as itself: getPaxControls resolves it to
+  // `ask_before_everything`.) A future permissive stance or a real tap
+  // mechanism changes THIS function deliberately, and nowhere else.
+  return (
+    controls.stance === "ask_before_sending" ||
+    controls.stance === "ask_before_everything"
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Auto-Follow-Up Engine
@@ -71,9 +170,27 @@ interface FollowUpResult {
   campaignsCreated: number;
 }
 
-async function runAutoFollowUpEngine(
+/** Exported as a test seam (quarantine fence #2): the tenant-quarantine test
+ * invokes this engine directly and asserts it enrols nothing. REVOCATION:
+ * if a production module imports it, remove this note — the export stays. */
+export async function runAutoFollowUpEngine(
   organizationId: number
 ): Promise<FollowUpResult> {
+  // Quarantine fence #2 (P1-15 / TAIL-A2): enrolment happens inside this
+  // function, so the refusal lives here too — not in caller discipline. A
+  // paused org, an unreadable controls state (getPaxControls fails closed),
+  // or the untapped-enrolment quarantine each refuse the whole run before a
+  // single lead is read.
+  const controls = await getPaxControls(organizationId);
+  if (controls.paused || controls.checkFailed || followUpEnrolmentQuarantined(controls)) {
+    logger.warn(
+      `[DealMachine] Follow-up enrolment refused for org ${organizationId} ` +
+        `(paused=${controls.paused}, checkFailed=${controls.checkFailed}, ` +
+        `stance=${controls.stance}): campaign enrolment without a tap is quarantined`
+    );
+    return { leadsReenraged: 0, touchesScheduled: 0, campaignsCreated: 0 };
+  }
+
   const now = clock.now();
   let leadsReengaged = 0;
   let touchesScheduled = 0;
@@ -783,6 +900,11 @@ async function runAutonomousDealMachine(job: Job): Promise<void> {
     leadsAutoEnrolled: 0,
     followUpsScheduled: 0,
   };
+  // Quarantine fence #1: each org's activity is ALSO recorded under its own
+  // org id. Briefings read only their own slice (overnightActivityForOrg);
+  // the aggregate fields remain for founder-level rollups (founderWeeklyDigest)
+  // and must never be rendered into a tenant's briefing.
+  const perOrgActivity: Record<string, OvernightActivity> = {};
 
   try {
     // Get all active organizations
@@ -803,6 +925,13 @@ async function runAutonomousDealMachine(job: Job): Promise<void> {
         const followUpActivity = await runAutoFollowUpEngine(orgId);
         aggregateActivity.followUpsScheduled += followUpActivity.touchesScheduled;
 
+        perOrgActivity[String(orgId)] = {
+          newDealsFound: dealActivity.totalScored,
+          hotDealsFound: dealActivity.hotDeals,
+          leadsAutoEnrolled: dealActivity.autoEnrolled,
+          followUpsScheduled: followUpActivity.touchesScheduled,
+        };
+
         totalOrgsProcessed++;
       } catch (err: any) {
         logger.error(`[DealMachine] Org ${orgId} failed`, err);
@@ -819,6 +948,7 @@ async function runAutonomousDealMachine(job: Job): Promise<void> {
           result: {
             orgsProcessed: totalOrgsProcessed,
             ...aggregateActivity,
+            perOrg: perOrgActivity,
             durationMs: clock.nowMs() - startedAt.getTime(),
           },
         })
@@ -846,20 +976,16 @@ export async function sendEnhancedMorningBriefings(): Promise<{ sent: number; fa
   let sent = 0;
   let failed = 0;
 
-  // Get last night's machine run stats
+  // Get last night's machine run record. The row itself is a platform-level
+  // run record (background_jobs has no org column); what each org may SEE of
+  // it is decided per org by overnightActivityForOrg — never from the row's
+  // aggregate fields (quarantine fence #1, P1-15 / TAIL-A2).
   const [lastMachineRun] = await db
     .select()
     .from(backgroundJobs)
     .where(eq(backgroundJobs.type, "autonomous_deal_machine"))
     .orderBy(desc(backgroundJobs.scheduledFor))
     .limit(1);
-
-  const overnightActivity = {
-    newDealsFound: (lastMachineRun?.result as any)?.newDealsFound || 0,
-    hotDealsFound: (lastMachineRun?.result as any)?.hotDealsFound || 0,
-    leadsAutoEnrolled: (lastMachineRun?.result as any)?.leadsAutoEnrolled || 0,
-    followUpsScheduled: (lastMachineRun?.result as any)?.followUpsScheduled || 0,
-  };
 
   const allOrgs = await db
     .select({ id: organizations.id })
@@ -868,6 +994,7 @@ export async function sendEnhancedMorningBriefings(): Promise<{ sent: number; fa
 
   for (const { id } of allOrgs) {
     try {
+      const overnightActivity = overnightActivityForOrg(lastMachineRun?.result, id);
       const data = await collectEnhancedBriefingData(id, overnightActivity);
       if (!data || !data.recipientEmail) continue;
 
