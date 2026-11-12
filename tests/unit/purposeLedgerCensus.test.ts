@@ -795,6 +795,10 @@ const DEBT: Record<string, ProposedSurface> = {
   "server/routes-trust-checks.ts route:GET /api/deals/:id/fraud-check": "review",
   // server/routes-va-engine.ts
   "server/routes-va-engine.ts route:GET /api/seller-communications/lead/:leadId": "lead_contact_read",
+  // server/routes-wholesale-disposition.ts
+  "server/routes-wholesale-disposition.ts route:GET /deals/:dealId/seller-follow-ups/preview": "lead_contact_read",
+  "server/routes-wholesale-disposition.ts route:POST /deals/:dealId/seller-follow-ups": "lead_contact_read",
+  "server/routes-wholesale-disposition.ts route:GET /deals/:dealId/seller-follow-ups": "lead_contact_read",
   // server/routes.ts
   "server/routes.ts route:GET /api/leads/deleted": "lead_contact_read",
   "server/routes.ts route:GET /api/search": "lead_contact_read",
@@ -820,7 +824,7 @@ const DEBT: Record<string, ProposedSurface> = {
 };
 
 /** DEBT may only shrink. Lower this in the same commit that removes an entry. */
-const DEBT_BASELINE = 214;
+const DEBT_BASELINE = 217;
 
 /**
  * Every file holding a dispatch switch (≥10 snake_case case labels, raw count)

@@ -13,16 +13,25 @@
  *   Records realised fee, days to close and the exit against the frozen
  *   decision through the existing outcome loop. The fee is read from the
  *   deal's own record; no money moves.
+ *
+ * GET  /api/wholesale/deals/:dealId/seller-follow-ups/preview?templateId=
+ * POST /api/wholesale/deals/:dealId/seller-follow-ups  { offerTemplateId, supersedes? }
+ * GET  /api/wholesale/deals/:dealId/seller-follow-ups
+ *   Seller-side follow-up DRAFTS (§6.2): the operator's own follow-up template
+ *   merged with the deal's record facts. Preview writes nothing; create writes
+ *   one draft record; list re-checks each draft's cited facts. None of them
+ *   sends anything.
  */
 import { Router, type Response } from "express";
 import { z } from "zod";
 import type { AuthenticatedRequest } from "./types/request";
-import { getOrganizationId } from "./types/request";
+import { getOrganizationId, getUserId } from "./types/request";
 import { Errors, sendError } from "./utils/errors";
 import { clock } from "./utils/clock";
 import { isCalendarDate } from "@shared/dates/calendar";
 import { routeParam } from "./utils/routeParams";
 import { buildDispositionPacket, DispositionRefusal, recordWholesaleOutcome } from "./services/wholesale/disposition";
+import { createSellerFollowUp, listSellerFollowUps, previewSellerFollowUp } from "./services/wholesale/sellerFollowUps";
 
 const router = Router();
 
@@ -64,6 +73,61 @@ router.post("/decisions/:decisionId/outcome", async (req: AuthenticatedRequest, 
     const parsed = outcomeSchema.safeParse(req.body);
     if (!parsed.success) return Errors.validationFailed(res, parsed.error);
     res.json(await recordWholesaleOutcome(organizationId, decisionId, parsed.data, clock.now()));
+  } catch (err) {
+    if (err instanceof DispositionRefusal) return refuse(res, err);
+    Errors.internal(res, err);
+  }
+});
+
+// ── Seller follow-up drafts (§6.2): prepared, never sent ─────────────────────
+
+function dealIdOf(req: AuthenticatedRequest): number | null {
+  const id = Number(routeParam(req.params.dealId));
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+router.get("/deals/:dealId/seller-follow-ups/preview", async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const organizationId = getOrganizationId(req);
+    const dealId = dealIdOf(req);
+    if (dealId === null) return Errors.badRequest(res, "Invalid deal id");
+    const templateId = Number(typeof req.query.templateId === "string" ? req.query.templateId : NaN);
+    if (!Number.isInteger(templateId) || templateId <= 0) return Errors.badRequest(res, "Choose a follow-up template (templateId)");
+    res.json(await previewSellerFollowUp(organizationId, dealId, templateId, clock.now()));
+  } catch (err) {
+    if (err instanceof DispositionRefusal) return refuse(res, err);
+    Errors.internal(res, err);
+  }
+});
+
+const sellerFollowUpSchema = z
+  .object({
+    offerTemplateId: z.number().int().positive(),
+    supersedes: z.number().int().positive().optional(),
+  })
+  .strict();
+
+router.post("/deals/:dealId/seller-follow-ups", async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const organizationId = getOrganizationId(req);
+    const userId = getUserId(req);
+    const dealId = dealIdOf(req);
+    if (dealId === null) return Errors.badRequest(res, "Invalid deal id");
+    const parsed = sellerFollowUpSchema.safeParse(req.body);
+    if (!parsed.success) return Errors.validationFailed(res, parsed.error);
+    res.json(await createSellerFollowUp(organizationId, userId, dealId, parsed.data, clock.now()));
+  } catch (err) {
+    if (err instanceof DispositionRefusal) return refuse(res, err);
+    Errors.internal(res, err);
+  }
+});
+
+router.get("/deals/:dealId/seller-follow-ups", async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const organizationId = getOrganizationId(req);
+    const dealId = dealIdOf(req);
+    if (dealId === null) return Errors.badRequest(res, "Invalid deal id");
+    res.json(await listSellerFollowUps(organizationId, dealId));
   } catch (err) {
     if (err instanceof DispositionRefusal) return refuse(res, err);
     Errors.internal(res, err);
