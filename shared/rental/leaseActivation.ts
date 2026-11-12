@@ -44,7 +44,7 @@ import type { LeaseStatus } from "../schema/rental";
 export const GENERATABLE_LEASE_STATUSES = ["active", "pending_signature"] as const;
 
 /** The status an activation lands on. A member of GENERATABLE_LEASE_STATUSES. */
-export const LEASE_ACTIVATION_TARGET: LeaseStatus = "active";
+export const LEASE_ACTIVATION_TARGET = "active" as const satisfies LeaseStatus;
 
 /** Statuses a lease may be activated FROM. Terminal/superseded states refuse. */
 const LEASE_ACTIVATABLE_FROM_STATUSES = ["draft", "pending_signature"] as const;
