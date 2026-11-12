@@ -11,6 +11,12 @@
  * determination's OWN flag. An INT determination never opens NEC; an NEC
  * determination never opens INT.
  *
+ * The GET preview endpoint is behind the same gate (founder decision
+ * 2026-11-10, Tap #10): the preview applies the unconfirmed threshold and
+ * names who is over it, so it refuses exactly like generation until the
+ * determination exists, and answers for allowed callers (determination
+ * recorded, or the founder).
+ *
  * This file drives the real route and the real gate. Only the flag store, the
  * founder check, the db and the PDF renderer are mocked.
  */
@@ -113,6 +119,7 @@ function app() {
   return a;
 }
 const postBatch = () => request(app()).post("/api/contractors/1099-nec-batch?taxYear=2026").send({});
+const getPreview = () => request(app()).get("/api/contractors/1099-nec-batch?taxYear=2026");
 
 beforeEach(() => {
   h.flagsOn = new Set();
@@ -198,9 +205,63 @@ describe("POST /api/contractors/1099-nec-batch refuses until the NEC threshold i
     expect(h.generate).toHaveBeenCalledTimes(1);
   });
 
-  it("the GET preview is outside this change's scope and still answers", async () => {
-    const res = await request(app()).get("/api/contractors/1099-nec-batch?taxYear=2026");
+});
+
+// ── The preview endpoint: same refusal discipline as generation (Tap #10) ──
+
+describe("GET /api/contractors/1099-nec-batch (preview) refuses until the NEC threshold is confirmed", () => {
+  it("refuses with the same structured 422 as generation and computes nothing (no determination recorded)", async () => {
+    const res = await getPreview();
+    expect(res.status).toBe(422);
+    expect(res.body).toMatchObject({
+      error: "not_qualified_filing_output",
+      statusCode: 422,
+      details: { reason: "nec_threshold_unconfirmed", flagKey: NEC_FLAG, thresholdCents: NEC_THRESHOLD_CENTS },
+    });
+    expect(res.body.message).toMatch(/1099-NEC/);
+    // The preview list is withheld whole — no contractor data leaks.
+    expect(res.body.contractors).toBeUndefined();
+    expect(res.body.contractorCount).toBeUndefined();
+    expect(h.execute, "the preview query must not run").not.toHaveBeenCalled();
+    expect(h.generate).not.toHaveBeenCalled();
+  });
+
+  it("an INT determination does NOT open the preview", async () => {
+    h.flagsOn.add(INT_FLAG);
+    const res = await getPreview();
+    expect(res.status).toBe(422);
+    expect(res.body.error).toBe("not_qualified_filing_output");
+    expect(h.execute).not.toHaveBeenCalled();
+  });
+
+  it("fails CLOSED when the flag store throws", async () => {
+    h.flagThrows = true;
+    const res = await getPreview();
+    expect(res.status).toBe(422);
+    expect(res.body.error).toBe("not_qualified_filing_output");
+    expect(h.execute).not.toHaveBeenCalled();
+  });
+
+  it("previews once the NEC determination is recorded for the org", async () => {
+    h.flagsOn.add(NEC_FLAG);
+    const res = await getPreview();
     expect(res.status).toBe(200);
+    expect(h.flagKeysRead).toEqual([NEC_FLAG]);
+    expect(res.body).toMatchObject({
+      taxYear: 2026,
+      thresholdCents: NEC_THRESHOLD_CENTS,
+      contractorCount: 1,
+      readyCount: 1,
+      blockedCount: 0,
+    });
+    expect(h.generate, "a preview never renders a form").not.toHaveBeenCalled();
+  });
+
+  it("the founder previews (that is how the review is exercised against real data)", async () => {
+    h.user = { id: "f", email: "founder@acreos.test" };
+    const res = await getPreview();
+    expect(res.status).toBe(200);
+    expect(res.body.contractorCount).toBe(1);
     expect(h.generate).not.toHaveBeenCalled();
   });
 });
@@ -257,7 +318,7 @@ describe("requireQualified1099Output — one gate, each form behind its own dete
   });
 });
 
-describe("the NEC route consults the shared gate — no second mechanism (source, comments stripped)", () => {
+describe("the NEC routes consult the shared gate — no second mechanism (source, comments stripped)", () => {
   const root = resolve(__dirname, "../..");
   const read = (p: string) => stripComments(readFileSync(resolve(root, p), "utf8"));
 
@@ -267,6 +328,13 @@ describe("the NEC route consults the shared gate — no second mechanism (source
     expect(src).toMatch(/generate1099NecPdf\(/);
     expect(src).toMatch(
       /app\.post\(\s*"\/api\/contractors\/1099-nec-batch"\s*,[^]*?requireQualified1099Output\(\s*"1099-NEC"\s*\)[^]*?async\s*\(/,
+    );
+  });
+
+  it("the GET preview registration mounts the same gate before the handler (Tap #10)", () => {
+    const src = read("server/routes-contractors.ts");
+    expect(src).toMatch(
+      /app\.get\(\s*"\/api\/contractors\/1099-nec-batch"\s*,[^]*?requireQualified1099Output\(\s*"1099-NEC"\s*\)[^]*?async\s*\(/,
     );
   });
 

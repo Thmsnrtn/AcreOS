@@ -52,6 +52,8 @@ import { UnitsPanel } from "@/components/rentals/units-panel";
 import { ExpensesPanel } from "@/components/rentals/expenses-panel";
 import { T12Workspace } from "@/components/rentals/t12-workspace";
 import { BookingsPanel } from "@/components/rentals/bookings-panel";
+import { CommercialPanel } from "@/components/rentals/commercial-panel";
+import { useOrganization } from "@/hooks/use-organization";
 import { UNIT_KIND_OPTIONS, unitVocabulary } from "@shared/rental/unitInventory";
 import type { RentalUnitKind } from "@shared/schema";
 
@@ -104,6 +106,10 @@ export default function LeasesPage() {
   const deepLinkedProperty = Number(new URLSearchParams(search).get("propertyId"));
   const initialUnitsProperty = Number.isInteger(deepLinkedProperty) && deepLinkedProperty > 0 ? deepLinkedProperty : null;
   const [tab, setTab] = useState<string>(initialTab);
+  // Commercial orgs only — the same businessType signal rent-roll and the
+  // contractual late-fee guard read (W2-COMMERCIAL).
+  const { data: org } = useOrganization();
+  const isCommercial = (org?.onboardingData as { businessType?: string } | null)?.businessType === "commercial";
   const [showCreate, setShowCreate] = useState(false);
   const [propertyId, setPropertyId] = useState("");
   const [startDate, setStartDate] = useState("");
@@ -220,6 +226,8 @@ export default function LeasesPage() {
           {/* Short-term-rental nightly stays (STR Wave A). A tab behind the
               Rentals module — no new door, no new route (standing hard-stop). */}
           <TabsTrigger value="bookings" data-testid="tab-bookings">Bookings</TabsTrigger>
+          {/* Commercial terms, rent steps, $/sqft, CAM (W2-COMMERCIAL) — a tab, never a nav entry. */}
+          {isCommercial && <TabsTrigger value="commercial" data-testid="tab-commercial">Commercial</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="units" className="mt-0">
@@ -237,6 +245,12 @@ export default function LeasesPage() {
         <TabsContent value="bookings" className="mt-0">
           <BookingsPanel />
         </TabsContent>
+
+        {isCommercial && (
+          <TabsContent value="commercial" className="mt-0">
+            <CommercialPanel />
+          </TabsContent>
+        )}
 
         <TabsContent value="leases" className="mt-0">
       {showCreate && (

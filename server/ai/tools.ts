@@ -6,6 +6,7 @@ import { getSystemContext, formatContextForAI, invalidateContextCache } from "..
 import { lookupParcelByAPN } from "../services/parcel";
 import { generateOfferSuggestions, generateOfferLetter } from "../services/aiOfferService";
 import { emailService } from "../services/emailService";
+import { leadReplyToAddress } from "../services/leadReplyTo";
 import { smsService, sendOrgSMS } from "../services/smsService";
 import { getComparableProperties } from "../services/comps";
 import {
@@ -32,7 +33,17 @@ import {
 // switches and the pause folded into one call, failing CLOSED. The pause
 // primitive (server/services/paxPause.ts) is consulted through it.
 import { getPaxControls, paxControlsRefusalMessage, type PaxControlsState } from "../services/paxControls";
+// Per-capability rails (PX-2): the one decision both dispatch switches consult.
+import { decidePaxCall, paxRailWatchRefusalMessage } from "../services/paxRails";
 import { recordPaxEffect } from "../services/paxReceipts";
+// PX-1 (register P-4): browse receipts, per-turn `web:<host>` provenance and
+// the web-sourced row cap — browse is never a side channel around the licence gate.
+import {
+  checkWebSourcedRows,
+  noteBrowseInTurn,
+  recordBrowseReceipt,
+  type WebFenceVerdict,
+} from "../services/webSourceFence";
 import type { PaxAskOrigin, PaxAskSourceRef } from "@shared/pax-controls";
 // The permission ladder, reachable without an Express request. `intentScopes`
 // is a TYPE-ONLY leaf so importing it here is not the cycle that importing
@@ -1207,6 +1218,15 @@ export interface ExecuteToolOptions {
   origin?: ExecuteToolOrigin;
   /** The scheduled prompt that ran this call, when origin is "scheduled". */
   scheduledTask?: { id: number; name: string } | null;
+  /**
+   * One Pax turn — minted by TRUSTED server code (the chat loops in
+   * server/ai/executive.ts), never by model output. It correlates a
+   * `browse_web` read with records created LATER IN THE SAME TURN, so those
+   * records carry `web:<host>` provenance and count against the web-sourced
+   * row cap (server/services/webSourceFence.ts, PX-1). Absent = the call
+   * cannot be linked to a browse.
+   */
+  turnId?: string;
 }
 
 type ToolResult = { success: boolean; data?: any; error?: string; reachabilitySummary?: unknown; refusal?: RefusalParts; requiredScope?: string };
@@ -1271,6 +1291,19 @@ function receiptEntity(
     if (n) return { entityType: type, entityId: n };
   }
   return { entityType: "organization", entityId: org.id };
+}
+
+/**
+ * The refusal for a create the web-sourced-rows fence stopped (PX-1). Names the
+ * fence — the licence check — and what unlocks it; the rows are refused whole,
+ * never silently truncated.
+ */
+function webFenceRefusal(v: Extract<WebFenceVerdict, { allowed: false }>) {
+  return toolRefusal({
+    what: "No records were created from the web pages I read",
+    why: `This is the licence check: records taken from web pages (${v.hosts.join(", ")}) are limited to ${v.cap} per conversation turn (${v.alreadyThisTurn} already made, ${v.asked} more asked), because a website's data may not be ours to copy in bulk`,
+    unlock: "Add a few of them yourself, import them from a list you own, or ask your administrator to clear that website as a source",
+  });
 }
 
 /** "Cochise County" / " cochise " → "cochise", so a county filter matches how people type it. */
@@ -1347,9 +1380,25 @@ export async function executeTool(
     //   - at "Ask before everything", every non-pause-safe tool — record
     //     writes included, and the customer's own chat commands included
     //     (founder decision 4: uniform, no asterisk).
+    //
+    // Per-capability rails (PX-2): the ONE decision — pause ∧ stance ∧ rail —
+    // comes from decidePaxCall (server/services/paxRails.ts). A rail only
+    // NARROWS: Watch refuses the write in plain words; Draft and Ask park it.
+    // The two original conditions stay as the floor, so a rail can never turn
+    // an ask into a run.
+    const railDecision = controls ? decidePaxCall(controls, toolName) : null;
+    if (railDecision?.kind === "refuse" && railDecision.why === "rail_watch") {
+      logger.info("[executeTool] Refused — the rail for this kind of change is on Watch", {
+        orgId: org.id,
+        metadata: { toolName, origin },
+      });
+      return { success: false, error: paxRailWatchRefusalMessage(toolName) };
+    }
     const requiresAsk =
       kernelApprovalRequiredTools.has(toolName) ||
-      (controls?.stance === "ask_before_everything" && !pauseSafe);
+      (controls?.stance === "ask_before_everything" && !pauseSafe) ||
+      railDecision?.kind === "ask" ||
+      railDecision?.kind === "draft";
     if (requiresAsk && !trustedApproval) {
       const pending = await proposePendingAction({
         organizationId: org.id,
@@ -1608,6 +1657,11 @@ export async function executeTool(
       }
 
       case "create_lead": {
+        // PX-1 — a lead made after a page was read this turn is web-sourced:
+        // counted against the cap and tagged `web:<host>` (the lead's existing
+        // `source` column). No browse this turn → the fence has nothing to say.
+        const leadFence = checkWebSourcedRows(org.id, options?.turnId, 1);
+        if (leadFence.webSourced && !leadFence.allowed) return webFenceRefusal(leadFence);
         const lead = await storage.createLead({
           organizationId: org.id,
           firstName: args.first_name,
@@ -1615,7 +1669,7 @@ export async function executeTool(
           email: args.email || null,
           phone: args.phone || null,
           type: args.type || "buyer",
-          source: args.source || "AI Assistant",
+          source: leadFence.webSourced ? leadFence.tag : (args.source || "AI Assistant"),
           notes: args.notes || null,
           status: "new"
         });
@@ -1878,9 +1932,16 @@ export async function executeTool(
 
       // Property CRUD
       case "create_property": {
+        // PX-1 — same fence as create_lead: a single-row create called fifty
+        // times in one turn must not slip past the web-sourced cap.
+        const propertyFence = checkWebSourcedRows(org.id, options?.turnId, 1);
+        if (propertyFence.webSourced && !propertyFence.allowed) return webFenceRefusal(propertyFence);
         const property = await storage.createProperty({
           organizationId: org.id,
           apn: args.apn,
+          // Properties have no `source` column, so web provenance rides the
+          // existing due-diligence notes: `source: web:<host>`.
+          ...(propertyFence.webSourced ? { dueDiligenceData: { notes: `source: ${propertyFence.tag}` } } : {}),
           address: args.address || null,
           city: args.city || null,
           county: args.county,
@@ -2169,8 +2230,14 @@ export async function executeTool(
           return toolRefusal({ what: "No properties were created", why: "The request did not include any parcels", unlock: "Paste the APNs with their county and state, and I will add them" });
         }
 
+        // PX-1 — the bulk fence. A batch made after a page was read this turn is
+        // web-sourced: more than the cap is refused WHOLE (never truncated) unless
+        // every source host is on the cleared list (empty by default).
+        const batchFence = checkWebSourcedRows(org.id, options?.turnId, propertiesToCreate.length);
+        if (batchFence.webSourced && !batchFence.allowed) return webFenceRefusal(batchFence);
+
         const results: Array<{ success: boolean; apn: string; propertyId?: number; hasBoundary?: boolean; error?: string }> = [];
-        
+
         for (const prop of propertiesToCreate) {
           try {
             if (!prop.apn || !prop.county || !prop.state) {
@@ -2188,6 +2255,7 @@ export async function executeTool(
               zip: prop.zip || null,
               sizeAcres: prop.sizeAcres || "0",
               status: prop.status || "prospect",
+              ...(batchFence.webSourced ? { dueDiligenceData: { notes: `source: ${batchFence.tag}` } } : {}),
             });
 
             // Wave B — property.created, once per row that really landed.
@@ -2438,6 +2506,8 @@ export async function executeTool(
           subject: args.subject,
           html: htmlContent,
           text: textContent,
+          // Lead-addressed sends thread replies back through the inbound seam.
+          replyTo: args.lead_id ? await leadReplyToAddress(args.lead_id, org.id) : undefined,
           organizationId: org.id,
           // Deal mail: Pax emailing a customer's lead — org identity required.
           purpose: 'counterparty',
@@ -2831,13 +2901,38 @@ export async function executeTool(
           extractTables: args.extract_tables !== false,
           captureScreenshot: args.take_screenshot === true,
           waitMs: args.wait_ms || 0,
+          orgId: org.id,
         });
         logger.info(`[browse_web] Result: success=${result.success}, title="${result.title}", contentLen=${result.content?.length}, error=${result.error}`);
-        
+
+        // PX-1 — a receipt for the visit, even though the tool is pause-safe
+        // (the generic post-dispatch hook skips pause-safe tools). Best-effort:
+        // a failure is logged inside, never breaks the browse.
+        await recordBrowseReceipt({
+          orgId: org.id,
+          userId: options?.userId ?? null,
+          origin,
+          turnId: options?.turnId ?? null,
+          url,
+          outcome: result.success ? "read" : (result.robotsDisallowed || result.robotsUnverified || result.rateLimited) ? "refused" : "failed",
+        });
+
+        if (result.robotsUnverified) {
+          return toolRefusal({ what: "The page was not opened", why: "I could not read that website's rules for automated visitors, so I did not guess", unlock: "Try again in a minute, or open it yourself in your browser" });
+        }
+        if (result.robotsDisallowed) {
+          return toolRefusal({ what: "The page was not opened", why: "That website's own rules ask automated visitors to stay out of this page, and I respect them", unlock: "Open it yourself in your browser, or ask about a different page or site" });
+        }
+        if (result.rateLimited) {
+          return toolRefusal({ what: "The page was not opened", why: "I have visited this website a lot in the last few minutes, and I pace myself so I do not overload it", unlock: "Wait a few minutes and ask again, or open it yourself in your browser" });
+        }
         if (!result.success) {
           return toolRefusal({ what: "The page did not load", why: "The website did not answer, or refused the visit", unlock: "Try again in a minute, or open it yourself in your browser" });
         }
-        
+
+        // PX-1 — from here on, records made in THIS turn are web-sourced.
+        noteBrowseInTurn(org.id, options?.turnId, parsedBrowseUrl.hostname);
+
         return {
           success: true,
           data: {
