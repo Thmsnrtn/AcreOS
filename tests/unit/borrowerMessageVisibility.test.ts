@@ -174,7 +174,7 @@ function makeApp() {
     if (header) {
       for (const part of header.split(";")) {
         const [k, v] = part.trim().split("=");
-        if (k) req.cookies[k] = decodeURIComponent(v ?? "");
+        if (k === "borrower_session") req.cookies[k] = decodeURIComponent(v ?? "");
       }
     }
     next();

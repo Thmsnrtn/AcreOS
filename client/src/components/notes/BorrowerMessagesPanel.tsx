@@ -128,7 +128,7 @@ export function BorrowerMessagesPanel({ noteId }: BorrowerMessagesPanelProps) {
       {isError && (
         <div className="text-sm text-muted-foreground">
           We couldn't load the borrower's messages.{" "}
-          <Button variant="link" className="p-0 h-auto" onClick={() => void refetch()}>
+          <Button variant="ghost" className="p-0 h-auto" onClick={() => void refetch()}>
             Try again
           </Button>
         </div>
