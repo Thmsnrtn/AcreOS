@@ -3,7 +3,7 @@ import crypto from "crypto";
 import { storage, db } from "./storage";
 import { eq, and, gte, desc, inArray } from "drizzle-orm";
 import { achDebitAttempts } from "@shared/schema/ach-autopay";
-import { notes, notePayoffQuotes, type BorrowerSession, type NotePayoffQuote } from "@shared/schema";
+import { notes, notePayoffQuotes, organizations, properties, type BorrowerSession, type NotePayoffQuote } from "@shared/schema";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { createRateLimiter, RATE_LIMIT_CONFIGS } from "./middleware/rateLimit";
@@ -23,6 +23,7 @@ import {
 // same generator the lender files from (borrowerCopy1098ForNote).
 import { borrowerCopy1098ForNote, dayInZone, resolveOrgTimeZone } from "./services/form1098Batch";
 import { quoteServicedNotePayoff } from "./services/notes/servicedNotePayoff";
+import { buildPayoffLetter } from "./services/settlementRail/documents";
 import { Errors, sendError } from "./utils/errors";
 
 /**
@@ -1808,7 +1809,82 @@ export function registerBorrowerRoutes(app: Express): void {
       Errors.internal(res, err);
     }
   });
-  
+
+  // The payoff LETTER (Settlement & Documents Rail, N-1): the formal letter
+  // built on the same recorded quote the endpoint above prices — addressed,
+  // dated, with the per-diem and good-through terms stated as a letter the
+  // borrower can hand to their escrow or title company. Same session pin,
+  // same engine, same row: the letter's figures are the quote row's figures.
+  api.get("/api/borrower/payoff-letter", validateBorrowerSession, portalPaymentRateLimiter, async (req, res) => {
+    try {
+      const session = requireBorrowerSession(req);
+      const [note] = await db
+        .select()
+        .from(notes)
+        .where(
+          session.organizationId != null
+            ? and(eq(notes.id, session.noteId), eq(notes.organizationId, session.organizationId))
+            : eq(notes.id, session.noteId),
+        )
+        .limit(1);
+      if (!note) {
+        return Errors.notFound(res, "loan");
+      }
+      const borrower = note.borrowerId ? await storage.getLead(note.organizationId, note.borrowerId) : undefined;
+      const borrowerLabel = borrower
+        ? `${borrower.firstName ?? ""} ${borrower.lastName ?? ""}`.trim() || null
+        : null;
+      const lenderTimeZone = await resolveOrgTimeZone(note.organizationId);
+      const todayIso = dayInZone(clock.now(), lenderTimeZone) ?? isoDateUtc(clock.now());
+      const requestedDate = typeof req.query.payoffDate === "string" ? req.query.payoffDate : todayIso;
+      let payoffDate: Date;
+      try {
+        payoffDate = parseIsoDateUtc(requestedDate);
+      } catch {
+        return Errors.badRequest(res, "payoffDate must be a valid ISO date (YYYY-MM-DD)");
+      }
+      if (isoDateUtc(payoffDate) < todayIso) {
+        return Errors.badRequest(res, "payoffDate cannot be in the past");
+      }
+      const { row: quoteRow } = await quoteServicedNotePayoff({
+        note,
+        payoffDate,
+        lenderTimeZone,
+        channel: "borrower_portal",
+        payerName: borrowerLabel,
+        quotedByUserId: null,
+        provenance: `borrower_session:${session.id}:payoff_letter`,
+      });
+      const [org] = await db
+        .select({ name: organizations.name })
+        .from(organizations)
+        .where(eq(organizations.id, note.organizationId))
+        .limit(1);
+      const [property] = note.propertyId
+        ? await db
+            .select({ address: properties.address, city: properties.city, state: properties.state, zip: properties.zip })
+            .from(properties)
+            .where(eq(properties.id, note.propertyId))
+            .limit(1)
+        : [];
+      const artifact = buildPayoffLetter({
+        quote: quoteRow,
+        lenderName: org?.name ?? "Your lender",
+        borrowerName: borrowerLabel,
+        propertyAddress: property
+          ? [property.address, property.city, property.state, property.zip].filter((x) => x && String(x).trim()).join(", ") || null
+          : null,
+        paymentInstructions: null,
+      });
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${artifact.filename}"`);
+      return res.send(artifact.pdf);
+    } catch (err) {
+      logger.error("Payoff letter error", err);
+      return Errors.internal(res, err);
+    }
+  });
+
   // Generate PDF statement for borrower portal
   api.get("/api/borrower/statements/generate", async (req, res) => {
     try {

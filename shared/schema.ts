@@ -13982,6 +13982,11 @@ export * from "./schema/unattached-inbound";
 export * from "./schema/notes-vertical";
 
 // ============================================================================
+// SETTLEMENT & DOCUMENTS RAIL — extracted to ./schema/settlement-rail.ts
+// ============================================================================
+export * from "./schema/settlement-rail";
+
+// ============================================================================
 // WHOLESALE VERTICAL — extracted to ./schema/wholesale.ts
 // ============================================================================
 export * from "./schema/wholesale";

@@ -312,6 +312,8 @@ export const JOB_ROSTER: JobRosterEntry[] = [
   { name: "action_preview_sweeper", intervalMs: HOUR, critical: false },
   { name: "dispatch_reaper", intervalMs: 10 * MIN, critical: false },
   { name: "mail_flusher", intervalMs: 3 * MIN, critical: true },
+  // Settlement & Documents Rail (P1-3): drains offer letters queued by Send.
+  { name: "offer_mail_transport", intervalMs: 5 * MIN, critical: false },
   { name: "proof_chain_audit", intervalMs: DAY, critical: true },
   { name: "strategic_proposals_weekly", intervalMs: WEEK, critical: false },
   // Wall-clock 1st-of-month 10:00 UTC. cron not yet consumed.
