@@ -12,9 +12,37 @@ concurrency:
 
 jobs:
   # ── Pre-deploy gate ─────────────────────────────────────────────────────────
-  test:
-    name: Pre-deploy Tests
+  # TypeScript check + ratchets, split out of the pre-deploy job so it runs
+  # in parallel with the test shards (CI efficiency package, 2026-11-11).
+  typecheck:
+    name: TypeScript check + ratchets
     runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+  # The pre-deploy suite, partitioned by test file across three runners via
+  # vitest's --shard (CI efficiency package, 2026-11-11; measured 39–46 min as
+  # one serial job). The union of the three shards is the full suite. Each
+  # shard job provisions its OWN pgvector service and builds the schema in
+  # it, so the real-database suites get a private database per shard — in the
+  # single job every test file shared ONE database, in parallel forks, so a
+  # per-shard database removes cross-file interference rather than adding any.
+  test:
+    name: Pre-deploy Tests (shard ${{ matrix.shard }}/3)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     env:
       DATABASE_URL: postgresql://acreos:acreos@localhost:5432/acreos_test
       # The tests that read Postgres itself (tests/helpers/realDb.ts) run against
@@ -92,7 +120,7 @@ jobs:
         run: npm run db:build-from-repo
 
       - name: Run tests
-        run: npx vitest run
+        run: npx vitest run --shard=${{ matrix.shard }}/3
         env:
           CI: true
 
@@ -112,7 +140,7 @@ jobs:
   #   3. ensure secrets.FLY_API_TOKEN is scoped to that app
   deploy-staging:
     name: Deploy to Staging (Fly.io)
-    needs: test
+    needs: [test, typecheck]
     # Kill switch: DEPLOY_FROZEN=true blocks all automated deploys (2026-10-17)
     if: vars.FLY_STAGING_APP != '' && vars.DEPLOY_FROZEN != 'true'
     runs-on: ubuntu-latest
