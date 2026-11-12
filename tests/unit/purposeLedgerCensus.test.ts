@@ -588,6 +588,7 @@ const DEBT: Record<string, ProposedSurface> = {
   // server/routes-analytics.ts
   "server/routes-analytics.ts route:GET /api/analytics/cohort-dashboard": "review",
   // server/routes-borrower.ts
+  "server/routes-borrower.ts route:GET /api/borrower/payoff-letter": "review",
   "server/routes-borrower.ts route:GET /api/borrower/payoff-quote": "review",
   "server/routes-borrower.ts route:GET /api/borrower/periodic-statements/:statementId/pdf": "review",
   "server/routes-borrower.ts route:GET /api/borrower/session": "review",
@@ -811,6 +812,9 @@ const DEBT: Record<string, ProposedSurface> = {
   "server/services/core-agents.ts case:run_digest": "review",
   // server/services/outcomeVerificationLoop.ts
   "server/services/outcomeVerificationLoop.ts case:send_follow_up": "review",
+  // server/services/settlementRail/routes.ts
+  "server/services/settlementRail/routes.ts route:POST /api/notes/:id/lien-release": "review",
+  "server/services/settlementRail/routes.ts route:POST /api/notes/:id/payoff-letter": "review",
   // server/services/workflow-engine.ts
   "server/services/workflow-engine.ts case:conditional": "review",
   "server/services/workflow-engine.ts case:send_email#2": "review",
@@ -820,7 +824,10 @@ const DEBT: Record<string, ProposedSurface> = {
 /** DEBT may only shrink. Lower this in the same commit that removes an entry. */
 // 214 → 212 (2026-11-06, W2-TEAM): GET /api/analytics/team-kpi and
 // GET /api/analytics/team-leaderboard deleted — no client caller.
-const DEBT_BASELINE = 212;
+// 212 → 215 (2026-11-12, PR #564): settlement rail registered three new
+// person-adjacent surfaces in DEBT (borrower payoff-letter + notes
+// payoff-letter/lien-release routes), per the PR's assigned audit.
+const DEBT_BASELINE = 215;
 
 /**
  * Every file holding a dispatch switch (≥10 snake_case case labels, raw count)
