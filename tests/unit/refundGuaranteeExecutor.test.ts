@@ -16,6 +16,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getTableColumns } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
+import { stripComments } from "../helpers/stripComments";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -438,7 +439,7 @@ describe("everything else is queued under the right brake with a decision clock"
     const cfg = fs.readFileSync("server/services/refunds/refundConfig.ts", "utf8");
     expect(cfg).toMatch(/PROPOSAL, NOT A RATIFIED NUMBER/);
     for (const f of ["requestGuaranteeRefund.ts", "executeRefund.ts", "refundQueue.ts", "guaranteeEligibility.ts"]) {
-      const src = fs.readFileSync(`server/services/refunds/${f}`, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+      const src = stripComments(fs.readFileSync(`server/services/refunds/${f}`, "utf8"));
       expect(src, f).not.toMatch(/\b500_?000\b|maxCount:\s*\d|windowHours:\s*\d/);
     }
   });
@@ -715,7 +716,7 @@ describe("response copy", () => {
   it("the route and the intake service no longer carry the old amount wording or the $50 line", async () => {
     const fs = await import("node:fs");
     for (const f of ["server/routes-billing.ts", "server/services/refunds/requestGuaranteeRefund.ts"]) {
-      const src = fs.readFileSync(f, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+      const src = stripComments(fs.readFileSync(f, "utf8"));
       expect(src, f).not.toMatch(/over \$50|requires manual approval|autoApproveThreshold|<=\s*5000/);
     }
   });

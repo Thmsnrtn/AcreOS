@@ -27,8 +27,12 @@ type Charge = Record<string, any>;
 const stripeState = vi.hoisted(() => ({
   charges: [] as Charge[],
   refundSeq: 0,
-  refundsCreate: undefined as unknown as ReturnType<typeof vi.fn>,
-  subscriptionsCancel: undefined as unknown as ReturnType<typeof vi.fn>,
+  // Plain function types, not ReturnType<typeof vi.fn>: that is
+  // Mock<Procedure | Constructable>, which TS refuses to call (TS2348) at the
+  // seam spreads below. The values assigned are vi.fn mocks; the assertions
+  // read them through expect(), which does not care about the declared type.
+  refundsCreate: undefined as unknown as (...args: any[]) => Promise<any>,
+  subscriptionsCancel: undefined as unknown as (...args: any[]) => Promise<any>,
   glFails: false,
 }));
 
