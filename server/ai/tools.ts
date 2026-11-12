@@ -45,6 +45,9 @@ import {
   type WebFenceVerdict,
 } from "../services/webSourceFence";
 import type { PaxAskOrigin, PaxAskSourceRef } from "@shared/pax-controls";
+// PX-7: type only — the search service (and the browser behind it) is loaded
+// lazily inside the browse_search case, exactly as browse_web loads its own.
+import type { PaxSearchRefusalReason, PaxSearchStep } from "../services/paxBrowseSearch";
 // The permission ladder, reachable without an Express request. `intentScopes`
 // is a TYPE-ONLY leaf so importing it here is not the cycle that importing
 // `appIntents/catalog` would be (catalog imports executeTool from this file).
@@ -591,6 +594,31 @@ export const toolDefinitions = {
     }
   },
 
+  browse_search: {
+    name: "browse_search",
+    description: "Run a search on a public county or records website: open the site, type the search text into the site's own search box, and read the results page. Use it for an assessor, recorder or treasurer lookup by owner name, parcel number or address. `site` is one of the user's saved county sites (by name or address) or the full web address the user gave you (starting with https://). It does not sign in, solve CAPTCHAs or fill any other form; if the site asks for a human check it stops and says so. Returns the results page text, links and tables, and the pages visited. Optionally saves a short note on ONE lead, property or deal.",
+    parameters: {
+      type: "object",
+      properties: {
+        site: { type: "string", description: "A saved county site (its name or address), or the full URL the user gave you (https://...)" },
+        query: { type: "string", description: "The text to search for: an owner name, parcel number (APN) or address" },
+        attach_to: {
+          type: "object",
+          description: "Optional: ONE record to save a short note on (the note says where the result came from)",
+          properties: {
+            kind: { type: "string", enum: ["lead", "property", "deal"], description: "Which kind of record" },
+            id: { type: "number", description: "The record's ID" }
+          },
+          required: ["kind", "id"]
+        },
+        finding: { type: "string", description: "Optional: one short sentence on what the search found, saved on the record's note (max 500 characters)" },
+        max_pages: { type: "number", description: "Optional: how many results pages to read, 1 to 3 (default 1)" },
+        open_result: { type: "number", description: "Optional: after reading the results page, open the result link with this number (0 is the first link in the list you were given)" }
+      },
+      required: ["site", "query"]
+    }
+  },
+
   draft_offer: {
     name: "draft_offer",
     description: "Draft a purchase offer letter for a land deal. Queries deal and property from the database, generates a professional offer letter using AI, and returns the draft text.",
@@ -1117,6 +1145,9 @@ export const PAUSE_SAFE_TOOLS: ReadonlySet<string> = new Set([
   "run_comps_analysis",
   "research_property",
   "browse_web",
+  // PX-7: a public-site search is a look. Its optional timeline note is a
+  // write, so the note is skipped while Pax is paused (attachSearchNote).
+  "browse_search",
   "extract_properties_from_text",
   "retrieve_land_knowledge",
   // Drafts that don't send (the pause promise: "Pax will still draft and ask").
@@ -1230,6 +1261,56 @@ export interface ExecuteToolOptions {
 }
 
 type ToolResult = { success: boolean; data?: any; error?: string; reachabilitySummary?: unknown; refusal?: RefusalParts; requiredScope?: string };
+
+/**
+ * The words for every way a browse_search session can refuse or stop early
+ * (PX-7). One switch so the set is enumerable — the reason union is the
+ * switch's input, and TypeScript fails the build on a reason without words.
+ * Every part is written here, as literals, so refusalsArePlainWords can judge
+ * it. `siteName` is the person's own name for the site (or its host).
+ */
+function browseSearchRefusal(reason: PaxSearchRefusalReason, siteName: string) {
+  switch (reason) {
+    case "step_not_allowed":
+      return toolRefusal({ what: "The search was not run", why: "The steps asked for are not ones I am allowed to take on a website", unlock: "Ask me to search a site for a name, parcel number or address, and I will take it from there" });
+    case "too_many_steps":
+      return toolRefusal({ what: "The search was not run", why: "That would take more steps than one search is allowed", unlock: "Ask again with a narrower search" });
+    case "too_many_pages":
+      return toolRefusal({ what: "The search stopped early", why: "It reached the number of pages one search is allowed to open", unlock: "Ask again with a narrower search, or open the site yourself and paste the page address here" });
+    case "different_site":
+      return toolRefusal({ what: "The search was not finished", why: `It would have had to leave ${siteName} for a different website, which a search is not allowed to do`, unlock: "Add the other website under My county sites in Settings, or open it yourself and paste the page address here" });
+    case "no_page_open":
+      return toolRefusal({ what: "The search was not run", why: "There was no page open to work from", unlock: "Ask again and tell me which site to start from" });
+    case "no_search_form":
+      return toolRefusal({ what: "The search was not finished", why: "I could not find an ordinary search box on that page, and I do not guess at other controls on a website", unlock: "Open the site yourself, run the search, and paste the result page address here" });
+    case "login_form_only":
+      return toolRefusal({ what: "The search was not finished", why: "The only form on that page is a sign-in form, and I never enter passwords", unlock: "Open the site yourself, run the search, and paste the result page address here" });
+    case "ambiguous_search_form":
+      return toolRefusal({ what: "The search was not finished", why: "That page has more than one search box and I could not tell which one to use", unlock: "Open the site yourself, run the search, and paste the result page address here" });
+    case "query_not_usable":
+      return toolRefusal({ what: "The search was not run", why: "The search text was empty or too long to type into a search box", unlock: "Give me a shorter name, parcel number or address to look up" });
+    case "no_such_result":
+      return toolRefusal({ what: "The result was not opened", why: "That result number is not among the links I read on the page", unlock: "Ask again and pick one of the results from the list I gave you" });
+    case "no_next_page":
+      return toolRefusal({ what: "No further page was opened", why: "The page has no next-page link that I can use", unlock: "Ask me to read this page again, or open the site yourself to look further" });
+    case "address_refused":
+      return toolRefusal({ what: "The page was not opened", why: "That address points somewhere I am not allowed to go, such as a private network or a site that is not on the approved list", unlock: "Use a public website address instead, or open it yourself in your browser" });
+    case "robots_disallowed":
+      return toolRefusal({ what: "The search was not finished", why: "That website's own rules ask automated visitors to stay out of this page, and I respect them", unlock: "Open it yourself in your browser, or ask about a different page or site" });
+    case "robots_unverified":
+      return toolRefusal({ what: "The search was not finished", why: "I could not read that website's rules for automated visitors, so I did not guess", unlock: "Try again in a minute, or open it yourself in your browser" });
+    case "rate_limited":
+      return toolRefusal({ what: "The search was not finished", why: "I have visited this website a lot in the last few minutes, and I pace myself so I do not overload it", unlock: "Wait a few minutes and ask again, or open it yourself in your browser" });
+    case "timed_out":
+      return toolRefusal({ what: "The search was not finished", why: "The website took too long to answer", unlock: "Try again in a minute, or open the site yourself and paste the result page address here" });
+    case "did_not_load":
+      return toolRefusal({ what: "The search did not finish", why: "The website did not answer, or refused the visit", unlock: "Try again in a minute, or open it yourself in your browser" });
+    case "not_a_web_page":
+      return toolRefusal({ what: "The search was not finished", why: "That link leads to a file rather than a web page, and I do not download files", unlock: "Open it yourself in your browser" });
+    case "site_error":
+      return toolRefusal({ what: "The search was not finished", why: "The website answered with an error page", unlock: "Try again in a minute, or open it yourself in your browser" });
+  }
+}
 
 const positiveInt = (v: unknown): number | null => {
   if (typeof v === "number" && Number.isInteger(v) && v > 0) return v;
@@ -2947,6 +3028,141 @@ export async function executeTool(
         };
       }
       
+      case "browse_search": {
+        // PX-7 — a bounded search on a public site (server/services/paxBrowseSearch.ts):
+        // open → type the query into the site's own GET search box → read, then
+        // optionally one result or the next page. Creates NO records; anything Pax
+        // later makes from the content goes through the PX-1 fence like browse_web.
+        const { resolveSearchSite, runPaxSearchSession, attachSearchNote, cleanSearchQuery, PAX_SEARCH_LIMITS } = await import("../services/paxBrowseSearch");
+        const searchQuery = cleanSearchQuery(args.query);
+        if (!searchQuery) {
+          return toolRefusal({ what: "The search was not run", why: "I was not told what to search for", unlock: "Tell me the name, parcel number or address to look up, and which site to use" });
+        }
+
+        // The record (if any) is verified BEFORE searching: a bad target refuses the whole call.
+        let attachTarget: { kind: "lead" | "property" | "deal"; id: number } | null = null;
+        if (args.attach_to !== undefined && args.attach_to !== null) {
+          const wanted = args.attach_to as { kind?: unknown; id?: unknown };
+          const wantedId = positiveInt(wanted.id);
+          const wantedKind = wanted.kind === "lead" || wanted.kind === "property" || wanted.kind === "deal" ? wanted.kind : null;
+          if (!wantedKind || !wantedId) {
+            return toolRefusal({ what: "The search was not run", why: "I could not tell which record to save the result on", unlock: "Name one lead, property or deal by its number, or leave the record out and ask again" });
+          }
+          const wantedRecord =
+            wantedKind === "lead"
+              ? await storage.getLead(org.id, wantedId)
+              : wantedKind === "property"
+                ? await storage.getProperty(org.id, wantedId)
+                : await storage.getDeal(org.id, wantedId);
+          if (!wantedRecord) {
+            return toolRefusal({ what: "The search was not run", why: "That record is not in this account, so there is nowhere to save the result", unlock: "Open Leads, Properties or Deals to find the right number, or ask again without a record" });
+          }
+          attachTarget = { kind: wantedKind, id: wantedId };
+        }
+
+        // THE SITE GATE: a saved county site, or the full address the user gave.
+        const searchControls = await getPaxControls(org.id);
+        const mySites = Array.isArray(searchControls.mySites) ? searchControls.mySites : [];
+        const resolved = resolveSearchSite(args.site, mySites);
+        if (resolved.kind === "refused") {
+          if (resolved.reason === "site_not_listed") {
+            return toolRefusal({ what: "The search was not run", why: "That website is not on your list of county sites, and you did not give me its full address", unlock: "Add it under My county sites in Settings → Pax, or paste the site's full address, starting with https://" });
+          }
+          return toolRefusal({ what: "The search was not run", why: "I need a website address, or the name of one of your saved sites, to start from", unlock: "Paste the site's full address, starting with https://, or pick one of your saved county sites" });
+        }
+
+        // The same boundary checks browse_web makes on its URL (the session re-passes them on every hop).
+        const { validateUrl, SSRFBlockedError } = await import("../middleware/fileUploadSecurity");
+        try {
+          await validateUrl(resolved.url);
+        } catch (ssrfErr) {
+          if (ssrfErr instanceof SSRFBlockedError) {
+            logger.warn("[browse_search] URL blocked by SSRF guard", { metadata: { orgId: org.id, reason: ssrfErr.message } });
+            return toolRefusal({ what: "The search was not run", why: "That address points inside a private network, which I am not allowed to reach", unlock: "Use a public web address instead" });
+          }
+          throw ssrfErr;
+        }
+        const { checkBrowseDomainPolicy } = await import("../utils/browsePolicy");
+        if (!checkBrowseDomainPolicy(resolved.host).allowed) {
+          return toolRefusal({ what: "The search was not run", why: "That website is not on the list of sites I may visit", unlock: "Open it yourself in your browser, or ask about a public records site instead" });
+        }
+
+        // The plan, in the closed step language: open → search → read, then one
+        // result, or further results pages. Page loads: the open, plus each page read.
+        const pagesWanted = Math.min(Math.max(positiveInt(args.max_pages) ?? 1, 1), PAX_SEARCH_LIMITS.maxPages - 1);
+        const openResult = typeof args.open_result === "number" && Number.isInteger(args.open_result) && args.open_result >= 0 ? args.open_result : null;
+        const plan: PaxSearchStep[] = [{ kind: "open", url: resolved.url }, { kind: "search", query: searchQuery }, { kind: "read" }];
+        if (openResult !== null) {
+          plan.push({ kind: "open_result", index: openResult }, { kind: "read" });
+        } else {
+          for (let p = 1; p < pagesWanted; p++) plan.push({ kind: "next_page" }, { kind: "read" });
+        }
+        const outcome = await runPaxSearchSession({
+          orgId: org.id,
+          userId: options?.userId ?? null,
+          origin,
+          turnId: options?.turnId ?? null,
+          mySites,
+          steps: plan,
+          // open + search + the result page; or open + each results page read.
+          maxPages: openResult !== null ? Math.min(3, PAX_SEARCH_LIMITS.maxPages) : 1 + pagesWanted,
+        });
+
+        if (outcome.kind === "captcha") {
+          return toolRefusal({ what: "The search was not finished", why: "The site asked for a human check (a CAPTCHA), and I do not solve those", unlock: `Open ${resolved.label} yourself, run the search, and paste the result page address here — or add the page to your sites and try from the result page` });
+        }
+        if (outcome.kind === "refused") {
+          return browseSearchRefusal(outcome.reason, resolved.label);
+        }
+        const lastPage = outcome.pages[outcome.pages.length - 1];
+        if (!lastPage) {
+          return browseSearchRefusal("did_not_load", resolved.label);
+        }
+
+        let noteState: { attached: boolean; skipped: "paused" | "not_saved" | null } | null = null;
+        if (attachTarget) {
+          let noteHost = resolved.host;
+          try {
+            noteHost = new URL(lastPage.url).hostname;
+          } catch {
+            noteHost = resolved.host;
+          }
+          noteState = await attachSearchNote({
+            orgId: org.id,
+            userId: options?.userId ?? null,
+            origin,
+            // The pause state read above for the site gate: a paused Pax still searches, but saves no note.
+            paused: searchControls.paused !== false,
+            stance: searchControls.checkFailed ? null : searchControls.stance,
+            kind: attachTarget.kind,
+            id: attachTarget.id,
+            host: noteHost,
+            url: lastPage.url,
+            query: searchQuery,
+            finding: args.finding,
+            pagesRead: outcome.pages.length,
+          });
+        }
+
+        return {
+          success: true,
+          data: {
+            site: resolved.host,
+            query: searchQuery,
+            pages: outcome.pages,
+            pagesVisited: outcome.trail,
+            endedEarly: outcome.stoppedEarly ? browseSearchRefusal(outcome.stoppedEarly, resolved.label).error : null,
+            noteSaved: noteState?.attached ?? false,
+            noteNotSaved:
+              noteState && !noteState.attached
+                ? noteState.skipped === "paused"
+                  ? "Pax is paused, so no note was saved on the record"
+                  : "The note could not be saved on the record"
+                : null,
+          },
+        };
+      }
+
       case "draft_offer": {
         const deal = await storage.getDeal(org.id, Number(args.dealId));
         if (!deal) return toolRefusal({ what: "No deal with that number is in this account", why: "It may have been deleted, or the number came from another list", unlock: "Open Deals to find the one you mean" });
@@ -3468,7 +3684,7 @@ export function getToolsForRole(role: string) {
     acquisitions: [...coreTools, ...memoryTools, "get_leads", "get_lead_details", "update_lead_status", "create_lead", "get_properties", "create_property", "get_deals", "create_deal", "get_tasks", "create_task", "get_pipeline_summary", "generate_offer", "generate_offer_letter", "send_email", "send_sms", "run_comps_analysis", "schedule_followup", "draft_offer", "schedule_follow_up", "run_comps", "get_stale_leads", "draft_outreach_message"],
     underwriting: [...coreTools, ...memoryTools, "get_properties", "get_property_details", "update_property", "get_notes", "calculate_amortization", "get_cashflow_summary", "get_deals", "update_deal", "run_comps_analysis", "run_comps", "calculate_roi", "calculate_payment_schedule", "research_property", "draft_offer"],
     marketing: [...coreTools, ...memoryTools, "get_leads", "get_properties", "get_pipeline_summary", "create_task", "send_email", "send_sms", "get_stale_leads", "draft_outreach_message"],
-    research: [...coreTools, ...memoryTools, "get_properties", "get_property_details", "get_leads", "create_property", "update_property", "run_comps_analysis", "run_comps", "research_property", "calculate_roi", "browse_web"],
+    research: [...coreTools, ...memoryTools, "get_properties", "get_property_details", "get_leads", "create_property", "update_property", "run_comps_analysis", "run_comps", "research_property", "calculate_roi", "browse_web", "browse_search"],
     documents: [...coreTools, "get_leads", "get_lead_details", "get_properties", "get_property_details", "get_notes", "get_deals", "generate_offer_letter", "draft_offer"],
     assistant: allTools // Full access for the main assistant
   };

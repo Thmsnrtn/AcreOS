@@ -292,6 +292,34 @@ export const PAX_RAIL_COPY = {
 } as const;
 
 /**
+ * "My county sites" (PX-7) — the list of public sites Pax may run a search on.
+ * Listing a site lets Pax type a search into that site's own search box and read
+ * the results page; it is not a licence, and the line below says so without
+ * claiming more than the fence enforces (a handful of web-sourced records per
+ * conversation, each tagged with where it came from).
+ */
+export const PAX_MY_SITES_COPY = {
+  title: "My county sites",
+  intro:
+    "Public sites you want Pax to search for you — a county assessor, recorder or treasurer. Pax types your search into the site's own search box and reads the results page.",
+  limitLine:
+    "Listing a site lets Pax run searches on it. It does not let Pax copy a site's data in bulk: Pax still adds only a few records from a web page at a time, and notes where each one came from.",
+  empty: "No sites yet. Add the ones you use and Pax can search them when you ask.",
+  labelField: "Name",
+  labelPlaceholder: "Cochise County assessor",
+  hostField: "Website address",
+  hostPlaceholder: "https://assessor.example.gov",
+  addButton: "Add site",
+  removeButton: "Remove",
+  added: (label: string) => `${label} added to your sites`,
+  removed: (label: string) => `${label} removed from your sites`,
+  notAddress: "That does not look like a website address. Paste the address of the site, like https://assessor.example.gov.",
+  alreadyListed: "That site is already on your list.",
+  listFull: (max: number) => `You can list up to ${max} sites. Remove one to add another.`,
+  readOnly: "Ask an owner to change your sites.",
+} as const;
+
+/**
  * The fixed Never list — facts, each with the gate that makes it a fact
  * (spec §2). A line is listed ONLY while its gate exists; the pricing line
  * ("change what you pay AcreOS") is appended by wave 1 A together with

@@ -30,6 +30,7 @@ import {
   CheckCircle2,
   Clock,
   Database,
+  Globe,
   History,
   Inbox,
   Mail,
@@ -50,6 +51,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -62,25 +64,30 @@ import { formatDateTime, formatRelative } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import {
   OFFERED_STANCES,
+  PAX_MY_SITES_MAX,
   PAX_RAIL_LEVEL_LABELS,
   PAX_RAIL_LEVEL_SENTENCES,
   PAX_RAIL_LEVELS,
   PAX_RECORD_DOMAINS,
   PAX_RECORD_DOMAIN_LABELS,
   PAX_SENDS_RAIL_LEVELS,
+  PAX_SITE_LABEL_MAX,
   PAX_TOOL_DOMAINS,
   PAX_TOOL_GROUPS,
   STANCE_LABELS,
   UNATTENDED_PATHS,
+  siteHostFromInput,
   type PaxRailLevel,
   type PaxRails,
   type PaxRecordDomain,
   type PaxSendsRailLevel,
+  type PaxSiteEntry,
   type PaxStance,
 } from "@shared/pax-controls";
 import {
   PAX_GROUP_COPY,
   PAX_LABELS,
+  PAX_MY_SITES_COPY,
   PAX_NEVER_LIST,
   PAX_PAGE_COPY,
   PAX_PAUSE_COPY,
@@ -113,6 +120,8 @@ export interface PaxControlsResponse {
   switches: { leadScoring: boolean; borrowerReminders: boolean; inboxDrafts: boolean };
   /** PX-2 per-capability rails; the server always sends it, the page tolerates its absence. */
   rails?: PaxRails;
+  /** PX-7 public sites Pax may search; the server always sends it, the page tolerates its absence. */
+  mySites?: PaxSiteEntry[];
   rightNow: {
     waiting: number;
     changedTodayOnItsOwn: number;
@@ -580,6 +589,9 @@ export function PaxControls() {
         />
       )}
 
+      {/* ── 2c. My county sites — where Pax may run searches (PX-7) ─────── */}
+      <MySitesCard sites={data.mySites ?? []} canEdit={data.canChangeStance} />
+
       {/* ── 3. What runs on its own ─────────────────────────────────────── */}
       <Card className="rounded-card mb-4" data-testid="pax-runs-card">
         <CardHeader>
@@ -864,6 +876,153 @@ function RailRow({
       </div>
       {note && <div className="text-xs text-muted-foreground mt-0.5">{note}</div>}
     </div>
+  );
+}
+
+// ── My county sites (PX-7) ─────────────────────────────────────────────────
+
+/**
+ * The org's list of public sites Pax may run searches on. The page extracts
+ * the host from whatever is pasted (siteHostFromInput); the SERVER validates it
+ * again and replaces the whole list (PATCH /api/pax/controls { mySites }). Only
+ * an owner or admin edits it — the same gate as the rest of this page.
+ */
+function MySitesCard({ sites, canEdit }: { sites: PaxSiteEntry[]; canEdit: boolean }) {
+  const { toast } = useToast();
+  const [label, setLabel] = React.useState("");
+  const [address, setAddress] = React.useState("");
+  const [problem, setProblem] = React.useState<string | null>(null);
+
+  const save = useMutation({
+    mutationFn: async (next: PaxSiteEntry[]) => {
+      const res = await apiRequest("PATCH", "/api/pax/controls", { mySites: next });
+      return (await res.json()) as PaxControlsResponse;
+    },
+    onSuccess: (next) => {
+      queryClient.setQueryData(CONTROLS_KEY, next);
+      void queryClient.invalidateQueries({ queryKey: CONTROLS_KEY });
+      void queryClient.invalidateQueries({ queryKey: [RECEIPTS_KEY[0]] });
+    },
+    onError: (error: unknown) =>
+      toast({ title: PAX_PAGE_COPY.couldNotChange, description: serverMessage(error), variant: "destructive" }),
+  });
+
+  const add = () => {
+    const host = siteHostFromInput(address);
+    if (!host) return setProblem(PAX_MY_SITES_COPY.notAddress);
+    if (sites.some((s) => s.host === host)) return setProblem(PAX_MY_SITES_COPY.alreadyListed);
+    if (sites.length >= PAX_MY_SITES_MAX) return setProblem(PAX_MY_SITES_COPY.listFull(PAX_MY_SITES_MAX));
+    const name = (label.trim() || host).slice(0, PAX_SITE_LABEL_MAX);
+    setProblem(null);
+    save.mutate([...sites, { host, label: name }], {
+      onSuccess: () => {
+        setLabel("");
+        setAddress("");
+        toast({ title: PAX_MY_SITES_COPY.added(name) });
+      },
+    });
+  };
+
+  const remove = (site: PaxSiteEntry) =>
+    save.mutate(sites.filter((s) => s.host !== site.host), {
+      onSuccess: () => toast({ title: PAX_MY_SITES_COPY.removed(site.label) }),
+    });
+
+  return (
+    <Card className="rounded-card mb-4" data-testid="pax-my-sites-card">
+      <CardHeader>
+        <CardTitle className="text-section-h2">{PAX_MY_SITES_COPY.title}</CardTitle>
+        <CardDescription>{PAX_MY_SITES_COPY.intro}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-xs text-muted-foreground" data-testid="my-sites-limit-line">
+          {PAX_MY_SITES_COPY.limitLine}
+        </p>
+        {sites.length === 0 ? (
+          <p className="text-sm text-muted-foreground" data-testid="my-sites-empty">
+            {PAX_MY_SITES_COPY.empty}
+          </p>
+        ) : (
+          <ul className="divide-y border rounded-card" data-testid="my-sites-list">
+            {sites.map((s) => (
+              <li key={s.host} className="px-3 py-2 flex items-center gap-3" data-testid={`my-site-${s.host}`}>
+                <Globe className="w-4 h-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium truncate">{s.label}</div>
+                  <div className="text-xs text-muted-foreground truncate">{s.host}</div>
+                </div>
+                {canEdit && (
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-11 w-11 pointer-fine:sm:h-9 pointer-fine:sm:w-9 text-muted-foreground hover:text-destructive"
+                    onClick={() => remove(s)}
+                    disabled={save.isPending}
+                    aria-label={`${PAX_MY_SITES_COPY.removeButton}: ${s.label}`}
+                    data-testid={`button-remove-site-${s.host}`}
+                  >
+                    <Trash2 className="w-4 h-4" aria-hidden="true" />
+                  </Button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        {canEdit ? (
+          <form
+            className="grid gap-3 sm:grid-cols-[1fr_1.4fr_auto] sm:items-end"
+            onSubmit={(e) => {
+              e.preventDefault();
+              add();
+            }}
+            data-testid="my-sites-form"
+          >
+            <div className="space-y-1">
+              <Label htmlFor="my-site-label" className="text-xs">
+                {PAX_MY_SITES_COPY.labelField}
+              </Label>
+              <Input
+                id="my-site-label"
+                value={label}
+                maxLength={PAX_SITE_LABEL_MAX}
+                placeholder={PAX_MY_SITES_COPY.labelPlaceholder}
+                onChange={(e) => setLabel(e.target.value)}
+                data-testid="input-site-label"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="my-site-address" className="text-xs">
+                {PAX_MY_SITES_COPY.hostField}
+              </Label>
+              <Input
+                id="my-site-address"
+                value={address}
+                placeholder={PAX_MY_SITES_COPY.hostPlaceholder}
+                onChange={(e) => {
+                  setAddress(e.target.value);
+                  setProblem(null);
+                }}
+                aria-invalid={problem !== null}
+                aria-describedby={problem ? "my-site-problem" : undefined}
+                data-testid="input-site-address"
+              />
+            </div>
+            <Button type="submit" className={TAP} disabled={save.isPending || address.trim() === ""} data-testid="button-add-site">
+              {PAX_MY_SITES_COPY.addButton}
+            </Button>
+          </form>
+        ) : (
+          <p className="text-xs text-muted-foreground" data-testid="my-sites-read-only">
+            {PAX_MY_SITES_COPY.readOnly}
+          </p>
+        )}
+        {problem && (
+          <p id="my-site-problem" role="alert" className="text-xs text-acr-neg" data-testid="my-sites-problem">
+            {problem}
+          </p>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

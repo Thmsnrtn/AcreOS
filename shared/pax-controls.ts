@@ -176,6 +176,75 @@ export function clampSendsLevel(level: PaxRailLevel): PaxSendsRailLevel {
     : (level as PaxSendsRailLevel);
 }
 
+// ── My county sites (PX-7) ──────────────────────────────────────────────────
+
+/** One public site the org lists for Pax's search sessions. `host` is a BARE hostname. */
+export interface PaxSiteEntry {
+  host: string;
+  label: string;
+}
+
+/** Most sites an org may list. */
+export const PAX_MY_SITES_MAX = 50;
+/** Longest label, in characters. */
+export const PAX_SITE_LABEL_MAX = 60;
+
+/** One DNS label: letters, digits and inner hyphens. */
+const HOST_LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+
+/**
+ * A bare public hostname, or null. Case and one trailing dot are normalised
+ * (the same rule as webSourceFence's normalizeHost); anything else that is not
+ * a bare host — a scheme, a path, a port, credentials, a query, whitespace, an
+ * underscore, an IP address, a single-label name like `localhost` — is REFUSED,
+ * never rewritten into a host the person did not write.
+ */
+export function normalizeSiteHost(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const host = raw.trim().toLowerCase().replace(/\.$/, "");
+  if (host.length === 0 || host.length > 253) return null;
+  const labels = host.split(".");
+  if (labels.length < 2) return null;
+  if (!labels.every((l) => HOST_LABEL.test(l))) return null;
+  // The last label must carry a letter: an all-numeric tail is an IPv4 address.
+  if (!/[a-z]/.test(labels[labels.length - 1])) return null;
+  return host;
+}
+
+/**
+ * The host out of what a person pastes ("https://assessor.example.gov/search?x=1",
+ * "assessor.example.gov"). Used by the page; the SERVER validates the result
+ * again with normalizeSiteHost. Credentials in the paste refuse (null).
+ */
+export function siteHostFromInput(input: string): string | null {
+  const text = String(input ?? "").trim();
+  if (!text || /\s/.test(text) || text.includes("@")) return null;
+  try {
+    const hasScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(text);
+    if (!hasScheme && /^[a-z][a-z0-9+.-]*:/i.test(text) && !/^[^/]+:\d+(\/|$)/.test(text)) return null;
+    const url = new URL(hasScheme ? text : `https://${text}`);
+    if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+    if (url.username || url.password) return null;
+    return normalizeSiteHost(url.hostname);
+  } catch {
+    return null;
+  }
+}
+
+const withoutWww = (host: string): string => (host.startsWith("www.") ? host.slice(4) : host);
+
+/**
+ * The listed entry that covers `hostname`, or null. A listed host covers
+ * itself and its `www.` twin, nothing else — a listed `records.example.gov`
+ * does not cover `example.gov` or a sibling subdomain.
+ */
+export function mySiteForHost(sites: readonly PaxSiteEntry[], hostname: string): PaxSiteEntry | null {
+  const wanted = normalizeSiteHost(hostname);
+  if (!wanted) return null;
+  const bare = withoutWww(wanted);
+  return sites.find((s) => withoutWww(s.host) === bare) ?? null;
+}
+
 // ── The stored column ───────────────────────────────────────────────────────
 
 /**
@@ -194,6 +263,13 @@ export interface PaxControls {
   inboxDrafts: boolean;
   /** Per-capability rails — may only NARROW what the stance allows. */
   rails: PaxRails;
+  /**
+   * PX-7: the public sites Pax may run search sessions on (browse_search).
+   * Optional IN THE DATABASE (a pre-PX-7 row reads as []); always present on
+   * the object the reader returns. EMPTY = nothing listed = no search runs on a
+   * listed site (fail-closed); the closed state keeps it empty.
+   */
+  mySites: readonly PaxSiteEntry[];
 }
 
 /**
@@ -208,6 +284,7 @@ export const PAX_CONTROLS_DEFAULTS: Readonly<PaxControls> = {
   borrowerReminders: true,
   inboxDrafts: true,
   rails: defaultPaxRails(),
+  mySites: [],
 };
 
 // ── Asks ("Waiting for your tap") ───────────────────────────────────────────
@@ -340,6 +417,7 @@ const TOOL_REGISTRY: Readonly<Record<string, ToolEntry>> = Object.fromEntries([
       "run_comps_analysis",
       "research_property",
       "browse_web",
+      "browse_search",
       "extract_properties_from_text",
       "retrieve_land_knowledge",
       "generate_offer",

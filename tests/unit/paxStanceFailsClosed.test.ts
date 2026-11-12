@@ -262,6 +262,9 @@ describe("a NULL column is today's behaviour, not an error", () => {
         },
         sends: "ask",
       },
+      // PX-7: nothing listed = no search runs on a listed site (fail-closed);
+      // see paxMySites.test.ts for the reader's proof.
+      mySites: [],
     });
   });
 });
