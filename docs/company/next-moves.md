@@ -3,6 +3,13 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-11-10 — Gap slice 7: push revival — on `claude/gap7-push-revival`
+
+- Added `web-push` (`^3.6.7`, lockfile synced) + VAPID vars in `.env.example`; fixed the client subscribe body (was `{subscription}`, route wants `{endpoint,keys}` → 422); mounted the existing hook as a "Push on this device" switch in `notification-preferences.tsx`; `/sw.js` handles `push` + `notificationclick`.
+- Fan-out through one helper (`server/services/orgPushFanout.ts`, org-scoped, never throws): urgent (priority 1) Pax nudges, the 7-day redemption alert (once-per-cert-per-day dedupe), ladder-ready cards (`ensureLadderRung` only). 30/90-day redemption alerts and non-urgent nudges deliberately do not push.
+- Proof (driver-run): orgPushFanout 11/11 + pushFanoutCreationSites 9/9 + pushDispatchSemantics 9/9 + census/budget 22/22; scoped tsc 0 diagnostics in changed files; reachability PASS all 11 (unreachedExports baseline measured DOWN 414 → 413: `sendPushToOrg` gained its first real consumer). Full suite is CI's completing proof.
+- Still open: per-user notification preferences (`globalMute`, per-event Push toggle) are NOT consulted by the org fan-out — a founder decision is owed on whether global mute should silence push.
+
 ## 2026-11-10 — PX-2: per-capability rails v1 — on `claude/px2-capability-rails` (stacked on PX-1)
 
 - Rails live INSIDE the existing controls, not as a new stance (founder ruling 2026-11-10 §6.5 Q4): one level per record domain (leads, properties, deals, tasks, follow-ups, plus `account` for the support switch's system fixes) and one for sends. Levels weakest → strongest: watch, draft, ask, act_and_report; sends are capped at ask by type (`PaxSendsRailLevel`) and clamped at read.
