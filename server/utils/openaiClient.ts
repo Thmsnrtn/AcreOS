@@ -40,6 +40,12 @@ export function getOpenAIClient(): OpenAI | null {
       apiKey: openrouterKey,
       baseURL: process.env.AI_INTEGRATIONS_OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1",
       defaultHeaders: { "HTTP-Referer": "https://acreos.fly.dev", "X-Title": "AcreOS" },
+      // P1-16 D1: 30s per request + 1 retry. The SDK default is 10 minutes /
+      // 2 retries — under any provider stall that holds the Node socket for
+      // up to 30 minutes per request, exhausting the connection pool.
+      // Mirrors the aiRouter precedent; this bound is the per-call ceiling.
+      timeout: 30_000,
+      maxRetries: 1,
     });
   }
   return openaiClient;
