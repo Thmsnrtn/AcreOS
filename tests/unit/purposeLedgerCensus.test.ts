@@ -795,6 +795,10 @@ const DEBT: Record<string, ProposedSurface> = {
   "server/routes-trust-checks.ts route:GET /api/deals/:id/fraud-check": "review",
   // server/routes-va-engine.ts
   "server/routes-va-engine.ts route:GET /api/seller-communications/lead/:leadId": "lead_contact_read",
+  // server/routes-wholesale-disposition.ts
+  "server/routes-wholesale-disposition.ts route:GET /deals/:dealId/seller-follow-ups/preview": "lead_contact_read",
+  "server/routes-wholesale-disposition.ts route:POST /deals/:dealId/seller-follow-ups": "lead_contact_read",
+  "server/routes-wholesale-disposition.ts route:GET /deals/:dealId/seller-follow-ups": "lead_contact_read",
   // server/routes.ts
   "server/routes.ts route:GET /api/leads/deleted": "lead_contact_read",
   "server/routes.ts route:GET /api/search": "lead_contact_read",
@@ -830,7 +834,12 @@ const DEBT: Record<string, ProposedSurface> = {
 // surfaces whose accesses are recorded in audit_events (DSAR_VERIFIED /
 // DSAR_ERASURE) and the DSAR record itself, not the FCRA purpose ledger —
 // PURPOSE_CODES there are pinned exactly to the skip-trace taxonomy.
-const DEBT_BASELINE = 214;
+// 214 → 217 (2026-11-12, Lane A re-prep union of #477+#533 with #535):
+// the wholesale seller-follow-up trio from routes-wholesale-disposition.ts
+// (preview / create / list, lead_contact_read) registered by #477's branch
+// (its own tree read 215 = 212 + 3) unioned with PKG-1's +2 above —
+// 212 base + 3 + 2 = 217, disjoint entry sets, verified by key count.
+const DEBT_BASELINE = 217;
 
 /**
  * Every file holding a dispatch switch (≥10 snake_case case labels, raw count)
