@@ -8,6 +8,7 @@
  * Extracted from client/src/pages/deals.tsx as part of P1-28 (URL routes
  * for deal-detail).
  */
+import { RequiredDisclaimer } from "@/components/required-disclaimer";
 import { WireVerificationDialog } from "@/components/wire-verification-dialog";
 import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -466,6 +467,7 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
                                 </div>
                               </div>
                               <div className="p-4 space-y-4">
+                                <RequiredDisclaimer type="ai" />
                                 <div className="text-center">
                                   <p className="text-sm text-muted-foreground mb-1">Suggested offer</p>
                                   <p className="text-3xl font-bold tabular-nums text-primary" data-testid="text-suggested-offer">
@@ -566,6 +568,7 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
                         </ResponsiveModalHeader>
                         {negotiationScript && (
                           <div className="space-y-4">
+                            <RequiredDisclaimer type="ai" />
                             <div className="bg-primary/5 dark:bg-primary/10 rounded-card p-4 border border-primary/20">
                               <pre className="text-sm whitespace-pre-wrap font-sans leading-relaxed">{negotiationScript}</pre>
                             </div>

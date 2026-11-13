@@ -3,6 +3,24 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-11-10 — PKG-6a: price-figure truth for prose surfaces (detection only)
+
+- **Built.** `tests/unit/publicCopyPrices.test.ts` + `tests/helpers/priceClaimScanner.ts`: scans docs/marketing/**, content/{marketing,emails,outreach,business,blog}/** and the compare/FAQ TSX for dollar figures beside a plan name, diffed against figures derived from `tier-pricing.ts` (annual-equivalent tolerance: whole dollar within $0.50, decimals within $0.01). Register of 23 mismatches + 1 plan-less figure + 10 comment-debt entries + 1 plan-content finding; none fixed here.
+- **Debt to pay (separate PR).** 17× "Pro $41/mo billed annually" in 7 docs/marketing files (Starter's figure); `$20/$49`-era prices in content/business/{acquire-listing,investor-brief}.md and **content/emails/onboarding-sequence.md** (customer-facing); copy.ts "Pro unlocks the full Pax assistant" vs pricing-copy.ts Starter "Full Pax assistant".
+- **Blind spots.** content/business/competitive-teardown.md excluded (competitor tiers share plan names; its AcreOS line "$49/mo for full Pro access" is stale); content/strategy/** and docs/*.md not scanned.
+- **Open.** `publicPricingMatchesCanonical.test.tsx` fails on this VM with or without this change (two React copies via jsdom resolving from ../freebuff-walkdoc), so its clean-pass could not be re-measured here.
+
+## 2026-11-10 — PKG-5c: AI-disclaimer surfaces wired (existing copy only)
+
+- **Changed.** 12 surfaces now mount the existing `RequiredDisclaimer type="ai"` (no copy touched): Pax rail, Pax page, HelpPanel ticket thread, property-analysis chat, DecisionQueue (once per queue, not per card), inbox draft reply, offer generator, deal-detail (price recommendation + negotiation script), deal feed, due-diligence dossier, portfolio, portfolio optimizer. Registry: `shared/governance/aiDisclaimerSurfaces.ts` (present / added with `before` none|partial / covered-by-host / not-advice / founder-only); ratchet + canary: `tests/unit/aiDisclaimerSurfaces.test.ts` (also sweeps client/src for unregistered `/api/ai|pax/` callers).
+- **Counsel flags (flags only).** ToS §7 vs terms.tsx §3 numbering; LQ-03 scope; client "ai" copy is shorter than server `DISCLAIMER_AI`. Listed in the registry.
+- **Open.** `npm run check:tests` not run (OOM on this VM). 16 tests in inboxLeadPopulationUi / paxAskCardIsAnswerable / todaySkeletonsMatchTheirContent fail identically on the clean branch (pre-existing, not investigated).
+
+## 2026-11-10 — PKG-6b: SES suppression path verified; suppression-write failures now fail the webhook
+
+- **Changed.** `suppress()` / `recordSoftBounce()` no longer swallow DB errors; `ingestSesNotification` rethrows; the route calls new `releaseReplay()` (snsVerification.ts) when ingest throws, so SNS's retry of the same MessageId is processed rather than deduped. Successful ingests still dedupe.
+- **Tests.** `sesSuppressionRoute.test.ts` (no DB: 401, retry arc, dedupe, eventType format-gap pin) and `sesSuppressionPath.realdb.test.ts` (real chain + SES mock). The realdb file SKIPPED locally (no Postgres); it has not been run.
+- **Open.** (1) Production event format (`notificationType` vs event-destination `eventType`) is unverifiable from the repo; dual-format acceptance is a design call, not built. (2) A multi-recipient soft-bounce notification that fails midway and is retried re-counts strikes for recipients already written. (3) The SubscriptionConfirmation failure path has the same replay trap and was not touched. (4) Full `tsc` OOM-killed on this VM; not verified here.
 ## 2026-11-10 — Gap slice 7: push revival — on `claude/gap7-push-revival`
 
 - Added `web-push` (`^3.6.7`, lockfile synced) + VAPID vars in `.env.example`; fixed the client subscribe body (was `{subscription}`, route wants `{endpoint,keys}` → 422); mounted the existing hook as a "Push on this device" switch in `notification-preferences.tsx`; `/sw.js` handles `push` + `notificationclick`.

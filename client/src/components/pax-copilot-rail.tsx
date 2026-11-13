@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { RequiredDisclaimer } from "@/components/required-disclaimer";
 import { useLocation, Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
@@ -1898,6 +1899,7 @@ export function PaxCopilotRail() {
                   )}
                 </div>
               </div>
+              <RequiredDisclaimer type="ai" className="mb-1" />
               <p className="text-micro text-muted-foreground/50 text-center">
                 {PAX_STANDING_LINE}
               </p>

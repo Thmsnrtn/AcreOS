@@ -1,3 +1,4 @@
+import { RequiredDisclaimer } from "@/components/required-disclaimer";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { isRouteHidden } from "@/lib/sidebar-hidden-routes";
 import { Link, useLocation } from "wouter";
@@ -477,6 +478,8 @@ export function DecisionQueue({
           )}
         </div>
       </div>
+
+      {visible.length > 0 && <RequiredDisclaimer type="ai" className="mb-4" />}
 
       <ContentReveal
         ready={!isLoading}

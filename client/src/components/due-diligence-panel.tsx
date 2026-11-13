@@ -1,3 +1,4 @@
+import { RequiredDisclaimer } from "@/components/required-disclaimer";
 import { useState, useEffect } from "react";
 import { clientLogger } from "@/lib/clientLogger";
 import {
@@ -525,6 +526,7 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
             </CardDescription>
           </CardHeader>
           <CardContent>
+            <RequiredDisclaimer type="ai" className="mb-4" />
             {!dossierId && !dossier && (
               <Button
                 type="button"
