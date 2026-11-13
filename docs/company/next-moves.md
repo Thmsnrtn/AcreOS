@@ -1416,3 +1416,44 @@ ratchet measure at baseline. NOT run: npm run check / tsc / full suite.
    (`/api/import/tax-delinquent` is named in a 404 hint but never mounted).
 3. The synchronous `/api/import/:entityType` path ignores a `fieldMap` the
    job path honours (no client sends one today).
+
+## PKG-1 — DSAR pipeline wired end to end (2026-11-09)
+
+**Shipped (branch claude/pkg1-dsar-api, stacked on PKG-2 / PR #526):** the
+lifecycle DSAR record (`dsar_requests_lifecycle`) is the record of record.
+Intake in routes-gdpr.ts now stamps deadlines from the shared
+`DSAR_CLOCK_HOURS` (its local 24h literal is deleted). New founder actions on
+the lifecycle routes, all behind one verification gate
+(`server/services/privacy/dsarActionGate.ts`): verify-identity (operator-
+attested, posture "strict-operator-attested-exact-email-v1" in
+`shared/privacy/dsarIdentityPosture.ts`), generate-export (subject-complete
+via the declared exporter registry `shared/privacy/dsarDomains.ts` +
+`server/services/privacy/dsarExporters.ts`; the old export's int-parsed userId
+500 and hard-coded-empty properties are gone), execute-erasure (hold-checked;
+legal hold refuses 423 naming the real hold; audit row for every outcome;
+idempotent by the subject's own erased state), subject-candidates. Erasure no
+longer touches a user's assigned leads or tasks (they are other people's
+data; borrower leads feed 1099-INT/1098). The older `dsar_requests` system's
+fan-out/erasure endpoints answer 501 pointing at the lifecycle routes instead
+of pretending. Founder UI: DsarSubjectActions panel in the compliance-ops
+DSAR tab. Coverage: `dsarDomainCoverage.test.ts` fails if a personal-data
+table (138 measured candidates) has no registry decision; 122 tables sit in
+the named DSAR_UNDECIDED_TABLES debt register. Drill:
+`dsarDrill.realdb.test.ts` (runs where a schema is built).
+
+**Still open:**
+- **S-1 (founder/counsel):** borrower-subject ERASE is refused by name
+  (422 RETENTION_REQUIRED_LOAN_RECORDS) because 1099-INT/1098 read borrower
+  identity from the lead row. Ruling needed on which borrower fields may be
+  erased; borrower export works today.
+- **S-2:** lead erasure does not scrub free-text bodies that mention the lead
+  (notes/messages) — retained domains are named in the erasure report.
+- **S-3:** user erasure does not delete the Clerk identity; the report's
+  operatorFollowUps names it for out-of-band deletion.
+- **Q-C1/Q-C2/Q-C3** (counsel): which DSAR pipeline is canonical as a matter
+  of record; whether the fulfilled-receipt 30-day promise or the 24h internal
+  clock governs externally; whether the legacy `dsar_requests` store is
+  retired or migrated. Both stores remain until counsel rules.
+- Registry drift found: CLASSIFICATION_REGISTRY's support_tickets entries
+  name columns (body, requester_email) the table no longer has.
+- The LQ-11 drill's staging run (synthetic subjects) is still owed post-merge.
