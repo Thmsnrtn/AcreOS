@@ -15,6 +15,7 @@ import type { Express, Response } from "express";
 import { z } from "zod";
 import { db } from "./db";
 import { dsarRequestsLifecycle } from "@shared/schema";
+import { DSAR_CLOCK_HOURS } from "@shared/privacy/dsarClock";
 import { desc, eq, and, isNull, lte } from "drizzle-orm";
 import { isAuthenticated, requireFounder } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
@@ -24,8 +25,6 @@ import { auditFromRequest, AuditActions } from "./utils/auditLog";
 import { logger } from "./utils/logger";
 import { clock } from "./utils/clock";
 import { routeParam } from "./utils/routeParams";
-
-const SLA_HOURS = 24;
 
 const dsarSubmitSchema = z.object({
   requestType: z.enum(["access", "erasure", "portability", "rectification"]),
@@ -41,7 +40,7 @@ export function registerPrivacyDsarRoutes(app: Express): void {
       if (!parsed.success) {
         return Errors.validationFailed(res, parsed.error.flatten());
       }
-      const slaDeadline = new Date(clock.nowMs() + SLA_HOURS * 60 * 60 * 1000);
+      const slaDeadline = new Date(clock.nowMs() + DSAR_CLOCK_HOURS * 60 * 60 * 1000);
       const [row] = await db
         .insert(dsarRequestsLifecycle)
         .values({
@@ -124,7 +123,7 @@ export function registerPrivacyDsarRoutes(app: Express): void {
     requireFounder,
     async (req: AuthenticatedRequest, res: Response) => {
       try {
-        const slaDeadline = new Date(clock.nowMs() + SLA_HOURS * 60 * 60 * 1000);
+        const slaDeadline = new Date(clock.nowMs() + DSAR_CLOCK_HOURS * 60 * 60 * 1000);
         const [row] = await db
           .insert(dsarRequestsLifecycle)
           .values({
