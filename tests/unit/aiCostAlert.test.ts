@@ -7,7 +7,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const h = vi.hoisted(() => ({
-  sendEmail: vi.fn(async () => ({ success: true })),
+  // Typed parameter: an unparameterised vi.fn leaves mock.calls as an
+  // empty tuple, so mock.calls[0][0] is a TS2493/TS2352 pair under
+  // check:tests. The shape mirrors what notifyAiCeilingTrip passes.
+  sendEmail: vi.fn(
+    async (_options: { to: string; subject: string; html: string; from?: string; fromName?: string }) => ({ success: true }),
+  ),
   errorLogs: [] as string[],
   warnLogs: [] as string[],
 }));
@@ -44,7 +49,7 @@ describe("aiCostAlert — founder trip alerting (R4)", () => {
   it("emails the founder on the first trip, naming the scope and the numbers", async () => {
     await notifyAiCeilingTrip(TRIP);
     expect(h.sendEmail).toHaveBeenCalledTimes(1);
-    const arg = h.sendEmail.mock.calls[0][0] as { to: string; subject: string; html: string };
+    const arg = h.sendEmail.mock.calls[0][0];
     expect(arg.to).toBe("founder@example.test");
     expect(arg.subject).toContain("70%");
     expect(arg.html).toContain("$11.00");
@@ -63,7 +68,7 @@ describe("aiCostAlert — founder trip alerting (R4)", () => {
     await notifyAiCeilingTrip(TRIP);
     await notifyAiCeilingTrip({ scope: "org_background", orgId: 7, windowKey: "background_monthly", currentCents: 1000, ceilingCents: 1000 });
     expect(h.sendEmail).toHaveBeenCalledTimes(2);
-    const second = h.sendEmail.mock.calls[1][0] as { subject: string };
+    const second = h.sendEmail.mock.calls[1][0];
     expect(second.subject).toContain("org 7");
   });
 
