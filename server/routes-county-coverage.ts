@@ -38,10 +38,26 @@ import {
   normalizeState,
   normalizeCounty,
 } from "./services/coverageLedger";
+import {
+  COVERAGE_DEMAND_SURFACES,
+  COVERAGE_REFUSAL_REASONS,
+  type CoverageDemandSurface,
+  type CoverageRefusalReason,
+} from "@shared/coverageDemand";
+import { clock } from "./utils/clock";
 
 const requestSchema = z.object({
   state: z.string().trim().min(2).max(2),
   county: z.string().trim().min(1).max(120),
+  // P1-7 / A-2: where the request came from and the refusal that prompted
+  // it, in shared/coverageDemand.ts's taxonomy. Optional — a request with
+  // neither is the pre-P1-7 shape and is recorded unattributed.
+  surface: z
+    .enum(COVERAGE_DEMAND_SURFACES as unknown as [CoverageDemandSurface, ...CoverageDemandSurface[]])
+    .optional(),
+  reason: z
+    .enum(COVERAGE_REFUSAL_REASONS as unknown as [CoverageRefusalReason, ...CoverageRefusalReason[]])
+    .optional(),
 });
 
 /**
@@ -150,6 +166,8 @@ export function registerCountyCoverageRoutes(app: Express) {
         const userId = getUserId(req);
         const state = normalizeState(parsed.data.state);
         const county = normalizeCounty(parsed.data.county);
+        const surface = parsed.data.surface ?? null;
+        const reason = parsed.data.reason ?? null;
 
         if (!state || !county) {
           return Errors.badRequest(res, "A valid state and county are required.");
@@ -157,9 +175,12 @@ export function registerCountyCoverageRoutes(app: Express) {
 
         // Enqueue with a customer-priority boost so customer-requested
         // counties jump ahead of system-miss counties in the crawl order.
+        // The refusal reason rides along so the queue row records that this
+        // demand was refusal-sourced, and why.
         const enqueue = await enqueueCountyForDiscovery(state, county, {
           organizationId,
           priorityBoost: 100,
+          refusalReason: reason ?? undefined,
         });
 
         // Record the per-org request ledger row (idempotent-ish: one open
@@ -181,6 +202,24 @@ export function registerCountyCoverageRoutes(app: Express) {
 
           if (existing.length > 0) {
             requestId = existing[0].id;
+            // Dedupe holds — still ONE open request per org+county — but a
+            // repeat request refreshes the attribution: the latest surface /
+            // refusal reason is the context acquisition should plan against.
+            if (surface || reason) {
+              await db
+                .update(countyCoverageRequests)
+                .set({
+                  ...(surface ? { surface } : {}),
+                  ...(reason ? { reason } : {}),
+                  updatedAt: clock.now(),
+                })
+                .where(
+                  and(
+                    eq(countyCoverageRequests.id, existing[0].id),
+                    eq(countyCoverageRequests.organizationId, organizationId),
+                  ),
+                );
+            }
           } else {
             const ins = await db
               .insert(countyCoverageRequests)
@@ -191,6 +230,8 @@ export function registerCountyCoverageRoutes(app: Express) {
                 county,
                 status: "pending",
                 queueId: enqueue.queueId,
+                surface,
+                reason,
               })
               .returning({ id: countyCoverageRequests.id });
             requestId = ins[0]?.id ?? null;
@@ -204,6 +245,8 @@ export function registerCountyCoverageRoutes(app: Express) {
             organizationId,
             state,
             county,
+            surface,
+            reason,
             alreadyCovered: enqueue.alreadyCovered,
             queueId: enqueue.queueId,
             demandCount: enqueue.demandCount,
@@ -214,6 +257,8 @@ export function registerCountyCoverageRoutes(app: Express) {
           state,
           county,
           requestId,
+          surface,
+          reason,
           ...status,
         });
       } catch (error) {
@@ -264,6 +309,8 @@ export function registerCountyCoverageRoutes(app: Express) {
             state: countyCoverageRequests.state,
             county: countyCoverageRequests.county,
             status: countyCoverageRequests.status,
+            surface: countyCoverageRequests.surface,
+            reason: countyCoverageRequests.reason,
             createdAt: countyCoverageRequests.createdAt,
           })
           .from(countyCoverageRequests)

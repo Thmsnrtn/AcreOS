@@ -2,6 +2,7 @@ import { z } from "zod";
 import { storage } from "../storage";
 import { dataSourceBroker, type LookupCategory } from "./data-source-broker";
 import { lookupParcelByAPN } from "./parcel";
+import { REFUSAL_REASON_COPY } from "@shared/coverageDemand";
 import { getPropertyComps, calculateMarketValue, calculateOfferPrices, calculateDesirabilityScore } from "./comps";
 import { generateOfferLetter as generateOfferDocument } from "./documents";
 import { PropertyEnrichmentService } from "./propertyEnrichment";
@@ -106,9 +107,19 @@ const lookupParcelSkill: Skill = {
       const result = await lookupParcelByAPN(apn, stateCountyPath, context.organizationId);
       
       if (!result.found) {
+        // P1-7 / A-2: the refusal is named and, when coverage work can move
+        // it, the "request this county" affordance rides along — Pax can
+        // offer the request (POST the affordance's endpoint with its
+        // state/county/reason and surface "pax") instead of reporting a
+        // bare not-found for what was really a licence-gate refusal.
         return {
           success: false,
-          message: result.error || "Parcel not found",
+          message:
+            result.refusalReason === "gated"
+              ? `${result.error || "Parcel not found"} — ${REFUSAL_REASON_COPY.gated} The county can be requested: coverage demand is recorded per county and drives which counties get connected next.`
+              : result.error || "Parcel not found",
+          ...(result.refusalReason ? { refusalReason: result.refusalReason } : {}),
+          ...(result.demand ? { coverageDemand: { ...result.demand, surface: "pax" as const } } : {}),
         };
       }
 
