@@ -29,6 +29,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { SubdivisionPlanEditor } from "@/components/parcels/subdivision-plan-editor";
+import { BuildabilityScreenSection } from "@/components/parcels/buildability-screen";
 import { Verbs } from "@/lib/labels";
 
 interface ChildLot {
@@ -357,6 +358,9 @@ export function SubdivisionTab({ parentParcelId }: { parentParcelId: number }) {
           )}
         </CardContent>
       </Card>
+
+      {/* Subdivision V1 Legs 1–2: the buildability screen and lot-yield estimate — the intake gate, ahead of permits, basis and plans */}
+      <BuildabilityScreenSection parentParcelId={parentParcelId} />
 
       {/* Permit checklists (SD-3) */}
       <PermitChecklistsSection parentParcelId={parentParcelId} />

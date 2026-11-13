@@ -6,10 +6,102 @@ on:
   pull_request:
     branches: [main]
 
+# CI efficiency package (2026-11-11): a superseded head's run cancels itself
+# instead of occupying the account's concurrent-job slots behind the new
+# head. The group is keyed by ref (a PR's ref is stable across its pushes).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  test:
-    name: TypeScript + Tests
+  # ── Change scope ──────────────────────────────────────────────────────────
+  # Docs-only pull requests skip the heavy jobs below: a PR that touches
+  # nothing but markdown / docs cannot change what the suites measure, and
+  # the skipped checks report as SKIPPED (a by-design skip in settlement
+  # counting), never as absent. Only pull_request events can be docs-only —
+  # pushes always run everything, and any doubt resolves to a FULL run.
+  changes:
+    name: Change scope
     runs-on: ubuntu-latest
+    outputs:
+      docs_only: ${{ steps.scope.outputs.docs_only }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Classify the change set
+        id: scope
+        run: |
+          echo "docs_only=false" >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "event=${{ github.event_name }} — full run"
+            exit 0
+          fi
+          files=$(git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}" || true)
+          if [ -z "$files" ]; then
+            echo "no diff available — full run"
+            exit 0
+          fi
+          echo "changed files:"
+          echo "$files"
+          nondocs=$(echo "$files" | grep -vE '\.(md|mdx)$' | grep -vE '^docs/' || true)
+          if [ -z "$nondocs" ]; then
+            echo "docs_only=true" >> "$GITHUB_OUTPUT"
+            echo "docs-only change set — heavy jobs will skip"
+          else
+            echo "non-docs files present — full run"
+          fi
+
+  # ── TypeScript check + ratchets ───────────────────────────────────────────
+  # Runs in parallel with the test shards below (CI efficiency package,
+  # 2026-11-11); it used to serialize ahead of them inside the single job.
+  typecheck:
+    name: TypeScript check + ratchets
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Unified gate — the SAME `npm run check` the deploy gate (deploy.yml)
+      # and CI (ci.yml) run, so Test can never disagree with the deploy gate.
+      # A bare `npx tsc --noEmit` here once ran with no heap ceiling and aborted
+      # at exit 134 (SIGABRT), making this workflow chronically red on green
+      # code. The ceiling now lives in scripts/lib/heap-ceiling.mjs and is passed
+      # to each heavy child; it is NOT a workflow-level env, and NOT a shell
+      # prefix in package.json (a `VAR=x cmd1 && cmd2` prefix binds to cmd1 only,
+      # which is how the same 134 came back on main from 2026-08-17).
+      - name: TypeScript check + ratchets
+        run: npm run check
+
+  # ── Tests, sharded ────────────────────────────────────────────────────────
+  # The full suite, partitioned by test file across three runners via
+  # vitest's --shard (CI efficiency package, 2026-11-11; measured 32–45 min
+  # as one serial job). The union of the three shards is the full suite;
+  # nothing is dropped. Each shard job provisions its OWN pgvector service
+  # and builds the schema in it, so the real-database suites get a private
+  # database per shard — today every test file shares ONE database inside a
+  # single job, in parallel forks, so a per-shard database removes
+  # cross-file interference rather than adding any.
+  test:
+    name: TypeScript + Tests (shard ${{ matrix.shard }}/3)
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
 
     services:
       postgres:
@@ -54,17 +146,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Unified gate — the SAME `npm run check` the deploy gate (deploy.yml)
-      # and CI (ci.yml) run, so Test can never disagree with the deploy gate.
-      # A bare `npx tsc --noEmit` here once ran with no heap ceiling and aborted
-      # at exit 134 (SIGABRT), making this workflow chronically red on green
-      # code. The ceiling now lives in scripts/lib/heap-ceiling.mjs and is passed
-      # to each heavy child; it is NOT a workflow-level env, and NOT a shell
-      # prefix in package.json (a `VAR=x cmd1 && cmd2` prefix binds to cmd1 only,
-      # which is how the same 134 came back on main from 2026-08-17).
-      - name: TypeScript check + ratchets
-        run: npm run check
-
       # Build the schema from this repository and gate on the result. This
       # replaces `npx drizzle-kit migrate` + `continue-on-error: true`, which
       # could never have worked: drizzle.config.ts records that
@@ -103,6 +184,6 @@ jobs:
       # No `--coverage` here: coverage v8 instrumentation is heavier (OOM risk)
       # and its threshold gate is report-only, owned by ci.yml's Coverage step.
       - name: Run tests
-        run: npx vitest run --reporter=verbose
+        run: npx vitest run --reporter=verbose --shard=${{ matrix.shard }}/3
         env:
           CI: true

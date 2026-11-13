@@ -26,7 +26,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useLocation, useSearch } from "wouter";
 import { FileText, Filter, HelpCircle, Upload } from "lucide-react";
 import { PageShell } from "@/components/page-shell";
-import { delinquencyIsDeterminable } from "@shared/notes/delinquency";
+import { delinquencyIsDeterminable, ladderStageFor, LADDER_STAGES, LADDER_STAGE_LABEL } from "@shared/notes/delinquency";
 import { RequiredDisclaimer } from "@/components/required-disclaimer";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -258,6 +258,37 @@ const FALLBACK_CHIP = {
   label: "Unknown",
   tone: "bg-muted text-muted-foreground border-transparent",
 };
+
+/**
+ * Delinquency-ladder buckets for the notes on this page (V-Notes-2 Leg 1). The
+ * stage comes from the ONE shared definition (`ladderStageFor`) the note page
+ * and the aging sweep use; a note whose aging cannot be determined is counted
+ * as such, never as current. Paid-off and sold notes are off the ladder.
+ */
+function LadderBuckets({ notes }: { notes: Array<{ status: string; daysDelinquent: number; nextPaymentDate: string | null | undefined }> }) {
+  const counts = new Map<string, number>();
+  let unknown = 0;
+  for (const n of notes) {
+    if (n.status === "paid_off" || n.status === "sold") continue;
+    if (!delinquencyIsDeterminable(n.nextPaymentDate)) {
+      unknown++;
+      continue;
+    }
+    const stage = ladderStageFor(n.daysDelinquent);
+    counts.set(stage, (counts.get(stage) ?? 0) + 1);
+  }
+  return (
+    <div className="flex flex-wrap gap-x-4 gap-y-1 border-b px-4 py-2 text-xs text-muted-foreground" data-testid="notes-ladder-buckets">
+      <span className="font-medium text-foreground">On this page:</span>
+      {LADDER_STAGES.map((st) => (
+        <span key={st} data-testid={`notes-ladder-bucket-${st}`}>
+          {LADDER_STAGE_LABEL[st]} {counts.get(st) ?? 0}
+        </span>
+      ))}
+      <span data-testid="notes-ladder-bucket-unknown">Aging not determinable {unknown}</span>
+    </div>
+  );
+}
 
 function chipFor(status: NoteDelinquencyStatus | string) {
   return DELINQUENCY_CHIP[status as NoteDelinquencyStatus] ?? FALLBACK_CHIP;
@@ -598,6 +629,7 @@ export default function NotesPage() {
         />
       ) : (
         <Card className="overflow-hidden">
+          <LadderBuckets notes={notes} />
           {/* Mobile: stacked note cards — the 5-column table side-scrolls at
               phone widths. md+ renders the full table below. */}
           <ul className="md:hidden divide-y divide-border" data-testid="list-notes-mobile">
