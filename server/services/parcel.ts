@@ -20,6 +20,14 @@ import {
   buildArcgisPointQueryParams,
 } from "./statewideParcelEndpoints";
 import { isClearedForLookup, statewideSource } from "./openData/statewideSourceRegistry";
+import {
+  coverageDemandAffordance,
+  refusalAffordanceEligible,
+  terminalRefusalReason,
+  type CoverageDemandAffordance,
+  type CoverageDemandSurface,
+  type CoverageRefusalReason,
+} from "@shared/coverageDemand";
 import { storage } from "../storage";
 import { logger } from '../utils/logger';
 import { recordProviderParcelFacts, coerceSaleDate } from "./data-cache/observation-log";
@@ -57,6 +65,12 @@ export interface ParcelLookupOptions {
   organizationId?: number;
   /** The org's own key, already resolved by the caller (the provider registry's BYOK override). Never the platform key. */
   regridApiKey?: string | null;
+  /**
+   * P1-7 / A-2: the product surface this lookup serves, stamped onto the
+   * demand affordance when the lookup refuses. Defaults to "parcel_lookup".
+   * Attribution only — it never changes what a lookup returns.
+   */
+  surface?: CoverageDemandSurface;
 }
 
 /**
@@ -192,6 +206,20 @@ export interface ParcelLookupResult {
     };
   };
   error?: string;
+  /**
+   * P1-7 / A-2: on a miss (found:false), WHY the lookup refused, in the
+   * shared demand taxonomy (shared/coverageDemand.ts). Absent on a hit.
+   * Additive only — a hit's shape and a miss's `error` string are exactly
+   * what they were before this field existed.
+   */
+  refusalReason?: CoverageRefusalReason;
+  /**
+   * P1-7 / A-2: on a refusal a surface may act on (gated / no_endpoint /
+   * no_key — never a terminal not_found), the "request this county"
+   * affordance to render at the moment of refusal. Absent on a hit and on
+   * a terminal not-found.
+   */
+  demand?: CoverageDemandAffordance;
 }
 
 /**
@@ -373,10 +401,21 @@ function formatOwnerAddress(props: RegridParcel["properties"]): string {
 /**
  * Lookup parcel from County GIS endpoint
  */
+/**
+ * P1-7 / A-2: optional out-param a caller may pass to learn WHY the county
+ * layer refused, without changing this function's contract — it still
+ * returns null on every miss, exactly as before, for every caller that does
+ * not pass one (the gate's own tests pin the null).
+ */
+export interface CountyGisMissInfo {
+  refusalReason?: CoverageRefusalReason;
+}
+
 export async function lookupFromCountyGIS(
   apn: string,
   state: string,
-  county: string
+  county: string,
+  missInfo?: CountyGisMissInfo
 ): Promise<ParcelLookupResult | null> {
   try {
     const normalizedCounty = county.toLowerCase().replace(/ county$/i, "").trim();
@@ -413,13 +452,25 @@ export async function lookupFromCountyGIS(
     
     if (!matchingEndpoint) {
       logger.debug("[CountyGIS] No endpoint found", { metadata: { county, state, endpointsChecked: endpoints.length } });
+      // P1-7 / A-2: name WHY nothing matched. A seeded statewide row for this
+      // state that the lookup gate does not clear was filtered out above by
+      // statewideRowMayServe — that is a GATE refusal, not a missing endpoint,
+      // and the demand record must say so: until this distinction existed a
+      // gated refusal was indistinguishable from a not-found downstream.
+      // The gate is not loosened in any way — the row still serves nothing.
+      const gatedStatewide = endpoints.some(
+        (e) => e.county === STATEWIDE_COUNTY && !statewideRowMayServe(e),
+      );
+      const refusalReason: CoverageRefusalReason = gatedStatewide ? "gated" : "no_endpoint";
+      if (missInfo) missInfo.refusalReason = refusalReason;
       // Demand-driven discovery-on-miss (Iris/Iyari): a miss for an unseeded
       // county enqueues it for background ArcGIS discovery so the next lookup
       // for this county hits free instead of falling through to paid Regrid.
-      // Fire-and-forget — never block or fail the lookup on the enqueue.
+      // Fire-and-forget — never block or fail the lookup on the enqueue. The
+      // refusal reason rides along so the queue records the demand's source.
       void import("./coverageLedger")
         .then(({ enqueueCountyForDiscovery }) =>
-          enqueueCountyForDiscovery(normalizedState, normalizedCounty),
+          enqueueCountyForDiscovery(normalizedState, normalizedCounty, { refusalReason }),
         )
         .catch((err) =>
           logger.warn("[CountyGIS] discovery enqueue failed", {
@@ -601,7 +652,8 @@ async function queryArcGISEndpoint(
  */
 export async function lookupFromCountyGISByPoint(
   lat: number,
-  lng: number
+  lng: number,
+  missInfo?: CountyGisMissInfo & { gatedState?: string }
 ): Promise<ParcelLookupResult | null> {
   if (!isValidLatLng(lat, lng)) return null;
 
@@ -635,7 +687,15 @@ export async function lookupFromCountyGISByPoint(
     if (blockedOutboundSource(endpoint.baseUrl)) continue;
     // Not cleared for point lookup (founder decision 2026-11-03): skipped
     // before any request, as if never seeded.
-    if (!statewideRowMayServe(endpoint)) continue;
+    if (!statewideRowMayServe(endpoint)) {
+      // P1-7 / A-2: record the gate refusal for callers that ask — the row
+      // still serves nothing; only the refusal gains a name.
+      if (missInfo && !missInfo.gatedState) {
+        missInfo.refusalReason = "gated";
+        missInfo.gatedState = endpoint.state;
+      }
+      continue;
+    }
     try {
       const baseUrl = endpoint.baseUrl.replace(/\/$/, "");
       const layerId = endpoint.layerId || "0";
@@ -838,6 +898,9 @@ export async function lookupParcelByAPN(
   }
   const orgId = opts.organizationId ?? organizationId;
   let lastMiss: ParcelLookupResult | null = null;
+  // P1-7 / A-2: the county layer's refusal reason, when it refuses — carried
+  // to the terminal miss so the refusal is named, never just "not found".
+  let countyLayerReason: CoverageRefusalReason | null = null;
   const regridKey = await resolveRegridKey({ ...opts, organizationId: orgId });
 
   for (const layer of parcelLayerOrder(regridKey)) {
@@ -878,7 +941,9 @@ export async function lookupParcelByAPN(
       lastMiss = regridResult;
     } else if (layer === "county_gis") {
       if (!state || !county) continue;
-      const countyResult = await lookupFromCountyGIS(apn, state, county);
+      const countyMiss: CountyGisMissInfo = {};
+      const countyResult = await lookupFromCountyGIS(apn, state, county, countyMiss);
+      if (countyMiss.refusalReason) countyLayerReason = countyMiss.refusalReason;
       if (countyResult?.found) {
         logger.info("[Parcel] Found via County GIS (FREE)");
         await cacheParcelResult(countyResult, state, county, orgId);
@@ -895,7 +960,29 @@ export async function lookupParcelByAPN(
     }
   }
 
-  return lastMiss ?? { found: false, error: regridKey ? `Parcel not found for APN: ${apn}` : REGRID_NOT_CONFIGURED };
+  // P1-7 / A-2: the terminal miss carries its refusal reason and, when the
+  // refusal is one coverage work can move, the request affordance. The
+  // `error` string is exactly what this return produced before.
+  const refusalReason = terminalRefusalReason({
+    countyLayerReason,
+    regridKeyPresent: !!regridKey,
+  });
+  const terminal: ParcelLookupResult =
+    lastMiss ?? { found: false, error: regridKey ? `Parcel not found for APN: ${apn}` : REGRID_NOT_CONFIGURED };
+  return {
+    ...terminal,
+    refusalReason,
+    ...(refusalAffordanceEligible(refusalReason) && state && county
+      ? {
+          demand: coverageDemandAffordance({
+            state,
+            county,
+            reason: refusalReason,
+            surface: opts.surface ?? "parcel_lookup",
+          }),
+        }
+      : {}),
+  };
 }
 
 /**
@@ -1215,6 +1302,10 @@ export async function lookupParcelByCoordinates(
   opts: ParcelLookupOptions = {},
 ): Promise<ParcelLookupResult> {
   let lastMiss: ParcelLookupResult | null = null;
+  // P1-7 / A-2: the county-GIS layer records a gated statewide sighting on
+  // this out-param, but the terminal below deliberately never surfaces it
+  // (clearance pin — see the terminal comment).
+  const pointMiss: CountyGisMissInfo & { gatedState?: string } = {};
   const regridKey = await resolveRegridKey(opts);
 
   // Tennessee (founder decision 2026-10-11): never the state's non-commercial
@@ -1236,14 +1327,34 @@ export async function lookupParcelByCoordinates(
       lastMiss = r;
     } else if (layer === "county_gis") {
       // FREE statewide GIS point-intersection (Open-Data Phase 3).
-      const statewideResult = await lookupFromCountyGISByPoint(lat, lng);
+      const statewideResult = await lookupFromCountyGISByPoint(lat, lng, pointMiss);
       if (statewideResult?.found) {
         logger.info("[Parcel] Found via statewide GIS point query (FREE)");
         return statewideResult;
       }
     }
   }
-  return lastMiss ?? { found: false, error: regridKey ? "No parcel found at coordinates" : REGRID_NOT_CONFIGURED };
+  // P1-7 / A-2, as bounded by the P1-6 clearance pin: the gate may be NAMED
+  // only for a geography the caller specified (the APN path, the passport,
+  // Pax) — never for one inferred from coordinates. The statewide pin
+  // (statewideLookupClearance) requires a gated point lookup to be
+  // indistinguishable from an unseeded one, so the point-miss sighting
+  // (pointMiss) is deliberately NOT surfaced here: the terminal reason
+  // derives from the Regrid outcome alone (key present → not_found, no key
+  // → no_key, identical for gated and unseeded states) and no demand
+  // affordance is attached — a point lookup knows no caller-specified
+  // county to request. The `error` string is exactly what this return
+  // produced before.
+  const refusalReason = terminalRefusalReason({
+    countyLayerReason: null,
+    regridKeyPresent: !!regridKey,
+  });
+  const terminal: ParcelLookupResult =
+    lastMiss ?? { found: false, error: regridKey ? "No parcel found at coordinates" : REGRID_NOT_CONFIGURED };
+  return {
+    ...terminal,
+    refusalReason,
+  };
 }
 
 async function lookupFromRegridByPoint(lat: number, lng: number, token: string): Promise<ParcelLookupResult> {
