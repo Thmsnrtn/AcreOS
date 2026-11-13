@@ -756,6 +756,8 @@ const DEBT: Record<string, ProposedSurface> = {
   "server/routes-platform-features.ts route:GET /api/pipeline/attribution": "review",
   "server/routes-platform-features.ts route:POST /api/export/full": "lead_contact_bulk",
   // server/routes-privacy-dsar.ts
+  "server/routes-privacy-dsar.ts route:GET /api/founder/dsar/:id/subject-candidates": "lead_contact_bulk",
+  "server/routes-privacy-dsar.ts route:POST /api/founder/dsar/:id/execute-erasure": "lead_contact_bulk",
   "server/routes-privacy-dsar.ts route:POST /api/founder/dsar/:id/generate-export": "lead_contact_bulk",
   // server/routes-properties.ts
   "server/routes-properties.ts route:GET /api/properties/:id/report.pdf": "review",
@@ -820,7 +822,15 @@ const DEBT: Record<string, ProposedSurface> = {
 /** DEBT may only shrink. Lower this in the same commit that removes an entry. */
 // 214 → 212 (2026-11-06, W2-TEAM): GET /api/analytics/team-kpi and
 // GET /api/analytics/team-leaderboard deleted — no client caller.
-const DEBT_BASELINE = 212;
+// 212 → 214 (2026-11-09, PKG-1): two NEW founder DSAR routes registered —
+// GET /api/founder/dsar/:id/subject-candidates and POST
+// /api/founder/dsar/:id/execute-erasure (generate-export was already in
+// DEBT). New-surface registration is the census's own remedy for a new
+// person-adjacent surface; these are founder-only rights-fulfilment
+// surfaces whose accesses are recorded in audit_events (DSAR_VERIFIED /
+// DSAR_ERASURE) and the DSAR record itself, not the FCRA purpose ledger —
+// PURPOSE_CODES there are pinned exactly to the skip-trace taxonomy.
+const DEBT_BASELINE = 214;
 
 /**
  * Every file holding a dispatch switch (≥10 snake_case case labels, raw count)
