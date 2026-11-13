@@ -151,6 +151,7 @@ const UPLOAD_SITES: Record<string, Verdict> = {
   "server/routes-bid-estimates.ts": "parsed-not-kept", // bid PDF text extraction
   "server/routes-ai.ts": "parsed-not-kept", // voice → transcript
   "server/routes-founder-life-cockpit.ts": "stored-in-db", // encrypted vault bytea
+  "server/routes-object-documents.ts": "kept-in-store-or-refused", // deal documents (doc store): bytes to the document store or 503 before any write
 };
 
 describe("DEFECT-0164 — every upload site is classified", () => {
@@ -177,8 +178,14 @@ describe("DEFECT-0164 — every upload site is classified", () => {
       expect(found).toContain(file);
       if (verdict === "kept-in-store-or-refused") {
         const src = stripComments(readFileSync(resolve(ROOT, file), "utf8"));
-        expect(src).toMatch(/photoStorageAvailable\(\)/);
-        expect(src).toMatch(/persistPhotoBytes\(/);
+        // Two storage backends honour this verdict, each with its own
+        // refuse-before-write gate + persist call: rehab/field photos
+        // (photoStorageAvailable/persistPhotoBytes) and the deal document
+        // store (documentStorageAvailable/storeObjectDocument). An entry
+        // must match ONE backend's pair in full.
+        const photoPair = /photoStorageAvailable\(\)/.test(src) && /persistPhotoBytes\(/.test(src);
+        const documentPair = /documentStorageAvailable\(\)/.test(src) && /storeObjectDocument\(/.test(src);
+        expect(photoPair || documentPair).toBe(true);
       }
     });
   }

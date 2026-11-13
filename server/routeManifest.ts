@@ -236,6 +236,7 @@ export const ROUTE_MANIFEST: RouteManifestEntry[] = [
   { file: "routes-note-tape.ts", mountPath: null, kind: "register", export: "registerNoteTapeRoutes" },
   { file: "routes-notes.ts", mountPath: null, kind: "register", export: "registerNoteRoutes" },
   { file: "routes-notifications.ts", mountPath: "/api/notifications", kind: "router", export: "default" },
+  { file: "routes-object-documents.ts", mountPath: null, kind: "register", export: "registerObjectDocumentRoutes" },
   { file: "routes-observability-cost.ts", mountPath: null, kind: "register", export: "registerObservabilityCostRoutes" },
   { file: "routes-onboarding.ts", mountPath: "/api/onboarding", kind: "router", export: "default" },
   { file: "routes-onboarding-funnel.ts", mountPath: null, kind: "register", export: "registerOnboardingFunnelRoutes" },

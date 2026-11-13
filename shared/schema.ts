@@ -14023,6 +14023,16 @@ export * from "./schema/note-origination-records";
 export * from "./schema/tax-v1";
 
 // ============================================================================
+// DEAL DOCUMENT STORE — uploaded_documents (./schema/uploaded-documents.ts).
+// The customer's OWN PDFs attached to a deal, a property or an acquired note —
+// the mirror of generated_documents (what AcreOS produced). Re-exported here
+// because the single drizzle schema source (drizzle.config.ts -> this file) is
+// what `drizzle-kit push` reads; prod mirrors the DDL via scripts/migrate.mjs
+// (PROVISIONAL migration 0309).
+// ============================================================================
+export * from "./schema/uploaded-documents";
+
+// ============================================================================
 // FINANCIAL LEDGER + MAIL SHIPMENTS — extracted to ./schema/finance.ts
 // ============================================================================
 export * from "./schema/finance";

@@ -37,6 +37,7 @@ import { NoteAssignmentsCard } from "@/components/note-assignments-card";
 import { NoteSplitsCard } from "@/components/note-splits-card";
 import { NoteComplianceCard } from "@/components/note-compliance-card";
 import { NoteLossMitCard } from "@/components/note-loss-mit-card";
+import { DocumentsPanel } from "@/components/documents-panel";
 import { DataProvenanceChip } from "@/components/data-provenance-chip";
 import { NoteRecordPanels } from "@/components/notes/NoteRecordPanels";
 import { NoteWorkoutAnalysisPanel } from "@/components/notes/NoteWorkoutAnalysisPanel";
@@ -848,6 +849,15 @@ export default function NoteDetailPage() {
 
       {/* Assignment paperwork — Allonge + Assignment of Mortgage. */}
       <NoteAssignmentsCard noteId={note.id} noteNumber={note.noteNumber} />
+
+      {/* Slice 5 (docs/docstore-design-2026-11.md §9) — the collateral file:
+          the note, the mortgage/DOT, the allonge and the assignment chain, as
+          the PDFs the investor actually holds. Sits beside the assignment and
+          compliance cards because it is the same paperwork story.
+          No activity_events row is written for a note (§7): activity_events
+          .entity_id is an integer and acquired_notes.id is a uuid, so this
+          panel's own list IS the record. */}
+      <DocumentsPanel objectType="note" objectId={note.id} className="mb-6" />
 
       {/* Internal notes */}
       {note.notes && (
