@@ -36,6 +36,8 @@ import { startForecastingMonthlyJob } from "./forecastingJobs";
 import { startTrustJobs } from "./trustJobs";
 import { seedFounderDecisionCardsOnStartup } from "./seedFounderDecisionCards";
 import { runDecisionExecutorTickBounded, AUTONOMOUS_DECISION_EXECUTOR_MAX_USD_PER_TICK, AUTONOMOUS_DECISION_EXECUTOR_MAX_DECISIONS_PER_TICK } from "./decisionExecutorTick";
+import { startGateWatcherJob } from "./gateWatcherJobs"; // S3 slice (extracted 2026-11-08)
+import { startLq22TripwireJob } from "./lq22TripwireJobs"; // PKG-4 (LQ-22) tripwire
 import { clock } from "../utils/clock";
 
 // Auto-seed county GIS endpoints on startup
@@ -670,38 +672,6 @@ function startConnectionsSweepJob() {
           log(`Connections sweep run failed: ${err}`, 'connections-sweep');
         });
       }).catch(err => log(`Connections sweep import failed: ${err}`, 'connections-sweep'));
-    }
-  }, ONE_HOUR);
-}
-
-// ============================================================================
-// Launch-Week WS4 — Gate-Watcher (the self-birthing roadmap). Daily 09:00 UTC.
-// Evaluates every machine-encoded roadmap gate (mature-machine §4 autonomy
-// switch schedule + phase triggers: Phase-1 runbook at $200 MRR held 30d,
-// Sentry rung at $500, Telnyx eval at $3k, switch eligibility at 25 paying).
-// A ripened gate raises a one-tap founder Decision via founderCollab, or
-// auto-executes ONLY where the studio revenue-trigger dial already says
-// autoApprove. Hard-stops never auto-execute. Every evaluation is logged and
-// persisted to the Story surface; dedup state lives in founder_settings, so a
-// duplicate tick (second machine acquiring the lock later in the hour) is a
-// no-op.
-// ============================================================================
-function startGateWatcherJob() {
-  const ONE_HOUR = 60 * 60 * 1000;
-  const TTL_SECONDS = 30 * 60;
-
-  log('Registering gate watcher job (daily 09:00 UTC)', 'gate-watcher');
-
-  trackInterval(() => {
-    const now = clock.now();
-    if (now.getUTCHours() === 9) {
-      import('../services/autopilot/gateWatcher').then(({ runGateWatch }) => {
-        withJobLock('gate_watcher_daily', TTL_SECONDS, async () => {
-          await runGateWatch();
-        }).catch(err => {
-          log(`Gate watcher run failed: ${err}`, 'gate-watcher');
-        });
-      }).catch(err => log(`Gate watcher import failed: ${err}`, 'gate-watcher'));
     }
   }, ONE_HOUR);
 }
@@ -3985,6 +3955,8 @@ export async function runScheduledJobs(): Promise<void> {
   // roadmap items detect their own moment and become one-tap founder
   // Decisions (or auto-execute where the studio dial says autoApprove).
   startGateWatcherJob();
+
+  startLq22TripwireJob();
 
   // Horizon A5 — doctrine corpus ingest (daily 03:00 UTC): the repo's
   // doctrine dirs → 'doctrine' embedding namespace, hash-skip on unchanged.
