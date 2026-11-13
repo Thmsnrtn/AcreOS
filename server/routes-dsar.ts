@@ -108,6 +108,12 @@ async function runErasureStub(_dsarId: string): Promise<never> {
   throw new Error("Implement: erasure (legal-hold check + soft-delete)");
 }
 
+// PKG-1 §1: the 501 names the canonical routes. Fulfilment runs on the
+// dsar_requests_lifecycle record (server/routes-privacy-dsar.ts); this table's
+// fan-out/erasure stay unwired until counsel answers Q-C3.
+const DSAR_NOT_WIRED_MESSAGE =
+  "Fulfilment runs on the dsar_requests_lifecycle record: POST /api/founder/dsar/:id/generate-export or /execute-erasure (see docs/pkg1-dsar-design-2026-11.md). This dsar_requests record is not wired.";
+
 // ─── Routes ─────────────────────────────────────────────────────────────────
 export function registerDsarRoutes(app: Express): void {
   // ── POST /api/public/dsar ─────────────────────────────────────────────
@@ -272,13 +278,10 @@ export function registerDsarRoutes(app: Express): void {
 
       try {
         await runFanOutStub(row.id);
-      } catch (stubErr) {
-        // Stub always throws — return 501 so ops sees the gap.
-        return res.status(501).json({
-          error: "NOT_IMPLEMENTED",
-          message: (stubErr as Error).message,
-          statusCode: 501,
-        });
+      } catch {
+        // Stub always throws — return 501 so ops sees the gap, pointing at the
+        // canonical lifecycle routes (PKG-1 §1).
+        return Errors.notImplemented(res, DSAR_NOT_WIRED_MESSAGE);
       }
       return res.json({ ok: true });
     } catch (err) {
@@ -318,12 +321,9 @@ export function registerDsarRoutes(app: Express): void {
 
       try {
         await runErasureStub(row.id);
-      } catch (stubErr) {
-        return res.status(501).json({
-          error: "NOT_IMPLEMENTED",
-          message: (stubErr as Error).message,
-          statusCode: 501,
-        });
+      } catch {
+        // Stub always throws — 501 pointing at the lifecycle routes (PKG-1 §1).
+        return Errors.notImplemented(res, DSAR_NOT_WIRED_MESSAGE);
       }
       return res.json({ ok: true });
     } catch (err) {

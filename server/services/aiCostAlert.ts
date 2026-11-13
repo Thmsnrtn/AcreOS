@@ -91,6 +91,15 @@ export async function notifyAiCeilingTrip(trip: AiCeilingTrip): Promise<void> {
       to,
       from,
       fromName: "AcreOS AI cost guard",
+      // Protected send (outwardActionCoverage): the dedup identity above —
+      // scope:orgId:UTC-day — is durable domain identity (one alert per
+      // scope per day), so it doubles as the outward-action idempotency
+      // key. For org trips organizationId is present and the boundary
+      // engages for real; for platform trips there is no org to scope a
+      // claim to, and this module's dedup is the guard (the lane
+      // emailService documents for platform-scoped system mail).
+      idempotencyKey: `ai-cost-alert:${key}`,
+      ...(trip.orgId != null ? { organizationId: trip.orgId } : {}),
       subject: `[AcreOS] AI cost ceiling tripped — ${label}`,
       html: [
         `<p><strong>AI cost ceiling tripped:</strong> ${label}.</p>`,

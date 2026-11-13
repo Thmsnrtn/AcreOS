@@ -11,7 +11,7 @@ const h = vi.hoisted(() => ({
   // empty tuple, so mock.calls[0][0] is a TS2493/TS2352 pair under
   // check:tests. The shape mirrors what notifyAiCeilingTrip passes.
   sendEmail: vi.fn(
-    async (_options: { to: string; subject: string; html: string; from?: string; fromName?: string }) => ({ success: true }),
+    async (_options: { to: string; subject: string; html: string; from?: string; fromName?: string; idempotencyKey?: string; organizationId?: number }) => ({ success: true }),
   ),
   errorLogs: [] as string[],
   warnLogs: [] as string[],
@@ -54,6 +54,11 @@ describe("aiCostAlert — founder trip alerting (R4)", () => {
     expect(arg.subject).toContain("70%");
     expect(arg.html).toContain("$11.00");
     expect(arg.html).toContain("$10.50");
+    // Protected send: the idempotency key IS the dedup identity
+    // (scope:orgId:UTC-day); a platform trip has no org to scope to.
+    const today = new Date().toISOString().slice(0, 10);
+    expect(arg.idempotencyKey).toBe(`ai-cost-alert:platform_background:platform:${today}`);
+    expect(arg.organizationId).toBeUndefined();
     expect(h.errorLogs.some((m) => m.includes("[ai-cost-alert]"))).toBe(true);
   });
 
@@ -70,6 +75,11 @@ describe("aiCostAlert — founder trip alerting (R4)", () => {
     expect(h.sendEmail).toHaveBeenCalledTimes(2);
     const second = h.sendEmail.mock.calls[1][0];
     expect(second.subject).toContain("org 7");
+    // An org trip scopes the outward-action claim to that org, with the
+    // same dedup-derived key.
+    const today = new Date().toISOString().slice(0, 10);
+    expect(second.idempotencyKey).toBe(`ai-cost-alert:org_background:7:${today}`);
+    expect(second.organizationId).toBe(7);
   });
 
   it("FOUNDER_ALERT_EMAIL unset → log-only, no send attempted, still resolves", async () => {
