@@ -14,6 +14,7 @@
 
 import { getOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
+import { meteredEmbeddingsCreate, type EmbeddingsClient } from "./aiSpendGuard";
 
 export const EMBEDDING_MODEL = "text-embedding-3-small";
 export const EMBEDDING_DIMENSIONS = 1536;
@@ -40,10 +41,13 @@ export async function generateQueryEmbedding(
   }
 
   try {
-    const response = await openai.embeddings.create({
-      model: EMBEDDING_MODEL,
-      input: text,
-    });
+    // P1-5 R2: metered — ceiling check before, telemetry after
+    // (aiSpendGuard.meteredEmbeddingsCreate). Interactive search posture.
+    const response = await meteredEmbeddingsCreate(
+      openai as unknown as EmbeddingsClient,
+      { model: EMBEDDING_MODEL, input: text },
+      { taskType: "embedding_query", origin: "customer" },
+    );
 
     const embedding = response.data[0]?.embedding;
     if (!embedding || embedding.length !== EMBEDDING_DIMENSIONS) {
@@ -105,10 +109,12 @@ export async function generateQueryEmbeddingsBatch(
   if (nonEmptyTexts.length === 0) return out;
 
   try {
-    const response = await openai.embeddings.create({
-      model: EMBEDDING_MODEL,
-      input: nonEmptyTexts,
-    });
+    // P1-5 R2: metered, background posture (driven by the refresh job).
+    const response = await meteredEmbeddingsCreate(
+      openai as unknown as EmbeddingsClient,
+      { model: EMBEDDING_MODEL, input: nonEmptyTexts },
+      { taskType: "embedding_batch", origin: "background" },
+    );
     for (let i = 0; i < nonEmptyTexts.length; i++) {
       const embedding = response.data[i]?.embedding;
       if (embedding && embedding.length === EMBEDDING_DIMENSIONS) {

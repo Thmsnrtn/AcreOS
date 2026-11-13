@@ -73,6 +73,12 @@ const REGISTER: Record<string, [number, SendClass]> = {
   "server/routes-inbound-email.ts": [1, "system-mail"],
   "server/routes-marketplace.ts": [1, "system-mail"],
   "server/services/agentActionExecutors.ts": [0, "agent-autonomous"],
+  // P1-5 R4 (2026-11-12): the AI cost ceiling trip alert — AcreOS's own
+  // guard mailing the founder at FOUNDER_ALERT_EMAIL, system lane (same
+  // class as its sibling dailyAiCostGuard below). Protected send: it
+  // passes an idempotencyKey derived from its scope:orgId:UTC-day dedup
+  // identity (see outwardActionCoverage).
+  "server/services/aiCostAlert.ts": [1, "system-mail"],
   "server/services/alertPolicy.ts": [3, "system-mail"],
   "server/services/autonomousDecisionExecutor.ts": [0, "agent-autonomous"],
   "server/services/autopilot/hands/send-email.ts": [1, "witnessed-hand"],

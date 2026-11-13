@@ -180,6 +180,8 @@ export class VoiceCallAIService {
           const audioBuffer = await response.arrayBuffer();
           const audioFile = new File([audioBuffer], "audio.mp3", { type: "audio/mpeg" });
           
+          // AI_SPEND_EXEMPTION: whisper_transcription — deliberately unmetered;
+          // see server/services/aiSpendExemptions.ts (P1-5 R2).
           const whisperResponse = await openai.audio.transcriptions.create({
             file: audioFile,
             model: "whisper-1",

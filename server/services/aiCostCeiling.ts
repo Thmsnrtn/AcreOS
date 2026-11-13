@@ -41,6 +41,42 @@ const TIER_CEILING_DEFAULTS: Record<string, { dailyCents: number; monthlyCents: 
 };
 
 /**
+ * P1-5 / I-5 R1 (2026-11-12): per-org BACKGROUND sub-ceiling, monthly
+ * (rolling 30d), tiered to price. The total ceilings above were set as
+ * runaway-loop protection (204–505% of tier price); background/agent AI
+ * (origin='background') never touches the customer allowance, so before
+ * this sub-ceiling a single org's background work could consume its
+ * entire monthly ceiling — a pure per-org margin loss bounded only by
+ * the shared platform bucket. The sub-ceiling bounds that layer at
+ * roughly 20–25% of the tier's price:
+ *   free $2 · starter $10 (~20% of $49) · pro $25 (~25% of $99) ·
+ *   scale $50 (~25% of $199) · enterprise $100.
+ * It reconciles ceilings TO the ratified prices; it changes no price and
+ * no allowance value.
+ *
+ * Only origin='background' rows count. origin='background_metered' work
+ * is already bounded by the allowance it counts toward (founder decision
+ * 2026-10-17), so summing it here too would double-bound it below its
+ * own allowance. A founder override scales the sub-ceiling by the same
+ * ratio it applies to the tier monthly ceiling (see getEffectiveCeilings).
+ */
+const TIER_BACKGROUND_MONTHLY_SUBCEILING_CENTS: Record<string, number> = {
+  free: 200,        // $2/mo
+  starter: 1_000,   // $10/mo
+  pro: 2_500,       // $25/mo
+  scale: 5_000,     // $50/mo
+  enterprise: 10_000, // $100/mo
+};
+
+/** The tier's background sub-ceiling, scaled by a founder override's ratio. */
+function backgroundSubCeilingCents(tier: string, effectiveMonthlyCents: number): number {
+  const base = TIER_BACKGROUND_MONTHLY_SUBCEILING_CENTS[tier] ?? TIER_BACKGROUND_MONTHLY_SUBCEILING_CENTS.free;
+  const tierMonthly = TIER_CEILING_DEFAULTS[tier]?.monthlyCents;
+  if (!tierMonthly || effectiveMonthlyCents === tierMonthly) return Math.min(base, effectiveMonthlyCents);
+  return Math.min(effectiveMonthlyCents, Math.round(base * (effectiveMonthlyCents / tierMonthly)));
+}
+
+/**
  * W4.3: last-known-good spend cache so a telemetry-read hiccup enforces
  * against recent truth instead of silently disabling the gate. Entries
  * older than the TTL are not trusted.
@@ -159,7 +195,7 @@ export class AiCostCeilingExceededError extends Error {
   readonly code = "AI_COST_CEILING_EXCEEDED" as const;
   constructor(
     public readonly orgId: number,
-    public readonly windowKey: "daily" | "monthly",
+    public readonly windowKey: "daily" | "monthly" | "background_monthly",
     public readonly currentCents: number,
     public readonly ceilingCents: number,
   ) {
@@ -171,9 +207,35 @@ export class AiCostCeilingExceededError extends Error {
   }
 }
 
+/**
+ * P1-5 / I-5 R4: founder alerting on a MEASURED ceiling trip (fire-and-
+ * forget; alerting must never break or delay the gate). Dedup + delivery
+ * live in aiCostAlert.ts. Dynamic import keeps the alert module's email
+ * dependency out of this module's import graph.
+ */
+function fireCeilingTripAlert(input: {
+  scope: "platform" | "platform_background" | "org" | "org_background";
+  orgId: number | null;
+  windowKey: "daily" | "monthly" | "background_monthly";
+  currentCents: number;
+  ceilingCents: number;
+}): void {
+  void (async () => {
+    try {
+      const { notifyAiCeilingTrip } = await import("./aiCostAlert");
+      await notifyAiCeilingTrip(input);
+    } catch {
+      // The gate has already thrown the refusal; a failed alert is logged
+      // inside aiCostAlert and must never surface as a second error here.
+    }
+  })();
+}
+
 export async function getEffectiveCeilings(orgId: number): Promise<{
   dailyCents: number;
   monthlyCents: number;
+  /** P1-5 R1: monthly sub-ceiling for origin='background' spend alone. */
+  backgroundMonthlyCents: number;
   source: "platform_default" | "tier_default" | "founder_override";
 }> {
   // G10 (2026-10-30): the overrides lookup used to run OUTSIDE any try/catch, so
@@ -198,9 +260,28 @@ export async function getEffectiveCeilings(orgId: number): Promise<{
     );
   }
   if (override) {
+    const monthlyCents = override.monthlyCeilingCents ?? PLATFORM_DEFAULT_MONTHLY_CEILING_CENTS;
+    // R1 under an override: the sub-ceiling scales by the same ratio the
+    // override applies to the org's tier monthly ceiling, so a founder
+    // raise lifts background headroom proportionally (and never past the
+    // effective monthly ceiling itself). Tier unreadable → ratio 1
+    // against the free tier's sub-ceiling (the conservative direction).
+    let tier = "free";
+    try {
+      const [org] = await db
+        .select({ subscriptionTier: organizations.subscriptionTier })
+        .from(organizations)
+        .where(eq(organizations.id, orgId))
+        .limit(1);
+      const { limitsTierFor } = await import("@shared/billing/tier-limits");
+      tier = limitsTierFor(org?.subscriptionTier ?? "free");
+    } catch {
+      // Keep "free" — smallest sub-ceiling.
+    }
     return {
       dailyCents: override.dailyCeilingCents,
-      monthlyCents: override.monthlyCeilingCents ?? PLATFORM_DEFAULT_MONTHLY_CEILING_CENTS,
+      monthlyCents,
+      backgroundMonthlyCents: backgroundSubCeilingCents(tier, monthlyCents),
       source: "founder_override",
     };
   }
@@ -220,15 +301,24 @@ export async function getEffectiveCeilings(orgId: number): Promise<{
     const tier = limitsTierFor(org?.subscriptionTier ?? "free");
     const tierDefaults = TIER_CEILING_DEFAULTS[tier];
     if (tierDefaults) {
-      return { ...tierDefaults, source: "tier_default" };
+      return {
+        ...tierDefaults,
+        backgroundMonthlyCents: backgroundSubCeilingCents(tier, tierDefaults.monthlyCents),
+        source: "tier_default",
+      };
     }
     return {
       dailyCents: PLATFORM_DEFAULT_DAILY_CEILING_CENTS,
       monthlyCents: PLATFORM_DEFAULT_MONTHLY_CEILING_CENTS,
+      backgroundMonthlyCents: TIER_BACKGROUND_MONTHLY_SUBCEILING_CENTS.free,
       source: "platform_default",
     };
   } catch {
-    return { ...TIER_CEILING_DEFAULTS.free, source: "tier_default" };
+    return {
+      ...TIER_CEILING_DEFAULTS.free,
+      backgroundMonthlyCents: TIER_BACKGROUND_MONTHLY_SUBCEILING_CENTS.free,
+      source: "tier_default",
+    };
   }
 }
 
@@ -241,6 +331,26 @@ async function sumCostCentsSince(orgId: number, sinceMs: number): Promise<number
     .from(aiTelemetryEvents)
     .where(and(
       eq(aiTelemetryEvents.organizationId, orgId),
+      gte(aiTelemetryEvents.createdAt, since),
+    ));
+  return Number(row?.sum ?? 0);
+}
+
+/**
+ * P1-5 R1: an org's background-origin spend alone (origin='background').
+ * Deliberately NOT 'background_metered' — that origin is allowance-bound
+ * already (see TIER_BACKGROUND_MONTHLY_SUBCEILING_CENTS).
+ */
+async function sumBackgroundCostCentsSince(orgId: number, sinceMs: number): Promise<number> {
+  const since = new Date(clock.nowMs() - sinceMs);
+  const [row] = await db
+    .select({
+      sum: sql<string>`COALESCE(SUM(${aiTelemetryEvents.estimatedCostCents}), 0)`,
+    })
+    .from(aiTelemetryEvents)
+    .where(and(
+      eq(aiTelemetryEvents.organizationId, orgId),
+      eq(aiTelemetryEvents.origin, "background"),
       gte(aiTelemetryEvents.createdAt, since),
     ));
   return Number(row?.sum ?? 0);
@@ -316,6 +426,17 @@ export async function assertWithinPlatformCostCeiling(opts?: {
     const dailyCents = await sumPlatformCostCentsSince(dayMs);
     lastKnownPlatformDailyCents = { cents: dailyCents, at: clock.nowMs() };
     if (dailyCents >= effectiveCeiling) {
+      // P1-5 R4: a background caller tripping here is the platform bucket
+      // tripping at 70% — the first moment background work is cut to
+      // reserve headroom for customer chat. That trip, and the full-bucket
+      // trip, alert the founder (deduped per scope per day in aiCostAlert).
+      fireCeilingTripAlert({
+        scope: isBackground ? "platform_background" : "platform",
+        orgId: null,
+        windowKey: "daily",
+        currentCents: dailyCents,
+        ceilingCents: effectiveCeiling,
+      });
       throw new AiCostCeilingExceededError(0, "daily", dailyCents, effectiveCeiling);
     }
   } catch (err) {
@@ -358,7 +479,17 @@ export async function assertWithinPlatformCostCeiling(opts?: {
  */
 export async function assertWithinAiCostCeiling(
   orgId: number | null,
-  opts?: { failClosed?: boolean },
+  opts?: {
+    failClosed?: boolean;
+    /**
+     * P1-5 R1: who triggered the call. "background" subjects the call to
+     * the org's background monthly sub-ceiling. When omitted, the
+     * existing convention decides: failClosed callers ARE the autonomous /
+     * background callers (the same identification the platform 70%
+     * reserve uses), everyone else is customer-facing.
+     */
+    origin?: "customer" | "background";
+  },
 ): Promise<void> {
   // Platform-wide check ALWAYS runs (including for orgId === null platform
   // calls). This is the outer envelope that prevents the runaway $30/day
@@ -370,6 +501,8 @@ export async function assertWithinAiCostCeiling(
   if (orgId == null) return;
   if (process.env.AI_COST_CEILING_BYPASS === "1") return;
 
+  const isBackground = opts?.origin ? opts.origin === "background" : opts?.failClosed === true;
+
   const ceilings = await getEffectiveCeilings(orgId);
   const dayMs = 24 * 60 * 60 * 1000;
   const monthMs = 30 * dayMs;
@@ -378,11 +511,31 @@ export async function assertWithinAiCostCeiling(
     const dailyCents = await sumCostCentsSince(orgId, dayMs);
     lastKnownOrgDailyCents.set(orgId, { cents: dailyCents, at: clock.nowMs() });
     if (dailyCents >= ceilings.dailyCents) {
+      fireCeilingTripAlert({ scope: "org", orgId, windowKey: "daily", currentCents: dailyCents, ceilingCents: ceilings.dailyCents });
       throw new AiCostCeilingExceededError(orgId, "daily", dailyCents, ceilings.dailyCents);
     }
     const monthlyCents = await sumCostCentsSince(orgId, monthMs);
     if (monthlyCents >= ceilings.monthlyCents) {
+      fireCeilingTripAlert({ scope: "org", orgId, windowKey: "monthly", currentCents: monthlyCents, ceilingCents: ceilings.monthlyCents });
       throw new AiCostCeilingExceededError(orgId, "monthly", monthlyCents, ceilings.monthlyCents);
+    }
+    // P1-5 R1: the background sub-ceiling. A background call is refused
+    // here even when the org is far under its TOTAL ceilings — while the
+    // same org's customer calls (origin 'customer') never reach this
+    // check, and other orgs are unaffected. That per-org isolation is
+    // the I-5 acceptance proof (tests/unit/aiBackgroundSubCeiling.test.ts).
+    if (isBackground) {
+      const backgroundMonthlyCents = await sumBackgroundCostCentsSince(orgId, monthMs);
+      if (backgroundMonthlyCents >= ceilings.backgroundMonthlyCents) {
+        fireCeilingTripAlert({
+          scope: "org_background",
+          orgId,
+          windowKey: "background_monthly",
+          currentCents: backgroundMonthlyCents,
+          ceilingCents: ceilings.backgroundMonthlyCents,
+        });
+        throw new AiCostCeilingExceededError(orgId, "background_monthly", backgroundMonthlyCents, ceilings.backgroundMonthlyCents);
+      }
     }
   } catch (err) {
     if (err instanceof AiCostCeilingExceededError) throw err;

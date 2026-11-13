@@ -14,6 +14,7 @@ import { eq, and, desc } from "drizzle-orm";
 import { getOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
 import { clock } from "../utils/clock";
+import { meteredEmbeddingsCreate, type EmbeddingsClient } from "./aiSpendGuard";
 
 export interface PatternFingerprint {
   property: {
@@ -743,10 +744,13 @@ class DealPatternCloningService {
     try {
       const text = this.fingerprintToText(fingerprint);
 
-      const response = await openai.embeddings.create({
-        model: "text-embedding-3-small",
-        input: text,
-      });
+      // P1-5 R2: metered — ceiling check before, telemetry after
+      // (aiSpendGuard.meteredEmbeddingsCreate).
+      const response = await meteredEmbeddingsCreate(
+        openai as unknown as EmbeddingsClient,
+        { model: "text-embedding-3-small", input: text },
+        { taskType: "deal_pattern_embedding", origin: "background" },
+      );
 
       return response.data[0]?.embedding || null;
     } catch (error) {
