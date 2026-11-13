@@ -20,8 +20,8 @@
  *                         never invents its own "was it recorded?" field.
  */
 import { bigint, date, index, integer, pgTable, serial, text, timestamp, varchar } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+import { createInsertSchema } from "../db/createInsertSchema";
 import { organizations } from "../schema";
 import { MONEY_EVENT_KINDS, RECORDING_STATUSES, RECORDING_SUBJECT_KINDS } from "../settlement-rail";
 

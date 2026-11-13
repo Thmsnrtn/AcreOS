@@ -1864,7 +1864,7 @@ export function registerBorrowerRoutes(app: Express): void {
         ? await db
             .select({ address: properties.address, city: properties.city, state: properties.state, zip: properties.zip })
             .from(properties)
-            .where(eq(properties.id, note.propertyId))
+            .where(and(eq(properties.id, note.propertyId), eq(properties.organizationId, note.organizationId)))
             .limit(1)
         : [];
       const artifact = buildPayoffLetter({

@@ -504,7 +504,15 @@ function decideMailLane(input: MailLaneInputs): MailLane {
         "Use your own Lob key (Settings → Your provider keys) to send it.",
     };
   }
-  if (!input.price && knownBase && input.spec.kind === "letter" && input.spec.pages == null) {
+  if (
+    !input.price &&
+    knownBase &&
+    input.spec.kind === "letter" &&
+    input.spec.pages == null &&
+    input.letter &&
+    !input.letter.ok &&
+    input.letter.reason === "unknown"
+  ) {
     return {
       lane: "refused",
       reason: "letter_pages_unconfirmed",

@@ -101,13 +101,15 @@ export function buildPayoffLetter(model: PayoffLetterModel): RailDocumentArtifac
   const q = model.quote;
   const borrower = model.borrowerName ?? q.payerName ?? "Borrower";
   const letterDate = clock.now().toISOString().slice(0, 10);
+  const unappliedCreditRow: Array<[string, string]> =
+    q.unappliedCreditCents > 0 ? [["Unapplied credit", `-${dollars(q.unappliedCreditCents)}`]] : [];
   const breakdown: Array<[string, string]> = [
     ["Remaining principal", dollars(q.principalBalanceCents)],
     [
       `Accrued interest (${q.daysAccrued} days from ${q.accrualStartDate}, ${q.dayCountConvention})`,
       dollars(q.accruedInterestCents),
     ],
-    ...(q.unappliedCreditCents > 0 ? [["Unapplied credit", `-${dollars(q.unappliedCreditCents)}`] as Array<[string, string]>] : []),
+    ...unappliedCreditRow,
     ["Late fees owed", dollars(q.lateFeesOutstandingCents)],
     ["Payoff fee", dollars(q.payoffFeeCents)],
   ];

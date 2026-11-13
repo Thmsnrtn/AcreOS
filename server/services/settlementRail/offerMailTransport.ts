@@ -36,6 +36,7 @@ import { leads, offerLetters, type OfferLetter } from "@shared/schema";
 import { mergeMailCopy } from "@shared/parcel/ownerName";
 import { leadNotOptedOutSql } from "../leadContactability";
 import { deliverRailLetterByMail, type RailMailRecipient } from "./delivery";
+import { unscopedForPlatformOps } from "../../utils/orgScopedDb";
 import { logger } from "../../utils/logger";
 import { clock } from "../../utils/clock";
 
@@ -131,7 +132,12 @@ async function sendOne(letter: OfferLetter): Promise<"sent" | "failed" | "skippe
  * idempotency key makes an overlapping cycle harmless.
  */
 export async function drainQueuedOfferLetters(limit = 25): Promise<OfferMailTransportSummary> {
-  const queued = await db
+  // Platform operation by design: the drain claims queued letters across
+  // ALL orgs (each send then re-scopes to the letter's own organizationId),
+  // so the claim read is rooted in the sanctioned cross-org escape hatch.
+  const queued = await unscopedForPlatformOps(
+    "offer-mail transport drain: cross-org claim of queued offer letters so each can be mailed under its own org's lane",
+  )
     .select()
     .from(offerLetters)
     .where(eq(offerLetters.status, "queued"))
