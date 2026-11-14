@@ -121,7 +121,7 @@ Each of these is one click away. Let me know if you want a walkthrough of any of
 
 **Body:**
 
-Your 90-day Pro trial wraps up in 2 days. Here's where you stand:
+Your 14-day free trial wraps up in 2 days. Here's where you stand:
 
 During your trial, you've had access to:
 - Unlimited Deal Feed scanning

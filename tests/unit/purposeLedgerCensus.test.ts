@@ -588,6 +588,7 @@ const DEBT: Record<string, ProposedSurface> = {
   // server/routes-analytics.ts
   "server/routes-analytics.ts route:GET /api/analytics/cohort-dashboard": "review",
   // server/routes-borrower.ts
+  "server/routes-borrower.ts route:GET /api/borrower/payoff-letter": "review",
   "server/routes-borrower.ts route:GET /api/borrower/payoff-quote": "review",
   "server/routes-borrower.ts route:GET /api/borrower/periodic-statements/:statementId/pdf": "review",
   "server/routes-borrower.ts route:GET /api/borrower/session": "review",
@@ -817,6 +818,9 @@ const DEBT: Record<string, ProposedSurface> = {
   "server/services/core-agents.ts case:run_digest": "review",
   // server/services/outcomeVerificationLoop.ts
   "server/services/outcomeVerificationLoop.ts case:send_follow_up": "review",
+  // server/services/settlementRail/routes.ts
+  "server/services/settlementRail/routes.ts route:POST /api/notes/:id/lien-release": "review",
+  "server/services/settlementRail/routes.ts route:POST /api/notes/:id/payoff-letter": "review",
   // server/services/workflow-engine.ts
   "server/services/workflow-engine.ts case:conditional": "review",
   "server/services/workflow-engine.ts case:send_email#2": "review",
@@ -839,7 +843,12 @@ const DEBT: Record<string, ProposedSurface> = {
 // (preview / create / list, lead_contact_read) registered by #477's branch
 // (its own tree read 215 = 212 + 3) unioned with PKG-1's +2 above —
 // 212 base + 3 + 2 = 217, disjoint entry sets, verified by key count.
-const DEBT_BASELINE = 217;
+// 217 → 220 (merge-lane union, 2026-11-14, PR #477 slot): main's #564
+// settlement-rail trio (214 → 217 on main) unions with the wholesale
+// seller-follow-up trio above — disjoint entry sets, so the merged
+// baseline is 214 + 3 + 3 = 220. Census re-run on the merged tree is
+// the proof.
+const DEBT_BASELINE = 220;
 
 /**
  * Every file holding a dispatch switch (≥10 snake_case case labels, raw count)
