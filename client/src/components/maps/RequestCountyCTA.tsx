@@ -23,6 +23,7 @@ import { Label } from "@/components/ui/label";
 import { MapPinned, Check, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { clientLogger } from "@/lib/clientLogger";
+import type { CoverageDemandSurface, CoverageRefusalReason } from "@shared/coverageDemand";
 
 const REQUEST_COUNTY_ENDPOINT = "/api/county-coverage/request";
 
@@ -33,6 +34,15 @@ export interface RequestCountyCTAProps {
   /** Compact variant for inside the intelligence panel / bottom sheet. */
   compact?: boolean;
   className?: string;
+  /**
+   * P1-7 / A-2 demand attribution: the surface rendering the CTA and the
+   * refusal reason that prompted it (shared/coverageDemand.ts taxonomy).
+   * A surface that renders this CTA at a refusal passes its affordance's
+   * reason so the request is recorded as refusal-sourced. Defaults to the
+   * Maps surface that has always rendered it.
+   */
+  surface?: CoverageDemandSurface;
+  reason?: CoverageRefusalReason;
 }
 
 export function RequestCountyCTA({
@@ -40,6 +50,8 @@ export function RequestCountyCTA({
   defaultCounty = "",
   compact = false,
   className,
+  surface = "maps",
+  reason,
 }: RequestCountyCTAProps) {
   const { toast } = useToast();
   const [state, setState] = useState(defaultState);
@@ -52,6 +64,8 @@ export function RequestCountyCTA({
       const res = await apiRequest("POST", REQUEST_COUNTY_ENDPOINT, {
         state: state.trim(),
         county: county.trim(),
+        surface,
+        ...(reason ? { reason } : {}),
       });
       return res.json().catch(() => ({}));
     },
