@@ -7,11 +7,14 @@
  * gate governs, not in a string the gate mentions.
  */
 
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 const REPO_ROOT = resolve(__dirname, "../..");
 const EVALUATOR = join(REPO_ROOT, "scripts", "check-schema-journal-sync.mjs");
