@@ -264,6 +264,49 @@ function learnContentPlugin(): Plugin {
   };
 }
 
+// The Tennessee county boundary shapes (shared/landData/tnCountyBoundaries.json,
+// ~52 KB of simplified TIGER GeoJSON) are data, not code. The coverage panel
+// (client/src/components/maps/LandCoveragePanel.tsx) used to import the file,
+// which put every byte inside the bundle gate's summed JS total
+// (scripts/check-bundle-size.js counts every emitted .js file). The shapes now
+// ship as a static asset the panel fetches on demand
+// (client/src/lib/tn-boundaries.ts), and the parsed object is the same one
+// the bundle used to carry — the panel draws identical fills from it. The
+// server keeps importing the JSON directly (tnCountyAt, release lineage) and
+// is untouched. This plugin is only the Vite wiring: it copies the file
+// VERBATIM into dist/public/land-data/ at build end (the production static
+// server serves it from there) and serves the same URL from disk under the
+// dev server so dev behaviour is unchanged.
+const TN_BOUNDARIES_URL = "/land-data/tn-county-boundaries.json";
+function tnBoundariesPlugin(): Plugin {
+  const rootDir = path.resolve(import.meta.dirname);
+  const sourcePath = path.join(rootDir, "shared", "landData", "tnCountyBoundaries.json");
+  let outDir = path.resolve(rootDir, "dist/public");
+  return {
+    name: "acreos-tn-boundaries",
+    configResolved(config) {
+      outDir = config.build.outDir;
+    },
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        if ((req.url ?? "").split("?")[0] !== TN_BOUNDARIES_URL) return next();
+        res.setHeader("Content-Type", "application/json");
+        const stream = fs.createReadStream(sourcePath);
+        stream.on("error", () => {
+          res.statusCode = 404;
+          res.end();
+        });
+        stream.pipe(res);
+      });
+    },
+    closeBundle() {
+      const dest = path.join(outDir, TN_BOUNDARIES_URL.replace(/^\//, ""));
+      fs.mkdirSync(path.dirname(dest), { recursive: true });
+      fs.copyFileSync(sourcePath, dest);
+    },
+  };
+}
+
 // Phase 8 Mo 12 — Beatriz §3 bundle-analyzer.
 // Enabled when ANALYZE=1 (CI / one-off `npm run build:analyze`).
 // In normal builds the plugin is excluded so the prod bundle is unaffected.
@@ -298,6 +341,7 @@ export default defineConfig({
     jspdfUnusedOptionalDepsPlugin(),
     zodJsonSchemaUnusedPlugin(),
     learnContentPlugin(),
+    tnBoundariesPlugin(),
     chunkGraphPlugin(),
     // Pre-compress build output (gzip + brotli) so static-serve can deliver
     // already-compressed bytes. Sidesteps the HTTP/2 + `compression`
