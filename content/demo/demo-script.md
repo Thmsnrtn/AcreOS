@@ -84,4 +84,4 @@
 
 **[Screen: Dashboard overview]**
 
-> "AcreOS is in beta right now. Free to try for 90 days with full Pro access. If you're a land investor and you're tired of toggling between 5 different tools, DM me and I'll get you set up."
+> "AcreOS is in beta right now. Free to try for 14 days — full access to your plan's features, no charge until the trial ends. If you're a land investor and you're tired of toggling between 5 different tools, DM me and I'll get you set up."

@@ -81,6 +81,6 @@ That's the difference between a hobby and a business. When you have better data,
 
 ## Want to Try It?
 
-I'm looking for 5 beta testers who are actively doing land deals and want to consolidate their workflow. 90 days of full Pro access, completely free. The only thing I ask is honest feedback.
+I'm looking for 5 beta testers who are actively doing land deals and want to consolidate their workflow. You get a 14-day free trial with full access to your plan's features, completely free. The only thing I ask is honest feedback.
 
 DM me if you're interested.
