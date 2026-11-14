@@ -18,7 +18,7 @@ Bring Your Own Key. On the Pro plan, you can connect your own API keys for premi
 
 ## 5. How does the free trial work?
 
-When you sign up, you get 90 days of full Pro access — every feature, no restrictions. No credit card required to start. At the end of 90 days, your account moves to the Free tier. You can upgrade to Starter or Pro at any point during or after the trial.
+When you sign up, you get a 14-day free trial — full access to your plan's features, and no charge until it ends. No credit card required to start. At the end of the 14 days, your account moves to the Free tier. You can upgrade to Starter or Pro at any point during or after the trial.
 
 ## 6. Can I have multiple users on the Free plan?
 

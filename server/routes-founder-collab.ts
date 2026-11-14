@@ -174,6 +174,27 @@ export function registerFounderCollabRoutes(app: Express): void {
     },
   );
 
+  // §5A guarantee tail exposure (P1-14 / B2): what the guarantee currently
+  // stands behind, its burn-down, and how much the B7 brake would auto-pay.
+  // Read-only and advisory — a gatherer failure answers 200 `available: false`
+  // so the founder surface never 500s because Stripe hiccuped.
+  app.get(
+    "/api/founder/refund-guarantee/exposure",
+    isAuthenticated,
+    requireFounder,
+    async (_req: AuthenticatedRequest, res: Response) => {
+      try {
+        const { gatherGuaranteeExposure } = await import("./services/refunds/guaranteeExposureFacts");
+        const report = await gatherGuaranteeExposure();
+        if (!report) return res.json({ available: false });
+        return res.json(report);
+      } catch (err) {
+        logger.warn("[founder-collab] guarantee exposure unavailable", { err: String(err) });
+        return res.json({ available: false });
+      }
+    },
+  );
+
   app.post(
     "/api/founder/refund-requests/:id/approve",
     isAuthenticated,
@@ -345,6 +366,32 @@ export function registerFounderCollabRoutes(app: Express): void {
           err: String(err),
         });
         return Errors.internal(res, err);
+      }
+    },
+  );
+
+  // ────────────────────────────────────────────────────────────────────────
+  // GET /api/founder/first-settlement-milestone
+  // Read-only, ALERT-ONLY LLC-formation trigger fact (P1-13). Unavailable
+  // is honest: never invent a settlement.
+  // ────────────────────────────────────────────────────────────────────────
+  app.get(
+    "/api/founder/first-settlement-milestone",
+    isAuthenticated,
+    requireFounder,
+    async (_req: AuthenticatedRequest, res: Response) => {
+      try {
+        const { gatherFirstSettlementMilestone } = await import(
+          "./services/founder/firstSettlementMilestoneFacts"
+        );
+        const report = await gatherFirstSettlementMilestone();
+        if (!report) return res.json({ available: false });
+        return res.json({ available: true, ...report });
+      } catch (err) {
+        logger.warn("[founder-collab] first-settlement-milestone failed", {
+          metadata: { error: err instanceof Error ? err.message : String(err) },
+        });
+        return res.json({ available: false });
       }
     },
   );
