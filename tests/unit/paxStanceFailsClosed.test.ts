@@ -262,6 +262,11 @@ describe("a NULL column is today's behaviour, not an error", () => {
         },
         sends: "ask",
       },
+      // PX-3: no caps and no member overrides — today's behaviour (the
+      // fails-closed and narrowing proofs live in paxLimitsFailsClosed /
+      // paxLimitsNarrowing).
+      limits: { asksPerDay: null, creditSpendPerDay: null, browseCallsPerDay: null, batchRowsPerDay: null },
+      members: {},
     });
   });
 });

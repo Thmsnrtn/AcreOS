@@ -32,6 +32,14 @@
  *                     pausedUntil (the pause has its own two routes above;
  *                     routes-autonomy.ts's shallow-merge clobber is gone
  *                     with that file). Owner / admin only.
+ *                     PX-3 adds `limits?: { asksPerDay, creditSpendPerDay,
+ *                     browseCallsPerDay, batchRowsPerDay }` (each an integer ≥ 0
+ *                     or null = no cap; omitted keeps the stored one).
+ *   PATCH /controls/my-override   any member: { rails?, limits? } — writes ONLY
+ *                     the caller's own narrower override (null clears a part).
+ *   POST  /controls/reset-rails   owner / admin: rails, limits and every member
+ *                     override back to the defaults; stance, switches and the
+ *                     pause are untouched.
  *   GET   /receipts   "What Pax did" — server/services/paxReceiptsReader.ts.
  *
  * Every response of the four control routes is the SAME controls object, so
@@ -71,12 +79,18 @@ import {
 import { isLiveWorkflowTriggerEvent } from "@shared/workflow-live-triggers";
 import {
   OFFERED_STANCES,
+  PAX_LIMIT_KEYS,
   PAX_RAIL_LEVELS,
   PAX_SENDS_RAIL_LEVELS,
+  defaultPaxLimits,
+  defaultPaxRails,
+  effectiveControlsForMember,
   type PaxControls,
+  type PaxLimits,
+  type PaxMemberOverride,
   type PaxSendsRailLevel,
 } from "@shared/pax-controls";
-import { PAX_LABELS, PAX_PAUSE_COPY } from "@shared/pax-glossary";
+import { PAX_LABELS, PAX_LIMIT_COPY, PAX_PAUSE_COPY } from "@shared/pax-glossary";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganization, getOrganizationId, getUserId } from "./types/request";
 import { getUserPermissionContext, isAdminOrAbove } from "./utils/permissions";
@@ -380,6 +394,15 @@ async function buildControls(
     },
     // PX-2: the per-capability rails (always complete — a pre-PX-2 row reads as today's defaults).
     rails: { records: { ...state.rails.records }, sends: state.rails.sends },
+    // PX-3: the org's daily caps (null = no cap), every member's own narrower
+    // settings (org-internal settings data), and what actually applies to THIS
+    // caller — the org's rails/limits narrowed by their own override.
+    limits: { ...state.limits },
+    members: Object.fromEntries(Object.entries(state.members)),
+    effective: (() => {
+      const e = effectiveControlsForMember(state, caller.userId);
+      return { rails: { records: { ...e.rails.records }, sends: e.rails.sends }, limits: { ...e.limits } };
+    })(),
     rightNow: { waiting, changedTodayOnItsOwn, rulesRunning },
     runsOnItsOwn,
     // Convenience for the page: the glossary lines, printed in the ORG zone.
@@ -638,6 +661,30 @@ const railsPatchSchema = z
   })
   .strict();
 
+/**
+ * PX-3. A cap is a whole number ≥ 0, or null = no cap. Fractions, negatives and
+ * non-numbers are 422. A PATCH names only the caps it changes (omitted keeps
+ * the stored value).
+ */
+const limitValueSchema = z.number().int().min(0).nullable();
+
+const limitsPatchSchema = z
+  .object({
+    asksPerDay: limitValueSchema.optional(),
+    creditSpendPerDay: limitValueSchema.optional(),
+    browseCallsPerDay: limitValueSchema.optional(),
+    batchRowsPerDay: limitValueSchema.optional(),
+  })
+  .strict();
+
+/** One member's override on the way in/out: the same rails and limits shapes (sends above ask is 422). */
+const memberOverrideSchema = z
+  .object({
+    rails: railsPatchSchema.optional(),
+    limits: limitsPatchSchema.optional(),
+  })
+  .strict();
+
 const controlsPatchSchema = z
   .object({
     stance: z.enum(OFFERED_STANCES).optional(),
@@ -645,6 +692,7 @@ const controlsPatchSchema = z
     borrowerReminders: z.boolean().optional(),
     inboxDrafts: z.boolean().optional(),
     rails: railsPatchSchema.optional(),
+    limits: limitsPatchSchema.optional(),
   })
   .strict();
 
@@ -655,6 +703,15 @@ const storedControlsSchema = z
     leadScoring: z.boolean(),
     borrowerReminders: z.boolean(),
     inboxDrafts: z.boolean(),
+    limits: z
+      .object({
+        asksPerDay: limitValueSchema,
+        creditSpendPerDay: limitValueSchema,
+        browseCallsPerDay: limitValueSchema,
+        batchRowsPerDay: limitValueSchema,
+      })
+      .strict(),
+    members: z.record(z.string().min(1), memberOverrideSchema),
     rails: z
       .object({
         records: z
@@ -695,15 +752,28 @@ router.patch("/controls", async (req: AuthenticatedRequest, res: Response) => {
       borrowerReminders: current.borrowerReminders,
       inboxDrafts: current.inboxDrafts,
       rails: { records: { ...current.rails.records }, sends: current.rails.sends },
+      limits: { ...current.limits },
+      members: { ...current.members },
     };
     // A PATCH that omits `rails` keeps the stored ones; one that names some
-    // keeps the rest (the same field-by-field merge the switches get).
-    const { rails: railsPatch, ...scalarPatch } = parsed.data;
+    // keeps the rest (the same field-by-field merge the switches get). Limits
+    // merge the same way; the members' overrides are never touched here.
+    const { rails: railsPatch, limits: limitsPatch, ...scalarPatch } = parsed.data;
     const mergedRails = {
       records: { ...before.rails.records, ...(railsPatch?.records ?? {}) },
       sends: railsPatch?.sends ?? before.rails.sends,
     };
-    const next = storedControlsSchema.safeParse({ ...before, ...scalarPatch, rails: mergedRails });
+    const mergedLimits: PaxLimits = { ...before.limits };
+    for (const k of PAX_LIMIT_KEYS) {
+      const v = limitsPatch?.[k];
+      if (v !== undefined) mergedLimits[k] = v;
+    }
+    const next = storedControlsSchema.safeParse({
+      ...before,
+      ...scalarPatch,
+      rails: mergedRails,
+      limits: mergedLimits,
+    });
     if (!next.success) return Errors.validationFailed(res, next.error.issues);
 
     await db
@@ -739,6 +809,189 @@ router.patch("/controls", async (req: AuthenticatedRequest, res: Response) => {
     return res.json(built.payload);
   } catch (error) {
     logger.error("[pax-controls] PATCH /controls failed", error as Error, { orgId: req.organization?.id });
+    return Errors.internal(res, error);
+  }
+});
+
+// ── PATCH /controls/my-override (PX-3) ─────────────────────────────────────
+
+/**
+ * Any signed-in member may narrow Pax for THEIR OWN calls. Writes ONLY
+ * `members[caller's userId]`. Per part:
+ *   `rails: null`   clears the caller's own rails override
+ *   `limits: null`  clears the caller's own limits override
+ *   `rails: {…}`    merges field-by-field onto the caller's own (sends above ask is 422)
+ *   `limits: {…}`   merges key-by-key (a key set to null = no narrowing for it)
+ *   key absent      keeps what is stored
+ * An empty body is "Nothing to change" (400). An override wider than the
+ * org's is accepted and has no effect — the min always wins at read time
+ * (effectiveControlsForMember) — so nothing a member sends can widen anything.
+ */
+const myOverridePatchSchema = z
+  .object({
+    rails: railsPatchSchema.nullable().optional(),
+    limits: limitsPatchSchema.nullable().optional(),
+  })
+  .strict();
+
+function mergeOverride(
+  own: PaxMemberOverride | undefined,
+  patch: z.infer<typeof myOverridePatchSchema>,
+): PaxMemberOverride | null {
+  const next: PaxMemberOverride = { ...(own ?? {}) };
+
+  if (patch.rails === null) delete next.rails;
+  else if (patch.rails !== undefined) {
+    next.rails = {
+      ...(next.rails ?? {}),
+      ...(patch.rails.records ? { records: { ...(next.rails?.records ?? {}), ...patch.rails.records } } : {}),
+      ...(patch.rails.sends ? { sends: patch.rails.sends } : {}),
+    };
+  }
+
+  if (patch.limits === null) delete next.limits;
+  else if (patch.limits !== undefined) {
+    const limits: Partial<PaxLimits> = { ...(next.limits ?? {}) };
+    for (const k of PAX_LIMIT_KEYS) {
+      const v = patch.limits[k];
+      if (v !== undefined) limits[k] = v;
+    }
+    next.limits = limits;
+  }
+
+  return next.rails || next.limits ? next : null;
+}
+
+router.patch("/controls/my-override", async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const org = getOrganization(req);
+    const orgId = getOrganizationId(req);
+    const parsed = myOverridePatchSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+    if (Object.keys(parsed.data).length === 0) return Errors.badRequest(res, "Nothing to change");
+
+    const caller = await resolveCaller(req, org);
+    const current = await getPaxControls(orgId);
+    // A stored value we could not read is not a base to merge onto.
+    if (current.checkFailed) return refuseUnverified(res);
+
+    const members: Record<string, PaxMemberOverride> = { ...current.members };
+    const own = Object.prototype.hasOwnProperty.call(members, caller.userId) ? members[caller.userId] : undefined;
+    const merged = mergeOverride(own, parsed.data);
+    if (merged) members[caller.userId] = merged;
+    else delete members[caller.userId];
+
+    const next = storedControlsSchema.safeParse({
+      stance: current.stance,
+      leadScoring: current.leadScoring,
+      borrowerReminders: current.borrowerReminders,
+      inboxDrafts: current.inboxDrafts,
+      rails: { records: { ...current.rails.records }, sends: current.rails.sends },
+      limits: { ...current.limits },
+      members,
+    });
+    if (!next.success) return Errors.validationFailed(res, next.error.issues);
+
+    await db
+      .update(organizations)
+      .set({ paxControls: next.data, updatedAt: clock.now() })
+      .where(eq(organizations.id, orgId));
+
+    logger.info("[pax-controls] A member's own Pax override changed", {
+      orgId,
+      userId: caller.userId,
+      metadata: { parts: Object.keys(parsed.data), before: own ?? null, after: merged },
+    });
+
+    await recordPaxEffect({
+      orgId,
+      actor: "pax",
+      origin: "engine",
+      group: "runs_rules",
+      stance: next.data.stance,
+      tool: "change_pax_controls",
+      action: "pax_my_override_changed",
+      entityType: "organization",
+      entityId: orgId,
+      description: `${PAX_LABELS.active} — a member's own narrower settings ${merged ? "changed" : "cleared"}`,
+      before: own ?? null,
+      after: merged,
+      witnessed: true,
+      userId: caller.userId,
+    });
+
+    const built = await buildControls(req, org);
+    if (!built.payload) return refuseUnverified(res);
+    return res.json(built.payload);
+  } catch (error) {
+    logger.error("[pax-controls] PATCH /controls/my-override failed", error as Error, { orgId: req.organization?.id });
+    return Errors.internal(res, error);
+  }
+});
+
+// ── POST /controls/reset-rails (PX-3) ──────────────────────────────────────
+
+/**
+ * Owner / admin only. Resets the rails to defaultPaxRails(), the limits to
+ * defaultPaxLimits() and CLEARS every member override. The stance and the three
+ * switches are not touched, and neither is the pause (it lives on the users'
+ * rows, not in this column). Responds with the same object GET /controls does.
+ */
+router.post("/controls/reset-rails", async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const org = getOrganization(req);
+    const orgId = getOrganizationId(req);
+    const caller = await resolveCaller(req, org);
+    if (!caller.isAdmin) return Errors.forbidden(res, "Ask an owner to change this");
+
+    const current = await getPaxControls(orgId);
+    if (current.checkFailed) return refuseUnverified(res);
+
+    const rails = defaultPaxRails();
+    const next = storedControlsSchema.safeParse({
+      stance: current.stance,
+      leadScoring: current.leadScoring,
+      borrowerReminders: current.borrowerReminders,
+      inboxDrafts: current.inboxDrafts,
+      rails,
+      limits: defaultPaxLimits(),
+      members: {},
+    });
+    if (!next.success) return Errors.validationFailed(res, next.error.issues);
+
+    await db
+      .update(organizations)
+      .set({ paxControls: next.data, updatedAt: clock.now() })
+      .where(eq(organizations.id, orgId));
+
+    logger.info("[pax-controls] Pax rails reset", {
+      orgId,
+      userId: caller.userId,
+      metadata: { membersCleared: Object.keys(current.members).length },
+    });
+
+    await recordPaxEffect({
+      orgId,
+      actor: "pax",
+      origin: "engine",
+      group: "runs_rules",
+      stance: next.data.stance,
+      tool: "change_pax_controls",
+      action: "pax_rails_reset",
+      entityType: "organization",
+      entityId: orgId,
+      description: PAX_LIMIT_COPY.resetDone,
+      before: { rails: current.rails, limits: current.limits, members: current.members },
+      after: { rails: next.data.rails, limits: next.data.limits, members: next.data.members },
+      witnessed: true,
+      userId: caller.userId,
+    });
+
+    const built = await buildControls(req, org);
+    if (!built.payload) return refuseUnverified(res);
+    return res.json(built.payload);
+  } catch (error) {
+    logger.error("[pax-controls] POST /controls/reset-rails failed", error as Error, { orgId: req.organization?.id });
     return Errors.internal(res, error);
   }
 });

@@ -59,12 +59,13 @@ import { listServerSources, parseSource, rel, REPO_ROOT } from "../helpers/serve
 import { PAX_PAUSE_COPY } from "../../shared/pax-glossary";
 import { undeclaredSupportScopeMessage, supportScopeRefusalMessage } from "../../server/ai/supportToolScopes";
 import { paxRailWatchRefusalMessage } from "../../server/services/paxRails";
+import { paxLimitRefusalMessage } from "../../server/services/paxLimits";
 import { PAX_TOOL_DOMAINS, PAX_RECORD_DOMAINS, domainForTool, groupForTool } from "../../shared/pax-controls";
 
 const read = (p: string) => fs.readFileSync(path.join(REPO_ROOT, p), "utf8");
 
 /** Builders whose outputs are verified below by calling them. */
-const REGISTERED_BUILDERS = new Set(["paxControlsRefusalMessage", "paxRailWatchRefusalMessage", "undeclaredSupportScopeMessage", "supportScopeRefusalMessage"]);
+const REGISTERED_BUILDERS = new Set(["paxControlsRefusalMessage", "paxRailWatchRefusalMessage", "paxLimitRefusalMessage", "undeclaredSupportScopeMessage", "supportScopeRefusalMessage"]);
 /** Constants whose text is read from source and judged below. */
 const REGISTERED_CONSTANTS = new Set(["APPLY_CREDIT_REFUSAL", "VOID_INVOICE_REFUSAL"]);
 /**
@@ -272,6 +273,14 @@ describe("registered builders say plain words for every input", () => {
       const t = paxRailWatchRefusalMessage(tool);
       expect(judgeRefusal(t), `${tool}: ${t}`).toEqual({ plain: true, problems: [] });
     }
+  });
+  it("the Pax daily-limit refusal, for every kind of cap", () => {
+    const kinds = ["asks", "credits", "browse", "batchRows"] as const;
+    for (const kind of kinds) {
+      const t = paxLimitRefusalMessage(kind);
+      expect(judgeRefusal(t), `${kind}: ${t}`).toEqual({ plain: true, problems: [] });
+    }
+    expect(new Set(kinds.map(paxLimitRefusalMessage)).size, "each cap names itself").toBe(kinds.length);
   });
   it.each(["APPLY_CREDIT_REFUSAL", "VOID_INVOICE_REFUSAL"])("%s, read from its declaration", (constName) => {
     const sf = parseSource("supportAgent.ts", read("server/ai/supportAgent.ts"));
