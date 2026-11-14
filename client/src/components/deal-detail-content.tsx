@@ -37,6 +37,7 @@ import { AssignmentPanel } from "@/components/deals/AssignmentPanel";
 import { SellerFollowUpsPanel } from "@/components/deals/SellerFollowUpsPanel";
 import { CmaPanel } from "@/components/deals/CmaPanel";
 import { AgencyDisclosurePanel } from "@/components/deals/AgencyDisclosurePanel";
+import { DocumentsPanel } from "@/components/documents-panel";
 import { CustomFieldValuesEditor } from "@/components/custom-fields";
 import { DealJourney } from "@/components/ui/deal-journey";
 import { FraudCheckPanel } from "@/components/deals/FraudCheckPanel";
@@ -718,6 +719,14 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
                   only for wholesaler orgs (or when assignment records already
                   exist on this deal) — the panel self-gates. */}
               <AssignmentPanel dealId={deal.id} propertyId={deal.propertyId} />
+
+              {/* Slice 5 (docs/docstore-design-2026-11.md §9) — the customer's
+                  OWN PDFs on this deal (PSA, title commitment, deed). Sits
+                  above the generated packages because `uploaded_documents` is
+                  the mirror of `generated_documents`: what the customer
+                  brought, versus what AcreOS produced. */}
+              <DocumentsPanel objectType="deal" objectId={deal.id} />
+
               {/* Wholesale §6.2 — seller follow-up drafts built from the org's
                   own follow-up templates. Prepared, never sent: copy is the
                   only way text leaves it. Renders only for wholesaler orgs (or
