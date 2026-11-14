@@ -753,29 +753,42 @@ interface ComputedFields {
  * §1026.41(d)(3) refusal: money moved in this cycle, but nothing applied it.
  *
  * The past-payment breakdown, the transactions array and the YTD totals on a
- * periodic statement are all summed from `payment_applications`. That table
- * has exactly ONE writer in the whole server — applyPayment in
- * server/services/paymentApplication/index.ts — and NOTHING imports that
- * module, so no row has ever been written by production. The statement job,
- * meanwhile, runs on the 1st of every month for every active organization.
- *
- * Payments themselves are posted through five live rails (the borrower
- * portal, ACH autopay settlement, Stripe webhooks, the note repository and
- * the manual note-payment route). So for a borrower who actually paid, the
- * generator would print $0 applied to principal, $0 to interest, $0 to
- * escrow and "No transactions during this cycle." on a federally mandated
- * disclosure — a false statement of account, and a fabricated number under
- * the standing no-fabrication rule.
+ * periodic statement are all summed from `payment_applications`. When this
+ * refusal was written (2026-09-04) that table had exactly ONE writer in the
+ * whole server — applyPayment in server/services/paymentApplication/index.ts
+ * — and NOTHING imported that module, so no row had ever been written by
+ * production, while payments were posted through five live rails (the
+ * borrower portal, ACH autopay settlement, Stripe webhooks, the note
+ * repository and the manual note-payment route). For a borrower who actually
+ * paid, the generator would have printed $0 applied to principal, $0 to
+ * interest, $0 to escrow and "No transactions during this cycle." on a
+ * federally mandated disclosure — a false statement of account, and a
+ * fabricated number under the standing no-fabrication rule.
  *
  * A truthful $0 is still allowed: a borrower who paid NOTHING has no
  * payments in either table and generates a statement as before. This refuses
  * only the specific contradiction — real payments in the cycle, zero
  * applications to describe them with.
  *
- * This is the interim half. The fix is to wire applyPayment into the posting
- * paths and backfill; until then a missing statement is a disclosure defect
- * the skip ledger records, and a WRONG statement is a misrepresentation.
- * Recorded 2026-09-04.
+ * THE CURE (D4, 2026-11-09): every posting path now writes the breakdown in
+ * the same transaction as its payment row, through
+ * `recordPostedPaymentApplication` in the paymentApplication module — a
+ * mirror of the split the posting rule itself recorded, not a re-decision
+ * under applyPayment's suspense model (the posting rules apply money
+ * immediately; re-deciding here would make the two ledgers contradict).
+ * The PKG-3 settlement-proof suite, which posts through the real webhook
+ * handler and reads statements from the real generator, caught the gap and
+ * proves the cure.
+ *
+ * The refusal STAYS, deliberately, even with the wiring in place. It is the
+ * only thing standing between a borrower and a $0 breakdown for every
+ * payment posted BEFORE the wiring landed — the backfill those cycles need
+ * (derivable mechanically from the payment rows' own recorded splits) is a
+ * separate, separately-approved step — and it remains the guard for any
+ * future posting path that forgets the mirror write. A missing statement is
+ * a disclosure defect the skip ledger records; a WRONG statement is a
+ * misrepresentation nobody can see.
+ * Recorded 2026-09-04; cure recorded 2026-11-09.
  */
 const PAYMENTS_NOT_APPLIED_CITATION = "12 CFR 1026.41(d)(3)";
 

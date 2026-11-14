@@ -39,6 +39,10 @@
  *     cards for a paused org.
  *   - server/services/autonomousDecisionExecutor.ts — defers org-scoped inbox
  *     items for paused orgs until the pause lifts (founder lane).
+ *   - server/jobs/autonomousDealMachine.ts (runAutoFollowUpEngine) — the
+ *     follow-up engine refuses enrolment for a paused org (and on a failed
+ *     controls read) before reading a single lead; enrolment is also
+ *     quarantined at every stance because it creates no tap.
  *
  *   Rules the customer turned on
  *   - server/services/workflow-engine.ts — a paused org's run PARKS

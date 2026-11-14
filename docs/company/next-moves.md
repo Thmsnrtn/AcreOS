@@ -3,6 +3,24 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-11-14 — P1-17: schema-journal sync guard (PR #578, landed in the merge wave)
+
+- **Built.** `lint:schema-journal-sync`, wired into the `check` chain immediately after `lint:schema-migrate-mirror`: `scripts/check-schema-journal-sync.mjs` fails when the drizzle journal and the `scripts/migrate.mjs` mirror drift apart. The legacy desync is frozen in `scripts/ratchets/schema-journal-sync.json` (baseline 224, every frozen entry at or below migration 0252); past that frontier the two sides must pair exactly, and the evaluator also fails if the frozen baseline count disagrees with the measured headline. Suite: `tests/unit/schemaJournalSync.test.ts`.
+- **Why.** Journal/mirror drift was invisible until a migration landed on one side only; the guard makes drift a loud failure in the PR that causes it. Audit notes carried: the paired-deletion blind spot is a disclosed scope limitation (N1), and `freezePoint` is a one-line trust point — flag any future change to it per se (N2).
+- **Next.** P3-1 (schema consolidation, I-7) is unblocked now that the guard is on main.
+
+## 2026-11-09 — Wholesale §6.2: seller follow-up drafts — on `claude/wholesale-62-drafts-api` (off `claude/wholesale-leg4-disposition` `60fed37e`, PR open, unmerged)
+
+- **Built.** The §6.2 completeness debt on Leg 4: seller-side follow-up DRAFTS on the deal record. `server/services/wholesale/sellerFollowUps.ts` composes the operator's own `offer_templates` row (type `follow_up`) char-for-char with only {{owner_name}} / {{address}} / {{offer_amount}} / {{company_name}} filled from the record — {{offer_amount}} is `deals.offerAmount` only and refuses when absent; {{expiration_date}} and unknown tokens refuse by name; an opted-out or unlinked seller refuses. Drafts persist as `generated_documents` rows (type `seller_follow_up_draft`, status `draft`, review-sealed); a correction is a new draft citing `variables.supersedes`; the list flags drafts stale when a cited fact moves. Routes: preview / create / list under `/api/wholesale/deals/:dealId/seller-follow-ups`. Client: `SellerFollowUpsPanel` in the deal Documents tab after AssignmentPanel — Copy is the only way text leaves it.
+- **Guards in the same PR (refuse-only).** `server/routes-doc-system.ts`: PUT refuses content/name/signers changes on this type, and request-signature + send-for-signature refuse it 422 — without them a draft would be editable after create and enrollable on the signing rail.
+- **Proved.** Bundle measured on the final tree: 9,822 / 9,823 KB (PASS, 1 KB spare); ratchets + reachability all at baseline (table-count 748, no new tables); the no-sends harness's control test passes DB-free (two-layer net: class prototypes incl. `performSend` + module exports, with vacuity assertions — closes the pre-bound `sendEmail` alias blind spot in the Notes V2 harness). Client: 10 lints clean, scoped tsc clean, 56 existing client tests pass, panel smoke test 3/3 (throwaway, deleted).
+- **Gates that only CI can verify.** The 23 realdb tests in `tests/unit/sellerFollowUps.realdb.test.ts` were SKIPPED locally (no test DB on the VM) — CI's schema-building jobs are their first real run; full `check:app`/`check:tests` typechecks likewise. Disclosed for the auditor: the draft's review seal hashes subject + body, so `verifyChainReviewSeal(variables, row.content)` would report broken — its only caller is request-signature, which refuses this type first.
+- **Next.**
+  1. Muse audits; the PR stacks on #477 and lands after it.
+  2. On merge, the wholesale Leg 5 staging walk (§11) remains the vertical's owed proof.
+
+## 2026-11-05 — Notes V2 Leg 2: workout NPV comparison — on `claude/notes-v2-leg2-workout-npv` (off main `4b2044b`, PR open, unmerged)
+
 ## 2026-11-10 — Gap slice 7: push revival — on `claude/gap7-push-revival`
 
 - Added `web-push` (`^3.6.7`, lockfile synced) + VAPID vars in `.env.example`; fixed the client subscribe body (was `{subscription}`, route wants `{endpoint,keys}` → 422); mounted the existing hook as a "Push on this device" switch in `notification-preferences.tsx`; `/sw.js` handles `push` + `notificationclick`.
@@ -1404,3 +1422,44 @@ ratchet measure at baseline. NOT run: npm run check / tsc / full suite.
    (`/api/import/tax-delinquent` is named in a 404 hint but never mounted).
 3. The synchronous `/api/import/:entityType` path ignores a `fieldMap` the
    job path honours (no client sends one today).
+
+## PKG-1 — DSAR pipeline wired end to end (2026-11-09)
+
+**Shipped (branch claude/pkg1-dsar-api, stacked on PKG-2 / PR #526):** the
+lifecycle DSAR record (`dsar_requests_lifecycle`) is the record of record.
+Intake in routes-gdpr.ts now stamps deadlines from the shared
+`DSAR_CLOCK_HOURS` (its local 24h literal is deleted). New founder actions on
+the lifecycle routes, all behind one verification gate
+(`server/services/privacy/dsarActionGate.ts`): verify-identity (operator-
+attested, posture "strict-operator-attested-exact-email-v1" in
+`shared/privacy/dsarIdentityPosture.ts`), generate-export (subject-complete
+via the declared exporter registry `shared/privacy/dsarDomains.ts` +
+`server/services/privacy/dsarExporters.ts`; the old export's int-parsed userId
+500 and hard-coded-empty properties are gone), execute-erasure (hold-checked;
+legal hold refuses 423 naming the real hold; audit row for every outcome;
+idempotent by the subject's own erased state), subject-candidates. Erasure no
+longer touches a user's assigned leads or tasks (they are other people's
+data; borrower leads feed 1099-INT/1098). The older `dsar_requests` system's
+fan-out/erasure endpoints answer 501 pointing at the lifecycle routes instead
+of pretending. Founder UI: DsarSubjectActions panel in the compliance-ops
+DSAR tab. Coverage: `dsarDomainCoverage.test.ts` fails if a personal-data
+table (138 measured candidates) has no registry decision; 122 tables sit in
+the named DSAR_UNDECIDED_TABLES debt register. Drill:
+`dsarDrill.realdb.test.ts` (runs where a schema is built).
+
+**Still open:**
+- **S-1 (founder/counsel):** borrower-subject ERASE is refused by name
+  (422 RETENTION_REQUIRED_LOAN_RECORDS) because 1099-INT/1098 read borrower
+  identity from the lead row. Ruling needed on which borrower fields may be
+  erased; borrower export works today.
+- **S-2:** lead erasure does not scrub free-text bodies that mention the lead
+  (notes/messages) — retained domains are named in the erasure report.
+- **S-3:** user erasure does not delete the Clerk identity; the report's
+  operatorFollowUps names it for out-of-band deletion.
+- **Q-C1/Q-C2/Q-C3** (counsel): which DSAR pipeline is canonical as a matter
+  of record; whether the fulfilled-receipt 30-day promise or the 24h internal
+  clock governs externally; whether the legacy `dsar_requests` store is
+  retired or migrated. Both stores remain until counsel rules.
+- Registry drift found: CLASSIFICATION_REGISTRY's support_tickets entries
+  name columns (body, requester_email) the table no longer has.
+- The LQ-11 drill's staging run (synthetic subjects) is still owed post-merge.

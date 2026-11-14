@@ -196,13 +196,25 @@ export const refundRequests = pgTable("refund_requests", {
   stripePaymentIntentId: text("stripe_payment_intent_id"),
   amountCents: integer("amount_cents").notNull(),
   reason: text("reason"),
-  status: text("status").notNull().default("pending"), // pending, approved, denied, processed
+  // pending, approved (transient), denied, processed, processing (claimed by
+  // the executor), uncertain (refunds.create called, outcome/bookkeeping unknown)
+  status: text("status").notNull().default("pending"),
   autoApproved: boolean("auto_approved").default(false),
   processedAt: timestamp("processed_at"),
   processedBy: text("processed_by"), // 'auto' or founder user id
   stripeRefundId: text("stripe_refund_id"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+  // Refund automation (migration 0309 — PROVISIONAL number, renumbered at
+  // merge if another migration lands first). Design 2026-11 §4.
+  eligibility: jsonb("eligibility").$type<Record<string, unknown>>(), // E1–E6 verdicts at intake
+  brake: text("brake"), // B1–B7 when not auto-processed
+  dueAt: timestamp("due_at", { withTimezone: true }), // decision SLA (createdAt + 24h)
+  attempts: integer("attempts").notNull().default(0),
+  lastError: text("last_error"),
+  deniedReason: text("denied_reason"),
+}, (table) => ({
+  byDueAt: index("refund_requests_due_at_idx").on(table.dueAt),
+}));
 
 export type RefundRequest = typeof refundRequests.$inferSelect;
 export type InsertRefundRequest = typeof refundRequests.$inferInsert;

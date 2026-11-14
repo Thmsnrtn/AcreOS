@@ -96,7 +96,7 @@
 ## Week 4: Monetize
 
 ### Day 22-24 — Soft Upgrade Conversation
-- Email beta users: "Your 90-day Pro access is still active. Here's what you'd lose on the free tier: [specific features they've used]."
+- Email beta users: "Your Pro access is still active. Here's what you'd lose on the free tier: [specific features they've used]."
 - Frame it as information, not pressure: "I want to make sure you know what the tiers include so there are no surprises."
 - For users who haven't engaged: send the "Features You Haven't Tried" email from the onboarding sequence
 
