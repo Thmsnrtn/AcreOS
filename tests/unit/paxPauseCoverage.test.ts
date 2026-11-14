@@ -250,6 +250,12 @@ const EXPECTATIONS: Record<UnattendedPathId, Expectation> = {
     kind: "switch_read",
     reads: [AGGREGATOR_CALL, ".inboxDrafts"],
   },
+  follow_up_enrolment: {
+    kind: "pause_gate",
+    fn: "export async function runAutoFollowUpEngine(",
+    gate: "getPaxPauseState(organizationId)",
+    before: "const activeLeads = await db",
+  },
   founder_lane: {
     kind: "pause_gate",
     fn: "async function processInboxItem(",

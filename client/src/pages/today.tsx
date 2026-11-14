@@ -873,8 +873,9 @@ export default function TodayPage() {
                   Working well?
                 </h3>
                 <p className="text-xs md:text-[11px] text-muted-foreground leading-snug">
-                  Refer another Land Investor — you both earn a free month
-                  when they close their first deal.
+                  Refer another Land Investor — you both earn a $49 credit:
+                  theirs at their first paid invoice, yours after they&apos;ve
+                  stayed a subscriber for 30 days.
                 </p>
               </div>
             </div>
