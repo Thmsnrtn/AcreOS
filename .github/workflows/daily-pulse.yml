@@ -28,7 +28,7 @@ jobs:
       - name: Full-program tests typecheck (raw tsc)
         run: |
           set +e
-          NODE_OPTIONS=--max-old-space-size=5120 ./node_modules/.bin/tsc --noEmit --incremental false -p tsconfig.tests.json --extendedDiagnostics > ab-tsc-full.log 2>&1
+          NODE_OPTIONS=--max-old-space-size=6144 ./node_modules/.bin/tsc --noEmit --incremental false -p tsconfig.tests.json --extendedDiagnostics > ab-tsc-full.log 2>&1
           echo "TSC_EXIT=$?"
           echo "AB_ERROR_COUNT=$(grep -cE 'error TS[0-9]+' ab-tsc-full.log)"
           grep -E '^[[:space:]]*Files:' ab-tsc-full.log || echo "AB_NO_FILES_LINE"
