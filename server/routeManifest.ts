@@ -296,6 +296,7 @@ export const ROUTE_MANIFEST: RouteManifestEntry[] = [
   { file: "routes-buy-and-hold-underwriting.ts", mountPath: "/api/buy-and-hold", kind: "router", export: "default" },
   { file: "routes-wholesale-buy-box.ts", mountPath: "/api/wholesale", kind: "router", export: "default" },
   { file: "routes-wholesale-underwriting.ts", mountPath: "/api/wholesale", kind: "router", export: "default" },
+  { file: "routes-wholesale-disposition.ts", mountPath: "/api/wholesale", kind: "router", export: "default" },
   { file: "routes-scp-v2.ts", mountPath: null, kind: "register", export: "registerSCPv2Routes" },
   { file: "routes-seller-intent.ts", mountPath: "/api/seller-intent", kind: "router", export: "default" },
   // Free-distribution: per-route server-rendered <head> for public pages.

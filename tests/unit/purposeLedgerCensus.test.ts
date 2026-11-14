@@ -796,6 +796,10 @@ const DEBT: Record<string, ProposedSurface> = {
   "server/routes-trust-checks.ts route:GET /api/deals/:id/fraud-check": "review",
   // server/routes-va-engine.ts
   "server/routes-va-engine.ts route:GET /api/seller-communications/lead/:leadId": "lead_contact_read",
+  // server/routes-wholesale-disposition.ts
+  "server/routes-wholesale-disposition.ts route:GET /deals/:dealId/seller-follow-ups/preview": "lead_contact_read",
+  "server/routes-wholesale-disposition.ts route:POST /deals/:dealId/seller-follow-ups": "lead_contact_read",
+  "server/routes-wholesale-disposition.ts route:GET /deals/:dealId/seller-follow-ups": "lead_contact_read",
   // server/routes.ts
   "server/routes.ts route:GET /api/leads/deleted": "lead_contact_read",
   "server/routes.ts route:GET /api/search": "lead_contact_read",
@@ -826,11 +830,25 @@ const DEBT: Record<string, ProposedSurface> = {
 /** DEBT may only shrink. Lower this in the same commit that removes an entry. */
 // 214 → 212 (2026-11-06, W2-TEAM): GET /api/analytics/team-kpi and
 // GET /api/analytics/team-leaderboard deleted — no client caller.
-// 212 → 217 (merge-lane union, 2026-11-14): main registered two NEW founder
-// DSAR routes (PKG-1, 212 → 214) and PR #564 registers three settlement-rail
-// surfaces (212 → 215); the merged register carries both sets, so the baseline
-// is the sum: 217. Census re-run on the merged tree is the proof.
-const DEBT_BASELINE = 217;
+// 212 → 214 (2026-11-09, PKG-1): two NEW founder DSAR routes registered —
+// GET /api/founder/dsar/:id/subject-candidates and POST
+// /api/founder/dsar/:id/execute-erasure (generate-export was already in
+// DEBT). New-surface registration is the census's own remedy for a new
+// person-adjacent surface; these are founder-only rights-fulfilment
+// surfaces whose accesses are recorded in audit_events (DSAR_VERIFIED /
+// DSAR_ERASURE) and the DSAR record itself, not the FCRA purpose ledger —
+// PURPOSE_CODES there are pinned exactly to the skip-trace taxonomy.
+// 214 → 217 (2026-11-12, Lane A re-prep union of #477+#533 with #535):
+// the wholesale seller-follow-up trio from routes-wholesale-disposition.ts
+// (preview / create / list, lead_contact_read) registered by #477's branch
+// (its own tree read 215 = 212 + 3) unioned with PKG-1's +2 above —
+// 212 base + 3 + 2 = 217, disjoint entry sets, verified by key count.
+// 217 → 220 (merge-lane union, 2026-11-14, PR #477 slot): main's #564
+// settlement-rail trio (214 → 217 on main) unions with the wholesale
+// seller-follow-up trio above — disjoint entry sets, so the merged
+// baseline is 214 + 3 + 3 = 220. Census re-run on the merged tree is
+// the proof.
+const DEBT_BASELINE = 220;
 
 /**
  * Every file holding a dispatch switch (≥10 snake_case case labels, raw count)
