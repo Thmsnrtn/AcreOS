@@ -34,6 +34,7 @@ vi.mock("../../server/utils/logger", () => ({
 type PaymentRow = Record<string, any> & { id: number; transactionId: string };
 const state = vi.hoisted(() => ({
   payments: new Map<string, PaymentRow>(),
+  applications: new Map<string, Record<string, any>>(),
   nextId: 1,
   noteBalance: "10000.00",
   noteVersion: 1,
@@ -47,6 +48,7 @@ const state = vi.hoisted(() => ({
 
 function resetState() {
   state.payments.clear();
+  state.applications.clear();
   state.nextId = 1;
   state.noteBalance = "10000.00";
   state.noteVersion = 1;
@@ -56,15 +58,23 @@ function resetState() {
   state.emails = 0;
 }
 
-const TABLES = vi.hoisted(() => ({ payments: null as any }));
+const TABLES = vi.hoisted(() => ({ payments: null as any, applications: null as any }));
 const LAST_TXN = vi.hoisted(() => ({ id: "" }));
 
 vi.mock("../../server/db", () => {
   const tx = {
-    insert: () => ({
+    insert: (table: any) => ({
       values: (vals: any) => ({
         onConflictDoNothing: () => ({
           returning: async () => {
+            // The D4 mirror write (insert into payment_applications) is
+            // keyed on payment_id in its own map — never a payments row.
+            if (table === TABLES.applications) {
+              if (state.applications.has(vals.paymentId)) return [];
+              const appRow = { id: `app-${state.applications.size + 1}`, ...vals };
+              state.applications.set(vals.paymentId, appRow);
+              return [appRow];
+            }
             if (state.payments.has(vals.transactionId)) return [];
             const row = { id: state.nextId++, ...vals };
             state.payments.set(vals.transactionId, row);
@@ -163,9 +173,11 @@ vi.mock("../../server/stripeClient", () => ({
 }));
 
 import { payments as paymentsTable, type Note } from "@shared/schema";
+import { paymentApplications as paymentApplicationsTable } from "@shared/schema/reg-z";
 import { splitPaymentCents } from "../../server/services/notePaymentMath";
 
 TABLES.payments = paymentsTable;
+TABLES.applications = paymentApplicationsTable;
 
 // 6% on $10,000, $500/month, due 2026-09-01, paid 2026-09-20 (grace 10, fee $25 → applies).
 const NOTE_ROW = {

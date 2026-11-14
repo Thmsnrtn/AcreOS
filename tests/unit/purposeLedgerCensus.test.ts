@@ -588,6 +588,7 @@ const DEBT: Record<string, ProposedSurface> = {
   // server/routes-analytics.ts
   "server/routes-analytics.ts route:GET /api/analytics/cohort-dashboard": "review",
   // server/routes-borrower.ts
+  "server/routes-borrower.ts route:GET /api/borrower/payoff-letter": "review",
   "server/routes-borrower.ts route:GET /api/borrower/payoff-quote": "review",
   "server/routes-borrower.ts route:GET /api/borrower/periodic-statements/:statementId/pdf": "review",
   "server/routes-borrower.ts route:GET /api/borrower/session": "review",
@@ -795,6 +796,10 @@ const DEBT: Record<string, ProposedSurface> = {
   "server/routes-trust-checks.ts route:GET /api/deals/:id/fraud-check": "review",
   // server/routes-va-engine.ts
   "server/routes-va-engine.ts route:GET /api/seller-communications/lead/:leadId": "lead_contact_read",
+  // server/routes-wholesale-disposition.ts
+  "server/routes-wholesale-disposition.ts route:GET /deals/:dealId/seller-follow-ups/preview": "lead_contact_read",
+  "server/routes-wholesale-disposition.ts route:POST /deals/:dealId/seller-follow-ups": "lead_contact_read",
+  "server/routes-wholesale-disposition.ts route:GET /deals/:dealId/seller-follow-ups": "lead_contact_read",
   // server/routes.ts
   "server/routes.ts route:GET /api/leads/deleted": "lead_contact_read",
   "server/routes.ts route:GET /api/search": "lead_contact_read",
@@ -813,6 +818,9 @@ const DEBT: Record<string, ProposedSurface> = {
   "server/services/core-agents.ts case:run_digest": "review",
   // server/services/outcomeVerificationLoop.ts
   "server/services/outcomeVerificationLoop.ts case:send_follow_up": "review",
+  // server/services/settlementRail/routes.ts
+  "server/services/settlementRail/routes.ts route:POST /api/notes/:id/lien-release": "review",
+  "server/services/settlementRail/routes.ts route:POST /api/notes/:id/payoff-letter": "review",
   // server/services/workflow-engine.ts
   "server/services/workflow-engine.ts case:conditional": "review",
   "server/services/workflow-engine.ts case:send_email#2": "review",
@@ -830,7 +838,17 @@ const DEBT: Record<string, ProposedSurface> = {
 // surfaces whose accesses are recorded in audit_events (DSAR_VERIFIED /
 // DSAR_ERASURE) and the DSAR record itself, not the FCRA purpose ledger —
 // PURPOSE_CODES there are pinned exactly to the skip-trace taxonomy.
-const DEBT_BASELINE = 214;
+// 214 → 217 (2026-11-12, Lane A re-prep union of #477+#533 with #535):
+// the wholesale seller-follow-up trio from routes-wholesale-disposition.ts
+// (preview / create / list, lead_contact_read) registered by #477's branch
+// (its own tree read 215 = 212 + 3) unioned with PKG-1's +2 above —
+// 212 base + 3 + 2 = 217, disjoint entry sets, verified by key count.
+// 217 → 220 (merge-lane union, 2026-11-14, PR #477 slot): main's #564
+// settlement-rail trio (214 → 217 on main) unions with the wholesale
+// seller-follow-up trio above — disjoint entry sets, so the merged
+// baseline is 214 + 3 + 3 = 220. Census re-run on the merged tree is
+// the proof.
+const DEBT_BASELINE = 220;
 
 /**
  * Every file holding a dispatch switch (≥10 snake_case case labels, raw count)

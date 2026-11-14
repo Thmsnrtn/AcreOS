@@ -6,12 +6,12 @@
   "description": "REACHABILITY ratchet. `tsc`, the test suite and every existing lint gate check TYPES and BEHAVIOUR; nothing checked whether a thing is REACHED. CLAUDE.md names 'built but unwired' as this repo's single most common defect, and every instance (services/lateFees, services/respa/earlyIntervention, calculateFlipAnalysis, taxSaleAuctions/taxSaleListings, achMandateSetup/achAutopayRun, rental_units.kind='pad', routes-contract-chain.ts, the rent-roll importer's unitKind arg) shipped GREEN and was found hours later by a manual audit. This converts that recurring audit into CI. Every count is strictly down-only, and raising one requires explicit founder/Iris-CTO sign-off (see lastBumpNote for the exceptions actually invoked): exports in server/services|jobs with no production call site; pgTables with no writer; pgTables with no reader; routes-*.ts never mounted; exports the gate cannot assert on because their module is dynamically imported in a way that hides which exports are touched; and service/job files nothing imports at all. Family 1 is TWO rules, split 2026-08-20: `unreachedExports` is the accusation (nothing anywhere references the symbol) and `internalOnlyExports` is the narrower complaint (exported, but used only inside its own module — drop the keyword, keep the code). They are baselined apart because merged, the second buried the first four to one. The count of families is deliberately not stated here — it said 'four' for as long as there were four, and would have said it forever. THE CHEAPEST WAY TO SATISFY THIS GATE IS DELETION — the north star is a smaller codebase, and every reduction must be locked in by the commit that earned it (a stale-high baseline FAILS, same as `as-any`).",
   "baselines": {
     "unreachedExports": 411,
-    "internalOnlyExports": 1222,
+    "internalOnlyExports": 1221,
     "tablesNoWriter": 53,
     "tablesNoReader": 58,
     "unregisteredRoutes": 4,
     "opaqueExports": 18,
-    "moduleOrphans": 33,
+    "moduleOrphans": 32,
     "unreachedExportsShared": 52,
     "internalOnlyExportsShared": 419,
     "moduleOrphansShared": 1,
@@ -334,11 +334,6 @@
       "kind": "export",
       "id": "server/services/unitEconomics.ts::maybeEmitCostToServeAlert",
       "reason": "TEST SEAM (2026-10 cost efficiency). The read-only cost-to-serve founder alert; production calls it from computeAllOrgs (the nightly job). Exported so costToServeVsPlanPrice.test.ts pins above/below/dedupe."
-    },
-    {
-      "kind": "export",
-      "id": "server/services/aiSpendGuard.ts::recordExternalAiSpend",
-      "reason": "TEST SEAM (2026-10 cost efficiency). It had two production callers (vaService, supportAgent) that recorded their own spend by hand; both now go through meteredChatCompletion, which calls it internally, so production reaches it only through the gateway. aiSpendGuard.test.ts still pins its row shape and never-throws contract directly."
     },
     {
       "kind": "export",
@@ -939,6 +934,61 @@
       "kind": "export",
       "id": "server/services/decisionsInboxThrottle.ts::STANDARD_DAILY_CAP",
       "reason": "TEST SEAM (PR #530, 2026-11-09). The 3-per-day standard-class cap; decisionsInboxThrottle.test.ts asserts the capped raise sequence (three raises, the fourth denied with no subject state) against the constant rather than a copied literal. REVOCATION: if a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "shared/billing/autoRenewalTerms.ts::MA_ANNUAL_NOTICE_MIN_DAYS",
+      "reason": "TEST-INTROSPECTION SEAM (P1-14 / TAIL-B3, 2026-11-12). The statutory lower bound (940 CMR 38.05(4): written renewal notice no fewer than 5 days before the cancel-by date); maAnnualRenewalNoticeDue in the same module enforces it, and autoRenewalCompliance.test.ts pins the Massachusetts window inside it. REVOCATION: if a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "shared/billing/autoRenewalTerms.ts::MA_ANNUAL_NOTICE_MAX_DAYS",
+      "reason": "TEST-INTROSPECTION SEAM (P1-14 / TAIL-B3, 2026-11-12). The statutory upper bound (940 CMR 38.05(4): no more than 30 days before the cancel-by date). Nothing in production needs it, because the job sends inside 5–30 days via the predicate; autoRenewalCompliance.test.ts asserts the bound. REVOCATION: if a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "server/jobs/autonomousDealMachine.ts::overnightActivityForOrg",
+      "reason": "TEST SEAM (P1-15 cross-tenant quarantine, 2026-11-12). Quarantine fence #1 of the autonomous deal machine: extracts ONE org's overnight-activity slice from a platform run row's result; production reaches it through sendEnhancedMorningBriefings in the same module, and autonomousDealMachineTenantFence.test.ts + autonomousDealMachineTenantQuarantine.realdb.test.ts pin it directly (poisoned aggregate never returned, another org's slice never returned, legacy aggregate-only row yields zeros). REVOCATION: if a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "server/jobs/autonomousDealMachine.ts::ZERO_OVERNIGHT_ACTIVITY",
+      "reason": "TEST SEAM (P1-15 cross-tenant quarantine, 2026-11-12). The fail-closed zero shape overnightActivityForOrg returns when a run row carries no slice for the requesting org; the two P1-15 quarantine tests assert against it by identity of value. Production reaches it through overnightActivityForOrg in the same module. REVOCATION: if a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "server/services/openData/fieldClearanceRegistry.ts::FIELD_CLEARANCE_REGISTRY",
+      "reason": "FIELD-LEVEL SERVING DETERMINATIONS REGISTRY (register I-6, P1-6, 2026-11-12). The transcription of the dossier program's written per-field/per-class determinations (14 written-green counties + 9 state objects, all DRAFT for attorney review). It is deliberately NOT wired into the live lookup gate in this package — the gate never loosens and LOOKUP_CLEARANCE still governs live serving; the registry is the machinery the reviewed per-source enablement (a later package) will consume, and tests/unit/fieldLevelServing.test.ts pins every record's servable fields and class statuses so widening a record without a new written determination fails CI. REVOCATION: if a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "server/services/openData/fieldClearanceRegistry.ts::fieldClearanceRecordFor",
+      "reason": "FIELD-LEVEL SERVING DETERMINATIONS REGISTRY (register I-6, P1-6, 2026-11-12). The exact-match record lookup over FIELD_CLEARANCE_REGISTRY (no wildcard widening, no neighbouring-county inference); its only consumer today is tests/unit/fieldLevelServing.test.ts, which pins the fail-closed shapes (unknown county, wrong object key). Same posture as the registry entry above: determinations, not live clearances. REVOCATION: if a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "server/services/openData/fieldClearanceRegistry.ts::fieldClearanceFor",
+      "reason": "FIELD-LEVEL SERVING DETERMINATIONS REGISTRY (register I-6, P1-6, 2026-11-12). The per-field answer entry point over the determinations registry — the API a future reviewed per-source enablement calls to learn what a determination permits on a surface. Proven today by tests/unit/fieldLevelServing.test.ts (14/14 counties serve something on display, 13/14 on paid lookup). Deliberately uncalled by production in this package: wiring it live is the enablement package's reviewed change, not this one's. REVOCATION: if a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "shared/openData/fieldClearance.ts::LOOKUP_USE_CLASSES",
+      "reason": "FIELD-LEVEL SERVING TAXONOMY (register I-6, P1-6, 2026-11-12). The canonical runtime enumeration of the lookup use classes (internal / display / redistribution / resale / lookupDisplay); the LookupUseClass type is derived from it and production code passes the literals, so the list itself has no production importer yet. It is the taxonomy's public enumeration for the surfaces that will iterate the classes (demand wiring P1-7, coverage reporting P1-8). REVOCATION: if a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "server/services/aiCostAlert.ts::__resetAiCostAlertDedupForTests",
+      "reason": "TEST SEAM (P1-5 AI cost reconciliation, 2026-11-12). Clears the per-scope-per-UTC-day dedup set behind notifyAiCeilingTrip so aiCostAlert.test.ts can drive first-trip/repeat-trip states in one process. Production never clears it: the day rollover is the reset. REVOCATION: remove if no test needs it."
+    },
+    {
+      "kind": "export",
+      "id": "server/services/aiSpendExemptions.ts::AI_SPEND_EXEMPTIONS",
+      "reason": "DELIBERATE EXEMPTION REGISTRY (P1-5 R2, 2026-11-12). The named, code-level decision that Whisper transcription and DALL·E image generation are NOT metered into the AI cost ceiling (per-minute / per-image pricing does not fit the token price table; metering at a token rate would fabricate numbers). Each entry names its call sites, reason and revisit trigger; aiSpendExemptions.test.ts pins that every listed site exists and carries the exemption marker. REVOCATION: if a production module consumes the registry (e.g. a startup assertion), remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "server/services/aiSpendExemptions.ts::AI_SPEND_EXEMPTION_MARKER",
+      "reason": "DELIBERATE EXEMPTION REGISTRY (P1-5 R2, 2026-11-12). The marker string every exempt call site carries in a comment naming its registry key; aiSpendExemptions.test.ts asserts each registered site contains it. See the AI_SPEND_EXEMPTIONS entry above."
     },
     {
       "kind": "export",
