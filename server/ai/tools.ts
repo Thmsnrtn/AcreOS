@@ -3066,7 +3066,7 @@ export async function executeTool(
         const resolved = resolveSearchSite(args.site, mySites);
         if (resolved.kind === "refused") {
           if (resolved.reason === "site_not_listed") {
-            return toolRefusal({ what: "The search was not run", why: "That website is not on your list of county sites, and you did not give me its full address", unlock: "Add it under My county sites in Settings → Pax, or paste the site's full address, starting with https://" });
+            return toolRefusal({ what: "The search was not run", why: "That website is not on your list of county sites, and you did not give me its full address", unlock: `Add it in ${PLACE_TEXT.mySites}, or paste the site's full address, starting with https://` });
           }
           return toolRefusal({ what: "The search was not run", why: "I need a website address, or the name of one of your saved sites, to start from", unlock: "Paste the site's full address, starting with https://, or pick one of your saved county sites" });
         }
@@ -3121,7 +3121,7 @@ export async function executeTool(
 
         let noteState: { attached: boolean; skipped: "paused" | "not_saved" | null } | null = null;
         if (attachTarget) {
-          let noteHost = resolved.host;
+          let noteHost: string;
           try {
             noteHost = new URL(lastPage.url).hostname;
           } catch {

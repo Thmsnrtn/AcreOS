@@ -467,7 +467,17 @@ describe("the session runner enforces the bounds in code", () => {
     if (out.kind === "done") expect(out.stoppedEarly).toBe("different_site");
     expect(calls.navigate).toEqual([START]);
     expect(calls.preflight).toEqual([START]); // the foreign address never got as far as the pre-flight
-    expect(calls.receipts.some((r) => r.url.startsWith("https://records.other-county.gov") && r.outcome === "refused")).toBe(true);
+    expect(
+      calls.receipts.some((r) => {
+        if (r.outcome !== "refused") return false;
+        try {
+          const parsed = new URL(r.url);
+          return parsed.protocol === "https:" && parsed.host === "records.other-county.gov";
+        } catch {
+          return false;
+        }
+      }),
+    ).toBe(true);
   });
 
   it("a hop to a second LISTED host is allowed", async () => {
