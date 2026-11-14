@@ -50,6 +50,7 @@ const H = vi.hoisted(() => ({
     borrowerReminders: true,
     inboxDrafts: true,
     rails: { records: { leads: "act_and_report", properties: "act_and_report", deals: "act_and_report", tasks: "act_and_report", follow_ups: "act_and_report", account: "act_and_report" }, sends: "ask" },
+    mySites: [],
     timezone: "America/Chicago",
   })),
   proposePendingAction: vi.fn(async (params: any) => ({ id: 901, ...params })),
@@ -138,6 +139,7 @@ function controls(over: Partial<PaxControlsState> = {}): PaxControlsState {
     borrowerReminders: true,
     inboxDrafts: true,
     rails: { records: { leads: "act_and_report", properties: "act_and_report", deals: "act_and_report", tasks: "act_and_report", follow_ups: "act_and_report", account: "act_and_report" }, sends: "ask" },
+    mySites: [],
     timezone: "America/Chicago",
     ...over,
   };

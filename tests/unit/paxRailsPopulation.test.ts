@@ -127,6 +127,7 @@ function state(over: Partial<PaxControlsState> & { rails?: PaxRails } = {}): Pax
     borrowerReminders: true,
     inboxDrafts: true,
     rails: defaultPaxRails(),
+    mySites: [],
     paused: false,
     pausedUntil: null,
     pausedBy: null,
