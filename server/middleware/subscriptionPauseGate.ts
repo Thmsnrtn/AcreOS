@@ -3,9 +3,19 @@
  *
  * When the org has elected a 30/60/90-day pause via the cancellation
  * dialog's 4th rung, AcreOS becomes read-only: existing data viewable but
- * no new actions allowed (no new mail, no new comps, no Pax messages).
+ * no new business actions allowed (no new mail, no new comps, no Pax
+ * messages, no new acquisitions).
  * Stripe handles billing-side pause via `subscription.pause_collection`;
  * this middleware handles the API-side gate.
+ *
+ * ONE CARVE-OUT — servicing continuations on notes the org already holds.
+ * A hybrid org also services notes it owns. Recording a borrower payment,
+ * quoting a payoff, or working a loss-mitigation case fulfils an obligation
+ * to a borrower; it is not new business. Blocking those writes breaks live
+ * servicing and produces the churn the pause exists to prevent. Those paths
+ * (PAUSE_SERVICING_PATH_PATTERNS) stay writable while paused. Everything
+ * else — acquiring or originating notes, splits, assignments, basis/yield
+ * analytics, and the whole non-notes surface — still 402s.
  *
  * Returns HTTP 402 ("Payment Required") with `{ error: "subscription_paused",
  * subscriptionPauseEndsAt }` so the customer banner can render the
@@ -48,6 +58,44 @@ export const PAUSE_GATE_EXEMPT_PREFIXES = [
 ];
 
 /**
+ * Mutating routes that SERVICE an existing note, as segment patterns.
+ *
+ * Containment rule (the reason this is not a prefix list): `/api/notes/` also
+ * holds acquisition (`/api/notes/acquired`, `/from-deal/:dealId`), transfers
+ * (`/:id/splits`, `/:id/assignments`) and acquisition analytics
+ * (`/:id/basis`, `/:id/yield`), so a prefix would exempt them too. A pattern
+ * matches only when the path has EXACTLY the pattern's segment count, every
+ * literal segment is equal, and `:id` stands for one non-empty segment.
+ * Each entry below is a verified mutating route (routes-notes.ts,
+ * routes-note-workout.ts); GET-only candidates need no entry because reads
+ * always pass.
+ */
+export const PAUSE_SERVICING_PATH_PATTERNS: readonly string[] = [
+  "/api/notes/:id/payments",                    // POST — record a borrower payment
+  "/api/notes/:id/payoff/quotes",               // POST — issue a payoff quote
+  "/api/notes/:id/loss-mit-case",               // POST — open a case on a note already held (defaulted-note servicing)
+  "/api/loss-mit-cases/:id",                    // PATCH — update an existing case
+  "/api/loss-mit-cases/:id/actions",            // POST — log an action on an existing case
+  "/api/notes/:id/workout-analyses",            // POST — workout analysis for a held note
+];
+
+/**
+ * True when `path` is a servicing continuation. Query strings are ignored,
+ * one trailing slash is tolerated, empty interior segments (`//`) never match.
+ */
+export function pathIsServicingContinuation(path: string): boolean {
+  const clean = path.split("?")[0].replace(/\/+$/, "");
+  const actual = clean.split("/");
+  return PAUSE_SERVICING_PATH_PATTERNS.some((pattern) => {
+    const want = pattern.split("/");
+    if (want.length !== actual.length) return false;
+    return want.every((seg, i) =>
+      seg === ":id" ? actual[i] !== "" : seg === actual[i],
+    );
+  });
+}
+
+/**
  * Methods that mutate. PATCH is included; we also gate PATCH because some
  * routes use it for "create-if-missing" semantics.
  */
@@ -80,6 +128,9 @@ export function subscriptionPauseGate(
   // The elapsed-window allowance below moved into `orgActRefusal` with it, so
   // the jobs read a closed pause the same way this gate always has.
   if (orgActRefusal(org) !== "subscription_paused") return next();
+
+  // Servicing continuations on existing notes stay open (see header).
+  if (pathIsServicingContinuation(path)) return next();
 
   logger.info(
     `[pause-gate] org=${org.id} blocked ${req.method} ${path} (paused until ${

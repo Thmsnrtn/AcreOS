@@ -22,7 +22,11 @@ vi.mock("../../server/utils/logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-import { subscriptionPauseGate } from "../../server/middleware/subscriptionPauseGate";
+import {
+  subscriptionPauseGate,
+  pathIsServicingContinuation,
+  PAUSE_SERVICING_PATH_PATTERNS,
+} from "../../server/middleware/subscriptionPauseGate";
 
 const FUTURE = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
 const PAST = new Date(Date.now() - 3600 * 1000).toISOString();
@@ -127,5 +131,71 @@ describe("subscriptionPauseGate — a live pause blocks mutations", () => {
     });
     expect(next).toHaveBeenCalledOnce();
     expect(res.statusCode).toBeUndefined();
+  });
+});
+
+describe("subscriptionPauseGate — servicing carve-out for notes the org already holds", () => {
+  const SERVICING: Array<[string, string]> = [
+    ["POST", "/api/notes/123/payments"],
+    ["POST", "/api/notes/123/payoff/quotes"],
+    ["POST", "/api/notes/123/loss-mit-case"],
+    ["PATCH", "/api/loss-mit-cases/9"],
+    ["POST", "/api/loss-mit-cases/9/actions"],
+    ["POST", "/api/notes/123/workout-analyses"],
+    ["PUT", "/api/notes/123/payments"],
+    ["POST", "/api/notes/123/payments/"],
+  ];
+
+  it.each(SERVICING)("%s %s passes while paused", (method, path) => {
+    const { res, next } = run({ method, path, organization: pausedOrg });
+    expect(next).toHaveBeenCalledOnce();
+    expect(res.statusCode).toBeUndefined();
+  });
+
+  const GENERAL: Array<[string, string]> = [
+    ["POST", "/api/notes/acquired"],
+    ["POST", "/api/notes"],
+    ["POST", "/api/notes/from-deal/4"],
+    ["POST", "/api/notes/5/splits"],
+    ["PATCH", "/api/note-splits/5"],
+    ["PATCH", "/api/note-assignments/5"],
+    ["POST", "/api/notes/5/assignments"],
+    ["POST", "/api/notes/5/basis"],
+    ["POST", "/api/notes/5/yield"],
+    ["POST", "/api/notes/5/paymentsXYZ"],
+    ["POST", "/api/notes/payments"],
+    ["POST", "/api/notes//payments"],
+    ["POST", "/api/notes/5/payments/extra/deep"],
+    ["POST", "/api/loss-mit-cases"],
+    ["POST", "/api/deals/1"],
+    ["POST", "/api/leads"],
+    ["POST", "/api/campaigns"],
+  ];
+
+  it.each(GENERAL)("%s %s still 402s while paused", (method, path) => {
+    const { res, next } = run({ method, path, organization: pausedOrg });
+    expect(next).not.toHaveBeenCalled();
+    expect(res.statusCode).toBe(402);
+  });
+
+  it("acceptance: a paused hybrid org's servicing writes succeed while its general writes 402", () => {
+    const servicing = run({ method: "POST", path: "/api/notes/42/payments", organization: pausedOrg });
+    const general = run({ method: "POST", path: "/api/deals/1", organization: pausedOrg });
+    expect(servicing.next).toHaveBeenCalledOnce();
+    expect(servicing.res.statusCode).toBeUndefined();
+    expect(general.next).not.toHaveBeenCalled();
+    expect(general.res.statusCode).toBe(402);
+  });
+
+  it("the predicate itself separates servicing from transfers", () => {
+    expect(pathIsServicingContinuation("/api/notes/1/payments")).toBe(true);
+    expect(pathIsServicingContinuation("/api/notes/1/splits")).toBe(false);
+  });
+
+  it("every pattern is anchored under a notes surface and none is a bare prefix", () => {
+    for (const p of PAUSE_SERVICING_PATH_PATTERNS) {
+      expect(p).toMatch(/^\/api\/(notes|loss-mit-cases)\//);
+      expect(p.endsWith("/")).toBe(false);
+    }
   });
 });

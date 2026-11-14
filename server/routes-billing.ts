@@ -18,6 +18,7 @@ import { z } from "zod";
 import { lenderServicingPhase } from "./services/borrower/servicingPhase";
 import { clock } from "./utils/clock";
 import { routeParam } from "./utils/routeParams";
+import { countActiveServicedNotes } from "./services/billing/activeServicedNotes";
 
 export function registerBillingRoutes(app: Express): void {
   const api = app;
@@ -1399,11 +1400,17 @@ export function registerBillingRoutes(app: Express): void {
           pauseDays: parsed.data.days,
         });
 
+        // Best-effort: informs the customer, never gates the pause. The
+        // helper degrades to null on failure. Servicing writes on these notes
+        // stay open while paused (subscriptionPauseGate carve-out).
+        const activeServicingNotes = await countActiveServicedNotes(org.id);
+
         await auditFromRequest(req, {
           action: AuditActions.BILLING_PLAN_SWITCHED,
           target: { type: "billing", id: org.id },
           metadata: {
             op: "self_serve_pause",
+            activeServicingNotes,
             pauseDays: parsed.data.days,
             pauseEndsAt: pauseEnds.toISOString(),
             reason: parsed.data.reason,
@@ -1414,6 +1421,8 @@ export function registerBillingRoutes(app: Express): void {
           paused: true,
           pauseDays: parsed.data.days,
           pauseEndsAt: pauseEnds.toISOString(),
+          activeServicingNotes,
+          servicingContinuesWhilePaused: true,
         });
       } catch (err: any) {
         Errors.internal(res, err);
