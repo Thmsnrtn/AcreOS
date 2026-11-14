@@ -45,8 +45,11 @@ import {
   houseMailSpecKey,
   houseMailBaseKey,
   HOUSE_MAIL_EXTRA_PAGE_COST_CENTS,
+  HOUSE_MAIL_EXTRA_SERVICE_COST_CENTS,
+  houseMailExtraService,
   type HouseMailSpec,
   type HouseMailSpecKey,
+  type HouseMailExtraService,
 } from "@shared/billing/house-mail-pricing";
 import { db, withTransaction, type PrimaryDb } from "../../db";
 import { getSetting } from "../settings";
@@ -94,8 +97,22 @@ export function postcardSpec(size: string | null | undefined): HouseMailSpec {
  * (prepareLetterPdf: render HTML / fetch a PDF, then count). Unknown is refused on the house lane — never assumed
  * to be one page (founder decision 2026-10-18).
  */
-export function letterSpec(opts: { color?: boolean | null; pages?: number | null; file?: string | null } = {}): HouseMailSpec {
-  return { kind: "letter", color: opts.color ?? false, pages: opts.pages ?? null, file: opts.file ?? null };
+export function letterSpec(
+  opts: {
+    color?: boolean | null;
+    pages?: number | null;
+    file?: string | null;
+    /** USPS extra service priced as a surcharge on the letter (Settlement Rail S-1). */
+    extraService?: HouseMailExtraService | null;
+  } = {},
+): HouseMailSpec {
+  return {
+    kind: "letter",
+    color: opts.color ?? false,
+    pages: opts.pages ?? null,
+    file: opts.file ?? null,
+    ...(opts.extraService ? { extraService: opts.extraService } : {}),
+  };
 }
 
 /** founder_settings keys that are UNSET (0) by default: no figure is assumed until the founder sets one. */
@@ -103,6 +120,11 @@ export function letterSpec(opts: { color?: boolean | null; pages?: number | null
 const HOUSE_MAIL_LETTER_EXTRA_PAGE_COST_KEY = "mail.house.cost_cents.letter_extra_page";
 const HOUSE_MAIL_LETTER_EXTRA_PAGE_COLOR_COST_KEY = "mail.house.cost_cents.letter_extra_page_color";
 const HOUSE_MAIL_ADDRESS_CHECK_COST_KEY = "mail.house.cost_cents.address_check";
+/** founder_settings overrides of Lob's extra-service add-on prices (0 = use the compiled table). */
+const HOUSE_MAIL_EXTRA_SERVICE_COST_KEY: Readonly<Record<HouseMailExtraService, string>> = {
+  certified: "mail.house.cost_cents.letter_certified",
+  registered: "mail.house.cost_cents.letter_registered",
+};
 
 /** A founder-set cost in cents, or null while it is unset (0, missing or malformed). */
 async function founderSetCostCents(key: string): Promise<number | null> {
@@ -265,6 +287,8 @@ async function houseMailProviderCostCents(key: HouseMailSpecKey): Promise<number
 export interface HouseMailPrice {
   key: HouseMailSpecKey;
   label: string;
+  /** The USPS extra service priced into this piece, when the spec asked for one. */
+  extraService?: HouseMailExtraService;
   providerCostCents: number;
   /** The credits the surface lists for this piece before the floor. */
   listedCredits: number;
@@ -310,11 +334,19 @@ async function houseMailPrice(
   } else if (!houseMailSpecKey(spec)) {
     return null;
   }
+  // An extra service (Certified / Registered Mail) is a surcharge on the
+  // letter's own cost — Lob's published add-on price unless the founder set
+  // one — and the self-funding floor judges base + surcharge together.
+  const extraService = spec.kind === "letter" ? houseMailExtraService(spec) : null;
+  const extraServiceCents = extraService
+    ? ((await founderSetCostCents(HOUSE_MAIL_EXTRA_SERVICE_COST_KEY[extraService])) ??
+      HOUSE_MAIL_EXTRA_SERVICE_COST_CENTS[extraService])
+    : 0;
   const [baseCostCents, listed] = await Promise.all([
     houseMailProviderCostCents(key),
     opts.listedCredits !== undefined ? Promise.resolve(opts.listedCredits) : listedCreditsFor(spec.kind),
   ]);
-  const providerCostCents = baseCostCents + extraPages * extraPageCents;
+  const providerCostCents = baseCostCents + extraPages * extraPageCents + extraServiceCents;
   const listedCredits = Math.ceil(listed);
   const creditsPerPiece = houseMailCreditsPerPiece(listedCredits, providerCostCents);
   // Belt and braces: a charge that does not pay for the piece is never
@@ -326,9 +358,11 @@ async function houseMailPrice(
     return null;
   }
   const baseLabel = houseMailCostEntry(key).label;
+  const pagedLabel = extraPages > 0 ? baseLabel.replace("one page", `${extraPages + 1} pages`) : baseLabel;
   return {
     key,
-    label: extraPages > 0 ? baseLabel.replace("one page", `${extraPages + 1} pages`) : baseLabel,
+    label: extraService ? `${pagedLabel} + ${extraService === "certified" ? "Certified" : "Registered"} Mail` : pagedLabel,
+    ...(extraService ? { extraService } : {}),
     providerCostCents,
     listedCredits,
     creditsPerPiece,
@@ -470,7 +504,15 @@ function decideMailLane(input: MailLaneInputs): MailLane {
         "Use your own Lob key (Settings → Your provider keys) to send it.",
     };
   }
-  if (!input.price && knownBase && input.spec.kind === "letter" && input.spec.pages == null) {
+  if (
+    !input.price &&
+    knownBase &&
+    input.spec.kind === "letter" &&
+    input.spec.pages == null &&
+    input.letter &&
+    !input.letter.ok &&
+    input.letter.reason === "unknown"
+  ) {
     return {
       lane: "refused",
       reason: "letter_pages_unconfirmed",

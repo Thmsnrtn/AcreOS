@@ -79,3 +79,19 @@ export function startJobLockJanitorJobs(): void {
     logger.error("Failed to register job-lock janitor", err instanceof Error ? err : undefined);
   });
 }
+
+/**
+ * Settlement & Documents Rail jobs (P1-3 core). Lives here, with the other
+ * boot registrations split out of runScheduledJobs.ts, because that file's
+ * line ratchet only goes down: runScheduledJobs extends its existing import
+ * of this module and adds this call beside startJobLockJanitorJobs().
+ * Today the rail has one job — the offer-mail transport, the consumer the
+ * offer letters' `queued` status always lacked (Land S-01).
+ */
+export function startSettlementRailJobs(): void {
+  import("./offerMailTransportJob")
+    .then(({ startOfferMailTransportJob }) => startOfferMailTransportJob())
+    .catch((err) => {
+      logger.error("Failed to register settlement rail jobs", err instanceof Error ? err : undefined);
+    });
+}
