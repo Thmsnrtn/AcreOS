@@ -1,0 +1,39 @@
+{
+  "name": "schema-journal-sync",
+  "mode": "external",
+  "evaluator": "scripts/check-schema-journal-sync.mjs",
+  "direction": "down",
+  "description": "MIGRATION NUMBER PAIRING (the Phase-1 leg of I-7 / roadmap P1-17). scripts/migrate.mjs is the ONLY migration path that reaches prod (Fly release_command); the Drizzle journal (migrations/meta/_journal.json) was retired 2026-05-11. What replaced it is a discipline, not a file: every migration number NNNN has BOTH a migrations/NNNN_<name>.sql file AND a numbered block in scripts/migrate.mjs introduced by a `// NNNN — …` header line. Nothing enforced that pairing, so an unpaired .sql, an unpaired block, or two migrations claiming one number had no tripwire and every schema PR hand-verified number allocation across open PRs. This ratchet freezes the pairing: the legacy desync set recorded in `legacyDesync` (numbers <= `freezePoint`) is FROZEN, NOT FORGIVEN — it may only shrink, exactly, and no number above the freeze point may ever be desynced. Curing the legacy set (consolidation) is P3-1's job; this guard only stops it growing. Counted by scripts/check-schema-journal-sync.mjs: sqlOnly + blockOnly + duplicateSql numbers + duplicateBlock numbers, bidirectional, down-only.",
+  "baselineCount": 224,
+  "minima": {
+    "sqlFiles": 245,
+    "blockHeaders": 64,
+    "sqlNumbers": 231
+  },
+  "minimaNote": "VACUITY FLOORS, not a ratchet. `baselineCount` counts BAD THINGS FOUND (desynced numbers), so an extractor that stops seeing files — a renamed migrations/ dir, a changed header convention, a moved migrate.mjs — finds fewer desyncs, or none, and reads that as progress. Worse, with no .sql files at all every block would look 'blockOnly' and the opposite lie appears. The evaluator therefore refuses to print ANY verdict (neither PASS nor a 'lock it in' instruction) when a population is under its floor, or when migrations/ or scripts/migrate.mjs is missing or unreadable. MEASURED 2026-11-14 on main 96e154e: 306 .sql files matching ^(\\d{4})_.+\\.sql$, 289 distinct sql numbers, 81 block headers matching ^\\s*//\\s*(\\d{4})\\s*—. Floors are ~80% of live (245 / 231 / 64). If a real consolidation (P3-1) takes a population under its floor, lower the floor in the same commit and name the wave; do NOT raise it to silence anything and do NOT delete a key (a missing floor FAILS, by design).",
+  "lastBumpNote": "SEEDED 2026-11-14 at 224 on main 96e154e, measured by scripts/check-schema-journal-sync.mjs: sql side = files in migrations/ matching ^(\\d{4})_.+\\.sql$ (306 files, 289 distinct numbers, max 0309); block side = lines in scripts/migrate.mjs matching ^\\s*//\\s*(\\d{4})\\s*— (em-dash U+2014; 81 headers, 81 distinct, max 0309). Legacy desync: 208 sqlOnly (all <= 0252) + 0 blockOnly + 16 duplicateSql + 0 duplicateBlock = 224. Every number >= 0253 is paired exactly once on both sides. Freeze point 0309.",
+  "freezePoint": "0309",
+  "legacyDesync": {
+    "sqlOnly": ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032", "0033", "0034", "0035", "0036", "0037", "0038", "0039", "0040", "0041", "0042", "0043", "0044", "0045", "0046", "0047", "0048", "0049", "0050", "0051", "0052", "0053", "0054", "0055", "0056", "0057", "0058", "0059", "0060", "0061", "0062", "0063", "0064", "0065", "0066", "0067", "0068", "0069", "0070", "0072", "0073", "0074", "0075", "0076", "0077", "0079", "0080", "0081", "0082", "0084", "0085", "0086", "0087", "0088", "0089", "0090", "0091", "0092", "0093", "0094", "0095", "0096", "0097", "0098", "0099", "0100", "0101", "0102", "0103", "0104", "0105", "0106", "0107", "0108", "0109", "0110", "0111", "0112", "0113", "0115", "0118", "0124", "0133", "0134", "0135", "0136", "0138", "0139", "0140", "0141", "0142", "0143", "0144", "0145", "0146", "0147", "0148", "0149", "0150", "0151", "0152", "0153", "0154", "0155", "0156", "0157", "0162", "0164", "0183", "0184", "0185", "0186", "0187", "0188", "0189", "0190", "0191", "0192", "0193", "0194", "0195", "0196", "0197", "0198", "0199", "0200", "0201", "0202", "0203", "0204", "0205", "0206", "0207", "0208", "0209", "0210", "0211", "0212", "0213", "0214", "0215", "0216", "0217", "0218", "0219", "0220", "0221", "0222", "0223", "0224", "0225", "0226", "0227", "0228", "0229", "0230", "0231", "0232", "0233", "0234", "0235", "0236", "0237", "0238", "0239", "0240", "0241", "0242", "0243", "0244", "0245", "0246", "0247", "0250", "0251", "0252"],
+    "blockOnly": [],
+    "duplicateSql": {
+      "0003": 2,
+      "0004": 2,
+      "0007": 2,
+      "0008": 2,
+      "0009": 2,
+      "0010": 2,
+      "0011": 2,
+      "0012": 2,
+      "0013": 2,
+      "0015": 2,
+      "0016": 2,
+      "0017": 2,
+      "0018": 2,
+      "0080": 2,
+      "0081": 3,
+      "0085": 2
+    },
+    "duplicateBlock": {}
+  }
+}
