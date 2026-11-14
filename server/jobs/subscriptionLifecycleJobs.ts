@@ -10,6 +10,7 @@
  * rather than re-sends). Registered by runScheduledJobs() — worker process only.
  */
 import { trackInterval, withJobLock, jobLog as log } from "../utils/jobRuntime";
+import { startRefundSlaSweepJob } from "./refundSlaSweepJob"; // refund automation: retry / reminder / escalation / uncertain listing
 import { jobSupervisor } from "../services/jobSupervisor";
 import { clock } from "../utils/clock";
 
@@ -19,6 +20,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export function startSubscriptionLifecycleJobs() {
   startTrialExpiryJob();
   startAnnualRenewalNoticeJob();
+  startRefundSlaSweepJob(); // every 10 min — refund queue SLA (retry, reminder at dueAt, escalation at dueAt+24h, uncertain listing)
 }
 
 // ── Trial expiry automation (daily 9am UTC) ─────────────────────────────────
