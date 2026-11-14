@@ -24,6 +24,7 @@ import { logger } from "./utils/logger";
 import type { AuthenticatedRequest } from "./types/request";
 import { getUserId } from "./types/request";
 import { routeParam } from "./utils/routeParams";
+import { raiseIfAllowed } from "./services/decisionsInboxThrottle";
 
 export function registerFounderDlqRoutes(app: Express): void {
   /**
@@ -208,7 +209,17 @@ export async function surfacePoisonJobDecision(): Promise<{
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if (((existing as any)?.rows ?? []).length > 0) continue;
 
-    await db.insert(decisionsInboxItems).values({
+    // Generator throttle (STEP0-DESIGN; scheduled hourly, open-only dedupe above).
+    // Condition = order of magnitude of the DLQ depth, so a drain-and-refill of
+    // the same size does not re-raise but a materially deeper DLQ does.
+    const outcome = await raiseIfAllowed(
+      {
+        producer: "dlq_poison_job",
+        subjectKey: r.event_type,
+        conditionKey: `depth_log2:${Math.floor(Math.log2(Math.max(1, r.cnt)))}`,
+        class: "standard",
+      },
+      () => db.insert(decisionsInboxItems).values({
       itemType: "dlq_poison_job",
       riskLevel: "high",
       urgencyScore: Math.min(90, 50 + r.cnt * 5),
@@ -228,9 +239,10 @@ export async function surfacePoisonJobDecision(): Promise<{
       },
       ownerAgentCodename: "ops",
       status: "pending",
-    });
+    }),
+    );
 
-    surfaced += 1;
+    if (outcome.inserted) surfaced += 1;
   }
 
   return { surfaced };

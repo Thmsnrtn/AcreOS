@@ -338,9 +338,32 @@ function ComposerDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
     suppressed?: any[];
   } | null>(null);
 
+  // The wholesale disposition packet (Leg 4): drafted NOW from the deal and the
+  // frozen decision — the price re-derived at this moment — and dropped into
+  // this composer. Nothing is stored or sent by drafting; the send below is the
+  // same blast lane as any other.
+  const [packetNote, setPacketNote] = useState<string | null>(null);
+  // allow-no-invalidation: drafting writes nothing; it only fills this form
+  const packet = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/wholesale/properties/${propertyId}/disposition-packet`, { credentials: "include" });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.message);
+      return d;
+    },
+    onSuccess: (d) => {
+      setSubject(d.subject);
+      setBody(d.html);
+      setPreview(null);
+      setPacketNote(d.price.withinBuyerCeiling ? "Price derived just now." : `Above your buyer's ceiling of $${Math.round(d.price.buyerSideMaoCents / 100).toLocaleString()}.`);
+    },
+    onError: (err: any) => toast({ title: err.message, variant: "destructive" }),
+  });
+
   const reset = () => {
     setPropertyId(""); setSubject(""); setBody(""); setMinScore("70");
     setFinancingType("cash"); setPreview(null);
+    setPacketNote(null);
   };
 
   // allow-no-invalidation: dry-run preview — nothing sent, results render from mutation.data
@@ -433,6 +456,10 @@ function ComposerDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
               </Select>
             </div>
           </div>
+          <Button variant="outline" size="sm" onClick={() => packet.mutate()} disabled={!propertyId || packet.isPending} data-testid="fill-disposition-packet">
+            Fill from disposition packet
+          </Button>
+          {packetNote && <p className="text-xs" data-testid="disposition-packet-note">{packetNote}</p>}
           <div className="space-y-1.5">
             <Label htmlFor="bb-subject" className="text-xs">Subject *</Label>
             <Input id="bb-subject" value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="New deal in 85016 — $185K assignment, ARV $310K" />
