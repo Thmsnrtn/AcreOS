@@ -337,19 +337,25 @@ router.get("/investor-network/trust-score", async (req: Request, res: Response) 
 
 router.post("/investor-network/share-deal", async (req: Request, res: Response) => {
   try {
-    const { shareDealWithPartner } = await import("./services/investorNetworkService");
+    const { shareDealWithPartner, DealShareUnavailableError } = await import("./services/investorNetworkService");
     const org = req.organization;
     const { toOrganizationId, dealSummary, referralFeeAmount, notes } = req.body;
 
-    const result = await shareDealWithPartner({
-      fromOrganizationId: org.id,
-      toOrganizationId,
-      dealSummary,
-      referralFeeAmount,
-      notes,
-    });
-
-    res.json(result);
+    try {
+      await shareDealWithPartner({
+        fromOrganizationId: org.id,
+        toOrganizationId,
+        dealSummary,
+        referralFeeAmount,
+        notes,
+      });
+    } catch (err) {
+      // Honest refusal: 501 NOT_IMPLEMENTED, never a success-shaped 200.
+      if (err instanceof DealShareUnavailableError) return Errors.notImplemented(res, err.message);
+      throw err;
+    }
+    // shareDealWithPartner never resolves (it refuses); nothing was shared.
+    Errors.internal(res, new Error("shareDealWithPartner resolved unexpectedly"));
   } catch (err: any) {
     Errors.badRequest(res, err.message ?? "Bad request");
   }

@@ -171,31 +171,30 @@ export interface DealShareRequest {
   notes?: string;
 }
 
-export interface DealShareResult {
-  shareId: string;
-  status: "sent" | "failed";
-  expiresAt: Date;
-  message: string;
+const DEAL_SHARE_UNAVAILABLE_MESSAGE =
+  "Investor-network deal sharing is not available: the investor network has not launched. " +
+  "Nothing was sent, recorded, or reserved, and no partner was notified.";
+
+/** Thrown by shareDealWithPartner — the refusal IS the outcome; there is no success shape. */
+export class DealShareUnavailableError extends Error {
+  readonly code = "NOT_IMPLEMENTED";
+  constructor() {
+    super(DEAL_SHARE_UNAVAILABLE_MESSAGE);
+    this.name = "DealShareUnavailableError";
+  }
 }
 
+// Deal sharing is deliberately unimplemented until the investor network
+// launches under the marketplace ladder (X-7; founder decision 2026-10-20 #4).
+// There is no connection check, delivery, notification or first-look right to
+// back a "sent" claim, so this refuses rather than simulating a send.
 export async function shareDealWithPartner(
   request: DealShareRequest
-): Promise<DealShareResult> {
-  // Verify trust relationship exists between orgs
-  // In production: check investor_connections table
-  const shareId = `share_${clock.nowMs()}_${request.fromOrganizationId}_${request.toOrganizationId}`;
-  const expiresAt = new Date(clock.nowMs() + 48 * 60 * 60 * 1000); // 48 hours
-
-  logger.info(`[InvestorNetwork] Deal share sent from org ${request.fromOrganizationId} to ${request.toOrganizationId}. ` +
-    `${request.dealSummary.acreage} acres in ${request.dealSummary.county}, ${request.dealSummary.state} at $${request.dealSummary.askingPrice.toLocaleString()}. ` +
-    `First look expires: ${expiresAt.toISOString()}`);
-
-  return {
-    shareId,
-    status: "sent",
-    expiresAt,
-    message: `Deal shared successfully. Your partner has 48 hours to claim first-look rights.`,
-  };
+): Promise<never> {
+  logger.warn(
+    `[InvestorNetwork] Deal share refused (network not launched) from org ${request.fromOrganizationId} to ${request.toOrganizationId}; nothing sent.`
+  );
+  throw new DealShareUnavailableError();
 }
 
 // ---------------------------------------------------------------------------
