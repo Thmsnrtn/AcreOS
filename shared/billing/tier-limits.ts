@@ -95,7 +95,7 @@ export interface TierLimits {
    * `null` = no BYOK threshold (the plain `ai_requests` cap, if any, governs).
    *
    * Rationale: a heavy Pro user at the 12,000/mo `ai_requests` cap costs
-   * ≈ $180/mo in AI COGS against $49/mo revenue. The threshold keeps the
+   * ≈ $180/mo in AI COGS against $99/mo revenue. The threshold keeps the
    * included allotment comfortably margin-positive (1,500 × 1.5¢ ≈ $22.50)
    * while never walling anyone off — BYOK restores unlimited usage.
    *
@@ -120,17 +120,17 @@ export interface TierLimits {
  * lots of headroom; only the COGS-inverting tail crosses them. Adjust here
  * (single source of truth) — every gate, banner, and test reads this.
  */
-// Margin math reconciled 2026-07-03 (roadmap audit): canonical prices are
-// $20/$49/$79 (tier-pricing.ts) — the previous annotations cited a $29
-// Starter and a $199 Scale that never shipped.
+// Margin math reconciled to the ratified ladder (tier-pricing.ts:
+// Starter $49 / Pro $99 / Scale $199, repriced 2026-10-17; earlier
+// annotations here reasoned from pre-repricing prices).
 // Re-bounded 2026-07-07 (cost audit): Scale's old shape (500 Opus turns +
-// Sonnet to 6,000) bounded worst-case platform-key COGS at ~$90 on a $79
-// plan — underwater at full utilization. paxModelTier.ts now runs a
-// two-stage downgrade (Opus→Sonnet at 200, →Haiku at 3,000), bounding
-// Scale at ≈ $4.50 + $38 + $12 ≈ $54 of $79 (~32% margin at absolute full
-// utilization). Starter/pro bounds with the Haiku tail past their soft
-// caps: starter ≈ $11.25 of $20 (56% of revenue — thin, watch it),
-// pro ≈ $15.50 of $49. Roadmap W4 also tracks that non-chat AI surfaces
+// Sonnet to 6,000) bounded worst-case platform-key COGS at ~$90 —
+// underwater on the pre-repricing Scale price. paxModelTier.ts now runs
+// a two-stage downgrade (Opus→Sonnet at 200, →Haiku at 3,000), bounding
+// Scale at ≈ $4.50 + $38 + $12 ≈ $54 of $199 (~73% margin at absolute
+// full utilization). Starter/pro bounds with the Haiku tail past their
+// soft caps: starter ≈ $11.25 of $49 (23% of revenue), pro ≈ $15.50 of
+// $99 (16% of revenue). Roadmap W4 also tracks that non-chat AI surfaces
 // bypass these thresholds entirely (they hit the per-org COGS ceilings in
 // aiCostCeiling.ts instead). S3 follow-up: campaign optimize now mirrors
 // the tier ladder (campaignOptimizer.ts); document intelligence and agent
@@ -149,14 +149,17 @@ export const AI_TURNS_BYOK_THRESHOLDS: Record<SubscriptionTier, number | null> =
  * (founder decisions 2026-10-08 and 2026-10-09), so a long document read is
  * not counted as one chat turn. EXPLICIT per tier — not derived:
  *
- *   starter  1,125¢  ($11.25 / month)  =   750 turns × 1.5¢  (of a $20 price)
- *   pro      2,250¢  ($22.50 / month)  = 1,500 turns × 1.5¢  (of a $49 price)
- *   scale    4,500¢  ($45.00 / month)  — founder decision 2026-10-09. The
- *            turn-derived figure (6,000 × 1.5¢ = $90) was ABOVE Scale's $79
- *            price; the rule is that an allowance stays below plan price, and
- *            $45 is 57% of $79.
+ *   starter  2,500¢  ($25.00 / month)  (of a $49 price)
+ *   pro      5,000¢  ($50.00 / month)  (of a $99 price)
+ *   scale   10,000¢  ($100.00 / month)  (of a $199 price)
  *   free / enterprise: no allowance wall (free: the plain ai_requests cap
  *            governs; enterprise: negotiated per deal)
+ *
+ * The figures were scaled at the 2026-10-17 repricing (founder decision)
+ * so each allowance stays at roughly half its plan price. They are set
+ * explicitly, NOT derived from turns: the earlier turn-derived Scale
+ * figure (6,000 turns × 1.5¢ = $90) sat above the pre-repricing Scale
+ * price, which is exactly the failure the explicit table prevents.
  *
  * Invariant (aiAllowanceBelowPrice in founderDecisions20261008.test.ts): every
  * tier's allowance is strictly below its monthly price.
@@ -168,8 +171,8 @@ export const AI_TURNS_BYOK_THRESHOLDS: Record<SubscriptionTier, number | null> =
  * customer off), BYOK calls (recorded at $0), and platform-internal / founder
  * AI (no org). See docs/company/founder-decisions-2026-10-08.md.
  *
- * The starter and pro figures were priced from the documented 1.5¢ blended
- * per-turn cost (credit-weights.ts ai_turn_avg). The turn thresholds above no
+ * The 1.5¢ blended per-turn cost behind the turn thresholds is documented
+ * in credit-weights.ts (ai_turn_avg). The turn thresholds above no
  * longer gate anything on their own — the cents allowance is the wall.
  */
 const AI_ALLOWANCE_CENTS: Record<SubscriptionTier, number | null> = {
@@ -227,11 +230,10 @@ export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
     properties: 50,
     notes: 25,
     // Monthly cap. Was 500/DAY, which at ~$0.015/turn × 500 × 30 = $225/mo
-    // COGS vs $20/mo revenue (~-1000% margin). At the 1,500/mo cap the
+    // COGS vs $49/mo revenue. At the 1,500/mo cap the
     // PLATFORM-key exposure is bounded earlier by the 750-turn BYOK
-    // threshold (~$11.25 COGS vs $20/mo revenue); 1,500 governs total turns
-    // across lanes. (Prices reconciled 2026-07-03 — this previously cited a
-    // $29 Starter that never shipped.) See
+    // threshold (~$11.25 COGS vs $49/mo revenue); 1,500 governs total turns
+    // across lanes. (Price per tier-pricing.ts.) See
     // docs/internal/pricing/alternatives-2026-06-06.md.
     ai_requests: 1500,
     campaigns: 5,
@@ -250,9 +252,9 @@ export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
     notes: 50,
     // Monthly cap. Pro is the workhorse tier; 12,000 turns/mo (~400/day)
     // supports a single operator running Pax across the full pipeline.
-    // Canonical price is $49/mo (tier-pricing.ts, reconciled 2026-07-03).
+    // Canonical price is $99/mo (tier-pricing.ts).
     // Worst-case platform-key COGS is bounded well before the 12,000 cap by
-    // the 2,500-turn BYOK threshold (~$37.50) plus the tier-proportional AI
+    // the 1,500-turn BYOK threshold (~$22.50) plus the tier-proportional AI
     // cost ceiling (aiCostCeiling.ts); past the threshold, turns ride the
     // customer's own key at $0 COGS to us.
     ai_requests: 12000,

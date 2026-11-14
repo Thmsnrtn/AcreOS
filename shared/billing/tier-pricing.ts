@@ -2,18 +2,22 @@
  * Single source of truth for AcreOS subscription tier pricing.
  *
  * Six places in the codebase used to carry tier prices and they drifted —
- * `/api/founder/executive-dashboard` was even using $29/$79/$199 while the
- * pricing page shipped $20/$49/$79, so the MRR math was fiction.
+ * the founder dashboard's MRR math ran on one ladder while the pricing
+ * page shipped another, so the MRR math was fiction.
  *
  * Every site that needs tier prices (UI, MRR math, Stripe checkout helpers,
  * tests) MUST import from this module. Do not hardcode tier prices anywhere.
  *
  * Canonical tier names (renamed 2026-05-11 to match the customer-facing
  * pricing page; old names retained as aliases for the
- * `organizations.subscription_tier` column so historical rows still resolve):
- *   - starter ($20 / mo, $200 / yr) — 1 investor, replaces the spreadsheet
- *   - pro     ($49 / mo, $490 / yr) — partnerships and small teams
- *   - scale   ($79 / mo, $790 / yr) — full-time multi-state operations
+ * `organizations.subscription_tier` column so historical rows still resolve).
+ * Prices are the ratified ladder (repriced 2026-10-17 — Free / Starter
+ * $49 / Pro $99 / Scale $199):
+ *   - starter ($49 / mo, $490 / yr) — 1 investor, replaces the spreadsheet
+ *   - pro     ($99 / mo, $990 / yr) — partnerships and small teams
+ *   - scale   ($199 / mo, $1,990 / yr) — full-time multi-state operations
+ * Per-seat add-ons (past the tier's included seats, tier-limits.ts):
+ * Pro $20/seat, Scale $25/seat; Starter cannot add seats.
  *
  * Legacy `organizations.subscription_tier` values that we still recognise:
  * "solo" (now starter), "operator" (now pro), "empire" (now scale). All
