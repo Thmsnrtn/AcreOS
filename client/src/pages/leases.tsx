@@ -250,6 +250,7 @@ export default function LeasesPage() {
     },
     onSuccess: (_data, { leaseId, tenantId }) => {
       toast({ title: "Tenant attached" });
+      queryClient.invalidateQueries({ queryKey: ["/api/leases"] });
       setAttachedByLease((prev) => ({
         ...prev,
         [leaseId]: [...(prev[leaseId] ?? []), tenantId],
