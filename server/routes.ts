@@ -87,6 +87,7 @@ import flipDecisionRouter from "./routes-flip-decision";
 import buyAndHoldUnderwritingRouter from "./routes-buy-and-hold-underwriting";
 import wholesaleBuyBoxRouter from "./routes-wholesale-buy-box";
 import wholesaleUnderwritingRouter from "./routes-wholesale-underwriting";
+import wholesaleDispositionRouter from "./routes-wholesale-disposition";
 import exchange1031Router from "./routes-exchange-1031";
 import dunningRouter from "./routes-dunning";
 import onboardingRouter from "./routes-onboarding";
@@ -1483,6 +1484,7 @@ export async function registerRoutes(
   // Wholesale Leg 2 — the operator's versioned buy box and candidate triage.
   app.use('/api/wholesale', isAuthenticated, getOrCreateOrg, wholesaleBuyBoxRouter);
   app.use('/api/wholesale', isAuthenticated, getOrCreateOrg, wholesaleUnderwritingRouter);
+  app.use('/api/wholesale', isAuthenticated, getOrCreateOrg, wholesaleDispositionRouter);
   app.use('/api/exchange-1031', isAuthenticated, getOrCreateOrg, exchange1031Router);
   // FOUNDER-ONLY, and it was not. `client/src/App.tsx` gates the Dunning
   // Manager page behind FounderProtectedRoute with the note "the dunning API is

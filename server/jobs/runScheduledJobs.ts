@@ -9,7 +9,7 @@
  */
 
 import { db } from "../storage";
-import { claimScheduledJobsBoot, startJobLockJanitorJobs } from "./scheduledJobsBoot";
+import { claimScheduledJobsBoot, startJobLockJanitorJobs, startSettlementRailJobs } from "./scheduledJobsBoot";
 import { sql, lt, eq } from "drizzle-orm";
 import { organizations, jobHealthLogs, agentEvents } from "@shared/schema";
 import { logger } from "../utils/logger";
@@ -3901,7 +3901,7 @@ function startBurnRateMonitorJob() {
 // ============================================================================
 export async function runScheduledJobs(): Promise<void> {
   if (!claimScheduledJobsBoot()) return;
-  startJobLockJanitorJobs();
+  startJobLockJanitorJobs(); startSettlementRailJobs();
 
   // Start lead nurturing background job (every 15 minutes)
   startLeadNurturingJob();

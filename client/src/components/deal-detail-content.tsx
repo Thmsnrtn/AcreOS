@@ -34,6 +34,7 @@ import { ListSkeleton } from "@/components/list-skeleton";
 import { ActivityTimeline } from "@/components/activity-timeline";
 import { DealNextAction } from "@/components/deals/DealNextAction";
 import { AssignmentPanel } from "@/components/deals/AssignmentPanel";
+import { SellerFollowUpsPanel } from "@/components/deals/SellerFollowUpsPanel";
 import { CmaPanel } from "@/components/deals/CmaPanel";
 import { AgencyDisclosurePanel } from "@/components/deals/AgencyDisclosurePanel";
 import { CustomFieldValuesEditor } from "@/components/custom-fields";
@@ -717,6 +718,11 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
                   only for wholesaler orgs (or when assignment records already
                   exist on this deal) — the panel self-gates. */}
               <AssignmentPanel dealId={deal.id} propertyId={deal.propertyId} />
+              {/* Wholesale §6.2 — seller follow-up drafts built from the org's
+                  own follow-up templates. Prepared, never sent: copy is the
+                  only way text leaves it. Renders only for wholesaler orgs (or
+                  when drafts already exist on this deal) — the panel self-gates. */}
+              <SellerFollowUpsPanel dealId={deal.id} />
               <div className="flex items-center justify-between gap-3">
                 <h3 className="font-medium text-sm md:text-base">Document packages</h3>
                 <Button aria-label="Copy link" asChild size="sm" className="min-h-[44px]" data-testid="button-create-package-from-deal">
