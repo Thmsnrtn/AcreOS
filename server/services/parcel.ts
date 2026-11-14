@@ -19,7 +19,9 @@ import {
   statesForPoint,
   buildArcgisPointQueryParams,
 } from "./statewideParcelEndpoints";
-import { isClearedForLookup, statewideSource } from "./openData/statewideSourceRegistry";
+import { statewideFieldAnswer, statewideSource } from "./openData/statewideSourceRegistry";
+import { maskParcelLookupResult } from "./openData/fieldMasking";
+import { answerServes } from "@shared/openData/fieldClearance";
 import { storage } from "../storage";
 import { logger } from '../utils/logger';
 import { recordProviderParcelFacts, coerceSaleDate } from "./data-cache/observation-log";
@@ -69,7 +71,14 @@ export interface ParcelLookupOptions {
  */
 function statewideRowMayServe(endpoint: { county: string; state: string }): boolean {
   if (endpoint.county !== STATEWIDE_COUNTY) return true;
-  return isClearedForLookup(statewideSource(endpoint.state));
+  const answer = statewideFieldAnswer(statewideSource(endpoint.state), "lookupDisplay");
+  return answerServes(answer, "geometry") && answerServes(answer, "identifiers");
+}
+
+/** The masked statewide result, or null when the answer serves no geometry. */
+function maskStatewideResult(result: ParcelLookupResult, state: string): ParcelLookupResult | null {
+  const masked = maskParcelLookupResult(result, statewideFieldAnswer(statewideSource(state), "lookupDisplay"));
+  return masked.found ? masked : null;
 }
 
 /** A source's owner field, or null. "Unknown" was written here, and read downstream as a name. */
@@ -565,11 +574,10 @@ async function queryArcGISEndpoint(
           })
           .where(eq(countyGisEndpoints.id, endpoint.id));
         
-        return {
-          found: true,
-          source: "county_gis",
-          parcel: geometry,
-        };
+        const served: ParcelLookupResult = { found: true, source: "county_gis", parcel: geometry };
+        // Statewide rows serve through the field-level mask (I-6); county rows pass untouched.
+        if (endpoint.county === STATEWIDE_COUNTY) return maskStatewideResult(served, endpoint.state);
+        return served;
       }
     }
     
@@ -671,7 +679,11 @@ export async function lookupFromCountyGISByPoint(
         .set({ lastVerified: clock.now(), isVerified: true, errorCount: 0 })
         .where(eq(countyGisEndpoints.id, endpoint.id));
 
-      return { found: true, source: "county_gis", parcel };
+      // Field-level mask (I-6): a cleared statewide source serves only the
+      // field groups its clearance names; the rest are stripped here.
+      const masked = maskStatewideResult({ found: true, source: "county_gis", parcel }, endpoint.state);
+      if (!masked) continue;
+      return masked;
     } catch (error) {
       logger.error(
         "[CountyGIS] Statewide point query error",

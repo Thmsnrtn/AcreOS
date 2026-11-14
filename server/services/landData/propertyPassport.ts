@@ -17,6 +17,20 @@
  * layer content at all. A cleared state's determination, evidence, URL and
  * date ride on the passport verbatim, so a reader sees what cleared it.
  *
+ * FIELD-LEVEL ANSWERS (I-6). When the statewide gate refuses but the caller
+ * supplies a field-level clearance answer (fieldClearance.ts — a written
+ * county/state determination expressed per field group), the passport no
+ * longer refuses whole: it assembles PARTIALLY. Only what the answer serves
+ * is assembled — the physical layer rides on the geometry group — every
+ * withheld field group lands in `ignorance` with the determination's own
+ * reason, the parcel's source identifier is carried only when the
+ * identifiers group is served, and the passport is marked `partial` with
+ * the served/withheld groups and the determination's evidence on it. With
+ * no field-level answer, or an answer serving zero groups, the refusal
+ * shapes above are byte-identical to before this package. The field-level
+ * answer is a DETERMINATION, not a live clearance: this module's posture
+ * toward the live gate does not change (see fieldClearanceRegistry.ts).
+ *
  * Pure: no I/O, no clock reads, no mutation of its inputs. Facts pass through
  * by reference, unmodified.
  *
@@ -42,6 +56,12 @@ import {
 import type { ParcelTruth } from "@shared/landData/parcelTruths";
 import type { TaxSaleSource } from "@shared/landData/taxSaleSources";
 import { isClearedForLookup, type StatewideSourceEntry } from "../openData/statewideSourceRegistry";
+import {
+  PARCEL_FIELD_GROUP_LABELS,
+  answerServes,
+  type FieldClearanceAnswer,
+  type ParcelFieldGroup,
+} from "@shared/openData/fieldClearance";
 // Type-only: that module loads the database at import time.
 import type { CountyMomentum } from "../openData/countyMarketSignals";
 
@@ -76,8 +96,24 @@ export interface PropertyPassport {
   state: string;
   county: string;
   sourceParcelId: string;
-  /** What cleared this state's statewide source for lookup, verbatim from the register. */
-  gate: { determination: string; evidence: string; evidenceUrl: string; decidedOn: string };
+  /**
+   * What cleared this state's statewide source for lookup, verbatim from the
+   * register. Null exactly when the passport is partial: no statewide
+   * clearance exists for it, and the field-level basis rides in
+   * `fieldClearance` instead — never dressed up as a gate clearance.
+   */
+  gate: { determination: string; evidence: string; evidenceUrl: string; decidedOn: string } | null;
+  /** True when this passport was assembled from a field-level answer, not a full gate clearance. */
+  partial: boolean;
+  /** The field-level basis of a partial passport: what was served, what was withheld, and the determination behind both. */
+  fieldClearance?: {
+    servedFieldGroups: ParcelFieldGroup[];
+    withheldFieldGroups: ParcelFieldGroup[];
+    objectScope: string;
+    evidence: string;
+    evidenceSource: string;
+    recordedOn: string;
+  };
   layers: {
     physical: { facts: ParcelFact[]; excludedFactKeys: ParcelFactKey[] } | null;
     legalDistress: PassportLegalDistressInput | null;
@@ -105,9 +141,16 @@ export function assemblePropertyPassport(
   ref: PassportParcelRef,
   entry: StatewideSourceEntry | undefined,
   layers: PassportLayerInputs,
+  fieldClearance?: FieldClearanceAnswer | null,
 ): PropertyPassportResult {
+  const fullCleared = isClearedForLookup(entry);
+  // A field-level answer serving at least one field group converts a
+  // refused-whole into a partial assembly. Zero groups — or no answer at
+  // all — keeps the refusal exactly as it was.
+  const partialAnswer =
+    !fullCleared && fieldClearance && fieldClearance.servableFields.length > 0 ? fieldClearance : null;
   // The gate is asked first. No layer input has been read when it refuses.
-  if (!isClearedForLookup(entry)) {
+  if (!fullCleared && !partialAnswer) {
     const lookup = entry?.lookup;
     if (!entry || !lookup) {
       return {
@@ -139,7 +182,7 @@ export function assemblePropertyPassport(
   const clearance = entry?.lookup;
   // isClearedForLookup is true only for a filled "cleared" record; this keeps the
   // compiler in step with that and fails closed if the two ever disagree.
-  if (!clearance || clearance.status !== "cleared") {
+  if (fullCleared && (!clearance || clearance.status !== "cleared")) {
     return {
       status: "refused",
       apid: ref.apid,
@@ -151,9 +194,17 @@ export function assemblePropertyPassport(
 
   const ignorance: PassportIgnoranceEntry[] = [];
 
-  // Physical layer.
+  // Physical layer. The facts are computed from the parcel layer itself, so
+  // on a partial passport the layer rides on the GEOMETRY group: geometry
+  // withheld means the layer is withheld whole, named in ignorance below.
   let physical: PropertyPassport["layers"]["physical"] = null;
-  if (layers.physical === null) {
+  if (partialAnswer && !answerServes(partialAnswer, "geometry")) {
+    ignorance.push({
+      layer: "physical",
+      what: "Physical facts",
+      why: `The field-level determination for ${partialAnswer.basis?.objectScope ?? "this source"} does not clear parcel geometry, so no physical layer is assembled.`,
+    });
+  } else if (layers.physical === null) {
     ignorance.push({
       layer: "physical",
       what: "Physical facts",
@@ -196,6 +247,20 @@ export function assemblePropertyPassport(
     }
   }
 
+  // Partial assembly: one ignorance entry per withheld field group, with the
+  // determination's own reason — the withheld half of the answer is stated,
+  // never silent.
+  if (partialAnswer) {
+    for (const withheld of partialAnswer.withheldFields) {
+      ignorance.push({
+        layer: "physical",
+        what: `Parcel field group: ${PARCEL_FIELD_GROUP_LABELS[withheld.field]}`,
+        why: withheld.why,
+      });
+    }
+  }
+
+  const partialBasis = partialAnswer?.basis ?? null;
   return {
     status: "assembled",
     passport: {
@@ -203,13 +268,31 @@ export function assemblePropertyPassport(
       parcelKey: ref.parcelKey,
       state: ref.state,
       county: ref.county,
-      sourceParcelId: ref.sourceParcelId,
-      gate: {
-        determination: clearance.determination,
-        evidence: clearance.evidence,
-        evidenceUrl: clearance.evidenceUrl,
-        decidedOn: clearance.decidedOn,
-      },
+      // The source parcel id IS the identifiers group: carried only when served.
+      sourceParcelId:
+        partialAnswer && !answerServes(partialAnswer, "identifiers") ? "" : ref.sourceParcelId,
+      gate:
+        fullCleared && clearance && clearance.status === "cleared"
+          ? {
+              determination: clearance.determination,
+              evidence: clearance.evidence,
+              evidenceUrl: clearance.evidenceUrl,
+              decidedOn: clearance.decidedOn,
+            }
+          : null,
+      partial: partialAnswer !== null,
+      ...(partialAnswer && partialBasis
+        ? {
+            fieldClearance: {
+              servedFieldGroups: [...partialAnswer.servableFields],
+              withheldFieldGroups: partialAnswer.withheldFields.map((w) => w.field),
+              objectScope: partialBasis.objectScope,
+              evidence: partialBasis.evidence,
+              evidenceSource: partialBasis.evidenceSource,
+              recordedOn: partialBasis.recordedOn,
+            },
+          }
+        : {}),
       layers: {
         physical,
         legalDistress: layers.legalDistress,

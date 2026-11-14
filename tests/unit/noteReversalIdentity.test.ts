@@ -45,12 +45,20 @@ const tx = {
       }),
   }),
   insert: () => ({
-    values: (v: Record<string, unknown>) => ({
-      returning: async () => {
-        S.inserted.push(v);
-        return [{ id: "pay-new", ...v }];
-      },
-    }),
+    values: (v: Record<string, unknown>) => {
+      const chain: Record<string, unknown> = {
+        returning: async () => {
+          S.inserted.push(v);
+          return [{ id: "pay-new", ...v }];
+        },
+      };
+      // The D4 mirror write (payment_applications, via
+      // recordPostedPaymentApplication in routes-notes Write 1b) chains
+      // onConflictDoNothing before returning; the notePayments insert
+      // does not. Support both shapes.
+      chain.onConflictDoNothing = () => chain;
+      return chain;
+    },
   }),
   update: () => ({ set: (v: Record<string, unknown>) => ({ where: async () => void S.noteUpdates.push(v) }) }),
 };

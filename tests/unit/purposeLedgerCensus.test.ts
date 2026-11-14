@@ -757,6 +757,8 @@ const DEBT: Record<string, ProposedSurface> = {
   "server/routes-platform-features.ts route:GET /api/pipeline/attribution": "review",
   "server/routes-platform-features.ts route:POST /api/export/full": "lead_contact_bulk",
   // server/routes-privacy-dsar.ts
+  "server/routes-privacy-dsar.ts route:GET /api/founder/dsar/:id/subject-candidates": "lead_contact_bulk",
+  "server/routes-privacy-dsar.ts route:POST /api/founder/dsar/:id/execute-erasure": "lead_contact_bulk",
   "server/routes-privacy-dsar.ts route:POST /api/founder/dsar/:id/generate-export": "lead_contact_bulk",
   // server/routes-properties.ts
   "server/routes-properties.ts route:GET /api/properties/:id/report.pdf": "review",
@@ -824,10 +826,11 @@ const DEBT: Record<string, ProposedSurface> = {
 /** DEBT may only shrink. Lower this in the same commit that removes an entry. */
 // 214 → 212 (2026-11-06, W2-TEAM): GET /api/analytics/team-kpi and
 // GET /api/analytics/team-leaderboard deleted — no client caller.
-// 212 → 215 (2026-11-12, PR #564): settlement rail registered three new
-// person-adjacent surfaces in DEBT (borrower payoff-letter + notes
-// payoff-letter/lien-release routes), per the PR's assigned audit.
-const DEBT_BASELINE = 215;
+// 212 → 217 (merge-lane union, 2026-11-14): main registered two NEW founder
+// DSAR routes (PKG-1, 212 → 214) and PR #564 registers three settlement-rail
+// surfaces (212 → 215); the merged register carries both sets, so the baseline
+// is the sum: 217. Census re-run on the merged tree is the proof.
+const DEBT_BASELINE = 217;
 
 /**
  * Every file holding a dispatch switch (≥10 snake_case case labels, raw count)

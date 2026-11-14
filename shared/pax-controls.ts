@@ -724,6 +724,18 @@ export const UNATTENDED_PATHS: readonly UnattendedPath[] = [
     customerVisible: true,
   },
   {
+    id: "follow_up_enrolment",
+    label: "Follow-up enrolment for cold leads",
+    file: "server/jobs/autonomousDealMachine.ts",
+    fn: "runAutoFollowUpEngine",
+    stance: { ask_before_sending: WAITS_FOR_TAP, ask_before_everything: WAITS_FOR_TAP },
+    whilePaused: "skipped until the pause lifts",
+    pauseStops: true,
+    pausedReason: null,
+    switch: paxSwitch,
+    customerVisible: true,
+  },
+  {
     id: "founder_lane",
     label: "Founder-run items for your workspace",
     file: "server/services/autonomousDecisionExecutor.ts",

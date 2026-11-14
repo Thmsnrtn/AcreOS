@@ -27,6 +27,7 @@ import { db } from "../db";
 import { agentEvents, decisionsInboxItems } from "@shared/schema";
 import { TIER_PRICES_CENTS } from "@shared/billing/tier-pricing";
 import { logger } from "../utils/logger";
+import { raiseIfAllowed, canonicalSetJson } from "./decisionsInboxThrottle";
 
 export interface DriftFinding {
   severity: "info" | "warn" | "critical";
@@ -209,7 +210,18 @@ export async function runStripeDriftJob(): Promise<{ findings: DriftFinding[]; r
 
     // Surface as a /founder/now inbox item (red if any critical).
     const critical = findings.filter((f) => f.severity === "critical").length > 0;
-    await db.insert(decisionsInboxItems).values({
+    // Generator throttle (STEP0-DESIGN): an unchanged finding set does not
+    // re-raise a card every run, whatever happened to the last card.
+    await raiseIfAllowed(
+      {
+        producer: "stripe_drift",
+        subjectKey: "stripe_drift",
+        conditionKey: canonicalSetJson(
+          findings.map((f) => `${f.kind}:${f.acreosKey ?? ""}:${f.actualCents ?? ""}`),
+        ),
+        class: critical ? "critical" : "standard",
+      },
+      () => db.insert(decisionsInboxItems).values({
       itemType: "stripe_drift",
       riskLevel: critical ? "critical" : "medium",
       urgencyScore: critical ? 95 : 60,
@@ -222,7 +234,8 @@ export async function runStripeDriftJob(): Promise<{ findings: DriftFinding[]; r
       organizationId: orgId,
       status: "pending",
       ownerAgentCodename: "stripe_drift_detector",
-    });
+    }),
+    );
   } catch (err) {
     logger.error("[stripe-drift] failed to write inbox item", err);
   }

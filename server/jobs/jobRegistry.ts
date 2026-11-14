@@ -172,6 +172,7 @@ export const JOB_ROSTER: JobRosterEntry[] = [
     disabledWhen: () => process.env.AUTONOMOUS_DECISION_EXECUTOR_DISABLED === "1" },
 
   { name: "finance_agent", intervalMs: 30 * MIN, critical: false },
+  { name: "refund_sla_sweep", intervalMs: 10 * MIN, critical: true }, // refund queue SLA + uncertain listing (a dark sweep = unreminded customer money)
   // W5.1 — former bare setIntervals routed through the runtime (2026-07).
   // (autonomous_task_processor was deleted 2026-09-02 — founder decision #7
   // of the customer autonomy clarity program: the customer "Tasks / Deploy

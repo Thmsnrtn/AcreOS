@@ -13415,6 +13415,15 @@ $mig0284$`,
   `ALTER TABLE "rehabs" ADD COLUMN IF NOT EXISTS "realized_closing_date" date`,
   `ALTER TABLE "rehabs" ADD COLUMN IF NOT EXISTS "realized_recorded_by" text`,
   `ALTER TABLE "rehabs" ADD COLUMN IF NOT EXISTS "realized_recorded_at" timestamptz`,
+  // 0309 — Refund automation (design 2026-11 §4): guarantee-eligibility verdicts, brake code, decision SLA, retry bookkeeping and deny reason on refund_requests. Columns only, no new table. PROVISIONAL number.
+  // Mirrors migrations/0309_refund_requests_guarantee_automation.sql.
+  `ALTER TABLE "refund_requests" ADD COLUMN IF NOT EXISTS "eligibility" jsonb`,
+  `ALTER TABLE "refund_requests" ADD COLUMN IF NOT EXISTS "brake" text`,
+  `ALTER TABLE "refund_requests" ADD COLUMN IF NOT EXISTS "due_at" timestamptz`,
+  `ALTER TABLE "refund_requests" ADD COLUMN IF NOT EXISTS "attempts" integer NOT NULL DEFAULT 0`,
+  `ALTER TABLE "refund_requests" ADD COLUMN IF NOT EXISTS "last_error" text`,
+  `ALTER TABLE "refund_requests" ADD COLUMN IF NOT EXISTS "denied_reason" text`,
+  `CREATE INDEX IF NOT EXISTS "refund_requests_due_at_idx" ON "refund_requests" ("due_at")`,
   // 0311 — Settlement & Documents Rail (P1-3 core): money_events (the common payment-event ledger shape for non-note money; a record of money that moved elsewhere — the rail custodies nothing) + recording_statuses (the recording-status workflow for recordable instruments: lien releases, deeds, partial releases).
   // Mirrors migrations/0311_settlement_rail.sql. (0309 is claimed by two in-flight branches, #543/#550; the second to land renumbers into 0310, so the rail takes 0311.)
   `CREATE TABLE IF NOT EXISTS "money_events" (
