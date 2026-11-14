@@ -39,10 +39,9 @@ import { Errors } from "./utils/errors";
 import { auditFromRequest, AuditActions } from "./utils/auditLog";
 import { logger } from "./utils/logger";
 import { clock } from "./utils/clock";
+import { DSAR_CLOCK_HOURS } from "@shared/privacy/dsarClock";
 
 const router = Router();
-
-const SLA_HOURS = 24;
 
 function getRequesterEmail(req: AuthenticatedRequest): string | null {
   const email = req.user?.email;
@@ -57,7 +56,7 @@ async function enqueueDsar(
   const email = getRequesterEmail(req);
   if (!email) return null;
 
-  const slaDeadline = new Date(clock.nowMs() + SLA_HOURS * 60 * 60 * 1000);
+  const slaDeadline = new Date(clock.nowMs() + DSAR_CLOCK_HOURS * 60 * 60 * 1000);
   const [row] = await db
     .insert(dsarRequestsLifecycle)
     .values({

@@ -18,6 +18,7 @@ import { agentEvents, decisionsInboxItems } from "@shared/schema";
 import { is, sql, getTableName, getTableColumns } from "drizzle-orm";
 import { PgTable, getTableConfig } from "drizzle-orm/pg-core";
 import { logger } from "../utils/logger";
+
 export interface SchemaFinding {
   kind: "missing_table" | "missing_column" | "orphan_column";
   table: string;
@@ -138,7 +139,27 @@ export async function runSchemaDriftJob(): Promise<{ findings: SchemaFinding[] }
       },
     });
 
-    await db.insert(decisionsInboxItems).values({
+    // Generator throttle (STEP0-DESIGN): same missing-set + orphan bucket does
+    // not re-raise a card every run, whatever happened to the last card.
+    // Lazy import, like ./founder above (D-5d): this module is loaded by the
+    // production-CommonJS service-graph harness
+    // (productionServiceInitialization), whose require resolves only a small
+    // set of sibling services — a static import of the throttle (which pulls
+    // in the wider service graph) fails there with "Cannot find module".
+    const { raiseIfAllowed, canonicalJson, canonicalSetJson } = await import("./decisionsInboxThrottle");
+    await raiseIfAllowed(
+      {
+        producer: "schema_drift",
+        subjectKey: "schema_drift",
+        conditionKey: canonicalJson({
+          missing: canonicalSetJson(
+            missing.map((f) => `${f.kind}:${f.table}${f.column ? `.${f.column}` : ""}`),
+          ),
+          orphanBucket: Math.floor(orphans.length / 20),
+        }),
+        class: missing.length > 0 ? "critical" : "standard",
+      },
+      () => db.insert(decisionsInboxItems).values({
       itemType: "schema_drift",
       riskLevel: missing.length > 0 ? "high" : "medium",
       urgencyScore: missing.length > 0 ? 85 : 50,
@@ -160,7 +181,8 @@ export async function runSchemaDriftJob(): Promise<{ findings: SchemaFinding[] }
       organizationId: orgId,
       status: "pending",
       ownerAgentCodename: "schema_drift_detector",
-    });
+    }),
+    );
   } catch (err) {
     logger.error("[schema-drift] failed to write inbox item", err);
   }
