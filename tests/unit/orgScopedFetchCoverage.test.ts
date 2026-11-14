@@ -366,8 +366,27 @@ const RULE_3_CHAIN_FLOOR = 300;
  * dunning console's three identical by-id reads (retryPayment / cancelCase /
  * resolveCase) became one, dunningService.getCaseForConsole, and the approval
  * card reads through it: same statements, same reason sentence, 16 sites.
+ *
+ * 16 → 17 on 2026-11-12 (PR #550, refund automation S2), ONE new exemption,
+ * justified per-use as this gate's own failure text prescribes.
+ * refundQueue.loadRow — the founder refund queue's single shared by-id read
+ * of refund_requests, through which approve / deny / resolve-uncertain all
+ * load the row they act on. The queue is platform-wide by design: a founder
+ * acts on any organization's request, the founder routes carry only the
+ * request id, and the row's organization is learned FROM the row, so there
+ * is no organization to scope by at load time — the exact case the hatch
+ * exists for (the dunning console's getCaseForConsole is the same shape,
+ * counted the same way; the PR's three actions were built on ONE shared
+ * load rather than three reads). Every later write re-predicates on the
+ * row's organizationId. No other statement the PR adds is counted: its
+ * deny / resolve / stamp updates name eq(refundRequests.organizationId, …)
+ * in the predicate (org context present — skipped before the hatch is
+ * consulted), and its remaining hatch reads predicate on status and time
+ * windows, not id (queue list, SLA sweep, B7 velocity count, page dedupe).
+ * Measured with the real lint: main 16, with the PR 17 — the delta is this
+ * one site.
  */
-const HATCH_EXEMPTION_CEILING = 16;
+const HATCH_EXEMPTION_CEILING = 17;
 
 /**
  * BOTH of Drizzle's query spellings reach rule 3.
