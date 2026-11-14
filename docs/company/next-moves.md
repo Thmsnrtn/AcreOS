@@ -3,6 +3,12 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-11-09 — Subdivision V1, Leg 4: decision desk (decision-loop closure) — on `claude/subdiv-leg4-api`, stacked on PR #462's branch, PR open, unmerged
+
+- **What shipped.** The §6.1 desk: `POST /api/subdivision/decide` records pursue/pass through the decision kit (engine `subdivision_feasibility`, pack `subdivider`, the operator's review date), freezing the latest screen run as derived evidence; `GET /api/subdivision/parcels/:id/desk` is the read model — latest screen run, decisions, pricing locks labelled `ungraded_pricing_act` (§6.2 reconciled in the surface's own words; the lock route is untouched), and the §5.5 entitlement critical path (`shared/subdivision/criticalPath.ts`) measuring elapsed time against the decision run's own stated p50/p90 (ruling 3 — no county figure). The panel mounts on the subdivision tab after the screen section. §6.3 closes by construction: `/api/decisions/due` has no pack filter, and the outcome-loop suite pins a subdivider decision surfacing there.
+- **Measured.** 87 new tests pass locally (critical path 27, decide route 21, outcome loop 6, desk panel 20, desk read route 13); fence suites pass unmodified; ratchets all pass, table-count measured 750 = baseline (no new table, §9.1 held); reachability and date-format lints pass at baseline. `check:app`/`check:tests` and the bundle figure are CI's on this head (both abort under this VM's memory contention; the stack's tree predates the bundle-headroom merge, so Build is expected to read over until the branch is brought current at merge).
+- **Next.** Muse audits; lands after #462 in the cascade (bring-current → CI re-settle → merge → §10 steps 5–7 staging proof). The `vertical.subdivider` notGradeable caveat is NOT removed here — §9.6, Tom's call on the proof.
+
 ## 2026-11-10 — Gap slice 7: push revival — on `claude/gap7-push-revival`
 
 - Added `web-push` (`^3.6.7`, lockfile synced) + VAPID vars in `.env.example`; fixed the client subscribe body (was `{subscription}`, route wants `{endpoint,keys}` → 422); mounted the existing hook as a "Push on this device" switch in `notification-preferences.tsx`; `/sw.js` handles `push` + `notificationclick`.
