@@ -5,13 +5,13 @@ Status: prep only. No posting until Solene authorizes Phase 0 activation and Bea
 
 ## 1. Org Page Bio (≤2,000 chars)
 
-> AcreOS is the operating system for property investors — deepest in land. Land Investors, Note Investors, and land+note hybrid operators are core; Wholesalers, Fix-and-Flippers, Buy-and-Hold Landlords, Tax-Lien/Deed Buyers, Subdividers, and Creative-Finance Investors are in beta; short-term rentals, commercial, development, multifamily, mobile-home parks, and agent-investors are on the roadmap.
+> AcreOS is the operating system for property investors — deepest in land. Land Investors, Note Investors, and land+note hybrid operators are core; Wholesalers, Fix-and-Flippers, Tax-Lien/Deed Buyers, Subdividers, and Creative-Finance Investors are in beta; short-term rentals, commercial, development, multifamily, mobile-home parks, and agent-investors are on the roadmap.
 >
 > The platform consolidates the workflow an investor used to run across six tabs and four subscriptions: pull lists from county parcel records, run real comparable-sales analysis (not Zestimates), send direct mail, draft seller replies, close deals, and service the note after.
 >
 > The AI assistant — Pax — runs overnight. Pax pulls comps, scores leads against the saved buy-box, drafts replies a seller will actually read, books follow-ups, and tracks every parcel from cold lead through closed note in one thread. Every action Pax takes is shown with the data it used. No black boxes.
 >
-> Pricing is on the page. Pro is $41/mo billed annually — full Pax assistant, unlimited counties, bring-your-own-key for the parcel and skip-trace data costs every operator already pays. No "contact us" wall.
+> Pricing is on the page. Pro is $82.50/mo billed annually ($990/yr) — full Pax assistant, unlimited counties, bring-your-own-key for the parcel and skip-trace data costs every operator already pays. No "contact us" wall.
 >
 > Public landing: acreos.io
 > Status page: status.acreos.io
@@ -24,7 +24,7 @@ Status: prep only. No posting until Solene authorizes Phase 0 activation and Bea
 - Honest tier language matches landing `Positioning.tsx`.
 - Pax is the only AI named. No Sophie/Forge/Atlas leak.
 - Zero references to Land Geek, GeekPay, LG Pass, Mark Podolsky.
-- Pricing claim ($41/mo annual) matches `landing/copy.ts:133` and `Pricing.tsx`.
+- Pricing claim (Pro $82.50/mo billed annually, $990/yr) matches `landing/copy.ts:133` and `Pricing.tsx`.
 
 ---
 
@@ -40,7 +40,7 @@ These are the only three posts written in full at this stage. The other 8 hooks 
 >
 > AcreOS replaces all six. One thread per parcel, from cold lead through closed note.
 >
-> The platform serves property investors — deepest in land. Land Investors, Note Investors, and hybrid operators are core. Wholesalers, Fix-and-Flippers, Buy-and-Hold Landlords, Tax-Lien/Deed Buyers, Subdividers, and Creative-Finance Investors are in beta. The rest of the roadmap is on the landing page.
+> The platform serves property investors — deepest in land. Land Investors, Note Investors, and hybrid operators are core. Wholesalers, Fix-and-Flippers, Tax-Lien/Deed Buyers, Subdividers, and Creative-Finance Investors are in beta. The rest of the roadmap is on the landing page.
 >
 > acreos.io
 
@@ -63,7 +63,7 @@ These are the only three posts written in full at this stage. The other 8 hooks 
 > The landing page tiers every investor type the platform serves:
 >
 > Core (full workflow, complete vocabulary): Land Investors, Note Investors, land+note hybrids.
-> Beta (real workflows, outer shell still maturing): Wholesalers, Fix-and-Flippers, Buy-and-Hold Landlords, Tax-Lien/Deed Buyers, Subdividers, Creative-Finance Investors.
+> Beta (real workflows, outer shell still maturing): Wholesalers, Fix-and-Flippers, Tax-Lien/Deed Buyers, Subdividers, Creative-Finance Investors.
 > Roadmap (declared, not pitched): short-term rentals, commercial, development, multifamily, mobile-home parks, agent-investors.
 >
 > A first-time visitor sees what's live, what's maturing, and what's coming — before signing up. Honesty scales better than feature inflation.
@@ -143,7 +143,7 @@ The three seed posts above were the scaffold. The three bodies below are publish
 >
 > AcreOS consolidates those six into one thread per parcel, from cold lead through closed note.
 >
-> The platform serves property investors — deepest in land. Land Investors, Note Investors, and hybrid operators are core. Wholesalers, Fix-and-Flippers, Buy-and-Hold Landlords, Tax-Lien/Deed Buyers, Subdividers, and Creative-Finance Investors are in beta.
+> The platform serves property investors — deepest in land. Land Investors, Note Investors, and hybrid operators are core. Wholesalers, Fix-and-Flippers, Tax-Lien/Deed Buyers, Subdividers, and Creative-Finance Investors are in beta.
 >
 > The maturity tier is on the landing page — visible before anyone signs up. Honesty scales better than feature inflation.
 >
@@ -193,7 +193,7 @@ The three seed posts above were the scaffold. The three bodies below are publish
 >
 > Core (full workflow, complete vocabulary): Land Investors, Note Investors, land+note hybrids.
 >
-> Beta (real workflows, outer shell still maturing): Wholesalers, Fix-and-Flippers, Buy-and-Hold Landlords, Tax-Lien/Deed Buyers, Subdividers, Creative-Finance Investors.
+> Beta (real workflows, outer shell still maturing): Wholesalers, Fix-and-Flippers, Tax-Lien/Deed Buyers, Subdividers, Creative-Finance Investors.
 >
 > Roadmap (declared, not pitched): short-term rentals, commercial, development, multifamily, mobile-home parks, agent-investors.
 >

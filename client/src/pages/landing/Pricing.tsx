@@ -7,7 +7,7 @@
  * source the /pricing page renders — so this landing surface can never
  * drift from the pricing page, MRR math, or Stripe checkout amounts.
  * Earlier prototype copy used $199 / $499 / $1290 as illustrative
- * marketing; that drifted from the canonical $20 / $49 / $79 and is the
+ * marketing; that drifted from the canonical $49 / $99 / $199 and is the
  * reason MRR math was fiction across the founder dashboard. A later
  * drift episode (T3 Census W4-5) had this card still advertising
  * "10 leads" on Free and "Unlimited seats" on Pro after the limits
@@ -118,7 +118,7 @@ export function Pricing() {
       </div>
 
       <div className="lp-pricing-foot">
-        Every paid plan includes 14 days free, a 30-day money-back guarantee, no setup fees, and migration help from a real human.
+        Every self-serve paid plan (Starter and Pro) includes 14 days free, a 30-day money-back guarantee, no setup fees, and migration help from a real human.
       </div>
     </section>
   );

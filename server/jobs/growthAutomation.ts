@@ -209,8 +209,6 @@ async function runUpsellEngine(): Promise<{ sent: number }> {
             <ul style="color:#374151;font-size:14px;line-height:1.8;margin:0;padding-left:20px;">
               <li>${limits.nextTier === "pro" ? "500 leads (10× more)" : "Unlimited leads & deals"}</li>
               <li>Advanced AI deal analysis</li>
-              <li>Priority support from Sophie</li>
-              ${limits.nextTier === "scale" ? "<li>White-label capabilities + API access</li>" : ""}
             </ul>
           </div>
           <div style="text-align:center;margin:24px 0;">
@@ -293,7 +291,7 @@ async function runWinBackEngine(): Promise<{ sent: number }> {
           <p>We noticed your AcreOS account isn't active anymore — and we wanted to reach out personally.</p>
           <p>We've shipped several features recently that might change things for you:</p>
           <ul style="line-height:1.8;color:#374151;">
-            <li><strong>Atlas AI</strong> — finds deals while you sleep, every night at 1 AM</li>
+            <li><strong>Morning briefings</strong> — your pipeline, summarised for your morning review</li>
             <li><strong>5-touch follow-up automation</strong> — never let a lead go cold again</li>
             <li><strong>Seller-financed note tracking</strong> — complete note servicing dashboard</li>
           </ul>
@@ -576,7 +574,7 @@ async function runChurnRiskInterventions(): Promise<{ reengaged: number; alerted
             <p>We noticed your activity on AcreOS has slowed down recently. We want to make sure you're getting the most out of the platform.</p>
             <p>Here are a few things you might not have tried yet:</p>
             <ul style="line-height:1.8;color:#374151;">
-              <li><strong>Atlas AI</strong> — automatically finds deals overnight</li>
+              <li><strong>Pax</strong> — drafts your replies and follow-ups for your approval</li>
               <li><strong>Automated follow-ups</strong> — never let a lead go cold</li>
             </ul>
             <div style="text-align:center;margin:24px 0;">
@@ -635,23 +633,17 @@ async function runChurnRiskInterventions(): Promise<{ reengaged: number; alerted
         await emailService.sendEmail({
           to: contact.email,
           organizationId: orgId,
-          subject: `${contact.name}, we'd like to offer you something special`,
+          subject: `${contact.name}, we'd like to hear how AcreOS is working for you`,
           html: `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#1a1a1a;">
             <h2 style="color:#1e3a5f;">We value you as a customer</h2>
             <p>Hi ${contact.name},</p>
             <p>We noticed you haven't been using AcreOS as much lately, and we want to make sure we're the right fit for your business.</p>
-            <p>We'd like to offer you a special deal:</p>
-            <div style="background:#f0fdf4;border:2px solid #16a34a;border-radius:12px;padding:20px;margin:20px 0;text-align:center;">
-              <h3 style="color:#16a34a;margin:0 0 8px;">50% off your next 2 months</h3>
-              <p style="color:#374151;margin:0;font-size:14px;">Plus a free 1-on-1 onboarding call to help you get the most out of AcreOS</p>
-            </div>
             <p>If there's something that's not working for you, we genuinely want to know. Reply to this email and we'll work with you personally.</p>
             <div style="text-align:center;margin:24px 0;">
-              <a href="${CONFIG.APP_URL}/settings/billing" style="background:#16a34a;color:white;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;">Claim your offer</a>
+              <a href="${CONFIG.APP_URL}/dashboard" style="background:#1e3a5f;color:white;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;">Log back in</a>
             </div>
-            <p style="margin-top:24px;color:#6b7280;font-size:13px;">This offer expires in 7 days.</p>
           </div>`,
-          text: `Hi ${contact.name}, we'd like to offer you 50% off your next 2 months of AcreOS plus a free onboarding call. Reply to claim or visit: ${CONFIG.APP_URL}/settings/billing`,
+          text: `Hi ${contact.name}, we noticed you haven't been using AcreOS as much lately. If something isn't working for you, reply to this email and tell us. ${CONFIG.APP_URL}/dashboard`,
         });
         await logGrowthEmail(orgId, "growth_churn_save_offer", `Save offer sent (risk score: ${risk}, health: ${health.healthScore})`);
         saveOffers++;

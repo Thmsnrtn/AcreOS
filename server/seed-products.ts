@@ -12,7 +12,7 @@ const SEAT_ADDON_PRODUCTS = [
       type: 'seat_addon',
       tier: 'pro',
     },
-    monthlyPrice: TIER_PRICES_CENTS.starter.priceMonthlyCents, // $20/seat/month
+    monthlyPrice: TIER_PRICES_CENTS.starter.priceMonthlyCents, // $49/mo (Starter, per-organization — not per-seat)
     yearlyPrice: TIER_PRICES_CENTS.starter.priceYearlyCents,   // $200/seat/year
   },
 ];

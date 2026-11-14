@@ -47,7 +47,7 @@ export async function detectStage(): Promise<StageInfo> {
       .where(sql`${organizations.subscriptionStatus} = 'active' AND ${organizations.subscriptionTier} != 'free'`);
     const payingUsers = payingResult?.count || 0;
 
-    // Estimate MRR from paying users (starter=$20, pro=$49)
+    // Estimate MRR from paying users (starter=$49, pro=$99)
     const [starterCount] = await db.select({ count: count() }).from(organizations)
       .where(sql`${organizations.subscriptionTier} = 'starter' AND ${organizations.subscriptionStatus} = 'active'`);
     const [proCount] = await db.select({ count: count() }).from(organizations)

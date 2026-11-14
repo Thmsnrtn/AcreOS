@@ -33,7 +33,7 @@ const ITEMS = [
   },
   {
     q: "Can the AI assistant be turned off?",
-    a: "Yes. Pause everything with one tap, or set Pax to ask before it changes anything. Pax never sends a message to anyone until you tap Approve.",
+    a: "Yes. Pause everything with one tap, or set Pax to ask before it changes anything. Pax's own drafts never send until you tap Approve — and anything you automate (drips, campaigns) sends only on the schedule you switched on.",
   },
   {
     q: "Does this replace an existing CRM?",
@@ -74,15 +74,15 @@ const ITEMS = [
   },
   {
     q: "What happens on cancel?",
-    // "AcreOS retains nothing after cancellation" was false and contradicted
-    // this company's own binding privacy policy, which states 90 days for
-    // account and lead data and seven years for financial records
-    // (client/src/pages/privacy.tsx retention table). The deletion routine
+    // "AcreOS retains nothing after cancellation" was false. Conformed
+    // 2026-11 (claims register CR-037 / E-37) to the conformed Privacy
+    // Policy: deletion within 30 days of a verified request, subject to
+    // legally-required retention and legal holds. The deletion routine
     // agrees: server/services/orgDeletion.ts retains audit_events under GDPR
     // Art. 17(3)(b) and detaches rather than deletes the financial ledger.
     // A public promise the product cannot keep is the one kind of copy this
     // repo may never ship (2026-09-04 review).
-    a: "Export everything to CSV in one click — leads, properties, deals and notes, or a full backup. No data hostage-taking. After you cancel, your account and lead data are deleted within 90 days; financial records are kept for seven years because lending regulation requires it.",
+    a: "Export everything to CSV in one click — leads, properties, deals and notes, or a full backup. No data hostage-taking. After you cancel, we complete deletion of your account and lead data within 30 days of a verified request, except records the law requires us to keep or that sit under a legal hold — tax and loan records are kept on the retention schedule our Privacy Policy states.",
   },
 ];
 

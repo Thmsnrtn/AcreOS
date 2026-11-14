@@ -2,7 +2,7 @@
  * Seat-billing summary widget — Phase 5 §5 Part A (team readiness).
  *
  * Drop-in component that renders the billing math for the current org:
- *   "Operator @ $49/mo + 2 extra seats × $20 = $89/mo"
+ *   "Operator @ $99/mo + 2 extra seats × $20 = $139/mo"
  *
  * Admins can adjust seatCount inline; the API call hits
  * /api/team-readiness/seat-count which both updates the column and
