@@ -27,8 +27,13 @@
  * `mail.house.cost_cents.{key}`, resolved in server/services/mail/mailLane.ts).
  *
  * WHAT THE TABLE DOES NOT KNOW (so the house lane refuses it): any mail class
- * but USPS First Class (the class every send path uses, Lob's default), and any
- * extra service (certified, registered).
+ * but USPS First Class (the class every send path uses, Lob's default).
+ *
+ * EXTRA SERVICES (Settlement & Documents Rail, 2026-11-12): Certified and
+ * Registered Mail on a LETTER are priced as a SURCHARGE over the letter's own
+ * row (below) — Lob sells them as add-ons to a First-Class letter, never as
+ * standalone pieces, and never on postcards. Any other extra service, and
+ * either service on a postcard, is still refused: no recorded cost, no send.
  *
  * LETTERS (founder decisions 2026-10-18): a house letter's page count must be
  * CONFIRMED — AcreOS renders HTML to PDF (or reads a PDF) and counts it; a
@@ -129,6 +134,29 @@ export const HOUSE_MAIL_COST_TABLE: readonly HouseMailCostEntry[] = [
  */
 export const HOUSE_MAIL_EXTRA_PAGE_COST_CENTS: Readonly<Record<"bw" | "color", number>> = { bw: 11, color: 21 };
 
+/**
+ * Lob's published add-on prices for the two extra services the rail carries,
+ * in cents — the compiled defaults, founder-overridable via
+ * `mail.house.cost_cents.letter_certified` / `…letter_registered` (resolved
+ * in server/services/mail/mailLane.ts, the extra-page pattern). Source: Lob
+ * "Pricing details" extra-service list (Certified Mail $6.95, Registered
+ * Mail $24.50 per piece), read 2026-11-12. The self-funding floor applies to
+ * the surcharge exactly as to the base piece: the charge is computed on
+ * base + surcharge together.
+ */
+export const HOUSE_MAIL_EXTRA_SERVICE_COST_CENTS: Readonly<Record<"certified" | "registered", number>> = {
+  certified: 695,
+  registered: 2450,
+};
+
+export type HouseMailExtraService = keyof typeof HOUSE_MAIL_EXTRA_SERVICE_COST_CENTS;
+
+/** The extra service a spec asks for, or null when it asks for none. */
+export function houseMailExtraService(spec: HouseMailSpec): HouseMailExtraService | null {
+  const v = spec.extraService;
+  return v === "certified" || v === "registered" ? v : null;
+}
+
 const ENTRY_BY_KEY = new Map(HOUSE_MAIL_COST_TABLE.map((e) => [e.key, e] as const));
 
 export function houseMailCostEntry(key: HouseMailSpecKey): HouseMailCostEntry {
@@ -144,7 +172,10 @@ const FIRST_CLASS = "usps_first_class";
  */
 export function houseMailBaseKey(spec: HouseMailSpec): HouseMailSpecKey | null {
   if (spec.mailClass != null && spec.mailClass !== FIRST_CLASS) return null;
-  if (spec.extraService != null && spec.extraService !== "" && spec.extraService !== "none") return null;
+  if (spec.extraService != null && spec.extraService !== "" && spec.extraService !== "none") {
+    // Certified / Registered are priced (as a surcharge) on letters only.
+    if (houseMailExtraService(spec) === null || spec.kind !== "letter") return null;
+  }
   if (spec.kind === "postcard") {
     const key = `postcard_${spec.size}`;
     return ENTRY_BY_KEY.has(key as HouseMailSpecKey) ? (key as HouseMailSpecKey) : null;

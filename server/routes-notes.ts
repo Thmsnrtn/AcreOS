@@ -82,6 +82,7 @@ import {
 } from "./services/notePaymentMath";
 import { clock } from "./utils/clock";
 import { routeParam } from "./utils/routeParams";
+import { registerSettlementRailRoutes } from "./services/settlementRail/routes";
 
 // ─── Schemas ─────────────────────────────────────────────────────────────────
 
@@ -3531,6 +3532,13 @@ export function registerNoteRoutes(app: Express): void {
       }
     },
   );
+
+  // Settlement & Documents Rail (P1-3 core + Notes transplant): the payoff
+  // letter + lien release on /api/notes/:id/…, and the rail's shared
+  // recording-status + money-event routes. Mounted here, through the notes
+  // register function, because server/routes.ts + routeManifest.ts are owned
+  // by the Phase-0 landing lane — see services/settlementRail/routes.ts.
+  registerSettlementRailRoutes(app);
 }
 
 // ─── Aggregation helper used by form1099Batch.ts ─────────────────────────────

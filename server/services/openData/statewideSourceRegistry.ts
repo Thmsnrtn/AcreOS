@@ -43,6 +43,13 @@ import {
   type SourcePolicy,
 } from "@shared/openData/sourcePolicy";
 import { clock } from "../../utils/clock";
+import {
+  PARCEL_FIELD_GROUPS,
+  PARCEL_FIELD_GROUP_LABELS,
+  type FieldClearanceAnswer,
+  type LookupUseClass,
+  type ParcelFieldGroup,
+} from "@shared/openData/fieldClearance";
 
 export type DocumentedCadence =
   | { kind: "monthly" }
@@ -86,6 +93,16 @@ export type LookupClearance =
       evidenceUrl: string;
       /** ISO date of the determination. */
       decidedOn: string;
+      /**
+       * Field-level serving (I-6): the field groups this clearance lets the
+       * lookup serve. Absent = every group the source publishes (the
+       * determination cleared the source as published). A reviewed clearance
+       * whose determination trims fields (owner names excluded, geometry
+       * only) names the servable groups here, and parcel.ts strips the rest
+       * post-fetch, pre-response. Widening this list is the same reviewed
+       * code change as the clearance itself.
+       */
+      servableFields?: readonly ParcelFieldGroup[];
     };
 
 const REG_84 = "LQ-12/14 register §8.4 (2026-11-03)";
@@ -155,6 +172,53 @@ export function isClearedForLookup(entry: StatewideSourceEntry | undefined): boo
   const c = entry?.lookup;
   if (!c || c.status !== "cleared") return false;
   return [c.determination, c.evidence, c.evidenceUrl, c.decidedOn].every((f) => typeof f === "string" && f.trim().length > 0);
+}
+
+/**
+ * The gate's FIELD-LEVEL answer for a statewide source (I-6): the same
+ * clearance, expressed per field group. A source that is not cleared for
+ * lookup serves NO field group — the refused-whole posture is unchanged,
+ * and today every statewide entry is gated, so today this answers empty for
+ * every state. A cleared source serves exactly its clearance's
+ * `servableFields` (every group when the clearance names none), and each
+ * withheld group carries its reason. parcel.ts consumes this answer: the
+ * boolean gate is now "does the answer serve geometry + identifiers", and
+ * the mask is applied to whatever a cleared source returns.
+ */
+export function statewideFieldAnswer(
+  entry: StatewideSourceEntry | undefined,
+  surface: LookupUseClass,
+): FieldClearanceAnswer {
+  if (!isClearedForLookup(entry) || !entry || entry.lookup.status !== "cleared") {
+    const why = entry
+      ? `The statewide source for ${entry.state} is not cleared for lookup, so it serves no field group on any surface.`
+      : "No register entry exists for this state, and a source the register does not clear serves nothing.";
+    return {
+      surface,
+      servableFields: [],
+      withheldFields: PARCEL_FIELD_GROUPS.map((field) => ({ field, why })),
+      basis: null,
+    };
+  }
+  const clearance = entry.lookup;
+  const servable = new Set<ParcelFieldGroup>(clearance.servableFields ?? PARCEL_FIELD_GROUPS);
+  return {
+    surface,
+    servableFields: PARCEL_FIELD_GROUPS.filter((f) => servable.has(f)),
+    withheldFields: PARCEL_FIELD_GROUPS.filter((f) => !servable.has(f)).map((field) => ({
+      field,
+      why: `The lookup clearance for ${entry.state} does not clear the ${PARCEL_FIELD_GROUP_LABELS[field].toLowerCase()} group for serving.`,
+    })),
+    basis: {
+      state: entry.state,
+      county: "*",
+      objectScope: `Statewide source for ${entry.state} (live point-lookup clearance)`,
+      evidence: clearance.evidence,
+      evidenceSource: clearance.evidenceUrl,
+      recordedOn: clearance.decidedOn,
+      conditions: [],
+    },
+  };
 }
 
 const D1_SPEC = "D1 data-sourcing package 2026-10-22 (design §5)";

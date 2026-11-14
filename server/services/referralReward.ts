@@ -35,7 +35,7 @@ import { referrals } from "@shared/models/auth";
 import { organizations, teamMembers } from "@shared/schema";
 import { logger } from "../utils/logger";
 
-/** Cents credited to EACH side (the "a month each" denomination, Pro ≈ $49). */
+/** Cents credited to EACH side (the "give a month, get a month" denomination — $49 is one Starter month at current pricing; the credit is a flat $49 on every tier, NOT one month of the referrer's own plan). */
 export const REFERRAL_REWARD_CENTS = 4_900;
 /** Extra referrer cents when the referee pays annually ($98 total). */
 export const REFERRAL_ANNUAL_BONUS_CENTS = 4_900;
