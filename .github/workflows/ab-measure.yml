@@ -1,0 +1,46 @@
+name: AB Measure (scratch - do not merge)
+
+# Scratch measurement workflow for the PR #565 check:tests A/B (2026-11-14).
+# Runs the raw full-program tests typecheck on the checked-out tree and
+# prints the diagnostic count, the Files: line, and every diagnostic line
+# into the job log. Lives only on scratch/ab565-* branches; never merged.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  measure:
+    name: Full-program tests tsc A/B measure
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Full-program tests typecheck (raw tsc)
+        run: |
+          set +e
+          NODE_OPTIONS=--max-old-space-size=5120 ./node_modules/.bin/tsc --noEmit --incremental false -p tsconfig.tests.json --extendedDiagnostics > ab-tsc-full.log 2>&1
+          echo "TSC_EXIT=$?"
+          echo "AB_ERROR_COUNT=$(grep -cE 'error TS[0-9]+' ab-tsc-full.log)"
+          grep -E '^[[:space:]]*Files:' ab-tsc-full.log || echo "AB_NO_FILES_LINE"
+          grep -m1 'Cannot find type definition file' ab-tsc-full.log || echo "AB_NO_MISSING_TYPEDEF"
+          echo "AB_MEASURED_SHA=$(git rev-parse HEAD)"
+          echo "----- ALL DIAGNOSTICS (sorted) -----"
+          grep -E 'error TS[0-9]+' ab-tsc-full.log | sort
+          echo "----- END DIAGNOSTICS -----"
+
+      - name: Upload full tsc log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ab-tsc-full-log-${{ github.sha }}
+          path: ab-tsc-full.log
