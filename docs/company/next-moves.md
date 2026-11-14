@@ -10,8 +10,20 @@ what shipped, what it measured, and the top next moves. Newest first.
   - the acceptance moved to a new step 4b; 6b says five surfaces, matching 6a; step 9 expects `200`;
   - step 10 records the bundle figure for the exact SHA walked plus a served-string check;
   - new step 7b walks the §6.2 seller follow-up drafts.
-- **Leg 4 §6.2 debt is closed by code, not a deferral.** The seller follow-up drafts were built in #533 (2026-11-09) and folded into #477: drafts are `generated_documents` rows, there is no send path, and `POST /api/signatures` refuses them. Leg 4 is complete when #477 lands.
-- **Next.** The staging walk runs after #477 merges and staging deploys (Muse confirms). Bring the rehearsal test `tests/unit/wholesaleJourney.realdb.test.ts` from #478 onto main once #475 and #477 have landed. The beta-demotion lift is its own PR, opened only on the walk's PASS (§12.3).
+- **Leg 4 §6.2 debt is closed by code, not a deferral.** The seller follow-up drafts were built in #533 (2026-11-09) and folded into #477, which merged 2026-11-14 (`7d0b2e1`): drafts are `generated_documents` rows, there is no send path, and `POST /api/signatures` refuses them. Leg 4 is complete on main.
+- **Next.** #475 (Leg 3) is the last leg still open. The staging walk runs once it has landed and staging deploys (Muse confirms). The rehearsal test `tests/unit/wholesaleJourney.realdb.test.ts` comes from #478 onto main at the same point, since it exercises Leg 3's compliance gate. The beta-demotion lift is its own PR, opened only on the walk's PASS (§12.3).
+
+## 2026-11-09 — Wholesale §6.2: seller follow-up drafts — on `claude/wholesale-62-drafts-api` (off `claude/wholesale-leg4-disposition` `60fed37e`, PR open, unmerged)
+
+- **Built.** The §6.2 completeness debt on Leg 4: seller-side follow-up DRAFTS on the deal record. `server/services/wholesale/sellerFollowUps.ts` composes the operator's own `offer_templates` row (type `follow_up`) char-for-char with only {{owner_name}} / {{address}} / {{offer_amount}} / {{company_name}} filled from the record — {{offer_amount}} is `deals.offerAmount` only and refuses when absent; {{expiration_date}} and unknown tokens refuse by name; an opted-out or unlinked seller refuses. Drafts persist as `generated_documents` rows (type `seller_follow_up_draft`, status `draft`, review-sealed); a correction is a new draft citing `variables.supersedes`; the list flags drafts stale when a cited fact moves. Routes: preview / create / list under `/api/wholesale/deals/:dealId/seller-follow-ups`. Client: `SellerFollowUpsPanel` in the deal Documents tab after AssignmentPanel — Copy is the only way text leaves it.
+- **Guards in the same PR (refuse-only).** `server/routes-doc-system.ts`: PUT refuses content/name/signers changes on this type, and request-signature + send-for-signature refuse it 422 — without them a draft would be editable after create and enrollable on the signing rail.
+- **Proved.** Bundle measured on the final tree: 9,822 / 9,823 KB (PASS, 1 KB spare); ratchets + reachability all at baseline (table-count 748, no new tables); the no-sends harness's control test passes DB-free (two-layer net: class prototypes incl. `performSend` + module exports, with vacuity assertions — closes the pre-bound `sendEmail` alias blind spot in the Notes V2 harness). Client: 10 lints clean, scoped tsc clean, 56 existing client tests pass, panel smoke test 3/3 (throwaway, deleted).
+- **Gates that only CI can verify.** The 23 realdb tests in `tests/unit/sellerFollowUps.realdb.test.ts` were SKIPPED locally (no test DB on the VM) — CI's schema-building jobs are their first real run; full `check:app`/`check:tests` typechecks likewise. Disclosed for the auditor: the draft's review seal hashes subject + body, so `verifyChainReviewSeal(variables, row.content)` would report broken — its only caller is request-signature, which refuses this type first.
+- **Next.**
+  1. Muse audits; the PR stacks on #477 and lands after it.
+  2. On merge, the wholesale Leg 5 staging walk (§11) remains the vertical's owed proof.
+
+## 2026-11-05 — Notes V2 Leg 2: workout NPV comparison — on `claude/notes-v2-leg2-workout-npv` (off main `4b2044b`, PR open, unmerged)
 
 ## 2026-11-10 — Gap slice 7: push revival — on `claude/gap7-push-revival`
 
