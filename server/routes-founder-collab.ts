@@ -29,7 +29,7 @@ import { getUserId } from "./types/request";
 import type { Express, Response } from "express";
 import { isAuthenticated, requireFounder } from "./auth";
 import type { AuthenticatedRequest } from "./types/request";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 import { logger } from "./utils/logger";
 import {
   answerFounderAsk,
@@ -146,6 +146,98 @@ export function registerFounderCollabRoutes(app: Express): void {
         const ok = await resolveUncertainRefund(organizationId, id, getUserId(req), note);
         if (!ok) return Errors.notFound(res, "Uncertain refund");
         return res.json({ ok: true });
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  // ────────────────────────────────────────────────────────────────────────
+  // Refund-request queue (refund automation, design 2026-11 §3.3) — every
+  // request automation did not process, with its brake, verdicts and SLA.
+  // Same shape as the uncertain-refunds pair above; the logic lives in
+  // services/refunds/refundQueue.ts. Under /api/founder these inherit
+  // isAuthenticated + requireClerkMFA (routes.ts) on top of requireFounder.
+  // ────────────────────────────────────────────────────────────────────────
+  app.get(
+    "/api/founder/refund-requests",
+    isAuthenticated,
+    requireFounder,
+    async (_req: AuthenticatedRequest, res: Response) => {
+      try {
+        const { listFounderRefundQueue } = await import("./services/refunds/refundQueue");
+        const requests = await listFounderRefundQueue();
+        return res.json({ requests, count: requests.length });
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  app.post(
+    "/api/founder/refund-requests/:id/approve",
+    isAuthenticated,
+    requireFounder,
+    async (req: AuthenticatedRequest, res: Response) => {
+      const id = Number(routeParam(req.params.id));
+      if (!Number.isInteger(id) || id <= 0) return Errors.badRequest(res, "Invalid refund request id");
+      try {
+        const { approveRefundRequest } = await import("./services/refunds/refundQueue");
+        const { actorFromRequest } = await import("./utils/auditLog");
+        const outcome = await approveRefundRequest(id, getUserId(req), actorFromRequest(req));
+        if (!outcome.found) return Errors.notFound(res, "Refund request");
+        const r = outcome.result;
+        if (r.outcome === "processed") return res.json({ ok: true, status: "processed", stripeRefundId: r.stripeRefundId, amountCents: r.amountCents, bundleErrors: r.bundleErrors, credits: r.credits });
+        if (r.outcome === "not_claimable") return sendError(res, 409, "Conflict", `Refund request is ${r.status}; only a pending request can be approved`);
+        if (r.outcome === "queued") return sendError(res, 409, "Conflict", `Still held (${r.brake}): ${r.reason}`);
+        if (r.outcome === "retry_queued") return Errors.badGateway(res, `Failed before the refund call (nothing moved): ${r.error}`);
+        return sendError(res, 409, "Uncertain", r.reason); // the refund may or may not have gone out; the request is held `uncertain` for the founder
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  app.post(
+    "/api/founder/refund-requests/:id/deny",
+    isAuthenticated,
+    requireFounder,
+    async (req: AuthenticatedRequest, res: Response) => {
+      const id = Number(routeParam(req.params.id));
+      if (!Number.isInteger(id) || id <= 0) return Errors.badRequest(res, "Invalid refund request id");
+      const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
+      if (!reason) return Errors.badRequest(res, "A reason is required — the customer is told it");
+      try {
+        const { denyRefundRequest } = await import("./services/refunds/refundQueue");
+        const outcome = await denyRefundRequest(id, getUserId(req), reason);
+        if (!outcome.found) return Errors.notFound(res, "Refund request");
+        if (!outcome.denied) return sendError(res, 409, "Conflict", `Refund request is ${outcome.status}; only a pending request can be denied`);
+        return res.json({ ok: true, status: "denied" });
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  app.post(
+    "/api/founder/refund-requests/:id/resolve-uncertain",
+    isAuthenticated,
+    requireFounder,
+    async (req: AuthenticatedRequest, res: Response) => {
+      const id = Number(routeParam(req.params.id));
+      if (!Number.isInteger(id) || id <= 0) return Errors.badRequest(res, "Invalid refund request id");
+      const outcomeFinding = req.body?.outcome;
+      if (outcomeFinding !== "refunded" && outcomeFinding !== "not_refunded") {
+        return Errors.badRequest(res, "outcome must be \"refunded\" or \"not_refunded\" — what Stripe actually shows");
+      }
+      const note = typeof req.body?.note === "string" && req.body.note.trim() ? req.body.note.trim() : "checked on Stripe";
+      const stripeRefundId = typeof req.body?.stripeRefundId === "string" && req.body.stripeRefundId.trim() ? req.body.stripeRefundId.trim() : undefined;
+      try {
+        const { resolveUncertainRefundRequest } = await import("./services/refunds/refundQueue");
+        const outcome = await resolveUncertainRefundRequest(id, getUserId(req), { outcome: outcomeFinding, note, stripeRefundId });
+        if (!outcome.found) return Errors.notFound(res, "Refund request");
+        if (!outcome.resolved) return sendError(res, 409, "Conflict", `Refund request is ${outcome.status}; only an uncertain request can be resolved`);
+        return res.json({ ok: true, status: outcome.status, followUpErrors: outcome.followUpErrors ?? [] });
       } catch (err) {
         return Errors.internal(res, err);
       }

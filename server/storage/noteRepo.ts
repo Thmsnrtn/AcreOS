@@ -18,6 +18,7 @@ import type { DatabaseStorage } from "../storage";
 import { LIST_READ_CAP, capListRead } from "./listCap";
 import { assertWritablePatch } from "../utils/patch";
 import { clock } from "../utils/clock";
+import { recordPostedPaymentApplication } from "../services/paymentApplication";
 import { nextServicedStatus } from "@shared/notes/servicedStatus";
 
 // Amortization helpers — co-located with notes since they're only used
@@ -411,6 +412,40 @@ export const noteRepo = {
     return withTransaction(async (tx) => {
       // Insert payment — unique transactionId constraint prevents double-inserts
       const [newPayment] = await tx.insert(payments).values(payment).returning();
+
+      // The Reg-Z application breakdown, in the SAME transaction (D4): the
+      // periodic-statement generator sums `payment_applications` only and
+      // refuses a statement whose posted payments have no breakdown there.
+      // Mirror the split recorded on this payment row itself — the columns
+      // are decimal-dollar strings; the residue (received but applied to
+      // nothing, e.g. a payoff overage the split capped at the balance) is
+      // derived from the row's own figures so the buckets sum to the amount.
+      // Only the statuses the generator's probe treats as posted money
+      // ('completed', 'processing') get a breakdown.
+      if (payment.status === "completed" || payment.status === "processing") {
+        const toCents = (v: string | number | null | undefined): number =>
+          Math.round(Number(v ?? 0) * 100);
+        const principalCents = toCents(payment.principalAmount);
+        const interestCents = toCents(payment.interestAmount);
+        const feesCents = toCents(payment.feeAmount) + toCents(payment.lateFeeAmount);
+        const residueCents = Math.max(
+          0,
+          toCents(payment.amount) - principalCents - interestCents - feesCents,
+        );
+        await recordPostedPaymentApplication(tx, {
+          organizationId: payment.organizationId,
+          loanId: String(payment.noteId),
+          loanType: "note",
+          paymentId: String(newPayment.id),
+          receivedAt: payment.paymentDate,
+          appliedAt: payment.paymentDate,
+          appliedToPrincipalCents: principalCents,
+          appliedToInterestCents: interestCents,
+          appliedToEscrowCents: 0,
+          appliedToFeesCents: feesCents,
+          appliedToSuspenseCents: residueCents,
+        });
+      }
 
       // Update note balance inside the same transaction with optimistic locking
       if (payment.status === "completed") {

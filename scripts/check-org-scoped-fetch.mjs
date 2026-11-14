@@ -580,7 +580,6 @@ const BASELINE_FUNCTION_OFFENDERS = new Set([
   "server/services/founderNarrative.ts::buildSummary",
   "server/services/founderTodo.ts::fetchDecisions",
   "server/services/founderTodo.ts::fetchExperimentPromotions",
-  "server/services/gdprService.ts::exportUserData",
   "server/services/ledgerDeadLetter.ts::runLedgerDeadLetterSweep",
   "server/services/marketNetworkContributor.ts::getStagingEntries",
   "server/services/mlSnapshots.ts::pairOutcome",
@@ -733,7 +732,6 @@ const BASELINE_FUNCTION_UNUSED_ORG = new Set([
   // on null). The lint fires on the SELECT projection, not on an input.
   // Adjudicated 2026-08-20, ledger 49.
   "server/services/founder-chat/assert-entity-org.ts::resolveEntityOrg",
-  "server/services/gdprService.ts::anonymizeUser",
   "server/services/leadQualification.ts::checkForHotLeads",
   "server/services/leadScoreDecay.ts::applyScoreRecovery",
   "server/services/mail/mailFlusher.ts::bookFreeSendAcquisitionCogs",
@@ -2024,8 +2022,14 @@ const RULE3_BASELINE = new Set([
   "server/services/financial-ledger.ts::postRevenue::financialLedger",
   "server/services/form1098Batch.ts::collectAcquiredCandidates::notePayments",
   "server/services/form1098Batch.ts::collectOriginatedCandidates::payments",
-  "server/services/gdprService.ts::anonymizeUser::leads",
+  // PKG-1 (2026-11-09) — verified-parent reads, same shape as the DSAR gate's
+  // resolveSubject entry below. anonymizeUser reads the subject's OWN
+  // teamMembers rows to derive the orgs whose legal holds must be checked
+  // before erasure; resolveUserSubject does the same to scope a user export.
+  // The verified users row is the parent — there is no organization input to
+  // filter by, and every query after this derivation IS org-filtered.
   "server/services/gdprService.ts::anonymizeUser::teamMembers",
+  "server/services/gdprService.ts::resolveUserSubject::teamMembers",
   "server/services/lateFees/index.ts::assessLateFee::lateFeeAssessments",
   "server/services/lateFees/index.ts::assessLateFee::paymentApplications",
   "server/services/lcsCalibrator.ts::runLcsCalibrationSweep::deals",
@@ -2043,6 +2047,19 @@ const RULE3_BASELINE = new Set([
   "server/services/portfolioOptimizer.ts::analyzeDiversification::properties",
   "server/services/portfolioSentinel.ts::checkCompetitorActivity::marketMetrics",
   "server/services/portfolioSentinel.ts::checkMarketChanges::marketMetrics",
+  // PKG-1 DSAR gate (2026-11-09) — founder-plane by design, NOT a tenant read.
+  // resolveSubject reads a USER subject's teamMembers to DERIVE the orgs the
+  // export/erasure may touch (there is no org input to filter by; the verified
+  // users row is the parent). listDsarSubjectCandidates searches users/leads
+  // across orgs by the DSAR record's exact requester email so the founder can
+  // pick the subject — reachable only behind requireFounder, and the gate's
+  // posture (shared/privacy/dsarIdentityPosture.ts,
+  // strict-operator-attested-exact-email-v1) requires the exact-email match
+  // and one-org-at-a-time action afterwards. Every subsequent read/write in
+  // the flow IS org-filtered.
+  "server/services/privacy/dsarActionGate.ts::resolveSubject::teamMembers",
+  "server/services/privacy/dsarActionGate.ts::listDsarSubjectCandidates::teamMembers",
+  "server/services/privacy/dsarActionGate.ts::listDsarSubjectCandidates::leads",
   "server/services/proactiveMonitor.ts::getActiveAlerts::systemAlerts",
   "server/services/propertyVisionReimaging.ts::findPropertiesDueForReimaging::properties",
   "server/services/propertyVisionReimaging.ts::reimageProperty::propertyVisionSnapshots",
