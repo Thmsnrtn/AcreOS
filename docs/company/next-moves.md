@@ -3,6 +3,16 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-11-14 — Wholesale Leg 5: staging-walk package — on `claude/wholesale-leg5-walk-package`
+
+- **Walk doc fixed** (`docs/evidence/2026-11-05/wholesale-journey-walk.md`, new on main; #478 still holds the old copy and is closed as superseded later):
+  - step 2 is the concrete buy-box script, and step 3 now checks triage on prospects; the old version put both properties under contract, which triage never reads;
+  - the acceptance moved to a new step 4b; 6b says five surfaces, matching 6a; step 9 expects `200`;
+  - step 10 records the bundle figure for the exact SHA walked plus a served-string check;
+  - new step 7b walks the §6.2 seller follow-up drafts.
+- **Leg 4 §6.2 debt is closed by code, not a deferral.** The seller follow-up drafts were built in #533 (2026-11-09) and folded into #477: drafts are `generated_documents` rows, there is no send path, and `POST /api/signatures` refuses them. Leg 4 is complete when #477 lands.
+- **Next.** The staging walk runs after #477 merges and staging deploys (Muse confirms). Bring the rehearsal test `tests/unit/wholesaleJourney.realdb.test.ts` from #478 onto main once #475 and #477 have landed. The beta-demotion lift is its own PR, opened only on the walk's PASS (§12.3).
+
 ## 2026-11-10 — Gap slice 7: push revival — on `claude/gap7-push-revival`
 
 - Added `web-push` (`^3.6.7`, lockfile synced) + VAPID vars in `.env.example`; fixed the client subscribe body (was `{subscription}`, route wants `{endpoint,keys}` → 422); mounted the existing hook as a "Push on this device" switch in `notification-preferences.tsx`; `/sw.js` handles `push` + `notificationclick`.
