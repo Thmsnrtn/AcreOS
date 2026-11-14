@@ -50,6 +50,7 @@ import { sendEmail } from "./services/emailService";
 import { clock } from "./utils/clock";
 import { routeParam } from "./utils/routeParams";
 import { refuseRedeemableDeedSpend } from "./services/tax/landExit";
+import { offerComplianceGate, sendComplianceRefusal } from "./services/wholesale/offerCompliance";
 
 const blastBodySchema = z.object({
   subject: z.string().min(1).max(240),
@@ -57,6 +58,9 @@ const blastBodySchema = z.object({
   minMatchScore: z.number().int().min(0).max(100).default(70),
   financingType: z.enum(["cash", "owner_finance", "conventional", "hard_money", "any"]).default("cash"),
   dryRun: z.boolean().default(false),
+  // A state-rule WARN for a property under an assignable contract needs the
+  // operator's recorded acknowledgement before a real send (Leg 3).
+  ackComplianceWarning: z.boolean().default(false),
 });
 
 export function registerBuyerBlastRoutes(app: Express): void {
@@ -76,11 +80,11 @@ export function registerBuyerBlastRoutes(app: Express): void {
 
         const parsed = blastBodySchema.safeParse(req.body);
         if (!parsed.success) return Errors.validationFailed(res, parsed.error.flatten());
-        const { subject, body, minMatchScore, financingType, dryRun } = parsed.data;
+        const { subject, body, minMatchScore, financingType, dryRun, ackComplianceWarning } = parsed.data;
 
         // Confirm the property belongs to this org.
         const [prop] = await db
-          .select({ id: properties.id, status: properties.status })
+          .select({ id: properties.id, status: properties.status, state: properties.state })
           .from(properties)
           .where(and(eq(properties.id, propertyId), eq(properties.organizationId, orgId)))
           .limit(1);
@@ -166,6 +170,20 @@ export function registerBuyerBlastRoutes(app: Express): void {
           (m) => (cadenceMap.get(m.buyerId) ?? 0) < MAX_BLASTS_PER_7_DAYS,
         );
 
+        // Assignment compliance (Leg 3): offering a property held only under an
+        // assignable contract is what a state's advertising restriction governs.
+        // A block refuses even the preview; a warn is shown on the preview and
+        // needs a recorded acknowledgement before a real send.
+        const compliance = await offerComplianceGate({
+          organizationId: orgId,
+          userId: req.user?.id ?? null,
+          property: { id: prop.id, status: prop.status, state: prop.state },
+          surface: "buyer_blast",
+          acknowledged: ackComplianceWarning,
+          previewOnly: dryRun,
+        });
+        if (!compliance.ok) return sendComplianceRefusal(res, compliance.status, compliance.body);
+
         if (dryRun) {
           // Preview: return who would be reached without creating the
           // blast or sending. UI uses this to confirm before proceeding.
@@ -173,6 +191,7 @@ export function registerBuyerBlastRoutes(app: Express): void {
           // so the operator sees the cadence-guardrail effect before send.
           return res.json({
             dryRun: true,
+            compliance: compliance.applies ? compliance.warning : null,
             recipientCount: sendable.length,
             suppressedCount: suppressed.length,
             suppressionReason: suppressed.length > 0

@@ -336,11 +336,16 @@ function ComposerDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
     suppressedCount?: number;
     suppressionReason?: string | null;
     suppressed?: any[];
+    compliance?: { message: string; citation: string | null } | null;
   } | null>(null);
+  // A state-rule WARN on a property under an assignable contract: the send
+  // needs the operator's acknowledgement, which the server records (Leg 3).
+  const [ack, setAck] = useState(false);
 
   const reset = () => {
     setPropertyId(""); setSubject(""); setBody(""); setMinScore("70");
     setFinancingType("cash"); setPreview(null);
+    setAck(false);
   };
 
   // allow-no-invalidation: dry-run preview — nothing sent, results render from mutation.data
@@ -371,6 +376,7 @@ function ComposerDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
       suppressedCount: d.suppressedCount,
       suppressionReason: d.suppressionReason,
       suppressed: d.suppressed,
+      compliance: d.compliance ?? null,
     }),
     onError: (err: any) => toast({ title: "Preview failed", description: err.message, variant: "destructive" }),
   });
@@ -388,6 +394,7 @@ function ComposerDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
           minMatchScore: parseInt(minScore, 10),
           financingType,
           dryRun: false,
+          ackComplianceWarning: ack,
         }),
       });
       if (!res.ok) {
@@ -458,6 +465,15 @@ function ComposerDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
                 ))}
                 {preview.count > 5 && <div className="text-muted-foreground italic mt-1">…and {preview.count - 5} more</div>}
               </div>
+              {preview.compliance && (
+                <div className="p-3 rounded-md bg-acr-warning/10 border border-acr-warning/30 text-xs space-y-2" data-testid="blast-compliance-warning">
+                  <div>{preview.compliance.message}{preview.compliance.citation ? ` (${preview.compliance.citation})` : ""}</div>
+                  <label className="flex items-center gap-2">
+                    <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} data-testid="blast-compliance-ack" />
+                    I've read this state's rule and want to send anyway. This is recorded.
+                  </label>
+                </div>
+              )}
               {(preview.suppressedCount ?? 0) > 0 && (
                 <div className="p-3 rounded-md bg-acr-warning/10 border border-acr-warning/30 text-xs">
                   <div className="font-semibold mb-1 text-acr-warning">
@@ -480,7 +496,7 @@ function ComposerDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
           </Button>
           <Button
             onClick={() => send.mutate()}
-            disabled={!propertyId || !subject || !body || send.isPending || !preview}
+            disabled={!propertyId || !subject || !body || send.isPending || !preview || (!!preview.compliance && !ack)}
             data-testid="confirm-send-blast"
           >
             <Send className="w-3.5 h-3.5 mr-1.5" aria-hidden="true" />
