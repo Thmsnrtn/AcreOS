@@ -174,6 +174,27 @@ export function registerFounderCollabRoutes(app: Express): void {
     },
   );
 
+  // §5A guarantee tail exposure (P1-14 / B2): what the guarantee currently
+  // stands behind, its burn-down, and how much the B7 brake would auto-pay.
+  // Read-only and advisory — a gatherer failure answers 200 `available: false`
+  // so the founder surface never 500s because Stripe hiccuped.
+  app.get(
+    "/api/founder/refund-guarantee/exposure",
+    isAuthenticated,
+    requireFounder,
+    async (_req: AuthenticatedRequest, res: Response) => {
+      try {
+        const { gatherGuaranteeExposure } = await import("./services/refunds/guaranteeExposureFacts");
+        const report = await gatherGuaranteeExposure();
+        if (!report) return res.json({ available: false });
+        return res.json(report);
+      } catch (err) {
+        logger.warn("[founder-collab] guarantee exposure unavailable", { err: String(err) });
+        return res.json({ available: false });
+      }
+    },
+  );
+
   app.post(
     "/api/founder/refund-requests/:id/approve",
     isAuthenticated,

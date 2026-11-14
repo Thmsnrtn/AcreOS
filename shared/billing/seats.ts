@@ -112,7 +112,7 @@ export function totalMonthlyBillCents(
 
 /**
  * Human-readable seat-pricing breakdown for the billing UI, e.g.
- * "Pro @ $49/mo + 1 extra seat × $20 = $69/mo".
+ * "Pro @ $99/mo + 1 extra seat × $20 = $119/mo".
  */
 export function describeSeatPricing(
   tier: Tier,
