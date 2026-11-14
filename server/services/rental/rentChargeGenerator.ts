@@ -35,8 +35,14 @@ import {
 import type { RentScheduleStepInput } from "@shared/rental/rentEscalation";
 import { logger } from "../../utils/logger";
 
-/** Leases whose rent should be on the ledger. */
-const GENERATABLE_LEASE_STATUSES = ["active", "pending_signature"] as const;
+/**
+ * Leases whose rent should be on the ledger. The list itself lives in
+ * shared/rental/leaseActivation.ts — the same module that defines the
+ * activation transition INTO `active` (S-04) — so "activated ⇒ charges
+ * run" is one fact in one place. Re-exported here for existing importers.
+ */
+export { GENERATABLE_LEASE_STATUSES } from "@shared/rental/leaseActivation";
+import { GENERATABLE_LEASE_STATUSES } from "@shared/rental/leaseActivation";
 
 export interface LeaseChargePlanView {
   leaseId: string;
