@@ -176,13 +176,119 @@ export function clampSendsLevel(level: PaxRailLevel): PaxSendsRailLevel {
     : (level as PaxSendsRailLevel);
 }
 
+// ── Daily limits and per-member narrowing (PX-3) ────────────────────────────
+
+/**
+ * Daily caps on what Pax may do (register P-1). Each is a whole number ≥ 0, or
+ * `null` = no cap — which is today's behaviour, so a NULL column and a row
+ * written before PX-3 read as all-null. "Today" is the org's local day.
+ */
+export interface PaxLimits {
+  /** Asks Pax may park for a tap per day. */
+  asksPerDay: number | null;
+  /** Customer outbound-send credits Pax's executed sends may cost per day (sendPricing). */
+  creditSpendPerDay: number | null;
+  /** Web pages Pax may open per day. */
+  browseCallsPerDay: number | null;
+  /** Rows Pax may create through a batch create per day. */
+  batchRowsPerDay: number | null;
+}
+
+export const PAX_LIMIT_KEYS = ["asksPerDay", "creditSpendPerDay", "browseCallsPerDay", "batchRowsPerDay"] as const;
+
+export type PaxLimitKey = (typeof PAX_LIMIT_KEYS)[number];
+
+/** No cap on anything — what a missing `limits` key means (= today). Fresh copy per call. */
+export function defaultPaxLimits(): PaxLimits {
+  return { asksPerDay: null, creditSpendPerDay: null, browseCallsPerDay: null, batchRowsPerDay: null };
+}
+
+/**
+ * One member's own NARROWER settings, keyed by userId in `PaxControls.members`.
+ * A member may only make Pax more careful for THEIR OWN calls: the effective
+ * value is the weaker rail / the smaller cap of (org, member), so an override
+ * that is wider than the org's has no effect (narrowRails / narrowLimits).
+ */
+export interface PaxMemberOverride {
+  rails?: {
+    records?: Partial<Record<PaxRecordDomain, PaxRailLevel>>;
+    sends?: PaxSendsRailLevel;
+  };
+  limits?: Partial<PaxLimits>;
+}
+
+/**
+ * The org's rails narrowed by a member's override: per record domain the WEAKER
+ * of the two; sends the weaker of the two, clamped to the sends ceiling. An
+ * absent override returns the org rails unchanged. Pure; fresh object.
+ */
+export function narrowRails(org: PaxRails, override?: PaxMemberOverride): PaxRails {
+  const records = { ...org.records };
+  const own = override?.rails;
+  if (own?.records) {
+    for (const d of PAX_RECORD_DOMAINS) {
+      const level = own.records[d];
+      if (level !== undefined) records[d] = weakerRailLevel(records[d], level);
+    }
+  }
+  let sends: PaxSendsRailLevel = clampSendsLevel(org.sends);
+  if (own?.sends !== undefined) sends = clampSendsLevel(weakerRailLevel(sends, own.sends));
+  return { records, sends };
+}
+
+/**
+ * The org's limits narrowed by a member's override: per key the SMALLER of the
+ * non-null values, null only when both are null. A member value higher than the
+ * org's has no effect (min wins); a member can never raise a cap or remove one
+ * the org set. Pure; fresh object.
+ */
+export function narrowLimits(org: PaxLimits, override?: PaxMemberOverride): PaxLimits {
+  const out = { ...org };
+  const own = override?.limits;
+  if (!own) return out;
+  for (const k of PAX_LIMIT_KEYS) {
+    const m = own[k];
+    if (m === null || m === undefined) continue;
+    const o = out[k];
+    out[k] = o === null ? m : Math.min(o, m);
+  }
+  return out;
+}
+
+/**
+ * The controls a particular caller is held to: rails and limits narrowed by
+ * `members[userId]`. A null / unknown userId returns the controls unchanged —
+ * org-level automation (a scheduled run, an inbound signal, the registry's own
+ * handler) acts under the org's own grant. This is the same identified /
+ * unidentified asymmetry as the permission-ladder gate in executeTool: an
+ * identified caller is held to what applies to THEM; an unidentified one has no
+ * person to hold, and refusing would break automation that has always run so.
+ * Generic so a PaxControlsState keeps its pause / timezone / checkFailed fields.
+ */
+export function effectiveControlsForMember<T extends PaxControls>(
+  controls: T,
+  userId: string | null | undefined,
+): T {
+  if (!userId) return controls;
+  // A hand-built state from before PX-3 may lack members / limits: read as none.
+  const members: Readonly<Record<string, PaxMemberOverride>> = controls.members ?? {};
+  const override = Object.prototype.hasOwnProperty.call(members, userId) ? members[userId] : undefined;
+  if (!override) return controls;
+  return {
+    ...controls,
+    rails: narrowRails(controls.rails ?? defaultPaxRails(), override),
+    limits: narrowLimits(controls.limits ?? defaultPaxLimits(), override),
+  };
+}
+
 // ── The stored column ───────────────────────────────────────────────────────
 
 /**
  * `organizations.pax_controls` (jsonb, migration 0250). The three switches
  * are the org-level "runs on its own" toggles from spec §3a.3. `rails` (PX-2)
- * is optional IN THE DATABASE — a row written before PX-2 has none and reads
- * as the defaults — but always present on the object the reader returns.
+ * and `limits` / `members` (PX-3) are optional IN THE DATABASE — a row written
+ * before them has none and reads as the defaults — but always present on the
+ * object the reader returns.
  */
 export interface PaxControls {
   stance: PaxStance;
@@ -194,6 +300,10 @@ export interface PaxControls {
   inboxDrafts: boolean;
   /** Per-capability rails — may only NARROW what the stance allows. */
   rails: PaxRails;
+  /** Daily caps (PX-3). All null = no cap = today. */
+  limits: PaxLimits;
+  /** Per-member narrower settings, keyed by userId (PX-3). Empty = none. */
+  members: Readonly<Record<string, PaxMemberOverride>>;
 }
 
 /**
@@ -208,6 +318,8 @@ export const PAX_CONTROLS_DEFAULTS: Readonly<PaxControls> = {
   borrowerReminders: true,
   inboxDrafts: true,
   rails: defaultPaxRails(),
+  limits: defaultPaxLimits(),
+  members: {},
 };
 
 // ── Asks ("Waiting for your tap") ───────────────────────────────────────────
