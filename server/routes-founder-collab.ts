@@ -348,4 +348,30 @@ export function registerFounderCollabRoutes(app: Express): void {
       }
     },
   );
+
+  // ────────────────────────────────────────────────────────────────────────
+  // GET /api/founder/first-settlement-milestone
+  // Read-only, ALERT-ONLY LLC-formation trigger fact (P1-13). Unavailable
+  // is honest: never invent a settlement.
+  // ────────────────────────────────────────────────────────────────────────
+  app.get(
+    "/api/founder/first-settlement-milestone",
+    isAuthenticated,
+    requireFounder,
+    async (_req: AuthenticatedRequest, res: Response) => {
+      try {
+        const { gatherFirstSettlementMilestone } = await import(
+          "./services/founder/firstSettlementMilestoneFacts"
+        );
+        const report = await gatherFirstSettlementMilestone();
+        if (!report) return res.json({ available: false });
+        return res.json({ available: true, ...report });
+      } catch (err) {
+        logger.warn("[founder-collab] first-settlement-milestone failed", {
+          metadata: { error: err instanceof Error ? err.message : String(err) },
+        });
+        return res.json({ available: false });
+      }
+    },
+  );
 }
