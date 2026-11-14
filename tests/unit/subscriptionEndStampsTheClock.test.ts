@@ -58,7 +58,7 @@ function endCapableSites(src: string): string[] {
 /** The writers found when this gate was written, with their site counts. */
 const WRITERS: Record<string, number> = {
   "server/webhookHandlers.ts": 2, // subscription.deleted + subscription.updated → canceled
-  "server/routes-billing.ts": 1, // refund-and-cancel
+  "server/services/refunds/executeRefund.ts": 1, // refund-and-cancel (extracted from routes-billing by PR #550)
   "server/services/dunning.ts": 1, // dunning reaches "cancelled"
   "server/ai/supportAgent.ts": 1, // Stripe resync writes the raw Stripe status
 };

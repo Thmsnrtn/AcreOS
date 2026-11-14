@@ -13415,6 +13415,15 @@ $mig0284$`,
   `ALTER TABLE "rehabs" ADD COLUMN IF NOT EXISTS "realized_closing_date" date`,
   `ALTER TABLE "rehabs" ADD COLUMN IF NOT EXISTS "realized_recorded_by" text`,
   `ALTER TABLE "rehabs" ADD COLUMN IF NOT EXISTS "realized_recorded_at" timestamptz`,
+  // 0309 — Refund automation (design 2026-11 §4): guarantee-eligibility verdicts, brake code, decision SLA, retry bookkeeping and deny reason on refund_requests. Columns only, no new table. PROVISIONAL number.
+  // Mirrors migrations/0309_refund_requests_guarantee_automation.sql.
+  `ALTER TABLE "refund_requests" ADD COLUMN IF NOT EXISTS "eligibility" jsonb`,
+  `ALTER TABLE "refund_requests" ADD COLUMN IF NOT EXISTS "brake" text`,
+  `ALTER TABLE "refund_requests" ADD COLUMN IF NOT EXISTS "due_at" timestamptz`,
+  `ALTER TABLE "refund_requests" ADD COLUMN IF NOT EXISTS "attempts" integer NOT NULL DEFAULT 0`,
+  `ALTER TABLE "refund_requests" ADD COLUMN IF NOT EXISTS "last_error" text`,
+  `ALTER TABLE "refund_requests" ADD COLUMN IF NOT EXISTS "denied_reason" text`,
+  `CREATE INDEX IF NOT EXISTS "refund_requests_due_at_idx" ON "refund_requests" ("due_at")`,
 ];
 
 // The statement set this run executes. Default: everything (the production

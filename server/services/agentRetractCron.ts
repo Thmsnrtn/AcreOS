@@ -32,6 +32,7 @@ import { and, eq, lt, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { recordRetract } from "./trustGraduation";
 import { clock } from "../utils/clock";
+import { raiseIfAllowed } from "./decisionsInboxThrottle";
 
 interface RegressionVerdict {
   regressed: boolean;
@@ -219,7 +220,16 @@ async function retractObservation(
     });
 
     // Surface as inbox item too — observation is real, founder needs to know.
-    await db.insert(decisionsInboxItems).values({
+    // Generator throttle (STEP0-DESIGN): same agent/category/ref at the same
+    // suspended-state does not re-raise; suspension is a material change.
+    await raiseIfAllowed(
+      {
+        producer: "agent_retract",
+        subjectKey: `${agentCodename}:${actionCategory}:${shippedRef}`,
+        conditionKey: String(demotion.suspended),
+        class: demotion.suspended ? "critical" : "standard",
+      },
+      () => db.insert(decisionsInboxItems).values({
       itemType: "agent_retract",
       riskLevel: demotion.suspended ? "critical" : "high",
       urgencyScore: demotion.suspended ? 95 : 80,
@@ -241,7 +251,8 @@ async function retractObservation(
       status: "pending",
       ownerAgentCodename: "agent_retract_cron",
       sophieConfidenceScore: 80,
-    });
+    }),
+    );
   } catch (err) {
     logger.error("[retract-cron] failed to write retract notification", err as Error);
   }

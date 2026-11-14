@@ -2,8 +2,13 @@ import { getUncachableStripeClient } from './stripeClient';
 import { logger } from "./utils/logger";
 import { TIER_PRICES_CENTS } from "@shared/billing/tier-pricing";
 
-// Only Pro tier supports additional seats in the launch lineup.
-// Per-seat add-on shadows the Starter monthly price as the per-seat cost.
+// Seat add-ons for the tiers that can add seats (Pro and Scale; Starter
+// is single-seat). Prices are DERIVED from the canonical per-seat prices
+// in tier-pricing.ts (Pro $20/seat, Scale $25/seat; yearly = 10× monthly,
+// the same ~17% yearly discount as the base tiers) so this seed can never
+// drift from the pricing copy again. The previous version priced the Pro
+// add-on from the STARTER tier's price — $49 under a "$20/seat" comment —
+// and seeded no Scale add-on at all (TAIL-B4).
 const SEAT_ADDON_PRODUCTS = [
   {
     name: 'Pro Seat Add-on',
@@ -12,8 +17,18 @@ const SEAT_ADDON_PRODUCTS = [
       type: 'seat_addon',
       tier: 'pro',
     },
-    monthlyPrice: TIER_PRICES_CENTS.starter.priceMonthlyCents, // $20/seat/month
-    yearlyPrice: TIER_PRICES_CENTS.starter.priceYearlyCents,   // $200/seat/year
+    monthlyPrice: TIER_PRICES_CENTS.pro.priceMonthlyPerSeatCents!, // $20/seat/month
+    yearlyPrice: TIER_PRICES_CENTS.pro.priceMonthlyPerSeatCents! * 10, // $200/seat/year
+  },
+  {
+    name: 'Scale Seat Add-on',
+    description: 'Additional team member seat for Scale plan',
+    metadata: {
+      type: 'seat_addon',
+      tier: 'scale',
+    },
+    monthlyPrice: TIER_PRICES_CENTS.scale.priceMonthlyPerSeatCents!, // $25/seat/month
+    yearlyPrice: TIER_PRICES_CENTS.scale.priceMonthlyPerSeatCents! * 10, // $250/seat/year
   },
 ];
 

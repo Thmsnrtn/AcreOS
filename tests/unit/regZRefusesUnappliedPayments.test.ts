@@ -42,12 +42,22 @@
  * before. This refuses one specific shape.
  *
  * ── THE REVOCATION CONDITION IS PART OF THE GATE ────────────────────────────
- * The last block below asserts the premise that MAKES this refusal correct —
- * that `payment_applications` still has no reachable writer. The day someone
- * wires `applyPayment` into the posting paths, that assertion fails and tells
- * them to revisit the refusal instead of leaving it in place forever. A
- * workaround that outlives its cause is how a codebase accumulates behaviour
- * nobody can explain.
+ * The last block below originally asserted the premise that MADE this refusal
+ * necessary — that `payment_applications` had no reachable writer — and was
+ * written to fail the day someone wired the posting paths, so the refusal
+ * would be revisited instead of outliving its cause.
+ *
+ * That day came on 2026-11-09 (defect D4, caught by the PKG-3 settlement-proof
+ * suite): every posting path now writes the breakdown in its own transaction
+ * via `recordPostedPaymentApplication`. The revisit did NOT delete the
+ * refusal, and the block below now pins why: the cycles posted before the
+ * wiring have no application rows and no backfill yet, so deleting the
+ * refusal would print $0 breakdowns for real payments — the exact
+ * misrepresentation it exists to prevent — and the refusal remains the guard
+ * for any future posting path that forgets the mirror write. The block's
+ * assertion flipped direction: it now fails if a posting path LOSES its
+ * wiring, or if a new `.insert(paymentApplications)` appears outside the one
+ * module that owns the table.
  */
 
 import { describe, expect, it, vi } from "vitest";
@@ -115,7 +125,7 @@ describe("the refusal exists and is reachable from both loan loops", () => {
   });
 });
 
-describe("the premise that makes the refusal correct still holds", () => {
+describe("the D4 cure stays wired, and the refusal stays as its guard", () => {
   function walk(dir: string): string[] {
     const out: string[] = [];
     for (const e of fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true })) {
@@ -131,22 +141,45 @@ describe("the premise that makes the refusal correct still holds", () => {
     expect(serverFiles.length).toBeGreaterThan(300);
   });
 
-  it("payment_applications still has exactly one writer, in a module nothing imports", () => {
+  it("payment_applications still has exactly one writer module", () => {
+    // Single-writer discipline survived the cure: every posting path calls
+    // the recorder in the module that owns the table; no path inserts into
+    // payment_applications directly. A second literal insert site is how
+    // the mirror writes drift apart — fail here instead.
     const writers = serverFiles.filter((f) => /\.insert\(paymentApplications\)/.test(code(f)));
     expect(writers).toEqual(["server/services/paymentApplication/index.ts"]);
+  });
 
+  it("every posting path imports the recorder — and calls it", () => {
+    // The D4 wiring set (2026-11-09), one entry per live rail:
+    //   portalPaymentPosting — the serviced-note posting rule behind the
+    //     borrower portal, the Stripe checkout webhook, payment links and
+    //     the operator finance route;
+    //   achAutopay — ACH settlement AND its return reversal;
+    //   noteRepo — the sunset portal route's createPayment;
+    //   webhookHandlers — the charge-refund reversal loop;
+    //   routes-notes — the acquired-note ledger route.
+    // If a rail loses its call, its borrowers' statements go back to being
+    // refused — the refusal above will still protect them, but the cure is
+    // gone, so this gate fails loudly instead.
+    const wiring = [
+      "server/routes-notes.ts",
+      "server/services/achAutopay.ts",
+      "server/services/borrower/portalPaymentPosting.ts",
+      "server/storage/noteRepo.ts",
+      "server/webhookHandlers.ts",
+    ];
     const importers = serverFiles.filter(
       (f) =>
         f !== "server/services/paymentApplication/index.ts" &&
-        /from\s+["'][^"']*services\/paymentApplication["']/.test(code(f)),
+        /from\s+["'][^"']*paymentApplication(?:\/index)?["']/.test(code(f)),
     );
-    expect(
-      importers,
-      "applyPayment now has a production importer — payment_applications may finally be " +
-        "populated. Revisit the PAYMENTS_NOT_APPLIED refusal in " +
-        `${GENERATOR}: backfill the cycles already skipped, then delete the refusal and this ` +
-        "block. Do not leave a workaround in place after its cause is gone.",
-    ).toEqual([]);
+    expect(importers.sort()).toEqual(wiring);
+    for (const f of wiring) {
+      expect(code(f), `${f} imports the recorder but never calls it`).toContain(
+        "recordPostedPaymentApplication(",
+      );
+    }
   });
 
   it("the statement job still runs unconditionally for every active organization", () => {
