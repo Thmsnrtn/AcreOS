@@ -680,9 +680,10 @@ export default function RentRollPage() {
           <CardContent>
             <p className="text-sm text-muted-foreground max-w-3xl" data-testid="commercial-late-fee-note">
               Commercial late fees are set by the lease, not by state statute — the residential
-              statutory late-fee rules do not apply to a commercial tenancy. Enter a late fee as a
-              manual charge at the figure your lease specifies. AcreOS will not propose one from a
-              residential statute here.
+              statutory late-fee rules do not apply to a commercial tenancy, so AcreOS will not
+              propose one from a residential statute here. Recording a contractual late fee on
+              the ledger is not available yet; charge it at the figure your lease specifies on your
+              own books.
             </p>
           </CardContent>
         </Card>
