@@ -19,6 +19,7 @@ import { QueryErrorState } from "@/components/query-error-state";
 import { DataProvenanceChip } from "@/components/data-provenance-chip";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { formatDate } from "@/lib/format";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { Download } from "lucide-react";
 import { Search, User, Phone, Mail, MapPin, Loader2, CheckCircle2, AlertCircle, AlertTriangle, ShieldCheck } from "lucide-react";
@@ -441,8 +442,8 @@ export default function SkipTracingPage() {
                           {a.status}
                         </Badge>
                         <span className="text-xs text-muted-foreground">
-                          version {a.attestationVersion} · attested {new Date(a.attestedAt).toLocaleDateString()} · expires{" "}
-                          {new Date(a.expiresAt).toLocaleDateString()}
+                          version {a.attestationVersion} · attested {formatDate(a.attestedAt)} · expires{" "}
+                          {formatDate(a.expiresAt)}
                         </span>
                       </li>
                     ))}
@@ -464,7 +465,7 @@ export default function SkipTracingPage() {
                       {defense.coverage.totalEntries === 1 ? "" : "s"}
                       {defense.coverage.truncated ? " (most recent shown; older lookups are kept but not included in this file)" : ""}
                       {defense.coverage.firstEntryAt && defense.coverage.lastEntryAt
-                        ? `, ${new Date(defense.coverage.firstEntryAt).toLocaleDateString()} – ${new Date(defense.coverage.lastEntryAt).toLocaleDateString()}`
+                        ? `, ${formatDate(defense.coverage.firstEntryAt)} – ${formatDate(defense.coverage.lastEntryAt)}`
                         : ""}
                       .
                     </p>
