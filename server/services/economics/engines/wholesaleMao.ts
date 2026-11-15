@@ -106,8 +106,12 @@ export interface WholesaleMaoBreakdown {
   offerCents: number;
 }
 
-/** The arithmetic alone; the engine below is its only caller. */
-function computeWholesaleMao(
+/**
+ * The arithmetic alone. Exported so the disposition packet RE-DERIVES the
+ * buyer-side ceiling from the frozen inputs with the same function the engine
+ * froze it with (server/services/wholesale/disposition.ts).
+ */
+export function computeWholesaleMao(
   inputs: Record<string, number | string>,
 ): WholesaleMaoBreakdown & { normalised: Record<string, number> } {
   const arvCents = requireCents(inputs, "arvCents");

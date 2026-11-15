@@ -172,6 +172,7 @@ export const JOB_ROSTER: JobRosterEntry[] = [
     disabledWhen: () => process.env.AUTONOMOUS_DECISION_EXECUTOR_DISABLED === "1" },
 
   { name: "finance_agent", intervalMs: 30 * MIN, critical: false },
+  { name: "refund_sla_sweep", intervalMs: 10 * MIN, critical: true }, // refund queue SLA + uncertain listing (a dark sweep = unreminded customer money)
   // W5.1 — former bare setIntervals routed through the runtime (2026-07).
   // (autonomous_task_processor was deleted 2026-09-02 — founder decision #7
   // of the customer autonomy clarity program: the customer "Tasks / Deploy
@@ -202,6 +203,14 @@ export const JOB_ROSTER: JobRosterEntry[] = [
   // Non-critical: a dark watcher delays a gate by days, it doesn't harm a
   // customer — and the deadman still surfaces the absence as P2.
   { name: "gate_watcher_daily", intervalMs: DAY, critical: false, cron: "0 9 * * *" },
+  // PKG-4 (LQ-22) — /investor-network tripwire: daily 08:00 UTC paying-
+  // customer count against the ~25-customer marketplace ladder, plus a
+  // freeze-still-in-force assertion (route frozen + ladder flag off for
+  // non-founders). Non-critical: this job only OBSERVES — the freeze is
+  // enforced by requireLadderFlag, not by this monitor — the ops watch
+  // reads the same persisted report, and the deadman still surfaces the
+  // absence as P2.
+  { name: "lq22_tripwire_daily", intervalMs: DAY, critical: false, cron: "0 8 * * *" },
   // Jarvis 2.1 (audit G2) — note payment due-date detector: daily 11:00 UTC
   // scan turning borrower payments due-soon/overdue into mesh events +
   // counts-only outward senses. Non-critical: a dark scan delays perception
@@ -312,6 +321,8 @@ export const JOB_ROSTER: JobRosterEntry[] = [
   { name: "action_preview_sweeper", intervalMs: HOUR, critical: false },
   { name: "dispatch_reaper", intervalMs: 10 * MIN, critical: false },
   { name: "mail_flusher", intervalMs: 3 * MIN, critical: true },
+  // Settlement & Documents Rail (P1-3): drains offer letters queued by Send.
+  { name: "offer_mail_transport", intervalMs: 5 * MIN, critical: false },
   { name: "proof_chain_audit", intervalMs: DAY, critical: true },
   { name: "strategic_proposals_weekly", intervalMs: WEEK, critical: false },
   // Wall-clock 1st-of-month 10:00 UTC. cron not yet consumed.

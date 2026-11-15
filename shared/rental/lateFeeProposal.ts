@@ -45,7 +45,9 @@ export type LateFeeProposalStatus =
   | "no_rule_for_state"
   | "within_grace"
   | "not_late"
-  | "no_fee_in_rule";
+  | "no_fee_in_rule"
+  /** The rule's total for this charge is already on it — nothing more to propose. */
+  | "already_charged";
 
 export type LateFeeUnitBranch = "large_4_plus" | "small_under_4" | "conservative_unknown";
 
@@ -249,5 +251,44 @@ export function proposeLateFee(args: {
       `${args.daysLate} days late (${rule.graceDays}-day grace) → proposed fee ${fmtUsd(picked.feeCents)}.` +
       `${capBits}${conservativeNote}` +
       `${rule.citation ? ` Rule: ${rule.citation}.` : ""} Requires operator confirmation before it is charged.`,
+  };
+}
+
+/**
+ * Net a proposal of the late fees ALREADY on the same charge.
+ *
+ * `proposeLateFee` computes the TOTAL fee the rule allows for one charge as of
+ * `daysLate` — the initial fee plus the per-day accrual, capped. It knows
+ * nothing about what is already on the charge, and the confirm-and-apply path
+ * ADDED the figure to `late_fee_cents`. So a second confirmation on the same
+ * charge (the dialog opened again next week) charged the whole total again and
+ * stacked the tenant past the statutory cap — the exact over-cap fee this
+ * module exists to prevent. The chargeable figure is what the rule allows in
+ * total minus what is already charged, never below zero.
+ */
+export function netOfLateFeesAlreadyCharged<T extends LateFeeProposal>(
+  proposal: T,
+  alreadyChargedCents: number,
+): T {
+  if (proposal.status !== "proposed" || !(alreadyChargedCents > 0)) return proposal;
+  const ruleTotal = proposal.proposedFeeCents;
+  const remaining = Math.max(0, ruleTotal - alreadyChargedCents);
+  const onCharge = `${fmtUsd(alreadyChargedCents)} in late fees is already on this charge`;
+  if (remaining > 0) {
+    return {
+      ...proposal,
+      proposedFeeCents: remaining,
+      explanation:
+        `${proposal.explanation} ${onCharge}, so ${fmtUsd(remaining)} remains of the ` +
+        `${fmtUsd(ruleTotal)} the rule allows in total.`,
+    };
+  }
+  return {
+    ...proposal,
+    status: "already_charged",
+    proposedFeeCents: 0,
+    explanation:
+      `${proposal.explanation} ${onCharge} — at or above the ${fmtUsd(ruleTotal)} the rule ` +
+      "allows in total — so no further fee is proposed.",
   };
 }

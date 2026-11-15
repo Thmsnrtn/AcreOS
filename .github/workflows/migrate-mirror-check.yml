@@ -19,6 +19,13 @@ on:
   push:
     branches: [main]
 
+
+# CI efficiency package (2026-11-11): a superseded head's run cancels itself
+# instead of occupying the account's concurrent-job slots behind the new
+# head. The group is keyed by ref (a PR's ref is stable across its pushes).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   check-mirror:
     name: Ensure migrate.mjs is updated when migrations/*.sql changes

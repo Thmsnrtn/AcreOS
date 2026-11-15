@@ -62,30 +62,26 @@ export async function suppress(
 ): Promise<void> {
   const normalized = normalize(email);
   if (!normalized) return;
-  try {
-    await db
-      .insert(emailSuppressions)
-      .values({
-        email: normalized,
+  // No catch: a failed write MUST propagate. The SES webhook relies on it to
+  // fail the request so SNS retries; swallowing it silently lost suppressions.
+  await db
+    .insert(emailSuppressions)
+    .values({
+      email: normalized,
+      reason,
+      source,
+      bounceCategory: options?.bounceCategory,
+      organizationId: options?.organizationId,
+    })
+    .onConflictDoUpdate({
+      target: emailSuppressions.email,
+      set: {
         reason,
         source,
         bounceCategory: options?.bounceCategory,
         organizationId: options?.organizationId,
-      })
-      .onConflictDoUpdate({
-        target: emailSuppressions.email,
-        set: {
-          reason,
-          source,
-          bounceCategory: options?.bounceCategory,
-          organizationId: options?.organizationId,
-        },
-      });
-  } catch (err) {
-    logger.error("[emailSuppressions] suppress failed", err instanceof Error ? err : undefined, {
-      metadata: { email: normalized, reason, source },
+      },
     });
-  }
 }
 
 /**
@@ -108,7 +104,8 @@ export async function recordSoftBounce(
   const now = clock.now();
   const windowMs = SOFT_BOUNCE_WINDOW_DAYS * 24 * 60 * 60 * 1000;
 
-  try {
+  // No catch: write failures propagate (see suppress()).
+  {
     // Read existing row.
     const rows = await db
       .select()
@@ -192,11 +189,6 @@ export async function recordSoftBounce(
       });
     }
     return { suppressed: false, strikes };
-  } catch (err) {
-    logger.error("[emailSuppressions] recordSoftBounce failed", err instanceof Error ? err : undefined, {
-      metadata: { email: normalized, reason },
-    });
-    return { suppressed: false, strikes: 0 };
   }
 }
 

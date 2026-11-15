@@ -48,8 +48,11 @@ import {
   CheckCircle2,
   Clock,
   AlertCircle,
+  Percent,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/empty-state";
+import { QueryErrorState } from "@/components/query-error-state";
 import { format } from "date-fns";
 import { Verbs } from "@/lib/labels";
 
@@ -63,6 +66,12 @@ interface CommissionConfig {
   tiers: CommissionTier[];
   baseFlatAmount?: number;
   trackingPeriod: "monthly" | "quarterly" | "annual";
+}
+
+/** GET /api/commissions/config — `config` is null when no rates are saved. */
+export interface CommissionConfigResponse {
+  configured: boolean;
+  config: CommissionConfig | null;
 }
 
 interface CommissionRecord {
@@ -296,6 +305,85 @@ function PaymentDialog({
   );
 }
 
+/**
+ * The tier tab body. Renders the org's OWN saved rates only: when none are
+ * saved it says so, and never shows a default schedule as if it were theirs.
+ */
+export function CommissionTiers({
+  data,
+  isLoading,
+  error,
+  onRetry,
+}: {
+  data: CommissionConfigResponse | undefined;
+  isLoading: boolean;
+  error: Error | null;
+  onRetry: () => void;
+}) {
+  if (error) {
+    return <QueryErrorState error={error} onRetry={onRetry} title="Couldn't load commission rates" />;
+  }
+  if (isLoading || !data) {
+    return (
+      <div className="space-y-3" role="status" aria-busy="true" aria-live="polite">
+        <span className="sr-only">Loading tier configuration</span>
+        <Skeleton announce={false} className="h-4 w-48" />
+        <Skeleton announce={false} className="h-4 w-full" />
+        <Skeleton announce={false} className="h-4 w-2/3" />
+      </div>
+    );
+  }
+  const config = data.config;
+  if (!data.configured || !config) {
+    return (
+      <EmptyState
+        icon={Percent}
+        headline="No commission rates saved"
+        subtitle="AcreOS calculates a commission only from rates you have saved, and never assumes a default rate. Rate setup is not available in AcreOS yet."
+        // TODO(cta): rate setup has no screen yet (stopped in W2-AGENT pending the deal-to-agent attribution decision)
+        cta={{ label: "", _noOp: true }}
+        testId="commission-tiers-unconfigured"
+      />
+    );
+  }
+  return (
+    <div className="space-y-3">
+      <p className="text-sm text-muted-foreground">
+        Tracking period:{" "}
+        <span className="font-medium capitalize">{config.trackingPeriod}</span>
+      </p>
+      <div role="region" aria-label="Commission tier configuration" tabIndex={0}>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead scope="col">Tier</TableHead>
+              <TableHead scope="col">Min deals</TableHead>
+              <TableHead scope="col">Rate</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {config.tiers.map((t, i) => (
+              <TableRow key={i}>
+                <TableCell scope="row" className="font-medium">
+                  {t.label}
+                </TableCell>
+                <TableCell className="tabular-nums">{t.minDeals}+</TableCell>
+                <TableCell className="tabular-nums">{t.ratePercent}%</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+      {config.baseFlatAmount && config.baseFlatAmount > 0 ? (
+        <p className="text-sm text-muted-foreground">
+          Flat bonus per deal:{" "}
+          <span className="font-medium tabular-nums">{money(config.baseFlatAmount)}</span>
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 export default function CommissionsPage({ intro }: { intro?: ReactNode } = {}) {
   useDocumentTitle("Commissions");
   const { toast } = useToast();
@@ -304,23 +392,31 @@ export default function CommissionsPage({ intro }: { intro?: ReactNode } = {}) {
   const [payTarget, setPayTarget] = useState<AgentSummary | null>(null);
   const yearSelectId = useId();
 
-  const { data: summaries = [], isLoading } = useQuery<AgentSummary[]>({
+  const {
+    data: summaries = [],
+    isLoading,
+    isError: summariesFailed,
+    error: summariesError,
+    refetch: refetchSummaries,
+  } = useQuery<AgentSummary[]>({
     queryKey: ["/api/commissions/summaries", year],
     queryFn: () =>
       apiRequest("GET", `/api/commissions/summaries?year=${year}`).then((r) =>
         r.json()
       ),
   });
+  // A failed load is an error, never "no team members" / "no records".
+  const summariesErrorState = summariesFailed ? (
+    <QueryErrorState
+      error={summariesError as Error}
+      onRetry={() => void refetchSummaries()}
+      title="Couldn't load commissions"
+    />
+  ) : null;
 
-  const { data: config } = useQuery<CommissionConfig>({
+  const configQuery = useQuery<CommissionConfigResponse>({
     queryKey: ["/api/commissions/config"],
-    // The endpoint returns the config wrapped as { config: {...} }; unwrap it so
-    // `config.tiers` is the tier array (not undefined) — an unwrapped body would
-    // make `config.tiers.map(...)` below throw and take down the whole surface.
-    queryFn: () =>
-      apiRequest("GET", "/api/commissions/config")
-        .then((r) => r.json())
-        .then((d) => d?.config ?? d),
+    queryFn: () => apiRequest("GET", "/api/commissions/config").then((r) => r.json()),
   });
 
   const payMutation = useMutation({
@@ -453,7 +549,7 @@ export default function CommissionsPage({ intro }: { intro?: ReactNode } = {}) {
           </TabsList>
 
           <TabsContent value="agents" className="mt-4">
-            {isLoading ? (
+            {summariesErrorState ?? (isLoading ? (
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4" role="status" aria-busy="true" aria-live="polite">
                 <span className="sr-only">Loading agent summaries</span>
                 {Array.from({ length: 3 }).map((_, i) => (
@@ -485,11 +581,11 @@ export default function CommissionsPage({ intro }: { intro?: ReactNode } = {}) {
                   </li>
                 ))}
               </ul>
-            )}
+            ))}
           </TabsContent>
 
           <TabsContent value="records" className="mt-4">
-            <Card>
+            {summariesErrorState ?? <Card>
               <CardContent className="p-0">
                 <div role="region" aria-label="All commission records" tabIndex={0}>
                   <Table>
@@ -554,7 +650,7 @@ export default function CommissionsPage({ intro }: { intro?: ReactNode } = {}) {
                   </Table>
                 </div>
               </CardContent>
-            </Card>
+            </Card>}
           </TabsContent>
 
           <TabsContent value="tiers" className="mt-4">
@@ -563,58 +659,12 @@ export default function CommissionsPage({ intro }: { intro?: ReactNode } = {}) {
                 <CardTitle>Commission tiers</CardTitle>
               </CardHeader>
               <CardContent>
-                {config ? (
-                  <div className="space-y-3">
-                    <p className="text-sm text-muted-foreground">
-                      Tracking period:{" "}
-                      <span className="font-medium capitalize">
-                        {config.trackingPeriod}
-                      </span>
-                    </p>
-                    <div role="region" aria-label="Commission tier configuration" tabIndex={0}>
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead scope="col">Tier</TableHead>
-                            <TableHead scope="col">Min deals</TableHead>
-                            <TableHead scope="col">Rate</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {(config.tiers ?? []).map((t, i) => (
-                            <TableRow key={i}>
-                              <TableCell scope="row" className="font-medium">
-                                {t.label}
-                              </TableCell>
-                              <TableCell className="tabular-nums">{t.minDeals}+</TableCell>
-                              <TableCell className="tabular-nums">{t.ratePercent}%</TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                    {config.baseFlatAmount && config.baseFlatAmount > 0 && (
-                      <p className="text-sm text-muted-foreground">
-                        Flat bonus per deal:{" "}
-                        <span className="font-medium tabular-nums">
-                          {money(config.baseFlatAmount)}
-                        </span>
-                      </p>
-                    )}
-                  </div>
-                ) : (
-                  <div className="space-y-3" role="status" aria-busy="true" aria-live="polite">
-                    <span className="sr-only">Loading tier configuration</span>
-                    <Skeleton announce={false} className="h-4 w-48" />
-                    {Array.from({ length: 3 }).map((_, i) => (
-                      <div key={i} className="flex items-center gap-4">
-                        <Skeleton announce={false} className="h-4 w-32" />
-                        <Skeleton announce={false} className="h-4 w-20" />
-                        <Skeleton announce={false} className="h-4 w-16" />
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <CommissionTiers
+                  data={configQuery.data}
+                  isLoading={configQuery.isLoading}
+                  error={configQuery.isError ? (configQuery.error as Error) : null}
+                  onRetry={() => void configQuery.refetch()}
+                />
               </CardContent>
             </Card>
           </TabsContent>

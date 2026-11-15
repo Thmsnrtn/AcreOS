@@ -1,3 +1,4 @@
+import { RequiredDisclaimer } from "@/components/required-disclaimer";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
@@ -595,6 +596,7 @@ export function PropertyAnalysisChat({ property, open, onOpenChange }: PropertyA
         </ScrollArea>
 
         <div className="p-4 border-t">
+          <RequiredDisclaimer type="ai" className="mb-3" />
           <form onSubmit={handleSubmit} className="flex gap-2">
             <Input
               ref={inputRef}

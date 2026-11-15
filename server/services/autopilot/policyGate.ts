@@ -125,7 +125,9 @@ const defaultDeps: PolicyGateDeps = {
   // a telemetry-read outage must REFUSE (block the action), never wave it through
   // un-metered. Pass failClosed so a cost-ceiling read failure throws → budget gate
   // blocks, rather than the default fail-open that's correct for interactive paths.
-  assertWithinAiCostCeiling: (orgId) => realAssertCostCeiling(orgId, { failClosed: true }),
+  // P1-5 R1: origin rides through — autopilot is background work, so its
+  // calls are also checked against the org's background sub-ceiling.
+  assertWithinAiCostCeiling: (orgId) => realAssertCostCeiling(orgId, { failClosed: true, origin: "background" }),
   gateOutputOrThrow: realGateOutputOrThrow,
   approvalRequiredTools: realApprovalRequiredTools,
   checkDomainAutonomy: realCheckDomainAutonomy,

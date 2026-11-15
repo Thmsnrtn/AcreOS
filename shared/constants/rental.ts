@@ -26,3 +26,29 @@ export const RENTAL_UNIT_STATUSES = [
   "retired",  // no longer a rentable slot (combined into another, demolished)
 ] as const;
 export type RentalUnitStatus = typeof RENTAL_UNIT_STATUSES[number];
+
+/**
+ * Short-term-rental stay vocabulary (moved here from shared/schema/rental.ts,
+ * W2-STR 2026-11-06) so the Bookings tab's channel and status controls offer
+ * exactly the values the reservation routes validate against — one list, not a
+ * client copy that could drift from the server's zod enums.
+ *
+ * `channel` is a recorded LABEL, never a live OTA integration.
+ */
+export const RESERVATION_CHANNELS = [
+  "airbnb",
+  "vrbo",
+  "booking",
+  "direct",
+  "other",
+] as const;
+export type ReservationChannel = typeof RESERVATION_CHANNELS[number];
+
+/** booked | checked_in | checked_out | cancelled. A cancelled stay is excluded from every metric. */
+export const RESERVATION_STATUSES = [
+  "booked",
+  "checked_in",
+  "checked_out",
+  "cancelled",
+] as const;
+export type ReservationStatus = typeof RESERVATION_STATUSES[number];

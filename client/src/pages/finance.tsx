@@ -48,6 +48,7 @@ import { PersonaFinanceHero } from "@/components/finance/PersonaFinanceHero";
 import { FinanceBook } from "@/components/finance/FinanceBook";
 import { usePersona, useTerm, useVocabulary } from "@/hooks/use-persona";
 import { AtrGate } from "@/components/AtrGate";
+import { OriginationFactsPanel } from "@/components/OriginationFactsPanel";
 import { useAuth } from "@/hooks/use-auth";
 import { Verbs } from "@/lib/labels";
 
@@ -1132,6 +1133,10 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
               onActivated={onClose}
             />
           ) : null}
+          {/* Notes V2 Leg 3: the seller-finance counter, origination
+              facts and RMLO engagement records behind the gate. Same
+              owner/admin rule as the server routes and mayRecordPayment. */}
+          {mayRecordPayment ? <OriginationFactsPanel noteId={note.id} /> : null}
           <div className="grid grid-cols-2 gap-4">
             <Card className="glass-panel">
               <CardContent className="p-4">

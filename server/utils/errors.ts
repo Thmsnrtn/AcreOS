@@ -42,6 +42,12 @@ export interface ErrorOptions {
    * doesn't need to know the route shape.
    */
   docsSlug?: string;
+  /**
+   * Optional structured details carried in the error body's `details`
+   * field (sendError already supports it). Additive: callers that do not
+   * set it produce the exact body they produced before.
+   */
+  details?: unknown;
 }
 
 function buildDocsUrl(opts?: ErrorOptions): string | undefined {
@@ -232,7 +238,7 @@ function setRetryAfter(res: Response, seconds: number): void {
 export const Errors = {
   notFound(res: Response, entity: string, opts?: ErrorOptions): void {
     const message = `We couldn't find that ${entity} — it may have been deleted, archived, or moved between organizations.`;
-    sendError(res, 404, "NOT_FOUND", message, undefined, buildDocsUrl(opts) ?? "/help/article/not-found");
+    sendError(res, 404, "NOT_FOUND", message, opts?.details, buildDocsUrl(opts) ?? "/help/article/not-found");
   },
 
   badRequest(res: Response, message?: string, details?: unknown, opts?: ErrorOptions): void {
