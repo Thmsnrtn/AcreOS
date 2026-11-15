@@ -41,7 +41,7 @@
 
 import type OpenAI from "openai";
 import { assertWithinAiCostCeiling } from "./aiCostCeiling";
-import { computeCostUsd } from "./aiCostRates";
+import { computeCostUsd, estimateFailedCallCostCents, estimateTokensFromChars } from "./aiCostRates";
 import { ANTHROPIC_CACHE_MIN_CHARS } from "./promptCache";
 import { clock } from "../utils/clock";
 import { logger } from "../utils/logger";
@@ -83,13 +83,25 @@ export function recordExternalAiSpend(input: {
   origin?: AiCallOrigin | null;
   /** Background work the org pays for past its allowance — counts toward it (decision 2026-10-17). */
   allowanceMetered?: boolean;
+  /**
+   * P1-5 R5: an explicit cost for this row, in cents, that wins over the
+   * token-derived computation. Used for FAILED attempts, whose cost is
+   * the named floor estimate (aiCostRates.estimateFailedCallCostCents) —
+   * the tokens are unknown, but the attempt was not free. BYOK still
+   * records $0 (the customer's key paid, not the platform).
+   */
+  estimatedCostCentsOverride?: number;
 }): void {
   void (async () => {
     try {
       const promptTokens = Math.max(0, Math.trunc(input.promptTokens ?? 0));
       const completionTokens = Math.max(0, Math.trunc(input.completionTokens ?? 0));
       const cachedInputTokens = Math.max(0, Math.trunc(input.cachedInputTokens ?? 0));
-      const usd = input.byok ? 0 : computeCostUsd(input.model, promptTokens, completionTokens, cachedInputTokens);
+      const usd = input.byok
+        ? 0
+        : input.estimatedCostCentsOverride !== undefined
+          ? Math.max(0, input.estimatedCostCentsOverride) / 100
+          : computeCostUsd(input.model, promptTokens, completionTokens, cachedInputTokens);
       const { db } = await import("../db");
       const { aiTelemetryEvents } = await import("@shared/schema");
       await db.insert(aiTelemetryEvents).values({
@@ -159,7 +171,12 @@ function isAnthropicModel(model: string): boolean {
 async function assertMeteredCallAllowed(meta: MeteredCallMeta): Promise<void> {
   if (meta.byok || process.env.AI_COST_CEILING_BYPASS === "1") return;
   try {
-    await assertWithinAiCostCeiling(meta.orgId ?? null, meta.origin === "background" ? { failClosed: true } : undefined);
+    // P1-5 R1: origin rides through so a background call is checked
+    // against the org's background sub-ceiling, not only its totals.
+    await assertWithinAiCostCeiling(meta.orgId ?? null, {
+      origin: meta.origin,
+      failClosed: meta.origin === "background",
+    });
   } catch (err) {
     if ((err as { code?: string })?.code === "AI_COST_CEILING_EXCEEDED") throw err;
     if (meta.origin === "background") throw err;
@@ -201,11 +218,54 @@ interface MeteredOutcome {
   latencyMs: number;
   responseId: string | null;
   error: unknown;
+  /**
+   * P1-5 R5: character length of the request's input, used ONLY when the
+   * call failed with no usage block — the floor estimate prices it.
+   */
+  inputChars?: number;
+}
+
+/** Character length of a metered request's input, for the R5 floor estimate. */
+function requestInputChars(params: { messages?: unknown; system?: unknown }): number {
+  try {
+    let chars = 0;
+    if (typeof params.system === "string") chars += params.system.length;
+    else if (params.system !== undefined) chars += JSON.stringify(params.system)?.length ?? 0;
+    if (Array.isArray(params.messages)) {
+      for (const m of params.messages) {
+        const content = (m as { content?: unknown })?.content;
+        if (typeof content === "string") chars += content.length;
+        else if (content !== undefined) chars += JSON.stringify(content)?.length ?? 0;
+      }
+    } else if (params.messages !== undefined) {
+      chars += JSON.stringify(params.messages)?.length ?? 0;
+    }
+    return chars;
+  } catch {
+    return 0;
+  }
 }
 
 function recordMeteredCall(meta: MeteredCallMeta, o: MeteredOutcome, provider: string): void {
   const priced = pricingModelId(o.model);
-  const usd = meta.byok || o.error ? 0 : computeCostUsd(priced, o.promptTokens, o.completionTokens, o.cachedInputTokens);
+  // P1-5 R5: a failed attempt is NOT $0. Real usage wins when the outcome
+  // carries it; otherwise the named floor estimate (input priced, output
+  // 0) applies, floored at 1¢ for a non-empty request so a real attempt
+  // never rounds back to the $0 this replaces. BYOK stays $0 — the
+  // customer's key paid, not the platform.
+  let usd: number;
+  let costOverrideCents: number | undefined;
+  if (meta.byok) {
+    usd = 0;
+  } else if (!o.error) {
+    usd = computeCostUsd(priced, o.promptTokens, o.completionTokens, o.cachedInputTokens);
+  } else if (o.promptTokens > 0 || o.completionTokens > 0) {
+    usd = computeCostUsd(priced, o.promptTokens, o.completionTokens, o.cachedInputTokens);
+  } else {
+    const estCents = estimateFailedCallCostCents(priced, o.inputChars ?? 0);
+    costOverrideCents = (o.inputChars ?? 0) > 0 ? Math.max(1, Math.round(estCents)) : 0;
+    usd = costOverrideCents / 100;
+  }
   recordExternalAiSpend({
     orgId: meta.orgId ?? null,
     taskType: meta.taskType,
@@ -220,6 +280,7 @@ function recordMeteredCall(meta: MeteredCallMeta, o: MeteredOutcome, provider: s
     byok: meta.byok,
     origin: meta.origin,
     allowanceMetered: meta.allowanceMetered,
+    ...(costOverrideCents !== undefined ? { estimatedCostCentsOverride: costOverrideCents } : {}),
   });
   void (async () => {
     try {
@@ -326,7 +387,7 @@ async function meteredChatCompletionUnbounded(
   } catch (err) {
     recordMeteredCall(
       meta,
-      { model: params.model, promptTokens: 0, cachedInputTokens: 0, completionTokens: 0, latencyMs: clock.nowMs() - started, responseId: null, error: err },
+      { model: params.model, promptTokens: 0, cachedInputTokens: 0, completionTokens: 0, latencyMs: clock.nowMs() - started, responseId: null, error: err, inputChars: requestInputChars(params) },
       "openrouter",
     );
     throw err;
@@ -410,9 +471,81 @@ async function meteredAnthropicMessageUnbounded<R extends { id?: string; usage?:
   } catch (err) {
     recordMeteredCall(
       meta,
-      { model: params.model, promptTokens: 0, cachedInputTokens: 0, completionTokens: 0, latencyMs: clock.nowMs() - started, responseId: null, error: err },
+      { model: params.model, promptTokens: 0, cachedInputTokens: 0, completionTokens: 0, latencyMs: clock.nowMs() - started, responseId: null, error: err, inputChars: requestInputChars(params as { messages?: unknown; system?: unknown }) },
       "anthropic",
     );
+    throw err;
+  }
+}
+
+// ─── Embeddings — the metered path (P1-5 / I-5 R2) ──────────────────────────
+
+/** Minimal structural embeddings client — the OpenAI SDK or a test double. */
+export interface EmbeddingsClient {
+  embeddings: { create: (body: never, options?: never) => Promise<unknown> };
+}
+
+/** The slice of an embeddings response the metering + callers rely on. */
+export interface EmbeddingCreateResponse {
+  data: Array<{ embedding: number[]; index?: number }>;
+  usage?: { prompt_tokens?: number; total_tokens?: number };
+}
+
+/**
+ * An embeddings call, metered: platform/per-org ceiling BEFORE, telemetry
+ * AFTER (priced by the text-embedding rows in aiCostRates). Before P1-5,
+ * embeddings were wholly unmetered — no ceiling check, no telemetry row.
+ * Callers keep their own failure handling: a provider error is recorded
+ * (at the R5 floor estimate) and rethrown, exactly as the chat wrappers do.
+ */
+export async function meteredEmbeddingsCreate(
+  client: EmbeddingsClient,
+  params: { model: string; input: string | string[] },
+  meta: MeteredCallMeta,
+  options?: unknown,
+): Promise<EmbeddingCreateResponse> {
+  await assertMeteredCallAllowed(meta);
+  const inputChars = Array.isArray(params.input)
+    ? params.input.reduce((n, s) => n + (typeof s === "string" ? s.length : 0), 0)
+    : typeof params.input === "string"
+      ? params.input.length
+      : 0;
+  const started = clock.nowMs();
+  try {
+    const response = (await client.embeddings.create(params as never, options as never)) as EmbeddingCreateResponse;
+    const promptTokens =
+      response?.usage?.prompt_tokens ?? response?.usage?.total_tokens ?? estimateTokensFromChars(inputChars);
+    recordExternalAiSpend({
+      orgId: meta.orgId ?? null,
+      taskType: meta.taskType,
+      model: params.model,
+      provider: "openai",
+      promptTokens,
+      completionTokens: 0,
+      latencyMs: clock.nowMs() - started,
+      success: true,
+      byok: meta.byok,
+      origin: meta.origin,
+      allowanceMetered: meta.allowanceMetered,
+    });
+    return response;
+  } catch (err) {
+    const estCents = estimateFailedCallCostCents(params.model, inputChars);
+    recordExternalAiSpend({
+      orgId: meta.orgId ?? null,
+      taskType: meta.taskType,
+      model: params.model,
+      provider: "openai",
+      promptTokens: 0,
+      completionTokens: 0,
+      latencyMs: clock.nowMs() - started,
+      success: false,
+      errorMessage: err instanceof Error ? err.message : String(err),
+      byok: meta.byok,
+      origin: meta.origin,
+      allowanceMetered: meta.allowanceMetered,
+      estimatedCostCentsOverride: meta.byok ? 0 : inputChars > 0 ? Math.max(1, Math.round(estCents)) : 0,
+    });
     throw err;
   }
 }

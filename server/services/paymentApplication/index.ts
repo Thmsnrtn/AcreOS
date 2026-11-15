@@ -44,7 +44,7 @@
  * is `applyPayment`.
  */
 
-import { db } from "../../db";
+import { db, type PrimaryDb } from "../../db";
 import {
   paymentApplications,
   suspenseBalances,
@@ -408,6 +408,98 @@ export async function applyPayment(
   }
 
   return { decision, created: true };
+}
+
+// ============================================================================
+// POSTED-PAYMENT RECORDER — the mirror write the posting paths were missing
+// ----------------------------------------------------------------------------
+// `applyPayment` above DECIDES an application for a payment that has not
+// posted yet, under the §1026.36(c) suspense model. Production does not post
+// that way: every live rail posts FIRST, under its own audited rule — the
+// serviced-note posting rule (portal / webhook / payment link / operator),
+// ACH autopay settlement, the sunset portal route through the note
+// repository, and the acquired-note ledger route — and each of those paths
+// already computes and records the exact split on its own payment row
+// (`payments.principal_amount` / `interest_amount` / `late_fee_amount`, or
+// the note_payments bucket columns). What none of them did was write the
+// `payment_applications` breakdown alongside it, so the periodic-statement
+// generator — which sums ONLY this table — found money moved with nothing
+// applied and refused the borrower's statement (defect D4, proven by the
+// PKG-3 settlement-proof suite against the real posting path and the real
+// generator). The generator's refusal is the safety behaviour and stays;
+// this recorder is the missing half it always named.
+//
+// The recorder is a MIRROR, not a second decision: the caller hands it the
+// split its own posting rule already recorded, and it persists that split
+// verbatim inside the SAME transaction as the payment row, so the two
+// ledgers can never disagree and can never half-commit. It deliberately
+// does NOT route the posting paths through `applyPayment`'s suspense
+// model — that model holds partials and overages in suspense, while the
+// posting rules apply money immediately and gate the installment instead;
+// re-deciding the split here would make this table contradict the payment
+// row it describes. Buckets must sum to the payment amount (the schema's
+// invariant): whatever the posting rule received but applied to nothing
+// (a payoff overage) is handed in as `appliedToSuspenseCents`, which is
+// where the statement's unapplied figure reads from.
+//
+// Idempotency: ON CONFLICT DO NOTHING on the `payment_id` unique index —
+// the same enforcement `applyPayment` relies on. `paymentId` is the source
+// payment row's primary key as text (the convention the schema documents:
+// `payments.id` for the serviced book, `note_payments.id` for acquired
+// notes), so a re-post, a redelivery or a replay collides and no-ops.
+// ============================================================================
+
+export interface RecordPostedPaymentApplicationInput {
+  organizationId: number;
+  /** `notes.id` as text, or the acquired note's uuid — matches the generator's loanId reads. */
+  loanId: string;
+  loanType: "note" | "acquired_note";
+  /** Source payment row's primary key, as text. Unique across both books. */
+  paymentId: string;
+  /** When the payment hit our system (the posting path's own payment date). */
+  receivedAt: Date;
+  /** §1026.36(c)(1)(i) credit-as-of instant — for posted rails, the payment date itself. */
+  appliedAt: Date;
+  appliedToPrincipalCents: number;
+  appliedToInterestCents: number;
+  appliedToEscrowCents: number;
+  /** Fees the payment collected (late fees on the serviced book; the late-fee bucket on acquired notes). */
+  appliedToFeesCents: number;
+  /** Money received but applied to nothing (payoff residue), or held unapplied. Negative on a reversal of held funds. */
+  appliedToSuspenseCents: number;
+  /** The §-citation that authorised this row's behaviour. Defaults to prompt crediting. */
+  regCitation?: string;
+}
+
+/**
+ * Persist the `payment_applications` breakdown for a payment that has JUST
+ * been inserted by a production posting path, inside that path's own
+ * transaction. Returns true when a row was created, false when the payment
+ * already had one (idempotent re-post).
+ */
+export async function recordPostedPaymentApplication(
+  tx: PrimaryDb,
+  input: RecordPostedPaymentApplicationInput,
+): Promise<boolean> {
+  const inserted = await tx
+    .insert(paymentApplications)
+    .values({
+      organizationId: input.organizationId,
+      loanId: input.loanId,
+      loanType: input.loanType,
+      paymentId: input.paymentId,
+      receivedAt: input.receivedAt,
+      appliedAt: input.appliedAt,
+      appliedToPrincipalCents: input.appliedToPrincipalCents,
+      appliedToInterestCents: input.appliedToInterestCents,
+      appliedToEscrowCents: input.appliedToEscrowCents,
+      appliedToFeesCents: input.appliedToFeesCents,
+      appliedToSuspenseCents: input.appliedToSuspenseCents,
+      regCitation: input.regCitation ?? "12 C.F.R. §1026.36(c)(1)(i)",
+    })
+    .onConflictDoNothing({ target: paymentApplications.paymentId })
+    .returning({ id: paymentApplications.id });
+  return inserted.length > 0;
 }
 
 // ============================================================================

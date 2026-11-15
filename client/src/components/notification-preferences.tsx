@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
+import { usePushNotifications } from "@/hooks/use-push-notifications";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
 
@@ -74,6 +75,7 @@ function effectiveValue(
 
 export function NotificationPreferences() {
   const { toast } = useToast();
+  const push = usePushNotifications();
 
   const { data: schema, isLoading: schemaLoading } = useQuery<NotificationCategory[]>({
     queryKey: SCHEMA_QUERY_KEY,
@@ -192,6 +194,33 @@ export function NotificationPreferences() {
             aria-label="Pause all notifications"
           />
         </div>
+
+        {/* This device's web-push subscription (browser/phone). Only shown where the
+            browser supports push; the per-event Push toggles below are separate
+            preferences and do not subscribe a device by themselves. */}
+        {push.isSupported && (
+          <div className="flex items-start justify-between gap-4 rounded-card border px-4 py-3">
+            <div className="space-y-0.5">
+              <p className="text-sm font-medium" id="push-device-label">Push notifications on this device</p>
+              <p className="text-xs text-muted-foreground">
+                {push.permission === "denied"
+                  ? "Blocked in your browser settings — allow notifications for this site to turn this on."
+                  : push.isSubscribed
+                    ? "This device receives urgent Pax cards, 7-day redemption alerts and borrower reminders that are ready for your tap."
+                    : "Get urgent Pax cards, 7-day redemption alerts and borrower reminders that are ready for your tap, even when AcreOS is closed."}
+              </p>
+            </div>
+            <Switch
+              checked={push.isSubscribed}
+              onCheckedChange={(v) => {
+                void (v ? push.subscribe() : push.unsubscribe());
+              }}
+              disabled={push.isLoading || push.permission === "denied"}
+              data-testid="notification-push-device"
+              aria-labelledby="push-device-label"
+            />
+          </div>
+        )}
 
         {/* Channel column header — only on md+ where row layout is grid-like. */}
         <div className="hidden md:flex items-center justify-end gap-8 pb-2 border-b text-xs text-muted-foreground">

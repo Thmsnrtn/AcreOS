@@ -30,9 +30,18 @@
 
 import { readAllDeals, readAllNotes } from "./storage/wholeBookReads";
 import { realPayment, samplePropertyIds } from "./services/onboarding/sampleFilters";
+import { SAMPLE_LEAD_SOURCE } from "./services/onboarding/sampleSeeder";
+import { countPendingActionsByTool } from "./services/approvalKernel";
+import {
+  composeBriefSections,
+  localBriefDate,
+  parseTzOffset,
+  type BriefSectionKey,
+  type BriefSections,
+} from "./services/morningBriefSections";
 import { Router, type Response } from "express";
 import { and, desc, eq, gt, gte, inArray, notInArray, sql } from "drizzle-orm";
-import { paxObservations, leads as leadsTable, deals as dealsTable, properties as propertiesTable, payments as paymentsTable, todayQueueState, paxSends, paxScheduledTaskRuns } from "@shared/schema";
+import { paxObservations, leads as leadsTable, deals as dealsTable, properties as propertiesTable, payments as paymentsTable, todayQueueState, paxSends, paxScheduledTaskRuns, paxMorningBriefs } from "@shared/schema";
 import type { Persona } from "@shared/models/auth";
 import { db, storage } from "./storage";
 import { runPortfolioHealthJob, getActiveAlerts } from "./services/portfolioHealth";
@@ -1427,6 +1436,8 @@ router.get("/", async (req: AuthenticatedRequest, res: Response) => {
     // Completed payment rows whose processed/payment timestamp is within the
     // last 24h — the brief's "{n} posted" (a real count, never a claim).
     let postedOvernight = 0;
+    // The brief must not read a failed query as "0 payments posted".
+    let paymentsReadFailed = false;
     try {
       const since = bucketStart(0);
       const rows = await db
@@ -1460,6 +1471,7 @@ router.get("/", async (req: AuthenticatedRequest, res: Response) => {
         error: e instanceof Error ? e.message : String(e),
       });
       cashHistory = [];
+      paymentsReadFailed = true;
     }
 
     const openDealsValueHistory: number[] = (() => {
@@ -1540,9 +1552,29 @@ router.get("/", async (req: AuthenticatedRequest, res: Response) => {
       ? (composed ?? composeBrief(persona, briefInputs))
       : null;
 
+    // ── Sectioned brief (E2 slice 1 leg 2) — what changed / what needs you /
+    // what Pax prepared. Deterministic counts from the gather above plus the
+    // kernel's live asks; renders the same when the AI provider is down. The
+    // headline above stays the one line it always was.
+    const briefCard = await buildBriefCard({
+      orgId,
+      now,
+      tzOffsetMin: parseTzOffset(req.query.tz),
+      hasAnyData,
+      headline: brief,
+      allLeads,
+      realDeals,
+      activeNotes,
+      lateNotes: lateCount,
+      paymentsPosted24h: postedOvernight,
+      paymentsReadFailed,
+      openAlerts,
+    });
+
     res.json({
       queue,
       brief,
+      briefCard,
       progress,
       receipts,
       cash: {
@@ -1571,6 +1603,132 @@ router.get("/", async (req: AuthenticatedRequest, res: Response) => {
     Errors.internal(res, error);
   }
 });
+
+// ── The sectioned morning brief (E2 slice 1 leg 2) ─────────────────────────
+// The card GET /api/today returns, and the archive behind it. Sections come
+// from morningBriefSections.composeBriefSections (pure); this helper only
+// gathers the two counts the queue gather did not already hold (asks per tool,
+// deals touched / leads created in 24h are derived from rows already loaded)
+// and keeps one archive row per org per local day.
+
+const SAMPLE_LEAD_SOURCES = new Set([SAMPLE_LEAD_SOURCE, "sample"]);
+/** A lead in one of these is not one to contact (the queue's stalled-lead rule). */
+const OPEN_LEAD_EXCLUDED_STATUSES = new Set<string>([...TERMINAL_LEAD_STATUSES, "converted"]);
+
+interface BriefCardPayload {
+  /** Archive row id; null when nothing was archived (no data, or no viewer zone). */
+  id: number | null;
+  /** The viewer's local day; null when the request carried no zone. */
+  date: string | null;
+  headline: string | null;
+  sections: BriefSections;
+  dismissed: boolean;
+}
+
+async function buildBriefCard(params: {
+  orgId: number;
+  now: Date;
+  /** parseTzOffset(req.query.tz): null when the client sent no real offset. */
+  tzOffsetMin: number | null;
+  hasAnyData: boolean;
+  headline: string | null;
+  allLeads: Array<{
+    source?: string | null;
+    status?: string | null;
+    createdAt?: Date | string | null;
+    lastContactedAt?: Date | string | null;
+  }>;
+  realDeals: Array<{ updatedAt?: Date | string | null }>;
+  activeNotes: Array<{ nextPaymentDate?: Date | string | null }>;
+  lateNotes: number;
+  paymentsPosted24h: number;
+  paymentsReadFailed: boolean;
+  openAlerts: number;
+}): Promise<BriefCardPayload> {
+  const { orgId, now } = params;
+  const dayAgo = now.getTime() - DAY_MS;
+  const within24h = (ts: Date | string | null | undefined) => {
+    if (!ts) return false;
+    const t = new Date(ts).getTime();
+    return Number.isFinite(t) && t >= dayAgo && t <= now.getTime();
+  };
+  const notePaymentsDue7d = params.activeNotes.filter((n) => {
+    if (!n.nextPaymentDate) return false;
+    const diff = (new Date(n.nextPaymentDate).getTime() - now.getTime()) / DAY_MS;
+    return diff >= 0 && diff <= 7;
+  }).length;
+
+  const unreadable: BriefSectionKey[] = params.paymentsReadFailed ? ["changed"] : [];
+  let pendingAsksByTool: Record<string, number> = {};
+  try {
+    pendingAsksByTool = await countPendingActionsByTool(orgId);
+  } catch (e) {
+    // An unreadable kernel is reported as unreadable — never as "nothing prepared".
+    unreadable.push("prepared");
+    logger.warn("Today: brief prepared-work read failed", { error: e instanceof Error ? e.message : String(e) });
+  }
+
+  // The real book only, on both lead counts: a demo workspace's sample leads
+  // are neither "new" nor "not contacted".
+  const realLeads = params.allLeads.filter((l) => !SAMPLE_LEAD_SOURCES.has(String(l.source ?? "")));
+  const fourteenDaysAgo = now.getTime() - 14 * DAY_MS;
+  const leadsUncontacted14d = realLeads.filter((l) => {
+    if (OPEN_LEAD_EXCLUDED_STATUSES.has(String(l.status ?? ""))) return false;
+    if (!l.lastContactedAt) return true;
+    return new Date(l.lastContactedAt).getTime() < fourteenDaysAgo;
+  }).length;
+
+  const sections = composeBriefSections({
+    asOf: now,
+    paymentsPosted24h: params.paymentsPosted24h,
+    leadsCreated24h: realLeads.filter((l) => within24h(l.createdAt)).length,
+    dealsUpdated24h: params.realDeals.filter((d) => within24h(d.updatedAt)).length,
+    lateNotes: params.lateNotes,
+    notePaymentsDue7d,
+    openAlerts: params.openAlerts,
+    leadsUncontacted14d,
+    pendingAsksByTool,
+    unreadable,
+  });
+
+  // No archive row when:
+  //   - the org has no data (nothing to dismiss or reopen — the honest empty
+  //     sections still go back);
+  //   - the request carried no real offset (e.g. CashStrip's shared-cache
+  //     fetch): without the viewer's zone there is no "their day" to key a
+  //     row by, and a UTC guess files tomorrow's row every US evening.
+  if (!params.hasAnyData || params.tzOffsetMin === null) {
+    const date = params.tzOffsetMin === null ? null : localBriefDate(now, params.tzOffsetMin);
+    return { id: null, date, headline: params.headline, sections, dismissed: false };
+  }
+  const date = localBriefDate(now, params.tzOffsetMin);
+
+  try {
+    const [row] = await db
+      .insert(paxMorningBriefs)
+      .values({
+        organizationId: orgId,
+        briefDate: date,
+        headline: params.headline,
+        sections: sections as unknown as Record<string, unknown>,
+      })
+      .onConflictDoUpdate({
+        target: [paxMorningBriefs.organizationId, paxMorningBriefs.briefDate],
+        // The day's content follows the live state; a dismissal stays.
+        set: {
+          headline: params.headline,
+          sections: sections as unknown as Record<string, unknown>,
+          updatedAt: now,
+        },
+      })
+      .returning({ id: paxMorningBriefs.id, dismissedAt: paxMorningBriefs.dismissedAt });
+    return { id: row?.id ?? null, date, headline: params.headline, sections, dismissed: row?.dismissedAt != null };
+  } catch (e) {
+    // The archive is bookkeeping; never break Today for it.
+    logger.warn("Today: brief archive write failed", { error: e instanceof Error ? e.message : String(e) });
+    return { id: null, date, headline: params.headline, sections, dismissed: false };
+  }
+}
 
 // ── PATCH /api/today/queue/:id — inline-resolve a decision item (Maren CPO #2)
 // Records the operator's in-place action on a (derived) queue item so the GET

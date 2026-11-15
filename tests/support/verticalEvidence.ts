@@ -60,6 +60,16 @@
  * and reachable). It is NOT gradeable, which the law holds as a named,
  * down-only exception until wave V2.
  *
+ * Legacy credit is PER-SURFACE (resolution (a), 2026-11-09): the entry credits
+ * the decisions of the one route file it names — the lot-pricing LOCK route's
+ * scenario-less lock decisions — and nothing else in the vertical. A vertical
+ * may also have a separate surface that decides through an engine (subdivider
+ * gained one in Leg 4: the decision desk, `routes-subdivision-decision.ts`);
+ * that neither needs the entry nor retires it. The entry retires when the LOCK
+ * ROUTE's own decisions cite an engine declaring the vertical. To keep the two
+ * apart, `creditVerticals` reports engine-cited credits separately as
+ * `engineDecidedBy`.
+ *
  * The crediting itself is a PURE function (`creditVerticals`), so the tests can
  * feed it fixtures. The audit of V0 found the first draft could not be fed
  * anything but the live tree, and that let a per-FILE engine match pass for a
@@ -85,8 +95,14 @@ function definedTemplateIds(): Set<string> {
 
 /**
  * Decision routes owned by a vertical WITHOUT an engine scenario. Down-only:
- * an entry leaves when its route records a scenario from an engine declaring
- * the vertical. Do not add to this list — give the route an engine.
+ * an entry leaves when ITS OWN route records a scenario from an engine
+ * declaring the vertical. Do not add to this list — give the route an engine.
+ *
+ * Each key names the ONE surface the entry credits: the entry below credits
+ * the lot-pricing lock decisions `server/routes-lot-pricing.ts` records for
+ * `subdivider` (a decision snapshot citing no scenario, reviewDueAt hard-coded
+ * null). It does not credit the vertical at large — another route deciding for
+ * subdivider through an engine stands on the engine rule alone.
  */
 export const LEGACY_DECISION_ROUTE_OWNER: Readonly<Record<string, BusinessTypeId>> = {
   "server/routes-lot-pricing.ts": "subdivider",
@@ -446,6 +462,13 @@ export interface Credit {
   /** Crediting decisions that can never be graded, per vertical (file names). */
   ungradeable: Map<BusinessTypeId, string[]>;
   decidedBy: Map<BusinessTypeId, string[]>;
+  /**
+   * Files whose crediting decisions CITE an engine declaring the vertical —
+   * the engine rule only; legacy-branch credits are never listed here. This
+   * is what tells a legacy entry's own surface apart from another surface in
+   * the same vertical that already decides through an engine.
+   */
+  engineDecidedBy: Map<BusinessTypeId, string[]>;
 }
 
 export function creditVerticals(
@@ -453,7 +476,7 @@ export function creditVerticals(
   engines: EngineTable,
   legacy: Readonly<Record<string, BusinessTypeId>> = LEGACY_DECISION_ROUTE_OWNER,
 ): Credit {
-  const c: Credit = { underwritten: new Set(), deciding: new Set(), gradeable: new Set(), ungradeable: new Map(), decidedBy: new Map() };
+  const c: Credit = { underwritten: new Set(), deciding: new Set(), gradeable: new Set(), ungradeable: new Map(), decidedBy: new Map(), engineDecidedBy: new Map() };
   const push = (m: Map<BusinessTypeId, string[]>, v: BusinessTypeId, f: string) => m.set(v, [...(m.get(v) ?? []), f]);
   for (const { file, facts, reachable } of files) {
     // `underwritten`: a genuine scenario writer for the vertical's engine.
@@ -465,6 +488,7 @@ export function creditVerticals(
       if (owning.length > 0) {
         c.deciding.add(v);
         push(c.decidedBy, v, file);
+        push(c.engineDecidedBy, v, file);
         if (!d.reviewHardNull && !facts.optionalReviewSchema && owning.some((id) => engines.get(id)?.gradeable)) c.gradeable.add(v);
         else push(c.ungradeable, v, file);
       } else if (legacy[file] === v) {
@@ -516,6 +540,8 @@ export interface MeasuredEvidence extends VerticalEvidence {
   /** How many route files were parsed — the population floor. */
   routeFilesRead: number;
   decidedBy: ReadonlyMap<BusinessTypeId, string[]>;
+  /** Files that credit each vertical through the engine rule (never via the legacy map). */
+  engineDecidedBy: ReadonlyMap<BusinessTypeId, string[]>;
 }
 
 /**
@@ -548,5 +574,6 @@ export function measureVerticalEvidence(): MeasuredEvidence {
     ungradeable: c.ungradeable,
     routeFilesRead: files.length,
     decidedBy: c.decidedBy,
+    engineDecidedBy: c.engineDecidedBy,
   };
 }

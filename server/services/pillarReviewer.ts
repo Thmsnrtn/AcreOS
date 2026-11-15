@@ -12,6 +12,7 @@ import { db } from "../db";
 import { decisionsInboxItems, agentEvents } from "@shared/schema";
 import { logger } from "../utils/logger";
 import { clock } from "../utils/clock";
+import { raiseIfAllowed } from "./decisionsInboxThrottle";
 
 export async function runPillarReviewJob(): Promise<{
   reportPath: string;
@@ -63,7 +64,15 @@ export async function runPillarReviewJob(): Promise<{
       },
     });
 
-    await db.insert(decisionsInboxItems).values({
+    // Generator throttle (STEP0-DESIGN): unchanged stale/dead counts do not re-raise.
+    await raiseIfAllowed(
+      {
+        producer: "pillar_review",
+        subjectKey: "pillar_review",
+        conditionKey: `${staleCount}:${deadCount}`,
+        class: "standard",
+      },
+      () => db.insert(decisionsInboxItems).values({
       itemType: "pillar_review",
       riskLevel: deadCount > 0 ? "medium" : "low",
       urgencyScore: deadCount > 0 ? 60 : 35,
@@ -76,7 +85,8 @@ export async function runPillarReviewJob(): Promise<{
       organizationId: orgId,
       status: "pending",
       ownerAgentCodename: "pillar_reviewer",
-    });
+    }),
+    );
   } catch (err) {
     logger.error("[pillar-review] failed to write inbox item", err);
   }

@@ -159,7 +159,7 @@ export function rechartsSharedBabelHelpersPlugin(): Plugin {
       if (!table) return null;
       const file = id.split("?")[0];
       if (!file.endsWith(".js")) return null;
-      let real = file;
+      let real: string;
       try {
         real = fs.realpathSync(file);
       } catch {
