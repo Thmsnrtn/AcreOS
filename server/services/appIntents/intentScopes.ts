@@ -55,6 +55,7 @@ export const INTENT_META: Record<string, { door: CustomerDoor; scope: Scope | nu
   run_comps_analysis: { door: "map", scope: "deal_read" },
   run_comps: { door: "map", scope: "deal_read" },
   browse_web: { door: "map", scope: "deal_read" },
+  browse_search: { door: "map", scope: "deal_read" },
   propstream_lookup: { door: "map", scope: "deal_read" },
   propstream_comps: { door: "map", scope: "deal_read" },
   // tenant_pii_write, NOT deal_read — corrected 2026-08-19. The SAME operation

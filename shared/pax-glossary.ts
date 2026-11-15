@@ -236,6 +236,158 @@ export const PAX_GROUP_COPY = {
 } as const;
 
 /**
+ * Per-capability rails (PX-2, register P-1; founder ruling 2026-11-10 §6.5 Q4:
+ * a refinement INSIDE the existing stance, never a new stance). Keys of
+ * `levels` ARE the stored rail levels and keys of `domains` ARE the stored
+ * record domains — shared/pax-controls.ts derives its label maps from here
+ * and its types force one entry per level / domain.
+ */
+export const PAX_RAIL_COPY = {
+  title: "What Pax may do on each kind of record",
+  intro:
+    "Your stance above still decides first. These rails can only make Pax more careful for one kind of record — never less careful than your stance.",
+  levels: {
+    watch: {
+      label: "Watch",
+      sentence: "Pax looks but does not change anything.",
+    },
+    draft: {
+      label: "Draft",
+      sentence: "Pax prepares the change and holds it for you. Nothing is written until you tap.",
+    },
+    ask: {
+      label: "Ask",
+      sentence: "Pax proposes each change and waits for your tap.",
+    },
+    act_and_report: {
+      label: "Act and report",
+      sentence: "Pax makes the change and leaves a receipt.",
+    },
+  },
+  domains: {
+    leads: { label: "Leads" },
+    properties: { label: "Properties" },
+    deals: { label: "Deals" },
+    tasks: { label: "Tasks" },
+    follow_ups: { label: "Follow-ups" },
+    account: { label: "Account fixes" },
+  },
+  sendsLabel: "Sends to people",
+  sendsCeiling: "Sends never go past Ask. Pax never sends what it wrote without your tap.",
+  alwaysOnLabel: "Looks & drafts",
+  alwaysOnLine: "Always on — never gated, and it keeps working while paused.",
+  runsRulesLabel: "Runs your rules",
+  runsRulesLine: "Not a rail. Each rule keeps its own switch, listed under what runs on its own below.",
+  /** Toast after a rail changes: "Leads — Ask". */
+  changed(areaLabel: string, levelLabel: string): string {
+    return `${areaLabel} — ${levelLabel}`;
+  },
+  /** The refusal when a rail is on Watch (same shape as the pause refusal). */
+  watchRefusal(areaLabel: string): string {
+    return (
+      `Pax is set to Watch for ${areaLabel.toLowerCase()}, so this wasn't done. ` +
+      `Change it under ${PAX_CONTROLS_LABEL}. Looking, drafting and anything you approve still work.`
+    );
+  },
+} as const;
+
+/**
+ * Daily limits, per-member narrowing and the rails reset (PX-3, register P-1).
+ * Keys of `labels` ARE the stored limit keys (shared/pax-controls.ts PaxLimits);
+ * keys of `refusals` / `deniedLine` are the limit kinds paxLimits.ts reports
+ * (asks, credits, browse, batchRows). Every refusal is whole sentences with a
+ * way forward — tests/unit/refusalsArePlainWords.test.ts judges each one
+ * through paxLimitRefusalMessage.
+ */
+export const PAX_LIMIT_COPY = {
+  title: "Daily limits",
+  intro:
+    "Cap how much Pax may do in one day. Leave a box blank for no limit. When Pax reaches a cap it stops and tells you; nothing is cut short halfway.",
+  resetNote: "Counts start again at midnight in your workspace's time zone.",
+  placeholder: "No limit",
+  labels: {
+    asksPerDay: "Asks Pax may put in front of you",
+    creditSpendPerDay: "Credits Pax's approved sends may cost",
+    browseCallsPerDay: "Web pages Pax may open",
+    batchRowsPerDay: "Records Pax may add in a batch",
+  },
+  save: "Save limits",
+  saved: "Daily limits saved",
+  adminHint: "Ask an owner to change the daily limits.",
+  /** The refusal each cap gives, by kind. Built by paxLimitRefusalMessage. */
+  refusals: {
+    asks:
+      "Pax has reached your daily limit for asks, so this wasn't done. Your count starts again at midnight, or you can raise the limit under " +
+      `${PAX_CONTROLS_LABEL}.`,
+    credits:
+      "This send would take Pax past your daily limit for credits, so it wasn't put in front of you. Your count starts again at midnight, or you can raise the limit under " +
+      `${PAX_CONTROLS_LABEL}.`,
+    browse:
+      "Pax has reached your daily limit for opening web pages, so the page wasn't opened. Your count starts again at midnight, or you can raise the limit under " +
+      `${PAX_CONTROLS_LABEL}.`,
+    batchRows:
+      "Adding these records would take Pax past your daily limit for batch additions, so none of them were added. Your count starts again at midnight, or you can raise the limit under " +
+      `${PAX_CONTROLS_LABEL}.`,
+  },
+  /** The receipt line for a stopped attempt, in the customer's words. */
+  deniedLine: {
+    asks: "Stopped at the daily limit for asks",
+    credits: "Stopped at the daily limit for credits",
+    browse: "Stopped at the daily limit for web pages",
+    batchRows: "Stopped at the daily limit for batch additions",
+  },
+  // Your own narrower settings
+  memberTitle: "Your own narrower settings",
+  memberIntro:
+    "Make Pax more careful when it acts for you. These can only narrow what the workspace allows — a choice that is wider than the workspace's has no effect.",
+  memberLimitNote: "A number above the workspace's limit has no effect; the smaller one always applies.",
+  memberApplies: "What applies to you right now",
+  memberNoLimit: "no limit",
+  memberSave: "Save my settings",
+  memberSaved: "Your narrower settings saved",
+  memberClear: "Clear my narrower settings",
+  memberCleared: "Your narrower settings cleared",
+  memberCouldNotSave: "Could not save your settings",
+  // Reset all rails
+  resetButton: "Reset all rails",
+  resetConfirm: "Tap again to reset",
+  resetCancel: "Keep my settings",
+  resetWhat:
+    "Resets every rail to its starting level, removes every daily limit, and clears everyone's own narrower settings.",
+  resetWhatNot: "Does not change your stance, the three switches, or a pause.",
+  resetDone: "Rails, limits and everyone's narrower settings reset",
+  couldNotReset: "Could not reset the rails",
+} as const;
+
+/**
+ * "My county sites" (PX-7) — the list of public sites Pax may run a search on.
+ * Listing a site lets Pax type a search into that site's own search box and read
+ * the results page; it is not a licence, and the line below says so without
+ * claiming more than the fence enforces (a handful of web-sourced records per
+ * conversation, each tagged with where it came from).
+ */
+export const PAX_MY_SITES_COPY = {
+  title: "My county sites",
+  intro:
+    "Public sites you want Pax to search for you — a county assessor, recorder or treasurer. Pax types your search into the site's own search box and reads the results page.",
+  limitLine:
+    "Listing a site lets Pax run searches on it. It does not let Pax copy a site's data in bulk: Pax still adds only a few records from a web page at a time, and notes where each one came from.",
+  empty: "No sites yet. Add the ones you use and Pax can search them when you ask.",
+  labelField: "Name",
+  labelPlaceholder: "Cochise County assessor",
+  hostField: "Website address",
+  hostPlaceholder: "https://assessor.example.gov",
+  addButton: "Add site",
+  removeButton: "Remove",
+  added: (label: string) => `${label} added to your sites`,
+  removed: (label: string) => `${label} removed from your sites`,
+  notAddress: "That does not look like a website address. Paste the address of the site, like https://assessor.example.gov.",
+  alreadyListed: "That site is already on your list.",
+  listFull: (max: number) => `You can list up to ${max} sites. Remove one to add another.`,
+  readOnly: "Ask an owner to change your sites.",
+} as const;
+
+/**
  * The fixed Never list — facts, each with the gate that makes it a fact
  * (spec §2). A line is listed ONLY while its gate exists; the pricing line
  * ("change what you pay AcreOS") is appended by wave 1 A together with

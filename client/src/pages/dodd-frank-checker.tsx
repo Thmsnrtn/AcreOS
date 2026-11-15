@@ -10,12 +10,21 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
+import { useNotes } from "@/hooks/use-notes";
 import { CheckCircle2, AlertTriangle, XCircle, Scale, Loader2 } from "lucide-react";
 
 interface FindingItem {
   issue: string;
   detail: string;
   severity: "info" | "warning" | "critical";
+}
+
+interface BookCounts {
+  noteId: number;
+  trackA_dwellingSecuredRolling12Months: number;
+  unknownDwellingRolling12Months: number;
+  thisDealAddedToTrackA: boolean;
+  sellerKeyLimitation: string;
 }
 
 interface ComplianceResult {
@@ -25,6 +34,8 @@ interface ComplianceResult {
   findings: FindingItem[];
   recommendations: string[];
   requiresLicensedMLO: boolean;
+  countSource?: "book" | "hypothetical";
+  bookCounts?: BookCounts;
 }
 
 const SEVERITY_META: Record<FindingItem["severity"], { label: string; render: () => JSX.Element }> = {
@@ -44,6 +55,7 @@ export default function DoddFrankCheckerPage() {
   useDocumentTitle("Dodd-Frank compliance");
   const { toast } = useToast();
   const dealsId = useId();
+  const notePickerId = useId();
   const sellerTypeId = useId();
   const rateTypeId = useId();
   const interestId = useId();
@@ -55,6 +67,10 @@ export default function DoddFrankCheckerPage() {
 
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ComplianceResult | null>(null);
+  // §5.5: pick a note from the book and the count is counted for real;
+  // leave it on "hypothetical" and the typed count stands, labelled as such.
+  const [selectedNoteId, setSelectedNoteId] = useState<string>("hypothetical");
+  const { data: bookNotes } = useNotes();
   const [form, setForm] = useState({
     sellerFinancedDealsLast12Months: "1",
     sellerType: "natural_person",
@@ -79,6 +95,7 @@ export default function DoddFrankCheckerPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...form,
+          ...(selectedNoteId !== "hypothetical" ? { noteId: parseInt(selectedNoteId, 10) } : {}),
           sellerFinancedDealsLast12Months: parseInt(form.sellerFinancedDealsLast12Months),
           interestRate: parseFloat(form.interestRate),
           balloonAfterMonths: form.balloonAfterMonths ? parseInt(form.balloonAfterMonths) : undefined,
@@ -128,6 +145,27 @@ export default function DoddFrankCheckerPage() {
         </CardHeader>
         <CardContent className="p-4 pt-0">
           <form onSubmit={runCheck} className="space-y-4">
+            <div>
+              <Label htmlFor={notePickerId} className="text-xs">Count the deals from a note in your book?</Label>
+              <Select value={selectedNoteId} onValueChange={setSelectedNoteId}>
+                <SelectTrigger id={notePickerId} className="mt-1" aria-label="Count the deals from a note in your book">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="hypothetical">Hypothetical — I'll type the count myself</SelectItem>
+                  {(bookNotes ?? []).map((n) => (
+                    <SelectItem key={n.id} value={String(n.id)}>
+                      Note #{n.id} — {n.borrowerId ? `Borrower #${n.borrowerId}` : "Unassigned borrower"}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {selectedNoteId !== "hypothetical" && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  The deals count below is ignored — the server counts this seller's deals from your book.
+                </p>
+              )}
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label htmlFor={dealsId} className="text-xs">Deals financed (last 12 mo)</Label>
@@ -255,6 +293,30 @@ export default function DoddFrankCheckerPage() {
             </div>
 
             <p className="text-sm text-muted-foreground">{result.summary}</p>
+
+            {result.countSource === "book" && result.bookCounts ? (
+              <div className="text-xs space-y-1" aria-label="Count source">
+                <p>
+                  <span className="font-medium">Count from your book:</span>{" "}
+                  {result.bookCounts.trackA_dwellingSecuredRolling12Months} dwelling-secured deal
+                  {result.bookCounts.trackA_dwellingSecuredRolling12Months === 1 ? "" : "s"} in the last 12 months
+                  {result.bookCounts.thisDealAddedToTrackA ? ", plus this deal" : " (this deal is already among them)"}.
+                </p>
+                {result.bookCounts.unknownDwellingRolling12Months > 0 && (
+                  <p className="text-muted-foreground">
+                    Plus {result.bookCounts.unknownDwellingRolling12Months} deal
+                    {result.bookCounts.unknownDwellingRolling12Months === 1 ? "" : "s"} where the dwelling answer
+                    isn't recorded — the activation gate counts those as dwelling-secured.
+                  </p>
+                )}
+                <p className="text-muted-foreground italic">{result.bookCounts.sellerKeyLimitation}</p>
+              </div>
+            ) : result.countSource === "hypothetical" ? (
+              <p className="text-xs text-muted-foreground" aria-label="Count source">
+                <span className="font-medium">Hypothetical</span> — the deals count is the number you typed, not a
+                count from your book.
+              </p>
+            ) : null}
 
             {result.requiresLicensedMLO && (
               <div className="bg-acr-neg-soft border border-acr-neg-soft rounded p-3 text-xs text-acr-neg-soft-ink" role="alert">

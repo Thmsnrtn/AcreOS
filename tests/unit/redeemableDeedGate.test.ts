@@ -60,7 +60,10 @@ const GATED_UPDATES: Array<[file: string, key: string, write: RegExp]> = [
 ];
 
 /** Units that write a spend table but are not spend on a parcel — each with why. */
-const EXEMPT: Record<string, string> = {};
+const EXEMPT: Record<string, string> = {
+  "server/routes-rehabs.ts POST /api/rehabs/:id/realized":
+    "records realized outcome facts at close; commits no spend — the project's spend was gated at create/PATCH",
+};
 
 const GATE = /\b(refuseRedeemableDeedSpend|taxHoldRefusal)\(/;
 const REGISTRATION = /\b(app|api|router)\.(get|post|put|patch|delete)\(\s*["'`]([^"'`]+)["'`]/g;

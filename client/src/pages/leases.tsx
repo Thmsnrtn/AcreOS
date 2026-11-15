@@ -20,6 +20,17 @@
  *      leases, which are PADS. The discriminator existed in the schema and no
  *      write site in the product ever set it to anything else.
  *
+ * ACTIVATION (S-04). A lease created here starts as a draft, and a draft is
+ * read by NOTHING downstream: rent-charge generation takes only
+ * active/pending_signature leases, the expiry scan takes only active ones,
+ * and the deposit clock resolves only once a tenancy's lifecycle moves.
+ * Leases used to sit in draft forever because no client called the routes
+ * that move one. Each draft / pending-signature row below now carries the
+ * two calls that end that: POST /api/leases/:id/tenants (attach) and
+ * POST /api/leases/:id/activate (the server transition into `active`,
+ * guarded server-side — no tenant, no activation), and a banner says
+ * plainly that a draft runs no charges and no clocks until then.
+ *
  * UNITS TAB. This page now has two tabs: Leases and Units. The units surface
  * (client/src/components/rentals/units-panel.tsx) is a TAB here rather than a
  * route of its own because "no new top-level nav entries EVER" is a standing
@@ -52,6 +63,8 @@ import { UnitsPanel } from "@/components/rentals/units-panel";
 import { ExpensesPanel } from "@/components/rentals/expenses-panel";
 import { T12Workspace } from "@/components/rentals/t12-workspace";
 import { BookingsPanel } from "@/components/rentals/bookings-panel";
+import { CommercialPanel } from "@/components/rentals/commercial-panel";
+import { useOrganization } from "@/hooks/use-organization";
 import { UNIT_KIND_OPTIONS, unitVocabulary } from "@shared/rental/unitInventory";
 import type { RentalUnitKind } from "@shared/schema";
 
@@ -75,6 +88,23 @@ interface RentalUnit {
   status: string;
   activeLeaseCount: number;
 }
+
+interface Tenant {
+  id: string;
+  firstName: string | null;
+  lastName: string | null;
+  isEntity: boolean;
+  companyName: string | null;
+  status: string;
+}
+
+function tenantName(t: Tenant): string {
+  if (t.isEntity) return t.companyName ?? "Company tenant";
+  return [t.firstName, t.lastName].filter(Boolean).join(" ") || "Unnamed tenant";
+}
+
+/** Statuses a lease can be activated FROM (mirrors shared/rental/leaseActivation.ts). */
+const ACTIVATABLE_STATUSES = new Set(["draft", "pending_signature"]);
 
 const STATUSES = ["draft", "pending_signature", "active", "ended", "terminated", "renewed"] as const;
 
@@ -104,6 +134,10 @@ export default function LeasesPage() {
   const deepLinkedProperty = Number(new URLSearchParams(search).get("propertyId"));
   const initialUnitsProperty = Number.isInteger(deepLinkedProperty) && deepLinkedProperty > 0 ? deepLinkedProperty : null;
   const [tab, setTab] = useState<string>(initialTab);
+  // Commercial orgs only — the same businessType signal rent-roll and the
+  // contractual late-fee guard read (W2-COMMERCIAL).
+  const { data: org } = useOrganization();
+  const isCommercial = (org?.onboardingData as { businessType?: string } | null)?.businessType === "commercial";
   const [showCreate, setShowCreate] = useState(false);
   const [propertyId, setPropertyId] = useState("");
   const [startDate, setStartDate] = useState("");
@@ -118,6 +152,12 @@ export default function LeasesPage() {
   const [isSection8, setIsSection8] = useState(false);
   const [hapPortion, setHapPortion] = useState("");
   const [tenantPortion, setTenantPortion] = useState("");
+  // S-04 activation flow: the tenant picked per lease row, and the tenants
+  // attached from THIS page in this session (the list endpoint carries no
+  // tenant count, so a just-attached tenant is tracked here until Activate —
+  // the server recounts the links itself and refuses activation with none).
+  const [selectedTenantByLease, setSelectedTenantByLease] = useState<Record<string, string>>({});
+  const [attachedByLease, setAttachedByLease] = useState<Record<string, string[]>>({});
 
   const list = useQuery<{ leases: Lease[] }>({
     queryKey: ["/api/leases"],
@@ -185,6 +225,69 @@ export default function LeasesPage() {
     },
   });
 
+  const hasActivatable = (list.data?.leases ?? []).some((l) => ACTIVATABLE_STATUSES.has(l.status));
+  const tenants = useQuery<{ tenants: Tenant[] }>({
+    queryKey: ["/api/tenants"],
+    enabled: hasActivatable,
+    queryFn: async () => {
+      const res = await fetch("/api/tenants", { credentials: "include" });
+      if (!res.ok) throw new Error(`Failed (${res.status})`);
+      return res.json();
+    },
+  });
+
+  const attachTenant = useMutation({
+    mutationFn: async ({ leaseId, tenantId }: { leaseId: string; tenantId: string }) => {
+      const res = await fetch(`/api/leases/${leaseId}/tenants`, {
+        method: "POST", credentials: "include", headers: csrf(),
+        body: JSON.stringify({ tenantId, rentSharePct: 1, isPrimary: true }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.message || body?.error || `Failed (${res.status})`);
+      }
+      return res.json();
+    },
+    onSuccess: (_data, { leaseId, tenantId }) => {
+      toast({ title: "Tenant attached" });
+      queryClient.invalidateQueries({ queryKey: ["/api/leases"] });
+      setAttachedByLease((prev) => ({
+        ...prev,
+        [leaseId]: [...(prev[leaseId] ?? []), tenantId],
+      }));
+    },
+    onError: (error) => {
+      toast({ title: getErrorTitle(error), description: getErrorMessage(error), variant: "destructive" });
+    },
+  });
+
+  const activate = useMutation({
+    mutationFn: async (leaseId: string) => {
+      const res = await fetch(`/api/leases/${leaseId}/activate`, {
+        method: "POST", credentials: "include", headers: csrf(),
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) {
+        // The server's refusal IS the instruction (no tenant attached yet,
+        // lead-paint disclosure required, lease already closed) — surface
+        // it verbatim instead of a bare status code.
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.message || body?.error || `Failed (${res.status})`);
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Lease activated", description: "Rent charges, expiry alerts and the deposit lifecycle now run on this lease." });
+      queryClient.invalidateQueries({ queryKey: ["/api/leases"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/rent-roll/occupancy"] });
+    },
+    onError: (error) => {
+      toast({ title: getErrorTitle(error), description: getErrorMessage(error), variant: "destructive" });
+    },
+  });
+
+  const draftCount = (list.data?.leases ?? []).filter((l) => l.status === "draft").length;
+
   return (
     <PageShell label="Leases">
       <div className="flex items-start justify-between mb-6 gap-4">
@@ -220,6 +323,8 @@ export default function LeasesPage() {
           {/* Short-term-rental nightly stays (STR Wave A). A tab behind the
               Rentals module — no new door, no new route (standing hard-stop). */}
           <TabsTrigger value="bookings" data-testid="tab-bookings">Bookings</TabsTrigger>
+          {/* Commercial terms, rent steps, $/sqft, CAM (W2-COMMERCIAL) — a tab, never a nav entry. */}
+          {isCommercial && <TabsTrigger value="commercial" data-testid="tab-commercial">Commercial</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="units" className="mt-0">
@@ -238,12 +343,18 @@ export default function LeasesPage() {
           <BookingsPanel />
         </TabsContent>
 
+        {isCommercial && (
+          <TabsContent value="commercial" className="mt-0">
+            <CommercialPanel />
+          </TabsContent>
+        )}
+
         <TabsContent value="leases" className="mt-0">
       {showCreate && (
         <Card className="mb-6">
           <CardHeader>
             <CardTitle className="text-base">New lease</CardTitle>
-            <CardDescription>Tie to an existing property. Add tenants to the lease after it's created.</CardDescription>
+            <CardDescription>Tie to an existing property. The lease starts as a draft — attach its tenant(s) in the list below, then Activate it so rent charges and the lease clocks run.</CardDescription>
           </CardHeader>
           <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-3">
             <div><Label className="text-xs" htmlFor="lease-property-id">Property ID *</Label><Input id="lease-property-id" value={propertyId} onChange={(e) => setPropertyId(e.target.value)} className="h-9" /></div>
@@ -325,6 +436,14 @@ export default function LeasesPage() {
         </Card>
       )}
 
+      {draftCount > 0 && (
+        <div role="alert" data-testid="draft-lease-banner" className="mb-4 rounded-md border border-border bg-muted/40 px-4 py-3 text-sm">
+          {draftCount === 1 ? "1 lease is" : `${draftCount} leases are`} still in draft. A draft lease generates
+          no rent charges, no expiry alerts and no deposit clock — attach its tenant(s) below, then
+          Activate it to start all three.
+        </div>
+      )}
+
       <Card>
         <CardContent className="p-0">
           {list.isLoading ? (
@@ -339,6 +458,7 @@ export default function LeasesPage() {
                   <th className="px-3 py-2 text-left font-medium">End</th>
                   <th className="px-3 py-2 text-right font-medium">Rent</th>
                   <th className="px-3 py-2 text-left font-medium">Flags</th>
+                  <th className="px-3 py-2 text-left font-medium">Tenants / Activation</th>
                 </tr>
               </thead>
               <tbody>
@@ -356,6 +476,51 @@ export default function LeasesPage() {
                       {l.isSection8 && <Badge variant="default" className="text-micro">Sec 8</Badge>}
                       {l.versionNumber > 1 && <Badge variant="outline" className="text-micro">v{l.versionNumber}</Badge>}
                       <Badge variant="outline" className="text-micro">{l.state}</Badge>
+                    </td>
+                    <td className="px-3 py-2">
+                      {ACTIVATABLE_STATUSES.has(l.status) ? (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Select
+                            value={selectedTenantByLease[l.id] ?? ""}
+                            onValueChange={(v) => setSelectedTenantByLease((prev) => ({ ...prev, [l.id]: v }))}
+                          >
+                            <SelectTrigger className="h-8 w-44" data-testid={`attach-tenant-select-${l.id}`} aria-label="Tenant to attach">
+                              <SelectValue placeholder="Pick a tenant" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {(tenants.data?.tenants ?? [])
+                                .filter((t) => !(attachedByLease[l.id] ?? []).includes(t.id))
+                                .map((t) => (
+                                  <SelectItem key={t.id} value={t.id}>{tenantName(t)}</SelectItem>
+                                ))}
+                            </SelectContent>
+                          </Select>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            data-testid={`attach-tenant-${l.id}`}
+                            disabled={!selectedTenantByLease[l.id] || attachTenant.isPending}
+                            onClick={() => attachTenant.mutate({ leaseId: l.id, tenantId: selectedTenantByLease[l.id] })}
+                          >
+                            Attach tenant
+                          </Button>
+                          <Button
+                            size="sm"
+                            data-testid={`activate-lease-${l.id}`}
+                            disabled={activate.isPending}
+                            onClick={() => activate.mutate(l.id)}
+                          >
+                            Activate lease
+                          </Button>
+                          {(attachedByLease[l.id] ?? []).length > 0 && (
+                            <span className="text-xs text-muted-foreground">
+                              {(attachedByLease[l.id] ?? []).length} tenant(s) attached — activation unlocks charges &amp; clocks.
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
                     </td>
                   </tr>
                 ))}

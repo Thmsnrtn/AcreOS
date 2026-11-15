@@ -1696,7 +1696,9 @@ export async function importNotesFromCSV(
           // ATR origination gate accepts them. Servicing surfaces flag
           // 'legacy' rows for retroactive review.
           atrExemptionCode: "legacy",
-        } as any);
+          // viaImport: this is the ONE entry allowed to land 'legacy' (ruling R1 —
+          // grandfathering the pre-0099 book by construction, not a new claim).
+        } as any, { viaImport: true });
       } catch (noteError) {
         if (createdLead) {
           await db.delete(activityLog).where(and(eq(activityLog.organizationId, organizationId), eq(activityLog.entityType, "lead"), eq(activityLog.entityId, createdLead.id)));

@@ -37,7 +37,9 @@ import {
   organizationIntegrations,
   sequenceEnrollments,
   activityLog,
+  leadActivities,
 } from "@shared/schema";
+import { pauseSequencesOnResponse } from "./leadResponse";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { leadHasOptedOut } from "./leadContactability";
@@ -857,6 +859,26 @@ export async function handleIncomingSMS(
         err instanceof Error ? err : undefined,
       );
     }
+
+    // Stop-on-reply (gap slice 1): record the reply as a RESPONSE_SOURCES
+    // lead activity (what checkLeadResponded reads) and pause the lead's
+    // active drip enrollments. Replays returned early above, so this runs once
+    // per distinct inbound. Fail-soft: the message is already stored.
+    try {
+      await db.insert(leadActivities).values({
+        leadId,
+        organizationId,
+        type: "sms_received",
+        description: `Inbound SMS from ${fromPhone}`,
+        metadata: { messageId: newMessage.id, from: fromPhone, messageSid },
+      });
+    } catch (err) {
+      logger.warn(
+        "[SMS] failed to record sms_received lead activity (message stored fine)",
+        err instanceof Error ? err : undefined,
+      );
+    }
+    await pauseSequencesOnResponse(organizationId, leadId);
   }
 
   return {

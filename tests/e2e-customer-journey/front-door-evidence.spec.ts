@@ -70,12 +70,39 @@ async function clickIfVisible(page: Page, selector: string, timeout = 4_000) {
   }
 }
 
+/** Headers carrying the harness's synthetic identity (the same token source
+ * as seedPersona's route rule) for calls that cannot ride that rule. */
+function e2eAuthHeaders(): Record<string, string> {
+  const token = process.env.E2E_TEST_AUTH_TOKEN;
+  return token ? { "X-E2E-Auth-Token": token } : {};
+}
+
+/**
+ * Does this persona still need onboarding? Asked via page.request, which
+ * shares the context's cookies but does NOT pass through seedPersona's
+ * context.route header injection — so the token goes on explicitly (cookie +
+ * header is exactly what the server's token path consumes). Fail closed:
+ * onboarded means a 200 whose body says needsOnboarding === false; a non-200
+ * (the unauthenticated probe 401s, and a 401 body parses as JSON) or a body
+ * without a boolean means "treat as needs onboarding" — the posture the old
+ * .catch default intended. A broken probe must never again masquerade as
+ * "already onboarded" (diag-cj-today-2026-11-09).
+ */
+async function readNeedsOnboarding(page: Page): Promise<boolean> {
+  const res = await page.request
+    .get("/api/me/needs-onboarding", { headers: e2eAuthHeaders() })
+    .catch(() => null);
+  if (!res || res.status() !== 200) return true;
+  const body: unknown = await res.json().catch(() => null);
+  const needs = (body as { needsOnboarding?: unknown } | null)?.needsOnboarding;
+  return typeof needs === "boolean" ? needs : true;
+}
+
 /** Onboard as a note investor with no data — only on this persona's first run. */
 async function ensureOnboardedAsFreshNoteInvestor(page: Page) {
   await page.goto("/today", { waitUntil: "domcontentloaded" });
   await clickIfVisible(page, 'button:has-text("Got it")', 10_000);
-  const needs = await (await page.request.get("/api/me/needs-onboarding")).json().catch(() => ({ needsOnboarding: true }));
-  if (!needs?.needsOnboarding) return;
+  if (!(await readNeedsOnboarding(page))) return;
   if (!/onboarding/.test(page.url())) await page.goto("/onboarding-v2");
   const orgName = page.locator('[data-testid="input-org-name"]');
   await orgName.waitFor({ state: "visible", timeout: 20_000 });
@@ -85,12 +112,23 @@ async function ensureOnboardedAsFreshNoteInvestor(page: Page) {
   await page.locator('[data-testid="button-continue-workspace"]').click();
   await page.getByRole("button", { name: "Set up data later" }).click();
   await page.locator('[data-testid="button-finish-onboarding"]').click();
-  await expect
-    .poll(async () => (await page.request.get("/api/me/needs-onboarding")).json(), { timeout: 20_000 })
-    .toMatchObject({ needsOnboarding: false });
+  await expect.poll(async () => readNeedsOnboarding(page), { timeout: 20_000 }).toBe(false);
 }
 
 test.describe("CJ4: front-door evidence (D11)", () => {
+  // The synthetic identity is presented as an X-E2E-Auth-Token header added by
+  // route interception (seedPersona). A request the app's service worker
+  // re-issues is not seen by page.route, and context.route sees
+  // service-worker requests on Chromium only, so on WebKit it would reach the
+  // server WITHOUT the header and 401. Measured on this spec
+  // (diag-cj-today-2026-11-09): on mobile-iphone-12 the second /today load
+  // went cookie-only once the service worker controlled the page,
+  // /api/auth/user 401'd, and the walk ended on the Clerk sign-in page. Same
+  // defence as CJ1, same reason: a property of the HARNESS, not of the
+  // product — a real customer authenticates with cookies, which the service
+  // worker's fetch() carries.
+  test.use({ serviceWorkers: "block" });
+
   test.beforeEach(({}, testInfo) => {
     test.skip(!EVIDENCE_PROJECTS.has(testInfo.project.name), "evidence runs on one phone and one desktop project");
   });
@@ -105,7 +143,11 @@ test.describe("CJ4: front-door evidence (D11)", () => {
     await test.step("/today: the pinned CTA is on the first screen", async () => {
       await page.goto("/today", { waitUntil: "domcontentloaded" });
       await page.locator('[data-testid="text-today-title"]').waitFor({ state: "visible", timeout: 30_000 });
-      const book = await (await page.request.get("/api/notes/acquired?limit=1")).json().catch(() => null);
+      const book = await (
+        await page.request.get("/api/notes/acquired?limit=1", { headers: e2eAuthHeaders() })
+      )
+        .json()
+        .catch(() => null);
       expect(book?.total, `this evidence tenant must stay fresh (no acquired notes): ${JSON.stringify(book)}`).toBe(0);
       const cta = page.locator(CTA);
       await cta.waitFor({ state: "visible", timeout: 20_000 });

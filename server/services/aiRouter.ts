@@ -1276,7 +1276,15 @@ async function routeAITaskUnbounded(
   if (!config.byok && process.env.AI_COST_CEILING_BYPASS !== "1") {
     try {
       const { assertWithinAiCostCeiling } = await import("./aiCostCeiling");
-      await assertWithinAiCostCeiling(config.orgId ?? null);
+      // P1-5 R1: the resolved origin rides through — a background call is
+      // checked against the org's background sub-ceiling and the platform
+      // bucket's 70% background reserve, with the autonomous fail-closed
+      // posture the metered path already had (sweep-ai-cost §4 named the
+      // two-posture split a doorway accident; the doorway is now one).
+      await assertWithinAiCostCeiling(config.orgId ?? null, {
+        origin: callOrigin,
+        failClosed: callOrigin === "background",
+      });
     } catch (err) {
       if ((err as { code?: string })?.code === "AI_COST_CEILING_EXCEEDED") throw err;
       logger.warn("[AIRouter] cost ceiling check failed — allowing call", {
@@ -1520,12 +1528,31 @@ async function routeAITaskUnbounded(
       ?? 0;
   } catch (err: any) {
     const latencyMs = clock.nowMs() - startTime;
-    recordAITelemetry({ origin: callOrigin, orgId: config.orgId, taskType: task.taskType ?? "unknown", provider, model, promptTokens: 0, completionTokens: 0, totalTokens: 0, estimatedCostCents: 0, latencyMs, cacheHit: false, complexity: task.complexity, success: false, errorMessage: err.message });
+    // P1-5 R5: a failed attempt is NOT $0. The provider may have billed
+    // tokens before the failure (timeout after generation, mid-stream
+    // drop, the SDK's own retry); with no usage block to read, record
+    // the named floor estimate (input priced in full, output 0 — see
+    // aiCostRates.estimateFailedCallCostCents) instead of 0. BYOK stays
+    // genuinely $0 platform cost.
+    let failedCostCents = 0;
+    if (!config.byok) {
+      const { estimateFailedCallCostCents } = await import("./aiCostRates");
+      const inputChars = (task.messages ?? []).reduce(
+        (n: number, m: { content?: unknown }) => n + (typeof m?.content === "string" ? m.content.length : 0),
+        0,
+      );
+      const est = estimateFailedCallCostCents(model, inputChars);
+      failedCostCents = inputChars > 0 ? Math.max(1, Math.round(est)) : 0;
+    }
+    recordAITelemetry({ origin: callOrigin, orgId: config.orgId, taskType: task.taskType ?? "unknown", provider, model, promptTokens: 0, completionTokens: 0, totalTokens: 0, estimatedCostCents: failedCostCents, latencyMs, cacheHit: false, complexity: task.complexity, success: false, errorMessage: err.message });
     void recordCascadeCall({
       organizationId: config.orgId ?? null,
       model,
       complexityClass: complexityClassFromTaskType(task.taskType),
       feature: task.taskType || "unknown",
+      promptTokens: 0,
+      completionTokens: 0,
+      costCents: failedCostCents,
       latencyMs,
       cacheHit: false,
       errorClass: classifyAiError(err),
