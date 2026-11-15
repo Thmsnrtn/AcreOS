@@ -63,6 +63,12 @@
  *   node scripts/check-bundle-size.js                  # skip-if-no-build (local)
  *   node scripts/check-bundle-size.js --require-build  # a missing build FAILS
  *   CI=true node scripts/check-bundle-size.js          # same, implied by CI
+ *   node scripts/check-bundle-size.js --output founder # the founder bundle (dist/founder);
+ *                                                      # its absence always FAILS
+ *   node scripts/check-bundle-size.js --require-graph  # customer run: a missing chunk graph FAILS
+ *
+ * Two outputs (P1-9 / X-2): CI runs the gate once per output. The customer run
+ * additionally fails if any customer chunk bundles a founder-only module.
  *
  * Exit codes: 0 = PASS or documented SKIP · 1 = FAIL (including vacuous scan).
  */
@@ -80,9 +86,69 @@ import { fileURLToPath } from "node:url";
 // `slackBeforeLoweringPct` above the measured size fails until it is lowered.
 // Ceilings only go down; the targets stay the destination.
 const BUDGET = JSON.parse(readFileSync(new URL("./bundle-budget.json", import.meta.url), "utf8"));
+
+// ── Which build output this run measures (P1-9 / X-2) ─────────────────────
+// The client builds to TWO outputs: the customer bundle (dist/public, the
+// original and default) and the founder bundle (dist/founder). Each has its
+// own ceilings and its own vacuity floor, and a run measures exactly one:
+//
+//   node scripts/check-bundle-size.js                    # customer (default)
+//   node scripts/check-bundle-size.js --output founder
+//
+// The founder output is budgeted separately and can never leak into the
+// customer total — and the customer run additionally FAILS if any customer
+// chunk contains a founder-only module (see the chunk-graph check below).
+const args = process.argv.slice(2);
+function outputFromArgs(argv) {
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === "--output") return argv[i + 1];
+    if (argv[i].startsWith("--output=")) return argv[i].slice("--output=".length);
+  }
+  return "customer";
+}
+const OUTPUT = outputFromArgs(args);
+const OUTPUTS = {
+  customer: {
+    dir: "public",
+    assetsDir: "assets",
+    graphFile: "client-chunk-graph.json",
+    ceilings: BUDGET.ceilings ?? {},
+    // Definitional floor; see MIN_JS_FILES below for why it is not larger.
+    minJsFiles: 1,
+  },
+  founder: {
+    dir: "founder",
+    assetsDir: "founder-assets",
+    graphFile: "founder-chunk-graph.json",
+    ceilings: BUDGET.founder?.ceilings ?? {},
+    // Measured basis (2026-11-15, first founder build on the P1-9 / X-2
+    // branch): 175 .js files measured under dist/founder/founder-assets.
+    // 140 is 80% of that, so a build that loses a fifth of the founder
+    // output (a lost route tree, a renamed assetsDir) fails instead of
+    // reading as a tiny clean bundle.
+    minJsFiles: 140,
+  },
+};
+if (!Object.hasOwn(OUTPUTS, OUTPUT)) {
+  console.error(
+    `FAIL: unknown --output ${JSON.stringify(OUTPUT)} (expected one of ${Object.keys(OUTPUTS).join(", ")}). ` +
+      `A budget gate pointed at an output it does not know has measured nothing.`
+  );
+  process.exit(1);
+}
+const OUT = OUTPUTS[OUTPUT];
+if (OUTPUT === "founder" && !Number.isFinite(OUT.ceilings.totalKB)) {
+  console.error(
+    `FAIL: scripts/bundle-budget.json has no numeric founder.ceilings.totalKB (got ${JSON.stringify(OUT.ceilings.totalKB)}). ` +
+      `The founder output is budgeted separately; with no ceiling the gate would fall back to the 3000 KB ` +
+      `target and fail for the wrong reason.`
+  );
+  process.exit(1);
+}
+
 const MAX_SINGLE_CHUNK_KB = BUDGET.targets.maxChunkKB;
-const MAX_TOTAL_JS_KB = BUDGET.ceilings?.totalKB ?? BUDGET.targets.maxTotalKB;
-const CHUNK_CEILINGS_KB = BUDGET.ceilings?.chunks ?? {};
+const MAX_TOTAL_JS_KB = OUT.ceilings.totalKB ?? BUDGET.targets.maxTotalKB;
+const CHUNK_CEILINGS_KB = OUT.ceilings.chunks ?? {};
 const LOWERING_SLACK = 1 + (BUDGET.slackBeforeLoweringPct ?? 5) / 100;
 /** Vite names chunks `<name>-<8-char hash>.js`; a ceiling is keyed by <name>. */
 const chunkName = (file) => file.split("/").pop().replace(/-[A-Za-z0-9_-]{8}\.js$/, "");
@@ -107,7 +173,10 @@ const chunkName = (file) => file.split("/").pop().replace(/-[A-Za-z0-9_-]{8}\.js
  * `minima`. Do not guess it from vite.config.ts manualChunks or the React.lazy
  * count; those predict emitted chunks, they do not measure them.
  */
-const MIN_JS_FILES = 1; // floor; no measured build available 2026-08-16
+// (Per output since P1-9 / X-2 — OUT.minJsFiles above. The customer floor stays
+// at 1 on purpose: the fixtures in tests/unit/bundleBudgetIsDownOnly.test.ts run
+// this script over three-chunk trees.)
+const MIN_JS_FILES = OUT.minJsFiles;
 
 // A floor of 0 is not a floor, and neither is a deleted one. scripts/ratchet.mjs
 // rejects the same shape for the same reason: an unfloored population must not
@@ -136,10 +205,9 @@ if (!SCRIPT_DIR || !existsSync(SCRIPT_DIR)) {
 }
 const REPO_ROOT = resolve(SCRIPT_DIR, "..");
 const DIST_ROOT = join(REPO_ROOT, "dist"); // script/build.ts output root
-const CLIENT_OUT = join(REPO_ROOT, "dist", "public"); // vite.config.ts build.outDir
-const ASSETS_DIR = join(CLIENT_OUT, "assets"); // vite assetsDir (default)
+const CLIENT_OUT = join(REPO_ROOT, "dist", OUT.dir); // vite.config.ts build.outDir (per output)
+const ASSETS_DIR = join(CLIENT_OUT, OUT.assetsDir); // vite assetsDir (per output)
 
-const args = process.argv.slice(2);
 const envFlag = (name) => {
   const v = process.env[name];
   return typeof v === "string" && v !== "" && v !== "0" && v.toLowerCase() !== "false";
@@ -284,6 +352,24 @@ function decideNoAssetsDir() {
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────
+// The founder output was explicitly requested, so its absence is never a "no
+// build" SKIP and never depends on CI: a build that emitted no founder bundle
+// (or emitted it somewhere this gate is not looking) must fail.
+if (OUTPUT === "founder" && !existsSync(ASSETS_DIR)) {
+  let listing = [];
+  try {
+    listing = existsSync(CLIENT_OUT) ? readdirSync(CLIENT_OUT).slice(0, 20) : [];
+  } catch {
+    /* diagnostic only */
+  }
+  fail(`--output founder was requested but ${rel(ASSETS_DIR)} does not exist`, [
+    existsSync(CLIENT_OUT)
+      ? `${rel(CLIENT_OUT)} exists and contains: ${listing.length ? listing.join(", ") : "(empty)"} — the founder build emitted its assets elsewhere.`
+      : `${rel(CLIENT_OUT)} does not exist — the founder build did not run (script/build.ts runs it right after the customer build).`,
+    `Run 'npm run build' first. The founder bundle ships in the image; an unmeasured one is not a passing one.`,
+  ]);
+}
+
 let assetsStat = null;
 try {
   assetsStat = statSync(ASSETS_DIR);
@@ -368,15 +454,98 @@ for (const [name, ceilingKB] of Object.entries(CHUNK_CEILINGS_KB)) {
     violations.push(`ceiling '${name}' is ${ceilingKB} KB but the chunk is ${Math.round(bytes / 1024)} KB — lower the ceiling`);
   }
 }
-if (BUDGET.ceilings?.totalKB != null && BUDGET.ceilings.totalKB * 1024 > totalBytes * LOWERING_SLACK) {
-  violations.push(`total ceiling is ${BUDGET.ceilings.totalKB} KB but total JS is ${totalJSKB} KB — lower the ceiling`);
+if (OUT.ceilings.totalKB != null && OUT.ceilings.totalKB * 1024 > totalBytes * LOWERING_SLACK) {
+  violations.push(`total ceiling is ${OUT.ceilings.totalKB} KB but total JS is ${totalJSKB} KB — lower the ceiling`);
+}
+
+// ── Founder-only code in the CUSTOMER bundle (P1-9 / X-2) ──────────────────
+// The point of the two-output split is that no founder module ships to
+// customers. A byte total cannot prove that (a founder page could replace the
+// weight of one it displaced), so the customer run reads the chunk graph the
+// build itself wrote (dist/client-chunk-graph.json — vite.config.ts
+// chunkGraphPlugin, one graph per output so the second build cannot clobber
+// it) and FAILS if any customer chunk contains a founder-only module.
+//
+// The patterns are SOURCE PATHS, i.e. the population is "every module Rollup
+// bundled", not "every chunk with a founder-looking name". lib/founder-doors.ts
+// is deliberately absent: nav-items.ts derives the shared nav (and the command
+// palette entries) from it, so it ships in both builds on purpose.
+const FOUNDER_ONLY_MODULES = [
+  /^client\/src\/pages\/founder\//,
+  /^client\/src\/pages\/founder-[\w-]+\.tsx?$/,
+  /^client\/src\/components\/founder(?:-chat|-bridge)?\//,
+  /^client\/src\/components\/mobile\/FounderMobileBottomNav\.tsx?$/,
+  /^client\/src\/pages\/(?:safety-gates|executive-dashboard|dunning-manager|reseller-dashboard|agent-performance|agent-detail|job-health)\.tsx?$/,
+  /^client\/src\/hooks\/use-sovereign-dashboard\.ts$/,
+  /^client\/src\/founder-routes\.tsx$/,
+  /^client\/src\/FounderApp\.tsx$/,
+  /^client\/src\/founder-main\.tsx$/,
+];
+const REQUIRE_GRAPH = args.includes("--require-graph") || envFlag("BUNDLE_SIZE_REQUIRE_GRAPH");
+let graphLine = `chunk graph: not checked (--output ${OUTPUT})`;
+if (OUTPUT === "customer") {
+  const graphPath = join(DIST_ROOT, OUT.graphFile);
+  if (!existsSync(graphPath)) {
+    if (REQUIRE_GRAPH) {
+      violations.push(
+        `${rel(graphPath)} is missing, so founder-only code in the customer bundle cannot be ruled out — ` +
+          `the build writes it beside dist/public (vite.config.ts chunkGraphPlugin)`,
+      );
+      graphLine = `chunk graph: MISSING ${rel(graphPath)} (required)`;
+    } else {
+      graphLine = `chunk graph: SKIPPED — ${rel(graphPath)} not found (pass --require-graph to make that a failure)`;
+    }
+  } else {
+    let graph = null;
+    try {
+      graph = JSON.parse(readFileSync(graphPath, "utf8"));
+    } catch (err) {
+      violations.push(`${rel(graphPath)} is not valid JSON (${err.message}) — founder-only code cannot be ruled out`);
+    }
+    const chunkEntries = graph && typeof graph.chunks === "object" && graph.chunks ? Object.entries(graph.chunks) : [];
+    if (graph && chunkEntries.length === 0) {
+      violations.push(`${rel(graphPath)} lists no chunks — a graph that names nothing proves nothing`);
+    }
+    // The graph must describe THIS build: every chunk it names must be on disk
+    // under the scanned assets dir. A graph of another build (or a clobbered
+    // one) would otherwise read clean over a bundle it never saw.
+    const onDisk = new Set(jsFiles.map((f) => f.rel.split("\\").join("/")));
+    const assetPrefix = `${OUT.assetsDir}/`;
+    const absent = chunkEntries
+      .map(([file]) => file)
+      .filter((file) => !(file.startsWith(assetPrefix) && onDisk.has(file.slice(assetPrefix.length))));
+    if (absent.length > 0) {
+      violations.push(
+        `${rel(graphPath)} names ${absent.length} chunk(s) that are not in ${rel(ASSETS_DIR)} ` +
+          `(e.g. ${absent.slice(0, 3).join(", ")}) — it is the graph of another build`,
+      );
+    }
+    let modulesSeen = 0;
+    const leaks = [];
+    for (const [file, chunk] of chunkEntries) {
+      for (const mod of Object.keys(chunk?.modules ?? {})) {
+        modulesSeen++;
+        if (FOUNDER_ONLY_MODULES.some((re) => re.test(mod))) leaks.push(`${file}: ${mod}`);
+      }
+    }
+    if (chunkEntries.length > 0 && modulesSeen === 0) {
+      violations.push(`${rel(graphPath)} lists ${chunkEntries.length} chunk(s) but no modules — the module records are gone`);
+    }
+    for (const l of leaks.slice(0, 20)) violations.push(`founder-only module in the CUSTOMER bundle — ${l}`);
+    if (leaks.length > 20) violations.push(`…and ${leaks.length - 20} more founder-only module(s) in the customer bundle`);
+    graphLine =
+      `chunk graph: ${rel(graphPath)} — ${chunkEntries.length} chunks, ${modulesSeen} modules scanned, ` +
+      `${leaks.length} founder-only`;
+  }
 }
 
 // The measured population prints on EVERY outcome. "0 violations" means
 // nothing unless the reader can see how much was actually looked at.
 const largest = jsFiles.reduce((a, b) => (b.bytes > a.bytes ? b : a), jsFiles[0]);
 const population = [
+  `output:       ${OUTPUT}`,
   `scanned:      ${rel(ASSETS_DIR)}`,
+  graphLine,
   `js chunks measured: ${jsFiles.length}  (floor ${MIN_JS_FILES})`,
   `directories walked: ${dirsWalked}, entries seen: ${entriesSeen}, non-.js files: ${otherFiles}`,
   `total JS:     ${totalJSKB} KB  (limit ${MAX_TOTAL_JS_KB} KB)`,
@@ -391,6 +560,6 @@ if (violations.length > 0) {
   process.exit(1);
 }
 
-console.log(`PASS: Bundle size OK (total JS: ${totalJSKB} KB across ${jsFiles.length} chunks)`);
+console.log(`PASS: Bundle size OK [${OUTPUT}] (total JS: ${totalJSKB} KB across ${jsFiles.length} chunks)`);
 for (const l of population) console.log(`  ${l}`);
 process.exit(0);

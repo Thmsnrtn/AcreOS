@@ -5,7 +5,7 @@ import fs from "fs";
 import { execSync } from "child_process";
 import { visualizer } from "rollup-plugin-visualizer";
 import viteCompression from "vite-plugin-compression";
-import type { Plugin } from "vite";
+import type { Plugin, UserConfig } from "vite";
 import { buildLearnContentIndex } from "./scripts/learn-content-index.mjs";
 
 // Writes the client chunk graph Rollup actually produced — for every chunk:
@@ -19,7 +19,15 @@ import { buildLearnContentIndex } from "./scripts/learn-content-index.mjs";
 // Written in writeBundle, not generateBundle: later plugins still rename some
 // chunks after generateBundle (measured: a chunk with a CSS import), and a
 // graph naming files that do not exist would be a graph of another build.
-function chunkGraphPlugin(): Plugin {
+//
+// One graph PER OUTPUT (P1-9 / X-2): the customer build writes
+// dist/client-chunk-graph.json, the founder build dist/founder-chunk-graph.json.
+// They share a directory, so a single file name would let the second build
+// silently replace the first — and the route-closure gate would then read the
+// founder graph and call the customer bundle clean.
+const CUSTOMER_CHUNK_GRAPH_FILE = "client-chunk-graph.json";
+const FOUNDER_CHUNK_GRAPH_FILE = "founder-chunk-graph.json";
+function chunkGraphPlugin(graphFile: string): Plugin {
   const rootDir = path.resolve(import.meta.dirname);
   const rel = (id: string) =>
     path.relative(rootDir, id.replace(/^\0/, "").split("?")[0]).split(path.sep).join("/");
@@ -56,7 +64,7 @@ function chunkGraphPlugin(): Plugin {
       }
       const outDir = options.dir ?? path.resolve(rootDir, "dist/public");
       fs.writeFileSync(
-        path.resolve(outDir, "..", "client-chunk-graph.json"),
+        path.resolve(outDir, "..", graphFile),
         JSON.stringify({ version: 2, chunks, dynamicImports: dynamicImporters }, null, 1),
       );
     },
@@ -330,19 +338,49 @@ function resolveGitSha(): string {
 const GIT_SHA = resolveGitSha();
 process.env.VITE_GIT_SHA = GIT_SHA;
 
-export default defineConfig({
+// ── Two outputs (P1-9 / X-2) ────────────────────────────────────────────────
+// The client builds to TWO Vite outputs so the founder's pages never ship in
+// the customer bundle:
+//   customer — client/index.html + src/main.tsx            → dist/public,  base "/",
+//              assets under /assets            (this file's default export)
+//   founder  — client/founder.html + src/founder-main.tsx  → dist/founder, base "/founder-app/",
+//              assets under /founder-assets    (vite.founder.config.ts)
+// The founder output lives in its own URL space (/founder-app/founder-assets/…)
+// so the customer's `/assets/*.js` 404 guard and long-cache rules in
+// server/static.ts cannot collide with it. Both run the SAME manualChunks: the
+// shared vendor chunks (react, ui, motion, clerk, …) are DUPLICATED per output
+// rather than shared across two builds (a federated vendor build is a large new
+// failure surface; the duplicate is paid once, by the founder, on first visit).
+export type BuildOutput = "customer" | "founder";
+
+// Plugins that only serve customer pages: the /learn corpus and the TN boundary
+// shapes are copied into dist/public, and nothing in the founder build imports
+// them.
+const CUSTOMER_ONLY_PLUGIN_NAMES = new Set(["acreos-learn-content", "acreos-tn-boundaries"]);
+
+export function buildConfig(output: BuildOutput): UserConfig {
+  const isFounder = output === "founder";
+  const config: UserConfig = {
   define: {
     // Belt-and-suspenders: ensure `import.meta.env.VITE_GIT_SHA` is
     // available even when Vite's loadEnv hasn't picked up the var.
     "import.meta.env.VITE_GIT_SHA": JSON.stringify(GIT_SHA),
+    // Which bundle this is — read by client/src/lib/cross-build.ts to decide
+    // when a navigation must become a full page load.
+    "import.meta.env.VITE_ACREOS_BUILD": JSON.stringify(output),
   },
+  // The founder output is served under /founder-app/ (server/static.ts) and
+  // reads no public/ files: its HTML and fonts use root-absolute URLs that the
+  // customer static mount already serves, so a copied public/ would only
+  // duplicate several MB into the image.
+  ...(isFounder ? { base: "/founder-app/", publicDir: false as const } : {}),
   plugins: [
     react(),
     jspdfUnusedOptionalDepsPlugin(),
     zodJsonSchemaUnusedPlugin(),
     learnContentPlugin(),
     tnBoundariesPlugin(),
-    chunkGraphPlugin(),
+    chunkGraphPlugin(isFounder ? FOUNDER_CHUNK_GRAPH_FILE : CUSTOMER_CHUNK_GRAPH_FILE),
     // Pre-compress build output (gzip + brotli) so static-serve can deliver
     // already-compressed bytes. Sidesteps the HTTP/2 + `compression`
     // middleware bug where compression negotiation fails under H2 (verified
@@ -372,7 +410,10 @@ export default defineConfig({
     ...(ANALYZE
       ? [
           visualizer({
-            filename: path.resolve(import.meta.dirname, "dist/bundle-stats.html"),
+            filename: path.resolve(
+              import.meta.dirname,
+              isFounder ? "dist/bundle-stats-founder.html" : "dist/bundle-stats.html",
+            ),
             gzipSize: true,
             brotliSize: true,
             template: "treemap",
@@ -391,13 +432,19 @@ export default defineConfig({
   },
   root: path.resolve(import.meta.dirname, "client"),
   build: {
-    outDir: path.resolve(import.meta.dirname, "dist/public"),
+    outDir: path.resolve(import.meta.dirname, isFounder ? "dist/founder" : "dist/public"),
+    // Each output empties only ITS OWN directory — dist/public and dist/founder
+    // are siblings, so building one never wipes the other.
     emptyOutDir: true,
+    assetsDir: isFounder ? "founder-assets" : "assets",
     // Task #196: Performance budget — warn if any chunk exceeds 500 KB
     chunkSizeWarningLimit: 500,
     // Task #196: Emit source maps in production for Sentry error symbolication
     sourcemap: process.env.NODE_ENV === "production" ? "hidden" : false,
     rollupOptions: {
+      ...(isFounder
+        ? { input: { founder: path.resolve(import.meta.dirname, "client", "founder.html") } }
+        : {}),
       output: {
         // Why this is a function instead of an object map:
         // The previous object form leaked weight onto first paint. Vite's
@@ -461,4 +508,13 @@ export default defineConfig({
       ],
     },
   },
-});
+  };
+  if (isFounder) {
+    config.plugins = (config.plugins ?? []).filter(
+      (p) => !(p && !Array.isArray(p) && CUSTOMER_ONLY_PLUGIN_NAMES.has((p as Plugin).name)),
+    );
+  }
+  return config;
+}
+
+export default defineConfig(buildConfig("customer"));

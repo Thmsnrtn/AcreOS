@@ -13,7 +13,7 @@ import { motion } from "framer-motion";
 import { Check, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ArtifactRenderer } from "@/components/founder-chat/ArtifactRenderer";
-import { TextArtifact } from "@/components/founder-chat/artifacts/text";
+import { TextArtifact } from "@/components/artifacts/text";
 import { ThinkingDots } from "@/components/founder-chat/ThinkingDots";
 import { REVEAL_FROM_BELOW } from "@/lib/motion";
 import type { ChatMessage } from "@shared/founder-chat/artifacts";

@@ -2,6 +2,7 @@ import { build as esbuild } from "esbuild";
 import { build as viteBuild } from "vite";
 import { rm, readFile, readdir, unlink } from "fs/promises";
 import { join } from "path";
+import { existsSync } from "fs";
 import { execSync } from "child_process";
 
 // server deps to bundle to reduce openat(2) syscalls
@@ -47,6 +48,14 @@ function resolveGitSha(): string {
 }
 
 /**
+ * The client's two Vite outputs (P1-9 / X-2): the customer bundle that
+ * server/static.ts serves at `/`, and the founder bundle it serves under
+ * `/founder-app/`. Both are SERVED directories, so both get their source maps
+ * uploaded to Sentry and then deleted.
+ */
+const CLIENT_OUTPUT_DIRS = ["dist/public", "dist/founder"] as const;
+
+/**
  * Inject + upload source maps to Sentry. Runs only on production
  * builds (NODE_ENV=production). In CI we hard-fail if SENTRY_AUTH_TOKEN
  * is missing — silently skipping makes Sentry useless because stack
@@ -81,14 +90,18 @@ async function uploadSourceMapsToSentry(release: string): Promise<void> {
   const env = { ...process.env, SENTRY_AUTH_TOKEN: token, SENTRY_ORG: org, SENTRY_PROJECT: project };
   const opts = { stdio: "inherit" as const, env };
 
-  console.log(`[sentry] injecting debug ids into source maps (release=${release})...`);
-  execSync(`npx --yes @sentry/cli sourcemaps inject ./dist/public`, opts);
+  // Both client outputs (customer + founder, P1-9 / X-2) carry hidden maps; the
+  // founder output's stack traces need symbolicating exactly like the customer's.
+  for (const dir of CLIENT_OUTPUT_DIRS) {
+    console.log(`[sentry] injecting debug ids into source maps in ${dir} (release=${release})...`);
+    execSync(`npx --yes @sentry/cli sourcemaps inject ./${dir}`, opts);
 
-  console.log(`[sentry] uploading source maps for release=${release}...`);
-  execSync(
-    `npx --yes @sentry/cli sourcemaps upload --release=${release} ./dist/public`,
-    opts
-  );
+    console.log(`[sentry] uploading source maps from ${dir} for release=${release}...`);
+    execSync(
+      `npx --yes @sentry/cli sourcemaps upload --release=${release} ./${dir}`,
+      opts
+    );
+  }
 
   console.log(`[sentry] source-map upload complete for release=${release}`);
 }
@@ -119,7 +132,14 @@ async function uploadSourceMapsToSentry(release: string): Promise<void> {
  * than not emitting them is deliberate: an upload needs the files to exist.
  */
 async function stripSourceMapsFromDist(): Promise<void> {
-  const root = "dist/public";
+  // BOTH served client outputs — a founder output outside this list would ship
+  // its hidden maps (the highest-severity gotcha of the two-output split).
+  for (const root of CLIENT_OUTPUT_DIRS) {
+    await stripSourceMapsFrom(root);
+  }
+}
+
+async function stripSourceMapsFrom(root: string): Promise<void> {
   let removed = 0;
   let bytes = 0;
 
@@ -204,6 +224,18 @@ async function buildAll() {
 
   console.log(`building client (release=${release})...`);
   await viteBuild();
+
+  // The founder output (P1-9 / X-2): client/founder.html → dist/founder, base
+  // /founder-app/. A second build, not a second entry of the first, so the
+  // customer chunk graph and bundle total never see a founder module.
+  console.log("building founder client...");
+  await viteBuild({ configFile: "vite.founder.config.ts" });
+  if (!existsSync("dist/founder/founder.html")) {
+    throw new Error(
+      "[build] the founder build emitted no dist/founder/founder.html — server/static.ts would serve " +
+        "the customer shell (which has no founder routes) for every /founder URL",
+    );
+  }
 
   // Pre-render the public marketing routes so /pricing, /security,
   // /changelog, /glossary serve route-specific <title>, <meta
