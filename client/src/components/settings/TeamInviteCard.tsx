@@ -3,7 +3,7 @@
  * Added in cycle 12 to unblock Maya T01/T02/T04 and Dolores E01 (bulk seat).
  *
  * Copy rule: say only what the server reported. Creating an invitation tries
- * to email it and reports one status per invite (sent / not_configured /
+ * to email it and reports one status per invite (sent / not_configured / simulated /
  * suppressed / failed). The stored invite keeps only a hash of its token, so a
  * link can be shown just once, right after it is created or replaced; a lost
  * link is replaced with "New link", never recovered.
@@ -69,6 +69,8 @@ function deliveryLine(delivery: TeamInviteDeliveryStatus | null): string {
       return "Emailed.";
     case "not_configured":
       return "Not emailed: email delivery isn't set up on this server. Send them this link yourself.";
+    case "simulated":
+      return "Not emailed: simulated send; nothing was emailed. Send them this link yourself.";
     case "suppressed":
       return "Not emailed: AcreOS can't email this address. Send them this link yourself.";
     case "failed":

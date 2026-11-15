@@ -107,6 +107,19 @@ describe("lane and content", () => {
     expect(raw).toContain("expires on January 15, 2030");
   });
 
+  it("APP_URL unset: the production-host fallback is taken explicitly, with a warn", async () => {
+    delete process.env.APP_URL;
+    await run();
+    expect(rawSent()).toContain(`https://app.acreos.io/auth?invite=${TOKEN}`);
+    expect(JSON.stringify(logged)).toContain("APP_URL is not set");
+    expect(JSON.stringify(logged)).not.toContain(TOKEN);
+  });
+
+  it("APP_URL set: no fallback warning", async () => {
+    await run();
+    expect(JSON.stringify(logged)).not.toContain("APP_URL is not set");
+  });
+
   it("a replacement link says it replaces the earlier one", async () => {
     await run([target({ reissued: true })]);
     expect(rawSent()).toMatch(/replaces any invitation link/);
@@ -136,9 +149,9 @@ describe("honest outcomes", () => {
     expect(sesSend).not.toHaveBeenCalled();
   });
 
-  it("simulation mode: not_configured, nothing sent", async () => {
+  it("simulation mode: simulated (not 'not configured'), nothing sent", async () => {
     process.env.SIMULATION_MODE = "true";
-    expect(await run()).toEqual([{ invitationId: 11, status: "not_configured" }]);
+    expect(await run()).toEqual([{ invitationId: 11, status: "simulated" }]);
     expect(sesSend).not.toHaveBeenCalled();
   });
 

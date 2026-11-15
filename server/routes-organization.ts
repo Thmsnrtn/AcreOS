@@ -2011,7 +2011,7 @@ export function registerOrganizationRoutes(app: Express): void {
       }
 
       await auditFromRequest(req, {
-        action: AuditActions.ORG_MEMBER_ADDED,
+        action: AuditActions.ORG_INVITE_ROTATED,
         target: { type: "organization", id: org.id },
         metadata: { stage: "invitation_reissued", invitationId: row.id, email: row.email, role: row.role, emailed: delivery === "sent" },
       });

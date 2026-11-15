@@ -123,6 +123,7 @@ describe("outcome after creating an invite", () => {
 
   it.each([
     ["not_configured", /email delivery isn't set up on this server/],
+    ["simulated", /simulated send; nothing was emailed/],
     ["suppressed", /AcreOS can't email this address/],
     ["failed", /sending failed/],
   ])("%s: says not emailed and offers the link to copy", async (delivery, line) => {
@@ -139,6 +140,7 @@ describe("outcome after creating an invite", () => {
     expect(p!.textContent).toMatch(/Not emailed/);
     expect(p!.textContent).toContain("b@example.com");
     expect(p!.textContent).toMatch(/Copy link/);
+    if (delivery === "simulated") expect(p!.textContent).not.toMatch(/isn't set up/);
   });
 
   it("mixed batch: counts both and lists only the ones not emailed", async () => {

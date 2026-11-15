@@ -27,6 +27,7 @@ const h = vi.hoisted(() => ({
   sendCalls: [] as any[],
   deliver: "sent" as string,
   limitAllowed: true,
+  audits: [] as Array<{ action: string; metadata?: Record<string, unknown> }>,
 }));
 
 vi.mock("../../server/auth", () => ({
@@ -55,7 +56,7 @@ vi.mock("../../server/services/teamInviteEmail", () => ({
 }));
 vi.mock("../../server/utils/auditLog", async () => {
   const actual = await vi.importActual<Record<string, any>>("../../server/utils/auditLog");
-  return { ...actual, auditFromRequest: async () => undefined };
+  return { ...actual, auditFromRequest: async (_req: unknown, payload: any) => { h.audits.push(payload); } };
 });
 vi.mock("../../server/utils/customerAudit", async () => {
   const actual = await vi.importActual<Record<string, any>>("../../server/utils/customerAudit");
@@ -160,10 +161,11 @@ beforeEach(() => {
   h.sendCalls = [];
   h.deliver = "sent";
   h.limitAllowed = true;
+  h.audits = [];
 });
 
 describe("creating an invite reports delivery per invite", () => {
-  it.each(["sent", "not_configured", "suppressed", "failed"])("%s is returned as reported, with the link", async (status) => {
+  it.each(["sent", "not_configured", "simulated", "suppressed", "failed"])("%s is returned as reported, with the link", async (status) => {
     h.deliver = status;
     const res = await request(await app()).post("/api/organization/invitations").send({ email: "New@Example.com", role: "member" });
     expect(res.status, JSON.stringify(res.body)).toBe(201);
@@ -192,6 +194,14 @@ describe("regenerate", () => {
     expect(stored.token).toBeNull();
     expect(stored.expiresAt.getTime()).toBeGreaterThan(Date.now());
     expect(h.sendCalls[0].invites[0]).toMatchObject({ invitationId: row.id, reissued: true, token });
+  });
+
+  it("audits a link rotation as a rotation, never as a member being added", async () => {
+    const row = seed();
+    const res = await request(await app()).post(`/api/organization/invitations/${row.id}/regenerate`).send({});
+    expect(res.status).toBe(200);
+    expect(h.audits.map((a) => a.action)).toEqual(["org.invite_rotated"]);
+    expect(h.audits[0].metadata).toMatchObject({ stage: "invitation_reissued", invitationId: row.id });
   });
 
   it("without sendEmail it emails nothing and reports no delivery", async () => {

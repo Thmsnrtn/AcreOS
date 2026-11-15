@@ -134,6 +134,9 @@ export const AuditActions = {
   ORG_OWNERSHIP_TRANSFERRED: "org.ownership_transferred",
   ORG_MEMBER_ADDED: "org.member_added",
   ORG_MEMBER_REMOVED: "org.member_removed",
+  // A pending invitation's link was rotated (new token, expiry restarted).
+  // No member is added; the seat is only taken when the invitation is accepted.
+  ORG_INVITE_ROTATED: "org.invite_rotated",
   // Billing
   BILLING_PLAN_SWITCHED: "billing.plan_switched",
   BILLING_REFUND_ISSUED: "billing.refund_issued",

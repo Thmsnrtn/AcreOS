@@ -1319,7 +1319,7 @@ Each role has different access levels:
 
 ### Sending Invitations
 
-1. Go to **Settings** > **Team**
+1. Go to **Settings** > **Organization**
 2. Find the **Invite team members** card
 3. Enter their email address
 4. Select their role
@@ -1334,7 +1334,7 @@ Each role has different access levels:
 
 ### Managing Pending Invitations
 
-- View pending invitations in **Settings** > **Team**
+- View pending invitations in **Settings** > **Organization**
 - **Resend email** or **New link** issues a fresh link; the previous link stops working
 - Revoke invitations
 - Invitations expire after 14 days; a new link restarts the 14 days
@@ -1343,7 +1343,7 @@ Each role has different access levels:
 
 ### Changing Roles
 
-1. Go to **Settings** > **Team**
+1. Go to **Settings** > **Organization**
 2. Find the team member
 3. Click their current role
 4. Select the new role
@@ -1351,7 +1351,7 @@ Each role has different access levels:
 
 ### Removing Team Members
 
-1. Go to **Settings** > **Team**
+1. Go to **Settings** > **Organization**
 2. Find the team member
 3. Click **Remove**
 4. Confirm the removal

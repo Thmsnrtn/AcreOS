@@ -10,7 +10,7 @@
  * one-to-one account message.
  *
  * HONESTY. The result is per invitation and says what actually happened:
- * sent | not_configured | suppressed | failed. It is decided by checks made
+ * sent | not_configured | simulated | suppressed | failed. It is decided by checks made
  * BEFORE the send (simulation mode, any sender configured, suppression list),
  * because the idempotent send path reports a failure as an error string, not a
  * typed reason, and a route must never answer "sent" for mail that did not
@@ -75,8 +75,18 @@ function formatDate(d: Date): string {
   });
 }
 
+// Same production-host fallback as the other system mailers (emailService,
+// emailRegistry, unsubscribeTokens, periodicStatements/delivery). Production
+// sets APP_URL from Fly secrets; when it is unset the fallback is taken
+// explicitly and logged at warn on every composed invite, never silently.
+const APP_URL_FALLBACK = "https://app.acreos.io";
 function appBaseUrl(): string {
-  return (process.env.APP_URL || "https://app.acreos.io").trim().replace(/\/+$/, "");
+  const configured = (process.env.APP_URL ?? "").trim();
+  if (configured) return configured;
+  logger.warn("[team-invite] APP_URL is not set; invitation links use the production host fallback", {
+    metadata: { fallback: APP_URL_FALLBACK },
+  });
+  return APP_URL_FALLBACK;
 }
 
 function compose(
@@ -156,8 +166,9 @@ export async function sendTeamInviteEmails(
   if (invites.length === 0) return [];
 
   try {
-    // Simulation mode sends nothing; reporting "sent" would be a lie.
-    if (shouldSimulate("email", organization)) return all("not_configured");
+    // Simulation mode sends nothing; reporting "sent" would be a lie, and
+    // "not set up on this server" would be untrue too.
+    if (shouldSimulate("email", organization)) return all("simulated");
 
     let configured = false;
     try {
