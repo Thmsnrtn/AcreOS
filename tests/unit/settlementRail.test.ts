@@ -1,17 +1,22 @@
 /**
- * Settlement & Documents Rail (P1-3 core + Notes transplant) — unit proof.
+ * Settlement & Documents Rail (P1-3 core + Notes transplant) — unit proof of
+ * the PURE functions only: the document renderers (from fixture rows), the
+ * recording transition table, house-mail pricing, the money-event variance
+ * read, mergeMailCopy, and the note-id shape rule. Nothing here drives a
+ * service. The four service behaviours — the lien release's paid_off guard,
+ * the service-layer instrument-number rule, the payoff letter rendering the
+ * RECORDED quote row, and the offer-mail transport returning a failed send
+ * to draft — are pinned in `settlementRailServices.test.ts`.
  *
  * What this pins:
- *   N-1  the payoff letter renders ONLY the recorded quote row's figures
- *        (letter ≡ quote by construction) and states the no-custody line
- *        when the lender gave no payment instructions of their own;
- *   N-2  the lien release names the parties + the original instrument and
- *        carries the satisfaction language; it is the recordable kind (its
- *        generation opens a recording row — S-2);
+ *   N-1  buildPayoffLetter renders ONLY the quote row it is given (a
+ *        fixture here) and states the no-custody line when the lender gave
+ *        no payment instructions of their own;
+ *   N-2  buildLienRelease names the parties + the original instrument and
+ *        carries the satisfaction language;
  *   S-1  certified/registered are priced surcharges on a LETTER's base key
  *        and still refused on a postcard (no recorded cost, no send);
- *   S-2  the recording workflow's transition table (instrument number is
- *        enforced in the service; the table itself is pinned here);
+ *   S-2  the recording workflow's transition table only;
  *   S-3  the money-event variance read (received vs expected);
  *   L-2  mergeMailCopy merges a piece's OWN price into {offerPrice}/{price}
  *        only when a price is passed — every other caller is byte-identical;
