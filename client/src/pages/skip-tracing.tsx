@@ -20,6 +20,7 @@ import { DataProvenanceChip } from "@/components/data-provenance-chip";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { useDocumentTitle } from "@/hooks/use-document-title";
+import { Download } from "lucide-react";
 import { Search, User, Phone, Mail, MapPin, Loader2, CheckCircle2, AlertCircle, AlertTriangle, ShieldCheck } from "lucide-react";
 
 /**
@@ -35,6 +36,35 @@ interface SkipTraceStats {
   untracedCount: number;
   foundCount: number;
   foundRate: number | null;
+}
+
+/** Mirrors server/services/fcraDefenseFile.ts (purpose metadata only). */
+interface DefenseFileResponse {
+  generatedAt: string;
+  currentAttestationVersion: string;
+  attestations: Array<{
+    userId: string;
+    attestationVersion: string;
+    attestedAt: string;
+    expiresAt: string;
+    status: "current" | "stale";
+  }>;
+  coverage: {
+    totalEntries: number;
+    byPurposeCode: Record<string, number>;
+    bySurface: Record<string, number>;
+    distinctActors: number;
+    firstEntryAt: string | null;
+    lastEntryAt: string | null;
+    truncated: boolean;
+  };
+  entries: Array<{
+    id: number;
+    createdAt: string;
+    actorUserId: string;
+    purposeCode: string;
+    justification: string | null;
+  }>;
 }
 
 interface TracePhone {
@@ -113,6 +143,31 @@ export default function SkipTracingPage() {
     queryKey: ["/api/skip-tracing/stats"],
   });
   const stats = statsQuery.data;
+
+  const defenseQuery = useQuery<DefenseFileResponse>({
+    queryKey: ["/api/skip-tracing/defense-file"],
+  });
+  const defense = defenseQuery.data;
+  const [downloadingCsv, setDownloadingCsv] = useState(false);
+  const downloadDefenseCsv = async () => {
+    setDownloadingCsv(true);
+    try {
+      const res = await apiRequest("GET", "/api/skip-tracing/defense-file?format=csv");
+      const blob = new Blob([await res.text()], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "fcra-defense-file.csv";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      toast({ title: "Download failed", description: err?.message ?? "Try again.", variant: "destructive" });
+    } finally {
+      setDownloadingCsv(false);
+    }
+  };
 
   // Invalidation is written out inline in each onSuccess below rather than
   // shared through a helper: the use-mutation-must-invalidate rule reads the
@@ -258,7 +313,8 @@ export default function SkipTracingPage() {
               <p className="text-xs text-muted-foreground">
                 Federal law (FCRA §1681b) permits these lookups only for a permissible
                 purpose. Your purpose and justification are recorded on every trace,
-                and a current annual FCRA attestation is required.
+                and a current annual FCRA attestation is required. The full trail is kept
+                as your FCRA defense file — see "Your FCRA defense file" below.
               </p>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -337,6 +393,132 @@ export default function SkipTracingPage() {
               </p>
             )}
           </form>
+        </CardContent>
+      </Card>
+
+      <Card data-testid="skip-tracing-defense-file">
+        <CardHeader>
+          <CardTitle className="text-base">Your FCRA defense file</CardTitle>
+          <CardDescription>
+            Every skip trace on this account is recorded before it runs — who ran it, when,
+            the permissible purpose they declared, their justification, and the attestation
+            version in force — in an append-only ledger that cannot be edited after the fact.
+            That record is the file you would hand your attorney if a lookup were ever
+            challenged. AcreOS does not provide legal advice and this file does not guarantee
+            any legal outcome.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {defenseQuery.isLoading ? (
+            <div className="space-y-2" data-testid="defense-file-loading">
+              <Skeleton className="h-4 w-1/2" />
+              <Skeleton className="h-4 w-3/4" />
+              <Skeleton className="h-16 w-full" />
+            </div>
+          ) : defenseQuery.isError ? (
+            <QueryErrorState
+              error={defenseQuery.error as Error}
+              onRetry={() => defenseQuery.refetch()}
+              isRetrying={defenseQuery.isRefetching}
+              compact
+              title="Couldn't load your FCRA defense file"
+              testId="defense-file-error"
+            />
+          ) : defense ? (
+            <>
+              <div className="space-y-1.5">
+                <h3 className="text-sm font-semibold">Attestation status</h3>
+                {defense.attestations.length === 0 ? (
+                  <p className="text-sm text-muted-foreground" data-testid="defense-file-no-attestations">
+                    No user on this account has attested yet.
+                  </p>
+                ) : (
+                  <ul className="space-y-1" aria-label="FCRA attestations by user">
+                    {defense.attestations.map((a) => (
+                      <li key={a.userId} className="flex flex-wrap items-center gap-2 text-sm">
+                        <span className="font-mono text-xs">{a.userId}</span>
+                        <Badge variant={a.status === "current" ? "outline" : "destructive"} className="text-xs capitalize">
+                          {a.status}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground">
+                          version {a.attestationVersion} · attested {new Date(a.attestedAt).toLocaleDateString()} · expires{" "}
+                          {new Date(a.expiresAt).toLocaleDateString()}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              {defense.coverage.totalEntries === 0 ? (
+                <p className="text-sm text-muted-foreground" data-testid="defense-file-empty">
+                  No lookups have been recorded on this account yet. Each skip trace you run
+                  will appear here.
+                </p>
+              ) : (
+                <>
+                  <div className="space-y-1.5" data-testid="defense-file-coverage">
+                    <h3 className="text-sm font-semibold">Coverage</h3>
+                    <p className="text-sm">
+                      {defense.coverage.totalEntries.toLocaleString()} recorded lookup
+                      {defense.coverage.totalEntries === 1 ? "" : "s"}
+                      {defense.coverage.truncated ? " (most recent shown; older lookups are kept but not included in this file)" : ""}
+                      {defense.coverage.firstEntryAt && defense.coverage.lastEntryAt
+                        ? `, ${new Date(defense.coverage.firstEntryAt).toLocaleDateString()} – ${new Date(defense.coverage.lastEntryAt).toLocaleDateString()}`
+                        : ""}
+                      .
+                    </p>
+                    <ul className="flex flex-wrap gap-2" aria-label="Lookups by purpose">
+                      {Object.entries(defense.coverage.byPurposeCode).map(([code, n]) => (
+                        <li key={code}>
+                          <Badge variant="outline" className="text-xs">
+                            {code.replace(/_/g, " ")}: {n}
+                          </Badge>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <h3 className="text-sm font-semibold">Most recent entries</h3>
+                    <ul className="space-y-2" aria-label="Recent recorded lookups">
+                      {defense.entries.slice(0, 10).map((e) => (
+                        <li key={e.id} className="rounded-md border p-2 text-sm">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-xs text-muted-foreground">
+                              {new Date(e.createdAt).toLocaleString()}
+                            </span>
+                            <span className="font-mono text-xs">{e.actorUserId}</span>
+                            <Badge variant="outline" className="text-xs">
+                              {e.purposeCode.replace(/_/g, " ")}
+                            </Badge>
+                          </div>
+                          {e.justification && (
+                            <p className="mt-1 text-xs text-muted-foreground">{e.justification}</p>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </>
+              )}
+
+              <Button
+                type="button"
+                variant="outline"
+                onClick={downloadDefenseCsv}
+                disabled={downloadingCsv}
+                data-testid="button-download-defense-file-csv"
+              >
+                {downloadingCsv ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
+                ) : (
+                  <Download className="w-4 h-4 mr-2" aria-hidden="true" />
+                )}
+                Download CSV
+              </Button>
+            </>
+          ) : null}
         </CardContent>
       </Card>
 
