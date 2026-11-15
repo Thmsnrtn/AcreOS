@@ -130,6 +130,7 @@ function state(over: Partial<PaxControlsState> & { rails?: PaxRails } = {}): Pax
     rails: defaultPaxRails(),
     limits: defaultPaxLimits(),
     members: {},
+    mySites: [],
     paused: false,
     pausedUntil: null,
     pausedBy: null,

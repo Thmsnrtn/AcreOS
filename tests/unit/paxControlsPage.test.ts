@@ -37,6 +37,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { QueryClientProvider } from "@tanstack/react-query";
 import fs from "node:fs";
 import path from "node:path";
+import { stripComments } from "../helpers/stripComments";
 
 const ROOT = path.resolve(__dirname, "../..");
 const PAGE_REL = "client/src/pages/settings/pax-controls.tsx";
@@ -85,7 +86,7 @@ vi.mock("@/lib/queryClient", async () => {
 const { PaxControls } = await import("../../client/src/pages/settings/pax-controls");
 const { queryClient } = await import("../../client/src/lib/queryClient");
 const { UNATTENDED_PATHS, OFFERED_STANCES } = await import("../../shared/pax-controls");
-const { PAX_STANCE_COPY, PAX_PAUSE_COPY, PAX_PAGE_COPY, PAX_FIXED_RULES, PAX_LABELS } = await import(
+const { PAX_STANCE_COPY, PAX_PAUSE_COPY, PAX_PAGE_COPY, PAX_FIXED_RULES, PAX_LABELS, PAX_MY_SITES_COPY } = await import(
   "../../shared/pax-glossary"
 );
 
@@ -480,6 +481,156 @@ describe("scheduled prompts", () => {
     expect(patches[0][2]).toEqual({ isActive: false });
     expect(apiRequest.mock.calls.some(([, u]) => String(u).includes("/toggle"))).toBe(false);
     expect(q('[data-testid="button-prompt-resume-12"]')).not.toBeNull();
+  });
+});
+
+// ── 6b. My county sites (PX-7) ─────────────────────────────────────────────
+
+describe("My county sites", () => {
+  const SITES = [
+    { host: "assessor.example.gov", label: "Cochise assessor" },
+    { host: "recorder.example.gov", label: "Cochise recorder" },
+  ];
+
+  async function typeInto(el: HTMLElement | null, value: string) {
+    expect(el, "input to type into").not.toBeNull();
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+      setter.call(el!, value);
+      el!.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  }
+
+  async function submitForm() {
+    await act(async () => {
+      q('[data-testid="my-sites-form"]')!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+    await flush();
+  }
+
+  /** A server that keeps the list the page PATCHes, like the real route. */
+  function serveSites(initial: typeof SITES, overrides: Record<string, unknown> = {}) {
+    let state = controls({ mySites: initial, ...overrides });
+    serve(
+      () => state,
+      (method, url, body) => {
+        if (method === "PATCH" && url === "/api/pax/controls") {
+          state = controls({ mySites: (body as { mySites: typeof SITES }).mySites, ...overrides });
+          return json(state);
+        }
+        return undefined;
+      },
+    );
+  }
+
+  const sitePatches = () => apiRequest.mock.calls.filter(([m, u]) => m === "PATCH" && u === "/api/pax/controls");
+
+  it("lists each site's name and host, with the glossary copy and the one-line limit", async () => {
+    serveSites(SITES);
+    await mount();
+    expect(text('[data-testid="pax-my-sites-card"]')).toContain(PAX_MY_SITES_COPY.title);
+    expect(text('[data-testid="my-sites-limit-line"]')).toBe(PAX_MY_SITES_COPY.limitLine);
+    for (const s of SITES) {
+      const row = text(`[data-testid="my-site-${s.host}"]`);
+      expect(row).toContain(s.label);
+      expect(row).toContain(s.host);
+    }
+    expect(q('[data-testid="my-sites-empty"]')).toBeNull();
+  });
+
+  it("an org with no sites sees the empty line, not a blank card", async () => {
+    serveSites([]);
+    await mount();
+    expect(text('[data-testid="my-sites-empty"]')).toBe(PAX_MY_SITES_COPY.empty);
+    expect(q('[data-testid="my-sites-list"]')).toBeNull();
+  });
+
+  it("a controls response from before PX-7 (no mySites key) renders as empty, not as a crash", async () => {
+    serve(() => controls());
+    await mount();
+    expect(text('[data-testid="my-sites-empty"]')).toBe(PAX_MY_SITES_COPY.empty);
+  });
+
+  it("adding extracts the host from a pasted address and PATCHes the whole list", async () => {
+    serveSites(SITES);
+    await mount();
+    await typeInto(q('[data-testid="input-site-label"]'), "Cochise treasurer");
+    await typeInto(q('[data-testid="input-site-address"]'), "https://Treasurer.Example.gov/search?x=1");
+    await submitForm();
+    expect(sitePatches()).toHaveLength(1);
+    expect(sitePatches()[0][2]).toEqual({ mySites: [...SITES, { host: "treasurer.example.gov", label: "Cochise treasurer" }] });
+    expect(toasts.map((t) => t.title)).toContain(PAX_MY_SITES_COPY.added("Cochise treasurer"));
+    expect(q('[data-testid="my-site-treasurer.example.gov"]')).not.toBeNull();
+  });
+
+  it("a site added without a name is listed under its host", async () => {
+    serveSites([]);
+    await mount();
+    await typeInto(q('[data-testid="input-site-address"]'), "assessor.example.gov");
+    await submitForm();
+    expect(sitePatches()[0][2]).toEqual({ mySites: [{ host: "assessor.example.gov", label: "assessor.example.gov" }] });
+  });
+
+  it.each([
+    ["something that is not an address", "not an address"],
+    ["credentials", "https://user:pw@assessor.example.gov/"],
+    ["an IP address", "http://10.0.0.1/"],
+    ["an internal name", "http://localhost:3000/"],
+  ])("refuses %s on the page, says so, and sends nothing", async (_name, pasted) => {
+    serveSites(SITES);
+    await mount();
+    await typeInto(q('[data-testid="input-site-address"]'), pasted);
+    await submitForm();
+    expect(text('[data-testid="my-sites-problem"]')).toBe(PAX_MY_SITES_COPY.notAddress);
+    expect(sitePatches()).toHaveLength(0);
+  });
+
+  it("does not add a site twice", async () => {
+    serveSites(SITES);
+    await mount();
+    await typeInto(q('[data-testid="input-site-address"]'), "https://assessor.example.gov/other");
+    await submitForm();
+    expect(text('[data-testid="my-sites-problem"]')).toBe(PAX_MY_SITES_COPY.alreadyListed);
+    expect(sitePatches()).toHaveLength(0);
+  });
+
+  it("removing PATCHes the list without that site, and the icon button has a label", async () => {
+    serveSites(SITES);
+    await mount();
+    const btn = q('[data-testid="button-remove-site-assessor.example.gov"]');
+    expect(btn?.getAttribute("aria-label")).toBe(`${PAX_MY_SITES_COPY.removeButton}: Cochise assessor`);
+    await click(btn);
+    expect(sitePatches()).toHaveLength(1);
+    expect(sitePatches()[0][2]).toEqual({ mySites: [SITES[1]] });
+    expect(toasts.map((t) => t.title)).toContain(PAX_MY_SITES_COPY.removed("Cochise assessor"));
+    expect(q('[data-testid="my-site-assessor.example.gov"]')).toBeNull();
+  });
+
+  it("every input has a label tied to it", async () => {
+    serveSites([]);
+    await mount();
+    for (const id of ["my-site-label", "my-site-address"]) {
+      expect(q(`label[for="${id}"]`), `${id} has no <label>`).not.toBeNull();
+      expect(q(`#${id}`), `${id} input missing`).not.toBeNull();
+    }
+  });
+
+  it("a member sees the list read-only: no form, no remove buttons, and the ask-an-owner line", async () => {
+    serveSites(SITES, { canChangeStance: false });
+    await mount();
+    expect(text('[data-testid="my-sites-read-only"]')).toBe(PAX_MY_SITES_COPY.readOnly);
+    expect(q('[data-testid="my-sites-form"]')).toBeNull();
+    expect(q('[data-testid="button-remove-site-assessor.example.gov"]')).toBeNull();
+    expect(q('[data-testid="my-site-assessor.example.gov"]')).not.toBeNull();
+  });
+
+  it("the page types no copy of its own for the card — it reads the glossary", () => {
+    // Comments stripped first: the page's own comments name the card, and a comment is not copy.
+    const src = stripComments(read(PAGE_REL));
+    expect(src).toContain("PAX_MY_SITES_COPY");
+    for (const line of [PAX_MY_SITES_COPY.title, PAX_MY_SITES_COPY.intro, PAX_MY_SITES_COPY.limitLine, PAX_MY_SITES_COPY.empty, PAX_MY_SITES_COPY.notAddress]) {
+      expect(src, `"${line}" is typed inline on the page`).not.toContain(line);
+    }
   });
 });
 
