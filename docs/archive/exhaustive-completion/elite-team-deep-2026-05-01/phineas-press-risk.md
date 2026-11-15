@@ -137,7 +137,7 @@ Three facts that make this piece writable today:
 
 When the reporter asks "isn't your AI generating legal documents?", the answer is *not* "we have lawyers review them" (that is rubber-stamping in the public's ear). The answer is:
 
-> "AcreOS generates document *templates* from state-specific rule sets that we publish openly. A licensed attorney reviewed every template in our library. The AI does not draft novel legal language — it fills documented templates with deal data the customer provides and reviews before signing. Every document has an audit trail showing exactly which template version was used, who reviewed it, and what the customer saw on screen. We're transparent about what the AI does and what it doesn't."
+> "AcreOS generates document *templates* from state-specific rule sets that we publish openly. [PLACEHOLDER — the templates are drafts prepared for attorney review; no licensed attorney has reviewed them yet.] The AI does not draft novel legal language — it fills documented templates with deal data the customer provides and reviews before signing. Every document has an audit trail showing exactly which template version was used, who reviewed it, and what the customer saw on screen. We're transparent about what the AI does and what it doesn't."
 
 Three things to notice about that answer: every clause is falsifiable, none of it is true today across the board, and *you can make all of it true in a 60-day sprint.* That is the point of a defensive narrative — the narrative comes first, then the engineering catches up to make it true.
 

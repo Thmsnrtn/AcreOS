@@ -136,10 +136,10 @@ export interface CreditExample {
 }
 
 /**
- * Concrete examples for the pricing-page UI — "$20 buys 750 credits, which
+ * Concrete examples for the pricing-page UI — "Starter's 750-credit pool
  * is 750 SMS / 37,500 emails / 24 EDDM postcards / 25 letters." Caller
  * passes the tier's credit pool size; the result is 4 illustrative
- * full-consumption breakdowns for the Starter $20 → 750 spec in the plan.
+ * full-consumption breakdowns for the Starter $49 → 750-credit pool.
  *
  * Uses CREDIT_WEIGHTS (the synchronous constant) rather than the async
  * creditCost() helper — the pricing page is a marketing surface and reads

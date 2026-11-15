@@ -16,11 +16,12 @@
  *      only when an explicit config exists (never fabricate).
  *   4. The duplicate standalone /api/commissions router is gone — one source of
  *      truth.
- *   5. MLS / CMA is now LIVE via the ATTOM seam (the founder lifted the
- *      land-persona ruling; BYO key, honest-unavailable when unkeyed, no data
- *      plane), client-vs-own-book (deal_book, migration 0226) is LIVE, and
- *      dual-agency is a RECORD-ONLY tracker (never generated, sent, or signed) —
- *      all disclosed honestly in the persona voice.
+ *   5. The page claims only what a customer can reach. (Rewritten W2-AGENT,
+ *      2026-11-06: it used to pin copy calling client-vs-own-book, split
+ *      economics, a GCI forecast and a dual-agency tracker live while none had
+ *      a client caller. CMA and the record-only agency disclosure record are
+ *      reachable; the rest is named as not set up yet. The rendered, caller-
+ *      backed proof is agentInvestorCommissionScope.test.tsx.)
  *
  * Source-shape assertions (node env, no DOM) — same pattern as
  * tailVerticalGates.test.ts.
@@ -29,6 +30,7 @@ import { describe, it, expect } from "vitest";
 import fs from "fs";
 import path from "path";
 import { getBusinessType } from "../../shared/business-types";
+import { stripComments } from "../helpers/stripComments";
 
 const ROOT = path.resolve(__dirname, "../..");
 const SERVER = path.join(ROOT, "server");
@@ -104,22 +106,23 @@ describe("the customer commission page gates + stays honest", () => {
     expect(page).toContain("CommissionsPage");
   });
 
-  it("describes the now-live MLS/CMA (ATTOM seam, honest-unavailable), book split, and record-only dual-agency honestly", () => {
-    // REWRITTEN at the Wave 5 core flip (not deleted): MLS/CMA is no longer the
-    // NOT-built hard-stop — the founder lifted the land-persona ruling and comps
-    // now route through the ATTOM seam (BYO key), so the page describes it as
-    // available with an honest "unavailable" degradation, never a faked comp.
-    expect(page).toMatch(/MLS/);
-    expect(page).toMatch(/ATTOM/);
-    expect(page).toMatch(/unavailable|never (a )?faked|honest/i);
-    // Client-vs-own-book is live (deal_book, migration 0226).
-    expect(page).toMatch(/own book|own investment/i);
-    // Dual-agency present AND explicitly record-only (legal-signing hard-stop).
-    expect(page).toMatch(/dual-agency/i);
-    expect(page).toMatch(/record-only|never (generate|sign|send)/i);
-    // Refuse-not-fabricate is disclosed for the split/forecast surfaces.
-    expect(page).toMatch(/split/i);
-    expect(page).toMatch(/refuse|never .*(assumed|made-up|invent|fabricat|fake)/i);
+  it("claims only what a customer can reach, and says what is not set up yet", () => {
+    // REWRITTEN in W2-AGENT (2026-11-06), not deleted. This pinned the claim
+    // that own-book tagging, split economics, a GCI forecast and a dual-agency
+    // tracker were live; none had a client caller, so the pin certified an
+    // overclaim. Its invariant — the page tells the customer exactly what
+    // works — now holds against RENDERED output and real callers in
+    // agentInvestorCommissionScope.test.tsx. Here: the page renders that note,
+    // and none of the old "live now" copy survives outside a comment.
+    const code = stripComments(page);
+    expect(code).toContain("<CommissionScopeNote />");
+    expect(code).toContain('data-testid="commission-scope-live"');
+    expect(code).toContain('data-testid="commission-scope-not-yet"');
+    expect(code).not.toMatch(/Now also live|Live now/);
+    // CMA stays honest about the unkeyed case; the agency record stays record only.
+    expect(code).toMatch(/ATTOM/);
+    expect(code).toMatch(/unavailable/);
+    expect(code).toMatch(/Record only/);
   });
 
   it("the underlying page renders honest empty/zero states, never an invented number", () => {

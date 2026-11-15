@@ -1,3 +1,4 @@
+import { RequiredDisclaimer } from "@/components/required-disclaimer";
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -315,6 +316,7 @@ export function AIOfferGenerator({ property }: AIOfferGeneratorProps) {
         </CardDescription>
       </CardHeader>
       <CardContent>
+        <RequiredDisclaimer type="ai" className="mb-4" />
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="grid w-full grid-cols-3" data-testid="tabs-ai-offer">
             <TabsTrigger value="suggestions" data-testid="tab-suggestions">

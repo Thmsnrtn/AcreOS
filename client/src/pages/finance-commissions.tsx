@@ -14,10 +14,13 @@
  * summaries, with honest empty/zero states when nothing is configured. We do
  * NOT widen the founder-only /commissions surface or the admin write scope.
  *
- * The disclosure below names what is live: commission tracking + the measured
- * split/cap/GCI economics, client-vs-own-book, the record-only dual-agency
- * tracker, and MLS/CMA via the ATTOM seam (BYO key, honest-unavailable when
- * unkeyed). agent_investor is core (Wave 5); nothing here is oversold.
+ * The note below claims ONLY what a customer can reach today (W2-AGENT,
+ * 2026-11-06). It used to call net-of-split economics, a pipeline GCI
+ * forecast, client-vs-own-book tagging, a dual-agency tracker and automatic
+ * commission recording "live now" — none had a screen, and recording needs a
+ * deal assigned to an agent, which nothing in AcreOS can set. Those are named
+ * as not set up yet; agentInvestorCommissionScope.test.tsx pins each live
+ * claim to a real client caller.
  */
 import { AlertTriangle } from "lucide-react";
 import CommissionsPage from "@/pages/commissions";
@@ -26,43 +29,33 @@ import { PageShell } from "@/components/page-shell";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useOrganization } from "@/hooks/use-organization";
 
-function CommissionRoadmapDisclosure() {
+export function CommissionScopeNote() {
   return (
     <div
       className="rounded-card border border-acr-warn/30 bg-acr-warn/10 p-4"
       role="note"
-      aria-label="Commission tracking — beta scope"
+      aria-label="What commissions covers today"
     >
       <div className="flex items-start gap-3">
         <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-acr-warn" aria-hidden="true" />
-        <div className="space-y-1 text-sm">
-          <p className="font-semibold text-foreground">
-            Commission tracking is a beta — here's exactly what's live
-          </p>
-          <p className="text-muted-foreground">
-            Live now: tiered commission tracking, YTD summaries, and per-agent
-            statements, with a commission recorded automatically when a deal
-            closes (only once you've configured your tiers — never a made-up
-            number before then). Now also live: net-of-split economics (your
-            agent split, an annual company-dollar cap, and per-transaction and
-            franchise fees), a pipeline GCI forecast over your under-contract
-            deals, tagging each deal as a client transaction vs. your own
-            investment (only client deals earn a commission — your own book is
-            your P&L, never a commission), and a record-only dual-agency
-            tracker. Every one of these refuses rather than fabricates: with no
-            split saved you see no split, not an assumed one.
-          </p>
-          <p className="text-muted-foreground">
-            The dual-agency tracker is record-only: it stores which side you
-            represented, an acknowledgement date, and a link to a disclosure you
-            produced elsewhere. It will never generate, send, or e-sign a
-            disclosure for you — legal signing stays a human decision.
-          </p>
-          <p className="text-muted-foreground">
-            MLS / CMA is here: comps and valuation run through the ATTOM data
-            seam, pay-per-call on your own connected ATTOM/MLS key. Without a
-            connected key you see an honest "unavailable", never a faked comp —
-            we'd rather show you nothing than invent it.
+        <div className="space-y-1 text-sm text-muted-foreground">
+          <p className="font-semibold text-foreground">What works today</p>
+          <ul className="list-disc pl-4 space-y-1" data-testid="commission-scope-live">
+            <li>
+              A CMA on each deal&apos;s Analysis tab, from your connected ATTOM key or
+              credits. Without one it says &ldquo;unavailable&rdquo; rather than guess.
+            </li>
+            <li>
+              An agency disclosure record on each deal&apos;s Details tab: the side you
+              represented, the date a disclosure was acknowledged and a link to it.
+              Record only: AcreOS doesn&apos;t prepare, send or sign disclosures.
+            </li>
+          </ul>
+          <p data-testid="commission-scope-not-yet">
+            Not set up in AcreOS yet: your commission rates, your broker split,
+            assigning a deal to an agent, tagging your own investments and a
+            pipeline forecast. Until then AcreOS records no new commission, and
+            it never estimates one.
           </p>
         </div>
       </div>
@@ -96,5 +89,5 @@ export default function FinanceCommissionsPage() {
     return <NotFound />;
   }
 
-  return <CommissionsPage intro={<CommissionRoadmapDisclosure />} />;
+  return <CommissionsPage intro={<CommissionScopeNote />} />;
 }

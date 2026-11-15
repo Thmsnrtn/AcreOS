@@ -16,7 +16,6 @@ import { describe, it, expect } from "vitest";
 import {
   computeStrMetrics,
   windowNights,
-  computeNightlyRateExpectation,
 } from "@shared/rental/strMetrics";
 
 // A calendar month window: 2026-06-01 inclusive .. 2026-07-01 exclusive = 30 nights.
@@ -203,50 +202,6 @@ describe("windowNights — the denominator multiplier", () => {
   });
 });
 
-describe("computeNightlyRateExpectation — the operator's OWN set rate (Wave B)", () => {
-  it("computes expected revenue = set nightly rate × nights, and its variance vs the recorded gross", () => {
-    const e = computeNightlyRateExpectation({
-      nightlyRateCents: 20_000, // the operator's OWN set rate
-      nights: 5,
-      grossBookingCents: 90_000,
-    });
-    expect(e.expectedRevenueCents).toBe(100_000); // 20000 × 5
-    // Booked BELOW the set rate: 90000 − 100000 = −10000.
-    expect(e.varianceCents).toBe(-10_000);
-    expect(e.nightlyRateCents).toBe(20_000);
-    expect(e.nights).toBe(5);
-  });
-
-  describe("REFUSAL — null when the operator has not set a nightly rate", () => {
-    it("returns null expected revenue AND null variance when nightlyRateCents is unset", () => {
-      const e = computeNightlyRateExpectation({
-        nightlyRateCents: null, // NOT set — never a market/suggested rate
-        nights: 5,
-        grossBookingCents: 90_000,
-      });
-      expect(e.nightlyRateCents).toBeNull();
-      expect(e.expectedRevenueCents).toBeNull(); // <- refusal, not a comp-derived rate
-      expect(e.varianceCents).toBeNull();
-    });
-  });
-
-  it("refuses expected revenue when nights are not derivable, but never invents a rate", () => {
-    const e = computeNightlyRateExpectation({
-      nightlyRateCents: 20_000,
-      nights: null,
-      grossBookingCents: 90_000,
-    });
-    expect(e.expectedRevenueCents).toBeNull();
-    expect(e.varianceCents).toBeNull();
-  });
-
-  it("computes expected revenue but refuses variance when the gross booking is unrecorded", () => {
-    const e = computeNightlyRateExpectation({
-      nightlyRateCents: 20_000,
-      nights: 5,
-      grossBookingCents: null, // no recorded gross to compare against
-    });
-    expect(e.expectedRevenueCents).toBe(100_000);
-    expect(e.varianceCents).toBeNull(); // variance needs both sides
-  });
-});
+// computeNightlyRateExpectation and its four cases were removed with the pricing
+// route it served (W2-STR, 2026-11-06); tests/unit/strBookingsRoutes.test.ts
+// pins that the route stays gone and that nothing claims the capability.

@@ -12,10 +12,13 @@ import {
   autoRenewalTermsText,
   annualRenewalNotice,
   annualRenewalNoticeDue,
+  maAnnualRenewalNoticeDue,
   autoRenewalAcknowledgment,
   ANNUAL_NOTICE_MIN_DAYS,
   ANNUAL_NOTICE_MAX_DAYS,
   ANNUAL_NOTICE_TARGET_DAYS,
+  MA_ANNUAL_NOTICE_MIN_DAYS,
+  MA_ANNUAL_NOTICE_MAX_DAYS,
 } from "../../shared/billing/autoRenewalTerms";
 
 const DAY = 86_400_000;
@@ -54,6 +57,48 @@ describe("the terms and the notices say what § 17602 asks", () => {
     expect(n.text).toMatch(/\$490\.00/);
     expect(n.html).toMatch(/href="https:\/\/app\.test\/settings\?tab=billing"/);
     expect(n.text).toMatch(/support@acreos\.io/);
+  });
+
+  it("940 CMR 38.05(4): the Massachusetts window is 5–30 days before the cancel-by date, and it reaches the 5–14-day band California's predicate cannot", () => {
+    expect(MA_ANNUAL_NOTICE_MIN_DAYS).toBe(5);
+    expect(MA_ANNUAL_NOTICE_MAX_DAYS).toBe(30);
+    const maDue = (days: number, extra: Partial<Parameters<typeof maAnnualRenewalNoticeDue>[0]> = {}) =>
+      maAnnualRenewalNoticeDue({ renewsAtMs: days * DAY, nowMs: 0, alreadySentForThisPeriod: false, cancelAtPeriodEnd: false, ...extra });
+    const caDue = (days: number) =>
+      annualRenewalNoticeDue({ renewsAtMs: days * DAY, nowMs: 0, alreadySentForThisPeriod: false, cancelAtPeriodEnd: false });
+    expect(maDue(4.9)).toBe(false);
+    expect(maDue(5)).toBe(true);
+    expect(maDue(30)).toBe(true);
+    expect(maDue(30.1)).toBe(false);
+    // The rescue band: at 10 days the Massachusetts duty is still owed
+    // even though the California 15-day floor has already closed.
+    expect(maDue(10)).toBe(true);
+    expect(caDue(10)).toBe(false);
+    // At 20 days one notice satisfies both regimes.
+    expect(maDue(20)).toBe(true);
+    expect(caDue(20)).toBe(true);
+    expect(maDue(20, { alreadySentForThisPeriod: true })).toBe(false);
+    expect(maDue(20, { cancelAtPeriodEnd: true })).toBe(false);
+  });
+
+  it("940 CMR 38.05(4)(a)–(e): the notice states the obligations on failing to cancel, every Product chargeable, the mechanism, the cancel-by date and the charge date", () => {
+    const n = annualRenewalNotice({
+      planName: "Pro",
+      renewsOn: new Date(Date.UTC(2027, 0, 15)),
+      amountCents: 139_000,
+      appUrl: "https://app.test",
+      products: ["AcreOS Pro plan", "additional seat add-on"],
+    });
+    // (b) every Product chargeable at renewal
+    expect(n.text).toMatch(/Products charged at renewal: AcreOS Pro plan, additional seat add-on\./);
+    // (a) obligations if the consumer fails to cancel + (d) cancel-by
+    // calendar date + (e) charge calendar date, in one explicit sentence
+    expect(n.text).toMatch(/If you do not cancel by January 15, 2027, \$1,390\.00 \(plus applicable tax\) will be charged to your payment method on file on January 15, 2027, and your plan will renew for one year\./);
+    // (c) the cancellation mechanism
+    expect(n.html).toMatch(/href="https:\/\/app\.test\/settings\?tab=billing"/);
+    // The checkout terms promise the Massachusetts window too.
+    const t = autoRenewalTermsText({ planName: "Pro", priceCents: 99_000, interval: "year" });
+    expect(t).toMatch(/5–30 days before the cancel-by date, per 940 CMR 38\.05/);
   });
 
   it("(a)(3): the acknowledgment carries the terms, the cancellation policy and how to cancel", () => {
@@ -103,6 +148,35 @@ describe("the annual-notice job", () => {
     // Keyed per org and period, so a crash between send and history row replays rather than resends.
     expect(sent[0]).toEqual(expect.objectContaining({ organizationId: 1, idempotencyKey: `annual-renewal-notice:1:${(now + 20 * DAY) / 1000}` }));
     expect(J.inserted[0]).toEqual(expect.objectContaining({ organizationId: 1, eventType: "annual_renewal_notice_sent" }));
+    // Next day: the history row for this period exists → nothing more.
+    J.orgs = [J.orgs[0]];
+    const r2 = await runAnnualRenewalNotices({ deps, nowMs: now + DAY });
+    expect(r2.sent).toBe(0);
+  });
+
+  it("940 CMR 38.05: a renewal first observed 10 days out still gets exactly one notice (Massachusetts-timely), one at 3 days gets none, and the amount is the full multi-item renewal total", async () => {
+    const { runAnnualRenewalNotices } = await import("../../server/services/annualRenewalNotice");
+    const now = Date.UTC(2026, 9, 9);
+    const subs: Record<string, any> = {
+      // 10 days out: outside California's 15-day floor, inside
+      // Massachusetts' 5–30-day window. Two items: base plan + 2 seats.
+      sub_ma: { current_period_end: (now + 10 * DAY) / 1000, cancel_at_period_end: false, items: { data: [{ price: { unit_amount: 99_000, currency: "usd" } }, { quantity: 2, price: { unit_amount: 20_000, currency: "usd" } }] } },
+      // 3 days out: inside neither window — no notice may be sent.
+      sub_late: { current_period_end: (now + 3 * DAY) / 1000, cancel_at_period_end: false, items: { data: [{ price: { unit_amount: 99_000 } }] } },
+    };
+    J.orgs = [{ id: 7, tier: "pro", subId: "sub_ma" }, { id: 8, tier: "pro", subId: "sub_late" }];
+    const sent: any[] = [];
+    const deps = { getSubscription: async (id: string) => subs[id], ownerEmail: async () => "owner@x.test", send: async (o: any) => { sent.push(o); } };
+    const r1 = await runAnnualRenewalNotices({ deps, nowMs: now });
+    expect(r1.sent).toBe(1);
+    expect(sent).toHaveLength(1);
+    expect(sent[0].organizationId).toBe(7);
+    // Full renewal total: $990 plan + 2 × $200 seats = $1,390, and both
+    // Products are named in the notice body (38.05(4)(b)).
+    expect(sent[0].text).toMatch(/\$1,390\.00/);
+    expect(sent[0].text).toMatch(/Products charged at renewal: AcreOS Pro plan, additional seat add-on\./);
+    expect(J.inserted[0]).toEqual(expect.objectContaining({ organizationId: 7, eventType: "annual_renewal_notice_sent", priceCents: 139_000 }));
+    expect(J.inserted[0].metadata.noticeRegimes).toEqual(["ma-940-cmr-38.05"]);
     // Next day: the history row for this period exists → nothing more.
     J.orgs = [J.orgs[0]];
     const r2 = await runAnnualRenewalNotices({ deps, nowMs: now + DAY });

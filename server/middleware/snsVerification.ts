@@ -48,6 +48,11 @@ export function isReplay(messageId: string): boolean {
   return false;
 }
 
+/** Forget a recorded MessageId so a retry of a FAILED delivery is processed. */
+export function releaseReplay(messageId: string): void {
+  replayCache.delete(messageId);
+}
+
 /** Test-only helper to clear the replay cache. */
 export function _resetReplayCache(): void {
   replayCache.clear();

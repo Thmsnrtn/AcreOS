@@ -30,7 +30,7 @@ import {
   type CountyCoverage,
   type StateCensus,
 } from "@shared/landData/countyCoverage";
-import tnBoundaries from "@shared/landData/tnCountyBoundaries.json";
+import { fetchTnBoundaries } from "@/lib/tn-boundaries";
 
 interface CoverageResponse {
   counties: StateCensus[];
@@ -103,16 +103,32 @@ export function LandCoveragePanel() {
       fitBoundsOptions: { padding: 8 },
       interactive: true,
     });
+    let removed = false;
     map.on("load", () => {
-      const features = (tnBoundaries as any).features.map((f: any) => {
-        const row = byFips.get(f.properties.fips);
-        return { ...f, properties: { ...f.properties, color: row ? coverageColor(row.coverage) : "gray" } };
-      });
-      map.addSource("tn-coverage", { type: "geojson", data: { type: "FeatureCollection", features } });
-      map.addLayer({ id: "tn-coverage-fill", type: "fill", source: "tn-coverage", paint: { "fill-color": ["get", "color"], "fill-opacity": 0.45 } });
-      map.addLayer({ id: "tn-coverage-line", type: "line", source: "tn-coverage", paint: { "line-color": ["get", "color"], "line-width": 0.6 } });
+      // The boundary shapes ship as a static asset, not in the bundle (see
+      // @/lib/tn-boundaries); the county fills are added when they arrive.
+      fetchTnBoundaries()
+        .then((tnBoundaries) => {
+          if (removed) return;
+          const features = tnBoundaries.features.map((f) => {
+            const row = byFips.get(f.properties.fips);
+            return { ...f, properties: { ...f.properties, color: row ? coverageColor(row.coverage) : "gray" } };
+          });
+          map.addSource("tn-coverage", { type: "geojson", data: { type: "FeatureCollection", features } });
+          map.addLayer({ id: "tn-coverage-fill", type: "fill", source: "tn-coverage", paint: { "fill-color": ["get", "color"], "fill-opacity": 0.45 } });
+          map.addLayer({ id: "tn-coverage-line", type: "line", source: "tn-coverage", paint: { "line-color": ["get", "color"], "line-width": 0.6 } });
+        })
+        .catch(() => {
+          // The asset ships beside the bundle, so a failure here means a
+          // broken deploy. The base map still renders and the panel's data
+          // (legend, tallies, request form — all from the coverage API) is
+          // unaffected; only the county fills are missing.
+        });
     });
-    return () => map.remove();
+    return () => {
+      removed = true;
+      map.remove();
+    };
   }, [tn, byFips]);
 
   if (coverage.isLoading) {

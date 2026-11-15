@@ -204,6 +204,16 @@ describe("GET /api/verticals — catalog shape", () => {
     }
   });
 
+  it("the Note pack does not advertise 1099-INT (output is refused pending a tax determination)", async () => {
+    const { body } = await callVerticalsRoute(anonReq());
+    const note = body.verticals.find((p: any) => p.key === "note_investor");
+    expect(note, "vacuity: the Note pack is served").toBeDefined();
+    expect(note.features.length).toBeGreaterThan(0);
+    expect(`${note.tagline} ${note.features.join(" ")}`).not.toMatch(/1099/);
+    // What it still honestly offers is unchanged: 1098 reporting.
+    expect(note.features.join(" ")).toMatch(/1098/);
+  });
+
   it("selectability exactly agrees with isVerticalSelectable (the single maturity gate)", async () => {
     const { body } = await callVerticalsRoute(anonReq());
     for (const p of body.verticals) {

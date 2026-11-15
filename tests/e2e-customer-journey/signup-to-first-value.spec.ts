@@ -645,7 +645,7 @@ test.describe("CJ1: signup → onboarding → first value", () => {
           async () => {
             const found = await page.evaluate(() => {
               const txt = (document.body?.innerText || "").toLowerCase();
-              return /add (a |your )?(property|deal|parcel)|new (property|deal)|import|send.*pax|ask pax/i.test(
+              return /add (a |your )?(property|deal|parcel)|new (property|deal)|import|make your first offer|send.*pax|ask pax/i.test(
                 txt,
               );
             });

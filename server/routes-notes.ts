@@ -49,6 +49,7 @@ import { Errors, sendError } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { encrypt as encryptField } from "./services/fieldEncryption";
 import { emitPaymentEvent } from "./services/workflow-engine";
+import { recordPostedPaymentApplication } from "./services/paymentApplication";
 // The ONE schedule engine for the acquired book (pure — no db, no clock).
 import {
   advancePaidThrough,
@@ -81,6 +82,7 @@ import {
 } from "./services/notePaymentMath";
 import { clock } from "./utils/clock";
 import { routeParam } from "./utils/routeParams";
+import { registerSettlementRailRoutes } from "./services/settlementRail/routes";
 
 // ─── Schemas ─────────────────────────────────────────────────────────────────
 
@@ -2026,6 +2028,30 @@ export function registerNoteRoutes(app: Express): void {
             })
             .returning();
 
+          // ── Write 1b: the Reg-Z application breakdown, same transaction
+          // (D4). The periodic-statement generator sums `payment_applications`
+          // only — for BOTH note books — and refuses an acquired note's
+          // statement when a posted payment has no breakdown there. Mirror
+          // the buckets the operator just recorded on the ledger row
+          // verbatim (this route's split is supplied, never computed, so
+          // there is nothing to re-derive): late fee lands in the fees
+          // bucket, held money in suspense. `paymentId` is the ledger row's
+          // own uuid — the convention the payment_applications schema
+          // documents for this book.
+          await recordPostedPaymentApplication(tx, {
+            organizationId: orgId,
+            loanId: id,
+            loanType: "acquired_note",
+            paymentId: row.id,
+            receivedAt: new Date(data.paymentDate),
+            appliedAt: new Date(data.paymentDate),
+            appliedToPrincipalCents: data.principalCents,
+            appliedToInterestCents: data.interestCents,
+            appliedToEscrowCents: data.escrowCents,
+            appliedToFeesCents: data.lateFeeCents,
+            appliedToSuspenseCents: data.unappliedCents,
+          });
+
           // ── Write 2: the denormalized running balances on the note.
           // currentBalance: subtract principal applied (negative principal on
           //   reversal restores balance).
@@ -3506,6 +3532,13 @@ export function registerNoteRoutes(app: Express): void {
       }
     },
   );
+
+  // Settlement & Documents Rail (P1-3 core + Notes transplant): the payoff
+  // letter + lien release on /api/notes/:id/…, and the rail's shared
+  // recording-status + money-event routes. Mounted here, through the notes
+  // register function, because server/routes.ts + routeManifest.ts are owned
+  // by the Phase-0 landing lane — see services/settlementRail/routes.ts.
+  registerSettlementRailRoutes(app);
 }
 
 // ─── Aggregation helper used by form1099Batch.ts ─────────────────────────────

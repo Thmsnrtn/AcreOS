@@ -162,5 +162,6 @@ export const ESTIMATE_EDITABLE_STATUS = "planning" as const;
 
 export const ESTIMATE_LOCK_MESSAGE =
   "This project has left planning, so its line estimates are locked — the estimate is what variance is measured against. " +
-  "A scope change after work starts is a change order (priced amount and schedule impact, approved before the work), " +
-  "and change orders are not available in AcreOS yet. Until they are, record the change in the line's notes; spent and committed stay editable.";
+  "A scope change after work starts is a change order: priced (amount and schedule impact) and approved before the work it covers starts. " +
+  "Propose one from this project's Change orders card — the recorded estimate never changes; an approved order adjusts the line's effective budget instead. " +
+  "Spent and committed stay editable.";

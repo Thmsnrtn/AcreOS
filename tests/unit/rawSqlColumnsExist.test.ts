@@ -98,7 +98,19 @@ const MAX_GHOSTS = 0;
 // (organization_id, provider) has no unique index in a database built from
 // this repository. That is a separate defect, tracked in the ON CONFLICT
 // ratchet on the payments-transaction-id-constraint branch, not fixed here.
-const MAX_UNRESOLVED = 49;
+// 49 → 63 (2026-11-12, PR #543 bring-current onto main 8c70d35961): set FROM
+// MEASUREMENT on the merged tree, never arithmetic — the scan was run on the
+// merged tree and counted exactly 63. All +14 sit in the PR's own new file
+// tests/unit/dealDocuments.realdb.test.ts (per-file attribution measured, not
+// inferred): information_schema / pg_enum catalog queries, one
+// ${sql.identifier(table)} dynamic-table INSERT, and sql.join / fragment
+// compositions (bare WHERE fragments handed to a count helper) — the shapes
+// this budget exists for; none is a table reference this gate could read
+// without the suite being rewritten around the scanner. The other 49 are the
+// pre-existing population, unchanged file-for-file. Ghosts still 0 and the
+// population floors hold (templates 1777 ≥ 800, withColumns 601 ≥ 150), so
+// nothing is silenced: a 64th unread template turns this red.
+const MAX_UNRESOLVED = 63;
 const MIN_TEMPLATES = 800;
 const MIN_WITH_COLUMNS = 150;
 

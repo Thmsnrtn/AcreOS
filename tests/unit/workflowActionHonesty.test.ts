@@ -111,6 +111,10 @@ const getPaxControls = vi.fn(async (_orgId: number): Promise<PaxControlsState> =
   leadScoring: true,
   borrowerReminders: true,
   inboxDrafts: true,
+  rails: { records: { leads: "act_and_report", properties: "act_and_report", deals: "act_and_report", tasks: "act_and_report", follow_ups: "act_and_report", account: "act_and_report" }, sends: "ask" },
+  limits: { asksPerDay: null, creditSpendPerDay: null, browseCallsPerDay: null, batchRowsPerDay: null },
+  members: {},
+  mySites: [],
   timezone: "America/Chicago",
 }));
 vi.mock("../../server/services/paxControls", async (importOriginal) => {
@@ -192,6 +196,10 @@ beforeEach(() => {
     leadScoring: true,
     borrowerReminders: true,
     inboxDrafts: true,
+    rails: { records: { leads: "act_and_report", properties: "act_and_report", deals: "act_and_report", tasks: "act_and_report", follow_ups: "act_and_report", account: "act_and_report" }, sends: "ask" },
+  limits: { asksPerDay: null, creditSpendPerDay: null, browseCallsPerDay: null, batchRowsPerDay: null },
+  members: {},
+    mySites: [],
     timezone: "America/Chicago",
   });
   createWorkflowRun.mockClear();
@@ -432,6 +440,10 @@ describe("a paused org's run is parked, never reported as done (honesty of the r
       leadScoring: true,
       borrowerReminders: true,
       inboxDrafts: true,
+      rails: { records: { leads: "act_and_report", properties: "act_and_report", deals: "act_and_report", tasks: "act_and_report", follow_ups: "act_and_report", account: "act_and_report" }, sends: "ask" },
+  limits: { asksPerDay: null, creditSpendPerDay: null, browseCallsPerDay: null, batchRowsPerDay: null },
+  members: {},
+      mySites: [],
       timezone: "America/Chicago",
     });
 

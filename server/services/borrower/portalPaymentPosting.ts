@@ -54,6 +54,8 @@ import {
   outstandingServicedLateFeesCents,
 } from "../notes/servicedLateFees";
 import { clock } from "../../utils/clock";
+import { recordPostedPaymentApplication } from "../paymentApplication";
+import { nextServicedStatus } from "@shared/notes/servicedStatus";
 
 // ─────────────────────────────────────────────────────────────────────
 // Workflow payment events (Wave B — "wire the engine")
@@ -447,8 +449,9 @@ export async function postServicedNotePayment(
         // defaulted: a payment on it is money toward a cure, and whether the
         // loan is reinstated is the lender's decision — silently flipping it
         // to active re-armed autopay, reminders and the fee sweep (audit of
-        // the fourth follow-up).
-        status: newBalanceCents <= 0 ? "paid_off" : lockedNote.status === "defaulted" ? "defaulted" : "active",
+        // the fourth follow-up). A payment never consummates a pending
+        // note. One rule for every payment path: shared/notes/servicedStatus.ts.
+        status: nextServicedStatus(lockedNote.status, newBalanceCents),
         version: (lockedNote.version ?? 1) + 1,
         updatedAt: clock.now(),
       })
@@ -463,6 +466,28 @@ export async function postServicedNotePayment(
     if (updated.length === 0) {
       throw new Error(`Optimistic lock conflict on note ${note.id} — concurrent update detected`);
     }
+
+    // The Reg-Z application breakdown, in the SAME transaction (D4): the
+    // periodic-statement generator sums `payment_applications` only, and
+    // refuses the borrower's statement when a posted payment has no row
+    // there. Mirror the split this rule just recorded on the payment row —
+    // principal / interest from the split, the collected late fee as fees,
+    // and the payoff residue as unapplied (it was received and applied to
+    // nothing). The buckets sum to the payment amount, as the table's
+    // invariant requires.
+    await recordPostedPaymentApplication(tx, {
+      organizationId: note.organizationId,
+      loanId: String(note.id),
+      loanType: "note",
+      paymentId: String(row.id),
+      receivedAt: paymentDate,
+      appliedAt: paymentDate,
+      appliedToPrincipalCents: split.principalCents,
+      appliedToInterestCents: split.interestCents,
+      appliedToEscrowCents: 0,
+      appliedToFeesCents: lateFeeCents,
+      appliedToSuspenseCents: split.residueCents,
+    });
 
     return { row, created: true, remainingBalanceCents: newBalanceCents } as const;
   });

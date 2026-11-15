@@ -26,6 +26,13 @@ permissions:
   contents: read
   pull-requests: write
 
+
+# CI efficiency package (2026-11-11): a superseded head's run cancels itself
+# instead of occupying the account's concurrent-job slots behind the new
+# head. The group is keyed by ref (a PR's ref is stable across its pushes).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   eval:
     runs-on: ubuntu-latest
