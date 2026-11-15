@@ -58,6 +58,14 @@ export const SCENARIO_SHAPE_VERSION = 1 as const;
 export const SCENARIO_SUBJECT_TYPES = ["property", "opportunity", "deal"] as const;
 export type ScenarioSubjectType = (typeof SCENARIO_SUBJECT_TYPES)[number];
 
+/**
+ * What an engine's arithmetic is ABOUT. The scenario and decision stores key a
+ * subject as one of SCENARIO_SUBJECT_TYPES by an integer id. "note" is a kind
+ * they cannot key: every note is keyed by a uuid (`acquired_notes.id`,
+ * `note_acquisitions.id`), so there is no integer to put in `subject_id`.
+ */
+export type EngineSubjectKind = ScenarioSubjectType | "note";
+
 // ── Assumptions ───────────────────────────────────────────────────────────
 
 /**
@@ -306,6 +314,17 @@ export interface EngineSpec {
    */
   verticals?: readonly StrategyPackId[];
   /**
+   * The kind of record this engine's arithmetic is about. Absent: a property,
+   * opportunity or deal, so any subject the scenario store can key. When it is
+   * declared, a scenario is RECORDED only against that kind
+   * (`assertRecordableSubject`, which `recordScenario`, the one writer of the
+   * scenarios table, runs before it computes or inserts). A kind the store
+   * cannot key at all ("note") is recordable on nothing. Filing a note's
+   * economics under an integer property or deal id would put them on the wrong
+   * record. Preview records nothing, so it still computes the engine.
+   */
+  subjectKind?: EngineSubjectKind;
+  /**
    * The arithmetic. PURE — no I/O, no clock, no randomness. It also normalises
    * its own inputs and returns the exact set it consumed, so the persisted
    * `inputs` are what the engine actually used rather than whatever the caller
@@ -438,6 +457,49 @@ export interface ComputeScenarioRequest {
 
 /** Raised when a request names an engine or inputs the registry cannot honour. */
 export class ScenarioEngineError extends Error {}
+
+/** The machine-readable name of the refusal below. POST /api/scenarios returns it in `details.refusal`. */
+const SCENARIO_SUBJECT_REFUSAL = "scenario_subject_mismatch" as const;
+
+/**
+ * Raised when a scenario would be RECORDED on a subject its engine is not
+ * about. It is a ScenarioEngineError, so every caller that already maps one to
+ * a 4xx keeps doing that. POST /api/scenarios answers it with 422 and the
+ * refusal name: the request is well-formed, and nothing the caller sends can
+ * fix it.
+ */
+export class ScenarioSubjectRefused extends ScenarioEngineError {
+  readonly refusal = SCENARIO_SUBJECT_REFUSAL;
+  constructor(
+    readonly engineId: string,
+    readonly engineSubjectKind: EngineSubjectKind,
+    readonly subjectType: ScenarioSubjectType,
+  ) {
+    const keyable = (SCENARIO_SUBJECT_TYPES as readonly string[]).includes(engineSubjectKind);
+    super(
+      `Engine "${engineId}" computes economics about a ${engineSubjectKind}, so a scenario from it ` +
+        `cannot be recorded on subject type "${subjectType}"` +
+        (keyable
+          ? "."
+          : `. A scenario subject can only be a property, opportunity or deal, keyed by an integer id, ` +
+            `and a ${engineSubjectKind} is none of those. Recording it would put the ` +
+            `${engineSubjectKind}'s economics on the wrong record, so recording waits until a ` +
+            `${engineSubjectKind} can be keyed as a subject. Preview still computes it and records nothing.`),
+    );
+    this.name = "ScenarioSubjectRefused";
+  }
+}
+
+/**
+ * Refuse to RECORD a scenario on a subject its engine is not about. This is the
+ * one rule, and `recordScenario` runs it for every record path. It is a property
+ * of the EngineSpec (`subjectKind`), never a match on an engine id.
+ */
+export function assertRecordableSubject(engine: EngineSpec, subjectType: ScenarioSubjectType): void {
+  const kind = engine.subjectKind;
+  if (kind === undefined || kind === subjectType) return;
+  throw new ScenarioSubjectRefused(engine.id, kind, subjectType);
+}
 
 export function requireCents(
   inputs: Record<string, number | string>,

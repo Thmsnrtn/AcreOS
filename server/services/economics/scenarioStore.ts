@@ -19,7 +19,9 @@ import { db } from "../../db";
 import { scenarios } from "@shared/schema";
 import { ALL_ENGINES } from "./engines";
 import {
+  assertRecordableSubject,
   computeScenario,
+  engineById,
   freezeScenarioRef,
   type ComputeScenarioRequest,
   type FrozenScenarioRef,
@@ -64,6 +66,15 @@ export async function recordScenario(
   organizationId: number,
   req: ComputeScenarioRequest,
 ): Promise<StoredScenario> {
+  // This is the one writer of the scenarios table, so it is the one place where
+  // the subject rule holds for every record path: POST /api/scenarios, the
+  // vertical kit, the flip analyzer and the blind-offer commit. A scenario is
+  // never recorded on a subject its engine is not about (EngineSpec.subjectKind).
+  // The check runs before anything is computed or inserted. An unknown engine
+  // falls through to computeScenario's own refusal.
+  const engine = engineById(req.engineId, ALL_ENGINES);
+  if (engine) assertRecordableSubject(engine, req.subjectType);
+
   // The FULL registry — core (shared) engines plus the server-side ones. See
   // ./engines/index.ts for why the note engine cannot live in shared/.
   const body = computeScenario(req, ALL_ENGINES);

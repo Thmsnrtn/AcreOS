@@ -2,6 +2,9 @@
  * Scenario HTTP surface — the economics layer (Master Audit BI12, BK24).
  *
  *   POST /api/scenarios                          — compute + persist a scenario
+ *                                                  (422 scenario_subject_mismatch
+ *                                                  for an engine not about the
+ *                                                  named subject, e.g. a note)
  *   POST /api/scenarios/preview                  — compute a vertical
  *                                                  underwriting scenario, persist
  *                                                  nothing
@@ -42,6 +45,7 @@ import {
   METRICS,
   SCENARIO_SUBJECT_TYPES,
   ScenarioEngineError,
+  ScenarioSubjectRefused,
   type EngineSpec,
 } from "@shared/economics/scenario";
 import { ALL_ENGINES } from "./services/economics/engines";
@@ -153,6 +157,17 @@ router.post("/", async (req: AuthenticatedRequest, res: Response) => {
     // An unregistered engine or a malformed money input is a CALLER error, and
     // saying so precisely is the difference between a fixable 400 and a
     // mysterious 500.
+    if (err instanceof ScenarioSubjectRefused) {
+      // The request is well-formed and nothing in it can be corrected: the
+      // store cannot key this engine's subject. Answer 422 with the refusal
+      // named, not a 400 that tells the caller to fix their input.
+      return Errors.unprocessable(res, err.message, {
+        refusal: err.refusal,
+        engineId: err.engineId,
+        engineSubjectKind: err.engineSubjectKind,
+        subjectType: err.subjectType,
+      });
+    }
     if (err instanceof ScenarioEngineError) {
       return Errors.badRequest(res, err.message);
     }
