@@ -57,6 +57,11 @@ import type { ParcelTruth } from "@shared/landData/parcelTruths";
 import type { TaxSaleSource } from "@shared/landData/taxSaleSources";
 import { isClearedForLookup, type StatewideSourceEntry } from "../openData/statewideSourceRegistry";
 import {
+  coverageDemandAffordance,
+  type CoverageDemandAffordance,
+  type CoverageRefusalReason,
+} from "@shared/coverageDemand";
+import {
   PARCEL_FIELD_GROUP_LABELS,
   answerServes,
   type FieldClearanceAnswer,
@@ -124,7 +129,22 @@ export interface PropertyPassport {
 }
 
 export type PropertyPassportResult =
-  | { status: "refused"; apid: string; state: string; reason: string; registerState: string | null }
+  | {
+      status: "refused";
+      apid: string;
+      state: string;
+      reason: string;
+      registerState: string | null;
+      /**
+       * P1-7 / A-2: the refusal, named in the shared demand taxonomy, plus
+       * the "request this county" affordance a future caller can render.
+       * This module stays pure — it emits nothing; the fields only let the
+       * refusal be attributed when a caller surfaces it. The refusal itself
+       * and its `reason` text are unchanged.
+       */
+      refusalReason: CoverageRefusalReason;
+      demand: CoverageDemandAffordance;
+    }
   | { status: "assembled"; passport: PropertyPassport };
 
 /**
@@ -149,6 +169,17 @@ export function assemblePropertyPassport(
   // all — keeps the refusal exactly as it was.
   const partialAnswer =
     !fullCleared && fieldClearance && fieldClearance.servableFields.length > 0 ? fieldClearance : null;
+  // P1-7 / A-2: every refusal below is a gate refusal; name it and carry the
+  // demand affordance on the result (see the type note — nothing is emitted).
+  const refusalFields = {
+    refusalReason: "gated" as CoverageRefusalReason,
+    demand: coverageDemandAffordance({
+      state: ref.state,
+      county: ref.county,
+      reason: "gated",
+      surface: "passport",
+    }),
+  };
   // The gate is asked first. No layer input has been read when it refuses.
   if (!fullCleared && !partialAnswer) {
     const lookup = entry?.lookup;
@@ -159,6 +190,7 @@ export function assemblePropertyPassport(
         state: ref.state,
         reason: `No register entry exists for ${ref.state}, and a source the register does not clear serves nothing.`,
         registerState: null,
+        ...refusalFields,
       };
     }
     if (lookup.status === "gated") {
@@ -168,6 +200,7 @@ export function assemblePropertyPassport(
         state: ref.state,
         reason: `The statewide source for ${ref.state} is not cleared for lookup; its licence review is recorded on the register, and a source the register does not clear serves nothing.`,
         registerState: lookup.registerState,
+        ...refusalFields,
       };
     }
     return {
@@ -176,6 +209,7 @@ export function assemblePropertyPassport(
       state: ref.state,
       reason: `The clearance record for ${ref.state} is incomplete, so it serves nothing.`,
       registerState: null,
+      ...refusalFields,
     };
   }
 
@@ -189,6 +223,7 @@ export function assemblePropertyPassport(
       state: ref.state,
       reason: `The clearance record for ${ref.state} is incomplete, so it serves nothing.`,
       registerState: null,
+      ...refusalFields,
     };
   }
 

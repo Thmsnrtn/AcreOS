@@ -13239,6 +13239,15 @@ $mig0284$`,
   `DROP TRIGGER IF EXISTS note_origination_records_no_delete ON "note_origination_records"`,
   `CREATE TRIGGER note_origination_records_no_delete BEFORE DELETE ON "note_origination_records"
      FOR EACH ROW EXECUTE FUNCTION note_origination_records_guard()`,
+  // 0312 — P1-7 / A-2: gate-refusal demand wiring. county_coverage_requests gains
+  // surface + reason (which surface an explicit county request came from, and the
+  // refusal reason that prompted it); county_discovery_queue gains
+  // last_refusal_reason (the latest refusal reason that bumped demand, so the
+  // founder demand view can separate gate-refusal demand from search demand).
+  // Mirrors migrations/0312_coverage_demand_refusal.sql.
+  `ALTER TABLE "county_coverage_requests" ADD COLUMN IF NOT EXISTS "surface" text`,
+  `ALTER TABLE "county_coverage_requests" ADD COLUMN IF NOT EXISTS "reason" text`,
+  `ALTER TABLE "county_discovery_queue" ADD COLUMN IF NOT EXISTS "last_refusal_reason" text`,
   // 0306 — Fix-and-Flip Leg 3: rehab_baselines, rehab_status_transitions and rehab_holding_cost_entries (timeline truth; append-only, org-private, each leaves only with its org).
   // Mirrors migrations/0306_ff_leg3_timeline_holding.sql.
   `CREATE TABLE IF NOT EXISTS "rehab_baselines" (
