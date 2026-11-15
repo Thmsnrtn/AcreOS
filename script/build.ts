@@ -3,7 +3,7 @@ import { build as viteBuild } from "vite";
 import { rm, readFile, readdir, unlink } from "fs/promises";
 import { join } from "path";
 import { existsSync } from "fs";
-import { execSync } from "child_process";
+import { execSync, execFileSync } from "child_process";
 
 // server deps to bundle to reduce openat(2) syscalls
 // which helps cold start times
@@ -94,11 +94,12 @@ async function uploadSourceMapsToSentry(release: string): Promise<void> {
   // founder output's stack traces need symbolicating exactly like the customer's.
   for (const dir of CLIENT_OUTPUT_DIRS) {
     console.log(`[sentry] injecting debug ids into source maps in ${dir} (release=${release})...`);
-    execSync(`npx --yes @sentry/cli sourcemaps inject ./${dir}`, opts);
+    execFileSync("npx", ["--yes", "@sentry/cli", "sourcemaps", "inject", `./${dir}`], opts);
 
     console.log(`[sentry] uploading source maps from ${dir} for release=${release}...`);
-    execSync(
-      `npx --yes @sentry/cli sourcemaps upload --release=${release} ./${dir}`,
+    execFileSync(
+      "npx",
+      ["--yes", "@sentry/cli", "sourcemaps", "upload", `--release=${release}`, `./${dir}`],
       opts
     );
   }

@@ -89,10 +89,38 @@ function reachable(entry: string, host: Host): Set<string> {
 }
 
 const EXTS = ["", ".ts", ".tsx", "/index.ts", "/index.tsx"];
+
+// Extension probing used to statSync each candidate — a check-then-use shape
+// (the answer can change between the probe and the walker's read). Probe
+// against a snapshot of the tree instead: one walk up front, membership after.
+let clientFileSnapshot: Set<string> | null = null;
+function clientFiles(): Set<string> {
+  if (clientFileSnapshot) return clientFileSnapshot;
+  const files = new Set<string>();
+  const walk = (dir: string): void => {
+    let entries;
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (entry.isFile()) files.add(full);
+    }
+  };
+  walk(CLIENT_SRC);
+  clientFileSnapshot = files;
+  return files;
+}
+
 const realHost: Host = {
   load(abs) {
+    // Read-first: a directory or a missing path throws → null; no probe
+    // whose answer the read then trusts.
     try {
-      return fs.statSync(abs).isFile() ? fs.readFileSync(abs, "utf8") : null;
+      return fs.readFileSync(abs, "utf8");
     } catch {
       return null;
     }
@@ -103,13 +131,10 @@ const realHost: Host = {
     else if (spec.startsWith(".")) base = path.resolve(path.dirname(from), spec);
     else return null; // a package, @shared/* (shared never imports client/), @content, @acreos/*
     if (/\.(css|json|svg|png|jpe?g|woff2?)$/.test(base)) return null;
+    const files = clientFiles();
     for (const ext of EXTS) {
       const candidate = base + ext;
-      try {
-        if (fs.statSync(candidate).isFile()) return candidate;
-      } catch {
-        /* try the next */
-      }
+      if (files.has(candidate)) return candidate;
     }
     return null;
   },
