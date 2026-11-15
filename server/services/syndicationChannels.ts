@@ -22,6 +22,7 @@
 
 import { OCCUPIED_TARGET_STATUSES } from "./listingWithdrawal";
 import { offerabilityRefusal } from "./listability";
+import { unattendedOfferRefusal } from "./wholesale/offerCompliance";
 import { db } from "../db";
 import {
   propertyListings,
@@ -287,6 +288,9 @@ export async function syncChannels(
     // offered sold land on every other channel.
     if (offerabilityRefusal(property.status)) continue;
     if (taxHeld.has(property.id)) continue; // V-Tax-1 T4b: not yet marketable in AcreOS
+    // Assignment compliance (Leg 3): nobody is present to acknowledge a warn,
+    // so an under-contract property in a block OR warn state is not pushed.
+    if (await unattendedOfferRefusal(property)) continue;
 
     // Only push to channels where this listing isn't already live — and
     // never back onto a channel it was withdrawn or taken down from (a
