@@ -4,8 +4,8 @@
 PR lifting `residential_wholesaler`'s `beta` demotion. It runs on **staging
 only**, after Legs 1–4 merge and staging deploys. The walk needs a
 staging session, which this build session did not have. The same API sequence
-was rehearsed against a local database built from the integrated L1–L4 stack
-(`tests/unit/wholesaleJourney.realdb.test.ts` on the integration branch, #478).
+is rehearsed against a real database on main, with all four legs landed
+(`tests/unit/wholesaleJourney.realdb.test.ts`).
 That rehearsal proves the walk is possible in code; it is not the staging
 proof.
 

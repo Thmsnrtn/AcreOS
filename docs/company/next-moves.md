@@ -11,7 +11,7 @@ what shipped, what it measured, and the top next moves. Newest first.
   - step 10 records the bundle figure for the exact SHA walked plus a served-string check;
   - new step 7b walks the §6.2 seller follow-up drafts.
 - **Leg 4 §6.2 debt is closed by code, not a deferral.** The seller follow-up drafts were built in #533 (2026-11-09) and folded into #477, which merged 2026-11-14 (`7d0b2e1`): drafts are `generated_documents` rows, there is no send path, and `POST /api/signatures` refuses them. Leg 4 is complete on main.
-- **Next.** #475 (Leg 3) is the last leg still open. The staging walk runs once it has landed and staging deploys (Muse confirms). The rehearsal test `tests/unit/wholesaleJourney.realdb.test.ts` comes from #478 onto main at the same point, since it exercises Leg 3's compliance gate. The beta-demotion lift is its own PR, opened only on the walk's PASS (§12.3).
+- **Next.** All four legs are on main (#475 merged 2026-11-15). The rehearsal test `tests/unit/wholesaleJourney.realdb.test.ts` joined main in this PR and passes against main's real code. The staging walk runs once staging deploys (Muse confirms). The beta-demotion lift is its own PR, opened only on the walk's PASS (§12.3).
 
 ## 2026-11-14 — P1-17: schema-journal sync guard (PR #578, landed in the merge wave)
 
