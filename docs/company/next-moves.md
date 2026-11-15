@@ -3,6 +3,16 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-11-03 — P2 B1 slice 1 (decision inbox + live Atlas): step 0 run, both build legs STOPPED — on `claude/b1-slice1-step0` (draft PR #453; brought current with main `6b0332f` on 2026-11-15; unmerged)
+
+- **Nothing built.** The step-0 record is `docs/evidence/2026-11-03/b1-slice1-step0-inventory.md`.
+- **Leg 1 stopped.** The spec assumes there is no approval write path. On main, `POST /api/founder/autopilot/pending-actions/:id/{approve,reject}` is live and executes. `founder-decisions.tsx` is the only UI for it and for six other founder write paths. A read-only rebuild in place would take all of them away. The card data the spec wants (summary, dispatch anchor, `expiresAt`) already exists, so no schema change is needed. The blocker is only the read-only constraint.
+- **Leg 2 stopped.** Atlas v1.3 and the spec's `files/*` design sources are not in the repo or on any branch. Rendering gate cards without them would mean inventing the gate data.
+- **Inventory.** `command-center.tsx` is the customer's Pax door, and `founder-compliance-ops.tsx` is the only DSAR/compliance UI. Both serve functions outside B1, so neither was ruled on. `routes-founder-intelligence.ts` backs the current inbox and is not a retire-candidate. `founder-ai-observatory.tsx` is keep-and-mark.
+- **Next.**
+  1. ~~Muse/Tom pick a leg-1 option.~~ **Decided 2026-11-05: Option A.** The slice-1 spec is corrected to the existing founder approval write path; this stop report stands as the package deliverable.
+  2. Commit Atlas v1.3 to the repo so leg 2 can render it as recorded.
+
 ## 2026-11-15 — P2-5: skip-trace gate as feature — the FCRA defense file (PR #584)
 
 - **Built.** The FCRA purpose/attestation trail is now readable from the customer's seat: a pure assembler (`server/services/fcraDefenseFile.ts`) projects the org's append-only `purpose_ledger` + `fcra_attestations` rows into a defense file; `GET /api/skip-tracing/defense-file` serves it as JSON or `?format=csv` (org-scoped, newest 1000 entries + truncated flag); the skip-tracing page gains a "Your FCRA defense file" section (attestation status, coverage, 10 most recent entries, honest zero state, CSV download) and one gate-copy sentence pointing to it. Suite: `tests/unit/fcraDefenseFile.test.ts` (9 tests). Landing fix round: the page's four dates now render through `lib/format.ts` (`formatDate`) instead of `toLocaleDateString`, per the date-format gate. No schema change; the route reads only the two trail tables, so the purpose-ledger census owes no registration (DEBT_BASELINE unchanged).
