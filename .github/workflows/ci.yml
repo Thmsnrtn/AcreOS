@@ -76,20 +76,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Unified gate — same `npm run check` the deploy gate runs, so CI and
-      # deploy can never disagree on which lints run. `check` forces
-      # `--incremental false` (a stale tsBuildInfo in node_modules produced a
-      # false-negative this session) and runs the schema + no-fabrication ratchets.
-      #
-      # The heap ceiling is NOT set by this workflow. It lives in
-      # scripts/lib/heap-ceiling.mjs and is passed to each heavy child process; a
-      # `VAR=x cmd1 && cmd2` prefix in package.json reaches cmd1 only, which is
-      # what broke every deploy from 2026-08-17. The historical note is kept
-      # because it still constrains the value: 8192 invited the OOM-killer that
-      # broke deploys Jun 6-8, so raise the ceiling only against a fresh
-      # measurement, never speculatively.
-      - name: TypeScript type check + ratchets
-        run: npm run check
+      # NOTE — no `npm run check` step here, deliberately. The typecheck +
+      # ratchets family is owned by test.yml's `typecheck` job ("TypeScript
+      # check + ratchets"), which runs the identical command on every
+      # pull_request / push-to-main head AND on claude/** branch pushes where
+      # this workflow never fires (the discharge path for API-published heads).
+      # The deploy path still gates on the same command via deploy.yml's own
+      # pre-deploy `test` job. Removed 2026-11-15 (CI dedup) so the family
+      # runs once per head, not twice.
 
       # Blocking since 2026-07-07: `eslint client/src --max-warnings 0` passes
       # clean (the acreos/* ratchet baseline is all-zero), so a red here is a
@@ -124,11 +118,13 @@ jobs:
         run: node scripts/generate-sitemap.mjs --check
 
       # The two test executions that used to run serially at the end of this
-      # job — the plain blocking suite and the coverage ratchet — are now the
-      # parallel `tests` and `coverage` jobs below (CI efficiency package,
-      # 2026-11-11). Measured 2026-11-11, this job ran 60–84 min with those
-      # two steps as ~45–70 of it; the gates themselves are unchanged, only
-      # their placement: same commands, same env, same thresholds.
+      # job — the plain blocking suite and the coverage ratchet — moved out
+      # (CI efficiency package, 2026-11-11): the coverage ratchet is the
+      # parallel `coverage` job below, and the blocking suite is owned by
+      # test.yml's `test` job. Measured 2026-11-11, this job ran 60–84 min
+      # with those two steps as ~45–70 of it; the gates themselves are
+      # unchanged, only their placement: same commands, same env, same
+      # thresholds.
       - name: Build
         run: npm run build
         env:
@@ -162,38 +158,13 @@ jobs:
   # duplicate compute when green, zero signal when red. Coverage owner:
   # .github/workflows/security.yml.
 
-  # ── 2. Blocking test suite, sharded ───────────────────────────────────────
-  # The SAME plain `npx vitest run` the deploy gate runs — kept plain (no
-  # --coverage) so CI and deploy can never disagree on the test signal —
-  # partitioned by test file across three runners via vitest's --shard.
-  # The union of the three shards is the full suite; nothing is dropped.
-  # This workflow provisions no database (unchanged): the real-database
-  # suites skip here by design and are owned, with a real DB, by test.yml.
-  tests:
-    name: Run tests (shard ${{ matrix.shard }}/3)
-    needs: changes
-    if: needs.changes.outputs.docs_only != 'true'
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2, 3]
-
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run tests (blocking — matches deploy gate)
-        run: npx vitest run --shard=${{ matrix.shard }}/3
-        env:
-          CI: true
+  # NOTE — no blocking-test-suite job here, deliberately. The blocking test
+  # suite is owned by test.yml's `test` job, which runs the SAME suite with
+  # the SAME 3-way shard partition plus a provisioned pgvector database and
+  # the schema-build gate, so the real-database suites execute there instead
+  # of skipping here. Every test that could fail in the removed no-DB run can
+  # fail in test.yml's run. The duplicate was removed in the CI dedup
+  # (2026-11-15) to stop paying for the suite twice per head.
 
   # ── 3. Coverage ratchet ───────────────────────────────────────────────────
   # Coverage is a BLOCKING RATCHET (2026-07-07). The old `lines: 50`
@@ -236,7 +207,7 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
-    needs: [changes, lint-and-typecheck, tests, coverage]
+    needs: [changes, lint-and-typecheck, coverage]
     if: needs.changes.outputs.docs_only != 'true'
 
     steps:
