@@ -2,8 +2,9 @@
  * Signup trim (W1.4) — the server agrees with the picker.
  *
  * Flag ON (the default): a NEW signup (org not yet onboarded) is refused (422)
- * a business type that is not land_flipper / note_investor / hybrid, on every
- * route that writes one. Flag OFF: all fifteen are accepted again. An org that
+ * a business type that is not land_flipper / note_investor / hybrid. Every
+ * writer is driven in signupTrimEveryWriter.test.ts; this file covers the
+ * flag states, the twelve types and the waitlist. Flag OFF: all fifteen are accepted again. An org that
  * already has a type keeps it, an onboarded org is never touched, and a
  * founder is never refused. The waitlist capture persists to the existing
  * feedback inbox, validated, idempotent and rate limited.
@@ -18,7 +19,7 @@ const h = vi.hoisted(() => ({
   org: null as any,
   isFounder: false,
   userId: "user-1",
-  flag: null as null | { state: string },
+  flag: null as null | { state: string; createdAt?: Date },
   feedbackRows: [] as any[],
   failInsert: false,
   completed: 0,
@@ -72,7 +73,8 @@ import { SIGNUP_OPEN_BUSINESS_TYPES } from "@shared/business-types/signupTrim";
 
 const SIGNUP_WAITLIST_BUSINESS_TYPES = BUSINESS_TYPES.filter((t) => !SIGNUP_OPEN_BUSINESS_TYPES.includes(t));
 const fresh = (o: Record<string, unknown> = {}) => ({
-  id: 42, onboardingCompleted: false, onboardingData: null, ownerId: "user-1", ...o,
+  id: 42, onboardingCompleted: false, onboardingData: null, ownerId: "user-1",
+  createdAt: new Date("2026-11-05T00:00:00Z"), ...o,
 });
 
 describe("signup trim on the server", () => {
@@ -135,9 +137,13 @@ describe("signup trim on the server", () => {
     expect((await complete("fix_and_flip")).status).toBe(422);
   });
 
-  it("existing orgs are untouched: an onboarded org, and an org keeping the type it has", async () => {
-    h.org = fresh({ onboardingCompleted: true });
+  it("existing orgs are untouched: an org created before the trim, and an org keeping the type it has", async () => {
+    h.flag = { state: "on", createdAt: new Date("2026-11-01T00:00:00Z") };
+    h.org = fresh({ onboardingCompleted: true, createdAt: new Date("2026-06-01T00:00:00Z") });
     expect((await complete("tax_lien_deed")).status).toBe(200);
+    // ...but an org created after it is a new signup even once onboarded.
+    h.org = fresh({ onboardingCompleted: true, createdAt: new Date("2026-11-05T00:00:00Z") });
+    expect((await complete("tax_lien_deed")).status).toBe(422);
     h.org = fresh({ onboardingData: { businessType: "residential_wholesaler" } });
     expect((await complete("residential_wholesaler")).status).toBe(200);
     // ...but a re-run may not hop to a DIFFERENT closed type.

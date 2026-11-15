@@ -20,6 +20,7 @@ import {
   SIGNUP_TRIM_FLAG_KEY,
   SIGNUP_OPEN_BUSINESS_TYPES,
   decideSignupBusinessType,
+  orgPredatesSignupTrim,
   signupTrimFlagVerdict,
   signupWaitlistSource,
   type SignupTrimDecision,
@@ -32,10 +33,15 @@ import { logger } from "../utils/logger";
 import type { AuthenticatedRequest } from "../types/request";
 import { featureFlagService } from "./featureFlags";
 
+/** The trim flag as the rule needs it: ON?, and when the trim shipped (the row's seed date). */
+async function readSignupTrimFlag(): Promise<{ on: boolean; shippedAt: Date | null }> {
+  const flag = await featureFlagService.getByKey(SIGNUP_TRIM_FLAG_KEY);
+  return { on: signupTrimFlagVerdict(flag ? flag.state : null), shippedAt: flag?.createdAt ?? null };
+}
+
 /** Trim ON? A missing flag row is ON (the default); only an explicit non-`on` state turns it off. */
 export async function isSignupTrimOn(): Promise<boolean> {
-  const flag = await featureFlagService.getByKey(SIGNUP_TRIM_FLAG_KEY);
-  return signupTrimFlagVerdict(flag ? flag.state : null);
+  return (await readSignupTrimFlag()).on;
 }
 
 function labelOf(type: BusinessType): string {
@@ -59,26 +65,33 @@ export async function refuseClosedSignupType(
   const base = {
     requested: typeof requested === "string" ? requested : null,
     stored: typeof stored === "string" ? stored : null,
-    orgOnboarded: org?.onboardingCompleted === true,
     isFounder: req.isFounder === true,
   };
-  // Decide with the trim assumed ON first: the common cases (an open type, a
-  // founder, an onboarded org) never need the flag read.
-  const provisional: SignupTrimDecision = decideSignupBusinessType({ ...base, flagOn: true });
+  // Decide with the trim assumed ON and the org assumed new first: the common
+  // cases (no type, an open type, the stored type, a founder) never need the
+  // flag read. Anything that could be refused reads the flag for real.
+  const provisional: SignupTrimDecision = decideSignupBusinessType({ ...base, flagOn: true, orgPredatesTrim: false });
   if (provisional.allowed) return false;
-  if (!(await isSignupTrimOn())) return false;
+  const flag = await readSignupTrimFlag();
+  const decision = decideSignupBusinessType({
+    ...base,
+    flagOn: flag.on,
+    // Not `onboardingCompleted`: Skip sets that with no type check (audit of #499).
+    orgPredatesTrim: orgPredatesSignupTrim(org?.createdAt, flag.shippedAt),
+  });
+  if (decision.allowed) return false;
 
-  const label = labelOf(provisional.requested);
+  const label = labelOf(decision.requested);
   logger.info("[signup-trim] refused a business type that is not open to new signups", {
-    metadata: { organizationId: org?.id, businessType: provisional.requested, via },
+    metadata: { organizationId: org?.id, businessType: decision.requested, via },
   });
   Errors.unprocessable(
     res,
     `${label} isn't open for new signups yet. Pick ${SIGNUP_OPEN_BUSINESS_TYPES.map(labelOf).join(", ")}, or join the waitlist and we'll tell you when ${label} opens.`,
     {
       reason: "business_type_not_open",
-      requested: provisional.requested,
-      open: provisional.open,
+      requested: decision.requested,
+      open: decision.open,
       waitlistPath: "/api/onboarding/waitlist",
     },
   );

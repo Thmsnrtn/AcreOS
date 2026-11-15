@@ -10,6 +10,7 @@ import {
   SIGNUP_OPEN_BUSINESS_TYPES,
   SIGNUP_TRIM_FLAG_KEY,
   decideSignupBusinessType,
+  orgPredatesSignupTrim,
   signupTrimFlagVerdict,
 } from "@shared/business-types/signupTrim";
 import { BUSINESS_TYPES } from "@shared/models/persona-mapping";
@@ -17,7 +18,7 @@ import { resolveFlagEnabled, type FeatureFlagsResponse } from "../../client/src/
 
 const SIGNUP_WAITLIST_BUSINESS_TYPES = BUSINESS_TYPES.filter((t) => !SIGNUP_OPEN_BUSINESS_TYPES.includes(t));
 const read = (f: string) => stripComments(readFileSync(resolve(__dirname, "../..", f), "utf8"));
-const base = { flagOn: true, requested: "developer", stored: null, orgOnboarded: false, isFounder: false };
+const base = { flagOn: true, requested: "developer", stored: null, orgPredatesTrim: false, isFounder: false };
 
 describe("the rule", () => {
   it("opens exactly land_flipper, hybrid, note_investor and waitlists the other twelve", () => {
@@ -29,11 +30,29 @@ describe("the rule", () => {
     expect(decideSignupBusinessType(base).allowed).toBe(false);
     expect(decideSignupBusinessType({ ...base, flagOn: false }).allowed).toBe(true);
     expect(decideSignupBusinessType({ ...base, isFounder: true }).allowed).toBe(true);
-    expect(decideSignupBusinessType({ ...base, orgOnboarded: true }).allowed).toBe(true);
+    expect(decideSignupBusinessType({ ...base, orgPredatesTrim: true }).allowed).toBe(true);
     expect(decideSignupBusinessType({ ...base, stored: "developer" }).allowed).toBe(true);
     expect(decideSignupBusinessType({ ...base, requested: "hybrid" }).allowed).toBe(true);
     expect(decideSignupBusinessType({ ...base, requested: undefined }).allowed).toBe(true);
     expect(decideSignupBusinessType({ ...base, requested: "not_a_type" }).allowed).toBe(true);
+  });
+});
+
+describe("who is a new signup: org created_at against the trim's ship date", () => {
+  const shipped = new Date("2026-11-01T00:00:00Z");
+  it("an org created before the trim predates it; one created at or after does not", () => {
+    expect(orgPredatesSignupTrim(new Date("2026-10-31T23:59:59Z"), shipped)).toBe(true);
+    expect(orgPredatesSignupTrim(shipped, shipped)).toBe(false);
+    expect(orgPredatesSignupTrim(new Date("2026-11-02T00:00:00Z"), shipped)).toBe(false);
+    expect(orgPredatesSignupTrim("2026-10-01T00:00:00Z", shipped.toISOString())).toBe(true);
+  });
+  it("with no ship date (no flag row) no org is shown to predate the trim", () => {
+    expect(orgPredatesSignupTrim(new Date("2020-01-01"), null)).toBe(false);
+    expect(orgPredatesSignupTrim(new Date("2020-01-01"), undefined)).toBe(false);
+  });
+  it("an org with no created_at predates it; an unreadable one does not", () => {
+    expect(orgPredatesSignupTrim(null, shipped)).toBe(true);
+    expect(orgPredatesSignupTrim("not a date", shipped)).toBe(false);
   });
 });
 
@@ -88,6 +107,8 @@ describe("every business-type writer asks the trim", () => {
     "PUT /api/me/persona",
     "PATCH /api/organization",
   ];
+  // Defence in depth only: signupTrimEveryWriter.test.ts drives each of these
+  // seven routes for real and proves the refusal; this pins the population.
   it("each of the seven writers calls refuseClosedSignupType", () => {
     const all = new Map(units().map((u) => [u.key, u.body]));
     for (const w of WRITERS) {

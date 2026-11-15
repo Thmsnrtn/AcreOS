@@ -34,6 +34,8 @@ export interface FeatureFlag {
   changedBy?: string | null;
   changedAt?: Date | null;
   controlledRoutes: string[];
+  /** When the row was first seeded. Set by the database; no route writes it. */
+  createdAt?: Date | null;
 }
 
 /** Raised when someone tries to set a flag whose subsystem is deleted. */
@@ -110,6 +112,7 @@ function rowToFlag(row: typeof platformFeatureFlags.$inferSelect): FeatureFlag {
     changedBy: row.changedBy,
     changedAt: row.changedAt,
     controlledRoutes: (row.controlledRoutes ?? []) as string[],
+    createdAt: row.createdAt ?? null,
   };
 }
 
