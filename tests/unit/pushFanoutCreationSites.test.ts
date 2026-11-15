@@ -4,8 +4,8 @@
  * borrower ladder) need a full database to execute.
  *
  * Population is enumerated, not assumed: EVERY server file that calls
- * `pushOrgEvent` is found by walking `server/`, and must be one of the three
- * declared creation sites. A fourth caller (or a caller that stops calling)
+ * `pushOrgEvent` is found by walking `server/`, and must be one of the
+ * declared creation sites. A new caller (or a caller that stops calling)
  * fails here rather than going unseen. Comments are stripped first, so a
  * comment describing a push cannot satisfy — or trip — any predicate.
  */
@@ -42,6 +42,11 @@ const SITES: Record<string, { orgArg: RegExp; family?: string }> = {
     orgArg: /pushOrgEvent\(\s*note\.organizationId\s*,/,
     family: "ladder_ready",
   },
+  // S-05 (P1-4b): a borrower portal message notifies the note's org.
+  "server/services/borrowerMessageNotify.ts": {
+    orgArg: /pushOrgEvent\(\s*notice\.orgId\s*,/,
+    family: "borrower_message",
+  },
 };
 const DEFINITION = "server/services/orgPushFanout.ts";
 
@@ -50,7 +55,7 @@ describe("push fan-out: population", () => {
     .map((f) => path.relative(ROOT, f).split(path.sep).join("/"))
     .filter((rel) => /\bpushOrgEvent\s*\(/.test(read(rel)) && rel !== DEFINITION);
 
-  it("exactly the three declared creation sites call pushOrgEvent", () => {
+  it("exactly the four declared creation sites call pushOrgEvent", () => {
     expect(callers.sort()).toEqual(Object.keys(SITES).sort());
   });
 
@@ -84,6 +89,7 @@ describe("push fan-out: population", () => {
     expect(src).toMatch(/pax_nudge: "pax\.needs_you"/);
     expect(src).toMatch(/redemption_alert: "deal\.closing_reminder"/);
     expect(src).toMatch(/ladder_ready: "finance\.payment_missed"/);
+    expect(src).toMatch(/borrower_message: "finance\.borrower_message"/);
   });
 });
 
