@@ -25,6 +25,7 @@ const NO_ORG_LEVEL_KEYS: Record<string, string> = {
   "POST /api/onboarding/tips": "reads tips; writes nothing",
   "POST /api/onboarding/reset": "resetOnboarding preserves businessType/noteRole (routes-onboarding.test.ts)",
   "POST /api/onboarding/sample-data": "seeds from the stored type; takes no body",
+  "POST /api/onboarding/waitlist": "writes one feedback-inbox row for the caller; never touches the org",
 };
 
 function units(): Array<{ key: string; body: string }> {

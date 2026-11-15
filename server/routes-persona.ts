@@ -31,6 +31,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { clock } from "./utils/clock";
+import { refuseClosedSignupType } from "./services/signupTrim";
 
 const router = Router();
 
@@ -85,6 +86,16 @@ router.put("/", getOrCreateOrg, async (req: AuthenticatedRequest, res: Response)
     }
     const persona = parsed.data.persona;
     const explicitBusinessType = parsed.data.businessType;
+    // Signup trim (W1.4): the type this call would leave the org on (explicit,
+    // or derived from the persona exactly as below) must be open to a new
+    // signup. Runs before the first write.
+    {
+      const stored = (req.organization?.onboardingData as { businessType?: BusinessType } | null | undefined)?.businessType;
+      const effective =
+        explicitBusinessType ??
+        (stored && BUSINESS_TYPE_TO_PERSONA[stored] === persona ? stored : PERSONA_TO_BUSINESS_TYPE[persona]);
+      if (await refuseClosedSignupType(req, res, effective, "persona")) return;
+    }
     await db
       .update(users)
       .set({ persona, updatedAt: clock.now() })

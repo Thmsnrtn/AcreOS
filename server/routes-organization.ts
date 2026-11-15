@@ -27,6 +27,7 @@ import {
 } from "./services/commissionService";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
+import { refuseClosedSignupType } from "./services/signupTrim";
 import { sophiePrivacyGuard } from "./services/sophiePrivacyGuard";
 import { auditFromRequest, AuditActions } from "./utils/auditLog";
 import { customerAuditFromRequest, CustomerAuditActions } from "./utils/customerAudit";
@@ -553,6 +554,7 @@ export function registerOrganizationRoutes(app: Express): void {
       return Errors.validationFailed(res, parsed.error.issues);
     }
     const updates: typeof parsed.data = { ...parsed.data };
+    if (await refuseClosedSignupType(req as AuthenticatedRequest, res, updates.onboardingData?.businessType, "organization-patch")) return;
     if (updates.settings) {
       // Merge the whitelisted slice over the stored blob — privileged keys
       // (simulationMode etc.) are preserved from the DB, never client-set.
@@ -924,6 +926,7 @@ export function registerOrganizationRoutes(app: Express): void {
         return Errors.validationFailed(res, parsed.error.issues);
       }
       const { step, data, skipped } = parsed.data;
+      if (await refuseClosedSignupType(req as AuthenticatedRequest, res, data?.businessType, "step")) return;
       // The org's type and name are not a member's to set (audit of 224a5c0).
       const mayMoveOrg = await mayChangeOrganizationType(org.id, req.user?.id, org.ownerId ?? null);
       
@@ -952,6 +955,7 @@ export function registerOrganizationRoutes(app: Express): void {
         return Errors.validationFailed(res, parsed.error.issues);
       }
       const { stepId, data } = parsed.data;
+      if (await refuseClosedSignupType(req as AuthenticatedRequest, res, data?.businessType, "complete-step")) return;
       const mayMoveOrg = await mayChangeOrganizationType(org.id, req.user?.id, org.ownerId ?? null);
       
       const skipped = data?.skipped === true;
@@ -984,6 +988,7 @@ export function registerOrganizationRoutes(app: Express): void {
         return Errors.validationFailed(res, parsed.error.issues);
       }
       const { businessType } = parsed.data;
+      if (await refuseClosedSignupType(req as AuthenticatedRequest, res, businessType, "provision")) return;
       // Provisioning writes the org's business type and creates its template
       // campaigns — the owner's or an admin's call, not any member's (audit of
       // 224a5c0). A member's onboarding continues; nothing is provisioned.

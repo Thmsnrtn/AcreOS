@@ -60,6 +60,15 @@ vi.mock("../../server/utils/logger", () => ({
 
 vi.mock("../../server/storage", () => ({ storage: h.storage, db: {} }));
 
+// Signup trim (W1.4) defaults ON, so the "all 15 types" invariants below are
+// pinned with the flag explicitly OFF (the full picker). The trim-ON behaviour
+// is pinned in signupTrimRoutes.test.ts.
+vi.mock("../../server/services/featureFlags", () => ({
+  featureFlagService: {
+    getByKey: async () => ({ key: "onboarding.signup_trim", state: "off" }),
+  },
+}));
+
 vi.mock("../../server/db", () => ({
   db: {
     // The team-member role read behind mayChangeOrganizationType.
@@ -137,7 +146,7 @@ describe("onboarding routes", () => {
       expect(BUSINESS_TYPES).toHaveLength(15);
     });
 
-    it("POST /complete accepts every one of the 15 registry businessType ids", async () => {
+    it("POST /complete accepts every one of the 15 registry businessType ids (signup trim off)", async () => {
       for (const id of BUSINESS_TYPE_IDS) {
         h.state.org = freshOrg();
         const res = await request(app)

@@ -1745,6 +1745,11 @@ $mig0262$`,
   `INSERT INTO "platform_feature_flags" ("key", "label", "description", "enabled", "state", "audience", "controlled_routes")
    VALUES ('feature_deal_rooms', 'Deal Rooms', 'Shared diligence rooms for marketplace deals', false, 'off', '{}'::jsonb, '["/deal-rooms"]'::jsonb)
    ON CONFLICT ("key") DO NOTHING`,
+  // W1.4 signup trim: ON by default (a missing row is ON too). Flip to off in
+  // /founder/features to restore the full 15-type picker. Data only, no table.
+  `INSERT INTO "platform_feature_flags" ("key", "label", "description", "enabled", "state", "audience", "controlled_routes")
+   VALUES ('onboarding.signup_trim', 'Signup trim', 'ON: new signups pick Land Flipper, Note Investor or Hybrid and the other investor types join a waitlist. OFF: the full investor-type picker.', true, 'on', '{}'::jsonb, '[]'::jsonb)
+   ON CONFLICT ("key") DO NOTHING`,
 
   // ── Phase 3 Week 7-8 (P2-11): Postgres extensions. Migration 0044. ──────
   // pgvector for Sayuri-Vatanen embeddings, pg_trgm for Anaïs fuzzy search,
