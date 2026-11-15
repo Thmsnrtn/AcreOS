@@ -18,7 +18,7 @@
  * Routing: mounted in App.tsx at /learn/county/:state/:county. Public.
  */
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useRoute } from "wouter";
 import { ArrowLeft } from "lucide-react";
 
@@ -29,7 +29,11 @@ import { usePageMeta } from "@/hooks/use-document-title";
 import { emitMarketingTouch } from "@/lib/marketing-touch";
 import { SITE } from "@/lib/jsonld-schemas";
 
-import { getCountyContent } from "./county-registry";
+import {
+  fetchCountyContent,
+  getCountyRouteMeta,
+  type CountyRouteMeta,
+} from "./county-registry";
 import { DataSnapshotBand } from "./DataSnapshotBand";
 import type { CountyLearnContent } from "./types";
 
@@ -54,6 +58,49 @@ function CountyNotFound() {
         </p>
         <div className="flex gap-2 justify-center">
           <Button asChild variant="default" data-testid="button-county-back-home">
+            <Link href="/">Back to AcreOS</Link>
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CountyPrimerLoading({ meta }: { meta: CountyRouteMeta }) {
+  usePageMeta(
+    "County data",
+    "County-level free-data primers for land investors.",
+  );
+  return (
+    <div className="min-h-screen bg-background flex items-center justify-center p-6">
+      <p className="text-sm text-muted-foreground" role="status" data-testid="county-primer-loading">
+        Loading the {meta.countyName} County primer…
+      </p>
+    </div>
+  );
+}
+
+function CountyPrimerLoadError({ onRetry }: { onRetry: () => void }) {
+  usePageMeta(
+    "County data",
+    "County-level free-data primers for land investors.",
+  );
+  return (
+    <div className="min-h-screen bg-background flex items-center justify-center p-6">
+      <div className="max-w-md text-center space-y-4" data-testid="county-primer-load-error">
+        <p className="text-xs uppercase tracking-wide text-muted-foreground">
+          Something went wrong
+        </p>
+        <h1 className="text-2xl font-semibold">This primer didn’t load</h1>
+        <p className="text-muted-foreground">
+          The primer exists, but its content didn’t come through. Check your
+          connection and try again.
+        </p>
+        <div className="flex gap-2 justify-center">
+          <Button variant="default" onClick={onRetry} data-testid="button-county-retry">
+            Try again
+          </Button>
+          <Button asChild variant="outline">
             <Link href="/">Back to AcreOS</Link>
           </Button>
         </div>
@@ -141,7 +188,34 @@ export default function CountyLandingPage() {
   const state = params?.state ?? "";
   const county = params?.county ?? "";
 
-  const content = useMemo(() => getCountyContent(state, county), [state, county]);
+  // Existence is decided synchronously from the build-time index, exactly
+  // as the bundled registry decided it: an unknown county renders the
+  // not-found page immediately. A known primer's body is fetched from its
+  // static JSON (see ./county-registry.ts) and renders the identical page
+  // once it arrives.
+  const meta = useMemo(() => getCountyRouteMeta(state, county), [state, county]);
+  const [content, setContent] = useState<CountyLearnContent | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    if (!meta) return;
+    let live = true;
+    setContent(null);
+    setLoadFailed(false);
+    fetchCountyContent(state, county)
+      .then((loaded) => {
+        if (!live) return;
+        if (loaded) setContent(loaded);
+        else setLoadFailed(true);
+      })
+      .catch(() => {
+        if (live) setLoadFailed(true);
+      });
+    return () => {
+      live = false;
+    };
+  }, [meta, state, county, attempt]);
 
   // Title/description/OG/canonical are handled by SeoPageShell in the
   // found branch; CountyNotFound sets its own fallback meta.
@@ -155,8 +229,16 @@ export default function CountyLandingPage() {
     });
   }, [content]);
 
-  if (!content) {
+  if (!meta) {
     return <CountyNotFound />;
+  }
+
+  if (loadFailed) {
+    return <CountyPrimerLoadError onRetry={() => setAttempt((n) => n + 1)} />;
+  }
+
+  if (!content) {
+    return <CountyPrimerLoading meta={meta} />;
   }
 
   const canonicalUrl = `${SITE_URL}/learn/county/${content.stateSlug}/${content.countySlug}`;

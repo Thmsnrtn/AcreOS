@@ -290,6 +290,7 @@ describe("(c) ratchet — the gate cannot be bypassed by future seeding", () => 
     "server/services/landData/countyPipeline.ts": "BULK county ingest — refuses a statewide row without a verified county field (TN only, URL-blocked); out of point-lookup scope",
     "server/routes-permit-tracker.ts": "false positive: a permit-template wildcard (state/county \"*\"), not a parcel source",
     "server/services/landData/listBuilder.ts": "the county list builder (W10.3 v0) — calls isClearedForLookup(statewideSource(state)) for every state it evaluates, before any source is asked to count (behaviour: countyListBuilder.test.ts)",
+    "server/services/openData/fieldClearanceRegistry.ts": "field-level determinations registry (I-6) — transcribes written determinations, incl. statewide objects named with county \"*\"; reads no endpoint rows, fetches nothing, and clears nothing for live lookup (LOOKUP_CLEARANCE still governs; behaviour: fieldLevelServing.test.ts)",
   };
   const READS_STATEWIDE = [
     /\bSTATEWIDE_PARCEL_ENDPOINTS\b/,

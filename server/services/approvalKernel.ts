@@ -275,6 +275,23 @@ export async function countPendingActions(organizationId: number): Promise<numbe
 }
 
 /**
+ * Live actions awaiting a tap, counted per tool name — what the morning
+ * brief's "what Pax prepared" section reads (server/services/
+ * morningBriefSections.ts). Read-only, and the SAME predicate as the list and
+ * the badge, so the brief can never name an ask the queue does not show.
+ */
+export async function countPendingActionsByTool(organizationId: number): Promise<Record<string, number>> {
+  const rows = await db
+    .select({ toolName: pendingActions.toolName, count: sql<number>`count(*)::int` })
+    .from(pendingActions)
+    .where(livePendingPredicate(organizationId))
+    .groupBy(pendingActions.toolName);
+  const out: Record<string, number> = {};
+  for (const r of rows) out[r.toolName] = Number(r.count ?? 0);
+  return out;
+}
+
+/**
  * Flip every pending row past its TTL to 'expired'. Deliberately cross-org
  * (a platform bookkeeping sweep, like the referral-maturity sweep — it
  * writes no org's data INTO another's; it only stamps a status the readers

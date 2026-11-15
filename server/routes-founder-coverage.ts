@@ -21,10 +21,19 @@ import type { AuthenticatedRequest } from "./types/request";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { dbForReads } from "./db-replica";
-import { countyDiscoveryQueue, countyGisEndpoints } from "@shared/schema";
+import { countyCoverageRequests, countyDiscoveryQueue, countyGisEndpoints } from "@shared/schema";
 import { desc, sql } from "drizzle-orm";
 import { getCoverageLedger } from "./services/coverageLedger";
 import { clock } from "./utils/clock";
+
+/** dbForReads().execute() resolves to the driver's result, whose rows ride
+ *  on `.rows` under pg and ARE the result under some test doubles — the same
+ *  dual shape coverageLedger's ledger read handles. */
+function rowsOf<T>(result: unknown): T[] {
+  if (Array.isArray(result)) return result as T[];
+  const rows = (result as { rows?: unknown }).rows;
+  return Array.isArray(rows) ? (rows as T[]) : [];
+}
 
 export function registerFounderCoverageRoutes(app: Express) {
   app.get(
@@ -59,6 +68,7 @@ export function registerFounderCoverageRoutes(app: Express) {
             status: countyDiscoveryQueue.status,
             attempts: countyDiscoveryQueue.attempts,
             lastResult: countyDiscoveryQueue.lastResult,
+            lastRefusalReason: countyDiscoveryQueue.lastRefusalReason,
             lastAttemptAt: countyDiscoveryQueue.lastAttemptAt,
           })
           .from(countyDiscoveryQueue)
@@ -72,6 +82,64 @@ export function registerFounderCoverageRoutes(app: Express) {
           acc[q.status] = (acc[q.status] ?? 0) + 1;
           return acc;
         }, {});
+
+        // ── P1-7 / A-2: refusal-sourced demand, separated ──────────────────
+        // Until P1-7 a gate refusal wrote no distinguishable artefact, so
+        // this view could not tell licence-gated demand from search demand.
+        // Now the queue records the latest refusal reason per county and the
+        // explicit requests carry surface+reason; this section is the feed
+        // dossier targeting plans against (demand-ranked, refusal-first).
+        const reasonAggRows = await reader.execute(sql`
+          SELECT ${countyDiscoveryQueue.lastRefusalReason} AS reason,
+                 COUNT(*)::int AS counties,
+                 COALESCE(SUM(${countyDiscoveryQueue.demandCount}), 0)::int AS demand
+          FROM ${countyDiscoveryQueue}
+          GROUP BY ${countyDiscoveryQueue.lastRefusalReason}
+        `);
+        const reasonAgg = rowsOf<{ reason: string | null; counties: number; demand: number }>(reasonAggRows).map((r) => ({
+          reason: r.reason ?? "unrecorded",
+          counties: r.counties,
+          demand: r.demand,
+        }));
+
+        const gatedQueue = await reader
+          .select({
+            id: countyDiscoveryQueue.id,
+            state: countyDiscoveryQueue.state,
+            county: countyDiscoveryQueue.county,
+            demandCount: countyDiscoveryQueue.demandCount,
+            priority: countyDiscoveryQueue.priority,
+            status: countyDiscoveryQueue.status,
+          })
+          .from(countyDiscoveryQueue)
+          .where(sql`${countyDiscoveryQueue.lastRefusalReason} = 'gated'`)
+          .orderBy(desc(countyDiscoveryQueue.demandCount), desc(countyDiscoveryQueue.priority))
+          .limit(100);
+
+        const requestAggRows = await reader.execute(sql`
+          SELECT ${countyCoverageRequests.state} AS state,
+                 ${countyCoverageRequests.county} AS county,
+                 COUNT(*)::int AS requests,
+                 COUNT(DISTINCT ${countyCoverageRequests.organizationId})::int AS orgs
+          FROM ${countyCoverageRequests}
+          GROUP BY ${countyCoverageRequests.state}, ${countyCoverageRequests.county}
+          ORDER BY requests DESC, orgs DESC
+          LIMIT 100
+        `);
+        const requestByCounty = rowsOf<{ state: string; county: string; requests: number; orgs: number }>(requestAggRows);
+
+        const requestReasonRows = await reader.execute(sql`
+          SELECT ${countyCoverageRequests.reason} AS reason,
+                 ${countyCoverageRequests.surface} AS surface,
+                 COUNT(*)::int AS requests
+          FROM ${countyCoverageRequests}
+          GROUP BY ${countyCoverageRequests.reason}, ${countyCoverageRequests.surface}
+        `);
+        const requestByReasonSurface = rowsOf<{ reason: string | null; surface: string | null; requests: number }>(requestReasonRows).map((r) => ({
+          reason: r.reason ?? "unrecorded",
+          surface: r.surface ?? "unrecorded",
+          requests: r.requests,
+        }));
 
         logger.info("[founder-coverage] served", {
           metadata: {
@@ -101,6 +169,20 @@ export function registerFounderCoverageRoutes(app: Express) {
             depth: queue.length,
             byStatus: queueByStatus,
             items: queue,
+          },
+          // P1-7 / A-2: refusal-sourced demand ranked separately from
+          // search-sourced demand — the dossier-targeting feed. `gatedQueue`
+          // is the licence-gate worklist (counties customers hit that the
+          // gate refused); `explicitRequests` is org-attributed demand from
+          // the request affordance itself, deduplicated per org+county at
+          // write time (one open request per org/county).
+          refusalDemand: {
+            queueByReason: reasonAgg,
+            gatedQueue,
+            explicitRequests: {
+              byCounty: requestByCounty,
+              byReasonSurface: requestByReasonSurface,
+            },
           },
         });
       } catch (error) {

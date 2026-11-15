@@ -14,7 +14,8 @@
  * ceilings cannot see and cannot stop: they SUM ai_telemetry_events, and only
  * the gateway writes it. Audit slice 16 (F-16-1/-2) found exactly that — the
  * /api/va agent and two Pax tools billing gpt-4o invisibly — and proposed this
- * ratchet. 2026-10 cost efficiency took the count from 94 to 14; the remainder is
+ * ratchet. 2026-10 cost efficiency took the count from 94 to 14; P1-5 (2026-11)
+ * metered the 3 embedding calls, taking it to 11; the remainder is
  * the per-file BASELINE below, which may only SHRINK.
  *
  * POPULATION (law 3). Every non-test .ts file under server/, parsed with the
@@ -58,14 +59,18 @@ const BASELINE: Record<string, number> = {
   "server/ai/executive.ts": 5,
   // Founder Solene chat — streaming calls (founder-side): the Anthropic SDK
   // stream and the OpenRouter SSE fetch. turnRunner gates them on the
-  // platform ceiling; per-token telemetry is a follow-up.
+  // platform ceiling and, since P1-5 R3, writes a per-turn
+  // ai_telemetry_events row — the streams themselves still cannot use the
+  // wrapper, so the calls stay baselined here.
   "server/services/solene/chat/anthropicClient.ts": 1,
   "server/services/solene/chat/openRouterClient.ts": 1,
-  // Embeddings (≈$0.02/M tokens) — no price row yet; priced at the dearest
-  // rate they would distort the ceilings. Next: add the rate, then meter.
-  "server/services/embeddingClient.ts": 2,
-  "server/services/dealPatternCloning.ts": 1,
-  // Whisper transcription (OpenAI direct; OpenRouter does not proxy audio).
+  // Embeddings were baselined here until P1-5 R2: they now route through
+  // aiSpendGuard.meteredEmbeddingsCreate with a text-embedding price row,
+  // so embeddingClient.ts and dealPatternCloning.ts carry no direct calls.
+  // Whisper transcription (OpenAI direct; OpenRouter does not proxy audio)
+  // and DALL·E image generation are EXEMPT from metering by the named,
+  // deliberate decision in server/services/aiSpendExemptions.ts (P1-5 R2):
+  // per-minute / per-image pricing does not fit the token table.
   "server/services/voiceCallAI.ts": 1,
   "server/routes-ai.ts": 1,
   "server/routes-field-scout.ts": 1,

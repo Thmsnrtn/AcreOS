@@ -23,7 +23,7 @@
  * public (no auth required) so search-engine crawlers can index it.
  */
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useRoute } from "wouter";
 import { ArrowLeft, ExternalLink } from "lucide-react";
 
@@ -35,7 +35,12 @@ import { usePageMeta } from "@/hooks/use-document-title";
 import { emitMarketingTouch } from "@/lib/marketing-touch";
 import { SITE } from "@/lib/jsonld-schemas";
 
-import { getLearnContent, listLearnRoutes } from "./registry";
+import {
+  fetchLearnContent,
+  getLearnRouteMeta,
+  listLearnRoutes,
+  type LearnRouteMeta,
+} from "./registry";
 import { DataSnapshotBand } from "./DataSnapshotBand";
 import type { LearnContent } from "./types";
 
@@ -60,6 +65,49 @@ function NotFoundForLearn() {
         </p>
         <div className="flex gap-2 justify-center">
           <Button asChild variant="default" data-testid="button-learn-back-home">
+            <Link href="/">Back to AcreOS</Link>
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LearnPrimerLoading({ meta }: { meta: LearnRouteMeta }) {
+  usePageMeta(
+    "Learn",
+    "State-by-vertical primers for land and note investors.",
+  );
+  return (
+    <div className="min-h-screen bg-background flex items-center justify-center p-6">
+      <p className="text-sm text-muted-foreground" role="status" data-testid="learn-primer-loading">
+        Loading the {meta.stateName} primer…
+      </p>
+    </div>
+  );
+}
+
+function LearnPrimerLoadError({ onRetry }: { onRetry: () => void }) {
+  usePageMeta(
+    "Learn",
+    "State-by-vertical primers for land and note investors.",
+  );
+  return (
+    <div className="min-h-screen bg-background flex items-center justify-center p-6">
+      <div className="max-w-md text-center space-y-4" data-testid="learn-primer-load-error">
+        <p className="text-xs uppercase tracking-wide text-muted-foreground">
+          Something went wrong
+        </p>
+        <h1 className="text-2xl font-semibold">This primer didn’t load</h1>
+        <p className="text-muted-foreground">
+          The primer exists, but its content didn’t come through. Check your
+          connection and try again.
+        </p>
+        <div className="flex gap-2 justify-center">
+          <Button variant="default" onClick={onRetry} data-testid="button-learn-retry">
+            Try again
+          </Button>
+          <Button asChild variant="outline">
             <Link href="/">Back to AcreOS</Link>
           </Button>
         </div>
@@ -152,7 +200,34 @@ export default function StateVerticalLandingPage() {
   const vertical = params?.vertical ?? "";
   const state = params?.state ?? "";
 
-  const content = useMemo(() => getLearnContent(vertical, state), [vertical, state]);
+  // Existence is decided synchronously from the build-time index, exactly
+  // as the bundled registry decided it: an unknown state×vertical renders
+  // the not-found page immediately. A known primer's body is fetched from
+  // its static JSON (see ./registry.ts) and renders the identical page
+  // once it arrives.
+  const meta = useMemo(() => getLearnRouteMeta(vertical, state), [vertical, state]);
+  const [content, setContent] = useState<LearnContent | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    if (!meta) return;
+    let live = true;
+    setContent(null);
+    setLoadFailed(false);
+    fetchLearnContent(vertical, state)
+      .then((loaded) => {
+        if (!live) return;
+        if (loaded) setContent(loaded);
+        else setLoadFailed(true);
+      })
+      .catch(() => {
+        if (live) setLoadFailed(true);
+      });
+    return () => {
+      live = false;
+    };
+  }, [meta, vertical, state, attempt]);
 
   // Title/description/OG/canonical are handled by SeoPageShell in the
   // found branch; NotFoundForLearn sets its own fallback meta.
@@ -172,8 +247,16 @@ export default function StateVerticalLandingPage() {
     });
   }, [content]);
 
-  if (!content) {
+  if (!meta) {
     return <NotFoundForLearn />;
+  }
+
+  if (loadFailed) {
+    return <LearnPrimerLoadError onRetry={() => setAttempt((n) => n + 1)} />;
+  }
+
+  if (!content) {
+    return <LearnPrimerLoading meta={meta} />;
   }
 
   const canonicalUrl = `${SITE_URL}/learn/${content.vertical}/${content.stateSlug}`;

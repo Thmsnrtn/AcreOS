@@ -248,6 +248,28 @@ describe("a NULL column is today's behaviour, not an error", () => {
       leadScoring: true,
       borrowerReminders: true,
       inboxDrafts: true,
+      // PX-2: the rails ARE today's behaviour — record changes run and are
+      // receipted, sends ask (see paxRailsPopulation.test.ts for the
+      // composition proof that these equal today's outcomes).
+      rails: {
+        records: {
+          leads: "act_and_report",
+          properties: "act_and_report",
+          deals: "act_and_report",
+          tasks: "act_and_report",
+          follow_ups: "act_and_report",
+          account: "act_and_report",
+        },
+        sends: "ask",
+      },
+      // PX-3: no caps and no member overrides — today's behaviour (the
+      // fails-closed and narrowing proofs live in paxLimitsFailsClosed /
+      // paxLimitsNarrowing).
+      limits: { asksPerDay: null, creditSpendPerDay: null, browseCallsPerDay: null, batchRowsPerDay: null },
+      members: {},
+      // PX-7: nothing listed = no search runs on a listed site (fail-closed);
+      // see paxMySites.test.ts for the reader's proof.
+      mySites: [],
     });
   });
 });
