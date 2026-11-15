@@ -1,3 +1,4 @@
+import { RequiredDisclaimer } from "@/components/required-disclaimer";
 import { useState } from "react";
 import { PageShell } from "@/components/page-shell";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -409,6 +410,7 @@ export default function PortfolioPage({ embedded = false }: { embedded?: boolean
           </section>
 
           <section data-testid="section-portfolio-alerts">
+            <RequiredDisclaimer type="ai" className="mb-3" />
             <Card className="floating-window">
               <CardHeader className="pb-2">
                 <div className="flex items-center justify-between flex-wrap gap-2">
