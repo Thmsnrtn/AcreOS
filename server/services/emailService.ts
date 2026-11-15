@@ -1554,16 +1554,83 @@ export class EmailService {
     return friendlyMessages[errorType] || baseMessage;
   }
 
+  /**
+   * Remove `<tag …>…</tag>` blocks (style, script) in linear time.
+   *
+   * This replaces `/<tag[^>]*>[\s\S]*?<\/tag>/gi`, which CodeQL flagged as
+   * polynomial ReDoS (js/polynomial-redos, high severity): when no closing
+   * tag exists, the lazy body quantifier is retried from every later
+   * `<tag` start, so stripping is O(n²) — 112 KB of repeated unclosed
+   * `<style>` tags took ~2 s here. That matters because this is the text
+   * fallback for tenant-authored campaign HTML (see htmlToText callers).
+   *
+   * The scan only moves forward and lands on exactly the old pattern's
+   * endpoints: the open tag ends at the first `>` after `<tag`, and the
+   * block ends at the first exact `</tag>` after that. An open tag with no
+   * later `>` or no later `</tag>` removes nothing — also as before,
+   * because a failed match at one start cannot succeed at a later start in
+   * the same tail (the later search region is a subset). Output is
+   * byte-identical to the regex version on every input.
+   */
+  private stripTagBlocks(html: string, tag: string): string {
+    const openRe = new RegExp(`<${tag}`, "gi");
+    const closeRe = new RegExp(`</${tag}>`, "gi");
+    let out = "";
+    let cursor = 0;
+    while (true) {
+      openRe.lastIndex = cursor;
+      const open = openRe.exec(html);
+      if (!open) break;
+      const gt = html.indexOf(">", open.index);
+      if (gt === -1) break;
+      closeRe.lastIndex = gt + 1;
+      const close = closeRe.exec(html);
+      if (!close) break;
+      out += html.slice(cursor, open.index);
+      cursor = close.index + close[0].length;
+    }
+    return out + html.slice(cursor);
+  }
+
+  /**
+   * Remove every remaining tag (`<` + non-`>` chars + `>`) in linear time.
+   *
+   * Same story as stripTagBlocks: `/<[^>]+>/g` is O(n²) on a string of
+   * repeated `<x` fragments with no `>` anywhere (each `<` start rescans
+   * the tail — 140 KB took ~5 s), and it runs on the same uncontrolled
+   * campaign HTML. The forward scan lands on the pattern's exact endpoint
+   * (the first `>` after the `<`); a `<>` pair is not a match for the
+   * pattern (it requires at least one char between the brackets), so it is
+   * kept, exactly as before.
+   */
+  private stripTags(html: string): string {
+    let out = "";
+    let cursor = 0;
+    while (true) {
+      const lt = html.indexOf("<", cursor);
+      if (lt === -1) break;
+      const gt = html.indexOf(">", lt);
+      if (gt === -1) break;
+      if (gt === lt + 1) {
+        out += html.slice(cursor, lt + 1);
+        cursor = lt + 1;
+        continue;
+      }
+      out += html.slice(cursor, lt);
+      cursor = gt + 1;
+    }
+    return out + html.slice(cursor);
+  }
+
   private htmlToText(html: string): string {
-    return html
-      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-      .replace(/<br\s*\/?>/gi, '\n')
-      .replace(/<\/p>/gi, '\n\n')
-      .replace(/<\/div>/gi, '\n')
-      .replace(/<\/li>/gi, '\n')
-      .replace(/<li>/gi, '- ')
-      .replace(/<[^>]+>/g, '')
+    return this.stripTags(
+      this.stripTagBlocks(this.stripTagBlocks(html, "style"), "script")
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<\/p>/gi, '\n\n')
+        .replace(/<\/div>/gi, '\n')
+        .replace(/<\/li>/gi, '\n')
+        .replace(/<li>/gi, '- '),
+    )
       .replace(/&nbsp;/g, ' ')
       .replace(/&amp;/g, '&')
       .replace(/&lt;/g, '<')

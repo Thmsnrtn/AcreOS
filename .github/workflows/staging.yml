@@ -12,9 +12,48 @@ concurrency:
 
 jobs:
   # ── Pre-deploy gate ─────────────────────────────────────────────────────────
-  test:
-    name: Pre-deploy Tests
+  # TypeScript check + ratchets, split out of the pre-deploy job so it runs
+  # in parallel with the test shards (CI efficiency package, 2026-11-11).
+  typecheck:
+    name: TypeScript check + ratchets
     runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Unified gate — the SAME `npm run check` the deploy gate (deploy.yml)
+      # and CI (ci.yml) run, so Test can never disagree with the deploy gate.
+      # A bare `npx tsc --noEmit` here once ran with no heap ceiling and aborted
+      # at exit 134 (SIGABRT), making this workflow chronically red on green
+      # code. The ceiling now lives in scripts/lib/heap-ceiling.mjs and is passed
+      # to each heavy child; it is NOT a workflow-level env, and NOT a shell
+      # prefix in package.json (a `VAR=x cmd1 && cmd2` prefix binds to cmd1 only,
+      # which is how the same 134 came back on main from 2026-08-17).
+      - name: TypeScript check + ratchets
+        run: npm run check
+
+  # The pre-deploy suite, partitioned by test file across three runners via
+  # vitest's --shard (CI efficiency package, 2026-11-11; measured 39–46 min as
+  # one serial job). The union of the three shards is the full suite. Each
+  # shard job provisions its OWN pgvector service and builds the schema in
+  # it, so the real-database suites get a private database per shard — in the
+  # single job every test file shared ONE database, in parallel forks, so a
+  # per-shard database removes cross-file interference rather than adding any.
+  test:
+    name: Pre-deploy Tests (shard ${{ matrix.shard }}/3)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     env:
       DATABASE_URL: postgresql://acreos:acreos@localhost:5432/acreos_test
       # The tests that read Postgres itself (tests/helpers/realDb.ts) run against
@@ -57,14 +96,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Unified gate — same `npm run check` as deploy.yml / ci.yml / test.yml.
-      # A bare `npx tsc --noEmit` here once ran with no heap ceiling and aborted
-      # (exit 134) before the deploy step. The ceiling lives in
-      # scripts/lib/heap-ceiling.mjs and is passed to each heavy child process —
-      # not set by this workflow, and not carried by a package.json shell prefix.
-      - name: TypeScript check + ratchets
-        run: npm run check
-
       # Staging is exactly where a missing column surfaces first, and until
       # 2026-09-04 nothing here had ever built this schema. Same script as
       # test.yml and deploy.yml — migrations/*.sql, then the Fly
@@ -92,7 +123,7 @@ jobs:
         run: npm run db:build-from-repo
 
       - name: Run tests
-        run: npx vitest run
+        run: npx vitest run --shard=${{ matrix.shard }}/3
         env:
           CI: true
 
@@ -112,7 +143,7 @@ jobs:
   #   3. ensure secrets.FLY_API_TOKEN is scoped to that app
   deploy-staging:
     name: Deploy to Staging (Fly.io)
-    needs: test
+    needs: [test, typecheck]
     # Kill switch: DEPLOY_FROZEN=true blocks all automated deploys (2026-10-17)
     if: vars.FLY_STAGING_APP != '' && vars.DEPLOY_FROZEN != 'true'
     runs-on: ubuntu-latest

@@ -111,6 +111,15 @@ export interface UnderwritingWorkbenchProps {
    * only — it runs after the record succeeded and must not write anything.
    */
   recordedNextStep?: (recorded: { decisionId: number; kind: DecisionKind; propertyId: number }) => ReactNode;
+  /**
+   * Optional: extra fields a vertical's decision route requires beyond the
+   * numbers (e.g. wholesale's comp, ARV and fee evidence). `null` means the
+   * vertical's own form is not complete yet, and recording waits for it; the
+   * object is sent as-is next to the standard fields, which it cannot replace.
+   */
+  recordExtras?: Record<string, unknown> | null;
+  /** Rendered under the inputs — where a vertical collects `recordExtras`. */
+  extraForm?: ReactNode;
   testIdPrefix: string;
 }
 
@@ -123,6 +132,8 @@ export function UnderwritingWorkbench({
   describeChoice,
   initialPropertyId = null,
   recordedNextStep,
+  recordExtras,
+  extraForm,
   testIdPrefix,
 }: UnderwritingWorkbenchProps) {
   const [propertyId, setPropertyId] = useState<number | null>(initialPropertyId);
@@ -169,6 +180,9 @@ export function UnderwritingWorkbench({
     mutationFn: async () => {
       if (reviewInDays === undefined || kind === null) throw new Error("Answer your call and when you'll know first");
       const res = await apiRequest("POST", decideEndpoint, {
+        // A vertical's extras first, so none of them can overwrite the
+        // standard fields below.
+        ...(recordExtras ?? {}),
         propertyId,
         inputs,
         kind,
@@ -202,6 +216,7 @@ export function UnderwritingWorkbench({
     choice.trim().length > 0 &&
     rationale.trim().length >= 10 &&
     reviewInDays !== undefined &&
+    recordExtras !== null &&
     !record.isPending;
 
   const ordered = [
@@ -257,6 +272,8 @@ export function UnderwritingWorkbench({
           </div>
         </CardContent>
       </Card>
+
+      {extraForm ?? null}
 
       <Card data-testid={`${testIdPrefix}-results`}>
         <CardHeader>

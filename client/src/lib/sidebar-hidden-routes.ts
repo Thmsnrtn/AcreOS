@@ -23,6 +23,9 @@
  *
  * Adding a new vertical: drop a new entry in the appropriate axis. If the
  * vertical introduces a *new* axis, add a 4th input and union the same way.
+ *
+ * One list is NOT an axis: `HIDDEN_FOR_EVERYONE` (below) names surfaces whose
+ * capability does not exist yet, so it hides them for every account.
  */
 
 /**
@@ -205,6 +208,25 @@ const REGISTRY: HiddenRouteRegistry = {
   },
 };
 
+/**
+ * Routes hidden for EVERY account, whatever its persona: the capability behind
+ * them does not exist yet, so a nav entry would advertise a surface that
+ * cannot do what its label says. The persona axes above answer "who is this
+ * customer"; this list answers "is the thing built". Hide, never delete — the
+ * page, the route and the API all stay, and removing the entry here is the
+ * whole un-hide. Each entry names the condition that lifts it.
+ *
+ *   - "/offers/batches" (Deals → Offer Batches, "Bulk-generated offers").
+ *     Creating a batch is refused at the API (server/services/offerBatchGate.ts)
+ *     because no handler is registered for the "process-offer-batch" job, so
+ *     nothing generates the letters, sends them or tracks replies and the page
+ *     can only list batches created before that refusal, none of them
+ *     processed. A direct visit still lands on that page, which says so
+ *     plainly. Lift: when OFFER_BATCH_PROCESSOR_REGISTERED flips to true —
+ *     offerBatchesAreHiddenUntilProcessed.test.ts fails if the two disagree.
+ */
+const HIDDEN_FOR_EVERYONE: readonly string[] = ["/offers/batches"];
+
 export interface ResolveHiddenRoutesInput {
   businessType?: string;
   detectedInvestorType: InvestorType;
@@ -234,9 +256,10 @@ const PROTECTED_DOOR_ROUTES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Compute the union of hidden routes across all three input axes.
- * The single entry point used by `layout-sidebar.tsx`. Returns a
- * stable Array (not a Set) for stable React keying.
+ * Compute the union of hidden routes across all three input axes, plus the
+ * routes hidden for everyone (`HIDDEN_FOR_EVERYONE`). The single entry point
+ * used by `layout-sidebar.tsx`. Returns a stable Array (not a Set) for stable
+ * React keying.
  */
 export function resolveHiddenRoutes(input: ResolveHiddenRoutesInput): string[] {
   const out = new Set<string>();
@@ -245,6 +268,7 @@ export function resolveHiddenRoutes(input: ResolveHiddenRoutesInput): string[] {
   }
   for (const r of REGISTRY.byDetectedInvestorType[input.detectedInvestorType] ?? []) out.add(r);
   for (const r of REGISTRY.byOrgInvestorType[input.orgInvestorType] ?? []) out.add(r);
+  for (const r of HIDDEN_FOR_EVERYONE) out.add(r);
   for (const door of PROTECTED_DOOR_ROUTES) out.delete(door);
   return Array.from(out);
 }

@@ -187,6 +187,13 @@ export const countyCoverageRequests = pgTable("county_coverage_requests", {
   status: text("status").notNull().default("pending"), // pending | covered | unavailable
   queueId: integer("queue_id").references(() => countyDiscoveryQueue.id), // link to the global discovery work
   notifiedAt: timestamp("notified_at"), // when we told the org their county came online
+  // P1-7 / A-2 (migration 0312): the surface an explicit request came from
+  // (maps | parcel_lookup | pax | passport | …) and the refusal reason that
+  // prompted it (gated | no_endpoint | no_key | not_found) — see
+  // shared/coverageDemand.ts. Null on pre-0312 rows and on requests a surface
+  // did not attribute.
+  surface: text("surface"),
+  reason: text("reason"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [

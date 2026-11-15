@@ -123,7 +123,9 @@ fieldScoutRouter.post('/voice/transcribe', voiceUpload.single('audio'), async (r
     const openaiKey = process.env.OPENAI_API_KEY;
 
     if (openaiKey) {
-      // Use OpenAI Whisper API for transcription
+      // Use OpenAI Whisper API for transcription.
+      // AI_SPEND_EXEMPTION: whisper_transcription — deliberately unmetered;
+      // see server/services/aiSpendExemptions.ts (P1-5 R2).
       try {
         const blob = new Blob([file.buffer as Buffer<ArrayBuffer>], { type: file.mimetype || 'audio/webm' });
         const formData = new FormData();

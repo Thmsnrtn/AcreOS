@@ -14,7 +14,7 @@
  * and Finance tab to the real client files (and fails if a Pax-facing server
  * file types `Settings ->` by hand again).
  */
-import { PAX_SETTINGS_COPY } from "@shared/pax-glossary";
+import { PAX_MY_SITES_COPY, PAX_SETTINGS_COPY } from "@shared/pax-glossary";
 
 /** `value` of each Settings tab -> the label the customer sees. */
 export const SETTINGS_TAB_LABELS = {
@@ -110,6 +110,14 @@ const SETTINGS_SECTIONS = {
       { file: "client/src/components/import-export.tsx", marker: "Import / Export Data" },
     ],
   },
+  mySites: {
+    tab: "integrations",
+    section: PAX_MY_SITES_COPY.title,
+    evidence: [
+      { file: SETTINGS_PAGE, marker: 'data-testid="link-pax-controls"', withinSettingsTab: "integrations" },
+      { file: "client/src/pages/settings/pax-controls.tsx", marker: "PAX_MY_SITES_COPY.title" },
+    ],
+  },
   byok: {
     tab: "integrations",
     section: PAX_SETTINGS_COPY.byokOpen,
@@ -172,6 +180,7 @@ export const PLACE_TEXT = {
   plans: sectionPlace("plans"),
   importExport: sectionPlace("importExport"),
   byok: sectionPlace("byok"),
+  mySites: sectionPlace("mySites"),
   teamRoles: settingsPlace("organization"),
   recordPayment: recordPaymentPlace(),
 } as const;

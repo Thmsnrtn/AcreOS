@@ -63,7 +63,6 @@ const REGISTER: Record<string, [number, SendClass]> = {
   "server/jobs/growthAutomation.ts": [6, "system-mail"],
   "server/jobs/runScheduledJobs.ts": [1, "system-mail"],
   "server/routes-admin-recovery.ts": [2, "system-mail"],
-  "server/routes-billing.ts": [1, "system-mail"],
   "server/routes-buyer-blasts.ts": [1, "system-mail"],
   "server/routes-campaigns.ts": [2, "system-mail"],
   "server/routes-communications.ts": [1, "system-mail"],
@@ -73,6 +72,12 @@ const REGISTER: Record<string, [number, SendClass]> = {
   "server/routes-inbound-email.ts": [1, "system-mail"],
   "server/routes-marketplace.ts": [1, "system-mail"],
   "server/services/agentActionExecutors.ts": [0, "agent-autonomous"],
+  // P1-5 R4 (2026-11-12): the AI cost ceiling trip alert — AcreOS's own
+  // guard mailing the founder at FOUNDER_ALERT_EMAIL, system lane (same
+  // class as its sibling dailyAiCostGuard below). Protected send: it
+  // passes an idempotencyKey derived from its scope:orgId:UTC-day dedup
+  // identity (see outwardActionCoverage).
+  "server/services/aiCostAlert.ts": [1, "system-mail"],
   "server/services/alertPolicy.ts": [3, "system-mail"],
   "server/services/autonomousDecisionExecutor.ts": [0, "agent-autonomous"],
   "server/services/autopilot/hands/send-email.ts": [1, "witnessed-hand"],
@@ -96,6 +101,15 @@ const REGISTER: Record<string, [number, SendClass]> = {
   "server/services/notificationDispatcher.ts": [1, "system-mail"],
   "server/services/oncall.ts": [1, "system-mail"],
   "server/services/periodicStatements/delivery.ts": [1, "system-mail"],
+  // PR #550 (2026-11-12): the guarantee-refund executor was extracted out of
+  // routes-billing.ts into the refund services, and routes-billing's one
+  // send site went with it (its register entry is deleted at zero). Both
+  // sends are AcreOS mail to its own customer about their own billing —
+  // the processed confirmation (executor) and the founder's denial notice
+  // (queue) — system lane, each carrying an org-scoped outward-action
+  // idempotency key rooted in the refund request id.
+  "server/services/refunds/executeRefund.ts": [1, "system-mail"],
+  "server/services/refunds/refundQueue.ts": [1, "system-mail"],
   "server/services/revenueProtection.ts": [3, "system-mail"],
   "server/services/sequenceProcessor.ts": [1, "system-mail"],
   "server/services/solene/pagerService.ts": [1, "system-mail"],

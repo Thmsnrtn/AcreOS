@@ -45,6 +45,7 @@ import {
 import { and, asc, desc, eq, isNull, lte, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { clock } from "../utils/clock";
+import { raiseIfAllowed, canonicalJson } from "./decisionsInboxThrottle";
 
 export type StepKey =
   | "day0_welcome"
@@ -360,7 +361,15 @@ async function handleWeek1Checkin(
 
   // If stalled, surface to the founder decision inbox for personal touch.
   if (verdict === "stalled") {
-    await db.insert(decisionsInboxItems).values({
+    // Generator throttle (STEP0-DESIGN): one card per journey per trigger.
+    await raiseIfAllowed(
+      {
+        producer: "onboarding_autonomy",
+        subjectKey: canonicalJson({ orgId: organizationId, journeyId, trigger: "day7_stalled" }),
+        conditionKey: "day7_stalled",
+        class: "standard",
+      },
+      () => db.insert(decisionsInboxItems).values({
       organizationId,
       itemType: "churn_risk_intervention",
       riskLevel: "medium",
@@ -372,7 +381,8 @@ async function handleWeek1Checkin(
       recommendedActionLabel: "Personal 1:1 with stalled new customer",
       ownerAgentCodename: "sophie_csm",
       contextBundle: { journeyId, trigger: "day7_stalled" },
-    });
+    }),
+    );
     await db
       .update(onboardingJourneys)
       .set({ founderFlag: "escalate", updatedAt: clock.now() })
@@ -484,7 +494,15 @@ async function handleActivationVerdict(
 
   // If churned or at-risk, surface to founder inbox.
   if (status !== "active") {
-    await db.insert(decisionsInboxItems).values({
+    // Generator throttle (STEP0-DESIGN): one card per journey per verdict.
+    await raiseIfAllowed(
+      {
+        producer: "onboarding_autonomy",
+        subjectKey: canonicalJson({ orgId: organizationId, journeyId, trigger: "day30_verdict" }),
+        conditionKey: status,
+        class: "standard",
+      },
+      () => db.insert(decisionsInboxItems).values({
       organizationId,
       itemType: "churn_risk_intervention",
       riskLevel: status === "churned" ? "high" : "medium",
@@ -499,7 +517,8 @@ async function handleActivationVerdict(
           : "Targeted 2-week activation push (below threshold)",
       ownerAgentCodename: "sophie_csm",
       contextBundle: { journeyId, verdict: status, leadCount, dealCount },
-    });
+    }),
+    );
   }
 
   return { intent: "activation_verdict", status, leadCount, dealCount };
