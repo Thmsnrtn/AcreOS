@@ -28,7 +28,10 @@
  *                     key, a stance outside OFFERED_STANCES, an unknown rail
  *                     domain/level, or a sends rail above ask, is 422. A
  *                     PATCH that omits `rails` keeps the stored ones; one that
- *                     names some keeps the rest (PX-2). Cannot touch
+ *                     names some keeps the rest (PX-2). `mySites` (PX-7) is a
+ *                     FULL replacement list of { host, label } — at most 50,
+ *                     hosts must be bare hostnames (422 otherwise), deduplicated
+ *                     by host; omitted = the stored list is kept. Cannot touch
  *                     pausedUntil (the pause has its own two routes above;
  *                     routes-autonomy.ts's shallow-merge clobber is gone
  *                     with that file). Owner / admin only.
@@ -80,15 +83,19 @@ import { isLiveWorkflowTriggerEvent } from "@shared/workflow-live-triggers";
 import {
   OFFERED_STANCES,
   PAX_LIMIT_KEYS,
+  PAX_MY_SITES_MAX,
   PAX_RAIL_LEVELS,
   PAX_SENDS_RAIL_LEVELS,
+  PAX_SITE_LABEL_MAX,
   defaultPaxLimits,
   defaultPaxRails,
   effectiveControlsForMember,
+  normalizeSiteHost,
   type PaxControls,
   type PaxLimits,
   type PaxMemberOverride,
   type PaxSendsRailLevel,
+  type PaxSiteEntry,
 } from "@shared/pax-controls";
 import { PAX_LABELS, PAX_LIMIT_COPY, PAX_PAUSE_COPY } from "@shared/pax-glossary";
 import type { AuthenticatedRequest } from "./types/request";
@@ -403,6 +410,8 @@ async function buildControls(
       const e = effectiveControlsForMember(state, caller.userId);
       return { rails: { records: { ...e.rails.records }, sends: e.rails.sends }, limits: { ...e.limits } };
     })(),
+    // PX-7: the public sites Pax may run searches on (always an array; [] = none listed).
+    mySites: state.mySites.map((s) => ({ host: s.host, label: s.label })),
     rightNow: { waiting, changedTodayOnItsOwn, rulesRunning },
     runsOnItsOwn,
     // Convenience for the page: the glossary lines, printed in the ORG zone.
@@ -685,6 +694,18 @@ const memberOverrideSchema = z
   })
   .strict();
 
+/**
+ * PX-7: one listed site. The host must be a bare hostname (normalizeSiteHost:
+ * case and a trailing dot are normalised; a scheme, path, port, credentials or
+ * an IP is refused, not rewritten). The PATCH replaces the WHOLE list.
+ */
+const mySiteEntrySchema = z
+  .object({
+    host: z.string().max(253).refine((h) => normalizeSiteHost(h) !== null, { message: "Not a bare website host" }),
+    label: z.string().trim().min(1).max(PAX_SITE_LABEL_MAX),
+  })
+  .strict();
+
 const controlsPatchSchema = z
   .object({
     stance: z.enum(OFFERED_STANCES).optional(),
@@ -693,8 +714,22 @@ const controlsPatchSchema = z
     inboxDrafts: z.boolean().optional(),
     rails: railsPatchSchema.optional(),
     limits: limitsPatchSchema.optional(),
+    mySites: z.array(mySiteEntrySchema).max(PAX_MY_SITES_MAX).optional(),
   })
   .strict();
+
+/** The submitted list, hosts normalised, deduplicated by host (first label wins). */
+function normalizedSites(entries: ReadonlyArray<{ host: string; label: string }>): PaxSiteEntry[] {
+  const seen = new Set<string>();
+  const out: PaxSiteEntry[] = [];
+  for (const e of entries) {
+    const host = normalizeSiteHost(e.host);
+    if (!host || seen.has(host)) continue;
+    seen.add(host);
+    out.push({ host, label: e.label });
+  }
+  return out;
+}
 
 /** The stored column shape, re-validated on the way OUT so a bad merge can never land. */
 const storedControlsSchema = z
@@ -727,6 +762,16 @@ const storedControlsSchema = z
         sends: sendsRailLevelSchema,
       })
       .strict(),
+    mySites: z
+      .array(
+        z
+          .object({
+            host: z.string().refine((h) => normalizeSiteHost(h) === h, { message: "Not a bare website host" }),
+            label: z.string().min(1).max(PAX_SITE_LABEL_MAX),
+          })
+          .strict(),
+      )
+      .max(PAX_MY_SITES_MAX),
   })
   .strict();
 
@@ -754,11 +799,13 @@ router.patch("/controls", async (req: AuthenticatedRequest, res: Response) => {
       rails: { records: { ...current.rails.records }, sends: current.rails.sends },
       limits: { ...current.limits },
       members: { ...current.members },
+      mySites: current.mySites.map((s) => ({ host: s.host, label: s.label })),
     };
     // A PATCH that omits `rails` keeps the stored ones; one that names some
     // keeps the rest (the same field-by-field merge the switches get). Limits
-    // merge the same way; the members' overrides are never touched here.
-    const { rails: railsPatch, limits: limitsPatch, ...scalarPatch } = parsed.data;
+    // merge the same way; the members' overrides are never touched here;
+    // `mySites` is a full replacement when named (handled below).
+    const { rails: railsPatch, limits: limitsPatch, mySites: mySitesPatch, ...scalarPatch } = parsed.data;
     const mergedRails = {
       records: { ...before.rails.records, ...(railsPatch?.records ?? {}) },
       sends: railsPatch?.sends ?? before.rails.sends,
@@ -768,11 +815,14 @@ router.patch("/controls", async (req: AuthenticatedRequest, res: Response) => {
       const v = limitsPatch?.[k];
       if (v !== undefined) mergedLimits[k] = v;
     }
+    // PX-7: `mySites` is a full replacement (omitted = keep the stored list).
+    const mergedSites = mySitesPatch ? normalizedSites(mySitesPatch) : before.mySites;
     const next = storedControlsSchema.safeParse({
       ...before,
       ...scalarPatch,
       rails: mergedRails,
       limits: mergedLimits,
+      mySites: mergedSites,
     });
     if (!next.success) return Errors.validationFailed(res, next.error.issues);
 
