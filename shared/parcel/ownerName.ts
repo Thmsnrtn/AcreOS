@@ -103,14 +103,31 @@ const escapeHtml = (t: string) =>
  */
 export function mergeMailCopy(
   copy: string,
-  r: { name: string | null | undefined; city: string | null | undefined; state: string | null | undefined },
+  r: {
+    name: string | null | undefined;
+    city: string | null | undefined;
+    state: string | null | undefined;
+    /**
+     * The per-piece offer price, already formatted (e.g. "$12,500"), for the
+     * {offerPrice} / {price} tokens. Optional because only an offer letter
+     * HAS a per-piece price: the composer's preview and the campaign flusher
+     * call without one and those tokens are left untouched, exactly as
+     * before. The offer-mail transport (Settlement Rail L-2) always passes
+     * the letter's own offer amount — a piece is never printed with another
+     * parcel's price, and never with the raw token where a price was owed.
+     */
+    price?: string | null;
+  },
   opts: { html: boolean },
 ): string {
   const v = (t: string | null | undefined) => (opts.html ? escapeHtml(t ?? "") : (t ?? ""));
   const text = opts.html ? escapeHtml(copy) : copy;
-  const merged = text
+  let merged = text
     .replace(/\{firstName\}/g, () => v(greetingName(r.name)))
     .replace(/\{city\}/g, () => v(r.city))
     .replace(/\{state\}/g, () => v(r.state));
+  if (r.price != null && r.price !== "") {
+    merged = merged.replace(/\{offerPrice\}/g, () => v(r.price)).replace(/\{price\}/g, () => v(r.price));
+  }
   return opts.html ? merged.replace(/\r?\n/g, "<br>") : merged;
 }

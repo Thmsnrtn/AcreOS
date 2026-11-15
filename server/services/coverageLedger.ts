@@ -34,6 +34,7 @@ import {
   parcelSnapshots,
 } from "@shared/schema";
 import { and, eq, sql, desc } from "drizzle-orm";
+import type { CoverageRefusalReason } from "@shared/coverageDemand";
 import { logger } from "../utils/logger";
 import {
   validateEndpoint,
@@ -78,7 +79,18 @@ export interface EnqueueResult {
 export async function enqueueCountyForDiscovery(
   rawState: string,
   rawCounty: string,
-  opts: { organizationId?: number; priorityBoost?: number } = {},
+  opts: {
+    organizationId?: number;
+    priorityBoost?: number;
+    /**
+     * P1-7 / A-2: the refusal reason that generated this demand (see
+     * shared/coverageDemand.ts). Recorded on the queue row as
+     * lastRefusalReason so the founder demand view can rank gate-refusal
+     * demand separately from search-sourced demand. Omitted by callers that
+     * are not refusals — the existing reason is then left untouched.
+     */
+    refusalReason?: CoverageRefusalReason;
+  } = {},
 ): Promise<EnqueueResult> {
   const state = normalizeState(rawState);
   const county = normalizeCounty(rawCounty);
@@ -125,12 +137,16 @@ export async function enqueueCountyForDiscovery(
       priority: priorityBoost,
       firstRequestedBy: opts.organizationId ?? null,
       status: "pending",
+      lastRefusalReason: opts.refusalReason ?? null,
     })
     .onConflictDoUpdate({
       target: [countyDiscoveryQueue.state, countyDiscoveryQueue.county],
       set: {
         demandCount: sql`${countyDiscoveryQueue.demandCount} + 1`,
         priority: sql`GREATEST(${countyDiscoveryQueue.priority}, ${priorityBoost})`,
+        // Latest refusal reason wins when the bump carries one; a bump with
+        // no reason (plain search demand) leaves the recorded reason alone.
+        ...(opts.refusalReason ? { lastRefusalReason: opts.refusalReason } : {}),
         // Re-open a row when new demand arrives and there is nothing live to
         // show for it: an EXHAUSTED search, or a RESOLVED row whose endpoint
         // has since gone inactive (DEFECT-0113). The attempt counter resets

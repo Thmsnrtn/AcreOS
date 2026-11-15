@@ -2,6 +2,7 @@ import { limitsTierFor } from "@shared/billing/tier-limits";
 import type { Express, Response, NextFunction } from "express";
 import { withdrawnTargets, OCCUPIED_TARGET_STATUSES, MANUAL_POSTING } from "./services/listingWithdrawal";
 import { offerabilityRefusal } from "./services/listability";
+import { offerComplianceGate, sendComplianceRefusal } from "./services/wholesale/offerCompliance";
 import { readPropertiesBySellerIds } from "./storage/wholeBookReads";
 import type { AuthenticatedRequest } from "./types/request";
 import { storage, db } from "./storage";
@@ -984,11 +985,14 @@ export function registerTeamMessagingRoutes(app: Express): void {
       // take-down aims a platform-credentialed DELETE at — plus `status`
       // ("active" without publishing) and the counters. The client sends
       // `status: "draft"`, which is the only status it may name.
+      // The compliance acknowledgement is a flag on the request, not a listing
+      // field: taken off before the strict listing schema reads the body.
+      const { ackComplianceWarning, ...listingBody } = (req.body ?? {}) as Record<string, unknown>;
       const parsed = insertPropertyListingSchema
         .omit({ ...LISTING_SYSTEM_FIELDS, organizationId: true })
         .extend({ status: z.literal("draft").optional() })
         .strict()
-        .safeParse(req.body);
+        .safeParse(listingBody);
       
       if (!parsed.success) {
         return Errors.badRequest(res, "Invalid listing data", parsed.error.issues);
@@ -1004,6 +1008,17 @@ export function registerTeamMessagingRoutes(app: Express): void {
       if (notOfferable) return Errors.badRequest(res, notOfferable);
       // V-Tax-1 T4b: nor land still held by a tax position (not yet marketable in AcreOS).
       if (!(await refuseRedeemableDeedSpend(res, org.id, parsed.data.propertyId, "Listing this property"))) return;
+      // Assignment compliance (Leg 3, coordinator ruling 2026-11-05): creating
+      // a listing for a property held under an assignable contract is gated
+      // like publishing it — a block refuses, a warn needs a recorded ack.
+      const compliance = await offerComplianceGate({
+        organizationId: org.id,
+        userId: req.user?.id ?? null,
+        property: { id: property.id, status: property.status, state: property.state },
+        surface: "listing_create",
+        acknowledged: ackComplianceWarning === true,
+      });
+      if (!compliance.ok) return sendComplianceRefusal(res, compliance.status, compliance.body);
       
       // Check if listing already exists for this property
       const existing = await storage.getPropertyListingByPropertyId(org.id, parsed.data.propertyId);
@@ -1190,6 +1205,18 @@ export function registerTeamMessagingRoutes(app: Express): void {
         const notOfferable = offerabilityRefusal(property.status);
         if (notOfferable) return Errors.badRequest(res, notOfferable);
         if (!(await refuseRedeemableDeedSpend(res, org.id, property.id, "Publishing this listing"))) return;
+        // Assignment compliance (Leg 3): publishing offers the property; one
+        // held under an assignable contract is gated by its state's rule. A
+        // dry run sees a warn without needing an ack; a real publish records it.
+        const compliance = await offerComplianceGate({
+          organizationId: org.id,
+          userId: req.user?.id ?? null,
+          property: { id: property.id, status: property.status, state: property.state },
+          surface: "listing_publish",
+          acknowledged: req.body?.ackComplianceWarning === true,
+          previewOnly: dryRun,
+        });
+        if (!compliance.ok) return sendComplianceRefusal(res, compliance.status, compliance.body);
 
         const [orgRow] = await db
           .select()

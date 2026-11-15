@@ -30,6 +30,7 @@
  */
 
 import type { Express, Response } from "express";
+import { recordComplianceAck, type ComplianceAckContext } from "./services/wholesale/offerCompliance";
 import { storage } from "./storage";
 import { db } from "./db";
 import { and, desc, eq, sql } from "drizzle-orm";
@@ -186,10 +187,15 @@ async function gatherAndAssemble(
   };
 }
 
-/** Assignment-legality gate, reusing the existing wholesaler rules service. */
+/**
+ * Assignment-legality gate, reusing the existing wholesaler rules service. An
+ * acknowledged warn is RECORDED (audit_log) before the draft is written, and
+ * refused when it cannot be recorded (wholesale package, Leg 3).
+ */
 async function assignmentComplianceRefusal(
   state: string,
   acknowledged: boolean,
+  ack: Omit<ComplianceAckContext, "state">,
 ): Promise<{ code: string; message: string; recommendation: string; citation: string | null; attorneyReviewed: boolean } | null> {
   const { checkAssignmentCompliance } = await import("./routes-wholesaler-rules");
   const result = await checkAssignmentCompliance(state);
@@ -210,6 +216,19 @@ async function assignmentComplianceRefusal(
       citation: result.citation,
       attorneyReviewed: result.attorneyReviewed,
     };
+  }
+  if (result.warn) {
+    try {
+      await recordComplianceAck({ ...ack, state }, result);
+    } catch (err) {
+      return {
+        code: "COMPLIANCE_ACK_NOT_RECORDED",
+        message: (err as Error).message,
+        recommendation: result.recommendation,
+        citation: result.citation,
+        attorneyReviewed: result.attorneyReviewed,
+      };
+    }
   }
   return null;
 }
@@ -346,6 +365,7 @@ export function registerContractChainRoutes(app: Express): void {
           const compliance = await assignmentComplianceRefusal(
             draft.state,
             body.ackComplianceWarning === true,
+            { organizationId: org.id, userId, surface: "contract_chain_draft", entityType: "deal", entityId: dealId },
           );
           if (compliance) {
             logger.warn("Assignment contract blocked by state compliance gate", {

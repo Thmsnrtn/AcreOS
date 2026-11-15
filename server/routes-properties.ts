@@ -1000,14 +1000,24 @@ export function registerPropertyRoutes(app: Express): void {
           path = `/us/${state.toLowerCase()}/${county.toLowerCase().replace(/\s+/g, "-")}`;
         }
         const org = req.organization;
-        result = await lookupParcelByAPN(apn, path, org?.id);
+        result = await lookupParcelByAPN(apn, path, org?.id, { surface: "parcel_lookup" });
       } else if (lat != null && lng != null) {
-        result = await lookupParcelByCoordinates(lat, lng, { organizationId: req.organization?.id });
+        result = await lookupParcelByCoordinates(lat, lng, { organizationId: req.organization?.id, surface: "parcel_lookup" });
       } else {
         return Errors.badRequest(res, "Provide either an apn or lat/lng coordinates");
       }
-      
+
       if (!result.found) {
+        // P1-7 / A-2: a refusal the coverage machinery can act on carries its
+        // reason + the "request this county" affordance in `details`, so this
+        // surface returns the affordance at the moment of refusal instead of
+        // a bare not-found. Misses without an affordance (a terminal
+        // not-found) return exactly what they returned before.
+        if (result.demand) {
+          return Errors.notFound(res, "Parcel", {
+            details: { refusalReason: result.refusalReason, demand: result.demand },
+          });
+        }
         return Errors.notFound(res, "Parcel");
       }
 

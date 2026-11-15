@@ -43,14 +43,16 @@
  *   - Validates the eight-factor payload structure
  *   - Computes a derived DTI when not provided
  *   - Persists the attestation onto notes.atrDetermination + sets the
- *     completion flag
+ *     completion flag, with an atr_determination_written audit record in
+ *     note_origination_records in the same transaction
  *   - Throws AtrIncompleteError when required factors / verification
  *     documents are missing
  */
 
-import { db } from "../db";
-import { notes } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { withTransaction } from "../db";
+import { notes, noteOriginationRecords } from "@shared/schema";
+import { atrDeterminationWrittenDetail } from "@shared/notes/sellerFinanceGate";
+import { and, eq } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { clock } from "../utils/clock";
 
@@ -234,20 +236,42 @@ export async function persistAtrDetermination(input: AtrDeterminationInput): Pro
     attestationText: ATR_ATTESTATION_TEXT,
   };
 
-  const updated = await db
-    .update(notes)
-    .set({
-      atrDetermination: payload,
-      atrDeterminationCompleted: true,
-      atrDeterminationCompletedAt: new Date(attestedAt),
-      updatedAt: clock.now(),
-    })
-    .where(eq(notes.id, input.noteId))
-    .returning({ id: notes.id });
+  // The column write and its audit row commit together or not at all
+  // (founder decision 2026-11-05 §3.4, as adapted by Leg 3 Step 0 §9.3: one
+  // append-only atr_determination_written record per write; the column stays
+  // the determination of record). The UPDATE is org-scoped: a note id from
+  // another organization matches nothing and throws "not found".
+  await withTransaction(async (tx) => {
+    const updated = await tx
+      .update(notes)
+      .set({
+        atrDetermination: payload,
+        atrDeterminationCompleted: true,
+        atrDeterminationCompletedAt: new Date(attestedAt),
+        updatedAt: clock.now(),
+      })
+      .where(and(eq(notes.id, input.noteId), eq(notes.organizationId, input.organizationId)))
+      .returning({ id: notes.id });
 
-  if (updated.length === 0) {
-    throw new Error(`Note ${input.noteId} not found — cannot attach ATR determination.`);
-  }
+    if (updated.length === 0) {
+      throw new Error(`Note ${input.noteId} not found — cannot attach ATR determination.`);
+    }
+
+    await tx.insert(noteOriginationRecords).values({
+      organizationId: input.organizationId,
+      noteId: input.noteId,
+      noteIdAtRecord: input.noteId,
+      kind: "atr_determination_written",
+      // attestorUserId mirrors the payload's attestedByUserId (the session-
+      // derived int, see attestorUserIdToInt); recorded_by carries attestedBy,
+      // which holds the full session user id.
+      detail: atrDeterminationWrittenDetail.parse({
+        attestedAt,
+        attestorUserId: String(input.attestedByUserId),
+      }),
+      recordedBy: input.attestedBy,
+    });
+  });
 
   logger.info("atrSafeHarbor.attestationRecorded", {
     noteId: input.noteId,

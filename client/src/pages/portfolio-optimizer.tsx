@@ -1,3 +1,4 @@
+import { RequiredDisclaimer } from "@/components/required-disclaimer";
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useDocumentTitle } from '@/hooks/use-document-title';
@@ -600,6 +601,10 @@ export default function PortfolioOptimizerPage() {
             </Card>
           )}
         </div>
+      )}
+
+      {metrics && (
+        <RequiredDisclaimer type="ai" className="mb-4" />
       )}
 
       {metrics && (
