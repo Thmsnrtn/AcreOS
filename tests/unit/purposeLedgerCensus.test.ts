@@ -542,6 +542,7 @@ const DEBT: Record<string, ProposedSurface> = {
   "server/ai/supportAgent.ts case:detect_data_integrity_issues": "review",
   "server/ai/supportAgent.ts case:predict_user_issues": "review",
   // server/ai/tools.ts
+  "server/ai/tools.ts case:browse_search": "review",
   "server/ai/tools.ts case:create_properties_batch": "review",
   "server/ai/tools.ts case:create_property": "review",
   "server/ai/tools.ts case:draft_outreach_message": "lead_contact_model",
@@ -857,7 +858,12 @@ const DEBT: Record<string, ProposedSurface> = {
 // pax-controls routes (the 212 → 214 note above, written against its own
 // base) union with the stack's 220 — disjoint entry sets, verified by key
 // count (222). Census re-run on the merged tree is the proof.
-const DEBT_BASELINE = 222;
+// 222 → 223 (merge-lane union, 2026-11-14, PR #565 slot): PX-7's one
+// NEW surface — the browse_search dispatch case in server/ai/tools.ts
+// (its own note: 212 → 213 on its branch) — unions with the stack's 222;
+// disjoint entry sets, verified by key count (223). Census re-run on
+// the merged tree is the proof.
+const DEBT_BASELINE = 223;
 
 /**
  * Every file holding a dispatch switch (≥10 snake_case case labels, raw count)

@@ -24,6 +24,7 @@ import {
 } from "./services/esign/signerRequest";
 import { clock } from "./utils/clock";
 import { routeParam } from "./utils/routeParams";
+import { recordComplianceAck, type ComplianceAckContext } from "./services/wholesale/offerCompliance";
 import { SELLER_FOLLOW_UP_DRAFT_TYPE } from "./services/wholesale/sellerFollowUps";
 
 /**
@@ -95,18 +96,24 @@ export function missingAssignmentParties(
 
 type AssignmentGateOutcome =
   | { ok: true }
-  | { ok: false; body: Record<string, unknown> };
+  | { ok: false; status: 409 | 503; body: Record<string, unknown> };
 
-/** Run the wholesaler state-rule check for an assignment template. */
+/**
+ * Run the wholesaler state-rule check for an assignment template. An
+ * acknowledged warn is RECORDED (audit_log) before generation proceeds, and
+ * refused when it cannot be recorded (wholesale package, Leg 3).
+ */
 async function assignmentComplianceGate(
   state: string | undefined,
   ackComplianceWarning: boolean,
+  ack: Omit<ComplianceAckContext, "state">,
 ): Promise<AssignmentGateOutcome> {
   const { checkAssignmentCompliance } = await import("./routes-wholesaler-rules");
   const result = await checkAssignmentCompliance(state);
   if (result.blocked) {
     return {
       ok: false,
+      status: 409,
       body: {
         error: "wholesaler_compliance_blocked",
         message: result.summary,
@@ -120,6 +127,7 @@ async function assignmentComplianceGate(
   if (result.warn && !ackComplianceWarning) {
     return {
       ok: false,
+      status: 409,
       body: {
         error: "wholesaler_compliance_warn",
         message: result.summary,
@@ -130,6 +138,17 @@ async function assignmentComplianceGate(
         statusCode: 409,
       },
     };
+  }
+  if (result.warn) {
+    try {
+      await recordComplianceAck({ ...ack, state }, result);
+    } catch (err) {
+      return {
+        ok: false,
+        status: 503,
+        body: { error: "compliance_ack_not_recorded", message: (err as Error).message, statusCode: 503 },
+      };
+    }
   }
   return { ok: true };
 }
@@ -910,8 +929,15 @@ export function registerDocSystemRoutes(app: Express): void {
         const gate = await assignmentComplianceGate(
           mergedVars.state || mergedVars.property_state,
           !!ackComplianceWarning,
+          {
+            organizationId: org.id,
+            userId: user?.id ? String(user.id) : null,
+            surface: "generated_document",
+            entityType: "document_template",
+            entityId: typeof template.id === "number" ? template.id : null,
+          },
         );
-        if (!gate.ok) return res.status(409).json(gate.body);
+        if (!gate.ok) return res.status(gate.status).json(gate.body);
         const missing = missingAssignmentParties(template, mergedVars);
         if (missing.length > 0) {
           return Errors.unprocessable(
@@ -1775,6 +1801,13 @@ export function registerDocSystemRoutes(app: Express): void {
           const gate = await assignmentComplianceGate(
             (mergedVars as Record<string, string | undefined>).state || (mergedVars as Record<string, string | undefined>).property_state,
             !!req.body?.ackComplianceWarning,
+            {
+              organizationId: org.id,
+              userId: req.user?.id ? String(req.user.id) : null,
+              surface: "document_package",
+              entityType: "document_template",
+              entityId: typeof template.id === "number" ? template.id : null,
+            },
           );
           if (!gate.ok) {
             generatedDocs.push({ ...docItem, status: "blocked", compliance: gate.body });

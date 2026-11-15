@@ -22,6 +22,8 @@ import {
   ROBOTS_MAX_BYTES,
   type RobotsFetchResult,
 } from "./browseRobots";
+import { checkBrowseDomainPolicy } from "../utils/browsePolicy";
+import type { BrowseDnsDeps } from "./browseRequestGate";
 // NOTE (merge of R-14 + PX-1): main's in-file dnsResolve4 / resolveAndCheckHost /
 // isBlockedUrl implementations are NOT carried over — R-14 replaced them with
 // aliases to browseRequestGate (see below), which PX-1's fetchRobotsTxt binds to.
@@ -1083,6 +1085,360 @@ export async function browseWeb(url: string, options?: {
       loadTimeMs: clock.nowMs() - startTime,
     };
   }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// PX-7 — the navigation primitive behind Pax's bounded public-search sessions
+// (server/services/paxBrowseSearch.ts). Two pieces, both deliberately small:
+//
+//   preflightBrowseNavigation  the SAME stack browseWeb runs before it fetches
+//                              anything, as one callable, so a search session
+//                              can re-pass it on EVERY navigation:
+//                              isBlockedUrl → private literal → operator domain
+//                              policy → DNS/private addresses → the R-14
+//                              request gate → robots.txt → the PX-1 per-org /
+//                              per-host rate limit. It calls the same functions
+//                              browseWeb calls (no second copy of any rule).
+//   openBrowseNavSession       one Chromium page that can ONLY navigate to a
+//                              URL it is handed and snapshot what it landed on.
+//                              It exposes no click, no typing, no scripting, no
+//                              download. Every request the page makes passes the
+//                              R-14 gate, only GET/HEAD requests are let through
+//                              (no POST body, ever), and a main-frame navigation
+//                              (a redirect included) to a host the session may
+//                              not visit is aborted.
+//
+// browseWeb itself is untouched on purpose: its refusals are counted by the
+// plain-words ratchet (tests/unit/refusalsArePlainWords.test.ts), and this
+// block therefore reports outcomes as `kind`-tagged unions, never as
+// `{ success: false, error }` objects. paxBrowseSearchGate.test.ts pins that
+// preflightBrowseNavigation and browseWeb reach the same gate functions.
+// ════════════════════════════════════════════════════════════════════════════
+
+/** Why a navigation was refused before anything was fetched. Internal vocabulary — never shown to a person. */
+export type BrowseNavRefusalReason =
+  | "address_blocked"
+  | "private_address"
+  | "unresolvable"
+  | "site_policy"
+  | "request_blocked"
+  | "robots_disallowed"
+  | "robots_unverified"
+  | "rate_limited";
+
+export type BrowsePreflightOutcome =
+  | { kind: "clear"; url: URL }
+  | { kind: "refused"; reason: BrowseNavRefusalReason; detail: string };
+
+/** Test seams for the preflight: the DNS resolvers and the robots.txt fetch. */
+export interface BrowsePreflightDeps {
+  dns?: BrowseDnsDeps;
+  fetchRobots?: (robotsUrl: string) => Promise<RobotsFetchResult>;
+}
+
+export async function preflightBrowseNavigation(
+  url: string,
+  options: {
+    orgId?: number;
+    /** Count this navigation against the per-org/per-host visit limit. Default true; a re-check of a redirect's landing URL passes false. */
+    takeVisit?: boolean;
+    deps?: BrowsePreflightDeps;
+  } = {},
+): Promise<BrowsePreflightOutcome> {
+  const refuse = (reason: BrowseNavRefusalReason, detail: string): BrowsePreflightOutcome => ({ kind: "refused", reason, detail });
+
+  const urlCheck = isBlockedUrl(url);
+  if (urlCheck.blocked) return refuse("address_blocked", urlCheck.reason ?? "URL blocked");
+  const parsed = new URL(url);
+
+  const literalHost = parsed.hostname.toLowerCase();
+  const isPrivateLiteralHost =
+    literalHost.startsWith("[") || literalHost.includes(":")
+      ? isPrivateIpv6(literalHost)
+      : /^\d+\.\d+\.\d+\.\d+$/.test(literalHost) && isPrivateIpv4(literalHost);
+  if (isPrivateLiteralHost) return refuse("private_address", "literal private host");
+
+  // The operator's domain allow/deny policy (BROWSE_WEB_DOMAIN_*), which the
+  // browse_web tool applies at its own boundary — applied here on every hop.
+  const policy = checkBrowseDomainPolicy(parsed.hostname);
+  if (!policy.allowed) return refuse("site_policy", policy.reason ?? "blocked by policy");
+
+  const dnsCheck = await resolveAndCheckHost(parsed.hostname, options.deps?.dns);
+  if (!dnsCheck.allowed) {
+    return refuse(/private|internal/i.test(dnsCheck.reason ?? "") ? "private_address" : "unresolvable", dnsCheck.reason ?? "DNS resolution blocked");
+  }
+  for (const addr of dnsCheck.resolvedAddresses ?? []) {
+    const isPrivateResolved = addr.includes(":") ? isPrivateIpv6(addr) : isPrivateIpv4(addr);
+    if (isPrivateResolved) return refuse("private_address", `resolves to ${addr}`);
+  }
+
+  // The R-14 gate, exactly as it judges each sub-request the browser makes.
+  const gate = await evaluateBrowseRequest(url, options.deps?.dns);
+  if (gate.action !== "continue") return refuse("request_blocked", gate.reason ?? "request gate");
+
+  const robots = await checkRobots(parsed, options.deps?.fetchRobots ?? fetchRobotsTxt, clock.nowMs());
+  if (robots === "disallowed") return refuse("robots_disallowed", "robots.txt disallows this path");
+  if (robots === "unverified") return refuse("robots_unverified", "robots.txt could not be read");
+
+  if (options.takeVisit !== false && !takeBrowseVisit(options.orgId, parsed.hostname, clock.nowMs()).allowed) {
+    return refuse("rate_limited", "visit rate limit");
+  }
+  return { kind: "clear", url: parsed };
+}
+
+/** One control inside a form, as the page presented it. Plain data — the judge reads it, nothing executes it. */
+export interface BrowseFormField {
+  tag: "input" | "textarea" | "select" | "button";
+  /** input type lower-cased (text, search, password, hidden, checkbox, …); the tag name for non-inputs. */
+  type: string;
+  name: string;
+  id: string;
+  placeholder: string;
+  ariaLabel: string;
+  /** The control's current/default value (a select's selected option). */
+  value: string;
+  checked: boolean;
+  /** type=hidden, or not rendered (display:none / visibility:hidden). */
+  hidden: boolean;
+  disabled: boolean;
+}
+
+export interface BrowseFormDescriptor {
+  /** The declared method, lower-cased; "get" when the attribute is absent. */
+  method: string;
+  /** The form's action resolved against the page; "" when it could not be resolved. */
+  action: string;
+  fields: BrowseFormField[];
+}
+
+/** A link on the page (an <a href> or a <link rel=next>), for the next-page finder. */
+export interface BrowseAnchorDescriptor {
+  text: string;
+  href: string;
+  rel: string;
+}
+
+/** What one navigation landed on: browseWeb's extraction, plus the raw signals the search judge reads. */
+export interface BrowseNavPage {
+  /** The URL the browser ended on (after redirects). */
+  url: string;
+  title: string;
+  content: string;
+  /** The first 20 links, exactly as browseWeb extracts them (raw href attributes). */
+  links: { text: string; href: string }[];
+  tables: string[];
+  httpStatus: number | null;
+  /** The page's HTML (capped), read ONLY by challenge detection — never returned to a model. */
+  html: string;
+  forms: BrowseFormDescriptor[];
+  anchors: BrowseAnchorDescriptor[];
+}
+
+export type BrowseNavOutcome =
+  | { kind: "page"; page: BrowseNavPage }
+  | { kind: "refused"; reason: "left_site" | "not_a_web_page" | "timed_out" | "did_not_load"; detail: string };
+
+export interface BrowseNavSession {
+  /** Go to `url` (the caller has ALREADY passed it through preflightBrowseNavigation) and snapshot the page. */
+  navigate(url: string): Promise<BrowseNavOutcome>;
+  /** Close Chromium. Safe to call twice. */
+  close(): Promise<void>;
+}
+
+export interface BrowseNavSessionOptions {
+  /** May a main-frame navigation (including a redirect) land on this host? */
+  allowNavigationHost: (hostname: string) => boolean;
+  /** Per-navigation timeout. */
+  navTimeoutMs: number;
+}
+
+const BROWSE_NAV_USER_AGENT =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+const BROWSE_NAV_HTML_CAP = 300_000;
+
+export async function openBrowseNavSession(options: BrowseNavSessionOptions): Promise<BrowseNavSession> {
+  const browser = await launchBrowser();
+  let closed = false;
+  const close = async () => {
+    if (closed) return;
+    closed = true;
+    await browser.close().catch(() => {});
+  };
+
+  let page: Page;
+  try {
+    page = await browser.newPage();
+    await page.setViewport({ width: 1280, height: 800 });
+    await page.setUserAgent(BROWSE_NAV_USER_AGENT);
+
+    // Downloads are never wanted. Best effort on top of the content-type check
+    // in navigate(): a page that cannot be told to refuse them is still only
+    // ever sent to URLs the search judge chose.
+    try {
+      const cdp = await page.createCDPSession();
+      await cdp.send("Browser.setDownloadBehavior", { behavior: "deny" });
+    } catch (err) {
+      logger.warn("[browse_search] Could not set download behaviour to deny", { metadata: { err: err instanceof Error ? err.name : "error" } });
+    }
+
+    await page.setRequestInterception(true);
+    // FAIL CLOSED, same as browseWeb: the only path to continue() is a positive
+    // decision; any error ends in abort. Plus the two search-session rules:
+    // only GET/HEAD (no POST body, ever) and no main-frame hop to a host the
+    // session may not visit.
+    page.on("request", async (request) => {
+      let reqUrl = "";
+      try {
+        reqUrl = request.url();
+        const method = request.method().toUpperCase();
+        if (method !== "GET" && method !== "HEAD") {
+          await request.abort("blockedbyclient");
+          return;
+        }
+        if (request.isNavigationRequest() && request.frame() === page.mainFrame()) {
+          if (!options.allowNavigationHost(new URL(reqUrl).hostname)) {
+            logger.info(`[browse_search] Blocked navigation off the session's site: ${reqUrl}`);
+            await request.abort("blockedbyclient");
+            return;
+          }
+        }
+        const decision = await evaluateBrowseRequest(reqUrl);
+        if (decision.action === "continue") {
+          await request.continue();
+          return;
+        }
+        logger.info(`[browse_search] Blocked request: ${reqUrl} - ${decision.reason}`);
+        await request.abort("blockedbyclient");
+      } catch {
+        logger.warn(`[browse_search] Request handler error, blocking: ${reqUrl}`);
+        try {
+          await request.abort("blockedbyclient");
+        } catch {
+          // already handled — nothing left to abort
+        }
+      }
+    });
+  } catch (err) {
+    await close();
+    throw err;
+  }
+
+  const navigate = async (url: string): Promise<BrowseNavOutcome> => {
+    try {
+      const response = await page.goto(url, { waitUntil: "networkidle2", timeout: options.navTimeoutMs });
+      const httpStatus = response ? response.status() : null;
+      const contentType = String(response?.headers()["content-type"] ?? "");
+      if (contentType && !/^(text\/html|application\/xhtml\+xml|text\/plain)/i.test(contentType)) {
+        return { kind: "refused", reason: "not_a_web_page", detail: contentType.slice(0, 80) };
+      }
+
+      const finalUrl = page.url();
+      let finalHost = "";
+      try {
+        finalHost = new URL(finalUrl).hostname;
+      } catch {
+        finalHost = "";
+      }
+      if (!finalHost || !options.allowNavigationHost(finalHost)) {
+        return { kind: "refused", reason: "left_site", detail: finalHost };
+      }
+
+      const title = await page.title();
+      const html = (await page.content()).slice(0, BROWSE_NAV_HTML_CAP);
+
+      // Forms and links are read BEFORE the content pass below, which removes
+      // nav/header/footer/aside from the DOM — a site's search box and its
+      // pager live in exactly those elements.
+      const forms = await page.evaluate((): BrowseFormDescriptor[] => {
+        const isRendered = (el: Element): boolean => {
+          const style = window.getComputedStyle(el as HTMLElement);
+          return style.display !== "none" && style.visibility !== "hidden";
+        };
+        return Array.from(document.querySelectorAll("form"))
+          .slice(0, 10)
+          .map((form) => {
+            let action = "";
+            try {
+              action = new URL(form.getAttribute("action") ?? "", document.baseURI).href;
+            } catch {
+              action = "";
+            }
+            const fields = Array.from(form.querySelectorAll("input, textarea, select, button"))
+              .slice(0, 60)
+              .map((el) => {
+                const tag = el.tagName.toLowerCase() as BrowseFormField["tag"];
+                const input = el as HTMLInputElement;
+                const type = tag === "input" ? (el.getAttribute("type") || "text").toLowerCase() : tag === "button" ? (el.getAttribute("type") || "submit").toLowerCase() : tag;
+                return {
+                  tag,
+                  type,
+                  name: (el.getAttribute("name") || "").slice(0, 100),
+                  id: (el.getAttribute("id") || "").slice(0, 100),
+                  placeholder: (el.getAttribute("placeholder") || "").slice(0, 100),
+                  ariaLabel: (el.getAttribute("aria-label") || "").slice(0, 100),
+                  value: String((el as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement).value ?? "").slice(0, 500),
+                  checked: tag === "input" ? Boolean(input.checked) : false,
+                  hidden: type === "hidden" || !isRendered(el),
+                  disabled: Boolean((el as HTMLInputElement).disabled),
+                };
+              });
+            return { method: (form.getAttribute("method") || "get").toLowerCase(), action, fields };
+          });
+      });
+
+      const anchors = await page.evaluate((): BrowseAnchorDescriptor[] =>
+        Array.from(document.querySelectorAll("a[href], link[rel~='next'][href]"))
+          .slice(0, 300)
+          .map((a) => ({
+            text: (a.textContent || a.getAttribute("aria-label") || a.getAttribute("title") || "").trim().replace(/\s+/g, " ").substring(0, 100),
+            href: a.getAttribute("href") || "",
+            rel: (a.getAttribute("rel") || "").toLowerCase(),
+          }))
+          .filter((a) => a.href),
+      );
+
+      // The same three extractions browseWeb performs, with the same caps.
+      const content = await page.evaluate(() => {
+        const removeElements = (selectors: string[]) => {
+          selectors.forEach((sel) => {
+            document.querySelectorAll(sel).forEach((el) => el.remove());
+          });
+        };
+        removeElements(["script", "style", "nav", "footer", "header", "aside", ".ad", ".advertisement", "#cookie-banner"]);
+        const main = document.querySelector("main, article, .content, #content, .main") || document.body;
+        return (main.textContent || "").replace(/\s+/g, " ").trim().substring(0, 15000);
+      });
+      const links = await page.evaluate(() => {
+        const found = Array.from(document.querySelectorAll("a[href]"));
+        return found
+          .slice(0, 20)
+          .map((a) => ({
+            text: (a.textContent || "").trim().substring(0, 100),
+            href: a.getAttribute("href") || "",
+          }))
+          .filter((l) => l.text && l.href);
+      });
+      const tables = await page.evaluate(() => {
+        const tbls = Array.from(document.querySelectorAll("table")).slice(0, 3);
+        return tbls
+          .map((tbl) => {
+            const rows = Array.from(tbl.querySelectorAll("tr")).slice(0, 15);
+            return rows.map((row) => {
+              const cells = Array.from(row.querySelectorAll("th, td"));
+              return cells.map((c) => (c.textContent || "").trim()).join(" | ");
+            });
+          })
+          .flat();
+      });
+
+      return { kind: "page", page: { url: finalUrl, title, content, links, tables, httpStatus, html, forms, anchors } };
+    } catch (err) {
+      const timedOut = err instanceof Error && err.name === "TimeoutError";
+      return { kind: "refused", reason: timedOut ? "timed_out" : "did_not_load", detail: err instanceof Error ? err.name : "error" };
+    }
+  };
+
+  return { navigate, close };
 }
 
 export async function executeAdHocAutomation(

@@ -797,12 +797,62 @@ import { recordUnderwrittenDecision } from "./services/underwriting/verticalDeci
     expect(readinessOf(meta, ev(["hybrid"]))).toBe("surfaced");
   });
 
-  it("the legacy file-ownership map only shrinks, and holds no vertical the engine rule already earns", () => {
+  it("the legacy file-ownership map only shrinks, and each entry credits only its own surface's uncited decisions", () => {
     expect(Object.keys(LEGACY_DECISION_ROUTE_OWNER)).toEqual(["server/routes-lot-pricing.ts"]);
     for (const [file, owner] of Object.entries(LEGACY_DECISION_ROUTE_OWNER)) {
-      const viaEngines = (measured.decidedBy.get(owner) ?? []).filter((f) => f !== file);
-      expect(viaEngines, `${owner} now decides through an engine — remove its legacy entry`).toEqual([]);
+      // Per-surface credit (resolution (a), 2026-11-09): an entry credits the
+      // decisions of the ONE route file it names — here, the lot-pricing lock
+      // route's scenario-less lock decisions. Another file in the same
+      // vertical deciding through an engine (the subdivision decision desk)
+      // is a different surface: it neither needs this entry nor retires it.
+      // The entry retires when ITS OWN route's decisions cite an engine
+      // declaring the vertical — that is the removal signal, and only that.
+      const ownSurface = (measured.engineDecidedBy.get(owner) ?? []).filter((f) => f === file);
+      expect(ownSurface, `${file} now decides through an engine — remove its legacy entry`).toEqual([]);
+      // The entry must still be load-bearing for its own surface: the route
+      // still credits the vertical, through a decision citing no scenario (it
+      // sits in the ungradeable set via the legacy branch). An entry whose
+      // route credits nothing — or no longer credits it uncited — is dead
+      // weight and must go as well.
+      expect(measured.decidedBy.get(owner) ?? [], `${file} no longer credits ${owner} — remove its legacy entry`).toContain(file);
+      expect(measured.ungradeable.get(owner) ?? [], `${file} records no uncited decision for ${owner} — remove its legacy entry`).toContain(file);
     }
+  });
+
+  it("canary: legacy credit is per-surface — an engine desk elsewhere in the vertical does not retire it; an engine-cited lock route does", () => {
+    // The lot-pricing shape: a decision for the pack, citing no scenario.
+    const lock = facts(`router.post("/lock", async () => {
+      await recordDecision(o, { strategyPackId: "subdivider", reviewDueAt: null }, new Date(), []);
+    });`);
+    // The Leg 4 desk shape: the same pack, decided through the engine.
+    const desk = facts(`router.post("/decide", async () => {
+      await recordUnderwrittenDecision(o, { engineId: "subdivision_feasibility", strategyPackId: "subdivider", reviewDueAt: d });
+    });`);
+    const legacy: Readonly<Record<string, BusinessTypeId>> = { "server/routes-lot-pricing.ts": "subdivider" };
+    const both = creditVerticals(
+      [
+        { file: "server/routes-lot-pricing.ts", facts: lock, reachable: [true] },
+        { file: "server/routes-subdivision-decision.ts", facts: desk, reachable: [true] },
+      ],
+      engines,
+      legacy,
+    );
+    // Both surfaces credit subdivider; only the desk's credit is engine-cited,
+    // and only the lock route's credit is ungradeable.
+    expect(both.deciding.has("subdivider")).toBe(true);
+    expect(both.decidedBy.get("subdivider")).toEqual(["server/routes-lot-pricing.ts", "server/routes-subdivision-decision.ts"]);
+    expect(both.engineDecidedBy.get("subdivider")).toEqual(["server/routes-subdivision-decision.ts"]);
+    expect(both.ungradeable.get("subdivider")).toEqual(["server/routes-lot-pricing.ts"]);
+
+    // The falsification direction: if the LOCK ROUTE itself cites the engine,
+    // its credit moves to the engine rule — exactly the signal the map law
+    // above reads as "remove its legacy entry".
+    const lockCited = facts(`router.post("/lock", async () => {
+      const s = await recordScenario(o, { engineId: "subdivision_feasibility", inputs: {} });
+      await recordDecision(o, { strategyPackId: "subdivider", reviewDueAt: null }, new Date(), [s.id]);
+    });`);
+    const cited = creditVerticals([{ file: "server/routes-lot-pricing.ts", facts: lockCited, reachable: [true] }], engines, legacy);
+    expect(cited.engineDecidedBy.get("subdivider")).toEqual(["server/routes-lot-pricing.ts"]);
   });
 });
 

@@ -221,9 +221,11 @@ import { registerLotPricingRoutes } from "./routes-lot-pricing";
 import { registerCountyTimelineRoutes } from "./routes-county-timelines";
 import { registerSubdivisionPlanRoutes } from "./routes-subdivision-plans";
 import { registerSubdivisionScreenRoutes } from "./routes-subdivision-screen";
+import { registerSubdivisionDecisionRoutes } from "./routes-subdivision-decision";
 import { registerCcrTemplateRoutes } from "./routes-ccr-templates";
 import { registerRehabRoutes } from "./routes-rehabs";
 import { registerRehabPhotoRoutes } from "./routes-rehab-photos";
+import { registerObjectDocumentRoutes } from "./routes-object-documents";
 import { registerDriveModeRoutes } from "./routes-drive-mode";
 import { registerContractorRoutes } from "./routes-contractors";
 import { registerArvRoutes } from "./routes-arv";
@@ -2450,6 +2452,11 @@ export async function registerRoutes(
   registerSubscriptionRoutes(app);
   // Note Investor vertical (Phase 5 §5) — acquired-notes + payments + amort.
   registerNoteRoutes(app);
+  // Deal document store (autonomy gap §8 slice 5) — the customer's own PDFs on
+  // a deal, a property or an acquired note. Registered AFTER the deal/property/
+  // note route files: every path here has the literal segment `documents` after
+  // :objectId, so nothing earlier can swallow it and it swallows nothing.
+  registerObjectDocumentRoutes(app);
   // Note Investor vertical (Phase 5 §5) — pre-book diligence pipeline.
   registerNoteAcquisitionRoutes(app);
   registerNoteTapeRoutes(app);
@@ -2495,6 +2502,8 @@ export async function registerRoutes(
   registerSubdivisionPlanRoutes(app);
   // Subdivision V1 Leg 1 — the buildability screen (append-only runs, migration 0304).
   registerSubdivisionScreenRoutes(app);
+  // Subdivision V1 Leg 4 — the decision desk (pursue/pass through the kit; read model).
+  registerSubdivisionDecisionRoutes(app);
   // Subdivider vertical SD-8 — CC&R / covenant template library.
   registerCcrTemplateRoutes(app);
   // Fix-and-flip vertical FF-2 — rehab budget builder.

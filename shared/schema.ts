@@ -4945,6 +4945,12 @@ export const countyDiscoveryQueue = pgTable("county_discovery_queue", {
 
   lastAttemptAt: timestamp("last_attempt_at"),
   lastResult: text("last_result"), // human-readable outcome of the last attempt
+  // P1-7 / A-2 (migration 0312): the most recent refusal reason that bumped
+  // this county's demand (gated | no_endpoint | no_key | not_found — see
+  // shared/coverageDemand.ts). Lets the founder demand view rank gate-refusal
+  // demand separately from search-sourced demand. Null on rows whose demand
+  // never carried a reason (pre-0312 rows, pure search demand).
+  lastRefusalReason: text("last_refusal_reason"),
   resolvedEndpointId: integer("resolved_endpoint_id").references(() => countyGisEndpoints.id), // set when status=resolved
 
   // ── W2 on-demand OWNERSHIP of the county's free parcels (migration 0270) ──
@@ -14026,6 +14032,16 @@ export * from "./schema/note-events";
 export * from "./schema/wholesale-buy-boxes";
 export * from "./schema/note-origination-records";
 export * from "./schema/tax-v1";
+
+// ============================================================================
+// DEAL DOCUMENT STORE — uploaded_documents (./schema/uploaded-documents.ts).
+// The customer's OWN PDFs attached to a deal, a property or an acquired note —
+// the mirror of generated_documents (what AcreOS produced). Re-exported here
+// because the single drizzle schema source (drizzle.config.ts -> this file) is
+// what `drizzle-kit push` reads; prod mirrors the DDL via scripts/migrate.mjs
+// (migration 0310).
+// ============================================================================
+export * from "./schema/uploaded-documents";
 
 // ============================================================================
 // FINANCIAL LEDGER + MAIL SHIPMENTS — extracted to ./schema/finance.ts
