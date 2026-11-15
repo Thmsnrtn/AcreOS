@@ -60,6 +60,7 @@ const BrandingEditor = lazy(() =>
   import("@/components/settings/branding-editor").then((m) => ({ default: m.BrandingEditor })),
 );
 import { TeamActivityCard } from "@/components/settings/TeamActivityCard";
+import { LeadRoutingCard } from "@/components/settings/LeadRoutingCard";
 import { MembershipGivingPanel } from "@/components/settings/MembershipGivingPanel";
 
 // Monolith split (T3 census W1-2) — per-tab sections live in their own
@@ -1097,6 +1098,9 @@ export default function Settings() {
               </Card>
 
               <TeamActivityCard />
+
+              {/* W2-TEAM: lead routing — for people who may assign leads, once there is a team to route to. */}
+              {userPermissions?.permissions.canAssignLeads && (teamMembers?.length ?? 0) > 1 && <LeadRoutingCard />}
 
               {/*
                 Blanco §1: Co-Owners section. Owner-only management. The

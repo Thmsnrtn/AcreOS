@@ -13,6 +13,36 @@ import { logger } from "../utils/logger";
 import { orgMayActFilter } from "./orgOperating";
 import { getPaxControls } from "./paxControls";
 import { clock } from "../utils/clock";
+import { pushOrgEvent } from "./orgPushFanout";
+
+/**
+ * Phone push for a freshly created nudge (autonomy gap slice 7).
+ *
+ * Only URGENT cards (priority 1) buzz a phone — the in-app card remains the
+ * home for everything else, and a phone that buzzes for "you have 5 new leads
+ * this month" gets its notifications switched off. Best-effort by
+ * construction (`pushOrgEvent` never throws) and org-scoped. The body is the
+ * card's own content, which names no more than the in-app card does.
+ */
+function pushUrgentNudge(
+  orgId: number,
+  nudge: { content: string; category?: string; entityType?: string; entityId?: unknown; priority?: number },
+): Promise<boolean> {
+  if ((nudge.priority ?? 99) > 1) return Promise.resolve(false);
+  const id = Number(nudge.entityId);
+  const hasId = Number.isInteger(id) && id > 0;
+  const url =
+    nudge.entityType === "deal" && hasId ? `/deals/${id}`
+    : nudge.entityType === "lead" && hasId ? `/leads/${id}`
+    : "/pax";
+  return pushOrgEvent(orgId, {
+    family: "pax_nudge",
+    title: "Pax needs your attention",
+    body: nudge.content,
+    url,
+    tag: `pax-nudge-${nudge.category ?? "card"}${hasId ? `-${id}` : ""}`,
+  });
+}
 
 const MAX_NUDGES_PER_ORG = 5;
 // Interval before regenerating nudges for an org (6 hours)
@@ -157,8 +187,35 @@ async function generateNudgesForOrg(org: Organization): Promise<void> {
   // Insert up to MAX_NUDGES_PER_ORG new nudges
   const toInsert = nudgesToInsert.slice(0, MAX_NUDGES_PER_ORG);
   if (toInsert.length > 0) {
+    // This job regenerates cards every 6h, so a still-open urgent card would be
+    // re-announced to the phone four times a day. Remember which categories
+    // already had a live card inside the 24h window BEFORE inserting, and only
+    // push the ones that are genuinely new. Best-effort: a failed lookup
+    // means "assume already announced" (silence beats a repeat buzz).
+    let alreadyLive = new Set<string>();
+    let liveLookupOk = true;
+    try {
+      const live = await db.select({ category: paxNudges.category })
+        .from(paxNudges)
+        .where(and(
+          eq(paxNudges.organizationId, orgId),
+          isNull(paxNudges.dismissedAt),
+          gte(paxNudges.createdAt, cutoff),
+        ));
+      alreadyLive = new Set(live.map((r) => String(r.category)));
+    } catch {
+      liveLookupOk = false;
+    }
+
     await db.insert(paxNudges as any).values(toInsert);
     logger.info(`[PaxNudges] Generated ${toInsert.length} nudges for org ${orgId}`);
+
+    if (liveLookupOk) {
+      for (const n of toInsert) {
+        if (alreadyLive.has(String(n.category))) continue;
+        await pushUrgentNudge(orgId, n);
+      }
+    }
   }
 }
 
@@ -272,6 +329,9 @@ export async function handleDomainEvent(event: {
         const { pushObservationSSE } = await import("../routes-ai");
         pushObservationSSE(orgId, { type: "nudge", ...nudge });
       } catch {}
+
+      // Phone push (urgent cards only; best-effort, never throws).
+      await pushUrgentNudge(orgId, nudge);
 
       logger.info(`[PaxNudges] Event-driven nudge created for org ${orgId}: ${eventType}`);
     }

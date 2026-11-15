@@ -139,13 +139,18 @@ function makeTx(h: Harness) {
     insert(table: any) {
       return {
         values(v: Row) {
-          return {
+          const chain: any = {
             returning: async () => {
               const row = { id: h.inserted.length + 100, ...v };
               if (getTableName(table) === "payments") h.inserted.push(row);
               return [row];
             },
           };
+          // The D4 mirror write (payment_applications) chains
+          // onConflictDoNothing before returning; the payments insert in
+          // createPayment does not. Support both shapes.
+          chain.onConflictDoNothing = () => chain;
+          return chain;
         },
       };
     },

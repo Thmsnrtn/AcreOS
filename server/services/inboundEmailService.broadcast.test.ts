@@ -46,10 +46,36 @@ vi.mock("./activation", () => ({
   recordActivationEventAsync: vi.fn(),
 }));
 
+// Stop-on-reply seam: spy on the pause the writer must call (the real helper
+// lazily loads the whole sequence processor).
+const { pauseSequencesOnResponse } = vi.hoisted(() => ({
+  pauseSequencesOnResponse: vi.fn(async (_orgId: number, _leadId: number) => undefined),
+}));
+vi.mock("./leadResponse", () => ({ pauseSequencesOnResponse }));
+
 import { processInboundEmail, generateReplyToAddress } from "./inboundEmailService";
 
 beforeEach(() => {
   broadcastToOrg.mockClear();
+  pauseSequencesOnResponse.mockClear();
+});
+
+describe("processInboundEmail → stop-on-reply", () => {
+  it("pauses the resolved lead's active drip enrollments", async () => {
+    const result = await processInboundEmail({
+      from: "seller@example.com",
+      to: generateReplyToAddress(42, 99),
+      subject: "Re: your offer",
+    });
+    expect(result.success).toBe(true);
+    expect(pauseSequencesOnResponse).toHaveBeenCalledWith(99, 42);
+  });
+
+  it("does not pause when the recipient resolves to no lead", async () => {
+    const result = await processInboundEmail({ from: "x@example.com", to: "nobody@example.com" });
+    expect(result.success).toBe(false);
+    expect(pauseSequencesOnResponse).not.toHaveBeenCalled();
+  });
 });
 
 describe("processInboundEmail → inbox.unread broadcast", () => {

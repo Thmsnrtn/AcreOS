@@ -58,11 +58,14 @@ import { scanRefusals, countRefusalObjects } from "../helpers/refusalPopulation"
 import { listServerSources, parseSource, rel, REPO_ROOT } from "../helpers/serverPopulation";
 import { PAX_PAUSE_COPY } from "../../shared/pax-glossary";
 import { undeclaredSupportScopeMessage, supportScopeRefusalMessage } from "../../server/ai/supportToolScopes";
+import { paxRailWatchRefusalMessage } from "../../server/services/paxRails";
+import { paxLimitRefusalMessage } from "../../server/services/paxLimits";
+import { PAX_TOOL_DOMAINS, PAX_RECORD_DOMAINS, domainForTool, groupForTool } from "../../shared/pax-controls";
 
 const read = (p: string) => fs.readFileSync(path.join(REPO_ROOT, p), "utf8");
 
 /** Builders whose outputs are verified below by calling them. */
-const REGISTERED_BUILDERS = new Set(["paxControlsRefusalMessage", "undeclaredSupportScopeMessage", "supportScopeRefusalMessage"]);
+const REGISTERED_BUILDERS = new Set(["paxControlsRefusalMessage", "paxRailWatchRefusalMessage", "paxLimitRefusalMessage", "undeclaredSupportScopeMessage", "supportScopeRefusalMessage"]);
 /** Constants whose text is read from source and judged below. */
 const REGISTERED_CONSTANTS = new Set(["APPLY_CREDIT_REFUSAL", "VOID_INVOICE_REFUSAL"]);
 /**
@@ -252,6 +255,32 @@ describe("registered builders say plain words for every input", () => {
     for (const t of [undeclaredSupportScopeMessage("apply_billing_fix"), supportScopeRefusalMessage("apply_billing_fix", "financial_write" as never)]) {
       expect(judgeRefusal(t), t).toEqual({ plain: true, problems: [] });
     }
+  });
+  it("the Pax rail Watch refusal, for the sends rail and every record domain", () => {
+    // One real tool per area the builder can name: the sends group, then one
+    // tool for each record domain (derived from the registry, so a new domain
+    // is judged the moment it exists).
+    const sendsTool = "send_borrower_reminder";
+    expect(groupForTool(sendsTool)).toBe("sends");
+    const tools = [sendsTool];
+    for (const domain of PAX_RECORD_DOMAINS) {
+      const tool = Object.keys(PAX_TOOL_DOMAINS).find((t) => domainForTool(t) === domain);
+      expect(tool, `no tool in record domain ${domain}`).toBeDefined();
+      tools.push(tool!);
+    }
+    expect(tools).toHaveLength(1 + PAX_RECORD_DOMAINS.length);
+    for (const tool of tools) {
+      const t = paxRailWatchRefusalMessage(tool);
+      expect(judgeRefusal(t), `${tool}: ${t}`).toEqual({ plain: true, problems: [] });
+    }
+  });
+  it("the Pax daily-limit refusal, for every kind of cap", () => {
+    const kinds = ["asks", "credits", "browse", "batchRows"] as const;
+    for (const kind of kinds) {
+      const t = paxLimitRefusalMessage(kind);
+      expect(judgeRefusal(t), `${kind}: ${t}`).toEqual({ plain: true, problems: [] });
+    }
+    expect(new Set(kinds.map(paxLimitRefusalMessage)).size, "each cap names itself").toBe(kinds.length);
   });
   it.each(["APPLY_CREDIT_REFUSAL", "VOID_INVOICE_REFUSAL"])("%s, read from its declaration", (constName) => {
     const sf = parseSource("supportAgent.ts", read("server/ai/supportAgent.ts"));

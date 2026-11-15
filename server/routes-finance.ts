@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Express, Response } from "express";
 // Book-wide figures read the WHOLE book, not the 5000-row capped lists
 // (DEFECT-0170): old notes are the ones most likely to be late.
 import { readAllDeals, readAllNotes, readAllPayments, readAllProperties } from "./storage/wholeBookReads";
@@ -34,6 +34,47 @@ import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId, getUserId } from "./types/request";
 import { clock } from "./utils/clock";
 import { routeParam } from "./utils/routeParams";
+import { ActivationRefused } from "./services/notes/originationGate";
+
+/**
+ * The one mapping of an activation refusal to its response, shared by the
+ * note create, update and originate paths: 422 in the { error, message,
+ * details, statusCode } shape.
+ *  - ActivationRefused (the Leg 3 gate, incl. the legacy-code refusal) →
+ *    error = its code (ATR_DETERMINATION_REQUIRED when an ATR basis is
+ *    missing, else ACTIVATION_REFUSED), details.refusals = every failed check
+ *    with its element, message and curing fact.
+ *  - The pre-Leg-3 coded error (a cure / reactivation without an ATR basis,
+ *    still thrown by noteRepo.updateNote) → ATR_DETERMINATION_REQUIRED with
+ *    an empty refusal list.
+ * Returns false (and sends nothing) for any other error.
+ */
+function sendActivationRefusal(res: Response, e: unknown, extra?: Record<string, unknown>): boolean {
+  const base = {
+    regulatoryCite: "12 CFR §1026.43(c)",
+    acceptedExemptionCodes: ["raw_land", "business_purpose", "commercial_borrower"],
+    useEndpoint: "POST /api/notes/:id/originate",
+    ...extra,
+  };
+  if (e instanceof ActivationRefused) {
+    sendError(res, 422, e.code, e.message, {
+      ...base,
+      refusals: e.refusals.map((r) => ({
+        check: r.check,
+        element: r.element ?? null,
+        message: r.message,
+        curingFact: r.curingFact,
+      })),
+    });
+    return true;
+  }
+  const coded = e as { code?: unknown; message?: unknown } | null;
+  if (coded?.code === "ATR_DETERMINATION_REQUIRED") {
+    sendError(res, 422, "ATR_DETERMINATION_REQUIRED", String(coded.message ?? ""), { ...base, refusals: [] });
+    return true;
+  }
+  return false;
+}
 
 // Zod schema for note updates — only user-editable fields are allowed.
 // Sensitive fields (organizationId, currentBalance, interestRate, accessToken,
@@ -276,21 +317,40 @@ export function registerFinanceRoutes(app: Express): void {
       const maturityDate = req.body.maturityDate ? new Date(req.body.maturityDate) : undefined;
       const nextPaymentDate = req.body.nextPaymentDate ? new Date(req.body.nextPaymentDate) : firstPaymentDate;
 
-      // Reg-Z §1026.43 hard gate (Workstream A): new notes default to
-      // status='pending' so origination is forced through the gated
-      // POST /api/notes/:id/originate route. If the caller explicitly
-      // supplied status='active' WITH an ATR completion or exemption code,
-      // we honor that; otherwise we downgrade to 'pending' to keep the
-      // consummation path through the audited chokepoint.
-      const callerSuppliedActiveWithAtr =
-        req.body.status === "active" &&
-        (req.body.atrDeterminationCompleted === true ||
-          (typeof req.body.atrExemptionCode === "string" &&
-            ["raw_land", "business_purpose", "commercial_borrower"].includes(req.body.atrExemptionCode)));
-      const resolvedStatus = callerSuppliedActiveWithAtr ? "active" : "pending";
+      // Reg-Z §1026.43 + Notes V2 Leg 3 activation gate.
+      //
+      // The ATR determination is never taken from a create body. Only
+      // persistAtrDetermination (POST /api/notes/:id/originate, attestor =
+      // the session) may write atrDetermination / atrDeterminationCompleted /
+      // atrDeterminationCompletedAt (founder decision 2026-11-05 §3.2: the
+      // bare flag is closed on every path). They are dropped here, so a
+      // create body cannot assert a determination, bare or with a payload.
+      const {
+        atrDetermination: _droppedAtrDetermination,
+        atrDeterminationCompleted: _droppedAtrFlag,
+        atrDeterminationCompletedAt: _droppedAtrAt,
+        ...createBody
+      } = req.body ?? {};
+      // The status:
+      //  - 'active' WITH an ATR basis claimed (an exemption code, or the
+      //    dropped determination fields) goes to storage.createNote as
+      //    'active'; the gate there decides, and a refusal is a 422 naming
+      //    every failed check. A dropped bare flag with no exemption refuses
+      //    (atr_missing) — it never activates and never silently downgrades.
+      //  - 'active' with NO basis claimed at all, or no status, lands
+      //    'pending' — the Finance form sends status 'active' by default
+      //    with no ATR fields, and its notes are originated through
+      //    POST /api/notes/:id/originate. Nothing activates on this branch.
+      //  - Any other status lands 'pending', as before: a create never lands
+      //    a consummated-looking status (paid_off, defaulted …) past the gate.
+      const claimsAtrBasis =
+        req.body?.atrExemptionCode !== undefined ||
+        req.body?.atrDeterminationCompleted !== undefined ||
+        req.body?.atrDetermination !== undefined;
+      const resolvedStatus = req.body?.status === "active" && claimsAtrBasis ? "active" : "pending";
 
       const input = insertNoteSchema.parse({
-        ...req.body,
+        ...createBody,
         organizationId: org.id,
         monthlyPayment: String(monthlyPayment),
         currentBalance: req.body.originalPrincipal,
@@ -302,20 +362,9 @@ export function registerFinanceRoutes(app: Express): void {
       });
       let note;
       try {
-        note = await storage.createNote(input);
-      } catch (e: any) {
-        if (e?.code === "ATR_DETERMINATION_REQUIRED") {
-          return res.status(422).json({
-            error: "ATR_DETERMINATION_REQUIRED",
-            message: e.message,
-            details: {
-              regulatoryCite: "12 CFR §1026.43(c)",
-              acceptedExemptionCodes: ["raw_land", "business_purpose", "commercial_borrower"],
-              useEndpoint: "POST /api/notes/:id/originate",
-            },
-            statusCode: 422,
-          });
-        }
+        note = await storage.createNote(input, { recordedBy: getUserId(req as AuthenticatedRequest) });
+      } catch (e: unknown) {
+        if (sendActivationRefusal(res, e)) return;
         throw e;
       }
 
@@ -382,20 +431,9 @@ export function registerFinanceRoutes(app: Express): void {
 
     let note;
     try {
-      note = await storage.updateNote(noteId, validated, org.id);
-    } catch (e: any) {
-      if (e?.code === "ATR_DETERMINATION_REQUIRED") {
-        return res.status(422).json({
-          error: "ATR_DETERMINATION_REQUIRED",
-          message: e.message,
-          details: {
-            regulatoryCite: "12 CFR §1026.43(c)",
-            acceptedExemptionCodes: ["raw_land", "business_purpose", "commercial_borrower"],
-            useEndpoint: "POST /api/notes/:id/originate",
-          },
-          statusCode: 422,
-        });
-      }
+      note = await storage.updateNote(noteId, validated, org.id, { recordedBy: getUserId(req as AuthenticatedRequest) });
+    } catch (e: unknown) {
+      if (sendActivationRefusal(res, e)) return;
       throw e;
     }
 
@@ -539,31 +577,37 @@ export function registerFinanceRoutes(app: Express): void {
             }
             throw atrErr;
           }
-        } else if (parsed.data.atrExemptionCode) {
-          // Statutory exemption — record the code, no eight-factor data
-          // required. updateNote() backstops this with its own validation.
-          await db
-            .update(notesTable)
-            .set({
-              atrExemptionCode: parsed.data.atrExemptionCode,
-              updatedAt: clock.now(),
-            })
-            .where(eq(notesTable.id, noteId));
         }
 
-        // Flip status to active. updateNote enforces the gate (in addition
-        // to the DB CHECK constraint).
+        // Flip status to active. updateNote runs the activation gate (in
+        // addition to the DB CHECK constraint) inside ONE transaction that
+        // also holds the row lock, the activation_gate_passed record and the
+        // UPDATE.
+        //
+        // Exemption branch: the code is written by that SAME updateNote call
+        // (org-scoped WHERE, same transaction), so the code and the
+        // activation commit or roll back together — a refused activation
+        // leaves no code behind. (This replaces a separate, id-only
+        // db.update of the code that ran before, outside any transaction.)
+        //
+        // ATR branch: persistAtrDetermination above commits its own
+        // transaction (the column write + its atr_determination_written audit
+        // row) before this one opens; neither it nor updateNote accepts an
+        // outer transaction. A gate refusal here therefore leaves the
+        // determination recorded and the note pending — a determination with
+        // no activation, never an activation with no determination.
         let activated;
         try {
-          activated = await storage.updateNote(noteId, { status: "active" }, orgId);
-        } catch (e: any) {
-          if (e?.code === "ATR_DETERMINATION_REQUIRED") {
-            return res.status(422).json({
-              error: "ATR_DETERMINATION_REQUIRED",
-              message: e.message,
-              statusCode: 422,
-            });
-          }
+          activated = await storage.updateNote(
+            noteId,
+            parsed.data.atrExemptionCode
+              ? { status: "active", atrExemptionCode: parsed.data.atrExemptionCode }
+              : { status: "active" },
+            orgId,
+            { recordedBy: userId },
+          );
+        } catch (e: unknown) {
+          if (sendActivationRefusal(res, e, { atrDeterminationRecorded: !!parsed.data.atrDetermination })) return;
           throw e;
         }
 

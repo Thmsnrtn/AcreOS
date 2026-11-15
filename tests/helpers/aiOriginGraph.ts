@@ -35,6 +35,7 @@ import path from "node:path";
 export const METERED_ENTRYPOINTS: Record<string, number> = {
   meteredChatCompletion: 2,
   meteredAnthropicMessage: 2,
+  meteredEmbeddingsCreate: 2,
   recordExternalAiSpend: 0,
   routeAITask: 1,
   routeSimpleTask: 2,

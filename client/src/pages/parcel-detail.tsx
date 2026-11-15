@@ -74,6 +74,7 @@ import { SubdivisionTab } from "@/components/parcels/subdivision-tab";
 import { ArvCalculator } from "@/components/parcels/arv-calculator";
 import { LandSnapshot } from "@/components/parcels/land-snapshot";
 import { ParcelBiography } from "@/components/parcels/parcel-biography";
+import { DocumentsPanel } from "@/components/documents-panel";
 
 const STATUS_LABELS: Record<string, string> = {
   prospect: "Prospect",
@@ -400,6 +401,21 @@ function ParcelDetailDesktop({ id }: { id: number | null }) {
                 </CardContent>
               </Card>
             ) : null}
+
+            {/* Slice 5 (docs/docstore-design-2026-11.md §9) — the customer's
+                own PDFs on this parcel (deed, survey, title work).
+                MOUNT POINT, recorded rather than invented (§9 build note):
+                the design expected the property surface that renders
+                <ActivityTimeline entityType="property" …/>, and no such
+                surface exists. There is no /properties/:id route at all —
+                /properties is the list, and the property DETAIL surface is
+                this page at /parcels/:id, which renders no ActivityTimeline
+                (nor does its mobile twin, MobilePropertyDetail). So the panel
+                mounts here, in the Overview column, per the design's stated
+                fallback. An uploaded document still writes a real
+                activity_events row server-side (§7); the parcel page just has
+                no timeline rendering it yet. */}
+            <DocumentsPanel objectType="property" objectId={property.id} />
           </TabsContent>
 
           <TabsContent value="diligence" className="space-y-4">

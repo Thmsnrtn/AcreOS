@@ -40,7 +40,7 @@
 
 import type { Express, Response } from "express";
 import { z } from "zod";
-import { and, eq, asc, desc, sql, gt, gte, lte, inArray, isNull, isNotNull } from "drizzle-orm";
+import { and, eq, ne, asc, desc, sql, gt, gte, lte, inArray, isNull, isNotNull } from "drizzle-orm";
 import { db } from "./db";
 import {
   rentalLeases,
@@ -108,6 +108,8 @@ import {
   computeCamReconciliation,
   renderCamStatementMarkdown,
   monthsInPeriod,
+  resolveCamEstimatedBilled,
+  findCamDoubleRecovery,
 } from "@shared/rental/camReconciliation";
 import { computePercentageRent } from "@shared/rental/percentageRent";
 import { sumEffectiveBaseRentOverPeriod } from "@shared/rental/rentEscalation";
@@ -269,25 +271,21 @@ const camPoolSchema = z.object({
 });
 
 /**
- * A CAM reconciliation the operator RECORDS by hand (stage 1). The engine-computed
- * snapshot (poolActual, recoverableShare, delta, statement) is filled by the
- * later reconciliation engine — here, only operator-supplied figures are stored,
- * and provenance is stamped `generatedBy: "operator_entered"` so nothing masquerades
- * as an engine statement. Omitted money fields stay null (honest absence, not zero).
+ * Generate a CAM reconciliation (the engine path — the only writer of
+ * cam_reconciliations). `estimatedBilledCents` is the landlord's OWN stated total
+ * of the CAM estimates billed over the period; it is used only when the ledger
+ * carries no CAM charges for the period, and with neither the engine refuses.
+ *
+ * DELETED (W2-COMMERCIAL, 2026-11-06): the Stage-1 `POST
+ * /api/cam-pools/:poolId/reconciliations` writer and its schema. It stored
+ * typed-in figures — a pool actual, a share, a "balance due" — with no relation
+ * to the expense ledger and no check that the delta was the share minus the
+ * billed amount, under the same (pool, lease) row the engine writes. It was a
+ * bridge until the engine existed; the engine exists, so it went.
  */
-const camReconciliationSchema = z.object({
+const camGenerateSchema = z.object({
   leaseId: z.string().min(1),
-  periodStart: isoDate.nullable().optional(),
-  periodEnd: isoDate.nullable().optional(),
-  proRataBpsUsed: bpField.nullable().optional(),
-  proRataBasis: z.enum(["lease_fixed", "sqft"]).nullable().optional(),
-  leasedSqftUsed: z.number().int().min(0).nullable().optional(),
-  totalRentableSqftUsed: z.number().int().min(0).nullable().optional(),
-  poolActualCents: centsField.nullable().optional(),
-  recoverableShareCents: centsField.nullable().optional(),
   estimatedBilledCents: centsField.nullable().optional(),
-  deltaCents: z.number().int().nullable().optional(),
-  notes: z.string().max(2000).nullable().optional(),
 });
 
 /** The tenant's reported gross sales for a period — the percentage-rent input. */
@@ -1934,6 +1932,16 @@ export function registerRentLedgerRoutes(app: Express): void {
   // provider"): none of these moves, holds or charges a cent — each *_cents is a
   // recorded fact, and the actual rent/CAM charges land on the existing
   // rent_charges ledger, on the operator's own account, elsewhere.
+  //
+  // REACHABILITY (W2-COMMERCIAL, 2026-11-06): until this date no screen called
+  // any handler in this block. The Commercial tab on /leases
+  // (client/src/components/rentals/commercial-panel.tsx, commercial orgs only)
+  // now calls the commercial-terms writer, the CAM pools, the reconciliation
+  // generate + list, the rent schedule and per-sqft. The sales-report /
+  // percentage-rent and contractual late-fee handlers still have no screen —
+  // held for a product decision (posting a computed commercial charge to the
+  // ledger), not deleted. The Stage-1 operator-entered reconciliation writer was
+  // deleted (see camGenerateSchema).
   // ==========================================================================
 
   // ── A lease's commercial terms (writer for the additive lease columns) ─────
@@ -2033,88 +2041,18 @@ export function registerRentLedgerRoutes(app: Express): void {
   });
 
   // ── CAM reconciliations — the per-lease true-up statement ──────────────────
-  // Stage-1 writer records an operator-entered reconciliation; the engine-
-  // computed snapshot columns (byCategory, coverage, statement) stay null until
-  // the reconciliation engine lands. Provenance is stamped so nothing here reads
-  // as an engine statement. Re-recording the same (pool, lease) UPSERTs.
-  app.post("/api/cam-pools/:poolId/reconciliations", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const orgId = getOrganizationId(req);
-      const parsed = camReconciliationSchema.safeParse(req.body ?? {});
-      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
-
-      const [pool] = await db.select({ id: camExpensePools.id }).from(camExpensePools)
-        .where(and(
-          eq(camExpensePools.id, routeParam(req.params.poolId)),
-          eq(camExpensePools.organizationId, orgId),
-        ));
-      if (!pool) return Errors.notFound(res, "CAM pool");
-
-      const [lease] = await db.select({ id: rentalLeases.id }).from(rentalLeases)
-        .where(and(eq(rentalLeases.id, parsed.data.leaseId), eq(rentalLeases.organizationId, orgId)));
-      if (!lease) return Errors.notFound(res, "Lease");
-
-      const [saved] = await db.insert(camReconciliations).values({
-        organizationId: orgId,
-        poolId: pool.id,
-        leaseId: lease.id,
-        periodStart: parsed.data.periodStart ?? null,
-        periodEnd: parsed.data.periodEnd ?? null,
-        proRataBpsUsed: parsed.data.proRataBpsUsed ?? null,
-        proRataBasis: parsed.data.proRataBasis ?? null,
-        leasedSqftUsed: parsed.data.leasedSqftUsed ?? null,
-        totalRentableSqftUsed: parsed.data.totalRentableSqftUsed ?? null,
-        poolActualCents: parsed.data.poolActualCents ?? null,
-        recoverableShareCents: parsed.data.recoverableShareCents ?? null,
-        estimatedBilledCents: parsed.data.estimatedBilledCents ?? null,
-        estimatedBilledBasis: parsed.data.estimatedBilledCents != null ? "operator_entered" : null,
-        deltaCents: parsed.data.deltaCents ?? null,
-        // Engine-only columns — left null until the reconciliation engine fills them.
-        byCategoryCents: null,
-        coverageMonths: null,
-        coverageComplete: null,
-        statementMarkdown: null,
-        statementVersion: null,
-        generatedAt: clock.now(),
-        generatedBy: "operator_entered",
-      })
-        .onConflictDoUpdate({
-          target: [camReconciliations.poolId, camReconciliations.leaseId],
-          set: {
-            periodStart: parsed.data.periodStart ?? null,
-            periodEnd: parsed.data.periodEnd ?? null,
-            proRataBpsUsed: parsed.data.proRataBpsUsed ?? null,
-            proRataBasis: parsed.data.proRataBasis ?? null,
-            leasedSqftUsed: parsed.data.leasedSqftUsed ?? null,
-            totalRentableSqftUsed: parsed.data.totalRentableSqftUsed ?? null,
-            poolActualCents: parsed.data.poolActualCents ?? null,
-            recoverableShareCents: parsed.data.recoverableShareCents ?? null,
-            estimatedBilledCents: parsed.data.estimatedBilledCents ?? null,
-            estimatedBilledBasis: parsed.data.estimatedBilledCents != null ? "operator_entered" : null,
-            deltaCents: parsed.data.deltaCents ?? null,
-            generatedAt: clock.now(),
-            generatedBy: "operator_entered",
-          },
-        })
-        .returning();
-
-      logger.info("[W4] CAM reconciliation recorded", {
-        orgId, poolId: pool.id, leaseId: lease.id, reconciliationId: saved?.id,
-      });
-      return res.json({ reconciliation: saved });
-    } catch (err) {
-      return Errors.internal(res, err);
-    }
-  });
-
   // Engine-generated reconciliation: computes the frozen true-up from the pool's
   // recoverable property_expenses × the lease's pro-rata and FREEZES it. Refuses
-  // (400, writes nothing) when the pro-rata share cannot be derived — a CAM bill
-  // on a fabricated share is never produced. Provenance: generatedBy "engine".
+  // (400, writes nothing) whenever an input the bill depends on is missing — the
+  // pro-rata share, the lease type, a term covering the period, a stop that fits
+  // the period, or a RECORD of what was billed (ledger CAM charges, else the
+  // landlord's stated total) — and when the lease is already reconciled for the
+  // same expenses in an overlapping pool. Provenance: generatedBy "engine".
+  // (The Stage-1 operator-entered writer was deleted — see camGenerateSchema.)
   app.post("/api/cam-pools/:poolId/reconciliations/generate", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const orgId = getOrganizationId(req);
-      const parsed = z.object({ leaseId: z.string().min(1) }).safeParse(req.body ?? {});
+      const parsed = camGenerateSchema.safeParse(req.body ?? {});
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
       const [pool] = await db.select().from(camExpensePools)
@@ -2149,9 +2087,10 @@ export function registerRentLedgerRoutes(app: Express): void {
           lte(propertyExpenses.incurredOn, pool.periodEnd),
         ));
 
-      // What the tenant was actually billed in CAM estimates over the period —
-      // the real charges first, the lease's monthly estimate only as a fallback,
-      // and an honest zero (basis "none") when neither exists.
+      // What the tenant was billed in CAM estimates over the period — a RECORD
+      // only: the ledger's CAM charges, else the landlord's own stated total, else
+      // nothing (the engine refuses). Never an assumed $0, never the lease's
+      // monthly estimate × the pool's months (resolveCamEstimatedBilled).
       const camCharges = await db
         .select({ amountCents: rentCharges.amountCents })
         .from(rentCharges)
@@ -2162,18 +2101,40 @@ export function registerRentLedgerRoutes(app: Express): void {
           gte(rentCharges.chargedForMonth, pool.periodStart),
           lte(rentCharges.chargedForMonth, pool.periodEnd),
         ));
-      const periodMonths = monthsInPeriod(pool.periodStart, pool.periodEnd);
-      let estimatedBilledCents = camCharges.reduce((s, c) => s + Number(c.amountCents), 0);
-      let estimatedBilledBasis = "from_charges";
-      if (camCharges.length === 0) {
-        if (lease.camEstimateMonthlyCents != null && periodMonths > 0) {
-          estimatedBilledCents = lease.camEstimateMonthlyCents * periodMonths;
-          estimatedBilledBasis = "lease_estimate";
-        } else {
-          estimatedBilledCents = 0;
-          estimatedBilledBasis = "none";
-        }
-      }
+      const billed = resolveCamEstimatedBilled({
+        ledgerCamChargeCents: camCharges.map((c) => Number(c.amountCents)),
+        statedCents: parsed.data.estimatedBilledCents ?? null,
+      });
+      if (billed.conflict) return Errors.badRequest(res, billed.conflict);
+
+      // One expense recovers once: the other pools on this property that this
+      // lease already has a frozen reconciliation in.
+      const reconciledElsewhere = await db
+        .select({
+          poolKind: camExpensePools.poolKind,
+          periodStart: camExpensePools.periodStart,
+          periodEnd: camExpensePools.periodEnd,
+          recoverableCategories: camExpensePools.recoverableCategories,
+        })
+        .from(camReconciliations)
+        .innerJoin(camExpensePools, eq(camExpensePools.id, camReconciliations.poolId))
+        .where(and(
+          eq(camReconciliations.organizationId, orgId),
+          eq(camReconciliations.leaseId, lease.id),
+          eq(camExpensePools.organizationId, orgId),
+          eq(camExpensePools.propertyId, pool.propertyId),
+          ne(camExpensePools.id, pool.id),
+        ));
+      const doubleRecovery = findCamDoubleRecovery(
+        {
+          poolKind: pool.poolKind,
+          periodStart: pool.periodStart,
+          periodEnd: pool.periodEnd,
+          recoverableCategories: pool.recoverableCategories,
+        },
+        reconciledElsewhere,
+      );
+      if (doubleRecovery) return Errors.badRequest(res, doubleRecovery);
 
       const result = computeCamReconciliation({
         pool: {
@@ -2189,6 +2150,8 @@ export function registerRentLedgerRoutes(app: Express): void {
           rentableSqft: lease.rentableSqft,
           camBaseYearStopCents: lease.camBaseYearStopCents,
           leaseType: lease.leaseType,
+          termStart: String(lease.startDate),
+          termEnd: lease.endDate ? String(lease.endDate) : null,
         },
         rows: expenseRows.map((r) => ({
           category: r.category,
@@ -2196,13 +2159,14 @@ export function registerRentLedgerRoutes(app: Express): void {
           isOperating: r.isOperating,
           incurredOn: r.incurredOn,
         })),
-        estimatedBilledCents,
+        estimatedBilledCents: billed.cents,
       });
 
       // Honest refusal — write nothing, say exactly why.
       if (result.refusedReason) {
         return Errors.badRequest(res, result.refusedReason);
       }
+      const estimatedBilledBasis = billed.basis;
 
       const statementMarkdown = renderCamStatementMarkdown(result, {
         periodStart: pool.periodStart,
@@ -2597,7 +2561,9 @@ export function registerRentLedgerRoutes(app: Express): void {
   // ── Per-square-foot metrics — commercial rent quoted the commercial way ────
   // Base rent $/sqft/yr and occupancy cost $/sqft/yr (base + CAM estimate),
   // derived by the pure engine, which returns nulls (unavailable) rather than a
-  // fabricated figure when the lease has no recorded rentable area.
+  // fabricated figure when the lease has no recorded rentable area. The base is
+  // the rent IN EFFECT this month — the lease's escalation steps applied by the
+  // canonical engine — not the lease's starting rent.
   app.get("/api/leases/:id/per-sqft", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const orgId = getOrganizationId(req);
@@ -2605,10 +2571,40 @@ export function registerRentLedgerRoutes(app: Express): void {
         .where(and(eq(rentalLeases.id, routeParam(req.params.id)), eq(rentalLeases.organizationId, orgId)));
       if (!lease) return Errors.notFound(res, "Lease");
 
+      const stepRows = await db
+        .select({
+          effectiveMonth: leaseRentSchedule.effectiveMonth,
+          stepType: leaseRentSchedule.stepType,
+          amountCents: leaseRentSchedule.amountCents,
+          pctBps: leaseRentSchedule.pctBps,
+          cpiIndexBase: leaseRentSchedule.cpiIndexBase,
+          cpiIndexCurrent: leaseRentSchedule.cpiIndexCurrent,
+          floorPctBps: leaseRentSchedule.floorPctBps,
+          ceilingPctBps: leaseRentSchedule.ceilingPctBps,
+        })
+        .from(leaseRentSchedule)
+        .where(and(
+          eq(leaseRentSchedule.organizationId, orgId),
+          eq(leaseRentSchedule.leaseId, lease.id),
+        ));
+
       const metrics = computePerSqftMetrics({
         monthlyRentCents: lease.monthlyRentCents,
+        scheduleSteps: stepRows.map((r) => ({
+          effectiveMonth: String(r.effectiveMonth).slice(0, 10),
+          stepType: r.stepType,
+          amountCents: r.amountCents ?? null,
+          pctBps: r.pctBps ?? null,
+          // numeric columns arrive as strings — normalise for the engine.
+          cpiIndexBase: r.cpiIndexBase != null ? Number(r.cpiIndexBase) : null,
+          cpiIndexCurrent: r.cpiIndexCurrent != null ? Number(r.cpiIndexCurrent) : null,
+          floorPctBps: r.floorPctBps ?? null,
+          ceilingPctBps: r.ceilingPctBps ?? null,
+        })),
+        asOfMonth: clock.now().toISOString().slice(0, 7),
         rentableSqft: lease.rentableSqft,
         camEstimateMonthlyCents: lease.camEstimateMonthlyCents,
+        leaseType: lease.leaseType,
       });
       return res.json({ perSqft: metrics });
     } catch (err) {

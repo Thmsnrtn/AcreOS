@@ -14,6 +14,7 @@ import { eq, sql } from 'drizzle-orm';
 import Stripe from 'stripe';
 import { logger } from './utils/logger';
 import { postBorrowerPortalCheckoutPayment } from './services/borrower/portalPaymentPosting';
+import { recordPostedPaymentApplication } from './services/paymentApplication';
 import { recordSense } from './services/autopilot/perception';
 import { subscriptionEndedPatch, subscriptionHasEnded } from './services/borrower/servicingPhase';
 import { clock } from "./utils/clock";
@@ -2050,6 +2051,28 @@ export class WebhookHandlers {
           .returning();
         if (inserted.length === 0) continue; // already posted by a redelivery
         restored += -rev.principalCents;
+
+        // The reversal's own application breakdown, in the SAME transaction
+        // (D4): a reversal row is itself a 'completed' posting, so without a
+        // mirror row the statement generator would refuse the refund cycle's
+        // statement as undescribed money movement. The reversal's split is
+        // already negative; the applications table carries a single fees
+        // bucket, so the fee and late-fee parts combine there. The original
+        // payment's breakdown stays in its own cycle — this row nets the
+        // refund in the cycle it happened.
+        await recordPostedPaymentApplication(tx, {
+          organizationId: original.organizationId,
+          loanId: String(original.noteId),
+          loanType: 'note',
+          paymentId: String(inserted[0].id),
+          receivedAt: rev.postedAt,
+          appliedAt: rev.postedAt,
+          appliedToPrincipalCents: rev.principalCents,
+          appliedToInterestCents: rev.interestCents,
+          appliedToEscrowCents: 0,
+          appliedToFeesCents: rev.feeCents + rev.lateFeeCents,
+          appliedToSuspenseCents: 0,
+        });
       }
 
       if (restored !== 0) {

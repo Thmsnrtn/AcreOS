@@ -1,26 +1,28 @@
 /**
  * Team-readiness routes — Phase 5 §5 (per-seat pricing, lead assignment
- * rules, manager dashboard, Slack/Teams integrations, offer-approval queue).
+ * rules, Slack/Teams integrations, offer-approval queue).
  *
  * All endpoints under /api/team-readiness/* are admin-or-above gated unless
  * documented otherwise. The server is the source of truth for tier limits;
  * the client must round-trip through these endpoints to mutate state.
+ *
+ * The per-rep "manager dashboard" read (GET /rep-performance) was deleted
+ * 2026-11-06 (W2-TEAM): no screen reached it, it duplicated the live team
+ * dashboard (GET /api/team/performance, Analytics → Team), and it labelled
+ * purchase prices as revenue.
  */
 
 import type { Express } from "express";
 import { z } from "zod";
-import { and, asc, desc, eq, gte, sql, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, sql, inArray } from "drizzle-orm";
 import { db, storage } from "./storage";
 import {
   organizations,
   teamMembers,
   leadAssignmentRules,
-  orgAssignmentCursor,
   orgIntegrationsSlack,
   offerApprovals,
   offers,
-  leads,
-  deals,
 } from "@shared/schema";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
@@ -84,10 +86,6 @@ const offerThresholdSchema = z.object({
 const approvalDecisionSchema = z.object({
   decision: z.enum(["approved", "declined"]),
   notes: z.string().max(2000).optional(),
-});
-
-const performanceQuerySchema = z.object({
-  range: z.enum(["7d", "30d", "90d"]).default("30d"),
 });
 
 // ─── Registration ───────────────────────────────────────────────────────────
@@ -271,6 +269,25 @@ export function registerTeamReadinessRoutes(app: Express): void {
         if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
         const data = parsed.data;
+
+        // A rule may only name this organization's own team members. The
+        // assigner re-filters to active members at assignment time, but a
+        // rule row must never hold another organization's member ids.
+        // Inactive members of THIS org are allowed: re-saving a rule that
+        // still lists someone since deactivated must not fail.
+        const namedIds = [...new Set(data.weightedAssignees.map((a) => a.teamMemberId))];
+        const ownIds = new Set(
+          (
+            await db
+              .select({ id: teamMembers.id })
+              .from(teamMembers)
+              .where(and(eq(teamMembers.organizationId, org.id), inArray(teamMembers.id, namedIds)))
+          ).map((m) => m.id),
+        );
+        if (namedIds.some((id) => !ownIds.has(id))) {
+          return Errors.badRequest(res, "Every assignee must be a member of your team.");
+        }
+
         if (data.id) {
           const [updated] = await db
             .update(leadAssignmentRules)
@@ -356,8 +373,10 @@ export function registerTeamReadinessRoutes(app: Express): void {
           .safeParse(req.body);
         if (!sample.success) return Errors.validationFailed(res, sample.error.issues);
 
+        // dryRun: a test reports who WOULD get the lead and takes no
+        // round-robin turn — it must not change who gets the next real lead.
         const { assignLead } = await import("./services/leadAssigner");
-        const teamMemberId = await assignLead(org.id, sample.data);
+        const teamMemberId = await assignLead(org.id, sample.data, { dryRun: true });
         return res.json({ teamMemberId });
       } catch (err) {
         return Errors.internal(res, err);
@@ -605,172 +624,9 @@ export function registerTeamReadinessRoutes(app: Express): void {
       }
     },
   );
-
-  // ── Manager dashboard — per-rep performance ────────────────────────────
-  app.get(
-    "/api/team-readiness/rep-performance",
-    isAuthenticated,
-    getOrCreateOrg,
-    requireAdminOrAbove(),
-    async (req, res) => {
-      try {
-        const org = (req as AuthenticatedRequest).organization;
-        const parsed = performanceQuerySchema.safeParse(req.query);
-        if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
-
-        const days = parsed.data.range === "7d" ? 7 : parsed.data.range === "90d" ? 90 : 30;
-        const since = new Date(clock.nowMs() - days * 24 * 60 * 60 * 1000);
-
-        const performance = await getRepPerformance(org.id, since);
-        return res.json({ range: parsed.data.range, since: since.toISOString(), performance });
-      } catch (err) {
-        return Errors.internal(res, err);
-      }
-    },
-  );
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-/**
- * Per-rep performance rollup. Returns one row per active team member with
- * leadsAssigned / leadsContacted / dealsOpened / dealsClosed / mrrContrib.
- *
- * MRR contribution is computed from closed-won deals' purchasePrice in the
- * window — the proxy for "how much revenue did this rep close" without
- * needing a finance-team-grade attribution model.
- */
-async function getRepPerformance(orgId: number, since: Date): Promise<Array<{
-  teamMemberId: number;
-  displayName: string | null;
-  email: string | null;
-  role: string;
-  leadsAssigned: number;
-  leadsContacted: number;
-  dealsOpened: number;
-  dealsClosed: number;
-  mrrContribCents: number;
-}>> {
-  const members = await db
-    .select()
-    .from(teamMembers)
-    .where(
-      and(
-        eq(teamMembers.organizationId, orgId),
-        eq(teamMembers.isActive, true),
-      ),
-    );
-
-  if (members.length === 0) return [];
-  const memberIds = members.map((m) => m.id);
-
-  // Leads assigned in window
-  const leadsAssignedRows = await db
-    .select({
-      assignedTo: leads.assignedTo,
-      cnt: sql<number>`count(*)::int`,
-    })
-    .from(leads)
-    .where(
-      and(
-        eq(leads.organizationId, orgId),
-        gte(leads.createdAt, since),
-        inArray(leads.assignedTo, memberIds),
-      ),
-    )
-    .groupBy(leads.assignedTo);
-
-  // Leads contacted = lastContactedAt in window
-  const leadsContactedRows = await db
-    .select({
-      assignedTo: leads.assignedTo,
-      cnt: sql<number>`count(*)::int`,
-    })
-    .from(leads)
-    .where(
-      and(
-        eq(leads.organizationId, orgId),
-        gte(leads.lastContactedAt, since),
-        inArray(leads.assignedTo, memberIds),
-      ),
-    )
-    .groupBy(leads.assignedTo);
-
-  // Deals opened / closed — use deals table if it has assignedTo column
-  // (schema.ts L4484). Group by assignedTo with status filter.
-  const dealsOpenedRows = await db
-    .select({
-      assignedTo: deals.assignedTo,
-      cnt: sql<number>`count(*)::int`,
-    })
-    .from(deals)
-    .where(
-      and(
-        eq(deals.organizationId, orgId),
-        gte(deals.createdAt, since),
-        inArray(deals.assignedTo, memberIds),
-      ),
-    )
-    .groupBy(deals.assignedTo);
-
-  const dealsClosedRows = await db
-    .select({
-      assignedTo: deals.assignedTo,
-      cnt: sql<number>`count(*)::int`,
-      revenue: sql<string>`coalesce(sum(${deals.acceptedAmount}), 0)::text`,
-    })
-    .from(deals)
-    .where(
-      and(
-        eq(deals.organizationId, orgId),
-        eq(deals.status, "closed"),
-        gte(deals.createdAt, since),
-        inArray(deals.assignedTo, memberIds),
-      ),
-    )
-    .groupBy(deals.assignedTo);
-
-  const byMember = new Map<number, {
-    leadsAssigned: number;
-    leadsContacted: number;
-    dealsOpened: number;
-    dealsClosed: number;
-    mrrContribCents: number;
-  }>();
-  for (const id of memberIds) {
-    byMember.set(id, {
-      leadsAssigned: 0,
-      leadsContacted: 0,
-      dealsOpened: 0,
-      dealsClosed: 0,
-      mrrContribCents: 0,
-    });
-  }
-  for (const r of leadsAssignedRows) {
-    if (r.assignedTo != null) byMember.get(r.assignedTo)!.leadsAssigned = r.cnt;
-  }
-  for (const r of leadsContactedRows) {
-    if (r.assignedTo != null) byMember.get(r.assignedTo)!.leadsContacted = r.cnt;
-  }
-  for (const r of dealsOpenedRows) {
-    if (r.assignedTo != null) byMember.get(r.assignedTo)!.dealsOpened = r.cnt;
-  }
-  for (const r of dealsClosedRows) {
-    if (r.assignedTo != null) {
-      const entry = byMember.get(r.assignedTo)!;
-      entry.dealsClosed = r.cnt;
-      entry.mrrContribCents = Math.round(parseFloat(r.revenue) * 100);
-    }
-  }
-
-  return members.map((m) => ({
-    teamMemberId: m.id,
-    displayName: m.displayName,
-    email: m.email,
-    role: m.role,
-    ...byMember.get(m.id)!,
-  }));
-}
 
 function maskWebhookUrl(url: string): string {
   try {
