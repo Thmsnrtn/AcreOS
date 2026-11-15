@@ -28,7 +28,9 @@ export class LegalHoldViolationError extends Error {
   public readonly code = "LEGAL_HOLD_ACTIVE";
   constructor(
     public readonly organizationId: number,
-    public readonly resourceType: LegalHoldResourceType,
+    // "organization": whole-org erasure (orgDeletion.ts), which any active
+    // hold blocks. Not a hold SCOPE target — only the error's subject.
+    public readonly resourceType: LegalHoldResourceType | "organization",
     public readonly resourceId: string | number,
     public readonly hold: Pick<LegalHold, "id" | "caseRef" | "scope">,
   ) {

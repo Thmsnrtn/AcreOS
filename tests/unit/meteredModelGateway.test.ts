@@ -76,13 +76,15 @@ describe("meteredChatCompletion", () => {
     create.mockImplementation(async () => { order.push("provider"); return { choices: [] }; });
     await meteredChatCompletion(client, { model: "openai/gpt-4o", messages: [{ role: "user", content: "hi" }] }, { taskType: "due_diligence", orgId: 7, origin: "customer" });
     expect(order).toEqual(["ceiling", "provider"]);
-    expect(h.assertWithinAiCostCeiling).toHaveBeenCalledWith(7, undefined);
+    // P1-5 R1: origin rides through so the ceiling can apply the org's
+    // background sub-ceiling; customer posture stays fail-open.
+    expect(h.assertWithinAiCostCeiling).toHaveBeenCalledWith(7, { origin: "customer", failClosed: false });
   });
 
   it("background callers ask the ceiling to fail closed", async () => {
     const { client } = openaiDouble();
     await meteredChatCompletion(client, { model: "openai/gpt-4o", messages: [] }, { taskType: "x", orgId: null, origin: "background" });
-    expect(h.assertWithinAiCostCeiling).toHaveBeenCalledWith(null, { failClosed: true });
+    expect(h.assertWithinAiCostCeiling).toHaveBeenCalledWith(null, { origin: "background", failClosed: true });
   });
 
   it("an exceeded ceiling refuses — the provider is never called", async () => {
@@ -196,7 +198,7 @@ describe("meteredAnthropicMessage", () => {
     expect(row).toMatchObject({ model: "anthropic/claude-sonnet-4-6", promptTokens: 5500, completionTokens: 100 });
     const expected = computeCostUsd("anthropic/claude-sonnet-4-6", 5500, 100, 5000);
     expect(Number(row.estimatedCostCents)).toBeCloseTo(expected * 100, 4);
-    expect(h.assertWithinAiCostCeiling).toHaveBeenCalledWith(null, { failClosed: true });
+    expect(h.assertWithinAiCostCeiling).toHaveBeenCalledWith(null, { origin: "background", failClosed: true });
   });
 
   it("a long string system becomes one cached text block with identical text", async () => {

@@ -37,8 +37,12 @@ import { NoteAssignmentsCard } from "@/components/note-assignments-card";
 import { NoteSplitsCard } from "@/components/note-splits-card";
 import { NoteComplianceCard } from "@/components/note-compliance-card";
 import { NoteLossMitCard } from "@/components/note-loss-mit-card";
+import { DocumentsPanel } from "@/components/documents-panel";
 import { DataProvenanceChip } from "@/components/data-provenance-chip";
 import { NoteRecordPanels } from "@/components/notes/NoteRecordPanels";
+import { BorrowerMessagesPanel } from "@/components/notes/BorrowerMessagesPanel";
+import { NoteWorkoutAnalysisPanel } from "@/components/notes/NoteWorkoutAnalysisPanel";
+import { NoteDelinquencyLadderPanel } from "@/components/notes/NoteDelinquencyLadderPanel";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { delinquencyIsDeterminable } from "@shared/notes/delinquency";
 
@@ -604,6 +608,11 @@ export default function NoteDetailPage() {
           the document set; then the collateral's data picture. */}
       <NoteRecordPanels noteId={note.id} />
 
+      {/* S-05 (P1-4b): the borrower's portal messages, surfaced where the
+          lender works the note — before this panel no client called the
+          lender message routes and borrower messages were a dead letter. */}
+      <BorrowerMessagesPanel noteId={note.id} />
+
       {/* Top stat cards — the line Linnea's CPA cares about goes first.
           Acquisition price separated from face value is the basis story. */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
@@ -819,7 +828,13 @@ export default function NoteDetailPage() {
       <NoteBasisSchedule noteId={note.id} />
 
       {/* Loss-mit case file — auto-prominent when status is late/default. */}
+      {/* V-Notes-2 Leg 1: delinquency ladder — evidence and record only; contacts no one. */}
+      <NoteDelinquencyLadderPanel noteId={note.id} />
+
       <NoteLossMitCard noteId={note.id} currentNoteStatus={note.status} />
+
+      {/* V-Notes-2 Leg 2: workout comparison — a record of stated scenarios, never a recommendation. */}
+      <NoteWorkoutAnalysisPanel noteId={note.id} />
 
       {/* Compliance — hazard insurance + property-tax escrow. */}
       <NoteComplianceCard
@@ -840,6 +855,15 @@ export default function NoteDetailPage() {
 
       {/* Assignment paperwork — Allonge + Assignment of Mortgage. */}
       <NoteAssignmentsCard noteId={note.id} noteNumber={note.noteNumber} />
+
+      {/* Slice 5 (docs/docstore-design-2026-11.md §9) — the collateral file:
+          the note, the mortgage/DOT, the allonge and the assignment chain, as
+          the PDFs the investor actually holds. Sits beside the assignment and
+          compliance cards because it is the same paperwork story.
+          No activity_events row is written for a note (§7): activity_events
+          .entity_id is an integer and acquired_notes.id is a uuid, so this
+          panel's own list IS the record. */}
+      <DocumentsPanel objectType="note" objectId={note.id} className="mb-6" />
 
       {/* Internal notes */}
       {note.notes && (

@@ -52,6 +52,21 @@ interface PageShellProps {
    * command-center.tsx (~:1909) was de-shelled for.
    */
   embedded?: boolean;
+  /**
+   * Let a `position: sticky` element inside the page stick to the VIEWPORT.
+   *
+   * `<main>` clips horizontal overflow. With `overflow-x: hidden` that makes
+   * `<main>` a scroll container, and since `<main>` never scrolls itself (the
+   * document does) a sticky child resolves against `<main>`'s own box and
+   * never sticks. `overflow-x: clip` clips identically without creating a
+   * scroll container — the same choice App.tsx's page-transition wrapper made.
+   *
+   * Opt-in, not the default: ~17 page-level `sticky` elements exist today
+   * that have never actually stuck; flipping the shell for every page would
+   * start pinning all of them at once. The Pax door opts in so its composer
+   * can stay on screen (D11 front-door fix 1).
+   */
+  stickyToViewport?: boolean;
 }
 
 /**
@@ -82,7 +97,7 @@ const MAX_WIDTH_CLASSES = {
   "7xl": "max-w-7xl",
 } as const;
 
-export function PageShell({ children, isLoading, loadingFallback, maxWidth = "7xl", label, embedded }: PageShellProps) {
+export function PageShell({ children, isLoading, loadingFallback, maxWidth = "7xl", label, embedded, stickyToViewport }: PageShellProps) {
   const { isCollapsed } = useSidebarCollapsed();
   const { isOpen: railOpen } = usePaxRail();
 
@@ -144,8 +159,7 @@ export function PageShell({ children, isLoading, loadingFallback, maxWidth = "7x
         <main
           id="main-content"
           aria-label={resolvedLabel}
-          className="flex-1 p-4 md:p-8 pb-8 mobile-safe-content overflow-x-hidden"
-        >
+          className={`flex-1 p-4 md:p-8 pb-8 mobile-safe-content ${stickyToViewport ? "overflow-x-clip" : "overflow-x-hidden"}`}        >
         <NotificationStack>
           {/* legal hold outranks a usage warning */}
           <LegalHoldBanner />

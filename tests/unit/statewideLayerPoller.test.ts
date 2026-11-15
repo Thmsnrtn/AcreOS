@@ -55,7 +55,9 @@ describe("source registry: one entry per statewide row (population pinned)", () 
   });
 
   it("A2: every row carries the policy block, restrictive until its dossier resolves a use class", () => {
-    for (const ep of STATEWIDE_PARCEL_ENDPOINTS) {
+    // WI is the one resolved dossier (first-party ingest package, Wave A pilot,
+    // 2026-11-03); its findings are pinned in firstPartyIngestAdmission.test.ts.
+    for (const ep of STATEWIDE_PARCEL_ENDPOINTS.filter((x) => x.state !== "WI")) {
       const e = statewideSource(ep.state)!;
       expect(e.dossier.termsUrl).toBe(ep.termsUrl ?? null);
       for (const u of USE_CLASSES) expect(e.dossier.useClasses[u].status, `${e.state} ${u}`).toBe("unresolved");

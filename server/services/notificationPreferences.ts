@@ -18,8 +18,8 @@
  */
 
 import { db } from "../db";
-import { eq } from "drizzle-orm";
-import { users } from "@shared/models/auth";
+import { eq, inArray } from "drizzle-orm";
+import { users, type UserNotificationPrefsShape } from "@shared/models/auth";
 import { clock } from "../utils/clock";
 
 export interface NotificationChannel {
@@ -163,6 +163,16 @@ export const NOTIFICATION_SCHEMA: NotificationCategory[] = [
         description: "When a buyer makes the final payment on a note you hold",
         defaultChannels: { email: true, sms: false, push: true, inApp: true },
       },
+      {
+        // S-05 (P1-4b): borrower portal messages were a dead letter — the
+        // lender was never told. This event is the per-user toggle the
+        // borrower-message notification (push + in-app) consults; a stored
+        // refusal (global mute or this event's push/inApp off) is honoured.
+        id: "finance.borrower_message",
+        label: "A borrower messages you",
+        description: "When a borrower sends a message through their portal on a note you hold",
+        defaultChannels: { email: false, sms: false, push: true, inApp: true },
+      },
     ],
   },
   {
@@ -253,6 +263,73 @@ const DEFAULTS: Omit<UserNotificationPreferences, "userId" | "organizationId" | 
 export const notificationPrefsService = {
   getSchema(): NotificationCategory[] {
     return NOTIFICATION_SCHEMA;
+  },
+
+  /**
+   * Resolve the push channel for MANY users at once (org fan-out).
+   *
+   * Returns a Map keyed by userId: `true` = push allowed for `eventId`,
+   * `false` = push refused. A user with no stored row, or whose preferences
+   * cannot be read, gets NO entry — absence is not a refusal, and the caller
+   * decides what absence means (notification fan-out SENDS on absence: a user
+   * who never opened the settings page lives on the event's schema defaults,
+   * and a transient read failure must not silently mute an org).
+   *
+   * The per-user rules themselves are not re-implemented here: globalMute
+   * refuses everything; an explicit per-event push override wins; otherwise
+   * the event's `defaultChannels.push` from NOTIFICATION_SCHEMA decides.
+   * Unknown event ids resolve against the schema only (no override can name
+   * them), so an event with no schema row gets entries of `false`.
+   *
+   * `options.defaultWhenNoOverride`, when provided, replaces the schema
+   * default in the no-override case (globalMute and explicit overrides are
+   * unaffected). It exists for callers whose shipped behaviour predates the
+   * schema default for their event — see orgPushFanout's family map for the
+   * one deliberate use.
+   */
+  async getPushEligibility(
+    userIds: string[],
+    eventId: string,
+    options?: { defaultWhenNoOverride?: boolean }
+  ): Promise<Map<string, boolean>> {
+    const eligibility = new Map<string, boolean>();
+    const uniqueIds = [...new Set(userIds.filter((id) => typeof id === "string" && id.length > 0))];
+    if (uniqueIds.length === 0) return eligibility;
+
+    let schemaDefault: boolean | undefined;
+    for (const category of NOTIFICATION_SCHEMA) {
+      for (const event of category.events) {
+        if (event.id === eventId) schemaDefault = event.defaultChannels.push;
+      }
+    }
+
+    let rows: Array<{ id: string; notificationPrefs: unknown }> = [];
+    try {
+      rows = await db
+        .select({ id: users.id, notificationPrefs: users.notificationPrefs })
+        .from(users)
+        .where(inArray(users.id, uniqueIds));
+    } catch {
+      // No rows read → every caller sees absence. A broken prefs read must
+      // never masquerade as a mute (see the contract above).
+      return eligibility;
+    }
+
+    for (const row of rows) {
+      const stored = (row.notificationPrefs ?? {}) as UserNotificationPrefsShape;
+      if (stored.globalMute) {
+        eligibility.set(row.id, false);
+        continue;
+      }
+      const override = stored.overrides?.[eventId];
+      if (override && override.push !== undefined) {
+        eligibility.set(row.id, override.push);
+        continue;
+      }
+      const fallback = options?.defaultWhenNoOverride ?? schemaDefault;
+      if (fallback !== undefined) eligibility.set(row.id, fallback);
+    }
+    return eligibility;
   },
 
   async getPreferences(userId: string, orgId: number): Promise<UserNotificationPreferences> {

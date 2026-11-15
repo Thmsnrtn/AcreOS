@@ -26,6 +26,7 @@ import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { clock } from "./utils/clock";
 import { routeParam } from "./utils/routeParams";
+import { patchSchemaOf } from "./utils/updatePayload";
 
 const drawSchema = z.object({
   label: z.string().min(1).max(120),
@@ -40,7 +41,7 @@ const drawSchema = z.object({
   notes: z.string().optional(),
 });
 
-const updateSchema = drawSchema.partial();
+const updateSchema = patchSchemaOf(drawSchema);
 
 const seedSchema = z.object({
   loanCents: z.coerce.number().int().nonnegative().optional(),

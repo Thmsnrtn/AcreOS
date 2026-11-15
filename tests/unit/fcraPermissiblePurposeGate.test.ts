@@ -1,6 +1,6 @@
 /**
- * Statute register `fcra.permissible-purpose` (15 U.S.C. §1681b,
- * §1681b(a)(3)(F)) — first real tests for the permissible-purpose gate,
+ * Statute register `fcra.permissible-purpose` (15 U.S.C. §1681b(a)(2),
+ * §1681b(a)(3)(A), §1681b(a)(3)(F)) — first real tests for the permissible-purpose gate,
  * which the register recorded as a well-designed refusal with ZERO tests.
  * FCRA is the classic class-action vehicle; this gate is the defence.
  *
@@ -662,7 +662,7 @@ describe("POST /api/tenants/:id/adverse-action — gated, and never claims a sen
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-describe("POST /api/skip-traces — §1681b(a)(3)(F) purpose gate on consumer-report-adjacent lookups", () => {
+describe("POST /api/skip-traces — §1681b(a)(2)/(a)(3) purpose gate on consumer-report-adjacent lookups", () => {
   const body = (extra: Record<string, unknown> = {}) => ({
     leadId: 9,
     purposeOfUse: "collection",

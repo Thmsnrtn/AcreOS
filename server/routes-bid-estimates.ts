@@ -17,7 +17,9 @@ import type { Express, Response } from "express";
 import { z } from "zod";
 import { and, eq, asc } from "drizzle-orm";
 import { db } from "./db";
-import { bidEstimates, contractors, REHAB_LINE_CATEGORIES } from "@shared/schema";
+import { bidEstimates, contractors, rehabLineItems, rehabs, REHAB_LINE_CATEGORIES } from "@shared/schema";
+import { refuseRedeemableDeedSpend } from "./services/tax/landExit";
+import { bidVsEstimate } from "@shared/rehab/variance";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId, getUserId } from "./types/request";
 import { isAuthenticated } from "./auth";
@@ -43,6 +45,12 @@ const bidSchema = z.object({
 });
 
 const updateSchema = bidSchema.partial();
+
+const applyToLinesSchema = z.object({
+  categories: z.array(z.enum(REHAB_LINE_CATEGORIES)).min(1).max(REHAB_LINE_CATEGORIES.length),
+  /** Required to overwrite a committed amount the operator already entered on a line. */
+  replaceCommitted: z.boolean().default(false),
+});
 
 export function registerBidEstimateRoutes(app: Express): void {
   // List bids for a rehab — includes side-by-side category matrix.
@@ -91,8 +99,20 @@ export function registerBidEstimateRoutes(app: Express): void {
         };
       });
 
+      // Each bid's category amounts beside this project's own estimate for the
+      // category — arithmetic, not a verdict on the contractor (Leg 2 §4.5).
+      const lines = await db
+        .select({ id: rehabLineItems.id, category: rehabLineItems.category, scope: rehabLineItems.scope, budgetCents: rehabLineItems.budgetCents, committedCents: rehabLineItems.committedCents, spentCents: rehabLineItems.spentCents })
+        .from(rehabLineItems)
+        .where(and(eq(rehabLineItems.rehabId, rehabId), eq(rehabLineItems.organizationId, orgId)));
+      const estimateLines = lines.map((l) => ({ ...l, id: String(l.id) }));
+
       return res.json({
-        bids: bids.map((b) => ({ ...b, contractorName: nameById.get(b.contractorId ?? "") ?? "Unknown" })),
+        bids: bids.map((b) => ({
+          ...b,
+          contractorName: nameById.get(b.contractorId ?? "") ?? "Unknown",
+          vsEstimate: bidVsEstimate((b.categoryBreakdown as Record<string, number>) ?? {}, estimateLines),
+        })),
         categories,
         matrix,
       });
@@ -172,6 +192,62 @@ export function registerBidEstimateRoutes(app: Express): void {
 
       logger.info("[FF-5] bid accepted", { orgId, userId, bidId: target.id });
       return res.json({ accepted: true, id: target.id });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // Apply an ACCEPTED bid's category amounts to the project's lines as their
+  // committed figure (fix-and-flip package, Leg 2 §4.1). An explicit act the
+  // operator confirms per category — accepting a bid writes nothing to the
+  // lines. A category maps only when exactly one line on the project carries
+  // it; otherwise the whole request is refused, naming the categories, so a
+  // partial copy never lands. Estimates are not touched (they may be locked);
+  // committed stays the operator's to change afterwards.
+  app.post("/api/bids/:id/apply-to-lines", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const parsed = applyToLinesSchema.safeParse(req.body);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+      const [bid] = await db.select().from(bidEstimates)
+        .where(and(eq(bidEstimates.id, routeParam(req.params.id)), eq(bidEstimates.organizationId, orgId)));
+      if (!bid) return Errors.notFound(res, "Bid");
+      if (!bid.isAccepted) {
+        return Errors.badRequest(res, "Only an accepted bid can set what is committed. Accept this bid first.");
+      }
+      // Committing contractor amounts is rehab spend on the parcel (V-Tax-1 T4b).
+      const [owner] = await db.select({ propertyId: rehabs.propertyId }).from(rehabs)
+        .where(and(eq(rehabs.id, bid.rehabId as string), eq(rehabs.organizationId, orgId)));
+      if (!owner) return Errors.notFound(res, "Rehab");
+      if (!(await refuseRedeemableDeedSpend(res, orgId, owner.propertyId, "Committing a bid to rehab lines"))) return;
+      const breakdown = (bid.categoryBreakdown as Record<string, number>) ?? {};
+      const lines = await db.select({ id: rehabLineItems.id, category: rehabLineItems.category, committedCents: rehabLineItems.committedCents })
+        .from(rehabLineItems)
+        .where(and(eq(rehabLineItems.rehabId, bid.rehabId as string), eq(rehabLineItems.organizationId, orgId)));
+
+      const plan: Array<{ lineId: string; category: string; committedCents: number }> = [];
+      const refused: Array<{ category: string; reason: string }> = [];
+      for (const category of parsed.data.categories) {
+        const amount = breakdown[category];
+        const matches = lines.filter((l) => l.category === category);
+        if (typeof amount !== "number") refused.push({ category, reason: "This bid has no amount for this category." });
+        else if (matches.length === 0) refused.push({ category, reason: "The project has no line in this category." });
+        else if (matches.length > 1) refused.push({ category, reason: `The project has ${matches.length} lines in this category — enter the committed amount on each line yourself.` });
+        else if (!parsed.data.replaceCommitted && Number(matches[0].committedCents) > 0 && Number(matches[0].committedCents) !== Math.round(amount)) {
+          refused.push({ category, reason: `The line already has $${Math.round(Number(matches[0].committedCents) / 100).toLocaleString("en-US")} committed — choose to replace it if this bid supersedes it.` });
+        } else plan.push({ lineId: String(matches[0].id), category, committedCents: Math.round(amount) });
+      }
+      if (refused.length > 0) {
+        return Errors.badRequest(res, `Nothing was applied. ${refused.map((r) => `${r.category}: ${r.reason}`).join(" ")}`, { refused });
+      }
+      await db.transaction(async (tx) => {
+        for (const p of plan) {
+          await tx.update(rehabLineItems).set({ committedCents: p.committedCents, updatedAt: clock.now() })
+            .where(and(eq(rehabLineItems.id, p.lineId), eq(rehabLineItems.organizationId, orgId)));
+        }
+      });
+      logger.info("[FF-5] accepted bid applied to lines as committed", { orgId, bidId: bid.id, lines: plan.length });
+      return res.json({ applied: plan });
     } catch (err) {
       return Errors.internal(res, err);
     }

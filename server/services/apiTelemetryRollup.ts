@@ -15,6 +15,9 @@
  * Retention window
  *   - 30 days by default. Configurable via env `API_TELEMETRY_RETENTION_DAYS`
  *     for test fixtures + emergency widening.
+ *   - This module is the SINGLE owner of api_telemetry_samples retention
+ *     (2026-11-03, legal-run Leg 6.3). jobs/dataRetention.ts no longer purges
+ *     the table; it used to delete raw rows at 120d without rolling them up.
  *
  * Idempotency
  *   - The rollup UPSERTs on (year, month, route_key, cost_class). Re-running

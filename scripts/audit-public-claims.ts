@@ -37,6 +37,27 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { verifyClaims, type Source } from "../server/services/truth-engine";
 import { stripCommentsPreservingLines as stripComments } from "./lib/strip-comments.mjs";
+import { TIER_PRICES_CENTS } from "../shared/billing/tier-pricing";
+
+/**
+ * The pricing SOURCE paragraph is DERIVED from the canonical tier registry,
+ * never hand-written. Until 2026-11-03 it was prose saying "Pro is $49/mo …
+ * displayed as $41/mo billed annually" and the claim said "Pro at $41/mo" —
+ * the claim verified against a source that agreed with it while the registry
+ * had moved to $49 / $99 / $199. A literal claim checked against a
+ * registry-derived source cannot do that: change a price and the claim's
+ * tokens stop matching until someone updates the claim to the truth.
+ *
+ * Known floor, not ceiling: the engine substring-matches, so "$99" also
+ * matches inside "$990" — a Pro MONTHLY drift alone trips only the derived
+ * "Save 17%" claim here. The rendered surfaces are pinned exactly by
+ * tests/unit/publicPricingMatchesCanonical.test.tsx.
+ */
+const proPrice = TIER_PRICES_CENTS.pro;
+const dollars = (cents: number) => `$${(cents / 100).toLocaleString("en-US")}`;
+const annualSavePct = Math.round(
+  (1 - proPrice.priceYearlyCents / (12 * proPrice.priceMonthlyCents)) * 100,
+);
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -177,10 +198,12 @@ const CLAIMS: { claim: string; anchor: string }[] = [
     anchor: "14 days, no card",
   },
   {
-    // Prices render from the tier registry at runtime (displayMonthlyPrice),
-    // so no "$41" literal exists on the surface; the anchor is the billing
-    // line and the SOURCE verifies the registry arithmetic.
-    claim: "Pro at $41/mo (billed annually) unlocks the full Pax assistant, unlimited counties, and bring-your-own-key",
+    // Prices render from the tier registry at runtime (pricing-copy.ts →
+    // displayMonthlyPrice), so no price literal exists on the surface; the
+    // anchor is the billing line and the SOURCE is derived from the registry.
+    // CORRECTED 2026-11-03: this record said "Pro at $41/mo" — the pre-repricing
+    // Pro annual figure ($490 / 12). Canonical Pro is $99/mo or $990/yr.
+    claim: "Pro at $99/mo, or $990/yr billed annually, unlocks the full Pax assistant, unlimited counties, and bring-your-own-key",
     anchor: "Billed $",
   },
   {
@@ -435,13 +458,16 @@ function buildSources(): Source[] {
     {
       name: "AcreOS pricing tiers (registry-derived)",
       ref: "shared/billing/tier-pricing.ts + client/src/pages/landing/Pricing.tsx",
+      // DERIVED from TIER_PRICES_CENTS — see the note at the top of the file.
       content: `
         Tiers render from shared/billing/tier-pricing.ts at runtime:
-        Pro is $49/mo monthly or $490/yr — $40.83/mo, displayed as
-        $41/mo billed annually. $490 vs $588 (12 x $49) = save ~17%,
-        displayed as Annual Save 17%. Pro tier unlocks: full Pax
-        assistant, unlimited counties, BYOK for parcel and skip-trace
-        data costs. Monthly/annual toggle on the page.
+        Pro is ${dollars(proPrice.priceMonthlyCents)}/mo monthly or
+        ${dollars(proPrice.priceYearlyCents)}/yr billed annually.
+        ${dollars(proPrice.priceYearlyCents)} vs
+        ${dollars(12 * proPrice.priceMonthlyCents)} (12 months monthly) =
+        save ~${annualSavePct}%, displayed as Annual Save ${annualSavePct}%.
+        Pro tier unlocks: full Pax assistant, unlimited counties, BYOK for
+        parcel and skip-trace data costs. Monthly/annual toggle on the page.
       `,
     },
     {

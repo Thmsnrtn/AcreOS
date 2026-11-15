@@ -1471,6 +1471,19 @@
   }
 }
 
+/* MapLibre styles its compass ("Drag to rotate map, click to reset north")
+   cursor:grab at rest, so it was the one map control without the pointer
+   affordance its zoom siblings get (issue #479). Show pointer at rest like
+   the siblings; keep MapLibre's grabbing cue while pressed. The extra
+   :not(:disabled) out-specifies the library rule, whose stylesheet loads
+   later in the lazy PropertyMap chunk. Hover background is MapLibre's own. */
+.maplibregl-ctrl-group button.maplibregl-ctrl-compass:not(:disabled) {
+  cursor: pointer;
+}
+.maplibregl-ctrl-group button.maplibregl-ctrl-compass:not(:disabled):active {
+  cursor: grabbing;
+}
+
 /* When the offline banner is up (40px tall, fixed top-0 z-[100]), shift
    the sticky page-topbar (top-0 z-30) down so it sits BELOW the banner
    instead of being covered. Banner sets body[data-offline-banner='true']

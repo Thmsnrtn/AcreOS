@@ -264,7 +264,7 @@ const CommissionsPage = React.lazy(() => import("@/pages/commissions"));
 const FinanceCommissionsPage = React.lazy(() => import("@/pages/finance-commissions"));
 // TeamLeaderboardPage archived 2026-06-01 — no sidebar entry, no callers.
 // Phase 5 §5 — team-readiness pages.
-const TeamManagerDashboardPage = React.lazy(() => import("@/pages/team-manager-dashboard"));
+// TeamManagerDashboardPage deleted 2026-11-06 (W2-TEAM) — duplicated Analytics → Team; /team/dashboard redirects there.
 const TeamOfferApprovalsPage = React.lazy(() => import("@/pages/team-offer-approvals"));
 const LeadAssignmentSettingsPage = React.lazy(() => import("@/pages/settings/lead-assignment"));
 const UnderwritingSettingsPage = React.lazy(() => import("@/pages/settings/underwriting"));
@@ -471,6 +471,9 @@ const Contractor1099NecPage = React.lazy(() => import("@/pages/contractor-1099-n
 const TenantsPage = React.lazy(() => import("@/pages/tenants"));
 const LeasesPage = React.lazy(() => import("@/pages/leases"));
 const RentRollPage = React.lazy(() => import("@/pages/rent-roll"));
+const UnderwriteRentalPage = React.lazy(() => import("@/pages/rentals/underwrite-rental"));
+const WholesaleBuyBoxPage = React.lazy(() => import("@/pages/wholesale/buy-box"));
+const UnderwriteWholesaleOfferPage = React.lazy(() => import("@/pages/wholesale/underwrite-offer"));
 const MaintenancePage = React.lazy(() => import("@/pages/maintenance"));
 // InvestorAnalyticsPage archived 2026-06-01 — no direct callers.
 const InspectionDetailPage = React.lazy(() => import("@/pages/inspection-detail"));
@@ -673,7 +676,7 @@ function HomeRoute() {
 // gate never strands a user with a render error. Whilst the org
 // status is loading we render PageLoader rather than the page itself
 // to avoid a flash of `/today` before the redirect resolves.
-function OnboardingGate({ children }: { children: React.ReactNode }) {
+export function OnboardingGate({ children }: { children: React.ReactNode }) {
   // Server is the source of truth — `/api/me/needs-onboarding` returns
   // a single boolean that consolidates founder-bypass + legacy-completion
   // signals + canonical column read. Migration 0098 backfilled
@@ -687,7 +690,7 @@ function OnboardingGate({ children }: { children: React.ReactNode }) {
   // (including the founder), and shipped with a ?bypass-onboarding=1
   // escape valve we needed twice on the day it shipped. Replaced with
   // this 5-line version after the migration consolidated the data.
-  const { data, isLoading, error } = useQuery<{ needsOnboarding: boolean }>({
+  const { data, isLoading, isFetching, error } = useQuery<{ needsOnboarding: boolean }>({
     queryKey: ["/api/me/needs-onboarding"],
     staleTime: 60_000,
   });
@@ -697,6 +700,15 @@ function OnboardingGate({ children }: { children: React.ReactNode }) {
   // through to render the page — its own auth guard handles the real
   // redirect. Never force-bounce a user into a wizard from an error path.
   if (error || !data) return <>{children}</>;
+  // Act on `true` only when it is the settled current answer (onboarding
+  // bounce, 2026-11-05, RC-1). The wizard invalidates this query on finish
+  // while the gate is unmounted, so the cache still holds the signup-time
+  // `true` when the finish navigation remounts the gate; React Query hands
+  // that back synchronously while the corrective refetch is in flight, and
+  // redirecting on it bounced a just-completed user into the wizard. While
+  // a newer answer is being fetched, wait for it. A fresh cached `true`
+  // (no fetch in flight) still redirects immediately.
+  if (data.needsOnboarding && isFetching) return <PageLoader />;
   if (data.needsOnboarding) return <Redirect to="/onboarding-v2" />;
   return <>{children}</>;
 }
@@ -900,6 +912,9 @@ function Router() {
       <Route path="/rent-roll">
         {() => <ProtectedRoute component={RentRollPage} />}
       </Route>
+      <Route path="/rentals/underwrite">
+        {() => <ProtectedRoute component={UnderwriteRentalPage} />}
+      </Route>
       <Route path="/maintenance">
         {() => <ProtectedRoute component={MaintenancePage} />}
       </Route>
@@ -947,7 +962,8 @@ function Router() {
       </Route>
       {/* Phase 5 §5 — team-readiness routes. */}
       <Route path="/team/dashboard">
-        {() => <ProtectedRoute component={TeamManagerDashboardPage} />}
+        {/* 2026-11-06 W2-TEAM — the per-rep page duplicated Analytics → Team. */}
+        {() => <Redirect to="/analytics#team" />}
       </Route>
       <Route path="/team/offer-approvals">
         {() => <ProtectedRoute component={TeamOfferApprovalsPage} />}
@@ -1046,6 +1062,12 @@ function Router() {
       </Route>
       <Route path="/earnest-money">
         {() => <ProtectedRoute component={EarnestMoneyPage} />}
+      </Route>
+      <Route path="/wholesale/buy-box">
+        {() => <ProtectedRoute component={WholesaleBuyBoxPage} />}
+      </Route>
+      <Route path="/wholesale/underwrite">
+        {() => <ProtectedRoute component={UnderwriteWholesaleOfferPage} />}
       </Route>
       <Route path="/double-close">
         {() => <ProtectedRoute component={DoubleClosePage} />}
@@ -1732,7 +1754,7 @@ function Router() {
         {() => <Redirect to="/analytics" />}
       </Route>
       <Route path="/investor-network">
-        {() => <ProtectedRoute component={InvestorDirectoryPage} />}
+        {() => <FlaggedRoute route="/investor-network" component={InvestorDirectoryPage} />}
       </Route>
       <Route path="/regulatory-intel">
         {() => <ProtectedRoute component={RegulatoryIntelPage} />}

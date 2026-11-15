@@ -86,12 +86,14 @@ import {
   type UnitBulkCreateReport,
 } from "@shared/rental/unitInventory";
 import { RENTAL_UNIT_STATUSES, type RentalUnitKind, type RentalUnitStatus } from "@shared/constants/rental";
+import { PadHomeDialog, type PadHome } from "./pad-home-dialog";
 
 // ---------------------------------------------------------------------------
 // Wire types
 // ---------------------------------------------------------------------------
 
-interface UnitRow {
+/** A pad row also carries its home record (POH/TOH + title) — see PadHomeDialog. */
+interface UnitRow extends PadHome {
   id: string;
   label: string;
   kind: RentalUnitKind;
@@ -211,14 +213,20 @@ function statusTone(s: RentalUnitStatus): "default" | "secondary" | "outline" {
 // Panel
 // ---------------------------------------------------------------------------
 
-export function UnitsPanel() {
+/**
+ * `initialPropertyId` preselects a property from a deep link
+ * (`/leases?tab=units&propertyId=…`, e.g. buy-and-hold's acquire handoff).
+ * It only chooses which property's units are READ; an id from another org
+ * reads nothing, because the units endpoint is org-scoped.
+ */
+export function UnitsPanel({ initialPropertyId = null }: { initialPropertyId?: number | null }) {
   const { toast } = useToast();
-  const [propertyId, setPropertyId] = useState<string>("");
+  const [propertyId, setPropertyId] = useState<string>(initialPropertyId ? String(initialPropertyId) : "");
   const [createOpen, setCreateOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [editing, setEditing] = useState<UnitRow | null>(null);
-
+  const [homeFor, setHomeFor] = useState<UnitRow | null>(null);
 
   const propertyIdNum = Number.parseInt(propertyId, 10);
   const hasProperty = Number.isFinite(propertyIdNum) && propertyIdNum > 0;
@@ -383,7 +391,10 @@ export function UnitsPanel() {
                       return (
                         <motion.tr key={u.id} variants={staggerItem} className="border-b border-border/40" data-testid={`row-unit-${u.id}`}>
                           <td className="px-3 py-2 font-medium">{u.label}</td>
-                          <td className="px-3 py-2 text-muted-foreground">{uv.titleSingular}</td>
+                          <td className="px-3 py-2 text-muted-foreground">
+                            {uv.titleSingular}
+                            {u.kind === "pad" && u.homeOwnership ? (u.homeOwnership === "park_owned" ? " · POH" : " · TOH") : ""}
+                          </td>
                           <td className="px-3 py-2">
                             <Badge variant={statusTone(u.status)} className="text-xs">{STATUS_COPY[u.status].label}</Badge>
                           </td>
@@ -399,6 +410,18 @@ export function UnitsPanel() {
                           <td className="px-3 py-2 text-right tabular-nums">{u.squareFeet?.toLocaleString("en-US") ?? "—"}</td>
                           <td className="px-3 py-2 text-right tabular-nums">{centsExact(u.marketRentCents)}</td>
                           <td className="px-3 py-2 text-right whitespace-nowrap">
+                            {u.kind === "pad" && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 text-xs"
+                                onClick={() => setHomeFor(u)}
+                                aria-label={`Home & meters for ${uv.singular} ${u.label}`}
+                                data-testid={`button-pad-home-${u.id}`}
+                              >
+                                Home &amp; meters
+                              </Button>
+                            )}
                             <Button
                               size="sm"
                               variant="ghost"
@@ -475,6 +498,7 @@ export function UnitsPanel() {
             onOpenChange={(open) => { if (!open) setEditing(null); }}
             onDone={refresh}
           />
+          {homeFor && <PadHomeDialog key={homeFor.id} pad={homeFor} onClose={() => setHomeFor(null)} />}
         </>
       )}
     </div>

@@ -26,7 +26,7 @@ const CONFIG: ComparisonConfig = {
       capability: "Free tier",
       acreos: true,
       competitor: null,
-      note: "AcreOS ships a free tier with the core list-pull + CRM loop.",
+      note: "AcreOS has a capped free evaluation tier: a lead CRM you fill by importing your own list as a CSV.",
     },
   ],
 };

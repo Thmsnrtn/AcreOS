@@ -130,7 +130,7 @@ export function ComparisonPage({ config }: { config: ComparisonConfig }) {
           data-testid="text-compare-summary"
         >
           {config.positioning ??
-            `AcreOS is built for one loop: pull county data, mail the right owners, capture every seller response, and turn it into an offer — with Pax doing the busywork and nothing going out to a seller until you tap Approve. Below is how that stacks up against ${config.competitor}, capability by capability. Where we haven't verified ${config.competitor}'s current feature, the cell is left blank rather than guessed.`}
+            `AcreOS is built for one loop: import your county list, mail the right owners, capture every seller response, and turn it into an offer — with Pax doing the busywork and nothing going out to a seller until you tap Approve. Below is how that stacks up against ${config.competitor}, capability by capability. Where we haven't verified ${config.competitor}'s current feature, the cell is left blank rather than guessed.`}
         </p>
       }
     >

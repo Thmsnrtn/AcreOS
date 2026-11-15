@@ -148,7 +148,15 @@ const PROTECTABLE_SENDS = [
 // reduction being banked instead of recorded.
 // 60 -> 59 (turn 6) -> 57 (turn 7) -> 55 (turn 8) -> 54 (turn 9, the
 // executor churn branch): the agent callers moved onto the witnessed seam.
-const UNPROTECTED_SEND_SITES_BASELINE = 52;
+// 52 -> 51 on 2026-11-12 (PR #550): the guarantee-refund executor extraction
+// deleted routes-billing.ts's unprotected sendEmail site and added two new
+// ones — the processed confirmation in server/services/refunds/
+// executeRefund.ts and the denial notice in server/services/refunds/
+// refundQueue.ts — and BOTH pass an org-scoped `idempotencyKey` rooted in
+// the refund request's durable identity (`refund_request:<id>:
+// processed_notice` / `:denied_notice`), so the extraction nets −1. Measured
+// by this scanner on the merged tree, not estimated.
+const UNPROTECTED_SEND_SITES_BASELINE = 51;
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {

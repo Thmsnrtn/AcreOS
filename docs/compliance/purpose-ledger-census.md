@@ -399,6 +399,39 @@ Each surface below reads lead rows, stored traces or parcel-owner addresses, dir
 | 171 | `server/services/workflow-engine.ts:2533` | case | `case:send_email#2` | executeSendEmail | no |
 | 172 | `server/services/workflow-engine.ts:2537` | case | `case:update_record#2` | executeUpdateRecord | no |
 
+## Legal-run Leg 5 disposition (2026-11-03)
+
+Package rule: wire a Tier A surface into `recordPurpose()` only where an EXISTING purpose code and
+ledger surface honestly fit its use; a surface that needs a proposed code is counsel-blocked
+(LQ-15/16 Q-A.2 / Q-A.7 / Q-A.8), not built.
+
+**5.1 Tier A wave: 0 wired, 42 blocked on the taxonomy.** Every unledgered Tier A surface maps to
+a proposed surface code, not an existing one:
+
+| Proposed code | Surfaces (Tier A #) | Disposition |
+|---|---|---|
+| `lead_contact_model` | 1–9, 43–48 (15) | Blocked on taxonomy (Q-A.2/Q-A.7; attorney input Q11–Q12) |
+| `lead_contact_read` | 18–20, 23, 24, 26, 27, 37, 38, 40–42 (12) | Blocked on taxonomy (Q-A.7; attorney input Q11) |
+| `lead_contact_bulk` | 21, 22, 25, 32–34 (6) | Blocked on taxonomy (Q-A.7; #34 also attorney input Q14) |
+| `lead_contact_api` | 10, 11, 14–16 (5) | Blocked on taxonomy (Q-A.7; attorney input Q11) |
+| `lead_contact_webhook` | 12, 13 (2) | Blocked on taxonomy (Q-A.7; attorney input Q11) |
+| `owner_mailing_read` | 17, 39 (2) | Blocked: whether public-record owner mailing data needs a purpose at all is attorney input Q13 |
+
+Why no existing code fits: the three built surfaces (`skip_trace_call`, `skip_trace_result_read`,
+`owner_contact_lookup`) name vendor lookups and their result reads, and `PURPOSE_CODES` are the
+FCRA purposes an operator claims for those lookups. A CRM list read, an AI-context read, a bulk
+export, a public-API read or a webhook is none of those, so recording one under them would be a
+misstatement in an evidence ledger. `DEBT_BASELINE` is unchanged: nothing moved.
+
+**5.2 Candidate confirmation wave: not started.** The 172 `review` surfaces need a HUMAN read per
+surface (does it return a contact field, to whom, on what trigger). An AI read is by definition
+not that confirmation, so this session recorded none, and the baseline was not edited.
+
+**5.3 Entity-graph gap (named debt).** Amendment 2 §2.3 names a third ledger category, an entity
+graph. No entity graph exists in code, so there is nothing to ledger. The absence is recorded
+here as a named debt: if an entity graph that links people to parcels or contact data is ever
+built, it joins this census as a candidate population on day one.
+
 ## Keeping this current
 
 - **Ledgering a surface:** wire `recordPurpose` / `releaseSkipTraceResults` into it (see

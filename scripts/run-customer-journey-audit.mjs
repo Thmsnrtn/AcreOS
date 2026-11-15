@@ -144,6 +144,8 @@ try {
  * Suite shape: { suites: [ { specs: [ { tests: [ { results: [...] } ] } ] } ] }
  * Each spec.test has one entry per project (via projectId / projectName).
  */
+const corroboratedPageErrors = [];
+
 function classify(report) {
   const perProject = {}; // projectName → { specs: [{ title, status }] }
 
@@ -155,6 +157,28 @@ function classify(report) {
           if (!perProject[proj]) perProject[proj] = { specs: [] };
           // Final result is the latest one (after retries).
           const finalResult = (t.results ?? []).slice(-1)[0] ?? {};
+          // Page errors the CJ1 gate dismissed by network corroboration
+          // (tests/e2e-customer-journey/page-error-gate.ts). Collected from
+          // EVERY attempt, not just the final one, and printed below with
+          // their raw strings, so the class is never silently dropped.
+          (t.results ?? []).forEach((r, attempt) => {
+            for (const a of r.annotations ?? []) {
+              if (a.type !== "page-errors-corroborated") continue;
+              let parsed = null;
+              try {
+                parsed = JSON.parse(a.description ?? "");
+              } catch {
+                parsed = { count: null, entries: [], unparsed: a.description ?? "" };
+              }
+              corroboratedPageErrors.push({
+                project: proj,
+                spec: spec.title,
+                attempt,
+                status: r.status,
+                ...parsed,
+              });
+            }
+          });
           perProject[proj].specs.push({
             title: spec.title,
             file: spec.file,
@@ -219,6 +243,7 @@ const summary = {
   targetUrl: targetUrl ?? "(unspecified — parsed existing report)",
   totals: { red: totalReds, amber: totalAmbers, green: totalGreens },
   projects: classified,
+  corroboratedPageErrors,
 };
 
 if (!flags["no-write"]) {
@@ -272,6 +297,35 @@ if (!flags["no-write"]) {
       }
       mdLines.push("");
     }
+  }
+
+  // Always printed, including when it is zero: a green run must show whether
+  // the class fired and was dismissed or never fired at all.
+  const corroboratedTotal = corroboratedPageErrors.reduce((n, c) => n + (c.count ?? 0), 0);
+  mdLines.push("## Page errors dismissed by network corroboration");
+  mdLines.push("");
+  mdLines.push(
+    `WebKit "due to access control checks" errors on the walk's own origin whose path completed 2xx in the same attempt (tests/e2e-customer-journey/page-error-gate.ts). Any other page error still fails the walk. **Total dismissed: ${corroboratedTotal}** across ${corroboratedPageErrors.length} attempt(s).`,
+  );
+  mdLines.push("");
+  if (corroboratedPageErrors.length > 0) {
+    mdLines.push("| Project | Attempt | Attempt result | Dismissed |");
+    mdLines.push("|---|---|---|---|");
+    for (const c of corroboratedPageErrors) {
+      mdLines.push(`| \`${c.project}\` | ${c.attempt} | ${c.status} | ${c.count ?? "?"} |`);
+    }
+    mdLines.push("");
+    mdLines.push("<details><summary>Raw error strings, with the status that corroborated each</summary>");
+    mdLines.push("");
+    for (const c of corroboratedPageErrors) {
+      for (const e of c.entries ?? []) {
+        mdLines.push(`- \`${c.project}\` #${c.attempt}: \`${e.raw}\` ← ${e.status} on \`${e.key}\``);
+      }
+      if (c.unparsed) mdLines.push(`- \`${c.project}\` #${c.attempt}: (unparsed) ${c.unparsed}`);
+    }
+    mdLines.push("");
+    mdLines.push("</details>");
+    mdLines.push("");
   }
 
   writeFileSync(mdOut, mdLines.join("\n"));

@@ -7,6 +7,12 @@
  * due, maturity, balloon, rate adjustment) a source STATED — never derived.
  * Nothing alerts, schedules or sends from these rows in V1.
  *
+ * V-Notes-2 (migration 0301) adds one COMPUTED category, 'analysis': a workout
+ * NPV comparison run with its full input snapshot. It is the one category whose
+ * source is not a statement — its source is 'workout_engine', bound to it both
+ * ways in the database — so a reader can never mistake it for a stated fact.
+ * Readers of stated facts filter by category (noteRecord.ts already does).
+ *
  * Append-only by trigger; a row leaves only with its note (ON DELETE CASCADE).
  * Org-private: organization_id NOT NULL, no FK to organizations, every reader
  * filters on it. A later registration is a new row; the reader takes the latest.
@@ -17,8 +23,27 @@ import { acquiredNotes } from "./notes-vertical";
 
 const NOTE_OUTCOME_EVENT_TYPES = ["performance_reported"] as const;
 export const NOTE_CALENDAR_EVENT_TYPES = ["payment_due", "maturity", "balloon", "rate_adjustment"] as const;
-export type NoteEventCategory = "outcome" | "calendar";
-export type NoteEventType = (typeof NOTE_OUTCOME_EVENT_TYPES)[number] | (typeof NOTE_CALENDAR_EVENT_TYPES)[number];
+/**
+ * V-Notes-2 Leg 2 (migration 0301): a workout NPV comparison run. COMPUTED, not
+ * stated — its source is always 'workout_engine' and only it may carry that
+ * source (the DB binds the two both ways). An analysis row is a record of what
+ * an operator asked the engine to compare; nothing acts on it.
+ */
+const NOTE_ANALYSIS_EVENT_TYPES = ["workout_analysis_run"] as const;
+/**
+ * V-Notes-2 Leg 1 (migration 0302): the delinquency ladder. A stage entry is
+ * COMPUTED by the aging sweep (source 'aging_engine'); a default review is an
+ * OPERATOR act (source 'operator_recorded'). Each type is bound to its one
+ * source both ways in the database. No aging run can write a default review.
+ */
+const NOTE_DELINQUENCY_EVENT_TYPES = ["delinquency_stage_entered", "default_review_recorded"] as const;
+export type NoteEventCategory = "outcome" | "calendar" | "analysis" | "delinquency";
+export type NoteEventType =
+  | (typeof NOTE_OUTCOME_EVENT_TYPES)[number]
+  | (typeof NOTE_CALENDAR_EVENT_TYPES)[number]
+  | (typeof NOTE_ANALYSIS_EVENT_TYPES)[number]
+  | (typeof NOTE_DELINQUENCY_EVENT_TYPES)[number];
+export type NoteEventSource = "note_tape" | "operator_correction" | "workout_engine" | "aging_engine" | "operator_recorded";
 
 export const noteEvents = pgTable(
   "note_events",
@@ -34,7 +59,7 @@ export const noteEvents = pgTable(
     recurrence: text("recurrence").$type<"monthly">(),
     recurrenceUntil: date("recurrence_until"),
     detail: jsonb("detail").$type<Record<string, unknown>>().notNull(),
-    source: text("source").$type<"note_tape" | "operator_correction">().notNull(),
+    source: text("source").$type<NoteEventSource>().notNull(),
     sourceRef: jsonb("source_ref").$type<Record<string, unknown>>().notNull(),
     importId: uuid("import_id"),
     recordedBy: text("recorded_by").notNull(),
@@ -45,7 +70,11 @@ export const noteEvents = pgTable(
     index("note_events_org_calendar_idx").on(t.organizationId, t.eventDate).where(sql`category = 'calendar'`),
     check(
       "note_events_type_matches_category",
-      sql`(category = 'outcome' AND event_type IN ('performance_reported')) OR (category = 'calendar' AND event_type IN ('payment_due', 'maturity', 'balloon', 'rate_adjustment'))`,
+      sql`(category = 'outcome' AND event_type IN ('performance_reported')) OR (category = 'calendar' AND event_type IN ('payment_due', 'maturity', 'balloon', 'rate_adjustment')) OR (category = 'analysis' AND event_type IN ('workout_analysis_run')) OR (category = 'delinquency' AND event_type IN ('delinquency_stage_entered', 'default_review_recorded'))`,
+    ),
+    check(
+      "note_events_source_matches_category",
+      sql`((category = 'analysis') = (source = 'workout_engine')) AND ((event_type = 'delinquency_stage_entered') = (source = 'aging_engine')) AND ((event_type = 'default_review_recorded') = (source = 'operator_recorded'))`,
     ),
     check(
       "note_events_recurrence_shape",

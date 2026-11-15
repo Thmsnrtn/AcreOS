@@ -49,6 +49,7 @@ import { QueryErrorState } from "@/components/query-error-state";
 import { EmptyState } from "@/components/empty-state";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useTerm } from "@/hooks/use-persona";
+import { useOrganization } from "@/hooks/use-organization";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { usd, formatDate } from "@/lib/format";
@@ -64,6 +65,7 @@ import {
   ShieldAlert,
   ExternalLink,
   Sparkles,
+  Calculator,
 } from "lucide-react";
 import type { Property, LandStatus } from "@shared/schema";
 import { buildBlindOfferPrefillSearch } from "@shared/blindOfferPrefill";
@@ -72,6 +74,7 @@ import { SubdivisionTab } from "@/components/parcels/subdivision-tab";
 import { ArvCalculator } from "@/components/parcels/arv-calculator";
 import { LandSnapshot } from "@/components/parcels/land-snapshot";
 import { ParcelBiography } from "@/components/parcels/parcel-biography";
+import { DocumentsPanel } from "@/components/documents-panel";
 
 const STATUS_LABELS: Record<string, string> = {
   prospect: "Prospect",
@@ -169,6 +172,10 @@ function ParcelDetailDesktop({ id }: { id: number | null }) {
   // /parcels/:id (route compat); the visible noun adapts.
   const propertyLabel = useTerm("entity.property");
   useDocumentTitle(id ? `${propertyLabel} #${id}` : propertyLabel);
+  // Buy-and-hold's decision desk is offered only to buy-and-hold orgs, the
+  // same gate as its sidebar child (businessTypeOnly: ["buy_and_hold"]).
+  const { data: organization } = useOrganization();
+  const businessType = (organization?.onboardingData as { businessType?: string } | null | undefined)?.businessType;
 
   const {
     data: property,
@@ -394,6 +401,21 @@ function ParcelDetailDesktop({ id }: { id: number | null }) {
                 </CardContent>
               </Card>
             ) : null}
+
+            {/* Slice 5 (docs/docstore-design-2026-11.md §9) — the customer's
+                own PDFs on this parcel (deed, survey, title work).
+                MOUNT POINT, recorded rather than invented (§9 build note):
+                the design expected the property surface that renders
+                <ActivityTimeline entityType="property" …/>, and no such
+                surface exists. There is no /properties/:id route at all —
+                /properties is the list, and the property DETAIL surface is
+                this page at /parcels/:id, which renders no ActivityTimeline
+                (nor does its mobile twin, MobilePropertyDetail). So the panel
+                mounts here, in the Overview column, per the design's stated
+                fallback. An uploaded document still writes a real
+                activity_events row server-side (§7); the parcel page just has
+                no timeline rendering it yet. */}
+            <DocumentsPanel objectType="property" objectId={property.id} />
           </TabsContent>
 
           <TabsContent value="diligence" className="space-y-4">
@@ -490,6 +512,16 @@ function ParcelDetailDesktop({ id }: { id: number | null }) {
               title="Generate offer"
               description="Calculate a blind offer based on current valuation + your strategy."
             />
+            {businessType === "buy_and_hold" ? (
+              // Property → desk: the buy-and-hold vertical's intake → underwrite
+              // step, with this property preselected. Navigation only.
+              <ActionLink
+                href={`/rentals/underwrite?propertyId=${property.id}`}
+                icon={Calculator}
+                title="Underwrite as a rental"
+                description="Run the rental numbers on your own inputs and record your call."
+              />
+            ) : null}
           </TabsContent>
         </Tabs>
       </div>

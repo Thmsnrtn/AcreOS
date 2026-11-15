@@ -61,6 +61,7 @@ import {
   type PollDeps,
 } from "./openData/statewideLayerPoller";
 import {
+  IngestRefusedError,
   SchemaDriftError,
   buildCounty,
   buildSpecFor,
@@ -1695,6 +1696,13 @@ function statewideCadastralEtlHandler(state: (typeof STATEWIDE_BUILD_STATES)[num
       try {
         report = await buildCounty(spec, config, deps());
       } catch (err) {
+        // A licensing refusal (first-party ingest §3.1) happened before any
+        // fetch: keep it, named, in the failed run's observation — loud, never
+        // a silent skip.
+        if (err instanceof IngestRefusedError) {
+          if (opts.runState) opts.runState.failureObservation = { kind: "statewide_ingest_refused", state: err.state, reasons: err.reasons, fetches: 0 };
+          throw err;
+        }
         if (!(err instanceof SchemaDriftError)) throw err;
         remap = await healDrift(spec, err, { getJson: (url) => getGeoJson(url, 60_000) }, clock.now());
         if (remap.outcome !== "promoted" || !remap.mappingAfter) {

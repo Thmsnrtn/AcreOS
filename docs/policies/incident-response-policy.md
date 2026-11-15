@@ -45,7 +45,7 @@ for the founder-unavailable path.
 
 ## 5. Lifecycle
 
-1. **Detect** — Sentry, Datadog, customer report, or a runbook-driven check.
+1. **Detect** — Sentry, customer report, or a runbook-driven check. *(Corrected 2026-11-03: Datadog was listed here; AcreOS does not use Datadog — see `docs/policies/data-retention-policy.md`.)*
 2. **Declare** — assign severity, name an IC, open an incident timeline.
 3. **Stabilize** — execute the relevant runbook(s); rollback before
    debugging when possible.

@@ -1,0 +1,83 @@
+{
+  "state": "WI",
+  "county": "PEPIN",
+  "layerUrl": "https://services3.arcgis.com/n6uYoouQZW75n5WI/arcgis/rest/services/Wisconsin_Statewide_Parcels_DB/FeatureServer/0",
+  "asOf": "2026-06-30T21:21:29.649Z",
+  "admission": {
+    "admitted": true,
+    "reasons": []
+  },
+  "outcome": {
+    "status": "dry_run_only",
+    "reasons": [
+      "object storage not configured (OPEN_DATA_BUCKET_* unset) — nothing uploaded",
+      "no bucket-confirmed upload receipt for every built artifact"
+    ]
+  },
+  "gate": {
+    "upload": false,
+    "ownerNamesAllowed": true,
+    "reasons": [
+      "object storage not configured (OPEN_DATA_BUCKET_* unset) — nothing uploaded"
+    ]
+  },
+  "summary": {
+    "state": "WI",
+    "county": "PEPIN",
+    "countyField": "CONAME",
+    "asOf": "2026-06-30T21:21:29.649Z",
+    "conformance": {
+      "ok": true,
+      "present": [
+        "PARCELID",
+        "OWNERNME1",
+        "SITEADRESS",
+        "CNTASSDVALUE",
+        "ESTFMKVALUE"
+      ],
+      "missing": []
+    },
+    "fetched": 9693,
+    "normalized": 9693,
+    "skippedNoId": 0,
+    "skippedNoGeometry": 0,
+    "pages": 10,
+    "peakRssMb": 287
+  },
+  "artifacts": {
+    "parquet": {
+      "sha256": "fd86e2ea67af94eb9339e1fff26b16fec12aed7e8586ed4a106b13ddfca1a69e",
+      "bytes": 24094630,
+      "objectKey": "statewide/wi/pepin/2026-11-04/wi-pepin.fd86e2ea67af94eb.parquet"
+    },
+    "pmtiles": {
+      "sha256": "086db0c34120d1059425cd309b429aa50c733eb966ffe6cf7419e092df76d4be",
+      "bytes": 1043518,
+      "objectKey": "statewide/wi/pepin/2026-11-04/wi-pepin.086db0c34120d105.pmtiles"
+    },
+    "rowsWritten": 9693,
+    "rowsReadBack": 9693,
+    "tileCount": 1189
+  },
+  "reconciliation": {
+    "status": "reconciled",
+    "publisher": {
+      "count": 9693,
+      "source": "https://services3.arcgis.com/n6uYoouQZW75n5WI/arcgis/rest/services/Wisconsin_Statewide_Parcels_DB/FeatureServer/0 count-only query, 2026-11-04T02:36:29.582Z"
+    },
+    "fetched": 9693,
+    "stored": 9693,
+    "rejected": {
+      "noParcelId": 0,
+      "noGeometry": 0
+    },
+    "sourceSideDelta": 0,
+    "notes": []
+  },
+  "recountAfterFetch": 9693,
+  "requests": 14,
+  "seconds": 10,
+  "peakRssMb": 287,
+  "rssCeilingMb": 400
+}
+{"suppressionReadBack":{"rows":9693,"ownerNameNotAvailable":1,"provenanceSuppressedUpstream":1}}

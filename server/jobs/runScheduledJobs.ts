@@ -9,7 +9,7 @@
  */
 
 import { db } from "../storage";
-import { claimScheduledJobsBoot, startJobLockJanitorJobs } from "./scheduledJobsBoot";
+import { claimScheduledJobsBoot, startJobLockJanitorJobs, startSettlementRailJobs } from "./scheduledJobsBoot";
 import { sql, lt, eq } from "drizzle-orm";
 import { organizations, jobHealthLogs, agentEvents } from "@shared/schema";
 import { logger } from "../utils/logger";
@@ -25,6 +25,7 @@ import { startPendingActionExpiryJob } from "./pendingActionExpiryJob"; // S3 sl
 import { startWorkflowDelayResumeJob } from "./workflowDelayResume"; // S3 decomposition slice 2 (Wave B)
 import { startAchAutopayJob } from "./achAutopayRun"; // S3 decomposition slice 3 (Wave C — money moves)
 import { startAcquiredNoteAgingJob } from "./acquiredNoteAging"; // acquired-note delinquency sweep
+import { startApiTelemetryRollupJob } from "./apiTelemetryRollupJob"; // S3 slice (legal-run Leg 6.3)
 // Daily due/expiry detectors — extracted from this file into a cohesive
 // job-group (S3 decomposition). startLeaseExpiryDetectorJob is the net-new
 // buy_and_hold beta→core registration (audit Wave 1).
@@ -35,6 +36,8 @@ import { startForecastingMonthlyJob } from "./forecastingJobs";
 import { startTrustJobs } from "./trustJobs";
 import { seedFounderDecisionCardsOnStartup } from "./seedFounderDecisionCards";
 import { runDecisionExecutorTickBounded, AUTONOMOUS_DECISION_EXECUTOR_MAX_USD_PER_TICK, AUTONOMOUS_DECISION_EXECUTOR_MAX_DECISIONS_PER_TICK } from "./decisionExecutorTick";
+import { startGateWatcherJob } from "./gateWatcherJobs"; // S3 slice (extracted 2026-11-08)
+import { startLq22TripwireJob } from "./lq22TripwireJobs"; // PKG-4 (LQ-22) tripwire
 import { clock } from "../utils/clock";
 
 // Auto-seed county GIS endpoints on startup
@@ -674,38 +677,6 @@ function startConnectionsSweepJob() {
 }
 
 // ============================================================================
-// Launch-Week WS4 — Gate-Watcher (the self-birthing roadmap). Daily 09:00 UTC.
-// Evaluates every machine-encoded roadmap gate (mature-machine §4 autonomy
-// switch schedule + phase triggers: Phase-1 runbook at $200 MRR held 30d,
-// Sentry rung at $500, Telnyx eval at $3k, switch eligibility at 25 paying).
-// A ripened gate raises a one-tap founder Decision via founderCollab, or
-// auto-executes ONLY where the studio revenue-trigger dial already says
-// autoApprove. Hard-stops never auto-execute. Every evaluation is logged and
-// persisted to the Story surface; dedup state lives in founder_settings, so a
-// duplicate tick (second machine acquiring the lock later in the hour) is a
-// no-op.
-// ============================================================================
-function startGateWatcherJob() {
-  const ONE_HOUR = 60 * 60 * 1000;
-  const TTL_SECONDS = 30 * 60;
-
-  log('Registering gate watcher job (daily 09:00 UTC)', 'gate-watcher');
-
-  trackInterval(() => {
-    const now = clock.now();
-    if (now.getUTCHours() === 9) {
-      import('../services/autopilot/gateWatcher').then(({ runGateWatch }) => {
-        withJobLock('gate_watcher_daily', TTL_SECONDS, async () => {
-          await runGateWatch();
-        }).catch(err => {
-          log(`Gate watcher run failed: ${err}`, 'gate-watcher');
-        });
-      }).catch(err => log(`Gate watcher import failed: ${err}`, 'gate-watcher'));
-    }
-  }, ONE_HOUR);
-}
-
-// ============================================================================
 // Wave 10: Self-Tuning Cost Optimizer — daily, self-rescheduling
 // Analyses last 30 days of AI usage + MRR + Fly estimate, generates
 // recommendations, auto-applies safe changes (prompt-cache, log-volume),
@@ -745,36 +716,6 @@ function startCustomerUnitEconomicsJob() {
   }).catch(err => log(`Unit economics scheduler import failed: ${err}`, 'unit-economics'));
 }
 
-// ============================================================================
-// Tahoe L14 follow-up — api_telemetry_samples nightly rollup + purge.
-//
-// 30-day rolling retention on api_telemetry_samples. Older rows are
-// aggregated into api_telemetry_rollup_monthly (UPSERT) then DELETEd from
-// the source. Idempotent — see server/services/apiTelemetryRollup.ts.
-// Daily wall-clock 01:00 UTC.
-// ============================================================================
-function startApiTelemetryRollupJob() {
-  const ONE_HOUR_MS = 60 * 60 * 1000;
-  const TTL_SECONDS = 50 * 60;
-
-  log('Registering api_telemetry rollup + purge job (daily 01:00 UTC)', 'api-telemetry-rollup');
-
-  trackInterval(() => {
-    const now = clock.now();
-    if (now.getUTCHours() === 1 && now.getUTCMinutes() < 5) {
-      void withJobLock('api_telemetry_rollup', TTL_SECONDS, async () => {
-        const { runApiTelemetryRollup } = await import('../services/apiTelemetryRollup');
-        const r = await runApiTelemetryRollup();
-        log(
-          `[api-telemetry-rollup] upserted=${r.rollupRowsUpserted} deleted=${r.sourceRowsDeleted} retentionDays=${r.retentionDays}`,
-          'api-telemetry-rollup',
-        );
-      }).catch((err) => {
-        log(`api_telemetry rollup failed: ${err}`, 'api-telemetry-rollup');
-      });
-    }
-  }, ONE_HOUR_MS);
-}
 
 // ============================================================================
 // Tahoe L6 — reserve-floor compliance check.
@@ -1580,7 +1521,16 @@ async function processDataRetentionJob() {
     const { runDataRetention } = await import("./dataRetention");
     const result = await runDataRetention();
     log(`Data retention: purged ${result.purged} total rows`, 'data-retention');
-    jobSupervisor.notifyResult('data_retention', 24 * 60 * 60 * 1000, true);
+    // A run where rules failed (including the fail-closed legal-hold case) is
+    // not a success — the supervisor must see it (legal-run Leg 6.2).
+    const ok = result.failures.length === 0;
+    jobSupervisor.notifyResult(
+      'data_retention',
+      24 * 60 * 60 * 1000,
+      ok,
+      undefined,
+      ok ? undefined : `${result.failures.length} rule(s) failed: ${result.failures.map((f) => f.label).join(', ')}`,
+    );
   } catch (err) {
     log(`Data retention job error: ${err}`, 'data-retention');
     jobSupervisor.notifyResult('data_retention', 24 * 60 * 60 * 1000, false, undefined, String(err));
@@ -3921,7 +3871,7 @@ function startBurnRateMonitorJob() {
 // ============================================================================
 export async function runScheduledJobs(): Promise<void> {
   if (!claimScheduledJobsBoot()) return;
-  startJobLockJanitorJobs();
+  startJobLockJanitorJobs(); startSettlementRailJobs();
 
   // Start lead nurturing background job (every 15 minutes)
   startLeadNurturingJob();
@@ -4005,6 +3955,8 @@ export async function runScheduledJobs(): Promise<void> {
   // roadmap items detect their own moment and become one-tap founder
   // Decisions (or auto-execute where the studio dial says autoApprove).
   startGateWatcherJob();
+
+  startLq22TripwireJob();
 
   // Horizon A5 — doctrine corpus ingest (daily 03:00 UTC): the repo's
   // doctrine dirs → 'doctrine' embedding namespace, hash-skip on unchanged.

@@ -105,3 +105,39 @@ export async function getOrgObject(organizationId: number, ref: string): Promise
   if (!body) throw new Error("empty object body");
   return Buffer.from(await body.transformToByteArray());
 }
+
+/**
+ * Delete EVERY object under the org's prefix (`org/<orgId>/`). The erasure
+ * path's byte step (legal-run Leg 6.4, LQ-07 §3.1): before this, org erasure
+ * deleted the rows that referenced stored bytes and left the bytes in the
+ * bucket. Tenancy is in the key, so the prefix is the whole of an org's
+ * bytes whether or not any row still references them. Throws if any object
+ * could not be deleted — the caller must stop, not report success.
+ */
+export async function deleteAllOrgObjects(organizationId: number): Promise<{ objectsDeleted: number }> {
+  if (!Number.isInteger(organizationId) || organizationId <= 0) throw new Error(`invalid organization id ${organizationId}`);
+  const Bucket = bucket();
+  const Prefix = `org/${organizationId}/`;
+  const { ListObjectsV2Command, DeleteObjectsCommand } = await import("@aws-sdk/client-s3");
+  const client = await s3();
+  let objectsDeleted = 0;
+  let ContinuationToken: string | undefined;
+  do {
+    const page = await client.send(new ListObjectsV2Command({ Bucket, Prefix, ContinuationToken }));
+    const keys = (page.Contents ?? []).map((o) => o.Key).filter((k): k is string => !!k && k.startsWith(Prefix));
+    if (keys.length > 0) {
+      const out = await client.send(
+        new DeleteObjectsCommand({ Bucket, Delete: { Objects: keys.map((Key) => ({ Key })), Quiet: true } }),
+      );
+      if (out.Errors && out.Errors.length > 0) {
+        throw new Error(
+          `document store: ${out.Errors.length} object(s) under ${Prefix} could not be deleted (first: ${out.Errors[0]?.Code ?? "unknown"})`,
+        );
+      }
+      objectsDeleted += keys.length;
+    }
+    ContinuationToken = page.IsTruncated ? page.NextContinuationToken : undefined;
+  } while (ContinuationToken);
+  logger.info("[documentStore] deleted every object under org prefix", { organizationId, objectsDeleted });
+  return { objectsDeleted };
+}

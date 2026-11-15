@@ -1,0 +1,83 @@
+{
+  "state": "WI",
+  "county": "KENOSHA",
+  "layerUrl": "https://services3.arcgis.com/n6uYoouQZW75n5WI/arcgis/rest/services/Wisconsin_Statewide_Parcels_DB/FeatureServer/0",
+  "asOf": "2026-06-30T21:21:29.649Z",
+  "admission": {
+    "admitted": true,
+    "reasons": []
+  },
+  "outcome": {
+    "status": "dry_run_only",
+    "reasons": [
+      "object storage not configured (OPEN_DATA_BUCKET_* unset) — nothing uploaded",
+      "no bucket-confirmed upload receipt for every built artifact"
+    ]
+  },
+  "gate": {
+    "upload": false,
+    "ownerNamesAllowed": true,
+    "reasons": [
+      "object storage not configured (OPEN_DATA_BUCKET_* unset) — nothing uploaded"
+    ]
+  },
+  "summary": {
+    "state": "WI",
+    "county": "KENOSHA",
+    "countyField": "CONAME",
+    "asOf": "2026-06-30T21:21:29.649Z",
+    "conformance": {
+      "ok": true,
+      "present": [
+        "PARCELID",
+        "OWNERNME1",
+        "SITEADRESS",
+        "CNTASSDVALUE",
+        "ESTFMKVALUE"
+      ],
+      "missing": []
+    },
+    "fetched": 68499,
+    "normalized": 68499,
+    "skippedNoId": 0,
+    "skippedNoGeometry": 0,
+    "pages": 69,
+    "peakRssMb": 442
+  },
+  "artifacts": {
+    "parquet": {
+      "sha256": "1960908c54b47a318eb2107ddcc17fe7a4a87200fdcd58fbc926d042072fc1d8",
+      "bytes": 187629171,
+      "objectKey": "statewide/wi/kenosha/2026-11-04/wi-kenosha.1960908c54b47a31.parquet"
+    },
+    "pmtiles": {
+      "sha256": "f048ed6cabd57e22343e72a27e9fb7b5b3bf4ae930347cebe514401572da2187",
+      "bytes": 3709362,
+      "objectKey": "statewide/wi/kenosha/2026-11-04/wi-kenosha.f048ed6cabd57e22.pmtiles"
+    },
+    "rowsWritten": 68499,
+    "rowsReadBack": 68499,
+    "tileCount": 1240
+  },
+  "reconciliation": {
+    "status": "reconciled",
+    "publisher": {
+      "count": 68499,
+      "source": "https://services3.arcgis.com/n6uYoouQZW75n5WI/arcgis/rest/services/Wisconsin_Statewide_Parcels_DB/FeatureServer/0 count-only query, 2026-11-04T02:36:45.815Z"
+    },
+    "fetched": 68499,
+    "stored": 68499,
+    "rejected": {
+      "noParcelId": 0,
+      "noGeometry": 0
+    },
+    "sourceSideDelta": 0,
+    "notes": []
+  },
+  "recountAfterFetch": 68499,
+  "requests": 73,
+  "seconds": 61,
+  "peakRssMb": 442,
+  "rssCeilingMb": 400
+}
+{"suppressionReadBack":{"rows":68499,"ownerNameNotAvailable":64144,"provenanceSuppressedUpstream":64144}}

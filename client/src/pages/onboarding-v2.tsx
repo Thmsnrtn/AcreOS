@@ -386,7 +386,11 @@ export default function OnboardingV2() {
   // onboardingData, so a re-run must start from the org's CURRENT type — not
   // the land_flipper default. resolveWizardPrefill only yields values the
   // registry recognizes; anything else leaves the wizard's defaults alone.
-  const { data: onboardingStatus } = useQuery<{
+  const {
+    data: onboardingStatus,
+    isLoading: onboardingStatusLoading,
+    isFetching: onboardingStatusFetching,
+  } = useQuery<{
     completed: boolean;
     data?: Record<string, unknown>;
   }>({
@@ -611,6 +615,33 @@ export default function OnboardingV2() {
     },
   });
 
+  // ── Release an already-completed org (onboarding bounce, 2026-11-05) ─────
+  // A completed user who lands here (a gate bounce, a stale link, a second
+  // tab) used to get step 1 with no way out. The status read above already
+  // knows. Release ONLY on a SETTLED read that says completed: true — never
+  // on cached data while a refetch is in flight (after Settings → "Re-run
+  // onboarding" the cache can still hold the pre-reset `completed: true`;
+  // reset flips the flag false on the server before navigating here, so the
+  // refetch answers false and the wizard runs). A genuinely incomplete org
+  // reads completed: false and is never released, however long it takes.
+  // Our own finish/skip navigates on its own; don't race it.
+  const finishing =
+    completeMutation.isPending ||
+    completeMutation.isSuccess ||
+    skipMutation.isPending ||
+    skipMutation.isSuccess;
+  const releaseCompleted =
+    onboardingStatus?.completed === true && !onboardingStatusFetching && !finishing;
+  // Hold the wizard while the answer that could release this user is pending:
+  // the first read, or a refetch over a cached completed: true.
+  const holdForStatus =
+    !finishing &&
+    (onboardingStatusLoading ||
+      (onboardingStatus?.completed === true && onboardingStatusFetching));
+  useEffect(() => {
+    if (releaseCompleted) navigate("/today", { replace: true });
+  }, [releaseCompleted, navigate]);
+
   // ── Step telemetry (best-effort) ─────────────────────────────────────────
   useEffect(() => {
     if (disclosureRequired) return;
@@ -789,7 +820,9 @@ export default function OnboardingV2() {
   };
 
   // ── Skeleton while disclosure status loads ───────────────────────────────
-  if (disclosureLoading) {
+  // (also while the completion read is pending, or releasing to /today — a
+  // completed org never sees step 1)
+  if (disclosureLoading || holdForStatus || releaseCompleted) {
     return (
       <div className="ob2-shell" aria-busy="true" aria-label="Loading">
         <div className="ob2-content">

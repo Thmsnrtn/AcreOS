@@ -3,17 +3,525 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
-## 2026-11-03 — P2 B1 slice 1 (decision inbox + live Atlas): step 0 run, both build legs STOPPED — on `claude/b1-slice1-step0` (off main `f7f2e3f`, draft PR, unmerged)
+## 2026-11-03 — P2 B1 slice 1 (decision inbox + live Atlas): step 0 run, both build legs STOPPED — on `claude/b1-slice1-step0` (draft PR #453; brought current with main `6b0332f` on 2026-11-15; unmerged)
 
 - **Nothing built.** The step-0 record is `docs/evidence/2026-11-03/b1-slice1-step0-inventory.md`.
 - **Leg 1 stopped.** The spec assumes there is no approval write path. On main, `POST /api/founder/autopilot/pending-actions/:id/{approve,reject}` is live and executes. `founder-decisions.tsx` is the only UI for it and for six other founder write paths. A read-only rebuild in place would take all of them away. The card data the spec wants (summary, dispatch anchor, `expiresAt`) already exists, so no schema change is needed. The blocker is only the read-only constraint.
 - **Leg 2 stopped.** Atlas v1.3 and the spec's `files/*` design sources are not in the repo or on any branch. Rendering gate cards without them would mean inventing the gate data.
 - **Inventory.** `command-center.tsx` is the customer's Pax door, and `founder-compliance-ops.tsx` is the only DSAR/compliance UI. Both serve functions outside B1, so neither was ruled on. `routes-founder-intelligence.ts` backs the current inbox and is not a retire-candidate. `founder-ai-observatory.tsx` is keep-and-mark.
 - **Next.**
-  1. Muse/Tom pick a leg-1 option (A recommended: additive card semantics, write controls kept).
+  1. ~~Muse/Tom pick a leg-1 option.~~ **Decided 2026-11-05: Option A.** The slice-1 spec is corrected to the existing founder approval write path; this stop report stands as the package deliverable.
   2. Commit Atlas v1.3 to the repo so leg 2 can render it as recorded.
 
-## 2026-11-03 — Statewide point lookup gated behind the license dossiers — on `claude/statewide-lookup-clearance-gate` (off main `519b62c`, PR open, unmerged)
+## 2026-11-15 — P2-5: skip-trace gate as feature — the FCRA defense file (PR #584)
+
+- **Built.** The FCRA purpose/attestation trail is now readable from the customer's seat: a pure assembler (`server/services/fcraDefenseFile.ts`) projects the org's append-only `purpose_ledger` + `fcra_attestations` rows into a defense file; `GET /api/skip-tracing/defense-file` serves it as JSON or `?format=csv` (org-scoped, newest 1000 entries + truncated flag); the skip-tracing page gains a "Your FCRA defense file" section (attestation status, coverage, 10 most recent entries, honest zero state, CSV download) and one gate-copy sentence pointing to it. Suite: `tests/unit/fcraDefenseFile.test.ts` (9 tests). Landing fix round: the page's four dates now render through `lib/format.ts` (`formatDate`) instead of `toLocaleDateString`, per the date-format gate. No schema change; the route reads only the two trail tables, so the purpose-ledger census owes no registration (DEBT_BASELINE unchanged).
+- **Why.** The trail was already the class-action defense file in substance — every lookup writes its purpose, justification and attestation into the append-only ledger before the vendor call, in the same transaction as the credit debit — but it was write-only from the customer's seat (R-6). Surfacing it makes the gate's protection visible and exportable at the moment a customer needs to prove permissible purpose.
+- **Next.** Nothing owed in this slice; the trail's remaining consumers (support/DSAR exports) read the same assembler when their slices come.
+
+## 2026-11-14 — P1-17: schema-journal sync guard (PR #578, landed in the merge wave)
+
+- **Built.** `lint:schema-journal-sync`, wired into the `check` chain immediately after `lint:schema-migrate-mirror`: `scripts/check-schema-journal-sync.mjs` fails when the drizzle journal and the `scripts/migrate.mjs` mirror drift apart. The legacy desync is frozen in `scripts/ratchets/schema-journal-sync.json` (baseline 224, every frozen entry at or below migration 0252); past that frontier the two sides must pair exactly, and the evaluator also fails if the frozen baseline count disagrees with the measured headline. Suite: `tests/unit/schemaJournalSync.test.ts`.
+- **Why.** Journal/mirror drift was invisible until a migration landed on one side only; the guard makes drift a loud failure in the PR that causes it. Audit notes carried: the paired-deletion blind spot is a disclosed scope limitation (N1), and `freezePoint` is a one-line trust point — flag any future change to it per se (N2).
+- **Next.** P3-1 (schema consolidation, I-7) is unblocked now that the guard is on main.
+
+## 2026-11-10 — PKG-6a: price-figure truth for prose surfaces (detection only)
+
+- **Built.** `tests/unit/publicCopyPrices.test.ts` + `tests/helpers/priceClaimScanner.ts`: scans docs/marketing/**, content/{marketing,emails,outreach,business,blog}/** and the compare/FAQ TSX for dollar figures beside a plan name, diffed against figures derived from `tier-pricing.ts` (annual-equivalent tolerance: whole dollar within $0.50, decimals within $0.01). Register of 23 mismatches + 1 plan-less figure + 10 comment-debt entries + 1 plan-content finding; none fixed here.
+- **Debt to pay (separate PR).** 17× "Pro $41/mo billed annually" in 7 docs/marketing files (Starter's figure); `$20/$49`-era prices in content/business/{acquire-listing,investor-brief}.md and **content/emails/onboarding-sequence.md** (customer-facing); copy.ts "Pro unlocks the full Pax assistant" vs pricing-copy.ts Starter "Full Pax assistant".
+- **Blind spots.** content/business/competitive-teardown.md excluded (competitor tiers share plan names; its AcreOS line "$49/mo for full Pro access" is stale); content/strategy/** and docs/*.md not scanned.
+- **Open.** `publicPricingMatchesCanonical.test.tsx` fails on this VM with or without this change (two React copies via jsdom resolving from ../freebuff-walkdoc), so its clean-pass could not be re-measured here.
+
+## 2026-11-10 — PKG-5c: AI-disclaimer surfaces wired (existing copy only)
+
+- **Changed.** 12 surfaces now mount the existing `RequiredDisclaimer type="ai"` (no copy touched): Pax rail, Pax page, HelpPanel ticket thread, property-analysis chat, DecisionQueue (once per queue, not per card), inbox draft reply, offer generator, deal-detail (price recommendation + negotiation script), deal feed, due-diligence dossier, portfolio, portfolio optimizer. Registry: `shared/governance/aiDisclaimerSurfaces.ts` (present / added with `before` none|partial / covered-by-host / not-advice / founder-only); ratchet + canary: `tests/unit/aiDisclaimerSurfaces.test.ts` (also sweeps client/src for unregistered `/api/ai|pax/` callers).
+- **Counsel flags (flags only).** ToS §7 vs terms.tsx §3 numbering; LQ-03 scope; client "ai" copy is shorter than server `DISCLAIMER_AI`. Listed in the registry.
+- **Open.** `npm run check:tests` not run (OOM on this VM). 16 tests in inboxLeadPopulationUi / paxAskCardIsAnswerable / todaySkeletonsMatchTheirContent fail identically on the clean branch (pre-existing, not investigated).
+
+## 2026-11-10 — PKG-6b: SES suppression path verified; suppression-write failures now fail the webhook
+
+- **Changed.** `suppress()` / `recordSoftBounce()` no longer swallow DB errors; `ingestSesNotification` rethrows; the route calls new `releaseReplay()` (snsVerification.ts) when ingest throws, so SNS's retry of the same MessageId is processed rather than deduped. Successful ingests still dedupe.
+- **Tests.** `sesSuppressionRoute.test.ts` (no DB: 401, retry arc, dedupe, eventType format-gap pin) and `sesSuppressionPath.realdb.test.ts` (real chain + SES mock). The realdb file SKIPPED locally (no Postgres); it has not been run.
+- **Open.** (1) Production event format (`notificationType` vs event-destination `eventType`) is unverifiable from the repo; dual-format acceptance is a design call, not built. (2) A multi-recipient soft-bounce notification that fails midway and is retried re-counts strikes for recipients already written. (3) The SubscriptionConfirmation failure path has the same replay trap and was not touched. (4) Full `tsc` OOM-killed on this VM; not verified here.
+## 2026-11-09 — Subdivision V1, Leg 4: decision desk (decision-loop closure) — on `claude/subdiv-leg4-api`, stacked on PR #462's branch, PR open, unmerged
+
+- **What shipped.** The §6.1 desk: `POST /api/subdivision/decide` records pursue/pass through the decision kit (engine `subdivision_feasibility`, pack `subdivider`, the operator's review date), freezing the latest screen run as derived evidence; `GET /api/subdivision/parcels/:id/desk` is the read model — latest screen run, decisions, pricing locks labelled `ungraded_pricing_act` (§6.2 reconciled in the surface's own words; the lock route is untouched), and the §5.5 entitlement critical path (`shared/subdivision/criticalPath.ts`) measuring elapsed time against the decision run's own stated p50/p90 (ruling 3 — no county figure). The panel mounts on the subdivision tab after the screen section. §6.3 closes by construction: `/api/decisions/due` has no pack filter, and the outcome-loop suite pins a subdivider decision surfacing there.
+- **Measured.** 87 new tests pass locally (critical path 27, decide route 21, outcome loop 6, desk panel 20, desk read route 13); fence suites pass unmodified; ratchets all pass, table-count measured 750 = baseline (no new table, §9.1 held); reachability and date-format lints pass at baseline. `check:app`/`check:tests` and the bundle figure are CI's on this head (both abort under this VM's memory contention; the stack's tree predates the bundle-headroom merge, so Build is expected to read over until the branch is brought current at merge).
+- **Next.** Muse audits; lands after #462 in the cascade (bring-current → CI re-settle → merge → §10 steps 5–7 staging proof). The `vertical.subdivider` notGradeable caveat is NOT removed here — §9.6, Tom's call on the proof.
+## 2026-11-09 — Wholesale §6.2: seller follow-up drafts — on `claude/wholesale-62-drafts-api` (off `claude/wholesale-leg4-disposition` `60fed37e`, PR open, unmerged)
+
+- **Built.** The §6.2 completeness debt on Leg 4: seller-side follow-up DRAFTS on the deal record. `server/services/wholesale/sellerFollowUps.ts` composes the operator's own `offer_templates` row (type `follow_up`) char-for-char with only {{owner_name}} / {{address}} / {{offer_amount}} / {{company_name}} filled from the record — {{offer_amount}} is `deals.offerAmount` only and refuses when absent; {{expiration_date}} and unknown tokens refuse by name; an opted-out or unlinked seller refuses. Drafts persist as `generated_documents` rows (type `seller_follow_up_draft`, status `draft`, review-sealed); a correction is a new draft citing `variables.supersedes`; the list flags drafts stale when a cited fact moves. Routes: preview / create / list under `/api/wholesale/deals/:dealId/seller-follow-ups`. Client: `SellerFollowUpsPanel` in the deal Documents tab after AssignmentPanel — Copy is the only way text leaves it.
+- **Guards in the same PR (refuse-only).** `server/routes-doc-system.ts`: PUT refuses content/name/signers changes on this type, and request-signature + send-for-signature refuse it 422 — without them a draft would be editable after create and enrollable on the signing rail.
+- **Proved.** Bundle measured on the final tree: 9,822 / 9,823 KB (PASS, 1 KB spare); ratchets + reachability all at baseline (table-count 748, no new tables); the no-sends harness's control test passes DB-free (two-layer net: class prototypes incl. `performSend` + module exports, with vacuity assertions — closes the pre-bound `sendEmail` alias blind spot in the Notes V2 harness). Client: 10 lints clean, scoped tsc clean, 56 existing client tests pass, panel smoke test 3/3 (throwaway, deleted).
+- **Gates that only CI can verify.** The 23 realdb tests in `tests/unit/sellerFollowUps.realdb.test.ts` were SKIPPED locally (no test DB on the VM) — CI's schema-building jobs are their first real run; full `check:app`/`check:tests` typechecks likewise. Disclosed for the auditor: the draft's review seal hashes subject + body, so `verifyChainReviewSeal(variables, row.content)` would report broken — its only caller is request-signature, which refuses this type first.
+- **Next.**
+  1. Muse audits; the PR stacks on #477 and lands after it.
+  2. On merge, the wholesale Leg 5 staging walk (§11) remains the vertical's owed proof.
+
+## 2026-11-05 — Notes V2 Leg 2: workout NPV comparison — on `claude/notes-v2-leg2-workout-npv` (off main `4b2044b`, PR open, unmerged)
+## 2026-11-12 — PX-7: browser rung 2 — public search forms + "My county sites" (off main `8c70d3596`)
+
+- **Built.** Pax can run a bounded search on a public county site: new tool `browse_search` (`looks_and_drafts`, pause-safe, offered wherever `browse_web` is). The step language is a closed enum — `open`, `search`, `open_result`, `next_page`, `read` — in `server/services/paxBrowseSearch.ts`; nothing else (click, free typing, script, download, POST) is representable. `search` is judged mechanically: a GET form with one identifiable text/search input; never a password, hidden, textarea or disabled field; a POST form is never re-sent as a GET; a login-only page refuses. Bounds in code: 8 steps, 4 page loads, 15 s per navigation, 60 s per session, one site per session unless every host is on the org's list or one registrable domain.
+- **Every navigation re-passes the full pre-flight** (`preflightBrowseNavigation` in `browserAutomation.ts`: the same gate functions `browseWeb` calls — SSRF patterns, private/DNS, R-14 gate, operator domain policy, robots.txt, PX-1 rate limit), and a redirect's landing URL is re-checked. The browser behind it lets only GET/HEAD out and aborts a main-frame hop off the session's site. A CAPTCHA / bot wall ends the session (`captcha`), receipted "refused", never retried. Every page loaded is receipted like `browse_web` and noted in the turn, so PX-1's `web:<host>` provenance and row cap apply unchanged; the tool creates no records.
+- **"My county sites"** lives in the existing `pax_controls` jsonb (key `mySites`, no table, no migration): strict reader (hostile value → whole column fails closed, empty list), PATCH `/api/pax/controls { mySites }` (full replacement, ≤50, bare hosts only, deduped), a card on `/settings/pax`. Site gate: a listed site (by name/host) or the full address the user gave; an unlisted name/host is refused.
+- **Optional `attach_to`** (lead/property/deal) is verified before the search runs; one timeline row (`tool "browse_search"`, `after = { host, url, query, source: web:<host> }`) is written after, and skipped while Pax is paused.
+- **Not run in this session** (no shell): the driver owes `paxBrowseSearch{Steps,Gate,Tool}`, `paxMySites`, `paxMySitesRoute`, `paxControlsPage`, `paxStanceFailsClosed`, `refusalsArePlainWords`, `paxControlsOffered`, `paxPauseToolGate`, `paxPauseCoverage`, `browseMakeSafe`, `browseLaunchHardening`, the reachability gate (7 TEST-SEAM allowlist entries added for `paxBrowseSearch.ts`) and `npm run check`.
+- **Merge note.** PX-3 adds `limits`/`members` to the same jsonb, reader and routes; this slice only adds the `mySites` key (a one-line `mySites: []` in `PAX_CONTROLS_DEFAULTS`/`CLOSED`, one more entry in the `paxStanceFailsClosed` defaults literal) so the two union at merge.
+- **Left out.** Logged-in sites (PX-10), CAPTCHA solving, any form but the GET search, wiring Pax to `executeAdHocAutomation`.
+
+## 2026-11-10 — Gap slice 7: push revival — on `claude/gap7-push-revival`
+
+- Added `web-push` (`^3.6.7`, lockfile synced) + VAPID vars in `.env.example`; fixed the client subscribe body (was `{subscription}`, route wants `{endpoint,keys}` → 422); mounted the existing hook as a "Push on this device" switch in `notification-preferences.tsx`; `/sw.js` handles `push` + `notificationclick`.
+- Fan-out through one helper (`server/services/orgPushFanout.ts`, org-scoped, never throws): urgent (priority 1) Pax nudges, the 7-day redemption alert (once-per-cert-per-day dedupe), ladder-ready cards (`ensureLadderRung` only). 30/90-day redemption alerts and non-urgent nudges deliberately do not push.
+- Proof (driver-run): orgPushFanout 11/11 + pushFanoutCreationSites 9/9 + pushDispatchSemantics 9/9 + census/budget 22/22; scoped tsc 0 diagnostics in changed files; reachability PASS all 11 (unreachedExports baseline measured DOWN 414 → 413: `sendPushToOrg` gained its first real consumer). Full suite is CI's completing proof.
+- Still open: per-user notification preferences (`globalMute`, per-event Push toggle) are NOT consulted by the org fan-out — a founder decision is owed on whether global mute should silence push.
+
+## 2026-11-10 — PX-2: per-capability rails v1 — on `claude/px2-capability-rails` (stacked on PX-1)
+
+- Rails live INSIDE the existing controls, not as a new stance (founder ruling 2026-11-10 §6.5 Q4): one level per record domain (leads, properties, deals, tasks, follow-ups, plus `account` for the support switch's system fixes) and one for sends. Levels weakest → strongest: watch, draft, ask, act_and_report; sends are capped at ask by type (`PaxSendsRailLevel`) and clamped at read.
+- ONE decision, `decidePaxCall` (`server/services/paxRails.ts`), composes pause ∧ stance ∧ rail for both dispatch switches; a rail only narrows. Old stored rows (no `rails`) and NULL read as today's defaults (record changes act_and_report, sends ask) — no silent change.
+- PATCH `/api/pax/controls` takes `rails` (422 on unknown domain/level or sends above ask); `/settings/pax` renders the rails card from the tool registry. Proof: `tests/unit/paxRailsPopulation.test.ts`.
+- Proof (driver-run): paxRailsPopulation + stance/page suites 85/85, neighbour batch 203/203, census 22/22, scoped tsc clean in changed files (one real TS2322 in the PATCH merge found and fixed in round 1), reachability PASS all 11 at baseline. CI is the completing proof. Still open: whether `draft` should differ from `ask` in the queue (today both park a pending action).
+
+## 2026-11-10 — PX-1: Pax browser make-safe — on `claude/px1-browser-make-safe`
+
+- `browse_web` now writes a Pax receipt (host, URL without query, turn) through `recordPaxEffect` on every lane that can browse; records created in a turn after a browse carry `source: web:<host>` provenance (tagged in due-diligence notes).
+- `create_properties_batch` / `create_lead` refuse web-sourced rows past a small cap (5 per turn) unless every browsed host is on the cleared-source list (env `BROWSE_WEB_CLEARED_SOURCE_HOSTS`, empty by default — fail-closed; the licence gate and dossiers stay authoritative). Falsified locally: disabling the fence turns 6 of the new tests red.
+- `browseWeb` honours robots.txt (the `acreos` group, else `*`) and a per-org/per-host rate limit.
+- Proof (driver-run): browseMakeSafe 17/17 + seven neighbouring suites 159/159 + purpose-ledger census and sweep-budget 22/22; scoped tsc 0 diagnostics in changed files; reachability PASS all 11 at baseline (10 helpers unexported, 9 TEST-SEAM allowlist entries with revocation notes). Full suite is CI's completing proof.
+- Next: PX-2 per-capability rails stacks on this branch.
+
+## 2026-11-10 — PKG-5a/5b: paid conversions by source/campaign (D6), on `claude/pkg5-ads-stripe-api`
+
+- **Built.** `/api/founder/customers` gains an additive `paidBySource` field: distinct paying orgs from the 90-day signup window, grouped by `utm_source` + `utm_campaign` (missing source = `direct`, missing campaign = `null`; nothing dropped). "Paying" mirrors `liveMrrDetail` (status exactly `active`, positive monthly-equivalent price), so trials, free and past_due are not conversions. Server-only; no table, migration or client change. Existing fields and the founder gate are unchanged.
+- **Proved.** `tests/unit/founderCustomersPaidBySource.test.ts`; a mutant that counts trials turns it red.
+- **Docs.** The PKG-5a/5b runbook and creative pack live in the goal files, not this repo.
+- **Next.** The founder page does not render `paidBySource` yet (client change not in this slice); read it from the API until then.
+
+## 2026-11-06 — merge statuses reconciled against git at main `6b8240fa`
+
+- **What changed.** Every merge status stated below was checked against the GitHub API (`merged_at`) and `git merge-base --is-ancestor <merge commit> origin/main`. The stale ones ("PR open", "unmerged", "uncommitted", "nothing merged", "waiting on CI and Muse") now read "PR #N, MERGED <date>", in US Eastern (so #421 is 2026-10-31). Only status wording was edited, plus a Status column on the 2026-10-18 branch table. "Next" and "owed" bullets stay as written, so some still say "Muse audits; the founder merges" about PRs that have since merged: trust the heading.
+- **Every PR branch named in an entry below has merged**, except `claude/buy-and-hold-underwriting` (the held branch; it has no PR). #406 and #411, the Dependabot bumps named in the 2026-10-30 Express 5 entry, were closed unmerged. Refresh 2 (merged main into this branch): #464, #466, #468, #469, #470, #471, #473 and #484 merged since the first pass, and #461, #465, #466, #467, #483 and #485 after that, and all left the open table; the stale statuses on the entries main added (#473, #464, #484, #468, #469, #471) got the same treatment.
+- **Open PRs at this snapshot** (13, excluding S0 itself; base `main` unless noted; none has an entry below yet). Refresh with `gh api "repos/Thmsnrtn/AcreOS/pulls?state=open&per_page=100" --jq '.[]|"\(.number) \(.draft) \(.head.ref) \(.title)"'`.
+
+| PR | Branch | What | Draft? |
+|---|---|---|---|
+| #453 | `claude/b1-slice1-step0` | P2 B1 slice 1: step-0 inventory + stop report (both build legs blocked) | yes |
+| #459 | `claude/e2-slice1-pax-brief` | E2 slice 1 (Pax core): step-0 stop report + leg 2 sectioned morning brief (legs 1/5 stopped, 3/4 held) | no |
+| #462 | `claude/subdivision-legs1-2-screen-yield` | Subdivision V1 Legs 1–2: buildability screen + lot-yield estimate (+1 table, founder-approved) | no |
+| #463 | `claude/notes-v2-leg1-delinquency-ladder` | Notes V2 Leg 1: delinquency ladder (evidence only; default review operator-recorded) | no |
+| #474 | `claude/wholesale-leg1-mao-engine` | Wholesale Leg 1: wholesale_mao engine + decision desk (held at beta pending the journey walk) | no |
+| #475 | `claude/wholesale-leg3-compliance-gate` | Wholesale Leg 3: assignment compliance on every offer path, with recorded acknowledgements | yes |
+| #476 | `claude/wholesale-leg2-buy-box` | Wholesale Leg 2: versioned buy box (one append-only table, approved) + candidate triage | yes |
+| #477 | `claude/wholesale-leg4-disposition` | Wholesale Leg 4: disposition packet (price re-derived at draft time) + outcome record | yes |
+| #478 | `claude/wholesale-leg5-journey` | Wholesale Leg 5: journey walk script + local rehearsal on the integrated L1–L4 stack (bundle decision needed) | yes |
+| #486 | `claude/w2-agent-investor` | W2-AGENT: agent-investor light-up/delete — agency disclosure record lit, two uncalled commission routes deleted, no default rates shown as the org's own | no |
+| #487 | `claude/w1-land-first-offer-cta` | W1.5 Land first-offer CTA on Today | no |
+| #488 | `claude/w4-note-merge-plan-pricing-engine` | W4.11 [DRAFT]: B10 note-model merge proposal + note pricing engine (recording stopped) | yes |
+| #489 | `claude/next-moves-ff-merged` | next-moves: Fix-and-Flip Legs 1–2, #466, #484, #458 merged; §9.3 routing recorded (docs only) | no |
+
+## 2026-11-05 — Subdivision V1, Legs 1–2: buildability screen + lot-yield estimate — on `claude/subdivision-legs1-2-screen-yield` (off main `da74f12`, PR open, unmerged)
+
+- **Step 0.** Verdicts are in `docs/evidence/2026-11-05/subdivision-v1-step0.md`. Four premise contradictions were reported:
+  - the county-timeline seeds were deleted in 0283;
+  - the standalone screen record had no honest store;
+  - the decision vocabulary has no `defer`;
+  - no perc result is stored anywhere.
+
+  Staging row counts are unverified (no staging access).
+- **Rulings** (`founder-decisions-2026-11-05-subdivision.md`): Tom approved +1 table `subdivision_screen_runs` (0304, renumbered from 0301; `table-count` 748 to 749). Muse ruled that `defer` is dropped and that timelines are operator-stated per run.
+- **Built.**
+  - `shared/subdivision/lotYield.ts` (lot-yield v1) and `buildabilityScreen.ts` (buildability-screen v1): seven triggers, three verdicts, and a headline that never says "buildable". The perc-estimate slot is always null.
+  - `POST /api/parcels/:id/screen` (appends a run) and `GET …/screen-runs` (history, plus the newest estimate beside the drawn plans).
+  - The screen panel on the Subdivision tab. The database refuses UPDATE on runs.
+- **Proved.**
+  - New tests: 18 for yield, 15 for the screen, 9 for the routes, 3 for the panel, and 1 real-DB test that runs in CI.
+  - 9 + 4 mutants, all red.
+  - check:app, every lint and the ratchets pass; the 34-file related batch passes; the build passes.
+  - Bundle: 9,775 KB against a 9,823 KB ceiling (+10 KB over main), after #470 trimmed main to 9,765 KB.
+- **Next.**
+  1. Muse audits.
+  2. Leg 3 (#464) merged 2026-11-07 (`0abcce7`).
+  3. Leg 4: the pursue/pass desk.
+  4. Staging proof after the merges.
+## 2026-11-05 — Notes V2 Leg 1: delinquency ladder — on `claude/notes-v2-leg1-delinquency-ladder` (PR #463, retargeted to main after #461 merged as `fd984d8`; open, unmerged)
+
+- **Built.** Stage entries (current / past due under 30 / 30 / 60 / 90+) are recorded by the aging sweep. They go on `note_events` as category `delinquency` (migration 0302 widens the CHECKs only, restates 0301, and adds no table) inside the status transaction.
+  - Default review is an operator act, recorded once and never derived (ruling 1).
+  - Plus the escalation evidence bundle, extend-and-pretend from recorded payments, the note-page panel, and buckets on the notes list.
+- **Proved.**
+  - The real sweep against a real DB hits the boundary days, is idempotent, and records no stage for unknown notes or terminal notes.
+  - The no-sends fence holds at the module boundary, both runtime spies and the static import scan.
+  - The default-review ruling and cross-tenant refusal hold.
+  - Four mutants are caught.
+  - Evidence: `docs/evidence/2026-11-05/notes-v2-leg1-delinquency-ladder.md`.
+- **Found on the way.**
+  - `GET /api/notes/:noteId/delinquency` is the originated book's route, so the ladder lives at `/delinquency-ladder`.
+  - The bundle is the first reader of `respa_outreach_events` (`tablesNoReader` 59 → 58).
+- **Bundle: 9,823 / 9,823 KB with zero headroom** after trimming both panels. The next client change anywhere fails CI until a trim makes room.
+- **Next.**
+  1. Muse audits #461, then this PR.
+  2. Retarget this PR to main after #461 merges; CI's bundle check runs only on PRs into main.
+  3. Staging proof per §10.
+  4. Muse confirms the 1–29 day stage, or folds it into current.
+
+## 2026-11-05 — Notes V2 Leg 2: workout NPV comparison — on `claude/notes-v2-leg2-workout-npv` (off main `4b2044b`, PR #461, MERGED 2026-11-08)
+
+- **Built.** One pure engine (`shared/notes/workoutEngine.ts`, `workout-engine v1`). It compares six paths on one input snapshot:
+  - each path in a fixed order, with line-item cash flows and a sensitivity grid;
+  - no recommendation, rank or score.
+- **Run records.** Runs append to `note_events` as category `analysis`. Migration 0301 widens the CHECKs only; there is no new table.
+  - Every run keeps its full snapshot and the provenance of each input.
+  - The record names the open loss-mit case, and the run writes nothing else.
+- **Surfaces.** Routes `/api/notes/:id/workout-analyses`, and a panel on the note page.
+- **Inputs AcreOS does not hold.** Foreclosure timeline and cost are operator-entered: the repo holds no cited mortgage-foreclosure data. Arrears are operator-stated: AcreOS records no arrears amount.
+- **Proved.**
+  - The golden case matches independent Python Decimal arithmetic to the cent.
+  - Snapshot reproduction holds after the note is edited.
+  - Cross-tenant reads are refused, and the write set is exact.
+  - Four engine/service mutants are caught.
+  - The founder-decisions entry for 2026-11-05 (B1 Option A, Leg 1 ruling, Leg 3 ruling) rides in this PR.
+  - Evidence: `docs/evidence/2026-11-05/notes-v2-leg2-workout-npv.md`.
+- **Gates that only CI can verify.**
+  - `check:tests`: tsc is OOM-killed on an 8 GB container.
+  - The full vitest count: the 2-core container cannot finish the run.
+  - Bundle: 9,816 / 9,823 KB (+18 KB). **7 KB of headroom is left.**
+- **Next.**
+  1. Muse audits; on merge, run the staging proof per §10.
+  2. Leg 1 (ladder; default review is an operator act) must stack on this PR or rebase after it, because both legs redefine the same `note_events` CHECKs.
+  3. Leg 3: the Step 0 census is done. Its schema questions go to Muse/Tom before build (see the report in the session).
+
+## 2026-11-05 — Onboarding bounce fix (gate stale-cache, wizard release, complete ordering) — on `claude/onboarding-bounce-fix` (off main `c8fa715`, PR #473, MERGED 2026-11-07)
+
+- **What shipped on the branch.** Three legs, one PR. Full Step 0 table, mutants and gates: `docs/evidence/2026-11-05/onboarding-bounce.md`.
+  - Leg 1: `OnboardingGate` no longer redirects on a cached `needsOnboarding: true` while a refetch is in flight. It shows `PageLoader` and acts on the settled answer.
+  - Leg 2: `/onboarding-v2` releases an org whose status read settles `completed: true` to `/today` (replace). Step 1 never renders for it. It never releases on cached data or during its own finish/skip.
+  - Leg 3: `POST /complete` flips the completion flag before the sample-data seed. The response contract is unchanged.
+- **Step 0.**
+  - RC-1 reproduced: the pre-fix gate redirects synchronously from the stale value.
+  - RC-2 confirmed at component level.
+  - RC-3 latency not material: seeded vs unseeded median 54 vs 10 ms locally, ~33 extra round-trips, ~200–250 ms projected on staging. Leg 3 was built for durability (a hung or crashed seed left no completion record).
+- **Proved.**
+  - 13 new tests; 7 of them red on pre-fix code. 4 mutants caught.
+  - check exit 0, ratchet 151 = baseline, lint 0, build 0, bundle 9,816 KB of 9,823 (+1 KB vs main on the same machine).
+- **Next.**
+  1. Muse audits the PR; then merge, staging-only deploy.
+  2. Coordinator proof on staging: throttled fresh-user repro, direct loads in both directions, a CJ run with zero bounce signatures. If CJ is red only on harness buckets, report exactly that.
+
+## 2026-11-05 — Subdivision V1, Leg 3: feasibility engine — on `claude/subdivision-leg3-feasibility` (off main `4b2044b`, PR #464, MERGED 2026-11-07)
+
+- **Built.**
+  - `shared/subdivision/feasibility.ts` (subdivision-feasibility v1): refuse per line; carry over the operator-stated timeline, withheld without one; IRR paced by absorption; phases; a sensitivity grid.
+  - Engine `subdivision_feasibility`, the only engine declaring `subdivider`.
+  - Three registered metrics.
+  - `POST /api/scenarios/subdivision-feasibility/sensitivity`.
+  - Evidence: `docs/evidence/2026-11-05/subdivision-v1-leg3.md`.
+- **Proved.**
+  - 21 tests, with the golden case's IRR solved independently.
+  - 7 mutants, all red.
+  - The related batch passes (46 files, 656 tests); the gates pass; the bundle is unchanged.
+- **For Muse.**
+  1. §5.5 is not built, because there is no honest per-gate lead time. Pick (a) operator-stated per-gate leads or (b) elapsed time against the run's end-to-end timeline.
+  2. Leg 4 will be the first production adoption of the decision kit, which sits under the 2026-10-21 COO HOLD. Mounting the desk retires those reachability exemptions.
+
+## 2026-11-07 — E2E: first-value CTA URL check gets the spec's own 15 s budget — `claude/e2e-first-value-cta-url-timeout`, PR #484, MERGED 2026-11-07
+
+- **Why.** `today-first-value-cta.spec.ts` (from #460) failed Mobile navigation smoke on #471 and then on #465, both times on the desktop-1440 variant and all 3 tries. Both PRs are unrelated, and the same code also passed.
+- **Root cause, from the CI trace** (#465 run 42341097494):
+  - The click finished at 274.866 s.
+  - The URL was still `/today` at 274.937 s and was `/notes?action=new` by 279.954 s, about 5.1 s after the click. The default `expect` timeout is 5 s.
+  - In-app `pushState` runs inside a View Transition's update callback (`client/src/lib/view-transitions.ts`), so on a loaded runner the URL lands late.
+- **Change.** `toHaveURL(/\/notes(\?|$)/, { timeout: 15_000 })`, the same budget as the file-picker check that follows it. The assertion is otherwise unchanged. Locally the spec passes 3/3.
+- **Next.** Muse audits it. If ~5 s in-app navigations under load ever show up on real devices, that is a View Transitions perf question, not a test question.
+
+## 2026-11-05 — 1099-NEC output gate — on `claude/nec-1099-qualified-gate` (off main `07de793`, PR #468, MERGED 2026-11-06)
+
+- **Scope.** `POST /api/contractors/1099-nec-batch` now refuses until the NEC threshold is confirmed (founder decision 2026-11-05, `founder-decisions-2026-11-05-nec.md`). The INT generator, its dormant code and the $600 figure are untouched.
+- **Mechanism.** `requireQualified1099Output(form)` — one gate, one flag per form (`QUALIFIED_1099_GATES`). INT keeps `tax.1099int.direction_reviewed`, its message and details byte-identical (default arg, so INT call sites are unchanged). NEC reads `tax.1099nec.threshold_confirmed` and refuses with NEC-specific text (`reason: nec_threshold_unconfirmed`).
+- **Proved.** `nec1099QualifiedOutputGate.test.ts` drives the real route: 422, no org read, no batch query, no PDF, no "generated" log; INT flag does not open NEC and vice versa; fails closed; founder passes. Four mutants caught (gate removed, NEC reading the INT flag, NEC carrying INT text, a route-local divergent flag).
+- **Next.**
+  1. Decide whether the GET preview (contractors "over $600" + `thresholdCents`) should also be gated — flagged in the PR, not done.
+  2. When K13 confirms the figure: set `NEC_THRESHOLD_CENTS`, null `NEC_THRESHOLD_REVIEW_NOTE`, then turn the NEC flag on.
+
+## 2026-11-05 — CJ harness: answer the "How Pax works" dialog before composer assertions — on `claude/cj1-dismiss-ai-disclosure` (off main `c8fa715`, PR #472, MERGED 2026-11-06)
+
+- **Scope.** Harness only. The CJ audit was red three runs running. Decomposing run 42104190391 found 7 composer-topmost failures, the largest single cause. Each had `inViewport: true`. The first-visit AI-disclosure dialog (`AiDisclosureGate`, app shell) sat over /ai, so `elementFromPoint` hit the dialog.
+- **Change.** CJ1 step 6 now clicks "Got it" when the dialog shows, the way a first-time customer would. It waits for the dialog to unmount and the Radix modal layer to release, then runs the topmost check unchanged. If the dialog is absent, the step does nothing. No product code changed and no assertion was loosened.
+- **Out of scope, observed.** Load-timing flakes under the 18-way parallel walk, and the onboarding-bounce defect (its own package).
+- **Proof.**
+  - The workflow dispatch was REFUSED for the session token (HTTP 403, "Resource not accessible by integration"), so no CJ audit run exists on the branch yet. The founder dispatches: `gh workflow run customer-journey-audit.yml --ref claude/cj1-dismiss-ai-disclosure`.
+  - Local probe instead: production build, local PG, `E2E_TEST_AUTH=1`, Chromium, iPhone 12 dark plus desktop 1440 light. It ran step 6's logic on /ai with the seeded customer's consent cleared.
+  - Without dismissal, the composer measured `inViewport: true, topmost: false` (the defect, reproduced). With the step, `topmost: true`, still on /ai. With consent already recorded, the dialog was absent, nothing happened, and the check passed. 6/6.
+  - Not a CJ1 run: the config documents why a local CJ1 cannot pass (no signed-out landing). WebKit was not probed.
+- **Branch proof run 42137097255** (founder-dispatched on `eddc6e2`): CJ1 green on all 12 Chromium projects; red on the 6 WebKit iPhone projects.
+  - No failure snapshot showed the disclosure dialog: the disclosure fix held.
+  - 12 of 18 failed attempts were still composer-topmost. Every one had the iOS "Install AcreOS" sheet (`pwa-install-prompt.tsx`) over the composer. The sheet opens 4s after load, on iOS Safari only.
+  - 5 attempts were navigation-interrupted (onboarding bounce, out of scope). 1 was the "no first-value CTA" timing class (out of scope).
+- **Follow-up commit.** The same step now taps the sheet's X when it is open. The wait is bounded by the sheet's own 4s timer from the /ai load. Local WebKit probe: iPhone 12 and SE reproduce `topmost: false` with the sheet as the hit, and pass with the step. Pixel 5 and desktop Chromium never show the sheet.
+- **Second follow-up (founder-scoped into this PR).** Navigation settle-tolerance.
+  - Steps 3–7 use `gotoSettled()`. On a THROWN interruption only, it waits for the interrupting navigation to land, then re-issues the goto, at most 2 times. The interruption is WebKit "interrupted by another navigation" / "Frame load interrupted", or Chromium `net::ERR_ABORTED`.
+  - A goto that completes is never repeated.
+  - New landed-route assertions after the URL settles: step 4 must land on /onboarding-v2 or /today; steps 5 and 7 on /today, with step 7 also checked after the CTA poll; step 6 on /ai.
+  - So the onboarding bounce now fails by name at step 5 with the URL it reached, instead of surfacing later as a CTA miss.
+  - Local probe, iPhone 12, iPhone SE (WebKit) and Pixel 5 (Chromium), ×4 each: a stray navigation from the previous page kills a raw goto; `gotoSettled` lands /ai; an app bounce after a clean goto is not retried and lands /onboarding-v2. 36/36.
+  - The probe also caught a single re-issue being interrupted again on SE, which is why the helper waits for the interrupting target.
+- **Proof run 42143893610** on `a8da042`: the 12 Chromium projects and iPhone 14 Pro Max dark passed. 5 iPhone projects were red, 18 failed attempts in all.
+  - 0 composer-topmost failures and 0 goto-interruption deaths. 9 interruptions were annotated and recovered from.
+  - 12 attempts timed out at step 4: the install sheet opened over the wizard's "Go to Today" button, and the click waited behind it until the 240s test timeout.
+  - 6 attempts completed every step, then failed the final `pageErrors == []` contract. The errors were WebKit's "<url> due to access control checks" for the app's boot fetches, cancelled by the walk's own full-document `page.goto`. One of the 6 had no re-issued navigation.
+- **Third follow-up.** `page.addLocatorHandler` answers the install sheet whenever it blocks an action anywhere in the walk. The step-6 explicit dismissal stays, because the topmost check reads `elementFromPoint`, which never triggers a locator handler. Local WebKit probe: a click under the sheet hangs without the handler and succeeds with it on iPhone 12 and SE. Chromium never shows the sheet. 12/12.
+- **Proof run 42151652145** on `348b6d3`: every bucket except one was zero, and step 4 was clear. All 13 failed attempts failed only on the page-errors contract: 271 entries, all access-control shaped.
+  - The founder's decomposition of the traces settled it as a harness artefact. All /api/* requests returned 200 on the wire, the rejected instances never appear in the network log, and Chromium had 0 occurrences.
+  - The mechanism is context.route + route.continue({headers}) token injection racing WebKit's access-control check.
+- **Fourth follow-up (founder-directed): a network-corroborated page-error gate.** `tests/e2e-customer-journey/page-error-gate.ts`:
+  - It dismisses an access-control page error ONLY when it is on the walk's own origin AND the same host+path completed 2xx in the same attempt. The gate runs after every step has passed.
+  - Everything else still fails, including cross-origin errors, 4xx/5xx, no response, and unparseable messages.
+  - Dismissed entries become a `page-errors-corroborated` annotation carrying raw strings and statuses. `run-customer-journey-audit.mjs` always prints that section in the run markdown and JSON, even at zero. The timing attachment keeps the raw `pageErrors`.
+- **Proofs.**
+  - `tests/unit/cjPageErrorGate.test.ts`, 10 tests using the raw strings from the run. Three mutants are all caught: bare signature exclusion, dropping the same-origin check, and accepting any status of 200 or more.
+  - Live WebKit control (iPhone 12 and SE) produced REAL WebKit access-control errors through the spec's own listeners. A same-path 2xx was dismissed. Forced 500, revoked-token 401, no response and a genuine cross-origin CORS block all failed the gate.
+  - Chromium never raises the class.
+  - The `blob:` entry (`767f47f1-…`) has no network entry, so it still fails if it recurs.
+- **Unchanged.** Route checks, so the onboarding bounce stays visible.
+- **Next.** Founder dispatches proof run 4. The honesty proof needs a GREEN run whose report shows the class FIRED and was dismissed.
+
+## 2026-11-05 — DEFECT-455-1: last two "Acquisition Radar" lines out of growth email copy — on `claude/defect-455-1-acquisition-radar-copy` (PR #469, MERGED 2026-11-06)
+
+- **Scope.** Copy only. `server/jobs/growthAutomation.ts`: removed the "Acquisition Radar" bullet from win-back touch 2 (`runWinBackEngine`) and from the churn re-engagement email (`runChurnRiskInterventions`). No logic, schedule, recipient or send change. The job has zero recorded sends.
+- **Proved.** `winBackCopyIsHonest.test.ts` now forbids `/acquisition[\s-]*radar/i` across every literal in the job. Red with both lines restored, and red with a hyphenated variant reintroduced in the churn email only.
+- **Other live references (reported, not fixed).**
+  - `server/services/contextProfile.ts` still names Acquisition Radar in `suggestedModules` (wholesaler, auction_hunter) and a quick action linking to `/radar`. Served by the context-profile API; `useContextProfile` has no client consumer found.
+  - `server/services/agentOrchestration.ts` names agent sessions `Acquisition Radar - <county>` — an internal session label, not advertising.
+  - The client changelog entry (2026-02-26) is historical and stays.
+- **Next.**
+  1. Audit the PR; founder merges.
+  2. Check whether the churn email's "Atlas AI — automatically finds deals overnight" holds against what ships.
+  3. Decide whether to clean `contextProfile.ts`.
+
+## 2026-11-05 — Buy-and-hold beta demotion LIFTED (founder decision) — PR #471, MERGED 2026-11-07 (squash `ba92b5e`)
+
+- **Why.** Leg 3's post-merge staging journey passed all 7 steps on the `c8fa715` deploy (`postmerge-458-journey-proof-2026-11-05.md`, COO side), and the founder called the lift.
+- **What changed, in one commit, as the decision file prescribes.**
+  - `PUBLIC_CLAIM_DEMOTIONS.buy_and_hold` removed.
+  - Evidence-ladder entry flipped `surfaced` → `decided`.
+  - The `HELD_PENDING_JOURNEY_PROOF` entry deleted; the register is pinned EMPTY, and the `isHeld` exemption is gone from all three OD-5 assertions.
+  - The landing demotion-count pin went 12 → 11.
+  - An addendum was added to `founder-decisions-2026-11-05-buy-and-hold.md`.
+- **Proved.** Three mutants caught: demotion back (4 red), ladder reverted (3 red), hold re-added (pin red). `npm run check` exits 0.
+- **Next.**
+  1. ~~Muse audits #471.~~ Merged 2026-11-07. Muse is running the post-merge staging proof of the lift.
+  2. The Atlas row is finalised in `docs/evidence/2026-11-03/buy-and-hold-release.md` ("Atlas row — final").
+  3. **Parked:** delete `claude/buy-and-hold-underwriting` (item 5 below) only after Muse confirms the post-merge staging proof (COO direction 2026-11-07).
+  4. **For Muse/Tom — public copy outside the app still says beta or roadmap.** The landing follows `PUBLIC_CLAIM_DEMOTIONS` automatically; these hand-written drafts do not, and none was edited, since public claims are a founder/COO call:
+     - `docs/marketing/linkedin-org-page-setup.md` (lines 8, 43, 66, 146, 196: beta);
+     - `docs/marketing/x-threads/01-six-tabs-one-thread.md:35` (roadmap);
+     - `docs/marketing/x-threads/03-beta-is-on-the-page.md:51`;
+     - `docs/marketing/blog/the-buy-box-defined-six-filters.md:129,140`;
+     - `docs/internal/marketing-os/05-current-state.md:61` (roadmap).
+
+## 2026-11-05 — Fix-and-Flip V1: Leg 1 (#465), PATCH-defaults fix (#466), Leg 2 (stacked on #466) — all MERGED (#466 2026-11-07, #465 and #467 2026-11-08); Legs 3–4 held for Tom
+
+- **Step 0** (`docs/evidence/2026-11-05/fix-and-flip-step0.md`, branch `claude/fix-flip-step0`) stopped the package before build. Muse ruled on 2026-11-05:
+  - evidence rides as scenario assumptions (option a);
+  - a NEW kit desk, with the draft offer untouched;
+  - Leg 2 starts in parallel;
+  - Legs 3–4 and change orders wait on Tom's §9.3 bundle.
+  - Two ruling premises were wrong and are stated in the PRs: there is no `POST /api/flip-decisions` (the live recorder is `POST /api/flip-analyzer/offer`), and accepting a bid wrote nothing to the lines.
+- **#465 Leg 1.**
+  - What it adds: `POST /api/fix-and-flip/decide` through `recordUnderwrittenDecision` (`flip_mao` / `fix_and_flip`). Every input is server-resolved. The evidence (ARV row id + low/mid/high + count, the scope source, each rule's provenance, the hold comparison seen) is frozen as assumptions.
+  - UI: the analyzer's MAO card says "Screen — nothing recorded", and a decision panel sits beside the draft offer.
+  - Proof: 22 mutants caught; full vitest 19,805 passed (the 5 local-only env failures also fail on main); bundle 9,807 KB at first push.
+  - Bundle history: 9,825 KB > the 9,823 KB ceiling after main grew. The ceiling did not move (COO ruling 2026-11-06: down-only). It passed at 9,775 KB once the #470 i18n trim landed.
+- **#466 Fix (live data loss).** Zod 4 `.partial()` keeps defaults, so:
+  - saving a rehab line's "spent" zeroed its budget and committed amounts;
+  - a rehab PATCH reset status to planning;
+  - a draw PATCH reset status to planned.
+
+  `patchSchemaOf` fixes the three FF routes. A population gate lists **8 other routes with the same shape** (rentals ×3, move-inspections, double-close, ccr-templates, tax-researcher, api-v1 leads). They are reported for their lanes and held down-only.
+- **Leg 2 (stacked on #466).**
+  - Three-way variance (not-committed ≠ $0).
+  - Explicit apply-accepted-bid-to-lines act.
+  - Estimate lock after planning, including no return to planning and no category moves.
+  - Fact flags with no threshold; arithmetic bid deltas.
+  - No migration. 21 mutants caught.
+- **Merged.** #466 on 2026-11-07; #465 on 2026-11-08 (`b6e1a612`); #467 on 2026-11-08 (`6b8240fa`).
+  - Main `6b8240fa`: all 18 workflow runs green or intentionally skipped (incl. Security Scanning, Deploy to Staging). JS total measured 9,804 KB on that exact tree (locally; ceiling 9,823).
+  - Post-merge verification of legs 1–5 was done by Muse (COO, 2026-11-08).
+  - A late bring-current commit `c1c50a37` sits on the closed #467 branch. It is tree-identical to main `6b8240fa` and harmless.
+- **Next.**
+  1. **§9.3 routing (Muse → Tom).** Tom must approve any new table or migration.
+     - Pre-named: the change-orders table (§4.2) and the realized-economics columns on `rehabs` (Leg 4).
+     - The pre-named pair is already covered by Muse's mandate yes on the F&F schema bundle (2026-11-07 full-readiness mandate); the live ask is only the not-pre-named items.
+     - Not pre-named: Leg 3's status-transition log and baseline record, plus a holding-spend record if actual holding cost is wanted.
+     - Do not build Legs 3–4 until this routes.
+  2. Leg 5's staging proof for Legs 3–4 waits on them. The authenticated staging journey proof for Legs 1–2 is still owed — folded into the CJ-expansion fix-and-flip walk.
+  3. Product calls reported, not made:
+     - the rehab header budget vs the line estimates (two "budgets");
+     - closing the lock's check-then-write race;
+     - the 1099-NEC generator has no qualified-output gate (tax lane).
+
+## 2026-11-03 — Buy-and-hold release: desk ported + mounted, wiring as links — on `claude/buy-and-hold-release` (off main `f7f2e3f`, PR #458, MERGED 2026-11-05; blocker resolved 2026-11-05 by Option B); the hold was lifted in #471 (see the 2026-11-05 lift entry)
+
+- **What shipped on the branch.**
+  - Ported (not merged — the held branch is 73 behind) the route, the page and the route test; the kit is byte-identical on both.
+  - The four mounts were applied by hand.
+  - Wiring is links only: the parcel page offers "Underwrite as a rental" (buy_and_hold orgs); after an `acquire`, the desk links to `/leases?tab=units&propertyId=…`. Nothing is created or copied.
+  - HOLD pins removed together. `MATURITY_OVERCLAIM_BASELINE` 12 → 11.
+  - `publicClaims.ts` and the evidence ladder are untouched.
+- **Blocker (the reason it was a draft).**
+  - `verticalReadiness.test.ts` measures evidence from source, so the mounted desk makes buy_and_hold `decided`.
+  - Three main assertions then REQUIRE lifting the beta demotion and flipping the ladder in the same commit. The package forbids both until the staging journey.
+  - Options A (lift now) / B (dated exemption until the Atlas row; recommended) / C (re-hold) are in `docs/evidence/2026-11-03/buy-and-hold-release.md`.
+  - **Resolved 2026-11-05: Option B** (`founder-decisions-2026-11-05-buy-and-hold.md`). The register `HELD_PENDING_JOURNEY_PROOF` holds buy_and_hold at `beta` until 2026-12-31 at the latest; 6 mutants caught.
+- **Proved.** The evidence file has the full Step 0 table, gates, mutants and audit:
+  - real-DB route test (one scenario + one decision citing it, preview ≡ record, ownership guard writes nothing, cross-tenant 404 writes nothing, three declared assumptions, freeze integrity);
+  - wiring test;
+  - 10 mutants caught;
+  - check/lint/build/bundle green: 9,814 KB of 9,823;
+  - full vitest: 3 red = the blocker, plus 5 that fail identically on main here.
+- **Next.**
+  1. ~~Decide A/B/C~~ — B applied. The lift commit removes the demotion, flips the ladder and deletes the register entry together.
+  2. Muse audits; merge deploys staging only.
+  3. Leg 3 on staging: skip sample data; review "In 2 weeks", so the outcome leg completes ≥ 14 days later as a dated open leg.
+  4. The ladder flips only on the completed journey.
+  5. Founder: delete `claude/buy-and-hold-underwriting` after the staging proof.
+
+## 2026-11-03 — G8 containment fixes — on `claude/g8-containment-fixes` (off main `f7f2e3f`, PR #455, MERGED 2026-11-05)
+
+- **Scope.** Two items from the G8 containment verification. Both reproduced on `f7f2e3f`.
+- **(1) `/investor-network` render layer.** `App.tsx` rendered `InvestorDirectoryPage` through a bare `ProtectedRoute`, so the frozen route's entry in `FROZEN_ROUTES` was never consulted. A signed-in user with the direct URL got the directory UI; the APIs already 404'd. It now renders through `FlaggedRoute`, the same wrapper as `/marketplace` and `/capital-markets`. The existing test was green over the defect because it asserted list membership, not the wrapper.
+- **(2) Win-back touch-2 copy.** `server/jobs/growthAutomation.ts` advertised Marketplace (FREEZE), Satellite imagery (Vision AI, KILL 2026-08-01) and Voice AI (KILL 2026-08-01). The three lines are removed. One replacement was added: Offline field maps, which the Map door renders today (`maps.tsx` → `OfflineAreasPanel`). Schedule, recipients and sending logic are unchanged.
+- **Proved.** `investorNetworkIsAMarketplace.test.ts` now asserts that every frozen route App.tsx registers parses as `flagged`. The new `winBackCopyIsHonest.test.ts` parses every string and template literal in the job and forbids frozen/killed surface names. Both go red with the fixes reverted.
+- **Next.**
+  1. Out of scope, flagged for later: touch 2 still says "Acquisition Radar". `/radar` is a redirect to `/deals/discover` (`AcquisitionRadarPage` archived 2026-06-01), so whether that claim holds needs a check.
+
+## 2026-11-03 — G12 public-copy truth fixes (list-pull, stale Pro price) — on `claude/public-copy-truth-fixes` (off main `f7f2e3f`, PR #454, MERGED 2026-11-05)
+
+- **Scope.** Public marketing/comparison copy only. No server code, in-app surfaces, legal docs or pricing changes.
+- **List-pull (5 live strings removed).** Both /compare matrix notes, the shared /compare intro ("pull county data, mail the right owners"), every /learn/county page, and the /tools/calculator CTA.
+  - Evidence that nothing pulls a list: no list-builder route; `countyAssessorIngestJob` has no caller; `fetchTaxDelinquentList` is a stub.
+  - Replacement copy says only what code proves: the capped free tier (`TIER_LIMITS.free`) and CSV import (`POST /api/leads/import`).
+- **The "$41 Pro" price.** No rendered public surface showed it; all three render from `TIER_PRICES_CENTS`.
+  - The stale price lived in the CI claim record (`audit-public-claims.ts`), whose hand-written source agreed with it. The record now reads $99/$990, and the source is derived from the registry.
+  - `$41` still renders correctly as **Starter** annual (round($490/12)).
+- **Sept-2025 withdrawn claim: not found.** No claim record is dated 2025-09. The records hold 2026-09-01 and 2026-09-29 withdrawals; none of their phrases is on a public surface, and 2026-09-29 is the list-pull withdrawal fixed above.
+- **Gates.**
+  - `landingClaimsNoListPulling` now reads compare, learn, tools, pricing, the routed public pages and llms.txt. It also learned the "pull county data" shape.
+  - New `publicPricingMatchesCanonical.test.tsx` renders landing Pricing and /pricing (both cadences), the JSON-LD and the Save-% badges against the decided tiers.
+  - 14 mutants caught.
+- **Not fixed (out of scope; for the founder).**
+  - `docs/marketing/*` drafts (blog, outreach emails, LinkedIn page copy) still say "Pro $41/mo billed annually". They are not served, but the LinkedIn text may be live on LinkedIn.
+  - `acreos-landing/` (a localhost-only prototype) still says "first list pulls overnight" and "90 seconds".
+  - Stale price comments: `tier-pricing.ts` header ($20/$49/$79), `landing/Pricing.tsx:10`, and `pricing.tsx:159`.
+  - Rounding: /pricing shows Pro annual as $83/mo against a $990 bill ($82.50).
+- **Next.** Independent audit of the PR, then the founder merges. Decide whether to correct the docs/marketing drafts and the LinkedIn page.
+
+## 2026-11-03 — First-party parcel ingest (the Regrid exit ramp), Wave A pilot WI — on `claude/first-party-ingest-wave-a` (off main `f7f2e3f`, PR #457, MERGED 2026-11-05)
+
+- **Scope as dispatched.** Wave A only, WI first. AR excluded. The #452 gate is untouched: WI stays `gated`, `CLEARED_FOR_LOOKUP` stays `[]`, and `parcel.ts` is unchanged.
+- **Step 0.** Verdicts are in `docs/evidence/2026-11-03/first-party-ingest-step0-and-wi-pilot.md`.
+  - D1/D2 machinery has largely landed: the ETL template, releases, APID/lineage, the purpose ledger, the poller code and the honesty contract.
+  - Confidence is high/medium/low, not 0–1, and has no serving floor.
+  - Parcel lookup is not a ledgered surface.
+  - No staging access this session: no Fly token, and Actions paths are refused. The bucket and staging tables are **unverified**, so the build is **dry-run only**.
+  - The design-authority docs and dossier packs are not in the repo.
+- **Contradictions (legs stopped).**
+  - CT: the same item now serves the 2026 collection (1,320,686 vs the pack's 1,282,833 for 2025).
+  - MA: the pack's service URL is dead (MassGIS moved it 2026-04-02), and no publisher statewide total exists.
+  - Serving hookup: no store exists for a cleared statewide leg to answer from. Statewide builds write only bucket artifacts, the owned store is served ungated, and a new table needs a founder `table-count` bump. **Founder decision needed.**
+  - DE matches its pack and is next.
+- **Built.**
+  - Pre-fetch ingest admission (`ingestAdmission` / `statewideIngestAdmission` → `IngestRefusedError` in `buildCounty`).
+  - The re-verification radar (`reverifyBy`, `effectiveDossier`, applied on every registry read).
+  - `can_mail` decoupled from internal use.
+  - The WI dossier, from the V12 schema documentation re-read live.
+  - WI `NOT AVAILABLE` stored as published, with a `suppressedUpstream` flag.
+  - `reconcileCountyBuild`.
+  - `scripts/land-data/statewide-dry-run.ts`.
+- **Proved (live WI layer, dry run).**
+  - Pepin: 9,693 counted, 9,693 stored, reconciled.
+  - Kenosha: 68,499 counted, 68,499 stored, reconciled, with 64,144 "NOT AVAILABLE" stored and flagged. That equals the independent live count.
+  - Kenosha peak RSS was **442 MB, over the 400 MB ceiling** (measured under tsx). Measure the large counties on the worker before scheduling.
+  - 34 new tests; 8 mutants, all red. An independent audit's should-fixes are applied: one instant per run, a re-verify date is required, the job-level refusal is tested, and the population pins are in place.
+  - **Radar is tighten-on-date only.** `reverifyTriggers` (the V13 release, a terms change) is recorded but not yet wired to the poller.
+  - WI artifacts carry real owner names (internal use). Serving them waits on the §5 ledger; a parquet-reader pin holds that.
+- **Next.**
+  1. Muse audits; the founder merges (staging only).
+  2. Founder: the bucket probe (staging access, or run it), and the serving-store decision (a new table vs. gating the owned-store readers).
+  3. The post-merge §9 staging proof legs that do not need the bucket: live refusal (FL), gate-unchanged at a WI point.
+  4. The DE adapter (geometry-only).
+  5. Update the CT and MA packs, then build them.
+  6. A WI golden county (§3.8) before any WI promotion.
+
+## 2026-11-03 — P0 front-door fixes (D11) — on `claude/p0-front-door-fixes` (off main `f7f2e3f`, PR #460, MERGED 2026-11-05)
+
+- **Step 0** ran on a staging-shaped local build (no staging token in-session) with fresh tenants walked through onboarding (no data). Record: `docs/evidence/2026-11-03/p0-front-door/README.md`.
+- **Fix 1 (built).** The Pax composer was below the fold on 12/12 runs (top at 1,758 / 1,622 / 1,316px on phone / tablet / desktop) while `isVisible()` passed. It now portals into a sticky dock and sits on the first screen at 16/16 viewport × theme combinations, iPhone SE through QHD. PageShell gained an opt-in `stickyToViewport`; only Pax uses it. Placeholder pinned.
+- **Fix 2 (partial).** "Import your first tape" is built for a fresh note investor and opens the note-tape import. A `/notes?action=new` bug was found and fixed: the import opened closed on phones after any in-app link, because the page mounts twice across the transition layers. **"Add your first watch" is stopped**: the "watch" referent is unpinned (flagged market watchlist with email alerts vs. import-only tax county watches). Land investors get no pinned CTA from this package.
+- **Fix 3 (re-proof only).** 0 "Transition was skipped" page errors in 12 runs; reduced motion is respected.
+- **Finding (not fixed, stop condition).** The final onboarding step's "Go to Today instead" bounces a fresh user back to wizard step 1. The cause is a non-awaited `needs-onboarding` invalidation before `navigate` plus a stale `OnboardingGate` cache. This is also the live double navigation beneath the silenced transition skip. It is a one-line fix and the strongest next package.
+- **Next.**
+  1. Muse audits the PR; the founder merges, which deploys staging only.
+  2. Staging proof per the package's §1–5, plus the CJ run id + image for the Atlas row.
+  3. Package the onboarding bounce fix.
+  4. Decide what "watch" means for the second pinned CTA, and which personas get each form.
+
+## 2026-11-03 — Legal-run build findings, unblocked legs — on `claude/legal-run-build-findings-2026-11` (off main `f7f2e3f`, one PR, #456, MERGED 2026-11-05)
+
+- **Shipped (per-leg commits).**
+  - **Leg 1:** the FCRA register citation spans (a)(2)/(a)(3)(A)/(a)(3)(F), and the umbrella comments are aligned. This is hygiene, not a mis-cite fix.
+  - **Leg 4:** the benchmarks endpoint enforces its stated 10-transaction minimum.
+  - **Leg 6:** legal holds now stop org erasure and the nightly purge (fail closed). `api_telemetry_samples` has a single retention owner: the rollup, whose hourly-vs-5-minute schedule bug is fixed and which now lives in its own file. Org erasure deletes the S3 bytes under `org/<id>/`.
+  - **Leg 7:** the vendor inventory is retired as evidence (every DPA is UNKNOWN), and the four contradicted retention-policy claims are corrected.
+  - **Leg 5:** disposition only; 0 of the 42 Tier A surfaces are wired, because every one needs a proposed taxonomy code.
+  - **Leg 2:** only the read-only export-completeness inventory.
+- **Stopped.**
+  - **Leg 3:** four contradictions at step 0, listed in the PR.
+    - dossiers are code, not database rows;
+    - no destination is specified for the radar's tasks;
+    - none of the four serve points carries statewide data today;
+    - the 3.4 internal-doc rejection necessarily un-seeds NY, which is a founder call.
+  - **Leg 8:** not touched (blocker-only by design).
+- **New findings for Tom.** Two deletion paths ignore legal holds and are now named in the policy's §6 table: `POST /api/clear-demo-data` → `clearOrganizationRecords()`, and `server/jobs/archival.ts` (off by default). Neither was in the package.
+- **Proved.**
+  - The real-Postgres test `retentionRespectsLegalHolds.realdb.test.ts` fails on the old tree.
+  - Unit mutants for every new gate are red.
+  - Full vitest: 4 failures. 3 are date/timezone and fail identically on main; the 4th (the reachability gate) is fixed in this branch.
+  - Gates run alone: `check:app`, the 33 lints and `build` are all exit 0. `check:tests` could not run in this 8 GB container (tsc was killed, exit 137), so CI is the verdict.
+- **Not proved.** The staging proofs for Legs 4 and 6 (no staging access), the per-leg auditor verdicts and CI.
+- **Next.**
+  1. Muse audits; the founder merges.
+  2. Run the staging proofs for Legs 4 and 6.
+  3. Decide NY's seed (Leg 3.4) and state where the radar's tasks go (3.3).
+  4. Wire hold checks into clear-demo-data and archival.
+
+## 2026-11-03 — E2 slice 1 (Pax core): step 0 stopped three legs; leg 2, the morning brief, built as an extend — on `claude/e2-slice1-pax-brief` (PR #459, open)
+
+- **Step 0 contradicted the spec's "missing" checklist.**
+  - **Memory exists:** `pax_memory`, with a panel and silent model writes.
+  - **A brief exists:** `MorningBrief` / `composeBrief`.
+  - **`routes-pax-controls.ts` is the rails, stance and stand-down home:** stances tied to founder rulings, an org-wide Pause with a coverage ratchet, and receipts.
+  - The full rulings table and the conflicts are in `docs/evidence/2026-11-03/e2-slice1-pax-brief.md`.
+- **Leg 1 (memory): STOPPED.** "Pax never writes memory silently" contradicts `remember_fact`, `save_user_memory` and `paxMemoryTriggers`. A new table would be a parallel implementation. Needs a decision: make `pax_memory` the business memory and route model writes through proposals, or keep them separate and say why.
+- **Leg 5 (presets, rails, ledger, stand-down): STOPPED** on the spec's own stop condition.
+  - The default "Prepare-only" preset conflicts with the live default stance `ask_before_sending`, under which chat record writes run with no tap.
+  - Stand-down vs Pause: the Pause is time-limited and doesn't stop drafts.
+  - Trust ledger vs receipts: pause and controls events are already receipted.
+- **Legs 3 + 4 (packets, pane): HELD.** The packet lifecycle writes to the §5 ledger, and the only defined producers are legs 1 and 5. Built now, they would be unwired.
+- **Leg 2 (brief): built.**
+  - Three deterministic sections from real rows, with provenance, under the unchanged headline.
+  - Unreadable inputs are shown as unreadable, never as zero.
+  - Dismiss, restore, archive and reopen, through `routes-today-briefs.ts`, which is mounted without `todayGuard`.
+  - `pax_morning_briefs`: migration 0303 (renumbered from 0301; #461 holds 0301), table-count 749, **approved 2026-11-07 under Tom's full-readiness mandate** (Muse, PR #459 audit).
+  - The position on /today is unchanged, so P0's first-value CTA is not displaced.
+- **Proved.** A realdb suite through the mounted routers, a pure composer suite with send, kernel-write and model-name sweeps, and 15 of 15 mutants red. An independent audit found 8 issues; all are fixed or flagged (see the evidence file). The gates are in the PR body.
+- **Next.**
+  1. Muse audits and merges (the +1 table is approved under the mandate, 2026-11-07).
+  2. The leg-1 and leg-5 decisions (owner: Tom or Muse). Then legs 3 and 4 can be built on the decided ledger.
+  3. After merge: staging proof of the brief (it renders from staging state; dismiss, archive and reopen; cross-org 404), recorded in `docs/evidence/`. That becomes the brief's Atlas row.
+  4. When P0 lands, rebase over it.
+
+## 2026-11-03 — Statewide point lookup gated behind the license dossiers — on `claude/statewide-lookup-clearance-gate` (off main `519b62c`, PR #452, MERGED 2026-11-03)
 
 - **Founder decision (2026-11-03).** A seeded statewide source may serve point-lookup results ONLY when its register state is cleared for lookup. It is recorded in `founder-decisions-2026-11-03-lookup-gate.md`. It closes the LQ-13/LQ-14 finding: nine statewide rows answered live lookups, owner names included, ahead of Regrid, with no gate.
 - **Step 0 (verified against the tree).** The finding reproduced. On the platform key the order is cache → county_gis → Regrid. The function returned `outFields:*` (owner names in 7 of 9 states), and its only check was `blockedOutboundSource`. Two additions to the finding:
@@ -37,7 +545,7 @@ what shipped, what it measured, and the top next moves. Newest first.
   2. Clear states one at a time as Option B lookup determinations land (the PR body lists the exact code change).
   3. Still open from register §8.5: C-3 (whether callers persist lookup results downstream) and C-4 (whether deployed `county_gis_endpoints` rows match the seed file). The gate keys on the row's `state` and `county="*"`, so extra DB rows are gated too.
 
-## 2026-11-03 — Fix B: server auth reads @clerk/express 2.x's callable `req.auth` — on `claude/fix-b-clerk-auth-v2` (off main `29a1755`, PR open, unmerged)
+## 2026-11-03 — Fix B: server auth reads @clerk/express 2.x's callable `req.auth` — on `claude/fix-b-clerk-auth-v2` (off main `29a1755`, PR #449, MERGED 2026-11-03)
 
 - **Change.** `getClerkAuth(req)` invokes the callable `req.auth` and normalizes `userId` / `sessionId` / `factorVerificationAge`. All reads go through it: the 6 direct reads, the MFA cast, the 21 existing call sites (unchanged), and **2 cast-form reads the census missed** (`requirePaxDisclosure`, `routes-pax-disclosure`). The E2E bypass installs the callable. The JWT fallback block is untouched.
 - **Production effects once deployed** (prod still runs on the fallback until the founder dispatches):
@@ -59,7 +567,7 @@ what shipped, what it measured, and the top next moves. Newest first.
   1. Muse audits; the founder merges, which deploys staging only.
   2. Staging proof per Rollout §3: Google sign-in → `/today` stays after a hard reload; `/api/auth/user` returns 200; sign out and back in; two helper-consuming surfaces return 200. Record it in `docs/evidence/`.
   3. The prod deploy is a separate founder dispatch.
-## 2026-11-03 — Acquired-note deletion guard (soft-delete package, reduced) — on `claude/acquired-notes-delete-guard` (unmerged)
+## 2026-11-03 — Acquired-note deletion guard (soft-delete package, reduced) — on `claude/acquired-notes-delete-guard` (PR #450, MERGED 2026-11-03)
 
 - **Decisions.** Tom chose soft-delete for acquired notes. The delete-path sweep then found no product path that deletes one, so per the working-session answer this ships only a guard: no migration (the census stays unchanged), no service, no route. Both decisions are in `founder-decisions-2026-11-03-notes.md`.
 - **Sweep.**
@@ -74,7 +582,7 @@ what shipped, what it measured, and the top next moves. Newest first.
   - 11 mutants, all red.
 - **Next.** Muse audits. When an acquired-note delete UI or route is wanted, build it as the soft delete Tom chose: `deleted_at` (migration 0301), read exclusion at the org-scoping layer, and restore. The guard fails any hard version first. Open question for Tom: should "acquired notes are soft-deleted" join the CLAUDE.md DO-NOT-DO list and `constitution.ts` as a standing rule?
 
-## 2026-11-03 — Per-channel consent grant rows — on `claude/consent-per-channel-grants` (off main `29a1755`, unmerged)
+## 2026-11-03 — Per-channel consent grant rows — on `claude/consent-per-channel-grants` (off main `29a1755`, PR #451, MERGED 2026-11-03)
 
 - **Decision implemented.** Founder decision 2026-10-29 (G8 §B1), now recorded in `founder-decisions-2026-10-29-consent.md`. Consent grants are written as one `lead_consent_events` row per granted channel. The decision changes how grants are recorded, not who may be contacted.
 - **Writer sweep.** Before this change there were three bundled grant writers, all writing one row claiming sms + email + phone + direct_mail:
@@ -94,7 +602,7 @@ what shipped, what it measured, and the top next moves. Newest first.
 - **Held, needs a decision (not changed — it would move the AI-voice gate).** The consent PATCH writes a fresh grant row on every call, including a re-assertion on an already-consented lead, using its own source mapping rather than the lead row's. Dedupe or source read-back would let an older written AI-voice grant become "newest" again and flip that gate.
 - **Next.** Muse audits. Then decide the PATCH re-assertion question above, and whether STOP should keep revoking every channel (open since 2026-10-20).
 
-## 2026-11-02 — G5 upgrade-path proof workflow — on `claude/serene-cori-0u9h8n` (PR #438, unmerged)
+## 2026-11-02 — G5 upgrade-path proof workflow — on `claude/serene-cori-0u9h8n` (PR #438, MERGED 2026-11-03)
 
 - **Built.** `.github/workflows/g5-proof.yml`: `workflow_dispatch` only, input `base_ref`. It builds `base_ref` with that ref's own `db:build-from-repo`, then upgrades it with the current `migrate.mjs`. It runs `--ddl-only` (the staging entry) and then the release_command, then `--dry-run`. It fresh-builds the current ref into a second database, diffs upgraded against fresh (census read plus normalized `pg_dump --schema-only`), and runs the real-DB suites on the upgraded database. No change to migrate.mjs, the schema or app code.
 - **Proved.** Run 41401168690, base `58d1a9b7` → current `833f88f2` (main `b539f15` plus the workflow). Base, upgraded and fresh each have 752 tables. Both upgraded-vs-fresh diffs are EMPTY. 7 `tests/db` scripts and 199/199 real-DB vitest tests (41 files) passed on the upgraded database. Evidence: `docs/evidence/2026-11-02/g5-upgrade-path-proof.md`.
@@ -108,7 +616,7 @@ what shipped, what it measured, and the top next moves. Newest first.
 - **Gate.** `tests/unit/clerkProxyFapiOrigin.test.ts` asserts the URL actually fetched under each env. Mutants: emu default restored -> 4 failed; env override ignored -> 1 failed.
 - **No staging verification record** for this change exists in `docs/evidence/` (the 2026-10-30 `clerk-proxy-gates.log` is the x-forwarded-host fix). No Clerk or Fly config was changed.
 - **Next.** Merge, then deploy; prod presents the registered proxy URL, so `https://acreos.io/__clerk/v1/environment` should answer 200. The ops-watch `sign_in` probe will show it.
-## 2026-11-02 — V-Tax-1 T4b audit fixes (#425, audited NOT YET MERGEABLE at `8d71515`) — rebased onto main `6defa32a`
+## 2026-11-02 — V-Tax-1 T4b audit fixes (#425, audited NOT YET MERGEABLE at `8d71515`; since MERGED 2026-11-03) — rebased onto main `6defa32a`
 
 - **B3, rebase after T4a.** Done. T4b's two commits now sit on main `6defa32a`, with the same 29 files as before. The route-file conflicts were all #432's `routeParam` lines next to T4b's gate, and both are kept. The founder-decisions conflict was two "§3"s: main's T3a decision stays §3, and T4b's becomes §4, with its references updated.
 - **B1, the T2b PATCH-status bypass.** Closed by the rebase. The refusal at `routes-tax-certificates.ts` (a PATCH to `deed_obtained`/`expired_to_deed` while redeemable returns 422) comes from main's T2b squash `a5ba7a1` (#421). `taxClock.realdb` passes 10/10, and with the refusal removed its PATCH case goes red.
@@ -146,7 +654,7 @@ what shipped, what it measured, and the top next moves. Newest first.
   - No offer calculator reads the tax cost yet. It is shown on the property, not wired into `calculateBlindOffer` or `POST /api/offers`.
   - There is no single document store: the canon marks documents "conflated". Tax certificates have no document upload; quiet-title steps hold one S3 key.
   - `properties` has no APID column. The exit matches by parcel ref, as lead conversion does.
-- **V-Tax-1 PR stack, all open.** #418 → #419 → #420 → #421 → #422 → #423 → #424 → T4b. Each retargets to main as the one before merges.
+- **V-Tax-1 PR stack, all MERGED.** #418 (2026-10-29) → #419 (2026-10-29) → #420 (2026-10-29) → #421 (2026-10-31) → #422 (2026-11-01) → #423 (2026-11-02) → #424 (2026-11-02) → T4b = #425 (2026-11-03). Each retargets to main as the one before merges.
 - **Escalations still open.**
   1. `preForeclosureNoticeMonths: 1` is a national default, used for 45 states. It needs the founder's call.
   2. TX flat-first-period stacking (25% plus 50%) is a legal reading.
@@ -162,7 +670,7 @@ what shipped, what it measured, and the top next moves. Newest first.
 - **Not done:** the staging demonstration and the k6 burst re-run of the four limiters (no staging access or `k6` here). Gates log: `docs/evidence/2026-10-30/g10-spend-guard-fix-gates.md`.
 - **Next:** Muse audit; staging demonstration and burst re-run once the branch is on staging; Redis-backed cross-instance bound.
 
-## 2026-10-29 — V-Tax-1 T4a audit fix (#424, audited NOT YET MERGEABLE at `6fcbbe21`)
+## 2026-10-29 — V-Tax-1 T4a audit fix (#424, audited NOT YET MERGEABLE at `6fcbbe21`; since MERGED 2026-11-02)
 
 - **Fix:** `buildLotRecord` read no county watch, so it always reported the redemption period "not stated on this county's watch". That was a false negative on the lot record, contradicting the watch panel beside it.
   - It now reads the org's own watch for the lot's state and county, matched case-insensitively. It uses the same `terms.redemptionPeriodMonths` read as `buildWatchTriage`, and passes `{ months, source }` to `triageLot`.
@@ -285,7 +793,7 @@ what shipped, what it measured, and the top next moves. Newest first.
 - **Evidence:** `docs/evidence/2026-10-30/t2b-bundle-trim.log`.
 - **Next:** Muse re-audits #421. Then T3a (#422), T3b (#423), T4a (#424, already accepted) and T4b (#425) each take main as the PR below them lands. The prod sign-in fix (Clerk proxy) is on its own branch.
 
-## 2026-10-29 — V-Tax-1 T2b audit fix batch (#421, audited NOT YET MERGEABLE at `86d77e26`)
+## 2026-10-29 — V-Tax-1 T2b audit fix batch (#421, audited NOT YET MERGEABLE at `86d77e26`; since MERGED 2026-10-31)
 
 - **Fix 1, the quiet-title gate bypass.** Every route that could lift the lock now checks the county's deadline, not the status alone:
   - the case-open gate checks the date whatever the status;
@@ -543,7 +1051,7 @@ what shipped, what it measured, and the top next moves. Newest first.
 - **Proof.** A local shim reporting "17" that sends `SET transaction_timeout`: the old scripts reproduce CI's exact error; the new ones resolve 16's tools and pass. The full `build-schema` run passes 10/10 with the shim on PATH. `offProviderBackupIsProvenInCi.test.ts` now pins the resolved call, and its credential check reads the `$PG_DUMP`/`$PG_RESTORE` calls. A bare-`pg_restore` mutant turns it red.
 - **Follow-up, not changed.** `server/jobs/dbBackup.ts` (the production backup job) still runs a bare `pg_dump`. It has the same hazard if the Fly image's client ever moves past the database's major version. It is a production path, so it is flagged here rather than changed in a CI fix.
 
-## 2026-10-26 — D2 consolidated audit fix list (Tom decided every open item); same branch, nothing merged
+## 2026-10-26 — D2 consolidated audit fix list (Tom decided every open item); same branch, PR #412, MERGED 2026-10-27
 
 ### What shipped
 - **Org erasure deletes the text-keyed tenant tables** (Tom: delete, not retain). `deleteOrganization` now compares each tenant key in its own type (integer key → number, text key → its decimal string). It refuses to start when a key has a type it cannot match. Only an FK violation (23503) is retried; any other DELETE error throws `OrgErasureError` BEFORE the org row is deleted, and so does a failed `financial_ledger` detach. `onboarding_funnel_metrics` and `pax_user_context` rows are now erased. Proven on a database built from the repo (`orgErasureTextKeyedTables.realdb.test.ts`); the old integer comparison turns it red. Retention (1A) unchanged and re-verified: `financial_ledger` is detached, `purpose_ledger` is kept.
@@ -580,7 +1088,7 @@ what shipped, what it measured, and the top next moves. Newest first.
 - D2a TN-47000 key reconcile (read-only count first).
 - Other `§1681b(a)(3)(F)` mentions outside `fcraAttestation.ts` (`ai/tools.ts`, `routes-leads.ts`, `statuteRegister.ts`, …) were left as they are; only the cited line was in scope.
 
-## 2026-10-25 — D2 pre-merge fix list (Tom approved seven decisions via Muse); same branch, nothing merged
+## 2026-10-25 — D2 pre-merge fix list (Tom approved seven decisions via Muse); same branch, PR #412, MERGED 2026-10-27
 
 ### What shipped (follow-up commits on `claude/d2-bulk-wave1-identity-trust`, no history rewritten)
 - **Org erasure (merge blocker).** `purpose_ledger` keeps no FK to `organizations` and sits in `RETAINED_TABLES` (Art. 17(3)(b)). `deleteOrganization()` now finishes for an org with ledger rows. Proven against a real DB built from the repo, differentially against a ledger-free control org; re-adding the FK turns it red.
@@ -602,7 +1110,7 @@ what shipped, what it measured, and the top next moves. Newest first.
 - A national Census county-FIPS reference (lineage is TN-only until then).
 - D2b §4 served-answer stamping: the `served_release_id` column exists, but nothing writes it.
 
-## 2026-10-24 — Package D2, delivered per workstream on branch `claude/d2-bulk-wave1-identity-trust` (Muse audits each; nothing merged from this lane)
+## 2026-10-24 — Package D2, delivered per workstream on branch `claude/d2-bulk-wave1-identity-trust` (Muse audits each; PR #412, MERGED 2026-10-27)
 
 Worked as a fleet: one worktree agent per workstream (D2a–D2h) plus two spec tracks, file-disjoint, with every shared file (migrations, migrate.mjs, schema, etlHandlers, registry, ratchets, next-moves) changed only by the integrator. Each lane's claims were re-run centrally; reachability was fixed per landing, never by raising a baseline.
 
@@ -666,19 +1174,22 @@ Worked as a fleet: one worktree agent per workstream (D2a–D2h) plus two spec t
 #377 (transfer tax from statute), #391 (ops/ledger/kill-switch routes before
 the /api catch-all).
 
-### Refreshed onto main, waiting on CI and Muse (do NOT merge from this lane)
+### Refreshed onto main, MERGED 2026-10-22 to 2026-10-24 (do NOT merge from this lane)
 - **#395 Package 5, refund posting** — head 8d3d8ed0, 17/17 green. #394's
   restructure merged textually clean but put the chart-of-accounts seed
   OUTSIDE `if (provisioned.created)`; moved inside, after the `!isFounder`
   block (founders get charts). `chartOfAccountsSeedCallSite.test.ts` parses the
   file and fails on git's auto-merged version. Muse verified the carry.
+  *(#395 MERGED 2026-10-22.)*
 - **#378, #380–#383, #385–#387** — each a merge of main with its port files
   equal to main and ratchets set from `--measure` on the merged tree (as-any:
   #378 → 1061, #381 → 1058; everything else at baseline). #382/#387
   migrate.mjs checked line-by-line against the merge base (both sides kept).
+  *(All MERGED: #378, #380, #383, #386, #387 on 2026-10-22; #381, #382, #385
+  on 2026-10-23.)*
 - **#379** — head 734c0f01 (merge of 14748ed7, as-any → 1062); draft, Muse
   marks ready. **#384** stays held until #379 merges (stacked; routes-elite-
-  features.ts needs a semantic merge).
+  features.ts needs a semantic merge). *(#379 and #384 MERGED 2026-10-23.)*
 - **Package 4, canonical uuid ids (this branch).** The 14 parents and their 40
   child columns are uuid in shared/schema; KNOWN_DB_PUSH_MISMATCHES (38) is
   gone; `CONVERGE_UUID_ID_FAMILIES` in migrate.mjs converts a db:push-built
@@ -692,6 +1203,7 @@ the /api catch-all).
   commercial_sales_reports, lease_rent_schedule) uuid with live FKs, and the
   convergence test 4/4 against real Postgres. The stale "STILL UNRESOLVED"
   note on the CAM block in migrate.mjs now records the resolution.
+  *(#397 MERGED 2026-10-24.)*
 
 ### Found, not fixed (needs a person)
 - **npm's audit service is failing** (2026-10-22 ~02:35–03:20Z: 503, then 400
@@ -775,7 +1287,7 @@ first attempt, 1 org, 0 429s, 0 page errors.
 - `PUBLIC_CLAIM_DEMOTIONS` 11 → 12 entries (buy_and_hold restored); overclaim
   baseline 12 (main 13); ladder entry `surfaced`.
 
-## 2026-10-20 — V0 vertical program re-applied (staged, not committed)
+## 2026-10-20 — V0 vertical program re-applied (PR #386, MERGED 2026-10-22)
 
 ### Staged on `claude/recover-v0-vertical-program`
 - Stranded commit `6f6c65f4` (V0: evidence rule v2, underwriting kit, land and
@@ -827,7 +1339,7 @@ suites still green (56 tests); tsc clean on changed files.
 
 ## 2026-10-18 — Fieldstone redesign (`claude/fieldstone-redesign-q48nuj`)
 
-### Built, on a branch with a draft PR, waiting for founder review
+### Built, on a branch with a draft PR (#366, MERGED 2026-10-19)
 
 The approved Fieldstone redesign (founder decisions recorded in
 `founder-decisions-2026-10-18-fieldstone.md`), implemented in the real app:
@@ -881,18 +1393,18 @@ Safari on an iPhone.
 
 ## 2026-10-18 (earlier sessions)
 
-### Built, on branches, waiting for review and merge
+### Built, on branches, MERGED 2026-10-19 (PR in the Status column)
 
-| Branch | What it does |
-|---|---|
-| `claude/billing-entitlement-truth` | Seats: plans include their seats without support; add-on billing counts only seats past the included ones. One plan table. Included Pax turns charge no credits; past the allowance, purchased credits or an own key fund turns; background AI jobs follow the same rule. |
-| `claude/lead-to-deal` | "Make this a deal" on a seller lead: creates or links the property and the deal in one transaction; idempotent; honest refusal when parcel facts are missing. |
-| `claude/persona-vocabulary` | Deals and Finance use each persona's vocabulary; route hiding matches by path in every nav surface. |
-| `claude/route-load-performance` | Map code loads only on Map; quick-add sheet loads on tap; build-graph gate. Mobile door pages download about 1–1.7 MB less JavaScript. |
-| `claude/isolation-sweep-in-ci` | By-id isolation sweep runs in CI; the public log carries counts only; empty runs fail. |
-| `claude/sim-followups` | Statement portal answers 503 when unconfigured; `phone_normalized` declared as the generated column it is in production. |
-| `claude/declared-uniques-enforced` | Migration 0281 creates the 17 declared unique constraints idempotently (warn and skip, never fail a deploy); founder-org diagnostics on `/founder/readiness`. |
-| `claude/house-mail-option` | Physical mail via AcreOS house mail (purchased credits only, priced above cost + card fees + margin) or the org's own Lob key. |
+| Branch | What it does | Status |
+|---|---|---|
+| `claude/billing-entitlement-truth` | Seats: plans include their seats without support; add-on billing counts only seats past the included ones. One plan table. Included Pax turns charge no credits; past the allowance, purchased credits or an own key fund turns; background AI jobs follow the same rule. | PR #365, MERGED 2026-10-19 |
+| `claude/lead-to-deal` | "Make this a deal" on a seller lead: creates or links the property and the deal in one transaction; idempotent; honest refusal when parcel facts are missing. | PR #367, MERGED 2026-10-19 |
+| `claude/persona-vocabulary` | Deals and Finance use each persona's vocabulary; route hiding matches by path in every nav surface. | PR #368, MERGED 2026-10-19 |
+| `claude/route-load-performance` | Map code loads only on Map; quick-add sheet loads on tap; build-graph gate. Mobile door pages download about 1–1.7 MB less JavaScript. | PR #363, MERGED 2026-10-19 |
+| `claude/isolation-sweep-in-ci` | By-id isolation sweep runs in CI; the public log carries counts only; empty runs fail. | PR #369, MERGED 2026-10-19 |
+| `claude/sim-followups` | Statement portal answers 503 when unconfigured; `phone_normalized` declared as the generated column it is in production. | PR #370, MERGED 2026-10-19 |
+| `claude/declared-uniques-enforced` | Migration 0281 creates the 17 declared unique constraints idempotently (warn and skip, never fail a deploy); founder-org diagnostics on `/founder/readiness`. | PR #371, MERGED 2026-10-19 |
+| `claude/house-mail-option` | Physical mail via AcreOS house mail (purchased credits only, priced above cost + card fees + margin) or the org's own Lob key. | PR #364, MERGED 2026-10-19 |
 
 Each needs: an independent review, a merge of current `main`, then a PR.
 
@@ -926,9 +1438,9 @@ Each needs: an independent review, a merge of current `main`, then a PR.
 - Current Lob prices for every mail spec (to confirm the house-mail cost table).
 - Whether to unify the two house-mail price lists, once real Lob prices are in.
 
-## 2026-10-20 — Lead imports keep the parcel facts (`claude/p4-csv-import-keeps-parcel-facts`, uncommitted)
+## 2026-10-20 — Lead imports keep the parcel facts (`claude/p4-csv-import-keeps-parcel-facts`, PR #387, MERGED 2026-10-22)
 
-### Built (working tree, not committed)
+### Built (PR #387, MERGED 2026-10-22)
 - **One parser module, every import path.** `shared/leads/parcelFacts.ts`
   reads ACREAGE, ASSESSED value (county), ESTIMATED value (market) and
   TAX-DELINQUENT status (flag, amount owed, years) — refuse-not-fabricate:
@@ -958,3 +1470,44 @@ ratchet measure at baseline. NOT run: npm run check / tsc / full suite.
    (`/api/import/tax-delinquent` is named in a 404 hint but never mounted).
 3. The synchronous `/api/import/:entityType` path ignores a `fieldMap` the
    job path honours (no client sends one today).
+
+## PKG-1 — DSAR pipeline wired end to end (2026-11-09)
+
+**Shipped (branch claude/pkg1-dsar-api, stacked on PKG-2 / PR #526):** the
+lifecycle DSAR record (`dsar_requests_lifecycle`) is the record of record.
+Intake in routes-gdpr.ts now stamps deadlines from the shared
+`DSAR_CLOCK_HOURS` (its local 24h literal is deleted). New founder actions on
+the lifecycle routes, all behind one verification gate
+(`server/services/privacy/dsarActionGate.ts`): verify-identity (operator-
+attested, posture "strict-operator-attested-exact-email-v1" in
+`shared/privacy/dsarIdentityPosture.ts`), generate-export (subject-complete
+via the declared exporter registry `shared/privacy/dsarDomains.ts` +
+`server/services/privacy/dsarExporters.ts`; the old export's int-parsed userId
+500 and hard-coded-empty properties are gone), execute-erasure (hold-checked;
+legal hold refuses 423 naming the real hold; audit row for every outcome;
+idempotent by the subject's own erased state), subject-candidates. Erasure no
+longer touches a user's assigned leads or tasks (they are other people's
+data; borrower leads feed 1099-INT/1098). The older `dsar_requests` system's
+fan-out/erasure endpoints answer 501 pointing at the lifecycle routes instead
+of pretending. Founder UI: DsarSubjectActions panel in the compliance-ops
+DSAR tab. Coverage: `dsarDomainCoverage.test.ts` fails if a personal-data
+table (138 measured candidates) has no registry decision; 122 tables sit in
+the named DSAR_UNDECIDED_TABLES debt register. Drill:
+`dsarDrill.realdb.test.ts` (runs where a schema is built).
+
+**Still open:**
+- **S-1 (founder/counsel):** borrower-subject ERASE is refused by name
+  (422 RETENTION_REQUIRED_LOAN_RECORDS) because 1099-INT/1098 read borrower
+  identity from the lead row. Ruling needed on which borrower fields may be
+  erased; borrower export works today.
+- **S-2:** lead erasure does not scrub free-text bodies that mention the lead
+  (notes/messages) — retained domains are named in the erasure report.
+- **S-3:** user erasure does not delete the Clerk identity; the report's
+  operatorFollowUps names it for out-of-band deletion.
+- **Q-C1/Q-C2/Q-C3** (counsel): which DSAR pipeline is canonical as a matter
+  of record; whether the fulfilled-receipt 30-day promise or the 24h internal
+  clock governs externally; whether the legacy `dsar_requests` store is
+  retired or migrated. Both stores remain until counsel rules.
+- Registry drift found: CLASSIFICATION_REGISTRY's support_tickets entries
+  name columns (body, requester_email) the table no longer has.
+- The LQ-11 drill's staging run (synthetic subjects) is still owed post-merge.

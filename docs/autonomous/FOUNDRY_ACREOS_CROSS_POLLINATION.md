@@ -2121,6 +2121,10 @@ transfer.
 **The defect.** Skip-trace is FCRA-adjacent under §1681b(a)(3)(F), and AcreOS
 has two doors to it.
 
+> *Annotation (2026-11-03, legal-run Leg 1):* the (a)(3)(F) umbrella above is
+> historical phrasing. AcreOS's gate cites §1681b(a)(2) (written_consent) or §1681b(a)(3) (collection, legitimate_business_need, account_review) — see
+> `server/services/fcraAttestation.ts`. This record is otherwise unchanged.
+
 The REST door (`POST /api/skip-traces`, `routes-leads.ts:1806`) requires
 `requireScope("tenant_pii_write")` — a scope `member`, `va`, `viewer` and
 `intern` do not hold — plus a purpose from a closed enum, a justification of at

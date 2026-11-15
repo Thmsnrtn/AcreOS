@@ -353,7 +353,7 @@ function CtaCard({ onClick }: { onClick: () => void }) {
     >
       <div className="space-y-1">
         <p className="text-sm font-medium">
-          AcreOS tracks 100+ of these in one dashboard, pulls the lists, and runs the mail.
+          AcreOS tracks 100+ of these in one dashboard and runs the mail.
         </p>
         <p className="text-xs text-muted-foreground">See how it fits your workflow.</p>
       </div>

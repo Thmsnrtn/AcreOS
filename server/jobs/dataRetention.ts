@@ -44,14 +44,22 @@ const retentionRules: Array<{
   keepWhere?: SQL;
   /** Why those rows are exempt — printed with the purge log. */
   keepReason?: string;
+  /**
+   * The tenant-key column, for org-scoped tables. Rows of an org under an
+   * active legal hold are never purged (see LEGAL HOLDS below). Absent means
+   * the table has no org dimension — each such rule carries its hold
+   * disposition in NON_ORG_SCOPED_RULE_DISPOSITIONS.
+   */
+  orgColumn?: string;
 }> = [
   { table: "job_health_logs", column: "created_at", retainDays: 30, label: "Job health logs" },
-  { table: "agent_events", column: "created_at", retainDays: 60, label: "Agent events" },
+  { table: "agent_events", column: "created_at", retainDays: 60, label: "Agent events", orgColumn: "organization_id" },
   {
     table: "activity_log",
     column: "created_at",
     retainDays: 90,
     label: "Activity logs",
+    orgColumn: "organization_id",
     // Pax receipts live in this table and are never purged. See the block above.
     keepWhere: sql` AND agent_type IS DISTINCT FROM 'pax'`,
     keepReason: "Pax receipts (agent_type = 'pax') are the autopilot's accountability record and are retained indefinitely",
@@ -60,17 +68,68 @@ const retentionRules: Array<{
   // DIFFERENT table from activity_log and was growing forever — the deal/
   // lead timelines only render recent history, so a generous 2-year window
   // keeps every visible timeline intact while bounding growth.
-  { table: "activity_events", column: "created_at", retainDays: 730, label: "Activity events (timeline)" },
-  { table: "ai_telemetry_events", column: "created_at", retainDays: 30, label: "AI telemetry" },
-  { table: "usage_events", column: "created_at", retainDays: 90, label: "Usage events" },
+  { table: "activity_events", column: "created_at", retainDays: 730, label: "Activity events (timeline)", orgColumn: "organization_id" },
+  { table: "ai_telemetry_events", column: "created_at", retainDays: 30, label: "AI telemetry", orgColumn: "organization_id" },
+  { table: "usage_events", column: "created_at", retainDays: 90, label: "Usage events", orgColumn: "organization_id" },
   { table: "notification_history", column: "created_at", retainDays: 60, label: "Notification history" },
-  { table: "revenue_protection_interventions", column: "created_at", retainDays: 180, label: "Revenue interventions" },
-  // 2026-07 audit: two more forever-growth tables. Realtime heartbeat/event
-  // rows are operational exhaust (30d); raw API telemetry samples feed the
-  // monthly rollup job, so 120d comfortably covers re-rollup needs.
+  { table: "revenue_protection_interventions", column: "created_at", retainDays: 180, label: "Revenue interventions", orgColumn: "organization_id" },
+  // 2026-07 audit: realtime heartbeat/event rows are operational exhaust (30d).
   { table: "realtime_event_log", column: "created_at", retainDays: 30, label: "Realtime event log" },
-  { table: "api_telemetry_samples", column: "created_at", retainDays: 120, label: "API telemetry samples" },
+  // api_telemetry_samples is NOT purged here (2026-11-03, legal-run Leg 6.3).
+  // This list used to delete it at 120d while services/apiTelemetryRollup.ts
+  // rolled it up and deleted it at 30d — two numbers for one table, and this
+  // one deleted raw rows WITHOUT rolling them up. The rollup is the single
+  // owner of the number (API_TELEMETRY_RETENTION_DAYS, default 30).
 ];
+
+/**
+ * ── LEGAL HOLDS (2026-11-03, legal-run Leg 6.2 / LQ-07 §4.3) ───────────────
+ * This job used to delete by raw SQL with no org dimension, so an active
+ * legal hold could not stop it even in principle. Every org-scoped rule now
+ * names its tenant column, and rows belonging to an org with ANY active hold
+ * (status 'active', released_at NULL — the same test as orgHasActiveHold and
+ * gdprService.anonymizeUser) are excluded from the DELETE. Rows with a NULL
+ * org belong to no org and are purged as before. If the hold lookup itself
+ * fails, the org-scoped rules do not run at all: fail closed, recorded as a
+ * failure. Retained rows are counted and reported at error level, never
+ * silently skipped.
+ *
+ * The rules with no org dimension are inventoried here with their hold
+ * disposition; a new rule without `orgColumn` must be added to this list
+ * (pinned by retentionRespectsLegalHolds.test.ts).
+ */
+export const NON_ORG_SCOPED_RULE_DISPOSITIONS: Record<string, string> = {
+  job_health_logs:
+    "Not hold-relevant: scheduler run records (job name, status, timing). No customer or org data; no org column.",
+  realtime_event_log:
+    "Hold-relevance UNKNOWN: agent nervous-system events with a free-form JSON payload and no org column. A hold cannot be honoured by org here without a payload contract; flagged in the LQ-07 Leg 6 record for counsel/founder.",
+  notification_history:
+    "No such table in shared/schema or a database built from this repo; the rule is a 42P01 no-op. Left in place, disposition recorded.",
+};
+
+/** The rule list's table/tenant-column pairs — for the hold-coverage test. */
+export function retentionRuleInventory(): Array<{ table: string; orgColumn: string | null }> {
+  return retentionRules.map((r) => ({ table: r.table, orgColumn: r.orgColumn ?? null }));
+}
+
+/** Org ids with at least one active, unreleased legal hold. Throws on failure. */
+async function heldOrgIds(): Promise<number[]> {
+  const res = await db.execute(
+    sql`SELECT DISTINCT organization_id FROM legal_holds WHERE status = 'active' AND released_at IS NULL`,
+  );
+  const rows = Array.isArray(res) ? res : ((res as { rows?: unknown[] }).rows ?? []);
+  return (rows as Array<{ organization_id: number | string }>)
+    .map((r) => Number(r.organization_id))
+    .filter((n) => Number.isInteger(n) && n > 0);
+}
+
+function rowCountOf(result: unknown): number {
+  return Array.isArray(result)
+    ? result.length
+    : ((result as { rowCount?: number; rows?: unknown[] }).rowCount
+        ?? (result as { rows?: unknown[] }).rows?.length
+        ?? 0);
+}
 
 /** postgres: relation does not exist. The one failure worth skipping quietly. */
 const UNDEFINED_TABLE = "42P01";
@@ -79,14 +138,40 @@ export async function runDataRetention(): Promise<{
   purged: number;
   auditReport: AuditRetentionReport;
   failures: Array<{ label: string; error: string }>;
+  /** Rows past their window that were KEPT because their org is under an active legal hold. */
+  heldRetained: Array<{ label: string; heldOrgIds: number[]; rowsRetained: number }>;
 }> {
   let totalPurged = 0;
   const failures: Array<{ label: string; error: string }> = [];
+  const heldRetained: Array<{ label: string; heldOrgIds: number[]; rowsRetained: number }> = [];
+
+  let held: number[] | null = null;
+  try {
+    held = await heldOrgIds();
+  } catch (err) {
+    logger.error(
+      "[data-retention] legal-hold lookup FAILED — org-scoped rules will NOT run tonight (fail closed)",
+      err instanceof Error ? err : undefined,
+    );
+  }
 
   for (const rule of retentionRules) {
+    if (rule.orgColumn && held === null) {
+      failures.push({ label: rule.label, error: "legal-hold lookup failed; org-scoped purge not run (fail closed)" });
+      continue;
+    }
     try {
       const cutoff = clock.now();
       cutoff.setDate(cutoff.getDate() - rule.retainDays);
+
+      // Exclude every held org's rows. NULL-org rows belong to no org.
+      const holdClause =
+        rule.orgColumn && held && held.length > 0
+          ? sql` AND (${sql.identifier(rule.orgColumn)} IS NULL OR ${sql.identifier(rule.orgColumn)} NOT IN (${sql.join(
+              held.map((id) => sql`${id}`),
+              sql`, `,
+            )}))`
+          : sql``;
 
       // The cutoff is a PARAMETER now, not a string interpolated into the
       // statement. The table and column still come from the literal list above
@@ -95,16 +180,41 @@ export async function runDataRetention(): Promise<{
       const result = await db.execute(
         sql`${sql.raw(`DELETE FROM ${rule.table} WHERE ${rule.column} < `)}${cutoff}${
           rule.keepWhere ?? sql``
-        } RETURNING id`,
+        }${holdClause} RETURNING id`,
       );
 
       // node-postgres returns a result OBJECT ({ rows, rowCount }), not a
       // bare array — the old Array.isArray check made every purge log 0.
-      const count = Array.isArray(result)
-        ? result.length
-        : ((result as { rowCount?: number; rows?: unknown[] }).rowCount
-            ?? (result as { rows?: unknown[] }).rows?.length
-            ?? 0);
+      const count = rowCountOf(result);
+
+      if (rule.orgColumn && held && held.length > 0) {
+        try {
+        const keptRes = await db.execute(
+          sql`SELECT count(*)::int AS n FROM ${sql.identifier(rule.table)} WHERE ${sql.identifier(rule.column)} < ${cutoff}${
+            rule.keepWhere ?? sql``
+          } AND ${sql.identifier(rule.orgColumn)} IN (${sql.join(
+            held.map((id) => sql`${id}`),
+            sql`, `,
+          )})`,
+        );
+        const keptRows = Array.isArray(keptRes) ? keptRes : ((keptRes as { rows?: unknown[] }).rows ?? []);
+        const rowsRetained = Number((keptRows as Array<{ n: number | string }>)[0]?.n ?? 0);
+        if (rowsRetained > 0) {
+          heldRetained.push({ label: rule.label, heldOrgIds: held, rowsRetained });
+          logger.error(
+            `[data-retention] HELD — kept ${rowsRetained} expired row(s) in ${rule.label} for ${held.length} org(s) under an active legal hold`,
+            undefined,
+            { metadata: { table: rule.table, heldOrgIds: held, rowsRetained } },
+          );
+        }
+        } catch (countErr) {
+          // The purge above already ran; only the REPORT of what the hold kept failed.
+          logger.error(
+            `[data-retention] ${rule.label}: purge ran, but counting the rows kept for held orgs FAILED`,
+            countErr instanceof Error ? countErr : undefined,
+          );
+        }
+      }
       if (count > 0) {
         logger.info(
           `[data-retention] Purged ${count} rows from ${rule.label} (>${rule.retainDays}d old)` +
@@ -151,7 +261,7 @@ export async function runDataRetention(): Promise<{
     `[data-retention] Complete — purged ${totalPurged} total rows across ` +
       `${retentionRules.length - failures.length}/${retentionRules.length} tables`,
   );
-  return { purged: totalPurged, auditReport, failures };
+  return { purged: totalPurged, auditReport, failures, heldRetained };
 }
 
 // ─── Pillar D / D4 — audit_events retention report ────────────────────────

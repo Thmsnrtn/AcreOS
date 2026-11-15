@@ -5,6 +5,10 @@
  *   POST /api/scenarios/preview                  — compute a vertical
  *                                                  underwriting scenario, persist
  *                                                  nothing
+ *   POST /api/scenarios/subdivision-feasibility/sensitivity
+ *                                                — the subdivision feasibility
+ *                                                  engine's sensitivity grid,
+ *                                                  persist nothing
  *   GET  /api/scenarios/engines                  — the deterministic engines and
  *                                                  the metrics each produces
  *   GET  /api/scenarios/:subjectType/:subjectId  — a subject's scenarios
@@ -43,6 +47,8 @@ import {
 import { ALL_ENGINES } from "./services/economics/engines";
 import { previewUnderwriting, underwritingInputsSchema } from "./services/underwriting/verticalDecision";
 import { routeParam } from "./utils/routeParams";
+import { feasibilityInputsFromWire } from "./services/economics/engines/subdivisionFeasibility";
+import { FEASIBILITY_ENGINE_VERSION, FeasibilityInputError, feasibilitySensitivity } from "@shared/subdivision/feasibility";
 
 const router = Router();
 
@@ -109,6 +115,27 @@ router.post("/preview", (req: AuthenticatedRequest, res: Response) => {
     res.json(previewUnderwriting(parsed.data.engineId, parsed.data.inputs));
   } catch (err) {
     if (err instanceof ScenarioEngineError) return Errors.badRequest(res, err.message);
+    Errors.internal(res, err);
+  }
+});
+
+/**
+ * POST /api/scenarios/subdivision-feasibility/sensitivity — the §5.3 grid for
+ * the subdivision feasibility engine: lot price ±10/±20%, absorption pace ±25%,
+ * infrastructure cost ±15%, one axis at a time, every cell computed by the SAME
+ * pure module over the same (perturbed) input snapshot — so a frozen scenario's
+ * grid is reproducible from its stored inputs. Records nothing.
+ */
+const sensitivitySchema = z.object({ inputs: underwritingInputsSchema });
+router.post("/subdivision-feasibility/sensitivity", (req: AuthenticatedRequest, res: Response) => {
+  try {
+    getOrganizationId(req);
+    const parsed = sensitivitySchema.safeParse(req.body);
+    if (!parsed.success) return Errors.validationFailed(res, parsed.error);
+    const inputs = feasibilityInputsFromWire(parsed.data.inputs);
+    res.json({ engineVersion: FEASIBILITY_ENGINE_VERSION, cells: feasibilitySensitivity(inputs) });
+  } catch (err) {
+    if (err instanceof ScenarioEngineError || err instanceof FeasibilityInputError) return Errors.badRequest(res, err.message);
     Errors.internal(res, err);
   }
 });

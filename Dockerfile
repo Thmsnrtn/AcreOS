@@ -58,6 +58,14 @@ ENV NODE_ENV="production"
 #      crypto/x509, fixed 1.26.10 / 1.27.3) in usr/bin/gh — the only finding
 #      in the image. 1.26.9 → 1.26.10 (golang:1.26.10-bookworm, published
 #      2026-10-21); no gh or dep change needed.
+#      2026-11-07: red again with no commit on CVE-2026-78661 (HIGH,
+#      golang.org/x/net/html DoS, fixed 0.62.0) in usr/bin/gh — the only
+#      finding in the image (Security Scanning was green on main 07de793
+#      2026-11-06). Override x/net v0.60.0 → v0.62.0 (published 2026-10-27;
+#      go directive 1.26.0, fits this toolchain). `go get` also lifts
+#      x/crypto, x/sys, x/term, x/text, x/mod, x/sync, x/tools to the
+#      versions x/net v0.62.0 requires; build verified locally with
+#      go1.26.10 (`go version -m`: x/net v0.62.0).
 #      GOTOOLCHAIN=local: gh's go.mod carries `toolchain go1.26.7`, and the
 #      default auto mode can build with THAT instead of this image's Go,
 #      silently undoing step 1 (seen locally: binary reported go1.26.7).
@@ -66,7 +74,7 @@ ENV NODE_ENV="production"
 # clears when gh bumps the dep.)
 FROM golang:1.26.10-bookworm AS gh-build
 ARG GH_VERSION=v2.99.0
-ARG GH_DEP_OVERRIDES="golang.org/x/net@v0.60.0"
+ARG GH_DEP_OVERRIDES="golang.org/x/net@v0.62.0"
 ENV GOTOOLCHAIN=local CGO_ENABLED=0
 WORKDIR /src
 RUN set -eux; \
