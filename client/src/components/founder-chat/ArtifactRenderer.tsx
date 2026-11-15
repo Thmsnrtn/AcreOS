@@ -17,7 +17,7 @@ import { UnknownArtifactType } from "@/components/founder-chat/artifacts/_unknow
 import type { Artifact } from "@shared/founder-chat/artifacts";
 
 // ── Lazy renderers for the CORE 9 ──────────────────────────────────────
-const TextArtifact = lazy(() => import("./artifacts/text"));
+const TextArtifact = lazy(() => import("@/components/artifacts/text"));
 const BucketChartArtifact = lazy(() => import("./artifacts/bucket_chart"));
 const MrrSparklineArtifact = lazy(() => import("./artifacts/mrr_sparkline"));
 const CostMixPieArtifact = lazy(() => import("./artifacts/cost_mix_pie"));

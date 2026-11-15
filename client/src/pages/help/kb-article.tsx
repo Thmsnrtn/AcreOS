@@ -7,7 +7,7 @@
  * (SEO: canonical link + og:title + schema.org Article JSON-LD).
  *
  * Markdown body is rendered with the in-house `TextArtifact` parser
- * (client/src/components/founder-chat/artifacts/text.tsx) — same one used
+ * (client/src/components/artifacts/text.tsx) — same one used
  * by the property-analysis chat. We deliberately don't pull in
  * react-markdown / remark just for this surface.
  */
@@ -21,7 +21,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { BookOpen, ArrowLeft } from "lucide-react";
-import { TextArtifact } from "@/components/founder-chat/artifacts/text";
+import { TextArtifact } from "@/components/artifacts/text";
 
 interface KbArticle {
   id: number;
