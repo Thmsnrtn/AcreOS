@@ -172,10 +172,17 @@ describe.runIf(realDbAvailable)("autonomous deal machine tenant quarantine (real
     const toB = sent.mail.find((m) => m.to === emailB);
     expect(toA, "org A received a briefing").toBeTruthy();
     expect(toB, "org B received a briefing").toBeTruthy();
+    // Assert the delimited `>N<` form, not bare digits: a bare numeric
+    // substring like "444" collides with generated IDs/timestamps elsewhere in
+    // the email HTML (it flaked in CI on an epoch-millis run ID). The renderer
+    // emits each overnight count as the sole content of a div, so `>N<` pins
+    // exactly a leaked aggregate count and nothing else.
     for (const m of [toA!, toB!]) {
       expect(m.subject).not.toContain("hot deal");
-      expect(m.html).not.toContain("555");
-      expect(m.html).not.toContain("444");
+      expect(m.html).not.toContain(">555<");
+      expect(m.html).not.toContain(">444<");
+      expect(m.html).not.toContain(">333<");
+      expect(m.html).not.toContain(">222<");
       expect(m.html).not.toContain("Overnight Activity");
     }
   });
