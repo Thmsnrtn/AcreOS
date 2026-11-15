@@ -252,6 +252,12 @@ export function registerDeliverabilityRoutes(app: Express): void {
         }));
     }
     if (!resolved.alreadyUsed) {
+      // DELIBERATE (PKG-6 N3, 2026-11-10): suppress() propagates DB
+      // failures and there is intentionally no try/catch here — a
+      // failed write fails loudly (500) instead of showing the
+      // "unsubscribed" page while recording nothing. markTokenUsed
+      // below is never reached on that path, so the token stays
+      // unused and a retry self-heals once the DB recovers.
       await suppress(resolved.email, "one_click_unsubscribe", "unsubscribe", {
         bounceCategory: "unsubscribe",
         organizationId: resolved.organizationId ?? undefined,
@@ -280,6 +286,10 @@ export function registerDeliverabilityRoutes(app: Express): void {
       return Errors.notFound(res, "Unsubscribe token");
     }
     if (!resolved.alreadyUsed) {
+      // DELIBERATE (PKG-6 N3, 2026-11-10): same choice as the GET
+      // handler above — suppress() failures propagate (loud 500)
+      // rather than a silently unrecorded unsubscribe; the token
+      // stays unused, so a provider retry self-heals.
       await suppress(resolved.email, "one_click_unsubscribe_post", "unsubscribe", {
         bounceCategory: "unsubscribe",
         organizationId: resolved.organizationId ?? undefined,

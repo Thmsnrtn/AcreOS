@@ -14,6 +14,7 @@
 
 import { OCCUPIED_TARGET_STATUSES, MANUAL_POSTING } from "./services/listingWithdrawal";
 import { offerabilityRefusal } from "./services/listability";
+import { offerComplianceGate, sendComplianceRefusal } from "./services/wholesale/offerCompliance";
 import type { Express, Request, Response } from "express";
 import { z } from "zod";
 import { isAuthenticated } from "./auth";
@@ -467,6 +468,16 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
       if (notOfferable) return Errors.badRequest(res, notOfferable);
       // V-Tax-1 T4b: nor land still held by a tax position.
       if (!(await refuseRedeemableDeedSpend(res, org.id, property.id, "Syndicating this listing"))) return;
+      // Assignment compliance (Leg 3): a property held under an assignable
+      // contract is gated by its state's rule; a warn needs a recorded ack.
+      const compliance = await offerComplianceGate({
+        organizationId: org.id,
+        userId: (req.user as { id?: string } | undefined)?.id ?? null,
+        property: { id: property.id, status: property.status, state: property.state },
+        surface: "listing_syndicate",
+        acknowledged: (req.body as { ackComplianceWarning?: unknown })?.ackComplianceWarning === true,
+      });
+      if (!compliance.ok) return sendComplianceRefusal(res, compliance.status, compliance.body);
 
       const [orgData] = await db.select().from(organizations).where(eq(organizations.id, org.id));
 
