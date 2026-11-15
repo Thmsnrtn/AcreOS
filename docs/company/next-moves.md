@@ -3,6 +3,12 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-11-15 — P2-5: skip-trace gate as feature — the FCRA defense file (PR #584)
+
+- **Built.** The FCRA purpose/attestation trail is now readable from the customer's seat: a pure assembler (`server/services/fcraDefenseFile.ts`) projects the org's append-only `purpose_ledger` + `fcra_attestations` rows into a defense file; `GET /api/skip-tracing/defense-file` serves it as JSON or `?format=csv` (org-scoped, newest 1000 entries + truncated flag); the skip-tracing page gains a "Your FCRA defense file" section (attestation status, coverage, 10 most recent entries, honest zero state, CSV download) and one gate-copy sentence pointing to it. Suite: `tests/unit/fcraDefenseFile.test.ts` (9 tests). Landing fix round: the page's four dates now render through `lib/format.ts` (`formatDate`) instead of `toLocaleDateString`, per the date-format gate. No schema change; the route reads only the two trail tables, so the purpose-ledger census owes no registration (DEBT_BASELINE unchanged).
+- **Why.** The trail was already the class-action defense file in substance — every lookup writes its purpose, justification and attestation into the append-only ledger before the vendor call, in the same transaction as the credit debit — but it was write-only from the customer's seat (R-6). Surfacing it makes the gate's protection visible and exportable at the moment a customer needs to prove permissible purpose.
+- **Next.** Nothing owed in this slice; the trail's remaining consumers (support/DSAR exports) read the same assembler when their slices come.
+
 ## 2026-11-14 — P1-17: schema-journal sync guard (PR #578, landed in the merge wave)
 
 - **Built.** `lint:schema-journal-sync`, wired into the `check` chain immediately after `lint:schema-migrate-mirror`: `scripts/check-schema-journal-sync.mjs` fails when the drizzle journal and the `scripts/migrate.mjs` mirror drift apart. The legacy desync is frozen in `scripts/ratchets/schema-journal-sync.json` (baseline 224, every frozen entry at or below migration 0252); past that frontier the two sides must pair exactly, and the evaluator also fails if the frozen baseline count disagrees with the measured headline. Suite: `tests/unit/schemaJournalSync.test.ts`.
