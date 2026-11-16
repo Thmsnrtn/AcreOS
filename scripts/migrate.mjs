@@ -328,6 +328,7 @@ END $mig0247$`,
   // accent color, logo URL, density. Applied client-side by
   // TenantThemeProvider as CSS variables / data-attributes. All nullable so
   // legacy orgs render the default theme unchanged.
+  // 0112 — 0112_tenant_theme_and_ui_state
   'ALTER TABLE "organizations" ADD COLUMN IF NOT EXISTS "brand_accent_color" text',
   'ALTER TABLE "organizations" ADD COLUMN IF NOT EXISTS "brand_logo_url" text',
   'ALTER TABLE "organizations" ADD COLUMN IF NOT EXISTS "brand_density" text',
@@ -380,6 +381,7 @@ END $mig0247$`,
   // missing all five required pre-consent disclosures. Adds per-user
   // consent timestamp + version so the dialog suppresses itself once
   // consent is on file (and re-fires when the disclosure version bumps).
+  // 0100 — 0100_esign_consumer_consent
   'ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "esign_consented_at" timestamp',
   'ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "esign_consent_version" varchar(32)',
   `CREATE TABLE IF NOT EXISTS "signing_consent_audit" (
@@ -418,11 +420,13 @@ END $mig0247$`,
 
   // Per-user acquisition UTM jsonb (migrations/0101). users.acquisition_utm
   // is the load-bearing one — login 500'd until this column existed.
+  // 0101 — 0101_users_acquisition_utm
   `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "acquisition_utm" jsonb`,
 
   // Per-org underwriting defaults (migrations/0102). Null = legacy
   // hardcoded 9%/84mo behavior; populated rows opt in to per-org config
   // via Settings → Underwriting (Texas standard 9.9%/120mo/20%/no balloon).
+  // 0102 — 0102_org_underwriting_defaults
   `ALTER TABLE "organizations" ADD COLUMN IF NOT EXISTS "underwriting_defaults" jsonb`,
 
   // 2026-06-06 — Tahoe E11 cancellation 4th rung (pause). Org-elected
@@ -434,6 +438,7 @@ END $mig0247$`,
   // cancellation_surveys for the founder aggregation; partial-style
   // index on organizations (paused-flag-leading) for the
   // resumeExpiredPauses worker.
+  // 0110 — 0110_subscription_pause
   `ALTER TABLE "organizations" ADD COLUMN IF NOT EXISTS "subscription_paused" boolean NOT NULL DEFAULT false`,
   `ALTER TABLE "organizations" ADD COLUMN IF NOT EXISTS "subscription_paused_at" timestamp`,
   `ALTER TABLE "organizations" ADD COLUMN IF NOT EXISTS "subscription_pause_ends_at" timestamp`,
@@ -516,6 +521,7 @@ $mig0262$`,
   // Nullable — manual-add + legacy imports don't carry APN. Indexed
   // per-org because the importer's dedupe queries `WHERE org=$1 AND apn=$2`.
   // Not UNIQUE — multiple orgs may legitimately have the same APN.
+  // 0103 — 0103_leads_apn
   `ALTER TABLE "leads" ADD COLUMN IF NOT EXISTS "apn" text`,
   `CREATE INDEX IF NOT EXISTS "leads_org_apn_idx" ON "leads" ("organization_id", "apn") WHERE "apn" IS NOT NULL`,
 
@@ -531,6 +537,7 @@ $mig0262$`,
   // ── 0080 audit_log hash chain (Kareem §1 — SOC 2 CC7.2/CC7.3) ──────────────
   // Tamper-evident audit_log via SHA-256 chain. The trigger function is
   // installed via CREATE OR REPLACE so a re-run is a no-op.
+  // 0143 — 0143_audit_log_hash_chain
   `ALTER TABLE "audit_log" ADD COLUMN IF NOT EXISTS "prev_hash" text`,
   `ALTER TABLE "audit_log" ADD COLUMN IF NOT EXISTS "row_hash" text`,
   `CREATE INDEX IF NOT EXISTS "audit_log_org_id_idx" ON "audit_log" ("organization_id", "id")`,
@@ -1745,6 +1752,7 @@ $mig0262$`,
   // founder-only until the retrieval-recall eval is green; runtime tool-list
   // builder additionally gates on PAX_LAND_KNOWLEDGE_ENABLED env flag. Cards
   // live in the existing solene_embedded_records registry (no new table).
+  // 0138 — 0138_pax_land_knowledge_flag
   `INSERT INTO "platform_feature_flags" ("key", "label", "description", "enabled", "state", "audience", "controlled_routes")
    VALUES ('feature.pax-land-knowledge', 'Pax land-knowledge retrieval', 'Lets Pax retrieve curated, cited land-domain knowledge cards (FEMA flood zones, USDA soils/perc, seller-finance/usury mechanics, diligence traps) for explanatory turns. Distinct from parcel-fact lookups; every card carries a citation.', false, 'founder-only', '{}'::jsonb, '[]'::jsonb)
    ON CONFLICT ("key") DO NOTHING`,
@@ -1757,6 +1765,7 @@ $mig0262$`,
   // 0183's fourth row (Voice AI) is deliberately NOT mirrored: that module was
   // killed 2026-08-01 and the founder-authorized flag-row deletion further down
   // this file removes it; inserting it here would only re-create it each deploy.
+  // 0183 — 0183_seed_missing_module_flags
   `INSERT INTO "platform_feature_flags" ("key", "label", "description", "enabled", "state", "audience", "controlled_routes")
    VALUES ('feature_white_label', 'White Label', 'Reseller branding and custom domains', false, 'off', '{}'::jsonb, '["/white-label"]'::jsonb)
    ON CONFLICT ("key") DO NOTHING`,
@@ -3718,6 +3727,7 @@ $mig0262$`,
   // (server/services/aiEvalHarness.ts) gates on. Canonical source:
   // server/ai/dataGroundingEvalCases.ts. ids are deterministic UUIDv5.
   // Idempotent via ON CONFLICT; mirrors migrations/0124_data_grounding_eval_cases.sql.
+  // 0124 — 0124_data_grounding_eval_cases
   `INSERT INTO "ai_test_cases" ("id","surface","name","description","input_prompt","expected_traits","forbidden_traits","severity","is_active")
    VALUES ('82d6bbba-0327-505e-8d58-fca4dff49d44','pax_inbox','flood-zone hit cites FEMA','[dg-hit-flood-001] Flood lookup returned Zone AE; Pax must state it and cite FEMA.','I pulled flood data for my lot and the tool returned FEMA Zone AE (FEMA NFHL, effective 2021-09). What''s the flood situation?','["AE","FEMA"]'::jsonb,'["zone x","no flood risk","not in a flood zone"]'::jsonb,'critical',true)
    ON CONFLICT ("id") DO UPDATE SET "surface"=EXCLUDED."surface","name"=EXCLUDED."name","description"=EXCLUDED."description","input_prompt"=EXCLUDED."input_prompt","expected_traits"=EXCLUDED."expected_traits","forbidden_traits"=EXCLUDED."forbidden_traits","severity"=EXCLUDED."severity","is_active"=EXCLUDED."is_active","updated_at"=now()`,
@@ -3783,6 +3793,7 @@ $mig0262$`,
   // Tahoe E7 (2026-06-06): prompt-change eval-gate verdict log. One row per
   // eval-gate invocation (scripts/eval-gate.mjs). System/CI-scoped — no
   // organization_id, no org-leading index (mirrors ai_test_cases).
+  // 0111 — 0111_ai_eval_gate_runs
   `CREATE TABLE IF NOT EXISTS "ai_eval_gate_runs" (
      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
      "golden_set" text NOT NULL,
@@ -4725,6 +4736,7 @@ $mig0262$`,
   `CREATE INDEX IF NOT EXISTS "api_telemetry_samples_window_start_idx" ON "api_telemetry_samples" ("window_start")`,
   // 2026-06-06 (Tahoe Tess) — distinct_orgs added after initial deploy of the
   // samples table; idempotent ALTER for already-migrated databases.
+  // 0118 — 0118_api_telemetry_distinct_orgs
   `ALTER TABLE "api_telemetry_samples" ADD COLUMN IF NOT EXISTS "distinct_orgs" integer NOT NULL DEFAULT 0`,
 
   // 2026-06-06 (Tahoe L14 follow-up). Monthly rollup of api_telemetry_samples
@@ -5009,6 +5021,7 @@ $mig0262$`,
   // columns idempotently via /api/me/ai-disclosure/accept. When
   // AI_DISCLOSURE_VERSION bumps, the version diverges from the stored value
   // and the dialog re-fires so re-consent is recorded.
+  // 0104 — 0104_users_ai_disclosure
   `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "ai_disclosed_at" timestamp`,
   `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "ai_disclosure_version" varchar(32)`,
 
@@ -5018,6 +5031,7 @@ $mig0262$`,
   // Constitution §7 + CO SB 24-205 §6-1-1703 evidentiary trail. Mirrors
   // migrations/0105_users_pax_disclosure.sql. Set once via POST
   // /api/pax/acknowledge-disclosure (idempotent — no overwrite once non-null).
+  // 0105 — 0105_users_pax_disclosure
   `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "pax_disclosure_acknowledged_at" timestamp`,
 
   // 2026-06-01 — Phase Zero-Three gate (Beatrice audit). Clickwrap acceptance
@@ -5029,6 +5043,7 @@ $mig0262$`,
   // client/src/pages/auth-page.tsx; first hydrateUser request after sign-up
   // writes both columns on the user row. Nullable so existing pre-clickwrap
   // users are grandfathered; the server enforces non-null on every NEW row.
+  // 0106 — 0106_users_clickwrap_acceptance
   `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "tos_accepted_at" timestamp`,
   `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "privacy_accepted_at" timestamp`,
 
@@ -5305,6 +5320,7 @@ $mig0262$`,
   //   solene_audit_findings  — one row per (decision × detector) match
   // Mirrors shared/schema/solene-audit.ts. Wired to the cron in
   // server/jobs/runScheduledJobs.ts → startSoleneAuditJob.
+  // 0107 — 0107_solene_self_audit
   `CREATE TABLE IF NOT EXISTS "solene_decisions" (
      "id" serial PRIMARY KEY,
      "decided_at" timestamp with time zone NOT NULL DEFAULT now(),
@@ -5355,6 +5371,7 @@ $mig0262$`,
   // Per-session + per-day spend tracker. Fire-and-forget writes from
   // recordCapitalEvent; getMonthlyEnvelopeStatus reads the rolling rollup.
   // Mirrors shared/schema/solene-capital.ts.
+  // 0108 — 0108_solene_capital_events
   `CREATE TABLE IF NOT EXISTS "solene_capital_events" (
      "id" serial PRIMARY KEY,
      "occurred_at" timestamp with time zone NOT NULL DEFAULT now(),
@@ -5666,12 +5683,14 @@ $mig0262$`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "solene_dispatch_queue_idempotency_key_uq" ON "solene_dispatch_queue" ("idempotency_key") WHERE "idempotency_key" IS NOT NULL`,
   // Step-away gap #3 — bounded side-effect-aware retry. attempts increments at
   // CLAIM time; not_before_at is the backoff gate claimNextDispatch respects.
+  // 0184 — 0184_dispatch_retry
   `ALTER TABLE "solene_dispatch_queue" ADD COLUMN IF NOT EXISTS "attempts" integer NOT NULL DEFAULT 0`,
   `ALTER TABLE "solene_dispatch_queue" ADD COLUMN IF NOT EXISTS "not_before_at" timestamptz`,
 
   // Step-away gap #4 — immune-system run reports (migration 0185). One
   // append-only row per daily immune-response run; the board report + Control
   // door read this instead of the plan evaporating at process exit.
+  // 0185 — 0185_immune_reports
   `CREATE TABLE IF NOT EXISTS "autopilot_immune_reports" (
      "id" serial PRIMARY KEY,
      "ran_at" timestamptz NOT NULL DEFAULT now(),
@@ -5693,6 +5712,7 @@ $mig0262$`,
   // Step-away gap #5 — persisted WitnessGrants (migration 0186). Founder-issued
   // bounded/expiring/revocable delegation of the witnessed-send tap; the
   // deny_money/deny_broadcast belts default TRUE (explicit opt-in only).
+  // 0186 — 0186_witness_grants
   `CREATE TABLE IF NOT EXISTS "witness_grants" (
      "id" serial PRIMARY KEY,
      "grantor_id" text NOT NULL,
@@ -5716,14 +5736,17 @@ $mig0262$`,
   // Step-away gap #6 — persisted Stage-6 regression due-time (migration 0187).
   // Replaces the in-process setTimeout (lost on redeploy, never armed in PR
   // mode) with a due-time the evolution_regression_scan job fires durably.
+  // 0187 — 0187_evolution_regression_due
   `ALTER TABLE "evolution_history" ADD COLUMN IF NOT EXISTS "regression_check_due_at" timestamptz`,
 
   // Self-patch master switch (migration 0188) — DB-backed like dispatch/
   // publish/cognition; null → env SELF_PATCH_ENABLED fallback (OFF).
+  // 0188 — 0188_self_patch_switch
   `ALTER TABLE "autopilot_settings" ADD COLUMN IF NOT EXISTS "self_patch_enabled" boolean`,
 
   // Platform Connections (migration 0189) — founder-entered credentials for
   // the accounts the platform itself runs on; DB-first, env fallback.
+  // 0189 — 0189_platform_connections
   `CREATE TABLE IF NOT EXISTS "platform_connections" (
      "id" serial PRIMARY KEY,
      "provider" text NOT NULL,
@@ -5740,6 +5763,7 @@ $mig0262$`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "platform_connections_active_uidx" ON "platform_connections" ("provider", "field") WHERE "revoked_at" IS NULL`,
 
   // SMS response capture + quiet-hours truth (migration 0190, roadmap W1.4/5).
+  // 0190 — 0190_sms_response_capture
   `CREATE TABLE IF NOT EXISTS "unattached_inbound_messages" (
      "id" serial PRIMARY KEY,
      "organization_id" integer NOT NULL,
@@ -5759,12 +5783,14 @@ $mig0262$`,
   `ALTER TABLE "leads" ADD COLUMN IF NOT EXISTS "timezone" text`,
 
   // Data-API key hardening (migration 0191, roadmap W1.6) — SHA-256 at rest.
+  // 0191 — 0191_data_api_key_hash
   `ALTER TABLE "system_api_keys" ADD COLUMN IF NOT EXISTS "key_hash" text`,
   `ALTER TABLE "system_api_keys" ADD COLUMN IF NOT EXISTS "key_last4" text`,
   `CREATE INDEX IF NOT EXISTS "system_api_keys_key_hash_idx" ON "system_api_keys" ("key_hash")`,
 
   // Hot-path indexes (migration 0194, 2026-07 platform sweep) — worst of the
   // zero-index org-scoped tables (timelines, payments, AI cost aggregation).
+  // 0194 — 0194_hot_path_indexes
   `CREATE INDEX IF NOT EXISTS "activity_events_org_entity_idx" ON "activity_events" ("organization_id", "entity_type", "entity_id", "created_at")`,
   `CREATE INDEX IF NOT EXISTS "lead_activities_lead_created_idx" ON "lead_activities" ("lead_id", "created_at")`,
   `CREATE INDEX IF NOT EXISTS "lead_activities_org_idx" ON "lead_activities" ("organization_id")`,
@@ -5779,6 +5805,7 @@ $mig0262$`,
 
   // Contract assignments (migration 0193, roadmap W6.1) — the wholesaler's
   // assignment-of-contract record: deal → end buyer → fee (cents) → doc.
+  // 0193 — 0193_contract_assignments
   `CREATE TABLE IF NOT EXISTS "contract_assignments" (
      "id" serial PRIMARY KEY,
      "organization_id" integer NOT NULL,
@@ -5798,6 +5825,7 @@ $mig0262$`,
 
   // Weekly MRR snapshots (migration 0192, roadmap W4.5) — WoW growth was
   // structurally 0 with no history; runway upside == base since launch.
+  // 0192 — 0192_mrr_snapshots
   `CREATE TABLE IF NOT EXISTS "mrr_snapshots" (
      "id" serial PRIMARY KEY,
      "captured_at" timestamp NOT NULL DEFAULT now(),
@@ -6678,6 +6706,7 @@ $mig0262$`,
    )`,
   // Quinn alignment fix (migration 0133) — plain-language snapshot of the
   // cited immutable, for the appeal UI. Additive + idempotent for existing DBs.
+  // 0134 — 0134_refusal_cited_immutable_text
   `ALTER TABLE "pax_refusal_payloads" ADD COLUMN IF NOT EXISTS "cited_immutable_text" text`,
   `CREATE INDEX IF NOT EXISTS "pax_refusal_payloads_org_created_idx" ON "pax_refusal_payloads" ("organization_id", "created_at")`,
   `CREATE INDEX IF NOT EXISTS "pax_refusal_payloads_org_imm_created_idx" ON "pax_refusal_payloads" ("organization_id", "cited_immutable_id", "created_at")`,
@@ -6711,6 +6740,7 @@ $mig0262$`,
   // Migration 0136 (Quinn + Rafe) — customer-facing outcome wording surfaced
   // back to the customer on resolution. Distinct from internal review_notes.
   // Additive + idempotent for existing DBs.
+  // 0136 — 0136_appeal_customer_message
   `ALTER TABLE "pax_decision_appeals" ADD COLUMN IF NOT EXISTS "customer_message" text`,
   `CREATE INDEX IF NOT EXISTS "pax_decision_appeals_org_status_created_idx" ON "pax_decision_appeals" ("organization_id", "status", "created_at")`,
   `CREATE INDEX IF NOT EXISTS "pax_decision_appeals_org_created_idx" ON "pax_decision_appeals" ("organization_id", "created_at")`,
@@ -6754,6 +6784,7 @@ $mig0262$`,
   // earlier inlined statements). ALTER TABLE … ADD COLUMN IF NOT
   // EXISTS is the idempotent shape.
   // Mirrors shared/schema.ts → knowledgeBaseArticles.
+  // 0109 — 0109_kb_drafts_nps_queue
   `ALTER TABLE "knowledge_base_articles" ADD COLUMN IF NOT EXISTS "is_draft" boolean DEFAULT false`,
   `ALTER TABLE "knowledge_base_articles" ADD COLUMN IF NOT EXISTS "draft_status" text`,
   `ALTER TABLE "knowledge_base_articles" ADD COLUMN IF NOT EXISTS "source_ticket_id" integer REFERENCES "support_tickets" ("id")`,
@@ -6782,6 +6813,7 @@ $mig0262$`,
   // outbound_email_log is the audit trail for every send routed through
   // server/services/emailRegistry.ts (the single typed send entrypoint).
   // Mirrors shared/schema.ts → outboundEmailLog. Migration 0113.
+  // 0113 — 0113_outbound_email_log
   `CREATE TABLE IF NOT EXISTS "outbound_email_log" (
      "id" varchar PRIMARY KEY DEFAULT gen_random_uuid(),
      "organization_id" integer,
@@ -6803,6 +6835,7 @@ $mig0262$`,
   // + docs/internal/marketing-os/03-analytics.md §4. Privacy lock: NO raw IP
   // (country only), UA hashed. organization_id/user_id populated post-signup
   // via the anonymous_id JOIN. Idempotent create + indexes.
+  // 0115 — 0115_marketing_touch
   `CREATE TABLE IF NOT EXISTS "marketing_touch" (
      "id" bigserial PRIMARY KEY,
      "anonymous_id" text NOT NULL,
@@ -7139,6 +7172,7 @@ $mig0262$`,
   // deleting the deal never destroys a live note. Leading-org composite index
   // for the reverse deal→note probe. Mirrors shared/schema.ts (notes) +
   // migrations/0133_notes_originating_deal.sql.
+  // 0133 — 0133_notes_originating_deal
   `ALTER TABLE "notes" ADD COLUMN IF NOT EXISTS "originating_deal_id" integer REFERENCES "deals" ("id") ON DELETE SET NULL`,
   `CREATE INDEX IF NOT EXISTS "notes_org_originating_deal_idx" ON "notes" ("organization_id", "originating_deal_id")`,
 
@@ -7148,6 +7182,7 @@ $mig0262$`,
   // them. Dedupe via UNIQUE(detector, dedupe_key) — recordFinding() upserts:
   // insert once, bump last_seen_at on re-fire, never duplicate. Mirrors
   // shared/schema/domain-audit-findings.ts + migrations/0135_domain_audit_findings.sql.
+  // 0135 — 0135_domain_audit_findings
   `CREATE TABLE IF NOT EXISTS "domain_audit_findings" (
      "id" serial PRIMARY KEY,
      "domain" text NOT NULL,
@@ -7172,6 +7207,7 @@ $mig0262$`,
   // server/worker.ts UPSERTs id=1 every outbox poll loop; the external probe
   // reads GET /api/health/worker-heartbeat to detect "alerting itself is down."
   // Mirrors shared/schema.ts workerHeartbeat + migrations/0139_worker_heartbeat.sql.
+  // 0139 — 0139_worker_heartbeat
   `CREATE TABLE IF NOT EXISTS "worker_heartbeat" (
      "id" integer PRIMARY KEY DEFAULT 1,
      "instance_id" text,
@@ -7186,6 +7222,7 @@ $mig0262$`,
   // founder queue, one-click to edit-and-send, with the sent reply persisted
   // back so the loop is auditable.
   // Mirrors shared/schema/recourse-drafts.ts + migrations/0140_recourse_drafts.sql.
+  // 0140 — 0140_recourse_drafts
   `CREATE TABLE IF NOT EXISTS "recourse_drafts" (
      "id" serial PRIMARY KEY,
      "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
@@ -7215,6 +7252,7 @@ $mig0262$`,
   // today". Unique (organization_id, item_id) backs the PATCH upsert + the
   // per-tenant GET subtract. Mirrors shared/schema.ts todayQueueState +
   // migrations/0141_today_queue_state.sql.
+  // 0141 — 0141_today_queue_state
   `CREATE TABLE IF NOT EXISTS "today_queue_state" (
      "id" serial PRIMARY KEY,
      "organization_id" integer NOT NULL REFERENCES "organizations" ("id") ON DELETE CASCADE,
@@ -7235,6 +7273,7 @@ $mig0262$`,
   // We persist only the screened NAME (no other counterparty PII) plus the
   // matched entry + score for human adjudication. Mirrors shared/schema.ts
   // (sanctionsScreenings) + migrations/0142_sanctions_screenings.sql.
+  // 0142 — 0142_sanctions_screenings
   `CREATE TABLE IF NOT EXISTS "sanctions_screenings" (
      "id" serial PRIMARY KEY,
      "organization_id" integer NOT NULL REFERENCES "organizations" ("id") ON DELETE CASCADE,
@@ -7270,6 +7309,7 @@ $mig0262$`,
   //
   // Mirrors shared/schema.ts (sanctionsListEntries) +
   // migrations/0144_sanctions_list_entries.sql. Idempotent (IF NOT EXISTS).
+  // 0144 — 0144_sanctions_list_entries
   `CREATE TABLE IF NOT EXISTS "sanctions_list_entries" (
      "id" serial PRIMARY KEY,
      "source_list" text NOT NULL,
@@ -7298,6 +7338,7 @@ $mig0262$`,
   // insert-then-UPDATE pattern is impossible). TAMPER-EVIDENCE, not legal proof.
   // Mirrors shared/schema.ts (auditEvents.seq/prevHash/rowHash) +
   // migrations/0145_audit_events_hash_chain.sql. Idempotent (IF NOT EXISTS).
+  // 0145 — 0145_audit_events_hash_chain
   `ALTER TABLE "audit_events" ADD COLUMN IF NOT EXISTS "seq" bigserial`,
   `ALTER TABLE "audit_events" ADD COLUMN IF NOT EXISTS "prev_hash" text`,
   `ALTER TABLE "audit_events" ADD COLUMN IF NOT EXISTS "row_hash" text`,
@@ -7316,6 +7357,7 @@ $mig0262$`,
   // Mirrors shared/schema.ts (agentChannelMessages) +
   // migrations/0146_agent_channel_messages.sql. Idempotent (IF NOT EXISTS).
   // Not org-scoped — this is an internal AI-team bus with no org_id column.
+  // 0146 — 0146_agent_channel_messages
   `CREATE TABLE IF NOT EXISTS "agent_channel_messages" (
      "id" serial PRIMARY KEY,
      "from_agent" text NOT NULL,
@@ -7342,6 +7384,7 @@ $mig0262$`,
   // key on `is_founder_bypass` (the reasoning-regex it replaced was never
   // written, so the published count was permanently 0). Self-contained block;
   // safe to run alongside another agent's appended block.
+  // 0147 — 0147_founder_bypass_marker
   `ALTER TABLE "solene_pre_call_decisions" ADD COLUMN IF NOT EXISTS "is_founder_bypass" boolean NOT NULL DEFAULT false`,
   `ALTER TABLE "solene_pre_call_decisions" ADD COLUMN IF NOT EXISTS "founder_bypass_reason" text`,
   `CREATE INDEX IF NOT EXISTS "solene_pre_call_decisions_founder_bypass_idx" ON "solene_pre_call_decisions" ("is_founder_bypass", "decided_at")`,
@@ -7360,6 +7403,7 @@ $mig0262$`,
   // Triggers ONLY — the SHA-256 hash-chain is a separate Beatrice follow-up.
   // Mirrors migrations/0147_parcel_observations_append_only.sql. Idempotent
   // (CREATE OR REPLACE FUNCTION + DROP TRIGGER IF EXISTS then CREATE TRIGGER).
+  // 0148 — 0148_parcel_observations_append_only
   `CREATE OR REPLACE FUNCTION parcel_observations_deny_mutation()
    RETURNS trigger AS $$
    BEGIN
@@ -7397,6 +7441,7 @@ $mig0262$`,
   // auto-resolve threshold is unchanged. Self-contained block; safe to run
   // alongside another agent's appended block. Idempotent (ADD COLUMN IF NOT
   // EXISTS + CREATE INDEX IF NOT EXISTS).
+  // 0149 — 0149_support_resolve_outcome_label
   `ALTER TABLE "support_tickets" ADD COLUMN IF NOT EXISTS "ai_resolution_outcome" text`,
   `ALTER TABLE "support_tickets" ADD COLUMN IF NOT EXISTS "ai_resolution_reopened" boolean DEFAULT false`,
   `CREATE INDEX IF NOT EXISTS "support_tickets_ai_resolve_outcome_idx"
@@ -7412,6 +7457,7 @@ $mig0262$`,
   // row; the pending→sent UPDATE (WHERE status = 'pending') is the
   // idempotency claim — the losing tap returns the first result. Idempotent
   // (CREATE TABLE/INDEX IF NOT EXISTS); self-contained block.
+  // 0150 — 0150_pax_drafts
   `CREATE TABLE IF NOT EXISTS "pax_drafts" (
      "id" serial PRIMARY KEY,
      "organization_id" integer NOT NULL,
@@ -7440,6 +7486,7 @@ $mig0262$`,
   // pending→approved UPDATE) and records the send in append-only pax_sends
   // (no UPDATE path exists). Idempotent (CREATE TABLE/INDEX IF NOT EXISTS);
   // self-contained block.
+  // 0151 — 0151_approval_kernel
   `CREATE TABLE IF NOT EXISTS "pending_actions" (
      "id" serial PRIMARY KEY,
      "organization_id" integer NOT NULL,
@@ -7523,6 +7570,7 @@ $mig0262$`,
   // and writes one row here as the durable proof trail the deadman/founder
   // surfaces can read. status: 'verified' | 'failed' | 'skipped_config'.
   // Idempotent (CREATE TABLE/INDEX IF NOT EXISTS); self-contained block.
+  // 0153 — 0153_backup_verified
   `CREATE TABLE IF NOT EXISTS "backup_verified" (
      "id" serial PRIMARY KEY,
      "backup_key" text NOT NULL,
@@ -7545,6 +7593,7 @@ $mig0262$`,
   // probe claim across deploys. deadman_page_state: deadmanCheck.ts re-page
   // throttle was an in-memory map; a deploy mid-incident re-paged every dark
   // job. Idempotent (CREATE TABLE IF NOT EXISTS); self-contained block.
+  // 0154 — 0154_circuit_breaker_state
   `CREATE TABLE IF NOT EXISTS "circuit_breaker_state" (
      "provider_name" text PRIMARY KEY,
      "state" text NOT NULL DEFAULT 'closed',
@@ -7571,6 +7620,7 @@ $mig0262$`,
   // provider_lookup_log.cache_lane/avoided_cost_cents: cache hits used to
   // early-return before telemetry, making hit rate + avoided dollars invisible
   // across the four cache lanes. Idempotent; self-contained block.
+  // 0152 — 0152_observation_capture_2a
   `ALTER TABLE "land_credit_scores" ADD COLUMN IF NOT EXISTS "apn" text`,
   `ALTER TABLE "land_credit_scores" ADD COLUMN IF NOT EXISTS "state" text`,
   `ALTER TABLE "land_credit_scores" ADD COLUMN IF NOT EXISTS "county" text`,
@@ -7603,6 +7653,7 @@ $mig0262$`,
   // solene_failure_modes.status/source_incident_id: incident resolutions with
   // lessonsLearned auto-draft failure-mode entries (status='draft', never
   // auto-published; the dispatch preamble reads only the disk ledger).
+  // 0155 — 0155_tier2d_self_improvement_loops
   `CREATE TABLE IF NOT EXISTS "support_resolver_threshold_adjustments" (
      "id" serial PRIMARY KEY,
      "surface" text NOT NULL DEFAULT 'support_resolve',
@@ -7632,6 +7683,7 @@ $mig0262$`,
   // in the lcs jsonb — never invented values). The row IS the cache, and the
   // /sitemap-reports.xml route only lists rows that actually exist (no
   // fabricated coverage). No org linkage — pre-signup acquisition surface.
+  // 0156 — 0156_public_parcel_reports
   `CREATE TABLE IF NOT EXISTS "public_parcel_reports" (
      "id" serial PRIMARY KEY,
      "state" text NOT NULL,
@@ -7667,6 +7719,7 @@ $mig0262$`,
   // an alert-spine warning. market_report_drafts: quarterly report artifacts
   // (JSON+markdown), founder-reviewable, NEVER auto-published.
   // Idempotent; self-contained block.
+  // 0157 — 0157_county_market_rollups
   `CREATE TABLE IF NOT EXISTS "county_market_rollups" (
      "id" serial PRIMARY KEY,
      "state" text NOT NULL,
@@ -7708,6 +7761,7 @@ $mig0262$`,
   // `ledger_dead_letter_replay` worker job re-dispatches pending rows through
   // the same idempotent posting functions and raises an alert-spine finding
   // when entries accumulate. Idempotent; self-contained block.
+  // 0162 — 0162_ledger_dead_letters
   `CREATE TABLE IF NOT EXISTS "ledger_dead_letters" (
      "id" serial PRIMARY KEY,
      "organization_id" integer REFERENCES "organizations"("id") ON DELETE SET NULL,
@@ -7987,6 +8041,7 @@ $mig0262$`,
   // DNC / litigator scrub results (migration 0195, mature-machine H0 §6.1) —
   // the TCPA cold-outreach seam. Inert until DNC_SCRUB_PROVIDER is configured
   // (pending founder vendor decision); see server/services/compliance/dncScrub.ts.
+  // 0195 — 0195_dnc_scrub_results
   `CREATE TABLE IF NOT EXISTS "dnc_scrub_results" (
      "id" serial PRIMARY KEY,
      "organization_id" integer NOT NULL REFERENCES "organizations" ("id") ON DELETE CASCADE,
@@ -8003,6 +8058,7 @@ $mig0262$`,
   // Agent state persistence (migration 0196, module-state audit 2026-07-07) —
   // temporary authority delegations + the autonomous-action rate throttle
   // move from per-process Maps to Postgres so 2+ machines share one truth.
+  // 0196 — 0196_agent_state_persistence
   `CREATE TABLE IF NOT EXISTS "authority_delegations" (
      "id" serial PRIMARY KEY,
      "agent_codename" text NOT NULL,
@@ -8025,6 +8081,7 @@ $mig0262$`,
 
   // Marketing spend ledger (migration 0197, 2026-07-07 cost audit) — the CAC
   // numerator. Actuals only; budgets are never recorded here.
+  // 0197 — 0197_marketing_spend
   `CREATE TABLE IF NOT EXISTS "marketing_spend" (
      "id" serial PRIMARY KEY,
      "channel" text NOT NULL,
@@ -8040,6 +8097,7 @@ $mig0262$`,
 
   // Reactivation surveys (migration 0198, launch-week WS1) — the welcome-back
   // page's survey POST finally has a real endpoint + durable store.
+  // 0198 — 0198_reactivation_surveys
   `CREATE TABLE IF NOT EXISTS "reactivation_surveys" (
      "id" serial PRIMARY KEY,
      "organization_id" integer NOT NULL REFERENCES "organizations" ("id") ON DELETE CASCADE,
@@ -8052,6 +8110,7 @@ $mig0262$`,
   // Outbox claim timestamp (migration 0199, launch-week WS5 worker-kill
   // drill) — recovery of rows orphaned in status='running' needs the claim
   // time; created_at is enqueue time and would mis-reap a claimed backlog.
+  // 0199 — 0199_outbox_claimed_at
   `ALTER TABLE outbox ADD COLUMN IF NOT EXISTS claimed_at TIMESTAMP`,
   `CREATE INDEX IF NOT EXISTS outbox_running_claimed_idx ON outbox (claimed_at) WHERE status = 'running'`,
 
