@@ -115,7 +115,14 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
   land_flipper: {
     id: "land_flipper",
     label: "Land flipper",
-    maturity: "core",
+    // FD1 (2026-11-12): beta — one of the three beta types in the public
+    // promise (with residential_wholesaler and tax_lien_deed), per the
+    // 2026-11-12 decision records. Core is earned per vertical by full
+    // journey proof; Land's journey is not yet proven, so it does not hold
+    // core in the launch-day snapshot. (S1 originally recorded core here
+    // from an unratified Land↔Buy-and-Hold swap; corrected 2026-11-16 by
+    // founder ruling.)
+    maturity: "beta",
     // 2026-07-29 truth pass: the previously declared land_* ids never
     // existed in workflow-engine.ts. These are the real shipped templates
     // for the land flow (lead intake, seller-financed dunning, deal close).
@@ -234,7 +241,7 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     // workflowActionHonesty. The vertical passes the honesty bar for core.
     //
     // FD1 (2026-11-12): beta — one of the three beta types in the public
-    // promise (with buy_and_hold and tax_lien_deed). Its journey-proof hold
+    // promise (with land_flipper and tax_lien_deed). Its journey-proof hold
     // (founder-decisions-2026-11-05-wholesale.md) is unchanged: the ladder
     // still waits for the Leg 5 walk.
     maturity: "beta",
@@ -300,10 +307,14 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     // pull market rent on their own surface). The vertical passes the honesty bar
     // for core.
     //
-    // FD1 (2026-11-12): beta — one of the three beta types in the public
-    // promise. Its decision desk still measures `decided`; beta is the launch
-    // presentation, not a verdict on the build.
-    maturity: "beta",
+    // FD1 (2026-11-12): core — one of the two full-strength types in the
+    // public promise (with note_investor), per the 2026-11-12 decision
+    // records. This is the journey-proven vertical: its beta demotion was
+    // lifted 2026-11-05/07 after the staging journey proof, and its decision
+    // desk measures `decided` — core here is earned by that proof, not
+    // asserted. (S1 originally recorded beta from an unratified
+    // Land↔Buy-and-Hold swap; corrected 2026-11-16 by founder ruling.)
+    maturity: "core",
     // All four exist in workflow-engine.ts (landlord moments + lease expiry) and
     // are now wired live (see rentalEvents.ts + leaseExpiryDetector.ts).
     workflowTemplateIds: [

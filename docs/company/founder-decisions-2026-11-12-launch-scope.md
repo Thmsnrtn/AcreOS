@@ -5,14 +5,27 @@ conceptual-gap roadmap's decision set (FD1–FD5), adopted 2026-11-12 and held i
 the roadmap execution tracker ("Decisions in force"). This file writes FD1 down
 in the form the registry gates check; it is not a new ruling.
 
+**Membership corrected 2026-11-16 (founder ruling, delegated and decided per
+the PR #592 auditor's recommendation).** The original S1 recording swapped
+Land and Buy-and-Hold: it pinned Land core and Buy-and-Hold beta. Every
+2026-11-12 decision record names Note Investor + Buy-and-Hold as the
+full-strength pair and Land, Tax-Lien/Deed, Wholesale as beta; the swap first
+appeared in a 2026-11-15 lane-slicing prep doc with no cited decision. The
+table below now states the ratified membership. Governing rule, stated by the
+founder with the ruling: core is *earned* per vertical by full journey proof —
+the earning order is not fixed — and this table is the launch-day snapshot of
+what is proven so far, not a ranking. Buy-and-Hold holds core because its
+journey is proven (demotion lifted 2026-11-05/07); Land does not hold core
+because its journey is not yet proven.
+
 ## FD1 — the public promise is 2 core + 3 beta; ten types are registry-only
 
 **Decision (corrected framing).** Of the fifteen registered business types:
 
 | Presentation | Types |
 |---|---|
-| **Core** (full workflows, sold as such) | Land flipper, Note investor |
-| **Beta** (offered, labelled Beta) | Tax lien / deed, Residential wholesaler, Buy-and-hold rentals |
+| **Core** (full workflows, sold as such) | Note investor, Buy-and-hold rentals |
+| **Beta** (offered, labelled Beta) | Land flipper, Tax lien / deed, Residential wholesaler |
 | **Registry-only** (built, kept, not in the public promise) | Land + notes (hybrid), Fix-and-flip, Short-term rentals, Commercial, Creative finance, Developer / entitlements, Subdivider, Multifamily, Mobile home / park, Agent-investor |
 
 Fix-and-Flip and Subdivider are named registry-only explicitly: the original
@@ -29,10 +42,11 @@ tier). Nothing is deleted.
 **What this supersedes.** OD-5 (2026-08-17) kept the registry at `core` for
 all fifteen and lowered the PUBLIC claim through an eleven-row demotion table.
 FD1 moves that conservatism into the registry itself; the table is empty and
-pinned empty. The 2026-11-05 buy-and-hold release and the wholesaler's
-journey-proof hold are unchanged in substance: both are `beta` launch types
-by this decision, both still measure `decided`, and the wholesaler's ladder
-entry still waits for its Leg 5 walk.
+pinned empty. The 2026-11-05 buy-and-hold release stands in substance:
+Buy-and-Hold is a `core` launch type by this decision, consistent with its
+demotion having been lifted on journey proof; it still measures `decided`.
+The wholesaler's journey-proof hold is unchanged: it is a `beta` launch type,
+still measures `decided`, and its ladder entry still waits for its Leg 5 walk.
 
 **The one gap this decision owns.** `note_investor` is promised as core on
 evidence that reaches `surfaced` (real modules and templates, no production

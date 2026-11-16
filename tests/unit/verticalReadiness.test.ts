@@ -534,8 +534,8 @@ describe("no PUBLIC claim outruns the evidence (OD-5, under FD1)", () => {
     ).toThrow(/not in the registry/);
 
     // And the happy path still passes, so the throws above are not universal:
-    // land_flipper is core, so beta is a genuine DOWN move.
-    expect(() => assertDemotionsValid({ land_flipper: ok })).not.toThrow();
+    // buy_and_hold is core, so beta is a genuine DOWN move.
+    expect(() => assertDemotionsValid({ buy_and_hold: ok })).not.toThrow();
   });
 
   it("no demotion is stale — a vertical that closed the loop must be released", () => {
@@ -674,15 +674,20 @@ describe("held pending journey proof — code-decided, claim still beta, and dat
   it("buy_and_hold is released from its hold: measured `decided`, no demotion entry, and the ladder claims the loop", () => {
     // The lifted state, pinned by name so that reinstating the hold or
     // reverting the ladder entry fails here as well as in the OD-5 rules above.
-    // FD1 (2026-11-12) then set its REGISTRY maturity to `beta` — one of the
-    // three beta launch types — so its public claim is beta by the registry,
-    // not by a demotion, and its ladder caveat says so beside the loop claim.
+    // FD1 (2026-11-12) then set its REGISTRY maturity to `core` — one of the
+    // two full-strength launch types, per the 2026-11-12 decision records —
+    // so its public claim is core by the registry, not by a demotion. Its
+    // ladder entry therefore carries NO public-tier caveat: the generator
+    // states one only beside a decided vertical the founder kept below core
+    // (under the S1 recording this entry said "the public claim is beta
+    // (FD1)" — that was the unratified Land↔Buy-and-Hold swap; corrected
+    // 2026-11-16 by founder ruling.)
     expect(readinessOf(BUSINESS_TYPES.buy_and_hold, evidence)).toBe("decided");
     expect(PUBLIC_CLAIM_DEMOTIONS.buy_and_hold).toBeUndefined();
-    expect(BUSINESS_TYPES.buy_and_hold.maturity).toBe("beta");
+    expect(BUSINESS_TYPES.buy_and_hold.maturity).toBe("core");
     expect(entry("buy_and_hold"), "no ladder entry for buy_and_hold").toBeDefined();
     expect(entry("buy_and_hold")!.claim).toMatch(/closes the canonical loop/);
-    expect(entry("buy_and_hold")!.caveat ?? "").toMatch(/public claim is beta/);
+    expect(entry("buy_and_hold")!.caveat).toBeUndefined();
   });
 
   it("the lift is recorded in the founder decision file", () => {

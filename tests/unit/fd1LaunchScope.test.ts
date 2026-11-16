@@ -35,11 +35,11 @@ import {
 
 /** The decision, one row per type. Exhaustive: the type forbids a missing key. */
 const FD1_PRESENTATION: Record<BusinessTypeId, VerticalMaturity> = {
-  land_flipper: "core",
+  land_flipper: "beta",
   note_investor: "core",
   tax_lien_deed: "beta",
   residential_wholesaler: "beta",
-  buy_and_hold: "beta",
+  buy_and_hold: "core",
   hybrid: "registry_only",
   fix_and_flip: "registry_only",
   short_term_rental: "registry_only",
@@ -65,8 +65,8 @@ describe("FD1 — the registry states the launch presentation exactly", () => {
   });
 
   it("2 core / 3 beta / 10 registry-only / 0 roadmap", () => {
-    expect(byTier("core").sort()).toEqual(["land_flipper", "note_investor"]);
-    expect(byTier("beta").sort()).toEqual(["buy_and_hold", "residential_wholesaler", "tax_lien_deed"]);
+    expect(byTier("core").sort()).toEqual(["buy_and_hold", "note_investor"]);
+    expect(byTier("beta").sort()).toEqual(["land_flipper", "residential_wholesaler", "tax_lien_deed"]);
     expect(byTier("registry_only")).toHaveLength(10);
     expect(byTier("roadmap")).toEqual([]);
   });
@@ -124,8 +124,8 @@ describe("FD1 — what the presentation means in code", () => {
   it("publicMaturityOf derives from the registry: strangers are told 2 core, 3 beta, 10 not sold", () => {
     const told = (tier: string) =>
       BUSINESS_TYPE_IDS.filter((id) => publicMaturityOf(BUSINESS_TYPES[id]) === tier).sort();
-    expect(told("core")).toEqual(["land_flipper", "note_investor"]);
-    expect(told("beta")).toEqual(["buy_and_hold", "residential_wholesaler", "tax_lien_deed"]);
+    expect(told("core")).toEqual(["buy_and_hold", "note_investor"]);
+    expect(told("beta")).toEqual(["land_flipper", "residential_wholesaler", "tax_lien_deed"]);
     expect(told("roadmap")).toEqual(byTier("registry_only").sort());
   });
 
