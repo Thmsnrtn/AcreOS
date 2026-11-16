@@ -278,7 +278,7 @@ beforeAll(async () => {
   const setupRouter = (await import("../../server/routes-setup")).default;
   setupApp = express();
   setupApp.use((req: Request, _res: Response, next: NextFunction) => {
-    (req as Request & { user?: { email: string } }).user = { email: String(process.env.FOUNDER_EMAIL) };
+    (req as unknown as { user?: { email: string } }).user = { email: String(process.env.FOUNDER_EMAIL) };
     next();
   });
   setupApp.use("/api/founder/setup", setupRouter);
