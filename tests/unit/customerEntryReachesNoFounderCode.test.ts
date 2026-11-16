@@ -144,7 +144,9 @@ const rel = (abs: string) => path.relative(ROOT, abs).split(path.sep).join("/");
 
 describe("the founder-only module list (read from the build gate) is alive", () => {
   it("has one pattern per founder source family, and each matches a real file shape", () => {
-    expect(PATTERNS.length).toBeGreaterThanOrEqual(8);
+    // 9 families from the P1-9 split + the 5 P1-9 N1 hardening entries (Solene
+    // tree, info-tooltip, prompt-diff-viewer, atlas-discuss, setup wizard).
+    expect(PATTERNS.length).toBeGreaterThanOrEqual(14);
     const samples = [
       "client/src/pages/founder/home.tsx",
       "client/src/pages/founder-letter.tsx",
@@ -155,11 +157,28 @@ describe("the founder-only module list (read from the build gate) is alive", () 
       "client/src/pages/dunning-manager.tsx",
       "client/src/hooks/use-sovereign-dashboard.ts",
       "client/src/founder-routes.tsx",
+      // P1-9 N1: founder-only surfaces that the first list did not name.
+      "client/src/components/solene/MessageList.tsx",
+      "client/src/components/solene/chatWork.ts",
+      "client/src/components/info-tooltip.tsx",
+      "client/src/components/prompt-diff-viewer.tsx",
+      "client/src/lib/atlas-discuss.ts",
+      "client/src/components/founder-setup-wizard.tsx",
     ];
     for (const s of samples) expect(isFounderOnly(s), `${s} is not covered by the founder-only list`).toBe(true);
     // Shared on purpose — nav-items derives the shared nav from founder-doors,
-    // and /commissions' page is shared with Finance → Commissions.
-    for (const s of ["client/src/lib/founder-doors.ts", "client/src/pages/commissions.tsx", "client/src/components/artifacts/text.tsx"]) {
+    // and /commissions' page is shared with Finance → Commissions. The setup
+    // wizard's own imports (shared ui/*, queryClient, use-toast, labels) are
+    // customer modules too, so listing the wizard must not have dragged them in.
+    for (const s of [
+      "client/src/lib/founder-doors.ts",
+      "client/src/pages/commissions.tsx",
+      "client/src/components/artifacts/text.tsx",
+      "client/src/components/ui/dialog.tsx",
+      "client/src/lib/queryClient.ts",
+      "client/src/lib/labels.ts",
+      "client/src/hooks/use-toast.ts",
+    ]) {
       expect(isFounderOnly(s), `${s} must stay shareable`).toBe(false);
     }
   });
