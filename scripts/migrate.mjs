@@ -241,6 +241,7 @@ const STATEMENTS = [
   // the six batches govern and RAISEs a SINGLE compact line: tables still
   // present list their row counts; 'present=none' is the program's full
   // clean verdict in one atomic read. Re-prints every release.
+  // 0247 — 0247_od8_ledger
   `DO $mig0247$
 DECLARE
   t text;
@@ -2862,6 +2863,7 @@ $mig0262$`,
   'CREATE INDEX IF NOT EXISTS "import_jobs_status_created_idx" ON "import_jobs" ("status", "created_at")',
   // Migration 0252 (DEFECT-0130): the import upload lives in the row, not in
   // one machine's /tmp; heartbeat_at lets a dead run be failed honestly.
+  // 0252 — 0252_import_job_payload_in_db
   'ALTER TABLE "import_jobs" ADD COLUMN IF NOT EXISTS "payload_bytes" bytea',
   'ALTER TABLE "import_jobs" ADD COLUMN IF NOT EXISTS "heartbeat_at" timestamp',
 
@@ -8117,6 +8119,7 @@ $mig0262$`,
   // Syndication channel states (migration 0200, founder decision D7) — the
   // per-org half of the listing-syndication channel model; the catalog
   // (names, env keys) lives in code.
+  // 0200 — 0200_syndication_channels
   `CREATE TABLE IF NOT EXISTS "syndication_channel_states" (
      "id" serial PRIMARY KEY,
      "organization_id" integer NOT NULL REFERENCES "organizations" ("id") ON DELETE CASCADE,
@@ -8134,6 +8137,7 @@ $mig0262$`,
   // IRS SOI county migration totals + Census BPS county building permits,
   // feeding the County Opportunity Score. Suppressed IRS values (-1) are
   // stored NULL — nulls are honest.
+  // 0201 — 0201_county_market_signals
   `CREATE TABLE IF NOT EXISTS "county_migration_summary" (
      "id" serial PRIMARY KEY,
      "state_fips" text NOT NULL,
@@ -8178,6 +8182,7 @@ $mig0262$`,
   // CSV), the economic-durability leg of county scoring. BLS-suppressed
   // counties (disclosure_code 'N') store NULL employment/wage — nulls are
   // honest.
+  // 0202 — 0202_county_employment_wages
   `CREATE TABLE IF NOT EXISTS "county_employment_wages" (
      "id" serial PRIMARY KEY,
      "state_fips" text NOT NULL,
@@ -8217,6 +8222,7 @@ $mig0262$`,
   // lands ('pending' | 'passed' | 'flagged' + FINDINGS). Verification never
   // blocks the import in CP2 — blocking is CP3. Additive + nullable.
   // Mirrors shared/schema/solene-dispatch.ts + shared/schema/etl.ts.
+  // 0204 — 0204_verify_success_criteria
   `ALTER TABLE "solene_dispatch_queue" ADD COLUMN IF NOT EXISTS "success_criteria" jsonb`,
   `ALTER TABLE "import_jobs" ADD COLUMN IF NOT EXISTS "verify_status" text`,
   `ALTER TABLE "import_jobs" ADD COLUMN IF NOT EXISTS "verify_findings" text`,
@@ -8228,6 +8234,7 @@ $mig0262$`,
   // here ('pending' | 'passed' | 'flagged' + FINDINGS). Verification never
   // blocks or un-sends — CP3's act-and-confirm binding is the Trust Ledger,
   // not blocking. Additive + nullable. Mirrors shared/schema/finance.ts.
+  // 0205 — 0205_mail_verify_status
   `ALTER TABLE "mail_shipments" ADD COLUMN IF NOT EXISTS "verify_status" text`,
   `ALTER TABLE "mail_shipments" ADD COLUMN IF NOT EXISTS "verify_findings" text`,
 
@@ -8236,6 +8243,7 @@ $mig0262$`,
   // OAuth tokens (bytea) + non-secret metadata; message bodies are never
   // stored. Mirrors migrations/0206_connected_mailboxes.sql +
   // shared/schema/connected-mailboxes.ts.
+  // 0206 — 0206_connected_mailboxes
   `CREATE TABLE IF NOT EXISTS "connected_mailboxes" (
     "id" serial PRIMARY KEY,
     "organization_id" integer NOT NULL,
@@ -8261,6 +8269,7 @@ $mig0262$`,
   // The native inbox rides Clerk's OAuth token vending now — AcreOS stores no
   // mailbox tokens. Remove the unused encrypted-token columns from 0206.
   // Mirrors migrations/0207_connected_mailboxes_drop_tokens.sql.
+  // 0207 — 0207_connected_mailboxes_drop_tokens
   `ALTER TABLE "connected_mailboxes" DROP COLUMN IF EXISTS "access_token_encrypted"`,
   `ALTER TABLE "connected_mailboxes" DROP COLUMN IF EXISTS "refresh_token_encrypted"`,
   `ALTER TABLE "connected_mailboxes" DROP COLUMN IF EXISTS "token_expires_at"`,
@@ -8275,6 +8284,7 @@ $mig0262$`,
   // migrations/0208_open_data_change_events.sql + shared/schema.ts
   // (openDataChangeEvents); rules in
   // server/services/openData/changeDetection.ts.
+  // 0208 — 0208_open_data_change_events
   `CREATE TABLE IF NOT EXISTS "open_data_change_events" (
     "id" serial PRIMARY KEY,
     "category" text NOT NULL,
@@ -8309,6 +8319,7 @@ $mig0262$`,
   // Mirrors migrations/0209_wave_a_persistence_tables.sql +
   // shared/schema/market-watchlist.ts, shared/schema/outreach-ab.ts,
   // shared/schema/compliance.ts.
+  // 0209 — 0209_wave_a_persistence_tables
   `CREATE TABLE IF NOT EXISTS "market_watchlist_entries" (
     "id" text PRIMARY KEY,
     "organization_id" integer NOT NULL,
@@ -8395,6 +8406,7 @@ $mig0262$`,
   // process is alive. No new table — two nullable columns + a partial index on
   // the existing workflow_runs. Mirrors
   // migrations/0210_workflow_delay_durability.sql + shared/schema.ts.
+  // 0210 — 0210_workflow_delay_durability
   `ALTER TABLE "workflow_runs" ADD COLUMN IF NOT EXISTS "resume_at" timestamp`,
   `ALTER TABLE "workflow_runs" ADD COLUMN IF NOT EXISTS "resume_state" jsonb`,
   `CREATE INDEX IF NOT EXISTS "workflow_runs_waiting_resume_idx" ON "workflow_runs" ("resume_at") WHERE "status" = 'waiting'`,
@@ -8408,6 +8420,7 @@ $mig0262$`,
   // a campaign. The analytics on top were already built — they just needed
   // real data. Mirrors migrations/0211_mail_qr_attribution.sql +
   // shared/schema/finance.ts.
+  // 0211 — 0211_mail_qr_attribution
   `ALTER TABLE "mail_shipment_pieces" ADD COLUMN IF NOT EXISTS "qr_code" text`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "mail_shipment_pieces_qr_code_uidx" ON "mail_shipment_pieces" ("qr_code")`,
   `CREATE INDEX IF NOT EXISTS "mail_shipment_pieces_provider_piece_idx" ON "mail_shipment_pieces" ("provider_piece_id")`,
@@ -8439,6 +8452,7 @@ $mig0262$`,
   // no FK to either: the evidence of what was quoted must outlive the note
   // row it describes. Mirrors migrations/0212_note_payoff_quotes.sql +
   // shared/schema/notes-vertical.ts.
+  // 0212 — 0212_note_payoff_quotes
   `CREATE TABLE IF NOT EXISTS "note_payoff_quotes" (
     "id" varchar PRIMARY KEY DEFAULT gen_random_uuid(),
     "organization_id" integer NOT NULL REFERENCES "organizations" ("id") ON DELETE CASCADE,
@@ -8484,6 +8498,7 @@ $mig0262$`,
   // processor idempotency key, and the resulting PaymentIntent id becomes the
   // unique payments.transaction_id). Mirrors migrations/0213_ach_autopay.sql
   // + shared/schema/ach-autopay.ts.
+  // 0213 — 0213_ach_autopay
   `CREATE TABLE IF NOT EXISTS "ach_mandates" (
     "id" serial PRIMARY KEY,
     "organization_id" integer NOT NULL REFERENCES "organizations" ("id") ON DELETE CASCADE,
@@ -8569,6 +8584,7 @@ $mig0262$`,
   // No new table — the challenge is signed, not stored. Mirrors
   // migrations/0215_ach_mandate_authorization_challenge.sql +
   // shared/schema/ach-autopay.ts.
+  // 0215 — 0215_ach_mandate_authorization_challenge
   `ALTER TABLE "ach_mandates" ADD COLUMN IF NOT EXISTS "authorization_challenge_id" text`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "ach_mandates_authorization_challenge_uidx" ON "ach_mandates" ("authorization_challenge_id")`,
 
@@ -8598,6 +8614,7 @@ $mig0262$`,
   // walk_away_condition, partner_split) already exist above; this commit fixes
   // the drift by finally mirroring them into shared/schema.ts, which needs no
   // DDL. Mirrors migrations/0216_tax_sale_manual_import.sql + shared/schema.ts.
+  // 0216 — 0216_tax_sale_manual_import
   `ALTER TABLE "tax_sale_auctions" ADD COLUMN IF NOT EXISTS "session_budget_cents" bigint`,
   `CREATE INDEX IF NOT EXISTS "tax_sale_auctions_org_date_idx" ON "tax_sale_auctions" ("organization_id", "auction_date")`,
   `CREATE INDEX IF NOT EXISTS "tax_sale_auctions_org_state_county_idx" ON "tax_sale_auctions" ("organization_id", "state", "county")`,
@@ -8637,6 +8654,7 @@ $mig0262$`,
   //
   // ONE new table — scripts/ratchets/table-count.json 753 -> 754.
   // Mirrors migrations/0217_wave_d_rent_ledger.sql + shared/schema/rental.ts.
+  // 0217 — 0217_wave_d_rent_ledger
   `CREATE TABLE IF NOT EXISTS "rent_payment_allocations" (
     "id" varchar PRIMARY KEY DEFAULT gen_random_uuid(),
     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
@@ -8713,6 +8731,7 @@ $mig0262$`,
   //
   // NO new tables — scripts/ratchets/table-count.json unchanged.
   // Mirrors migrations/0218_acquired_note_aging.sql + shared/schema/notes-vertical.ts.
+  // 0218 — 0218_acquired_note_aging
   `ALTER TABLE "acquired_notes" ADD COLUMN IF NOT EXISTS "first_payment_date" date`,
   `ALTER TABLE "acquired_notes" ADD COLUMN IF NOT EXISTS "next_payment_date" date`,
   `ALTER TABLE "acquired_notes" ADD COLUMN IF NOT EXISTS "paid_through_date" date`,
@@ -8772,6 +8791,7 @@ $mig0262$`,
   //
   // ONE new table — scripts/ratchets/table-count.json 754 -> 755.
   // Mirrors migrations/0219_rental_units.sql + shared/schema/rental.ts.
+  // 0219 — 0219_rental_units
   `CREATE TABLE IF NOT EXISTS "rental_units" (
     "id" varchar PRIMARY KEY DEFAULT gen_random_uuid(),
     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
@@ -8980,6 +9000,7 @@ $mig0262$`,
   //     server/routes-rentals.ts). Nothing previously valid becomes invalid.
   // Additive + widening only. Mirrors migrations/0220_tenant_entity.sql +
   // shared/schema/rental.ts. Idempotent — safe to re-run every deploy.
+  // 0220 — 0220_tenant_entity
   `ALTER TABLE "tenants" ADD COLUMN IF NOT EXISTS "is_entity" boolean NOT NULL DEFAULT false`,
   `ALTER TABLE "tenants" ADD COLUMN IF NOT EXISTS "company_name" text`,
   `ALTER TABLE "tenants" ALTER COLUMN "first_name" DROP NOT NULL`,
@@ -9109,6 +9130,7 @@ $mig0262$`,
   //
   // ONE new table — scripts/ratchets/table-count.json 748 -> 749.
   // Mirrors migrations/0221_property_expenses.sql + shared/schema/rental.ts.
+  // 0221 — 0221_property_expenses
   `CREATE TABLE IF NOT EXISTS "property_expenses" (
     "id" varchar PRIMARY KEY DEFAULT gen_random_uuid(),
     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
@@ -9165,6 +9187,7 @@ $mig0262$`,
   //
   // FOUR new tables — scripts/ratchets/table-count.json 749 -> 753.
   // Mirrors migrations/0222_commercial_core.sql + shared/schema/rental.ts.
+  // 0222 — 0222_commercial_core
 
   // 1. cam_expense_pools — the recoverable-pool definition.
   `CREATE TABLE IF NOT EXISTS "cam_expense_pools" (
@@ -9340,6 +9363,7 @@ $mig0262$`,
   //
   // TWO new tables — scripts/ratchets/table-count.json 753 -> 755.
   // Mirrors migrations/0223_mobile_home_core.sql + shared/schema/rental.ts.
+  // 0223 — 0223_mobile_home_core
 
   // 1. rental_units — home_ownership (POH/TOH) + chattel-title RECORD columns.
   `ALTER TABLE "rental_units" ADD COLUMN IF NOT EXISTS "home_ownership" text`,
@@ -9407,6 +9431,7 @@ $mig0262$`,
   //
   // ONE new table — scripts/ratchets/table-count.json 755 -> 756.
   // Mirrors migrations/0224_str_reservations.sql + shared/schema/rental.ts.
+  // 0224 — 0224_str_reservations
   `CREATE TABLE IF NOT EXISTS "reservations" (
     "id" varchar PRIMARY KEY DEFAULT gen_random_uuid(),
     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
@@ -9443,6 +9468,7 @@ $mig0262$`,
   //     REUSE maintenance_tickets (category 'cleaning'), so no new table; this
   //     nullable column + the partial unique index below make generation
   //     idempotent (one turnover per reservation checkout).
+  // 0225 — 0225_str_wave_b
   `ALTER TABLE "reservations" ADD COLUMN IF NOT EXISTS "nightly_rate_cents" bigint`,
   `ALTER TABLE "maintenance_tickets" ADD COLUMN IF NOT EXISTS "reservation_id" varchar`,
   // Org-LEADING + PARTIAL: at most ONE turnover-cleaning ticket per reservation.
@@ -9459,6 +9485,7 @@ $mig0262$`,
   //     RECORD-ONLY dual-agency tracker. AcreOS never generates, sends, or e-signs
   //     a disclosure (legal-signing is founder-only); these store what the operator
   //     asserts and uploads elsewhere.
+  // 0226 — 0226_agent_investor_commission_book
   `ALTER TABLE "deals" ADD COLUMN IF NOT EXISTS "deal_book" text`,
   // Org-LEADING pipeline filter: "my client deals under contract" reads by (org, book).
   `CREATE INDEX IF NOT EXISTS "deals_org_book_idx" ON "deals" ("organization_id", "deal_book")`,
@@ -9490,6 +9517,7 @@ $mig0262$`,
   // UPDATEs. subject_id carries NO foreign key because subject_type may be
   // 'parcel', which has no table yet — recording it now makes the eventual
   // Parcel/Property split a backfill, not a rewrite of history.
+  // 0227 — 0227_evidence_claims
   `CREATE TABLE IF NOT EXISTS "evidence_claims" (
     "id" serial PRIMARY KEY,
     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
@@ -9535,6 +9563,7 @@ $mig0262$`,
   // carries NO foreign key because a snapshot must SURVIVE its subject — an
   // investor who passed on a property and deleted it still needs the record of
   // why, and a cascade would erase precisely the decisions worth keeping.
+  // 0228 — 0228_decision_snapshots
   `CREATE TABLE IF NOT EXISTS "decision_snapshots" (
     "id" serial PRIMARY KEY,
     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
@@ -9574,6 +9603,7 @@ $mig0262$`,
   // date and never prompt. The date is frozen at decision time by the person
   // making the call, never guessed later by a heuristic that would nag about a
   // long land hold and stay silent on a flip.
+  // 0232 — 0232_decision_review_due
   `ALTER TABLE "decision_snapshots" ADD COLUMN IF NOT EXISTS "review_due_at" timestamp`,
   `CREATE INDEX IF NOT EXISTS "decision_snapshots_org_review_due_idx" ON "decision_snapshots" ("organization_id", "review_due_at")`,
 
@@ -9587,6 +9617,7 @@ $mig0262$`,
   // Plain integer, NO foreign key: offers.organization_id does not cascade while
   // decision_snapshots.organization_id does, so an FK would fail on tenant
   // deletion. The read resolves through the org-scoped getDecision instead.
+  // 0233 — 0233_offer_decision_link
   `ALTER TABLE "offers" ADD COLUMN IF NOT EXISTS "decision_snapshot_id" integer`,
 
   // ── 0234 lot_pricing_rules.locked_decision_snapshot_id ─────────────────────
@@ -9594,6 +9625,7 @@ $mig0262$`,
   // The lock writes each child lot's list_price — an act — while locked_grid
   // preserves only the output. The rules and base source that produced it live
   // in the same mutable row, so this is the link to the frozen reasoning.
+  // 0234 — 0234_lot_pricing_decision_link
   `ALTER TABLE "lot_pricing_rules" ADD COLUMN IF NOT EXISTS "locked_decision_snapshot_id" integer`,
 
   // ── 0229 outward_actions: idempotency at the action/provider boundary ──────
@@ -9619,6 +9651,7 @@ $mig0262$`,
   // terminal and refuses retry (AU28): a timeout after the request left is
   // neither success nor failure, and guessing is how a second letter gets
   // printed.
+  // 0229 — 0229_outward_actions
   `CREATE TABLE IF NOT EXISTS "outward_actions" (
     "id" serial PRIMARY KEY,
     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
@@ -9653,6 +9686,7 @@ $mig0262$`,
   // engine_input_json. IMMUTABLE: no updated_at, no UPDATE path; re-running the
   // maths inserts a new row. No FK on subject_id because the economics of a deal
   // you walked away from are exactly the ones worth still being able to read.
+  // 0230 — 0230_scenarios
   `CREATE TABLE IF NOT EXISTS "scenarios" (
     "id" serial PRIMARY KEY,
     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
@@ -9718,6 +9752,7 @@ END $mig0249$`,
   // survive their subject, whereas an outcome WITHOUT its decision is
   // meaningless. Variance is NOT a column — it is a pure projection over the
   // scenario refs the decision already froze (law 9).
+  // 0231 — 0231_outcomes
   `CREATE TABLE IF NOT EXISTS "outcomes" (
     "id" serial PRIMARY KEY,
     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
@@ -9756,6 +9791,7 @@ END $mig0249$`,
   // record of work done and stays true after the lead it was about is deleted.
   // note_id is deliberately unconstrained — two live note families exist and
   // which is canonical is an open founder decision (B10).
+  // 0235 — 0235_va_tasks
   `CREATE TABLE IF NOT EXISTS "va_tasks" (
     "id" serial PRIMARY KEY,
     "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
@@ -9897,6 +9933,7 @@ END $mig0249$`,
   // by definition precedes the commitment that would create a property row, and
   // a properties.id would re-conflate the identity the parcel work just
   // separated.
+  // 0237 — 0237_opportunities
   `CREATE TABLE IF NOT EXISTS "opportunities" (
     "id"              serial PRIMARY KEY,
     "organization_id" integer NOT NULL
@@ -11023,6 +11060,7 @@ END $mig0249$`,
   // ── 0238 evidence_claims: closed vocabularies + value coherence + append-only ──
   // Full reasoning lives in migrations/0238_evidence_claims_integrity.sql; only the executable
   // statements are mirrored here, which is the path that runs on deploy.
+  // 0238 — 0238_evidence_claims_integrity
   `DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'evidence_claims_subject_type_chk') THEN
     ALTER TABLE "evidence_claims" ADD CONSTRAINT "evidence_claims_subject_type_chk"
@@ -11067,6 +11105,7 @@ $$ LANGUAGE plpgsql;`,
   // ── 0239 earnest_money_events: append-only by TRIGGER, not RULE ──
   // Full reasoning lives in migrations/0239_emd_events_append_only_via_trigger.sql; only the executable
   // statements are mirrored here, which is the path that runs on deploy.
+  // 0239 — 0239_emd_events_append_only_via_trigger
   `DROP RULE IF EXISTS "emd_events_no_update" ON "earnest_money_events"`,
   `DROP RULE IF EXISTS "emd_events_no_delete" ON "earnest_money_events"`,
   `CREATE OR REPLACE FUNCTION "emd_events_refuse_update"() RETURNS trigger AS $$
@@ -11087,6 +11126,7 @@ $$ LANGUAGE plpgsql;`,
   // (OWNER_DECISIONS_PENDING.md OD-9 DECIDED). Idempotent via the ruling tag
   // in the note. Belts stay ON (deny_money, deny_broadcast); revocable from
   // Controls; 300 actions / 30-day TTL — renewal is a deliberate founder act.
+  // 0240 — 0240_od9_seed_standing_witness_grant
   `INSERT INTO witness_grants
   (grantor_id, grantee_id, domains, max_cost_usd, max_actions, expires_at,
    deny_money, deny_broadcast, note)
@@ -11115,6 +11155,7 @@ WHERE NOT EXISTS (
   // removed from this file in the same commit that added this block, so
   // nothing can recreate them. The RAISE output reaches the release log
   // through the notice listener on the pool below.
+  // 0241 — 0241_od8_batch1_conditional_drops
   `DO $mig0241$
 DECLARE
   t text;
@@ -11172,6 +11213,7 @@ END $mig0241$`,
   // war_room_messages came OFF (live reader+writer in warRoomService via
   // ceoCommandBridge/attentionOptimizer); canary_deploys/migration_plans/
   // provider_configs were never persisted anywhere — nothing to drop.
+  // 0242 — 0242_od8_batch2_conditional_drops
   `DO $mig0242$
 DECLARE
   t text;
@@ -11222,6 +11264,7 @@ END $mig0242$`,
   // dropping the parent leaves it structurally untouched.
   // reaction_chain_links discovered zero-caller during this batch's
   // census; recorded as a future tranche candidate, not dropped here.
+  // 0243 — 0243_od8_batch3_conditional_drops
   `DO $mig0243$
 DECLARE
   t text;
@@ -11263,6 +11306,7 @@ END $mig0243$`,
   // exception to 0241-0243's zero-rows condition, and it carries its
   // authorization inline; the dropped row count is preserved in the
   // evidence line.
+  // 0244 — 0244_od8_drop_reaction_chains_survivor
   `DO $mig0244$
 DECLARE
   n bigint;
@@ -11283,6 +11327,7 @@ END $mig0244$`,
   // writer and reader. Created only by migrations/0016 (never applied to
   // production), so 'absent' is the expected verdict; a populated survivor
   // would mean a founder curl once granted a token and stays for review.
+  // 0245 — 0245_od8_batch5_drop_delegation_tokens
   `DO $mig0245$
 DECLARE
   n bigint;
@@ -11309,6 +11354,7 @@ END $mig0245$`,
   // 2026-08-30): ledger-only lane, one HTTP call site, zero engine
   // callers; the governance Trust-log tab retired in the same commit so
   // no surface renders a dead fetch.
+  // 0246 — 0246_od8_batch6_lane2_conditional_drops
   `DO $mig0246$
 DECLARE
   t text;
@@ -11348,6 +11394,7 @@ END $mig0246$`,
   // organizations.pax_controls — the customer's stance + three switches.
   // NULL reads as the defaults in shared/pax-controls.ts, which equal
   // today's live behaviour: this deploy changes nothing silently.
+  // 0250 — 0250_pax_controls
   'ALTER TABLE "organizations" ADD COLUMN IF NOT EXISTS "pax_controls" jsonb',
   // pending_actions gains where-from and why. Nullable; older rows have none.
   'ALTER TABLE "pending_actions" ADD COLUMN IF NOT EXISTS "origin" text',
@@ -11391,6 +11438,7 @@ END $mig0246$`,
   // Mirror of migrations/0251_organizations_hot_indexes.sql. `owner_id` is
   // read by getOrCreateOrg on nearly every authenticated request and had no
   // index; `stripe_customer_id` is read by every Stripe webhook. Idempotent.
+  // 0251 — 0251_organizations_hot_indexes
   'CREATE INDEX IF NOT EXISTS "organizations_owner_id_idx" ON "organizations" ("owner_id")',
   'CREATE INDEX IF NOT EXISTS "organizations_stripe_customer_id_idx" ON "organizations" ("stripe_customer_id")',
 
