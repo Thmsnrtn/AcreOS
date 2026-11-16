@@ -36,6 +36,13 @@
  * Pure data + pure functions: shared/ is bundled into the client.
  */
 
+import {
+  BUSINESS_TYPES,
+  registryPublicTier,
+  type BusinessTypeId,
+  type PublicMaturity,
+} from "../business-types";
+
 const EVIDENCE_LEVELS = ["E0", "E1", "E2", "E3", "E4", "E5", "E6"] as const;
 export type EvidenceLevel = (typeof EVIDENCE_LEVELS)[number];
 
@@ -55,31 +62,58 @@ export interface Capability {
 }
 
 /**
+ * What the caveat says about the PUBLIC tier, per registry tier. Read from the
+ * registry (shared/business-types.ts → registryPublicTier) so the ladder can
+ * never restate a public claim by hand — it used to say "the public claim is
+ * beta (OD-5)" for every surfaced vertical, which was true only while the
+ * demotion table said so. Pinned against publicMaturityOf in
+ * verticalReadiness.test.ts.
+ */
+const PUBLIC_TIER_WORDING: Record<PublicMaturity, string> = {
+  core: "the public claim is core",
+  beta: "the public claim is beta",
+  roadmap: "registry-only, not in the public promise",
+};
+
+/**
  * A vertical's ladder entry, derived from the one readiness fact it states.
  *
  * `decided`: a decision under the vertical's pack cites a scenario from an engine
  * that declares the vertical (evidence rule v2, tests/support/verticalEvidence.ts).
- * `surfaced`: real modules and workflow templates, but no such decision — which is
- * why its public claim is demoted to beta (OD-5, shared/business-types/publicClaims.ts).
+ * `surfaced`: real modules and workflow templates, but no such decision. The
+ * public-tier half of the caveat is READ FROM THE REGISTRY (FD1, 2026-11-12), so
+ * the ladder tells the founder the same tier a stranger is told: a surfaced
+ * vertical the founder nonetheless promised as core says so in plain words.
  */
 function verticalEntry(
-  id: string,
+  id: BusinessTypeId,
   name: string,
   evidenced: "surfaced" | "decided",
   opts: { notGradeable?: string } = {},
 ): Capability {
   const base = { id: `vertical.${id}`, level: "E1" as const, proof: { unit: ["tests/unit/verticalReadiness.test.ts"] } };
+  const publicTier = registryPublicTier(BUSINESS_TYPES[id].maturity);
+  const publicWording = `${PUBLIC_TIER_WORDING[publicTier]} (FD1)`;
   if (evidenced === "decided") {
+    const caveats = [
+      ...(opts.notGradeable ? [`decided, not yet gradeable: ${opts.notGradeable}`] : []),
+      // A decided vertical promised as core needs no public caveat; one the
+      // founder kept at beta or registry-only states that beside its proof.
+      ...(publicTier === "core" ? [] : [publicWording]),
+    ];
     return {
       ...base,
       claim: `The ${name} vertical closes the canonical loop (scenario → decision snapshot)`,
-      ...(opts.notGradeable ? { caveat: `decided, not yet gradeable: ${opts.notGradeable}` } : {}),
+      ...(caveats.length > 0 ? { caveat: caveats.join("; ") } : {}),
     };
   }
   return {
     ...base,
     claim: `The ${name} vertical has real modules and workflow templates (evidenced 'surfaced')`,
-    caveat: "surfaced, not decided: the public claim is beta (OD-5)",
+    caveat:
+      publicTier === "core"
+        ? `surfaced, not decided: ${publicWording} by founder decision on surfaced evidence`
+        : `surfaced, not decided: ${publicWording}`,
   };
 }
 
@@ -184,9 +218,9 @@ export const CAPABILITIES: readonly Capability[] = [
   // Each entry states ONE fact — the readiness tier its evidence reaches — and the
   // claim and caveat are derived from it (verticalEntry, above), so the ladder cannot
   // say "beta" about a vertical the evidence rule v2 has released. That tier is
-  // pinned to the MEASURED one in verticalReadiness.test.ts, which also pins the
-  // public demotion map (PUBLIC_CLAIM_DEMOTIONS) to the same measurement: one rule,
-  // read in two places, never restated by hand.
+  // pinned to the MEASURED one in verticalReadiness.test.ts, which also pins each
+  // caveat's public-tier wording to publicMaturityOf (the registry's projection,
+  // FD1): one rule, read in two places, never restated by hand.
   verticalEntry("land_flipper", "land flipper", "decided"),
   verticalEntry("note_investor", "note investor", "surfaced"),
   verticalEntry("hybrid", "hybrid", "surfaced"),

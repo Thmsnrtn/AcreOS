@@ -11,13 +11,29 @@
  *   - Vertical-aware Pax personalization
  *
  * Maturity tiers:
- *   core     — production-ready, full workflow templates, dedicated
- *              integrations, primary marketing surface.
- *   beta     — schema + onboarding path defined, partial workflow, no
- *              dedicated marketing surface. Customers can opt in but
- *              see "Beta" badges throughout.
- *   roadmap  — declared in the registry for waitlist + research, but
- *              UI affordances are intentionally suppressed.
+ *   core          — production-ready, full workflow templates, dedicated
+ *                   integrations, primary marketing surface.
+ *   beta          — schema + onboarding path defined, partial workflow, no
+ *                   dedicated marketing surface. Customers can opt in but
+ *                   see "Beta" badges throughout.
+ *   registry_only — BUILT and REGISTERED, but outside the public promise
+ *                   (founder decision FD1, 2026-11-12). Not offered to new
+ *                   signups and not sold to strangers; every existing book
+ *                   of this type keeps working — surfaces, templates,
+ *                   spotlight modules and data all stay exactly as they
+ *                   were. Nothing is deleted. Publicly it projects to the
+ *                   landing's one "not sold" tier (registryPublicTier).
+ *   roadmap       — declared in the registry for waitlist + research, but
+ *                   UI affordances are intentionally suppressed.
+ *
+ * 2026-11-12 — FD1 (launch scope & registry; recorded in
+ * docs/company/founder-decisions-2026-11-12-launch-scope.md). The public
+ * promise is 2 core + 3 beta; the other TEN are registry_only, Fix-and-Flip
+ * and Subdivider explicitly among them. This is a PRESENTATION re-cut of the
+ * 15 values below, not a deletion: `isProductionReady` (core|beta) is what
+ * gates new-signup selectability, so registry_only types stop being offered
+ * while `getBusinessType()` still resolves them for every existing org. The
+ * exact 15-row presentation is pinned in tests/unit/fd1LaunchScope.test.ts.
  *
  * 2026-07-29 — founder ruling #11 activation program in progress
  * (docs/company/founder-decisions-2026-07-28.md: build ALL registered
@@ -50,7 +66,19 @@ export const BUSINESS_TYPE_IDS = [
 ] as const;
 
 export type BusinessTypeId = (typeof BUSINESS_TYPE_IDS)[number];
-export type VerticalMaturity = "core" | "beta" | "roadmap";
+export type VerticalMaturity = "core" | "beta" | "registry_only" | "roadmap";
+
+/**
+ * The tiers a PUBLIC surface can show. `registry_only` is not one of them:
+ * a stranger is told "not sold", which is the landing's roadmap tier. This
+ * is the one registry→public mapping; publicClaims.ts and the evidence
+ * ladder both read it rather than restating it.
+ */
+export type PublicMaturity = Exclude<VerticalMaturity, "registry_only">;
+
+export function registryPublicTier(maturity: VerticalMaturity): PublicMaturity {
+  return maturity === "registry_only" ? "roadmap" : maturity;
+}
 
 export interface BusinessTypeMeta {
   id: BusinessTypeId;
@@ -122,7 +150,9 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
   hybrid: {
     id: "hybrid",
     label: "Land + notes (hybrid)",
-    maturity: "core",
+    // FD1 (2026-11-12): registry_only. Both halves stay in the public promise
+    // as their own types; the combined workspace is kept for existing books.
+    maturity: "registry_only",
     // 2026-07-29 truth pass: real template ids (see land_flipper /
     // note_investor entries) — one from each book, plus the live-emitted
     // parcel owner-change follow-up (wave V3).
@@ -173,7 +203,12 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     // prompt the operator to pull comps rather than interpolate an invented
     // comp number. With the ATTOM data seam already wired, the loop now fires
     // end-to-end — so this passes the honesty bar for core.
-    maturity: "core",
+    //
+    // FD1 (2026-11-12): registry_only, NAMED EXPLICITLY. The build above is
+    // untouched and still measures `decided`; what changes is the launch
+    // promise — flip is not offered to new signups or sold to strangers.
+    // Existing fix_and_flip orgs keep every surface.
+    maturity: "registry_only",
     // 2026-07-29 truth pass: all three flip templates ship in
     // workflow-engine.ts; the Flip sidebar module (businessTypeOnly
     // fix_and_flip) surfaces /rehabs + /contractors, which existing
@@ -197,7 +232,12 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     // fires from the AI matcher's fresh-insert branch (buyerEvents.ts); all three
     // are registered in shared/workflow-live-triggers.ts and pinned by
     // workflowActionHonesty. The vertical passes the honesty bar for core.
-    maturity: "core",
+    //
+    // FD1 (2026-11-12): beta — one of the three beta types in the public
+    // promise (with buy_and_hold and tax_lien_deed). Its journey-proof hold
+    // (founder-decisions-2026-11-05-wholesale.md) is unchanged: the ladder
+    // still waits for the Leg 5 walk.
+    maturity: "beta",
     // 2026-07-29 truth pass: the wholesaler build was real but undeclared
     // here. Wholesale sidebar module (businessTypeOnly
     // residential_wholesaler): buyer blasts, /buyer-analytics,
@@ -259,7 +299,11 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     // plane (that hard-stop is upheld: the templates now PROMPT the operator to
     // pull market rent on their own surface). The vertical passes the honesty bar
     // for core.
-    maturity: "core",
+    //
+    // FD1 (2026-11-12): beta — one of the three beta types in the public
+    // promise. Its decision desk still measures `decided`; beta is the launch
+    // presentation, not a verdict on the build.
+    maturity: "beta",
     // All four exist in workflow-engine.ts (landlord moments + lease expiry) and
     // are now wired live (see rentalEvents.ts + leaseExpiryDetector.ts).
     workflowTemplateIds: [
@@ -308,7 +352,10 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     // `surfaced` (no scenario/decision loop) and the PUBLIC claim is demoted to
     // beta (publicClaims.ts, OD-5); whether to relabel `maturity` here is the
     // founder's call, not a code change.
-    maturity: "core",
+    //
+    // FD1 (2026-11-12): the founder's call — registry_only. Outside the public
+    // promise; existing STR books keep the Bookings tab and everything above.
+    maturity: "registry_only",
     // The landlord templates that apply to nightly stays (maintenance triage,
     // rent-received receipt) plus the genuinely-STR turnover-cleaning template,
     // which fires live on the reservation.checkout emitter (workflowActionHonesty
@@ -363,7 +410,10 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     // commercial terms, $/sqft, escalation steps and CAM pools + reconciliation.
     // Percentage rent (sales reports) and the contractual late-fee proposal STILL
     // have no screen — held for a product decision, see the W2 report.
-    maturity: "core",
+    //
+    // FD1 (2026-11-12): registry_only. Outside the public promise; existing
+    // commercial books keep the Leases → Commercial tab and every engine above.
+    maturity: "registry_only",
     // Landlord templates whose mechanics genuinely apply to commercial
     // base-rent operations: maintenance triage, rent-received receipt, and
     // the plain lease-expiring renewal task. tpl_landlord_lease_renewal_
@@ -434,7 +484,10 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     // (tpl_deal_closed / tpl_note_setup) and payment.missed dunning already fire —
     // so the vertical now passes the honesty bar for core. rentalEvents.ts +
     // noteEvents.ts + workflowActionHonesty pin the live-trigger relationship.
-    maturity: "core",
+    //
+    // FD1 (2026-11-12): registry_only. Outside the public promise; the
+    // seller-finance rails stay live for existing books.
+    maturity: "registry_only",
     // All four exist in workflow-engine.ts: deal close (with the
     // seller-financed note-setup task), owner-finance note setup, missed-
     // payment dunning, and the balloon 90-day countdown (balloons being a
@@ -476,7 +529,10 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     // record-only) or ground-up construction management (correctly de-scoped in
     // Wave 2, never re-asserted). No comps, no vendor, no new nav, no money
     // movement. 2026-08 founder promote decision (Wave 5).
-    maturity: "core",
+    //
+    // FD1 (2026-11-12): registry_only, with subdivider (it collapses to the
+    // same surface). Outside the public promise; existing books unchanged.
+    maturity: "registry_only",
     // The three subdivision templates, adopted verbatim from subdivider — the
     // same LIVE emitters serve both (developer collapses to the subdivider
     // persona/surface, so no re-wiring is required).
@@ -494,7 +550,11 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
   subdivider: {
     id: "subdivider",
     label: "Subdivider",
-    maturity: "core",
+    // FD1 (2026-11-12): registry_only, NAMED EXPLICITLY. It still measures
+    // `decided` (lot-pricing lock + the Leg 4 decision desk); the launch
+    // promise simply does not include it. Existing subdivider orgs keep the
+    // Subdivision module and every route below.
+    maturity: "registry_only",
     // 2026-07-29 truth pass: all three subdivision templates exist in
     // workflow-engine.ts. "subdivision-editor" was a dangling name — there
     // is no such route; subdivision editing lives on the parcel-detail
@@ -520,7 +580,10 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
   tax_lien_deed: {
     id: "tax_lien_deed",
     label: "Tax lien / deed",
-    maturity: "core",
+    // FD1 (2026-11-12): beta — one of the three beta types in the public
+    // promise. Its evidence reaches `surfaced` (four live cert emitters, no
+    // decision desk yet), which is exactly what beta requires.
+    maturity: "beta",
     // 2026-07-29 truth pass: the tax-delinquent build was real but
     // undeclared here. Tax-delinquent sidebar module (businessTypeOnly
     // tax_lien_deed): /redemption-clock, /auction-worksheet, /state-rules,
@@ -602,7 +665,10 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     // Core is the shipped rental stack PLUS the measured expense axis,
     // per-building occupancy, and the T-12 workspace above — the operations a
     // small/mid multifamily operator actually runs, all honest end to end.
-    maturity: "core",
+    //
+    // FD1 (2026-11-12): registry_only. Outside the public promise; the rental
+    // stack, measured op-ex axis and T-12 workspace stay for existing books.
+    maturity: "registry_only",
     // All four landlord templates genuinely apply — multifamily IS
     // long-term rental operations at unit scale (term leases that renew,
     // a rent ledger, maintenance dispatch). Wave V3 added the dedicated
@@ -672,7 +738,10 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     // for a founder call (the split's rent_component input has no writer; the
     // billback needs read-period and provenance rules before any screen), so
     // the Pax voice no longer offers them. `maturity` is untouched (OD-5).
-    maturity: "core",
+    //
+    // FD1 (2026-11-12): registry_only. Outside the public promise; existing
+    // park books keep the Units tab, pad inventory and the record half above.
+    maturity: "registry_only",
     // All four landlord templates genuinely apply to lot-lease operations
     // (lot leases renew, lot rent hits the ledger, park infrastructure
     // needs maintenance dispatch). Wave V3 added the lot-rent receipt on
@@ -724,7 +793,10 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     //   (3) Dual-agency — a record-only tracker (no generation, sending, or
     //       e-signature; legal-signing stays founder-only).
     // Behind the existing Finance/Deals doors, no new nav, no money movement.
-    maturity: "core",
+    //
+    // FD1 (2026-11-12): registry_only. Outside the public promise; the
+    // commission surface and CMA stay for existing agent-investor books.
+    maturity: "registry_only",
     // The generic land-loop templates genuinely apply (lead intake, deal
     // close). Dunning is excluded — it assumes a serviced-note book this
     // operator doesn't necessarily carry.
@@ -750,6 +822,13 @@ export function listByMaturity(maturity: VerticalMaturity): BusinessTypeMeta[] {
 export function isCore(id: string | null | undefined): boolean {
   return getBusinessType(id)?.maturity === "core";
 }
+/**
+ * Selectable for a NEW signup / vertical profile: core|beta only. A
+ * `registry_only` type (FD1) is deliberately false here — it is registered
+ * and its existing books keep working, but it is not offered — exactly like
+ * `roadmap`. Readers that need "does this org's existing type resolve" use
+ * `getBusinessType()`, which answers for all fifteen.
+ */
 export function isProductionReady(id: string | null | undefined): boolean {
   const m = getBusinessType(id)?.maturity;
   return m === "core" || m === "beta";

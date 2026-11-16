@@ -38,6 +38,24 @@ import { fileURLToPath } from "node:url";
 import { verifyClaims, type Source } from "../server/services/truth-engine";
 import { stripCommentsPreservingLines as stripComments } from "./lib/strip-comments.mjs";
 import { TIER_PRICES_CENTS } from "../shared/billing/tier-pricing";
+import { BUSINESS_TYPES, BUSINESS_TYPE_IDS, type PublicMaturity } from "../shared/business-types";
+import { publicMaturityOf } from "../shared/business-types/publicClaims";
+
+/**
+ * The business-types SOURCE paragraph is DERIVED from the registry's public
+ * projection, never hand-written — the same rule the pricing source follows.
+ * Until 2026-11-15 it was prose naming "beta (residential wholesaler,
+ * buy-and-hold rentals, subdivider, tax lien / deed)" and "roadmap
+ * (fix-and-flip, short-term rentals, …)" — a tiering the registry had not
+ * held since 2026-08, so the audit was verifying landing claims against a
+ * source that described no shipped state. Now the lists below are what
+ * `publicMaturityOf` says a stranger is told, per type (FD1, 2026-11-12), so a
+ * registry change moves the source and a stale claim stops verifying.
+ */
+const publicTierLabels = (tier: PublicMaturity): string =>
+  BUSINESS_TYPE_IDS.filter((id) => publicMaturityOf(BUSINESS_TYPES[id]) === tier)
+    .map((id) => BUSINESS_TYPES[id].label.toLowerCase())
+    .join(", ");
 
 /**
  * The pricing SOURCE paragraph is DERIVED from the canonical tier registry,
@@ -471,19 +489,19 @@ function buildSources(): Source[] {
       `,
     },
     {
-      name: "AcreOS business types registry",
-      ref: "shared/business-types.ts",
+      name: "AcreOS business types registry (registry-derived)",
+      ref: "shared/business-types.ts + shared/business-types/publicClaims.ts",
+      // DERIVED from publicMaturityOf over BUSINESS_TYPES — see the note at the top.
       content: `
         Tiering registry — since ruling #11 wave V1 the landing chips DERIVE
-        from this registry's maturity at build time, so every investor type
-        the platform serves is labeled by what's true today: core (land
-        flipper, note investor — full workflow templates), beta (residential
-        wholesaler, buy-and-hold rentals, subdivider, tax lien / deed), and
-        roadmap (fix-and-flip, short-term rentals, commercial, creative
-        finance, developer, multifamily, mobile home, agent-investor —
-        promised, not sold). Land flipper is the founding wedge — the
-        deepest workflows live there (deepest in land is a
-        self-referential depth fact backed by this registry's core
+        from this registry at build time through publicMaturityOf, so every
+        investor type the platform serves is labeled by what's true today
+        (FD1 launch scope, 2026-11-12): full workflows / core
+        (${publicTierLabels("core")}), beta (${publicTierLabels("beta")}),
+        and the not-sold tier — registry-only, kept for existing books,
+        promised, not sold (${publicTierLabels("roadmap")}). Land flipper is
+        the founding wedge — the deepest workflows live there (deepest in
+        land is a self-referential depth fact backed by this registry's core
         maturity, not a claim about competitors).
       `,
     },
