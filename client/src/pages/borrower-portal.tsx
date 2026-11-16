@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, lazy, Suspense } from "react";
 import { useParams } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { RequiredDisclaimer } from "@/components/required-disclaimer";
@@ -33,6 +33,10 @@ import type { jsPDF as JsPDFType } from "jspdf";
 import type { Note, Payment, Property, BorrowerMessage } from "@shared/schema";
 import { LegalDocReadAloud } from "@/components/LegalDocReadAloud";
 import { StatementsPanel } from "@/components/borrower/StatementsPanel";
+// The S-1 borrower letter (P2-6 S2) loads only when its tab is opened: a
+// borrower paying a bill never downloads it. Its skeleton lives here so the
+// portal chunk does not statically pull the letter module in.
+const DataRetentionLetter = lazy(() => import("@/components/borrower/DataRetentionLetter"));
 
 type BorrowerLoanData = {
   note: Note & { property?: Property };
@@ -278,7 +282,26 @@ export default function BorrowerPortal() {
     return <PortalLoadingSkeleton />;
   }
 
-  return <BorrowerDashboard data={loanData} />;
+  // The verified email is the borrower's own request context for the S-1
+  // letter (the address a data request is matched on); nothing else reads it.
+  return <BorrowerDashboard data={loanData} verifiedEmail={email.trim()} />;
+}
+
+/** Content-shaped fallback while the lazy letter chunk loads: heading, then letter lines. */
+function LetterLoadingSkeleton() {
+  return (
+    <Card aria-busy="true" data-testid="borrower-data-letter-loading">
+      <CardHeader className="pb-3">
+        <Skeleton className="h-5 w-64" announce announceText="Loading the letter" />
+        <Skeleton className="h-4 w-80" announce={false} />
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <Skeleton key={i} className={`h-4 ${i % 3 === 2 ? "w-3/5" : "w-full"}`} announce={false} />
+        ))}
+      </CardContent>
+    </Card>
+  );
 }
 
 /**
@@ -448,7 +471,7 @@ function BorrowerLandingPage() {
   );
 }
 
-function BorrowerDashboard({ data }: { data: BorrowerLoanData }) {
+function BorrowerDashboard({ data, verifiedEmail }: { data: BorrowerLoanData; verifiedEmail?: string }) {
   const { note, payments, borrower } = data;
   // Never fabricated: when the org has no name on file this stays generic
   // rather than naming a lender that isn't in the record.
@@ -1490,14 +1513,15 @@ function BorrowerDashboard({ data }: { data: BorrowerLoanData }) {
             if (value === "messages" && !messagesLoaded && !isLoadingMessages) void loadMessages();
           }}
         >
-          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4">
+          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-5">
             <TabsTrigger value="history" data-testid="tab-history">Payment history</TabsTrigger>
             <TabsTrigger value="schedule" id="schedule-tab" data-testid="tab-schedule">Payment schedule</TabsTrigger>
             <TabsTrigger value="statements" data-testid="tab-statements">Statements</TabsTrigger>
+            <TabsTrigger value="your-data" data-testid="tab-your-data">Your data</TabsTrigger>
             <TabsTrigger
               value="messages"
               data-testid="tab-messages"
-              className="relative"
+              className="relative col-span-2 sm:col-span-1"
               aria-label={unreadCount > 0 ? `Messages (${unreadCount} unread)` : "Messages"}
             >
               Messages
@@ -1511,6 +1535,19 @@ function BorrowerDashboard({ data }: { data: BorrowerLoanData }) {
               )}
             </TabsTrigger>
           </TabsList>
+
+          <TabsContent value="your-data">
+            {/* The S-1 borrower letter, rendered from context this page already
+                holds after sign-in — no server read (P2-6 S2 census ruling). */}
+            <Suspense fallback={<LetterLoadingSkeleton />}>
+              <DataRetentionLetter
+                borrowerFirstName={borrower?.firstName ?? null}
+                lenderName={data.lenderName ?? null}
+                loanNumber={note.id}
+                emailOnFile={verifiedEmail ?? null}
+              />
+            </Suspense>
+          </TabsContent>
 
           <TabsContent value="history">
             <Card>
