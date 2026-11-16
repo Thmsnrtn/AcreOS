@@ -123,10 +123,19 @@ const W5A_TRUST_FILES = [
   "client/src/components/settings/MembershipGivingPanel.tsx",
 ];
 
+/**
+ * P2-6 S1 (2026-11-15): the dated /trust page. Every sentence on it is a
+ * public promise about money, data, records or disputes, so the whole page is
+ * in the population, with a per-member vacuity floor below. Its claims are the
+ * "P2-6 /trust" entries in CLAIMS, each backed by a source paragraph that
+ * names the shipped code making it true.
+ */
+const TRUST_PAGE_FILES = ["client/src/pages/trust.tsx"];
+
 /** Strip comments so truth-notes and design notes don't read as claims. */
 
 function landingSurface(): { file: string; text: string }[] {
-  return [...LANDING_FILES, ...PUBLIC_LAND_FILES, ...W5A_TRUST_FILES].map((f) => {
+  return [...LANDING_FILES, ...PUBLIC_LAND_FILES, ...W5A_TRUST_FILES, ...TRUST_PAGE_FILES].map((f) => {
     let raw = "";
     try {
       raw = readFileSync(join(ROOT, f), "utf8");
@@ -143,7 +152,57 @@ function landingSurface(): { file: string; text: string }[] {
  * live landing surface (liveness), and whose number-tokens count as covered
  * for the completeness scan.
  */
-const CLAIMS: { claim: string; anchor: string }[] = [
+/**
+ * P2-6 S1 — the /trust page's claims. Each entry's claim AND anchor are the
+ * page sentence verbatim, so editing a sentence on the page fails liveness
+ * (checked against the /trust page itself, below) until this list and the
+ * matching source move to the same truth. The figures on the page (30 days,
+ * $50, $10,000) are covered by these anchors for the completeness pass.
+ */
+const TRUST_LINES: readonly string[] = [
+  // INV-1 no custody (architecture tense only).
+  "Your borrowers pay your Stripe account directly. AcreOS is built so it can never touch, hold, or move your money.",
+  "Borrower payments are set up on your own Stripe Standard account, with no AcreOS fee taken from them and no AcreOS account to fall back to.",
+  // INV-2 licensed-data gate.
+  "We only show you parcel data we're licensed to show you — and we'd rather show you nothing than data we can't stand behind.",
+  "A parcel source must be cleared in writing before it answers a lookup, and until it is, the gate stays shut.",
+  // INV-3 field-level encryption, exactly scoped.
+  "Your own EIN or SSN for tax forms, and a borrower's tax ID on a purchased note, are encrypted field by field with AES-256-GCM and never sent back to the browser.",
+  "We never store full card or bank numbers. Your payment processor holds them; AcreOS keeps a reference and the last four digits.",
+  // INV-4 tenant isolation.
+  "One organization can never read another's book. That is tested, not just designed: automated tests check it on every change.",
+  // INV-5 money-back guarantee.
+  "Ask within 30 days of your first charge and we refund that charge in full, no questions asked.",
+  "Eligible refunds are automated at any amount, so a refund above $50 doesn't wait on a person to approve it.",
+  // INV-6 fail-closed fences as record integrity.
+  "We protect your loan records' integrity. When a record can't support a request, AcreOS refuses and says why rather than guess:",
+  "A 1099-INT is not generated until the payer and recipient tax details it needs are on file.",
+  "A request to erase a borrower is refused, naming the notes involved, while their loan and tax records must keep that identity.",
+  "Skip tracing runs only after you state a permissible purpose under the FCRA and sign the attestation.",
+  // INV-7 consent discipline.
+  "No cold texting without written consent. A verbal yes is not enough.",
+  "Email consent is separate from texting consent; one never stands in for the other.",
+  "Every grant and revocation goes into an append-only consent record, and it comes with a person's data export.",
+  // INV-8 auditability.
+  "Your audit log is append-only and hash-chained: each entry seals the one before it, so an altered or removed entry shows when the chain is checked.",
+  "The data-retention job won't purge an account that is under a legal hold.",
+  // INV-9 / D3 portability + succession.
+  "Your book is exportable in full, any time — and for 30 days after your subscription ends.",
+  "If AcreOS moves into its own company (a Massachusetts LLC is being formed) or changes hands, the Terms pass to the new owner and your subscription continues under them.",
+  // D1 AI data-flow floor.
+  "When you ask Pax for help, the records it needs to answer — which can include a borrower's or seller's name, address and loan details — are sent to OpenRouter, which passes the request to the model that answers it.",
+  "AcreOS's backup route for those requests is OpenAI. If you connect your own AI key, the request runs on your key with that provider instead.",
+  // D2 arbitration account.
+  "Our Terms send disputes to binding individual arbitration with JAMS instead of court, and neither side can bring a class action.",
+  "In plain words: if something goes wrong, you and AcreOS settle it one-on-one before a neutral arbitrator, in Massachusetts or by phone or video.",
+  "AcreOS pays the JAMS fees on claims under $10,000, and you can opt out of arbitration by emailing legal@acreos.io within 30 days of first agreeing to the Terms.",
+  // INV-10 honesty posture.
+  "AcreOS is new and in active development, run by one person: Thomas Norton, a sole proprietor in Massachusetts.",
+  "It's in beta, and what early users tell us shapes what gets built next. Wherever AcreOS shows example data, it's labelled as example data.",
+];
+
+const CLAIMS: { claim: string; anchor: string; surface?: "trust" }[] = [
+  ...TRUST_LINES.map((line) => ({ claim: line, anchor: line, surface: "trust" as const })),
   {
     // W5a giving panel (Settings → Billing). Founder decision 2026-10-09; the
     // panel itself shows only receipted amounts (shared/trust/giving.ts).
@@ -319,6 +378,162 @@ const NUMBER_CLAIM = /\b\d+(?:\.\d+)?\s?(?:seconds?|minutes?|hours?|days?|federa
 
 function buildSources(): Source[] {
   return [
+    // ── P2-6 S1 /trust page sources. Each quotes the page sentences it backs
+    // verbatim, then names the shipped code that makes them true. ──────────
+    {
+      name: "/trust INV-1 — no platform custody of customer money (constitutional hard-stop)",
+      ref: "shared/governance/constitution.ts (hard-stop.no-platform-money-custody) + server/services/customerMoneyRouting.ts (prepareCustomerMoneyCall, PlatformTakeError) + server/services/stripeConnect.ts + tests/unit/moneyCustodyHardStop.test.ts + tests/unit/sellerFinanceConnectAccountsAreStandard.test.ts",
+      content: `
+        Your borrowers pay your Stripe account directly. AcreOS is built so it can never touch, hold, or move your money.
+        Borrower payments are set up on your own Stripe Standard account, with no AcreOS fee taken from them and no AcreOS account to fall back to.
+        Architecture, not operation: the constitutional hard-stop says customer money never moves on AcreOS's own account.
+        prepareCustomerMoneyCall() scopes every customer-money Stripe call to the org's own connected account and throws
+        PlatformTakeError on application_fee_amount / application_fee_percent / transfer_data / on_behalf_of, and
+        UnscopedCustomerMoneyCallError when no org account exists — there is no platform fallback. Connected accounts
+        are created as Stripe STANDARD accounts (sellerFinanceConnectAccountsAreStandard.test.ts). No payment has ever
+        settled in any environment, so no surface may say payments run through AcreOS.
+      `,
+    },
+    {
+      name: "/trust INV-2 — licensed-data lookup gate (fail-closed, nothing cleared)",
+      ref: "server/services/openData/statewideSourceRegistry.ts (LOOKUP_CLEARANCE, NO_LOOKUP_ENTRY) + server/services/parcel.ts + server/services/openData/fieldClearanceRegistry.ts + tests/unit/fieldLevelServing.test.ts",
+      content: `
+        We only show you parcel data we're licensed to show you — and we'd rather show you nothing than data we can't stand behind.
+        A parcel source must be cleared in writing before it answers a lookup, and until it is, the gate stays shut.
+        parcel.ts reads LOOKUP_CLEARANCE before querying any statewide row; an entry answers a live lookup only when it is
+        explicitly cleared with every evidence field filled, a missing entry is gated (fail-closed), and today every state
+        is gated. The field-clearance registry transcribes the written determinations but widens nothing live; enabling a
+        source is a reviewed code change pinned by fieldLevelServing.test.ts. No county or state coverage is claimed live.
+      `,
+    },
+    {
+      name: "/trust INV-3 — field-level encryption of held tax IDs + processor-held card and bank numbers",
+      ref: "server/services/fieldEncryption.ts (ALGORITHM aes-256-gcm, encrypt) + server/routes-organization.ts (tax identity: ein = encrypt(taxId)) + server/routes-notes.ts (payerEncryptedTin = encryptField(payerTin)) + server/utils/secretColumns.ts + server/middleware/secretColumnGuard.ts + shared/schema/ach-autopay.ts (processor handles, accountLast4)",
+      content: `
+        Your own EIN or SSN for tax forms, and a borrower's tax ID on a purchased note, are encrypted field by field with AES-256-GCM and never sent back to the browser.
+        We never store full card or bank numbers. Your payment processor holds them; AcreOS keeps a reference and the last four digits.
+        Scoped, not blanket — the page names these two and claims nothing about any other tax ID
+        (contractors.taxIdEncrypted is still stored as typed, a TODO in routes-contractors.ts, and no
+        encrypting writer for leads.taxId was found): the organization's tax identity (taxIdType EIN or SSN) is written to organizations.ein as
+        encrypt(taxId), and an acquired note's payer TIN is written to payerEncryptedTin as encryptField(payerTin), both
+        through fieldEncryption.ts (aes-256-gcm, 256-bit key). Both columns are registered ciphertext in secretColumns.ts,
+        which the response guard strips from every JSON response. CONTACT_SENSITIVE_FIELDS / LAND_SENSITIVE_FIELDS
+        (encryptContactRecord / encryptLandRecord) have no production caller, so no claim names them. Card and bank
+        details live with the processor: ach_autopay rows hold processor handles (pm_, mandate_, seti_) plus bankName,
+        accountLast4 and accountType for display, and moneyCustodyHardStop.test.ts forbids any route naming raw bank
+        routing or account numbers.
+      `,
+    },
+    {
+      name: "/trust INV-4 — tenant isolation, tested on every change",
+      ref: "tests/unit/orgScopedWritesRatchet.test.ts (+ orgScopedWrites.baseline.json) + scripts/check-org-scoped-fetch.mjs (npm run lint:org-fetch, in the check chain) + tests/unit/crossTenantPathsClosed2026_09_04.test.ts",
+      content: `
+        One organization can never read another's book. That is tested, not just designed: automated tests check it on every change.
+        Every request is scoped to the caller's organization; the org-scoped-writes ratchet and the org-scoped fetch lint
+        (part of npm run check) plus the cross-tenant path tests run in CI on every pull request and every push to main.
+      `,
+    },
+    {
+      name: "/trust INV-5 — the §5A money-back guarantee, automated at any amount (PR #550)",
+      ref: "client/src/pages/terms.tsx §5A + server/services/refunds/refundConfig.ts (GUARANTEE_WINDOW_DAYS = 30) + server/services/refunds/guaranteeEligibility.ts (E1–E6; amount is not a predicate) + server/services/refunds/requestGuaranteeRefund.ts + server/services/refunds/executeRefund.ts + server/routes-billing.ts",
+      content: `
+        Ask within 30 days of your first charge and we refund that charge in full, no questions asked.
+        Eligible refunds are automated at any amount, so a refund above $50 doesn't wait on a person to approve it.
+        Terms §5A: a full refund of the initial paid subscription's first charge, requested within 30 days, no questions
+        asked. GUARANTEE_WINDOW_DAYS = 30. evaluateGuaranteeEligibility checks E1–E6 and AMOUNT IS NOT A PREDICATE; when
+        a request is eligible and no brake applies, requestGuaranteeRefund calls executeRefundRequest immediately, so the
+        refund is issued without a person approving it — the older $50 ceiling of the apply_refund hand does not govern
+        guarantee refunds. No refund has been issued yet (no customers), so no claim says one has.
+      `,
+    },
+    {
+      name: "/trust INV-6 — fail-closed record fences (1099-INT, borrower erasure, FCRA skip-trace gate)",
+      ref: "server/services/form1099Batch.ts (TaxIdentityError PAYER_NAME_MISSING / PAYER_EIN_MISSING / RECIPIENT_TIN_MISSING) + server/services/gdprService.ts (eraseLeadSubject → DsarErasureRefusedError naming the note ids) + server/services/fcraAttestation.ts + server/routes-skip-tracing.ts + server/services/fcraDefenseFile.ts",
+      content: `
+        We protect your loan records' integrity. When a record can't support a request, AcreOS refuses and says why rather than guess:
+        A 1099-INT is not generated until the payer and recipient tax details it needs are on file.
+        A request to erase a borrower is refused, naming the notes involved, while their loan and tax records must keep that identity.
+        Skip tracing runs only after you state a permissible purpose under the FCRA and sign the attestation.
+        form1099Batch throws TaxIdentityError when the payer name, payer EIN or recipient TIN is missing, and the batch
+        fails rather than issuing the form. eraseLeadSubject refuses before any write when the person is the borrower on
+        any note, with a message naming the note numbers and the retention reason. Skip-trace lookups require the FCRA
+        attestation and a stated permissible purpose, written to the append-only purpose ledger before the vendor call.
+      `,
+    },
+    {
+      name: "/trust INV-7 — consent discipline (founder decisions 2026-10-20)",
+      ref: "server/services/tcpaCompliance.ts (tcpaGateForSms, checkTcpaConsentFromLead) + server/services/autonomyGuardrails.ts (checkTcpaBeforeSend(…, channel)) + tests/unit/noColdTextWithoutWrittenConsent.test.ts + server/services/consentEvents.ts (append-only lead_consent_events) + server/services/privacy/dsarExporters.ts (consent_records)",
+      content: `
+        No cold texting without written consent. A verbal yes is not enough.
+        Email consent is separate from texting consent; one never stands in for the other.
+        Every grant and revocation goes into an append-only consent record, and it comes with a person's data export.
+        A prospecting text needs prior express written consent (web form, written form, texted double opt-in or IVR
+        keypress); a verbal yes is not enough (tcpaGateForSms, noColdTextWithoutWrittenConsent.test.ts). TCPA consent
+        governs texts and calls only; email reachability depends on opt-outs and the suppression list, never on SMS
+        consent. consentEvents.ts appends one lead_consent_events row per granted or revoked channel, and the DSAR
+        exporter's consent_records domain includes those rows in a person's data export.
+      `,
+    },
+    {
+      name: "/trust INV-8 — hash-chained audit log + retention that respects legal holds",
+      ref: "server/utils/auditLogChain.ts (chainAndInsertAuditLog, verifyAuditLogChain; migrations 0080/0143 trigger) + server/storage/auditRepo.ts + server/services/compliance/auditChain.ts + server/jobs/dataRetention.ts (LEGAL HOLDS) + tests/unit/retentionRespectsLegalHolds.test.ts",
+      content: `
+        Your audit log is append-only and hash-chained: each entry seals the one before it, so an altered or removed entry shows when the chain is checked.
+        The data-retention job won't purge an account that is under a legal hold.
+        Every audit_log row carries prev_hash and row_hash = SHA-256(prev_hash, canonical row), written by
+        chainAndInsertAuditLog from auditRepo; a Postgres trigger blocks UPDATE and DELETE of a chained row, and
+        verifyAuditLogChain detects alteration — tamper-evidence, not notarized proof. dataRetention.ts reads the org ids
+        with an active, unreleased legal hold and keeps their rows past the window (retentionRespectsLegalHolds.test.ts).
+      `,
+    },
+    {
+      name: "/trust INV-9 / D3 — portability and succession (Terms §7 and §19)",
+      ref: "client/src/pages/terms.tsx §7 (data export upon cancellation) + §19 (assignment to a successor entity) + client/src/lib/legal-entity.ts + server/routes-import-export.ts (GET /api/export/backup, /api/export/:entityType)",
+      content: `
+        Your book is exportable in full, any time — and for 30 days after your subscription ends.
+        If AcreOS moves into its own company (a Massachusetts LLC is being formed) or changes hands, the Terms pass to the new owner and your subscription continues under them.
+        Terms §7: you may export all of your data in a portable format at any time, including for 30 days following the
+        end of your subscription; GET /api/export/backup serves a full backup. Terms §19: AcreOS may assign the Terms to a
+        successor entity formed to operate the Service — including the Massachusetts LLC being organized — which assumes
+        all rights and obligations and your subscription continues uninterrupted, or in a merger, acquisition or sale; the
+        Terms bind successors. Terms §19 states NO advance-notice period for an assignment, so no surface may promise one.
+      `,
+    },
+    {
+      name: "/trust D1 — which AI providers receive the data Pax works with",
+      ref: "server/services/aiRouter.ts (selectProviderAndModel: OpenRouter first, direct OpenAI final fallback; BYOK branch) + server/services/byok/aiByok.ts (AiByokRouting) + server/ai/tools.ts (tool results go to the model provider verbatim)",
+      content: `
+        When you ask Pax for help, the records it needs to answer — which can include a borrower's or seller's name, address and loan details — are sent to OpenRouter, which passes the request to the model that answers it.
+        AcreOS's backup route for those requests is OpenAI. If you connect your own AI key, the request runs on your key with that provider instead.
+        selectProviderAndModel routes every platform AI turn to OpenRouter and falls back to direct OpenAI only when
+        OpenRouter is not available; tool results (lead and loan records) go to the model provider verbatim. With an
+        org's own key (BYOK: OpenRouter, Anthropic or OpenAI), the call executes on that key with that provider. No claim
+        is made about any provider's retention or training terms (unverified).
+      `,
+    },
+    {
+      name: "/trust D2 — the arbitration clause explained (Terms §14)",
+      ref: "client/src/pages/terms.tsx §14.1–14.6 + client/src/lib/legal-entity.ts (governingState Massachusetts)",
+      content: `
+        Our Terms send disputes to binding individual arbitration with JAMS instead of court, and neither side can bring a class action.
+        In plain words: if something goes wrong, you and AcreOS settle it one-on-one before a neutral arbitrator, in Massachusetts or by phone or video.
+        AcreOS pays the JAMS fees on claims under $10,000, and you can opt out of arbitration by emailing legal@acreos.io within 30 days of first agreeing to the Terms.
+        Terms §14.1 final, binding arbitration administered by JAMS rather than in court; §14.2 class action waiver;
+        §14.4 conducted in Massachusetts or, at your election, by telephone or videoconference, relief on an individual
+        basis; §14.5 AcreOS will pay JAMS arbitration fees for claims under $10,000; §14.6 opt out by written notice to
+        legal@acreos.io within 30 days of first agreeing. The clause itself is unchanged; this explains it.
+      `,
+    },
+    {
+      name: "/trust INV-10 — who operates AcreOS and the beta posture",
+      ref: "client/src/lib/legal-entity.ts (ENTITY_STATUS sole-proprietor, Thomas Norton, Massachusetts) + client/src/pages/landing/Hero.tsx / ProductShots.tsx (\"Example · representative output\" labels)",
+      content: `
+        AcreOS is new and in active development, run by one person: Thomas Norton, a sole proprietor in Massachusetts.
+        It's in beta, and what early users tell us shapes what gets built next. Wherever AcreOS shows example data, it's labelled as example data.
+        legal-entity.ts: a sole proprietorship of Thomas Norton based in Massachusetts; an LLC is being formed. Illustrative
+        landing fixtures carry a visible "Example · representative output" label.
+      `,
+    },
     {
       name: "Giving commitment (founder decision 2026-10-09) and its pledge computation",
       ref: "shared/trust/giving.ts (CENTS_PER_MEMBER_PER_MONTH = 100, computeGivingPledge) + server/services/trust/givingService.ts",
@@ -552,6 +767,24 @@ async function main() {
     if (!member || member.text.length <= 200) {
       failures += 1;
       console.error(`[VACUOUS] W5a trust surface ${f} was not read — it left the scan's population.`);
+    }
+  }
+  for (const f of TRUST_PAGE_FILES) {
+    const member = surface.find((s) => s.file === f);
+    if (!member || member.text.length <= 200) {
+      failures += 1;
+      console.error(`[VACUOUS] /trust page ${f} was not read — it left the scan's population.`);
+    }
+  }
+  // Every /trust anchor must be found IN the /trust page itself, not merely
+  // somewhere on the landing — a trust claim deleted from the page must not
+  // stay "live" because a landing file happens to share its words.
+  const trustText = surface.filter((s) => TRUST_PAGE_FILES.includes(s.file)).map((s) => s.text).join("\n");
+  for (const { anchor, claim } of CLAIMS.filter((c) => c.surface === "trust")) {
+    if (!trustText.includes(anchor)) {
+      failures += 1;
+      console.error(`[STALE] /trust claim anchor is not on the /trust page: "${anchor}"`);
+      console.error(`        (claim: ${claim.slice(0, 80)}…) — update or retire the entry.`);
     }
   }
 
