@@ -470,6 +470,18 @@ if (OUT.ceilings.totalKB != null && OUT.ceilings.totalKB * 1024 > totalBytes * L
 // bundled", not "every chunk with a founder-looking name". lib/founder-doors.ts
 // is deliberately absent: nav-items.ts derives the shared nav (and the command
 // palette entries) from it, so it ships in both builds on purpose.
+//
+// Only modules that are founder-only BY CONSTRUCTION belong here — every
+// production importer is itself on this list (or there is none). The P1-9 N1
+// additions (2026-11-16) are: components/solene/** (the Solene founder-assistant
+// chat tree, imported only by pages/founder/solene-chat.tsx); info-tooltip.tsx
+// (founder-ai-observatory + executive-dashboard); prompt-diff-viewer.tsx
+// (founder-prompt-history + founder-prompt-evolutions); lib/atlas-discuss.ts
+// (pages/founder/cockpit + pages/founder/inspector/cost-event); and
+// founder-setup-wizard.tsx (the platform-credential wizard; no importer in
+// either build today). The wizard's own import graph is ONLY shared ui/*,
+// lib/queryClient, lib/utils, lib/labels and hooks/use-toast, which every
+// customer page uses too, so nothing it imports is listed with it.
 const FOUNDER_ONLY_MODULES = [
   /^client\/src\/pages\/founder\//,
   /^client\/src\/pages\/founder-[\w-]+\.tsx?$/,
@@ -480,6 +492,11 @@ const FOUNDER_ONLY_MODULES = [
   /^client\/src\/founder-routes\.tsx$/,
   /^client\/src\/FounderApp\.tsx$/,
   /^client\/src\/founder-main\.tsx$/,
+  /^client\/src\/components\/solene\//,
+  /^client\/src\/components\/info-tooltip\.tsx?$/,
+  /^client\/src\/components\/prompt-diff-viewer\.tsx?$/,
+  /^client\/src\/lib\/atlas-discuss\.ts$/,
+  /^client\/src\/components\/founder-setup-wizard\.tsx?$/,
 ];
 const REQUIRE_GRAPH = args.includes("--require-graph") || envFlag("BUNDLE_SIZE_REQUIRE_GRAPH");
 let graphLine = `chunk graph: not checked (--output ${OUTPUT})`;
