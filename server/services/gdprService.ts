@@ -318,7 +318,7 @@ async function eraseLeadSubject(organizationId: number, leadId: number): Promise
     const noteIds = borrowerNotes.map((n) => n.id);
     throw new DsarErasureRefusedError(
       "RETENTION_REQUIRED_LOAN_RECORDS",
-      `This person is the borrower on note(s) ${noteIds.map((id) => `#${id}`).join(", ")} — loan, 1099-INT and 1098 records require their identity to be retained (GDPR Art. 17(3)(b)). Erasure is refused; the export is available. Founder/counsel ruling S-1 pending.`,
+      `This person is the borrower on note(s) ${noteIds.map((id) => `#${id}`).join(", ")} — loan, 1099-INT and 1098 records require their identity to be retained (GDPR Art. 17(3)(b)). Erasure is refused; the export is available. Borrower-erasure refusal decided — ruling S-1 stands (Tap #5, decided 2026-11-10).`,
       { noteIds },
     );
   }
