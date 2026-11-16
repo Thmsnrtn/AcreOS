@@ -368,6 +368,14 @@ export function buildConfig(output: BuildOutput): UserConfig {
     // Which bundle this is — read by client/src/lib/cross-build.ts to decide
     // when a navigation must become a full page load.
     "import.meta.env.VITE_ACREOS_BUILD": JSON.stringify(output),
+    // Sentry's documented tree-shaking flag (P2-6 S1 bundle offset). The
+    // SDK gates its own debug logging on `__SENTRY_DEBUG__`; that logging
+    // prints only when Sentry.init gets `debug: true`, which AcreOS never
+    // passes (client/src/lib/sentry.ts). Defining it false strips that dead
+    // logging from both outputs; events, sampling, replay and tracing are
+    // untouched. To get SDK debug logs, remove this line first —
+    // tests/unit/sentryDebugLoggingStripped.test.ts pins both halves.
+    __SENTRY_DEBUG__: false,
   },
   // The founder output is served under /founder-app/ (server/static.ts) and
   // reads no public/ files: its HTML and fonts use root-absolute URLs that the

@@ -401,6 +401,8 @@ const BlindOfferWizardPage = React.lazy(() => import("@/pages/blind-offer-wizard
 const StatusPage = React.lazy(() => import("@/pages/status"));
 const ChangelogPage = React.lazy(() => import("@/pages/changelog"));
 const SecurityPage = React.lazy(() => import("@/pages/security"));
+// P2-6 S1: the dated trust surface. DARK — reachable by URL only; linked from no nav, footer, sitemap or landing.
+const TrustPage = React.lazy(() => import("@/pages/trust"));
 // Public Transparency Report (Quinn #4 / Beatrice #3). Renders the latest
 // published transparency_reports row. Public route + linked from Settings;
 // NOT a new customer door (respects the five-door nav model).
@@ -603,6 +605,7 @@ function Router() {
       <Route path="/status" component={StatusPage} />
       <Route path="/changelog" component={ChangelogPage} />
       <Route path="/security" component={SecurityPage} />
+      <Route path="/trust" component={TrustPage} />
       {/* Public Transparency Report — accountability artifact, no login.
           Also reachable from Settings → Account. Not a customer door. */}
       <Route path="/transparency" component={TransparencyPage} />
