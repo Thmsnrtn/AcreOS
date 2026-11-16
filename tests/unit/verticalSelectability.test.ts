@@ -37,11 +37,19 @@ describe("vertical selectability", () => {
     }
   });
 
-  it("never selects a vertical that is on the waitlist (roadmap)", () => {
+  it("never selects a vertical that is on the waitlist (roadmap) or registry-only (FD1)", () => {
     for (const pack of selectableVerticals()) {
       const maturity = getBusinessType(pack.businessTypeId)?.maturity;
       expect(maturity, pack.key).not.toBe("roadmap");
+      expect(maturity, pack.key).not.toBe("registry_only");
     }
+    // Positive control, so the loop above is not vacuous: FD1 made the
+    // Fix-and-Flip and Subdivision profiles registry-only, and they must have
+    // left the selectable set (the exact set is pinned in fd1LaunchScope.test.ts).
+    const keys = selectableVerticals().map((p) => p.key);
+    expect(keys).not.toContain("fix_and_flipper");
+    expect(keys).not.toContain("subdivision");
+    expect(keys.length).toBeGreaterThan(0);
   });
 
   it("verticals carry no pricing — selection is free", () => {

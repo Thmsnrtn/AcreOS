@@ -18,11 +18,13 @@
  *   4. The exceptions map requires a non-empty reason (runtime throw;
  *      the `LandingDemotion` type also makes `reason` required at the
  *      type level) and can only DEMOTE — a promote/no-op entry throws.
- *   5. The demotion map carries thirteen dated entries (OD-5, 2026-08-17)
- *      and every one has a written reason. WHICH verticals are demoted is
- *      pinned in verticalReadiness.test.ts against measured evidence, not
- *      here against a hand-written list — this file guards the derivation,
- *      that one guards the claim.
+ *   5. The demotion map is EMPTY since FD1 (2026-11-12): the registry states
+ *      the launch presentation itself (2 core / 3 beta / 10 registry_only,
+ *      pinned in fd1LaunchScope.test.ts), and a registry_only vertical
+ *      renders in the muted third tier — "not sold". WHICH verticals may
+ *      claim what is pinned in verticalReadiness.test.ts against measured
+ *      evidence, not here — this file guards the derivation, that one guards
+ *      the claim.
  */
 
 import { describe, expect, it } from "vitest";
@@ -30,7 +32,9 @@ import { describe, expect, it } from "vitest";
 import {
   BUSINESS_TYPES,
   BUSINESS_TYPE_IDS,
+  registryPublicTier,
   type BusinessTypeId,
+  type PublicMaturity,
   type VerticalMaturity,
 } from "../../shared/business-types";
 import {
@@ -47,9 +51,13 @@ function allChips(tiers: LandingVerticalTiers) {
   return TIER_NAMES.flatMap((t) => tiers[t]);
 }
 
-/** Effective tier the derivation contract promises for an id. */
-function expectedTier(id: BusinessTypeId): VerticalMaturity {
-  return DEMOTE_ON_LANDING[id]?.to ?? BUSINESS_TYPES[id].maturity;
+/**
+ * Effective tier the derivation contract promises for an id: the registry's
+ * public projection (registry_only → the "not sold" roadmap tier), lowered
+ * only by an explicit demotion.
+ */
+function expectedTier(id: BusinessTypeId): PublicMaturity {
+  return DEMOTE_ON_LANDING[id]?.to ?? registryPublicTier(BUSINESS_TYPES[id].maturity);
 }
 
 /** Live-registry id of the given maturity (excluding non-chip ids), if any. */
@@ -99,44 +107,43 @@ describe("landing vertical tiers derive from the business-type registry", () => 
   it("default invocation equals explicit live-registry invocation (build-time = live)", () => {
     expect(deriveLandingTiers(BUSINESS_TYPES, DEMOTE_ON_LANDING)).toEqual(tiers);
   });
+
+  it("renders the FD1 presentation: every registry_only vertical in the muted 'not sold' tier, 2 core, 3 beta", () => {
+    const registryOnly = BUSINESS_TYPE_IDS.filter(
+      (id) => BUSINESS_TYPES[id].maturity === "registry_only" && !LANDING_EXCLUDED_IDS.includes(id),
+    );
+    expect(registryOnly.length).toBeGreaterThan(0);
+    expect(tiers.roadmap.map((c) => c.id).sort()).toEqual([...registryOnly].sort());
+    expect(tiers.core).toHaveLength(2);
+    expect(tiers.beta).toHaveLength(3);
+  });
 });
 
 describe("DEMOTE_ON_LANDING — the only sanctioned public conservatism", () => {
-  it("carries the remaining OD-5 demotions, and every one is dated", () => {
-    // WAS: `expect(Object.keys(DEMOTE_ON_LANDING)).toHaveLength(0)` with the
-    // note that the registry truth pass had superseded all hardcoded
-    // demotions. That pin was correct until the truth pass itself was
-    // checked: verticalReadiness.test.ts measured that all fifteen verticals
-    // declare `core` and exactly two record a decision, so the map is no
-    // longer empty and must not be.
+  it("is EMPTY under FD1 — the registry carries the conservatism, and the map is pinned empty", () => {
+    // History of this pin, kept because each turn was a real finding:
+    //   - originally `toHaveLength(0)` ("the registry truth pass superseded all
+    //     hardcoded demotions") — correct until verticalReadiness.test.ts
+    //     measured that all fifteen verticals declared `core` and two recorded
+    //     a decision, so the map filled (13 at OD-5, 2026-08-17);
+    //   - then a shrinking count as verticals closed the loop (land released
+    //     2026-10-04; buy-and-hold released 2026-11-05 after its journey proof;
+    //     11 at the last pin);
+    //   - FD1 (2026-11-12) moved the conservatism INTO the registry
+    //     (2 core / 3 beta / 10 registry_only), so the map is empty again — and
+    //     this time the reason is pinned beside it in fd1LaunchScope.test.ts.
     //
-    // REWRITTEN, not deleted — the invariant is still "a demotion is a
-    // deliberate, documented act", and it is asserted more strongly now:
-    // every entry must carry a reason and the date it was decided. The
-    // membership itself is pinned in verticalReadiness.test.ts against the
-    // EVIDENCE rather than against a hand-written list, so this file does not
-    // duplicate that.
-    //
-    // The count shrinks as verticals close the loop (vertical program,
-    // decision-memos/2026-10-04-vertical-program.md): 13 at OD-5; land
-    // released 2026-10-04. Buy-and-hold was held demoted (COO ruling
-    // 2026-10-21, then the 2026-11-05 journey-proof hold) and released
-    // 2026-11-05 by founder decision after its staging journey proof
-    // (docs/company/founder-decisions-2026-11-05-buy-and-hold.md, addendum).
-    const entries = Object.entries(DEMOTE_ON_LANDING);
-    expect(entries).toHaveLength(11);
-    for (const [id, d] of entries) {
-      expect(d!.reason.trim().length, `${id} has an empty reason`).toBeGreaterThan(0);
-      expect(d!.decidedOn, `${id} is undated`).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-      expect(d!.to, `${id} demotes to an unexpected tier`).toBe("beta");
-    }
+    // The invariant is unchanged: a demotion is a deliberate, documented act.
+    // Today there is none, and a new entry is a founder decision.
+    expect(DEMOTE_ON_LANDING).toEqual({});
   });
 
   it("rejects a demotion entry with an empty/whitespace reason", () => {
     const anyId = BUSINESS_TYPE_IDS.find(
       (id) =>
         !LANDING_EXCLUDED_IDS.includes(id) &&
-        BUSINESS_TYPES[id].maturity !== "roadmap",
+        BUSINESS_TYPES[id].maturity !== "roadmap" &&
+        BUSINESS_TYPES[id].maturity !== "registry_only",
     );
     // Registry always carries at least one core/beta vertical (land_flipper
     // is the founding wedge); if that ever changes this test must be revisited.
@@ -192,6 +199,15 @@ describe("DEMOTE_ON_LANDING — the only sanctioned public conservatism", () => 
     if (betaId) {
       expect(() =>
         deriveLandingTiers(BUSINESS_TYPES, { [betaId]: { to: "beta", reason: "stale", decidedOn: "2026-08-17" } }),
+      ).toThrow(/must move a vertical DOWN/);
+    }
+    // FD1: a live registry_only vertical is already told as "not sold", so a
+    // demotion to roadmap is a no-op and to beta is a promote — both refused.
+    const registryOnlyId = liveIdWithMaturity("registry_only");
+    expect(registryOnlyId, "FD1 leaves ten registry_only verticals; none found").toBeDefined();
+    for (const to of ["roadmap", "beta"] as const) {
+      expect(() =>
+        deriveLandingTiers(BUSINESS_TYPES, { [registryOnlyId!]: { to, reason: "stale", decidedOn: "2026-11-12" } }),
       ).toThrow(/must move a vertical DOWN/);
     }
   });

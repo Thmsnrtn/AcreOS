@@ -169,7 +169,7 @@ describe("/today creative-finance surfaces cluster", () => {
 describe("registry entry (shared/business-types.ts)", () => {
   const meta = getBusinessType("creative_finance")!;
 
-  it("is core — the audit-Wave-1 flip (balloon lane now live), still backed by the surfaces pinned above", () => {
+  it("is registry_only (FD1) — the audit-Wave-1 build (balloon lane live) stands, kept for existing books", () => {
     // 2026-07-29 wave V2 flipped roadmap → beta on the assembled seller-finance
     // surface. 2026-08 audit Wave 1 flips beta → core: the vertical's ONLY
     // genuinely-dead template lane (note.balloon_approaching, driving
@@ -179,7 +179,10 @@ describe("registry entry (shared/business-types.ts)", () => {
     // corrected to the honest, approximate {{outstandingBalance}}. The deal→note
     // bridge and payment.missed dunning already fired, so the vertical now clears
     // the honesty bar for core. A silent re-demotion should fail loudly here.
-    expect(meta.maturity).toBe("core");
+    // FD1 (2026-11-12, re-pinned not deleted): the launch promise is 2 core +
+    // 3 beta; creative_finance is one of the ten registry-only types. The
+    // surfaces pinned above are unchanged and existing books keep them.
+    expect(meta.maturity).toBe("registry_only");
   });
 
   it("every workflowTemplateId names a template that actually exists in workflow-engine.ts", async () => {

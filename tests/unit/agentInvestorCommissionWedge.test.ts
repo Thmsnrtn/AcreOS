@@ -39,14 +39,17 @@ function read(rel: string): string {
   return fs.readFileSync(path.join(ROOT, rel), "utf-8");
 }
 
-describe("agent_investor is CORE (Wave 5 — measured economics + MLS/CMA via ATTOM)", () => {
-  it("the registry entry is core", () => {
+describe("agent_investor is REGISTRY-ONLY (FD1) — built, kept, not in the public promise", () => {
+  it("the registry entry is registry_only", () => {
     // REWRITTEN at the Wave 5 core flip (not deleted): the wedge shipped in beta;
     // Wave 5 added the measured commission economics (split/cap/GCI, client-vs-
     // own-book), a record-only dual-agency tracker, AND MLS/CMA — the founder
     // lifted the land-persona ruling so comps route through the ATTOM seam (BYO
-    // key, honest-unavailable when unkeyed). agent_investor is now core.
-    expect(getBusinessType("agent_investor")?.maturity).toBe("core");
+    // key, honest-unavailable when unkeyed).
+    // REWRITTEN AGAIN at FD1 (2026-11-12, not deleted): the build above stands
+    // and existing agent-investor books keep it; the launch promise is 2 core +
+    // 3 beta, and agent_investor is one of the ten registry-only types.
+    expect(getBusinessType("agent_investor")?.maturity).toBe("registry_only");
   });
 });
 
