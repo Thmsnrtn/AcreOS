@@ -114,7 +114,7 @@ function makeApp() {
   return app;
 }
 
-function pdfBodyParser(res: NodeJS.ReadableStream, callback: (err: Error | null, body?: Buffer) => void) {
+function pdfBodyParser(res: request.Response, callback: (err: Error | null, body?: Buffer) => void) {
   const chunks: Buffer[] = [];
   res.on("data", (c: Buffer) => chunks.push(c));
   res.on("end", () => callback(null, Buffer.concat(chunks)));
