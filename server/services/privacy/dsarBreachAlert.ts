@@ -39,8 +39,8 @@ import { dsarRequestsLifecycle, systemAlerts } from "@shared/schema";
 import { clock } from "../../utils/clock";
 import { logger } from "../../utils/logger";
 
-export const DSAR_BREACH_ALERT_TYPE = "dsar_breach";
-export const DSAR_BREACH_SOURCE = "dsar_overdue_alert";
+const DSAR_BREACH_ALERT_TYPE = "dsar_breach";
+const DSAR_BREACH_SOURCE = "dsar_overdue_alert";
 /** Re-alert cadence while a breached DSAR stays unfulfilled. */
 export const DSAR_BREACH_RE_ALERT_MS = 24 * 60 * 60 * 1000;
 
