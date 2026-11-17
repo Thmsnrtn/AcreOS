@@ -300,8 +300,14 @@ const CLAIMS: { claim: string; anchor: string; surface?: "trust" }[] = [
     // FAQ "Can the AI assistant be turned off?" — the witnessed-send rule
     // (founder decision 2026-09-02 #1), enforced by the approval kernel and
     // ratcheted by paxWitnessedSend.test.ts at every offered stance.
-    claim: "Pax never sends a message to anyone until you tap Approve.",
-    anchor: "Pax never sends a message to anyone until you tap Approve.",
+    // RE-ANCHORED 2026-11-16 (PR #566 fix round): E-36(a) replaced the
+    // blanket sentence with the shipped distinction — Pax's own drafts wait
+    // for the tap; automations the customer switched on (drips, campaigns)
+    // send on their schedule (sequenceProcessorService). The blanket
+    // sentence is retired; do not resurrect it.
+    claim:
+      "Pax's own drafts never send until you tap Approve — and anything you automate (drips, campaigns) sends only on the schedule you switched on.",
+    anchor: "Pax's own drafts never send until you tap Approve",
   },
   {
     // FAQ, same answer — the one Pause and the two stances
@@ -315,9 +321,16 @@ const CLAIMS: { claim: string; anchor: string; surface?: "trust" }[] = [
     // "AcreOS retains nothing after cancellation", which both the policy's
     // retention table and the deletion routine contradict (corrected
     // 2026-09-04).
+    // RE-ANCHORED 2026-11-16 (PR #566 fix round): E-37 (claims register
+    // CR-037) replaced the 90-day sentence with the verified-request
+    // wording. The promise is kept with margin by the layers beneath it:
+    // the policy's deletion-request paragraph commits to delete or
+    // anonymize within 7 days of verification, and every DSAR intake is
+    // stamped with the 24h operational clock (shared/privacy/dsarClock.ts)
+    // — the published 30 days is the outer bound, not the target.
     claim:
-      "After you cancel, your account and lead data are deleted within 90 days; financial records are kept for seven years because lending regulation requires it.",
-    anchor: "deleted within 90 days",
+      "After you cancel, we complete deletion of your account and lead data within 30 days of a verified request, except records the law requires us to keep or that sit under a legal hold — tax and loan records are kept on the retention schedule our Privacy Policy states.",
+    anchor: "within 30 days of a verified request",
   },
   {
     // FAQ "Can existing lists be imported?" — the mechanism, after the four
@@ -566,25 +579,48 @@ function buildSources(): Source[] {
       `,
     },
     {
-      name: "Data retention on cancellation (binding privacy policy + the deletion routine)",
-      ref: "client/src/pages/privacy.tsx retention table + server/services/orgDeletion.ts + server/routes-admin.ts (POST /api/admin/organizations/:id/delete)",
+      name: "Data retention on cancellation (binding privacy policy + the DSAR clock + the deletion routines)",
+      ref: "client/src/pages/privacy.tsx §6–§7 + shared/privacy/dsarClock.ts + server/services/gdprService.ts (eraseDsarSubject) + server/services/orgDeletion.ts + server/routes-admin.ts (POST /api/admin/organizations/:id/delete)",
       content: `
-        The published privacy policy's retention table is the binding
-        statement of what happens after you cancel. Account and organization
-        data, and lead and contact data, are retained for the duration of the
-        active subscription plus 90 days, so that data is deleted within 90
-        days of cancellation. Note and financial records are kept for the
-        duration of the subscription plus seven years, because lending
-        regulation requires that financial records be kept for seven years.
-        The deletion routine agrees rather than exceeding the promise:
-        deleteOrganization reports residual tables instead of claiming
-        completeness, retains audit_events under GDPR Art. 17(3)(b), and
-        detaches the financial ledger (org id nulled) rather than deleting it.
-        Export is real and unconditional: GET /api/export/:entity serves
-        leads, properties, deals and notes as CSV and /api/export/backup
-        serves a full backup, so nothing is held hostage. AcreOS therefore
-        does NOT retain "nothing" after cancellation, and no public surface
-        may say that it does.
+        The published privacy policy is the binding statement. Its
+        deletion-request paragraph (§6) commits: upon a verified deletion
+        request, AcreOS will delete or anonymize your personal data
+        within 7 days of verification, except where retention is required
+        by law (financial records, e-signature audit logs). Section 7 sets
+        the response frame: respond within 30 days for routine requests,
+        or the statutory deadline (45 days for CCPA, 30 days for GDPR),
+        with identity verification before processing. The FAQ's published
+        promise — deletion of account and lead data completed within
+        30 days of a verified request — is therefore the outer bound; the
+        policy's own request path commits to 7 days.
+
+        Underneath the promise, every DSAR intake is stamped from the ONE
+        shared clock (shared/privacy/dsarClock.ts, DSAR_CLOCK_HOURS = 24):
+        the operational deadline is 24 hours from the message's arrival.
+        The 24h clock changes no published promise — it is the stricter
+        internal target the 30-day promise is kept by.
+
+        Execution is real and gated. gdprService.eraseDsarSubject runs
+        only for a subject the verification gate produced: a user's own
+        data is anonymized, and an organization's erasure runs
+        deleteOrganization, which sweeps every tenant table (account and
+        lead data included), deletes stored document bytes, and reports
+        residual tables instead of claiming completeness. The retentions
+        match the FAQ's carve-outs: an org under an active legal hold is
+        refused before a single row is touched (LegalHoldViolationError),
+        and the only records kept are the ones the law requires us to
+        keep — audit_events and purpose_ledger are retained under GDPR
+        Art. 17(3)(b), and the
+        financial ledger is detached (org id nulled) rather than deleted,
+        so tax and loan records are kept on the retention schedule the
+        policy states (note and financial records: subscription plus
+        seven years). Backup snapshots are purged within 30 days of
+        primary deletion. Export is real and unconditional:
+        GET /api/export/:entityType serves leads, properties, deals and
+        notes as CSV and /api/export/backup serves a full backup, so
+        nothing is held hostage. AcreOS therefore does NOT retain
+        "nothing" after cancellation, and no public surface may say
+        that it does.
       `,
     },
     {
@@ -722,14 +758,20 @@ function buildSources(): Source[] {
     },
     {
       name: "Witnessed send + the one Pause (Pax controls kernel)",
-      ref: "server/services/approvalKernel.ts (APPROVAL_REQUIRED_TOOLS) + server/ai/tools.ts (executeTool) + shared/pax-controls.ts (OFFERED_STANCES) + server/routes-pax-controls.ts (POST /api/pax/pause) + tests/unit/paxWitnessedSend.test.ts + tests/unit/paxPauseCoverage.test.ts",
+      ref: "server/services/approvalKernel.ts (APPROVAL_REQUIRED_TOOLS) + server/ai/tools.ts (executeTool) + shared/pax-controls.ts (OFFERED_STANCES) + server/routes-pax-controls.ts (POST /api/pax/pause) + server/jobs/runScheduledJobs.ts (sequenceProcessorService.start) + tests/unit/paxWitnessedSend.test.ts + tests/unit/paxPauseCoverage.test.ts",
       content: `
-        Pax never sends a message to anyone until you tap Approve: every
-        send tool (send_sms, send_email, send_direct_mail, payment link)
-        is in APPROVAL_REQUIRED_TOOLS and executeTool freezes it as a
+        Pax's own drafts never send until you tap Approve: every send
+        tool (send_email, send_sms, send_gmail, send_slack_message,
+        create_stripe_payment_link, and the connector sends) is in
+        APPROVAL_REQUIRED_TOOLS and executeTool freezes it as a
         pending ask until a signed-in human approves it, at every offered
         stance — paxWitnessedSend.test.ts drives the real kernel and the
-        set may only grow. Pause everything with one tap: POST
+        set may only grow. Anything you automate travels a different,
+        customer-switched path: the drips and campaigns you turned on
+        send only on the schedule you switched on
+        (sequenceProcessorService, started in runScheduledJobs.ts) — no
+        automation sends that the customer did not switch on. Pause
+        everything with one tap: POST
         /api/pax/pause writes the org-wide pause that every member of
         UNATTENDED_PATHS reads before it acts (paxPauseCoverage.test.ts),
         or set Pax to ask before it changes anything: the

@@ -63,7 +63,7 @@ Yes. Export your data from Pebble or REsimpli as CSV, then use AcreOS's import t
 
 ## 14. Do you offer refunds?
 
-If you're not satisfied within the first 30 days of a paid subscription, email us for a full refund. After 30 days, we don't offer refunds, but you can cancel anytime and your subscription will remain active through the end of the billing period.
+If you're not satisfied within the first 30 days of a paid subscription, email us for a full refund — see the refund policy (Terms §5A) for what's covered. After 30 days, refund requests are considered case by case, and you can cancel anytime to stop the next charge.
 
 ## 15. Is there a mobile app?
 

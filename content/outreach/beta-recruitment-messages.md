@@ -2,11 +2,11 @@
 
 ## 1. The Beginner (0–5 deals)
 
-> Hey — saw your post asking about software for land investing. I've been building a platform called AcreOS that handles the whole workflow: finding deals, running due diligence from 18 free government data sources, sending offers, and tracking everything in one place. It even has a Land Credit Score that rates parcels on a 300–850 scale so you know which ones are worth pursuing before you spend time on them. I'm looking for a few early users to try it and tell me what's missing. Would you want to give it a shot?
+> Hey — saw your post asking about software for land investing. I've been building a platform called AcreOS that handles the whole workflow: finding deals, running due diligence from free government data sources (FEMA flood, USDA soil, USGS elevation, USFWS wetlands, Census context), sending offers, and tracking everything in one place. It even has a Land Credit Score that rates parcels on a 300–850 scale so you know which ones are worth pursuing before you spend time on them. I'm looking for a few early users to try it and tell me what's missing. Would you want to give it a shot?
 
 ## 2. The Active Operator (2–10 deals/month)
 
-> I noticed you mentioned juggling Pebble + spreadsheets + Mailchimp for your pipeline. I built a single platform that replaces all three — CRM, campaigns, due diligence, offer generation, note servicing, everything. It pulls from 18 free data sources automatically so you're not copy-pasting from FEMA and USDA sites. I'm doing a small beta right now and I think you'd get real value from it given your volume. Want to try it?
+> I noticed you mentioned juggling Pebble + spreadsheets + Mailchimp for your pipeline. I built a single platform that replaces all three — CRM, campaigns, due diligence, offer generation, note servicing, everything. It pulls the free government data sources automatically — FEMA flood, USDA soil, USGS elevation, USFWS wetlands, Census context — so you're not copy-pasting from agency sites. I'm doing a small beta right now and I think you'd get real value from it given your volume. Want to try it?
 
 ## 3. The Seller Finance Focused
 
@@ -18,4 +18,4 @@
 
 ## 5. The Competitor Switcher (on Pebble or REsimpli)
 
-> Noticed you mentioned some frustrations with [Pebble/REsimpli]. I was in the same boat, which is why I built AcreOS. Specific things it does that they don't: automatic due diligence from 18 government data sources, a Land Credit Score (300–850) for every parcel, built-in seller-financed note management with Dodd-Frank compliance, AI-generated offer letters that match your writing style, and a Deal Feed that finds opportunities in your target counties every morning. I'm looking for 5 beta testers who know what they need because they've already outgrown their current tool. Would you want to take a look?
+> Noticed you mentioned some frustrations with [Pebble/REsimpli]. I was in the same boat, which is why I built AcreOS. Specific things it does that they don't: automatic due diligence from the free government data sources (FEMA, USDA, USGS, USFWS, Census), a Land Credit Score (300–850) for every parcel, built-in seller-financed note management with Dodd-Frank compliance, AI-generated offer letters that match your writing style, and a morning briefing that surfaces your best-scored opportunities. I'm looking for 5 beta testers who know what they need because they've already outgrown their current tool. Would you want to take a look?

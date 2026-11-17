@@ -9,8 +9,8 @@ publish-status: draft (Phase 1 gated — see Beatrice check)
 beatrice-reviewed: NEEDS-FOUNDER-REVIEW — CAN-SPAM postal address blocks live send until LLC at Phase 1; in-app billing surface owns Day 14
 truth-engine:
   - sources:
-      - { name: "client/src/pages/landing/copy.ts (Pro $41/mo billed annually; full Pax; unlimited counties; BYOK)", ref: "/Users/user/AcreOS/AcreOS/client/src/pages/landing/copy.ts#L133" }
-      - { name: "client/src/pages/landing/Pricing.tsx (Pro $41/mo billed annually)", ref: "/Users/user/AcreOS/AcreOS/client/src/pages/landing/Pricing.tsx#L56" }
+      - { name: "client/src/pages/landing/copy.ts (Pro $82.50/mo billed annually ($990/yr); full Pax; unlimited counties; BYOK)", ref: "/Users/user/AcreOS/AcreOS/client/src/pages/landing/copy.ts#L133" }
+      - { name: "client/src/pages/landing/Pricing.tsx (Pro $82.50/mo billed annually ($990/yr))", ref: "/Users/user/AcreOS/AcreOS/client/src/pages/landing/Pricing.tsx#L56" }
       - { name: "phase-zero-two-content-runway.md (template #6 spec: Day 13; no data deletion on downgrade)", ref: "/Users/user/AcreOS/AcreOS/docs/marketing/phase-zero-two-content-runway.md" }
       - { name: "AcreOS Constitution §4 (cancellation as easy as signup) and §6 (no auto-charge without consent)", ref: "/Users/user/AcreOS/AcreOS/docs/company/CONSTITUTION.md" }
 ai-disclosure: "Drafted by Pax under Soren's direction. (AcreOS Constitution §7.)"
@@ -47,7 +47,7 @@ If `parcel_count + lead_count + deal_count == 0`, this template does not fire; t
 
 > There are two ways forward. Both keep the data you've built.
 >
-> **Upgrade to Pro — $41/month billed annually.**
+> **Upgrade to Pro — $82.50/month billed annually ($990/yr).**
 > Full Pax assistant. Unlimited counties on the buy-box. Bring-your-own-key for the parcel-data and skip-trace costs every operator already pays AcreOS does not mark up. Cancel any time; cancellation is one click — same number of clicks as signup. That is in the AcreOS Constitution.
 >
 > **Downgrade to Free — $0/month.**
@@ -86,7 +86,7 @@ your account either way.
 
 There are two ways forward. Both keep the data you've built.
 
-UPGRADE TO PRO — $41/month billed annually.
+UPGRADE TO PRO — $82.50/month billed annually ($990/yr).
 Full Pax assistant. Unlimited counties on the buy-box.
 Bring-your-own-key for the parcel-data and skip-trace costs every
 operator already pays — AcreOS does not mark up. Cancel any time;

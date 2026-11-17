@@ -395,9 +395,10 @@ export default function TermsOfService() {
                 advised of the possibility of such damages.
               </p>
               <p className="text-muted-foreground leading-relaxed uppercase text-sm">
-                AcreOS's total cumulative liability arising out of or related to these Terms or the Service
-                shall not exceed the lesser of: (a) one thousand dollars ($1,000.00), or (b) the total
-                fees you paid to AcreOS in the twelve (12) months immediately preceding the claim.
+                To the maximum extent permitted by applicable law, AcreOS's total aggregate liability
+                arising out of or relating to these Terms or the Service will not exceed the amounts you
+                paid us for the Service in the 12 months preceding the event giving rise to the claim, or
+                $100, whichever is greater.
               </p>
               <p className="text-muted-foreground leading-relaxed uppercase text-sm">
                 The limitations in this section apply regardless of the theory of liability (contract,
@@ -459,50 +460,56 @@ export default function TermsOfService() {
               </p>
               <h3 className="text-base font-semibold text-foreground">14.1 Agreement to arbitrate</h3>
               <p className="text-muted-foreground leading-relaxed">
-                You and AcreOS agree that any dispute, claim, or controversy arising out of or relating to
-                these Terms or the Service (including any dispute as to the formation, validity,
-                enforceability, or scope of this arbitration agreement) will be resolved exclusively by
-                final, binding arbitration, rather than in court. The arbitration will be administered by
-                JAMS (www.jamsadr.com) under its Streamlined Arbitration Rules and Procedures (for claims
-                under $250,000) or Comprehensive Arbitration Rules and Procedures (for claims $250,000 or
-                above), as applicable, in effect at the time arbitration is commenced. The arbitrator will
-                have exclusive authority to resolve any dispute relating to the interpretation,
-                applicability, enforceability, or formation of this agreement to arbitrate.
+                Any dispute arising out of or relating to these Terms or the Service will be resolved by
+                binding individual arbitration administered by JAMS (www.jamsadr.com) in Middlesex County,
+                Massachusetts, under that provider&apos;s commercial rules, rather than in court.
               </p>
-              <h3 className="text-base font-semibold text-foreground">14.2 Class action waiver</h3>
+              <h3 className="text-base font-semibold text-foreground">14.2 Jury and class waiver</h3>
               <p className="text-muted-foreground leading-relaxed uppercase text-sm">
-                You and AcreOS each waive the right to bring or participate in any class, collective,
-                representative, or consolidated action or proceeding, whether in arbitration or court. The
-                arbitrator may not consolidate more than one person's claims and may not preside over any
-                form of a class or representative proceeding. If this class action waiver is found to be
-                unenforceable, the entire arbitration provision will be null and void.
+                You and AcreOS each waive any right to a jury trial and to participate in a class,
+                collective, consolidated, or representative action. The arbitrator may not consolidate
+                claims or preside over any form of class or representative proceeding. The class and
+                representative-action waiver in this section applies to a claim in whatever forum the
+                claim is heard, including a claim severed from arbitration under Section 14.7.
               </p>
-              <h3 className="text-base font-semibold text-foreground">14.3 Exceptions</h3>
+              <h3 className="text-base font-semibold text-foreground">14.3 Small claims and injunctive relief</h3>
               <p className="text-muted-foreground leading-relaxed">
-                Either party may seek injunctive or other equitable relief from a court of competent
-                jurisdiction to prevent actual or threatened infringement, misappropriation, or violation
-                of intellectual property rights.
+                Either party may bring an individual claim in small-claims court, and either party may
+                seek injunctive relief from a court for misuse of the Service or its data.
               </p>
-              <h3 className="text-base font-semibold text-foreground">14.4 Location and procedure</h3>
+              <h3 className="text-base font-semibold text-foreground">14.4 Massachusetts c. 93A</h3>
               <p className="text-muted-foreground leading-relaxed">
-                Arbitration will be conducted in {LEGAL_GOVERNING_STATE} or, at your election, by
-                telephone or videoconference. The arbitrator will apply {LEGAL_GOVERNING_STATE} law and
-                these Terms, and may award any relief available in court on an individual basis. The
-                arbitrator's decision is final and binding and may be entered as a judgment in any court
-                of competent jurisdiction.
+                Nothing in this section removes the pre-suit demand and tender mechanism of M.G.L. c. 93A
+                §9(3) or the fee consequence of §9(4): where a §9 demand is made, the parties will complete
+                that exchange before arbitration is filed, and the arbitrator will make the reasonableness
+                finding those paragraphs assign to &ldquo;the court&rdquo; and will apply the consequences
+                the statute attaches to it. Nothing in this section limits the arbitrator&apos;s power to
+                award any relief authorized by law, including multiple damages and attorney&apos;s fees
+                under M.G.L. c. 93A.
               </p>
               <h3 className="text-base font-semibold text-foreground">14.5 Costs</h3>
               <p className="text-muted-foreground leading-relaxed">
-                JAMS filing fees are as set forth in JAMS's fee schedule. AcreOS will pay JAMS arbitration
-                fees for claims under $10,000 unless the arbitrator determines the claim is frivolous. You
-                are responsible for your own attorneys' fees unless applicable law provides otherwise.
+                In any arbitration under this section, AcreOS will bear the provider&apos;s filing and
+                administrative fees and the arbitrator&apos;s compensation to the extent they exceed the
+                filing fee you would have paid to bring the same claim in court. Either party may serve a
+                written settlement offer with or after its first submission in the arbitration; if the
+                offer is rejected, the arbitrator shall take the offer and its reasonableness into account
+                in apportioning the fees, expenses, and compensation of the arbitration itself, but no
+                offer under this sentence limits any damages or attorney&apos;s fees awardable under
+                M.G.L. c. 93A.
               </p>
-              <h3 className="text-base font-semibold text-foreground">14.6 Opt-out</h3>
+              <h3 className="text-base font-semibold text-foreground">14.6 Severability</h3>
               <p className="text-muted-foreground leading-relaxed">
-                You may opt out of this arbitration agreement by sending written notice to legal@acreos.io
-                within <span className="tabular-nums">30</span> days of first agreeing to these Terms. Your
-                opt-out notice must include your name, account email address, and a clear statement that
-                you wish to opt out of arbitration.
+                If a provision of this section other than the class waiver is found unenforceable, that
+                provision is severed and the remainder of this section continues in effect.
+              </p>
+              <h3 className="text-base font-semibold text-foreground">14.7 Unenforceable class waiver or arbitration obligation</h3>
+              <p className="text-muted-foreground leading-relaxed">
+                If the class waiver is found unenforceable as to a claim, that claim will be resolved in
+                court under Section 15, severed from claims that remain arbitrable. If the arbitration
+                obligation itself is found unenforceable as to a claim, that claim will likewise be
+                resolved in court under Section 15, and the class waiver will continue to apply to it there
+                unless the class waiver is itself held unenforceable.
               </p>
             </section>
 
@@ -588,11 +595,15 @@ export default function TermsOfService() {
               <p className="text-muted-foreground leading-relaxed">
                 You may not assign or transfer these Terms, or any rights or obligations under them,
                 without AcreOS&apos;s prior written consent. AcreOS may assign these Terms, in whole or
-                in part, without your consent: (a) to a successor entity formed to operate the Service —
-                including the Massachusetts limited liability company currently being organized — upon
-                which that entity automatically assumes all rights and obligations under these Terms and
-                your subscription continues uninterrupted; or (b) in connection with a merger,
-                acquisition, reorganization, or sale of substantially all assets relating to the Service.
+                in part, without your consent: (a) to a legal entity that the operator of the Service
+                forms, owns, or controls, including a limited liability company formed to operate the
+                Service, which then assumes all rights and obligations under these Terms; or (b) in connection with a merger,
+                acquisition, reorganization, or sale of all or part of the business or its assets. We
+                will notify you of an assignment under clause (a) by email or in-app notice at least 30
+                days before it takes effect. Your continued use of the Service after the effective date
+                of an assignment is your acceptance of the assignee as operator under these Terms, on the
+                same terms. An assignment does not, by reason of the assignment alone, change the price,
+                features, or data-handling commitments in effect for your then-current subscription term.
                 These Terms bind and benefit the parties and their respective successors and permitted
                 assigns. If any provision of these Terms is held unenforceable, it will be limited to the
                 minimum extent necessary and the remaining provisions will continue in full force. A
