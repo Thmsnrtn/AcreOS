@@ -538,6 +538,7 @@ $mig0262$`,
   // ── 0080 audit_log hash chain (Kareem §1 — SOC 2 CC7.2/CC7.3) ──────────────
   // Tamper-evident audit_log via SHA-256 chain. The trigger function is
   // installed via CREATE OR REPLACE so a re-run is a no-op.
+  // 0080 — 0080_audit_log_hash_chain
   // 0143 — 0143_audit_log_hash_chain
   `ALTER TABLE "audit_log" ADD COLUMN IF NOT EXISTS "prev_hash" text`,
   `ALTER TABLE "audit_log" ADD COLUMN IF NOT EXISTS "row_hash" text`,
@@ -13939,6 +13940,1022 @@ $mig0284$`,
          FOREIGN KEY (rehab_id) REFERENCES rehabs(id) ON DELETE SET NULL;
      END IF;
    END$$`,
+
+  // ── P3-1 S3.2 — A2 blocks: declared DDL that was missing from this file ──
+  // Each block below mirrors the migrations/*.sql file of the same number,
+  // statement for statement, CREATE … IF NOT EXISTS throughout, so on any
+  // database that already carries an object the statement no-ops. One A2
+  // number is cured elsewhere: the 0080 pairing is a header line on the
+  // hash-chain block above, whose statements already mirror its file in
+  // full. The largest A2 block (the v13 file, 26 tables) is its own commit.
+  // 0007 — 0007_composite_indexes
+  // Composite (organization_id, status / created_at) indexes. Eighteen of
+  // the file's twenty indexes are written here; the two audit_logs indexes
+  // are omitted on purpose: there is no audit_logs table (the audit table
+  // is audit_log, indexed by the hash-chain block above), so those two
+  // statements could only ever skip.
+  `CREATE INDEX IF NOT EXISTS "leads_org_status_idx"
+  ON "leads" ("organization_id", "status")`,
+  `CREATE INDEX IF NOT EXISTS "leads_org_created_idx"
+  ON "leads" ("organization_id", "created_at" DESC)`,
+  `CREATE INDEX IF NOT EXISTS "deals_org_status_idx"
+  ON "deals" ("organization_id", "status")`,
+  `CREATE INDEX IF NOT EXISTS "deals_org_created_idx"
+  ON "deals" ("organization_id", "created_at" DESC)`,
+  `CREATE INDEX IF NOT EXISTS "properties_org_status_idx"
+  ON "properties" ("organization_id", "status")`,
+  `CREATE INDEX IF NOT EXISTS "properties_org_created_idx"
+  ON "properties" ("organization_id", "created_at" DESC)`,
+  `CREATE INDEX IF NOT EXISTS "notes_org_status_idx"
+  ON "notes" ("organization_id", "status")`,
+  `CREATE INDEX IF NOT EXISTS "notes_org_created_idx"
+  ON "notes" ("organization_id", "created_at" DESC)`,
+  `CREATE INDEX IF NOT EXISTS "campaigns_org_status_idx"
+  ON "campaigns" ("organization_id", "status")`,
+  `CREATE INDEX IF NOT EXISTS "campaigns_org_created_idx"
+  ON "campaigns" ("organization_id", "created_at" DESC)`,
+  `CREATE INDEX IF NOT EXISTS "marketplace_listings_org_status_idx"
+  ON "marketplace_listings" ("organization_id", "status")`,
+  `CREATE INDEX IF NOT EXISTS "marketplace_listings_status_created_idx"
+  ON "marketplace_listings" ("status", "created_at" DESC)`,
+  `CREATE INDEX IF NOT EXISTS "note_payments_org_due_date_idx"
+  ON "note_payments" ("note_id", "due_date")`,
+  `CREATE INDEX IF NOT EXISTS "ai_conversations_org_idx"
+  ON "ai_conversations" ("organization_id")`,
+  `CREATE INDEX IF NOT EXISTS "ai_conversations_org_created_idx"
+  ON "ai_conversations" ("organization_id", "created_at" DESC)`,
+  `CREATE INDEX IF NOT EXISTS "team_members_org_user_idx"
+  ON "team_members" ("organization_id", "user_id")`,
+  `CREATE INDEX IF NOT EXISTS "support_tickets_org_status_idx"
+  ON "support_tickets" ("organization_id", "status")`,
+  `CREATE INDEX IF NOT EXISTS "job_health_logs_name_started_idx"
+  ON "job_health_logs" ("job_name", "run_started_at" DESC)`,
+  // 0010 — 0010_fts_gin_indexes
+  // GIN expression indexes for full-text search. Written CONCURRENTLY (the
+  // file itself omits it): this runner executes each statement outside a
+  // transaction, so CONCURRENTLY is valid here and does not lock writes.
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "leads_fts_idx"
+  ON "leads" USING GIN (
+    to_tsvector('english',
+      COALESCE("first_name", '') || ' ' ||
+      COALESCE("last_name", '') || ' ' ||
+      COALESCE("email", '') || ' ' ||
+      COALESCE("phone", '') || ' ' ||
+      COALESCE("address", '') || ' ' ||
+      COALESCE("city", '') || ' ' ||
+      COALESCE("notes", '')
+    )
+  )`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "properties_fts_idx"
+  ON "properties" USING GIN (
+    to_tsvector('english',
+      COALESCE("address", '') || ' ' ||
+      COALESCE("city", '') || ' ' ||
+      COALESCE("state", '') || ' ' ||
+      COALESCE("zip_code", '') || ' ' ||
+      COALESCE("notes", '')
+    )
+  )`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "deals_fts_idx"
+  ON "deals" USING GIN (
+    to_tsvector('english',
+      COALESCE("title", '') || ' ' ||
+      COALESCE("notes", '')
+    )
+  )`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "support_tickets_fts_idx"
+  ON "support_tickets" USING GIN (
+    to_tsvector('english',
+      COALESCE("subject", '') || ' ' ||
+      COALESCE("description", '')
+    )
+  )`,
+  // 0011 — 0011_autonomy
+  // The file's two tables and three indexes. Its five organizations columns
+  // (churn_risk_score, churn_risk_updated_at, churn_rescue_sent_at,
+  // milestones_reached, referral_nudge_sent_at) already live in this file,
+  // so they are not repeated here.
+  `CREATE TABLE IF NOT EXISTS "system_activity" (
+  "id"          serial PRIMARY KEY,
+  "org_id"      integer REFERENCES "organizations"("id") ON DELETE SET NULL,
+  "job_name"    text NOT NULL,
+  "action"      text NOT NULL,
+  "summary"     text NOT NULL,
+  "entity_type" text,
+  "entity_id"   text,
+  "metadata"    jsonb,
+  "created_at"  timestamp NOT NULL DEFAULT now()
+)`,
+  `CREATE INDEX IF NOT EXISTS "IDX_sysact_created" ON "system_activity" ("created_at" DESC)`,
+  `CREATE INDEX IF NOT EXISTS "IDX_sysact_org"     ON "system_activity" ("org_id", "created_at" DESC)`,
+  `CREATE INDEX IF NOT EXISTS "IDX_sysact_job"     ON "system_activity" ("job_name", "created_at" DESC)`,
+  `CREATE TABLE IF NOT EXISTS "system_meta" (
+  "key"        text PRIMARY KEY,
+  "value"      text,
+  "updated_at" timestamp NOT NULL DEFAULT now()
+)`,
+  // 0013 — 0013_index_audit
+  // All eighty-five indexes of the file, written CONCURRENTLY. Four of the
+  // names already exist in this file and no-op: lead_activities_org_idx and
+  // payments_org_idx with identical definitions, and
+  // usage_events_org_created_idx and activity_events_org_entity_idx with
+  // wider definitions (the existing definitions stand; this block does not
+  // alter them). The four campaign_delivery indexes target
+  // campaign_delivery_events, created by the 0021 block later in this
+  // section: on a database without that table they skip on the first pass
+  // and land on the runner's retry pass.
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "leads_assigned_to_idx"
+  ON "leads" ("assigned_to")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "leads_type_idx"
+  ON "leads" ("type")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "leads_deleted_at_idx"
+  ON "leads" ("deleted_at")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "leads_nurturing_stage_idx"
+  ON "leads" ("nurturing_stage")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "leads_next_follow_up_idx"
+  ON "leads" ("next_follow_up_at")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "leads_org_assigned_idx"
+  ON "leads" ("organization_id", "assigned_to")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "leads_org_deleted_idx"
+  ON "leads" ("organization_id", "deleted_at")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "properties_seller_id_idx"
+  ON "properties" ("seller_id")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "properties_buyer_id_idx"
+  ON "properties" ("buyer_id")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "properties_county_state_idx"
+  ON "properties" ("county", "state")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "properties_deleted_at_idx"
+  ON "properties" ("deleted_at")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "deals_property_id_idx"
+  ON "deals" ("property_id")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "deals_type_idx"
+  ON "deals" ("type")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "deals_assigned_to_idx"
+  ON "deals" ("assigned_to")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "deals_deleted_at_idx"
+  ON "deals" ("deleted_at")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "deals_closing_date_idx"
+  ON "deals" ("closing_date")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "campaign_responses_campaign_id_idx"
+  ON "campaign_responses" ("campaign_id")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "campaign_responses_lead_id_idx"
+  ON "campaign_responses" ("lead_id")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "campaign_responses_org_idx"
+  ON "campaign_responses" ("organization_id")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "campaign_delivery_campaign_idx"
+  ON "campaign_delivery_events" ("campaign_id")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "campaign_delivery_lead_idx"
+  ON "campaign_delivery_events" ("lead_id")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "campaign_delivery_status_idx"
+  ON "campaign_delivery_events" ("status")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "campaign_delivery_campaign_status_idx"
+  ON "campaign_delivery_events" ("campaign_id", "status")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "campaign_optimizations_campaign_idx"
+  ON "campaign_optimizations" ("campaign_id")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "campaign_optimizations_org_idx"
+  ON "campaign_optimizations" ("organization_id")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "activity_log_org_idx"
+  ON "activity_log" ("organization_id")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "activity_log_entity_idx"
+  ON "activity_log" ("entity_type", "entity_id")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "activity_log_created_at_idx"
+  ON "activity_log" ("created_at" DESC)`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "activity_log_org_created_idx"
+  ON "activity_log" ("organization_id", "created_at" DESC)`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "agent_events_org_idx"
+  ON "agent_events" ("organization_id")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "agent_events_type_idx"
+  ON "agent_events" ("event_type")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "agent_events_created_at_idx"
+  ON "agent_events" ("created_at" DESC)`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "agent_events_org_created_idx"
+  ON "agent_events" ("organization_id", "created_at" DESC)`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "ai_telemetry_task_type_idx"
+  ON "ai_telemetry_events" ("task_type")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "ai_telemetry_org_task_idx"
+  ON "ai_telemetry_events" ("organization_id", "task_type")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "usage_events_org_idx"
+  ON "usage_events" ("organization_id")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "usage_events_type_idx"
+  ON "usage_events" ("event_type")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "usage_events_created_at_idx"
+  ON "usage_events" ("created_at" DESC)`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "usage_events_org_created_idx"
+  ON "usage_events" ("organization_id", "created_at" DESC)`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "usage_records_org_idx"
+  ON "usage_records" ("organization_id")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "usage_records_billing_month_idx"
+  ON "usage_records" ("billing_month")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "usage_records_org_billing_idx"
+  ON "usage_records" ("organization_id", "billing_month")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "credit_transactions_org_idx"
+  ON "credit_transactions" ("organization_id")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "credit_transactions_created_at_idx"
+  ON "credit_transactions" ("created_at" DESC)`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "outcome_telemetry_org_idx"
+  ON "outcome_telemetry" ("organization_id")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "outcome_telemetry_type_idx"
+  ON "outcome_telemetry" ("outcome_type")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "outcome_telemetry_created_at_idx"
+  ON "outcome_telemetry" ("created_at" DESC)`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "audit_log_org_idx"
+  ON "audit_log" ("organization_id")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "audit_log_entity_idx"
+  ON "audit_log" ("entity_type", "entity_id")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "audit_log_created_at_idx"
+  ON "audit_log" ("created_at" DESC)`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "audit_log_user_idx"
+  ON "audit_log" ("user_id")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "activity_events_org_idx"
+  ON "activity_events" ("organization_id")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "activity_events_entity_idx"
+  ON "activity_events" ("entity_type", "entity_id")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "activity_events_event_date_idx"
+  ON "activity_events" ("event_date" DESC)`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "activity_events_org_entity_idx"
+  ON "activity_events" ("organization_id", "entity_type", "entity_id")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "notifications_org_idx"
+  ON "notifications" ("organization_id")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "notifications_user_idx"
+  ON "notifications" ("user_id")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "notifications_is_read_idx"
+  ON "notifications" ("is_read")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "notifications_created_at_idx"
+  ON "notifications" ("created_at" DESC)`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "notifications_user_unread_idx"
+  ON "notifications" ("user_id", "is_read", "created_at" DESC)`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "conversations_org_idx"
+  ON "conversations" ("organization_id")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "conversations_lead_idx"
+  ON "conversations" ("lead_id")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "conversations_status_idx"
+  ON "conversations" ("status")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "messages_conversation_idx"
+  ON "messages" ("conversation_id")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "messages_org_idx"
+  ON "messages" ("organization_id")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "messages_created_at_idx"
+  ON "messages" ("created_at" DESC)`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "lead_activities_lead_idx"
+  ON "lead_activities" ("lead_id")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "lead_activities_org_idx"
+  ON "lead_activities" ("organization_id")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "lead_activities_created_at_idx"
+  ON "lead_activities" ("created_at" DESC)`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "lead_score_history_lead_idx"
+  ON "lead_score_history" ("lead_id")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "lead_score_history_org_idx"
+  ON "lead_score_history" ("organization_id")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "lead_conversions_lead_idx"
+  ON "lead_conversions" ("lead_id")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "lead_conversions_org_idx"
+  ON "lead_conversions" ("organization_id")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "notes_property_idx"
+  ON "notes" ("property_id")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "payments_org_idx"
+  ON "payments" ("organization_id")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "tax_escrow_payments_note_idx"
+  ON "tax_escrow_payments" ("note_id")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "tax_escrow_payments_org_idx"
+  ON "tax_escrow_payments" ("organization_id")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "payment_reminders_note_idx"
+  ON "payment_reminders" ("note_id")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "payment_reminders_org_idx"
+  ON "payment_reminders" ("organization_id")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "team_members_org_idx"
+  ON "team_members" ("organization_id")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "org_integrations_org_idx"
+  ON "organization_integrations" ("organization_id")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "borrower_profiles_org_idx"
+  ON "borrower_payment_profiles" ("organization_id")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "borrower_profiles_lead_idx"
+  ON "borrower_payment_profiles" ("lead_id")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "sequence_enrollments_org_idx"
+  ON "sequence_enrollments" ("organization_id")`,
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS "sequence_enrollments_lead_idx"
+  ON "sequence_enrollments" ("lead_id")`,
+  // 0014 — 0014_direct_mail_attribution_and_api_keys
+  `ALTER TABLE mailing_order_pieces
+  ADD COLUMN IF NOT EXISTS tracking_code TEXT UNIQUE`,
+  `ALTER TABLE leads
+  ADD COLUMN IF NOT EXISTS source_mail_piece_id INTEGER REFERENCES mailing_order_pieces(id)`,
+  `CREATE TABLE IF NOT EXISTS org_api_keys (
+  id                SERIAL PRIMARY KEY,
+  organization_id   INTEGER NOT NULL REFERENCES organizations(id),
+  name              TEXT NOT NULL,
+  key_hash          TEXT NOT NULL,
+  key_prefix        TEXT NOT NULL,
+  scope             TEXT NOT NULL DEFAULT 'read',
+  expires_at        TIMESTAMP,
+  last_used_at      TIMESTAMP,
+  is_revoked        BOOLEAN NOT NULL DEFAULT FALSE,
+  created_by        INTEGER,
+  created_at        TIMESTAMP DEFAULT NOW(),
+  updated_at        TIMESTAMP DEFAULT NOW()
+)`,
+  `CREATE INDEX IF NOT EXISTS org_api_keys_org_idx ON org_api_keys (organization_id)`,
+  // 0021 — 0021_campaign_delivery_events
+  `CREATE TABLE IF NOT EXISTS "campaign_delivery_events" (
+  "id" serial PRIMARY KEY,
+  "campaign_id" integer NOT NULL REFERENCES "campaigns"("id"),
+  "lead_id" integer NOT NULL REFERENCES "leads"("id"),
+  "channel" text NOT NULL,
+  "status" text NOT NULL DEFAULT 'sent',
+  "sent_at" timestamp DEFAULT now(),
+  "status_updated_at" timestamp DEFAULT now(),
+  "metadata" jsonb
+)`,
+  `CREATE INDEX IF NOT EXISTS "idx_delivery_events_campaign" ON "campaign_delivery_events" ("campaign_id")`,
+  `CREATE INDEX IF NOT EXISTS "idx_delivery_events_lead" ON "campaign_delivery_events" ("lead_id")`,
+  `CREATE INDEX IF NOT EXISTS "idx_delivery_events_status" ON "campaign_delivery_events" ("status")`,
+  // 0034 — 0034_twilio_messagesid_unique
+  // Webhook replay defense: a partial UNIQUE index on messages.external_id.
+  // Guarded, after the pattern of the 0262 block above: the guard counts
+  // duplicate non-null values first and stops with the count rather than
+  // letting the concurrent build fail on duplicates (which would also
+  // leave an INVALID index behind), and it drops an INVALID leftover of
+  // the same name so IF NOT EXISTS cannot silently wedge on one. The guard
+  // never deletes or rewrites a message row.
+  `DO $mig0034$
+DECLARE
+  dupes bigint;
+BEGIN
+  IF EXISTS (
+    SELECT 1
+      FROM pg_index i
+      JOIN pg_class c ON c.oid = i.indexrelid
+     WHERE c.relname = 'messages_external_id_unique'
+       AND i.indisvalid
+  ) THEN
+    RETURN;
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+      FROM pg_index i
+      JOIN pg_class c ON c.oid = i.indexrelid
+     WHERE c.relname = 'messages_external_id_unique'
+       AND NOT i.indisvalid
+  ) THEN
+    DROP INDEX "messages_external_id_unique";
+  END IF;
+
+  SELECT count(*) INTO dupes
+    FROM (
+      SELECT external_id
+        FROM "messages"
+       WHERE external_id IS NOT NULL
+       GROUP BY external_id
+      HAVING count(*) > 1
+    ) d;
+  IF dupes > 0 THEN
+    RAISE EXCEPTION 'messages.external_id has % non-null value(s) recorded more than once; the messages_external_id_unique index cannot be added until they are resolved by hand', dupes;
+  END IF;
+END
+$mig0034$`,
+  `CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS messages_external_id_unique
+  ON messages (external_id)
+  WHERE external_id IS NOT NULL`,
+  // 0050 — 0050_unaccent_extension
+  // The unaccent extension itself already lives in this file (the
+  // extensions batch above); only the IMMUTABLE wrapper was missing.
+  `CREATE OR REPLACE FUNCTION public.acreos_unaccent_immutable(text)
+RETURNS text AS $$
+  SELECT public.unaccent('public.unaccent', $1);
+$$ LANGUAGE sql IMMUTABLE PARALLEL SAFE`,
+  // 0089 — 0089_rehab_photos
+  // Its prereq tables (rehabs, rehab_line_items) are created above.
+  `CREATE TABLE IF NOT EXISTS rehab_photos (
+  id              varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id integer NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  rehab_id        uuid    NOT NULL REFERENCES rehabs(id) ON DELETE CASCADE,
+  line_item_id    uuid    REFERENCES rehab_line_items(id) ON DELETE SET NULL,
+  s3_key          text NOT NULL,
+  caption         text,
+  tag             text CHECK (tag IN ('before','during','after','defect','lender_draw','tax')),
+  captured_at     timestamp with time zone DEFAULT now(),
+  captured_by     varchar REFERENCES users(id) ON DELETE SET NULL,
+  lat             numeric,
+  lng             numeric,
+  metadata        jsonb
+)`,
+  `CREATE INDEX IF NOT EXISTS rehab_photos_org_rehab_captured_idx
+  ON rehab_photos (organization_id, rehab_id, captured_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS rehab_photos_rehab_tag_idx
+  ON rehab_photos (rehab_id, tag)`,
+  // 0092 — 0092_audit_log_purges
+  `CREATE TABLE IF NOT EXISTS audit_log_purges (
+  id              serial      PRIMARY KEY,
+  organization_id integer     NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  purged_before   timestamp   NOT NULL,
+  purge_started_at  timestamp NOT NULL DEFAULT now(),
+  purge_completed_at timestamp,
+  purged_count    integer     NOT NULL DEFAULT 0,
+  last_purged_row_hash text,
+  sealing_hash    text,
+  sealing_audit_log_id integer REFERENCES audit_log(id) ON DELETE RESTRICT,
+  actor_user_id   text,
+  metadata        jsonb       NOT NULL DEFAULT '{}'::jsonb
+)`,
+  `CREATE INDEX IF NOT EXISTS audit_log_purges_org_idx
+  ON audit_log_purges (organization_id, purge_started_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS audit_log_purges_sealing_idx
+  ON audit_log_purges (sealing_audit_log_id)`,
+  `COMMENT ON TABLE audit_log_purges IS
+  'Ledger of audit_log purges. Each row records the purged window, the cumulative hash of purged rows, and the sealing audit_log row that documents the discontinuity for chain verification.'`,
+  // 0093 — 0093_chat_tool_cooldowns
+  `CREATE TABLE IF NOT EXISTS chat_tool_cooldowns (
+  user_id           text NOT NULL,
+  tool_name         text NOT NULL,
+  last_confirmed_at timestamp NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, tool_name)
+)`,
+  `CREATE INDEX IF NOT EXISTS chat_tool_cooldowns_last_confirmed_idx
+  ON chat_tool_cooldowns (last_confirmed_at)`,
+  `COMMENT ON TABLE chat_tool_cooldowns IS
+  'Lens 13: persistent Tier-3 chat-tool re-confirmation cooldowns. Replaces an in-memory Map that did not survive Fly restarts. Old rows can age out via cron.'`,
+  // 0094 — 0094_org_credits
+  `CREATE TABLE IF NOT EXISTS org_credits (
+  organization_id integer PRIMARY KEY REFERENCES organizations(id) ON DELETE CASCADE,
+  balance_cents integer NOT NULL DEFAULT 0,
+  updated_at timestamptz NOT NULL DEFAULT now()
+)`,
+  `CREATE INDEX IF NOT EXISTS idx_org_credits_updated_at ON org_credits(updated_at)`,
+  // 0095 — 0095_public_api_v0
+  // Tables only: the public-API ladder gate governs exposure of the
+  // surface, not storage, so the backing tables land with the schema.
+  `CREATE TABLE IF NOT EXISTS api_keys (
+  id              SERIAL PRIMARY KEY,
+  organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  name            TEXT NOT NULL,
+  prefix          TEXT NOT NULL,
+  hashed_key      TEXT NOT NULL,
+  scopes          JSONB NOT NULL DEFAULT '[]'::jsonb,
+  rate_limit      INTEGER,
+  last_used_at    TIMESTAMPTZ,
+  expires_at      TIMESTAMPTZ,
+  created_by      TEXT NOT NULL,
+  revoked_at      TIMESTAMPTZ,
+  revoked_by      TEXT,
+  revoked_reason  TEXT,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+)`,
+  `CREATE INDEX IF NOT EXISTS api_keys_org_idx          ON api_keys(organization_id)`,
+  `CREATE INDEX IF NOT EXISTS api_keys_hash_idx         ON api_keys(hashed_key)`,
+  `CREATE INDEX IF NOT EXISTS api_keys_org_revoked_idx  ON api_keys(organization_id, revoked_at)`,
+  `CREATE TABLE IF NOT EXISTS api_key_usage (
+  id                 BIGSERIAL PRIMARY KEY,
+  api_key_id         INTEGER NOT NULL REFERENCES api_keys(id) ON DELETE CASCADE,
+  organization_id    INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  method             TEXT NOT NULL,
+  path               TEXT NOT NULL,
+  status_code        INTEGER NOT NULL,
+  duration_ms        INTEGER NOT NULL,
+  remote_addr_prefix TEXT,
+  user_agent         TEXT,
+  request_id         TEXT,
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+)`,
+  `CREATE INDEX IF NOT EXISTS api_key_usage_key_created_idx ON api_key_usage(api_key_id, created_at)`,
+  `CREATE INDEX IF NOT EXISTS api_key_usage_org_created_idx ON api_key_usage(organization_id, created_at)`,
+  `CREATE TABLE IF NOT EXISTS webhook_subscriptions (
+  id                    SERIAL PRIMARY KEY,
+  organization_id       INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  url                   TEXT NOT NULL,
+  events                JSONB NOT NULL DEFAULT '[]'::jsonb,
+  signing_secret        TEXT NOT NULL,
+  is_active             BOOLEAN NOT NULL DEFAULT TRUE,
+  consecutive_failures  INTEGER NOT NULL DEFAULT 0,
+  last_success_at       TIMESTAMPTZ,
+  last_failure_at       TIMESTAMPTZ,
+  created_by            TEXT NOT NULL,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
+)`,
+  `CREATE INDEX IF NOT EXISTS webhook_subs_org_idx        ON webhook_subscriptions(organization_id)`,
+  `CREATE INDEX IF NOT EXISTS webhook_subs_org_active_idx ON webhook_subscriptions(organization_id, is_active)`,
+  `CREATE TABLE IF NOT EXISTS webhook_delivery_log (
+  id              BIGSERIAL PRIMARY KEY,
+  subscription_id INTEGER NOT NULL REFERENCES webhook_subscriptions(id) ON DELETE CASCADE,
+  organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  event_id        TEXT NOT NULL,
+  event_type      TEXT NOT NULL,
+  payload         JSONB NOT NULL,
+  attempt_number  INTEGER NOT NULL DEFAULT 1,
+  status          TEXT NOT NULL DEFAULT 'pending',
+  status_code     INTEGER,
+  response_body   TEXT,
+  error_message   TEXT,
+  next_retry_at   TIMESTAMPTZ,
+  delivered_at    TIMESTAMPTZ,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+)`,
+  `CREATE INDEX IF NOT EXISTS webhook_delivery_log_sub_idx         ON webhook_delivery_log(subscription_id)`,
+  `CREATE INDEX IF NOT EXISTS webhook_delivery_log_event_idx       ON webhook_delivery_log(event_id)`,
+  `CREATE INDEX IF NOT EXISTS webhook_delivery_log_next_retry_idx  ON webhook_delivery_log(next_retry_at)`,
+  `CREATE INDEX IF NOT EXISTS webhook_delivery_log_org_created_idx ON webhook_delivery_log(organization_id, created_at)`,
+  // 0096 — 0096_servicer_foundation
+  `CREATE TABLE IF NOT EXISTS note_ownership_of_record (
+  id                varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id   integer NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  note_id           uuid    NOT NULL REFERENCES acquired_notes(id) ON DELETE CASCADE,
+  owner_org_id      integer NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
+  owner_type        text NOT NULL,
+  basis_percentage  numeric(5,2) NOT NULL DEFAULT 100.00,
+  effective_at      timestamptz NOT NULL DEFAULT now(),
+  superseded_at     timestamptz,
+  created_at        timestamptz NOT NULL DEFAULT now(),
+  updated_at        timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT note_owner_of_record_type_chk
+    CHECK (owner_type IN ('org','lp','ira_custodian','trust')),
+  CONSTRAINT note_owner_of_record_basis_chk
+    CHECK (basis_percentage >= 0 AND basis_percentage <= 100)
+)`,
+  `CREATE INDEX IF NOT EXISTS note_owner_of_record_org_note_idx
+  ON note_ownership_of_record(organization_id, note_id)`,
+  `CREATE INDEX IF NOT EXISTS note_owner_of_record_owner_idx
+  ON note_ownership_of_record(owner_org_id, superseded_at)`,
+  `CREATE INDEX IF NOT EXISTS note_owner_of_record_active_idx
+  ON note_ownership_of_record(organization_id, note_id)
+  WHERE superseded_at IS NULL`,
+  `CREATE TABLE IF NOT EXISTS servicer_remittances (
+  id                varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id   integer NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  owner_org_id      integer NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
+  period_start      date NOT NULL,
+  period_end        date NOT NULL,
+  gross_cents       bigint NOT NULL DEFAULT 0,
+  servicer_fee_cents bigint NOT NULL DEFAULT 0,
+  net_cents         bigint NOT NULL DEFAULT 0,
+  status            text NOT NULL DEFAULT 'draft',
+  pdf_s3_key        text,
+  generated_at      timestamptz NOT NULL DEFAULT now(),
+  sent_at           timestamptz,
+  paid_at           timestamptz,
+  created_at        timestamptz NOT NULL DEFAULT now(),
+  updated_at        timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT servicer_remittance_status_chk
+    CHECK (status IN ('draft','sent','paid')),
+  CONSTRAINT servicer_remittance_period_chk
+    CHECK (period_end >= period_start)
+)`,
+  `CREATE INDEX IF NOT EXISTS servicer_remit_org_owner_period_idx
+  ON servicer_remittances(organization_id, owner_org_id, period_end DESC)`,
+  `CREATE INDEX IF NOT EXISTS servicer_remit_org_status_idx
+  ON servicer_remittances(organization_id, status)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS servicer_remit_uniq_period_uk
+  ON servicer_remittances(organization_id, owner_org_id, period_start, period_end)`,
+  `CREATE TABLE IF NOT EXISTS servicer_licenses (
+  id              varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id integer NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  state           text NOT NULL,
+  license_type    text NOT NULL,
+  license_number  text,
+  expires_at      date,
+  notes           text,
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  updated_at      timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT servicer_license_type_chk
+    CHECK (license_type IN ('sub_servicer','master_servicer','rmlo','none_required'))
+)`,
+  `CREATE INDEX IF NOT EXISTS servicer_licenses_org_state_idx
+  ON servicer_licenses(organization_id, state)`,
+  `CREATE INDEX IF NOT EXISTS servicer_licenses_org_expiring_idx
+  ON servicer_licenses(organization_id, expires_at)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS servicer_licenses_state_uk
+  ON servicer_licenses(organization_id, state, license_type)`,
+  // 0018 — 0018_v13_sentient_enterprise
+  // The v13 sentient-enterprise file: twenty-six tables and eighty index
+  // statements, in its own commit because of its size. Seventy-eight of
+  // the index names are new. Two already exist in this file on other
+  // tables and no-op by name — sp_agent_idx (on scp_procedures) and
+  // ad_status_idx (on agent_debates): a pre-existing cross-file name
+  // collision in the sources, mirrored faithfully, not introduced here.
+  `CREATE TABLE IF NOT EXISTS agent_episodic_memory (
+  id SERIAL PRIMARY KEY,
+  agent_codename TEXT NOT NULL,
+  episode_id TEXT NOT NULL UNIQUE,
+  context JSONB NOT NULL DEFAULT '{}',
+  action TEXT NOT NULL,
+  outcome TEXT NOT NULL,
+  outcome_success BOOLEAN NOT NULL DEFAULT true,
+  emotional_valence INTEGER NOT NULL DEFAULT 0,
+  related_entities JSONB NOT NULL DEFAULT '[]',
+  tags JSONB NOT NULL DEFAULT '[]',
+  relevance_score INTEGER NOT NULL DEFAULT 100,
+  access_count INTEGER NOT NULL DEFAULT 0,
+  last_accessed_at TIMESTAMP,
+  org_id INTEGER,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+)`,
+  `CREATE INDEX IF NOT EXISTS aem_agent_idx ON agent_episodic_memory(agent_codename)`,
+  `CREATE INDEX IF NOT EXISTS aem_relevance_idx ON agent_episodic_memory(relevance_score)`,
+  `CREATE INDEX IF NOT EXISTS aem_org_idx ON agent_episodic_memory(org_id)`,
+  `CREATE INDEX IF NOT EXISTS aem_created_idx ON agent_episodic_memory(created_at)`,
+  `CREATE TABLE IF NOT EXISTS agent_semantic_memory (
+  id SERIAL PRIMARY KEY,
+  agent_codename TEXT NOT NULL,
+  fact_id TEXT NOT NULL UNIQUE,
+  fact TEXT NOT NULL,
+  category TEXT NOT NULL,
+  confidence INTEGER NOT NULL DEFAULT 50,
+  source_episodes JSONB NOT NULL DEFAULT '[]',
+  reinforcement_count INTEGER NOT NULL DEFAULT 1,
+  contradiction_count INTEGER NOT NULL DEFAULT 0,
+  decay_score INTEGER NOT NULL DEFAULT 100,
+  is_shared BOOLEAN NOT NULL DEFAULT false,
+  shared_with_agents JSONB NOT NULL DEFAULT '[]',
+  org_id INTEGER,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+)`,
+  `CREATE INDEX IF NOT EXISTS asm_agent_idx ON agent_semantic_memory(agent_codename)`,
+  `CREATE INDEX IF NOT EXISTS asm_category_idx ON agent_semantic_memory(category)`,
+  `CREATE INDEX IF NOT EXISTS asm_confidence_idx ON agent_semantic_memory(confidence)`,
+  `CREATE INDEX IF NOT EXISTS asm_shared_idx ON agent_semantic_memory(is_shared)`,
+  `CREATE INDEX IF NOT EXISTS asm_org_idx ON agent_semantic_memory(org_id)`,
+  `CREATE TABLE IF NOT EXISTS agent_working_memory_v13 (
+  id SERIAL PRIMARY KEY,
+  saga_id TEXT,
+  agent_codename TEXT NOT NULL,
+  key TEXT NOT NULL,
+  value JSONB NOT NULL,
+  ttl_seconds INTEGER NOT NULL DEFAULT 3600,
+  expires_at TIMESTAMP NOT NULL,
+  org_id INTEGER,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+)`,
+  `CREATE INDEX IF NOT EXISTS awm_agent_idx ON agent_working_memory_v13(agent_codename)`,
+  `CREATE INDEX IF NOT EXISTS awm_saga_idx ON agent_working_memory_v13(saga_id)`,
+  `CREATE INDEX IF NOT EXISTS awm_expires_idx ON agent_working_memory_v13(expires_at)`,
+  `CREATE TABLE IF NOT EXISTS memory_access_log (
+  id SERIAL PRIMARY KEY,
+  agent_codename TEXT NOT NULL,
+  memory_type TEXT NOT NULL,
+  memory_id TEXT NOT NULL,
+  query TEXT,
+  relevance_returned INTEGER,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+)`,
+  `CREATE INDEX IF NOT EXISTS mal_agent_idx ON memory_access_log(agent_codename)`,
+  `CREATE INDEX IF NOT EXISTS mal_type_idx ON memory_access_log(memory_type)`,
+  `CREATE TABLE IF NOT EXISTS agent_strategies (
+  id SERIAL PRIMARY KEY,
+  strategy_id TEXT NOT NULL UNIQUE,
+  agent_codename TEXT NOT NULL,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL,
+  config JSONB NOT NULL DEFAULT '{}',
+  context_weights JSONB NOT NULL DEFAULT '{}',
+  trial_count INTEGER NOT NULL DEFAULT 0,
+  success_count INTEGER NOT NULL DEFAULT 0,
+  success_rate NUMERIC NOT NULL DEFAULT 0,
+  avg_outcome_value NUMERIC NOT NULL DEFAULT 0,
+  thompson_alpha INTEGER NOT NULL DEFAULT 1,
+  thompson_beta INTEGER NOT NULL DEFAULT 1,
+  min_trials_before_compare INTEGER NOT NULL DEFAULT 10,
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  parent_strategy_id TEXT,
+  mutation_description TEXT,
+  org_id INTEGER,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+)`,
+  `CREATE INDEX IF NOT EXISTS as_agent_idx ON agent_strategies(agent_codename)`,
+  `CREATE INDEX IF NOT EXISTS as_active_idx ON agent_strategies(is_active)`,
+  `CREATE INDEX IF NOT EXISTS as_parent_idx ON agent_strategies(parent_strategy_id)`,
+  `CREATE INDEX IF NOT EXISTS as_org_idx ON agent_strategies(org_id)`,
+  `CREATE TABLE IF NOT EXISTS strategy_assignments (
+  id SERIAL PRIMARY KEY,
+  strategy_id TEXT NOT NULL,
+  agent_codename TEXT NOT NULL,
+  entity_type TEXT NOT NULL,
+  entity_id TEXT NOT NULL,
+  context_snapshot JSONB NOT NULL DEFAULT '{}',
+  outcome TEXT,
+  outcome_value NUMERIC,
+  outcome_recorded_at TIMESTAMP,
+  org_id INTEGER,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+)`,
+  `CREATE INDEX IF NOT EXISTS sa_strategy_idx ON strategy_assignments(strategy_id)`,
+  `CREATE INDEX IF NOT EXISTS sa_entity_idx ON strategy_assignments(entity_type, entity_id)`,
+  `CREATE INDEX IF NOT EXISTS sa_agent_idx ON strategy_assignments(agent_codename)`,
+  `CREATE INDEX IF NOT EXISTS sa_org_idx ON strategy_assignments(org_id)`,
+  `CREATE TABLE IF NOT EXISTS strategy_proposals (
+  id SERIAL PRIMARY KEY,
+  proposal_id TEXT NOT NULL UNIQUE,
+  agent_codename TEXT NOT NULL,
+  proposed_name TEXT NOT NULL,
+  proposed_config JSONB NOT NULL DEFAULT '{}',
+  rationale TEXT NOT NULL,
+  evidence_episodes JSONB NOT NULL DEFAULT '[]',
+  parent_strategy_id TEXT,
+  status TEXT NOT NULL DEFAULT 'pending',
+  reviewed_by TEXT,
+  review_notes TEXT,
+  org_id INTEGER,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  reviewed_at TIMESTAMP
+)`,
+  `CREATE INDEX IF NOT EXISTS sp_agent_idx ON strategy_proposals(agent_codename)`,
+  `CREATE INDEX IF NOT EXISTS sp_status_idx ON strategy_proposals(status)`,
+  `CREATE INDEX IF NOT EXISTS sp_org_idx ON strategy_proposals(org_id)`,
+  `CREATE TABLE IF NOT EXISTS agent_dialogues (
+  id SERIAL PRIMARY KEY,
+  dialogue_id TEXT NOT NULL UNIQUE,
+  topic TEXT NOT NULL,
+  participants JSONB NOT NULL DEFAULT '[]',
+  consensus_mechanism TEXT NOT NULL DEFAULT 'majority',
+  status TEXT NOT NULL DEFAULT 'open',
+  resolution TEXT,
+  related_entity_type TEXT,
+  related_entity_id TEXT,
+  org_id INTEGER,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  resolved_at TIMESTAMP
+)`,
+  `CREATE INDEX IF NOT EXISTS ad_status_idx ON agent_dialogues(status)`,
+  `CREATE INDEX IF NOT EXISTS ad_org_idx ON agent_dialogues(org_id)`,
+  `CREATE TABLE IF NOT EXISTS dialogue_messages (
+  id SERIAL PRIMARY KEY,
+  dialogue_id TEXT NOT NULL,
+  from_agent TEXT NOT NULL,
+  message_type TEXT NOT NULL,
+  content TEXT NOT NULL,
+  evidence JSONB,
+  vote TEXT,
+  confidence INTEGER,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+)`,
+  `CREATE INDEX IF NOT EXISTS dm_dialogue_idx ON dialogue_messages(dialogue_id)`,
+  `CREATE INDEX IF NOT EXISTS dm_agent_idx ON dialogue_messages(from_agent)`,
+  `CREATE INDEX IF NOT EXISTS dm_type_idx ON dialogue_messages(message_type)`,
+  `CREATE TABLE IF NOT EXISTS agent_delegations (
+  id SERIAL PRIMARY KEY,
+  delegation_id TEXT NOT NULL UNIQUE,
+  from_agent TEXT NOT NULL,
+  to_agent TEXT NOT NULL,
+  task TEXT NOT NULL,
+  task_context JSONB NOT NULL DEFAULT '{}',
+  sla_deadline TIMESTAMP,
+  sla_quality_threshold INTEGER,
+  status TEXT NOT NULL DEFAULT 'pending',
+  result JSONB,
+  quality_score INTEGER,
+  org_id INTEGER,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  completed_at TIMESTAMP
+)`,
+  `CREATE INDEX IF NOT EXISTS adl_from_idx ON agent_delegations(from_agent)`,
+  `CREATE INDEX IF NOT EXISTS adl_to_idx ON agent_delegations(to_agent)`,
+  `CREATE INDEX IF NOT EXISTS adl_status_idx ON agent_delegations(status)`,
+  `CREATE INDEX IF NOT EXISTS adl_org_idx ON agent_delegations(org_id)`,
+  `CREATE TABLE IF NOT EXISTS agent_reputation_votes (
+  id SERIAL PRIMARY KEY,
+  voter_agent TEXT NOT NULL,
+  subject_agent TEXT NOT NULL,
+  dimension TEXT NOT NULL,
+  score INTEGER NOT NULL,
+  evidence TEXT,
+  dialogue_id TEXT,
+  delegation_id TEXT,
+  org_id INTEGER,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+)`,
+  `CREATE INDEX IF NOT EXISTS arv_voter_idx ON agent_reputation_votes(voter_agent)`,
+  `CREATE INDEX IF NOT EXISTS arv_subject_idx ON agent_reputation_votes(subject_agent)`,
+  `CREATE INDEX IF NOT EXISTS arv_dimension_idx ON agent_reputation_votes(dimension)`,
+  `CREATE INDEX IF NOT EXISTS arv_org_idx ON agent_reputation_votes(org_id)`,
+  `CREATE TABLE IF NOT EXISTS agent_skill_registry (
+  id SERIAL PRIMARY KEY,
+  agent_codename TEXT NOT NULL,
+  skill_name TEXT NOT NULL,
+  skill_description TEXT NOT NULL,
+  proficiency INTEGER NOT NULL DEFAULT 50,
+  avg_latency_ms INTEGER,
+  success_rate NUMERIC NOT NULL DEFAULT 0,
+  total_invocations INTEGER NOT NULL DEFAULT 0,
+  is_advertised BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+)`,
+  `CREATE INDEX IF NOT EXISTS asr_agent_idx ON agent_skill_registry(agent_codename)`,
+  `CREATE INDEX IF NOT EXISTS asr_skill_idx ON agent_skill_registry(skill_name)`,
+  `CREATE INDEX IF NOT EXISTS asr_proficiency_idx ON agent_skill_registry(proficiency)`,
+  `CREATE TABLE IF NOT EXISTS agent_health_baselines (
+  id SERIAL PRIMARY KEY,
+  agent_codename TEXT NOT NULL,
+  metric TEXT NOT NULL,
+  p50 NUMERIC NOT NULL DEFAULT 0,
+  p95 NUMERIC NOT NULL DEFAULT 0,
+  p99 NUMERIC NOT NULL DEFAULT 0,
+  sample_count INTEGER NOT NULL DEFAULT 0,
+  sample_window TEXT NOT NULL DEFAULT '24h',
+  last_calculated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+)`,
+  `CREATE INDEX IF NOT EXISTS ahb_agent_idx ON agent_health_baselines(agent_codename)`,
+  `CREATE INDEX IF NOT EXISTS ahb_metric_idx ON agent_health_baselines(metric)`,
+  `CREATE TABLE IF NOT EXISTS anomaly_detections (
+  id SERIAL PRIMARY KEY,
+  anomaly_id TEXT NOT NULL UNIQUE,
+  agent_codename TEXT NOT NULL,
+  metric TEXT NOT NULL,
+  expected_value NUMERIC NOT NULL,
+  actual_value NUMERIC NOT NULL,
+  deviation_percent NUMERIC NOT NULL,
+  severity TEXT NOT NULL,
+  correlated_events JSONB NOT NULL DEFAULT '[]',
+  root_cause_analysis TEXT,
+  auto_resolved BOOLEAN NOT NULL DEFAULT false,
+  resolved_at TIMESTAMP,
+  org_id INTEGER,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+)`,
+  `CREATE INDEX IF NOT EXISTS adet_agent_idx ON anomaly_detections(agent_codename)`,
+  `CREATE INDEX IF NOT EXISTS adet_severity_idx ON anomaly_detections(severity)`,
+  `CREATE INDEX IF NOT EXISTS adet_resolved_idx ON anomaly_detections(auto_resolved)`,
+  `CREATE INDEX IF NOT EXISTS adet_org_idx ON anomaly_detections(org_id)`,
+  `CREATE TABLE IF NOT EXISTS degradation_modes (
+  id SERIAL PRIMARY KEY,
+  agent_codename TEXT NOT NULL,
+  mode_name TEXT NOT NULL,
+  capabilities_available JSONB NOT NULL DEFAULT '[]',
+  capabilities_disabled JSONB NOT NULL DEFAULT '[]',
+  trigger_conditions JSONB NOT NULL DEFAULT '{}',
+  is_current_mode BOOLEAN NOT NULL DEFAULT false,
+  activated_at TIMESTAMP,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+)`,
+  `CREATE INDEX IF NOT EXISTS dgm_agent_idx ON degradation_modes(agent_codename)`,
+  `CREATE INDEX IF NOT EXISTS dgm_current_idx ON degradation_modes(is_current_mode)`,
+  `CREATE TABLE IF NOT EXISTS incident_playbooks (
+  id SERIAL PRIMARY KEY,
+  playbook_id TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  trigger_pattern JSONB NOT NULL,
+  actions JSONB NOT NULL DEFAULT '[]',
+  cooldown_minutes INTEGER NOT NULL DEFAULT 30,
+  last_triggered_at TIMESTAMP,
+  trigger_count INTEGER NOT NULL DEFAULT 0,
+  is_enabled BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+)`,
+  `CREATE INDEX IF NOT EXISTS ip_enabled_idx ON incident_playbooks(is_enabled)`,
+  `CREATE TABLE IF NOT EXISTS chaos_experiments (
+  id SERIAL PRIMARY KEY,
+  experiment_id TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  experiment_type TEXT NOT NULL,
+  target_agent TEXT,
+  target_service TEXT,
+  config JSONB NOT NULL DEFAULT '{}',
+  duration_ms INTEGER NOT NULL DEFAULT 60000,
+  status TEXT NOT NULL DEFAULT 'pending',
+  impact_observed JSONB,
+  recovery_time_ms INTEGER,
+  lessons_learned TEXT,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  started_at TIMESTAMP,
+  completed_at TIMESTAMP
+)`,
+  `CREATE INDEX IF NOT EXISTS ce_status_idx ON chaos_experiments(status)`,
+  `CREATE INDEX IF NOT EXISTS ce_type_idx ON chaos_experiments(experiment_type)`,
+  `CREATE TABLE IF NOT EXISTS governance_policies (
+  id SERIAL PRIMARY KEY,
+  policy_id TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  category TEXT NOT NULL,
+  jurisdiction TEXT,
+  rule_dsl TEXT NOT NULL,
+  rule_config JSONB NOT NULL DEFAULT '{}',
+  severity TEXT NOT NULL DEFAULT 'warning',
+  effective_date TIMESTAMP NOT NULL DEFAULT NOW(),
+  sunset_date TIMESTAMP,
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+)`,
+  `CREATE INDEX IF NOT EXISTS gp_category_idx ON governance_policies(category)`,
+  `CREATE INDEX IF NOT EXISTS gp_jurisdiction_idx ON governance_policies(jurisdiction)`,
+  `CREATE INDEX IF NOT EXISTS gp_active_idx ON governance_policies(is_active)`,
+  `CREATE TABLE IF NOT EXISTS policy_evaluations (
+  id SERIAL PRIMARY KEY,
+  evaluation_id TEXT NOT NULL UNIQUE,
+  action_id TEXT NOT NULL,
+  agent_codename TEXT NOT NULL,
+  policies_checked JSONB NOT NULL DEFAULT '[]',
+  overall_result TEXT NOT NULL,
+  explanation TEXT NOT NULL,
+  org_id INTEGER,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+)`,
+  `CREATE INDEX IF NOT EXISTS pe_action_idx ON policy_evaluations(action_id)`,
+  `CREATE INDEX IF NOT EXISTS pe_agent_idx ON policy_evaluations(agent_codename)`,
+  `CREATE INDEX IF NOT EXISTS pe_result_idx ON policy_evaluations(overall_result)`,
+  `CREATE INDEX IF NOT EXISTS pe_org_idx ON policy_evaluations(org_id)`,
+  `CREATE TABLE IF NOT EXISTS audit_explanations (
+  id SERIAL PRIMARY KEY,
+  action_id TEXT NOT NULL,
+  agent_codename TEXT NOT NULL,
+  action_type TEXT NOT NULL,
+  human_readable TEXT NOT NULL,
+  machine_readable JSONB NOT NULL DEFAULT '{}',
+  evidence_chain JSONB NOT NULL DEFAULT '[]',
+  model_version TEXT,
+  org_id INTEGER,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+)`,
+  `CREATE INDEX IF NOT EXISTS ae_action_idx ON audit_explanations(action_id)`,
+  `CREATE INDEX IF NOT EXISTS ae_agent_idx ON audit_explanations(agent_codename)`,
+  `CREATE INDEX IF NOT EXISTS ae_org_idx ON audit_explanations(org_id)`,
+  `CREATE TABLE IF NOT EXISTS compliance_snapshots (
+  id SERIAL PRIMARY KEY,
+  org_id INTEGER NOT NULL,
+  period TEXT NOT NULL,
+  metrics_by_category JSONB NOT NULL DEFAULT '{}',
+  violations JSONB NOT NULL DEFAULT '[]',
+  overall_score INTEGER NOT NULL DEFAULT 100,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+)`,
+  `CREATE INDEX IF NOT EXISTS cs_org_idx ON compliance_snapshots(org_id)`,
+  `CREATE INDEX IF NOT EXISTS cs_period_idx ON compliance_snapshots(period)`,
+  `CREATE INDEX IF NOT EXISTS cs_score_idx ON compliance_snapshots(overall_score)`,
+  `CREATE TABLE IF NOT EXISTS regulatory_sandbox_runs (
+  id SERIAL PRIMARY KEY,
+  sandbox_id TEXT NOT NULL UNIQUE,
+  strategy_id TEXT,
+  agent_codename TEXT,
+  simulated_actions JSONB NOT NULL DEFAULT '[]',
+  policy_violations_found JSONB NOT NULL DEFAULT '[]',
+  total_simulated INTEGER NOT NULL DEFAULT 0,
+  total_violations INTEGER NOT NULL DEFAULT 0,
+  recommendation TEXT,
+  org_id INTEGER,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+)`,
+  `CREATE INDEX IF NOT EXISTS rsr_agent_idx ON regulatory_sandbox_runs(agent_codename)`,
+  `CREATE INDEX IF NOT EXISTS rsr_strategy_idx ON regulatory_sandbox_runs(strategy_id)`,
+  `CREATE INDEX IF NOT EXISTS rsr_org_idx ON regulatory_sandbox_runs(org_id)`,
+  `CREATE TABLE IF NOT EXISTS founder_briefings (
+  id SERIAL PRIMARY KEY,
+  org_id INTEGER NOT NULL,
+  briefing_date TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  insights JSONB NOT NULL DEFAULT '[]',
+  recommendations JSONB NOT NULL DEFAULT '[]',
+  agent_highlights JSONB NOT NULL DEFAULT '{}',
+  metrics_snapshot JSONB NOT NULL DEFAULT '{}',
+  is_read BOOLEAN NOT NULL DEFAULT false,
+  read_at TIMESTAMP,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+)`,
+  `CREATE INDEX IF NOT EXISTS fb_org_idx ON founder_briefings(org_id)`,
+  `CREATE INDEX IF NOT EXISTS fb_date_idx ON founder_briefings(briefing_date)`,
+  `CREATE INDEX IF NOT EXISTS fb_read_idx ON founder_briefings(is_read)`,
+  `CREATE TABLE IF NOT EXISTS simulation_runs (
+  id SERIAL PRIMARY KEY,
+  simulation_id TEXT NOT NULL UNIQUE,
+  org_id INTEGER NOT NULL,
+  scenario_name TEXT NOT NULL,
+  scenario_config JSONB NOT NULL DEFAULT '{}',
+  outcomes JSONB NOT NULL DEFAULT '[]',
+  confidence_interval NUMERIC NOT NULL DEFAULT 0.95,
+  risk_factors JSONB NOT NULL DEFAULT '[]',
+  recommendation TEXT,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+)`,
+  `CREATE INDEX IF NOT EXISTS sr_org_idx ON simulation_runs(org_id)`,
+  `CREATE INDEX IF NOT EXISTS sr_scenario_idx ON simulation_runs(scenario_name)`,
+  `CREATE TABLE IF NOT EXISTS strategic_recommendations (
+  id SERIAL PRIMARY KEY,
+  org_id INTEGER NOT NULL,
+  category TEXT NOT NULL,
+  recommendation TEXT NOT NULL,
+  evidence JSONB NOT NULL DEFAULT '[]',
+  impact_estimate TEXT NOT NULL,
+  priority INTEGER NOT NULL DEFAULT 5,
+  status TEXT NOT NULL DEFAULT 'new',
+  acknowledged_at TIMESTAMP,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+)`,
+  `CREATE INDEX IF NOT EXISTS strec_org_idx ON strategic_recommendations(org_id)`,
+  `CREATE INDEX IF NOT EXISTS strec_category_idx ON strategic_recommendations(category)`,
+  `CREATE INDEX IF NOT EXISTS strec_priority_idx ON strategic_recommendations(priority)`,
+  `CREATE INDEX IF NOT EXISTS strec_status_idx ON strategic_recommendations(status)`,
+  `CREATE TABLE IF NOT EXISTS founder_interactions (
+  id SERIAL PRIMARY KEY,
+  org_id INTEGER NOT NULL,
+  feature_used TEXT NOT NULL,
+  section TEXT,
+  engagement_depth TEXT NOT NULL DEFAULT 'glance',
+  session_duration_ms INTEGER,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+)`,
+  `CREATE INDEX IF NOT EXISTS fi_org_idx ON founder_interactions(org_id)`,
+  `CREATE INDEX IF NOT EXISTS fi_feature_idx ON founder_interactions(feature_used)`,
+  `CREATE INDEX IF NOT EXISTS fi_section_idx ON founder_interactions(section)`,
 ];
 
 // The statement set this run executes. Default: everything (the production
