@@ -23,6 +23,15 @@ what shipped, what it measured, and the top next moves. Newest first.
 - **Built.** The FCRA purpose/attestation trail is now readable from the customer's seat: a pure assembler (`server/services/fcraDefenseFile.ts`) projects the org's append-only `purpose_ledger` + `fcra_attestations` rows into a defense file; `GET /api/skip-tracing/defense-file` serves it as JSON or `?format=csv` (org-scoped, newest 1000 entries + truncated flag); the skip-tracing page gains a "Your FCRA defense file" section (attestation status, coverage, 10 most recent entries, honest zero state, CSV download) and one gate-copy sentence pointing to it. Suite: `tests/unit/fcraDefenseFile.test.ts` (9 tests). Landing fix round: the page's four dates now render through `lib/format.ts` (`formatDate`) instead of `toLocaleDateString`, per the date-format gate. No schema change; the route reads only the two trail tables, so the purpose-ledger census owes no registration (DEBT_BASELINE unchanged).
 - **Why.** The trail was already the class-action defense file in substance — every lookup writes its purpose, justification and attestation into the append-only ledger before the vendor call, in the same transaction as the credit debit — but it was write-only from the customer's seat (R-6). Surfacing it makes the gate's protection visible and exportable at the moment a customer needs to prove permissible purpose.
 - **Next.** Nothing owed in this slice; the trail's remaining consumers (support/DSAR exports) read the same assembler when their slices come.
+## 2026-11-14 — Wholesale Leg 5: staging-walk package — on `claude/wholesale-leg5-walk-package`
+
+- **Walk doc fixed** (`docs/evidence/2026-11-05/wholesale-journey-walk.md`, new on main; #478 still holds the old copy and is closed as superseded later):
+  - step 2 is the concrete buy-box script, and step 3 now checks triage on prospects; the old version put both properties under contract, which triage never reads;
+  - the acceptance moved to a new step 4b; 6b says five surfaces, matching 6a; step 9 expects `200`;
+  - step 10 records the bundle figure for the exact SHA walked plus a served-string check;
+  - new step 7b walks the §6.2 seller follow-up drafts.
+- **Leg 4 §6.2 debt is closed by code, not a deferral.** The seller follow-up drafts were built in #533 (2026-11-09) and folded into #477, which merged 2026-11-14 (`7d0b2e1`): drafts are `generated_documents` rows, there is no send path, and `POST /api/signatures` refuses them. Leg 4 is complete on main.
+- **Next.** All four legs are on main (#475 merged 2026-11-15). The rehearsal test `tests/unit/wholesaleJourney.realdb.test.ts` joined main in this PR and passes against main's real code. The staging walk runs once staging deploys (Muse confirms). The beta-demotion lift is its own PR, opened only on the walk's PASS (§12.3).
 
 ## 2026-11-14 — P1-17: schema-journal sync guard (PR #578, landed in the merge wave)
 
