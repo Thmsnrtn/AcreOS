@@ -108,6 +108,8 @@ const LEGACY_WRITERS: Record<string, string> = {
     "Posts a borrower-portal payment to the legacy book idempotently: the payments row and the note balance in one transaction.",
   "server/webhookHandlers.ts":
     "Reverses a refunded charge on the legacy ledger: reversal payments rows and the restored note principal in one transaction.",
+  "server/services/connectDisputes.ts":
+    "Flags a borrower chargeback on the legacy payments row the portal payment posted to: dispute_* columns only, no amount/balance mutation (B10: the flag must live on that row; the cents family has no row for a legacy-posted payment).",
   "server/routes-subdivisions.ts":
     "Creates a seller-financed note when a subdivision lot sells.",
   "server/services/achAutopay.ts":

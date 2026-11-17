@@ -141,7 +141,7 @@ describe("processBorrowerChargeDispute — updated", () => {
     const moved = new Date(DUE_BY.getTime() - 24 * 3600 * 1000);
     const dispute = makeDispute({
       status: "under_review",
-      evidence_details: { due_by: Math.floor(moved.getTime() / 1000), has_evidence: true, past_due: false, submission_count: 1 },
+      evidence_details: { due_by: Math.floor(moved.getTime() / 1000), has_evidence: true, past_due: false, submission_count: 1 } as Stripe.Dispute.EvidenceDetails,
     });
     const outcome = await processBorrowerChargeDispute("charge.dispute.updated", dispute, "acct_lender", h.deps);
     expect(outcome.matched).toBe(true);

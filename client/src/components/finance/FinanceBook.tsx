@@ -61,9 +61,9 @@ function disputeBadge(dispute: NonNullable<BookEntry["dispute"]>): { label: stri
   if (!dispute.closed) {
     return { label: "Dispute opened — under review", className: "border-acr-warn/60 text-acr-warn" };
   }
-  if (dispute.status === "won") return { label: "Dispute closed — won", className: "text-muted-foreground" };
-  if (dispute.status === "lost") return { label: "Dispute closed — lost", className: "border-acr-neg/60 text-acr-neg" };
-  return { label: "Dispute closed", className: "text-muted-foreground" };
+  if (dispute.status === "won") return { label: "Dispute resolved — won", className: "text-muted-foreground" };
+  if (dispute.status === "lost") return { label: "Dispute resolved — lost", className: "border-acr-neg/60 text-acr-neg" };
+  return { label: "Dispute resolved", className: "text-muted-foreground" };
 }
 
 interface FinanceBookProps {
