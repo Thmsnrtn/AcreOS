@@ -13677,6 +13677,268 @@ $mig0284$`,
    )`,
   `CREATE INDEX IF NOT EXISTS "recording_statuses_org_subject_idx" ON "recording_statuses" ("organization_id", "subject_type", "subject_id")`,
   `CREATE INDEX IF NOT EXISTS "recording_statuses_org_status_idx" ON "recording_statuses" ("organization_id", "status")`,
+  // ── P3-1 S3.1 — D1 renumbered migrations, paired blocks ──────────────────
+  // Each block below mirrors a migrations/*.sql file that was renumbered in
+  // P3-1 S3.1 because its old number was claimed by two (0081: three) files.
+  // The blocks sit at the end of the list, in new-number order; every
+  // statement is IF NOT EXISTS / idempotent, and 0117's table belongs with
+  // 0071's pax_scheduled_tasks, created earlier in this same list.
+  // 0071 — Pax deep features: knowledge base, projects, scheduled tasks.
+  // Mirrors migrations/0071_pax_deep_features.sql (renumbered from 0015).
+  `CREATE TABLE IF NOT EXISTS "pax_knowledge_files" (
+     "id" serial PRIMARY KEY NOT NULL,
+     "organization_id" integer NOT NULL,
+     "name" text NOT NULL,
+     "description" text,
+     "mime_type" text NOT NULL,
+     "size_bytes" integer NOT NULL,
+     "extracted_content" text NOT NULL,
+     "uploaded_by" text NOT NULL,
+     "is_active" boolean NOT NULL DEFAULT true,
+     "usage_count" integer NOT NULL DEFAULT 0,
+     "last_used_at" timestamp,
+     "created_at" timestamp DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "pax_kb_org_idx" ON "pax_knowledge_files" ("organization_id")`,
+  `CREATE INDEX IF NOT EXISTS "pax_kb_active_idx" ON "pax_knowledge_files" ("is_active")`,
+  `CREATE TABLE IF NOT EXISTS "pax_projects" (
+     "id" serial PRIMARY KEY NOT NULL,
+     "organization_id" integer NOT NULL,
+     "user_id" text NOT NULL,
+     "name" text NOT NULL,
+     "description" text,
+     "entity_type" text,
+     "entity_id" integer,
+     "is_active" boolean NOT NULL DEFAULT true,
+     "file_count" integer NOT NULL DEFAULT 0,
+     "created_at" timestamp DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "pax_proj_org_idx" ON "pax_projects" ("organization_id")`,
+  `CREATE INDEX IF NOT EXISTS "pax_proj_entity_idx" ON "pax_projects" ("entity_type", "entity_id")`,
+  `CREATE TABLE IF NOT EXISTS "pax_project_files" (
+     "id" serial PRIMARY KEY NOT NULL,
+     "project_id" integer NOT NULL,
+     "file_name" text NOT NULL,
+     "mime_type" text NOT NULL,
+     "size_bytes" integer NOT NULL,
+     "extracted_content" text NOT NULL,
+     "uploaded_by" text NOT NULL,
+     "uploaded_at" timestamp DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "pax_pf_proj_idx" ON "pax_project_files" ("project_id")`,
+  `CREATE TABLE IF NOT EXISTS "pax_scheduled_tasks" (
+     "id" serial PRIMARY KEY NOT NULL,
+     "organization_id" integer NOT NULL,
+     "user_id" text NOT NULL,
+     "name" text NOT NULL,
+     "prompt" text NOT NULL,
+     "agent_role" text NOT NULL DEFAULT 'executive',
+     "schedule" text NOT NULL,
+     "timezone" text NOT NULL DEFAULT 'America/New_York',
+     "is_active" boolean NOT NULL DEFAULT true,
+     "last_run_at" timestamp,
+     "next_run_at" timestamp,
+     "last_run_conversation_id" integer,
+     "last_run_status" text,
+     "last_run_summary" text,
+     "run_count" integer NOT NULL DEFAULT 0,
+     "created_at" timestamp DEFAULT now(),
+     "updated_at" timestamp DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "pax_tasks_org_idx" ON "pax_scheduled_tasks" ("organization_id")`,
+  `CREATE INDEX IF NOT EXISTS "pax_tasks_next_run_idx" ON "pax_scheduled_tasks" ("next_run_at")`,
+  `ALTER TABLE "ai_messages" ADD COLUMN IF NOT EXISTS "mentioned_entities" jsonb`,
+  `ALTER TABLE "ai_messages" ADD COLUMN IF NOT EXISTS "thinking_content" text`,
+  `ALTER TABLE "ai_conversations" ADD COLUMN IF NOT EXISTS "active_project_id" integer`,
+  // 0083 — rebuild_prereq_tables. Header only: the three CREATE TABLEs
+  // (earnest_money_holds, rehabs, rehab_line_items) already live in this file
+  // above, verbatim, and are pinned against the .sql file by
+  // tests/unit/migrationDefinitionParity.test.ts. Mirrors
+  // migrations/0083_rebuild_prereq_tables.sql (renumbered from 0085 so the
+  // ordering fix sorts before 0086/0089, the dependants it unblocks).
+  // 0114 — Pax connector instances: per-org connector/plugin configurations.
+  // Mirrors migrations/0114_pax_connectors.sql (renumbered from 0016).
+  `CREATE TABLE IF NOT EXISTS "pax_connector_instances" (
+     "id" serial PRIMARY KEY NOT NULL,
+     "organization_id" integer NOT NULL,
+     "connector_id" text NOT NULL,
+     "status" text NOT NULL DEFAULT 'disconnected',
+     "credentials_encrypted" text,
+     "settings" jsonb,
+     "last_tested_at" timestamp,
+     "last_error_at" timestamp,
+     "error_message" text,
+     "created_at" timestamp DEFAULT now(),
+     "updated_at" timestamp DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "pax_ci_org_idx" ON "pax_connector_instances" ("organization_id")`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "pax_ci_connector_idx" ON "pax_connector_instances" ("organization_id", "connector_id")`,
+  // 0116 — Pax next gen: context compaction, message ratings, proactive nudges.
+  // Mirrors migrations/0116_pax_next_gen.sql (renumbered from 0017).
+  `ALTER TABLE ai_conversations ADD COLUMN IF NOT EXISTS context_summary TEXT`,
+  `ALTER TABLE ai_messages ADD COLUMN IF NOT EXISTS rating INTEGER`,
+  `CREATE TABLE IF NOT EXISTS pax_nudges (
+     id SERIAL PRIMARY KEY,
+     organization_id INTEGER NOT NULL,
+     user_id TEXT,
+     content TEXT NOT NULL,
+     category TEXT NOT NULL,
+     entity_type TEXT,
+     entity_id INTEGER,
+     priority INTEGER NOT NULL DEFAULT 5,
+     action_prompt TEXT,
+     dismissed_at TIMESTAMP,
+     created_at TIMESTAMP DEFAULT NOW()
+   )`,
+  `CREATE INDEX IF NOT EXISTS pax_nudges_org_idx ON pax_nudges (organization_id)`,
+  `CREATE INDEX IF NOT EXISTS pax_nudges_active_idx ON pax_nudges (organization_id, dismissed_at)`,
+  // 0117 — Pax scheduled task runs: run history log for pax_scheduled_tasks
+  // (created by 0071 above, earlier in this same list).
+  // Mirrors migrations/0117_pax_task_runs.sql (renumbered from 0018).
+  `CREATE TABLE IF NOT EXISTS pax_scheduled_task_runs (
+     id SERIAL PRIMARY KEY,
+     task_id INTEGER NOT NULL,
+     organization_id INTEGER NOT NULL,
+     run_at TIMESTAMP DEFAULT NOW() NOT NULL,
+     status TEXT NOT NULL,
+     summary TEXT,
+     conversation_id INTEGER,
+     duration_ms INTEGER
+   )`,
+  `CREATE INDEX IF NOT EXISTS pax_task_runs_task_idx ON pax_scheduled_task_runs (task_id)`,
+  `CREATE INDEX IF NOT EXISTS pax_task_runs_org_idx ON pax_scheduled_task_runs (organization_id)`,
+  // 0128 — borrower_messages: self-service messaging thread between borrowers
+  // and lenders (incl. the sender_type CHECK 0003_robust_namora lacks).
+  // Mirrors migrations/0128_borrower_messages.sql (renumbered from 0013).
+  `CREATE TABLE IF NOT EXISTS borrower_messages (
+     id SERIAL PRIMARY KEY,
+     note_id INTEGER NOT NULL REFERENCES notes(id),
+     org_id INTEGER NOT NULL REFERENCES organizations(id),
+     sender_type TEXT NOT NULL CHECK (sender_type IN ('borrower', 'lender')),
+     content TEXT NOT NULL,
+     read_at TIMESTAMP,
+     created_at TIMESTAMP DEFAULT NOW()
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_borrower_messages_note_id ON borrower_messages (note_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_borrower_messages_org_id ON borrower_messages (org_id)`,
+  // 0130 — lead_consent_events: TCPA / CAN-SPAM evidence-grade consent capture.
+  // Mirrors migrations/0130_lead_consent_events.sql (renumbered from 0080).
+  `CREATE TABLE IF NOT EXISTS lead_consent_events (
+     id SERIAL PRIMARY KEY,
+     organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+     lead_id INTEGER NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+     event_type TEXT NOT NULL,
+     channels JSONB NOT NULL,
+     source TEXT NOT NULL,
+     consent_text TEXT,
+     checkbox_checked BOOLEAN,
+     ip_address TEXT,
+     user_agent TEXT,
+     page_url TEXT,
+     inbound_message_text TEXT,
+     inbound_message_sid TEXT,
+     inbound_from_phone TEXT,
+     import_batch_id TEXT,
+     recorded_by TEXT,
+     metadata JSONB,
+     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   )`,
+  `CREATE INDEX IF NOT EXISTS lead_consent_events_lead_idx ON lead_consent_events (lead_id)`,
+  `CREATE INDEX IF NOT EXISTS lead_consent_events_org_idx ON lead_consent_events (organization_id)`,
+  `CREATE INDEX IF NOT EXISTS lead_consent_events_type_idx ON lead_consent_events (event_type)`,
+  `CREATE INDEX IF NOT EXISTS lead_consent_events_created_at_idx ON lead_consent_events (created_at)`,
+  `COMMENT ON TABLE lead_consent_events IS 'TCPA / CAN-SPAM evidence chain. Rows are append-only — never UPDATE or DELETE for any reason short of a court order. Every grant/revocation of consent on any channel writes one row here, capturing the exact disclosure shown + checkbox state + IP/UA at grant time, or the verbatim inbound message + Twilio SID at revocation time.'`,
+  // 0137 — deployments + dr_drills: change-management ledger and DR drill
+  // ledger (SOC 2 CC8.1 / A1.2 evidence).
+  // Mirrors migrations/0137_deployments_and_dr_drills.sql (renumbered from 0081).
+  `CREATE TABLE IF NOT EXISTS deployments (
+     id serial PRIMARY KEY,
+     git_sha text NOT NULL,
+     pr_number integer,
+     approved_by text,
+     deployed_by text NOT NULL,
+     workflow_run_url text,
+     fly_machine_ids text,
+     environment text NOT NULL DEFAULT 'production',
+     status text NOT NULL DEFAULT 'success',
+     rollback_of_deployment_id integer REFERENCES deployments(id),
+     deployed_at timestamp NOT NULL DEFAULT now(),
+     notes text
+   )`,
+  `CREATE INDEX IF NOT EXISTS deployments_git_sha_idx ON deployments (git_sha)`,
+  `CREATE INDEX IF NOT EXISTS deployments_deployed_at_idx ON deployments (deployed_at)`,
+  `COMMENT ON TABLE deployments IS 'SOC 2 CC8.1 change-management ledger. Every prod deploy is recorded here by .github/workflows/deploy.yml.'`,
+  `CREATE TABLE IF NOT EXISTS dr_drills (
+     id serial PRIMARY KEY,
+     ran_at timestamp NOT NULL DEFAULT now(),
+     ran_by text NOT NULL,
+     snapshot_age_hours integer,
+     restore_minutes integer,
+     boot_minutes integer,
+     synthetic_check_minutes integer,
+     data_verify_minutes integer,
+     total_rto_minutes integer NOT NULL,
+     passed_rto_target boolean NOT NULL DEFAULT false,
+     what_went_wrong text,
+     whats_flaky text,
+     action_items text,
+     postmortem_ref text
+   )`,
+  `CREATE INDEX IF NOT EXISTS dr_drills_ran_at_idx ON dr_drills (ran_at)`,
+  `COMMENT ON TABLE dr_drills IS 'SOC 2 A1.2 availability evidence. One row per quarterly DR drill per docs/runbooks/dr-drill-quarterly.md.'`,
+  // 0158 — Devon FF FK alignment: idempotent hard-FK adds on the
+  // rehab+contractor stack + contractors.license_expires_at. Every FK add is
+  // guarded by a pg_constraint lookup by conname, so on prod — where 0088
+  // already installed the corrected FKs under the same connames — each check
+  // skips and the block is a no-op.
+  // Mirrors migrations/0158_devon_ff_fk_alignment.sql (renumbered from 0081).
+  `ALTER TABLE contractors ADD COLUMN IF NOT EXISTS license_expires_at date`,
+  `DO $$
+   BEGIN
+     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'rehab_line_items_rehab_id_fkey') THEN
+       ALTER TABLE rehab_line_items
+         ADD CONSTRAINT rehab_line_items_rehab_id_fkey
+         FOREIGN KEY (rehab_id) REFERENCES rehabs(id) ON DELETE CASCADE;
+     END IF;
+     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'contractor_payments_rehab_id_fkey') THEN
+       UPDATE contractor_payments cp
+          SET rehab_id = NULL
+        WHERE cp.rehab_id IS NOT NULL
+          AND NOT EXISTS (SELECT 1 FROM rehabs r WHERE r.id = cp.rehab_id);
+       ALTER TABLE contractor_payments
+         ADD CONSTRAINT contractor_payments_rehab_id_fkey
+         FOREIGN KEY (rehab_id) REFERENCES rehabs(id) ON DELETE SET NULL;
+     END IF;
+     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'contractor_payments_contractor_id_fkey') THEN
+       ALTER TABLE contractor_payments
+         ADD CONSTRAINT contractor_payments_contractor_id_fkey
+         FOREIGN KEY (contractor_id) REFERENCES contractors(id) ON DELETE CASCADE;
+     END IF;
+     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'construction_draws_rehab_id_fkey') THEN
+       ALTER TABLE construction_draws
+         ADD CONSTRAINT construction_draws_rehab_id_fkey
+         FOREIGN KEY (rehab_id) REFERENCES rehabs(id) ON DELETE CASCADE;
+     END IF;
+     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'bid_estimates_rehab_id_fkey') THEN
+       ALTER TABLE bid_estimates
+         ADD CONSTRAINT bid_estimates_rehab_id_fkey
+         FOREIGN KEY (rehab_id) REFERENCES rehabs(id) ON DELETE CASCADE;
+     END IF;
+     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'bid_estimates_contractor_id_fkey') THEN
+       ALTER TABLE bid_estimates
+         ADD CONSTRAINT bid_estimates_contractor_id_fkey
+         FOREIGN KEY (contractor_id) REFERENCES contractors(id) ON DELETE CASCADE;
+     END IF;
+     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'arv_calculations_rehab_id_fkey') THEN
+       UPDATE arv_calculations ac
+          SET rehab_id = NULL
+        WHERE ac.rehab_id IS NOT NULL
+          AND NOT EXISTS (SELECT 1 FROM rehabs r WHERE r.id = ac.rehab_id);
+       ALTER TABLE arv_calculations
+         ADD CONSTRAINT arv_calculations_rehab_id_fkey
+         FOREIGN KEY (rehab_id) REFERENCES rehabs(id) ON DELETE SET NULL;
+     END IF;
+   END$$`,
 ];
 
 // The statement set this run executes. Default: everything (the production

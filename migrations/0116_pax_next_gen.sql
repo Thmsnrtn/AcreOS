@@ -1,4 +1,4 @@
--- Migration: 0017_pax_next_gen
+-- Migration: 0116_pax_next_gen (renumbered from 0017 in P3-1 S3.1 — 0017 was claimed by two files)
 -- Adds context compaction, message ratings, and proactive nudges
 
 -- Context compaction summary on conversations
