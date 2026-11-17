@@ -28,7 +28,17 @@
  *   - VITE_POSTHOG_HOST  — defaults to https://us.i.posthog.com.
  */
 
-import posthog from "posthog-js";
+// The SLIM build of posthog-js, not the full module (P2-6 S2 bundle offset).
+// Slim is PostHog's own core-only bundle: capture / identify / reset / groups
+// and feature flags, WITHOUT the extension payloads this app never invokes —
+// autocapture (disabled above, by design), session recording (Sentry Replay's
+// job, client/src/lib/sentry.ts), surveys, product tours and web-vitals
+// attribution. The wrapper below uses exactly init / capture / identify /
+// reset, all present in slim with the same types. If a future surface ever
+// needs one of the excluded extensions, revert this one import line to
+// "posthog-js" and re-measure the bundle first (the full module costs
+// ~109 KB more source). tests/unit/posthogSlimBuild.test.ts pins both halves.
+import posthog from "posthog-js/dist/module.slim.js";
 
 const DEFAULT_HOST = "https://us.i.posthog.com";
 

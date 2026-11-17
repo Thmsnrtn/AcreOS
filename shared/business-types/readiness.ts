@@ -2,6 +2,10 @@
  * Vertical readiness — maturity as a PROJECTION OF EVIDENCE, not an adjective.
  *
  * ── THE DEFECT THIS EXISTS TO END ───────────────────────────────────────────
+ * (As measured 2026-08-17. Since FD1, 2026-11-12, the registry states the
+ * launch presentation — 2 core / 3 beta / 10 registry_only — and the ratchet in
+ * verticalReadiness.test.ts counts the one remaining founder-decided gap.)
+ *
  * All fifteen entries in `shared/business-types.ts` declare `maturity: "core"`.
  * Exactly one vertical — `fix_and_flip` — closes the canonical loop end to end
  * (routes-flip-analyzer.ts:556 writes a scenario, :597 writes a decision
@@ -102,6 +106,10 @@ export interface VerticalEvidence {
 const MATURITY_REQUIRES: Record<VerticalMaturity, ReadinessTier> = {
   core: "decided",
   beta: "surfaced",
+  // FD1 (2026-11-12): a registry_only vertical is BUILT and kept for existing
+  // books — it must have somewhere to stand. It is not `roadmap` (declared,
+  // nothing to reach), so it is held to the same floor as beta.
+  registry_only: "surfaced",
   roadmap: "declared",
 };
 

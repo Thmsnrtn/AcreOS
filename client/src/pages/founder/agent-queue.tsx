@@ -45,13 +45,25 @@ import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import {
   Bot,
+  Brain,
   CircleCheck,
   CircleSlash,
   Clock,
   AlertCircle,
   DollarSign,
+  Users,
   Zap,
 } from "lucide-react";
+// The founder's agent console (VA roster, background services, AI ops). It was
+// tabs on the CUSTOMER's /ai page (pages/command-center.tsx) behind isFounder;
+// P1-9 / X-2 moved it here so none of it ships in the customer bundle. Same
+// three panels, same queries — and no new route: they are tabs of this
+// already-routed founder page (the four-door rule).
+import {
+  AiOperationsPanel,
+  BackgroundServicesPanel,
+  VaTeamPanel,
+} from "@/components/founder/ai-console";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -297,6 +309,18 @@ export default function FounderAgentQueuePage() {
                 </Badge>
               ) : null}
             </TabsTrigger>
+            <TabsTrigger value="team" data-testid="tab-team" aria-label="Team">
+              <Users className="h-4 w-4 md:mr-2" aria-hidden="true" />
+              <span className="hidden md:inline">Team</span>
+            </TabsTrigger>
+            <TabsTrigger value="agents" data-testid="tab-agents" aria-label="Background agents">
+              <Bot className="h-4 w-4 md:mr-2" aria-hidden="true" />
+              <span className="hidden md:inline">Background</span>
+            </TabsTrigger>
+            <TabsTrigger value="ai-ops" data-testid="tab-ai-ops" aria-label="AI Ops">
+              <Brain className="h-4 w-4 md:mr-2" aria-hidden="true" />
+              <span className="hidden md:inline">AI Ops</span>
+            </TabsTrigger>
           </TabsList>
 
           {/* Proposals tab */}
@@ -444,6 +468,18 @@ export default function FounderAgentQueuePage() {
                 </Card>
               ))}
             </div>
+          </TabsContent>
+
+          {/* Agent console — the panels that used to be tabs on the customer's
+              /ai page. Each fills its own column, so give them a body. */}
+          <TabsContent value="team" className="min-h-[60vh] flex flex-col">
+            <VaTeamPanel />
+          </TabsContent>
+          <TabsContent value="agents" className="min-h-[60vh] flex flex-col">
+            <BackgroundServicesPanel />
+          </TabsContent>
+          <TabsContent value="ai-ops" className="min-h-[60vh] flex flex-col">
+            <AiOperationsPanel />
           </TabsContent>
         </Tabs>
       </div>

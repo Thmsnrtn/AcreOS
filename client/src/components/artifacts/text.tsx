@@ -4,6 +4,12 @@
  * Uses the same minimal markdown parser the property-analysis chat uses
  * (no react-markdown dep in the repo). Headings, lists, code fences,
  * inline bold/italic/code.
+ *
+ * Lives in a neutral directory (P1-9 / X-2): it began in components/
+ * founder-chat/artifacts/, but the CUSTOMER help article page
+ * (pages/help/kb-article.tsx) renders it too, which would have pulled a
+ * founder-chat module into the customer bundle. The founder-chat chain
+ * (MessageBubble, ArtifactRenderer) imports it from here directly.
  */
 import { cn } from "@/lib/utils";
 

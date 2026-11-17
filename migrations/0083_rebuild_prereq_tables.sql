@@ -37,9 +37,11 @@
 -- no-op. `migrationDefinitionParity.test.ts` pins the two definitions against
 -- each other so they cannot drift apart silently.
 --
--- Numbered 0085 rather than appended at the end deliberately: an ordering fix
--- has to sort before what it unblocks, and 0085 is the last free slot before
--- 0086.
+-- Numbered 0083 rather than appended at the end deliberately: an ordering fix
+-- has to sort before what it unblocks (0086, 0089). Originally numbered 0085;
+-- renumbered to 0083 in P3-1 S3.1 because 0085 was claimed by two files (the
+-- earlier note that "0085 is the last free slot before 0086" was wrong — 0083
+-- was free).
 
 CREATE TABLE IF NOT EXISTS "earnest_money_holds" (
    "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),

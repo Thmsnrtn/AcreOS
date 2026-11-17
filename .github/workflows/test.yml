@@ -55,6 +55,10 @@ jobs:
   # ── TypeScript check + ratchets ───────────────────────────────────────────
   # Runs in parallel with the test shards below (CI efficiency package,
   # 2026-11-11); it used to serialize ahead of them inside the single job.
+  # Since the 2026-11-15 CI dedup this job is the single per-head owner of the
+  # `npm run check` family (ci.yml's duplicate step was removed); ci.yml's
+  # duplicate no-DB test shards were removed too, so this workflow's `test`
+  # job is the suite's single owner.
   typecheck:
     name: TypeScript check + ratchets
     needs: changes

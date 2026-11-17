@@ -49,7 +49,13 @@ vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 
 const ROOT = path.resolve(__dirname, "../..");
-const EXEMPT = new Set(["client/src/App.tsx", "client/src/lib/route-redirects.ts"]);
+// App.tsx and founder-routes.tsx are the two route trees (P1-9 / X-2); both DEFINE
+// the redirects, so both name the legacy paths in `to=`.
+const EXEMPT = new Set([
+  "client/src/App.tsx",
+  "client/src/founder-routes.tsx",
+  "client/src/lib/route-redirects.ts",
+]);
 
 function clientSources(): Array<{ rel: string; src: string }> {
   const out: Array<{ rel: string; src: string }> = [];

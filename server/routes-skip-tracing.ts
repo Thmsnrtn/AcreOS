@@ -6,6 +6,8 @@
  * POST /api/skip-tracing/batch         — trace the next page of genuinely
  *      UNTRACED leads (leads with no finished skip_traces row)
  * GET  /api/skip-tracing/stats         — stats derived from real trace rows
+ * GET  /api/skip-tracing/defense-file  — the org's purpose-ledger + attestation
+ *      trail (JSON, or CSV with ?format=csv). Purpose metadata only.
  *
  * Honesty contract (Wave A "Nothing lies"):
  * - Stats report only what the server can truthfully derive from the
@@ -48,7 +50,9 @@ import { logger } from "./utils/logger";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId, getUserId } from "./types/request";
 import { createRateLimiter } from "./middleware/rateLimit";
-import type { Lead, SkipTrace } from "@shared/schema";
+import { purposeLedger, fcraAttestations, type Lead, type SkipTrace } from "@shared/schema";
+import { eq, desc } from "drizzle-orm";
+import { buildFcraDefenseFile, fcraDefenseFileToCsv } from "./services/fcraDefenseFile";
 import { clock } from "./utils/clock";
 import { routeParam } from "./utils/routeParams";
 
@@ -626,6 +630,53 @@ router.get("/stats", async (req: AuthenticatedRequest, res: Response) => {
     ]);
     res.json(deriveSkipTraceStats(leads, traces, skipTracingService.isConfigured()));
   } catch (err: any) {
+    Errors.internal(res, err);
+  }
+});
+
+// GET /api/skip-tracing/defense-file — the attestation trail AcreOS keeps for
+// this org. Reads ONLY purpose_ledger + fcra_attestations (scoped to the org);
+// never leads, skip_traces or trace results, and it is a read of the ledger,
+// not a lookup surface, so it records no purpose row.
+const DEFENSE_FILE_ENTRY_LIMIT = 1000;
+router.get("/defense-file", async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const orgId = getOrganizationId(req);
+    // Dynamic imports keep db / the gate module out of the route unit-test
+    // load graph (same discipline as gateSkipTracePermitted).
+    const [{ db }, { CURRENT_FCRA_ATTESTATION_VERSION }] = await Promise.all([
+      import("./db"),
+      import("./services/fcraAttestation"),
+    ]);
+    const [ledgerRows, attestationRows] = await Promise.all([
+      db
+        .select()
+        .from(purposeLedger)
+        .where(eq(purposeLedger.organizationId, orgId))
+        .orderBy(desc(purposeLedger.createdAt))
+        .limit(DEFENSE_FILE_ENTRY_LIMIT + 1),
+      db
+        .select()
+        .from(fcraAttestations)
+        .where(eq(fcraAttestations.organizationId, orgId))
+        .orderBy(desc(fcraAttestations.attestedAt)),
+    ]);
+    const file = buildFcraDefenseFile({
+      organizationId: orgId,
+      generatedAt: clock.now(),
+      currentAttestationVersion: CURRENT_FCRA_ATTESTATION_VERSION,
+      entries: ledgerRows.slice(0, DEFENSE_FILE_ENTRY_LIMIT),
+      attestations: attestationRows,
+      truncated: ledgerRows.length > DEFENSE_FILE_ENTRY_LIMIT,
+    });
+    if (req.query.format === "csv") {
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", 'attachment; filename="fcra-defense-file.csv"');
+      res.send(fcraDefenseFileToCsv(file));
+      return;
+    }
+    res.json(file);
+  } catch (err) {
     Errors.internal(res, err);
   }
 });
