@@ -94,6 +94,9 @@ export const STRIPE_CONNECT_WEBHOOK_EVENTS = [
   "checkout.session.completed",
   "checkout.session.async_payment_succeeded",
   "charge.refunded",
+  "charge.dispute.created",
+  "charge.dispute.updated",
+  "charge.dispute.closed",
   "payment_intent.succeeded",
   "payment_intent.payment_failed",
   "invoice.payment_failed",
@@ -416,6 +419,30 @@ export class StripeConnectService {
         const charge = event.data.object as Stripe.Charge;
         const { WebhookHandlers } = await import("../webhookHandlers");
         await WebhookHandlers.processBorrowerPaymentRefund(charge, event.account ?? null);
+        break;
+      }
+
+      // ── Money clawed back ───────────────────────────────────────────
+      // A borrower disputing a card payment on the lender's own account
+      // (autopilot brief B-2). Until these branches existed the dispute
+      // events were not even subscribed: Stripe took the money back while
+      // the ledger row stood serene and the lender was never told. The
+      // handler flags the ledger row "dispute opened — under review",
+      // raises the founder alert + lender notice, and records Stripe's
+      // response.by deadline for the T-72h/T-24h escalation sweep. It
+      // posts NO reversal — that stays a founder/lender judgment. The
+      // PLATFORM dispatcher's dispute branch (processChargeDispute)
+      // handles AcreOS's own charges and never sees these events.
+      case "charge.dispute.created":
+      case "charge.dispute.updated":
+      case "charge.dispute.closed": {
+        const dispute = event.data.object as Stripe.Dispute;
+        const { processBorrowerChargeDispute } = await import("./connectDisputes");
+        await processBorrowerChargeDispute(
+          event.type as Parameters<typeof processBorrowerChargeDispute>[0],
+          dispute,
+          event.account ?? null,
+        );
         break;
       }
 

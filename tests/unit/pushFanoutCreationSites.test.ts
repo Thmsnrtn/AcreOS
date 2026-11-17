@@ -47,6 +47,12 @@ const SITES: Record<string, { orgArg: RegExp; family?: string }> = {
     orgArg: /pushOrgEvent\(\s*notice\.orgId\s*,/,
     family: "borrower_message",
   },
+  // B-2 (founder autopilot): a borrower chargeback — and its deadline
+  // escalations — notify the note's org.
+  "server/services/connectDisputes.ts": {
+    orgArg: /pushOrgEvent\(\s*notice\.orgId\s*,/,
+    family: "borrower_dispute",
+  },
 };
 const DEFINITION = "server/services/orgPushFanout.ts";
 
@@ -55,7 +61,7 @@ describe("push fan-out: population", () => {
     .map((f) => path.relative(ROOT, f).split(path.sep).join("/"))
     .filter((rel) => /\bpushOrgEvent\s*\(/.test(read(rel)) && rel !== DEFINITION);
 
-  it("exactly the four declared creation sites call pushOrgEvent", () => {
+  it("exactly the declared creation sites call pushOrgEvent", () => {
     expect(callers.sort()).toEqual(Object.keys(SITES).sort());
   });
 
@@ -90,6 +96,7 @@ describe("push fan-out: population", () => {
     expect(src).toMatch(/redemption_alert: "deal\.closing_reminder"/);
     expect(src).toMatch(/ladder_ready: "finance\.payment_missed"/);
     expect(src).toMatch(/borrower_message: "finance\.borrower_message"/);
+    expect(src).toMatch(/borrower_dispute: "finance\.borrower_dispute"/);
   });
 });
 
