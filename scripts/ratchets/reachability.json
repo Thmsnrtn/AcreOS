@@ -1169,6 +1169,31 @@
       "kind": "export",
       "id": "server/services/paxBrowseSearch.ts::detectChallenge",
       "reason": "TEST SEAM (PX-7 browser rung 2, 2026-11-12). The CAPTCHA / bot-wall detector; runPaxSearchSession calls it on every page loaded, and paxBrowseSearchSteps.test.ts drives it with fixture HTML for each marker family and with the look-alikes that must not trip it (an invisible reCAPTCHA, a plain 404). REVOCATION: if a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "server/services/privacy/dsarBreachAlert.ts::DSAR_BREACH_RE_ALERT_MS",
+      "reason": "TEST SEAM (Autopilot B-1, 2026-11-17). The 24h re-alert interval breachAlertDue enforces in-module; exported so dsarBreachAlert.test.ts pins the daily re-alert boundary against the constant itself rather than a copied literal. REVOCATION: if a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "server/services/privacy/dsarBreachAlert.ts::isOverdueUnfulfilled",
+      "reason": "TEST SEAM (Autopilot B-1, 2026-11-17). The sweep's in-process overdue re-filter (unfulfilled AND slaDeadlineAt <= now); runDsarBreachAlertSweep consumes it in-module, and dsarBreachAlert.test.ts pins the <= boundary directly. REVOCATION: if a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "server/services/privacy/dsarBreachAlert.ts::dsarMetBySla",
+      "reason": "TEST SEAM (Autopilot B-1, 2026-11-17). The honest SLA verdict for a DSAR row (on-time fulfilment true, late fulfilment false, unfulfilled false); the breach alert records metBySla:false for its overdue-unfulfilled population, and dsarBreachAlert.test.ts pins all three cases directly so a miss can never be re-labelled a meet. Only in-repo consumer today: the test suite. REVOCATION: when a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "server/services/privacy/dsarBreachAlert.ts::dsarDaysOverdue",
+      "reason": "TEST SEAM (Autopilot B-1, 2026-11-17). Whole days a row has been in breach; the breach alert's raise path consumes it in-module, and dsarBreachAlert.test.ts pins the whole-day counting (0 on breach day one) directly. REVOCATION: if a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "server/services/privacy/dsarBreachAlert.ts::breachAlertDue",
+      "reason": "TEST SEAM (Autopilot B-1, 2026-11-17). The re-alert due check (first breach always due, then only once the last alert is at least DSAR_BREACH_RE_ALERT_MS old); runDsarBreachAlertSweep consumes it in-module, and dsarBreachAlert.test.ts pins the first-breach and interval boundaries directly. REVOCATION: if a production module imports it, remove this entry."
     }
   ],
   "lastBumpNote": "2026-11-15 PR #590 fix round (P2-6 S1 /trust): baselines LOWERED to measured \u2014 unreachedExports 410\u2192408, internalOnlyExports 1221\u21921219. The /trust page + expanded scripts/audit-public-claims.ts consume two previously-unreached exports, so the counts fell and the stale-high baselines failed lint:reachability (CI: TypeScript check + ratchets, TS+Tests shard 2/3 reachabilityGate, Coverage ratchet \u2014 one root cause). No allowlist entries added or removed; direction stays down-only.",

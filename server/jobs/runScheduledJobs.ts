@@ -4813,9 +4813,11 @@ export async function runScheduledJobs(): Promise<void> {
 
   // ─── Panel-300 #26: DSAR overdue alert (every 1h) ────────────────
   // Walks dsar_requests_lifecycle for rows where sla_deadline_at < now
-  // AND fulfilled_at IS NULL. Logs warning per overdue row so the
-  // founder/page-watcher sees them in /founder/dsar/recent. v0: log-
-  // only; alert-fan-out is a follow-up.
+  // AND fulfilled_at IS NULL. B-1 (Founder Autopilot drills, 2026-11):
+  // a breach of the strict 24h clock (Tap #4) now fans out — critical
+  // systemAlert + founder page + founder decisions card at first
+  // breach, re-alerted daily while unfulfilled — via
+  // services/privacy/dsarBreachAlert. (Was log-only in v0.)
   import("./scheduler").then(({ scheduleSelfRescheduling }) => {
     log("DSAR overdue-alert cron registered (self-rescheduling, 1h)", "compliance");
     scheduleSelfRescheduling({
@@ -4824,18 +4826,10 @@ export async function runScheduledJobs(): Promise<void> {
       initialDelayMs: 14 * 60 * 1000,
       run: async () => {
         try {
-          const { db } = await import("../db");
-          const { dsarRequestsLifecycle } = await import("@shared/schema");
-          const { and, lte, isNull } = await import("drizzle-orm");
-          const overdue = await db
-            .select()
-            .from(dsarRequestsLifecycle)
-            .where(and(
-              isNull(dsarRequestsLifecycle.fulfilledAt),
-              lte(dsarRequestsLifecycle.slaDeadlineAt, clock.now()),
-            ));
-          if (overdue.length > 0) {
-            log(`[DSAR] ${overdue.length} overdue requests — review at /founder/dsar/recent`, "compliance");
+          const { runDsarBreachAlertSweep } = await import("../services/privacy/dsarBreachAlert");
+          const r = await runDsarBreachAlertSweep();
+          if (r.overdue > 0) {
+            log(`[DSAR] ${r.overdue} overdue requests — ${r.alerted} breach alert(s), ${r.carded} new founder card(s) — review at /founder/dsar/recent`, "compliance");
           }
         } catch (err) {
           log(`DSAR overdue check failed: ${err}`, "compliance");
