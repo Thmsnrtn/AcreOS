@@ -13437,6 +13437,23 @@ $mig0284$`,
   `ALTER TABLE "county_coverage_requests" ADD COLUMN IF NOT EXISTS "surface" text`,
   `ALTER TABLE "county_coverage_requests" ADD COLUMN IF NOT EXISTS "reason" text`,
   `ALTER TABLE "county_discovery_queue" ADD COLUMN IF NOT EXISTS "last_refusal_reason" text`,
+  // 0313 — Founder Autopilot B-2: borrower chargebacks visible. payments gains
+  // the dispute flag set (dispute id/status/reason/amount, the response
+  // deadline dispute_due_by, open/close stamps, and the T-72h/T-24h
+  // escalation stamps) plus the sweep's partial deadline index. The flag
+  // lives on the ledger row the dispute concerns; no amount/balance/status
+  // column is touched — reversal stays a founder/lender judgment.
+  // Mirrors migrations/0313_borrower_payment_disputes.sql.
+  `ALTER TABLE "payments" ADD COLUMN IF NOT EXISTS "dispute_id" text`,
+  `ALTER TABLE "payments" ADD COLUMN IF NOT EXISTS "dispute_status" text`,
+  `ALTER TABLE "payments" ADD COLUMN IF NOT EXISTS "dispute_reason" text`,
+  `ALTER TABLE "payments" ADD COLUMN IF NOT EXISTS "dispute_amount_cents" integer`,
+  `ALTER TABLE "payments" ADD COLUMN IF NOT EXISTS "dispute_due_by" timestamp with time zone`,
+  `ALTER TABLE "payments" ADD COLUMN IF NOT EXISTS "dispute_opened_at" timestamp with time zone`,
+  `ALTER TABLE "payments" ADD COLUMN IF NOT EXISTS "dispute_closed_at" timestamp with time zone`,
+  `ALTER TABLE "payments" ADD COLUMN IF NOT EXISTS "dispute_escalation_72h_at" timestamp with time zone`,
+  `ALTER TABLE "payments" ADD COLUMN IF NOT EXISTS "dispute_escalation_24h_at" timestamp with time zone`,
+  `CREATE INDEX IF NOT EXISTS "payments_dispute_due_idx" ON "payments" ("dispute_due_by") WHERE "dispute_id" IS NOT NULL AND "dispute_closed_at" IS NULL`,
   // 0306 — Fix-and-Flip Leg 3: rehab_baselines, rehab_status_transitions and rehab_holding_cost_entries (timeline truth; append-only, org-private, each leaves only with its org).
   // Mirrors migrations/0306_ff_leg3_timeline_holding.sql.
   `CREATE TABLE IF NOT EXISTS "rehab_baselines" (

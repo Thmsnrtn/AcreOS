@@ -30,7 +30,7 @@ import { logger } from "../utils/logger";
 import { sendPushToOrg, type PushPayload } from "./pushNotificationService";
 import { notificationPrefsService } from "./notificationPreferences";
 
-export type OrgPushFamily = "pax_nudge" | "redemption_alert" | "ladder_ready" | "borrower_message";
+export type OrgPushFamily = "pax_nudge" | "redemption_alert" | "ladder_ready" | "borrower_message" | "borrower_dispute";
 
 /**
  * The fan-out family for an event, mapped to the `notificationPreferences`
@@ -47,6 +47,9 @@ export type OrgPushFamily = "pax_nudge" | "redemption_alert" | "ladder_ready" | 
  *  - `borrower_message` → `finance.borrower_message`: the schema event added
  *    deliberately with the S-05 wire (P1-4b) — a borrower's portal message
  *    is its own preference, not a payment alert's.
+ *  - `borrower_dispute` → `finance.borrower_dispute`: the schema event added
+ *    deliberately with the B-2 wire — a borrower chargeback (and its
+ *    response-deadline escalations) is its own preference too.
  * A user's explicit push override for the mapped id is honoured either way;
  * with no override, the schema's `defaultChannels.push` for that id decides
  * (all three currently default push ON, matching the pre-fix behaviour for
@@ -73,6 +76,10 @@ export const ORG_PUSH_FAMILY_EVENT_ID: Record<OrgPushFamily, string> = {
   // added with this wire — muting a payment alert must not silently mute a
   // borrower's message, and muting borrower messages must not mute alerts.
   borrower_message: "finance.borrower_message",
+  // B-2 (founder autopilot): a borrower chargeback maps to its OWN schema
+  // event, added with this wire — muting payment alerts or borrower
+  // messages must not silently mute a dispute deadline.
+  borrower_dispute: "finance.borrower_dispute",
 };
 
 /**

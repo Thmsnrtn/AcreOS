@@ -2011,6 +2011,14 @@ const RULE3_BASELINE = new Set([
   "server/services/cashFlowForecaster.ts::compareActualVsProjected::payments",
   "server/services/comms/tracking-pool.ts::assignTrackingNumberForMailShipment::trackingNumberAssignments",
   "server/services/comms/tracking-pool.ts::attributeInbound::trackingNumberAssignments",
+  // B-2 (2026-11-17) — deliberate all-org sweep, same shape as the disclosure
+  // dispatcher below. defaultListOpenDisputes feeds the hourly chargeback
+  // deadline sweep: it must see every organization's OPEN disputes (flagged,
+  // unclosed, with a response deadline) or a lender's response.by passes
+  // unwatched. The read goes through unscopedForPlatformOps(reason); every
+  // WRITE the sweep makes from these rows is org-scoped by the row's own
+  // organizationId, and the webhook path's reads/writes are org-predicated.
+  "server/services/connectDisputes.ts::defaultListOpenDisputes::payments",
   "server/services/creditPool.ts::poolDebit::financialLedger",
   "server/services/customerNarrative.ts::deliverAllPendingLettersForMonth::customerLetters",
   "server/services/digest.ts::getSubscriptionsNeedingDigest::digestSubscriptions",

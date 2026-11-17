@@ -173,6 +173,18 @@ export const NOTIFICATION_SCHEMA: NotificationCategory[] = [
         description: "When a borrower sends a message through their portal on a note you hold",
         defaultChannels: { email: false, sms: false, push: true, inApp: true },
       },
+      {
+        // B-2 (founder autopilot, 2026-11-16): a borrower's chargeback on the
+        // lender's own Stripe account was invisible to AcreOS — the lender
+        // was never told their books were under dispute. This event is the
+        // per-user toggle the dispute notification (push + in-app) consults;
+        // a stored refusal (global mute or this event's push/inApp off) is
+        // honoured, exactly as for borrower messages.
+        id: "finance.borrower_dispute",
+        label: "A borrower disputes a payment",
+        description: "When a borrower opens a chargeback on a payment for a note you hold, and as its response deadline approaches",
+        defaultChannels: { email: false, sms: false, push: true, inApp: true },
+      },
     ],
   },
   {
