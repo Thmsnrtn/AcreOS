@@ -24,12 +24,10 @@ import { QueryErrorState } from "@/components/query-error-state";
 import { motion } from "framer-motion";
 import { staggerContainer, staggerItem } from "@/lib/animations";
 import { Verbs } from "@/lib/labels";
-import { format, differenceInDays, parseISO } from "date-fns";
-// jsPDF is dynamically imported inside generatePDF below — it's ~340KB
-// raw / 100KB brotli'd and only fires when a borrower actually downloads
-// a 1098/statement, so there's no reason to ship it on first paint of
-// the portal.
-import type { jsPDF as JsPDFType } from "jspdf";
+import { format, differenceInDays } from "date-fns";
+// Statement PDFs are rendered on the server (BD-1): the portal asks
+// /api/borrower/statements/generate?format=pdf and downloads the result.
+// jsPDF no longer ships to the browser at all.
 import type { Note, Payment, Property, BorrowerMessage } from "@shared/schema";
 import { LegalDocReadAloud } from "@/components/LegalDocReadAloud";
 import { StatementsPanel } from "@/components/borrower/StatementsPanel";
@@ -891,7 +889,9 @@ function BorrowerDashboard({ data, verifiedEmail }: { data: BorrowerLoanData; ve
       // F3.4 fix — credentials no longer in URL. Auth comes from the
       // borrower_session cookie set during /api/borrower/verify, which
       // already ran before this dashboard rendered.
-      const params = new URLSearchParams({ type: statementType });
+      // BD-1 — the server renders the PDF (same jsPDF layout, moved
+      // server-side); the portal just downloads it.
+      const params = new URLSearchParams({ type: statementType, format: 'pdf' });
 
       if (statementType === '1098') {
         params.set('year', statementYear.toString());
@@ -900,10 +900,22 @@ function BorrowerDashboard({ data, verifiedEmail }: { data: BorrowerLoanData; ve
       const res = await fetch(`/api/borrower/statements/generate?${params}`, {
         credentials: 'include',
       });
-      
+
       if (res.ok) {
-        const data = await res.json();
-        await generatePDF(data);
+        const blob = await res.blob();
+        const disposition = res.headers.get('Content-Disposition') || '';
+        const fromServer = /filename="([^"]+)"/.exec(disposition)?.[1];
+        const fallback = statementType === '1098'
+          ? `1098_${statementYear}.pdf`
+          : `statement_${format(new Date(), 'yyyy-MM-dd')}.pdf`;
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = fromServer || fallback;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        URL.revokeObjectURL(url);
         setShowStatementDialog(false);
       } else {
         const errData = await res.json();
@@ -913,163 +925,6 @@ function BorrowerDashboard({ data, verifiedEmail }: { data: BorrowerLoanData; ve
       setPaymentStatusMessage({ type: 'error', message: 'Failed to generate statement' });
     } finally {
       setIsGeneratingStatement(false);
-    }
-  };
-  
-  const generatePDF = async (data: any) => {
-    const { jsPDF } = await import("jspdf");
-    const doc: JsPDFType = new jsPDF();
-    const pageWidth = doc.internal.pageSize.getWidth();
-    let y = 20;
-    
-    if (data.type === '1098') {
-      doc.setFontSize(18);
-      doc.text('Form 1098 - Mortgage Interest Statement', pageWidth / 2, y, { align: 'center' });
-      y += 10;
-      
-      doc.setFontSize(12);
-      doc.text(`Tax Year: ${data.taxYear}`, pageWidth / 2, y, { align: 'center' });
-      y += 20;
-      
-      doc.setFontSize(10);
-      doc.text('LENDER INFORMATION:', 14, y);
-      y += 6;
-      doc.text(data.lenderName, 14, y);
-      y += 5;
-      if (data.lenderAddress) {
-        doc.text(data.lenderAddress, 14, y);
-        y += 5;
-      }
-      y += 10;
-      
-      doc.text('BORROWER INFORMATION:', 14, y);
-      y += 6;
-      doc.text(data.borrowerName, 14, y);
-      y += 5;
-      if (data.borrowerAddress) {
-        doc.text(`${data.borrowerAddress}`, 14, y);
-        y += 5;
-        doc.text(`${data.borrowerCity || ''}, ${data.borrowerState || ''} ${data.borrowerZip || ''}`, 14, y);
-        y += 5;
-      }
-      y += 15;
-      
-      doc.setFontSize(12);
-      doc.text('Box 1 - Mortgage Interest Received:', 14, y);
-      doc.setFontSize(14);
-      doc.text(`$${data.interestPaid.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 100, y);
-      y += 10;
-      
-      doc.setFontSize(12);
-      doc.text('Box 2 - Outstanding Principal (Jan 1):', 14, y);
-      doc.setFontSize(14);
-      doc.text(`$${data.principalBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 100, y);
-      y += 10;
-      
-      if (typeof data.refundOfOverpaidInterest === 'number' && data.refundOfOverpaidInterest > 0) {
-        doc.setFontSize(12);
-        doc.text('Box 4 - Refund of Overpaid Interest:', 14, y);
-        doc.setFontSize(14);
-        doc.text(`$${data.refundOfOverpaidInterest.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 100, y);
-        y += 10;
-      }
-
-      doc.setFontSize(12);
-      doc.text('Loan Origination Date:', 14, y);
-      doc.text(format(parseISO(data.loanOriginationDate), 'MMM d, yyyy'), 100, y);
-      y += 20;
-      
-      doc.setFontSize(8);
-      doc.text('This is for informational purposes. Please consult your tax advisor.', 14, y);
-      
-      doc.save(`1098_${data.taxYear}.pdf`);
-    } else {
-      doc.setFontSize(18);
-      doc.text('Account Statement', pageWidth / 2, y, { align: 'center' });
-      y += 10;
-      
-      doc.setFontSize(10);
-      doc.text(`Generated: ${format(new Date(data.generatedDate), 'MMMM d, yyyy')}`, pageWidth / 2, y, { align: 'center' });
-      y += 15;
-      
-      doc.line(14, y, pageWidth - 14, y);
-      y += 10;
-      
-      doc.setFontSize(12);
-      doc.text('ACCOUNT SUMMARY', 14, y);
-      y += 8;
-      
-      doc.setFontSize(10);
-      const summaryData = [
-        ['Borrower:', data.borrowerName],
-        ['Loan Number:', `#${data.noteId}`],
-        ['Original Principal:', usd(data.originalPrincipal)],
-        ['Current Balance:', usd(data.currentBalance)],
-        ['Interest Rate:', `${data.interestRate}% APR`],
-        ['Monthly Payment:', usd(data.monthlyPayment)],
-        ['Next Payment Due:', data.nextPaymentDate ? format(new Date(data.nextPaymentDate), 'MMM d, yyyy') : 'N/A'],
-        ['Autopay Status:', data.autopayEnabled ? 'Enabled' : 'Disabled'],
-      ];
-      
-      summaryData.forEach(([label, value]) => {
-        doc.text(label, 14, y);
-        doc.text(value, 80, y);
-        y += 6;
-      });
-      
-      y += 10;
-      doc.line(14, y, pageWidth - 14, y);
-      y += 10;
-      
-      doc.setFontSize(12);
-      doc.text('PAYMENT SUMMARY', 14, y);
-      y += 8;
-      
-      doc.setFontSize(10);
-      doc.text('Total Payments:', 14, y);
-      doc.text(data.summary.paymentsCount.toString(), 80, y);
-      y += 6;
-      doc.text('Total Paid:', 14, y);
-      doc.text(usd(data.summary.totalPaid), 80, y);
-      y += 6;
-      doc.text('Principal Paid:', 14, y);
-      doc.text(usd(data.summary.totalPrincipal), 80, y);
-      y += 6;
-      doc.text('Interest Paid:', 14, y);
-      doc.text(usd(data.summary.totalInterest), 80, y);
-      y += 15;
-      
-      if (data.payments && data.payments.length > 0) {
-        doc.setFontSize(12);
-        doc.text('PAYMENT HISTORY', 14, y);
-        y += 8;
-        
-        doc.setFontSize(9);
-        doc.text('Date', 14, y);
-        doc.text('Amount', 50, y);
-        doc.text('Principal', 80, y);
-        doc.text('Interest', 110, y);
-        doc.text('Method', 140, y);
-        y += 6;
-        
-        doc.line(14, y, pageWidth - 14, y);
-        y += 4;
-        
-        data.payments.slice(0, 20).forEach((p: any) => {
-          if (y > 270) {
-            doc.addPage();
-            y = 20;
-          }
-          doc.text(format(new Date(p.date), 'MM/dd/yy'), 14, y);
-          doc.text(usd(p.amount), 50, y);
-          doc.text(usd(p.principal), 80, y);
-          doc.text(usd(p.interest), 110, y);
-          doc.text(p.method || 'N/A', 140, y);
-          y += 5;
-        });
-      }
-      
-      doc.save(`statement_${format(new Date(), 'yyyy-MM-dd')}.pdf`);
     }
   };
   
