@@ -206,9 +206,15 @@ describe("registry entry (shared/business-types.ts)", () => {
 });
 
 describe("onboarding wizard (onboarding-v2.tsx)", () => {
-  it("creative_finance stays selectable with its strategy description", () => {
+  // FD1 re-cut (P1-11 S2): creative_finance is registry_only — it left the
+  // public promise, so the wizard no longer offers it to new signups. This
+  // leg previously pinned the opposite ("stays selectable"); that premise
+  // was superseded by the founder's FD1 ruling (2026-11-12, registry re-cut
+  // in PR #592). What must NOT change: the registry still resolves the type
+  // for every existing creative-finance book (registry_only ≠ deleted).
+  it("creative_finance is not offered to new signups (FD1 registry_only)", () => {
     const src = fs.readFileSync(path.join(CLIENT, "pages/onboarding-v2.tsx"), "utf-8");
-    expect(src).toContain('value: "creative_finance"');
-    expect(src).toContain("Subject-to, seller financing, wraps, and lease options.");
+    expect(src).not.toContain('value: "creative_finance"');
+    expect(getBusinessType("creative_finance")?.maturity).toBe("registry_only");
   });
 });

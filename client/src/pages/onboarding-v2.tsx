@@ -20,7 +20,7 @@
  *   - RE-RUNNABLE: Settings → "Re-run onboarding" calls POST
  *     /api/onboarding/reset (which PRESERVES businessType/noteRole) and
  *     routes back here; the wizard prefills from the stored onboardingData so
- *     a re-run never silently flips the org back to the land_flipper default.
+ *     a re-run never silently flips the org back to the note_investor default.
  *
  * Target: 3 taps + ~45-60 seconds from signup-complete to Today with realistic
  * state (Decision Queue, MorningBrief, Cash Strip). Hank-the-operator approved.
@@ -62,20 +62,11 @@ import {
   Loader2,
   CheckCircle,
   Home,
-  Hammer,
   Key,
-  Palmtree,
-  Building2,
-  Landmark,
-  Lightbulb,
-  Warehouse,
   Receipt,
-  Truck,
-  Users,
   TrendingUp,
   FileSignature,
   ClipboardCheck,
-  Scissors,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useLocation } from "wouter";
@@ -91,6 +82,10 @@ import { okOrThrow } from "@/lib/fetch-honesty";
 import type { Persona } from "@shared/models/auth";
 import { derivePersona, type BusinessType, type NoteRole } from "@shared/models/persona-mapping";
 import {
+  BUSINESS_TYPES as BUSINESS_TYPE_REGISTRY,
+  isProductionReady,
+} from "@shared/business-types";
+import {
   getVerticalOnboarding,
   getDataStepCopy,
   resolveWizardPrefill,
@@ -98,81 +93,76 @@ import {
 import "./styles/onboarding-v2.css";
 
 // ---------------------------------------------------------------------------
-// Business type taxonomy — three primary choices surfaced in Step 1.
-// Mirrors CORE_INVESTOR_TYPES from OnboardingWizard.tsx so both surfaces
-// agree on the canonical three. Secondary verticals are accessible from
-// Settings after onboarding completes — we don't avalanche the first screen.
+// Business type taxonomy — the FD1 launch presentation (P1-11 S2).
+//
+// The registry (shared/business-types.ts, re-cut in P1-11 S1 / PR #592) is
+// the single source of truth for WHICH types a new signup is offered: the
+// presented set is exactly the production-ready set — core + beta, five
+// types today (Note Investor + Buy-and-Hold core; Land, Wholesale and
+// Tax Lien / Deed beta). The other ten registry types are registry_only
+// under FD1: built and registered, their existing books keep working, but
+// they are NOT offered here and carry no choice row below.
+//
+// This file owns only the UI copy (label / description / icon) for the five
+// presented types. CORE_CHOICES and BETA_CHOICES are DERIVED from the
+// registry's maturity values at module load — if a type's maturity moves
+// in the registry, the fork moves with it; no local list decides who is
+// offered. Pinned by tests/unit/onboardingForkRecut.test.ts.
 // ---------------------------------------------------------------------------
 
 // BusinessType / NoteRole / persona derivation now come from the shared
-// source of truth (@shared/models/persona-mapping) — see import above. The UI
-// choice arrays below stay local (they carry labels + icons).
+// source of truth (@shared/models/persona-mapping) — see import above. The
+// UI choice arrays below stay local (they carry labels + icons).
 
-const CORE_CHOICES = [
+const PRESENTED_CHOICE_META: { value: BusinessType; label: string; description: string; icon: typeof Map }[] = [
   {
-    value: "land_flipper" as BusinessType,
-    label: "Land Flipper",
-    description: "Buy raw land at wholesale and resell for profit.",
-    icon: Map,
-  },
-  {
-    value: "note_investor" as BusinessType,
+    value: "note_investor",
     label: "Note Investor",
     description: "Buy, sell, and service mortgage notes and seller-financed paper.",
     icon: FileText,
   },
   {
-    value: "hybrid" as BusinessType,
-    label: "Hybrid / Multi-Strategy",
-    description: "Combine land, notes, and other strategies.",
-    icon: Sparkles,
+    value: "buy_and_hold",
+    label: "Buy & Hold",
+    description: "Build a long-term rental portfolio for passive income.",
+    icon: Key,
+  },
+  {
+    value: "land_flipper",
+    label: "Land Flipper",
+    description: "Buy raw land at wholesale and resell for profit.",
+    icon: Map,
+  },
+  {
+    value: "residential_wholesaler",
+    label: "Residential Wholesaler",
+    description: "Find distressed homes and assign contracts to cash buyers.",
+    icon: Home,
+  },
+  {
+    value: "tax_lien_deed",
+    label: "Tax Lien / Tax Deed",
+    description: "Purchase tax liens and tax deeds at county auctions.",
+    icon: Receipt,
   },
 ];
 
-// Secondary verticals — collapsed by default. Surfaced via "Show all
-// investor types" disclosure so the first impression isn't a 15-card
-// avalanche. Without this list, wholesalers / fix-and-flippers /
-// landlords / etc were silently mapped to land_investor at signup —
-// flagged by the 2026-06-05 customer audit. Pattern ported from the
-// legacy OnboardingWizard.tsx (no-longer-mounted but kept as the
-// single source of truth for vertical metadata).
-const SECONDARY_CHOICES: { value: BusinessType; label: string; description: string; icon: typeof Map }[] = [
-  { value: "residential_wholesaler", label: "Residential Wholesaler", icon: Home, description: "Find distressed homes and assign contracts to cash buyers." },
-  // The "(waitlist)" tag and the "comps run on land data" description were
-  // STALE, and stale in the direction that matters. They described the
-  // 2026-07-11 demotion long after the registry recorded its root cause FIXED
-  // (residential comps route through the ATTOM provider seam, 2026-07-29) and
-  // promoted the vertical to `core` (2026-08). Corrected 2026-08-17.
-  //
-  // It was a live contradiction across three customer-facing surfaces at once:
-  // the public landing rendered fix_and_flip under "full workflow support",
-  // /pricing sold the Fix-and-flip pack at $150/mo, and onboarding told the
-  // customer who had just paid for it that it was waitlisted and running on
-  // land data — which had itself been false for three weeks.
-  //
-  // Pinned by tests/unit/customerPersonas.test.ts, which now scans this file
-  // for "(waitlist)"/"(beta)" tags and checks them against the registry.
-  { value: "fix_and_flip", label: "Fix & Flip", icon: Hammer, description: "Renovate-and-resell: rehab budgets and milestones, contractor tracking, and 70%-rule underwriting, on residential comps and valuations." },
-  { value: "buy_and_hold", label: "Buy & Hold", icon: Key, description: "Build a long-term rental portfolio for passive income." },
-  // STR: the Bookings tab lists a property's recorded reservations and its
-  // occupancy/ADR/RevPAR. This description used to also promise channel-CSV
-  // import, per-stay P&L, turnovers and operator-set nightly pricing — API
-  // routes exist for those, but no screen a customer can reach delivers them,
-  // so the promise was removed (P1 sweep 2026-10-20), not reworded.
-  { value: "short_term_rental", label: "Short-Term Rental", icon: Palmtree, description: "Nightly-stay reservations with occupancy, ADR and RevPAR. OTA channel sync (Airbnb, VRBO) and dynamic market pricing aren't built." },
-  { value: "multifamily", label: "Multifamily", icon: Building2, description: "Invest in apartment buildings and 5+ unit properties." },
-  { value: "commercial", label: "Commercial", icon: Landmark, description: "Office, retail, industrial, and mixed-use investments." },
-  { value: "creative_finance", label: "Creative Finance", icon: Lightbulb, description: "Subject-to, seller financing, wraps, and lease options." },
-  { value: "developer", label: "Developer / Entitlements", icon: Warehouse, description: "Land development and entitlements." },
-  // W2.5: the Subdivision module (sidebar, businessTypeOnly:["subdivider"])
-  // was orphaned — gated on a businessType no onboarding path could set.
-  { value: "subdivider", label: "Subdivider", icon: Scissors, description: "Buy acreage, split it into parcels, and sell the pieces." },
-  { value: "tax_lien_deed", label: "Tax Lien / Tax Deed", icon: Receipt, description: "Purchase tax liens and tax deeds at county auctions." },
-  { value: "mobile_home", label: "Mobile Home / MHP", icon: Truck, description: "Mobile home parks and manufactured housing investments." },
-  { value: "agent_investor", label: "Agent-Investor", icon: Users, description: "Licensed agent who also invests — manage clients and your own deals." },
-];
+// The fork reads the registry, not the local copy above: a meta row whose
+// registry maturity is registry_only (or roadmap) is never presented, and
+// the core/beta split below is the registry's, restated nowhere.
+const CORE_CHOICES = PRESENTED_CHOICE_META.filter(
+  ({ value }) => BUSINESS_TYPE_REGISTRY[value].maturity === "core",
+);
+const BETA_CHOICES = PRESENTED_CHOICE_META.filter(
+  ({ value }) => BUSINESS_TYPE_REGISTRY[value].maturity === "beta",
+);
 
-const SECONDARY_BUSINESS_TYPES = new Set<BusinessType>(SECONDARY_CHOICES.map((c) => c.value));
+const PRESENTED_BUSINESS_TYPES = new Set<BusinessType>(
+  PRESENTED_CHOICE_META.filter(({ value }) => isProductionReady(value)).map(
+    (c) => c.value,
+  ),
+);
+const BETA_BUSINESS_TYPES = new Set<BusinessType>(BETA_CHOICES.map((c) => c.value));
 
 // The "Note Investor" businessType covers THREE distinct jobs, each its own
 // persona (drives every persona-gated surface). Surfaced only when
@@ -286,7 +276,7 @@ export default function OnboardingV2() {
 
   // Form data
   const [workspaceName, setWorkspaceName] = useState("");
-  const [businessType, setBusinessType] = useState<BusinessType>("land_flipper");
+  const [businessType, setBusinessType] = useState<BusinessType>("note_investor");
   const [showAllInvestorTypes, setShowAllInvestorTypes] = useState(false);
   // Note-role fork — only meaningful when businessType === "note_investor".
   // Drives which persona we persist (invest/originate/service) and how the
@@ -384,7 +374,7 @@ export default function OnboardingV2() {
   // ── Re-run prefill ────────────────────────────────────────────────────────
   // POST /api/onboarding/reset preserves businessType/noteRole in the org's
   // onboardingData, so a re-run must start from the org's CURRENT type — not
-  // the land_flipper default. resolveWizardPrefill only yields values the
+  // the note_investor default. resolveWizardPrefill only yields values the
   // registry recognizes; anything else leaves the wizard's defaults alone.
   const {
     data: onboardingStatus,
@@ -998,12 +988,26 @@ export default function OnboardingV2() {
                       </label>
                     ))}
                   </RadioGroup>
-                  {/* Secondary verticals — collapsed by default. Auto-opens
+                  {/* Existing-book note — a re-run can hold a registry_only
+                      type (FD1: existing books keep working, but the type is
+                      not offered to new signups, so it has no card below).
+                      Name it plainly; continuing without picking a new type
+                      keeps it. */}
+                  {!PRESENTED_BUSINESS_TYPES.has(businessType) && (
+                    <p className="ob2-hint" data-testid="current-type-note">
+                      Your workspace is currently a{" "}
+                      {BUSINESS_TYPE_REGISTRY[businessType]?.label ?? businessType}{" "}
+                      book. That type isn&apos;t offered to new signups, so it
+                      isn&apos;t in the list — continuing without choosing a
+                      new type keeps it.
+                    </p>
+                  )}
+                  {/* Beta verticals — collapsed by default. Auto-opens
                       if the user previously selected one (e.g. coming back
                       to edit) so their selection is always visible. */}
                   <details
                     style={{ marginTop: 12 }}
-                    open={SECONDARY_BUSINESS_TYPES.has(businessType) || showAllInvestorTypes}
+                    open={BETA_BUSINESS_TYPES.has(businessType) || showAllInvestorTypes}
                     onToggle={(e) =>
                       setShowAllInvestorTypes((e.target as HTMLDetailsElement).open)
                     }
@@ -1014,7 +1018,7 @@ export default function OnboardingV2() {
                       style={{ cursor: "pointer", userSelect: "none", marginBottom: 8 }}
                       data-testid="summary-show-all-investor-types"
                     >
-                      Show all investor types (beta verticals)
+                      Show beta investor types
                     </summary>
                     <RadioGroup
                       value={businessType}
@@ -1025,7 +1029,7 @@ export default function OnboardingV2() {
                       className="ob2-type-cards"
                       aria-labelledby="ob2-biztype-label"
                     >
-                      {SECONDARY_CHOICES.map(({ value, label, description, icon: Icon }) => (
+                      {BETA_CHOICES.map(({ value, label, description, icon: Icon }) => (
                         <label
                           key={value}
                           htmlFor={`ob2-type-${value}`}
@@ -1050,7 +1054,7 @@ export default function OnboardingV2() {
                     </RadioGroup>
                   </details>
                   <p className="ob2-hint">
-                    Land Flipper is primary. More verticals can be changed in Settings.
+                    Note Investor is the lead type. You can change your type anytime in Settings.
                   </p>
                 </motion.div>
 
