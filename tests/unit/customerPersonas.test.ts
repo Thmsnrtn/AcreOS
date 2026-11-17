@@ -122,16 +122,27 @@ describe("customer persona catalog", () => {
     // `{ value: "<id>", label: "<label>", …` — the choice rows a signup sees.
     const choices = [...src.matchAll(/value:\s*"([a-z_]+)"\s*,\s*label:\s*"([^"]+)"/g)];
 
+    // P1-11 S2 (FD1): the wizard now offers exactly the 5 presented types
+    // (2 core + 3 beta) plus the 3 note-role rows = 8 parsed rows. The floor
+    // is the exact presented count, not the old 15-type population — a scan
+    // that finds fewer rows has broken, and one that finds MORE registry
+    // rows is caught by the production-ready assertion below.
     expect(
       choices.length,
       "no onboarding vertical choices parsed — the scan broke, so the tag " +
         "checks below assert nothing (which is exactly how the sibling test " +
         "above went quiet)",
-    ).toBeGreaterThan(8);
+    ).toBeGreaterThanOrEqual(8);
 
     for (const [, id, label] of choices) {
       const meta = BUSINESS_TYPES[id as keyof typeof BUSINESS_TYPES];
       if (!meta) continue; // a non-registry choice (e.g. "other")
+      // FD1: a registry type may only be offered if it is production-ready
+      // (core|beta). Registry-only types keep their books, not a signup card.
+      expect(
+        meta.maturity === "core" || meta.maturity === "beta",
+        `onboarding offers ${id} but the registry says "${meta.maturity}" (FD1: not offered)`,
+      ).toBe(true);
       if (label.includes("(waitlist)")) {
         expect(
           meta.maturity,
