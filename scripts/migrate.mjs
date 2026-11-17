@@ -7,6 +7,16 @@
 // sync with what's actually been applied to prod (many migration files
 // live outside the journal), and running a migrator against drifted state
 // risks re-applying already-applied migrations.
+//
+// P3-1 S3.3 (D2 retirements, 2026-11-17): six duplicate migrations/*.sql
+// files were retired because 0003_robust_namora.sql re-creates every DDL
+// object in them exactly: the enrichment-columns file (0003), the
+// user-map-layer-preferences file (0004), the password-reset-tokens file
+// (0007), the ad-creative-bundles file (0009), the referrals file (0010)
+// and the platform-config file (0011). Retiring them changes nothing this
+// file or db:build-from-repo builds; it only cures those duplicateSql
+// desyncs. This comment is also the migrate.mjs touch the migrate-mirror
+// check requires when migrations/*.sql files change.
 
 import pg from "pg";
 
