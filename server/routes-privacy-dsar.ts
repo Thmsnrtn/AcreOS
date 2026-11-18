@@ -50,11 +50,17 @@ import {
 import { buildSubjectExport } from "./services/privacy/dsarExporters";
 import { eraseDsarSubject, DsarErasureRefusedError } from "./services/gdprService";
 import { LegalHoldViolationError } from "./services/legalHold";
+import { dsarIntakeLimiter, verifyDsarTurnstile } from "./services/privacy/dsarIntakeGuards";
+import { getClientIp } from "./utils/clientIp";
 
 const dsarSubmitSchema = z.object({
   requestType: z.enum(["access", "erasure", "portability", "rectification"]),
   requesterEmail: z.string().email(),
   notes: z.string().max(2000).optional(),
+  // Optional Cloudflare Turnstile token. Verified server-side only when
+  // CLOUDFLARE_TURNSTILE_SECRET is set; otherwise the per-IP rate limit
+  // is the defence (shared with the legacy alias — dsarIntakeGuards.ts).
+  turnstileToken: z.string().max(5000).optional(),
 });
 
 /** The founder's subject pick — same union for export and erasure (§3/§4). */
@@ -115,11 +121,17 @@ function sendGateRefusal(res: Response, refusal: GateRefusal): void {
 
 export function registerPrivacyDsarRoutes(app: Express): void {
   // PUBLIC — anyone can file a DSAR. 24h SLA starts at received_at.
-  app.post("/api/privacy/dsar", async (req, res: Response) => {
+  // Abuse controls at parity with the legacy alias (Autopilot B-3):
+  // per-IP rate limit + Turnstile when configured (dsarIntakeGuards).
+  app.post("/api/privacy/dsar", dsarIntakeLimiter, async (req, res: Response) => {
     try {
       const parsed = dsarSubmitSchema.safeParse(req.body);
       if (!parsed.success) {
         return Errors.validationFailed(res, parsed.error.flatten());
+      }
+      const turnstileOk = await verifyDsarTurnstile(parsed.data.turnstileToken, getClientIp(req));
+      if (!turnstileOk) {
+        return Errors.forbidden(res, "Captcha verification failed");
       }
       const slaDeadline = new Date(clock.nowMs() + DSAR_CLOCK_HOURS * 60 * 60 * 1000);
       const [row] = await db
