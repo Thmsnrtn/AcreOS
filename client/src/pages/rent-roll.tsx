@@ -1149,8 +1149,6 @@ function LedgerBody({ ledger }: { ledger: LedgerResponse }) {
         monthlyRentCents={ledger.lease.monthlyRentCents}
       />
 
-      <Separator />
-
       <CollectRentSection leaseId={ledger.lease.id} hasOpenBalance={openCharges.length > 0} />
     </div>
   );
@@ -1177,11 +1175,11 @@ function CollectRentSection({ leaseId, hasOpenBalance }: { leaseId: string; hasO
     },
     onSuccess: (res) => {
       setCheckoutUrl(res.url);
-      toast({ title: "Checkout link created — share it with your tenant" });
+      toast({ title: "Link created" });
     },
     onError: (err: any) => {
       toast({
-        title: "Couldn't create the checkout link",
+        title: "Couldn't create link",
         description: err.message,
         variant: "destructive",
       });
@@ -1189,14 +1187,10 @@ function CollectRentSection({ leaseId, hasOpenBalance }: { leaseId: string; hasO
   });
 
   return (
-    <div className="space-y-3">
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        Collect rent by card
-      </h3>
+    <>
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs text-muted-foreground">
-          Your tenant pays through your own connected Stripe account. AcreOS never holds the rent
-          and takes no cut of it.
+          Rent by card via your Stripe account. AcreOS never holds rent.
         </p>
         <Button
           size="sm"
@@ -1205,18 +1199,17 @@ function CollectRentSection({ leaseId, hasOpenBalance }: { leaseId: string; hasO
           disabled={collect.isPending || !hasOpenBalance}
           data-testid="button-collect-rent"
         >
-          {collect.isPending ? "Creating…" : "Create payment link"}
+          {collect.isPending ? "Creating" : "Get link"}
         </Button>
       </div>
       {checkoutUrl && (
-        <p className="text-xs break-all" role="status">
-          Payment link:{" "}
+        <p className="mt-3 text-xs break-all">
           <a className="underline" href={checkoutUrl} target="_blank" rel="noreferrer">
             {checkoutUrl}
           </a>
         </p>
       )}
-    </div>
+    </>
   );
 }
 
@@ -1531,8 +1524,7 @@ function RecordPaymentForm({
 
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs text-muted-foreground">
-          Records money you already received by hand. To collect by card instead, use the payment
-          link below — it runs through your own Stripe account.
+          Records money you already received by hand.
         </p>
         <Button
           size="sm"

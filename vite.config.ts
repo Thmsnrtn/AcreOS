@@ -119,16 +119,17 @@ function jspdfUnusedOptionalDepsPlugin(): Plugin {
 // resolves to a stub whose entry points throw if ever invoked: a future
 // caller fails loudly instead of quietly shipping the weight.
 //
-// json-schema-processors.js was originally left whole: classic/schemas.js
-// reads processors.aggregateChecks(inst) inside the DERIVED PUBLIC
-// ACCESSORS on live schema instances — ZodString.format / .minLength /
-// .maxLength, ZodNumber.minValue / .maxValue / .format — so stubbing that
-// module wholesale would break real schema API, not just JSON Schema
-// generation. BD-5 (below) now stubs it SURGICALLY: aggregateChecks is
-// preserved verbatim, only the generation-only processors go. Before
-// BD-5 the standalone z.toJSONSchema() (which lives in the processors
-// module) reached processSchema in the stubbed module and threw there;
-// it now throws at the processors stub itself — the same loud failure.
+// json-schema-processors.js is NOT stubbed by THIS plugin: classic/
+// schemas.js reads processors.aggregateChecks(inst) inside the DERIVED
+// PUBLIC ACCESSORS on live schema instances — ZodString.format /
+// .minLength / .maxLength, ZodNumber.minValue / .maxValue / .format — so
+// replacing that module wholesale would break real schema API, not just
+// JSON Schema generation. The surgical half lives in
+// zodJsonSchemaProcessorsPlugin (BD-5, below): it keeps aggregateChecks
+// verbatim and stubs only the generation-only processors. The standalone
+// z.toJSONSchema() (which lives in the processors module) reaches
+// processSchema in the stubbed module here and throws there, which is
+// the same loud failure.
 //
 // The stub is matched two ways, because zod reaches the generator through
 // two specifier shapes: classic/schemas.js imports
@@ -184,182 +185,179 @@ function zodJsonSchemaUnusedPlugin(): Plugin {
   };
 }
 
-
-// BD-5 (2026-11-18, P3-3's in-PR bundle offset) — the surgical half of the
-// note above, landed. json-schema-processors.js is now replaced FOR THE
-// CLIENT BUILD ONLY by a stub that keeps exactly the one export live code
-// reaches — aggregateChecks, copied VERBATIM below together with the two
-// util range tables it folds over (NUMBER_FORMAT_RANGES /
-// BIGINT_FORMAT_RANGES from zod/v4/core/util.js, zod 4.6.7) — and turns
-// every generation-only processor, allProcessors and toJSONSchema into
-// the same throwing unavailable() as the generator stub above. The
-// derived accessors (ZodString.format/.minLength/.maxLength,
-// ZodNumber.minValue/.maxValue/.format) therefore behave identically;
-// only an actual JSON Schema generation throws, exactly as it already
-// did via the to-json-schema stub. Desync hazard on a zod bump is pinned
-// by tests/unit/zodProcessorsStubbed.test.ts: it diffs the verbatim block
-// against the installed zod's own source and runs a behaviour battery
-// over the live accessors, so a zod upgrade that changes aggregateChecks
-// fails the test suite instead of silently desyncing the bundle.
+// BD-5 (bundle diet, 2026-11-18) — the surgical half of the processors
+// module. json-schema-processors.js (~35 KB source) ships in the client
+// bundle because classic/schemas.js reads ONE export from it on live
+// schema instances: aggregateChecks, folded into the derived public
+// accessors (ZodString.format / .minLength / .maxLength, ZodNumber
+// .minValue / .maxValue / .format, …). Everything else the module
+// carries — the ~40 per-type processors, allProcessors, and the
+// standalone toJSONSchema — runs only during JSON Schema generation,
+// which the plugin above already stubs at the generator. So this plugin
+// resolves the processors module (for zod-internal importers only, the
+// same two specifier shapes as above) to a stub that keeps
+// aggregateChecks REAL — copied verbatim below (the range tables are
+// value-verbatim: their @__PURE__ IIFE wrappers are unwrapped), with its
+// module-local helpers, from zod 4.x's
+// core/json-schema-processors.js + core/util.js — and makes every
+// generation-only export throw if ever invoked, the same loud failure
+// as the generator stub. tests/unit/zodProcessorsStub.test.ts pins the
+// verbatim copy against the installed zod (a zod bump that changes
+// aggregateChecks fails there until this copy is refreshed) and runs a
+// behaviour battery over the live accessors. Desync hazard, stated
+// plainly: if zod changes aggregateChecks' helpers or tables and this
+// copy is not refreshed, the accessors above would fold checks with
+// stale rules — the pin test is the guard, and it reads the INSTALLED
+// module, never a remembered copy.
+const ZOD_PROCESSORS_VERBATIM = [
+  `const NUMBER_FORMAT_RANGES = {`,
+  `    safeint: [Number.MIN_SAFE_INTEGER, Number.MAX_SAFE_INTEGER],`,
+  `    int32: [-2147483648, 2147483647],`,
+  `    uint32: [0, 4294967295],`,
+  `    float32: [-3.4028234663852886e38, 3.4028234663852886e38],`,
+  `    float64: [-Number.MAX_VALUE, Number.MAX_VALUE],`,
+  `};`,
+  `const BIGINT_FORMAT_RANGES = {`,
+  `    int64: [BigInt("-9223372036854775808"), BigInt("9223372036854775807")],`,
+  `    uint64: [BigInt(0), BigInt("18446744073709551615")],`,
+  `};`,
+  `const narrowMin = (agg, key, value) => {`,
+  `    if (agg[key] === undefined || value > agg[key])`,
+  `        agg[key] = value;`,
+  `};`,
+  `const narrowMax = (agg, key, value) => {`,
+  `    if (agg[key] === undefined || value < agg[key])`,
+  `        agg[key] = value;`,
+  `};`,
+  `const narrowBoth = (agg, value) => {`,
+  `    narrowMin(agg, "minimum", value);`,
+  `    narrowMax(agg, "maximum", value);`,
+  `};`,
+  `const addDivisor = (agg, value) => {`,
+  `    agg.multipleOf ?? (agg.multipleOf = []);`,
+  `    if (!agg.multipleOf.includes(value))`,
+  `        agg.multipleOf.push(value);`,
+  `};`,
+  `const addPattern = (agg, pattern) => {`,
+  `    agg.patterns ?? (agg.patterns = new Set());`,
+  `    agg.patterns.add(pattern);`,
+  `};`,
+  `const intersectMime = (agg, mime) => {`,
+  `    agg.mime = agg.mime ? agg.mime.filter((m) => mime.includes(m)) : [...mime];`,
+  `};`,
+  `// last-wins, matching the bag's historical write order; the flag keeps an integer format from being lost to a later float one`,
+  `const setFormat = (agg, format) => {`,
+  `    agg.format = format;`,
+  `    if (format.includes("int"))`,
+  `        agg.isInt = true;`,
+  `};`,
+  `const minContributor = (agg, def) => narrowMin(agg, "minimum", def.minimum);`,
+  `const maxContributor = (agg, def) => narrowMax(agg, "maximum", def.maximum);`,
+  `const formatContributor = (ranges) => (agg, def) => {`,
+  `    setFormat(agg, def.format);`,
+  `    const [minimum, maximum] = ranges[def.format];`,
+  `    narrowMin(agg, "minimum", minimum);`,
+  `    narrowMax(agg, "maximum", maximum);`,
+  `};`,
+  `const contributors = {`,
+  `    greater_than: (agg, def) => narrowMin(agg, def.inclusive ? "minimum" : "exclusiveMinimum", def.value),`,
+  `    less_than: (agg, def) => narrowMax(agg, def.inclusive ? "maximum" : "exclusiveMaximum", def.value),`,
+  `    multiple_of: (agg, def) => addDivisor(agg, def.value),`,
+  `    number_format: formatContributor(NUMBER_FORMAT_RANGES),`,
+  `    bigint_format: formatContributor(BIGINT_FORMAT_RANGES),`,
+  `    min_length: minContributor,`,
+  `    max_length: maxContributor,`,
+  `    length_equals: (agg, def) => narrowBoth(agg, def.length),`,
+  `    min_size: minContributor,`,
+  `    max_size: maxContributor,`,
+  `    size_equals: (agg, def) => narrowBoth(agg, def.size),`,
+  `    string_format: (agg, def) => {`,
+  `        setFormat(agg, def.format);`,
+  `        if (def.pattern)`,
+  `            addPattern(agg, def.pattern);`,
+  `        if (def.format === "base64" || def.format === "base64url")`,
+  `            agg.contentEncoding = def.format;`,
+  `        if (def.local || def.precision === -1)`,
+  `            agg.laxFormat = true;`,
+  `    },`,
+  `    mime_type: (agg, def) => intersectMime(agg, def.mime),`,
+  `};`,
+];
+const ZOD_AGGREGATE_CHECKS_VERBATIM = [
+  `export function aggregateChecks(schema) {`,
+  `    const agg = {};`,
+  `    const def = schema._zod.def;`,
+  `    // a format schema is its own first check, same rule as $ZodType init`,
+  `    const list = schema._zod.traits.has("$ZodCheck")`,
+  `        ? [schema, ...(def.checks ?? [])]`,
+  `        : (def.checks ?? []);`,
+  `    for (const ch of list)`,
+  `        contributors[ch._zod.def.check]?.(agg, ch._zod.def);`,
+  `    // reconcile with the bag so third-party onattach contributions still land; first-party residue is never tighter than the fold, so merging it back is idempotent for one and additive for the other`,
+  `    const bag = schema._zod.bag;`,
+  `    if (bag.minimum !== undefined)`,
+  `        narrowMin(agg, "minimum", bag.minimum);`,
+  `    if (bag.exclusiveMinimum !== undefined)`,
+  `        narrowMin(agg, "exclusiveMinimum", bag.exclusiveMinimum);`,
+  `    if (bag.maximum !== undefined)`,
+  `        narrowMax(agg, "maximum", bag.maximum);`,
+  `    if (bag.exclusiveMaximum !== undefined)`,
+  `        narrowMax(agg, "exclusiveMaximum", bag.exclusiveMaximum);`,
+  `    if (bag.multipleOf !== undefined)`,
+  `        addDivisor(agg, bag.multipleOf);`,
+  `    if (bag.format !== undefined) {`,
+  `        agg.format ?? (agg.format = bag.format);`,
+  `        if (bag.format.includes("int"))`,
+  `            agg.isInt = true;`,
+  `    }`,
+  `    if (bag.mime)`,
+  `        intersectMime(agg, bag.mime);`,
+  `    for (const pattern of bag.patterns ?? [])`,
+  `        addPattern(agg, pattern);`,
+  `    return agg;`,
+  `}`,
+];
+const ZOD_GENERATION_PROCESSORS = [
+  "stringProcessor", "numberProcessor", "booleanProcessor", "bigintProcessor", "symbolProcessor",
+  "nullProcessor", "undefinedProcessor", "voidProcessor", "neverProcessor", "anyProcessor",
+  "unknownProcessor", "dateProcessor", "enumProcessor", "literalProcessor", "nanProcessor",
+  "templateLiteralProcessor", "fileProcessor", "successProcessor", "customProcessor", "functionProcessor",
+  "transformProcessor", "mapProcessor", "setProcessor", "arrayProcessor", "objectProcessor",
+  "unionProcessor", "intersectionProcessor", "tupleProcessor", "recordProcessor", "nullableProcessor",
+  "nonoptionalProcessor", "defaultProcessor", "prefaultProcessor", "catchProcessor", "pipeProcessor",
+  "readonlyProcessor", "promiseProcessor", "optionalProcessor", "lazyProcessor",
+];
+const ZOD_ALL_PROCESSOR_KEYS = [
+  "string", "number", "boolean", "bigint", "symbol", "null", "undefined", "void", "never", "any",
+  "unknown", "date", "enum", "literal", "nan", "template_literal", "file", "success", "custom",
+  "function", "transform", "map", "set", "array", "object", "union", "intersection", "tuple",
+  "record", "nullable", "nonoptional", "default", "prefault", "catch", "pipe", "readonly",
+  "promise", "optional", "lazy",
+];
 function zodJsonSchemaProcessorsPlugin(): Plugin {
-  const STUB = "\0zod-json-schema-processors-stub";
+  const STUB = "\0zod-json-schema-processors";
   return {
     name: "acreos-zod-json-schema-processors",
     enforce: "pre",
     resolveId(source, importer) {
       if (!importer || !/node_modules[\\/]zod[\\/]/.test(importer)) return null;
-      // Every zod-internal import of the processors module ends with this
-      // filename ("../core/json-schema-processors.js" from classic/mini,
-      // "./json-schema-processors.js" from core itself); the importer is
-      // already gated to zod above, so the suffix match cannot hit app
-      // code — the same shape as the generator plugin's primary branch.
       const normalized = source.replace(/\\/g, "/");
-      if (normalized.endsWith("json-schema-processors.js")) return STUB;
+      if (normalized.endsWith("core/json-schema-processors.js")) return STUB;
+      if (normalized.startsWith(".")) {
+        const importerDir = importer.replace(/\\/g, "/").split("/").slice(0, -1).join("/");
+        const resolved = `${importerDir}/${normalized.replace(/^\.\//, "")}`;
+        if (resolved.endsWith("zod/v4/core/json-schema-processors.js")) return STUB;
+      }
       return null;
     },
     load(id) {
       if (id !== STUB) return null;
       return [
-        `const unavailable = () => { throw new Error("zod JSON Schema generation (per-type processors / toJSONSchema) is not bundled in AcreOS (vite.config.ts zodJsonSchemaProcessorsPlugin)"); };`,
-        // === BEGIN VERBATIM RANGE TABLES (zod 4.6.7, v4/core/util.js) ===
-        `const NUMBER_FORMAT_RANGES = { safeint: [Number.MIN_SAFE_INTEGER, Number.MAX_SAFE_INTEGER], int32: [-2147483648, 2147483647], uint32: [0, 4294967295], float32: [-3.4028234663852886e38, 3.4028234663852886e38], float64: [-Number.MAX_VALUE, Number.MAX_VALUE] };`,
-        `const BIGINT_FORMAT_RANGES = { int64: [BigInt("-9223372036854775808"), BigInt("9223372036854775807")], uint64: [BigInt(0), BigInt("18446744073709551615")] };`,
-        // === END VERBATIM RANGE TABLES ===
-        // === BEGIN VERBATIM aggregateChecks (zod 4.6.7, v4/core/json-schema-processors.js) ===
-        `const narrowMin = (agg, key, value) => {
-    if (agg[key] === undefined || value > agg[key])
-        agg[key] = value;
-};
-const narrowMax = (agg, key, value) => {
-    if (agg[key] === undefined || value < agg[key])
-        agg[key] = value;
-};
-const narrowBoth = (agg, value) => {
-    narrowMin(agg, "minimum", value);
-    narrowMax(agg, "maximum", value);
-};
-const addDivisor = (agg, value) => {
-    agg.multipleOf ?? (agg.multipleOf = []);
-    if (!agg.multipleOf.includes(value))
-        agg.multipleOf.push(value);
-};
-const addPattern = (agg, pattern) => {
-    agg.patterns ?? (agg.patterns = new Set());
-    agg.patterns.add(pattern);
-};
-const intersectMime = (agg, mime) => {
-    agg.mime = agg.mime ? agg.mime.filter((m) => mime.includes(m)) : [...mime];
-};
-// last-wins, matching the bag's historical write order; the flag keeps an integer format from being lost to a later float one
-const setFormat = (agg, format) => {
-    agg.format = format;
-    if (format.includes("int"))
-        agg.isInt = true;
-};
-const minContributor = (agg, def) => narrowMin(agg, "minimum", def.minimum);
-const maxContributor = (agg, def) => narrowMax(agg, "maximum", def.maximum);
-const formatContributor = (ranges) => (agg, def) => {
-    setFormat(agg, def.format);
-    const [minimum, maximum] = ranges[def.format];
-    narrowMin(agg, "minimum", minimum);
-    narrowMax(agg, "maximum", maximum);
-};
-const contributors = {
-    greater_than: (agg, def) => narrowMin(agg, def.inclusive ? "minimum" : "exclusiveMinimum", def.value),
-    less_than: (agg, def) => narrowMax(agg, def.inclusive ? "maximum" : "exclusiveMaximum", def.value),
-    multiple_of: (agg, def) => addDivisor(agg, def.value),
-    number_format: formatContributor(NUMBER_FORMAT_RANGES),
-    bigint_format: formatContributor(BIGINT_FORMAT_RANGES),
-    min_length: minContributor,
-    max_length: maxContributor,
-    length_equals: (agg, def) => narrowBoth(agg, def.length),
-    min_size: minContributor,
-    max_size: maxContributor,
-    size_equals: (agg, def) => narrowBoth(agg, def.size),
-    string_format: (agg, def) => {
-        setFormat(agg, def.format);
-        if (def.pattern)
-            addPattern(agg, def.pattern);
-        if (def.format === "base64" || def.format === "base64url")
-            agg.contentEncoding = def.format;
-        if (def.local || def.precision === -1)
-            agg.laxFormat = true;
-    },
-    mime_type: (agg, def) => intersectMime(agg, def.mime),
-};
-export function aggregateChecks(schema) {
-    const agg = {};
-    const def = schema._zod.def;
-    // a format schema is its own first check, same rule as $ZodType init
-    const list = schema._zod.traits.has("$ZodCheck")
-        ? [schema, ...(def.checks ?? [])]
-        : (def.checks ?? []);
-    for (const ch of list)
-        contributors[ch._zod.def.check]?.(agg, ch._zod.def);
-    // reconcile with the bag so third-party onattach contributions still land; first-party residue is never tighter than the fold, so merging it back is idempotent for one and additive for the other
-    const bag = schema._zod.bag;
-    if (bag.minimum !== undefined)
-        narrowMin(agg, "minimum", bag.minimum);
-    if (bag.exclusiveMinimum !== undefined)
-        narrowMin(agg, "exclusiveMinimum", bag.exclusiveMinimum);
-    if (bag.maximum !== undefined)
-        narrowMax(agg, "maximum", bag.maximum);
-    if (bag.exclusiveMaximum !== undefined)
-        narrowMax(agg, "exclusiveMaximum", bag.exclusiveMaximum);
-    if (bag.multipleOf !== undefined)
-        addDivisor(agg, bag.multipleOf);
-    if (bag.format !== undefined) {
-        agg.format ?? (agg.format = bag.format);
-        if (bag.format.includes("int"))
-            agg.isInt = true;
-    }
-    if (bag.mime)
-        intersectMime(agg, bag.mime);
-    for (const pattern of bag.patterns ?? [])
-        addPattern(agg, pattern);
-    return agg;
-}`,
-        // === END VERBATIM aggregateChecks ===
-        `export const stringProcessor = unavailable;`,
-        `export const numberProcessor = unavailable;`,
-        `export const booleanProcessor = unavailable;`,
-        `export const bigintProcessor = unavailable;`,
-        `export const symbolProcessor = unavailable;`,
-        `export const nullProcessor = unavailable;`,
-        `export const undefinedProcessor = unavailable;`,
-        `export const voidProcessor = unavailable;`,
-        `export const neverProcessor = unavailable;`,
-        `export const anyProcessor = unavailable;`,
-        `export const unknownProcessor = unavailable;`,
-        `export const dateProcessor = unavailable;`,
-        `export const enumProcessor = unavailable;`,
-        `export const literalProcessor = unavailable;`,
-        `export const nanProcessor = unavailable;`,
-        `export const templateLiteralProcessor = unavailable;`,
-        `export const fileProcessor = unavailable;`,
-        `export const successProcessor = unavailable;`,
-        `export const customProcessor = unavailable;`,
-        `export const functionProcessor = unavailable;`,
-        `export const transformProcessor = unavailable;`,
-        `export const mapProcessor = unavailable;`,
-        `export const setProcessor = unavailable;`,
-        `export const arrayProcessor = unavailable;`,
-        `export const objectProcessor = unavailable;`,
-        `export const unionProcessor = unavailable;`,
-        `export const intersectionProcessor = unavailable;`,
-        `export const tupleProcessor = unavailable;`,
-        `export const recordProcessor = unavailable;`,
-        `export const nullableProcessor = unavailable;`,
-        `export const nonoptionalProcessor = unavailable;`,
-        `export const defaultProcessor = unavailable;`,
-        `export const prefaultProcessor = unavailable;`,
-        `export const catchProcessor = unavailable;`,
-        `export const pipeProcessor = unavailable;`,
-        `export const readonlyProcessor = unavailable;`,
-        `export const promiseProcessor = unavailable;`,
-        `export const optionalProcessor = unavailable;`,
-        `export const lazyProcessor = unavailable;`,
-        `export const allProcessors = { string: unavailable, number: unavailable, boolean: unavailable, bigint: unavailable, symbol: unavailable, null: unavailable, undefined: unavailable, void: unavailable, never: unavailable, any: unavailable, unknown: unavailable, date: unavailable, enum: unavailable, literal: unavailable, nan: unavailable, templateLiteral: unavailable, file: unavailable, success: unavailable, custom: unavailable, function: unavailable, transform: unavailable, map: unavailable, set: unavailable, array: unavailable, object: unavailable, union: unavailable, intersection: unavailable, tuple: unavailable, record: unavailable, nullable: unavailable, nonoptional: unavailable, default: unavailable, prefault: unavailable, catch: unavailable, pipe: unavailable, readonly: unavailable, promise: unavailable, optional: unavailable, lazy: unavailable };`,
+        `const unavailable = () => { throw new Error("zod JSON Schema generation (the per-type processors / toJSONSchema) is not bundled in AcreOS (vite.config.ts zodJsonSchemaProcessorsPlugin)"); };`,
+        ...ZOD_PROCESSORS_VERBATIM,
+        ...ZOD_AGGREGATE_CHECKS_VERBATIM,
+        ...ZOD_GENERATION_PROCESSORS.map((n) => `export const ${n} = unavailable;`),
+        `export const allProcessors = { ${ZOD_ALL_PROCESSOR_KEYS.map((k) => `${k}: unavailable`).join(", ")} };`,
         `export const toJSONSchema = unavailable;`,
       ].join("\n");
     },
