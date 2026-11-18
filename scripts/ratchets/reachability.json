@@ -6,7 +6,7 @@
   "description": "REACHABILITY ratchet. `tsc`, the test suite and every existing lint gate check TYPES and BEHAVIOUR; nothing checked whether a thing is REACHED. CLAUDE.md names 'built but unwired' as this repo's single most common defect, and every instance (services/lateFees, services/respa/earlyIntervention, calculateFlipAnalysis, taxSaleAuctions/taxSaleListings, achMandateSetup/achAutopayRun, rental_units.kind='pad', routes-contract-chain.ts, the rent-roll importer's unitKind arg) shipped GREEN and was found hours later by a manual audit. This converts that recurring audit into CI. Every count is strictly down-only, and raising one requires explicit founder/Iris-CTO sign-off (see lastBumpNote for the exceptions actually invoked): exports in server/services|jobs with no production call site; pgTables with no writer; pgTables with no reader; routes-*.ts never mounted; exports the gate cannot assert on because their module is dynamically imported in a way that hides which exports are touched; and service/job files nothing imports at all. Family 1 is TWO rules, split 2026-08-20: `unreachedExports` is the accusation (nothing anywhere references the symbol) and `internalOnlyExports` is the narrower complaint (exported, but used only inside its own module \u2014 drop the keyword, keep the code). They are baselined apart because merged, the second buried the first four to one. The count of families is deliberately not stated here \u2014 it said 'four' for as long as there were four, and would have said it forever. THE CHEAPEST WAY TO SATISFY THIS GATE IS DELETION \u2014 the north star is a smaller codebase, and every reduction must be locked in by the commit that earned it (a stale-high baseline FAILS, same as `as-any`).",
   "baselines": {
     "unreachedExports": 408,
-    "internalOnlyExports": 1219,
+    "internalOnlyExports": 1217,
     "tablesNoWriter": 53,
     "tablesNoReader": 58,
     "unregisteredRoutes": 4,
@@ -1194,8 +1194,23 @@
       "kind": "export",
       "id": "server/services/privacy/dsarBreachAlert.ts::breachAlertDue",
       "reason": "TEST SEAM (Autopilot B-1, 2026-11-17). The re-alert due check (first breach always due, then only once the last alert is at least DSAR_BREACH_RE_ALERT_MS old); runDsarBreachAlertSweep consumes it in-module, and dsarBreachAlert.test.ts pins the first-breach and interval boundaries directly. REVOCATION: if a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "server/services/settlementRail/delivery.ts::RailDeliveryRefusedError",
+      "reason": "TEST SEAM (T-DEF-2, 2026-11-18). The rail layer's refusal type: translateRailDeliveryError raises it inside delivery.ts and railDeliveryHttpError reads it there, while the routes consume only the HTTP mapping; exported so railDeliveryErrors.test.ts asserts a mail-lane refusal surfaces as exactly this type carrying the lane's own reason, not an incidental error. REVOCATION: if a production module imports it by type, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "server/services/settlementRail/delivery.ts::RailDeliveryConflictError",
+      "reason": "TEST SEAM (T-DEF-2, 2026-11-18). The rail layer's conflict type (send_in_flight / send_outcome_unknown / idempotency_key_reused): raised and read inside delivery.ts, where railDeliveryHttpError maps it to 409, while the routes consume only the HTTP mapping; exported so railDeliveryErrors.test.ts asserts a send-claim collision surfaces as exactly this type with its reason. REVOCATION: if a production module imports it by type, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "server/services/settlementRail/delivery.ts::translateRailDeliveryError",
+      "reason": "TEST SEAM (T-DEF-2, 2026-11-18). The rail layer's single error translation (lane refusal \u2192 RailDeliveryRefusedError, send-claim errors \u2192 RailDeliveryConflictError, rail errors and genuine faults pass through by identity); called only by deliverRailLetterByMail inside delivery.ts, and exported so railDeliveryErrors.test.ts pins the identity passthrough directly. REVOCATION: if a production module imports it, remove this entry."
     }
   ],
-  "lastBumpNote": "2026-11-15 PR #590 fix round (P2-6 S1 /trust): baselines LOWERED to measured \u2014 unreachedExports 410\u2192408, internalOnlyExports 1221\u21921219. The /trust page + expanded scripts/audit-public-claims.ts consume two previously-unreached exports, so the counts fell and the stale-high baselines failed lint:reachability (CI: TypeScript check + ratchets, TS+Tests shard 2/3 reachabilityGate, Coverage ratchet \u2014 one root cause). No allowlist entries added or removed; direction stays down-only.",
-  "_lastBumpNote": "2026-11-15 PR #590 fix round (P2-6 S1 /trust): baselines LOWERED to measured \u2014 unreachedExports 410\u2192408, internalOnlyExports 1221\u21921219. The /trust page + expanded scripts/audit-public-claims.ts consume two previously-unreached exports, so the counts fell and the stale-high baselines failed lint:reachability (CI: TypeScript check + ratchets, TS+Tests shard 2/3 reachabilityGate, Coverage ratchet \u2014 one root cause). No allowlist entries added or removed; direction stays down-only."
+  "lastBumpNote": "2026-11-18 PR #616 fix round (D-1): baseline LOWERED to measured \u2014 internalOnlyExports 1219\u21921217. Three TEST-SEAM allowlist entries added for server/services/settlementRail/delivery.ts (RailDeliveryRefusedError, RailDeliveryConflictError, translateRailDeliveryError \u2014 all imported by tests/unit/railDeliveryErrors.test.ts), and the same PR's translation reaches outwardAction.ts's ActionInFlightError + ActionKeyReusedError from production, so the count fell two net of the exemptions and the stale-high rule required this lock-in (the PR #590 precedent). No baseline raised; direction stays down-only.",
+  "_lastBumpNote": "2026-11-18 PR #616 fix round (D-1): baseline LOWERED to measured \u2014 internalOnlyExports 1219\u21921217. Three TEST-SEAM allowlist entries added for server/services/settlementRail/delivery.ts (RailDeliveryRefusedError, RailDeliveryConflictError, translateRailDeliveryError \u2014 all imported by tests/unit/railDeliveryErrors.test.ts), and the same PR's translation reaches outwardAction.ts's ActionInFlightError + ActionKeyReusedError from production, so the count fell two net of the exemptions and the stale-high rule required this lock-in (the PR #590 precedent). No baseline raised; direction stays down-only."
 }
