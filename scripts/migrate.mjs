@@ -3087,6 +3087,34 @@ $mig0262$`,
   'CREATE INDEX IF NOT EXISTS idx_nps_org ON nps_responses(organization_id)',
   'CREATE INDEX IF NOT EXISTS idx_nps_trigger ON nps_responses(organization_id, trigger)',
 
+  // 0000 — 0000_sleepy_betty_ross: header only. Drizzle baseline, historical,
+  //   not mirrored (S4 ruling 2026-11-17, Group 1, Option A). The file is the
+  //   original whole-schema snapshot; prod's schema reaches it via this
+  //   file's own accretion, never by running the baseline. Zero statements:
+  //   mirroring it would re-create "sessions", which the release path drops
+  //   deliberately (founder-authorized dead-table drops, below).
+  // 0001 — 0001_brief_giant_man: header only. Drizzle baseline, historical,
+  //   not mirrored (S4 ruling 2026-11-17, Group 1, Option A). Zero statements.
+  //   The file's five orphans are named here so the record keeps them in
+  //   view: automation_executions, county_redemption_rates,
+  //   negotiation_sessions, payoff_quotes, tax_sale_alerts — created by the
+  //   baseline, declared nowhere, read by nothing; negotiation_sessions is
+  //   additionally dropped on the release path by the 0249 OD-8 tranche
+  //   (founder drop order, below). The file also creates borrower_sessions,
+  //   whose existence on prod is UNPROVEN by either file — a required
+  //   evidence input to S4 item 0081; this file is NOT retired before 0081
+  //   settles.
+  // 0003 — 0003_robust_namora: header only. Drizzle catch-up snapshot,
+  //   historical, not mirrored (S4 ruling 2026-11-17, Group 1, Option A).
+  //   Zero statements. Orphans this snapshot creates that the release path
+  //   drops on purpose on every deploy (founder-authorized dead-table
+  //   drops, below) — training_metrics, model_versions,
+  //   voice_call_recordings, voice_calls, satellite_analysis,
+  //   satellite_snapshots — are dropped on purpose; their presence in the
+  //   snapshot is not a revival list. This header takes NO position on the
+  //   fee tables the snapshot also creates (fee_audit_log,
+  //   fee_payout_schedules, transaction_fee_settlements): created here,
+  //   undeclared, unmirrored — their disposition is founder-held item 0214.
   // 0004 — 0004_field_scout_canonical_columns (pairs to this sibling: its 14 columns are
   //   carried by the field_scout_visits / field_scout_photos CREATEs below. The other
   //   0004 file, 0004_user_map_layer_preferences, retires in S3 — D2)
@@ -3250,9 +3278,18 @@ $mig0262$`,
   // leads: tax identity (0035)
   `ALTER TABLE leads ADD COLUMN IF NOT EXISTS tax_id text`,
   `ALTER TABLE leads ADD COLUMN IF NOT EXISTS tax_id_type text`,
-  // leads: phone normalization (0051) — GENERATED column requires pg_trgm
-  // for the gin_trgm_ops index. If pg_trgm absent, the index will be
-  // SKIPPED non-fatally.
+  // 0051 — 0051_phone_normalized
+  // leads half mirrored: the two statements below are the file's leads
+  //   phone_normalized generated column + its GIN trigram index, live and
+  //   pinned by tests/unit/phoneNormalizedMatchesMigration.test.ts.
+  //   GENERATED column requires pg_trgm for the gin_trgm_ops index. If
+  //   pg_trgm absent, the index will be SKIPPED non-fatally.
+  // borrower half HELD (S4 ruling 2026-11-17, Group 4): the file's identical
+  //   generated column + trigram index on borrower_payment_profiles are NOT
+  //   mirrored and NOT declared — held pending a named payment-ops consumer
+  //   (no reader of that column exists today). Any PR that adds a phone
+  //   lookup against borrower_payment_profiles lands the borrower half in
+  //   the same commit.
   `ALTER TABLE leads ADD COLUMN IF NOT EXISTS phone_normalized text
      GENERATED ALWAYS AS (regexp_replace(coalesce(phone, ''), '[^0-9]', '', 'g')) STORED`,
   `CREATE INDEX IF NOT EXISTS leads_phone_normalized_trgm_idx ON leads USING GIN (phone_normalized gin_trgm_ops)`,
@@ -3274,9 +3311,16 @@ $mig0262$`,
   `ALTER TABLE dunning_events ADD COLUMN IF NOT EXISTS sms_sent_at TIMESTAMPTZ`,
   `CREATE INDEX IF NOT EXISTS idx_dunning_events_sms_sent ON dunning_events (organization_id, sms_sent_at) WHERE sms_sent_at IS NOT NULL`,
 
-  // deal_patterns: embedding refresh tracker (0052) — pgvector column-type
+  // 0052 — 0052_pgvector_columns
+  // deal_patterns: embedding refresh tracker — pgvector column-type
   // change + IVFFlat index intentionally excluded; pgvector unavailable
   // on the current Fly Postgres image. Only the timestamp + btree ship.
+  // The exclusion is the RULING (S4, 2026-11-17, Group 4), not an
+  // oversight: the file's NULLing UPDATE, its jsonb-to-vector(1536)
+  // conversion and its IVFFlat index are deliberately not mirrored.
+  // Named successor: when a pgvector-capable Fly Postgres image lands,
+  // the conversion runs census-first (prod column type + malformed-row
+  // count measured read-only first; no blind nulling).
   `ALTER TABLE deal_patterns ADD COLUMN IF NOT EXISTS embedding_refreshed_at timestamp`,
   `CREATE INDEX IF NOT EXISTS deal_patterns_embedding_refreshed_at_idx ON deal_patterns (embedding_refreshed_at NULLS FIRST)`,
   // Tahoe L3 shard-readiness composites on the embedding-bearing
@@ -14370,6 +14414,14 @@ $$ LANGUAGE sql IMMUTABLE PARALLEL SAFE`,
   ON rehab_photos (organization_id, rehab_id, captured_at DESC)`,
   `CREATE INDEX IF NOT EXISTS rehab_photos_rehab_tag_idx
   ON rehab_photos (rehab_id, tag)`,
+  // 0097 — 0097_lead_photos: header only. lead_photos is deliberately NOT
+  //   mirrored (S4 ruling 2026-11-17, Group 4): the Drive Mode / field-
+  //   capture photo surface it was designed for shipped on
+  //   field_scout_photos instead (declared in shared/schema.ts, served by
+  //   server/routes-field-scout.ts). lead_photos stays a registered orphan
+  //   with no reader or writer; revisit only if a future Drive Mode
+  //   redesign names this table. NOT rehab_photos (0089, above — Fix-and-
+  //   Flip, declared, live): the two rulings do not touch each other.
   // 0092 — 0092_audit_log_purges
   `CREATE TABLE IF NOT EXISTS audit_log_purges (
   id              serial      PRIMARY KEY,
