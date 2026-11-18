@@ -782,6 +782,7 @@ const DEBT: Record<string, ProposedSurface> = {
   "server/routes-support-tickets.ts route:POST /api/support/tickets/:id/messages": "review",
   // server/routes-tax-certificates.ts
   "server/routes-tax-certificates.ts route:POST /api/tax-certificates": "review",
+  "server/routes-tax-certificates.ts route:POST /api/tax-certificates/:id/redemption-notice": "review",
   // server/routes-tax-delinquent.ts
   "server/routes-tax-delinquent.ts route:GET /": "lead_contact_read",
   "server/routes-tax-delinquent.ts route:GET /:id": "lead_contact_read",
@@ -863,7 +864,11 @@ const DEBT: Record<string, ProposedSurface> = {
 // (its own note: 212 → 213 on its branch) — unions with the stack's 222;
 // disjoint entry sets, verified by key count (223). Census re-run on
 // the merged tree is the proof.
-const DEBT_BASELINE = 223;
+// 223 → 224 (T-P1, 2026-11-18): the Tax transplant's ONE new surface —
+// POST /api/tax-certificates/:id/redemption-notice, which mails the owner
+// of record a statutory notice through the rail — registered "review",
+// mirroring its sibling POST /api/tax-certificates.
+const DEBT_BASELINE = 224;
 
 /**
  * Every file holding a dispatch switch (≥10 snake_case case labels, raw count)

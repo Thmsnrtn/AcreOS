@@ -12,8 +12,11 @@
  *   - Interest accrues only where AcreOS has an encoded rule for the state,
  *     and covers the certificate amount only; otherwise it is "not computed",
  *     with why.
- *   - A redemption notice is a record of a notice the OPERATOR sent, outside
- *     AcreOS. AcreOS sends nothing.
+ *   - A redemption notice is one of two records, told apart on the entry:
+ *     a notice the OPERATOR sent outside AcreOS and recorded after the fact
+ *     (`sentByOperator`), or a notice drafted and sent IN-PRODUCT through
+ *     the Settlement & Documents Rail (P3-2 / T-P1), recorded from the mail
+ *     provider's receipt (`sentViaRail`, with the provider's id).
  *   - The foreclosure-filing deadline is stated with its source (the county
  *     procedure or the county's record). There is no national default: with
  *     none stated, it says so.
@@ -52,7 +55,7 @@ export interface CertificateLedger {
     reimbursement: { status: "stated"; text: string } | { status: "not_stated"; why: string };
   };
   interest: { status: "computed"; text: string; cents: number } | { status: "not_computed"; why: string };
-  notices: Array<{ sentOn: string; method: string; note: string | null; source: string }>;
+  notices: Array<{ sentOn: string; method: string; note: string | null; source: string; viaRail: boolean; providerId: string | null }>;
   foreclosureFilingDeadline: { status: "stated"; date: string; basis: string } | { status: "not_stated"; why: string };
 }
 
@@ -63,7 +66,14 @@ export function certificateLedger(i: LedgerInput): CertificateLedger {
     .sort((a, b) => a.paidOn.localeCompare(b.paidOn));
   const notices = i.events
     .filter((e) => e.eventType === "redemption_notice_recorded")
-    .map((e) => ({ sentOn: e.eventDate, method: String(e.detail.method ?? "not stated"), note: typeof e.detail.note === "string" ? e.detail.note : null, source: sourceOf(e) }))
+    .map((e) => ({
+      sentOn: e.eventDate,
+      method: String(e.detail.method ?? "not stated"),
+      note: typeof e.detail.note === "string" ? e.detail.note : null,
+      source: sourceOf(e),
+      viaRail: e.detail.sentViaRail === true,
+      providerId: typeof e.detail.providerId === "string" ? e.detail.providerId : null,
+    }))
     .sort((a, b) => a.sentOn.localeCompare(b.sentOn));
   // The latest registration wins, as for every tax calendar event.
   const foreclosure = i.events.filter((e) => e.eventType === "foreclosure_filing_deadline").sort((a, b) => a.recordedAt.localeCompare(b.recordedAt)).at(-1);

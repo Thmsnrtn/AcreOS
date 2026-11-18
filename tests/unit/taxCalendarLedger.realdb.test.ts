@@ -144,7 +144,7 @@ describe.runIf(realDbAvailable)("sale calendar, registration gate and position r
     expect(last.status).toBe(200);
     const l = (await request(app).get(`/api/tax-certificates/${certId}/ledger`)).body.ledger;
     expect(l.subsequentTaxes).toMatchObject({ totalCents: 49_000, payments: [{ amountCents: 49_000, taxYear: "2025", source: "SYNTHETIC receipt #1" }], reimbursement: { status: "not_stated" } });
-    expect(l.notices).toEqual([{ sentOn: today, method: "Certified mail", note: null, source: "SYNTHETIC receipt 7019" }]);
+    expect(l.notices).toEqual([{ sentOn: today, method: "Certified mail", note: null, source: "SYNTHETIC receipt 7019", viaRail: false, providerId: null }]);
     expect(l.foreclosureFilingDeadline).toEqual({ status: "stated", date: "2029-06-01", basis: "SYNTHETIC procedure v2" });
     expect(l.interest.status).toBe("not_computed"); // OH has no encoded rule
     expect(l.redemptionDeadline.basis).toMatch(/before AcreOS tracked|county's records/);

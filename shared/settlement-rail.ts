@@ -20,12 +20,13 @@
  * the server (server/services/settlementRail/documents.ts) is the population
  * the reachability of this list is checked against.
  */
-export const RAIL_DOCUMENT_KINDS = ["payoff_letter", "lien_release"] as const;
+export const RAIL_DOCUMENT_KINDS = ["payoff_letter", "lien_release", "tax_redemption_notice"] as const;
 export type RailDocumentKind = (typeof RAIL_DOCUMENT_KINDS)[number];
 
 export const RAIL_DOCUMENT_LABELS: Readonly<Record<RailDocumentKind, string>> = {
   payoff_letter: "Payoff letter",
   lien_release: "Lien release / satisfaction of mortgage",
+  tax_redemption_notice: "Tax redemption notice",
 };
 
 // ── Delivery lanes ───────────────────────────────────────────────────────────
