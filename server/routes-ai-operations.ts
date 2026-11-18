@@ -638,8 +638,44 @@ export function registerAIOperationsRoutes(app: Express): void {
   router.post("/buyer-matching/profile", isAuthenticated, getOrCreateOrg, validateRequest(buyerProfileSchema), async (req, res) => {
     try {
       const org = req.organization;
-      const params = req.body;
-      
+      const body = req.body as z.infer<typeof buyerProfileSchema>;
+
+      // W-DEF-2: the flat request fields ARE the buyer's buy box, but the
+      // service stores preferences/financialInfo. Passing the flat body
+      // through stored nulls for all three, so the buyer matched on neutral
+      // defaults and fell out of the default cash blast audience. Translate
+      // here, where the flat contract lives; the stored shape is unchanged
+      // and only fields the caller actually supplied are set — a profile
+      // created with no flat fields stores the same nulls it always did.
+      const preferences = {
+        ...(body.targetCounties !== undefined ? { counties: body.targetCounties } : {}),
+        ...(body.priceRangeMin !== undefined ? { minPrice: body.priceRangeMin } : {}),
+        ...(body.priceRangeMax !== undefined ? { maxPrice: body.priceRangeMax } : {}),
+        ...(body.acreageMin !== undefined ? { minAcreage: body.acreageMin } : {}),
+        ...(body.acreageMax !== undefined ? { maxAcreage: body.acreageMax } : {}),
+      };
+      const financialInfo = {
+        // The stated price ceiling is also the buyer's budget: price
+        // matching prefers financialInfo.budget, and buyer analytics read
+        // budget as the buyer's stated capacity.
+        ...(body.priceRangeMax !== undefined ? { budget: body.priceRangeMax } : {}),
+        // `financing: true` asserts the buyer has their money in place —
+        // the cash-buyer case the default blast audience is built on.
+        // `false` asserts nothing about how the buyer pays, so no
+        // financingType is stored for it (never an invented audience).
+        ...(body.financing === true ? { financingType: "cash" } : {}),
+      };
+      const params = {
+        leadId: body.leadId,
+        // The flat schema carries no profile type; "individual" is the
+        // column default every profile created through this route has
+        // always stored.
+        profileType: "individual" as const,
+        preferences: Object.keys(preferences).length > 0 ? preferences : undefined,
+        financialInfo: Object.keys(financialInfo).length > 0 ? financialInfo : undefined,
+        intent: undefined,
+      };
+
       const { buyerMatchingAIService } = await import("./services/buyerMatchingAI");
       const profile = await buyerMatchingAIService.createBuyerProfile(org.id, params);
       
