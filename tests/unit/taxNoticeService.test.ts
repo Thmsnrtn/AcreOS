@@ -208,6 +208,19 @@ describe("T-P1 service — refusals send nothing and record nothing", () => {
     expect((inserts[0].values as { detail: Record<string, unknown> }).detail).toMatchObject({ amountBasis: "operator_supplied", amountCents: 130_500 });
   });
 
+  it("a mail-lane refusal (T-DEF-2's shape: sender identity unverified) propagates and records NOTHING — no receipt, no ledger entry", async () => {
+    const laneRefusal = Object.assign(
+      new Error('AcreOS mail only goes out under a verified return address, and "Main office" is not verified yet.'),
+      { name: "RailDeliveryRefusedError", reason: "sender_identity_unverified" },
+    );
+    deliverMock.mockRejectedValue(laneRefusal);
+    await expect(
+      sendTaxRedemptionNotice({ organizationId: ORG, certificateId: CERT_ID, lane: "certified_mail", recordedByUserId: "user-1" }),
+    ).rejects.toBe(laneRefusal);
+    expect(deliverMock).toHaveBeenCalledTimes(1);
+    expect(callsOn("insert", taxEvents)).toHaveLength(0);
+  });
+
   it("an unknown certificate is a refusal, not a send", async () => {
     fake.selectRows.set(taxCertificates, []);
     await expect(
