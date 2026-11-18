@@ -287,7 +287,7 @@ function toAllocationCharge(c: LedgerCharge): OpenChargeForAllocation {
 export const RENT_ROLL_EMPTY_COPY = {
   headline: "No unpaid rent charges",
   subtitle:
-    "No rent charge on the ledger has an open balance — which is also what you see when no rent charges have been posted yet. This is not confirmation that rent was paid. Open a lease ledger to record a payment you received, or to check a deposit clock.",
+    "No rent charge on the ledger has an open balance — also what you see when no charges have been posted yet. This is not confirmation that rent was paid. Open a lease ledger to record a payment, or check a deposit clock.",
 } as const;
 
 export default function RentRollPage() {
@@ -377,13 +377,13 @@ export default function RentRollPage() {
           Rent roll
         </h1>
         <p className="text-sm text-muted-foreground mt-1 max-w-3xl">
-          Aging across every lease, the ledger behind each balance, and the statutory clocks that
-          run against you. Late fees are <strong>proposed</strong> from the state rule and charged
-          only when you confirm the figure.
+          Aging across every lease, the ledger behind each balance, and the statutory clocks
+          against you. Late fees are <strong>proposed</strong> from the state rule; charged
+          only when you confirm.
         </p>
         <p className="text-xs text-muted-foreground mt-2 max-w-3xl">
-          AcreOS does not collect rent and never holds a tenant deposit — you receive money on your
-          own rails and record it here. Nothing on this page moves funds.
+          AcreOS does not collect rent or hold a tenant deposit — you receive money on your
+          own rails and record it here. Nothing here moves funds.
         </p>
       </div>
 
@@ -444,9 +444,9 @@ export default function RentRollPage() {
                 <AlertTriangle className="w-4 h-4 text-acr-warning" aria-hidden="true" /> Open balances
               </CardTitle>
               <CardDescription>
-                Sorted by due date, oldest first. Open a ledger to see how each payment was applied.
+                Sorted by due date, oldest first. Open a ledger to see how payments were applied.
                 {!isCommercial &&
-                  " The proposed fee is what the state rule on record allows today, net of any late fee already charged — nothing is charged until you confirm it."}
+                  " The proposed fee is what the state rule allows today, net of any late fee already charged — nothing charged until you confirm."}
               </CardDescription>
             </CardHeader>
             <CardContent className="p-0">
@@ -679,9 +679,9 @@ export default function RentRollPage() {
           </CardHeader>
           <CardContent>
             <p className="text-sm text-muted-foreground max-w-3xl" data-testid="commercial-late-fee-note">
-              Commercial late fees are set by the lease, not by state statute — the residential
-              statutory late-fee rules do not apply to a commercial tenancy. Enter a late fee as a
-              manual charge at the figure your lease specifies. AcreOS will not propose one from a
+              Commercial late fees are set by the lease, not by state statute — residential
+              statutory rules do not apply to a commercial tenancy. Enter a late fee as a
+              manual charge at your lease's figure. AcreOS will not propose one from a
               residential statute here.
             </p>
           </CardContent>
@@ -708,7 +708,7 @@ export default function RentRollPage() {
                 isRetrying={rules.isRefetching}
                 compact
                 title="Couldn't load the late-fee rules"
-                description="Without the rule table AcreOS proposes no fee at all — it will not guess a cap."
+                description="Without the rule table AcreOS proposes no fee — it will not guess a cap."
                 testId="late-fee-rules-query-error"
               />
             </div>
@@ -896,8 +896,8 @@ function RentDueSection() {
               })}
             </ul>
             <p className="text-xs text-muted-foreground">
-              Months start at the lease's start date, or at the first month already on its ledger —
-              for an imported rent roll, the month you imported it. A month you were already paid for
+              Months start at the lease's start date, or the first month already on its ledger —
+              for an imported rent roll, the month you imported it. A month already paid for
               shows as owed until you record the payment.
             </p>
           </div>
@@ -973,7 +973,7 @@ function LeaseLedgerSection({
 
         {selectedLeaseId === null ? (
           <p className="text-sm text-muted-foreground">
-            Pick a lease to see its ledger and record a payment you received.
+            Pick a lease to see its ledger and record a payment.
           </p>
         ) : ledger.isLoading ? (
           <div className="space-y-2">
@@ -1082,8 +1082,8 @@ function LedgerBody({ ledger }: { ledger: LedgerResponse }) {
         </table>
       </div>
       <p className="text-xs text-muted-foreground">
-        Legal posture records what you did: AcreOS serves no notice and files nothing. Under a
-        notice to vacate it asks you to confirm before recording a partial payment.
+        Legal posture records what you did: AcreOS serves no notice, files nothing. Under a
+        notice to vacate, confirm before recording a partial payment.
       </p>
 
       {/* Recorded payments, per charge — the persisted allocation lines. */}
@@ -1148,7 +1148,69 @@ function LedgerBody({ ledger }: { ledger: LedgerResponse }) {
         openCharges={openCharges}
         monthlyRentCents={ledger.lease.monthlyRentCents}
       />
+
+      <CollectRentSection leaseId={ledger.lease.id} hasOpenBalance={openCharges.length > 0} />
     </div>
+  );
+}
+
+/**
+ * P3-3 — collect rent by card through the landlord's OWN Stripe account.
+ *
+ * Creates a hosted Checkout for the lease's full outstanding balance
+ * (POST /api/leases/:id/rent-checkout) and shows its URL for the operator to
+ * share with the tenant on their own identity — AcreOS does not send it.
+ * The charge lands on the landlord's connected account, never AcreOS's; an
+ * org that hasn't connected Stripe gets the server's refusal verbatim.
+ * When the tenant pays, the payment posts to this ledger by the same
+ * allocation rule as a recorded payment (webhook or verify — one rule).
+ */
+function CollectRentSection({ leaseId, hasOpenBalance }: { leaseId: string; hasOpenBalance: boolean }) {
+  const { toast } = useToast();
+  const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
+
+  const collect = useMutation({
+    mutationFn: async () => {
+      return apiPost<{ url: string; amountCents: number }>(`/api/leases/${leaseId}/rent-checkout`, {});
+    },
+    onSuccess: (res) => {
+      for (const key of RENT_LEDGER_KEYS) queryClient.invalidateQueries({ queryKey: [key] });
+      setCheckoutUrl(res.url);
+      toast({ title: "Link created" });
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Couldn't create link",
+        description: err.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  return (
+    <>
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs text-muted-foreground">
+          Rent by card via your Stripe. AcreOS never holds rent.
+        </p>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => collect.mutate()}
+          disabled={collect.isPending || !hasOpenBalance}
+          data-testid="button-collect-rent"
+        >
+          {collect.isPending ? "Creating" : "Get link"}
+        </Button>
+      </div>
+      {checkoutUrl && (
+        <p className="mt-3 text-xs break-all">
+          <a className="underline" href={checkoutUrl} target="_blank" rel="noreferrer">
+            {checkoutUrl}
+          </a>
+        </p>
+      )}
+    </>
   );
 }
 
@@ -1261,7 +1323,7 @@ function RecordPaymentForm({
       }
       if (partialUnderNotice && !acceptPartial) {
         throw new Error(
-          "This payment leaves a charge under a notice to vacate short. Confirm you accept a partial payment first — in several states accepting it voids the notice.",
+          "This payment leaves a charge under notice to vacate short. Confirm you accept a partial payment — in several states accepting it voids the notice.",
         );
       }
       // ONE request for the whole amount (quality directive 2026-09-29). The
@@ -1439,7 +1501,7 @@ function RecordPaymentForm({
             {allocation.explanation}
           </p>
           <p className="text-micro text-muted-foreground">
-            Recorded as one ledger line per charge (oldest first, rent before late fees) so each
+            One ledger line per charge (oldest first, rent before late fees) so each
             month's balance is exact. Rule: {allocation.orderRule.replace(/_/g, " ")}.
           </p>
         </div>
@@ -1463,7 +1525,7 @@ function RecordPaymentForm({
 
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs text-muted-foreground">
-          Records money you already received. AcreOS does not collect it.
+          Records money you received by hand.
         </p>
         <Button
           size="sm"
@@ -1533,7 +1595,7 @@ function DepositClockSection({ leases, isLoading }: { leases: Lease[]; isLoading
           <Skeleton className="h-24" />
         ) : ended.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            No ended or terminated leases. The clock starts at move-out, so nothing is running.
+            No ended or terminated leases. The clock starts at move-out; nothing is running.
           </p>
         ) : (
           <motion.ul
@@ -1637,7 +1699,7 @@ function DepositClockRow({ lease }: { lease: Lease }) {
             <span className="text-foreground font-medium">Basis: </span>
             move-out {moveOutDate} + {binding.deadlineDays}{" "}
             {binding.businessDays ? "business" : "calendar"} days
-            {binding.citation ? ` (${binding.citation})` : ""}. Move-out is taken from the lease's
+            {binding.citation ? ` (${binding.citation})` : ""}. Move-out is the lease's
             recorded end date — if you handed over possession on a different day, that date governs.
             <strong className="text-acr-warning"> Preliminary, not attorney-reviewed.</strong>
           </p>
@@ -1645,7 +1707,7 @@ function DepositClockRow({ lease }: { lease: Lease }) {
             <p>
               {lease.state} runs a different window depending on whether you withhold anything (
               {withDeductions.deadlineDays}d with deductions ·{" "}
-              {withoutDeductions.deadlineDays}d without). AcreOS does not know which applies here, so
+              {withoutDeductions.deadlineDays}d without). AcreOS does not know which applies, so
               the <strong>earlier</strong> date is shown — being early is never the violation.
             </p>
           )}
@@ -1655,15 +1717,15 @@ function DepositClockRow({ lease }: { lease: Lease }) {
               <span>
                 A <strong>written, itemized statement</strong> of every deduction must reach the
                 tenant by this date, with any refund. Missing it typically forfeits the right to
-                withhold anything and adds statutory damages.
+                withhold and adds statutory damages.
               </span>
             </p>
           )}
           {binding.note && <p className="italic">{binding.note}</p>}
           <p>
-            Disposition letter: prepare and send it yourself for now — generating one from this
-            page isn't available yet, and AcreOS will not imply one was sent. Itemize each
-            deduction with a description and an amount; a line with no description is what the
+            Disposition letter: prepare and send it yourself — generating one here
+            isn't available yet, and AcreOS will not imply one was sent. Itemize each
+            deduction with a description and amount; a line with no description is what the
             itemization requirement exists to prevent.
           </p>
         </div>
@@ -1782,7 +1844,7 @@ function LateFeeProposalDialog({
             isRetrying={read.isRefetching}
             compact
             title="Couldn't load the proposal"
-            description="Nothing was charged. AcreOS shows no fee rather than a guessed one."
+            description="Nothing was charged. No fee shown rather than a guessed one."
             testId="late-fee-proposal-query-error"
           />
         ) : proposal === null ? (

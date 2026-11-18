@@ -29,7 +29,8 @@ import { startApiTelemetryRollupJob } from "./apiTelemetryRollupJob"; // S3 slic
 // Daily due/expiry detectors — extracted from this file into a cohesive
 // job-group (S3 decomposition). startLeaseExpiryDetectorJob is the net-new
 // buy_and_hold beta→core registration (audit Wave 1).
-import { startNotePaymentDueDetectorJob, startLeaseExpiryDetectorJob } from "./expiryDetectorJobs";
+import { startNotePaymentDueDetectorJob, startLeaseExpiryDetectorJob, startRentCycleJob } from "./expiryDetectorJobs";
+import { startCostOptimizerSelfReschedulingJob } from "./costOptimizer";
 import { startBorrowerServicingJobs } from "./servicingWindDownJob";
 import { startSubscriptionLifecycleJobs } from "./subscriptionLifecycleJobs";
 import { startForecastingMonthlyJob } from "./forecastingJobs";
@@ -682,12 +683,7 @@ function startConnectionsSweepJob() {
 // recommendations, auto-applies safe changes (prompt-cache, log-volume),
 // flags everything else for /founder/cost-optimizer review.
 // ============================================================================
-function startCostOptimizerSelfRescheduling() {
-  log('Registering self-tuning cost optimiser (daily)', 'cost-optimizer');
-  import('./costOptimizer').then(({ startCostOptimizerJob }) => {
-    startCostOptimizerJob();
-  }).catch(err => log(`Cost optimiser import failed: ${err}`, 'cost-optimizer'));
-}
+// The starter body lives in costOptimizer.ts (startCostOptimizerSelfReschedulingJob).
 
 // ============================================================================
 // Wave 10: Per-Customer Unit Economics — daily, self-rescheduling.
@@ -3951,6 +3947,9 @@ export async function runScheduledJobs(): Promise<void> {
   // workflow events (renewal countdown + expiring). Deduped per (lease, endDate).
   startLeaseExpiryDetectorJob();
 
+  // P3-3 (decided 2026-11-16) — daily rent cycle (09:00 UTC): charge generation + late-rent trigger.
+  startRentCycleJob();
+
   // Launch-Week WS4 — Gate-Watcher (daily 09:00 UTC): condition-gated
   // roadmap items detect their own moment and become one-tap founder
   // Decisions (or auto-execute where the studio dial says autoApprove).
@@ -3973,7 +3972,7 @@ export async function runScheduledJobs(): Promise<void> {
   startPeriodicStatementsMonthlyJob();
 
   // Wave 10: Self-tuning cost optimiser (daily, self-rescheduling)
-  startCostOptimizerSelfRescheduling();
+  startCostOptimizerSelfReschedulingJob();
 
   // Wave 10: Per-customer unit economics (daily, self-rescheduling)
   startCustomerUnitEconomicsJob();
