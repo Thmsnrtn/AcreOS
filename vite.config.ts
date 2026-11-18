@@ -376,6 +376,16 @@ export function buildConfig(output: BuildOutput): UserConfig {
     // untouched. To get SDK debug logs, remove this line first —
     // tests/unit/sentryDebugLoggingStripped.test.ts pins both halves.
     __SENTRY_DEBUG__: false,
+    // Sentry's documented tree-shaking flag for tracing (L-P3 bundle
+    // offset). The client installs NO tracing integration — sentry.ts's
+    // only integration is Replay, its performance signal is web-vitals via
+    // captureMessage, and no client file calls a span/transaction API — so
+    // the SDK's span/transaction machinery cannot run and is compiled out.
+    // `tracesSampleRate` in the init is inert without an integration and
+    // stays as the tuning knob for the day one is added: adding a tracing
+    // integration means removing this line first —
+    // tests/unit/sentryTracingStripped.test.ts pins both halves.
+    __SENTRY_TRACING__: false,
   },
   // The founder output is served under /founder-app/ (server/static.ts) and
   // reads no public/ files: its HTML and fonts use root-absolute URLs that the

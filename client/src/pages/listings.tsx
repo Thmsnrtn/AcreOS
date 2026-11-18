@@ -65,6 +65,7 @@ const SYNDICATION_TARGETS = [
 // must also be handled in renderPlatformResult below.
 type PlatformResultStatus =
   | "sent"
+  | "manual"
   | "missing_credentials"
   | "failed"
   | "idempotent_skip"
@@ -78,6 +79,7 @@ interface PlatformResult {
   listingId?: string;
   listingUrl?: string;
   deepLinkUrl?: string;
+  preformattedText?: string;
   manualInstructions?: string;
 }
 
@@ -224,12 +226,20 @@ export default function ListingsPage() {
       );
       const sent = counts.sent ?? 0;
       const simulated = counts.simulated ?? 0;
+      const manual = counts.manual ?? 0;
       const missing = counts.missing_credentials ?? 0;
       const failed = counts.failed ?? 0;
 
-      if (sent + simulated > 0 && failed === 0 && missing === 0) {
+      // "manual" is copy the operator posts by hand (Craigslist paste
+      // text) — it is never counted as published (L-P3 copy-truth).
+      if (sent + simulated > 0 && failed === 0 && missing === 0 && manual === 0) {
         toast({ title: `Published to ${sent + simulated} platform${sent + simulated === 1 ? "" : "s"}` });
-      } else if (sent + simulated === 0) {
+      } else if (sent + simulated === 0 && manual > 0 && failed === 0 && missing === 0) {
+        toast({
+          title: "Paste text ready — not posted",
+          description: "Copy the text in the dialog.",
+        });
+      } else if (sent + simulated === 0 && manual === 0) {
         toast({
           title: "Nothing published",
           description: `${missing} need credentials, ${failed} failed.`,
@@ -238,7 +248,10 @@ export default function ListingsPage() {
       } else {
         toast({
           title: `Partial: ${sent + simulated} sent, ${missing + failed} skipped`,
-          description: "See per-platform results in the dialog.",
+          description:
+            manual > 0
+              ? "Paste text ready in the dialog."
+              : "See per-platform results in the dialog.",
         });
       }
     },
@@ -1000,6 +1013,11 @@ export default function ListingsPage() {
                                   Sent
                                 </Badge>
                               )}
+                              {lastResult.status === "manual" && (
+                                <Badge className="bg-acr-warn-soft text-acr-warn-soft-ink border-transparent">
+                                  Post by hand
+                                </Badge>
+                              )}
                               {lastResult.status === "simulated" && (
                                 <Badge className="bg-acr-brand-soft text-acr-brand-soft-ink border-transparent">
                                   Simulated
@@ -1039,6 +1057,27 @@ export default function ListingsPage() {
                   })}
                 </ul>
               </fieldset>
+              {lastPublishResults
+                ?.filter((r) => r.status === "manual")
+                .map((r) => (
+                  <div key={r.platform} className="space-y-1 text-xs text-muted-foreground" data-testid={`manual-${r.platform}`}>
+                    <b>{r.platform.replace(/_/g, " ")}</b> — not posted
+                    {r.manualInstructions && ` ${r.manualInstructions}`}
+                    {r.preformattedText && (
+                      <textarea
+                        readOnly
+                        value={r.preformattedText}
+                        aria-label="Paste text"
+                        className="w-full h-32 font-mono p-2 rounded-md border"
+                      />
+                    )}
+                    {r.deepLinkUrl && (
+                      <a href={r.deepLinkUrl} target="_blank" rel="noopener noreferrer" className="underline">
+                        Open {r.platform.replace(/_/g, " ")}
+                      </a>
+                    )}
+                  </div>
+                ))}
               {lastPublishResults?.some((r) => r.error) && (
                 <ul className="text-xs text-muted-foreground space-y-1 list-none p-0 m-0">
                   {lastPublishResults

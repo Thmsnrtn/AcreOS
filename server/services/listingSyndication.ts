@@ -789,6 +789,24 @@ export async function syndicateListing(
   return results;
 }
 
+/** The per-platform status the publish route reports for one channel result. */
+export type PublishResultStatus = "sent" | "manual" | "missing_credentials" | "failed";
+
+/**
+ * Map one channel result to the status POST /api/listings/:id/publish
+ * reports (L-P3 resolution, 2026-11-18). A result that carries copy for the
+ * operator to post by hand — Craigslist's ready-to-paste text: success with
+ * `requiresManualAction` and no provider listing id — is "manual", NEVER
+ * "sent": nothing was posted, and calling it sent made the Listings UI
+ * toast "Published to 1 platform" for a listing that went nowhere. "sent"
+ * is reserved for a provider acceptance with a listing id behind it.
+ */
+export function publishStatusForResult(r: LegacySyndicationResult): PublishResultStatus {
+  if (r.success && r.requiresManualAction && !r.listingId) return "manual";
+  if (r.success) return "sent";
+  return r.error?.toLowerCase().includes("not configured") ? "missing_credentials" : "failed";
+}
+
 /**
  * DELETE one provider listing. Success means the provider ANSWERED 2xx
  * (DEFECT-0173): this returned `{ success: true }` whenever `fetch` resolved,
