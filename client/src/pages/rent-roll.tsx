@@ -1174,6 +1174,7 @@ function CollectRentSection({ leaseId, hasOpenBalance }: { leaseId: string; hasO
       return apiPost<{ url: string; amountCents: number }>(`/api/leases/${leaseId}/rent-checkout`, {});
     },
     onSuccess: (res) => {
+      for (const key of RENT_LEDGER_KEYS) queryClient.invalidateQueries({ queryKey: [key] });
       setCheckoutUrl(res.url);
       toast({ title: "Link created" });
     },
