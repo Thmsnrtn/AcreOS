@@ -398,6 +398,11 @@ export class StripeConnectService {
           // rule as the portal, keyed on this session (DEFECT-0116).
           const { WebhookHandlers } = await import("../webhookHandlers");
           await WebhookHandlers.processPaymentLinkNotePayment(session, event.account ?? null);
+        } else if (session.metadata?.type === "rent_payment") {
+          // P3-3 — a tenant paid rent by card on the landlord's own account.
+          // Posted by the ONE rent posting rule, keyed on this session.
+          const { WebhookHandlers } = await import("../webhookHandlers");
+          await WebhookHandlers.processRentPayment(session, event.account ?? null);
         }
         break;
       }

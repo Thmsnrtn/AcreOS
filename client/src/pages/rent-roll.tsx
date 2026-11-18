@@ -1148,6 +1148,74 @@ function LedgerBody({ ledger }: { ledger: LedgerResponse }) {
         openCharges={openCharges}
         monthlyRentCents={ledger.lease.monthlyRentCents}
       />
+
+      <Separator />
+
+      <CollectRentSection leaseId={ledger.lease.id} hasOpenBalance={openCharges.length > 0} />
+    </div>
+  );
+}
+
+/**
+ * P3-3 — collect rent by card through the landlord's OWN Stripe account.
+ *
+ * Creates a hosted Checkout for the lease's full outstanding balance
+ * (POST /api/leases/:id/rent-checkout) and shows its URL for the operator to
+ * share with the tenant on their own identity — AcreOS does not send it.
+ * The charge lands on the landlord's connected account, never AcreOS's; an
+ * org that hasn't connected Stripe gets the server's refusal verbatim.
+ * When the tenant pays, the payment posts to this ledger by the same
+ * allocation rule as a recorded payment (webhook or verify — one rule).
+ */
+function CollectRentSection({ leaseId, hasOpenBalance }: { leaseId: string; hasOpenBalance: boolean }) {
+  const { toast } = useToast();
+  const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
+
+  const collect = useMutation({
+    mutationFn: async () => {
+      return apiPost<{ url: string; amountCents: number }>(`/api/leases/${leaseId}/rent-checkout`, {});
+    },
+    onSuccess: (res) => {
+      setCheckoutUrl(res.url);
+      toast({ title: "Checkout link created — share it with your tenant" });
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Couldn't create the checkout link",
+        description: err.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  return (
+    <div className="space-y-3">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        Collect rent by card
+      </h3>
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs text-muted-foreground">
+          Your tenant pays through your own connected Stripe account. AcreOS never holds the rent
+          and takes no cut of it.
+        </p>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => collect.mutate()}
+          disabled={collect.isPending || !hasOpenBalance}
+          data-testid="button-collect-rent"
+        >
+          {collect.isPending ? "Creating…" : "Create payment link"}
+        </Button>
+      </div>
+      {checkoutUrl && (
+        <p className="text-xs break-all" role="status">
+          Payment link:{" "}
+          <a className="underline" href={checkoutUrl} target="_blank" rel="noreferrer">
+            {checkoutUrl}
+          </a>
+        </p>
+      )}
     </div>
   );
 }
@@ -1463,7 +1531,8 @@ function RecordPaymentForm({
 
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs text-muted-foreground">
-          Records money you already received. AcreOS does not collect it.
+          Records money you already received by hand. To collect by card instead, use the payment
+          link below — it runs through your own Stripe account.
         </p>
         <Button
           size="sm"

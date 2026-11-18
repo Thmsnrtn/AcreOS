@@ -232,6 +232,13 @@ export const JOB_ROSTER: JobRosterEntry[] = [
   // workflow events (renewal countdown + expiring). Non-critical: a dark scan
   // delays the renewal nudge by a day; the deadman still surfaces the absence.
   { name: "lease_expiry_scan", intervalMs: DAY, critical: false, cron: "0 10 * * *" },
+  // P3-3 (decided 2026-11-16) — daily rent cycle: scheduled rent charge
+  // generation for every org with a generatable lease + the late-rent
+  // trigger (mesh event per NEW overdue charge + legalPosture flip).
+  // Non-critical: a dark cycle delays a charge/late signal by a day (the
+  // generator is idempotent and the operator path still exists); the
+  // deadman still surfaces the absence.
+  { name: "rent_cycle_daily", intervalMs: DAY, critical: false, cron: "0 9 * * *" },
   // Wave C "Money moves" — borrower ACH autopay cycle: hourly submit of due
   // debits (one per note+period, guarded by a unique claim) + reconciliation
   // of every in-flight debit into settlement or return. CRITICAL: this is the
