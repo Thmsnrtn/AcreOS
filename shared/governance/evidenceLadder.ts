@@ -225,7 +225,10 @@ export const CAPABILITIES: readonly Capability[] = [
   verticalEntry("note_investor", "note investor", "surfaced"),
   verticalEntry("hybrid", "hybrid", "surfaced"),
   verticalEntry("fix_and_flip", "fix and flip", "decided"),
-  verticalEntry("residential_wholesaler", "residential wholesaler", "surfaced"),
+  // residential_wholesaler flipped surfaced → decided 2026-11-18 in the
+  // core-status lift: its journey-proof hold ended when the scoped
+  // revenue-loop walk passed green end-to-end (see shared/business-types.ts).
+  verticalEntry("residential_wholesaler", "residential wholesaler", "decided"),
   verticalEntry("buy_and_hold", "buy and hold", "decided"),
   verticalEntry("short_term_rental", "short term rental", "surfaced"),
   verticalEntry("commercial", "commercial", "surfaced"),
