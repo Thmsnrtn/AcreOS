@@ -4,13 +4,16 @@
  * subsequent taxes paid, interest (encoded states only), the notices the
  * operator recorded, and the foreclosure-filing deadline — each with its basis.
  *
- * A notice here is a RECORD of one the operator sent outside AcreOS; AcreOS
- * sends nothing. Whether subsequent taxes are reimbursed is the county
+ * A notice recorded here by hand is a RECORD of one the operator sent
+ * outside AcreOS. A notice can also be sent in-product through the
+ * Settlement & Documents Rail (the control below the position record):
+ * those entries are written from the mail provider's receipt and carry
+ * its id. Whether subsequent taxes are reimbursed is the county
  * procedure's rule, shown with its source, never added in by AcreOS.
  */
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { BookOpen } from "lucide-react";
+import { BookOpen, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,6 +23,13 @@ import { useToast } from "@/hooks/use-toast";
 import { ApiError, apiRequest, queryClient } from "@/lib/queryClient";
 import { formatDate } from "@/lib/format";
 import type { CertificateLedger } from "@shared/tax/ledger";
+import {
+  REDEMPTION_NOTICE_DRAFT_TEXT,
+  REDEMPTION_NOTICE_FAILURE_TEXT,
+  redemptionNoticeReceiptText,
+  redemptionNoticeRefusalText,
+  type RedemptionNoticeDelivery,
+} from "./redemptionNoticeCopy";
 
 const usd = (c: number) => `$${(c / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 type Kind = "subsequent_tax_paid" | "redemption_notice_recorded" | "foreclosure_filing_deadline";
@@ -61,14 +71,117 @@ export function CertificateLedgerPanel({ certificateId }: { certificateId: strin
         <dt className="text-muted-foreground">Notices you sent</dt>
         <dd data-testid="ledger-notices">
           {l.notices.length === 0 ? <span className="text-muted-foreground">none recorded</span> : (
-            <ul className="text-xs">{l.notices.map((n, i) => <li key={i}>{formatDate(n.sentOn)} · {n.method}{n.note ? ` · ${n.note}` : ""} — {n.source}</li>)}</ul>
+            <ul className="text-xs">{l.notices.map((n, i) => <li key={i}>{formatDate(n.sentOn)} · {n.method}{n.note ? ` · ${n.note}` : ""} — {n.source}{n.viaRail ? <> · sent through AcreOS{n.providerId ? <> · provider id {n.providerId}</> : null}</> : null}</li>)}</ul>
           )}
         </dd>
         <dt className="text-muted-foreground">Foreclosure-filing deadline</dt>
         <dd data-testid="ledger-foreclosure">{l.foreclosureFilingDeadline.status === "stated" ? <>{formatDate(l.foreclosureFilingDeadline.date)} <span className="text-xs text-muted-foreground">— {l.foreclosureFilingDeadline.basis}</span></> : <span className="text-muted-foreground">{l.foreclosureFilingDeadline.why}</span>}</dd>
       </dl>
+      <RedemptionNoticeControl certificateId={certificateId} queryKey={key} />
       <LedgerEntryForm certificateId={certificateId} queryKey={key} />
     </section>
+  );
+}
+
+type NoticeOutcome =
+  | { kind: "sent"; text: string; expectedDeliveryDate: string | null }
+  | { kind: "draft" }
+  | { kind: "refused"; text: string }
+  | { kind: "failed" };
+
+type NoticeLane = "certified_mail" | "mail" | "download";
+const LANE_LABEL: Record<NoticeLane, string> = {
+  certified_mail: "Certified mail",
+  mail: "Mail",
+  download: "Download a draft (you mail it yourself)",
+};
+
+/**
+ * Send the statutory redemption notice through the rail (T-P1 / T-DEF-3).
+ * The endpoint is fail-closed: a 422 names its reason and nothing was
+ * sent; a mail lane answers only with the provider's receipt; download
+ * returns a draft and records nothing. The outcome line below renders
+ * exactly which of those happened — a refusal or a failure never reads
+ * as a send.
+ */
+function RedemptionNoticeControl({ certificateId, queryKey }: { certificateId: string; queryKey: string }) {
+  const [lane, setLane] = useState<NoticeLane>("certified_mail");
+  const [amount, setAmount] = useState("");
+  const [amountSource, setAmountSource] = useState("");
+  const [outcome, setOutcome] = useState<NoticeOutcome | null>(null);
+  const amountPaired = (amount.trim() === "") === (amountSource.trim() === "");
+
+  const send = useMutation({
+    mutationFn: async (): Promise<NoticeOutcome> => {
+      const body: Record<string, unknown> = { delivery: lane };
+      if (amount.trim() !== "") {
+        body.redemptionAmountCents = Math.round(Number(amount) * 100);
+        body.redemptionAmountSource = amountSource.trim();
+      }
+      const res = await apiRequest("POST", `/api/tax-certificates/${certificateId}/redemption-notice`, body);
+      if (lane === "download") {
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `redemption-notice-${certificateId}.pdf`;
+        a.click();
+        URL.revokeObjectURL(url);
+        return { kind: "draft" };
+      }
+      const data = (await res.json()) as { delivery: RedemptionNoticeDelivery };
+      return { kind: "sent", text: redemptionNoticeReceiptText(data.delivery), expectedDeliveryDate: data.delivery.expectedDeliveryDate };
+    },
+    onSuccess: (o) => {
+      setOutcome(o);
+      if (o.kind === "sent") queryClient.invalidateQueries({ queryKey: [queryKey] });
+    },
+    onError: (err) => {
+      if (err instanceof ApiError && err.status === 422) {
+        const details = err.body?.details as { reason?: unknown } | undefined;
+        setOutcome({ kind: "refused", text: redemptionNoticeRefusalText(details?.reason, err.body?.message) });
+      } else if (err instanceof ApiError && err.status === 400 && err.body?.message) {
+        // A delivery-lane refusal (e.g. no verified sender identity): the
+        // server's message is written for the operator — show it as-is.
+        setOutcome({ kind: "refused", text: `Not sent — ${err.body.message}` });
+      } else {
+        setOutcome({ kind: "failed" });
+      }
+    },
+  });
+
+  const id = `notice-${certificateId}`;
+  return (
+    <div className="space-y-2 rounded-md border p-3 text-xs" data-testid="redemption-notice-control">
+      <h4 className="flex items-center gap-2 text-sm font-semibold"><Send className="h-4 w-4" aria-hidden="true" />Send redemption notice</h4>
+      <p className="text-muted-foreground">Drafted from this certificate and the county procedure on record. If the county's requirements are not recorded, the amount cannot be determined, or the owner's address is incomplete, AcreOS refuses and nothing is sent.</p>
+      <div className="grid gap-2 sm:grid-cols-3">
+        <div className="space-y-1">
+          <Label htmlFor={`${id}-delivery`} className="text-xs">Delivery</Label>
+          <select id={`${id}-delivery`} data-testid="notice-delivery" className="h-8 w-full rounded-md border bg-background px-2" value={lane} onChange={(e) => setLane(e.target.value as NoticeLane)}>
+            {(Object.keys(LANE_LABEL) as NoticeLane[]).map((k) => <option key={k} value={k}>{LANE_LABEL[k]}</option>)}
+          </select>
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor={`${id}-amount`} className="text-xs">Redemption amount from the county $ (only if AcreOS cannot compute it)</Label>
+          <Input id={`${id}-amount`} data-testid="notice-amount" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} className="h-8" />
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor={`${id}-amount-source`} className="text-xs">Where that amount comes from</Label>
+          <Input id={`${id}-amount-source`} data-testid="notice-amount-source" value={amountSource} onChange={(e) => setAmountSource(e.target.value)} className="h-8" />
+        </div>
+      </div>
+      {!amountPaired && <p className="text-muted-foreground">Give both the amount and where it comes from, or leave both blank.</p>}
+      <div className="flex justify-end">
+        <Button size="sm" onClick={() => send.mutate()} disabled={send.isPending || !amountPaired} data-testid="button-send-notice">{send.isPending ? "Working…" : lane === "download" ? "Download draft" : "Send redemption notice"}</Button>
+      </div>
+      {outcome?.kind === "sent" && (
+        <p data-testid="notice-outcome" role="status">{outcome.text}{outcome.expectedDeliveryDate ? ` Expected delivery: ${formatDate(outcome.expectedDeliveryDate)}.` : ""}</p>
+      )}
+      {outcome?.kind === "draft" && <p data-testid="notice-outcome" role="status">{REDEMPTION_NOTICE_DRAFT_TEXT}</p>}
+      {outcome?.kind === "refused" && <p data-testid="notice-outcome" role="alert" className="text-destructive">{outcome.text}</p>}
+      {outcome?.kind === "failed" && <p data-testid="notice-outcome" role="alert" className="text-destructive">{REDEMPTION_NOTICE_FAILURE_TEXT}</p>}
+    </div>
   );
 }
 
