@@ -60,7 +60,7 @@ async function mount(ledger: CertificateLedger) {
   document.body.appendChild(host);
   root = createRoot(host);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0, queryFn: getQueryFn({ on401: "throw" }) } } });
-  await act(async () => { root.render(React.createElement(QueryClientProvider, { client }, React.createElement(CertificateLedgerPanel, { certificateId: "c1" }))); });
+  await act(async () => { root!.render(React.createElement(QueryClientProvider, { client }, React.createElement(CertificateLedgerPanel, { certificateId: "c1" }))); });
   await settle();
 }
 async function settle() { for (let i = 0; i < 8; i++) await act(async () => { await new Promise((r) => setTimeout(r, 0)); }); }
