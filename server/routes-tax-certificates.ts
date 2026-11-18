@@ -27,7 +27,7 @@ import { getOrganizationId } from "./types/request";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { requireRole } from "./middleware/roleGuard";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 import { logger } from "./utils/logger";
 import {
   computeRedemptionDeadline,
@@ -358,7 +358,7 @@ export function registerTaxCertificateRoutes(app: Express): void {
           .safeParse(req.body ?? {});
         if (!parsed.success) return Errors.validationFailed(res, parsed.error.flatten());
         const { sendTaxRedemptionNotice, TaxNoticeRefusedError } = await import("./services/settlementRail/taxNotice");
-        const { RailDeliveryRefusedError } = await import("./services/settlementRail/delivery");
+        const { railDeliveryHttpError } = await import("./services/settlementRail/delivery");
         try {
           const result = await sendTaxRedemptionNotice({
             organizationId: getOrganizationId(req),
@@ -383,7 +383,11 @@ export function registerTaxCertificateRoutes(app: Express): void {
               ? Errors.notFound(res, "Certificate")
               : Errors.unprocessable(res, err.message, { reason: err.reason });
           }
-          if (err instanceof RailDeliveryRefusedError) return Errors.badRequest(res, err.message);
+          // A mail-lane refusal or claim conflict (T-DEF-2): the lane's own
+          // reason and words as a 4xx — never a bare 500 for a send that
+          // was refused before (or in conflict at) the provider boundary.
+          const railError = railDeliveryHttpError(err);
+          if (railError) return sendError(res, railError.status, railError.code, railError.message, { reason: railError.reason });
           throw err;
         }
       } catch (err) {
