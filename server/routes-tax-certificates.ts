@@ -70,7 +70,9 @@ const ledgerSource = z.string().trim().min(1).max(500);
 const ledgerDate = z.string().refine(isCalendarDate, "a calendar date (YYYY-MM-DD)");
 const ledgerEntrySchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("subsequent_tax_paid"), paidOn: ledgerDate, amountCents: z.number().int().positive(), taxYear: z.string().regex(/^\d{4}$/).nullable(), source: ledgerSource }),
-  // A notice the OPERATOR sent, outside AcreOS. AcreOS sends nothing.
+  // A notice the OPERATOR sent, outside AcreOS, recorded after the fact.
+  // Notices sent in-product through the rail are recorded by the rail
+  // itself, from the provider's receipt — never through this entry.
   z.object({ kind: z.literal("redemption_notice_recorded"), sentOn: ledgerDate, method: z.string().trim().min(1).max(200), note: z.string().trim().max(1_000).nullable(), source: ledgerSource }),
   z.object({ kind: z.literal("foreclosure_filing_deadline"), date: ledgerDate, source: ledgerSource }),
 ]);
@@ -321,6 +323,71 @@ export function registerTaxCertificateRoutes(app: Express): void {
         const events = await latestTaxEvents(orgId, routeParam(req.params.id));
         res.json({ ledger: await buildCertificateLedger(orgId, routeParam(req.params.id), deadlineBasisOf(events.redemption_expiry?.ruleCited ?? null)) });
       } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  // ── The statutory redemption notice, on the rail (P3-2 transplant, T-P1) ──
+  // Drafted in-product from the certificate record and — on the mail lanes —
+  // sent through the Settlement & Documents Rail, which records the send in
+  // the certificate ledger from the provider's receipt. Fail-closed: no
+  // recorded county notice requirements, no determinable amount, or no
+  // complete owner address refuses with the reason, and nothing is sent or
+  // recorded as sent. `download` drafts only.
+  app.post(
+    "/api/tax-certificates/:id/redemption-notice",
+    isAuthenticated,
+    getOrCreateOrg,
+    ownerOrAdmin,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const parsed = z
+          .object({
+            delivery: z.enum(["download", "mail", "certified_mail"]).default("certified_mail"),
+            // The county's own redemption figure, for a state AcreOS has no
+            // encoded rule for. Supplied with its source or not at all —
+            // the same operator-entered discipline as the deadline.
+            redemptionAmountCents: z.number().int().positive().optional(),
+            redemptionAmountSource: z.string().trim().min(3).max(500).optional(),
+          })
+          .refine((d) => (d.redemptionAmountCents === undefined) === (d.redemptionAmountSource === undefined), {
+            message: "a redemption amount you supply needs its source (e.g. the county's payoff quote), and a source needs the amount",
+            path: ["redemptionAmountSource"],
+          })
+          .safeParse(req.body ?? {});
+        if (!parsed.success) return Errors.validationFailed(res, parsed.error.flatten());
+        const { sendTaxRedemptionNotice, TaxNoticeRefusedError } = await import("./services/settlementRail/taxNotice");
+        const { RailDeliveryRefusedError } = await import("./services/settlementRail/delivery");
+        try {
+          const result = await sendTaxRedemptionNotice({
+            organizationId: getOrganizationId(req),
+            certificateId: routeParam(req.params.id),
+            lane: parsed.data.delivery,
+            recordedByUserId: req.user?.id ?? "unknown",
+            operatorAmountCents: parsed.data.redemptionAmountCents ?? null,
+            operatorAmountSource: parsed.data.redemptionAmountSource ?? null,
+          });
+          if (parsed.data.delivery === "download") {
+            res.setHeader("Content-Type", "application/pdf");
+            res.setHeader("Content-Disposition", `attachment; filename="${result.artifact.filename}"`);
+            return res.send(result.artifact.pdf);
+          }
+          return res.json({
+            delivery: result.delivery,
+            notice: { redemptionDeadline: result.redemptionDeadline, deadlineBasis: result.deadlineBasis, amountCents: result.amountCents },
+          });
+        } catch (err) {
+          if (err instanceof TaxNoticeRefusedError) {
+            return err.reason === "certificate_not_found"
+              ? Errors.notFound(res, "Certificate")
+              : Errors.unprocessable(res, err.message, { reason: err.reason });
+          }
+          if (err instanceof RailDeliveryRefusedError) return Errors.badRequest(res, err.message);
+          throw err;
+        }
+      } catch (err) {
+        logger.error("taxCertificates.redemptionNotice failed", err instanceof Error ? err : undefined);
         return Errors.internal(res, err);
       }
     },

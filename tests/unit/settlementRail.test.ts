@@ -164,11 +164,11 @@ describe("N-2 lien release — the satisfaction paper", () => {
     expect(artifact.pdf.subarray(0, 4).toString("latin1")).toBe("%PDF");
   });
 
-  it("the shared vocabulary is exactly the two built kinds", () => {
+  it("the shared vocabulary is exactly the built kinds", () => {
     // Generator coverage of this vocabulary is enforced at module load in
     // documents.ts (it throws if a kind has no generator) — importing the
     // builders above already exercised that check.
-    expect([...RAIL_DOCUMENT_KINDS].sort()).toEqual(["lien_release", "payoff_letter"]);
+    expect([...RAIL_DOCUMENT_KINDS].sort()).toEqual(["lien_release", "payoff_letter", "tax_redemption_notice"]);
   });
 });
 
