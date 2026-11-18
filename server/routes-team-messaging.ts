@@ -1348,15 +1348,15 @@ export function registerTeamMessagingRoutes(app: Express): void {
           }
           return {
             platform: r.platform,
-            status: r.success
-              ? ("sent" as const)
-              : r.error?.toLowerCase().includes("not configured")
-              ? ("missing_credentials" as const)
-              : ("failed" as const),
+            // "manual" (never "sent") for copy the operator posts by hand,
+            // and the paste text itself rides along — without it the one
+            // real Craigslist deliverable never reached the UI (L-P3).
+            status: listingSyndication.publishStatusForResult(r),
             error: r.error,
             listingId: r.listingId,
             listingUrl: r.listingUrl,
             deepLinkUrl: r.deepLinkUrl,
+            preformattedText: r.preformattedText,
             manualInstructions: r.manualInstructions,
             requiresManualAction: r.requiresManualAction,
           };
@@ -1377,11 +1377,11 @@ export function registerTeamMessagingRoutes(app: Express): void {
           listingId: r.listingId,
           listingUrl: r.listingUrl,
           status:
-            r.status === "sent"
+            r.status === "manual"
               ? // Copy/paste text is not a live posting (DEFECT-0182 audit).
-                "requiresManualAction" in r && r.requiresManualAction && !r.listingId
-                ? MANUAL_POSTING
-                : "active"
+                MANUAL_POSTING
+              : r.status === "sent"
+              ? "active"
               : r.status === "simulated"
               ? "simulated"
               : r.status === "dry_run"

@@ -28,8 +28,11 @@
  *
  * 2026-11-12 — FD1 (launch scope & registry; recorded in
  * docs/company/founder-decisions-2026-11-12-launch-scope.md). The public
- * promise is 2 core + 3 beta; the other TEN are registry_only, Fix-and-Flip
- * and Subdivider explicitly among them. This is a PRESENTATION re-cut of the
+ * promise was 2 core + 3 beta; the other TEN are registry_only, Fix-and-Flip
+ * and Subdivider explicitly among them.
+ * 2026-11-18 — Wholesale LIFTED beta → core: its scoped revenue-loop journey
+ * walk passed green end-to-end on staging (see the residential_wholesaler
+ * entry below), so the promise is now 3 core + 2 beta. This is a PRESENTATION re-cut of the
  * 15 values below, not a deletion: `isProductionReady` (core|beta) is what
  * gates new-signup selectability, so registry_only types stop being offered
  * while `getBusinessType()` still resolves them for every existing org. The
@@ -115,8 +118,9 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
   land_flipper: {
     id: "land_flipper",
     label: "Land flipper",
-    // FD1 (2026-11-12): beta — one of the three beta types in the public
-    // promise (with residential_wholesaler and tax_lien_deed), per the
+    // FD1 (2026-11-12): beta — one of the beta types in the public
+    // promise (with tax_lien_deed; residential_wholesaler was the third
+    // until its 2026-11-18 lift to core), per the
     // 2026-11-12 decision records. Core is earned per vertical by full
     // journey proof; Land's journey is not yet proven, so it does not hold
     // core in the launch-day snapshot. (S1 originally recorded core here
@@ -242,9 +246,24 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     //
     // FD1 (2026-11-12): beta — one of the three beta types in the public
     // promise (with land_flipper and tax_lien_deed). Its journey-proof hold
-    // (founder-decisions-2026-11-05-wholesale.md) is unchanged: the ladder
-    // still waits for the Leg 5 walk.
-    maturity: "beta",
+    // (founder-decisions-2026-11-05-wholesale.md) waited for the journey walk.
+    //
+    // LIFTED TO CORE 2026-11-18 — core earned under the founder rule of
+    // 2026-11-16 (core is earned per vertical by full journey proof). The
+    // scoped Wholesale revenue-loop walk passed GREEN end-to-end on staging
+    // across the first walk, the post-fix re-walk, and the send-half run
+    // (walk record: journey-walk-wholesale-2026-11): buyer profile created
+    // through a customer-facing path with its buy box stored, buyer match
+    // fired, blast sent on the org's own verified sending identity,
+    // contract assigned with assignmentFeeCents recorded, and the fee
+    // surfaced in Finance and on the wholesaler dashboard. Wholesale is the
+    // second of the five public verticals to earn core (Notes was first).
+    // HONEST SCOPE: the walk proved the scoped revenue loop only — legs
+    // outside it (the buy-box surface, the underwriting decision,
+    // contract-chain compliance in both directions, the org's own e-sign
+    // rail, outcome grading, bundle evidence) were not walked and are not
+    // claimed by this lift.
+    maturity: "core",
     // 2026-07-29 truth pass: the wholesaler build was real but undeclared
     // here. Wholesale sidebar module (businessTypeOnly
     // residential_wholesaler): buyer blasts, /buyer-analytics,
@@ -591,8 +610,9 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
   tax_lien_deed: {
     id: "tax_lien_deed",
     label: "Tax lien / deed",
-    // FD1 (2026-11-12): beta — one of the three beta types in the public
-    // promise. Its evidence reaches `surfaced` (four live cert emitters, no
+    // FD1 (2026-11-12): beta — one of the beta types in the public
+    // promise (two since residential_wholesaler's 2026-11-18 lift to core).
+    // Its evidence reaches `surfaced` (four live cert emitters, no
     // decision desk yet), which is exactly what beta requires.
     maturity: "beta",
     // 2026-07-29 truth pass: the tax-delinquent build was real but

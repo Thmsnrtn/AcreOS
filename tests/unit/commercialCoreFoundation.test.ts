@@ -51,7 +51,7 @@ describe("commercial is REGISTRY-ONLY (FD1) — every roadmap-for-core capabilit
     // commercial-correct NOI — each a pure, tested engine that refuses rather than
     // fabricate.
     // REWRITTEN AGAIN at FD1 (2026-11-12, not deleted): the engines stand and
-    // existing commercial books keep them; the launch promise is 2 core + 3 beta,
+    // existing commercial books keep them; the launch promise is 3 core + 2 beta,
     // and commercial is one of the ten registry-only types.
     expect(getBusinessType("commercial")?.maturity).toBe("registry_only");
   });

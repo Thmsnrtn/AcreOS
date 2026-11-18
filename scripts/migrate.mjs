@@ -1733,6 +1733,55 @@ $mig0262$`,
    )`,
   'CREATE UNIQUE INDEX IF NOT EXISTS "security_deposits_lease_uk" ON "security_deposits" ("lease_id")',
 
+  // 0008 — 0008_feature_flags_pricing_growth: release-path CREATEs only for
+  //   the two DECLARED tables (S4 ruling 2026-11-17, Group 5, item 7 Option A2).
+  //   pricing_config and platform_feature_flags were declared in
+  //   shared/schema.ts but created only by the .sql path, so the 0029 block
+  //   below (ALTERs + seed INSERTs) skipped on any database lacking them.
+  //   Placed immediately before 0029 so a release-path run creates, then
+  //   extends, then seeds. NOT mirrored, by the same ruling: the file's
+  //   pricing_config SEED ROWS (superseded 2025 tiers, incl. an "enterprise"
+  //   tier the ratified lineup does not have — pricing is a founder-only
+  //   rail and no price changes hands in a schema PR; the code source of
+  //   truth is shared/billing/tier-pricing.ts), founder_ad_accounts (a
+  //   credential-shaped table — access_token / app_secret as plain columns;
+  //   not created on prod), and growth_campaigns (undeclared, unreferenced
+  //   here). The file's UTM columns on organizations are already mirrored
+  //   further down this file. The flag seed INSERTs in the .sql file are
+  //   also not mirrored: this file's own later blocks seed the flag rows
+  //   that assume the table.
+  `CREATE TABLE IF NOT EXISTS "platform_feature_flags" (
+     "id" SERIAL PRIMARY KEY,
+     "key" TEXT NOT NULL UNIQUE,
+     "label" TEXT NOT NULL,
+     "description" TEXT NOT NULL,
+     "enabled" BOOLEAN NOT NULL DEFAULT FALSE,
+     "controlled_routes" JSONB NOT NULL DEFAULT '[]',
+     "created_at" TIMESTAMP DEFAULT NOW(),
+     "updated_at" TIMESTAMP DEFAULT NOW()
+   )`,
+  `CREATE TABLE IF NOT EXISTS "pricing_config" (
+     "id" SERIAL PRIMARY KEY,
+     "tier" TEXT NOT NULL UNIQUE,
+     "display_price_monthly" INTEGER NOT NULL,
+     "display_price_yearly" INTEGER NOT NULL,
+     "promo_label" TEXT,
+     "promo_discount_percent" INTEGER,
+     "promo_ends_at" TIMESTAMP,
+     "stripe_coupon_id" TEXT,
+     "allow_promo_codes" BOOLEAN NOT NULL DEFAULT FALSE,
+     "updated_at" TIMESTAMP DEFAULT NOW()
+   )`,
+  // 0159 — 0159_password_reset: header only, not mirrored (S4 ruling
+  //   2026-11-17, Group 5, item 33 executing item 7's A4 under Branch A).
+  //   This number is the renumbered 0008_password_reset.sql (item 33 takes
+  //   0159; item 32's disposition is a retirement and takes no number, so
+  //   0160 is not consumed). The file adds users.password_reset_token /
+  //   password_reset_expires_at — pre-Clerk residue, declared at
+  //   shared/models/auth.ts but deliberately NOT mirrored: Clerk owns
+  //   password reset now. Disposition of those declarations belongs to the
+  //   users-model cleanup (with 0009 and founder-held 0020), not this PR.
+  //   Zero statements.
   // Production port phase D.1: feature flag 5-state machine (migration 0029).
   // Extends platform_feature_flags with state + audience + audit columns.
   // Backfills state from existing enabled boolean (only on rows where state IS NULL).
@@ -2994,6 +3043,114 @@ $mig0262$`,
   'CREATE INDEX IF NOT EXISTS note_payments_note_date_idx ON note_payments(note_id, payment_date)',
   'CREATE INDEX IF NOT EXISTS note_payments_org_date_idx ON note_payments(organization_id, payment_date)',
 
+  // 0005 — 0005_ai_model_configs: CREATEs only (S4 ruling 2026-11-17,
+  //   Group 2, Option B conditional — the executing slice's reader check
+  //   FOUND live readers, so the ruling flips to Option A). Both tables are
+  //   declared (shared/schema/ai-telemetry.ts) and live: ai_model_configs is
+  //   read/written by aiRouter, modelIntelligence, telemetryOptimizer and
+  //   the admin routes; system_api_keys by routes-data-api, dataApiKeys and
+  //   the admin routes. Neither was created on the release path, so the
+  //   0191 key_hash / key_last4 ALTERs further down this file skipped on
+  //   any database lacking system_api_keys. The file's SEED ROWS are never
+  //   mirrored under any branch: a stale 2025 model catalogue with
+  //   superseded prices, and a provider registry that is configuration,
+  //   not schema.
+  `CREATE TABLE IF NOT EXISTS "ai_model_configs" (
+     "id" SERIAL PRIMARY KEY,
+     "provider" TEXT NOT NULL DEFAULT 'openrouter',
+     "model_id" TEXT NOT NULL,
+     "display_name" TEXT NOT NULL,
+     "cost_per_million_input" NUMERIC(10, 4),
+     "cost_per_million_output" NUMERIC(10, 4),
+     "max_tokens" INTEGER DEFAULT 4096,
+     "task_types" TEXT[],
+     "weight" INTEGER DEFAULT 50,
+     "enabled" BOOLEAN DEFAULT TRUE,
+     "created_at" TIMESTAMP DEFAULT NOW(),
+     "updated_at" TIMESTAMP DEFAULT NOW()
+   )`,
+  'CREATE INDEX IF NOT EXISTS "ai_model_configs_enabled_idx" ON "ai_model_configs" ("enabled")',
+  `CREATE TABLE IF NOT EXISTS "system_api_keys" (
+     "id" SERIAL PRIMARY KEY,
+     "provider" TEXT NOT NULL UNIQUE,
+     "display_name" TEXT NOT NULL,
+     "api_key" TEXT,
+     "is_active" BOOLEAN DEFAULT TRUE,
+     "last_validated_at" TIMESTAMP,
+     "validation_status" TEXT DEFAULT 'pending',
+     "created_at" TIMESTAMP DEFAULT NOW(),
+     "updated_at" TIMESTAMP DEFAULT NOW()
+   )`,
+  // 0006 — 0006_goals_portfolio_push: faithful mirror (S4 ruling 2026-11-17,
+  //   Group 2 — EXECUTED AS A MIRROR, NOT the dossier's retirement, because
+  //   the executing slice's reader check overturned the dossier's premise:
+  //   goals is declared in shared/schema/ai-telemetry.ts, portfolio_
+  //   simulations and optimization_recommendations in shared/schema/
+  //   marketplace.ts, and push_subscriptions is LIVE — subscribe /
+  //   unsubscribe routes in routes-organization.ts, pushNotificationService
+  //   and the orgPushFanout door read and write it, pinned by unit suites.
+  //   Retiring the file would have deleted push_subscriptions' only .sql
+  //   creator while its writers stay live. Statements mirror the .sql file
+  //   exactly; push_subscriptions stays on the orphan register (created
+  //   here, modelled nowhere) with its register note corrected to match.
+  `CREATE TABLE IF NOT EXISTS "goals" (
+     "id" SERIAL PRIMARY KEY,
+     "organization_id" INTEGER NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "label" TEXT NOT NULL,
+     "goal_type" TEXT NOT NULL,
+     "target_value" NUMERIC(14, 2) NOT NULL,
+     "period_start" TIMESTAMP NOT NULL,
+     "period_end" TIMESTAMP NOT NULL,
+     "created_at" TIMESTAMP DEFAULT NOW(),
+     "updated_at" TIMESTAMP DEFAULT NOW()
+   )`,
+  'CREATE INDEX IF NOT EXISTS "goals_org_idx" ON "goals" ("organization_id")',
+  'CREATE INDEX IF NOT EXISTS "goals_period_idx" ON "goals" ("period_start", "period_end")',
+  `CREATE TABLE IF NOT EXISTS "portfolio_simulations" (
+     "id" SERIAL PRIMARY KEY,
+     "organization_id" INTEGER NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "name" TEXT NOT NULL,
+     "description" TEXT,
+     "iterations" INTEGER NOT NULL DEFAULT 10000,
+     "time_horizon_months" INTEGER NOT NULL,
+     "assumptions" JSONB,
+     "results" JSONB,
+     "status" TEXT NOT NULL DEFAULT 'pending',
+     "completed_at" TIMESTAMP,
+     "created_at" TIMESTAMP DEFAULT NOW()
+   )`,
+  'CREATE INDEX IF NOT EXISTS "portfolio_simulations_org_idx" ON "portfolio_simulations" ("organization_id")',
+  'CREATE INDEX IF NOT EXISTS "portfolio_simulations_status_idx" ON "portfolio_simulations" ("status")',
+  `CREATE TABLE IF NOT EXISTS "optimization_recommendations" (
+     "id" SERIAL PRIMARY KEY,
+     "organization_id" INTEGER NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "recommendation_type" TEXT NOT NULL,
+     "title" TEXT NOT NULL,
+     "description" TEXT NOT NULL,
+     "reasoning" TEXT NOT NULL,
+     "priority" TEXT NOT NULL DEFAULT 'medium',
+     "estimated_impact" JSONB,
+     "action_items" JSONB,
+     "status" TEXT NOT NULL DEFAULT 'new',
+     "reviewed_at" TIMESTAMP,
+     "implemented_at" TIMESTAMP,
+     "created_at" TIMESTAMP DEFAULT NOW()
+   )`,
+  'CREATE INDEX IF NOT EXISTS "optimization_recommendations_org_idx" ON "optimization_recommendations" ("organization_id")',
+  'CREATE INDEX IF NOT EXISTS "optimization_recommendations_type_idx" ON "optimization_recommendations" ("recommendation_type")',
+  'CREATE INDEX IF NOT EXISTS "optimization_recommendations_status_idx" ON "optimization_recommendations" ("status")',
+  `CREATE TABLE IF NOT EXISTS "push_subscriptions" (
+     "id" SERIAL PRIMARY KEY,
+     "organization_id" INTEGER NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "user_id" TEXT NOT NULL,
+     "endpoint" TEXT NOT NULL UNIQUE,
+     "p256dh" TEXT NOT NULL,
+     "auth" TEXT NOT NULL,
+     "created_at" TIMESTAMP DEFAULT NOW()
+   )`,
+  'CREATE INDEX IF NOT EXISTS "push_subscriptions_org_idx" ON "push_subscriptions" ("organization_id")',
+  'CREATE INDEX IF NOT EXISTS "push_subscriptions_user_idx" ON "push_subscriptions" ("user_id")',
+
   // ── §3 Batch 7 — derived + legacy (7 tables) ────────────────────────────
   // 4 derived from shared/schema.ts (no canonical migration):
   //   adjacent_verticals_waitlist, feedback_submissions, integration_status,
@@ -3074,7 +3231,19 @@ $mig0262$`,
      "created_at" TIMESTAMP DEFAULT NOW()
    )`,
 
-  // nps_responses — 0012
+  // 0012 — 0012_nps_churn_risk (nps_responses, mirrored directly below) +
+  //   0012_ab_tests (RETIRED in this PR; S4 ruling 2026-11-17, Group 5,
+  //   items 9 + 32, Option A). The FK ruling is NO ACTION: the declared
+  //   schema (shared/schema.ts campaignVariants — campaignId references
+  //   campaigns with no onDelete) and the 0003 catch-up snapshot both say
+  //   NO ACTION; CASCADE's only support was the retired file's constraint
+  //   line, with no recorded product intent. campaign_variants is created
+  //   below with that rule, under the retired file's constraint name,
+  //   guarded so a database already carrying the constraint is left as-is
+  //   (this slice has no prod pg_constraint evidence; if prod's live
+  //   constraint is the CASCADE one, replacing it is a separate,
+  //   evidence-first step — the CREATE converging a fresh database to
+  //   NO ACTION is what this block proves).
   `CREATE TABLE IF NOT EXISTS "nps_responses" (
      "id" SERIAL PRIMARY KEY,
      "organization_id" INTEGER NOT NULL REFERENCES organizations(id),
@@ -3086,6 +3255,40 @@ $mig0262$`,
    )`,
   'CREATE INDEX IF NOT EXISTS idx_nps_org ON nps_responses(organization_id)',
   'CREATE INDEX IF NOT EXISTS idx_nps_trigger ON nps_responses(organization_id, trigger)',
+
+  // campaign_variants — the retired 0012_ab_tests table, created with the
+  //   ruled NO ACTION delete rule (see the 0012 header above).
+  `CREATE TABLE IF NOT EXISTS "campaign_variants" (
+     "id" SERIAL PRIMARY KEY,
+     "campaign_id" INTEGER NOT NULL,
+     "name" TEXT NOT NULL,
+     "subject" TEXT,
+     "body" TEXT,
+     "traffic_split" INTEGER DEFAULT 50,
+     "sent_count" INTEGER DEFAULT 0,
+     "open_count" INTEGER DEFAULT 0,
+     "click_count" INTEGER DEFAULT 0,
+     "response_count" INTEGER DEFAULT 0,
+     "is_winner" BOOLEAN DEFAULT FALSE,
+     "created_at" TIMESTAMP DEFAULT NOW()
+   )`,
+  `DO $mig0012$
+   BEGIN
+     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'campaign_variants_campaign_id_campaigns_id_fk') THEN
+       ALTER TABLE "campaign_variants"
+         ADD CONSTRAINT "campaign_variants_campaign_id_campaigns_id_fk"
+         FOREIGN KEY ("campaign_id") REFERENCES "public"."campaigns"("id")
+         ON DELETE NO ACTION ON UPDATE NO ACTION;
+     END IF;
+   END $mig0012$`,
+  // 0019 — 0019_oauth_providers: header only, net-nil (S4 ruling
+  //   2026-11-17, Group 2). The file adds users.oauth_provider /
+  //   oauth_provider_id + a partial unique index; founder-held 0020 drops
+  //   both columns (the index dies by column dependency). Net effect nil,
+  //   deliberately not mirrored: 0020 is unmirrored, so mirroring 0019
+  //   alone would create live OAuth columns on prod that nothing drops.
+  //   The columns are declared nowhere and read by nothing — Clerk owns
+  //   OAuth now. Zero statements.
 
   // 0000 — 0000_sleepy_betty_ross: header only. Drizzle baseline, historical,
   //   not mirrored (S4 ruling 2026-11-17, Group 1, Option A). The file is the
@@ -7851,11 +8054,13 @@ $mig0262$`,
   `CREATE INDEX IF NOT EXISTS "negotiation_outcomes_org_idx"
      ON "negotiation_outcomes" ("organization_id", "created_at")`,
 
-  // 0164 (removed 2026-08-01): four ALTER TABLE "voice_calls" ADD COLUMN
-  // statements lived here. voice_calls is dropped at the end of this file by
-  // founder ruling; leaving the ALTERs would make every post-drop deploy log a
-  // spurious "SKIPPED (dependency missing)" plus advice to apply a migration
-  // that must never be applied again.
+  // 0164 — 0164_voice_call_outcome: header only, removed on purpose (S4
+  // ruling 2026-11-17, Group 2). Four ALTER TABLE "voice_calls" ADD COLUMN
+  // statements lived here (removed 2026-08-01). voice_calls is dropped at
+  // the end of this file by founder ruling; leaving the ALTERs would make
+  // every post-drop deploy log a spurious "SKIPPED (dependency missing)"
+  // plus advice to apply a migration that must never be applied again.
+  // Zero statements.
 
   // 0165 — ensure organizations.last_active_at exists. The column was in the
   // Drizzle schema + read by founder-intelligence, but never in migrate.mjs (so

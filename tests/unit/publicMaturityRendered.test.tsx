@@ -19,8 +19,8 @@
  * registry states nobody has committed yet.
  *
  * ── SINCE FD1 (2026-11-12) ──────────────────────────────────────────────────
- * The registry states the launch presentation (2 core / 3 beta / 10
- * registry_only) and the demotion table is empty, so the tiers a visitor sees
+ * The registry states the launch presentation (3 core / 2 beta / 10
+ * registry_only since Wholesale's 2026-11-18 lift) and the demotion table is empty, so the tiers a visitor sees
  * derive from the registry alone. The registry-only types render in the
  * landing's third, muted tier — whose copy still reads "promised, not sold"
  * (client/src/pages/landing/copy.ts, a landing follow-up outside this slice).
@@ -247,13 +247,13 @@ describe("the surface follows the registry, for states the registry is not in", 
     }
   });
 
-  it("the live registry with no demotions is the FD1 presentation: 2 core, 3 beta, 9 not sold", () => {
+  it("the live registry with no demotions is the FD1 presentation: 3 core, 2 beta, 9 not sold", () => {
     // Under OD-5 this asserted the opposite — that an empty table meant
     // fourteen core chips. FD1 moved the conservatism into the registry, so the
     // table being empty now yields the founder's presentation, not a lie.
     const tiers = deriveLandingTiers(BUSINESS_TYPES, {});
-    expect(tiers.core.map((c) => c.id).sort()).toEqual(["buy_and_hold", "note_investor"]);
-    expect(tiers.beta.map((c) => c.id).sort()).toEqual(["land_flipper", "residential_wholesaler", "tax_lien_deed"]);
+    expect(tiers.core.map((c) => c.id).sort()).toEqual(["buy_and_hold", "note_investor", "residential_wholesaler"]);
+    expect(tiers.beta.map((c) => c.id).sort()).toEqual(["land_flipper", "tax_lien_deed"]);
     expect(tiers.roadmap).toHaveLength(9);
   });
 

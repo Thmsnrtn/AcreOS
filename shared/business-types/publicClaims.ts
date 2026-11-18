@@ -4,7 +4,7 @@
  * ── THE DECISION THIS IMPLEMENTS ────────────────────────────────────────────
  * FD1 (launch scope & registry, 2026-11-12; recorded in
  * docs/company/founder-decisions-2026-11-12-launch-scope.md): the public
- * promise is 2 core + 3 beta, and the other ten types are `registry_only` —
+ * promise is 3 core + 2 beta (FD1 as lifted 2026-11-18), and the other ten types are `registry_only` —
  * registered, built, kept for existing books, but not sold.
  *
  * Under OD-5 (2026-08-17) the registry said `core` for all fifteen and THIS
