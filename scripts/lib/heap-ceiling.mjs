@@ -38,13 +38,37 @@
 // Do not raise it speculatively: 8192 raised peak RSS to 5,971 MB, which is
 // worse on a small runner, and ci.yml records that an 8192 bump "invited the
 // OOM-killer that broke deploys Jun 6-8".
+//
+// RE-MEASURED 2026-11-18 at 14968d36, same command, on a GitHub ubuntu-latest
+// runner (Actions run 44326711700; runner Mem total 15,983 MB, 4 vCPU) — the
+// program grew to 9,597 files and demand crossed the 6144 ceiling: identical
+// gates passed or aborted 134 by run-to-run variance, and staging.yml's copy
+// aborted on the #610/#611 merge heads, skipping their deploys. Three
+// completing runs, each exit 2 with exactly 151 errors (= the ratchet
+// baseline, unchanged):
+//     8192 → "Memory used" 6,432,803K, peak RSS 6,640,196 KB, 157s
+//     7168 → "Memory used" 6,404,036K, peak RSS 6,549,176 KB, 141s
+//     8192 → "Memory used" 6,438,275K, peak RSS 6,613,232 KB, 123s
+// Peak "Memory used" 6,438,275K ≈ 6,287 MiB; the three reads agree within
+// 0.5%, so at a completing ceiling the demand is stable, not GC noise.
+//
+// 8192 is ~30% above that measured peak (8192 / 6287 ≈ 1.30) — restoring the
+// ~20% rule with buffer, because demand grew ~23% while files grew ~20%
+// since the Aug measurement, and 7168 completes with only ~12–14% margin.
+// Peak RSS at 8192 measured ~6.5 GiB against the runner's ~16 GB, so the
+// loud V8 abort still fires long before machine RAM is threatened on the
+// current runner tier (the Jun-era 8192/OOM caution above predates it; the
+// 2026-11-18 run's own `free -m` is the current evidence). RE-MEASURE and
+// raise again when the reported "Memory used" passes ~7,000 MB; if demand
+// grows into 8192 the way it grew into 6144, the next lever is cutting the
+// program's demand (split the tests program), not another raise alone.
 // ============================================================================
 
 /**
  * Single source of truth. Mirrored in package.json's `check:app` prefix, and
  * tests/unit/testsAreTypeChecked.test.ts fails if the two ever disagree.
  */
-export const HEAP_CEILING_MB = 6144;
+export const HEAP_CEILING_MB = 8192;
 
 /** The `--max-old-space-size` already present in a NODE_OPTIONS string, or 0. */
 export function ceilingOf(nodeOptions) {
