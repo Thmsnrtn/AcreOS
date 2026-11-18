@@ -2,8 +2,8 @@
  * A declared maturity may not exceed evidenced readiness.
  *
  * ── SINCE FD1 (2026-11-12) ──────────────────────────────────────────────────
- * The registry states the launch presentation itself — 2 core / 3 beta / 10
- * registry_only (fd1LaunchScope.test.ts) — and the public demotion table is
+ * The registry states the launch presentation itself — 3 core / 2 beta / 10
+ * registry_only since Wholesale's 2026-11-18 lift (fd1LaunchScope.test.ts) — and the public demotion table is
  * empty. The ratchet below therefore counts ONE gap: `note_investor`, which the
  * founder promised as core on evidence that reaches `surfaced`. That gap is
  * named in a dated register (FD1_CORE_ON_SURFACED_EVIDENCE) rather than
@@ -195,14 +195,16 @@ const isFounderDecidedCore = (id: string) => id in FD1_CORE_ON_SURFACED_EVIDENCE
  * confirmed by the coordinator) AND the exemption visibly restored at the three
  * OD-5 sites below (`isHeld`). The wholesale package's Leg 5 staging walk is
  * the proof that ends it, in its own lift PR — the same path buy_and_hold took.
+ *
+ * LIFTED 2026-11-18 for residential_wholesaler: the scoped revenue-loop
+ * journey walk passed green end-to-end on staging (first walk + post-fix
+ * re-walk + send-half run; walk record journey-walk-wholesale-2026-11), so
+ * its registry maturity was lifted to `core`, its ladder entry flipped to
+ * `decided`, and its entry here deleted, in one commit — recorded as an
+ * addendum in its decision file. The register is EMPTY again and pinned
+ * empty; the lifted state is pinned by name in the block below.
  */
-const HELD_PENDING_JOURNEY_PROOF: Partial<Record<BusinessTypeId, { heldSince: string; reviewBy: string; decision: string }>> = {
-  residential_wholesaler: {
-    heldSince: "2026-11-05",
-    reviewBy: "2026-12-31",
-    decision: "docs/company/founder-decisions-2026-11-05-wholesale.md",
-  },
-};
+const HELD_PENDING_JOURNEY_PROOF: Partial<Record<BusinessTypeId, { heldSince: string; reviewBy: string; decision: string }>> = {};
 const isHeld = (id: string) => id in HELD_PENDING_JOURNEY_PROOF;
 
 describe("the evidence scan is real (vacuity guards, first)", () => {
@@ -637,8 +639,9 @@ describe("held pending journey proof — code-decided, claim still beta, and dat
     // Adding a vertical here bypasses OD-5 for it. That is a founder decision,
     // so the set is pinned and widening it fails until this line is changed.
     // buy_and_hold left it on 2026-11-05 (lifted); residential_wholesaler
-    // joined under its own decision file.
-    expect(held.map(([id]) => id)).toEqual(["residential_wholesaler"]);
+    // joined under its own decision file and left it on 2026-11-18 (lifted).
+    // The register is empty and pinned empty.
+    expect(held.map(([id]) => id)).toEqual([]);
   });
 
   it.each(held)("%s measures `decided` — a hold over an unclosed vertical is stale", (id) => {
@@ -648,8 +651,8 @@ describe("held pending journey proof — code-decided, claim still beta, and dat
 
   it.each(held)("%s keeps its public claim at `beta` — lifting it ends the hold", (id) => {
     // Under OD-5 this read the demotion table; under FD1 the registry itself
-    // says `beta` for the wholesaler (one of the three beta launch types), and
-    // the public claim is the registry's projection.
+    // said `beta` for a held vertical, and the public claim is the registry's
+    // projection.
     expect(BUSINESS_TYPES[id].maturity).toBe("beta");
     expect(publicMaturityOf(BUSINESS_TYPES[id])).toBe("beta");
   });
@@ -696,6 +699,31 @@ describe("held pending journey proof — code-decided, claim still beta, and dat
       "utf8",
     );
     expect(doc).toMatch(/## Addendum — 2026-11-05: the hold is lifted/);
+  });
+
+  it("residential_wholesaler is released from its hold: measured `decided`, no demotion entry, and the ladder claims the loop", () => {
+    // The lifted state, pinned by name so that reinstating the hold or
+    // reverting the ladder entry fails here as well as in the OD-5 rules
+    // above. The hold (founder-decisions-2026-11-05-wholesale.md) ended
+    // 2026-11-18 when the scoped revenue-loop journey walk passed green
+    // end-to-end on staging; FD1's registry maturity is now `core`, so its
+    // public claim is core by the registry and its ladder entry carries NO
+    // public-tier caveat (the generator states one only beside a decided
+    // vertical the founder kept below core).
+    expect(readinessOf(BUSINESS_TYPES.residential_wholesaler, evidence)).toBe("decided");
+    expect(PUBLIC_CLAIM_DEMOTIONS.residential_wholesaler).toBeUndefined();
+    expect(BUSINESS_TYPES.residential_wholesaler.maturity).toBe("core");
+    expect(entry("residential_wholesaler"), "no ladder entry for residential_wholesaler").toBeDefined();
+    expect(entry("residential_wholesaler")!.claim).toMatch(/closes the canonical loop/);
+    expect(entry("residential_wholesaler")!.caveat).toBeUndefined();
+  });
+
+  it("the wholesale lift is recorded in the founder decision file", () => {
+    const doc = fs.readFileSync(
+      path.resolve(__dirname, "../..", "docs/company/founder-decisions-2026-11-05-wholesale.md"),
+      "utf8",
+    );
+    expect(doc).toMatch(/## Addendum — 2026-11-18: the hold is lifted/);
   });
 });
 

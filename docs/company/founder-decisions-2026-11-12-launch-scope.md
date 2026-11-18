@@ -18,14 +18,30 @@ what is proven so far, not a ranking. Buy-and-Hold holds core because its
 journey is proven (demotion lifted 2026-11-05/07); Land does not hold core
 because its journey is not yet proven.
 
-## FD1 — the public promise is 2 core + 3 beta; ten types are registry-only
+**Membership lifted 2026-11-18 (Wholesale beta → core).** Residential
+wholesaler's journey-proof hold (founder-decisions-2026-11-05-wholesale.md)
+ended: the scoped Wholesale revenue-loop walk passed green end-to-end on
+staging across the first walk, the post-fix re-walk, and the send-half run
+(walk record: journey-walk-wholesale-2026-11) — buyer profile created through
+a customer-facing path with its buy box stored, buyer match fired, blast sent
+on the org's own verified sending identity, contract assigned with
+`assignmentFeeCents` recorded, and the fee surfaced in Finance and on the
+wholesaler dashboard. Under the governing rule above, Wholesale has *earned*
+core — the second of the five public verticals to do so (Notes was first).
+Honest scope: the walk proved the scoped revenue loop only; legs outside it
+(the buy-box surface, the underwriting decision, contract-chain compliance in
+both directions, the org's own e-sign rail, outcome grading, bundle evidence)
+were not walked and are not claimed by this lift. The table below now states
+the lifted membership: 3 core + 2 beta.
 
-**Decision (corrected framing).** Of the fifteen registered business types:
+## FD1 — the public promise is 3 core + 2 beta; ten types are registry-only
+
+**Decision (corrected framing, as lifted 2026-11-18).** Of the fifteen registered business types:
 
 | Presentation | Types |
 |---|---|
-| **Core** (full workflows, sold as such) | Note investor, Buy-and-hold rentals |
-| **Beta** (offered, labelled Beta) | Land flipper, Tax lien / deed, Residential wholesaler |
+| **Core** (full workflows, sold as such) | Note investor, Buy-and-hold rentals, Residential wholesaler |
+| **Beta** (offered, labelled Beta) | Land flipper, Tax lien / deed |
 | **Registry-only** (built, kept, not in the public promise) | Land + notes (hybrid), Fix-and-flip, Short-term rentals, Commercial, Creative finance, Developer / entitlements, Subdivider, Multifamily, Mobile home / park, Agent-investor |
 
 Fix-and-Flip and Subdivider are named registry-only explicitly: the original
@@ -45,8 +61,9 @@ FD1 moves that conservatism into the registry itself; the table is empty and
 pinned empty. The 2026-11-05 buy-and-hold release stands in substance:
 Buy-and-Hold is a `core` launch type by this decision, consistent with its
 demotion having been lifted on journey proof; it still measures `decided`.
-The wholesaler's journey-proof hold is unchanged: it is a `beta` launch type,
-still measures `decided`, and its ladder entry still waits for its Leg 5 walk.
+The wholesaler's journey-proof hold ended with the 2026-11-18 lift above: it
+is a `core` launch type, still measures `decided`, and its ladder entry now
+claims the loop.
 
 **The one gap this decision owns.** `note_investor` is promised as core on
 evidence that reaches `surfaced` (real modules and templates, no production
