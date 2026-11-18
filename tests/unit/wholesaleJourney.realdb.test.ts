@@ -39,6 +39,10 @@ vi.mock("../../server/services/emailService", () => ({
     sent.emails += 1;
     return { success: true };
   }),
+  // W-DEF-1: the blast route preflights the org's sending identity through
+  // the same resolver the (here stubbed) transport would use; the stubbed
+  // transport accepts, so the preflight answers canSend.
+  counterpartyEmailIdentityStatus: vi.fn(async () => ({ canSend: true, ownSesCredentials: false, verifiedDomain: true })),
 }));
 
 const tag = `wjr-${Math.random().toString(36).slice(2, 10)}`;
