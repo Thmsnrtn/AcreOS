@@ -1243,17 +1243,12 @@
     {
       "kind": "export",
       "id": "shared/schema/earnest-money-events.ts::earnestMoneyEvents",
-      "reason": "CENSUS CURE (2026-11-19). Deliberate declaration-only export: earnest_money_events is created on the release path by the item-0086 mirror block in scripts/migrate.mjs (PR #623, S4 0086 Option A) and this pgTable models that CREATE exactly so the staging schema census stops counting the live table as undeclared residue. It has no named production consumer BY DESIGN -- the writer wiring (append an event in server/routes-earnest-money.ts on every status transition) is a named follow-up build item, not this slice. REVOCATION: if a production module imports earnestMoneyEvents by name, remove this entry."
-    },
-    {
-      "kind": "table-writer",
-      "id": "earnest_money_events",
-      "reason": "CENSUS CURE (2026-11-19). No writer yet BY DESIGN: the table was release-path created by the 0086 mirror (PR #623) before any code appends to it, and the writer wiring (append an event in server/routes-earnest-money.ts on every earnest-money status transition) is a named follow-up build item recorded in the S4 0086 dossier and the schema-migrate-mirror register history. Until it lands the table is empty by design -- a tracked debt, not dead weight: the append-only trail is the dispute evidence for a live money-adjacent surface. REVOCATION: when the writer lands, remove this entry."
+      "reason": "CENSUS CURE (2026-11-19). Deliberate declaration-only export: earnest_money_events is created on the release path by the item-0086 mirror block in scripts/migrate.mjs (PR #623, S4 0086 Option A) and this pgTable models that CREATE exactly so the staging schema census stops counting the live table as undeclared residue. It has no named production consumer BY DESIGN -- the writer that landed in PR #628 appends via raw sql`` INSERT in server/routes-earnest-money.ts and does not import this export. REVOCATION: if a production module imports earnestMoneyEvents by name, remove this entry."
     },
     {
       "kind": "table-reader",
       "id": "earnest_money_events",
-      "reason": "CENSUS CURE (2026-11-19). No reader yet BY DESIGN, same basis as the table-writer entry above: the read path is the EMD replay (ORDER BY occurred_at ASC per migration 0086's header) that ships with the writer follow-up build item. The declaration exists now so the staging census, the schema-migrate-mirror register and db:build-from-repo all model the physical table staging already holds. REVOCATION: when a production read path lands, remove this entry."
+      "reason": "CENSUS CURE (2026-11-19). No reader yet BY DESIGN: the writer landed in PR #628 (raw sql`` INSERT appends in server/routes-earnest-money.ts; the table-writer entry was revoked when it landed), but the read path -- the EMD replay (ORDER BY occurred_at ASC per migration 0086's header) -- has not landed; PR #628's own register note records 'No reader yet.' The declaration exists now so the staging census, the schema-migrate-mirror register and db:build-from-repo all model the physical table staging already holds. REVOCATION: when a production read path lands, remove this entry."
     }
   ],
   "lastBumpNote": "2026-11-18 PR #616 fix round (D-1): baseline LOWERED to measured \u2014 internalOnlyExports 1219\u21921217. Three TEST-SEAM allowlist entries added for server/services/settlementRail/delivery.ts (RailDeliveryRefusedError, RailDeliveryConflictError, translateRailDeliveryError \u2014 all imported by tests/unit/railDeliveryErrors.test.ts), and the same PR's translation reaches outwardAction.ts's ActionInFlightError + ActionKeyReusedError from production, so the count fell two net of the exemptions and the stale-high rule required this lock-in (the PR #590 precedent). No baseline raised; direction stays down-only.",

@@ -121,7 +121,13 @@ const MAX_GHOSTS = 0;
 // sql`` INSERT whose table this gate cannot resolve to a modelled table.
 // Measured on the PR head by this suite itself (unresolved 60, ghosts
 // still 0).
-const MAX_UNRESOLVED = 60;
+// 60 → 59 (2026-11-19, PR #627 round 3, on the tree merged over #628):
+// PR #627 models earnest_money_events in shared/schema, so the EMD
+// writer's raw INSERT now resolves to a modelled table and the +1 is
+// revoked. Measured on the merged tree by this suite itself (unresolved
+// 59, ghosts still 0); the same declaration-revokes-the-budget shape as
+// the PR #621 entry above.
+const MAX_UNRESOLVED = 59;
 const MIN_TEMPLATES = 800;
 const MIN_WITH_COLUMNS = 150;
 

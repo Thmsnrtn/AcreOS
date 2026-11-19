@@ -417,12 +417,23 @@ describe("earnest_money_events writer (0086)", () => {
     expect(src).toMatch(/INSERT INTO earnest_money_events/);
     expect(src).not.toMatch(/UPDATE\s+earnest_money_events/i);
     expect(src).not.toMatch(/DELETE\s+FROM\s+earnest_money_events/i);
-    // The table stays unmodelled: no pgTable declaration anywhere for it.
+    // The writer stays raw-SQL by this slice's design (the routes file
+    // above INSERTs via sql`` and never imports the pgTable), but the
+    // table itself is modelled: PR #627's census cure declares it in
+    // shared/schema/earnest-money-events.ts, exactly once, in its own
+    // file — modelling is what removed it from the orphans register.
+    // (This test originally asserted "no pgTable anywhere"; that premise
+    // was #628's unmodelled-by-design posture, superseded when #627
+    // landed on the merged tree — declaration wins, as with #626's pin.)
     const schemaDir = path.join(process.cwd(), "shared/schema");
     for (const f of fs.readdirSync(schemaDir)) {
       if (!f.endsWith(".ts")) continue;
       const s = fs.readFileSync(path.join(schemaDir, f), "utf8");
-      expect(s).not.toMatch(/pgTable\(\s*"earnest_money_events"/);
+      if (f === "earnest-money-events.ts") {
+        expect(s).toMatch(/pgTable\(\s*"earnest_money_events"/);
+      } else {
+        expect(s).not.toMatch(/pgTable\(\s*"earnest_money_events"/);
+      }
     }
   });
 });
