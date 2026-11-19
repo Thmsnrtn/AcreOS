@@ -14030,6 +14030,12 @@ export * from "./schema/subdivision-screen-runs";
 export * from "./schema/push-subscriptions";
 
 // ============================================================================
+// EARNEST MONEY EVENTS — append-only EMD event log (migration 0086; declared
+// 2026-11-19 as the census cure) — ./schema/earnest-money-events.ts
+// ============================================================================
+export * from "./schema/earnest-money-events";
+
+// ============================================================================
 // FIX-AND-FLIP VERTICAL — extracted to ./schema/fix-and-flip.ts
 // ============================================================================
 export * from "./schema/fix-and-flip";
