@@ -116,7 +116,12 @@ const MAX_GHOSTS = 0;
 // and the SELECT/DELETE templates in pushNotificationService now resolve
 // to a modelled table. Measured on the PR head by this suite itself; the
 // test's own instruction is to lower MAX_UNRESOLVED in the same change.
-const MAX_UNRESOLVED = 59;
+// 59 → 60 (2026-11-19, PR #628): +1 for the 0086 EMD writer's raw INSERT
+// against the deliberately unmodelled earnest_money_events table — a raw
+// sql`` INSERT whose table this gate cannot resolve to a modelled table.
+// Measured on the PR head by this suite itself (unresolved 60, ghosts
+// still 0).
+const MAX_UNRESOLVED = 60;
 const MIN_TEMPLATES = 800;
 const MIN_WITH_COLUMNS = 150;
 
