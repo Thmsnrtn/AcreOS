@@ -29,7 +29,9 @@ import request from "supertest";
 import fs from "node:fs";
 import path from "node:path";
 import { PgDialect } from "drizzle-orm/pg-core";
-import { stripComments } from "../helpers/stripComments";
+import { REPO_SWEEP_TIMEOUT_MS, stripComments } from "../helpers/stripComments";
+
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 const ORG_A = 42;
 const ORG_B = 7;
