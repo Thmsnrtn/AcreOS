@@ -159,7 +159,7 @@ describe("staging schema census", () => {
 
   it("counts earnest_money_events as residue when it is physical but NOT marked registered", () => {
     const residue = Array.from({ length: UNDECLARED_RESIDUE_TOLERANCE }, (_, i) => `old${i}`);
-    // No registered set passed — earnest_money_events IS in the orphans map, which alone confers nothing.
+    // No registered set passed — presence in the orphans map alone would confer nothing anyway.
     const v = censusVerdict(declared, [...declared, ...residue, "earnest_money_events"]);
     expect(v.ok).toBe(false);
     expect(v.registered).toEqual([]);
@@ -169,14 +169,20 @@ describe("staging schema census", () => {
 
   it("reads the real register: only the explicit marker confers registration", () => {
     const registered = registeredReleasePathOrphans();
-    expect([...registered]).toEqual(["earnest_money_events"]);
+    // earnest_money_events left the marked set when PR #627 modelled it — a table
+    // leaves this register by being modelled (the register's own _note) — so the
+    // marker array is currently empty; the mechanism stays for future
+    // release-path orphans.
+    expect([...registered]).toEqual([]);
     // Names present in the register's orphans map for unrelated .sql reasons are NOT registered.
     const orphans = JSON.parse(read("scripts/schema-migrate-mirror.orphans.json")) as { orphans: Record<string, string> };
     expect(Object.keys(orphans.orphans)).toContain("sessions");
     expect(registered.has("sessions")).toBe(false);
-    expect(registered.has("earnest_money_events")).toBe(true);
-    // The marked table keeps its orphans-map entry (the register is not restructured).
-    expect(orphans.orphans["earnest_money_events"]).toMatch(/RELEASE-PATH CREATED/);
+    expect(registered.has("earnest_money_events")).toBe(false);
+    // The formerly marked table is gone from the orphans map because it is
+    // declared now: the census declaration scan sees it as a modelled table.
+    expect(orphans.orphans["earnest_money_events"]).toBeUndefined();
+    expect(declarationCensus().names.has("earnest_money_events")).toBe(true);
   });
 
   it("fails loudly when the register cannot be read or has no valid marker", () => {
