@@ -269,11 +269,6 @@ export function classifyExisting(
         reason: "another worker is performing this action now",
         error: new ActionInFlightError(kind, key),
       };
-    case "failed":
-      return {
-        verdict: "execute",
-        reason: "prior attempt failed before any side effect; safe to retry",
-      };
     default: {
       // An unrecognised status is not a reason to send. Refuse loudly rather
       // than fall through to execute — the failure mode of guessing here is a
