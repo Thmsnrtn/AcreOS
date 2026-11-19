@@ -43,6 +43,21 @@
  *   on every run; a count above the tolerance fails. Lower the tolerance as the
  *   residue is retired — never raise it to get green.
  *
+ * ── REGISTERED RELEASE-PATH ORPHANS (not a tolerance change) ────────────────
+ * A table named in the `releasePathCreatedUnmodelled` array of
+ * scripts/schema-migrate-mirror.orphans.json is CREATEd on the release path
+ * (scripts/migrate.mjs) under a founder ruling that deliberately keeps it
+ * UNMODELLED — no pgTable declaration (e.g. `earnest_money_events`, S4 item
+ * 0086 Option A, adopted 2026-11-17, executed 2026-11-19 in #623). Such a
+ * table is physical-but-undeclared BY DECISION, not residue: the census
+ * reports it in its own named section and excludes it from the residue count
+ * above. The residue tolerance is unchanged (still 19) and this category is
+ * not a raise of it — only an entry in that explicit array confers the
+ * exclusion. A name that merely appears in the register's `orphans` map (many
+ * residue names do, for unrelated historical .sql reasons) is NOT excluded.
+ * If the register file is missing or unparseable, the census fails loudly —
+ * it never silently treats the registered set as empty.
+ *
  * It also prints, SELECT-only, the newest migrations/*.sql block's tables with
  * their constraint and trigger counts, and fails if a table that file creates
  * is absent or has fewer triggers than the file creates on it.
@@ -88,10 +103,42 @@ export function parsePhysical(text: string): PhysicalTable[] {
   return rows;
 }
 
+/** The orphans register whose `releasePathCreatedUnmodelled` array marks founder-ruled, deliberately unmodelled tables. */
+export const ORPHANS_REGISTER_PATH = path.join(ROOT, "scripts/schema-migrate-mirror.orphans.json");
+
+/**
+ * Read the registered release-path orphan set from the orphans register.
+ * Throws on ANY failure — missing file, invalid JSON, or a missing/malformed
+ * `releasePathCreatedUnmodelled` array — so the census fails loudly rather
+ * than silently treating the registered set as empty.
+ */
+export function registeredReleasePathOrphans(file = ORPHANS_REGISTER_PATH): Set<string> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch (e) {
+    throw new Error(
+      `could not read/parse the orphans register (${file}): ${e instanceof Error ? e.message : String(e)} — ` +
+        `refusing to run the census without the registered release-path orphan set`,
+    );
+  }
+  const list = (parsed as { releasePathCreatedUnmodelled?: unknown } | null)?.releasePathCreatedUnmodelled;
+  if (!Array.isArray(list) || list.some((t) => typeof t !== "string")) {
+    throw new Error(
+      `the orphans register (${file}) has no valid "releasePathCreatedUnmodelled" array of table names — ` +
+        `refusing to treat the registered release-path orphan set as empty`,
+    );
+  }
+  return new Set(list as string[]);
+}
+
 export interface CensusVerdict {
   ok: boolean;
   missing: string[];
+  /** Physical-but-undeclared tables that count as residue (registered release-path orphans excluded). */
   undeclared: string[];
+  /** Physical-but-undeclared tables on the registered release-path orphan list — reported separately, never residue. */
+  registered: string[];
   failures: string[];
 }
 
@@ -99,11 +146,15 @@ export function censusVerdict(
   declared: Iterable<string>,
   physical: Iterable<string>,
   undeclaredTolerance = UNDECLARED_RESIDUE_TOLERANCE,
+  registeredOrphans: Iterable<string> = [],
 ): CensusVerdict {
   const d = new Set(declared);
   const p = new Set(physical);
+  const registeredSet = new Set(registeredOrphans);
   const missing = [...d].filter((t) => !p.has(t)).sort();
-  const undeclared = [...p].filter((t) => !d.has(t)).sort();
+  const physicalUndeclared = [...p].filter((t) => !d.has(t)).sort();
+  const registered = physicalUndeclared.filter((t) => registeredSet.has(t));
+  const undeclared = physicalUndeclared.filter((t) => !registeredSet.has(t));
   const failures: string[] = [];
   if (d.size < DECLARED_TABLE_FLOOR) failures.push(`only ${d.size} declared tables read (floor ${DECLARED_TABLE_FLOOR})`);
   if (p.size < PHYSICAL_TABLE_FLOOR) failures.push(`staging returned only ${p.size} tables (floor ${PHYSICAL_TABLE_FLOOR})`);
@@ -111,7 +162,7 @@ export function censusVerdict(
   if (undeclared.length > undeclaredTolerance) {
     failures.push(`${undeclared.length} undeclared table(s) on staging, above the tolerance of ${undeclaredTolerance}`);
   }
-  return { ok: failures.length === 0, missing, undeclared, failures };
+  return { ok: failures.length === 0, missing, undeclared, registered, failures };
 }
 
 /** Tables the newest migrations/NNNN_*.sql file creates, with the triggers it creates on each. */
@@ -196,7 +247,9 @@ async function main() {
   const census = declarationCensus();
   const barrel = await barrelTableNames();
   const ratchet = JSON.parse(fs.readFileSync(path.join(ROOT, "scripts/ratchets/table-count.json"), "utf8"));
-  const verdict = censusVerdict(census.names, physical.map((t) => t.name));
+  // Throws (→ loud failure via the main().catch below) if the register is missing/unparseable.
+  const registeredOrphans = registeredReleasePathOrphans();
+  const verdict = censusVerdict(census.names, physical.map((t) => t.name), UNDECLARED_RESIDUE_TOLERANCE, registeredOrphans);
 
   console.log(
     `[census] declared: ${census.occurrences} pgTable( occurrence(s) across shared/ ` +
@@ -223,6 +276,11 @@ async function main() {
   }
   console.log(`\n[census] on staging but UNDECLARED (${verdict.undeclared.length}; left in place — dropping is a founder/deletion-ledger decision):`);
   for (const t of verdict.undeclared) console.log(`  + ${t}`);
+
+  console.log(
+    `\n[census] on staging, undeclared but REGISTERED release-path orphans (founder-ruled, deliberately unmodelled) (${verdict.registered.length}; excluded from the undeclared residue count above — not a tolerance change):`,
+  );
+  for (const t of verdict.registered) console.log(`  + ${t}`);
 
   const block = newestMigrationBlock();
   const byName = new Map(physical.map((t) => [t.name, t]));
