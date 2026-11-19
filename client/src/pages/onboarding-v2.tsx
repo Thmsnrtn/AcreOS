@@ -98,8 +98,8 @@ import "./styles/onboarding-v2.css";
 // The registry (shared/business-types.ts, re-cut in P1-11 S1 / PR #592) is
 // the single source of truth for WHICH types a new signup is offered: the
 // presented set is exactly the production-ready set — core + beta, five
-// types today (Note Investor, Buy-and-Hold and Wholesale core —
-// Wholesale lifted 2026-11-18 on journey proof; Land and Tax Lien / Deed beta). The other ten registry types are registry_only
+// types today (Note Investor, Buy-and-Hold, Wholesale and Tax Lien / Deed core —
+// Wholesale lifted 2026-11-18 and Tax 2026-11-19, both on journey proof; Land beta). The other ten registry types are registry_only
 // under FD1: built and registered, their existing books keep working, but
 // they are NOT offered here and carry no choice row below.
 //

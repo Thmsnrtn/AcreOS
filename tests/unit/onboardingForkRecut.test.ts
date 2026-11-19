@@ -2,7 +2,7 @@
  * P1-11 S2 — onboarding fork re-cut (X-1 build half, FD1 launch presentation).
  *
  * S1 (PR #592) re-cut the REGISTRY: 2 core + 3 beta public, 10 registry_only
- * (Wholesale lifted to core 2026-11-18: 3 core + 2 beta).
+ * (Wholesale lifted to core 2026-11-18 and Tax 2026-11-19: 4 core + 1 beta).
  * The onboarding wizard was the remaining surface still offering all 15 —
  * its CORE_CHOICES even led with a registry_only type (hybrid) and its
  * default selection was land_flipper. This suite pins the re-cut fork:
@@ -47,7 +47,7 @@ const registryIdsByTier = (tier: string): BusinessTypeId[] =>
   BUSINESS_TYPE_IDS.filter((id) => BUSINESS_TYPES[id].maturity === tier);
 
 describe("onboarding fork — FD1 presentation (P1-11 S2)", () => {
-  it("offers exactly the FD1 five: 3 core + 2 beta, nothing else", () => {
+  it("offers exactly the FD1 five: 4 core + 1 beta, nothing else", () => {
     const offered = presentedMetaIds().sort();
     expect(offered).toEqual(
       ["buy_and_hold", "land_flipper", "note_investor", "residential_wholesaler", "tax_lien_deed"].sort(),

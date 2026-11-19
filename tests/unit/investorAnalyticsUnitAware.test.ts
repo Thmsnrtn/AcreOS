@@ -182,8 +182,8 @@ describe("the gap prose matches the code (Wave 3 — core-closed truth)", () => 
     // occupancy (perBuildingOccupancy.test.ts), and the T-12 workspace
     // (t12Workspace.test.ts + the wiring gate in multifamilyCore.test.ts). The
     // flat 40% is only a disclosed fallback rather than the headline op-ex.
-    // FD1 (2026-11-12, re-pinned not deleted): the launch promise is 3 core +
-    // 2 beta, so the entry now reads registry_only — the capability prose
+    // FD1 (2026-11-12, re-pinned not deleted): the launch promise is 4 core +
+    // 1 beta, so the entry now reads registry_only — the capability prose
     // above is unchanged and existing books keep it.
     const registry = read("shared/business-types.ts");
     const mf = registry.slice(registry.indexOf("multifamily: {"));

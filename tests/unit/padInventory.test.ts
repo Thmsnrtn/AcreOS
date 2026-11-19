@@ -573,7 +573,7 @@ describe("the mobile_home registry entry states the pad gap as CLOSED", () => {
     // comps or DMV/VIN title verification — those residuals are disclosed, not
     // fabricated.
     // REWRITTEN AGAIN at FD1 (2026-11-12, not deleted): the launch promise is
-    // 3 core + 2 beta; mobile_home is one of the ten registry-only types.
+    // 4 core + 1 beta; mobile_home is one of the ten registry-only types.
     expect(BUSINESS_TYPES.mobile_home.maturity).toBe("registry_only");
   });
 });

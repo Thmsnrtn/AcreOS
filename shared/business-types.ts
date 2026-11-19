@@ -32,7 +32,11 @@
  * and Subdivider explicitly among them.
  * 2026-11-18 — Wholesale LIFTED beta → core: its scoped revenue-loop journey
  * walk passed green end-to-end on staging (see the residential_wholesaler
- * entry below), so the promise is now 3 core + 2 beta. This is a PRESENTATION re-cut of the
+ * entry below), so the promise is now 3 core + 2 beta.
+ * 2026-11-19 — Tax lien / deed LIFTED beta → core: its journey walk passed
+ * on staging and the founder counted it proven the same day (see the
+ * tax_lien_deed entry below), so the promise is now 4 core + 1 beta.
+ * This is a PRESENTATION re-cut of the
  * 15 values below, not a deletion: `isProductionReady` (core|beta) is what
  * gates new-signup selectability, so registry_only types stop being offered
  * while `getBusinessType()` still resolves them for every existing org. The
@@ -118,9 +122,9 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
   land_flipper: {
     id: "land_flipper",
     label: "Land flipper",
-    // FD1 (2026-11-12): beta — one of the beta types in the public
-    // promise (with tax_lien_deed; residential_wholesaler was the third
-    // until its 2026-11-18 lift to core), per the
+    // FD1 (2026-11-12): beta — the one remaining beta type in the public
+    // promise (residential_wholesaler lifted to core 2026-11-18 and
+    // tax_lien_deed on 2026-11-19), per the
     // 2026-11-12 decision records. Core is earned per vertical by full
     // journey proof; Land's journey is not yet proven, so it does not hold
     // core in the launch-day snapshot. (S1 originally recorded core here
@@ -614,7 +618,33 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     // promise (two since residential_wholesaler's 2026-11-18 lift to core).
     // Its evidence reaches `surfaced` (four live cert emitters, no
     // decision desk yet), which is exactly what beta requires.
-    maturity: "beta",
+    //
+    // LIFTED TO CORE 2026-11-19 — core earned under the founder rule of
+    // 2026-11-16 (core is earned per vertical by full journey proof). The
+    // Tax journey walk passed on staging (walk record:
+    // journey-walk-tax-2026-11): the T-P2 three-case walk passed, and the
+    // N3 redemption-notice send leg — blocked in the first walk by
+    // T-DEF-1, an environment defect (staging's shared Lob TEST key
+    // returns undeliverable verdicts for every address) — passed its
+    // 2026-11-19 re-walk composed with the walk org's own live Lob key:
+    // the verified-sender-identity precondition was satisfied FOR REAL
+    // (a real deliverability verdict under the live key), the send
+    // executed end-to-end, and the receipt records `sentViaRail:true`
+    // with the matching provider id. The founder counted Tax proven the
+    // same day, with the footnote below on the record. Tax is the fourth
+    // of the five public verticals to earn core (Notes, Buy-and-Hold and
+    // Wholesale before it); Land is the one beta remaining.
+    // HONEST SCOPE + FOOTNOTE: the N3 send leg ran in simulation mode
+    // (the founder's zero-real-mail rule for tests), so the walk proves
+    // AcreOS's send machinery end-to-end but does NOT prove Lob accepting
+    // a real letters.create — that inch is unprovable without mailing
+    // something real. And the CODE evidence still reaches only
+    // `surfaced` (no decision desk yet): like note_investor, this core
+    // claim stands on the founder's decision, named in the
+    // FD1_CORE_ON_SURFACED_EVIDENCE register in
+    // tests/unit/verticalReadiness.test.ts, and the gap closes when the
+    // tax vertical records a decision.
+    maturity: "core",
     // 2026-07-29 truth pass: the tax-delinquent build was real but
     // undeclared here. Tax-delinquent sidebar module (businessTypeOnly
     // tax_lien_deed): /redemption-clock, /auction-worksheet, /state-rules,
