@@ -108,6 +108,9 @@ type ListingFormValues = z.infer<typeof listingFormSchema>;
 // across all five themes; replaces raw green/yellow/blue/red hardcodes.
 const STATUS_COLORS: Record<string, string> = {
   draft: "bg-acr-surface-2 text-acr-ink-3 border-transparent",
+  // `listed` = on the market on the operator's own word (L-DEF-1 Option C);
+  // `active` stays reserved for a channel-accepted posting through AcreOS.
+  listed: "bg-acr-pos-soft text-acr-pos-soft-ink border-transparent",
   active: "bg-acr-pos-soft text-acr-pos-soft-ink border-transparent",
   pending_sale: "bg-acr-warn-soft text-acr-warn-soft-ink border-transparent",
   sold: "bg-acr-brand-soft text-acr-brand-soft-ink border-transparent",
@@ -273,6 +276,24 @@ export default function ListingsPage() {
     getId: ({ id }) => id,
     buildPatch: () => ({ status: "withdrawn" }),
     successToast: { title: "Listing withdrawn", description: "Check each channel below — a live portal listing needs its own take-down." },
+  });
+
+  // Mark as listed — the operator's own statement that the listing is on
+  // the market (they posted it themselves, wherever they posted it;
+  // L-DEF-1 Option C). Recorded as their word: channels still show exactly
+  // what AcreOS itself posted, and `active` keeps its stricter meaning.
+  const markListedMutation = useMutation({
+    mutationFn: async ({ id }: { id: number }) => apiRequest("POST", `/api/listings/${id}/mark-listed`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/listings"] });
+      toast({
+        title: "Marked as listed",
+        description: "On the market on your word — channel records still show exactly what AcreOS posted.",
+      });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Couldn't mark as listed", description: err.message, variant: "destructive" });
+    },
   });
 
   const form = useForm<ListingFormValues>({
@@ -746,7 +767,19 @@ export default function ListingsPage() {
                             Publish
                           </Button>
                         )}
-                        {listing.status === "active" && (
+                        {listing.status === "draft" && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => markListedMutation.mutate({ id: listing.id })}
+                            disabled={markListedMutation.isPending}
+                            data-testid={`button-mark-listed-${listing.id}`}
+                            aria-label={`Mark ${listing.title} as listed`}
+                          >
+                            Mark as listed
+                          </Button>
+                        )}
+                        {(listing.status === "active" || listing.status === "listed") && (
                           <Button
                             variant="outline"
                             size="sm"

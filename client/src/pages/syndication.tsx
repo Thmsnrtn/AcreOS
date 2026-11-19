@@ -118,7 +118,7 @@ export default function SyndicationPage() {
     // The property's ACTIVE listing: a withdrawn or sold one is refused by
     // the route even when a live listing exists for the same property.
     const forProperty = (listingsData ?? []).filter((l) => l.propertyId === selectedPropertyId);
-    const listing = forProperty.find((l) => l.status === "active") ?? forProperty[0];
+    const listing = forProperty.find((l) => l.status === "active") ?? forProperty.find((l) => l.status === "listed") ?? forProperty[0];
     if (!listing) {
       toast({
         title: "No listing for this property yet",

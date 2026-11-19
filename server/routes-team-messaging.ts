@@ -1511,6 +1511,47 @@ export function registerTeamMessagingRoutes(app: Express): void {
     }
   });
 
+  // POST /api/listings/:id/mark-listed - Record the operator's word that
+  // this listing is on the market (L-DEF-1, Option C).
+  //
+  // `listed` means exactly one thing: the operator states they posted this
+  // listing themselves, wherever they posted it. It is recorded as the
+  // operator's word, not a channel's — the same attestation pattern as
+  // confirm-removed. The write touches ONLY status + publishedAt (the
+  // on-market date the forecasting code reads for days-on-market):
+  // syndicationTargets keep saying exactly what AcreOS itself did
+  // (manual_posting, needs_credentials, …), and `active` keeps its strict
+  // meaning — a provider accepted a posting through AcreOS. No publish run
+  // is required first. Sold/withdrawn listings refuse (off the market);
+  // an already-`active` listing refuses too — downgrading it to `listed`
+  // would understate a provider-proven fact. Re-marking a `listed` listing
+  // is a no-op: the original on-market date stands.
+  api.post("/api/listings/:id/mark-listed", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const id = parseInt(routeParam(req.params.id));
+      if (isNaN(id)) return Errors.badRequest(res, "Invalid listing ID");
+      const listing = await storage.getPropertyListing(org.id, id);
+      if (!listing) return Errors.notFound(res, "Listing");
+      if (listing.status === "sold" || listing.status === "withdrawn") {
+        return Errors.badRequest(res, `This listing is ${listing.status}; a listing that is off the market cannot be marked as listed.`);
+      }
+      if (listing.status === "active") {
+        return Errors.badRequest(res, "This listing is already active — a channel accepted its posting through AcreOS.");
+      }
+      if (listing.status === "listed") return res.json(listing);
+      const updated = await storage.updatePropertyListing(
+        id,
+        { status: "listed", publishedAt: clock.now() },
+        org.id,
+      );
+      res.json(updated);
+    } catch (error: unknown) {
+      logger.error("Mark listing as listed error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
+    }
+  });
+
   // ============================================
 
   // ── Named Channels ─────────────────────────────────────────────────────────
