@@ -110,7 +110,13 @@ const MAX_GHOSTS = 0;
 // pre-existing population, unchanged file-for-file. Ghosts still 0 and the
 // population floors hold (templates 1777 ≥ 800, withColumns 601 ≥ 150), so
 // nothing is silenced: a 64th unread template turns this red.
-const MAX_UNRESOLVED = 63;
+// 63 → 59 (2026-11-18, PR #621): declaring push_subscriptions (the census
+// cure) resolved 4 previously-unresolved raw-SQL templates against that
+// table — the subscribe/unsubscribe INSERT/DELETE in routes-organization
+// and the SELECT/DELETE templates in pushNotificationService now resolve
+// to a modelled table. Measured on the PR head by this suite itself; the
+// test's own instruction is to lower MAX_UNRESOLVED in the same change.
+const MAX_UNRESOLVED = 59;
 const MIN_TEMPLATES = 800;
 const MIN_WITH_COLUMNS = 150;
 

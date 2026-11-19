@@ -95,6 +95,14 @@ export const DSAR_DOMAINS: readonly DsarDomainDecision[] = [
     erasure: { action: "delete" }, // anonymizeUser step 5a
   },
   {
+    domain: "push_subscriptions",
+    decision: "export",
+    subjectKind: "user",
+    tables: ["push_subscriptions"],
+    scope: "userId = userId; drop auth (push subscription secret)",
+    erasure: { action: "delete" }, // anonymizeUser step 5b
+  },
+  {
     domain: "assigned_records",
     decision: "exclude",
     subjectKind: "user",

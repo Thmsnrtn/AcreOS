@@ -14024,6 +14024,12 @@ export * from "./schema/subdivision";
 export * from "./schema/subdivision-screen-runs";
 
 // ============================================================================
+// PUSH SUBSCRIPTIONS — web-push endpoint registry (migration 0006; declared
+// 2026-11-18 as the census cure) — ./schema/push-subscriptions.ts
+// ============================================================================
+export * from "./schema/push-subscriptions";
+
+// ============================================================================
 // FIX-AND-FLIP VERTICAL — extracted to ./schema/fix-and-flip.ts
 // ============================================================================
 export * from "./schema/fix-and-flip";
