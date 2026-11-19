@@ -867,11 +867,6 @@
     },
     {
       "kind": "export",
-      "id": "shared/schema/push-subscriptions.ts::pushSubscriptions",
-      "reason": "DECLARATION-ONLY CENSUS CURE (2026-11-18). push_subscriptions is a LIVE table reached in production by raw SQL — subscribe/unsubscribe in server/routes-organization.ts, reads/sends in pushNotificationService and orgPushFanout — and created on the release path by the item-0006 mirror block in scripts/migrate.mjs. This pgTable declaration exists so the schema census, schema-migrate-mirror and DB column-mirror gates model the table; it is deliberately inert, and no production module imports the symbol by name because the live paths predate it and this slice does not touch them. The table itself is counted by the tables-no-writer / tables-no-reader families via its raw-SQL traffic, not by this export. REVOCATION: if a production module imports pushSubscriptions by name, remove this entry."
-    },
-    {
-      "kind": "export",
       "id": "shared/schema/note-origination-records.ts::NOTE_ORIGINATION_RECORD_KINDS",
       "reason": "TEST SEAM (Notes V2 Leg 3, 2026-11-09). The five record kinds of note_origination_records; the table's CHECK is built from it inside its own module, and sellerFinanceGate.test.ts asserts the Drizzle kinds and the gate's detail-schema map cover exactly the same set. REVOCATION: if a production module imports it directly, remove this entry."
     },

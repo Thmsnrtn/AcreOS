@@ -28,6 +28,7 @@ import {
   supportTickets,
   notes,
   teamMembers,
+  pushSubscriptions,
 } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import crypto from "crypto";
@@ -63,6 +64,7 @@ type DeletionReport = {
     sessions: number;
     aiMemory: number;
     aiConversations: number;
+    pushSubscriptions: number;
   };
   leadsAnonymized: number;
   userAnonymized: boolean;
@@ -210,6 +212,13 @@ async function anonymizeUser(userId: string): Promise<DeletionReport> {
     .returning({ id: aiConversations.id })
     .catch(() => [] as { id: number }[]);
 
+  // 5b. Delete web-push subscriptions (DSAR domain push_subscriptions,
+  // erasure: delete). The rows are the subject's own device endpoints plus
+  // their push key material; no other subject's row shares the user_id.
+  const deletedPushSubscriptions = await db.delete(pushSubscriptions)
+    .where(eq(pushSubscriptions.userId, userId))
+    .returning({ id: pushSubscriptions.id });
+
   // 6. REMOVED (PKG-1 C-5): this step anonymized every lead ASSIGNED to the
   // user. Those leads are third parties' personal data and the org's
   // records — the org is their controller, not this user — and they include
@@ -241,6 +250,7 @@ async function anonymizeUser(userId: string): Promise<DeletionReport> {
       sessions: deletedSessions.length,
       aiMemory: deletedAiMemory.length,
       aiConversations: deletedAiConversations.length,
+      pushSubscriptions: deletedPushSubscriptions.length,
     },
     leadsAnonymized,
     userAnonymized: true,

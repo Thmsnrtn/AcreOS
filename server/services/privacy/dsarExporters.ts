@@ -30,7 +30,9 @@
  *   - borrower_portal_sessions drops `sessionToken` (registered secret);
  *   - borrower_payment_profiles drops SECRET_COLUMNS entries (none registered
  *     today) and the processor references stripeCustomerId,
- *     stripeConnectAccountId, defaultPaymentMethodId.
+ *     stripeConnectAccountId, defaultPaymentMethodId;
+ *   - push_subscriptions drops `auth` (the subscription's shared secret,
+ *     registered in SECRET_COLUMNS).
  *
  * activity_events scope evidence (design §4 asks the builder to confirm the
  * 'lead' literal): `entityType` is `text("entity_type")` with comment
@@ -66,6 +68,7 @@ import {
   notes,
   payments,
   properties,
+  pushSubscriptions,
   sellerCommunications,
   supportTickets,
   teamMembers,
@@ -204,6 +207,21 @@ export const DSAR_EXPORTERS: Record<string, (s: DsarSubject) => Promise<unknown[
       .where(eq(aiConversations.userId, String(u.userId)))
       .limit(MAX_EXPORT_RECORDS);
     return capped("ai_conversations", rows).map((r) => clean(aiConversations, r));
+  },
+
+  push_subscriptions: async (s) => {
+    const u = asUser(s, "push_subscriptions");
+    const rows = await db
+      .select()
+      .from(pushSubscriptions)
+      .where(eq(pushSubscriptions.userId, u.userId))
+      .limit(MAX_EXPORT_RECORDS);
+    // `auth` is the subscription's shared secret (registered in
+    // SECRET_COLUMNS, so clean() drops it; the explicit drop keeps the
+    // rule independent of the registry). p256dh is a public key and the
+    // endpoint is the subscription's address — both are the subject's
+    // own data and are exported.
+    return capped("push_subscriptions", rows).map((r) => clean(pushSubscriptions, r, ["auth"]));
   },
 
   // ─── Lead subjects (every query org-filtered) ─────────────────────────────
