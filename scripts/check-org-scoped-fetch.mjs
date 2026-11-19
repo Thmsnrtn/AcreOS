@@ -2019,6 +2019,15 @@ const RULE3_BASELINE = new Set([
   // WRITE the sweep makes from these rows is org-scoped by the row's own
   // organizationId, and the webhook path's reads/writes are org-predicated.
   "server/services/connectDisputes.ts::defaultListOpenDisputes::payments",
+  // B-7 (2026-11-19) — deliberate all-org sweep, same shape as B-2's.
+  // defaultListStripeConnectIntegrations feeds the daily onboarding-stall
+  // sweep and the founder aging list: it must see every organization's
+  // stripe_connect row or a lender's stall goes unseen (the defect). The
+  // read goes through unscopedForPlatformOps(reason); every WRITE the
+  // sweep makes from these rows is scoped to the row's own organizationId
+  // (settings-only upsert), and the webhook path's stall write is
+  // org-predicated through the integration it already holds.
+  "server/services/connectOnboardingStalls.ts::defaultListStripeConnectIntegrations::organizationIntegrations",
   "server/services/creditPool.ts::poolDebit::financialLedger",
   "server/services/customerNarrative.ts::deliverAllPendingLettersForMonth::customerLetters",
   "server/services/digest.ts::getSubscriptionsNeedingDigest::digestSubscriptions",

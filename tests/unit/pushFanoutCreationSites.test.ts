@@ -53,6 +53,13 @@ const SITES: Record<string, { orgArg: RegExp; family?: string }> = {
     orgArg: /pushOrgEvent\(\s*notice\.orgId\s*,/,
     family: "borrower_dispute",
   },
+  // B-7 (founder autopilot): a 7-day lender onboarding stall notifies
+  // the stalled org (push + in-app; no email/SMS — a lender-facing
+  // reminder sent that way is a customer send, not this notice).
+  "server/services/connectOnboardingStalls.ts": {
+    orgArg: /pushOrgEvent\(\s*notice\.orgId\s*,/,
+    family: "onboarding_stall",
+  },
 };
 const DEFINITION = "server/services/orgPushFanout.ts";
 
@@ -97,6 +104,7 @@ describe("push fan-out: population", () => {
     expect(src).toMatch(/ladder_ready: "finance\.payment_missed"/);
     expect(src).toMatch(/borrower_message: "finance\.borrower_message"/);
     expect(src).toMatch(/borrower_dispute: "finance\.borrower_dispute"/);
+    expect(src).toMatch(/onboarding_stall: "finance\.onboarding_stall"/);
   });
 });
 

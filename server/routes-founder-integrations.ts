@@ -15,6 +15,7 @@ import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
 import { clock } from "./utils/clock";
 import { routeParam } from "./utils/routeParams";
+import { listOnboardingStalls } from "./services/connectOnboardingStalls";
 
 // ─── Integration definitions ────────────────────────────────────────────────
 
@@ -141,12 +142,24 @@ export function registerFounderIntegrationsRoutes(app: Express) {
           `[FounderIntegrations] Status check: ${configured}/${total} configured, ${criticalMissing} critical missing`
         );
 
+        // B-7: the lender Connect onboarding aging list — every account
+        // currently observed stuck in `currentlyDue`, oldest first, read
+        // from the database alone (no Stripe call). A stall that predates
+        // the detector is clocked from its first observation after
+        // deploy, never backdated.
+        const connectOnboardingStalls = await listOnboardingStalls();
+
         res.json({
           integrations,
           summary: {
             total,
             configured,
             criticalMissing,
+          },
+          connectOnboardingStalls,
+          onboardingStallSummary: {
+            stalled: connectOnboardingStalls.length,
+            alerted: connectOnboardingStalls.filter((s) => s.alertedAt != null).length,
           },
         });
       } catch (error) {
