@@ -7,8 +7,8 @@
   "baselines": {
     "unreachedExports": 408,
     "internalOnlyExports": 1217,
-    "tablesNoWriter": 53,
-    "tablesNoReader": 58,
+    "tablesNoWriter": 52,
+    "tablesNoReader": 57,
     "unregisteredRoutes": 4,
     "opaqueExports": 18,
     "moduleOrphans": 32,
@@ -203,12 +203,12 @@
     {
       "kind": "export",
       "id": "server/services/rentalEvents.ts::daysLateForRentPayment",
-      "reason": "TEST-INTROSPECTION SEAM (P3-3, 2026-11-18). Moved from server/routes-rent-ledger.ts into the landlord lifecycle's emit seam together with emitRentPaymentReceived, which is the production consumer; this helper is composed into that emit inside the module and has no external production caller by construction. Exported so tests/unit/paymentWorkflowEvents.test.ts pins the payment.received data bag (daysLate) against the real builder rather than a copy — the exact shape of the borrower entry above. REVOCATION: if a second production module imports it, remove this entry."
+      "reason": "TEST-INTROSPECTION SEAM (P3-3, 2026-11-18). Moved from server/routes-rent-ledger.ts into the landlord lifecycle's emit seam together with emitRentPaymentReceived, which is the production consumer; this helper is composed into that emit inside the module and has no external production caller by construction. Exported so tests/unit/paymentWorkflowEvents.test.ts pins the payment.received data bag (daysLate) against the real builder rather than a copy \u2014 the exact shape of the borrower entry above. REVOCATION: if a second production module imports it, remove this entry."
     },
     {
       "kind": "export",
       "id": "server/services/rentalEvents.ts::buildRentPaymentEventData",
-      "reason": "TEST-INTROSPECTION SEAM (P3-3, 2026-11-18). Moved from server/routes-rent-ledger.ts into the landlord lifecycle's emit seam together with emitRentPaymentReceived, which is the production consumer; this builder is composed into that emit inside the module and has no external production caller by construction. Exported so tests/unit/paymentWorkflowEvents.test.ts pins the payment.received data bag a workflow condition matches on (isPartial, daysLate, allocated/unapplied) against the real builder rather than a copy — the exact shape of the borrower entry above. REVOCATION: if a second production module imports it, remove this entry."
+      "reason": "TEST-INTROSPECTION SEAM (P3-3, 2026-11-18). Moved from server/routes-rent-ledger.ts into the landlord lifecycle's emit seam together with emitRentPaymentReceived, which is the production consumer; this builder is composed into that emit inside the module and has no external production caller by construction. Exported so tests/unit/paymentWorkflowEvents.test.ts pins the payment.received data bag a workflow condition matches on (isPartial, daysLate, allocated/unapplied) against the real builder rather than a copy \u2014 the exact shape of the borrower entry above. REVOCATION: if a second production module imports it, remove this entry."
     },
     {
       "kind": "export",
@@ -223,12 +223,12 @@
     {
       "kind": "export",
       "id": "server/services/rentCycle.ts::classifyLateRentCharges",
-      "reason": "TEST SEAM (P3-3, 2026-11-18). The pure late-rent classification (derived outstanding, due-day rule, grace precedence lease > state rule > 0) of the daily rent cycle; production reaches it through runRentCycle in the same module — the same shape as leaseExpiryDetector's classifyExpiringLeases. Exported so tests/unit/rentCollection.test.ts pins the rule against the real classifier rather than a copy. REVOCATION: if a second production module imports it, remove this entry."
+      "reason": "TEST SEAM (P3-3, 2026-11-18). The pure late-rent classification (derived outstanding, due-day rule, grace precedence lease > state rule > 0) of the daily rent cycle; production reaches it through runRentCycle in the same module \u2014 the same shape as leaseExpiryDetector's classifyExpiringLeases. Exported so tests/unit/rentCollection.test.ts pins the rule against the real classifier rather than a copy. REVOCATION: if a second production module imports it, remove this entry."
     },
     {
       "kind": "export",
       "id": "server/services/rentCycle.ts::selectNewLateFindings",
-      "reason": "TEST SEAM (P3-3, 2026-11-18). The pure dedupe filter of the daily rent cycle's late-rent trigger (a published (charge, dueDate) key never re-fires); production reaches it through runRentCycle in the same module — the same shape as leaseExpiryDetector's selectNewFindings. Exported so tests/unit/rentCollection.test.ts pins the once-only guarantee against the real filter rather than a copy. REVOCATION: if a second production module imports it, remove this entry."
+      "reason": "TEST SEAM (P3-3, 2026-11-18). The pure dedupe filter of the daily rent cycle's late-rent trigger (a published (charge, dueDate) key never re-fires); production reaches it through runRentCycle in the same module \u2014 the same shape as leaseExpiryDetector's selectNewFindings. Exported so tests/unit/rentCollection.test.ts pins the once-only guarantee against the real filter rather than a copy. REVOCATION: if a second production module imports it, remove this entry."
     },
     {
       "kind": "export",

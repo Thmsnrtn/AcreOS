@@ -268,7 +268,7 @@ DECLARE
     'perpetual_ops_checks','communications',
     'saga_instances','reaction_chains',
     'delegation_tokens',
-    'trust_enforcement_log','tenant_agent_config',
+    'trust_enforcement_log','tenant_agent_config','tenant_event_streams',
     'negotiation_sessions'
   ];
 BEGIN
@@ -601,10 +601,265 @@ $mig0262$`,
   `ALTER TABLE "note_acquisitions" ADD COLUMN IF NOT EXISTS "funding_pool_id" text`,
   `CREATE INDEX IF NOT EXISTS "note_acquisitions_org_pool_idx" ON "note_acquisitions" ("organization_id", "funding_pool_id") WHERE "funding_pool_id" IS NOT NULL`,
 
+  // 0002 — 0002_puzzling_millenium_guard: faithful CREATE blocks (S4 ruling
+  //   2026-11-17, Group 1 Option B — explicitly NOT folded into the 0000/
+  //   0001/0003 comment-only baseline ruling: these 8 tables are live,
+  //   declared product tables). 8 CREATE TABLEs + 19 indexes in the file's
+  //   shapes (verified column-by-column against the declarations in the
+  //   executing PR: .sql columns are a subset of declared everywhere; the
+  //   declared extras arrive via existing later blocks — support_tickets
+  //   ai_resolution_*, pax_observations reasoning/inputs/alternatives/
+  //   model_used, pax_cross_org_learnings contributing_org_ids,
+  //   knowledge_base_articles 0109 draft columns). The file's 10 FK ADD
+  //   CONSTRAINTs are mirrored behind pg_constraint guards (the snapshot's
+  //   bare ADDs are not idempotent); its organizations
+  //   .proactive_notification_level ALTER is already in this file (below)
+  //   and is not duplicated. Staging evidence (in-machine census,
+  //   2026-11-19): all 8 tables already exist on staging, so there the
+  //   block no-ops; on any release-path-only database it closes the gap.
+  //   Prod before-state is the post-merge deploy-evidence leg.
+  `CREATE TABLE IF NOT EXISTS "fix_attempts" (
+  "id" serial PRIMARY KEY NOT NULL,
+  "organization_id" integer NOT NULL,
+  "issue_pattern" text NOT NULL,
+  "fix_action" text NOT NULL,
+  "attempt_number" integer DEFAULT 1 NOT NULL,
+  "status" text DEFAULT 'pending' NOT NULL,
+  "error_message" text,
+  "result" jsonb,
+  "source_observation_id" integer,
+  "source_ticket_id" integer,
+  "escalated_at" timestamp,
+  "created_at" timestamp DEFAULT now(),
+  "updated_at" timestamp DEFAULT now()
+)`,
+  `CREATE TABLE IF NOT EXISTS "knowledge_base_articles" (
+  "id" serial PRIMARY KEY NOT NULL,
+  "title" text NOT NULL,
+  "slug" text NOT NULL,
+  "content" text NOT NULL,
+  "summary" text,
+  "category" text NOT NULL,
+  "tags" jsonb DEFAULT '[]'::jsonb,
+  "keywords" jsonb DEFAULT '[]'::jsonb,
+  "related_issues" jsonb DEFAULT '[]'::jsonb,
+  "troubleshooting_steps" jsonb,
+  "can_auto_fix" boolean DEFAULT false,
+  "auto_fix_tool_name" text,
+  "auto_fix_parameters" jsonb,
+  "view_count" integer DEFAULT 0,
+  "helpful_count" integer DEFAULT 0,
+  "not_helpful_count" integer DEFAULT 0,
+  "is_published" boolean DEFAULT true,
+  "created_at" timestamp DEFAULT now(),
+  "updated_at" timestamp DEFAULT now(),
+  CONSTRAINT "knowledge_base_articles_slug_unique" UNIQUE("slug")
+)`,
+  `CREATE TABLE IF NOT EXISTS "pax_cross_org_learnings" (
+  "id" serial PRIMARY KEY NOT NULL,
+  "issue_pattern" text NOT NULL,
+  "issue_category" text NOT NULL,
+  "resolution_approach" text NOT NULL,
+  "lesson_learned" text,
+  "applicable_categories" jsonb DEFAULT '[]'::jsonb,
+  "keywords" jsonb DEFAULT '[]'::jsonb,
+  "success_count" integer DEFAULT 0,
+  "failure_count" integer DEFAULT 0,
+  "success_rate" numeric DEFAULT '0',
+  "is_auto_fixable" boolean DEFAULT false,
+  "auto_fix_action" text,
+  "source_ticket_ids" jsonb DEFAULT '[]'::jsonb,
+  "contributing_orgs" integer DEFAULT 0,
+  "created_at" timestamp DEFAULT now(),
+  "updated_at" timestamp DEFAULT now()
+)`,
+  `CREATE TABLE IF NOT EXISTS "pax_memory" (
+  "id" serial PRIMARY KEY NOT NULL,
+  "organization_id" integer NOT NULL,
+  "user_id" text NOT NULL,
+  "memory_type" text NOT NULL,
+  "key" text NOT NULL,
+  "value" jsonb,
+  "importance" integer DEFAULT 5,
+  "expires_at" timestamp,
+  "source_ticket_id" integer,
+  "created_at" timestamp DEFAULT now(),
+  "updated_at" timestamp DEFAULT now()
+)`,
+  `CREATE TABLE IF NOT EXISTS "pax_observations" (
+  "id" serial PRIMARY KEY NOT NULL,
+  "organization_id" integer NOT NULL,
+  "user_id" text,
+  "type" text NOT NULL,
+  "confidence_score" integer NOT NULL,
+  "severity" text DEFAULT 'info' NOT NULL,
+  "title" text NOT NULL,
+  "description" text NOT NULL,
+  "metadata" jsonb,
+  "status" text DEFAULT 'detected' NOT NULL,
+  "detected_at" timestamp DEFAULT now(),
+  "acknowledged_at" timestamp,
+  "escalated_at" timestamp,
+  "resolved_at" timestamp,
+  "notification_sent" boolean DEFAULT false,
+  "notification_type" text DEFAULT 'none',
+  "auto_resolve_attempted" boolean DEFAULT false,
+  "auto_resolve_success" boolean DEFAULT false,
+  "auto_resolve_details" text,
+  "created_at" timestamp DEFAULT now(),
+  "updated_at" timestamp DEFAULT now()
+)`,
+  `CREATE TABLE IF NOT EXISTS "support_resolution_history" (
+  "id" serial PRIMARY KEY NOT NULL,
+  "organization_id" integer NOT NULL,
+  "ticket_id" integer,
+  "issue_type" text NOT NULL,
+  "issue_pattern" text,
+  "variant_name" text,
+  "resolution_approach" text NOT NULL,
+  "tools_used" jsonb,
+  "customer_effort_score" integer,
+  "was_successful" boolean NOT NULL,
+  "customer_satisfied" boolean,
+  "lesson_learned" text,
+  "created_at" timestamp DEFAULT now()
+)`,
+  `CREATE TABLE IF NOT EXISTS "support_ticket_messages" (
+  "id" serial PRIMARY KEY NOT NULL,
+  "ticket_id" integer NOT NULL,
+  "role" text NOT NULL,
+  "content" text NOT NULL,
+  "agent_name" text,
+  "tools_used" jsonb,
+  "actions_performed" jsonb,
+  "created_at" timestamp DEFAULT now()
+)`,
+  `CREATE TABLE IF NOT EXISTS "support_tickets" (
+  "id" serial PRIMARY KEY NOT NULL,
+  "organization_id" integer NOT NULL,
+  "user_id" text NOT NULL,
+  "subject" text NOT NULL,
+  "description" text NOT NULL,
+  "category" text DEFAULT 'general' NOT NULL,
+  "priority" text DEFAULT 'normal' NOT NULL,
+  "status" text DEFAULT 'open' NOT NULL,
+  "assigned_agent" text,
+  "ai_handled" boolean DEFAULT false,
+  "ai_confidence_score" numeric,
+  "ai_resolution_attempts" integer DEFAULT 0,
+  "resolution" text,
+  "resolution_type" text,
+  "resolved_at" timestamp,
+  "resolved_by" text,
+  "customer_rating" integer,
+  "customer_feedback" text,
+  "page_context" text,
+  "error_context" jsonb,
+  "escalation_bundle" jsonb,
+  "source" text DEFAULT 'in_app' NOT NULL,
+  "created_at" timestamp DEFAULT now(),
+  "updated_at" timestamp DEFAULT now()
+)`,
+  'CREATE INDEX IF NOT EXISTS "fix_attempts_org_idx" ON "fix_attempts" ("organization_id")',
+  'CREATE INDEX IF NOT EXISTS "fix_attempts_pattern_idx" ON "fix_attempts" ("issue_pattern")',
+  'CREATE INDEX IF NOT EXISTS "fix_attempts_status_idx" ON "fix_attempts" ("status")',
+  'CREATE INDEX IF NOT EXISTS "kb_articles_category_idx" ON "knowledge_base_articles" ("category")',
+  'CREATE INDEX IF NOT EXISTS "kb_articles_slug_idx" ON "knowledge_base_articles" ("slug")',
+  'CREATE INDEX IF NOT EXISTS "pax_cross_org_learnings_category_idx" ON "pax_cross_org_learnings" ("issue_category")',
+  'CREATE INDEX IF NOT EXISTS "pax_cross_org_learnings_pattern_idx" ON "pax_cross_org_learnings" ("issue_pattern")',
+  'CREATE INDEX IF NOT EXISTS "pax_memory_org_user_idx" ON "pax_memory" ("organization_id","user_id")',
+  'CREATE INDEX IF NOT EXISTS "pax_memory_type_idx" ON "pax_memory" ("memory_type")',
+  'CREATE INDEX IF NOT EXISTS "pax_memory_key_idx" ON "pax_memory" ("key")',
+  'CREATE INDEX IF NOT EXISTS "pax_obs_org_idx" ON "pax_observations" ("organization_id")',
+  'CREATE INDEX IF NOT EXISTS "pax_obs_status_idx" ON "pax_observations" ("status")',
+  'CREATE INDEX IF NOT EXISTS "pax_obs_type_idx" ON "pax_observations" ("type")',
+  'CREATE INDEX IF NOT EXISTS "pax_obs_detected_at_idx" ON "pax_observations" ("detected_at")',
+  'CREATE INDEX IF NOT EXISTS "resolution_history_issue_type_idx" ON "support_resolution_history" ("issue_type")',
+  'CREATE INDEX IF NOT EXISTS "support_ticket_messages_ticket_idx" ON "support_ticket_messages" ("ticket_id")',
+  'CREATE INDEX IF NOT EXISTS "support_tickets_org_idx" ON "support_tickets" ("organization_id")',
+  'CREATE INDEX IF NOT EXISTS "support_tickets_status_idx" ON "support_tickets" ("status")',
+  'CREATE INDEX IF NOT EXISTS "support_tickets_user_idx" ON "support_tickets" ("user_id")',
+  `DO $$
+   BEGIN
+     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fix_attempts_organization_id_organizations_id_fk') THEN
+       ALTER TABLE "fix_attempts" ADD CONSTRAINT "fix_attempts_organization_id_organizations_id_fk" FOREIGN KEY ("organization_id") REFERENCES "organizations"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+     END IF;
+   END $$`,
+  `DO $$
+   BEGIN
+     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fix_attempts_source_observation_id_pax_observations_id_fk') THEN
+       ALTER TABLE "fix_attempts" ADD CONSTRAINT "fix_attempts_source_observation_id_pax_observations_id_fk" FOREIGN KEY ("source_observation_id") REFERENCES "pax_observations"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+     END IF;
+   END $$`,
+  `DO $$
+   BEGIN
+     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fix_attempts_source_ticket_id_support_tickets_id_fk') THEN
+       ALTER TABLE "fix_attempts" ADD CONSTRAINT "fix_attempts_source_ticket_id_support_tickets_id_fk" FOREIGN KEY ("source_ticket_id") REFERENCES "support_tickets"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+     END IF;
+   END $$`,
+  `DO $$
+   BEGIN
+     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'pax_memory_organization_id_organizations_id_fk') THEN
+       ALTER TABLE "pax_memory" ADD CONSTRAINT "pax_memory_organization_id_organizations_id_fk" FOREIGN KEY ("organization_id") REFERENCES "organizations"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+     END IF;
+   END $$`,
+  `DO $$
+   BEGIN
+     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'pax_memory_source_ticket_id_support_tickets_id_fk') THEN
+       ALTER TABLE "pax_memory" ADD CONSTRAINT "pax_memory_source_ticket_id_support_tickets_id_fk" FOREIGN KEY ("source_ticket_id") REFERENCES "support_tickets"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+     END IF;
+   END $$`,
+  `DO $$
+   BEGIN
+     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'pax_observations_organization_id_organizations_id_fk') THEN
+       ALTER TABLE "pax_observations" ADD CONSTRAINT "pax_observations_organization_id_organizations_id_fk" FOREIGN KEY ("organization_id") REFERENCES "organizations"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+     END IF;
+   END $$`,
+  `DO $$
+   BEGIN
+     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'support_resolution_history_organization_id_organizations_id_fk') THEN
+       ALTER TABLE "support_resolution_history" ADD CONSTRAINT "support_resolution_history_organization_id_organizations_id_fk" FOREIGN KEY ("organization_id") REFERENCES "organizations"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+     END IF;
+   END $$`,
+  `DO $$
+   BEGIN
+     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'support_resolution_history_ticket_id_support_tickets_id_fk') THEN
+       ALTER TABLE "support_resolution_history" ADD CONSTRAINT "support_resolution_history_ticket_id_support_tickets_id_fk" FOREIGN KEY ("ticket_id") REFERENCES "support_tickets"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+     END IF;
+   END $$`,
+  `DO $$
+   BEGIN
+     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'support_ticket_messages_ticket_id_support_tickets_id_fk') THEN
+       ALTER TABLE "support_ticket_messages" ADD CONSTRAINT "support_ticket_messages_ticket_id_support_tickets_id_fk" FOREIGN KEY ("ticket_id") REFERENCES "support_tickets"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+     END IF;
+   END $$`,
+  `DO $$
+   BEGIN
+     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'support_tickets_organization_id_organizations_id_fk') THEN
+       ALTER TABLE "support_tickets" ADD CONSTRAINT "support_tickets_organization_id_organizations_id_fk" FOREIGN KEY ("organization_id") REFERENCES "organizations"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+     END IF;
+   END $$`,
+
   // ── 0085 landlord-tenant compliance (Glenn Okonkwo audit) ─────────────────
   // THIS is the one that just took /api/today down — properties.requires_
   // lead_paint_disclosure was selected by storage.getProperties() but didn't
   // exist on prod, so Drizzle's SELECT-* blew up every Today render.
+  // 0085 — 0085_landlord_compliance_columns: conforming header + BOTH
+  //   backfills mirrored (S4 ruling 2026-11-17, Group 3 Option A). The
+  //   five ADD COLUMNs and both partial indexes in this block were
+  //   already here under the box banner above; the file's two data
+  //   statements were not — they follow the indexes below. The lead-
+  //   paint gate's NULL semantics, read in the executing slice
+  //   (server/routes-rentals.ts propertyNeedsLeadPaintDisclosure): the
+  //   stored flag is authoritative when set; NULL falls back to
+  //   yearBuilt < 1978 — fail-safe, and the backfill makes the stored
+  //   truth match the computed one. Staging pre-flight counts
+  //   (2026-11-19): move_inspections holds 0 rows (photo backfill
+  //   no-ops there); properties holds 1 row with NULL flag + year_built
+  //   (post-1978, converges to FALSE). The companion write-path fix
+  //   (inspection create/PATCH derive photoCount from photos
+  //   server-side) ships in the same PR, per the dossier's Option D
+  //   companion item.
   `ALTER TABLE "lease_tenants" ADD COLUMN IF NOT EXISTS "holds_joint_and_several" boolean NOT NULL DEFAULT FALSE`,
   `ALTER TABLE "lease_tenants" ADD COLUMN IF NOT EXISTS "joint_and_several_acknowledged_at" timestamptz`,
   `ALTER TABLE "properties" ADD COLUMN IF NOT EXISTS "requires_lead_paint_disclosure" boolean`,
@@ -612,6 +867,8 @@ $mig0262$`,
   `ALTER TABLE "move_inspections" ADD COLUMN IF NOT EXISTS "photo_count" integer NOT NULL DEFAULT 0`,
   `CREATE INDEX IF NOT EXISTS "lease_tenants_jointly_liable_idx" ON "lease_tenants" ("lease_id") WHERE "holds_joint_and_several" = TRUE`,
   `CREATE INDEX IF NOT EXISTS "properties_lead_paint_idx" ON "properties" ("organization_id") WHERE "requires_lead_paint_disclosure" = TRUE`,
+  `UPDATE properties SET requires_lead_paint_disclosure = (year_built < 1978) WHERE year_built IS NOT NULL AND requires_lead_paint_disclosure IS NULL`,
+  `UPDATE move_inspections SET photo_count = COALESCE(jsonb_array_length(photos), 0) WHERE photo_count = 0 AND photos IS NOT NULL`,
 
   // ── 0087 earnest_money_holds IOLTA compliance (Mae Vasquez audit) ─────────
   // 0087 — 0087_emd_iolta_compliance
@@ -2168,6 +2425,25 @@ $mig0262$`,
   `CREATE INDEX IF NOT EXISTS idx_support_saved_replies_org ON support_saved_replies (organization_id) WHERE organization_id IS NOT NULL`,
   `CREATE INDEX IF NOT EXISTS idx_support_saved_replies_global ON support_saved_replies (created_at DESC) WHERE organization_id IS NULL`,
 
+  // 0054 — 0054_co_owners: mirror the two role collapses; the viewer
+  //   backfill is NOT mirrored (S4 ruling 2026-11-17, Group 3 Option B).
+  //   Already in this file: the org_co_owners DDL (part 3, directly
+  //   below) and the view_only_assigned_leads column (Batch 8, below).
+  //   The collapse UPDATEs are behaviour-neutral — roleGuard's
+  //   LEGACY_ROLE_REMAP already treats acquisitions/marketing/finance
+  //   as member at read time; this converges storage to that truth.
+  //   The viewer backfill (SET view_only_assigned_leads = TRUE WHERE
+  //   role = 'viewer') is recorded SUPERSEDED by 0269: the flag is now
+  //   a nullable per-member override, so stamping TRUE would change
+  //   live permissions; any viewer-flag normalization is a founder-run
+  //   data act of the reset-va-view-only-default kind, never a deploy
+  //   side effect. Pre-flight counts (staging census, 2026-11-19):
+  //   team_members roles = owner 37 / admin 1 (zero legacy rows),
+  //   organization_invitations empty, zero viewer rows — the UPDATEs
+  //   no-op on staging.
+  `UPDATE team_members SET role = 'member' WHERE role IN ('acquisitions', 'marketing', 'finance')`,
+  `UPDATE organization_invitations SET role = 'member' WHERE role IN ('acquisitions', 'marketing', 'finance')`,
+
   // org_co_owners — 0054 part 3
   `CREATE TABLE IF NOT EXISTS "org_co_owners" (
      "id"              SERIAL PRIMARY KEY,
@@ -3290,6 +3566,96 @@ $mig0262$`,
   //   The columns are declared nowhere and read by nothing — Clerk owns
   //   OAuth now. Zero statements.
 
+  // 0024 — 0024_cascade_critical_fks: mirror all 15 FK re-points verbatim
+  //   (S4 ruling 2026-11-17, Group 3 Option A). The declared schema
+  //   already agrees with all 15 (7 organization FKs CASCADE, 5 child
+  //   FKs CASCADE, 2 SET NULL on notes, 1 RESTRICT on deals.property).
+  //   Gate evidence — staging in-machine census (2026-11-19): all 15
+  //   constraints already sit at the ruled confdeltype on staging
+  //   (c x12, n x2, r x1), so there this block converges as a no-op
+  //   re-point; prod's before-state could not be read from the
+  //   executing lane and is the post-merge re-census leg. Org erasure
+  //   stays the orgDeletion sweep's job (legal hold, founder-org
+  //   refusal, documented retentions); these FKs are its backstop,
+  //   not a bare-delete trigger.
+  `ALTER TABLE "team_members" DROP CONSTRAINT IF EXISTS "team_members_organization_id_organizations_id_fk"`,
+  `ALTER TABLE "team_members" ADD CONSTRAINT "team_members_organization_id_organizations_id_fk" FOREIGN KEY ("organization_id") REFERENCES "organizations"("id") ON DELETE CASCADE`,
+  `ALTER TABLE "leads" DROP CONSTRAINT IF EXISTS "leads_organization_id_organizations_id_fk"`,
+  `ALTER TABLE "leads" ADD CONSTRAINT "leads_organization_id_organizations_id_fk" FOREIGN KEY ("organization_id") REFERENCES "organizations"("id") ON DELETE CASCADE`,
+  `ALTER TABLE "properties" DROP CONSTRAINT IF EXISTS "properties_organization_id_organizations_id_fk"`,
+  `ALTER TABLE "properties" ADD CONSTRAINT "properties_organization_id_organizations_id_fk" FOREIGN KEY ("organization_id") REFERENCES "organizations"("id") ON DELETE CASCADE`,
+  `ALTER TABLE "deals" DROP CONSTRAINT IF EXISTS "deals_organization_id_organizations_id_fk"`,
+  `ALTER TABLE "deals" ADD CONSTRAINT "deals_organization_id_organizations_id_fk" FOREIGN KEY ("organization_id") REFERENCES "organizations"("id") ON DELETE CASCADE`,
+  `ALTER TABLE "notes" DROP CONSTRAINT IF EXISTS "notes_organization_id_organizations_id_fk"`,
+  `ALTER TABLE "notes" ADD CONSTRAINT "notes_organization_id_organizations_id_fk" FOREIGN KEY ("organization_id") REFERENCES "organizations"("id") ON DELETE CASCADE`,
+  `ALTER TABLE "campaigns" DROP CONSTRAINT IF EXISTS "campaigns_organization_id_organizations_id_fk"`,
+  `ALTER TABLE "campaigns" ADD CONSTRAINT "campaigns_organization_id_organizations_id_fk" FOREIGN KEY ("organization_id") REFERENCES "organizations"("id") ON DELETE CASCADE`,
+  `ALTER TABLE "credit_transactions" DROP CONSTRAINT IF EXISTS "credit_transactions_organization_id_organizations_id_fk"`,
+  `ALTER TABLE "credit_transactions" ADD CONSTRAINT "credit_transactions_organization_id_organizations_id_fk" FOREIGN KEY ("organization_id") REFERENCES "organizations"("id") ON DELETE CASCADE`,
+  `ALTER TABLE "payments" DROP CONSTRAINT IF EXISTS "payments_note_id_notes_id_fk"`,
+  `ALTER TABLE "payments" ADD CONSTRAINT "payments_note_id_notes_id_fk" FOREIGN KEY ("note_id") REFERENCES "notes"("id") ON DELETE CASCADE`,
+  `ALTER TABLE "lead_activities" DROP CONSTRAINT IF EXISTS "lead_activities_lead_id_leads_id_fk"`,
+  `ALTER TABLE "lead_activities" ADD CONSTRAINT "lead_activities_lead_id_leads_id_fk" FOREIGN KEY ("lead_id") REFERENCES "leads"("id") ON DELETE CASCADE`,
+  `ALTER TABLE "campaign_responses" DROP CONSTRAINT IF EXISTS "campaign_responses_campaign_id_campaigns_id_fk"`,
+  `ALTER TABLE "campaign_responses" ADD CONSTRAINT "campaign_responses_campaign_id_campaigns_id_fk" FOREIGN KEY ("campaign_id") REFERENCES "campaigns"("id") ON DELETE CASCADE`,
+  `ALTER TABLE "messages" DROP CONSTRAINT IF EXISTS "messages_conversation_id_conversations_id_fk"`,
+  `ALTER TABLE "messages" ADD CONSTRAINT "messages_conversation_id_conversations_id_fk" FOREIGN KEY ("conversation_id") REFERENCES "conversations"("id") ON DELETE CASCADE`,
+  `ALTER TABLE "ai_messages" DROP CONSTRAINT IF EXISTS "ai_messages_conversation_id_ai_conversations_id_fk"`,
+  `ALTER TABLE "ai_messages" ADD CONSTRAINT "ai_messages_conversation_id_ai_conversations_id_fk" FOREIGN KEY ("conversation_id") REFERENCES "ai_conversations"("id") ON DELETE CASCADE`,
+  `ALTER TABLE "notes" DROP CONSTRAINT IF EXISTS "notes_property_id_properties_id_fk"`,
+  `ALTER TABLE "notes" ADD CONSTRAINT "notes_property_id_properties_id_fk" FOREIGN KEY ("property_id") REFERENCES "properties"("id") ON DELETE SET NULL`,
+  `ALTER TABLE "notes" DROP CONSTRAINT IF EXISTS "notes_borrower_id_leads_id_fk"`,
+  `ALTER TABLE "notes" ADD CONSTRAINT "notes_borrower_id_leads_id_fk" FOREIGN KEY ("borrower_id") REFERENCES "leads"("id") ON DELETE SET NULL`,
+  `ALTER TABLE "deals" DROP CONSTRAINT IF EXISTS "deals_property_id_properties_id_fk"`,
+  `ALTER TABLE "deals" ADD CONSTRAINT "deals_property_id_properties_id_fk" FOREIGN KEY ("property_id") REFERENCES "properties"("id") ON DELETE RESTRICT`,
+
+  // 0025 — 0025_credit_allowance_month_unique: column + backfill
+  //   mirrored; the unique index is DEFERRED (S4 ruling 2026-11-17,
+  //   Group 3 Option A degraded to its named Option B fallback).
+  //   Gate evidence — staging in-machine census (2026-11-19): the
+  //   allowance_month column and the unique index already exist on
+  //   staging, the duplicate census is CLEAN (0 allowance-type rows
+  //   at all; 235 credit_transactions rows total), and no code reads
+  //   or writes allowanceMonth (the monthly grant it guarded was
+  //   removed 2026-10). The prod duplicate census could NOT be run
+  //   from the executing lane, so the index is not mirrored blind:
+  //   if prod held even one historical double-grant pair, CREATE
+  //   UNIQUE INDEX would fail the deploy or skip silently. The index
+  //   ships in a follow-up once a prod census is quoted; the column
+  //   (hardened to IF NOT EXISTS) and the verbatim backfill below
+  //   converge prod safely from any state meanwhile.
+  `ALTER TABLE "credit_transactions" ADD COLUMN IF NOT EXISTS "allowance_month" text`,
+  `UPDATE "credit_transactions" SET "allowance_month" = "metadata"->>'month' WHERE "type" IN ('monthly_allowance', 'allowance') AND "metadata"->>'month' IS NOT NULL AND "allowance_month" IS NULL`,
+
+  // 0081 — 0081_borrower_session_org_pin: mirror the tenant pin verbatim
+  //   (S4 ruling 2026-11-17, Group 3 Option A — the packet's
+  //   highest-stakes item: this column is the only binding between a
+  //   borrower session and its organization; validateBorrowerSession
+  //   re-asserts it on every borrower request, NULL pins exempt).
+  //   All four statements are idempotent as written and converge any
+  //   state. Gate evidence — staging in-machine census (2026-11-19):
+  //   borrower_sessions EXISTS with organization_id present (integer,
+  //   nullable), 0 rows, and idx_borrower_sessions_org_note ABSENT —
+  //   so on staging the backfill no-ops, the conditional SET NOT NULL
+  //   lands (zero NULL pins), and the index is created. Prod's
+  //   before-state could not be read from the executing lane; the
+  //   block is safe from every state the dossier enumerates, and
+  //   prod's convergence is the post-merge deploy leg. This also
+  //   discharges 0001's rider: borrower_sessions' existence is now
+  //   evidenced on staging (0001 itself stays a baseline record).
+  `ALTER TABLE borrower_sessions ADD COLUMN IF NOT EXISTS organization_id INTEGER REFERENCES organizations(id) ON DELETE CASCADE`,
+  `UPDATE borrower_sessions bs SET organization_id = n.organization_id FROM notes n WHERE bs.note_id = n.id AND bs.organization_id IS NULL`,
+  `DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM borrower_sessions WHERE organization_id IS NULL
+  ) THEN
+    ALTER TABLE borrower_sessions
+      ALTER COLUMN organization_id SET NOT NULL;
+  END IF;
+END $$`,
+  `CREATE INDEX IF NOT EXISTS idx_borrower_sessions_org_note ON borrower_sessions(organization_id, note_id)`,
+
   // 0000 — 0000_sleepy_betty_ross: header only. Drizzle baseline, historical,
   //   not mirrored (S4 ruling 2026-11-17, Group 1, Option A). The file is the
   //   original whole-schema snapshot; prod's schema reaches it via this
@@ -4141,6 +4507,23 @@ $mig0262$`,
   'CREATE UNIQUE INDEX IF NOT EXISTS "user_sign_in_locations_unique" ON "user_sign_in_locations" ("user_id", "ip_prefix", "ua_family")',
   'CREATE INDEX IF NOT EXISTS "user_sign_in_locations_user_last_seen_idx" ON "user_sign_in_locations" ("user_id", "last_seen_at")',
 
+  // 0074 — 0074_schema_drift_fix: conforming header + the 7 ALTERs
+  //   (S4 ruling 2026-11-17, Group 3). The dossier's Option B
+  //   (comment-only) was gated on prod evidence that all 7 declared
+  //   columns are present; the staging census (2026-11-19) confirms
+  //   all 7 on staging and both baseline CREATEs (0000:811, 0001:1384)
+  //   carry them, but prod evidence could not be obtained from the
+  //   executing lane, so this item flips to its named Option C shape:
+  //   the 7 idempotent ADD COLUMNs follow the indexes below and are
+  //   no-ops wherever the baselines ran. Ruled facts recorded here:
+  //   (1) autonomous_decisions + its 4 indexes are already mirrored
+  //   directly below; the table stays a registered orphan, superseded
+  //   by the decision-snapshot model — no code reads or writes it
+  //   (the register's "two raw-SQL reads" claim could not be verified
+  //   from source); (2) the file's two sessions.* ALTERs are
+  //   deliberately NOT mirrored — sessions is dropped (0020; the
+  //   release-path drop sits below in this file) and the columns
+  //   match no declaration that ever existed.
   // 2026-05-10 audit — autonomous_decisions audit-trail table. Promised
   // by server/jobs/autonomousHealthMonitor.ts:23 but never defined in
   // shared/schema.ts or any migrations/*.sql file. Without it the
@@ -4167,6 +4550,13 @@ $mig0262$`,
   'CREATE INDEX IF NOT EXISTS "autonomous_decisions_actor_created_idx" ON "autonomous_decisions" ("actor", "created_at" DESC)',
   'CREATE INDEX IF NOT EXISTS "autonomous_decisions_type_created_idx" ON "autonomous_decisions" ("decision_type", "created_at" DESC)',
   'CREATE INDEX IF NOT EXISTS "autonomous_decisions_outcome_idx" ON "autonomous_decisions" ("outcome") WHERE "outcome" IN (\'pending\', \'failure\')',
+  `ALTER TABLE "sequence_enrollments" ADD COLUMN IF NOT EXISTS "last_step_sent_at" timestamp`,
+  `ALTER TABLE "sequence_enrollments" ADD COLUMN IF NOT EXISTS "next_step_scheduled_at" timestamp`,
+  `ALTER TABLE "sequence_enrollments" ADD COLUMN IF NOT EXISTS "pause_reason" text`,
+  `ALTER TABLE "sequence_enrollments" ADD COLUMN IF NOT EXISTS "updated_at" timestamp DEFAULT now()`,
+  `ALTER TABLE "scheduled_tasks" ADD COLUMN IF NOT EXISTS "next_run_at" timestamp`,
+  `ALTER TABLE "scheduled_tasks" ADD COLUMN IF NOT EXISTS "last_run_at" timestamp`,
+  `ALTER TABLE "scheduled_tasks" ADD COLUMN IF NOT EXISTS "updated_at" timestamp DEFAULT now()`,
 
   // 2026-05-11 — campaigns.media_urls (migration 0075). MMS attachments
   // for SMS campaigns. text[] so we can stash multiple URLs even though
@@ -7049,6 +7439,179 @@ $mig0262$`,
   `ALTER TABLE "knowledge_base_articles" ADD COLUMN IF NOT EXISTS "draft_status" text`,
   `ALTER TABLE "knowledge_base_articles" ADD COLUMN IF NOT EXISTS "source_ticket_id" integer REFERENCES "support_tickets" ("id")`,
   `CREATE INDEX IF NOT EXISTS "kb_articles_draft_status_idx" ON "knowledge_base_articles" ("draft_status", "created_at")`,
+  // 0090 — 0090_kb_error_docs_stubs: mirror the slugs as UNPUBLISHED
+  //   DRAFTS through the 0109 draft gate (S4 ruling 2026-11-17,
+  //   Group 3 Option C — never as published: every body is a one-line
+  //   TODO, and is_published = true would present placeholder content
+  //   as real help on the public KB routes, the support route, and
+  //   the AI support agent's knowledge source). Deliberate divergence
+  //   from the .sql file, recorded here per the pairing discipline:
+  //   same 11 rows, same slugs / titles / bodies, but
+  //   is_published = false, is_draft = true,
+  //   draft_status = 'pending_review' — the slugs are reserved and
+  //   the writing queue is explicit in the founder KB tool; publishing
+  //   stays an individual human editing act. Staging evidence
+  //   (2026-11-19): knowledge_base_articles exists (via the 0002
+  //   block above) with 0 rows; none of the 11 slugs is taken.
+  `INSERT INTO knowledge_base_articles (
+  title, slug, content, summary, category, tags, keywords, is_published, is_draft, draft_status
+) VALUES
+  (
+    'AI injection rate limit triggered',
+    'ai-injection-rate-limit',
+    '# AI injection rate limit triggered
+
+TODO: explain prompt-injection guardrail, why we throttle, how to clear it.',
+    'Suspicious AI inputs were detected and the user was throttled for an hour.',
+    'ai',
+    '["ai","rate-limit","security"]'::jsonb,
+    '["prompt injection","ai limit","blocked"]'::jsonb,
+    false,
+    true,
+    \'pending_review\'
+  ),
+  (
+    'AI request limit reached',
+    'limit-ai-requests',
+    '# AI request limit reached
+
+TODO: explain plan AI quotas, what counts, and how upgrading lifts the cap.',
+    'You have used your monthly AI request quota for this plan.',
+    'billing',
+    '["billing","ai","limits"]'::jsonb,
+    '["ai limit","quota","upgrade"]'::jsonb,
+    false,
+    true,
+    \'pending_review\'
+  ),
+  (
+    'Out of email credits',
+    'limit-email-credits',
+    '# Out of email credits
+
+TODO: explain credit math, how to top up, what happens to queued sends.',
+    'Your organization does not have enough credits to send the planned email batch.',
+    'campaigns',
+    '["campaigns","credits","email"]'::jsonb,
+    '["email credits","top up","insufficient"]'::jsonb,
+    false,
+    true,
+    \'pending_review\'
+  ),
+  (
+    'Out of SMS credits',
+    'limit-sms-credits',
+    '# Out of SMS credits
+
+TODO: explain SMS credit cost, how to top up, what happens to queued sends.',
+    'Your organization does not have enough credits to send the planned SMS batch.',
+    'campaigns',
+    '["campaigns","credits","sms"]'::jsonb,
+    '["sms credits","top up","insufficient"]'::jsonb,
+    false,
+    true,
+    \'pending_review\'
+  ),
+  (
+    'Refund already issued',
+    'refund-already-issued',
+    '# Refund already issued
+
+TODO: explain the 30-day refund window and how to escalate edge cases.',
+    'A refund was already processed for this account within the last 30 days.',
+    'billing',
+    '["billing","refunds"]'::jsonb,
+    '["refund","already processed","duplicate"]'::jsonb,
+    false,
+    true,
+    \'pending_review\'
+  ),
+  (
+    'Team messaging requires a team plan',
+    'feature-requires-team-plan',
+    '# Team messaging requires a team plan
+
+TODO: explain that team messaging needs >=2 seats and link to upgrade flow.',
+    'Team messaging is only available on Starter and higher plans.',
+    'billing',
+    '["billing","team","plans"]'::jsonb,
+    '["team plan","starter","upgrade"]'::jsonb,
+    false,
+    true,
+    \'pending_review\'
+  ),
+  (
+    'Founder-only feature',
+    'feature-founder-only',
+    '# Founder-only feature
+
+TODO: explain why some surfaces (executive dashboard, etc.) are founder-only.',
+    'This surface is restricted to the founder account.',
+    'getting_started',
+    '["permissions","founder"]'::jsonb,
+    '["restricted","founder only","admin"]'::jsonb,
+    false,
+    true,
+    \'pending_review\'
+  ),
+  (
+    'Too many invites in 24 hours',
+    'limit-invites-per-day',
+    '# Too many invites in 24 hours
+
+TODO: document per-org invite cap and how to request a temporary lift.',
+    'You hit the daily invitation cap for this organization.',
+    'integrations',
+    '["team","invites","limits"]'::jsonb,
+    '["invite limit","daily cap"]'::jsonb,
+    false,
+    true,
+    \'pending_review\'
+  ),
+  (
+    'Too many invite-accept attempts',
+    'limit-invite-accept-attempts',
+    '# Too many invite-accept attempts
+
+TODO: document per-user accept-attempt cap and when it resets.',
+    'You exceeded the hourly invite-accept attempt cap.',
+    'integrations',
+    '["team","invites","limits"]'::jsonb,
+    '["invite accept","brute force","retry"]'::jsonb,
+    false,
+    true,
+    \'pending_review\'
+  ),
+  (
+    'Invitation email does not match',
+    'invite-email-mismatch',
+    '# Invitation email does not match
+
+TODO: explain why the signed-in account must match the invited email exactly.',
+    'The signed-in account email differs from the invited email.',
+    'integrations',
+    '["team","invites"]'::jsonb,
+    '["wrong email","invite mismatch"]'::jsonb,
+    false,
+    true,
+    \'pending_review\'
+  ),
+  (
+    'Public API rate limit',
+    'limit-public-api-rate',
+    '# Public API rate limit
+
+TODO: document tier-based rate caps and the Retry-After contract.',
+    'Your public API key hit its per-minute rate cap.',
+    'integrations',
+    '["api","limits"]'::jsonb,
+    '["rate limit","api","429"]'::jsonb,
+    false,
+    true,
+    \'pending_review\'
+  )
+ON CONFLICT (slug) DO NOTHING`,
+
 
   // Sub-3: NPS prompt queue. Daily scheduler inserts one row per
   // (org, primary_user) when the cohort gate passes; /api/nps/pending
@@ -11362,6 +11925,43 @@ $$ LANGUAGE plpgsql;`,
   BEFORE UPDATE ON "evidence_claims"
   FOR EACH ROW EXECUTE FUNCTION "evidence_claims_refuse_update"()`,
 
+  // 0086 — 0086_earnest_money_events: mirror the CREATE (S4 ruling
+  //   2026-11-17, Group 3 Option A). Records-only under the
+  //   constitution's no-platform-money-custody rule: an append-only
+  //   log of state changes to deposits HELD BY LICENSED THIRD
+  //   PARTIES (the parent earnest_money_holds names the external
+  //   holder) — no account, balance, transfer or processor field
+  //   exists in this table. The table stays on the orphan register
+  //   (created here, modelled nowhere) with its entry reworded in
+  //   this PR. Staging evidence (2026-11-19): the table is ABSENT on
+  //   staging while the 0239 guard FUNCTION exists there orphaned —
+  //   the dossier's refinement, first-hand; placed immediately
+  //   before the 0239 block below, the trigger now installs on the
+  //   same run instead of skipping. NAMED FOLLOW-UP (not in this
+  //   PR): wire server/routes-earnest-money.ts to append an event on
+  //   every status transition — without a writer the table starts
+  //   empty by design, as a tracked debt.
+  `CREATE TABLE IF NOT EXISTS earnest_money_events (
+  id                varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id   integer NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  hold_id           uuid    NOT NULL REFERENCES earnest_money_holds(id) ON DELETE CASCADE,
+
+  -- Transition. from_state is null for the initial 'recorded' event.
+  from_state        text,
+  to_state          text NOT NULL,
+  amount_cents      bigint NOT NULL,
+
+  actor_user_id     text,
+  actor_ip          text,
+  actor_ua          text,
+  justification     text,
+
+  occurred_at       timestamptz NOT NULL DEFAULT now(),
+  created_at        timestamptz NOT NULL DEFAULT now()
+)`,
+  `CREATE INDEX IF NOT EXISTS emd_events_hold_idx ON earnest_money_events (hold_id, occurred_at)`,
+  `CREATE INDEX IF NOT EXISTS emd_events_org_idx ON earnest_money_events (organization_id, occurred_at)`,
+
   // ── 0239 earnest_money_events: append-only by TRIGGER, not RULE ──
   // Full reasoning lives in migrations/0239_emd_events_append_only_via_trigger.sql; only the executable
   // statements are mirrored here, which is the path that runs on deploy.
@@ -11778,6 +12378,444 @@ END $mig0246$`,
   `ALTER TABLE "properties" ADD COLUMN IF NOT EXISTS "owning_entity" text`,
   `ALTER TABLE "properties" ADD COLUMN IF NOT EXISTS "deleted_at" timestamp`,
   `ALTER TABLE "properties" ADD COLUMN IF NOT EXISTS "deleted_by" text`,
+  // 0015 — 0015_v10_conscious_organization: mirror the DECLARED shape
+  //   (S4 ruling 2026-11-17, Group 3 Option A). Executing-slice reader
+  //   evidence: the v10 services are live-wired —
+  //   routes-founder-conscious-organization imports all eight V10
+  //   services and is registered in server/routes.ts
+  //   (registerFounderV10Routes) — so Option B (retire) does not
+  //   trigger. Ten CREATEs: nine in the file's shapes (column-diffed
+  //   against the declarations in the PR; equal modulo enum/default
+  //   literals) and scenario_simulations in its DECLARED shape — the
+  //   .sql shape (scenario_type, parameters, agent_projections,
+  //   consensus_summary, consensus_recommendation, confidence_interval)
+  //   is ruled superseded; the declared columns (agent_analyses,
+  //   scenarios, recommendation, requested_by) are folded into the
+  //   CREATE and the pre-existing ALTERs below then no-op. ss_type_idx
+  //   (on the superseded scenario_type column) is deliberately NOT
+  //   mirrored.
+  `CREATE TABLE IF NOT EXISTS "scenario_simulations" (
+  "id" serial PRIMARY KEY,
+  "title" text NOT NULL,
+  "hypothesis" text NOT NULL,
+  "status" text NOT NULL DEFAULT 'running',
+  "agent_analyses" jsonb NOT NULL DEFAULT '[]'::jsonb,
+  "scenarios" jsonb,
+  "recommendation" text,
+  "requested_by" text NOT NULL DEFAULT 'ceo',
+  "created_at" timestamp NOT NULL DEFAULT now(),
+  "completed_at" timestamp
+)`,
+  'CREATE INDEX IF NOT EXISTS "ss_status_idx" ON "scenario_simulations" ("status")',
+  `CREATE TABLE IF NOT EXISTS "scenario_outcome_comparisons" (
+  id SERIAL PRIMARY KEY,
+  scenario_id INTEGER NOT NULL REFERENCES scenario_simulations(id),
+  comparison_date TIMESTAMP NOT NULL DEFAULT NOW(),
+  predicted_outcome JSONB NOT NULL,
+  actual_outcome JSONB NOT NULL,
+  accuracy_score INTEGER NOT NULL DEFAULT 50,
+  lessons_learned TEXT,
+  agent_accuracy JSONB NOT NULL DEFAULT '[]',
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+)`,
+  `CREATE TABLE IF NOT EXISTS "learning_propagations" (
+  id SERIAL PRIMARY KEY,
+  source_agent TEXT NOT NULL,
+  target_agents JSONB NOT NULL DEFAULT '[]',
+  learning_type TEXT NOT NULL,
+  learning TEXT NOT NULL,
+  evidence JSONB NOT NULL DEFAULT '[]',
+  outcome_window_days INTEGER NOT NULL DEFAULT 7,
+  original_outcome_id TEXT,
+  propagation_status TEXT NOT NULL DEFAULT 'pending',
+  acceptance_rate INTEGER,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  propagated_at TIMESTAMP
+)`,
+  `CREATE TABLE IF NOT EXISTS "outcome_calibrations" (
+  id SERIAL PRIMARY KEY,
+  agent_codename TEXT NOT NULL,
+  action_type TEXT NOT NULL,
+  predicted_outcome TEXT NOT NULL,
+  predicted_confidence INTEGER NOT NULL,
+  actual_outcome TEXT,
+  actual_success BOOLEAN,
+  accuracy_delta INTEGER,
+  outcome_window_days INTEGER NOT NULL DEFAULT 7,
+  outcome_measured_at TIMESTAMP,
+  status TEXT NOT NULL DEFAULT 'awaiting_outcome',
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+)`,
+  `CREATE TABLE IF NOT EXISTS "org_heartbeat_snapshots" (
+  id SERIAL PRIMARY KEY,
+  snapshot_type TEXT NOT NULL DEFAULT 'hourly',
+  agent_latencies JSONB NOT NULL DEFAULT '{}',
+  decision_queue_depth INTEGER NOT NULL DEFAULT 0,
+  learning_velocity INTEGER NOT NULL DEFAULT 0,
+  trust_trajectory JSONB NOT NULL DEFAULT '{}',
+  escalation_ratio NUMERIC NOT NULL DEFAULT 0,
+  feedback_closure_rate NUMERIC NOT NULL DEFAULT 0,
+  coherence_score INTEGER NOT NULL DEFAULT 100,
+  anomalies JSONB NOT NULL DEFAULT '[]',
+  health_grade TEXT NOT NULL DEFAULT 'A',
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+)`,
+  `CREATE TABLE IF NOT EXISTS "agent_calibration_history" (
+  id SERIAL PRIMARY KEY,
+  agent_codename TEXT NOT NULL,
+  calibration_type TEXT NOT NULL,
+  parameter_name TEXT NOT NULL,
+  old_value TEXT NOT NULL,
+  new_value TEXT NOT NULL,
+  trigger_reason TEXT NOT NULL,
+  performance_before JSONB,
+  performance_after JSONB,
+  status TEXT NOT NULL DEFAULT 'applied',
+  ceo_action TEXT,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  measured_at TIMESTAMP
+)`,
+  `CREATE TABLE IF NOT EXISTS "ceo_decision_replays" (
+  id SERIAL PRIMARY KEY,
+  original_decision_id TEXT NOT NULL,
+  decision_type TEXT NOT NULL,
+  decision_summary TEXT NOT NULL,
+  original_context JSONB NOT NULL DEFAULT '{}',
+  agent_recommendations JSONB NOT NULL DEFAULT '[]',
+  ceo_choice TEXT NOT NULL,
+  outcome_data JSONB,
+  hindsight_assessment TEXT,
+  was_optimal BOOLEAN,
+  quality_score INTEGER,
+  bias_flags JSONB NOT NULL DEFAULT '[]',
+  replay_date TIMESTAMP NOT NULL DEFAULT NOW(),
+  original_date TIMESTAMP NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+)`,
+  `CREATE TABLE IF NOT EXISTS "resilience_tests" (
+  id SERIAL PRIMARY KEY,
+  test_type TEXT NOT NULL,
+  test_description TEXT NOT NULL,
+  simulated_conditions JSONB NOT NULL DEFAULT '{}',
+  results JSONB NOT NULL DEFAULT '{}',
+  single_points_of_failure JSONB NOT NULL DEFAULT '[]',
+  recommendations JSONB NOT NULL DEFAULT '[]',
+  resilience_score INTEGER NOT NULL DEFAULT 50,
+  status TEXT NOT NULL DEFAULT 'completed',
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+)`,
+  `CREATE TABLE IF NOT EXISTS "realtime_event_log" (
+  id SERIAL PRIMARY KEY,
+  event_type TEXT NOT NULL,
+  agent_codename TEXT,
+  channel TEXT NOT NULL,
+  payload JSONB NOT NULL DEFAULT '{}',
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+)`,
+  `CREATE TABLE IF NOT EXISTS "dashboard_context_states" (
+  id SERIAL PRIMARY KEY,
+  context_mode TEXT NOT NULL,
+  active_layers JSONB NOT NULL DEFAULT '[]',
+  suppressed_layers JSONB NOT NULL DEFAULT '[]',
+  trigger_reason TEXT NOT NULL,
+  trigger_data JSONB NOT NULL DEFAULT '{}',
+  active_from TIMESTAMP NOT NULL DEFAULT NOW(),
+  active_until TIMESTAMP,
+  is_current BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+)`,
+  'CREATE INDEX IF NOT EXISTS "soc_scenario_idx" ON "scenario_outcome_comparisons" (scenario_id)',
+  'CREATE INDEX IF NOT EXISTS "lp_source_idx" ON "learning_propagations" (source_agent)',
+  'CREATE INDEX IF NOT EXISTS "lp_status_idx" ON "learning_propagations" (propagation_status)',
+  'CREATE INDEX IF NOT EXISTS "lp_type_idx" ON "learning_propagations" (learning_type)',
+  'CREATE INDEX IF NOT EXISTS "oc_agent_idx" ON "outcome_calibrations" (agent_codename)',
+  'CREATE INDEX IF NOT EXISTS "oc_status_idx" ON "outcome_calibrations" (status)',
+  'CREATE INDEX IF NOT EXISTS "ohs_type_idx" ON "org_heartbeat_snapshots" (snapshot_type)',
+  'CREATE INDEX IF NOT EXISTS "ohs_grade_idx" ON "org_heartbeat_snapshots" (health_grade)',
+  'CREATE INDEX IF NOT EXISTS "ohs_created_idx" ON "org_heartbeat_snapshots" (created_at)',
+  'CREATE INDEX IF NOT EXISTS "ach_agent_idx" ON "agent_calibration_history" (agent_codename)',
+  'CREATE INDEX IF NOT EXISTS "ach_type_idx" ON "agent_calibration_history" (calibration_type)',
+  'CREATE INDEX IF NOT EXISTS "ach_status_idx" ON "agent_calibration_history" (status)',
+  'CREATE INDEX IF NOT EXISTS "cdr_type_idx" ON "ceo_decision_replays" (decision_type)',
+  'CREATE INDEX IF NOT EXISTS "cdr_quality_idx" ON "ceo_decision_replays" (quality_score)',
+  'CREATE INDEX IF NOT EXISTS "cdr_replay_date_idx" ON "ceo_decision_replays" (replay_date)',
+  'CREATE INDEX IF NOT EXISTS "rt_type_idx" ON "resilience_tests" (test_type)',
+  'CREATE INDEX IF NOT EXISTS "rt_score_idx" ON "resilience_tests" (resilience_score)',
+  'CREATE INDEX IF NOT EXISTS "rel_event_type_idx" ON "realtime_event_log" (event_type)',
+  'CREATE INDEX IF NOT EXISTS "rel_agent_idx" ON "realtime_event_log" (agent_codename)',
+  'CREATE INDEX IF NOT EXISTS "rel_created_idx" ON "realtime_event_log" (created_at)',
+  'CREATE INDEX IF NOT EXISTS "dcs_mode_idx" ON "dashboard_context_states" (context_mode)',
+  'CREATE INDEX IF NOT EXISTS "dcs_current_idx" ON "dashboard_context_states" (is_current)',
+
+  // 0016 — 0016_v11_anticipatory_enterprise: split cure (S4 ruling
+  //   2026-11-17, Group 3 Option B for the declared tables). The 9
+  //   OD-8 orphans (ceo_cognitive_model, ceo_shadow_predictions,
+  //   knowledge_freshness, agent_resource_quotas,
+  //   resource_quota_events, decision_causality_nodes,
+  //   predictive_staged_actions, temporal_prediction_patterns,
+  //   delegation_tokens) are deliberately NOT mirrored — retired
+  //   under OD-8, dropped conditionally by 0241/0245 on every
+  //   release, and they stay on the orphan register. The 3 declared
+  //   tables ARE mirrored below: agentNegotiationV11 +
+  //   revenueAttributionV11 are imported by
+  //   routes-founder-anticipatory-enterprise, registered in
+  //   server/routes.ts (registerFounderV11Routes); shapes
+  //   column-diffed against the shared/schema.ts declarations in
+  //   the PR.
+  `CREATE TABLE IF NOT EXISTS "agent_negotiations" (
+  id SERIAL PRIMARY KEY,
+  initiator_agent TEXT NOT NULL,
+  respondent_agent TEXT NOT NULL,
+  conflict_type TEXT NOT NULL,
+  subject TEXT NOT NULL,
+  initiator_position TEXT NOT NULL,
+  initiator_evidence JSONB NOT NULL DEFAULT '[]',
+  respondent_position TEXT,
+  respondent_evidence JSONB NOT NULL DEFAULT '[]',
+  negotiation_rounds JSONB NOT NULL DEFAULT '[]',
+  resolution TEXT,
+  resolution_type TEXT,
+  compromise_details JSONB,
+  ceo_override TEXT,
+  status TEXT NOT NULL DEFAULT 'open',
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  resolved_at TIMESTAMP
+)`,
+  `CREATE TABLE IF NOT EXISTS "revenue_attribution_nodes" (
+  id SERIAL PRIMARY KEY,
+  correlation_id TEXT NOT NULL,
+  agent_codename TEXT NOT NULL,
+  action_type TEXT NOT NULL,
+  action_description TEXT NOT NULL,
+  revenue_impact_cents INTEGER,
+  attribution_weight NUMERIC NOT NULL DEFAULT 0,
+  upstream_node_id INTEGER,
+  downstream_node_ids JSONB NOT NULL DEFAULT '[]',
+  metadata JSONB NOT NULL DEFAULT '{}',
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+)`,
+  `CREATE TABLE IF NOT EXISTS "revenue_attribution_reports" (
+  id SERIAL PRIMARY KEY,
+  report_period TEXT NOT NULL,
+  period_start TIMESTAMP NOT NULL,
+  period_end TIMESTAMP NOT NULL,
+  agent_contributions JSONB NOT NULL DEFAULT '[]',
+  top_chains JSONB NOT NULL DEFAULT '[]',
+  total_attributed_revenue INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+)`,
+  'CREATE INDEX IF NOT EXISTS "an_status_idx" ON "agent_negotiations" (status)',
+  'CREATE INDEX IF NOT EXISTS "an_initiator_idx" ON "agent_negotiations" (initiator_agent)',
+  'CREATE INDEX IF NOT EXISTS "an_respondent_idx" ON "agent_negotiations" (respondent_agent)',
+  'CREATE INDEX IF NOT EXISTS "ran_correlation_idx" ON "revenue_attribution_nodes" (correlation_id)',
+  'CREATE INDEX IF NOT EXISTS "ran_agent_idx" ON "revenue_attribution_nodes" (agent_codename)',
+  'CREATE INDEX IF NOT EXISTS "ran_action_idx" ON "revenue_attribution_nodes" (action_type)',
+  'CREATE INDEX IF NOT EXISTS "rar_period_idx" ON "revenue_attribution_reports" (report_period)',
+
+  // 0017 — 0017_v12_real_runtime: split cure + tenant_event_streams
+  //   rider (S4 ruling 2026-11-17, Group 3 Option B + rider).
+  //   saga_instances (OD-8 batch 3, 0243) and trust_enforcement_log /
+  //   tenant_agent_config (batch 6, 0246) are deliberately NOT
+  //   mirrored. tenant_event_streams was dropped by NOTHING — the
+  //   0160 block directly below retires it under the same
+  //   conditional-drop machinery. The 7 declared tables ARE
+  //   mirrored: agentLifecycleRuntimeV12 + eventMeshV12 are imported
+  //   by routes-founder-real-runtime (registered in
+  //   server/routes.ts), and eventMeshPublisher / eventMeshDrain are
+  //   wired into server/jobs/runScheduledJobs; shapes column-diffed
+  //   against the declarations in the PR.
+  `CREATE TABLE IF NOT EXISTS "agent_runtime_state" (
+  id SERIAL PRIMARY KEY,
+  agent_codename TEXT NOT NULL UNIQUE,
+  lifecycle_state TEXT NOT NULL DEFAULT 'initializing',
+  current_task TEXT,
+  current_task_started_at TIMESTAMP,
+  waiting_for TEXT,
+  waiting_since TIMESTAMP,
+  persistent_context JSONB NOT NULL DEFAULT '{}',
+  memory_budget_bytes INTEGER NOT NULL DEFAULT 1048576,
+  memory_used_bytes INTEGER NOT NULL DEFAULT 0,
+  execution_time_limit_ms INTEGER NOT NULL DEFAULT 30000,
+  last_heartbeat_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  heartbeat_interval_ms INTEGER NOT NULL DEFAULT 30000,
+  consecutive_failures INTEGER NOT NULL DEFAULT 0,
+  max_consecutive_failures INTEGER NOT NULL DEFAULT 5,
+  supervisor_agent TEXT,
+  restart_policy TEXT NOT NULL DEFAULT 'restart',
+  restart_count INTEGER NOT NULL DEFAULT 0,
+  last_restart_at TIMESTAMP,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+)`,
+  `CREATE TABLE IF NOT EXISTS "event_mesh_events" (
+  id SERIAL PRIMARY KEY,
+  event_id TEXT NOT NULL UNIQUE,
+  channel TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  priority INTEGER NOT NULL DEFAULT 5,
+  payload JSONB NOT NULL DEFAULT '{}',
+  publisher TEXT NOT NULL,
+  org_id INTEGER,
+  requires_ack BOOLEAN NOT NULL DEFAULT false,
+  acked_by JSONB NOT NULL DEFAULT '[]',
+  dead_lettered BOOLEAN NOT NULL DEFAULT false,
+  dead_letter_reason TEXT,
+  retry_count INTEGER NOT NULL DEFAULT 0,
+  max_retries INTEGER NOT NULL DEFAULT 3,
+  expires_at TIMESTAMP,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+)`,
+  `CREATE TABLE IF NOT EXISTS "event_mesh_subscriptions" (
+  id SERIAL PRIMARY KEY,
+  subscriber TEXT NOT NULL,
+  channel_pattern TEXT NOT NULL,
+  filter_conditions JSONB NOT NULL DEFAULT '{}',
+  callback_type TEXT NOT NULL DEFAULT 'internal',
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  last_event_at TIMESTAMP,
+  events_processed INTEGER NOT NULL DEFAULT 0,
+  events_failed INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+)`,
+  `CREATE TABLE IF NOT EXISTS "outcome_verification_contracts" (
+  id SERIAL PRIMARY KEY,
+  action_id TEXT NOT NULL,
+  agent_codename TEXT NOT NULL,
+  action_type TEXT NOT NULL,
+  action_description TEXT NOT NULL,
+  claimed_outcome TEXT NOT NULL,
+  claimed_success BOOLEAN NOT NULL DEFAULT true,
+  verification_method TEXT NOT NULL,
+  verification_config JSONB NOT NULL DEFAULT '{}',
+  verify_after_minutes INTEGER NOT NULL DEFAULT 60,
+  verify_stages JSONB NOT NULL DEFAULT '[]',
+  current_stage TEXT NOT NULL DEFAULT 'pending',
+  verified_outcome TEXT,
+  verified_success BOOLEAN,
+  discrepancy_detected BOOLEAN NOT NULL DEFAULT false,
+  discrepancy_details TEXT,
+  org_id INTEGER,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  next_verification_at TIMESTAMP,
+  completed_at TIMESTAMP
+)`,
+  `CREATE TABLE IF NOT EXISTS "agent_versions" (
+  id SERIAL PRIMARY KEY,
+  agent_codename TEXT NOT NULL,
+  version_number INTEGER NOT NULL,
+  personality_prompt TEXT NOT NULL,
+  owned_services JSONB NOT NULL DEFAULT '[]',
+  behavior_config JSONB NOT NULL DEFAULT '{}',
+  change_description TEXT NOT NULL,
+  is_active BOOLEAN NOT NULL DEFAULT false,
+  canary_weight INTEGER NOT NULL DEFAULT 0,
+  performance_metrics JSONB NOT NULL DEFAULT '{}',
+  regression_test_passed BOOLEAN,
+  regression_test_results JSONB,
+  deployed_at TIMESTAMP,
+  rolled_back_at TIMESTAMP,
+  created_by TEXT NOT NULL DEFAULT 'system',
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+)`,
+  `CREATE TABLE IF NOT EXISTS "integration_credentials" (
+  id SERIAL PRIMARY KEY,
+  service_name TEXT NOT NULL,
+  credential_type TEXT NOT NULL,
+  encrypted_value TEXT NOT NULL,
+  allowed_agents JSONB NOT NULL DEFAULT '[]',
+  rate_limit_per_minute INTEGER NOT NULL DEFAULT 60,
+  rate_limit_used INTEGER NOT NULL DEFAULT 0,
+  rate_limit_reset_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  circuit_breaker_failures INTEGER NOT NULL DEFAULT 0,
+  circuit_breaker_threshold INTEGER NOT NULL DEFAULT 5,
+  circuit_breaker_open BOOLEAN NOT NULL DEFAULT false,
+  circuit_breaker_reset_at TIMESTAMP,
+  last_used_at TIMESTAMP,
+  org_id INTEGER,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+)`,
+  `CREATE TABLE IF NOT EXISTS "integration_execution_log" (
+  id SERIAL PRIMARY KEY,
+  agent_codename TEXT NOT NULL,
+  service_name TEXT NOT NULL,
+  method TEXT NOT NULL,
+  endpoint TEXT NOT NULL,
+  request_summary TEXT,
+  response_status INTEGER,
+  response_summary TEXT,
+  cost_cents INTEGER NOT NULL DEFAULT 0,
+  latency_ms INTEGER,
+  success BOOLEAN,
+  error TEXT,
+  retry_count INTEGER NOT NULL DEFAULT 0,
+  rollback_action TEXT,
+  rollback_executed BOOLEAN NOT NULL DEFAULT false,
+  org_id INTEGER,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+)`,
+  'CREATE INDEX IF NOT EXISTS "ars_state_idx" ON "agent_runtime_state" (lifecycle_state)',
+  'CREATE INDEX IF NOT EXISTS "ars_heartbeat_idx" ON "agent_runtime_state" (last_heartbeat_at)',
+  'CREATE INDEX IF NOT EXISTS "eme_channel_idx" ON "event_mesh_events" (channel)',
+  'CREATE INDEX IF NOT EXISTS "eme_type_idx" ON "event_mesh_events" (event_type)',
+  'CREATE INDEX IF NOT EXISTS "eme_priority_idx" ON "event_mesh_events" (priority)',
+  'CREATE INDEX IF NOT EXISTS "eme_org_idx" ON "event_mesh_events" (org_id)',
+  'CREATE INDEX IF NOT EXISTS "eme_dead_idx" ON "event_mesh_events" (dead_lettered)',
+  'CREATE INDEX IF NOT EXISTS "eme_created_idx" ON "event_mesh_events" (created_at)',
+  'CREATE INDEX IF NOT EXISTS "ems_subscriber_idx" ON "event_mesh_subscriptions" (subscriber)',
+  'CREATE INDEX IF NOT EXISTS "ems_channel_idx" ON "event_mesh_subscriptions" (channel_pattern)',
+  'CREATE INDEX IF NOT EXISTS "ovc_agent_idx" ON "outcome_verification_contracts" (agent_codename)',
+  'CREATE INDEX IF NOT EXISTS "ovc_stage_idx" ON "outcome_verification_contracts" (current_stage)',
+  'CREATE INDEX IF NOT EXISTS "ovc_next_idx" ON "outcome_verification_contracts" (next_verification_at)',
+  'CREATE INDEX IF NOT EXISTS "ovc_discrepancy_idx" ON "outcome_verification_contracts" (discrepancy_detected)',
+  'CREATE INDEX IF NOT EXISTS "av_agent_idx" ON "agent_versions" (agent_codename)',
+  'CREATE INDEX IF NOT EXISTS "av_active_idx" ON "agent_versions" (is_active)',
+  'CREATE INDEX IF NOT EXISTS "av_version_idx" ON "agent_versions" (agent_codename, version_number)',
+  'CREATE INDEX IF NOT EXISTS "ic_service_idx" ON "integration_credentials" (service_name)',
+  'CREATE INDEX IF NOT EXISTS "ic_circuit_idx" ON "integration_credentials" (circuit_breaker_open)',
+  'CREATE INDEX IF NOT EXISTS "iel_agent_idx" ON "integration_execution_log" (agent_codename)',
+  'CREATE INDEX IF NOT EXISTS "iel_service_idx" ON "integration_execution_log" (service_name)',
+  'CREATE INDEX IF NOT EXISTS "iel_success_idx" ON "integration_execution_log" (success)',
+
+  // 0160 — 0160_tenant_event_streams_retirement: the S4 0017 rider
+  //   (ruling 2026-11-17). tenant_event_streams (created only by
+  //   0017_v12_real_runtime.sql) is retired as superseded by
+  //   lifecycle_events. Unlike its 0017 siblings it had NO standing
+  //   drop machinery; this block gives it the OD-8 conditional-drop
+  //   treatment — dropped only when it exists AND holds 0 rows; a
+  //   populated survivor stays in place and logs loudly for a
+  //   founder decision, never force-dropped. The table also joins
+  //   the 0247 ledger's re-check list in this PR. Mirrors
+  //   migrations/0160_tenant_event_streams_retirement.sql.
+  `DO $mig0160$
+DECLARE
+  t text;
+  n bigint;
+  dropped text[] := '{}';
+  absent text[] := '{}';
+  survivors text[] := '{}';
+  tables text[] := ARRAY[
+    'tenant_event_streams'
+  ];
+BEGIN
+  FOREACH t IN ARRAY tables LOOP
+    IF to_regclass('public.' || t) IS NULL THEN
+      absent := absent || t;
+      CONTINUE;
+    END IF;
+    EXECUTE format('SELECT count(*) FROM %I', t) INTO n;
+    IF n = 0 THEN
+      EXECUTE format('DROP TABLE %I CASCADE', t);
+      dropped := dropped || t;
+    ELSE
+      survivors := survivors || format('%s=%s rows', t, n);
+      RAISE WARNING '[od8-0160] % HOLDS % ROW(S) — LEFT IN PLACE for founder review before any drop', t, n;
+    END IF;
+  END LOOP;
+  RAISE NOTICE '[od8-0160-summary] dropped=% absent=% survivors=%',
+    array_to_string(dropped, ','), array_to_string(absent, ','),
+    COALESCE(NULLIF(array_to_string(survivors, ','), ''), 'none');
+END $mig0160$`,
+
   // scenario_simulations
   `ALTER TABLE "scenario_simulations" ADD COLUMN IF NOT EXISTS "agent_analyses" jsonb NOT NULL DEFAULT '[]'::jsonb`,
   `ALTER TABLE "scenario_simulations" ADD COLUMN IF NOT EXISTS "scenarios" jsonb`,
@@ -14163,11 +15201,94 @@ $mig0284$`,
    )`,
   `CREATE INDEX IF NOT EXISTS dr_drills_ran_at_idx ON dr_drills (ran_at)`,
   `COMMENT ON TABLE dr_drills IS 'SOC 2 A1.2 availability evidence. One row per quarterly DR drill per docs/runbooks/dr-drill-quarterly.md.'`,
+  // 0088 — 0088_devon_ff_fk_semantics_correction: mirror the correction
+  //   faithfully (S4 ruling 2026-11-17, Group 3 Option A); the 0158
+  //   mirror comment below is corrected in the same commit. The
+  //   declared schema already carries the corrected rules
+  //   (contractorPayments RESTRICT, bidEstimates SET NULL + nullable,
+  //   contractorW9Documents CASCADE); this file's CREATEs above still
+  //   install CASCADE for the first two. Gate evidence — staging
+  //   in-machine census (2026-11-19): contractor_payments
+  //   confdeltype = 'c', bid_estimates confdeltype = 'c' (both
+  //   pre-correction, as the dossier predicted),
+  //   bid_estimates.contractor_id already nullable, and the W9
+  //   constraint ABSENT by name on staging (so the DELETE branch can
+  //   fire there — its orphan count measured 0, it deletes nothing)
+  //   while on release-path databases the constraint exists inline
+  //   in the CREATE above and the branch is unreachable (zero rows
+  //   deleted). The DO block below is the .sql file verbatim.
+  `DO $$
+BEGIN
+  -- ── contractor_payments.contractor_id  CASCADE → RESTRICT ────────────────
+  IF EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conname = 'contractor_payments_contractor_id_fkey'
+       AND confdeltype = 'c'    -- 'c' = CASCADE
+  ) THEN
+    ALTER TABLE contractor_payments
+      DROP CONSTRAINT contractor_payments_contractor_id_fkey;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conname = 'contractor_payments_contractor_id_fkey'
+       AND confdeltype = 'r'    -- 'r' = RESTRICT
+  ) THEN
+    ALTER TABLE contractor_payments
+      ADD CONSTRAINT contractor_payments_contractor_id_fkey
+      FOREIGN KEY (contractor_id) REFERENCES contractors(id) ON DELETE RESTRICT;
+  END IF;
+
+  -- ── bid_estimates.contractor_id  CASCADE → SET NULL ──────────────────────
+  -- Relax NOT NULL first so SET NULL on delete is legal.
+  ALTER TABLE bid_estimates
+    ALTER COLUMN contractor_id DROP NOT NULL;
+
+  IF EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conname = 'bid_estimates_contractor_id_fkey'
+       AND confdeltype = 'c'
+  ) THEN
+    ALTER TABLE bid_estimates
+      DROP CONSTRAINT bid_estimates_contractor_id_fkey;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conname = 'bid_estimates_contractor_id_fkey'
+       AND confdeltype = 'n'    -- 'n' = SET NULL
+  ) THEN
+    ALTER TABLE bid_estimates
+      ADD CONSTRAINT bid_estimates_contractor_id_fkey
+      FOREIGN KEY (contractor_id) REFERENCES contractors(id) ON DELETE SET NULL;
+  END IF;
+
+  -- ── contractor_w9_documents.contractor_id  → CASCADE (was soft) ──────────
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conname = 'contractor_w9_documents_contractor_id_fkey'
+  ) THEN
+    -- Defang orphans first so the ADD CONSTRAINT survives on drifted dev DBs.
+    DELETE FROM contractor_w9_documents w
+     WHERE w.contractor_id IS NOT NULL
+       AND NOT EXISTS (SELECT 1 FROM contractors c WHERE c.id = w.contractor_id);
+
+    ALTER TABLE contractor_w9_documents
+      ADD CONSTRAINT contractor_w9_documents_contractor_id_fkey
+      FOREIGN KEY (contractor_id) REFERENCES contractors(id) ON DELETE CASCADE;
+  END IF;
+END$$`,
+
   // 0158 — Devon FF FK alignment: idempotent hard-FK adds on the
   // rehab+contractor stack + contractors.license_expires_at. Every FK add is
-  // guarded by a pg_constraint lookup by conname, so on prod — where 0088
-  // already installed the corrected FKs under the same connames — each check
-  // skips and the block is a no-op.
+  // guarded by a pg_constraint lookup by conname. NOTE (corrected by
+  // the S4 0088 mirror above, 2026-11-19): this comment previously
+  // claimed prod already carried 0088's corrected FKs under the same
+  // connames — false on the release path, where 0088 had never been
+  // mirrored and the CREATEs above installed CASCADE, so the
+  // existence checks skipped and preserved the wrong rules. With the
+  // 0088 block now in this file, the corrected FKs land first and
+  // these checks skip over them, as intended.
   // Mirrors migrations/0158_devon_ff_fk_alignment.sql (renumbered from 0081).
   `ALTER TABLE contractors ADD COLUMN IF NOT EXISTS license_expires_at date`,
   `DO $$
