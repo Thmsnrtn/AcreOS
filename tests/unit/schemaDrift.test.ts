@@ -161,24 +161,70 @@ function parseSchemaFile(relPath: string): DeclaredColumn[] {
 }
 
 /**
- * Collect every (table, column) pair that any migration creates or adds.
- * Reads:
- *   - migrations/*.sql  (CREATE TABLE + ALTER TABLE ADD COLUMN)
- *   - scripts/migrate.mjs  (idempotent ADD COLUMN IF NOT EXISTS bag)
+ * Strip `--` line comments from a SQL fragment, replacing comment
+ * characters with spaces (newlines and offsets preserved).
+ *
+ * `--` sequences inside single-quoted string literals or double-quoted
+ * identifiers are NOT comments and are left untouched. (Verified
+ * repo-wide before this cure landed: no CREATE TABLE body in
+ * migrations/*.sql or scripts/migrate.mjs contains a `--` inside a
+ * string literal, but the parser stays correct if one ever appears.)
+ *
+ * Why this exists: the CREATE-body column regex below anchors each
+ * column to `(?:^|,)` followed only by whitespace. A comment line
+ * sitting between a comma and the next column — e.g. migration 0086's
+ * `-- Transition. …` line before `from_state` — therefore hid that
+ * column from the detector, and a trailing comment after a comma hid
+ * the following column the same way. Stripping comments before the
+ * column sweep removes that whole class of blind spot.
  */
-function collectMigratedColumns(): Set<string> {
-  const out = new Set<string>(); // "table.column" keyed
-  const migDir = join(REPO_ROOT, "migrations");
-  const sqlFiles = readdirSync(migDir).filter((f) => f.endsWith(".sql"));
+function stripSqlLineComments(text: string): string {
+  let out = "";
+  let i = 0;
+  while (i < text.length) {
+    const ch = text[i];
+    if (ch === "'" || ch === '"') {
+      // Quoted string/identifier: copy verbatim, honoring the SQL
+      // doubled-quote escape ('' or "").
+      let j = i + 1;
+      while (j < text.length) {
+        if (text[j] === ch) {
+          if (text[j + 1] === ch) {
+            j += 2;
+            continue;
+          }
+          j += 1;
+          break;
+        }
+        j += 1;
+      }
+      out += text.slice(i, j);
+      i = j;
+      continue;
+    }
+    if (ch === "-" && text[i + 1] === "-") {
+      // Line comment: blank everything up to (not including) the newline.
+      let j = text.indexOf("\n", i);
+      if (j === -1) j = text.length;
+      out += " ".repeat(j - i);
+      i = j;
+      continue;
+    }
+    out += ch;
+    i += 1;
+  }
+  return out;
+}
 
-  /**
-   * Parse one SQL-ish source string. Used for both *.sql files and the
-   * mjs migration bag (template literals + ALTER strings live there too).
-   *
-   * Both quoted ("name") and unquoted (name) identifiers are accepted —
-   * different migrations in this repo use different styles.
-   */
-  function ingest(sql: string) {
+/**
+ * Parse one SQL-ish source string into a "table.column" set. Used for
+ * both *.sql files and the mjs migration bag (template literals + ALTER
+ * strings live there too).
+ *
+ * Both quoted ("name") and unquoted (name) identifiers are accepted —
+ * different migrations in this repo use different styles.
+ */
+function ingestSql(sql: string, out: Set<string>) {
     // Identifier: bare or double-quoted. Capture group 1 = name.
     const id = `(?:"([a-z_][a-z0-9_]*)"|([a-z_][a-z0-9_]*))`;
     // Postgres column-type tokens we recognize. The set has to match the
@@ -204,14 +250,41 @@ function collectMigratedColumns(): Set<string> {
       const table = m[1] ?? m[2];
       // m.index..headRe.lastIndex points just past the opening "(".
       const bodyStart = headRe.lastIndex;
+      // Walk to the matching close paren, skipping `--` line comments
+      // and single-quoted string literals so parens inside them do not
+      // disturb the depth count.
       let depth = 1;
       let k = bodyStart;
-      for (; k < sql.length && depth > 0; k++) {
+      while (k < sql.length && depth > 0) {
         const ch = sql[k];
+        if (ch === "-" && sql[k + 1] === "-") {
+          const nl = sql.indexOf("\n", k);
+          k = nl === -1 ? sql.length : nl;
+          continue;
+        }
+        if (ch === "'") {
+          k += 1;
+          while (k < sql.length) {
+            if (sql[k] === "'") {
+              if (sql[k + 1] === "'") {
+                k += 2;
+                continue;
+              }
+              k += 1;
+              break;
+            }
+            k += 1;
+          }
+          continue;
+        }
         if (ch === "(") depth++;
         else if (ch === ")") depth--;
+        k += 1;
       }
-      const body = sql.slice(bodyStart, k - 1);
+      // Strip `--` line comments before the column sweep: a comment
+      // between a comma and the next column hides that column from the
+      // comma-anchored regex below (see stripSqlLineComments).
+      const body = stripSqlLineComments(sql.slice(bodyStart, k - 1));
       // Each top-level column declaration: id <type>
       const colRe = new RegExp(
         `(?:^|,)\\s*(?:"([a-z_][a-z0-9_]*)"|([a-z_][a-z0-9_]*))\\s+${typeTok}\\b`,
@@ -265,12 +338,23 @@ function collectMigratedColumns(): Set<string> {
         out.add(`${table}.${col}`);
       }
     }
-  }
+}
+
+/**
+ * Collect every (table, column) pair that any migration creates or adds.
+ * Reads:
+ *   - migrations/*.sql  (CREATE TABLE + ALTER TABLE ADD COLUMN)
+ *   - scripts/migrate.mjs  (idempotent ADD COLUMN IF NOT EXISTS bag)
+ */
+function collectMigratedColumns(): Set<string> {
+  const out = new Set<string>(); // "table.column" keyed
+  const migDir = join(REPO_ROOT, "migrations");
+  const sqlFiles = readdirSync(migDir).filter((f) => f.endsWith(".sql"));
 
   for (const f of sqlFiles) {
-    ingest(readFileSync(join(migDir, f), "utf-8"));
+    ingestSql(readFileSync(join(migDir, f), "utf-8"), out);
   }
-  ingest(readFileSync(join(REPO_ROOT, "scripts/migrate.mjs"), "utf-8"));
+  ingestSql(readFileSync(join(REPO_ROOT, "scripts/migrate.mjs"), "utf-8"), out);
 
   return out;
 }
@@ -358,5 +442,82 @@ describe("schema-drift detector", () => {
     }
 
     expect(newDrift).toEqual([]);
+  });
+});
+
+describe("schema-drift detector — CREATE-body comment handling", () => {
+  // Regression pin for the parser blind spot behind PR #627's D-1:
+  // migration 0086's `-- Transition. …` comment line hid
+  // earnest_money_events.from_state from the comma-anchored column
+  // regex, so a column the migration demonstrably creates was reported
+  // as drift the moment the table was declared. These fixtures pin the
+  // class, not the instance.
+  function migrated(sql: string): Set<string> {
+    const out = new Set<string>();
+    ingestSql(sql, out);
+    return out;
+  }
+
+  it("registers a column preceded by a standalone comment line", () => {
+    const cols = migrated(
+      [
+        "CREATE TABLE IF NOT EXISTS earnest_money_events (",
+        "  id varchar PRIMARY KEY,",
+        "  hold_id uuid NOT NULL,",
+        "",
+        "  -- Transition. from_state is null for the initial 'recorded' event.",
+        "  from_state text,",
+        "  to_state text NOT NULL",
+        ");",
+      ].join("\n"),
+    );
+    expect(cols.has("earnest_money_events.from_state")).toBe(true);
+    expect(cols.has("earnest_money_events.to_state")).toBe(true);
+    expect(cols.has("earnest_money_events.hold_id")).toBe(true);
+  });
+
+  it("registers a column following a trailing comment after a comma", () => {
+    const cols = migrated(
+      [
+        "CREATE TABLE saga_instances (",
+        "  id serial PRIMARY KEY,",
+        "  status text NOT NULL DEFAULT 'running',  -- 'running' | 'completed'",
+        "  steps jsonb NOT NULL DEFAULT '[]',       -- [{ order, action }]",
+        "  current_step integer NOT NULL DEFAULT 0,",
+        "  org_id integer",
+        ");",
+      ].join("\n"),
+    );
+    expect(cols.has("saga_instances.steps")).toBe(true);
+    expect(cols.has("saga_instances.current_step")).toBe(true);
+    expect(cols.has("saga_instances.org_id")).toBe(true);
+  });
+
+  it("does not register a column named only inside a comment", () => {
+    const cols = migrated(
+      [
+        "CREATE TABLE t2 (",
+        "  id serial PRIMARY KEY,",
+        "  -- ghost_col text,",
+        "  real_col text",
+        ");",
+      ].join("\n"),
+    );
+    expect(cols.has("t2.ghost_col")).toBe(false);
+    expect(cols.has("t2.real_col")).toBe(true);
+  });
+
+  it("does not treat `--` inside a string literal as a comment", () => {
+    const cols = migrated(
+      [
+        "CREATE TABLE t3 (",
+        "  id serial PRIMARY KEY,",
+        "  marker text DEFAULT '--',",
+        "  after_col text",
+        ");",
+      ].join("\n"),
+    );
+    expect(cols.has("t3.marker")).toBe(true);
+    expect(cols.has("t3.after_col")).toBe(true);
   });
 });
