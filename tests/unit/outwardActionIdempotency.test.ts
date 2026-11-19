@@ -117,7 +117,7 @@ describe("the retry that would double-send", () => {
   });
 });
 
-describe("key reuse is caught before status is even considered", () => {
+describe("key reuse is caught before status is even considered — except `failed`", () => {
   it("refuses a succeeded claim whose payload no longer matches", () => {
     // Without this, replaying a stale success would SUPPRESS a send the caller
     // genuinely wanted — a silent failure, which is worse than a loud one.
@@ -128,14 +128,58 @@ describe("key reuse is caught before status is even considered", () => {
     }
   });
 
-  it("refuses a FAILED claim whose payload no longer matches, rather than executing", () => {
-    // The precedence matters: a mismatched payload is a caller bug in EVERY
-    // status, so it must be checked before the status switch.
-    const d = classifyExisting(existing({ status: "failed" }), requestHash({ different: true }));
+  it("refuses an AMBIGUOUS claim whose payload no longer matches", () => {
+    // The prior attempt may already have printed a letter. Changed content
+    // does not make retrying it any safer — L-DEF-3's correction path is
+    // only for attempts that PROVABLY never performed the action.
+    const d = classifyExisting(existing({ status: "ambiguous", externalId: null }), requestHash({ different: true }));
     expect(d.verdict).toBe("refuse");
     if (d.verdict === "refuse") {
       expect(d.error).toBeInstanceOf(ActionKeyReusedError);
     }
+  });
+
+  it("refuses an IN-FLIGHT claim whose payload no longer matches", () => {
+    const d = classifyExisting(existing({ status: "in_flight" }), requestHash({ different: true }));
+    expect(d.verdict).toBe("refuse");
+    if (d.verdict === "refuse") {
+      expect(d.error).toBeInstanceOf(ActionKeyReusedError);
+    }
+  });
+
+  it("the key-reuse refusal speaks operator language, not rail internals", () => {
+    // This text is written onto the letter record the operator reads
+    // (offerMailTransport records the failure reason on the draft).
+    const d = classifyExisting(existing({ status: "succeeded" }), requestHash({ different: true }));
+    expect(d.verdict).toBe("refuse");
+    if (d.verdict === "refuse") {
+      expect(d.error.message).not.toMatch(/payload|idempotency|outward action/i);
+      expect(d.error.message).toMatch(/changed content/i);
+      expect(d.error.message).toMatch(/create a new item/i);
+    }
+  });
+});
+
+describe("L-DEF-3 — a provably-failed attempt can be corrected and re-sent", () => {
+  it("EXECUTES a FAILED claim whose payload was corrected", () => {
+    // The Land walk's dead end: Lob refused the recipient address, the
+    // letter returned to draft, the operator fixed the address — and
+    // re-queueing refused forever because the corrected payload no longer
+    // matched the failed attempt's hash. A `failed` row exists only where
+    // the attempt provably never performed the action, so superseding its
+    // content under the same key cannot duplicate a send.
+    const corrected = requestHash({
+      ...PAYLOAD,
+      recipientAddress: { line1: "44 Corrected Rd", city: "Bastrop", state: "TX", zip: "78602" },
+    });
+    const d = classifyExisting(existing({ status: "failed", externalId: null }), corrected);
+    expect(d.verdict).toBe("execute");
+    expect(d.reason).toMatch(/provably never performed/i);
+  });
+
+  it("still EXECUTES a FAILED claim retried with identical content", () => {
+    const d = classifyExisting(existing({ status: "failed", externalId: null }), HASH);
+    expect(d.verdict).toBe("execute");
   });
 });
 
