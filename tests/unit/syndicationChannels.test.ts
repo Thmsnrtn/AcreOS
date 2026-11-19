@@ -166,4 +166,28 @@ describe("countTargets", () => {
     // A channel with no targets at all: nothing published, all active pending.
     expect(counts.get("land_com")).toEqual({ published: 0, pending: 3 });
   });
+
+  it("pending counts `listed` listings like active ones; published still needs a real target record (L-DEF-1)", () => {
+    const listings = [
+      {
+        // On the market on the operator's word, not yet live anywhere.
+        status: "listed",
+        syndicationTargets: null,
+      },
+      {
+        // Listed, and genuinely live on landflip (a real target record).
+        status: "listed",
+        syndicationTargets: [{ platform: "landflip", status: "active" }],
+      },
+      {
+        // A draft is not on the market: never pending.
+        status: "draft",
+        syndicationTargets: null,
+      },
+    ] as any;
+
+    const counts = countTargets(listings);
+    expect(counts.get("landflip")).toEqual({ published: 1, pending: 1 });
+    expect(counts.get("craigslist")).toEqual({ published: 0, pending: 2 });
+  });
 });
