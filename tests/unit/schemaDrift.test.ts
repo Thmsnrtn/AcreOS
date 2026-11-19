@@ -29,6 +29,7 @@
 
 import { describe, it, expect, vi } from "vitest";
 import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
+import { stripSqlComments } from "../helpers/stripSqlComments";
 import { readFileSync, readdirSync, existsSync, writeFileSync } from "fs";
 import { join } from "path";
 // This gate walks the source tree; its cost scales with the repo, and under the
@@ -161,60 +162,24 @@ function parseSchemaFile(relPath: string): DeclaredColumn[] {
 }
 
 /**
- * Strip `--` line comments from a SQL fragment, replacing comment
- * characters with spaces (newlines and offsets preserved).
+ * CREATE bodies are stripped of comments before the column sweep by the
+ * one shared SQL stripper, `stripSqlComments` from
+ * tests/helpers/stripSqlComments (registered in
+ * tests/unit/stripCommentsIsALexer.test.ts) — this gate must not
+ * hand-roll comment stripping in any spelling.
  *
- * `--` sequences inside single-quoted string literals or double-quoted
- * identifiers are NOT comments and are left untouched. (Verified
- * repo-wide before this cure landed: no CREATE TABLE body in
- * migrations/*.sql or scripts/migrate.mjs contains a `--` inside a
- * string literal, but the parser stays correct if one ever appears.)
- *
- * Why this exists: the CREATE-body column regex below anchors each
- * column to `(?:^|,)` followed only by whitespace. A comment line
- * sitting between a comma and the next column — e.g. migration 0086's
- * `-- Transition. …` line before `from_state` — therefore hid that
- * column from the detector, and a trailing comment after a comma hid
- * the following column the same way. Stripping comments before the
- * column sweep removes that whole class of blind spot.
+ * Why stripping exists at all: the CREATE-body column regex below
+ * anchors each column to `(?:^|,)` followed only by whitespace. A
+ * comment line sitting between a comma and the next column — e.g.
+ * migration 0086's `-- Transition. …` line before `from_state` —
+ * therefore hid that column from the detector, and a trailing comment
+ * after a comma hid the following column the same way. The shared
+ * helper removes `--` line comments and `/* … *\/` block comments
+ * while preserving single-quoted literals (with `''` escapes), so a
+ * `--` inside a string is not treated as a comment. It does not
+ * preserve offsets, and nothing here needs them: the stripped body is
+ * consumed only by the comma-anchored column sweep.
  */
-function stripSqlLineComments(text: string): string {
-  let out = "";
-  let i = 0;
-  while (i < text.length) {
-    const ch = text[i];
-    if (ch === "'" || ch === '"') {
-      // Quoted string/identifier: copy verbatim, honoring the SQL
-      // doubled-quote escape ('' or "").
-      let j = i + 1;
-      while (j < text.length) {
-        if (text[j] === ch) {
-          if (text[j + 1] === ch) {
-            j += 2;
-            continue;
-          }
-          j += 1;
-          break;
-        }
-        j += 1;
-      }
-      out += text.slice(i, j);
-      i = j;
-      continue;
-    }
-    if (ch === "-" && text[i + 1] === "-") {
-      // Line comment: blank everything up to (not including) the newline.
-      let j = text.indexOf("\n", i);
-      if (j === -1) j = text.length;
-      out += " ".repeat(j - i);
-      i = j;
-      continue;
-    }
-    out += ch;
-    i += 1;
-  }
-  return out;
-}
 
 /**
  * Parse one SQL-ish source string into a "table.column" set. Used for
@@ -281,10 +246,11 @@ function ingestSql(sql: string, out: Set<string>) {
         else if (ch === ")") depth--;
         k += 1;
       }
-      // Strip `--` line comments before the column sweep: a comment
-      // between a comma and the next column hides that column from the
-      // comma-anchored regex below (see stripSqlLineComments).
-      const body = stripSqlLineComments(sql.slice(bodyStart, k - 1));
+      // Strip comments before the column sweep, via the shared
+      // stripSqlComments helper: a comment between a comma and the
+      // next column hides that column from the comma-anchored regex
+      // below.
+      const body = stripSqlComments(sql.slice(bodyStart, k - 1));
       // Each top-level column declaration: id <type>
       const colRe = new RegExp(
         `(?:^|,)\\s*(?:"([a-z_][a-z0-9_]*)"|([a-z_][a-z0-9_]*))\\s+${typeTok}\\b`,
@@ -505,6 +471,22 @@ describe("schema-drift detector — CREATE-body comment handling", () => {
     );
     expect(cols.has("t2.ghost_col")).toBe(false);
     expect(cols.has("t2.real_col")).toBe(true);
+  });
+
+  it("registers a column preceded by a block comment", () => {
+    // The shared stripSqlComments helper also removes /* … */ block
+    // comments (the hand-rolled stripper this gate previously carried
+    // did not), so the class stays pinned for that spelling too.
+    const cols = migrated(
+      [
+        "CREATE TABLE t4 (",
+        "  id serial PRIMARY KEY,",
+        "  /* provenance: backfill, phase 2 */",
+        "  after_block text",
+        ");",
+      ].join("\n"),
+    );
+    expect(cols.has("t4.after_block")).toBe(true);
   });
 
   it("does not treat `--` inside a string literal as a comment", () => {
