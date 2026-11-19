@@ -29,7 +29,7 @@ export const pushSubscriptions = pgTable(
     /** Clerk user id of the subscription's owner. */
     userId: text("user_id").notNull(),
     /** Web-push endpoint URL — one row per endpoint (UNIQUE in the 0006 CREATE). */
-    endpoint: text("endpoint").notNull().unique(),
+    endpoint: text("endpoint").notNull().unique("push_subscriptions_endpoint_key"),
     /** The subscription's p256dh key. */
     p256dh: text("p256dh").notNull(),
     /** The subscription's auth secret. */
