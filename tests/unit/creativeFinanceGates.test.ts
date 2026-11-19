@@ -179,8 +179,8 @@ describe("registry entry (shared/business-types.ts)", () => {
     // corrected to the honest, approximate {{outstandingBalance}}. The deal→note
     // bridge and payment.missed dunning already fired, so the vertical now clears
     // the honesty bar for core. A silent re-demotion should fail loudly here.
-    // FD1 (2026-11-12, re-pinned not deleted): the launch promise is 3 core +
-    // 2 beta; creative_finance is one of the ten registry-only types. The
+    // FD1 (2026-11-12, re-pinned not deleted): the launch promise is 4 core +
+    // 1 beta; creative_finance is one of the ten registry-only types. The
     // surfaces pinned above are unchanged and existing books keep them.
     expect(meta.maturity).toBe("registry_only");
   });

@@ -3,8 +3,8 @@
  *
  * ── THE DEFECT THIS EXISTS TO END ───────────────────────────────────────────
  * (As measured 2026-08-17. Since FD1, 2026-11-12, the registry states the
- * launch presentation — 3 core / 2 beta / 10 registry_only since Wholesale's 2026-11-18 lift — and the ratchet in
- * verticalReadiness.test.ts counts the one remaining founder-decided gap.)
+ * launch presentation — 4 core / 1 beta / 10 registry_only since Tax's 2026-11-19 lift — and the ratchet in
+ * verticalReadiness.test.ts counts the two remaining founder-decided gaps.)
  *
  * All fifteen entries in `shared/business-types.ts` declare `maturity: "core"`.
  * Exactly one vertical — `fix_and_flip` — closes the canonical loop end to end

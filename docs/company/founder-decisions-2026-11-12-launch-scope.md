@@ -34,14 +34,35 @@ both directions, the org's own e-sign rail, outcome grading, bundle evidence)
 were not walked and are not claimed by this lift. The table below now states
 the lifted membership: 3 core + 2 beta.
 
-## FD1 — the public promise is 3 core + 2 beta; ten types are registry-only
+**Membership lifted 2026-11-19 (Tax beta → core).** Tax lien / deed's
+journey-proof wait ended: the Tax journey walk passed on staging — the
+T-P2 three-case walk, and the N3 redemption-notice send leg on its
+2026-11-19 re-walk, composed with the walk org's own live Lob key (the
+first walk's block was T-DEF-1, an environment defect: staging's shared
+Lob test key returns undeliverable verdicts for every address). The
+verified-sender-identity precondition was satisfied for real under the
+live key; the send then executed end-to-end in simulation mode under
+the founder's zero-real-mail rule for tests, and its receipt is
+truthful, `testMode` included (walk record: journey-walk-tax-2026-11).
+The founder counted Tax proven on 2026-11-19 with this footnote on the
+record: simulation proves AcreOS's send machinery end-to-end but does
+not prove Lob accepting a real `letters.create`. Under the governing
+rule above, Tax has *earned* core — the fourth of the five public
+verticals to do so. Its code evidence still reaches only `surfaced`
+(no decision desk yet), so — like `note_investor` below — its core
+claim is registered in FD1_CORE_ON_SURFACED_EVIDENCE, and the readiness
+ratchet counts the gap (baseline 1 → 2) until the tax vertical records
+a decision. The table below now states the lifted membership:
+4 core + 1 beta.
 
-**Decision (corrected framing, as lifted 2026-11-18).** Of the fifteen registered business types:
+## FD1 — the public promise is 4 core + 1 beta; ten types are registry-only
+
+**Decision (corrected framing, as lifted 2026-11-18 and 2026-11-19).** Of the fifteen registered business types:
 
 | Presentation | Types |
 |---|---|
-| **Core** (full workflows, sold as such) | Note investor, Buy-and-hold rentals, Residential wholesaler |
-| **Beta** (offered, labelled Beta) | Land flipper, Tax lien / deed |
+| **Core** (full workflows, sold as such) | Note investor, Buy-and-hold rentals, Residential wholesaler, Tax lien / deed |
+| **Beta** (offered, labelled Beta) | Land flipper |
 | **Registry-only** (built, kept, not in the public promise) | Land + notes (hybrid), Fix-and-flip, Short-term rentals, Commercial, Creative finance, Developer / entitlements, Subdivider, Multifamily, Mobile home / park, Agent-investor |
 
 Fix-and-Flip and Subdivider are named registry-only explicitly: the original
@@ -65,11 +86,14 @@ The wholesaler's journey-proof hold ended with the 2026-11-18 lift above: it
 is a `core` launch type, still measures `decided`, and its ladder entry now
 claims the loop.
 
-**The one gap this decision owns.** `note_investor` is promised as core on
+**The gaps this decision owns.** `note_investor` is promised as core on
 evidence that reaches `surfaced` (real modules and templates, no production
 decision desk yet). The readiness ratchet counts it (baseline 10 → 1, measured)
 and names it in a dated register; the gap closes when the notes vertical
 records a decision, and the register entry must go in that commit.
+`tax_lien_deed` joined it in the same register on 2026-11-19 (see the lift
+above): proven by its journey, still `surfaced` in code, so the ratchet now
+counts both (baseline 1 → 2) until the tax vertical records a decision.
 
 ## Where it is enforced
 
@@ -83,7 +107,7 @@ records a decision, and the register entry must go in that commit.
 - `scripts/audit-public-claims.ts` — the business-types source paragraph is
   registry-derived.
 - Tests: `fd1LaunchScope.test.ts` (exact 15-row pin), `verticalReadiness.test.ts`
-  (ratchet 1 + the FD1 register), `publicMaturityRendered.test.tsx`,
+  (ratchet 2 + the FD1 register), `publicMaturityRendered.test.tsx`,
   `landingVerticalTiers.test.ts`, `evidenceLadder.test.ts`,
   `verticalSelectability.test.ts`, and the per-vertical gates that pinned the
   old `core` label.

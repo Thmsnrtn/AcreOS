@@ -46,8 +46,8 @@ const t12Body = INV.slice(
 
 describe("multifamily is registry-only (FD1) — the core capabilities below are kept for existing books", () => {
   it("the registry entry reads registry_only", () => {
-    // FD1 (2026-11-12, re-pinned not deleted): the launch promise is 3 core +
-    // 2 beta; multifamily is one of the ten registry-only types. The three
+    // FD1 (2026-11-12, re-pinned not deleted): the launch promise is 4 core +
+    // 1 beta; multifamily is one of the ten registry-only types. The three
     // capability gates below still bind the build.
     expect(getBusinessType("multifamily")?.maturity).toBe("registry_only");
   });

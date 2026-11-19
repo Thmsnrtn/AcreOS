@@ -123,7 +123,7 @@ describe("customer persona catalog", () => {
     const choices = [...src.matchAll(/value:\s*"([a-z_]+)"\s*,\s*label:\s*"([^"]+)"/g)];
 
     // P1-11 S2 (FD1): the wizard now offers exactly the 5 presented types
-    // (3 core + 2 beta) plus the 3 note-role rows = 8 parsed rows. The floor
+    // (4 core + 1 beta) plus the 3 note-role rows = 8 parsed rows. The floor
     // is the exact presented count, not the old 15-type population — a scan
     // that finds fewer rows has broken, and one that finds MORE registry
     // rows is caught by the production-ready assertion below.

@@ -19,8 +19,8 @@
  * registry states nobody has committed yet.
  *
  * ── SINCE FD1 (2026-11-12) ──────────────────────────────────────────────────
- * The registry states the launch presentation (3 core / 2 beta / 10
- * registry_only since Wholesale's 2026-11-18 lift) and the demotion table is empty, so the tiers a visitor sees
+ * The registry states the launch presentation (4 core / 1 beta / 10
+ * registry_only since Tax's 2026-11-19 lift) and the demotion table is empty, so the tiers a visitor sees
  * derive from the registry alone. The registry-only types render in the
  * landing's third, muted tier — whose copy still reads "promised, not sold"
  * (client/src/pages/landing/copy.ts, a landing follow-up outside this slice).
@@ -57,13 +57,15 @@ import { deriveLandingTiers, Positioning } from "../../client/src/pages/landing/
 const evidence = measureVerticalEvidence();
 
 /**
- * The one vertical the founder promised as core on `surfaced` evidence (FD1).
+ * The verticals the founder promised as core on `surfaced` evidence (FD1).
  * Mirrors FD1_CORE_ON_SURFACED_EVIDENCE in verticalReadiness.test.ts; both pin
- * the same single name, and both fail when the notes vertical records a
- * decision (the entry must then go).
+ * the same names, and an entry fails when its vertical records a
+ * decision (the entry must then go). tax_lien_deed joined 2026-11-19 on
+ * journey proof, on the same terms as note_investor.
  */
 const FD1_CORE_ON_SURFACED_EVIDENCE: Partial<Record<BusinessTypeId, string>> = {
   note_investor: "docs/company/founder-decisions-2026-11-12-launch-scope.md",
+  tax_lien_deed: "docs/company/founder-decisions-2026-11-12-launch-scope.md",
 };
 
 let container: HTMLDivElement | null = null;
@@ -109,7 +111,7 @@ describe("what a visitor is actually shown", () => {
     expect([...core].sort()).toEqual([...expected].sort());
   });
 
-  it("shows NO vertical as core that cannot evidence a recorded decision — except the one FD1 names", () => {
+  it("shows NO vertical as core that cannot evidence a recorded decision — except the ones FD1 names", () => {
     // THE ANCHOR THAT IS NOT THE MAP, and the reason tests/support exists.
     //
     // Every other assertion here derives its expectation from the registry or
@@ -120,7 +122,7 @@ describe("what a visitor is actually shown", () => {
     // This compares the rendered page against the EVIDENCE instead: a chip may
     // sit in "full workflow support" only if that vertical actually records a
     // decision snapshot in production — or the founder decided it by name
-    // (FD1: note_investor), in which case the exemption must be exactly that
+    // (FD1: note_investor, and tax_lien_deed since 2026-11-19), in which case the exemption must be exactly that
     // set, dated and cited, and nothing wider.
     expect(
       evidence.definedWorkflowTemplateIds.size,
@@ -247,13 +249,13 @@ describe("the surface follows the registry, for states the registry is not in", 
     }
   });
 
-  it("the live registry with no demotions is the FD1 presentation: 3 core, 2 beta, 9 not sold", () => {
+  it("the live registry with no demotions is the FD1 presentation: 4 core, 1 beta, 9 not sold", () => {
     // Under OD-5 this asserted the opposite — that an empty table meant
     // fourteen core chips. FD1 moved the conservatism into the registry, so the
     // table being empty now yields the founder's presentation, not a lie.
     const tiers = deriveLandingTiers(BUSINESS_TYPES, {});
-    expect(tiers.core.map((c) => c.id).sort()).toEqual(["buy_and_hold", "note_investor", "residential_wholesaler"]);
-    expect(tiers.beta.map((c) => c.id).sort()).toEqual(["land_flipper", "tax_lien_deed"]);
+    expect(tiers.core.map((c) => c.id).sort()).toEqual(["buy_and_hold", "note_investor", "residential_wholesaler", "tax_lien_deed"]);
+    expect(tiers.beta.map((c) => c.id).sort()).toEqual(["land_flipper"]);
     expect(tiers.roadmap).toHaveLength(9);
   });
 
