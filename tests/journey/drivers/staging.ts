@@ -13,6 +13,17 @@
  * else, never logs it, and never includes it in any error message or
  * report. A run without the token refuses to start.
  *
+ * CSRF: staging's double-submit middleware (server/middleware/csrf.ts)
+ * issues a `csrf_token` cookie on safe requests and requires every
+ * mutating request to echo it as the `x-csrf-token` header. The driver
+ * keeps a cookie jar — it absorbs `Set-Cookie` from every response,
+ * sends the accumulated cookies alongside the persona cookie, and
+ * mirrors the jar's `csrf_token` into the header on mutating requests,
+ * exactly as the product's own client does (client/src/lib/
+ * queryClient.ts `readCsrfToken` + `doApiFetch`). Without the jar the
+ * driver cannot mutate at all (H-DEF-1: every POST 403'd "CSRF token
+ * validation failed" on the harness's first staging execution).
+ *
  * SAFETY:
  * - The base URL must contain "staging" and use https. Anything else —
  *   including production — is refused before a single request is made.
@@ -59,6 +70,31 @@ export function assertStagingBaseUrl(raw: string): string {
   return baseUrl;
 }
 
+/** The methods the product's client treats as mutating (queryClient.ts). */
+const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+/**
+ * The `Set-Cookie` values a response carries, as raw `name=value; …`
+ * strings. Node's fetch (undici) exposes them via `getSetCookie()`; the
+ * fallback splits a combined header on cookie boundaries (a comma that
+ * is followed by a token and `=` — expiry dates contain commas too).
+ */
+function setCookieValues(headers: Headers): string[] {
+  const holder = headers as unknown as { getSetCookie?: () => string[] };
+  if (typeof holder.getSetCookie === "function") return holder.getSetCookie();
+  const combined = headers.get("set-cookie");
+  if (!combined) return [];
+  return combined.split(/, (?=[^;,=]+?=)/);
+}
+
+/** One cookie's name/value out of a `Set-Cookie` string, or null. */
+function parseSetCookie(raw: string): { name: string; value: string } | null {
+  const pair = raw.split(";", 1)[0];
+  const eq = pair.indexOf("=");
+  if (eq <= 0) return null;
+  return { name: pair.slice(0, eq).trim(), value: pair.slice(eq + 1).trim() };
+}
+
 function stagingDateStamp(date: Date): string {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York",
@@ -79,6 +115,8 @@ export class StagingDriver implements WalkDriver {
   private readonly promptForManualInput: StagingDriverOptions["promptForManualInput"];
   private personaSlug: string;
   private orgId: number | string = 0;
+  /** Cookies staging has set on this driver's responses, name → value. */
+  private readonly cookieJar = new Map<string, string>();
 
   constructor(opts: StagingDriverOptions = {}) {
     const baseUrl = assertStagingBaseUrl(opts.baseUrl ?? process.env.ACREOS_STAGING_URL ?? "https://acreos-staging.fly.dev");
@@ -100,8 +138,49 @@ export class StagingDriver implements WalkDriver {
     return null;
   }
 
+  /** Absorb a response's `Set-Cookie` headers into the jar (H-DEF-1). */
+  private absorbCookies(res: Response): void {
+    for (const raw of setCookieValues(res.headers)) {
+      const cookie = parseSetCookie(raw);
+      if (!cookie) continue;
+      if (cookie.value === "") this.cookieJar.delete(cookie.name);
+      else this.cookieJar.set(cookie.name, cookie.value);
+    }
+  }
+
+  /**
+   * The Cookie header for the next request: the persona cookie first
+   * (it is the driver's identity and always wins), then every jar
+   * cookie the server has set — including `csrf_token`, which the
+   * double-submit check compares against the header below.
+   */
+  private cookieHeader(): string {
+    const parts = [`__session=e2e-persona-${this.personaSlug}`];
+    for (const [name, value] of this.cookieJar) {
+      if (name === "__session") continue;
+      parts.push(`${name}=${value}`);
+    }
+    return parts.join("; ");
+  }
+
+  /**
+   * The jar's `csrf_token`, decoded the way the product's client
+   * decodes it (queryClient.ts `readCsrfToken`: decodeURIComponent,
+   * raw value if the encoding is somehow malformed).
+   */
+  private csrfToken(): string {
+    const raw = this.cookieJar.get("csrf_token");
+    if (!raw) return "";
+    try {
+      return decodeURIComponent(raw);
+    } catch {
+      return raw;
+    }
+  }
+
   async version(): Promise<{ sha: string }> {
     const res = await fetch(`${this.baseUrl}/api/version`);
+    this.absorbCookies(res);
     const body = (await res.json().catch(() => ({}))) as { sha?: unknown };
     return { sha: typeof body.sha === "string" && body.sha ? body.sha : "unknown" };
   }
@@ -135,15 +214,23 @@ export class StagingDriver implements WalkDriver {
   }
 
   api: WalkDriver["api"] = async (method, path, body) => {
+    const headers: Record<string, string> = {
+      "content-type": "application/json",
+      "x-e2e-auth-token": this.token,
+      cookie: this.cookieHeader(),
+    };
+    // Double-submit: mirror the csrf_token cookie into the header on
+    // mutating requests only, as the product's client does (H-DEF-1).
+    if (MUTATING_METHODS.has(method.toUpperCase())) {
+      const csrf = this.csrfToken();
+      if (csrf) headers["x-csrf-token"] = csrf;
+    }
     const res = await fetch(`${this.baseUrl}${path}`, {
       method,
-      headers: {
-        "content-type": "application/json",
-        "x-e2e-auth-token": this.token,
-        cookie: `__session=e2e-persona-${this.personaSlug}`,
-      },
+      headers,
       body: body === undefined ? undefined : JSON.stringify(body),
     });
+    this.absorbCookies(res);
     const parsed = await res.json().catch(() => null);
     return { status: res.status, body: parsed };
   };
