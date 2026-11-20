@@ -248,6 +248,55 @@ function categorizeError(error: any): EmailErrorType {
   return 'unknown';
 }
 
+/**
+ * N1 (#624 audit follow-up) — what a structured `performSend` failure proves
+ * about whether the message went out, for the outward-action exec in
+ * `sendEmail`.
+ *
+ * `true` means the failure PROVES nothing was sent, so the rail may let a
+ * later attempt re-execute under the same key (including with corrected
+ * content, L-DEF-3). `false` means the outcome is unknown, so the rail must
+ * refuse every later attempt until a human reconciles. The polarity follows
+ * outwardAction's: prove no contact, or stay ambiguous.
+ *
+ * The proof, per `EmailErrorType` (every value's provenance is enumerable
+ * from the nine `performSend` failure sites plus `categorizeError`):
+ *   - `recipient_rejected` / `sender_not_verified` — SES answered
+ *     MessageRejected, i.e. a received 4xx refusing the message before
+ *     acceptance; the pre-transport refusals (bad address, suppression,
+ *     opt-out) carry `recipient_rejected` with attempts 0. A refused
+ *     message was not accepted.
+ *   - `configuration_error` — a refusal that happens strictly before the
+ *     SES call (no identity, undeclared lane, From chokepoint) or an SES
+ *     4xx for a missing configuration set / missing credentials. No
+ *     `configuration_error` can arise after acceptance.
+ *   - `rate_limit` / `quota_exceeded` — a received SES throttling / limit
+ *     response, likewise a 4xx, not an acceptance.
+ *   - `attempts === 0` — the return happened before the SES loop ran at
+ *     all, whatever its errorType (a backstop for a future pre-transport
+ *     refusal that forgets to set one).
+ *   - `network_error` / `unknown` (or a missing errorType) — the SES call
+ *     may have been accepted and the response lost (dropped connection,
+ *     timeout), or the failure happened somewhere the result cannot place
+ *     (circuit open, credential-resolution throw, MIME build). That is the
+ *     unknown case, and it maps to `ambiguous`, fail closed.
+ */
+function isEmailFailureProvablyUnperformed(result: EmailResult): boolean {
+  if ((result.attempts ?? 0) === 0) return true;
+  switch (result.errorType) {
+    case 'recipient_rejected':
+    case 'sender_not_verified':
+    case 'configuration_error':
+    case 'rate_limit':
+    case 'quota_exceeded':
+      return true;
+    case 'network_error':
+    case 'unknown':
+    default:
+      return false;
+  }
+}
+
 async function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -667,13 +716,21 @@ export class EmailService {
           if (result.success && result.messageId) {
             return { status: 'succeeded', externalId: result.messageId, result };
           }
-          // A structured failure from the transport ran BEFORE anything left,
-          // or the provider rejected it outright — safe to retry. A THROWN
-          // error is different and withOutwardAction records it as ambiguous.
-          return {
-            status: 'failed',
-            error: new Error(result.error ?? 'email send failed'),
-          };
+          // N1 (#624 audit follow-up): a structured failure is NOT one
+          // thing. A refusal the transport can prove — the provider
+          // rejected it outright, or it never reached the provider —
+          // records `failed` and stays retryable. A transport failure
+          // whose outcome is unknown (dropped connection / timeout after
+          // the request left) records `ambiguous`: under #624's failed-first
+          // precedence a `failed` recording would additionally permit
+          // corrected-content execution under this key, which is exactly
+          // what an unknown outcome must not allow. A THROWN error is
+          // unchanged — withOutwardAction records it as ambiguous.
+          const error = new Error(result.error ?? 'email send failed');
+          if (isEmailFailureProvablyUnperformed(result)) {
+            return { status: 'failed', error };
+          }
+          return { status: 'ambiguous', error };
         },
         (externalId) => ({ success: true, messageId: externalId ?? undefined }),
       ).catch((err) => {
