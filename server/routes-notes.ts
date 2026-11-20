@@ -73,6 +73,7 @@ import {
 // quotes comes from computePayoffQuote — no local per-diem arithmetic.
 import {
   computePayoffQuote,
+  isUuidShape,
   noteBookForId,
   resolvePayoffAccrualStart,
   parseIsoDateUtc,
@@ -3359,12 +3360,19 @@ export function registerNoteRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const orgId = getOrganizationId(req);
+        const quoteId = routeParam(req.params.quoteId);
+        // note_payoff_quotes.id is a UUID column: a non-UUID quoteId can
+        // never match a row, and passing it to Postgres throws
+        // invalid-uuid, which the catch below turns into a 500.
+        // Shape-guard it to the same 404 a well-formed unknown id gets
+        // (the L9-DEF-1 discipline; #639 audit follow-up).
+        if (!isUuidShape(quoteId)) return Errors.notFound(res, "Payoff quote");
         const [row] = await db
           .select()
           .from(notePayoffQuotes)
           .where(
             and(
-              eq(notePayoffQuotes.id, routeParam(req.params.quoteId)),
+              eq(notePayoffQuotes.id, quoteId),
               eq(notePayoffQuotes.organizationId, orgId),
               eq(notePayoffQuotes.noteRef, routeParam(req.params.id)),
             ),

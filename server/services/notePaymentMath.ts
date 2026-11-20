@@ -194,8 +194,19 @@ export type NoteBook = "serviced_note" | "acquired_note";
 
 const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/**
+ * True when the value is UUID-shaped. Route params that address a
+ * UUID column (a note id, a payoff quote id) are shape-checked with
+ * this before any lookup: a non-UUID value can never match a row, and
+ * passing it to Postgres throws invalid-uuid, which the handler's
+ * catch turns into a 500 for what is really a "no such row" (404).
+ */
+export function isUuidShape(value: string): boolean {
+  return UUID_SHAPE.test(value);
+}
+
 export function noteBookForId(noteId: string): NoteBook | null {
-  if (UUID_SHAPE.test(noteId)) return "acquired_note";
+  if (isUuidShape(noteId)) return "acquired_note";
   if (/^\d+$/.test(noteId)) return "serviced_note";
   return null;
 }

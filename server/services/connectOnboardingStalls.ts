@@ -25,13 +25,14 @@
  *       aging list: org, account, requirements, days stuck, alert state.
  *       The founder integrations endpoint serves it; the Bridge action
  *       queue carries the 7-day-plus rows.
- *   (c) ALERT — at 7 days stuck, the daily sweep raises ONE founder
- *       `systemAlert` (org-scoped, warning) and notifies the lender
+ *   (c) ALERT — at 7 days stuck, the daily sweep notifies the lender
  *       through the witnessed rails (push + in-app, preference-gated on
- *       `finance.onboarding_stall`, mirroring the B-2 dispute notice).
- *       `stripeConnectStallAlertedAt` stamps the firing so it happens
- *       once per stall episode; the aging list keeps the stall visible
- *       every day after that.
+ *       `finance.onboarding_stall`, mirroring the B-2 dispute notice),
+ *       then raises ONE founder `systemAlert` (org-scoped, warning)
+ *       whose message and metadata record whether the reminder
+ *       actually landed. `stripeConnectStallAlertedAt` stamps the
+ *       firing so it happens once per stall episode; the aging list
+ *       keeps the stall visible every day after that.
  *
  * ── WHAT THIS NEVER DOES ───────────────────────────────────────────────────
  * NO AUTOMATIC ACCOUNT CHANGES. The sweep reads Stripe and writes stall
@@ -107,6 +108,12 @@ export interface OnboardingStallNotice {
   requirements: string[];
 }
 
+/** What the lender notice actually achieved — recorded on the founder alert. */
+export interface OnboardingStallNoticeOutcome {
+  pushed: boolean;
+  inApp: number;
+}
+
 export interface ConnectOnboardingStallDeps {
   /** Every stripe_connect integration row that holds an account id. */
   listStripeConnectIntegrations: () => Promise<StripeConnectIntegrationSnapshot[]>;
@@ -127,7 +134,7 @@ export interface ConnectOnboardingStallDeps {
     relatedEntityId: number | null;
     metadata: Record<string, unknown>;
   }) => Promise<void>;
-  notifyLender: (notice: OnboardingStallNotice) => Promise<void>;
+  notifyLender: (notice: OnboardingStallNotice) => Promise<OnboardingStallNoticeOutcome>;
   getOrganizationName: (organizationId: number) => Promise<string | null>;
   now: () => Date;
 }
@@ -334,9 +341,7 @@ const defaultConnectOnboardingStallDeps: ConnectOnboardingStallDeps = {
   getAccountStatus: defaultGetAccountStatus,
   saveStallObservation: defaultSaveStallObservation,
   createSystemAlert: defaultCreateSystemAlert,
-  notifyLender: async (notice) => {
-    await notifyLenderOfOnboardingStall(notice);
-  },
+  notifyLender: async (notice) => notifyLenderOfOnboardingStall(notice),
   getOrganizationName: defaultGetOrganizationName,
   now: () => clock.now(),
 };
@@ -356,7 +361,7 @@ const STALL_NOTICE_URL = "/settings#billing";
  * SMS — a lender-facing reminder sent that way is a customer send and
  * goes through the outward-action rail, not this job.
  */
-async function notifyLenderOfOnboardingStall(notice: OnboardingStallNotice): Promise<{ pushed: boolean; inApp: number }> {
+async function notifyLenderOfOnboardingStall(notice: OnboardingStallNotice): Promise<OnboardingStallNoticeOutcome> {
   const result = { pushed: false, inApp: 0 };
   if (!Number.isInteger(notice.orgId) || notice.orgId <= 0) return result;
   const body =
@@ -518,6 +523,19 @@ export async function runOnboardingStallSweep(
 
       const organizationName =
         (await deps.getOrganizationName(row.organizationId)) ?? `Organization ${row.organizationId}`;
+      // The lender notice runs BEFORE the founder alert is written, so
+      // the alert can state truthfully whether the reminder landed —
+      // the #631 audit found the alert claiming "has been reminded"
+      // before the best-effort notice had even run, overstating it
+      // whenever both notice legs failed. The outcome is recorded in
+      // the alert metadata either way.
+      const noticeOutcome = await deps.notifyLender({
+        orgId: row.organizationId,
+        accountId: row.accountId,
+        daysStuck: stuckDays,
+        requirements: currentlyDue,
+      });
+      const lenderReminded = noticeOutcome.pushed || noticeOutcome.inApp > 0;
       await deps.createSystemAlert({
         organizationId: row.organizationId,
         type: ONBOARDING_STALL_ALERT_TYPE,
@@ -527,7 +545,10 @@ export async function runOnboardingStallSweep(
           `The lender's Stripe Connect account ${row.accountId} has been stuck in onboarding for ${stuckDays} days ` +
           `(${currentlyDue.length} requirement${currentlyDue.length === 1 ? "" : "s"} outstanding: ${currentlyDue.join(", ")}). ` +
           `Until onboarding completes the lender cannot take payments — the same stall that blocked P3-4's settlement leg. ` +
-          `The lender has been reminded in-app. No account changes were made; onboarding completes only in Stripe's hosted flow.`,
+          (lenderReminded
+            ? `The lender has been reminded in-app. `
+            : `The lender reminder was attempted in-app, but no push or in-app delivery succeeded — the lender may not have seen it. `) +
+          `No account changes were made; onboarding completes only in Stripe's hosted flow.`,
         relatedEntityType: "organization",
         relatedEntityId: row.organizationId,
         metadata: {
@@ -536,15 +557,10 @@ export async function runOnboardingStallSweep(
           daysStuck: stuckDays,
           requirements: currentlyDue,
           firstSeenStuckAt: stall.stripeConnectStallFirstSeenAt,
+          lenderNotice: { pushed: noticeOutcome.pushed, inApp: noticeOutcome.inApp },
         },
       });
-      await deps.notifyLender({
-        orgId: row.organizationId,
-        accountId: row.accountId,
-        daysStuck: stuckDays,
-        requirements: currentlyDue,
-      });
-      // Stamp AFTER the alert + notice go out, so a failed fan-out
+      // Stamp AFTER the notice + alert go out, so a failed fan-out
       // retries on the next run and a fired alert never repeats.
       await deps.saveStallObservation(row, {
         ...readStallSettings(settings),
