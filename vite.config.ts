@@ -545,8 +545,9 @@ export function buildConfig(output: BuildOutput): UserConfig {
   // BD-4 (bundle diet): the web builds alias @capacitor/core to a shim that
   // answers its two web-constant questions (client/src/lib/
   // capacitor-web-shim.ts). A NATIVE build must link the real core, so the
-  // alias is removed when ACREOS_NATIVE_BUILD=1 — the mobile:* scripts set
-  // it. Read here, at config-build time, so the pin test can flip it.
+  // alias is removed when ACREOS_NATIVE_BUILD=1 — the build:native script
+  // sets it (the mobile:* scripts build through build:native). Read here,
+  // at config-build time, so the pin test can flip it.
   const nativeBuild = process.env.ACREOS_NATIVE_BUILD === "1";
   const config: UserConfig = {
   define: {

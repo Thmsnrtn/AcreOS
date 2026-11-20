@@ -14,18 +14,27 @@
  *     gate in the hooks/haptics layer), so no plugin module is statically
  *     bound to the shim.
  *
- * The fence: ACREOS_NATIVE_BUILD=1 removes the vite alias, and every
- * mobile:* script sets it — a native shell that reported itself as "web"
- * would be a silent platform-detection break, so both halves are pinned.
- * Mutation: drop the env prefix from a mobile script, or the conditional
- * in buildConfig → red.
+ * The fence: ACREOS_NATIVE_BUILD=1 removes the vite alias. The prefix
+ * lives on its own single-command script (build:native) — a VAR=x prefix
+ * may not cross an `&&` (POSIX binds it to the first command only, and
+ * testsAreTypeChecked forbids the shape outright) — and every mobile:*
+ * script builds through build:native. A native shell that reported
+ * itself as "web" would be a silent platform-detection break, so both
+ * halves are pinned.
+ * Mutation: drop the env prefix from build:native, point a mobile script
+ * at the plain web build, or the conditional in buildConfig → red.
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
 import { stripComments } from "../helpers/stripComments";
 import { buildConfig } from "../../vite.config";
 import * as shim from "../../client/src/lib/capacitor-web-shim";
+
+// This suite walks all of client/src (a repo-wide sweep); its cost scales
+// with the tree, so the budget is declared, not inherited.
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 const { Capacitor } = shim;
 
@@ -61,12 +70,22 @@ describe("the alias and its native fence", () => {
     expect(aliasOf(buildConfig("founder"))).toBeUndefined();
   });
 
-  it("every mobile:* script sets ACREOS_NATIVE_BUILD=1 for its build", () => {
+  it("the native build carries ACREOS_NATIVE_BUILD=1 on its own script, and every mobile:* script builds through it", () => {
     const pkg = JSON.parse(readFileSync(path.join(ROOT, "package.json"), "utf8")) as { scripts: Record<string, string> };
+    // The prefix sits on a single-command script with no `&&` chain: a
+    // VAR=x prefix crossing `&&` binds to the first command only (and
+    // testsAreTypeChecked forbids the shape outright), so the mobile:*
+    // scripts invoke this script plainly instead of carrying the prefix
+    // themselves.
+    const native = pkg.scripts["build:native"];
+    expect(native, "build:native is gone — the native fence lost its script").toBeTruthy();
+    expect(native).toMatch(/^ACREOS_NATIVE_BUILD=1 /);
+    expect(native, "build:native must be a single command — no && chain for the prefix to fall off").not.toContain("&&");
     const mobile = Object.entries(pkg.scripts).filter(([k]) => k.startsWith("mobile:"));
     expect(mobile.length).toBeGreaterThan(0);
     for (const [name, cmd] of mobile) {
-      expect(cmd, `${name} must build native`).toMatch(/^ACREOS_NATIVE_BUILD=1 npm run build/);
+      expect(cmd, `${name} must build native`).toMatch(/^npm run build:native( &&|$)/);
+      expect(cmd, `${name} must not carry the env prefix itself`).not.toMatch(/^[A-Za-z_][A-Za-z0-9_]*=/);
     }
   });
 });

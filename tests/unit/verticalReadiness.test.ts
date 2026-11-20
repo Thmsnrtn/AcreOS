@@ -4,9 +4,11 @@
  * ── SINCE FD1 (2026-11-12) ──────────────────────────────────────────────────
  * The registry states the launch presentation itself — 4 core / 1 beta / 10
  * registry_only since Tax's 2026-11-19 lift (fd1LaunchScope.test.ts) — and the public demotion table is
- * empty. The ratchet below therefore counts TWO gaps: `note_investor` and
- * `tax_lien_deed`, each promised as core by founder decision on evidence
- * that reaches `surfaced`. Those gaps are
+ * empty. The ratchet below therefore counts ONE gap: `tax_lien_deed`,
+ * promised as core by founder decision on evidence that reaches
+ * `surfaced`. (`note_investor` stood here too until 2026-11-20, when its
+ * price-to-yield desk started recording decisions and the gap closed.)
+ * Those gaps are
  * named in a dated register (FD1_CORE_ON_SURFACED_EVIDENCE) rather than
  * tolerated silently, and each closes when its vertical records a decision.
  *
@@ -141,17 +143,28 @@ const evidence: VerticalEvidence = measured;
 // `surfaced` (no decision desk yet), so the lift registers it below
 // beside note_investor — a founder-decided public core on surfaced
 // evidence, counted here rather than hidden.
-const MATURITY_OVERCLAIM_BASELINE = 2;
+// 2 → 1 on 2026-11-20: note_investor EARNED its way off the register —
+// the price-to-yield engine + decision desk (Step 0 N3+N4) record
+// decisions citing gradeable scenarios, so its measured evidence reaches
+// `decided` and the exemption is deleted below (N5 integrator lift).
+// tax_lien_deed remains the one founder-decided public core on surfaced
+// evidence.
+const MATURITY_OVERCLAIM_BASELINE = 1;
 
 /**
  * FOUNDER-DECIDED PUBLIC CORE ON SURFACED EVIDENCE (FD1, 2026-11-12).
  *
  * The one place a public `core` claim may stand on less than a recorded
- * decision, and only because the founder decided it by name: the notes
- * vertical is one of the two launch promises (FD1), and its evidence reaches
- * `surfaced` (real modules, real templates, no production decision desk yet).
+ * decision, and only because the founder decided it by name.
  *
- * JOINED 2026-11-19 by tax_lien_deed, on the same terms: its journey is
+ * The register's first member was note_investor (FD1, 2026-11-12 — one of
+ * the two launch promises, its evidence then reaching only `surfaced`).
+ * It LEFT on 2026-11-20: the price-to-yield engine + decision desk
+ * (Step 0 N3+N4) record decisions, its measured evidence reaches
+ * `decided`, and the exemption closed exactly as designed (N5 lift).
+ *
+ * tax_lien_deed JOINED 2026-11-19, on the same terms, and is now the
+ * sole entry: its journey is
  * proven (the founder counted Tax proven 2026-11-19; walk record
  * journey-walk-tax-2026-11) but its code evidence reaches only `surfaced`
  * (four live cert emitters, no production decision desk yet), so its public
@@ -165,10 +178,6 @@ const MATURITY_OVERCLAIM_BASELINE = 2;
  *   - the set is widened without changing the pinned list below.
  */
 const FD1_CORE_ON_SURFACED_EVIDENCE: Partial<Record<BusinessTypeId, { decidedOn: string; decision: string }>> = {
-  note_investor: {
-    decidedOn: "2026-11-12",
-    decision: "docs/company/founder-decisions-2026-11-12-launch-scope.md",
-  },
   tax_lien_deed: {
     decidedOn: "2026-11-19",
     decision: "docs/company/founder-decisions-2026-11-12-launch-scope.md",
@@ -371,7 +380,7 @@ describe("a declared maturity may not exceed evidenced readiness", () => {
 
   it("the FD1 register cannot rot: each entry still overclaims, is dated, and cites a decision file that exists", () => {
     const entries = Object.entries(FD1_CORE_ON_SURFACED_EVIDENCE) as Array<[BusinessTypeId, { decidedOn: string; decision: string }]>;
-    expect(entries.map(([id]) => id)).toEqual(["note_investor", "tax_lien_deed"]);
+    expect(entries.map(([id]) => id)).toEqual(["tax_lien_deed"]);
     for (const [id, e] of entries) {
       expect(BUSINESS_TYPES[id].maturity, `${id} is not core — it needs no exemption; remove it`).toBe("core");
       expect(
@@ -391,7 +400,8 @@ describe("a declared maturity may not exceed evidenced readiness", () => {
     // simulation mode under the zero-real-mail rule, footnote on the
     // record) — not by recording a decision, so unlike buy_and_hold and
     // residential_wholesaler it still measures `surfaced` and its core
-    // claim stands on the FD1 register, like note_investor's.
+    // claim stands on the FD1 register — as note_investor's did, until
+    // its desk earned it off the register on 2026-11-20.
     expect(BUSINESS_TYPES.tax_lien_deed.maturity).toBe("core");
     expect(readinessOf(BUSINESS_TYPES.tax_lien_deed, evidence)).toBe("surfaced");
     expect(FD1_CORE_ON_SURFACED_EVIDENCE.tax_lien_deed?.decidedOn).toBe("2026-11-19");

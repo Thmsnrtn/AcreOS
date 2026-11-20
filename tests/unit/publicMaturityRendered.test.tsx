@@ -61,10 +61,11 @@ const evidence = measureVerticalEvidence();
  * Mirrors FD1_CORE_ON_SURFACED_EVIDENCE in verticalReadiness.test.ts; both pin
  * the same names, and an entry fails when its vertical records a
  * decision (the entry must then go). tax_lien_deed joined 2026-11-19 on
- * journey proof, on the same terms as note_investor.
+ * journey proof, on the same terms note_investor originally stood on;
+ * note_investor left the register on 2026-11-20 when its price-to-yield
+ * desk started recording decisions (Step 0 N5 lift).
  */
 const FD1_CORE_ON_SURFACED_EVIDENCE: Partial<Record<BusinessTypeId, string>> = {
-  note_investor: "docs/company/founder-decisions-2026-11-12-launch-scope.md",
   tax_lien_deed: "docs/company/founder-decisions-2026-11-12-launch-scope.md",
 };
 
@@ -122,7 +123,8 @@ describe("what a visitor is actually shown", () => {
     // This compares the rendered page against the EVIDENCE instead: a chip may
     // sit in "full workflow support" only if that vertical actually records a
     // decision snapshot in production — or the founder decided it by name
-    // (FD1: note_investor, and tax_lien_deed since 2026-11-19), in which case the exemption must be exactly that
+    // (FD1: tax_lien_deed since 2026-11-19; note_investor stood here until
+    // its desk earned it off the register on 2026-11-20), in which case the exemption must be exactly that
     // set, dated and cited, and nothing wider.
     expect(
       evidence.definedWorkflowTemplateIds.size,
