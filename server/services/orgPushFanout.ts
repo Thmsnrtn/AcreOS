@@ -30,7 +30,7 @@ import { logger } from "../utils/logger";
 import { sendPushToOrg, type PushPayload } from "./pushNotificationService";
 import { notificationPrefsService } from "./notificationPreferences";
 
-export type OrgPushFamily = "pax_nudge" | "redemption_alert" | "ladder_ready" | "borrower_message" | "borrower_dispute";
+export type OrgPushFamily = "pax_nudge" | "redemption_alert" | "ladder_ready" | "borrower_message" | "borrower_dispute" | "onboarding_stall";
 
 /**
  * The fan-out family for an event, mapped to the `notificationPreferences`
@@ -50,6 +50,9 @@ export type OrgPushFamily = "pax_nudge" | "redemption_alert" | "ladder_ready" | 
  *  - `borrower_dispute` → `finance.borrower_dispute`: the schema event added
  *    deliberately with the B-2 wire — a borrower chargeback (and its
  *    response-deadline escalations) is its own preference too.
+ *  - `onboarding_stall` → `finance.onboarding_stall`: the schema event added
+ *    deliberately with the B-7 wire — a lender's 7-day onboarding stall is
+ *    its own preference too.
  * A user's explicit push override for the mapped id is honoured either way;
  * with no override, the schema's `defaultChannels.push` for that id decides
  * (all three currently default push ON, matching the pre-fix behaviour for
@@ -80,6 +83,11 @@ export const ORG_PUSH_FAMILY_EVENT_ID: Record<OrgPushFamily, string> = {
   // event, added with this wire — muting payment alerts or borrower
   // messages must not silently mute a dispute deadline.
   borrower_dispute: "finance.borrower_dispute",
+  // B-7 (founder autopilot): a stalled lender onboarding maps to its OWN
+  // schema event, added with this wire — muting payment alerts, borrower
+  // messages or dispute deadlines must not silently mute the stall notice
+  // that tells a lender they still cannot take payments.
+  onboarding_stall: "finance.onboarding_stall",
 };
 
 /**

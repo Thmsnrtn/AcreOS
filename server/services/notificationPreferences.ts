@@ -185,6 +185,21 @@ export const NOTIFICATION_SCHEMA: NotificationCategory[] = [
         description: "When a borrower opens a chargeback on a payment for a note you hold, and as its response deadline approaches",
         defaultChannels: { email: false, sms: false, push: true, inApp: true },
       },
+      {
+        // B-7 (founder autopilot, 2026-11-19): a lender's Stripe onboarding
+        // can sit in `currentlyDue` for days with nobody told — P3-4's
+        // settlement leg failed three times at that wall. This event is
+        // the per-user toggle the 7-day stall notice (push + in-app)
+        // consults; a stored refusal (global mute or this event's
+        // push/inApp off) is honoured, exactly as for borrower disputes.
+        // No email/SMS channel: a lender-facing reminder sent that way is
+        // a customer send and goes through the outward-action rail, not
+        // this notice.
+        id: "finance.onboarding_stall",
+        label: "Your Stripe onboarding is stalled",
+        description: "When your Stripe account has been stuck in onboarding for 7 days and still needs details before you can take payments",
+        defaultChannels: { email: false, sms: false, push: true, inApp: true },
+      },
     ],
   },
   {

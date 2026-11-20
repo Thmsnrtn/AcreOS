@@ -275,26 +275,52 @@ export class StripeConnectService {
   async updateAccountStatus(organizationId: number, accountId: string): Promise<void> {
     const status = await this.getAccountStatus(accountId);
     const integration = await storage.getOrganizationIntegration(organizationId, "stripe_connect");
-    
+
     if (integration) {
+      // B-7: advance the onboarding-stall clock on every live observation.
+      // Only when Stripe was actually read (isConnected + requirements
+      // present) — an unreadable account neither seeds nor clears a stall.
+      // The daily sweep's live read is the second observation point, so a
+      // stall is clocked even if account.updated delivery stops.
+      const now = clock.now();
+      let stallPatch: Record<string, unknown> = {};
+      if (status.isConnected && status.requirements) {
+        const { computeStallObservation } = await import("./connectOnboardingStalls");
+        const observation = computeStallObservation(
+          (integration.settings ?? {}) as Record<string, unknown>,
+          status.requirements.currentlyDue,
+          now,
+        );
+        if (observation?.changed) {
+          stallPatch = { ...observation.patch };
+        }
+      }
+      const settings = {
+        ...integration.settings,
+        stripeConnectOnboardingComplete: status.detailsSubmitted,
+        stripeConnectPayoutsEnabled: status.payoutsEnabled,
+        stripeConnectChargesEnabled: status.chargesEnabled,
+        stripeConnectCapabilities: {
+          cardPayments: status.capabilities?.cardPayments === "active",
+          transfers: status.capabilities?.transfers === "active",
+          achPayments: status.capabilities?.usBankAccountAchPayments === "active",
+        },
+      };
+      // A resolve patch carries undefined for the cleared keys — delete
+      // them rather than writing undefined into the settings JSONB.
+      const settingsRecord = settings as Record<string, unknown>;
+      for (const [key, value] of Object.entries(stallPatch)) {
+        if (value === undefined) delete settingsRecord[key];
+        else settingsRecord[key] = value;
+      }
       await storage.upsertOrganizationIntegration({
         organizationId,
         provider: "stripe_connect",
         isEnabled: integration.isEnabled ?? true,
         credentials: integration.credentials,
-        settings: {
-          ...integration.settings,
-          stripeConnectOnboardingComplete: status.detailsSubmitted,
-          stripeConnectPayoutsEnabled: status.payoutsEnabled,
-          stripeConnectChargesEnabled: status.chargesEnabled,
-          stripeConnectCapabilities: {
-            cardPayments: status.capabilities?.cardPayments === "active",
-            transfers: status.capabilities?.transfers === "active",
-            achPayments: status.capabilities?.usBankAccountAchPayments === "active",
-          },
-        },
-        lastValidatedAt: clock.now(),
-        validationError: status.requirements?.currentlyDue?.length 
+        settings,
+        lastValidatedAt: now,
+        validationError: status.requirements?.currentlyDue?.length
           ? `Pending requirements: ${status.requirements.currentlyDue.join(", ")}`
           : undefined,
       });
