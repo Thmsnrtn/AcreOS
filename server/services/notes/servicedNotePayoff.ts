@@ -19,27 +19,44 @@ import { storage, db } from "../../storage";
 import { notePayoffQuotes, type Note, type NotePayoffQuote, type PayoffQuoteChannel } from "@shared/schema";
 import {
   computePayoffQuote,
+  decimalDollarsToCents,
   payoffInputsFromServicedNote,
   isoDateUtc,
   PAYOFF_DAY_COUNT_CONVENTION,
   PAYOFF_ENGINE_VERSION,
   type PayoffQuote,
+  type PayoffQuoteInput,
 } from "../notePaymentMath";
 import { dayInZone } from "../form1098Batch";
 import { assessServicedNoteLateFee, lateFeeDueByCents, outstandingServicedLateFeesCents } from "./servicedLateFees";
 import { clock } from "../../utils/clock";
 
-export async function quoteServicedNotePayoff(args: {
+export interface ServicedNotePayoffInputs {
+  input: PayoffQuoteInput;
+  ledgerRowsConsidered: number;
+  /** SUM(late_fee_amount) over the completed ledger rows, in cents — fees already collected. */
+  lateFeesCollectedToDateCents: number;
+}
+
+/**
+ * Derive the engine input for one serviced note from the note and its OWN
+ * completed payment ledger — the one derivation both payoff surfaces share.
+ * `quoteServicedNotePayoff` records the quote; the operator calculator
+ * (GET /api/notes/:id/payoff) calls this and quotes WITHOUT recording, so
+ * the two surfaces can never price the same note differently again.
+ *
+ * Side effect, stated plainly: this assesses the current installment's late
+ * fee when its grace has already passed — the same idempotent assessment
+ * the daily job runs, and the one the borrower-portal GET already performs
+ * on every read (it calls `quoteServicedNotePayoff`, which calls this).
+ * The derivation writes a fee assessment, never a quote row.
+ */
+export async function deriveServicedNotePayoffInput(args: {
   note: Note;
   payoffDate: Date;
   /** The LENDER's zone — which calendar day a posting instant fell on. */
   lenderTimeZone: string;
-  channel: PayoffQuoteChannel;
-  payerName: string | null;
-  quotedByUserId: string | null;
-  /** Free-text provenance stored in `notes` (e.g. `borrower_session:<id>`). */
-  provenance: string;
-}): Promise<{ quote: PayoffQuote; row: NotePayoffQuote; ledgerRowsConsidered: number }> {
+}): Promise<ServicedNotePayoffInputs> {
   const { note, payoffDate, lenderTimeZone } = args;
 
   // The accrual start comes from the ledger — the most recent COMPLETED
@@ -87,6 +104,42 @@ export async function quoteServicedNotePayoff(args: {
     // No org-configured payoff fee exists for serviced notes.
     payoffFeeCents: 0,
   });
+  return {
+    input,
+    ledgerRowsConsidered: ledger.length,
+    lateFeesCollectedToDateCents: ledger.reduce(
+      (sum, p) => sum + decimalDollarsToCents(p.lateFeeAmount),
+      0,
+    ),
+  };
+}
+
+export async function quoteServicedNotePayoff(args: {
+  note: Note;
+  payoffDate: Date;
+  /** The LENDER's zone — which calendar day a posting instant fell on. */
+  lenderTimeZone: string;
+  channel: PayoffQuoteChannel;
+  payerName: string | null;
+  quotedByUserId: string | null;
+  /** Free-text provenance stored in `notes` (e.g. `borrower_session:<id>`). */
+  provenance: string;
+}): Promise<{
+  quote: PayoffQuote;
+  row: NotePayoffQuote;
+  ledgerRowsConsidered: number;
+  /** SUM(late_fee_amount) over the completed ledger rows — fees already collected. */
+  lateFeesCollectedToDateCents: number;
+}> {
+  const { note, payoffDate, lenderTimeZone } = args;
+
+  // One derivation for both surfaces — see deriveServicedNotePayoffInput.
+  const { input, ledgerRowsConsidered, lateFeesCollectedToDateCents } =
+    await deriveServicedNotePayoffInput({
+      note,
+      payoffDate,
+      lenderTimeZone,
+    });
   const quote = computePayoffQuote(input);
 
   const [row] = await db
@@ -125,11 +178,11 @@ export async function quoteServicedNotePayoff(args: {
         payoffFeeCents: input.payoffFeeCents ?? 0,
         dayCountConvention: PAYOFF_DAY_COUNT_CONVENTION,
         engineVersion: PAYOFF_ENGINE_VERSION,
-        ledgerRowsConsidered: ledger.length,
+        ledgerRowsConsidered,
       },
       notes: args.provenance,
     })
     .returning();
 
-  return { quote, row, ledgerRowsConsidered: ledger.length };
+  return { quote, row, ledgerRowsConsidered, lateFeesCollectedToDateCents };
 }

@@ -33,7 +33,7 @@ import {
   buildLienRelease,
   buildPayoffLetter,
 } from "../../server/services/settlementRail/documents";
-import { noteBookForId } from "../../server/services/settlementRail/payoffLetter";
+import { noteBookForId } from "../../server/services/notePaymentMath";
 import { moneyEventVarianceCents } from "../../server/services/settlementRail/moneyEvents";
 import { mergeMailCopy } from "@shared/parcel/ownerName";
 import {

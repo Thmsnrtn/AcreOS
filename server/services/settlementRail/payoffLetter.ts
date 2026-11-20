@@ -33,21 +33,18 @@ import {
 } from "@shared/schema";
 import { quoteServicedNotePayoff } from "../notes/servicedNotePayoff";
 import { resolveOrgTimeZone } from "../form1098Batch";
-import { isoDateUtc, PAYOFF_DAY_COUNT_CONVENTION, PAYOFF_ENGINE_VERSION } from "../notePaymentMath";
+import {
+  isoDateUtc,
+  noteBookForId,
+  PAYOFF_DAY_COUNT_CONVENTION,
+  PAYOFF_ENGINE_VERSION,
+  type NoteBook,
+} from "../notePaymentMath";
 import { computeAcquiredNotePayoff } from "../../routes-notes";
 import { buildPayoffLetter, type RailDocumentArtifact } from "./documents";
 import type { RailMailRecipient } from "./delivery";
 
-export type NoteBook = "serviced_note" | "acquired_note";
-
-const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/** Which book a `/api/notes/:id` id belongs to, by the id's own shape. Null when it is neither. */
-export function noteBookForId(noteId: string): NoteBook | null {
-  if (UUID_SHAPE.test(noteId)) return "acquired_note";
-  if (/^\d+$/.test(noteId)) return "serviced_note";
-  return null;
-}
+export type { NoteBook } from "../notePaymentMath";
 
 export interface PayoffLetterResult {
   book: NoteBook;
