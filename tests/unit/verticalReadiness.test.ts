@@ -4,11 +4,10 @@
  * ── SINCE FD1 (2026-11-12) ──────────────────────────────────────────────────
  * The registry states the launch presentation itself — 4 core / 1 beta / 10
  * registry_only since Tax's 2026-11-19 lift (fd1LaunchScope.test.ts) — and the public demotion table is
- * empty. The ratchet below therefore counts ONE gap: `tax_lien_deed`,
- * promised as core by founder decision on evidence that reaches
- * `surfaced`. (`note_investor` stood here too until 2026-11-20, when its
- * price-to-yield desk started recording decisions and the gap closed.)
- * Those gaps are
+ * empty. The ratchet below therefore counts NO gaps: the last one,
+ * `tax_lien_deed`, closed on 2026-11-20 when its max-bid desk started
+ * recording decisions (`note_investor` closed the same way earlier that
+ * day). The gaps were
  * named in a dated register (FD1_CORE_ON_SURFACED_EVIDENCE) rather than
  * tolerated silently, and each closes when its vertical records a decision.
  *
@@ -147,9 +146,12 @@ const evidence: VerticalEvidence = measured;
 // the price-to-yield engine + decision desk (Step 0 N3+N4) record
 // decisions citing gradeable scenarios, so its measured evidence reaches
 // `decided` and the exemption is deleted below (N5 integrator lift).
-// tax_lien_deed remains the one founder-decided public core on surfaced
-// evidence.
-const MATURITY_OVERCLAIM_BASELINE = 1;
+// 1 → 0 on 2026-11-20: tax_lien_deed EARNED its way off the register —
+// the max-bid engine + decision desk (Step 0 T4+T5) record decisions
+// citing gradeable scenarios, so its measured evidence reaches
+// `decided` and the exemption is deleted below (T6 integrator lift).
+// The register is now EMPTY: no public core stands on surfaced evidence.
+const MATURITY_OVERCLAIM_BASELINE = 0;
 
 /**
  * FOUNDER-DECIDED PUBLIC CORE ON SURFACED EVIDENCE (FD1, 2026-11-12).
@@ -163,12 +165,19 @@ const MATURITY_OVERCLAIM_BASELINE = 1;
  * (Step 0 N3+N4) record decisions, its measured evidence reaches
  * `decided`, and the exemption closed exactly as designed (N5 lift).
  *
- * tax_lien_deed JOINED 2026-11-19, on the same terms, and is now the
- * sole entry: its journey is
+ * tax_lien_deed JOINED 2026-11-19, on the same terms: its journey is
  * proven (the founder counted Tax proven 2026-11-19; walk record
- * journey-walk-tax-2026-11) but its code evidence reaches only `surfaced`
- * (four live cert emitters, no production decision desk yet), so its public
- * `core` claim likewise stands on the founder's decision, by name.
+ * journey-walk-tax-2026-11) but its code evidence then reached only
+ * `surfaced` (four live cert emitters, no production decision desk yet),
+ * so its public `core` claim likewise stood on the founder's decision,
+ * by name. It LEFT on 2026-11-20: the max-bid engine + decision desk
+ * (Step 0 T4+T5) record decisions, its measured evidence reaches
+ * `decided`, and the exemption closed exactly as designed (T6 lift).
+ *
+ * THE REGISTER IS NOW EMPTY, and pinned empty below. That is the state
+ * the register was designed to reach: every public core evidences a
+ * recorded decision. A future entry is a founder decision, added with
+ * its dated record — never a quiet widening.
  *
  * Not a waiver. Each entry fails loudly when:
  *   - it no longer OVERCLAIMS (the vertical records a decision → the gap is
@@ -177,12 +186,7 @@ const MATURITY_OVERCLAIM_BASELINE = 1;
  *   - its decision file does not exist;
  *   - the set is widened without changing the pinned list below.
  */
-const FD1_CORE_ON_SURFACED_EVIDENCE: Partial<Record<BusinessTypeId, { decidedOn: string; decision: string }>> = {
-  tax_lien_deed: {
-    decidedOn: "2026-11-19",
-    decision: "docs/company/founder-decisions-2026-11-12-launch-scope.md",
-  },
-};
+const FD1_CORE_ON_SURFACED_EVIDENCE: Partial<Record<BusinessTypeId, { decidedOn: string; decision: string }>> = {};
 const isFounderDecidedCore = (id: string) => id in FD1_CORE_ON_SURFACED_EVIDENCE;
 
 /**
@@ -380,7 +384,7 @@ describe("a declared maturity may not exceed evidenced readiness", () => {
 
   it("the FD1 register cannot rot: each entry still overclaims, is dated, and cites a decision file that exists", () => {
     const entries = Object.entries(FD1_CORE_ON_SURFACED_EVIDENCE) as Array<[BusinessTypeId, { decidedOn: string; decision: string }]>;
-    expect(entries.map(([id]) => id)).toEqual(["tax_lien_deed"]);
+    expect(entries.map(([id]) => id)).toEqual([]);
     for (const [id, e] of entries) {
       expect(BUSINESS_TYPES[id].maturity, `${id} is not core — it needs no exemption; remove it`).toBe("core");
       expect(
@@ -392,19 +396,20 @@ describe("a declared maturity may not exceed evidenced readiness", () => {
     }
   });
 
-  it("tax_lien_deed's 2026-11-19 lift is pinned by name: core in the registry, still `surfaced` in code, registered above", () => {
-    // The lifted state, pinned so that quietly reverting the maturity or
-    // deleting the register entry fails here as well as in the ratchet.
+  it("tax_lien_deed's 2026-11-19 lift, closed 2026-11-20: core in the registry, now `decided` in code, register entry deleted", () => {
+    // The closed state, pinned so that quietly reverting the maturity or
+    // re-adding a register entry fails here as well as in the ratchet.
     // Tax earned core by JOURNEY proof (founder counted it proven
     // 2026-11-19; walk record journey-walk-tax-2026-11, N3 send leg in
     // simulation mode under the zero-real-mail rule, footnote on the
-    // record) — not by recording a decision, so unlike buy_and_hold and
-    // residential_wholesaler it still measures `surfaced` and its core
-    // claim stands on the FD1 register — as note_investor's did, until
-    // its desk earned it off the register on 2026-11-20.
+    // record) — not by recording a decision, so it stood on the FD1
+    // register from 2026-11-19 until 2026-11-20, when its max-bid engine
+    // + decision desk (Step 0 T4+T5) started recording decisions citing
+    // gradeable scenarios and it earned its way off the register (T6
+    // lift) — the same path note_investor took earlier that day.
     expect(BUSINESS_TYPES.tax_lien_deed.maturity).toBe("core");
-    expect(readinessOf(BUSINESS_TYPES.tax_lien_deed, evidence)).toBe("surfaced");
-    expect(FD1_CORE_ON_SURFACED_EVIDENCE.tax_lien_deed?.decidedOn).toBe("2026-11-19");
+    expect(readinessOf(BUSINESS_TYPES.tax_lien_deed, evidence)).toBe("decided");
+    expect(FD1_CORE_ON_SURFACED_EVIDENCE.tax_lien_deed).toBeUndefined();
     const doc = fs.readFileSync(
       path.resolve(__dirname, "../..", "docs/company/founder-decisions-2026-11-12-launch-scope.md"),
       "utf8",
@@ -661,10 +666,16 @@ describe("the Evidence Ladder states the same vertical truth (one rule, not two)
       );
     }).map((id) => `${id}: public "${publicMaturityOf(BUSINESS_TYPES[id])}", caveat "${caveat(id)}"`);
     expect(disagree).toEqual([]);
-    // Vacuity: all three wordings occur on the live ladder.
+    // Vacuity: the beta and roadmap wordings occur on the live ladder.
     expect(BUSINESS_TYPE_IDS.some((id) => /public claim is beta/.test(caveat(id)))).toBe(true);
     expect(BUSINESS_TYPE_IDS.some((id) => /not in the public promise/.test(caveat(id)))).toBe(true);
-    expect(BUSINESS_TYPE_IDS.some((id) => /public claim is core/.test(caveat(id)))).toBe(true);
+    // The core wording occurs NOWHERE since 2026-11-20 (T6 lift): it is
+    // carried only by a public core standing on surfaced evidence (the
+    // FD1 register), the register is empty, and every public core now
+    // closes the loop. Pinned as absent so a future surfaced core —
+    // which would need a founder decision and a register entry — fails
+    // here loudly instead of slipping the wording back in unpinned.
+    expect(BUSINESS_TYPE_IDS.some((id) => /public claim is core/.test(caveat(id)))).toBe(false);
   });
 
   it("a ladder caveat says `not yet gradeable` exactly for a decided vertical the measurement cannot grade", () => {

@@ -235,6 +235,7 @@ export const ROUTE_MANIFEST: RouteManifestEntry[] = [
   { file: "routes-note-origination.ts", mountPath: null, kind: "register", export: "registerNoteOriginationRoutes" },
   { file: "routes-note-tape.ts", mountPath: null, kind: "register", export: "registerNoteTapeRoutes" },
   { file: "routes-note-underwriting.ts", mountPath: "/api/note-investor", kind: "router", export: "default" },
+  { file: "routes-tax-underwriting.ts", mountPath: "/api/tax-lien", kind: "router", export: "default" },
   { file: "routes-notes.ts", mountPath: null, kind: "register", export: "registerNoteRoutes" },
   { file: "routes-notifications.ts", mountPath: "/api/notifications", kind: "router", export: "default" },
   { file: "routes-object-documents.ts", mountPath: null, kind: "register", export: "registerObjectDocumentRoutes" },
