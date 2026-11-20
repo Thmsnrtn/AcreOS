@@ -27,9 +27,10 @@
  * manual step or a blocked Pax leg remains — the record says which). 1 =
  * FAIL or refused to start (no token, bad spec, non-staging URL).
  */
+import "../server/outboundGuard";
 import readline from "node:readline";
 import { getWalkSpec } from "../tests/journey/specs/index";
-import { StagingDriver } from "../tests/journey/drivers/staging";
+import { StagingDriver, assertStagingBaseUrl } from "../tests/journey/drivers/staging";
 import { runWalk, writeWalkRecord } from "../tests/journey/runner";
 import { validateWalkSpec } from "../tests/journey/walk-spec";
 
@@ -79,9 +80,12 @@ async function main(): Promise<number> {
     console.error(`walk spec ${specId} is invalid:\n- ${errors.join("\n- ")}`);
     return 1;
   }
-  const baseUrl = (process.env.ACREOS_STAGING_URL ?? "https://acreos-staging.fly.dev").replace(/\/$/, "");
   if (check) {
-    // --check needs no token: the version probe is unauthenticated.
+    // --check needs no token: the version probe is unauthenticated. It still
+    // goes through the staging driver's base-URL refusal first (https +
+    // "staging"), so the probe can never be pointed at production or any
+    // other host by the environment.
+    const baseUrl = assertStagingBaseUrl(process.env.ACREOS_STAGING_URL ?? "https://acreos-staging.fly.dev");
     const res = await fetch(`${baseUrl}/api/version`);
     const version = (await res.json().catch(() => ({}))) as { sha?: unknown };
     console.log(`staging /api/version: ${JSON.stringify(version)}`);

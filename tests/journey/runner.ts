@@ -27,6 +27,7 @@ import type {
   WalkStep,
 } from "./walk-spec";
 import { validateWalkSpec } from "./walk-spec";
+import { randomBytes } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -105,7 +106,10 @@ export function etDateStamp(date: Date): string {
 }
 
 function runTag(specId: string, date: Date): string {
-  const rand = Math.random().toString(36).slice(2, 8);
+  // Crypto randomness, not Math.random: the tag becomes the realdb org
+  // slug/name and the `${tag}-user` / `${tag}-owner` identities, and the
+  // staging persona slug — a security context (CodeQL js/insecure-randomness).
+  const rand = randomBytes(4).toString("hex");
   return `walk-${specId}-${etDateStamp(date)}-${rand}`;
 }
 

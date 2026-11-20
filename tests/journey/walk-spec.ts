@@ -18,10 +18,10 @@
  *   `sql`, `check`, `store`/`get`, `note`. A leg that imports server code
  *   directly breaks staging portability and fails spec validation review.
  * - The no-send fence is structural: `fences.noSend` is true for every
- *   walk, validation rejects any step that declares `sends: true`, and the
- *   runner records the driver's sent count (realdb) or the dry-run +
- *   recipient-count assertions (staging, where the transport is not
- *   observable from outside).
+ *   walk (validation rejects any spec without it), and the runner records
+ *   the driver's sent count and fails the walk if anything was sent
+ *   (realdb) or relies on the dry-run + recipient-count assertions
+ *   (staging, where the transport is not observable from outside).
  */
 
 export type WalkStepKind = "api" | "sql" | "observe" | "pax" | "manual";

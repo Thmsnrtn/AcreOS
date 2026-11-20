@@ -42,6 +42,23 @@ export interface StagingDriverOptions {
   promptForManualInput?: (step: { id: string; collects?: { key: string; prompt: string }[] }) => Promise<Record<string, string>>;
 }
 
+/**
+ * The staging-only base-URL refusal, shared by the driver constructor and
+ * the CLI's `--check` probe: a walk runs on staging only, so the URL must
+ * be https and contain "staging". Anything else — including production —
+ * is refused before a single request is made. Returns the URL with any
+ * trailing slash removed.
+ */
+export function assertStagingBaseUrl(raw: string): string {
+  const baseUrl = raw.replace(/\/$/, "");
+  if (!baseUrl.startsWith("https://") || !baseUrl.includes("staging")) {
+    throw new Error(
+      `staging driver refuses base URL ${JSON.stringify(baseUrl)} — a walk runs on staging only (https URL containing "staging")`,
+    );
+  }
+  return baseUrl;
+}
+
 function stagingDateStamp(date: Date): string {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York",
@@ -64,12 +81,7 @@ export class StagingDriver implements WalkDriver {
   private orgId: number | string = 0;
 
   constructor(opts: StagingDriverOptions = {}) {
-    const baseUrl = (opts.baseUrl ?? process.env.ACREOS_STAGING_URL ?? "https://acreos-staging.fly.dev").replace(/\/$/, "");
-    if (!baseUrl.startsWith("https://") || !baseUrl.includes("staging")) {
-      throw new Error(
-        `staging driver refuses base URL ${JSON.stringify(baseUrl)} — a walk runs on staging only (https URL containing "staging")`,
-      );
-    }
+    const baseUrl = assertStagingBaseUrl(opts.baseUrl ?? process.env.ACREOS_STAGING_URL ?? "https://acreos-staging.fly.dev");
     const token = opts.token ?? process.env.ACREOS_STAGING_E2E_TOKEN ?? "";
     if (!token) {
       throw new Error(

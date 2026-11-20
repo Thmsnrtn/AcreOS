@@ -120,8 +120,58 @@ export class RealDbDriver implements WalkDriver {
   async cleanup(spec: WalkSpec, orgId: number | string): Promise<void> {
     const { pool } = await import("../../../server/db");
     const numericOrg = Number(orgId);
+    // One LITERAL statement per table, from a fixed allowlist — never a
+    // dynamic-table DELETE (`DELETE FROM "${table}" …`). A template whose
+    // table is interpolated cannot be resolved by the raw-SQL scanner
+    // (tests/unit/rawSqlColumnsExist.test.ts counts it unresolved, and the
+    // ratchet ceiling does not move for it), and a delete whose target is
+    // data is exactly the shape that gate exists to keep visible. A spec
+    // that names a table with no literal statement here fails loudly:
+    // add the statement (in the spec's FK-safe order) in the same change
+    // that adds the table to a spec.
     for (const table of spec.cleanupTables) {
-      await pool.query(`DELETE FROM "${table}" WHERE organization_id = $1`, [numericOrg]);
+      switch (table) {
+        case "buyer_blast_recipients":
+          await pool.query(`DELETE FROM buyer_blast_recipients WHERE organization_id = $1`, [numericOrg]);
+          break;
+        case "buyer_blasts":
+          await pool.query(`DELETE FROM buyer_blasts WHERE organization_id = $1`, [numericOrg]);
+          break;
+        case "buyer_property_matches":
+          await pool.query(`DELETE FROM buyer_property_matches WHERE organization_id = $1`, [numericOrg]);
+          break;
+        case "buyer_profiles":
+          await pool.query(`DELETE FROM buyer_profiles WHERE organization_id = $1`, [numericOrg]);
+          break;
+        case "outcomes":
+          await pool.query(`DELETE FROM outcomes WHERE organization_id = $1`, [numericOrg]);
+          break;
+        case "decision_snapshots":
+          await pool.query(`DELETE FROM decision_snapshots WHERE organization_id = $1`, [numericOrg]);
+          break;
+        case "scenarios":
+          await pool.query(`DELETE FROM scenarios WHERE organization_id = $1`, [numericOrg]);
+          break;
+        case "generated_documents":
+          await pool.query(`DELETE FROM generated_documents WHERE organization_id = $1`, [numericOrg]);
+          break;
+        case "contract_assignments":
+          await pool.query(`DELETE FROM contract_assignments WHERE organization_id = $1`, [numericOrg]);
+          break;
+        case "deals":
+          await pool.query(`DELETE FROM deals WHERE organization_id = $1`, [numericOrg]);
+          break;
+        case "properties":
+          await pool.query(`DELETE FROM properties WHERE organization_id = $1`, [numericOrg]);
+          break;
+        case "leads":
+          await pool.query(`DELETE FROM leads WHERE organization_id = $1`, [numericOrg]);
+          break;
+        default:
+          throw new Error(
+            `realdb cleanup: no literal cleanup statement for table ${JSON.stringify(table)} — add one to the allowlist in tests/journey/drivers/realdb.ts`,
+          );
+      }
     }
     await pool.query(`DELETE FROM organizations WHERE id = $1`, [numericOrg]);
   }
