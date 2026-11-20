@@ -12,8 +12,11 @@
  *               the requirements snapshot refreshes when it changes; a
  *               resolved stall clears all three keys; an unreadable
  *               account (no requirements list) moves nothing;
- *   sweep    → a 7-day stall fires ONE founder alert (warning) + ONE
- *               lender notice and stamps alertedAt; 6 days fires
+ *   sweep    → a 7-day stall fires ONE lender notice + ONE founder
+ *               alert (warning) and stamps alertedAt; the notice runs
+ *               first, so the alert's reminder claim reports the actual
+ *               delivery outcome (never claims a reminder that failed);
+ *               6 days fires
  *               nothing; an already-alerted stall never re-fires; a fresh
  *               stall is seeded, not alerted; a resolved stall clears;
  *               a failed live read leaves the row untouched; one bad row
@@ -69,6 +72,8 @@ interface Harness {
   saves: { integration: StripeConnectIntegrationSnapshot; patch: OnboardingStallSettings }[];
   alerts: Parameters<ConnectOnboardingStallDeps["createSystemAlert"]>[0][];
   notices: Parameters<ConnectOnboardingStallDeps["notifyLender"]>[0][];
+  /** Fan-out order across the alert + notice seams ("notice" / "alert"). */
+  order: string[];
 }
 
 function makeHarness(
@@ -79,6 +84,7 @@ function makeHarness(
   const saves: Harness["saves"] = [];
   const alerts: Harness["alerts"] = [];
   const notices: Harness["notices"] = [];
+  const order: string[] = [];
   const deps: ConnectOnboardingStallDeps = {
     listStripeConnectIntegrations: async () => integrations,
     getAccountStatus: async (accountId) =>
@@ -87,16 +93,19 @@ function makeHarness(
       saves.push({ integration, patch });
     },
     createSystemAlert: async (alert) => {
+      order.push("alert");
       alerts.push(alert);
     },
     notifyLender: async (notice) => {
+      order.push("notice");
       notices.push(notice);
+      return { pushed: true, inApp: 1 };
     },
     getOrganizationName: async (organizationId) => `Org ${organizationId}`,
     now: () => NOW,
     ...overrides,
   };
-  return { deps, saves, alerts, notices };
+  return { deps, saves, alerts, notices, order };
 }
 
 /** The no-account-changes pin: a settings write may carry stall keys ONLY. */
@@ -181,6 +190,13 @@ describe("runOnboardingStallSweep — the 7-day alert", () => {
     expect(h.alerts[0].message).toContain("No account changes were made");
     expect(h.alerts[0].metadata).toMatchObject({ accountId: "acct_stalled_1", daysStuck: 8 });
 
+    // The notice runs BEFORE the alert is written, so the alert's
+    // "has been reminded" claim is a report of a delivery that already
+    // happened, and the outcome is recorded in the alert metadata.
+    expect(h.order).toEqual(["notice", "alert"]);
+    expect(h.alerts[0].message).toContain("The lender has been reminded in-app.");
+    expect(h.alerts[0].metadata).toMatchObject({ lenderNotice: { pushed: true, inApp: 1 } });
+
     expect(h.notices).toHaveLength(1);
     expect(h.notices[0]).toEqual({ orgId: 102, accountId: "acct_stalled_1", daysStuck: 8, requirements: REQS });
 
@@ -188,6 +204,28 @@ describe("runOnboardingStallSweep — the 7-day alert", () => {
     expectStallKeysOnly(h.saves[0].patch);
     expect(h.saves[0].patch.stripeConnectStallFirstSeenAt).toBe(firstSeen);
     expect(h.saves[0].patch.stripeConnectStallRequirements).toEqual(REQS);
+    expect(h.saves[0].patch.stripeConnectStallAlertedAt).toBe(NOW.toISOString());
+  });
+
+  it("does not claim the lender was reminded when no notice leg delivered (#631 audit follow-up)", async () => {
+    const h = makeHarness(
+      [makeIntegration({ settings: stallSettings(isoDaysAgo(8)) })],
+      {},
+      {
+        notifyLender: async () => ({ pushed: false, inApp: 0 }),
+      },
+    );
+    const result = await runOnboardingStallSweep(h.deps);
+
+    // The founder alert itself is the escalation — it still fires and
+    // still stamps — but its text reports the failed delivery instead
+    // of claiming a reminder the lender never saw.
+    expect(result.alerted).toBe(1);
+    expect(h.alerts).toHaveLength(1);
+    expect(h.alerts[0].message).not.toContain("has been reminded");
+    expect(h.alerts[0].message).toContain("no push or in-app delivery succeeded");
+    expect(h.alerts[0].metadata).toMatchObject({ lenderNotice: { pushed: false, inApp: 0 } });
+    expect(h.saves).toHaveLength(1);
     expect(h.saves[0].patch.stripeConnectStallAlertedAt).toBe(NOW.toISOString());
   });
 
