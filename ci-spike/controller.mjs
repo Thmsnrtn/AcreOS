@@ -87,11 +87,10 @@ export function buildRunnerMachineConfig(jitConfig, machineName) {
       init: {
         entrypoint: ["/bin/bash", "-c"],
         cmd: [
-          'cd /home/runner/actions-runner && exec ./run.sh --jitconfig "$JITCONFIG"',
+          'cd /home/runner && exec ./run.sh --jitconfig "$JITCONFIG"',
         ],
       },
-      env: { JITCONFIG: jitConfig, RUNNER_ALLOW_RUNASROOT: "1" },
-      guest: { cpu_kind: "performance", cpus: 2, memory_mb: 8192 },
+      env: { JITCONFIG: jitConfig, RUNNER_ALLOW_RUNASROOT: "1" },      guest: { cpu_kind: "performance", cpus: 2, memory_mb: 8192 },
       auto_destroy: true,
       restart: { policy: "no" },
       metadata: { spike: "fly-ci", role: "runner" },
@@ -113,7 +112,9 @@ async function mintJitConfig(runnerName) {
       body: JSON.stringify({
         name: runnerName,
         runner_group_id: 1,
-        labels: [SPIKE_LABEL],
+        // JIT runners advertise exactly the labels in the config — the
+        // system labels must be requested explicitly or no job will match.
+        labels: ["self-hosted", "Linux", "X64", SPIKE_LABEL],
         work_folder: "_work",
       }),
     },
