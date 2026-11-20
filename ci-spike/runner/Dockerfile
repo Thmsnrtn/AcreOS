@@ -7,8 +7,7 @@
 FROM ubuntu:24.04
 
 ARG RUNNER_VERSION=2.330.0
-ENV DEBIAN_FRONTEND=noninteractive \
-    RUNNER_ALLOW_RUNASROOT=1
+ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
       bash curl git jq ca-certificates libicu74 libssl3 \
@@ -23,7 +22,20 @@ RUN mkdir -p /home/runner/actions-runner \
     && tar -xzf /tmp/runner.tar.gz -C /home/runner/actions-runner \
     && rm /tmp/runner.tar.gz
 
+# Run the agent as a non-root user: the self-hosted runner's supported mode
+# (it writes its config, logs and _work dir under its own home), and Trivy
+# DS-0002 requires at least one non-root USER in every Dockerfile. The user
+# is created after the root-only install/extract steps and owns the whole
+# runner home, so no root-only step follows it. RUNNER_ALLOW_RUNASROOT is
+# dropped with it: it only matters when the agent runs as root, which this
+# image no longer does. (controller.mjs still passes it for the spike's
+# published-image JIT runs — a separate path, untouched here.)
+RUN useradd -d /home/runner -s /bin/bash runner \
+    && chown -R runner:runner /home/runner
+
 WORKDIR /home/runner/actions-runner
+
+USER runner
 
 # JIT config arrives via the JITCONFIG env var (single-use bearer credential;
 # never baked into the image, never logged). Exactly one job runs, then the
