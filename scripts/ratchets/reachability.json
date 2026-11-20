@@ -862,6 +862,21 @@
     },
     {
       "kind": "export",
+      "id": "shared/notes/notePriceYield.ts::yieldForPrice",
+      "reason": "PUBLIC MATH SURFACE (Step 0 N3 revival of PR #541, 2026-11-20). The inverse half of the adopted price-to-yield pair: the note_price_yield engine consumes priceForTargetYield in production, and the pair is one contract — the price → yield → price round-trip is the module's core invariant, pinned by tests/unit/notePriceYield.test.ts against closed-form anchors. Exported so the inverse stays available to the next desk surface (yield at the seller's asking price) without re-deriving the bisection. REVOCATION: if a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "shared/notes/notePriceYield.ts::scheduledCashFlows",
+      "reason": "TEST-INTROSPECTION SEAM (Step 0 N3 revival of PR #541, 2026-11-20). The schedule both public pricers run on (payment capping, balloon placement, negative-amortization capitalization); priceForTargetYield and yieldForPrice consume it inside its own module, and tests/unit/notePriceYield.test.ts pins the flow composition directly rather than inferring it back out of a price. REVOCATION: if a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "shared/notes/notePriceYield.ts::MAX_REMAINING_TERM_MONTHS",
+      "reason": "TEST SEAM (Step 0 N3 revival of PR #541, 2026-11-20). The schedule-length ceiling scheduledCashFlows enforces inside its own module; tests/unit/notePriceYield.test.ts pins the refusal at the boundary (term = ceiling + 1) against the exported value rather than a copied literal. REVOCATION: if a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
       "id": "shared/regulatory/doddFrankElements.ts::DODD_FRANK_ELEMENT_CODES",
       "reason": "TEST SEAM (Notes V2 Leg 3, 2026-11-09). The canonical \u00a71026.36(a)(4)/(a)(5) element-code list; evaluateClaimedExclusion consumes it inside its own module, and sellerFinanceGate.test.ts iterates it to prove every element has a verdict path (met / failed / unanswered) for both claimed exclusions. REVOCATION: if a production module imports it directly, remove this entry."
     },

@@ -542,6 +542,13 @@ const CUSTOMER_ONLY_PLUGIN_NAMES = new Set(["acreos-learn-content", "acreos-tn-b
 
 export function buildConfig(output: BuildOutput): UserConfig {
   const isFounder = output === "founder";
+  // BD-4 (bundle diet): the web builds alias @capacitor/core to a shim that
+  // answers its two web-constant questions (client/src/lib/
+  // capacitor-web-shim.ts). A NATIVE build must link the real core, so the
+  // alias is removed when ACREOS_NATIVE_BUILD=1 — the build:native script
+  // sets it (the mobile:* scripts build through build:native). Read here,
+  // at config-build time, so the pin test can flip it.
+  const nativeBuild = process.env.ACREOS_NATIVE_BUILD === "1";
   const config: UserConfig = {
   define: {
     // Belt-and-suspenders: ensure `import.meta.env.VITE_GIT_SHA` is
@@ -625,6 +632,9 @@ export function buildConfig(output: BuildOutput): UserConfig {
   ],
   resolve: {
     alias: {
+      ...(nativeBuild
+        ? {}
+        : { "@capacitor/core": path.resolve(import.meta.dirname, "client", "src", "lib", "capacitor-web-shim.ts") }),
       "@": path.resolve(import.meta.dirname, "client", "src"),
       "@acreos/solene": path.resolve(import.meta.dirname, "packages", "solene", "src", "index.ts"),
       "@shared": path.resolve(import.meta.dirname, "shared"),

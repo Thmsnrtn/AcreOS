@@ -222,8 +222,13 @@ export const CAPABILITIES: readonly Capability[] = [
   // caveat's public-tier wording to publicMaturityOf (the registry's projection,
   // FD1): one rule, read in two places, never restated by hand.
   verticalEntry("land_flipper", "land flipper", "decided"),
-  verticalEntry("note_investor", "note investor", "surfaced"),
-  verticalEntry("hybrid", "hybrid", "surfaced"),
+  // note_investor flipped surfaced → decided 2026-11-20 in the N5 lift:
+  // the price-to-yield engine + decision desk (N3+N4) record decisions
+  // citing gradeable scenarios, so its FD1 register entry closed.
+  // hybrid follows mechanically — it is land + notes, and reaches a tier
+  // exactly when every part has (readiness.ts COMPOSITE_VERTICALS).
+  verticalEntry("note_investor", "note investor", "decided"),
+  verticalEntry("hybrid", "hybrid", "decided"),
   verticalEntry("fix_and_flip", "fix and flip", "decided"),
   // residential_wholesaler flipped surfaced → decided 2026-11-18 in the
   // core-status lift: its journey-proof hold ended when the scoped
