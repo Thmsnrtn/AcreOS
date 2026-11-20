@@ -242,7 +242,11 @@ export const CAPABILITIES: readonly Capability[] = [
   verticalEntry("subdivider", "subdivider", "decided", {
     notGradeable: "its lot-pricing lock records no scenario and no review date, so its decisions are never asked for an outcome (V2)",
   }),
-  verticalEntry("tax_lien_deed", "tax lien deed", "surfaced"),
+  // tax_lien_deed flipped surfaced → decided 2026-11-20 in the T6 lift:
+  // the max-bid engine + decision desk (T4+T5) record decisions citing
+  // gradeable scenarios, so its FD1 register entry closed — the register
+  // is now empty and the maturity-overclaim baseline is 0.
+  verticalEntry("tax_lien_deed", "tax lien deed", "decided"),
   verticalEntry("multifamily", "multifamily", "surfaced"),
   verticalEntry("mobile_home", "mobile home", "surfaced"),
   verticalEntry("agent_investor", "agent investor", "surfaced"),
