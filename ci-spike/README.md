@@ -45,3 +45,12 @@ autonomous, provision as Fly secrets on `acreos-ci-controller`:
 
 `GITHUB_WEBHOOK_SECRET` is already provisioned (it is also the secret on the
 repo's `workflow_job` webhook).
+
+## Spike lessons (measured, 2026-11-19)
+
+- JIT runners advertise **exactly** the labels in the generated config — the
+  system labels (`self-hosted`, `Linux`, `X64`) must be requested explicitly,
+  or a job requiring `self-hosted` will never match the runner.
+- In GitHub's official `actions-runner` image the agent lives in
+  `/home/runner` (run.sh is at `/home/runner/run.sh`), not in an
+  `actions-runner` subdirectory.
