@@ -298,3 +298,83 @@ describe("email exec keeps provably-unperformed failures as failed (N1)", () => 
     expect(sesSend).not.toHaveBeenCalled();
   });
 });
+
+describe("email exec maps a MIXED history to ambiguous (#630 follow-up)", () => {
+  // The corner the #630 audit filed as a note: `performSend`'s retry loop
+  // used to report only the LAST error, so an attempt whose outcome was
+  // unknown (response lost — SES may have accepted it) followed by a clean
+  // provider 4xx returned the 4xx's errorType with attempts ≥ 1, and the
+  // exec mapped it to `failed` — re-execution (incl. corrected content)
+  // permitted over a possibly-sent first attempt. `performSend` now
+  // surfaces `someAttemptOutcomeUnknown` for the whole history and the
+  // classifier fails closed on it. Two SES attempts per send
+  // (maxRetries: 1, ~1ms backoff).
+  const MIXED = { ...BASE, retryConfig: { maxRetries: 1, baseDelayMs: 1, maxDelayMs: 2 } };
+
+  it.each([
+    {
+      label: "network-error attempt, then a throttling 4xx",
+      first: () => sesError("ECONNRESET", "read ECONNRESET"),
+      second: () => sesError("Throttling", "Throttling: rate exceeded"),
+      finalError: /rate limit exceeded/,
+    },
+    {
+      label: "unknown attempt (SES 5xx), then a limit-exceeded 4xx",
+      first: () => sesError("ServiceUnavailable", "Service unavailable"),
+      second: () => sesError("LimitExceededException", "Daily message quota exceeded"),
+      finalError: /Daily email quota exceeded/,
+    },
+  ])("$label → ambiguous: the retry refuses without calling SES again", async ({ first, second, finalError }) => {
+    sesSend.mockRejectedValueOnce(first()).mockRejectedValue(second());
+    const key = `email-amb:mixed:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+
+    const firstSend = await emailService.sendEmail({ ...MIXED, idempotencyKey: key });
+    expect(firstSend.success).toBe(false);
+    // The surfaced error is the FINAL attempt's clean 4xx — on final
+    // errorType alone this would have recorded `failed` before the fix.
+    expect(firstSend.error).toMatch(finalError);
+    expect(S.row!.status).toBe("ambiguous");
+    expect(sesSend).toHaveBeenCalledTimes(2);
+
+    const retry = await emailService.sendEmail({ ...MIXED, idempotencyKey: key });
+    expect(retry.success).toBe(false);
+    expect(retry.error).toMatch(/AMBIGUOUS prior outcome/);
+    expect(sesSend).toHaveBeenCalledTimes(2);
+  });
+
+  it("performSend result carries the history flag (no idempotency key)", async () => {
+    sesSend
+      .mockRejectedValueOnce(sesError("ECONNRESET", "read ECONNRESET"))
+      .mockRejectedValue(sesError("Throttling", "Throttling: rate exceeded"));
+
+    const result = await emailService.sendEmail({ ...MIXED });
+    expect(result.success).toBe(false);
+    expect(result.errorType).toBe("rate_limit");
+    expect(result.attempts).toBe(2);
+    expect(result.someAttemptOutcomeUnknown).toBe(true);
+  });
+
+  it("a purely provable history does NOT set the flag and stays failed", async () => {
+    sesSend
+      .mockRejectedValueOnce(sesError("Throttling", "Throttling: rate exceeded"))
+      .mockRejectedValue(sesError("MessageRejected", "Message rejected: bad recipient"));
+
+    const result = await emailService.sendEmail({ ...MIXED });
+    expect(result.success).toBe(false);
+    expect(result.errorType).toBe("recipient_rejected");
+    expect(result.attempts).toBe(2);
+    expect(result.someAttemptOutcomeUnknown).toBe(false);
+
+    // And through the exec: the recording is `failed`, not `ambiguous`.
+    sesSend.mockReset();
+    emailCircuitBreaker.reset();
+    sesSend
+      .mockRejectedValueOnce(sesError("Throttling", "Throttling: rate exceeded"))
+      .mockRejectedValue(sesError("MessageRejected", "Message rejected: bad recipient"));
+    const key = `email-amb:pure:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+    const viaExec = await emailService.sendEmail({ ...MIXED, idempotencyKey: key });
+    expect(viaExec.success).toBe(false);
+    expect(S.row!.status).toBe("failed");
+    expect(sesSend).toHaveBeenCalledTimes(2);
+  });
+});
