@@ -178,6 +178,28 @@ export const PAYOFF_DAY_COUNT_CONVENTION = "actual/365_fixed" as const;
  */
 export const PAYOFF_ENGINE_VERSION = "payoff-engine-1" as const;
 
+/**
+ * Which book a `/api/notes/:id` id belongs to. The two books share the one
+ * path family and are told apart by id shape — serviced notes are integer
+ * ids, acquired notes are uuids — the same disambiguation
+ * `note_payoff_quotes.noteSystem` records.
+ *
+ * Null when the id is neither shape. Callers treat null as "no such note"
+ * (404): a non-shape id must NEVER reach a UUID column — Postgres throws
+ * invalid-uuid and the handler's catch turns it into a 500 (L9-DEF-1:
+ * every serviced-note operator payoff surface 500'd because the numeric
+ * id was passed straight into the acquired-note lookup).
+ */
+export type NoteBook = "serviced_note" | "acquired_note";
+
+const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function noteBookForId(noteId: string): NoteBook | null {
+  if (UUID_SHAPE.test(noteId)) return "acquired_note";
+  if (/^\d+$/.test(noteId)) return "serviced_note";
+  return null;
+}
+
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 /** Denominator of the fixed day count. */
