@@ -242,14 +242,26 @@ export const wholesaleWalk: WalkSpec = defineWalkSpec({
         for (const key of ["tx", "il"] as const) {
           const property = await ctx.api("PUT", `/api/properties/${ctx.get<number>(`${key}Property`)}`, { status: "under_contract" });
           ctx.check(property.status < 300, `PUT property ${key} under_contract must succeed, got ${property.status}`);
-          const deal = await ctx.api("PUT", `/api/deals/${ctx.get<number>(`${key}Deal`)}`, {
+          // H-DEF-2: walk the deal state machine like a customer —
+          // negotiating → offer_sent → accepted (DEAL_STATUS_TRANSITIONS
+          // refuses the direct negotiating → accepted skip this step
+          // used to attempt). The accepted price and closing date ride
+          // the final PUT: the stage route (PATCH /api/deals/:id/stage)
+          // sets status only, and the packet leg derives its price from
+          // the deal's acceptedAmount, so the fields must land here.
+          const dealId = ctx.get<number>(`${key}Deal`);
+          const offered = await ctx.api("PUT", `/api/deals/${dealId}`, { status: "offer_sent" });
+          ctx.check(offered.status < 300, `PUT deal ${key} offer_sent must succeed, got ${offered.status}: ${JSON.stringify(offered.body).slice(0, 300)}`);
+          const deal = await ctx.api("PUT", `/api/deals/${dealId}`, {
             status: "accepted",
             acceptedAmount: "140000",
             closingDate: closing,
           });
           ctx.check(deal.status < 300, `PUT deal ${key} accepted must succeed, got ${deal.status}: ${JSON.stringify(deal.body).slice(0, 300)}`);
+          ctx.check((deal.body as any)?.status === "accepted", `PUT deal ${key} accepted must read back status accepted, got ${JSON.stringify((deal.body as any)?.status)}`);
+          ctx.check(String((deal.body as any)?.acceptedAmount) === "140000", `PUT deal ${key} accepted must land acceptedAmount 140000 (the packet leg reads it), got ${JSON.stringify((deal.body as any)?.acceptedAmount)}`);
         }
-        return { observed: { txDeal: "accepted 140000", ilDeal: "accepted 140000" } };
+        return { observed: { txDeal: "accepted 140000 via offer_sent", ilDeal: "accepted 140000 via offer_sent" } };
       },
     },
     {
