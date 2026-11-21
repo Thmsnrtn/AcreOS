@@ -29,6 +29,9 @@ function setNoCacheHeaders(res: Response) {
 /** /learn-content/* files are unhashed, so they must never get the 1y immutable cache. */
 const isLearnContentPath = (urlPath: string) => /^\/learn-content\//.test(urlPath);
 
+/** /pax-glossary.json is unhashed, refreshed-in-place glossary data (BD-6) — same rule. */
+const isPaxGlossaryPath = (urlPath: string) => urlPath === "/pax-glossary.json";
+
 /**
  * URL prefix the FOUNDER build is served under (P1-9 / X-2): its own URL space
  * (`/founder-app/founder-assets/…`), so the customer's `/assets/*` stale-chunk
@@ -88,7 +91,7 @@ function preCompressedAssets(distPath: string, hashedAssetRx: RegExp = CUSTOMER_
         const isHashedAsset = hashedAssetRx.test(requested);
         if (process.env.NODE_ENV === "production" && isHashedAsset) {
           res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
-        } else if (isLearnContentPath(requested)) {
+        } else if (isLearnContentPath(requested) || isPaxGlossaryPath(requested)) {
           setNoCacheHeaders(res);
         }
         const stream = fs.createReadStream(cmpPath);
@@ -239,7 +242,10 @@ export function serveStatic(
         setNoCacheHeaders(res);
       }
       // Learn content is unhashed and refreshed in place — never immutable.
-      if (isLearnContentPath("/" + path.relative(distPath, filePath).split(path.sep).join("/"))) {
+      if (
+        isLearnContentPath("/" + path.relative(distPath, filePath).split(path.sep).join("/")) ||
+        isPaxGlossaryPath("/" + path.relative(distPath, filePath).split(path.sep).join("/"))
+      ) {
         setNoCacheHeaders(res);
       }
       // Service worker file must NOT be cached as immutable. Browsers check

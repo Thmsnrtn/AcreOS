@@ -28,10 +28,11 @@
 import {
   PAX_CONTROLS_LABEL,
   PAX_CONTROLS_PATH,
-  PAX_NEVER_LIST,
-  PAX_RAIL_COPY,
-  PAX_STANCE_COPY,
-} from "./pax-glossary";
+  PAX_RAIL_DOMAINS,
+  PAX_RAIL_LEVEL_WORDS,
+  PAX_STANCE_LABELS,
+} from "./pax-glossary-core";
+import type { PAX_NEVER_LIST } from "./pax-glossary";
 
 // ── Stances ─────────────────────────────────────────────────────────────────
 
@@ -58,10 +59,7 @@ export const STANCE_RULINGS: Readonly<Record<PaxStance, string>> = {
 };
 
 /** Glossary-derived labels — the segmented control renders these. */
-export const STANCE_LABELS: Readonly<Record<PaxStance, string>> = {
-  ask_before_sending: PAX_STANCE_COPY.ask_before_sending.label,
-  ask_before_everything: PAX_STANCE_COPY.ask_before_everything.label,
-};
+export const STANCE_LABELS: Readonly<Record<PaxStance, string>> = PAX_STANCE_LABELS;
 
 // ── Per-capability rails (PX-2) ─────────────────────────────────────────────
 
@@ -127,26 +125,26 @@ export interface PaxRails {
 
 /** Glossary-derived labels — the page renders these, never its own strings. */
 export const PAX_RAIL_LEVEL_LABELS: Readonly<Record<PaxRailLevel, string>> = {
-  watch: PAX_RAIL_COPY.levels.watch.label,
-  draft: PAX_RAIL_COPY.levels.draft.label,
-  ask: PAX_RAIL_COPY.levels.ask.label,
-  act_and_report: PAX_RAIL_COPY.levels.act_and_report.label,
+  watch: PAX_RAIL_LEVEL_WORDS.watch.label,
+  draft: PAX_RAIL_LEVEL_WORDS.draft.label,
+  ask: PAX_RAIL_LEVEL_WORDS.ask.label,
+  act_and_report: PAX_RAIL_LEVEL_WORDS.act_and_report.label,
 };
 
 export const PAX_RAIL_LEVEL_SENTENCES: Readonly<Record<PaxRailLevel, string>> = {
-  watch: PAX_RAIL_COPY.levels.watch.sentence,
-  draft: PAX_RAIL_COPY.levels.draft.sentence,
-  ask: PAX_RAIL_COPY.levels.ask.sentence,
-  act_and_report: PAX_RAIL_COPY.levels.act_and_report.sentence,
+  watch: PAX_RAIL_LEVEL_WORDS.watch.sentence,
+  draft: PAX_RAIL_LEVEL_WORDS.draft.sentence,
+  ask: PAX_RAIL_LEVEL_WORDS.ask.sentence,
+  act_and_report: PAX_RAIL_LEVEL_WORDS.act_and_report.sentence,
 };
 
 export const PAX_RECORD_DOMAIN_LABELS: Readonly<Record<PaxRecordDomain, string>> = {
-  leads: PAX_RAIL_COPY.domains.leads.label,
-  properties: PAX_RAIL_COPY.domains.properties.label,
-  deals: PAX_RAIL_COPY.domains.deals.label,
-  tasks: PAX_RAIL_COPY.domains.tasks.label,
-  follow_ups: PAX_RAIL_COPY.domains.follow_ups.label,
-  account: PAX_RAIL_COPY.domains.account.label,
+  leads: PAX_RAIL_DOMAINS.leads.label,
+  properties: PAX_RAIL_DOMAINS.properties.label,
+  deals: PAX_RAIL_DOMAINS.deals.label,
+  tasks: PAX_RAIL_DOMAINS.tasks.label,
+  follow_ups: PAX_RAIL_DOMAINS.follow_ups.label,
+  account: PAX_RAIL_DOMAINS.account.label,
 };
 
 /**
