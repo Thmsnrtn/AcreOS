@@ -548,6 +548,7 @@ const DEBT: Record<string, ProposedSurface> = {
   "server/ai/tools.ts case:draft_outreach_message": "lead_contact_model",
   "server/ai/tools.ts case:get_lead_details": "lead_contact_model",
   "server/ai/tools.ts case:get_leads": "lead_contact_model",
+  "server/ai/tools.ts case:get_notes": "lead_contact_model",
   "server/ai/tools.ts case:get_stale_leads": "lead_contact_model",
   "server/ai/tools.ts case:get_system_context": "review",
   "server/ai/tools.ts case:schedule_follow_up": "lead_contact_model",
@@ -874,7 +875,15 @@ const DEBT: Record<string, ProposedSurface> = {
 // surfaces — GET /api/notes/:id/payoff and POST /api/notes/:id/payoff/quotes
 // now read the borrower lead's name for serviced notes (loadServicedNoteForPayoff)
 // — registered "review", mirroring the borrower-side payoff-quote routes.
-const DEBT_BASELINE = 226;
+// 226 → 227 (HYB-DEF-5 fix, 2026-11-21, PR #664): ONE new surface —
+// server/ai/tools.ts case:get_notes became person-adjacent in this PR when
+// its cross-book expansion began returning borrowerContact resolved from
+// the linked lead to the model — registered "lead_contact_model",
+// mirroring its eight sibling Pax cases in tools.ts (get_leads,
+// get_lead_details, send_email, …). Ledgering is not honestly available:
+// PURPOSE_SURFACES/PURPOSE_CODES are the FCRA skip-trace taxonomy and the
+// Pax dispatch collects no purpose attestation.
+const DEBT_BASELINE = 227;
 
 /**
  * Every file holding a dispatch switch (≥10 snake_case case labels, raw count)
