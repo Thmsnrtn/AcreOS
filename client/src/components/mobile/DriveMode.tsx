@@ -26,6 +26,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { apiRequest } from "@/lib/queryClient";
+import { isOfflineQueuedResponse } from "@/hooks/useOfflineSync";
 import { useLocation } from "wouter";
 import { SinglePropertyMap } from "@/components/property-map-lazy";
 
@@ -108,6 +109,7 @@ export function DriveMode() {
   const { toast } = useToast();
   const { fix, error: gpsError, pending: gpsPending } = useGpsWatch();
   const [saving, setSaving] = useState(false);
+  const [queuedCount, setQueuedCount] = useState(0);
   const [recent, setRecent] = useState<SavedLead[]>([]);
   const [pendingPhotoLeadId, setPendingPhotoLeadId] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -126,6 +128,21 @@ export function DriveMode() {
         accuracy: fix.accuracy,
       });
       const body = await res.json();
+      // A11-03: offline, the service worker queues the POST and answers
+      // 202 { offline: true, queued: true } — there is NO lead yet and
+      // body.leadId is undefined. Treating that as a save fabricated a
+      // "Lead saved" toast (and a photo target) for a lead that did not
+      // exist. Surface it honestly as queued instead: no SavedLead, no
+      // photo target, no navigation id.
+      if (isOfflineQueuedResponse(res.status, body)) {
+        setQueuedCount((n) => n + 1);
+        toast({
+          title: "Lead queued — not saved yet",
+          description:
+            "You're offline. This stop is queued on this phone and will save automatically when you're back online.",
+        });
+        return;
+      }
       const saved: SavedLead = {
         id: body.leadId,
         lat: fix.lat,
@@ -334,6 +351,15 @@ export function DriveMode() {
         <h2 className="text-caption font-medium text-muted-foreground mb-2">
           Recent saves
         </h2>
+        {queuedCount > 0 ? (
+          <Card className="mb-2" data-testid="drive-mode-queued-notice">
+            <CardContent className="py-4 text-sm text-muted-foreground">
+              {queuedCount} {queuedCount === 1 ? "stop is" : "stops are"} queued
+              on this phone — not saved yet. {queuedCount === 1 ? "It" : "They"}{" "}
+              will save automatically when you're back online.
+            </CardContent>
+          </Card>
+        ) : null}
         {recent.length === 0 ? (
           <Card>
             <CardContent className="py-4 text-sm text-muted-foreground">

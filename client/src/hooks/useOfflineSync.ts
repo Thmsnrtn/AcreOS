@@ -63,7 +63,63 @@ const DB_NAME = 'acreos-offline';
 // version bump simply forces onupgradeneeded to fire so any future
 // migration hook has a place to land. Rows persisted by v1 (no
 // idempotencyKey) are handled at drain time, see drainMutationQueue.
-const DB_VERSION = 2;
+// v3 (A11-01): this DB is SHARED with the service worker
+// (client/public/sw.js), which needs the 'pending-requests' store while
+// this hook needs 'cache' + 'mutations'. At v2 both sides opened the
+// same name at the same version with disjoint stores, so whichever
+// opener ran first created only its own stores and the other side's
+// transactions failed forever. v3 unifies the schema: BOTH openers'
+// upgrade paths create ALL THREE stores (shapes identical), and v2
+// databases gain the missing stores on upgrade.
+const DB_VERSION = 3;
+
+/** BackgroundSync tag the service worker listens for (A11-02). */
+export const OFFLINE_SYNC_TAG = 'acreos-offline-replay';
+
+/**
+ * True when a response is the service worker's offline-queue receipt
+ * (HTTP 202 `{ offline: true, queued: true }`) rather than a real
+ * server save. Callers must surface this as "queued", never as
+ * "saved" — the queued body carries no server-assigned ids (A11-03).
+ */
+export function isOfflineQueuedResponse(
+  status: number,
+  body: unknown,
+): boolean {
+  if (status !== 202) return false;
+  if (!body || typeof body !== 'object') return false;
+  const b = body as { offline?: unknown; queued?: unknown };
+  return b.offline === true && b.queued === true;
+}
+
+/**
+ * Ask the service worker to replay ITS queue (the 'pending-requests'
+ * store drained by sw.js). Service workers receive no 'online' event,
+ * so the window side has to trigger replay explicitly: a postMessage
+ * (works everywhere) plus a BackgroundSync registration where the
+ * browser supports it (fires even if this tab closes). Best-effort —
+ * failures are swallowed because the next 'online'/mount retries.
+ */
+export function requestServiceWorkerReplay(): void {
+  if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
+  try {
+    navigator.serviceWorker.controller?.postMessage({ type: 'REPLAY_OFFLINE_QUEUE' });
+  } catch {
+    /* best effort */
+  }
+  try {
+    void navigator.serviceWorker.ready
+      .then((registration) => {
+        type RegistrationWithSync = ServiceWorkerRegistration & {
+          sync?: { register: (tag: string) => Promise<void> };
+        };
+        return (registration as RegistrationWithSync).sync?.register(OFFLINE_SYNC_TAG);
+      })
+      .catch(() => undefined);
+  } catch {
+    /* BackgroundSync unsupported — postMessage above is the trigger */
+  }
+}
 
 async function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -76,6 +132,12 @@ async function openDB(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains('mutations')) {
         const store = db.createObjectStore('mutations', { keyPath: 'id' });
         store.createIndex('timestamp', 'timestamp');
+      }
+      // A11-01: the service worker's queue store — created here too so
+      // the shared DB is complete whichever opener creates it first.
+      // Shape must stay identical to sw.js's upgrade path.
+      if (!db.objectStoreNames.contains('pending-requests')) {
+        db.createObjectStore('pending-requests', { autoIncrement: true });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -189,6 +251,10 @@ export function useOfflineSync(): UseOfflineSyncResult {
       setIsOnline(true);
       // Trigger sync when we come back online
       if (dbRef.current) drainMutationQueue(dbRef.current);
+      // A11-02: also trigger the SERVICE WORKER's queue replay — the
+      // SW gets no 'online' event of its own, so without this its
+      // 'pending-requests' queue never drained.
+      requestServiceWorkerReplay();
     };
     const onOffline = () => {
       setIsOnline(false);
@@ -196,6 +262,9 @@ export function useOfflineSync(): UseOfflineSyncResult {
     };
     window.addEventListener('online', onOnline);
     window.addEventListener('offline', onOffline);
+    // Mounted while already online with a stale SW queue (e.g. the app
+    // was closed when connectivity returned): drain it now.
+    if (navigator.onLine) requestServiceWorkerReplay();
     return () => {
       window.removeEventListener('online', onOnline);
       window.removeEventListener('offline', onOffline);

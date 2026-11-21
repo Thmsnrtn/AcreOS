@@ -29,7 +29,18 @@ const OFFLINE_STORE = 'pending-requests';
 // shape change has a real path, and so we exercise the upgrade path
 // once while the store is empty enough to recover if anything goes
 // wrong.
-const OFFLINE_DB_VERSION = 2;
+// v3 (A11-01): this DB is SHARED with the app hook
+// (client/src/hooks/useOfflineSync.ts), which needs the 'cache' and
+// 'mutations' stores while this worker needs 'pending-requests'. At v2
+// both sides opened the same name at the same version with disjoint
+// stores, so whichever opener ran first created only its own stores
+// and the other side's transactions failed forever (no upgrade ever
+// fires at an equal version). v3 unifies the schema: BOTH openers'
+// upgrade paths create ALL THREE stores, so the DB is complete no
+// matter who opens it first, and existing v2 databases gain the
+// missing stores on the v3 upgrade.
+const OFFLINE_DB_VERSION = 3;
+const OFFLINE_SYNC_TAG = 'acreos-offline-replay';
 
 // Offline field maps (W5b). Saved by client/src/lib/offline-map-store.ts;
 // named WITHOUT the `acreos-` prefix so the activate step below (which clears
@@ -117,6 +128,23 @@ function migrateOfflineDb(oldVersion, db, transaction) {
     // the ladder so the first real schema change has a tested path.
     // No-op intentional: do not touch existing entries.
     void transaction; // no-op marker; reserved for future migrations
+  }
+  if (oldVersion < 3) {
+    // v3 (A11-01): unified schema shared with useOfflineSync.ts. Create
+    // whichever of the three stores this database is missing — a v2 DB
+    // created by the SW lacks 'cache'+'mutations'; one created by the
+    // app hook lacks 'pending-requests'. Shapes must stay identical to
+    // the app hook's upgrade path.
+    if (!db.objectStoreNames.contains(OFFLINE_STORE)) {
+      db.createObjectStore(OFFLINE_STORE, { autoIncrement: true });
+    }
+    if (!db.objectStoreNames.contains('cache')) {
+      db.createObjectStore('cache', { keyPath: 'key' });
+    }
+    if (!db.objectStoreNames.contains('mutations')) {
+      const mutations = db.createObjectStore('mutations', { keyPath: 'id' });
+      mutations.createIndex('timestamp', 'timestamp');
+    }
   }
 }
 
@@ -282,8 +310,20 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-self.addEventListener('online', () => {
-  replayOfflineQueue().catch(console.error);
+// A11-02: service workers never receive a Window 'online' event — the
+// previous replay trigger, an 'online' listener registered on `self`,
+// was dead code and queued requests only ever replayed by accident. Replay is
+// now driven by two real triggers:
+//   1. BackgroundSync: the app registers the 'acreos-offline-replay'
+//      sync tag when it queues/goes online (where the browser supports
+//      it), and the browser fires this 'sync' event on reconnect.
+//   2. A 'REPLAY_OFFLINE_QUEUE' postMessage from the app, sent from the
+//      window 'online' handler in useOfflineSync.ts — the fallback that
+//      works everywhere a window is open.
+self.addEventListener('sync', (event) => {
+  if (event.tag === OFFLINE_SYNC_TAG) {
+    event.waitUntil(replayOfflineQueue());
+  }
 });
 
 self.addEventListener('fetch', (event) => {
@@ -435,6 +475,11 @@ self.addEventListener('notificationclick', (event) => {
 self.addEventListener('message', (event) => {
   if (event.data?.type === 'SKIP_WAITING') {
     self.skipWaiting();
+  }
+  if (event.data?.type === 'REPLAY_OFFLINE_QUEUE') {
+    // A11-02: the app's window 'online' handler asks us to drain the
+    // queue — service workers get no 'online' event of their own.
+    event.waitUntil(replayOfflineQueue());
   }
   if (event.data?.type === 'CLEAR_CACHE') {
     caches.keys().then((names) => {
