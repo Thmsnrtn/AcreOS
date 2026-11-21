@@ -2,8 +2,8 @@
  * FD1 — launch scope & registry (founder decision 2026-11-12; recorded in
  * docs/company/founder-decisions-2026-11-12-launch-scope.md).
  *
- * The public promise is 4 core + 1 beta (FD1 as lifted 2026-11-18 and
- * 2026-11-19: Wholesale, then Tax, earned core on journey proof). The other TEN business types are
+ * The public promise is 5 core + 0 beta (FD1 as lifted 2026-11-18,
+ * 2026-11-19 and 2026-11-21: Wholesale, Tax, then Land, earned core on journey proof). The other TEN business types are
  * `registry_only`: registered, built, kept for every existing book — and not
  * offered to new signups or sold to strangers. Fix-and-Flip and Subdivider are
  * registry-only BY NAME (the original 2+3+8 framing left them unassigned).
@@ -36,7 +36,7 @@ import {
 
 /** The decision, one row per type. Exhaustive: the type forbids a missing key. */
 const FD1_PRESENTATION: Record<BusinessTypeId, VerticalMaturity> = {
-  land_flipper: "beta",
+  land_flipper: "core",
   note_investor: "core",
   tax_lien_deed: "core",
   residential_wholesaler: "core",
@@ -65,9 +65,9 @@ describe("FD1 — the registry states the launch presentation exactly", () => {
     expect(BUSINESS_TYPE_IDS).toHaveLength(15);
   });
 
-  it("4 core / 1 beta / 10 registry-only / 0 roadmap", () => {
-    expect(byTier("core").sort()).toEqual(["buy_and_hold", "note_investor", "residential_wholesaler", "tax_lien_deed"]);
-    expect(byTier("beta").sort()).toEqual(["land_flipper"]);
+  it("5 core / 0 beta / 10 registry-only / 0 roadmap", () => {
+    expect(byTier("core").sort()).toEqual(["buy_and_hold", "land_flipper", "note_investor", "residential_wholesaler", "tax_lien_deed"]);
+    expect(byTier("beta").sort()).toEqual([]);
     expect(byTier("registry_only")).toHaveLength(10);
     expect(byTier("roadmap")).toEqual([]);
   });
@@ -122,11 +122,11 @@ describe("FD1 — what the presentation means in code", () => {
     expect(registryPublicTier("roadmap")).toBe("roadmap");
   });
 
-  it("publicMaturityOf derives from the registry: strangers are told 4 core, 1 beta, 10 not sold", () => {
+  it("publicMaturityOf derives from the registry: strangers are told 5 core, 0 beta, 10 not sold", () => {
     const told = (tier: string) =>
       BUSINESS_TYPE_IDS.filter((id) => publicMaturityOf(BUSINESS_TYPES[id]) === tier).sort();
-    expect(told("core")).toEqual(["buy_and_hold", "note_investor", "residential_wholesaler", "tax_lien_deed"]);
-    expect(told("beta")).toEqual(["land_flipper"]);
+    expect(told("core")).toEqual(["buy_and_hold", "land_flipper", "note_investor", "residential_wholesaler", "tax_lien_deed"]);
+    expect(told("beta")).toEqual([]);
     expect(told("roadmap")).toEqual(byTier("registry_only").sort());
   });
 

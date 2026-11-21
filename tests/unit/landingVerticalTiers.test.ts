@@ -19,8 +19,8 @@
  *      the `LandingDemotion` type also makes `reason` required at the
  *      type level) and can only DEMOTE — a promote/no-op entry throws.
  *   5. The demotion map is EMPTY since FD1 (2026-11-12): the registry states
- *      the launch presentation itself (4 core / 1 beta / 10 registry_only
- *      since Tax's 2026-11-19 lift, pinned in fd1LaunchScope.test.ts), and a registry_only vertical
+ *      the launch presentation itself (5 core / 0 beta / 10 registry_only
+ *      since Land's 2026-11-21 lift, pinned in fd1LaunchScope.test.ts), and a registry_only vertical
  *      renders in the muted third tier — "not sold". WHICH verticals may
  *      claim what is pinned in verticalReadiness.test.ts against measured
  *      evidence, not here — this file guards the derivation, that one guards
@@ -108,14 +108,14 @@ describe("landing vertical tiers derive from the business-type registry", () => 
     expect(deriveLandingTiers(BUSINESS_TYPES, DEMOTE_ON_LANDING)).toEqual(tiers);
   });
 
-  it("renders the FD1 presentation: every registry_only vertical in the muted 'not sold' tier, 4 core, 1 beta", () => {
+  it("renders the FD1 presentation: every registry_only vertical in the muted 'not sold' tier, 5 core, 0 beta", () => {
     const registryOnly = BUSINESS_TYPE_IDS.filter(
       (id) => BUSINESS_TYPES[id].maturity === "registry_only" && !LANDING_EXCLUDED_IDS.includes(id),
     );
     expect(registryOnly.length).toBeGreaterThan(0);
     expect(tiers.roadmap.map((c) => c.id).sort()).toEqual([...registryOnly].sort());
-    expect(tiers.core).toHaveLength(4);
-    expect(tiers.beta).toHaveLength(1);
+    expect(tiers.core).toHaveLength(5);
+    expect(tiers.beta).toHaveLength(0);
   });
 });
 
