@@ -699,7 +699,7 @@ export function buildConfig(output: BuildOutput): UserConfig {
           // undefined lets Vite co-locate the lib with its sole importer's
           // lazy chunk, so the lib only downloads when that route renders.
           // Apply to: jspdf (borrower-portal only), @turf/turf (subdivision-
-          // plan-editor only), isomorphic-dompurify, @dnd-kit (deals only).
+          // plan-editor only), isomorphic-dompurify.
 
           return undefined;
         },
