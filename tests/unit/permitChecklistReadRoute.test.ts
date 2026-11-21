@@ -283,7 +283,7 @@ describe("SD-DEF-1 — GET /api/parcels/:id/permits (create-then-list)", () => {
     const res = await request(app).get(`/api/parcels/${PARENT_ID}/permits`);
     expect(res.status).toBe(200);
     expect(res.body.checklists).toHaveLength(2);
-    const byId = new Map(res.body.checklists.map((c: any) => [c.id, c]));
+    const byId = new Map<string, any>(res.body.checklists.map((c: any) => [c.id, c]));
     expect(byId.get(CHECKLIST_ID).gates).toHaveLength(1);
     expect(byId.get(CHECKLIST_ID).completedCount).toBe(1);
     expect(byId.get(CHECKLIST_ID_2).gates).toHaveLength(2);
