@@ -207,6 +207,16 @@ export default function FinancePage({ embedded = false }: { embedded?: boolean }
     totalPortfolioValue: number;
     totalMonthlyPayment: number;
     monthlyCashFlow: { month: string; amount: number }[];
+    byBook?: {
+      acquired?: {
+        book: string;
+        totalNotes: number;
+        activeNotes: number;
+        totalPortfolioValue: number;
+        totalMonthlyPayment: number;
+        delinquentCount: number;
+      };
+    };
   }>({ queryKey: ["/api/finance/portfolio-summary"] });
 
   const handleExport = async () => {
@@ -371,6 +381,26 @@ export default function FinancePage({ embedded = false }: { embedded?: boolean }
               the hero is the entry point and the area chart is
               suppressed in favor of the persona-shaped representation. */}
           <PersonaFinanceHero notes={enrichedNotes} />
+
+          {/* H-DEF-4 — the acquired book on this shared surface, labelled
+              as its own book (never merged into the serviced figures). */}
+          {portfolioSummary?.byBook?.acquired && portfolioSummary.byBook.acquired.totalNotes > 0 && (
+            <Card className="mb-6" data-testid="acquired-book-summary">
+              <CardHeader className="pb-2">
+                <CardTitle className="acr-section-h2 text-section-h2">Acquired book</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">
+                  {portfolioSummary.byBook.acquired.activeNotes} active of {portfolioSummary.byBook.acquired.totalNotes} acquired notes ·{" "}
+                  {usd(portfolioSummary.byBook.acquired.totalPortfolioValue)} outstanding ·{" "}
+                  {usd(portfolioSummary.byBook.acquired.totalMonthlyPayment)}/mo scheduled
+                  {portfolioSummary.byBook.acquired.delinquentCount > 0
+                    ? ` · ${portfolioSummary.byBook.acquired.delinquentCount} past due`
+                    : ""}
+                </p>
+              </CardContent>
+            </Card>
+          )}
 
           {/* W5b — deals closed and realised profit, from closed-deal records
               only; refuses the profit figure when a cost basis is missing. */}
