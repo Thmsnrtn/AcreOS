@@ -283,7 +283,7 @@ describe("registry truth (shared/business-types.ts) — the five tail entries", 
     //     channel sync + dynamic pricing stay disclosed-out-of-scope.
     // FD1 (2026-11-12, re-pinned not deleted): every tail vertical's build
     // above stands and existing books keep it, but the launch promise is
-    // 4 core + 1 beta — all five tail verticals are registry-only. The exact
+    // 5 core + 0 beta — all five tail verticals are registry-only. The exact
     // 15-row presentation is pinned in fd1LaunchScope.test.ts; this pin keeps
     // the tail verticals' own gate honest about the same values.
     const EXPECTED_MATURITY: Partial<Record<BusinessTypeId, VerticalMaturity>> = {

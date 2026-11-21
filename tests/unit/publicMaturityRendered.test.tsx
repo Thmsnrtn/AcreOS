@@ -19,8 +19,8 @@
  * registry states nobody has committed yet.
  *
  * ── SINCE FD1 (2026-11-12) ──────────────────────────────────────────────────
- * The registry states the launch presentation (4 core / 1 beta / 10
- * registry_only since Tax's 2026-11-19 lift) and the demotion table is empty, so the tiers a visitor sees
+ * The registry states the launch presentation (5 core / 0 beta / 10
+ * registry_only since Land's 2026-11-21 lift) and the demotion table is empty, so the tiers a visitor sees
  * derive from the registry alone. The registry-only types render in the
  * landing's third, muted tier — whose copy still reads "promised, not sold"
  * (client/src/pages/landing/copy.ts, a landing follow-up outside this slice).
@@ -156,7 +156,12 @@ describe("what a visitor is actually shown", () => {
   it("labels every registry-beta vertical Beta in the DOM, not just in the registry", () => {
     const { beta, core } = renderedTiers();
     const betaIds = registryIds("beta");
-    expect(betaIds.length, "no beta vertical in the registry — the loop below is vacuous").toBeGreaterThan(0);
+    // PINNED EMPTY since the 2026-11-21 Land lift: Land was the last
+    // registry-beta vertical, and its lift to core emptied the tier, so
+    // today the pin is that there are none — in the registry or the DOM.
+    // The loop below is live again the day any vertical is beta.
+    expect(betaIds).toEqual([]);
+    expect(beta).toEqual([]);
 
     for (const id of betaIds) {
       const label = BUSINESS_TYPES[id].label;
@@ -177,7 +182,10 @@ describe("what a visitor is actually shown", () => {
     // the tier split would still be "correct" and the page would still claim
     // more than it can show.
     const { beta } = renderedTiers();
-    expect(beta.length).toBeGreaterThan(0);
+    // PINNED EMPTY since the 2026-11-21 Land lift (see the test above):
+    // no beta chips render today. The qualifier rule below is live again
+    // the day any vertical is beta.
+    expect(beta).toEqual([]);
     for (const text of beta) {
       expect(text, `a beta chip rendered without its qualifier: "${text}"`).toMatch(/Beta$/);
     }
@@ -252,13 +260,13 @@ describe("the surface follows the registry, for states the registry is not in", 
     }
   });
 
-  it("the live registry with no demotions is the FD1 presentation: 4 core, 1 beta, 9 not sold", () => {
+  it("the live registry with no demotions is the FD1 presentation: 5 core, 0 beta, 9 not sold", () => {
     // Under OD-5 this asserted the opposite — that an empty table meant
     // fourteen core chips. FD1 moved the conservatism into the registry, so the
     // table being empty now yields the founder's presentation, not a lie.
     const tiers = deriveLandingTiers(BUSINESS_TYPES, {});
-    expect(tiers.core.map((c) => c.id).sort()).toEqual(["buy_and_hold", "note_investor", "residential_wholesaler", "tax_lien_deed"]);
-    expect(tiers.beta.map((c) => c.id).sort()).toEqual(["land_flipper"]);
+    expect(tiers.core.map((c) => c.id).sort()).toEqual(["buy_and_hold", "land_flipper", "note_investor", "residential_wholesaler", "tax_lien_deed"]);
+    expect(tiers.beta.map((c) => c.id).sort()).toEqual([]);
     expect(tiers.roadmap).toHaveLength(9);
   });
 

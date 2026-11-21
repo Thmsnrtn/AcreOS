@@ -2,8 +2,8 @@
  * A declared maturity may not exceed evidenced readiness.
  *
  * ── SINCE FD1 (2026-11-12) ──────────────────────────────────────────────────
- * The registry states the launch presentation itself — 4 core / 1 beta / 10
- * registry_only since Tax's 2026-11-19 lift (fd1LaunchScope.test.ts) — and the public demotion table is
+ * The registry states the launch presentation itself — 5 core / 0 beta / 10
+ * registry_only since Land's 2026-11-21 lift (fd1LaunchScope.test.ts) — and the public demotion table is
  * empty. The ratchet below therefore counts NO gaps: the last one,
  * `tax_lien_deed`, closed on 2026-11-20 when its max-bid desk started
  * recording decisions (`note_investor` closed the same way earlier that
@@ -666,9 +666,16 @@ describe("the Evidence Ladder states the same vertical truth (one rule, not two)
       );
     }).map((id) => `${id}: public "${publicMaturityOf(BUSINESS_TYPES[id])}", caveat "${caveat(id)}"`);
     expect(disagree).toEqual([]);
-    // Vacuity: the beta and roadmap wordings occur on the live ladder.
-    expect(BUSINESS_TYPE_IDS.some((id) => /public claim is beta/.test(caveat(id)))).toBe(true);
+    // Vacuity: the roadmap wording occurs on the live ladder.
     expect(BUSINESS_TYPE_IDS.some((id) => /not in the public promise/.test(caveat(id)))).toBe(true);
+    // The beta wording occurs NOWHERE since 2026-11-21 (Land lift): it is
+    // carried only by a vertical whose public claim is beta, Land was the
+    // last one, and its lift to core emptied the tier. Pinned as absent —
+    // the same treatment the core wording got below — so a future beta
+    // vertical fails here loudly instead of slipping the wording back in
+    // unpinned; the per-tier agreement rule above still binds any
+    // vertical that projects to beta.
+    expect(BUSINESS_TYPE_IDS.some((id) => /public claim is beta/.test(caveat(id)))).toBe(false);
     // The core wording occurs NOWHERE since 2026-11-20 (T6 lift): it is
     // carried only by a public core standing on surfaced evidence (the
     // FD1 register), the register is empty, and every public core now
@@ -781,6 +788,35 @@ describe("held pending journey proof — code-decided, claim still beta, and dat
       "utf8",
     );
     expect(doc).toMatch(/## Addendum — 2026-11-18: the hold is lifted/);
+  });
+
+  it("land_flipper's 2026-11-21 lift is pinned by name: core in the registry, measured `decided`, and the ladder claims the loop", () => {
+    // The lifted state, pinned by name so that reverting the maturity or
+    // the ladder entry fails here as well as in the ratchet above. Land
+    // earned core by JOURNEY proof (founder decided the lift 2026-11-21;
+    // walk record journey-walk-land-2026-11: legs 1–9 green end to end,
+    // the Leg 9 payment cycle proven in-machine, and the L-P2
+    // mailed-letter leg passed twice in Lob test mode — org 125 and org
+    // 129 — with zero real mail). Unlike note_investor and tax_lien_deed
+    // at their lifts, Land already measured `decided` in code, so no
+    // FD1_CORE_ON_SURFACED_EVIDENCE entry was ever needed and the
+    // ratchet is unchanged; its ladder entry carries NO public-tier
+    // caveat now that the registry itself says core.
+    expect(BUSINESS_TYPES.land_flipper.maturity).toBe("core");
+    expect(readinessOf(BUSINESS_TYPES.land_flipper, evidence)).toBe("decided");
+    expect(PUBLIC_CLAIM_DEMOTIONS.land_flipper).toBeUndefined();
+    expect(FD1_CORE_ON_SURFACED_EVIDENCE.land_flipper).toBeUndefined();
+    expect(entry("land_flipper"), "no ladder entry for land_flipper").toBeDefined();
+    expect(entry("land_flipper")!.claim).toMatch(/closes the canonical loop/);
+    expect(entry("land_flipper")!.caveat).toBeUndefined();
+  });
+
+  it("the land lift is recorded in the founder decision file", () => {
+    const doc = fs.readFileSync(
+      path.resolve(__dirname, "../..", "docs/company/founder-decisions-2026-11-12-launch-scope.md"),
+      "utf8",
+    );
+    expect(doc).toMatch(/\*\*Membership lifted 2026-11-21 \(Land beta → core\)\.\*\*/);
   });
 });
 

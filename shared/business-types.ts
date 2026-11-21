@@ -36,6 +36,10 @@
  * 2026-11-19 — Tax lien / deed LIFTED beta → core: its journey walk passed
  * on staging and the founder counted it proven the same day (see the
  * tax_lien_deed entry below), so the promise is now 4 core + 1 beta.
+ * 2026-11-21 — Land flipper LIFTED beta → core: its journey walk passed on
+ * staging and the founder decided the lift the same day (see the
+ * land_flipper entry below), so the promise is now 5 core + 0 beta — all
+ * five public verticals hold core.
  * This is a PRESENTATION re-cut of the
  * 15 values below, not a deletion: `isProductionReady` (core|beta) is what
  * gates new-signup selectability, so registry_only types stop being offered
@@ -126,11 +130,31 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     // promise (residential_wholesaler lifted to core 2026-11-18 and
     // tax_lien_deed on 2026-11-19), per the
     // 2026-11-12 decision records. Core is earned per vertical by full
-    // journey proof; Land's journey is not yet proven, so it does not hold
+    // journey proof; Land's journey was not yet proven, so it did not hold
     // core in the launch-day snapshot. (S1 originally recorded core here
     // from an unratified Land↔Buy-and-Hold swap; corrected 2026-11-16 by
     // founder ruling.)
-    maturity: "beta",
+    //
+    // LIFTED TO CORE 2026-11-21 — core earned under the founder rule of
+    // 2026-11-16 (core is earned per vertical by full journey proof). The
+    // Land journey walk passed on staging (walk record:
+    // journey-walk-land-2026-11): legs 1–9 walked green end to end, the
+    // Leg 9 seller-financed payment cycle proven in-machine (note 61:
+    // $687.10/mo, split exact, all checks pass), and the L-P2
+    // mailed-letter success leg passed TWICE in Lob test mode — org 125
+    // (ltr_3d046e1ee01aafa2, 2026-11-20) and org 129
+    // (ltr_1205578b59dc9a6a, 2026-11-21) — provider receipts recorded,
+    // zero real mail. The founder decided the lift on 2026-11-21. Land is
+    // the fifth of the five public verticals to earn core (Notes,
+    // Buy-and-Hold, Wholesale and Tax before it); no beta remains.
+    // HONEST SCOPE: unlike Notes and Tax at their lifts, Land's CODE
+    // evidence already reaches `decided` (the blind-offer commit records
+    // gradeable land decisions), so this claim needs no
+    // FD1_CORE_ON_SURFACED_EVIDENCE entry and the readiness ratchet is
+    // unchanged. Standing residual, not a blocker: R-11 — Lob's US Mail
+    // Strictness was set to Relaxed to arm test-mode sending and must be
+    // restored to Normal before the first live production mailing.
+    maturity: "core",
     // 2026-07-29 truth pass: the previously declared land_* ids never
     // existed in workflow-engine.ts. These are the real shipped templates
     // for the land flow (lead intake, seller-financed dunning, deal close).
@@ -633,7 +657,8 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     // with the matching provider id. The founder counted Tax proven the
     // same day, with the footnote below on the record. Tax is the fourth
     // of the five public verticals to earn core (Notes, Buy-and-Hold and
-    // Wholesale before it); Land is the one beta remaining.
+    // Wholesale before it); Land was the one beta remaining, until its
+    // own lift to core on 2026-11-21.
     // HONEST SCOPE + FOOTNOTE: the N3 send leg ran in simulation mode
     // (the founder's zero-real-mail rule for tests), so the walk proves
     // AcreOS's send machinery end-to-end but does NOT prove Lob accepting

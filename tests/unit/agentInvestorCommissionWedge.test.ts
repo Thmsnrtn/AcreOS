@@ -47,8 +47,8 @@ describe("agent_investor is REGISTRY-ONLY (FD1) — built, kept, not in the publ
     // lifted the land-persona ruling so comps route through the ATTOM seam (BYO
     // key, honest-unavailable when unkeyed).
     // REWRITTEN AGAIN at FD1 (2026-11-12, not deleted): the build above stands
-    // and existing agent-investor books keep it; the launch promise is 4 core +
-    // 1 beta, and agent_investor is one of the ten registry-only types.
+    // and existing agent-investor books keep it; the launch promise is 5 core +
+    // 0 beta, and agent_investor is one of the ten registry-only types.
     expect(getBusinessType("agent_investor")?.maturity).toBe("registry_only");
   });
 });

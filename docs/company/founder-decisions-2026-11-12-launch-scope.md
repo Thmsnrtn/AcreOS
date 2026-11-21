@@ -55,14 +55,33 @@ ratchet counts the gap (baseline 1 → 2) until the tax vertical records
 a decision. The table below now states the lifted membership:
 4 core + 1 beta.
 
-## FD1 — the public promise is 4 core + 1 beta; ten types are registry-only
+**Membership lifted 2026-11-21 (Land beta → core).** Land flipper's
+journey-proof wait ended: the Land journey walk passed on staging —
+legs 1–9 walked green end to end, the Leg 9 seller-financed payment
+cycle proven in-machine (note 61: $687.10/mo, split exact, all checks
+pass), and the L-P2 mailed-letter success leg passed TWICE in Lob test
+mode (org 125, `ltr_3d046e1ee01aafa2`, 2026-11-20; org 129,
+`ltr_1205578b59dc9a6a`, 2026-11-21), provider receipts recorded, zero
+real mail sent (walk record: journey-walk-land-2026-11). The founder
+decided the lift on 2026-11-21. Under the governing rule above, Land
+has *earned* core — the fifth of the five public verticals to do so,
+completing the launch set. Unlike `note_investor` and `tax_lien_deed`
+at their lifts, Land's code evidence already reaches `decided` (the
+blind-offer commit records gradeable land decisions), so no
+FD1_CORE_ON_SURFACED_EVIDENCE entry is needed and the readiness
+ratchet is unchanged. Standing residual, not a blocker: R-11 — Lob's
+US Mail Strictness, set to Relaxed to arm test-mode sending, must be
+restored to Normal before the first live production mailing. The
+table below now states the lifted membership: 5 core + 0 beta.
 
-**Decision (corrected framing, as lifted 2026-11-18 and 2026-11-19).** Of the fifteen registered business types:
+## FD1 — the public promise is 5 core + 0 beta; ten types are registry-only
+
+**Decision (corrected framing, as lifted 2026-11-18, 2026-11-19 and 2026-11-21).** Of the fifteen registered business types:
 
 | Presentation | Types |
 |---|---|
-| **Core** (full workflows, sold as such) | Note investor, Buy-and-hold rentals, Residential wholesaler, Tax lien / deed |
-| **Beta** (offered, labelled Beta) | Land flipper |
+| **Core** (full workflows, sold as such) | Note investor, Buy-and-hold rentals, Residential wholesaler, Tax lien / deed, Land flipper |
+| **Beta** (offered, labelled Beta) | — (none; all five public verticals hold core) |
 | **Registry-only** (built, kept, not in the public promise) | Land + notes (hybrid), Fix-and-flip, Short-term rentals, Commercial, Creative finance, Developer / entitlements, Subdivider, Multifamily, Mobile home / park, Agent-investor |
 
 Fix-and-Flip and Subdivider are named registry-only explicitly: the original

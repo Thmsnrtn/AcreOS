@@ -3,7 +3,7 @@
  *
  * ── THE DEFECT THIS EXISTS TO END ───────────────────────────────────────────
  * (As measured 2026-08-17. Since FD1, 2026-11-12, the registry states the
- * launch presentation — 4 core / 1 beta / 10 registry_only since Tax's 2026-11-19 lift — and the ratchet in
+ * launch presentation — 5 core / 0 beta / 10 registry_only since Land's 2026-11-21 lift — and the ratchet in
  * verticalReadiness.test.ts counts the two remaining founder-decided gaps.)
  *
  * All fifteen entries in `shared/business-types.ts` declare `maturity: "core"`.
