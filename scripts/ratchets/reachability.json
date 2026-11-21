@@ -1265,6 +1265,16 @@
       "id": "earnest_money_events",
       "reason": "CENSUS CURE (2026-11-19). No reader yet BY DESIGN: the writer landed in PR #628 (raw sql`` INSERT appends in server/routes-earnest-money.ts; the table-writer entry was revoked when it landed), but the read path -- the EMD replay (ORDER BY occurred_at ASC per migration 0086's header) -- has not landed; PR #628's own register note records 'No reader yet.' The declaration exists now so the staging census, the schema-migrate-mirror register and db:build-from-repo all model the physical table staging already holds. REVOCATION: when a production read path lands, remove this entry."
     }
+,    {
+      "kind": "export",
+      "id": "server/utils/auditEventsChain.ts::stableCanonicalStringify",
+      "reason": "TEST SEAM (AUD-DEF-1, 2026-11-21). The recursive canonical stringifier canonicalAuditEventPayload applies in-module at write and verify time; exported so auditEventsChain.test.ts can pin its deep key-sorting and undefined-dropping semantics directly rather than through a copied implementation. REVOCATION: if a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "server/utils/auditEventsChain.ts::verifyAuditEventRows",
+      "reason": "TEST SEAM (AUD-DEF-1, 2026-11-21). The pure chain walk verifyAuditEventsChain (same module) delegates to after loading rows; exported so auditEventsChain.test.ts can drive the verifier logic against the historical genesis byte-pattern fixture and auditEventsChain.realdb.test.ts can verify a freshly written segment without a whole-table walk. REVOCATION: if a second production module imports it, remove this entry."
+    }
   ],
   "lastBumpNote": "2026-11-18 PR #616 fix round (D-1): baseline LOWERED to measured \u2014 internalOnlyExports 1219\u21921217. Three TEST-SEAM allowlist entries added for server/services/settlementRail/delivery.ts (RailDeliveryRefusedError, RailDeliveryConflictError, translateRailDeliveryError \u2014 all imported by tests/unit/railDeliveryErrors.test.ts), and the same PR's translation reaches outwardAction.ts's ActionInFlightError + ActionKeyReusedError from production, so the count fell two net of the exemptions and the stale-high rule required this lock-in (the PR #590 precedent). No baseline raised; direction stays down-only.",
   "_lastBumpNote": "2026-11-18 PR #616 fix round (D-1): baseline LOWERED to measured \u2014 internalOnlyExports 1219\u21921217. Three TEST-SEAM allowlist entries added for server/services/settlementRail/delivery.ts (RailDeliveryRefusedError, RailDeliveryConflictError, translateRailDeliveryError \u2014 all imported by tests/unit/railDeliveryErrors.test.ts), and the same PR's translation reaches outwardAction.ts's ActionInFlightError + ActionKeyReusedError from production, so the count fell two net of the exemptions and the stale-high rule required this lock-in (the PR #590 precedent). No baseline raised; direction stays down-only."
