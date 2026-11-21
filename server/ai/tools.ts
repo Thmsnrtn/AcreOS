@@ -181,14 +181,14 @@ export const toolDefinitions = {
   // Finance Tools
   get_notes: {
     name: "get_notes",
-    description: "Get seller financing notes with payment schedules and balances.",
+    description: "Get notes from BOTH note books — the serviced book (seller-financed notes this account originated) and the acquired book (notes this account bought) — with balances, payment schedules and each borrower's contact as recorded on their linked lead. The result carries a coverage statement naming both books and their counts: state that coverage when you summarize a portfolio, and never present one book as the whole book. Each note is tagged with its book. Borrower contact comes from the linked lead record; if a field is null there, say it is not on the borrower's lead record — do not say it \"isn't stored\" without this read.",
     parameters: {
       type: "object",
       properties: {
         status: {
           type: "string",
-          enum: ["pending", "active", "paid_off", "defaulted", "foreclosed"],
-          description: "Filter by note status (optional)"
+          enum: ["pending", "active", "paid_off", "defaulted", "foreclosed", "performing", "late", "default", "sold"],
+          description: "Filter by note status (optional). Serviced-book statuses: pending/active/paid_off/defaulted/foreclosed. Acquired-book statuses: performing/late/default/paid_off/sold. The filter is applied within each book's own vocabulary."
         }
       }
     }
@@ -209,7 +209,7 @@ export const toolDefinitions = {
   },
   get_cashflow_summary: {
     name: "get_cashflow_summary",
-    description: "Get monthly cashflow summary from all active notes.",
+    description: "Get monthly cashflow summary from active notes in BOTH books. The unprefixed fields are the serviced book (originated notes); the acquired* fields are the acquired book (bought notes). Present them labelled by book — never merge them into one unlabelled total.",
     parameters: { type: "object", properties: {} }
   },
   
@@ -467,7 +467,7 @@ export const toolDefinitions = {
 
   send_email: {
     name: "send_email",
-    description: "Send an email to a lead or any email address. Checks TCPA compliance when sending to leads. Use for follow-ups, offer letters, or general communication.",
+    description: "Draft an email to a lead or any email address for the operator's approval. FD5: this NEVER sends on your word alone — the draft is frozen for the operator's one-tap approval and goes out only after they approve it. Describe the flow to the user exactly that way (draft → their approval → send); never say or imply you will send immediately, or with no further confirmation, even if the user says \"just send it\". Checks TCPA compliance when sending to leads. Use for follow-ups, offer letters, or general communication.",
     parameters: {
       type: "object",
       properties: {
@@ -482,7 +482,7 @@ export const toolDefinitions = {
 
   send_sms: {
     name: "send_sms",
-    description: "Send an SMS text message to a lead or phone number. Checks TCPA compliance before sending. Use for quick follow-ups or time-sensitive communications.",
+    description: "Draft an SMS text message to a lead or phone number for the operator's approval. FD5: this NEVER sends on your word alone — the draft is frozen for the operator's one-tap approval and goes out only after they approve it. Describe the flow to the user exactly that way (draft → their approval → send); never say or imply you will send immediately, or with no further confirmation, even if the user says \"just send it\". Checks TCPA compliance before sending. Use for quick follow-ups or time-sensitive communications.",
     parameters: {
       type: "object",
       properties: {
@@ -1823,24 +1823,51 @@ export async function executeTool(
       }
       
       case "get_notes": {
-        const notes = await storage.getNotes(org.id);
-        let filtered = notes;
+        // HYB-DEF-5/6: cross-book read. The serviced book alone was
+        // presented as the whole book (acquired notes silently absent,
+        // no coverage statement), and borrower contact was declared
+        // missing without consulting the borrower's linked lead.
+        const {
+          listAcquiredNotesForPax,
+          shapeAcquiredNoteForPax,
+          borrowerContactFromLead,
+          borrowerContactForAcquiredNote,
+          buildNotesCoverageStatement,
+        } = await import("../services/notes/acquiredBookRead");
+        const [notes, acquiredRows, leads] = await Promise.all([
+          storage.getNotes(org.id),
+          listAcquiredNotesForPax(org.id),
+          storage.getLeads(org.id),
+        ]);
+        const leadById = new Map(leads.map(l => [l.id, l]));
+        let serviced = notes;
+        let acquired = acquiredRows;
         if (args.status) {
-          filtered = notes.filter(n => n.status === args.status);
+          serviced = notes.filter(n => n.status === args.status);
+          acquired = acquiredRows.filter(n => n.status === args.status);
         }
-        return { success: true, data: filtered.map(n => ({
-          id: n.id,
-          propertyId: n.propertyId,
-          borrowerId: n.borrowerId,
-          originalPrincipal: n.originalPrincipal,
-          currentBalance: n.currentBalance,
-          interestRate: n.interestRate,
-          monthlyPayment: n.monthlyPayment,
-          termMonths: n.termMonths,
-          status: n.status,
-          startDate: n.startDate,
-          nextPaymentDate: n.nextPaymentDate
-        })) };
+        return { success: true, data: {
+          coverage: buildNotesCoverageStatement(notes.length, acquiredRows.length),
+          serviced: serviced.map(n => ({
+            id: n.id,
+            book: "serviced",
+            propertyId: n.propertyId,
+            borrowerId: n.borrowerId,
+            borrowerContact: borrowerContactFromLead(n.borrowerId != null ? leadById.get(n.borrowerId) : undefined),
+            originalPrincipal: n.originalPrincipal,
+            currentBalance: n.currentBalance,
+            interestRate: n.interestRate,
+            monthlyPayment: n.monthlyPayment,
+            termMonths: n.termMonths,
+            status: n.status,
+            startDate: n.startDate,
+            nextPaymentDate: n.nextPaymentDate
+          })),
+          acquired: acquired.map(r => shapeAcquiredNoteForPax(
+            r,
+            borrowerContactForAcquiredNote(r, r.borrowerId != null ? leadById.get(r.borrowerId) : undefined),
+          )),
+        } };
       }
       
       case "calculate_amortization": {
@@ -1895,14 +1922,22 @@ export async function executeTool(
         // SQL over the whole book (DEFECT-0171): this summed the 5000-row
         // capped list and told the customer it was their whole portfolio.
         const { activeNoteTotals } = await import("../storage/bookAggregates");
-        const t = await activeNoteTotals(org.id);
+        const { activeAcquiredNoteTotals } = await import("../services/notes/acquiredBookRead");
+        const [t, aq] = await Promise.all([activeNoteTotals(org.id), activeAcquiredNoteTotals(org.id)]);
         const monthlyCashflow = t.monthlyCashflow;
         const totalBalance = t.totalOutstandingBalance;
         const cashflowData = {
+          // Serviced-book figures (pre-existing fields, unchanged meaning).
           activeNotesCount: t.activeNotesCount,
           totalOutstandingBalance: Math.round(totalBalance * 100) / 100,
           monthlyCashflow: Math.round(monthlyCashflow * 100) / 100,
-          annualCashflow: Math.round(monthlyCashflow * 12 * 100) / 100
+          annualCashflow: Math.round(monthlyCashflow * 12 * 100) / 100,
+          // HYB-DEF-5: the acquired book rides alongside, labelled — the
+          // serviced figures above were previously the whole answer.
+          acquiredLiveNotesCount: aq.liveAcquiredNotesCount,
+          acquiredTotalOutstandingBalance: aq.totalOutstandingBalance,
+          acquiredMonthlyCashflow: aq.monthlyCashflow,
+          booksLabelled: "activeNotesCount/totalOutstandingBalance/monthlyCashflow/annualCashflow are the SERVICED book (originated notes); acquired* fields are the ACQUIRED book (bought notes). Never merge them into one unlabelled total.",
         };
 
         const cfValidation = validateAtlasOutput(AtlasOutputType.CASH_FLOW, {

@@ -1,5 +1,10 @@
 import { storage } from "../storage";
 import { clock } from "../utils/clock";
+import {
+  listAcquiredNotesForPax,
+  summarizeAcquiredBook,
+  buildNotesCoverageStatement,
+} from "./notes/acquiredBookRead";
 
 export interface ModuleSnapshot {
   name: string;
@@ -24,6 +29,9 @@ export interface SystemContext {
       monthlyCashflow: number;
       activeNotesCount: number;
       totalOutstanding: number;
+      acquiredLiveNotesCount: number;
+      acquiredMonthlyCashflow: number;
+      acquiredTotalOutstanding: number;
       upcomingPayments: number;
     };
   };
@@ -58,7 +66,7 @@ async function buildSystemContext(organizationId: number): Promise<SystemContext
   const now = clock.now();
   const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-  const [org, leads, properties, deals, notes, tasks, campaigns] = await Promise.all([
+  const [org, leads, properties, deals, notes, tasks, campaigns, acquiredNotes] = await Promise.all([
     storage.getOrganization(organizationId),
     storage.getLeads(organizationId),
     storage.getProperties(organizationId),
@@ -66,7 +74,17 @@ async function buildSystemContext(organizationId: number): Promise<SystemContext
     storage.getNotes(organizationId),
     storage.getTasks(organizationId),
     storage.getCampaigns(organizationId),
+    // HYB-DEF-5: the acquired book is part of Pax's notes coverage. Before
+    // this read existed, this context presented the serviced book alone
+    // as the whole book, with no coverage statement.
+    listAcquiredNotesForPax(organizationId),
   ]);
+  const acquiredSummary = summarizeAcquiredBook(acquiredNotes);
+  const notesCoverage = buildNotesCoverageStatement(notes.length, acquiredNotes.length);
+  // Closed deals are a fact of record, not pipeline: the pipeline figures
+  // below count open work, and a zero there must never be stated as
+  // "no deals closed" (HYB-DEF-5).
+  const closedDeals = deals.filter(d => d.status === "closed").length;
 
   const recentLeads = leads.filter(l => new Date(l.createdAt || 0) > weekAgo);
   const recentProperties = properties.filter(p => new Date(p.createdAt || 0) > weekAgo);
@@ -149,6 +167,7 @@ async function buildSystemContext(organizationId: number): Promise<SystemContext
         recentCount: recentDeals.length,
         keyStats: {
           byStatus: dealsByStatus,
+          closed: closedDeals,
           acquisitions: deals.filter(d => d.type === "acquisition").length,
           dispositions: deals.filter(d => d.type === "disposition").length,
           totalPipelineValue: deals.reduce((sum, d) => sum + Number(d.offerAmount || 0), 0),
@@ -162,20 +181,49 @@ async function buildSystemContext(organizationId: number): Promise<SystemContext
         })),
       },
       notes: {
-        name: "Seller Finance Notes",
-        totalCount: notes.length,
+        name: "Notes (serviced + acquired books)",
+        totalCount: notes.length + acquiredNotes.length,
         recentCount: 0,
         keyStats: {
+          coverage: notesCoverage,
+          serviced: {
+            count: notes.length,
+            active: activeNotes.length,
+            totalPrincipal: notes.reduce((sum, n) => sum + Number(n.originalPrincipal || 0), 0),
+            currentBalance: totalOutstanding,
+          },
+          acquired: {
+            count: acquiredSummary.count,
+            live: acquiredSummary.liveCount,
+            totalBalance: acquiredSummary.totalBalance,
+            monthlyPayments: acquiredSummary.monthlyPayments,
+            delinquent: acquiredSummary.delinquentCount,
+          },
+          // Legacy serviced-only keys, kept for existing consumers of the
+          // raw context. The formatted summary labels them as the serviced
+          // book; the slices above are the labelled truth.
           active: activeNotes.length,
           totalPrincipal: notes.reduce((sum, n) => sum + Number(n.originalPrincipal || 0), 0),
           currentBalance: totalOutstanding,
         },
-        recentItems: activeNotes.slice(0, 5).map(n => ({
-          id: n.id,
-          balance: n.currentBalance,
-          payment: n.monthlyPayment,
-          status: n.status,
-        })),
+        recentItems: [
+          ...activeNotes.slice(0, 5).map(n => ({
+            id: n.id,
+            book: "serviced",
+            balance: n.currentBalance,
+            payment: n.monthlyPayment,
+            status: n.status,
+          })),
+          ...acquiredNotes.slice(0, 5).map(n => ({
+            id: n.id,
+            book: "acquired",
+            noteNumber: n.noteNumber,
+            balance: n.currentBalanceCents / 100,
+            payment: n.paymentAmountCents / 100,
+            status: n.status,
+            delinquencyStatus: n.delinquencyStatus,
+          })),
+        ],
       },
       tasks: {
         name: "Tasks",
@@ -211,9 +259,14 @@ async function buildSystemContext(organizationId: number): Promise<SystemContext
         })),
       },
       finance: {
+        // Serviced-book figures (the pre-existing fields). The acquired
+        // book rides alongside, labelled — never folded in silently.
         monthlyCashflow,
         activeNotesCount: activeNotes.length,
         totalOutstanding,
+        acquiredLiveNotesCount: acquiredSummary.liveCount,
+        acquiredMonthlyCashflow: acquiredSummary.monthlyPayments,
+        acquiredTotalOutstanding: acquiredSummary.totalBalance,
         upcomingPayments: 0,
       },
     },
@@ -246,13 +299,23 @@ export function formatContextForAI(context: SystemContext): string {
 
   summary += `### Deals\n`;
   summary += `- Total: ${modules.deals.totalCount} deals\n`;
-  summary += `- Pipeline value: $${modules.deals.keyStats.totalPipelineValue.toLocaleString()}\n`;
+  summary += `- Closed: ${modules.deals.keyStats.closed} deals closed (a fact of record — an empty open pipeline never means no deals have closed)\n`;
+  summary += `- By status: ${Object.entries(modules.deals.keyStats.byStatus).map(([k, v]) => `${k}: ${v}`).join(", ")}\n`;
+  summary += `- Pipeline value (open deals): $${modules.deals.keyStats.totalPipelineValue.toLocaleString()}\n`;
   summary += `- Acquisitions: ${modules.deals.keyStats.acquisitions}, Dispositions: ${modules.deals.keyStats.dispositions}\n\n`;
 
+  summary += `### Notes\n`;
+  summary += `- ${modules.notes.keyStats.coverage}\n`;
+  summary += `- Serviced book (originated, seller-financed): ${modules.notes.keyStats.serviced.count} notes, ${modules.notes.keyStats.serviced.active} active, $${Number(modules.notes.keyStats.serviced.currentBalance).toLocaleString()} outstanding\n`;
+  summary += `- Acquired book (bought notes): ${modules.notes.keyStats.acquired.count} notes, ${modules.notes.keyStats.acquired.live} live, $${Number(modules.notes.keyStats.acquired.totalBalance).toLocaleString()} outstanding, ${modules.notes.keyStats.acquired.delinquent} delinquent\n\n`;
+
   summary += `### Finance\n`;
-  summary += `- Active notes: ${modules.finance.activeNotesCount}\n`;
-  summary += `- Monthly cashflow: $${modules.finance.monthlyCashflow.toLocaleString()}\n`;
-  summary += `- Outstanding balance: $${modules.finance.totalOutstanding.toLocaleString()}\n\n`;
+  summary += `- Active notes (serviced book): ${modules.finance.activeNotesCount}\n`;
+  summary += `- Monthly cashflow (serviced book): $${modules.finance.monthlyCashflow.toLocaleString()}\n`;
+  summary += `- Outstanding balance (serviced book): $${modules.finance.totalOutstanding.toLocaleString()}\n`;
+  summary += `- Live notes (acquired book): ${modules.finance.acquiredLiveNotesCount}\n`;
+  summary += `- Monthly payments (acquired book): $${modules.finance.acquiredMonthlyCashflow.toLocaleString()}\n`;
+  summary += `- Outstanding balance (acquired book): $${modules.finance.acquiredTotalOutstanding.toLocaleString()}\n\n`;
 
   summary += `### Tasks\n`;
   summary += `- Pending: ${modules.tasks.keyStats.pending}\n`;
