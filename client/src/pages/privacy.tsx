@@ -9,7 +9,7 @@ import { SupportFeedbackButton } from "@/components/support-feedback-button";
 import { OpenGraph } from "@/components/seo/OpenGraph";
 import { SITE } from "@/lib/jsonld-schemas";
 import { LEGAL_ENTITY_NAME, LEGAL_ENTITY_FOOTER } from "@/lib/legal-entity";
-import { PAX_CONTROLS_LABEL } from "@shared/pax-glossary";
+import { PAX_CONTROLS_LABEL } from "@shared/pax-glossary-core";
 
 // v1.0 — effective 2026-06-01 — Beatrice Whitfield, CRO (Beatrice audit P2).
 // Content sourced from docs/legal/privacy-policy.md.

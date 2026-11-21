@@ -19,7 +19,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useSearch } from "wouter";
 import { clientLogger } from "@/lib/clientLogger";
-import { PAX_LABELS } from "@shared/pax-glossary";
+import { PAX_LABELS } from "@shared/pax-glossary-core";
 
 // Client-side form schema that omits organizationId (added by server)
 const noteFormSchema = insertNoteSchema.omit({ organizationId: true });

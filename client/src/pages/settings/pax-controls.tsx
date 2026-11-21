@@ -88,20 +88,13 @@ import {
   type PaxSiteEntry,
   type PaxStance,
 } from "@shared/pax-controls";
+import { PAX_LABELS, PAX_RECEIPT_WORDS } from "@shared/pax-glossary-core";
 import {
-  PAX_GROUP_COPY,
-  PAX_LABELS,
-  PAX_LIMIT_COPY,
-  PAX_MY_SITES_COPY,
-  PAX_NEVER_LIST,
-  PAX_PAGE_COPY,
-  PAX_PAUSE_COPY,
-  PAX_PAUSE_OPTIONS,
-  PAX_RAIL_COPY,
-  PAX_RECEIPT_WORDS,
-  PAX_STANCE_COPY,
+  PaxGlossaryProvider,
+  usePaxGlossaryData,
+  type PaxGlossaryData,
   type PaxPauseOption,
-} from "@shared/pax-glossary";
+} from "@/lib/pax-glossary";
 
 // ── The controls object (frozen contract 3, server/routes-pax-controls.ts) ──
 
@@ -196,7 +189,7 @@ const TAP = "min-h-11 pointer-fine:sm:min-h-9";
 // "Connected" is keyed on the customer having their OWN key for the channel
 // (BYO rails); the link goes to the one catalog at /settings/byok.
 const CAPABILITIES: Array<{
-  key: keyof typeof PAX_PAGE_COPY.capabilities;
+  key: keyof PaxGlossaryData["PAX_PAGE_COPY"]["capabilities"];
   icon: typeof MessageSquare;
   channels: string[];
 }> = [
@@ -242,13 +235,16 @@ function isLongPause(until: Date | null): boolean {
 type PromptTone = "ok" | "neutral" | "error";
 
 /** Neutral outcomes stay neutral: a skip is not an error. */
-function promptStatus(status: string | null): { label: string; tone: PromptTone } | null {
+function promptStatus(
+  status: string | null,
+  pageCopy: PaxGlossaryData["PAX_PAGE_COPY"],
+): { label: string; tone: PromptTone } | null {
   if (!status) return null;
-  if (status === "success") return { label: PAX_PAGE_COPY.promptOk, tone: "ok" };
-  if (status === "skipped_paused") return { label: PAX_PAGE_COPY.promptSkippedPaused, tone: "neutral" };
-  if (status === "skipped_off") return { label: PAX_PAGE_COPY.promptSkippedOff, tone: "neutral" };
+  if (status === "success") return { label: pageCopy.promptOk, tone: "ok" };
+  if (status === "skipped_paused") return { label: pageCopy.promptSkippedPaused, tone: "neutral" };
+  if (status === "skipped_off") return { label: pageCopy.promptSkippedOff, tone: "neutral" };
   if (status.startsWith("skipped")) return { label: status.replace(/_/g, " "), tone: "neutral" };
-  return { label: PAX_PAGE_COPY.promptError, tone: "error" };
+  return { label: pageCopy.promptError, tone: "error" };
 }
 
 const TONE_CLASS: Record<PromptTone, string> = {
@@ -270,7 +266,17 @@ async function getJson<T>(url: string): Promise<T> {
 
 // ── Page ───────────────────────────────────────────────────────────────────
 
-export function PaxControls() {
+function PaxControlsLoaded() {
+  const {
+    PAX_GROUP_COPY,
+    PAX_LIMIT_COPY,
+    PAX_NEVER_LIST,
+    PAX_PAGE_COPY,
+    PAX_PAUSE_COPY,
+    PAX_PAUSE_OPTIONS,
+    PAX_RAIL_COPY,
+    PAX_STANCE_COPY,
+  } = usePaxGlossaryData();
   useDocumentTitle(PAX_PAGE_COPY.title);
   const { toast } = useToast();
   const [pauseOpen, setPauseOpen] = React.useState(false);
@@ -831,6 +837,37 @@ export default PaxControls;
  * drafts) and UNATTENDED_PATHS (rules). A rail can narrow the stance above,
  * never widen it — the server enforces that; this page only offers the levels.
  */
+/**
+ * The page's long copy is a static asset now (BD-6): the shell renders
+ * first (the same skeleton the controls fetch shows), the glossary text
+ * arrives with its fetch, and a failed fetch shows the load-error state
+ * with retry — never a half-labelled page. PaxControlsLoaded and every
+ * card below read the copy from the provider via usePaxGlossaryData().
+ */
+export function PaxControls() {
+  return (
+    <PaxGlossaryProvider
+      fallback={
+        <PageShell label="Pax">
+          <div className="space-y-4" data-testid="pax-controls-loading" aria-busy="true">
+            <Skeleton className="h-8 w-40" />
+            <Skeleton className="h-24 w-full rounded-card" />
+            <Skeleton className="h-40 w-full rounded-card" />
+            <Skeleton className="h-64 w-full rounded-card" />
+          </div>
+        </PageShell>
+      }
+      errorFallback={(retry) => (
+        <PageShell label="Pax">
+          <QueryErrorState error={new Error("glossary")} onRetry={retry} title="Couldn't load Pax" testId="pax-controls-error" />
+        </PageShell>
+      )}
+    >
+      <PaxControlsLoaded />
+    </PaxGlossaryProvider>
+  );
+}
+
 function RailsCard({
   rails,
   stance,
@@ -851,6 +888,7 @@ function RailsCard({
   onReset: () => void;
 }) {
   const [confirmReset, setConfirmReset] = React.useState(false);
+  const { PAX_LIMIT_COPY, PAX_RAIL_COPY } = usePaxGlossaryData();
   const groups = new Set<string>(Object.values(PAX_TOOL_GROUPS));
   const domainsWithTools = new Set<string>(Object.values(PAX_TOOL_DOMAINS));
   const recordDomains = groups.has("changes_records")
@@ -979,6 +1017,7 @@ function LimitInputs({
   /** Per-key placeholder; the member card shows the org's cap there. */
   placeholders?: Partial<Record<PaxLimitKey, string>>;
 }) {
+  const { PAX_LIMIT_COPY } = usePaxGlossaryData();
   return (
     <div className="grid gap-3 sm:grid-cols-2">
       {PAX_LIMIT_KEYS.map((k) => {
@@ -1009,6 +1048,7 @@ function LimitInputs({
 }
 
 function LimitsCard({
+
   limits,
   canEdit,
   onSave,
@@ -1017,6 +1057,7 @@ function LimitsCard({
   canEdit: boolean;
   onSave: (limits: Partial<PaxLimits>) => void;
 }) {
+  const { PAX_LIMIT_COPY } = usePaxGlossaryData();
   const [values, setValues] = React.useState<Record<PaxLimitKey, string>>(() => ({
     asksPerDay: capText(limits.asksPerDay),
     creditSpendPerDay: capText(limits.creditSpendPerDay),
@@ -1089,6 +1130,7 @@ function MemberCard({
   onSaveLimits: (limits: Partial<PaxLimits>) => void;
   onClear: () => void;
 }) {
+  const { PAX_LIMIT_COPY, PAX_RAIL_COPY } = usePaxGlossaryData();
   // Show a limit in the box only when the member's own is the tighter one.
   const own = (k: PaxLimitKey) => (effective.limits[k] !== orgLimits[k] ? effective.limits[k] : null);
   const [values, setValues] = React.useState<Record<PaxLimitKey, string>>(() => ({
@@ -1255,6 +1297,7 @@ function RailRow({
  * an owner or admin edits it — the same gate as the rest of this page.
  */
 function MySitesCard({ sites, canEdit }: { sites: PaxSiteEntry[]; canEdit: boolean }) {
+  const { PAX_MY_SITES_COPY, PAX_PAGE_COPY } = usePaxGlossaryData();
   const { toast } = useToast();
   const [label, setLabel] = React.useState("");
   const [address, setAddress] = React.useState("");
@@ -1465,6 +1508,7 @@ function SwitchRow({
 // ── Scheduled prompts (moved here from the deleted pax-tasks-settings-tab) ──
 
 function ScheduledPrompts({ prompts }: { prompts: ScheduledPromptRow[] }) {
+  const { PAX_PAGE_COPY } = usePaxGlossaryData();
   const { toast } = useToast();
   const [historyOf, setHistoryOf] = React.useState<ScheduledPromptRow | null>(null);
 
@@ -1512,7 +1556,7 @@ function ScheduledPrompts({ prompts }: { prompts: ScheduledPromptRow[] }) {
     <>
       <ul className="mt-2 space-y-2" data-testid="scheduled-prompts-list">
         {prompts.map((p) => {
-          const status = promptStatus(p.lastRunStatus);
+          const status = promptStatus(p.lastRunStatus, PAX_PAGE_COPY);
           return (
             <li
               key={p.id}
@@ -1586,6 +1630,7 @@ function ScheduledPrompts({ prompts }: { prompts: ScheduledPromptRow[] }) {
 }
 
 function RunHistorySheet({ prompt, onClose }: { prompt: ScheduledPromptRow | null; onClose: () => void }) {
+  const { PAX_PAGE_COPY } = usePaxGlossaryData();
   const runs = useQuery<TaskRun[]>({
     queryKey: [SCHEDULED_TASKS_KEY[0], prompt?.id ?? 0, "runs"],
     queryFn: () => getJson<TaskRun[]>(`/api/ai/scheduled-tasks/${prompt!.id}/runs`),
@@ -1616,7 +1661,7 @@ function RunHistorySheet({ prompt, onClose }: { prompt: ScheduledPromptRow | nul
             <p className="text-xs text-muted-foreground text-center py-10">{PAX_PAGE_COPY.runHistoryEmpty}</p>
           ) : (
             (runs.data ?? []).map((run) => {
-              const status = promptStatus(run.status) ?? { label: run.status, tone: "neutral" as const };
+              const status = promptStatus(run.status, PAX_PAGE_COPY) ?? { label: run.status, tone: "neutral" as const };
               return (
                 <div key={run.id} className="rounded-md border px-3 py-2 space-y-0.5" data-testid={`run-${run.id}`}>
                   <div className="flex items-center gap-2">
@@ -1649,6 +1694,7 @@ function RunHistorySheet({ prompt, onClose }: { prompt: ScheduledPromptRow | nul
 // ── What Pax can use (moved here from the deleted autopilot-setup) ─────────
 
 function Connections() {
+  const { PAX_PAGE_COPY } = usePaxGlossaryData();
   const byok = useQuery<ByokResponse>({
     queryKey: ["/api/byok"],
     queryFn: () => getJson<ByokResponse>("/api/byok"),
@@ -1711,6 +1757,7 @@ function Connections() {
 // ── What Pax did (GET /api/pax/receipts) ───────────────────────────────────
 
 function Receipts() {
+  const { PAX_PAGE_COPY } = usePaxGlossaryData();
   const receipts = useQuery<ReceiptsPage>({
     queryKey: RECEIPTS_KEY,
     queryFn: () => getJson<ReceiptsPage>(`/api/pax/receipts?limit=${RECEIPTS_LIMIT}`),
