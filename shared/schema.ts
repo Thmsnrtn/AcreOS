@@ -5863,7 +5863,7 @@ export const reconciliationRuns = pgTable(
     sourceTotal: numeric("source_total"),
     acreosTotal: numeric("acreos_total"),
     differenceDollars: numeric("difference_dollars"),
-    status: text("status").notNull(), // ok | divergent | failing
+    status: text("status").notNull(), // ok | divergent | failing | indeterminate (REC-DEF-1: source total is a lower bound — unresolved-customer invoices excluded and reported in error_message)
     errorMessage: text("error_message"),
   },
   (table) => [
