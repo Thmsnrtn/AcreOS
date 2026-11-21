@@ -1264,6 +1264,11 @@
       "kind": "table-reader",
       "id": "earnest_money_events",
       "reason": "CENSUS CURE (2026-11-19). No reader yet BY DESIGN: the writer landed in PR #628 (raw sql`` INSERT appends in server/routes-earnest-money.ts; the table-writer entry was revoked when it landed), but the read path -- the EMD replay (ORDER BY occurred_at ASC per migration 0086's header) -- has not landed; PR #628's own register note records 'No reader yet.' The declaration exists now so the staging census, the schema-migrate-mirror register and db:build-from-repo all model the physical table staging already holds. REVOCATION: when a production read path lands, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "server/jobs/deadmanPolicy.ts::DEADMAN_REPAGE_WINDOW_MS",
+      "reason": "TEST SEAM (MON-DEF-1, 2026-11-21). The 24h re-page window deadmanAlertMode applies in-module in deadmanPolicy.ts; exported so deadmanCadence.test.ts can pin the digest/full boundary against the actual window (digest at +1h, full at exactly the window, and the window equals 24h) rather than a copied literal. Its only external consumer is that test by design. REVOCATION: if a production module imports it, remove this entry."
     }
 ,    {
       "kind": "export",

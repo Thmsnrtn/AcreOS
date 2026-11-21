@@ -19,8 +19,9 @@
  *
  * `runJobDeadmanCheck()` (in deadmanCheck.ts) walks this roster and pages
  * on-call when a non-disabled job hasn't emitted ANY job_health_logs row
- * (success | failed | skipped_lock | timeout) within 2× its expected
- * cadence.
+ * (success | failed | skipped_lock | timeout) within its deadman threshold
+ * (see `deadmanThresholdMs` below — 2× cadence, floored by the success-log
+ * sampling window).
  *
  * intervalMs is the EFFECTIVE WORK cadence, not the setInterval tick cadence
  * ──────────────────────────────────────────────────────────────────────────
@@ -49,7 +50,11 @@ export interface JobRosterEntry {
   /**
    * Effective work cadence in ms — how often the job actually reaches
    * `withJobLock` (the wall-clock cadence for time-gated jobs, the tick
-   * interval for free-running jobs). The deadman threshold is 2× this.
+   * interval for free-running jobs). The deadman threshold is DERIVED from
+   * this by `deadmanThresholdMs` — never compare row ages against this
+   * directly: success rows are sampled (see SUCCESS_LOG_SAMPLE_MS), so the
+   * liveness-ROW cadence of a healthy sub-hourly job is ~hourly even when
+   * its work cadence is minutes.
    */
   intervalMs: number;
   /**
@@ -141,6 +146,44 @@ const HOUR = 60 * MIN;
 const DAY = 24 * HOUR;
 const WEEK = 7 * DAY;
 const MONTH = 30 * DAY;
+
+/**
+ * SUCCESS_LOG_SAMPLE_MS — the success-row sampling window in
+ * `withJobLock` (server/utils/jobRuntime.ts): a job's `success` rows land
+ * in job_health_logs at most once per this window per process (failures
+ * and skipped_lock rows are never sampled). jobRuntime imports THIS
+ * constant — it lives here, in the dependency-free module that owns the
+ * deadman contract, so the sampler and the deadman can never drift apart
+ * again.
+ *
+ * MON-DEF-1 (2026-11-21): this window is the missing term in the original
+ * deadman math. The roster recorded TICK cadences (burn_rate_monitor 5m,
+ * retry_failed_actions / recourse_sweep 30m — matching their scheduler
+ * declarations exactly), but the deadman reads ROWS, and a healthy
+ * always-succeeding job's row cadence is ~SAMPLE + phase, not its tick.
+ * Measured on staging 2026-11-20/21: burn_rate_monitor rows ~65m apart
+ * against a 10m threshold; retry/recourse rows 57–81m apart against 60m —
+ * ~30–67 false job_dark alerts/hour since at least 2026-11-17.
+ */
+export const SUCCESS_LOG_SAMPLE_MS = HOUR;
+
+/**
+ * The deadman threshold for a roster entry, derived from the two sources
+ * of truth that bound a healthy job's liveness-row gap:
+ *
+ *   worst-case healthy row gap ≤ SUCCESS_LOG_SAMPLE_MS + intervalMs
+ *
+ * (a success landing just after a sampled row waits out the rest of the
+ * sampling window; the next row lands at the first tick after it expires).
+ * 2 × max(intervalMs, SAMPLE) is ≥ that bound for every intervalMs, with
+ * headroom — so a job inside this threshold is provably consistent with
+ * healthy, and a job past it is genuinely dark. Sub-hourly jobs get a 2h
+ * threshold (their old 2×-tick thresholds of 10–60m sat INSIDE the healthy
+ * row gap); daily+ jobs keep exactly 2× cadence.
+ */
+export function deadmanThresholdMs(entry: Pick<JobRosterEntry, "intervalMs">): number {
+  return 2 * Math.max(entry.intervalMs, SUCCESS_LOG_SAMPLE_MS);
+}
 
 /**
  * The roster. 118 entries: the 116 distinct `withJobLock` jobs registered in
