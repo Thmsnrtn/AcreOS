@@ -53,7 +53,7 @@ import {
   usePaxNeedsYou,
   type PaxAskItem,
 } from "@/hooks/usePaxNeedsYou";
-import { PAX_CONTROLS_PATH, PAX_LABELS } from "@shared/pax-glossary";
+import { PAX_CONTROLS_PATH, PAX_LABELS } from "@shared/pax-glossary-core";
 import { formatDate } from "@/lib/format";
 import { DisclaimerBanner } from "@/components/disclaimer-banner";
 import { ReadAloudButton } from "@/components/ReadAloudButton";

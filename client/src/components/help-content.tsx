@@ -7,9 +7,9 @@ import {
   PAX_CONTROLS_LABEL,
   PAX_CONTROLS_PATH,
   PAX_LABELS,
-  PAX_PAUSE_COPY,
+  PAX_PAUSE_STILL_WORKS,
   PAX_STANDING_LINE,
-} from "@shared/pax-glossary";
+} from "@shared/pax-glossary-core";
 import {
   Rocket,
   Mail, 
@@ -139,7 +139,7 @@ const faqItems = [
     question: "How do I stop Pax?",
     answer:
       `Open ${PAX_CONTROLS_LABEL} and tap Pause, then choose how long. That stops the things that run without you — workflows, campaign sequences, scheduled prompts, lead scoring, borrower reminder prep.` +
-      ` ${PAX_PAUSE_COPY.stillWorks}` +
+      ` ${PAX_PAUSE_STILL_WORKS}` +
       " The same page lists each of them separately, so you can switch off one thing instead of all of it."
   },
   {
