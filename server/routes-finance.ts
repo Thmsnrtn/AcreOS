@@ -6,6 +6,8 @@ import { storage, db, calculateMonthlyPayment } from "./storage";
 import { z } from "zod";
 import { insertNoteSchema, payments as paymentsTable, paymentReminders, notes as notesTable, contractAssignments, deals as dealsTable, properties as propertiesTable } from "@shared/schema";
 import { eq, and, sql, count, inArray } from "drizzle-orm";
+import { acquiredNotes as acquiredNotesTable, notePayments as acquiredNotePaymentsTable, SELLER_FINANCE_BOOK_ID } from "@shared/schema/notes-vertical";
+import { summarizeAcquiredBook, acquiredDelinquency } from "./services/finance/acquiredBook";
 import { achDebitAttempts } from "@shared/schema/ach-autopay";
 import { realDeal, realNote, realProperty } from "./services/onboarding/sampleFilters";
 import { isAuthenticated } from "./auth";
@@ -1200,6 +1202,13 @@ export function registerFinanceRoutes(app: Express): void {
         if ((err as { statusCode?: number } | null)?.statusCode === 413) throw err;
       }
 
+      // H-DEF-4: the acquired book joins this shared surface, labelled as
+      // its own book — never silently merged into the serviced figures
+      // above (the books differ in money representation and id type).
+      const acquiredRows = await db.select().from(acquiredNotesTable).where(eq(acquiredNotesTable.organizationId, org.id));
+      const acquiredPayments = await db.select().from(acquiredNotePaymentsTable).where(eq(acquiredNotePaymentsTable.organizationId, org.id));
+      const acquiredBook = summarizeAcquiredBook(acquiredRows, acquiredPayments, now);
+
       res.json({
         totalNotes: allNotes.length,
         activeNotes: activeNotes.length,
@@ -1209,6 +1218,23 @@ export function registerFinanceRoutes(app: Express): void {
         averageInterestRate: avgInterestRate,
         statusBreakdown,
         monthlyCashFlow,
+        // Per-book breakdown (H-DEF-4): every figure carries its book.
+        // The pre-existing top-level figures are the seller-finance book,
+        // unchanged for existing clients; `byBook.sellerFinance` restates
+        // them under their label.
+        byBook: {
+          sellerFinance: {
+            book: SELLER_FINANCE_BOOK_ID,
+            totalNotes: allNotes.length,
+            activeNotes: activeNotes.length,
+            totalPortfolioValue,
+            totalMonthlyPayment,
+            totalOriginalPrincipal,
+            delinquentCount,
+            delinquencyRate: Math.round(delinquencyRate * 10) / 10,
+          },
+          acquired: acquiredBook,
+        },
         // Persona-typed additive fields — clients that don't read them keep
         // working unchanged.
         monthlyBreakdownByType,
@@ -1291,19 +1317,39 @@ export function registerFinanceRoutes(app: Express): void {
         });
       });
 
+      const servicedAgingBuckets = {
+        current: { count: agingBuckets.current.length, value: agingBuckets.current.reduce((s, n) => s + Number(n.currentBalance || 0), 0) },
+        days30: { count: agingBuckets.days30.length, value: agingBuckets.days30.reduce((s, n) => s + Number(n.currentBalance || 0), 0) },
+        days60: { count: agingBuckets.days60.length, value: agingBuckets.days60.reduce((s, n) => s + Number(n.currentBalance || 0), 0) },
+        days90Plus: { count: agingBuckets.days90Plus.length, value: agingBuckets.days90Plus.reduce((s, n) => s + Number(n.currentBalance || 0), 0) },
+      };
+
+      // H-DEF-4: the acquired book's delinquency, labelled as its own
+      // book and derived live from nextPaymentDate (never the stored
+      // days_delinquent column — H-DEF-3). Not merged into the serviced
+      // figures above.
+      const acquiredRowsD = await db.select().from(acquiredNotesTable).where(eq(acquiredNotesTable.organizationId, org.id));
+      const acquiredPaymentsD = await db.select().from(acquiredNotePaymentsTable).where(eq(acquiredNotePaymentsTable.organizationId, org.id));
+      const acquiredBookDelinquency = acquiredDelinquency(acquiredRowsD, acquiredPaymentsD, now);
+
       res.json({
         delinquencyRate,
         atRiskAmount,
         totalDelinquentNotes: delinquentNotes.length,
-        agingBuckets: {
-          current: { count: agingBuckets.current.length, value: agingBuckets.current.reduce((s, n) => s + Number(n.currentBalance || 0), 0) },
-          days30: { count: agingBuckets.days30.length, value: agingBuckets.days30.reduce((s, n) => s + Number(n.currentBalance || 0), 0) },
-          days60: { count: agingBuckets.days60.length, value: agingBuckets.days60.reduce((s, n) => s + Number(n.currentBalance || 0), 0) },
-          days90Plus: { count: agingBuckets.days90Plus.length, value: agingBuckets.days90Plus.reduce((s, n) => s + Number(n.currentBalance || 0), 0) },
-        },
+        agingBuckets: servicedAgingBuckets,
         totalPrincipalCollected,
         totalInterestCollected,
         monthlyBreakdown,
+        byBook: {
+          sellerFinance: {
+            book: SELLER_FINANCE_BOOK_ID,
+            delinquencyRate,
+            atRiskAmount,
+            totalDelinquentNotes: delinquentNotes.length,
+            agingBuckets: servicedAgingBuckets,
+          },
+          acquired: acquiredBookDelinquency,
+        },
       });
     } catch (err: any) {
       logger.error("Error getting delinquency metrics", err instanceof Error ? err : undefined);
