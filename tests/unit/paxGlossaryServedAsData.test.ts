@@ -22,7 +22,7 @@
  *      the static server never gives the unhashed asset the 1-year
  *      immutable cache.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import express from "express";
 import fs from "node:fs";
 import os from "node:os";
@@ -33,6 +33,11 @@ import * as glossary from "../../shared/pax-glossary";
 import * as core from "../../shared/pax-glossary-core";
 import { buildPaxGlossary } from "../../client/src/lib/pax-glossary";
 import { stripComments } from "../helpers/stripComments";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
+
+// This suite walks all of client/src (a repo-wide sweep); its cost scales
+// with the tree, so the budget is declared, not inherited.
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 const ROOT = path.join(__dirname, "../..");
 const read = (rel: string): string => fs.readFileSync(path.join(ROOT, rel), "utf8");
