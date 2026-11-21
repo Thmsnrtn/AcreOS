@@ -33,6 +33,7 @@ import { useToast } from "@/hooks/use-toast";
 import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
 import { DecisionQueue, type DecisionItem, type ResolveAction } from "@/components/today/DecisionQueue";
 import { useHiddenRoutes } from "@/hooks/use-hidden-routes";
+import { VerticalSurfaces } from "@/components/today/VerticalSurfaces";
 import { usePaxNeedsYou } from "@/hooks/usePaxNeedsYou";
 import { ReceiptsStrip, type ReceiptItem } from "@/components/today/ReceiptsStrip";
 import { trackEvent } from "@/lib/telemetry";
@@ -856,6 +857,12 @@ export default function TodayPage() {
           the five-doors rule; Today is the ATTENTION door and this is an
           attention item, so it is a card and not a sixth entry. */}
       {!showEmptyState && !todayError && <OutcomePrompt />}
+
+      {/* ── Your vertical's tools (phones only) ──────────────────────── */}
+      {/* The vertical's nav module lives in the sidebar, which phones do
+          not render; this is their path to those pages. Links only, after
+          the day's attention sections. Renders nothing on desktop. */}
+      {!showEmptyState && !todayError && <VerticalSurfaces />}
 
       {/* ── Referral nudge (Tier 2C) ─────────────────────────────────── */}
       {/* Post-first-value only (hasAnyData) and permanently dismissible.
