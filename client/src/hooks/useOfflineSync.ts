@@ -58,6 +58,7 @@ export interface UseOfflineSyncResult {
 // ─── IndexedDB helpers ────────────────────────────────────────────────────────
 
 const DB_NAME = 'acreos-offline';
+const LOG_PREFIX = '[OfflineSync] ';
 // v2: QueuedMutation now carries an idempotencyKey so drain replays
 // collapse to one server-side effect. No store shape changed — the
 // version bump simply forces onupgradeneeded to fire so any future
@@ -86,8 +87,7 @@ export function isOfflineQueuedResponse(
   status: number,
   body: unknown,
 ): boolean {
-  if (status !== 202) return false;
-  if (!body || typeof body !== 'object') return false;
+  if (status !== 202 || !body || typeof body !== 'object') return false;
   const b = body as { offline?: unknown; queued?: unknown };
   return b.offline === true && b.queued === true;
 }
@@ -100,24 +100,23 @@ export function isOfflineQueuedResponse(
  * browser supports it (fires even if this tab closes). Best-effort —
  * failures are swallowed because the next 'online'/mount retries.
  */
+type RegistrationWithSync = ServiceWorkerRegistration & {
+  sync?: { register: (tag: string) => Promise<void> };
+};
+
 export function requestServiceWorkerReplay(): void {
   if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
   try {
-    navigator.serviceWorker.controller?.postMessage({ type: 'REPLAY_OFFLINE_QUEUE' });
-  } catch {
-    /* best effort */
-  }
-  try {
-    void navigator.serviceWorker.ready
-      .then((registration) => {
-        type RegistrationWithSync = ServiceWorkerRegistration & {
-          sync?: { register: (tag: string) => Promise<void> };
-        };
-        return (registration as RegistrationWithSync).sync?.register(OFFLINE_SYNC_TAG);
-      })
+    const sw = navigator.serviceWorker;
+    sw.controller?.postMessage({ type: 'REPLAY_OFFLINE_QUEUE' });
+    // BackgroundSync unsupported → this rejects / sync is undefined and
+    // the postMessage above remains the trigger. Best effort throughout:
+    // the next 'online'/mount retries.
+    void sw.ready
+      .then((registration) => (registration as RegistrationWithSync).sync?.register(OFFLINE_SYNC_TAG))
       .catch(() => undefined);
   } catch {
-    /* BackgroundSync unsupported — postMessage above is the trigger */
+    /* best effort */
   }
 }
 
@@ -145,48 +144,60 @@ async function openDB(): Promise<IDBDatabase> {
   });
 }
 
-async function idbGet<T>(db: IDBDatabase, store: string, key: string): Promise<T | undefined> {
+/**
+ * One transaction wrapper for every store op below (bundle trim,
+ * EL-P1 fix round): when `run` returns a request, the promise settles
+ * on that request; otherwise it settles on transaction completion —
+ * the exact semantics the five hand-rolled wrappers had before.
+ */
+function idbOp<T>(
+  db: IDBDatabase,
+  store: string,
+  mode: IDBTransactionMode,
+  run: (s: IDBObjectStore) => IDBRequest<T> | undefined,
+): Promise<T | undefined> {
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(store, 'readonly');
-    const req = tx.objectStore(store).get(key);
-    req.onsuccess = () => resolve(req.result?.value as T);
-    req.onerror = () => reject(req.error);
+    const tx = db.transaction(store, mode);
+    // A synchronous throw from `run` (e.g. a missing store) rejects the
+    // promise via the executor, matching the old wrappers.
+    const req = run(tx.objectStore(store));
+    if (req) {
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    }
+    tx.oncomplete = () => resolve(undefined);
+    tx.onerror = () => reject(tx.error);
   });
 }
 
+async function idbGet<T>(db: IDBDatabase, store: string, key: string): Promise<T | undefined> {
+  const row = await idbOp<{ value: T }>(db, store, 'readonly', (s) => s.get(key));
+  return row?.value;
+}
+
 async function idbSet(db: IDBDatabase, store: string, key: string, value: unknown): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(store, 'readwrite');
-    tx.objectStore(store).put({ key, value });
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
+  await idbOp(db, store, 'readwrite', (s) => {
+    s.put({ key, value });
   });
 }
 
 async function idbGetAll<T>(db: IDBDatabase, store: string): Promise<T[]> {
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(store, 'readonly');
-    const req = tx.objectStore(store).getAll();
-    req.onsuccess = () => resolve(req.result as T[]);
-    req.onerror = () => reject(req.error);
-  });
+  return (await idbOp<T[]>(db, store, 'readonly', (s) => s.getAll())) ?? [];
+}
+
+async function idbCount(db: IDBDatabase, store: string): Promise<number> {
+  return (await idbOp<number>(db, store, 'readonly', (s) => s.count())) ?? 0;
 }
 
 async function idbDelete(db: IDBDatabase, store: string, key: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(store, 'readwrite');
-    tx.objectStore(store).delete(key);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
+  await idbOp(db, store, 'readwrite', (s) => {
+    s.delete(key);
   });
 }
 
 async function idbAddMutation(db: IDBDatabase, mutation: QueuedMutation): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction('mutations', 'readwrite');
-    tx.objectStore('mutations').put(mutation);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
+  await idbOp(db, 'mutations', 'readwrite', (s) => {
+    s.put(mutation);
   });
 }
 
@@ -195,14 +206,6 @@ function generateIdempotencyKey(): string {
     return crypto.randomUUID();
   }
   return "k-" + Math.random().toString(36).slice(2) + "-" + Date.now().toString(36);
-}
-
-// ─── Fetch helpers ────────────────────────────────────────────────────────────
-
-async function fetchJSON(url: string): Promise<unknown> {
-  const res = await fetch(url, { credentials: 'include' });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-  return res.json();
 }
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
@@ -224,8 +227,9 @@ export function useOfflineSync(): UseOfflineSyncResult {
     const db = dbRef.current;
     if (!db) return;
     try {
-      const all = await idbGetAll<QueuedMutation>(db, 'mutations');
-      setQueuedCount(all.length);
+      // Count via the store's count() instead of materialising every
+      // queued row just to badge their number.
+      setQueuedCount(await idbCount(db, 'mutations'));
     } catch {
       /* best effort */
     }
@@ -242,7 +246,7 @@ export function useOfflineSync(): UseOfflineSyncResult {
         // Seed the queued-count badge so the UI doesn't show "0" on cold mount.
         refreshQueuedCount();
       })
-      .catch((err) => clientLogger.error('[OfflineSync] Failed to open IndexedDB:', err));
+      .catch((err) => clientLogger.error(LOG_PREFIX + 'Failed to open IndexedDB:', err));
   }, [refreshQueuedCount]);
 
   // ── Online/offline listeners ────────────────────────────────────────────────
@@ -265,59 +269,54 @@ export function useOfflineSync(): UseOfflineSyncResult {
     // Mounted while already online with a stale SW queue (e.g. the app
     // was closed when connectivity returned): drain it now.
     if (navigator.onLine) requestServiceWorkerReplay();
+    // Periodic background sync (every 5 min when online).
+    const interval = setInterval(() => {
+      if (navigator.onLine && dbRef.current) {
+        drainMutationQueue(dbRef.current);
+      }
+    }, 5 * 60 * 1000);
     return () => {
       window.removeEventListener('online', onOnline);
       window.removeEventListener('offline', onOffline);
+      clearInterval(interval);
     };
   }, []);
 
   // ── Load cached data from IndexedDB ─────────────────────────────────────────
   async function loadCachedData(db: IDBDatabase) {
     try {
-      const [leads, properties, deals, lastSyncedAt] = await Promise.all([
-        idbGet<unknown[]>(db, 'cache', 'leads'),
-        idbGet<unknown[]>(db, 'cache', 'properties'),
-        idbGet<unknown[]>(db, 'cache', 'deals'),
-        idbGet<string>(db, 'cache', 'lastSyncedAt'),
-      ]);
-      setCachedData({
-        leads: leads ?? [],
-        properties: properties ?? [],
-        deals: deals ?? [],
-        lastSyncedAt: lastSyncedAt ? new Date(lastSyncedAt) : null,
-      });
+      const out: CachedData = { leads: [], properties: [], deals: [], lastSyncedAt: null };
+      await Promise.all(
+        (['leads', 'properties', 'deals'] as const).map(async (key) => {
+          out[key] = (await idbGet<unknown[]>(db, 'cache', key)) ?? [];
+        }),
+      );
+      const lastSyncedAt = await idbGet<string>(db, 'cache', 'lastSyncedAt');
+      out.lastSyncedAt = lastSyncedAt ? new Date(lastSyncedAt) : null;
+      setCachedData(out);
     } catch (err) {
-      clientLogger.warn('[OfflineSync] Could not load cached data:', err);
+      clientLogger.warn(LOG_PREFIX + 'Could not load cached data:', err);
     }
   }
 
   // ── Fetch fresh data from server and cache it ─────────────────────────────
   const fetchAndCache = useCallback(async (db: IDBDatabase) => {
-    const endpoints: Array<{ key: keyof CachedData; url: string }> = [
-      // Caps lowered from 500/500/200 to 200/200/100 — the offline
-      // primer was pulling ~1MB of JSON on every mount and stalling
-      // cold loads on slow cellular. The cached page-1 slice is the
-      // useful "see your recent stuff while offline" data anyway.
-      // `limit` is not a param these routes read (DEFECT-0168): each call
-      // got the default 25 rows while this comment claimed 200. They page
-      // with `pageSize`, capped at 100 by the server.
-      { key: 'leads', url: '/api/leads?page=1&pageSize=100' },
-      { key: 'properties', url: '/api/properties?page=1&pageSize=100' },
-      { key: 'deals', url: '/api/deals?page=1&pageSize=100' },
-    ];
+    // The cached page-1 slice is the useful "see your recent stuff
+    // while offline" data. `limit` is not a param these routes read
+    // (DEFECT-0168): they page with `pageSize`, capped at 100 by the
+    // server. Each route answers with its own collection field, so the
+    // URL and the response field both derive from the cache key.
+    const keys: Array<'leads' | 'properties' | 'deals'> = ['leads', 'properties', 'deals'];
 
     const results: Partial<CachedData> = {};
 
     await Promise.allSettled(
-      endpoints.map(async ({ key, url }) => {
+      keys.map(async (key) => {
         try {
-          const data = await fetchJSON(url);
-          const arr =
-            (data as any)?.leads ??
-            (data as any)?.properties ??
-            (data as any)?.deals ??
-            (data as any)?.data ??
-            [];
+          const res = await fetch(`/api/${key}?page=1&pageSize=100`, { credentials: 'include' });
+          if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+          const data = await res.json();
+          const arr = (data as any)?.[key] ?? (data as any)?.data ?? [];
           results[key] = arr;
           await idbSet(db, 'cache', key, arr);
         } catch {
@@ -329,12 +328,9 @@ export function useOfflineSync(): UseOfflineSyncResult {
     const now = new Date().toISOString();
     await idbSet(db, 'cache', 'lastSyncedAt', now);
 
-    setCachedData((prev) => ({
-      leads: results.leads ?? prev.leads,
-      properties: results.properties ?? prev.properties,
-      deals: results.deals ?? prev.deals,
-      lastSyncedAt: new Date(now),
-    }));
+    // `results` only carries keys whose fetch succeeded, so spreading
+    // it over the previous cache keeps stale data for failed routes.
+    setCachedData((prev) => ({ ...prev, ...results, lastSyncedAt: new Date(now) }));
   }, []);
 
   // ── Drain the mutation queue ─────────────────────────────────────────────────
@@ -366,34 +362,29 @@ export function useOfflineSync(): UseOfflineSyncResult {
           //
           // We swallow errors from apiRequest (which throws on !ok) and
           // mirror the original status-code branching by inspecting
-          // err.message ("404: …", "500: …").
-          let succeeded = false;
-          let isHttpError = false;
-          try {
-            await apiRequest(
-              mutation.method,
-              mutation.url,
-              mutation.body,
-              { idempotencyKey },
-            );
-            succeeded = true;
-          } catch (err) {
-            // apiRequest throws `${status}: ${message}` for HTTP errors.
-            // Anything else (network / abort) means the request never
-            // landed → leave the mutation in the queue and bail.
-            const msg = (err as Error)?.message ?? "";
-            isHttpError = /^\d{3}:/.test(msg);
-            if (!isHttpError) {
-              throw err; // caught below — break the drain loop
-            }
-          }
+          // err.message ("404: …", "500: …"). apiRequest throws
+          // `${status}: ${message}` for HTTP errors; anything else
+          // (network / abort) means the request never landed → rethrow
+          // so the outer catch leaves the mutation queued and bails.
+          const isHttpError = await apiRequest(
+            mutation.method,
+            mutation.url,
+            mutation.body,
+            { idempotencyKey },
+          ).then(
+            () => false,
+            (err) => {
+              if (!/^\d{3}:/.test((err as Error)?.message ?? "")) throw err;
+              return true;
+            },
+          );
 
-          if (succeeded) {
+          if (!isHttpError) {
             await idbDelete(db, 'mutations', mutation.id);
           } else if (mutation.retries >= 3) {
             // Give up after 3 retries on persistent HTTP errors
             await idbDelete(db, 'mutations', mutation.id);
-            clientLogger.warn('[OfflineSync] Dropped mutation after 3 retries:', mutation.url);
+            clientLogger.warn(LOG_PREFIX + 'Dropped mutation after 3 retries:', mutation.url);
           } else {
             // Increment retry count; preserve the idempotencyKey so
             // the next attempt collapses with prior ones server-side.
@@ -414,7 +405,7 @@ export function useOfflineSync(): UseOfflineSyncResult {
       await refreshQueuedCount();
       setSyncStatus('idle');
     } catch (err) {
-      clientLogger.error('[OfflineSync] Drain error:', err);
+      clientLogger.error(LOG_PREFIX + 'Drain error:', err);
       setSyncStatus('error');
     }
   }, [fetchAndCache, refreshQueuedCount]);
@@ -427,15 +418,11 @@ export function useOfflineSync(): UseOfflineSyncResult {
       setSyncStatus('offline');
       return;
     }
-    setSyncStatus('syncing');
-    try {
-      await drainMutationQueue(db);
-      await fetchAndCache(db);
-      setSyncStatus('idle');
-    } catch {
-      setSyncStatus('error');
-    }
-  }, [drainMutationQueue, fetchAndCache]);
+    // drainMutationQueue already sets syncing/idle/error and finishes
+    // with fetchAndCache + refreshQueuedCount; the extra pass this
+    // wrapper used to make was a duplicate fetch of all three routes.
+    await drainMutationQueue(db);
+  }, [drainMutationQueue]);
 
   // ── queueMutation ────────────────────────────────────────────────────────────
   const queueMutation = useCallback(
@@ -466,16 +453,6 @@ export function useOfflineSync(): UseOfflineSyncResult {
     },
     [drainMutationQueue, refreshQueuedCount]
   );
-
-  // ── Periodic background sync (every 5 min when online) ───────────────────
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (navigator.onLine && dbRef.current) {
-        drainMutationQueue(dbRef.current);
-      }
-    }, 5 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, [drainMutationQueue]);
 
   return { isOnline, cachedData, syncStatus, forceSync, queueMutation, queuedCount };
 }

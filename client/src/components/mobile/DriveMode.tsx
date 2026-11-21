@@ -34,7 +34,6 @@ interface GpsFix {
   lat: number;
   lng: number;
   accuracy: number;
-  capturedAt: number;
 }
 
 interface SavedLead {
@@ -68,7 +67,6 @@ function useGpsWatch() {
           lat: pos.coords.latitude,
           lng: pos.coords.longitude,
           accuracy: pos.coords.accuracy,
-          capturedAt: Date.now(),
         });
         setPending(false);
         setError(null);
@@ -103,6 +101,29 @@ function haptic(ms = 20) {
   }
 }
 
+/** Shared shell for the session-status cards under the action stack. */
+function SessionCard({
+  testId,
+  className,
+  children,
+}: {
+  testId?: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Card className={className} data-testid={testId}>
+      <CardContent className="py-4 text-sm text-muted-foreground">{children}</CardContent>
+    </Card>
+  );
+}
+
+const ringClass =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+
+// Shared tail of the two offline-queue messages (toast + notice).
+const QUEUED_TAIL = "will save automatically when you're back online.";
+
 export function DriveMode() {
   const { isMobile } = useIsMobile();
   const [, setLocation] = useLocation();
@@ -119,7 +140,7 @@ export function DriveMode() {
   // current point, then prepends the result to the recent list.
   const saveCurrentLocation = async () => {
     if (!fix || saving) return;
-    haptic(20);
+    haptic();
     setSaving(true);
     try {
       const res = await apiRequest("POST", "/api/field-scout/quick-add", {
@@ -138,8 +159,7 @@ export function DriveMode() {
         setQueuedCount((n) => n + 1);
         toast({
           title: "Lead queued — not saved yet",
-          description:
-            "You're offline. This stop is queued on this phone and will save automatically when you're back online.",
+          description: `You're offline. This stop is queued on this phone and ${QUEUED_TAIL}`,
         });
         return;
       }
@@ -222,16 +242,20 @@ export function DriveMode() {
   // bounding-box around the current point so the map renders the right
   // area at street level.
   const mapCentroid = fix ? { lat: fix.lat, lng: fix.lng } : null;
+  // Tiny closed ring around the fix: SW, SE, NE, NW corners at
+  // ±0.0005°, then back to SW to close the polygon.
   const mapBoundary = fix
     ? {
         type: "Polygon" as const,
-        coordinates: [[
-          [fix.lng - 0.0005, fix.lat - 0.0005],
-          [fix.lng + 0.0005, fix.lat - 0.0005],
-          [fix.lng + 0.0005, fix.lat + 0.0005],
-          [fix.lng - 0.0005, fix.lat + 0.0005],
-          [fix.lng - 0.0005, fix.lat - 0.0005],
-        ]],
+        coordinates: [
+          [
+            [-1, -1],
+            [1, -1],
+            [1, 1],
+            [-1, 1],
+            [-1, -1],
+          ].map(([dx, dy]) => [fix.lng + dx * 0.0005, fix.lat + dy * 0.0005]),
+        ],
       }
     : null;
 
@@ -250,7 +274,7 @@ export function DriveMode() {
           type="button"
           onClick={() => setLocation("/")}
           aria-label="Exit Drive Mode"
-          className="h-10 w-10 -ml-2 flex items-center justify-center rounded-full text-muted-foreground active:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className={`h-10 w-10 -ml-2 flex items-center justify-center rounded-full text-muted-foreground active:bg-muted/50 ${ringClass}`}
           data-testid="drive-mode-back"
         >
           <ArrowLeft className="h-5 w-5" aria-hidden />
@@ -352,21 +376,17 @@ export function DriveMode() {
           Recent saves
         </h2>
         {queuedCount > 0 ? (
-          <Card className="mb-2" data-testid="drive-mode-queued-notice">
-            <CardContent className="py-4 text-sm text-muted-foreground">
-              {queuedCount} {queuedCount === 1 ? "stop is" : "stops are"} queued
-              on this phone — not saved yet. {queuedCount === 1 ? "It" : "They"}{" "}
-              will save automatically when you're back online.
-            </CardContent>
-          </Card>
+          <SessionCard testId="drive-mode-queued-notice" className="mb-2">
+            {queuedCount} {queuedCount === 1 ? "stop is" : "stops are"} queued
+            on this phone — not saved yet. {queuedCount === 1 ? "It" : "They"}{" "}
+            {QUEUED_TAIL}
+          </SessionCard>
         ) : null}
         {recent.length === 0 ? (
-          <Card>
-            <CardContent className="py-4 text-sm text-muted-foreground">
-              Saves from this session show up here. Tap the big button to
-              capture the address you're parked in front of.
-            </CardContent>
-          </Card>
+          <SessionCard>
+            Saves from this session show up here. Tap the big button to
+            capture the address you're parked in front of.
+          </SessionCard>
         ) : (
           <ul className="space-y-2" data-testid="drive-mode-recent-list">
             {recent.map((r) => (
@@ -374,7 +394,7 @@ export function DriveMode() {
                 <button
                   type="button"
                   onClick={() => setLocation(`/leads/${r.id}`)}
-                  className="w-full text-left rounded-xl border border-border bg-card px-4 py-3 active:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className={`w-full text-left rounded-xl border border-border bg-card px-4 py-3 active:bg-muted/40 ${ringClass}`}
                   aria-label={`Open lead ${r.id}`}
                 >
                   <div className="text-sm font-medium">
