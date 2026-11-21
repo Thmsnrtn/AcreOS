@@ -44,7 +44,7 @@ import {
   usePaxAskActions,
   usePaxAskById,
 } from "@/hooks/usePaxNeedsYou";
-import { PAX_LABELS, PAX_STANDING_LINE } from "@shared/pax-glossary";
+import { PAX_LABELS, PAX_STANDING_LINE } from "@shared/pax-glossary-core";
 import { useReadAloud } from "@/hooks/useReadAloud";
 import { useReadAloudPrefs } from "@/hooks/useReadAloud.prefs";
 import { apiRequest } from "@/lib/queryClient";

@@ -167,7 +167,20 @@ async function click(el: HTMLElement | null) {
   await flush();
 }
 
+// BD-6: the page's long copy arrives by fetch from the static asset
+// /pax-glossary.json. The stub serves the committed asset verbatim — the
+// same bytes production serves — so the rendered-text assertions below
+// still judge the real glossary strings.
+const GLOSSARY_JSON = fs.readFileSync(path.join(ROOT, "shared/pax-glossary.json"), "utf8");
+
 beforeEach(() => {
+  vi.stubGlobal("fetch", async (input: unknown) => {
+    const url = typeof input === "string" ? input : (input as { url: string }).url;
+    if (url === "/pax-glossary.json") {
+      return new Response(GLOSSARY_JSON, { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    throw new Error(`unexpected fetch ${url}`);
+  });
   toasts.length = 0;
   apiRequest.mockReset();
   queryClient.clear();
@@ -177,6 +190,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.unstubAllGlobals();
   act(() => {
     root.unmount();
   });
@@ -257,7 +271,8 @@ describe("stance labels and sentences come from the glossary", () => {
 
   it("the page source carries no inline stance label — only the glossary import", () => {
     const src = read(PAGE_REL);
-    expect(src).toContain('from "@shared/pax-glossary"');
+    expect(src).toContain('from "@/lib/pax-glossary"');
+    expect(src).not.toContain('from "@shared/pax-glossary"');
     for (const s of OFFERED_STANCES) {
       const label = PAX_STANCE_COPY[s].label;
       for (const quoted of [`"${label}"`, `'${label}'`, `\`${label}\``, `>${label}<`]) {

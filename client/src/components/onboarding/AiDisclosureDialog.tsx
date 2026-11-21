@@ -29,7 +29,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
-import { PAX_CONTROLS_PATH, PAX_LABELS } from "@shared/pax-glossary";
+import { PAX_CONTROLS_PATH, PAX_LABELS } from "@shared/pax-glossary-core";
 import {
   Dialog,
   DialogContent,
