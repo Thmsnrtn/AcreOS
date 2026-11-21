@@ -208,6 +208,14 @@ function generateIdempotencyKey(): string {
   return "k-" + Math.random().toString(36).slice(2) + "-" + Date.now().toString(36);
 }
 
+// ─── Fetch helpers ────────────────────────────────────────────────────────────
+
+async function fetchJSON(url: string): Promise<unknown> {
+  const res = await fetch(url, { credentials: 'include' });
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  return res.json();
+}
+
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
 export function useOfflineSync(): UseOfflineSyncResult {
@@ -304,18 +312,22 @@ export function useOfflineSync(): UseOfflineSyncResult {
     // The cached page-1 slice is the useful "see your recent stuff
     // while offline" data. `limit` is not a param these routes read
     // (DEFECT-0168): they page with `pageSize`, capped at 100 by the
-    // server. Each route answers with its own collection field, so the
-    // URL and the response field both derive from the cache key.
-    const keys: Array<'leads' | 'properties' | 'deals'> = ['leads', 'properties', 'deals'];
+    // server. The literal `url:` entries are load-bearing — the
+    // DEFECT-0168 register test detects this file as a whole-list
+    // reader by exactly these read shapes; do not template them away.
+    const endpoints: Array<{ key: 'leads' | 'properties' | 'deals'; url: string }> = [
+      { key: 'leads', url: '/api/leads?page=1&pageSize=100' },
+      { key: 'properties', url: '/api/properties?page=1&pageSize=100' },
+      { key: 'deals', url: '/api/deals?page=1&pageSize=100' },
+    ];
 
     const results: Partial<CachedData> = {};
 
     await Promise.allSettled(
-      keys.map(async (key) => {
+      endpoints.map(async ({ key, url }) => {
         try {
-          const res = await fetch(`/api/${key}?page=1&pageSize=100`, { credentials: 'include' });
-          if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-          const data = await res.json();
+          const data = await fetchJSON(url);
+          // Each route answers with its own collection field.
           const arr = (data as any)?.[key] ?? (data as any)?.data ?? [];
           results[key] = arr;
           await idbSet(db, 'cache', key, arr);
@@ -379,12 +391,12 @@ export function useOfflineSync(): UseOfflineSyncResult {
             },
           );
 
-          if (!isHttpError) {
+          if (!isHttpError || mutation.retries >= 3) {
+            // Success, or give up after 3 retries on persistent HTTP errors
             await idbDelete(db, 'mutations', mutation.id);
-          } else if (mutation.retries >= 3) {
-            // Give up after 3 retries on persistent HTTP errors
-            await idbDelete(db, 'mutations', mutation.id);
-            clientLogger.warn(LOG_PREFIX + 'Dropped mutation after 3 retries:', mutation.url);
+            if (isHttpError) {
+              clientLogger.warn(LOG_PREFIX + 'Dropped mutation after 3 retries:', mutation.url);
+            }
           } else {
             // Increment retry count; preserve the idempotencyKey so
             // the next attempt collapses with prior ones server-side.

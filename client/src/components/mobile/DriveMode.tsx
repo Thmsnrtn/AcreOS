@@ -420,5 +420,3 @@ export function DriveMode() {
     </div>
   );
 }
-
-export default DriveMode;
