@@ -247,10 +247,12 @@ export type CircuitBreakerStateRow = typeof circuitBreakerState.$inferSelect;
 // ============================================
 // DEADMAN PAGE STATE (Tier 1H — persisted re-page throttle)
 // ============================================
-// One row per roster job. server/jobs/deadmanCheck.ts throttles on-call
-// re-pages to once/hour per dark job; this table persists the last-paged
-// timestamp so a deploy mid-incident doesn't reset the throttle and re-page
-// every still-dark job.
+// One row per roster job. server/jobs/deadmanCheck.ts persists the last
+// FULL-severity alert timestamp of a job's current dark episode here
+// (MON-DEF-1 widened the original last-paged meaning): it seeds the
+// spine's page throttle across deploys AND opens the episode's 24h
+// page-once-then-digest window. The row is deleted when the job is
+// observed alive again, so the next episode alerts fresh.
 
 export const deadmanPageState = pgTable("deadman_page_state", {
   jobName: text("job_name").primaryKey(),

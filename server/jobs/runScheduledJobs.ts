@@ -1912,7 +1912,7 @@ function startDispatchReaperJob() {
 function startProofChainAuditJob() {
   const ONE_DAY = 24 * 60 * 60 * 1000;
   log('Registering proof-receipt chain audit (daily)', 'sovereign');
-  trackInterval(async () => {
+  const runOnce = async () => {
     // Daily — TTL = 23h (≈90% of cadence).
     withJobLock("proof_chain_audit", 23 * 60 * 60, async () => {
       const { auditAllReceiptChains } = await import('../services/autopilot/proofReceiptStore');
@@ -1932,7 +1932,22 @@ function startProofChainAuditJob() {
     }).catch((err: any) => {
       log(`[proof-chain-audit] failed: ${err?.message ?? err}`, 'sovereign');
     });
-  }, ONE_DAY);
+  };
+
+  // MON-DEF-1: first run 5 minutes after boot, then daily. This was the
+  // only daily job in this file with NO boot-time first run — a bare 24h
+  // interval whose first fire lands a full day after every worker boot
+  // and resets on every restart, so any worker generation shorter than
+  // 24h starved it indefinitely (staging runs: Oct 31, Nov 4, Nov 11 —
+  // weekly-ish against a daily registration; the registration was right,
+  // the schedule mechanism was wrong). Every peer job here
+  // (recourse_sweep, data_source_probe, burn_rate_monitor) pairs its
+  // interval with a boot run; this one now does too. The audit is a
+  // read-only verification, so an extra boot run on a deploy-heavy day
+  // is harmless — and the lock keeps two live generations from running
+  // it concurrently.
+  setTimeout(runOnce, 5 * 60 * 1000);
+  trackInterval(runOnce, ONE_DAY);
 }
 
 /**
