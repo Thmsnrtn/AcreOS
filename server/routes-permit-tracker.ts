@@ -25,7 +25,7 @@
 
 import type { Express, Response } from "express";
 import { z } from "zod";
-import { and, eq, sql, lte, asc, gt } from "drizzle-orm";
+import { and, eq, sql, lte, asc, gt, inArray } from "drizzle-orm";
 import { db } from "./db";
 import {
   permitChecklists,
@@ -230,13 +230,21 @@ export function registerPermitTrackerRoutes(app: Express): void {
         if (checklists.length === 0) return res.json({ checklists: [] });
 
         // Fetch all gates for these checklists in a single query.
+        // inArray, not raw `= ANY(${ids}::uuid[])` — drizzle binds a JS
+        // array inside sql`` as a parenthesised parameter list, so
+        // Postgres received ANY(($2, $3)::uuid[]) and rejected the
+        // record-to-uuid[] cast, 500ing this read whenever at least one
+        // checklist existed (SD-DEF-1, Subdivider journey walk
+        // 2026-11-20; same shape as the /founder/build and creditPool
+        // incidents documented in routes-team-system-audit.ts and
+        // services/creditPool.ts).
         const ids = checklists.map((c) => c.id);
         const gates = await db
           .select()
           .from(permitGates)
           .where(and(
             eq(permitGates.organizationId, orgId),
-            sql`${permitGates.checklistId} = ANY(${ids}::uuid[])`,
+            inArray(permitGates.checklistId, ids),
           ))
           .orderBy(asc(permitGates.sequence));
 
