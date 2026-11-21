@@ -762,6 +762,10 @@ export interface MappedNoteFields {
 
 const DEFAULT_TERM_MONTHS = 120; // 10yr — the common land-contract default
 const DEFAULT_INTEREST_RATE = 0; // operator must set a real rate on the confirm screen
+// H-DEF-2: those two fallbacks are the MAPPER's contract only. The carry
+// route refuses a carry whose rate/term would come from them (see
+// missingCarryTerms below) — a platform default must never be written to
+// a note as if it were a fact about the deal.
 
 /**
  * Add `months` calendar months to a date, clamping the day for short months.
@@ -843,6 +847,33 @@ export function mapDealToNoteFields(
     // operator originates.
     status: "pending",
   };
+}
+
+/** Money terms a carry can only take from the deal or the operator. */
+export type CarryTermField = "interestRate" | "termMonths";
+
+/**
+ * H-DEF-2 — which money terms a carry would have to take from the platform
+ * defaults (DEFAULT_INTEREST_RATE / DEFAULT_TERM_MONTHS) because NEITHER
+ * the deal's saved analysis NOR the operator's confirm-screen overrides
+ * supply them. Pure, mirroring the mapper's own fallback chain field by
+ * field. An explicitly supplied 0% rate (override or deal analysis) is a
+ * recorded fact, not a default, and is NOT missing. The carry route
+ * refuses when this is non-empty — the same discipline as POST /api/notes
+ * (STR-020: reject missing terms instead of persisting invented ones).
+ */
+export function missingCarryTerms(
+  deal: CarryableDeal,
+  overrides: CarryOverrides,
+): CarryTermField[] {
+  const missing: CarryTermField[] = [];
+  if (overrides.interestRate == null && deal.analysisResults?.interestRate == null) {
+    missing.push("interestRate");
+  }
+  if (overrides.termMonths == null && deal.analysisResults?.holdingPeriodMonths == null) {
+    missing.push("termMonths");
+  }
+  return missing;
 }
 
 // ─── Yield math ──────────────────────────────────────────────────────────────
@@ -3625,20 +3656,33 @@ export function registerNoteRoutes(app: Express): void {
           }
         }
 
-        const mapped = mapDealToNoteFields(
-          {
-            id: deal.id,
-            organizationId: deal.organizationId,
-            propertyId: deal.propertyId,
-            status: deal.status,
-            type: deal.type,
-            offerAmount: deal.offerAmount,
-            acceptedAmount: deal.acceptedAmount,
-            closingDate: deal.closingDate,
-            analysisResults: deal.analysisResults ?? null,
-          },
-          overrides,
-        );
+        const carryableDeal = {
+          id: deal.id,
+          organizationId: deal.organizationId,
+          propertyId: deal.propertyId,
+          status: deal.status,
+          type: deal.type,
+          offerAmount: deal.offerAmount,
+          acceptedAmount: deal.acceptedAmount,
+          closingDate: deal.closingDate,
+          analysisResults: deal.analysisResults ?? null,
+        };
+
+        // H-DEF-2: a deal that records no rate/term must not originate a
+        // note on the platform defaults (0% / 120mo) as if they were the
+        // deal's terms. The operator supplies them explicitly — the
+        // confirm screen already sends both on every carry — or the
+        // carry is refused naming what is missing. No note is created.
+        const missingTerms = missingCarryTerms(carryableDeal, overrides);
+        if (missingTerms.length > 0) {
+          return Errors.badRequest(
+            res,
+            `${missingTerms.join(" and ")} ${missingTerms.length > 1 ? "are" : "is"} required to carry this deal into a note — the deal does not record ${missingTerms.length > 1 ? "them" : "it"}, so supply ${missingTerms.length > 1 ? "them" : "it"} explicitly instead of originating on platform defaults`,
+            { missingTerms, dealId },
+          );
+        }
+
+        const mapped = mapDealToNoteFields(carryableDeal, overrides);
 
         const note = await storage.createNote(mapped as unknown as InsertNote);
 
