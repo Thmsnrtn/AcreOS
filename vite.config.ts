@@ -497,6 +497,50 @@ function tnBoundariesPlugin(): Plugin {
   };
 }
 
+// The Pax glossary's long copy (shared/pax-glossary.json, ~15 KB of static
+// reference text generated verbatim from shared/pax-glossary.ts by
+// scripts/pax-glossary-asset.mts) is data, not code. It used to ride inside
+// the entry chunk as shared/pax-glossary.ts (16,714 B rendered) because the
+// shell surfaces import the glossary's labels. The shell subset now lives in
+// shared/pax-glossary-core.ts (bundled, synchronous), and the long copy
+// ships as this static asset: the one fetch-tolerant consumer, the
+// Settings → Pax page, loads it via client/src/lib/pax-glossary.tsx —
+// shell first, text on arrival (the #524 learn-content discipline). The
+// server keeps importing the TS module directly and is untouched. This
+// plugin is only the Vite wiring: it copies the JSON VERBATIM into
+// dist/public/ at build end (the production static server serves it from
+// there) and serves the same URL from disk under the dev server so dev
+// behaviour is unchanged.
+const PAX_GLOSSARY_URL = "/pax-glossary.json";
+function paxGlossaryPlugin(): Plugin {
+  const rootDir = path.resolve(import.meta.dirname);
+  const sourcePath = path.join(rootDir, "shared", "pax-glossary.json");
+  let outDir = path.resolve(rootDir, "dist/public");
+  return {
+    name: "acreos-pax-glossary",
+    configResolved(config) {
+      outDir = config.build.outDir;
+    },
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        if ((req.url ?? "").split("?")[0] !== PAX_GLOSSARY_URL) return next();
+        res.setHeader("Content-Type", "application/json");
+        const stream = fs.createReadStream(sourcePath);
+        stream.on("error", () => {
+          res.statusCode = 404;
+          res.end();
+        });
+        stream.pipe(res);
+      });
+    },
+    closeBundle() {
+      const dest = path.join(outDir, PAX_GLOSSARY_URL.replace(/^\//, ""));
+      fs.mkdirSync(path.dirname(dest), { recursive: true });
+      fs.copyFileSync(sourcePath, dest);
+    },
+  };
+}
+
 // Phase 8 Mo 12 — Beatriz §3 bundle-analyzer.
 // Enabled when ANALYZE=1 (CI / one-off `npm run build:analyze`).
 // In normal builds the plugin is excluded so the prod bundle is unaffected.
@@ -538,7 +582,7 @@ export type BuildOutput = "customer" | "founder";
 // Plugins that only serve customer pages: the /learn corpus and the TN boundary
 // shapes are copied into dist/public, and nothing in the founder build imports
 // them.
-const CUSTOMER_ONLY_PLUGIN_NAMES = new Set(["acreos-learn-content", "acreos-tn-boundaries"]);
+const CUSTOMER_ONLY_PLUGIN_NAMES = new Set(["acreos-learn-content", "acreos-tn-boundaries", "acreos-pax-glossary"]);
 
 export function buildConfig(output: BuildOutput): UserConfig {
   const isFounder = output === "founder";
@@ -588,6 +632,7 @@ export function buildConfig(output: BuildOutput): UserConfig {
     zodJsonSchemaProcessorsPlugin(),
     learnContentPlugin(),
     tnBoundariesPlugin(),
+    paxGlossaryPlugin(),
     chunkGraphPlugin(isFounder ? FOUNDER_CHUNK_GRAPH_FILE : CUSTOMER_CHUNK_GRAPH_FILE),
     // Pre-compress build output (gzip + brotli) so static-serve can deliver
     // already-compressed bytes. Sidesteps the HTTP/2 + `compression`

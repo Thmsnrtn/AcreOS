@@ -67,11 +67,6 @@
     },
     {
       "kind": "export",
-      "id": "shared/pax-glossary.ts::PAX_FIXED_RULES",
-      "reason": "TEST-INTROSPECTION SEAM (same category as redemptionDeadlineFromAnchor). The constant is composed into three other glossary exports inside this module, so it has no external PRODUCTION consumer by construction. It is exported so paxControlsPage.test.ts can pin the cadences the page prints against the jobs that actually run them ('every 15 min' for lead scoring, 'every 30 min' for borrower reminders, '8 am-9 pm' for texts) \u2014 a number the customer reads must be checkable against the registry that produces it. REVOCATION: if a client or server module imports it directly, this entry is unnecessary; remove it."
-    },
-    {
-      "kind": "export",
       "id": "shared/schema.ts::paxDrafts",
       "reason": "AWAITING A FOUNDER-AUTHORISED DROP. Customer-autonomy wave 1 deleted the last reader and the last writer of pax_drafts (server/services/paxDraftService.ts and the first-follow-up approve-and-send route, per AUTONOMY_SPEC.md Section 3d), which is exactly the zero-reader condition Section 4.1 named as the precondition for the drop migration. The drop is NOT taken here: the table holds customer-authored draft content, and deleting customer data is a founder-only hard-stop (CLAUDE.md DO-NOT-DO list). REVOCATION: the founder authorises the drop, the migration lands, and all three pax_drafts entries go with the table."
     },
