@@ -12,6 +12,16 @@
  *     source (migration 0302).
  *   - A note whose aging is not determinable enters no stage (unknown is not
  *     late). Terminal notes (paid off, sold) never enter or move.
+ *   - The ladder's CURRENT stage is DERIVED LIVE at read (H-DEF-3 cure):
+ *     `buildLadderView` runs the schedule service's own
+ *     `computeNoteDelinquency` over the note's next payment date as of now,
+ *     and never reads the stored `days_delinquent` column. That column is
+ *     refreshed only by a payment posting or the daily sweep, and tape
+ *     import writes neither — a note imported 32 days past due read
+ *     "current / 0 days" until a payment happened to recompute it. The
+ *     stored next payment date IS a maintained fact (stated on the tape at
+ *     import, recomputed by the payment path and the sweep), so it stays
+ *     the derivation's input; only the day count is derived at read.
  *   - THE NO-SENDS FENCE: nothing here writes a reminder, a notice, a letter,
  *     a message or an outbox row; nothing calls the legacy book's dunning
  *     ladder or borrowerNotices; nothing starts a clock against a borrower.
@@ -29,6 +39,7 @@ import {
   type LadderStage,
 } from "@shared/notes/delinquency";
 import { checkExtendAndPretend } from "@shared/notes/extendAndPretend";
+import { computeNoteDelinquency } from "./acquiredNoteSchedule";
 import type { EscalationBundle, LadderView } from "@shared/notes/delinquencyLadderView";
 import { db } from "../../db";
 import { clock } from "../../utils/clock";
@@ -53,6 +64,18 @@ export interface LadderSweepInput {
 }
 
 type Executor = Pick<typeof db, "select" | "insert">;
+
+/**
+ * Days past due RIGHT NOW for a note whose next payment date is
+ * determinable — the one derivation (`computeNoteDelinquency`, the same
+ * function the aging sweep and the payment path use), applied at read.
+ * Callers branch on `delinquencyIsDeterminable` first: for an
+ * undeterminable date this returns the derivation's neutral 0, which is
+ * not a finding and must never be shown or recorded as one.
+ */
+function liveDaysDelinquent(nextPaymentDate: string | null, asOf: Date): number {
+  return computeNoteDelinquency({ nextPaymentDate, asOf }).daysDelinquent;
+}
 
 async function latestStageRow(organizationId: number, noteId: string, executor: Executor = db) {
   const [row] = await executor
@@ -116,7 +139,7 @@ export class DefaultReviewRefused extends Error {}
 /** The operator records default review. Once per note; terminal notes refuse. Null = not this org's note. */
 export async function recordDefaultReview(params: { organizationId: number; noteId: string; userId: string; note: string | null }) {
   const [n] = await db
-    .select({ id: acquiredNotes.id, status: acquiredNotes.status, daysDelinquent: acquiredNotes.daysDelinquent, nextPaymentDate: acquiredNotes.nextPaymentDate })
+    .select({ id: acquiredNotes.id, status: acquiredNotes.status, nextPaymentDate: acquiredNotes.nextPaymentDate })
     .from(acquiredNotes)
     .where(and(eq(acquiredNotes.id, params.noteId), eq(acquiredNotes.organizationId, params.organizationId)))
     .limit(1);
@@ -139,7 +162,10 @@ export async function recordDefaultReview(params: { organizationId: number; note
       eventDate: clock.now().toISOString().slice(0, 10),
       detail: {
         operatorNote: params.note,
-        daysDelinquentAtRecording: delinquencyIsDeterminable(n.nextPaymentDate) ? n.daysDelinquent : null,
+        // A recorded fact about the recording moment, so it is derived live
+        // like the ladder view (H-DEF-3) — the stored column may predate any
+        // refresh and would stamp the stale count into an append-only event.
+        daysDelinquentAtRecording: delinquencyIsDeterminable(n.nextPaymentDate) ? liveDaysDelinquent(n.nextPaymentDate, clock.now()) : null,
         recordedStageAtRecording: (latest?.detail as { stage?: string } | undefined)?.stage ?? null,
       },
       source: "operator_recorded",
@@ -182,13 +208,18 @@ export async function buildLadderView(organizationId: number, noteId: string): P
   if (TERMINAL.has(n.status)) reason = `This note is ${n.status.replace(/_/g, " ")}; it is off the ladder.`;
   else if (!delinquencyIsDeterminable(n.nextPaymentDate)) reason = "Aging not determinable: the note has no derivable next payment date (missing schedule facts or paid through maturity). Unknown is not late.";
   else {
-    const stage = ladderStageFor(n.daysDelinquent);
-    current = { stage, label: LADDER_STAGE_LABEL[stage], daysDelinquent: n.daysDelinquent, nextPaymentDate: n.nextPaymentDate, paidThroughDate: n.paidThroughDate };
+    // H-DEF-3: derive the day count live from the stored next payment date.
+    // Reading `n.daysDelinquent` here reported the column's last refresh —
+    // for a freshly imported note, the schema default 0 ("current") — as
+    // the note's present state.
+    const daysDelinquent = liveDaysDelinquent(n.nextPaymentDate, clock.now());
+    const stage = ladderStageFor(daysDelinquent);
+    current = { stage, label: LADDER_STAGE_LABEL[stage], daysDelinquent, nextPaymentDate: n.nextPaymentDate, paidThroughDate: n.paidThroughDate };
   }
   const last = recorded.at(-1) ?? null;
   const disagreement =
     current && last && last.stage !== current.stage
-      ? { recordedStage: last.stage, currentStage: current.stage, note: "The note's stored aging facts now give a different stage than the last one recorded. The next aging run records the entry; until then both are shown." }
+      ? { recordedStage: last.stage, currentStage: current.stage, note: "The note's aging, derived live from its next payment date, now gives a different stage than the last one recorded. The next aging run records the entry; until then both are shown." }
       : null;
   return { noteId, onLadder: current !== null, reason, current, recorded, disagreement, defaultReview, escalates: current !== null && ladderStageEscalates(current.stage) };
 }
