@@ -25,7 +25,7 @@
  * never a silently shorter legal document (empty-on-failure discipline).
  */
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import DOMPurify from "isomorphic-dompurify";
 import { useLocation } from "wouter";
@@ -60,10 +60,9 @@ export function LegalDocBody({
     fetchLegalDoc(url)
       .then((raw) => {
         if (cancelled) return;
-        // The asset opens with an editor-facing HTML comment; it is not
-        // document content and never reaches the DOM.
-        const body = raw.replace(/<!--[\s\S]*?-->/g, "");
-        setHtml(substituteLegalTokens(body, substitutions));
+        // The asset opens with an editor-facing HTML comment; DOMPurify
+        // drops comment nodes, so it never reaches the DOM.
+        setHtml(substituteLegalTokens(raw, substitutions));
       })
       .catch(() => {
         if (!cancelled) setFailed(true);
@@ -76,19 +75,18 @@ export function LegalDocBody({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [url]);
 
-  const sanitized = useMemo(
-    () => (html === null ? null : DOMPurify.sanitize(html)),
-    [html],
-  );
-
-  // Find the support-button slot once the body is in the DOM.
+  // Find the support-button slot once the body is in the DOM. Keyed off
+  // the substituted `html` state: the sanitize call lives inline at the
+  // sink below (the sink gate's legible shape), so there is no memoised
+  // sanitized value to key off — this effect runs after that render, so
+  // the container already holds the sanitized body when it queries.
   useEffect(() => {
-    if (sanitized === null) return;
+    if (html === null) return;
     setSlot(
       containerRef.current?.querySelector("[data-support-feedback-slot]") ??
         null,
     );
-  }, [sanitized]);
+  }, [html]);
 
   const onClick = (event: React.MouseEvent) => {
     const anchor = (event.target as HTMLElement).closest?.(
@@ -113,7 +111,7 @@ export function LegalDocBody({
       </p>
     );
   }
-  if (sanitized === null) return null;
+  if (html === null) return null;
   return (
     <>
       <div
@@ -124,7 +122,7 @@ export function LegalDocBody({
         // space-y-8 CardContent; the wrapper carries the same spacing
         // so the section rhythm is unchanged.
         className="space-y-8"
-        dangerouslySetInnerHTML={{ __html: sanitized }}
+        dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(html) }}
       />
       {slot ? createPortal(supportFeedbackButton, slot) : null}
     </>

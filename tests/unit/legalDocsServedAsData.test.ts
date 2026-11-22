@@ -146,12 +146,26 @@ describe("the loader fetches the served assets and fails loudly", () => {
 describe("the component sanitizes, portals and routes like the JSX did", () => {
   it("sanitizes the fetched HTML before innerHTML", () => {
     expect(body).toMatch(/DOMPurify\.sanitize\(html\)/);
-    expect(body).toMatch(/dangerouslySetInnerHTML=\{\{ __html: sanitized \}\}/);
+    // The sanitize call is inline at the sink itself — the sink gate
+    // (noDataReachesTheDomAsHtml) accepts only a literal
+    // DOMPurify.sanitize(...) call (or a constant) as the __html value,
+    // never a variable holding a memoised result.
+    expect(body).toMatch(
+      /dangerouslySetInnerHTML=\{\{ __html: DOMPurify\.sanitize\(html\) \}\}/,
+    );
+    expect(body).not.toMatch(/__html: sanitized/);
+    // No home-grown comment-strip regex: DOMPurify drops comment nodes
+    // itself (a regex strip is the CodeQL
+    // js/incomplete-multi-character-sanitization shape).
+    expect(body).not.toMatch(/replace\(\/<!--/);
   });
 
   it("portals the support button into the asset's slot", () => {
     expect(body).toMatch(/querySelector\("\[data-support-feedback-slot\]"\)/);
     expect(body).toMatch(/createPortal\(supportFeedbackButton, slot\)/);
+    // The slot lookup keys off the substituted `html` state (there is no
+    // memoised sanitized value to key off any more).
+    expect(body).toMatch(/\}, \[html\]\);/);
   });
 
   it("routes internal links through wouter instead of full page loads", () => {
