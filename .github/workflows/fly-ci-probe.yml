@@ -1,0 +1,66 @@
+# Fly CI probe — MEASUREMENT ONLY, never merged (lives on the fly-ci-probe
+# branch). Replicates test.yml's shard-1 job step-for-step on a Fly runner
+# ([self-hosted, fly-ci]) so the rollout can compare cold-cache suite time
+# against the GitHub-hosted baseline on identical work. Differences from
+# test.yml, all forced by the platform: no `services:` block (no Docker on
+# a Fly Machine — the image's baked-in PostgreSQL 16 + pgvector is started
+# by the first step instead) and no sudo apt step for the pg16 client
+# (already baked into the image).
+name: Fly CI Probe
+
+on:
+  workflow_dispatch:
+
+jobs:
+  shard1:
+    name: TypeScript + Tests (shard 1/3) [fly probe]
+    runs-on: [self-hosted, fly-ci]
+    timeout-minutes: 60
+
+    env:
+      DATABASE_URL: postgresql://acreos:acreos@localhost:5432/acreos_test
+      ACREOS_REAL_DATABASE_URL: postgresql://acreos:acreos@localhost:5432/acreos_test
+      ACREOS_REQUIRE_REAL_DB: "1"
+      SESSION_SECRET: test-session-secret-at-least-32-characters-long
+      APP_URL: http://localhost:5000
+      NODE_ENV: test
+
+    steps:
+      - name: Report machine
+        run: |
+          echo "RUNNER_NAME=${RUNNER_NAME:-unknown}"
+          echo "hostname: $(hostname)"
+          echo "cpus: $(nproc)"
+          grep -E 'MemTotal' /proc/meminfo || true
+          echo "FLY_MACHINE_ID=${FLY_MACHINE_ID:-unset}"
+          echo "FLY_REGION=${FLY_REGION:-unset}"
+
+      - name: Start the baked-in PostgreSQL 16 + pgvector
+        run: |
+          /usr/lib/postgresql/16/bin/pg_ctl -D /home/runner/pgdata \
+            -l /home/runner/pglog/server.log -w start
+          for i in $(seq 1 30); do
+            pg_isready -h localhost -p 5432 && break
+            sleep 1
+          done
+          pg_isready -h localhost -p 5432
+          psql "$DATABASE_URL" -c "SELECT extname FROM pg_extension WHERE extname = 'vector'"
+
+      - uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build the schema from this repo and verify it
+        run: npm run db:build-from-repo
+
+      - name: Run tests (shard 1/3)
+        run: npx vitest run --reporter=verbose --shard=1/3
+        env:
+          CI: true
