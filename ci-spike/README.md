@@ -14,7 +14,7 @@ for this repo.
   guards (repo match, spike label, spike workflow, head-repo/fork check), and
   spawns one ephemeral runner Machine (Fly app `acreos-ci-runner`) per queued
   job. A reaper destroys any spike machine older than 60 minutes.
-- `ci-spike/runner/Dockerfile` — custom runner image for rollout. The spike
+- `ci-spike/runner/Dockerfile` — custom runner image for rollout (built and pushed to GHCR by `.github/workflows/fly-runner-image.yml`; see **Rollout** below). The spike
   itself ran GitHub's official published agent image
   (`ghcr.io/actions/actions-runner:latest`), the same actions/runner agent on
   Ubuntu 24.04.
@@ -54,3 +54,33 @@ repo's `workflow_job` webhook).
 - In GitHub's official `actions-runner` image the agent lives in
   `/home/runner` (run.sh is at `/home/runner/run.sh`), not in an
   `actions-runner` subdirectory.
+
+## Rollout (2026-11-22)
+
+First production use beyond the spike: ONE test shard moves to Fly runners;
+everything else stays GitHub-hosted until the measurement says otherwise.
+
+- **Label set**: the controller's `SPIKE_LABEL` env becomes `fly-ci` and its
+  `SPIKE_WORKFLOW` env names the one workflow allowed to spawn (the probe
+  workflow during measurement, then `Test`). Jobs request
+  `runs-on: [self-hosted, fly-ci]`. The fork/head-repo guard is unchanged:
+  fork PRs can never spawn a machine.
+- **Runner image**: `ci-spike/runner/Dockerfile` (this PR) — Ubuntu 24.04,
+  Node 22, the actions-runner agent in `/home/runner` (the layout the
+  controller's spawn command expects), and PostgreSQL 16 + pgvector baked
+  in. A Fly Machine has no Docker daemon, so GitHub `services:` containers
+  cannot run on these runners; the shard job starts the baked-in cluster
+  itself (pre-initialized at image build: role `acreos`, database
+  `acreos_test`, `vector` extension — the same shape the hosted services
+  block provisions, with the same public CI test password as `test.yml`).
+  Built and pushed to `ghcr.io/thmsnrtn/acreos-ci-runner` by
+  `.github/workflows/fly-runner-image.yml`; the package is public because
+  the image carries no secrets and an ephemeral runner's only credential
+  is its single-use JIT config.
+- **Shard move** (follow-up PR): `test.yml` shard 1 becomes a separate job
+  on `[self-hosted, fly-ci]` with no services block; shards 2/3 and every
+  other workflow stay GitHub-hosted. Deploy workflows never move (rails).
+- **Measurement**: a dispatch-only probe workflow (never merged) replicates
+  the shard-1 job on Fly; its cold-cache duration is compared against the
+  GitHub-hosted baseline (median shard-1 job 18.9 min over 8 runs measured
+  2026-11-22) in the rollout record before the shard move is proposed.
