@@ -208,6 +208,32 @@ function PipelineIntelligenceHeader({ leads, deals }: { leads: Lead[]; deals: De
   );
 }
 
+// ─── Honest whole-set reads ───────────────────────────────────────────────────
+
+// The intelligence header's funnel, totals, averages and tab badges are
+// PORTFOLIO figures, so they must be computed over the whole set — the
+// server's default first page is 25 records (pageSize cap 100), and
+// computing "totals" over one page silently understates every number
+// (EL-P1 A5-01). Page through at the cap until a short page arrives,
+// which is the server's end-of-set signal.
+const PIPELINE_PAGE_SIZE = 100;
+// Safety bound only: 200 pages × 100 = 20,000 records per collection,
+// far beyond any current org; it exists so a misbehaving endpoint can
+// never loop this header forever.
+const PIPELINE_MAX_PAGES = 200;
+
+export async function fetchAllPages<T>(baseUrl: string): Promise<T[]> {
+  const all: T[] = [];
+  for (let page = 1; page <= PIPELINE_MAX_PAGES; page++) {
+    const batch = await fetchJsonArray<T>(
+      `${baseUrl}?page=${page}&pageSize=${PIPELINE_PAGE_SIZE}`,
+    );
+    all.push(...batch);
+    if (batch.length < PIPELINE_PAGE_SIZE) return all;
+  }
+  return all;
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function PipelinePage() {
@@ -227,13 +253,13 @@ export default function PipelinePage() {
     isRefetching: leadsRefetching,
   } = useQuery<Lead[]>({
     queryKey: ["/api/leads"],
-    queryFn: () => fetchJsonArray<Lead>("/api/leads"),
+    queryFn: () => fetchAllPages<Lead>("/api/leads"),
     staleTime: 2 * 60 * 1000,
   });
 
   const { data: deals = [] } = useQuery<Deal[]>({
     queryKey: ["/api/deals"],
-    queryFn: () => fetchJsonArray<Deal>("/api/deals"),
+    queryFn: () => fetchAllPages<Deal>("/api/deals"),
     staleTime: 2 * 60 * 1000,
   });
 

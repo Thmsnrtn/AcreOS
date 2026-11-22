@@ -2,8 +2,13 @@
  * Branding editor shape test.
  *
  * The company branding editor (Settings → Organization) must exist, wire the
- * three org brand affordances (accent color, logo URL, density) to
+ * two org brand affordances (accent color, logo URL) to
  * PATCH /api/tenant-theme, and gate writes behind owner/admin.
+ *
+ * Density is NOT a brand affordance (EL-P1 A2-12): the old picker wrote
+ * organizations.brandDensity, which nothing applied — reading density is
+ * the person's own accessibility setting. The picker and its payload are
+ * pinned absent by clientHonestyBatch2.test.ts.
  */
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
@@ -17,10 +22,10 @@ const EDITOR = fs.readFileSync(
 const SETTINGS = fs.readFileSync(path.join(ROOT, "client/src/pages/settings.tsx"), "utf8");
 
 describe("BrandingEditor", () => {
-  it("exists and covers the three brand affordances", () => {
+  it("exists and covers the two brand affordances", () => {
     expect(EDITOR).toContain("brandAccentColor");
     expect(EDITOR).toContain("brandLogoUrl");
-    expect(EDITOR).toContain("brandDensity");
+    expect(EDITOR).not.toContain("select-brand-density");
   });
 
   it("PATCHes /api/tenant-theme on save", () => {

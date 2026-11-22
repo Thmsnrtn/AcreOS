@@ -13,7 +13,7 @@ import { deriveTenantAccent, TENANT_ACCENT_VARS } from "@/lib/tenant-accent";
 /**
  * TenantThemeProvider — per-organization first-party theming (Tahoe E5).
  *
- * Applies the org's brand affordances (accent color, logo, density) on top of
+ * Applies the org's brand affordances (accent color, logo) on top of
  * the user's personal theme (theme-context.tsx). It mounts INSIDE ThemeProvider
  * so it layers over — never replaces — the personal theme:
  *
@@ -26,9 +26,13 @@ import { deriveTenantAccent, TENANT_ACCENT_VARS } from "@/lib/tenant-accent";
  *     Re-derived when the colorway or mode changes; on removal every override
  *     is cleared, so the personal colorway's stylesheet values return.
  *   - Logo → exposed via context (`brandLogoUrl`) for nav/topbar consumers.
- *   - Density → stored and exposed, but NOT applied: `data-density` is the
- *     person's Accessibility & comfort reading density, and organization
- *     branding never overrides a person's reading or accessibility settings.
+ *   - Density is NOT a brand affordance and is not exposed here (EL-P1
+ *     A2-12): `data-density` is the person's Accessibility & comfort
+ *     reading density, and organization branding never overrides a
+ *     person's reading or accessibility settings. The organizations
+ *     table still carries a legacy brandDensity column the API may
+ *     return; this provider deliberately ignores it rather than expose
+ *     a value nothing applies.
  *
  * Distinct from white_label_configs (reseller/Kim tenants on custom domains),
  * which useWhiteLabel handles. These columns live directly on `organizations`
@@ -38,7 +42,6 @@ import { deriveTenantAccent, TENANT_ACCENT_VARS } from "@/lib/tenant-accent";
 export interface TenantTheme {
   brandAccentColor: string | null;
   brandLogoUrl: string | null;
-  brandDensity: "compact" | "comfortable" | "adaptive" | null;
 }
 
 interface TenantThemeContextValue extends TenantTheme {
@@ -49,7 +52,6 @@ interface TenantThemeContextValue extends TenantTheme {
 const TenantThemeContext = createContext<TenantThemeContextValue>({
   brandAccentColor: null,
   brandLogoUrl: null,
-  brandDensity: null,
   isLoaded: false,
 });
 
@@ -66,11 +68,11 @@ export function TenantThemeProvider({ children }: { children: ReactNode }) {
         .then((r) =>
           r.ok
             ? (r.json() as Promise<TenantTheme>)
-            : ({ brandAccentColor: null, brandLogoUrl: null, brandDensity: null } as TenantTheme),
+            : ({ brandAccentColor: null, brandLogoUrl: null } as TenantTheme),
         )
         .catch(
           () =>
-            ({ brandAccentColor: null, brandLogoUrl: null, brandDensity: null }) as TenantTheme,
+            ({ brandAccentColor: null, brandLogoUrl: null }) as TenantTheme,
         ),
     staleTime: 5 * 60 * 1000,
     retry: false,
@@ -78,7 +80,6 @@ export function TenantThemeProvider({ children }: { children: ReactNode }) {
 
   const accent = data?.brandAccentColor ?? null;
   const logo = data?.brandLogoUrl ?? null;
-  const density = data?.brandDensity ?? null;
 
   // Apply / clear the accent overrides. Clearing first means the surfaces read
   // below are the personal colorway's own, never a previous override.
@@ -103,10 +104,9 @@ export function TenantThemeProvider({ children }: { children: ReactNode }) {
     () => ({
       brandAccentColor: accent,
       brandLogoUrl: logo,
-      brandDensity: density,
       isLoaded: !hasSession || isSuccess,
     }),
-    [accent, logo, density, hasSession, isSuccess],
+    [accent, logo, hasSession, isSuccess],
   );
 
   return <TenantThemeContext.Provider value={value}>{children}</TenantThemeContext.Provider>;

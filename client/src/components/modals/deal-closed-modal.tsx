@@ -9,7 +9,6 @@
  * Voice matches the prototype's letter-tone: short, founder-y, not
  * gamified-startup celebratory.
  */
-import { useEffect, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { useModals } from "@/stores/modal-store";
@@ -20,23 +19,10 @@ export function DealClosedModal() {
   const open = useModals((s) => s.dealClosed.open);
   const deal = useModals((s) => s.dealClosed.deal);
   const close = useModals((s) => s.closeDealClosed);
-  const fired = useRef(false);
 
-  // Optional sound trigger (respects user preference + prefers-reduced-motion).
-  // The actual sound hook lives in @/hooks/use-sound; if it isn't loaded
-  // we no-op silently.
-  useEffect(() => {
-    if (open && !fired.current) {
-      fired.current = true;
-      try {
-        // Best-effort dispatch — sound provider listens, off by default.
-        window.dispatchEvent(new CustomEvent("acreos:sound", { detail: { kind: "deal-closed" } }));
-      } catch {
-        /* noop */
-      }
-    }
-    if (!open) fired.current = false;
-  }, [open]);
+  // No sound trigger here: the old "acreos:sound" CustomEvent dispatch had
+  // no listener anywhere (the use-sound hook's play() was a stub), so it
+  // was removed with the dead sound surface (EL-P1 A2-11, 2026-11-21).
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && close()}>

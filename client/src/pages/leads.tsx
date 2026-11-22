@@ -492,6 +492,32 @@ function ContactAgeBadge({ lead }: { lead: Lead }) {
   );
 }
 
+// How a lead can actually have given express TCPA consent, mapped to the
+// canonical consentSource the server records (routes-import-export.ts
+// LEAD_CONSENT_EXPRESS_SOURCES). Recording consent is an ATTESTATION: the
+// operator names the channel the lead personally consented through, and
+// the PATCH only fires once that attestation is complete (EL-P1 A5-05).
+// The previous one-click "Grant Consent" sent consentSource
+// "admin_manual" with no attestation at all — one click manufactured an
+// express-consent record indistinguishable from a genuine opt-in.
+const CONSENT_ATTESTATION_METHODS = [
+  { value: "sms_double_optin", label: "They replied with an opt-in keyword to our text" },
+  { value: "website", label: "They opted in on a website or web form" },
+  { value: "written", label: "They gave written consent (signed form)" },
+  { value: "verbal", label: "They verbally consented on a call" },
+  { value: "phone_ivr", label: "They consented through a phone (IVR) prompt" },
+] as const;
+
+// Consent sources that record an operator's attestation rather than a
+// consent captured directly from the lead. The badge renders these
+// differently (see TcpaConsentBadge) so an attested record never wears
+// the same face as a lead-captured opt-in.
+export const ADMIN_ATTESTED_CONSENT_SOURCES: ReadonlySet<string> = new Set([
+  "admin_manual",
+  "manual",
+  "manual_restoration",
+]);
+
 export function TcpaConsentToggle({ lead }: { lead: Lead }) {
   // Optimistic consent flip — the Grant/Opt Out/Restore button swaps
   // instantly across every cached leads list, with snapshot + rollback on
@@ -539,16 +565,90 @@ export function TcpaConsentToggle({ lead }: { lead: Lead }) {
   const hasConsent = lead.tcpaConsent === true;
   const isOptedOut = lead.doNotContact === true;
 
+  // Attestation step (EL-P1 A5-05): granting or restoring consent first
+  // opens this panel. The PATCH cannot fire until the operator has named
+  // how the lead actually consented AND checked the attestation — there
+  // is no one-click path from "no consent" to a consent record.
+  const [attesting, setAttesting] = useState<"grant" | "restore" | null>(null);
+  const [attestMethod, setAttestMethod] = useState<string>("");
+  const [attested, setAttested] = useState(false);
+  const attestationComplete = attestMethod !== "" && attested;
+
+  const cancelAttestation = () => {
+    setAttesting(null);
+    setAttestMethod("");
+    setAttested(false);
+  };
+
+  if (attesting) {
+    return (
+      <div
+        className="space-y-2 rounded-card border border-acr-line bg-acr-surface-2 p-3 max-w-sm"
+        data-testid={`consent-attestation-${lead.id}`}
+      >
+        <p className="text-xs font-medium">
+          {attesting === "restore"
+            ? "How did this lead consent again after opting out?"
+            : "How did this lead actually consent?"}
+        </p>
+        <Label htmlFor={`consent-method-${lead.id}`} className="sr-only">
+          How the lead consented
+        </Label>
+        <Select value={attestMethod} onValueChange={setAttestMethod}>
+          <SelectTrigger id={`consent-method-${lead.id}`} className="h-8 text-xs" data-testid={`select-consent-method-${lead.id}`}>
+            <SelectValue placeholder="Select how they consented" />
+          </SelectTrigger>
+          <SelectContent>
+            {CONSENT_ATTESTATION_METHODS.map((m) => (
+              <SelectItem key={m.value} value={m.value} className="text-xs">
+                {m.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <label htmlFor={`consent-attest-${lead.id}`} className="flex items-start gap-2 text-xs cursor-pointer">
+          <Checkbox
+            id={`consent-attest-${lead.id}`}
+            checked={attested}
+            onCheckedChange={(v) => setAttested(v === true)}
+            data-testid={`checkbox-consent-attest-${lead.id}`}
+          />
+          <span>
+            I attest this lead personally gave express consent in the way
+            selected above. This creates a permanent consent record.
+          </span>
+        </label>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            disabled={!attestationComplete || consentMutation.isPending}
+            onClick={() => {
+              consentMutation.mutate({ tcpaConsent: true, consentSource: attestMethod });
+              cancelAttestation();
+            }}
+            data-testid={`button-record-consent-${lead.id}`}
+          >
+            {consentMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Shield className="w-3 h-3 mr-1" />}
+            Record Consent
+          </Button>
+          <Button size="sm" variant="ghost" onClick={cancelAttestation} data-testid={`button-cancel-consent-${lead.id}`}>
+            Cancel
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   if (isOptedOut) {
     return (
       <Button
         size="sm"
         variant="outline"
-        onClick={() => consentMutation.mutate({ tcpaConsent: true, consentSource: "admin_manual" })}
+        onClick={() => setAttesting("restore")}
         disabled={consentMutation.isPending}
         data-testid={`button-restore-consent-${lead.id}`}
       >
-        {consentMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <CheckCircle className="w-3 h-3 mr-1" />}
+        <CheckCircle className="w-3 h-3 mr-1" />
         Restore Consent
       </Button>
     );
@@ -573,11 +673,11 @@ export function TcpaConsentToggle({ lead }: { lead: Lead }) {
   return (
     <Button
       size="sm"
-      onClick={() => consentMutation.mutate({ tcpaConsent: true, consentSource: "admin_manual" })}
+      onClick={() => setAttesting("grant")}
       disabled={consentMutation.isPending}
       data-testid={`button-grant-consent-${lead.id}`}
     >
-      {consentMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Shield className="w-3 h-3 mr-1" />}
+      <Shield className="w-3 h-3 mr-1" />
       Grant Consent
     </Button>
   );
@@ -611,6 +711,35 @@ export function TcpaConsentBadge({ lead }: { lead: Lead }) {
   }
   
   if (hasConsent) {
+    // Admin-attested consent (EL-P1 A5-05) must not wear the same face as
+    // consent captured directly from the lead: attested records render
+    // amber and say so, lead-captured opt-ins render green.
+    const isAdminAttested =
+      lead.consentSource != null && ADMIN_ATTESTED_CONSENT_SOURCES.has(lead.consentSource);
+    if (isAdminAttested) {
+      return (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Badge
+              variant="outline"
+              className="text-xs border-0 flex items-center gap-1 cursor-default bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink"
+              data-testid={`badge-tcpa-${lead.id}`}
+            >
+              <Shield className="w-3 h-3" />
+              TCPA · Attested
+            </Badge>
+          </TooltipTrigger>
+          <TooltipContent>
+            <span data-testid={`tooltip-tcpa-${lead.id}`}>
+              TCPA consent recorded by a team member's attestation
+              {lead.consentDate && ` on ${formatDate(lead.consentDate)}`}
+              {lead.consentSource && ` (${lead.consentSource})`}
+              {" "}— not captured directly from the lead.
+            </span>
+          </TooltipContent>
+        </Tooltip>
+      );
+    }
     return (
       <Tooltip>
         <TooltipTrigger asChild>

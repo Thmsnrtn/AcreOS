@@ -5,12 +5,18 @@
  *   - Leads (CSV, JSON)
  *   - Properties (CSV, JSON)
  *   - Deals (CSV)
- *   - Campaigns (CSV)
  *   - Finance/Notes (CSV)
- *   - Activity Log (CSV)
- *   - Full account archive (ZIP)
+ *   - Full account archive (ZIP) — the async POST /api/export/everything
+ *     job: create the job, poll its status, download when completed.
  *
  * All exports go through the existing /api/export/* endpoints.
+ *
+ * There are deliberately NO Campaigns or Activity log cards (EL-P1
+ * A16-03): the generic GET /api/export/:entityType route only accepts
+ * leads/properties/deals/notes and 400s everything else, so those two
+ * cards could only ever refuse. The old archive card also refused — it
+ * GET /api/export/archive?format=zip, which is not a route; the real
+ * archive is the everything-job flow below.
  */
 import { useState, useId } from "react";
 import { PageShell } from "@/components/page-shell";
@@ -30,9 +36,7 @@ import {
   Users,
   Map,
   Briefcase,
-  Megaphone,
   Banknote,
-  Activity,
   Package,
   Loader2,
   CheckCircle2,
@@ -77,14 +81,6 @@ const EXPORT_OPTIONS: ExportOption[] = [
     formats: ["csv"],
   },
   {
-    id: "campaigns",
-    label: "Campaigns",
-    description: "Campaign settings and performance metrics",
-    icon: Megaphone,
-    endpoint: "/api/export/campaigns",
-    formats: ["csv"],
-  },
-  {
     id: "notes",
     label: "Seller-financed notes",
     description: "All note records with payment schedules and balances",
@@ -99,14 +95,6 @@ const EXPORT_OPTIONS: ExportOption[] = [
     icon: Banknote,
     endpoint: "/api/export/acquired-notes",
     formats: ["csv", "json"],
-  },
-  {
-    id: "activities",
-    label: "Activity log",
-    description: "Full audit trail of all user actions",
-    icon: Activity,
-    endpoint: "/api/export/activities",
-    formats: ["csv"],
   },
 ];
 
@@ -157,6 +145,81 @@ export default function DataExportPage() {
     }
   };
 
+  // Full account archive — the async everything-job flow (EL-P1 A16-03):
+  // POST /api/export/everything creates the job (202 {jobId, status}),
+  // GET /api/export/jobs/:id reports queued/running/completed/failed,
+  // and GET /api/export/jobs/:id/download streams the ZIP once completed.
+  // The card states mirror the job's real states — no fake progress bar.
+  const [archiveState, setArchiveState] = useState<
+    "idle" | "creating" | "running" | "downloading" | "done" | "error"
+  >("idle");
+  const [archiveJobStatus, setArchiveJobStatus] = useState<string>("");
+  const archiveBusy =
+    archiveState === "creating" || archiveState === "running" || archiveState === "downloading";
+
+  const handleArchive = async () => {
+    setArchiveState("creating");
+    setArchiveJobStatus("");
+    try {
+      const res = await fetch("/api/export/everything", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ message: "Export failed" }));
+        throw new Error(err.message);
+      }
+      const { jobId } = (await res.json()) as { jobId: number };
+      setArchiveState("running");
+
+      // Poll the job: 90 × 2s ≈ 3 minutes of headroom for a full-org build.
+      let completed = false;
+      for (let i = 0; i < 90 && !completed; i++) {
+        await new Promise((r) => setTimeout(r, 2000));
+        const jobRes = await fetch(`/api/export/jobs/${jobId}`, { credentials: "include" });
+        if (!jobRes.ok) throw new Error("Lost track of the archive job — reload the page and try again");
+        const job = await jobRes.json();
+        setArchiveJobStatus(typeof job.status === "string" ? job.status : "");
+        if (job.status === "completed") {
+          completed = true;
+        } else if (job.status === "failed") {
+          throw new Error(job.error ?? job.errorMessage ?? "The archive job failed on the server");
+        }
+      }
+      if (!completed) {
+        throw new Error("The archive is taking longer than a few minutes to build. Wait a bit and try again — each attempt starts a fresh job.");
+      }
+
+      setArchiveState("downloading");
+      const dlRes = await fetch(`/api/export/jobs/${jobId}/download`, { credentials: "include" });
+      if (!dlRes.ok) {
+        const err = await dlRes.json().catch(() => ({ message: "Archive download failed" }));
+        throw new Error(err.message);
+      }
+      const blob = await dlRes.blob();
+      const downloadUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = downloadUrl;
+      a.download = "acreos-account-archive.zip";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(downloadUrl);
+
+      setArchiveState("done");
+      toast({ title: "Account archive downloaded" });
+    } catch (err: any) {
+      setArchiveState("error");
+      toast({
+        title: "Couldn't build your archive",
+        description: `${err.message}. Your data is unchanged — try again, or contact support if the issue persists.`,
+        variant: "destructive",
+      });
+    }
+  };
+
   return (
     <PageShell label="Data export">
       <div>
@@ -197,33 +260,48 @@ export default function DataExportPage() {
           <div className="flex-1 min-w-[200px]">
             <div className="font-medium text-sm">Full account archive</div>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Download all your data as a single ZIP file. Includes leads, properties, deals, campaigns, notes, documents, and activity log.
+              All your data as a single ZIP file: leads, properties, deals, communications,
+              notes, payments, and an audit log. The archive is built as a background job —
+              the download starts automatically when it's ready.
             </p>
+            {archiveState === "running" && (
+              <p className="text-xs text-muted-foreground mt-1" role="status">
+                Building your archive{archiveJobStatus ? ` — job ${archiveJobStatus}` : ""}…
+              </p>
+            )}
+            {archiveState === "done" && (
+              <p className="text-xs text-acr-pos mt-1 inline-flex items-center gap-1" role="status">
+                <CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" /> Archive downloaded.
+              </p>
+            )}
+            {archiveState === "error" && (
+              <p className="text-xs text-destructive mt-1" role="status">
+                The last archive attempt didn't finish — you can try again.
+              </p>
+            )}
           </div>
           <Button
             variant="outline"
-            onClick={() => handleExport({
-              id: "archive",
-              label: "Archive",
-              description: "",
-              icon: Package,
-              endpoint: "/api/export/archive",
-              formats: ["zip"],
-            })}
-            disabled={downloading.has("archive")}
-            aria-label="Download full account archive as ZIP"
+            onClick={handleArchive}
+            disabled={archiveBusy}
+            aria-label="Build and download full account archive as ZIP"
+            data-testid="button-download-archive"
           >
-            {downloading.has("archive") ? (
-              <><Loader2 className="w-4 h-4 animate-spin mr-2" aria-hidden="true" /> Preparing…</>
+            {archiveState === "creating" ? (
+              <><Loader2 className="w-4 h-4 animate-spin mr-2" aria-hidden="true" /> Requesting…</>
+            ) : archiveState === "running" ? (
+              <><Loader2 className="w-4 h-4 animate-spin mr-2" aria-hidden="true" /> Building…</>
+            ) : archiveState === "downloading" ? (
+              <><Loader2 className="w-4 h-4 animate-spin mr-2" aria-hidden="true" /> Downloading…</>
             ) : (
-              <><Download className="w-4 h-4 mr-2" aria-hidden="true" /> Download archive</>
+              <><Download className="w-4 h-4 mr-2" aria-hidden="true" /> {archiveState === "done" ? "Build a fresh archive" : "Download archive"}</>
             )}
           </Button>
         </CardContent>
       </Card>
 
       <p className="text-xs text-muted-foreground">
-        Exports are processed in real-time and limited to your organization's data. Large exports may take a few seconds.
+        Exports are limited to your organization's data. The per-type exports above download immediately; the full archive is built as a background job and may take a few minutes for large organizations.
         For GDPR data deletion requests, use the{" "}
         <Link
           href="/settings/privacy"
