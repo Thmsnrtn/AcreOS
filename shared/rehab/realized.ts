@@ -23,6 +23,13 @@
  * exactly the same basis; omitting it overstates every forecast-vs-realized
  * delta by the closing amount.
  *
+ * HOLDING COSTS FOLLOW THE SAME RULE (A8-10). Both numerators subtract
+ * holding, so both denominators include it: the forecast's
+ * `totalCashInCents` includes the modelled holding cost, and `investedCents`
+ * here includes `holdingRecorded`. Before A8-10 the forecast denominator
+ * excluded holding while its numerator subtracted it, so
+ * `roiVsScenarioRatio` compared unlike ratios on every graded rehab.
+ *
  * THE HOLDING METER NEVER ENTERS THE NET. The Leg 3 holding meter is an
  * accrual — a running estimate of what carrying the property is costing. Only
  * RECORDED holding entries (costs actually paid) are subtracted here.
