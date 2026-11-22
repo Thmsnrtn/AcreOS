@@ -20,6 +20,7 @@ import { clientLogger } from "@/lib/clientLogger";
 import { okOrThrow } from "@/lib/fetch-honesty";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { OverlayLegend } from "@/components/maps/OverlayLegend";
+import { ParcelOwnerCard, type ParcelPick } from "@/components/maps/ParcelOwnerCard";
 import {
   STYLE_URLS,
   isMapEngineConfigured,
@@ -906,6 +907,12 @@ export function PropertyMap({
   const [showComps, setShowComps] = useState(false);
   const [compsPanelOpen, setCompsPanelOpen] = useState(false);
   
+  // Click-a-parcel owner lookup: the parcel the user tapped on the nearby-
+  // parcels layer. The click handler is registered once per map instance and
+  // reads the latest closure through this ref.
+  const [pickedParcel, setPickedParcel] = useState<ParcelPick | null>(null);
+  const parcelClickRef = useRef<(e: mapboxgl.MapMouseEvent) => void>(() => {});
+
   const compMarkersRef = useRef<mapboxgl.Marker[]>([]);
   const dynamicLayerIdsRef = useRef<Set<string>>(new Set());
   // FIFO activation order of heavy raster overlays — drives mobile eviction.
@@ -2367,6 +2374,9 @@ export function PropertyMap({
       }
     });
 
+    // Click-a-parcel → owner lookup (nearby-parcels layer only).
+    map.current.on("click", (e: mapboxgl.MapMouseEvent) => parcelClickRef.current(e));
+
     // Honest per-layer lifecycle. A source we track flips to "ready" once its
     // tiles actually arrive (not after a fake 1s timer), and to "error" the
     // moment the free GIS endpoint fails — with a single debounced toast so a
@@ -2402,6 +2412,21 @@ export function PropertyMap({
       map.current?.remove();
     };
   }, [properties, initialViewState, interactive, currentStyle, setup3DTerrain, addPropertyLayers, stopFlyover, markLayerStatus, toast]);
+
+  parcelClickRef.current = (e: mapboxgl.MapMouseEvent) => {
+    const m = map.current;
+    // Measuring owns the click; and only a drawn nearby-parcels layer is a
+    // parcel surface here — a click elsewhere is not a parcel pick.
+    if (!m || measurementMode !== "none" || !m.getLayer("nearby-parcels-fill")) return;
+    const hit = m.queryRenderedFeatures(e.point, { layers: ["nearby-parcels-fill"] })[0];
+    if (!hit) return;
+    const apn = hit.properties?.apn;
+    setPickedParcel({
+      apn: typeof apn === "string" && apn ? apn : undefined,
+      lat: e.lngLat.lat,
+      lng: e.lngLat.lng,
+    });
+  };
 
   if (!isMapEngineConfigured()) {
     // Customer-safe: never render env-var names or engine internals on a
@@ -2719,6 +2744,12 @@ export function PropertyMap({
                   </CollapsibleContent>
                 </div>
               </Collapsible>
+            </div>
+          )}
+
+          {showNearbyParcels && pickedParcel && (
+            <div className="absolute bottom-3 left-3 z-docked w-72 max-w-[calc(100%-1.5rem)]" data-testid="map-parcel-owner">
+              <ParcelOwnerCard pick={pickedParcel} onClose={() => setPickedParcel(null)} />
             </div>
           )}
 
@@ -3314,7 +3345,16 @@ interface SinglePropertyMapProps {
   enable3DTerrain?: boolean;
   state?: string;
   county?: string;
+  /**
+   * Draw the nearby-parcels overlay AND enable tap-a-parcel owner lookup
+   * (a tap on a parcel, or on the map where no parcel is drawn, looks up the
+   * owner through /api/parcels/lookup).
+   */
   showNearbyParcels?: boolean;
+  /** Called with the county/state a successful owner lookup resolved. */
+  onParcelResolved?: (region: { state?: string; county?: string }) => void;
+  /** Mobile surface: tighter owner card. */
+  compactOwnerCard?: boolean;
   /** Upstream parcel resolver provenance — drives the dashed "approximate" outline. */
   boundarySource?: BoundarySource;
   /** Explicit override of the approximate-extent honesty signal. */
@@ -3336,11 +3376,31 @@ export function SinglePropertyMap({
   state,
   county,
   showNearbyParcels = true,
+  onParcelResolved,
+  compactOwnerCard,
   boundarySource,
   approximate,
 }: SinglePropertyMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
+  const [pickedParcel, setPickedParcel] = useState<ParcelPick | null>(null);
+  const parcelClickRef = useRef<(e: mapboxgl.MapMouseEvent) => void>(() => {});
+  parcelClickRef.current = (e: mapboxgl.MapMouseEvent) => {
+    const m = map.current;
+    if (!m || !showNearbyParcels) return;
+    const layers = ["nearby-parcels-fill", "property-fill"].filter((id) => m.getLayer(id));
+    const hit = layers.length ? m.queryRenderedFeatures(e.point, { layers })[0] : undefined;
+    const hitApn = hit?.properties?.apn;
+    // A parcel feature carries its APN; with none under the tap, the tapped
+    // coordinate is the identifier. Either way it is a lookup, never a guess.
+    setPickedParcel({
+      apn: typeof hitApn === "string" && hitApn ? hitApn : undefined,
+      lat: e.lngLat.lat,
+      lng: e.lngLat.lng,
+      state,
+      county,
+    });
+  };
   // Honesty signal: is this single parcel's footprint inferred (dashed) vs.
   // authoritative (solid)? Defaults to approximate when provenance is unknown.
   const isApproximate = isApproximateBoundary({ approximate, boundarySource });
@@ -3387,6 +3447,8 @@ export function SinglePropertyMap({
         message: e?.error?.message,
       });
     });
+
+    mapInstance.on("click", (e: mapboxgl.MapMouseEvent) => parcelClickRef.current(e));
 
     let layersAdded = false;
 
@@ -3504,6 +3566,18 @@ export function SinglePropertyMap({
                 data: nearbyGeojson,
               });
 
+              // Faint fill: gives the tap a surface to hit-test (a line alone
+              // is nearly untappable on a phone) and marks parcels as tappable.
+              mapInstance.addLayer({
+                id: "nearby-parcels-fill",
+                type: "fill",
+                source: "nearby-parcels",
+                paint: {
+                  "fill-color": "#fbbf24",
+                  "fill-opacity": 0.08,
+                },
+              }, "property-fill");
+
               mapInstance.addLayer({
                 id: "nearby-parcels-outline",
                 type: "line",
@@ -3563,6 +3637,19 @@ export function SinglePropertyMap({
         style={{ height }}
         data-testid="single-property-map"
       />
+      {showNearbyParcels && pickedParcel && (
+        <div
+          className="absolute bottom-2 left-2 right-2 z-docked max-h-[90%] overflow-y-auto sm:right-auto sm:w-72"
+          data-testid="single-map-parcel-owner"
+        >
+          <ParcelOwnerCard
+            pick={pickedParcel}
+            compact={compactOwnerCard}
+            onResolved={onParcelResolved}
+            onClose={() => setPickedParcel(null)}
+          />
+        </div>
+      )}
       {/* Approximate-extent honesty caption — explains the dashed outline so an
           inferred footprint is never mistaken for a surveyed boundary. */}
       {isApproximate && (
