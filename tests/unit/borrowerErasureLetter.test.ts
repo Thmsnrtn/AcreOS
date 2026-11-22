@@ -15,7 +15,10 @@
  *   the refusal code                    gdprService.ts eraseLeadSubject (source)
  *                                       + the founder UI that maps the same code
  *   exact-email, person-recorded check  DSAR_IDENTITY_POSTURE switches
- *   where to write                      client/src/pages/privacy.tsx mailto
+ *   where to write                      the privacy page's served body
+ *                                       (client/src/legal/privacy-policy.html,
+ *                                       the asset pages/privacy.tsx renders
+ *                                       since the 2026-11-21 bundle diet)
  *
  * The refusal's BEHAVIOUR (a borrower lead mutates nothing, 422 by name) is
  * already pinned by dsarErasureRegistryEquivalence.test.ts and the realdb
@@ -175,7 +178,9 @@ describe("S-1 borrower letter — the request process it describes is the one en
   });
 
   it("sends the borrower to the address the published privacy page gives", () => {
-    expect(read("client/src/pages/privacy.tsx")).toContain(`mailto:${PRIVACY_REQUEST_EMAIL}`);
+    // The published page's body is the served asset pages/privacy.tsx
+    // renders (bundle diet, 2026-11-21); the mailto lives there now.
+    expect(read("client/src/legal/privacy-policy.html")).toContain(`mailto:${PRIVACY_REQUEST_EMAIL}`);
     expect(text).toContain(PRIVACY_REQUEST_EMAIL);
   });
 

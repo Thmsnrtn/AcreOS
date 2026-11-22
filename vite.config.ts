@@ -541,6 +541,57 @@ function paxGlossaryPlugin(): Plugin {
   };
 }
 
+// The legal documents' section bodies (client/src/legal/*.html, ~57 KB of
+// static HTML) are data, not code. The Privacy Policy and Terms of Service
+// pages used to carry them as inline JSX, which put every byte inside the
+// bundle gate's summed JS total (scripts/check-bundle-size.js counts every
+// emitted .js file). The bodies now ship as static assets the pages fetch
+// on demand (client/src/lib/legal-doc.ts + components/legal-doc-body.tsx):
+// the pages keep their shells (title, dates, read-aloud, entity footer) as
+// bundled React, and the bodies' {{TOKEN}} placeholders are substituted at
+// render time from their single sources of truth (lib/legal-entity.ts,
+// @shared/pax-glossary-core), so the one-edit entity flip still propagates.
+// This plugin is only the Vite wiring: it copies the files VERBATIM into
+// dist/public/legal/ at build end (the production static server serves them
+// from there) and serves the same URLs from disk under the dev server so
+// dev behaviour is unchanged.
+const LEGAL_DOC_FILES: Record<string, string> = {
+  "/legal/privacy-policy.html": "privacy-policy.html",
+  "/legal/terms-of-service.html": "terms-of-service.html",
+};
+function legalDocsPlugin(): Plugin {
+  const rootDir = path.resolve(import.meta.dirname);
+  const sourceDir = path.join(rootDir, "client", "src", "legal");
+  let outDir = path.resolve(rootDir, "dist/public");
+  return {
+    name: "acreos-legal-docs",
+    configResolved(config) {
+      outDir = config.build.outDir;
+    },
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const url = (req.url ?? "").split("?")[0];
+        const file = LEGAL_DOC_FILES[url];
+        if (!file) return next();
+        res.setHeader("Content-Type", "text/html");
+        const stream = fs.createReadStream(path.join(sourceDir, file));
+        stream.on("error", () => {
+          res.statusCode = 404;
+          res.end();
+        });
+        stream.pipe(res);
+      });
+    },
+    closeBundle() {
+      for (const [url, file] of Object.entries(LEGAL_DOC_FILES)) {
+        const dest = path.join(outDir, url.replace(/^\//, ""));
+        fs.mkdirSync(path.dirname(dest), { recursive: true });
+        fs.copyFileSync(path.join(sourceDir, file), dest);
+      }
+    },
+  };
+}
+
 // Phase 8 Mo 12 — Beatriz §3 bundle-analyzer.
 // Enabled when ANALYZE=1 (CI / one-off `npm run build:analyze`).
 // In normal builds the plugin is excluded so the prod bundle is unaffected.
@@ -582,7 +633,7 @@ export type BuildOutput = "customer" | "founder";
 // Plugins that only serve customer pages: the /learn corpus and the TN boundary
 // shapes are copied into dist/public, and nothing in the founder build imports
 // them.
-const CUSTOMER_ONLY_PLUGIN_NAMES = new Set(["acreos-learn-content", "acreos-tn-boundaries", "acreos-pax-glossary"]);
+const CUSTOMER_ONLY_PLUGIN_NAMES = new Set(["acreos-learn-content", "acreos-tn-boundaries", "acreos-pax-glossary", "acreos-legal-docs"]);
 
 export function buildConfig(output: BuildOutput): UserConfig {
   const isFounder = output === "founder";
@@ -633,6 +684,7 @@ export function buildConfig(output: BuildOutput): UserConfig {
     learnContentPlugin(),
     tnBoundariesPlugin(),
     paxGlossaryPlugin(),
+    legalDocsPlugin(),
     chunkGraphPlugin(isFounder ? FOUNDER_CHUNK_GRAPH_FILE : CUSTOMER_CHUNK_GRAPH_FILE),
     // Pre-compress build output (gzip + brotli) so static-serve can deliver
     // already-compressed bytes. Sidesteps the HTTP/2 + `compression`
