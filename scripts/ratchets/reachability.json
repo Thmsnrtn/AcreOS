@@ -492,6 +492,11 @@
     },
     {
       "kind": "export",
+      "id": "shared/outreach/templates.ts::campaignTemplatesFor",
+      "reason": "REFERENCE-IMPLEMENTATION SEAM (bundle diet micro-slice, 2026-11-21). The campaign composer's picker used to call this directly; it now reads the registry as served data (/outreach-templates.json) through selectCampaignTemplates in client/src/lib/outreach-templates.ts, and this function is the reference implementation that selector is pinned selector-equal to (language fallback, unknown channel) in tests/unit/staticDataServedAsData.test.ts, over the asset pinned deep-equal to CAMPAIGN_TEMPLATES. It has no production consumer by construction now — the served-data selector is the production path. REVOCATION: if a production module imports it again, remove this entry."
+    },
+    {
+      "kind": "export",
       "id": "server/services/offerLetterPdf.ts::OFFER_LETTER_STRINGS",
       "reason": "TEST-INTROSPECTION SEAM. The offer letter's English and Spanish strings, consumed inside its own module by generateOfferLetterPdf; exported so tests/unit/outreachTemplatesBilingual.test.ts can prove the Spanish letter has every English key, keeps the binding notice in English and carries the English-controls note, without parsing a PDF. REVOCATION: if another module imports it, remove this entry."
     },

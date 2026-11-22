@@ -1,7 +1,8 @@
 /**
  * ChangelogPage — public, curated, customer-facing.
  *
- * Reads from `client/src/data/customer-changelog.ts` (manually edited
+ * Reads the served asset generated from
+ * `client/src/data/customer-changelog.ts` (manually edited
  * before each release) instead of the dev CHANGELOG.md, which is too
  * noisy: it includes ticket IDs, file paths, regex counts, and
  * occasionally CVE-like detail we don't want on a public surface.
@@ -21,10 +22,11 @@ import { usePageMeta } from "@/hooks/use-document-title";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { OpenGraph } from "@/components/seo/OpenGraph";
 import { blogPostingSchema, SITE } from "@/lib/jsonld-schemas";
-import {
-  CUSTOMER_CHANGELOG,
-  type ChangelogEntryType,
+import type {
+  ChangelogEntryType,
+  CustomerChangelogEntry,
 } from "@/data/customer-changelog";
+import { CUSTOMER_CHANGELOG_URL, useStaticData } from "@/lib/static-data";
 
 const TYPE_META: Record<
   ChangelogEntryType,
@@ -67,11 +69,18 @@ export default function ChangelogPage() {
     "Recent updates, new features, and improvements to AcreOS — written for Land Investors using the platform.",
   );
 
+  // The entries ship as served data (/customer-changelog.json, generated
+  // verbatim from client/src/data/customer-changelog.ts and pinned
+  // deep-equal to it) instead of riding inside this page's JS chunk; the
+  // page renders its shell first and the entries arrive with the fetch.
+  const { data: changelogData, error: changelogError } =
+    useStaticData<CustomerChangelogEntry[]>(CUSTOMER_CHANGELOG_URL);
+
   // Defensive: ensure reverse-chronological even if an editor inserts
   // an out-of-order entry by hand.
-  const entries = [...CUSTOMER_CHANGELOG].sort((a, b) =>
-    a.date < b.date ? 1 : -1,
-  );
+  const entries = changelogData
+    ? [...changelogData].sort((a, b) => (a.date < b.date ? 1 : -1))
+    : [];
 
   return (
     <div className="min-h-screen bg-background">
@@ -133,7 +142,11 @@ export default function ChangelogPage() {
           </p>
         </header>
 
-        {entries.length === 0 ? (
+        {changelogError ? (
+          <p className="text-center text-muted-foreground py-12">
+            Couldn't load the changelog — refresh to try again.
+          </p>
+        ) : !changelogData ? null : entries.length === 0 ? (
           <p className="text-center text-muted-foreground py-12">
             No changelog entries yet — check back soon.
           </p>
