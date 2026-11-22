@@ -146,6 +146,9 @@ async function generateDigestBullets(data: DigestData): Promise<{
       role: "user",
       content: JSON.stringify({
         mrrFormatted: `$${(data.mrrCents / 100).toLocaleString()}`,
+        // A10-01: the figure is list-price arithmetic (liveMrrDetail basis),
+        // billed not collected — the analyst must label it as such.
+        mrrBasis: "list-price MRR for active orgs — billed, not collected; never present as collected revenue",
         newSignups24h: data.newSignups24h,
         cancellations24h: data.cancellations24h,
         openDecisions: data.openDecisions,
@@ -162,7 +165,7 @@ async function generateDigestBullets(data: DigestData): Promise<{
   try {
     const parsed = JSON.parse(response.choices[0]?.message?.content ?? "{}");
     return {
-      revenueBullet: parsed.revenueBullet ?? `MRR: $${(data.mrrCents / 100).toLocaleString()}. ${data.newSignups24h} new signups, ${data.cancellations24h} cancellations in 24h.`,
+      revenueBullet: parsed.revenueBullet ?? `List-price MRR: $${(data.mrrCents / 100).toLocaleString()} (billed, not collected). ${data.newSignups24h} new signups, ${data.cancellations24h} cancellations in 24h.`,
       systemHealthBullet: parsed.systemHealthBullet ?? `${data.jobFailures24h} job failures in last 24h.`,
       supportActivityBullet: parsed.supportActivityBullet ?? `Sophie auto-resolved ${data.sophieAutoResolved24h} tickets in 24h.`,
       topAtRiskBullet: parsed.topAtRiskBullet ?? (data.topAtRiskOrgName ? `Top at-risk: ${data.topAtRiskOrgName} (score ${data.topAtRiskScore}/100).` : "No orgs in critical risk band."),
@@ -170,7 +173,7 @@ async function generateDigestBullets(data: DigestData): Promise<{
     };
   } catch {
     return {
-      revenueBullet: `MRR $${(data.mrrCents / 100).toLocaleString()}, ${data.newSignups24h} signups, ${data.cancellations24h} cancellations.`,
+      revenueBullet: `List-price MRR $${(data.mrrCents / 100).toLocaleString()} (billed, not collected), ${data.newSignups24h} signups, ${data.cancellations24h} cancellations.`,
       systemHealthBullet: `${data.jobFailures24h === 0 ? "All jobs healthy." : `${data.jobFailures24h} job failures — check dashboard.`}`,
       supportActivityBullet: `Sophie auto-resolved ${data.sophieAutoResolved24h} tickets autonomously.`,
       topAtRiskBullet: data.topAtRiskOrgName ? `${data.topAtRiskOrgName} at ${data.topAtRiskScore}/100 churn risk.` : "No orgs in red/critical churn band.",

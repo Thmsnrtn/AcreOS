@@ -17,7 +17,7 @@
  *    data ⇒ null (the caller keeps the conservative default rather than
  *    inventing a number).
  *
- * computeUptimePct is PURE → exhaustively testable. The DB helpers are thin.
+ * computeUptimeDetail is PURE → exhaustively testable. The DB helpers are thin.
  */
 import { and, eq, gte, lt } from "drizzle-orm";
 import { db } from "../../db";
@@ -44,11 +44,46 @@ export interface UptimeComputeOpts {
   minMeasuredMs?: number;
 }
 
+/** Canonical label for the A14-05 basis: the % is of the measured span only. */
+export const UPTIME_BASIS_LABEL = "of measured span";
+
+export interface UptimeDetail {
+  /** Uptime % over the measured span. */
+  pct: number;
+  /** The basis the pct is computed on — always the measured span (A14-05). */
+  basis: "measured_span";
+  /** Span actually covered by samples: first in-window sample → now. */
+  measuredSpanMs: number;
+  /** The full reporting window the span sits inside. */
+  windowMs: number;
+  /** Window time with NO samples (windowMs − measuredSpanMs). This time is
+   *  UNKNOWN — neither up nor down — and is the bias the label discloses. */
+  unknownMs: number;
+  /** measuredSpanMs / windowMs as a percentage, one decimal. */
+  coveragePct: number;
+}
+
 /**
- * Compute uptime % from sample timestamps (epoch ms, any order). Pure + total.
- * Returns null when there isn't enough measured span to make an honest claim.
+ * A14-05 detail form: compute uptime from sample timestamps (epoch ms, any
+ * order). Pure + total. Returns null when there isn't enough measured span
+ * to make an honest claim.
+ *
+ * The denominator is the MEASURED SPAN (first sample in window → now), not
+ * the full window. All window time before the first sample —
+ * pre-instrumentation, or an outage the worker had not yet recovered from
+ * to resume sampling — is excluded by construction and can never count as
+ * downtime, so the bare number is biased upward. The figure must therefore
+ * never render unlabelled: use UPTIME_BASIS_LABEL wherever it is shown, and
+ * the detail's unknownMs/coveragePct quantify the unsampled share of the
+ * window as explicitly unknown time.
+ *
+ * (This supersedes the former computeUptimePct/getUptimePct pair, which
+ * returned the bare number with the bias invisible to callers.)
  */
-export function computeUptimePct(sampleTimes: number[], opts: UptimeComputeOpts): number | null {
+export function computeUptimeDetail(
+  sampleTimes: number[],
+  opts: UptimeComputeOpts,
+): UptimeDetail | null {
   const windowMs = opts.windowMs ?? UPTIME_WINDOW_MS;
   const expected = opts.expectedIntervalMs ?? SAMPLE_INTERVAL_MS;
   const grace = opts.graceFactor ?? GRACE_FACTOR;
@@ -76,7 +111,15 @@ export function computeUptimePct(sampleTimes: number[], opts: UptimeComputeOpts)
   if (trailing > tolerance) downtime += trailing - expected;
 
   const up = Math.max(0, Math.min(1, (measuredSpan - downtime) / measuredSpan));
-  return Math.round(up * 1000) / 10; // one decimal, e.g. 99.9
+  const pct = Math.round(up * 1000) / 10; // one decimal, e.g. 99.9
+  return {
+    pct,
+    basis: "measured_span",
+    measuredSpanMs: measuredSpan,
+    windowMs,
+    unknownMs: Math.max(0, windowMs - measuredSpan),
+    coveragePct: Math.round((measuredSpan / windowMs) * 1000) / 10,
+  };
 }
 
 // ── DB helpers ───────────────────────────────────────────────────────────────
@@ -103,27 +146,30 @@ export async function recordUptimeSample(source = "worker"): Promise<void> {
   }
 }
 
-async function uptimeForSource(source: string, now: number): Promise<number | null> {
+async function uptimeDetailForSource(source: string, now: number): Promise<UptimeDetail | null> {
   const rows = await db
     .select({ at: uptimeSamples.at })
     .from(uptimeSamples)
     .where(and(gte(uptimeSamples.at, new Date(now - UPTIME_WINDOW_MS)), eq(uptimeSamples.source, source)))
     .orderBy(uptimeSamples.at);
-  return computeUptimePct(rows.map((r) => r.at.getTime()), { now });
+  return computeUptimeDetail(rows.map((r) => r.at.getTime()), { now });
 }
 
 /**
- * Real uptime % over the rolling window, or null if not enough data yet.
- * PREFERS the external probe (true outside-in web reachability) when it has
- * data; otherwise falls back to the worker-liveness pulse. This matters: if
- * the web tier is down but the worker is alive, worker samples would mask the
- * outage — so when the external probe is enabled, it is the measure of record.
+ * Real uptime detail over the rolling window, or null if not enough data
+ * yet. PREFERS the external probe (true outside-in web reachability) when
+ * it has data; otherwise falls back to the worker-liveness pulse. This
+ * matters: if the web tier is down but the worker is alive, worker samples
+ * would mask the outage — so when the external probe is enabled, it is the
+ * measure of record. The result carries its measured-span basis and the
+ * unsampled (unknown) share of the window (A14-05); founder-facing renders
+ * print UPTIME_BASIS_LABEL with the figure.
  */
-export async function getUptimePct(now = clock.nowMs()): Promise<number | null> {
+export async function getUptimeDetail(now = clock.nowMs()): Promise<UptimeDetail | null> {
   try {
-    const external = await uptimeForSource("external", now);
+    const external = await uptimeDetailForSource("external", now);
     if (external != null) return external;
-    return await uptimeForSource("worker", now);
+    return await uptimeDetailForSource("worker", now);
   } catch (err) {
     logger.warn("[uptime] read failed", err instanceof Error ? err : undefined);
     return null;
