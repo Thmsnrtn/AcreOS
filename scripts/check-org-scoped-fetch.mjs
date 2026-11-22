@@ -2009,6 +2009,16 @@ const RULE3_BASELINE = new Set([
   "server/services/autopilot/hands/counterpartyMatch.ts::counterpartyMatch::buyerReservations",
   "server/services/cashFlowForecaster.ts::analyzePaymentHealth::payments",
   "server/services/cashFlowForecaster.ts::compareActualVsProjected::payments",
+  // CG-1 (2026-11-22) — deliberate all-org sweep, same shape as B-2/B-7 below.
+  // snapshotQuarter freezes the quarter's vote tally: the cause-giving pool
+  // is platform-wide by program design (one active membership = one vote,
+  // spec §1.3), so the selections read must see every organization's rows or
+  // the tally silently drops members. Founder-only command; the service
+  // takes an injected db handle (deps.db) so the read cannot route through
+  // unscopedForPlatformOps — the sweep is declared here instead. Nothing
+  // org-shaped is returned: the command emits a receipt only, and every
+  // snapshot row it writes is a per-cause aggregate for the quarter.
+  "server/services/causeGiving.ts::snapshotQuarter::memberCauseSelections",
   "server/services/comms/tracking-pool.ts::assignTrackingNumberForMailShipment::trackingNumberAssignments",
   "server/services/comms/tracking-pool.ts::attributeInbound::trackingNumberAssignments",
   // B-2 (2026-11-17) — deliberate all-org sweep, same shape as the disclosure
