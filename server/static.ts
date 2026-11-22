@@ -32,6 +32,17 @@ const isLearnContentPath = (urlPath: string) => /^\/learn-content\//.test(urlPat
 /** /pax-glossary.json is unhashed, refreshed-in-place glossary data (BD-6) — same rule. */
 const isPaxGlossaryPath = (urlPath: string) => urlPath === "/pax-glossary.json";
 
+/** The static-data assets (campaign templates, customer changelog, help
+ * content) are unhashed, refreshed-in-place JSON — same rule as the
+ * pax glossary: never the 1-year immutable cache, or a copy edit would
+ * take a year to reach a returning browser. */
+const STATIC_DATA_PATHS = new Set([
+  "/outreach-templates.json",
+  "/customer-changelog.json",
+  "/help-content.json",
+]);
+const isStaticDataPath = (urlPath: string) => STATIC_DATA_PATHS.has(urlPath);
+
 /**
  * URL prefix the FOUNDER build is served under (P1-9 / X-2): its own URL space
  * (`/founder-app/founder-assets/…`), so the customer's `/assets/*` stale-chunk
@@ -91,7 +102,7 @@ function preCompressedAssets(distPath: string, hashedAssetRx: RegExp = CUSTOMER_
         const isHashedAsset = hashedAssetRx.test(requested);
         if (process.env.NODE_ENV === "production" && isHashedAsset) {
           res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
-        } else if (isLearnContentPath(requested) || isPaxGlossaryPath(requested)) {
+        } else if (isLearnContentPath(requested) || isPaxGlossaryPath(requested) || isStaticDataPath(requested)) {
           setNoCacheHeaders(res);
         }
         const stream = fs.createReadStream(cmpPath);
@@ -244,7 +255,8 @@ export function serveStatic(
       // Learn content is unhashed and refreshed in place — never immutable.
       if (
         isLearnContentPath("/" + path.relative(distPath, filePath).split(path.sep).join("/")) ||
-        isPaxGlossaryPath("/" + path.relative(distPath, filePath).split(path.sep).join("/"))
+        isPaxGlossaryPath("/" + path.relative(distPath, filePath).split(path.sep).join("/")) ||
+        isStaticDataPath("/" + path.relative(distPath, filePath).split(path.sep).join("/"))
       ) {
         setNoCacheHeaders(res);
       }
