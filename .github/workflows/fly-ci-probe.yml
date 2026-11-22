@@ -8,7 +8,13 @@
 # (already baked into the image).
 name: Fly CI Probe
 
+# Triggered by push to its own branch: workflow_dispatch requires the
+# workflow to exist on the default branch, and this file never merges.
+# test.yml/ci.yml do not fire on this branch (their push triggers are
+# main / claude/** only), so a probe push runs this workflow alone.
 on:
+  push:
+    branches: [fly-ci-probe]
   workflow_dispatch:
 
 jobs:
