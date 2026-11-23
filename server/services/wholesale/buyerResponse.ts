@@ -10,6 +10,7 @@ import { z } from "zod";
 import { db } from "../../db";
 import { buyerBlastRecipients, buyerBlasts, BUYER_BLAST_RECIPIENT_STATUSES } from "@shared/schema";
 import { clock } from "../../utils/clock";
+import { assertWritablePatch } from "../../utils/patch";
 
 export const recipientResponseSchema = z.object({
   status: z.enum(BUYER_BLAST_RECIPIENT_STATUSES).optional(),
@@ -29,7 +30,7 @@ export async function recordBlastRecipientResponse(organizationId: number, recip
   }
   const [row] = await db
     .update(buyerBlastRecipients)
-    .set(update)
+    .set(assertWritablePatch(update, "buyerBlastRecipients.recordResponse"))
     .where(and(eq(buyerBlastRecipients.id, recipientId), eq(buyerBlastRecipients.organizationId, organizationId)))
     .returning();
   if (!row) return null;
