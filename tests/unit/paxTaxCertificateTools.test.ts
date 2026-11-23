@@ -101,12 +101,22 @@ describe("registration — every place the pattern registers a tool", () => {
     for (const n of READS) expect(INTENT_META[n]).toEqual({ door: "finance", scope: "financial_read" });
     expect(INTENT_META[WRITE]).toEqual({ door: "finance", scope: "financial_write" });
   });
-  it("grouped in the underwriting and documents bundles", () => {
-    const s = src("server/ai/tools.ts");
-    for (const bundle of ["underwriting", "documents"]) {
-      const line = s.split("\n").find((l) => l.trimStart().startsWith(`${bundle}: [`));
-      expect(line, `${bundle} bundle line`).toBeDefined();
-      for (const n of [...READS, WRITE]) expect(line!, `${bundle} lacks ${n}`).toContain(`"${n}"`);
+  it("grouped in the underwriting and documents bundles — in BOTH registries (legacy tools.ts and the appIntents roleAllowList the Pax loop consumes)", () => {
+    const legacy = src("server/ai/tools.ts");
+    const registry = src("server/services/appIntents/index.ts");
+    for (const [label, text, shape] of [
+      ["tools.ts", legacy, (b: string) => (l: string) => l.trimStart().startsWith(`${b}: [`)],
+      ["appIntents/index.ts", registry, (b: string) => (l: string) => l.trimStart().startsWith(`${b}: [`)],
+    ] as const) {
+      for (const bundle of ["underwriting", "documents"]) {
+        const lines = text.split("\n");
+        const start = lines.findIndex(shape(bundle));
+        expect(start, `${label}: ${bundle} bundle`).toBeGreaterThan(-1);
+        let end = start;
+        while (!/\],?$/.test(lines[end].trimEnd())) end++;
+        const body = lines.slice(start, end + 1).join("\n");
+        for (const n of [...READS, WRITE]) expect(body, `${label}: ${bundle} lacks ${n}`).toContain(`"${n}"`);
+      }
     }
   });
 });
