@@ -74,6 +74,7 @@ import {
   supportTickets,
   teamMembers,
   teamMessages,
+  memberCauseSelections,
   users,
 } from "@shared/schema";
 import {
@@ -208,6 +209,16 @@ export const DSAR_EXPORTERS: Record<string, (s: DsarSubject) => Promise<unknown[
       .where(eq(aiConversations.userId, String(u.userId)))
       .limit(MAX_EXPORT_RECORDS);
     return capped("ai_conversations", rows).map((r) => clean(aiConversations, r));
+  },
+
+  member_cause_selections: async (s) => {
+    const u = asUser(s, "member_cause_selections");
+    const rows = await db
+      .select()
+      .from(memberCauseSelections)
+      .where(eq(memberCauseSelections.memberUserId, u.userId))
+      .limit(MAX_EXPORT_RECORDS);
+    return capped("member_cause_selections", rows).map((r) => clean(memberCauseSelections, r));
   },
 
   push_subscriptions: async (s) => {

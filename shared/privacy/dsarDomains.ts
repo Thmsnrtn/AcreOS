@@ -103,6 +103,19 @@ export const DSAR_DOMAINS: readonly DsarDomainDecision[] = [
     erasure: { action: "delete" }, // anonymizeUser step 5b
   },
   {
+    // CG-1 (2026-11-23, fix round D13). The member's cause choice is personal
+    // data (member user id + chosen cause). Erasure deletes ONLY these rows:
+    // the aggregate snapshot / allocation / disbursement / report tables carry
+    // no member id (pinned by a CG-1 test), so erasing selection rows does not
+    // touch the aggregate or money tables.
+    domain: "member_cause_selections",
+    decision: "export",
+    subjectKind: "user",
+    tables: ["member_cause_selections"],
+    scope: "memberUserId = userId (every organization the member belongs to)",
+    erasure: { action: "delete" }, // anonymizeUser step 5c
+  },
+  {
     domain: "assigned_records",
     decision: "exclude",
     subjectKind: "user",
