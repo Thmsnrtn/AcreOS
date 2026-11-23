@@ -14311,6 +14311,9 @@ export * from "./schema/parcel-data";
 // W3 acquisition engine — creator revenue share (AcreOS's own money to
 // creators; rules in shared/billing/creatorProgram.ts).
 export * from "./schema/creators";
+// CG-1 (2026-11-22): Cause Giving data foundation — 12 tables behind the
+// `cause_giving` flag (seeded OFF); rules in shared/cause-giving/rules.ts.
+export * from "./schema/cause-giving";
 
 /**
  * COO Operations Ledger — append-only log of every COO/autopilot action.

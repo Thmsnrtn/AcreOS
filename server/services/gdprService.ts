@@ -25,6 +25,7 @@ import {
   leads,
   aiConversations,
   teamMessages,
+  memberCauseSelections,
   supportTickets,
   notes,
   teamMembers,
@@ -65,6 +66,7 @@ type DeletionReport = {
     aiMemory: number;
     aiConversations: number;
     pushSubscriptions: number;
+    causeSelections: number;
   };
   leadsAnonymized: number;
   userAnonymized: boolean;
@@ -219,6 +221,14 @@ async function anonymizeUser(userId: string): Promise<DeletionReport> {
     .where(eq(pushSubscriptions.userId, userId))
     .returning({ id: pushSubscriptions.id });
 
+  // 5c. Delete the member's cause selections (DSAR domain
+  // member_cause_selections, erasure: delete). Only the member's own rows;
+  // the aggregate snapshot/allocation/money tables carry no member id and are
+  // untouched.
+  const deletedCauseSelections = await db.delete(memberCauseSelections)
+    .where(eq(memberCauseSelections.memberUserId, userId))
+    .returning({ id: memberCauseSelections.id });
+
   // 6. REMOVED (PKG-1 C-5): this step anonymized every lead ASSIGNED to the
   // user. Those leads are third parties' personal data and the org's
   // records — the org is their controller, not this user — and they include
@@ -251,6 +261,7 @@ async function anonymizeUser(userId: string): Promise<DeletionReport> {
       aiMemory: deletedAiMemory.length,
       aiConversations: deletedAiConversations.length,
       pushSubscriptions: deletedPushSubscriptions.length,
+      causeSelections: deletedCauseSelections.length,
     },
     leadsAnonymized,
     userAnonymized: true,
