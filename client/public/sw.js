@@ -107,6 +107,25 @@ function isOfflineQueueable(method, pathname, contentType) {
 // IndexedDB helpers for offline queue
 // ---------------------------------------------------------------------------
 
+// OFF-DEF-1: single-flight guard for replay coalescing. Two concurrent
+// replayOfflineQueue() invocations (BackgroundSync 'sync' event + window
+// 'online' message, ~11-19ms apart per walk evidence) would otherwise
+// snapshot the same rows before either deletes anything, sending every
+// queued save twice. See hidden_files/walk-staging-offline-upgrade-2026-11.md
+// Finding F1 for the proven effect (one queued quick-add → 2× POST 201 → two
+// identical leads). A trigger arriving during a drain waits for that same
+// promise; a trigger arriving after a drain completes starts a fresh drain.
+let replayInFlight = null;
+// OFF-DEF-2 §2C auth-blocked ceiling and OFF-DEF-1 §2A drain-pass bound.
+// Module scope so reQueueAuthBlocked (a sibling function) can read them.
+const MAX_AUTH_RETRIES = 10;
+const AUTH_RETRY_WINDOW_DAYS = 7;
+const MAX_DRAIN_PASSES = 3;
+
+function mintIdempotencyKey() {
+  return self.crypto?.randomUUID?.() || `k-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+}
+
 // Schema migration ladder, run inside onupgradeneeded. Each step is
 // idempotent and only applies between its source and current version,
 // so a fresh install at v2 runs the same path as a v1 → v2 upgrade.
@@ -167,7 +186,15 @@ function openOfflineDb() {
         }
       }
     };
-    req.onsuccess = () => resolve(req.result);
+    req.onsuccess = () => {
+      const db = req.result;
+      // OFF-DEF-1 §2E: auto-close on version change so a future upgrade
+      // from the page side is not blocked by this SW's open handle. The
+      // walk hit this: a mount-time replay left the SW holding an open v3
+      // connection forever, blocking deleteDatabase during seeding.
+      db.onversionchange = () => db.close();
+      resolve(db);
+    };
     req.onerror = () => reject(req.error);
     // A blocked upgrade means another tab still holds the v1 connection
     // open. Log so we can see this in the wild rather than silently
@@ -180,52 +207,101 @@ function openOfflineDb() {
 
 async function queueOfflineRequest(entry) {
   const db = await openOfflineDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(OFFLINE_STORE, 'readwrite');
-    tx.objectStore(OFFLINE_STORE).add(entry);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
+  try {
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(OFFLINE_STORE, 'readwrite');
+      const addReq = tx.objectStore(OFFLINE_STORE).add(entry);
+      tx.oncomplete = () => resolve(addReq.result);
+      tx.onerror = () => reject(tx.error);
+    });
+  } finally {
+    db.close();
+  }
 }
 
 async function getAllOfflineRequests() {
   const db = await openOfflineDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(OFFLINE_STORE, 'readonly');
-    const req = tx.objectStore(OFFLINE_STORE).getAll();
-    req.onsuccess = () => resolve({ items: req.result, keys: [] });
-    req.onerror = () => reject(req.error);
-  });
+  try {
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(OFFLINE_STORE, 'readonly');
+      const req = tx.objectStore(OFFLINE_STORE).getAll();
+      req.onsuccess = () => resolve({ items: req.result, keys: [] });
+      req.onerror = () => reject(req.error);
+    });
+  } finally {
+    db.close();
+  }
 }
 
 async function getAllOfflineRequestsWithKeys() {
   const db = await openOfflineDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(OFFLINE_STORE, 'readonly');
-    const store = tx.objectStore(OFFLINE_STORE);
-    const items = [];
-    const cursorReq = store.openCursor();
-    cursorReq.onsuccess = (event) => {
-      const cursor = event.target.result;
-      if (cursor) {
-        items.push({ key: cursor.key, value: cursor.value });
-        cursor.continue();
-      } else {
-        resolve(items);
-      }
-    };
-    cursorReq.onerror = () => reject(cursorReq.error);
-  });
+  try {
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(OFFLINE_STORE, 'readonly');
+      const store = tx.objectStore(OFFLINE_STORE);
+      const items = [];
+      const cursorReq = store.openCursor();
+      cursorReq.onsuccess = (event) => {
+        const cursor = event.target.result;
+        if (cursor) {
+          items.push({ key: cursor.key, value: cursor.value });
+          cursor.continue();
+        } else {
+          resolve(items);
+        }
+      };
+      cursorReq.onerror = () => reject(cursorReq.error);
+    });
+  } finally {
+    db.close();
+  }
 }
 
 async function deleteOfflineRequest(key) {
   const db = await openOfflineDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(OFFLINE_STORE, 'readwrite');
-    tx.objectStore(OFFLINE_STORE).delete(key);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
+  try {
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(OFFLINE_STORE, 'readwrite');
+      tx.objectStore(OFFLINE_STORE).delete(key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } finally {
+    db.close();
+  }
+}
+
+async function updateOfflineRequest(key, entry) {
+  const db = await openOfflineDb();
+  try {
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(OFFLINE_STORE, 'readwrite');
+      tx.objectStore(OFFLINE_STORE).put(entry, key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } finally {
+    db.close();
+  }
+}
+
+// OFF-DEF-2: read current CSRF token from cookie for fresh-header replay.
+// Cookie Store API is available in Chromium service workers (the
+// DriveMode/BackgroundSync target platform). Returns null if unavailable or
+// the cookie is not present.
+async function getCurrentCsrfToken() {
+  if (typeof cookieStore === 'undefined') {
+    // Cookie Store API not available (non-Chromium SW). The spec's fallback
+    // is to leave the row queued and retry on next trigger — the app side
+    // (which can read document.cookie) eventually drains it.
+    return null;
+  }
+  try {
+    const cookie = await cookieStore.get('csrf_token');
+    return cookie ? decodeURIComponent(cookie.value) : null;
+  } catch {
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -233,56 +309,204 @@ async function deleteOfflineRequest(key) {
 // ---------------------------------------------------------------------------
 
 async function replayOfflineQueue() {
-  const items = await getAllOfflineRequestsWithKeys();
-  if (items.length === 0) return;
+  // OFF-DEF-1 §2A: single-flight guard. If a drain is already in progress,
+  // coalesce to that same promise instead of starting a second concurrent
+  // drain (which would snapshot the same rows before either deletes anything,
+  // sending every queued save twice — walk F1). A trigger arriving after a
+  // drain completes starts a fresh drain.
+  if (replayInFlight) {
+    console.log('[SW] Replay already in progress — coalescing');
+    return replayInFlight;
+  }
 
-  console.log(`[SW] Replaying ${items.length} offline request(s)`);
+  // Keys of rows already handled (or re-queued) in this flight, so the
+  // end-of-drain re-read only picks up rows queued mid-drain, never the
+  // retryable rows this drain just re-queued.
+  const seen = new Set();
 
-  let successCount = 0;
-
-  for (const { key, value } of items) {
+  replayInFlight = (async () => {
     try {
-      const response = await fetch(value.url, {
-        method: value.method,
-        headers: value.headers,
-        body: value.body,
-      });
-      if (response.ok) {
-        await deleteOfflineRequest(key);
-        successCount++;
-        console.log(`[SW] Replayed offline request to ${value.url}`);
-      } else if (response.status >= 400 && response.status < 500) {
-        // 4xx = permanent client error — the server rejected this request
-        // and retrying will never help (wrong payload, forbidden, gone,
-        // etc.). Pull it from the queue so it doesn't block future syncs,
-        // and notify the user so they know the item was dropped.
-        await deleteOfflineRequest(key);
-        console.warn(`[SW] Dropped offline request ${value.url} — permanent ${response.status}`);
+      let successCount = 0;
+      let stop = false;
+      let pass = 0;
+
+      // OFF-DEF-1 §2A: bounded end-of-drain re-read (<= MAX_DRAIN_PASSES) so
+      // rows queued during a drain are drained in the same wake.
+      while (pass < MAX_DRAIN_PASSES && !stop) {
+        const items = (await getAllOfflineRequestsWithKeys()).filter((it) => !seen.has(it.key));
+        if (items.length === 0) break;
+        pass++;
+
+        console.log(`[SW] Replaying ${items.length} offline request(s) (pass ${pass})`);
+
+        for (const { key, value } of items) {
+          seen.add(key);
+          // OFF-DEF-1 §2C: mint/persist idempotency key for legacy rows that
+          // lack one. Once persisted, all retries carry the same key.
+          if (!value.idempotencyKey) {
+            value.idempotencyKey = mintIdempotencyKey();
+            await updateOfflineRequest(key, value);
+          }
+
+          // OFF-DEF-1 §2B: claim-then-send (delete before fetch). Crash
+          // window trade-off is stated in the PR. Network errors re-queue.
+          const claimedValue = { ...value };
+          await deleteOfflineRequest(key);
+
+          try {
+            const outcome = await sendClaimed(claimedValue, true);
+            if (outcome === 'success') successCount++;
+          } catch (err) {
+            // Network error: re-queue and stop draining (network still down)
+            console.error(`[SW] Replay network error for ${claimedValue.url}:`, err);
+            await reQueueRetryable(claimedValue);
+            stop = true;
+            break;
+          }
+        }
+      }
+
+      if (successCount > 0) {
+        // Notify all open clients so the app can show "Synced N items" toast
         const clients = await self.clients.matchAll({ type: 'window' });
         clients.forEach((client) => {
           client.postMessage({
-            type: 'OFFLINE_SYNC_FAILED',
-            url: value.url,
-            status: response.status,
-            data: value.data,
+            type: 'OFFLINE_SYNC_COMPLETE',
+            count: successCount,
           });
         });
       }
-      // 5xx: leave in queue — transient server error, retry next time.
-    } catch (err) {
-      // Network still down or fetch threw — stop draining, try again later.
-      console.error(`[SW] Replay network error for ${value.url}:`, err);
-      break;
+    } finally {
+      replayInFlight = null;
     }
+  })();
+
+  return replayInFlight;
+
+  // One place builds replay headers (OFF-DEF-2 §2B + OFF-DEF-1 §2C): stored
+  // headers minus any stored x-csrf-token and idempotency-key (any case),
+  // plus a fresh csrf cookie read and the queue-minted Idempotency-Key.
+  async function buildReplayHeaders(entry) {
+    const headers = {};
+    for (const [name, val] of Object.entries(entry.headers || {})) {
+      const lower = name.toLowerCase();
+      if (lower === 'x-csrf-token' || lower === 'idempotency-key') continue;
+      headers[name] = val;
+    }
+    headers['Idempotency-Key'] = entry.idempotencyKey;
+    const csrfToken = await getCurrentCsrfToken();
+    if (csrfToken) headers['x-csrf-token'] = csrfToken;
+    return headers;
   }
 
-  if (successCount > 0) {
-    // Notify all open clients so the app can show "Synced N items" toast.
+  // Send a claimed row and apply the disposition table. Returns 'success'
+  // or 'handled'. Throws on network error (caller re-queues).
+  async function sendClaimed(entry, allowAuthRetry) {
+    const response = await fetch(entry.url, {
+      method: entry.method,
+      headers: await buildReplayHeaders(entry),
+      body: entry.body,
+    });
+
+    if (response.ok) {
+      console.log(`[SW] Replayed offline request to ${entry.url}`);
+      return 'success';
+    }
+    if (response.status === 401 || response.status === 403) {
+      if (allowAuthRetry) {
+        console.log(`[SW] Auth failure ${response.status} on ${entry.url} — retrying with fresh header`);
+        return sendClaimed(entry, false);
+      }
+      await reQueueAuthBlocked(entry);
+      return 'handled';
+    }
+    if (response.status === 409) {
+      const body = await response.json().catch(() => ({}));
+      if (body && body.code === 'IDEMPOTENCY_IN_PROGRESS') {
+        console.log(`[SW] Idempotency in-progress for ${entry.url} — will retry`);
+        await reQueueRetryable(entry);
+      } else {
+        await notifyPermanentFailure(entry, 409);
+      }
+      return 'handled';
+    }
+    if (response.status >= 400 && response.status < 500) {
+      await notifyPermanentFailure(entry, response.status);
+      return 'handled';
+    }
+    if (response.status >= 500) {
+      console.log(`[SW] Server error ${response.status} for ${entry.url} — will retry`);
+      await reQueueRetryable(entry);
+      return 'handled';
+    }
+    // Anything else (3xx, unexpected): never silently drop a claimed row.
+    console.warn(`[SW] Unexpected status ${response.status} for ${entry.url} — retaining`);
+    await reQueueRetryable(entry);
     const clients = await self.clients.matchAll({ type: 'window' });
     clients.forEach((client) => {
       client.postMessage({
-        type: 'OFFLINE_SYNC_COMPLETE',
-        count: successCount,
+        type: 'OFFLINE_SYNC_DEFERRED',
+        url: entry.url,
+        status: response.status,
+        data: entry.data,
+      });
+    });
+    return 'handled';
+  }
+
+  // Helper: re-queue a retryable entry (network error, 5xx, 409 in-progress)
+  async function reQueueRetryable(entry) {
+    const retries = (entry.retries || 0) + 1;
+    seen.add(await queueOfflineRequest({ ...entry, retries }));
+  }
+
+  // Helper: re-queue an auth-blocked entry with tracking
+  async function reQueueAuthBlocked(entry) {
+    const retries = (entry.retries || 0) + 1;
+    const authRetries = (entry.authRetries || 0) + 1;
+    const lastAuthFailureAt = Date.now();
+    const firstAuthFailureAt = entry.firstAuthFailureAt || lastAuthFailureAt;
+
+    const ageMs = lastAuthFailureAt - firstAuthFailureAt;
+    const ageDays = ageMs / (1000 * 60 * 60 * 24);
+
+    // Drop only after generous attempt ceiling
+    if (authRetries >= MAX_AUTH_RETRIES && ageDays >= AUTH_RETRY_WINDOW_DAYS) {
+      console.warn(`[SW] Dropping auth-blocked request ${entry.url} after ${authRetries} auth failures over ${ageDays.toFixed(1)} days`);
+      await notifyPermanentFailure(entry, 403);
+      return;
+    }
+
+    seen.add(await queueOfflineRequest({
+      ...entry,
+      retries,
+      authRetries,
+      lastAuthFailureAt,
+      firstAuthFailureAt,
+    }));
+
+    // Distinct message for auth-blocked (not permanent failure)
+    const clients = await self.clients.matchAll({ type: 'window' });
+    clients.forEach((client) => {
+      client.postMessage({
+        type: 'OFFLINE_SYNC_AUTH_BLOCKED',
+        url: entry.url,
+        authRetries,
+        data: entry.data,
+      });
+    });
+  }
+
+  // Helper: notify permanent failure
+  async function notifyPermanentFailure(entry, status) {
+    console.warn(`[SW] Dropped offline request ${entry.url} — permanent ${status}`);
+    const clients = await self.clients.matchAll({ type: 'window' });
+    clients.forEach((client) => {
+      client.postMessage({
+        type: 'OFFLINE_SYNC_FAILED',
+        url: entry.url,
+        status,
+        data: entry.data,
       });
     });
   }
@@ -338,13 +562,32 @@ self.addEventListener('fetch', (event) => {
           return await fetch(request);
         } catch {
           // Network failure — queue for later
+          // OFF-DEF-1 §2C + OFF-DEF-2 §2A: mint idempotency key at queue
+          // time and strip x-csrf-token (session-scoped, never freeze it).
+          const headers = Object.fromEntries(request.headers.entries());
+          // Strip session-scoped headers (any case); promote a captured
+          // Idempotency-Key to the entry field so all retries share it.
+          let capturedKey = null;
+          for (const name of Object.keys(headers)) {
+            const lower = name.toLowerCase();
+            if (lower === 'x-csrf-token') delete headers[name];
+            else if (lower === 'idempotency-key') {
+              capturedKey = headers[name];
+              delete headers[name];
+            }
+          }
+
+          const idempotencyKey = capturedKey || mintIdempotencyKey();
+
           await queueOfflineRequest({
             url: request.url,
             method: request.method,
-            headers: Object.fromEntries(request.headers.entries()),
+            headers,
             body,
             queuedAt: Date.now(),
             data: { pathname: url.pathname },
+            idempotencyKey,
+            retries: 0,
           });
           return new Response(
             JSON.stringify({ offline: true, queued: true, message: 'Saved offline — will sync when online' }),
