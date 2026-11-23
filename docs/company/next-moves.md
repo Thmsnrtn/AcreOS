@@ -3,6 +3,13 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-11-21 — Gap slice 6 rebased: click-any-parcel owner lookup (EL-P1 A4-01) — supersedes PR #546
+
+- **Built (rebase of #546, head `64584210`, onto main `420de7b3`).** A map parcel click (`nearby-parcels-fill`) and SinglePropertyMap taps now open the new `ParcelOwnerCard`, which runs the existing `POST /api/parcels/lookup` chain (cache → county GIS → BYO-Regrid); DriveMode enables it with the compact card and feeds a resolved county/state back so the overlay can draw. Carried verbatim from #546: `ParcelOwnerCard.tsx` (including the D1 `Verbs.RETRY` cure), `property-map.tsx`, `use-parcels.ts`, and both test suites. DriveMode was hand-composed onto PR #674: #674's computed `.map()` map ring and offline queued-honesty behaviour kept, wrapped in #546's `useMemo` on the fix, with #546's region state placed beside #674's `queuedCount`.
+- **Honest uncovered state.** A 404 renders "Owner lookup isn't covered here" — no toast, no invented owner; a null owner says the source names none; a real failure shows an error with retry and is never labelled not-covered.
+- **Fences.** No server, gate, registry, dossier, migration or census change — the lookup route already carries its purpose-ledger entry. Statewide and paid sources stay shut. No bundle ceiling or ratchet baseline touched: the client addition is an estimated ~5–9 KB minified, which needs the bundle-diet headroom (PR #676) — merge sequencing is diet first, this slice second.
+- **Next.** CI settlement on the fresh PR is the completing proof (CI green on any #546 head has never been observed); after merge, the still-owed signed-in staging walk of map click → owner card joins the post-merge proof legs.
+
 ## 2026-11-15 — P2-6 S1: the /trust page — dark route, claims anchors, bundle offset (on `claude/p2-6-trust-page`, unpushed)
 
 - **Built.** `client/src/pages/trust.tsx` — the dated trust surface (INV-1…INV-10 in their publishable tenses, D1 AI data flows, D2 arbitration explained, D3 succession/portability), modelled on /security, lazy-loaded at `/trust` in the customer App only. DARK: no nav/footer/sitemap/landing link, robots noindex. Every sentence is anchored verbatim in `scripts/audit-public-claims.ts` (`TRUST_PAGE_FILES`, per-member vacuity, and a /trust-only liveness check so a landing file cannot keep a deleted trust sentence "live"), each backed by a source paragraph naming the shipped code.
