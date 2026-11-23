@@ -335,7 +335,17 @@ describe.runIf(realDbAvailable)("G11 fidelity fix — real database", () => {
     const res = await request(app).patch(`/api/notes/${note.id}`).send({ currentBalanceCents: 8_000_000, payerName: "SYNTHETIC Renamed" });
     expect(res.status).toBe(200);
     const rows = await db.select().from(noteFieldObservations).where(eq(noteFieldObservations.noteId, note.id));
-    const edits = rows.filter((r) => r.source === "edit");
+    // The tape commit that created this note also writes ONE source:"edit" row of
+    // its own — the operator's servicingArrangement declaration at import
+    // (noteTapeCommit, designed N7 behaviour, asserted by
+    // noteTapeServicingArrangement.test.ts). It is not a PATCH row, so the PATCH
+    // expectation below is scoped to the two fields this PATCH writes, and the
+    // import-time declaration row is asserted separately, on its own terms.
+    const declaration = rows.filter((r) => r.source === "edit" && r.field === "servicingArrangement");
+    expect(declaration.map((r) => [r.field, r.value, r.kind, r.recordedBy])).toEqual([
+      ["servicingArrangement", "passive_holder", "value", `${tag}-u`],
+    ]);
+    const edits = rows.filter((r) => r.source === "edit" && (r.field === "currentBalance" || r.field === "payerName"));
     expect(edits.map((r) => [r.field, r.value, r.kind, r.recordedBy]).sort()).toEqual([
       ["currentBalance", 8_000_000, "value", h.user.id],
       ["payerName", "SYNTHETIC Renamed", "value", h.user.id],

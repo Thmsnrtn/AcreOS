@@ -3,7 +3,8 @@
  *
  * The BD-6 / legal-docs pattern, generalised: long, purely-static copy
  * (campaign template bodies, the customer changelog, the help centre's
- * guides + FAQ) ships as JSON under client/public/ — Vite copies it
+ * guides + FAQ, the security-deposit return-rule registry) ships as JSON
+ * under client/public/ — Vite copies it
  * verbatim into the build output and the web server serves it at the
  * root — instead of riding inside a JS chunk, where every byte counts
  * against scripts/bundle-budget.json. The TypeScript modules stay the
@@ -25,6 +26,7 @@ import { useEffect, useState } from "react";
 export const OUTREACH_TEMPLATES_URL = "/outreach-templates.json";
 export const CUSTOMER_CHANGELOG_URL = "/customer-changelog.json";
 export const HELP_CONTENT_URL = "/help-content.json";
+export const DEPOSIT_RETURN_RULES_URL = "/deposit-return-rules.json";
 
 const cache = new Map<string, Promise<unknown>>();
 
