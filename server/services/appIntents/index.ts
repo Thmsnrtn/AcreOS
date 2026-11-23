@@ -50,6 +50,7 @@ function roleAllowList(role: string): string[] {
       ...CORE, ...MEMORY,
       "get_leads", "get_lead_details", "update_lead_status", "create_lead",
       "get_properties", "create_property", "get_deals", "create_deal",
+      "get_wholesale_buy_box", "get_wholesale_triage", "get_wholesale_buyers", "get_wholesale_buyer_matches", "get_wholesale_assignments", "get_wholesale_decision", "get_wholesale_disposition_packet", "get_wholesale_blasts", "record_buyer_blast_response",
       "get_tasks", "create_task", "get_pipeline_summary", "generate_offer",
       "generate_offer_letter", "send_email", "send_sms", "run_comps_analysis",
       "schedule_followup", "draft_offer", "schedule_follow_up", "run_comps",
@@ -78,10 +79,9 @@ function roleAllowList(role: string): string[] {
     documents: [
       ...CORE,
       "get_leads", "get_lead_details", "get_properties", "get_property_details",
-      "get_notes",
-      "get_tax_certificates", "get_tax_certificate", "get_tax_certificate_clock",
-      "get_tax_certificate_ledger", "record_tax_ledger_entry",
-      "get_deals", "generate_offer_letter", "draft_offer",
+      "get_notes", "get_tax_certificates", "get_tax_certificate", "get_tax_certificate_clock", "get_tax_certificate_ledger", "record_tax_ledger_entry",
+      "get_deals", "get_wholesale_buy_box", "get_wholesale_triage", "get_wholesale_buyers", "get_wholesale_buyer_matches", "get_wholesale_assignments", "get_wholesale_decision", "get_wholesale_disposition_packet", "get_wholesale_blasts", "record_buyer_blast_response",
+      "generate_offer_letter", "draft_offer",
     ],
   };
   return map[role] ?? map.executive;
