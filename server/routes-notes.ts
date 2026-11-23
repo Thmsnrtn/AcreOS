@@ -1204,6 +1204,7 @@ export async function computeAcquiredNotePayoff(
       unappliedBalanceCents: acquiredNotes.unappliedBalanceCents,
       interestRateBps: acquiredNotes.interestRateBps,
       originationDate: acquiredNotes.originationDate,
+      paidThroughDate: acquiredNotes.paidThroughDate,
     })
     .from(acquiredNotes)
     .where(and(eq(acquiredNotes.id, noteId), eq(acquiredNotes.organizationId, orgId)))
@@ -1230,6 +1231,7 @@ export async function computeAcquiredNotePayoff(
   const accrualStartDate = resolvePayoffAccrualStart(
     lastInterestRows,
     note.originationDate as unknown as string,
+    note.paidThroughDate as unknown as string | null,
   );
 
   const input: PayoffQuoteInput = {

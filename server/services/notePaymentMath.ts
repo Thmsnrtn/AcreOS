@@ -389,8 +389,16 @@ export function computePayoffQuote(input: PayoffQuoteInput): PayoffQuote {
 
 /**
  * Ledger-derived accrual start: the payment_date of the most recent posting
- * that carried interest (interest is settled THROUGH that date), else the
- * note's origination date when the ledger has no interest-bearing posting.
+ * that carried interest (interest is settled THROUGH that date); else the
+ * note's recorded paid-through date (a tape-imported note carries no payment
+ * ledger, but its tape states everything up to Paid Thru as settled); else
+ * the note's origination date.
+ *
+ * The ledger wins over paid-through when both exist: paid-through is a
+ * schedule position (it advances by whole periods), the ledger is the dated
+ * record of when interest was actually settled. Paid-through exists to cover
+ * the ledger-less case; falling to origination there bills the borrower for
+ * years the tape says are paid.
  *
  * Rows with `interestCents <= 0` are ignored on purpose: a principal-only
  * curtailment or an unapplied deposit settles no interest, so it must not
@@ -404,6 +412,7 @@ export function computePayoffQuote(input: PayoffQuoteInput): PayoffQuote {
 export function resolvePayoffAccrualStart(
   ledgerRows: Array<{ paymentDate: string | Date; interestCents: number | string | null }>,
   originationDate: string | Date,
+  paidThroughDate?: string | Date | null,
 ): Date {
   let latest: Date | null = null;
   for (const row of ledgerRows) {
@@ -412,7 +421,9 @@ export function resolvePayoffAccrualStart(
     const posted = parseIsoDateUtc(row.paymentDate);
     if (latest === null || posted.getTime() > latest.getTime()) latest = posted;
   }
-  return latest ?? parseIsoDateUtc(originationDate);
+  if (latest) return latest;
+  if (paidThroughDate) return parseIsoDateUtc(paidThroughDate);
+  return parseIsoDateUtc(originationDate);
 }
 
 /**
