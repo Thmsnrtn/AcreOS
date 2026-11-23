@@ -21,6 +21,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -105,6 +107,25 @@ export default function LotPricingPage() {
     { attribute: "acres", operator: "<", threshold: 1.5, premiumPct: -0.10, label: "Sub-1.5 acre lot" },
   ]);
 
+  // The review date is the operator's OWN answer, and it is required: pick a
+  // date, or say "no set date". There is deliberately no default — a date the
+  // operator did not choose would be a manufactured one.
+  const [reviewDate, setReviewDate] = useState("");
+  const [noReviewDate, setNoReviewDate] = useState(false);
+  // Set from the lock response when prices saved but no decision was recorded.
+  const [lockNotice, setLockNotice] = useState<string | null>(null);
+  const earliestReviewDate = useMemo(() => {
+    const t = new Date();
+    t.setDate(t.getDate() + 1);
+    return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
+  }, []);
+  /** null = unanswered; otherwise { value } where value null means "no set date". */
+  const reviewAnswer: { value: string | null } | null = noReviewDate
+    ? { value: null }
+    : reviewDate && reviewDate >= earliestReviewDate
+      ? { value: new Date(`${reviewDate}T12:00:00`).toISOString() }
+      : null;
+
   const existing = useQuery<RulesResponse>({
     queryKey: ["/api/parcels", parcelId, "pricing-rules"],
     enabled: parcelId !== null,
@@ -170,11 +191,12 @@ export default function LotPricingPage() {
 
   const lock = useMutation({
     mutationFn: async () => {
+      if (!reviewAnswer) throw new Error("Choose a review date, or tick “No set date”, before locking.");
       const res = await fetch(`/api/parcels/${parcelId}/pricing-rules/lock`, {
         method: "POST",
         credentials: "include",
         headers: csrfHeader(),
-        body: JSON.stringify({ overrides: {} }),
+        body: JSON.stringify({ overrides: {}, reviewDueAt: reviewAnswer.value }),
       });
       if (!res.ok) {
         const detail = await res.json().catch(() => ({}));
@@ -184,6 +206,7 @@ export default function LotPricingPage() {
     },
     onSuccess: (r: any) => {
       toast({ title: "Grid locked", description: `${r.lockedGrid.length} list prices updated` });
+      setLockNotice(r.decisionRecorded === false ? (r.decisionWhy ?? "Prices saved; no decision was recorded.") : null);
       queryClient.invalidateQueries({ queryKey: ["/api/parcels", parcelId, "pricing-rules"] });
       queryClient.invalidateQueries({ queryKey: ["/api/parcels", parcelId, "subdivision"] });
     },
@@ -340,17 +363,52 @@ export default function LotPricingPage() {
             </Button>
           </div>
 
+          <div className="space-y-2 pt-2" data-testid="lot-lock-review">
+            <p className="text-xs text-muted-foreground">
+              Locking prices a decision on the whole parcel. Say when you will know how it went — you will be asked for the outcome then (sold or abandoned on the parcel; lot-by-lot sell-through is not captured).
+            </p>
+            <div className="flex flex-wrap items-end gap-4">
+              <div>
+                <Label className="text-xs" htmlFor="lot-lock-review-date">Review date</Label>
+                <Input
+                  id="lot-lock-review-date"
+                  type="date"
+                  min={earliestReviewDate}
+                  value={reviewDate}
+                  disabled={noReviewDate}
+                  onChange={(e) => setReviewDate(e.target.value)}
+                  className="h-8 w-44 text-xs"
+                />
+              </div>
+              <div className="flex items-center gap-2 pb-1">
+                <Checkbox
+                  id="lot-lock-no-review-date"
+                  checked={noReviewDate}
+                  onCheckedChange={(v) => setNoReviewDate(v === true)}
+                />
+                <Label className="text-xs" htmlFor="lot-lock-no-review-date">No set date</Label>
+              </div>
+            </div>
+          </div>
+
           <div className="flex gap-2 pt-2">
             <Button onClick={() => save.mutate()} disabled={save.isPending}>Save rules</Button>
             <Button variant="outline" onClick={() => preview.mutate()} disabled={preview.isPending || !existing.data?.rules}>
               <Sparkles className="w-4 h-4 mr-1" aria-hidden="true" /> Preview grid
             </Button>
-            <Button variant="default" onClick={() => lock.mutate()} disabled={lock.isPending || !existing.data?.rules}>
+            <Button variant="default" onClick={() => lock.mutate()} disabled={lock.isPending || !existing.data?.rules || !reviewAnswer}>
               <Lock className="w-4 h-4 mr-1" aria-hidden="true" /> Lock grid
             </Button>
           </div>
         </CardContent>
       </Card>
+
+      {lockNotice && (
+        <Alert role="status" data-testid="lot-lock-notice">
+          <AlertTitle>Prices saved — no decision recorded</AlertTitle>
+          <AlertDescription>{lockNotice}</AlertDescription>
+        </Alert>
+      )}
 
       {/* Preview / locked grid */}
       {preview.data && (

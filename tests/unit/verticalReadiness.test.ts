@@ -285,13 +285,18 @@ describe("readiness is a projection of evidence", () => {
     expect(measured.decidedBy.get("land_flipper")).toContain("server/routes-data-intelligence.ts");
   });
 
-  it("subdivider reaches `decided` too — it records, even though it cannot be graded", () => {
-    // routes-lot-pricing.ts:351 records a decision. It hardcodes
-    // `reviewDueAt: null` (:419) so those decisions never enter the due sweep
-    // and can never be graded — a real defect, but a SEPARATE one. Readiness
-    // measures what is recorded, not what is gradeable; conflating them here
-    // would hide the grading defect inside a maturity number.
+  it("subdivider reaches `decided` AND is gradeable — its lock cites the parent's feasibility scenario and takes a review date", () => {
+    // Until 2026-11 this read "it records, even though it cannot be graded":
+    // routes-lot-pricing.ts recorded a decision citing no scenario with
+    // `reviewDueAt: null`, so it was credited through a legacy exception and
+    // sat in the ungradeable set. The lock now cites the parent parcel's newest
+    // `subdivision_feasibility` scenario and takes the operator's own review
+    // date (required-nullable, never defaulted), so it is credited by the
+    // ENGINE rule like every other route — and graded by the same rule.
     expect(readinessOf(BUSINESS_TYPES.subdivider, evidence)).toBe("decided");
+    expect(measured.gradeableBusinessTypes.has("subdivider")).toBe(true);
+    expect(measured.engineDecidedBy.get("subdivider") ?? []).toContain("server/routes-lot-pricing.ts");
+    expect(measured.ungradeable.get("subdivider") ?? []).toEqual([]);
   });
 
   it("a vertical with no templates and no modules is only `declared`", () => {
@@ -1043,23 +1048,19 @@ import { recordUnderwrittenDecision } from "./services/underwriting/verticalDeci
     expect(readinessOf(meta, ev(["hybrid"]))).toBe("surfaced");
   });
 
-  it("the legacy file-ownership map only shrinks, and each entry credits only its own surface's uncited decisions", () => {
-    expect(Object.keys(LEGACY_DECISION_ROUTE_OWNER)).toEqual(["server/routes-lot-pricing.ts"]);
+  it("the legacy file-ownership map only shrinks — and it is now empty", () => {
+    // Retired 2026-11 (subdivider item 1): its last entry, the lot-pricing lock
+    // route, now cites a feasibility scenario. Pinned EMPTY, so adding an entry
+    // back fails here — "do not add to this list, give the route an engine".
+    expect(Object.keys(LEGACY_DECISION_ROUTE_OWNER)).toEqual([]);
+    // The loop is kept, vacuous on an empty map, so a future entry is held to
+    // the original rule: it credits only its own surface's uncited decisions
+    // and leaves the moment its own route decides through an engine. (The
+    // branch itself stays falsifiable in the canary below, which feeds
+    // `creditVerticals` a synthetic map.)
     for (const [file, owner] of Object.entries(LEGACY_DECISION_ROUTE_OWNER)) {
-      // Per-surface credit (resolution (a), 2026-11-09): an entry credits the
-      // decisions of the ONE route file it names — here, the lot-pricing lock
-      // route's scenario-less lock decisions. Another file in the same
-      // vertical deciding through an engine (the subdivision decision desk)
-      // is a different surface: it neither needs this entry nor retires it.
-      // The entry retires when ITS OWN route's decisions cite an engine
-      // declaring the vertical — that is the removal signal, and only that.
       const ownSurface = (measured.engineDecidedBy.get(owner) ?? []).filter((f) => f === file);
       expect(ownSurface, `${file} now decides through an engine — remove its legacy entry`).toEqual([]);
-      // The entry must still be load-bearing for its own surface: the route
-      // still credits the vertical, through a decision citing no scenario (it
-      // sits in the ungradeable set via the legacy branch). An entry whose
-      // route credits nothing — or no longer credits it uncited — is dead
-      // weight and must go as well.
       expect(measured.decidedBy.get(owner) ?? [], `${file} no longer credits ${owner} — remove its legacy entry`).toContain(file);
       expect(measured.ungradeable.get(owner) ?? [], `${file} records no uncited decision for ${owner} — remove its legacy entry`).toContain(file);
     }
@@ -1100,15 +1101,103 @@ import { recordUnderwrittenDecision } from "./services/underwriting/verticalDeci
     const cited = creditVerticals([{ file: "server/routes-lot-pricing.ts", facts: lockCited, reachable: [true] }], engines, legacy);
     expect(cited.engineDecidedBy.get("subdivider")).toEqual(["server/routes-lot-pricing.ts"]);
   });
+
+  // ── The lock route's own shape: it CITES an existing scenario by lookup ──
+  const LOOKUP_IMPORT = `import { latestScenarioForSubject } from "./services/economics/scenarioStore";
+`;
+  const lockFacts = (body: string, imports = IMPORTS + LOOKUP_IMPORT) => analyzeRouteSource("server/routes-lot-pricing.ts", imports + body, K);
+  const credit = (f: ReturnType<typeof lockFacts>) =>
+    creditVerticals([{ file: "server/routes-lot-pricing.ts", facts: f, reachable: f.decisions.map(() => true) }], engines, {});
+  const lockBody = (reviewExpr: string, engine = '"subdivision_feasibility"', schema = "") => `${schema}
+    router.post("/lock", async () => {
+      const latest = await latestScenarioForSubject(o, "property", parentId, ${engine});
+      await recordDecision(o, { strategyPackId: "subdivider", reviewDueAt: ${reviewExpr} }, new Date(), [latest.id]);
+    });`;
+
+  it("canary: a lock that cites the parent's feasibility scenario with an operator review date is engine-credited AND gradeable (empty legacy map)", () => {
+    const c = credit(lockFacts(lockBody("reviewDueAt")));
+    expect(c.engineDecidedBy.get("subdivider")).toEqual(["server/routes-lot-pricing.ts"]);
+    expect(c.gradeable.has("subdivider")).toBe(true);
+    expect(c.ungradeable.get("subdivider")).toBeUndefined();
+  });
+
+  it("canary: hard-nulling the lock's review date turns the law red NAMING the route (null, undefined, a null-bound const, an omitted key)", () => {
+    for (const expr of ["null", "undefined", "NEVER"]) {
+      const f = lockFacts(`const NEVER = null;\n` + lockBody(expr));
+      const c = credit(f);
+      expect(c.ungradeable.get("subdivider"), `reviewDueAt: ${expr} must be ungradeable`).toEqual(["server/routes-lot-pricing.ts"]);
+      expect(c.gradeable.has("subdivider")).toBe(false);
+    }
+    const omitted = lockFacts(`router.post("/lock", async () => {
+      const latest = await latestScenarioForSubject(o, "property", parentId, "subdivision_feasibility");
+      await recordDecision(o, { strategyPackId: "subdivider" }, new Date(), [latest.id]);
+    });`);
+    expect(credit(omitted).ungradeable.get("subdivider")).toEqual(["server/routes-lot-pricing.ts"]);
+  });
+
+  it("canary: an OMITTABLE review-date schema on the lock turns the law red (the body may not let a client skip the answer)", () => {
+    for (const chain of ["z.string().nullable().optional()", "z.string().nullish()", "z.string().nullable().default(null)"]) {
+      const f = lockFacts(lockBody("reviewDueAt", '"subdivision_feasibility"', `const lockBody = z.object({ reviewDueAt: ${chain} });\n`));
+      expect(credit(f).ungradeable.get("subdivider"), chain).toEqual(["server/routes-lot-pricing.ts"]);
+    }
+    // And the shape the route actually declares — required, nullable — stays green.
+    const ok = lockFacts(lockBody("reviewDueAt", '"subdivision_feasibility"', `const lockBody = z.object({ reviewDueAt: z.string().datetime().nullable().refine(() => true) });\n`));
+    expect(credit(ok).gradeable.has("subdivider")).toBe(true);
+  });
+
+  it("canary: citing the WRONG engine's scenario, a local lookalike, or an aliased import earns the lock nothing", () => {
+    // A different engine (declares other verticals) — not subdivider's.
+    const wrongEngine = credit(lockFacts(lockBody("reviewDueAt", '"land_deal"')));
+    expect(wrongEngine.deciding.has("subdivider")).toBe(false);
+    // An engine id that does not resolve to a literal proves nothing.
+    expect(credit(lockFacts(lockBody("reviewDueAt", "someEngineVariable"))).deciding.has("subdivider")).toBe(false);
+    // A local function of the same name is not the store.
+    const local = lockFacts(
+      `function latestScenarioForSubject(...a: unknown[]) { return { id: 1 }; }\n` + lockBody("reviewDueAt"),
+      IMPORTS,
+    );
+    expect(credit(local).deciding.has("subdivider")).toBe(false);
+    // An alias binds the local name to some OTHER export.
+    const aliased = lockFacts(lockBody("reviewDueAt"), IMPORTS + `import { somethingElse as latestScenarioForSubject } from "./services/economics/scenarioStore";\n`);
+    expect(credit(aliased).deciding.has("subdivider")).toBe(false);
+    // A lookup is a CITATION, never a scenario writer: it does not make the vertical `underwritten`.
+    expect(credit(lockFacts(lockBody("reviewDueAt"))).underwritten.has("subdivider")).toBe(false);
+  });
+
+  it("MUTATION on the real lock route: hard-null its review date in a copy of the source → the law names server/routes-lot-pricing.ts", () => {
+    // The thing the law GOVERNS, not a fixture that mimics it: the shipped
+    // route's own source, mutated, run through the same analyzer and credit.
+    const src = read("server/routes-lot-pricing.ts");
+    const constants = K; // the route resolves its engine id from a local const
+    const run = (text: string) => {
+      const f = analyzeRouteSource("server/routes-lot-pricing.ts", text, constants);
+      return { f, c: creditVerticals([{ file: "server/routes-lot-pricing.ts", facts: f, reachable: f.decisions.map(() => true) }], engines, {}) };
+    };
+    // Vacuity: the shipped route is credited, gradeable, and has a decision to mutate.
+    const real = run(src);
+    expect(real.f.decisions.length).toBeGreaterThan(0);
+    expect(real.c.gradeable.has("subdivider")).toBe(true);
+    // The recordDecision literal's `reviewDueAt,` shorthand → `reviewDueAt: null,`.
+    const needle = /(\n\s+)reviewDueAt,(\n\s+\}, clock\.now\(\), \[feasibility\.id\]\))/;
+    expect(needle.test(src), "the lock's recordDecision shape moved — update this mutation, do not delete it").toBe(true);
+    const mutated = run(src.replace(needle, "$1reviewDueAt: null,$2"));
+    expect(mutated.c.ungradeable.get("subdivider")).toEqual(["server/routes-lot-pricing.ts"]);
+    expect(mutated.c.gradeable.has("subdivider")).toBe(false);
+    // And making the body's review date omittable is caught too.
+    const omittable = run(src.replace(/(reviewDueAt: z\s*\.string\(\)\s*\.datetime\(\)\s*\.nullable\(\))/, "$1.optional()"));
+    expect(omittable.c.gradeable.has("subdivider")).toBe(false);
+  });
 });
 
 describe("a decided vertical is gradeable (the loop can close on reality)", () => {
   /**
-   * Down-only. subdivider's lot-pricing lock records no scenario and hard-codes
-   * reviewDueAt: null, so none of its decisions is ever asked for an outcome.
-   * Wave V2 gives it both and removes it from here.
+   * Down-only, and EMPTY since 2026-11: subdivider's lot-pricing lock now cites
+   * the parent parcel's feasibility scenario and takes an operator-chosen review
+   * date, so the last exception retired (the "gradeable now" assertion below
+   * fired against the old list before the entry was removed — the proof it was
+   * load-bearing). Do not add to this list — make the route gradeable.
    */
-  const NOT_YET_GRADEABLE: readonly BusinessTypeId[] = ["subdivider"];
+  const NOT_YET_GRADEABLE: readonly BusinessTypeId[] = [];
   const gradeable = measured.gradeableBusinessTypes;
 
   it("vacuity: the gradeable set is real", () => {

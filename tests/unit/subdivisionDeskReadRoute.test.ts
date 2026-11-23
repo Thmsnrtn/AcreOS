@@ -357,6 +357,55 @@ describe("GET /api/subdivision/parcels/:id/desk — pricingLocks", () => {
   });
 });
 
+describe("GET /api/subdivision/parcels/:id/desk — pricingLocks: graded vs ungraded is read off the lock's OWN record", () => {
+  const lockRow = (id: number, snapshotId: number | null) => ({
+    id,
+    organizationId: ORG,
+    parentParcelId: PARCEL,
+    lockedAt: d("2026-11-10T00:00:00Z"),
+    lockedGrid: [{ askingPriceCents: 5_000_00 }],
+    lockedDecisionSnapshotId: snapshotId,
+  });
+  const priceSnapshot = (id: number, over: Record<string, any> = {}) =>
+    decisionRow({ id, kind: "price", authority: "org_member:lot_pricing_lock", reviewDueAt: d("2027-03-01T00:00:00Z"), ...over });
+
+  it("a lock whose snapshot cites the feasibility scenario is graded on the parent position, with its date and outcome state; the pre-change lock stays ungraded", async () => {
+    world.rows.lot_pricing_rules = [lockRow(1, 91), lockRow(2, 92)];
+    world.rows.decision_snapshots = [
+      priceSnapshot(91), // cites scenario 501 (decisionRow default)
+      priceSnapshot(92, { scenarios: [], reviewDueAt: null }), // the old, scenario-less shape
+    ];
+    const res = await getDesk(PARCEL);
+    const byId = Object.fromEntries(res.body.pricingLocks.map((l: any) => [l.id, l]));
+    expect(byId[1]).toMatchObject({
+      grading: "graded_on_parent_position",
+      scenarioIds: [501],
+      reviewDueAt: "2027-03-01T00:00:00.000Z",
+      hasOutcome: false,
+    });
+    expect(byId[1].gradingNote).toMatch(/parent position .* not lot by lot/);
+    expect(byId[2].grading).toBe("ungraded_pricing_act");
+    expect(byId[2]).not.toHaveProperty("scenarioIds");
+    // The lock's price snapshot is not a pursue / pass decision: the decisions list is unchanged by it.
+    expect(res.body.decisions).toEqual([]);
+  });
+
+  it("hasOutcome turns true only for THIS org's outcome on THAT lock's snapshot", async () => {
+    world.rows.lot_pricing_rules = [lockRow(1, 91)];
+    world.rows.decision_snapshots = [priceSnapshot(91)];
+    world.rows.outcomes = [{ id: 1, organizationId: OTHER, decisionSnapshotId: 91 }];
+    expect((await getDesk(PARCEL)).body.pricingLocks[0].hasOutcome).toBe(false);
+    world.rows.outcomes = [{ id: 2, organizationId: ORG, decisionSnapshotId: 91 }];
+    expect((await getDesk(PARCEL)).body.pricingLocks[0].hasOutcome).toBe(true);
+  });
+
+  it("a lock pointing at a snapshot that is another parcel's (or missing) is NOT shown as graded", async () => {
+    world.rows.lot_pricing_rules = [lockRow(1, 93)];
+    world.rows.decision_snapshots = [priceSnapshot(93, { subjectId: PARCEL + 1 })];
+    expect((await getDesk(PARCEL)).body.pricingLocks[0].grading).toBe("ungraded_pricing_act");
+  });
+});
+
 describe("GET /api/subdivision/parcels/:id/desk — criticalPath", () => {
   // Decision recorded 2026-10-01; clock pinned at 2026-11-09 → 39 elapsed days.
   const seedTimeline = (inputs: Record<string, unknown>) => {
