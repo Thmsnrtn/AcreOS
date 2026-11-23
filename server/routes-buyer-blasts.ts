@@ -35,7 +35,6 @@ import {
   buyerPropertyMatches,
   properties,
   leads,
-  BUYER_BLAST_RECIPIENT_STATUSES,
 } from "@shared/schema";
 import { inArray } from "drizzle-orm";
 import type { AuthenticatedRequest } from "./types/request";
@@ -51,6 +50,7 @@ import { clock } from "./utils/clock";
 import { routeParam } from "./utils/routeParams";
 import { refuseRedeemableDeedSpend } from "./services/tax/landExit";
 import { offerComplianceGate, sendComplianceRefusal } from "./services/wholesale/offerCompliance";
+import { recipientResponseSchema, recordBlastRecipientResponse } from "./services/wholesale/buyerResponse";
 
 const blastBodySchema = z.object({
   subject: z.string().min(1).max(240),
@@ -450,44 +450,21 @@ export function registerBuyerBlastRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const orgId = getOrganizationId(req);
-        const parsed = z.object({
-          status: z.enum(BUYER_BLAST_RECIPIENT_STATUSES).optional(),
-          responseNotes: z.string().max(4_000).optional(),
-        }).safeParse(req.body);
+        const parsed = recipientResponseSchema.safeParse(req.body);
         if (!parsed.success) return Errors.validationFailed(res, parsed.error.flatten());
 
-        const update: Partial<typeof buyerBlastRecipients.$inferInsert> = {
-          ...parsed.data,
-        };
-        if (parsed.data.status === "replied_interested" || parsed.data.status === "replied_not_interested") {
-          update.respondedAt = clock.now();
-        }
         // Both schema fields are optional, so `{}` parses clean and reaches
         // here with nothing to set. Unlike its sibling routes this patch has
         // no unconditional `updatedAt`, so Drizzle would render
         // `set  where …` — a Postgres syntax error answered as a 500 about
         // SQL grammar. An empty PATCH body is the client's mistake; say so.
-        if (!hasWritableValues(update)) {
+        if (!hasWritableValues({ ...parsed.data })) {
           return Errors.badRequest(res, "No fields to update");
         }
-        const [row] = await db
-          .update(buyerBlastRecipients)
-          .set(update)
-          .where(and(eq(buyerBlastRecipients.id, routeParam(req.params.id)), eq(buyerBlastRecipients.organizationId, orgId)))
-          .returning();
+        // The write (and the parent blast's repliedCount bump) is the shared
+        // service — the Pax record_buyer_blast_response tool calls the same one.
+        const row = await recordBlastRecipientResponse(orgId, routeParam(req.params.id), parsed.data);
         if (!row) return Errors.notFound(res, "Recipient");
-
-        // Bump the parent blast's repliedCount when this is the first
-        // reply transition for this recipient.
-        if (parsed.data.status === "replied_interested" || parsed.data.status === "replied_not_interested") {
-          await db
-            .update(buyerBlasts)
-            .set({
-              repliedCount: sql`${buyerBlasts.repliedCount} + 1`,
-              status: "completed",
-            })
-            .where(eq(buyerBlasts.id, row.blastId));
-        }
 
         return res.json({ recipient: row });
       } catch (err) {

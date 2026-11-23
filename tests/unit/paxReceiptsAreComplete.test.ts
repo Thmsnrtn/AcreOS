@@ -127,6 +127,7 @@ vi.mock("../../server/db", () => {
     values: async () => undefined,
     update: () => chain,
     set: () => chain,
+    returning: async () => H.dbSelectRows,
   };
   return { db: chain };
 });
@@ -207,6 +208,7 @@ function caseLabels(rel: string, fn: string): string[] {
 }
 
 const TAX_CERT_ID = "6f1c1c1e-2b7a-4c1d-9a55-0e0e0e0e0e0e";
+const BLAST_RECIPIENT_ID = "8a2d2d2e-3c8b-4d2e-8b66-1f1f1f1f1f1f";
 
 /** Minimal args that make each member SUCCEED against the stubbed storage. */
 const ARGS: Record<string, Record<string, unknown>> = {
@@ -222,6 +224,7 @@ const ARGS: Record<string, Record<string, unknown>> = {
   complete_task: { task_id: 5 },
   generate_offer_letter: { property_id: 3, offer_amount: 25000, buyer_name: "Acme" },
   draft_offer: { dealId: 11, offerAmount: 25000 },
+  record_buyer_blast_response: { recipient_id: BLAST_RECIPIENT_ID, status: "replied_interested", response_notes: "Wants it, asked for proof of the rehab scope" },
   record_tax_ledger_entry: { certificate_id: TAX_CERT_ID, kind: "subsequent_tax_paid", paid_on: "2026-01-15", amount_cents: 12000, tax_year: "2025", source: "County treasurer receipt" },
   schedule_followup: { title: "Follow up", entity_type: "lead", entity_id: 42, due_date: "2026-09-10" },
   schedule_follow_up: { entityType: "lead", entityId: 42, note: "Call back", followUpDate: "2026-09-10" },
@@ -285,6 +288,8 @@ describe("each executed member yields exactly one activity_log row with agentTyp
     // The tax ledger tool loads the certificate before it writes: give the stubbed
     // database the one row it needs (the rest of the population never reads it).
     if (name === "record_tax_ledger_entry") H.dbSelectRows = [{ id: TAX_CERT_ID, organizationId: 7, county: "Cochise", state: "AZ", apn: "100-20-030" }];
+    // The wholesale reply tool loads the recipient, then updates it and returns the row.
+    if (name === "record_buyer_blast_response") H.dbSelectRows = [{ id: BLAST_RECIPIENT_ID, organizationId: 7, blastId: "b1", status: "sent", responseNotes: null }];
     const result = await executeTool(name, { ...ARGS[name] }, org, { userId: "u-1", origin: "chat" });
     // Per-member vacuity: the member must have RUN, or "one receipt" is a
     // claim about a tool that did nothing.

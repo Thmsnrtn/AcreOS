@@ -523,6 +523,14 @@ const TOOL_REGISTRY: Readonly<Record<string, ToolEntry>> = Object.fromEntries([
       "get_tax_certificate",
       "get_tax_certificate_clock",
       "get_tax_certificate_ledger",
+      "get_wholesale_buy_box",
+      "get_wholesale_triage",
+      "get_wholesale_buyers",
+      "get_wholesale_buyer_matches",
+      "get_wholesale_assignments",
+      "get_wholesale_decision",
+      "get_wholesale_disposition_packet",
+      "get_wholesale_blasts",
       "calculate_amortization",
       "calculate_payment_schedule",
       "calculate_roi",
@@ -573,6 +581,8 @@ const TOOL_REGISTRY: Readonly<Record<string, ToolEntry>> = Object.fromEntries([
   ),
   // A tax-certificate ledger entry is a record on a position the customer holds — the deals rail.
   ...recordTools("deals", ["record_tax_ledger_entry"], "executeTool"),
+  // A buyer's reply on a blast recipient is a record on a deal the customer is disposing of — the deals rail.
+  ...recordTools("deals", ["record_buyer_blast_response"], "executeTool"),
   ...recordTools("tasks", ["create_task", "update_task", "complete_task"], "executeTool"),
   ...recordTools("follow_ups", ["schedule_followup", "schedule_follow_up"], "executeTool"),
   // APPROVAL_REQUIRED_TOOLS (server/services/approvalKernel.ts) — may only grow.

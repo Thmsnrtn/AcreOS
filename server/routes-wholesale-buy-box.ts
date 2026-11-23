@@ -12,36 +12,20 @@
  * no list building, no sends.
  */
 import { Router, type Response } from "express";
-import { and, desc, eq, inArray, isNull } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { db } from "./db";
-import { decisionSnapshots, deals, properties, wholesaleBuyBoxes } from "@shared/schema";
+import { wholesaleBuyBoxes } from "@shared/schema";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId, getUserId } from "./types/request";
 import { Errors, sendError } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { clock } from "./utils/clock";
-import {
-  buyBoxCriteriaSchema,
-  CANDIDATE_STATUSES,
-  triageCandidates,
-  type CandidateFacts,
-} from "@shared/wholesale/buyBox";
+import { buyBoxCriteriaSchema } from "@shared/wholesale/buyBox";
+import { buyBoxVersionsFor, triageForOrg } from "./services/wholesale/buyBoxTriage";
 
 const router = Router();
 
-/** A buy box's history is short; the cap is a runaway-writer guard. */
-const VERSION_READ_CAP = 100;
-/** Triage reads at most this many candidates, newest first, and says so. */
-const CANDIDATE_CAP = 500;
-
-async function versionsFor(organizationId: number) {
-  return db
-    .select()
-    .from(wholesaleBuyBoxes)
-    .where(eq(wholesaleBuyBoxes.organizationId, organizationId))
-    .orderBy(desc(wholesaleBuyBoxes.version))
-    .limit(VERSION_READ_CAP);
-}
+const versionsFor = buyBoxVersionsFor;
 
 router.get("/buy-box", async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -85,74 +69,15 @@ router.post("/buy-box", async (req: AuthenticatedRequest, res: Response) => {
   }
 });
 
-const centsOf = (v: string | number | null | undefined): number | null => {
-  if (v === null || v === undefined || v === "") return null;
-  const n = Number(v);
-  return Number.isFinite(n) && n > 0 ? Math.round(n * 100) : null;
-};
-const later = (...ds: Array<Date | null | undefined>): Date | null =>
-  ds.reduce<Date | null>((m, d) => (d && (!m || d > m) ? d : m), null);
-
 router.get("/candidates/triage", async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const organizationId = getOrganizationId(req);
-    const [box] = await versionsFor(organizationId);
-    if (!box) return sendError(res, 409, "NO_BUY_BOX", "Save your buy box first — triage scores your candidates against it.");
-    const criteria = buyBoxCriteriaSchema.parse(box.criteria);
-
-    const props = await db
-      .select({ id: properties.id, address: properties.address, apn: properties.apn, state: properties.state, county: properties.county, zip: properties.zip, updatedAt: properties.updatedAt })
-      .from(properties)
-      .where(and(eq(properties.organizationId, organizationId), inArray(properties.status, [...CANDIDATE_STATUSES]), isNull(properties.deletedAt)))
-      .orderBy(desc(properties.updatedAt), desc(properties.id))
-      .limit(CANDIDATE_CAP);
-    const ids = props.map((p) => p.id);
-
-    const dealRows = ids.length
-      ? await db
-          .select({ propertyId: deals.propertyId, offerAmount: deals.offerAmount, acceptedAmount: deals.acceptedAmount, updatedAt: deals.updatedAt })
-          .from(deals)
-          .where(and(eq(deals.organizationId, organizationId), inArray(deals.propertyId, ids), eq(deals.type, "acquisition"), isNull(deals.deletedAt)))
-          .orderBy(desc(deals.updatedAt))
-      : [];
-    const decisionRows = ids.length
-      ? await db
-          .select({ subjectId: decisionSnapshots.subjectId, scenarios: decisionSnapshots.scenarios, decidedAt: decisionSnapshots.decidedAt })
-          .from(decisionSnapshots)
-          .where(
-            and(
-              eq(decisionSnapshots.organizationId, organizationId),
-              eq(decisionSnapshots.subjectType, "property"),
-              inArray(decisionSnapshots.subjectId, ids),
-              eq(decisionSnapshots.strategyPackId, "residential_wholesaler"),
-            ),
-          )
-          .orderBy(desc(decisionSnapshots.decidedAt))
-      : [];
-
-    const candidates: CandidateFacts[] = props.map((p) => {
-      const deal = dealRows.find((d) => d.propertyId === p.id); // newest first
-      const decision = decisionRows.find((d) => d.subjectId === p.id); // newest first
-      const fee = decision?.scenarios
-        .flatMap((s) => s.predicted)
-        .find((m) => m.id === "assignment_fee")?.value;
-      return {
-        propertyId: p.id,
-        label: p.address || (p.apn ? `APN ${p.apn}` : `Property ${p.id}`),
-        state: p.state,
-        county: p.county,
-        zip: p.zip,
-        priceCents: centsOf(deal?.acceptedAmount) ?? centsOf(deal?.offerAmount),
-        underwrittenFeeCents: typeof fee === "number" ? fee : null,
-        lastActivityAt: later(p.updatedAt, deal?.updatedAt, decision?.decidedAt),
-      };
-    });
-
+    const read = await triageForOrg(getOrganizationId(req), clock.now());
+    if (read.kind === "no_buy_box") return sendError(res, 409, "NO_BUY_BOX", "Save your buy box first — triage scores your candidates against it.");
     res.json({
-      buyBoxVersion: box.version,
-      candidatesRead: props.length,
-      capped: props.length === CANDIDATE_CAP,
-      rows: triageCandidates(criteria, candidates, clock.now()),
+      buyBoxVersion: read.buyBoxVersion,
+      candidatesRead: read.candidatesRead,
+      capped: read.capped,
+      rows: read.rows,
     });
   } catch (err) {
     Errors.internal(res, err);
