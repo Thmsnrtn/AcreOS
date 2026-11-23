@@ -166,18 +166,25 @@ describe("the deposit deadline is measured from a real day", () => {
     path.join(ROOT, "shared/regulatory/depositReturnRules.ts"),
     "utf8",
   );
+  // The deadline arithmetic moved to depositDeadline.ts (bundle diet for
+  // PR #704 D1: the registry data ships as a served asset, the computation
+  // core stays bundled). The pin follows the computation.
+  const core = fs.readFileSync(
+    path.join(ROOT, "shared/regulatory/depositDeadline.ts"),
+    "utf8",
+  );
 
   it("the lenient parser is gone from the module that computes it", () => {
     // Asserted on source because the defect WAS a definition. The behaviour it
     // caused is covered by the parser tests above; what must not come back is a
     // second, laxer parser living beside the deadline arithmetic.
     expect(
-      rules,
+      rules + core,
       "depositReturnRules defines its own date parser again. The last one accepted " +
         "2026-02-30 and returned March 2nd, which moved a statutory return " +
         "deadline two days late.",
     ).not.toMatch(/^export function parseIsoDate\(/m);
-    expect(rules).toContain("parseCalendarDate");
+    expect(core).toContain("parseCalendarDate");
   });
 
   it("and the two-day shift is what was at stake", () => {

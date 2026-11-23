@@ -33,7 +33,17 @@
  *      Regenerate: npx tsx -e 'import {TRUST_SECTIONS} from "./client/src/data/trust-content-data";
  *      import fs from "node:fs"; fs.writeFileSync("client/public/trust-content.json", JSON.stringify(TRUST_SECTIONS,null,2)+"\n")'
  *   6. the static server never gives the unhashed assets the 1-year
- *      immutable cache.
+ *      immutable cache;
+ *   7. (bundle diet for PR #704 D1) the security-deposit statutory
+ *      registry (shared/regulatory/depositReturnRules.ts, source of
+ *      truth) → /deposit-return-rules.json; the rent-roll deposit clock
+ *      loads it via the shared loader and computes with
+ *      computeDepositDeadlineFrom, whose results over the served asset
+ *      must equal the bundled-registry computeDepositDeadline for every
+ *      jurisdiction and both deduction branches.
+ *      Regenerate: npx tsx -e 'import {DEPOSIT_RULE_STATES, getDepositReturnRule} from "./shared/regulatory/depositReturnRules";
+ *      import fs from "node:fs"; const rules = Object.fromEntries(DEPOSIT_RULE_STATES.map((s) => [s, getDepositReturnRule(s)]));
+ *      fs.writeFileSync("client/public/deposit-return-rules.json", JSON.stringify(rules,null,2)+"\n")'
  */
 import { describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
@@ -44,6 +54,19 @@ import {
   campaignTemplatesFor,
 } from "../../shared/outreach/templates";
 import { TRUST_SECTIONS } from "../../client/src/data/trust-content-data";
+import {
+  computeDepositDeadline,
+  computeDepositDeadlineFrom,
+  DEPOSIT_RULE_STATES,
+  getDepositReturnRule,
+  type DepositReturnRule,
+} from "../../shared/regulatory/depositReturnRules";
+
+// The registry record rebuilt through the module's public surface —
+// exactly what the generator writes to the served asset.
+const DEPOSIT_REFERENCE: Record<string, DepositReturnRule> = Object.fromEntries(
+  DEPOSIT_RULE_STATES.map((s) => [s, getDepositReturnRule(s)!]),
+);
 import { CUSTOMER_CHANGELOG } from "../../client/src/data/customer-changelog";
 import {
   HELP_FAQ_ITEMS,
@@ -77,6 +100,9 @@ const readJson = (rel: string): unknown => JSON.parse(read(rel));
 const OUTREACH_ASSET = readJson("client/public/outreach-templates.json");
 const CHANGELOG_ASSET = readJson("client/public/customer-changelog.json");
 const TRUST_ASSET = readJson("client/public/trust-content.json");
+const DEPOSIT_ASSET = readJson(
+  "client/public/deposit-return-rules.json",
+) as Record<string, DepositReturnRule>;
 const HELP_ASSET = readJson("client/public/help-content.json") as {
   featureGuides: typeof HELP_FEATURE_GUIDES;
   faqItems: typeof HELP_FAQ_ITEMS;
@@ -100,6 +126,16 @@ describe("served assets are verbatim the modules' data", () => {
   it("trust-content.json is the generator's exact output (regenerate with the header's command)", () => {
     expect(read("client/public/trust-content.json")).toBe(
       JSON.stringify(TRUST_SECTIONS, null, 2) + "\n",
+    );
+  });
+
+  it("deposit-return-rules.json deep-equals the registry record", () => {
+    expect(DEPOSIT_ASSET).toEqual(DEPOSIT_REFERENCE);
+  });
+
+  it("deposit-return-rules.json is the generator's exact output (regenerate with the header's command)", () => {
+    expect(read("client/public/deposit-return-rules.json")).toBe(
+      JSON.stringify(DEPOSIT_REFERENCE, null, 2) + "\n",
     );
   });
 
@@ -135,6 +171,46 @@ describe("selectCampaignTemplates reproduces campaignTemplatesFor", () => {
     expect(selectCampaignTemplates(data, fr, "email")).toEqual(
       campaignTemplatesFor(fr, "email"),
     );
+  });
+});
+
+// ── 2b. Deposit-clock behaviour over the served asset ─────────────────────
+
+describe("computeDepositDeadlineFrom over the served asset reproduces computeDepositDeadline", () => {
+  it("every registered jurisdiction, both deduction branches, two move-out dates", () => {
+    for (const state of DEPOSIT_RULE_STATES) {
+      for (const hasDeductions of [true, false]) {
+        for (const moveOutDate of ["2026-01-15", "2026-06-30"]) {
+          const args = { moveOutDate, state, hasDeductions };
+          expect(computeDepositDeadlineFrom(DEPOSIT_ASSET, args)).toEqual(
+            computeDepositDeadline(args),
+          );
+        }
+      }
+    }
+  });
+
+  it("absent jurisdictions stay unknown over the asset (no invented date)", () => {
+    for (const state of ["KY", "ZZ", null, undefined, ""]) {
+      const args = { moveOutDate: "2026-01-15", state, hasDeductions: true };
+      expect(computeDepositDeadlineFrom(DEPOSIT_ASSET, args)).toEqual(
+        computeDepositDeadline(args),
+      );
+      expect(computeDepositDeadlineFrom(DEPOSIT_ASSET, args).known).toBe(false);
+    }
+  });
+
+  it("the rent-roll clock reads the asset through the shared loader and never value-imports the bundled-registry entry points", () => {
+    const page = stripComments(read("client/src/pages/rent-roll.tsx"));
+    expect(page).toContain("DEPOSIT_RETURN_RULES_URL");
+    expect(page).toContain("computeDepositDeadlineFrom");
+    expect(page).toContain('data-testid="deposit-rules-load-error"');
+    // The registry module itself (which would drag the registry data
+    // back into the JS bundle) must not be imported by the page at all —
+    // the computation core is a separate, data-free module.
+    expect(page).toContain("@shared/regulatory/depositDeadline");
+    expect(page).not.toContain("@shared/regulatory/depositReturnRules");
+    expect(page).not.toMatch(/\bDEPOSIT_RETURN_RULES\b/);
   });
 });
 
@@ -326,6 +402,7 @@ describe("static server cache discipline", () => {
       "/customer-changelog.json",
       "/help-content.json",
       "/trust-content.json",
+      "/deposit-return-rules.json",
     ]) {
       expect(src).toContain(`"${url}"`);
     }

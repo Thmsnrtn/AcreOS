@@ -33,7 +33,7 @@ const isLearnContentPath = (urlPath: string) => /^\/learn-content\//.test(urlPat
 const isPaxGlossaryPath = (urlPath: string) => urlPath === "/pax-glossary.json";
 
 /** The static-data assets (campaign templates, customer changelog, help
- * content, /trust copy) are unhashed, refreshed-in-place JSON — same rule as the
+ * content, /trust copy, deposit-return rules) are unhashed, refreshed-in-place JSON — same rule as the
  * pax glossary: never the 1-year immutable cache, or a copy edit would
  * take a year to reach a returning browser. */
 const STATIC_DATA_PATHS = new Set([
@@ -41,6 +41,7 @@ const STATIC_DATA_PATHS = new Set([
   "/customer-changelog.json",
   "/help-content.json",
   "/trust-content.json",
+  "/deposit-return-rules.json",
 ]);
 const isStaticDataPath = (urlPath: string) => STATIC_DATA_PATHS.has(urlPath);
 

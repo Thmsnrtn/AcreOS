@@ -89,10 +89,12 @@ import {
 } from "@shared/rental/paymentAllocation";
 import type { LateFeeProposal } from "@shared/rental/lateFeeProposal";
 import {
-  computeDepositDeadline,
+  computeDepositDeadlineFrom,
   depositDeadlineCountdown,
   type DepositDeadlineResult,
-} from "@shared/regulatory/depositReturnRules";
+  type DepositReturnRule,
+} from "@shared/regulatory/depositDeadline";
+import { DEPOSIT_RETURN_RULES_URL, useStaticData } from "@/lib/static-data";
 
 // ---------------------------------------------------------------------------
 // Wire types
@@ -1578,6 +1580,14 @@ function DepositClockSection({ leases, isLoading }: { leases: Lease[]; isLoading
         .sort((a, b) => String(b.endDate ?? "").localeCompare(String(a.endDate ?? ""))),
     [leases],
   );
+  // The statutory registry ships as a served data asset, not bundle JS
+  // (the shared module stays the source of truth; the asset is pinned
+  // verbatim to it). Shell first: while it loads — or if it fails — the
+  // section says so visibly instead of rendering guessed deadlines.
+  const {
+    data: depositRules,
+    error: depositRulesError,
+  } = useStaticData<Record<string, DepositReturnRule>>(DEPOSIT_RETURN_RULES_URL);
 
   return (
     <Card className="mb-6">
@@ -1593,6 +1603,13 @@ function DepositClockSection({ leases, isLoading }: { leases: Lease[]; isLoading
       <CardContent>
         {isLoading ? (
           <Skeleton className="h-24" />
+        ) : depositRulesError ? (
+          <p className="text-sm text-acr-neg" role="alert" data-testid="deposit-rules-load-error">
+            The statutory deposit-deadline registry could not be loaded, so no deadlines are
+            shown. AcreOS will not guess a statutory date — reload the page to try again.
+          </p>
+        ) : !depositRules ? (
+          <Skeleton className="h-24" />
         ) : ended.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             No ended or terminated leases. The clock starts at move-out; nothing is running.
@@ -1607,7 +1624,7 @@ function DepositClockSection({ leases, isLoading }: { leases: Lease[]; isLoading
           >
             {ended.map((l) => (
               <motion.li key={l.id} variants={staggerItem}>
-                <DepositClockRow lease={l} />
+                <DepositClockRow lease={l} rules={depositRules} />
               </motion.li>
             ))}
           </motion.ul>
@@ -1617,18 +1634,24 @@ function DepositClockSection({ leases, isLoading }: { leases: Lease[]; isLoading
   );
 }
 
-function DepositClockRow({ lease }: { lease: Lease }) {
+function DepositClockRow({
+  lease,
+  rules,
+}: {
+  lease: Lease;
+  rules: Record<string, DepositReturnRule>;
+}) {
   const moveOutDate = lease.endDate ? String(lease.endDate).slice(0, 10) : null;
 
   // Both statutory branches. We do not know whether this operator is
   // withholding anything (no deposit-disposition read exists yet), so where
   // the branches differ the EARLIER date binds.
-  const withDeductions = computeDepositDeadline({
+  const withDeductions = computeDepositDeadlineFrom(rules, {
     moveOutDate,
     state: lease.state,
     hasDeductions: true,
   });
-  const withoutDeductions = computeDepositDeadline({
+  const withoutDeductions = computeDepositDeadlineFrom(rules, {
     moveOutDate,
     state: lease.state,
     hasDeductions: false,

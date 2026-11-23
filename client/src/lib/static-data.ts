@@ -26,6 +26,7 @@ export const OUTREACH_TEMPLATES_URL = "/outreach-templates.json";
 export const CUSTOMER_CHANGELOG_URL = "/customer-changelog.json";
 export const HELP_CONTENT_URL = "/help-content.json";
 export const TRUST_CONTENT_URL = "/trust-content.json";
+export const DEPOSIT_RETURN_RULES_URL = "/deposit-return-rules.json";
 
 const cache = new Map<string, Promise<unknown>>();
 
