@@ -66,16 +66,7 @@ function certEventRowFrom(row: typeof taxCertificates.$inferSelect): CertEventRo
 
 import { deadlineBasisOf } from "./services/tax/certificateClock";
 
-const ledgerSource = z.string().trim().min(1).max(500);
-const ledgerDate = z.string().refine(isCalendarDate, "a calendar date (YYYY-MM-DD)");
-const ledgerEntrySchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("subsequent_tax_paid"), paidOn: ledgerDate, amountCents: z.number().int().positive(), taxYear: z.string().regex(/^\d{4}$/).nullable(), source: ledgerSource }),
-  // A notice the OPERATOR sent, outside AcreOS, recorded after the fact.
-  // Notices sent in-product through the rail are recorded by the rail
-  // itself, from the provider's receipt — never through this entry.
-  z.object({ kind: z.literal("redemption_notice_recorded"), sentOn: ledgerDate, method: z.string().trim().min(1).max(200), note: z.string().trim().max(1_000).nullable(), source: ledgerSource }),
-  z.object({ kind: z.literal("foreclosure_filing_deadline"), date: ledgerDate, source: ledgerSource }),
-]);
+import { ledgerEntrySchema, happenedOnOf } from "./services/tax/ledgerEntryInput";
 
 const addressSchema = z
   .object({
@@ -312,7 +303,7 @@ export function registerTaxCertificateRoutes(app: Express): void {
         if (!parsed.success) return Errors.validationFailed(res, parsed.error.flatten());
         const e = parsed.data;
         const today = clock.now().toISOString().slice(0, 10);
-        const happenedOn = e.kind === "subsequent_tax_paid" ? e.paidOn : e.kind === "redemption_notice_recorded" ? e.sentOn : null;
+        const happenedOn = happenedOnOf(e);
         if (happenedOn && happenedOn > today) {
           return Errors.unprocessable(res, "That date is in the future — record a payment or a notice once it has happened.");
         }

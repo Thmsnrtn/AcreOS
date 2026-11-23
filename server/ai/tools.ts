@@ -193,6 +193,66 @@ export const toolDefinitions = {
       }
     }
   },
+  // Tax certificate tools (T7). Reads state their coverage; the one record change
+  // appends to the ledger and never sends anything (FD5: notices stay ask-before-sending).
+  get_tax_certificates: {
+    name: "get_tax_certificates",
+    description: "List this account's tax certificates (tax lien / tax deed positions), soonest redemption deadline first, with status, county/state, purchase amount, deadline, days remaining and the current redemption amount. The result carries a coverage statement: state it. Defaults to active certificates.",
+    parameters: {
+      type: "object",
+      properties: {
+        status: { type: "string", description: "Certificate status filter (default active)" },
+        state: { type: "string", description: "Two-letter state filter (optional)" }
+      }
+    }
+  },
+  get_tax_certificate: {
+    name: "get_tax_certificate",
+    description: "Get one tax certificate: status, amounts, county/state, sale and redemption dates, the deadline's source and the current redemption amount. The result carries a coverage statement.",
+    parameters: {
+      type: "object",
+      properties: { certificate_id: { type: "string", description: "The certificate id from get_tax_certificates (a long identifier, not the printed certificate number)" } },
+      required: ["certificate_id"]
+    }
+  },
+  get_tax_certificate_clock: {
+    name: "get_tax_certificate_clock",
+    description: "Get the redemption clock for one certificate: the deadline and the rule it rests on, countdown, alert dates, next action, any improve/market lock, and a cross-check against the county's procedure. A redemption deadline is a legal fact — report the basis; where no rule is encoded or the county procedure disagrees, say so and never invent a date.",
+    parameters: {
+      type: "object",
+      properties: { certificate_id: { type: "string", description: "The certificate id" } },
+      required: ["certificate_id"]
+    }
+  },
+  get_tax_certificate_ledger: {
+    name: "get_tax_certificate_ledger",
+    description: "Get the ledger for one certificate: lien amount, rate, subsequent taxes paid, interest, redemption notices recorded and the foreclosure-filing deadline. Carries a notice-simulation statement: a notice recorded in test mode was NOT mailed — never say it went out.",
+    parameters: {
+      type: "object",
+      properties: { certificate_id: { type: "string", description: "The certificate id" } },
+      required: ["certificate_id"]
+    }
+  },
+  record_tax_ledger_entry: {
+    name: "record_tax_ledger_entry",
+    description: "Record ONE ledger entry on a certificate from what the customer tells you: a subsequent tax payment, a redemption notice THEY sent themselves outside AcreOS, or the foreclosure-filing deadline. Always give the source (where the customer got it). A date in the future is refused. This records only — it never sends a notice; to send one, say the customer must use the certificate's notice screen.",
+    parameters: {
+      type: "object",
+      properties: {
+        certificate_id: { type: "string", description: "The certificate id" },
+        kind: { type: "string", enum: ["subsequent_tax_paid", "redemption_notice_recorded", "foreclosure_filing_deadline"], description: "Which entry" },
+        paid_on: { type: "string", description: "subsequent_tax_paid: date paid, YYYY-MM-DD" },
+        amount_cents: { type: "number", description: "subsequent_tax_paid: amount in cents" },
+        tax_year: { type: "string", description: "subsequent_tax_paid: four-digit tax year, if known" },
+        sent_on: { type: "string", description: "redemption_notice_recorded: date the customer sent it, YYYY-MM-DD" },
+        method: { type: "string", description: "redemption_notice_recorded: how it was sent (e.g. certified mail)" },
+        note: { type: "string", description: "redemption_notice_recorded: optional note" },
+        date: { type: "string", description: "foreclosure_filing_deadline: the deadline date, YYYY-MM-DD" },
+        source: { type: "string", description: "Where this fact comes from (receipt, county record, the customer's words)" }
+      },
+      required: ["certificate_id", "kind", "source"]
+    }
+  },
   calculate_amortization: {
     name: "calculate_amortization",
     description: "Calculate loan amortization schedule given principal, rate, and term.",
@@ -1138,6 +1198,10 @@ export const PAUSE_SAFE_TOOLS: ReadonlySet<string> = new Set([
   "get_tasks",
   "get_notes",
   "get_cashflow_summary",
+  "get_tax_certificates",
+  "get_tax_certificate",
+  "get_tax_certificate_clock",
+  "get_tax_certificate_ledger",
   // Pure calculations
   "calculate_amortization",
   "calculate_payment_schedule",
@@ -1822,6 +1886,52 @@ export async function executeTool(
         return { success: true, data: property };
       }
       
+      case "get_tax_certificates": {
+        const { paxGetTaxCertificates, taxOutcomeToResult } = await import("./taxCertificateTools");
+        return taxOutcomeToResult(await paxGetTaxCertificates(org.id, { status: args.status, state: args.state }));
+      }
+
+      case "get_tax_certificate": {
+        const { paxGetTaxCertificate, taxOutcomeToResult } = await import("./taxCertificateTools");
+        return taxOutcomeToResult(await paxGetTaxCertificate(org.id, args.certificate_id));
+      }
+
+      case "get_tax_certificate_clock": {
+        const { paxGetTaxCertificateClock, taxOutcomeToResult } = await import("./taxCertificateTools");
+        return taxOutcomeToResult(await paxGetTaxCertificateClock(org.id, args.certificate_id));
+      }
+
+      case "get_tax_certificate_ledger": {
+        const { paxGetTaxCertificateLedger, taxOutcomeToResult } = await import("./taxCertificateTools");
+        return taxOutcomeToResult(await paxGetTaxCertificateLedger(org.id, args.certificate_id));
+      }
+
+      case "record_tax_ledger_entry": {
+        // A record, not a send (FD5): the entry is what the customer says
+        // happened. The receipt names the certificate and the entry.
+        const { paxRecordTaxLedgerEntry, taxOutcomeToResult } = await import("./taxCertificateTools");
+        const out = await paxRecordTaxLedgerEntry(org.id, options?.userId ?? null, args);
+        if (out.ok && out.receipt && !trustedApproval) {
+          await recordPaxEffect({
+            orgId: org.id,
+            actor: "pax",
+            origin,
+            stance: controls?.stance ?? null,
+            tool: "record_tax_ledger_entry",
+            action: "ledger_entry_recorded",
+            entityType: "organization",
+            entityId: org.id,
+            description: out.receipt.description,
+            before: out.receipt.before,
+            after: out.receipt.after,
+            witnessed: false,
+            userId: options?.userId ?? null,
+          });
+          receiptWritten = true;
+        }
+        return taxOutcomeToResult(out);
+      }
+
       case "get_notes": {
         // HYB-DEF-5/6: cross-book read. The serviced book alone was
         // presented as the whole book (acquired notes silently absent,
@@ -3815,10 +3925,10 @@ export function getToolsForRole(role: string) {
   const roleToolMap: Record<string, string[]> = {
     executive: allTools,
     acquisitions: [...coreTools, ...memoryTools, "get_leads", "get_lead_details", "update_lead_status", "create_lead", "get_properties", "create_property", "get_deals", "create_deal", "get_tasks", "create_task", "get_pipeline_summary", "generate_offer", "generate_offer_letter", "send_email", "send_sms", "run_comps_analysis", "schedule_followup", "draft_offer", "schedule_follow_up", "run_comps", "get_stale_leads", "draft_outreach_message"],
-    underwriting: [...coreTools, ...memoryTools, "get_properties", "get_property_details", "update_property", "get_notes", "calculate_amortization", "get_cashflow_summary", "get_deals", "update_deal", "run_comps_analysis", "run_comps", "calculate_roi", "calculate_payment_schedule", "research_property", "draft_offer"],
+    underwriting: [...coreTools, ...memoryTools, "get_properties", "get_property_details", "update_property", "get_notes", "get_tax_certificates", "get_tax_certificate", "get_tax_certificate_clock", "get_tax_certificate_ledger", "record_tax_ledger_entry", "calculate_amortization", "get_cashflow_summary", "get_deals", "update_deal", "run_comps_analysis", "run_comps", "calculate_roi", "calculate_payment_schedule", "research_property", "draft_offer"],
     marketing: [...coreTools, ...memoryTools, "get_leads", "get_properties", "get_pipeline_summary", "create_task", "send_email", "send_sms", "get_stale_leads", "draft_outreach_message"],
     research: [...coreTools, ...memoryTools, "get_properties", "get_property_details", "get_leads", "create_property", "update_property", "run_comps_analysis", "run_comps", "research_property", "calculate_roi", "browse_web", "browse_search"],
-    documents: [...coreTools, "get_leads", "get_lead_details", "get_properties", "get_property_details", "get_notes", "get_deals", "generate_offer_letter", "draft_offer"],
+    documents: [...coreTools, "get_leads", "get_lead_details", "get_properties", "get_property_details", "get_notes", "get_tax_certificates", "get_tax_certificate", "get_tax_certificate_clock", "get_tax_certificate_ledger", "record_tax_ledger_entry", "get_deals", "generate_offer_letter", "draft_offer"],
     assistant: allTools // Full access for the main assistant
   };
   
