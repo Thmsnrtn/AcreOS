@@ -6,10 +6,12 @@
  * line in this map — no CLI change, no runner change.
  */
 import { wholesaleWalk } from "./wholesale";
+import { notesWalk } from "./notes";
 import type { WalkSpec } from "../walk-spec";
 
 export const walkSpecs: Record<string, WalkSpec> = {
   wholesale: wholesaleWalk,
+  notes: notesWalk,
 };
 
 export function getWalkSpec(id: string): WalkSpec {
