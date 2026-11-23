@@ -35,6 +35,7 @@ import {
   notes as sellerFinanceNotes,
 } from "@shared/schema";
 import { NOTE_TAPE_FIELD } from "@shared/notes/noteTapeFields";
+import { SERVICING_ARRANGEMENTS } from "@shared/notes/servicingArrangement";
 import { renderAssignmentPdf } from "./services/noteAssignmentPdf";
 // §1024.17 annual escrow ANALYSIS (projection + surplus/shortage/deficiency).
 // Serves the seller-finance `notes` book only — the schema the analyzer reads.
@@ -1355,6 +1356,8 @@ async function retractCarriedDealSale(orgId: number, dealId: number): Promise<vo
  * so an edit lands in the same series the import wrote). The payer's TIN is
  * deliberately absent: it is encrypted at rest and never copied into a ledger.
  */
+const servicingArrangementBody = z.object({ servicingArrangement: z.enum(SERVICING_ARRANGEMENTS) }).strict();
+
 const EDIT_OBSERVED_COLUMNS: Record<string, string> = {
   propertyId: "propertyId",
   borrowerId: "borrowerId",
@@ -1779,6 +1782,62 @@ export function registerNoteRoutes(app: Express): void {
         return res.json({ note: safe });
       } catch (err) {
         logger.error("notes.patch failed", err instanceof Error ? err : undefined);
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  // ── Who services this acquired note (the operator's declaration) ─────────
+  // The periodic-statement predicate skips every note that is not
+  // 'self_serviced', so this is the only way a note imported before the commit
+  // step asked (or one whose servicer changed) comes to qualify. The change
+  // lands in the append-only provenance ledger beside the note's other edits;
+  // an unchanged value writes nothing.
+  app.patch(
+    "/api/notes/acquired/:id/servicing-arrangement",
+    isAuthenticated,
+    getOrCreateOrg,
+    ownerOrAdmin,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const orgId = getOrganizationId(req);
+        const actor = getUserId(req);
+        const id = routeParam(req.params.id);
+        const parsed = servicingArrangementBody.safeParse(req.body);
+        if (!parsed.success) return Errors.validationFailed(res, parsed.error.flatten());
+        const next = parsed.data.servicingArrangement;
+        const outcome = await withTransaction(async (tx) => {
+          const [before] = await tx
+            .select({ id: acquiredNotes.id, servicingArrangement: acquiredNotes.servicingArrangement })
+            .from(acquiredNotes)
+            .where(and(eq(acquiredNotes.id, id), eq(acquiredNotes.organizationId, orgId)))
+            .limit(1);
+          if (!before) return null;
+          if (before.servicingArrangement === next) return { previous: before.servicingArrangement, changed: false };
+          await tx
+            .update(acquiredNotes)
+            .set({ servicingArrangement: next, updatedAt: clock.now() })
+            .where(and(eq(acquiredNotes.id, id), eq(acquiredNotes.organizationId, orgId)));
+          await tx.insert(noteFieldObservations).values({
+            organizationId: orgId,
+            noteId: id,
+            field: "servicingArrangement",
+            kind: "value",
+            value: next,
+            source: "edit",
+            sourceRef: { via: "PATCH /api/notes/acquired/:id/servicing-arrangement", column: "servicingArrangement", previous: before.servicingArrangement },
+            asOf: clock.now().toISOString().slice(0, 10),
+            confidence: "high",
+            confidenceBasis: "declared by the signed-in operator on the note",
+            decayClass: "years",
+            recordedBy: actor,
+          });
+          return { previous: before.servicingArrangement, changed: true };
+        });
+        if (!outcome) return Errors.notFound(res, "Note");
+        return res.json({ id, servicingArrangement: next, previous: outcome.previous, changed: outcome.changed });
+      } catch (err) {
+        logger.error("notes.servicingArrangement failed", err instanceof Error ? err : undefined);
         return Errors.internal(res, err);
       }
     },

@@ -27,6 +27,7 @@ import { randomUUID } from "node:crypto";
 import { and, desc, eq } from "drizzle-orm";
 import { acquiredNotes, noteEvents, noteFieldObservations, type InsertNoteFieldObservation } from "@shared/schema";
 import { NOTE_TAPE_FIELD, TAPE_CONFIDENCE, TAPE_CONFIDENCE_BASIS, type NoteTapeFieldKey } from "@shared/notes/noteTapeFields";
+import { isServicingArrangement, type ServicingArrangement } from "@shared/notes/servicingArrangement";
 import type { NoteTapeValidation, PreparedNote } from "./noteTapeImport";
 import { planNoteEvents } from "./noteEventsPlan";
 import { clock } from "../../utils/clock";
@@ -49,6 +50,12 @@ export interface CommitNoteTapeArgs {
   validation: NoteTapeValidation;
   /** Rows the operator chose to leave out. Every rejected row must be fixed or listed here. */
   excludeRows: number[];
+  /**
+   * The operator's declaration of who services these notes. Written to every
+   * NEW note; a note the org already holds keeps the arrangement it has (a
+   * re-import never flips it) and the result reports that.
+   */
+  servicingArrangement: ServicingArrangement;
 }
 
 export type CommitNoteTapeResult =
@@ -59,11 +66,14 @@ export type CommitNoteTapeResult =
       created: number;
       appendedToExisting: number;
       excludedRows: number[];
-      notes: Array<{ fileRow: number; noteId: string; noteNumber: string; created: boolean; collateral: "matched" | "unmatched" | "not_searched"; documentsIncomplete: boolean; differingFields: string[]; calendarRegistered: string[] }>;
+      notes: Array<{ fileRow: number; noteId: string; noteNumber: string; created: boolean; servicingArrangement: ServicingArrangement | string; servicingArrangementKept: boolean; collateral: "matched" | "unmatched" | "not_searched"; documentsIncomplete: boolean; differingFields: string[]; calendarRegistered: string[] }>;
     };
 
 export async function commitNoteTape(a: CommitNoteTapeArgs): Promise<CommitNoteTapeResult> {
   const v = a.validation;
+  // Belt and braces: the route's schema already requires it, but a direct caller must not be able to
+  // import notes whose servicer nobody declared (it would fall to the column default, silently).
+  if (!isServicingArrangement(a.servicingArrangement)) return { status: "refused", reason: "Say who services these notes before importing." };
   if (v.unmappedRequired.length > 0) return { status: "refused", reason: "Map every required column before importing.", unmappedRequired: v.unmappedRequired };
   const excluded = new Set(a.excludeRows);
   const unresolved = v.rejected.map((r) => r.fileRow).filter((r) => !excluded.has(r));
@@ -82,7 +92,7 @@ export async function commitNoteTape(a: CommitNoteTapeArgs): Promise<CommitNoteT
     const out: Extract<CommitNoteTapeResult, { status: "committed" }>["notes"] = [];
     for (const n of notes) {
       const [existing] = await tx
-        .select({ id: acquiredNotes.id })
+        .select({ id: acquiredNotes.id, servicingArrangement: acquiredNotes.servicingArrangement })
         .from(acquiredNotes)
         .where(and(eq(acquiredNotes.organizationId, a.organizationId), eq(acquiredNotes.noteNumber, n.noteNumber)))
         .limit(1);
@@ -111,6 +121,7 @@ export async function commitNoteTape(a: CommitNoteTapeArgs): Promise<CommitNoteT
             balloonDate: n.balloonDate,
             paidThroughDate: n.paidThroughDate,
             nextPaymentDate: n.nextPaymentDate,
+            servicingArrangement: a.servicingArrangement,
           })
           .returning({ id: acquiredNotes.id });
         noteId = row.id;
@@ -132,6 +143,25 @@ export async function commitNoteTape(a: CommitNoteTapeArgs): Promise<CommitNoteT
       }
 
       const rows: InsertNoteFieldObservation[] = [];
+      // The declaration is recorded beside the note's other provenance — only for a
+      // note this import created. An existing note's arrangement is left as it is.
+      if (!existing) {
+        rows.push({
+          organizationId: a.organizationId,
+          noteId,
+          field: "servicingArrangement",
+          kind: "value",
+          value: a.servicingArrangement,
+          source: "edit",
+          sourceRef: { via: "note-tape commit", fileName: a.fileName, fileSha256: a.fileSha256, fileRow: n.fileRow },
+          asOf: a.asOf,
+          confidence: "high",
+          confidenceBasis: "declared by the signed-in operator at import; not stated by the tape",
+          decayClass: "years",
+          importId,
+          recordedBy: a.actorUserId,
+        });
+      }
       for (const [k, s] of Object.entries(n.stated) as Array<[NoteTapeFieldKey, NonNullable<PreparedNote["stated"][NoteTapeFieldKey]>]>) {
         const corrected = s.source.origin === "operator_correction";
         rows.push({
@@ -181,7 +211,7 @@ export async function commitNoteTape(a: CommitNoteTapeArgs): Promise<CommitNoteT
       const events = planNoteEvents(n, { fileName: a.fileName, fileSha256: a.fileSha256, asOf: a.asOf, importDate });
       await tx.insert(noteEvents).values(events.map((e) => ({ ...e, organizationId: a.organizationId, noteId, importId, recordedBy: a.actorUserId })));
       const calendarRegistered = events.filter((e) => e.category === "calendar").map((e) => e.eventType);
-      out.push({ fileRow: n.fileRow, noteId, noteNumber: n.noteNumber, created: !existing, collateral: res === null ? "not_searched" : res.parcelKey ? "matched" : "unmatched", documentsIncomplete: n.documentsIncomplete, differingFields: differing, calendarRegistered });
+      out.push({ fileRow: n.fileRow, noteId, noteNumber: n.noteNumber, created: !existing, servicingArrangement: existing ? existing.servicingArrangement : a.servicingArrangement, servicingArrangementKept: !!existing, collateral: res === null ? "not_searched" : res.parcelKey ? "matched" : "unmatched", documentsIncomplete: n.documentsIncomplete, differingFields: differing, calendarRegistered });
     }
     return {
       status: "committed" as const,
