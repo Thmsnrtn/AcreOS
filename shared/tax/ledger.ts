@@ -55,7 +55,7 @@ export interface CertificateLedger {
     reimbursement: { status: "stated"; text: string } | { status: "not_stated"; why: string };
   };
   interest: { status: "computed"; text: string; cents: number } | { status: "not_computed"; why: string };
-  notices: Array<{ sentOn: string; method: string; note: string | null; source: string; viaRail: boolean; providerId: string | null }>;
+  notices: Array<{ sentOn: string; method: string; note: string | null; source: string; viaRail: boolean; providerId: string | null; simulated: boolean | null }>;
   foreclosureFilingDeadline: { status: "stated"; date: string; basis: string } | { status: "not_stated"; why: string };
 }
 
@@ -66,14 +66,23 @@ export function certificateLedger(i: LedgerInput): CertificateLedger {
     .sort((a, b) => a.paidOn.localeCompare(b.paidOn));
   const notices = i.events
     .filter((e) => e.eventType === "redemption_notice_recorded")
-    .map((e) => ({
-      sentOn: e.eventDate,
-      method: String(e.detail.method ?? "not stated"),
-      note: typeof e.detail.note === "string" ? e.detail.note : null,
-      source: sourceOf(e),
-      viaRail: e.detail.sentViaRail === true,
-      providerId: typeof e.detail.providerId === "string" ? e.detail.providerId : null,
-    }))
+    .map((e) => {
+      const viaRail = e.detail.sentViaRail === true;
+      const providerId = typeof e.detail.providerId === "string" ? e.detail.providerId : null;
+      // T-DEF-4: carry the rail's simulation marker. Three-way, never a boolean:
+      // true = test mode / sim_ id (NOT mailed); false = a real send or the operator's own word
+      // about a send outside AcreOS; null = a rail row that carries no marker either way.
+      const simulated: boolean | null = !viaRail ? false : e.detail.testMode === true || (providerId?.startsWith("sim_") ?? false) ? true : e.detail.testMode === false ? false : null;
+      return {
+        sentOn: e.eventDate,
+        method: String(e.detail.method ?? "not stated"),
+        note: typeof e.detail.note === "string" ? e.detail.note : null,
+        source: sourceOf(e),
+        viaRail,
+        providerId,
+        simulated,
+      };
+    })
     .sort((a, b) => a.sentOn.localeCompare(b.sentOn));
   // The latest registration wins, as for every tax calendar event.
   const foreclosure = i.events.filter((e) => e.eventType === "foreclosure_filing_deadline").sort((a, b) => a.recordedAt.localeCompare(b.recordedAt)).at(-1);

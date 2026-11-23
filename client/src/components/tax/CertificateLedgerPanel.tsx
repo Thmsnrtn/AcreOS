@@ -71,7 +71,7 @@ export function CertificateLedgerPanel({ certificateId }: { certificateId: strin
         <dt className="text-muted-foreground">Notices you sent</dt>
         <dd data-testid="ledger-notices">
           {l.notices.length === 0 ? <span className="text-muted-foreground">none recorded</span> : (
-            <ul className="text-xs">{l.notices.map((n, i) => <li key={i}>{formatDate(n.sentOn)} · {n.method}{n.note ? ` · ${n.note}` : ""} — {n.source}{n.viaRail ? <> · sent through AcreOS{n.providerId ? <> · provider id {n.providerId}</> : null}</> : null}</li>)}</ul>
+            <ul className="text-xs">{l.notices.map((n, i) => <li key={i}>{formatDate(n.sentOn)} · {n.method}{n.note ? ` · ${n.note}` : ""} — {n.source}{n.viaRail ? <> · {n.simulated === true ? "simulated — not mailed" : n.simulated === false ? "sent through AcreOS" : "sent through AcreOS — mailing status not recorded"}{n.providerId ? <> · provider id {n.providerId}</> : null}</> : null}</li>)}</ul>
           )}
         </dd>
         <dt className="text-muted-foreground">Foreclosure-filing deadline</dt>
