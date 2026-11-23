@@ -148,7 +148,14 @@ const W5A_TRUST_FILES = [
  * "P2-6 /trust" entries in CLAIMS, each backed by a source paragraph that
  * names the shipped code making it true.
  */
-const TRUST_PAGE_FILES = ["client/src/pages/trust.tsx"];
+const TRUST_PAGE_FILES = [
+  "client/src/pages/trust.tsx",
+  // Diet micro-slice #3: the sentences moved out of the page into the source
+  // module the served /trust-content.json is generated from (and pinned to by
+  // tests/unit/staticDataServedAsData.test.ts). Same anchors, same verbatim
+  // sentences; the page file stays in the population (vacuity floor intact).
+  "client/src/data/trust-content-data.ts",
+];
 
 /** Strip comments so truth-notes and design notes don't read as claims. */
 
