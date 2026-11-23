@@ -171,8 +171,8 @@ describe("redemption notice control", () => {
     const ledger: CertificateLedger = {
       ...baseLedger,
       notices: [
-        { sentOn: "2026-11-10", method: "certified mail via AcreOS", note: null, source: "county procedure v1", viaRail: true, providerId: "ltr_xyz789" },
-        { sentOn: "2026-10-01", method: "Certified mail", note: null, source: "post office receipt", viaRail: false, providerId: null },
+        { sentOn: "2026-11-10", method: "certified mail via AcreOS", note: null, source: "county procedure v1", viaRail: true, providerId: "ltr_xyz789", simulated: false },
+        { sentOn: "2026-10-01", method: "Certified mail", note: null, source: "post office receipt", viaRail: false, providerId: null, simulated: false },
       ],
     };
     await mount(ledger);
