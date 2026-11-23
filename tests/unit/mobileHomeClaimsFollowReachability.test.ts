@@ -31,7 +31,7 @@ import ts from "typescript";
 import { stripComments } from "../helpers/stripComments";
 import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
 import { PERSONAS } from "../../server/services/pax/personas";
-import { VERTICAL_ONBOARDING } from "../../client/src/lib/onboarding-verticals";
+import { VERTICAL_ONBOARDING } from "../../client/src/data/onboarding-verticals-data";
 
 vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 

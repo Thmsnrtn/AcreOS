@@ -3,6 +3,13 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-11-23 — Subdivider item 1: the lot-pricing lock is gradeable, the legacy exception is retired (on `subdiv-gradeable-lock`, unpublished)
+
+- **Built.** `POST /api/parcels/:id/pricing-rules/lock` now cites the PARENT parcel's newest `subdivision_feasibility` scenario (`latestScenarioForSubject` — subject AND engine in the query) and takes an operator-chosen `reviewDueAt` (required-nullable in the body, no default, past dates refused). With no scenario on file the prices still save, NO decision is recorded, and the response says so (`decisionRecorded: false` + `decisionWhy`). The decision rationale labels the grade coarse ("graded on the parent position: sold / abandoned — lot-level sell-through is not captured by this vocabulary"). The lock page gains the review-date input + "No set date" + the no-decision notice; the decision desk lists each lock as graded-on-parent or ungraded from the lock's own record.
+- **Evidence law.** `LEGACY_DECISION_ROUTE_OWNER` is `{}` and `NOT_YET_GRADEABLE` is `[]` (both exception lists now empty). The three pinned `verticalReadiness` blocks were rewritten, not deleted; the hard-null review-date mutation on the real route turns `every decided vertical takes a review date` red naming `server/routes-lot-pricing.ts`. The analyzer's citation tracing learned one new shape (a lookup through the store's `latestScenarioForSubject` with a literal engine id) — the gradeable predicate is untouched.
+- **Founder call B-4 (P1) was taken on the recommendation — flagged.** If Tom picks P2/P3, only the route change is redone.
+- **Next.** Developer items 1–2 edit the same desk read model: they follow this slice. Post-merge: a staging lock on org 127's parent 1049 showing `scenarioIds` populated + a review date closes SD-DEF-2.
+
 ## 2026-11-15 — P2-6 S1: the /trust page — dark route, claims anchors, bundle offset (on `claude/p2-6-trust-page`, unpushed)
 
 - **Built.** `client/src/pages/trust.tsx` — the dated trust surface (INV-1…INV-10 in their publishable tenses, D1 AI data flows, D2 arbitration explained, D3 succession/portability), modelled on /security, lazy-loaded at `/trust` in the customer App only. DARK: no nav/footer/sitemap/landing link, robots noindex. Every sentence is anchored verbatim in `scripts/audit-public-claims.ts` (`TRUST_PAGE_FILES`, per-member vacuity, and a /trust-only liveness check so a landing file cannot keep a deleted trust sentence "live"), each backed by a source paragraph naming the shipped code.

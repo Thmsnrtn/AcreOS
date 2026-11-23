@@ -27,13 +27,21 @@
  * is one sentence: **adopt where the reasoning would otherwise be LOST; never
  * where an equivalent versioned record already owns it.**
  *
- * NO SCENARIO IS RECORDED, AND THAT IS THE POINT OF THIS FILE AS MUCH AS THE
- * DECISION IS. A per-lot price grid is not expressed in the shared metric
- * vocabulary — it has no `total_cost`, no `profit`, no `cap_rate`. Adding a
- * sixth economics engine so this surface could produce a Scenario would be
- * optimising for the adoption count rather than for the customer, which is the
- * exact failure an up-only ratchet invites. The decision is recorded; the
- * scenario is honestly absent.
+ * A SCENARIO IS CITED WHEN ONE EXISTS, AND NONE IS INVENTED WHEN NONE DOES
+ * (rewritten 2026-11, subdivider item 1 — it used to read "no scenario is
+ * recorded, and that is the point"). The lock writes no scenario of its own: a
+ * per-lot price grid has no `total_cost`, `profit` or `cap_rate`, and a sixth
+ * engine invented so this surface could produce one would optimise the
+ * adoption count, not the customer. What it does instead is cite the PARENT
+ * parcel's newest `subdivision_feasibility` scenario — the parcel's own
+ * economics, which the decision desk already reads — so the lock is graded
+ * through the same loop as every other decision. With no such scenario on
+ * file the prices still save, NO decision is recorded (a snapshot citing
+ * nothing is the defect that was retired), and the response says so.
+ *
+ * The review date is the operator's own answer: required-nullable, never
+ * defaulted, never in the past. Grading is on the PARENT position with the
+ * existing outcome vocabulary and is labelled coarse in the rationale.
  */
 
 import { describe, it, expect } from "vitest";
@@ -129,12 +137,11 @@ describe("the lock records the reasoning it used to discard", () => {
   });
 });
 
-describe("what it deliberately does NOT do", () => {
-  it("records no Scenario", () => {
+describe("the scenario it cites, and the one it refuses to invent", () => {
+  it("records no Scenario of its own", () => {
     // A per-lot price grid carries none of the shared metrics. Adding a sixth
     // engine so this surface could produce a Scenario would move the adoption
-    // ratchet without helping a customer, which is the failure the ratchet is
-    // supposed to detect rather than reward.
+    // ratchet without helping a customer. It CITES; it does not write one.
     expect(
       lockHandler.includes("recordScenario("),
       "the lock now records a Scenario — a per-lot price grid has no total_cost, " +
@@ -143,14 +150,64 @@ describe("what it deliberately does NOT do", () => {
     ).toBe(false);
   });
 
-  it("sets no review date, and the reason still holds", () => {
-    // A review date is what later makes the loop ASK for an outcome. The
-    // outcome vocabulary is shaped for a single position resolving; a price set
-    // across N child lots resolves as "how many sold, at what", which none of
-    // those answers expresses. Asking a question whose answers do not fit is
-    // worse than not asking — so this stays null until the vocabulary can
-    // answer honestly, and this test fails if someone sets it without that.
-    expect(lockHandler).toMatch(/reviewDueAt:\s*null/);
+  it("cites the PARENT parcel's newest subdivision_feasibility scenario — subject AND engine", () => {
+    // The named trap: citing another parcel's scenario. The lookup must be
+    // keyed on parentId (the parcel being priced, not a child lot and not a
+    // body-supplied id) and on the engine literal.
+    expect(route).toMatch(/const FEASIBILITY_ENGINE = "subdivision_feasibility"/);
+    expect(lockHandler).toMatch(
+      /latestScenarioForSubject\(\s*orgId,\s*"property",\s*parentId,\s*FEASIBILITY_ENGINE\s*\)/,
+    );
+    // …and what it cites is exactly that scenario's id, nothing from the request.
+    expect(lockHandler).toMatch(/\[feasibility\.id\]/);
+    expect(lockHandler, "scenario ids must never come from the request body").not.toMatch(/scenarioIds?\s*[:=]\s*(req|parsedBody)/);
+  });
+
+  it("the lookup filters subject and engine in the QUERY, newest first", () => {
+    const store = stripComments(fs.readFileSync(path.join(ROOT, "server/services/economics/scenarioStore.ts"), "utf8"));
+    const at = store.indexOf("export async function latestScenarioForSubject");
+    expect(at, "latestScenarioForSubject is gone").toBeGreaterThan(-1);
+    const fn = store.slice(at, store.indexOf("\nexport ", at + 10));
+    for (const col of ["organizationId", "subjectType", "subjectId", "engineId"]) {
+      expect(fn, `the lookup no longer filters on ${col}`).toContain(`scenarios.${col}`);
+    }
+    expect(fn).toMatch(/orderBy\(desc\(scenarios\.computedAt\)/);
+    expect(fn).toMatch(/limit\(1\)/);
+  });
+
+  it("with no scenario on file it records NO decision and says so", () => {
+    expect(lockHandler).toMatch(/if \(!feasibility\) decisionWhy = NO_SCENARIO_WHY/);
+    expect(lockHandler).toContain("decisionRecorded: decisionSnapshotId !== null");
+    expect(lockHandler).toContain("decisionWhy,");
+    // The record call sits in the branch that HAS a scenario — not before the check.
+    expect(lockHandler.indexOf("recordDecision(", lockHandler.indexOf("!feasibility"))).toBeGreaterThan(lockHandler.indexOf("!feasibility"));
+    expect(route).toContain("No feasibility scenario is on file");
+  });
+});
+
+describe("the review date is the operator's answer", () => {
+  it("is required-nullable in the body, with no default and no omission", () => {
+    const at = route.indexOf("const lockBodySchema");
+    expect(at, "the lock has no body schema").toBeGreaterThan(-1);
+    const schema = route.slice(at, route.indexOf("});", at) + 3);
+    expect(schema).toMatch(/reviewDueAt:\s*z\s*\.string\(\)\s*\.datetime\(\)\s*\.nullable\(\)/);
+    const field = schema.slice(schema.indexOf("reviewDueAt"));
+    expect(field, "a defaulted/omittable review date is a manufactured one").not.toMatch(/\.(optional|nullish|default|catch|or)\(/);
+    // past dates refused
+    expect(schema).toMatch(/getTime\(\) > clock\.nowMs\(\)/);
+  });
+
+  it("is parsed before any write, and passed to the decision as the operator's value", () => {
+    expect(lockHandler.indexOf("lockBodySchema.safeParse")).toBeGreaterThan(-1);
+    expect(lockHandler.indexOf("lockBodySchema.safeParse")).toBeLessThan(lockHandler.indexOf("db.transaction("));
+    expect(lockHandler).not.toMatch(/reviewDueAt:\s*null/);
+    expect(lockHandler).toMatch(/\n\s+reviewDueAt,\n/);
+  });
+
+  it("labels the grade coarse in the rationale", () => {
+    expect(lockHandler).toContain(
+      "Graded on the parent position: sold / abandoned — lot-level sell-through is not captured by this vocabulary.",
+    );
   });
 });
 
