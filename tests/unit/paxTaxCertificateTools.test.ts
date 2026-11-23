@@ -10,6 +10,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
+import { stripComments } from "../helpers/stripComments";
 import { PgDialect } from "drizzle-orm/pg-core";
 import { getTableName } from "drizzle-orm";
 
@@ -72,7 +73,7 @@ import { PAX_TOOL_GROUPS, groupForTool } from "../../shared/pax-controls";
 import { INTENT_META } from "../../server/services/appIntents/intentScopes";
 
 const READS = ["get_tax_certificates", "get_tax_certificate", "get_tax_certificate_clock", "get_tax_certificate_ledger"] as const;
-const WRITE = "record_tax_ledger_entry";
+const WRITE = "record_tax_ledger_entry" as const; // `as const` keeps the literal type so [...READS, WRITE] indexes toolDefinitions (TS7053 otherwise)
 const org = { id: 7, name: "Org", ownerId: "u" } as any;
 const certRow = {
   id: CERT_ID, organizationId: 7, state: "AZ", county: "Cochise", apn: "100-20-030", certificateNumber: "C-1",
@@ -130,7 +131,7 @@ describe("FD5 — no notice send is reachable from Pax", () => {
     expect(Object.keys(toolDefinitions).filter((n) => /tax.*(send|notice)|redemption_notice|send.*notice/i.test(n))).toEqual([]);
   });
   it("the tool module cannot reach the rail, the mail lanes or the notice service", () => {
-    const code = src("server/ai/taxCertificateTools.ts").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    const code = stripComments(src("server/ai/taxCertificateTools.ts"));
     expect(code).not.toMatch(/settlementRail|taxNotice|mailLane|emailService|smsService|redemption-notice/);
   });
   it("the ledger entry the tool records is the operator-sent kind, never a rail receipt", () => {
