@@ -519,6 +519,10 @@ const TOOL_REGISTRY: Readonly<Record<string, ToolEntry>> = Object.fromEntries([
       "get_tasks",
       "get_notes",
       "get_cashflow_summary",
+      "get_tax_certificates",
+      "get_tax_certificate",
+      "get_tax_certificate_clock",
+      "get_tax_certificate_ledger",
       "calculate_amortization",
       "calculate_payment_schedule",
       "calculate_roi",
@@ -567,6 +571,8 @@ const TOOL_REGISTRY: Readonly<Record<string, ToolEntry>> = Object.fromEntries([
     ["create_deal", "update_deal", "generate_offer_letter", "draft_offer"],
     "executeTool",
   ),
+  // A tax-certificate ledger entry is a record on a position the customer holds — the deals rail.
+  ...recordTools("deals", ["record_tax_ledger_entry"], "executeTool"),
   ...recordTools("tasks", ["create_task", "update_task", "complete_task"], "executeTool"),
   ...recordTools("follow_ups", ["schedule_followup", "schedule_follow_up"], "executeTool"),
   // APPROVAL_REQUIRED_TOOLS (server/services/approvalKernel.ts) — may only grow.
