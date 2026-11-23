@@ -13,7 +13,7 @@
  * person-quotes.
  */
 
-import { LANDING_COPY } from "./copy";
+import type { LandingCopy } from "./copy";
 
 type MechCard = {
   /** Single-sentence mechanic statement, in third-person. */
@@ -67,8 +67,8 @@ const MECHANICS: MechCard[] = [
   },
 ];
 
-export function Quotes() {
-  const c = LANDING_COPY.quotes;
+export function Quotes({ copy }: { copy: LandingCopy["quotes"] }) {
+  const c = copy;
   return (
     <section className="lp-section" id="quotes">
       <div className="lp-eyebrow">{c.eyebrow}</div>

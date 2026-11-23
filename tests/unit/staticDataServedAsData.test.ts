@@ -33,7 +33,18 @@
  *      Regenerate: npx tsx -e 'import {TRUST_SECTIONS} from "./client/src/data/trust-content-data";
  *      import fs from "node:fs"; fs.writeFileSync("client/public/trust-content.json", JSON.stringify(TRUST_SECTIONS,null,2)+"\n")'
  *   6. the static server never gives the unhashed assets the 1-year
- *      immutable cache.
+ *      immutable cache;
+ *   7. (landing-copy diet) LANDING_COPY (client/src/pages/landing/copy.ts,
+ *      source of truth — the claims audit's LANDING_FILES already lists
+ *      it, so no re-pointing) → /landing-copy.json; landing.tsx loads it
+ *      ONCE via useLandingCopy (client/src/lib/landing-copy.ts) and
+ *      threads each section its slice as a prop; the loaded shape is
+ *      validated at the loader boundary (isLandingCopy) so a wrong-shape
+ *      200 flows into the visible load-error path, never a section crash
+ *      (the wrong-shape regression lives in
+ *      tests/unit/landingCopyWrongShapeAsset.test.tsx).
+ *      Regenerate: npx tsx -e 'import {LANDING_COPY} from "./client/src/pages/landing/copy";
+ *      import fs from "node:fs"; fs.writeFileSync("client/public/landing-copy.json", JSON.stringify(LANDING_COPY,null,2)+"\n")'
  */
 import { describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
@@ -44,6 +55,8 @@ import {
   campaignTemplatesFor,
 } from "../../shared/outreach/templates";
 import { TRUST_SECTIONS } from "../../client/src/data/trust-content-data";
+import { LANDING_COPY } from "../../client/src/pages/landing/copy";
+import { isLandingCopy } from "../../client/src/lib/landing-copy";
 import { CUSTOMER_CHANGELOG } from "../../client/src/data/customer-changelog";
 import {
   HELP_FAQ_ITEMS,
@@ -77,6 +90,7 @@ const readJson = (rel: string): unknown => JSON.parse(read(rel));
 const OUTREACH_ASSET = readJson("client/public/outreach-templates.json");
 const CHANGELOG_ASSET = readJson("client/public/customer-changelog.json");
 const TRUST_ASSET = readJson("client/public/trust-content.json");
+const LANDING_ASSET = readJson("client/public/landing-copy.json");
 const HELP_ASSET = readJson("client/public/help-content.json") as {
   featureGuides: typeof HELP_FEATURE_GUIDES;
   faqItems: typeof HELP_FAQ_ITEMS;
@@ -100,6 +114,16 @@ describe("served assets are verbatim the modules' data", () => {
   it("trust-content.json is the generator's exact output (regenerate with the header's command)", () => {
     expect(read("client/public/trust-content.json")).toBe(
       JSON.stringify(TRUST_SECTIONS, null, 2) + "\n",
+    );
+  });
+
+  it("landing-copy.json deep-equals LANDING_COPY", () => {
+    expect(LANDING_ASSET).toEqual(LANDING_COPY);
+  });
+
+  it("landing-copy.json is the generator's exact output (regenerate with the header's command)", () => {
+    expect(read("client/public/landing-copy.json")).toBe(
+      JSON.stringify(LANDING_COPY, null, 2) + "\n",
     );
   });
 
@@ -234,7 +258,10 @@ describe("no client file value-imports the externalised registries", () => {
           from === "@shared/outreach/templates" ||
           from.endsWith("/data/customer-changelog") ||
           from.endsWith("/data/help-content-data") ||
-          from.endsWith("/data/trust-content-data")
+          from.endsWith("/data/trust-content-data") ||
+          from.endsWith("/pages/landing/copy") ||
+          (from === "./copy" &&
+            path.relative(ROOT, file).startsWith("client/src/pages/landing/"))
         ) {
           offenders.push(
             `${path.relative(ROOT, file)} value-imports ${from}`,
@@ -256,6 +283,20 @@ describe("no client file value-imports the externalised registries", () => {
       "HELP_CONTENT_URL",
     );
     expect(read("client/src/pages/trust.tsx")).toContain("TRUST_CONTENT_URL");
+  });
+
+  it("the landing page loads its copy ONCE through the validated loader", () => {
+    expect(read("client/src/pages/landing.tsx")).toContain("useLandingCopy()");
+    expect(read("client/src/lib/landing-copy.ts")).toContain(
+      "LANDING_COPY_URL",
+    );
+    expect(read("client/src/lib/landing-copy.ts")).toContain("isLandingCopy");
+  });
+
+  it("the landing page renders a VISIBLE error on loader failure, never a blank page", () => {
+    const page = stripComments(read("client/src/pages/landing.tsx"));
+    expect(page).toMatch(/\{copyError && \(\s*<p role="alert"/);
+    expect(page).toContain('data-testid="landing-load-error"');
   });
 
   it("/trust renders a VISIBLE error on loader failure, never a blank page", () => {
@@ -280,6 +321,42 @@ describe("no client file value-imports the externalised registries", () => {
     const served = (TRUST_ASSET as typeof TRUST_SECTIONS).flatMap((s) => s.lines);
     expect(anchored).toHaveLength(27);
     expect(served).toEqual(anchored);
+  });
+});
+
+// ── 4b. Landing shape guard (the #716 D-2 mandate) ────────────────────────
+
+describe("isLandingCopy validates the served shape at the boundary", () => {
+  it("accepts the real asset", () => {
+    expect(isLandingCopy(LANDING_ASSET)).toBe(true);
+  });
+
+  it("rejects non-objects and empty objects", () => {
+    expect(isLandingCopy(null)).toBe(false);
+    expect(isLandingCopy("copy")).toBe(false);
+    expect(isLandingCopy({})).toBe(false);
+  });
+
+  it("rejects a missing section", () => {
+    const broken = { ...(LANDING_ASSET as object) } as Record<string, unknown>;
+    delete broken.faq;
+    expect(isLandingCopy(broken)).toBe(false);
+  });
+
+  it("rejects a wrong-typed field inside a section", () => {
+    const broken = JSON.parse(JSON.stringify(LANDING_ASSET)) as {
+      hero: { wedge: unknown };
+    };
+    broken.hero.wedge = 42;
+    expect(isLandingCopy(broken)).toBe(false);
+  });
+
+  it("rejects a malformed nested list", () => {
+    const broken = JSON.parse(JSON.stringify(LANDING_ASSET)) as {
+      how: { steps: unknown };
+    };
+    broken.how.steps = [{ n: "one", t: "x", b: "y" }];
+    expect(isLandingCopy(broken)).toBe(false);
   });
 });
 
@@ -319,13 +396,14 @@ describe("loadStaticData", () => {
 // ── 6. The unhashed assets never get the immutable cache ──────────────────
 
 describe("static server cache discipline", () => {
-  it("server/static.ts no-cache-lists all three assets", () => {
+  it("server/static.ts no-cache-lists all the assets", () => {
     const src = read("server/static.ts");
     for (const url of [
       "/outreach-templates.json",
       "/customer-changelog.json",
       "/help-content.json",
       "/trust-content.json",
+      "/landing-copy.json",
     ]) {
       expect(src).toContain(`"${url}"`);
     }

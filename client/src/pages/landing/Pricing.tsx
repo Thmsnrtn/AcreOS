@@ -21,7 +21,7 @@
 
 import { useState } from "react";
 import { Link } from "wouter";
-import { LANDING_COPY } from "./copy";
+import type { LandingCopy } from "./copy";
 import {
   PRICING_TIER_COPY,
   SCALE_SALES_MAILTO,
@@ -29,8 +29,8 @@ import {
   tierSignupHref,
 } from "@/lib/pricing-copy";
 
-export function Pricing() {
-  const c = LANDING_COPY.pricing;
+export function Pricing({ copy }: { copy: LandingCopy["pricing"] }) {
+  const c = copy;
   const [annual, setAnnual] = useState(true);
 
   return (
