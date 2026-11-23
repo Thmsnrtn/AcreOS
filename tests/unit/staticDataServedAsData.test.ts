@@ -61,6 +61,7 @@ import {
 import {
   getDataStepCopy,
   getVerticalOnboarding,
+  isOnboardingVerticalsData,
 } from "../../client/src/lib/onboarding-verticals";
 import { CUSTOMER_CHANGELOG } from "../../client/src/data/customer-changelog";
 import {
@@ -171,6 +172,64 @@ describe("onboarding selectors over the served asset match the module", () => {
         );
       }
     }
+  });
+});
+
+// ── 1c. Loaded-shape guard: a wrong-shape 200 is a load failure (D-2) ────
+
+describe("isOnboardingVerticalsData guards the loaded asset shape", () => {
+  it("accepts the served asset and the module data", () => {
+    expect(isOnboardingVerticalsData(ONBOARDING_ASSET)).toBe(true);
+    expect(isOnboardingVerticalsData(MODULE_ONBOARDING_DATA)).toBe(true);
+  });
+
+  it("rejects the D-2 payload: a 200 with body {}", () => {
+    expect(isOnboardingVerticalsData({})).toBe(false);
+  });
+
+  it.each([
+    ["null", null],
+    ["an array", []],
+    ["a string", "verticals"],
+    ["verticals missing", { noteRoleOverrides: NOTE_ROLE_DATA_OVERRIDES }],
+    ["noteRoleOverrides missing", { verticals: VERTICAL_ONBOARDING }],
+    ["verticals not an object", { verticals: 42, noteRoleOverrides: NOTE_ROLE_DATA_OVERRIDES }],
+    [
+      "one vertical missing",
+      {
+        verticals: { ...VERTICAL_ONBOARDING, land_flipper: undefined },
+        noteRoleOverrides: NOTE_ROLE_DATA_OVERRIDES,
+      },
+    ],
+    [
+      "a vertical with a malformed finish",
+      {
+        verticals: {
+          ...VERTICAL_ONBOARDING,
+          note_investor: { ...VERTICAL_ONBOARDING.note_investor, finish: { path: "/money" } },
+        },
+        noteRoleOverrides: NOTE_ROLE_DATA_OVERRIDES,
+      },
+    ],
+    [
+      "a vertical with a non-pair dataTitle",
+      {
+        verticals: {
+          ...VERTICAL_ONBOARDING,
+          hybrid: { ...VERTICAL_ONBOARDING.hybrid, dataTitle: ["only one"] },
+        },
+        noteRoleOverrides: NOTE_ROLE_DATA_OVERRIDES,
+      },
+    ],
+    [
+      "the invest override missing (selector fallback target)",
+      {
+        verticals: VERTICAL_ONBOARDING,
+        noteRoleOverrides: { ...NOTE_ROLE_DATA_OVERRIDES, invest: undefined },
+      },
+    ],
+  ])("rejects %s", (_label, payload) => {
+    expect(isOnboardingVerticalsData(payload)).toBe(false);
   });
 });
 

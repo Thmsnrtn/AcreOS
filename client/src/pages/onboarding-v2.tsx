@@ -88,6 +88,7 @@ import {
 import {
   getVerticalOnboarding,
   getDataStepCopy,
+  isOnboardingVerticalsData,
   resolveWizardPrefill,
   type OnboardingVerticalsData,
 } from "@/lib/onboarding-verticals";
@@ -296,7 +297,12 @@ export default function OnboardingV2() {
   // wizard with the wrong vertical's copy.
   const { data: verticalData, error: verticalDataError } =
     useStaticData<OnboardingVerticalsData>(ONBOARDING_VERTICALS_URL);
-  const vertical = verticalData
+  // A 200 response is not proof of shape: a wrong-shape payload is a
+  // load failure (visible error below), never selector input — the
+  // selectors dereference the registries and would crash the render.
+  const verticalDataValid =
+    verticalData !== null && isOnboardingVerticalsData(verticalData);
+  const vertical = verticalDataValid
     ? getVerticalOnboarding(verticalData, businessType)
     : null;
 
@@ -808,7 +814,7 @@ export default function OnboardingV2() {
   // config (client/src/lib/onboarding-verticals.ts). The note vertical's
   // three roles each override with their real first job ("load 50 leads"
   // isn't it). Sample data + CSV stay available for everyone as the fast path.
-  const dataStep = verticalData
+  const dataStep = verticalDataValid
     ? getDataStepCopy(verticalData, businessType, noteRole)
     : null;
   const dataStepCopy = {
@@ -826,7 +832,7 @@ export default function OnboardingV2() {
   // ── Skeleton while disclosure status loads ───────────────────────────────
   // (also while the completion read is pending, or releasing to /today — a
   // completed org never sees step 1)
-  if (verticalDataError) {
+  if (verticalDataError || (verticalData !== null && !verticalDataValid)) {
     return (
       <div className="ob2-shell">
         <div className="ob2-content">

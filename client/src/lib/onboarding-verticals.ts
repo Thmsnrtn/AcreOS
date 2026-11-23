@@ -19,6 +19,7 @@
  * served asset deep-equal to the module.
  */
 import {
+  BUSINESS_TYPES,
   isBusinessType,
   type BusinessType,
   type NoteRole,
@@ -81,6 +82,68 @@ export function getDataStepCopy(
 }
 
 const NOTE_ROLES: readonly NoteRole[] = ["invest", "originate", "service"];
+
+// ---------------------------------------------------------------------------
+// Loaded-shape guard (D-2)
+// ---------------------------------------------------------------------------
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+const isStr = (value: unknown): value is string => typeof value === "string";
+
+function isStringPair(value: unknown): value is [string, string] {
+  return Array.isArray(value) && value.length === 2 && value.every(isStr);
+}
+
+function isVerticalCopy(value: unknown): value is VerticalOnboardingCopy {
+  if (!isRecord(value) || !isRecord(value.finish)) return false;
+  const finish = value.finish;
+  return (
+    isStr(value.noun) &&
+    isStringPair(value.dataTitle) &&
+    isStr(value.dataSub) &&
+    isStr(finish.path) &&
+    isStr(finish.cta) &&
+    isStr(finish.blurb)
+  );
+}
+
+function isNoteRoleOverride(value: unknown): value is NoteRoleDataOverride {
+  return (
+    isRecord(value) &&
+    isStringPair(value.dataTitle) &&
+    isStr(value.dataSub) &&
+    isStr(value.jobLabel) &&
+    isStr(value.jobHref)
+  );
+}
+
+/**
+ * Shape guard for the SERVED onboarding data, checked at the loader
+ * boundary before any selector runs. The asset is fetched at runtime,
+ * so a 200 response is not proof of shape: a mis-served fallback body
+ * (`{}`, an error page parsed as JSON, a truncated or edited asset)
+ * must be treated as a LOAD FAILURE — the wizard renders its visible
+ * load-error — never handed to the selectors above, which dereference
+ * `data.verticals[…]` / `data.noteRoleOverrides[…]` and would crash
+ * the render (white screen) on a wrong-shape payload. Valid means:
+ * both registries are plain objects, EVERY registered business type
+ * has a well-formed copy entry, and every note role has a well-formed
+ * override (the selectors fall back to `noteRoleOverrides.invest`).
+ */
+export function isOnboardingVerticalsData(
+  value: unknown,
+): value is OnboardingVerticalsData {
+  if (!isRecord(value)) return false;
+  const { verticals, noteRoleOverrides } = value;
+  if (!isRecord(verticals) || !isRecord(noteRoleOverrides)) return false;
+  return (
+    BUSINESS_TYPES.every((t) => isVerticalCopy(verticals[t])) &&
+    NOTE_ROLES.every((r) => isNoteRoleOverride(noteRoleOverrides[r]))
+  );
+}
 
 export interface WizardPrefill {
   /** Valid stored businessType, or null (= no prefill; wizard keeps its default). */
