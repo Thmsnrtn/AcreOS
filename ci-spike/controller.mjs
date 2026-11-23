@@ -90,7 +90,7 @@ export function buildRunnerMachineConfig(jitConfig, machineName) {
           'cd /home/runner && exec ./run.sh --jitconfig "$JITCONFIG"',
         ],
       },
-      env: { JITCONFIG: jitConfig, RUNNER_ALLOW_RUNASROOT: "1" },      guest: { cpu_kind: "performance", cpus: 2, memory_mb: 8192 },
+      env: { JITCONFIG: jitConfig, RUNNER_ALLOW_RUNASROOT: "1" },      guest: { cpu_kind: "performance", cpus: 4, memory_mb: 16384 },
       auto_destroy: true,
       restart: { policy: "no" },
       metadata: { spike: "fly-ci", role: "runner" },
