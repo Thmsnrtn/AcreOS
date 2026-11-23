@@ -26,6 +26,12 @@
  *      into the bundle (type-only imports are erased and fine);
  *   5. the shared loader rejects on !ok and clears its cache on
  *      rejection, so a retry can succeed;
+ *   6a. (diet micro-slice #3) /trust copy: client/src/data/trust-content-data.ts
+ *      (source of truth) → /trust-content.json; the page loads it via the
+ *      shared loader and renders a visible error on failure; the claims
+ *      audit reads the module, so all 27 anchored sentences stay verbatim.
+ *      Regenerate: npx tsx -e 'import {TRUST_SECTIONS} from "./client/src/data/trust-content-data";
+ *      import fs from "node:fs"; fs.writeFileSync("client/public/trust-content.json", JSON.stringify(TRUST_SECTIONS,null,2)+"\n")'
  *   6. the static server never gives the unhashed assets the 1-year
  *      immutable cache.
  */
@@ -37,6 +43,7 @@ import {
   CAMPAIGN_TEMPLATES,
   campaignTemplatesFor,
 } from "../../shared/outreach/templates";
+import { TRUST_SECTIONS } from "../../client/src/data/trust-content-data";
 import { CUSTOMER_CHANGELOG } from "../../client/src/data/customer-changelog";
 import {
   HELP_FAQ_ITEMS,
@@ -69,6 +76,7 @@ const readJson = (rel: string): unknown => JSON.parse(read(rel));
 
 const OUTREACH_ASSET = readJson("client/public/outreach-templates.json");
 const CHANGELOG_ASSET = readJson("client/public/customer-changelog.json");
+const TRUST_ASSET = readJson("client/public/trust-content.json");
 const HELP_ASSET = readJson("client/public/help-content.json") as {
   featureGuides: typeof HELP_FEATURE_GUIDES;
   faqItems: typeof HELP_FAQ_ITEMS;
@@ -83,6 +91,16 @@ describe("served assets are verbatim the modules' data", () => {
 
   it("customer-changelog.json deep-equals CUSTOMER_CHANGELOG", () => {
     expect(CHANGELOG_ASSET).toEqual(CUSTOMER_CHANGELOG);
+  });
+
+  it("trust-content.json deep-equals TRUST_SECTIONS", () => {
+    expect(TRUST_ASSET).toEqual(TRUST_SECTIONS);
+  });
+
+  it("trust-content.json is the generator's exact output (regenerate with the header's command)", () => {
+    expect(read("client/public/trust-content.json")).toBe(
+      JSON.stringify(TRUST_SECTIONS, null, 2) + "\n",
+    );
   });
 
   it("help-content.json deep-equals the help data module", () => {
@@ -215,7 +233,8 @@ describe("no client file value-imports the externalised registries", () => {
         if (
           from === "@shared/outreach/templates" ||
           from.endsWith("/data/customer-changelog") ||
-          from.endsWith("/data/help-content-data")
+          from.endsWith("/data/help-content-data") ||
+          from.endsWith("/data/trust-content-data")
         ) {
           offenders.push(
             `${path.relative(ROOT, file)} value-imports ${from}`,
@@ -236,6 +255,31 @@ describe("no client file value-imports the externalised registries", () => {
     expect(read("client/src/components/help-content.tsx")).toContain(
       "HELP_CONTENT_URL",
     );
+    expect(read("client/src/pages/trust.tsx")).toContain("TRUST_CONTENT_URL");
+  });
+
+  it("/trust renders a VISIBLE error on loader failure, never a blank page", () => {
+    const page = stripComments(read("client/src/pages/trust.tsx"));
+    expect(page).toContain("useStaticData<TrustSection[]>(TRUST_CONTENT_URL)");
+    expect(page).toMatch(/\{error && \(\s*<p role="alert"/);
+    expect(page).toContain('data-testid="trust-load-error"');
+  });
+
+  it("the /trust claims audit reads the source module with the same sentences (anchors not weakened)", () => {
+    const audit = read("scripts/audit-public-claims.ts");
+    expect(audit).toContain('"client/src/pages/trust.tsx"');
+    expect(audit).toContain('"client/src/data/trust-content-data.ts"');
+    // The 27 TRUST_LINES anchors are exactly the module's sentences, in order.
+    const block = audit.slice(
+      audit.indexOf("const TRUST_LINES"),
+      audit.indexOf("const CLAIMS"),
+    );
+    const anchored = [...block.matchAll(/^\s*"((?:[^"\\]|\\.)*)",?\s*$/gm)].map(
+      (m) => JSON.parse(`"${m[1]}"`) as string,
+    );
+    const served = (TRUST_ASSET as typeof TRUST_SECTIONS).flatMap((s) => s.lines);
+    expect(anchored).toHaveLength(27);
+    expect(served).toEqual(anchored);
   });
 });
 
@@ -281,6 +325,7 @@ describe("static server cache discipline", () => {
       "/outreach-templates.json",
       "/customer-changelog.json",
       "/help-content.json",
+      "/trust-content.json",
     ]) {
       expect(src).toContain(`"${url}"`);
     }
