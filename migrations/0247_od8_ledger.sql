@@ -26,7 +26,7 @@ DECLARE
     'perpetual_ops_checks','communications',
     'saga_instances','reaction_chains',
     'delegation_tokens',
-    'trust_enforcement_log','tenant_agent_config'
+    'trust_enforcement_log','tenant_agent_config','tenant_event_streams'
   ];
 BEGIN
   FOREACH t IN ARRAY tables LOOP

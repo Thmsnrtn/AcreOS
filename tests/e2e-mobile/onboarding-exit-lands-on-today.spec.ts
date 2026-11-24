@@ -78,6 +78,9 @@ test.describe("Leaving onboarding for Today lands on Today", () => {
     await freshTenant(page, baseURL!, `exit-today-${testInfo.project.name}-${Date.now()}`);
     await openWizard(page);
     await page.locator('[data-testid="input-org-name"]').fill("E2E onboarding exit");
+    // P1-11 S2 (FD1): land_flipper is a beta type now — its card lives
+    // behind the "Show beta investor types" disclosure.
+    await page.locator('[data-testid="summary-show-all-investor-types"]').click();
     await page.locator('[data-testid="option-land_flipper"]').click();
     await page.locator('[data-testid="button-continue-workspace"]').click();
     await page.getByRole("button", { name: "Set up data later" }).click();

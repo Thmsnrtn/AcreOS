@@ -28,7 +28,7 @@ import {
   ArrowUpRight,
 } from "lucide-react";
 import { DURATIONS, EASINGS } from "@/lib/motion-tokens";
-import { PAX_CONTROLS_PATH, PAX_LABELS } from "@shared/pax-glossary";
+import { PAX_CONTROLS_PATH, PAX_LABELS } from "@shared/pax-glossary-core";
 
 // The standalone pages re-homed from the old peer tabs. Lazy so opening Pax
 // doesn't ship them in the parent chunk — each loads on demand when the

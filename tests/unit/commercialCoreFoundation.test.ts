@@ -43,14 +43,17 @@ const ledger = read("server/routes-rent-ledger.ts");
 const ledgerCode = stripComments(ledger);
 const schema = read("shared/schema/rental.ts");
 
-describe("commercial is CORE — every roadmap-for-core capability is now delivered", () => {
-  it("the registry entry has been flipped to core (Wave 4 complete)", () => {
+describe("commercial is REGISTRY-ONLY (FD1) — every roadmap-for-core capability delivered, kept for existing books", () => {
+  it("the registry entry reads registry_only (Wave 4 complete; FD1 presentation)", () => {
     // REWRITTEN at the flip (not deleted): Stage 1 pinned "still beta" so the flag
     // could not race ahead of the engines. Wave 4 built them all — CAM
     // reconciliation, percentage rent, escalation, per-sqft, contractual late fees,
     // commercial-correct NOI — each a pure, tested engine that refuses rather than
-    // fabricate, so calling commercial "core" is now honest.
-    expect(getBusinessType("commercial")?.maturity).toBe("core");
+    // fabricate.
+    // REWRITTEN AGAIN at FD1 (2026-11-12, not deleted): the engines stand and
+    // existing commercial books keep them; the launch promise is 5 core + 0 beta,
+    // and commercial is one of the ten registry-only types.
+    expect(getBusinessType("commercial")?.maturity).toBe("registry_only");
   });
 });
 

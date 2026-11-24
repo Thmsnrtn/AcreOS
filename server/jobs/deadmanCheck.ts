@@ -19,16 +19,20 @@
  * the lock; the rest log skipped_lock every tick). We therefore count
  * skipped_lock AS LIVENESS: a lock-skipped job is demonstrably alive. This
  * avoids write-amplification (no always-on success heartbeat) while still
- * detecting true death. The deadman threshold is 2× the job's effective work
- * cadence, which is comfortably larger than the 1-hour success sampling window
- * for every daily+ job, and high-frequency jobs (≤30m) emit skipped_lock or
- * sampled-success well inside 2× their interval on any multi-machine worker.
+ * detecting true death.
  *
- * On a genuinely SINGLE-machine worker a low-frequency job with zero failures
- * and zero lock contention could in theory go a full success-sampling window
- * without a row; that is why intervalMs is the WORK cadence (≥ daily for the
- * time-gated jobs) and the threshold is 2× — a daily job that ran today writes
- * one sampled-success row today, which is < 2×24h old tomorrow.
+ * MON-DEF-1 (2026-11-21) — the threshold is DERIVED, never a bare 2× the
+ * work cadence. The original 2× rule sat INSIDE the healthy row gap of
+ * every sub-hourly job on a single-lock-winner worker: success rows are
+ * sampled at SUCCESS_LOG_SAMPLE_MS (1h), so burn_rate_monitor (5m tick)
+ * legitimately emits rows ~65m apart against a 10m threshold, and
+ * retry_failed_actions / recourse_sweep (30m) emit rows 57–81m apart
+ * against 60m — staging produced 30–67 false job_dark alerts/hour for
+ * months. `deadmanThresholdMs` (jobRegistry.ts) derives the threshold
+ * from both sources of truth — 2 × max(intervalMs, SAMPLE) — which
+ * provably exceeds the worst-case healthy gap (SAMPLE + interval) for
+ * every job while keeping daily+ jobs at exactly 2× cadence. The pure
+ * judgment lives in deadmanPolicy.ts (evaluateDarkness).
  *
  * Action on detection
  * ───────────────────
@@ -48,15 +52,25 @@
  * per-job, so a job that stays dark re-fires (bumps last_seen_at) rather
  * than spamming. The spine's page/system_alert windows additionally ensure
  * we don't re-page the same dark job every 5 minutes.
+ *
+ * MON-DEF-1 — page-once-then-digest: the persisted row's meaning widened
+ * from "last paged at" to "last FULL-severity alert of the current dark
+ * episode" (deadmanPolicy.deadmanAlertMode). A dark job with a full alert
+ * inside DEADMAN_REPAGE_WINDOW_MS (24h) is re-raised at info severity —
+ * the finding upsert IS the digest (it bumps last_seen_at; no page, no
+ * system_alerts row). A job observed alive again has its row DELETED, so
+ * the next episode opens with a fresh full alert: a job that recovers and
+ * dies again pages again.
  */
 
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "../db";
 import { deadmanPageState, jobHealthLogs, jobRuns } from "@shared/schema";
 import { logger } from "../utils/logger";
 import { raiseAlert, seedPageThrottle } from "../services/alertSpine";
 import { recordFinding } from "../services/audit/domainAudit";
 import { activeRosterEntries, configDormantEntries, type ConfigDormantEntry } from "./jobRegistry";
+import { deadmanAlertMode, evaluateDarkness } from "./deadmanPolicy";
 import { clock } from "../utils/clock";
 
 // Process start time — used to avoid false-paging a job that has simply never
@@ -68,13 +82,15 @@ const DETECTOR_ID = "job_deadman";
 export interface DeadmanResult {
   checked: number;
   dark: Array<{ name: string; critical: boolean; lastSeenMs: number | null; thresholdMs: number }>;
+  /** Dark jobs re-raised as digest (finding-only) this sweep — MON-DEF-1. */
+  digested: string[];
   /** Tier 1E meta-check: roster jobs currently dormant on missing config. */
   configDormant: ConfigDormantEntry[];
 }
 
 /**
  * Walk the active roster; page + record a finding for any job that has gone
- * dark (no job_health_logs row within 2× its effective cadence). Returns the
+ * dark (no liveness row within its derived deadman threshold). Returns the
  * set of dark jobs (also used by tests).
  */
 export async function runJobDeadmanCheck(): Promise<DeadmanResult> {
@@ -82,15 +98,17 @@ export async function runJobDeadmanCheck(): Promise<DeadmanResult> {
   const now = clock.nowMs();
   const uptimeMs = now - _processStartedAt;
   const dark: DeadmanResult["dark"] = [];
+  const digested: string[] = [];
 
-  // Hydrate the persisted re-page throttle (one read per sweep). Best-effort:
-  // a failed read degrades to the in-memory map (worst case: one duplicate
-  // page after a deploy — the pre-persistence behavior).
-  const persistedPagedAt = new Map<string, number>();
+  // Hydrate the persisted episode state (one read per sweep): per job, the
+  // timestamp of the last FULL-severity alert of its current dark episode.
+  // Best-effort: a failed read degrades to an empty map (worst case: one
+  // duplicate full alert after a deploy — the pre-persistence behavior).
+  const persistedAlertAt = new Map<string, number>();
   try {
     const rows = await db.select().from(deadmanPageState);
     for (const row of rows) {
-      persistedPagedAt.set(row.jobName, new Date(row.lastPagedAt).getTime());
+      persistedAlertAt.set(row.jobName, new Date(row.lastPagedAt).getTime());
     }
   } catch (err) {
     logger.warn("[deadman] failed to hydrate deadman_page_state — using in-memory throttle only", {
@@ -139,19 +157,33 @@ export async function runJobDeadmanCheck(): Promise<DeadmanResult> {
       continue;
     }
 
-    const thresholdMs = entry.intervalMs * 2;
+    // Darkness + threshold from the pure policy (deadmanPolicy.ts): the
+    // threshold is derived from the cadence AND the success-log sampling
+    // window — a bare 2× intervalMs sits inside the healthy row gap of
+    // every sub-hourly job (MON-DEF-1).
+    const { isDark, thresholdMs } = evaluateDarkness({
+      entry,
+      lastSeenMs,
+      nowMs: now,
+      uptimeMs,
+    });
 
-    let isDark: boolean;
-    if (lastSeenMs == null) {
-      // Never seen. Only treat as dark once the process has been up long
-      // enough that the job SHOULD have run at least once — otherwise a fresh
-      // boot would page every job before its first scheduled tick.
-      isDark = uptimeMs > entry.intervalMs;
-    } else {
-      isDark = now - lastSeenMs > thresholdMs;
+    if (!isDark) {
+      // Episode close: the job is alive again. If a previous dark episode
+      // left persisted state, delete it so the NEXT episode opens with a
+      // fresh full alert instead of inheriting this one's digest window.
+      if (persistedAlertAt.has(entry.name)) {
+        persistedAlertAt.delete(entry.name);
+        db.delete(deadmanPageState)
+          .where(eq(deadmanPageState.jobName, entry.name))
+          .catch((err) => {
+            logger.warn(`[deadman] failed to clear page state for recovered ${entry.name}`, {
+              metadata: { error: String(err) },
+            });
+          });
+      }
+      continue;
     }
-
-    if (!isDark) continue;
     dark.push({ name: entry.name, critical: entry.critical, lastSeenMs, thresholdMs });
 
     const ageDesc =
@@ -161,25 +193,66 @@ export async function runJobDeadmanCheck(): Promise<DeadmanResult> {
 
     const title = `Scheduled job dark: ${entry.name}`;
     const body =
-      `Job "${entry.name}" has emitted no job_health_logs row (success/failed/skipped_lock) ` +
-      `within 2× its expected cadence. Last seen: ${ageDesc}. ` +
+      `Job "${entry.name}" has emitted no liveness row (job_health_logs or job_runs) ` +
+      `within its deadman threshold. Last seen: ${ageDesc}. ` +
       `It may have stopped registering (deploy regression), be stuck, or its host worker may be down.`;
 
-    // One spine call replaces the old recordFinding + throttled notifyOnCall
-    // pair: critical job dark → P0 page (throttled once/hour inside the
-    // spine) + finding + system_alerts; non-critical dark → warning finding
-    // + system_alerts, no page.
+    // Page-once-then-digest (MON-DEF-1): a job whose current dark episode
+    // already got a full alert inside the repage window is re-raised at
+    // info severity — the spine turns that into a finding upsert only
+    // (the digest record), with no page and no new system_alerts row.
+    const mode = deadmanAlertMode({
+      lastFullAlertMs: persistedAlertAt.get(entry.name) ?? null,
+      nowMs: now,
+    });
+
+    if (mode === "digest") {
+      digested.push(entry.name);
+      try {
+        await raiseAlert({
+          severity: "info",
+          source: DETECTOR_ID,
+          title,
+          detail: body,
+          dedupeKey: `dark:${entry.name}`,
+          domain: "reliability",
+          citedReason:
+            "SLO: every roster job must emit a liveness row within its deadman threshold.",
+          subjectRef: entry.name,
+          alertType: "job_dark",
+          metadata: {
+            lastSeenMs,
+            thresholdMs,
+            critical: entry.critical,
+            intervalMs: entry.intervalMs,
+            alertMode: "digest",
+          },
+        });
+      } catch (err) {
+        logger.error(`[deadman] digest raiseAlert failed for ${entry.name}`, err instanceof Error ? err : undefined);
+      }
+      logger.info(`[deadman] still dark (digest): ${entry.name} — ${ageDesc}`, {
+        metadata: { job: entry.name, lastSeenMs, thresholdMs },
+      });
+      continue;
+    }
+
+    // Full alert. One spine call replaces the old recordFinding + throttled
+    // notifyOnCall pair: critical job dark → P0 page (throttled once/hour
+    // inside the spine) + finding + system_alerts; non-critical dark →
+    // warning finding + system_alerts, no page.
     //
     // Tier 1H / blueprint E11: the spine's page-throttle window is in-process
     // and resets on deploy. Seed it from the persisted deadman_page_state row
     // so a deploy mid-incident doesn't re-page on-call for every still-dark
-    // job; when the spine DOES page, persist the timestamp back.
-    const persisted = persistedPagedAt.get(entry.name);
+    // job; persist the full-alert timestamp back for BOTH severities (the
+    // row now opens the episode's digest window, not just the page throttle).
+    const persisted = persistedAlertAt.get(entry.name);
     if (persisted != null) {
       seedPageThrottle(DETECTOR_ID, `dark:${entry.name}`, persisted);
     }
     try {
-      const alertResult = await raiseAlert({
+      await raiseAlert({
         severity: entry.critical ? "critical" : "warning",
         source: DETECTOR_ID,
         title,
@@ -187,25 +260,29 @@ export async function runJobDeadmanCheck(): Promise<DeadmanResult> {
         dedupeKey: `dark:${entry.name}`,
         domain: "reliability",
         citedReason:
-          "SLO: every roster job must emit a liveness row within 2× its cadence (deadman).",
+          "SLO: every roster job must emit a liveness row within its deadman threshold.",
         subjectRef: entry.name,
         alertType: "job_dark",
-        metadata: { lastSeenMs, thresholdMs, critical: entry.critical, intervalMs: entry.intervalMs },
+        metadata: {
+          lastSeenMs,
+          thresholdMs,
+          critical: entry.critical,
+          intervalMs: entry.intervalMs,
+          alertMode: "full",
+        },
       });
-      if (alertResult.paged) {
-        // Persist the page timestamp (fire-and-forget — never block the sweep).
-        db.insert(deadmanPageState)
-          .values({ jobName: entry.name, lastPagedAt: new Date(now), updatedAt: new Date(now) })
-          .onConflictDoUpdate({
-            target: deadmanPageState.jobName,
-            set: { lastPagedAt: new Date(now), updatedAt: new Date(now) },
-          })
-          .catch((err) => {
-            logger.warn(`[deadman] failed to persist page state for ${entry.name}`, {
-              metadata: { error: String(err) },
-            });
+      // Persist the full-alert timestamp (fire-and-forget — never block the sweep).
+      db.insert(deadmanPageState)
+        .values({ jobName: entry.name, lastPagedAt: new Date(now), updatedAt: new Date(now) })
+        .onConflictDoUpdate({
+          target: deadmanPageState.jobName,
+          set: { lastPagedAt: new Date(now), updatedAt: new Date(now) },
+        })
+        .catch((err) => {
+          logger.warn(`[deadman] failed to persist page state for ${entry.name}`, {
+            metadata: { error: String(err) },
           });
-      }
+        });
     } catch (err) {
       // raiseAlert is internally best-effort, but never let an alerting
       // failure abort the rest of the sweep.
@@ -266,5 +343,5 @@ export async function runJobDeadmanCheck(): Promise<DeadmanResult> {
     }
   }
 
-  return { checked: entries.length, dark, configDormant };
+  return { checked: entries.length, dark, digested, configDormant };
 }

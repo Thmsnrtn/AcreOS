@@ -21,10 +21,20 @@ import { BUSINESS_TYPE_IDS } from "@shared/business-types";
 import {
   VERTICAL_ONBOARDING,
   NOTE_ROLE_DATA_OVERRIDES,
+  type OnboardingVerticalsData,
+} from "@/data/onboarding-verticals-data";
+import {
   getVerticalOnboarding,
   getDataStepCopy,
   resolveWizardPrefill,
 } from "@/lib/onboarding-verticals";
+
+/** The selectors run over the served asset's shape; in tests the asset's
+ * source module supplies the same object synchronously. */
+const DATA: OnboardingVerticalsData = {
+  verticals: VERTICAL_ONBOARDING,
+  noteRoleOverrides: NOTE_ROLE_DATA_OVERRIDES,
+};
 
 const appTsx = readFileSync(
   path.resolve(__dirname, "../../client/src/App.tsx"),
@@ -107,9 +117,9 @@ describe("Tailoring — the ruling's named examples", () => {
 
 describe("getDataStepCopy — note-role fork", () => {
   it("note_investor forks per role with a real first-job link", () => {
-    const invest = getDataStepCopy("note_investor", "invest");
-    const originate = getDataStepCopy("note_investor", "originate");
-    const service = getDataStepCopy("note_investor", "service");
+    const invest = getDataStepCopy(DATA, "note_investor", "invest");
+    const originate = getDataStepCopy(DATA, "note_investor", "originate");
+    const service = getDataStepCopy(DATA, "note_investor", "service");
     expect(invest.jobHref).toBe("/notes?action=new");
     expect(originate.jobHref).toBe("/settings?tab=tax-compliance");
     expect(service.jobHref).toBe("/notes?action=new");
@@ -118,7 +128,7 @@ describe("getDataStepCopy — note-role fork", () => {
   });
 
   it("non-note verticals ignore noteRole and carry no job link", () => {
-    const copy = getDataStepCopy("tax_lien_deed", "originate");
+    const copy = getDataStepCopy(DATA, "tax_lien_deed", "originate");
     expect(copy.dataSub).toBe(VERTICAL_ONBOARDING.tax_lien_deed.dataSub);
     expect(copy.jobLabel).toBeNull();
     expect(copy.jobHref).toBeNull();
@@ -127,14 +137,14 @@ describe("getDataStepCopy — note-role fork", () => {
 
 describe("getVerticalOnboarding — unknown input", () => {
   it("falls back to land_flipper copy for unknown/missing types", () => {
-    expect(getVerticalOnboarding(undefined)).toBe(VERTICAL_ONBOARDING.land_flipper);
-    expect(getVerticalOnboarding(null)).toBe(VERTICAL_ONBOARDING.land_flipper);
-    expect(getVerticalOnboarding("not_a_type")).toBe(VERTICAL_ONBOARDING.land_flipper);
+    expect(getVerticalOnboarding(DATA, undefined)).toBe(VERTICAL_ONBOARDING.land_flipper);
+    expect(getVerticalOnboarding(DATA, null)).toBe(VERTICAL_ONBOARDING.land_flipper);
+    expect(getVerticalOnboarding(DATA, "not_a_type")).toBe(VERTICAL_ONBOARDING.land_flipper);
   });
 
   it("returns the exact entry for every valid id", () => {
     for (const id of BUSINESS_TYPE_IDS) {
-      expect(getVerticalOnboarding(id)).toBe(VERTICAL_ONBOARDING[id]);
+      expect(getVerticalOnboarding(DATA, id)).toBe(VERTICAL_ONBOARDING[id]);
     }
   });
 });

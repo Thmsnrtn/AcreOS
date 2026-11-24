@@ -164,7 +164,7 @@ describe("POST /api/pax/acknowledge-disclosure serves the account view, not the 
     const full: Record<string, unknown> = {};
     for (const key of Object.keys(getTableColumns(users))) full[key] = `value-of-${key}`;
     // Named so a rename of one of these columns empties nothing silently.
-    for (const k of ["passwordResetToken", "failedLoginAttempts", "lockedUntil", "referralCode"]) {
+    for (const k of ["passwordResetToken", "referralCode"]) {
       expect(Object.keys(full), k).toContain(k);
     }
     userRow = {

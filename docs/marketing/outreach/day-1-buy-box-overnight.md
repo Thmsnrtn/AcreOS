@@ -10,7 +10,7 @@ beatrice-reviewed: NEEDS-FOUNDER-REVIEW — CAN-SPAM postal address blocks live 
 truth-engine:
   - sources:
       - { name: "client/src/pages/landing/copy.ts (Pax: pulls comps, scores leads, drafts replies, books follow-ups, services notes)", ref: "/Users/user/AcreOS/AcreOS/client/src/pages/landing/copy.ts#L112" }
-      - { name: "client/src/pages/landing/copy.ts (Pricing: Pro $41/mo billed annually; unlimited counties; BYOK)", ref: "/Users/user/AcreOS/AcreOS/client/src/pages/landing/copy.ts#L133" }
+      - { name: "client/src/pages/landing/copy.ts (Pricing: Pro $82.50/mo billed annually ($990/yr); unlimited counties; BYOK)", ref: "/Users/user/AcreOS/AcreOS/client/src/pages/landing/copy.ts#L133" }
       - { name: "shared/business-types.ts (Land Investor + Note Investor = core tier)", ref: "/Users/user/AcreOS/AcreOS/shared/business-types.ts" }
       - { name: "server/services/cmo/brandProfiles.ts (three-step mechanic)", ref: "/Users/user/AcreOS/AcreOS/server/services/cmo/brandProfiles.ts#L142" }
 ai-disclosure: "Drafted by Pax under Soren's direction. (AcreOS Constitution §7.)"

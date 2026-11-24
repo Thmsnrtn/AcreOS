@@ -442,7 +442,7 @@ export const propertyListings = pgTable("property_listings", {
     order?: number;
   }[]>(),
   
-  status: text("status").notNull().default("draft"), // draft, active, pending, sold, withdrawn
+  status: text("status").notNull().default("draft"), // draft, listed, active, pending, sold, withdrawn (listed = on the market on the operator's word, L-DEF-1)
   
   syndicationTargets: jsonb("syndication_targets").$type<{
     platform: string; // landwatch, landandfarm, lands_of_america, facebook_marketplace, craigslist

@@ -10,8 +10,12 @@ import { describe, it, expect } from "vitest";
 import fs from "fs";
 import path from "path";
 import { FOUNDER_DOORS, FOUNDER_ADMIN_NAMESPACE, founderDoorByHref } from "@/lib/founder-doors";
+import { FOUNDER_ROUTES_TSX, routeTreeSource } from "../helpers/clientRoutes";
 
-const APP = fs.readFileSync(path.resolve(__dirname, "../../client/src/App.tsx"), "utf-8");
+// The UNION of both route trees (customer App.tsx + founder-routes.tsx — the
+// P1-9 / X-2 build split). Reading App.tsx alone would count 1 founder route
+// and let the ratchet below pass over a population the split had hidden.
+const APP = routeTreeSource();
 
 /** Current count — the ratchet baseline. Consolidation may only LOWER this.
  *  2026-06-23: 88→82 — the 7 cost/economics routes (cost, ai-costs,
@@ -90,6 +94,15 @@ describe("founder route-sprawl ratchet", () => {
    */
   it("counts a real population — a zero here means the matcher broke, not that sprawl ended", () => {
     expect(founderRouteCount()).toBeGreaterThan(40);
+  });
+
+  it("the founder route tree holds the founder routes — the union is not satisfied by App.tsx alone", () => {
+    // Per-file vacuity: the founder file must carry the bulk of the population,
+    // so a founder-routes.tsx that stopped being read (or was emptied) fails
+    // here instead of hiding behind the baseline arithmetic.
+    const founderOnly = (fs.readFileSync(FOUNDER_ROUTES_TSX, "utf-8").match(/path="\/founder/g) ?? []).length;
+    expect(founderOnly, "founder-routes.tsx must carry the /founder* routes").toBeGreaterThanOrEqual(75);
+    expect(FOUNDER_ROUTE_BASELINE - founderOnly, "App.tsx keeps only /founder-dashboard").toBe(1);
   });
 
   it("the /founder/* route count never exceeds the baseline", () => {

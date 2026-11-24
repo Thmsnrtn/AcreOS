@@ -181,16 +181,76 @@ export const toolDefinitions = {
   // Finance Tools
   get_notes: {
     name: "get_notes",
-    description: "Get seller financing notes with payment schedules and balances.",
+    description: "Get notes from BOTH note books — the serviced book (seller-financed notes this account originated) and the acquired book (notes this account bought) — with balances, payment schedules and each borrower's contact as recorded on their linked lead. The result carries a coverage statement naming both books and their counts: state that coverage when you summarize a portfolio, and never present one book as the whole book. Each note is tagged with its book. Borrower contact comes from the linked lead record; if a field is null there, say it is not on the borrower's lead record — do not say it \"isn't stored\" without this read.",
     parameters: {
       type: "object",
       properties: {
         status: {
           type: "string",
-          enum: ["pending", "active", "paid_off", "defaulted", "foreclosed"],
-          description: "Filter by note status (optional)"
+          enum: ["pending", "active", "paid_off", "defaulted", "foreclosed", "performing", "late", "default", "sold"],
+          description: "Filter by note status (optional). Serviced-book statuses: pending/active/paid_off/defaulted/foreclosed. Acquired-book statuses: performing/late/default/paid_off/sold. The filter is applied within each book's own vocabulary."
         }
       }
+    }
+  },
+  // Tax certificate tools (T7). Reads state their coverage; the one record change
+  // appends to the ledger and never sends anything (FD5: notices stay ask-before-sending).
+  get_tax_certificates: {
+    name: "get_tax_certificates",
+    description: "List this account's tax certificates (tax lien / tax deed positions), soonest redemption deadline first, with status, county/state, purchase amount, deadline, days remaining and the current redemption amount. The result carries a coverage statement: state it. Defaults to active certificates.",
+    parameters: {
+      type: "object",
+      properties: {
+        status: { type: "string", description: "Certificate status filter (default active)" },
+        state: { type: "string", description: "Two-letter state filter (optional)" }
+      }
+    }
+  },
+  get_tax_certificate: {
+    name: "get_tax_certificate",
+    description: "Get one tax certificate: status, amounts, county/state, sale and redemption dates, the deadline's source and the current redemption amount. The result carries a coverage statement.",
+    parameters: {
+      type: "object",
+      properties: { certificate_id: { type: "string", description: "The certificate id from get_tax_certificates (a long identifier, not the printed certificate number)" } },
+      required: ["certificate_id"]
+    }
+  },
+  get_tax_certificate_clock: {
+    name: "get_tax_certificate_clock",
+    description: "Get the redemption clock for one certificate: the deadline and the rule it rests on, countdown, alert dates, next action, any improve/market lock, and a cross-check against the county's procedure. A redemption deadline is a legal fact — report the basis; where no rule is encoded or the county procedure disagrees, say so and never invent a date.",
+    parameters: {
+      type: "object",
+      properties: { certificate_id: { type: "string", description: "The certificate id" } },
+      required: ["certificate_id"]
+    }
+  },
+  get_tax_certificate_ledger: {
+    name: "get_tax_certificate_ledger",
+    description: "Get the ledger for one certificate: lien amount, rate, subsequent taxes paid, interest, redemption notices recorded and the foreclosure-filing deadline. Carries a notice-simulation statement: a notice recorded in test mode was NOT mailed — never say it went out.",
+    parameters: {
+      type: "object",
+      properties: { certificate_id: { type: "string", description: "The certificate id" } },
+      required: ["certificate_id"]
+    }
+  },
+  record_tax_ledger_entry: {
+    name: "record_tax_ledger_entry",
+    description: "Record ONE ledger entry on a certificate from what the customer tells you: a subsequent tax payment, a redemption notice THEY sent themselves outside AcreOS, or the foreclosure-filing deadline. Always give the source (where the customer got it). A date in the future is refused. This records only — it never sends a notice; to send one, say the customer must use the certificate's notice screen.",
+    parameters: {
+      type: "object",
+      properties: {
+        certificate_id: { type: "string", description: "The certificate id" },
+        kind: { type: "string", enum: ["subsequent_tax_paid", "redemption_notice_recorded", "foreclosure_filing_deadline"], description: "Which entry" },
+        paid_on: { type: "string", description: "subsequent_tax_paid: date paid, YYYY-MM-DD" },
+        amount_cents: { type: "number", description: "subsequent_tax_paid: amount in cents" },
+        tax_year: { type: "string", description: "subsequent_tax_paid: four-digit tax year, if known" },
+        sent_on: { type: "string", description: "redemption_notice_recorded: date the customer sent it, YYYY-MM-DD" },
+        method: { type: "string", description: "redemption_notice_recorded: how it was sent (e.g. certified mail)" },
+        note: { type: "string", description: "redemption_notice_recorded: optional note" },
+        date: { type: "string", description: "foreclosure_filing_deadline: the deadline date, YYYY-MM-DD" },
+        source: { type: "string", description: "Where this fact comes from (receipt, county record, the customer's words)" }
+      },
+      required: ["certificate_id", "kind", "source"]
     }
   },
   calculate_amortization: {
@@ -209,7 +269,7 @@ export const toolDefinitions = {
   },
   get_cashflow_summary: {
     name: "get_cashflow_summary",
-    description: "Get monthly cashflow summary from all active notes.",
+    description: "Get monthly cashflow summary from active notes in BOTH books. The unprefixed fields are the serviced book (originated notes); the acquired* fields are the acquired book (bought notes). Present them labelled by book — never merge them into one unlabelled total.",
     parameters: { type: "object", properties: {} }
   },
   
@@ -467,7 +527,7 @@ export const toolDefinitions = {
 
   send_email: {
     name: "send_email",
-    description: "Send an email to a lead or any email address. Checks TCPA compliance when sending to leads. Use for follow-ups, offer letters, or general communication.",
+    description: "Draft an email to a lead or any email address for the operator's approval. FD5: this NEVER sends on your word alone — the draft is frozen for the operator's one-tap approval and goes out only after they approve it. Describe the flow to the user exactly that way (draft → their approval → send); never say or imply you will send immediately, or with no further confirmation, even if the user says \"just send it\". Checks TCPA compliance when sending to leads. Use for follow-ups, offer letters, or general communication.",
     parameters: {
       type: "object",
       properties: {
@@ -482,7 +542,7 @@ export const toolDefinitions = {
 
   send_sms: {
     name: "send_sms",
-    description: "Send an SMS text message to a lead or phone number. Checks TCPA compliance before sending. Use for quick follow-ups or time-sensitive communications.",
+    description: "Draft an SMS text message to a lead or phone number for the operator's approval. FD5: this NEVER sends on your word alone — the draft is frozen for the operator's one-tap approval and goes out only after they approve it. Describe the flow to the user exactly that way (draft → their approval → send); never say or imply you will send immediately, or with no further confirmation, even if the user says \"just send it\". Checks TCPA compliance before sending. Use for quick follow-ups or time-sensitive communications.",
     parameters: {
       type: "object",
       properties: {
@@ -1138,6 +1198,10 @@ export const PAUSE_SAFE_TOOLS: ReadonlySet<string> = new Set([
   "get_tasks",
   "get_notes",
   "get_cashflow_summary",
+  "get_tax_certificates",
+  "get_tax_certificate",
+  "get_tax_certificate_clock",
+  "get_tax_certificate_ledger",
   // Pure calculations
   "calculate_amortization",
   "calculate_payment_schedule",
@@ -1822,25 +1886,98 @@ export async function executeTool(
         return { success: true, data: property };
       }
       
-      case "get_notes": {
-        const notes = await storage.getNotes(org.id);
-        let filtered = notes;
-        if (args.status) {
-          filtered = notes.filter(n => n.status === args.status);
+      case "get_tax_certificates": {
+        const { paxGetTaxCertificates, taxOutcomeToResult } = await import("./taxCertificateTools");
+        return taxOutcomeToResult(await paxGetTaxCertificates(org.id, { status: args.status, state: args.state }));
+      }
+
+      case "get_tax_certificate": {
+        const { paxGetTaxCertificate, taxOutcomeToResult } = await import("./taxCertificateTools");
+        return taxOutcomeToResult(await paxGetTaxCertificate(org.id, args.certificate_id));
+      }
+
+      case "get_tax_certificate_clock": {
+        const { paxGetTaxCertificateClock, taxOutcomeToResult } = await import("./taxCertificateTools");
+        return taxOutcomeToResult(await paxGetTaxCertificateClock(org.id, args.certificate_id));
+      }
+
+      case "get_tax_certificate_ledger": {
+        const { paxGetTaxCertificateLedger, taxOutcomeToResult } = await import("./taxCertificateTools");
+        return taxOutcomeToResult(await paxGetTaxCertificateLedger(org.id, args.certificate_id));
+      }
+
+      case "record_tax_ledger_entry": {
+        // A record, not a send (FD5): the entry is what the customer says
+        // happened. The receipt names the certificate and the entry.
+        const { paxRecordTaxLedgerEntry, taxOutcomeToResult } = await import("./taxCertificateTools");
+        const out = await paxRecordTaxLedgerEntry(org.id, options?.userId ?? null, args);
+        if (out.ok && out.receipt && !trustedApproval) {
+          await recordPaxEffect({
+            orgId: org.id,
+            actor: "pax",
+            origin,
+            stance: controls?.stance ?? null,
+            tool: "record_tax_ledger_entry",
+            action: "ledger_entry_recorded",
+            entityType: "organization",
+            entityId: org.id,
+            description: out.receipt.description,
+            before: out.receipt.before,
+            after: out.receipt.after,
+            witnessed: false,
+            userId: options?.userId ?? null,
+          });
+          receiptWritten = true;
         }
-        return { success: true, data: filtered.map(n => ({
-          id: n.id,
-          propertyId: n.propertyId,
-          borrowerId: n.borrowerId,
-          originalPrincipal: n.originalPrincipal,
-          currentBalance: n.currentBalance,
-          interestRate: n.interestRate,
-          monthlyPayment: n.monthlyPayment,
-          termMonths: n.termMonths,
-          status: n.status,
-          startDate: n.startDate,
-          nextPaymentDate: n.nextPaymentDate
-        })) };
+        return taxOutcomeToResult(out);
+      }
+
+      case "get_notes": {
+        // HYB-DEF-5/6: cross-book read. The serviced book alone was
+        // presented as the whole book (acquired notes silently absent,
+        // no coverage statement), and borrower contact was declared
+        // missing without consulting the borrower's linked lead.
+        const {
+          listAcquiredNotesForPax,
+          shapeAcquiredNoteForPax,
+          borrowerContactFromLead,
+          borrowerContactForAcquiredNote,
+          buildNotesCoverageStatement,
+        } = await import("../services/notes/acquiredBookRead");
+        const [notes, acquiredRows, leads] = await Promise.all([
+          storage.getNotes(org.id),
+          listAcquiredNotesForPax(org.id),
+          storage.getLeads(org.id),
+        ]);
+        const leadById = new Map(leads.map(l => [l.id, l]));
+        let serviced = notes;
+        let acquired = acquiredRows;
+        if (args.status) {
+          serviced = notes.filter(n => n.status === args.status);
+          acquired = acquiredRows.filter(n => n.status === args.status);
+        }
+        return { success: true, data: {
+          coverage: buildNotesCoverageStatement(notes.length, acquiredRows.length),
+          serviced: serviced.map(n => ({
+            id: n.id,
+            book: "serviced",
+            propertyId: n.propertyId,
+            borrowerId: n.borrowerId,
+            borrowerContact: borrowerContactFromLead(n.borrowerId != null ? leadById.get(n.borrowerId) : undefined),
+            originalPrincipal: n.originalPrincipal,
+            currentBalance: n.currentBalance,
+            interestRate: n.interestRate,
+            monthlyPayment: n.monthlyPayment,
+            termMonths: n.termMonths,
+            status: n.status,
+            startDate: n.startDate,
+            nextPaymentDate: n.nextPaymentDate
+          })),
+          acquired: acquired.map(r => shapeAcquiredNoteForPax(
+            r,
+            borrowerContactForAcquiredNote(r, r.borrowerId != null ? leadById.get(r.borrowerId) : undefined),
+          )),
+        } };
       }
       
       case "calculate_amortization": {
@@ -1895,14 +2032,22 @@ export async function executeTool(
         // SQL over the whole book (DEFECT-0171): this summed the 5000-row
         // capped list and told the customer it was their whole portfolio.
         const { activeNoteTotals } = await import("../storage/bookAggregates");
-        const t = await activeNoteTotals(org.id);
+        const { activeAcquiredNoteTotals } = await import("../services/notes/acquiredBookRead");
+        const [t, aq] = await Promise.all([activeNoteTotals(org.id), activeAcquiredNoteTotals(org.id)]);
         const monthlyCashflow = t.monthlyCashflow;
         const totalBalance = t.totalOutstandingBalance;
         const cashflowData = {
+          // Serviced-book figures (pre-existing fields, unchanged meaning).
           activeNotesCount: t.activeNotesCount,
           totalOutstandingBalance: Math.round(totalBalance * 100) / 100,
           monthlyCashflow: Math.round(monthlyCashflow * 100) / 100,
-          annualCashflow: Math.round(monthlyCashflow * 12 * 100) / 100
+          annualCashflow: Math.round(monthlyCashflow * 12 * 100) / 100,
+          // HYB-DEF-5: the acquired book rides alongside, labelled — the
+          // serviced figures above were previously the whole answer.
+          acquiredLiveNotesCount: aq.liveAcquiredNotesCount,
+          acquiredTotalOutstandingBalance: aq.totalOutstandingBalance,
+          acquiredMonthlyCashflow: aq.monthlyCashflow,
+          booksLabelled: "activeNotesCount/totalOutstandingBalance/monthlyCashflow/annualCashflow are the SERVICED book (originated notes); acquired* fields are the ACQUIRED book (bought notes). Never merge them into one unlabelled total.",
         };
 
         const cfValidation = validateAtlasOutput(AtlasOutputType.CASH_FLOW, {
@@ -3780,10 +3925,10 @@ export function getToolsForRole(role: string) {
   const roleToolMap: Record<string, string[]> = {
     executive: allTools,
     acquisitions: [...coreTools, ...memoryTools, "get_leads", "get_lead_details", "update_lead_status", "create_lead", "get_properties", "create_property", "get_deals", "create_deal", "get_tasks", "create_task", "get_pipeline_summary", "generate_offer", "generate_offer_letter", "send_email", "send_sms", "run_comps_analysis", "schedule_followup", "draft_offer", "schedule_follow_up", "run_comps", "get_stale_leads", "draft_outreach_message"],
-    underwriting: [...coreTools, ...memoryTools, "get_properties", "get_property_details", "update_property", "get_notes", "calculate_amortization", "get_cashflow_summary", "get_deals", "update_deal", "run_comps_analysis", "run_comps", "calculate_roi", "calculate_payment_schedule", "research_property", "draft_offer"],
+    underwriting: [...coreTools, ...memoryTools, "get_properties", "get_property_details", "update_property", "get_notes", "get_tax_certificates", "get_tax_certificate", "get_tax_certificate_clock", "get_tax_certificate_ledger", "record_tax_ledger_entry", "calculate_amortization", "get_cashflow_summary", "get_deals", "update_deal", "run_comps_analysis", "run_comps", "calculate_roi", "calculate_payment_schedule", "research_property", "draft_offer"],
     marketing: [...coreTools, ...memoryTools, "get_leads", "get_properties", "get_pipeline_summary", "create_task", "send_email", "send_sms", "get_stale_leads", "draft_outreach_message"],
     research: [...coreTools, ...memoryTools, "get_properties", "get_property_details", "get_leads", "create_property", "update_property", "run_comps_analysis", "run_comps", "research_property", "calculate_roi", "browse_web", "browse_search"],
-    documents: [...coreTools, "get_leads", "get_lead_details", "get_properties", "get_property_details", "get_notes", "get_deals", "generate_offer_letter", "draft_offer"],
+    documents: [...coreTools, "get_leads", "get_lead_details", "get_properties", "get_property_details", "get_notes", "get_tax_certificates", "get_tax_certificate", "get_tax_certificate_clock", "get_tax_certificate_ledger", "record_tax_ledger_entry", "get_deals", "generate_offer_letter", "draft_offer"],
     assistant: allTools // Full access for the main assistant
   };
   

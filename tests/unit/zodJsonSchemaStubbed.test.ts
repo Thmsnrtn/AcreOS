@@ -19,16 +19,20 @@
  *      itself is the importer — reached both as "../core/to-json-schema.js"
  *      from classic/schemas.js and as the sibling "./to-json-schema.js"
  *      from core's own modules, matched by resolved path.
- *      json-schema-processors.js is never the stubbed module:
+ *      json-schema-processors.js is not stubbed by THIS plugin:
  *      classic/schemas.js reads processors.aggregateChecks(inst)
  *      inside the derived public accessors on live schema instances
  *      (ZodString.format / .minLength / .maxLength, ZodNumber.minValue /
- *      .maxValue / .format), so stubbing that module would break real
- *      schema API. aggregateChecks itself only folds check metadata and
- *      never calls the generator functions processors imports, so
- *      stubbing those imports is safe. The standalone z.toJSONSchema()
- *      lives in the processors module but reaches processSchema in the
- *      stubbed generator, so it still fails loudly if ever called.
+ *      .maxValue / .format), so replacing that module wholesale would
+ *      break real schema API. BD-5's surgical processors plugin
+ *      (zodJsonSchemaProcessorsPlugin) handles it separately — verbatim
+ *      aggregateChecks, generation-only exports throwing — and is pinned
+ *      by tests/unit/zodProcessorsStub.test.ts. aggregateChecks itself
+ *      only folds check metadata and never calls the generator functions
+ *      processors imports, so stubbing those imports is safe here. The
+ *      standalone z.toJSONSchema() lives in the processors module but
+ *      reaches processSchema in the stubbed generator, so it still fails
+ *      loudly if ever called.
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
@@ -74,17 +78,18 @@ describe("zod JSON Schema generation is never called by app code", () => {
 describe("the stub covers exactly core/to-json-schema.js, and only for zod", () => {
   const config = stripComments(readFileSync(path.join(ROOT, "vite.config.ts"), "utf8"));
 
-  it("stubs exactly the generator module, never json-schema-processors.js", () => {
+  it("stubs exactly the generator module in this plugin's set", () => {
     const set = config.match(/ZOD_UNUSED_JSON_SCHEMA_MODULES\s*=\s*new Set\(\[([^\]]*)\]\)/);
     expect(set, "the stubbed-module set was not found").not.toBeNull();
     const names = [...set![1].matchAll(/["']([^"']+)["']/g)].map((m) => m[1]).sort();
     expect(names).toEqual(["core/to-json-schema.js"]);
-    // processors may be named in comments as an importer, but it is never
-    // a stub target: no code path resolves a processors specifier to a stub.
     expect(config).not.toMatch(/Set\(\[[^\]]*json-schema-processors/);
     // the sibling "./to-json-schema.js" imports from core's own modules
     // are caught by resolved path, pinned so the branch can't silently go.
     expect(config).toMatch(/zod\/v4\/core\/to-json-schema\.js/);
+    // the processors module is handled by the separate BD-5 plugin, whose
+    // own pins live in zodProcessorsStub.test.ts.
+    expect(config).toMatch(/zodJsonSchemaProcessorsPlugin\(\)/);
   });
 
   it("is registered as a plugin and keyed on zod as the importer", () => {

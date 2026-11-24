@@ -48,9 +48,8 @@ voice-check: third-person mechanics; no founder voice; banned references absent
 > Roadmap (declared, not pitched):
 >
 > · Subdividers
-> · Buy-and-Hold Landlords
 >
-> The workflows are on the build list. They are not in the product yet. The platform does not pretend otherwise.
+> The workflow is on the build list. It is not in the product yet. The platform does not pretend otherwise.
 
 ## Tweet 5 (229 chars)
 

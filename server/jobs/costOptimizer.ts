@@ -51,6 +51,7 @@ import {
 import { monthlyRevenueCentsFor } from "@shared/billing/tier-pricing";
 import { storage } from "../storage";
 import { logger } from "../utils/logger";
+import { jobLog } from "../utils/jobRuntime";
 import { scheduleSelfRescheduling } from "./scheduler";
 import crypto from "node:crypto";
 import {
@@ -660,9 +661,11 @@ const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
  * Registers the nightly cost-optimiser job. Self-reschedules with exponential
- * backoff on error (Wave 7 pattern).
+ * backoff on error (Wave 7 pattern). Module-private since the P3-3 extraction
+ * (2026-11-18): its only caller was runScheduledJobs' dynamic import, and
+ * startCostOptimizerSelfReschedulingJob below is now the module's entry point.
  */
-export function startCostOptimizerJob(): () => void {
+function startCostOptimizerJob(): () => void {
   logger.info("[CostOptimizer] registering daily self-rescheduling job");
   return scheduleSelfRescheduling({
     name: "cost_optimizer",
@@ -673,4 +676,22 @@ export function startCostOptimizerJob(): () => void {
       return result.recommendationsCount + result.autoAppliedCount;
     },
   });
+}
+
+/**
+ * Boot-time registration, extracted from runScheduledJobs.ts as P3-3's
+ * linecount payment (2026-11-18 — that file's strictly-down ratchet pays
+ * for new start calls by moving bodies out, the PKG-4 shape). The
+ * monolith's version deferred this module's load behind a dynamic
+ * import so a load failure logged instead of throwing into server
+ * startup; living in the module now, the same posture is kept as a
+ * fire-and-forget promise whose rejection only logs.
+ */
+export function startCostOptimizerSelfReschedulingJob(): void {
+  jobLog("Registering self-tuning cost optimiser (daily)", "cost-optimizer");
+  Promise.resolve()
+    .then(() => {
+      startCostOptimizerJob();
+    })
+    .catch((err) => jobLog(`Cost optimiser start failed: ${err}`, "cost-optimizer"));
 }

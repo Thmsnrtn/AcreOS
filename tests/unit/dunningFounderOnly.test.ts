@@ -48,7 +48,9 @@ import { stripComments } from "../helpers/stripComments";
 const ROOT = path.resolve(__dirname, "../..");
 
 const routes = stripComments(fs.readFileSync(path.join(ROOT, "server/routes.ts"), "utf8"));
-const app = fs.readFileSync(path.join(ROOT, "client/src/App.tsx"), "utf8");
+// The /dunning route moved with the rest of the founder surface into the founder
+// build's route tree (P1-9 / X-2); this is where its page gate lives now.
+const app = fs.readFileSync(path.join(ROOT, "client/src/founder-routes.tsx"), "utf8");
 const service = stripComments(
   fs.readFileSync(path.join(ROOT, "server/services/dunning.ts"), "utf8"),
 );

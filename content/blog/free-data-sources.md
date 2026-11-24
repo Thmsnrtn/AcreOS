@@ -156,6 +156,6 @@ Here are the 18 free data sources I use for every deal, what they tell you, and 
 
 Each of these sources gives you a piece of the puzzle. Together, they give you a comprehensive picture of any parcel's investment quality — flood risk, buildability, environmental issues, market dynamics, and access.
 
-I built a platform called AcreOS that queries all 18 of these automatically and produces a one-click due diligence report with a Land Credit Score (300-850) for every parcel. It's in beta right now.
+I built a platform called AcreOS that pulls the free government data sources automatically — FEMA flood, USDA soil, USGS elevation, USFWS wetlands, Census context — so you're not copy-pasting from agency sites, and produces a one-click due diligence report with a Land Credit Score (300-850) for every parcel. It's in beta right now.
 
 Want to try it? DM me.

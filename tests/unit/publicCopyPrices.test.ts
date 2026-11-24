@@ -100,35 +100,20 @@ interface PriceFinding {
 
 const PRO_41 =
   "Pro annual-equivalent is $82.50/mo ($990/yr); $41 is Starter's ($490/12 = $40.83). The figure is wrong for the plan it names.";
-const OLD_ERA = "Pre-repricing figure ($20 Starter / $49 Pro / $79 Scale era); today Starter $49, Pro $99.";
+const PRO_990 =
+  "Pro's true yearly figure ($990/yr per tier-pricing.ts), in the parenthetical of the '$82.50/mo billed annually ($990/yr)' framing — no plan name within the scanner's adjacency window, so adjacency cannot check it; pinned exactly so any change is noticed.";
 
 /** Each entry is a follow-up fix item. Remove the entry in the PR that fixes the copy. */
-const PRICE_FINDINGS: PriceFinding[] = [
-  { file: "docs/marketing/blog/the-buy-box-defined-six-filters.md", plan: "Pro", figure: 41, unit: "month", count: 4, why: PRO_41 },
-  { file: "docs/marketing/blog/what-an-ai-assistant-should-do-for-a-land-investor.md", plan: "Pro", figure: 41, unit: "month", count: 3, why: PRO_41 },
-  { file: "docs/marketing/linkedin-org-page-setup.md", plan: "Pro", figure: 41, unit: "month", count: 1, why: PRO_41 },
-  { file: "docs/marketing/phase-zero-two-content-runway.md", plan: "Pro", figure: 41, unit: "month", count: 1, why: PRO_41 },
-  { file: "docs/marketing/outreach/day-1-buy-box-overnight.md", plan: "Pro", figure: 41, unit: "month", count: 1, why: PRO_41 },
-  { file: "docs/marketing/outreach/day-13-trial-ending-tomorrow.md", plan: "Pro", figure: 41, unit: "month", count: 4, why: PRO_41 },
-  { file: "docs/marketing/outreach/day-30-trial-ended-no-conversion.md", plan: "Pro", figure: 41, unit: "month", count: 3, why: PRO_41 },
-  // Found by this scanner beyond the Step-0 list (content/ prose, $20/$49 era):
-  { file: "content/business/acquire-listing.md", plan: "Starter", figure: 20, unit: "month", count: 1, why: OLD_ERA },
-  { file: "content/business/acquire-listing.md", plan: "Pro", figure: 49, unit: "month", count: 1, why: OLD_ERA },
-  { file: "content/business/investor-brief.md", plan: "Starter", figure: 20, unit: "month", count: 1, why: OLD_ERA },
-  { file: "content/business/investor-brief.md", plan: "Pro", figure: 49, unit: "month", count: 1, why: OLD_ERA },
-  { file: "content/emails/onboarding-sequence.md", plan: "Starter", figure: 20, unit: "month", count: 1, why: OLD_ERA + " Customer-facing email." },
-  { file: "content/emails/onboarding-sequence.md", plan: "Pro", figure: 49, unit: "month", count: 1, why: OLD_ERA + " Customer-facing email." },
-];
+const PRICE_FINDINGS: PriceFinding[] = [];
 
 /** Per-period figures with NO plan name beside them (uncheckable by adjacency — named, not skipped). */
-const ORPHAN_REGISTER: { file: string; figure: number; unit: "month"; count: number; why: string }[] = [
-  {
-    file: "docs/marketing/linkedin-org-page-setup.md",
-    figure: 41,
-    unit: "month",
-    count: 1,
-    why: '"Pricing claim ($41/mo annual) matches …" — the same wrong Pro figure, in a checklist line that does not name the plan.',
-  },
+const ORPHAN_REGISTER: { file: string; figure: number; unit: "month" | "year"; count: number; why: string }[] = [
+  { file: "docs/marketing/blog/the-buy-box-defined-six-filters.md", figure: 990, unit: "year", count: 4, why: PRO_990 },
+  { file: "docs/marketing/blog/what-an-ai-assistant-should-do-for-a-land-investor.md", figure: 990, unit: "year", count: 3, why: PRO_990 },
+  { file: "docs/marketing/linkedin-org-page-setup.md", figure: 990, unit: "year", count: 2, why: PRO_990 },
+  { file: "docs/marketing/outreach/day-1-buy-box-overnight.md", figure: 990, unit: "year", count: 1, why: PRO_990 },
+  { file: "docs/marketing/outreach/day-13-trial-ending-tomorrow.md", figure: 990, unit: "year", count: 4, why: PRO_990 },
+  { file: "docs/marketing/outreach/day-30-trial-ended-no-conversion.md", figure: 990, unit: "year", count: 3, why: PRO_990 },
 ];
 
 /**
@@ -138,18 +123,12 @@ const ORPHAN_REGISTER: { file: string; figure: number; unit: "month"; count: num
  * and delete the entry.
  */
 const COMMENT_DEBT: { file: string; snippet: string; why: string }[] = [
-  { file: "client/src/pages/landing/Pricing.tsx", snippet: "canonical $20 / $49 / $79", why: "historical-record wording; names a stale trio as 'canonical'" },
-  { file: "client/src/components/billing/seat-billing-summary.tsx", snippet: "Operator @ $49/mo + 2 extra seats × $20 = $89/mo", why: "Pro is $99/mo" },
-  { file: "client/src/components/usage-limit-banner.tsx", snippet: "at $49/mo\" — so a", why: "Pro is $99/mo" },
-  { file: "server/services/companyStageDetector.ts", snippet: "starter=$20, pro=$49", why: "Starter $49, Pro $99" },
-  { file: "server/services/paxModelChoice.ts", snippet: "exceeded its $79 price", why: "Scale is $199" },
-  { file: "server/services/paxModelChoice.ts", snippet: "$54 on a $79 plan", why: "Scale is $199" },
   { file: "server/seed-products.ts", snippet: "// $20/seat/month", why: "Starter is $49/mo, not a per-seat price" },
 ];
 
 /** The register may only shrink: lower these when entries are fixed. */
-const PRICE_MISMATCH_CEILING = 23;
-const COMMENT_DEBT_CEILING = 7;
+const PRICE_MISMATCH_CEILING = 0;
+const COMMENT_DEBT_CEILING = 1;
 
 /**
  * NON-PRICE finding (plan CONTENT, not a figure): which plan unlocks the full

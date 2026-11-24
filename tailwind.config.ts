@@ -35,7 +35,13 @@ const acrTextToken =
 
 export default {
   darkMode: ["class"],
-  content: ["./client/index.html", "./client/src/**/*.{js,jsx,ts,tsx}"],
+  content: [
+    "./client/index.html",
+    "./client/src/**/*.{js,jsx,ts,tsx}",
+    // The legal documents' section bodies ship as served HTML assets
+    // (bundle diet, 2026-11-21); their classes must keep generating CSS.
+    "./client/src/legal/*.html",
+  ],
   // Scope every `hover:` Tailwind class behind `@media (hover: hover)`
   // so they only apply when the device actually supports hovering. On
   // iOS Safari (no hover), the first tap no longer activates a hover

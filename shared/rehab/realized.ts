@@ -10,9 +10,25 @@
  *
  * A MISSING INPUT YIELDS NULL AND A NAMED EXCLUSION, NEVER AN ESTIMATE (the
  * computeMao honesty discipline). The realized net needs a purchase price,
- * recorded holding-cost entries and rehab scope lines; if any is absent the
- * net is null and `netMissing` says which, in words. A missing component is
- * never treated as zero. Recorded-spend figures are used verbatim when present.
+ * recorded purchase closing costs, recorded holding-cost entries and rehab
+ * scope lines; if any is absent the net is null and `netMissing` says which,
+ * in words. A missing component is never treated as zero. Recorded-spend
+ * figures are used verbatim when present.
+ *
+ * BOTH SIDES ARE COMPUTED ON THE SAME BASIS (FF-DEF-2). The forecast side —
+ * computeMao's `totalCashInCents`, stored as the flip_mao scenario's
+ * `total_cost` and the basis of its `profit`/`roi` — counts purchase closing
+ * costs as part of the money in. The realized side therefore counts the
+ * rehab's recorded `purchaseClosingCents` in invested and in the net, on
+ * exactly the same basis; omitting it overstates every forecast-vs-realized
+ * delta by the closing amount.
+ *
+ * HOLDING COSTS FOLLOW THE SAME RULE (A8-10). Both numerators subtract
+ * holding, so both denominators include it: the forecast's
+ * `totalCashInCents` includes the modelled holding cost, and `investedCents`
+ * here includes `holdingRecorded`. Before A8-10 the forecast denominator
+ * excluded holding while its numerator subtracted it, so
+ * `roiVsScenarioRatio` compared unlike ratios on every graded rehab.
  *
  * THE HOLDING METER NEVER ENTERS THE NET. The Leg 3 holding meter is an
  * accrual — a running estimate of what carrying the property is costing. Only
@@ -46,6 +62,8 @@ export interface ScenarioGradeFacts {
 export interface RealizedGradeInput {
   facts: RealizedFacts;
   purchasePriceCents: number | null;
+  /** The rehab's recorded purchase closing costs; null when not recorded. */
+  purchaseClosingCents: number | null;
   rehabSpentCents: number;
   rehabLineCount: number;
   holdingEntriesTotalCents: number;
@@ -60,6 +78,7 @@ export interface RealizedGrade {
   investedCents: number | null;
   investedParts: {
     purchaseCents: number | null;
+    purchaseClosingCents: number | null;
     rehabSpentCents: number;
     holdingRecordedCents: number | null;
   };
@@ -94,6 +113,7 @@ export function gradeRealized(input: RealizedGradeInput): RealizedGrade {
   const {
     facts,
     purchasePriceCents,
+    purchaseClosingCents,
     rehabSpentCents,
     rehabLineCount,
     holdingEntriesTotalCents,
@@ -111,24 +131,26 @@ export function gradeRealized(input: RealizedGradeInput): RealizedGrade {
 
   const netMissing: string[] = [];
   if (purchasePriceCents === null) netMissing.push("purchase price");
+  if (purchaseClosingCents === null) netMissing.push("purchase closing costs");
   if (holdingEntryCount === 0) netMissing.push("recorded holding costs");
   if (rehabLineCount === 0) netMissing.push("rehab scope lines");
 
   const holdingRecordedCents = holdingEntryCount === 0 ? null : holdingEntriesTotalCents;
 
   const realizedNetCents =
-    netMissing.length === 0 && purchasePriceCents !== null
+    netMissing.length === 0 && purchasePriceCents !== null && purchaseClosingCents !== null
       ? facts.salePriceCents -
         facts.sellingCostsCents -
         purchasePriceCents -
+        purchaseClosingCents -
         rehabSpentCents -
         holdingEntriesTotalCents
       : null;
 
   const investedCents =
-    purchasePriceCents === null || holdingRecordedCents === null
+    purchasePriceCents === null || purchaseClosingCents === null || holdingRecordedCents === null
       ? null
-      : purchasePriceCents + rehabSpentCents + holdingRecordedCents;
+      : purchasePriceCents + purchaseClosingCents + rehabSpentCents + holdingRecordedCents;
 
   const realizedRoiRatio =
     realizedNetCents === null || investedCents === null || investedCents <= 0
@@ -145,6 +167,7 @@ export function gradeRealized(input: RealizedGradeInput): RealizedGrade {
     investedCents,
     investedParts: {
       purchaseCents: purchasePriceCents,
+      purchaseClosingCents,
       rehabSpentCents,
       holdingRecordedCents,
     },

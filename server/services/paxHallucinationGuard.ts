@@ -16,7 +16,7 @@ import { db } from "../db";
 import { leads, properties, deals } from "@shared/schema";
 import { and, eq, inArray } from "drizzle-orm";
 import { detectHallucinations, type HallucinationWarning } from "./hallucinationDetector";
-import { findUngroundedCounts, type CountGroundingContext } from "../ai/paxSourceExtraction";
+import { findUngroundedCounts, findUnapprovedSendClaims, type CountGroundingContext } from "../ai/paxSourceExtraction";
 
 export interface PaxGuardInput {
   organizationId: number;
@@ -94,6 +94,17 @@ export async function guardPaxOutput(input: PaxGuardInput): Promise<PaxGuardResu
         evidence: { outputValue: claim.value },
       });
     }
+  }
+
+  // 1c. FD5: a promise to send without the approval step contradicts
+  // the ratified ask-before-sending rail, whatever the tools did.
+  for (const claim of findUnapprovedSendClaims(input.output)) {
+    warnings.push({
+      kind: "unapproved_send_claim",
+      severity: "error",
+      detail: `The reply states "${claim}" — Pax sends are draft → operator approval → send (FD5); a send is never promised without the approval step.`,
+      evidence: { field: claim },
+    });
   }
 
   // 2. Entity-existence checks (parallel).

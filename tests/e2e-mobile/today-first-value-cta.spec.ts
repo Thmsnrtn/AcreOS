@@ -67,7 +67,13 @@ async function onboard(page: Page, businessType: "note_investor" | "land_flipper
   const orgName = page.locator('[data-testid="input-org-name"]');
   await orgName.waitFor({ state: "visible", timeout: 20_000 });
   await orgName.fill(`E2E first value ${businessType}`);
-  await page.locator(`[data-testid="option-${businessType}"]`).click();
+  // P1-11 S2 (FD1): beta types (land_flipper) sit behind the "Show beta
+  // investor types" disclosure; core types (note_investor) are up front.
+  const typeOption = page.locator(`[data-testid="option-${businessType}"]`);
+  if (!(await typeOption.isVisible().catch(() => false))) {
+    await page.locator('[data-testid="summary-show-all-investor-types"]').click();
+  }
+  await typeOption.click();
   if (businessType === "note_investor") await clickIfVisible(page, '[data-testid^="option-noterole-"]', 2_000);
   await page.locator('[data-testid="button-continue-workspace"]').click();
   await page.getByRole("button", { name: "Set up data later" }).click();

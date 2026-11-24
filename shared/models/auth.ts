@@ -144,9 +144,11 @@ export const users = pgTable("users", {
   // Task #12: Password reset flow — token is a 64-char hex string, one-time use, 1-hour TTL
   passwordResetToken: varchar("password_reset_token"),
   passwordResetExpiresAt: timestamp("password_reset_expires_at"),
-  // Task #8: Account lockout — lock after 5 consecutive failed logins for 30 minutes
-  failedLoginAttempts: varchar("failed_login_attempts").default("0"),
-  lockedUntil: timestamp("locked_until"),
+  // Account lockout fields (failed_login_attempts / locked_until, ex-Task #8)
+  // were undeclared 2026-11-18 (S4 slice 2, item 0009 Option A): the pre-Clerk
+  // lockout columns were never mirrored to the release path, the .sql defined
+  // the counter as integer while this model claimed varchar, and nothing read
+  // either field — lockout lives at Clerk.
   referralCode: varchar("referral_code", { length: 16 }).unique(),
   // User-scoped appearance preferences (colorway + display mode, nav ordering,
   // list views, quiet hours). Missing fields fall back to shared/appearance.ts

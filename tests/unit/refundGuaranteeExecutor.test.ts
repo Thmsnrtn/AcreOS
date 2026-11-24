@@ -434,10 +434,13 @@ describe("everything else is queued under the right brake with a decision clock"
     expect(refunds().find((x) => x.organizationId === 7)!.brake).toBe("B7");
   });
 
-  it("B7 is a named constant in one place, flagged as a proposal — not a literal anywhere else", async () => {
+  it("B7 is a named constant in one place, flagged as ratified (2026-11-11, PR #550) — not a literal anywhere else", async () => {
     const fs = await import("node:fs");
     const cfg = fs.readFileSync("server/services/refunds/refundConfig.ts", "utf8");
-    expect(cfg).toMatch(/PROPOSAL, NOT A RATIFIED NUMBER/);
+    expect(cfg).toMatch(/RATIFIED/);
+    expect(cfg).toContain("2026-11-11");
+    expect(cfg).toContain("PR #550");
+    expect(cfg).not.toMatch(/PROPOSAL, NOT A RATIFIED NUMBER|pending founder ratification/);
     for (const f of ["requestGuaranteeRefund.ts", "executeRefund.ts", "refundQueue.ts", "guaranteeEligibility.ts"]) {
       const src = stripComments(fs.readFileSync(`server/services/refunds/${f}`, "utf8"));
       expect(src, f).not.toMatch(/\b500_?000\b|maxCount:\s*\d|windowHours:\s*\d/);

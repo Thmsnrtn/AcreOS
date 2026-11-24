@@ -281,18 +281,23 @@ describe("registry truth (shared/business-types.ts) — the five tail entries", 
     //     Wave B added per-stay P&L (off the measured property_expenses axis),
     //     idempotent turnover scheduling, and operator-set nightly pricing. OTA
     //     channel sync + dynamic pricing stay disclosed-out-of-scope.
+    // FD1 (2026-11-12, re-pinned not deleted): every tail vertical's build
+    // above stands and existing books keep it, but the launch promise is
+    // 5 core + 0 beta — all five tail verticals are registry-only. The exact
+    // 15-row presentation is pinned in fd1LaunchScope.test.ts; this pin keeps
+    // the tail verticals' own gate honest about the same values.
     const EXPECTED_MATURITY: Partial<Record<BusinessTypeId, VerticalMaturity>> = {
-      commercial: "core",
-      agent_investor: "core",
-      short_term_rental: "core",
+      commercial: "registry_only",
+      agent_investor: "registry_only",
+      short_term_rental: "registry_only",
       // Wave 3 (multifamily → core): the two beta gaps CLOSED — measured
       // operating expenses (property_expenses → measured NOI/cap rate, thin
       // coverage marked "(N/12 mo)", assumed 40% only as a disclosed fallback),
       // per-building occupancy, and the T-12 underwriting workspace. See the
       // core-closed prose pins in investorAnalyticsUnitAware.test.ts and the
       // capability gate in multifamilyCore.test.ts.
-      multifamily: "core",
-      mobile_home: "core",
+      multifamily: "registry_only",
+      mobile_home: "registry_only",
     };
     for (const bt of TAIL_VERTICALS) {
       expect(getBusinessType(bt)?.maturity, bt).toBe(EXPECTED_MATURITY[bt]);
