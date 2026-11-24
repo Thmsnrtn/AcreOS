@@ -203,6 +203,24 @@ describe("pricing locks — shown as what they are: ungraded", () => {
     expect(host.querySelector('[data-testid="subdiv-desk-locks-empty"]')).toBeNull();
   });
 
+  it("a lock graded on the parent position says so, shows its review state, and drops the 'not outcome-graded' note when every lock is graded", async () => {
+    const GRADED = { ...LOCK, id: 4, grading: "graded_on_parent_position", scenarioIds: [501], reviewDueAt: "2027-03-01T00:00:00Z", hasOutcome: false };
+    deskPayload.pricingLocks = [GRADED];
+    await render();
+    const locks = text("subdiv-desk-locks");
+    expect(locks).toContain("graded on the whole parcel, not lot by lot");
+    expect(locks).toContain(`review ${formatDate(GRADED.reviewDueAt)}`);
+    expect(locks).toContain("outcome not yet recorded");
+    const history = text("subdiv-desk-history");
+    expect(history).toContain("whole parcel (sold or abandoned)");
+    expect(history).not.toContain("not outcome-graded");
+    // Mixed: an old ungraded lock beside a graded one keeps BOTH notes.
+    deskPayload.pricingLocks = [GRADED, LOCK];
+    await render();
+    expect(text("subdiv-desk-history")).toContain("not outcome-graded");
+    expect(text("subdiv-desk-history")).toContain("whole parcel (sold or abandoned)");
+  });
+
   it("no locks: says none has been locked, and still carries the ungraded note", async () => {
     await render();
     expect(text("subdiv-desk-locks-empty")).toBe("No pricing grid has been locked on this parcel.");

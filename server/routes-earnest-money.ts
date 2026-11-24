@@ -17,6 +17,17 @@
  *                                             refundable-until ≤ 7 days out
  *                                             (Trey's "EMD becomes non-
  *                                              refundable in 48 hours" view)
+ *
+ * Event trail (0086 writer wiring, 2026-11-19): every status transition —
+ * creation included — appends exactly one row to the append-only
+ * `earnest_money_events` log (migration 0086; UPDATE refused by 0239's
+ * trigger). The table is deliberately UNMODELLED (founder Option A, S4
+ * 0086): writes go through raw sql`` INSERTs, following the
+ * push_subscriptions precedent in routes-organization.ts. The append runs
+ * in the SAME transaction as the hold mutation and is fail-closed: if the
+ * append fails, the transaction rolls back and the transition does not
+ * persist — a status change without its trail is never silently accepted.
+ * Non-transition updates (no status change) append nothing.
  */
 
 import type { Express, Response } from "express";
@@ -36,6 +47,7 @@ import { requireRole } from "./middleware/roleGuard";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { assertEntityBelongsToOrg } from "./utils/orgScope";
+import { clientIpOrNull } from "./utils/clientIp";
 import { clock } from "./utils/clock";
 import { routeParam } from "./utils/routeParams";
 
@@ -43,6 +55,53 @@ function addDaysIso(baseIso: string, days: number): string {
   const d = new Date(baseIso);
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
+}
+
+// ── earnest_money_events writer (0086) ─────────────────────────────────────
+// Append-only discipline: this helper is the ONLY write path to the events
+// table and it only ever INSERTs. Org deletion still removes events through
+// the table's own FK CASCADE, which application code never issues directly.
+interface EmdEventInput {
+  organizationId: number;
+  holdId: string;
+  fromState: string | null;
+  toState: string;
+  amountCents: number;
+  actorUserId: string | null;
+  actorIp: string | null;
+  actorUa: string | null;
+  justification: string | null;
+}
+
+/** Anything carrying Drizzle's execute — `db` or a transaction handle. */
+type EmdEventExecutor = {
+  execute: (query: ReturnType<typeof sql>) => Promise<unknown>;
+};
+
+async function appendEarnestMoneyEvent(exec: EmdEventExecutor, e: EmdEventInput): Promise<void> {
+  await exec.execute(sql`
+    INSERT INTO earnest_money_events
+      (organization_id, hold_id, from_state, to_state, amount_cents,
+       actor_user_id, actor_ip, actor_ua, justification)
+    VALUES (${e.organizationId}, ${e.holdId}, ${e.fromState}, ${e.toState},
+            ${e.amountCents}, ${e.actorUserId}, ${e.actorIp}, ${e.actorUa},
+            ${e.justification})
+  `);
+}
+
+/** Actor context for an event row, captured the way neighbouring routes do. */
+function emdActorContext(req: AuthenticatedRequest): {
+  actorUserId: string | null;
+  actorIp: string | null;
+  actorUa: string | null;
+} {
+  return {
+    actorUserId: req.user?.id ?? null,
+    // Stored-field IP: CF-Connecting-IP first, never bare req.ip (the
+    // Cloudflare edge address) — see utils/clientIp.ts (DEFECT-0062).
+    actorIp: clientIpOrNull(req),
+    actorUa: (req.headers?.["user-agent"] as string | undefined) ?? null,
+  };
 }
 
 const createSchema = z.object({
@@ -171,23 +230,39 @@ export function registerEarnestMoneyRoutes(app: Express): void {
 
         const refundableUntilAt = addDaysIso(data.depositedAt, data.inspectionPeriodDays ?? 7);
 
-        const [row] = await db
-          .insert(earnestMoneyHolds)
-          .values({
+        // Hold + its initial event commit or roll back together (0086):
+        // from_state is NULL for the creation event and to_state is the
+        // hold's initial status ("held" — recording means at title).
+        const actor = emdActorContext(req);
+        const row = await db.transaction(async (tx) => {
+          const [created] = await tx
+            .insert(earnestMoneyHolds)
+            .values({
+              organizationId: orgId,
+              dealId: data.dealId ?? null,
+              propertyId: data.propertyId ?? null,
+              amountCents: data.amountCents,
+              titleCompany: data.titleCompany ?? null,
+              referenceNumber: data.referenceNumber ?? null,
+              depositedAt: data.depositedAt,
+              inspectionPeriodDays: data.inspectionPeriodDays ?? 7,
+              refundableUntilAt,
+              status: "held", // assume the act of recording = at title in escrow
+              statusChangedAt: clock.now(),
+              notes: data.notes ?? null,
+            })
+            .returning();
+          await appendEarnestMoneyEvent(tx, {
             organizationId: orgId,
-            dealId: data.dealId ?? null,
-            propertyId: data.propertyId ?? null,
-            amountCents: data.amountCents,
-            titleCompany: data.titleCompany ?? null,
-            referenceNumber: data.referenceNumber ?? null,
-            depositedAt: data.depositedAt,
-            inspectionPeriodDays: data.inspectionPeriodDays ?? 7,
-            refundableUntilAt,
-            status: "held", // assume the act of recording = at title in escrow
-            statusChangedAt: clock.now(),
-            notes: data.notes ?? null,
-          })
-          .returning();
+            holdId: created.id,
+            fromState: null,
+            toState: created.status,
+            amountCents: created.amountCents,
+            ...actor,
+            justification: data.notes ?? null,
+          });
+          return created;
+        });
         return res.status(201).json({ hold: row });
       } catch (err) {
         logger.error("emd.create failed", err instanceof Error ? err : undefined);
@@ -208,21 +283,26 @@ export function registerEarnestMoneyRoutes(app: Express): void {
         const parsed = patchSchema.safeParse(req.body);
         if (!parsed.success) return Errors.validationFailed(res, parsed.error.flatten());
 
+        // Load the hold first (org-scoped): the event writer needs the
+        // previous status, and a missing hold is a 404 before any write.
+        const [existing] = await db
+          .select({
+            depositedAt: earnestMoneyHolds.depositedAt,
+            status: earnestMoneyHolds.status,
+          })
+          .from(earnestMoneyHolds)
+          .where(and(eq(earnestMoneyHolds.id, routeParam(req.params.id)), eq(earnestMoneyHolds.organizationId, orgId)))
+          .limit(1);
+        if (!existing) return Errors.notFound(res, "EMD hold");
+
         // Recompute refundableUntilAt when inspectionPeriodDays changes
         // and refundableUntilAt isn't explicitly supplied.
         let derivedRefundableUntil: string | undefined = parsed.data.refundableUntilAt;
         if (parsed.data.inspectionPeriodDays !== undefined && !derivedRefundableUntil) {
-          const [existing] = await db
-            .select({ depositedAt: earnestMoneyHolds.depositedAt })
-            .from(earnestMoneyHolds)
-            .where(and(eq(earnestMoneyHolds.id, routeParam(req.params.id)), eq(earnestMoneyHolds.organizationId, orgId)))
-            .limit(1);
-          if (existing) {
-            derivedRefundableUntil = addDaysIso(
-              existing.depositedAt as unknown as string,
-              parsed.data.inspectionPeriodDays,
-            );
-          }
+          derivedRefundableUntil = addDaysIso(
+            existing.depositedAt as unknown as string,
+            parsed.data.inspectionPeriodDays,
+          );
         }
 
         const update: Partial<typeof earnestMoneyHolds.$inferInsert> = {
@@ -232,11 +312,31 @@ export function registerEarnestMoneyRoutes(app: Express): void {
         };
         if (parsed.data.status) update.statusChangedAt = clock.now();
 
-        const [row] = await db
-          .update(earnestMoneyHolds)
-          .set(update)
-          .where(and(eq(earnestMoneyHolds.id, routeParam(req.params.id)), eq(earnestMoneyHolds.organizationId, orgId)))
-          .returning();
+        // A status CHANGE appends exactly one event in the same
+        // transaction; a status-preserving update appends nothing (0086).
+        const isTransition =
+          parsed.data.status !== undefined && parsed.data.status !== existing.status;
+        const actor = emdActorContext(req);
+        const row = await db.transaction(async (tx) => {
+          const [updated] = await tx
+            .update(earnestMoneyHolds)
+            .set(update)
+            .where(and(eq(earnestMoneyHolds.id, routeParam(req.params.id)), eq(earnestMoneyHolds.organizationId, orgId)))
+            .returning();
+          if (!updated) return undefined;
+          if (isTransition) {
+            await appendEarnestMoneyEvent(tx, {
+              organizationId: orgId,
+              holdId: updated.id,
+              fromState: existing.status,
+              toState: updated.status,
+              amountCents: updated.amountCents,
+              ...actor,
+              justification: parsed.data.notes ?? null,
+            });
+          }
+          return updated;
+        });
         if (!row) return Errors.notFound(res, "EMD hold");
         return res.json({ hold: row });
       } catch (err) {
@@ -268,28 +368,54 @@ export function registerEarnestMoneyRoutes(app: Express): void {
               : action === "refund" ? "refunded_to_buyer"
               : "forfeited";
 
-          // Default disposition amount = full hold amount when not specified.
-          let dispositionCents = parsed.data.finalDispositionAmountCents;
-          if (dispositionCents === undefined) {
-            const [row] = await db
-              .select({ amountCents: earnestMoneyHolds.amountCents })
-              .from(earnestMoneyHolds)
-              .where(and(eq(earnestMoneyHolds.id, routeParam(req.params.id)), eq(earnestMoneyHolds.organizationId, orgId)))
-              .limit(1);
-            dispositionCents = row?.amountCents ?? 0;
-          }
-
-          const [row] = await db
-            .update(earnestMoneyHolds)
-            .set({
-              status: targetStatus,
-              statusChangedAt: clock.now(),
-              finalDispositionAmountCents: dispositionCents,
-              notes: parsed.data.notes ?? undefined,
-              updatedAt: clock.now(),
+          // Load the hold first (org-scoped): the default disposition is
+          // the full hold amount, and the event writer needs the previous
+          // status. A missing hold is a 404 before any write.
+          const [existing] = await db
+            .select({
+              amountCents: earnestMoneyHolds.amountCents,
+              status: earnestMoneyHolds.status,
             })
+            .from(earnestMoneyHolds)
             .where(and(eq(earnestMoneyHolds.id, routeParam(req.params.id)), eq(earnestMoneyHolds.organizationId, orgId)))
-            .returning();
+            .limit(1);
+          if (!existing) return Errors.notFound(res, "EMD hold");
+
+          // Default disposition amount = full hold amount when not specified.
+          const dispositionCents = parsed.data.finalDispositionAmountCents ?? existing.amountCents;
+
+          // The terminal transition appends exactly one event in the same
+          // transaction (0086). Re-applying the status the hold already
+          // carries is not a transition and appends nothing. The event's
+          // amount is the hold's recorded amount, not the disposition.
+          const isTransition = existing.status !== targetStatus;
+          const actor = emdActorContext(req);
+          const row = await db.transaction(async (tx) => {
+            const [updated] = await tx
+              .update(earnestMoneyHolds)
+              .set({
+                status: targetStatus,
+                statusChangedAt: clock.now(),
+                finalDispositionAmountCents: dispositionCents,
+                notes: parsed.data.notes ?? undefined,
+                updatedAt: clock.now(),
+              })
+              .where(and(eq(earnestMoneyHolds.id, routeParam(req.params.id)), eq(earnestMoneyHolds.organizationId, orgId)))
+              .returning();
+            if (!updated) return undefined;
+            if (isTransition) {
+              await appendEarnestMoneyEvent(tx, {
+                organizationId: orgId,
+                holdId: updated.id,
+                fromState: existing.status,
+                toState: targetStatus,
+                amountCents: updated.amountCents,
+                ...actor,
+                justification: parsed.data.notes ?? null,
+              });
+            }
+            return updated;
+          });
           if (!row) return Errors.notFound(res, "EMD hold");
           return res.json({ hold: row });
         } catch (err) {

@@ -88,7 +88,7 @@ import { useSafeUser, CLERK_AVAILABLE } from "@/lib/clerk-safe";
 import { useLocation } from "wouter";
 import { useSearch } from "wouter";
 import { Link } from "wouter";
-import { PAX_CONTROLS_PATH, PAX_SETTINGS_COPY } from "@shared/pax-glossary";
+import { PAX_CONTROLS_PATH, PAX_SETTINGS_COPY } from "@shared/pax-glossary-core";
 import { XCircle } from "lucide-react";
 import { CancellationDialog } from "@/components/cancellation-dialog";
 import { useDocumentTitle } from "@/hooks/use-document-title";

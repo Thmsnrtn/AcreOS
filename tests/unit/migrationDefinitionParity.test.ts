@@ -1,5 +1,5 @@
 /**
- * `0085_rebuild_prereq_tables.sql` duplicates three table definitions that also
+ * `0083_rebuild_prereq_tables.sql` duplicates three table definitions that also
  * live in `scripts/migrate.mjs`. Duplication is the price of closing the
  * rebuild cycle — but two copies of a CREATE TABLE is exactly how a schema
  * drifts, and this repository already has a worked example of the damage:
@@ -31,7 +31,7 @@ const ROOT = path.resolve(__dirname, "../..");
  * (which is exactly the mutation this file exists to catch — an ordering fix
  * that sorts AFTER what it unblocks) crashed the suite at import with an
  * ENOENT instead of failing the ordering assertion. A red suite either way,
- * but a maintainer reading "cannot find 0085…" learns less than one reading
+ * but a maintainer reading "cannot find 0083…" learns less than one reading
  * "the ordering fix sorts after its dependants".
  */
 function read(rel: string): string {
@@ -46,7 +46,7 @@ function read(rel: string): string {
   }
 }
 
-const PREREQ = "migrations/0085_rebuild_prereq_tables.sql";
+const PREREQ = "migrations/0083_rebuild_prereq_tables.sql";
 const FIELD_SCOUT = "migrations/0004_field_scout_canonical_columns.sql";
 
 const TABLES = ["earnest_money_holds", "rehabs", "rehab_line_items"] as const;
@@ -92,7 +92,7 @@ describe("the rebuild-prerequisite tables match their migrate.mjs definitions", 
 
     expect(
       [...fromSql].sort(),
-      `${table} has drifted between migrations/0085_rebuild_prereq_tables.sql ` +
+      `${table} has drifted between migrations/0083_rebuild_prereq_tables.sql ` +
         "and scripts/migrate.mjs. Two copies of a CREATE TABLE is how " +
         "field_scout_* ended up without organization_id — fix both, or delete one.",
     ).toEqual([...fromMjs].sort());
@@ -101,7 +101,7 @@ describe("the rebuild-prerequisite tables match their migrate.mjs definitions", 
   it("the migration sorts BEFORE the dependants it unblocks", () => {
     // An ordering fix that sorts after what it unblocks fixes nothing.
     const dir = fs.readdirSync(path.join(ROOT, "migrations")).filter((f) => f.endsWith(".sql")).sort();
-    const prereq = dir.indexOf("0085_rebuild_prereq_tables.sql");
+    const prereq = dir.indexOf("0083_rebuild_prereq_tables.sql");
     const emd = dir.indexOf("0086_earnest_money_events.sql");
     const photos = dir.indexOf("0089_rehab_photos.sql");
     expect(prereq, "the prerequisite migration is gone").toBeGreaterThan(-1);

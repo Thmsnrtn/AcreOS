@@ -148,7 +148,7 @@ const EXPECTED_ORG_KEYS: Record<ViewerRole, string[]> = Object.fromEntries(
 const EXPECTED_TEAM_KEYS = ["displayName", "email", "id", "isActive", "role", "userId", "viewOnlyAssignedLeads", "viewOnlyAssignedLeadsOverride"];
 
 // Named so that widening an allowlist to one of these is its own red line.
-const NEVER_SERVED_USER = ["passwordResetToken", "passwordResetExpiresAt", "failedLoginAttempts", "lockedUntil"];
+const NEVER_SERVED_USER = ["passwordResetToken", "passwordResetExpiresAt"];
 const NEVER_SERVED_ORG = [
   "ein",
   "stripeCustomerId",

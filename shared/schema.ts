@@ -1201,10 +1201,29 @@ export const payments = pgTable("payments", {
   // Status
   status: text("status").notNull().default("pending"),
   // pending, processing, completed, failed, refunded
-  
+
   failureReason: text("failure_reason"),
   processedAt: timestamp("processed_at"),
   createdAt: timestamp("created_at").defaultNow(),
+
+  // ── Borrower chargeback (Stripe dispute) flag — migration 0313, autopilot
+  // brief B-2. A dispute on the lender's OWN connected account flags THIS
+  // ledger row "dispute opened — under review" instead of letting the books
+  // silently diverge from Stripe. These columns are the whole dispute
+  // record: Stripe's dispute id/status/reason/amount, the hard response
+  // deadline (evidence_details.due_by), open/close stamps, and the
+  // T-72h/T-24h escalation stamps the deadline sweep fires on. The dispute
+  // path NEVER writes amount/balance/status — reversal stays a
+  // founder/lender judgment, never an automatic posting.
+  disputeId: text("dispute_id"),
+  disputeStatus: text("dispute_status"), // Stripe's raw status: needs_response, under_review, won, lost, …
+  disputeReason: text("dispute_reason"),
+  disputeAmountCents: integer("dispute_amount_cents"),
+  disputeDueBy: timestamp("dispute_due_by", { withTimezone: true }),
+  disputeOpenedAt: timestamp("dispute_opened_at", { withTimezone: true }),
+  disputeClosedAt: timestamp("dispute_closed_at", { withTimezone: true }),
+  disputeEscalation72hAt: timestamp("dispute_escalation_72h_at", { withTimezone: true }),
+  disputeEscalation24hAt: timestamp("dispute_escalation_24h_at", { withTimezone: true }),
 }, (table) => [
   index("payments_note_idx").on(table.noteId),
   index("payments_status_idx").on(table.status),
@@ -5844,7 +5863,7 @@ export const reconciliationRuns = pgTable(
     sourceTotal: numeric("source_total"),
     acreosTotal: numeric("acreos_total"),
     differenceDollars: numeric("difference_dollars"),
-    status: text("status").notNull(), // ok | divergent | failing
+    status: text("status").notNull(), // ok | divergent | failing | indeterminate (REC-DEF-1: source total is a lower bound — unresolved-customer invoices excluded and reported in error_message)
     errorMessage: text("error_message"),
   },
   (table) => [
@@ -14005,6 +14024,18 @@ export * from "./schema/subdivision";
 export * from "./schema/subdivision-screen-runs";
 
 // ============================================================================
+// PUSH SUBSCRIPTIONS — web-push endpoint registry (migration 0006; declared
+// 2026-11-18 as the census cure) — ./schema/push-subscriptions.ts
+// ============================================================================
+export * from "./schema/push-subscriptions";
+
+// ============================================================================
+// EARNEST MONEY EVENTS — append-only EMD event log (migration 0086; declared
+// 2026-11-19 as the census cure) — ./schema/earnest-money-events.ts
+// ============================================================================
+export * from "./schema/earnest-money-events";
+
+// ============================================================================
 // FIX-AND-FLIP VERTICAL — extracted to ./schema/fix-and-flip.ts
 // ============================================================================
 export * from "./schema/fix-and-flip";
@@ -14280,6 +14311,9 @@ export * from "./schema/parcel-data";
 // W3 acquisition engine — creator revenue share (AcreOS's own money to
 // creators; rules in shared/billing/creatorProgram.ts).
 export * from "./schema/creators";
+// CG-1 (2026-11-22): Cause Giving data foundation — 12 tables behind the
+// `cause_giving` flag (seeded OFF); rules in shared/cause-giving/rules.ts.
+export * from "./schema/cause-giving";
 
 /**
  * COO Operations Ledger — append-only log of every COO/autopilot action.

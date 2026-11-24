@@ -9,7 +9,7 @@ publish-status: draft (Phase 1 gated — see Beatrice check)
 beatrice-reviewed: NEEDS-FOUNDER-REVIEW — CAN-SPAM postal address blocks live send until LLC at Phase 1; Constitution §2 (no manipulative urgency) and §10 (no marketing to vulnerable populations — distress signal screen) audited
 truth-engine:
   - sources:
-      - { name: "client/src/pages/landing/copy.ts (Pricing: Pro $41/mo billed annually; unlimited counties; BYOK)", ref: "/Users/user/AcreOS/AcreOS/client/src/pages/landing/copy.ts#L133" }
+      - { name: "client/src/pages/landing/copy.ts (Pricing: Pro $82.50/mo billed annually ($990/yr); unlimited counties; BYOK)", ref: "/Users/user/AcreOS/AcreOS/client/src/pages/landing/copy.ts#L133" }
       - { name: "client/src/pages/landing/copy.ts (Pax mechanics: pulls comps, scores leads, drafts replies, books follow-ups, services notes)", ref: "/Users/user/AcreOS/AcreOS/client/src/pages/landing/copy.ts#L108" }
       - { name: "shared/business-types.ts (9 personas; core/beta/roadmap tiers)", ref: "/Users/user/AcreOS/AcreOS/shared/business-types.ts" }
       - { name: "docs/company/CONSTITUTION.md §2 (no dark patterns), §4 (cancel as easy as signup), §6 (no auto-charge), §10 (no marketing to vulnerable populations)", ref: "/Users/user/AcreOS/AcreOS/docs/company/CONSTITUTION.md" }
@@ -57,7 +57,7 @@ If `parcel_count + lead_count == 0`, the row is held — the recipient did not e
 >
 > The full changelog is at acreos.io/changelog — every change with the date it shipped and the source code commit it lives in. AcreOS publishes the changelog because the product the recipient evaluated thirty days ago is not the product running today.
 >
-> The pricing has not changed. Pro is $41/month billed annually — full Pax assistant, unlimited counties, bring-your-own-key for the parcel-data and skip-trace costs every operator already pays. The platform does not mark up those external costs.
+> The pricing has not changed. Pro is $82.50/month billed annually ($990/yr) — full Pax assistant, unlimited counties, bring-your-own-key for the parcel-data and skip-trace costs every operator already pays. The platform does not mark up those external costs.
 >
 > The trial did not auto-charge a card. It does not now. The Constitution AcreOS operates under says the platform does not auto-charge without explicit, recent consent, and the trial-end path is the literal expression of that line.
 >
@@ -111,7 +111,7 @@ AcreOS publishes the changelog because the product the
 recipient evaluated thirty days ago is not the product running
 today.
 
-The pricing has not changed. Pro is $41/month billed annually —
+The pricing has not changed. Pro is $82.50/month billed annually ($990/yr) —
 full Pax assistant, unlimited counties, bring-your-own-key for
 the parcel-data and skip-trace costs every operator already pays.
 The platform does not mark up those external costs.

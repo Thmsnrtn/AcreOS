@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { format, isToday, isYesterday } from "date-fns";
 import { relative } from "@/lib/format";
-import { PAX_LABELS, PAX_RECEIPT_WORDS } from "@shared/pax-glossary";
+import { PAX_LABELS, PAX_RECEIPT_WORDS } from "@shared/pax-glossary-core";
 
 interface ActivityEvent {
   id: number;

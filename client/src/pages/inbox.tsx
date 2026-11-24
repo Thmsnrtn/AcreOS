@@ -50,7 +50,7 @@ import { Verbs } from "@/lib/labels";
 import { TeamChatPanel } from "@/components/team-chat-panel";
 import { NativeMailPanel } from "@/components/native-mail-panel";
 import { usePaxNeedsYouCount } from "@/hooks/usePaxNeedsYou";
-import { PAX_LABELS } from "@shared/pax-glossary";
+import { PAX_LABELS } from "@shared/pax-glossary-core";
 
 type ChannelFilter = "all" | "email" | "sms" | "team" | "mail";
 type StatusFilter = "all" | "unread" | "starred" | "archived";

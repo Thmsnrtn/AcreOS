@@ -178,6 +178,39 @@ export const PAYOFF_DAY_COUNT_CONVENTION = "actual/365_fixed" as const;
  */
 export const PAYOFF_ENGINE_VERSION = "payoff-engine-1" as const;
 
+/**
+ * Which book a `/api/notes/:id` id belongs to. The two books share the one
+ * path family and are told apart by id shape — serviced notes are integer
+ * ids, acquired notes are uuids — the same disambiguation
+ * `note_payoff_quotes.noteSystem` records.
+ *
+ * Null when the id is neither shape. Callers treat null as "no such note"
+ * (404): a non-shape id must NEVER reach a UUID column — Postgres throws
+ * invalid-uuid and the handler's catch turns it into a 500 (L9-DEF-1:
+ * every serviced-note operator payoff surface 500'd because the numeric
+ * id was passed straight into the acquired-note lookup).
+ */
+export type NoteBook = "serviced_note" | "acquired_note";
+
+const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * True when the value is UUID-shaped. Route params that address a
+ * UUID column (a note id, a payoff quote id) are shape-checked with
+ * this before any lookup: a non-UUID value can never match a row, and
+ * passing it to Postgres throws invalid-uuid, which the handler's
+ * catch turns into a 500 for what is really a "no such row" (404).
+ */
+export function isUuidShape(value: string): boolean {
+  return UUID_SHAPE.test(value);
+}
+
+export function noteBookForId(noteId: string): NoteBook | null {
+  if (isUuidShape(noteId)) return "acquired_note";
+  if (/^\d+$/.test(noteId)) return "serviced_note";
+  return null;
+}
+
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 /** Denominator of the fixed day count. */
@@ -356,8 +389,16 @@ export function computePayoffQuote(input: PayoffQuoteInput): PayoffQuote {
 
 /**
  * Ledger-derived accrual start: the payment_date of the most recent posting
- * that carried interest (interest is settled THROUGH that date), else the
- * note's origination date when the ledger has no interest-bearing posting.
+ * that carried interest (interest is settled THROUGH that date); else the
+ * note's recorded paid-through date (a tape-imported note carries no payment
+ * ledger, but its tape states everything up to Paid Thru as settled); else
+ * the note's origination date.
+ *
+ * The ledger wins over paid-through when both exist: paid-through is a
+ * schedule position (it advances by whole periods), the ledger is the dated
+ * record of when interest was actually settled. Paid-through exists to cover
+ * the ledger-less case; falling to origination there bills the borrower for
+ * years the tape says are paid.
  *
  * Rows with `interestCents <= 0` are ignored on purpose: a principal-only
  * curtailment or an unapplied deposit settles no interest, so it must not
@@ -371,6 +412,7 @@ export function computePayoffQuote(input: PayoffQuoteInput): PayoffQuote {
 export function resolvePayoffAccrualStart(
   ledgerRows: Array<{ paymentDate: string | Date; interestCents: number | string | null }>,
   originationDate: string | Date,
+  paidThroughDate?: string | Date | null,
 ): Date {
   let latest: Date | null = null;
   for (const row of ledgerRows) {
@@ -379,7 +421,9 @@ export function resolvePayoffAccrualStart(
     const posted = parseIsoDateUtc(row.paymentDate);
     if (latest === null || posted.getTime() > latest.getTime()) latest = posted;
   }
-  return latest ?? parseIsoDateUtc(originationDate);
+  if (latest) return latest;
+  if (paidThroughDate) return parseIsoDateUtc(paidThroughDate);
+  return parseIsoDateUtc(originationDate);
 }
 
 /**

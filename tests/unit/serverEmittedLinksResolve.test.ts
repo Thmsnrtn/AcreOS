@@ -43,6 +43,7 @@ import { describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { REPO_SWEEP_TIMEOUT_MS, stripComments } from "../helpers/stripComments";
+import { routeTreeSource } from "../helpers/clientRoutes";
 
 // THIS FILE SWEEPS THE WHOLE REPOSITORY. Stripping comments correctly means
 // parsing, ~2.7ms a file, and under the coverage run's instrumentation a
@@ -54,7 +55,10 @@ const ROOT = path.resolve(__dirname, "../..");
 
 /** Every path App.tsx declares a <Route> for, including redirect-only ones. */
 function declaredRoutes(): Set<string> {
-  const app = fs.readFileSync(path.join(ROOT, "client/src/App.tsx"), "utf8");
+  // Both route trees: the customer App.tsx and the founder build's
+  // founder-routes.tsx (P1-9 / X-2). Server-emitted /founder/* links resolve
+  // against the latter.
+  const app = routeTreeSource();
   return new Set([...app.matchAll(/<Route path="([^"]+)"/g)].map((m) => m[1]));
 }
 

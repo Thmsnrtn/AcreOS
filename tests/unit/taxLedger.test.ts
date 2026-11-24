@@ -34,3 +34,36 @@ describe("position record", () => {
     expect(l.notices).toEqual([]);
   });
 });
+
+describe("notice simulation marker (T-DEF-4)", () => {
+  const railEvent = (detail: Record<string, unknown>) => ({
+    eventType: "redemption_notice_recorded" as const,
+    eventDate: "2027-03-02",
+    ruleCited: { kind: "procedure_object", source: "SYNTHETIC procedure v1" },
+    detail: { method: "certified mail via AcreOS", note: null, sentViaRail: true, ...detail },
+    recordedBy: "u",
+    recordedAt: "2027-03-02T10:00:00.000Z",
+  });
+  const noticesFor = (detail: Record<string, unknown>) => certificateLedger({ ...golden.input, events: [railEvent(detail)] }).notices;
+
+  it("a rail notice recorded in test mode is simulated:true", () => {
+    expect(noticesFor({ providerId: "lob_real_1", testMode: true })[0]).toMatchObject({ viaRail: true, simulated: true });
+  });
+  it("a sim_ provider id is simulated:true even without testMode", () => {
+    expect(noticesFor({ providerId: "sim_abc" })[0].simulated).toBe(true);
+  });
+  it("testMode:false on a rail row is simulated:false", () => {
+    expect(noticesFor({ providerId: "psc_123", testMode: false })[0].simulated).toBe(false);
+  });
+  it("an operator-recorded notice is simulated:false (the operator's word)", () => {
+    const n = certificateLedger(golden.input).notices[0];
+    expect(n).toMatchObject({ viaRail: false, simulated: false });
+    // even a stray testMode on a non-rail row cannot mark it
+    expect(noticesFor({ sentViaRail: false, testMode: true })[0].simulated).toBe(false);
+  });
+  it("a rail row with no marker either way is simulated:null — never rounded to a boolean", () => {
+    expect(noticesFor({ providerId: "psc_123" })[0].simulated).toBeNull();
+    expect(noticesFor({})[0].simulated).toBeNull();
+  });
+});
+

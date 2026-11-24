@@ -442,9 +442,12 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
       const listing = await storage.getPropertyListing(org.id, parseInt(routeParam(req.params.id)));
       if (!listing) return Errors.notFound(res, "Listing");
       // A withdrawn or sold listing is off the market; re-listing goes
-      // through publish (DEFECT-0182).
-      if (listing.status !== "active") {
-        return Errors.badRequest(res, `This listing is ${listing.status}. Publish it first; channels only receive active listings.`);
+      // through publish (DEFECT-0182). Draft and `listed` listings pass:
+      // preparation must not demand an activation first (L-DEF-1) —
+      // `listed` is the operator's own on-market statement (Option C),
+      // and a draft may be prepared before any publish run.
+      if (listing.status === "sold" || listing.status === "withdrawn") {
+        return Errors.badRequest(res, `This listing is ${listing.status}; sold or withdrawn listings cannot be syndicated.`);
       }
       // Never post a second copy onto a channel where one is live or still
       // coming down: the new external id would orphan the old posting, which

@@ -258,7 +258,12 @@ export async function getOrCreateOrg(req: Request, res: Response, next: NextFunc
           subscriptionStatus: "active",
           trialStartedAt: isFounder ? null : now,
           trialEndsAt: isFounder ? null : trialEnds,
-          trialUsed: isFounder ? true : false,
+          // A15-09: the creation grant IS this org's one trial. It must set
+          // trialUsed, or the org can stack two more full 14-day trials on
+          // top of it — POST /api/trial/start refuses only on trialUsed, and
+          // Stripe checkout adds trial_period_days only when !trialUsed.
+          // One org, one trial, whichever path grants it first.
+          trialUsed: true,
           isFounder,
           utmSource: null,
           utmMedium: null,

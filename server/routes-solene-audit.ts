@@ -24,7 +24,7 @@
  */
 
 import type { Express, Response, NextFunction } from "express";
-import { and, desc, eq, gte, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import { db } from "./db";
 import {
   soleneAuditRuns,
@@ -87,7 +87,14 @@ export function registerSoleneAuditRoutes(app: Express): void {
             count: sql<number>`COUNT(*)::int`,
           })
           .from(soleneAuditFindings)
-          .where(sql`${soleneAuditFindings.runId} = ANY(${runIds})`)
+          // inArray, not raw `= ANY(${runIds})` — drizzle binds a JS array
+          // inside sql`` as a parenthesised parameter list, so Postgres
+          // received ANY(($1, $2)) ("op ANY/ALL (array) requires array on
+          // right side") / ANY(($1)) (malformed array literal) and rejected
+          // it, 500ing this read whenever at least one audit run existed
+          // (ANY-sweep 2026-11-21; identical twin of the /founder/build
+          // failure documented in routes-team-system-audit.ts).
+          .where(inArray(soleneAuditFindings.runId, runIds))
           .groupBy(soleneAuditFindings.runId, soleneAuditFindings.severity);
 
         const findingsByRun = new Map<

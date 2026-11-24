@@ -492,10 +492,10 @@ export async function sendLetter(options: SendLetterOptions): Promise<SendResult
         //  · BEFORE Lob is contacted — a credit refusal. That path now throws
         //    ProviderNotContactedError, which withOutwardAction records `failed`,
         //    so a retry after topping up succeeds under the same durable key.
-        //  · FROM the Lob call itself — genuinely ambiguous. A network failure
-        //    there may or may not have printed a letter, so it stays
-        //    unclassified and is recorded AMBIGUOUS, refusing retry until
-        //    someone reconciles.
+        //  · FROM the Lob call itself — genuinely ambiguous (a definitive
+        //    rejection's `providerNotBilled` verdict aside, L-DEF-3). A
+        //    network failure there may or may not have printed a letter, so
+        //    it stays unclassified and is recorded AMBIGUOUS.
         //
         // Rethrowing unchanged is what preserves that distinction: the type
         // carries it, so this handler must not flatten it into a plain Error.

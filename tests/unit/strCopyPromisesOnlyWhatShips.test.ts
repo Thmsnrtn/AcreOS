@@ -16,6 +16,7 @@ import { describe, expect, it, vi } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { stripComments } from "../helpers/stripComments";
+import { BUSINESS_TYPES } from "../../shared/business-types";
 
 import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
 
@@ -44,21 +45,33 @@ const PROMISES: Array<{ name: string; copy: RegExp; caller: RegExp }> = [
   { name: "record a stay", copy: /record a stay/i, caller: /method:\s*["']POST["'][\s\S]{0,200}\/reservations[`"']|apiRequest\(\s*["']POST["'],\s*`[^`]*\/reservations`/ },
 ];
 
-function strDescription(): string {
+function strDescription(): string | null {
   const src = read("client/src/pages/onboarding-v2.tsx");
   const m = src.match(/value:\s*"short_term_rental"[^}]*?description:\s*"([^"]*)"/);
-  expect(m, "STR onboarding option found").not.toBeNull();
-  return m![1];
+  // FD1 re-cut (P1-11 S2): short_term_rental is registry_only and is no
+  // longer an onboarding option at all, so the description population is
+  // legitimately ABSENT — but only for that reason. If the option ever
+  // returns (a registry re-promotion), this returns its copy again and
+  // every promise check below applies to it in full.
+  if (!m) {
+    expect(
+      BUSINESS_TYPES.short_term_rental.maturity,
+      "STR onboarding option is absent for a reason other than FD1 registry_only",
+    ).toBe("registry_only");
+    return null;
+  }
+  return m[1];
 }
 
 describe("STR copy", () => {
   it("reads its population (vacuity floor)", () => {
     expect(clientFiles.length).toBeGreaterThan(500);
-    expect(strDescription().length).toBeGreaterThan(10);
+    const desc = strDescription();
+    if (desc !== null) expect(desc.length).toBeGreaterThan(10);
     expect(read("client/src/components/rentals/bookings-panel.tsx")).toMatch(/testId="bookings-empty"/);
   });
 
-  const surfaces: Array<[string, () => string]> = [
+  const surfaces: Array<[string, () => string | null]> = [
     ["onboarding STR description", strDescription],
     // Module import declarations are code, not copy.
     ["bookings panel", () => read("client/src/components/rentals/bookings-panel.tsx")
@@ -68,7 +81,9 @@ describe("STR copy", () => {
   for (const [surface, text] of surfaces) {
     for (const p of PROMISES) {
       it(`${surface}: promises "${p.name}" only if a client screen calls its route`, () => {
-        if (!p.copy.test(text())) return;
+        const t = text();
+        if (t === null) return; // surface legitimately absent (FD1, see strDescription)
+        if (!p.copy.test(t)) return;
         expect(clientSrc, `${surface} promises ${p.name} but no client file calls its route`).toMatch(p.caller);
       });
     }

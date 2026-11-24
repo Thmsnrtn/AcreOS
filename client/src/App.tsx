@@ -1,5 +1,13 @@
 import React, { Suspense } from "react";
-import { Switch, Route, Redirect, useLocation } from "wouter";
+import { Switch, Route, useLocation } from "wouter";
+// Cross-build-aware Redirect (P1-9 / X-2): the founder pages live in a
+// separate bundle (FounderApp / founder-routes.tsx), so a redirect into
+// /founder/* is a full page load, not a wouter nav. (A link into /founder/*
+// reaches the last route, NotFound, which hands the navigation off too.)
+import { Redirect } from "@/components/cross-build-redirect";
+import { PageLoader } from "@/components/page-loader";
+import { PageWrapper } from "@/components/page-wrapper";
+import { FounderProtectedRoute } from "@/components/founder-protected-route";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -9,7 +17,6 @@ import { useAuth } from "@/hooks/use-auth";
 import { AiDisclosureGate } from "@/components/onboarding/AiDisclosureDialog";
 import { useWhiteLabel } from "@/hooks/use-white-label";
 import { telemetry } from "@/lib/telemetry";
-import { legacyAskSearch } from "@/lib/route-redirects";
 import { setSentryUser } from "@/lib/sentry";
 import { identifyUser, trackCanonicalEvent, trackEvent } from "@/lib/analytics";
 import { flushPendingUtm, hasSignupIntent } from "@/lib/acquisition-utm";
@@ -18,9 +25,7 @@ import { TenantThemeProvider } from "@/contexts/tenant-theme-context";
 import { FeatureFlagsProvider } from "@/contexts/feature-flags-context";
 import { AccessibilityProvider } from "@/contexts/accessibility-context";
 import { PaxRailProvider } from "@/contexts/pax-rail-context";
-import { AnimatePresence, motion, MotionConfig } from "framer-motion";
-import { pageTransition } from "@/lib/animations";
-import { variantPageFadeMobile } from "@/lib/motion-tokens";
+import { MotionConfig } from "framer-motion";
 import { installViewTransitions } from "@/lib/view-transitions";
 import { useToast } from "@/hooks/use-toast";
 
@@ -59,16 +64,14 @@ import { useNextRoutePrefetch } from "@/hooks/use-next-route-prefetch";
 import { useRouteHeadingFocus } from "@/hooks/use-route-heading-focus";
 import { RouteFallback } from "@/components/route-fallback";
 import { FlaggedRoute } from "@/components/flagged-route";
-import { MobileBottomNav, FounderMobileBottomNav } from "@/components/mobile";
+import { MobileBottomNav } from "@/components/mobile";
 import { useIsMobile } from "@/hooks/use-mobile";
-// Phase D — Atlas Dock follows Tom across every founder surface. Lazy
-// so non-founder users never download the chat bundle.
-const AtlasDock = React.lazy(() => import("@/components/founder-chat/Dock").then(m => ({ default: m.Dock })));
+// The Atlas Dock and the founder mobile nav moved to the founder build
+// (client/src/FounderApp.tsx) with the rest of the founder surface.
 // Cohesion R4 — TeamChatDock follows the operator across every customer
 // surface (the Atlas pattern, customer side). Lazy so the chat bundle only
 // loads when a customer actually opens it.
 const TeamChatDock = React.lazy(() => import("@/components/team-chat-dock").then(m => ({ default: m.TeamChatDock })));
-import { usePageContext } from "@/hooks/use-page-context";
 const BetaActivationDetector = React.lazy(() => import("@/components/beta-activation-detector").then(m => ({ default: m.BetaActivationDetector })));
 const PaxCopilotRail = React.lazy(() => import("@/components/pax-copilot-rail").then(m => ({ default: m.PaxCopilotRail })));
 const DynamicIsland = React.lazy(() => import("@/components/dynamic-island").then(m => ({ default: m.DynamicIsland })));
@@ -117,6 +120,8 @@ const NoteDetailPage = React.lazy(() => import("@/pages/note-detail"));
 const NotesTaxReadinessPage = React.lazy(() => import("@/pages/notes-tax-readiness"));
 const NotesPipelinePage = React.lazy(() => import("@/pages/notes-pipeline"));
 const NoteAcquisitionDetailPage = React.lazy(() => import("@/pages/note-acquisition-detail"));
+const UnderwriteNotePage = React.lazy(() => import("@/pages/notes/underwrite-note"));
+const TaxBidDeskPage = React.lazy(() => import("@/pages/tax/bid-desk"));
 // Tax-Delinquent vertical TD-2 — redemption clock.
 const RedemptionClockPage = React.lazy(() => import("@/pages/redemption-clock"));
 // Tax-Delinquent vertical TD-3 — state rules database.
@@ -302,132 +307,14 @@ const InvestorDirectoryPage = React.lazy(() => import("@/pages/investor-director
 // MatchingEnginePage archived 2026-06-01 — no nav entry.
 
 // Admin / Founder
+// Every founder page's lazy import moved to client/src/founder-routes.tsx with
+// its route (P1-9 / X-2): the founder pages ship in the founder build only.
 // AdminSupportPage archived 2026-06-01 — no nav entry, no callers.
-// IA consolidation (Lens 4): the legacy FounderDashboard and FounderHomePage
-// page bundles are no longer mounted — every prior founder-home route
-// redirects to /founder/bridge. Both files deleted 2026-06-01.
-const FounderAiObservatory = React.lazy(() => import("@/pages/founder-ai-observatory"));
-// FounderFeatureFlags archived 2026-06-01 — route redirects to /founder/features; lazy import was dead code.
-const FounderFeatures = React.lazy(() => import("@/pages/founder/features"));
-const FounderKeysPage = React.lazy(() => import("@/pages/founder/keys"));
-const FounderReadinessPage = React.lazy(() => import("@/pages/founder/readiness"));
-// Beatrice/Lena — Launch Legal & Peace-of-Mind Readiness checklist surface.
-// Renders docs/legal/launch-readiness-checklist.md status at a glance.
-const FounderLegalReadinessPage = React.lazy(() => import("@/pages/founder/legal-readiness"));
-const FounderCustomersHealthPage = React.lazy(() => import("@/pages/founder/customers/health"));
-const FounderGrowthCampaignsPage = React.lazy(() => import("@/pages/founder/growth/campaigns"));
-const FounderTelemetryPage = React.lazy(() => import("@/pages/founder/telemetry"));
-// Command cockpit — one synthesis surface aggregating every domain's
-// continuous-audit findings into per-domain status tiles. Consumes
-// GET /api/founder/audit-findings (owned by the substrate agent).
-const FounderCommandPage = React.lazy(() => import("@/pages/founder/command"));
-// FounderIntegrationsPage archived 2026-06-01 — no sidebar entry.
-// Costs & economics consolidated into one /founder/admin/costs hub (Phase 2).
-const FounderAdminCostsPage = React.lazy(() => import("@/pages/founder/admin/costs"));
-const FounderLifeCockpitPage = React.lazy(() => import("@/pages/founder/life-cockpit"));
-// FounderDsarPage archived 2026-06-01 — no sidebar entry.
-// FounderLegalHoldsPage archived 2026-06-01 — no sidebar entry.
-// FounderSubProcessorsPage archived 2026-06-01 — no sidebar entry.
-const FounderRecoveryConsolePage = React.lazy(() => import("@/pages/founder/recovery-console"));
-// FounderActivationPage archived 2026-06-01 — no sidebar entry.
-// FounderMlSnapshotsPage archived 2026-06-01 — no sidebar entry.
-// FounderEtlPage archived 2026-06-01 — no sidebar entry.
-// FounderPromptVersionsPage archived 2026-06-01 — no sidebar entry.
-// FounderTitlePartnersPage archived 2026-06-01 — no sidebar entry.
-const FounderFeedbackInboxPage = React.lazy(() => import("@/pages/founder/feedback-inbox"));
-// Quinn + Rafe — "appeal the AI" founder review surface. GET /api/founder/appeals.
-const FounderAppealsPage = React.lazy(() => import("@/pages/founder/appeals"));
-// Rafe — the Recourse Loop. Every negative customer signal → a drafted,
-// personal, same-hour human reply. GET /api/founder/recourse.
-const FounderRecoursePage = React.lazy(() => import("@/pages/founder/recourse"));
-// Tier 3F — the data co-op's quarterly market-report DRAFT review surface.
-// Review only (no publish path). GET /api/founder/market-reports.
-const FounderMarketReportsPage = React.lazy(() => import("@/pages/founder/market-reports"));
-const FounderAgentQueuePage = React.lazy(() => import("@/pages/founder/agent-queue"));
-const FounderDispatchesPage = React.lazy(() => import("@/pages/founder/dispatches"));
-// FounderAsksPage deleted 2026-07-27 (four-door merge) — the standalone
-// /founder/asks queue duplicated the Decisions door; founder-decisions.tsx
-// embeds OpenAsksSection against the same /api/founder/asks backend. The
-// /founder/asks route below redirects to /founder/decisions.
-// D2 signup-to-first-value funnel UI — surface for /api/founder/onboarding-funnel.
-const FounderOnboardingFunnelPage = React.lazy(() => import("@/pages/founder/onboarding-funnel"));
-const FounderFeedPage = React.lazy(() => import("@/pages/founder/feed"));
-const FounderPaxTracesPage = React.lazy(() => import("@/pages/founder/pax-traces"));
-const FounderPaxCalibrationPage = React.lazy(() => import("@/pages/founder/pax-calibration"));
-// Wave 3 Workstream E — distribution truth surface. Paid / trial /
-// churned counts + UTM sources + recent signups by name.
-const FounderCustomersPage = React.lazy(() => import("@/pages/founder/customers"));
-// Solene's daily one-line + Autonomy Horizon + capital + phase — the
-// pull-first CEO surface at /founder. Replaces the FounderChat shell
-// that was previously served at /founder (page since deleted).
-// Phase 4 of the Solene migration — new 5-door founder UI. /founder/today
-// is the founder landing page; /founder now always renders it (the legacy
-// Pulse page at founder/index.tsx is retired).
-const FounderHomePage = React.lazy(() => import("@/pages/founder/home"));
-// "Your Voice" — set durable intents + standing orders the autopilot honors.
-const FounderVoicePage = React.lazy(() => import("@/pages/founder/voice"));
-// "The Story" — the glass-box timeline of every action + its full reasoning.
-const FounderAutopilotStoryPage = React.lazy(() => import("@/pages/founder/autopilot-story"));
-// The Control Center — master switches + per-domain trust + everything in one.
-const FounderAutopilotControlPage = React.lazy(() => import("@/pages/founder/autopilot-control"));
-// Categorized index of every founder deep-dive — the visible affordance
-// into the ~70 secondary /founder/* surfaces beyond the 5 primary doors.
-const FounderAllToolsPage = React.lazy(() => import("@/pages/founder/all-tools"));
-// Phase 5 — the remaining three doors (team / money / build). The customers
-// door reuses FounderCustomersPage (rewritten in Phase 5).
-const FounderTeamPage = React.lazy(() => import("@/pages/founder/team"));
-const FounderMoneyPage = React.lazy(() => import("@/pages/founder/money"));
-const FounderBuildPage = React.lazy(() => import("@/pages/founder/build"));
-// FounderNowPage removed (Lens 4) — /founder/now now redirects to
-// /founder/bridge. FounderChatPage (pages/founder/chat.tsx) deleted in the
-// WS2 sweep (2026-07-07): no route ever mounted it and solene-chat is the
-// live founder chat face.
-// Phase 3 — iOS-Claude-UX chat surface that consumes the Phase 2 backend
-// at /api/founder/solene-chat/*. This is the face Tom interacts with when
-// he flips the in-app Solene flag on.
-const FounderSoleneChatPage = React.lazy(() => import("@/pages/founder/solene-chat"));
-const FounderBridgePage = React.lazy(() => import("@/pages/founder/bridge"));
-// FounderLegacyDashboard removed (Lens 4) — /founder/dashboard now
-// redirects to /founder/bridge. LegacyNowSurface lives on disk for
-// reference but is no longer route-mounted.
-const FounderCockpitPage = React.lazy(() => import("@/pages/founder/cockpit"));
-const FounderCmoPage = React.lazy(() => import("@/pages/founder/cmo"));
-const FounderStudioPage = React.lazy(() => import("@/pages/founder/studio"));
-const FounderInspectorRouter = React.lazy(() => import("@/pages/founder/inspector"));
-const FounderTrustGraduationPage = React.lazy(() => import("@/pages/founder/trust-graduation"));
 // PropertiesComparePage archived 2026-06-01 — no callers.
 // DealUnderwritingPage archived 2026-06-01 — route is Redirect to /deals/discover.
 // TeamKPIPage archived 2026-06-01 — no nav entry, no callers.
-// SovereignV13Page retired 2026-06-11 (Census W3-1) — page deleted;
-// /founder/v13 redirects to /founder/bridge. Its API surface
-// (/api/founder/v13/*) is still consumed by the refit founder pages.
-const AgentDetailPage = React.lazy(() => import("@/pages/agent-detail"));
-const SafetyGatesPage = React.lazy(() => import("@/pages/safety-gates"));
-// OpsDashboardPage archived 2026-06-01 — no nav entry.
-// BetaIntakePage archived 2026-06-01 — no nav entry; /admin/beta-intake redirects to /admin/beta.
-// BetaAnalyticsPage archived 2026-06-01 — no nav entry.
-// QueueMonitorPage archived 2026-06-01 — no nav entry.
-// IntegrationsHealthPage archived 2026-06-01 — no nav entry.
-// ProactiveMonitorPage archived 2026-06-01 — no nav entry.
-// BetaDashboardPage archived 2026-06-01 — no nav entry.
-const ResellerDashboardPage = React.lazy(() => import("@/pages/reseller-dashboard"));
-// DataMoatDashboardPage archived 2026-06-01 — no nav entry (sidebar shows "/data-moat" which routes to it, but page is a founder deep-tool with no unique value vs other telemetry pages).
-const ExecutiveDashboardPage = React.lazy(() => import("@/pages/executive-dashboard"));
-
-// Sovereign Protocol — Phase A Visibility Layer.
-// Census W3-1 (2026-06-11) retire/refit split: sovereign-dashboard,
-// sovereign-v13, anticipatory-enterprise, and agent-collaboration were
-// retired (pages deleted, routes redirect). The four surviving surfaces
-// moved under /founder/* as first-class founder deep-dives:
-//   board-of-directors    → /founder/governance
-//   memory-browser        → /founder (memory page retired 2026-08-28)
-//   event-log             → /founder/event-log
-//   conscious-organization → /founder/scenarios
-const FounderGovernancePage = React.lazy(() => import("@/pages/founder/governance"));
-const AgentPerformancePage = React.lazy(() => import("@/pages/agent-performance"));
-const FounderEventLogPage = React.lazy(() => import("@/pages/founder/event-log"));
-const JobHealthPage = React.lazy(() => import("@/pages/job-health"));
-const FounderScenariosPage = React.lazy(() => import("@/pages/founder/scenarios"));
+// Retired founder pages (Census W3-1 and the 2026-06-01 cuts) keep their
+// redirects below; the surviving surfaces live under /founder/*.
 
 // Misc public
 const BorrowerPortal = React.lazy(() => import("@/pages/borrower-portal"));
@@ -480,27 +367,13 @@ const InspectionDetailPage = React.lazy(() => import("@/pages/inspection-detail"
 const AccountSecurityPage = React.lazy(() => import("@/pages/account-security"));
 // FounderFinancialsPage archived 2026-06-01 — no sidebar entry.
 const FcraSubstantiveFormPage = React.lazy(() => import("@/pages/fcra-substantive-form"));
-const FounderComplianceOpsPage = React.lazy(() => import("@/pages/founder-compliance-ops"));
 // MultiVerticalPnLPage archived 2026-06-01 — no callers.
 // FounderAgentsPage archived 2026-06-01 — no sidebar entry.
 // FounderDailyDigestPage archived 2026-06-01 — no sidebar entry.
-const FounderDecisionsPage = React.lazy(() => import("@/pages/founder-decisions"));
-const FounderLetterPage = React.lazy(() => import("@/pages/founder-letter"));
-const FounderSettingsPage = React.lazy(() => import("@/pages/founder-settings"));
-const FounderPreviewPage = React.lazy(() => import("@/pages/founder-preview"));
-const FounderToolsPage = React.lazy(() => import("@/pages/founder-tools"));
-const FounderPromptEvolutionsPage = React.lazy(() => import("@/pages/founder-prompt-evolutions"));
-const FounderPromptHistoryPage = React.lazy(() => import("@/pages/founder-prompt-history"));
-const FounderTracesPage = React.lazy(() => import("@/pages/founder-traces"));
 const SignDocumentPage = React.lazy(() => import("@/pages/sign-document"));
 const OfferBatchesPage = React.lazy(() => import("@/pages/offer-batches"));
 const LeadsDedupePage = React.lazy(() => import("@/pages/leads-dedupe"));
-const FounderStrategyPage = React.lazy(() => import("@/pages/founder-strategy"));
-const FounderTrendsPage = React.lazy(() => import("@/pages/founder-trends"));
 // MyLetterPage archived 2026-06-01 — no callers outside App.tsx.
-const FounderOnboardingPage = React.lazy(() => import("@/pages/founder-onboarding"));
-const FounderExpansionPage = React.lazy(() => import("@/pages/founder-expansion"));
-const FounderExperimentsPage = React.lazy(() => import("@/pages/founder-experiments"));
 // FounderProvidersPage folded into the /founder/admin/costs hub (Providers tab).
 // ForgotPasswordPage / ResetPasswordPage deleted 2026-08-13. Both were
 // lazy-imported here and NEVER ROUTED — bundled and unreachable — and both
@@ -519,7 +392,6 @@ const OnboardingV2Page = React.lazy(() => import("@/pages/onboarding-v2"));
 const DriveModePage = React.lazy(() => import("@/pages/drivemode"));
 // B-2: CourthouseMode — Tax-Delinquent leapfrog mobile surface.
 const CourthouseModePage = React.lazy(() => import("@/pages/courthouse-mode"));
-const DunningManagerPage = React.lazy(() => import("@/pages/dunning-manager"));
 // /freedom-meter removed (Lens 4 Fix 4): 706-line customer-facing
 // surface with no nav link, no in-app referrers, no link to /today.
 // Stale standalone page — deleted.
@@ -531,6 +403,8 @@ const BlindOfferWizardPage = React.lazy(() => import("@/pages/blind-offer-wizard
 const StatusPage = React.lazy(() => import("@/pages/status"));
 const ChangelogPage = React.lazy(() => import("@/pages/changelog"));
 const SecurityPage = React.lazy(() => import("@/pages/security"));
+// P2-6 S1: the dated trust surface. DARK — reachable by URL only; linked from no nav, footer, sitemap or landing.
+const TrustPage = React.lazy(() => import("@/pages/trust"));
 // Public Transparency Report (Quinn #4 / Beatrice #3). Renders the latest
 // published transparency_reports row. Public route + linked from Settings;
 // NOT a new customer door (respects the five-door nav model).
@@ -542,40 +416,8 @@ const WelcomeBackPage = React.lazy(() => import("@/pages/welcome-back"));
 // an orphan page.
 const GlossaryPage = React.lazy(() => import("@/pages/glossary"));
 
-// ─── Page loading fallback ──────────────────────────────────────────────────
-// Shown during route-level auth resolution and React.lazy() chunk loads.
-// Intentionally branded (not a bare spinner) — users bouncing off a blank
-// page with a tiny loader read the app as "is this still working?" A small
-// AcreOS moment with a subtle pulse keeps them oriented.
-// `data-testid="app-loading"` is load-bearing for the mobile E2E contracts.
-// They settle on `networkidle` — a NETWORK signal — which on WebKit fires while
-// this shell is still up; they then measured the shell (innerText of exactly 34
-// characters, on every WebKit device and five routes) and reported it as a
-// blank route. The testid is the RENDER signal they wait to detach before
-// measuring anything. Keep it stable.
-function PageLoader() {
-  return (
-    <div
-      className="min-h-[100dvh] flex items-center justify-center bg-background px-4"
-      role="status"
-      aria-label="Loading AcreOS"
-      data-testid="app-loading"
-    >
-      <div className="flex flex-col items-center gap-4">
-        <div className="relative">
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-md">
-            <span className="text-white font-bold text-xl">A</span>
-          </div>
-          <div
-            className="absolute -inset-1 rounded-xl border-2 border-primary/30 animate-ping"
-            aria-hidden="true"
-          />
-        </div>
-        <p className="text-sm text-muted-foreground">Loading AcreOS…</p>
-      </div>
-    </div>
-  );
-}
+// PageLoader (the branded `data-testid="app-loading"` shell) lives in
+// @/components/page-loader — both builds render the same one.
 
 // ─── Route wrappers ─────────────────────────────────────────────────────────
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
@@ -601,23 +443,10 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
   return <Component />;
 }
 
-function FounderProtectedRoute({ component: Component }: { component: React.ComponentType }) {
-  const { user, isLoading, isFounder } = useAuth();
-
-  if (isLoading) {
-    return <PageLoader />;
-  }
-
-  if (!user) {
-    return <Redirect to="/auth" />;
-  }
-
-  if (!isFounder) {
-    return <NotFound />;
-  }
-
-  return <Component />;
-}
+// FounderProtectedRoute lives in @/components/founder-protected-route. The
+// founder route tree (client/src/founder-routes.tsx) uses it for every founder
+// page; this file keeps it for /commissions, whose page is shared with the
+// customer's Finance → Commissions surface and so stays in the customer build.
 
 // Feature-flagged protected route: lives in @/components/flagged-route. A
 // disabled flag renders a "not available" EmptyState, not the 404 page.
@@ -778,6 +607,7 @@ function Router() {
       <Route path="/status" component={StatusPage} />
       <Route path="/changelog" component={ChangelogPage} />
       <Route path="/security" component={SecurityPage} />
+      <Route path="/trust" component={TrustPage} />
       {/* Public Transparency Report — accountability artifact, no login.
           Also reachable from Settings → Account. Not a customer door. */}
       <Route path="/transparency" component={TransparencyPage} />
@@ -1018,6 +848,9 @@ function Router() {
       <Route path="/notes/pipeline/:id">
         {() => <ProtectedRoute component={NoteAcquisitionDetailPage} />}
       </Route>
+      <Route path="/notes/underwrite">
+        {() => <ProtectedRoute component={UnderwriteNotePage} />}
+      </Route>
       <Route path="/notes/:id">
         {() => <ProtectedRoute component={NoteDetailPage} />}
       </Route>
@@ -1170,280 +1003,20 @@ function Router() {
         {/* 2026-06-01 cut — admin-support.tsx archived; redirect to help. */}
         {() => <Redirect to="/help#support" />}
       </Route>
-      {/* IA consolidation (Lens 4): /founder/bridge is the canonical
-          The Letter (/founder) is the single founder home per the four-door
-          doctrine (client/src/lib/founder-doors.ts + CLAUDE.md). D6 fused the
-          Pulse (/founder) and Letter (/founder/autopilot) overviews there; the
-          earlier Lens-4 consolidation had pointed these legacy homes at
-          /founder/bridge, which left TWO surfaces each calling itself "the
-          canonical founder home." Completing the fold: every legacy founder-home
-          variant now redirects to /founder. Bridge stays reachable as a deep
-          chat+telemetry TOOL, not a competing home.
-            • /founder-dashboard  — was the legacy 7,400-line operations
-              console (FounderDashboard). The legacy component stays reachable
-              via the sidebar "Operations console (legacy)" overflow entry.
-            • /founder/now       — was the tile-driven daily inbox.
-            • /founder/cockpit   — was the weekly steering surface.
-          /founder-home (the early "clean home" landing page) redirected here
-          too until its route-redirects.ts sunset (2026-07-26) passed; the
-          route was deleted 2026-07-27 per the removal protocol.
+      {/* The founder routes live in client/src/founder-routes.tsx (the founder
+          build — P1-9 / X-2). The Letter (/founder) is the single founder home
+          per the four-door doctrine (client/src/lib/founder-doors.ts +
+          CLAUDE.md).
+          /founder-dashboard stays HERE, as a redirect: the server's founder-shell
+          selector covers `/founder` and `/founder/*` only
+          (shared/founder-surface-paths.ts), so this legacy alias reaches the
+          customer shell, and the cross-build Redirect carries it to /founder
+          with a full page load. It was the legacy 7,400-line operations
+          console; /founder-home (the early "clean home" landing page) was
+          deleted 2026-07-27 per the removal protocol.
           See client/src/lib/route-redirects.ts. */}
       <Route path="/founder-dashboard">
         {() => <Redirect to="/founder" />}
-      </Route>
-      <Route path="/founder/now">
-        {() => <Redirect to="/founder" />}
-      </Route>
-      <Route path="/founder/cockpit">
-        {() => <Redirect to="/founder" />}
-      </Route>
-      {/* Pillar R — per-(agent, category) tier admin. Linked from the
-          cockpit's autonomy section. */}
-      <Route path="/founder/trust-graduation">
-        {() => <FounderProtectedRoute component={FounderTrustGraduationPage} />}
-      </Route>
-      {/* CMO ad engine — single founder surface to review + ship ads to
-          Meta + TikTok. See server/services/cmo/ + apps/remotion/. */}
-      <Route path="/founder/cmo">
-        {() => <FounderProtectedRoute component={FounderCmoPage} />}
-      </Route>
-      {/* Founder redesign Phase C — Studio. Every dial in one place,
-          backed by founder_settings + the seeded catalog in
-          server/services/settingsSeeder.ts. */}
-      <Route path="/founder/studio">
-        {() => <FounderProtectedRoute component={FounderStudioPage} />}
-      </Route>
-      {/* Founder redesign Phase D — Inspector. Provenance lens for
-          agents, decisions, and the founder audit trail. */}
-      <Route path="/founder/inspector/:scope/:id">
-        {() => <FounderProtectedRoute component={FounderInspectorRouter} />}
-      </Route>
-      <Route path="/founder/inspector/audit">
-        {() => <FounderProtectedRoute component={FounderInspectorRouter} />}
-      </Route>
-      {/* /founder/dashboard was the legacy tile-driven Now-surface
-          (LegacyNowSurface). Folded into the single founder home (The Letter). */}
-      <Route path="/founder/dashboard">
-        {() => <Redirect to="/founder" />}
-      </Route>
-      {/* /founder — the founder home. The Solene-migration 5-door model is
-          now the sole surface: /founder always renders Today (the morning
-          pulse + active asks + decisions waiting + chat entry). The legacy
-          Pulse page (founder/index.tsx) is retired; its "Deep Tools" links
-          (Command cockpit, Customers, Pax traces, Pax calibration,
-          Life-Cockpit) are all present in FOUNDER_NAV_DEEP_DIVES and
-          reachable from /founder/all-tools + the command palette. Every
-          variant home (/founder-dashboard, /founder/now, /founder/cockpit,
-          /founder/dashboard) continues to redirect to /founder/bridge. */}
-      {/* D6 — the single fused founder home (board report + pulse strip + chat +
-          hub). The old /founder (Pulse) and /founder/autopilot (Letter) overview
-          surfaces are fused here; both now redirect to it. */}
-      <Route path="/founder">
-        {() => <FounderProtectedRoute component={FounderHomePage} />}
-      </Route>
-      <Route path="/founder/today">
-        {() => <Redirect to="/founder" />}
-      </Route>
-      {/* The Letter is now the fused home; the path redirects for old bookmarks.
-          The /founder/autopilot/{voice,story,control} sub-surfaces stay. */}
-      <Route path="/founder/autopilot">
-        {() => <Redirect to="/founder" />}
-      </Route>
-      {/* "Your Voice" — durable intents + standing orders the autopilot honors. */}
-      <Route path="/founder/autopilot/voice">
-        {() => <FounderProtectedRoute component={FounderVoicePage} />}
-      </Route>
-      {/* "The Story" — glass-box timeline of every autopilot action + its why. */}
-      <Route path="/founder/autopilot/story">
-        {() => <FounderProtectedRoute component={FounderAutopilotStoryPage} />}
-      </Route>
-      {/* The Control Center — master switches + per-domain trust + status. */}
-      <Route path="/founder/autopilot/control">
-        {() => <FounderProtectedRoute component={FounderAutopilotControlPage} />}
-      </Route>
-      {/* Categorized index of every founder deep-dive — reachable from the
-          "All tools" entry in the founder sidebar. Keeps all ~70 secondary
-          surfaces clickable without cluttering the 5-door primary nav. */}
-      <Route path="/founder/all-tools">
-        {() => <FounderProtectedRoute component={FounderAllToolsPage} />}
-      </Route>
-      {/* Phase 3 — iOS-Claude-UX chat surface. Consumes the Phase 2 backend
-          at /api/founder/solene-chat/*. Linked from the sidebar "Chat with
-          Solene" CTA and from a compact panel on /founder/today.
-          2026-07-27: canonical path renamed to /founder/chat — "Solene" is an
-          internal codename that shouldn't leak into the founder's URL bar.
-          /founder/solene-chat redirects for old bookmarks (route-redirects.ts). */}
-      <Route path="/founder/chat">
-        {() => <FounderProtectedRoute component={FounderSoleneChatPage} />}
-      </Route>
-      <Route path="/founder/solene-chat">
-        {() => <Redirect to="/founder/chat" />}
-      </Route>
-      {/* Phase 5 of the Solene migration — the remaining three doors next
-          to /founder/today. Each is a lean aggregation view that escapes to
-          Solene chat for any deep action. /founder/customers is registered
-          below at its existing route entry (rewritten in Phase 5). */}
-      <Route path="/founder/team">
-        {() => <FounderProtectedRoute component={FounderTeamPage} />}
-      </Route>
-      <Route path="/founder/money">
-        {() => <FounderProtectedRoute component={FounderMoneyPage} />}
-      </Route>
-      <Route path="/founder/build">
-        {() => <FounderProtectedRoute component={FounderBuildPage} />}
-      </Route>
-      {/* Bridge — a deep chat + telemetry TOOL, reachable from the sidebar
-          overflow and command palette. It is NOT the founder home: The Letter
-          (/founder) is the single home per the four-door doctrine. (Telemetry
-          also stands alone at /founder/telemetry; chat is on The Letter.) */}
-      <Route path="/founder/bridge">
-        {() => <FounderProtectedRoute component={FounderBridgePage} />}
-      </Route>
-      {/* Founder redesign Phase E — /founder/steering is the canonical
-          weekly/monthly surface. Renders the existing cockpit component;
-          future enhancement folds in recovery console + cmo intelligence. */}
-      <Route path="/founder/steering">
-        {() => <FounderProtectedRoute component={FounderCockpitPage} />}
-      </Route>
-      <Route path="/founder/ai-observatory">
-        {() => <FounderProtectedRoute component={FounderAiObservatory} />}
-      </Route>
-      <Route path="/founder/financials">
-        {/* 2026-06-01 cut — FounderFinancialsPage archived; redirect to the costs hub. */}
-        {() => <Redirect to="/founder/admin/costs" />}
-      </Route>
-      <Route path="/founder/compliance-ops">
-        {() => <FounderProtectedRoute component={FounderComplianceOpsPage} />}
-      </Route>
-      <Route path="/founder/appeals">
-        {() => <FounderProtectedRoute component={FounderAppealsPage} />}
-      </Route>
-      <Route path="/founder/recourse">
-        {() => <FounderProtectedRoute component={FounderRecoursePage} />}
-      </Route>
-      <Route path="/founder/market-reports">
-        {() => <FounderProtectedRoute component={FounderMarketReportsPage} />}
-      </Route>
-      {/* Legacy binary-flag page consolidated to /founder/features per
-          JUDGMENT-CALL-RECOMMENDATIONS #6. Old page kept registered (lazy-
-          loaded only on direct URL hit, not in nav) for one release in case
-          migration edge-cases surface; planned removal next cleanup. */}
-      <Route path="/founder/feature-flags">
-        {() => <Redirect to="/founder/features" />}
-      </Route>
-      <Route path="/founder/features">
-        {() => <FounderProtectedRoute component={FounderFeatures} />}
-      </Route>
-      <Route path="/founder/keys">
-        {() => <FounderProtectedRoute component={FounderKeysPage} />}
-      </Route>
-      <Route path="/founder/readiness">
-        {() => <FounderProtectedRoute component={FounderReadinessPage} />}
-      </Route>
-      <Route path="/founder/legal-readiness">
-        {() => <FounderProtectedRoute component={FounderLegalReadinessPage} />}
-      </Route>
-      <Route path="/founder/customers/health">
-        {() => <FounderProtectedRoute component={FounderCustomersHealthPage} />}
-      </Route>
-      <Route path="/founder/growth/campaigns">
-        {() => <FounderProtectedRoute component={FounderGrowthCampaignsPage} />}
-      </Route>
-      <Route path="/founder/telemetry">
-        {() => <FounderProtectedRoute component={FounderTelemetryPage} />}
-      </Route>
-      {/* Command cockpit — "is the company green right now?" synthesis surface. */}
-      <Route path="/founder/command">
-        {() => <FounderProtectedRoute component={FounderCommandPage} />}
-      </Route>
-      <Route path="/founder/pax-traces">
-        {() => <FounderProtectedRoute component={FounderPaxTracesPage} />}
-      </Route>
-      <Route path="/founder/pax-calibration">
-        {() => <FounderProtectedRoute component={FounderPaxCalibrationPage} />}
-      </Route>
-      {/* Wave 3 Workstream E (distribution telemetry) — acquisition truth */}
-      <Route path="/founder/customers">
-        {() => <FounderProtectedRoute component={FounderCustomersPage} />}
-      </Route>
-      <Route path="/founder/integrations">
-        {/* 2026-06-01 cut — FounderIntegrationsPage archived; redirect to bridge. */}
-        {() => <Redirect to="/founder/bridge" />}
-      </Route>
-      {/* Costs & economics — unified hub (Phase 2 consolidation): cost, AI spend,
-          optimizer, unit economics, observability cost, providers, and the
-          paid-data trial eval, all as tabs under the /founder/admin namespace. */}
-      <Route path="/founder/admin/costs">
-        {() => <FounderProtectedRoute component={FounderAdminCostsPage} />}
-      </Route>
-      {/* Founder Life-Cockpit — personal taxes, income, deadlines, encrypted vault. */}
-      <Route path="/founder/life-cockpit">
-        {() => <FounderProtectedRoute component={FounderLifeCockpitPage} />}
-      </Route>
-      <Route path="/founder/dsar">
-        {/* 2026-06-01 cut — FounderDsarPage archived; redirect to bridge. */}
-        {() => <Redirect to="/founder/bridge" />}
-      </Route>
-      <Route path="/founder/legal-holds">
-        {/* 2026-06-01 cut — FounderLegalHoldsPage archived; redirect to bridge. */}
-        {() => <Redirect to="/founder/bridge" />}
-      </Route>
-      <Route path="/founder/sub-processors">
-        {/* 2026-06-01 cut — FounderSubProcessorsPage archived; redirect to bridge. */}
-        {() => <Redirect to="/founder/bridge" />}
-      </Route>
-      <Route path="/founder/recovery-console">
-        {() => <FounderProtectedRoute component={FounderRecoveryConsolePage} />}
-      </Route>
-      <Route path="/founder/activation">
-        {/* 2026-06-01 cut — FounderActivationPage archived; redirect to onboarding. */}
-        {() => <Redirect to="/founder/onboarding" />}
-      </Route>
-      <Route path="/founder/ml-snapshots">
-        {/* 2026-06-01 cut — FounderMlSnapshotsPage archived; redirect to bridge. */}
-        {() => <Redirect to="/founder/bridge" />}
-      </Route>
-      <Route path="/founder/etl">
-        {/* 2026-06-01 cut — FounderEtlPage archived; redirect to bridge. */}
-        {() => <Redirect to="/founder/bridge" />}
-      </Route>
-      <Route path="/founder/prompt-versions">
-        {/* 2026-06-01 cut — FounderPromptVersionsPage archived; redirect to prompt-evolutions. */}
-        {() => <Redirect to="/founder/prompt-evolutions" />}
-      </Route>
-      <Route path="/founder/title-partners">
-        {/* 2026-06-01 cut — FounderTitlePartnersPage archived; redirect to bridge. */}
-        {() => <Redirect to="/founder/bridge" />}
-      </Route>
-      <Route path="/founder/feedback">
-        {() => <FounderProtectedRoute component={FounderFeedbackInboxPage} />}
-      </Route>
-      <Route path="/founder/agent-queue">
-        {() => <FounderProtectedRoute component={FounderAgentQueuePage} />}
-      </Route>
-      <Route path="/founder/dispatches">
-        {() => <FounderProtectedRoute component={FounderDispatchesPage} />}
-      </Route>
-      <Route path="/founder/onboarding-funnel">
-        {() => <FounderProtectedRoute component={FounderOnboardingFunnelPage} />}
-      </Route>
-      {/* 2026-07-27 four-door merge — the standalone Agent-asks queue
-          duplicated the Decisions door: founder-decisions.tsx embeds
-          OpenAsksSection with the same /api/founder/asks answer flows. One
-          "things that need me" queue, one door.
-
-          The query string is preserved (wouter's Redirect drops it otherwise),
-          but `id` is TRANSLATED to `ask`: on this legacy route `?id=` always
-          meant an ask id, while on the Decisions door `?id=` addresses the
-          decision LOG — a different table with its own key space. Forwarding it
-          verbatim (2026-07-27 → 2026-09-06) meant an old ask bookmark either
-          highlighted an unrelated decision or matched nothing at all. See
-          route-redirects.ts. */}
-      <Route path="/founder/asks">
-        {() => <Redirect to={`/founder/decisions${legacyAskSearch(window.location.search)}`} />}
-      </Route>
-      <Route path="/founder/feed">
-        {() => <FounderProtectedRoute component={FounderFeedPage} />}
       </Route>
       <Route path="/properties/compare">
         {/* 2026-06-01 cut — PropertiesComparePage archived; no callers. */}
@@ -1507,9 +1080,6 @@ function Router() {
         {/* 2026-06-01 cut — BetaDashboardPage archived; redirect to bridge. */}
         {() => <Redirect to="/founder/bridge" />}
       </Route>
-      <Route path="/admin/safety-gates">
-        {() => <FounderProtectedRoute component={SafetyGatesPage} />}
-      </Route>
       {/* The decision queue lives on Today (DEFECT-0148). The page these two
           paths rendered re-derived "what needs you" from bare /api/leads and
           /api/deals reads — the 25 newest of each, a failed read as empty —
@@ -1534,67 +1104,6 @@ function Router() {
             public form remains at /beta-intake for non-founder users. */}
         {() => <Redirect to="/admin/beta" />}
       </Route>
-      <Route path="/founder/beta-analytics">
-        {/* 2026-06-01 cut — BetaAnalyticsPage archived; redirect to bridge. */}
-        {() => <Redirect to="/founder/bridge" />}
-      </Route>
-      <Route path="/founder/agents">
-        {/* 2026-06-01 cut — FounderAgentsPage archived; redirect to agent-queue. */}
-        {() => <Redirect to="/founder/agent-queue" />}
-      </Route>
-      <Route path="/founder/daily-digest">
-        {/* 2026-06-01 cut — FounderDailyDigestPage archived; redirect to founder pulse. */}
-        {() => <Redirect to="/founder" />}
-      </Route>
-      <Route path="/founder/decisions">
-        {() => <FounderProtectedRoute component={FounderDecisionsPage} />}
-      </Route>
-      <Route path="/founder/letter">
-        {() => <FounderProtectedRoute component={FounderLetterPage} />}
-      </Route>
-      <Route path="/founder/settings">
-        {() => <FounderProtectedRoute component={FounderSettingsPage} />}
-      </Route>
-      <Route path="/founder/preview">
-        {() => <FounderProtectedRoute component={FounderPreviewPage} />}
-      </Route>
-      <Route path="/founder/tools">
-        {() => <FounderProtectedRoute component={FounderToolsPage} />}
-      </Route>
-      <Route path="/founder/prompt-evolutions">
-        {() => <FounderProtectedRoute component={FounderPromptEvolutionsPage} />}
-      </Route>
-      <Route path="/founder/prompt-history">
-        {() => <FounderProtectedRoute component={FounderPromptHistoryPage} />}
-      </Route>
-      <Route path="/founder/traces">
-        {() => <FounderProtectedRoute component={FounderTracesPage} />}
-      </Route>
-      <Route path="/founder/strategy">
-        {() => <FounderProtectedRoute component={FounderStrategyPage} />}
-      </Route>
-      <Route path="/founder/trends">
-        {() => <FounderProtectedRoute component={FounderTrendsPage} />}
-      </Route>
-      <Route path="/founder/onboarding">
-        {() => <FounderProtectedRoute component={FounderOnboardingPage} />}
-      </Route>
-      <Route path="/founder/expansion">
-        {() => <FounderProtectedRoute component={FounderExpansionPage} />}
-      </Route>
-      <Route path="/founder/experiments">
-        {() => <FounderProtectedRoute component={FounderExperimentsPage} />}
-      </Route>
-      {/* /founder/todo — legacy "what needs you" feed, now folded into the
-          Today door (active asks + decisions waiting). Redirects there; the
-          old standalone page was deleted 2026-06-09. */}
-      <Route path="/founder/todo">
-        {() => <Redirect to="/founder/today" />}
-      </Route>
-      <Route path="/executive-dashboard">
-        {() => <FounderProtectedRoute component={ExecutiveDashboardPage} />}
-      </Route>
-
       <Route path="/deal-underwriting">
         {/* 2026-05-11 audit — consolidated into /deals/discover. */}
         {() => <Redirect to="/deals/discover" />}
@@ -1630,6 +1139,9 @@ function Router() {
       </Route>
       <Route path="/tax-delinquent">
         {() => <ProtectedRoute component={TaxDelinquentPage} />}
+      </Route>
+      <Route path="/tax/bid-desk">
+        {() => <ProtectedRoute component={TaxBidDeskPage} />}
       </Route>
       <Route path="/bookkeeping">
         {() => <ProtectedRoute component={BookkeepingPage} />}
@@ -1795,26 +1307,15 @@ function Router() {
         {/* 2026-06-01 cut — StateDocumentsPage archived; no nav entry. */}
         {() => <Redirect to="/settings" />}
       </Route>
-      <Route path="/dunning">
-        {/* The dunning API is founder-only (requireFounder on the whole
-            router, P1-5) — a customer reaching this page saw every panel
-            404 (2026-07-11 sweep). Gate the page like its API. */}
-        {() => <FounderProtectedRoute component={DunningManagerPage} />}
-      </Route>
       {/* /freedom-meter, /night-cap, /evening-review removed (Lens 4
           Fix 4) — see lazy-import notes. Page files deleted. */}
       <Route path="/blind-offer-wizard">
         {() => <ProtectedRoute component={BlindOfferWizardPage} />}
       </Route>
 
-      {/* Founder / Admin — additional */}
-      <Route path="/founder/v13">
-        {/* Census W3-1 retire 2026-06-11 — SovereignV13Page deleted. */}
-        {() => <Redirect to="/founder/bridge" />}
-      </Route>
-      <Route path="/founder/agents/:codename">
-        {() => <FounderProtectedRoute component={AgentDetailPage} />}
-      </Route>
+      {/* Founder / Admin — additional. The founder-gated pages moved to
+          client/src/founder-routes.tsx; the retired legacy paths below keep a
+          (cross-build) redirect so an old bookmark lands on a real surface. */}
       <Route path="/admin/beta-analytics">
         {/* 2026-06-01 cut — BetaAnalyticsPage archived; no nav entry. */}
         {() => <Redirect to="/founder/bridge" />}
@@ -1831,25 +1332,14 @@ function Router() {
         {/* 2026-06-01 cut — ProactiveMonitorPage archived; no nav entry. */}
         {() => <Redirect to="/founder/bridge" />}
       </Route>
-      <Route path="/reseller">
-        {() => <FounderProtectedRoute component={ResellerDashboardPage} />}
-      </Route>
       <Route path="/data-moat">
         {/* 2026-06-01 cut — DataMoatDashboardPage archived; no nav entry. */}
         {() => <Redirect to="/founder/telemetry" />}
       </Route>
 
       {/* Sovereign Protocol — Census W3-1 retire/refit split (2026-06-11).
-          Refit surfaces live at their /founder/* routes; old paths 301. */}
-      <Route path="/founder/governance">
-        {() => <FounderProtectedRoute component={FounderGovernancePage} />}
-      </Route>
-      <Route path="/founder/event-log">
-        {() => <FounderProtectedRoute component={FounderEventLogPage} />}
-      </Route>
-      <Route path="/founder/scenarios">
-        {() => <FounderProtectedRoute component={FounderScenariosPage} />}
-      </Route>
+          Refit surfaces live at their /founder/* routes (founder-routes.tsx);
+          old paths redirect. */}
       {/* Old-path redirects for the refit surfaces. */}
       <Route path="/board-of-directors">
         {() => <Redirect to="/founder/governance" />}
@@ -1871,86 +1361,15 @@ function Router() {
       <Route path="/agent-collaboration">
         {() => <Redirect to="/founder/bridge" />}
       </Route>
-      <Route path="/agent-performance">
-        {() => <FounderProtectedRoute component={AgentPerformancePage} />}
-      </Route>
-      <Route path="/job-health">
-        {() => <FounderProtectedRoute component={JobHealthPage} />}
-      </Route>
-
       <Route component={NotFound} />
       </Switch>
     </React.Suspense>
   );
 }
 
-function PageWrapper({ children }: { children: React.ReactNode }) {
-  const [location] = useLocation();
-  const { isMobile } = useIsMobile();
-  // Mobile: opacity cross-fade only — the persistent bottom-nav makes
-  // route changes feel like tab switches, not forward navigation, so
-  // the x-translate reads as drift. Desktop keeps the existing fade+x.
-  const variants = isMobile ? variantPageFadeMobile : pageTransition;
-
-  return (
-    // overflow-x-clip: the desktop variant's x-translate transiently pushes
-    // the 100%-width page 8px past the viewport during every route change.
-    // On desktop that's a scrollbar flicker; on mobile browsers it expands
-    // the layout viewport at first paint (shrink-to-fit), which both zooms
-    // the page below CSS-pixel scale and — at 744px (iPad mini) — pushes
-    // innerWidth across the 768 breakpoint, flipping the app to the desktop
-    // arm. Clip (not hidden — no new scroll container) keeps the slide
-    // animation while the document never exceeds the viewport.
-    <div className="overflow-x-clip">
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={location}
-          variants={variants}
-          initial="initial"
-          animate="animate"
-          exit="exit"
-          // page-transition-layer: this motion.div wraps the ENTIRE app
-          // (sidebar + topbar + main). AnimatePresence mode="wait" can strand
-          // it at the exit state (opacity:0) when a route change interrupts
-          // an in-flight transition — e.g. a full load of /pipeline that
-          // redirects a beat later — leaving every user-visible pixel hidden
-          // with the DOM fully intact (2026-07 production-gate finding). The
-          // acr-render-rescue CSS rule (index.css) lands this layer back at
-          // opacity 1 if it sits at exactly inline opacity:0 for >1s, which a
-          // normal ~0.24s transition never does. Belt to the sentinel's
-          // suspenders.
-          className="min-h-[100dvh] page-transition-layer"
-          id="main-content"
-        >
-          {children}
-        </motion.div>
-      </AnimatePresence>
-    </div>
-  );
-}
-
-/**
- * AtlasDockHost — thin wrapper that resolves the current page context
- * (route + URL params) and hands it to the lazy Dock. Lives in App.tsx
- * because both the gating logic and the dock mount belong to the global
- * shell; pulling it into its own file would split a 4-line concern.
- */
-function AtlasDockHost() {
-  const pageContext = usePageContext();
-  // Subscribe to the global "atlas:discuss" event so any artifact card
-  // can request the dock open with a prefilled question. See
-  // client/src/lib/atlas-discuss.ts for the publisher helper.
-  const [prefill, setPrefill] = React.useState<string | undefined>(undefined);
-  React.useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent<{ message?: string }>).detail;
-      setPrefill(detail?.message ?? undefined);
-    };
-    window.addEventListener("atlas:discuss", handler);
-    return () => window.removeEventListener("atlas:discuss", handler);
-  }, []);
-  return <AtlasDock pageContext={pageContext} prefillMessage={prefill} />;
-}
+// PageWrapper (the route-transition wrapper that owns #main-content) lives in
+// @/components/page-wrapper — shared with the founder build's FounderApp. The
+// AtlasDockHost moved to FounderApp with the rest of the founder chrome.
 
 function AppContent() {
   const { user } = useAuth();
@@ -2197,28 +1616,16 @@ function AppContent() {
           <NewItemMenu />
         </Suspense>
       )}
-      {/* Suppress MobileBottomNav on founder routes — customer-side nav
-          items don't apply to founder mode (#9 audit finding). The founder
-          gets a dedicated FounderMobileBottomNav with the 5 canonical
-          surfaces, otherwise mobile founders are stranded on whatever page
-          they landed on with no nav (F-D22, reported as "single dashboard
-          and no controls"). */}
+      {/* Customer bottom nav. The founder surface is a separate build
+          (FounderApp, which mounts the founder's own FounderMobileBottomNav and
+          the Atlas Dock — P1-9 / X-2). A /founder URL that reaches this shell is
+          handed off to that build by NotFound; the `/founder` guards here and
+          below just keep the customer chrome from flashing during the hand-off. */}
       {user && !location.startsWith("/founder") && <MobileBottomNav />}
-      {user && location.startsWith("/founder") && <FounderMobileBottomNav />}
-      {/* Atlas Dock — Phase D. Appears on every /founder/* page EXCEPT
-          /founder itself (which IS the chat shell — dual surfaces would
-          duplicate the UI). Page-context is auto-resolved from the
-          current location so Atlas can answer "what am I looking at?". */}
-      {user && location.startsWith("/founder") && location !== "/founder" && (
-        <Suspense fallback={null}>
-          <AtlasDockHost />
-        </Suspense>
-      )}
       {/* TeamChatDock — Cohesion R4. The persistent, collapsible team-chat
-          presence on every CUSTOMER surface. Suppressed on /founder (Atlas
-          lives there) and on /inbox + /team-inbox (team chat is already a
-          first-class surface there — no double UI). Bottom-left, clear of the
-          Pax copilot rail's right edge. */}
+          presence on every CUSTOMER surface. Suppressed on /inbox + /team-inbox
+          (team chat is already a first-class surface there — no double UI).
+          Bottom-left, clear of the Pax copilot rail's right edge. */}
       {user &&
         !location.startsWith("/founder") &&
         !location.startsWith("/inbox") &&

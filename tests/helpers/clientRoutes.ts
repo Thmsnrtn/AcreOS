@@ -31,7 +31,34 @@ import ts from "typescript";
 
 // import.meta, not __dirname: Playwright loads this module as ESM (the
 // package is "type": "module"), where __dirname does not exist.
-export const APP_TSX = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../client/src/App.tsx");
+const CLIENT_SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../client/src");
+export const APP_TSX = path.join(CLIENT_SRC, "App.tsx");
+
+/**
+ * The client's route trees are TWO files since the founder/customer build split
+ * (P1-9 / X-2): the customer router in App.tsx and the founder router in
+ * founder-routes.tsx (the founder build's route tree). Every consumer that asks
+ * "which routes exist" or "is this route declared / guarded" must read BOTH —
+ * a gate that reads only App.tsx is a gate over half the population, and the
+ * founder-route ratchet (founderFourDoors.test.ts) would read a count that the
+ * split had hidden. App.tsx comes first: wouter's Switch is first-match, and
+ * the customer tree has always been the earlier one.
+ */
+export const FOUNDER_ROUTES_TSX = path.join(CLIENT_SRC, "founder-routes.tsx");
+/** Where FounderProtectedRoute is DEFINED (both route trees import it). */
+export const FOUNDER_PROTECTED_ROUTE_TSX = path.join(CLIENT_SRC, "components", "founder-protected-route.tsx");
+/** The two files that hold `<Route>` registrations. */
+export const ROUTE_TREE_FILES = [APP_TSX, FOUNDER_ROUTES_TSX] as const;
+
+/** The union of both route trees' source, joined with a newline. */
+export function routeTreeSource(): string {
+  return ROUTE_TREE_FILES.map((f) => fs.readFileSync(f, "utf8")).join("\n");
+}
+
+/** Route trees plus the file that defines the founder guard (for guard-derivation scans). */
+export function routeTreeAndGuardSource(): string {
+  return [routeTreeSource(), fs.readFileSync(FOUNDER_PROTECTED_ROUTE_TSX, "utf8")].join("\n");
+}
 
 export type RouteKind = "founder" | "customer" | "flagged" | "persona" | "redirect" | "public";
 
@@ -110,7 +137,7 @@ export function routesInSource(source: string, fileName = "App.tsx"): ClientRout
 }
 
 export function clientRoutes(): ClientRoute[] {
-  return routesInSource(fs.readFileSync(APP_TSX, "utf8"), APP_TSX);
+  return ROUTE_TREE_FILES.flatMap((f) => routesInSource(fs.readFileSync(f, "utf8"), f));
 }
 
 /**

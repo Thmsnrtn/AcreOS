@@ -121,6 +121,11 @@ test.describe("CJ3: onboarding abandonment + resume", () => {
       const orgNameInput = page1.locator('[data-testid="input-org-name"]');
       if (await orgNameInput.isVisible().catch(() => false)) {
         await orgNameInput.fill("Krieger Abandonment Test Co");
+        // P1-11 S2 (FD1): land_flipper is beta — behind the disclosure.
+        const betaSummary = page1.locator('[data-testid="summary-show-all-investor-types"]');
+        if (await betaSummary.isVisible().catch(() => false)) {
+          await betaSummary.click();
+        }
         const landOption = page1
           .locator(
             '[data-testid="option-land_investor"], [data-testid="option-land_flipper"]',

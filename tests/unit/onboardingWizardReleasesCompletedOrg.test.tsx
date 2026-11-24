@@ -27,9 +27,25 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Router } from "wouter";
 import { memoryLocation } from "wouter/memory-location";
 
+import fs from "node:fs";
+import path from "node:path";
+
 import OnboardingV2 from "../../client/src/pages/onboarding-v2";
 import { queryClient } from "../../client/src/lib/queryClient";
 import { AI_DISCLOSURE_VERSION } from "../../client/src/components/onboarding/AiDisclosureDialog";
+
+// The wizard loads its per-vertical copy from the served asset
+// /onboarding-verticals.json. Production serves the real asset, so the
+// stub serves it too (read from the committed file) — an earlier stub
+// fell through to `{}` for this URL, which no longer models production
+// and, before the D-2 shape guard, crashed the render. The wrong-shape
+// case itself is pinned in onboardingWizardWrongShapeAsset.test.tsx.
+const ONBOARDING_ASSET: unknown = JSON.parse(
+  fs.readFileSync(
+    path.join(__dirname, "../../client/public/onboarding-verticals.json"),
+    "utf8",
+  ),
+);
 
 type Status = { completed: boolean; data?: Record<string, unknown> };
 
@@ -63,6 +79,7 @@ beforeEach(() => {
         });
       }
       if (url.includes("/api/organization")) return json({ name: "Acme Land" });
+      if (url.includes("/onboarding-verticals.json")) return json(ONBOARDING_ASSET);
       return json({});
     }),
   );

@@ -89,6 +89,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
+import { routeTreeAndGuardSource } from "../helpers/clientRoutes";
 import fs from "node:fs";
 import path from "node:path";
 import ts from "typescript";
@@ -156,7 +157,13 @@ interface AppRouteFacts {
   mounts: Map<string, boolean[]>;
 }
 
-function parseAppRoutes(src: string = read(APP)): AppRouteFacts {
+// The default source is the UNION of both route trees plus the file that
+// declares the founder guard (App.tsx + founder-routes.tsx + components/
+// founder-protected-route.tsx — P1-9 / X-2): the founder pages are mounted in
+// the second tree and FounderProtectedRoute is declared in the third file, so
+// App.tsx alone would derive no guard and no founder pages. The concatenation
+// is parsed as one module — only syntax matters, so repeated imports are fine.
+function parseAppRoutes(src: string = routeTreeAndGuardSource()): AppRouteFacts {
   const sf = ts.createSourceFile(APP, src, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 
   const guards = new Set<string>();

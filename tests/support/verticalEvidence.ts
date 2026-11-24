@@ -55,20 +55,17 @@
  * The law in verticalReadiness.test.ts is universal, not existential: every
  * crediting decision of a decided vertical must be gradeable.
  *
- * ONE legacy entry survives: `routes-lot-pricing.ts` decides for `subdivider`
- * without a scenario. It keeps subdivider `decided` (what it records is real
- * and reachable). It is NOT gradeable, which the law holds as a named,
- * down-only exception until wave V2.
+ * The legacy map is EMPTY (retired 2026-11): the lot-pricing lock now cites the
+ * parent's `subdivision_feasibility` scenario through the store's
+ * `latestScenarioForSubject` (traced by `citedEngine` below) and takes an
+ * operator-chosen review date, so it is credited by the engine rule like every
+ * other route. The branch survives for the canaries, which feed it a synthetic
+ * entry.
  *
- * Legacy credit is PER-SURFACE (resolution (a), 2026-11-09): the entry credits
- * the decisions of the one route file it names — the lot-pricing LOCK route's
- * scenario-less lock decisions — and nothing else in the vertical. A vertical
- * may also have a separate surface that decides through an engine (subdivider
- * gained one in Leg 4: the decision desk, `routes-subdivision-decision.ts`);
- * that neither needs the entry nor retires it. The entry retires when the LOCK
- * ROUTE's own decisions cite an engine declaring the vertical. To keep the two
- * apart, `creditVerticals` reports engine-cited credits separately as
- * `engineDecidedBy`.
+ * Legacy credit, when an entry exists, is PER-SURFACE (resolution (a),
+ * 2026-11-09): it credits the decisions of the one route file it names and
+ * nothing else in the vertical. To keep the two apart, `creditVerticals`
+ * reports engine-cited credits separately as `engineDecidedBy`.
  *
  * The crediting itself is a PURE function (`creditVerticals`), so the tests can
  * feed it fixtures. The audit of V0 found the first draft could not be fed
@@ -98,15 +95,14 @@ function definedTemplateIds(): Set<string> {
  * an entry leaves when ITS OWN route records a scenario from an engine
  * declaring the vertical. Do not add to this list — give the route an engine.
  *
- * Each key names the ONE surface the entry credits: the entry below credits
- * the lot-pricing lock decisions `server/routes-lot-pricing.ts` records for
- * `subdivider` (a decision snapshot citing no scenario, reviewDueAt hard-coded
- * null). It does not credit the vertical at large — another route deciding for
- * subdivider through an engine stands on the engine rule alone.
+ * EMPTY since 2026-11 (subdivider item 1). Its last entry,
+ * `server/routes-lot-pricing.ts` → `subdivider`, retired when the lot-pricing
+ * lock began citing the parent parcel's `subdivision_feasibility` scenario and
+ * taking an operator-chosen review date. The type and the crediting branch stay:
+ * the canaries in verticalReadiness.test.ts feed `creditVerticals` a synthetic
+ * map to keep the branch falsifiable.
  */
-export const LEGACY_DECISION_ROUTE_OWNER: Readonly<Record<string, BusinessTypeId>> = {
-  "server/routes-lot-pricing.ts": "subdivider",
-};
+export const LEGACY_DECISION_ROUTE_OWNER: Readonly<Record<string, BusinessTypeId>> = {};
 
 export type EngineTable = Map<string, { verticals: BusinessTypeId[]; gradeable: boolean }>;
 
@@ -161,6 +157,7 @@ export interface RouteFacts {
 
 const STORE_MODULES: Record<string, RegExp> = {
   recordScenario: /economics\/scenarioStore$/,
+  latestScenarioForSubject: /economics\/scenarioStore$/,
   recordDecision: /decisions\/decisionStore$/,
   recordUnderwrittenDecision: /services\/underwriting\/verticalDecision$/,
 };
@@ -303,6 +300,16 @@ export function analyzeRouteSource(file: string, src: string, constants: Map<str
     if (!b?.initializer) return null;
     const init = unwrap(b.initializer);
     if (ts.isCallExpression(init) && ts.isIdentifier(init.expression) && init.expression.text === "recordScenario" && isStore("recordScenario")) return scenarioEngineOf(init);
+    // A decision that cites an EXISTING scenario rather than writing one: the
+    // store's `latestScenarioForSubject(org, type, id, ENGINE)` filters by the
+    // engine in the query, so the literal engine argument IS the engine of what
+    // is cited. A bare call to the imported store function only — a local of
+    // the same name, an alias or a method is something else — and the engine
+    // must resolve to a literal. This traces a citation; it does not touch the
+    // gradeable rule, which still reads the review date and the engine's metrics.
+    if (ts.isCallExpression(init) && ts.isIdentifier(init.expression) && init.expression.text === "latestScenarioForSubject" && isStore("latestScenarioForSubject")) {
+      return resolveString(init.arguments[3]);
+    }
     return null;
   };
 

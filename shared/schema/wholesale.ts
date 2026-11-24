@@ -221,7 +221,8 @@ export type InsertDoubleCloseDeal = typeof doubleCloseDeals.$inferInsert;
 
 export const BUYER_BLAST_STATUSES = [
   "queued",       // recipients selected; sends in flight
-  "sent",         // all recipient sends attempted
+  "sent",         // at least one recipient send succeeded
+  "failed",       // every recipient send failed — nothing was sent (W-DEF-1)
   "completed",    // sent + at least one response logged
   "cancelled",    // user aborted before send completion
 ] as const;
