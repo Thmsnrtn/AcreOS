@@ -57,13 +57,13 @@ export default function ListingSyndicationPage() {
   const syncAllMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/syndication/sync-all"),
     onSuccess: () => {
-      toast({ title: "Sync checked every channel.", description: "A channel posts only on your own account, which can't be connected yet — see each channel's status." });
+      toast({ title: "Sync checked every channel.", description: "Channels post only on your own account, which can't be connected yet." });
       qc.invalidateQueries({ queryKey: ["/api/syndication"] });
     },
     onError: () =>
       toast({
         title: "Couldn't initiate sync",
-        description: "No channels were synced — your existing listings and channel state are unchanged.",
+        description: "No channels were synced — listings and channel state unchanged.",
         variant: "destructive",
       }),
   });
@@ -78,7 +78,7 @@ export default function ListingSyndicationPage() {
     onError: () =>
       toast({
         title: "Couldn't update channel",
-        description: "The channel's on/off state is unchanged.",
+        description: "The channel's state is unchanged.",
         variant: "destructive",
       }),
   });
@@ -86,13 +86,13 @@ export default function ListingSyndicationPage() {
   const syncChannelMutation = useMutation({
     mutationFn: (channelId: string) => apiRequest("POST", `/api/syndication/channels/${channelId}/sync`),
     onSuccess: () => {
-      toast({ title: "Channel checked.", description: "It posts only on your own account, which can't be connected yet — see its status." });
+      toast({ title: "Channel checked.", description: "It posts only on your own account, which can't be connected yet." });
       qc.invalidateQueries({ queryKey: ["/api/syndication"] });
     },
     onError: () =>
       toast({
         title: "Couldn't sync channel",
-        description: "No listings were pushed — the channel state is unchanged.",
+        description: "No listings were pushed — channel state unchanged.",
         variant: "destructive",
       }),
   });
@@ -107,7 +107,7 @@ export default function ListingSyndicationPage() {
             Listing syndication
           </h1>
           <p className="text-muted-foreground text-sm md:text-base">
-            Channel status for your listings. Posting runs on your own account with each channel, which AcreOS can&apos;t connect yet; Craigslist posts are generated for you to paste.
+            Channel status for your listings. Posting runs on your own account, which AcreOS can&apos;t connect yet; Craigslist posts are generated to paste.
           </p>
         </div>
         <Button
@@ -171,7 +171,7 @@ export default function ListingSyndicationPage() {
         <EmptyState
           icon={Globe}
           headline="No syndication channels"
-          subtitle="No channels are set up. Posting to a portal runs on your own account with it, and AcreOS can't connect one yet."
+          subtitle="No channels are set up. Posting runs on your own account with each portal, which AcreOS can't connect yet."
           cta={{
             label: "Open listings",
             onClick: () => { window.location.assign("/listings"); },

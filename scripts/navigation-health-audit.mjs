@@ -25,6 +25,7 @@ import * as url from "url";
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
 const APP_TSX = path.join(ROOT, "client/src/App.tsx");
+const FOUNDER_ROUTES_TSX = path.join(ROOT, "client/src/founder-routes.tsx");
 const OUT_DIR = path.join(ROOT, "docs/archive/exhaustive-completion/auth-screenshots");
 const RESULTS_JSON = path.join(ROOT, "docs/archive/exhaustive-completion/_nav-audit-results.json");
 const REPORT_MD = path.join(ROOT, "docs/archive/exhaustive-completion/NAVIGATION-HEALTH-AUDIT.md");
@@ -213,9 +214,11 @@ async function auditRoute(context, route) {
 async function main() {
   fs.mkdirSync(OUT_DIR, { recursive: true });
 
-  const appTsx = fs.readFileSync(APP_TSX, "utf8");
+  // Both route trees — the customer App.tsx and the founder build's
+  // founder-routes.tsx (P1-9 / X-2).
+  const appTsx = [APP_TSX, FOUNDER_ROUTES_TSX].map((f) => fs.readFileSync(f, "utf8")).join("\n");
   const routes = extractRoutes(appTsx);
-  console.log(`[audit] extracted ${routes.length} routes from App.tsx`);
+  console.log(`[audit] extracted ${routes.length} routes from App.tsx + founder-routes.tsx`);
   console.log(`[audit] host: ${HOST}`);
   const storagePath = process.env.STORAGE_STATE || "";
   const useAuth = storagePath && fs.existsSync(storagePath);

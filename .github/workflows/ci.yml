@@ -239,8 +239,18 @@ jobs:
       # Bundle budget (roadmap W10.1). Down-only ceilings in
       # scripts/bundle-budget.json: growth past one fails, a loose one fails
       # until lowered. CI=true makes a missing bundle a failure, never a skip.
-      - name: Bundle-size budget
-        run: node scripts/check-bundle-size.js
+      #
+      # TWO outputs since P1-9 / X-2 (the founder-OS extraction): the customer
+      # bundle (dist/public) and the founder bundle (dist/founder) are budgeted
+      # separately, and the gate runs once for each. The customer run
+      # (--require-graph) also fails if any customer chunk bundles a founder-only
+      # module, read from dist/client-chunk-graph.json. The founder run fails
+      # outright when dist/founder is absent.
+      - name: Bundle-size budget (customer)
+        run: node scripts/check-bundle-size.js --require-graph
+
+      - name: Bundle-size budget (founder)
+        run: node scripts/check-bundle-size.js --output founder
 
       # Map code loads only on routes that render a map. Reads the chunk graph
       # the build wrote (dist/client-chunk-graph.json): the entry and the

@@ -15,6 +15,8 @@ const state = vi.hoisted(() => ({
   dispatchEnabled: true,
   paused: [] as string[],
   level: "draft",
+  autopilotPaused: false,
+  cooStoodDown: false,
   ownerByOrg: { 5: "u-owner" } as Record<number, string>,
   emailByUser: { "u-owner": "owner@acme.test", "u-other": "other@acme.test" } as Record<string, string>,
 }));
@@ -22,6 +24,24 @@ const state = vi.hoisted(() => ({
 vi.mock("../../server/services/autopilot/settings", () => ({
   isPanicStopped: () => state.panic,
   getEffectiveSettings: async () => ({ dispatchEnabled: state.dispatchEnabled }),
+}));
+// B-4: the ops kill switches gate delegated releases; the mock is the
+// switch state (ledger rows in production).
+vi.mock("../../server/services/killSwitches", () => ({
+  isAutopilotPaused: async () => ({
+    name: "autopilot_pause" as const,
+    engaged: state.autopilotPaused,
+    engagedAt: null,
+    engagedBy: null,
+    detail: null,
+  }),
+  isCooStoodDown: async () => ({
+    name: "coo_stand_down" as const,
+    engaged: state.cooStoodDown,
+    engagedAt: null,
+    engagedBy: null,
+    detail: null,
+  }),
 }));
 vi.mock("../../server/services/autopilot/founderControls", () => ({
   getControlState: async () => ({ pausedDomains: state.paused, adsEnabled: true }),
@@ -65,7 +85,7 @@ const DELEGATED = "solene (delegated by founder-tom via witness-grant #3)";
 const ownerMail = { to: "owner@acme.test", subject: "s", html: "<p>h</p>", organization_id: 5 };
 
 beforeEach(() => {
-  Object.assign(state, { panic: false, dispatchEnabled: true, paused: [], level: "draft" });
+  Object.assign(state, { panic: false, dispatchEnabled: true, paused: [], level: "draft", autopilotPaused: false, cooStoodDown: false });
   __resetHandsForTest();
   handler.mockClear();
   registerHand({
@@ -98,6 +118,25 @@ describe("executeHandWitnessed — a delegated release is re-checked at executio
     expect(r.success).toBe(false);
     expect(r.output).toMatch(why);
     expect(handler).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["the autopilot is paused", () => (state.autopilotPaused = true), /autopilot is paused.*autopilot_pause/],
+    ["the COO is stood down", () => (state.cooStoodDown = true), /COO is stood down.*coo_stand_down/],
+  ])("refuses a delegated release at execution when %s (B-4)", async (_l, arrange, why) => {
+    arrange();
+    const r = await executeHandWitnessed("send_email", ownerMail, DELEGATED, { delegation: { grantId: "3", sourceRole: "retention" } });
+    expect(r.success).toBe(false);
+    expect(r.output).toMatch(why);
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("a founder's own tap still executes while both kill switches are engaged (B-4)", async () => {
+    state.autopilotPaused = true;
+    state.cooStoodDown = true;
+    const r = await executeHandWitnessed("send_email", ownerMail, "founder-tom", {});
+    expect(r.success).toBe(true);
+    expect(handler).toHaveBeenCalledTimes(1);
   });
 
   it("refuses a draft whose role may not draft this hand", async () => {
@@ -146,5 +185,15 @@ describe("delegationRules", () => {
     state.panic = false;
     state.level = "observe";
     expect(await delegationBlockedByControls("support")).toMatch(/OBSERVE/);
+  });
+  it("controls: either kill switch blocks, naming the switch; released switches do not (B-4)", async () => {
+    expect(await delegationBlockedByControls("support")).toBeNull();
+    state.autopilotPaused = true;
+    expect(await delegationBlockedByControls("support")).toMatch(/autopilot is paused.*autopilot_pause/);
+    state.autopilotPaused = false;
+    state.cooStoodDown = true;
+    expect(await delegationBlockedByControls("support")).toMatch(/COO is stood down.*coo_stand_down/);
+    state.cooStoodDown = false;
+    expect(await delegationBlockedByControls("support")).toBeNull();
   });
 });

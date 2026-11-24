@@ -46,7 +46,7 @@ import { requireRole } from "./middleware/roleGuard";
 import { Errors } from "./utils/errors";
 import { hasWritableValues } from "./utils/patch";
 import { logger } from "./utils/logger";
-import { sendEmail } from "./services/emailService";
+import { sendEmail, counterpartyEmailIdentityStatus } from "./services/emailService";
 import { clock } from "./utils/clock";
 import { routeParam } from "./utils/routeParams";
 import { refuseRedeemableDeedSpend } from "./services/tax/landExit";
@@ -184,6 +184,23 @@ export function registerBuyerBlastRoutes(app: Express): void {
         });
         if (!compliance.ok) return sendComplianceRefusal(res, compliance.status, compliance.body);
 
+        // Sending-identity preflight (W-DEF-1): a blast is counterparty
+        // mail — it goes out under the org's OWN identity or not at all
+        // (founder decision 2026-07-17, enforced per-message by the
+        // transport). Ask the SAME resolver the transport asks, before any
+        // blast row exists, so an org with no identity is told up front —
+        // on the preview, where they compose — instead of learning it from
+        // a per-recipient failure after the blast finalized as "sent" with
+        // zero delivered. Mirrors the campaign send's pre-flight
+        // (routes-campaigns.ts, same reason code).
+        const identity = await counterpartyEmailIdentityStatus(orgId);
+        const identityWarning = identity.canSend
+          ? null
+          : "Nothing can be sent yet: buyer blasts go out under your own sending identity, " +
+            "and this organization has no connected email account or verified sending domain yet. " +
+            "Connect your email account or verify your sending domain (Settings → Connections), " +
+            "then send again — AcreOS does not email your buyers from its own address.";
+
         if (dryRun) {
           // Preview: return who would be reached without creating the
           // blast or sending. UI uses this to confirm before proceeding.
@@ -192,6 +209,7 @@ export function registerBuyerBlastRoutes(app: Express): void {
           return res.json({
             dryRun: true,
             compliance: compliance.applies ? compliance.warning : null,
+            sendingIdentityWarning: identityWarning,
             recipientCount: sendable.length,
             suppressedCount: suppressed.length,
             suppressionReason: suppressed.length > 0
@@ -210,6 +228,13 @@ export function registerBuyerBlastRoutes(app: Express): void {
               email: m.buyerEmail,
               recentBlastCount: cadenceMap.get(m.buyerId) ?? 0,
             })),
+          });
+        }
+
+        if (!identity.canSend) {
+          return Errors.badRequest(res, identityWarning!, {
+            reason: "no_counterparty_email_identity",
+            sent: 0,
           });
         }
 
@@ -295,11 +320,18 @@ export function registerBuyerBlastRoutes(app: Express): void {
           }),
         );
 
-        // Finalize blast counters.
+        // Finalize blast counters. The status must tell the truth about
+        // the outcome (W-DEF-1): a blast where every send failed and zero
+        // mail went out is "failed", never "sent" — the walk found a blast
+        // finalized "sent" at sentCount 0 / failedCount 1, and the honest
+        // numbers lived only one level down on the recipient rows. A
+        // partial blast (some sent, some failed) stays "sent": mail did go
+        // out, and failedCount carries the rest of the truth.
+        const finalStatus = sentCount === 0 && failedCount > 0 ? "failed" : "sent";
         await db
           .update(buyerBlasts)
           .set({
-            status: "sent",
+            status: finalStatus,
             sentCount,
             failedCount,
             completedAt: clock.now(),
@@ -311,6 +343,7 @@ export function registerBuyerBlastRoutes(app: Express): void {
             orgId,
             blastId: blast.id,
             propertyId,
+            status: finalStatus,
             sentCount,
             failedCount,
             suppressedCount: suppressed.length,
@@ -318,7 +351,7 @@ export function registerBuyerBlastRoutes(app: Express): void {
         });
 
         return res.status(201).json({
-          blast: { ...blast, sentCount, failedCount, status: "sent" },
+          blast: { ...blast, sentCount, failedCount, status: finalStatus },
           recipientCount: sendable.length,
           suppressedCount: suppressed.length,
           suppressionReason: suppressed.length > 0

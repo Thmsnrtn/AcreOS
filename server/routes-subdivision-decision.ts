@@ -17,10 +17,15 @@
  * says, in one assumption, that no screen had been run. Only pursue and pass are
  * accepted: a decision is recorded on the PARENT parcel, never a child lot.
  *
- * §6.2 — PRICING LOCKS are shown with their true grading state. A lock is a
- * pricing act, not an outcome-graded decision: its record cites no scenario and
- * carries no review date, by design. The desk lists locks as "ungraded" and
- * never rewrites, back-fills or regrades them.
+ * §6.2 — PRICING LOCKS are shown with their true grading state, read off each
+ * lock's OWN decision record and never rewritten, back-filled or regraded. A
+ * lock recorded before 2026-11 (or one saved with no feasibility scenario on
+ * file) cites no scenario and carries no review date: it is listed as an
+ * "ungraded pricing act". A lock whose record cites the parcel's feasibility
+ * scenario is listed as "graded on the parent position" — coarse by
+ * construction (sold / abandoned on the whole parcel; lot-level sell-through
+ * is not captured by the outcome vocabulary) — with its review date and
+ * whether an outcome has been recorded.
  *
  * §6.3 — THE LOOP CLOSES through the existing GET /api/decisions/due, which
  * takes no pack filter: a pursue/pass recorded here with a review date is asked
@@ -209,7 +214,8 @@ export function registerSubdivisionDecisionRoutes(app: Express): void {
           : null;
 
         // ── decisions (subdivider pursue / pass), newest first ────────────
-        const recorded = (await decisionsForSubject(organizationId, "property", property.id)).filter(
+        const subjectDecisions = await decisionsForSubject(organizationId, "property", property.id);
+        const recorded = subjectDecisions.filter(
           (d) => d.body.strategyPackId === SUBDIVIDER_PACK && (d.body.kind === "pursue" || d.body.kind === "pass"),
         );
         const graded = new Set<number>();
@@ -237,21 +243,54 @@ export function registerSubdivisionDecisionRoutes(app: Express): void {
         }));
 
         // ── pricing locks: shown as what they are, never regraded ─────────
+        // Each lock's own snapshot decides its state. A snapshot that cites a
+        // scenario is graded (on the parent position, coarsely); one that does
+        // not — a pre-2026-11 lock, or a lock saved with no feasibility
+        // scenario on file — stays an ungraded pricing act.
         const lockRows = await db
           .select()
           .from(lotPricingRules)
           .where(and(eq(lotPricingRules.organizationId, organizationId), eq(lotPricingRules.parentParcelId, property.id)))
           .orderBy(desc(lotPricingRules.lockedAt));
+        const lockSnapshots = new Map(
+          subjectDecisions
+            .filter((d) => d.body.kind === "price" && d.body.strategyPackId === SUBDIVIDER_PACK)
+            .map((d) => [d.id, d] as const),
+        );
+        const lockSnapshotIds = [...lockSnapshots.keys()];
+        const lockGraded = new Set<number>();
+        if (lockSnapshotIds.length > 0) {
+          const rows = await db
+            .select({ decisionSnapshotId: outcomes.decisionSnapshotId })
+            .from(outcomes)
+            .where(and(eq(outcomes.organizationId, organizationId), inArray(outcomes.decisionSnapshotId, lockSnapshotIds)));
+          for (const r of rows) lockGraded.add(r.decisionSnapshotId);
+        }
         const pricingLocks = lockRows
           .filter((r) => r.lockedGrid !== null && r.lockedGrid !== undefined)
           .map((r) => {
             const grid = r.lockedGrid ?? [];
-            return {
+            const base = {
               id: r.id,
               lockedAt: iso(r.lockedAt),
               lotCount: grid.length,
               totalAskingCents: grid.reduce((s, l) => s + Number(l.askingPriceCents ?? 0), 0),
               decisionSnapshotId: r.lockedDecisionSnapshotId,
+            };
+            const snap = r.lockedDecisionSnapshotId !== null ? lockSnapshots.get(r.lockedDecisionSnapshotId) : undefined;
+            if (snap && snap.body.scenarios.length > 0) {
+              return {
+                ...base,
+                grading: "graded_on_parent_position" as const,
+                gradingNote:
+                  "Graded on the parent position (sold / abandoned), not lot by lot: this lock's record cites the parcel's feasibility scenario; lot-level sell-through is not captured by the outcome vocabulary.",
+                scenarioIds: snap.body.scenarios.map((x) => x.scenarioId),
+                reviewDueAt: iso(snap.body.reviewDueAt),
+                hasOutcome: lockGraded.has(snap.id),
+              };
+            }
+            return {
+              ...base,
               grading: "ungraded_pricing_act" as const,
               gradingNote:
                 "A pricing act, not an outcome-graded decision: the lock's record cites no scenario and carries no review date, by design (package §6.2).",

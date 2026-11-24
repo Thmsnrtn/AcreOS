@@ -1,5 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { computeUptimePct, SAMPLE_INTERVAL_MS } from "../../server/services/autopilot/uptime";
+import { computeUptimeDetail, SAMPLE_INTERVAL_MS } from "../../server/services/autopilot/uptime";
+
+// A14-05: the bare-pct helpers (computeUptimePct/getUptimePct) were
+// superseded by the detail form, which carries the measured-span basis.
+// This suite's pct assertions run against the detail's pct field.
+const computeUptimePct = (
+  samples: number[],
+  opts: { now: number },
+): number | null => computeUptimeDetail(samples, opts)?.pct ?? null;
 
 const MIN = 60_000;
 const HOUR = 60 * MIN;

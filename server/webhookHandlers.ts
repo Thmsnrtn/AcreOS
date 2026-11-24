@@ -1730,6 +1730,74 @@ export class WebhookHandlers {
     }
   }
 
+  /**
+   * A tenant paid rent by card (P3-3) — a Checkout Session created by
+   * POST /api/leases/:id/rent-checkout on the LANDLORD'S OWN connected
+   * account, so the session arrives here as a Connect event with
+   * metadata.type === "rent_payment".
+   *
+   * TENANT. There is no tenant access token to prove ownership, so — exactly
+   * as processPaymentLinkNotePayment — the Connect account the event arrived
+   * on must BE the metadata org's connected account. Metadata is written by
+   * whoever controls the account that created the session; a different
+   * account naming our org id is refused.
+   *
+   * Posting is the ONE rent rule (services/rental/rentCollection.ts), shared
+   * with the operator's browser-return verify: idempotent on the session id,
+   * so whichever arrives second is a no-op.
+   */
+  static async processRentPayment(
+    session: Stripe.Checkout.Session,
+    connectedAccountId: string | null,
+  ): Promise<void> {
+    const meta = session.metadata || {};
+    if (meta.type !== 'rent_payment') return;
+    const organizationId = Number(meta.organizationId);
+    const leaseId = meta.leaseId;
+    if (!Number.isInteger(organizationId) || !leaseId || !connectedAccountId) {
+      logger.error(
+        `[webhook] rent session ${session.id} lacks organizationId/leaseId metadata or a connected account — refusing`,
+      );
+      return;
+    }
+
+    const integration = await storage.findOrganizationIntegrationByCredential(
+      'stripe_connect',
+      'stripeConnectAccountId',
+      connectedAccountId,
+    );
+    if (!integration || integration.organizationId !== organizationId) {
+      logger.error(
+        `[webhook] rent session ${session.id} arrived on account ${connectedAccountId}, which is not organization ${organizationId}'s connected account — refusing`,
+      );
+      return;
+    }
+
+    const { postRentCheckoutPayment } = await import('./services/rental/rentCollection');
+    const result = await postRentCheckoutPayment({
+      organizationId,
+      leaseId,
+      stripeSession: session,
+      source: 'stripe_webhook',
+    });
+    switch (result.outcome) {
+      case 'refused':
+        logger.warn(`[webhook] rent payment ${session.id} not posted: ${result.reason}`, {
+          metadata: { leaseId, organizationId, reason: result.reason },
+        });
+        return;
+      case 'already_recorded':
+        logger.info(`Rent payment already recorded for session: ${session.id}`);
+        return;
+      case 'posted':
+        logger.info(
+          `Rent payment processed: Lease ${leaseId}, Amount: $${(result.amountCents / 100).toFixed(2)}`,
+          { metadata: { leaseId, organizationId, isPartial: result.isPartial } },
+        );
+        return;
+    }
+  }
+
   static async processBorrowerPortalPayment(session: Stripe.Checkout.Session): Promise<void> {
     try {
       const { noteId, accessToken } = session.metadata || {};

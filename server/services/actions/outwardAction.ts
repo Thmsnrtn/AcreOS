@@ -121,14 +121,49 @@ export class ProviderNotContactedError extends OutwardActionError {
   }
 }
 
-/** The same idempotency key was reused for materially different content. */
+/**
+ * True when an error carries the mail lane's structured billing verdict:
+ * `withBillingVerdict` (server/services/mail/mailLane.ts) stamps
+ * `providerNotBilled: true` only when the provider CERTAINLY did not accept
+ * the piece — it was never contacted, or it answered with a rejection
+ * status (e.g. Lob's 422 for an undeliverable recipient address: nothing
+ * was created, printed or billed). The flag is a proof attached by the
+ * transport that made the call, the same trust level as throwing
+ * ProviderNotContactedError; the absence of the flag proves nothing and
+ * the caller stays `ambiguous`. A timeout, a dropped connection or a 5xx
+ * carries no such verdict and stays `ambiguous`.
+ */
+function hasProviderNotBilledVerdict(error: unknown): boolean {
+  return (
+    !!error &&
+    typeof error === "object" &&
+    (error as { providerNotBilled?: unknown }).providerNotBilled === true
+  );
+}
+
+/**
+ * The same idempotency key was reused for materially different content in a
+ * state where the earlier content may already have been sent (or may have
+ * been — `ambiguous`). The message is operator language on purpose: this
+ * text is written onto the letter/message record the operator reads, so it
+ * names what happened and what to do next, not the rail's internals.
+ */
 export class ActionKeyReusedError extends OutwardActionError {
+  /** Kept for logs/diagnostics; deliberately NOT in the operator message. */
+  readonly actionKind: string;
+  readonly idempotencyKey: string;
+
   constructor(kind: string, key: string) {
     super(
-      `Outward action ${kind}:${key} was already used for a DIFFERENT payload. ` +
-        `Reusing a key for new content would silently suppress a legitimate ` +
-        `send. Derive the key from the new content's own durable identity.`,
+      `This can't be sent with changed content: an earlier version of this ` +
+        `item was already recorded with different content, and sending a ` +
+        `changed version under the same record could hide a duplicate. ` +
+        `To send the changed version, create a new item with the corrected ` +
+        `details. To send the original, restore its original content and ` +
+        `try again.`,
     );
+    this.actionKind = kind;
+    this.idempotencyKey = key;
   }
 }
 
@@ -165,14 +200,24 @@ export type ClaimVerdict =
  * Decide what to do about an existing claim row. PURE — no I/O, no clock.
  *
  * The precedence matters and is deliberate:
- *   1. A payload mismatch is checked FIRST, before status. A key reused for
- *      different content is a caller bug in every status, and letting a
- *      `succeeded` row replay a stale result for new content would silently
- *      suppress a send the caller genuinely wanted.
- *   2. `succeeded` replays — the whole point.
- *   3. `ambiguous` refuses — never guess with someone else's money.
- *   4. `in_flight` refuses — a concurrent worker owns it.
- *   5. `failed` re-executes — the provider rejected it before any side effect.
+ *   1. `failed` is decided FIRST, before the payload check. A `failed` row
+ *      exists only where the attempt PROVABLY never performed the action
+ *      (the provider was never contacted, or it definitively rejected the
+ *      request before accepting it — see ProviderNotContactedError and the
+ *      `providerNotBilled` verdict below). Nothing was sent under the old content, so a
+ *      corrected payload may supersede it under the same key: this is the
+ *      L-DEF-3 cure — a letter whose send failed because the recipient
+ *      address was wrong can be fixed and re-sent, instead of refusing
+ *      forever and forcing the operator to recreate it by hand.
+ *   2. For every other status, a payload mismatch refuses FIRST. A key
+ *      reused for different content where a send happened (`succeeded`) or
+ *      may have happened (`ambiguous`) must never execute or replay: letting
+ *      a `succeeded` row replay a stale result for new content would
+ *      silently suppress a send the caller genuinely wanted, and retrying
+ *      an `ambiguous` row with changed content could print a second letter.
+ *   3. `succeeded` replays — the whole point.
+ *   4. `ambiguous` refuses — never guess with someone else's money.
+ *   5. `in_flight` refuses — a concurrent worker owns it.
  */
 export function classifyExisting(
   existing: Pick<
@@ -182,6 +227,20 @@ export function classifyExisting(
   incomingHash: string,
 ): ClaimVerdict {
   const { actionKind: kind, idempotencyKey: key } = existing;
+
+  // A provably-unperformed attempt may be superseded by corrected content
+  // under the same key (precedence note 1 above). The re-claim in
+  // withOutwardAction stores the incoming hash, so from here on the key is
+  // bound to the corrected content exactly as strictly as before.
+  if (existing.status === "failed") {
+    return {
+      verdict: "execute",
+      reason:
+        existing.requestHash === incomingHash
+          ? "prior attempt failed before any side effect; safe to retry"
+          : "prior attempt provably never performed the action; corrected content may supersede it under the same key",
+    };
+  }
 
   if (existing.requestHash !== incomingHash) {
     return {
@@ -209,11 +268,6 @@ export function classifyExisting(
         verdict: "refuse",
         reason: "another worker is performing this action now",
         error: new ActionInFlightError(kind, key),
-      };
-    case "failed":
-      return {
-        verdict: "execute",
-        reason: "prior attempt failed before any side effect; safe to retry",
       };
     default: {
       // An unrecognised status is not a reason to send. Refuse loudly rather
@@ -326,16 +380,21 @@ export async function withOutwardAction<T>(
       return onReplay(decision.externalId);
     }
 
-    // verdict === "execute": a previous attempt failed before any side effect.
-    // The re-claim is CONDITIONAL on the row still being `failed` (DEFECT-0105):
+    // verdict === "execute": a previous attempt provably never performed the
+    // action. The re-claim is CONDITIONAL on the row still being `failed` (DEFECT-0105):
     // an UPDATE by id alone let two workers that both read `failed` both flip
     // it to in_flight and both run exec() — two letters, two charges. Exactly
     // one UPDATE matches; the loser refuses rather than executing.
+    // The re-claim also SUPERSEDES the stored request hash with the incoming
+    // one (L-DEF-3): when the retry carries corrected content, the key is
+    // re-bound to that content in the same conditional update, so a third
+    // attempt is judged against the corrected payload, never the failed one.
     claimId = existing.id;
     const reclaimed = await db
       .update(outwardActions)
       .set({
         status: "in_flight",
+        requestHash: hash,
         attempts: sql`${outwardActions.attempts} + 1`,
         lastError: null,
         claimedAt: clock.now(),
@@ -361,16 +420,26 @@ export async function withOutwardAction<T>(
   } catch (err) {
     const error = err instanceof Error ? err : new Error(String(err));
 
-    // A transport that PROVES it never reached the provider gets `failed`, which
-    // is retryable. Without this, a pre-flight refusal (no credits, no
-    // credentials) permanently poisons the key: every later attempt would meet
-    // ActionAmbiguousError and be told to reconcile against a provider that
-    // never heard of the request.
-    if (error instanceof ProviderNotContactedError) {
+    // A transport that PROVES the action was not performed gets `failed`,
+    // which is retryable — including with the cause corrected (L-DEF-3).
+    // Two proofs count, and only these: the provider was never contacted
+    // (ProviderNotContactedError), or the error carries the transport's
+    // structured verdict that the provider did not bill/accept the piece
+    // (`providerNotBilled: true`, stamped by withBillingVerdict — e.g. Lob
+    // answering 422 for a bad recipient address, a definitive rejection
+    // before acceptance). Without this, a pre-flight refusal (no credits,
+    // no credentials) or a definitive provider rejection permanently
+    // poisons the key: every later attempt would meet
+    // ActionAmbiguousError and be told to reconcile against a provider
+    // that never accepted anything.
+    if (
+      error instanceof ProviderNotContactedError ||
+      hasProviderNotBilledVerdict(error)
+    ) {
       await markClaim(claimId, "failed", null, error.message);
       logger.warn(
-        `[outward-action] ${spec.actionKind}:${spec.idempotencyKey} refused before ` +
-          `contacting the provider — recorded FAILED (retryable): ${error.message}`,
+        `[outward-action] ${spec.actionKind}:${spec.idempotencyKey} provably not ` +
+          `performed — recorded FAILED (retryable): ${error.message}`,
       );
       throw error;
     }

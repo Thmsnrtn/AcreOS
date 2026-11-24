@@ -31,7 +31,7 @@ vi.mock("../../client/src/components/rehabs/bids-section", () => ({ BidsSection:
 type Grading = {
   holdDays: number | null;
   investedCents: number | null;
-  investedParts: { purchaseCents: number | null; rehabSpentCents: number | null; holdingRecordedCents: number | null };
+  investedParts: { purchaseCents: number | null; purchaseClosingCents: number | null; rehabSpentCents: number | null; holdingRecordedCents: number | null };
   realizedNetCents: number | null;
   netMissing: string[];
   realizedRoiRatio: number | null;
@@ -47,16 +47,16 @@ const SCENARIO = { arvCents: 32_000_000, profitCents: 8_000_000, roiRatio: 0.4, 
 
 const FULL_GRADING: Grading = {
   holdDays: 181,
-  investedCents: 18_900_000,
-  investedParts: { purchaseCents: 12_000_000, rehabSpentCents: 6_000_000, holdingRecordedCents: 900_000 },
-  realizedNetCents: 9_600_000,
+  investedCents: 19_140_000,
+  investedParts: { purchaseCents: 12_000_000, purchaseClosingCents: 240_000, rehabSpentCents: 6_000_000, holdingRecordedCents: 900_000 },
+  realizedNetCents: 9_360_000,
   netMissing: [],
-  realizedRoiRatio: 9_600_000 / 18_900_000,
+  realizedRoiRatio: 9_360_000 / 19_140_000,
   deltas: {
     saleVsArvCents: -2_000_000,
     holdDaysVsScenarioDays: 31,
-    netVsScenarioProfitCents: 1_600_000,
-    roiVsScenarioRatio: 9_600_000 / 18_900_000 - 0.4,
+    netVsScenarioProfitCents: 1_360_000,
+    roiVsScenarioRatio: 9_360_000 / 19_140_000 - 0.4,
   },
 };
 
@@ -266,7 +266,7 @@ describe("rehab page — closing panel", () => {
 
     expect(q("rehab-realized-facts")!.textContent).toContain("closed 2026-03-31");
     const text = q("rehab-realized-grading")!.textContent ?? "";
-    expect(text).toContain("Realized net $96,000");
+    expect(text).toContain("Realized net $93,600");
     expect(text).toContain("Sold $300,000 vs $320,000 ARV in the recorded scenario");
     expect(text).toContain("−$20,000");
     expect(text).toContain("Held 181 days");
@@ -308,7 +308,7 @@ describe("rehab page — closing panel", () => {
     const text = q("rehab-realized-grading")!.textContent ?? "";
     expect(text).toContain("No recorded flip scenario to grade against");
     // The net is still a fact of the close.
-    expect(text).toContain("Realized net $96,000");
+    expect(text).toContain("Realized net $93,600");
     expect(text).not.toContain("Sold $300,000 vs");
   });
 });

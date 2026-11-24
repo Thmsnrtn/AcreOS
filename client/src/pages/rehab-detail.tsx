@@ -133,7 +133,7 @@ interface RealizedPayload {
   grading: null | {
     holdDays: number | null;
     investedCents: number | null;
-    investedParts: { purchaseCents: number | null; rehabSpentCents: number | null; holdingRecordedCents: number | null };
+    investedParts: { purchaseCents: number | null; purchaseClosingCents: number | null; rehabSpentCents: number | null; holdingRecordedCents: number | null };
     realizedNetCents: number | null;
     netMissing: string[];
     realizedRoiRatio: number | null;
@@ -1378,7 +1378,8 @@ export default function RehabDetailPage() {
                         </div>
                         <div className="text-xs text-muted-foreground">
                           sale {fmtUsdCents(realized.facts.salePriceCents)} − selling costs {fmtUsdCents(realized.facts.sellingCostsCents)} −
-                          purchase {fmtUsdCents(grading.investedParts.purchaseCents)} − rehab spent {fmtUsdCents(grading.investedParts.rehabSpentCents)} −
+                          purchase {fmtUsdCents(grading.investedParts.purchaseCents)} − purchase closing {fmtUsdCents(grading.investedParts.purchaseClosingCents)} −
+                          rehab spent {fmtUsdCents(grading.investedParts.rehabSpentCents)} −
                           recorded holding {fmtUsdCents(grading.investedParts.holdingRecordedCents)}
                         </div>
                       </>

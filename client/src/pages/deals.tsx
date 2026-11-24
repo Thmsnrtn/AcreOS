@@ -22,18 +22,6 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { usePersona, useTerm, useVocabulary } from "@/hooks/use-persona";
 import { DEAL_STAGE_ORDER, dealStageLabel } from "@/lib/personaVocabulary";
-import {
-  DndContext,
-  type DragEndEvent,
-  DragOverlay,
-  PointerSensor,
-  KeyboardSensor,
-  useSensor,
-  useSensors,
-  useDroppable,
-  useDraggable,
-} from "@dnd-kit/core";
-import { CSS } from "@dnd-kit/utilities";
 import { useSearch, useLocation, Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -223,17 +211,38 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [typeFilter]);
   const { mutate: updateDealStage } = useUpdateDeal();
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(KeyboardSensor),
-  );
 
-  const handleDragEnd = (event: DragEndEvent) => {
-    setActiveDragId(null);
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    const dealId = active.id as number;
-    const newStage = over.id as string;
+  // ── BD-2: in-house drag layer for the board (replaces @dnd-kit) ──
+  // Pointer parity with the old PointerSensor: drag starts from the card's
+  // grip button only, after an 8px activation distance, with pointer
+  // capture on the grip; the column under the pointer highlights and a
+  // floating copy of the card follows the pointer while the source dims.
+  // Keyboard/ARIA parity with the old KeyboardSensor + announcements:
+  // Space/Enter picks a focused grip's card up, arrow keys move the
+  // highlighted target stage one column at a time, Space/Enter drops,
+  // Escape cancels — every step announced in the board's aria-live region
+  // with the same strings @dnd-kit announced.
+  const [dragOverStage, setDragOverStage] = useState<string | null>(null);
+  const [dragPointer, setDragPointer] = useState<{ x: number; y: number; offsetX: number; offsetY: number; width: number } | null>(null);
+  const [dragAnnouncement, setDragAnnouncement] = useState("");
+  const [keyboardDrag, setKeyboardDrag] = useState<{ id: number; targetIndex: number } | null>(null);
+  const pointerDragRef = useRef<{
+    id: number;
+    startX: number;
+    startY: number;
+    offsetX: number;
+    offsetY: number;
+    width: number;
+    activated: boolean;
+    overStage: string | null;
+  } | null>(null);
+
+  const dragLabelFor = (dealId: number) => {
+    const d = enrichedDeals.find(x => x.id === dealId);
+    return d?.property ? `${d.property.county}, ${d.property.state}` : `${dealLabel} ${dealId}`;
+  };
+
+  const moveDealToStage = (dealId: number, newStage: string) => {
     const stageDef = dealStages.find(s => s.value === newStage);
     if (!stageDef) return;
     const previousDeal = enrichedDeals.find(d => d.id === dealId);
@@ -259,6 +268,139 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
         },
       },
     );
+  };
+
+  const stageUnderPointer = (x: number, y: number): string | null => {
+    const el = document.elementFromPoint(x, y)?.closest?.("[data-drop-stage]");
+    return el?.getAttribute("data-drop-stage") ?? null;
+  };
+
+  const handleGripPointerDown = (e: React.PointerEvent, deal: DealWithProperty) => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    const cardEl = (e.currentTarget as HTMLElement).closest('[data-testid^="card-deal-"]');
+    const rect = cardEl?.getBoundingClientRect();
+    pointerDragRef.current = {
+      id: deal.id,
+      startX: e.clientX,
+      startY: e.clientY,
+      offsetX: rect ? e.clientX - rect.left : 0,
+      offsetY: rect ? e.clientY - rect.top : 0,
+      width: rect?.width ?? 272,
+      activated: false,
+      overStage: null,
+    };
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    } catch {
+      // Capture is a nicety (keeps move/up flowing to the grip outside the
+      // board); without it the drag still tracks inside the board.
+    }
+  };
+
+  const handleGripPointerMove = (e: React.PointerEvent, deal: DealWithProperty) => {
+    const drag = pointerDragRef.current;
+    if (!drag || drag.id !== deal.id) return;
+    if (!drag.activated) {
+      if (Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY) < 8) return;
+      drag.activated = true;
+      setActiveDragId(deal.id);
+      setDragAnnouncement(`Picked up ${dragLabelFor(deal.id)}.`);
+    }
+    setDragPointer({ x: e.clientX, y: e.clientY, offsetX: drag.offsetX, offsetY: drag.offsetY, width: drag.width });
+    const over = stageUnderPointer(e.clientX, e.clientY);
+    if (over !== drag.overStage) {
+      drag.overStage = over;
+      setDragOverStage(over);
+      const s = over ? dealStages.find(x => x.value === over) : undefined;
+      setDragAnnouncement(s ? `Over ${s.label}.` : "Not over a stage.");
+    }
+  };
+
+  const finishPointerDrag = (deal: DealWithProperty, cancelled: boolean) => {
+    const drag = pointerDragRef.current;
+    if (!drag || drag.id !== deal.id) return;
+    pointerDragRef.current = null;
+    if (!drag.activated) return;
+    setActiveDragId(null);
+    setDragOverStage(null);
+    setDragPointer(null);
+    const over = drag.overStage;
+    if (cancelled || !over) {
+      setDragAnnouncement(`Drop canceled for ${dragLabelFor(deal.id)}.`);
+      return;
+    }
+    const s = dealStages.find(x => x.value === over);
+    setDragAnnouncement(s ? `Moved ${dragLabelFor(deal.id)} to ${s.label}.` : `Drop canceled for ${dragLabelFor(deal.id)}.`);
+    if (s) moveDealToStage(deal.id, over);
+  };
+
+  const handleGripPointerUp = (e: React.PointerEvent, deal: DealWithProperty) => {
+    finishPointerDrag(deal, false);
+  };
+
+  const handleGripPointerCancel = (e: React.PointerEvent, deal: DealWithProperty) => {
+    finishPointerDrag(deal, true);
+  };
+
+  const handleGripKeyDown = (e: React.KeyboardEvent, deal: DealWithProperty) => {
+    // Escape also cancels an in-progress pointer drag from the grip.
+    if (e.key === "Escape" && pointerDragRef.current?.id === deal.id) {
+      finishPointerDrag(deal, true);
+      return;
+    }
+    if (keyboardDrag && keyboardDrag.id === deal.id) {
+      const setTarget = (targetIndex: number) => {
+        const clamped = Math.max(0, Math.min(dealStages.length - 1, targetIndex));
+        setKeyboardDrag({ id: deal.id, targetIndex: clamped });
+        setDragAnnouncement(`Over ${dealStages[clamped].label}.`);
+      };
+      switch (e.key) {
+        case "ArrowRight":
+        case "ArrowDown":
+          e.preventDefault();
+          setTarget(keyboardDrag.targetIndex + 1);
+          return;
+        case "ArrowLeft":
+        case "ArrowUp":
+          e.preventDefault();
+          setTarget(keyboardDrag.targetIndex - 1);
+          return;
+        case "Home":
+          e.preventDefault();
+          setTarget(0);
+          return;
+        case "End":
+          e.preventDefault();
+          setTarget(dealStages.length - 1);
+          return;
+        case " ":
+        case "Enter": {
+          e.preventDefault();
+          const target = dealStages[keyboardDrag.targetIndex];
+          setKeyboardDrag(null);
+          if (!target) {
+            setDragAnnouncement(`Drop canceled for ${dragLabelFor(deal.id)}.`);
+            return;
+          }
+          setDragAnnouncement(`Moved ${dragLabelFor(deal.id)} to ${target.label}.`);
+          moveDealToStage(deal.id, target.value);
+          return;
+        }
+        case "Escape":
+          e.preventDefault();
+          setKeyboardDrag(null);
+          setDragAnnouncement(`Drop canceled for ${dragLabelFor(deal.id)}.`);
+          return;
+        default:
+          return;
+      }
+    }
+    if (e.key === " " || e.key === "Enter") {
+      e.preventDefault();
+      const currentIndex = dealStages.findIndex(s => s.value === deal.status);
+      setKeyboardDrag({ id: deal.id, targetIndex: currentIndex >= 0 ? currentIndex : 0 });
+      setDragAnnouncement(`Picked up ${dragLabelFor(deal.id)}.`);
+    }
   };
 
   // Bulk selection state for bulk stage update with undo
@@ -1013,72 +1155,58 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
                 </div>
               ) : (
                 <div className="relative">
-                  <DndContext
-                    sensors={sensors}
-                    onDragStart={(e) => setActiveDragId(e.active.id as number)}
-                    onDragEnd={handleDragEnd}
-                    onDragCancel={() => setActiveDragId(null)}
-                    accessibility={{
-                      screenReaderInstructions: {
-                        draggable:
-                          `To move ${withArticle(dealLabel, dealsLabel)} between stages: press Space or Enter to pick it up, use arrow keys to move between columns, press Space or Enter to drop it into the highlighted stage, or press Escape to cancel.`,
-                      },
-                      announcements: {
-                        onDragStart: ({ active }) => {
-                          const d = enrichedDeals.find(x => x.id === active.id);
-                          const label = d?.property
-                            ? `${d.property.county}, ${d.property.state}`
-                            : `${dealLabel} ${String(active.id)}`;
-                          return `Picked up ${label}.`;
-                        },
-                        onDragOver: ({ over }) => {
-                          if (!over) return "Not over a stage.";
-                          const s = dealStages.find(x => x.value === over.id);
-                          return s ? `Over ${s.label}.` : "Not over a stage.";
-                        },
-                        onDragEnd: ({ active, over }) => {
-                          const d = enrichedDeals.find(x => x.id === active.id);
-                          const label = d?.property
-                            ? `${d.property.county}, ${d.property.state}`
-                            : `${dealLabel} ${String(active.id)}`;
-                          if (!over) return `Drop canceled for ${label}.`;
-                          const s = dealStages.find(x => x.value === over.id);
-                          return s ? `Moved ${label} to ${s.label}.` : `Drop canceled for ${label}.`;
-                        },
-                        onDragCancel: ({ active }) => {
-                          const d = enrichedDeals.find(x => x.id === active.id);
-                          const label = d?.property
-                            ? `${d.property.county}, ${d.property.state}`
-                            : `${dealLabel} ${String(active.id)}`;
-                          return `Drop canceled for ${label}.`;
-                        },
-                      },
-                    }}
-                  >
-                    <div className="overflow-x-auto pb-4 scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent">
-                      <div className="flex gap-4 min-w-max px-1">
-                        {dealStages.map((stage) => {
-                          const stageDeals = enrichedDeals.filter(d => d.status === stage.value);
-                          return (
-                            <KanbanColumn
-                              key={stage.value}
-                              stage={stage}
-                              deals={stageDeals}
-                              isLoading={isLoading}
-                              activeDragId={activeDragId}
-                              onSelect={(deal) => setLocation(`/deals/${deal.id}`)}
-                            />
-                          );
-                        })}
-                      </div>
+                  {/* BD-2 in-house drag: instructions every grip's
+                      aria-describedby points at, and the single live region
+                      that carries the drag announcements (the strings the
+                      @dnd-kit accessibility layer used to announce). */}
+                  <p id="deals-board-drag-instructions" className="sr-only">
+                    {`To move ${withArticle(dealLabel, dealsLabel)} between stages: press Space or Enter to pick it up, use arrow keys to move between columns, press Space or Enter to drop it into the highlighted stage, or press Escape to cancel.`}
+                  </p>
+                  <div role="status" aria-live="polite" className="sr-only">
+                    {dragAnnouncement}
+                  </div>
+                  <div className="overflow-x-auto pb-4 scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent">
+                    <div className="flex gap-4 min-w-max px-1">
+                      {dealStages.map((stage) => {
+                        const stageDeals = enrichedDeals.filter(d => d.status === stage.value);
+                        return (
+                          <KanbanColumn
+                            key={stage.value}
+                            stage={stage}
+                            deals={stageDeals}
+                            isLoading={isLoading}
+                            activeDragId={activeDragId}
+                            isDropTarget={
+                              dragOverStage === stage.value ||
+                              (keyboardDrag != null && dealStages[keyboardDrag.targetIndex]?.value === stage.value)
+                            }
+                            keyboardDragId={keyboardDrag?.id ?? null}
+                            onGripPointerDown={handleGripPointerDown}
+                            onGripPointerMove={handleGripPointerMove}
+                            onGripPointerUp={handleGripPointerUp}
+                            onGripPointerCancel={handleGripPointerCancel}
+                            onGripKeyDown={handleGripKeyDown}
+                            onSelect={(deal) => setLocation(`/deals/${deal.id}`)}
+                          />
+                        );
+                      })}
                     </div>
-                    <DragOverlay dropAnimation={null}>
-                      {activeDragId != null && (() => {
-                        const deal = enrichedDeals.find(d => d.id === activeDragId);
-                        return deal ? <DealCard deal={deal} onSelect={() => {}} isDragging /> : null;
-                      })()}
-                    </DragOverlay>
-                  </DndContext>
+                  </div>
+                  {activeDragId != null && dragPointer && (() => {
+                    const deal = enrichedDeals.find(d => d.id === activeDragId);
+                    return deal ? (
+                      <div
+                        aria-hidden="true"
+                        className="pointer-events-none fixed left-0 top-0 z-floating"
+                        style={{
+                          transform: `translate(${dragPointer.x - dragPointer.offsetX}px, ${dragPointer.y - dragPointer.offsetY}px)`,
+                          width: dragPointer.width,
+                        }}
+                      >
+                        <DealCard deal={deal} onSelect={() => {}} isDragging />
+                      </div>
+                    ) : null;
+                  })()}
                   <div className="hidden md:block absolute left-0 top-0 bottom-4 w-4 bg-gradient-to-r from-background to-transparent pointer-events-none" />
                   <div className="hidden md:block absolute right-0 top-0 bottom-4 w-4 bg-gradient-to-l from-background to-transparent pointer-events-none" />
                 </div>
@@ -1130,20 +1258,37 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
   );
 }
 
+type GripDragHandlers = {
+  onGripPointerDown: (e: React.PointerEvent, deal: DealWithProperty) => void;
+  onGripPointerMove: (e: React.PointerEvent, deal: DealWithProperty) => void;
+  onGripPointerUp: (e: React.PointerEvent, deal: DealWithProperty) => void;
+  onGripPointerCancel: (e: React.PointerEvent, deal: DealWithProperty) => void;
+  onGripKeyDown: (e: React.KeyboardEvent, deal: DealWithProperty) => void;
+};
+
 function KanbanColumn({
   stage,
   deals,
   isLoading,
   activeDragId,
+  isDropTarget,
+  keyboardDragId,
+  onGripPointerDown,
+  onGripPointerMove,
+  onGripPointerUp,
+  onGripPointerCancel,
+  onGripKeyDown,
   onSelect,
 }: {
   stage: { value: string; label: string; color: string };
   deals: DealWithProperty[];
   isLoading: boolean;
   activeDragId: number | null;
+  isDropTarget: boolean;
+  keyboardDragId: number | null;
+} & GripDragHandlers & {
   onSelect: (deal: DealWithProperty) => void;
 }) {
-  const { setNodeRef, isOver } = useDroppable({ id: stage.value });
   const headingId = `kanban-stage-${stage.value}`;
   const term = useVocabulary();
   const dealLower = term("entity.deal").toLowerCase();
@@ -1170,12 +1315,12 @@ function KanbanColumn({
           semantics move to a wrapper that holds ONLY cards, so the loading and
           empty states — which are genuinely not list items — sit outside it. */}
       <div
-        ref={setNodeRef}
         role="group"
         aria-label={`${stage.label} drop zone`}
         aria-describedby={headingId}
-        className={`bg-muted/30 rounded-b-card p-2 min-h-[400px] space-y-2 transition-colors ${isOver ? "bg-primary/5 ring-2 ring-primary/20 ring-inset" : ""}`}
+        className={`bg-muted/30 rounded-b-card p-2 min-h-[400px] space-y-2 transition-colors ${isDropTarget ? "bg-primary/5 ring-2 ring-primary/20 ring-inset" : ""}`}
         data-testid={`column-${stage.value}`}
+        data-drop-stage={stage.value}
       >
         {isLoading ? (
           <div data-testid={`skeleton-deals-${stage.value}`}>
@@ -1193,6 +1338,12 @@ function KanbanColumn({
                   deal={deal}
                   onSelect={() => onSelect(deal)}
                   isDragging={activeDragId === deal.id}
+                  isKeyboardDragging={keyboardDragId === deal.id}
+                  onGripPointerDown={onGripPointerDown}
+                  onGripPointerMove={onGripPointerMove}
+                  onGripPointerUp={onGripPointerUp}
+                  onGripPointerCancel={onGripPointerCancel}
+                  onGripKeyDown={onGripKeyDown}
                 />
               </div>
             ))}
@@ -1223,9 +1374,7 @@ const nextActionIcons: Record<DealNextAction["icon"], React.ReactNode> = {
  *   right-swipe → advance stage (pos tone)
  *   left-swipe  → snooze for 24h (warn tone)
  */
-function DealCard({ deal, onSelect, isDragging = false, isSelected, onToggleSelect }: { deal: DealWithProperty; onSelect: () => void; isDragging?: boolean; isSelected?: boolean; onToggleSelect?: (id: number) => void }) {
-  const { attributes, listeners, setNodeRef, transform } = useDraggable({ id: deal.id });
-  const style = transform ? { transform: CSS.Translate.toString(transform) } : undefined;
+function DealCard({ deal, onSelect, isDragging = false, isSelected, onToggleSelect, isKeyboardDragging = false, onGripPointerDown, onGripPointerMove, onGripPointerUp, onGripPointerCancel, onGripKeyDown }: { deal: DealWithProperty; onSelect: () => void; isDragging?: boolean; isSelected?: boolean; onToggleSelect?: (id: number) => void; isKeyboardDragging?: boolean } & Partial<GripDragHandlers>) {
   const isClosed = deal.status === 'closed' || deal.status === 'cancelled';
   const nextAction = getDealNextAction(deal);
   const daysInStage = getDaysInStage(deal);
@@ -1257,15 +1406,19 @@ function DealCard({ deal, onSelect, isDragging = false, isSelected, onToggleSele
 
   const cardInner = (
     <Card
-      ref={setNodeRef}
-      style={style}
       className={`group bg-card shadow-acr-1 rounded-card cursor-pointer hover-elevate active:scale-[0.98] transition-transform touch-manipulation ${isDragging ? "opacity-40" : ""}`}
       onClick={onSelect}
       data-testid={`card-deal-${deal.id}`}
     >
       <CardContent className="p-4">
         <div className="flex items-start gap-3">
-          {/* Drag handle — desktop only */}
+          {/* Drag handle — desktop only. BD-2 in-house drag: pointer
+              events (mouse/touch/pen) with capture + an 8px activation
+              distance, and the keyboard stage-move path (Space/Enter to
+              pick up, arrows to choose the highlighted stage, Space/Enter
+              to drop, Escape to cancel). touch-none keeps a touch drag
+              from scrolling the board mid-move — the same touch-action
+              the old drag library set on its activator. */}
           <button
             type="button"
             aria-label={
@@ -1273,9 +1426,15 @@ function DealCard({ deal, onSelect, isDragging = false, isSelected, onToggleSele
                 ? `Drag ${deal.property.county}, ${deal.property.state} to change stage`
                 : `Drag ${cardDealLower} ${deal.id} to change stage`
             }
-            className="mt-1 flex-shrink-0 hidden md:block cursor-grab active:cursor-grabbing text-muted-foreground/50 hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
-            {...listeners}
-            {...attributes}
+            aria-describedby={onGripKeyDown ? "deals-board-drag-instructions" : undefined}
+            aria-pressed={onGripKeyDown ? isKeyboardDragging : undefined}
+            data-testid={`drag-handle-deal-${deal.id}`}
+            className="mt-1 flex-shrink-0 hidden md:block cursor-grab active:cursor-grabbing touch-none text-muted-foreground/50 hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
+            onPointerDown={onGripPointerDown ? (e) => { e.stopPropagation(); onGripPointerDown(e, deal); } : undefined}
+            onPointerMove={onGripPointerMove ? (e) => onGripPointerMove(e, deal) : undefined}
+            onPointerUp={onGripPointerUp ? (e) => onGripPointerUp(e, deal) : undefined}
+            onPointerCancel={onGripPointerCancel ? (e) => onGripPointerCancel(e, deal) : undefined}
+            onKeyDown={onGripKeyDown ? (e) => onGripKeyDown(e, deal) : undefined}
             onClick={(e) => e.stopPropagation()}
           >
             <GripVertical className="w-4 h-4" aria-hidden="true" />

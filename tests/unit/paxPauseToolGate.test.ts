@@ -332,6 +332,7 @@ const NOT_PAUSE_SAFE = [
   "schedule_follow_up",
   "generate_offer_letter", // upserts a pipeline deal — a record write
   "draft_offer", // advances a negotiating deal to offer_sent + writes paxMemory (2026-09-02)
+  "record_tax_ledger_entry", // appends a tax_events ledger row on a certificate (T7)
 ] as const;
 
 describe("PAUSE_SAFE_TOOLS allowlist hygiene", () => {

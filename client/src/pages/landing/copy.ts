@@ -180,7 +180,7 @@ export const LANDING_COPY = {
     eyebrow: "Meet Pax",
     title: "Pax — your AI operations partner.",
     sub:
-      "Pax monitors the pipeline overnight: pulls comps, scores leads, drafts replies, prepares borrower reminders for your tap. Every action is shown with the data it used. Nothing happens behind your back.",
+      "Pax works your pipeline the way you set it up: pulls comps, scores leads as they land, drafts replies, prepares borrower reminders for your tap. Every action is shown with the data it used. Nothing happens behind your back.",
   },
   day: {
     eyebrow: "A Tuesday in May",
@@ -226,6 +226,7 @@ export const LANDING_COPY = {
   pricing: {
     eyebrow: "Pricing",
     title: "Premium government data, free. Paid data when you scale.",
+    // CR-025 OPEN FOUNDER CALL: E-25A vs E-25B drafts held in the claims register — do not conform until Tom picks.
     sub:
       "Numbers on the page. No \"contact us\" wall. The free tier runs flood, soil, elevation, and wetlands checks from government data on every parcel. Pro unlocks the full Pax assistant, unlimited counties, and bring-your-own-key for the parcel and skip-trace data costs you already pay — see the live price on each tile below. Every paid plan is backed by a 30-day money-back guarantee.",
   },
