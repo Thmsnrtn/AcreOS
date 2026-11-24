@@ -435,11 +435,28 @@ router.post("/wire/:service", requireFounder, async (req: Request, res: Response
             connect: true,
           });
 
-          // Save the webhook secret to config
+          // Save the signing secret under the CONNECT key, because this is the
+          // Connect endpoint's secret and the Connect route verifies against
+          // STRIPE_CONNECT_WEBHOOK_SECRET first (server/routes-billing.ts,
+          // registerStripeConnectWebhookRoute). It used to be saved under the
+          // PLATFORM key, STRIPE_WEBHOOK_SECRET, and that failed twice over on a
+          // real deployment: `loadConfigToEnv` never lets a DB value override a
+          // real env var, and the platform secret IS a real env var on Fly, so
+          // the wired value never reached the Connect route after a restart —
+          // while in the running process `saveCredential` patched process.env
+          // and the PLATFORM route started verifying subscription events
+          // against the Connect secret until the next restart. Found by the
+          // P3-4 test-mode settlement proof (2026-11-15).
+          //
+          // Precedence stays with the operator: where
+          // STRIPE_CONNECT_WEBHOOK_SECRET is set in env, `loadConfigToEnv`
+          // leaves it alone and the DB copy is inert. The platform key is not
+          // written here — this step provisions only the Connect endpoint.
+          // Pinned by tests/unit/connectWireStepSavesConnectSecret.test.ts.
           if (webhook.secret) {
-            await saveCredential("STRIPE_WEBHOOK_SECRET", webhook.secret, {
+            await saveCredential("STRIPE_CONNECT_WEBHOOK_SECRET", webhook.secret, {
               service: "stripe",
-              label: "Stripe Webhook Secret",
+              label: "Stripe Connect Webhook Secret",
               isSecret: true,
               isRequired: true,
             });
@@ -447,7 +464,7 @@ router.post("/wire/:service", requireFounder, async (req: Request, res: Response
 
           return res.json({
             status: "ok",
-            message: "Stripe webhook created and secret saved",
+            message: "Stripe Connect webhook created and its secret saved as STRIPE_CONNECT_WEBHOOK_SECRET",
             details: { id: webhook.id, url: webhookUrl, secret: webhook.secret ? "saved" : "not returned" },
           });
         } catch (e: any) {

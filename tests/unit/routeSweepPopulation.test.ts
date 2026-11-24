@@ -26,6 +26,8 @@ import ts from "typescript";
 import { stripComments } from "../helpers/stripComments";
 import {
   APP_TSX,
+  FOUNDER_ROUTES_TSX,
+  ROUTE_TREE_FILES,
   SWEEP_EXCLUDED,
   SWEEP_FLOORS,
   clientRoutes,
@@ -45,19 +47,35 @@ describe("route sweep population", () => {
     expect(pop.flagged.length, "flagged pages").toBeGreaterThanOrEqual(SWEEP_FLOORS.flagged);
   });
 
-  it("reads every <Route path=…> element App.tsx declares", () => {
+  it("reads every <Route path=…> element both route trees declare", () => {
     // The span check: a comment-stripped count of the opening tags against the
     // parser's. If the AST walk stops reaching a nesting shape, this differs.
-    const stripped = stripComments(fs.readFileSync(APP_TSX, "utf8"));
-    const textual = (stripped.match(/<Route\s+path=/g) ?? []).length;
-    expect(textual, "no <Route path=…> found in App.tsx at all").toBeGreaterThan(200);
-    expect(routes.length).toBe(textual);
+    // Both route trees (App.tsx + founder-routes.tsx — P1-9 / X-2), per file so
+    // a tree that stops being read cannot hide behind the other's count.
+    let total = 0;
+    for (const file of ROUTE_TREE_FILES) {
+      const textual = (stripComments(fs.readFileSync(file, "utf8")).match(/<Route\s+path=/g) ?? []).length;
+      expect(textual, `no <Route path=…> found in ${path.basename(file)} at all`).toBeGreaterThan(50);
+      expect(routesInSource(fs.readFileSync(file, "utf8"), file).length, path.basename(file)).toBe(textual);
+      total += textual;
+    }
+    expect(total, "no <Route path=…> found in the route trees at all").toBeGreaterThan(200);
+    expect(routes.length).toBe(total);
+  });
+
+  it("the founder route tree is where the founder routes are (the split cannot empty either half)", () => {
+    const founderTree = routesInSource(fs.readFileSync(FOUNDER_ROUTES_TSX, "utf8"), FOUNDER_ROUTES_TSX);
+    expect(founderTree.filter((r) => r.kind === "founder").length, "founder pages in founder-routes.tsx").toBeGreaterThanOrEqual(55);
+    const customerTree = routesInSource(fs.readFileSync(APP_TSX, "utf8"), APP_TSX);
+    expect(customerTree.filter((r) => r.kind === "customer").length, "customer pages in App.tsx").toBeGreaterThanOrEqual(85);
+    // The only founder-classed route the customer build keeps is the shared /commissions page.
+    expect(customerTree.filter((r) => r.kind === "founder").map((r) => r.path)).toEqual(["/commissions"]);
   });
 
   it("every exclusion names a real, concrete route", () => {
     const declared = new Set(routes.map((r) => r.path));
     for (const p of Object.keys(SWEEP_EXCLUDED)) {
-      expect(declared.has(p), `SWEEP_EXCLUDED names ${p}, which App.tsx does not declare`).toBe(true);
+      expect(declared.has(p), `SWEEP_EXCLUDED names ${p}, which no route tree declares`).toBe(true);
     }
   });
 

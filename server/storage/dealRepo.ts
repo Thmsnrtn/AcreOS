@@ -52,6 +52,61 @@ function dealStatusRefusal(current: string | null | undefined, next: string, opt
   }
   return validateDealTransition(current, next);
 }
+
+/**
+ * Property statuses that mean "in the acquisition pipeline, not yet held".
+ * When an acquisition closes, the org holds the parcel, so a property still
+ * in one of these states becomes `owned`. A property already `owned`,
+ * `listed` or `sold` is at or past held and is NEVER overwritten by a deal
+ * close (same rule as the tax deed→land move in services/tax/landExit.ts).
+ */
+const PRE_HELD_PROPERTY_STATUSES = ["prospect", "due_diligence", "offer_sent", "under_contract"] as const;
+
+/**
+ * L-DEF-2 (Land journey walk 2026-11-18, Leg 6): closing an acquisition deal
+ * never marked the parcel held — the property stayed `prospect`, and listing
+ * create then refused it as "not held" (services/listability.ts) until the
+ * operator separately PUT the property to `owned`. No surface connected the
+ * two steps.
+ *
+ * The cure lives here, in the repository seam every deal status write passes
+ * through (PUT /api/deals/:id, PATCH stage moves, Pax tools, title-chain
+ * close, bulk moves), so no caller can close an acquisition and leave the
+ * parcel behind. The transition is ONE conditional UPDATE: org-scoped, and
+ * restricted to the pre-held statuses above, so it is atomic — a property
+ * that has already moved on (owned / listed / sold) or belongs to another
+ * org matches no row and is left exactly as it is.
+ *
+ * Returns true when a property row actually transitioned.
+ */
+async function markPropertyOwnedOnAcquisitionClose(organizationId: number, propertyId: number): Promise<boolean> {
+  const rows = await db
+    .update(properties)
+    .set({ status: "owned", updatedAt: clock.now() })
+    .where(
+      and(
+        eq(properties.id, propertyId),
+        eq(properties.organizationId, organizationId),
+        inArray(properties.status, [...PRE_HELD_PROPERTY_STATUSES]),
+      ),
+    )
+    .returning({ id: properties.id });
+  if (rows.length === 0) return false;
+  // Every property-status writer passes through the listing-withdrawal hook
+  // (the soldLandIsWithdrawn census): a status change that ends the holding
+  // withdraws the parcel's listings. "owned" IS held, so this withdraws
+  // nothing — it runs so this writer honours the same rule as every other
+  // (same pattern as services/tax/landExit.ts). Its failure must not
+  // un-report a transition that already happened, so it is logged, not thrown.
+  try {
+    const { withdrawListingsForUnheldProperty } = await import("../services/listingWithdrawal");
+    await withdrawListingsForUnheldProperty(organizationId, propertyId, "owned");
+  } catch (err) {
+    logger.warn(`[dealRepo] L-DEF-2 listing-withdrawal hook failed for property ${propertyId}: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  return true;
+}
+
 export const dealRepo = {
   async getDeals(this: DatabaseStorage, orgId: number): Promise<Deal[]> {
     // Task 223: exclude soft-deleted deals from list queries
@@ -186,6 +241,26 @@ export const dealRepo = {
       // retracted) — here, where every status write passes.
       recordDealTransitionEvidence(updated.organizationId, before, updated);
 
+      // L-DEF-2: an ACQUISITION deal reaching `closed` means the org now
+      // holds the parcel — move a still-pre-held property to `owned` in the
+      // same operation, so the exit leg (listing create's held check) works
+      // without a separate manual property edit. The deal's CURRENT
+      // property (DEFECT-0176's lesson: not the pre-update one) and the
+      // deal's own org scope the write. A failure here must not un-commit
+      // the deal close that already succeeded, so it is logged, not thrown —
+      // the conditional update is a single statement, and the deal row
+      // itself records that the close happened.
+      if (updated.status === "closed" && updated.type === "acquisition" && updated.propertyId) {
+        try {
+          const transitioned = await markPropertyOwnedOnAcquisitionClose(updated.organizationId, updated.propertyId);
+          if (transitioned) {
+            logger.info(`[storage.updateDeal] L-DEF-2: acquisition deal ${updated.id} closed — property ${updated.propertyId} marked owned`);
+          }
+        } catch (err) {
+          logger.warn(`[storage.updateDeal] L-DEF-2 property-owned transition failed for deal ${updated.id} (property ${updated.propertyId}): ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+
       const triggerStatuses = new Set(["accepted", "under_contract", "in_escrow"]);
       if (triggerStatuses.has(updated.status ?? "")) {
         // The deal's CURRENT property, org and closing date (DEFECT-0176):
@@ -273,10 +348,10 @@ export const dealRepo = {
     // The pre-image is also what the state machine checks, so a failed read
     // fails the write — it used to degrade to "no events", which would now
     // mean "no check" (audit of 9ed61f4).
-    let beforeRows: Array<{ id: number; status: string | null; acceptedAmount: string | null; offerAmount: string | null }> = [];
+    let beforeRows: Array<{ id: number; status: string | null; acceptedAmount: string | null; offerAmount: string | null; propertyId: number | null; type: string | null }> = [];
     if (updates.status !== undefined) {
       beforeRows = await db
-        .select({ id: deals.id, status: deals.status, acceptedAmount: deals.acceptedAmount, offerAmount: deals.offerAmount })
+        .select({ id: deals.id, status: deals.status, acceptedAmount: deals.acceptedAmount, offerAmount: deals.offerAmount, propertyId: deals.propertyId, type: deals.type })
         .from(deals)
         .where(and(eq(deals.organizationId, orgId), inArray(deals.id, ids)));
     }
@@ -296,6 +371,19 @@ export const dealRepo = {
       if (before.status === updates.status) continue; // no transition
       publishDealLifecycle(orgId, before, { ...before, ...updates, id: before.id });
       recordDealTransitionEvidence(orgId, before, { ...before, ...updates, id: before.id });
+    }
+
+    // L-DEF-2: a bulk move can close deals too — an acquisition closed here
+    // holds its parcel exactly as a single close does (see updateDeal).
+    if (updates.status === "closed") {
+      for (const before of beforeRows) {
+        if (before.status === "closed" || before.type !== "acquisition" || !before.propertyId) continue;
+        try {
+          await markPropertyOwnedOnAcquisitionClose(orgId, before.propertyId);
+        } catch (err) {
+          logger.warn(`[storage.bulkUpdateDeals] L-DEF-2 property-owned transition failed for deal ${before.id} (property ${before.propertyId}): ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
     }
 
     return ids.length;

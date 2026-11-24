@@ -36,7 +36,7 @@
 
 import type { Express, Response } from "express";
 import { z } from "zod";
-import { and, eq, desc, asc, sql } from "drizzle-orm";
+import { and, eq, desc, asc, inArray, sql } from "drizzle-orm";
 import { db } from "./db";
 import {
   tenants,
@@ -612,7 +612,13 @@ export function registerRentalRoutes(app: Express): void {
       const leases = leaseIds.length > 0
         ? await db.select().from(rentalLeases).where(and(
             eq(rentalLeases.organizationId, orgId),
-            sql`${rentalLeases.id} = ANY(${leaseIds}::uuid[])`,
+            // inArray, not raw `= ANY(${leaseIds}::uuid[])` — drizzle binds
+            // a JS array inside sql`` as a parenthesised parameter list, so
+            // Postgres received ANY(($1, $2)::uuid[]) / ANY(($1)::uuid[])
+            // and rejected it (record/scalar to uuid[]), 500ing this read
+            // whenever the tenant had at least one lease (ANY-sweep
+            // 2026-11-21; same shape as SD-DEF-1 in routes-permit-tracker).
+            inArray(rentalLeases.id, leaseIds),
           ))
         : [];
 
@@ -972,7 +978,10 @@ export function registerRentalRoutes(app: Express): void {
       const tenantRows = tenantIds.length > 0
         ? await db.select().from(tenants).where(and(
             eq(tenants.organizationId, orgId),
-            sql`${tenants.id} = ANY(${tenantIds}::uuid[])`,
+            // inArray, not raw `= ANY(${tenantIds}::uuid[])` — same
+            // record/scalar-to-uuid[] rejection as the tenant read above
+            // (ANY-sweep 2026-11-21; SD-DEF-1 shape).
+            inArray(tenants.id, tenantIds),
           ))
         : [];
       const tenantsByLink = links.map((link) => ({

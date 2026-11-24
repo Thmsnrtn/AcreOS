@@ -8,7 +8,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertCampaignSchema } from "@shared/forms/campaign";
-import { campaignTemplatesFor } from "@shared/outreach/templates";
+import { useCampaignTemplates } from "@/lib/outreach-templates";
 import { OUTREACH_LANGUAGES, OUTREACH_LANGUAGE_LABELS, isOutreachLanguage, type OutreachLanguage } from "@shared/outreach/outreachLanguage";
 import type { Campaign, CampaignOptimization } from "@shared/schema";
 import { z } from "zod";
@@ -64,6 +64,9 @@ const pieceTypes = [
 // Stock templates live in ONE registry (shared/outreach/templates.ts), in
 // English and Spanish, so the ethical-outreach test reads the exact copy this
 // picker offers. The language is the CUSTOMER's choice for the campaign.
+// The picker reads the registry as served data (/outreach-templates.json,
+// pinned deep-equal to the module) instead of bundling it — see
+// client/src/lib/outreach-templates.ts.
 
 // ─── Sparkline: 7-day response trend ─────────────────────────────────────────
 
@@ -1206,7 +1209,7 @@ function CampaignForm({ onSuccess }: { onSuccess: () => void }) {
   const campaignType = form.watch("type");
   const watchedLanguage = form.watch("language");
   const campaignLanguage: OutreachLanguage = isOutreachLanguage(watchedLanguage) ? watchedLanguage : "en";
-  const availableTemplates = campaignTemplatesFor(campaignLanguage, campaignType);
+  const availableTemplates = useCampaignTemplates(campaignLanguage, campaignType);
 
   const handleTemplateSelect = (templateId: string) => {
     setSelectedTemplate(templateId);

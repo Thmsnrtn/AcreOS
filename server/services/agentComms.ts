@@ -17,7 +17,7 @@
 
 import { db } from "../db";
 import { agentChannelMessages } from "@shared/schema";
-import { eq, and, desc, gte, sql } from "drizzle-orm";
+import { eq, and, desc, gte, inArray, sql } from "drizzle-orm";
 import { clock } from "../utils/clock";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -125,10 +125,16 @@ class AgentCommsService {
 
     const messages = await db.select()
       .from(agentChannelMessages)
-      .where(
-        sql`${agentChannelMessages.toChannel} = ANY(${subscribedChannels})
-            AND NOT (${agentChannelMessages.readByAgents}::jsonb ? ${agentCodename})`
-      )
+      .where(and(
+        // inArray, not raw `= ANY(${subscribedChannels})` — drizzle binds
+        // a JS array inside sql`` as a parenthesised parameter list, so
+        // Postgres received ANY(($1, $2)) ("op ANY/ALL (array) requires
+        // array on right side") / ANY(($1)) (malformed array literal) and
+        // rejected it for every subscribed-channel count (2–6 for every
+        // known agent) (ANY-sweep 2026-11-21; SD-DEF-1 shape).
+        inArray(agentChannelMessages.toChannel, subscribedChannels),
+        sql`NOT (${agentChannelMessages.readByAgents}::jsonb ? ${agentCodename})`,
+      ))
       .orderBy(desc(agentChannelMessages.createdAt))
       .limit(limit);
 

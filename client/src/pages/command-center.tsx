@@ -11,7 +11,6 @@ import { createPortal } from "react-dom";
 import type { ReactNode } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useToast } from "@/hooks/use-toast";
@@ -25,7 +24,6 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import {
-  Bot,
   FileText,
   Send,
   Plus,
@@ -36,7 +34,6 @@ import {
   ChevronDown,
   ChevronUp,
   Wrench,
-  Users,
   Settings,
   Brain,
   Sparkles,
@@ -56,21 +53,18 @@ import {
   usePaxNeedsYou,
   type PaxAskItem,
 } from "@/hooks/usePaxNeedsYou";
-import { PAX_CONTROLS_PATH, PAX_LABELS } from "@shared/pax-glossary";
+import { PAX_CONTROLS_PATH, PAX_LABELS } from "@shared/pax-glossary-core";
 import { formatDate } from "@/lib/format";
 import { DisclaimerBanner } from "@/components/disclaimer-banner";
 import { ReadAloudButton } from "@/components/ReadAloudButton";
 import { useAuth } from "@/hooks/use-auth";
 import { refusalFromBody } from "@/lib/refusal";
 import { ToastAction } from "@/components/ui/toast";
-// The founder-only AI console (VA roster, background services, AI ops).
-// It moved out of this file 2026-09-04 — same panels, same queries, same
-// isFounder guard below; it just no longer sits inside the customer's door.
-import {
-  AiOperationsPanel,
-  BackgroundServicesPanel,
-  VaTeamPanel,
-} from "@/components/founder/ai-console";
+// The founder-only AI console (VA roster, background services, AI ops) is NOT
+// imported here. It left this file 2026-09-04 for components/founder/ai-console
+// and — P1-9 / X-2 — now renders only inside the founder build, as tabs on the
+// /founder/agent-queue page. Importing it here put ≈30 KB of founder code in
+// the customer bundle for a panel only the founder could ever see.
 
 interface Message {
   id: number;
@@ -305,17 +299,6 @@ export default function CommandCenterPage({ composerDock }: { composerDock?: HTM
   const { isMobile } = useIsMobile();
   const { toast } = useToast();
   const { isFounder } = useAuth();
-  const [mainTab, setMainTab] = useState<string>("chat");
-
-  // Constitution guard: if a non-founder somehow lands on a founder-only tab
-  // (e.g. via a saved URL hash), redirect them silently to the Chat tab.
-  // This runs on mount and whenever mainTab or isFounder changes.
-  const FOUNDER_ONLY_TABS = ["team", "agents", "ai-ops"] as const;
-  useEffect(() => {
-    if (!isFounder && FOUNDER_ONLY_TABS.includes(mainTab as (typeof FOUNDER_ONLY_TABS)[number])) {
-      setMainTab("chat");
-    }
-  }, [isFounder, mainTab]);
   const [input, setInput] = useState("");
   const [currentConversationId, setCurrentConversationId] = useState<number | null>(null);
   const [streamingContent, setStreamingContent] = useState("");
@@ -731,40 +714,22 @@ export default function CommandCenterPage({ composerDock }: { composerDock?: HTM
       <div className="pb-4 border-b border-border">
         <DisclaimerBanner type="ai" className="mb-4" />
           <div className="flex items-center gap-2">
-            {/* Customer tabs collapsed to the conversation alone (Pax
-                controls program, spec §3b): the Tasks tab, its queue and
-                its invented price are gone. Founders keep their own tabs
-                (Team / Background / AI Ops) behind the same isFounder gate
-                the constitution requires. */}
+            {/* Customers see the conversation alone (Pax controls program,
+                spec §3b): the Tasks tab, its queue and its invented price are
+                gone. The founder's agent console (Team / Background / AI Ops)
+                is no longer a set of tabs on this customer page — it lives on
+                the founder build's /founder/agent-queue page, and this door
+                (shown only when isFounder) is a full-page navigation to it
+                (a plain <a>: wouter cannot cross builds — P1-9 / X-2). */}
             {isFounder ? (
-              <Tabs value={mainTab} onValueChange={setMainTab} className="flex-1 min-w-0">
-                <div className="md:overflow-visible md:mx-0 md:px-0">
-                  <TabsList className="w-full md:w-auto">
-                    <TabsTrigger value="chat" data-testid="tab-chat" aria-label="Assistant">
-                      <MessageSquare className="w-4 h-4 md:mr-2" />
-                      <span className="hidden md:inline">Assistant</span>
-                    </TabsTrigger>
-                    {isFounder && (
-                      <TabsTrigger value="team" data-testid="tab-team" aria-label="Team">
-                        <Users className="w-4 h-4 md:mr-2" />
-                        <span className="hidden md:inline">Team</span>
-                      </TabsTrigger>
-                    )}
-                    {isFounder && (
-                      <TabsTrigger value="agents" data-testid="tab-agents" aria-label="Background agents">
-                        <Bot className="w-4 h-4 md:mr-2" />
-                        <span className="hidden md:inline">Background</span>
-                      </TabsTrigger>
-                    )}
-                    {isFounder && (
-                      <TabsTrigger value="ai-ops" data-testid="tab-ai-ops" aria-label="AI Ops">
-                        <Brain className="w-4 h-4 md:mr-2" />
-                        <span className="hidden md:inline">AI Ops</span>
-                      </TabsTrigger>
-                    )}
-                  </TabsList>
-                </div>
-              </Tabs>
+              <div className="flex-1 min-w-0">
+                <Button variant="outline" size="sm" asChild className="min-h-11 md:min-h-9">
+                  <a href="/founder/agent-queue" data-testid="link-founder-agent-console">
+                    <Brain className="w-4 h-4 mr-2" aria-hidden="true" />
+                    Founder agent console
+                  </a>
+                </Button>
+              </div>
             ) : (
               <div className="flex-1 min-w-0" />
             )}
@@ -789,7 +754,9 @@ export default function CommandCenterPage({ composerDock }: { composerDock?: HTM
         </div>
 
         <div className="flex-1 overflow-hidden">
-          {mainTab === "chat" && (
+          {/* The conversation — the only thing on this page (the founder's
+              agent-console tabs moved to the founder build; see the door above). */}
+          {(
             <div className="flex flex-1 h-full overflow-hidden">
               {!isMobile && (
                 <div className="w-72 border-r border-border flex flex-col">
@@ -1214,18 +1181,6 @@ export default function CommandCenterPage({ composerDock }: { composerDock?: HTM
                 </InComposerDock>
               </div>
             </div>
-          )}
-
-          {mainTab === "team" && isFounder && (
-            <VaTeamPanel />
-          )}
-
-          {mainTab === "agents" && isFounder && (
-            <BackgroundServicesPanel />
-          )}
-
-          {mainTab === "ai-ops" && isFounder && (
-            <AiOperationsPanel />
           )}
         </div>
 

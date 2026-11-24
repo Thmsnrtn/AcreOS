@@ -132,6 +132,15 @@ describe("1. the registry is a pinned transcription of written determinations", 
     expect(rec("IL", "Shelby").classes).toMatchObject({ internal: "unresolved" });
   });
 
+  it("pins the DuPage conditions verbatim — audit #561 §C / N1 cure; dropping or altering a string fails here", () => {
+    expect(rec("IL", "DuPage").conditions).toEqual([
+      "Licence condition (Open Geo-Spatial Data License – DuPage County, v1.0): where the county specifies no other statement, served product must carry \"Contains information licensed under the Open Geo-Spatial Data License – DuPage County\" and, where possible, link to the licence; non-compliance terminates the granted rights automatically — attribution is a release gate.",
+      "The licence grants no right to use \"Personal Information\"; whether the owner/billing names the county itself publishes (BILLNAME as display field) fall inside that exemption was never construed by the county — the ownerName group rests on the pack's published-as-display reading. Inquiry Q2 to the county GIS Division is drafted, not sent.",
+      "The Tax Parcel item's own licenseInfo was never directly read; the licence was read verbatim from the county's ArcGIS-organisation service metadata and corroborated on other county items. If counsel requires item-level attachment, this record's permitted classes drop to unresolved.",
+      "Channel discipline (pack Counsel Flag 3): this record clears the GIS Open Data portal download channel only. The county-hosted ParcelSearch service carries an empty licenseInfo, and the 2012 DuPageMaps terms bar repackaging, resale, or distribution of that application's renderings without written permission — do not source DuPage data by scraping the Parcel Viewer or web apps under this record.",
+    ]);
+  });
+
   it("the field-level math: 14 of 14 counties serve something on display; 13 of 14 on paid lookup (LA stays dark)", () => {
     const counties = FIELD_CLEARANCE_REGISTRY.filter((r) => r.county !== "*");
     for (const r of counties) {

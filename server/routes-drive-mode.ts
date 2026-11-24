@@ -33,6 +33,7 @@ import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId, getUserId } from "./types/request";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
+import { idempotencyMiddleware } from "./middleware/idempotency";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { emitLeadCreated } from "./services/leadEvents";
@@ -76,10 +77,15 @@ export function registerDriveModeRoutes(app: Express): void {
   // One-tap curb capture. Body: { lat, lng, accuracy?, photo_s3_key?, notes? }.
   // Creates a `lead` row with source='driving_for_dollars' + the GPS point,
   // and reverse-geocodes the address when Regrid is configured.
+  // OFF-DEF-1 §2D(ii): idempotency middleware added after getOrCreateOrg to
+  // collapse duplicate SW-queued replays (the SW now mints and sends
+  // Idempotency-Key headers). 409 IDEMPOTENCY_IN_PROGRESS is treated as
+  // retryable in the SW replay loop.
   app.post(
     "/api/field-scout/quick-add",
     isAuthenticated,
     getOrCreateOrg,
+    idempotencyMiddleware,
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const orgId = getOrganizationId(req);

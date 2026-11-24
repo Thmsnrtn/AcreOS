@@ -25,9 +25,11 @@ import {
   leads,
   aiConversations,
   teamMessages,
+  memberCauseSelections,
   supportTickets,
   notes,
   teamMembers,
+  pushSubscriptions,
 } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import crypto from "crypto";
@@ -63,6 +65,8 @@ type DeletionReport = {
     sessions: number;
     aiMemory: number;
     aiConversations: number;
+    pushSubscriptions: number;
+    causeSelections: number;
   };
   leadsAnonymized: number;
   userAnonymized: boolean;
@@ -210,6 +214,21 @@ async function anonymizeUser(userId: string): Promise<DeletionReport> {
     .returning({ id: aiConversations.id })
     .catch(() => [] as { id: number }[]);
 
+  // 5b. Delete web-push subscriptions (DSAR domain push_subscriptions,
+  // erasure: delete). The rows are the subject's own device endpoints plus
+  // their push key material; no other subject's row shares the user_id.
+  const deletedPushSubscriptions = await db.delete(pushSubscriptions)
+    .where(eq(pushSubscriptions.userId, userId))
+    .returning({ id: pushSubscriptions.id });
+
+  // 5c. Delete the member's cause selections (DSAR domain
+  // member_cause_selections, erasure: delete). Only the member's own rows;
+  // the aggregate snapshot/allocation/money tables carry no member id and are
+  // untouched.
+  const deletedCauseSelections = await db.delete(memberCauseSelections)
+    .where(eq(memberCauseSelections.memberUserId, userId))
+    .returning({ id: memberCauseSelections.id });
+
   // 6. REMOVED (PKG-1 C-5): this step anonymized every lead ASSIGNED to the
   // user. Those leads are third parties' personal data and the org's
   // records — the org is their controller, not this user — and they include
@@ -241,6 +260,8 @@ async function anonymizeUser(userId: string): Promise<DeletionReport> {
       sessions: deletedSessions.length,
       aiMemory: deletedAiMemory.length,
       aiConversations: deletedAiConversations.length,
+      pushSubscriptions: deletedPushSubscriptions.length,
+      causeSelections: deletedCauseSelections.length,
     },
     leadsAnonymized,
     userAnonymized: true,
@@ -318,7 +339,7 @@ async function eraseLeadSubject(organizationId: number, leadId: number): Promise
     const noteIds = borrowerNotes.map((n) => n.id);
     throw new DsarErasureRefusedError(
       "RETENTION_REQUIRED_LOAN_RECORDS",
-      `This person is the borrower on note(s) ${noteIds.map((id) => `#${id}`).join(", ")} — loan, 1099-INT and 1098 records require their identity to be retained (GDPR Art. 17(3)(b)). Erasure is refused; the export is available. Founder/counsel ruling S-1 pending.`,
+      `This person is the borrower on note(s) ${noteIds.map((id) => `#${id}`).join(", ")} — loan, 1099-INT and 1098 records require their identity to be retained (GDPR Art. 17(3)(b)). Erasure is refused; the export is available. Borrower-erasure refusal decided — ruling S-1 stands (Tap #5, decided 2026-11-10).`,
       { noteIds },
     );
   }

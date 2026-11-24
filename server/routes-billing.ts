@@ -771,8 +771,12 @@ export function registerBillingRoutes(app: Express): void {
         customerId = customer.id;
       }
 
-      // Check if organization is eligible for 14-day free trial (first subscription only)
-      const trialDays = org.trialUsed ? undefined : 14;
+      // Check if organization is eligible for 14-day free trial (first subscription only).
+      // A15-09: any prior grant counts — trialUsed (set by every grant path
+      // since the cure) OR a trialStartedAt from a pre-cure creation grant.
+      // Keying on trialUsed alone stacked a Stripe trial on top of the
+      // in-app creation trial for orgs created before the cure.
+      const trialDays = org.trialUsed || org.trialStartedAt ? undefined : 14;
       
       // Look up active promo for this price (match by tier name in Stripe product metadata)
       // and detect yearly billing to opt the session into ACH (Pillar 8.5).

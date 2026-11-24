@@ -35,6 +35,7 @@
 import { describe, it, expect } from "vitest";
 import fs from "fs";
 import path from "path";
+import { stripComments } from "../helpers/stripComments";
 
 const CLIENT_SRC = path.resolve(__dirname, "../../client/src");
 const COMMAND_CENTER = path.join(CLIENT_SRC, "pages/command-center.tsx");
@@ -73,8 +74,17 @@ describe("the AI-console union is real (vacuity guard)", () => {
 
 // ─── 1. Founder-gate on /ai surface (fb46d356) ───────────────────────────────
 
-describe("fb46d356 — /ai tabs founder-gate (constitution: Customer AI = Pax only)", () => {
+describe("fb46d356 — /ai founder console is out of the customer's door (constitution: Customer AI = Pax only)", () => {
+  // THE INVARIANT IS UNCHANGED — a customer never sees Team / Background / AI Ops
+  // and never receives the founder's agent codenames on /ai. The MECHANISM got
+  // stronger (P1-9 / X-2, the founder/customer build split): the console used
+  // to be tabs on this customer page behind `FOUNDER_ONLY_TABS` + `isFounder`,
+  // which put ≈30 KB of founder code in the customer bundle. It now renders
+  // only in the founder build, as tabs on /founder/agent-queue, so a customer
+  // session cannot render it by any state at all — the code is not in their
+  // bundle. These assertions follow it there instead of being deleted.
   const src = read(COMMAND_CENTER);
+  const AGENT_QUEUE = path.join(CLIENT_SRC, "pages/founder/agent-queue.tsx");
 
   it("imports the useAuth hook (source of isFounder)", () => {
     expect(src).toMatch(/import\s+\{\s*useAuth\s*\}\s+from\s+["']@\/hooks\/use-auth["']/);
@@ -84,50 +94,61 @@ describe("fb46d356 — /ai tabs founder-gate (constitution: Customer AI = Pax on
     expect(src).toMatch(/const\s+\{\s*isFounder\s*\}\s*=\s*useAuth\(\)/);
   });
 
-  it("declares the FOUNDER_ONLY_TABS allowlist (team, agents, ai-ops)", () => {
-    // The mount-time bouncer reads this list. Drift here = the bouncer no
-    // longer covers a tab. Pin exactly.
-    expect(src).toMatch(
-      /const\s+FOUNDER_ONLY_TABS\s*=\s*\["team",\s*"agents",\s*"ai-ops"\]\s+as\s+const/,
+  it("the customer page no longer contains, imports or renders any founder console panel", () => {
+    // Read the code, not the prose (the file explains the move in comments).
+    const code = stripComments(src);
+    expect(code, "command-center imports the founder AI console again").not.toMatch(
+      /components\/founder(?:\/|-)/,
     );
+    for (const panel of ["VaTeamPanel", "BackgroundServicesPanel", "AiOperationsPanel"]) {
+      expect(code, `${panel} is back in the customer's /ai page`).not.toContain(panel);
+    }
+    for (const testid of ["tab-team", "tab-agents", "tab-ai-ops"]) {
+      expect(code, `the ${testid} trigger is back on the customer's /ai page`).not.toContain(testid);
+    }
+    expect(code).not.toContain("FOUNDER_ONLY_TABS");
   });
 
-  it("redirects non-founders off any FOUNDER_ONLY_TABS via useEffect", () => {
-    // The bouncer must reset mainTab to "chat" when isFounder is false and
-    // the active tab is founder-only (saved URL / hash deep-link case).
-    expect(src).toMatch(/!isFounder\s*&&\s*FOUNDER_ONLY_TABS\.includes\(/);
-    expect(src).toMatch(/setMainTab\("chat"\)/);
+  it("the only founder affordance is a door, shown only when isFounder, that is a full-page link", () => {
+    const code = stripComments(src);
+    const at = code.indexOf('data-testid="link-founder-agent-console"');
+    expect(at, "the founder door is gone from command-center").toBeGreaterThan(-1);
+    // The unit is the whole `{isFounder ? (…) : …}` arm, not the tail after the testid.
+    const gate = code.lastIndexOf("{isFounder ?", at);
+    expect(gate, "the founder door is not behind an isFounder gate").toBeGreaterThan(-1);
+    expect(at - gate, "the isFounder gate is not the one enclosing the door").toBeLessThan(600);
+    const anchor = code.slice(code.lastIndexOf("<a ", at), code.indexOf("</a>", at));
+    // A plain <a href>, not wouter's <Link>: the founder build is a separate
+    // bundle, and a client-side navigation to /founder would land on NotFound.
+    expect(anchor).toContain('href="/founder/agent-queue"');
   });
 
-  it("wraps each TabsTrigger for team/agents/ai-ops with {isFounder && …}", () => {
-    // The trigger only renders on founder sessions. Three sites, all gated.
-    const teamTrigger = /\{isFounder\s*&&\s*\([\s\S]{0,200}data-testid="tab-team"/;
-    const agentsTrigger = /\{isFounder\s*&&\s*\([\s\S]{0,200}data-testid="tab-agents"/;
-    const aiOpsTrigger = /\{isFounder\s*&&\s*\([\s\S]{0,200}data-testid="tab-ai-ops"/;
-    expect(src, "Team trigger must be founder-gated").toMatch(teamTrigger);
-    expect(src, "Agents trigger must be founder-gated").toMatch(agentsTrigger);
-    expect(src, "AI Ops trigger must be founder-gated").toMatch(aiOpsTrigger);
-  });
-
-  it("guards the TabsContent for team/agents/ai-ops with && isFounder", () => {
-    // Defense in depth: even if mainTab were forced to a founder tab value,
-    // the content blocks must not render for non-founders.
-    expect(src).toMatch(/mainTab\s*===\s*"team"\s*&&\s*isFounder/);
-    expect(src).toMatch(/mainTab\s*===\s*"agents"\s*&&\s*isFounder/);
-    expect(src).toMatch(/mainTab\s*===\s*"ai-ops"\s*&&\s*isFounder/);
+  it("the console lives on an already-routed founder page, as tabs, behind FounderProtectedRoute", () => {
+    const queue = read(AGENT_QUEUE);
+    expect(queue).toMatch(/from\s+["']@\/components\/founder\/ai-console["']/);
+    for (const [testid, panel] of [
+      ["tab-team", "VaTeamPanel"],
+      ["tab-agents", "BackgroundServicesPanel"],
+      ["tab-ai-ops", "AiOperationsPanel"],
+    ] as const) {
+      expect(queue, `${testid} trigger is not on /founder/agent-queue`).toContain(`data-testid="${testid}"`);
+      expect(queue, `${panel} is not rendered on /founder/agent-queue`).toContain(`<${panel} />`);
+    }
+    // Reachable only through the founder route tree, behind the founder guard.
+    const routes = read(path.join(CLIENT_SRC, "founder-routes.tsx"));
+    expect(routes).toMatch(
+      /<Route path="\/founder\/agent-queue">\s*\{\(\) => <FounderProtectedRoute component=\{FounderAgentQueuePage\} \/>\}/,
+    );
   });
 
   it("the Tasks tab is gone for everyone and customers get the conversation alone", () => {
     // Pax controls program (spec §3b, §3d): the customer Tasks tab — a
     // dead-letter queue with an invented "$0.02 per task" price — is deleted,
-    // not gated. Customers see no tab strip; the founder-only tabs render
-    // inside `isFounder ? (<Tabs …>) : …`.
+    // not gated. Customers see no tab strip.
     expect(src, "the Tasks tab trigger must not exist").not.toContain('data-testid="tab-tasks"');
     expect(src).not.toContain("TasksTabContent");
     expect(src).not.toContain("$0.02");
     expect(src).not.toContain("Deploy Agent");
-    // The whole tab strip is founder-only; the Chat trigger lives inside it.
-    expect(src).toMatch(/\{isFounder\s*\?\s*\(\s*<Tabs[\s\S]{0,1200}data-testid="tab-chat"/);
     // The gear is a link to the ONE Pax control surface, not an in-place dialog.
     expect(src).toContain('data-testid="button-pax-settings"');
     expect(src).not.toContain("AISettings");

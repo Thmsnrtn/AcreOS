@@ -180,7 +180,7 @@ describe("PaxAskCard — the one card and its four hosts (spec §4.5)", () => {
     expect(card).toContain("PAX_LABELS.expiredAsk");
     expect(card).toContain("/ai?prefill=");
     // While paused, the card says approving still sends (glossary words).
-    expect(card).toContain("PAX_PAUSE_COPY.stillWorks");
+    expect(card).toContain("PAX_PAUSE_STILL_WORKS");
 
     const hook = read(HOOK);
     for (const name of ["usePaxNeedsYou", "usePaxNeedsYouCount", "usePaxAskById", "usePaxAskActions"]) {

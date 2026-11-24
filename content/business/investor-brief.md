@@ -40,8 +40,8 @@ Key capabilities:
 
 **Launch Tiers:**
 - Free: $0/mo — basic CRM, up to 100 leads
-- Starter: $20/mo — Deal Feed, DD reports, campaigns
-- Pro: $49/mo — full AI, compliance, notes, team features
+- Starter: $49/mo — Deal Feed, DD reports, campaigns
+- Pro: $99/mo — full AI, compliance, notes, team features
 
 **Future Revenue Streams:**
 - Payment processing fees (Stripe Connect for note payments)

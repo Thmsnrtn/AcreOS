@@ -63,10 +63,30 @@ export function OfflineIndicator() {
 
   if (!bannerVisible) return null;
 
+  // One banner shell for all three states (bundle trim, EL-P1 fix
+  // round): the states differ only in palette, icon, copy and whether
+  // the force-sync / dismiss actions ride along.
+  const bannerClass =
+    "fixed top-0 left-0 right-0 z-toast px-4 py-2 text-center text-sm font-medium flex items-center justify-center";
+  const warnClass = `${bannerClass} bg-acr-warn-soft text-acr-warn-soft-ink flex-wrap`;
+  const changes = `${queuedCount} ${queuedCount === 1 ? "change is" : "changes are"}`;
+  const dismissButton = (label: string, testId: string, className: string) => (
+    <Button
+      aria-label={label}
+      size="sm"
+      variant="ghost"
+      className={className}
+      onClick={() => setDismissed(true)}
+      data-testid={testId}
+    >
+      <X className="w-4 h-4" aria-hidden="true" />
+    </Button>
+  );
+
   if (showReconnecting) {
     return (
       <div
-        className="fixed top-0 left-0 right-0 z-toast bg-acr-pos text-white px-4 py-2 text-center text-sm font-medium flex items-center justify-center gap-2"
+        className={`${bannerClass} bg-acr-pos text-white gap-2`}
         data-testid="reconnecting-indicator"
       >
         <RefreshCw className="w-4 h-4 animate-spin" aria-hidden="true" />
@@ -78,14 +98,9 @@ export function OfflineIndicator() {
   // Online but mutations still queued (e.g., a backend hiccup).
   if (isOnline && queuedCount > 0) {
     return (
-      <div
-        className="fixed top-0 left-0 right-0 z-toast bg-acr-warn-soft text-acr-warn-soft-ink px-4 py-2 text-center text-sm font-medium flex items-center justify-center gap-3 flex-wrap"
-        data-testid="queued-indicator"
-      >
+      <div className={`${warnClass} gap-3`} data-testid="queued-indicator">
         <CheckCircle2 className="w-4 h-4" aria-hidden="true" />
-        <span>
-          {queuedCount} {queuedCount === 1 ? "change is" : "changes are"} waiting to sync.
-        </span>
+        <span>{changes} waiting to sync.</span>
         <Button
           size="sm"
           variant="outline"
@@ -95,55 +110,28 @@ export function OfflineIndicator() {
           aria-label="Force sync queued changes now"
           data-testid="button-force-sync"
         >
-          {syncStatus === "syncing" ? (
-            <>
-              <RefreshCw className="w-3 h-3 mr-1 animate-spin" aria-hidden="true" />
-              Syncing…
-            </>
-          ) : (
-            <>
-              <RefreshCw className="w-3 h-3 mr-1" aria-hidden="true" />
-              Sync now
-            </>
-          )}
+          <RefreshCw
+            className={`w-3 h-3 mr-1${syncStatus === "syncing" ? " animate-spin" : ""}`}
+            aria-hidden="true"
+          />
+          {syncStatus === "syncing" ? "Syncing…" : "Sync now"}
         </Button>
-        <Button
-          aria-label="Dismiss sync banner"
-          size="sm"
-          variant="ghost"
-          className="h-7 px-1 text-acr-warn"
-          onClick={() => setDismissed(true)}
-          data-testid="button-dismiss-queued"
-        >
-          <X className="w-4 h-4" aria-hidden="true" />
-        </Button>
+        {dismissButton("Dismiss sync banner", "button-dismiss-queued", "h-7 px-1 text-acr-warn")}
       </div>
     );
   }
 
   // Offline.
   return (
-    <div
-      className="fixed top-0 left-0 right-0 z-toast bg-acr-warn-soft text-acr-warn-soft-ink px-4 py-2 text-center text-sm font-medium flex items-center justify-center gap-2 flex-wrap"
-      data-testid="offline-indicator"
-    >
+    <div className={`${warnClass} gap-2`} data-testid="offline-indicator">
       <WifiOff className="w-4 h-4" aria-hidden="true" />
       <span>
         You're offline.{" "}
         {queuedCount > 0
-          ? `${queuedCount} ${queuedCount === 1 ? "change is" : "changes are"} queued; they'll sync when you're back.`
+          ? `${changes} queued; they'll sync when you're back.`
           : "Changes will sync when reconnected."}
       </span>
-      <Button
-        aria-label="Dismiss offline notice"
-        size="sm"
-        variant="ghost"
-        className="ml-2 text-acr-warn"
-        onClick={() => setDismissed(true)}
-        data-testid="button-dismiss-offline"
-      >
-        <X className="w-4 h-4" aria-hidden="true" />
-      </Button>
+      {dismissButton("Dismiss offline notice", "button-dismiss-offline", "ml-2 text-acr-warn")}
     </div>
   );
 }

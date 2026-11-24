@@ -4,10 +4,12 @@
  * Every DSAR intake (public form, support inbox, future channels) stamps its
  * deadline from this constant instead of carrying its own literal.
  *
- * `DSAR_CLOCK_HOURS` is the OPERATIONAL default: the stricter 24h target. It
- * changes NO published promise — `routes-dsar.ts` still says 30 days in prose.
- * Which clock is legally canonical is counsel's open question Q-C2; until
- * counsel answers, this module is the operating target, not a legal claim.
+ * `DSAR_CLOCK_HOURS` is the OPERATIONAL default: the stricter 24h target.
+ * Requester-facing DSAR copy was conformed to this posture by Autopilot
+ * B-3 (2026-11-18): every intake stamps its deadline from this constant
+ * and describes the 24-hour target. Which clock is legally canonical is
+ * counsel's open question Q-C2; until counsel answers, this module is
+ * the operating target, not a legal claim.
  *
  * Pure functions, no imports.
  */

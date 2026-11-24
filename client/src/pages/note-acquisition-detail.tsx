@@ -277,6 +277,23 @@ export default function NoteAcquisitionDetailPage() {
         />
       </div>
 
+      {/* Price-to-yield decision desk (Step 0 N4) — the buy call on this
+          acquisition, priced by the note_price_yield engine and recorded
+          under the note_investor pack with a review date. */}
+      <Card className="mb-6">
+        <div className="p-4 flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold">Price this note to your yield</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Work backwards from the yield you require to the most you can pay — then record the buy call.
+            </p>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => navigate("/notes/underwrite")} data-testid="acquisition-underwrite-link">
+            Open the desk <ChevronRight className="w-3.5 h-3.5 ml-1" aria-hidden="true" />
+          </Button>
+        </div>
+      </Card>
+
       {/* Diligence checklist */}
       <Card className="mb-6">
         <div className="p-5">

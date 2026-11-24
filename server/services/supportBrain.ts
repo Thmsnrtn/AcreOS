@@ -33,6 +33,12 @@ function getOpenAI(): OpenAI {
   openaiSingleton ??= new OpenAI({
     apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
     baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+    // P1-16 D1: 30s per request + 1 retry. The SDK default is 10 minutes /
+    // 2 retries — under any provider stall that holds the Node socket for
+    // up to 30 minutes per request, exhausting the connection pool.
+    // Mirrors the aiRouter precedent; this bound is the per-call ceiling.
+    timeout: 30_000,
+    maxRetries: 1,
   });
   return openaiSingleton;
 }

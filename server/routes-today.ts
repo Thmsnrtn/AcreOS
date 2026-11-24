@@ -42,6 +42,8 @@ import {
 import { Router, type Response } from "express";
 import { and, desc, eq, gt, gte, inArray, notInArray, sql } from "drizzle-orm";
 import { paxObservations, leads as leadsTable, deals as dealsTable, properties as propertiesTable, payments as paymentsTable, todayQueueState, paxSends, paxScheduledTaskRuns, paxMorningBriefs } from "@shared/schema";
+import { acquiredNotes as acquiredNotesTable } from "@shared/schema/notes-vertical";
+import { delinquentAcquiredNotes, type AcquiredBookNote } from "./services/finance/acquiredBook";
 import type { Persona } from "@shared/models/auth";
 import { db, storage } from "./storage";
 import { runPortfolioHealthJob, getActiveAlerts } from "./services/portfolioHealth";
@@ -1139,6 +1141,35 @@ interface BuiltQueue {
   };
 }
 
+/**
+ * H-DEF-4 — an acquired note's delinquency raises a Today item, as the
+ * serviced book's lateness does. Pure builder (rows in, items out) so the
+ * walk's exact shape is unit-testable: the delinquency is derived LIVE
+ * from nextPaymentDate (never the stored days_delinquent column —
+ * H-DEF-3), the item names the ACQUIRED book in its title, and a note
+ * whose due date cannot be determined raises nothing ("unknown is not
+ * late"). Capped at 3, worst first, mirroring the ai-queue's caps.
+ */
+export function buildAcquiredDelinquencyQueueItems(
+  rows: AcquiredBookNote[],
+  now: Date,
+): DecisionItem[] {
+  return delinquentAcquiredNotes(rows, now)
+    .slice(0, 3)
+    .map(({ note, daysDelinquent }) => ({
+      id: `acquired-note-delinquent-${note.id}`,
+      source: "portfolio-alert" as const,
+      priority: (daysDelinquent > 30 ? "high" : "medium") as "high" | "medium",
+      title: `Acquired note ${note.noteNumber} is ${daysDelinquent} day${daysDelinquent === 1 ? "" : "s"} past due`,
+      description: `${note.payerName} · $${(Number(note.currentBalanceCents || 0) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} balance · acquired book`,
+      actionLabel: "View notes",
+      actionUrl: "/notes",
+      rank: 210 + (daysDelinquent > 30 ? 0 : 1),
+      // A real due date already passed: missed dollars, honestly claimed.
+      urgency: "money" as QueueUrgency,
+    }));
+}
+
 async function buildActiveQueue(orgId: number, now: Date): Promise<BuiltQueue> {
   const [
     paxPriorities,
@@ -1218,12 +1249,39 @@ async function buildActiveQueue(orgId: number, now: Date): Promise<BuiltQueue> {
 
   const aiQueue = await gatherAiQueue(orgId, now, allLeads, allDeals, allProperties);
 
+  // H-DEF-4: acquired-book delinquency items. A failed read degrades to
+  // no items rather than breaking Today (the queue-state subtract below
+  // follows the same honest-degradation pattern).
+  let acquiredItems: DecisionItem[] = [];
+  try {
+    const acquiredRows = await db
+      .select({
+        id: acquiredNotesTable.id,
+        noteNumber: acquiredNotesTable.noteNumber,
+        payerName: acquiredNotesTable.payerName,
+        status: acquiredNotesTable.status,
+        originalPrincipalCents: acquiredNotesTable.originalPrincipalCents,
+        currentBalanceCents: acquiredNotesTable.currentBalanceCents,
+        paymentAmountCents: acquiredNotesTable.paymentAmountCents,
+        interestRateBps: acquiredNotesTable.interestRateBps,
+        nextPaymentDate: acquiredNotesTable.nextPaymentDate,
+      })
+      .from(acquiredNotesTable)
+      .where(eq(acquiredNotesTable.organizationId, orgId));
+    acquiredItems = buildAcquiredDelinquencyQueueItems(acquiredRows, now);
+  } catch (e) {
+    logger.warn("Today: acquired-book delinquency gather failed — queue without it", {
+      error: e instanceof Error ? e.message : String(e),
+    });
+  }
+
   // One ranking function (Tier 3C): overdue → money-touching →
   // time-sensitive → routine; see compareQueueItems for the full contract.
   const mergedQueue: DecisionItem[] = [
     ...paxPriorities,
     ...taskItems,
     ...alertItems,
+    ...acquiredItems,
     ...paxNoticed,
     ...paxSuggests,
     ...aiQueue,

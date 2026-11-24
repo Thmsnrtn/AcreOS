@@ -7,9 +7,11 @@
  * cannot see because they live in the database and the founder's controls:
  *
  *   1. CONTROLS — nothing is released while the env panic stop is engaged,
- *      dispatch is switched off, the hand's domain is paused, or the domain
- *      sits at OBSERVE (the panic stop's quarantine). A founder's "pause" or
- *      "stop" therefore reaches delegated sends, not only new dispatches.
+ *      either ops kill switch is engaged (autopilot_pause / coo_stand_down,
+ *      B-4), dispatch is switched off, the hand's domain is paused, or the
+ *      domain sits at OBSERVE (the panic stop's quarantine). A founder's
+ *      "pause" or "stop" therefore reaches delegated sends, not only new
+ *      dispatches.
  *   2. THE HAND'S DELEGATED RULES — the role tools' rules, re-read from the
  *      frozen args against live data:
  *        apply_refund — the hand's own eligibility (org-owned purchase,
@@ -42,6 +44,16 @@ export async function ownerEmailOf(organizationId: number): Promise<string | nul
 export async function delegationBlockedByControls(domain: AutopilotDomain): Promise<string | null> {
   const { isPanicStopped, getEffectiveSettings } = await import("./settings");
   if (isPanicStopped()) return "the panic stop is engaged";
+  // B-4: the ops kill switches are real stops, not ledger theatre. Either one
+  // engaged blocks every delegated release — at the sweep (autoWitness /
+  // routineSupportSweep) and again at execution (executeHandWitnessed), so a
+  // switch flipped between sweep and send still wins. A read failure throws
+  // and the callers fail closed (skip / refuse), like the domain-level read
+  // below. A founder's own tap is not a delegated release and never reaches
+  // this gate.
+  const { isAutopilotPaused, isCooStoodDown } = await import("../../services/killSwitches");
+  if ((await isAutopilotPaused()).engaged) return "the autopilot is paused (kill switch autopilot_pause engaged)";
+  if ((await isCooStoodDown()).engaged) return "the COO is stood down (kill switch coo_stand_down engaged)";
   const settings = await getEffectiveSettings();
   if (!settings.dispatchEnabled) return "the autopilot's hands are switched off (dispatch disabled)";
   const { getControlState } = await import("./founderControls");

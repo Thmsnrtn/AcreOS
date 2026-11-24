@@ -141,7 +141,7 @@ The only two tables the second SQL pass created were `earnest_money_events` and
 `rehab_photos`, and each had a single unmet edge —
 `0086_earnest_money_events.sql` needs `earnest_money_holds`,
 `0089_rehab_photos.sql` needs `rehabs` **and** `rehab_line_items` — all three
-parents created by `migrate.mjs`, which runs after. `0085_rebuild_prereq_tables.sql`
+parents created by `migrate.mjs`, which runs after. `0083_rebuild_prereq_tables.sql`
 creates those three parents ahead of their dependants (definitions copied
 verbatim from migrate.mjs; both sides use `IF NOT EXISTS`, so whichever runs
 first wins).

@@ -55,7 +55,7 @@ import {
   rentCharges,
   rentPayments,
 } from "@shared/schema";
-import { emitRentalEvent } from "./workflow-engine";
+import { emitRentalEvent, emitPaymentEvent } from "./workflow-engine";
 import { tenantDisplayName } from "@shared/rental/tenantName";
 import { logger } from "../utils/logger";
 import { clock } from "../utils/clock";
@@ -432,6 +432,123 @@ export function emitLeaseExpiryEvents(ctx: ResolvedLeaseContext): void {
     logger.warn(`[rentalEvents] emit lease expiry events failed for lease ${ctx.leaseId}`, {
       metadata: { error: err instanceof Error ? err.message : String(err) },
     });
+  }
+}
+
+// ── payment.received for rent (Wave B — "wire the engine") ─────────────────
+// Moved here from routes-rent-ledger.ts in P3-3: the rent ledger gained a
+// second posting path (rent checkout on the landlord's own Stripe account,
+// services/rental/rentCollection.ts) and both paths must emit the identical
+// `payment.received` from ONE implementation — this module is the landlord
+// lifecycle's emit seam. routes-rent-ledger.ts re-exports this family for its
+// existing importers.
+//
+// Money-path discipline: the payment insert + charge updates run inside a db
+// transaction; the emit runs AFTER that transaction has committed and is
+// wrapped so a workflow failure can never fail, roll back, or double-post
+// rent. Never throws back into the caller.
+//
+// `entityId` is 0 because rent_payments is uuid-keyed while
+// emitPaymentEvent's entityId is numeric; the real key rides in
+// `data.paymentId`.
+const UUID_KEYED_PAYMENT_ENTITY_ID = 0;
+
+const RENT_DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Whole days between a charge's due date and the date the payment was
+ * received. Both are stored `date` columns (YYYY-MM-DD). Returns null when
+ * the payment applied to no open charge (nothing to be late against) or a
+ * date is unparseable — the event carries `null`, never a guessed number.
+ */
+export function daysLateForRentPayment(
+  dueDate: string | null | undefined,
+  receivedAt: string | null | undefined,
+): number | null {
+  if (!dueDate || !receivedAt) return null;
+  const due = new Date(`${String(dueDate).slice(0, 10)}T00:00:00.000Z`).getTime();
+  const paid = new Date(`${String(receivedAt).slice(0, 10)}T00:00:00.000Z`).getTime();
+  if (Number.isNaN(due) || Number.isNaN(paid)) return null;
+  const diffDays = Math.floor((paid - due) / RENT_DAY_MS);
+  return diffDays > 0 ? diffDays : 0;
+}
+
+/** Everything the emit needs, read from rows that are already committed. */
+export interface PostedRentPayment {
+  organizationId: number;
+  leaseId: string;
+  paymentId: string;
+  rentChargeId: string | null;
+  amountCents: number;
+  isPartial: boolean;
+  payorType: string;
+  method: string | null;
+  receivedAt: string;
+  dueDate: string | null;
+  chargeAmountCents: number | null;
+  /** rent_charges.balance_cents AFTER this payment applied. */
+  chargeBalanceAfterCents: number | null;
+  legalPosture: string | null;
+  /** Cents that landed on a charge. Omitted ⇒ reported as null, never guessed. */
+  allocatedCents?: number | null;
+  /** Cents held as an explicit credit because no open charge was left. */
+  unappliedCents?: number | null;
+  /** How many charges this one payment cured or reduced. */
+  allocationLineCount?: number | null;
+  /** Plain-language "where did my money go" line. */
+  allocationExplanation?: string | null;
+}
+
+/** The `data` bag workflow conditions match on / templates interpolate. */
+export function buildRentPaymentEventData(p: PostedRentPayment): Record<string, any> {
+  return {
+    source: "rent_ledger",
+    // Identity
+    leaseId: p.leaseId,
+    paymentId: p.paymentId,
+    rentChargeId: p.rentChargeId,
+    // Money
+    amountCents: p.amountCents,
+    amount: p.amountCents / 100,
+    chargeAmountCents: p.chargeAmountCents,
+    chargeBalanceAfterCents: p.chargeBalanceAfterCents,
+    // Shape
+    isPartial: p.isPartial,
+    isFullPayment: p.chargeBalanceAfterCents === null ? null : p.chargeBalanceAfterCents === 0,
+    payorType: p.payorType,
+    paymentMethod: p.method,
+    paymentDate: p.receivedAt,
+    dueDate: p.dueDate,
+    daysLate: daysLateForRentPayment(p.dueDate, p.receivedAt),
+    legalPosture: p.legalPosture,
+    // Allocation shape — a payment can now cure several months at once.
+    allocatedCents: p.allocatedCents ?? null,
+    unappliedCents: p.unappliedCents ?? null,
+    chargesTouched: p.allocationLineCount ?? null,
+    allocationExplanation: p.allocationExplanation ?? null,
+  };
+}
+
+/**
+ * Fire-and-forget workflow emit for rent that is ALREADY committed to the
+ * ledger. Never throws.
+ */
+export function emitRentPaymentReceived(p: PostedRentPayment): void {
+  try {
+    emitPaymentEvent(
+      "payment.received",
+      p.organizationId,
+      UUID_KEYED_PAYMENT_ENTITY_ID,
+      buildRentPaymentEventData(p),
+    );
+  } catch (err) {
+    // Swallowed on purpose — the rent is banked; a workflow fault must not
+    // change the response or the ledger.
+    logger.error(
+      "[BH-3] rent payment workflow emit failed (payment already posted)",
+      err instanceof Error ? err : undefined,
+      { organizationId: p.organizationId, leaseId: p.leaseId, paymentId: p.paymentId },
+    );
   }
 }
 

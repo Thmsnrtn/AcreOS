@@ -5,7 +5,7 @@ import fs from "fs";
 import { execSync } from "child_process";
 import { visualizer } from "rollup-plugin-visualizer";
 import viteCompression from "vite-plugin-compression";
-import type { Plugin } from "vite";
+import type { Plugin, UserConfig } from "vite";
 import { rechartsSharedBabelHelpersPlugin } from "./script/vite-shared-babel-helpers";
 import { buildLearnContentIndex } from "./scripts/learn-content-index.mjs";
 
@@ -20,7 +20,15 @@ import { buildLearnContentIndex } from "./scripts/learn-content-index.mjs";
 // Written in writeBundle, not generateBundle: later plugins still rename some
 // chunks after generateBundle (measured: a chunk with a CSS import), and a
 // graph naming files that do not exist would be a graph of another build.
-function chunkGraphPlugin(): Plugin {
+//
+// One graph PER OUTPUT (P1-9 / X-2): the customer build writes
+// dist/client-chunk-graph.json, the founder build dist/founder-chunk-graph.json.
+// They share a directory, so a single file name would let the second build
+// silently replace the first — and the route-closure gate would then read the
+// founder graph and call the customer bundle clean.
+const CUSTOMER_CHUNK_GRAPH_FILE = "client-chunk-graph.json";
+const FOUNDER_CHUNK_GRAPH_FILE = "founder-chunk-graph.json";
+function chunkGraphPlugin(graphFile: string): Plugin {
   const rootDir = path.resolve(import.meta.dirname);
   const rel = (id: string) =>
     path.relative(rootDir, id.replace(/^\0/, "").split("?")[0]).split(path.sep).join("/");
@@ -57,7 +65,7 @@ function chunkGraphPlugin(): Plugin {
       }
       const outDir = options.dir ?? path.resolve(rootDir, "dist/public");
       fs.writeFileSync(
-        path.resolve(outDir, "..", "client-chunk-graph.json"),
+        path.resolve(outDir, "..", graphFile),
         JSON.stringify({ version: 2, chunks, dynamicImports: dynamicImporters }, null, 1),
       );
     },
@@ -112,14 +120,17 @@ function jspdfUnusedOptionalDepsPlugin(): Plugin {
 // resolves to a stub whose entry points throw if ever invoked: a future
 // caller fails loudly instead of quietly shipping the weight.
 //
-// json-schema-processors.js is deliberately NOT stubbed. classic/schemas.js
-// reads processors.aggregateChecks(inst) inside the DERIVED PUBLIC
-// ACCESSORS on live schema instances — ZodString.format / .minLength /
-// .maxLength, ZodNumber.minValue / .maxValue / .format — so stubbing that
-// module would break real schema API, not just JSON Schema generation.
-// Only the generator entry points go: the standalone z.toJSONSchema()
-// (which lives in the processors module) reaches processSchema in the
-// stubbed module and throws there, which is the same loud failure.
+// json-schema-processors.js is NOT stubbed by THIS plugin: classic/
+// schemas.js reads processors.aggregateChecks(inst) inside the DERIVED
+// PUBLIC ACCESSORS on live schema instances — ZodString.format /
+// .minLength / .maxLength, ZodNumber.minValue / .maxValue / .format — so
+// replacing that module wholesale would break real schema API, not just
+// JSON Schema generation. The surgical half lives in
+// zodJsonSchemaProcessorsPlugin (BD-5, below): it keeps aggregateChecks
+// verbatim and stubs only the generation-only processors. The standalone
+// z.toJSONSchema() (which lives in the processors module) reaches
+// processSchema in the stubbed module here and throws there, which is
+// the same loud failure.
 //
 // The stub is matched two ways, because zod reaches the generator through
 // two specifier shapes: classic/schemas.js imports
@@ -170,6 +181,185 @@ function zodJsonSchemaUnusedPlugin(): Plugin {
         `export const process = unavailable;`,
         `export const extractDefs = unavailable;`,
         `export const finalize = unavailable;`,
+      ].join("\n");
+    },
+  };
+}
+
+// BD-5 (bundle diet, 2026-11-18) — the surgical half of the processors
+// module. json-schema-processors.js (~35 KB source) ships in the client
+// bundle because classic/schemas.js reads ONE export from it on live
+// schema instances: aggregateChecks, folded into the derived public
+// accessors (ZodString.format / .minLength / .maxLength, ZodNumber
+// .minValue / .maxValue / .format, …). Everything else the module
+// carries — the ~40 per-type processors, allProcessors, and the
+// standalone toJSONSchema — runs only during JSON Schema generation,
+// which the plugin above already stubs at the generator. So this plugin
+// resolves the processors module (for zod-internal importers only, the
+// same two specifier shapes as above) to a stub that keeps
+// aggregateChecks REAL — copied verbatim below (the range tables are
+// value-verbatim: their @__PURE__ IIFE wrappers are unwrapped), with its
+// module-local helpers, from zod 4.x's
+// core/json-schema-processors.js + core/util.js — and makes every
+// generation-only export throw if ever invoked, the same loud failure
+// as the generator stub. tests/unit/zodProcessorsStub.test.ts pins the
+// verbatim copy against the installed zod (a zod bump that changes
+// aggregateChecks fails there until this copy is refreshed) and runs a
+// behaviour battery over the live accessors. Desync hazard, stated
+// plainly: if zod changes aggregateChecks' helpers or tables and this
+// copy is not refreshed, the accessors above would fold checks with
+// stale rules — the pin test is the guard, and it reads the INSTALLED
+// module, never a remembered copy.
+const ZOD_PROCESSORS_VERBATIM = [
+  `const NUMBER_FORMAT_RANGES = {`,
+  `    safeint: [Number.MIN_SAFE_INTEGER, Number.MAX_SAFE_INTEGER],`,
+  `    int32: [-2147483648, 2147483647],`,
+  `    uint32: [0, 4294967295],`,
+  `    float32: [-3.4028234663852886e38, 3.4028234663852886e38],`,
+  `    float64: [-Number.MAX_VALUE, Number.MAX_VALUE],`,
+  `};`,
+  `const BIGINT_FORMAT_RANGES = {`,
+  `    int64: [BigInt("-9223372036854775808"), BigInt("9223372036854775807")],`,
+  `    uint64: [BigInt(0), BigInt("18446744073709551615")],`,
+  `};`,
+  `const narrowMin = (agg, key, value) => {`,
+  `    if (agg[key] === undefined || value > agg[key])`,
+  `        agg[key] = value;`,
+  `};`,
+  `const narrowMax = (agg, key, value) => {`,
+  `    if (agg[key] === undefined || value < agg[key])`,
+  `        agg[key] = value;`,
+  `};`,
+  `const narrowBoth = (agg, value) => {`,
+  `    narrowMin(agg, "minimum", value);`,
+  `    narrowMax(agg, "maximum", value);`,
+  `};`,
+  `const addDivisor = (agg, value) => {`,
+  `    agg.multipleOf ?? (agg.multipleOf = []);`,
+  `    if (!agg.multipleOf.includes(value))`,
+  `        agg.multipleOf.push(value);`,
+  `};`,
+  `const addPattern = (agg, pattern) => {`,
+  `    agg.patterns ?? (agg.patterns = new Set());`,
+  `    agg.patterns.add(pattern);`,
+  `};`,
+  `const intersectMime = (agg, mime) => {`,
+  `    agg.mime = agg.mime ? agg.mime.filter((m) => mime.includes(m)) : [...mime];`,
+  `};`,
+  `// last-wins, matching the bag's historical write order; the flag keeps an integer format from being lost to a later float one`,
+  `const setFormat = (agg, format) => {`,
+  `    agg.format = format;`,
+  `    if (format.includes("int"))`,
+  `        agg.isInt = true;`,
+  `};`,
+  `const minContributor = (agg, def) => narrowMin(agg, "minimum", def.minimum);`,
+  `const maxContributor = (agg, def) => narrowMax(agg, "maximum", def.maximum);`,
+  `const formatContributor = (ranges) => (agg, def) => {`,
+  `    setFormat(agg, def.format);`,
+  `    const [minimum, maximum] = ranges[def.format];`,
+  `    narrowMin(agg, "minimum", minimum);`,
+  `    narrowMax(agg, "maximum", maximum);`,
+  `};`,
+  `const contributors = {`,
+  `    greater_than: (agg, def) => narrowMin(agg, def.inclusive ? "minimum" : "exclusiveMinimum", def.value),`,
+  `    less_than: (agg, def) => narrowMax(agg, def.inclusive ? "maximum" : "exclusiveMaximum", def.value),`,
+  `    multiple_of: (agg, def) => addDivisor(agg, def.value),`,
+  `    number_format: formatContributor(NUMBER_FORMAT_RANGES),`,
+  `    bigint_format: formatContributor(BIGINT_FORMAT_RANGES),`,
+  `    min_length: minContributor,`,
+  `    max_length: maxContributor,`,
+  `    length_equals: (agg, def) => narrowBoth(agg, def.length),`,
+  `    min_size: minContributor,`,
+  `    max_size: maxContributor,`,
+  `    size_equals: (agg, def) => narrowBoth(agg, def.size),`,
+  `    string_format: (agg, def) => {`,
+  `        setFormat(agg, def.format);`,
+  `        if (def.pattern)`,
+  `            addPattern(agg, def.pattern);`,
+  `        if (def.format === "base64" || def.format === "base64url")`,
+  `            agg.contentEncoding = def.format;`,
+  `        if (def.local || def.precision === -1)`,
+  `            agg.laxFormat = true;`,
+  `    },`,
+  `    mime_type: (agg, def) => intersectMime(agg, def.mime),`,
+  `};`,
+];
+const ZOD_AGGREGATE_CHECKS_VERBATIM = [
+  `export function aggregateChecks(schema) {`,
+  `    const agg = {};`,
+  `    const def = schema._zod.def;`,
+  `    // a format schema is its own first check, same rule as $ZodType init`,
+  `    const list = schema._zod.traits.has("$ZodCheck")`,
+  `        ? [schema, ...(def.checks ?? [])]`,
+  `        : (def.checks ?? []);`,
+  `    for (const ch of list)`,
+  `        contributors[ch._zod.def.check]?.(agg, ch._zod.def);`,
+  `    // reconcile with the bag so third-party onattach contributions still land; first-party residue is never tighter than the fold, so merging it back is idempotent for one and additive for the other`,
+  `    const bag = schema._zod.bag;`,
+  `    if (bag.minimum !== undefined)`,
+  `        narrowMin(agg, "minimum", bag.minimum);`,
+  `    if (bag.exclusiveMinimum !== undefined)`,
+  `        narrowMin(agg, "exclusiveMinimum", bag.exclusiveMinimum);`,
+  `    if (bag.maximum !== undefined)`,
+  `        narrowMax(agg, "maximum", bag.maximum);`,
+  `    if (bag.exclusiveMaximum !== undefined)`,
+  `        narrowMax(agg, "exclusiveMaximum", bag.exclusiveMaximum);`,
+  `    if (bag.multipleOf !== undefined)`,
+  `        addDivisor(agg, bag.multipleOf);`,
+  `    if (bag.format !== undefined) {`,
+  `        agg.format ?? (agg.format = bag.format);`,
+  `        if (bag.format.includes("int"))`,
+  `            agg.isInt = true;`,
+  `    }`,
+  `    if (bag.mime)`,
+  `        intersectMime(agg, bag.mime);`,
+  `    for (const pattern of bag.patterns ?? [])`,
+  `        addPattern(agg, pattern);`,
+  `    return agg;`,
+  `}`,
+];
+const ZOD_GENERATION_PROCESSORS = [
+  "stringProcessor", "numberProcessor", "booleanProcessor", "bigintProcessor", "symbolProcessor",
+  "nullProcessor", "undefinedProcessor", "voidProcessor", "neverProcessor", "anyProcessor",
+  "unknownProcessor", "dateProcessor", "enumProcessor", "literalProcessor", "nanProcessor",
+  "templateLiteralProcessor", "fileProcessor", "successProcessor", "customProcessor", "functionProcessor",
+  "transformProcessor", "mapProcessor", "setProcessor", "arrayProcessor", "objectProcessor",
+  "unionProcessor", "intersectionProcessor", "tupleProcessor", "recordProcessor", "nullableProcessor",
+  "nonoptionalProcessor", "defaultProcessor", "prefaultProcessor", "catchProcessor", "pipeProcessor",
+  "readonlyProcessor", "promiseProcessor", "optionalProcessor", "lazyProcessor",
+];
+const ZOD_ALL_PROCESSOR_KEYS = [
+  "string", "number", "boolean", "bigint", "symbol", "null", "undefined", "void", "never", "any",
+  "unknown", "date", "enum", "literal", "nan", "template_literal", "file", "success", "custom",
+  "function", "transform", "map", "set", "array", "object", "union", "intersection", "tuple",
+  "record", "nullable", "nonoptional", "default", "prefault", "catch", "pipe", "readonly",
+  "promise", "optional", "lazy",
+];
+function zodJsonSchemaProcessorsPlugin(): Plugin {
+  const STUB = "\0zod-json-schema-processors";
+  return {
+    name: "acreos-zod-json-schema-processors",
+    enforce: "pre",
+    resolveId(source, importer) {
+      if (!importer || !/node_modules[\\/]zod[\\/]/.test(importer)) return null;
+      const normalized = source.replace(/\\/g, "/");
+      if (normalized.endsWith("core/json-schema-processors.js")) return STUB;
+      if (normalized.startsWith(".")) {
+        const importerDir = importer.replace(/\\/g, "/").split("/").slice(0, -1).join("/");
+        const resolved = `${importerDir}/${normalized.replace(/^\.\//, "")}`;
+        if (resolved.endsWith("zod/v4/core/json-schema-processors.js")) return STUB;
+      }
+      return null;
+    },
+    load(id) {
+      if (id !== STUB) return null;
+      return [
+        `const unavailable = () => { throw new Error("zod JSON Schema generation (the per-type processors / toJSONSchema) is not bundled in AcreOS (vite.config.ts zodJsonSchemaProcessorsPlugin)"); };`,
+        ...ZOD_PROCESSORS_VERBATIM,
+        ...ZOD_AGGREGATE_CHECKS_VERBATIM,
+        ...ZOD_GENERATION_PROCESSORS.map((n) => `export const ${n} = unavailable;`),
+        `export const allProcessors = { ${ZOD_ALL_PROCESSOR_KEYS.map((k) => `${k}: unavailable`).join(", ")} };`,
+        `export const toJSONSchema = unavailable;`,
       ].join("\n");
     },
   };
@@ -308,6 +498,101 @@ function tnBoundariesPlugin(): Plugin {
   };
 }
 
+// The Pax glossary's long copy (shared/pax-glossary.json, ~15 KB of static
+// reference text generated verbatim from shared/pax-glossary.ts by
+// scripts/pax-glossary-asset.mts) is data, not code. It used to ride inside
+// the entry chunk as shared/pax-glossary.ts (16,714 B rendered) because the
+// shell surfaces import the glossary's labels. The shell subset now lives in
+// shared/pax-glossary-core.ts (bundled, synchronous), and the long copy
+// ships as this static asset: the one fetch-tolerant consumer, the
+// Settings → Pax page, loads it via client/src/lib/pax-glossary.tsx —
+// shell first, text on arrival (the #524 learn-content discipline). The
+// server keeps importing the TS module directly and is untouched. This
+// plugin is only the Vite wiring: it copies the JSON VERBATIM into
+// dist/public/ at build end (the production static server serves it from
+// there) and serves the same URL from disk under the dev server so dev
+// behaviour is unchanged.
+const PAX_GLOSSARY_URL = "/pax-glossary.json";
+function paxGlossaryPlugin(): Plugin {
+  const rootDir = path.resolve(import.meta.dirname);
+  const sourcePath = path.join(rootDir, "shared", "pax-glossary.json");
+  let outDir = path.resolve(rootDir, "dist/public");
+  return {
+    name: "acreos-pax-glossary",
+    configResolved(config) {
+      outDir = config.build.outDir;
+    },
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        if ((req.url ?? "").split("?")[0] !== PAX_GLOSSARY_URL) return next();
+        res.setHeader("Content-Type", "application/json");
+        const stream = fs.createReadStream(sourcePath);
+        stream.on("error", () => {
+          res.statusCode = 404;
+          res.end();
+        });
+        stream.pipe(res);
+      });
+    },
+    closeBundle() {
+      const dest = path.join(outDir, PAX_GLOSSARY_URL.replace(/^\//, ""));
+      fs.mkdirSync(path.dirname(dest), { recursive: true });
+      fs.copyFileSync(sourcePath, dest);
+    },
+  };
+}
+
+// The legal documents' section bodies (client/src/legal/*.html, ~57 KB of
+// static HTML) are data, not code. The Privacy Policy and Terms of Service
+// pages used to carry them as inline JSX, which put every byte inside the
+// bundle gate's summed JS total (scripts/check-bundle-size.js counts every
+// emitted .js file). The bodies now ship as static assets the pages fetch
+// on demand (client/src/lib/legal-doc.ts + components/legal-doc-body.tsx):
+// the pages keep their shells (title, dates, read-aloud, entity footer) as
+// bundled React, and the bodies' {{TOKEN}} placeholders are substituted at
+// render time from their single sources of truth (lib/legal-entity.ts,
+// @shared/pax-glossary-core), so the one-edit entity flip still propagates.
+// This plugin is only the Vite wiring: it copies the files VERBATIM into
+// dist/public/legal/ at build end (the production static server serves them
+// from there) and serves the same URLs from disk under the dev server so
+// dev behaviour is unchanged.
+const LEGAL_DOC_FILES: Record<string, string> = {
+  "/legal/privacy-policy.html": "privacy-policy.html",
+  "/legal/terms-of-service.html": "terms-of-service.html",
+};
+function legalDocsPlugin(): Plugin {
+  const rootDir = path.resolve(import.meta.dirname);
+  const sourceDir = path.join(rootDir, "client", "src", "legal");
+  let outDir = path.resolve(rootDir, "dist/public");
+  return {
+    name: "acreos-legal-docs",
+    configResolved(config) {
+      outDir = config.build.outDir;
+    },
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const url = (req.url ?? "").split("?")[0];
+        const file = LEGAL_DOC_FILES[url];
+        if (!file) return next();
+        res.setHeader("Content-Type", "text/html");
+        const stream = fs.createReadStream(path.join(sourceDir, file));
+        stream.on("error", () => {
+          res.statusCode = 404;
+          res.end();
+        });
+        stream.pipe(res);
+      });
+    },
+    closeBundle() {
+      for (const [url, file] of Object.entries(LEGAL_DOC_FILES)) {
+        const dest = path.join(outDir, url.replace(/^\//, ""));
+        fs.mkdirSync(path.dirname(dest), { recursive: true });
+        fs.copyFileSync(path.join(sourceDir, file), dest);
+      }
+    },
+  };
+}
+
 // Phase 8 Mo 12 — Beatriz §3 bundle-analyzer.
 // Enabled when ANALYZE=1 (CI / one-off `npm run build:analyze`).
 // In normal builds the plugin is excluded so the prod bundle is unaffected.
@@ -331,28 +616,77 @@ function resolveGitSha(): string {
 const GIT_SHA = resolveGitSha();
 process.env.VITE_GIT_SHA = GIT_SHA;
 
-export default defineConfig({
+// ── Two outputs (P1-9 / X-2) ────────────────────────────────────────────────
+// The client builds to TWO Vite outputs so the founder's pages never ship in
+// the customer bundle:
+//   customer — client/index.html + src/main.tsx            → dist/public,  base "/",
+//              assets under /assets            (this file's default export)
+//   founder  — client/founder.html + src/founder-main.tsx  → dist/founder, base "/founder-app/",
+//              assets under /founder-assets    (vite.founder.config.ts)
+// The founder output lives in its own URL space (/founder-app/founder-assets/…)
+// so the customer's `/assets/*.js` 404 guard and long-cache rules in
+// server/static.ts cannot collide with it. Both run the SAME manualChunks: the
+// shared vendor chunks (react, ui, motion, clerk, …) are DUPLICATED per output
+// rather than shared across two builds (a federated vendor build is a large new
+// failure surface; the duplicate is paid once, by the founder, on first visit).
+export type BuildOutput = "customer" | "founder";
+
+// Plugins that only serve customer pages: the /learn corpus and the TN boundary
+// shapes are copied into dist/public, and nothing in the founder build imports
+// them.
+const CUSTOMER_ONLY_PLUGIN_NAMES = new Set(["acreos-learn-content", "acreos-tn-boundaries", "acreos-pax-glossary", "acreos-legal-docs"]);
+
+export function buildConfig(output: BuildOutput): UserConfig {
+  const isFounder = output === "founder";
+  // BD-4 (bundle diet): the web builds alias @capacitor/core to a shim that
+  // answers its two web-constant questions (client/src/lib/
+  // capacitor-web-shim.ts). A NATIVE build must link the real core, so the
+  // alias is removed when ACREOS_NATIVE_BUILD=1 — the build:native script
+  // sets it (the mobile:* scripts build through build:native). Read here,
+  // at config-build time, so the pin test can flip it.
+  const nativeBuild = process.env.ACREOS_NATIVE_BUILD === "1";
+  const config: UserConfig = {
   define: {
     // Belt-and-suspenders: ensure `import.meta.env.VITE_GIT_SHA` is
     // available even when Vite's loadEnv hasn't picked up the var.
     "import.meta.env.VITE_GIT_SHA": JSON.stringify(GIT_SHA),
-    // Sentry's ESM packages guard every internal debug-log statement with
-    // `__SENTRY_DEBUG__` (DEBUG_BUILD). Those statements only ever print when
-    // Sentry.init is passed `debug: true`, which client/src/lib/sentry.ts
-    // never does, so defining the flag false drops code that could not run.
-    // This is the same switch Sentry's own bundler plugin exposes as
-    // bundleSizeOptimizations.excludeDebugStatements.
-    // tests/unit/sentryDebugStatementsStripped.test.ts pins the pair: the
-    // define stays false only while no Sentry.init passes debug.
-    __SENTRY_DEBUG__: "false",
+    // Which bundle this is — read by client/src/lib/cross-build.ts to decide
+    // when a navigation must become a full page load.
+    "import.meta.env.VITE_ACREOS_BUILD": JSON.stringify(output),
+    // Sentry's documented tree-shaking flag (P2-6 S1 bundle offset). The
+    // SDK gates its own debug logging on `__SENTRY_DEBUG__`; that logging
+    // prints only when Sentry.init gets `debug: true`, which AcreOS never
+    // passes (client/src/lib/sentry.ts). Defining it false strips that dead
+    // logging from both outputs; events, sampling, replay and tracing are
+    // untouched. To get SDK debug logs, remove this line first —
+    // tests/unit/sentryDebugLoggingStripped.test.ts pins both halves.
+    __SENTRY_DEBUG__: false,
+    // Sentry's documented tree-shaking flag for tracing (L-P3 bundle
+    // offset). The client installs NO tracing integration — sentry.ts's
+    // only integration is Replay, its performance signal is web-vitals via
+    // captureMessage, and no client file calls a span/transaction API — so
+    // the SDK's span/transaction machinery cannot run and is compiled out.
+    // `tracesSampleRate` in the init is inert without an integration and
+    // stays as the tuning knob for the day one is added: adding a tracing
+    // integration means removing this line first —
+    // tests/unit/sentryTracingStripped.test.ts pins both halves.
+    __SENTRY_TRACING__: false,
   },
+  // The founder output is served under /founder-app/ (server/static.ts) and
+  // reads no public/ files: its HTML and fonts use root-absolute URLs that the
+  // customer static mount already serves, so a copied public/ would only
+  // duplicate several MB into the image.
+  ...(isFounder ? { base: "/founder-app/", publicDir: false as const } : {}),
   plugins: [
     react(),
     jspdfUnusedOptionalDepsPlugin(),
     zodJsonSchemaUnusedPlugin(),
+    zodJsonSchemaProcessorsPlugin(),
     learnContentPlugin(),
     tnBoundariesPlugin(),
-    chunkGraphPlugin(),
+    paxGlossaryPlugin(),
+    legalDocsPlugin(),
+    chunkGraphPlugin(isFounder ? FOUNDER_CHUNK_GRAPH_FILE : CUSTOMER_CHUNK_GRAPH_FILE),
     // Pre-compress build output (gzip + brotli) so static-serve can deliver
     // already-compressed bytes. Sidesteps the HTTP/2 + `compression`
     // middleware bug where compression negotiation fails under H2 (verified
@@ -385,7 +719,10 @@ export default defineConfig({
     ...(ANALYZE
       ? [
           visualizer({
-            filename: path.resolve(import.meta.dirname, "dist/bundle-stats.html"),
+            filename: path.resolve(
+              import.meta.dirname,
+              isFounder ? "dist/bundle-stats-founder.html" : "dist/bundle-stats.html",
+            ),
             gzipSize: true,
             brotliSize: true,
             template: "treemap",
@@ -396,6 +733,9 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
+      ...(nativeBuild
+        ? {}
+        : { "@capacitor/core": path.resolve(import.meta.dirname, "client", "src", "lib", "capacitor-web-shim.ts") }),
       "@": path.resolve(import.meta.dirname, "client", "src"),
       "@acreos/solene": path.resolve(import.meta.dirname, "packages", "solene", "src", "index.ts"),
       "@shared": path.resolve(import.meta.dirname, "shared"),
@@ -404,13 +744,19 @@ export default defineConfig({
   },
   root: path.resolve(import.meta.dirname, "client"),
   build: {
-    outDir: path.resolve(import.meta.dirname, "dist/public"),
+    outDir: path.resolve(import.meta.dirname, isFounder ? "dist/founder" : "dist/public"),
+    // Each output empties only ITS OWN directory — dist/public and dist/founder
+    // are siblings, so building one never wipes the other.
     emptyOutDir: true,
+    assetsDir: isFounder ? "founder-assets" : "assets",
     // Task #196: Performance budget — warn if any chunk exceeds 500 KB
     chunkSizeWarningLimit: 500,
     // Task #196: Emit source maps in production for Sentry error symbolication
     sourcemap: process.env.NODE_ENV === "production" ? "hidden" : false,
     rollupOptions: {
+      ...(isFounder
+        ? { input: { founder: path.resolve(import.meta.dirname, "client", "founder.html") } }
+        : {}),
       output: {
         // Why this is a function instead of an object map:
         // The previous object form leaked weight onto first paint. Vite's
@@ -454,7 +800,7 @@ export default defineConfig({
           // undefined lets Vite co-locate the lib with its sole importer's
           // lazy chunk, so the lib only downloads when that route renders.
           // Apply to: jspdf (borrower-portal only), @turf/turf (subdivision-
-          // plan-editor only), isomorphic-dompurify, @dnd-kit (deals only).
+          // plan-editor only), isomorphic-dompurify.
 
           return undefined;
         },
@@ -474,4 +820,13 @@ export default defineConfig({
       ],
     },
   },
-});
+  };
+  if (isFounder) {
+    config.plugins = (config.plugins ?? []).filter(
+      (p) => !(p && !Array.isArray(p) && CUSTOMER_ONLY_PLUGIN_NAMES.has((p as Plugin).name)),
+    );
+  }
+  return config;
+}
+
+export default defineConfig(buildConfig("customer"));

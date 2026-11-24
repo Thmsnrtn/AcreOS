@@ -15,6 +15,7 @@ import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
 import { clock } from "./utils/clock";
 import { routeParam } from "./utils/routeParams";
+import { listOnboardingStalls } from "./services/connectOnboardingStalls";
 
 // ─── Integration definitions ────────────────────────────────────────────────
 
@@ -141,12 +142,34 @@ export function registerFounderIntegrationsRoutes(app: Express) {
           `[FounderIntegrations] Status check: ${configured}/${total} configured, ${criticalMissing} critical missing`
         );
 
+        // B-7: the lender Connect onboarding aging list — every account
+        // currently observed stuck in `currentlyDue`, oldest first, read
+        // from the database alone (no Stripe call). A stall that predates
+        // the detector is clocked from its first observation after
+        // deploy, never backdated. Guarded like the Bridge route's
+        // safe() wrap (#631 audit follow-up): a failing stall read
+        // degrades to an empty aging list, never a 500 that takes the
+        // whole integrations console down with it.
+        let connectOnboardingStalls: Awaited<ReturnType<typeof listOnboardingStalls>> = [];
+        try {
+          connectOnboardingStalls = await listOnboardingStalls();
+        } catch (err) {
+          logger.warn("[FounderIntegrations] onboarding stall list failed; serving an empty aging list", {
+            metadata: { error: err instanceof Error ? err.message : String(err) },
+          });
+        }
+
         res.json({
           integrations,
           summary: {
             total,
             configured,
             criticalMissing,
+          },
+          connectOnboardingStalls,
+          onboardingStallSummary: {
+            stalled: connectOnboardingStalls.length,
+            alerted: connectOnboardingStalls.filter((s) => s.alertedAt != null).length,
           },
         });
       } catch (error) {
