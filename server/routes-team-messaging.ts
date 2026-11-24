@@ -1348,15 +1348,15 @@ export function registerTeamMessagingRoutes(app: Express): void {
           }
           return {
             platform: r.platform,
-            status: r.success
-              ? ("sent" as const)
-              : r.error?.toLowerCase().includes("not configured")
-              ? ("missing_credentials" as const)
-              : ("failed" as const),
+            // "manual" (never "sent") for copy the operator posts by hand,
+            // and the paste text itself rides along — without it the one
+            // real Craigslist deliverable never reached the UI (L-P3).
+            status: listingSyndication.publishStatusForResult(r),
             error: r.error,
             listingId: r.listingId,
             listingUrl: r.listingUrl,
             deepLinkUrl: r.deepLinkUrl,
+            preformattedText: r.preformattedText,
             manualInstructions: r.manualInstructions,
             requiresManualAction: r.requiresManualAction,
           };
@@ -1377,11 +1377,11 @@ export function registerTeamMessagingRoutes(app: Express): void {
           listingId: r.listingId,
           listingUrl: r.listingUrl,
           status:
-            r.status === "sent"
+            r.status === "manual"
               ? // Copy/paste text is not a live posting (DEFECT-0182 audit).
-                "requiresManualAction" in r && r.requiresManualAction && !r.listingId
-                ? MANUAL_POSTING
-                : "active"
+                MANUAL_POSTING
+              : r.status === "sent"
+              ? "active"
               : r.status === "simulated"
               ? "simulated"
               : r.status === "dry_run"
@@ -1507,6 +1507,47 @@ export function registerTeamMessagingRoutes(app: Express): void {
       res.json(updated);
     } catch (error: any) {
       logger.error("Unpublish listing error", error);
+      Errors.internal(res, error);
+    }
+  });
+
+  // POST /api/listings/:id/mark-listed - Record the operator's word that
+  // this listing is on the market (L-DEF-1, Option C).
+  //
+  // `listed` means exactly one thing: the operator states they posted this
+  // listing themselves, wherever they posted it. It is recorded as the
+  // operator's word, not a channel's — the same attestation pattern as
+  // confirm-removed. The write touches ONLY status + publishedAt (the
+  // on-market date the forecasting code reads for days-on-market):
+  // syndicationTargets keep saying exactly what AcreOS itself did
+  // (manual_posting, needs_credentials, …), and `active` keeps its strict
+  // meaning — a provider accepted a posting through AcreOS. No publish run
+  // is required first. Sold/withdrawn listings refuse (off the market);
+  // an already-`active` listing refuses too — downgrading it to `listed`
+  // would understate a provider-proven fact. Re-marking a `listed` listing
+  // is a no-op: the original on-market date stands.
+  api.post("/api/listings/:id/mark-listed", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const id = parseInt(routeParam(req.params.id));
+      if (isNaN(id)) return Errors.badRequest(res, "Invalid listing ID");
+      const listing = await storage.getPropertyListing(org.id, id);
+      if (!listing) return Errors.notFound(res, "Listing");
+      if (listing.status === "sold" || listing.status === "withdrawn") {
+        return Errors.badRequest(res, `This listing is ${listing.status}; a listing that is off the market cannot be marked as listed.`);
+      }
+      if (listing.status === "active") {
+        return Errors.badRequest(res, "This listing is already active — a channel accepted its posting through AcreOS.");
+      }
+      if (listing.status === "listed") return res.json(listing);
+      const updated = await storage.updatePropertyListing(
+        id,
+        { status: "listed", publishedAt: clock.now() },
+        org.id,
+      );
+      res.json(updated);
+    } catch (error: unknown) {
+      logger.error("Mark listing as listed error", error instanceof Error ? error : undefined);
       Errors.internal(res, error);
     }
   });

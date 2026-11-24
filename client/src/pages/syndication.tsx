@@ -118,11 +118,11 @@ export default function SyndicationPage() {
     // The property's ACTIVE listing: a withdrawn or sold one is refused by
     // the route even when a live listing exists for the same property.
     const forProperty = (listingsData ?? []).filter((l) => l.propertyId === selectedPropertyId);
-    const listing = forProperty.find((l) => l.status === "active") ?? forProperty[0];
+    const listing = forProperty.find((l) => l.status === "active") ?? forProperty.find((l) => l.status === "listed") ?? forProperty[0];
     if (!listing) {
       toast({
         title: "No listing for this property yet",
-        description: "Create a listing for it under Listings first; each channel works from that listing.",
+        description: "Create a listing for it under Listings first.",
         variant: "destructive",
       });
       return;
@@ -151,8 +151,8 @@ export default function SyndicationPage() {
       });
     } catch (err: any) {
       toast({
-        title: "Couldn't prepare the listing for these channels",
-        description: `${err.message}. Your platform selection is unchanged. Some platforms may have partial state — check each platform's site directly to confirm.`,
+        title: "Couldn't prepare the listing",
+        description: `${err.message}. Selection unchanged. Some platforms may have partial state — check each directly to confirm.`,
         variant: "destructive",
       });
     } finally {
@@ -172,8 +172,8 @@ export default function SyndicationPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold">Listing syndication</h1>
         <p className="text-muted-foreground text-sm mt-0.5">
-          AcreOS prepares the listing copy. Posting to Land.com, Facebook and the other portals runs on your own account
-          with each, which can&apos;t be connected yet; Craigslist gets ready-to-paste text.
+          AcreOS prepares the copy. Land.com, Facebook and the other portals post on your own account with each,
+          which can&apos;t be connected yet; Craigslist gets ready-to-paste text.
         </p>
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -292,7 +292,7 @@ export default function SyndicationPage() {
                 className="w-full mt-4"
                 onClick={syndicateProperty}
                 disabled={!selectedPropertyId || selectedPlatforms.length === 0 || syndicating || !listingsData}
-                aria-label={selectedProperty ? `Prepare ${selectedProperty.address || `Property #${selectedProperty.id}`} for the selected channels` : "Prepare the listing for the selected channels"}
+                aria-label={selectedProperty ? `Prepare ${selectedProperty.address || `Property #${selectedProperty.id}`} for the selected channels` : "Prepare for the selected channels"}
               >
                 {syndicating ? (
                   <Loader2 className="h-4 w-4 animate-spin mr-2" aria-hidden="true" />

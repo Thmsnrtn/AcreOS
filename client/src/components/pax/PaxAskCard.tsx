@@ -30,7 +30,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { Verbs } from "@/lib/labels";
-import { formatPaxTime, PAX_LABELS, PAX_PAUSE_COPY } from "@shared/pax-glossary";
+import { formatPaxTime, PAX_LABELS, PAX_PAUSE_STILL_WORKS } from "@shared/pax-glossary-core";
 import { usePaxPaused, type PaxAskDecisionOutcome, type PaxAskItem } from "@/hooks/usePaxNeedsYou";
 import { AlertCircle, CheckCircle2, Clock, Loader2, Pencil, RotateCcw, XCircle } from "lucide-react";
 
@@ -505,7 +505,7 @@ export default function PaxAskCard({ ask, onApprove, onReject, onRevise, compact
       {/* Pause is never a gate on a tap — say so on the card. */}
       {paused === true && showButtons && (
         <p className="text-xs text-muted-foreground" data-testid={`pax-ask-paused-${ask.id}`}>
-          {PAX_LABELS.paused} — {PAX_PAUSE_COPY.stillWorks}
+          {PAX_LABELS.paused} — {PAX_PAUSE_STILL_WORKS}
         </p>
       )}
 

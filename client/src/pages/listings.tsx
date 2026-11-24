@@ -65,6 +65,7 @@ const SYNDICATION_TARGETS = [
 // must also be handled in renderPlatformResult below.
 type PlatformResultStatus =
   | "sent"
+  | "manual"
   | "missing_credentials"
   | "failed"
   | "idempotent_skip"
@@ -78,6 +79,7 @@ interface PlatformResult {
   listingId?: string;
   listingUrl?: string;
   deepLinkUrl?: string;
+  preformattedText?: string;
   manualInstructions?: string;
 }
 
@@ -104,9 +106,13 @@ type ListingFormValues = z.infer<typeof listingFormSchema>;
 
 // Status → semantic --acr-* tone (Tier 1 pattern). Re-skins automatically
 // across all five themes; replaces raw green/yellow/blue/red hardcodes.
+// `listed` (on the market on the operator's own word, L-DEF-1 Option C) and
+// `active` (a channel accepted the posting through AcreOS) share a tone.
+const ON_MARKET_TONE = "bg-acr-pos-soft text-acr-pos-soft-ink border-transparent";
 const STATUS_COLORS: Record<string, string> = {
   draft: "bg-acr-surface-2 text-acr-ink-3 border-transparent",
-  active: "bg-acr-pos-soft text-acr-pos-soft-ink border-transparent",
+  listed: ON_MARKET_TONE,
+  active: ON_MARKET_TONE,
   pending_sale: "bg-acr-warn-soft text-acr-warn-soft-ink border-transparent",
   sold: "bg-acr-brand-soft text-acr-brand-soft-ink border-transparent",
   withdrawn: "bg-acr-neg-soft text-acr-neg-soft-ink border-transparent",
@@ -163,7 +169,7 @@ export default function ListingsPage() {
       toast({ title: "Listing created successfully" });
     },
     onError: (error: any) => {
-      toast({ title: "Couldn't create listing", description: `${error.message} — your draft is preserved.`, variant: "destructive" });
+      toast({ title: "Couldn't create listing", description: `${error.message} — draft preserved.`, variant: "destructive" });
     },
   });
 
@@ -176,7 +182,7 @@ export default function ListingsPage() {
       toast({ title: "Listing deleted" });
     },
     onError: (error: any) => {
-      toast({ title: "Couldn't delete listing", description: `${error.message} — the listing is still live.`, variant: "destructive" });
+      toast({ title: "Couldn't delete listing", description: `${error.message} — listing still live.`, variant: "destructive" });
     },
   });
 
@@ -193,7 +199,7 @@ export default function ListingsPage() {
     onSuccess: (data, vars) => {
       queryClient.invalidateQueries({ queryKey: ["/api/listings"] });
       if (vars.how === "take_down" && data.success === false) {
-        toast({ title: "Take-down failed", description: data.error ?? "The platform did not confirm removal.", variant: "destructive" });
+        toast({ title: "Take-down failed", description: data.error ?? "The platform didn't confirm removal.", variant: "destructive" });
       } else {
         toast({ title: vars.how === "take_down" ? "Taken down" : "Recorded as removed" });
       }
@@ -224,12 +230,20 @@ export default function ListingsPage() {
       );
       const sent = counts.sent ?? 0;
       const simulated = counts.simulated ?? 0;
+      const manual = counts.manual ?? 0;
       const missing = counts.missing_credentials ?? 0;
       const failed = counts.failed ?? 0;
 
-      if (sent + simulated > 0 && failed === 0 && missing === 0) {
+      // "manual" is copy the operator posts by hand (Craigslist paste
+      // text) — it is never counted as published (L-P3 copy-truth).
+      if (sent + simulated > 0 && failed === 0 && missing === 0 && manual === 0) {
         toast({ title: `Published to ${sent + simulated} platform${sent + simulated === 1 ? "" : "s"}` });
-      } else if (sent + simulated === 0) {
+      } else if (sent + simulated === 0 && manual > 0 && failed === 0 && missing === 0) {
+        toast({
+          title: "Paste text ready — not posted",
+          description: "Copy the text in the dialog.",
+        });
+      } else if (sent + simulated === 0 && manual === 0) {
         toast({
           title: "Nothing published",
           description: `${missing} need credentials, ${failed} failed.`,
@@ -238,7 +252,10 @@ export default function ListingsPage() {
       } else {
         toast({
           title: `Partial: ${sent + simulated} sent, ${missing + failed} skipped`,
-          description: "See per-platform results in the dialog.",
+          description:
+            manual > 0
+              ? "Paste text ready in the dialog."
+              : "See per-platform results in the dialog.",
         });
       }
     },
@@ -259,7 +276,18 @@ export default function ListingsPage() {
     listKeys: [["/api/listings"]],
     getId: ({ id }) => id,
     buildPatch: () => ({ status: "withdrawn" }),
-    successToast: { title: "Listing withdrawn", description: "Check each channel below — a live portal listing needs its own take-down." },
+    successToast: { title: "Listing withdrawn", description: "A live portal listing needs its own take-down." },
+  });
+
+  // Mark as listed — the operator's own statement that the listing is on
+  // the market (they posted it themselves, wherever they posted it;
+  // L-DEF-1 Option C). Recorded as their word: channels still show exactly
+  // what AcreOS itself posted, and `active` keeps its stricter meaning.
+  const markListedMutation = useOptimisticUpdate<{ id: number; status: string }>({
+    mutationFn: async ({ id }) => apiRequest("POST", `/api/listings/${id}/mark-listed`),
+    listKeys: [["/api/listings"]],
+    getId: ({ id }) => id,
+    successToast: { title: "Marked as listed", description: "On the market on your word." },
   });
 
   const form = useForm<ListingFormValues>({
@@ -635,7 +663,7 @@ export default function ListingsPage() {
           <EmptyState
             icon={Building}
             headline="No listings live"
-            subtitle="Create your first listing — AcreOS prepares the listing copy. Posting to Land.com or Facebook runs on your own account with each, which can't be connected yet; Craigslist gets ready-to-paste text."
+            subtitle="Create your first listing — AcreOS prepares the copy. Land.com and Facebook post on your own account with each, which can't be connected yet; Craigslist gets ready-to-paste text."
             cta={{
               label: "Create listing",
               onClick: () => setIsCreateOpen(true),
@@ -722,18 +750,29 @@ export default function ListingsPage() {
                       </CardContent>
                       <CardFooter className="pt-0 flex gap-2 flex-wrap">
                         {listing.status === "draft" && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleOpenPublish(listing.id)}
-                            data-testid={`button-publish-${listing.id}`}
-                            aria-label={`Publish ${listing.title}`}
-                          >
-                            <Share2 className="h-4 w-4 mr-1" aria-hidden="true" />
-                            Publish
-                          </Button>
+                          <>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleOpenPublish(listing.id)}
+                              data-testid={`button-publish-${listing.id}`}
+                              aria-label={`Publish ${listing.title}`}
+                            >
+                              <Share2 className="h-4 w-4 mr-1" aria-hidden="true" />
+                              Publish
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => markListedMutation.mutate({ id: listing.id, status: "listed" })}
+                              data-testid={`button-mark-listed-${listing.id}`}
+                              aria-label={`Mark ${listing.title} as listed`}
+                            >
+                              Mark as listed
+                            </Button>
+                          </>
                         )}
-                        {listing.status === "active" && (
+                        {["active", "listed"].includes(listing.status) && (
                           <Button
                             variant="outline"
                             size="sm"
@@ -943,8 +982,8 @@ export default function ListingsPage() {
               <DialogTitle>Publish listing</DialogTitle>
               <DialogDescription>
                 {lastPublishResults
-                  ? "Per-platform results from your last publish attempt."
-                  : "Choose channels. Craigslist returns ready-to-paste text; every other channel posts only on your own account with it, which AcreOS can't connect yet."}
+                  ? "Results from your last publish attempt."
+                  : "Choose channels. Craigslist returns ready-to-paste text; every other channel posts only on your own account, which AcreOS can't connect yet."}
               </DialogDescription>
             </DialogHeader>
             <form
@@ -1000,6 +1039,11 @@ export default function ListingsPage() {
                                   Sent
                                 </Badge>
                               )}
+                              {lastResult.status === "manual" && (
+                                <Badge className="bg-acr-warn-soft text-acr-warn-soft-ink border-transparent">
+                                  Post by hand
+                                </Badge>
+                              )}
                               {lastResult.status === "simulated" && (
                                 <Badge className="bg-acr-brand-soft text-acr-brand-soft-ink border-transparent">
                                   Simulated
@@ -1039,6 +1083,27 @@ export default function ListingsPage() {
                   })}
                 </ul>
               </fieldset>
+              {lastPublishResults
+                ?.filter((r) => r.status === "manual")
+                .map((r) => (
+                  <div key={r.platform} className="space-y-1 text-xs text-muted-foreground" data-testid={`manual-${r.platform}`}>
+                    <b>{r.platform.replace(/_/g, " ")}</b> — not posted
+                    {r.manualInstructions && ` ${r.manualInstructions}`}
+                    {r.preformattedText && (
+                      <textarea
+                        readOnly
+                        value={r.preformattedText}
+                        aria-label="Paste text"
+                        className="w-full h-32 font-mono p-2 rounded-md border"
+                      />
+                    )}
+                    {r.deepLinkUrl && (
+                      <a href={r.deepLinkUrl} target="_blank" rel="noopener noreferrer" className="underline">
+                        Open {r.platform.replace(/_/g, " ")}
+                      </a>
+                    )}
+                  </div>
+                ))}
               {lastPublishResults?.some((r) => r.error) && (
                 <ul className="text-xs text-muted-foreground space-y-1 list-none p-0 m-0">
                   {lastPublishResults
@@ -1100,7 +1165,7 @@ export default function ListingsPage() {
           open={!!pendingDelete}
           onOpenChange={(open) => { if (!open) setPendingDelete(null); }}
           title={`Delete listing "${pendingDelete?.title}"?`}
-          description="This permanently removes the listing and any pending syndications. Inquiry history is preserved on the underlying property."
+          description="Permanently removes the listing and any pending syndications. Inquiry history is preserved on the property."
           confirmLabel="Delete listing"
           variant="destructive"
           onConfirm={() => {
@@ -1113,7 +1178,7 @@ export default function ListingsPage() {
           open={!!pendingUnpublish}
           onOpenChange={(open) => { if (!open) setPendingUnpublish(null); }}
           title={`Unpublish "${pendingUnpublish?.title}"?`}
-          description="This withdraws the listing in AcreOS. It does not by itself remove copies already live on other sites: each channel below then shows whether it still needs a take-down or a manual removal. View counts and inquiries to date are preserved; you can re-publish later."
+          description="Withdraws the listing in AcreOS. It does not by itself remove copies already live on other sites: each channel below then shows if it needs a take-down or manual removal. View counts and inquiries are preserved; you can re-publish later."
           confirmLabel="Unpublish"
           onConfirm={() => {
             if (pendingUnpublish) unpublishMutation.mutate({ id: pendingUnpublish.id });

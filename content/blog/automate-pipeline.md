@@ -12,7 +12,7 @@ This isn't a pitch. I want to walk through the specific workflows I automated an
 
 Before AcreOS, I'd spend 2-3 hours every morning scanning tax delinquent lists, cross-referencing with county GIS data, and trying to figure out which parcels were actually worth pursuing. Most of that time was wasted on parcels that had flood zones, no road access, or environmental issues I wouldn't discover until later.
 
-Now the Deal Feed does that scan automatically. Every morning, it checks my target counties and surfaces the top opportunities ranked by a composite score. The score combines four factors:
+Now AcreOS scores every lead against my buy-box the moment it's stored. My morning briefing surfaces the top of the list, ranked by a composite score. The score combines four factors:
 
 1. **Acquisition radar** — how well the parcel matches my buying criteria (acreage, price range, zoning)
 2. **Seller motivation signals** — tax delinquency, out-of-state owner, estate/trust ownership, duration of ownership
@@ -25,7 +25,7 @@ I went from 2-3 hours of manual scanning to 10 minutes reviewing pre-scored oppo
 
 Here's the thing most investors don't realize: almost everything you need for due diligence is available for free from government APIs. You just have to know where to look and how to query them.
 
-AcreOS pulls from 18 free data sources automatically:
+AcreOS pulls the free government data sources automatically — FEMA flood, USDA soil, USGS elevation, USFWS wetlands, Census context — so you're not copy-pasting from agency sites. Sources include:
 
 - **FEMA NFHL** for flood zone determination
 - **USGS 3DEP** for elevation and slope analysis

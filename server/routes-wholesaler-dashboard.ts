@@ -8,9 +8,10 @@
  * Replaces WHOLESALER_MOCK in client/src/components/dashboard/
  * type-specific-widgets.tsx with real org-scoped queries:
  *
- *   - assignmentFees: sum(analysisResults.netProfit) for closed deals
- *                     (closest proxy we have for assignment-fee total)
- *   - avgAssignmentFee: mean across closed deals
+ *   - assignmentFees: sum(contract_assignments.assignmentFeeCents) where
+ *                     status='signed'; null + source "none" when there is
+ *                     no signed assignment (no profit proxy — founder B-6)
+ *   - avgAssignmentFee: mean across signed assignments (null likewise)
  *   - speedToClose: avg (closingDate - offerDate) in days for closed
  *                   deals — Trey's days-on-contract KPI
  *   - buyerListHealth: total / active (last contact ≤ 90d) / stale
@@ -59,11 +60,12 @@ export function registerWholesalerDashboardRoutes(app: Express): void {
             eq(deals.status, "closed"),
           ));
 
-        // W6.1: real assignment fees from contract_assignments (signed, in
-        // cents). The netProfit proxy remains ONLY as a fallback for orgs
-        // whose closes predate the assignment record.
+        // Assignment fees are the signed contract_assignments sum — nothing
+        // else. There is no fallback estimate (founder call B-6): a profit
+        // figure is not an assignment fee, and zero is not "none". With no
+        // signed assignment (or no table on a fresh install) the fee fields
+        // are null and the source is "none".
         let totalAssignmentFeesCents = 0;
-        let assignmentFeeSource: "assignments" | "net_profit_proxy" = "net_profit_proxy";
         let signedAssignmentCount = 0;
         try {
           const { contractAssignments } = await import("@shared/schema");
@@ -80,19 +82,17 @@ export function registerWholesalerDashboardRoutes(app: Express): void {
           signedAssignmentCount = Number(agg?.cnt ?? 0);
           if (signedAssignmentCount > 0) {
             totalAssignmentFeesCents = Number(agg?.total ?? 0);
-            assignmentFeeSource = "assignments";
           }
-        } catch { /* table may not exist on a fresh install — proxy below */ }
+        } catch {
+          signedAssignmentCount = 0;
+          totalAssignmentFeesCents = 0;
+        }
+        const assignmentFeeSource: "assignments" | "none" =
+          signedAssignmentCount > 0 ? "assignments" : "none";
 
         let speedToCloseDaysSum = 0;
         let speedToCloseDaysCount = 0;
         for (const d of closedDeals) {
-          if (assignmentFeeSource === "net_profit_proxy") {
-            const netProfit = (d.analysisResults as any)?.netProfit;
-            if (typeof netProfit === "number" && isFinite(netProfit)) {
-              totalAssignmentFeesCents += Math.round(netProfit * 100);
-            }
-          }
           if (d.offerDate && d.closingDate) {
             const days = Math.round(
               (new Date(d.closingDate).getTime() - new Date(d.offerDate).getTime()) / 86_400_000,
@@ -103,10 +103,10 @@ export function registerWholesalerDashboardRoutes(app: Express): void {
             }
           }
         }
-        const feeDenominator = assignmentFeeSource === "assignments" ? signedAssignmentCount : closedDeals.length;
-        const avgAssignmentFeeCents = feeDenominator > 0
-          ? Math.round(totalAssignmentFeesCents / feeDenominator)
-          : 0;
+        const feesCents = assignmentFeeSource === "assignments" ? totalAssignmentFeesCents : null;
+        const avgAssignmentFeeCents = assignmentFeeSource === "assignments"
+          ? Math.round(totalAssignmentFeesCents / signedAssignmentCount)
+          : null;
         const speedToCloseDays = speedToCloseDaysCount > 0
           ? Math.round(speedToCloseDaysSum / speedToCloseDaysCount)
           : null;
@@ -164,8 +164,10 @@ export function registerWholesalerDashboardRoutes(app: Express): void {
 
         return res.json({
           hasData,
-          assignmentFeesCents: totalAssignmentFeesCents,
+          assignmentFeesCents: feesCents,
           avgAssignmentFeeCents,
+          assignmentFeeSource,
+          signedAssignmentCount,
           speedToCloseDays,
           buyerListHealth: {
             total: Number(totalBuyers),

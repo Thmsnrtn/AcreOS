@@ -26,6 +26,12 @@ describe("calculateMonthlyPayment", () => {
     expect(payment).toBeCloseTo(1_000, 2);
   });
 
+  it("rounds the zero-rate payment to cents (H-DEF-2)", () => {
+    // 40000 / 120 = 333.333… — the stored payment is money, so the
+    // zero-rate branch rounds to cents exactly like the amortizing one.
+    expect(calculateMonthlyPayment(40_000, 0, 120)).toBe(333.33);
+  });
+
   it("handles a short-term balloon note (12 months)", () => {
     // $50,000 at 8% annual for 12 months ≈ $4,349.42
     const payment = calculateMonthlyPayment(50_000, 8, 12);

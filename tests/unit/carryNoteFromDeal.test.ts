@@ -10,6 +10,7 @@
 import { describe, it, expect } from "vitest";
 import {
   mapDealToNoteFields,
+  missingCarryTerms,
   type CarryableDeal,
   type CarryOverrides,
 } from "../../server/routes-notes";
@@ -130,10 +131,87 @@ describe("mapDealToNoteFields — deal → note correctness", () => {
     expect(note.firstPaymentDate.toISOString().slice(0, 10)).toBe("2026-07-07");
   });
 
+  it("rounds the monthly payment to cents on the walk's no-terms shape (H-DEF-2)", () => {
+    // Hybrid walk reproduction: a $40,000 disposition carrying NO terms at
+    // all stored monthlyPayment "333.3333333333333" — the zero-rate branch
+    // of calculateMonthlyPayment returned the raw quotient. The stored
+    // payment is money: it is rounded to cents at write.
+    const note = mapDealToNoteFields(
+      baseDeal({ analysisResults: null, acceptedAmount: "40000", offerAmount: "40000" }),
+      {},
+    );
+    expect(note.monthlyPayment).toBe("333.33");
+  });
+
   it("leaves borrowerId null when the operator does not name a buyer", () => {
     // The deal table has no buyer link — the buyer is confirmed on the note,
     // so an un-overridden carry produces a borrower-less note.
     const note = mapDealToNoteFields(baseDeal(), {});
     expect(note.borrowerId).toBeNull();
+  });
+});
+
+describe("missingCarryTerms — H-DEF-2: defaults never written as facts", () => {
+  it("flags both terms when the deal records none and the operator supplies none", () => {
+    // The hybrid walk's defaults probe: price-only deal, borrowerId-only
+    // carry body. The route refuses on exactly this result — no note is
+    // created on the 0% / 120-month platform defaults.
+    const deal = baseDeal({ analysisResults: null });
+    expect(missingCarryTerms(deal, {})).toEqual(["interestRate", "termMonths"]);
+    expect(missingCarryTerms(deal, { borrowerId: 118 })).toEqual([
+      "interestRate",
+      "termMonths",
+    ]);
+  });
+
+  it("flags nothing when the deal's saved analysis carries both terms", () => {
+    expect(missingCarryTerms(baseDeal(), {})).toEqual([]);
+  });
+
+  it("flags nothing when the operator supplies both terms explicitly", () => {
+    const deal = baseDeal({ analysisResults: null });
+    expect(missingCarryTerms(deal, { interestRate: 9.5, termMonths: 120 })).toEqual([]);
+  });
+
+  it("treats an explicitly supplied 0% rate as a fact, not a default", () => {
+    const deal = baseDeal({ analysisResults: null });
+    expect(missingCarryTerms(deal, { interestRate: 0, termMonths: 120 })).toEqual([]);
+    const dealWithZeroRate = baseDeal({
+      analysisResults: { interestRate: 0, holdingPeriodMonths: 60 },
+    });
+    expect(missingCarryTerms(dealWithZeroRate, {})).toEqual([]);
+  });
+
+  it("the carry route refuses on missing terms before any note is created", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { resolve } = await import("node:path");
+    const src = readFileSync(
+      resolve(__dirname, "../../server/routes-notes.ts"),
+      "utf8",
+    );
+    const start = src.indexOf('"/api/notes/from-deal/:dealId"');
+    expect(start).toBeGreaterThan(0);
+    const body = src.slice(
+      start,
+      src.indexOf('"/api/notes/from-deal/:dealId"', start + 10),
+    );
+    const guard = body.indexOf("missingCarryTerms(carryableDeal, overrides)");
+    const created = body.indexOf("storage.createNote(");
+    expect(guard).toBeGreaterThan(-1);
+    expect(created).toBeGreaterThan(guard);
+  });
+
+  it("flags each term independently", () => {
+    const rateOnly = baseDeal({
+      analysisResults: { interestRate: 9 },
+    });
+    expect(missingCarryTerms(rateOnly, {})).toEqual(["termMonths"]);
+    const termOnly = baseDeal({
+      analysisResults: { holdingPeriodMonths: 60 },
+    });
+    expect(missingCarryTerms(termOnly, {})).toEqual(["interestRate"]);
+    // An override can cure one side while the other still defaults.
+    expect(missingCarryTerms(rateOnly, { termMonths: 180 })).toEqual([]);
+    expect(missingCarryTerms(termOnly, { interestRate: 7.5 })).toEqual([]);
   });
 });

@@ -117,6 +117,11 @@ const COMMENT_PATTERN = /\bcipher(text)?\b|\bencrypted\b|\bencryption\b|\bplaint
  * stale-entry check, so this list cannot outlive the columns it covers.
  */
 const REVIEWED_NOT_SECRET: Record<string, string> = {
+  // CG-1 (2026-11-23, fix round D11). Reviewed rather than registered: registering
+  // would strip the key from every response, hiding the EIN from the member-facing
+  // cause list that shows it by design; the value is a public 501(c)(3) record.
+  "causes.ein": "public-record EIN of a vetted 501(c)(3) charity, shown on the cause list by design; not secret",
+  "cause_nominations.ein": "member-submitted public-record EIN of a nominated charity (IRS Tax Exempt Org Search); not secret",
   "organizations.tax_id_type": "EIN/SSN/ITIN label; served by GET /api/organization/tax-identity and read by settings/tax-identity",
   "contractors.tax_id_type": "ein/ssn label; read by pages/contractors",
   "acquired_notes.payer_tin_type": "SSN/EIN/ITIN label; read by pages/note-detail (W-9 on-file indicator)",

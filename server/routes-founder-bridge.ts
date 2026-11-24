@@ -40,6 +40,7 @@ import {
   financialLedger,
 } from "@shared/schema";
 import { monthlyRevenueCentsFor } from "@shared/billing/tier-pricing";
+import { listOnboardingStalls } from "./services/connectOnboardingStalls";
 import { logger } from "./utils/logger";
 import type { AuthenticatedRequest } from "./types/request";
 import { Errors } from "./utils/errors";
@@ -132,6 +133,7 @@ router.get("/", async (req: AuthenticatedRequest, res: Response) => {
       ledger30d,
       ledger60to30,
       agentEvents24h,
+      stallsRaw,
     ] = await Promise.all([
       safe(
         // Select only the columns we need so a partially-drifted
@@ -180,6 +182,14 @@ router.get("/", async (req: AuthenticatedRequest, res: Response) => {
           .from(agentEvents).where(gte(agentEvents.createdAt, t24h)).limit(50_000),
         [] as Array<{ eventSource: string; createdAt: Date | null }>,
         "agent-events",
+      ),
+      // B-7: lender Connect onboarding stalls, read from the database
+      // alone (the aging list's own source). A failing read degrades to
+      // an empty queue, never to a collapsed payload.
+      safe(
+        listOnboardingStalls(),
+        [] as Awaited<ReturnType<typeof listOnboardingStalls>>,
+        "onboarding-stalls",
       ),
     ]);
 
@@ -253,6 +263,26 @@ router.get("/", async (req: AuthenticatedRequest, res: Response) => {
       return { codename, healthPct, status };
     });
 
+    // ── action queue ─────────────────────────────────────────────────
+    // v1 was empty; B-7 feeds it the alerted onboarding stalls (7 days
+    // stuck, founder alert already raised). A stall below the threshold
+    // stays on the integrations console's aging list only — the queue is
+    // "what needs you today", not a second copy of the list.
+    const actionQueue: BridgePayload["actionQueue"] = stallsRaw
+      .filter((s) => s.alertedAt != null)
+      .map((s) => ({
+        // Keyed by the stalled ACCOUNT, not the org id: the id is a display
+        // key only, and naming an org id here would make the org-fetch gate
+        // read this founder-only handler as org-scoped (its cross-org reads
+        // carry no org predicate — that is the route's registered rule-1
+        // widening, unchanged by this slice).
+        id: `onboarding-stall-${s.accountId}`,
+        title: `Stripe onboarding stalled ${s.daysStuck}d — ${s.organizationName}`,
+        meta: `${s.requirements.length} requirement${s.requirements.length === 1 ? "" : "s"} outstanding: ${s.requirements.slice(0, 3).join(", ")}${s.requirements.length > 3 ? ", …" : ""}`,
+        tone: "warn" as const,
+        discussPrefill: `about the stalled Stripe onboarding for ${s.organizationName}: `,
+      }));
+
     // Frugal Autonomy tile data — today's per-category AI spend.
     // Wrapped in a safe() so a budget module hiccup doesn't take down
     // the whole Bridge payload.
@@ -283,7 +313,7 @@ router.get("/", async (req: AuthenticatedRequest, res: Response) => {
       },
       agents: agentsOut,
       agentsLastSyncAt: now.toISOString(),
-      actionQueue: [], // v1 — wired to /api/founder/intelligence/todo next iteration
+      actionQueue,
       aiBudget: {
         totalCapCents,
         totalSpentCents,

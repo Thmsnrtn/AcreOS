@@ -1,0 +1,373 @@
+{
+  "PAX_CONTROLS_LABEL": "Settings → Pax",
+  "PAX_CONTROLS_PATH": "/settings/pax",
+  "PAX_FIXED_RULES": {
+    "textHours": "8 am–9 pm",
+    "leadScoringCadence": "every 15 min",
+    "borrowerRemindersCadence": "every 30 min"
+  },
+  "PAX_GROUP_COPY": {
+    "looks_and_drafts": {
+      "label": "Looks & drafts",
+      "ifYouNeverTouchThis": "Pax answers, researches and drafts whenever you ask. This is never gated, never counted, and keeps working while paused."
+    },
+    "changes_records": {
+      "label": "Changes your records",
+      "ifYouNeverTouchThis": "When you ask Pax to change something, it does it and leaves a receipt. Scheduled prompts you set up do the same. Switch to 'Ask before everything' and every change waits for your tap instead."
+    },
+    "sends": {
+      "label": "Sends to people",
+      "ifYouNeverTouchThis": "Pax never sends what it wrote without your tap. Always. There is no setting that changes this."
+    },
+    "runs_rules": {
+      "label": "Runs your rules"
+    },
+    "never": {
+      "label": "Never",
+      "ifYouNeverTouchThis": "Not even if you ask."
+    }
+  },
+  "PAX_LABELS": {
+    "queue": "Waiting for your tap",
+    "receipts": "What Pax did",
+    "active": "Pax is active",
+    "paused": "Paused",
+    "fixedRule": "Anything Pax writes to another person — email, text, letter, payment link — waits for your tap. Always.",
+    "mentalModel": [
+      "Pax looks things up and writes drafts on its own, and it keeps your records up to date — lead status, tasks, deals, calendar, scores — showing you every change.",
+      "Pax never sends a message to anyone until you tap Approve; everything waiting for you is in one place, \"Waiting for your tap\".",
+      "Rules you turned on — drips, workflows, scheduled prompts — run by themselves on your own connected accounts, each behind its own switch, and one red button pauses all of it."
+    ],
+    "youStartOn": "You start on Ask before sending. Change it, or pause everything, any time under Settings → Pax.",
+    "expiredAsk": "Expired — ask Pax to draft it again",
+    "notEvenIfYouAsk": "Not even if you ask.",
+    "noSendingIdentity": "no sending identity connected → Settings → BYOK",
+    "whyLabel": "Pax's explanation",
+    "notYetLive": "Not yet live",
+    "unknownHolder": "a teammate",
+    "notRunnable": "This can't be run from a tap. Ask Pax to draft it again."
+  },
+  "PAX_LIMIT_COPY": {
+    "title": "Daily limits",
+    "intro": "Cap how much Pax may do in one day. Leave a box blank for no limit. When Pax reaches a cap it stops and tells you; nothing is cut short halfway.",
+    "resetNote": "Counts start again at midnight in your workspace's time zone.",
+    "placeholder": "No limit",
+    "labels": {
+      "asksPerDay": "Asks Pax may put in front of you",
+      "creditSpendPerDay": "Credits Pax's approved sends may cost",
+      "browseCallsPerDay": "Web pages Pax may open",
+      "batchRowsPerDay": "Records Pax may add in a batch"
+    },
+    "save": "Save limits",
+    "saved": "Daily limits saved",
+    "adminHint": "Ask an owner to change the daily limits.",
+    "refusals": {
+      "asks": "Pax has reached your daily limit for asks, so this wasn't done. Your count starts again at midnight, or you can raise the limit under Settings → Pax.",
+      "credits": "This send would take Pax past your daily limit for credits, so it wasn't put in front of you. Your count starts again at midnight, or you can raise the limit under Settings → Pax.",
+      "browse": "Pax has reached your daily limit for opening web pages, so the page wasn't opened. Your count starts again at midnight, or you can raise the limit under Settings → Pax.",
+      "batchRows": "Adding these records would take Pax past your daily limit for batch additions, so none of them were added. Your count starts again at midnight, or you can raise the limit under Settings → Pax."
+    },
+    "deniedLine": {
+      "asks": "Stopped at the daily limit for asks",
+      "credits": "Stopped at the daily limit for credits",
+      "browse": "Stopped at the daily limit for web pages",
+      "batchRows": "Stopped at the daily limit for batch additions"
+    },
+    "memberTitle": "Your own narrower settings",
+    "memberIntro": "Make Pax more careful when it acts for you. These can only narrow what the workspace allows — a choice that is wider than the workspace's has no effect.",
+    "memberLimitNote": "A number above the workspace's limit has no effect; the smaller one always applies.",
+    "memberApplies": "What applies to you right now",
+    "memberNoLimit": "no limit",
+    "memberSave": "Save my settings",
+    "memberSaved": "Your narrower settings saved",
+    "memberClear": "Clear my narrower settings",
+    "memberCleared": "Your narrower settings cleared",
+    "memberCouldNotSave": "Could not save your settings",
+    "resetButton": "Reset all rails",
+    "resetConfirm": "Tap again to reset",
+    "resetCancel": "Keep my settings",
+    "resetWhat": "Resets every rail to its starting level, removes every daily limit, and clears everyone's own narrower settings.",
+    "resetWhatNot": "Does not change your stance, the three switches, or a pause.",
+    "resetDone": "Rails, limits and everyone's narrower settings reset",
+    "couldNotReset": "Could not reset the rails"
+  },
+  "PAX_MY_SITES_COPY": {
+    "title": "My county sites",
+    "intro": "Public sites you want Pax to search for you — a county assessor, recorder or treasurer. Pax types your search into the site's own search box and reads the results page.",
+    "limitLine": "Listing a site lets Pax run searches on it. It does not let Pax copy a site's data in bulk: Pax still adds only a few records from a web page at a time, and notes where each one came from.",
+    "empty": "No sites yet. Add the ones you use and Pax can search them when you ask.",
+    "labelField": "Name",
+    "labelPlaceholder": "Cochise County assessor",
+    "hostField": "Website address",
+    "hostPlaceholder": "https://assessor.example.gov",
+    "addButton": "Add site",
+    "removeButton": "Remove",
+    "notAddress": "That does not look like a website address. Paste the address of the site, like https://assessor.example.gov.",
+    "alreadyListed": "That site is already on your list.",
+    "readOnly": "Ask an owner to change your sites."
+  },
+  "PAX_NEVER_LIST": [
+    {
+      "id": "delete_data",
+      "line": "delete your data",
+      "gate": "tests/unit/paxToolsPerformNoDeletion.test.ts"
+    },
+    {
+      "id": "move_money",
+      "line": "move money or take a payment on AcreOS's account",
+      "gate": "tests/unit/moneyCustodyHardStop.test.ts"
+    },
+    {
+      "id": "skip_trace",
+      "line": "skip-trace from chat",
+      "gate": "tests/unit/paxToolScopeAndFcra.test.ts"
+    },
+    {
+      "id": "platform_sender",
+      "line": "send to a seller or buyer from an AcreOS address",
+      "gate": "tests/unit/connectorCatalogIsHonest.test.ts"
+    }
+  ],
+  "PAX_PAGE_COPY": {
+    "title": "Pax",
+    "intro": "When Pax asks, what runs on its own, and one button that pauses all of it.",
+    "pauseButton": "Pause Pax",
+    "resumeButton": "Resume",
+    "pauseUntilPrompt": "Until when?",
+    "pauseOptionLiftNote": "30 days at most — it lifts by itself if you forget.",
+    "cancel": "Cancel",
+    "whatPauseStops": "What Pause stops",
+    "whatPauseKeeps": "What it does not stop",
+    "resumeNotYours": "An owner, an admin, or the person who paused can resume.",
+    "whenPaxAsks": "When Pax asks",
+    "askAnOwner": "Ask an owner to change this",
+    "rightNowLabel": "Right now",
+    "runsOnItsOwn": "What runs on its own",
+    "runsOnItsOwnIntro": "Each has its own switch. Pause stops all of them.",
+    "noRunsYet": "no runs yet",
+    "noSendsYet": "no sends yet",
+    "workflows": "Workflows",
+    "sequences": "Campaign sequences",
+    "scheduledPrompts": "Scheduled prompts",
+    "scheduledPromptsEmpty": "No scheduled prompts yet — schedule one from the Pax chat.",
+    "promptPause": "Pause",
+    "promptResume": "Resume",
+    "promptDelete": "Delete",
+    "promptHistory": "Run history",
+    "promptPaused": "Paused",
+    "promptOk": "OK",
+    "promptError": "Error",
+    "promptSkippedPaused": "Skipped — paused",
+    "promptSkippedOff": "Skipped — off",
+    "runHistoryIntro": "The last 20 runs of this prompt.",
+    "runHistoryEmpty": "No runs recorded yet.",
+    "leadScoring": "Lead scoring",
+    "borrowerReminders": "Prepare borrower payment reminders",
+    "inboxDrafts": "Draft a reply when I open a message",
+    "inboxDraftsLine": "a draft is not an action — nothing is sent until you send it",
+    "fixedRules": "Fixed rules",
+    "switchOn": "on",
+    "switchOff": "off",
+    "canUse": "What Pax can use",
+    "canUseIntro": "Your own accounts — your keys, your invoices. Pax sends from these, never from an AcreOS address.",
+    "connected": "Connected",
+    "connect": "Connect",
+    "capabilities": {
+      "texts": "Text sellers",
+      "email": "Send email",
+      "mail": "Send mail",
+      "data": "Pull property data",
+      "inbox": "Read & reply to your inbox"
+    },
+    "waitingHint": "Everything Pax wrote for someone else, in one place.",
+    "receiptsEmpty": "Nothing yet. When Pax changes a record or a rule runs, it shows up here.",
+    "receiptsHint": "when · what · which record · how",
+    "teamLink": "Who on your team can ask Pax to do what",
+    "teamHint": "Settings → Team",
+    "neverLead": "Pax will never:",
+    "couldNotLoad": "Couldn't load your Pax settings",
+    "couldNotPause": "Couldn't pause Pax",
+    "couldNotResume": "Couldn't resume Pax",
+    "couldNotChange": "Couldn't change this",
+    "promptDeleted": "Scheduled prompt deleted"
+  },
+  "PAX_PAUSE_COPY": {
+    "stillWorks": "Pax still answers and drafts, still asks, and anything you approve still goes out.",
+    "checkFailedRefusal": "Pax could not verify its pause setting, so this wasn't done. Try again or check Settings → Pax."
+  },
+  "PAX_PAUSE_OPTIONS": {
+    "tomorrow_8am": "Tomorrow 8 am",
+    "3d": "3 days",
+    "30d": "Until I resume"
+  },
+  "PAX_PAUSE_STILL_WORKS": "Pax still answers and drafts, still asks, and anything you approve still goes out.",
+  "PAX_RAIL_COPY": {
+    "title": "What Pax may do on each kind of record",
+    "intro": "Your stance above still decides first. These rails can only make Pax more careful for one kind of record — never less careful than your stance.",
+    "levels": {
+      "watch": {
+        "label": "Watch",
+        "sentence": "Pax looks but does not change anything."
+      },
+      "draft": {
+        "label": "Draft",
+        "sentence": "Pax prepares the change and holds it for you. Nothing is written until you tap."
+      },
+      "ask": {
+        "label": "Ask",
+        "sentence": "Pax proposes each change and waits for your tap."
+      },
+      "act_and_report": {
+        "label": "Act and report",
+        "sentence": "Pax makes the change and leaves a receipt."
+      }
+    },
+    "domains": {
+      "leads": {
+        "label": "Leads"
+      },
+      "properties": {
+        "label": "Properties"
+      },
+      "deals": {
+        "label": "Deals"
+      },
+      "tasks": {
+        "label": "Tasks"
+      },
+      "follow_ups": {
+        "label": "Follow-ups"
+      },
+      "account": {
+        "label": "Account fixes"
+      }
+    },
+    "sendsLabel": "Sends to people",
+    "sendsCeiling": "Sends never go past Ask. Pax never sends what it wrote without your tap.",
+    "alwaysOnLabel": "Looks & drafts",
+    "alwaysOnLine": "Always on — never gated, and it keeps working while paused.",
+    "runsRulesLabel": "Runs your rules",
+    "runsRulesLine": "Not a rail. Each rule keeps its own switch, listed under what runs on its own below."
+  },
+  "PAX_RAIL_DOMAINS": {
+    "leads": {
+      "label": "Leads"
+    },
+    "properties": {
+      "label": "Properties"
+    },
+    "deals": {
+      "label": "Deals"
+    },
+    "tasks": {
+      "label": "Tasks"
+    },
+    "follow_ups": {
+      "label": "Follow-ups"
+    },
+    "account": {
+      "label": "Account fixes"
+    }
+  },
+  "PAX_RAIL_LEVEL_WORDS": {
+    "watch": {
+      "label": "Watch",
+      "sentence": "Pax looks but does not change anything."
+    },
+    "draft": {
+      "label": "Draft",
+      "sentence": "Pax prepares the change and holds it for you. Nothing is written until you tap."
+    },
+    "ask": {
+      "label": "Ask",
+      "sentence": "Pax proposes each change and waits for your tap."
+    },
+    "act_and_report": {
+      "label": "Act and report",
+      "sentence": "Pax makes the change and leaves a receipt."
+    }
+  },
+  "PAX_RECEIPT_WORDS": {
+    "asked": "asked",
+    "onItsOwn": "ran on its own",
+    "rule": "rule"
+  },
+  "PAX_RULES_COPY": {
+    "workflowActive": "Your workflow is now active.",
+    "aiPlatformKey": "Pax runs on AcreOS's AI account"
+  },
+  "PAX_SETTINGS_COPY": {
+    "bucketLabel": "Pax & connections",
+    "cardTitle": "Pax — when it asks, what runs on its own",
+    "cardOpen": "Open",
+    "byokCardTitle": "Use your own provider accounts",
+    "byokCardBody": "Plug in your own Twilio, SendGrid, Lob or AI account so texts, emails, mail and Pax bill to you directly.",
+    "byokOpen": "Open your keys",
+    "quickFind": {
+      "pax": {
+        "label": "Pax — pause, when it asks",
+        "description": "One page: pause, stance, what runs on its own"
+      },
+      "pause": {
+        "label": "Pause Pax",
+        "description": "Stop everything Pax and your rules do on their own"
+      },
+      "waiting": {
+        "label": "Waiting for your tap",
+        "description": "Approve, edit or reject what Pax wrote"
+      },
+      "byok": {
+        "label": "Your own keys (BYOK)",
+        "description": "Twilio, SendGrid, Lob, AI, property data"
+      }
+    }
+  },
+  "PAX_STANCE_COPY": {
+    "ask_before_sending": {
+      "label": "Ask before sending",
+      "sentence": "Pax keeps your records up to date on its own and shows you every change. Any message to another person waits for your tap.",
+      "toast": "Ask before sending — Pax will update records on its own again. Messages still wait for your tap."
+    },
+    "ask_before_everything": {
+      "label": "Ask before everything",
+      "sentence": "Pax only looks and drafts. Every change to your records and every message waits for your tap.",
+      "toast": "Ask before everything — every record change and every message now waits for your tap."
+    }
+  },
+  "PAX_STANCE_LABELS": {
+    "ask_before_sending": "Ask before sending",
+    "ask_before_everything": "Ask before everything"
+  },
+  "PAX_STANDING_LINE": "Pax looks, drafts and updates your records. Every message waits for your tap.",
+  "$functions": [
+    "PAX_GROUP_COPY.runs_rules.ifYouNeverTouchThis",
+    "PAX_MY_SITES_COPY.added",
+    "PAX_MY_SITES_COPY.listFull",
+    "PAX_MY_SITES_COPY.removed",
+    "PAX_PAGE_COPY.borrowerRemindersLine",
+    "PAX_PAGE_COPY.fixedRulesLine",
+    "PAX_PAGE_COPY.lastRan",
+    "PAX_PAGE_COPY.lastSend",
+    "PAX_PAGE_COPY.leadScoringLine",
+    "PAX_PAGE_COPY.promptNextRun",
+    "PAX_PAGE_COPY.rightNow",
+    "PAX_PAGE_COPY.runHistoryTitle",
+    "PAX_PAGE_COPY.scheduledPromptsLine",
+    "PAX_PAGE_COPY.sequencesLine",
+    "PAX_PAGE_COPY.switchToast",
+    "PAX_PAGE_COPY.switchesLiveOn",
+    "PAX_PAGE_COPY.waitingLink",
+    "PAX_PAGE_COPY.workflowsLine",
+    "PAX_PAUSE_COPY.refusal",
+    "PAX_PAUSE_COPY.resumesByItself",
+    "PAX_PAUSE_COPY.sentence",
+    "PAX_PAUSE_COPY.skippedLine",
+    "PAX_PAUSE_COPY.statusLine",
+    "PAX_RAIL_COPY.changed",
+    "PAX_RAIL_COPY.watchRefusal",
+    "PAX_RULES_COPY.aiOwnKey",
+    "PAX_RULES_COPY.workflowSavedNotLive",
+    "formatPaxTime",
+    "originPhrase"
+  ]
+}

@@ -243,7 +243,6 @@ const SCHEDULED_HANDOFFS: Array<{ file: string; durable: string }> = [
 
 const IN_MEMORY_EMITTERS: Record<string, string> = {
   "server/routes-notes.ts": "request: note payment posted by an operator",
-  "server/routes-rent-ledger.ts": "request: rent payment posted by an operator",
   "server/services/borrower/portalPaymentPosting.ts": "request/webhook: a borrower payment",
   "server/services/buyerEvents.ts": "request: buyer CRUD",
   "server/services/certificateEvents.ts": "request: cert.acquired / cert.redeemed only (the scheduled two are durable)",
@@ -251,7 +250,7 @@ const IN_MEMORY_EMITTERS: Record<string, string> = {
   "server/services/leadEvents.ts": "request: lead CRUD; the scheduled import worker uses emitLeadCreatedDurably (DEFECT-0130)",
   "server/services/propertyEvents.ts": "request: property CRUD; the scheduled import worker uses emitPropertyCreatedDurably",
   "server/services/rehabEvents.ts": "request: rehab CRUD",
-  "server/services/rentalEvents.ts": "request: rental CRUD",
+  "server/services/rentalEvents.ts": "request: rental CRUD; rent payment posted by an operator (payment.received family, moved here from routes-rent-ledger.ts)",
   "server/services/strEvents.ts": "request: STR CRUD",
   "server/services/subdivisionEvents.ts": "request: subdivision CRUD",
   "server/services/wholesaleEvents.ts": "request: wholesale CRUD",

@@ -27,6 +27,7 @@ import {
   declarationCensus,
   newestMigrationBlock,
   parsePhysical,
+  registeredReleasePathOrphans,
 } from "../../scripts/staging-schema-census";
 
 type Step = { run?: string; uses?: string; "continue-on-error"?: unknown };
@@ -125,6 +126,79 @@ describe("staging schema census", () => {
     const v = censusVerdict(declared, [...declared, ...residue]);
     expect(v.ok).toBe(false);
     expect(v.undeclared).toHaveLength(UNDECLARED_RESIDUE_TOLERANCE + 1);
+  });
+
+  it("passes with 19 residue + earnest_money_events physical & REGISTERED — the #623 / S4 0086 case", () => {
+    const residue = Array.from({ length: UNDECLARED_RESIDUE_TOLERANCE }, (_, i) => `old${i}`);
+    const v = censusVerdict(
+      declared,
+      [...declared, ...residue, "earnest_money_events"],
+      UNDECLARED_RESIDUE_TOLERANCE,
+      new Set(["earnest_money_events"]),
+    );
+    expect(v.ok, v.failures.join("; ")).toBe(true);
+    // Named in its own registered section, and NOT counted as residue.
+    expect(v.registered).toEqual(["earnest_money_events"]);
+    expect(v.undeclared).toHaveLength(UNDECLARED_RESIDUE_TOLERANCE);
+    expect(v.undeclared).not.toContain("earnest_money_events");
+  });
+
+  it("still fails on a 20th residue table even when earnest_money_events is registered and present", () => {
+    const residue = Array.from({ length: UNDECLARED_RESIDUE_TOLERANCE }, (_, i) => `old${i}`);
+    const v = censusVerdict(
+      declared,
+      [...declared, ...residue, "earnest_money_events", "unmarked_extra"],
+      UNDECLARED_RESIDUE_TOLERANCE,
+      new Set(["earnest_money_events"]),
+    );
+    expect(v.ok).toBe(false);
+    expect(v.registered).toEqual(["earnest_money_events"]);
+    expect(v.undeclared).toHaveLength(UNDECLARED_RESIDUE_TOLERANCE + 1);
+    expect(v.undeclared).toContain("unmarked_extra");
+  });
+
+  it("counts earnest_money_events as residue when it is physical but NOT marked registered", () => {
+    const residue = Array.from({ length: UNDECLARED_RESIDUE_TOLERANCE }, (_, i) => `old${i}`);
+    // No registered set passed — presence in the orphans map alone would confer nothing anyway.
+    const v = censusVerdict(declared, [...declared, ...residue, "earnest_money_events"]);
+    expect(v.ok).toBe(false);
+    expect(v.registered).toEqual([]);
+    expect(v.undeclared).toHaveLength(UNDECLARED_RESIDUE_TOLERANCE + 1);
+    expect(v.undeclared).toContain("earnest_money_events");
+  });
+
+  it("reads the real register: only the explicit marker confers registration", () => {
+    const registered = registeredReleasePathOrphans();
+    // earnest_money_events left the marked set when PR #627 modelled it — a table
+    // leaves this register by being modelled (the register's own _note) — so the
+    // marker array is currently empty; the mechanism stays for future
+    // release-path orphans.
+    expect([...registered]).toEqual([]);
+    // Names present in the register's orphans map for unrelated .sql reasons are NOT registered.
+    const orphans = JSON.parse(read("scripts/schema-migrate-mirror.orphans.json")) as { orphans: Record<string, string> };
+    expect(Object.keys(orphans.orphans)).toContain("sessions");
+    expect(registered.has("sessions")).toBe(false);
+    expect(registered.has("earnest_money_events")).toBe(false);
+    // The formerly marked table is gone from the orphans map because it is
+    // declared now: the census declaration scan sees it as a modelled table.
+    expect(orphans.orphans["earnest_money_events"]).toBeUndefined();
+    expect(declarationCensus().names.has("earnest_money_events")).toBe(true);
+  });
+
+  it("fails loudly when the register cannot be read or has no valid marker", () => {
+    expect(() => registeredReleasePathOrphans(path.join(ROOT, "scripts/does-not-exist.orphans.json"))).toThrow(
+      /could not read\/parse the orphans register/,
+    );
+    const dir = mkdtempSync(path.join(os.tmpdir(), "census-reg-"));
+    const bad = path.join(dir, "bad.json");
+    writeFileSync(bad, "{ not json");
+    expect(() => registeredReleasePathOrphans(bad)).toThrow(/could not read\/parse the orphans register/);
+    const noMarker = path.join(dir, "no-marker.json");
+    writeFileSync(noMarker, JSON.stringify({ orphans: { earnest_money_events: "reason" } }));
+    expect(() => registeredReleasePathOrphans(noMarker)).toThrow(/no valid "releasePathCreatedUnmodelled" array/);
+    const wrongType = path.join(dir, "wrong-type.json");
+    writeFileSync(wrongType, JSON.stringify({ releasePathCreatedUnmodelled: "earnest_money_events" }));
+    expect(() => registeredReleasePathOrphans(wrongType)).toThrow(/no valid "releasePathCreatedUnmodelled" array/);
   });
 
   it("fails on an empty or tiny physical read rather than calling it clean", () => {

@@ -24,9 +24,9 @@ export const REFUND_RETRY_MAX_MS = 6 * 60 * 60 * 1000;
 /**
  * B7 — platform velocity brake.
  *
- * ⚠ PROPOSAL, NOT A RATIFIED NUMBER. These values are Muse's proposal
- * (refund-automation design §3.3 B7 / §6) pending founder ratification at
- * build review. When the rolling window already holds `maxCount` automatic
+ * RATIFIED — founder ratification 2026-11-11 (PR #550): 10 refunds /
+ * $5,000 per rolling 24h stands as shipped (refund-automation design
+ * §3.3 B7 / §6). When the rolling window already holds `maxCount` automatic
  * guarantee refunds, or would exceed `maxCents` with the next one, automation
  * pauses platform-wide: eligible requests queue with brake B7 and the founder
  * is paged. It protects against a signup farm draining the platform through

@@ -5,11 +5,10 @@
  * Logs all high-risk operations, autonomous decisions, and compliance events.
  * All entries are immutable (append-only) and timestamped.
  */
-import { db } from "../db";
-import { auditLog } from "@shared/schema";
-import { sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { clock } from "../utils/clock";
+import { chainAndInsertAuditLog } from "../utils/auditLogChain";
+import type { InsertAuditLog } from "@shared/schema";
 
 export type AuditSeverity = "info" | "warning" | "critical";
 export type AuditCategory =
@@ -50,22 +49,32 @@ class FounderAuditService {
         logger.info(JSON.stringify({ type: "FOUNDER_AUDIT", ...logEntry }));
       }
 
-      // Also persist to database audit log
+      // Also persist to database audit log.
+      //
+      // AUD-DEF-2: this write MUST go through chainAndInsertAuditLog —
+      // the same chained insert every other audit_log writer uses. The
+      // previous raw INSERT landed rows with NULL prev_hash/row_hash
+      // mid-chain (staging org 107 row 97, a founder_audit:
+      // security_event:byok.set row), permanently breaking that org's
+      // verifyAuditLogChain() from that row onward. One implementation
+      // per concept: never insert into audit_log directly here.
       if (entry.organizationId) {
-        await db.execute(sql`
-          INSERT INTO audit_log (organization_id, user_id, action, entity_type, entity_id, changes, ip_address, user_agent, created_at)
-          VALUES (
-            ${entry.organizationId},
-            ${entry.userId || 'system'},
-            ${`founder_audit:${entry.category}:${entry.action}`},
-            ${'system'},
-            ${0},
-            ${JSON.stringify({ severity: entry.severity, description: entry.description, metadata: entry.metadata, complianceFlags: entry.complianceFlags })}::jsonb,
-            ${'system'},
-            ${'founder-audit-service'},
-            NOW()
-          )
-        `).catch(err => {
+        await chainAndInsertAuditLog({
+          organizationId: entry.organizationId,
+          userId: entry.userId || "system",
+          action: `founder_audit:${entry.category}:${entry.action}`,
+          entityType: "system",
+          entityId: 0,
+          // Preserve the exact payload shape the raw INSERT persisted.
+          changes: {
+            severity: entry.severity,
+            description: entry.description,
+            metadata: entry.metadata,
+            complianceFlags: entry.complianceFlags,
+          } as unknown as InsertAuditLog["changes"],
+          ipAddress: "system",
+          userAgent: "founder-audit-service",
+        }).catch((err) => {
           // Never let audit logging failure crash the application
           logger.error("[FounderAudit] Failed to persist audit entry", err);
         });

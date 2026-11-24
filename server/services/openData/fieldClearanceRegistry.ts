@@ -116,7 +116,12 @@ const COUNTY_RECORDS: readonly FieldClearanceRecord[] = [
     evidence: "Internal / display / redistribution / per-parcel lookup permitted under the county's Open Geo-Spatial Data License v1.0, including commercial purposes; billing owner names are in the data. Raw/bulk resale is unresolved — \"sell\" is not an enumerated verb in the licence. Owner mailing was not separately stated, so the ownerMailing group is not transcribed as servable.",
     evidenceSource: "COUNTY-QUEUE.md Tranche 2 index; pack W3C-IL-DuPage.md",
     recordedOn: "2026-11-12",
-    conditions: [],
+    conditions: [
+      "Licence condition (Open Geo-Spatial Data License – DuPage County, v1.0): where the county specifies no other statement, served product must carry \"Contains information licensed under the Open Geo-Spatial Data License – DuPage County\" and, where possible, link to the licence; non-compliance terminates the granted rights automatically — attribution is a release gate.",
+      "The licence grants no right to use \"Personal Information\"; whether the owner/billing names the county itself publishes (BILLNAME as display field) fall inside that exemption was never construed by the county — the ownerName group rests on the pack's published-as-display reading. Inquiry Q2 to the county GIS Division is drafted, not sent.",
+      "The Tax Parcel item's own licenseInfo was never directly read; the licence was read verbatim from the county's ArcGIS-organisation service metadata and corroborated on other county items. If counsel requires item-level attachment, this record's permitted classes drop to unresolved.",
+      "Channel discipline (pack Counsel Flag 3): this record clears the GIS Open Data portal download channel only. The county-hosted ParcelSearch service carries an empty licenseInfo, and the 2012 DuPageMaps terms bar repackaging, resale, or distribution of that application's renderings without written permission — do not source DuPage data by scraping the Parcel Viewer or web apps under this record.",
+    ],
   },
   {
     state: "CA",

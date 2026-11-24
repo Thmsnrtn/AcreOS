@@ -68,6 +68,7 @@ import {
   reactivationTokens,
   ownerOptOutRequests,
   dsarRequests,
+  pushSubscriptions,
 } from "@shared/schema";
 import { isEncrypted } from "../services/fieldEncryption";
 
@@ -159,6 +160,10 @@ const ENTRIES: readonly Entry[] = Object.freeze([
   secret(organizationInvitations, "token", "credential", "row"),
   secret(unsubscribeTokens, "token", "credential", "row"),
   secret(dsarRequests, "verificationToken", "credential", "row"),
+  // Web-push subscription shared secret. "row" match: `auth` is a generic
+  // key name served legitimately elsewhere; only a push_subscriptions row's
+  // auth is credential material. p256dh is a public key — not registered.
+  secret(pushSubscriptions, "auth", "credential", "row"),
 
   // ── Credential verifiers ──────────────────────────────────────────────────
   secret(systemApiKeys, "keyHash", "verifier", "anywhere"),

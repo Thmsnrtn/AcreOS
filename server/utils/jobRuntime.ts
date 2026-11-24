@@ -19,6 +19,7 @@ import { db, storage } from "../storage";
 import { jobHealthLogs } from "@shared/schema";
 import { logger } from "./logger";
 import { clock } from "./clock";
+import { SUCCESS_LOG_SAMPLE_MS } from "../jobs/jobRegistry";
 
 // One UUID per Node process. Used as the lock-holder identifier so
 // `releaseJobLock` only releases a lock this process actually owns.
@@ -36,8 +37,11 @@ export function trackInterval(fn: () => void, ms: number): ReturnType<typeof set
   return handle;
 }
 
-// Track last success log time per job to implement
-// "1 success log per hour per job" sampling.
+// Track last success log time per job to implement the success-log
+// sampling window. The window value is SUCCESS_LOG_SAMPLE_MS, owned by
+// jobRegistry.ts: the job deadman derives its thresholds from that same
+// constant, because a healthy job's liveness-ROW cadence is bounded by
+// this window, not by its tick interval (MON-DEF-1).
 const _jobLastSuccessLog: Record<string, number> = {};
 
 /**
@@ -108,10 +112,10 @@ export async function withJobLock<T>(
   try {
     const result = await fn();
     const durationMs = clock.nowMs() - startedAt.getTime();
-    // Sample: only log success once per hour per job
+    // Sample: only log success once per SUCCESS_LOG_SAMPLE_MS per job
     const now = clock.nowMs();
     const lastLog = _jobLastSuccessLog[jobName] ?? 0;
-    if (now - lastLog > 60 * 60 * 1000) {
+    if (now - lastLog > SUCCESS_LOG_SAMPLE_MS) {
       _jobLastSuccessLog[jobName] = now;
       db.insert(jobHealthLogs).values({
         jobName,

@@ -151,9 +151,14 @@ import fs from "node:fs";
 import path from "node:path";
 import { CONSTITUTION } from "@shared/governance/constitution";
 import { FROZEN_ROUTES, isFrozenRoute } from "@shared/feature-freeze";
+import { ROUTE_TREE_FILES, routeTreeSource } from "../helpers/clientRoutes";
 
 const ROOT = path.resolve(__dirname, "../..");
-const app = fs.readFileSync(path.join(ROOT, "client/src/App.tsx"), "utf8");
+// Every route tree: the customer App.tsx plus the founder build's
+// founder-routes.tsx (P1-9 / X-2). Reading only App.tsx would drop the
+// founder-gated pages that live at non-/founder paths (/dunning, /reseller, …)
+// out of the population this gate inspects.
+const app = routeTreeSource();
 
 /**
  * EVERY `<Route …>` opening tag in App.tsx — both syntaxes.
@@ -337,13 +342,14 @@ describe("there is exactly one customer-facing AI destination", () => {
     ).toBeGreaterThan(10);
 
     // The only tags allowed to carry no path are wouter catch-alls.
+    // One NotFound catch-all PER ROUTE TREE (customer + founder — P1-9 / X-2).
     const pathless = tags.filter((t) => !/\bpath=/.test(t.tag));
     expect(
       pathless.map((t) => t.tag.replace(/\s+/g, " ").trim()).join(" | "),
-      "more pathless <Route> tags than the single NotFound catch-all. A " +
-        "pathless route matches everything, so a new one is a routing change " +
-        "this gate cannot reason about — name it explicitly here.",
-    ).toBe("<Route component={NotFound}");
+      "more pathless <Route> tags than the one NotFound catch-all per route " +
+        "tree. A pathless route matches everything, so a new one is a routing " +
+        "change this gate cannot reason about — name it explicitly here.",
+    ).toBe(ROUTE_TREE_FILES.map(() => "<Route component={NotFound}").join(" | "));
 
     expect(ai.map((r) => r.path), "the /ai door is gone").toContain("/ai");
   });

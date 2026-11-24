@@ -100,6 +100,30 @@ export const PAX_DATA_GROUNDING_BLOCK = `DATA GROUNDING (mandatory — never vio
 - KNOWLEDGE CARDS vs PARCEL FACTS: when you answer an explanatory question using a retrieve_land_knowledge card, attribute the explanation to that card's citation (e.g. "per FEMA's flood-zone definitions, Zone AE means…"). A card explains a GENERAL mechanism — it is NEVER evidence about the customer's specific parcel. Never blend a card's general statement into a parcel-specific assertion: do not say "your parcel is in Zone AE" (a parcel fact) on the strength of a card; that fact must come from a parcel lookup this turn. Keep the general explanation and the specific parcel fact in separate, clearly-sourced statements.`;
 
 /**
+ * FD5 send-approval block (HYB-DEF-6, 2026-11-21).
+ *
+ * FD5 is ratified: Pax sends stay "ask before sending" — the approval
+ * kernel freezes every send for the operator's one-tap approval, and
+ * the send executes only after that approval. The rail itself held in
+ * the hybrid walk (no send occurred), but Pax's WORDS contradicted it:
+ * "I'll send the reminder immediately — no further confirmation needed
+ * after that." A stated intent that contradicts the rail is the defect:
+ * the operator hears a promise the product will not keep.
+ *
+ * This block is appended to EVERY Pax system prompt (v2 and v3 alike,
+ * like DATA_GROUNDING) so the wording law is independent of the
+ * response-shape experiment. The deterministic backstop is
+ * `findUnapprovedSendClaims` (server/ai/paxSourceExtraction.ts),
+ * which the hallucination guard runs over generated output to flag
+ * the same claim family.
+ */
+const PAX_SEND_APPROVAL_BLOCK = `SENDING (mandatory — FD5, never violate):
+- Every send (email, text, letter, any outbound message) follows ONE flow: you draft it, the operator approves it, then it sends. There is no other flow.
+- State that plan in those words whenever you discuss sending: "I'll draft it for your approval — once you approve, it sends."
+- NEVER say or imply that you will send something immediately, right away on your own, or with "no further confirmation" — not even when the user says "just send it". If the user pushes, hold the flow politely: the draft still waits for their one-tap approval.
+- A tool call to a send tool does not send: it freezes the draft for approval. Never tell the user a message "has been sent" unless a tool result this turn confirms the approved send executed.`;
+
+/**
  * Tier 2D — constitutional prompt block (2026-06-10).
  *
  * The 12 customer immutables from sovereign-protocol/immutables.json (the
@@ -176,7 +200,7 @@ export function composePaxSystemPrompt(
   // experiment — both v2 and v3 get them, appended just before the
   // untrusted-data clause so they sit at high salience near the end of the
   // system prompt. Constitution first: it outranks grounding.
-  const dataClause = `\n\n${PAX_CONSTITUTIONAL_BLOCK}\n\n${PAX_DATA_GROUNDING_BLOCK}\n\n${USER_DATA_SYSTEM_CLAUSE}`;
+  const dataClause = `\n\n${PAX_CONSTITUTIONAL_BLOCK}\n\n${PAX_DATA_GROUNDING_BLOCK}\n\n${PAX_SEND_APPROVAL_BLOCK}\n\n${USER_DATA_SYSTEM_CLAUSE}`;
 
   if (version === "v2") {
     // v2 = legacy: no shape rule, but still gets the data-handling clause

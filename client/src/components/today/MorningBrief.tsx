@@ -21,7 +21,7 @@ import { useState } from "react";
 import { Link } from "wouter";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { ChevronDown, History } from "lucide-react";
-import { PAX_CONTROLS_LABEL, PAX_CONTROLS_PATH } from "@shared/pax-glossary";
+import { PAX_CONTROLS_LABEL, PAX_CONTROLS_PATH } from "@shared/pax-glossary-core";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
   Dialog,

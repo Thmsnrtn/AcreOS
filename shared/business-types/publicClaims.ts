@@ -2,18 +2,18 @@
  * What STRANGERS are told about a vertical — the one conservatism channel.
  *
  * ── THE DECISION THIS IMPLEMENTS ────────────────────────────────────────────
- * OD-5, decided 2026-08-17: demote the PUBLIC CLAIM, not the registry.
+ * FD1 (launch scope & registry, 2026-11-12; recorded in
+ * docs/company/founder-decisions-2026-11-12-launch-scope.md): the public
+ * promise is 5 core + 0 beta (FD1 as lifted 2026-11-18, 2026-11-19 and 2026-11-21), and the other ten types are `registry_only` —
+ * registered, built, kept for existing books, but not sold.
  *
- * `verticalReadiness.test.ts` measured that 13 of 15 verticals declare
- * `maturity: "core"` on evidence that reaches only `surfaced` — they have
- * somewhere to stand (4-7 spotlight modules, 2-5 workflow templates, every
- * declared template id real) and nothing that closes the canonical loop. Only
- * `fix_and_flip` and `subdivider` record a decision snapshot.
- *
- * The registry keeps saying `core`, deliberately. `core` is a fair description
- * of what a paying customer actually gets in-app, and demoting the registry
- * would demote the PRODUCT to fix a CLAIM. What changes is what someone is told
- * before they can see for themselves.
+ * Under OD-5 (2026-08-17) the registry said `core` for all fifteen and THIS
+ * file carried an eleven-row demotion table that lowered the public claim to
+ * `beta` for every vertical that could not show a recorded decision. FD1 moves
+ * that conservatism INTO the registry: `shared/business-types.ts` now states
+ * the launch presentation itself, so the public tier derives from the registry
+ * entry and the demotion table is EMPTY — and pinned empty
+ * (tests/unit/fd1LaunchScope.test.ts, verticalReadiness.test.ts).
  *
  * ── WHY THIS LIVES IN shared/ ───────────────────────────────────────────────
  * It used to be `DEMOTE_ON_LANDING` inside
@@ -22,85 +22,61 @@
  * published raw `maturity` and respected no demotion at all, so a demotion
  * approved for the landing would not have reached it. Two public surfaces
  * making different claims about the same thing is the drift this file exists to
- * make impossible: there is now ONE map, in shared/, and
- * `verticalReadiness.test.ts` fails if any public claim outruns the evidence.
+ * make impossible: there is ONE projection, in shared/, and
+ * `verticalReadiness.test.ts` fails if any public claim outruns the evidence
+ * (outside the founder-decided set it names).
  *
  * (That endpoint was retired in the same change — it had zero callers, and its
  * own docstring claimed the landing used it, which the landing never did.)
  *
  * ── THE RULES ───────────────────────────────────────────────────────────────
- * An entry may only ever move a vertical DOWN, and must carry a written reason
- * and the date it was decided. `assertDemotionsValid` throws at module load on
- * a promote, a no-op, or an empty reason, so a misconfiguration fails the build
- * rather than the visitor.
+ * `publicMaturityOf` = the registry entry's public tier (`registryPublicTier`:
+ * `registry_only` → the landing's "not sold" tier), lowered by an explicit
+ * demotion if one exists, then capped by the Evidence Ladder (a vertical with
+ * no E1 entry is never `core` publicly).
+ *
+ * A demotion entry may only ever move a vertical DOWN, and must carry a
+ * written reason and the date it was decided. `assertDemotionsValid` throws at
+ * module load on a promote, a no-op, or an empty reason, so a misconfiguration
+ * fails the build rather than the visitor. The channel is kept, empty, so a
+ * future founder decision can under-promise the registry without rebuilding
+ * the mechanism — but FD1 needs no entry, and adding one is a founder decision.
  */
 
 import {
   BUSINESS_TYPES,
+  registryPublicTier,
   type BusinessTypeId,
   type BusinessTypeMeta,
-  type VerticalMaturity,
+  type PublicMaturity,
 } from "../business-types";
 import { CAPABILITIES, evidenceLevelOf, evidenceRankOf, type Capability } from "../governance/evidenceLadder";
 
 export interface PublicClaimDemotion {
   /** Target tier. `core` is absent because this channel only ever demotes. */
-  to: Exclude<VerticalMaturity, "core">;
+  to: Exclude<PublicMaturity, "core">;
   /** Required, non-empty. Why the public claim under-promises the registry. */
   reason: string;
   /** ISO date the founder decided it. */
   decidedOn: string;
 }
 
-const OD5 =
-  "OD-5 (2026-08-17): evidences `surfaced`, not `decided` — real spotlight " +
-  "modules and real workflow templates, but no production surface records a " +
-  "decision snapshot, so nothing here can be graded or calibrated. The " +
-  "registry keeps `core` because that describes the in-app experience; this " +
-  "is what a stranger is told before they can check. Remove this entry when " +
-  "the vertical closes the canonical loop — not when the copy feels stale.";
-
 /**
- * The verticals whose public claim is lowered to `beta` (thirteen at OD-5,
- * twelve after the 2026-10-04 release below).
+ * EMPTY since FD1 (2026-11-12), and pinned empty.
  *
- * `beta` is not a hedge chosen by feel: `MATURITY_REQUIRES` in `readiness.ts`
- * says `beta` demands evidenced `surfaced` and `core` demands `decided`. Every
- * vertical still listed evidences at least `surfaced` and less than `decided`,
- * so `beta` is the most the evidence supports — no gap left to count, which is
- * why the public-claim assertion in `verticalReadiness.test.ts` is a hard zero
- * rather than a ratchet.
- *
- * Absent, deliberately: `fix_and_flip` and `subdivider`. Both record decision
- * snapshots in production, so both carry `core` honestly.
- *
- * Released: `land_flipper`, 2026-10-04. Its blind-offer commit records a
- * land_deal scenario and a decision under the land pack citing it, now with an
- * operator-chosen review date (evidence rule v2,
- * decision-memos/2026-10-04-vertical-program.md).
- * Released: `buy_and_hold`, 2026-11-05, by founder decision after its
- * post-merge staging journey proof (Leg 3) passed on the c8fa715 deploy. Its
- * underwriting desk (server/routes-buy-and-hold-underwriting.ts) records a
- * rental_acquisition scenario and a decision under the buy_and_hold pack citing
- * it. docs/company/founder-decisions-2026-11-05-buy-and-hold.md, addendum.
+ * The eleven OD-5 rows (note_investor, hybrid, residential_wholesaler,
+ * short_term_rental, commercial, creative_finance, developer, tax_lien_deed,
+ * multifamily, mobile_home, agent_investor → `beta`) were the public layer
+ * under-promising a registry that said `core` fifteen times. The registry now
+ * says what the founder decided, per type, so there is nothing left for this
+ * table to correct. A non-empty table from here on means the registry and the
+ * founder's public promise have drifted apart again — fix the registry.
  */
 export const PUBLIC_CLAIM_DEMOTIONS: Partial<
   Record<BusinessTypeId, PublicClaimDemotion>
-> = {
-  note_investor: { to: "beta", reason: OD5, decidedOn: "2026-08-17" },
-  hybrid: { to: "beta", reason: OD5, decidedOn: "2026-08-17" },
-  residential_wholesaler: { to: "beta", reason: OD5, decidedOn: "2026-08-17" },
-  short_term_rental: { to: "beta", reason: OD5, decidedOn: "2026-08-17" },
-  commercial: { to: "beta", reason: OD5, decidedOn: "2026-08-17" },
-  creative_finance: { to: "beta", reason: OD5, decidedOn: "2026-08-17" },
-  developer: { to: "beta", reason: OD5, decidedOn: "2026-08-17" },
-  tax_lien_deed: { to: "beta", reason: OD5, decidedOn: "2026-08-17" },
-  multifamily: { to: "beta", reason: OD5, decidedOn: "2026-08-17" },
-  mobile_home: { to: "beta", reason: OD5, decidedOn: "2026-08-17" },
-  agent_investor: { to: "beta", reason: OD5, decidedOn: "2026-08-17" },
-};
+> = {};
 
-const TIER_RANK: Record<VerticalMaturity, number> = {
+const TIER_RANK: Record<PublicMaturity, number> = {
   core: 0,
   beta: 1,
   roadmap: 2,
@@ -110,13 +86,16 @@ const TIER_RANK: Record<VerticalMaturity, number> = {
  * The tier a PUBLIC surface may claim for a vertical.
  *
  * Every public surface must render this, never `meta.maturity` directly.
+ * Derivation, in order: registry entry → public tier (`registry_only` is told
+ * as "not sold", the roadmap tier) → explicit demotion, if any → Evidence
+ * Ladder cap.
  */
 export function publicMaturityOf(
   meta: BusinessTypeMeta,
   demotions: Partial<Record<BusinessTypeId, PublicClaimDemotion>> = PUBLIC_CLAIM_DEMOTIONS,
   ladder: readonly Capability[] = CAPABILITIES,
-): VerticalMaturity {
-  const claimed = demotions[meta.id]?.to ?? meta.maturity;
+): PublicMaturity {
+  const claimed = demotions[meta.id]?.to ?? registryPublicTier(meta.maturity);
   // The Evidence Ladder (shared/governance/evidenceLadder.ts) binds every
   // public claim: a vertical may be called `core` to a stranger only when its
   // ladder entry is at least E1. A vertical with no evidence on the ladder is
@@ -154,7 +133,10 @@ export function assertDemotionsValid(
         `PUBLIC_CLAIM_DEMOTIONS["${id}"] names a vertical that is not in the registry.`,
       );
     }
-    if (TIER_RANK[demotion.to] <= TIER_RANK[declared]) {
+    // Direction is judged on the PUBLIC tier the registry already projects: a
+    // registry_only vertical is already told as "not sold", so "demoting" it to
+    // roadmap is a no-op and to beta is a promote — both refused.
+    if (TIER_RANK[demotion.to] <= TIER_RANK[registryPublicTier(declared)]) {
       throw new Error(
         `PUBLIC_CLAIM_DEMOTIONS["${id}"] targets "${demotion.to}" but the ` +
           `registry already declares "${declared}" — demotions must move a ` +

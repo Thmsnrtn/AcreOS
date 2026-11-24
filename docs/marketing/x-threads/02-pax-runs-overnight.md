@@ -18,9 +18,7 @@ voice-check: third-person mechanics; no founder voice; banned references absent
 
 ## Tweet 1 (hook — 230 chars, stands alone)
 
-> Pax is the AI assistant inside AcreOS. It runs overnight.
->
-> By the time the operator opens the app in the morning, Pax has pulled new county lists against the saved buy-box, run comparable-sales on the parcels that passed, drafted reply emails, and queued tasks.
+> Pax is the AI assistant inside AcreOS. It works the pipeline you've built: by the time the operator opens the app in the morning, Pax has scored the leads in your pipeline against the saved buy-box, drafted reply emails, and queued tasks.
 
 ## Tweet 2 (251 chars)
 
@@ -44,7 +42,7 @@ voice-check: third-person mechanics; no founder voice; banned references absent
 > What Pax does not do:
 >
 > · give investment advice (Constitution §12; code-enforced)
-> · auto-send anything that touches a third party (mail, email, calls — all require approval)
+> · auto-send its own drafts (Pax drafts — mail, email, calls — require approval; automations you enable run on your settings)
 > · hide what it can't do (failed comp pulls flagged in the morning queue)
 
 ## Tweet 5 (192 chars)
