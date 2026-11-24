@@ -253,6 +253,66 @@ export const toolDefinitions = {
       required: ["certificate_id", "kind", "source"]
     }
   },
+  // Land tools (Land bar item (c)). Reads state their coverage; the passport
+  // names every gap field; the one record change records the operator's word
+  // that a listing is on the market. No tool posts a listing anywhere (FD5 /
+  // BYO channel accounts) and no tool sends anything.
+  get_parcel_passport: {
+    name: "get_parcel_passport",
+    description: "Get the parcel passport (LandProfile) for one property in this account: every diligence field that has a recorded value, with its source, date and confidence, plus the list of fields that are GAPS with the reason for each. The result carries a coverage statement (e.g. 3 of 17 fields): state it whenever you quote a figure — never present a gap field as known, and never present this as a fresh lookup; it reads the passport recorded for this account.",
+    parameters: {
+      type: "object",
+      properties: { property_id: { type: "number", description: "The property number from get_properties" } },
+      required: ["property_id"]
+    }
+  },
+  get_land_listings: {
+    name: "get_land_listings",
+    description: "List this account's OWN land listings (not external MLS or marketplace listings), newest records with their status (draft, listed, active, pending, sold, withdrawn) and recorded channel status. 'listed' is the operator's word that they posted it; 'active' means a channel accepted a posting through AcreOS. The result carries a coverage statement.",
+    parameters: {
+      type: "object",
+      properties: { status: { type: "string", description: "Listing status filter (optional; default every status)" } }
+    }
+  },
+  get_land_listing: {
+    name: "get_land_listing",
+    description: "Get one of this account's land listings: title, asking price, seller-financing terms as recorded, status and the recorded status of each syndication channel. The result carries a coverage statement.",
+    parameters: {
+      type: "object",
+      properties: { listing_id: { type: "number", description: "The listing number from get_land_listings" } },
+      required: ["listing_id"]
+    }
+  },
+  get_listing_paste_text: {
+    name: "get_listing_paste_text",
+    description: "Get the ready-to-paste Craigslist text for one of this account's listings, built from the listing exactly as the publish screen builds it. This RETURNS text for the customer to post themselves — it never posts anything anywhere. Say that plainly when you hand it over.",
+    parameters: {
+      type: "object",
+      properties: { listing_id: { type: "number", description: "The listing number from get_land_listings" } },
+      required: ["listing_id"]
+    }
+  },
+  get_land_payoff_quote: {
+    name: "get_land_payoff_quote",
+    description: "Get an INDICATIVE payoff amount for one serviced note in this account (a seller-financed note this account originated — the land sell-on-terms book): principal, accrued interest, per-diem, late fees and the total through the payoff date, computed by the same engine as the note payoff calculator. It records no quote and takes no payment; a payoff a third party will rely on is issued from the note's payoff screen. The result carries a coverage statement.",
+    parameters: {
+      type: "object",
+      properties: {
+        note_id: { type: "number", description: "The serviced note's number from get_notes" },
+        payoff_date: { type: "string", description: "Date the payoff would close, YYYY-MM-DD (optional; default today)" }
+      },
+      required: ["note_id"]
+    }
+  },
+  mark_land_listing_listed: {
+    name: "mark_land_listing_listed",
+    description: "Record the customer's word that one of their listings is on the market: sets the listing's status to listed with today's on-market date. Use only when the customer says THEY posted it (e.g. pasted the Craigslist text themselves). This never posts anything to any channel. Sold, withdrawn and already-active listings are refused.",
+    parameters: {
+      type: "object",
+      properties: { listing_id: { type: "number", description: "The listing number from get_land_listings" } },
+      required: ["listing_id"]
+    }
+  },
   calculate_amortization: {
     name: "calculate_amortization",
     description: "Calculate loan amortization schedule given principal, rate, and term.",
@@ -1202,6 +1262,11 @@ export const PAUSE_SAFE_TOOLS: ReadonlySet<string> = new Set([
   "get_tax_certificate",
   "get_tax_certificate_clock",
   "get_tax_certificate_ledger",
+  "get_parcel_passport",
+  "get_land_listings",
+  "get_land_listing",
+  "get_listing_paste_text",
+  "get_land_payoff_quote",
   // Pure calculations
   "calculate_amortization",
   "calculate_payment_schedule",
@@ -1930,6 +1995,57 @@ export async function executeTool(
           receiptWritten = true;
         }
         return taxOutcomeToResult(out);
+      }
+
+      case "get_parcel_passport": {
+        const { paxGetParcelPassport, landOutcomeToResult } = await import("./landTools");
+        return landOutcomeToResult(await paxGetParcelPassport(org.id, args.property_id));
+      }
+
+      case "get_land_listings": {
+        const { paxGetLandListings, landOutcomeToResult } = await import("./landTools");
+        return landOutcomeToResult(await paxGetLandListings(org.id, { status: args.status }));
+      }
+
+      case "get_land_listing": {
+        const { paxGetLandListing, landOutcomeToResult } = await import("./landTools");
+        return landOutcomeToResult(await paxGetLandListing(org.id, args.listing_id));
+      }
+
+      case "get_listing_paste_text": {
+        const { paxGetListingPasteText, landOutcomeToResult } = await import("./landTools");
+        return landOutcomeToResult(await paxGetListingPasteText(org.id, args.listing_id));
+      }
+
+      case "get_land_payoff_quote": {
+        const { paxGetLandPayoffQuote, landOutcomeToResult } = await import("./landTools");
+        return landOutcomeToResult(await paxGetLandPayoffQuote(org.id, { note_id: args.note_id, payoff_date: args.payoff_date }));
+      }
+
+      case "mark_land_listing_listed": {
+        // An attestation record, not a posting (FD5): the customer says they
+        // posted it themselves. The receipt names the listing and the change.
+        const { paxMarkLandListingListed, landOutcomeToResult } = await import("./landTools");
+        const out = await paxMarkLandListingListed(org.id, args.listing_id);
+        if (out.ok && out.receipt && !trustedApproval) {
+          await recordPaxEffect({
+            orgId: org.id,
+            actor: "pax",
+            origin,
+            stance: controls?.stance ?? null,
+            tool: "mark_land_listing_listed",
+            action: "listing_marked_listed",
+            entityType: "organization",
+            entityId: org.id,
+            description: out.receipt.description,
+            before: out.receipt.before,
+            after: out.receipt.after,
+            witnessed: false,
+            userId: options?.userId ?? null,
+          });
+          receiptWritten = true;
+        }
+        return landOutcomeToResult(out);
       }
 
       case "get_notes": {
@@ -3925,10 +4041,10 @@ export function getToolsForRole(role: string) {
   const roleToolMap: Record<string, string[]> = {
     executive: allTools,
     acquisitions: [...coreTools, ...memoryTools, "get_leads", "get_lead_details", "update_lead_status", "create_lead", "get_properties", "create_property", "get_deals", "create_deal", "get_tasks", "create_task", "get_pipeline_summary", "generate_offer", "generate_offer_letter", "send_email", "send_sms", "run_comps_analysis", "schedule_followup", "draft_offer", "schedule_follow_up", "run_comps", "get_stale_leads", "draft_outreach_message"],
-    underwriting: [...coreTools, ...memoryTools, "get_properties", "get_property_details", "update_property", "get_notes", "get_tax_certificates", "get_tax_certificate", "get_tax_certificate_clock", "get_tax_certificate_ledger", "record_tax_ledger_entry", "calculate_amortization", "get_cashflow_summary", "get_deals", "update_deal", "run_comps_analysis", "run_comps", "calculate_roi", "calculate_payment_schedule", "research_property", "draft_offer"],
+    underwriting: [...coreTools, ...memoryTools, "get_properties", "get_property_details", "update_property", "get_notes", "get_tax_certificates", "get_tax_certificate", "get_tax_certificate_clock", "get_tax_certificate_ledger", "record_tax_ledger_entry", "get_parcel_passport", "get_land_listings", "get_land_listing", "get_listing_paste_text", "get_land_payoff_quote", "mark_land_listing_listed", "calculate_amortization", "get_cashflow_summary", "get_deals", "update_deal", "run_comps_analysis", "run_comps", "calculate_roi", "calculate_payment_schedule", "research_property", "draft_offer"],
     marketing: [...coreTools, ...memoryTools, "get_leads", "get_properties", "get_pipeline_summary", "create_task", "send_email", "send_sms", "get_stale_leads", "draft_outreach_message"],
     research: [...coreTools, ...memoryTools, "get_properties", "get_property_details", "get_leads", "create_property", "update_property", "run_comps_analysis", "run_comps", "research_property", "calculate_roi", "browse_web", "browse_search"],
-    documents: [...coreTools, "get_leads", "get_lead_details", "get_properties", "get_property_details", "get_notes", "get_tax_certificates", "get_tax_certificate", "get_tax_certificate_clock", "get_tax_certificate_ledger", "record_tax_ledger_entry", "get_deals", "generate_offer_letter", "draft_offer"],
+    documents: [...coreTools, "get_leads", "get_lead_details", "get_properties", "get_property_details", "get_notes", "get_tax_certificates", "get_tax_certificate", "get_tax_certificate_clock", "get_tax_certificate_ledger", "record_tax_ledger_entry", "get_parcel_passport", "get_land_listings", "get_land_listing", "get_listing_paste_text", "get_land_payoff_quote", "mark_land_listing_listed", "get_deals", "generate_offer_letter", "draft_offer"],
     assistant: allTools // Full access for the main assistant
   };
   
