@@ -109,7 +109,7 @@ describe.runIf(realDbAvailable)("delinquency ladder — real database, real agin
     const { readNoteTape, suggestNoteTapeMapping, validateNoteTape } = await import("../../server/services/notes/noteTapeImport");
     const { commitNoteTape } = await import("../../server/services/notes/noteTapeCommit");
     const { sheet, sha256 } = readNoteTape(golden);
-    const r = await commitNoteTape({ organizationId: orgIds[0], actorUserId: `${tag}-u`, fileName: "tape.csv", fileSha256: sha256, asOf: "2026-09-30", validation: validateNoteTape({ sheet, mapping: suggestNoteTapeMapping(sheet.headers).mapping }), excludeRows: [4, 5] });
+    const r = await commitNoteTape({ servicingArrangement: "passive_holder", organizationId: orgIds[0], actorUserId: `${tag}-u`, fileName: "tape.csv", fileSha256: sha256, asOf: "2026-09-30", validation: validateNoteTape({ sheet, mapping: suggestNoteTapeMapping(sheet.headers).mapping }), excludeRows: [4, 5] });
     if (r.status !== "committed") throw new Error(JSON.stringify(r));
     [noteId, unknownNoteId, terminalNoteId] = r.notes.slice(0, 3).map((n) => n.noteId);
     // Known schedule facts on the main note; no derivable schedule on the second; the third is paid off.

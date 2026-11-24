@@ -22,6 +22,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { apiRequest } from "@/lib/queryClient";
 import { Verbs } from "@/lib/labels";
+import { ServicingArrangementChoice } from "@/components/notes/ServicingArrangementChoice";
+import { servicingArrangementLabel, type ServicingArrangement } from "@shared/notes/servicingArrangement";
 import { NOTE_TAPE_FIELDS, type NoteTapeFieldKey, type NoteTapeGroup } from "@shared/notes/noteTapeFields";
 
 type Mapping = Partial<Record<NoteTapeFieldKey, number | null>>;
@@ -56,7 +58,7 @@ interface Committed {
   created: number;
   appendedToExisting: number;
   excludedRows: number[];
-  notes: Array<{ fileRow: number; noteId: string; noteNumber: string; created: boolean; collateral: string; documentsIncomplete: boolean; differingFields: string[] }>;
+  notes: Array<{ fileRow: number; noteId: string; noteNumber: string; created: boolean; servicingArrangement: string; servicingArrangementKept: boolean; collateral: string; documentsIncomplete: boolean; differingFields: string[] }>;
 }
 
 const GROUP_LABEL: Record<NoteTapeGroup, string> = { identity: "Loan", terms: "Terms", yield: "Yield fields", collateral: "Collateral", documents: "Documents" };
@@ -78,6 +80,8 @@ export function NoteTapeImport({ onDone }: { onDone?: () => void }) {
   const [busy, setBusy] = useState<"preview" | "commit" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [committed, setCommitted] = useState<Committed | null>(null);
+  // Deliberately null: who services these notes is the operator's declaration, never a default.
+  const [servicing, setServicing] = useState<ServicingArrangement | null>(null);
 
   async function runPreview(next: { mapping?: Mapping; overrides?: Overrides; text?: string; name?: string }) {
     const text = next.text ?? file?.text;
@@ -130,10 +134,10 @@ export function NoteTapeImport({ onDone }: { onDone?: () => void }) {
   const v = preview?.validation;
   const unresolved = useMemo(() => (v ? v.rejected.filter((r) => !excluded.has(r.fileRow)) : []), [v, excluded]);
   const toImport = v ? v.valid.filter((n) => !excluded.has(n.fileRow)).length : 0;
-  const canCommit = !!v && v.unmappedRequired.length === 0 && unresolved.length === 0 && v.valid.some((n) => !excluded.has(n.fileRow)) && busy === null;
+  const canCommit = !!v && v.unmappedRequired.length === 0 && unresolved.length === 0 && v.valid.some((n) => !excluded.has(n.fileRow)) && servicing !== null && busy === null;
 
   async function commit() {
-    if (!file || !preview) return;
+    if (!file || !preview || !servicing) return;
     setBusy("commit");
     setError(null);
     try {
@@ -144,6 +148,7 @@ export function NoteTapeImport({ onDone }: { onDone?: () => void }) {
         overrides,
         excludeRows: [...excluded],
         asOf: asOf || null,
+        servicingArrangement: servicing,
       });
       setCommitted(await readJson<Committed>(res));
     } catch (e) {
@@ -164,7 +169,7 @@ export function NoteTapeImport({ onDone }: { onDone?: () => void }) {
           </AlertTitle>
           <AlertDescription>
             Every value is recorded with the tape row it came from.
-            {committed.appendedToExisting > 0 && " For notes already in your book, the tape's values were added beside the ones you had — nothing was overwritten; any difference shows on the note's page."}
+            {committed.appendedToExisting > 0 && " For notes already in your book, the tape's values were added beside the ones you had — nothing was overwritten, including who services the note (change that on the note's page); any difference shows there too."}
             {committed.excludedRows.length > 0 && ` Rows you excluded: ${committed.excludedRows.join(", ")}.`}
           </AlertDescription>
         </Alert>
@@ -175,6 +180,7 @@ export function NoteTapeImport({ onDone }: { onDone?: () => void }) {
                 {n.noteNumber}
               </Link>
               {!n.created && <Badge variant="secondary">already in book</Badge>}
+              {!n.created && <Badge variant="outline">servicing left as “{servicingArrangementLabel(n.servicingArrangement)}”</Badge>}
               {n.documentsIncomplete && <Badge variant="destructive">documents incomplete</Badge>}
               {n.collateral === "unmatched" && <Badge variant="outline">collateral not matched</Badge>}
               {n.collateral === "not_searched" && <Badge variant="outline">no parcel id on tape</Badge>}
@@ -338,6 +344,9 @@ export function NoteTapeImport({ onDone }: { onDone?: () => void }) {
                   </Table>
                 </div>
               )}
+
+              <ServicingArrangementChoice idPrefix="note-tape-servicing" legend="Who services these notes? (required)" value={servicing} onChange={setServicing} disabled={busy !== null} />
+              {servicing === null && <p className="text-sm text-muted-foreground" data-testid="note-tape-servicing-needed">Choose who services these notes to import them.</p>}
 
               <div className="flex flex-wrap items-center gap-3">
                 <Button onClick={() => void commit()} disabled={!canCommit} data-testid="note-tape-commit">

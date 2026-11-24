@@ -89,10 +89,12 @@ import {
 } from "@shared/rental/paymentAllocation";
 import type { LateFeeProposal } from "@shared/rental/lateFeeProposal";
 import {
-  computeDepositDeadline,
+  computeDepositDeadlineFromRule,
   depositDeadlineCountdown,
   type DepositDeadlineResult,
-} from "@shared/regulatory/depositReturnRules";
+  type DepositReturnRule,
+} from "@shared/regulatory/depositDeadline";
+import { DEPOSIT_RETURN_RULES_URL, useStaticData } from "@/lib/static-data";
 
 // ---------------------------------------------------------------------------
 // Wire types
@@ -1557,8 +1559,11 @@ function RecordPaymentForm({
  * persists it from POST /api/inspections/:id/reconcile-deposit and
  * POST /api/leases/:id/security-deposit/clock, using the inspection date as
  * the move-out trigger. This page still computes its own deadline from the
- * registry (`@shared/regulatory/depositReturnRules`) with the lease's own
- * end date as the trigger, and does NOT read the persisted clock — so the
+ * registry (source of truth `@shared/regulatory/depositReturnRules`, served
+ * to this page as the `/deposit-return-rules.json` data asset and pinned
+ * deep-equal to the registry by tests/unit/depositRulesServedAsData.test.ts)
+ * with the lease's own end date as the trigger, and does NOT read the
+ * persisted clock — so the
  * two can disagree when an inspection date differs from the lease end date.
  * Reconciling the page onto the persisted clock is queued
  * (docs/autonomous/TRUTH_SWEEP_QUEUE.md). Two things are deliberate:
@@ -1578,6 +1583,11 @@ function DepositClockSection({ leases, isLoading }: { leases: Lease[]; isLoading
         .sort((a, b) => String(b.endDate ?? "").localeCompare(String(a.endDate ?? ""))),
     [leases],
   );
+  // The registry rides as a served data asset (see the section comment
+  // above). While it is in flight the section shows the same skeleton as
+  // the lease load; if it fails, the section says so and shows NO dates —
+  // a missing registry must never be answered with an invented deadline.
+  const rules = useStaticData<Record<string, DepositReturnRule>>(DEPOSIT_RETURN_RULES_URL);
 
   return (
     <Card className="mb-6">
@@ -1591,8 +1601,13 @@ function DepositClockSection({ leases, isLoading }: { leases: Lease[]; isLoading
         </CardDescription>
       </CardHeader>
       <CardContent>
-        {isLoading ? (
+        {isLoading || (rules.data === null && !rules.error) ? (
           <Skeleton className="h-24" />
+        ) : rules.error ? (
+          <p className="text-sm text-acr-warning" role="alert" data-testid="deposit-rules-load-error">
+            The state deadline registry couldn't be loaded, so no deposit deadlines are shown.
+            AcreOS will not guess a statutory date — reload the page to try again.
+          </p>
         ) : ended.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             No ended or terminated leases. The clock starts at move-out; nothing is running.
@@ -1607,7 +1622,10 @@ function DepositClockSection({ leases, isLoading }: { leases: Lease[]; isLoading
           >
             {ended.map((l) => (
               <motion.li key={l.id} variants={staggerItem}>
-                <DepositClockRow lease={l} />
+                <DepositClockRow
+                  lease={l}
+                  rule={rules.data?.[String(l.state ?? "").toUpperCase().trim()] ?? null}
+                />
               </motion.li>
             ))}
           </motion.ul>
@@ -1617,18 +1635,18 @@ function DepositClockSection({ leases, isLoading }: { leases: Lease[]; isLoading
   );
 }
 
-function DepositClockRow({ lease }: { lease: Lease }) {
+function DepositClockRow({ lease, rule }: { lease: Lease; rule: DepositReturnRule | null }) {
   const moveOutDate = lease.endDate ? String(lease.endDate).slice(0, 10) : null;
 
   // Both statutory branches. We do not know whether this operator is
   // withholding anything (no deposit-disposition read exists yet), so where
   // the branches differ the EARLIER date binds.
-  const withDeductions = computeDepositDeadline({
+  const withDeductions = computeDepositDeadlineFromRule(rule, {
     moveOutDate,
     state: lease.state,
     hasDeductions: true,
   });
-  const withoutDeductions = computeDepositDeadline({
+  const withoutDeductions = computeDepositDeadlineFromRule(rule, {
     moveOutDate,
     state: lease.state,
     hasDeductions: false,

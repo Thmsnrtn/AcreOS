@@ -31,6 +31,8 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
 import React from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -751,6 +753,16 @@ describe("rent roll — allocation, deposit clock and late-fee proposal", () => 
       const fromExtra = extra?.(call);
       if (fromExtra) return fromExtra;
       const { url, method } = call;
+      // The deposit clock's registry rides as a served data asset
+      // (client/public/deposit-return-rules.json); serve the real asset so
+      // the clock computes from the registry's actual rules.
+      if (url === "/deposit-return-rules.json") {
+        return {
+          body: JSON.parse(
+            fs.readFileSync(path.join(__dirname, "../../client/public/deposit-return-rules.json"), "utf8"),
+          ),
+        };
+      }
       if (url === "/api/rent/aging") {
         return {
           body: {

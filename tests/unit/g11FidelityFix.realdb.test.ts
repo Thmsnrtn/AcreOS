@@ -63,7 +63,7 @@ async function commitGolden(orgId: number) {
   const { commitNoteTape } = await import("../../server/services/notes/noteTapeCommit");
   const { sheet, sha256 } = readNoteTape(tape);
   const validation = validateNoteTape({ sheet, mapping: suggestNoteTapeMapping(sheet.headers).mapping });
-  const r = await commitNoteTape({ organizationId: orgId, actorUserId: `${tag}-u`, fileName: "golden.csv", fileSha256: sha256, asOf: "2026-09-30", validation, excludeRows: [4, 5] });
+  const r = await commitNoteTape({ servicingArrangement: "passive_holder", organizationId: orgId, actorUserId: `${tag}-u`, fileName: "golden.csv", fileSha256: sha256, asOf: "2026-09-30", validation, excludeRows: [4, 5] });
   if (r.status !== "committed") throw new Error(JSON.stringify(r));
   return r;
 }
@@ -262,7 +262,7 @@ describe.runIf(realDbAvailable)("G11 fidelity fix — real database", () => {
         const picked = Object.fromEntries(Object.keys(want).map((k) => [k, (got as never as Record<string, unknown>)[k]]));
         expect(picked, want.noteNumber).toEqual(want);
       });
-      const r = await commitNoteTape({ organizationId: b, actorUserId: `${tag}-u`, fileName: "export.csv", fileSha256: sha256, asOf: null, validation, excludeRows: [] });
+      const r = await commitNoteTape({ servicingArrangement: "passive_holder", organizationId: b, actorUserId: `${tag}-u`, fileName: "export.csv", fileSha256: sha256, asOf: null, validation, excludeRows: [] });
       expect(r).toMatchObject({ status: "committed", created: 3 });
       const { db } = await import("../../server/db");
       const { acquiredNotes } = await import("@shared/schema");
@@ -335,7 +335,17 @@ describe.runIf(realDbAvailable)("G11 fidelity fix — real database", () => {
     const res = await request(app).patch(`/api/notes/${note.id}`).send({ currentBalanceCents: 8_000_000, payerName: "SYNTHETIC Renamed" });
     expect(res.status).toBe(200);
     const rows = await db.select().from(noteFieldObservations).where(eq(noteFieldObservations.noteId, note.id));
-    const edits = rows.filter((r) => r.source === "edit");
+    // The tape commit that created this note also writes ONE source:"edit" row of
+    // its own — the operator's servicingArrangement declaration at import
+    // (noteTapeCommit, designed N7 behaviour, asserted by
+    // noteTapeServicingArrangement.test.ts). It is not a PATCH row, so the PATCH
+    // expectation below is scoped to the two fields this PATCH writes, and the
+    // import-time declaration row is asserted separately, on its own terms.
+    const declaration = rows.filter((r) => r.source === "edit" && r.field === "servicingArrangement");
+    expect(declaration.map((r) => [r.field, r.value, r.kind, r.recordedBy])).toEqual([
+      ["servicingArrangement", "passive_holder", "value", `${tag}-u`],
+    ]);
+    const edits = rows.filter((r) => r.source === "edit" && (r.field === "currentBalance" || r.field === "payerName"));
     expect(edits.map((r) => [r.field, r.value, r.kind, r.recordedBy]).sort()).toEqual([
       ["currentBalance", 8_000_000, "value", h.user.id],
       ["payerName", "SYNTHETIC Renamed", "value", h.user.id],

@@ -31,7 +31,7 @@ async function commit(orgId: number, csv: string, asOf: string | null, excludeRo
   const { readNoteTape, suggestNoteTapeMapping, validateNoteTape } = await import("../../server/services/notes/noteTapeImport");
   const { commitNoteTape } = await import("../../server/services/notes/noteTapeCommit");
   const { sheet, sha256 } = readNoteTape(csv);
-  const r = await commitNoteTape({ organizationId: orgId, actorUserId: `${tag}-u`, fileName: "tape.csv", fileSha256: sha256, asOf, validation: validateNoteTape({ sheet, mapping: suggestNoteTapeMapping(sheet.headers).mapping }), excludeRows });
+  const r = await commitNoteTape({ servicingArrangement: "passive_holder", organizationId: orgId, actorUserId: `${tag}-u`, fileName: "tape.csv", fileSha256: sha256, asOf, validation: validateNoteTape({ sheet, mapping: suggestNoteTapeMapping(sheet.headers).mapping }), excludeRows });
   if (r.status !== "committed") throw new Error(JSON.stringify(r));
   for (const n of r.notes) noteIds[n.noteNumber] = n.noteId;
   return r;
