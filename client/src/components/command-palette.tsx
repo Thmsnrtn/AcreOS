@@ -45,6 +45,7 @@ import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import { Dialog, DialogTitle } from "@/components/ui/dialog";
 import { useRespectfulTransition } from "@/lib/motion-tokens";
 import type { Lead as SchemaLead, Property, Deal as SchemaDeal } from "@shared/schema";
+import { LEAD_STATUSES, type LeadStatus } from "@shared/lifecycle/pipeline-status";
 import { useAuth } from "@/hooks/use-auth";
 import { usePersonaMode } from "@/hooks/use-persona-mode";
 import { telemetry } from "@/lib/telemetry";
@@ -170,13 +171,30 @@ interface Deal {
   };
 }
 
-const leadStatuses = [
-  { value: 'new', label: 'New' },
-  { value: 'contacting', label: 'Contacting' },
-  { value: 'negotiation', label: 'Negotiation' },
-  { value: 'closed', label: 'Closed' },
-  { value: 'dead', label: 'Dead' },
-];
+// The lead-status menu is DERIVED from the canonical LEAD_STATUSES
+// vocabulary (shared/lifecycle/pipeline-status.ts) — never a local list.
+// The previous hand-written list offered 'contacting' and 'negotiation',
+// which are not lead statuses: PUT /api/leads/:id rejected them with a
+// 400 every time (EL-P1 A5-02). Deriving from the canonical list makes
+// that class of drift impossible.
+const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
+  new: 'New',
+  mailed: 'Mailed',
+  contacted: 'Contacted',
+  responded: 'Responded',
+  negotiating: 'Negotiating',
+  accepted: 'Accepted',
+  interested: 'Interested',
+  qualified: 'Qualified',
+  under_contract: 'Under contract',
+  closed: 'Closed',
+  dead: 'Dead',
+};
+
+const leadStatuses = LEAD_STATUSES.map((value) => ({
+  value,
+  label: LEAD_STATUS_LABELS[value],
+}));
 
 const dealStages = [
   { value: 'negotiating', label: 'Negotiating' },

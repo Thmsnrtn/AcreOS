@@ -4,7 +4,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -12,46 +11,43 @@ import { useUserPermissions } from "@/hooks/use-organization";
 import { useTenantTheme, type TenantTheme } from "@/contexts/tenant-theme-context";
 import { Palette, Loader2, RotateCcw } from "lucide-react";
 
-const DENSITY_OPTIONS = [
-  { value: "compact", label: "Compact" },
-  { value: "comfortable", label: "Comfortable" },
-  { value: "adaptive", label: "Adaptive" },
-] as const;
-
-type DensityValue = (typeof DENSITY_OPTIONS)[number]["value"];
-
 const HEX_RE = /^#[0-9a-fA-F]{6}$/;
 
 interface BrandingForm {
   brandAccentColor: string;
   brandLogoUrl: string;
-  brandDensity: DensityValue | "";
 }
 
 function toForm(theme: TenantTheme): BrandingForm {
   return {
     brandAccentColor: theme.brandAccentColor ?? "",
     brandLogoUrl: theme.brandLogoUrl ?? "",
-    brandDensity: (theme.brandDensity ?? "") as DensityValue | "",
   };
 }
 
 /**
  * Company branding editor — Settings → Organization.
  *
- * Wires the org-level brand affordances (accent color, logo, density) that
+ * Wires the org-level brand affordances (accent color, logo) that
  * previously could only be set through the API (PATCH /api/tenant-theme)
  * to a real UI. Writes require owner/admin (enforced server-side too);
  * everyone else sees the current brand read-only.
+ *
+ * There is deliberately NO density picker here (EL-P1 A2-12): the old
+ * one wrote organizations.brandDensity, which nothing applied —
+ * `data-density` is the person's own Accessibility & comfort reading
+ * density, and org branding must never override a person's reading or
+ * accessibility settings. A stored-but-never-applied setting under
+ * "Applied across the app for every member" copy was a false promise.
  */
 export function BrandingEditor() {
   const { toast } = useToast();
   const { data: permissions } = useUserPermissions();
-  const { brandAccentColor, brandLogoUrl, brandDensity, isLoaded } = useTenantTheme();
+  const { brandAccentColor, brandLogoUrl, isLoaded } = useTenantTheme();
 
   const isAdmin = permissions?.role === "owner" || permissions?.role === "admin";
 
-  const [form, setForm] = useState<BrandingForm>({ brandAccentColor: "", brandLogoUrl: "", brandDensity: "" });
+  const [form, setForm] = useState<BrandingForm>({ brandAccentColor: "", brandLogoUrl: "" });
   const [dirty, setDirty] = useState(false);
   const [hexError, setHexError] = useState<string | null>(null);
   const [urlError, setUrlError] = useState<string | null>(null);
@@ -59,13 +55,13 @@ export function BrandingEditor() {
   // Seed the form from the loaded theme; reset when it changes underneath us.
   useEffect(() => {
     if (isLoaded) {
-      setForm(toForm({ brandAccentColor, brandLogoUrl, brandDensity }));
+      setForm(toForm({ brandAccentColor, brandLogoUrl }));
       setDirty(false);
     }
-  }, [isLoaded, brandAccentColor, brandLogoUrl, brandDensity]);
+  }, [isLoaded, brandAccentColor, brandLogoUrl]);
 
   const saveMutation = useMutation({
-    mutationFn: async (body: { brandAccentColor: string | null; brandLogoUrl: string | null; brandDensity: DensityValue | null }) => {
+    mutationFn: async (body: { brandAccentColor: string | null; brandLogoUrl: string | null }) => {
       const res = await apiRequest("PATCH", "/api/tenant-theme", body);
       return res.json() as Promise<TenantTheme>;
     },
@@ -108,15 +104,14 @@ export function BrandingEditor() {
     saveMutation.mutate({
       brandAccentColor: form.brandAccentColor === "" ? null : form.brandAccentColor,
       brandLogoUrl: form.brandLogoUrl === "" ? null : form.brandLogoUrl,
-      brandDensity: form.brandDensity === "" ? null : form.brandDensity,
     });
   };
 
   const handleReset = () => {
-    setForm({ brandAccentColor: "", brandLogoUrl: "", brandDensity: "" });
+    setForm({ brandAccentColor: "", brandLogoUrl: "" });
     setHexError(null);
     setUrlError(null);
-    saveMutation.mutate({ brandAccentColor: null, brandLogoUrl: null, brandDensity: null });
+    saveMutation.mutate({ brandAccentColor: null, brandLogoUrl: null });
   };
 
   if (!isLoaded) {
@@ -146,7 +141,7 @@ export function BrandingEditor() {
           Company branding
         </CardTitle>
         <CardDescription>
-          Your organization's accent color, logo, and density. Applied across the app for every member.
+          Your organization's accent color and logo. Applied across the app for every member.
           {!isAdmin && " Only owners and admins can change these."}
         </CardDescription>
       </CardHeader>
@@ -228,28 +223,6 @@ export function BrandingEditor() {
               />
             )}
           </div>
-        </div>
-
-        {/* Density */}
-        <div className="space-y-2">
-          <Label htmlFor="branding-density">Density</Label>
-          <Select
-            value={form.brandDensity === "" ? "__default" : form.brandDensity}
-            onValueChange={(v) => update({ brandDensity: v === "__default" ? "" : (v as DensityValue) })}
-            disabled={!isAdmin}
-          >
-            <SelectTrigger id="branding-density" className="max-w-64" data-testid="select-brand-density">
-              <SelectValue placeholder="Theme default" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__default">Theme default</SelectItem>
-              {DENSITY_OPTIONS.map((o) => (
-                <SelectItem key={o.value} value={o.value}>
-                  {o.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
         </div>
 
         {isAdmin && (
