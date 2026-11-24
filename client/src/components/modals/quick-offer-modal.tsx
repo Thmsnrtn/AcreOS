@@ -1,201 +1,81 @@
 /**
- * Quick Offer modal — ⌘N entry point per HANDOFF demo script step 3
- * ("Click 'Draft offer' → modal opens, prefilled with Atlas-suggested amount").
+ * Quick Offer modal — ⌘O entry point per HANDOFF demo script step 3.
  *
- * Distinct from the full /blind-offer-wizard (which captures county +
- * comps + sellerProfile). This modal is the fast path: paste a parcel
- * ID, see Atlas's suggested band, send a written offer in under 30
- * seconds (per landing copy: "Generate written offers in 30 seconds.
- * Atlas defends the price.").
+ * This is a LAUNCHER, and says so. It used to collect a parcel and an amount,
+ * POST them to /api/offers, and toast "Offer sent — Pax queued a written
+ * offer". None of that was true:
+ *   - `offers` has no parcel or amount column, so the insert schema dropped
+ *     both and stored an empty draft row (status "draft", every field null);
+ *   - nothing reads that row (the Offers page lists /api/offer-letters), so the
+ *     customer could not reach it;
+ *   - nothing queued or sent a letter — and counterparty mail is the org's own
+ *     rail, never something this modal can promise;
+ *   - /api/atlas/analyze (the "Suggest" button) has no handler.
+ * So the modal no longer writes anything. It opens the Blind Offer Wizard,
+ * which is where an offer is actually priced and where its letter is prepared.
  *
- * Opens via useModals().openQuickOffer(parcelId?). Triggers:
- * - ⌘N keyboard (registered in use-keyboard-shortcuts)
+ * Opens via useModals().openQuickOffer(). Triggers:
+ * - ⌘O keyboard (registered in use-keyboard-shortcuts)
  * - Sidebar header trigger with data-tour="quick-offer"
- * - Programmatic from any place that has a parcel context
+ *
+ * Every entry point opens THIS modal, so the persona gate lives here: when the
+ * account's persona hides the wizard from the nav (pure-notes orgs, via
+ * sidebar-hidden-routes.ts), the modal says the wizard is not available for
+ * this business type instead of launching into a route the nav hides. It asks
+ * the same predicate the sidebar asks (useHiddenRoutes + isRouteHidden).
  */
-import { useState, useEffect } from "react";
-import { useMutation } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { useLocation } from "wouter";
 import { useModals } from "@/stores/modal-store";
-import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
-import { Sparkles, Send, Loader2 } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { Verbs } from "@/lib/labels";
-import { DataProvenanceChip } from "@/components/data-provenance-chip";
+import { useHiddenRoutes } from "@/hooks/use-hidden-routes";
+import { isRouteHidden } from "@/lib/sidebar-hidden-routes";
 
-interface AtlasSuggestion {
-  recommendedOfferTotal: number;
-  baseOfferTotal: number;
-  /** Tier the model reported; null when the API returned none — never defaulted. */
-  confidence: "low" | "medium" | "high" | null;
-  rationale?: string;
-}
+/** Where the launcher goes — the one place an offer is really priced. */
+export const QUICK_OFFER_DESTINATION = "/blind-offer-wizard";
 
 export function QuickOfferModal() {
   const open = useModals((s) => s.quickOffer.open);
-  const parcelId = useModals((s) => s.quickOffer.parcelId);
   const close = useModals((s) => s.closeQuickOffer);
-  const { toast } = useToast();
-
-  const [parcelInput, setParcelInput] = useState("");
-  const [amount, setAmount] = useState("");
-  const [suggestion, setSuggestion] = useState<AtlasSuggestion | null>(null);
-
-  // Reset state when opening fresh
-  useEffect(() => {
-    if (open) {
-      setParcelInput(parcelId ?? "");
-      setAmount("");
-      setSuggestion(null);
-    }
-  }, [open, parcelId]);
-
-  // allow-no-invalidation: AI suggestion lands in modal-local state — no cached reads change
-  const analyzeMutation = useMutation({
-    mutationFn: async (parcel: string): Promise<AtlasSuggestion> => {
-      const res = await apiRequest("POST", "/api/atlas/analyze", { parcelId: parcel });
-      if (!res.ok) throw new Error("Pax analysis failed");
-      const data = await res.json();
-      return {
-        recommendedOfferTotal: data.recommendedOfferTotal ?? data.suggestedOffer ?? 0,
-        baseOfferTotal: data.baseOfferTotal ?? data.recommendedOfferTotal ?? 0,
-        confidence: data.confidence ?? null,
-        rationale: data.rationale,
-      };
-    },
-    onSuccess: (data) => {
-      setSuggestion(data);
-      setAmount(String(data.recommendedOfferTotal));
-    },
-    onError: () => {
-      toast({
-        title: "Pax didn't return a suggestion",
-        description: "You can still enter an amount manually.",
-        variant: "destructive",
-      });
-    },
-  });
-
-  // allow-no-invalidation: no query reads /api/offers today (batches use /api/offer-batches); nothing cached goes stale
-  const sendMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/offers", {
-        parcelId: parcelInput,
-        amount: Number(amount),
-        source: "quick-offer",
-      });
-      if (!res.ok) throw new Error("Couldn't send offer");
-      return res.json();
-    },
-    onSuccess: () => {
-      toast({
-        title: "Offer sent",
-        description: `Pax queued a written offer for ${parcelInput}.`,
-      });
-      close();
-    },
-    onError: (e: Error) => {
-      toast({
-        title: "Couldn't send the offer",
-        description: e.message || "Try again — your draft is saved.",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const canSend = parcelInput.trim().length > 0 && Number(amount) > 0 && !sendMutation.isPending;
-  const canAnalyze = parcelInput.trim().length > 0 && !analyzeMutation.isPending;
+  const [, setLocation] = useLocation();
+  const wizardHidden = isRouteHidden(QUICK_OFFER_DESTINATION, useHiddenRoutes());
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && close()}>
       <DialogContent className="sm:max-w-md" data-testid="quick-offer-modal">
         <DialogHeader>
           <DialogTitle>Quick offer</DialogTitle>
-          <DialogDescription>
-            Paste a parcel ID. Pax suggests the price and sends the letter.
-          </DialogDescription>
+          {wizardHidden ? (
+            <DialogDescription data-testid="text-quick-offer-unavailable">
+              The offer wizard prices land offers, so it is not available for this business type.
+              Nothing is sent from here.
+            </DialogDescription>
+          ) : (
+            <DialogDescription>
+              The offer wizard takes the county, comps and seller details, shows the price you can
+              defend, and writes the letter for you to copy. Nothing is sent from here.
+            </DialogDescription>
+          )}
         </DialogHeader>
-
-        <div className="space-y-4 pt-2">
-          <div className="space-y-1.5">
-            <Label htmlFor="quick-offer-parcel">Parcel</Label>
-            <Input
-              id="quick-offer-parcel"
-              value={parcelInput}
-              onChange={(e) => setParcelInput(e.target.value)}
-              placeholder="e.g. APN 304-12-456"
-              autoFocus
-              data-testid="input-quick-offer-parcel"
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between gap-2">
-              <Label htmlFor="quick-offer-amount">Offer amount (USD)</Label>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                disabled={!canAnalyze}
-                onClick={() => analyzeMutation.mutate(parcelInput.trim())}
-                data-testid="button-quick-offer-suggest"
-                className="h-7 text-xs"
-              >
-                {analyzeMutation.isPending ? (
-                  <Loader2 className="w-3 h-3 mr-1 animate-spin" aria-hidden="true" />
-                ) : (
-                  <Sparkles className="w-3 h-3 mr-1" aria-hidden="true" />
-                )}
-                Suggest
-              </Button>
-            </div>
-            <Input
-              id="quick-offer-amount"
-              type="number"
-              inputMode="decimal"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              placeholder="0"
-              data-testid="input-quick-offer-amount"
-            />
-            {suggestion && (
-              <p className="text-xs text-muted-foreground flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
-                <span>
-                  Suggested band: ${suggestion.baseOfferTotal.toLocaleString()}–
-                  ${suggestion.recommendedOfferTotal.toLocaleString()}
-                </span>
-                <DataProvenanceChip
-                  source={
-                    suggestion.confidence
-                      ? `Pax analysis · ${suggestion.confidence.charAt(0).toUpperCase() + suggestion.confidence.slice(1)} confidence`
-                      : "Pax analysis"
-                  }
-                  classification="modeled"
-                />
-              </p>
-            )}
-          </div>
-        </div>
 
         <div className="flex items-center justify-end gap-2 pt-4 border-t mt-4">
           <Button variant="ghost" onClick={close} data-testid="button-quick-offer-cancel">
             {Verbs.CANCEL}
           </Button>
-          <Button
-            onClick={() => sendMutation.mutate()}
-            disabled={!canSend}
-            data-testid="button-quick-offer-send"
-          >
-            {sendMutation.isPending ? (
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
-            ) : (
-              <Send className="w-4 h-4 mr-2" aria-hidden="true" />
-            )}
-            Send offer
-          </Button>
+          {!wizardHidden && (
+            <Button
+              onClick={() => {
+                close();
+                setLocation(QUICK_OFFER_DESTINATION);
+              }}
+              data-testid="button-quick-offer-open-wizard"
+            >
+              Open the offer wizard
+              <ArrowRight className="w-4 h-4 ml-2" aria-hidden="true" />
+            </Button>
+          )}
         </div>
       </DialogContent>
     </Dialog>

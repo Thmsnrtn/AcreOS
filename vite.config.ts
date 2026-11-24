@@ -6,6 +6,7 @@ import { execSync } from "child_process";
 import { visualizer } from "rollup-plugin-visualizer";
 import viteCompression from "vite-plugin-compression";
 import type { Plugin, UserConfig } from "vite";
+import { rechartsSharedBabelHelpersPlugin } from "./script/vite-shared-babel-helpers";
 import { buildLearnContentIndex } from "./scripts/learn-content-index.mjs";
 
 // Writes the client chunk graph Rollup actually produced — for every chunk:
@@ -709,6 +710,9 @@ export function buildConfig(output: BuildOutput): UserConfig {
       deleteOriginFile: false,
       disable: false,
     }),
+    // recharts inlines the same Babel helpers into ~100 of its files; emit
+    // them once (byte-identical copies only — see the plugin's header).
+    rechartsSharedBabelHelpersPlugin(),
     // Bundle analyzer — only active in --analyze mode. Emits
     // `dist/bundle-stats.html` (treemap) so we can identify the
     // largest chunks. Run `ANALYZE=1 npm run build` then open the file.
