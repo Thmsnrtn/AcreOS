@@ -310,5 +310,50 @@ describe("scheduled rent never back-fills before the ledger's first month", () =
       "2026-09-01",
     ]);
     expect(res.body.totalToPostCents).toBe(280_000);
+    // There is no manual-charge route: the wire copy must not tell anyone to post one.
+    expect(res.body.prorationPolicy).toContain("AcreOS cannot post a manual charge yet");
+    expect(res.body.prorationPolicy).not.toMatch(/Post those periods manually/);
   });
+
+  it("a skipped partial month says it cannot be posted here, not 'post it manually'", () => {
+    const plan = planRentCharges({
+      lease: { ...imported, startDate: "2026-06-15" },
+      existingMonths: [],
+      throughDate: "2026-07-15",
+    });
+    const partial = plan.skipped.find((s) => s.code === "partial_first_period")!;
+    expect(partial.reason).toContain("AcreOS cannot post a manual charge yet");
+    expect(partial.reason).not.toMatch(/post this first charge manually/);
+  });
+});
+
+describe("a commercial org is refused the residential late-fee surface with a true next step", () => {
+  // The 409 copy is what a commercial landlord reads. AcreOS has no
+  // manual-charge route (rent_charges is written only by the scheduled
+  // generator and the rent-roll import), so the message must not send them to
+  // one. Driven through the real handlers, with the guard's own org read.
+  const commercialReq = () => req({ organization: { id: 7, onboardingData: { businessType: "commercial" } } });
+  const GUARDED: Array<[string, string]> = [
+    ["get", "/api/late-fee-rules"],
+    ["get", "/api/rent-charges/:id/late-fee-proposal"],
+    ["get", "/api/rent/late-fee-proposals"],
+    ["post", "/api/rent-charges/:id/apply-late-fee"],
+  ];
+
+  for (const [method, path] of GUARDED) {
+    it(`${method.toUpperCase()} ${path} answers 409 and points to the books, not a manual charge`, async () => {
+      const res = fakeRes();
+      await handlerFor(method, path)(commercialReq(), res);
+      expect(res.statusCode).toBe(409);
+      expect(res.body?.error).toBe("LATE_FEE_NOT_APPLICABLE_COMMERCIAL");
+      const message: string = res.body?.message ?? "";
+      expect(message).toContain("AcreOS cannot post a manual charge yet");
+      expect(message).toMatch(/on your own books/);
+      expect(message).not.toMatch(/enter it as a manual charge/i);
+      // Refused before any read or write.
+      expect(dbMock.select).not.toHaveBeenCalled();
+      expect(dbMock.update).not.toHaveBeenCalled();
+      expect(dbMock.insert).not.toHaveBeenCalled();
+    });
+  }
 });

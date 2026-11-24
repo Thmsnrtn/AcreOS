@@ -21,8 +21,8 @@
  *    partial period whose amount depends on the proration convention written
  *    into the lease (monthly/30ths, actual days, half-month). We do not hold
  *    that term, so we do NOT compute an amount: the partial period comes back
- *    as a `skipped` entry with a reason, for the operator to post by hand at
- *    the agreed figure. Charging a full month for a half month of tenancy
+ *    as a `skipped` entry with a reason, for the operator to record at the
+ *    agreed figure on their own books (AcreOS has no manual-charge route yet). Charging a full month for a half month of tenancy
  *    would be an overcharge we invented.
  * 3. NO BACK-FILL BEFORE THE LEDGER'S FIRST MONTH. An imported lease keeps the
  *    seller's start date; the months before the import were never owed to the
@@ -209,7 +209,7 @@ export function planRentCharges(args: {
         code: "partial_first_period",
         reason:
           `Tenancy starts ${lease.startDate}, so ${key.slice(0, 7)} is a partial period. ` +
-          "Proration is a lease term AcreOS does not hold — post this first charge manually at the agreed amount.",
+          "Proration is a lease term AcreOS does not hold — AcreOS cannot post a manual charge yet, so record this first period at the agreed amount on your own books.",
       });
       continue;
     }
@@ -221,7 +221,7 @@ export function planRentCharges(args: {
         code: "partial_final_period",
         reason:
           `Tenancy ends ${lease.endDate}, so ${key.slice(0, 7)} is a partial period. ` +
-          "Proration is a lease term AcreOS does not hold — post this final charge manually at the agreed amount.",
+          "Proration is a lease term AcreOS does not hold — AcreOS cannot post a manual charge yet, so record this final period at the agreed amount on your own books.",
       });
       continue;
     }

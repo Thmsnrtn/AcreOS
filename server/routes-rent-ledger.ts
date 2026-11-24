@@ -879,8 +879,8 @@ function refuseResidentialLateFeeForCommercial(req: AuthenticatedRequest, res: R
       409,
       "LATE_FEE_NOT_APPLICABLE_COMMERCIAL",
       "State statutory late-fee rules are residential and do not bind a commercial lease — a " +
-        "commercial late fee is set by the lease, not by statute. Enter it as a manual charge " +
-        "instead of proposing one from the residential statute surface.",
+        "commercial late fee is set by the lease, not by statute. AcreOS cannot post a manual charge yet; " +
+        "record it at the figure the lease specifies on your own books.",
     );
     return true;
   }
@@ -952,10 +952,11 @@ export function registerRentLedgerRoutes(app: Express): void {
         ...preview,
         // Partial first/final periods are NOT generated: proration is a lease
         // term AcreOS does not hold, and inventing a convention would overcharge
-        // somebody. They come back per-lease as `skipped`, to post by hand.
+        // somebody. They come back per-lease as `skipped`; AcreOS has no
+        // manual-charge route yet, so the operator records them on their own books.
         prorationPolicy:
           "Partial first/final periods are never generated — AcreOS does not hold the lease's " +
-          "proration convention and will not invent one. Post those periods manually at the agreed amount.",
+          "proration convention and will not invent one. AcreOS cannot post a manual charge yet, so record those periods at the agreed amount on your own books.",
       });
     } catch (err) {
       return Errors.internal(res, err);
@@ -2600,7 +2601,8 @@ export function registerRentLedgerRoutes(app: Express): void {
         return Errors.badRequest(res, result.refusedReason);
       }
 
-      // Proposal only — the operator posts the fee as its own charge if they choose.
+      // Proposal only — nothing is posted. AcreOS has no manual-charge route yet,
+      // so a fee the operator chooses to charge is recorded on their own books.
       return res.json({
         proposal: result,
         charge: {
