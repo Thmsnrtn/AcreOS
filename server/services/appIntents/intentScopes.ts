@@ -107,6 +107,17 @@ export const INTENT_META: Record<string, { door: CustomerDoor; scope: Scope | nu
   get_tax_certificate_clock: { door: "finance", scope: "financial_read" },
   get_tax_certificate_ledger: { door: "finance", scope: "financial_read" },
   record_tax_ledger_entry: { door: "finance", scope: "financial_write" },
+  // Buy-and-hold rentals: ledger/lease reads are financial_read; the tenant
+  // list is tenant_pii_read — a PII scope, so the chokepoint refuses even an
+  // unidentified caller who lacks it (the strictest existing handling). The
+  // two record changes are financial_write, the REST doors' own class.
+  get_rent_roll: { door: "finance", scope: "financial_read" },
+  get_rental_leases: { door: "finance", scope: "financial_read" },
+  get_tenants: { door: "finance", scope: "tenant_pii_read" },
+  get_lease_ledger: { door: "finance", scope: "financial_read" },
+  get_rental_underwriting_decision: { door: "finance", scope: "financial_read" },
+  record_rent_payment: { door: "finance", scope: "financial_write" },
+  generate_scheduled_rent_charges: { door: "finance", scope: "financial_write" },
   calculate_amortization: { door: "finance", scope: "financial_read" },
   get_cashflow_summary: { door: "finance", scope: "financial_read" },
   calculate_roi: { door: "finance", scope: "financial_read" },
