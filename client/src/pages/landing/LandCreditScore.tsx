@@ -35,7 +35,8 @@ import { SkipToContent } from "@/components/skip-to-content";
 import { OpenGraph } from "@/components/seo/OpenGraph";
 import { SITE } from "@/lib/jsonld-schemas";
 import { emitMarketingTouch } from "@/lib/marketing-touch";
-import { LANDING_COPY } from "./copy";
+import type { LandingCopy } from "./copy";
+import { useLandingCopy } from "@/lib/landing-copy";
 import { LandingNav } from "./LandingNav";
 import { Footer } from "./Footer";
 import "./landing.css";
@@ -55,11 +56,13 @@ import "./landing.css";
 export function LandCreditScoreBand({
   standalone = false,
   embed = false,
+  copy,
 }: {
   standalone?: boolean;
   embed?: boolean;
+  copy: LandingCopy["landCreditScore"];
 }) {
-  const c = LANDING_COPY.landCreditScore;
+  const c = copy;
   const Title = standalone ? "h1" : "h2";
   // Subheads step exactly one level below the band title so the
   // standalone route (h1) doesn't skip to h3. Visual style is owned
@@ -220,7 +223,8 @@ function EmbedThisBox() {
 
 /** Standalone /land-credit-score marketing route. */
 export default function LandCreditScorePage() {
-  const c = LANDING_COPY.landCreditScore;
+  const { data, error } = useLandingCopy();
+  const c = data?.landCreditScore;
   usePageDescription(
     "The Land Credit Score is a 300–850 read on a parcel as an investment — graded A+ through F across six weighted dimensions. It scores land, not people, and is not a consumer credit report.",
   );
@@ -233,12 +237,22 @@ export default function LandCreditScorePage() {
       <OpenGraph
         url={`${SITE.url}/land-credit-score`}
         title="The Land Credit Score — AcreOS"
-        description={c.sub}
+        description={c?.sub ?? ""}
         type="website"
       />
       <LandingNav />
       <main id="main-content">
-        <LandCreditScoreBand standalone />
+        {error && (
+          <p role="alert" className="lp-section text-sm" data-testid="landing-load-error">
+            We couldn't load this page's content. Please refresh and try again.
+          </p>
+        )}
+        {!data && !error && (
+          <p className="lp-section text-sm" role="status" data-testid="landing-loading">
+            Loading…
+          </p>
+        )}
+        {c && <LandCreditScoreBand standalone copy={c} />}
         <section className="lp-section">
           <EmbedThisBox />
         </section>
@@ -260,7 +274,8 @@ export default function LandCreditScorePage() {
  * Iframe-ability is scoped to this exact path by server/middleware/security.ts.
  */
 export function LandCreditScoreEmbedPage() {
-  const c = LANDING_COPY.landCreditScore;
+  const { data, error } = useLandingCopy();
+  const c = data?.landCreditScore;
   usePageDescription(
     "The Land Credit Score is a 300–850 read on a parcel as an investment — graded A+ through F. It scores land, not people, and is not a consumer credit report.",
   );
@@ -269,11 +284,21 @@ export function LandCreditScoreEmbedPage() {
       <OpenGraph
         url={`${SITE.url}/land-credit-score/embed`}
         title="The Land Credit Score — AcreOS"
-        description={c.sub}
+        description={c?.sub ?? ""}
         type="website"
       />
       <div className="mx-auto max-w-4xl">
-        <LandCreditScoreBand embed />
+        {error && (
+          <p role="alert" className="lp-section text-sm" data-testid="landing-load-error">
+            We couldn't load this page's content. Please refresh and try again.
+          </p>
+        )}
+        {!data && !error && (
+          <p className="lp-section text-sm" role="status" data-testid="landing-loading">
+            Loading…
+          </p>
+        )}
+        {c && <LandCreditScoreBand embed copy={c} />}
       </div>
     </main>
   );

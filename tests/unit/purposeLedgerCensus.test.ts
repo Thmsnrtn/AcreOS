@@ -548,6 +548,7 @@ const DEBT: Record<string, ProposedSurface> = {
   "server/ai/tools.ts case:draft_outreach_message": "lead_contact_model",
   "server/ai/tools.ts case:get_lead_details": "lead_contact_model",
   "server/ai/tools.ts case:get_leads": "lead_contact_model",
+  "server/ai/tools.ts case:get_notes": "lead_contact_model",
   "server/ai/tools.ts case:get_stale_leads": "lead_contact_model",
   "server/ai/tools.ts case:get_system_context": "review",
   "server/ai/tools.ts case:schedule_follow_up": "lead_contact_model",
@@ -732,6 +733,8 @@ const DEBT: Record<string, ProposedSurface> = {
   "server/routes-misc.ts route:POST /api/sms/send": "review",
   "server/routes-misc.ts route:POST /api/webhooks/twilio/sms": "review",
   // server/routes-notes.ts
+  "server/routes-notes.ts route:GET /api/notes/:id/payoff": "review",
+  "server/routes-notes.ts route:POST /api/notes/:id/payoff/quotes": "review",
   "server/routes-notes.ts route:POST /api/notes/from-deal/:dealId": "review",
   // server/routes-onboarding.ts
   "server/routes-onboarding.ts route:POST /complete": "review",
@@ -782,6 +785,7 @@ const DEBT: Record<string, ProposedSurface> = {
   "server/routes-support-tickets.ts route:POST /api/support/tickets/:id/messages": "review",
   // server/routes-tax-certificates.ts
   "server/routes-tax-certificates.ts route:POST /api/tax-certificates": "review",
+  "server/routes-tax-certificates.ts route:POST /api/tax-certificates/:id/redemption-notice": "review",
   // server/routes-tax-delinquent.ts
   "server/routes-tax-delinquent.ts route:GET /": "lead_contact_read",
   "server/routes-tax-delinquent.ts route:GET /:id": "lead_contact_read",
@@ -863,7 +867,23 @@ const DEBT: Record<string, ProposedSurface> = {
 // (its own note: 212 → 213 on its branch) — unions with the stack's 222;
 // disjoint entry sets, verified by key count (223). Census re-run on
 // the merged tree is the proof.
-const DEBT_BASELINE = 223;
+// 223 → 224 (T-P1, 2026-11-18): the Tax transplant's ONE new surface —
+// POST /api/tax-certificates/:id/redemption-notice, which mails the owner
+// of record a statutory notice through the rail — registered "review",
+// mirroring its sibling POST /api/tax-certificates.
+// 224 → 226 (L9-DEF-1, 2026-11-19): the operator payoff cure's TWO new
+// surfaces — GET /api/notes/:id/payoff and POST /api/notes/:id/payoff/quotes
+// now read the borrower lead's name for serviced notes (loadServicedNoteForPayoff)
+// — registered "review", mirroring the borrower-side payoff-quote routes.
+// 226 → 227 (HYB-DEF-5 fix, 2026-11-21, PR #664): ONE new surface —
+// server/ai/tools.ts case:get_notes became person-adjacent in this PR when
+// its cross-book expansion began returning borrowerContact resolved from
+// the linked lead to the model — registered "lead_contact_model",
+// mirroring its eight sibling Pax cases in tools.ts (get_leads,
+// get_lead_details, send_email, …). Ledgering is not honestly available:
+// PURPOSE_SURFACES/PURPOSE_CODES are the FCRA skip-trace taxonomy and the
+// Pax dispatch collects no purpose attestation.
+const DEBT_BASELINE = 227;
 
 /**
  * Every file holding a dispatch switch (≥10 snake_case case labels, raw count)

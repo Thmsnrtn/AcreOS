@@ -1,6 +1,6 @@
 import { Info } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { PAX_STANDING_LINE } from "@shared/pax-glossary";
+import { PAX_STANDING_LINE } from "@shared/pax-glossary-core";
 
 /**
  * PaxDisclosureRail — the standing, always-present "tool, not advisor" line on

@@ -13,11 +13,11 @@
  */
 
 import { Link } from "wouter";
-import { LANDING_COPY } from "./copy";
+import type { LandingCopy } from "./copy";
 import { emitMarketingTouch } from "@/lib/marketing-touch";
 
-export function DataProvenance() {
-  const c = LANDING_COPY.data;
+export function DataProvenance({ copy }: { copy: LandingCopy["data"] }) {
+  const c = copy;
   return (
     <section className="lp-section" id="data">
       <div className="lp-eyebrow">{c.eyebrow}</div>

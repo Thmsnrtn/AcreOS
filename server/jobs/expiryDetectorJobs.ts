@@ -55,6 +55,41 @@ export function startNotePaymentDueDetectorJob() {
 // read + a handful of inserts; no external API calls. Same shape as the note
 // payment detector — no new migration.
 // ============================================================================
+// ============================================================================
+// P3-3 (decided 2026-11-16) — the daily rent cycle. Daily 09:00 UTC (an hour
+// before the lease-expiry scan so the landlord daily scans interleave
+// cleanly). Two halves in server/services/rentCycle.ts: (1) scheduled rent
+// charge generation for every org with a generatable lease — the generator
+// existed operator-triggered only, so a landlord who never pressed the
+// button had an empty ledger; (2) the late-rent trigger — one mesh event per
+// NEW overdue charge (deduped against the mesh ledger) + the charge's
+// legalPosture flip ok → late. Idempotent throughout: a rerun generates
+// nothing and re-fires nothing.
+// ============================================================================
+export function startRentCycleJob() {
+  const ONE_HOUR = 60 * 60 * 1000;
+  const TTL_SECONDS = 10 * 60;
+
+  log('Registering rent cycle (daily 09:00 UTC)', 'rent-cycle');
+
+  trackInterval(() => {
+    const now = clock.now();
+    if (now.getUTCHours() === 9) {
+      import('../services/rentCycle').then(({ runRentCycle }) => {
+        withJobLock('rent_cycle_daily', TTL_SECONDS, async () => {
+          const r = await runRentCycle();
+          log(
+            `Rent cycle: orgs=${r.orgsGenerated} inserted=${r.chargesInserted} lateScanned=${r.lateScanned} lateFindings=${r.lateFindings} latePublished=${r.latePublished} flipped=${r.posturesFlipped} errors=${r.errors}`,
+            'rent-cycle',
+          );
+        }).catch(err => {
+          log(`Rent cycle failed: ${err}`, 'rent-cycle');
+        });
+      }).catch(err => log(`Rent cycle import failed: ${err}`, 'rent-cycle'));
+    }
+  }, ONE_HOUR);
+}
+
 export function startLeaseExpiryDetectorJob() {
   const ONE_HOUR = 60 * 60 * 1000;
   const TTL_SECONDS = 10 * 60;

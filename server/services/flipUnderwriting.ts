@@ -353,13 +353,25 @@ export function computeMao(input: MaoInput): MaoResult {
     ? Math.round(defaults.monthlyHoldingCostCents * defaults.holdMonths)
     : null;
 
+  // A8-10 — ONE denominator convention for forecast and realised ROI.
+  // The realised grade (shared/rehab/realized.ts) divides its net by
+  // investedCents = purchase + purchaseClosing + rehab + holdingRecorded:
+  // every cost the numerator subtracts is in the denominator. The forecast
+  // used to exclude holding from totalCashInCents while still subtracting
+  // it in the numerator, so roiVsScenarioRatio compared unlike ratios.
+  // Holding now enters totalCashInCents on the same basis. When holding is
+  // unknown it contributes 0 here and netProfit/netRoi stay null (the
+  // missing-input honesty rule below is unchanged).
   const totalCashInCents =
-    priceUsedCents + rehabWithContingencyCents + purchaseClosingCents;
+    priceUsedCents +
+    rehabWithContingencyCents +
+    purchaseClosingCents +
+    (holdingCostCents ?? 0);
 
   const netProfitCents =
     holdingCostCents === null
       ? null
-      : arvCents - sellingCostCents - totalCashInCents - holdingCostCents;
+      : arvCents - sellingCostCents - totalCashInCents;
 
   const netProfitPctOfArv =
     netProfitCents === null || arvCents <= 0

@@ -13,8 +13,8 @@ truth-engine:
   - sources:
       - { name: "shared/business-types.ts", ref: "/Users/user/AcreOS/AcreOS/shared/business-types.ts" }
       - { name: "client/src/pages/landing/Positioning.tsx", ref: "/Users/user/AcreOS/AcreOS/client/src/pages/landing/Positioning.tsx" }
-      - { name: "client/src/pages/landing/copy.ts (Pro $41/mo billed annually)", ref: "/Users/user/AcreOS/AcreOS/client/src/pages/landing/copy.ts#L133" }
-      - { name: "client/src/pages/landing/Pricing.tsx (Pro $41/mo billed annually)", ref: "/Users/user/AcreOS/AcreOS/client/src/pages/landing/Pricing.tsx#L56" }
+      - { name: "client/src/pages/landing/copy.ts (Pro $82.50/mo billed annually ($990/yr))", ref: "/Users/user/AcreOS/AcreOS/client/src/pages/landing/copy.ts#L133" }
+      - { name: "client/src/pages/landing/Pricing.tsx (Pro $82.50/mo billed annually ($990/yr))", ref: "/Users/user/AcreOS/AcreOS/client/src/pages/landing/Pricing.tsx#L56" }
       - { name: "server/services/cmo/brandProfiles.ts (Define the buy-box / busy work)", ref: "/Users/user/AcreOS/AcreOS/server/services/cmo/brandProfiles.ts#L142" }
       - { name: "REtipster public buy-box framework (named reference, public web)", ref: "https://retipster.com/" }
 ai-disclosure: "Drafted by Pax under Soren's direction. AcreOS Constitution §7."
@@ -126,9 +126,9 @@ That is the work. Land investing is hard, slow, real work — the AcreOS Constit
 
 The six filters are configured once and edited any time. They are persisted at the organization level so a virtual assistant on the same workspace sees the same buy-box the principal sees, with role-gated visibility on the parts the principal chooses to keep private.
 
-The platform's published landing tiers every investor type it serves: Land Investors are the primary built-for surface; Note Investors are core; Fix-and-Flippers, Wholesalers, and Tax-Delinquent Buyers are beta; Subdividers and Buy-and-Hold Landlords are on the roadmap. The buy-box this post describes is the Land Investor configuration. The other verticals carry their own filter shapes; the principle is the same.
+The platform's published landing tiers every investor type it serves: Land Investors are the primary built-for surface; Note Investors are core; Fix-and-Flippers, Wholesalers, and Tax-Delinquent Buyers are beta; Subdividers are on the roadmap. The buy-box this post describes is the Land Investor configuration. The other verticals carry their own filter shapes; the principle is the same.
 
-AcreOS pricing is on the page. Pro is $41/mo billed annually and unlocks the full Pax assistant, unlimited counties, and bring-your-own-key for the parcel and skip-trace data costs every operator already pays. No "contact us" wall.
+AcreOS pricing is on the page. Pro is $82.50/mo billed annually ($990/yr) and unlocks the full Pax assistant, unlimited counties, and bring-your-own-key for the parcel and skip-trace data costs every operator already pays. No "contact us" wall.
 
 The buy-box is the first thing the operator sets. Everything the system does after that is downstream of those six answers.
 
@@ -137,8 +137,8 @@ The buy-box is the first thing the operator sets. Everything the system does aft
 ## Sources
 
 1. `shared/business-types.ts` — Vertical maturity registry (Land Investor = core; tier definitions for the other six verticals named on the landing).
-2. `client/src/pages/landing/Positioning.tsx` — Public tier statement: Land Investors primary; Note Investors core; Fix-and-Flippers, Wholesalers, Tax-Delinquent Buyers beta; Subdividers + Buy-and-Hold Landlords roadmap.
-3. `client/src/pages/landing/copy.ts` (line 133) and `client/src/pages/landing/Pricing.tsx` (line 56) — Pro pricing: $41/mo billed annually; unlimited counties; BYOK for parcel + skip-trace.
+2. `client/src/pages/landing/Positioning.tsx` — Public tier statement: Land Investors primary; Note Investors core; Fix-and-Flippers, Wholesalers, Tax-Delinquent Buyers beta; Subdividers roadmap.
+3. `client/src/pages/landing/copy.ts` (line 133) and `client/src/pages/landing/Pricing.tsx` (line 56) — Pro pricing: $82.50/mo billed annually ($990/yr); unlimited counties; BYOK for parcel + skip-trace.
 4. `server/services/cmo/brandProfiles.ts` (line 142) — Three-step mechanic: define the buy-box / AcreOS does the busy work / operator makes the calls.
 5. AcreOS Constitution §11 — "Land investing is hard, slow, real work."
 6. REtipster public buy-box framework — public reference on owner-profile and road-access filtering as standard buy-box dimensions.

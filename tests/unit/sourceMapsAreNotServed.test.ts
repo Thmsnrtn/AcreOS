@@ -67,6 +67,24 @@ describe("the build removes the maps it just uploaded", () => {
     ).toBeGreaterThan(closeOfGuard);
   });
 
+  it("strips BOTH client outputs — a founder output outside the strip would ship its maps", () => {
+    // P1-9 / X-2: the client builds to dist/public AND dist/founder. Both are
+    // served directories (server/static.ts), and `sourcemap: "hidden"` writes
+    // maps into both. The strip walks every entry of CLIENT_OUTPUT_DIRS, and the
+    // Sentry upload walks the same list, so a map is uploaded before it is
+    // deleted, for either output.
+    const list = /const CLIENT_OUTPUT_DIRS = \[([^\]]*)\]/.exec(build);
+    expect(list, "CLIENT_OUTPUT_DIRS is gone — re-point this test").not.toBeNull();
+    expect(list![1]).toContain('"dist/public"');
+    expect(list![1]).toContain('"dist/founder"');
+    const strip = build.slice(build.indexOf("async function stripSourceMapsFromDist"));
+    expect(strip, "the strip no longer iterates the client outputs").toMatch(
+      /for \(const root of CLIENT_OUTPUT_DIRS\)\s*\{\s*await stripSourceMapsFrom\(root\)/,
+    );
+    const upload = build.slice(build.indexOf("async function uploadSourceMapsToSentry"), build.indexOf("async function stripSourceMapsFromDist"));
+    expect(upload, "the Sentry upload no longer covers every client output").toMatch(/for \(const dir of CLIENT_OUTPUT_DIRS\)/);
+  });
+
   it("covers the compressed twins, not just .map", () => {
     // The compression plugin emits .map.gz and .map.br beside each .map, and
     // those are exactly as readable.
@@ -101,6 +119,18 @@ describe("the server refuses a .map even if one is present", () => {
           "middleware in registration order, so the mount answers first and the " +
           "guard never runs — the same ordering bug the /api/admin MFA gate had.",
       ).toBeLessThan(at);
+    }
+  });
+
+  it("guards before the FOUNDER mount too (dist/founder, served under /founder-app)", () => {
+    // The founder output is a second served directory. Its mounts must sit
+    // BELOW the guard, or a map in dist/founder is answered by express.static
+    // before the guard runs.
+    const guard = statics.indexOf(".map(\\.gz|\\.br)?(\\?|$)");
+    for (const mount of ["preCompressedAssets(founderPath", "express.static(founderPath"]) {
+      const at = statics.indexOf(mount);
+      expect(at, `${mount} is gone — re-point this test`).toBeGreaterThan(-1);
+      expect(guard, `the .map guard is registered AFTER ${mount}`).toBeLessThan(at);
     }
   });
 

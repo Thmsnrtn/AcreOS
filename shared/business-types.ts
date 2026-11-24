@@ -11,13 +11,40 @@
  *   - Vertical-aware Pax personalization
  *
  * Maturity tiers:
- *   core     — production-ready, full workflow templates, dedicated
- *              integrations, primary marketing surface.
- *   beta     — schema + onboarding path defined, partial workflow, no
- *              dedicated marketing surface. Customers can opt in but
- *              see "Beta" badges throughout.
- *   roadmap  — declared in the registry for waitlist + research, but
- *              UI affordances are intentionally suppressed.
+ *   core          — production-ready, full workflow templates, dedicated
+ *                   integrations, primary marketing surface.
+ *   beta          — schema + onboarding path defined, partial workflow, no
+ *                   dedicated marketing surface. Customers can opt in but
+ *                   see "Beta" badges throughout.
+ *   registry_only — BUILT and REGISTERED, but outside the public promise
+ *                   (founder decision FD1, 2026-11-12). Not offered to new
+ *                   signups and not sold to strangers; every existing book
+ *                   of this type keeps working — surfaces, templates,
+ *                   spotlight modules and data all stay exactly as they
+ *                   were. Nothing is deleted. Publicly it projects to the
+ *                   landing's one "not sold" tier (registryPublicTier).
+ *   roadmap       — declared in the registry for waitlist + research, but
+ *                   UI affordances are intentionally suppressed.
+ *
+ * 2026-11-12 — FD1 (launch scope & registry; recorded in
+ * docs/company/founder-decisions-2026-11-12-launch-scope.md). The public
+ * promise was 2 core + 3 beta; the other TEN are registry_only, Fix-and-Flip
+ * and Subdivider explicitly among them.
+ * 2026-11-18 — Wholesale LIFTED beta → core: its scoped revenue-loop journey
+ * walk passed green end-to-end on staging (see the residential_wholesaler
+ * entry below), so the promise is now 3 core + 2 beta.
+ * 2026-11-19 — Tax lien / deed LIFTED beta → core: its journey walk passed
+ * on staging and the founder counted it proven the same day (see the
+ * tax_lien_deed entry below), so the promise is now 4 core + 1 beta.
+ * 2026-11-21 — Land flipper LIFTED beta → core: its journey walk passed on
+ * staging and the founder decided the lift the same day (see the
+ * land_flipper entry below), so the promise is now 5 core + 0 beta — all
+ * five public verticals hold core.
+ * This is a PRESENTATION re-cut of the
+ * 15 values below, not a deletion: `isProductionReady` (core|beta) is what
+ * gates new-signup selectability, so registry_only types stop being offered
+ * while `getBusinessType()` still resolves them for every existing org. The
+ * exact 15-row presentation is pinned in tests/unit/fd1LaunchScope.test.ts.
  *
  * 2026-07-29 — founder ruling #11 activation program in progress
  * (docs/company/founder-decisions-2026-07-28.md: build ALL registered
@@ -50,7 +77,19 @@ export const BUSINESS_TYPE_IDS = [
 ] as const;
 
 export type BusinessTypeId = (typeof BUSINESS_TYPE_IDS)[number];
-export type VerticalMaturity = "core" | "beta" | "roadmap";
+export type VerticalMaturity = "core" | "beta" | "registry_only" | "roadmap";
+
+/**
+ * The tiers a PUBLIC surface can show. `registry_only` is not one of them:
+ * a stranger is told "not sold", which is the landing's roadmap tier. This
+ * is the one registry→public mapping; publicClaims.ts and the evidence
+ * ladder both read it rather than restating it.
+ */
+export type PublicMaturity = Exclude<VerticalMaturity, "registry_only">;
+
+export function registryPublicTier(maturity: VerticalMaturity): PublicMaturity {
+  return maturity === "registry_only" ? "roadmap" : maturity;
+}
 
 export interface BusinessTypeMeta {
   id: BusinessTypeId;
@@ -87,6 +126,34 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
   land_flipper: {
     id: "land_flipper",
     label: "Land flipper",
+    // FD1 (2026-11-12): beta — the one remaining beta type in the public
+    // promise (residential_wholesaler lifted to core 2026-11-18 and
+    // tax_lien_deed on 2026-11-19), per the
+    // 2026-11-12 decision records. Core is earned per vertical by full
+    // journey proof; Land's journey was not yet proven, so it did not hold
+    // core in the launch-day snapshot. (S1 originally recorded core here
+    // from an unratified Land↔Buy-and-Hold swap; corrected 2026-11-16 by
+    // founder ruling.)
+    //
+    // LIFTED TO CORE 2026-11-21 — core earned under the founder rule of
+    // 2026-11-16 (core is earned per vertical by full journey proof). The
+    // Land journey walk passed on staging (walk record:
+    // journey-walk-land-2026-11): legs 1–9 walked green end to end, the
+    // Leg 9 seller-financed payment cycle proven in-machine (note 61:
+    // $687.10/mo, split exact, all checks pass), and the L-P2
+    // mailed-letter success leg passed TWICE in Lob test mode — org 125
+    // (ltr_3d046e1ee01aafa2, 2026-11-20) and org 129
+    // (ltr_1205578b59dc9a6a, 2026-11-21) — provider receipts recorded,
+    // zero real mail. The founder decided the lift on 2026-11-21. Land is
+    // the fifth of the five public verticals to earn core (Notes,
+    // Buy-and-Hold, Wholesale and Tax before it); no beta remains.
+    // HONEST SCOPE: unlike Notes and Tax at their lifts, Land's CODE
+    // evidence already reaches `decided` (the blind-offer commit records
+    // gradeable land decisions), so this claim needs no
+    // FD1_CORE_ON_SURFACED_EVIDENCE entry and the readiness ratchet is
+    // unchanged. Standing residual, not a blocker: R-11 — Lob's US Mail
+    // Strictness was set to Relaxed to arm test-mode sending and must be
+    // restored to Normal before the first live production mailing.
     maturity: "core",
     // 2026-07-29 truth pass: the previously declared land_* ids never
     // existed in workflow-engine.ts. These are the real shipped templates
@@ -122,7 +189,9 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
   hybrid: {
     id: "hybrid",
     label: "Land + notes (hybrid)",
-    maturity: "core",
+    // FD1 (2026-11-12): registry_only. Both halves stay in the public promise
+    // as their own types; the combined workspace is kept for existing books.
+    maturity: "registry_only",
     // 2026-07-29 truth pass: real template ids (see land_flipper /
     // note_investor entries) — one from each book, plus the live-emitted
     // parcel owner-change follow-up (wave V3).
@@ -173,7 +242,12 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     // prompt the operator to pull comps rather than interpolate an invented
     // comp number. With the ATTOM data seam already wired, the loop now fires
     // end-to-end — so this passes the honesty bar for core.
-    maturity: "core",
+    //
+    // FD1 (2026-11-12): registry_only, NAMED EXPLICITLY. The build above is
+    // untouched and still measures `decided`; what changes is the launch
+    // promise — flip is not offered to new signups or sold to strangers.
+    // Existing fix_and_flip orgs keep every surface.
+    maturity: "registry_only",
     // 2026-07-29 truth pass: all three flip templates ship in
     // workflow-engine.ts; the Flip sidebar module (businessTypeOnly
     // fix_and_flip) surfaces /rehabs + /contractors, which existing
@@ -197,6 +271,26 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     // fires from the AI matcher's fresh-insert branch (buyerEvents.ts); all three
     // are registered in shared/workflow-live-triggers.ts and pinned by
     // workflowActionHonesty. The vertical passes the honesty bar for core.
+    //
+    // FD1 (2026-11-12): beta — one of the three beta types in the public
+    // promise (with land_flipper and tax_lien_deed). Its journey-proof hold
+    // (founder-decisions-2026-11-05-wholesale.md) waited for the journey walk.
+    //
+    // LIFTED TO CORE 2026-11-18 — core earned under the founder rule of
+    // 2026-11-16 (core is earned per vertical by full journey proof). The
+    // scoped Wholesale revenue-loop walk passed GREEN end-to-end on staging
+    // across the first walk, the post-fix re-walk, and the send-half run
+    // (walk record: journey-walk-wholesale-2026-11): buyer profile created
+    // through a customer-facing path with its buy box stored, buyer match
+    // fired, blast sent on the org's own verified sending identity,
+    // contract assigned with assignmentFeeCents recorded, and the fee
+    // surfaced in Finance and on the wholesaler dashboard. Wholesale is the
+    // second of the five public verticals to earn core (Notes was first).
+    // HONEST SCOPE: the walk proved the scoped revenue loop only — legs
+    // outside it (the buy-box surface, the underwriting decision,
+    // contract-chain compliance in both directions, the org's own e-sign
+    // rail, outcome grading, bundle evidence) were not walked and are not
+    // claimed by this lift.
     maturity: "core",
     // 2026-07-29 truth pass: the wholesaler build was real but undeclared
     // here. Wholesale sidebar module (businessTypeOnly
@@ -259,6 +353,14 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     // plane (that hard-stop is upheld: the templates now PROMPT the operator to
     // pull market rent on their own surface). The vertical passes the honesty bar
     // for core.
+    //
+    // FD1 (2026-11-12): core — one of the two full-strength types in the
+    // public promise (with note_investor), per the 2026-11-12 decision
+    // records. This is the journey-proven vertical: its beta demotion was
+    // lifted 2026-11-05/07 after the staging journey proof, and its decision
+    // desk measures `decided` — core here is earned by that proof, not
+    // asserted. (S1 originally recorded beta from an unratified
+    // Land↔Buy-and-Hold swap; corrected 2026-11-16 by founder ruling.)
     maturity: "core",
     // All four exist in workflow-engine.ts (landlord moments + lease expiry) and
     // are now wired live (see rentalEvents.ts + leaseExpiryDetector.ts).
@@ -308,7 +410,10 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     // `surfaced` (no scenario/decision loop) and the PUBLIC claim is demoted to
     // beta (publicClaims.ts, OD-5); whether to relabel `maturity` here is the
     // founder's call, not a code change.
-    maturity: "core",
+    //
+    // FD1 (2026-11-12): the founder's call — registry_only. Outside the public
+    // promise; existing STR books keep the Bookings tab and everything above.
+    maturity: "registry_only",
     // The landlord templates that apply to nightly stays (maintenance triage,
     // rent-received receipt) plus the genuinely-STR turnover-cleaning template,
     // which fires live on the reservation.checkout emitter (workflowActionHonesty
@@ -363,7 +468,10 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     // commercial terms, $/sqft, escalation steps and CAM pools + reconciliation.
     // Percentage rent (sales reports) and the contractual late-fee proposal STILL
     // have no screen — held for a product decision, see the W2 report.
-    maturity: "core",
+    //
+    // FD1 (2026-11-12): registry_only. Outside the public promise; existing
+    // commercial books keep the Leases → Commercial tab and every engine above.
+    maturity: "registry_only",
     // Landlord templates whose mechanics genuinely apply to commercial
     // base-rent operations: maintenance triage, rent-received receipt, and
     // the plain lease-expiring renewal task. tpl_landlord_lease_renewal_
@@ -434,7 +542,10 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     // (tpl_deal_closed / tpl_note_setup) and payment.missed dunning already fire —
     // so the vertical now passes the honesty bar for core. rentalEvents.ts +
     // noteEvents.ts + workflowActionHonesty pin the live-trigger relationship.
-    maturity: "core",
+    //
+    // FD1 (2026-11-12): registry_only. Outside the public promise; the
+    // seller-finance rails stay live for existing books.
+    maturity: "registry_only",
     // All four exist in workflow-engine.ts: deal close (with the
     // seller-financed note-setup task), owner-finance note setup, missed-
     // payment dunning, and the balloon 90-day countdown (balloons being a
@@ -476,7 +587,10 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     // record-only) or ground-up construction management (correctly de-scoped in
     // Wave 2, never re-asserted). No comps, no vendor, no new nav, no money
     // movement. 2026-08 founder promote decision (Wave 5).
-    maturity: "core",
+    //
+    // FD1 (2026-11-12): registry_only, with subdivider (it collapses to the
+    // same surface). Outside the public promise; existing books unchanged.
+    maturity: "registry_only",
     // The three subdivision templates, adopted verbatim from subdivider — the
     // same LIVE emitters serve both (developer collapses to the subdivider
     // persona/surface, so no re-wiring is required).
@@ -494,7 +608,11 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
   subdivider: {
     id: "subdivider",
     label: "Subdivider",
-    maturity: "core",
+    // FD1 (2026-11-12): registry_only, NAMED EXPLICITLY. It still measures
+    // `decided` (lot-pricing lock + the Leg 4 decision desk); the launch
+    // promise simply does not include it. Existing subdivider orgs keep the
+    // Subdivision module and every route below.
+    maturity: "registry_only",
     // 2026-07-29 truth pass: all three subdivision templates exist in
     // workflow-engine.ts. "subdivision-editor" was a dangling name — there
     // is no such route; subdivision editing lives on the parcel-detail
@@ -520,6 +638,37 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
   tax_lien_deed: {
     id: "tax_lien_deed",
     label: "Tax lien / deed",
+    // FD1 (2026-11-12): beta — one of the beta types in the public
+    // promise (two since residential_wholesaler's 2026-11-18 lift to core).
+    // Its evidence reaches `surfaced` (four live cert emitters, no
+    // decision desk yet), which is exactly what beta requires.
+    //
+    // LIFTED TO CORE 2026-11-19 — core earned under the founder rule of
+    // 2026-11-16 (core is earned per vertical by full journey proof). The
+    // Tax journey walk passed on staging (walk record:
+    // journey-walk-tax-2026-11): the T-P2 three-case walk passed, and the
+    // N3 redemption-notice send leg — blocked in the first walk by
+    // T-DEF-1, an environment defect (staging's shared Lob TEST key
+    // returns undeliverable verdicts for every address) — passed its
+    // 2026-11-19 re-walk composed with the walk org's own live Lob key:
+    // the verified-sender-identity precondition was satisfied FOR REAL
+    // (a real deliverability verdict under the live key), the send
+    // executed end-to-end, and the receipt records `sentViaRail:true`
+    // with the matching provider id. The founder counted Tax proven the
+    // same day, with the footnote below on the record. Tax is the fourth
+    // of the five public verticals to earn core (Notes, Buy-and-Hold and
+    // Wholesale before it); Land was the one beta remaining, until its
+    // own lift to core on 2026-11-21.
+    // HONEST SCOPE + FOOTNOTE: the N3 send leg ran in simulation mode
+    // (the founder's zero-real-mail rule for tests), so the walk proves
+    // AcreOS's send machinery end-to-end but does NOT prove Lob accepting
+    // a real letters.create — that inch is unprovable without mailing
+    // something real. And the CODE evidence still reaches only
+    // `surfaced` (no decision desk yet): like note_investor, this core
+    // claim stands on the founder's decision, named in the
+    // FD1_CORE_ON_SURFACED_EVIDENCE register in
+    // tests/unit/verticalReadiness.test.ts, and the gap closes when the
+    // tax vertical records a decision.
     maturity: "core",
     // 2026-07-29 truth pass: the tax-delinquent build was real but
     // undeclared here. Tax-delinquent sidebar module (businessTypeOnly
@@ -602,7 +751,10 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     // Core is the shipped rental stack PLUS the measured expense axis,
     // per-building occupancy, and the T-12 workspace above — the operations a
     // small/mid multifamily operator actually runs, all honest end to end.
-    maturity: "core",
+    //
+    // FD1 (2026-11-12): registry_only. Outside the public promise; the rental
+    // stack, measured op-ex axis and T-12 workspace stay for existing books.
+    maturity: "registry_only",
     // All four landlord templates genuinely apply — multifamily IS
     // long-term rental operations at unit scale (term leases that renew,
     // a rent ledger, maintenance dispatch). Wave V3 added the dedicated
@@ -672,7 +824,10 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     // for a founder call (the split's rent_component input has no writer; the
     // billback needs read-period and provenance rules before any screen), so
     // the Pax voice no longer offers them. `maturity` is untouched (OD-5).
-    maturity: "core",
+    //
+    // FD1 (2026-11-12): registry_only. Outside the public promise; existing
+    // park books keep the Units tab, pad inventory and the record half above.
+    maturity: "registry_only",
     // All four landlord templates genuinely apply to lot-lease operations
     // (lot leases renew, lot rent hits the ledger, park infrastructure
     // needs maintenance dispatch). Wave V3 added the lot-rent receipt on
@@ -724,7 +879,10 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     //   (3) Dual-agency — a record-only tracker (no generation, sending, or
     //       e-signature; legal-signing stays founder-only).
     // Behind the existing Finance/Deals doors, no new nav, no money movement.
-    maturity: "core",
+    //
+    // FD1 (2026-11-12): registry_only. Outside the public promise; the
+    // commission surface and CMA stay for existing agent-investor books.
+    maturity: "registry_only",
     // The generic land-loop templates genuinely apply (lead intake, deal
     // close). Dunning is excluded — it assumes a serviced-note book this
     // operator doesn't necessarily carry.
@@ -750,6 +908,13 @@ export function listByMaturity(maturity: VerticalMaturity): BusinessTypeMeta[] {
 export function isCore(id: string | null | undefined): boolean {
   return getBusinessType(id)?.maturity === "core";
 }
+/**
+ * Selectable for a NEW signup / vertical profile: core|beta only. A
+ * `registry_only` type (FD1) is deliberately false here — it is registered
+ * and its existing books keep working, but it is not offered — exactly like
+ * `roadmap`. Readers that need "does this org's existing type resolve" use
+ * `getBusinessType()`, which answers for all fifteen.
+ */
 export function isProductionReady(id: string | null | undefined): boolean {
   const m = getBusinessType(id)?.maturity;
   return m === "core" || m === "beta";

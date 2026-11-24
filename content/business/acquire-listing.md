@@ -21,7 +21,7 @@ AcreOS is a fully built, deploy-ready SaaS platform that serves as the single op
 | Intelligent Pipelines | 11 |
 | Autonomous Founder Agents | 5 (customer success, growth, revenue, operations, digest) |
 | Land Credit Score | Proprietary, 300-850, 6-dimension scoring |
-| Pricing Tiers | 3 active ($0/$20/$49), 2 feature-flagged |
+| Pricing Tiers | 3 active ($0/$49/$99), 2 feature-flagged |
 | Mobile App | Capacitor-ready (iOS + Android) |
 | Billing | Full Stripe integration with 14-day free trials |
 | Data Sources | 18 free government + 3 BYOK premium |
@@ -53,7 +53,7 @@ AcreOS is a fully built, deploy-ready SaaS platform that serves as the single op
 
 ## Revenue Model
 
-- **SaaS Subscriptions:** Free ($0) / Starter ($20/mo) / Pro ($49/mo) — feature-gated tiers with 14-day free trial
+- **SaaS Subscriptions:** Free ($0) / Starter ($49/mo) / Pro ($99/mo) — feature-gated tiers with 14-day free trial
 - **Embedded Payment Processing:** Stripe Connect for note payments (potential transaction fee revenue)
 - **Marketplace Fees (Future):** Property marketplace with listing fees and buyer/seller matching
 - **API/Data Access (Future):** Land Credit Score API, market intelligence data, embeddable widgets for third-party sites

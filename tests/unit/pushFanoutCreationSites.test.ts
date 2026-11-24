@@ -47,6 +47,19 @@ const SITES: Record<string, { orgArg: RegExp; family?: string }> = {
     orgArg: /pushOrgEvent\(\s*notice\.orgId\s*,/,
     family: "borrower_message",
   },
+  // B-2 (founder autopilot): a borrower chargeback — and its deadline
+  // escalations — notify the note's org.
+  "server/services/connectDisputes.ts": {
+    orgArg: /pushOrgEvent\(\s*notice\.orgId\s*,/,
+    family: "borrower_dispute",
+  },
+  // B-7 (founder autopilot): a 7-day lender onboarding stall notifies
+  // the stalled org (push + in-app; no email/SMS — a lender-facing
+  // reminder sent that way is a customer send, not this notice).
+  "server/services/connectOnboardingStalls.ts": {
+    orgArg: /pushOrgEvent\(\s*notice\.orgId\s*,/,
+    family: "onboarding_stall",
+  },
 };
 const DEFINITION = "server/services/orgPushFanout.ts";
 
@@ -55,7 +68,7 @@ describe("push fan-out: population", () => {
     .map((f) => path.relative(ROOT, f).split(path.sep).join("/"))
     .filter((rel) => /\bpushOrgEvent\s*\(/.test(read(rel)) && rel !== DEFINITION);
 
-  it("exactly the four declared creation sites call pushOrgEvent", () => {
+  it("exactly the declared creation sites call pushOrgEvent", () => {
     expect(callers.sort()).toEqual(Object.keys(SITES).sort());
   });
 
@@ -90,6 +103,8 @@ describe("push fan-out: population", () => {
     expect(src).toMatch(/redemption_alert: "deal\.closing_reminder"/);
     expect(src).toMatch(/ladder_ready: "finance\.payment_missed"/);
     expect(src).toMatch(/borrower_message: "finance\.borrower_message"/);
+    expect(src).toMatch(/borrower_dispute: "finance\.borrower_dispute"/);
+    expect(src).toMatch(/onboarding_stall: "finance\.onboarding_stall"/);
   });
 });
 
