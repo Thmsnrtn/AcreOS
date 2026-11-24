@@ -18,6 +18,12 @@
  *      operator recording creates it exactly once; the database refuses it from
  *      any source but 'operator_recorded'.
  *  18. Cross-tenant: another org reads no ladder, no bundle, records nothing.
+ *
+ * Time model: the sweep is driven by its `asOf` parameter and the app clock
+ * is moved with it (`setSimulatedClockOffset` in the `sweep` helper), because
+ * the ladder read path derives delinquency live from `clock.now()`. Both
+ * clocks always show the suite's simulated date, so results do not depend on
+ * the wall-clock date the suite happens to run on.
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -72,7 +78,17 @@ async function stages(id: string) {
 }
 async function sweep(days: number) {
   const { runAcquiredNoteAgingSweep } = await import("../../server/jobs/acquiredNoteAging");
-  return runAcquiredNoteAgingSweep({ asOf: at(days) });
+  const result = await runAcquiredNoteAgingSweep({ asOf: at(days) });
+  // The suite's simulated "now" must move BOTH time sources: the sweep's
+  // asOf above AND the one app clock, because the ladder's read path derives
+  // delinquency live from clock.now() (H-DEF-3). In production the sweep
+  // runs at wall-clock now, so the two agree by construction; here the sweep
+  // is driven ahead of the calendar, so without this the live read would
+  // measure the fixture's dates from the real wall-clock date instead of
+  // the simulated one — a different answer every day the suite runs.
+  const { setSimulatedClockOffset } = await import("../../server/utils/clock");
+  setSimulatedClockOffset(at(days).getTime() - Date.now());
+  return result;
 }
 
 describe.runIf(realDbAvailable)("delinquency ladder — real database, real aging sweep", () => {
@@ -108,6 +124,8 @@ describe.runIf(realDbAvailable)("delinquency ladder — real database, real agin
   });
 
   afterAll(async () => {
+    const { setSimulatedClockOffset } = await import("../../server/utils/clock");
+    setSimulatedClockOffset(0);
     const { db, pool } = await import("../../server/db");
     const { sql } = await import("drizzle-orm");
     for (const id of orgIds) {

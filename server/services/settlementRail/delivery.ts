@@ -19,9 +19,39 @@
  * sendLetter returns). A refusal — no verified return address, no recorded
  * price, credits short — arrives as ProviderNotContactedError and nothing
  * was mailed; callers must say so, never "sent".
+ *
+ * ERROR TAXONOMY (T-DEF-2): the mail lane speaks in lane errors, and this
+ * module is the ONE place they are translated into the rail's own shapes
+ * before any caller sees them:
+ *
+ *   ProviderNotContactedError → RailDeliveryRefusedError (422 at the route):
+ *     the lane refused BEFORE any provider contact — nothing was mailed,
+ *     nothing was charged beyond a refunded pre-pay — and the refusal's
+ *     reason (sender identity unverified, credits short, …) travels with
+ *     it so the operator is told what to fix, in the refusal's own words.
+ *   ActionInFlight / ActionAmbiguous / ActionKeyReused →
+ *   RailDeliveryConflictError (409 at the route): the piece's durable
+ *     claim is in a state that forbids this call — another worker is
+ *     sending it, a prior attempt's outcome is unknown (the provider MAY
+ *     have accepted it — never presented as "nothing was sent"), or the
+ *     key was reused for different content.
+ *   Anything else passes through untouched: a genuine fault, which the
+ *     route's 500 handler owns.
+ *
+ * Before this translation existed, the redemption-notice route mapped only
+ * RailDeliveryRefusedError, so every lane refusal above fell through to a
+ * bare 500 INTERNAL_ERROR — a fixable configuration refusal mislabelled
+ * as a server crash (journey-walk-tax-2026-11.md, T-DEF-2).
  */
 
 import { sendLetter, LetterAlreadySentError } from "../directMailService";
+import {
+  ActionAmbiguousError,
+  ActionInFlightError,
+  ActionKeyReusedError,
+  ProviderNotContactedError,
+} from "../actions/outwardAction";
+import type { MailLaneRefusalReason } from "../mail/mailLane";
 import { storage } from "../../storage";
 import type { RailDeliveryLane } from "@shared/settlement-rail";
 
@@ -41,15 +71,117 @@ export interface RailDeliveryReceipt {
   expectedDeliveryDate: string | null;
 }
 
-/** Raised before any provider contact when the org has no usable return address. */
+/**
+ * Why the rail refused a mail send BEFORE any provider was contacted.
+ * The mail lane's own refusal reasons travel verbatim (mailLane.ts);
+ * `insufficient_purchased_credits` is the lane's charge refusal;
+ * `provider_not_contacted` is the honest remainder — the send provably
+ * never reached the provider, but the lane named no narrower reason
+ * (an unreadable own key, an uncountable letter file, an owner opt-out).
+ */
+export type RailDeliveryRefusalReason =
+  | MailLaneRefusalReason
+  | "insufficient_purchased_credits"
+  | "provider_not_contacted";
+
+/** Raised before any provider contact: nothing was mailed. The message is written for the operator. */
 export class RailDeliveryRefusedError extends Error {
   constructor(
-    readonly reason: "no_sender_identity",
+    readonly reason: RailDeliveryRefusalReason,
     message: string,
   ) {
     super(message);
     this.name = "RailDeliveryRefusedError";
   }
+}
+
+/** Why a rail send conflicts with its own durable outward-action claim. */
+export type RailDeliveryConflictReason = "send_in_flight" | "send_outcome_unknown" | "idempotency_key_reused";
+
+/**
+ * The piece's idempotency claim forbids this call. NOT a "nothing was
+ * sent" refusal: on `send_outcome_unknown` the provider may already have
+ * accepted the piece, and the message says to reconcile rather than retry.
+ */
+export class RailDeliveryConflictError extends Error {
+  constructor(
+    readonly reason: RailDeliveryConflictReason,
+    message: string,
+  ) {
+    super(message);
+    this.name = "RailDeliveryConflictError";
+  }
+}
+
+const KNOWN_REFUSAL_REASONS: ReadonlySet<string> = new Set<RailDeliveryRefusalReason>([
+  "no_sender_identity",
+  "sender_identity_unverified",
+  "house_mail_unavailable",
+  "unknown_spec",
+  "letter_pages_unconfirmed",
+  "letter_over_max",
+  "letter_render_failed",
+  "insufficient_purchased_credits",
+]);
+
+/**
+ * The lane's own reason for a pre-contact refusal, read off the error's
+ * cause chain (assertSendableLane / chargeHouseMailPiece wrap the lane's
+ * MailLaneRefusedError as the cause of their ProviderNotContactedError).
+ * An unrecognised or absent reason degrades to `provider_not_contacted`,
+ * never to a guessed narrower one.
+ */
+function refusalReasonOf(err: ProviderNotContactedError): RailDeliveryRefusalReason {
+  let cause: unknown = err.cause;
+  for (let depth = 0; depth < 4 && cause != null && typeof cause === "object"; depth++) {
+    const reason = (cause as { reason?: unknown }).reason;
+    if (typeof reason === "string" && KNOWN_REFUSAL_REASONS.has(reason)) {
+      return reason as RailDeliveryRefusalReason;
+    }
+    cause = (cause as { cause?: unknown }).cause;
+  }
+  return "provider_not_contacted";
+}
+
+/**
+ * Translate a mail-lane error into the rail's taxonomy (see the header).
+ * Rail errors and genuine faults pass through unchanged — identity is
+ * preserved so a route's 500 handler sees the original error.
+ */
+export function translateRailDeliveryError(err: unknown): unknown {
+  if (err instanceof RailDeliveryRefusedError || err instanceof RailDeliveryConflictError) return err;
+  if (err instanceof ProviderNotContactedError) {
+    return new RailDeliveryRefusedError(refusalReasonOf(err), err.message);
+  }
+  if (err instanceof ActionInFlightError) return new RailDeliveryConflictError("send_in_flight", err.message);
+  if (err instanceof ActionAmbiguousError) return new RailDeliveryConflictError("send_outcome_unknown", err.message);
+  if (err instanceof ActionKeyReusedError) return new RailDeliveryConflictError("idempotency_key_reused", err.message);
+  return err;
+}
+
+/** The HTTP shape a rail route answers for a translated delivery error. */
+export interface RailDeliveryHttpError {
+  status: 422 | 409;
+  /** The ApiErrorResponse `error` code (mirrors Errors.unprocessable / the 409 code). */
+  code: "UNPROCESSABLE" | "CONFLICT";
+  message: string;
+  reason: RailDeliveryRefusalReason | RailDeliveryConflictReason;
+}
+
+/**
+ * Map a delivery error onto its route response, or null when it is not a
+ * rail delivery refusal/conflict (the caller then owns it — a genuine
+ * fault stays a 500). Both rail-letter routes answer through this one
+ * mapping so a lane refusal reads identically on every rail surface.
+ */
+export function railDeliveryHttpError(err: unknown): RailDeliveryHttpError | null {
+  if (err instanceof RailDeliveryRefusedError) {
+    return { status: 422, code: "UNPROCESSABLE", message: err.message, reason: err.reason };
+  }
+  if (err instanceof RailDeliveryConflictError) {
+    return { status: 409, code: "CONFLICT", message: err.message, reason: err.reason };
+  }
+  return null;
 }
 
 /**
@@ -94,6 +226,8 @@ export async function deliverRailLetterByMail(args: {
     if (err instanceof LetterAlreadySentError) {
       return { lane: args.lane, providerId: err.lobId, testMode: false, alreadySent: true, expectedDeliveryDate: null };
     }
-    throw err;
+    // Lane refusals and claim conflicts leave here in the rail's own
+    // taxonomy; genuine faults pass through untouched (see the header).
+    throw translateRailDeliveryError(err);
   }
 }

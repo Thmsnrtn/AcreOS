@@ -56,10 +56,15 @@ describe("evidence ladder — adoption", () => {
     expect(b.evidence.provenInSimulation).toBe(evidenceSummary().provenInSimulation);
   });
   it("a public vertical claim cannot be core when the ladder has no evidence for it", () => {
-    const meta = BUSINESS_TYPES.fix_and_flip;
+    // buy_and_hold, not fix_and_flip: under FD1 (2026-11-12) fix_and_flip is
+    // registry-only and never projects to core, so it can no longer exercise
+    // the cap. buy_and_hold is public core and decided. (land_flipper was
+    // this test's subject until the 2026-11-16 FD1 membership correction —
+    // founder ruling — made it beta.)
+    const meta = BUSINESS_TYPES.buy_and_hold;
     expect(publicMaturityOf(meta)).toBe("core");
-    expect(evidenceLevelOf("vertical.fix_and_flip")).toBe("E1");
-    const without = CAPABILITIES.filter((c) => c.id !== "vertical.fix_and_flip");
+    expect(evidenceLevelOf("vertical.buy_and_hold")).toBe("E1");
+    const without = CAPABILITIES.filter((c) => c.id !== "vertical.buy_and_hold");
     expect(publicMaturityOf(meta, {}, without)).toBe("beta");
   });
 });

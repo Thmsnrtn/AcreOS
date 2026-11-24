@@ -33,6 +33,7 @@ let rehabB = "";
 
 // ── The fixture, hand-computed ─────────────────────────────────────────────
 const PURCHASE = 12_000_000;
+const PURCHASE_CLOSING = 240_000; // 2% of purchase — the forecast basis counts it, so the realized basis does too (FF-DEF-2)
 const REHAB_SPENT = 6_000_000;
 const HOLDING = 900_000;
 const STARTED = "2025-10-01";
@@ -45,8 +46,8 @@ const SC_ROI = 0.4;
 const SC_HOLD_MONTHS = 5;
 // Oct 1 2025 → Mar 31 2026
 const HOLD_DAYS = 181;
-const NET = SALE - SELLING - PURCHASE - REHAB_SPENT - HOLDING; // 9_600_000
-const INVESTED = PURCHASE + REHAB_SPENT + HOLDING; // 18_900_000
+const NET = SALE - SELLING - PURCHASE - PURCHASE_CLOSING - REHAB_SPENT - HOLDING; // 9_360_000
+const INVESTED = PURCHASE + PURCHASE_CLOSING + REHAB_SPENT + HOLDING; // 19_140_000
 
 async function appFor(organizationId: number, opts: { decisions?: boolean } = {}) {
   const a = express();
@@ -102,8 +103,8 @@ describe.runIf(realDbAvailable)("rehab exit & realized routes — real database"
     propB = await prop(orgB, `${tag}-b`);
 
     rehabA = (await q<{ id: string }>(
-      "INSERT INTO rehabs (organization_id, property_id, name, started_at, purchase_price_cents) VALUES ($1, $2, 'A', $3, $4) RETURNING id",
-      orgA, propA, STARTED, PURCHASE,
+      "INSERT INTO rehabs (organization_id, property_id, name, started_at, purchase_price_cents, purchase_closing_cents) VALUES ($1, $2, 'A', $3, $4, $5) RETURNING id",
+      orgA, propA, STARTED, PURCHASE, PURCHASE_CLOSING,
     ))[0].id;
     rehabB = (await q<{ id: string }>("INSERT INTO rehabs (organization_id, property_id, name) VALUES ($1, $2, 'B') RETURNING id", orgB, propB))[0].id;
 
@@ -226,7 +227,7 @@ describe.runIf(realDbAvailable)("rehab exit & realized routes — real database"
     expect(early.status, JSON.stringify(early.body)).toBe(400);
     expect((await realizedColumns())[0].sale).toBeNull();
 
-    // One recorded holding cost, so the net has all three components.
+    // One recorded holding cost, so the net has every component (purchase, closing, rehab, holding).
     await request(app)
       .post(`/api/rehabs/${rehabA}/holding-entries`)
       .send({ entryDate: "2026-01-15", category: "taxes", amountCents: HOLDING })
@@ -255,7 +256,7 @@ describe.runIf(realDbAvailable)("rehab exit & realized routes — real database"
     expect(g.netMissing).toEqual([]);
     expect(g.realizedNetCents).toBe(NET);
     expect(g.investedCents).toBe(INVESTED);
-    expect(g.investedParts).toEqual({ purchaseCents: PURCHASE, rehabSpentCents: REHAB_SPENT, holdingRecordedCents: HOLDING });
+    expect(g.investedParts).toEqual({ purchaseCents: PURCHASE, purchaseClosingCents: PURCHASE_CLOSING, rehabSpentCents: REHAB_SPENT, holdingRecordedCents: HOLDING });
     expect(g.realizedRoiRatio).toBeCloseTo(NET / INVESTED, 10);
     expect(g.deltas.saleVsArvCents).toBe(SALE - SC_ARV); // −2_000_000
     expect(g.deltas.holdDaysVsScenarioDays).toBe(HOLD_DAYS - SC_HOLD_MONTHS * 30); // 31

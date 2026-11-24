@@ -43,6 +43,27 @@ interface BookEntry {
   dealId?: number | null;
   /** Sub-label, e.g. principal/interest split or the borrower name. */
   detail?: string;
+  /**
+   * Borrower chargeback flag (B-2): the payment this entry posts is under
+   * a Stripe dispute on the lender's own account. Open disputes read
+   * "under review" with the response deadline; closed ones name the
+   * outcome. Absent when the payment was never disputed.
+   */
+  dispute?: {
+    status: string | null;
+    dueBy: Date | null;
+    closed: boolean;
+  };
+}
+
+/** The lender-facing words for a dispute flag — Stripe's status, plainly. */
+function disputeBadge(dispute: NonNullable<BookEntry["dispute"]>): { label: string; className: string } {
+  if (!dispute.closed) {
+    return { label: "Dispute opened — under review", className: "border-acr-warn/60 text-acr-warn" };
+  }
+  if (dispute.status === "won") return { label: "Dispute resolved — won", className: "text-muted-foreground" };
+  if (dispute.status === "lost") return { label: "Dispute resolved — lost", className: "border-acr-neg/60 text-acr-neg" };
+  return { label: "Dispute resolved", className: "text-muted-foreground" };
 }
 
 interface FinanceBookProps {
@@ -145,6 +166,13 @@ export function FinanceBook({ notes }: FinanceBookProps) {
         debit: null,
         noteId: p.noteId ?? null,
         dealId: note?.originatingDealId ?? null,
+        dispute: p.disputeId
+          ? {
+              status: p.disputeStatus ?? null,
+              dueBy: p.disputeDueBy ? new Date(p.disputeDueBy) : null,
+              closed: p.disputeClosedAt != null,
+            }
+          : undefined,
       });
     }
 
@@ -261,6 +289,7 @@ export function FinanceBook({ notes }: FinanceBookProps) {
                       {e.detail && (
                         <p className="text-sm text-muted-foreground mt-1 truncate">{e.detail}</p>
                       )}
+                      {e.dispute && <DisputeFlag dispute={e.dispute} />}
                       <div className="flex items-center gap-2 mt-1">
                         <span className="text-xs text-muted-foreground tabular-nums">
                           {format(e.date, "MMM d, yyyy")}
@@ -319,6 +348,11 @@ export function FinanceBook({ notes }: FinanceBookProps) {
                         {e.detail && (
                           <p className="text-xs text-muted-foreground mt-0.5 ml-6">{e.detail}</p>
                         )}
+                        {e.dispute && (
+                          <div className="ml-6 mt-1">
+                            <DisputeFlag dispute={e.dispute} />
+                          </div>
+                        )}
                       </TableCell>
                       <TableCell className="text-right tabular-nums text-muted-foreground">
                         {e.debit != null ? usd(e.debit) : "—"}
@@ -347,6 +381,28 @@ export function FinanceBook({ notes }: FinanceBookProps) {
         )}
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * The chargeback flag on a book entry: an open dispute names its response
+ * deadline (a missed one is an automatic loss in Stripe); a closed one
+ * names the outcome. The money columns never change because of a dispute —
+ * reversing a lost dispute is the lender's call, not an automatic posting.
+ */
+function DisputeFlag({ dispute }: { dispute: NonNullable<BookEntry["dispute"]> }) {
+  const badge = disputeBadge(dispute);
+  return (
+    <span className="inline-flex items-center gap-2 mt-1">
+      <Badge variant="outline" className={`text-[11px] font-normal ${badge.className}`} data-testid="chip-dispute-flag">
+        {badge.label}
+      </Badge>
+      {!dispute.closed && dispute.dueBy && (
+        <span className="text-xs text-muted-foreground tabular-nums">
+          Respond in Stripe by {format(dispute.dueBy, "MMM d, yyyy")}
+        </span>
+      )}
+    </span>
   );
 }
 

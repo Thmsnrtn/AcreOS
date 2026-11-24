@@ -14,7 +14,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CheckCircle2, XCircle, Cpu, MessageSquare, Mail } from "lucide-react";
-import { PAX_RULES_COPY } from "@shared/pax-glossary";
+import { PAX_RULES_COPY } from "@shared/pax-glossary-core";
 
 /**
  * The AI channels a customer can bring their own key for (server/routes-byok.ts

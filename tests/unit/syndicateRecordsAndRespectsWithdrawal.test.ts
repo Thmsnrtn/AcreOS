@@ -102,11 +102,23 @@ describe("POST /api/listings/:id/syndicate", () => {
     expect(h.pushed[0].askingPrice).toBe(20000);
   });
 
-  it.each(["withdrawn", "sold", "draft"])("a %s listing is refused before any provider call", async (status) => {
+  it.each(["withdrawn", "sold"])("a %s listing is refused before any provider call", async (status) => {
     h.listing = { ...h.listing, status };
     const res = await request(app).post("/api/listings/5/syndicate").send({ platforms: ["land_com"] });
     expect(res.status).toBe(400);
     expect(h.pushed).toHaveLength(0);
+  });
+
+  // L-DEF-1 (Option C): preparation no longer demands activation first —
+  // the old gate refused drafts outright ("Publish it first"), which made
+  // the syndication surface unusable for every listing that could not be
+  // channel-activated. Drafts and `listed` listings syndicate; the
+  // occupied-channel and sold/withdrawn protections above are untouched.
+  it.each(["draft", "listed"])("a %s listing can be syndicated — no activation demanded first (L-DEF-1)", async (status) => {
+    h.listing = { ...h.listing, status };
+    const res = await request(app).post("/api/listings/5/syndicate").send({ platforms: ["craigslist"] });
+    expect(res.status).toBe(200);
+    expect(h.pushed).toHaveLength(1);
   });
 
   it.each(["active", "withdrawal_requested", "withdrawal_failed", "manual_action_required"])(

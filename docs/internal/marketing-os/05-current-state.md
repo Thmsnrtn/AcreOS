@@ -58,7 +58,7 @@ These are in direct conflict. The `/letters` surface as currently framed cannot 
 
 - **Core:** land investors (primary), note investors. Full workflow templates exist. **Matches** `shared/business-types.ts`: `land_flipper` (core), `note_investor` (core), `hybrid` (core).
 - **Beta:** fix-and-flippers, wholesalers, tax-delinquent buyers. **Matches** registry: `fix_and_flip` (beta), `residential_wholesaler` (beta), `tax_lien_deed` (beta). Also `creative_finance` (beta) in registry — landing comment does not name it. **Drift item 1.**
-- **Roadmap (landing):** subdividers, buy-and-hold landlords. Registry has `subdivider` as **beta**, not roadmap. The landing comment explicitly notes: "Subdividers ... demoted to roadmap on landing for honesty." **Drift item 2** — the landing intentionally demotes; the registry is more permissive. This is honest in the customer's favor (the registry says beta, the customer-facing chip says roadmap, so the customer expects less than the product delivers — safe).
+- **Roadmap (landing):** subdividers. Registry has `subdivider` as **beta**, not roadmap. The landing comment explicitly notes: "Subdividers ... demoted to roadmap on landing for honesty." **Drift item 2** — the landing intentionally demotes; the registry is more permissive. This is honest in the customer's favor (the registry says beta, the customer-facing chip says roadmap, so the customer expects less than the product delivers — safe).
 - **Roadmap (rest):** `short_term_rental`, `commercial`, `developer`, `multifamily`, `mobile_home`, `agent_investor` are all roadmap in registry — these are not named on landing at all. **Acceptable** per blueprint §1.3 ("disclose but don't amplify" — naming is optional for roadmap-only).
 
 ### 2.2 Findings
@@ -67,7 +67,7 @@ These are in direct conflict. The `/letters` surface as currently framed cannot 
 
 2. **`subdivider` is beta in the registry but framed as roadmap on the landing — intentionally.** Defensible. Keep until subdivider work matures (per `00-blueprint.md` Phase 1 maturation arc).
 
-3. **`buy_and_hold` is roadmap in the registry and framed as roadmap on the landing — honest.** No action.
+3. buy_and_hold lifted 2026-11-07 (PR #471) — registry and landing agree; hand-written copy elsewhere still catching up (claims register CR-026…CR-030).
 
 4. **The landing copy.ts positioning block uses prose; the actual chip rendering is in `client/src/components/landing/Positioning.tsx`** (per the comment reference). Verify that file enforces the same tier split visually. Not read in this round; flag for W1-4 audit task.
 

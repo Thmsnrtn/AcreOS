@@ -565,14 +565,16 @@ describe("the mobile_home registry entry states the pad gap as CLOSED", () => {
     expect(flat).toMatch(/VERIFICATION/i);
   });
 
-  it("maturity is now CORE (Wave 5) — the home-side engines are built, not disclosed as gaps", () => {
+  it("maturity is REGISTRY-ONLY (FD1) — the home-side engines are built and kept, not in the public promise", () => {
     // REWRITTEN at the flip (not deleted): Wave 5 built the home-vs-lot rent
     // split + POH/TOH mix engine and the submeter/RUBS utility-billback engine,
     // each a pure tested engine that refuses rather than fabricates, so the two
-    // named core gaps are closed and calling mobile_home "core" is honest. Core
-    // still does NOT claim submarket lot-rent comps or DMV/VIN title
-    // verification — those residuals are disclosed, not fabricated.
-    expect(BUSINESS_TYPES.mobile_home.maturity).toBe("core");
+    // named core gaps are closed. Core still does NOT claim submarket lot-rent
+    // comps or DMV/VIN title verification — those residuals are disclosed, not
+    // fabricated.
+    // REWRITTEN AGAIN at FD1 (2026-11-12, not deleted): the launch promise is
+    // 5 core + 0 beta; mobile_home is one of the ten registry-only types.
+    expect(BUSINESS_TYPES.mobile_home.maturity).toBe("registry_only");
   });
 });
 

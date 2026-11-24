@@ -333,6 +333,9 @@ function realizedBlock(
     grading: gradeRealized({
       facts,
       purchasePriceCents: r.purchasePriceCents ?? null,
+      // FF-DEF-2: the forecast basis (computeMao totalCashIn) counts purchase
+      // closing, so the realized basis counts the recorded closing too.
+      purchaseClosingCents: r.purchaseClosingCents ?? null,
       rehabSpentCents: inputs.rehabSpentCents,
       rehabLineCount: inputs.rehabLineCount,
       holdingEntriesTotalCents: inputs.holdingEntriesTotalCents,

@@ -29,7 +29,8 @@ import { startApiTelemetryRollupJob } from "./apiTelemetryRollupJob"; // S3 slic
 // Daily due/expiry detectors — extracted from this file into a cohesive
 // job-group (S3 decomposition). startLeaseExpiryDetectorJob is the net-new
 // buy_and_hold beta→core registration (audit Wave 1).
-import { startNotePaymentDueDetectorJob, startLeaseExpiryDetectorJob } from "./expiryDetectorJobs";
+import { startNotePaymentDueDetectorJob, startLeaseExpiryDetectorJob, startRentCycleJob } from "./expiryDetectorJobs";
+import { startCostOptimizerSelfReschedulingJob } from "./costOptimizer";
 import { startBorrowerServicingJobs } from "./servicingWindDownJob";
 import { startSubscriptionLifecycleJobs } from "./subscriptionLifecycleJobs";
 import { startForecastingMonthlyJob } from "./forecastingJobs";
@@ -38,6 +39,7 @@ import { seedFounderDecisionCardsOnStartup } from "./seedFounderDecisionCards";
 import { runDecisionExecutorTickBounded, AUTONOMOUS_DECISION_EXECUTOR_MAX_USD_PER_TICK, AUTONOMOUS_DECISION_EXECUTOR_MAX_DECISIONS_PER_TICK } from "./decisionExecutorTick";
 import { startGateWatcherJob } from "./gateWatcherJobs"; // S3 slice (extracted 2026-11-08)
 import { startLq22TripwireJob } from "./lq22TripwireJobs"; // PKG-4 (LQ-22) tripwire
+import { startProofChainAuditJob } from "./proofChainAuditJob"; // S3 slice (extracted 2026-11-21, MON-DEF-1 fix round)
 import { clock } from "../utils/clock";
 
 // Auto-seed county GIS endpoints on startup
@@ -682,12 +684,7 @@ function startConnectionsSweepJob() {
 // recommendations, auto-applies safe changes (prompt-cache, log-volume),
 // flags everything else for /founder/cost-optimizer review.
 // ============================================================================
-function startCostOptimizerSelfRescheduling() {
-  log('Registering self-tuning cost optimiser (daily)', 'cost-optimizer');
-  import('./costOptimizer').then(({ startCostOptimizerJob }) => {
-    startCostOptimizerJob();
-  }).catch(err => log(`Cost optimiser import failed: ${err}`, 'cost-optimizer'));
-}
+// The starter body lives in costOptimizer.ts (startCostOptimizerSelfReschedulingJob).
 
 // ============================================================================
 // Wave 10: Per-Customer Unit Economics — daily, self-rescheduling.
@@ -1904,39 +1901,6 @@ function startDispatchReaperJob() {
       log(`[dispatch-reaper] reap failed: ${err?.message ?? err}`, 'sovereign');
     });
   }, TEN_MIN);
-}
-
-/**
- * Proof-receipt chain self-verify (Frontier #4) — daily, walks every scope's
- * persisted receipt chain and re-checks the per-row seal + chain linkage. A
- * tamper-evident log is only worth anything if something re-verifies it: a
- * silent corruption (an edited row, a forked chain) becomes a critical page
- * instead of sitting undetected until a regulator/insurer asks for the proof.
- */
-function startProofChainAuditJob() {
-  const ONE_DAY = 24 * 60 * 60 * 1000;
-  log('Registering proof-receipt chain audit (daily)', 'sovereign');
-  trackInterval(async () => {
-    // Daily — TTL = 23h (≈90% of cadence).
-    withJobLock("proof_chain_audit", 23 * 60 * 60, async () => {
-      const { auditAllReceiptChains } = await import('../services/autopilot/proofReceiptStore');
-      const r = await auditAllReceiptChains();
-      if (r.brokenChains.length > 0) {
-        const detail = r.brokenChains.map((b) => `${b.scope}: ${b.reason}`).join('; ');
-        log(`[proof-chain-audit] BROKEN ${r.brokenChains.length}/${r.scopesChecked} chains — ${detail}`, 'sovereign');
-        const { sendSolenePage } = await import('../services/solene/pagerService');
-        await sendSolenePage({
-          severity: 'critical',
-          subject: `Proof-receipt chain integrity broken (${r.brokenChains.length} scope${r.brokenChains.length === 1 ? '' : 's'})`,
-          body: `A persisted governance receipt chain failed self-verification — possible tampering or corruption. ${detail}`,
-        }).catch(() => { /* paging best-effort; the log line is the durable record */ });
-      } else {
-        log(`[proof-chain-audit] OK — ${r.receiptsChecked} receipts across ${r.scopesChecked} scopes verify`, 'sovereign');
-      }
-    }).catch((err: any) => {
-      log(`[proof-chain-audit] failed: ${err?.message ?? err}`, 'sovereign');
-    });
-  }, ONE_DAY);
 }
 
 /**
@@ -3951,6 +3915,9 @@ export async function runScheduledJobs(): Promise<void> {
   // workflow events (renewal countdown + expiring). Deduped per (lease, endDate).
   startLeaseExpiryDetectorJob();
 
+  // P3-3 (decided 2026-11-16) — daily rent cycle (09:00 UTC): charge generation + late-rent trigger.
+  startRentCycleJob();
+
   // Launch-Week WS4 — Gate-Watcher (daily 09:00 UTC): condition-gated
   // roadmap items detect their own moment and become one-tap founder
   // Decisions (or auto-execute where the studio dial says autoApprove).
@@ -3973,7 +3940,7 @@ export async function runScheduledJobs(): Promise<void> {
   startPeriodicStatementsMonthlyJob();
 
   // Wave 10: Self-tuning cost optimiser (daily, self-rescheduling)
-  startCostOptimizerSelfRescheduling();
+  startCostOptimizerSelfReschedulingJob();
 
   // Wave 10: Per-customer unit economics (daily, self-rescheduling)
   startCustomerUnitEconomicsJob();
@@ -4813,9 +4780,11 @@ export async function runScheduledJobs(): Promise<void> {
 
   // ─── Panel-300 #26: DSAR overdue alert (every 1h) ────────────────
   // Walks dsar_requests_lifecycle for rows where sla_deadline_at < now
-  // AND fulfilled_at IS NULL. Logs warning per overdue row so the
-  // founder/page-watcher sees them in /founder/dsar/recent. v0: log-
-  // only; alert-fan-out is a follow-up.
+  // AND fulfilled_at IS NULL. B-1 (Founder Autopilot drills, 2026-11):
+  // a breach of the strict 24h clock (Tap #4) now fans out — critical
+  // systemAlert + founder page + founder decisions card at first
+  // breach, re-alerted daily while unfulfilled — via
+  // services/privacy/dsarBreachAlert. (Was log-only in v0.)
   import("./scheduler").then(({ scheduleSelfRescheduling }) => {
     log("DSAR overdue-alert cron registered (self-rescheduling, 1h)", "compliance");
     scheduleSelfRescheduling({
@@ -4824,18 +4793,10 @@ export async function runScheduledJobs(): Promise<void> {
       initialDelayMs: 14 * 60 * 1000,
       run: async () => {
         try {
-          const { db } = await import("../db");
-          const { dsarRequestsLifecycle } = await import("@shared/schema");
-          const { and, lte, isNull } = await import("drizzle-orm");
-          const overdue = await db
-            .select()
-            .from(dsarRequestsLifecycle)
-            .where(and(
-              isNull(dsarRequestsLifecycle.fulfilledAt),
-              lte(dsarRequestsLifecycle.slaDeadlineAt, clock.now()),
-            ));
-          if (overdue.length > 0) {
-            log(`[DSAR] ${overdue.length} overdue requests — review at /founder/dsar/recent`, "compliance");
+          const { runDsarBreachAlertSweep } = await import("../services/privacy/dsarBreachAlert");
+          const r = await runDsarBreachAlertSweep();
+          if (r.overdue > 0) {
+            log(`[DSAR] ${r.overdue} overdue requests — ${r.alerted} breach alert(s), ${r.carded} new founder card(s) — review at /founder/dsar/recent`, "compliance");
           }
         } catch (err) {
           log(`DSAR overdue check failed: ${err}`, "compliance");

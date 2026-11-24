@@ -17,6 +17,15 @@
  *                   note pays off, generated from the note + collateral
  *                   record; its recording life is tracked by the rail's
  *                   recording-status component, not by this generator.
+ *   tax_redemption_notice — the Tax vertical's statutory redemption notice
+ *                   (P3-2 transplant): rendered ONLY from recorded facts —
+ *                   the certificate row, the deadline ON RECORD with what
+ *                   it rests on, a determinable redemption amount with its
+ *                   basis, and the county procedure's recorded notice
+ *                   requirements quoted with their source. The fail-closed
+ *                   gate that decides whether those facts suffice lives in
+ *                   shared/tax/notice.ts; this generator never sees a
+ *                   certificate the gate refused.
  *
  * Every generator returns BOTH the letter HTML (the mail lanes print HTML —
  * the house lane renders, counts and charges for exactly that HTML) and a
@@ -71,6 +80,7 @@ function pdfFromLines(title: string, lines: string[]): Buffer {
 const RAIL_DOCUMENT_GENERATORS: Readonly<Record<RailDocumentKind, { label: string; recordable: boolean }>> = {
   payoff_letter: { label: RAIL_DOCUMENT_LABELS.payoff_letter, recordable: false },
   lien_release: { label: RAIL_DOCUMENT_LABELS.lien_release, recordable: true },
+  tax_redemption_notice: { label: RAIL_DOCUMENT_LABELS.tax_redemption_notice, recordable: false },
 };
 
 // The registry must cover the shared vocabulary exactly: a kind added to
@@ -231,5 +241,102 @@ export function buildLienRelease(model: LienReleaseModel): RailDocumentArtifact 
     filename: `lien-release-${releaseDate}.pdf`,
     html,
     pdf: pdfFromLines("Satisfaction of Mortgage / Release of Lien", lines),
+  };
+}
+
+// ── Tax redemption notice (P3-2 transplant, T-P1) ────────────────────────────
+
+export interface TaxRedemptionNoticeModel {
+  /** The certificate holder sending the notice (the org of record). */
+  holderName: string;
+  /** The owner of record the notice is addressed to. */
+  ownerName: string;
+  county: string;
+  state: string;
+  /** Assessor's parcel number of the property under the certificate. */
+  apn: string;
+  /** The county's certificate reference, when recorded. */
+  certificateNumber: string | null;
+  saleDate: string;
+  /** What the holder paid at the sale, as recorded on the certificate. */
+  purchaseAmountCents: number;
+  /** The redemption deadline ON RECORD — never computed inside the letter. */
+  redemptionDeadline: string;
+  /** In words: what the deadline rests on (rule citation / county record). */
+  deadlineBasis: string;
+  /** The redemption amount the gate determined, with what it rests on. */
+  amountCents: number;
+  amountBasisText: string;
+  /** The county procedure's recorded notice requirements, quoted verbatim. */
+  noticeRequirements: string;
+  /** The citation those requirements rest on (statute section / county document). */
+  noticeRequirementsSource: string;
+  noticeRequirementsAsOf: string;
+}
+
+export function buildTaxRedemptionNotice(model: TaxRedemptionNoticeModel): RailDocumentArtifact {
+  const noticeDate = clock.now().toISOString().slice(0, 10);
+  const where = `${model.county} County, ${model.state}`;
+  const lines = [
+    `NOTICE OF REDEMPTION — TAX CERTIFICATE`,
+    ``,
+    `${model.holderName}`,
+    ``,
+    `${noticeDate}`,
+    ``,
+    `${model.ownerName}`,
+    `Property: APN ${model.apn} (${where})`,
+    ...(model.certificateNumber ? [`Certificate: ${model.certificateNumber}`] : []),
+    `Tax sale date: ${model.saleDate}`,
+    ``,
+    `Dear ${model.ownerName},`,
+    ``,
+    `The undersigned holds the tax certificate identified above, purchased at the tax sale on ${model.saleDate} ` +
+      `for ${dollars(model.purchaseAmountCents)}. Unless the certificate is redeemed, the holder may pursue the ` +
+      `foreclosure / deed remedies the law provides for the property identified by APN ${model.apn} in ${where}.`,
+    ``,
+    `To redeem, pay ${dollars(model.amountCents)} to the ${model.county} County tax office on or before ${model.redemptionDeadline}. ` +
+      `Redemption payments are made to the county — the holder does not receive redemption funds directly, and AcreOS, ` +
+      `the software used to prepare and send this notice, never receives or holds them.`,
+    ``,
+    `Redemption deadline: ${model.redemptionDeadline} — ${model.deadlineBasis}.`,
+    `Redemption amount: ${dollars(model.amountCents)} — ${model.amountBasisText}. ` +
+      `Interest and amounts the county adds may change the total; confirm the exact amount with the county before paying.`,
+    ``,
+    `Notice requirements recorded for ${where} (source: ${model.noticeRequirementsSource}, as of ${model.noticeRequirementsAsOf}):`,
+    model.noticeRequirements,
+    ``,
+    `If you believe this notice was sent in error, contact the holder and the ${model.county} County tax office.`,
+    ``,
+    `Sincerely,`,
+    `${model.holderName}`,
+  ];
+  const html =
+    `<div style="font-family: Georgia, serif; max-width: 640px; margin: 0 auto; line-height: 1.5;">` +
+    `<h3>NOTICE OF REDEMPTION — TAX CERTIFICATE</h3>` +
+    `<p>${escapeHtml(model.holderName)}</p>` +
+    `<p>${noticeDate}</p>` +
+    `<p>${escapeHtml(model.ownerName)}<br>Property: APN ${escapeHtml(model.apn)} (${escapeHtml(where)})<br>` +
+    (model.certificateNumber ? `Certificate: ${escapeHtml(model.certificateNumber)}<br>` : "") +
+    `Tax sale date: ${model.saleDate}</p>` +
+    `<p>Dear ${escapeHtml(model.ownerName)},</p>` +
+    `<p>The undersigned holds the tax certificate identified above, purchased at the tax sale on ${model.saleDate} ` +
+    `for ${dollars(model.purchaseAmountCents)}. Unless the certificate is redeemed, the holder may pursue the ` +
+    `foreclosure / deed remedies the law provides for the property identified by APN ${escapeHtml(model.apn)} in ${escapeHtml(where)}.</p>` +
+    `<p>To redeem, pay <strong>${dollars(model.amountCents)}</strong> to the ${escapeHtml(model.county)} County tax office on or before <strong>${model.redemptionDeadline}</strong>. ` +
+    `Redemption payments are made to the county — the holder does not receive redemption funds directly, and AcreOS, ` +
+    `the software used to prepare and send this notice, never receives or holds them.</p>` +
+    `<p>Redemption deadline: ${model.redemptionDeadline} — ${escapeHtml(model.deadlineBasis)}.<br>` +
+    `Redemption amount: ${dollars(model.amountCents)} — ${escapeHtml(model.amountBasisText)}. ` +
+    `Interest and amounts the county adds may change the total; confirm the exact amount with the county before paying.</p>` +
+    `<p>Notice requirements recorded for ${escapeHtml(where)} (source: ${escapeHtml(model.noticeRequirementsSource)}, as of ${model.noticeRequirementsAsOf}):</p>` +
+    `<blockquote>${escapeHtml(model.noticeRequirements)}</blockquote>` +
+    `<p>If you believe this notice was sent in error, contact the holder and the ${escapeHtml(model.county)} County tax office.</p>` +
+    `<p>Sincerely,<br>${escapeHtml(model.holderName)}</p></div>`;
+  return {
+    kind: "tax_redemption_notice",
+    filename: `tax-redemption-notice-${model.apn}-${noticeDate}.pdf`,
+    html,
+    pdf: pdfFromLines("Notice of Redemption — Tax Certificate", lines),
   };
 }

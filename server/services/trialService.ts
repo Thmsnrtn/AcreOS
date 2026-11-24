@@ -60,7 +60,11 @@ export async function startTrial(
   tier: "starter" | "pro" = "starter"
 ): Promise<TrialStatus> {
   const status = await getTrialStatus(organizationId);
-  if (status.trialUsed) {
+  // A15-09: refuse on ANY prior grant, not just the flag. Orgs created
+  // before the creation grant learned to set trialUsed still carry a
+  // granted trial as trialStartedAt with trialUsed=false; keying only on
+  // the flag let them take a second full 14 days here.
+  if (status.trialUsed || status.trialStartedAt) {
     throw new Error("This organization has already used its free trial.");
   }
 

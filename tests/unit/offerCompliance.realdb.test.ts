@@ -64,6 +64,9 @@ vi.mock("../../server/services/emailService", () => ({
     sent.emails.push(msg);
     return { success: true };
   }),
+  // W-DEF-1: blast-route identity preflight, same stubbing rule as the
+  // transport above (stubbed sends succeed ⇒ identity present).
+  counterpartyEmailIdentityStatus: vi.fn(async () => ({ canSend: true, ownSesCredentials: false, verifiedDomain: true })),
 }));
 
 const tag = `ocg-${Math.random().toString(36).slice(2, 10)}`;

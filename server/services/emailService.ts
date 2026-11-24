@@ -248,6 +248,66 @@ function categorizeError(error: any): EmailErrorType {
   return 'unknown';
 }
 
+/**
+ * N1 (#624 audit follow-up) — what a structured `performSend` failure proves
+ * about whether the message went out, for the outward-action exec in
+ * `sendEmail`.
+ *
+ * `true` means the failure PROVES nothing was sent, so the rail may let a
+ * later attempt re-execute under the same key (including with corrected
+ * content, L-DEF-3). `false` means the outcome is unknown, so the rail must
+ * refuse every later attempt until a human reconciles. The polarity follows
+ * outwardAction's: prove no contact, or stay ambiguous.
+ *
+ * The proof, per `EmailErrorType` (every value's provenance is enumerable
+ * from the nine `performSend` failure sites plus `categorizeError`):
+ *   - `recipient_rejected` / `sender_not_verified` — SES answered
+ *     MessageRejected, i.e. a received 4xx refusing the message before
+ *     acceptance; the pre-transport refusals (bad address, suppression,
+ *     opt-out) carry `recipient_rejected` with attempts 0. A refused
+ *     message was not accepted.
+ *   - `configuration_error` — a refusal that happens strictly before the
+ *     SES call (no identity, undeclared lane, From chokepoint) or an SES
+ *     4xx for a missing configuration set / missing credentials. No
+ *     `configuration_error` can arise after acceptance.
+ *   - `rate_limit` / `quota_exceeded` — a received SES throttling / limit
+ *     response, likewise a 4xx, not an acceptance.
+ *   - `attempts === 0` — the return happened before the SES loop ran at
+ *     all, whatever its errorType (a backstop for a future pre-transport
+ *     refusal that forgets to set one).
+ *   - `someAttemptOutcomeUnknown` (#630 follow-up) — the final errorType
+ *     describes only the LAST attempt; if ANY earlier attempt ended
+ *     `network_error` / `unknown`, a later clean 4xx does not retroactively
+ *     prove the earlier attempt unperformed, so a mixed history is not
+ *     provably unperformed whatever its final errorType says.
+ *   - `network_error` / `unknown` (or a missing errorType) — the SES call
+ *     may have been accepted and the response lost (dropped connection,
+ *     timeout), or the failure happened somewhere the result cannot place
+ *     (circuit open, credential-resolution throw, MIME build). That is the
+ *     unknown case, and it maps to `ambiguous`, fail closed.
+ */
+function isEmailFailureProvablyUnperformed(result: EmailResult): boolean {
+  // #630 follow-up: a mixed history is never provably unperformed. The
+  // final errorType may be a clean provider 4xx, but if an EARLIER attempt
+  // ended network_error / unknown the provider may have accepted that
+  // attempt — the whole send's outcome is unknown, fail closed. This check
+  // precedes every other branch, including the attempts-0 backstop.
+  if (result.someAttemptOutcomeUnknown) return false;
+  if ((result.attempts ?? 0) === 0) return true;
+  switch (result.errorType) {
+    case 'recipient_rejected':
+    case 'sender_not_verified':
+    case 'configuration_error':
+    case 'rate_limit':
+    case 'quota_exceeded':
+      return true;
+    case 'network_error':
+    case 'unknown':
+    default:
+      return false;
+  }
+}
+
 async function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -494,6 +554,16 @@ export interface EmailResult {
   errorType?: EmailErrorType;
   attempts?: number;
   retryable?: boolean;
+  /**
+   * #630 follow-up (mixed-history corner): `errorType` describes only the
+   * FINAL attempt — `performSend`'s retry loop overwrites `lastError` on
+   * every catch. This flag carries the whole history: `true` when ANY
+   * attempt in the loop ended `network_error` / `unknown`, i.e. an attempt
+   * the provider may have accepted before a later attempt produced a
+   * provably-unperformed outcome. The outward-action exec must treat such
+   * a mixed history as unknown overall, never as proven unperformed.
+   */
+  someAttemptOutcomeUnknown?: boolean;
 }
 
 export interface EmailLogEntry {
@@ -667,13 +737,21 @@ export class EmailService {
           if (result.success && result.messageId) {
             return { status: 'succeeded', externalId: result.messageId, result };
           }
-          // A structured failure from the transport ran BEFORE anything left,
-          // or the provider rejected it outright — safe to retry. A THROWN
-          // error is different and withOutwardAction records it as ambiguous.
-          return {
-            status: 'failed',
-            error: new Error(result.error ?? 'email send failed'),
-          };
+          // N1 (#624 audit follow-up): a structured failure is NOT one
+          // thing. A refusal the transport can prove — the provider
+          // rejected it outright, or it never reached the provider —
+          // records `failed` and stays retryable. A transport failure
+          // whose outcome is unknown (dropped connection / timeout after
+          // the request left) records `ambiguous`: under #624's failed-first
+          // precedence a `failed` recording would additionally permit
+          // corrected-content execution under this key, which is exactly
+          // what an unknown outcome must not allow. A THROWN error is
+          // unchanged — withOutwardAction records it as ambiguous.
+          const error = new Error(result.error ?? 'email send failed');
+          if (isEmailFailureProvablyUnperformed(result)) {
+            return { status: 'failed', error };
+          }
+          return { status: 'ambiguous', error };
         },
         (externalId) => ({ success: true, messageId: externalId ?? undefined }),
       ).catch((err) => {
@@ -1129,6 +1207,12 @@ export class EmailService {
 
     let lastError: any = null;
     let attempts = 0;
+    // #630 follow-up: the loop-exhausted return below categorizes only
+    // `lastError`, so without this the history of earlier attempts is lost.
+    // Set in the catch the moment any attempt's outcome is unknown; carried
+    // out on every failure return the loop can produce (loop-exhausted and
+    // the in-loop From-chokepoint return).
+    let someAttemptOutcomeUnknown = false;
 
     for (let attempt = 0; attempt <= config.maxRetries; attempt++) {
       attempts = attempt + 1;
@@ -1220,6 +1304,9 @@ export class EmailService {
             errorType: 'configuration_error',
             attempts,
             retryable: false,
+            // This iteration never reached `client.send`, but an earlier
+            // attempt may have — carry the history (#630 follow-up).
+            someAttemptOutcomeUnknown,
           };
         }
 
@@ -1311,6 +1398,9 @@ export class EmailService {
       } catch (error: any) {
         lastError = error;
         const errorType = categorizeError(error);
+        if (errorType === 'network_error' || errorType === 'unknown') {
+          someAttemptOutcomeUnknown = true;
+        }
         const retryable = isRetryableError(error);
         
         logger.warn(`[EmailService] Send attempt ${attempts} failed`, { metadata: { detail: {
@@ -1363,12 +1453,13 @@ export class EmailService {
       durationMs,
     } } });
     
-    return { 
-      success: false, 
-      error: errorMessage, 
-      errorType, 
+    return {
+      success: false,
+      error: errorMessage,
+      errorType,
       attempts,
       retryable: isRetryableError(lastError),
+      someAttemptOutcomeUnknown,
     };
   }
 

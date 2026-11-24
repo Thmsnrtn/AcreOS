@@ -32,6 +32,7 @@ import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { stripComments } from "../helpers/stripComments";
+import { routeTreeSource } from "../helpers/clientRoutes";
 import {
   CUSTOMER_AUDIT_ROUTES,
   CUSTOMER_DOOR_ROUTES,
@@ -42,7 +43,9 @@ import { FOUNDER_DOORS } from "../../client/src/lib/founder-doors";
 import { ROUTE_REDIRECTS } from "../../client/src/lib/route-redirects";
 
 const ROOT = path.resolve(__dirname, "../..");
-const APP = stripComments(fs.readFileSync(path.join(ROOT, "client/src/App.tsx"), "utf8"));
+// Both route trees (App.tsx + founder-routes.tsx — P1-9 / X-2): the four founder
+// doors this test audits are registered in the founder build's tree now.
+const APP = stripComments(routeTreeSource());
 
 /** Every path App.tsx registers a <Route> for. */
 function registeredRoutes(): Set<string> {

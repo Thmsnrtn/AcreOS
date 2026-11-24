@@ -85,7 +85,11 @@ vi.mock("../../server/middleware/getOrCreateOrg", () => ({
   },
 }));
 vi.mock("../../server/middleware/roleGuard", () => ({ requireRole: () => (_q: unknown, _s: unknown, n: () => void) => n() }));
-vi.mock("../../server/services/emailService", () => ({ sendEmail: vi.fn() }));
+vi.mock("../../server/services/emailService", () => ({
+  sendEmail: vi.fn(),
+  // W-DEF-1: blast-route identity preflight; this suite's org has an identity.
+  counterpartyEmailIdentityStatus: vi.fn(async () => ({ canSend: true, ownSesCredentials: false, verifiedDomain: true })),
+}));
 vi.mock("../../server/utils/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
 vi.mock("../../server/utils/openaiClient", () => ({ getOpenAIClient: vi.fn().mockReturnValue(null) }));
 

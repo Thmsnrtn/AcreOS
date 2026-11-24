@@ -152,7 +152,7 @@ export const rehabLineItems = pgTable(
   {
     id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
     organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
-    // Hard FK — migrations/0081_devon_ff_fk_alignment.sql installs the
+    // Hard FK — migrations/0158_devon_ff_fk_alignment.sql installs the
     // matching ON DELETE CASCADE constraint on any drifted env (prod already
     // has it via scripts/migrate.mjs §808). Soft-FK orphan-row hazard for
     // the 1099-NEC roll-up — see Devon's Lens 20 notes.

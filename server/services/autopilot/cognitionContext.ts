@@ -17,6 +17,7 @@
 
 import { logger } from "../../utils/logger";
 import { clock } from "../../utils/clock";
+import { UPTIME_BASIS_LABEL } from "./uptime";
 
 // ── Raw inputs (what the gatherer reads from real sources) ────────────────────
 
@@ -169,7 +170,7 @@ export function assembleContextPack(raw: ContextPackRaw): ContextPack {
     (absent.length ? ` Absent/partial: ${absent.join("; ")}.` : ` All signals present.`);
 
   const trendLine =
-    mrrWowPct == null ? "MRR trend: n/a (no prior datapoint)" : `MRR ${mrrWowPct >= 0 ? "+" : ""}${mrrWowPct}% WoW`;
+    mrrWowPct == null ? "List-price MRR trend: n/a (no prior datapoint)" : `List-price MRR ${mrrWowPct >= 0 ? "+" : ""}${mrrWowPct}% WoW`;
   const cacLine = cacUsd == null ? "CAC: n/a (no attributed signups)" : `CAC ~$${cacUsd} (lower bound)`;
   const askLine = raw.openAsks.length
     ? `${raw.openAsks.length} open ask(s), oldest ${oldestAskHours}h`
@@ -180,11 +181,13 @@ export function assembleContextPack(raw: ContextPackRaw): ContextPack {
     generatedNote,
     ``,
     `## Vitals`,
-    `$${raw.mrrUsd} MRR (${trendLine}); ${raw.trials} trial(s) (${raw.trialsEndingSoon} ending soon); ` +
+    // A10-01: pulse MRR is list-price arithmetic (liveMrrDetail) — label it.
+    // A14-05: uptime % is of the measured span only — label it.
+    `$${raw.mrrUsd} list-price MRR, billed not collected (${trendLine}); ${raw.trials} trial(s) (${raw.trialsEndingSoon} ending soon); ` +
       `${raw.supportBacklog} waiting on support` +
       `${raw.supportFirstResponseHours != null ? ` (first-response ~${raw.supportFirstResponseHours}h)` : ""}; ` +
       `${raw.churnSignals} churn signal(s); runway ${raw.envelopeStatus}; ` +
-      `${raw.uptimePct != null ? `uptime ${raw.uptimePct}%` : "uptime n/a"}; ` +
+      `${raw.uptimePct != null ? `uptime ${raw.uptimePct}% (${UPTIME_BASIS_LABEL})` : "uptime n/a"}; ` +
       `${raw.openIncidents} incident(s), ${raw.complianceOpen} compliance item(s), ${raw.emailComplaints} spam complaint(s).`,
     ``,
     `## The books`,

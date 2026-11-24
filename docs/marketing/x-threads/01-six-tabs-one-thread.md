@@ -32,7 +32,7 @@ voice-check: third-person mechanics; no founder voice; banned references absent;
 
 > The platform is built for Land Investors first.
 >
-> Note Investors are core. Fix-and-Flippers, Wholesalers, and Tax-Delinquent Buyers are in beta. Subdividers and Buy-and-Hold Landlords are on the roadmap.
+> Note Investors are core. Fix-and-Flippers, Wholesalers, and Tax-Delinquent Buyers are in beta. Subdividers are on the roadmap.
 >
 > The tier is on the page, before signup.
 

@@ -58,7 +58,11 @@ function calculateAmortizationSchedule(
 
 export function calculateMonthlyPayment(principal: number, annualRate: number, termMonths: number): number {
   const monthlyRate = annualRate / 100 / 12;
-  if (monthlyRate === 0) return principal / termMonths;
+  // Both branches round to cents: a stored payment is money, and the
+  // zero-rate branch previously returned the raw quotient (40000/120 =
+  // 333.3333333333333), which Close & Carry then wrote verbatim as the
+  // note's monthlyPayment (H-DEF-2).
+  if (monthlyRate === 0) return Number((principal / termMonths).toFixed(2));
   const payment = principal * (monthlyRate * Math.pow(1 + monthlyRate, termMonths)) / (Math.pow(1 + monthlyRate, termMonths) - 1);
   return Number(payment.toFixed(2));
 }

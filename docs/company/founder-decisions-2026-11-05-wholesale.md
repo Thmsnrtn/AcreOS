@@ -41,3 +41,19 @@ founder lifts the claim or re-dates the hold. Moving the date to get green is
 not allowed.
 
 **Not decided here:** lifting the `beta` claim.
+
+## Addendum — 2026-11-18: the hold is lifted
+
+The scoped Wholesale revenue-loop journey walk passed green end-to-end on
+staging across the first walk, the post-fix re-walk, and the send-half run
+(walk record: journey-walk-wholesale-2026-11): buyer profile created through
+a customer-facing path with its buy box stored, buyer match fired, blast sent
+on the org's own verified sending identity, contract assigned with
+`assignmentFeeCents` recorded, and the fee surfaced in Finance and on the
+wholesaler dashboard. Under the founder rule of 2026-11-16 (core is earned per
+vertical by full journey proof), `residential_wholesaler` is lifted
+`beta` → `core` in `shared/business-types.ts`, its ladder entry flips to
+`decided`, and its `HELD_PENDING_JOURNEY_PROOF` register entry is deleted —
+the same one-commit path this file prescribed. Honest scope: the walk proved
+the scoped revenue loop only; legs outside it were not walked and are not
+claimed by the lift.

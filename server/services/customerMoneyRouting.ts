@@ -427,3 +427,69 @@ export function buildBorrowerCardCheckoutParams(
     },
   };
 }
+
+// ───────────────────────────────────────────────────────────────────────────
+// Rent card checkout — the params, built in one place (P3-3)
+// ───────────────────────────────────────────────────────────────────────────
+
+export interface RentCardCheckoutInput {
+  /** rental_leases.id (uuid). */
+  leaseId: string;
+  organizationId: number;
+  /** The org's display name. Named in the line item so the tenant sees WHO is collecting. */
+  landlordName: string;
+  tenantName: string;
+  tenantEmail?: string;
+  amountCents: number;
+  /** Absolute origin used to build the return URLs. */
+  baseUrl: string;
+}
+
+/**
+ * The Checkout params for a tenant rent payment (P3-3, decided 2026-11-16).
+ *
+ * The same two load-bearing facts as the borrower builder above:
+ *
+ *   1. The line item names the LANDLORD, not AcreOS. The charge is a DIRECT
+ *      charge on the landlord's own connected account (the caller scopes it
+ *      via `prepareCustomerMoneyCall`), so the landlord is merchant of record
+ *      and the funds never touch AcreOS.
+ *   2. There is no fee field of any kind. `assertNoPlatformTake` enforces
+ *      that mechanically; this builder makes it true by construction.
+ *
+ * Metadata carries leaseId + organizationId — written here, at session-create
+ * time, and read back by the ONE posting rule
+ * (services/rental/rentCollection.ts) from the signed webhook / the scoped
+ * retrieve. `type: "rent_payment"` is the Connect webhook's dispatch key.
+ */
+export function buildRentCardCheckoutParams(
+  input: RentCardCheckoutInput,
+): Stripe.Checkout.SessionCreateParams {
+  const returnBase = `${input.baseUrl}/leases`;
+  return {
+    payment_method_types: ["card"],
+    line_items: [
+      {
+        price_data: {
+          currency: "usd",
+          product_data: {
+            name: `Rent payment to ${input.landlordName}`,
+            description: `Rent payment from ${input.tenantName}. Collected by ${input.landlordName}; AcreOS is the software your landlord uses and does not take a cut of this payment.`,
+          },
+          unit_amount: input.amountCents,
+        },
+        quantity: 1,
+      },
+    ],
+    mode: "payment",
+    success_url: `${returnBase}?rentPayment=success&session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${returnBase}?rentPayment=cancelled`,
+    ...(input.tenantEmail ? { customer_email: input.tenantEmail } : {}),
+    metadata: {
+      leaseId: String(input.leaseId),
+      organizationId: String(input.organizationId),
+      paymentAmount: (input.amountCents / 100).toString(),
+      type: "rent_payment",
+    },
+  };
+}

@@ -108,7 +108,12 @@ describe("2 · the stock templates, in every language, are the checked populatio
 describe("3 · the product serves this registry", () => {
   it("the campaign composer picks from campaignTemplatesFor and types no template copy of its own", () => {
     const src = stripComments(fs.readFileSync(path.join(ROOT, "client/src/components/campaigns-content.tsx"), "utf8"));
-    expect(src).toMatch(/campaignTemplatesFor\(campaignLanguage, campaignType\)/);
+    // The composer now reads the registry as served data: it calls
+    // useCampaignTemplates(campaignLanguage, campaignType), whose selector
+    // (client/src/lib/outreach-templates.ts) reproduces campaignTemplatesFor
+    // over /outreach-templates.json — pinned deep-equal to this module and
+    // selector-equivalent in tests/unit/staticDataServedAsData.test.ts.
+    expect(src).toMatch(/useCampaignTemplates\(campaignLanguage, campaignType\)/);
     // Template bodies were multi-line template literals; a placeholder hint is not one.
     expect(src).not.toMatch(/content:\s*`/);
     expect(src).not.toMatch(/const campaignTemplates\s*=/);

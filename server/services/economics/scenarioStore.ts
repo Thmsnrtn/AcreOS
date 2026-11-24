@@ -115,6 +115,36 @@ export async function scenariosForSubject(
 }
 
 /**
+ * The newest scenario of ONE engine on ONE subject, or null.
+ *
+ * Both filters are in the query: the subject (type AND id) and the engine. A
+ * decision that cites a scenario must cite one about the thing it decides —
+ * citing the wrong parcel's economics is the defect this exists to prevent —
+ * so callers cannot forget either filter by post-filtering a wider list.
+ */
+export async function latestScenarioForSubject(
+  organizationId: number,
+  subjectType: ScenarioSubjectType,
+  subjectId: number,
+  engineId: string,
+): Promise<StoredScenario | null> {
+  const [row] = await db
+    .select()
+    .from(scenarios)
+    .where(
+      and(
+        eq(scenarios.organizationId, organizationId),
+        eq(scenarios.subjectType, subjectType),
+        eq(scenarios.subjectId, subjectId),
+        eq(scenarios.engineId, engineId),
+      ),
+    )
+    .orderBy(desc(scenarios.computedAt), desc(scenarios.id))
+    .limit(1);
+  return row ? { id: row.id, computedAt: row.computedAt, body: rowToBody(row) } : null;
+}
+
+/**
  * Raised when a decision cites a scenario this organization cannot use.
  *
  * THE MESSAGE NAMES NO IDS AND DRAWS NO DISTINCTION, deliberately. "Belongs to

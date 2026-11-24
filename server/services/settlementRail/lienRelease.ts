@@ -23,7 +23,7 @@ import { db } from "../../db";
 import { acquiredNotes, leads, notes, organizations, properties, type RecordingStatusRow } from "@shared/schema";
 import { buildLienRelease, type RailDocumentArtifact } from "./documents";
 import { createRecordingStatus, listRecordingStatusesForSubject } from "./recordingStatus";
-import { noteBookForId } from "./payoffLetter";
+import { noteBookForId } from "../notePaymentMath";
 import { clock } from "../../utils/clock";
 
 export class LienReleaseRefusedError extends Error {
