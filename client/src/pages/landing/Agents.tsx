@@ -14,7 +14,7 @@
  */
 
 import { useState } from "react";
-import { LANDING_COPY } from "./copy";
+import type { LandingCopy } from "./copy";
 
 const PAX_COLOR = "#4C7B80";
 
@@ -86,8 +86,8 @@ const SURFACES = [
   },
 ] as const;
 
-export function Agents() {
-  const c = LANDING_COPY.agents;
+export function Agents({ copy }: { copy: LandingCopy["agents"] }) {
+  const c = copy;
   const [activeIdx, setActiveIdx] = useState(0);
   const a = SURFACES[activeIdx];
 

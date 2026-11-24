@@ -32,6 +32,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ThemeProvider } from "../../client/src/contexts/theme-context";
 import { TIER_PRICES_CENTS } from "../../shared/billing/tier-pricing";
 import { Pricing } from "../../client/src/pages/landing/Pricing";
+import { LANDING_COPY } from "../../client/src/pages/landing/copy";
 import PricingPage from "../../client/src/pages/pricing";
 import { pricingProductSchema } from "../../client/src/lib/jsonld-schemas";
 
@@ -116,7 +117,7 @@ describe("the canonical registry holds the decided tiers", () => {
 
 describe("landing Pricing section renders the decided tiers", () => {
   it("annual cadence (the default): monthly-equivalent and the yearly bill", () => {
-    const el = mount(<Pricing />);
+    const el = mount(<Pricing copy={LANDING_COPY.pricing} />);
     expect(texts(el, ".lp-tier-name")).toEqual(DECIDED.map((t) => t.name));
     expect(texts(el, ".lp-tier-amt")).toEqual(DECIDED.map((t) => fmt(annualMonthly(t))));
     expect(texts(el, ".lp-tier-billed")).toEqual(
@@ -126,7 +127,7 @@ describe("landing Pricing section renders the decided tiers", () => {
   });
 
   it("monthly cadence", () => {
-    const el = mount(<Pricing />);
+    const el = mount(<Pricing copy={LANDING_COPY.pricing} />);
     const monthlyTab = Array.from(el.querySelectorAll('button[role="tab"]')).find((b) => b.textContent?.trim() === "Monthly");
     expect(monthlyTab, "the Monthly toggle was not found — the read below would be vacuous").toBeTruthy();
     act(() => (monthlyTab as HTMLButtonElement).click());
