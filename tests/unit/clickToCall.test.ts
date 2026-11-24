@@ -232,7 +232,7 @@ describe("the carrier adapter itself has no platform fallback", () => {
     const { commsRouter } = await import("../../server/services/comms/router");
     await import("../../server/services/comms/providers/twilio");
     await expect(
-      commsRouter.initiateCall({ to: "+15125550111", voice: { kind: "human" }, organizationId: 8, preferredProvider: "twilio", bridge: { ringFirst: OPERATOR } }),
+      commsRouter.initiateCall({ to: "+15125550111", voice: { kind: "human" }, organizationId: 8, preferredProvider: "twilio", bridge: { ringFirst: OPERATOR, confirmUrl: "https://app.example.test/api/webhooks/twilio/call-confirm/8/5" } }),
     ).rejects.toThrow(/no connected \(BYO\) Twilio identity/);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
