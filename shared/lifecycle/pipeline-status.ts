@@ -20,29 +20,15 @@ import { z } from "zod";
 
 // ── Leads ───────────────────────────────────────────────────────────────────
 
-/**
- * All valid lead statuses across both lead types.
- *  Seller journey: new → mailed → responded/contacted → negotiating →
- *                  accepted → closed (or dead at any point)
- *  Buyer journey:  new → interested → qualified → under_contract → closed
- * `contacted` was written by executionEngine + taxDelinquentPipeline but
- * missing from the schema comment's list — it's real, so it's canonical now.
- */
-export const LEAD_STATUSES = [
-  "new",
-  "mailed",
-  "contacted",
-  "responded",
-  "negotiating",
-  "accepted",
-  "interested",
-  "qualified",
-  "under_contract",
-  "closed",
-  "dead",
-] as const;
+// LEAD_STATUSES + LeadStatus are DEFINED in the leaf module
+// ./lead-statuses.ts (no imports) and re-exported here, so a client surface
+// that needs only the list — the founder command palette is the measured
+// case — can import the leaf without pulling this module's Zod schemas,
+// transition tables, and deal vocabulary into its bundle. Every existing
+// consumer of this module keeps working unchanged.
+import { LEAD_STATUSES, type LeadStatus } from "./lead-statuses";
+export { LEAD_STATUSES, type LeadStatus };
 
-export type LeadStatus = (typeof LEAD_STATUSES)[number];
 export const leadStatusSchema = z.enum(LEAD_STATUSES);
 
 /**

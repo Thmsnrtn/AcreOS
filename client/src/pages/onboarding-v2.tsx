@@ -7,8 +7,9 @@
  *   Step 1 — Workspace + business type (two inputs, one screen)
  *   Step 2 — Sample data (one big calm primary CTA; manual paths demoted to
  *             secondary text links, all inline — no window.open anywhere)
- *   Step 3 — Reveal ("Pax loaded 50 sample leads") → navigate to the
- *             vertical's finishing destination
+ *   Step 3 — Reveal ("Pax loaded N sample leads" — N is the seed
+ *             response's real count) → navigate to the vertical's
+ *             finishing destination
  *
  * Founder ruling #12(b) — tailored / skippable / re-runnable:
  *   - TAILORED: every one of the 15 registry verticals gets its own data-step
@@ -472,7 +473,13 @@ export default function OnboardingV2() {
       });
       toast({
         title: "Sample data ready",
-        description: `Pax loaded ${data?.counts?.leads ?? 50} leads — your workspace is live.`,
+        // The seeder creates 2–5 leads per business type (sampleSeeder.ts);
+        // the count stated here is the seed response's own count, never a
+        // promised figure. If the response carries no count, say less.
+        description:
+          typeof data?.counts?.leads === "number"
+            ? `Pax loaded ${data.counts.leads} sample leads — your workspace is live.`
+            : "Pax loaded your sample data — your workspace is live.",
       });
     },
     onError: (error) => {
@@ -812,8 +819,8 @@ export default function OnboardingV2() {
 
   // Step 2 copy + entrypoint, tailored per vertical from the single per-type
   // config (client/src/lib/onboarding-verticals.ts). The note vertical's
-  // three roles each override with their real first job ("load 50 leads"
-  // isn't it). Sample data + CSV stay available for everyone as the fast path.
+  // three roles each override with their real first job ("load sample
+  // leads" isn't it). Sample data + CSV stay available for everyone as the fast path.
   const dataStep = verticalDataValid
     ? getDataStepCopy(verticalData, businessType, noteRole)
     : null;
@@ -1198,7 +1205,7 @@ export default function OnboardingV2() {
                     onClick={handleTrySampleData}
                     disabled={isPendingData}
                     data-testid="card-load-sample-data"
-                    aria-label="Try with sample data — Pax loads 50 realistic leads"
+                    aria-label="Try with sample data — Pax loads a small set of realistic sample leads, matched to your business type"
                   >
                     <span className="ob2-sample-card-glyph" aria-hidden="true">
                       {sampleDataMutation.isPending ? (
@@ -1217,7 +1224,7 @@ export default function OnboardingV2() {
                         </span>
                       </span>
                       <span className="ob2-sample-card-desc">
-                        Pax loads 50 realistic leads so Today is alive from the start.
+                        Pax loads a small set of realistic sample leads — 2 to 5, matched to your business type — so Today is alive from the start.
                         You'll approve before anything goes out. You'll wipe them when you're ready for real data.
                       </span>
                     </div>
