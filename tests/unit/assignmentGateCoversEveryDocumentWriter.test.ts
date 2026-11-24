@@ -15,6 +15,14 @@
  *      compiler (never a scan: a comment naming the call is not a call).
  *      Each call is attributed to its unit — the route registration around it,
  *      or the function. A unit not in WRITERS is red until someone classifies it.
+ *   A2. The UPDATE sites are read the same way — every `updateGeneratedDocument(`
+ *      call, every `update(generatedDocuments)` and raw `UPDATE generated_documents`
+ *      — and each unit's patch keys are pinned in UPDATERS. An update that can
+ *      rewrite a document's body (content / type / templateId / variables, or a
+ *      patch the parser cannot see into) can turn a gated draft into an
+ *      assignment after the gate ran; UPDATERS must say so (`rewritesBody`), and
+ *      the derived answer must match. Every shape has a per-shape floor on the
+ *      real tree (where the tree has one) and a canary fixture.
  *   B. Writers that cannot produce an assignment prove it from source: the
  *      document `type` they write is a string literal the canonical predicate
  *      (isAssignmentTemplate) rejects. Change it to a variable and this is red.
@@ -64,6 +72,10 @@ const WRITERS: Record<string, WriterClass> = {
     canProduceAssignment: false,
     why: "writes type residential_lease from the lease packet assembler",
   },
+  "server/services/wholesale/sellerFollowUps.ts::createSellerFollowUp": {
+    canProduceAssignment: false,
+    why: "writes type SELLER_FOLLOW_UP_DRAFT_TYPE, a module constant (\"seller_follow_up_draft\")",
+  },
   "server/storage/documentsRepo.ts::createGeneratedDocument": {
     canProduceAssignment: false,
     why: "the storage method every writer above calls — the population is its callers",
@@ -94,16 +106,69 @@ function enclosingRoute(node: ts.Node): string | null {
   return null;
 }
 
+type Shape = "create-call" | "insert-table" | "insert-sql" | "update-call" | "update-table" | "update-sql";
+
 interface Site {
   unit: string;
-  /** The `type` property of the written row: a literal, or null when computed. */
+  shape: Shape;
+  /** create sites: the `type` of the written row — a literal (or a same-file const bound to one), null when computed. */
   typeLiteral: string | null;
+  /** update sites: the keys the patch writes, sorted; `builder:<fn>` for a patch built by a call; `*` where the parser cannot see. */
+  keys?: string[];
+}
+
+/** Top-level `const NAME = "literal"` bindings in a file. */
+function constStrings(sf: ts.SourceFile): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const st of sf.statements) {
+    if (!ts.isVariableStatement(st) || !(st.declarationList.flags & ts.NodeFlags.Const)) continue;
+    for (const d of st.declarationList.declarations) {
+      if (ts.isIdentifier(d.name) && d.initializer && ts.isStringLiteralLike(unwrap(d.initializer))) {
+        out.set(d.name.text, (unwrap(d.initializer) as ts.StringLiteralLike).text);
+      }
+    }
+  }
+  return out;
+}
+
+/** Patch builders whose returned keys are read from source in A2. */
+const STATUS_PATCH_BUILDERS = new Set(["statusPatchFor"]);
+
+/** The keys an update patch writes. Conditional spreads (`...(x && { k })`, `...(c ? { k } : {})`) are followed. */
+function patchKeys(e: ts.Expression | undefined): string[] {
+  if (!e) return ["*"];
+  const u = unwrap(e);
+  const keys = new Set<string>();
+  const add = (x: ts.Expression) => {
+    const v = unwrap(x);
+    if (ts.isObjectLiteralExpression(v)) {
+      for (const p of v.properties) {
+        if (ts.isPropertyAssignment(p) || ts.isShorthandPropertyAssignment(p) || ts.isMethodDeclaration(p)) {
+          const n = p.name;
+          if (ts.isIdentifier(n) || ts.isStringLiteralLike(n)) keys.add(n.text);
+          else keys.add("*");
+        } else if (ts.isSpreadAssignment(p)) add(p.expression);
+        else keys.add("*");
+      }
+    } else if (ts.isBinaryExpression(v) && v.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken) add(v.right);
+    else if (ts.isConditionalExpression(v)) { add(v.whenTrue); add(v.whenFalse); }
+    else if (ts.isCallExpression(v)) {
+      const c = unwrap(v.expression);
+      // Only a builder whose source this file reads (below) is named; any
+      // other call passes through keys the parser cannot see.
+      keys.add(ts.isIdentifier(c) && STATUS_PATCH_BUILDERS.has(c.text) ? `builder:${c.text}` : "*");
+    } else keys.add("*");
+  };
+  add(u);
+  return [...keys].sort();
 }
 
 function analyze(fileName: string, text: string): Site[] {
   const sf = parseSource(fileName, text);
+  const consts = constStrings(sf);
   const out: Site[] = [];
   const unitOf = (node: ts.Node) => `${fileName}::${enclosingRoute(node) ?? ownerFunctionName(node)}`;
+  const isDocsTable = (a: ts.Expression) => ts.isIdentifier(unwrap(a)) && (unwrap(a) as ts.Identifier).text === "generatedDocuments";
   const visit = (node: ts.Node) => {
     if (ts.isCallExpression(node)) {
       const callee = unwrap(node.expression);
@@ -116,14 +181,26 @@ function analyze(fileName: string, text: string): Site[] {
             if (ts.isPropertyAssignment(p) && ts.isIdentifier(p.name) && p.name.text === "type") {
               const init = unwrap(p.initializer);
               if (ts.isStringLiteralLike(init)) typeLiteral = init.text;
+              else if (ts.isIdentifier(init) && consts.has(init.text)) typeLiteral = consts.get(init.text)!;
             }
           }
         }
-        out.push({ unit: unitOf(node), typeLiteral });
+        out.push({ unit: unitOf(node), shape: "create-call", typeLiteral });
       }
       // db.insert(generatedDocuments)
-      if (name === "insert" && node.arguments.some((a) => ts.isIdentifier(unwrap(a)) && (unwrap(a) as ts.Identifier).text === "generatedDocuments")) {
-        out.push({ unit: unitOf(node), typeLiteral: null });
+      if (name === "insert" && node.arguments.some(isDocsTable)) {
+        out.push({ unit: unitOf(node), shape: "insert-table", typeLiteral: null });
+      }
+      // storage.updateGeneratedDocument(id, patch[, orgId])
+      if (name === "updateGeneratedDocument" && node.arguments.length >= 2) {
+        out.push({ unit: unitOf(node), shape: "update-call", typeLiteral: null, keys: patchKeys(node.arguments[1]) });
+      }
+      // db.update(generatedDocuments).set(patch)
+      if (name === "update" && node.arguments.some(isDocsTable)) {
+        const acc = node.parent;
+        const call = acc?.parent;
+        const located = acc && ts.isPropertyAccessExpression(acc) && acc.name.text === "set" && call && ts.isCallExpression(call) && call.expression === acc;
+        out.push({ unit: unitOf(node), shape: "update-table", typeLiteral: null, keys: located ? patchKeys((call as ts.CallExpression).arguments[0]) : ["*"] });
       }
     }
     // Raw SQL into the table.
@@ -131,7 +208,8 @@ function analyze(fileName: string, text: string): Site[] {
       const t = ts.isTemplateExpression(node)
         ? [node.head.text, ...node.templateSpans.map((s) => s.literal.text)].join("")
         : node.text;
-      if (/insert\s+into\s+"?generated_documents"?/i.test(t)) out.push({ unit: unitOf(node), typeLiteral: null });
+      if (/insert\s+into\s+"?generated_documents"?/i.test(t)) out.push({ unit: unitOf(node), shape: "insert-sql", typeLiteral: null });
+      if (/update\s+"?generated_documents"?\s+set/i.test(t)) out.push({ unit: unitOf(node), shape: "update-sql", typeLiteral: null, keys: ["*"] });
     }
     ts.forEachChild(node, visit);
   };
@@ -139,15 +217,18 @@ function analyze(fileName: string, text: string): Site[] {
   return out;
 }
 
+const isCreate = (s: Site) => s.shape.startsWith("create") || s.shape.startsWith("insert");
+const isUpdate = (s: Site) => s.shape.startsWith("update");
+
 function scanServer() {
   const files = listServerSources();
-  const sites: Site[] = [];
+  const all: Site[] = [];
   for (const f of files) {
     const text = fs.readFileSync(f, "utf8");
-    if (!/createGeneratedDocument|generatedDocuments|generated_documents/.test(text)) continue;
-    sites.push(...analyze(rel(f), text));
+    if (!/GeneratedDocument|generatedDocuments|generated_documents/.test(text)) continue;
+    all.push(...analyze(rel(f), text));
   }
-  return { files: files.length, sites };
+  return { files: files.length, sites: all.filter(isCreate), updates: all.filter(isUpdate), all };
 }
 
 describe("A — every generated-document writer is classified", () => {
@@ -181,8 +262,143 @@ describe("A — every generated-document writer is classified", () => {
     ].join("\n");
     const found = analyze("server/fixture.ts", fixture);
     expect(found).toEqual([
-      { unit: "server/fixture.ts::POST /api/x", typeLiteral: null },
-      { unit: "server/fixture.ts::helper", typeLiteral: "lease" },
+      { unit: "server/fixture.ts::POST /api/x", shape: "create-call", typeLiteral: null },
+      { unit: "server/fixture.ts::helper", shape: "create-call", typeLiteral: "lease" },
+    ]);
+  });
+});
+
+// ── A2. the update sites ────────────────────────────────────────────────────
+
+/** Fields whose change rewrites what a document says (and so what the gate checked). */
+const BODY_FIELDS = new Set(["content", "type", "templateId", "variables", "*"]);
+
+const UPDATERS: Record<string, { keys: string[]; rewritesBody: boolean; note: string }> = {
+  "server/routes-doc-system.ts::PUT /api/generated-documents/:id": {
+    keys: ["content", "name", "signers", "status"],
+    rewritesBody: true,
+    note:
+      "edits content of a non-frozen document after creation, past the assignment gate; also takes `status` from the body " +
+      "(follow-up, e-sign ruling: a member can mark a document signed with no ceremony)",
+  },
+  "server/routes-doc-system.ts::POST /api/signatures": {
+    keys: ["builder:statusPatchFor"],
+    rewritesBody: false,
+    note: "status fields derived from the signatures table (statusPatchFor)",
+  },
+  "server/routes-doc-system.ts::POST /api/generated-documents/:id/request-signature": {
+    keys: ["esignProvider", "esignStatus", "expiresAt", "sentAt", "signers", "status"],
+    rewritesBody: false,
+    note: "sends for signature: roster and send state only",
+  },
+  "server/routes-doc-system.ts::POST /api/generated-documents/:id/send-for-signature": {
+    keys: ["esignProvider", "esignStatus", "expiresAt", "sentAt", "signers", "status"],
+    rewritesBody: false,
+    note: "legacy send path: roster and send state only",
+  },
+  "server/routes-public-sign.ts::POST /api/public/sign/:docId": {
+    keys: ["builder:statusPatchFor"],
+    rewritesBody: false,
+    note: "status fields derived from the signatures table (statusPatchFor)",
+  },
+  "server/storage/documentsRepo.ts::updateGeneratedDocument": {
+    keys: ["*", "updatedAt"],
+    rewritesBody: true,
+    note: "the storage method every update above calls — the population is its callers",
+  },
+  "server/storage/documentsRepo.ts::restoreDocumentVersion": {
+    keys: ["content"],
+    rewritesBody: true,
+    note: "restores an earlier version's content (follow-up: not re-gated)",
+  },
+};
+
+describe("A2 — every generated-document update site is classified, with the keys it writes", () => {
+  const { updates, all } = scanServer();
+
+  it("per-shape floors: the walker still reads each shape the tree has", () => {
+    const count = (sh: Shape) => all.filter((s) => s.shape === sh).length;
+    expect(count("create-call")).toBeGreaterThanOrEqual(6);
+    expect(count("insert-table")).toBeGreaterThanOrEqual(1);
+    expect(count("update-call")).toBeGreaterThanOrEqual(6);
+    expect(count("update-table")).toBeGreaterThanOrEqual(1);
+  });
+
+  it("no update site outside the register", () => {
+    const unknown = [...new Set(updates.map((s) => s.unit))].filter((u) => !(u in UPDATERS));
+    expect(unknown, "classify each new generated-document update site in UPDATERS").toEqual([]);
+  });
+
+  it("per member: every registered update site is still found, writing exactly the keys it is registered with", () => {
+    for (const [unit, reg] of Object.entries(UPDATERS)) {
+      const own = updates.filter((s) => s.unit === unit);
+      expect(own.length, unit).toBeGreaterThan(0);
+      const keys = [...new Set(own.flatMap((s) => s.keys ?? ["*"]))].sort();
+      expect(keys, unit).toEqual([...reg.keys].sort());
+    }
+  });
+
+  it("rewritesBody is derived from the keys, not asserted: a patch that gains a body field must be reclassified", () => {
+    for (const [unit, reg] of Object.entries(UPDATERS)) {
+      const derived = reg.keys.some((k) => BODY_FIELDS.has(k));
+      expect(reg.rewritesBody, unit).toBe(derived);
+    }
+  });
+
+  it("the patch builders named in UPDATERS write status fields only (read from their source)", () => {
+    const builders = new Set(Object.values(UPDATERS).flatMap((r) => r.keys).filter((k) => k.startsWith("builder:")).map((k) => k.slice(8)));
+    expect([...builders]).toEqual(["statusPatchFor"]);
+    const file = "server/services/esign/signingProgress.ts";
+    const sf = parseSource(file, fs.readFileSync(file, "utf8"));
+    const keys = new Set<string>();
+    let found = false;
+    const visit = (n: ts.Node) => {
+      if (ts.isFunctionDeclaration(n) && n.name?.text === "statusPatchFor" && n.body) {
+        found = true;
+        const ret = (m: ts.Node) => {
+          if (ts.isReturnStatement(m) && m.expression) for (const k of patchKeys(m.expression)) keys.add(k);
+          else if (!ts.isFunctionLike(m)) ts.forEachChild(m, ret);
+        };
+        ts.forEachChild(n.body, ret);
+      }
+      ts.forEachChild(n, visit);
+    };
+    visit(sf);
+    expect(found, "statusPatchFor not found").toBe(true);
+    expect(keys.size).toBeGreaterThan(0);
+    for (const k of keys) expect(["status", "completedAt", "signedAt"], k).toContain(k);
+  });
+
+  it("canaries: one fixture per shape is read, with its unit and keys", () => {
+    const fixture = [
+      'app.put("/api/d/:id", async (req, res) => {',
+      "  // await storage.updateGeneratedDocument(1, { type: 'assignment' });",
+      "  const { content, status } = req.body;",
+      "  await storage.updateGeneratedDocument(1, { ...(content && { content }), ...(status ? { status } : {}) }, 2);",
+      "});",
+      'app.post("/api/d/:id/s", async (req, res) => { await storage.updateGeneratedDocument(1, statusPatchFor(p)); });',
+      'app.post("/api/d/:id/t", async (req, res) => { await storage.updateGeneratedDocument(1, req.body); });',
+      'app.post("/api/d/:id/u", async (req, res) => { await storage.updateGeneratedDocument(1, { ...pick(req.body), name: "n" }); });',
+      "export async function viaTable() { await db.update(generatedDocuments).set({ name: 'x', updatedAt: now }).where(w); }",
+      "export async function viaTableOutOfChain() { const q = db.update(generatedDocuments); await q.set({ name: 'x' }); }",
+      "export async function viaSql() { await db.execute(sql`UPDATE generated_documents SET type = ${t} WHERE id = ${i}`); }",
+      "export async function insertSql() { await db.execute(sql`INSERT INTO generated_documents (type) VALUES (${t})`); }",
+      "export async function insertTable() { await db.insert(generatedDocuments).values(v); }",
+      'const KIND = "lease";',
+      "export async function viaConst() { await storage.createGeneratedDocument({ type: KIND }); }",
+    ].join("\n");
+    const got = analyze("server/fixture.ts", fixture).map((s) => [s.unit.replace("server/fixture.ts::", ""), s.shape, s.keys ?? s.typeLiteral]);
+    expect(got).toEqual([
+      ["PUT /api/d/:id", "update-call", ["content", "status"]],
+      ["POST /api/d/:id/s", "update-call", ["builder:statusPatchFor"]],
+      ["POST /api/d/:id/t", "update-call", ["*"]],
+      ["POST /api/d/:id/u", "update-call", ["*", "name"]],
+      ["viaTable", "update-table", ["name", "updatedAt"]],
+      ["viaTableOutOfChain", "update-table", ["*"]],
+      ["viaSql", "update-sql", ["*"]],
+      ["insertSql", "insert-sql", null],
+      ["insertTable", "insert-table", null],
+      ["viaConst", "create-call", "lease"],
     ]);
   });
 });
