@@ -224,7 +224,7 @@ function seedLegacyCounterpartySignature(signer = SELLER) {
   });
 }
 
-async function counterpartySigns(signer = BUYER) {
+function seedConsent(signer = BUYER) {
   (H.tables.signing_consent_audit ??= []).push({
     id: (H.tables.signing_consent_audit?.length ?? 0) + 1,
     organizationId: ORG_ID,
@@ -233,9 +233,29 @@ async function counterpartySigns(signer = BUYER) {
     disclosureVersion: ESIGN_DISCLOSURE_VERSION,
     consentedAt: new Date(),
   });
-  const res = await request(app)
-    .post(`/api/public/sign/${DOC_ID}`)
-    .send({ s: signer.id, t: "valid", signatureData: signer.name, signatureType: "typed", consentGiven: true });
+}
+
+/** The signing page's two requests: open the link, then submit what it was shown. */
+async function counterpartyOpens(signer = BUYER) {
+  const res = await request(app).get(`/api/public/sign/${DOC_ID}`).query({ s: signer.id, t: "valid" });
+  expect(res.status, JSON.stringify(res.body)).toBe(200);
+  return res.body.document as { content: string | null; contentHash: string | null };
+}
+function counterpartySubmits(signer: typeof BUYER, viewedContentHash: string | null | undefined) {
+  return request(app).post(`/api/public/sign/${DOC_ID}`).send({
+    s: signer.id,
+    t: "valid",
+    signatureData: signer.name,
+    signatureType: "typed",
+    consentGiven: true,
+    ...(viewedContentHash === undefined ? {} : { viewedContentHash }),
+  });
+}
+
+async function counterpartySigns(signer = BUYER) {
+  seedConsent(signer);
+  const shown = await counterpartyOpens(signer);
+  const res = await counterpartySubmits(signer, shown.contentHash);
   expect(res.status, JSON.stringify(res.body)).toBe(200);
 }
 
@@ -563,7 +583,60 @@ describe("every signature writer records the content hash at signing", () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 2. The four states, on every surface that states them
+// 2. What the signer saw is what is signed
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("the signature is bound to the content the signing page showed", () => {
+  it("the page is handed the hash of exactly the content it renders", async () => {
+    const shown = await counterpartyOpens(BUYER);
+    expect(shown.content).toBe(CONTENT);
+    expect(shown.contentHash).toBe(sha256(CONTENT));
+  });
+
+  it("an edit between opening the link and signing refuses 409 content_changed_since_view, recording nothing", async () => {
+    seedConsent(BUYER);
+    const shown = await counterpartyOpens(BUYER);
+    // The operator edits the still-pending document through the real route.
+    const edit = await request(app)
+      .put(`/api/generated-documents/${DOC_ID}`)
+      .send({ content: CONTENT.replace("10½", "1½") });
+    expect(edit.status, JSON.stringify(edit.body)).toBe(200);
+    expect(H.tables.generated_documents[0].content).not.toBe(CONTENT);
+
+    const res = await counterpartySubmits(BUYER, shown.contentHash);
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe("content_changed_since_view");
+    expect(res.body.message).toBe(
+      "This document changed since you opened it — reload to review the current version.",
+    );
+    expect(H.storageMock.createSignature).not.toHaveBeenCalled();
+    expect(H.tables.signatures ?? []).toHaveLength(0);
+    expect(H.tables.generated_documents[0].status).toBe("pending_signature");
+
+    // Nothing was sealed over the text the signer never saw.
+    const s = await readSurfaces();
+    expect(s.statusHeader).toBe("no_signatures");
+    expect(s.text).not.toContain("VERIFIED");
+
+    // Reload, review the current version, sign: that signature verifies.
+    const reloaded = await counterpartyOpens(BUYER);
+    expect((await counterpartySubmits(BUYER, reloaded.contentHash)).status).toBe(200);
+    expect(writtenOnce().documentContentHash).toBe(sha256(CONTENT.replace("10½", "1½")));
+    expect((await readSurfaces()).statusHeader).toBe("verified");
+  });
+
+  it("a submit that echoes no hash is refused, recording nothing", async () => {
+    seedConsent(BUYER);
+    await counterpartyOpens(BUYER);
+    const res = await counterpartySubmits(BUYER, undefined);
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("viewed_content_hash_required");
+    expect(H.storageMock.createSignature).not.toHaveBeenCalled();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 3. The four states, on every surface that states them
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe("the sealed PDF, its headers and the completion certificate say which state a document is in", () => {

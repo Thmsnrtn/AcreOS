@@ -45,6 +45,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import express from "express";
 import request from "supertest";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -283,12 +284,17 @@ const ALL_FIVE = {
   consentedScope: true,
 };
 
+// Since 2026-11-15 a submit echoes the hash of the content the signing page
+// was shown (GET /api/public/sign/:docId → document.contentHash); a missing or
+// stale echo refuses. seedDoc's content is the default, so every case here
+// still exercises the consent gate, not that binding.
 const signBody = (extra: Record<string, unknown> = {}) => ({
   s: SIGNER.id,
   t: "valid",
   signatureData: "data:image/png;base64,SIG",
   signatureType: "drawn",
   consentGiven: true,
+  viewedContentHash: crypto.createHash("sha256").update("The parties agree…").digest("hex"),
   ...extra,
 });
 

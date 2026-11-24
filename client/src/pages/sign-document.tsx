@@ -48,6 +48,8 @@ type PublicDoc = {
     name: string;
     type: string;
     content: string | null;
+    /** Hash of `content` as served; echoed on submit so a change since load refuses. */
+    contentHash: string | null;
     status: string;
     expiresAt: string | null;
   };
@@ -237,6 +239,7 @@ export default function SignDocumentPage() {
           signatureData: capture.data,
           signatureType: capture.type,
           consentGiven: true,
+          viewedContentHash: data.document.contentHash ?? "",
         }),
       });
       if (!res.ok) {
