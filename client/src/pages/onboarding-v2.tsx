@@ -88,8 +88,11 @@ import {
 import {
   getVerticalOnboarding,
   getDataStepCopy,
+  isOnboardingVerticalsData,
   resolveWizardPrefill,
+  type OnboardingVerticalsData,
 } from "@/lib/onboarding-verticals";
+import { ONBOARDING_VERTICALS_URL, useStaticData } from "@/lib/static-data";
 import "./styles/onboarding-v2.css";
 
 // ---------------------------------------------------------------------------
@@ -287,7 +290,21 @@ export default function OnboardingV2() {
   const typeTouchedRef = useRef(false);
   const isNoteBusiness = businessType === "note_investor";
   const resolvedPersona = resolvePersona(businessType, noteRole);
-  const vertical = getVerticalOnboarding(businessType);
+  // Per-vertical copy is served as a data asset (/onboarding-verticals.json,
+  // source of truth client/src/data/onboarding-verticals-data.ts) instead of
+  // riding inside this chunk — shell-first: the skeleton below covers the
+  // in-flight window and a load failure renders a visible error, never a
+  // wizard with the wrong vertical's copy.
+  const { data: verticalData, error: verticalDataError } =
+    useStaticData<OnboardingVerticalsData>(ONBOARDING_VERTICALS_URL);
+  // A 200 response is not proof of shape: a wrong-shape payload is a
+  // load failure (visible error below), never selector input — the
+  // selectors dereference the registries and would crash the render.
+  const verticalDataValid =
+    verticalData !== null && isOnboardingVerticalsData(verticalData);
+  const vertical = verticalDataValid
+    ? getVerticalOnboarding(verticalData, businessType)
+    : null;
 
   // Data-path state (Step 2)
   const [dataPath, setDataPath] = useState<"sample" | "csv" | null>(null);
@@ -762,6 +779,7 @@ export default function OnboardingV2() {
   // config names the destination (Map/offer for land loops, note book for
   // paper, rent roll for landlords, redemption clock for tax certs, …).
   const handleFinish = async () => {
+    if (!vertical) return;
     await completeMutation.mutateAsync(vertical.finish.path);
   };
 
@@ -796,23 +814,38 @@ export default function OnboardingV2() {
   // config (client/src/lib/onboarding-verticals.ts). The note vertical's
   // three roles each override with their real first job ("load 50 leads"
   // isn't it). Sample data + CSV stay available for everyone as the fast path.
-  const dataStep = getDataStepCopy(businessType, noteRole);
+  const dataStep = verticalDataValid
+    ? getDataStepCopy(verticalData, businessType, noteRole)
+    : null;
   const dataStepCopy = {
     title: (
       <>
-        {dataStep.dataTitle[0]}{" "}
-        <span className="ob2-title-italic">{dataStep.dataTitle[1]}</span>
+        {dataStep?.dataTitle[0]}{" "}
+        <span className="ob2-title-italic">{dataStep?.dataTitle[1]}</span>
       </>
     ),
-    sub: dataStep.dataSub,
-    jobLabel: dataStep.jobLabel,
-    jobHref: dataStep.jobHref,
+    sub: dataStep?.dataSub,
+    jobLabel: dataStep?.jobLabel,
+    jobHref: dataStep?.jobHref,
   };
 
   // ── Skeleton while disclosure status loads ───────────────────────────────
   // (also while the completion read is pending, or releasing to /today — a
   // completed org never sees step 1)
-  if (disclosureLoading || holdForStatus || releaseCompleted) {
+  if (verticalDataError || (verticalData !== null && !verticalDataValid)) {
+    return (
+      <div className="ob2-shell">
+        <div className="ob2-content">
+          <p role="alert" data-testid="onboarding-verticals-load-error">
+            We couldn't load your onboarding guide. Check your connection
+            and refresh to try again.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (disclosureLoading || holdForStatus || releaseCompleted || !verticalData) {
     return (
       <div className="ob2-shell" aria-busy="true" aria-label="Loading">
         <div className="ob2-content">
@@ -1377,7 +1410,7 @@ export default function OnboardingV2() {
                     : csvImport?.kind === "queued"
                       ? "Your leads are importing in the background and will appear on Today as they land. "
                     : "Pax is ready — data can wait on the checklist whenever you need it. You'll approve before anything goes out. "}
-                {vertical.finish.blurb}
+                {vertical?.finish.blurb}
               </motion.p>
             </div>
 
@@ -1397,10 +1430,10 @@ export default function OnboardingV2() {
                     Opening…
                   </>
                 ) : (
-                  vertical.finish.cta
+                  vertical?.finish.cta
                 )}
               </Button>
-              {vertical.finish.path !== "/today" && (
+              {vertical?.finish.path !== "/today" && (
                 <Button
                   variant="ghost"
                   className="w-full mt-2"

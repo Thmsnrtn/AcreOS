@@ -89,7 +89,7 @@ function verticalEntry(
   id: BusinessTypeId,
   name: string,
   evidenced: "surfaced" | "decided",
-  opts: { notGradeable?: string } = {},
+  opts: { notGradeable?: string; gradedCoarsely?: string } = {},
 ): Capability {
   const base = { id: `vertical.${id}`, level: "E1" as const, proof: { unit: ["tests/unit/verticalReadiness.test.ts"] } };
   const publicTier = registryPublicTier(BUSINESS_TYPES[id].maturity);
@@ -97,6 +97,9 @@ function verticalEntry(
   if (evidenced === "decided") {
     const caveats = [
       ...(opts.notGradeable ? [`decided, not yet gradeable: ${opts.notGradeable}`] : []),
+      // Gradeable, but only coarsely: said beside the proof so the claim is not
+      // read as finer-grained than it is.
+      ...(opts.gradedCoarsely ? [`gradeable, but coarse: ${opts.gradedCoarsely}`] : []),
       // A decided vertical promised as core needs no public caveat; one the
       // founder kept at beta or registry-only states that beside its proof.
       ...(publicTier === "core" ? [] : [publicWording]),
@@ -240,7 +243,7 @@ export const CAPABILITIES: readonly Capability[] = [
   verticalEntry("creative_finance", "creative finance", "surfaced"),
   verticalEntry("developer", "developer", "surfaced"),
   verticalEntry("subdivider", "subdivider", "decided", {
-    notGradeable: "its lot-pricing lock records no scenario and no review date, so its decisions are never asked for an outcome (V2)",
+    gradedCoarsely: "a price lock is asked for its outcome on the whole parcel (sold or abandoned), not lot by lot",
   }),
   // tax_lien_deed flipped surfaced → decided 2026-11-20 in the T6 lift:
   // the max-bid engine + decision desk (T4+T5) record decisions citing

@@ -34,6 +34,15 @@
  *      import fs from "node:fs"; fs.writeFileSync("client/public/trust-content.json", JSON.stringify(TRUST_SECTIONS,null,2)+"\n")'
  *   6. the static server never gives the unhashed assets the 1-year
  *      immutable cache.
+ *   7. (PR #697 diet) per-vertical onboarding copy:
+ *      client/src/data/onboarding-verticals-data.ts (source of truth) →
+ *      /onboarding-verticals.json; the wizard loads it via the shared
+ *      loader, the lib selectors run over the fetched data with their
+ *      pre-extraction semantics, and a loader failure renders a visible
+ *      error, never a wizard wearing the wrong vertical's copy.
+ *      Regenerate: npx tsx -e 'import {VERTICAL_ONBOARDING, NOTE_ROLE_DATA_OVERRIDES} from "./client/src/data/onboarding-verticals-data";
+ *      import fs from "node:fs"; fs.writeFileSync("client/public/onboarding-verticals.json", JSON.stringify({verticals: VERTICAL_ONBOARDING, noteRoleOverrides: NOTE_ROLE_DATA_OVERRIDES}, null, 2)+"\n")'
+
  */
 import { describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
@@ -44,6 +53,16 @@ import {
   campaignTemplatesFor,
 } from "../../shared/outreach/templates";
 import { TRUST_SECTIONS } from "../../client/src/data/trust-content-data";
+import {
+  NOTE_ROLE_DATA_OVERRIDES,
+  VERTICAL_ONBOARDING,
+  type OnboardingVerticalsData,
+} from "../../client/src/data/onboarding-verticals-data";
+import {
+  getDataStepCopy,
+  getVerticalOnboarding,
+  isOnboardingVerticalsData,
+} from "../../client/src/lib/onboarding-verticals";
 import { CUSTOMER_CHANGELOG } from "../../client/src/data/customer-changelog";
 import {
   HELP_FAQ_ITEMS,
@@ -77,6 +96,13 @@ const readJson = (rel: string): unknown => JSON.parse(read(rel));
 const OUTREACH_ASSET = readJson("client/public/outreach-templates.json");
 const CHANGELOG_ASSET = readJson("client/public/customer-changelog.json");
 const TRUST_ASSET = readJson("client/public/trust-content.json");
+const ONBOARDING_ASSET = readJson(
+  "client/public/onboarding-verticals.json",
+) as OnboardingVerticalsData;
+const MODULE_ONBOARDING_DATA: OnboardingVerticalsData = {
+  verticals: VERTICAL_ONBOARDING,
+  noteRoleOverrides: NOTE_ROLE_DATA_OVERRIDES,
+};
 const HELP_ASSET = readJson("client/public/help-content.json") as {
   featureGuides: typeof HELP_FEATURE_GUIDES;
   faqItems: typeof HELP_FAQ_ITEMS;
@@ -103,11 +129,107 @@ describe("served assets are verbatim the modules' data", () => {
     );
   });
 
+  it("onboarding-verticals.json deep-equals the onboarding data module", () => {
+    expect(ONBOARDING_ASSET).toEqual(MODULE_ONBOARDING_DATA);
+  });
+
+  it("onboarding-verticals.json is the generator's exact output (regenerate with the header's command)", () => {
+    expect(read("client/public/onboarding-verticals.json")).toBe(
+      JSON.stringify(MODULE_ONBOARDING_DATA, null, 2) + "\n",
+    );
+  });
+
   it("help-content.json deep-equals the help data module", () => {
     expect(HELP_ASSET).toEqual({
       featureGuides: HELP_FEATURE_GUIDES,
       faqItems: HELP_FAQ_ITEMS,
     });
+  });
+});
+
+// ── 1b. Onboarding selectors: served asset behaves as the module data ────
+
+describe("onboarding selectors over the served asset match the module", () => {
+  it("getVerticalOnboarding agrees for every id + unknown input", () => {
+    for (const id of Object.keys(VERTICAL_ONBOARDING)) {
+      expect(getVerticalOnboarding(ONBOARDING_ASSET, id)).toEqual(
+        getVerticalOnboarding(MODULE_ONBOARDING_DATA, id),
+      );
+    }
+    expect(getVerticalOnboarding(ONBOARDING_ASSET, undefined)).toEqual(
+      VERTICAL_ONBOARDING.land_flipper,
+    );
+    expect(getVerticalOnboarding(ONBOARDING_ASSET, "not_a_type")).toEqual(
+      VERTICAL_ONBOARDING.land_flipper,
+    );
+  });
+
+  it("getDataStepCopy agrees across verticals and note roles", () => {
+    for (const id of Object.keys(VERTICAL_ONBOARDING)) {
+      for (const role of ["invest", "originate", "service"] as const) {
+        expect(getDataStepCopy(ONBOARDING_ASSET, id, role)).toEqual(
+          getDataStepCopy(MODULE_ONBOARDING_DATA, id, role),
+        );
+      }
+    }
+  });
+});
+
+// ── 1c. Loaded-shape guard: a wrong-shape 200 is a load failure (D-2) ────
+
+describe("isOnboardingVerticalsData guards the loaded asset shape", () => {
+  it("accepts the served asset and the module data", () => {
+    expect(isOnboardingVerticalsData(ONBOARDING_ASSET)).toBe(true);
+    expect(isOnboardingVerticalsData(MODULE_ONBOARDING_DATA)).toBe(true);
+  });
+
+  it("rejects the D-2 payload: a 200 with body {}", () => {
+    expect(isOnboardingVerticalsData({})).toBe(false);
+  });
+
+  it.each([
+    ["null", null],
+    ["an array", []],
+    ["a string", "verticals"],
+    ["verticals missing", { noteRoleOverrides: NOTE_ROLE_DATA_OVERRIDES }],
+    ["noteRoleOverrides missing", { verticals: VERTICAL_ONBOARDING }],
+    ["verticals not an object", { verticals: 42, noteRoleOverrides: NOTE_ROLE_DATA_OVERRIDES }],
+    [
+      "one vertical missing",
+      {
+        verticals: { ...VERTICAL_ONBOARDING, land_flipper: undefined },
+        noteRoleOverrides: NOTE_ROLE_DATA_OVERRIDES,
+      },
+    ],
+    [
+      "a vertical with a malformed finish",
+      {
+        verticals: {
+          ...VERTICAL_ONBOARDING,
+          note_investor: { ...VERTICAL_ONBOARDING.note_investor, finish: { path: "/money" } },
+        },
+        noteRoleOverrides: NOTE_ROLE_DATA_OVERRIDES,
+      },
+    ],
+    [
+      "a vertical with a non-pair dataTitle",
+      {
+        verticals: {
+          ...VERTICAL_ONBOARDING,
+          hybrid: { ...VERTICAL_ONBOARDING.hybrid, dataTitle: ["only one"] },
+        },
+        noteRoleOverrides: NOTE_ROLE_DATA_OVERRIDES,
+      },
+    ],
+    [
+      "the invest override missing (selector fallback target)",
+      {
+        verticals: VERTICAL_ONBOARDING,
+        noteRoleOverrides: { ...NOTE_ROLE_DATA_OVERRIDES, invest: undefined },
+      },
+    ],
+  ])("rejects %s", (_label, payload) => {
+    expect(isOnboardingVerticalsData(payload)).toBe(false);
   });
 });
 
@@ -234,7 +356,8 @@ describe("no client file value-imports the externalised registries", () => {
           from === "@shared/outreach/templates" ||
           from.endsWith("/data/customer-changelog") ||
           from.endsWith("/data/help-content-data") ||
-          from.endsWith("/data/trust-content-data")
+          from.endsWith("/data/trust-content-data") ||
+          from.endsWith("/data/onboarding-verticals-data")
         ) {
           offenders.push(
             `${path.relative(ROOT, file)} value-imports ${from}`,
@@ -256,6 +379,18 @@ describe("no client file value-imports the externalised registries", () => {
       "HELP_CONTENT_URL",
     );
     expect(read("client/src/pages/trust.tsx")).toContain("TRUST_CONTENT_URL");
+    expect(read("client/src/pages/onboarding-v2.tsx")).toContain(
+      "ONBOARDING_VERTICALS_URL",
+    );
+  });
+
+  it("the onboarding wizard renders a VISIBLE error on loader failure, never a blank wizard", () => {
+    const page = stripComments(read("client/src/pages/onboarding-v2.tsx"));
+    expect(page).toContain(
+      "useStaticData<OnboardingVerticalsData>(ONBOARDING_VERTICALS_URL)",
+    );
+    expect(page).toMatch(/<p role="alert"/);
+    expect(page).toContain('data-testid="onboarding-verticals-load-error"');
   });
 
   it("/trust renders a VISIBLE error on loader failure, never a blank page", () => {
@@ -319,13 +454,14 @@ describe("loadStaticData", () => {
 // ── 6. The unhashed assets never get the immutable cache ──────────────────
 
 describe("static server cache discipline", () => {
-  it("server/static.ts no-cache-lists all three assets", () => {
+  it("server/static.ts no-cache-lists all served assets", () => {
     const src = read("server/static.ts");
     for (const url of [
       "/outreach-templates.json",
       "/customer-changelog.json",
       "/help-content.json",
       "/trust-content.json",
+      "/onboarding-verticals.json",
     ]) {
       expect(src).toContain(`"${url}"`);
     }
