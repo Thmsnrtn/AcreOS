@@ -62,7 +62,7 @@ describe.runIf(realDbAvailable)("note-tape commit — real database", () => {
     const { db } = await import("../../server/db");
     const { sql } = await import("drizzle-orm");
     const { sha256, validation } = await validate(tape);
-    const r = await commitNoteTape({ organizationId: orgId, actorUserId: `${tag}-u`, fileName: "golden.csv", fileSha256: sha256, asOf: null, validation, excludeRows: [] });
+    const r = await commitNoteTape({ servicingArrangement: "passive_holder", organizationId: orgId, actorUserId: `${tag}-u`, fileName: "golden.csv", fileSha256: sha256, asOf: null, validation, excludeRows: [] });
     expect(r).toMatchObject({ status: "refused", unresolvedRows: [4, 5] });
     expect(count(await db.execute(sql`SELECT count(*)::int AS n FROM acquired_notes WHERE organization_id = ${orgId}`))).toBe(0);
   });
@@ -81,7 +81,7 @@ describe.runIf(realDbAvailable)("note-tape commit — real database", () => {
 
     const { commitNoteTape } = await import("../../server/services/notes/noteTapeCommit");
     const { sha256, validation } = await validate(tape);
-    const r = await commitNoteTape({ organizationId: orgId, actorUserId: `${tag}-u`, fileName: "golden.csv", fileSha256: sha256, asOf: "2026-09-30", validation, excludeRows: [4, 5] });
+    const r = await commitNoteTape({ servicingArrangement: "passive_holder", organizationId: orgId, actorUserId: `${tag}-u`, fileName: "golden.csv", fileSha256: sha256, asOf: "2026-09-30", validation, excludeRows: [4, 5] });
     if (r.status !== "committed") throw new Error(JSON.stringify(r));
     expect(r).toMatchObject({ created: 3, appendedToExisting: 0, excludedRows: [4, 5] });
     expect(r.notes.map((n) => [n.noteNumber, n.collateral, n.documentsIncomplete])).toEqual([
@@ -113,7 +113,7 @@ describe.runIf(realDbAvailable)("note-tape commit — real database", () => {
     // Re-import: the same loan number, a different balance. Appended, never overwritten.
     const changed = tape.replace('"$84,250.00"', '"$83,900.00"');
     const again = await validate(changed);
-    const r2 = await commitNoteTape({ organizationId: orgId, actorUserId: `${tag}-u`, fileName: "golden-v2.csv", fileSha256: again.sha256, asOf: null, validation: again.validation, excludeRows: [4, 5] });
+    const r2 = await commitNoteTape({ servicingArrangement: "passive_holder", organizationId: orgId, actorUserId: `${tag}-u`, fileName: "golden-v2.csv", fileSha256: again.sha256, asOf: null, validation: again.validation, excludeRows: [4, 5] });
     if (r2.status !== "committed") throw new Error(JSON.stringify(r2));
     expect(r2).toMatchObject({ created: 0, appendedToExisting: 3 });
     expect(r2.notes[0]).toMatchObject({ noteId: n1001, differingFields: ["currentBalance"] });
@@ -136,7 +136,7 @@ describe.runIf(realDbAvailable)("note-tape commit — real database", () => {
     const { db } = await import("../../server/db");
     const { sql } = await import("drizzle-orm");
     const { sha256, validation } = await validate(tape);
-    const r = await commitNoteTape({ organizationId: b, actorUserId: `${tag}-u2`, fileName: "golden.csv", fileSha256: sha256, asOf: null, validation, excludeRows: [4, 5] });
+    const r = await commitNoteTape({ servicingArrangement: "passive_holder", organizationId: b, actorUserId: `${tag}-u2`, fileName: "golden.csv", fileSha256: sha256, asOf: null, validation, excludeRows: [4, 5] });
     if (r.status !== "committed") throw new Error(JSON.stringify(r));
     expect(r).toMatchObject({ created: 3, appendedToExisting: 0 });
     for (const n of r.notes) expect(n.differingFields).toEqual([]);

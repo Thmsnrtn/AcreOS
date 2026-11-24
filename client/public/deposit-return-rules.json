@@ -1,0 +1,320 @@
+{
+  "AK": {
+    "state": "AK",
+    "deadlineDays": 14,
+    "itemizedStatementRequired": true,
+    "citation": "Alaska Stat. §34.03.070(b)",
+    "note": "14 days where the tenancy ended with the notice the statute requires; 30 days where the tenant left without proper notice. Encoded at 14 — the shorter window."
+  },
+  "AL": {
+    "state": "AL",
+    "deadlineDays": 60,
+    "itemizedStatementRequired": true,
+    "citation": "Ala. Code §35-9A-201(b)"
+  },
+  "AR": {
+    "state": "AR",
+    "deadlineDays": 60,
+    "itemizedStatementRequired": true,
+    "citation": "Ark. Code §18-16-305"
+  },
+  "AZ": {
+    "state": "AZ",
+    "deadlineDays": 14,
+    "businessDays": true,
+    "itemizedStatementRequired": true,
+    "citation": "A.R.S. §33-1321(D)",
+    "note": "14 BUSINESS days. Weekends are excluded below; state holidays are not encoded, so treat the computed date as the outer edge."
+  },
+  "CA": {
+    "state": "CA",
+    "deadlineDays": 21,
+    "itemizedStatementRequired": true,
+    "citation": "Cal. Civ. Code §1950.5(g)"
+  },
+  "CO": {
+    "state": "CO",
+    "deadlineDays": 30,
+    "itemizedStatementRequired": true,
+    "citation": "C.R.S. §38-12-103(1)",
+    "note": "A written lease may extend this to as much as 60 days. Encoded at the 30-day statutory default; verify the lease before relying on a longer window."
+  },
+  "CT": {
+    "state": "CT",
+    "deadlineDays": 30,
+    "itemizedStatementRequired": true,
+    "citation": "Conn. Gen. Stat. §47a-21(d)(2)",
+    "note": "30 days after termination, or 15 days after the landlord receives the tenant's forwarding address, whichever is LATER. Encoded at 30 from move-out."
+  },
+  "DC": {
+    "state": "DC",
+    "deadlineDays": 45,
+    "itemizedStatementRequired": true,
+    "citation": "14 DCMR §308-309"
+  },
+  "DE": {
+    "state": "DE",
+    "deadlineDays": 20,
+    "itemizedStatementRequired": true,
+    "citation": "25 Del. C. §5514(f)"
+  },
+  "FL": {
+    "state": "FL",
+    "deadlineDays": 30,
+    "deadlineDaysNoDeductions": 15,
+    "itemizedStatementRequired": true,
+    "citation": "Fla. Stat. §83.49(3)",
+    "note": "15 days to return the deposit when nothing is withheld; 30 days to send the written notice of intent to impose a claim when something is."
+  },
+  "GA": {
+    "state": "GA",
+    "deadlineDays": 30,
+    "itemizedStatementRequired": true,
+    "citation": "O.C.G.A. §44-7-34(a)"
+  },
+  "HI": {
+    "state": "HI",
+    "deadlineDays": 14,
+    "itemizedStatementRequired": true,
+    "citation": "HRS §521-44(c)"
+  },
+  "IA": {
+    "state": "IA",
+    "deadlineDays": 30,
+    "itemizedStatementRequired": true,
+    "citation": "Iowa Code §562A.12(3)"
+  },
+  "ID": {
+    "state": "ID",
+    "deadlineDays": 21,
+    "itemizedStatementRequired": true,
+    "citation": "Idaho Code §6-321",
+    "note": "21 days by default; a written agreement may allow up to 30. Encoded at 21."
+  },
+  "IL": {
+    "state": "IL",
+    "deadlineDays": 30,
+    "deadlineDaysNoDeductions": 45,
+    "itemizedStatementRequired": true,
+    "citation": "765 ILCS 710/1",
+    "note": "Itemized statement (with paid receipts or estimates) within 30 days of vacating; the balance within 45. The 30-day itemization deadline is the binding one when anything is withheld."
+  },
+  "IN": {
+    "state": "IN",
+    "deadlineDays": 45,
+    "itemizedStatementRequired": true,
+    "citation": "Ind. Code §32-31-3-12"
+  },
+  "KS": {
+    "state": "KS",
+    "deadlineDays": 30,
+    "itemizedStatementRequired": true,
+    "citation": "K.S.A. §58-2550(b)"
+  },
+  "LA": {
+    "state": "LA",
+    "deadlineDays": 30,
+    "itemizedStatementRequired": true,
+    "citation": "La. R.S. §9:3251(A)"
+  },
+  "MA": {
+    "state": "MA",
+    "deadlineDays": 30,
+    "itemizedStatementRequired": true,
+    "citation": "Mass. Gen. Laws c.186 §15B(4)"
+  },
+  "MD": {
+    "state": "MD",
+    "deadlineDays": 45,
+    "itemizedStatementRequired": true,
+    "citation": "Md. Code, Real Prop. §8-203(e)(1)"
+  },
+  "ME": {
+    "state": "ME",
+    "deadlineDays": 21,
+    "itemizedStatementRequired": true,
+    "citation": "14 M.R.S. §6033",
+    "note": "21 days for a tenancy at will; 30 days under a written lease. Encoded at 21 — the shorter window."
+  },
+  "MI": {
+    "state": "MI",
+    "deadlineDays": 30,
+    "itemizedStatementRequired": true,
+    "citation": "MCL §554.609"
+  },
+  "MN": {
+    "state": "MN",
+    "deadlineDays": 21,
+    "itemizedStatementRequired": true,
+    "citation": "Minn. Stat. §504B.178(3)"
+  },
+  "MO": {
+    "state": "MO",
+    "deadlineDays": 30,
+    "itemizedStatementRequired": true,
+    "citation": "Mo. Rev. Stat. §535.300(3)"
+  },
+  "MS": {
+    "state": "MS",
+    "deadlineDays": 45,
+    "itemizedStatementRequired": true,
+    "citation": "Miss. Code §89-8-21(3)"
+  },
+  "MT": {
+    "state": "MT",
+    "deadlineDays": 30,
+    "deadlineDaysNoDeductions": 10,
+    "itemizedStatementRequired": true,
+    "citation": "Mont. Code §70-25-202",
+    "note": "10 days when no deductions are taken; 30 days when a deduction is made and an itemized list is delivered."
+  },
+  "NC": {
+    "state": "NC",
+    "deadlineDays": 30,
+    "itemizedStatementRequired": true,
+    "citation": "N.C.G.S. §42-52",
+    "note": "30 days; if the extent of the loss is not reasonably ascertainable in that window, an interim accounting is due at 30 days and the final one at 60. Encoded at 30."
+  },
+  "ND": {
+    "state": "ND",
+    "deadlineDays": 30,
+    "itemizedStatementRequired": true,
+    "citation": "N.D. Cent. Code §47-16-07.1(3)"
+  },
+  "NE": {
+    "state": "NE",
+    "deadlineDays": 14,
+    "itemizedStatementRequired": true,
+    "citation": "Neb. Rev. Stat. §76-1416(2)"
+  },
+  "NH": {
+    "state": "NH",
+    "deadlineDays": 30,
+    "itemizedStatementRequired": true,
+    "citation": "N.H. RSA §540-A:7"
+  },
+  "NJ": {
+    "state": "NJ",
+    "deadlineDays": 30,
+    "itemizedStatementRequired": true,
+    "citation": "N.J.S.A. §46:8-21.1"
+  },
+  "NM": {
+    "state": "NM",
+    "deadlineDays": 30,
+    "itemizedStatementRequired": true,
+    "citation": "N.M. Stat. §47-8-18(C)"
+  },
+  "NV": {
+    "state": "NV",
+    "deadlineDays": 30,
+    "itemizedStatementRequired": true,
+    "citation": "NRS §118A.242(4)"
+  },
+  "NY": {
+    "state": "NY",
+    "deadlineDays": 14,
+    "itemizedStatementRequired": true,
+    "citation": "N.Y. Gen. Oblig. Law §7-108(1-a)(e)"
+  },
+  "OH": {
+    "state": "OH",
+    "deadlineDays": 30,
+    "itemizedStatementRequired": true,
+    "citation": "Ohio Rev. Code §5321.16(B)"
+  },
+  "OK": {
+    "state": "OK",
+    "deadlineDays": 30,
+    "itemizedStatementRequired": true,
+    "citation": "Okla. Stat. tit. 41 §115(B)",
+    "note": "The statute runs the window from the tenant's written demand for the deposit. Encoded from move-out, which is never later than the demand."
+  },
+  "OR": {
+    "state": "OR",
+    "deadlineDays": 31,
+    "itemizedStatementRequired": true,
+    "citation": "ORS §90.300(13)"
+  },
+  "PA": {
+    "state": "PA",
+    "deadlineDays": 30,
+    "itemizedStatementRequired": true,
+    "citation": "68 P.S. §250.512(a)"
+  },
+  "RI": {
+    "state": "RI",
+    "deadlineDays": 20,
+    "itemizedStatementRequired": true,
+    "citation": "R.I. Gen. Laws §34-18-19(b)"
+  },
+  "SC": {
+    "state": "SC",
+    "deadlineDays": 30,
+    "itemizedStatementRequired": true,
+    "citation": "S.C. Code §27-40-410(b)"
+  },
+  "SD": {
+    "state": "SD",
+    "deadlineDays": 14,
+    "itemizedStatementRequired": true,
+    "citation": "S.D.C.L. §43-32-24",
+    "note": "14 days to return the undisputed portion; a written itemized accounting is due within 45 days on the tenant's request."
+  },
+  "TN": {
+    "state": "TN",
+    "deadlineDays": 30,
+    "itemizedStatementRequired": true,
+    "citation": "T.C.A. §66-28-301(g)"
+  },
+  "TX": {
+    "state": "TX",
+    "deadlineDays": 30,
+    "itemizedStatementRequired": true,
+    "citation": "Tex. Prop. Code §92.103(a), §92.104(c)"
+  },
+  "UT": {
+    "state": "UT",
+    "deadlineDays": 30,
+    "itemizedStatementRequired": true,
+    "citation": "Utah Code §57-17-3(2)"
+  },
+  "VA": {
+    "state": "VA",
+    "deadlineDays": 45,
+    "itemizedStatementRequired": true,
+    "citation": "Va. Code §55.1-1226(A)"
+  },
+  "VT": {
+    "state": "VT",
+    "deadlineDays": 14,
+    "itemizedStatementRequired": true,
+    "citation": "9 V.S.A. §4461(c)"
+  },
+  "WA": {
+    "state": "WA",
+    "deadlineDays": 30,
+    "itemizedStatementRequired": true,
+    "citation": "RCW 59.18.280(1)"
+  },
+  "WI": {
+    "state": "WI",
+    "deadlineDays": 21,
+    "itemizedStatementRequired": true,
+    "citation": "Wis. Stat. §704.28(4)"
+  },
+  "WV": {
+    "state": "WV",
+    "deadlineDays": 60,
+    "itemizedStatementRequired": true,
+    "citation": "W. Va. Code §37-6A-2(a)",
+    "note": "60 days after the tenancy ends, or 45 days after a new tenant occupies the unit, whichever is EARLIER. Encoded at 60 from move-out; re-letting the unit shortens it."
+  },
+  "WY": {
+    "state": "WY",
+    "deadlineDays": 30,
+    "itemizedStatementRequired": true,
+    "citation": "Wyo. Stat. §1-21-1208(a)",
+    "note": "30 days after the tenancy ends, or 15 days after receiving the tenant's forwarding address, whichever is later; 60 days where deductions for damage are itemized. Encoded at 30."
+  }
+}
