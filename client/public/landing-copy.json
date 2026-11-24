@@ -1,0 +1,169 @@
+{
+  "hero": {
+    "eyebrow": "For property investors — deepest in land",
+    "title": [
+      "The operating system",
+      "for property investors."
+    ],
+    "wedge": "One platform that finds the deals, sends the mail, drafts the replies, closes the deal, and services the note after.",
+    "cta1": "Start free — 14 days, no card",
+    "cta2": "Watch it run on a real parcel — no signup",
+    "ctaSub": "Bring your county list as a CSV — AcreOS reads the columns and skips owners you already have. Deepest in land: every parcel gets a Land Credit Score — a 300–850 read on the parcel itself.",
+    "proof": "Connect your own Twilio, SendGrid, Lob, and property-data accounts — or run on ours. Your keys, your invoices; AcreOS runs the intelligence over the top.",
+    "agenciesLabel": "The land toolkit — every parcel checked against five federal data sources, free:",
+    "agencies": [
+      "FEMA",
+      "USDA",
+      "USGS",
+      "USFWS",
+      "U.S. Census"
+    ]
+  },
+  "productShots": {
+    "eyebrow": "The product",
+    "title": "What you actually work in.",
+    "sub": "Illustrative screens with example data — run the free parcel check to see real output on a real parcel.",
+    "proofCta": "Run a free parcel check"
+  },
+  "positioning": {
+    "primary": "Built for property investors.",
+    "inProduct": "Deepest in land — the founding wedge — with every investor type the platform serves labeled by what's true today: full workflows, beta, or roadmap.",
+    "roadmap": "On the roadmap — promised, not sold:"
+  },
+  "how": {
+    "eyebrow": "How it works",
+    "title": "Three steps. Most happens on its own.",
+    "steps": [
+      {
+        "n": 1,
+        "t": "Define the buy-box",
+        "b": "Counties, price band, property type, owner profile. Wire it into workflow conditions and every new lead is checked against it the moment it's stored."
+      },
+      {
+        "n": 2,
+        "t": "AcreOS does the busy work",
+        "b": "Replies drafted, your drips sent — overnight, from your own accounts. Every action is logged and reviewable."
+      },
+      {
+        "n": 3,
+        "t": "Operator makes the calls",
+        "b": "Approve offers, edit drafts, skip what doesn't fit. Human judgment stays on the deals that matter."
+      }
+    ]
+  },
+  "agents": {
+    "eyebrow": "Meet Pax",
+    "title": "Pax — your AI operations partner.",
+    "sub": "Pax works your pipeline the way you set it up: pulls comps, scores leads as they land, drafts replies, prepares borrower reminders for your tap. Every action is shown with the data it used. Nothing happens behind your back."
+  },
+  "day": {
+    "eyebrow": "A Tuesday in May",
+    "title": "Two versions of the same week.",
+    "sub": "Before AcreOS, a typical Tuesday looks like the left column. With AcreOS, it looks like the right."
+  },
+  "features": {
+    "eyebrow": "What's in the box",
+    "title": "Every tool a property investor needs, in one place.",
+    "sub": "Find, analyze, reach, close, service — deals, mail, inbox, offers, notes, and rentals under one roof. On land it runs deepest: every parcel carries a Land Credit Score — a 300–850 read on the dirt. No tab-juggling, no per-step subscriptions."
+  },
+  "data": {
+    "eyebrow": "The land toolkit",
+    "title": "Premium government data, free.",
+    "sub": "Where AcreOS runs deepest for Land Investors: flood, soil, elevation, and wetlands checks on every parcel from public government data — before you ever pay for a data subscription. Paid providers come later, when your deal volume earns them.",
+    "sources": [
+      {
+        "agency": "FEMA",
+        "what": "National Flood Hazard Layer — flood zone and risk."
+      },
+      {
+        "agency": "USDA",
+        "what": "SSURGO soil survey — type, capability class, drainage."
+      },
+      {
+        "agency": "USGS",
+        "what": "3DEP elevation — point elevation and slope context."
+      },
+      {
+        "agency": "USFWS",
+        "what": "National Wetlands Inventory — mapped wetland presence."
+      },
+      {
+        "agency": "Census",
+        "what": "ACS tract context — population and median income."
+      }
+    ],
+    "promise": "Every parcel gets these checks at no cost. Paid data (parcel ownership, skip-trace) stays behind your own key, so you only pay for it when a deal justifies it.",
+    "proofCta": "Run it on any address"
+  },
+  "quotes": {
+    "eyebrow": "What the system does",
+    "title": "Mechanics, not marketing."
+  },
+  "pricing": {
+    "eyebrow": "Pricing",
+    "title": "Premium government data, free. Paid data when you scale.",
+    "sub": "Numbers on the page. No \"contact us\" wall. The free tier runs flood, soil, elevation, and wetlands checks from government data on every parcel. Pro unlocks the full Pax assistant, unlimited counties, and bring-your-own-key for the parcel and skip-trace data costs you already pay — see the live price on each tile below. Every paid plan is backed by a 30-day money-back guarantee."
+  },
+  "faq": {
+    "eyebrow": "Common questions",
+    "title": "Frequently asked."
+  },
+  "cta": {
+    "eyebrow": "Ready when you are",
+    "title": "Try AcreOS for two weeks.",
+    "sub": "No card, no calls, no pressure. Full feature access during the trial.",
+    "cta1": "Start free trial",
+    "cta2": "Email us first"
+  },
+  "landCreditScore": {
+    "eyebrow": "The Land Credit Score",
+    "title": "A credit score for the parcel — not the person.",
+    "sub": "Every parcel AcreOS touches gets a Land Credit Score: a single 300–850 read, graded A+ through F, of how a piece of land stacks up as an investment. It scores the dirt, not the buyer. It is not a consumer credit report and pulls no personal credit.",
+    "scaleNote": "300–850 scale · A+ through F · recomputed as the underlying data changes.",
+    "dimensionsTitle": "Six weighted dimensions",
+    "dimensionsSub": "The score is a weighted blend of six dimensions, drawn from the same government and market data behind every parcel check.",
+    "methodologyNote": "Published methodology, version v1 — the weights below are the methodology. Any change to the weights, scale, or grade thresholds revs the version, and every free parcel report is stamped with the version that produced it.",
+    "dimensions": [
+      {
+        "name": "Location",
+        "weight": 25,
+        "what": "Market strength, population growth, economic health, accessibility."
+      },
+      {
+        "name": "Financial",
+        "weight": 20,
+        "what": "Cash flow, appreciation, liquidity, tax burden, carrying cost."
+      },
+      {
+        "name": "Physical",
+        "weight": 20,
+        "what": "Topography, soil quality, water access, utilities, road access."
+      },
+      {
+        "name": "Legal",
+        "weight": 15,
+        "what": "Zoning, restrictions, mineral rights, water rights, clear title."
+      },
+      {
+        "name": "Environmental",
+        "weight": 10,
+        "what": "Flood risk, wildfire, contamination, wetlands, protected species."
+      },
+      {
+        "name": "Market",
+        "weight": 10,
+        "what": "Demand, supply, price history, days on market, comparable sales."
+      }
+    ],
+    "sampleLabel": "Illustrative — example output, not a real parcel",
+    "honestTitle": "What it is — and what it isn't",
+    "honest": [
+      "It scores parcels, not people. No personal or consumer credit is involved.",
+      "It is not a FICO score, a consumer credit report, or a regulated credit product.",
+      "It is a decision aid, not a guarantee — the operator still makes the call.",
+      "It updates as the underlying flood, soil, market, and ownership data changes."
+    ],
+    "cta1": "Run a free parcel check",
+    "cta2": "Start free trial"
+  }
+}

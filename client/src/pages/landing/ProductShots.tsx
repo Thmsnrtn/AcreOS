@@ -18,7 +18,7 @@
 
 import type { ReactNode } from "react";
 import { Link } from "wouter";
-import { LANDING_COPY } from "./copy";
+import type { LandingCopy } from "./copy";
 import { emitMarketingTouch } from "@/lib/marketing-touch";
 
 /** Same quiet chip as the hero cards — one honest label per frame. */
@@ -137,8 +137,8 @@ function PaxShot() {
   );
 }
 
-export function ProductShots() {
-  const c = LANDING_COPY.productShots;
+export function ProductShots({ copy }: { copy: LandingCopy["productShots"] }) {
+  const c = copy;
   return (
     <section className="lp-section lp-shots-section" id="product">
       <div className="lp-section-inner">

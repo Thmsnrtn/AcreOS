@@ -26,11 +26,11 @@
  */
 
 import { Link } from "wouter";
-import { LANDING_COPY } from "./copy";
+import type { LandingCopy } from "./copy";
 import { emitMarketingTouch } from "@/lib/marketing-touch";
 
-export function Hero() {
-  const c = LANDING_COPY.hero;
+export function Hero({ copy }: { copy: LandingCopy["hero"] }) {
+  const c = copy;
   return (
     <section className="lp-hero">
       {/* Backdrop: parcel grid + radial brand glow + parcel polygons */}

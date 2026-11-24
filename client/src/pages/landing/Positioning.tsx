@@ -65,7 +65,7 @@ import {
   publicMaturityOf,
   type PublicClaimDemotion,
 } from "@shared/business-types/publicClaims";
-import { LANDING_COPY } from "./copy";
+import type { LandingCopy } from "./copy";
 
 export interface LandingVerticalChip {
   id: BusinessTypeId;
@@ -149,8 +149,8 @@ export function deriveLandingTiers(
 // fails fast (build/test time), never in front of a visitor.
 const TIERS: LandingVerticalTiers = deriveLandingTiers();
 
-export function Positioning() {
-  const c = LANDING_COPY.positioning;
+export function Positioning({ copy }: { copy: LandingCopy["positioning"] }) {
+  const c = copy;
   return (
     <section className="lp-positioning" aria-label="Who AcreOS is for">
       <div className="lp-positioning-inner">
