@@ -335,7 +335,18 @@ async function loadKeyStores(): Promise<KeyStore[]> {
   return [...byTable.values()];
 }
 
+// One parse per (path, source) for the whole file: the repo sweep and the
+// founder-gate soundness check read the same ~300 server files.
+const parseCache = new Map<string, { src: string; out: { sf: ts.SourceFile; errors: number } }>();
 function parseSource(rel: string, src: string): { sf: ts.SourceFile; errors: number } {
+  const hit = parseCache.get(rel);
+  if (hit && hit.src === src) return hit.out;
+  const out = parseSourceUncached(rel, src);
+  parseCache.set(rel, { src, out });
+  return out;
+}
+
+function parseSourceUncached(rel: string, src: string): { sf: ts.SourceFile; errors: number } {
   const kind = rel.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
   const sf = ts.createSourceFile(rel, stripComments(src), ts.ScriptTarget.Latest, true, kind);
   const errors = ((sf as unknown as { parseDiagnostics?: unknown[] }).parseDiagnostics ?? []).length;
@@ -380,12 +391,27 @@ function propertyKey(p: ts.ObjectLiteralElementLike): string | undefined {
   return undefined;
 }
 
+const SQL_VERB = /\b(?:insert|update)\b/i;
+const storeRegexCache = new WeakMap<KeyStore[], Array<{ s: KeyStore; insertRe: RegExp; updateRe: RegExp }>>();
+function storeRegexes(stores: KeyStore[]) {
+  let out = storeRegexCache.get(stores);
+  if (!out) {
+    out = stores.map((s) => {
+      const t = s.table.replace(/[^a-z0-9_]/g, "");
+      return { s, insertRe: new RegExp(`insert\\s+into\\s+"?${t}"?\\b`, "i"), updateRe: new RegExp(`update\\s+"?${t}"?\\s+set\\b`, "i") };
+    });
+    storeRegexCache.set(stores, out);
+  }
+  return out;
+}
+
 /** Every place inside `node` that writes key material into a store or calls a minter. */
-function mintSites(node: ts.Node, sf: ts.SourceFile, stores: KeyStore[], minters: Set<string>): MintSite[] {
+function mintSites(node: ts.Node, sf: ts.SourceFile, stores: KeyStore[], minters: Set<string>, calls?: Set<string>): MintSite[] {
   const sites: MintSite[] = [];
   const visit = (n: ts.Node): void => {
     if (ts.isCallExpression(n)) {
       const name = calleeName(n);
+      if (name && calls) calls.add(name);
       if (name === "insert" && ts.isPropertyAccessExpression(n.expression) && storeOf(n.arguments[0], stores)) {
         sites.push({ at: n.getStart(sf), kind: "insert" });
       } else if (name === "set" && ts.isPropertyAccessExpression(n.expression)) {
@@ -404,12 +430,12 @@ function mintSites(node: ts.Node, sf: ts.SourceFile, stores: KeyStore[], minters
       }
     } else if (ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n) || ts.isTemplateExpression(n)) {
       const text = n.getText(sf);
-      for (const s of stores) {
-        const t = s.table.replace(/[^a-z0-9_]/g, "");
-        if (new RegExp(`insert\\s+into\\s+"?${t}"?\\b`, "i").test(text)) {
+      if (!SQL_VERB.test(text)) return ts.forEachChild(n, visit);
+      for (const { s, insertRe, updateRe } of storeRegexes(stores)) {
+        if (insertRe.test(text)) {
           sites.push({ at: n.getStart(sf), kind: "insert" });
         } else if (
-          new RegExp(`update\\s+"?${t}"?\\s+set\\b`, "i").test(text) &&
+          updateRe.test(text) &&
           [...s.materialColumns].some((c) => text.includes(c))
         ) {
           sites.push({ at: n.getStart(sf), kind: "update" });
@@ -446,12 +472,18 @@ function namedFunctions(sf: ts.SourceFile): NamedFunction[] {
   return out;
 }
 
+const gateConstMemo = new WeakMap<ts.SourceFile, Map<string, boolean>>();
 /** `X` itself, an array of gates, or `...X` where X is a same-file const array holding one. */
 function isFounderGateExpr(expr: ts.Expression, sf: ts.SourceFile): boolean {
   let e: ts.Expression = expr;
   while (ts.isAsExpression(e) || ts.isParenthesizedExpression(e)) e = e.expression;
   if (ts.isIdentifier(e)) {
     if (FOUNDER_GATES.has(e.text)) return true;
+    let memo = gateConstMemo.get(sf);
+    if (!memo) gateConstMemo.set(sf, (memo = new Map()));
+    const cached = memo.get(e.text);
+    if (cached !== undefined) return cached;
+    memo.set(e.text, false); // cycle guard
     const target = e.text;
     let found = false;
     const visit = (n: ts.Node): void => {
@@ -464,6 +496,7 @@ function isFounderGateExpr(expr: ts.Expression, sf: ts.SourceFile): boolean {
       ts.forEachChild(n, visit);
     };
     visit(sf);
+    memo.set(target, found);
     return found;
   }
   if (ts.isSpreadElement(e)) return isFounderGateExpr(e.expression, sf);
@@ -558,37 +591,34 @@ function importsOf(sf: ts.SourceFile): Map<string, ImportBinding> {
 }
 
 /** Declarations named `name` in `sf` — top-level statements only, or at any depth. */
-const declCache = new WeakMap<ts.SourceFile, Map<string, ts.Node[]>>();
+// One walk per file builds both indexes (any depth, and top-level statements).
+const declIndex = new WeakMap<ts.SourceFile, { any: Map<string, ts.Node[]>; top: Map<string, ts.Node[]> }>();
 function declarationsNamed(sf: ts.SourceFile, name: string, anyDepth: boolean): ts.Node[] {
-  let cache = declCache.get(sf);
-  if (!cache) declCache.set(sf, (cache = new Map()));
-  const key = `${anyDepth ? "*" : "^"}${name}`;
-  const hit = cache.get(key);
-  if (hit) return hit;
-  const out = declarationsNamedUncached(sf, name, anyDepth);
-  cache.set(key, out);
-  return out;
-}
-
-function declarationsNamedUncached(sf: ts.SourceFile, name: string, anyDepth: boolean): ts.Node[] {
-  const out: ts.Node[] = [];
-  const take = (n: ts.Node): void => {
-    if (ts.isFunctionDeclaration(n) && n.name?.text === name && n.body) out.push(n);
-    else if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name) && n.name.text === name && n.initializer) out.push(n.initializer);
-  };
-  if (anyDepth) {
+  let idx = declIndex.get(sf);
+  if (!idx) {
+    const any = new Map<string, ts.Node[]>();
+    const top = new Map<string, ts.Node[]>();
+    const add = (m: Map<string, ts.Node[]>, k: string, v: ts.Node) => {
+      const l = m.get(k);
+      if (l) l.push(v);
+      else m.set(k, [v]);
+    };
+    const take = (n: ts.Node, m: Map<string, ts.Node[]>): void => {
+      if (ts.isFunctionDeclaration(n) && n.name && n.body) add(m, n.name.text, n);
+      else if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name) && n.initializer) add(m, n.name.text, n.initializer);
+    };
     const visit = (n: ts.Node): void => {
-      take(n);
+      take(n, any);
       ts.forEachChild(n, visit);
     };
     visit(sf);
-  } else {
     for (const st of sf.statements) {
-      if (ts.isVariableStatement(st)) st.declarationList.declarations.forEach(take);
-      else take(st);
+      if (ts.isVariableStatement(st)) st.declarationList.declarations.forEach((d) => take(d, top));
+      else take(st, top);
     }
+    declIndex.set(sf, (idx = { any, top }));
   }
-  return out;
+  return (anyDepth ? idx.any : idx.top).get(name) ?? [];
 }
 
 function isParameterInScope(id: ts.Identifier): boolean {
@@ -600,6 +630,7 @@ function isParameterInScope(id: ts.Identifier): boolean {
 
 function makeResolver(parsed: ParsedUnit[], stores: KeyStore[], minters: Set<string>) {
   const byRel = new Map(parsed.map((p) => [p.rel, p]));
+  const fnSites = new WeakMap<ts.Node, MintSite[]>();
   const importCache = new Map<string, Map<string, ImportBinding>>();
   const importsFor = (p: ParsedUnit) => {
     let m = importCache.get(p.rel);
@@ -665,7 +696,9 @@ function makeResolver(parsed: ParsedUnit[], stores: KeyStore[], minters: Set<str
     const readAll = (targets: Array<{ node: ts.Node; unit: ParsedUnit }>) => targets.forEach((t) => reach(t.node, t.unit, acc, seen));
 
     if (ts.isArrowFunction(node) || ts.isFunctionExpression(node) || ts.isFunctionDeclaration(node) || ts.isMethodDeclaration(node)) {
-      acc.fns.push({ fn: node, sf: unit.sf, sites: node.body ? mintSites(node.body, unit.sf, stores, minters) : [] });
+      let sites = fnSites.get(node);
+      if (!sites) fnSites.set(node, (sites = node.body ? mintSites(node.body, unit.sf, stores, minters) : []));
+      acc.fns.push({ fn: node, sf: unit.sf, sites });
       return;
     }
     if (ts.isCallExpression(node) || ts.isNewExpression(node)) {
@@ -773,17 +806,24 @@ function scanForKeyMinting(units: SourceUnit[], stores: KeyStore[]): ScanResult 
   // directly in a HANDLER, every key-material write counts.
   const fns = parsed.flatMap((p) => namedFunctions(p.sf).map((f) => ({ ...f, sf: p.sf })));
   const minters = new Set<string>();
-  for (const f of fns) {
-    const text = f.body.getText(f.sf);
-    if (/key/i.test(f.name) && CSPRNG_CALL.test(text) && HASH_CALL.test(text)) minters.add(f.name);
-  }
+  const texts = fns.map((f) => f.body.getText(f.sf));
+  fns.forEach((f, i) => {
+    if (/key/i.test(f.name) && CSPRNG_CALL.test(texts[i]) && HASH_CALL.test(texts[i])) minters.add(f.name);
+  });
+  // Per function, once: its store writes (minter-independent) and the names it
+  // calls. The closure then iterates over these facts, not over the AST.
+  const noMinters = new Set<string>();
+  const facts = fns.map((f, i) => {
+    const calls = new Set<string>();
+    const storeSites = mintSites(f.body, f.sf, stores, noMinters, calls);
+    const fresh = CSPRNG_CALL.test(texts[i]);
+    return { name: f.name, storeMints: storeSites.some((s) => s.kind !== "update" || fresh), calls };
+  });
   for (let changed = true; changed; ) {
     changed = false;
-    for (const f of fns) {
+    for (const f of facts) {
       if (minters.has(f.name)) continue;
-      const sites = mintSites(f.body, f.sf, stores, minters);
-      const fresh = CSPRNG_CALL.test(f.body.getText(f.sf));
-      if (sites.some((s) => s.kind !== "update" || fresh)) {
+      if (f.storeMints || [...f.calls].some((c) => minters.has(c))) {
         minters.add(f.name);
         changed = true;
       }
@@ -820,8 +860,14 @@ function scanForKeyMinting(units: SourceUnit[], stores: KeyStore[]): ScanResult 
           const middleware = n.arguments.slice(1, -1);
           const at = n.getStart(p.sf);
           // Follow every non-path argument to what it names (see makeResolver).
-          const reached = resolveArgs(n.arguments.slice(1), p);
           const handlerReach = resolveArgs([handler], p);
+          const mwReach = resolveArgs(middleware, p);
+          const reached: Reach = {
+            fns: [...mwReach.fns, ...handlerReach.fns],
+            unresolved: [...mwReach.unresolved, ...handlerReach.unresolved],
+            external: mwReach.external + handlerReach.external,
+            minterByName: mwReach.minterByName || handlerReach.minterByName,
+          };
           unresolved.push(...reached.unresolved);
           const h = stripWrappers(handler);
           const inlineHandler = ts.isArrowFunction(h) || ts.isFunctionExpression(h);
