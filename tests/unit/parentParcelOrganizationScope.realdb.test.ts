@@ -6,8 +6,9 @@
  * 1. Every property writer that accepts a payload resolves a supplied
  *    `parentParcelId` inside the writer's organization, or refuses the write
  *    with one response whatever the id is (POST /api/properties,
- *    PUT /api/properties/:id, POST /api/properties/bulk-update, and the
- *    repository the workflow `update_record` action writes through).
+ *    PUT /api/properties/:id, POST /api/properties/bulk-update,
+ *    POST /api/bulk/properties/update, and the repository the workflow
+ *    `update_record` action writes through).
  * 2. GET /api/subdivider/dashboard counts only the organization's own child
  *    rows in every aggregate, whatever rows elsewhere reference its parcels.
  *
@@ -25,7 +26,7 @@ const h = vi.hoisted(() => ({ org: { id: 0 } as { id: number }, user: { id: "ppo
 vi.mock("../../server/utils/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
 vi.mock("../../server/auth", () => ({ isAuthenticated: (req: any, _res: any, next: any) => { req.user = h.user; next(); } }));
 vi.mock("../../server/middleware/getOrCreateOrg", () => ({ getOrCreateOrg: (req: any, _res: any, next: any) => { req.organization = h.org; req.organizationId = h.org.id; next(); } }));
-vi.mock("../../server/utils/permissions", () => ({ requirePermission: () => (_req: any, _res: any, next: any) => next() }));
+vi.mock("../../server/utils/permissions", () => ({ requirePermission: () => (_req: any, _res: any, next: any) => next(), attachPermissionContext: () => (_req: any, _res: any, next: any) => next() }));
 vi.mock("../../server/services/usageLimits", () => ({ checkUsageLimit: async () => ({ allowed: true, current: 0, limit: null }) }));
 vi.mock("../../server/services/propertyEvents", () => ({ emitPropertyCreated: vi.fn(), emitPropertyStatusChanged: vi.fn() }));
 vi.mock("../../server/services/data-cache/observation-log", () => ({ recordParcelObservations: vi.fn(async () => undefined) }));
@@ -69,6 +70,9 @@ describe.runIf(realDbAvailable)("parent-parcel references and dashboard aggregat
     app.use(express.json());
     registerPropertyRoutes(app);
     registerSubdivisionRoutes(app);
+    const { default: bulkRouter } = await import("../../server/routes-bulk");
+    const { getOrCreateOrg } = await import("../../server/middleware/getOrCreateOrg");
+    app.use("/api/bulk", getOrCreateOrg, bulkRouter);
   });
 
   afterAll(async () => {
@@ -145,6 +149,17 @@ describe.runIf(realDbAvailable)("parent-parcel references and dashboard aggregat
     const ok = await request(app).post("/api/properties/bulk-update").send({ ids: [ids.bOther], updates: { parentParcelId: ids.bParent } });
     expect(ok.status, ok.text).toBe(200);
     expect(await parentOf(ids.bOther)).toBe(ids.bParent);
+  });
+
+  it("POST /api/bulk/properties/update: a parent reference never reaches the update unless it resolves in the caller's organization", async () => {
+    // This route's allow-list carries status and assignee; the payload it
+    // builds is resolved in the organization before the write either way.
+    asOrg("b");
+    const before = await parentOf(ids.bOther);
+    const r = await request(app).post("/api/bulk/properties/update").send({ ids: [ids.bOther], updates: { status: "owned", parentParcelId: ids.aPlain } });
+    if (r.status !== 200) refused(r);
+    expect(await parentOf(ids.bOther)).toBe(before);
+    expect(await parentOf(ids.bOther)).not.toBe(ids.aPlain);
   });
 
   it("the repository (the path a workflow update_record action writes through) refuses another organization's parcel, with or without a caller-given organization", async () => {

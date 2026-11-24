@@ -26,6 +26,7 @@ import { assertUserIsOrgMember, isAssignableLeadMember } from "./utils/orgScope"
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId } from "./types/request";
 import { clock } from "./utils/clock";
+import { assertParentParcelInOrganization } from "./utils/parentParcel";
 
 const router = Router();
 const MAX_BATCH = 100;
@@ -146,6 +147,10 @@ router.post("/properties/update", async (req: AuthenticatedRequest, res: Respons
     }
 
     allowedUpdates.updatedAt = clock.now();
+    // A parent parcel reference in the payload resolves in the caller's
+    // organization, as in every other property writer (utils/parentParcel.ts);
+    // a reference outside it refuses the whole write.
+    await assertParentParcelInOrganization(allowedUpdates, orgId);
 
     const updatedRows = await db.update(properties)
       .set(allowedUpdates)
