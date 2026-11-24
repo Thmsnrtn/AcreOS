@@ -147,8 +147,14 @@ function buildDbMock() {
           rows = rows.filter((r) => r.id === pendingIdEq);
         }
         if (pendingOrderDesc === "introspected_at") {
+          // Tiebreak on id desc: introspectedAt has ms resolution, so two
+          // inserts can share a timestamp; ids are insertion sequence, so
+          // the later insert is the latest one. Without this, a tie kept
+          // insertion order and limit(1) returned the first insert.
           rows.sort(
-            (a, b) => b.introspectedAt.getTime() - a.introspectedAt.getTime(),
+            (a, b) =>
+              b.introspectedAt.getTime() - a.introspectedAt.getTime() ||
+              b.id - a.id,
           );
         }
         if (pendingLimit !== undefined) rows = rows.slice(0, pendingLimit);
@@ -162,8 +168,11 @@ function buildDbMock() {
           rows = rows.filter((r) => r.status === pendingStatusEq);
         }
         if (pendingOrderDesc === "proposed_at") {
+          // Same ms-tie tiebreak as introspections above: on equal
+          // proposedAt, the later insert (higher id) sorts first.
           rows.sort(
-            (a, b) => b.proposedAt.getTime() - a.proposedAt.getTime(),
+            (a, b) =>
+              b.proposedAt.getTime() - a.proposedAt.getTime() || b.id - a.id,
           );
         }
         if (pendingLimit !== undefined) rows = rows.slice(0, pendingLimit);
