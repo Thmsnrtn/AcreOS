@@ -193,6 +193,7 @@ export const notesWalk: WalkSpec = defineWalkSpec({
           fileName: `${ctx.tag}-tape.csv`,
           mapping: ctx.get("tapeMapping"),
           excludeRows: [],
+          servicingArrangement: "self_serviced",
         });
         ctx.check(res.status === 400, `an unresolved rejected row must refuse the commit with 400, got ${fail(res)}`);
         const book = await ctx.api("GET", "/api/notes/acquired");
@@ -214,6 +215,7 @@ export const notesWalk: WalkSpec = defineWalkSpec({
           mapping: ctx.get("tapeMapping"),
           excludeRows: [ctx.get<number>("badRow")],
           asOf: null,
+          servicingArrangement: "self_serviced",
         };
         const res = await ctx.api("POST", "/api/note-tape/commit", args);
         ctx.check(res.status === 200, `POST /api/note-tape/commit must return 200, got ${fail(res)}`);
