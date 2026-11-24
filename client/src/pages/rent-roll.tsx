@@ -26,9 +26,15 @@
  *   3. A LATE-FEE PROPOSAL, NOT A CHARGE (`@shared/rental/lateFeeProposal`).
  *      The statutory cap, grace period and citation are computed and shown;
  *      the operator must confirm the exact proposed figure before anything is
- *      posted. Nothing auto-charges a tenant, ever.
+ *      posted. Nothing auto-charges a tenant, ever. Since W2-RENT the figure
+ *      is the server's (unit-count aware, net of fees already charged) and the
+ *      confirmation echoes it back, so what is shown is what is charged.
  *   4. Every figure is integer cents formatted by `centsExact` — no
  *      float-rounded money on a surface that is read out in court.
+ *
+ * W2-RENT (2026-11-06) lit up three endpoints that had no caller: RENT DUE
+ * (scheduled charges, posted one lease at a time after a preview), the
+ * org-wide PROPOSED FEE column, and the per-charge LEGAL POSTURE.
  *
  * MONEY POSTURE (founder ruling #15 — be the rail, not the provider): this is
  * a LEDGER. AcreOS does not collect rent, does not hold deposits, and touches
@@ -81,7 +87,7 @@ import {
   splitChargeOutstanding,
   type OpenChargeForAllocation,
 } from "@shared/rental/paymentAllocation";
-import { parseLateFeeRuleRow, proposeLateFee, type LateFeeProposal } from "@shared/rental/lateFeeProposal";
+import type { LateFeeProposal } from "@shared/rental/lateFeeProposal";
 import {
   computeDepositDeadline,
   depositDeadlineCountdown,
@@ -173,6 +179,23 @@ interface LedgerResponse {
   };
 }
 
+/** GET /api/rent/late-fee-proposals — the server's proposal for every open charge. */
+interface LateFeeProposalsResponse {
+  proposals: Array<{ rentChargeId: string; proposal: LateFeeProposal }>;
+}
+
+/** GET /api/rent-charges/scheduled-preview — what posting WOULD write, per lease. */
+interface ScheduledPreviewResponse {
+  throughDate: string;
+  leases: Array<{
+    leaseId: string;
+    unitLabel: string | null;
+    create: Array<{ chargedForMonth: string }>;
+    skipped: Array<{ chargedForMonth: string; code: string }>;
+    totalToPostCents: number;
+  }>;
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -219,6 +242,20 @@ function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+/**
+ * Every read a ledger write can change: balances, the fee proposals (org-wide
+ * and per charge), rent due, and the lease ledgers. Keys match by first
+ * element, so "/api/leases" also refreshes every ["/api/leases", id, "ledger"].
+ * Each mutation invalidates these inline (`acreos/use-mutation-must-invalidate`).
+ */
+const RENT_LEDGER_KEYS = [
+  "/api/rent/aging",
+  "/api/rent/late-fee-proposals",
+  "/api/rent-charges",
+  "/api/rent-charges/scheduled-preview",
+  "/api/leases",
+] as const;
+
 function postureTone(p: string): "default" | "secondary" | "outline" | "destructive" {
   if (p === "eviction_filed") return "destructive";
   if (p === "notice_served") return "destructive";
@@ -250,7 +287,7 @@ function toAllocationCharge(c: LedgerCharge): OpenChargeForAllocation {
 export const RENT_ROLL_EMPTY_COPY = {
   headline: "No unpaid rent charges",
   subtitle:
-    "No rent charge on the ledger has an open balance — which is also what you see when no rent charges have been posted yet. This is not confirmation that rent was paid. Open a lease ledger to record a payment you received, or to check a deposit clock.",
+    "No rent charge on the ledger has an open balance — also what you see when no charges have been posted yet. This is not confirmation that rent was paid. Open a lease ledger to record a payment, or check a deposit clock.",
 } as const;
 
 export default function RentRollPage() {
@@ -301,15 +338,36 @@ export default function RentRollPage() {
     },
   });
 
-  const leases = leasesQuery.data?.leases ?? [];
-  const leaseById = useMemo(() => new Map(leases.map((l) => [l.id, l])), [leases]);
-  const ruleByState = useMemo(
-    () => new Map((rules.data?.rules ?? []).map((r) => [r.state.toUpperCase(), r])),
-    [rules.data],
+  // The server's fee proposal for every open charge (unit-count aware, net of
+  // fees already charged) — the same figure the late-fee dialog confirms.
+  // Residential only, like the rest of the statutory late-fee surface.
+  const proposals = useQuery<LateFeeProposalsResponse>({
+    queryKey: ["/api/rent/late-fee-proposals"],
+    // Wait for the org: before it loads, a commercial org reads as residential.
+    enabled: org !== undefined && !isCommercial,
+    queryFn: async () => {
+      const res = await fetch("/api/rent/late-fee-proposals", { credentials: "include" });
+      if (!res.ok) throw new Error(`Failed (${res.status})`);
+      return res.json();
+    },
+  });
+  const proposalByCharge = useMemo(
+    () => new Map((proposals.data?.proposals ?? []).map((p) => [p.rentChargeId, p.proposal])),
+    [proposals.data],
   );
+
+  const leases = leasesQuery.data?.leases ?? [];
 
   const charges = aging.data?.charges ?? [];
   const feeCharge = charges.find((c) => c.id === feeChargeId) ?? null;
+
+  /** The proposed-fee cell: the server's figure, or its reason for none. */
+  const proposedFee = (chargeId: string) => {
+    if (proposals.isLoading) return <Skeleton className="h-4 w-14 inline-block" announce={false} />;
+    const p = proposalByCharge.get(chargeId);
+    if (!p) return "—";
+    return p.status === "proposed" ? centsExact(p.proposedFeeCents) : p.status.replace(/_/g, " ");
+  };
 
   return (
     <PageShell label="Rent roll">
@@ -319,13 +377,13 @@ export default function RentRollPage() {
           Rent roll
         </h1>
         <p className="text-sm text-muted-foreground mt-1 max-w-3xl">
-          Aging across every lease, the ledger behind each balance, and the statutory clocks that
-          run against you. Late fees are <strong>proposed</strong> from the state rule and charged
-          only when you confirm the figure.
+          Aging across every lease, the ledger behind each balance, and the statutory clocks
+          against you. Late fees are <strong>proposed</strong> from the state rule; charged
+          only when you confirm.
         </p>
         <p className="text-xs text-muted-foreground mt-2 max-w-3xl">
-          AcreOS does not collect rent and never holds a tenant deposit — you receive money on your
-          own rails and record it here. Nothing on this page moves funds.
+          AcreOS does not collect rent or hold a tenant deposit — you receive money on your
+          own rails and record it here. Nothing here moves funds.
         </p>
       </div>
 
@@ -386,10 +444,25 @@ export default function RentRollPage() {
                 <AlertTriangle className="w-4 h-4 text-acr-warning" aria-hidden="true" /> Open balances
               </CardTitle>
               <CardDescription>
-                Sorted by due date, oldest first. Open a ledger to see how each payment was applied.
+                Sorted by due date, oldest first. Open a ledger to see how payments were applied.
+                {!isCommercial &&
+                  " The proposed fee is what the state rule allows today, net of any late fee already charged — nothing charged until you confirm."}
               </CardDescription>
             </CardHeader>
             <CardContent className="p-0">
+              {!isCommercial && proposals.isError && (
+                <div className="p-4">
+                  <QueryErrorState
+                    error={proposals.error instanceof Error ? proposals.error : null}
+                    onRetry={() => proposals.refetch()}
+                    isRetrying={proposals.isRefetching}
+                    compact
+                    title="Couldn't load the late-fee proposals"
+                    description="No fee is shown rather than a guessed one. Nothing was charged."
+                    testId="late-fee-proposals-query-error"
+                  />
+                </div>
+              )}
               {charges.length === 0 ? (
                 <div className="p-4">
                   {/* This said "Every recorded charge is paid in full" in a
@@ -452,6 +525,11 @@ export default function RentRollPage() {
                                 +{centsExact(c.late_fee_cents)} late fee
                               </div>
                             )}
+                            {!isCommercial && (
+                              <div className="text-xs text-muted-foreground tabular-nums">
+                                proposed fee: {proposedFee(c.id)}
+                              </div>
+                            )}
                           </div>
                         </div>
                         <div className="flex items-center justify-between gap-3 mt-2">
@@ -501,6 +579,9 @@ export default function RentRollPage() {
                           <th className="px-3 py-2 text-right font-medium">Days late</th>
                           <th className="px-3 py-2 text-right font-medium">Balance</th>
                           <th className="px-3 py-2 text-right font-medium">Late fee</th>
+                          {!isCommercial && (
+                            <th className="px-3 py-2 text-right font-medium">Proposed fee</th>
+                          )}
                           <th className="px-3 py-2 text-left font-medium">Posture</th>
                           <th className="px-3 py-2 text-right font-medium">Actions</th>
                         </tr>
@@ -524,6 +605,14 @@ export default function RentRollPage() {
                             <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
                               {c.late_fee_cents > 0 ? centsExact(c.late_fee_cents) : "—"}
                             </td>
+                            {!isCommercial && (
+                              <td
+                                className="px-3 py-2 text-right tabular-nums"
+                                data-testid={`proposed-fee-${c.id}`}
+                              >
+                                {proposedFee(c.id)}
+                              </td>
+                            )}
                             <td className="px-3 py-2">
                               <Badge variant={postureTone(c.legal_posture)} className="text-xs">
                                 {c.legal_posture.replace(/_/g, " ")}
@@ -563,6 +652,9 @@ export default function RentRollPage() {
         </>
       ) : null}
 
+      {/* Rent due — the leases' own schedules, posted only when you post them. */}
+      <RentDueSection />
+
       {/* Lease ledger — allocation, explained, and the record-payment path. */}
       <LeaseLedgerSection
         leases={leases}
@@ -587,9 +679,9 @@ export default function RentRollPage() {
           </CardHeader>
           <CardContent>
             <p className="text-sm text-muted-foreground max-w-3xl" data-testid="commercial-late-fee-note">
-              Commercial late fees are set by the lease, not by state statute — the residential
-              statutory late-fee rules do not apply to a commercial tenancy. Enter a late fee as a
-              manual charge at the figure your lease specifies. AcreOS will not propose one from a
+              Commercial late fees are set by the lease, not by state statute — residential
+              statutory rules do not apply to a commercial tenancy. Enter a late fee as a
+              manual charge at your lease's figure. AcreOS will not propose one from a
               residential statute here.
             </p>
           </CardContent>
@@ -616,7 +708,7 @@ export default function RentRollPage() {
                 isRetrying={rules.isRefetching}
                 compact
                 title="Couldn't load the late-fee rules"
-                description="Without the rule table AcreOS proposes no fee at all — it will not guess a cap."
+                description="Without the rule table AcreOS proposes no fee — it will not guess a cap."
                 testId="late-fee-rules-query-error"
               />
             </div>
@@ -669,15 +761,149 @@ export default function RentRollPage() {
           open={feeChargeId !== null}
           onOpenChange={(v) => setFeeChargeId(v ? feeChargeId : null)}
           charge={feeCharge}
-          lease={leaseById.get(feeCharge.lease_id) ?? null}
-          rule={
-            leaseById.get(feeCharge.lease_id)
-              ? ruleByState.get(leaseById.get(feeCharge.lease_id)!.state.toUpperCase()) ?? null
-              : null
-          }
         />
       )}
     </PageShell>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Rent due — the lease schedule, posted only when the operator posts it
+// ---------------------------------------------------------------------------
+
+/**
+ * Only a rent-roll import ever put rent on the ledger, so a lease set up by
+ * hand had no charges and aging, late fees and the ledger all read nothing
+ * owed. `GET /api/rent-charges/scheduled-preview` is what each lease's own
+ * schedule WOULD post; `POST /api/rent-charges/generate-scheduled` posts one
+ * lease's months at the preview's own horizon. Idempotent server-side, so a
+ * retry posts only what is still missing.
+ *
+ * One lease per click, on purpose: the operator reads a lease's months before
+ * they land on its ledger. Ledger only — posting records what a tenant owes;
+ * it bills, charges and collects nothing.
+ */
+function RentDueSection() {
+  const { toast } = useToast();
+  const preview = useQuery<ScheduledPreviewResponse>({
+    queryKey: ["/api/rent-charges/scheduled-preview"],
+    queryFn: async () => {
+      const res = await fetch("/api/rent-charges/scheduled-preview", { credentials: "include" });
+      if (!res.ok) throw new Error(`Failed (${res.status})`);
+      return res.json();
+    },
+  });
+  const post = useMutation({
+    mutationFn: (leaseId: string) =>
+      apiPost<{ inserted: number; insertedTotalCents: number }>(
+        "/api/rent-charges/generate-scheduled",
+        { leaseId, throughDate: preview.data?.throughDate },
+      ),
+    onSuccess: (r) => {
+      for (const key of RENT_LEDGER_KEYS) queryClient.invalidateQueries({ queryKey: [key] });
+      toast({
+        title: `Posted ${r.inserted} rent charge${r.inserted === 1 ? "" : "s"} (${centsExact(r.insertedTotalCents)}) to the ledger`,
+      });
+    },
+    onError: (err: Error) => {
+      for (const key of RENT_LEDGER_KEYS) queryClient.invalidateQueries({ queryKey: [key] });
+      toast({
+        title: "Couldn't post the charges",
+        description: `${err.message} Nothing is posted twice — trying again posts only what is missing.`,
+        variant: "destructive",
+      });
+    },
+  });
+  const rows = preview.data?.leases ?? [];
+
+  return (
+    <Card className="mb-6" data-testid="card-rent-due">
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <Wallet className="w-4 h-4 text-primary" aria-hidden="true" /> Rent due
+        </CardTitle>
+        <CardDescription>
+          Months each active lease's own schedule says are due
+          {preview.data ? ` through ${preview.data.throughDate}` : ""} that are not on its ledger
+          yet. Posting records what the tenant owes — AcreOS does not bill, charge or collect it.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {preview.isLoading ? (
+          <Skeleton className="h-20" />
+        ) : preview.isError ? (
+          <QueryErrorState
+            error={preview.error instanceof Error ? preview.error : null}
+            onRetry={() => preview.refetch()}
+            isRetrying={preview.isRefetching}
+            compact
+            title="Couldn't load the rent due"
+            description="Nothing was posted. Try again."
+            testId="rent-due-query-error"
+          />
+        ) : rows.length === 0 ? (
+          <EmptyState
+            icon={Wallet}
+            headline="No rent to post"
+            subtitle="No active lease has a month due that is missing from its ledger."
+            framed
+            cta={{ label: "View leases", href: "/leases", "data-testid": "rent-due-empty-cta" }}
+            testId="rent-due-empty"
+          />
+        ) : (
+          <div className="space-y-3">
+            <ul className="space-y-2" data-testid="list-rent-due">
+              {rows.map((l) => {
+                const n = l.create.length;
+                return (
+                  <li
+                    key={l.leaseId}
+                    className="rounded-md border border-border p-3 flex flex-wrap items-center justify-between gap-3"
+                    data-testid={`rent-due-${l.leaseId}`}
+                  >
+                    <div className="text-xs space-y-0.5">
+                      <div>
+                        <span className="font-mono">{l.leaseId.slice(0, 8)}…</span>
+                        {l.unitLabel ? ` · unit ${l.unitLabel}` : ""}
+                      </div>
+                      {n > 0 && (
+                        <div className="text-muted-foreground">
+                          {n} month{n === 1 ? "" : "s"} · {l.create[0].chargedForMonth.slice(0, 7)}
+                          {n > 1 ? ` → ${l.create[n - 1].chargedForMonth.slice(0, 7)}` : ""} ·{" "}
+                          <span className="font-mono">{centsExact(l.totalToPostCents)}</span>
+                        </div>
+                      )}
+                      {l.skipped.map((s) => (
+                        <div key={s.chargedForMonth} className="text-acr-warning">
+                          {s.chargedForMonth.slice(0, 7)} is a partial month and is not posted:
+                          AcreOS does not hold your lease's proration term and will not guess one.
+                        </div>
+                      ))}
+                    </div>
+                    {n > 0 && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => post.mutate(l.leaseId)}
+                        disabled={post.isPending}
+                        data-testid={`button-post-rent-${l.leaseId}`}
+                      >
+                        Post {n} charge{n === 1 ? "" : "s"}
+                      </Button>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+            <p className="text-xs text-muted-foreground">
+              Months start at the lease's start date, or the first month already on its ledger —
+              for an imported rent roll, the month you imported it. A month already paid for
+              shows as owed until you record the payment.
+            </p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -747,7 +973,7 @@ function LeaseLedgerSection({
 
         {selectedLeaseId === null ? (
           <p className="text-sm text-muted-foreground">
-            Pick a lease to see its ledger and record a payment you received.
+            Pick a lease to see its ledger and record a payment.
           </p>
         ) : ledger.isLoading ? (
           <div className="space-y-2">
@@ -814,6 +1040,7 @@ function LedgerBody({ ledger }: { ledger: LedgerResponse }) {
               <th className="px-3 py-2 text-right font-medium">Rent left</th>
               <th className="px-3 py-2 text-right font-medium">Fees left</th>
               <th className="px-3 py-2 text-right font-medium">Balance</th>
+              <th className="px-3 py-2 text-left font-medium">Legal posture</th>
             </tr>
           </thead>
           <tbody>
@@ -845,12 +1072,19 @@ function LedgerBody({ ledger }: { ledger: LedgerResponse }) {
                   <td className="px-3 py-2 text-right tabular-nums font-semibold">
                     {centsExact(c.balanceCents)}
                   </td>
+                  <td className="px-3 py-2">
+                    <PostureSelect charge={c} />
+                  </td>
                 </tr>
               );
             })}
           </tbody>
         </table>
       </div>
+      <p className="text-xs text-muted-foreground">
+        Legal posture records what you did: AcreOS serves no notice, files nothing. Under a
+        notice to vacate, confirm before recording a partial payment.
+      </p>
 
       {/* Recorded payments, per charge — the persisted allocation lines. */}
       <div>
@@ -914,7 +1148,117 @@ function LedgerBody({ ledger }: { ledger: LedgerResponse }) {
         openCharges={openCharges}
         monthlyRentCents={ledger.lease.monthlyRentCents}
       />
+
+      <CollectRentSection leaseId={ledger.lease.id} hasOpenBalance={openCharges.length > 0} />
     </div>
+  );
+}
+
+/**
+ * P3-3 — collect rent by card through the landlord's OWN Stripe account.
+ *
+ * Creates a hosted Checkout for the lease's full outstanding balance
+ * (POST /api/leases/:id/rent-checkout) and shows its URL for the operator to
+ * share with the tenant on their own identity — AcreOS does not send it.
+ * The charge lands on the landlord's connected account, never AcreOS's; an
+ * org that hasn't connected Stripe gets the server's refusal verbatim.
+ * When the tenant pays, the payment posts to this ledger by the same
+ * allocation rule as a recorded payment (webhook or verify — one rule).
+ */
+function CollectRentSection({ leaseId, hasOpenBalance }: { leaseId: string; hasOpenBalance: boolean }) {
+  const { toast } = useToast();
+  const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
+
+  const collect = useMutation({
+    mutationFn: async () => {
+      return apiPost<{ url: string; amountCents: number }>(`/api/leases/${leaseId}/rent-checkout`, {});
+    },
+    onSuccess: (res) => {
+      for (const key of RENT_LEDGER_KEYS) queryClient.invalidateQueries({ queryKey: [key] });
+      setCheckoutUrl(res.url);
+      toast({ title: "Link created" });
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Couldn't create link",
+        description: err.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  return (
+    <>
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs text-muted-foreground">
+          Rent by card via your Stripe. AcreOS never holds rent.
+        </p>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => collect.mutate()}
+          disabled={collect.isPending || !hasOpenBalance}
+          data-testid="button-collect-rent"
+        >
+          {collect.isPending ? "Creating" : "Get link"}
+        </Button>
+      </div>
+      {checkoutUrl && (
+        <p className="mt-3 text-xs break-all">
+          <a className="underline" href={checkoutUrl} target="_blank" rel="noreferrer">
+            {checkoutUrl}
+          </a>
+        </p>
+      )}
+    </>
+  );
+}
+
+const POSTURES = [
+  ["ok", "OK"],
+  ["late", "Late"],
+  ["notice_served", "Notice served"],
+  ["eviction_filed", "Eviction filed"],
+] as const;
+
+/**
+ * Record a charge's legal posture (`POST /api/rent-charges/:id/legal-posture`).
+ * "notice served" is what arms the partial-payment guard: in several states
+ * accepting partial rent after notice voids the notice, so recording one then
+ * needs an explicit confirmation. Nothing else could ever set it.
+ */
+function PostureSelect({ charge }: { charge: LedgerCharge }) {
+  const { toast } = useToast();
+  const record = useMutation({
+    mutationFn: (legalPosture: string) =>
+      apiPost(`/api/rent-charges/${charge.id}/legal-posture`, { legalPosture }),
+    onSuccess: () => {
+      for (const key of RENT_LEDGER_KEYS) queryClient.invalidateQueries({ queryKey: [key] });
+    },
+    onError: (err: Error) =>
+      toast({ title: "Couldn't record the posture", description: err.message, variant: "destructive" }),
+  });
+  return (
+    <Select
+      value={charge.legalPosture}
+      onValueChange={(v) => record.mutate(v)}
+      disabled={record.isPending}
+    >
+      <SelectTrigger
+        className="h-7 text-xs w-36"
+        aria-label={`Legal posture for ${String(charge.chargedForMonth).slice(0, 7)}`}
+        data-testid={`select-posture-${charge.id}`}
+      >
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {POSTURES.map(([value, label]) => (
+          <SelectItem key={value} value={value}>
+            {label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }
 
@@ -979,7 +1323,7 @@ function RecordPaymentForm({
       }
       if (partialUnderNotice && !acceptPartial) {
         throw new Error(
-          "This payment leaves a charge under a notice to vacate short. Confirm you accept a partial payment first — in several states accepting it voids the notice.",
+          "This payment leaves a charge under notice to vacate short. Confirm you accept a partial payment — in several states accepting it voids the notice.",
         );
       }
       // ONE request for the whole amount (quality directive 2026-09-29). The
@@ -1009,8 +1353,7 @@ function RecordPaymentForm({
       setPostedLines(res.done);
       setAmount("");
       setAcceptPartial(false);
-      queryClient.invalidateQueries({ queryKey: ["/api/leases", leaseId, "ledger"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/rent/aging"] });
+      for (const key of RENT_LEDGER_KEYS) queryClient.invalidateQueries({ queryKey: [key] });
       toast({
         title: res.replayed
           ? "This payment was already recorded"
@@ -1021,8 +1364,7 @@ function RecordPaymentForm({
       // One request: it either landed whole or not at all. Refresh anyway so
       // the ledger shows the server's truth; the key is kept, so trying again
       // cannot record it twice.
-      queryClient.invalidateQueries({ queryKey: ["/api/leases", leaseId, "ledger"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/rent/aging"] });
+      for (const key of RENT_LEDGER_KEYS) queryClient.invalidateQueries({ queryKey: [key] });
       toast({
         title: "Couldn't record the payment",
         description: `${err.message} Nothing was recorded twice — you can try again.`,
@@ -1159,7 +1501,7 @@ function RecordPaymentForm({
             {allocation.explanation}
           </p>
           <p className="text-micro text-muted-foreground">
-            Recorded as one ledger line per charge (oldest first, rent before late fees) so each
+            One ledger line per charge (oldest first, rent before late fees) so each
             month's balance is exact. Rule: {allocation.orderRule.replace(/_/g, " ")}.
           </p>
         </div>
@@ -1183,7 +1525,7 @@ function RecordPaymentForm({
 
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs text-muted-foreground">
-          Records money you already received. AcreOS does not collect it.
+          Records money you received by hand.
         </p>
         <Button
           size="sm"
@@ -1253,7 +1595,7 @@ function DepositClockSection({ leases, isLoading }: { leases: Lease[]; isLoading
           <Skeleton className="h-24" />
         ) : ended.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            No ended or terminated leases. The clock starts at move-out, so nothing is running.
+            No ended or terminated leases. The clock starts at move-out; nothing is running.
           </p>
         ) : (
           <motion.ul
@@ -1357,7 +1699,7 @@ function DepositClockRow({ lease }: { lease: Lease }) {
             <span className="text-foreground font-medium">Basis: </span>
             move-out {moveOutDate} + {binding.deadlineDays}{" "}
             {binding.businessDays ? "business" : "calendar"} days
-            {binding.citation ? ` (${binding.citation})` : ""}. Move-out is taken from the lease's
+            {binding.citation ? ` (${binding.citation})` : ""}. Move-out is the lease's
             recorded end date — if you handed over possession on a different day, that date governs.
             <strong className="text-acr-warning"> Preliminary, not attorney-reviewed.</strong>
           </p>
@@ -1365,7 +1707,7 @@ function DepositClockRow({ lease }: { lease: Lease }) {
             <p>
               {lease.state} runs a different window depending on whether you withhold anything (
               {withDeductions.deadlineDays}d with deductions ·{" "}
-              {withoutDeductions.deadlineDays}d without). AcreOS does not know which applies here, so
+              {withoutDeductions.deadlineDays}d without). AcreOS does not know which applies, so
               the <strong>earlier</strong> date is shown — being early is never the violation.
             </p>
           )}
@@ -1375,15 +1717,15 @@ function DepositClockRow({ lease }: { lease: Lease }) {
               <span>
                 A <strong>written, itemized statement</strong> of every deduction must reach the
                 tenant by this date, with any refund. Missing it typically forfeits the right to
-                withhold anything and adds statutory damages.
+                withhold and adds statutory damages.
               </span>
             </p>
           )}
           {binding.note && <p className="italic">{binding.note}</p>}
           <p>
-            Disposition letter: prepare and send it yourself for now — generating one from this
-            page isn't available yet, and AcreOS will not imply one was sent. Itemize each
-            deduction with a description and an amount; a line with no description is what the
+            Disposition letter: prepare and send it yourself — generating one here
+            isn't available yet, and AcreOS will not imply one was sent. Itemize each
+            deduction with a description and amount; a line with no description is what the
             itemization requirement exists to prevent.
           </p>
         </div>
@@ -1402,39 +1744,41 @@ function DepositClockRow({ lease }: { lease: Lease }) {
 
 /**
  * Propose a late fee; charge nothing without an explicit confirmation of the
- * exact figure. `confirmedCents` must equal the proposed figure, so an operator
- * can never confirm an amount they were not shown.
+ * exact figure.
+ *
+ * The figure is the SERVER's (`GET /api/rent-charges/:id/late-fee-proposal`):
+ * unit-count aware and net of any late fee already on the charge — the same
+ * function the apply runs. This dialog used to compute its own figure with a
+ * unit-count floor of 1 and post `{}`, so the server could charge a different
+ * fee from the one the operator confirmed. It now echoes the figure it showed
+ * as `confirmFeeCents`; if the server's figure moved, it refuses (409) and
+ * charges nothing.
  */
 function LateFeeProposalDialog({
   open,
   onOpenChange,
   charge,
-  lease,
-  rule,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   charge: AgingResponse["charges"][number];
-  lease: Lease | null;
-  rule: LateFeeRuleRow | null;
 }) {
   const { toast } = useToast();
   const [confirmed, setConfirmed] = useState(false);
   const [applied, setApplied] = useState<{ feeCents: number; explanation: string } | null>(null);
 
-  const proposal: LateFeeProposal | null = useMemo(() => {
-    if (!lease) return null;
-    return proposeLateFee({
-      rule: rule ? parseLateFeeRuleRow(rule) : null,
-      monthlyRentCents: lease.monthlyRentCents,
-      daysLate: charge.days_overdue,
-      // A FLOOR on the property's unit count. The client holds no unit count,
-      // so the floor is 1: the proposal then computes BOTH statutory branches
-      // and takes the lower fee, which cannot overcharge under either reality.
-      knownUnitCountFloor: 1,
-      state: lease.state,
-    });
-  }, [lease, rule, charge.days_overdue]);
+  const read = useQuery<{ proposal: LateFeeProposal }>({
+    queryKey: ["/api/rent-charges", charge.id, "late-fee-proposal"],
+    enabled: open,
+    queryFn: async () => {
+      const res = await fetch(`/api/rent-charges/${charge.id}/late-fee-proposal`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error(`Failed (${res.status})`);
+      return res.json();
+    },
+  });
+  const proposal = read.data?.proposal ?? null;
 
   const apply = useMutation({
     mutationFn: async () => {
@@ -1444,23 +1788,29 @@ function LateFeeProposalDialog({
       if (!confirmed) {
         throw new Error(`Confirm the ${centsExact(proposal.proposedFeeCents)} fee first.`);
       }
-      return apiPost<{ feeCents: number; explanation: string; daysLate: number }>(
+      return apiPost<{ feeCents: number; charged: boolean; explanation: string }>(
         `/api/rent-charges/${charge.id}/apply-late-fee`,
-        {},
+        { confirmFeeCents: proposal.proposedFeeCents },
       );
     },
     onSuccess: (res) => {
+      for (const key of RENT_LEDGER_KEYS) queryClient.invalidateQueries({ queryKey: [key] });
+      if (!res.charged) {
+        setConfirmed(false);
+        toast({ title: "Nothing was charged", description: res.explanation });
+        return;
+      }
       setApplied({ feeCents: res.feeCents, explanation: res.explanation });
-      queryClient.invalidateQueries({ queryKey: ["/api/rent/aging"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/leases", charge.lease_id, "ledger"] });
       toast({ title: `Late fee of ${centsExact(res.feeCents)} charged to the ledger` });
     },
-    onError: (err: any) =>
-      toast({ title: "Couldn't charge the fee", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => {
+      // A 409 means the rule's figure moved after it was shown, and nothing was
+      // charged: re-read it so the operator confirms the current figure.
+      setConfirmed(false);
+      read.refetch();
+      toast({ title: "Couldn't charge the fee", description: err.message, variant: "destructive" });
+    },
   });
-
-  const mismatch =
-    applied !== null && proposal !== null && applied.feeCents !== proposal.proposedFeeCents;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -1474,32 +1824,29 @@ function LateFeeProposalDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {!lease ? (
-          <p className="text-sm text-acr-warning">
-            AcreOS cannot propose a fee for this charge: its lease is not loaded, so the monthly rent
-            and the jurisdiction are unknown. It will not guess either.
-          </p>
-        ) : applied ? (
+        {applied ? (
           <div className="space-y-2" data-testid="late-fee-applied">
             <p className="text-sm font-semibold">
               {centsExact(applied.feeCents)} charged to the {String(charge.charged_for_month).slice(0, 7)}{" "}
               charge.
             </p>
             <p className="text-xs text-muted-foreground">{applied.explanation}</p>
-            {mismatch && (
-              <p className="text-xs text-acr-warning">
-                Note: the ledger recorded {centsExact(applied.feeCents)}, not the{" "}
-                {centsExact(proposal!.proposedFeeCents)} proposed here. The ledger figure is the one
-                that was charged — check the rule and the property's unit count before you invoice
-                the tenant.
-              </p>
-            )}
             <DialogFooter>
               <Button size="sm" onClick={() => onOpenChange(false)}>
                 Done
               </Button>
             </DialogFooter>
           </div>
+        ) : read.isError ? (
+          <QueryErrorState
+            error={read.error instanceof Error ? read.error : null}
+            onRetry={() => read.refetch()}
+            isRetrying={read.isRefetching}
+            compact
+            title="Couldn't load the proposal"
+            description="Nothing was charged. No fee shown rather than a guessed one."
+            testId="late-fee-proposal-query-error"
+          />
         ) : proposal === null ? (
           <Skeleton className="h-20" />
         ) : (
@@ -1515,7 +1862,7 @@ function LateFeeProposalDialog({
                 </span>
               </div>
               <div className="text-xs text-muted-foreground">
-                Status: {proposal.status.replace(/_/g, " ")} · {lease.state} ·{" "}
+                Status: {proposal.status.replace(/_/g, " ")} · {proposal.state} ·{" "}
                 {proposal.graceDays === null
                   ? "grace period not encoded"
                   : `${proposal.graceDays}-day grace`}
@@ -1531,7 +1878,7 @@ function LateFeeProposalDialog({
             )}
             <p className="text-xs text-acr-warning">
               Preliminary — not attorney-reviewed. Confirm the cap and grace period for{" "}
-              {lease.state} before charging a tenant.
+              {proposal.state} before charging a tenant.
             </p>
 
             {proposal.status === "proposed" && proposal.proposedFeeCents > 0 ? (

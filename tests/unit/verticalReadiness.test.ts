@@ -1,9 +1,19 @@
 /**
  * A declared maturity may not exceed evidenced readiness.
  *
- * ── WHAT WAS WRONG ──────────────────────────────────────────────────────────
- * All fifteen verticals in `shared/business-types.ts` declare
- * `maturity: "core"`. Exactly one — `fix_and_flip` — closes the canonical loop.
+ * ── SINCE FD1 (2026-11-12) ──────────────────────────────────────────────────
+ * The registry states the launch presentation itself — 5 core / 0 beta / 10
+ * registry_only since Land's 2026-11-21 lift (fd1LaunchScope.test.ts) — and the public demotion table is
+ * empty. The ratchet below therefore counts NO gaps: the last one,
+ * `tax_lien_deed`, closed on 2026-11-20 when its max-bid desk started
+ * recording decisions (`note_investor` closed the same way earlier that
+ * day). The gaps were
+ * named in a dated register (FD1_CORE_ON_SURFACED_EVIDENCE) rather than
+ * tolerated silently, and each closes when its vertical records a decision.
+ *
+ * ── WHAT WAS WRONG (as measured 2026-08-17) ─────────────────────────────────
+ * All fifteen verticals in `shared/business-types.ts` declared
+ * `maturity: "core"`. Exactly one — `fix_and_flip` — closed the canonical loop.
  *
  * Every vertical has a real surface (measured: 4–7 spotlight modules, 2–5
  * workflow templates, every declared template id defined in the engine). What
@@ -30,7 +40,7 @@ import { describe, it, expect, vi } from "vitest";
 import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
 import fs from "node:fs";
 import path from "node:path";
-import { BUSINESS_TYPES, BUSINESS_TYPE_IDS, type BusinessTypeId } from "../../shared/business-types";
+import { BUSINESS_TYPES, BUSINESS_TYPE_IDS, registryPublicTier, type BusinessTypeId } from "../../shared/business-types";
 import {
   overclaims,
   projectReadiness,
@@ -116,7 +126,68 @@ const evidence: VerticalEvidence = measured;
 // 12 → 11 on 2026-11-03: buy-and-hold's decision desk re-mounted on main
 // (server/routes-buy-and-hold-underwriting.ts), so its measured evidence
 // reaches `decided`.
-const MATURITY_OVERCLAIM_BASELINE = 11;
+// 11 → 10 on 2026-11-05: the wholesale decision desk mounted
+// (server/routes-wholesale-underwriting.ts, engine wholesale_mao), so
+// residential_wholesaler's measured evidence reaches `decided`.
+// 10 → 1 on 2026-11-15: FD1 (founder decision 2026-11-12) RELABELLED the
+// registry to the launch presentation — the second of the two legitimate ways
+// above. Nine `core` labels became `beta` or `registry_only` (each requiring
+// only `surfaced`, which every vertical reaches). MEASURED by this test's own
+// run before the number was lowered: "overclaims dropped to 1". The one left is
+// note_investor — public core by founder decision on `surfaced` evidence,
+// registered below in FD1_CORE_ON_SURFACED_EVIDENCE.
+// 1 → 2 on 2026-11-19: tax_lien_deed LIFTED beta → core on journey proof
+// (the founder counted Tax proven 2026-11-19; walk record
+// journey-walk-tax-2026-11). Its code evidence still reaches only
+// `surfaced` (no decision desk yet), so the lift registers it below
+// beside note_investor — a founder-decided public core on surfaced
+// evidence, counted here rather than hidden.
+// 2 → 1 on 2026-11-20: note_investor EARNED its way off the register —
+// the price-to-yield engine + decision desk (Step 0 N3+N4) record
+// decisions citing gradeable scenarios, so its measured evidence reaches
+// `decided` and the exemption is deleted below (N5 integrator lift).
+// 1 → 0 on 2026-11-20: tax_lien_deed EARNED its way off the register —
+// the max-bid engine + decision desk (Step 0 T4+T5) record decisions
+// citing gradeable scenarios, so its measured evidence reaches
+// `decided` and the exemption is deleted below (T6 integrator lift).
+// The register is now EMPTY: no public core stands on surfaced evidence.
+const MATURITY_OVERCLAIM_BASELINE = 0;
+
+/**
+ * FOUNDER-DECIDED PUBLIC CORE ON SURFACED EVIDENCE (FD1, 2026-11-12).
+ *
+ * The one place a public `core` claim may stand on less than a recorded
+ * decision, and only because the founder decided it by name.
+ *
+ * The register's first member was note_investor (FD1, 2026-11-12 — one of
+ * the two launch promises, its evidence then reaching only `surfaced`).
+ * It LEFT on 2026-11-20: the price-to-yield engine + decision desk
+ * (Step 0 N3+N4) record decisions, its measured evidence reaches
+ * `decided`, and the exemption closed exactly as designed (N5 lift).
+ *
+ * tax_lien_deed JOINED 2026-11-19, on the same terms: its journey is
+ * proven (the founder counted Tax proven 2026-11-19; walk record
+ * journey-walk-tax-2026-11) but its code evidence then reached only
+ * `surfaced` (four live cert emitters, no production decision desk yet),
+ * so its public `core` claim likewise stood on the founder's decision,
+ * by name. It LEFT on 2026-11-20: the max-bid engine + decision desk
+ * (Step 0 T4+T5) record decisions, its measured evidence reaches
+ * `decided`, and the exemption closed exactly as designed (T6 lift).
+ *
+ * THE REGISTER IS NOW EMPTY, and pinned empty below. That is the state
+ * the register was designed to reach: every public core evidences a
+ * recorded decision. A future entry is a founder decision, added with
+ * its dated record — never a quiet widening.
+ *
+ * Not a waiver. Each entry fails loudly when:
+ *   - it no longer OVERCLAIMS (the vertical records a decision → the gap is
+ *     closed → delete the entry and lower the ratchet);
+ *   - its registry maturity is not `core` (then it needs no exemption);
+ *   - its decision file does not exist;
+ *   - the set is widened without changing the pinned list below.
+ */
+const FD1_CORE_ON_SURFACED_EVIDENCE: Partial<Record<BusinessTypeId, { decidedOn: string; decision: string }>> = {};
+const isFounderDecidedCore = (id: string) => id in FD1_CORE_ON_SURFACED_EVIDENCE;
 
 /**
  * HELD PENDING JOURNEY PROOF (founder decision 2026-11-05, Option B —
@@ -148,8 +219,23 @@ const MATURITY_OVERCLAIM_BASELINE = 11;
  * agreement) hold with no exemption at all. A future hold therefore needs a new
  * founder decision AND a deliberate re-wiring of the exemption — it cannot come
  * back by adding a line here.
+ *
+ * RE-WIRED 2026-11-07 for residential_wholesaler, as the paragraph above
+ * requires: a founder decision (docs/company/founder-decisions-2026-11-05-wholesale.md,
+ * confirmed by the coordinator) AND the exemption visibly restored at the three
+ * OD-5 sites below (`isHeld`). The wholesale package's Leg 5 staging walk is
+ * the proof that ends it, in its own lift PR — the same path buy_and_hold took.
+ *
+ * LIFTED 2026-11-18 for residential_wholesaler: the scoped revenue-loop
+ * journey walk passed green end-to-end on staging (first walk + post-fix
+ * re-walk + send-half run; walk record journey-walk-wholesale-2026-11), so
+ * its registry maturity was lifted to `core`, its ladder entry flipped to
+ * `decided`, and its entry here deleted, in one commit — recorded as an
+ * addendum in its decision file. The register is EMPTY again and pinned
+ * empty; the lifted state is pinned by name in the block below.
  */
 const HELD_PENDING_JOURNEY_PROOF: Partial<Record<BusinessTypeId, { heldSince: string; reviewBy: string; decision: string }>> = {};
+const isHeld = (id: string) => id in HELD_PENDING_JOURNEY_PROOF;
 
 describe("the evidence scan is real (vacuity guards, first)", () => {
   it("found the workflow templates the engine defines", () => {
@@ -199,13 +285,18 @@ describe("readiness is a projection of evidence", () => {
     expect(measured.decidedBy.get("land_flipper")).toContain("server/routes-data-intelligence.ts");
   });
 
-  it("subdivider reaches `decided` too — it records, even though it cannot be graded", () => {
-    // routes-lot-pricing.ts:351 records a decision. It hardcodes
-    // `reviewDueAt: null` (:419) so those decisions never enter the due sweep
-    // and can never be graded — a real defect, but a SEPARATE one. Readiness
-    // measures what is recorded, not what is gradeable; conflating them here
-    // would hide the grading defect inside a maturity number.
+  it("subdivider reaches `decided` AND is gradeable — its lock cites the parent's feasibility scenario and takes a review date", () => {
+    // Until 2026-11 this read "it records, even though it cannot be graded":
+    // routes-lot-pricing.ts recorded a decision citing no scenario with
+    // `reviewDueAt: null`, so it was credited through a legacy exception and
+    // sat in the ungradeable set. The lock now cites the parent parcel's newest
+    // `subdivision_feasibility` scenario and takes the operator's own review
+    // date (required-nullable, never defaulted), so it is credited by the
+    // ENGINE rule like every other route — and graded by the same rule.
     expect(readinessOf(BUSINESS_TYPES.subdivider, evidence)).toBe("decided");
+    expect(measured.gradeableBusinessTypes.has("subdivider")).toBe(true);
+    expect(measured.engineDecidedBy.get("subdivider") ?? []).toContain("server/routes-lot-pricing.ts");
+    expect(measured.ungradeable.get("subdivider") ?? []).toEqual([]);
   });
 
   it("a vertical with no templates and no modules is only `declared`", () => {
@@ -276,15 +367,59 @@ describe("a declared maturity may not exceed evidenced readiness", () => {
 
   it("the gap is the loop, not the surface — every overclaimer is `surfaced`", () => {
     // The single most useful fact this file produces. Not one overclaiming
-    // vertical is short of a SURFACE; all thirteen have modules and real
-    // templates and stop dead before a recorded decision. If a vertical ever
-    // drops to `declared` this fails, and it should: shipping a vertical with
-    // no surface at all is a different and worse defect than not closing.
+    // vertical is short of a SURFACE; each has modules and real templates and
+    // stops dead before a recorded decision. If a vertical ever drops to
+    // `declared` this fails, and it should: shipping a vertical with no surface
+    // at all is a different and worse defect than not closing.
     const notSurfaced = over.filter((r) => r.evidenced !== "surfaced");
     expect(
       notSurfaced.map((r) => `${r.id}=${r.evidenced}`),
       "an overclaiming vertical is no longer merely unclosed — read the tier",
     ).toEqual([]);
+  });
+
+  it("every remaining overclaim is a founder-decided public core, by name (FD1)", () => {
+    // The ratchet says HOW MANY; this says WHICH, so a tolerated gap
+    // cannot be quietly swapped for a different vertical at the same count.
+    expect(over.map((r) => r.id).sort()).toEqual(Object.keys(FD1_CORE_ON_SURFACED_EVIDENCE).sort());
+    for (const r of over) {
+      expect(r.declared, `${r.id} is exempted but is not declared core`).toBe("core");
+    }
+  });
+
+  it("the FD1 register cannot rot: each entry still overclaims, is dated, and cites a decision file that exists", () => {
+    const entries = Object.entries(FD1_CORE_ON_SURFACED_EVIDENCE) as Array<[BusinessTypeId, { decidedOn: string; decision: string }]>;
+    expect(entries.map(([id]) => id)).toEqual([]);
+    for (const [id, e] of entries) {
+      expect(BUSINESS_TYPES[id].maturity, `${id} is not core — it needs no exemption; remove it`).toBe("core");
+      expect(
+        overclaims(BUSINESS_TYPES[id], evidence),
+        `${id} no longer overclaims (it records a decision) — delete its register entry and lower the ratchet`,
+      ).toBe(true);
+      expect(e.decidedOn).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(fs.existsSync(path.join(ROOT, e.decision)), e.decision).toBe(true);
+    }
+  });
+
+  it("tax_lien_deed's 2026-11-19 lift, closed 2026-11-20: core in the registry, now `decided` in code, register entry deleted", () => {
+    // The closed state, pinned so that quietly reverting the maturity or
+    // re-adding a register entry fails here as well as in the ratchet.
+    // Tax earned core by JOURNEY proof (founder counted it proven
+    // 2026-11-19; walk record journey-walk-tax-2026-11, N3 send leg in
+    // simulation mode under the zero-real-mail rule, footnote on the
+    // record) — not by recording a decision, so it stood on the FD1
+    // register from 2026-11-19 until 2026-11-20, when its max-bid engine
+    // + decision desk (Step 0 T4+T5) started recording decisions citing
+    // gradeable scenarios and it earned its way off the register (T6
+    // lift) — the same path note_investor took earlier that day.
+    expect(BUSINESS_TYPES.tax_lien_deed.maturity).toBe("core");
+    expect(readinessOf(BUSINESS_TYPES.tax_lien_deed, evidence)).toBe("decided");
+    expect(FD1_CORE_ON_SURFACED_EVIDENCE.tax_lien_deed).toBeUndefined();
+    const doc = fs.readFileSync(
+      path.resolve(__dirname, "../..", "docs/company/founder-decisions-2026-11-12-launch-scope.md"),
+      "utf8",
+    );
+    expect(doc).toMatch(/\*\*Membership lifted 2026-11-19 \(Tax beta → core\)\.\*\*/);
   });
 
   it("records that `underwritten` awards nobody today", () => {
@@ -306,18 +441,20 @@ describe("a declared maturity may not exceed evidenced readiness", () => {
   });
 });
 
-describe("no PUBLIC claim outruns the evidence (OD-5)", () => {
-  // This is a HARD ZERO, not a ratchet, and the difference matters.
+describe("no PUBLIC claim outruns the evidence (OD-5, under FD1)", () => {
+  // This is a HARD ZERO outside the FD1 register, not a ratchet, and the
+  // difference matters.
   //
-  // The registry ratchet above is frozen at 13 because `maturity` still says
-  // `core` — that is the founder's deliberate choice, since `core` describes
-  // the in-app experience a paying customer actually gets. But what a STRANGER
-  // is told before they can check has no such excuse, and after the OD-5
-  // demotions there is no gap left to tolerate. A ratchet here would be
-  // budgeting for an overclaim nobody needs.
+  // Under OD-5 the registry said `core` fifteen times and the demotion table
+  // lowered the public claim. Under FD1 the registry states the public promise
+  // itself, so the public tier IS the registry tier (registry_only → "not
+  // sold"). What a STRANGER is told before they can check still has no excuse
+  // to outrun the evidence — except the one the founder gave by name
+  // (FD1_CORE_ON_SURFACED_EVIDENCE), which is pinned above and expires on its
+  // own terms.
   const rows = projectReadiness(BUSINESS_TYPES, evidence);
 
-  it("every vertical's public tier is supported by its evidence", () => {
+  it("every vertical's public tier is supported by its evidence, outside the FD1 register", () => {
     // Reuses `overclaims` — the SAME law the registry ratchet uses — by asking
     // it about a vertical wearing its public tier instead of its declared one.
     // Re-deriving "does this tier need that evidence?" here would be a second
@@ -330,17 +467,33 @@ describe("no PUBLIC claim outruns the evidence (OD-5)", () => {
           id: r.id,
           publicTier,
           evidenced: r.evidenced,
-          bad: overclaims({ ...meta, maturity: publicTier }, evidence),
+          // A public tier is judged by the REGISTRY tier it stands for: the
+          // "not sold" tier is what registry_only projects to, and it demands
+          // `surfaced` (readiness.ts), not the nothing `roadmap` demands.
+          bad: overclaims({ ...meta, maturity: publicTier === "roadmap" ? "registry_only" : publicTier }, evidence),
         };
       })
       .filter((r) => r.bad);
 
     expect(
-      over.map((r) => `${r.id}: publicly "${r.publicTier}" but evidences ${r.evidenced}`),
-      "A PUBLIC surface claims more than this repository can show. Add a " +
-        "PUBLIC_CLAIM_DEMOTIONS entry in shared/business-types/publicClaims.ts " +
-        "with a written reason and a date, or close the loop for that vertical.",
+      over.filter((r) => !isFounderDecidedCore(r.id)).map((r) => `${r.id}: publicly "${r.publicTier}" but evidences ${r.evidenced}`),
+      "A PUBLIC surface claims more than this repository can show. Lower the " +
+        "registry maturity in shared/business-types.ts (FD1 is the presentation " +
+        "of record), or close the loop for that vertical.",
     ).toEqual([]);
+    // The register covers exactly what overclaims publicly — no spare
+    // exemption may sit there budgeting for a future overclaim.
+    expect(over.map((r) => r.id).sort()).toEqual(Object.keys(FD1_CORE_ON_SURFACED_EVIDENCE).sort());
+  });
+
+  it("the public tier IS the registry's projection — no table in between (FD1)", () => {
+    // The conservatism channel is kept for a future founder decision, but today
+    // it must be empty: a non-empty table means the registry and the public
+    // promise have drifted apart again, and the registry is the thing to fix.
+    expect(PUBLIC_CLAIM_DEMOTIONS).toEqual({});
+    for (const id of BUSINESS_TYPE_IDS) {
+      expect(publicMaturityOf(BUSINESS_TYPES[id]), id).toBe(registryPublicTier(BUSINESS_TYPES[id].maturity));
+    }
   });
 
   it("no public surface publishes raw `maturity`", () => {
@@ -414,8 +567,8 @@ describe("no PUBLIC claim outruns the evidence (OD-5)", () => {
       assertDemotionsValid({ commercial: { ...ok, decidedOn: "17-08-2026" } }),
     ).toThrow(/ISO date/);
 
-    // A no-op / promote: `commercial` declares `core`, so demoting a synthetic
-    // registry where it is already `roadmap` up to `beta` must be refused.
+    // A no-op / promote: demoting a synthetic registry where `commercial` is
+    // `roadmap` up to `beta` must be refused.
     const asRoadmap = {
       ...BUSINESS_TYPES,
       commercial: { ...BUSINESS_TYPES.commercial, maturity: "roadmap" as const },
@@ -424,13 +577,23 @@ describe("no PUBLIC claim outruns the evidence (OD-5)", () => {
       /must move a vertical DOWN/,
     );
 
+    // FD1: a registry_only vertical is ALREADY told as "not sold". "Demoting" it
+    // to roadmap is a no-op and to beta is a promote — both refused, judged on
+    // the public tier the registry projects. commercial is registry_only live.
+    expect(BUSINESS_TYPES.commercial.maturity).toBe("registry_only");
+    expect(() => assertDemotionsValid({ commercial: ok })).toThrow(/must move a vertical DOWN/);
+    expect(() => assertDemotionsValid({ commercial: { ...ok, to: "roadmap" } })).toThrow(
+      /must move a vertical DOWN/,
+    );
+
     // A vertical that is not in the registry at all.
     expect(() =>
       assertDemotionsValid({ not_a_vertical: ok } as never),
     ).toThrow(/not in the registry/);
 
-    // And the happy path still passes, so the throws above are not universal.
-    expect(() => assertDemotionsValid({ commercial: ok })).not.toThrow();
+    // And the happy path still passes, so the throws above are not universal:
+    // buy_and_hold is core, so beta is a genuine DOWN move.
+    expect(() => assertDemotionsValid({ buy_and_hold: ok })).not.toThrow();
   });
 
   it("no demotion is stale — a vertical that closed the loop must be released", () => {
@@ -440,7 +603,9 @@ describe("no PUBLIC claim outruns the evidence (OD-5)", () => {
     // pointing the other way.
     const stale = Object.keys(PUBLIC_CLAIM_DEMOTIONS).filter((id) => {
       const meta = BUSINESS_TYPES[id as BusinessTypeId];
-      return readinessOf(meta, evidence) === "decided";
+      // A vertical held pending its journey proof keeps its demotion on
+      // purpose; the held-register block below holds it to its own rules.
+      return readinessOf(meta, evidence) === "decided" && !isHeld(id);
     });
     expect(
       stale,
@@ -449,15 +614,18 @@ describe("no PUBLIC claim outruns the evidence (OD-5)", () => {
     ).toEqual([]);
   });
 
-  it("covers exactly the verticals that cannot show `decided`", () => {
-    // Positive control against a map that is merely large. The demoted set must
-    // be precisely the complement of the verticals that close the loop —
-    // neither a vertical missing (an overclaim) nor an extra one (an
-    // understatement) can pass.
+  it("the registry carries the conservatism: every vertical that cannot show `decided` is below core publicly, except the FD1 register", () => {
+    // Under OD-5 this asserted the demotion table was exactly the complement of
+    // the verticals that close the loop. Under FD1 the same invariant lives in
+    // the registry: a vertical that cannot show `decided` (or is held for its
+    // journey proof) must not PROJECT to core — unless the founder named it.
     const cannotShowCore = BUSINESS_TYPE_IDS.filter(
-      (id) => readinessOf(BUSINESS_TYPES[id], evidence) !== "decided",
-    ).sort();
-    expect(Object.keys(PUBLIC_CLAIM_DEMOTIONS).sort()).toEqual(cannotShowCore);
+      (id) => readinessOf(BUSINESS_TYPES[id], evidence) !== "decided" || isHeld(id),
+    );
+    const toldCore = cannotShowCore.filter((id) => publicMaturityOf(BUSINESS_TYPES[id]) === "core");
+    expect(toldCore.sort()).toEqual(Object.keys(FD1_CORE_ON_SURFACED_EVIDENCE).sort());
+    // Vacuity: the population is real — most verticals still cannot show decided.
+    expect(cannotShowCore.length).toBeGreaterThan(5);
   });
 });
 
@@ -476,16 +644,50 @@ describe("the Evidence Ladder states the same vertical truth (one rule, not two)
 
   it("a ladder entry claims the loop exactly when the measurement says `decided`", () => {
     const disagree = BUSINESS_TYPE_IDS.filter(
-      (id) => /closes the canonical loop/.test(entry(id)?.claim ?? "") !== decided(id),
+      // A held vertical's ladder waits for the journey proof, like its claim.
+      (id) => /closes the canonical loop/.test(entry(id)?.claim ?? "") !== (decided(id) && !isHeld(id)),
     ).map((id) => `${id}: ladder "${entry(id)?.claim}", measured ${readinessOf(BUSINESS_TYPES[id], evidence)}`);
     expect(disagree).toEqual([]);
   });
 
-  it("a ladder caveat says `beta` exactly when the public claim is demoted", () => {
-    const disagree = BUSINESS_TYPE_IDS.filter(
-      (id) => /public claim is beta/.test(entry(id)?.caveat ?? "") !== (id in PUBLIC_CLAIM_DEMOTIONS),
-    );
+  it("a ladder caveat states the public tier exactly as publicMaturityOf projects it (FD1)", () => {
+    // The ladder used to restate OD-5 by hand ("the public claim is beta"). It
+    // now reads the registry's projection; this pins the SERIALIZED caveat
+    // wording to publicMaturityOf, per tier, so neither can drift from the other.
+    const caveat = (id: BusinessTypeId) => entry(id)?.caveat ?? "";
+    const claimsLoop = (id: BusinessTypeId) => /closes the canonical loop/.test(entry(id)?.claim ?? "");
+    const disagree = BUSINESS_TYPE_IDS.filter((id) => {
+      const tier = publicMaturityOf(BUSINESS_TYPES[id]);
+      const saysBeta = /public claim is beta/.test(caveat(id));
+      const saysNotSold = /not in the public promise/.test(caveat(id));
+      // A public-core vertical carries the "core" wording only when it stands
+      // on surfaced evidence (the FD1 register); a decided public core has no
+      // public caveat at all.
+      const saysCore = /public claim is core/.test(caveat(id));
+      return (
+        saysBeta !== (tier === "beta") ||
+        saysNotSold !== (tier === "roadmap") ||
+        saysCore !== (tier === "core" && !claimsLoop(id))
+      );
+    }).map((id) => `${id}: public "${publicMaturityOf(BUSINESS_TYPES[id])}", caveat "${caveat(id)}"`);
     expect(disagree).toEqual([]);
+    // Vacuity: the roadmap wording occurs on the live ladder.
+    expect(BUSINESS_TYPE_IDS.some((id) => /not in the public promise/.test(caveat(id)))).toBe(true);
+    // The beta wording occurs NOWHERE since 2026-11-21 (Land lift): it is
+    // carried only by a vertical whose public claim is beta, Land was the
+    // last one, and its lift to core emptied the tier. Pinned as absent —
+    // the same treatment the core wording got below — so a future beta
+    // vertical fails here loudly instead of slipping the wording back in
+    // unpinned; the per-tier agreement rule above still binds any
+    // vertical that projects to beta.
+    expect(BUSINESS_TYPE_IDS.some((id) => /public claim is beta/.test(caveat(id)))).toBe(false);
+    // The core wording occurs NOWHERE since 2026-11-20 (T6 lift): it is
+    // carried only by a public core standing on surfaced evidence (the
+    // FD1 register), the register is empty, and every public core now
+    // closes the loop. Pinned as absent so a future surfaced core —
+    // which would need a founder decision and a register entry — fails
+    // here loudly instead of slipping the wording back in unpinned.
+    expect(BUSINESS_TYPE_IDS.some((id) => /public claim is core/.test(caveat(id)))).toBe(false);
   });
 
   it("a ladder caveat says `not yet gradeable` exactly for a decided vertical the measurement cannot grade", () => {
@@ -498,24 +700,66 @@ describe("the Evidence Ladder states the same vertical truth (one rule, not two)
   });
 });
 
-describe("held pending journey proof — the register is empty since the 2026-11-05 lift", () => {
+describe("held pending journey proof — code-decided, claim still beta, and dated", () => {
   const entry = (id: string) => CAPABILITIES.find((c) => c.id === `vertical.${id}`);
+  const held = Object.entries(HELD_PENDING_JOURNEY_PROOF) as Array<[BusinessTypeId, { heldSince: string; reviewBy: string; decision: string }]>;
 
-  it("the register is pinned empty — a new hold is a new founder decision", () => {
-    // buy_and_hold's hold ended on 2026-11-05. Nothing above consults this
-    // register any more, so an entry here would exempt nothing; adding one
-    // fails here first, and reinstating the exemption is a visible code change.
-    expect(Object.keys(HELD_PENDING_JOURNEY_PROOF)).toEqual([]);
+  it("the register is exactly the founder-decided set", () => {
+    // Adding a vertical here bypasses OD-5 for it. That is a founder decision,
+    // so the set is pinned and widening it fails until this line is changed.
+    // buy_and_hold left it on 2026-11-05 (lifted); residential_wholesaler
+    // joined under its own decision file and left it on 2026-11-18 (lifted).
+    // The register is empty and pinned empty.
+    expect(held.map(([id]) => id)).toEqual([]);
   });
 
-  it("buy_and_hold is released: measured `decided`, no public demotion, and the ladder claims the loop", () => {
-    // The lifted state, pinned by name so that reinstating the demotion or
+  it.each(held)("%s measures `decided` — a hold over an unclosed vertical is stale", (id) => {
+    expect(BUSINESS_TYPE_IDS).toContain(id);
+    expect(readinessOf(BUSINESS_TYPES[id], evidence)).toBe("decided");
+  });
+
+  it.each(held)("%s keeps its public claim at `beta` — lifting it ends the hold", (id) => {
+    // Under OD-5 this read the demotion table; under FD1 the registry itself
+    // said `beta` for a held vertical, and the public claim is the registry's
+    // projection.
+    expect(BUSINESS_TYPES[id].maturity).toBe("beta");
+    expect(publicMaturityOf(BUSINESS_TYPES[id])).toBe("beta");
+  });
+
+  it.each(held)("%s's ladder entry does not claim the loop until the journey proof", (id) => {
+    expect(entry(id), `no ladder entry for ${id}`).toBeDefined();
+    expect(entry(id)!.claim).not.toMatch(/closes the canonical loop/);
+  });
+
+  it.each(held)("%s is dated, cites its decision, and has not expired", (id, h) => {
+    expect(h.heldSince).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(h.reviewBy).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(h.reviewBy > h.heldSince).toBe(true);
+    expect(fs.existsSync(path.resolve(__dirname, "../..", h.decision)), h.decision).toBe(true);
+    expect(
+      Date.now() < Date.parse(`${h.reviewBy}T23:59:59Z`),
+      `${id}'s hold expired on ${h.reviewBy}. Run the journey proof and lift the claim on the Atlas row, ` +
+        "or have the founder re-date the hold — do not move the date to get green.",
+    ).toBe(true);
+  });
+
+  it("buy_and_hold is released from its hold: measured `decided`, no demotion entry, and the ladder claims the loop", () => {
+    // The lifted state, pinned by name so that reinstating the hold or
     // reverting the ladder entry fails here as well as in the OD-5 rules above.
+    // FD1 (2026-11-12) then set its REGISTRY maturity to `core` — one of the
+    // two full-strength launch types, per the 2026-11-12 decision records —
+    // so its public claim is core by the registry, not by a demotion. Its
+    // ladder entry therefore carries NO public-tier caveat: the generator
+    // states one only beside a decided vertical the founder kept below core
+    // (under the S1 recording this entry said "the public claim is beta
+    // (FD1)" — that was the unratified Land↔Buy-and-Hold swap; corrected
+    // 2026-11-16 by founder ruling.)
     expect(readinessOf(BUSINESS_TYPES.buy_and_hold, evidence)).toBe("decided");
     expect(PUBLIC_CLAIM_DEMOTIONS.buy_and_hold).toBeUndefined();
+    expect(BUSINESS_TYPES.buy_and_hold.maturity).toBe("core");
     expect(entry("buy_and_hold"), "no ladder entry for buy_and_hold").toBeDefined();
     expect(entry("buy_and_hold")!.claim).toMatch(/closes the canonical loop/);
-    expect(entry("buy_and_hold")!.caveat ?? "").not.toMatch(/public claim is beta/);
+    expect(entry("buy_and_hold")!.caveat).toBeUndefined();
   });
 
   it("the lift is recorded in the founder decision file", () => {
@@ -524,6 +768,60 @@ describe("held pending journey proof — the register is empty since the 2026-11
       "utf8",
     );
     expect(doc).toMatch(/## Addendum — 2026-11-05: the hold is lifted/);
+  });
+
+  it("residential_wholesaler is released from its hold: measured `decided`, no demotion entry, and the ladder claims the loop", () => {
+    // The lifted state, pinned by name so that reinstating the hold or
+    // reverting the ladder entry fails here as well as in the OD-5 rules
+    // above. The hold (founder-decisions-2026-11-05-wholesale.md) ended
+    // 2026-11-18 when the scoped revenue-loop journey walk passed green
+    // end-to-end on staging; FD1's registry maturity is now `core`, so its
+    // public claim is core by the registry and its ladder entry carries NO
+    // public-tier caveat (the generator states one only beside a decided
+    // vertical the founder kept below core).
+    expect(readinessOf(BUSINESS_TYPES.residential_wholesaler, evidence)).toBe("decided");
+    expect(PUBLIC_CLAIM_DEMOTIONS.residential_wholesaler).toBeUndefined();
+    expect(BUSINESS_TYPES.residential_wholesaler.maturity).toBe("core");
+    expect(entry("residential_wholesaler"), "no ladder entry for residential_wholesaler").toBeDefined();
+    expect(entry("residential_wholesaler")!.claim).toMatch(/closes the canonical loop/);
+    expect(entry("residential_wholesaler")!.caveat).toBeUndefined();
+  });
+
+  it("the wholesale lift is recorded in the founder decision file", () => {
+    const doc = fs.readFileSync(
+      path.resolve(__dirname, "../..", "docs/company/founder-decisions-2026-11-05-wholesale.md"),
+      "utf8",
+    );
+    expect(doc).toMatch(/## Addendum — 2026-11-18: the hold is lifted/);
+  });
+
+  it("land_flipper's 2026-11-21 lift is pinned by name: core in the registry, measured `decided`, and the ladder claims the loop", () => {
+    // The lifted state, pinned by name so that reverting the maturity or
+    // the ladder entry fails here as well as in the ratchet above. Land
+    // earned core by JOURNEY proof (founder decided the lift 2026-11-21;
+    // walk record journey-walk-land-2026-11: legs 1–9 green end to end,
+    // the Leg 9 payment cycle proven in-machine, and the L-P2
+    // mailed-letter leg passed twice in Lob test mode — org 125 and org
+    // 129 — with zero real mail). Unlike note_investor and tax_lien_deed
+    // at their lifts, Land already measured `decided` in code, so no
+    // FD1_CORE_ON_SURFACED_EVIDENCE entry was ever needed and the
+    // ratchet is unchanged; its ladder entry carries NO public-tier
+    // caveat now that the registry itself says core.
+    expect(BUSINESS_TYPES.land_flipper.maturity).toBe("core");
+    expect(readinessOf(BUSINESS_TYPES.land_flipper, evidence)).toBe("decided");
+    expect(PUBLIC_CLAIM_DEMOTIONS.land_flipper).toBeUndefined();
+    expect(FD1_CORE_ON_SURFACED_EVIDENCE.land_flipper).toBeUndefined();
+    expect(entry("land_flipper"), "no ladder entry for land_flipper").toBeDefined();
+    expect(entry("land_flipper")!.claim).toMatch(/closes the canonical loop/);
+    expect(entry("land_flipper")!.caveat).toBeUndefined();
+  });
+
+  it("the land lift is recorded in the founder decision file", () => {
+    const doc = fs.readFileSync(
+      path.resolve(__dirname, "../..", "docs/company/founder-decisions-2026-11-12-launch-scope.md"),
+      "utf8",
+    );
+    expect(doc).toMatch(/\*\*Membership lifted 2026-11-21 \(Land beta → core\)\.\*\*/);
   });
 });
 
@@ -750,22 +1048,156 @@ import { recordUnderwrittenDecision } from "./services/underwriting/verticalDeci
     expect(readinessOf(meta, ev(["hybrid"]))).toBe("surfaced");
   });
 
-  it("the legacy file-ownership map only shrinks, and holds no vertical the engine rule already earns", () => {
-    expect(Object.keys(LEGACY_DECISION_ROUTE_OWNER)).toEqual(["server/routes-lot-pricing.ts"]);
+  it("the legacy file-ownership map only shrinks — and it is now empty", () => {
+    // Retired 2026-11 (subdivider item 1): its last entry, the lot-pricing lock
+    // route, now cites a feasibility scenario. Pinned EMPTY, so adding an entry
+    // back fails here — "do not add to this list, give the route an engine".
+    expect(Object.keys(LEGACY_DECISION_ROUTE_OWNER)).toEqual([]);
+    // The loop is kept, vacuous on an empty map, so a future entry is held to
+    // the original rule: it credits only its own surface's uncited decisions
+    // and leaves the moment its own route decides through an engine. (The
+    // branch itself stays falsifiable in the canary below, which feeds
+    // `creditVerticals` a synthetic map.)
     for (const [file, owner] of Object.entries(LEGACY_DECISION_ROUTE_OWNER)) {
-      const viaEngines = (measured.decidedBy.get(owner) ?? []).filter((f) => f !== file);
-      expect(viaEngines, `${owner} now decides through an engine — remove its legacy entry`).toEqual([]);
+      const ownSurface = (measured.engineDecidedBy.get(owner) ?? []).filter((f) => f === file);
+      expect(ownSurface, `${file} now decides through an engine — remove its legacy entry`).toEqual([]);
+      expect(measured.decidedBy.get(owner) ?? [], `${file} no longer credits ${owner} — remove its legacy entry`).toContain(file);
+      expect(measured.ungradeable.get(owner) ?? [], `${file} records no uncited decision for ${owner} — remove its legacy entry`).toContain(file);
     }
+  });
+
+  it("canary: legacy credit is per-surface — an engine desk elsewhere in the vertical does not retire it; an engine-cited lock route does", () => {
+    // The lot-pricing shape: a decision for the pack, citing no scenario.
+    const lock = facts(`router.post("/lock", async () => {
+      await recordDecision(o, { strategyPackId: "subdivider", reviewDueAt: null }, new Date(), []);
+    });`);
+    // The Leg 4 desk shape: the same pack, decided through the engine.
+    const desk = facts(`router.post("/decide", async () => {
+      await recordUnderwrittenDecision(o, { engineId: "subdivision_feasibility", strategyPackId: "subdivider", reviewDueAt: d });
+    });`);
+    const legacy: Readonly<Record<string, BusinessTypeId>> = { "server/routes-lot-pricing.ts": "subdivider" };
+    const both = creditVerticals(
+      [
+        { file: "server/routes-lot-pricing.ts", facts: lock, reachable: [true] },
+        { file: "server/routes-subdivision-decision.ts", facts: desk, reachable: [true] },
+      ],
+      engines,
+      legacy,
+    );
+    // Both surfaces credit subdivider; only the desk's credit is engine-cited,
+    // and only the lock route's credit is ungradeable.
+    expect(both.deciding.has("subdivider")).toBe(true);
+    expect(both.decidedBy.get("subdivider")).toEqual(["server/routes-lot-pricing.ts", "server/routes-subdivision-decision.ts"]);
+    expect(both.engineDecidedBy.get("subdivider")).toEqual(["server/routes-subdivision-decision.ts"]);
+    expect(both.ungradeable.get("subdivider")).toEqual(["server/routes-lot-pricing.ts"]);
+
+    // The falsification direction: if the LOCK ROUTE itself cites the engine,
+    // its credit moves to the engine rule — exactly the signal the map law
+    // above reads as "remove its legacy entry".
+    const lockCited = facts(`router.post("/lock", async () => {
+      const s = await recordScenario(o, { engineId: "subdivision_feasibility", inputs: {} });
+      await recordDecision(o, { strategyPackId: "subdivider", reviewDueAt: null }, new Date(), [s.id]);
+    });`);
+    const cited = creditVerticals([{ file: "server/routes-lot-pricing.ts", facts: lockCited, reachable: [true] }], engines, legacy);
+    expect(cited.engineDecidedBy.get("subdivider")).toEqual(["server/routes-lot-pricing.ts"]);
+  });
+
+  // ── The lock route's own shape: it CITES an existing scenario by lookup ──
+  const LOOKUP_IMPORT = `import { latestScenarioForSubject } from "./services/economics/scenarioStore";
+`;
+  const lockFacts = (body: string, imports = IMPORTS + LOOKUP_IMPORT) => analyzeRouteSource("server/routes-lot-pricing.ts", imports + body, K);
+  const credit = (f: ReturnType<typeof lockFacts>) =>
+    creditVerticals([{ file: "server/routes-lot-pricing.ts", facts: f, reachable: f.decisions.map(() => true) }], engines, {});
+  const lockBody = (reviewExpr: string, engine = '"subdivision_feasibility"', schema = "") => `${schema}
+    router.post("/lock", async () => {
+      const latest = await latestScenarioForSubject(o, "property", parentId, ${engine});
+      await recordDecision(o, { strategyPackId: "subdivider", reviewDueAt: ${reviewExpr} }, new Date(), [latest.id]);
+    });`;
+
+  it("canary: a lock that cites the parent's feasibility scenario with an operator review date is engine-credited AND gradeable (empty legacy map)", () => {
+    const c = credit(lockFacts(lockBody("reviewDueAt")));
+    expect(c.engineDecidedBy.get("subdivider")).toEqual(["server/routes-lot-pricing.ts"]);
+    expect(c.gradeable.has("subdivider")).toBe(true);
+    expect(c.ungradeable.get("subdivider")).toBeUndefined();
+  });
+
+  it("canary: hard-nulling the lock's review date turns the law red NAMING the route (null, undefined, a null-bound const, an omitted key)", () => {
+    for (const expr of ["null", "undefined", "NEVER"]) {
+      const f = lockFacts(`const NEVER = null;\n` + lockBody(expr));
+      const c = credit(f);
+      expect(c.ungradeable.get("subdivider"), `reviewDueAt: ${expr} must be ungradeable`).toEqual(["server/routes-lot-pricing.ts"]);
+      expect(c.gradeable.has("subdivider")).toBe(false);
+    }
+    const omitted = lockFacts(`router.post("/lock", async () => {
+      const latest = await latestScenarioForSubject(o, "property", parentId, "subdivision_feasibility");
+      await recordDecision(o, { strategyPackId: "subdivider" }, new Date(), [latest.id]);
+    });`);
+    expect(credit(omitted).ungradeable.get("subdivider")).toEqual(["server/routes-lot-pricing.ts"]);
+  });
+
+  it("canary: an OMITTABLE review-date schema on the lock turns the law red (the body may not let a client skip the answer)", () => {
+    for (const chain of ["z.string().nullable().optional()", "z.string().nullish()", "z.string().nullable().default(null)"]) {
+      const f = lockFacts(lockBody("reviewDueAt", '"subdivision_feasibility"', `const lockBody = z.object({ reviewDueAt: ${chain} });\n`));
+      expect(credit(f).ungradeable.get("subdivider"), chain).toEqual(["server/routes-lot-pricing.ts"]);
+    }
+    // And the shape the route actually declares — required, nullable — stays green.
+    const ok = lockFacts(lockBody("reviewDueAt", '"subdivision_feasibility"', `const lockBody = z.object({ reviewDueAt: z.string().datetime().nullable().refine(() => true) });\n`));
+    expect(credit(ok).gradeable.has("subdivider")).toBe(true);
+  });
+
+  it("canary: citing the WRONG engine's scenario, a local lookalike, or an aliased import earns the lock nothing", () => {
+    // A different engine (declares other verticals) — not subdivider's.
+    const wrongEngine = credit(lockFacts(lockBody("reviewDueAt", '"land_deal"')));
+    expect(wrongEngine.deciding.has("subdivider")).toBe(false);
+    // An engine id that does not resolve to a literal proves nothing.
+    expect(credit(lockFacts(lockBody("reviewDueAt", "someEngineVariable"))).deciding.has("subdivider")).toBe(false);
+    // A local function of the same name is not the store.
+    const local = lockFacts(
+      `function latestScenarioForSubject(...a: unknown[]) { return { id: 1 }; }\n` + lockBody("reviewDueAt"),
+      IMPORTS,
+    );
+    expect(credit(local).deciding.has("subdivider")).toBe(false);
+    // An alias binds the local name to some OTHER export.
+    const aliased = lockFacts(lockBody("reviewDueAt"), IMPORTS + `import { somethingElse as latestScenarioForSubject } from "./services/economics/scenarioStore";\n`);
+    expect(credit(aliased).deciding.has("subdivider")).toBe(false);
+    // A lookup is a CITATION, never a scenario writer: it does not make the vertical `underwritten`.
+    expect(credit(lockFacts(lockBody("reviewDueAt"))).underwritten.has("subdivider")).toBe(false);
+  });
+
+  it("MUTATION on the real lock route: hard-null its review date in a copy of the source → the law names server/routes-lot-pricing.ts", () => {
+    // The thing the law GOVERNS, not a fixture that mimics it: the shipped
+    // route's own source, mutated, run through the same analyzer and credit.
+    const src = read("server/routes-lot-pricing.ts");
+    const constants = K; // the route resolves its engine id from a local const
+    const run = (text: string) => {
+      const f = analyzeRouteSource("server/routes-lot-pricing.ts", text, constants);
+      return { f, c: creditVerticals([{ file: "server/routes-lot-pricing.ts", facts: f, reachable: f.decisions.map(() => true) }], engines, {}) };
+    };
+    // Vacuity: the shipped route is credited, gradeable, and has a decision to mutate.
+    const real = run(src);
+    expect(real.f.decisions.length).toBeGreaterThan(0);
+    expect(real.c.gradeable.has("subdivider")).toBe(true);
+    // The recordDecision literal's `reviewDueAt,` shorthand → `reviewDueAt: null,`.
+    const needle = /(\n\s+)reviewDueAt,(\n\s+\}, clock\.now\(\), \[feasibility\.id\]\))/;
+    expect(needle.test(src), "the lock's recordDecision shape moved — update this mutation, do not delete it").toBe(true);
+    const mutated = run(src.replace(needle, "$1reviewDueAt: null,$2"));
+    expect(mutated.c.ungradeable.get("subdivider")).toEqual(["server/routes-lot-pricing.ts"]);
+    expect(mutated.c.gradeable.has("subdivider")).toBe(false);
+    // And making the body's review date omittable is caught too.
+    const omittable = run(src.replace(/(reviewDueAt: z\s*\.string\(\)\s*\.datetime\(\)\s*\.nullable\(\))/, "$1.optional()"));
+    expect(omittable.c.gradeable.has("subdivider")).toBe(false);
   });
 });
 
 describe("a decided vertical is gradeable (the loop can close on reality)", () => {
   /**
-   * Down-only. subdivider's lot-pricing lock records no scenario and hard-codes
-   * reviewDueAt: null, so none of its decisions is ever asked for an outcome.
-   * Wave V2 gives it both and removes it from here.
+   * Down-only, and EMPTY since 2026-11: subdivider's lot-pricing lock now cites
+   * the parent parcel's feasibility scenario and takes an operator-chosen review
+   * date, so the last exception retired (the "gradeable now" assertion below
+   * fired against the old list before the entry was removed — the proof it was
+   * load-bearing). Do not add to this list — make the route gradeable.
    */
-  const NOT_YET_GRADEABLE: readonly BusinessTypeId[] = ["subdivider"];
+  const NOT_YET_GRADEABLE: readonly BusinessTypeId[] = [];
   const gradeable = measured.gradeableBusinessTypes;
 
   it("vacuity: the gradeable set is real", () => {

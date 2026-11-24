@@ -1,0 +1,25 @@
+# Fly CI spike — throwaway proof workflow.
+# workflow_dispatch only. The single job targets the dedicated `fly-ci-spike`
+# self-hosted label, which only an ephemeral Fly Machine spawned for this
+# spike will ever carry. It prints machine facts and succeeds.
+name: Fly CI Spike
+
+on:
+  workflow_dispatch:
+
+jobs:
+  spike:
+    name: fly-ci-spike proof job
+    runs-on: [self-hosted, fly-ci-spike]
+    timeout-minutes: 15
+    steps:
+      - name: Report machine
+        run: |
+          echo "RUNNER_NAME=${RUNNER_NAME:-unknown}"
+          echo "hostname: $(hostname)"
+          echo "cpus: $(nproc)"
+          grep -E 'MemTotal' /proc/meminfo || true
+          echo "FLY_MACHINE_ID=${FLY_MACHINE_ID:-unset}"
+          echo "FLY_REGION=${FLY_REGION:-unset}"
+          uname -a
+          echo "spike-ok"

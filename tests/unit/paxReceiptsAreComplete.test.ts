@@ -80,6 +80,10 @@ const H = vi.hoisted(() => {
       leadScoring: true,
       borrowerReminders: true,
       inboxDrafts: true,
+      rails: { records: { leads: "act_and_report", properties: "act_and_report", deals: "act_and_report", tasks: "act_and_report", follow_ups: "act_and_report", account: "act_and_report" }, sends: "ask" },
+      limits: { asksPerDay: null, creditSpendPerDay: null, browseCallsPerDay: null, batchRowsPerDay: null },
+      members: {},
+      mySites: [],
       paused: false,
       pausedUntil: null,
       pausedBy: null,
@@ -202,6 +206,8 @@ function caseLabels(rel: string, fn: string): string[] {
   return [...body.matchAll(/^ {6}case "([a-z_0-9]+)": \{/gm)].map((m) => m[1]);
 }
 
+const TAX_CERT_ID = "6f1c1c1e-2b7a-4c1d-9a55-0e0e0e0e0e0e";
+
 /** Minimal args that make each member SUCCEED against the stubbed storage. */
 const ARGS: Record<string, Record<string, unknown>> = {
   update_lead_status: { lead_id: 42, status: "accepted" },
@@ -216,6 +222,7 @@ const ARGS: Record<string, Record<string, unknown>> = {
   complete_task: { task_id: 5 },
   generate_offer_letter: { property_id: 3, offer_amount: 25000, buyer_name: "Acme" },
   draft_offer: { dealId: 11, offerAmount: 25000 },
+  record_tax_ledger_entry: { certificate_id: TAX_CERT_ID, kind: "subsequent_tax_paid", paid_on: "2026-01-15", amount_cents: 12000, tax_year: "2025", source: "County treasurer receipt" },
   schedule_followup: { title: "Follow up", entity_type: "lead", entity_id: 42, due_date: "2026-09-10" },
   schedule_follow_up: { entityType: "lead", entityId: 42, note: "Call back", followUpDate: "2026-09-10" },
   // create_calendar_event / trigger_zapier / trigger_make left this population
@@ -275,6 +282,9 @@ describe("the population is derived, non-empty, and fully fixtured", () => {
 
 describe("each executed member yields exactly one activity_log row with agentType 'pax'", () => {
   it.each(population)("%s", async (name) => {
+    // The tax ledger tool loads the certificate before it writes: give the stubbed
+    // database the one row it needs (the rest of the population never reads it).
+    if (name === "record_tax_ledger_entry") H.dbSelectRows = [{ id: TAX_CERT_ID, organizationId: 7, county: "Cochise", state: "AZ", apn: "100-20-030" }];
     const result = await executeTool(name, { ...ARGS[name] }, org, { userId: "u-1", origin: "chat" });
     // Per-member vacuity: the member must have RUN, or "one receipt" is a
     // claim about a tool that did nothing.
@@ -349,6 +359,10 @@ describe("attribution and the one-tap-one-row rule", () => {
       leadScoring: true,
       borrowerReminders: true,
       inboxDrafts: true,
+      rails: { records: { leads: "act_and_report", properties: "act_and_report", deals: "act_and_report", tasks: "act_and_report", follow_ups: "act_and_report", account: "act_and_report" }, sends: "ask" },
+      limits: { asksPerDay: null, creditSpendPerDay: null, browseCallsPerDay: null, batchRowsPerDay: null },
+      members: {},
+      mySites: [],
       paused: true,
       pausedUntil: new Date(Date.now() + 3600_000),
       pausedBy: null,

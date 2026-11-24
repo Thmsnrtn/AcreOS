@@ -1330,7 +1330,12 @@ export const camReconciliations = pgTable(
     recoverableShareCents: bigint("recoverable_share_cents", { mode: "number" }),
     /** What the tenant was actually billed in estimates over the period. */
     estimatedBilledCents: bigint("estimated_billed_cents", { mode: "number" }),
-    /** How estimatedBilled was determined: 'from_charges' (summed rent_charges) or 'lease_estimate'. */
+    /**
+     * How estimatedBilled was determined: 'from_charges' (summed rent_charges) or
+     * 'operator_stated' (the landlord's own total, entered at generation). Rows
+     * frozen before 2026-11-06 may carry the retired 'lease_estimate' / 'none' /
+     * 'operator_entered' — kept as recorded, never produced again.
+     */
     estimatedBilledBasis: text("estimated_billed_basis"),
     /** recoverableShare − estimatedBilled: positive = tenant owes, negative = credit due. */
     deltaCents: bigint("delta_cents", { mode: "number" }),
@@ -1599,22 +1604,16 @@ export type InsertUtilityBill = typeof utilityBills.$inferInsert;
 // exactly the fabrication this table exists to prevent.
 // ============================================================================
 
-export const RESERVATION_CHANNELS = [
-  "airbnb",
-  "vrbo",
-  "booking",
-  "direct",
-  "other",
-] as const;
-export type ReservationChannel = typeof RESERVATION_CHANNELS[number];
-
-export const RESERVATION_STATUSES = [
-  "booked",
-  "checked_in",
-  "checked_out",
-  "cancelled",
-] as const;
-export type ReservationStatus = typeof RESERVATION_STATUSES[number];
+// The channel/status vocabulary lives in shared/constants/rental.ts (runtime-free,
+// so the Bookings tab can import it without dragging the ORM). Re-exported here
+// so the table definition below and every server caller are unchanged.
+export {
+  RESERVATION_CHANNELS,
+  RESERVATION_STATUSES,
+  type ReservationChannel,
+  type ReservationStatus,
+} from "../constants/rental";
+import type { ReservationChannel, ReservationStatus } from "../constants/rental";
 
 export const reservations = pgTable(
   "reservations",
@@ -1669,14 +1668,13 @@ export const reservations = pgTable(
     payoutCents: bigint("payout_cents", { mode: "number" }),
 
     /**
-     * The operator's OWN set nightly rate for this stay, in cents (STR Wave B).
-     * This is the rate the operator chose and RECORDED — never a market/dynamic
-     * "suggested" rate (that would touch the residential-comps data plane, a
-     * standing hard-stop, and require a vendor). From it the pricing helper
-     * (shared/rental/strMetrics.ts computeNightlyRateExpectation) derives an
-     * expected revenue (rate × nights) and its variance against grossBookingCents.
-     * Nullable: an unset rate makes the expectation null (refused), never a
-     * back-filled comp.
+     * ORPHANED since 2026-11-06 (W2-STR): no writer and no reader. It held an
+     * operator-set nightly rate for the stay (STR Wave B) whose only reader was
+     * the per-stay pricing route; that route was deleted because its variance
+     * compared rate × nights against the GROSS booking, which carries the
+     * pass-through cleaning fee and taxes. The column stays because this wave
+     * runs no migrations; dropping it is a later, separate decision. It was never
+     * a market/dynamic "suggested" rate (residential-comps hard-stop, no vendor).
      */
     nightlyRateCents: bigint("nightly_rate_cents", { mode: "number" }),
 

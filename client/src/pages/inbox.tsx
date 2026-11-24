@@ -1,3 +1,4 @@
+import { RequiredDisclaimer } from "@/components/required-disclaimer";
 import DOMPurify from "isomorphic-dompurify";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { Sidebar, useSidebarCollapsed } from "@/components/layout-sidebar";
@@ -49,7 +50,7 @@ import { Verbs } from "@/lib/labels";
 import { TeamChatPanel } from "@/components/team-chat-panel";
 import { NativeMailPanel } from "@/components/native-mail-panel";
 import { usePaxNeedsYouCount } from "@/hooks/usePaxNeedsYou";
-import { PAX_LABELS } from "@shared/pax-glossary";
+import { PAX_LABELS } from "@shared/pax-glossary-core";
 
 type ChannelFilter = "all" | "email" | "sms" | "team" | "mail";
 type StatusFilter = "all" | "unread" | "starred" | "archived";
@@ -643,6 +644,8 @@ function EmailMessageDetail({
                     </Button>
                   </div>
                 )}
+
+                {paxAttribution && <RequiredDisclaimer type="ai" />}
 
                 {draftReplyMutation.isPending && !replyText && (
                   <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-muted text-muted-foreground text-xs">

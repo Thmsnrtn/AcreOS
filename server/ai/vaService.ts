@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { randomUUID } from "node:crypto";
 import { storage } from "../storage";
 import { validateLeadTransition } from "@shared/lifecycle/pipeline-status";
 import { toolDefinitions, executeTool, type ToolName } from "./tools";
@@ -26,6 +27,12 @@ function getOpenAI(): OpenAI {
   openaiSingleton ??= new OpenAI({
     apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
     baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+    // P1-16 D1: 30s per request + 1 retry. The SDK default is 10 minutes /
+    // 2 retries — under any provider stall that holds the Node socket for
+    // up to 30 minutes per request, exhausting the connection pool.
+    // Mirrors the aiRouter precedent; this bound is the per-call ceiling.
+    timeout: 30_000,
+    maxRetries: 1,
   });
   return openaiSingleton;
 }
@@ -692,6 +699,8 @@ ${USER_DATA_SYSTEM_CLAUSE}`;
     let assistantMessage = response.choices[0].message;
 
     let toolIterations = 0;
+    // One id per VA run (PX-1): links a browse to the records made after it.
+    const vaTurnId = randomUUID();
     while (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
       if (++toolIterations > MAX_TOOL_ITERATIONS) {
         logger.warn(`[va] Tool-calling loop exceeded ${MAX_TOOL_ITERATIONS} iterations — breaking`);
@@ -704,7 +713,7 @@ ${USER_DATA_SYSTEM_CLAUSE}`;
         if ('function' in toolCall) {
           const args = JSON.parse(toolCall.function.arguments);
           toolsUsed.push(toolCall.function.name);
-          const result = await executeTool(toolCall.function.name, args, org, { origin: "chat" });
+          const result = await executeTool(toolCall.function.name, args, org, { origin: "chat", turnId: vaTurnId });
 
           toolResults.push({
             role: "tool",

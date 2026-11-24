@@ -23,6 +23,7 @@ import {
   noteFieldObservations,
   notePayments,
   notePayoffQuotes,
+  leads,
   noteAssignments,
   noteOwnershipSplits,
   noteLossMitCases,
@@ -41,7 +42,7 @@ import { analyzeEscrowAccount } from "./services/respaEscrowAnalysis";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId, getUserId } from "./types/request";
 import { storage, calculateMonthlyPayment } from "./storage";
-import type { InsertNote } from "@shared/schema";
+import type { InsertNote, NotePayoffQuote } from "@shared/schema";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { requireRole } from "./middleware/roleGuard";
@@ -49,6 +50,7 @@ import { Errors, sendError } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { encrypt as encryptField } from "./services/fieldEncryption";
 import { emitPaymentEvent } from "./services/workflow-engine";
+import { recordPostedPaymentApplication } from "./services/paymentApplication";
 // The ONE schedule engine for the acquired book (pure — no db, no clock).
 import {
   advancePaidThrough,
@@ -71,6 +73,8 @@ import {
 // quotes comes from computePayoffQuote — no local per-diem arithmetic.
 import {
   computePayoffQuote,
+  isUuidShape,
+  noteBookForId,
   resolvePayoffAccrualStart,
   parseIsoDateUtc,
   isoDateUtc,
@@ -79,8 +83,14 @@ import {
   type PayoffQuote,
   type PayoffQuoteInput,
 } from "./services/notePaymentMath";
+import {
+  deriveServicedNotePayoffInput,
+  quoteServicedNotePayoff,
+} from "./services/notes/servicedNotePayoff";
+import { resolveOrgTimeZone } from "./services/form1098Batch";
 import { clock } from "./utils/clock";
 import { routeParam } from "./utils/routeParams";
+import { registerSettlementRailRoutes } from "./services/settlementRail/routes";
 
 // ─── Schemas ─────────────────────────────────────────────────────────────────
 
@@ -752,6 +762,10 @@ export interface MappedNoteFields {
 
 const DEFAULT_TERM_MONTHS = 120; // 10yr — the common land-contract default
 const DEFAULT_INTEREST_RATE = 0; // operator must set a real rate on the confirm screen
+// H-DEF-2: those two fallbacks are the MAPPER's contract only. The carry
+// route refuses a carry whose rate/term would come from them (see
+// missingCarryTerms below) — a platform default must never be written to
+// a note as if it were a fact about the deal.
 
 /**
  * Add `months` calendar months to a date, clamping the day for short months.
@@ -833,6 +847,33 @@ export function mapDealToNoteFields(
     // operator originates.
     status: "pending",
   };
+}
+
+/** Money terms a carry can only take from the deal or the operator. */
+export type CarryTermField = "interestRate" | "termMonths";
+
+/**
+ * H-DEF-2 — which money terms a carry would have to take from the platform
+ * defaults (DEFAULT_INTEREST_RATE / DEFAULT_TERM_MONTHS) because NEITHER
+ * the deal's saved analysis NOR the operator's confirm-screen overrides
+ * supply them. Pure, mirroring the mapper's own fallback chain field by
+ * field. An explicitly supplied 0% rate (override or deal analysis) is a
+ * recorded fact, not a default, and is NOT missing. The carry route
+ * refuses when this is non-empty — the same discipline as POST /api/notes
+ * (STR-020: reject missing terms instead of persisting invented ones).
+ */
+export function missingCarryTerms(
+  deal: CarryableDeal,
+  overrides: CarryOverrides,
+): CarryTermField[] {
+  const missing: CarryTermField[] = [];
+  if (overrides.interestRate == null && deal.analysisResults?.interestRate == null) {
+    missing.push("interestRate");
+  }
+  if (overrides.termMonths == null && deal.analysisResults?.holdingPeriodMonths == null) {
+    missing.push("termMonths");
+  }
+  return missing;
 }
 
 // ─── Yield math ──────────────────────────────────────────────────────────────
@@ -1163,6 +1204,7 @@ export async function computeAcquiredNotePayoff(
       unappliedBalanceCents: acquiredNotes.unappliedBalanceCents,
       interestRateBps: acquiredNotes.interestRateBps,
       originationDate: acquiredNotes.originationDate,
+      paidThroughDate: acquiredNotes.paidThroughDate,
     })
     .from(acquiredNotes)
     .where(and(eq(acquiredNotes.id, noteId), eq(acquiredNotes.organizationId, orgId)))
@@ -1189,6 +1231,7 @@ export async function computeAcquiredNotePayoff(
   const accrualStartDate = resolvePayoffAccrualStart(
     lastInterestRows,
     note.originationDate as unknown as string,
+    note.paidThroughDate as unknown as string | null,
   );
 
   const input: PayoffQuoteInput = {
@@ -1210,8 +1253,23 @@ export async function computeAcquiredNotePayoff(
   };
 }
 
-/** Wire shape shared by the calculator and the recorded-quote endpoints. */
-function payoffResponseBody(result: AcquiredNotePayoffResult) {
+/** The acquired book tracks collected late fees, not outstanding ones. */
+const ACQUIRED_LATE_FEES_OUTSTANDING_NOTE =
+  "Outstanding late fees are not tracked separately from collected late fees in this ledger, so they are excluded from the payoff total rather than estimated.";
+
+/** The serviced book assesses late fees (ruling 2026-09-29 #6) and quotes what is owed. */
+const SERVICED_LATE_FEES_OUTSTANDING_NOTE =
+  "Late fees owed are the fees assessed under the note that are unpaid as of today, plus any late fee the note charges before the good-through date. They are included in this total.";
+
+/** Wire shape shared by the calculator and the recorded-quote endpoints, for either book. */
+function payoffResponseBody(result: {
+  quote: PayoffQuote;
+  /** SUM of late fees already collected through the ledger. */
+  lateFeesCollectedToDateCents: number;
+  /** Outstanding late fees when the book tracks them; null when it does not. */
+  lateFeesOutstandingCents: number | null;
+  lateFeesOutstandingNote: string | null;
+}) {
   const q = result.quote;
   return {
     asOf: q.payoffDate,
@@ -1230,10 +1288,46 @@ function payoffResponseBody(result: AcquiredNotePayoffResult) {
     annualRateBps: q.annualRateBps,
     lateFeesAppliedToDateCents: result.lateFeesCollectedToDateCents,
     // Not tracked, therefore not asserted as zero-owed. Refuse, don't fabricate.
-    lateFeesOutstandingCents: null as number | null,
-    lateFeesOutstandingNote:
-      "Outstanding late fees are not tracked separately from collected late fees in this ledger, so they are excluded from the payoff total rather than estimated.",
+    lateFeesOutstandingCents: result.lateFeesOutstandingCents,
+    lateFeesOutstandingNote: result.lateFeesOutstandingNote,
   };
+}
+
+/** The acquired book's response: outstanding late fees are not tracked, so null + the note. */
+function acquiredPayoffResponseBody(result: AcquiredNotePayoffResult) {
+  return payoffResponseBody({
+    quote: result.quote,
+    lateFeesCollectedToDateCents: result.lateFeesCollectedToDateCents,
+    lateFeesOutstandingCents: null,
+    lateFeesOutstandingNote: ACQUIRED_LATE_FEES_OUTSTANDING_NOTE,
+  });
+}
+
+/**
+ * Serviced-note side of the operator payoff surfaces (L9-DEF-1). Loads the
+ * note by its INTEGER id plus the payer name from its borrower lead, or null
+ * when the note is not in this org. The borrower portal proves the same
+ * engine exact; the operator surfaces were the ones 500ing because the
+ * numeric id was passed straight into the acquired-note UUID lookup.
+ */
+async function loadServicedNoteForPayoff(orgId: number, noteId: number) {
+  const [note] = await db
+    .select()
+    .from(sellerFinanceNotes)
+    .where(and(eq(sellerFinanceNotes.id, noteId), eq(sellerFinanceNotes.organizationId, orgId)))
+    .limit(1);
+  if (!note) return null;
+  const [borrower] = note.borrowerId
+    ? await db
+        .select()
+        .from(leads)
+        .where(and(eq(leads.id, note.borrowerId), eq(leads.organizationId, orgId)))
+        .limit(1)
+    : [];
+  const payerName = borrower
+    ? `${borrower.firstName ?? ""} ${borrower.lastName ?? ""}`.trim() || null
+    : null;
+  return { note, payerName };
 }
 
 // ─── Route registration ──────────────────────────────────────────────────────
@@ -2025,6 +2119,30 @@ export function registerNoteRoutes(app: Express): void {
               operationKey,
             })
             .returning();
+
+          // ── Write 1b: the Reg-Z application breakdown, same transaction
+          // (D4). The periodic-statement generator sums `payment_applications`
+          // only — for BOTH note books — and refuses an acquired note's
+          // statement when a posted payment has no breakdown there. Mirror
+          // the buckets the operator just recorded on the ledger row
+          // verbatim (this route's split is supplied, never computed, so
+          // there is nothing to re-derive): late fee lands in the fees
+          // bucket, held money in suspense. `paymentId` is the ledger row's
+          // own uuid — the convention the payment_applications schema
+          // documents for this book.
+          await recordPostedPaymentApplication(tx, {
+            organizationId: orgId,
+            loanId: id,
+            loanType: "acquired_note",
+            paymentId: row.id,
+            receivedAt: new Date(data.paymentDate),
+            appliedAt: new Date(data.paymentDate),
+            appliedToPrincipalCents: data.principalCents,
+            appliedToInterestCents: data.interestCents,
+            appliedToEscrowCents: data.escrowCents,
+            appliedToFeesCents: data.lateFeeCents,
+            appliedToSuspenseCents: data.unappliedCents,
+          });
 
           // ── Write 2: the denormalized running balances on the note.
           // currentBalance: subtract principal applied (negative principal on
@@ -2980,7 +3098,7 @@ export function registerNoteRoutes(app: Express): void {
   // Friday at 2 PM?' I need a payoff calculator. One button." This is the
   // one-button.
   //
-  // This is an INDICATIVE quote: a GET must not write, so nothing is recorded.
+  // This is an INDICATIVE quote: a GET records no quote row.
   // To issue a payoff a third party will rely on, POST :id/payoff/quotes —
   // same engine, same numbers, plus a durable row proving what was quoted.
   //
@@ -3005,10 +3123,42 @@ export function registerNoteRoutes(app: Express): void {
           return Errors.badRequest(res, "date must be a valid ISO date (YYYY-MM-DD)");
         }
 
+        // L9-DEF-1: the id's shape picks the book BEFORE any lookup. A
+        // numeric id is a serviced note — passing it to the acquired-note
+        // UUID lookup threw invalid-uuid and the catch returned 500 for the
+        // entire serviced book. An id of neither shape is no note (404).
+        const book = noteBookForId(id);
+        if (!book) return Errors.notFound(res, "Note");
+
+        if (book === "serviced_note") {
+          const loaded = await loadServicedNoteForPayoff(orgId, Number(id));
+          if (!loaded) return Errors.notFound(res, "Note");
+          // Non-recording by construction: the derivation quotes from the
+          // ledger and inserts no note_payoff_quotes row. (The one write it
+          // may perform is the idempotent late-fee assessment the borrower
+          // portal GET already performs — see deriveServicedNotePayoffInput.)
+          const { input, lateFeesCollectedToDateCents } =
+            await deriveServicedNotePayoffInput({
+              note: loaded.note,
+              payoffDate,
+              lenderTimeZone: await resolveOrgTimeZone(orgId),
+            });
+          const quote = computePayoffQuote(input);
+          return res.json({
+            ...payoffResponseBody({
+              quote,
+              lateFeesCollectedToDateCents,
+              lateFeesOutstandingCents: quote.lateFeesOutstandingCents,
+              lateFeesOutstandingNote: SERVICED_LATE_FEES_OUTSTANDING_NOTE,
+            }),
+            recorded: false,
+          });
+        }
+
         const result = await computeAcquiredNotePayoff(db, orgId, id, payoffDate);
         if (!result) return Errors.notFound(res, "Note");
 
-        return res.json({ ...payoffResponseBody(result), recorded: false });
+        return res.json({ ...acquiredPayoffResponseBody(result), recorded: false });
       } catch (err) {
         logger.error("notes.payoff failed", err instanceof Error ? err : undefined);
         return Errors.internal(res, err);
@@ -3064,70 +3214,134 @@ export function registerNoteRoutes(app: Express): void {
           return Errors.badRequest(res, "payoffDate must be a valid ISO date (YYYY-MM-DD)");
         }
 
-        const result = await computeAcquiredNotePayoff(db, orgId, id, payoffDate, {
-          payoffFeeCents: parsed.data.payoffFeeCents ?? 0,
-        });
-        if (!result) return Errors.notFound(res, "Note");
+        // L9-DEF-1: same shape-first dispatch as the calculator. The
+        // serviced engine records its own row (quoteServicedNotePayoff) —
+        // the branch must NOT run the acquired insert below, or the quote
+        // would be recorded twice; it builds the shared 201 body instead
+        // and the handler returns once, after the if/else.
+        const book = noteBookForId(id);
+        if (!book) return Errors.notFound(res, "Note");
 
-        const q = result.quote;
-        const [quoteRow] = await db
-          .insert(notePayoffQuotes)
-          .values({
-            organizationId: orgId,
-            noteSystem: "acquired_note",
-            noteRef: result.note.id,
-            noteNumber: result.note.noteNumber,
-            payerName: result.note.payerName,
-            quotedByUserId: userId,
+        // One 201 site for this endpoint: the res-status-raw ratchet counts
+        // every raw res.status( call, and a second one would be a +1 for a
+        // response the acquired branch already returns. Both books build the
+        // same body shape, so they share this variable and the return.
+        let created: { quote: NotePayoffQuote; recorded: true } & ReturnType<
+          typeof payoffResponseBody
+        >;
+
+        if (book === "serviced_note") {
+          // The serviced book carries no org-configured payoff fee: the
+          // engine hardcodes 0. Refusing a supplied fee beats quoting a
+          // total that silently excludes a fee the operator asked to include.
+          if ((parsed.data.payoffFeeCents ?? 0) > 0) {
+            return Errors.badRequest(res, "payoffFeeCents is not supported for serviced notes");
+          }
+          const loaded = await loadServicedNoteForPayoff(orgId, Number(id));
+          if (!loaded) return Errors.notFound(res, "Note");
+          const {
+            quote: servicedQuote,
+            row: servicedRow,
+            lateFeesCollectedToDateCents,
+          } = await quoteServicedNotePayoff({
+            note: loaded.note,
+            payoffDate,
+            lenderTimeZone: await resolveOrgTimeZone(orgId),
             channel: parsed.data.channel ?? "operator_api",
-            payoffDate: q.payoffDate,
-            // The engine accrues interest THROUGH payoffDate, so that IS the
-            // last date the quoted total is valid. Extending it costs
-            // perDiemInterestCents per additional day — we publish the
-            // per-diem rather than quietly quoting a stale total.
-            goodThroughDate: q.payoffDate,
-            principalBalanceCents: q.principalBalanceCents,
-            annualRateBpsHundredths: Math.round(q.annualRateBps * 100),
-            accrualStartDate: q.accrualStartDate,
-            daysAccrued: q.daysAccrued,
-            dayCountConvention: q.dayCountConvention,
-            perDiemInterestCents: q.perDiemInterestCents,
-            accruedInterestCents: q.accruedInterestCents,
-            unappliedCreditCents: q.unappliedCreditCents,
-            lateFeesOutstandingCents: q.lateFeesOutstandingCents,
-            payoffFeeCents: q.payoffFeeCents,
+            payerName: loaded.payerName,
+            quotedByUserId: userId,
+            provenance: parsed.data.notes
+              ? `operator_api:${userId} — ${parsed.data.notes}`
+              : `operator_api:${userId}`,
+          });
+
+          logger.info("notes.payoffQuote recorded", {
+            organizationId: orgId,
+            noteId: id,
+            quoteId: servicedRow?.id,
+            totalPayoffCents: servicedQuote.totalPayoffCents,
+            payoffDate: servicedQuote.payoffDate,
+          });
+
+          created = {
+            quote: servicedRow,
+            ...payoffResponseBody({
+              quote: servicedQuote,
+              lateFeesCollectedToDateCents,
+              lateFeesOutstandingCents: servicedQuote.lateFeesOutstandingCents,
+              lateFeesOutstandingNote: SERVICED_LATE_FEES_OUTSTANDING_NOTE,
+            }),
+            recorded: true,
+          };
+        } else {
+          const result = await computeAcquiredNotePayoff(db, orgId, id, payoffDate, {
+            payoffFeeCents: parsed.data.payoffFeeCents ?? 0,
+          });
+          if (!result) return Errors.notFound(res, "Note");
+
+          const q = result.quote;
+          const [quoteRow] = await db
+            .insert(notePayoffQuotes)
+            .values({
+              organizationId: orgId,
+              noteSystem: "acquired_note",
+              noteRef: result.note.id,
+              noteNumber: result.note.noteNumber,
+              payerName: result.note.payerName,
+              quotedByUserId: userId,
+              channel: parsed.data.channel ?? "operator_api",
+              payoffDate: q.payoffDate,
+              // The engine accrues interest THROUGH payoffDate, so that IS the
+              // last date the quoted total is valid. Extending it costs
+              // perDiemInterestCents per additional day — we publish the
+              // per-diem rather than quietly quoting a stale total.
+              goodThroughDate: q.payoffDate,
+              principalBalanceCents: q.principalBalanceCents,
+              annualRateBpsHundredths: Math.round(q.annualRateBps * 100),
+              accrualStartDate: q.accrualStartDate,
+              daysAccrued: q.daysAccrued,
+              dayCountConvention: q.dayCountConvention,
+              perDiemInterestCents: q.perDiemInterestCents,
+              accruedInterestCents: q.accruedInterestCents,
+              unappliedCreditCents: q.unappliedCreditCents,
+              lateFeesOutstandingCents: q.lateFeesOutstandingCents,
+              payoffFeeCents: q.payoffFeeCents,
+              totalPayoffCents: q.totalPayoffCents,
+              engineVersion: q.engineVersion,
+              // Verbatim inputs. Dates as ISO strings so the snapshot is
+              // self-describing without knowing the engine's Date handling.
+              engineInputJson: {
+                principalBalanceCents: result.input.principalBalanceCents,
+                annualRateBps: result.input.annualRateBps,
+                accrualStartDate: isoDateUtc(result.input.accrualStartDate),
+                payoffDate: isoDateUtc(result.input.payoffDate),
+                unappliedCreditCents: result.input.unappliedCreditCents ?? 0,
+                lateFeesOutstandingCents: result.input.lateFeesOutstandingCents ?? 0,
+                payoffFeeCents: result.input.payoffFeeCents ?? 0,
+                dayCountConvention: PAYOFF_DAY_COUNT_CONVENTION,
+                engineVersion: PAYOFF_ENGINE_VERSION,
+              },
+              notes: parsed.data.notes ?? null,
+            })
+            .returning();
+
+          logger.info("notes.payoffQuote recorded", {
+            organizationId: orgId,
+            noteId: id,
+            quoteId: quoteRow?.id,
             totalPayoffCents: q.totalPayoffCents,
-            engineVersion: q.engineVersion,
-            // Verbatim inputs. Dates as ISO strings so the snapshot is
-            // self-describing without knowing the engine's Date handling.
-            engineInputJson: {
-              principalBalanceCents: result.input.principalBalanceCents,
-              annualRateBps: result.input.annualRateBps,
-              accrualStartDate: isoDateUtc(result.input.accrualStartDate),
-              payoffDate: isoDateUtc(result.input.payoffDate),
-              unappliedCreditCents: result.input.unappliedCreditCents ?? 0,
-              lateFeesOutstandingCents: result.input.lateFeesOutstandingCents ?? 0,
-              payoffFeeCents: result.input.payoffFeeCents ?? 0,
-              dayCountConvention: PAYOFF_DAY_COUNT_CONVENTION,
-              engineVersion: PAYOFF_ENGINE_VERSION,
-            },
-            notes: parsed.data.notes ?? null,
-          })
-          .returning();
+            payoffDate: q.payoffDate,
+          });
 
-        logger.info("notes.payoffQuote recorded", {
-          organizationId: orgId,
-          noteId: id,
-          quoteId: quoteRow?.id,
-          totalPayoffCents: q.totalPayoffCents,
-          payoffDate: q.payoffDate,
-        });
+          created = {
+            quote: quoteRow,
+            ...acquiredPayoffResponseBody(result),
+            recorded: true,
+          };
+        }
 
-        return res.status(201).json({
-          quote: quoteRow,
-          ...payoffResponseBody(result),
-          recorded: true,
-        });
+        // One 201 site for both books (see the `created` declaration above).
+        return res.status(201).json(created);
       } catch (err) {
         logger.error("notes.payoffQuote.create failed", err instanceof Error ? err : undefined);
         return Errors.internal(res, err);
@@ -3145,13 +3359,18 @@ export function registerNoteRoutes(app: Express): void {
       try {
         const orgId = getOrganizationId(req);
         const id = routeParam(req.params.id);
+        // L9-DEF-1: the list hard-coded the acquired book, so a serviced
+        // quote recorded by POST above was unlistable. Scope by the id's
+        // shape; an id of neither shape lists nothing (no lookup runs).
+        const book = noteBookForId(id);
+        if (!book) return res.json({ quotes: [] });
         const rows = await db
           .select()
           .from(notePayoffQuotes)
           .where(
             and(
               eq(notePayoffQuotes.organizationId, orgId),
-              eq(notePayoffQuotes.noteSystem, "acquired_note"),
+              eq(notePayoffQuotes.noteSystem, book),
               eq(notePayoffQuotes.noteRef, id),
             ),
           )
@@ -3174,12 +3393,19 @@ export function registerNoteRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const orgId = getOrganizationId(req);
+        const quoteId = routeParam(req.params.quoteId);
+        // note_payoff_quotes.id is a UUID column: a non-UUID quoteId can
+        // never match a row, and passing it to Postgres throws
+        // invalid-uuid, which the catch below turns into a 500.
+        // Shape-guard it to the same 404 a well-formed unknown id gets
+        // (the L9-DEF-1 discipline; #639 audit follow-up).
+        if (!isUuidShape(quoteId)) return Errors.notFound(res, "Payoff quote");
         const [row] = await db
           .select()
           .from(notePayoffQuotes)
           .where(
             and(
-              eq(notePayoffQuotes.id, routeParam(req.params.quoteId)),
+              eq(notePayoffQuotes.id, quoteId),
               eq(notePayoffQuotes.organizationId, orgId),
               eq(notePayoffQuotes.noteRef, routeParam(req.params.id)),
             ),
@@ -3432,20 +3658,33 @@ export function registerNoteRoutes(app: Express): void {
           }
         }
 
-        const mapped = mapDealToNoteFields(
-          {
-            id: deal.id,
-            organizationId: deal.organizationId,
-            propertyId: deal.propertyId,
-            status: deal.status,
-            type: deal.type,
-            offerAmount: deal.offerAmount,
-            acceptedAmount: deal.acceptedAmount,
-            closingDate: deal.closingDate,
-            analysisResults: deal.analysisResults ?? null,
-          },
-          overrides,
-        );
+        const carryableDeal = {
+          id: deal.id,
+          organizationId: deal.organizationId,
+          propertyId: deal.propertyId,
+          status: deal.status,
+          type: deal.type,
+          offerAmount: deal.offerAmount,
+          acceptedAmount: deal.acceptedAmount,
+          closingDate: deal.closingDate,
+          analysisResults: deal.analysisResults ?? null,
+        };
+
+        // H-DEF-2: a deal that records no rate/term must not originate a
+        // note on the platform defaults (0% / 120mo) as if they were the
+        // deal's terms. The operator supplies them explicitly — the
+        // confirm screen already sends both on every carry — or the
+        // carry is refused naming what is missing. No note is created.
+        const missingTerms = missingCarryTerms(carryableDeal, overrides);
+        if (missingTerms.length > 0) {
+          return Errors.badRequest(
+            res,
+            `${missingTerms.join(" and ")} ${missingTerms.length > 1 ? "are" : "is"} required to carry this deal into a note — the deal does not record ${missingTerms.length > 1 ? "them" : "it"}, so supply ${missingTerms.length > 1 ? "them" : "it"} explicitly instead of originating on platform defaults`,
+            { missingTerms, dealId },
+          );
+        }
+
+        const mapped = mapDealToNoteFields(carryableDeal, overrides);
 
         const note = await storage.createNote(mapped as unknown as InsertNote);
 
@@ -3506,6 +3745,13 @@ export function registerNoteRoutes(app: Express): void {
       }
     },
   );
+
+  // Settlement & Documents Rail (P1-3 core + Notes transplant): the payoff
+  // letter + lien release on /api/notes/:id/…, and the rail's shared
+  // recording-status + money-event routes. Mounted here, through the notes
+  // register function, because server/routes.ts + routeManifest.ts are owned
+  // by the Phase-0 landing lane — see services/settlementRail/routes.ts.
+  registerSettlementRailRoutes(app);
 }
 
 // ─── Aggregation helper used by form1099Batch.ts ─────────────────────────────

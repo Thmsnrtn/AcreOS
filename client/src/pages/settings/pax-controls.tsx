@@ -30,6 +30,7 @@ import {
   CheckCircle2,
   Clock,
   Database,
+  Globe,
   History,
   Inbox,
   Mail,
@@ -50,6 +51,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -60,18 +62,39 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { formatDateTime, formatRelative } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { OFFERED_STANCES, STANCE_LABELS, UNATTENDED_PATHS, type PaxStance } from "@shared/pax-controls";
 import {
-  PAX_GROUP_COPY,
-  PAX_LABELS,
-  PAX_NEVER_LIST,
-  PAX_PAGE_COPY,
-  PAX_PAUSE_COPY,
-  PAX_PAUSE_OPTIONS,
-  PAX_RECEIPT_WORDS,
-  PAX_STANCE_COPY,
+  OFFERED_STANCES,
+  PAX_LIMIT_KEYS,
+  PAX_MY_SITES_MAX,
+  PAX_RAIL_LEVEL_LABELS,
+  PAX_RAIL_LEVEL_SENTENCES,
+  PAX_RAIL_LEVELS,
+  PAX_RECORD_DOMAINS,
+  PAX_RECORD_DOMAIN_LABELS,
+  PAX_SENDS_RAIL_LEVELS,
+  PAX_SITE_LABEL_MAX,
+  PAX_TOOL_DOMAINS,
+  PAX_TOOL_GROUPS,
+  STANCE_LABELS,
+  UNATTENDED_PATHS,
+  type PaxLimitKey,
+  type PaxLimits,
+  type PaxMemberOverride,
+  siteHostFromInput,
+  type PaxRailLevel,
+  type PaxRails,
+  type PaxRecordDomain,
+  type PaxSendsRailLevel,
+  type PaxSiteEntry,
+  type PaxStance,
+} from "@shared/pax-controls";
+import { PAX_LABELS, PAX_RECEIPT_WORDS } from "@shared/pax-glossary-core";
+import {
+  PaxGlossaryProvider,
+  usePaxGlossaryData,
+  type PaxGlossaryData,
   type PaxPauseOption,
-} from "@shared/pax-glossary";
+} from "@/lib/pax-glossary";
 
 // ── The controls object (frozen contract 3, server/routes-pax-controls.ts) ──
 
@@ -93,6 +116,14 @@ export interface PaxControlsResponse {
   canChangeStance: boolean;
   canResume: boolean;
   switches: { leadScoring: boolean; borrowerReminders: boolean; inboxDrafts: boolean };
+  /** PX-2 per-capability rails; the server always sends it, the page tolerates its absence. */
+  rails?: PaxRails;
+  /** PX-3 daily caps (null = no cap), members' own overrides, and what applies to THIS caller. */
+  limits?: PaxLimits;
+  members?: Record<string, PaxMemberOverride>;
+  effective?: { rails: PaxRails; limits: PaxLimits };
+  /** PX-7 public sites Pax may search; the server always sends it, the page tolerates its absence. */
+  mySites?: PaxSiteEntry[];
   rightNow: {
     waiting: number;
     changedTodayOnItsOwn: number;
@@ -158,7 +189,7 @@ const TAP = "min-h-11 pointer-fine:sm:min-h-9";
 // "Connected" is keyed on the customer having their OWN key for the channel
 // (BYO rails); the link goes to the one catalog at /settings/byok.
 const CAPABILITIES: Array<{
-  key: keyof typeof PAX_PAGE_COPY.capabilities;
+  key: keyof PaxGlossaryData["PAX_PAGE_COPY"]["capabilities"];
   icon: typeof MessageSquare;
   channels: string[];
 }> = [
@@ -204,13 +235,16 @@ function isLongPause(until: Date | null): boolean {
 type PromptTone = "ok" | "neutral" | "error";
 
 /** Neutral outcomes stay neutral: a skip is not an error. */
-function promptStatus(status: string | null): { label: string; tone: PromptTone } | null {
+function promptStatus(
+  status: string | null,
+  pageCopy: PaxGlossaryData["PAX_PAGE_COPY"],
+): { label: string; tone: PromptTone } | null {
   if (!status) return null;
-  if (status === "success") return { label: PAX_PAGE_COPY.promptOk, tone: "ok" };
-  if (status === "skipped_paused") return { label: PAX_PAGE_COPY.promptSkippedPaused, tone: "neutral" };
-  if (status === "skipped_off") return { label: PAX_PAGE_COPY.promptSkippedOff, tone: "neutral" };
+  if (status === "success") return { label: pageCopy.promptOk, tone: "ok" };
+  if (status === "skipped_paused") return { label: pageCopy.promptSkippedPaused, tone: "neutral" };
+  if (status === "skipped_off") return { label: pageCopy.promptSkippedOff, tone: "neutral" };
   if (status.startsWith("skipped")) return { label: status.replace(/_/g, " "), tone: "neutral" };
-  return { label: PAX_PAGE_COPY.promptError, tone: "error" };
+  return { label: pageCopy.promptError, tone: "error" };
 }
 
 const TONE_CLASS: Record<PromptTone, string> = {
@@ -232,7 +266,17 @@ async function getJson<T>(url: string): Promise<T> {
 
 // ── Page ───────────────────────────────────────────────────────────────────
 
-export function PaxControls() {
+function PaxControlsLoaded() {
+  const {
+    PAX_GROUP_COPY,
+    PAX_LIMIT_COPY,
+    PAX_NEVER_LIST,
+    PAX_PAGE_COPY,
+    PAX_PAUSE_COPY,
+    PAX_PAUSE_OPTIONS,
+    PAX_RAIL_COPY,
+    PAX_STANCE_COPY,
+  } = usePaxGlossaryData();
   useDocumentTitle(PAX_PAGE_COPY.title);
   const { toast } = useToast();
   const [pauseOpen, setPauseOpen] = React.useState(false);
@@ -302,7 +346,14 @@ export function PaxControls() {
       toast({ title: PAX_PAGE_COPY.couldNotResume, description: serverMessage(error), variant: "destructive" }),
   });
 
-  type Patch = Partial<{ stance: PaxStance; leadScoring: boolean; borrowerReminders: boolean; inboxDrafts: boolean }>;
+  type Patch = Partial<{
+    stance: PaxStance;
+    leadScoring: boolean;
+    borrowerReminders: boolean;
+    inboxDrafts: boolean;
+    rails: { records?: Partial<Record<PaxRecordDomain, PaxRailLevel>>; sends?: PaxSendsRailLevel };
+    limits: Partial<PaxLimits>;
+  }>;
   // allow-no-invalidation: settle() writes the fresh controls object into
   // CONTROLS_KEY with setQueryData and invalidates the receipts feed; the
   // rule cannot follow the useCallback helper.
@@ -320,9 +371,56 @@ export function PaxControls() {
         toast({ title: PAX_PAGE_COPY.switchToast(PAX_PAGE_COPY.borrowerReminders, body.borrowerReminders) });
       if (body.inboxDrafts !== undefined)
         toast({ title: PAX_PAGE_COPY.switchToast(PAX_PAGE_COPY.inboxDrafts, body.inboxDrafts) });
+      if (body.rails?.sends)
+        toast({ title: PAX_RAIL_COPY.changed(PAX_RAIL_COPY.sendsLabel, PAX_RAIL_LEVEL_LABELS[body.rails.sends]) });
+      for (const d of PAX_RECORD_DOMAINS) {
+        const level = body.rails?.records?.[d];
+        if (level) toast({ title: PAX_RAIL_COPY.changed(PAX_RECORD_DOMAIN_LABELS[d], PAX_RAIL_LEVEL_LABELS[level]) });
+      }
+      if (body.limits) toast({ title: PAX_LIMIT_COPY.saved });
     },
     onError: (error: unknown) =>
       toast({ title: PAX_PAGE_COPY.couldNotChange, description: serverMessage(error), variant: "destructive" }),
+  });
+
+  // PX-3 — the signed-in member's OWN narrower settings. `null` clears a part.
+  type MyOverrideBody = {
+    rails?: { records?: Partial<Record<PaxRecordDomain, PaxRailLevel>>; sends?: PaxSendsRailLevel } | null;
+    limits?: Partial<PaxLimits> | null;
+  };
+  // allow-no-invalidation: settle() writes the fresh controls object into
+  // CONTROLS_KEY with setQueryData and invalidates the receipts feed; the
+  // rule cannot follow the useCallback helper.
+  const myOverride = useMutation({
+    mutationFn: async (body: MyOverrideBody) => {
+      const res = await apiRequest("PATCH", "/api/pax/controls/my-override", body);
+      return { next: (await res.json()) as PaxControlsResponse, body };
+    },
+    onSuccess: ({ next, body }) => {
+      settle(next);
+      toast({
+        title: body.rails === null && body.limits === null ? PAX_LIMIT_COPY.memberCleared : PAX_LIMIT_COPY.memberSaved,
+      });
+    },
+    onError: (error: unknown) =>
+      toast({ title: PAX_LIMIT_COPY.memberCouldNotSave, description: serverMessage(error), variant: "destructive" }),
+  });
+
+  // POST /api/pax/controls/reset-rails — owner / admin; stance, switches and pause untouched.
+  // allow-no-invalidation: settle() writes the fresh controls object into
+  // CONTROLS_KEY with setQueryData and invalidates the receipts feed; the
+  // rule cannot follow the useCallback helper.
+  const resetRails = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/pax/controls/reset-rails");
+      return (await res.json()) as PaxControlsResponse;
+    },
+    onSuccess: (next) => {
+      settle(next);
+      toast({ title: PAX_LIMIT_COPY.resetDone });
+    },
+    onError: (error: unknown) =>
+      toast({ title: PAX_LIMIT_COPY.couldNotReset, description: serverMessage(error), variant: "destructive" }),
   });
 
   if (controls.isLoading) {
@@ -533,6 +631,51 @@ export function PaxControls() {
         </CardContent>
       </Card>
 
+      {/* ── 2b. Rails — what Pax may do on each kind of record (PX-2) ───── */}
+      {data.rails && (
+        <RailsCard
+          rails={data.rails}
+          stance={stance}
+          canEdit={canEdit}
+          onRecord={(domain, level) => {
+            const records: Partial<Record<PaxRecordDomain, PaxRailLevel>> = {};
+            records[domain] = level;
+            patch.mutate({ rails: { records } });
+          }}
+          onSends={(level) => patch.mutate({ rails: { sends: level } })}
+          canReset={data.canChangeStance}
+          resetPending={resetRails.isPending}
+          onReset={() => resetRails.mutate()}
+        />
+      )}
+
+      {/* ── 2c. Daily limits (PX-3) ─────────────────────────────────────── */}
+      {data.limits && (
+        <LimitsCard
+          key={JSON.stringify(data.limits)}
+          limits={data.limits}
+          canEdit={canEdit}
+          onSave={(limits) => patch.mutate({ limits })}
+        />
+      )}
+
+      {/* ── 2d. Your own narrower settings (PX-3) ───────────────────────── */}
+      {data.rails && data.limits && data.effective && (
+        <MemberCard
+          key={JSON.stringify(data.effective)}
+          orgRails={data.rails}
+          orgLimits={data.limits}
+          effective={data.effective}
+          pending={myOverride.isPending}
+          onRails={(rails) => myOverride.mutate({ rails })}
+          onSaveLimits={(limits) => myOverride.mutate({ limits })}
+          onClear={() => myOverride.mutate({ rails: null, limits: null })}
+        />
+      )}
+
+      {/* ── 2c. My county sites — where Pax may run searches (PX-7) ─────── */}
+      <MySitesCard sites={data.mySites ?? []} canEdit={data.canChangeStance} />
+
       {/* ── 3. What runs on its own ─────────────────────────────────────── */}
       <Card className="rounded-card mb-4" data-testid="pax-runs-card">
         <CardHeader>
@@ -684,6 +827,615 @@ export function PaxControls() {
 
 export default PaxControls;
 
+// ── Rails (PX-2) ───────────────────────────────────────────────────────────
+
+/**
+ * Rendered FROM the registry, not from a list typed here: the record rows are
+ * the domains PAX_TOOL_DOMAINS actually assigns a tool to (under the
+ * changes_records group), the sends row exists because PAX_TOOL_GROUPS has a
+ * sends tool, and the information rows come from PAX_TOOL_GROUPS (looks &
+ * drafts) and UNATTENDED_PATHS (rules). A rail can narrow the stance above,
+ * never widen it — the server enforces that; this page only offers the levels.
+ */
+/**
+ * The page's long copy is a static asset now (BD-6): the shell renders
+ * first (the same skeleton the controls fetch shows), the glossary text
+ * arrives with its fetch, and a failed fetch shows the load-error state
+ * with retry — never a half-labelled page. PaxControlsLoaded and every
+ * card below read the copy from the provider via usePaxGlossaryData().
+ */
+export function PaxControls() {
+  return (
+    <PaxGlossaryProvider
+      fallback={
+        <PageShell label="Pax">
+          <div className="space-y-4" data-testid="pax-controls-loading" aria-busy="true">
+            <Skeleton className="h-8 w-40" />
+            <Skeleton className="h-24 w-full rounded-card" />
+            <Skeleton className="h-40 w-full rounded-card" />
+            <Skeleton className="h-64 w-full rounded-card" />
+          </div>
+        </PageShell>
+      }
+      errorFallback={(retry) => (
+        <PageShell label="Pax">
+          <QueryErrorState error={new Error("glossary")} onRetry={retry} title="Couldn't load Pax" testId="pax-controls-error" />
+        </PageShell>
+      )}
+    >
+      <PaxControlsLoaded />
+    </PaxGlossaryProvider>
+  );
+}
+
+function RailsCard({
+  rails,
+  stance,
+  canEdit,
+  onRecord,
+  onSends,
+  canReset,
+  resetPending,
+  onReset,
+}: {
+  rails: PaxRails;
+  stance: PaxStance;
+  canEdit: boolean;
+  onRecord: (domain: PaxRecordDomain, level: PaxRailLevel) => void;
+  onSends: (level: PaxSendsRailLevel) => void;
+  canReset: boolean;
+  resetPending: boolean;
+  onReset: () => void;
+}) {
+  const [confirmReset, setConfirmReset] = React.useState(false);
+  const { PAX_LIMIT_COPY, PAX_RAIL_COPY } = usePaxGlossaryData();
+  const groups = new Set<string>(Object.values(PAX_TOOL_GROUPS));
+  const domainsWithTools = new Set<string>(Object.values(PAX_TOOL_DOMAINS));
+  const recordDomains = groups.has("changes_records")
+    ? PAX_RECORD_DOMAINS.filter((d) => domainsWithTools.has(d))
+    : [];
+  const ruleRows = UNATTENDED_PATHS.filter((p) => p.customerVisible && p.switch !== null);
+
+  return (
+    <Card className="rounded-card mb-4" data-testid="pax-rails-card">
+      <CardHeader>
+        <CardTitle className="text-section-h2">{PAX_RAIL_COPY.title}</CardTitle>
+        <CardDescription>{PAX_RAIL_COPY.intro}</CardDescription>
+      </CardHeader>
+      <CardContent className="divide-y p-0">
+        {recordDomains.map((d) => (
+          <RailRow
+            key={d}
+            testId={`rail-row-${d}`}
+            label={PAX_RECORD_DOMAIN_LABELS[d]}
+            level={rails.records[d]}
+            levels={PAX_RAIL_LEVELS}
+            disabled={!canEdit}
+            onChange={(l) => onRecord(d, l)}
+          />
+        ))}
+        {groups.has("sends") && (
+          <RailRow
+            testId="rail-row-sends"
+            label={PAX_RAIL_COPY.sendsLabel}
+            level={rails.sends}
+            levels={PAX_SENDS_RAIL_LEVELS}
+            disabled={!canEdit}
+            note={PAX_RAIL_COPY.sendsCeiling}
+            onChange={(l) => {
+              if ((PAX_SENDS_RAIL_LEVELS as readonly PaxRailLevel[]).includes(l)) onSends(l as PaxSendsRailLevel);
+            }}
+          />
+        )}
+        {groups.has("looks_and_drafts") && (
+          <RunRow
+            testId="rail-info-looks-and-drafts"
+            label={PAX_RAIL_COPY.alwaysOnLabel}
+            line={PAX_RAIL_COPY.alwaysOnLine}
+          />
+        )}
+        <div className="px-4 py-3" data-testid="rail-info-runs-rules">
+          <div className="text-sm font-medium">{PAX_RAIL_COPY.runsRulesLabel}</div>
+          <div className="text-xs text-muted-foreground">{PAX_RAIL_COPY.runsRulesLine}</div>
+          <ul className="mt-1.5 space-y-0.5">
+            {ruleRows.map((p) => (
+              <li key={p.id} className="text-xs" data-testid={`rail-rule-${p.id}`}>
+                <span className="font-medium">{p.label}</span>
+                <span className="text-muted-foreground"> — {p.stance[stance]}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+        {/* PX-3 — reset all rails. Two steps (the button turns into its own
+            confirmation) so a stray tap cannot wipe everyone's settings. */}
+        {canReset && (
+          <div className="px-4 py-3" data-testid="rail-reset">
+            <p className="text-xs text-muted-foreground">{PAX_LIMIT_COPY.resetWhat}</p>
+            <p className="text-xs text-muted-foreground mt-0.5" data-testid="rail-reset-keeps">
+              {PAX_LIMIT_COPY.resetWhatNot}
+            </p>
+            <div className="mt-2 flex items-center gap-2 flex-wrap">
+              <Button
+                variant={confirmReset ? "destructive" : "outline"}
+                className={TAP}
+                disabled={resetPending}
+                onClick={() => {
+                  if (!confirmReset) {
+                    setConfirmReset(true);
+                    return;
+                  }
+                  setConfirmReset(false);
+                  onReset();
+                }}
+                data-testid="button-reset-rails"
+              >
+                {confirmReset ? PAX_LIMIT_COPY.resetConfirm : PAX_LIMIT_COPY.resetButton}
+              </Button>
+              {confirmReset && (
+                <Button
+                  variant="ghost"
+                  className={TAP}
+                  onClick={() => setConfirmReset(false)}
+                  data-testid="button-reset-rails-cancel"
+                >
+                  {PAX_LIMIT_COPY.resetCancel}
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Daily limits and your own narrower settings (PX-3) ─────────────────────
+
+/** "" → no cap (null); a whole number ≥ 0 → itself; anything else → "invalid". */
+function parseCap(raw: string): number | null | "invalid" {
+  const t = raw.trim();
+  if (t === "") return null;
+  if (!/^\d+$/.test(t)) return "invalid";
+  const n = Number(t);
+  return Number.isSafeInteger(n) ? n : "invalid";
+}
+
+const capText = (v: number | null | undefined): string => (v === null || v === undefined ? "" : String(v));
+
+/** The four cap inputs, blank = no limit. Shared by the org card and the member card. */
+function LimitInputs({
+  idPrefix,
+  values,
+  onChange,
+  disabled,
+  placeholders,
+}: {
+  idPrefix: string;
+  values: Record<PaxLimitKey, string>;
+  onChange: (key: PaxLimitKey, value: string) => void;
+  disabled: boolean;
+  /** Per-key placeholder; the member card shows the org's cap there. */
+  placeholders?: Partial<Record<PaxLimitKey, string>>;
+}) {
+  const { PAX_LIMIT_COPY } = usePaxGlossaryData();
+  return (
+    <div className="grid gap-3 sm:grid-cols-2">
+      {PAX_LIMIT_KEYS.map((k) => {
+        const invalid = parseCap(values[k]) === "invalid";
+        return (
+          <div key={k} className="space-y-1">
+            <Label htmlFor={`${idPrefix}-${k}`} className="text-sm font-medium">
+              {PAX_LIMIT_COPY.labels[k]}
+            </Label>
+            <Input
+              id={`${idPrefix}-${k}`}
+              type="number"
+              inputMode="numeric"
+              min={0}
+              step={1}
+              value={values[k]}
+              placeholder={placeholders?.[k] ?? PAX_LIMIT_COPY.placeholder}
+              disabled={disabled}
+              aria-invalid={invalid}
+              onChange={(e) => onChange(k, e.target.value)}
+              data-testid={`${idPrefix}-${k}`}
+            />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function LimitsCard({
+
+  limits,
+  canEdit,
+  onSave,
+}: {
+  limits: PaxLimits;
+  canEdit: boolean;
+  onSave: (limits: Partial<PaxLimits>) => void;
+}) {
+  const { PAX_LIMIT_COPY } = usePaxGlossaryData();
+  const [values, setValues] = React.useState<Record<PaxLimitKey, string>>(() => ({
+    asksPerDay: capText(limits.asksPerDay),
+    creditSpendPerDay: capText(limits.creditSpendPerDay),
+    browseCallsPerDay: capText(limits.browseCallsPerDay),
+    batchRowsPerDay: capText(limits.batchRowsPerDay),
+  }));
+  const parsed = PAX_LIMIT_KEYS.map((k) => [k, parseCap(values[k])] as const);
+  const anyInvalid = parsed.some(([, v]) => v === "invalid");
+
+  return (
+    <Card className="rounded-card mb-4" data-testid="pax-limits-card">
+      <CardHeader>
+        <CardTitle className="text-section-h2">{PAX_LIMIT_COPY.title}</CardTitle>
+        <CardDescription>{PAX_LIMIT_COPY.intro}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <LimitInputs
+          idPrefix="limit"
+          values={values}
+          onChange={(k, v) => setValues((cur) => ({ ...cur, [k]: v }))}
+          disabled={!canEdit}
+        />
+        <p className="text-xs text-muted-foreground" data-testid="pax-limits-reset-note">
+          {PAX_LIMIT_COPY.resetNote}
+        </p>
+        {canEdit ? (
+          <Button
+            className={TAP}
+            disabled={anyInvalid}
+            onClick={() => {
+              const next: Partial<PaxLimits> = {};
+              for (const [k, v] of parsed) if (v !== "invalid") next[k] = v;
+              onSave(next);
+            }}
+            data-testid="button-save-limits"
+          >
+            {PAX_LIMIT_COPY.save}
+          </Button>
+        ) : (
+          <p className="text-xs text-muted-foreground" data-testid="pax-limits-read-only">
+            {PAX_LIMIT_COPY.adminHint}
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * The signed-in member's own override. The rail choices stop at the org's
+ * current level for each area — the page offers nothing wider (the server
+ * composition takes the weaker of the two regardless) — and the limit boxes
+ * show the org's cap as their placeholder. What APPLIES to the member is
+ * rendered from `effective` (GET /controls), never recomputed here.
+ */
+function MemberCard({
+  orgRails,
+  orgLimits,
+  effective,
+  pending,
+  onRails,
+  onSaveLimits,
+  onClear,
+}: {
+  orgRails: PaxRails;
+  orgLimits: PaxLimits;
+  effective: { rails: PaxRails; limits: PaxLimits };
+  pending: boolean;
+  onRails: (rails: { records?: Partial<Record<PaxRecordDomain, PaxRailLevel>>; sends?: PaxSendsRailLevel }) => void;
+  onSaveLimits: (limits: Partial<PaxLimits>) => void;
+  onClear: () => void;
+}) {
+  const { PAX_LIMIT_COPY, PAX_RAIL_COPY } = usePaxGlossaryData();
+  // Show a limit in the box only when the member's own is the tighter one.
+  const own = (k: PaxLimitKey) => (effective.limits[k] !== orgLimits[k] ? effective.limits[k] : null);
+  const [values, setValues] = React.useState<Record<PaxLimitKey, string>>(() => ({
+    asksPerDay: capText(own("asksPerDay")),
+    creditSpendPerDay: capText(own("creditSpendPerDay")),
+    browseCallsPerDay: capText(own("browseCallsPerDay")),
+    batchRowsPerDay: capText(own("batchRowsPerDay")),
+  }));
+  const parsed = PAX_LIMIT_KEYS.map((k) => [k, parseCap(values[k])] as const);
+  const anyInvalid = parsed.some(([, v]) => v === "invalid");
+  const placeholders: Partial<Record<PaxLimitKey, string>> = {};
+  for (const k of PAX_LIMIT_KEYS) placeholders[k] = capText(orgLimits[k]) || PAX_LIMIT_COPY.placeholder;
+
+  const recordDomains = PAX_RECORD_DOMAINS.filter((d) => new Set<string>(Object.values(PAX_TOOL_DOMAINS)).has(d));
+  /** Levels from the weakest up to and including the org's own — nothing wider is offered. */
+  const upTo = (orgLevel: PaxRailLevel, all: readonly PaxRailLevel[]) =>
+    all.slice(0, all.indexOf(orgLevel) + 1);
+
+  return (
+    <Card className="rounded-card mb-4" data-testid="pax-member-card">
+      <CardHeader>
+        <CardTitle className="text-section-h2">{PAX_LIMIT_COPY.memberTitle}</CardTitle>
+        <CardDescription>{PAX_LIMIT_COPY.memberIntro}</CardDescription>
+      </CardHeader>
+      <CardContent className="divide-y p-0">
+        {recordDomains.map((d) => (
+          <RailRow
+            key={d}
+            testId={`member-rail-${d}`}
+            label={PAX_RECORD_DOMAIN_LABELS[d]}
+            level={effective.rails.records[d]}
+            levels={upTo(orgRails.records[d], PAX_RAIL_LEVELS)}
+            disabled={pending}
+            onChange={(l) => {
+              const records: Partial<Record<PaxRecordDomain, PaxRailLevel>> = {};
+              records[d] = l;
+              onRails({ records });
+            }}
+          />
+        ))}
+        <RailRow
+          testId="member-rail-sends"
+          label={PAX_RAIL_COPY.sendsLabel}
+          level={effective.rails.sends}
+          levels={upTo(orgRails.sends, PAX_SENDS_RAIL_LEVELS)}
+          disabled={pending}
+          onChange={(l) => {
+            if ((PAX_SENDS_RAIL_LEVELS as readonly PaxRailLevel[]).includes(l)) onRails({ sends: l as PaxSendsRailLevel });
+          }}
+        />
+        <div className="px-4 py-3 space-y-3">
+          <LimitInputs
+            idPrefix="my-limit"
+            values={values}
+            onChange={(k, v) => setValues((cur) => ({ ...cur, [k]: v }))}
+            disabled={pending}
+            placeholders={placeholders}
+          />
+          <p className="text-xs text-muted-foreground" data-testid="pax-member-limit-note">
+            {PAX_LIMIT_COPY.memberLimitNote}
+          </p>
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              {PAX_LIMIT_COPY.memberApplies}
+            </div>
+            <ul className="text-sm mt-1 space-y-0.5" data-testid="pax-member-applies">
+              {PAX_LIMIT_KEYS.map((k) => (
+                <li key={k} data-testid={`member-applies-${k}`}>
+                  <span className="font-medium">{PAX_LIMIT_COPY.labels[k]}</span>
+                  <span className="text-muted-foreground tabular-nums">
+                    {" — "}
+                    {effective.limits[k] === null ? PAX_LIMIT_COPY.memberNoLimit : effective.limits[k]}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button
+              className={TAP}
+              disabled={pending || anyInvalid}
+              onClick={() => {
+                const next: Partial<PaxLimits> = {};
+                for (const [k, v] of parsed) if (v !== "invalid") next[k] = v;
+                onSaveLimits(next);
+              }}
+              data-testid="button-save-my-override"
+            >
+              {PAX_LIMIT_COPY.memberSave}
+            </Button>
+            <Button
+              variant="outline"
+              className={TAP}
+              disabled={pending}
+              onClick={onClear}
+              data-testid="button-clear-my-override"
+            >
+              {PAX_LIMIT_COPY.memberClear}
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function RailRow({
+  testId,
+  label,
+  level,
+  levels,
+  disabled,
+  note,
+  onChange,
+}: {
+  testId: string;
+  label: string;
+  level: PaxRailLevel;
+  levels: readonly PaxRailLevel[];
+  disabled: boolean;
+  note?: string;
+  onChange: (level: PaxRailLevel) => void;
+}) {
+  return (
+    <div className="px-4 py-3" data-testid={testId}>
+      <div className="text-sm font-medium">{label}</div>
+      <ToggleGroup
+        type="single"
+        value={level}
+        onValueChange={(v) => {
+          if (v && v !== level && levels.includes(v as PaxRailLevel)) onChange(v as PaxRailLevel);
+        }}
+        disabled={disabled}
+        aria-label={label}
+        className="justify-start flex-wrap gap-2 mt-1.5"
+        data-testid={`${testId}-control`}
+      >
+        {levels.map((l) => (
+          <ToggleGroupItem
+            key={l}
+            value={l}
+            variant="outline"
+            className={cn(TAP, "px-4 data-[state=on]:bg-acr-brand-soft data-[state=on]:text-acr-brand-soft-ink")}
+            data-testid={`${testId}-${l}`}
+          >
+            {PAX_RAIL_LEVEL_LABELS[l]}
+          </ToggleGroupItem>
+        ))}
+      </ToggleGroup>
+      <div className="text-xs text-muted-foreground mt-1" data-testid={`${testId}-sentence`}>
+        {PAX_RAIL_LEVEL_SENTENCES[level]}
+      </div>
+      {note && <div className="text-xs text-muted-foreground mt-0.5">{note}</div>}
+    </div>
+  );
+}
+
+// ── My county sites (PX-7) ─────────────────────────────────────────────────
+
+/**
+ * The org's list of public sites Pax may run searches on. The page extracts
+ * the host from whatever is pasted (siteHostFromInput); the SERVER validates it
+ * again and replaces the whole list (PATCH /api/pax/controls { mySites }). Only
+ * an owner or admin edits it — the same gate as the rest of this page.
+ */
+function MySitesCard({ sites, canEdit }: { sites: PaxSiteEntry[]; canEdit: boolean }) {
+  const { PAX_MY_SITES_COPY, PAX_PAGE_COPY } = usePaxGlossaryData();
+  const { toast } = useToast();
+  const [label, setLabel] = React.useState("");
+  const [address, setAddress] = React.useState("");
+  const [problem, setProblem] = React.useState<string | null>(null);
+
+  const save = useMutation({
+    mutationFn: async (next: PaxSiteEntry[]) => {
+      const res = await apiRequest("PATCH", "/api/pax/controls", { mySites: next });
+      return (await res.json()) as PaxControlsResponse;
+    },
+    onSuccess: (next) => {
+      queryClient.setQueryData(CONTROLS_KEY, next);
+      void queryClient.invalidateQueries({ queryKey: CONTROLS_KEY });
+      void queryClient.invalidateQueries({ queryKey: [RECEIPTS_KEY[0]] });
+    },
+    onError: (error: unknown) =>
+      toast({ title: PAX_PAGE_COPY.couldNotChange, description: serverMessage(error), variant: "destructive" }),
+  });
+
+  const add = () => {
+    const host = siteHostFromInput(address);
+    if (!host) return setProblem(PAX_MY_SITES_COPY.notAddress);
+    if (sites.some((s) => s.host === host)) return setProblem(PAX_MY_SITES_COPY.alreadyListed);
+    if (sites.length >= PAX_MY_SITES_MAX) return setProblem(PAX_MY_SITES_COPY.listFull(PAX_MY_SITES_MAX));
+    const name = (label.trim() || host).slice(0, PAX_SITE_LABEL_MAX);
+    setProblem(null);
+    save.mutate([...sites, { host, label: name }], {
+      onSuccess: () => {
+        setLabel("");
+        setAddress("");
+        toast({ title: PAX_MY_SITES_COPY.added(name) });
+      },
+    });
+  };
+
+  const remove = (site: PaxSiteEntry) =>
+    save.mutate(sites.filter((s) => s.host !== site.host), {
+      onSuccess: () => toast({ title: PAX_MY_SITES_COPY.removed(site.label) }),
+    });
+
+  return (
+    <Card className="rounded-card mb-4" data-testid="pax-my-sites-card">
+      <CardHeader>
+        <CardTitle className="text-section-h2">{PAX_MY_SITES_COPY.title}</CardTitle>
+        <CardDescription>{PAX_MY_SITES_COPY.intro}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-xs text-muted-foreground" data-testid="my-sites-limit-line">
+          {PAX_MY_SITES_COPY.limitLine}
+        </p>
+        {sites.length === 0 ? (
+          <p className="text-sm text-muted-foreground" data-testid="my-sites-empty">
+            {PAX_MY_SITES_COPY.empty}
+          </p>
+        ) : (
+          <ul className="divide-y border rounded-card" data-testid="my-sites-list">
+            {sites.map((s) => (
+              <li key={s.host} className="px-3 py-2 flex items-center gap-3" data-testid={`my-site-${s.host}`}>
+                <Globe className="w-4 h-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium truncate">{s.label}</div>
+                  <div className="text-xs text-muted-foreground truncate">{s.host}</div>
+                </div>
+                {canEdit && (
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-11 w-11 pointer-fine:sm:h-9 pointer-fine:sm:w-9 text-muted-foreground hover:text-destructive"
+                    onClick={() => remove(s)}
+                    disabled={save.isPending}
+                    aria-label={`${PAX_MY_SITES_COPY.removeButton}: ${s.label}`}
+                    data-testid={`button-remove-site-${s.host}`}
+                  >
+                    <Trash2 className="w-4 h-4" aria-hidden="true" />
+                  </Button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        {canEdit ? (
+          <form
+            className="grid gap-3 sm:grid-cols-[1fr_1.4fr_auto] sm:items-end"
+            onSubmit={(e) => {
+              e.preventDefault();
+              add();
+            }}
+            data-testid="my-sites-form"
+          >
+            <div className="space-y-1">
+              <Label htmlFor="my-site-label" className="text-xs">
+                {PAX_MY_SITES_COPY.labelField}
+              </Label>
+              <Input
+                id="my-site-label"
+                value={label}
+                maxLength={PAX_SITE_LABEL_MAX}
+                placeholder={PAX_MY_SITES_COPY.labelPlaceholder}
+                onChange={(e) => setLabel(e.target.value)}
+                data-testid="input-site-label"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="my-site-address" className="text-xs">
+                {PAX_MY_SITES_COPY.hostField}
+              </Label>
+              <Input
+                id="my-site-address"
+                value={address}
+                placeholder={PAX_MY_SITES_COPY.hostPlaceholder}
+                onChange={(e) => {
+                  setAddress(e.target.value);
+                  setProblem(null);
+                }}
+                aria-invalid={problem !== null}
+                aria-describedby={problem ? "my-site-problem" : undefined}
+                data-testid="input-site-address"
+              />
+            </div>
+            <Button type="submit" className={TAP} disabled={save.isPending || address.trim() === ""} data-testid="button-add-site">
+              {PAX_MY_SITES_COPY.addButton}
+            </Button>
+          </form>
+        ) : (
+          <p className="text-xs text-muted-foreground" data-testid="my-sites-read-only">
+            {PAX_MY_SITES_COPY.readOnly}
+          </p>
+        )}
+        {problem && (
+          <p id="my-site-problem" role="alert" className="text-xs text-acr-neg" data-testid="my-sites-problem">
+            {problem}
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // ── Rows ───────────────────────────────────────────────────────────────────
 
 function RunRow({
@@ -756,6 +1508,7 @@ function SwitchRow({
 // ── Scheduled prompts (moved here from the deleted pax-tasks-settings-tab) ──
 
 function ScheduledPrompts({ prompts }: { prompts: ScheduledPromptRow[] }) {
+  const { PAX_PAGE_COPY } = usePaxGlossaryData();
   const { toast } = useToast();
   const [historyOf, setHistoryOf] = React.useState<ScheduledPromptRow | null>(null);
 
@@ -803,7 +1556,7 @@ function ScheduledPrompts({ prompts }: { prompts: ScheduledPromptRow[] }) {
     <>
       <ul className="mt-2 space-y-2" data-testid="scheduled-prompts-list">
         {prompts.map((p) => {
-          const status = promptStatus(p.lastRunStatus);
+          const status = promptStatus(p.lastRunStatus, PAX_PAGE_COPY);
           return (
             <li
               key={p.id}
@@ -877,6 +1630,7 @@ function ScheduledPrompts({ prompts }: { prompts: ScheduledPromptRow[] }) {
 }
 
 function RunHistorySheet({ prompt, onClose }: { prompt: ScheduledPromptRow | null; onClose: () => void }) {
+  const { PAX_PAGE_COPY } = usePaxGlossaryData();
   const runs = useQuery<TaskRun[]>({
     queryKey: [SCHEDULED_TASKS_KEY[0], prompt?.id ?? 0, "runs"],
     queryFn: () => getJson<TaskRun[]>(`/api/ai/scheduled-tasks/${prompt!.id}/runs`),
@@ -907,7 +1661,7 @@ function RunHistorySheet({ prompt, onClose }: { prompt: ScheduledPromptRow | nul
             <p className="text-xs text-muted-foreground text-center py-10">{PAX_PAGE_COPY.runHistoryEmpty}</p>
           ) : (
             (runs.data ?? []).map((run) => {
-              const status = promptStatus(run.status) ?? { label: run.status, tone: "neutral" as const };
+              const status = promptStatus(run.status, PAX_PAGE_COPY) ?? { label: run.status, tone: "neutral" as const };
               return (
                 <div key={run.id} className="rounded-md border px-3 py-2 space-y-0.5" data-testid={`run-${run.id}`}>
                   <div className="flex items-center gap-2">
@@ -940,6 +1694,7 @@ function RunHistorySheet({ prompt, onClose }: { prompt: ScheduledPromptRow | nul
 // ── What Pax can use (moved here from the deleted autopilot-setup) ─────────
 
 function Connections() {
+  const { PAX_PAGE_COPY } = usePaxGlossaryData();
   const byok = useQuery<ByokResponse>({
     queryKey: ["/api/byok"],
     queryFn: () => getJson<ByokResponse>("/api/byok"),
@@ -1002,6 +1757,7 @@ function Connections() {
 // ── What Pax did (GET /api/pax/receipts) ───────────────────────────────────
 
 function Receipts() {
+  const { PAX_PAGE_COPY } = usePaxGlossaryData();
   const receipts = useQuery<ReceiptsPage>({
     queryKey: RECEIPTS_KEY,
     queryFn: () => getJson<ReceiptsPage>(`/api/pax/receipts?limit=${RECEIPTS_LIMIT}`),

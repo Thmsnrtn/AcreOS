@@ -14,6 +14,7 @@
 
 import { OCCUPIED_TARGET_STATUSES, MANUAL_POSTING } from "./services/listingWithdrawal";
 import { offerabilityRefusal } from "./services/listability";
+import { offerComplianceGate, sendComplianceRefusal } from "./services/wholesale/offerCompliance";
 import type { Express, Request, Response } from "express";
 import { z } from "zod";
 import { isAuthenticated } from "./auth";
@@ -441,9 +442,12 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
       const listing = await storage.getPropertyListing(org.id, parseInt(routeParam(req.params.id)));
       if (!listing) return Errors.notFound(res, "Listing");
       // A withdrawn or sold listing is off the market; re-listing goes
-      // through publish (DEFECT-0182).
-      if (listing.status !== "active") {
-        return Errors.badRequest(res, `This listing is ${listing.status}. Publish it first; channels only receive active listings.`);
+      // through publish (DEFECT-0182). Draft and `listed` listings pass:
+      // preparation must not demand an activation first (L-DEF-1) —
+      // `listed` is the operator's own on-market statement (Option C),
+      // and a draft may be prepared before any publish run.
+      if (listing.status === "sold" || listing.status === "withdrawn") {
+        return Errors.badRequest(res, `This listing is ${listing.status}; sold or withdrawn listings cannot be syndicated.`);
       }
       // Never post a second copy onto a channel where one is live or still
       // coming down: the new external id would orphan the old posting, which
@@ -467,6 +471,16 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
       if (notOfferable) return Errors.badRequest(res, notOfferable);
       // V-Tax-1 T4b: nor land still held by a tax position.
       if (!(await refuseRedeemableDeedSpend(res, org.id, property.id, "Syndicating this listing"))) return;
+      // Assignment compliance (Leg 3): a property held under an assignable
+      // contract is gated by its state's rule; a warn needs a recorded ack.
+      const compliance = await offerComplianceGate({
+        organizationId: org.id,
+        userId: (req.user as { id?: string } | undefined)?.id ?? null,
+        property: { id: property.id, status: property.status, state: property.state },
+        surface: "listing_syndicate",
+        acknowledged: (req.body as { ackComplianceWarning?: unknown })?.ackComplianceWarning === true,
+      });
+      if (!compliance.ok) return sendComplianceRefusal(res, compliance.status, compliance.body);
 
       const [orgData] = await db.select().from(organizations).where(eq(organizations.id, org.id));
 

@@ -36,6 +36,7 @@ vi.mock("../../server/utils/logger", () => ({
 type PaymentRow = Record<string, any> & { id: number; transactionId: string };
 const state = vi.hoisted(() => ({
   payments: new Map<string, PaymentRow>(),
+  applications: new Map<string, Record<string, any>>(),
   nextId: 1,
   noteBalance: "10000.00",
   noteVersion: 1,
@@ -52,6 +53,7 @@ function resetState() {
   FEES.owedCents = 0;
   FEES.assessCalls.length = 0;
   state.payments.clear();
+  state.applications.clear();
   state.nextId = 1;
   state.noteBalance = "10000.00";
   state.noteVersion = 1;
@@ -67,12 +69,21 @@ vi.mock("../../server/db", () => {
   // A tiny drizzle-shaped tx over the in-memory ledger. `insert(payments)`
   // honours ON CONFLICT (transaction_id) DO NOTHING RETURNING *; `select`
   // returns the locked note or the existing payment; `update(notes)` applies
-  // the balance/version write.
+  // the balance/version write. `insert(paymentApplications)` — the D4 mirror
+  // write inside the posting transaction — is keyed on payment_id, its own
+  // unique index, in a separate map so application rows never consume
+  // payment ids or pollute the payments ledger.
   const tx = {
-    insert: () => ({
+    insert: (table: any) => ({
       values: (vals: any) => ({
         onConflictDoNothing: () => ({
           returning: async () => {
+            if (table === MOCK_TABLES.applications) {
+              if (state.applications.has(vals.paymentId)) return [];
+              const appRow = { id: `app-${state.applications.size + 1}`, ...vals };
+              state.applications.set(vals.paymentId, appRow);
+              return [appRow];
+            }
             if (state.payments.has(vals.transactionId)) return [];
             const row = { id: state.nextId++, ...vals };
             state.payments.set(vals.transactionId, row);
@@ -120,7 +131,7 @@ vi.mock("../../server/db", () => {
 // Which table a `select().from(x)` was asked for, and which transaction id the
 // conflict branch is re-reading. The schema tables are real objects, so the mock
 // compares identity.
-const MOCK_TABLES = vi.hoisted(() => ({ payments: null as any }));
+const MOCK_TABLES = vi.hoisted(() => ({ payments: null as any, applications: null as any }));
 const LAST_CONFLICT_ID = vi.hoisted(() => ({ id: "" }));
 
 vi.mock("../../server/storage", () => ({
@@ -170,6 +181,7 @@ vi.mock("../../server/services/notes/servicedLateFees", async (orig) => ({
 }));
 
 import { payments as paymentsTable, type Note } from "@shared/schema";
+import { paymentApplications as paymentApplicationsTable } from "@shared/schema/reg-z";
 import {
   postBorrowerPortalCheckoutPayment,
   postServicedNotePayment,
@@ -177,6 +189,7 @@ import {
 } from "../../server/services/borrower/portalPaymentPosting";
 
 MOCK_TABLES.payments = paymentsTable;
+MOCK_TABLES.applications = paymentApplicationsTable;
 
 // Due 2026-09-01, 10-day grace, $25 late fee. Paid on 2026-09-20 → 19 days
 // late → fee applies.
@@ -323,6 +336,38 @@ describe("postBorrowerPortalCheckoutPayment — one rule for both writers", () =
     expect(state.emails).toHaveLength(1);
     // The loser did not touch the note either.
     expect(state.updateNoteCalls).toHaveLength(1);
+  });
+
+  it("(3c) the winning writer also writes the Reg-Z application breakdown, exactly once (D4)", async () => {
+    // The periodic-statement generator sums payment_applications only; a
+    // posted payment without a breakdown there gets its statement refused.
+    // The mirror row must carry THIS rule's split — fee included — and the
+    // losing writer must not add a second one.
+    FEES.owedCents = 2500;
+    const first = await post("borrower_portal", session({ amount_total: 12500 }));
+    const second = await post("stripe_webhook", session({ amount_total: 12500 }));
+
+    expect(first.outcome).toBe("posted");
+    expect(second.outcome).toBe("already_recorded");
+    expect(state.applications.size).toBe(1);
+    const app = [...state.applications.values()][0];
+    expect(app.loanType).toBe("note");
+    expect(app.loanId).toBe("42");
+    expect(app.organizationId).toBe(7);
+    // $125 paid: $25 fee collected from the excess, remaining $100 split
+    // $50 interest / $50 principal — the same facts the payment row carries.
+    expect(app.appliedToPrincipalCents).toBe(5000);
+    expect(app.appliedToInterestCents).toBe(5000);
+    expect(app.appliedToEscrowCents).toBe(0);
+    expect(app.appliedToFeesCents).toBe(2500);
+    expect(app.appliedToSuspenseCents).toBe(0);
+    const bucketSum =
+      app.appliedToPrincipalCents +
+      app.appliedToInterestCents +
+      app.appliedToEscrowCents +
+      app.appliedToFeesCents +
+      app.appliedToSuspenseCents;
+    expect(bucketSum).toBe(12500);
   });
 
   it("(3b) the webhook winning emits the event the old webhook never did", async () => {

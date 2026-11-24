@@ -6,6 +6,7 @@ import { getSystemContext, formatContextForAI, invalidateContextCache } from "..
 import { lookupParcelByAPN } from "../services/parcel";
 import { generateOfferSuggestions, generateOfferLetter } from "../services/aiOfferService";
 import { emailService } from "../services/emailService";
+import { leadReplyToAddress } from "../services/leadReplyTo";
 import { smsService, sendOrgSMS } from "../services/smsService";
 import { getComparableProperties } from "../services/comps";
 import {
@@ -32,8 +33,23 @@ import {
 // switches and the pause folded into one call, failing CLOSED. The pause
 // primitive (server/services/paxPause.ts) is consulted through it.
 import { getPaxControls, paxControlsRefusalMessage, type PaxControlsState } from "../services/paxControls";
+// Per-capability rails (PX-2): the one decision both dispatch switches consult.
+import { decidePaxCall, paxRailWatchRefusalMessage } from "../services/paxRails";
 import { recordPaxEffect } from "../services/paxReceipts";
-import type { PaxAskOrigin, PaxAskSourceRef } from "@shared/pax-controls";
+// PX-3 (register P-1): daily limits, judged against the caller's EFFECTIVE controls.
+import { checkPaxLimit, paxLimitRefusalMessage, recordPaxLimitDenied } from "../services/paxLimits";
+// PX-1 (register P-4): browse receipts, per-turn `web:<host>` provenance and
+// the web-sourced row cap — browse is never a side channel around the licence gate.
+import {
+  checkWebSourcedRows,
+  noteBrowseInTurn,
+  recordBrowseReceipt,
+  type WebFenceVerdict,
+} from "../services/webSourceFence";
+import { effectiveControlsForMember, type PaxAskOrigin, type PaxAskSourceRef } from "@shared/pax-controls";
+// PX-7: type only — the search service (and the browser behind it) is loaded
+// lazily inside the browse_search case, exactly as browse_web loads its own.
+import type { PaxSearchRefusalReason, PaxSearchStep } from "../services/paxBrowseSearch";
 // The permission ladder, reachable without an Express request. `intentScopes`
 // is a TYPE-ONLY leaf so importing it here is not the cycle that importing
 // `appIntents/catalog` would be (catalog imports executeTool from this file).
@@ -165,16 +181,76 @@ export const toolDefinitions = {
   // Finance Tools
   get_notes: {
     name: "get_notes",
-    description: "Get seller financing notes with payment schedules and balances.",
+    description: "Get notes from BOTH note books — the serviced book (seller-financed notes this account originated) and the acquired book (notes this account bought) — with balances, payment schedules and each borrower's contact as recorded on their linked lead. The result carries a coverage statement naming both books and their counts: state that coverage when you summarize a portfolio, and never present one book as the whole book. Each note is tagged with its book. Borrower contact comes from the linked lead record; if a field is null there, say it is not on the borrower's lead record — do not say it \"isn't stored\" without this read.",
     parameters: {
       type: "object",
       properties: {
         status: {
           type: "string",
-          enum: ["pending", "active", "paid_off", "defaulted", "foreclosed"],
-          description: "Filter by note status (optional)"
+          enum: ["pending", "active", "paid_off", "defaulted", "foreclosed", "performing", "late", "default", "sold"],
+          description: "Filter by note status (optional). Serviced-book statuses: pending/active/paid_off/defaulted/foreclosed. Acquired-book statuses: performing/late/default/paid_off/sold. The filter is applied within each book's own vocabulary."
         }
       }
+    }
+  },
+  // Tax certificate tools (T7). Reads state their coverage; the one record change
+  // appends to the ledger and never sends anything (FD5: notices stay ask-before-sending).
+  get_tax_certificates: {
+    name: "get_tax_certificates",
+    description: "List this account's tax certificates (tax lien / tax deed positions), soonest redemption deadline first, with status, county/state, purchase amount, deadline, days remaining and the current redemption amount. The result carries a coverage statement: state it. Defaults to active certificates.",
+    parameters: {
+      type: "object",
+      properties: {
+        status: { type: "string", description: "Certificate status filter (default active)" },
+        state: { type: "string", description: "Two-letter state filter (optional)" }
+      }
+    }
+  },
+  get_tax_certificate: {
+    name: "get_tax_certificate",
+    description: "Get one tax certificate: status, amounts, county/state, sale and redemption dates, the deadline's source and the current redemption amount. The result carries a coverage statement.",
+    parameters: {
+      type: "object",
+      properties: { certificate_id: { type: "string", description: "The certificate id from get_tax_certificates (a long identifier, not the printed certificate number)" } },
+      required: ["certificate_id"]
+    }
+  },
+  get_tax_certificate_clock: {
+    name: "get_tax_certificate_clock",
+    description: "Get the redemption clock for one certificate: the deadline and the rule it rests on, countdown, alert dates, next action, any improve/market lock, and a cross-check against the county's procedure. A redemption deadline is a legal fact — report the basis; where no rule is encoded or the county procedure disagrees, say so and never invent a date.",
+    parameters: {
+      type: "object",
+      properties: { certificate_id: { type: "string", description: "The certificate id" } },
+      required: ["certificate_id"]
+    }
+  },
+  get_tax_certificate_ledger: {
+    name: "get_tax_certificate_ledger",
+    description: "Get the ledger for one certificate: lien amount, rate, subsequent taxes paid, interest, redemption notices recorded and the foreclosure-filing deadline. Carries a notice-simulation statement: a notice recorded in test mode was NOT mailed — never say it went out.",
+    parameters: {
+      type: "object",
+      properties: { certificate_id: { type: "string", description: "The certificate id" } },
+      required: ["certificate_id"]
+    }
+  },
+  record_tax_ledger_entry: {
+    name: "record_tax_ledger_entry",
+    description: "Record ONE ledger entry on a certificate from what the customer tells you: a subsequent tax payment, a redemption notice THEY sent themselves outside AcreOS, or the foreclosure-filing deadline. Always give the source (where the customer got it). A date in the future is refused. This records only — it never sends a notice; to send one, say the customer must use the certificate's notice screen.",
+    parameters: {
+      type: "object",
+      properties: {
+        certificate_id: { type: "string", description: "The certificate id" },
+        kind: { type: "string", enum: ["subsequent_tax_paid", "redemption_notice_recorded", "foreclosure_filing_deadline"], description: "Which entry" },
+        paid_on: { type: "string", description: "subsequent_tax_paid: date paid, YYYY-MM-DD" },
+        amount_cents: { type: "number", description: "subsequent_tax_paid: amount in cents" },
+        tax_year: { type: "string", description: "subsequent_tax_paid: four-digit tax year, if known" },
+        sent_on: { type: "string", description: "redemption_notice_recorded: date the customer sent it, YYYY-MM-DD" },
+        method: { type: "string", description: "redemption_notice_recorded: how it was sent (e.g. certified mail)" },
+        note: { type: "string", description: "redemption_notice_recorded: optional note" },
+        date: { type: "string", description: "foreclosure_filing_deadline: the deadline date, YYYY-MM-DD" },
+        source: { type: "string", description: "Where this fact comes from (receipt, county record, the customer's words)" }
+      },
+      required: ["certificate_id", "kind", "source"]
     }
   },
   calculate_amortization: {
@@ -193,7 +269,7 @@ export const toolDefinitions = {
   },
   get_cashflow_summary: {
     name: "get_cashflow_summary",
-    description: "Get monthly cashflow summary from all active notes.",
+    description: "Get monthly cashflow summary from active notes in BOTH books. The unprefixed fields are the serviced book (originated notes); the acquired* fields are the acquired book (bought notes). Present them labelled by book — never merge them into one unlabelled total.",
     parameters: { type: "object", properties: {} }
   },
   
@@ -451,7 +527,7 @@ export const toolDefinitions = {
 
   send_email: {
     name: "send_email",
-    description: "Send an email to a lead or any email address. Checks TCPA compliance when sending to leads. Use for follow-ups, offer letters, or general communication.",
+    description: "Draft an email to a lead or any email address for the operator's approval. FD5: this NEVER sends on your word alone — the draft is frozen for the operator's one-tap approval and goes out only after they approve it. Describe the flow to the user exactly that way (draft → their approval → send); never say or imply you will send immediately, or with no further confirmation, even if the user says \"just send it\". Checks TCPA compliance when sending to leads. Use for follow-ups, offer letters, or general communication.",
     parameters: {
       type: "object",
       properties: {
@@ -466,7 +542,7 @@ export const toolDefinitions = {
 
   send_sms: {
     name: "send_sms",
-    description: "Send an SMS text message to a lead or phone number. Checks TCPA compliance before sending. Use for quick follow-ups or time-sensitive communications.",
+    description: "Draft an SMS text message to a lead or phone number for the operator's approval. FD5: this NEVER sends on your word alone — the draft is frozen for the operator's one-tap approval and goes out only after they approve it. Describe the flow to the user exactly that way (draft → their approval → send); never say or imply you will send immediately, or with no further confirmation, even if the user says \"just send it\". Checks TCPA compliance before sending. Use for quick follow-ups or time-sensitive communications.",
     parameters: {
       type: "object",
       properties: {
@@ -577,6 +653,31 @@ export const toolDefinitions = {
         wait_ms: { type: "number", description: "Extra milliseconds to wait after page load for dynamic content (default: 0)" }
       },
       required: ["url"]
+    }
+  },
+
+  browse_search: {
+    name: "browse_search",
+    description: "Run a search on a public county or records website: open the site, type the search text into the site's own search box, and read the results page. Use it for an assessor, recorder or treasurer lookup by owner name, parcel number or address. `site` is one of the user's saved county sites (by name or address) or the full web address the user gave you (starting with https://). It does not sign in, solve CAPTCHAs or fill any other form; if the site asks for a human check it stops and says so. Returns the results page text, links and tables, and the pages visited. Optionally saves a short note on ONE lead, property or deal.",
+    parameters: {
+      type: "object",
+      properties: {
+        site: { type: "string", description: "A saved county site (its name or address), or the full URL the user gave you (https://...)" },
+        query: { type: "string", description: "The text to search for: an owner name, parcel number (APN) or address" },
+        attach_to: {
+          type: "object",
+          description: "Optional: ONE record to save a short note on (the note says where the result came from)",
+          properties: {
+            kind: { type: "string", enum: ["lead", "property", "deal"], description: "Which kind of record" },
+            id: { type: "number", description: "The record's ID" }
+          },
+          required: ["kind", "id"]
+        },
+        finding: { type: "string", description: "Optional: one short sentence on what the search found, saved on the record's note (max 500 characters)" },
+        max_pages: { type: "number", description: "Optional: how many results pages to read, 1 to 3 (default 1)" },
+        open_result: { type: "number", description: "Optional: after reading the results page, open the result link with this number (0 is the first link in the list you were given)" }
+      },
+      required: ["site", "query"]
     }
   },
 
@@ -1097,6 +1198,10 @@ export const PAUSE_SAFE_TOOLS: ReadonlySet<string> = new Set([
   "get_tasks",
   "get_notes",
   "get_cashflow_summary",
+  "get_tax_certificates",
+  "get_tax_certificate",
+  "get_tax_certificate_clock",
+  "get_tax_certificate_ledger",
   // Pure calculations
   "calculate_amortization",
   "calculate_payment_schedule",
@@ -1106,6 +1211,9 @@ export const PAUSE_SAFE_TOOLS: ReadonlySet<string> = new Set([
   "run_comps_analysis",
   "research_property",
   "browse_web",
+  // PX-7: a public-site search is a look. Its optional timeline note is a
+  // write, so the note is skipped while Pax is paused (attachSearchNote).
+  "browse_search",
   "extract_properties_from_text",
   "retrieve_land_knowledge",
   // Drafts that don't send (the pause promise: "Pax will still draft and ask").
@@ -1207,9 +1315,68 @@ export interface ExecuteToolOptions {
   origin?: ExecuteToolOrigin;
   /** The scheduled prompt that ran this call, when origin is "scheduled". */
   scheduledTask?: { id: number; name: string } | null;
+  /**
+   * One Pax turn — minted by TRUSTED server code (the chat loops in
+   * server/ai/executive.ts), never by model output. It correlates a
+   * `browse_web` read with records created LATER IN THE SAME TURN, so those
+   * records carry `web:<host>` provenance and count against the web-sourced
+   * row cap (server/services/webSourceFence.ts, PX-1). Absent = the call
+   * cannot be linked to a browse.
+   */
+  turnId?: string;
 }
 
 type ToolResult = { success: boolean; data?: any; error?: string; reachabilitySummary?: unknown; refusal?: RefusalParts; requiredScope?: string };
+
+/**
+ * The words for every way a browse_search session can refuse or stop early
+ * (PX-7). One switch so the set is enumerable — the reason union is the
+ * switch's input, and TypeScript fails the build on a reason without words.
+ * Every part is written here, as literals, so refusalsArePlainWords can judge
+ * it. `siteName` is the person's own name for the site (or its host).
+ */
+function browseSearchRefusal(reason: PaxSearchRefusalReason, siteName: string) {
+  switch (reason) {
+    case "step_not_allowed":
+      return toolRefusal({ what: "The search was not run", why: "The steps asked for are not ones I am allowed to take on a website", unlock: "Ask me to search a site for a name, parcel number or address, and I will take it from there" });
+    case "too_many_steps":
+      return toolRefusal({ what: "The search was not run", why: "That would take more steps than one search is allowed", unlock: "Ask again with a narrower search" });
+    case "too_many_pages":
+      return toolRefusal({ what: "The search stopped early", why: "It reached the number of pages one search is allowed to open", unlock: "Ask again with a narrower search, or open the site yourself and paste the page address here" });
+    case "different_site":
+      return toolRefusal({ what: "The search was not finished", why: `It would have had to leave ${siteName} for a different website, which a search is not allowed to do`, unlock: "Add the other website under My county sites in Settings, or open it yourself and paste the page address here" });
+    case "no_page_open":
+      return toolRefusal({ what: "The search was not run", why: "There was no page open to work from", unlock: "Ask again and tell me which site to start from" });
+    case "no_search_form":
+      return toolRefusal({ what: "The search was not finished", why: "I could not find an ordinary search box on that page, and I do not guess at other controls on a website", unlock: "Open the site yourself, run the search, and paste the result page address here" });
+    case "login_form_only":
+      return toolRefusal({ what: "The search was not finished", why: "The only form on that page is a sign-in form, and I never enter passwords", unlock: "Open the site yourself, run the search, and paste the result page address here" });
+    case "ambiguous_search_form":
+      return toolRefusal({ what: "The search was not finished", why: "That page has more than one search box and I could not tell which one to use", unlock: "Open the site yourself, run the search, and paste the result page address here" });
+    case "query_not_usable":
+      return toolRefusal({ what: "The search was not run", why: "The search text was empty or too long to type into a search box", unlock: "Give me a shorter name, parcel number or address to look up" });
+    case "no_such_result":
+      return toolRefusal({ what: "The result was not opened", why: "That result number is not among the links I read on the page", unlock: "Ask again and pick one of the results from the list I gave you" });
+    case "no_next_page":
+      return toolRefusal({ what: "No further page was opened", why: "The page has no next-page link that I can use", unlock: "Ask me to read this page again, or open the site yourself to look further" });
+    case "address_refused":
+      return toolRefusal({ what: "The page was not opened", why: "That address points somewhere I am not allowed to go, such as a private network or a site that is not on the approved list", unlock: "Use a public website address instead, or open it yourself in your browser" });
+    case "robots_disallowed":
+      return toolRefusal({ what: "The search was not finished", why: "That website's own rules ask automated visitors to stay out of this page, and I respect them", unlock: "Open it yourself in your browser, or ask about a different page or site" });
+    case "robots_unverified":
+      return toolRefusal({ what: "The search was not finished", why: "I could not read that website's rules for automated visitors, so I did not guess", unlock: "Try again in a minute, or open it yourself in your browser" });
+    case "rate_limited":
+      return toolRefusal({ what: "The search was not finished", why: "I have visited this website a lot in the last few minutes, and I pace myself so I do not overload it", unlock: "Wait a few minutes and ask again, or open it yourself in your browser" });
+    case "timed_out":
+      return toolRefusal({ what: "The search was not finished", why: "The website took too long to answer", unlock: "Try again in a minute, or open the site yourself and paste the result page address here" });
+    case "did_not_load":
+      return toolRefusal({ what: "The search did not finish", why: "The website did not answer, or refused the visit", unlock: "Try again in a minute, or open it yourself in your browser" });
+    case "not_a_web_page":
+      return toolRefusal({ what: "The search was not finished", why: "That link leads to a file rather than a web page, and I do not download files", unlock: "Open it yourself in your browser" });
+    case "site_error":
+      return toolRefusal({ what: "The search was not finished", why: "The website answered with an error page", unlock: "Try again in a minute, or open it yourself in your browser" });
+  }
+}
 
 const positiveInt = (v: unknown): number | null => {
   if (typeof v === "number" && Number.isInteger(v) && v > 0) return v;
@@ -1273,6 +1440,19 @@ function receiptEntity(
   return { entityType: "organization", entityId: org.id };
 }
 
+/**
+ * The refusal for a create the web-sourced-rows fence stopped (PX-1). Names the
+ * fence — the licence check — and what unlocks it; the rows are refused whole,
+ * never silently truncated.
+ */
+function webFenceRefusal(v: Extract<WebFenceVerdict, { allowed: false }>) {
+  return toolRefusal({
+    what: "No records were created from the web pages I read",
+    why: `This is the licence check: records taken from web pages (${v.hosts.join(", ")}) are limited to ${v.cap} per conversation turn (${v.alreadyThisTurn} already made, ${v.asked} more asked), because a website's data may not be ours to copy in bulk`,
+    unlock: "Add a few of them yourself, import them from a list you own, or ask your administrator to clear that website as a source",
+  });
+}
+
 /** "Cochise County" / " cochise " → "cochise", so a county filter matches how people type it. */
 function normalizeCountyName(v: unknown): string {
   return typeof v === "string" ? v.trim().toLowerCase().replace(/\s+county$/, "").trim() : "";
@@ -1315,8 +1495,18 @@ export async function executeTool(
     // two cases the controls never gate: a pause-safe tool (looks and drafts
     // are never gated, never counted, and keep working while paused) and the
     // human-approved replay (a tap is the human acting, not Pax).
-    const controls: PaxControlsState | null =
+    //
+    // PX-3: the controls this call is judged by are the EFFECTIVE ones — the
+    // org's rails and limits narrowed by the calling member's own override
+    // (effectiveControlsForMember). An unidentified caller (a scheduled run,
+    // an inbound signal) acts under the org's own grant, unchanged. Every
+    // consumer of `controls` below (rails, limits, receipts' stance) sees this
+    // one narrowed state.
+    const orgControls: PaxControlsState | null =
       !pauseSafe && !trustedApproval ? await getPaxControls(org.id) : null;
+    const controls: PaxControlsState | null = orgControls
+      ? effectiveControlsForMember(orgControls, options?.userId)
+      : null;
 
     // A failed read is not a stance. When the controls could not be verified
     // NOTHING proceeds — not even as an ask, because an ask row minted under
@@ -1347,10 +1537,50 @@ export async function executeTool(
     //   - at "Ask before everything", every non-pause-safe tool — record
     //     writes included, and the customer's own chat commands included
     //     (founder decision 4: uniform, no asterisk).
+    //
+    // Per-capability rails (PX-2): the ONE decision — pause ∧ stance ∧ rail —
+    // comes from decidePaxCall (server/services/paxRails.ts). A rail only
+    // NARROWS: Watch refuses the write in plain words; Draft and Ask park it.
+    // The two original conditions stay as the floor, so a rail can never turn
+    // an ask into a run.
+    const railDecision = controls ? decidePaxCall(controls, toolName) : null;
+    if (railDecision?.kind === "refuse" && railDecision.why === "rail_watch") {
+      logger.info("[executeTool] Refused — the rail for this kind of change is on Watch", {
+        orgId: org.id,
+        metadata: { toolName, origin },
+      });
+      return { success: false, error: paxRailWatchRefusalMessage(toolName) };
+    }
     const requiresAsk =
       kernelApprovalRequiredTools.has(toolName) ||
-      (controls?.stance === "ask_before_everything" && !pauseSafe);
+      (controls?.stance === "ask_before_everything" && !pauseSafe) ||
+      railDecision?.kind === "ask" ||
+      railDecision?.kind === "draft";
     if (requiresAsk && !trustedApproval) {
+      // PX-3 — daily limits, immediately before an ask is parked: the asks cap
+      // for any tool, plus the credit cap for a priced send (the quote Pax
+      // gives is the amount judged). A denial parks nothing and leaves a receipt.
+      if (controls) {
+        const askLimit = await checkPaxLimit({
+          orgId: org.id,
+          limits: controls.limits,
+          toolName,
+          args,
+          stage: "ask",
+          timezone: controls.timezone,
+        });
+        if (!askLimit.allowed) {
+          await recordPaxLimitDenied({
+            orgId: org.id,
+            toolName,
+            verdict: askLimit,
+            origin,
+            stance: controls.stance,
+            userId: options?.userId ?? null,
+          });
+          return { success: false, error: paxLimitRefusalMessage(askLimit.kind) };
+        }
+      }
       const pending = await proposePendingAction({
         organizationId: org.id,
         toolName,
@@ -1608,6 +1838,11 @@ export async function executeTool(
       }
 
       case "create_lead": {
+        // PX-1 — a lead made after a page was read this turn is web-sourced:
+        // counted against the cap and tagged `web:<host>` (the lead's existing
+        // `source` column). No browse this turn → the fence has nothing to say.
+        const leadFence = checkWebSourcedRows(org.id, options?.turnId, 1);
+        if (leadFence.webSourced && !leadFence.allowed) return webFenceRefusal(leadFence);
         const lead = await storage.createLead({
           organizationId: org.id,
           firstName: args.first_name,
@@ -1615,7 +1850,7 @@ export async function executeTool(
           email: args.email || null,
           phone: args.phone || null,
           type: args.type || "buyer",
-          source: args.source || "AI Assistant",
+          source: leadFence.webSourced ? leadFence.tag : (args.source || "AI Assistant"),
           notes: args.notes || null,
           status: "new"
         });
@@ -1651,25 +1886,98 @@ export async function executeTool(
         return { success: true, data: property };
       }
       
-      case "get_notes": {
-        const notes = await storage.getNotes(org.id);
-        let filtered = notes;
-        if (args.status) {
-          filtered = notes.filter(n => n.status === args.status);
+      case "get_tax_certificates": {
+        const { paxGetTaxCertificates, taxOutcomeToResult } = await import("./taxCertificateTools");
+        return taxOutcomeToResult(await paxGetTaxCertificates(org.id, { status: args.status, state: args.state }));
+      }
+
+      case "get_tax_certificate": {
+        const { paxGetTaxCertificate, taxOutcomeToResult } = await import("./taxCertificateTools");
+        return taxOutcomeToResult(await paxGetTaxCertificate(org.id, args.certificate_id));
+      }
+
+      case "get_tax_certificate_clock": {
+        const { paxGetTaxCertificateClock, taxOutcomeToResult } = await import("./taxCertificateTools");
+        return taxOutcomeToResult(await paxGetTaxCertificateClock(org.id, args.certificate_id));
+      }
+
+      case "get_tax_certificate_ledger": {
+        const { paxGetTaxCertificateLedger, taxOutcomeToResult } = await import("./taxCertificateTools");
+        return taxOutcomeToResult(await paxGetTaxCertificateLedger(org.id, args.certificate_id));
+      }
+
+      case "record_tax_ledger_entry": {
+        // A record, not a send (FD5): the entry is what the customer says
+        // happened. The receipt names the certificate and the entry.
+        const { paxRecordTaxLedgerEntry, taxOutcomeToResult } = await import("./taxCertificateTools");
+        const out = await paxRecordTaxLedgerEntry(org.id, options?.userId ?? null, args);
+        if (out.ok && out.receipt && !trustedApproval) {
+          await recordPaxEffect({
+            orgId: org.id,
+            actor: "pax",
+            origin,
+            stance: controls?.stance ?? null,
+            tool: "record_tax_ledger_entry",
+            action: "ledger_entry_recorded",
+            entityType: "organization",
+            entityId: org.id,
+            description: out.receipt.description,
+            before: out.receipt.before,
+            after: out.receipt.after,
+            witnessed: false,
+            userId: options?.userId ?? null,
+          });
+          receiptWritten = true;
         }
-        return { success: true, data: filtered.map(n => ({
-          id: n.id,
-          propertyId: n.propertyId,
-          borrowerId: n.borrowerId,
-          originalPrincipal: n.originalPrincipal,
-          currentBalance: n.currentBalance,
-          interestRate: n.interestRate,
-          monthlyPayment: n.monthlyPayment,
-          termMonths: n.termMonths,
-          status: n.status,
-          startDate: n.startDate,
-          nextPaymentDate: n.nextPaymentDate
-        })) };
+        return taxOutcomeToResult(out);
+      }
+
+      case "get_notes": {
+        // HYB-DEF-5/6: cross-book read. The serviced book alone was
+        // presented as the whole book (acquired notes silently absent,
+        // no coverage statement), and borrower contact was declared
+        // missing without consulting the borrower's linked lead.
+        const {
+          listAcquiredNotesForPax,
+          shapeAcquiredNoteForPax,
+          borrowerContactFromLead,
+          borrowerContactForAcquiredNote,
+          buildNotesCoverageStatement,
+        } = await import("../services/notes/acquiredBookRead");
+        const [notes, acquiredRows, leads] = await Promise.all([
+          storage.getNotes(org.id),
+          listAcquiredNotesForPax(org.id),
+          storage.getLeads(org.id),
+        ]);
+        const leadById = new Map(leads.map(l => [l.id, l]));
+        let serviced = notes;
+        let acquired = acquiredRows;
+        if (args.status) {
+          serviced = notes.filter(n => n.status === args.status);
+          acquired = acquiredRows.filter(n => n.status === args.status);
+        }
+        return { success: true, data: {
+          coverage: buildNotesCoverageStatement(notes.length, acquiredRows.length),
+          serviced: serviced.map(n => ({
+            id: n.id,
+            book: "serviced",
+            propertyId: n.propertyId,
+            borrowerId: n.borrowerId,
+            borrowerContact: borrowerContactFromLead(n.borrowerId != null ? leadById.get(n.borrowerId) : undefined),
+            originalPrincipal: n.originalPrincipal,
+            currentBalance: n.currentBalance,
+            interestRate: n.interestRate,
+            monthlyPayment: n.monthlyPayment,
+            termMonths: n.termMonths,
+            status: n.status,
+            startDate: n.startDate,
+            nextPaymentDate: n.nextPaymentDate
+          })),
+          acquired: acquired.map(r => shapeAcquiredNoteForPax(
+            r,
+            borrowerContactForAcquiredNote(r, r.borrowerId != null ? leadById.get(r.borrowerId) : undefined),
+          )),
+        } };
       }
       
       case "calculate_amortization": {
@@ -1724,14 +2032,22 @@ export async function executeTool(
         // SQL over the whole book (DEFECT-0171): this summed the 5000-row
         // capped list and told the customer it was their whole portfolio.
         const { activeNoteTotals } = await import("../storage/bookAggregates");
-        const t = await activeNoteTotals(org.id);
+        const { activeAcquiredNoteTotals } = await import("../services/notes/acquiredBookRead");
+        const [t, aq] = await Promise.all([activeNoteTotals(org.id), activeAcquiredNoteTotals(org.id)]);
         const monthlyCashflow = t.monthlyCashflow;
         const totalBalance = t.totalOutstandingBalance;
         const cashflowData = {
+          // Serviced-book figures (pre-existing fields, unchanged meaning).
           activeNotesCount: t.activeNotesCount,
           totalOutstandingBalance: Math.round(totalBalance * 100) / 100,
           monthlyCashflow: Math.round(monthlyCashflow * 100) / 100,
-          annualCashflow: Math.round(monthlyCashflow * 12 * 100) / 100
+          annualCashflow: Math.round(monthlyCashflow * 12 * 100) / 100,
+          // HYB-DEF-5: the acquired book rides alongside, labelled — the
+          // serviced figures above were previously the whole answer.
+          acquiredLiveNotesCount: aq.liveAcquiredNotesCount,
+          acquiredTotalOutstandingBalance: aq.totalOutstandingBalance,
+          acquiredMonthlyCashflow: aq.monthlyCashflow,
+          booksLabelled: "activeNotesCount/totalOutstandingBalance/monthlyCashflow/annualCashflow are the SERVICED book (originated notes); acquired* fields are the ACQUIRED book (bought notes). Never merge them into one unlabelled total.",
         };
 
         const cfValidation = validateAtlasOutput(AtlasOutputType.CASH_FLOW, {
@@ -1878,9 +2194,16 @@ export async function executeTool(
 
       // Property CRUD
       case "create_property": {
+        // PX-1 — same fence as create_lead: a single-row create called fifty
+        // times in one turn must not slip past the web-sourced cap.
+        const propertyFence = checkWebSourcedRows(org.id, options?.turnId, 1);
+        if (propertyFence.webSourced && !propertyFence.allowed) return webFenceRefusal(propertyFence);
         const property = await storage.createProperty({
           organizationId: org.id,
           apn: args.apn,
+          // Properties have no `source` column, so web provenance rides the
+          // existing due-diligence notes: `source: web:<host>`.
+          ...(propertyFence.webSourced ? { dueDiligenceData: { notes: `source: ${propertyFence.tag}` } } : {}),
           address: args.address || null,
           city: args.city || null,
           county: args.county,
@@ -2169,8 +2492,41 @@ export async function executeTool(
           return toolRefusal({ what: "No properties were created", why: "The request did not include any parcels", unlock: "Paste the APNs with their county and state, and I will add them" });
         }
 
+        // PX-3 — the daily batch-rows cap, judged BEFORE anything is created and
+        // BEFORE the web fence below: checkWebSourcedRows RESERVES turn rows when
+        // it allows, so a call this cap refuses must not have consumed them.
+        // Refused whole, never truncated. (No controls on a human-approved
+        // replay — a tap is the human acting.)
+        if (controls) {
+          const batchLimit = await checkPaxLimit({
+            orgId: org.id,
+            limits: controls.limits,
+            toolName,
+            args,
+            stage: "run",
+            timezone: controls.timezone,
+          });
+          if (!batchLimit.allowed) {
+            await recordPaxLimitDenied({
+              orgId: org.id,
+              toolName,
+              verdict: batchLimit,
+              origin,
+              stance: controls.stance,
+              userId: options?.userId ?? null,
+            });
+            return { success: false, error: paxLimitRefusalMessage(batchLimit.kind) };
+          }
+        }
+
+        // PX-1 — the bulk fence. A batch made after a page was read this turn is
+        // web-sourced: more than the cap is refused WHOLE (never truncated) unless
+        // every source host is on the cleared list (empty by default).
+        const batchFence = checkWebSourcedRows(org.id, options?.turnId, propertiesToCreate.length);
+        if (batchFence.webSourced && !batchFence.allowed) return webFenceRefusal(batchFence);
+
         const results: Array<{ success: boolean; apn: string; propertyId?: number; hasBoundary?: boolean; error?: string }> = [];
-        
+
         for (const prop of propertiesToCreate) {
           try {
             if (!prop.apn || !prop.county || !prop.state) {
@@ -2188,6 +2544,7 @@ export async function executeTool(
               zip: prop.zip || null,
               sizeAcres: prop.sizeAcres || "0",
               status: prop.status || "prospect",
+              ...(batchFence.webSourced ? { dueDiligenceData: { notes: `source: ${batchFence.tag}` } } : {}),
             });
 
             // Wave B — property.created, once per row that really landed.
@@ -2241,8 +2598,12 @@ export async function executeTool(
             results,
             successCount,
             failCount,
-            boundaryCount
-          } 
+            boundaryCount,
+            // The generic post-dispatch receipt records this as `after`, which is
+            // what the daily batch-rows cap counts (paxLimits.batchRowsSince) —
+            // one receipt, no second write.
+            after: { rowsCreated: successCount },
+          }
         };
       }
 
@@ -2438,6 +2799,8 @@ export async function executeTool(
           subject: args.subject,
           html: htmlContent,
           text: textContent,
+          // Lead-addressed sends thread replies back through the inbound seam.
+          replyTo: args.lead_id ? await leadReplyToAddress(args.lead_id, org.id) : undefined,
           organizationId: org.id,
           // Deal mail: Pax emailing a customer's lead — org identity required.
           purpose: 'counterparty',
@@ -2824,6 +3187,37 @@ export async function executeTool(
           return toolRefusal({ what: "The page was not opened", why: "That website is not on the list of sites I may visit", unlock: "Open it yourself in your browser, or ask about a public records site instead" });
         }
 
+        // PX-3 — the daily web-pages cap. browse_web is pause-safe, so the
+        // dispatch read above skipped the controls; this is the one read the cap
+        // needs, judged on the caller's EFFECTIVE limits. Placed after the SSRF and
+        // domain checks (those refuse without a visit) and before the browser is
+        // touched, so a denied visit opens nothing and notes nothing in the turn.
+        if (!trustedApproval) {
+          const browseControls = effectiveControlsForMember(await getPaxControls(org.id), options?.userId);
+          if (browseControls.checkFailed) {
+            return { success: false, error: paxControlsRefusalMessage(browseControls) };
+          }
+          const browseLimit = await checkPaxLimit({
+            orgId: org.id,
+            limits: browseControls.limits,
+            toolName,
+            args,
+            stage: "run",
+            timezone: browseControls.timezone,
+          });
+          if (!browseLimit.allowed) {
+            await recordPaxLimitDenied({
+              orgId: org.id,
+              toolName,
+              verdict: browseLimit,
+              origin,
+              stance: browseControls.stance,
+              userId: options?.userId ?? null,
+            });
+            return { success: false, error: paxLimitRefusalMessage(browseLimit.kind) };
+          }
+        }
+
         const browserAutomation = await import("../services/browserAutomation");
         const browseWeb = browserAutomation.browseWeb;
         logger.info(`[browse_web] Calling browseWeb function...`);
@@ -2831,13 +3225,38 @@ export async function executeTool(
           extractTables: args.extract_tables !== false,
           captureScreenshot: args.take_screenshot === true,
           waitMs: args.wait_ms || 0,
+          orgId: org.id,
         });
         logger.info(`[browse_web] Result: success=${result.success}, title="${result.title}", contentLen=${result.content?.length}, error=${result.error}`);
-        
+
+        // PX-1 — a receipt for the visit, even though the tool is pause-safe
+        // (the generic post-dispatch hook skips pause-safe tools). Best-effort:
+        // a failure is logged inside, never breaks the browse.
+        await recordBrowseReceipt({
+          orgId: org.id,
+          userId: options?.userId ?? null,
+          origin,
+          turnId: options?.turnId ?? null,
+          url,
+          outcome: result.success ? "read" : (result.robotsDisallowed || result.robotsUnverified || result.rateLimited) ? "refused" : "failed",
+        });
+
+        if (result.robotsUnverified) {
+          return toolRefusal({ what: "The page was not opened", why: "I could not read that website's rules for automated visitors, so I did not guess", unlock: "Try again in a minute, or open it yourself in your browser" });
+        }
+        if (result.robotsDisallowed) {
+          return toolRefusal({ what: "The page was not opened", why: "That website's own rules ask automated visitors to stay out of this page, and I respect them", unlock: "Open it yourself in your browser, or ask about a different page or site" });
+        }
+        if (result.rateLimited) {
+          return toolRefusal({ what: "The page was not opened", why: "I have visited this website a lot in the last few minutes, and I pace myself so I do not overload it", unlock: "Wait a few minutes and ask again, or open it yourself in your browser" });
+        }
         if (!result.success) {
           return toolRefusal({ what: "The page did not load", why: "The website did not answer, or refused the visit", unlock: "Try again in a minute, or open it yourself in your browser" });
         }
-        
+
+        // PX-1 — from here on, records made in THIS turn are web-sourced.
+        noteBrowseInTurn(org.id, options?.turnId, parsedBrowseUrl.hostname);
+
         return {
           success: true,
           data: {
@@ -2852,6 +3271,141 @@ export async function executeTool(
         };
       }
       
+      case "browse_search": {
+        // PX-7 — a bounded search on a public site (server/services/paxBrowseSearch.ts):
+        // open → type the query into the site's own GET search box → read, then
+        // optionally one result or the next page. Creates NO records; anything Pax
+        // later makes from the content goes through the PX-1 fence like browse_web.
+        const { resolveSearchSite, runPaxSearchSession, attachSearchNote, cleanSearchQuery, PAX_SEARCH_LIMITS } = await import("../services/paxBrowseSearch");
+        const searchQuery = cleanSearchQuery(args.query);
+        if (!searchQuery) {
+          return toolRefusal({ what: "The search was not run", why: "I was not told what to search for", unlock: "Tell me the name, parcel number or address to look up, and which site to use" });
+        }
+
+        // The record (if any) is verified BEFORE searching: a bad target refuses the whole call.
+        let attachTarget: { kind: "lead" | "property" | "deal"; id: number } | null = null;
+        if (args.attach_to !== undefined && args.attach_to !== null) {
+          const wanted = args.attach_to as { kind?: unknown; id?: unknown };
+          const wantedId = positiveInt(wanted.id);
+          const wantedKind = wanted.kind === "lead" || wanted.kind === "property" || wanted.kind === "deal" ? wanted.kind : null;
+          if (!wantedKind || !wantedId) {
+            return toolRefusal({ what: "The search was not run", why: "I could not tell which record to save the result on", unlock: "Name one lead, property or deal by its number, or leave the record out and ask again" });
+          }
+          const wantedRecord =
+            wantedKind === "lead"
+              ? await storage.getLead(org.id, wantedId)
+              : wantedKind === "property"
+                ? await storage.getProperty(org.id, wantedId)
+                : await storage.getDeal(org.id, wantedId);
+          if (!wantedRecord) {
+            return toolRefusal({ what: "The search was not run", why: "That record is not in this account, so there is nowhere to save the result", unlock: "Open Leads, Properties or Deals to find the right number, or ask again without a record" });
+          }
+          attachTarget = { kind: wantedKind, id: wantedId };
+        }
+
+        // THE SITE GATE: a saved county site, or the full address the user gave.
+        const searchControls = await getPaxControls(org.id);
+        const mySites = Array.isArray(searchControls.mySites) ? searchControls.mySites : [];
+        const resolved = resolveSearchSite(args.site, mySites);
+        if (resolved.kind === "refused") {
+          if (resolved.reason === "site_not_listed") {
+            return toolRefusal({ what: "The search was not run", why: "That website is not on your list of county sites, and you did not give me its full address", unlock: `Add it in ${PLACE_TEXT.mySites}, or paste the site's full address, starting with https://` });
+          }
+          return toolRefusal({ what: "The search was not run", why: "I need a website address, or the name of one of your saved sites, to start from", unlock: "Paste the site's full address, starting with https://, or pick one of your saved county sites" });
+        }
+
+        // The same boundary checks browse_web makes on its URL (the session re-passes them on every hop).
+        const { validateUrl, SSRFBlockedError } = await import("../middleware/fileUploadSecurity");
+        try {
+          await validateUrl(resolved.url);
+        } catch (ssrfErr) {
+          if (ssrfErr instanceof SSRFBlockedError) {
+            logger.warn("[browse_search] URL blocked by SSRF guard", { metadata: { orgId: org.id, reason: ssrfErr.message } });
+            return toolRefusal({ what: "The search was not run", why: "That address points inside a private network, which I am not allowed to reach", unlock: "Use a public web address instead" });
+          }
+          throw ssrfErr;
+        }
+        const { checkBrowseDomainPolicy } = await import("../utils/browsePolicy");
+        if (!checkBrowseDomainPolicy(resolved.host).allowed) {
+          return toolRefusal({ what: "The search was not run", why: "That website is not on the list of sites I may visit", unlock: "Open it yourself in your browser, or ask about a public records site instead" });
+        }
+
+        // The plan, in the closed step language: open → search → read, then one
+        // result, or further results pages. Page loads: the open, plus each page read.
+        const pagesWanted = Math.min(Math.max(positiveInt(args.max_pages) ?? 1, 1), PAX_SEARCH_LIMITS.maxPages - 1);
+        const openResult = typeof args.open_result === "number" && Number.isInteger(args.open_result) && args.open_result >= 0 ? args.open_result : null;
+        const plan: PaxSearchStep[] = [{ kind: "open", url: resolved.url }, { kind: "search", query: searchQuery }, { kind: "read" }];
+        if (openResult !== null) {
+          plan.push({ kind: "open_result", index: openResult }, { kind: "read" });
+        } else {
+          for (let p = 1; p < pagesWanted; p++) plan.push({ kind: "next_page" }, { kind: "read" });
+        }
+        const outcome = await runPaxSearchSession({
+          orgId: org.id,
+          userId: options?.userId ?? null,
+          origin,
+          turnId: options?.turnId ?? null,
+          mySites,
+          steps: plan,
+          // open + search + the result page; or open + each results page read.
+          maxPages: openResult !== null ? Math.min(3, PAX_SEARCH_LIMITS.maxPages) : 1 + pagesWanted,
+        });
+
+        if (outcome.kind === "captcha") {
+          return toolRefusal({ what: "The search was not finished", why: "The site asked for a human check (a CAPTCHA), and I do not solve those", unlock: `Open ${resolved.label} yourself, run the search, and paste the result page address here — or add the page to your sites and try from the result page` });
+        }
+        if (outcome.kind === "refused") {
+          return browseSearchRefusal(outcome.reason, resolved.label);
+        }
+        const lastPage = outcome.pages[outcome.pages.length - 1];
+        if (!lastPage) {
+          return browseSearchRefusal("did_not_load", resolved.label);
+        }
+
+        let noteState: { attached: boolean; skipped: "paused" | "not_saved" | null } | null = null;
+        if (attachTarget) {
+          let noteHost: string;
+          try {
+            noteHost = new URL(lastPage.url).hostname;
+          } catch {
+            noteHost = resolved.host;
+          }
+          noteState = await attachSearchNote({
+            orgId: org.id,
+            userId: options?.userId ?? null,
+            origin,
+            // The pause state read above for the site gate: a paused Pax still searches, but saves no note.
+            paused: searchControls.paused !== false,
+            stance: searchControls.checkFailed ? null : searchControls.stance,
+            kind: attachTarget.kind,
+            id: attachTarget.id,
+            host: noteHost,
+            url: lastPage.url,
+            query: searchQuery,
+            finding: args.finding,
+            pagesRead: outcome.pages.length,
+          });
+        }
+
+        return {
+          success: true,
+          data: {
+            site: resolved.host,
+            query: searchQuery,
+            pages: outcome.pages,
+            pagesVisited: outcome.trail,
+            endedEarly: outcome.stoppedEarly ? browseSearchRefusal(outcome.stoppedEarly, resolved.label).error : null,
+            noteSaved: noteState?.attached ?? false,
+            noteNotSaved:
+              noteState && !noteState.attached
+                ? noteState.skipped === "paused"
+                  ? "Pax is paused, so no note was saved on the record"
+                  : "The note could not be saved on the record"
+                : null,
+          },
+        };
+      }
+
       case "draft_offer": {
         const deal = await storage.getDeal(org.id, Number(args.dealId));
         if (!deal) return toolRefusal({ what: "No deal with that number is in this account", why: "It may have been deleted, or the number came from another list", unlock: "Open Deals to find the one you mean" });
@@ -3371,10 +3925,10 @@ export function getToolsForRole(role: string) {
   const roleToolMap: Record<string, string[]> = {
     executive: allTools,
     acquisitions: [...coreTools, ...memoryTools, "get_leads", "get_lead_details", "update_lead_status", "create_lead", "get_properties", "create_property", "get_deals", "create_deal", "get_tasks", "create_task", "get_pipeline_summary", "generate_offer", "generate_offer_letter", "send_email", "send_sms", "run_comps_analysis", "schedule_followup", "draft_offer", "schedule_follow_up", "run_comps", "get_stale_leads", "draft_outreach_message"],
-    underwriting: [...coreTools, ...memoryTools, "get_properties", "get_property_details", "update_property", "get_notes", "calculate_amortization", "get_cashflow_summary", "get_deals", "update_deal", "run_comps_analysis", "run_comps", "calculate_roi", "calculate_payment_schedule", "research_property", "draft_offer"],
+    underwriting: [...coreTools, ...memoryTools, "get_properties", "get_property_details", "update_property", "get_notes", "get_tax_certificates", "get_tax_certificate", "get_tax_certificate_clock", "get_tax_certificate_ledger", "record_tax_ledger_entry", "calculate_amortization", "get_cashflow_summary", "get_deals", "update_deal", "run_comps_analysis", "run_comps", "calculate_roi", "calculate_payment_schedule", "research_property", "draft_offer"],
     marketing: [...coreTools, ...memoryTools, "get_leads", "get_properties", "get_pipeline_summary", "create_task", "send_email", "send_sms", "get_stale_leads", "draft_outreach_message"],
-    research: [...coreTools, ...memoryTools, "get_properties", "get_property_details", "get_leads", "create_property", "update_property", "run_comps_analysis", "run_comps", "research_property", "calculate_roi", "browse_web"],
-    documents: [...coreTools, "get_leads", "get_lead_details", "get_properties", "get_property_details", "get_notes", "get_deals", "generate_offer_letter", "draft_offer"],
+    research: [...coreTools, ...memoryTools, "get_properties", "get_property_details", "get_leads", "create_property", "update_property", "run_comps_analysis", "run_comps", "research_property", "calculate_roi", "browse_web", "browse_search"],
+    documents: [...coreTools, "get_leads", "get_lead_details", "get_properties", "get_property_details", "get_notes", "get_tax_certificates", "get_tax_certificate", "get_tax_certificate_clock", "get_tax_certificate_ledger", "record_tax_ledger_entry", "get_deals", "generate_offer_letter", "draft_offer"],
     assistant: allTools // Full access for the main assistant
   };
   

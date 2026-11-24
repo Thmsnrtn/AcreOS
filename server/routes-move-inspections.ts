@@ -120,6 +120,12 @@ export function registerMoveInspectionRoutes(app: Express): void {
         conductedBy: parsed.data.conductedBy ?? userId,
         checklist: parsed.data.checklist,
         photos: parsed.data.photos,
+        // S4 0085 companion (write-path fix): photo_count is derived
+        // server-side from the photos array it summarises. Before this,
+        // created rows took the column default 0 even with photos
+        // attached, and only the (previously unmirrored) 0085 backfill
+        // ever reconciled the count.
+        photoCount: parsed.data.photos.length,
         notes: parsed.data.notes ?? null,
       }).returning();
 
@@ -139,6 +145,13 @@ export function registerMoveInspectionRoutes(app: Express): void {
       const updates: Record<string, unknown> = { updatedAt: appClock.now() };
       for (const k of Object.keys(parsed.data) as Array<keyof typeof parsed.data>) {
         if (parsed.data[k] !== undefined) updates[k] = parsed.data[k];
+      }
+      // S4 0085 companion: when a PATCH replaces the photos array
+      // without an explicit photoCount, derive the count from the new
+      // array so the column cannot drift from what it summarises. An
+      // explicitly sent photoCount still wins.
+      if (updates.photos !== undefined && updates.photoCount === undefined) {
+        updates.photoCount = (updates.photos as unknown[]).length;
       }
       const [updated] = await db.update(moveInspections).set(updates)
         .where(and(eq(moveInspections.id, routeParam(req.params.id)), eq(moveInspections.organizationId, orgId)))

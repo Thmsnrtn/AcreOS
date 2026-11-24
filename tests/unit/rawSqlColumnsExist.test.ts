@@ -98,7 +98,36 @@ const MAX_GHOSTS = 0;
 // (organization_id, provider) has no unique index in a database built from
 // this repository. That is a separate defect, tracked in the ON CONFLICT
 // ratchet on the payments-transaction-id-constraint branch, not fixed here.
-const MAX_UNRESOLVED = 49;
+// 49 → 63 (2026-11-12, PR #543 bring-current onto main 8c70d35961): set FROM
+// MEASUREMENT on the merged tree, never arithmetic — the scan was run on the
+// merged tree and counted exactly 63. All +14 sit in the PR's own new file
+// tests/unit/dealDocuments.realdb.test.ts (per-file attribution measured, not
+// inferred): information_schema / pg_enum catalog queries, one
+// ${sql.identifier(table)} dynamic-table INSERT, and sql.join / fragment
+// compositions (bare WHERE fragments handed to a count helper) — the shapes
+// this budget exists for; none is a table reference this gate could read
+// without the suite being rewritten around the scanner. The other 49 are the
+// pre-existing population, unchanged file-for-file. Ghosts still 0 and the
+// population floors hold (templates 1777 ≥ 800, withColumns 601 ≥ 150), so
+// nothing is silenced: a 64th unread template turns this red.
+// 63 → 59 (2026-11-18, PR #621): declaring push_subscriptions (the census
+// cure) resolved 4 previously-unresolved raw-SQL templates against that
+// table — the subscribe/unsubscribe INSERT/DELETE in routes-organization
+// and the SELECT/DELETE templates in pushNotificationService now resolve
+// to a modelled table. Measured on the PR head by this suite itself; the
+// test's own instruction is to lower MAX_UNRESOLVED in the same change.
+// 59 → 60 (2026-11-19, PR #628): +1 for the 0086 EMD writer's raw INSERT
+// against the deliberately unmodelled earnest_money_events table — a raw
+// sql`` INSERT whose table this gate cannot resolve to a modelled table.
+// Measured on the PR head by this suite itself (unresolved 60, ghosts
+// still 0).
+// 60 → 59 (2026-11-19, PR #627 round 3, on the tree merged over #628):
+// PR #627 models earnest_money_events in shared/schema, so the EMD
+// writer's raw INSERT now resolves to a modelled table and the +1 is
+// revoked. Measured on the merged tree by this suite itself (unresolved
+// 59, ghosts still 0); the same declaration-revokes-the-budget shape as
+// the PR #621 entry above.
+const MAX_UNRESOLVED = 59;
 const MIN_TEMPLATES = 800;
 const MIN_WITH_COLUMNS = 150;
 

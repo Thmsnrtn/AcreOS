@@ -69,7 +69,11 @@ const TIER_DAILY_USD_BUDGET: Record<string, number> = {
 
 function isInTrial(org: { trialEndsAt?: Date | string | null; trialUsed?: boolean | null } | undefined): boolean {
   if (!org) return false;
-  if (org.trialUsed) return false;
+  // A15-09: trialUsed means "a trial has been GRANTED" (the org-creation
+  // grant sets it, as does startTrial) — it is not an "already finished"
+  // marker, so it must not exclude an org whose trial window is still open.
+  // The window itself is the test, mirroring usageLimits' isTrialing window
+  // check: an expired trial has trialEndsAt in the past and fails here.
   const ends = org.trialEndsAt;
   if (!ends) return false;
   const ms = typeof ends === "string" ? Date.parse(ends) : ends.getTime();
@@ -80,7 +84,8 @@ function isInTrial(org: { trialEndsAt?: Date | string | null; trialUsed?: boolea
  * Resolve the effective daily USD cap for the org:
  *   1. Founder / enterprise → 0 (unlimited)
  *   2. Org-level override (organizations.orgAiQuotaDailyUsd > 0)
- *   3. Trial tier if trialEndsAt is in the future and !trialUsed
+ *   3. Trial tier if trialEndsAt is in the future (an open trial window;
+ *      trialUsed records that a trial was granted, not that it ended)
  *   4. Tier default from TIER_DAILY_USD_BUDGET
  *   5. Free-tier floor
  */

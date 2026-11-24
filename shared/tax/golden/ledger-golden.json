@@ -29,7 +29,7 @@
       "reimbursement": { "status": "stated", "text": "SYNTHETIC: subsequent taxes paid by the holder are added to the redemption amount — county procedure v2, SYNTHETIC Rev. Code §1, as of 2026-09-01" }
     },
     "interest": { "status": "not_computed", "why": "AcreOS has no encoded redemption rule for OH — get the redemption amount from the county" },
-    "notices": [{ "sentOn": "2027-03-01", "method": "Certified mail", "note": "to the owner of record", "source": "SYNTHETIC certified mail receipt 7019" }],
+    "notices": [{ "sentOn": "2027-03-01", "method": "Certified mail", "note": "to the owner of record", "source": "SYNTHETIC certified mail receipt 7019", "viaRail": false, "providerId": null, "simulated": false }],
     "foreclosureFilingDeadline": { "status": "stated", "date": "2029-06-01", "basis": "SYNTHETIC procedure v2" }
   }
 }

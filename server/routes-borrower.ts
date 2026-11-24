@@ -3,7 +3,7 @@ import crypto from "crypto";
 import { storage, db } from "./storage";
 import { eq, and, gte, desc, inArray } from "drizzle-orm";
 import { achDebitAttempts } from "@shared/schema/ach-autopay";
-import { notes, notePayoffQuotes, type BorrowerSession, type NotePayoffQuote } from "@shared/schema";
+import { notes, notePayoffQuotes, organizations, properties, type BorrowerSession, type NotePayoffQuote } from "@shared/schema";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { createRateLimiter, RATE_LIMIT_CONFIGS } from "./middleware/rateLimit";
@@ -23,6 +23,7 @@ import {
 // same generator the lender files from (borrowerCopy1098ForNote).
 import { borrowerCopy1098ForNote, dayInZone, resolveOrgTimeZone } from "./services/form1098Batch";
 import { quoteServicedNotePayoff } from "./services/notes/servicedNotePayoff";
+import { buildPayoffLetter } from "./services/settlementRail/documents";
 import { Errors, sendError } from "./utils/errors";
 
 /**
@@ -86,6 +87,12 @@ import {
   outstandingServicedLateFeesCents,
 } from "./services/notes/servicedLateFees";
 import { lenderServicingPhase, servicingEndedBorrowerMessage } from "./services/borrower/servicingPhase";
+import {
+  renderBorrowerStatementPdf,
+  borrowerStatementPdfFilename,
+  type BorrowerStatementData,
+} from "./services/borrower/statementPdf";
+import { notifyLenderOfBorrowerMessage } from "./services/borrowerMessageNotify";
 import { getClientIp, clientIpOrNull } from "./utils/clientIp";
 import { clock } from "./utils/clock";
 import {
@@ -260,8 +267,19 @@ const deprecatedPaymentRateLimiter = createRateLimiter({ maxRequests: 10, window
 const BORROWER_PORTAL_SUNSET_DATE =
   process.env.BORROWER_PORTAL_SUNSET_DATE || "2026-07-04";
 
-// Successor URI advertised in the Link header per RFC 8594 §3.
-const BORROWER_PORTAL_SUCCESSOR = "/portal/v2";
+// Successor URI advertised in the Link header per RFC 8594 §3, and named in the
+// 410 message below. It MUST be a page the client router actually declares:
+// "/portal" is the registered public landing for the session-based portal
+// (client/src/App.tsx), which tells a borrower to use the link in their payment
+// reminder email or ask their lender. This used to say "/portal/v2", a route
+// that has never existed (it only param-matched the token route, so a borrower
+// who followed it landed on a failed sign-in). Pinned by
+// tests/unit/borrowerPortalSunsetPointsAtARealPortal.test.ts.
+const BORROWER_PORTAL_SUCCESSOR = "/portal";
+
+/** The 410 body text. Built from the constant so the message and the Link header cannot drift apart. */
+const BORROWER_PORTAL_SUNSET_MESSAGE =
+  `This endpoint is no longer available. Use the link in your payment reminder email to open your borrower portal (${BORROWER_PORTAL_SUCCESSOR}), or contact your lender for a new link.`;
 
 function sunsetMiddleware(sunsetDateStr: string = BORROWER_PORTAL_SUNSET_DATE) {
   // Parse once at middleware-construction time. Date parsing of an
@@ -288,7 +306,7 @@ function sunsetMiddleware(sunsetDateStr: string = BORROWER_PORTAL_SUNSET_DATE) {
         res,
         410,
         "endpoint_sunset",
-        "This endpoint is no longer available. Please use the new portal at /portal/v2.",
+        BORROWER_PORTAL_SUNSET_MESSAGE,
         { sunsetDate: sunsetDate.toISOString() },
       );
     }
@@ -1797,7 +1815,82 @@ export function registerBorrowerRoutes(app: Express): void {
       Errors.internal(res, err);
     }
   });
-  
+
+  // The payoff LETTER (Settlement & Documents Rail, N-1): the formal letter
+  // built on the same recorded quote the endpoint above prices — addressed,
+  // dated, with the per-diem and good-through terms stated as a letter the
+  // borrower can hand to their escrow or title company. Same session pin,
+  // same engine, same row: the letter's figures are the quote row's figures.
+  api.get("/api/borrower/payoff-letter", validateBorrowerSession, portalPaymentRateLimiter, async (req, res) => {
+    try {
+      const session = requireBorrowerSession(req);
+      const [note] = await db
+        .select()
+        .from(notes)
+        .where(
+          session.organizationId != null
+            ? and(eq(notes.id, session.noteId), eq(notes.organizationId, session.organizationId))
+            : eq(notes.id, session.noteId),
+        )
+        .limit(1);
+      if (!note) {
+        return Errors.notFound(res, "loan");
+      }
+      const borrower = note.borrowerId ? await storage.getLead(note.organizationId, note.borrowerId) : undefined;
+      const borrowerLabel = borrower
+        ? `${borrower.firstName ?? ""} ${borrower.lastName ?? ""}`.trim() || null
+        : null;
+      const lenderTimeZone = await resolveOrgTimeZone(note.organizationId);
+      const todayIso = dayInZone(clock.now(), lenderTimeZone) ?? isoDateUtc(clock.now());
+      const requestedDate = typeof req.query.payoffDate === "string" ? req.query.payoffDate : todayIso;
+      let payoffDate: Date;
+      try {
+        payoffDate = parseIsoDateUtc(requestedDate);
+      } catch {
+        return Errors.badRequest(res, "payoffDate must be a valid ISO date (YYYY-MM-DD)");
+      }
+      if (isoDateUtc(payoffDate) < todayIso) {
+        return Errors.badRequest(res, "payoffDate cannot be in the past");
+      }
+      const { row: quoteRow } = await quoteServicedNotePayoff({
+        note,
+        payoffDate,
+        lenderTimeZone,
+        channel: "borrower_portal",
+        payerName: borrowerLabel,
+        quotedByUserId: null,
+        provenance: `borrower_session:${session.id}:payoff_letter`,
+      });
+      const [org] = await db
+        .select({ name: organizations.name })
+        .from(organizations)
+        .where(eq(organizations.id, note.organizationId))
+        .limit(1);
+      const [property] = note.propertyId
+        ? await db
+            .select({ address: properties.address, city: properties.city, state: properties.state, zip: properties.zip })
+            .from(properties)
+            .where(and(eq(properties.id, note.propertyId), eq(properties.organizationId, note.organizationId)))
+            .limit(1)
+        : [];
+      const artifact = buildPayoffLetter({
+        quote: quoteRow,
+        lenderName: org?.name ?? "Your lender",
+        borrowerName: borrowerLabel,
+        propertyAddress: property
+          ? [property.address, property.city, property.state, property.zip].filter((x) => x && String(x).trim()).join(", ") || null
+          : null,
+        paymentInstructions: null,
+      });
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${artifact.filename}"`);
+      return res.send(artifact.pdf);
+    } catch (err) {
+      logger.error("Payoff letter error", err);
+      return Errors.internal(res, err);
+    }
+  });
+
   // Generate PDF statement for borrower portal
   api.get("/api/borrower/statements/generate", async (req, res) => {
     try {
@@ -1891,7 +1984,15 @@ export function registerBorrowerRoutes(app: Express): void {
       
       // Generate statement data based on type
       const statementType = type === '1098' ? '1098' : 'statement';
-      
+
+      // BD-1: the payload is built once, exactly as before, and then
+      // served two ways — as JSON (the default; the shape every existing
+      // reader knows) or, with ?format=pdf, rendered to a PDF on the
+      // server by services/borrower/statementPdf.ts and downloaded.
+      // The borrower portal asks for the PDF; jsPDF no longer ships to
+      // the browser for it.
+      let statementPayload: BorrowerStatementData;
+
       if (statementType === '1098') {
         // 1098 Interest Statement for tax year
         const taxYear = year ? Number(year) : clock.now().getFullYear() - 1;
@@ -1912,7 +2013,7 @@ export function registerBorrowerRoutes(app: Express): void {
           .map((p) => (p ?? "").trim())
           .filter(Boolean)
           .join(", ");
-        res.json({
+        statementPayload = {
           type: '1098',
           taxYear,
           borrowerName: f.borrowerName,
@@ -1926,10 +2027,10 @@ export function registerBorrowerRoutes(app: Express): void {
           principalBalance: f.box2OutstandingMortgagePrincipalCents / 100,
           refundOfOverpaidInterest: f.box4RefundOfOverpaidInterestCents / 100,
           loanOriginationDate: f.box3MortgageOriginationDate,
-        });
+        };
       } else {
         // Regular account statement
-        res.json({
+        statementPayload = {
           type: 'statement',
           generatedDate: clock.now().toISOString(),
           borrowerName: `${borrower.firstName} ${borrower.lastName}`,
@@ -1962,8 +2063,19 @@ export function registerBorrowerRoutes(app: Express): void {
             totalInterest,
             paymentsCount: filteredPayments.length,
           },
-        });
+        };
       }
+
+      if (req.query.format === 'pdf') {
+        const pdf = renderBorrowerStatementPdf(statementPayload);
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader(
+          "Content-Disposition",
+          `attachment; filename="${borrowerStatementPdfFilename(statementPayload)}"`,
+        );
+        return res.send(pdf);
+      }
+      return res.json(statementPayload);
     } catch (err) {
       logger.error("Statement generation error", err);
       Errors.internal(res, err);
@@ -2154,6 +2266,17 @@ export function registerBorrowerRoutes(app: Express): void {
         senderType: "borrower",
         content: sanitized,
         readAt: null,
+      });
+      // S-05 (P1-4b): the lender is told a borrower wrote — push (mute-gated)
+      // + an in-app notification row. Before this wire the message was a
+      // dead letter: no client called the lender read routes and nothing
+      // notified anyone. The notify service never throws, so a notification
+      // failure cannot fail the borrower's send.
+      await notifyLenderOfBorrowerMessage({
+        orgId: note.organizationId,
+        noteId: session.noteId,
+        messageId: msg.id,
+        content: sanitized,
       });
       res.status(201).json(msg);
     } catch (err) {

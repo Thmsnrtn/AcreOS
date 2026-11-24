@@ -22,6 +22,7 @@
 
 import { OCCUPIED_TARGET_STATUSES } from "./listingWithdrawal";
 import { offerabilityRefusal } from "./listability";
+import { unattendedOfferRefusal } from "./wholesale/offerCompliance";
 import { db } from "../db";
 import {
   propertyListings,
@@ -151,7 +152,12 @@ export function countTargets(
   listings: Pick<PropertyListing, "syndicationTargets" | "status">[],
 ): Map<string, ChannelCounts> {
   const counts = new Map<string, ChannelCounts>();
-  const activeListings = listings.filter((l) => l.status === "active");
+  // On-market listings: `active` (a channel accepted the posting through
+  // AcreOS) and `listed` (on the market on the operator's own word,
+  // L-DEF-1 Option C) alike — both are owed a posting on channels where
+  // they are not yet live. Published still derives only from per-target
+  // `active` records, which `listed` never fabricates.
+  const onMarketListings = listings.filter((l) => l.status === "active" || l.status === "listed");
 
   for (const id of Object.keys(PLATFORMS)) {
     let published = 0;
@@ -159,9 +165,9 @@ export function countTargets(
       const target = (listing.syndicationTargets ?? []).find((t) => t.platform === id);
       if (target?.status === "active") published++;
     }
-    // Pending = active listings not yet live on this channel.
+    // Pending = on-market listings not yet live on this channel.
     let pending = 0;
-    for (const listing of activeListings) {
+    for (const listing of onMarketListings) {
       const target = (listing.syndicationTargets ?? []).find((t) => t.platform === id);
       if (!target || target.status === "pending" || target.status === "failed") pending++;
     }
@@ -225,7 +231,9 @@ export interface ChannelSyncOutcome {
 }
 
 /**
- * Push the org's ACTIVE listings to the given channels (or all enabled
+ * Push the org's on-market listings — ACTIVE (a channel accepted the
+ * posting through AcreOS) or LISTED (on the market on the operator's own
+ * word, L-DEF-1 Option C) — to the given channels (or all enabled
  * channels when none specified). Each adapter result is recorded into the
  * listing's syndicationTargets and the channel's state row — real outcomes
  * only, including real failures.
@@ -263,12 +271,12 @@ export async function syncChannels(
   if (syncable.length === 0) return outcomes;
 
   const [org] = await db.select().from(organizations).where(eq(organizations.id, orgId));
-  const activeListings = await db
+  const onMarketListings = await db
     .select()
     .from(propertyListings)
-    .where(and(eq(propertyListings.organizationId, orgId), eq(propertyListings.status, "active")));
+    .where(and(eq(propertyListings.organizationId, orgId), inArray(propertyListings.status, ["active", "listed"])));
 
-  const propertyIds = [...new Set(activeListings.map((l) => l.propertyId))];
+  const propertyIds = [...new Set(onMarketListings.map((l) => l.propertyId))];
   const props = propertyIds.length
     ? await db.select().from(properties).where(and(eq(properties.organizationId, orgId), inArray(properties.id, propertyIds)))
     : [];
@@ -279,7 +287,7 @@ export async function syncChannels(
     syncable.map((id) => [id, { succeeded: 0, failed: 0 }]),
   );
 
-  for (const listing of activeListings) {
+  for (const listing of onMarketListings) {
     const property = propById.get(listing.propertyId);
     if (!property) continue;
     // Only held land is pushed (DEFECT-0174 audit): a listing published while
@@ -287,6 +295,9 @@ export async function syncChannels(
     // offered sold land on every other channel.
     if (offerabilityRefusal(property.status)) continue;
     if (taxHeld.has(property.id)) continue; // V-Tax-1 T4b: not yet marketable in AcreOS
+    // Assignment compliance (Leg 3): nobody is present to acknowledge a warn,
+    // so an under-contract property in a block OR warn state is not pushed.
+    if (await unattendedOfferRefusal(property)) continue;
 
     // Only push to channels where this listing isn't already live — and
     // never back onto a channel it was withdrawn or taken down from (a

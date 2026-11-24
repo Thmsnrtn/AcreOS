@@ -7,17 +7,17 @@ import {
   PAX_CONTROLS_LABEL,
   PAX_CONTROLS_PATH,
   PAX_LABELS,
-  PAX_PAUSE_COPY,
+  PAX_PAUSE_STILL_WORKS,
   PAX_STANDING_LINE,
-} from "@shared/pax-glossary";
+} from "@shared/pax-glossary-core";
 import {
   Rocket,
-  Mail, 
-  MessageSquare, 
-  Users, 
-  Map, 
-  GitBranch, 
-  Banknote, 
+  Mail,
+  MessageSquare,
+  Users,
+  Map,
+  GitBranch,
+  Banknote,
   Bot,
   Key,
   Building2,
@@ -26,143 +26,63 @@ import {
   Sparkles,
   Target,
   TrendingUp,
-  Headphones
+  Headphones,
+  type LucideIcon,
 } from "lucide-react";
+import type { HelpFaqItem, HelpFeatureGuide } from "@/data/help-content-data";
+import {
+  HELP_CONTENT_URL,
+  substituteTokens,
+  useStaticData,
+} from "@/lib/static-data";
 
-const featureGuides = [
-  {
-    icon: Users,
-    title: "Leads & CRM",
-    description: "Manage your seller and buyer leads with a full-featured CRM system.",
-    details: [
-      "Import leads from various sources or add them manually",
-      "Track lead status through customizable pipelines",
-      "Store contact information, notes, and communication history",
-      "Set follow-up reminders and automate outreach",
-      "Filter and search leads by location, status, or custom fields"
-    ]
-  },
-  {
-    icon: Map,
-    title: "Properties & Inventory",
-    description: "Track all properties in your pipeline from acquisition to sale.",
-    details: [
-      "Add properties with parcel data, acreage, and location details",
-      "Attach documents, photos, and due diligence materials",
-      "Track property status (researching, under contract, owned, listed, sold)",
-      "View properties on an interactive map",
-      "Calculate comps and market values"
-    ]
-  },
-  {
-    icon: GitBranch,
-    title: "Deals Pipeline",
-    description: "Visualize and manage deals from initial offer to closing.",
-    details: [
-      "Kanban-style deal pipeline with customizable stages",
-      "Track offer amounts, counter-offers, and negotiations",
-      "Set closing dates and track contract deadlines",
-      "Associate deals with leads and properties",
-      "Calculate profit margins and ROI projections"
-    ]
-  },
-  {
-    icon: Mail,
-    title: "Campaigns (Email, SMS, Direct Mail)",
-    description: "Run multi-channel marketing campaigns to reach motivated sellers.",
-    details: [
-      "Create email campaigns with templates and personalization",
-      "Send SMS messages to leads with opt-in/opt-out management",
-      "Launch direct mail campaigns with automated letter printing",
-      "Set a planned send date as a reminder, then send when you're ready (campaigns are not sent automatically)",
-      "Track open rates, responses, and conversions"
-    ]
-  },
-  {
-    icon: Banknote,
-    title: "Finance & Notes",
-    description: "Manage seller financing and track note performance.",
-    details: [
-      "Create and track seller finance notes",
-      "Set up payment schedules and amortization",
-      "Monitor payment status and send reminders",
-      "Generate borrower portals for online payments",
-      "Track portfolio performance and cash flow"
-    ]
-  },
-  {
-    icon: Bot,
-    title: "Pax",
-    description: PAX_STANDING_LINE,
-    details: [
-      "Ask about your leads, properties, deals or notes — Pax answers from your own records",
-      "Ask it to update a record — a lead's status, a task, a deal, a calendar event — and it does, leaving a receipt",
-      "Ask for a draft — an email, a text, an offer letter — and it writes one for you to read",
-      "Turn on rules that run by themselves: workflows, campaign sequences, scheduled prompts, lead scoring",
-      `One button under ${PAX_CONTROLS_LABEL} pauses everything that runs on its own`
-    ]
-  }
-];
+/**
+ * The feature guides + FAQ items are served as data (/help-content.json,
+ * generated verbatim from client/src/data/help-content-data.ts and pinned
+ * deep-equal to it) instead of riding inside this chunk as JS. The data
+ * names icons and carries {{TOKEN}} placeholders for the Pax glossary's
+ * single-source constants; both resolve here, at render time, to exactly
+ * the components and strings this file used inline before the extraction.
+ */
+const HELP_FEATURE_ICONS: Record<string, LucideIcon> = {
+  Users,
+  Map,
+  GitBranch,
+  Mail,
+  Banknote,
+  Bot,
+};
 
-const faqItems = [
-  {
-    question: "How do I get started with AcreOS?",
-    answer: "After signing up, complete the onboarding wizard to configure your organization. Start by importing or adding your first leads, then explore the different modules like Properties, Deals, and Campaigns. The Dashboard provides a quick overview of your entire operation."
-  },
-  {
-    question: "What's the difference between Platform and Custom credentials?",
-    answer: "Custom credentials are your own SendGrid, AWS SES, Twilio or Lob accounts, connected under Settings → Your provider keys: mail goes out from your domain and your numbers, and you pay the provider directly. Platform credentials are AcreOS's shared SMS and direct-mail rails, billed to you in credits. Email to a seller or buyer is the exception — it only sends from an email identity you have connected. AcreOS's own address is used for mail to you, like receipts and trial notices."
-  },
-  {
-    question: "How does the credit system work?",
-    answer: "AcreOS uses a credit-based system for billable actions like sending emails, SMS messages, and direct mail. Credits are deducted based on the action type. You can view pricing in Settings and purchase additional credits as needed. Your subscription tier may include monthly credit allowances."
-  },
-  {
-    question: "Can I import existing leads?",
-    answer: "Yes! AcreOS supports bulk lead import via CSV files. Navigate to the Leads page and use the Import feature. You can map your CSV columns to AcreOS fields and even deduplicate leads during import."
-  },
-  {
-    question: "How does Pax work?",
-    answer:
-      PAX_LABELS.mentalModel.join(" ") +
-      ` The chat and the queue are behind the Pax door in the sidebar. The switches, the receipts and the pause button are under ${PAX_CONTROLS_LABEL}.` +
-      " Most plans include a set number of Pax messages each month; connect your own AI key under Settings → Your provider keys to chat past it."
-  },
-  {
-    question: "Can Pax email or text someone without me?",
-    answer:
-      `No. ${PAX_LABELS.fixedRule}` +
-      ` Pax writes the message and puts it in "${PAX_LABELS.queue}" on the Pax page, with what it wrote and why. You approve it, edit it, or reject it — nothing leaves until you do.` +
-      " Drips and campaign sequences you switched on are the exception: those go out on the schedule you set, and each one has its own switch."
-  },
-  {
-    question: "How do I stop Pax?",
-    answer:
-      `Open ${PAX_CONTROLS_LABEL} and tap Pause, then choose how long. That stops the things that run without you — workflows, campaign sequences, scheduled prompts, lead scoring, borrower reminder prep.` +
-      ` ${PAX_PAUSE_COPY.stillWorks}` +
-      " The same page lists each of them separately, so you can switch off one thing instead of all of it."
-  },
-  {
-    question: "Is my data secure?",
-    answer: "Yes. AcreOS uses industry-standard encryption for data at rest and in transit. Your data is isolated per organization, and we follow security best practices. You can also connect your own API keys instead of using platform credentials for added control."
-  },
-  {
-    question: "How do I track deal profitability?",
-    answer: "Use the Deals Pipeline to track acquisition costs, selling price, and associated expenses. The deal calculator helps you analyze potential profit margins before making offers. Finance module tracks ongoing returns from seller-financed notes."
-  },
-  {
-    question: "Can multiple team members use AcreOS?",
-    answer: "Yes, AcreOS supports team collaboration. Organization members can access shared leads, properties, and deals. Different subscription tiers include varying numbers of team seats. Contact support to add team members."
-  }
-];
+const HELP_TOKENS: Record<string, string> = {
+  PAX_STANDING_LINE,
+  PAX_CONTROLS_LABEL,
+  PAX_MENTAL_MODEL: PAX_LABELS.mentalModel.join(" "),
+  PAX_FIXED_RULE: PAX_LABELS.fixedRule,
+  PAX_QUEUE: PAX_LABELS.queue,
+  PAX_PAUSE_STILL_WORKS,
+};
+
+interface HelpContentData {
+  featureGuides: HelpFeatureGuide[];
+  faqItems: HelpFaqItem[];
+}
 
 interface HelpContentProps {
   onNavigateToSupport?: () => void;
 }
 
 export function HelpContent({ onNavigateToSupport }: HelpContentProps) {
+  const { data: helpData, error: helpError } =
+    useStaticData<HelpContentData>(HELP_CONTENT_URL);
+  const featureGuides = helpData?.featureGuides ?? [];
+  const faqItems = helpData?.faqItems ?? [];
   return (
     <div className="space-y-8">
+      {helpError && (
+        <p className="text-sm text-muted-foreground" data-testid="text-help-load-error">
+          Couldn't load the feature guides and FAQ — refresh to try again.
+        </p>
+      )}
       {/* Getting Started */}
       <Card data-testid="card-getting-started">
         <CardHeader>
@@ -300,27 +220,30 @@ export function HelpContent({ onNavigateToSupport }: HelpContentProps) {
           Feature Guides
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {featureGuides.map((feature) => (
+          {featureGuides.map((feature) => {
+            const FeatureIcon = HELP_FEATURE_ICONS[feature.icon] ?? FileText;
+            return (
             <Card key={feature.title} data-testid={`card-feature-${feature.title.toLowerCase().replace(/\s+/g, '-')}`}>
               <CardHeader className="pb-2">
                 <CardTitle className="flex items-center gap-2 text-lg">
-                  <feature.icon className="w-5 h-5 text-primary" />
+                  <FeatureIcon className="w-5 h-5 text-primary" />
                   {feature.title}
                 </CardTitle>
-                <CardDescription>{feature.description}</CardDescription>
+                <CardDescription>{substituteTokens(feature.description, HELP_TOKENS)}</CardDescription>
               </CardHeader>
               <CardContent>
                 <ul className="space-y-1.5 text-sm text-muted-foreground">
                   {feature.details.map((detail, index) => (
                     <li key={index} className="flex items-start gap-2">
                       <span className="text-primary mt-0.5">•</span>
-                      {detail}
+                      {substituteTokens(detail, HELP_TOKENS)}
                     </li>
                   ))}
                 </ul>
               </CardContent>
             </Card>
-          ))}
+            );
+          })}
         </div>
       </div>
 
@@ -337,9 +260,9 @@ export function HelpContent({ onNavigateToSupport }: HelpContentProps) {
           <Accordion type="single" collapsible className="w-full">
             {faqItems.map((faq, index) => (
               <AccordionItem key={index} value={`faq-${index}`} data-testid={`faq-item-${index}`}>
-                <AccordionTrigger className="text-left">{faq.question}</AccordionTrigger>
+                <AccordionTrigger className="text-left">{substituteTokens(faq.question, HELP_TOKENS)}</AccordionTrigger>
                 <AccordionContent className="text-muted-foreground">
-                  {faq.answer}
+                  {substituteTokens(faq.answer, HELP_TOKENS)}
                 </AccordionContent>
               </AccordionItem>
             ))}

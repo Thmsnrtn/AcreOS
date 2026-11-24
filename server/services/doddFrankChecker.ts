@@ -49,6 +49,26 @@
  */
 
 import { DISCLAIMER_WORKSHEET } from "./legalDisclaimers";
+import {
+  evaluateClaimedExclusion,
+  type ClaimedExclusionFacts,
+  type ElementCode,
+  type ElementVerdictValue,
+} from "@shared/regulatory/doddFrankElements";
+
+// The per-element verdict for a CLAIMED exclusion — the activation gate's
+// question ("does the exclusion the operator claims hold, element by
+// element?"), as opposed to checkDoddFrankCompliance's ("which exclusion, if
+// any, fits best?"). One implementation, in shared/, used by both.
+export {
+  evaluateClaimedExclusion,
+  type ClaimedExclusion,
+  type ClaimedExclusionFacts,
+  type ElementCode,
+  type ElementVerdict,
+  type ElementVerdictValue,
+  type TriState,
+} from "@shared/regulatory/doddFrankElements";
 
 export interface DoddFrankInput {
   /** Number of seller-financed transactions in the past 12 months (including this one) */
@@ -328,24 +348,38 @@ function evaluateSellerFinancerExclusions(input: DoddFrankInput): ExclusionEvalu
     input.rateType === 'balloon_5yr_plus' ||
     (typeof input.balloonAfterMonths === 'number' && input.balloonAfterMonths > 0);
 
-  // Rate element, shared by (a)(4)(iii)(C) and (a)(5)(iii)(B).
-  let rate: 'met' | 'failed' | 'unknown' = 'met';
-  if (input.rateType === 'adjustable') {
-    if (typeof input.firstRateAdjustmentMonths !== 'number') rate = 'unknown';
-    else rate = input.firstRateAdjustmentMonths >= 60 ? 'met' : 'failed';
-  }
-  const negAm: 'met' | 'failed' | 'unknown' =
-    input.negativeAmortization === undefined ? 'unknown' : input.negativeAmortization ? 'failed' : 'met';
+  // The terms elements are decided by the shared rule
+  // (shared/regulatory/doddFrankElements.ts) — the same function the Leg 3
+  // activation gate calls, so the page and the gate cannot disagree. The
+  // legacy page inputs are mapped onto it exactly as this function always
+  // read them: the balloon from rateType/balloonAfterMonths, a non-adjustable
+  // rateType (fixed or balloon_*) as a fixed rate, a missing first-adjustment
+  // month as unanswered, the boolean sellerConstructedDwelling as answered.
+  // `rate_caps` is NOT read here: the page has no caps input, and reading the
+  // verdict would change this function's output for existing inputs.
+  const elementFacts: ClaimedExclusionFacts = {
+    balloon: hasBalloon ? 'yes' : 'no',
+    negativeAmortization:
+      input.negativeAmortization === undefined ? 'unanswered' : input.negativeAmortization ? 'yes' : 'no',
+    rateType: input.rateType === 'adjustable' ? 'adjustable' : 'fixed',
+    firstRateAdjustmentMonths:
+      typeof input.firstRateAdjustmentMonths === 'number' ? input.firstRateAdjustmentMonths : null,
+    sellerConstructedDwelling: input.sellerConstructedDwelling ? 'yes' : 'no',
+  };
+  const verdictOf = (claim: 'a4' | 'a5', element: ElementCode): ElementVerdictValue | undefined =>
+    evaluateClaimedExclusion(claim, elementFacts).find((v) => v.element === element)?.verdict;
 
   // ── 3-property exclusion, 12 CFR 1026.36(a)(4) ─────────────────────────
   const three: { failed: string[]; unknown: string[] } = { failed: [], unknown: [] };
   if (n > 3) three.failed.push(`financed ${n} properties in 12 months (limit 3)`);
-  if (input.sellerConstructedDwelling) three.failed.push('seller constructed the residence');
-  if (hasBalloon) three.failed.push('the note has a balloon, so it is not fully amortizing');
-  if (negAm === 'failed') three.failed.push('the schedule can negatively amortize');
-  else if (negAm === 'unknown') three.unknown.push('whether the schedule can negatively amortize');
-  if (rate === 'failed') three.failed.push('the rate can adjust within the first 5 years');
-  else if (rate === 'unknown') three.unknown.push('when the adjustable rate can first change');
+  if (verdictOf('a4', 'seller_constructed_dwelling') === 'failed') three.failed.push('seller constructed the residence');
+  if (verdictOf('a4', 'balloon') === 'failed') three.failed.push('the note has a balloon, so it is not fully amortizing');
+  const negAm4 = verdictOf('a4', 'negative_amortization');
+  if (negAm4 === 'failed') three.failed.push('the schedule can negatively amortize');
+  else if (negAm4 === 'unanswered') three.unknown.push('whether the schedule can negatively amortize');
+  const rate4 = verdictOf('a4', 'rate_adjustment_timing');
+  if (rate4 === 'failed') three.failed.push('the rate can adjust within the first 5 years');
+  else if (rate4 === 'unanswered') three.unknown.push('when the adjustable rate can first change');
   if (input.abilityToRepayDetermined === false) three.failed.push('no good-faith ability-to-repay determination');
   else if (input.abilityToRepayDetermined === undefined) three.unknown.push('whether a good-faith ability-to-repay determination was made');
 
@@ -353,11 +387,13 @@ function evaluateSellerFinancerExclusions(input: DoddFrankInput): ExclusionEvalu
   const one: { failed: string[]; unknown: string[] } = { failed: [], unknown: [] };
   if (input.sellerType === 'entity') one.failed.push('seller is an entity, not a natural person, estate or trust');
   if (n > 1) one.failed.push(`financed ${n} properties in 12 months (limit 1)`);
-  if (input.sellerConstructedDwelling) one.failed.push('seller constructed the residence');
-  if (negAm === 'failed') one.failed.push('the schedule can negatively amortize');
-  else if (negAm === 'unknown') one.unknown.push('whether the schedule can negatively amortize');
-  if (rate === 'failed') one.failed.push('the rate can adjust within the first 5 years');
-  else if (rate === 'unknown') one.unknown.push('when the adjustable rate can first change');
+  if (verdictOf('a5', 'seller_constructed_dwelling') === 'failed') one.failed.push('seller constructed the residence');
+  const negAm5 = verdictOf('a5', 'negative_amortization');
+  if (negAm5 === 'failed') one.failed.push('the schedule can negatively amortize');
+  else if (negAm5 === 'unanswered') one.unknown.push('whether the schedule can negatively amortize');
+  const rate5 = verdictOf('a5', 'rate_adjustment_timing');
+  if (rate5 === 'failed') one.failed.push('the rate can adjust within the first 5 years');
+  else if (rate5 === 'unanswered') one.unknown.push('when the adjustable rate can first change');
 
   if (three.failed.length === 0 && three.unknown.length === 0) {
     findings.push({

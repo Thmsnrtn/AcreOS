@@ -31,56 +31,39 @@
  * engines (A/B) and the landing/disclosure copy (F).
  */
 
-/** The one place the Pax controls live. Nested under Settings — never a door. */
-export const PAX_CONTROLS_PATH = "/settings/pax";
-
-/** How the controls are named in prose ("Resume under Settings → Pax"). */
-export const PAX_CONTROLS_LABEL = "Settings → Pax";
-
 /**
- * The standing line — replaces "Pax can take real actions · Always review…"
- * on the rail footer and the disclosure rail (spec §6).
+ * BD-6: the shell subset of this glossary (controls path/label, standing
+ * line, fixed labels, receipt words, settings/rules copy, stance and
+ * rail label words, formatPaxTime) lives in shared/pax-glossary-core.ts
+ * and is re-exported here, so the export surface of this module is
+ * unchanged for server and test consumers. Client shell surfaces import
+ * the core directly; the long copy below reaches the client only as the
+ * static asset /pax-glossary.json (see client/src/lib/pax-glossary.tsx).
  */
-export const PAX_STANDING_LINE =
-  "Pax looks, drafts and updates your records. Every message waits for your tap.";
+import {
+  formatPaxTime,
+  PAX_CONTROLS_LABEL,
+  PAX_LABELS,
+  PAX_PAUSE_STILL_WORKS,
+  PAX_RAIL_DOMAINS,
+  PAX_RAIL_LEVEL_WORDS,
+  PAX_STANCE_LABELS,
+} from "./pax-glossary-core";
 
-/** Fixed labels and the fixed sentences that are not tied to a stance. */
-export const PAX_LABELS = {
-  /** The one queue. */
-  queue: "Waiting for your tap",
-  /** The one receipts feed. */
-  receipts: "What Pax did",
-  /** Status strip, not paused. */
-  active: "Pax is active",
-  /** Status strip, paused (the "until when" follows). */
-  paused: "Paused",
-  /** Printed once on the page, under the stance control. */
-  fixedRule:
-    "Anything Pax writes to another person — email, text, letter, payment link — waits for your tap. Always.",
-  /** The three sentences of the mental model (spec §1), in order. */
-  mentalModel: [
-    "Pax looks things up and writes drafts on its own, and it keeps your records up to date — lead status, tasks, deals, calendar, scores — showing you every change.",
-    "Pax never sends a message to anyone until you tap Approve; everything waiting for you is in one place, \"Waiting for your tap\".",
-    "Rules you turned on — drips, workflows, scheduled prompts — run by themselves on your own connected accounts, each behind its own switch, and one red button pauses all of it.",
-  ] as const,
-  /** Appended to the disclosure (v2) after the mental model. */
-  youStartOn:
-    "You start on Ask before sending. Change it, or pause everything, any time under Settings → Pax.",
-  /** An ask past its expiry, still listed for 7 days. */
-  expiredAsk: "Expired — ask Pax to draft it again",
-  /** The Never list's one-line answer. */
-  notEvenIfYouAsk: "Not even if you ask.",
-  /** The ask card's "from" line when the channel has no connected identity. */
-  noSendingIdentity: "no sending identity connected → Settings → BYOK",
-  /** Label over Pax's own explanation on an ask card. Never a number. */
-  whyLabel: "Pax's explanation",
-  /** The one honest badge exception (spec §2). */
-  notYetLive: "Not yet live",
-  /** Who paused, when the holder's name is not on file. */
-  unknownHolder: "a teammate",
-  /** An approved ask whose tool name no rail can replay. */
-  notRunnable: "This can't be run from a tap. Ask Pax to draft it again.",
-} as const;
+export {
+  formatPaxTime,
+  PAX_CONTROLS_LABEL,
+  PAX_CONTROLS_PATH,
+  PAX_LABELS,
+  PAX_PAUSE_STILL_WORKS,
+  PAX_RAIL_DOMAINS,
+  PAX_RAIL_LEVEL_WORDS,
+  PAX_RECEIPT_WORDS,
+  PAX_RULES_COPY,
+  PAX_SETTINGS_COPY,
+  PAX_STANCE_LABELS,
+  PAX_STANDING_LINE,
+} from "./pax-glossary-core";
 
 /**
  * Stance copy, keyed by the STORED value. `label` is the segmented-control
@@ -91,51 +74,20 @@ export const PAX_LABELS = {
  */
 export const PAX_STANCE_COPY = {
   ask_before_sending: {
-    label: "Ask before sending",
+    label: PAX_STANCE_LABELS.ask_before_sending,
     sentence:
       "Pax keeps your records up to date on its own and shows you every change. Any message to another person waits for your tap.",
     toast:
       "Ask before sending — Pax will update records on its own again. Messages still wait for your tap.",
   },
   ask_before_everything: {
-    label: "Ask before everything",
+    label: PAX_STANCE_LABELS.ask_before_everything,
     sentence:
       "Pax only looks and drafts. Every change to your records and every message waits for your tap.",
     toast:
       "Ask before everything — every record change and every message now waits for your tap.",
   },
 } as const;
-
-/**
- * "Thu 8:00 am" — the one way a pause time is printed. `timeZone` is an
- * IANA name (the org's `timezone` column, or the user's browser zone on the
- * client). Never prints an ISO string to a customer.
- */
-export function formatPaxTime(date: Date, timeZone?: string): string {
-  let parts: Intl.DateTimeFormatPart[];
-  try {
-    parts = new Intl.DateTimeFormat("en-US", {
-      weekday: "short",
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-      timeZone,
-    }).formatToParts(date);
-  } catch {
-    // An unknown zone must not turn a refusal into a crash — fall back to
-    // the runtime's default zone rather than inventing a time.
-    parts = new Intl.DateTimeFormat("en-US", {
-      weekday: "short",
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    }).formatToParts(date);
-  }
-  const get = (type: Intl.DateTimeFormatPartTypes) =>
-    parts.find((p) => p.type === type)?.value ?? "";
-  const dayPeriod = get("dayPeriod").toLowerCase();
-  return `${get("weekday")} ${get("hour")}:${get("minute")} ${dayPeriod}`.trim();
-}
 
 export interface PaxPauseWords {
   /** Latest active expiry across the org; null when it cannot be known. */
@@ -168,8 +120,7 @@ export const PAX_PAUSE_COPY = {
     );
   },
   /** What Pause does NOT stop — printed under the list of what it does. */
-  stillWorks:
-    "Pax still answers and drafts, still asks, and anything you approve still goes out.",
+  stillWorks: PAX_PAUSE_STILL_WORKS,
   /** The 30-day safety lift, shown for "until I resume". */
   resumesByItself(until: Date, timeZone?: string): string {
     return `Pax resumes by itself on ${formatPaxTime(until, timeZone)} if you forget.`;
@@ -236,6 +187,134 @@ export const PAX_GROUP_COPY = {
 } as const;
 
 /**
+ * Per-capability rails (PX-2, register P-1; founder ruling 2026-11-10 §6.5 Q4:
+ * a refinement INSIDE the existing stance, never a new stance). Keys of
+ * `levels` ARE the stored rail levels and keys of `domains` ARE the stored
+ * record domains — shared/pax-controls.ts derives its label maps from here
+ * and its types force one entry per level / domain.
+ */
+export const PAX_RAIL_COPY = {
+  title: "What Pax may do on each kind of record",
+  intro:
+    "Your stance above still decides first. These rails can only make Pax more careful for one kind of record — never less careful than your stance.",
+  levels: PAX_RAIL_LEVEL_WORDS,
+  domains: PAX_RAIL_DOMAINS,
+  sendsLabel: "Sends to people",
+  sendsCeiling: "Sends never go past Ask. Pax never sends what it wrote without your tap.",
+  alwaysOnLabel: "Looks & drafts",
+  alwaysOnLine: "Always on — never gated, and it keeps working while paused.",
+  runsRulesLabel: "Runs your rules",
+  runsRulesLine: "Not a rail. Each rule keeps its own switch, listed under what runs on its own below.",
+  /** Toast after a rail changes: "Leads — Ask". */
+  changed(areaLabel: string, levelLabel: string): string {
+    return `${areaLabel} — ${levelLabel}`;
+  },
+  /** The refusal when a rail is on Watch (same shape as the pause refusal). */
+  watchRefusal(areaLabel: string): string {
+    return (
+      `Pax is set to Watch for ${areaLabel.toLowerCase()}, so this wasn't done. ` +
+      `Change it under ${PAX_CONTROLS_LABEL}. Looking, drafting and anything you approve still work.`
+    );
+  },
+} as const;
+
+/**
+ * Daily limits, per-member narrowing and the rails reset (PX-3, register P-1).
+ * Keys of `labels` ARE the stored limit keys (shared/pax-controls.ts PaxLimits);
+ * keys of `refusals` / `deniedLine` are the limit kinds paxLimits.ts reports
+ * (asks, credits, browse, batchRows). Every refusal is whole sentences with a
+ * way forward — tests/unit/refusalsArePlainWords.test.ts judges each one
+ * through paxLimitRefusalMessage.
+ */
+export const PAX_LIMIT_COPY = {
+  title: "Daily limits",
+  intro:
+    "Cap how much Pax may do in one day. Leave a box blank for no limit. When Pax reaches a cap it stops and tells you; nothing is cut short halfway.",
+  resetNote: "Counts start again at midnight in your workspace's time zone.",
+  placeholder: "No limit",
+  labels: {
+    asksPerDay: "Asks Pax may put in front of you",
+    creditSpendPerDay: "Credits Pax's approved sends may cost",
+    browseCallsPerDay: "Web pages Pax may open",
+    batchRowsPerDay: "Records Pax may add in a batch",
+  },
+  save: "Save limits",
+  saved: "Daily limits saved",
+  adminHint: "Ask an owner to change the daily limits.",
+  /** The refusal each cap gives, by kind. Built by paxLimitRefusalMessage. */
+  refusals: {
+    asks:
+      "Pax has reached your daily limit for asks, so this wasn't done. Your count starts again at midnight, or you can raise the limit under " +
+      `${PAX_CONTROLS_LABEL}.`,
+    credits:
+      "This send would take Pax past your daily limit for credits, so it wasn't put in front of you. Your count starts again at midnight, or you can raise the limit under " +
+      `${PAX_CONTROLS_LABEL}.`,
+    browse:
+      "Pax has reached your daily limit for opening web pages, so the page wasn't opened. Your count starts again at midnight, or you can raise the limit under " +
+      `${PAX_CONTROLS_LABEL}.`,
+    batchRows:
+      "Adding these records would take Pax past your daily limit for batch additions, so none of them were added. Your count starts again at midnight, or you can raise the limit under " +
+      `${PAX_CONTROLS_LABEL}.`,
+  },
+  /** The receipt line for a stopped attempt, in the customer's words. */
+  deniedLine: {
+    asks: "Stopped at the daily limit for asks",
+    credits: "Stopped at the daily limit for credits",
+    browse: "Stopped at the daily limit for web pages",
+    batchRows: "Stopped at the daily limit for batch additions",
+  },
+  // Your own narrower settings
+  memberTitle: "Your own narrower settings",
+  memberIntro:
+    "Make Pax more careful when it acts for you. These can only narrow what the workspace allows — a choice that is wider than the workspace's has no effect.",
+  memberLimitNote: "A number above the workspace's limit has no effect; the smaller one always applies.",
+  memberApplies: "What applies to you right now",
+  memberNoLimit: "no limit",
+  memberSave: "Save my settings",
+  memberSaved: "Your narrower settings saved",
+  memberClear: "Clear my narrower settings",
+  memberCleared: "Your narrower settings cleared",
+  memberCouldNotSave: "Could not save your settings",
+  // Reset all rails
+  resetButton: "Reset all rails",
+  resetConfirm: "Tap again to reset",
+  resetCancel: "Keep my settings",
+  resetWhat:
+    "Resets every rail to its starting level, removes every daily limit, and clears everyone's own narrower settings.",
+  resetWhatNot: "Does not change your stance, the three switches, or a pause.",
+  resetDone: "Rails, limits and everyone's narrower settings reset",
+  couldNotReset: "Could not reset the rails",
+} as const;
+
+/**
+ * "My county sites" (PX-7) — the list of public sites Pax may run a search on.
+ * Listing a site lets Pax type a search into that site's own search box and read
+ * the results page; it is not a licence, and the line below says so without
+ * claiming more than the fence enforces (a handful of web-sourced records per
+ * conversation, each tagged with where it came from).
+ */
+export const PAX_MY_SITES_COPY = {
+  title: "My county sites",
+  intro:
+    "Public sites you want Pax to search for you — a county assessor, recorder or treasurer. Pax types your search into the site's own search box and reads the results page.",
+  limitLine:
+    "Listing a site lets Pax run searches on it. It does not let Pax copy a site's data in bulk: Pax still adds only a few records from a web page at a time, and notes where each one came from.",
+  empty: "No sites yet. Add the ones you use and Pax can search them when you ask.",
+  labelField: "Name",
+  labelPlaceholder: "Cochise County assessor",
+  hostField: "Website address",
+  hostPlaceholder: "https://assessor.example.gov",
+  addButton: "Add site",
+  removeButton: "Remove",
+  added: (label: string) => `${label} added to your sites`,
+  removed: (label: string) => `${label} removed from your sites`,
+  notAddress: "That does not look like a website address. Paste the address of the site, like https://assessor.example.gov.",
+  alreadyListed: "That site is already on your list.",
+  listFull: (max: number) => `You can list up to ${max} sites. Remove one to add another.`,
+  readOnly: "Ask an owner to change your sites.",
+} as const;
+
+/**
  * The fixed Never list — facts, each with the gate that makes it a fact
  * (spec §2). A line is listed ONLY while its gate exists; the pricing line
  * ("change what you pay AcreOS") is appended by wave 1 A together with
@@ -265,13 +344,6 @@ export const PAX_NEVER_LIST = [
     gate: "tests/unit/connectorCatalogIsHonest.test.ts",
   },
 ] as const;
-
-/** "asked / ran on its own / rule" — the third column of a receipt row. */
-export const PAX_RECEIPT_WORDS = {
-  asked: "asked",
-  onItsOwn: "ran on its own",
-  rule: "rule",
-} as const;
 
 /**
  * Where an ask came from, in words (spec §4.5). `sourceRef` is the frozen
@@ -487,34 +559,4 @@ export const PAX_PAGE_COPY = {
   couldNotResume: "Couldn't resume Pax",
   couldNotChange: "Couldn't change this",
   promptDeleted: "Scheduled prompt deleted",
-} as const;
-
-/** Settings bucket + quick-find entry points (spec §3a "Entry points"). */
-export const PAX_SETTINGS_COPY = {
-  bucketLabel: "Pax & connections",
-  cardTitle: "Pax — when it asks, what runs on its own",
-  cardOpen: "Open",
-  byokCardTitle: "Use your own provider accounts",
-  byokCardBody:
-    "Plug in your own Twilio, SendGrid, Lob or AI account so texts, emails, mail and Pax bill to you directly.",
-  byokOpen: "Open your keys",
-  quickFind: {
-    pax: { label: "Pax — pause, when it asks", description: "One page: pause, stance, what runs on its own" },
-    pause: { label: PAX_PAGE_COPY.pauseButton, description: "Stop everything Pax and your rules do on their own" },
-    waiting: { label: PAX_LABELS.queue, description: "Approve, edit or reject what Pax wrote" },
-    byok: { label: "Your own keys (BYOK)", description: "Twilio, SendGrid, Lob, AI, property data" },
-  },
-} as const;
-
-/** Honesty lines for the rules editors (spec §6 workflow toast; provider status chip). */
-export const PAX_RULES_COPY = {
-  workflowActive: "Your workflow is now active.",
-  workflowSavedNotLive(eventLabel: string): string {
-    return `Saved — will run when ${eventLabel} goes live`;
-  },
-  /** Factual AI-key status on the provider card: read from GET /api/byok. */
-  aiOwnKey(providerName: string): string {
-    return `Pax runs on your own ${providerName} account`;
-  },
-  aiPlatformKey: "Pax runs on AcreOS's AI account",
 } as const;

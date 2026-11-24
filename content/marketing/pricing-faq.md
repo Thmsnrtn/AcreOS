@@ -18,7 +18,7 @@ Bring Your Own Key. On the Pro plan, you can connect your own API keys for premi
 
 ## 5. How does the free trial work?
 
-When you sign up, you get 90 days of full Pro access — every feature, no restrictions. No credit card required to start. At the end of 90 days, your account moves to the Free tier. You can upgrade to Starter or Pro at any point during or after the trial.
+When you sign up, you get a 14-day free trial — full access to your plan's features, and no charge until it ends. No credit card required to start. At the end of the 14 days, your account moves to the Free tier. You can upgrade to Starter or Pro at any point during or after the trial.
 
 ## 6. Can I have multiple users on the Free plan?
 
@@ -63,7 +63,7 @@ Yes. Export your data from Pebble or REsimpli as CSV, then use AcreOS's import t
 
 ## 14. Do you offer refunds?
 
-If you're not satisfied within the first 30 days of a paid subscription, email us for a full refund. After 30 days, we don't offer refunds, but you can cancel anytime and your subscription will remain active through the end of the billing period.
+If you're not satisfied within the first 30 days of a paid subscription, email us for a full refund — see the refund policy (Terms §5A) for what's covered. After 30 days, refund requests are considered case by case, and you can cancel anytime to stop the next charge.
 
 ## 15. Is there a mobile app?
 

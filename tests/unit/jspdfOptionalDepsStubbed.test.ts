@@ -7,13 +7,19 @@
  * lines only. That is safe only while it stays true, so:
  *
  *   1. every client/shared/package file that imports jsPDF, in any form, is
- *      found (vacuity floor: the borrower statement is one), and none of them
- *      calls html() or addSvgAsImage() — a new caller fails here instead of
- *      throwing in a customer's browser;
+ *      found, and none of them calls html() or addSvgAsImage() — a new caller
+ *      fails here instead of throwing in a customer's browser. Since BD-1
+ *      (borrower PDFs render on the server) the found set must be EMPTY:
+ *      jsPDF is a server-only dependency now, and any client import brings
+ *      the 331 KB chunk back into the customer bundle;
  *   2. the stub covers exactly html2canvas and canvg, is registered, and only
  *      applies when jsPDF is the importer. dompurify, jsPDF's third optional
  *      dependency, is never stubbed: isomorphic-dompurify sanitizes mail and
  *      assignment HTML with it.
+ *
+ * The stub plugin stays in vite.config.ts as a tripwire even with zero
+ * client consumers: if a client jsPDF import ever returns, the stubbed
+ * optional deps keep its worst weight out while this pin fails the build.
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
@@ -40,9 +46,12 @@ describe("jsPDF's unbundled optional features are never called", () => {
   const files = SCAN_DIRS.flatMap((d) => walk(path.join(ROOT, d)));
   const consumers = files.filter((f) => JSPDF_IMPORT.test(stripComments(readFileSync(f, "utf8"))));
 
-  it("finds the jsPDF consumers (vacuity)", () => {
+  it("finds no jsPDF consumers in the client bundle's sources (BD-1: jsPDF is server-only)", () => {
     expect(files.length).toBeGreaterThan(1000);
-    expect(consumers.map((f) => path.relative(ROOT, f))).toContain("client/src/pages/borrower-portal.tsx");
+    expect(
+      consumers.map((f) => path.relative(ROOT, f)),
+      "a client/shared/packages file imports jsPDF — borrower PDFs render on the server (BD-1); a client import ships the 331 KB jspdf chunk to every customer again",
+    ).toEqual([]);
   });
 
   it("no jsPDF consumer calls html(), addSvgAsImage() or addImage(), or enables compression", () => {

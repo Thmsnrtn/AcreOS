@@ -16,10 +16,16 @@
  *    → Touch 2 (30d after cancel): Product update email
  *    → Touch 3 (60d after cancel): Special offer (if configurable)
  *
- * 3. REFERRAL ACTIVATION
+ * 3. REFERRAL ACTIVATION — DISARMED by default (P1-2 / CR-047)
  *    Power users (high activity, good NPS signals) who haven't referred anyone
  *    → Invite to referral program with personalized note
  *    → Track and credit referral conversions automatically
+ *    The invite promised terms the referral machine never implemented
+ *    ("1 month free" per referral + "20% off their first 3 months"); the one
+ *    real program is server/services/referralReward.ts ($49 a side — see
+ *    runReferralActivation). The send stays disarmed until a founder re-arms
+ *    it via GROWTH_REFERRAL_INVITES_ENABLED=true; the copy below is written
+ *    from the machine's own constants so a re-arm sends only true terms.
  *
  * 4. ENGAGEMENT REACTIVATION
  *    Active paying orgs that haven't logged in for 14+ days
@@ -54,6 +60,12 @@ import { subDays, subHours, addDays, format, differenceInDays } from "date-fns";
 import { emailService } from "../services/emailService";
 import { PLAN_LIMITS } from "../services/planLimits";
 import { routeComplexTask } from "../services/aiRouter";
+import {
+  REFERRAL_REWARD_CENTS,
+  REFERRAL_ANNUAL_BONUS_CENTS,
+  REFERRAL_RETENTION_HOLD_DAYS,
+  REFERRAL_MILESTONES,
+} from "../services/referralReward";
 import { logger } from "../utils/logger";
 import { orgMayActFilter } from "../services/orgOperating";
 import { clock } from "../utils/clock";
@@ -77,6 +89,11 @@ const CONFIG = {
   // Power user threshold for referral program invitation
   POWER_USER_ACTIVITY_DAYS: 30,
   POWER_USER_MIN_ACTIONS: 50,
+
+  // P1-2 / CR-047 (E-47 hold, enforced in code): referral invites are
+  // DISARMED unless a founder explicitly re-arms them. Default off — the
+  // 6-hourly run must never again email referral terms on its own motion.
+  REFERRAL_INVITES_ENABLED: process.env.GROWTH_REFERRAL_INVITES_ENABLED === "true",
 
   // Re-engagement: days of inactivity before re-engagement email
   REENGAGEMENT_DAYS: 14,
@@ -192,8 +209,6 @@ async function runUpsellEngine(): Promise<{ sent: number }> {
             <ul style="color:#374151;font-size:14px;line-height:1.8;margin:0;padding-left:20px;">
               <li>${limits.nextTier === "pro" ? "500 leads (10× more)" : "Unlimited leads & deals"}</li>
               <li>Advanced AI deal analysis</li>
-              <li>Priority support from Sophie</li>
-              ${limits.nextTier === "scale" ? "<li>White-label capabilities + API access</li>" : ""}
             </ul>
           </div>
           <div style="text-align:center;margin:24px 0;">
@@ -276,7 +291,7 @@ async function runWinBackEngine(): Promise<{ sent: number }> {
           <p>We noticed your AcreOS account isn't active anymore — and we wanted to reach out personally.</p>
           <p>We've shipped several features recently that might change things for you:</p>
           <ul style="line-height:1.8;color:#374151;">
-            <li><strong>Atlas AI</strong> — finds deals while you sleep, every night at 1 AM</li>
+            <li><strong>Morning briefings</strong> — your pipeline, summarised for your morning review</li>
             <li><strong>5-touch follow-up automation</strong> — never let a lead go cold again</li>
             <li><strong>Seller-financed note tracking</strong> — complete note servicing dashboard</li>
           </ul>
@@ -332,8 +347,31 @@ async function runWinBackEngine(): Promise<{ sent: number }> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function runReferralActivation(): Promise<{ sent: number }> {
+  // DISARMED (P1-2 / CR-047): this invite previously promised "1 month free
+  // for every paying referral" and "20% off their first 3 months" — neither
+  // exists in the one real program (server/services/referralReward.ts), and
+  // its CTA linked to a /referrals route that does not exist. The send is
+  // off by default; the copy below states the machine's actual terms,
+  // interpolated from its constants, so if a founder re-arms the send
+  // (GROWTH_REFERRAL_INVITES_ENABLED=true) it can only tell the truth.
+  if (!CONFIG.REFERRAL_INVITES_ENABLED) {
+    logger.info("[GrowthAutomation] Referral invites disarmed (P1-2/CR-047) — skipping referral activation");
+    return { sent: 0 };
+  }
+
   let sent = 0;
   const since = subDays(clock.now(), CONFIG.POWER_USER_ACTIVITY_DAYS);
+
+  // The one real program, in the machine's own numbers (referralReward.ts):
+  // referee $49 at first paid invoice; referrer $49 after the 30-day
+  // retention hold ($98 total when the referee bills annually); milestone
+  // bonuses at the 5th / 10th lifetime conversion. Credits apply to AcreOS
+  // invoices only. Never restate these as literals — derive them.
+  const rewardUsd = `$${Math.round(REFERRAL_REWARD_CENTS / 100)}`;
+  const annualTotalUsd = `$${Math.round((REFERRAL_REWARD_CENTS + REFERRAL_ANNUAL_BONUS_CENTS) / 100)}`;
+  const milestoneCopy = Object.entries(REFERRAL_MILESTONES)
+    .map(([n, cents]) => `$${Math.round(cents / 100)} at your ${n}th converted referral`)
+    .join(", ");
 
   // Find power users: paying, active, high activity, not recently emailed about referrals
   const powerUsers = await db.select({
@@ -378,22 +416,23 @@ async function runReferralActivation(): Promise<{ sent: number }> {
         html: `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;">
           <h2 style="color:#1e3a5f;">Hey ${contact.name},</h2>
           <p>You're one of our most active users — ${user.activityCount}+ actions in the last 30 days. We notice these things.</p>
-          <p>We just launched our referral program, and we wanted you to be among the first to know about it.</p>
+          <p>We wanted you to know about our referral program — here are its exact terms:</p>
           <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px;margin:20px 0;">
             <h3 style="margin:0 0 8px;color:#374151;">Refer a Land Investor, earn rewards:</h3>
             <ul style="color:#374151;font-size:14px;line-height:1.8;margin:0;padding-left:20px;">
-              <li><strong>1 month free</strong> for every paying referral</li>
-              <li>Your referrals get <strong>20% off their first 3 months</strong></li>
-              <li>Stack multiple referrals — no limit</li>
+              <li>Your referral gets a <strong>${rewardUsd} account credit</strong> when their first paid invoice lands</li>
+              <li>You get a <strong>${rewardUsd} account credit</strong> once they've stayed a subscriber for ${REFERRAL_RETENTION_HOLD_DAYS} days (${annualTotalUsd} total if they chose annual billing)</li>
+              <li>Bonus credits: ${milestoneCopy} — and no limit on how many people you refer</li>
+              <li>Credits apply to AcreOS invoices only</li>
             </ul>
           </div>
           <p>If you know other Land Investors who'd benefit from AcreOS, we'd love the introduction.</p>
           <div style="text-align:center;margin:24px 0;">
-            <a href="${CONFIG.APP_URL}/referrals" style="background:#059669;color:white;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;">Get your referral link →</a>
+            <a href="${CONFIG.APP_URL}/settings?tab=account" style="background:#059669;color:white;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;">Get your referral link →</a>
           </div>
           <p style="color:#9ca3af;font-size:12px;">Questions? Just reply — I'm a real person.</p>
         </div>`,
-        text: `Hey ${contact.name}, you're one of our most active users. We just launched our referral program — earn a free month for every paying referral. ${CONFIG.APP_URL}/referrals`,
+        text: `Hey ${contact.name}, you're one of our most active users. Our referral program pays a ${rewardUsd} account credit to your referral at their first paid invoice, and ${rewardUsd} to you once they've stayed a subscriber for ${REFERRAL_RETENTION_HOLD_DAYS} days. Get your link: ${CONFIG.APP_URL}/settings?tab=account`,
       });
 
       await logGrowthEmail(user.orgId, "growth_referral_invite", `Referral program invitation sent to power user (${user.activityCount} actions/30d)`);
@@ -535,7 +574,7 @@ async function runChurnRiskInterventions(): Promise<{ reengaged: number; alerted
             <p>We noticed your activity on AcreOS has slowed down recently. We want to make sure you're getting the most out of the platform.</p>
             <p>Here are a few things you might not have tried yet:</p>
             <ul style="line-height:1.8;color:#374151;">
-              <li><strong>Atlas AI</strong> — automatically finds deals overnight</li>
+              <li><strong>Pax</strong> — drafts your replies and follow-ups for your approval</li>
               <li><strong>Automated follow-ups</strong> — never let a lead go cold</li>
             </ul>
             <div style="text-align:center;margin:24px 0;">
@@ -594,23 +633,17 @@ async function runChurnRiskInterventions(): Promise<{ reengaged: number; alerted
         await emailService.sendEmail({
           to: contact.email,
           organizationId: orgId,
-          subject: `${contact.name}, we'd like to offer you something special`,
+          subject: `${contact.name}, we'd like to hear how AcreOS is working for you`,
           html: `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#1a1a1a;">
             <h2 style="color:#1e3a5f;">We value you as a customer</h2>
             <p>Hi ${contact.name},</p>
             <p>We noticed you haven't been using AcreOS as much lately, and we want to make sure we're the right fit for your business.</p>
-            <p>We'd like to offer you a special deal:</p>
-            <div style="background:#f0fdf4;border:2px solid #16a34a;border-radius:12px;padding:20px;margin:20px 0;text-align:center;">
-              <h3 style="color:#16a34a;margin:0 0 8px;">50% off your next 2 months</h3>
-              <p style="color:#374151;margin:0;font-size:14px;">Plus a free 1-on-1 onboarding call to help you get the most out of AcreOS</p>
-            </div>
             <p>If there's something that's not working for you, we genuinely want to know. Reply to this email and we'll work with you personally.</p>
             <div style="text-align:center;margin:24px 0;">
-              <a href="${CONFIG.APP_URL}/settings/billing" style="background:#16a34a;color:white;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;">Claim your offer</a>
+              <a href="${CONFIG.APP_URL}/dashboard" style="background:#1e3a5f;color:white;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;">Log back in</a>
             </div>
-            <p style="margin-top:24px;color:#6b7280;font-size:13px;">This offer expires in 7 days.</p>
           </div>`,
-          text: `Hi ${contact.name}, we'd like to offer you 50% off your next 2 months of AcreOS plus a free onboarding call. Reply to claim or visit: ${CONFIG.APP_URL}/settings/billing`,
+          text: `Hi ${contact.name}, we noticed you haven't been using AcreOS as much lately. If something isn't working for you, reply to this email and tell us. ${CONFIG.APP_URL}/dashboard`,
         });
         await logGrowthEmail(orgId, "growth_churn_save_offer", `Save offer sent (risk score: ${risk}, health: ${health.healthScore})`);
         saveOffers++;

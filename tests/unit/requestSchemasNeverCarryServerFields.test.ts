@@ -157,8 +157,6 @@ const REVIEWED_RAW_BODY_SITES: Record<string, string> = {
     "inserts named branding and feature columns; commercial terms (revenue share, limits, plan) are platform defaults",
   "server/routes-white-label.ts patch /config :: updateConfig":
     "sets named branding and feature columns of the caller's own config; commercial terms are not written",
-  "server/routes-ai-operations.ts post /buyer-matching/profile :: createBuyerProfile":
-    "validateRequest replaces the body with a closed local schema's output; the service takes the org from the server",
   "server/routes-ai-operations.ts post /cashflow/forecast :: generateForecast":
     "validateRequest replaces the body with a closed local schema's output; computes a forecast",
   "server/routes-ai-operations.ts post /compliance/rules :: addRule":

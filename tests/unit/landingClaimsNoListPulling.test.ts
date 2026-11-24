@@ -6,8 +6,9 @@
  * overnight". Nothing pulls a list: there is no list builder (lists arrive by
  * CSV import — copy.ts's own truth-note withdrew the sibling claim).
  *
- * Coupled to the code: while no server route path names a list builder /
- * list pull, no file in the public population may claim list pulling. The
+ * Coupled to the code: while the list builder serves no geography (and,
+ * before 2026-11-06, while no server route named one), no file in the public
+ * population may claim list pulling. The
  * population is ENUMERATED (index.html + llms.txt + the routed public pages in
  * PUBLIC_FILES + every file under pages/landing/, pages/compare/,
  * pages/learn/, pages/tools/ and components/tools/), comments stripped, with
@@ -32,6 +33,7 @@ import { stripComments } from "../helpers/stripComments";
 import { stripHtmlComments } from "../helpers/stripHtmlComments";
 
 import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
+import { createListBuilder } from "../../server/services/landData/listBuilder";
 
 vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
@@ -118,7 +120,17 @@ function listBuilderRoutes(): string[] {
   return hits;
 }
 
-describe("public copy claims no list pulling while no list builder exists", () => {
+/** Geographies the list builder can actually serve a list from (production configuration). */
+function servedListGeographies(): string[] {
+  return createListBuilder().geographies().selectable.map((g) => g.state);
+}
+
+describe("public copy claims no list pulling while no list builder serves a list", () => {
+  it("a dark list builder does not open the claim hatch", () => {
+    expect(listBuilderRoutes().length).toBeGreaterThan(0); // the builder's routes exist (W10.3 v0)
+    expect(servedListGeographies()).toEqual([]); // and serve nothing: the scan below must run
+  });
+
   it("the predicate catches the shapes it guards (canary)", () => {
     for (const s of [
       "Pull lists, run comps",
@@ -154,7 +166,12 @@ describe("public copy claims no list pulling while no list builder exists", () =
         "client/src/components/tools/LandDealCalculator.tsx",
       ]),
     );
-    if (listBuilderRoutes().length > 0) return; // a list builder exists; the claim may return
+    // 2026-11-06 (W10.3 v0, draft W4.10): a list-builder route now EXISTS but
+    // is dark — it admits no geography. A route that names a list builder is
+    // no longer evidence that a customer can pull a list, so the claim may
+    // return only when the builder SERVES somewhere (the old hatch opened on
+    // the route name alone and would have switched this gate off).
+    if (listBuilderRoutes().length > 0 && servedListGeographies().length > 0) return;
     const offenders = pop.filter((p) => LIST_PULL_CLAIM.test(p.text)).map((p) => `${p.file}: ${p.text.match(LIST_PULL_CLAIM)?.[0]}`);
     expect(offenders).toEqual([]);
   });

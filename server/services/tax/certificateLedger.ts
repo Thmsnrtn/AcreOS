@@ -2,7 +2,10 @@
  * The certificate ledger — V-Tax-1 T3b. Records a subsequent tax paid, a
  * redemption notice the operator sent (outside AcreOS), or the foreclosure-
  * filing deadline as tax_events (append-only, org-private), and builds the
- * ledger view from them. The projection is pure, in shared/tax/ledger.ts.
+ * ledger view from them. Notices sent in-product through the Settlement &
+ * Documents Rail (T-P1) are recorded by the rail service itself, from the
+ * provider's receipt, as the same event type with `sentViaRail` detail.
+ * The projection is pure, in shared/tax/ledger.ts.
  */
 import { and, asc, eq } from "drizzle-orm";
 import { taxCertificates, taxEvents, type TaxRuleCited } from "@shared/schema";

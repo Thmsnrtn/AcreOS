@@ -379,6 +379,17 @@ export const organizationIntegrations = pgTable("organization_integrations", {
     stripeConnectOnboardingComplete?: boolean;
     stripeConnectPayoutsEnabled?: boolean;
     stripeConnectChargesEnabled?: boolean;
+    // Onboarding-stall detector (autopilot brief B-7, 2026-11-16): the
+    // first-seen clock for an account parked in `currentlyDue`. Seeded by
+    // the first observation with requirements outstanding (account.updated
+    // webhook via updateAccountStatus, or the daily stall sweep's live
+    // read) and cleared the moment the requirements empty — so the clock
+    // measures "stuck since first seen", not "since last webhook". The
+    // 7-day founder alert stamps alertedAt so it fires once per stall
+    // episode. No migration: these live in the existing settings JSONB.
+    stripeConnectStallFirstSeenAt?: string; // ISO timestamp, first stuck observation
+    stripeConnectStallRequirements?: string[]; // outstanding requirements at last observation
+    stripeConnectStallAlertedAt?: string | null; // ISO timestamp of the 7-day alert, null until fired
     stripeConnectDefaultCurrency?: string;
     stripeApplicationFeePercent?: number; // Platform fee percentage (e.g., 2.5)
   }>(),

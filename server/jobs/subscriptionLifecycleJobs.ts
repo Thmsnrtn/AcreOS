@@ -4,12 +4,16 @@
  *   - the yearly-plan pre-renewal notice (daily 10:00 UTC).
  *
  * The yearly-plan pre-renewal notice: Cal. Bus. & Prof.
- * Code § 17602(b)(2): 15–45 days before a yearly renewal. Thin scheduler over
+ * Code § 17602(b)(2): 15–45 days before a yearly renewal; 940 CMR
+ * 38.05(4): 5–30 days before the cancel-by date. Thin scheduler over
  * runAnnualRenewalNotices (server/services/annualRenewalNotice.ts), which sends
  * once per org and renewal period (idempotency-keyed, so a re-run replays
  * rather than re-sends). Registered by runScheduledJobs() — worker process only.
  */
 import { trackInterval, withJobLock, jobLog as log } from "../utils/jobRuntime";
+import { startRefundSlaSweepJob } from "./refundSlaSweepJob"; // refund automation: retry / reminder / escalation / uncertain listing
+import { startConnectDisputeEscalationJob } from "./connectDisputeEscalationJob"; // B-2: borrower-dispute response-deadline escalations (T-72h / T-24h)
+import { startConnectOnboardingStallJob } from "./connectOnboardingStallJob"; // B-7: lender Connect onboarding-stall aging (daily, 7-day founder alert + lender notice)
 import { jobSupervisor } from "../services/jobSupervisor";
 import { clock } from "../utils/clock";
 
@@ -19,6 +23,9 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export function startSubscriptionLifecycleJobs() {
   startTrialExpiryJob();
   startAnnualRenewalNoticeJob();
+  startRefundSlaSweepJob(); // every 10 min — refund queue SLA (retry, reminder at dueAt, escalation at dueAt+24h, uncertain listing)
+  startConnectDisputeEscalationJob(); // every 1h — borrower-dispute deadline escalations (T-72h warning, T-24h critical)
+  startConnectOnboardingStallJob(); // every 24h — lender Connect onboarding-stall aging (7-day founder alert + lender notice, once per episode)
 }
 
 // ── Trial expiry automation (daily 9am UTC) ─────────────────────────────────

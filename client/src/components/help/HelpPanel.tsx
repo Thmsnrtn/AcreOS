@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatDate } from "@/lib/format";
 import PaxAskCard from "@/components/pax/PaxAskCard";
+import { RequiredDisclaimer } from "@/components/required-disclaimer";
 import { usePaxAskActions, usePaxAskById } from "@/hooks/usePaxNeedsYou";
 
 // Browser context capture types
@@ -1083,6 +1084,8 @@ export function HelpPanel() {
                   )}
                 </div>
               </ScrollArea>
+
+              <RequiredDisclaimer type="ai" className="mt-3" />
 
               {ticketData.ticket.status !== "closed" && (
                 <form

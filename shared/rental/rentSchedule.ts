@@ -9,8 +9,8 @@
  * had an empty ledger, so aging buckets, the collected-% tile and the late-fee
  * engine were all computing over rent that was owed and never recorded.
  *
- * Two rules this module enforces
- * ──────────────────────────────
+ * Three rules this module enforces
+ * ────────────────────────────────
  * 1. IDEMPOTENT PER PERIOD. `planRentCharges` is given the set of months
  *    already on the ledger and returns only the missing ones. A second run
  *    with the first run's output folded in returns an empty `create` list.
@@ -24,6 +24,10 @@
  *    as a `skipped` entry with a reason, for the operator to post by hand at
  *    the agreed figure. Charging a full month for a half month of tenancy
  *    would be an overcharge we invented.
+ * 3. NO BACK-FILL BEFORE THE LEDGER'S FIRST MONTH. An imported lease keeps the
+ *    seller's start date; the months before the import were never owed to the
+ *    buyer, so planning starts at the first month already on the ledger when
+ *    there is one.
  *
  * Pure module: no DB, no I/O. `throughDate` is passed in, never read from the
  * clock, so the planner is deterministic and testable.
@@ -139,11 +143,12 @@ export function dueDateForPeriod(monthKey: string, rentDueDayOfMonth: number): s
 
 /**
  * Plan the charges a lease owes through `throughDate`, minus the periods
- * already on the ledger.
+ * already on the ledger, and never before the first month already on it.
  *
  * @param existingMonths month keys (YYYY-MM-01) already present in
  *        `rent_charges` for this lease. Pass every one of them — a partial set
- *        is what would let a duplicate through.
+ *        is what would let a duplicate through, and the earliest one bounds
+ *        the plan.
  */
 export function planRentCharges(args: {
   lease: LeaseScheduleInput;
@@ -170,9 +175,26 @@ export function planRentCharges(args: {
   const start = parseYmd(lease.startDate);
   const end = lease.endDate ? parseYmd(lease.endDate) : null;
 
+  // NEVER BACK-FILL BEFORE THE LEDGER'S FIRST MONTH. A rent-roll import keeps
+  // the SELLER's lease start and seeds the import month's charge, so planning
+  // from the lease start put every month before the acquisition on the buyer's
+  // ledger as rent owed to them — money nobody owed this operator. The first
+  // month already on a lease's ledger is where AcreOS's record of the tenancy
+  // begins; months before it are not planned. A lease with nothing on its
+  // ledger still plans from its own start, as before.
+  const firstOnLedger =
+    [...existing]
+      .map((m) => monthKeyOf(m))
+      .filter((k): k is string => k !== null)
+      .sort()[0] ?? null;
+  const firstKey = firstOnLedger && firstOnLedger > startKey ? firstOnLedger : startKey;
+  if (lastKey < firstKey) {
+    return { create: [], skipped: [], periodsConsidered: 0 };
+  }
+
   const create: PlannedRentCharge[] = [];
   const skipped: SkippedRentPeriod[] = [];
-  const periods = monthSpan(startKey, lastKey);
+  const periods = monthSpan(firstKey, lastKey);
 
   for (const key of periods) {
     if (existing.has(key)) {

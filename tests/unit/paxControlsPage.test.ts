@@ -37,6 +37,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { QueryClientProvider } from "@tanstack/react-query";
 import fs from "node:fs";
 import path from "node:path";
+import { stripComments } from "../helpers/stripComments";
 
 const ROOT = path.resolve(__dirname, "../..");
 const PAGE_REL = "client/src/pages/settings/pax-controls.tsx";
@@ -85,7 +86,7 @@ vi.mock("@/lib/queryClient", async () => {
 const { PaxControls } = await import("../../client/src/pages/settings/pax-controls");
 const { queryClient } = await import("../../client/src/lib/queryClient");
 const { UNATTENDED_PATHS, OFFERED_STANCES } = await import("../../shared/pax-controls");
-const { PAX_STANCE_COPY, PAX_PAUSE_COPY, PAX_PAGE_COPY, PAX_FIXED_RULES, PAX_LABELS } = await import(
+const { PAX_STANCE_COPY, PAX_PAUSE_COPY, PAX_PAGE_COPY, PAX_FIXED_RULES, PAX_LABELS, PAX_MY_SITES_COPY } = await import(
   "../../shared/pax-glossary"
 );
 
@@ -103,6 +104,7 @@ function controls(overrides: Record<string, unknown> = {}): Controls {
     canChangeStance: true,
     canResume: true,
     switches: { leadScoring: true, borrowerReminders: true, inboxDrafts: true },
+    rails: { records: { leads: "act_and_report", properties: "act_and_report", deals: "act_and_report", tasks: "act_and_report", follow_ups: "act_and_report", account: "act_and_report" }, sends: "ask" },
     rightNow: { waiting: 0, changedTodayOnItsOwn: 0, rulesRunning: { workflows: 0, sequences: 0, scheduledPrompts: 0 } },
     runsOnItsOwn: {
       workflows: { active: 0, live: 0, lastRanAt: null },
@@ -165,7 +167,20 @@ async function click(el: HTMLElement | null) {
   await flush();
 }
 
+// BD-6: the page's long copy arrives by fetch from the static asset
+// /pax-glossary.json. The stub serves the committed asset verbatim — the
+// same bytes production serves — so the rendered-text assertions below
+// still judge the real glossary strings.
+const GLOSSARY_JSON = fs.readFileSync(path.join(ROOT, "shared/pax-glossary.json"), "utf8");
+
 beforeEach(() => {
+  vi.stubGlobal("fetch", async (input: unknown) => {
+    const url = typeof input === "string" ? input : (input as { url: string }).url;
+    if (url === "/pax-glossary.json") {
+      return new Response(GLOSSARY_JSON, { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    throw new Error(`unexpected fetch ${url}`);
+  });
   toasts.length = 0;
   apiRequest.mockReset();
   queryClient.clear();
@@ -175,6 +190,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.unstubAllGlobals();
   act(() => {
     root.unmount();
   });
@@ -255,7 +271,8 @@ describe("stance labels and sentences come from the glossary", () => {
 
   it("the page source carries no inline stance label — only the glossary import", () => {
     const src = read(PAGE_REL);
-    expect(src).toContain('from "@shared/pax-glossary"');
+    expect(src).toContain('from "@/lib/pax-glossary"');
+    expect(src).not.toContain('from "@shared/pax-glossary"');
     for (const s of OFFERED_STANCES) {
       const label = PAX_STANCE_COPY[s].label;
       for (const quoted of [`"${label}"`, `'${label}'`, `\`${label}\``, `>${label}<`]) {
@@ -482,6 +499,156 @@ describe("scheduled prompts", () => {
   });
 });
 
+// ── 6b. My county sites (PX-7) ─────────────────────────────────────────────
+
+describe("My county sites", () => {
+  const SITES = [
+    { host: "assessor.example.gov", label: "Cochise assessor" },
+    { host: "recorder.example.gov", label: "Cochise recorder" },
+  ];
+
+  async function typeInto(el: HTMLElement | null, value: string) {
+    expect(el, "input to type into").not.toBeNull();
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+      setter.call(el!, value);
+      el!.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  }
+
+  async function submitForm() {
+    await act(async () => {
+      q('[data-testid="my-sites-form"]')!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+    await flush();
+  }
+
+  /** A server that keeps the list the page PATCHes, like the real route. */
+  function serveSites(initial: typeof SITES, overrides: Record<string, unknown> = {}) {
+    let state = controls({ mySites: initial, ...overrides });
+    serve(
+      () => state,
+      (method, url, body) => {
+        if (method === "PATCH" && url === "/api/pax/controls") {
+          state = controls({ mySites: (body as { mySites: typeof SITES }).mySites, ...overrides });
+          return json(state);
+        }
+        return undefined;
+      },
+    );
+  }
+
+  const sitePatches = () => apiRequest.mock.calls.filter(([m, u]) => m === "PATCH" && u === "/api/pax/controls");
+
+  it("lists each site's name and host, with the glossary copy and the one-line limit", async () => {
+    serveSites(SITES);
+    await mount();
+    expect(text('[data-testid="pax-my-sites-card"]')).toContain(PAX_MY_SITES_COPY.title);
+    expect(text('[data-testid="my-sites-limit-line"]')).toBe(PAX_MY_SITES_COPY.limitLine);
+    for (const s of SITES) {
+      const row = text(`[data-testid="my-site-${s.host}"]`);
+      expect(row).toContain(s.label);
+      expect(row).toContain(s.host);
+    }
+    expect(q('[data-testid="my-sites-empty"]')).toBeNull();
+  });
+
+  it("an org with no sites sees the empty line, not a blank card", async () => {
+    serveSites([]);
+    await mount();
+    expect(text('[data-testid="my-sites-empty"]')).toBe(PAX_MY_SITES_COPY.empty);
+    expect(q('[data-testid="my-sites-list"]')).toBeNull();
+  });
+
+  it("a controls response from before PX-7 (no mySites key) renders as empty, not as a crash", async () => {
+    serve(() => controls());
+    await mount();
+    expect(text('[data-testid="my-sites-empty"]')).toBe(PAX_MY_SITES_COPY.empty);
+  });
+
+  it("adding extracts the host from a pasted address and PATCHes the whole list", async () => {
+    serveSites(SITES);
+    await mount();
+    await typeInto(q('[data-testid="input-site-label"]'), "Cochise treasurer");
+    await typeInto(q('[data-testid="input-site-address"]'), "https://Treasurer.Example.gov/search?x=1");
+    await submitForm();
+    expect(sitePatches()).toHaveLength(1);
+    expect(sitePatches()[0][2]).toEqual({ mySites: [...SITES, { host: "treasurer.example.gov", label: "Cochise treasurer" }] });
+    expect(toasts.map((t) => t.title)).toContain(PAX_MY_SITES_COPY.added("Cochise treasurer"));
+    expect(q('[data-testid="my-site-treasurer.example.gov"]')).not.toBeNull();
+  });
+
+  it("a site added without a name is listed under its host", async () => {
+    serveSites([]);
+    await mount();
+    await typeInto(q('[data-testid="input-site-address"]'), "assessor.example.gov");
+    await submitForm();
+    expect(sitePatches()[0][2]).toEqual({ mySites: [{ host: "assessor.example.gov", label: "assessor.example.gov" }] });
+  });
+
+  it.each([
+    ["something that is not an address", "not an address"],
+    ["credentials", "https://user:pw@assessor.example.gov/"],
+    ["an IP address", "http://10.0.0.1/"],
+    ["an internal name", "http://localhost:3000/"],
+  ])("refuses %s on the page, says so, and sends nothing", async (_name, pasted) => {
+    serveSites(SITES);
+    await mount();
+    await typeInto(q('[data-testid="input-site-address"]'), pasted);
+    await submitForm();
+    expect(text('[data-testid="my-sites-problem"]')).toBe(PAX_MY_SITES_COPY.notAddress);
+    expect(sitePatches()).toHaveLength(0);
+  });
+
+  it("does not add a site twice", async () => {
+    serveSites(SITES);
+    await mount();
+    await typeInto(q('[data-testid="input-site-address"]'), "https://assessor.example.gov/other");
+    await submitForm();
+    expect(text('[data-testid="my-sites-problem"]')).toBe(PAX_MY_SITES_COPY.alreadyListed);
+    expect(sitePatches()).toHaveLength(0);
+  });
+
+  it("removing PATCHes the list without that site, and the icon button has a label", async () => {
+    serveSites(SITES);
+    await mount();
+    const btn = q('[data-testid="button-remove-site-assessor.example.gov"]');
+    expect(btn?.getAttribute("aria-label")).toBe(`${PAX_MY_SITES_COPY.removeButton}: Cochise assessor`);
+    await click(btn);
+    expect(sitePatches()).toHaveLength(1);
+    expect(sitePatches()[0][2]).toEqual({ mySites: [SITES[1]] });
+    expect(toasts.map((t) => t.title)).toContain(PAX_MY_SITES_COPY.removed("Cochise assessor"));
+    expect(q('[data-testid="my-site-assessor.example.gov"]')).toBeNull();
+  });
+
+  it("every input has a label tied to it", async () => {
+    serveSites([]);
+    await mount();
+    for (const id of ["my-site-label", "my-site-address"]) {
+      expect(q(`label[for="${id}"]`), `${id} has no <label>`).not.toBeNull();
+      expect(q(`#${id}`), `${id} input missing`).not.toBeNull();
+    }
+  });
+
+  it("a member sees the list read-only: no form, no remove buttons, and the ask-an-owner line", async () => {
+    serveSites(SITES, { canChangeStance: false });
+    await mount();
+    expect(text('[data-testid="my-sites-read-only"]')).toBe(PAX_MY_SITES_COPY.readOnly);
+    expect(q('[data-testid="my-sites-form"]')).toBeNull();
+    expect(q('[data-testid="button-remove-site-assessor.example.gov"]')).toBeNull();
+    expect(q('[data-testid="my-site-assessor.example.gov"]')).not.toBeNull();
+  });
+
+  it("the page types no copy of its own for the card — it reads the glossary", () => {
+    // Comments stripped first: the page's own comments name the card, and a comment is not copy.
+    const src = stripComments(read(PAGE_REL));
+    expect(src).toContain("PAX_MY_SITES_COPY");
+    for (const line of [PAX_MY_SITES_COPY.title, PAX_MY_SITES_COPY.intro, PAX_MY_SITES_COPY.limitLine, PAX_MY_SITES_COPY.empty, PAX_MY_SITES_COPY.notAddress]) {
+      expect(src, `"${line}" is typed inline on the page`).not.toContain(line);
+    }
+  });
+});
+
 // ── 7. Source contracts ────────────────────────────────────────────────────
 
 describe("source contracts (the deletions this page replaced)", () => {
@@ -533,5 +700,136 @@ describe("source contracts (the deletions this page replaced)", () => {
     const tcpa = read("server/services/tcpaCompliance.ts");
     expect(tcpa).toMatch(/local(?:Time)? < 8 \|\| local(?:Time)? >= 21/);
     expect(PAX_FIXED_RULES.textHours).toBe("8 am–9 pm");
+  });
+});
+
+// ── 8. Daily limits, own narrower settings, reset all rails (PX-3) ─────────
+
+describe("PX-3: limits card, member card, reset button — glossary copy only", () => {
+  const NO_CAPS = { asksPerDay: null, creditSpendPerDay: null, browseCallsPerDay: null, batchRowsPerDay: null };
+  const ORG_RAILS = {
+    records: { leads: "ask", properties: "act_and_report", deals: "act_and_report", tasks: "act_and_report", follow_ups: "act_and_report", account: "act_and_report" },
+    sends: "ask",
+  };
+  const px3 = (overrides: Record<string, unknown> = {}) =>
+    controls({
+      rails: ORG_RAILS,
+      limits: { ...NO_CAPS, asksPerDay: 10 },
+      members: {},
+      effective: { rails: { ...ORG_RAILS, records: { ...ORG_RAILS.records, leads: "draft" } }, limits: { ...NO_CAPS, asksPerDay: 4 } },
+      ...overrides,
+    });
+
+  it("renders the limits card with the glossary title, intro and one labelled input per cap", async () => {
+    const { PAX_LIMIT_COPY } = await import("../../shared/pax-glossary");
+    const { PAX_LIMIT_KEYS } = await import("../../shared/pax-controls");
+    serve(() => px3());
+    await mount();
+    const card = q('[data-testid="pax-limits-card"]');
+    expect(card, "limits card missing").not.toBeNull();
+    expect(card!.textContent).toContain(PAX_LIMIT_COPY.title);
+    expect(card!.textContent).toContain(PAX_LIMIT_COPY.intro);
+    expect(PAX_LIMIT_KEYS).toHaveLength(4);
+    for (const k of PAX_LIMIT_KEYS) {
+      const input = q(`[data-testid="limit-${k}"]`) as HTMLInputElement | null;
+      expect(input, `input for ${k}`).not.toBeNull();
+      expect(card!.textContent).toContain(PAX_LIMIT_COPY.labels[k]);
+      expect(container.querySelector(`label[for="limit-${k}"]`), `label for ${k}`).not.toBeNull();
+    }
+    // The stored cap is shown; an uncapped one is blank (placeholder "No limit").
+    expect((q('[data-testid="limit-asksPerDay"]') as HTMLInputElement).value).toBe("10");
+    expect((q('[data-testid="limit-browseCallsPerDay"]') as HTMLInputElement).value).toBe("");
+  });
+
+  it("a member sees the limits disabled with the admin hint", async () => {
+    const { PAX_LIMIT_COPY } = await import("../../shared/pax-glossary");
+    serve(() => px3({ canChangeStance: false }));
+    await mount();
+    expect((q('[data-testid="limit-asksPerDay"]') as HTMLInputElement).disabled).toBe(true);
+    expect(q('[data-testid="button-save-limits"]')).toBeNull();
+    expect(text('[data-testid="pax-limits-read-only"]')).toBe(PAX_LIMIT_COPY.adminHint);
+    expect(q('[data-testid="button-reset-rails"]'), "a member must not be offered the reset").toBeNull();
+  });
+
+  it("the member card offers no rail wider than the org's, and shows what applies from `effective`", async () => {
+    const { PAX_LIMIT_COPY } = await import("../../shared/pax-glossary");
+    serve(() => px3({ canChangeStance: false }));
+    await mount();
+    const card = q('[data-testid="pax-member-card"]');
+    expect(card, "member card missing").not.toBeNull();
+    expect(card!.textContent).toContain(PAX_LIMIT_COPY.memberTitle);
+    // Org leads rail = ask: watch, draft, ask are offered; act_and_report is not.
+    for (const l of ["watch", "draft", "ask"]) {
+      expect(q(`[data-testid="member-rail-leads-${l}"]`), `leads ${l}`).not.toBeNull();
+    }
+    expect(q('[data-testid="member-rail-leads-act_and_report"]'), "wider than the org").toBeNull();
+    // Sends stop at ask (the ceiling); the org's sends rail is ask.
+    expect(q('[data-testid="member-rail-sends-act_and_report"]')).toBeNull();
+    // Properties is act_and_report at the org: the member may pick any level.
+    expect(q('[data-testid="member-rail-properties-act_and_report"]')).not.toBeNull();
+    // What applies is the server's `effective` (4), not the org's 10.
+    expect(text('[data-testid="member-applies-asksPerDay"]')).toContain("4");
+    expect(text('[data-testid="member-applies-browseCallsPerDay"]')).toContain(PAX_LIMIT_COPY.memberNoLimit);
+    expect(text('[data-testid="pax-member-limit-note"]')).toBe(PAX_LIMIT_COPY.memberLimitNote);
+    expect(q('[data-testid="button-clear-my-override"]')!.textContent).toBe(PAX_LIMIT_COPY.memberClear);
+  });
+
+  it("Clear my narrower settings PATCHes only the caller's own override route with nulls", async () => {
+    const calls: Array<{ method: string; url: string; body?: unknown }> = [];
+    serve(
+      () => px3(),
+      (method, url, body) => {
+        if (url === "/api/pax/controls/my-override") {
+          calls.push({ method, url, body });
+          return json(px3());
+        }
+        return undefined;
+      },
+    );
+    await mount();
+    await click(q('[data-testid="button-clear-my-override"]'));
+    expect(calls).toEqual([{ method: "PATCH", url: "/api/pax/controls/my-override", body: { rails: null, limits: null } }]);
+  });
+
+  it("Reset all rails is two-step: the first tap asks, the second POSTs reset-rails; the copy says what resets and what does not", async () => {
+    const { PAX_LIMIT_COPY } = await import("../../shared/pax-glossary");
+    const posts: string[] = [];
+    serve(
+      () => px3(),
+      (method, url) => {
+        if (method === "POST" && url === "/api/pax/controls/reset-rails") {
+          posts.push(url);
+          return json(px3());
+        }
+        return undefined;
+      },
+    );
+    await mount();
+    const btn = q('[data-testid="button-reset-rails"]');
+    expect(btn!.textContent).toBe(PAX_LIMIT_COPY.resetButton);
+    expect(text('[data-testid="rail-reset"]')).toContain(PAX_LIMIT_COPY.resetWhat);
+    expect(text('[data-testid="rail-reset-keeps"]')).toBe(PAX_LIMIT_COPY.resetWhatNot);
+    await click(btn);
+    expect(posts, "one tap must not reset anything").toEqual([]);
+    expect(q('[data-testid="button-reset-rails"]')!.textContent).toBe(PAX_LIMIT_COPY.resetConfirm);
+    await click(q('[data-testid="button-reset-rails"]'));
+    expect(posts).toEqual(["/api/pax/controls/reset-rails"]);
+    expect(toasts.map((t) => t.title)).toContain(PAX_LIMIT_COPY.resetDone);
+  });
+
+  it("a response without limits (an older server) renders no PX-3 cards and does not crash", async () => {
+    serve(() => controls());
+    await mount();
+    expect(q('[data-testid="pax-limits-card"]')).toBeNull();
+    expect(q('[data-testid="pax-member-card"]')).toBeNull();
+  });
+
+  it("the page types none of the PX-3 copy inline (glossary only)", async () => {
+    const { PAX_LIMIT_COPY } = await import("../../shared/pax-glossary");
+    const page = read(PAGE_REL);
+    for (const s of [PAX_LIMIT_COPY.title, PAX_LIMIT_COPY.memberTitle, PAX_LIMIT_COPY.resetButton, PAX_LIMIT_COPY.memberClear, PAX_LIMIT_COPY.labels.asksPerDay]) {
+      expect(page, `"${s}" is typed inline`).not.toContain(`"${s}"`);
+      expect(page).not.toContain(`>${s}<`);
+    }
   });
 });
