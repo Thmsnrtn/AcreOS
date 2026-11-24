@@ -11,7 +11,7 @@
  * homestead palette.
  */
 
-import { LANDING_COPY } from "./copy";
+import type { LandingCopy } from "./copy";
 
 type GlyphKind =
   | "box" | "list" | "scale" | "satellite" | "mail" | "inbox"
@@ -144,8 +144,8 @@ function FeatureGlyph({ kind }: { kind: GlyphKind }) {
   }
 }
 
-export function Features() {
-  const c = LANDING_COPY.features;
+export function Features({ copy }: { copy: LandingCopy["features"] }) {
+  const c = copy;
   return (
     <section className="lp-section" id="features">
       <div className="lp-eyebrow">{c.eyebrow}</div>
