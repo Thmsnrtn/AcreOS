@@ -80,18 +80,40 @@ describe("POST /api/note-tape/commit", () => {
     const preview = await request(app()).post("/api/note-tape/preview").send({ csv, fileName: "golden.csv" });
     const res = await request(app())
       .post("/api/note-tape/commit")
-      .send({ csv, fileName: "golden.csv", mapping: preview.body.mapping, excludeRows: [4, 5], organizationId: 999, actorUserId: "someone-else" });
+      .send({ csv, fileName: "golden.csv", mapping: preview.body.mapping, excludeRows: [4, 5], servicingArrangement: "self_serviced", organizationId: 999, actorUserId: "someone-else" });
     expect(res.status).toBe(200);
     expect(h.commit).toHaveBeenCalledTimes(1);
     const arg = h.commit.mock.calls[0][0];
-    expect(arg).toMatchObject({ organizationId: 41, actorUserId: "u-41", fileName: "golden.csv", excludeRows: [4, 5], asOf: null });
+    expect(arg).toMatchObject({ organizationId: 41, actorUserId: "u-41", fileName: "golden.csv", excludeRows: [4, 5], asOf: null, servicingArrangement: "self_serviced" });
     // Server-side re-validation, not the client's preview.
     expect(arg.validation.summary.validCount).toBe(3);
   });
 
+  it("refuses a commit that does not say who services the notes — no default, nothing reaches the service", async () => {
+    const preview = await request(app()).post("/api/note-tape/preview").send({ csv, fileName: "golden.csv" });
+    const missing = await request(app()).post("/api/note-tape/commit").send({ csv, fileName: "golden.csv", mapping: preview.body.mapping, excludeRows: [4, 5] });
+    expect(missing.status).toBe(422);
+    expect(JSON.stringify(missing.body)).toMatch(/servicingArrangement/);
+    const bogus = await request(app()).post("/api/note-tape/commit").send({ csv, fileName: "golden.csv", mapping: preview.body.mapping, excludeRows: [4, 5], servicingArrangement: "compliant" });
+    expect(bogus.status).toBe(422);
+    const empty = await request(app()).post("/api/note-tape/commit").send({ csv, fileName: "golden.csv", mapping: preview.body.mapping, excludeRows: [4, 5], servicingArrangement: null });
+    expect(empty.status).toBe(422);
+    expect(h.commit).not.toHaveBeenCalled();
+  });
+
+  it("each of the four arrangements reaches the commit service unchanged", async () => {
+    h.commit.mockResolvedValue({ status: "committed", importId: "i", created: 3, appendedToExisting: 0, excludedRows: [4, 5], notes: [] });
+    const preview = await request(app()).post("/api/note-tape/preview").send({ csv, fileName: "golden.csv" });
+    for (const v of ["self_serviced", "sub_serviced", "seller_retained", "passive_holder"]) {
+      const res = await request(app()).post("/api/note-tape/commit").send({ csv, fileName: "golden.csv", mapping: preview.body.mapping, excludeRows: [4, 5], servicingArrangement: v });
+      expect(res.status).toBe(200);
+      expect(h.commit.mock.calls.at(-1)![0].servicingArrangement).toBe(v);
+    }
+  });
+
   it("a refusal is a 400 carrying the unmapped fields", async () => {
     h.commit.mockResolvedValue({ status: "refused", reason: "Map every required column before importing.", unmappedRequired: [{ field: "interestRate", label: "Interest rate (%)", fix: "map it" }] });
-    const res = await request(app()).post("/api/note-tape/commit").send({ csv, fileName: "golden.csv", mapping: {} });
+    const res = await request(app()).post("/api/note-tape/commit").send({ csv, fileName: "golden.csv", mapping: {}, servicingArrangement: "passive_holder" });
     expect(res.status).toBe(400);
     expect(res.body.message).toMatch(/Map every required column/);
     expect(res.body.details.unmappedRequired[0].field).toBe("interestRate");
@@ -100,7 +122,7 @@ describe("POST /api/note-tape/commit", () => {
   it("without canImportData both routes are refused before anything runs", async () => {
     h.permit = false;
     expect((await request(app()).post("/api/note-tape/preview").send({ csv, fileName: "g.csv" })).status).toBe(403);
-    expect((await request(app()).post("/api/note-tape/commit").send({ csv, fileName: "g.csv", mapping: {} })).status).toBe(403);
+    expect((await request(app()).post("/api/note-tape/commit").send({ csv, fileName: "g.csv", mapping: {}, servicingArrangement: "passive_holder" })).status).toBe(403);
     expect(h.commit).not.toHaveBeenCalled();
   });
 });

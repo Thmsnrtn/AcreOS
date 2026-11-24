@@ -42,6 +42,7 @@ import { DataProvenanceChip } from "@/components/data-provenance-chip";
 import { NoteRecordPanels } from "@/components/notes/NoteRecordPanels";
 import { BorrowerMessagesPanel } from "@/components/notes/BorrowerMessagesPanel";
 import { NoteWorkoutAnalysisPanel } from "@/components/notes/NoteWorkoutAnalysisPanel";
+import { NoteServicingArrangementCard } from "@/components/notes/NoteServicingArrangementCard";
 import { NoteDelinquencyLadderPanel } from "@/components/notes/NoteDelinquencyLadderPanel";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { delinquencyIsDeterminable } from "@shared/notes/delinquency";
@@ -103,6 +104,8 @@ export interface AcquiredNote {
   taxDisbursementAmountCents: number | null;
   taxAuthorityName: string | null;
   notes: string | null;
+  /** The operator's declaration — self_serviced | sub_serviced | seller_retained | passive_holder. */
+  servicingArrangement: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -835,6 +838,8 @@ export default function NoteDetailPage() {
 
       {/* V-Notes-2 Leg 2: workout comparison — a record of stated scenarios, never a recommendation. */}
       <NoteWorkoutAnalysisPanel noteId={note.id} />
+
+      <NoteServicingArrangementCard noteId={note.id} current={note.servicingArrangement} />
 
       {/* Compliance — hazard insurance + property-tax escrow. */}
       <NoteComplianceCard
