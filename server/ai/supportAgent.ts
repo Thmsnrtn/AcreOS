@@ -155,6 +155,33 @@ export const supportToolDefinitions = {
     }
   },
   
+  get_notes_book: {
+    name: "get_notes_book",
+    description: "Get notes from BOTH note books — the serviced book (seller-financed notes this account originated) and the acquired book (notes this account bought) — with balances, payment schedules, delinquency state and each borrower's contact as recorded on their linked lead. The result carries a coverage statement naming both books and their counts: state that coverage when you summarize a portfolio, and never present one book as the whole book. Each note is tagged with its book. Read-only: this never contacts a borrower or changes a note.",
+    parameters: {
+      type: "object",
+      properties: {
+        status: {
+          type: "string",
+          enum: ["pending", "active", "paid_off", "defaulted", "foreclosed", "performing", "late", "default", "sold"],
+          description: "Filter by note status (optional). Serviced-book statuses: pending/active/paid_off/defaulted/foreclosed. Acquired-book statuses: performing/late/default/paid_off/sold. The filter is applied within each book's own vocabulary."
+        }
+      }
+    }
+  },
+
+  get_note_delinquency_ladder: {
+    name: "get_note_delinquency_ladder",
+    description: "Get the delinquency ladder for ONE acquired note (use the note's id from get_notes_book): its current stage derived live from its next payment date, the stages recorded so far, and — when it has no current stage — the plain reason why (paid off / sold, or aging not determinable; unknown is not late). Read-only: this never contacts a borrower, starts a clock, or changes the note. The ladder covers the acquired book only; a serviced note's lateness is read from get_notes_book (status and next payment date).",
+    parameters: {
+      type: "object",
+      properties: {
+        note_id: { type: "string", description: "The acquired note id from get_notes_book" }
+      },
+      required: ["note_id"]
+    }
+  },
+
   draft_customer_response: {
     name: "draft_customer_response",
     description: "Draft a customer-facing response before escalating. The draft and confidence score determine if the support flow can auto-resolve or if internal review is needed.",
@@ -1278,6 +1305,8 @@ export const PAUSE_SAFE_SUPPORT_TOOLS: ReadonlySet<string> = new Set([
   "get_billing_issues",
   "get_contextual_suggestions",
   "get_feature_walkthrough",
+  "get_note_delinquency_ladder",
+  "get_notes_book",
   "get_payment_history",
   "get_resolution_stats",
   "get_similar_resolutions",
@@ -1918,6 +1947,66 @@ export async function executeSupportTool(
         };
       }
       
+      case "get_notes_book": {
+        // N9-DEF-1 cure: the support path's two-book notes read — the SAME
+        // read the chat path's get_notes performs (HYB-DEF-5/6), under a
+        // support-only name because the registries key one dispatch per
+        // tool name. Read-only; borrower contact comes from the linked lead.
+        const {
+          listAcquiredNotesForPax,
+          shapeAcquiredNoteForPax,
+          borrowerContactFromLead,
+          borrowerContactForAcquiredNote,
+          buildNotesCoverageStatement,
+        } = await import("../services/notes/acquiredBookRead");
+        const [notes, acquiredRows, leads] = await Promise.all([
+          storage.getNotes(org.id),
+          listAcquiredNotesForPax(org.id),
+          storage.getLeads(org.id),
+        ]);
+        const leadById = new Map(leads.map(l => [l.id, l]));
+        let serviced = notes;
+        let acquired = acquiredRows;
+        if (args.status) {
+          serviced = notes.filter(n => n.status === args.status);
+          acquired = acquiredRows.filter(n => n.status === args.status);
+        }
+        return { success: true, data: {
+          coverage: buildNotesCoverageStatement(notes.length, acquiredRows.length),
+          serviced: serviced.map(n => ({
+            id: n.id,
+            book: "serviced",
+            propertyId: n.propertyId,
+            borrowerId: n.borrowerId,
+            borrowerContact: borrowerContactFromLead(n.borrowerId != null ? leadById.get(n.borrowerId) : undefined),
+            originalPrincipal: n.originalPrincipal,
+            currentBalance: n.currentBalance,
+            interestRate: n.interestRate,
+            monthlyPayment: n.monthlyPayment,
+            termMonths: n.termMonths,
+            status: n.status,
+            startDate: n.startDate,
+            nextPaymentDate: n.nextPaymentDate
+          })),
+          acquired: acquired.map(r => shapeAcquiredNoteForPax(
+            r,
+            borrowerContactForAcquiredNote(r, r.borrowerId != null ? leadById.get(r.borrowerId) : undefined),
+          )),
+        } };
+      }
+
+      case "get_note_delinquency_ladder": {
+        // N9-DEF-1 cure: the ladder read the delinquency route serves
+        // (buildLadderView) — current stage derived live, recorded stages,
+        // and the plain reason when there is no stage. Read-only.
+        const { buildLadderView } = await import("../services/notes/delinquencyLadder");
+        const view = await buildLadderView(org.id, String(args.note_id ?? ""));
+        if (!view) {
+          return toolRefusal({ what: "No ladder was read", why: "That note is not in this account's acquired book", unlock: "Use a note id from get_notes_book's acquired list" });
+        }
+        return { success: true, data: view };
+      }
+
       case "escalate_to_human": {
         const { reason, priority, summary, include_diagnostic_bundle = true } = args;
         
