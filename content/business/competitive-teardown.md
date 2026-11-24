@@ -142,6 +142,6 @@ AcreOS sits in a space no competitor currently occupies: **the full-lifecycle in
 
 **AI intelligence:** No competitor has AI that learns the user's communication style, generates context-aware content, or autonomously handles operational tasks. AcreOS's AI isn't a chatbot — it's integrated into every workflow decision.
 
-**Price advantage:** At $49/mo for full Pro access, AcreOS costs less than the cheapest plan of most competitors while delivering more functionality. This isn't a race to the bottom — it's possible because the 18 free data sources eliminate the per-lookup costs that force competitors to charge more.
+**Price advantage:** At $99/mo for full Pro access, AcreOS costs less than the cheapest plan of most competitors while delivering more functionality. This isn't a race to the bottom — it's possible because the 18 free data sources eliminate the per-lookup costs that force competitors to charge more.
 
 **The network effect moat:** Every transaction processed improves the Land Credit Score model and market intelligence for all users. This is a compounding advantage that grows with adoption and cannot be replicated by a competitor starting from zero.

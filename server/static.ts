@@ -2,6 +2,8 @@ import express, { type Express, type NextFunction, type Request, type Response }
 import fs from "fs";
 import path from "path";
 import { sendError } from "./utils/errors";
+import { logger } from "./utils/logger";
+import { isFounderBuildPath } from "@shared/founder-surface-paths";
 
 /**
  * HTTP/2-safe pre-compressed asset middleware. Sidesteps the
@@ -27,7 +29,39 @@ function setNoCacheHeaders(res: Response) {
 /** /learn-content/* files are unhashed, so they must never get the 1y immutable cache. */
 const isLearnContentPath = (urlPath: string) => /^\/learn-content\//.test(urlPath);
 
-function preCompressedAssets(distPath: string) {
+/** /pax-glossary.json is unhashed, refreshed-in-place glossary data (BD-6) — same rule. */
+const isPaxGlossaryPath = (urlPath: string) => urlPath === "/pax-glossary.json";
+
+/** The static-data assets (campaign templates, customer changelog, help
+ * content, /trust copy) are unhashed, refreshed-in-place JSON — same rule as the
+ * pax glossary: never the 1-year immutable cache, or a copy edit would
+ * take a year to reach a returning browser. */
+const STATIC_DATA_PATHS = new Set([
+  "/outreach-templates.json",
+  "/customer-changelog.json",
+  "/help-content.json",
+  "/trust-content.json",
+  "/onboarding-verticals.json",
+  "/landing-copy.json",
+]);
+const isStaticDataPath = (urlPath: string) => STATIC_DATA_PATHS.has(urlPath);
+
+/**
+ * URL prefix the FOUNDER build is served under (P1-9 / X-2): its own URL space
+ * (`/founder-app/founder-assets/…`), so the customer's `/assets/*` stale-chunk
+ * guard and 1-year immutable rules can never collide with it. Must match `base`
+ * and `assetsDir` in vite.config.ts (buildConfig("founder")).
+ */
+const FOUNDER_MOUNT = "/founder-app";
+const FOUNDER_HASHED_ASSET_RX = /\/founder-assets\//;
+const CUSTOMER_HASHED_ASSET_RX = /\/assets\//;
+
+/** A missing hashed chunk answers 404 text, never the HTML shell (F-D10, below). */
+function sendStaleAsset404(res: Response) {
+  return res.status(404).type("text/plain").send("asset not found");
+}
+
+function preCompressedAssets(distPath: string, hashedAssetRx: RegExp = CUSTOMER_HASHED_ASSET_RX) {
   const CONTENT_TYPES: Record<string, string> = {
     ".js": "text/javascript; charset=utf-8",
     ".mjs": "text/javascript; charset=utf-8",
@@ -68,10 +102,10 @@ function preCompressedAssets(distPath: string) {
         // Match express.static long-cache semantics for hashed assets.
         // Same logic as the wrapping express.static call below — content-
         // hashed filenames are immutable for one year.
-        const isHashedAsset = /\/assets\//.test(requested);
+        const isHashedAsset = hashedAssetRx.test(requested);
         if (process.env.NODE_ENV === "production" && isHashedAsset) {
           res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
-        } else if (isLearnContentPath(requested)) {
+        } else if (isLearnContentPath(requested) || isPaxGlossaryPath(requested) || isStaticDataPath(requested)) {
           setNoCacheHeaders(res);
         }
         const stream = fs.createReadStream(cmpPath);
@@ -155,7 +189,12 @@ export function resolveShellPath(): string | null {
 }
 
 // `distPath` is overridable only so tests can mount the real middleware on a fixture dist.
-export function serveStatic(app: Express, distPath = path.resolve(__dirname, "public")) {
+// `founderPath` is the founder build output (dist/founder), a sibling of distPath.
+export function serveStatic(
+  app: Express,
+  distPath = path.resolve(__dirname, "public"),
+  founderPath = path.resolve(distPath, "..", "founder"),
+) {
   if (!fs.existsSync(distPath)) {
     throw new Error(
       `Could not find the build directory: ${distPath}, make sure to build the client first`,
@@ -217,7 +256,11 @@ export function serveStatic(app: Express, distPath = path.resolve(__dirname, "pu
         setNoCacheHeaders(res);
       }
       // Learn content is unhashed and refreshed in place — never immutable.
-      if (isLearnContentPath("/" + path.relative(distPath, filePath).split(path.sep).join("/"))) {
+      if (
+        isLearnContentPath("/" + path.relative(distPath, filePath).split(path.sep).join("/")) ||
+        isPaxGlossaryPath("/" + path.relative(distPath, filePath).split(path.sep).join("/")) ||
+        isStaticDataPath("/" + path.relative(distPath, filePath).split(path.sep).join("/"))
+      ) {
         setNoCacheHeaders(res);
       }
       // Service worker file must NOT be cached as immutable. Browsers check
@@ -229,6 +272,43 @@ export function serveStatic(app: Express, distPath = path.resolve(__dirname, "pu
       }
     },
   }));
+
+  // ── The FOUNDER build (P1-9 / X-2) ───────────────────────────────────────
+  // dist/founder is a second Vite output (base /founder-app/, assets under
+  // /founder-assets/), mounted here before the catch-all. Same treatment as the
+  // customer assets: it sits BELOW the .map guard registered above (so a map in
+  // dist/founder is refused exactly like one in dist/public), pre-compressed
+  // .br/.gz siblings are preferred, hashed chunks get the 1-year immutable
+  // cache, and HTML is never cached.
+  app.use(FOUNDER_MOUNT, preCompressedAssets(founderPath, FOUNDER_HASHED_ASSET_RX));
+  app.use(FOUNDER_MOUNT, express.static(founderPath, {
+    index: false,
+    redirect: false,
+    maxAge: process.env.NODE_ENV === "production" ? "1y" : 0,
+    immutable: process.env.NODE_ENV === "production",
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith(".html")) {
+        setNoCacheHeaders(res);
+      }
+    },
+  }));
+  // Nothing under /founder-app is an SPA route — it is an asset namespace. A
+  // chunk that did not hit express.static (post-deploy, the browser still holds
+  // old hashes) must be a 404, not the HTML shell with a text/html content
+  // type: the browser refuses the module, the dynamic import throws, and the
+  // client's chunk-error handler can only recover from a clean 404 (F-D10).
+  app.use(FOUNDER_MOUNT, (_req: Request, res: Response) => {
+    sendStaleAsset404(res);
+  });
+
+  // The founder shell. When dist/founder is absent (a dev tree, a stale or
+  // partial dist) the founder URLs fall back to the customer shell — which has
+  // no founder routes and hands the navigation off, loop-guarded — so say so.
+  const founderShellPath = path.resolve(founderPath, "founder.html");
+  const hasFounderShell = fs.existsSync(founderShellPath);
+  if (!hasFounderShell) {
+    logger.warn(`founder build output not found at ${founderShellPath}; /founder URLs will not render`);
+  }
 
   // fall through to index.html — inject runtime env + CSP nonce into the HTML shell
   // Skip API routes — they should have already sent a response
@@ -266,6 +346,43 @@ export function serveStatic(app: Express, distPath = path.resolve(__dirname, "pu
   // Path-only check; query strings + fragments are preserved by `res.redirect`.
   const LEGACY_LETTERS_301 = /^\/letters(?:\/([^/?#]+))?\/?$/;
 
+  /**
+   * Which HTML shell answers `fullPath` — the one place the shell is chosen.
+   *
+   * FOUNDER paths (`/founder`, `/founder/*` and the founder-gated pages at
+   * non-/founder URLs — shared/founder-surface-paths.ts) get
+   * dist/founder/founder.html. The customer build has no founder routes, so a
+   * founder URL reaching the customer shell would render NotFound: this
+   * selector is mandatory, not an optimization. Both shells go through the same
+   * finalizeShellHtml, so runtime env and the CSP nonce are injected
+   * identically. `/commissions` is not a founder path: its page is shared with
+   * the customer's Finance → Commissions surface and stays in the customer
+   * build (still behind FounderProtectedRoute and the server-side guards).
+   *
+   * Every other path keeps the existing behaviour: prefer a per-route
+   * prerendered shell (written by script/prerender.ts to
+   * dist/public/<route>/index.html for PUBLIC_ROUTES flagged prerender:true) so
+   * crawlers + link-unfurlers get the route's real <title>/meta/JSON-LD instead
+   * of the generic root index.html. Without this the entire prerender step is
+   * inert — the build generates per-route heads that were never served (every
+   * sub-route fell through to the root shell). The SPA still hydrates over the
+   * prerendered shell identically; runtime env + CSP nonce are injected exactly
+   * as for the root shell (same </head> + data-csp-nonce markers, since
+   * prerender only swaps the head metadata).
+   */
+  const shellFor = (fullPath: string): string => {
+    if (hasFounderShell && isFounderBuildPath(fullPath)) return founderShellPath;
+    const cleanPath = fullPath.replace(/\/+$/, "");
+    if (cleanPath && cleanPath !== "/" && !cleanPath.includes("..")) {
+      const candidate = path.resolve(distPath, "." + cleanPath, "index.html");
+      // Path-traversal guard: candidate must stay within distPath.
+      if (candidate.startsWith(distPath + path.sep) && fs.existsSync(candidate)) {
+        return candidate;
+      }
+    }
+    return indexPath;
+  };
+
   app.use("{*splat}", (req: Request, res: Response) => {
     if (res.headersSent) return;
     // This handler is mounted via app.use("{*splat}", …), which rewrites
@@ -299,30 +416,11 @@ export function serveStatic(app: Express, distPath = path.resolve(__dirname, "pu
     // Return 404 instead so the client-side chunk-error handler can detect
     // the deploy and trigger a hard reload to fetch the new bundle.
     if (/^\/assets\/.*\.(js|css|map|wasm)(\.(br|gz))?$/i.test(fullPath)) {
-      return res.status(404).type("text/plain").send("asset not found");
+      return sendStaleAsset404(res);
     }
 
+    const shellPath = shellFor(fullPath);
     try {
-      // Prefer a per-route prerendered shell (written by script/prerender.ts to
-      // dist/public/<route>/index.html for PUBLIC_ROUTES flagged prerender:true)
-      // so crawlers + link-unfurlers get the route's real <title>/meta/JSON-LD
-      // instead of the generic root index.html. Without this the entire prerender
-      // step is inert — the build generates per-route heads that were never
-      // served (every sub-route fell through to the root shell). The SPA still
-      // hydrates over the prerendered shell identically; runtime env + CSP nonce
-      // are injected below exactly as for the root shell (same </head> +
-      // data-csp-nonce markers, since prerender only swaps the head metadata).
-      let shellPath = indexPath;
-      {
-        const cleanPath = fullPath.replace(/\/+$/, "");
-        if (cleanPath && cleanPath !== "/" && !cleanPath.includes("..")) {
-          const candidate = path.resolve(distPath, "." + cleanPath, "index.html");
-          // Path-traversal guard: candidate must stay within distPath.
-          if (candidate.startsWith(distPath + path.sep) && fs.existsSync(candidate)) {
-            shellPath = candidate;
-          }
-        }
-      }
       const rawHtml = fs.readFileSync(shellPath, "utf-8");
       const nonce: string = res.locals.cspNonce || "";
       // Inject runtime env vars + CSP nonce (shared with /p report pages).
@@ -345,7 +443,7 @@ export function serveStatic(app: Express, distPath = path.resolve(__dirname, "pu
       }
       res.send(html);
     } catch {
-      res.sendFile(indexPath);
+      res.sendFile(shellPath);
     }
   });
 }

@@ -578,14 +578,14 @@ export function registerSubdivisionRoutes(app: Express): void {
             p.id,
             p.purchase_price,
             (SELECT COUNT(*) FROM properties c WHERE c.parent_parcel_id = p.id AND c.organization_id = ${orgId} AND c.deleted_at IS NULL) AS child_count,
-            (SELECT COUNT(*) FROM properties c WHERE c.parent_parcel_id = p.id AND c.status = 'sold') AS sold_count,
-            (SELECT COALESCE(SUM(c.sold_price::numeric * 100), 0) FROM properties c WHERE c.parent_parcel_id = p.id AND c.status = 'sold') AS sold_proceeds_cents
+            (SELECT COUNT(*) FROM properties c WHERE c.parent_parcel_id = p.id AND c.organization_id = ${orgId} AND c.status = 'sold') AS sold_count,
+            (SELECT COALESCE(SUM(c.sold_price::numeric * 100), 0) FROM properties c WHERE c.parent_parcel_id = p.id AND c.organization_id = ${orgId} AND c.status = 'sold') AS sold_proceeds_cents
           FROM properties p
           WHERE p.organization_id = ${orgId}
             AND p.parent_parcel_id IS NULL
             AND p.deleted_at IS NULL
             AND EXISTS (
-              SELECT 1 FROM properties c WHERE c.parent_parcel_id = p.id
+              SELECT 1 FROM properties c WHERE c.parent_parcel_id = p.id AND c.organization_id = ${orgId}
             )
         `);
 

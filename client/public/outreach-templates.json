@@ -1,0 +1,144 @@
+{
+  "en": {
+    "direct_mail": [
+      {
+        "id": "dm_neutral",
+        "name": "Neutral Offer",
+        "description": "Professional inquiry without stating a specific price",
+        "subject": "Interested in Your Property",
+        "content": "Dear {{firstName}} {{lastName}},\n\nMy name is [Your Name] and I am a land investor interested in purchasing property in {{county}} County, {{state}}.\n\nI recently came across your parcel (APN: {{apn}}) and wanted to reach out to see if you might be interested in selling.\n\nI purchase land for cash and can close quickly with no fees or commissions on your end. If you're open to discussing a sale, please give me a call or text at [Your Phone] or email me at [Your Email].\n\nI look forward to hearing from you.\n\nBest regards,\n[Your Name]\n[Your Company]"
+      },
+      {
+        "id": "dm_blind",
+        "name": "Blind Offer",
+        "description": "Specific cash offer without revealing how you found them",
+        "subject": "Cash Offer for Your {{county}} County Land",
+        "content": "Dear {{firstName}} {{lastName}},\n\nI am writing to make you a cash offer of ${{offerAmount}} for your property located in {{county}} County, {{state}} (APN: {{apn}}).\n\nThis is a no-obligation offer. If you accept:\n- I pay all closing costs\n- No realtor commissions\n- Close in as little as 14 days\n- Payment by cashier's check or wire transfer\n\nIf you're interested, simply sign the enclosed Purchase Agreement and return it in the prepaid envelope provided.\n\nQuestions? Call me directly at [Your Phone].\n\nSincerely,\n[Your Name]\n[Your Company]"
+      },
+      {
+        "id": "dm_followup",
+        "name": "Follow-Up Mailer",
+        "description": "Second touch for non-responders",
+        "subject": "Following Up: My Offer for Your Land",
+        "content": "Dear {{firstName}} {{lastName}},\n\nI recently sent you a letter expressing my interest in purchasing your property in {{county}} County, {{state}}.\n\nI wanted to follow up in case my first letter didn't reach you or got lost in the mail. My offer still stands, and I remain very interested in your parcel.\n\nIf you've been thinking about selling, I'd love to chat. Even if you're not ready to sell right now, feel free to reach out - I'm always happy to answer questions.\n\nCall or text: [Your Phone]\nEmail: [Your Email]\n\nBest regards,\n[Your Name]"
+      }
+    ],
+    "email": [
+      {
+        "id": "email_neutral",
+        "name": "Neutral Inquiry",
+        "description": "Professional email inquiry about selling",
+        "subject": "Quick Question About Your {{county}} County Property",
+        "content": "Hi {{firstName}},\n\nI came across your property in {{county}} County and wanted to reach out to see if you might be interested in selling.\n\nI'm a land investor and I purchase properties for cash with quick, hassle-free closings.\n\nWould you be open to a brief conversation? I'd be happy to answer any questions you might have.\n\nBest,\n[Your Name]\n[Your Phone]"
+      },
+      {
+        "id": "email_blind",
+        "name": "Blind Offer Email",
+        "description": "Direct cash offer via email",
+        "subject": "Cash Offer: ${{offerAmount}} for Your Land",
+        "content": "Hi {{firstName}},\n\nI'd like to make you a cash offer of ${{offerAmount}} for your property in {{county}} County, {{state}}.\n\nHere's what I offer:\n- All cash, no financing contingencies\n- I cover closing costs\n- Close in 2-3 weeks\n- No realtor fees\n\nIf this interests you, just reply to this email or call me at [Your Phone].\n\nNo pressure either way - just let me know!\n\n[Your Name]\n[Your Company]"
+      },
+      {
+        "id": "email_nurture",
+        "name": "Nurture Sequence",
+        "description": "Relationship-building email for warm leads",
+        "subject": "Checking In - {{county}} County Property",
+        "content": "Hi {{firstName}},\n\nI wanted to check in and see how things are going. I know selling land is a big decision, and I'm here whenever you're ready to talk.\n\nIn the meantime, if you have any questions about the process, property values in your area, or anything else - feel free to reach out. I'm happy to help with no obligation.\n\nHave a great week!\n\n[Your Name]\n[Your Phone]"
+      }
+    ],
+    "sms": [
+      {
+        "id": "sms_neutral",
+        "name": "Neutral Text",
+        "description": "Simple inquiry text message",
+        "subject": "",
+        "content": "Hi {{firstName}}, this is [Your Name]. I'm interested in buying land in {{county}} County and came across your property. Would you consider selling? No pressure - just reply YES if you'd like to chat."
+      },
+      {
+        "id": "sms_blind",
+        "name": "Blind Offer Text",
+        "description": "Direct offer via text",
+        "subject": "",
+        "content": "Hi {{firstName}}, I'd like to offer ${{offerAmount}} cash for your {{county}} County property. I pay all closing costs & can close in 2 weeks. Interested? Reply YES or call [Your Phone]."
+      },
+      {
+        "id": "sms_followup",
+        "name": "Follow-Up Text",
+        "description": "Quick follow-up for non-responders",
+        "subject": "",
+        "content": "Hi {{firstName}}, just following up on my offer for your {{county}} County land. Still interested in selling? Let me know - [Your Name]"
+      }
+    ]
+  },
+  "es": {
+    "direct_mail": [
+      {
+        "id": "dm_neutral",
+        "name": "Consulta neutral",
+        "description": "Consulta profesional sin indicar un precio",
+        "subject": "Interés en su propiedad",
+        "content": "Estimado(a) {{firstName}} {{lastName}}:\n\nMi nombre es [Su nombre] y soy inversionista en terrenos. Me interesa comprar propiedades en el condado de {{county}}, {{state}}.\n\nHace poco vi su terreno (APN: {{apn}}) y quería preguntarle si estaría interesado(a) en venderlo.\n\nCompro terrenos en efectivo y puedo cerrar con rapidez, sin comisiones ni cargos para usted. Si está abierto(a) a conversar sobre una venta, llámeme o envíeme un mensaje de texto al [Su teléfono], o escríbame a [Su correo electrónico].\n\nQuedo atento(a) a su respuesta.\n\nAtentamente,\n[Su nombre]\n[Su empresa]"
+      },
+      {
+        "id": "dm_blind",
+        "name": "Oferta directa",
+        "description": "Oferta en efectivo con un monto específico",
+        "subject": "Oferta en efectivo por su terreno en el condado de {{county}}",
+        "content": "Estimado(a) {{firstName}} {{lastName}}:\n\nLe escribo para hacerle una oferta en efectivo de ${{offerAmount}} por su propiedad ubicada en el condado de {{county}}, {{state}} (APN: {{apn}}).\n\nEsta oferta no le obliga a nada. Si la acepta:\n- Yo pago todos los costos de cierre\n- Sin comisiones de agentes inmobiliarios\n- Cierre en tan solo 14 días\n- Pago con cheque de caja o transferencia bancaria\n\nSi le interesa, firme el Contrato de Compra adjunto y devuélvalo en el sobre con franqueo pagado.\n\n¿Preguntas? Llámeme directamente al [Su teléfono].\n\nAtentamente,\n[Su nombre]\n[Su empresa]\n\nTraducción de cortesía. Cualquier contrato o documento legal se entrega en inglés, y la versión en inglés es la que rige."
+      },
+      {
+        "id": "dm_followup",
+        "name": "Carta de seguimiento",
+        "description": "Segundo contacto para quienes no respondieron",
+        "subject": "Seguimiento: mi oferta por su terreno",
+        "content": "Estimado(a) {{firstName}} {{lastName}}:\n\nHace poco le envié una carta para expresarle mi interés en comprar su propiedad en el condado de {{county}}, {{state}}.\n\nLe escribo de nuevo por si mi primera carta no le llegó o se perdió en el correo. Mi oferta sigue en pie y sigo muy interesado(a) en su terreno.\n\nSi ha estado pensando en vender, me encantaría conversar. Aunque no esté listo(a) para vender ahora, con gusto respondo sus preguntas.\n\nLlamadas o mensajes de texto: [Su teléfono]\nCorreo electrónico: [Su correo electrónico]\n\nSaludos cordiales,\n[Su nombre]"
+      }
+    ],
+    "email": [
+      {
+        "id": "email_neutral",
+        "name": "Consulta neutral",
+        "description": "Correo profesional para preguntar si desea vender",
+        "subject": "Una pregunta sobre su propiedad en el condado de {{county}}",
+        "content": "Hola, {{firstName}}:\n\nVi su propiedad en el condado de {{county}} y quería preguntarle si estaría interesado(a) en venderla.\n\nSoy inversionista en terrenos y compro propiedades en efectivo, con cierres rápidos y sin complicaciones.\n\n¿Le gustaría conversar brevemente? Con gusto respondo cualquier pregunta que tenga.\n\nSaludos,\n[Su nombre]\n[Su teléfono]"
+      },
+      {
+        "id": "email_blind",
+        "name": "Oferta directa por correo",
+        "description": "Oferta en efectivo por correo electrónico",
+        "subject": "Oferta en efectivo: ${{offerAmount}} por su terreno",
+        "content": "Hola, {{firstName}}:\n\nMe gustaría hacerle una oferta en efectivo de ${{offerAmount}} por su propiedad en el condado de {{county}}, {{state}}.\n\nEsto es lo que le ofrezco:\n- Todo en efectivo, sin condiciones de financiamiento\n- Yo cubro los costos de cierre\n- Cierre en 2 a 3 semanas\n- Sin comisiones de agentes inmobiliarios\n\nSi le interesa, responda a este correo o llámeme al [Su teléfono].\n\nSin ninguna presión; solo avíseme.\n\n[Su nombre]\n[Su empresa]"
+      },
+      {
+        "id": "email_nurture",
+        "name": "Seguimiento cordial",
+        "description": "Correo para mantener la relación con contactos interesados",
+        "subject": "Saludos - propiedad en el condado de {{county}}",
+        "content": "Hola, {{firstName}}:\n\nQuería saludarle y saber cómo está. Sé que vender un terreno es una decisión importante, y aquí estoy cuando quiera conversar.\n\nMientras tanto, si tiene preguntas sobre el proceso, los valores de las propiedades en su zona o cualquier otra cosa, escríbame. Con gusto le ayudo, sin ningún compromiso.\n\n¡Que tenga una excelente semana!\n\n[Su nombre]\n[Su teléfono]"
+      }
+    ],
+    "sms": [
+      {
+        "id": "sms_neutral",
+        "name": "Texto neutral",
+        "description": "Mensaje de texto sencillo",
+        "subject": "",
+        "content": "Hola, {{firstName}}, soy [Su nombre]. Me interesa comprar terrenos en el condado de {{county}} y vi su propiedad. ¿Consideraría venderla? Sin presión: responda SÍ si quiere conversar."
+      },
+      {
+        "id": "sms_blind",
+        "name": "Oferta directa por texto",
+        "description": "Oferta directa por mensaje de texto",
+        "subject": "",
+        "content": "Hola, {{firstName}}, me gustaría ofrecerle ${{offerAmount}} en efectivo por su propiedad en el condado de {{county}}. Pago todos los costos de cierre y puedo cerrar en 2 semanas. ¿Le interesa? Responda SÍ o llame al [Su teléfono]."
+      },
+      {
+        "id": "sms_followup",
+        "name": "Texto de seguimiento",
+        "description": "Seguimiento breve para quienes no respondieron",
+        "subject": "",
+        "content": "Hola, {{firstName}}, le escribo para dar seguimiento a mi oferta por su terreno en el condado de {{county}}. ¿Sigue interesado(a) en vender? Avíseme - [Su nombre]"
+      }
+    ]
+  }
+}

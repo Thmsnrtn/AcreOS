@@ -149,14 +149,18 @@ function FunnelBar({ stage, count, maxCount }: { stage: string; count: number; m
 
 interface WholesalerDashboard {
   hasData: boolean;
-  assignmentFeesCents: number;
-  avgAssignmentFeeCents: number;
+  // null + source "none" when no assignment has been signed — never a
+  // profit estimate, never zero (founder call B-6).
+  assignmentFeesCents: number | null;
+  avgAssignmentFeeCents: number | null;
+  assignmentFeeSource: "assignments" | "none";
+  signedAssignmentCount: number;
   speedToCloseDays: number | null;
   buyerListHealth: { total: number; active: number; stale: number };
   dealFunnel: Array<{ stage: string; count: number }>;
 }
 
-function WholesalerWidgets() {
+export function WholesalerWidgets() {
   // W-5: Real data replacing the WHOLESALER_MOCK constant. Trey's
   // "If I see those exact numbers and I have zero deals, I lose
   // trust in everything around it" — the API returns hasData=false
@@ -188,8 +192,14 @@ function WholesalerWidgets() {
   // Render shape kept compatible with the prior MOCK so the templates
   // below need no changes.
   const data = {
-    assignmentFees: live.assignmentFeesCents / 100,
-    avgAssignmentFee: live.avgAssignmentFeeCents / 100,
+    assignmentFees:
+      live.assignmentFeeSource === "assignments" && live.assignmentFeesCents != null
+        ? live.assignmentFeesCents / 100
+        : null,
+    avgAssignmentFee:
+      live.assignmentFeeSource === "assignments" && live.avgAssignmentFeeCents != null
+        ? live.avgAssignmentFeeCents / 100
+        : null,
     speedToClose: live.speedToCloseDays ?? 0,
     buyerListHealth: live.buyerListHealth,
     dealFunnel: live.dealFunnel,
@@ -215,10 +225,25 @@ function WholesalerWidgets() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold">${data.assignmentFees.toLocaleString()}</p>
-            <p className="text-xs text-muted-foreground mt-1">
-              ${data.avgAssignmentFee.toLocaleString()} avg per deal
-            </p>
+            {data.assignmentFees === null ? (
+              <p
+                className="text-sm text-muted-foreground"
+                data-testid="assignment-fees-none"
+              >
+                No signed assignments yet — fees appear when an assignment is signed
+              </p>
+            ) : (
+              <>
+                <p className="text-2xl font-bold" data-testid="assignment-fees-value">
+                  ${data.assignmentFees.toLocaleString()}
+                </p>
+                {data.avgAssignmentFee !== null && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    ${data.avgAssignmentFee.toLocaleString()} avg per signed assignment
+                  </p>
+                )}
+              </>
+            )}
           </CardContent>
         </Card>
       </motion.div>

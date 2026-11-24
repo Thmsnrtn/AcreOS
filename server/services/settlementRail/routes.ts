@@ -39,13 +39,13 @@ import { getOrganizationId, getUserId } from "../../types/request";
 import { isAuthenticated } from "../../auth";
 import { getOrCreateOrg } from "../../middleware/getOrCreateOrg";
 import { requireRole } from "../../middleware/roleGuard";
-import { Errors } from "../../utils/errors";
+import { Errors, sendError } from "../../utils/errors";
 import { logger } from "../../utils/logger";
 import { routeParam } from "../../utils/routeParams";
 import { parseIsoDateUtc } from "../notePaymentMath";
 import { generatePayoffLetter } from "./payoffLetter";
 import { generateLienRelease, LienReleaseRefusedError } from "./lienRelease";
-import { deliverRailLetterByMail, RailDeliveryRefusedError } from "./delivery";
+import { deliverRailLetterByMail, railDeliveryHttpError } from "./delivery";
 import {
   listRecordingStatusesForSubject,
   advanceRecordingStatus,
@@ -147,7 +147,10 @@ export function registerSettlementRailRoutes(app: Express): void {
         });
         return res.json({ quote: result.quoteRow, delivery: receipt });
       } catch (err) {
-        if (err instanceof RailDeliveryRefusedError) return Errors.badRequest(res, err.message);
+        // Same rail taxonomy as the redemption-notice route (T-DEF-2): a
+        // lane refusal/conflict is a reason-coded 4xx, never a bare 500.
+        const railError = railDeliveryHttpError(err);
+        if (railError) return sendError(res, railError.status, railError.code, railError.message, { reason: railError.reason });
         logger.error("settlementRail.payoffLetter failed", err instanceof Error ? err : undefined);
         return Errors.internal(res, err);
       }

@@ -5,10 +5,10 @@
  * connector arrow between steps. Section eyebrow + serif title + sub.
  */
 
-import { LANDING_COPY } from "./copy";
+import type { LandingCopy } from "./copy";
 
-export function HowItWorks() {
-  const c = LANDING_COPY.how;
+export function HowItWorks({ copy }: { copy: LandingCopy["how"] }) {
+  const c = copy;
   return (
     <section className="lp-section" id="how">
       <div className="lp-eyebrow">{c.eyebrow}</div>

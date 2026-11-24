@@ -87,6 +87,11 @@ import {
   outstandingServicedLateFeesCents,
 } from "./services/notes/servicedLateFees";
 import { lenderServicingPhase, servicingEndedBorrowerMessage } from "./services/borrower/servicingPhase";
+import {
+  renderBorrowerStatementPdf,
+  borrowerStatementPdfFilename,
+  type BorrowerStatementData,
+} from "./services/borrower/statementPdf";
 import { notifyLenderOfBorrowerMessage } from "./services/borrowerMessageNotify";
 import { getClientIp, clientIpOrNull } from "./utils/clientIp";
 import { clock } from "./utils/clock";
@@ -1979,7 +1984,15 @@ export function registerBorrowerRoutes(app: Express): void {
       
       // Generate statement data based on type
       const statementType = type === '1098' ? '1098' : 'statement';
-      
+
+      // BD-1: the payload is built once, exactly as before, and then
+      // served two ways — as JSON (the default; the shape every existing
+      // reader knows) or, with ?format=pdf, rendered to a PDF on the
+      // server by services/borrower/statementPdf.ts and downloaded.
+      // The borrower portal asks for the PDF; jsPDF no longer ships to
+      // the browser for it.
+      let statementPayload: BorrowerStatementData;
+
       if (statementType === '1098') {
         // 1098 Interest Statement for tax year
         const taxYear = year ? Number(year) : clock.now().getFullYear() - 1;
@@ -2000,7 +2013,7 @@ export function registerBorrowerRoutes(app: Express): void {
           .map((p) => (p ?? "").trim())
           .filter(Boolean)
           .join(", ");
-        res.json({
+        statementPayload = {
           type: '1098',
           taxYear,
           borrowerName: f.borrowerName,
@@ -2014,10 +2027,10 @@ export function registerBorrowerRoutes(app: Express): void {
           principalBalance: f.box2OutstandingMortgagePrincipalCents / 100,
           refundOfOverpaidInterest: f.box4RefundOfOverpaidInterestCents / 100,
           loanOriginationDate: f.box3MortgageOriginationDate,
-        });
+        };
       } else {
         // Regular account statement
-        res.json({
+        statementPayload = {
           type: 'statement',
           generatedDate: clock.now().toISOString(),
           borrowerName: `${borrower.firstName} ${borrower.lastName}`,
@@ -2050,8 +2063,19 @@ export function registerBorrowerRoutes(app: Express): void {
             totalInterest,
             paymentsCount: filteredPayments.length,
           },
-        });
+        };
       }
+
+      if (req.query.format === 'pdf') {
+        const pdf = renderBorrowerStatementPdf(statementPayload);
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader(
+          "Content-Disposition",
+          `attachment; filename="${borrowerStatementPdfFilename(statementPayload)}"`,
+        );
+        return res.send(pdf);
+      }
+      return res.json(statementPayload);
     } catch (err) {
       logger.error("Statement generation error", err);
       Errors.internal(res, err);

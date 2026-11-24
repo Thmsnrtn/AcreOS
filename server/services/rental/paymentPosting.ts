@@ -45,7 +45,10 @@
  * MONEY POSTURE (founder ruling #15, "be the rail, not the provider"): this is
  * a LEDGER writer. It touches no payment processor, moves no funds, and holds
  * nothing. A `rent_payments` row records money the landlord ALREADY received on
- * their own rails. There is deliberately no tenant payment rail here.
+ * their own rails. The one tenant payment rail (P3-3, decided 2026-11-16) —
+ * Checkout on the landlord's OWN connected Stripe account — posts through
+ * this writer too (services/rental/rentCollection.ts), so card-collected rent
+ * and hand-recorded rent land in the ledger by exactly the same rule.
  */
 
 import { and, asc, eq, gt } from "drizzle-orm";
@@ -88,6 +91,12 @@ export interface RecordRentPaymentInput {
   notes: string | null;
   /** The client's Idempotency-Key — unique per org (0258). Null when absent. */
   operationKey?: string | null;
+  /**
+   * The Stripe PaymentIntent id when the money arrived through the landlord's
+   * own connected account (P3-3 rent checkout). Null for money the landlord
+   * received on their own rails and recorded by hand.
+   */
+  stripePaymentIntentId?: string | null;
 }
 
 /** One charge row as it stands after the payment applied. */
@@ -247,6 +256,7 @@ export async function recordRentPayment(
       receivedAt: input.receivedAt,
       method: input.method,
       referenceNumber: input.referenceNumber,
+      stripePaymentIntentId: input.stripePaymentIntentId ?? null,
       isPartial,
       acceptedDespitePartial: isPartial ? input.acceptedDespitePartial : null,
       allocatedCents: allocation.appliedCents,

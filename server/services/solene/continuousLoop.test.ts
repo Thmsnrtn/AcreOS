@@ -423,6 +423,8 @@ describe("renderOneLine", () => {
       mrr: 1234,
       trials: 3,
       uptimePct: 99.9,
+      uptimeBasis: "measured_span",
+      uptimeCoveragePct: 100,
       prodVersion: "abcd1234",
       complianceOpenCount: 0,
       weeklySpendUsd: 4.21,
@@ -440,7 +442,7 @@ describe("renderOneLine", () => {
       agentActivity: [],
     });
     expect(oneLine).toBe(
-      "Thu 2026-06-04 · $1,234 MRR · +3 trials · 99.9% uptime · 0/0 compliance · $4.21 week-cost · 2 decisions waiting · 3/5 decisions used · verified: 3/4 · Horizon: 5 days",
+      "Thu 2026-06-04 · $1,234 list-price MRR · +3 trials · 99.9% uptime (of measured span) · 0/0 compliance · $4.21 week-cost · 2 decisions waiting · 3/5 decisions used · verified: 3/4 · Horizon: 5 days",
     );
   });
 
@@ -453,6 +455,8 @@ describe("renderOneLine", () => {
       mrr: 0,
       trials: 0,
       uptimePct: null,
+      uptimeBasis: null,
+      uptimeCoveragePct: null,
       prodVersion: "abcd1234",
       complianceOpenCount: 0,
       weeklySpendUsd: 0,

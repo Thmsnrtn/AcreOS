@@ -1,7 +1,8 @@
 import type { Express } from "express";
 import { storage, db } from "./storage";
 import { z } from "zod";
-import { insertPropertySchema, landStatusSchema } from "@shared/schema";
+import { insertPropertySchema, landStatusSchema, notes } from "@shared/schema";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { checkUsageLimit } from "./services/usageLimits";
@@ -89,6 +90,57 @@ function calculateDistanceMiles(lat1: number, lng1: number, lat2: number, lng2: 
 
 // One definition, shared with Pax's product facts (shared/product-limits.ts).
 const MAX_CSV_IMPORT_ROWS = CSV_IMPORT_MAX_ROWS_PER_FILE;
+
+// ── HYB-DEF-1 — a parcel that secures a live serviced note is not deletable ──
+//
+// The serviced-note status model (shared/schema.ts `notes.status` comment;
+// the identical enum in routes-finance.ts's note-update schema and in
+// ai/tools.ts) is: pending | active | paid_off | defaulted | foreclosed.
+// Of those, `paid_off` and `foreclosed` are terminal — the loan is finished.
+// `sold` is named as a finished state alongside them by the borrower-portal
+// payment path (portalPaymentPosting.ts: "finished (`paid_off`,
+// `foreclosed`, `sold`)"), so it is terminal here too. Every other status —
+// pending, active, defaulted, and the legacy late/delinquent values the
+// payment paths still accept as live — is a note still being serviced
+// against this parcel.
+export const TERMINAL_SERVICED_NOTE_STATUSES: ReadonlySet<string> = new Set([
+  "paid_off",
+  "foreclosed",
+  "sold",
+]);
+
+/** The subset of `rows` (notes pointing at one property) that still encumber it. */
+export function liveSecuringNotes<T extends { status: string }>(rows: readonly T[]): T[] {
+  return rows.filter((n) => !TERMINAL_SERVICED_NOTE_STATUSES.has(n.status));
+}
+
+/**
+ * Why a property may not be deleted, or null when it may be.
+ *
+ * `notes.property_id` is ON DELETE SET NULL and the property delete is a
+ * soft delete, so deleting a securing parcel would not error — it would
+ * quietly take the collateral record out from under a note that is still
+ * being serviced, and the land book and the notes book would disagree
+ * about what stands behind the loan. Refuse instead, and name the notes
+ * so the operator knows exactly what is in the way. Mirrors the rental
+ * unit guard (`unitDeletionRefusal`, routes-rentals.ts): a pure refusal
+ * predicate, a 400 via Errors.badRequest, and a structured `code` in
+ * details.
+ *
+ * Pure so the refusal itself is testable without a database.
+ */
+export function propertyDeletionRefusal(
+  securingNotes: ReadonlyArray<{ id: number; status: string }>,
+): string | null {
+  const live = liveSecuringNotes(securingNotes);
+  if (live.length === 0) return null;
+  const named = live.map((n) => `note ${n.id} (${n.status})`).join(", ");
+  return (
+    `This property still secures ${live.length === 1 ? "a live serviced note" : `${live.length} live serviced notes`}: ${named}. ` +
+    `Deleting it would remove the collateral record from under ${live.length === 1 ? "a note that is" : "notes that are"} still being serviced. ` +
+    `Pay off, foreclose, or sell the note first — the property can be deleted once no live note is secured by it.`
+  );
+}
 
 const upload = createUploadMiddleware({ maxSizeMB: 5, allowedTypes: ["text"] });
 const validateCSV = validateFileMiddleware(["text"]);
@@ -592,9 +644,25 @@ export function registerPropertyRoutes(app: Express): void {
       }
       
       const existingProperty = await storage.getProperty(org.id, propertyId);
-      
+
       if (!existingProperty) {
         return Errors.notFound(res, "Property");
+      }
+
+      // HYB-DEF-1: a parcel securing a live serviced note is not deletable.
+      // Count first, refuse in the guarded-delete idiom (see
+      // propertyDeletionRefusal above) — never soft-delete the collateral
+      // out from under the notes book silently.
+      const securingNotes = await db.select({ id: notes.id, status: notes.status })
+        .from(notes)
+        .where(and(eq(notes.organizationId, org.id), eq(notes.propertyId, propertyId), isNull(notes.deletedAt)));
+      const refusal = propertyDeletionRefusal(securingNotes);
+      if (refusal) {
+        return Errors.badRequest(res, refusal, {
+          code: "PROPERTY_SECURES_LIVE_NOTE",
+          propertyId,
+          securingNotes: liveSecuringNotes(securingNotes),
+        });
       }
 
       await storage.deleteProperty(propertyId, org.id);
@@ -627,6 +695,24 @@ export function registerPropertyRoutes(app: Express): void {
         return Errors.badRequest(res, parsed.error.issues[0].message);
       }
       const { ids } = parsed.data;
+
+      // HYB-DEF-1: the bulk path soft-deletes the same rows, so the same
+      // guard applies — refuse the batch naming the first encumbered
+      // property's live notes rather than deleting around them silently.
+      const bulkSecuring = await db.select({ id: notes.id, status: notes.status, propertyId: notes.propertyId })
+        .from(notes)
+        .where(and(eq(notes.organizationId, org.id), inArray(notes.propertyId, ids), isNull(notes.deletedAt)));
+      for (const pid of ids) {
+        const forProperty = bulkSecuring.filter((n) => n.propertyId === pid);
+        const refusal = propertyDeletionRefusal(forProperty);
+        if (refusal) {
+          return Errors.badRequest(res, refusal, {
+            code: "PROPERTY_SECURES_LIVE_NOTE",
+            propertyId: pid,
+            securingNotes: liveSecuringNotes(forProperty),
+          });
+        }
+      }
 
       const deletedCount = await storage.bulkDeleteProperties(org.id, ids);
       

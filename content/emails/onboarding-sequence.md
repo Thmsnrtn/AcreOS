@@ -6,13 +6,13 @@
 
 **Body:**
 
-Welcome to AcreOS. You've got 90 days of full Pro access to put it through its paces.
+Welcome to AcreOS. Your 14-day free trial starts now — full access to your plan's features, and no charge until it ends.
 
 Here's the fastest way to get value:
 
-1. **Set your target counties** — go to Settings → Counties and pick 2-3 counties you're active in. The Deal Feed starts scanning them immediately.
+1. **Set your target counties** — go to Settings → Counties and pick 2–3 counties you're active in. Your buy-box starts scoring every lead you bring in against them.
 
-2. **Import your leads** — if you have an existing list, go to Leads → Import and upload a CSV. Or skip this step and let the Deal Feed find opportunities for you.
+2. **Import your leads** — if you have an existing list, go to Leads → Import and upload a CSV. Or skip this step for now — import a list whenever you're ready and your buy-box scores it as it lands.
 
 3. **Send your first offer** — click into any lead or Deal Feed opportunity, hit "Make Offer," and the system will generate an offer letter that matches your writing style.
 
@@ -133,8 +133,8 @@ During your trial, you've had access to:
 
 After your trial:
 - **Free tier** — you keep your data, leads, and basic CRM. You lose Deal Feed, DD reports, LCS, AI features, and compliance checking.
-- **Starter ($20/mo)** — everything in Free plus Deal Feed, DD reports, and campaigns.
-- **Pro ($49/mo)** — everything. Full AI, compliance, note management, team features.
+- **Starter ($49/mo)** — everything in Free plus Deal Feed, DD reports, and campaigns.
+- **Pro ($99/mo)** — everything. Full AI, compliance, note management, team features.
 
 If AcreOS is saving you time and helping you find better deals, the Pro plan pays for itself with one deal per quarter.
 

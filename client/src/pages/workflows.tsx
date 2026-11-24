@@ -33,7 +33,7 @@ import {
   isLiveWorkflowTriggerEvent,
   TRIGGER_NOT_LIVE_MESSAGE,
 } from "@shared/workflow-live-triggers";
-import { PAX_RULES_COPY } from "@shared/pax-glossary";
+import { PAX_RULES_COPY } from "@shared/pax-glossary-core";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 

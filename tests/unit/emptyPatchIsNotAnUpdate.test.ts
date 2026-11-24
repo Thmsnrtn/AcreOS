@@ -65,7 +65,12 @@ vi.mock("../../server/middleware/getOrCreateOrg", () => ({
 vi.mock("../../server/middleware/roleGuard", () => ({
   requireRole: () => (_req: unknown, _res: unknown, next: () => void) => next(),
 }));
-vi.mock("../../server/services/emailService", () => ({ sendEmail: vi.fn(async () => ({ ok: true })) }));
+vi.mock("../../server/services/emailService", () => ({
+  sendEmail: vi.fn(async () => ({ ok: true })),
+  // W-DEF-1: blast-route identity preflight binding (this suite exercises
+  // only the PATCH recipient handler, which never calls it).
+  counterpartyEmailIdentityStatus: vi.fn(async () => ({ canSend: true, ownSesCredentials: false, verifiedDomain: true })),
+}));
 
 const { registerBuyerBlastRoutes } = await import("../../server/routes-buyer-blasts");
 const { hasWritableValues, assertWritablePatch } = await import("../../server/utils/patch");

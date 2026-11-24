@@ -100,6 +100,13 @@ export const INTENT_META: Record<string, { door: CustomerDoor; scope: Scope | nu
 
   // ── Finance (notes / amortization / cashflow / ROI / payments) ───────────
   get_notes: { door: "finance", scope: "financial_read" },
+  // Tax certificates (T7): the REST routes are owner/admin; financial_* is the nearest scope
+  // the ladder has (owner/admin/bookkeeper write; member/accountant read).
+  get_tax_certificates: { door: "finance", scope: "financial_read" },
+  get_tax_certificate: { door: "finance", scope: "financial_read" },
+  get_tax_certificate_clock: { door: "finance", scope: "financial_read" },
+  get_tax_certificate_ledger: { door: "finance", scope: "financial_read" },
+  record_tax_ledger_entry: { door: "finance", scope: "financial_write" },
   calculate_amortization: { door: "finance", scope: "financial_read" },
   get_cashflow_summary: { door: "finance", scope: "financial_read" },
   calculate_roi: { door: "finance", scope: "financial_read" },

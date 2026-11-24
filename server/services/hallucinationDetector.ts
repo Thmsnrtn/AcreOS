@@ -28,7 +28,8 @@ export interface HallucinationWarning {
     | "arv_unreasonable"
     | "missing_disclosure_field"
     | "entity_not_in_org"
-    | "ungrounded_count";
+    | "ungrounded_count"
+    | "unapproved_send_claim";
   detail: string;
   // severity is informational — most checks return "error", but
   // numeric warnings could become "warning" if we soften them later.

@@ -63,6 +63,14 @@ export interface MorningPulseSnapshot {
   trials: number;
   /** Measured uptime % over the rolling window; null until there's enough real data to claim one. */
   uptimePct: number | null;
+  /** A14-05: the uptime % is of the MEASURED SPAN only (see
+   *  services/autopilot/uptime.ts). Carried on the snapshot so every render
+   *  can label it; null on legacy rows that predate basis tracking. */
+  uptimeBasis: "measured_span" | null;
+  /** A14-05: % of the 30-day window actually covered by samples; the rest
+   *  is unknown time (neither up nor down). Null when uptimePct is null or
+   *  on legacy rows. */
+  uptimeCoveragePct: number | null;
   prodVersion: string;
   complianceOpenCount: number;
   weeklySpendUsd: number;
@@ -167,10 +175,19 @@ export async function composeMorningPulse(): Promise<MorningPulseSnapshot> {
   // Uptime: REAL, derived from worker heartbeat-gap samples over a 30-day
   // rolling window. null (not a flattering default) when there isn't enough
   // measured data to claim a number — the founder surface shows "no data yet".
+  // A14-05: read the DETAIL form so the measured-span basis + window
+  // coverage are stored on the snapshot and labelled wherever it renders.
   let uptimePct: number | null = null;
+  let uptimeBasis: "measured_span" | null = null;
+  let uptimeCoveragePct: number | null = null;
   try {
-    const { getUptimePct } = await import("../autopilot/uptime");
-    uptimePct = await getUptimePct();
+    const { getUptimeDetail } = await import("../autopilot/uptime");
+    const detail = await getUptimeDetail();
+    if (detail) {
+      uptimePct = detail.pct;
+      uptimeBasis = detail.basis;
+      uptimeCoveragePct = detail.coveragePct;
+    }
   } catch (err) {
     logger.warn(
       "[continuousLoop] uptime read failed; reporting no data",
@@ -206,6 +223,8 @@ export async function composeMorningPulse(): Promise<MorningPulseSnapshot> {
     mrr: DEFAULT_MRR,
     trials: DEFAULT_TRIALS,
     uptimePct,
+    uptimeBasis,
+    uptimeCoveragePct,
     prodVersion,
     complianceOpenCount: compliance.openCount,
     weeklySpendUsd: capital.weeklySpendUsd,
@@ -245,14 +264,22 @@ export async function composeMorningPulse(): Promise<MorningPulseSnapshot> {
 export function renderOneLine(snapshot: MorningPulseSnapshot): string {
   // Format per the team_solene brief, extended by kernel-restructure step 5
   // and Jarvis Phase 1 CP4:
-  //   "{Day} {Date} · ${MRR} MRR · +{N} trials · {X.X}% uptime ·
-  //    {N}/{N} compliance · ${X.XX} week-cost · {N} decisions waiting ·
-  //    {X}/{B} decisions used · verified: {N}/{M} · Horizon: {D} days"
+  //   "{Day} {Date} · ${MRR} list-price MRR · +{N} trials · {X.X}% uptime
+  //    (of measured span) · {N}/{N} compliance · ${X.XX} week-cost ·
+  //    {N} decisions waiting · {X}/{B} decisions used · verified: {N}/{M} ·
+  //    Horizon: {D} days"
   // The line has no hard character cap (it renders on the founder Today page
   // and in the cron log), but it stays a single " · "-joined sentence — one
   // segment per number, no prose.
   const mrr = Math.round(snapshot.mrr).toLocaleString();
-  const uptime = snapshot.uptimePct != null ? `${snapshot.uptimePct.toFixed(1)}% uptime` : "uptime n/a";
+  // A14-05: the % is of the measured span — the segment says so whenever the
+  // basis was recorded. Legacy snapshots (basis null) keep the plain form.
+  const uptime =
+    snapshot.uptimePct != null
+      ? snapshot.uptimeBasis === "measured_span"
+        ? `${snapshot.uptimePct.toFixed(1)}% uptime (of measured span)`
+        : `${snapshot.uptimePct.toFixed(1)}% uptime`
+      : "uptime n/a";
   const spend = snapshot.weeklySpendUsd.toFixed(2);
   // Compliance fraction: open / open (we only track open right now —
   // both numerator and denominator are the open count, matching the
@@ -274,7 +301,9 @@ export function renderOneLine(snapshot: MorningPulseSnapshot): string {
       : "verified n/a";
   return [
     `${snapshot.dayLabel}`,
-    `$${mrr} MRR`,
+    // A10-01: the pulse MRR is list-price arithmetic (computeRealMrrUsd sums
+    // tier list price for active orgs; no Stripe charge is consulted).
+    `$${mrr} list-price MRR`,
     `+${snapshot.trials} trials`,
     uptime,
     `${complianceFrac} compliance`,
@@ -355,6 +384,10 @@ function hydrateRow(row: SoleneMorningPulseRow): MorningPulseSnapshot {
     // Legacy rows persisted before uptime went nullable may carry the old
     // 99.9 stub — that's baked history; new snapshots only store real numbers.
     uptimePct: typeof blob.uptimePct === "number" ? blob.uptimePct : null,
+    // A14-05: legacy rows predate basis/coverage tracking — null (unrecorded),
+    // never backfilled with an invented coverage figure.
+    uptimeBasis: blob.uptimeBasis === "measured_span" ? "measured_span" : null,
+    uptimeCoveragePct: typeof blob.uptimeCoveragePct === "number" ? blob.uptimeCoveragePct : null,
     prodVersion: String(blob.prodVersion ?? "unknown"),
     complianceOpenCount: Number(blob.complianceOpenCount ?? 0),
     weeklySpendUsd: Number(blob.weeklySpendUsd ?? 0),

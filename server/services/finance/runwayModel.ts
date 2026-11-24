@@ -311,17 +311,42 @@ async function monthlyAiBurnUsd(windowStart: Date, windowEnd: Date): Promise<num
   return usd * (DAYS_PER_MONTH / windowDays);
 }
 
-/** Live MRR (USD) summed across paying active orgs. */
+/**
+ * A10-01 — what the figure this module calls "MRR" actually is, stated once
+ * so every consumer labels it the same way. `liveMrrDetail()` sums LIST
+ * PRICE (tier price × billing interval) for every org whose
+ * subscriptionStatus is "active". No Stripe charge, invoice, or payment is
+ * consulted: an org marked active that never paid counts at full list
+ * price, and a discounted or comped org counts at list. That is a
+ * legitimate run-rate input for runway planning, but it is NOT collected
+ * revenue, so it is never rendered as bare "MRR" — the label below travels
+ * with the figure (see `liveMrrDetail().basis` and the runway model's
+ * `mrrLabel`) and founder-facing renders use it verbatim. (Module-private
+ * on purpose: the label reaches renders through the model's `mrrLabel`
+ * field, not through cross-module imports of these constants.)
+ */
+const MRR_BASIS = "list_price" as const;
+const LIST_PRICE_MRR_LABEL =
+  "MRR at list price for active orgs (billed, not collected)";
+
+/** List-price MRR (USD) summed across active orgs. Billed, not collected. */
 async function liveMrrUsd(): Promise<number> {
   const { cents } = await liveMrrDetail();
   return cents / 100;
 }
 
 /**
- * Live MRR in cents + paying-org count (shared by runway + the snapshot job +
- * the gate watcher, so every consumer reads the SAME source of truth).
+ * List-price MRR in cents + paying-org count (shared by runway + the
+ * snapshot job + the gate watcher, so every consumer reads the SAME source
+ * of truth). `basis` is part of the contract (A10-01): the cents are
+ * list-price arithmetic, and any surface rendering them must label them
+ * with LIST_PRICE_MRR_LABEL rather than presenting them as collected MRR.
  */
-export async function liveMrrDetail(): Promise<{ cents: number; payingOrgs: number }> {
+export async function liveMrrDetail(): Promise<{
+  cents: number;
+  payingOrgs: number;
+  basis: typeof MRR_BASIS;
+}> {
   const rows = await db
     .select({
       tier: organizations.subscriptionTier,
@@ -340,7 +365,7 @@ export async function liveMrrDetail(): Promise<{ cents: number; payingOrgs: numb
     cents += orgCents;
     if (orgCents > 0) payingOrgs++;
   }
-  return { cents, payingOrgs };
+  return { cents, payingOrgs, basis: MRR_BASIS };
 }
 
 /**
@@ -475,7 +500,7 @@ export async function computeRunway(): Promise<RunwayResult> {
       ? "Planning cash (founder-declared; not reconciled to a bank balance)"
       : "Planning cash (ledger reserve buckets; not a bank balance)",
     observedLiquidityUsd: null,
-    mrrLabel: "MRR at list price for active orgs (billed, not collected)",
+    mrrLabel: LIST_PRICE_MRR_LABEL,
     isModeled: true,
     scenarios,
     inputs: {

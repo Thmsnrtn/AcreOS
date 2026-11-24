@@ -66,9 +66,12 @@ interface BuyerIntent {
 interface CreateBuyerProfileParams {
   leadId?: number;
   profileType: ProfileType;
-  preferences: BuyerPreferences;
-  financialInfo: FinancialInfo;
-  intent: BuyerIntent;
+  // Optional in fact since the creation route existed: its flat request
+  // schema carries none of these, so callers may supply any subset (the
+  // route translates its flat fields into the first two — W-DEF-2).
+  preferences?: BuyerPreferences;
+  financialInfo?: FinancialInfo;
+  intent?: BuyerIntent;
 }
 
 interface MatchFactors {

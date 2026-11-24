@@ -395,6 +395,40 @@ export function findUngroundedCounts(output: string, ctx: CountGroundingContext)
 }
 
 /**
+ * FD5 wording backstop (HYB-DEF-6). Pax's sends are gated by the
+ * approval kernel — a send tool call freezes a draft for the operator's
+ * approval and nothing sends before it — but in the hybrid walk Pax
+ * SAID "I'll send the reminder immediately — no further confirmation
+ * needed after that": a stated intent contradicting the ratified
+ * ask-before-sending rail. The prompt law (the SENDING block composed
+ * into every Pax prompt) prevents at generation; this detector catches
+ * the claim family in generated output so the guard can flag it and
+ * the executive loop can correct it.
+ *
+ * Patterns are deliberately narrow: they target promises that a send
+ * will bypass the approval step. Truthful statements of the rail
+ * ("nothing sends without your approval", "the draft waits for your
+ * approval") do not match.
+ */
+const UNAPPROVED_SEND_CLAIM_PATTERNS: RegExp[] = [
+  /no further confirmation/i,
+  /without further confirmation/i,
+  /no (confirmation|approval) (is )?(needed|required|necessary)/i,
+  /\b(i'll|i will|we'll|we will) send\b[^.!?]{0,80}\bimmediately\b/i,
+  /\bsend (it|this|that|them) immediately\b/i,
+  /\bsend\b[^.!?]{0,40}\bwithout asking\b/i,
+];
+
+export function findUnapprovedSendClaims(output: string): string[] {
+  const claims: string[] = [];
+  for (const pattern of UNAPPROVED_SEND_CLAIM_PATTERNS) {
+    const m = output.match(pattern);
+    if (m) claims.push(m[0]);
+  }
+  return claims;
+}
+
+/**
  * Everything the guard needs from one Pax turn, in one call, so the streaming
  * and non-streaming paths cannot feed it differently.
  */

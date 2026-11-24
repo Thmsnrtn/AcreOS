@@ -337,6 +337,7 @@ function ComposerDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
     suppressionReason?: string | null;
     suppressed?: any[];
     compliance?: { message: string; citation: string | null } | null;
+    sendingIdentityWarning?: string | null;
   } | null>(null);
   // A state-rule WARN on a property under an assignable contract: the send
   // needs the operator's acknowledgement, which the server records (Leg 3).
@@ -400,6 +401,7 @@ function ComposerDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
       suppressionReason: d.suppressionReason,
       suppressed: d.suppressed,
       compliance: d.compliance ?? null,
+      sendingIdentityWarning: d.sendingIdentityWarning ?? null,
     }),
     onError: (err: any) => toast({ title: "Preview failed", description: err.message, variant: "destructive" }),
   });
@@ -427,7 +429,13 @@ function ComposerDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
       return res.json() as Promise<{ blast: Blast; recipientCount: number }>;
     },
     onSuccess: ({ blast, recipientCount }) => {
-      toast({ title: "Blast sent", description: `${recipientCount} recipient${recipientCount === 1 ? "" : "s"}.` });
+      // The blast's finalized status is the truth (W-DEF-1): an all-failed
+      // blast is not announced as sent.
+      if (blast.status === "failed") {
+        toast({ title: "Blast failed — nothing was sent", description: `All ${recipientCount} send${recipientCount === 1 ? "" : "s"} failed. Open the blast for the per-recipient reasons.`, variant: "destructive" });
+      } else {
+        toast({ title: "Blast sent", description: `${recipientCount} recipient${recipientCount === 1 ? "" : "s"}.` });
+      }
       queryClient.invalidateQueries({ queryKey: ["/api/buyer-blasts"] });
       reset();
       onOpenChange(false);
@@ -501,6 +509,12 @@ function ComposerDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
                   </label>
                 </div>
               )}
+              {preview.sendingIdentityWarning && (
+                <div className="p-3 rounded-md bg-acr-warning/10 border border-acr-warning/30 text-xs" data-testid="blast-identity-warning">
+                  <div className="font-semibold mb-1 text-acr-warning">No sending identity connected</div>
+                  <div className="text-muted-foreground">{preview.sendingIdentityWarning}</div>
+                </div>
+              )}
               {(preview.suppressedCount ?? 0) > 0 && (
                 <div className="p-3 rounded-md bg-acr-warning/10 border border-acr-warning/30 text-xs">
                   <div className="font-semibold mb-1 text-acr-warning">
@@ -523,7 +537,7 @@ function ComposerDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
           </Button>
           <Button
             onClick={() => send.mutate()}
-            disabled={!propertyId || !subject || !body || send.isPending || !preview || (!!preview.compliance && !ack)}
+            disabled={!propertyId || !subject || !body || send.isPending || !preview || !!preview.sendingIdentityWarning || (!!preview.compliance && !ack)}
             data-testid="confirm-send-blast"
           >
             <Send className="w-3.5 h-3.5 mr-1.5" aria-hidden="true" />

@@ -12,6 +12,8 @@
  */
 import { trackInterval, withJobLock, jobLog as log } from "../utils/jobRuntime";
 import { startRefundSlaSweepJob } from "./refundSlaSweepJob"; // refund automation: retry / reminder / escalation / uncertain listing
+import { startConnectDisputeEscalationJob } from "./connectDisputeEscalationJob"; // B-2: borrower-dispute response-deadline escalations (T-72h / T-24h)
+import { startConnectOnboardingStallJob } from "./connectOnboardingStallJob"; // B-7: lender Connect onboarding-stall aging (daily, 7-day founder alert + lender notice)
 import { jobSupervisor } from "../services/jobSupervisor";
 import { clock } from "../utils/clock";
 
@@ -22,6 +24,8 @@ export function startSubscriptionLifecycleJobs() {
   startTrialExpiryJob();
   startAnnualRenewalNoticeJob();
   startRefundSlaSweepJob(); // every 10 min — refund queue SLA (retry, reminder at dueAt, escalation at dueAt+24h, uncertain listing)
+  startConnectDisputeEscalationJob(); // every 1h — borrower-dispute deadline escalations (T-72h warning, T-24h critical)
+  startConnectOnboardingStallJob(); // every 24h — lender Connect onboarding-stall aging (7-day founder alert + lender notice, once per episode)
 }
 
 // ── Trial expiry automation (daily 9am UTC) ─────────────────────────────────

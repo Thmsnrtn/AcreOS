@@ -10,7 +10,13 @@
  * Principles: fast (<60s), visible (GET /api/ops/kill-switches), logged
  * (every change is a ledger entry), reversible, independent.
  *
- * Implemented 2026-10-17.
+ * The pause / stand-down readers are the enforcement half: delegationRules.ts
+ * (delegationBlockedByControls) consults them on every delegated release, so
+ * engaging either switch halts unattended autopilot action (B-4). A founder's
+ * own tap is not a delegated release and is unaffected.
+ *
+ * Implemented 2026-10-17; pause/stand-down wired into the delegated-release
+ * gate 2026-11-19 (B-4).
  */
 
 import { sql, desc, eq, and, gte } from "drizzle-orm";
@@ -61,8 +67,8 @@ async function latestSwitchEntry(
   return latest.actionType === engageType ? latest : null;
 }
 
-/** Switch 3: Is the COO currently stood down? */
-async function isCooStoodDown(): Promise<KillSwitchState> {
+/** Switch 3: Is the COO currently stood down? (B-4: read by the delegated-release gate.) */
+export async function isCooStoodDown(): Promise<KillSwitchState> {
   const entry = await latestSwitchEntry("coo_stand_down", "coo_stand_up");
   return {
     name: "coo_stand_down",
@@ -73,8 +79,8 @@ async function isCooStoodDown(): Promise<KillSwitchState> {
   };
 }
 
-/** Switch 2: Is the autopilot currently paused? */
-async function isAutopilotPaused(): Promise<KillSwitchState> {
+/** Switch 2: Is the autopilot currently paused? (B-4: read by the delegated-release gate.) */
+export async function isAutopilotPaused(): Promise<KillSwitchState> {
   const entry = await latestSwitchEntry("autopilot_pause", "autopilot_resume");
   return {
     name: "autopilot_pause",

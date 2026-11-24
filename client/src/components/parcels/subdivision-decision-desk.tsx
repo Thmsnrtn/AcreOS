@@ -36,7 +36,13 @@ interface Desk {
     yieldEstimate: { refusedReason: string | null; yield: { low: RangeEnd; high: RangeEnd } };
   };
   decisions: Array<{ id: number; decidedAt: string; kind: string; choice: string; reviewDueAt: string | null; hasOutcome: boolean }>;
-  pricingLocks: Array<{ id: number; lockedAt: string | null; lotCount: number; totalAskingCents: number }>;
+  pricingLocks: Array<{
+    id: number; lockedAt: string | null; lotCount: number; totalAskingCents: number;
+    // A lock is graded only when its own record cites the parcel's feasibility
+    // scenario; older locks, and locks saved with none on file, are ungraded.
+    grading?: "graded_on_parent_position" | "ungraded_pricing_act";
+    reviewDueAt?: string | null; hasOutcome?: boolean;
+  }>;
   criticalPath:
     | { state: "withheld"; reason: string }
     | {
@@ -266,10 +272,23 @@ export function SubdivisionDecisionDeskSection({ parentParcelId }: { parentParce
                 <p className="text-xs text-muted-foreground" data-testid="subdiv-desk-locks-empty">No pricing grid has been locked on this parcel.</p>
               ) : (
                 <ul className="space-y-1" data-testid="subdiv-desk-locks">
-                  {d.pricingLocks.map((l) => <li key={l.id} className="border rounded-md p-2 text-xs">Locked {day(l.lockedAt)} · {l.lotCount} lots · {usd(l.totalAskingCents)} total asking</li>)}
+                  {d.pricingLocks.map((l) => (
+                    <li key={l.id} className="border rounded-md p-2 text-xs">
+                      Locked {day(l.lockedAt)} · {l.lotCount} lots · {usd(l.totalAskingCents)} total asking
+                      {l.grading === "graded_on_parent_position" && (
+                        <> · graded on the whole parcel, not lot by lot · review {l.reviewDueAt ? day(l.reviewDueAt) : "no set date"}
+                          {l.reviewDueAt && ` · ${l.hasOutcome ? "outcome recorded" : "outcome not yet recorded"}`}</>
+                      )}
+                    </li>
+                  ))}
                 </ul>
               )}
-              <p className="text-xs text-muted-foreground">A pricing lock is a pricing act — its record cites no scenario and carries no review date, so it is not outcome-graded; go-decisions recorded at this desk are.</p>
+              {(d.pricingLocks.length === 0 || d.pricingLocks.some((l) => l.grading !== "graded_on_parent_position")) && (
+                <p className="text-xs text-muted-foreground">A pricing lock is a pricing act — its record cites no scenario and carries no review date, so it is not outcome-graded; go-decisions recorded at this desk are.</p>
+              )}
+              {d.pricingLocks.some((l) => l.grading === "graded_on_parent_position") && (
+                <p className="text-xs text-muted-foreground">A graded lock is asked for its outcome on the whole parcel (sold or abandoned) — lot-by-lot sell-through is not captured.</p>
+              )}
             </section>
 
             <section className="space-y-1 text-sm" data-testid="subdiv-desk-path" aria-label="Entitlement path">
