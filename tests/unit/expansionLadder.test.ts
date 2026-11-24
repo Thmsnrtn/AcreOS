@@ -224,7 +224,10 @@ describe("no mounted route hands a customer an API key", () => {
  *   found by the TypeScript parser (never a bracket walk), on comment-stripped
  *   source. "Mounted" comes from the canonical route manifest; a route file the
  *   manifest does not classify fails the gate rather than being skipped, and a
- *   non-`routes-*` file is treated as mounted.
+ *   non-`routes-*` file is treated as mounted. A handler passed by NAME (or
+ *   through a wrapper, an import, a re-export or a handler map) is followed to
+ *   its declaration and that body is read; one that cannot be followed is
+ *   counted and fails the population check (see makeResolver).
  * - FOUNDER-GATED means: a founder gate in the handler's own middleware list
  *   (directly, inside an array, or spread from a same-file const array); a
  *   `router.use(<founder gate>)` on the same receiver registered BEFORE the
@@ -261,6 +264,12 @@ interface Registration {
   mints: boolean;
   gated: boolean;
   mounted: boolean;
+  /** how the handler body was reached: written inline, or followed from a name to its declaration */
+  handlerShape: "inline" | "wrapped" | "named";
+  /** the handler's body lies inside the registration call's own text (all the pre-B2 scanner read) */
+  bodyInSubtree: boolean;
+  /** the handler argument names something this scanner could not follow to a body */
+  handlerUnresolved: boolean;
 }
 
 interface ScanResult {
@@ -269,6 +278,10 @@ interface ScanResult {
   minters: Set<string>;
   unparsed: string[];
   routeChains: string[];
+  /** argument references (handler or middleware) that could not be followed — counted, never skipped */
+  unresolved: string[];
+  /** registrations whose handler body the scanner actually read (inline, or resolved from a name) */
+  handlerBodiesRead: number;
 }
 
 interface MintSite {
@@ -458,9 +471,9 @@ function isFounderGateExpr(expr: ts.Expression, sf: ts.SourceFile): boolean {
   return false;
 }
 
-function bodyGuardsFounder(handler: ts.Expression, firstMint: number, sf: ts.SourceFile): boolean {
-  if (!(ts.isArrowFunction(handler) || ts.isFunctionExpression(handler))) return false;
-  if (!ts.isBlock(handler.body)) return false;
+function bodyGuardsFounder(handler: ts.Node, firstMint: number, sf: ts.SourceFile): boolean {
+  if (!(ts.isArrowFunction(handler) || ts.isFunctionExpression(handler) || ts.isFunctionDeclaration(handler) || ts.isMethodDeclaration(handler))) return false;
+  if (!handler.body || !ts.isBlock(handler.body)) return false;
   // Look through a top-level try { … } — the repo's handlers almost all open with one.
   const statements: ts.Statement[] = [];
   for (const st of handler.body.statements) {
@@ -476,6 +489,270 @@ function bodyGuardsFounder(handler: ts.Expression, firstMint: number, sf: ts.Sou
     if (returns) return true;
   }
   return false;
+}
+
+/*
+ * NAMED HANDLERS. A registration's own subtree only holds the handler when it
+ * is written inline. `api.post(path, mw, createOrgKey)` passes it by NAME, and
+ * the body that mints lives at a declaration somewhere else — this file, or a
+ * module it imports. Audit B2 restored the retired mint in exactly that shape
+ * and the gate stayed green, because the unit it read ended at the identifier.
+ *
+ * So every non-path argument is RESOLVED, with the parser, to what it names:
+ * a same-file declaration first (function, or a const whose initializer is a
+ * function, a wrapper call such as `asyncHandler(fn)`, or an object literal
+ * for `handlers.create`), then an import (named, default, namespace, followed
+ * through `export { x } from` and `export *`) to the declaration in the module
+ * it comes from. Wrapper calls are read through: their arguments and their
+ * callee are resolved in turn. An argument that cannot be followed is never
+ * skipped silently — it is COUNTED (`unresolved`), and an unresolved name that
+ * is a known minter still counts as minting.
+ */
+interface ParsedUnit extends SourceUnit {
+  sf: ts.SourceFile;
+}
+
+type FnNode = ts.ArrowFunction | ts.FunctionExpression | ts.FunctionDeclaration | ts.MethodDeclaration;
+
+interface Reached {
+  fn: FnNode;
+  sf: ts.SourceFile;
+  sites: MintSite[];
+}
+
+interface Reach {
+  fns: Reached[];
+  /** names an argument referred to that could not be followed to a declaration in the population */
+  unresolved: string[];
+  /** names that resolved to a package outside the repo (express.json, multer, …) */
+  external: number;
+  /** an unresolved reference whose name is a known minter */
+  minterByName: boolean;
+}
+
+interface ImportBinding {
+  spec: string;
+  imported: string; // export name, "default", or "*"
+}
+
+function stripWrappers(e: ts.Expression): ts.Expression {
+  while (ts.isAsExpression(e) || ts.isParenthesizedExpression(e) || ts.isNonNullExpression(e) || ts.isSatisfiesExpression(e)) {
+    e = e.expression;
+  }
+  return e;
+}
+
+function importsOf(sf: ts.SourceFile): Map<string, ImportBinding> {
+  const out = new Map<string, ImportBinding>();
+  for (const st of sf.statements) {
+    if (!ts.isImportDeclaration(st) || !ts.isStringLiteral(st.moduleSpecifier) || !st.importClause) continue;
+    const spec = st.moduleSpecifier.text;
+    const c = st.importClause;
+    if (c.name) out.set(c.name.text, { spec, imported: "default" });
+    if (c.namedBindings && ts.isNamespaceImport(c.namedBindings)) out.set(c.namedBindings.name.text, { spec, imported: "*" });
+    if (c.namedBindings && ts.isNamedImports(c.namedBindings)) {
+      for (const el of c.namedBindings.elements) out.set(el.name.text, { spec, imported: (el.propertyName ?? el.name).text });
+    }
+  }
+  return out;
+}
+
+/** Declarations named `name` in `sf` — top-level statements only, or at any depth. */
+const declCache = new WeakMap<ts.SourceFile, Map<string, ts.Node[]>>();
+function declarationsNamed(sf: ts.SourceFile, name: string, anyDepth: boolean): ts.Node[] {
+  let cache = declCache.get(sf);
+  if (!cache) declCache.set(sf, (cache = new Map()));
+  const key = `${anyDepth ? "*" : "^"}${name}`;
+  const hit = cache.get(key);
+  if (hit) return hit;
+  const out = declarationsNamedUncached(sf, name, anyDepth);
+  cache.set(key, out);
+  return out;
+}
+
+function declarationsNamedUncached(sf: ts.SourceFile, name: string, anyDepth: boolean): ts.Node[] {
+  const out: ts.Node[] = [];
+  const take = (n: ts.Node): void => {
+    if (ts.isFunctionDeclaration(n) && n.name?.text === name && n.body) out.push(n);
+    else if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name) && n.name.text === name && n.initializer) out.push(n.initializer);
+  };
+  if (anyDepth) {
+    const visit = (n: ts.Node): void => {
+      take(n);
+      ts.forEachChild(n, visit);
+    };
+    visit(sf);
+  } else {
+    for (const st of sf.statements) {
+      if (ts.isVariableStatement(st)) st.declarationList.declarations.forEach(take);
+      else take(st);
+    }
+  }
+  return out;
+}
+
+function isParameterInScope(id: ts.Identifier): boolean {
+  for (let n: ts.Node | undefined = id.parent; n; n = n.parent) {
+    if (ts.isFunctionLike(n) && n.parameters.some((p) => ts.isIdentifier(p.name) && p.name.text === id.text)) return true;
+  }
+  return false;
+}
+
+function makeResolver(parsed: ParsedUnit[], stores: KeyStore[], minters: Set<string>) {
+  const byRel = new Map(parsed.map((p) => [p.rel, p]));
+  const importCache = new Map<string, Map<string, ImportBinding>>();
+  const importsFor = (p: ParsedUnit) => {
+    let m = importCache.get(p.rel);
+    if (!m) importCache.set(p.rel, (m = importsOf(p.sf)));
+    return m;
+  };
+
+  /** The unit a specifier names, `null` for a package outside the repo, `undefined` for a repo path not in the population. */
+  const moduleOf = (from: ParsedUnit, spec: string): ParsedUnit | null | undefined => {
+    let base: string;
+    if (spec.startsWith(".")) base = path.posix.normalize(path.posix.join(path.posix.dirname(from.rel), spec));
+    else if (spec.startsWith("@shared/")) base = `shared/${spec.slice("@shared/".length)}`;
+    else if (spec.startsWith("@server/")) base = `server/${spec.slice("@server/".length)}`;
+    else if (spec.startsWith("@/") || spec.startsWith("@content/") || spec.startsWith("@sovereign/")) return undefined;
+    else return null;
+    base = base.replace(/\.(js|ts|tsx|mjs)$/, "");
+    for (const cand of [`${base}.ts`, `${base}.tsx`, `${base}/index.ts`, `${base}/index.tsx`]) {
+      const u = byRel.get(cand);
+      if (u) return u;
+    }
+    return undefined;
+  };
+
+  /** What `exportName` of module `u` is: expressions/declarations to read, with the unit they live in. */
+  const exported = (u: ParsedUnit, exportName: string, seen: Set<string>): Array<{ node: ts.Node; unit: ParsedUnit }> | "unresolved" => {
+    const key = `${u.rel}#${exportName}`;
+    if (seen.has(key)) return [];
+    seen.add(key);
+    const out: Array<{ node: ts.Node; unit: ParsedUnit }> = [];
+    for (const st of u.sf.statements) {
+      if (exportName === "default" && ts.isExportAssignment(st) && !st.isExportEquals) out.push({ node: st.expression, unit: u });
+      if (exportName === "default" && ts.isFunctionDeclaration(st) && st.body &&
+          st.modifiers?.some((m) => m.kind === ts.SyntaxKind.DefaultKeyword)) out.push({ node: st, unit: u });
+      if (ts.isExportDeclaration(st)) {
+        const target = st.moduleSpecifier && ts.isStringLiteral(st.moduleSpecifier) ? moduleOf(u, st.moduleSpecifier.text) : undefined;
+        if (!st.exportClause && st.moduleSpecifier && target) {
+          const r = exported(target, exportName, seen);
+          if (r !== "unresolved") out.push(...r);
+        } else if (st.exportClause && ts.isNamedExports(st.exportClause)) {
+          for (const el of st.exportClause.elements) {
+            if (el.name.text !== exportName) continue;
+            const local = (el.propertyName ?? el.name).text;
+            if (st.moduleSpecifier) {
+              if (!target) return "unresolved";
+              const r = exported(target, local, seen);
+              if (r === "unresolved") return r;
+              out.push(...r);
+            } else {
+              out.push(...declarationsNamed(u.sf, local, false).map((node) => ({ node, unit: u })));
+            }
+          }
+        }
+      }
+    }
+    if (exportName !== "default") out.push(...declarationsNamed(u.sf, exportName, false).map((node) => ({ node, unit: u })));
+    return out.length ? out : "unresolved";
+  };
+
+  const reach = (expr: ts.Node, unit: ParsedUnit, acc: Reach, seen: Set<ts.Node>): void => {
+    if (seen.has(expr)) return;
+    seen.add(expr);
+    const node = ts.isExpression(expr) ? stripWrappers(expr) : expr;
+    const readAll = (targets: Array<{ node: ts.Node; unit: ParsedUnit }>) => targets.forEach((t) => reach(t.node, t.unit, acc, seen));
+
+    if (ts.isArrowFunction(node) || ts.isFunctionExpression(node) || ts.isFunctionDeclaration(node) || ts.isMethodDeclaration(node)) {
+      acc.fns.push({ fn: node, sf: unit.sf, sites: node.body ? mintSites(node.body, unit.sf, stores, minters) : [] });
+      return;
+    }
+    if (ts.isCallExpression(node) || ts.isNewExpression(node)) {
+      // a wrapper (`asyncHandler(fn)`) or a factory (`makeHandler(opts)`): read both sides
+      reach(node.expression, unit, acc, seen);
+      (node.arguments ?? []).forEach((a) => reach(a, unit, acc, seen));
+      return;
+    }
+    if (ts.isArrayLiteralExpression(node)) return node.elements.forEach((el) => reach(el, unit, acc, seen));
+    if (ts.isSpreadElement(node)) return reach(node.expression, unit, acc, seen);
+    if (ts.isObjectLiteralExpression(node)) return; // only read through a property access, below
+    if (ts.isIdentifier(node)) {
+      const local = declarationsNamed(unit.sf, node.text, true);
+      if (local.length) return readAll(local.map((n) => ({ node: n, unit })));
+      const imp = importsFor(unit).get(node.text);
+      if (imp && imp.imported !== "*") {
+        const mod = moduleOf(unit, imp.spec);
+        if (mod === null) { acc.external++; return; }
+        const r = mod ? exported(mod, imp.imported, new Set()) : "unresolved";
+        if (r !== "unresolved") return readAll(r);
+      }
+      if (isParameterInScope(node) && !imp) {
+        acc.unresolved.push(`${unit.rel}: ${node.text} (parameter)`);
+      } else {
+        acc.unresolved.push(`${unit.rel}: ${node.text}`);
+      }
+      if (minters.has(node.text)) acc.minterByName = true;
+      return;
+    }
+    if (ts.isPropertyAccessExpression(node)) {
+      const obj = stripWrappers(node.expression);
+      const prop = node.name.text;
+      if (ts.isIdentifier(obj)) {
+        const imp = importsFor(unit).get(obj.text);
+        const local = declarationsNamed(unit.sf, obj.text, true);
+        if (!local.length && imp) {
+          const mod = moduleOf(unit, imp.spec);
+          if (mod === null) { acc.external++; return; }
+          if (mod && imp.imported === "*") {
+            const r = exported(mod, prop, new Set());
+            if (r !== "unresolved") return readAll(r);
+          }
+          if (mod && imp.imported !== "*") {
+            const r = exported(mod, imp.imported, new Set());
+            if (r !== "unresolved") {
+              const props = r.flatMap((t) => propertyOf(t.node, prop).map((n) => ({ node: n, unit: t.unit })));
+              if (props.length) return readAll(props);
+            }
+          }
+        }
+        const props = local.flatMap((n) => propertyOf(n, prop));
+        if (props.length) return readAll(props.map((n) => ({ node: n, unit })));
+        // `upload.single(…)` on `const upload = createUploadMiddleware(…)`: the method
+        // belongs to whatever the factory returns, so read the factory call itself.
+        const made = local.filter((n) => {
+          const e = ts.isExpression(n) ? stripWrappers(n) : n;
+          return ts.isCallExpression(e) || ts.isNewExpression(e);
+        });
+        if (made.length) return readAll(made.map((n) => ({ node: n, unit })));
+      }
+      acc.unresolved.push(`${unit.rel}: ${node.getText(unit.sf)}`);
+      if (minters.has(prop)) acc.minterByName = true;
+      return;
+    }
+    // literals, template strings, `new X()`, etc. — nothing a handler body can hide in
+  };
+
+  return (args: readonly ts.Expression[], unit: ParsedUnit): Reach => {
+    const acc: Reach = { fns: [], unresolved: [], external: 0, minterByName: false };
+    const seen = new Set<ts.Node>();
+    for (const a of args) reach(a, unit, acc, seen);
+    return acc;
+  };
+}
+
+/** `{ create: fn }.create`, `{ create() {} }.create`. */
+function propertyOf(node: ts.Node, prop: string): ts.Node[] {
+  const obj = ts.isExpression(node) ? stripWrappers(node) : node;
+  if (!ts.isObjectLiteralExpression(obj)) return [];
+  const out: ts.Node[] = [];
+  for (const p of obj.properties) {
+    if (propertyKey(p) !== prop) continue;
+    if (ts.isPropertyAssignment(p)) out.push(p.initializer);
+    else if (ts.isMethodDeclaration(p) && p.body) out.push(p);
+    else if (ts.isShorthandPropertyAssignment(p)) out.push(p.name);
+  }
+  return out;
 }
 
 function scanForKeyMinting(units: SourceUnit[], stores: KeyStore[]): ScanResult {
@@ -513,8 +790,11 @@ function scanForKeyMinting(units: SourceUnit[], stores: KeyStore[]): ScanResult 
     }
   }
 
+  const resolveArgs = makeResolver(parsed, stores, minters);
   const registrations: Registration[] = [];
   const routeChains: string[] = [];
+  const unresolved: string[] = [];
+  let handlerBodiesRead = 0;
   for (const p of parsed) {
     const uses: Array<{ receiver: string; at: number; gated: boolean }> = [];
     const visit = (n: ts.Node): void => {
@@ -539,17 +819,47 @@ function scanForKeyMinting(units: SourceUnit[], stores: KeyStore[]): ScanResult 
           const handler = n.arguments[n.arguments.length - 1];
           const middleware = n.arguments.slice(1, -1);
           const at = n.getStart(p.sf);
+          // Follow every non-path argument to what it names (see makeResolver).
+          const reached = resolveArgs(n.arguments.slice(1), p);
+          const handlerReach = resolveArgs([handler], p);
+          unresolved.push(...reached.unresolved);
+          const h = stripWrappers(handler);
+          const inlineHandler = ts.isArrowFunction(h) || ts.isFunctionExpression(h);
+          const shape: Registration["handlerShape"] = inlineHandler
+            ? "inline"
+            : ts.isCallExpression(h) || ts.isNewExpression(h)
+              ? "wrapped"
+              : "named";
+          const bodyInSubtree =
+            handlerReach.fns.some((f) => f.sf === p.sf && f.fn.getStart(p.sf) >= at && f.fn.getEnd() <= n.getEnd());
+          const handlerUnresolved = !inlineHandler && handlerReach.fns.length === 0;
+          if (!handlerUnresolved) handlerBodiesRead++;
+          const mintingFns = reached.fns.filter((f) => f.sites.length > 0);
+          // A site in the registration's own text that no reached function contains
+          // (a minter CALLED as an argument) cannot be guarded by any body.
+          const loose = sites.filter(
+            (s) => !mintingFns.some((f) => f.sf === p.sf && s.at >= f.fn.getStart(p.sf) && s.at < f.fn.getEnd()),
+          );
+          const mints = sites.length > 0 || mintingFns.length > 0 || reached.minterByName;
+          const bodyGated =
+            mints &&
+            !reached.minterByName &&
+            loose.length === 0 &&
+            mintingFns.every((f) => bodyGuardsFounder(f.fn, Math.min(...f.sites.map((s) => s.at)), f.sf));
           const gated =
             middleware.some((a) => isFounderGateExpr(a, p.sf)) ||
             uses.some((u) => u.gated && u.receiver === receiver && u.at < at) ||
-            (sites.length > 0 && bodyGuardsFounder(handler, Math.min(...sites.map((s) => s.at)), p.sf));
+            bodyGated;
           registrations.push({
             rel: p.rel,
             method: method.toUpperCase(),
             route: first.getText(p.sf).slice(1, -1),
-            mints: sites.length > 0,
+            mints,
             gated,
             mounted: p.mounted,
+            handlerShape: shape,
+            bodyInSubtree,
+            handlerUnresolved,
           });
         }
       }
@@ -561,7 +871,7 @@ function scanForKeyMinting(units: SourceUnit[], stores: KeyStore[]): ScanResult 
   const offenders = registrations
     .filter((r) => r.mints && r.mounted && !r.gated)
     .map((r) => `${r.rel} ${r.method} ${r.route}`);
-  return { registrations, offenders, minters, unparsed, routeChains };
+  return { registrations, offenders, minters, unparsed, routeChains, unresolved, handlerBodiesRead };
 }
 
 function serverSourceFiles(): string[] {
@@ -621,6 +931,37 @@ describe("API-key minting, by behaviour: no mounted handler issues a key without
     expect(new Set(real.registrations.map((r) => r.rel)).size).toBeGreaterThan(280);
   });
 
+  it("every handler BODY is read — inline, wrapped, or followed from its name (audit B2)", () => {
+    // Measured 2026-11-23 on main d86ca537: 2,825 registrations — 2,772 inline,
+    // 39 wrapped (asyncHandler(…)), 14 passed by NAME. Before the resolver the
+    // scanner read 2,811 handler bodies: the 14 named ones ended at the identifier.
+    const by = (shape: Registration["handlerShape"]) => real.registrations.filter((r) => r.handlerShape === shape);
+    expect(by("inline").length).toBeGreaterThan(2500);
+    expect(by("wrapped").length).toBeGreaterThanOrEqual(30);
+    expect(by("named").length, "named-handler population vanished — has the shape detector broken?").toBeGreaterThanOrEqual(14);
+    expect(
+      real.registrations.filter((r) => r.handlerUnresolved).map((r) => `${r.rel} ${r.method} ${r.route}`),
+      "registrations whose handler body could not be located — their mints are invisible",
+    ).toEqual([]);
+    expect(real.handlerBodiesRead).toBe(real.registrations.length);
+    expect(
+      real.unresolved,
+      "handler/middleware references this scanner could not follow to a declaration — extend makeResolver",
+    ).toEqual([]);
+    // Per-member: the named handlers the audit cited are followed, not skipped.
+    const named = (rel: string, method: string, route: string) =>
+      real.registrations.find((r) => r.rel === rel && r.method === method && r.route === route);
+    for (const [rel, method, route] of [
+      ["server/routes-founder-letters.ts", "GET", "/api/letters"],
+      ["server/routes-exchange-1031.ts", "POST", "/"],
+    ] as const) {
+      const r = named(rel, method, route);
+      expect(r, `${rel} ${method} ${route}: registration not found`).toBeDefined();
+      expect(r!.handlerShape, `${rel} ${method} ${route}: no longer passed by name`).toBe("named");
+      expect(r!.handlerUnresolved, `${rel} ${method} ${route}: name not followed`).toBe(false);
+    }
+  });
+
   it("the scanner still SEES the legitimate key mints (per-member vacuity)", () => {
     // Each of these issues a key today and is allowed to. If one stops being
     // seen as minting, the detector broke — not the code.
@@ -642,13 +983,29 @@ describe("API-key minting, by behaviour: no mounted handler issues a key without
   it("the founder gates it credits really are founder gates", () => {
     // Crediting a name is only sound if the name does what it says.
     const files = serverSourceFiles();
+    // A same-named helper that takes no request cannot be registered as Express
+    // middleware, so the scanner can never credit it; it is listed here EXACTLY
+    // (file and name), so a new one has to be looked at rather than slipping by.
+    // causeGiving's requireFounder(actor) throws on a domain actor's isFounder.
+    const NOT_REQUEST_SHAPED = ["server/services/causeGiving.ts requireFounder"];
+    const notRequestShaped: string[] = [];
     for (const gate of FOUNDER_GATES) {
       const defs = files
-        .map((rel) => parseSource(rel, fs.readFileSync(path.join(ROOT, rel), "utf8")).sf)
-        .flatMap((sf) => namedFunctions(sf).filter((f) => f.name === gate).map((f) => f.body.getText(sf)));
+        .map((rel) => ({ rel, sf: parseSource(rel, fs.readFileSync(path.join(ROOT, rel), "utf8")).sf }))
+        .flatMap(({ rel, sf }) => namedFunctions(sf).filter((f) => f.name === gate).map((f) => ({ rel, sf, f })));
       expect(defs.length, `${gate} has no definition in server/`).toBeGreaterThan(0);
-      for (const body of defs) expect(body, `${gate} does not check isFounderIdentity`).toContain("isFounderIdentity(");
+      for (const { rel, sf, f } of defs) {
+        const fn = f.body.parent;
+        const first = ts.isFunctionLike(fn) ? fn.parameters[0] : undefined;
+        const firstName = first && ts.isIdentifier(first.name) ? first.name.text : "";
+        if (!/^_?req$/.test(firstName)) {
+          notRequestShaped.push(`${rel} ${gate}`);
+          continue;
+        }
+        expect(f.body.getText(sf), `${rel} ${gate} does not check isFounderIdentity`).toContain("isFounderIdentity(");
+      }
     }
+    expect(notRequestShaped.sort(), "a founder-gate name defined without a request parameter").toEqual(NOT_REQUEST_SHAPED);
     // `req.isFounder` (the in-body guard) is only ever set behind isFounderIdentity.
     const auth = stripComments(fs.readFileSync(path.join(ROOT, "server/auth/clerkAuth.ts"), "utf8"));
     const sets = [...auth.matchAll(/req\.isFounder\s*=\s*true/g)];
@@ -766,6 +1123,86 @@ api.post("/sibling", isAuthenticated, ${mint});`),
         ]),
         "a founder gate on one handler must not clear its neighbour (the per-file weakness)",
       ).toEqual(["server/routes-canary.ts POST /sibling"]);
+    });
+
+    describe("a mint hidden behind each handler SHAPE is flagged (audit B2: the named-handler blind spot)", () => {
+      const mintBody = `{ const raw = "acos_" + crypto.randomBytes(20).toString("hex"); await db.insert(orgApiKeys).values({ keyHash: raw } as any); res.json({ key: raw }); }`;
+      const one = (path: string) => [`server/routes-canary.ts POST ${path}`];
+      it("inline handler", () => {
+        expect(scan([route(`api.post("/inline", isAuthenticated, async (req, res) => ${mintBody});`)])).toEqual(one("/inline"));
+      });
+      it("named local const (the auditor's restoration shape)", () => {
+        expect(
+          scan([route(`const createOrgKey = async (req, res) => ${mintBody};\napi.post("/api/org/api-keys", isAuthenticated, getOrCreateOrg, createOrgKey);`)]),
+        ).toEqual(one("/api/org/api-keys"));
+      });
+      it("named local function declaration", () => {
+        expect(
+          scan([route(`async function createOrgKey(req, res) ${mintBody}\napi.post("/fn", isAuthenticated, createOrgKey);`)]),
+        ).toEqual(one("/fn"));
+      });
+      it("imported handler (named, default, namespace and re-exported)", () => {
+        const handlers: SourceUnit = {
+          rel: "server/handlers/canaryKeyHandlers.ts",
+          src: `${schemaStub}export const createOrgKey = async (req, res) => ${mintBody};\nexport default async function mintDefault(req, res) ${mintBody}\n`,
+          mounted: true,
+        };
+        const barrel: SourceUnit = { rel: "server/handlers/index.ts", src: `export { createOrgKey as viaBarrel } from "./canaryKeyHandlers";\n`, mounted: true };
+        const routes: SourceUnit = {
+          rel: "server/routes-canary.ts",
+          src: `import { createOrgKey } from "./handlers/canaryKeyHandlers";
+import mintDefault from "./handlers/canaryKeyHandlers.js";
+import * as H from "./handlers/canaryKeyHandlers";
+import { viaBarrel } from "./handlers";
+export function registerCanary(api: any) {
+api.post("/named", isAuthenticated, createOrgKey);
+api.post("/default", isAuthenticated, mintDefault);
+api.post("/namespace", isAuthenticated, H.createOrgKey);
+api.post("/barrel", isAuthenticated, viaBarrel);
+}
+`,
+          mounted: true,
+        };
+        expect(scan([handlers, barrel, routes])).toEqual(["/named", "/default", "/namespace", "/barrel"].map((p) => `server/routes-canary.ts POST ${p}`));
+      });
+      it("wrapped: asyncHandler(named), and a const holding asyncHandler(fn)", () => {
+        expect(
+          scan([
+            route(`const createOrgKey = async (req, res) => ${mintBody};
+const wrappedKey = asyncHandler(async (req, res) => ${mintBody});
+api.post("/wrap-named", isAuthenticated, asyncHandler(createOrgKey));
+api.post("/wrap-const", isAuthenticated, wrappedKey);`),
+          ]),
+        ).toEqual(["/wrap-named", "/wrap-const"].map((p) => `server/routes-canary.ts POST ${p}`));
+      });
+      it("object-literal handler map: handlers.create", () => {
+        expect(
+          scan([route(`const handlers = { create: async (req, res) => ${mintBody}, list: async (req, res) => { res.json([]); } };
+api.post("/map", isAuthenticated, handlers.create);
+api.get("/map", isAuthenticated, handlers.list);`)]),
+        ).toEqual(one("/map"));
+      });
+      it("a named handler that cannot be followed is COUNTED, and still flagged if its name is a minter", () => {
+        const helper: SourceUnit = {
+          rel: "server/services/canaryKeys.ts",
+          src: `export function generateApiKey() { const p = crypto.randomBytes(24).toString("hex"); return crypto.createHash("sha256").update(p).digest("hex"); }`,
+          mounted: true,
+        };
+        const r = scanForKeyMinting(
+          [helper, route(`export function registerMore(api: any, generateApiKey: any) { api.post("/param", isAuthenticated, generateApiKey); }`)],
+          stores,
+        );
+        expect(r.offenders).toEqual(one("/param"));
+        expect(r.registrations.find((x) => x.route === "/param")!.handlerUnresolved).toBe(true);
+        expect(r.unresolved.length).toBeGreaterThan(0);
+      });
+      it("…and a founder guard inside the NAMED body is still credited (no false red)", () => {
+        expect(
+          scan([route(`const founderMint = async (req, res) => { if (!req.isFounder) { return Errors.forbidden(res); } await db.insert(orgApiKeys).values({} as any); res.json({}); };
+api.post("/guarded", isAuthenticated, founderMint);
+api.post("/gated", isAuthenticated, requireFounder, founderMint);`)]),
+        ).toEqual([]);
+      });
     });
 
     it("router.use(founder gate) covers only handlers registered after it", () => {
