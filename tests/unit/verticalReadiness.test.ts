@@ -1222,6 +1222,88 @@ describe("a decided vertical is gradeable (the loop can close on reality)", () =
     ).toEqual([]);
   });
 
+  // ── Composite gradeability: hybrid (gap sheet work item 3) ──────────────
+  // The universal test above cannot see hybrid: a composite is never in
+  // decidingBusinessTypes itself, so "every decided vertical is gradeable"
+  // passes even if one of hybrid's parts stops being gradeable in a way the
+  // universal form does not name. Founder call B-8: hybrid is gradeable iff
+  // BOTH parts are. This pins that composition bespoke, derived from the
+  // parts' measured states through readinessOf — never from hybrid's own id.
+  const HYBRID_PARTS: readonly BusinessTypeId[] = ["land_flipper", "note_investor"];
+
+  function expectHybridGradeable(ev: VerticalEvidence, gradeableSet: ReadonlySet<BusinessTypeId>) {
+    expect(readinessOf(BUSINESS_TYPES.hybrid, ev), "hybrid must read decided through the composite rule").toBe("decided");
+    for (const part of HYBRID_PARTS) {
+      expect(ev.decidingBusinessTypes.has(part), `${part} must decide for hybrid to decide`).toBe(true);
+      expect(gradeableSet.has(part), `${part} must be gradeable for hybrid to be gradeable`).toBe(true);
+    }
+  }
+
+  it("hybrid is decided and gradeable via the composite — both parts, not its own id", () => {
+    // Derivation guard: hybrid has no loop of its own, so it sits in NEITHER
+    // measured set. If it ever appears in one, the assertions below could be
+    // passing on hybrid's own credit rather than the composite — fail here.
+    expect(evidence.decidingBusinessTypes.has("hybrid")).toBe(false);
+    expect(gradeable.has("hybrid")).toBe(false);
+    expectHybridGradeable(evidence, gradeable);
+  });
+
+  it("canary: hard-nulling the Notes desk's review date turns the composite assertion red, naming the desk", () => {
+    // The falsifying direction, on the REAL crediting sources — the same
+    // mutation pattern as the subdivider lock-route canary above. Each parent
+    // is credited by exactly one desk; credit those two files alone and run
+    // the bespoke assertion over the composite of their credits.
+    const engines = engineVerticals();
+    // The land desk resolves its engine id from the LAND_DEAL_ENGINE_ID
+    // const (the same resolution the harness's exportedStringConstants
+    // performs, and the v2 block's K map above).
+    const constants = new Map<string, string>([["LAND_DEAL_ENGINE_ID", "land_deal"]]);
+    const creditFile = (file: string, text: string) => {
+      const f = analyzeRouteSource(file, text, constants);
+      return creditVerticals([{ file, facts: f, reachable: f.decisions.map(() => true) }], engines, {});
+    };
+    type Credit = ReturnType<typeof creditVerticals>;
+    const compositeOf = (credits: Credit[]): { ev: VerticalEvidence; gradeableSet: Set<BusinessTypeId> } => {
+      const deciding = new Set<BusinessTypeId>();
+      const underwritten = new Set<BusinessTypeId>();
+      const gradeableSet = new Set<BusinessTypeId>();
+      for (const c of credits) {
+        c.deciding.forEach((v) => deciding.add(v));
+        c.underwritten.forEach((v) => underwritten.add(v));
+        c.gradeable.forEach((v) => gradeableSet.add(v));
+      }
+      return {
+        ev: { definedWorkflowTemplateIds: evidence.definedWorkflowTemplateIds, underwrittenBusinessTypes: underwritten, decidingBusinessTypes: deciding },
+        gradeableSet,
+      };
+    };
+
+    const LAND_DESK = "server/routes-data-intelligence.ts";
+    const NOTE_DESK = "server/routes-note-underwriting.ts";
+    const landCredit = creditFile(LAND_DESK, read(LAND_DESK));
+    const noteCredit = creditFile(NOTE_DESK, read(NOTE_DESK));
+    // Vacuity: on the shipped sources each desk credits its own vertical,
+    // gradeable — and the composite assertion passes over their credits.
+    expect(landCredit.gradeable.has("land_flipper")).toBe(true);
+    expect(noteCredit.gradeable.has("note_investor")).toBe(true);
+    const real = compositeOf([landCredit, noteCredit]);
+    expectHybridGradeable(real.ev, real.gradeableSet);
+
+    // Mutate the Notes desk's review date to a hard null in a COPY of its
+    // source (the sheet's prescribed canary). The desk still DECIDES — only
+    // gradeability dies — so a red composite assertion here can only be the
+    // gradeability leg firing, and the credit names the mutated route.
+    const src = read(NOTE_DESK);
+    const needle = /reviewDueAt: body\.reviewDueAt \? new Date\(body\.reviewDueAt\) : null,/;
+    expect(needle.test(src), "the Notes desk's review-date shape moved — update this mutation, do not delete it").toBe(true);
+    const mutatedNote = creditFile(NOTE_DESK, src.replace(needle, "reviewDueAt: null,"));
+    expect(mutatedNote.deciding.has("note_investor")).toBe(true);
+    expect(mutatedNote.gradeable.has("note_investor")).toBe(false);
+    expect(mutatedNote.ungradeable.get("note_investor")).toEqual([NOTE_DESK]);
+    const mutated = compositeOf([landCredit, mutatedNote]);
+    expect(() => expectHybridGradeable(mutated.ev, mutated.gradeableSet)).toThrow();
+  });
+
   it("the exceptions list cannot rot", () => {
     for (const id of NOT_YET_GRADEABLE) {
       expect(gradeable.has(id), `${id} is gradeable now — remove it from NOT_YET_GRADEABLE`).toBe(false);
