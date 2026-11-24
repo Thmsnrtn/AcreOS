@@ -45,6 +45,7 @@ import { getOrganizationId } from "./types/request";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { logger } from "./utils/logger";
+import { validateUrl } from "./middleware/fileUploadSecurity";
 import { Errors } from "./utils/errors";
 import { db } from "./db";
 import { titleOrders, titlePartners, deals } from "@shared/schema";
@@ -715,7 +716,12 @@ async function fireAndForgetPartnerWebhook(
   });
   const sig = crypto.createHmac("sha256", secret).update(body).digest("hex");
 
+  // Shared outbound URL check, no redirects, and the customer webhook
+  // dispatcher's 10s bound.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10_000);
   try {
+    await validateUrl(partner.webhookUrl);
     await fetch(partner.webhookUrl, {
       method: "POST",
       headers: {
@@ -723,14 +729,15 @@ async function fireAndForgetPartnerWebhook(
         "X-Acreos-Signature": `sha256=${sig}`,
       },
       body,
-      // 10s timeout via AbortController would be ideal; node-fetch in this
-      // codebase relies on the global fetch which already enforces a sane
-      // default. Keep the surface minimal here.
+      redirect: "manual",
+      signal: controller.signal,
     });
   } catch (err) {
     logger.warn(
       `[title-orders] outbound partner webhook failed partner=${partner.id} err=${(err as Error)?.message ?? "unknown"}`
     );
+  } finally {
+    clearTimeout(timer);
   }
 }
 

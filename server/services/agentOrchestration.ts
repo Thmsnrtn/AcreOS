@@ -760,17 +760,28 @@ class AgentOrchestrationService {
               }
               throw ssrfErr;
             }
-            await fetch(triggerConfig.webhookUrl, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                eventId: event.id,
-                eventType: event.eventType,
-                payload: event.payload,
-                triggeredAt: clock.now().toISOString(),
-              }),
-            });
-            logger.info(`[orchestration] Called webhook for event ${event.eventType}`);
+            // Same bound as the customer webhook dispatcher; redirects are not followed.
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 10_000);
+            let status: number;
+            try {
+              const res = await fetch(triggerConfig.webhookUrl, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  eventId: event.id,
+                  eventType: event.eventType,
+                  payload: event.payload,
+                  triggeredAt: clock.now().toISOString(),
+                }),
+                redirect: "manual",
+                signal: controller.signal,
+              });
+              status = res.status;
+            } finally {
+              clearTimeout(timer);
+            }
+            logger.info(`[orchestration] Called webhook for event ${event.eventType}: ${status}`);
           } catch (error: any) {
             logger.error(`[orchestration] Webhook call failed: ${error.message}`);
           }

@@ -5,6 +5,9 @@
 import { storage } from "../../storage";
 import type { Organization } from "@shared/schema";
 import { clock } from "../../utils/clock";
+import { logger } from "../../utils/logger";
+import { validateUrl } from "../../middleware/fileUploadSecurity";
+import { toolRefusal } from "@shared/refusal/plainRefusal";
 
 interface ConnectorCredentials {
   // Google OAuth
@@ -97,6 +100,93 @@ export async function sendGmail(org: Organization, args: { to: string; subject: 
   return { success: true, data: { sent: true, to: args.to, subject: args.subject } };
 }
 
+// ── Saved webhook URLs (Slack, Zapier, Make) ─────────────────────────────
+
+/** Same per-request bound as the customer webhook dispatcher. */
+const SAVED_WEBHOOK_TIMEOUT_MS = 10_000;
+
+type SavedWebhookOutcome =
+  | { kind: "answered"; ok: boolean; status: number }
+  | { kind: "not_accepted" }
+  | { kind: "redirected" }
+  | { kind: "timed_out" }
+  | { kind: "unreachable" };
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return "unparseable";
+  }
+}
+
+/**
+ * POST to a webhook URL a customer saved on a connector. The URL goes through
+ * the shared outbound URL check (`validateUrl`) first, redirects are not
+ * followed, and the request is bounded by a timeout. Never throws.
+ */
+async function postToSavedWebhook(connector: string, url: string, body: unknown): Promise<SavedWebhookOutcome> {
+  try {
+    await validateUrl(url);
+  } catch (err) {
+    logger.warn("connector webhook URL not accepted", {
+      metadata: { connector, host: hostOf(url), reason: (err as Error).message },
+    });
+    return { kind: "not_accepted" };
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), SAVED_WEBHOOK_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      redirect: "manual",
+      signal: controller.signal,
+    });
+    if (res.status >= 300 && res.status < 400) return { kind: "redirected" };
+    return { kind: "answered", ok: res.ok, status: res.status };
+  } catch (err) {
+    const kind = controller.signal.aborted ? "timed_out" : "unreachable";
+    logger.warn("connector webhook request did not complete", {
+      metadata: { connector, host: hostOf(url), kind, reason: (err as Error).message },
+    });
+    return { kind };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** The tool result for an outcome other than an answer, in plain words. */
+function savedWebhookRefusal(name: string, outcome: Exclude<SavedWebhookOutcome, { kind: "answered" }>) {
+  switch (outcome.kind) {
+    case "not_accepted":
+      return toolRefusal({
+        what: `Nothing was sent to ${name}`,
+        why: `The webhook address saved for ${name} is not one AcreOS sends to`,
+        unlock: `Reconnect ${name} in Pax Connectors with the webhook address ${name} gave you`,
+      });
+    case "redirected":
+      return toolRefusal({
+        what: `Nothing was delivered to ${name}`,
+        why: `The webhook address saved for ${name} points AcreOS on to a different address, and AcreOS does not follow it`,
+        unlock: `Reconnect ${name} in Pax Connectors with the webhook address ${name} gave you`,
+      });
+    case "timed_out":
+      return toolRefusal({
+        what: `${name} did not answer within ${SAVED_WEBHOOK_TIMEOUT_MS / 1000} seconds`,
+        why: "The message may or may not have arrived",
+        unlock: `Check ${name} for it, then try again if it is not there`,
+      });
+    case "unreachable":
+      return toolRefusal({
+        what: `AcreOS could not reach ${name}`,
+        why: `The connection to the webhook address saved for ${name} did not go through`,
+        unlock: `Check the ${name} connection in Pax Connectors, then try again`,
+      });
+  }
+}
+
 // ── Slack ─────────────────────────────────────────────────────────────────
 
 export async function sendSlackMessage(org: Organization, args: { message: string; channel?: string }) {
@@ -107,11 +197,8 @@ export async function sendSlackMessage(org: Organization, args: { message: strin
   const payload: Record<string, any> = { text: args.message };
   if (channel) payload.channel = channel;
 
-  const res = await fetch(creds.webhookUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
+  const res = await postToSavedWebhook("slack", creds.webhookUrl, payload);
+  if (res.kind !== "answered") return savedWebhookRefusal("Slack", res);
 
   if (!res.ok) return { success: false, error: `Slack webhook error: ${res.status}` };
   return { success: true, data: { sent: true, channel } };
@@ -314,11 +401,8 @@ export async function triggerZapier(org: Organization, args: { data: Record<stri
   const creds = await getCredentials(org.id, "zapier");
   if (!creds?.webhookUrl) return { success: false, error: "Zapier is not connected." };
 
-  const res = await fetch(creds.webhookUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ source: "pax", orgId: org.id, ...args.data }),
-  });
+  const res = await postToSavedWebhook("zapier", creds.webhookUrl, { source: "pax", orgId: org.id, ...args.data });
+  if (res.kind !== "answered") return savedWebhookRefusal("Zapier", res);
   return { success: res.ok, data: { triggered: res.ok, status: res.status } };
 }
 
@@ -326,11 +410,8 @@ export async function triggerMake(org: Organization, args: { data: Record<string
   const creds = await getCredentials(org.id, "make");
   if (!creds?.webhookUrl) return { success: false, error: "Make is not connected." };
 
-  const res = await fetch(creds.webhookUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ source: "pax", orgId: org.id, ...args.data }),
-  });
+  const res = await postToSavedWebhook("make", creds.webhookUrl, { source: "pax", orgId: org.id, ...args.data });
+  if (res.kind !== "answered") return savedWebhookRefusal("Make", res);
   return { success: res.ok, data: { triggered: res.ok, status: res.status } };
 }
 
