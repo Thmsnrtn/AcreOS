@@ -3,6 +3,122 @@
 The running hand-off between sessions. Update it at the end of every session:
 what shipped, what it measured, and the top next moves. Newest first.
 
+## 2026-11-23 — Subdivider item 1: the lot-pricing lock is gradeable, the legacy exception is retired (on `subdiv-gradeable-lock`, unpublished)
+
+- **Built.** `POST /api/parcels/:id/pricing-rules/lock` now cites the PARENT parcel's newest `subdivision_feasibility` scenario (`latestScenarioForSubject` — subject AND engine in the query) and takes an operator-chosen `reviewDueAt` (required-nullable in the body, no default, past dates refused). With no scenario on file the prices still save, NO decision is recorded, and the response says so (`decisionRecorded: false` + `decisionWhy`). The decision rationale labels the grade coarse ("graded on the parent position: sold / abandoned — lot-level sell-through is not captured by this vocabulary"). The lock page gains the review-date input + "No set date" + the no-decision notice; the decision desk lists each lock as graded-on-parent or ungraded from the lock's own record.
+- **Evidence law.** `LEGACY_DECISION_ROUTE_OWNER` is `{}` and `NOT_YET_GRADEABLE` is `[]` (both exception lists now empty). The three pinned `verticalReadiness` blocks were rewritten, not deleted; the hard-null review-date mutation on the real route turns `every decided vertical takes a review date` red naming `server/routes-lot-pricing.ts`. The analyzer's citation tracing learned one new shape (a lookup through the store's `latestScenarioForSubject` with a literal engine id) — the gradeable predicate is untouched.
+- **Founder call B-4 (P1) was taken on the recommendation — flagged.** If Tom picks P2/P3, only the route change is redone.
+- **Next.** Developer items 1–2 edit the same desk read model: they follow this slice. Post-merge: a staging lock on org 127's parent 1049 showing `scenarioIds` populated + a review date closes SD-DEF-2.
+
+## 2026-11-15 — P2-6 S1: the /trust page — dark route, claims anchors, bundle offset (on `claude/p2-6-trust-page`, unpushed)
+
+- **Built.** `client/src/pages/trust.tsx` — the dated trust surface (INV-1…INV-10 in their publishable tenses, D1 AI data flows, D2 arbitration explained, D3 succession/portability), modelled on /security, lazy-loaded at `/trust` in the customer App only. DARK: no nav/footer/sitemap/landing link, robots noindex. Every sentence is anchored verbatim in `scripts/audit-public-claims.ts` (`TRUST_PAGE_FILES`, per-member vacuity, and a /trust-only liveness check so a landing file cannot keep a deleted trust sentence "live"), each backed by a source paragraph naming the shipped code.
+- **Measured (production build, exact bytes).** Customer 8,846,708 → 8,845,579 B (8,639 → 8,638 KB): offset −7,720 B, page +6,591 B. Offset = `__SENTRY_DEBUG__: false` in `vite.config.ts` (Sentry's documented flag; compiles out SDK debug logging that only prints with `debug: true`, which nothing passes — pinned by `sentryDebugLoggingStripped.test.ts`). Founder 3,005,177 → 2,997,457 B (2,935 → 2,927 KB). Ceilings lowered: customer 8,639 KB, founder 2,928 KB.
+- **Flags for the founder (dropped from the brief's copy because no code or Terms backs them).** (1) "at least 30 days' notice" on assignment — Terms §19 states no notice period; (2) "Middlesex County" venue — Terms §14.4 says "Massachusetts or by phone/video"; (3) INV-3 narrowed to the two encrypted tax IDs that ship (org EIN/SSN, acquired-note payer TIN): `encryptContactRecord`/`CONTACT_SENSITIVE_FIELDS` have no production caller, and `routes-contractors.ts` stores `taxIdEncrypted` raw (TODO) — worth a fix slice; (4) no D1 "facts gatherer" exists (PR #574 is the refund tail model) — D1 is derived from `aiRouter`.
+- **Next.** Founder reads the page on staging and decides publication/linking; S2 (the S-1 borrower letter) is the next session.
+
+## 2026-11-15 — P1-9: founder-OS extraction — the client now builds to two outputs (session 2 of 4; this PR)
+
+- **Measured (session 1, main `6b0332f9`).** The founder surface is 102 chunks / 1,094.1 KB gross of the 9,805 KB total JS (11.2%; 1,082.8 KB of it founder application code, only 11.3 KB shared vendor weight) against a 9,823 KB ceiling — 18 KB of headroom. Reachability, not a name pattern, is the measure: 20 of the 102 chunks hold no `founder`-named module (seven founder-gated pages at non-`/founder` URLs, founder-only helpers, seven lucide icon chunks). Zero customer-only chunks contained a founder-pattern module. Projected customer total after extraction: ≈8,710.5 KB, i.e. 1,112.5 KB of headroom at the unchanged ceiling (the memo's "≈112 KB" is an arithmetic slip, corrected in its erratum).
+- **Built (this PR).** Two Vite outputs: the customer bundle (`dist/public`, base `/`, as before, minus the founder route tree) and a founder bundle (`client/founder.html` + `src/founder-main.tsx` → `FounderApp` → `dist/founder`, base `/founder-app/`, assets under `/founder-assets/`, built by `vite.founder.config.ts` right after the customer build; vendor chunks are duplicated per output on purpose). The founder route tree moved to `client/src/founder-routes.tsx` (80 `/founder*` routes + the six founder-gated pages at non-`/founder` URLs, 63 founder pages); App.tsx keeps `/founder-dashboard` (a legacy alias) and `/commissions` (its page is shared with Finance → Commissions). `FounderProtectedRoute`, `PageLoader`, `PageWrapper` and a cross-build `Redirect` live in `components/`; `pages/not-found.tsx` hands a path owned by the other build to a full page load, loop-guarded (`lib/cross-build.ts`). `server/static.ts` mounts `dist/founder` at `/founder-app` (same `.map` guard, pre-compressed siblings and immutable caching; a stale `/founder-app/*` chunk is a 404 text) and selects the shell with `shellFor(path)`: `/founder`, `/founder/*` and the six non-prefixed founder pages get `founder.html`, everything else the customer shell, both through `finalizeShellHtml`. The path list is one file, `shared/founder-surface-paths.ts`, read by the server and both bundles. No auth guard, middleware or API route changed — this is a build-time split.
+- **Decoupled.** `command-center` no longer imports `components/founder/ai-console` (≈30 KB of founder code inside a customer chunk): its founder tab strip became a plain-`<a>` door to `/founder/agent-queue`, and the three panels (Team / Background / AI Ops) are tabs on that already-routed founder page — no route added. `TextArtifact` moved to `components/artifacts/text.tsx` (the old path is a one-line re-export for the founder-chat chain; `git rm` it once its two importers are re-pointed).
+- **Gates.** `scripts/check-bundle-size.js --output customer|founder` (default customer; the founder run fails if `dist/founder` is absent, has its own floor and its own down-only ceiling in `bundle-budget.json`'s `founder` block; the customer run also fails if any customer chunk bundles a founder-only module, read from `dist/client-chunk-graph.json`; the founder graph is `dist/founder-chunk-graph.json`, so the second build cannot clobber the first). CI runs both. `stripSourceMapsFromDist` and the Sentry upload cover both outputs. `tests/helpers/clientRoutes.ts` reads BOTH route trees, so the founder-route ratchet (`FOUNDER_ROUTE_BASELINE` = 81) counts the union. New tests: `founderBuildIsServed`, `customerEntryReachesNoFounderCode`, `crossBuildNavigation`, plus founder/customer cases in `bundleBudgetIsDownOnly` and `sourceMapsAreNotServed`.
+- **Owed (driver / session 3).** Replace the two placeholders in `scripts/bundle-budget.json` with the first measured numbers (customer total rounded up to the next KB — the 5% slack rule fails the ~11% drop until the ceiling is lowered; founder total rounded up 1 KB), tighten the founder `minJsFiles` floor in `check-bundle-size.js` to ~75-80% of the first measured chunk count, and browser-smoke every `/founder/*` route plus the six non-prefixed pages from the founder output (Clerk redirects and the service worker are verified in a real browser, not unit tests). Session 4: re-measure on the merged tree, lower the customer ceiling to measured + ≤1 KB, run the independent completeness audit, enumerate all 13 workflows for the SHA before fast-forwarding.
+
+## 2026-11-15 — P2-5: skip-trace gate as feature — the FCRA defense file (PR #584)
+
+- **Built.** The FCRA purpose/attestation trail is now readable from the customer's seat: a pure assembler (`server/services/fcraDefenseFile.ts`) projects the org's append-only `purpose_ledger` + `fcra_attestations` rows into a defense file; `GET /api/skip-tracing/defense-file` serves it as JSON or `?format=csv` (org-scoped, newest 1000 entries + truncated flag); the skip-tracing page gains a "Your FCRA defense file" section (attestation status, coverage, 10 most recent entries, honest zero state, CSV download) and one gate-copy sentence pointing to it. Suite: `tests/unit/fcraDefenseFile.test.ts` (9 tests). Landing fix round: the page's four dates now render through `lib/format.ts` (`formatDate`) instead of `toLocaleDateString`, per the date-format gate. No schema change; the route reads only the two trail tables, so the purpose-ledger census owes no registration (DEBT_BASELINE unchanged).
+- **Why.** The trail was already the class-action defense file in substance — every lookup writes its purpose, justification and attestation into the append-only ledger before the vendor call, in the same transaction as the credit debit — but it was write-only from the customer's seat (R-6). Surfacing it makes the gate's protection visible and exportable at the moment a customer needs to prove permissible purpose.
+- **Next.** Nothing owed in this slice; the trail's remaining consumers (support/DSAR exports) read the same assembler when their slices come.
+## 2026-11-14 — Wholesale Leg 5: staging-walk package — on `claude/wholesale-leg5-walk-package`
+
+- **Walk doc fixed** (`docs/evidence/2026-11-05/wholesale-journey-walk.md`, new on main; #478 still holds the old copy and is closed as superseded later):
+  - step 2 is the concrete buy-box script, and step 3 now checks triage on prospects; the old version put both properties under contract, which triage never reads;
+  - the acceptance moved to a new step 4b; 6b says five surfaces, matching 6a; step 9 expects `200`;
+  - step 10 records the bundle figure for the exact SHA walked plus a served-string check;
+  - new step 7b walks the §6.2 seller follow-up drafts.
+- **Leg 4 §6.2 debt is closed by code, not a deferral.** The seller follow-up drafts were built in #533 (2026-11-09) and folded into #477, which merged 2026-11-14 (`7d0b2e1`): drafts are `generated_documents` rows, there is no send path, and `POST /api/signatures` refuses them. Leg 4 is complete on main.
+- **Next.** All four legs are on main (#475 merged 2026-11-15). The rehearsal test `tests/unit/wholesaleJourney.realdb.test.ts` joined main in this PR and passes against main's real code. The staging walk runs once staging deploys (Muse confirms). The beta-demotion lift is its own PR, opened only on the walk's PASS (§12.3).
+
+## 2026-11-14 — P1-17: schema-journal sync guard (PR #578, landed in the merge wave)
+
+- **Built.** `lint:schema-journal-sync`, wired into the `check` chain immediately after `lint:schema-migrate-mirror`: `scripts/check-schema-journal-sync.mjs` fails when the drizzle journal and the `scripts/migrate.mjs` mirror drift apart. The legacy desync is frozen in `scripts/ratchets/schema-journal-sync.json` (baseline 224, every frozen entry at or below migration 0252); past that frontier the two sides must pair exactly, and the evaluator also fails if the frozen baseline count disagrees with the measured headline. Suite: `tests/unit/schemaJournalSync.test.ts`.
+- **Why.** Journal/mirror drift was invisible until a migration landed on one side only; the guard makes drift a loud failure in the PR that causes it. Audit notes carried: the paired-deletion blind spot is a disclosed scope limitation (N1), and `freezePoint` is a one-line trust point — flag any future change to it per se (N2).
+- **Next.** P3-1 (schema consolidation, I-7) is unblocked now that the guard is on main.
+
+## 2026-11-10 — PKG-6a: price-figure truth for prose surfaces (detection only)
+
+- **Built.** `tests/unit/publicCopyPrices.test.ts` + `tests/helpers/priceClaimScanner.ts`: scans docs/marketing/**, content/{marketing,emails,outreach,business,blog}/** and the compare/FAQ TSX for dollar figures beside a plan name, diffed against figures derived from `tier-pricing.ts` (annual-equivalent tolerance: whole dollar within $0.50, decimals within $0.01). Register of 23 mismatches + 1 plan-less figure + 10 comment-debt entries + 1 plan-content finding; none fixed here.
+- **Debt to pay (separate PR).** 17× "Pro $41/mo billed annually" in 7 docs/marketing files (Starter's figure); `$20/$49`-era prices in content/business/{acquire-listing,investor-brief}.md and **content/emails/onboarding-sequence.md** (customer-facing); copy.ts "Pro unlocks the full Pax assistant" vs pricing-copy.ts Starter "Full Pax assistant".
+- **Blind spots.** content/business/competitive-teardown.md excluded (competitor tiers share plan names; its AcreOS line "$49/mo for full Pro access" is stale); content/strategy/** and docs/*.md not scanned.
+- **Open.** `publicPricingMatchesCanonical.test.tsx` fails on this VM with or without this change (two React copies via jsdom resolving from ../freebuff-walkdoc), so its clean-pass could not be re-measured here.
+
+## 2026-11-10 — PKG-5c: AI-disclaimer surfaces wired (existing copy only)
+
+- **Changed.** 12 surfaces now mount the existing `RequiredDisclaimer type="ai"` (no copy touched): Pax rail, Pax page, HelpPanel ticket thread, property-analysis chat, DecisionQueue (once per queue, not per card), inbox draft reply, offer generator, deal-detail (price recommendation + negotiation script), deal feed, due-diligence dossier, portfolio, portfolio optimizer. Registry: `shared/governance/aiDisclaimerSurfaces.ts` (present / added with `before` none|partial / covered-by-host / not-advice / founder-only); ratchet + canary: `tests/unit/aiDisclaimerSurfaces.test.ts` (also sweeps client/src for unregistered `/api/ai|pax/` callers).
+- **Counsel flags (flags only).** ToS §7 vs terms.tsx §3 numbering; LQ-03 scope; client "ai" copy is shorter than server `DISCLAIMER_AI`. Listed in the registry.
+- **Open.** `npm run check:tests` not run (OOM on this VM). 16 tests in inboxLeadPopulationUi / paxAskCardIsAnswerable / todaySkeletonsMatchTheirContent fail identically on the clean branch (pre-existing, not investigated).
+
+## 2026-11-10 — PKG-6b: SES suppression path verified; suppression-write failures now fail the webhook
+
+- **Changed.** `suppress()` / `recordSoftBounce()` no longer swallow DB errors; `ingestSesNotification` rethrows; the route calls new `releaseReplay()` (snsVerification.ts) when ingest throws, so SNS's retry of the same MessageId is processed rather than deduped. Successful ingests still dedupe.
+- **Tests.** `sesSuppressionRoute.test.ts` (no DB: 401, retry arc, dedupe, eventType format-gap pin) and `sesSuppressionPath.realdb.test.ts` (real chain + SES mock). The realdb file SKIPPED locally (no Postgres); it has not been run.
+- **Open.** (1) Production event format (`notificationType` vs event-destination `eventType`) is unverifiable from the repo; dual-format acceptance is a design call, not built. (2) A multi-recipient soft-bounce notification that fails midway and is retried re-counts strikes for recipients already written. (3) The SubscriptionConfirmation failure path has the same replay trap and was not touched. (4) Full `tsc` OOM-killed on this VM; not verified here.
+## 2026-11-09 — Subdivision V1, Leg 4: decision desk (decision-loop closure) — on `claude/subdiv-leg4-api`, stacked on PR #462's branch, PR open, unmerged
+
+- **What shipped.** The §6.1 desk: `POST /api/subdivision/decide` records pursue/pass through the decision kit (engine `subdivision_feasibility`, pack `subdivider`, the operator's review date), freezing the latest screen run as derived evidence; `GET /api/subdivision/parcels/:id/desk` is the read model — latest screen run, decisions, pricing locks labelled `ungraded_pricing_act` (§6.2 reconciled in the surface's own words; the lock route is untouched), and the §5.5 entitlement critical path (`shared/subdivision/criticalPath.ts`) measuring elapsed time against the decision run's own stated p50/p90 (ruling 3 — no county figure). The panel mounts on the subdivision tab after the screen section. §6.3 closes by construction: `/api/decisions/due` has no pack filter, and the outcome-loop suite pins a subdivider decision surfacing there.
+- **Measured.** 87 new tests pass locally (critical path 27, decide route 21, outcome loop 6, desk panel 20, desk read route 13); fence suites pass unmodified; ratchets all pass, table-count measured 750 = baseline (no new table, §9.1 held); reachability and date-format lints pass at baseline. `check:app`/`check:tests` and the bundle figure are CI's on this head (both abort under this VM's memory contention; the stack's tree predates the bundle-headroom merge, so Build is expected to read over until the branch is brought current at merge).
+- **Next.** Muse audits; lands after #462 in the cascade (bring-current → CI re-settle → merge → §10 steps 5–7 staging proof). The `vertical.subdivider` notGradeable caveat is NOT removed here — §9.6, Tom's call on the proof.
+## 2026-11-09 — Wholesale §6.2: seller follow-up drafts — on `claude/wholesale-62-drafts-api` (off `claude/wholesale-leg4-disposition` `60fed37e`, PR open, unmerged)
+
+- **Built.** The §6.2 completeness debt on Leg 4: seller-side follow-up DRAFTS on the deal record. `server/services/wholesale/sellerFollowUps.ts` composes the operator's own `offer_templates` row (type `follow_up`) char-for-char with only {{owner_name}} / {{address}} / {{offer_amount}} / {{company_name}} filled from the record — {{offer_amount}} is `deals.offerAmount` only and refuses when absent; {{expiration_date}} and unknown tokens refuse by name; an opted-out or unlinked seller refuses. Drafts persist as `generated_documents` rows (type `seller_follow_up_draft`, status `draft`, review-sealed); a correction is a new draft citing `variables.supersedes`; the list flags drafts stale when a cited fact moves. Routes: preview / create / list under `/api/wholesale/deals/:dealId/seller-follow-ups`. Client: `SellerFollowUpsPanel` in the deal Documents tab after AssignmentPanel — Copy is the only way text leaves it.
+- **Guards in the same PR (refuse-only).** `server/routes-doc-system.ts`: PUT refuses content/name/signers changes on this type, and request-signature + send-for-signature refuse it 422 — without them a draft would be editable after create and enrollable on the signing rail.
+- **Proved.** Bundle measured on the final tree: 9,822 / 9,823 KB (PASS, 1 KB spare); ratchets + reachability all at baseline (table-count 748, no new tables); the no-sends harness's control test passes DB-free (two-layer net: class prototypes incl. `performSend` + module exports, with vacuity assertions — closes the pre-bound `sendEmail` alias blind spot in the Notes V2 harness). Client: 10 lints clean, scoped tsc clean, 56 existing client tests pass, panel smoke test 3/3 (throwaway, deleted).
+- **Gates that only CI can verify.** The 23 realdb tests in `tests/unit/sellerFollowUps.realdb.test.ts` were SKIPPED locally (no test DB on the VM) — CI's schema-building jobs are their first real run; full `check:app`/`check:tests` typechecks likewise. Disclosed for the auditor: the draft's review seal hashes subject + body, so `verifyChainReviewSeal(variables, row.content)` would report broken — its only caller is request-signature, which refuses this type first.
+- **Next.**
+  1. Muse audits; the PR stacks on #477 and lands after it.
+  2. On merge, the wholesale Leg 5 staging walk (§11) remains the vertical's owed proof.
+
+## 2026-11-05 — Notes V2 Leg 2: workout NPV comparison — on `claude/notes-v2-leg2-workout-npv` (off main `4b2044b`, PR open, unmerged)
+## 2026-11-12 — PX-7: browser rung 2 — public search forms + "My county sites" (off main `8c70d3596`)
+
+- **Built.** Pax can run a bounded search on a public county site: new tool `browse_search` (`looks_and_drafts`, pause-safe, offered wherever `browse_web` is). The step language is a closed enum — `open`, `search`, `open_result`, `next_page`, `read` — in `server/services/paxBrowseSearch.ts`; nothing else (click, free typing, script, download, POST) is representable. `search` is judged mechanically: a GET form with one identifiable text/search input; never a password, hidden, textarea or disabled field; a POST form is never re-sent as a GET; a login-only page refuses. Bounds in code: 8 steps, 4 page loads, 15 s per navigation, 60 s per session, one site per session unless every host is on the org's list or one registrable domain.
+- **Every navigation re-passes the full pre-flight** (`preflightBrowseNavigation` in `browserAutomation.ts`: the same gate functions `browseWeb` calls — SSRF patterns, private/DNS, R-14 gate, operator domain policy, robots.txt, PX-1 rate limit), and a redirect's landing URL is re-checked. The browser behind it lets only GET/HEAD out and aborts a main-frame hop off the session's site. A CAPTCHA / bot wall ends the session (`captcha`), receipted "refused", never retried. Every page loaded is receipted like `browse_web` and noted in the turn, so PX-1's `web:<host>` provenance and row cap apply unchanged; the tool creates no records.
+- **"My county sites"** lives in the existing `pax_controls` jsonb (key `mySites`, no table, no migration): strict reader (hostile value → whole column fails closed, empty list), PATCH `/api/pax/controls { mySites }` (full replacement, ≤50, bare hosts only, deduped), a card on `/settings/pax`. Site gate: a listed site (by name/host) or the full address the user gave; an unlisted name/host is refused.
+- **Optional `attach_to`** (lead/property/deal) is verified before the search runs; one timeline row (`tool "browse_search"`, `after = { host, url, query, source: web:<host> }`) is written after, and skipped while Pax is paused.
+- **Not run in this session** (no shell): the driver owes `paxBrowseSearch{Steps,Gate,Tool}`, `paxMySites`, `paxMySitesRoute`, `paxControlsPage`, `paxStanceFailsClosed`, `refusalsArePlainWords`, `paxControlsOffered`, `paxPauseToolGate`, `paxPauseCoverage`, `browseMakeSafe`, `browseLaunchHardening`, the reachability gate (7 TEST-SEAM allowlist entries added for `paxBrowseSearch.ts`) and `npm run check`.
+- **Merge note.** PX-3 adds `limits`/`members` to the same jsonb, reader and routes; this slice only adds the `mySites` key (a one-line `mySites: []` in `PAX_CONTROLS_DEFAULTS`/`CLOSED`, one more entry in the `paxStanceFailsClosed` defaults literal) so the two union at merge.
+- **Left out.** Logged-in sites (PX-10), CAPTCHA solving, any form but the GET search, wiring Pax to `executeAdHocAutomation`.
+
+## 2026-11-10 — Gap slice 7: push revival — on `claude/gap7-push-revival`
+
+- Added `web-push` (`^3.6.7`, lockfile synced) + VAPID vars in `.env.example`; fixed the client subscribe body (was `{subscription}`, route wants `{endpoint,keys}` → 422); mounted the existing hook as a "Push on this device" switch in `notification-preferences.tsx`; `/sw.js` handles `push` + `notificationclick`.
+- Fan-out through one helper (`server/services/orgPushFanout.ts`, org-scoped, never throws): urgent (priority 1) Pax nudges, the 7-day redemption alert (once-per-cert-per-day dedupe), ladder-ready cards (`ensureLadderRung` only). 30/90-day redemption alerts and non-urgent nudges deliberately do not push.
+- Proof (driver-run): orgPushFanout 11/11 + pushFanoutCreationSites 9/9 + pushDispatchSemantics 9/9 + census/budget 22/22; scoped tsc 0 diagnostics in changed files; reachability PASS all 11 (unreachedExports baseline measured DOWN 414 → 413: `sendPushToOrg` gained its first real consumer). Full suite is CI's completing proof.
+- Still open: per-user notification preferences (`globalMute`, per-event Push toggle) are NOT consulted by the org fan-out — a founder decision is owed on whether global mute should silence push.
+
+## 2026-11-10 — PX-2: per-capability rails v1 — on `claude/px2-capability-rails` (stacked on PX-1)
+
+- Rails live INSIDE the existing controls, not as a new stance (founder ruling 2026-11-10 §6.5 Q4): one level per record domain (leads, properties, deals, tasks, follow-ups, plus `account` for the support switch's system fixes) and one for sends. Levels weakest → strongest: watch, draft, ask, act_and_report; sends are capped at ask by type (`PaxSendsRailLevel`) and clamped at read.
+- ONE decision, `decidePaxCall` (`server/services/paxRails.ts`), composes pause ∧ stance ∧ rail for both dispatch switches; a rail only narrows. Old stored rows (no `rails`) and NULL read as today's defaults (record changes act_and_report, sends ask) — no silent change.
+- PATCH `/api/pax/controls` takes `rails` (422 on unknown domain/level or sends above ask); `/settings/pax` renders the rails card from the tool registry. Proof: `tests/unit/paxRailsPopulation.test.ts`.
+- Proof (driver-run): paxRailsPopulation + stance/page suites 85/85, neighbour batch 203/203, census 22/22, scoped tsc clean in changed files (one real TS2322 in the PATCH merge found and fixed in round 1), reachability PASS all 11 at baseline. CI is the completing proof. Still open: whether `draft` should differ from `ask` in the queue (today both park a pending action).
+
+## 2026-11-10 — PX-1: Pax browser make-safe — on `claude/px1-browser-make-safe`
+
+- `browse_web` now writes a Pax receipt (host, URL without query, turn) through `recordPaxEffect` on every lane that can browse; records created in a turn after a browse carry `source: web:<host>` provenance (tagged in due-diligence notes).
+- `create_properties_batch` / `create_lead` refuse web-sourced rows past a small cap (5 per turn) unless every browsed host is on the cleared-source list (env `BROWSE_WEB_CLEARED_SOURCE_HOSTS`, empty by default — fail-closed; the licence gate and dossiers stay authoritative). Falsified locally: disabling the fence turns 6 of the new tests red.
+- `browseWeb` honours robots.txt (the `acreos` group, else `*`) and a per-org/per-host rate limit.
+- Proof (driver-run): browseMakeSafe 17/17 + seven neighbouring suites 159/159 + purpose-ledger census and sweep-budget 22/22; scoped tsc 0 diagnostics in changed files; reachability PASS all 11 at baseline (10 helpers unexported, 9 TEST-SEAM allowlist entries with revocation notes). Full suite is CI's completing proof.
+- Next: PX-2 per-capability rails stacks on this branch.
+
+## 2026-11-10 — PKG-5a/5b: paid conversions by source/campaign (D6), on `claude/pkg5-ads-stripe-api`
+
+- **Built.** `/api/founder/customers` gains an additive `paidBySource` field: distinct paying orgs from the 90-day signup window, grouped by `utm_source` + `utm_campaign` (missing source = `direct`, missing campaign = `null`; nothing dropped). "Paying" mirrors `liveMrrDetail` (status exactly `active`, positive monthly-equivalent price), so trials, free and past_due are not conversions. Server-only; no table, migration or client change. Existing fields and the founder gate are unchanged.
+- **Proved.** `tests/unit/founderCustomersPaidBySource.test.ts`; a mutant that counts trials turns it red.
+- **Docs.** The PKG-5a/5b runbook and creative pack live in the goal files, not this repo.
+- **Next.** The founder page does not render `paidBySource` yet (client change not in this slice); read it from the API until then.
+
 ## 2026-11-06 — merge statuses reconciled against git at main `6b8240fa`
 
 - **What changed.** Every merge status stated below was checked against the GitHub API (`merged_at`) and `git merge-base --is-ancestor <merge commit> origin/main`. The stale ones ("PR open", "unmerged", "uncommitted", "nothing merged", "waiting on CI and Muse") now read "PR #N, MERGED <date>", in US Eastern (so #421 is 2026-10-31). Only status wording was edited, plus a Status column on the 2026-10-18 branch table. "Next" and "owed" bullets stay as written, so some still say "Muse audits; the founder merges" about PRs that have since merged: trust the heading.
@@ -24,6 +140,51 @@ what shipped, what it measured, and the top next moves. Newest first.
 | #487 | `claude/w1-land-first-offer-cta` | W1.5 Land first-offer CTA on Today | no |
 | #488 | `claude/w4-note-merge-plan-pricing-engine` | W4.11 [DRAFT]: B10 note-model merge proposal + note pricing engine (recording stopped) | yes |
 | #489 | `claude/next-moves-ff-merged` | next-moves: Fix-and-Flip Legs 1–2, #466, #484, #458 merged; §9.3 routing recorded (docs only) | no |
+
+## 2026-11-05 — Subdivision V1, Legs 1–2: buildability screen + lot-yield estimate — on `claude/subdivision-legs1-2-screen-yield` (off main `da74f12`, PR open, unmerged)
+
+- **Step 0.** Verdicts are in `docs/evidence/2026-11-05/subdivision-v1-step0.md`. Four premise contradictions were reported:
+  - the county-timeline seeds were deleted in 0283;
+  - the standalone screen record had no honest store;
+  - the decision vocabulary has no `defer`;
+  - no perc result is stored anywhere.
+
+  Staging row counts are unverified (no staging access).
+- **Rulings** (`founder-decisions-2026-11-05-subdivision.md`): Tom approved +1 table `subdivision_screen_runs` (0304, renumbered from 0301; `table-count` 748 to 749). Muse ruled that `defer` is dropped and that timelines are operator-stated per run.
+- **Built.**
+  - `shared/subdivision/lotYield.ts` (lot-yield v1) and `buildabilityScreen.ts` (buildability-screen v1): seven triggers, three verdicts, and a headline that never says "buildable". The perc-estimate slot is always null.
+  - `POST /api/parcels/:id/screen` (appends a run) and `GET …/screen-runs` (history, plus the newest estimate beside the drawn plans).
+  - The screen panel on the Subdivision tab. The database refuses UPDATE on runs.
+- **Proved.**
+  - New tests: 18 for yield, 15 for the screen, 9 for the routes, 3 for the panel, and 1 real-DB test that runs in CI.
+  - 9 + 4 mutants, all red.
+  - check:app, every lint and the ratchets pass; the 34-file related batch passes; the build passes.
+  - Bundle: 9,775 KB against a 9,823 KB ceiling (+10 KB over main), after #470 trimmed main to 9,765 KB.
+- **Next.**
+  1. Muse audits.
+  2. Leg 3 (#464) merged 2026-11-07 (`0abcce7`).
+  3. Leg 4: the pursue/pass desk.
+  4. Staging proof after the merges.
+## 2026-11-05 — Notes V2 Leg 1: delinquency ladder — on `claude/notes-v2-leg1-delinquency-ladder` (PR #463, retargeted to main after #461 merged as `fd984d8`; open, unmerged)
+
+- **Built.** Stage entries (current / past due under 30 / 30 / 60 / 90+) are recorded by the aging sweep. They go on `note_events` as category `delinquency` (migration 0302 widens the CHECKs only, restates 0301, and adds no table) inside the status transaction.
+  - Default review is an operator act, recorded once and never derived (ruling 1).
+  - Plus the escalation evidence bundle, extend-and-pretend from recorded payments, the note-page panel, and buckets on the notes list.
+- **Proved.**
+  - The real sweep against a real DB hits the boundary days, is idempotent, and records no stage for unknown notes or terminal notes.
+  - The no-sends fence holds at the module boundary, both runtime spies and the static import scan.
+  - The default-review ruling and cross-tenant refusal hold.
+  - Four mutants are caught.
+  - Evidence: `docs/evidence/2026-11-05/notes-v2-leg1-delinquency-ladder.md`.
+- **Found on the way.**
+  - `GET /api/notes/:noteId/delinquency` is the originated book's route, so the ladder lives at `/delinquency-ladder`.
+  - The bundle is the first reader of `respa_outreach_events` (`tablesNoReader` 59 → 58).
+- **Bundle: 9,823 / 9,823 KB with zero headroom** after trimming both panels. The next client change anywhere fails CI until a trim makes room.
+- **Next.**
+  1. Muse audits #461, then this PR.
+  2. Retarget this PR to main after #461 merges; CI's bundle check runs only on PRs into main.
+  3. Staging proof per §10.
+  4. Muse confirms the 1–29 day stage, or folds it into current.
 
 ## 2026-11-05 — Notes V2 Leg 2: workout NPV comparison — on `claude/notes-v2-leg2-workout-npv` (off main `4b2044b`, PR #461, MERGED 2026-11-08)
 
@@ -354,6 +515,32 @@ what shipped, what it measured, and the top next moves. Newest first.
   2. Run the staging proofs for Legs 4 and 6.
   3. Decide NY's seed (Leg 3.4) and state where the radar's tasks go (3.3).
   4. Wire hold checks into clear-demo-data and archival.
+
+## 2026-11-03 — E2 slice 1 (Pax core): step 0 stopped three legs; leg 2, the morning brief, built as an extend — on `claude/e2-slice1-pax-brief` (PR #459, open)
+
+- **Step 0 contradicted the spec's "missing" checklist.**
+  - **Memory exists:** `pax_memory`, with a panel and silent model writes.
+  - **A brief exists:** `MorningBrief` / `composeBrief`.
+  - **`routes-pax-controls.ts` is the rails, stance and stand-down home:** stances tied to founder rulings, an org-wide Pause with a coverage ratchet, and receipts.
+  - The full rulings table and the conflicts are in `docs/evidence/2026-11-03/e2-slice1-pax-brief.md`.
+- **Leg 1 (memory): STOPPED.** "Pax never writes memory silently" contradicts `remember_fact`, `save_user_memory` and `paxMemoryTriggers`. A new table would be a parallel implementation. Needs a decision: make `pax_memory` the business memory and route model writes through proposals, or keep them separate and say why.
+- **Leg 5 (presets, rails, ledger, stand-down): STOPPED** on the spec's own stop condition.
+  - The default "Prepare-only" preset conflicts with the live default stance `ask_before_sending`, under which chat record writes run with no tap.
+  - Stand-down vs Pause: the Pause is time-limited and doesn't stop drafts.
+  - Trust ledger vs receipts: pause and controls events are already receipted.
+- **Legs 3 + 4 (packets, pane): HELD.** The packet lifecycle writes to the §5 ledger, and the only defined producers are legs 1 and 5. Built now, they would be unwired.
+- **Leg 2 (brief): built.**
+  - Three deterministic sections from real rows, with provenance, under the unchanged headline.
+  - Unreadable inputs are shown as unreadable, never as zero.
+  - Dismiss, restore, archive and reopen, through `routes-today-briefs.ts`, which is mounted without `todayGuard`.
+  - `pax_morning_briefs`: migration 0303 (renumbered from 0301; #461 holds 0301), table-count 749, **approved 2026-11-07 under Tom's full-readiness mandate** (Muse, PR #459 audit).
+  - The position on /today is unchanged, so P0's first-value CTA is not displaced.
+- **Proved.** A realdb suite through the mounted routers, a pure composer suite with send, kernel-write and model-name sweeps, and 15 of 15 mutants red. An independent audit found 8 issues; all are fixed or flagged (see the evidence file). The gates are in the PR body.
+- **Next.**
+  1. Muse audits and merges (the +1 table is approved under the mandate, 2026-11-07).
+  2. The leg-1 and leg-5 decisions (owner: Tom or Muse). Then legs 3 and 4 can be built on the decided ledger.
+  3. After merge: staging proof of the brief (it renders from staging state; dismiss, archive and reopen; cross-org 404), recorded in `docs/evidence/`. That becomes the brief's Atlas row.
+  4. When P0 lands, rebase over it.
 
 ## 2026-11-03 — Statewide point lookup gated behind the license dossiers — on `claude/statewide-lookup-clearance-gate` (off main `519b62c`, PR #452, MERGED 2026-11-03)
 
@@ -1304,3 +1491,44 @@ ratchet measure at baseline. NOT run: npm run check / tsc / full suite.
    (`/api/import/tax-delinquent` is named in a 404 hint but never mounted).
 3. The synchronous `/api/import/:entityType` path ignores a `fieldMap` the
    job path honours (no client sends one today).
+
+## PKG-1 — DSAR pipeline wired end to end (2026-11-09)
+
+**Shipped (branch claude/pkg1-dsar-api, stacked on PKG-2 / PR #526):** the
+lifecycle DSAR record (`dsar_requests_lifecycle`) is the record of record.
+Intake in routes-gdpr.ts now stamps deadlines from the shared
+`DSAR_CLOCK_HOURS` (its local 24h literal is deleted). New founder actions on
+the lifecycle routes, all behind one verification gate
+(`server/services/privacy/dsarActionGate.ts`): verify-identity (operator-
+attested, posture "strict-operator-attested-exact-email-v1" in
+`shared/privacy/dsarIdentityPosture.ts`), generate-export (subject-complete
+via the declared exporter registry `shared/privacy/dsarDomains.ts` +
+`server/services/privacy/dsarExporters.ts`; the old export's int-parsed userId
+500 and hard-coded-empty properties are gone), execute-erasure (hold-checked;
+legal hold refuses 423 naming the real hold; audit row for every outcome;
+idempotent by the subject's own erased state), subject-candidates. Erasure no
+longer touches a user's assigned leads or tasks (they are other people's
+data; borrower leads feed 1099-INT/1098). The older `dsar_requests` system's
+fan-out/erasure endpoints answer 501 pointing at the lifecycle routes instead
+of pretending. Founder UI: DsarSubjectActions panel in the compliance-ops
+DSAR tab. Coverage: `dsarDomainCoverage.test.ts` fails if a personal-data
+table (138 measured candidates) has no registry decision; 122 tables sit in
+the named DSAR_UNDECIDED_TABLES debt register. Drill:
+`dsarDrill.realdb.test.ts` (runs where a schema is built).
+
+**Still open:**
+- **S-1 (founder/counsel):** borrower-subject ERASE is refused by name
+  (422 RETENTION_REQUIRED_LOAN_RECORDS) because 1099-INT/1098 read borrower
+  identity from the lead row. Ruling needed on which borrower fields may be
+  erased; borrower export works today.
+- **S-2:** lead erasure does not scrub free-text bodies that mention the lead
+  (notes/messages) — retained domains are named in the erasure report.
+- **S-3:** user erasure does not delete the Clerk identity; the report's
+  operatorFollowUps names it for out-of-band deletion.
+- **Q-C1/Q-C2/Q-C3** (counsel): which DSAR pipeline is canonical as a matter
+  of record; whether the fulfilled-receipt 30-day promise or the 24h internal
+  clock governs externally; whether the legacy `dsar_requests` store is
+  retired or migrated. Both stores remain until counsel rules.
+- Registry drift found: CLASSIFICATION_REGISTRY's support_tickets entries
+  name columns (body, requester_email) the table no longer has.
+- The LQ-11 drill's staging run (synthetic subjects) is still owed post-merge.

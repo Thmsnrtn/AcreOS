@@ -6,7 +6,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { Suspense, lazy, useEffect, useState } from "react";
 import { prefetchDoorChunksOnIdle } from "@/lib/door-prefetch";
 // The More drawer renders nothing until the More tab is tapped, but it pulls
-// vaul (the drawer engine) and its own icon set — measured 2026-10-20 it was
+// the drawer engine (Radix Dialog via ui/drawer, BD-3) and its own icon set — measured 2026-10-20 it was
 // the largest lazy-able piece of the entry chunk every page (desktop
 // included) downloaded and parsed. Same treatment as the quick-add sheet
 // below: loaded on first open, stays mounted afterwards so the close

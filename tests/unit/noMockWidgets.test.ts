@@ -131,3 +131,23 @@ describe("every category resolves to a real org-scoped endpoint", () => {
     }
   });
 });
+
+describe("wholesale assignment fees — no profit proxy (founder call B-6)", () => {
+  const routeSrc = stripComments(
+    fs.readFileSync(path.resolve(__dirname, "../../server/routes-wholesaler-dashboard.ts"), "utf-8"),
+  );
+
+  it("the route no longer derives fees from analysisResults.netProfit", () => {
+    expect(routeSrc).not.toContain("net_profit_proxy");
+    expect(routeSrc).not.toMatch(/netProfit/);
+    // vacuity: the file we read is the route, and it still reads the real source
+    expect(routeSrc).toContain("contractAssignments");
+  });
+
+  it("the fee tile is gated on the wire's source, with the 'none' copy and no zero fallback", () => {
+    const code = stripComments(widgetsSrc);
+    expect(code).toContain('assignmentFeeSource === "assignments"');
+    expect(code).toContain("No signed assignments yet — fees appear when an assignment is signed");
+    expect(code).not.toMatch(/(assignmentFeesCents|avgAssignmentFeeCents)\s*\?\?\s*0/);
+  });
+});

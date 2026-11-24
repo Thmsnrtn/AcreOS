@@ -21,11 +21,14 @@ import fs from "fs";
 import path from "path";
 import { RUNG_SPECS, orderRungs, RUNG_STAGES } from "../../server/services/founder/readinessLadder";
 import { FOUNDER_DOORS } from "@/lib/founder-doors";
+import { routeTreeSource } from "../helpers/clientRoutes";
 
 const ROOT = path.resolve(__dirname, "../..");
 const read = (p: string) => fs.readFileSync(path.resolve(ROOT, p), "utf-8");
 
-const APP = read("client/src/App.tsx");
+// Both route trees (App.tsx + founder-routes.tsx): the founder routes moved to
+// the founder build's tree in P1-9 / X-2, and this ratchet counts the union.
+const APP = routeTreeSource();
 const CONTROLS = read("client/src/pages/founder/autopilot-control.tsx");
 const LETTER = read("client/src/pages/founder/home.tsx");
 const AUTOPILOT_ROUTES = read("server/routes-autopilot.ts");

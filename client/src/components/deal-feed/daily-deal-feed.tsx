@@ -1,3 +1,4 @@
+import { RequiredDisclaimer } from "@/components/required-disclaimer";
 import { useState, useRef, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
@@ -744,6 +745,7 @@ export function DailyDealFeed({ compact = false }: { compact?: boolean }) {
 
   return (
     <div className="space-y-4">
+      <RequiredDisclaimer type="ai" />
       {/* Pass-tracking dialog */}
       <AlertDialog open={showPassDialog} onOpenChange={setShowPassDialog}>
         <AlertDialogContent>

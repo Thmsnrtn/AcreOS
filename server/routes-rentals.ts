@@ -16,6 +16,7 @@
  *   POST   /api/leases                             — create
  *   PATCH  /api/leases/:id                         — update
  *   POST   /api/leases/:id/tenants                 — attach tenant
+ *   POST   /api/leases/:id/activate                — draft/pending_signature → active (S-04)
  *   DELETE /api/leases/:id/tenants/:tenantId       — detach tenant
  *   POST   /api/leases/:id/addendums               — append addendum
  *   POST   /api/leases/:id/renew                   — create renewal lease
@@ -35,7 +36,7 @@
 
 import type { Express, Response } from "express";
 import { z } from "zod";
-import { and, eq, desc, asc, sql } from "drizzle-orm";
+import { and, eq, desc, asc, inArray, sql } from "drizzle-orm";
 import { db } from "./db";
 import {
   tenants,
@@ -53,6 +54,7 @@ import {
 } from "@shared/schema";
 import type { RentalUnitKind } from "@shared/schema";
 import { computeNoticeWindow } from "@shared/regulatory/leaseNoticeRules";
+import { evaluateLeaseActivation, LEASE_ACTIVATION_TARGET } from "@shared/rental/leaseActivation";
 import {
   expandUnitLabels,
   buildBulkCreateReport,
@@ -610,7 +612,13 @@ export function registerRentalRoutes(app: Express): void {
       const leases = leaseIds.length > 0
         ? await db.select().from(rentalLeases).where(and(
             eq(rentalLeases.organizationId, orgId),
-            sql`${rentalLeases.id} = ANY(${leaseIds}::uuid[])`,
+            // inArray, not raw `= ANY(${leaseIds}::uuid[])` — drizzle binds
+            // a JS array inside sql`` as a parenthesised parameter list, so
+            // Postgres received ANY(($1, $2)::uuid[]) / ANY(($1)::uuid[])
+            // and rejected it (record/scalar to uuid[]), 500ing this read
+            // whenever the tenant had at least one lease (ANY-sweep
+            // 2026-11-21; same shape as SD-DEF-1 in routes-permit-tracker).
+            inArray(rentalLeases.id, leaseIds),
           ))
         : [];
 
@@ -970,7 +978,10 @@ export function registerRentalRoutes(app: Express): void {
       const tenantRows = tenantIds.length > 0
         ? await db.select().from(tenants).where(and(
             eq(tenants.organizationId, orgId),
-            sql`${tenants.id} = ANY(${tenantIds}::uuid[])`,
+            // inArray, not raw `= ANY(${tenantIds}::uuid[])` — same
+            // record/scalar-to-uuid[] rejection as the tenant read above
+            // (ANY-sweep 2026-11-21; SD-DEF-1 shape).
+            inArray(tenants.id, tenantIds),
           ))
         : [];
       const tenantsByLink = links.map((link) => ({
@@ -1134,6 +1145,75 @@ export function registerRentalRoutes(app: Express): void {
         .where(and(eq(rentalLeases.id, routeParam(req.params.id)), eq(rentalLeases.organizationId, orgId)))
         .returning();
       if (!updated) return Errors.notFound(res, "Lease");
+      return res.json({ lease: updated });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // S-04 — lease activation. Until this route (and its client caller on
+  // /leases) existed, a UI-created lease was a permanent draft: PATCH could
+  // move its status in theory, but no client called it, so rent-charge
+  // generation (active/pending_signature only), the lease-expiry scan
+  // (active only) and the deposit lifecycle all silently skipped every
+  // lease the operator entered by hand. Activation is a dedicated route —
+  // not a status value smuggled through PATCH — so the transition carries
+  // its own guards in one place:
+  //   1. the pure rule (shared/rental/leaseActivation.ts): only draft /
+  //      pending_signature may activate, and only with ≥1 tenant attached;
+  //   2. the federal lead-paint hard-gate, identical to PATCH's: a
+  //      pre-1978 lease may not enter an executing status without the
+  //      confirmed disclosure (attached earlier, or confirmed in this
+  //      request via leadPaintDisclosureConfirmed).
+  // Refusals are 422 with a machine code: the request was well-formed, the
+  // lease's state is what has to change first.
+  app.post("/api/leases/:id/activate", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const userId = getUserId(req);
+      const parsed = z.object({
+        leadPaintDisclosureConfirmed: z.boolean().optional(),
+      }).safeParse(req.body ?? {});
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+
+      const [existing] = await db.select().from(rentalLeases)
+        .where(and(eq(rentalLeases.id, routeParam(req.params.id)), eq(rentalLeases.organizationId, orgId)));
+      if (!existing) return Errors.notFound(res, "Lease");
+
+      const links = await db.select({ id: leaseTenants.id }).from(leaseTenants)
+        .where(and(eq(leaseTenants.leaseId, existing.id), eq(leaseTenants.organizationId, orgId)));
+      const decision = evaluateLeaseActivation({ status: existing.status, tenantCount: links.length });
+      if (!decision.ok) {
+        return Errors.unprocessable(res, decision.reason, { code: decision.code, leaseId: existing.id, status: existing.status });
+      }
+
+      // Lead-paint gate — same test PATCH applies to a move into `active`.
+      const attached =
+        existing.leadPaintDisclosureAttachedAt !== null ||
+        parsed.data.leadPaintDisclosureConfirmed === true;
+      if (!attached) {
+        const [prop] = await db.select({
+          id: properties.id,
+          yearBuilt: properties.yearBuilt,
+          requiresLeadPaintDisclosure: properties.requiresLeadPaintDisclosure,
+        }).from(properties)
+          .where(and(eq(properties.id, existing.propertyId), eq(properties.organizationId, orgId)));
+        if (prop && propertyNeedsLeadPaintDisclosure(prop)) {
+          return leadPaintBlocked(res, { propertyId: prop.id, yearBuilt: prop.yearBuilt, leaseId: existing.id });
+        }
+      }
+
+      const [updated] = await db.update(rentalLeases).set({
+        status: LEASE_ACTIVATION_TARGET,
+        updatedAt: clock.now(),
+        ...(parsed.data.leadPaintDisclosureConfirmed === true
+          ? { leadPaintDisclosureAttachedAt: clock.now() }
+          : {}),
+      })
+        .where(and(eq(rentalLeases.id, existing.id), eq(rentalLeases.organizationId, orgId)))
+        .returning();
+      if (!updated) return Errors.notFound(res, "Lease");
+      logger.info("[BH-2] lease activated", { orgId, userId, leaseId: updated.id, fromStatus: decision.fromStatus });
       return res.json({ lease: updated });
     } catch (err) {
       return Errors.internal(res, err);

@@ -19,6 +19,7 @@ import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
+import { DsarSubjectActions } from "@/components/founder/DsarSubjectActions";
 
 function csrf() {
   const m = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
@@ -305,18 +306,32 @@ export default function FounderComplianceOpsPage() {
                                 )}
                               </td>
                               <td className="p-2">
-                                {!r.fulfilledAt && (
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="h-7 text-xs"
-                                    aria-label={`Mark DSAR ${r.id} fulfilled`}
-                                    onClick={() => fulfillDsar.mutate(r.id)}
-                                    disabled={fulfillDsar.isPending}
-                                  >
-                                    Mark fulfilled
-                                  </Button>
-                                )}
+                                {/* No row-expansion pattern exists in this table, so the
+                                    PKG-1 subject actions open as a dialog from this cell (design §6). */}
+                                <div className="flex flex-wrap gap-1">
+                                  {!r.fulfilledAt && (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-7 text-xs"
+                                      aria-label={`Mark DSAR ${r.id} fulfilled`}
+                                      onClick={() => fulfillDsar.mutate(r.id)}
+                                      disabled={fulfillDsar.isPending}
+                                    >
+                                      Mark fulfilled
+                                    </Button>
+                                  )}
+                                  <DsarSubjectActions
+                                    record={{
+                                      id: r.id,
+                                      requestType: r.requestType,
+                                      requesterEmail: r.requesterEmail,
+                                      requesterIdentityVerified: r.requesterIdentityVerified === true,
+                                    }}
+                                    csrf={csrf}
+                                    onChanged={() => queryClient.invalidateQueries({ queryKey: ["/api/founder/dsar/recent"] })}
+                                  />
+                                </div>
                               </td>
                             </tr>
                           );

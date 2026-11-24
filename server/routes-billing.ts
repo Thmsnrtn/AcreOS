@@ -4,8 +4,7 @@ import express from "express";
 import { getOrganization, getClerkAuth, type AuthenticatedRequest } from "./types/request";
 import { storage, db } from "./storage";
 import { cancellationSurveys, refundRequests, stripeProcessedEvents } from "@shared/schema";
-import { SUBSCRIPTION_EVENT } from "@shared/billing/subscriptionEventVocabulary";
-import { eq, and, desc, gte } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { getAllUsageLimits, type SubscriptionTier, TIER_LIMITS } from "./services/usageLimits";
@@ -13,12 +12,13 @@ import { idempotencyMiddleware } from "./middleware/idempotency";
 import { logger } from "./utils/logger";
 import { Errors, sendError } from "./utils/errors";
 import { requirePermission } from "./utils/permissions";
-import { auditFromRequest, AuditActions } from "./utils/auditLog";
+import { auditFromRequest, actorFromRequest, AuditActions } from "./utils/auditLog";
 import { customerAuditFromRequest, CustomerAuditActions } from "./utils/customerAudit";
 import { z } from "zod";
-import { lenderServicingPhase, subscriptionEndedPatch } from "./services/borrower/servicingPhase";
+import { lenderServicingPhase } from "./services/borrower/servicingPhase";
 import { clock } from "./utils/clock";
 import { routeParam } from "./utils/routeParams";
+import { countActiveServicedNotes } from "./services/billing/activeServicedNotes";
 
 export function registerBillingRoutes(app: Express): void {
   const api = app;
@@ -771,8 +771,12 @@ export function registerBillingRoutes(app: Express): void {
         customerId = customer.id;
       }
 
-      // Check if organization is eligible for 14-day free trial (first subscription only)
-      const trialDays = org.trialUsed ? undefined : 14;
+      // Check if organization is eligible for 14-day free trial (first subscription only).
+      // A15-09: any prior grant counts — trialUsed (set by every grant path
+      // since the cure) OR a trialStartedAt from a pre-cure creation grant.
+      // Keying on trialUsed alone stacked a Stripe trial on top of the
+      // in-app creation trial for orgs created before the cure.
+      const trialDays = org.trialUsed || org.trialStartedAt ? undefined : 14;
       
       // Look up active promo for this price (match by tier name in Stripe product metadata)
       // and detect yearly billing to opt the session into ACH (Pillar 8.5).
@@ -1400,11 +1404,17 @@ export function registerBillingRoutes(app: Express): void {
           pauseDays: parsed.data.days,
         });
 
+        // Best-effort: informs the customer, never gates the pause. The
+        // helper degrades to null on failure. Servicing writes on these notes
+        // stay open while paused (subscriptionPauseGate carve-out).
+        const activeServicingNotes = await countActiveServicedNotes(org.id);
+
         await auditFromRequest(req, {
           action: AuditActions.BILLING_PLAN_SWITCHED,
           target: { type: "billing", id: org.id },
           metadata: {
             op: "self_serve_pause",
+            activeServicingNotes,
             pauseDays: parsed.data.days,
             pauseEndsAt: pauseEnds.toISOString(),
             reason: parsed.data.reason,
@@ -1415,6 +1425,8 @@ export function registerBillingRoutes(app: Express): void {
           paused: true,
           pauseDays: parsed.data.days,
           pauseEndsAt: pauseEnds.toISOString(),
+          activeServicingNotes,
+          servicingContinuesWhilePaused: true,
         });
       } catch (err: any) {
         Errors.internal(res, err);
@@ -1429,7 +1441,6 @@ export function registerBillingRoutes(app: Express): void {
   api.post("/api/subscription/refund-request", isAuthenticated, getOrCreateOrg, requirePermission("canManageBilling"), idempotencyMiddleware, async (req, res) => {
     try {
       const org = req.organization;
-      const userId = req.user?.id;
 
       const schema = z.object({
         reason: z.string().min(1).max(500),
@@ -1439,167 +1450,20 @@ export function registerBillingRoutes(app: Express): void {
         return Errors.validationFailed(res, parsed.error.issues);
       }
 
-      if (!org.stripeCustomerId) {
-        return Errors.badRequest(res, "No billing account found");
-      }
-
-      // Rate limit: reject if org already had a refund in the last 30 days
-      const thirtyDaysAgo = new Date(clock.nowMs() - 30 * 24 * 60 * 60 * 1000);
-      const recentRefunds = await db.select({ id: refundRequests.id })
-        .from(refundRequests)
-        .where(and(
-          eq(refundRequests.organizationId, org.id),
-          eq(refundRequests.status, "processed"),
-          gte(refundRequests.createdAt, thirtyDaysAgo),
-        ))
-        .limit(1);
-
-      if (recentRefunds.length > 0) {
-        return Errors.limitExceeded(res, "A refund was already processed for this account within the last 30 days. Please contact support for further assistance.", { docsSlug: "refund-already-issued" });
-      }
-
-      // Find recent charges from Stripe (last 30 days)
-      const { getUncachableStripeClient } = await import("./stripeClient");
-      const stripe = await getUncachableStripeClient();
-
-      const charges = await stripe.charges.list({
-        customer: org.stripeCustomerId,
-        limit: 5,
-        created: { gte: Math.floor(clock.nowMs() / 1000) - 30 * 24 * 60 * 60 },
-      });
-
-      if (!charges.data.length) {
-        return Errors.badRequest(res, "No charges found within the last 30 days");
-      }
-
-      const latestCharge = charges.data[0];
-      const amountCents = latestCharge.amount;
-      const autoApproveThreshold = 5000; // $50
-
-      const shouldAutoApprove = amountCents <= autoApproveThreshold;
-
-      const [request] = await db.insert(refundRequests).values({
-        organizationId: org.id,
-        userId,
-        stripeChargeId: latestCharge.id,
-        stripePaymentIntentId: typeof latestCharge.payment_intent === "string" ? latestCharge.payment_intent : latestCharge.payment_intent?.id,
-        amountCents,
+      // The whole intake — first-charge targeting, the §5A eligibility rule,
+      // the brakes, the shared executor — lives in the service so the support
+      // inbox creates requests through the same path.
+      const { requestGuaranteeRefund } = await import("./services/refunds/requestGuaranteeRefund");
+      const result = await requestGuaranteeRefund({
+        organization: { id: org.id, name: org.name, stripeCustomerId: org.stripeCustomerId ?? null, stripeSubscriptionId: org.stripeSubscriptionId ?? null },
+        userId: req.user?.id,
         reason: parsed.data.reason,
-        status: shouldAutoApprove ? "approved" : "pending",
-        autoApproved: shouldAutoApprove,
-      }).returning();
-
-      // Auto-process refunds under $50
-      if (shouldAutoApprove) {
-        try {
-          const refund = await stripe.refunds.create({
-            charge: latestCharge.id,
-          });
-
-          await db.update(refundRequests)
-            .set({
-              status: "processed",
-              processedAt: clock.now(),
-              processedBy: "auto",
-              stripeRefundId: refund.id,
-            })
-            .where(eq(refundRequests.id, request.id));
-
-          // Cancel subscription and downgrade to free tier
-          const previousTier = org.subscriptionTier || "free";
-          if (org.stripeSubscriptionId) {
-            try {
-              await stripe.subscriptions.cancel(org.stripeSubscriptionId);
-              logger.info(`[Refund] Cancelled Stripe subscription ${org.stripeSubscriptionId} for org ${org.id}`);
-            } catch (cancelErr: any) {
-              // Subscription may already be cancelled — log but continue
-              logger.warn(`[Refund] Could not cancel Stripe subscription ${org.stripeSubscriptionId}`, cancelErr);
-            }
-          }
-
-          await storage.updateOrganization(org.id, {
-            subscriptionTier: "free",
-            subscriptionStatus: "cancelled",
-            stripeSubscriptionId: null,
-            // Starts the 90-day borrower wind-down (ruling #3, DEFECT-0106).
-            ...subscriptionEndedPatch(),
-          });
-
-          await storage.logSubscriptionEvent({
-            organizationId: org.id,
-            eventType: SUBSCRIPTION_EVENT.cancel,
-            fromTier: previousTier,
-            toTier: null,
-          });
-
-          // Renoir audit-log: priced cancel for reactivation context.
-          try {
-            const { recordSubscriptionHistoryEvent } = await import("./routes-subscription");
-            await recordSubscriptionHistoryEvent({
-              organizationId: org.id,
-              eventType: "canceled",
-              tier: previousTier,
-              billingInterval: org.billingInterval || null,
-              priceCents: null,
-              metadata: {
-                source: "refund_auto_cancel",
-                refundRequestId: request.id,
-              },
-            });
-          } catch { /* non-fatal */ }
-
-          logger.info(`[Refund] Downgraded org ${org.id} from ${previousTier} to free after refund`);
-
-          // Send confirmation email
-          try {
-            const { emailService } = await import("./services/emailService");
-            const { users } = await import("@shared/models/auth");
-            const [owner] = await db.select({ email: users.email }).from(users).where(eq(users.id, org.ownerId)).limit(1);
-            if (owner?.email) {
-              await emailService.sendEmail({
-                to: owner.email,
-                subject: "Your AcreOS refund has been processed",
-                html: `<h2>Refund Processed</h2><p>Your refund of <strong>$${(amountCents / 100).toFixed(2)}</strong> has been processed. It should appear on your statement within 5-10 business days.</p><p>— The AcreOS Team</p>`,
-                text: `Your refund of $${(amountCents / 100).toFixed(2)} has been processed. It should appear within 5-10 business days.\n\n— The AcreOS Team`,
-                transactional: true, // billing receipt — not commercial
-              });
-            }
-          } catch {}
-
-          // Phase 3 Week 11 — refund issuance is a sensitive billing event.
-          await auditFromRequest(req, {
-            action: AuditActions.BILLING_REFUND_ISSUED,
-            target: { type: "billing", id: org.id },
-            metadata: {
-              op: "auto_refund",
-              refundRequestId: request.id,
-              stripeRefundId: refund.id,
-              amountCents,
-              previousTier,
-            },
-          });
-
-          return res.json({ status: "processed", amountCents, message: "Refund processed automatically" });
-        } catch (refundErr: any) {
-          logger.error("[Refund] Auto-refund failed", refundErr);
-          await db.update(refundRequests).set({ status: "pending", autoApproved: false }).where(eq(refundRequests.id, request.id));
-          return res.json({ status: "pending", amountCents, message: "Refund submitted for manual review" });
-        }
-      }
-
-      // Create system alert for founder to review
-      await storage.createSystemAlert({
-        type: "refund_request",
-        severity: "warning",
-        title: `Refund Request: $${(amountCents / 100).toFixed(2)}`,
-        message: `Org "${org.name}" requested a refund. Reason: ${parsed.data.reason}`,
-        organizationId: org.id,
-        relatedEntityType: "refund_request",
-        relatedEntityId: request.id,
-        status: "new",
+        actor: actorFromRequest(req),
       });
 
-      res.json({ status: "pending", amountCents, message: "Refund submitted for review (over $50 requires manual approval)" });
+      if (result.kind === "no_billing_account") return Errors.badRequest(res, "No billing account found");
+      if (result.kind === "no_charges") return Errors.badRequest(res, "No charges found for this account");
+      return res.json({ status: result.status, amountCents: result.amountCents, message: result.message });
     } catch (err: any) {
       Errors.internal(res, err);
     }
@@ -1609,10 +1473,30 @@ export function registerBillingRoutes(app: Express): void {
   api.get("/api/subscription/refund-requests", isAuthenticated, getOrCreateOrg, requirePermission("canManageBilling"), async (req, res) => {
     try {
       const org = req.organization;
-      const requests = await db.select().from(refundRequests)
+      const rows = await db.select().from(refundRequests)
         .where(eq(refundRequests.organizationId, org.id))
         .orderBy(desc(refundRequests.createdAt))
         .limit(10);
+      // The customer's view keeps the shape it always had (plus deniedReason,
+      // the decision they are owed). Brake codes, eligibility verdicts, retry
+      // bookkeeping and the SLA clock are internal; an "uncertain" outcome is
+      // honestly "processing" from the customer's side.
+      const requests = rows.map((r) => ({
+        id: r.id,
+        organizationId: r.organizationId,
+        userId: r.userId,
+        stripeChargeId: r.stripeChargeId,
+        stripePaymentIntentId: r.stripePaymentIntentId,
+        amountCents: r.amountCents,
+        reason: r.reason,
+        status: r.status === "uncertain" ? "processing" : r.status,
+        autoApproved: r.autoApproved,
+        processedAt: r.processedAt,
+        processedBy: r.processedBy,
+        stripeRefundId: r.stripeRefundId,
+        createdAt: r.createdAt,
+        deniedReason: r.deniedReason,
+      }));
       res.json({ requests });
     } catch (err: any) {
       Errors.internal(res, err);

@@ -461,6 +461,11 @@ test.describe("CJ1: signup → onboarding → first value", () => {
         // Per task: vertical='land_investing' → maps to the
         // 'land_investor' or 'land_flipper' option in the wizard.
         await orgNameInput.fill("Krieger Synthetic Land Co");
+        // P1-11 S2 (FD1): land_flipper is beta — behind the disclosure.
+        const betaSummary = page.locator('[data-testid="summary-show-all-investor-types"]');
+        if (await betaSummary.isVisible().catch(() => false)) {
+          await betaSummary.click();
+        }
         const landInvestorOption = page
           .locator('[data-testid="option-land_investor"], [data-testid="option-land_flipper"]')
           .first();

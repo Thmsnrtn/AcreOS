@@ -94,6 +94,9 @@ export const STRIPE_CONNECT_WEBHOOK_EVENTS = [
   "checkout.session.completed",
   "checkout.session.async_payment_succeeded",
   "charge.refunded",
+  "charge.dispute.created",
+  "charge.dispute.updated",
+  "charge.dispute.closed",
   "payment_intent.succeeded",
   "payment_intent.payment_failed",
   "invoice.payment_failed",
@@ -272,26 +275,52 @@ export class StripeConnectService {
   async updateAccountStatus(organizationId: number, accountId: string): Promise<void> {
     const status = await this.getAccountStatus(accountId);
     const integration = await storage.getOrganizationIntegration(organizationId, "stripe_connect");
-    
+
     if (integration) {
+      // B-7: advance the onboarding-stall clock on every live observation.
+      // Only when Stripe was actually read (isConnected + requirements
+      // present) — an unreadable account neither seeds nor clears a stall.
+      // The daily sweep's live read is the second observation point, so a
+      // stall is clocked even if account.updated delivery stops.
+      const now = clock.now();
+      let stallPatch: Record<string, unknown> = {};
+      if (status.isConnected && status.requirements) {
+        const { computeStallObservation } = await import("./connectOnboardingStalls");
+        const observation = computeStallObservation(
+          (integration.settings ?? {}) as Record<string, unknown>,
+          status.requirements.currentlyDue,
+          now,
+        );
+        if (observation?.changed) {
+          stallPatch = { ...observation.patch };
+        }
+      }
+      const settings = {
+        ...integration.settings,
+        stripeConnectOnboardingComplete: status.detailsSubmitted,
+        stripeConnectPayoutsEnabled: status.payoutsEnabled,
+        stripeConnectChargesEnabled: status.chargesEnabled,
+        stripeConnectCapabilities: {
+          cardPayments: status.capabilities?.cardPayments === "active",
+          transfers: status.capabilities?.transfers === "active",
+          achPayments: status.capabilities?.usBankAccountAchPayments === "active",
+        },
+      };
+      // A resolve patch carries undefined for the cleared keys — delete
+      // them rather than writing undefined into the settings JSONB.
+      const settingsRecord = settings as Record<string, unknown>;
+      for (const [key, value] of Object.entries(stallPatch)) {
+        if (value === undefined) delete settingsRecord[key];
+        else settingsRecord[key] = value;
+      }
       await storage.upsertOrganizationIntegration({
         organizationId,
         provider: "stripe_connect",
         isEnabled: integration.isEnabled ?? true,
         credentials: integration.credentials,
-        settings: {
-          ...integration.settings,
-          stripeConnectOnboardingComplete: status.detailsSubmitted,
-          stripeConnectPayoutsEnabled: status.payoutsEnabled,
-          stripeConnectChargesEnabled: status.chargesEnabled,
-          stripeConnectCapabilities: {
-            cardPayments: status.capabilities?.cardPayments === "active",
-            transfers: status.capabilities?.transfers === "active",
-            achPayments: status.capabilities?.usBankAccountAchPayments === "active",
-          },
-        },
-        lastValidatedAt: clock.now(),
-        validationError: status.requirements?.currentlyDue?.length 
+        settings,
+        lastValidatedAt: now,
+        validationError: status.requirements?.currentlyDue?.length
           ? `Pending requirements: ${status.requirements.currentlyDue.join(", ")}`
           : undefined,
       });
@@ -395,6 +424,11 @@ export class StripeConnectService {
           // rule as the portal, keyed on this session (DEFECT-0116).
           const { WebhookHandlers } = await import("../webhookHandlers");
           await WebhookHandlers.processPaymentLinkNotePayment(session, event.account ?? null);
+        } else if (session.metadata?.type === "rent_payment") {
+          // P3-3 — a tenant paid rent by card on the landlord's own account.
+          // Posted by the ONE rent posting rule, keyed on this session.
+          const { WebhookHandlers } = await import("../webhookHandlers");
+          await WebhookHandlers.processRentPayment(session, event.account ?? null);
         }
         break;
       }
@@ -416,6 +450,30 @@ export class StripeConnectService {
         const charge = event.data.object as Stripe.Charge;
         const { WebhookHandlers } = await import("../webhookHandlers");
         await WebhookHandlers.processBorrowerPaymentRefund(charge, event.account ?? null);
+        break;
+      }
+
+      // ── Money clawed back ───────────────────────────────────────────
+      // A borrower disputing a card payment on the lender's own account
+      // (autopilot brief B-2). Until these branches existed the dispute
+      // events were not even subscribed: Stripe took the money back while
+      // the ledger row stood serene and the lender was never told. The
+      // handler flags the ledger row "dispute opened — under review",
+      // raises the founder alert + lender notice, and records Stripe's
+      // response.by deadline for the T-72h/T-24h escalation sweep. It
+      // posts NO reversal — that stays a founder/lender judgment. The
+      // PLATFORM dispatcher's dispute branch (processChargeDispute)
+      // handles AcreOS's own charges and never sees these events.
+      case "charge.dispute.created":
+      case "charge.dispute.updated":
+      case "charge.dispute.closed": {
+        const dispute = event.data.object as Stripe.Dispute;
+        const { processBorrowerChargeDispute } = await import("./connectDisputes");
+        await processBorrowerChargeDispute(
+          event.type as Parameters<typeof processBorrowerChargeDispute>[0],
+          dispute,
+          event.account ?? null,
+        );
         break;
       }
 

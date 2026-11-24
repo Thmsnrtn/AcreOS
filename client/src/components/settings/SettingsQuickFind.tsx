@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useId } from "react";
 import { Search, ArrowRight, Command } from "lucide-react";
 import { useLocation } from "wouter";
-import { PAX_CONTROLS_PATH, PAX_SETTINGS_COPY } from "@shared/pax-glossary";
+import { PAX_CONTROLS_PATH, PAX_SETTINGS_COPY } from "@shared/pax-glossary-core";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { LEAD_ROUTING_PATH } from "@/lib/lead-routing";

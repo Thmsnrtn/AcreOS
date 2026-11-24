@@ -37,6 +37,7 @@ import realtimeRouter from "./routes-realtime";
 import paxInsightsRouter from "./routes-pax-insights";
 import paxControlsRouter from "./routes-pax-controls";
 import todayRouter from "./routes-today";
+import todayBriefsRouter from "./routes-today-briefs";
 import parcelAlertsRouter from "./routes-parcel-alerts";
 import parcelBiographyRouter from "./routes-parcel-biography";
 // Voice AI deleted 2026-08-01 (deletion-ledger row: Voice / AI voice, founder-authorized drop).
@@ -86,6 +87,9 @@ import flipDecisionRouter from "./routes-flip-decision";
 import buyAndHoldUnderwritingRouter from "./routes-buy-and-hold-underwriting";
 import wholesaleBuyBoxRouter from "./routes-wholesale-buy-box";
 import wholesaleUnderwritingRouter from "./routes-wholesale-underwriting";
+import wholesaleDispositionRouter from "./routes-wholesale-disposition";
+import noteUnderwritingRouter from "./routes-note-underwriting";
+import taxUnderwritingRouter from "./routes-tax-underwriting";
 import exchange1031Router from "./routes-exchange-1031";
 import dunningRouter from "./routes-dunning";
 import onboardingRouter from "./routes-onboarding";
@@ -198,6 +202,8 @@ import { registerNoteAcquisitionRoutes } from "./routes-note-acquisitions";
 import { registerNoteTapeRoutes } from "./routes-note-tape";
 import { registerNoteRecordRoutes } from "./routes-note-record";
 import { registerNoteWorkoutRoutes } from "./routes-note-workout";
+import { registerNoteDelinquencyRoutes } from "./routes-note-delinquency";
+import { registerNoteOriginationRoutes } from "./routes-note-origination";
 import { registerServicerRoutes } from "./routes-servicer";
 import { registerTaxCertificateRoutes } from "./routes-tax-certificates";
 import { registerTaxRuleRoutes } from "./routes-tax-rules";
@@ -216,9 +222,12 @@ import { registerLotBasisRoutes } from "./routes-lot-basis";
 import { registerLotPricingRoutes } from "./routes-lot-pricing";
 import { registerCountyTimelineRoutes } from "./routes-county-timelines";
 import { registerSubdivisionPlanRoutes } from "./routes-subdivision-plans";
+import { registerSubdivisionScreenRoutes } from "./routes-subdivision-screen";
+import { registerSubdivisionDecisionRoutes } from "./routes-subdivision-decision";
 import { registerCcrTemplateRoutes } from "./routes-ccr-templates";
 import { registerRehabRoutes } from "./routes-rehabs";
 import { registerRehabPhotoRoutes } from "./routes-rehab-photos";
+import { registerObjectDocumentRoutes } from "./routes-object-documents";
 import { registerDriveModeRoutes } from "./routes-drive-mode";
 import { registerContractorRoutes } from "./routes-contractors";
 import { registerArvRoutes } from "./routes-arv";
@@ -1390,6 +1399,10 @@ export async function registerRoutes(
   app.use('/api/pax', isAuthenticated, getOrCreateOrg, paxChatGuard, paxInsightsRouter);
   // Consolidated Today-screen payload (queue + cash + meta) — one round-trip
   // replacing the ~6 parallel fetches the Today page used to fan out.
+  // The morning brief archive (E2 slice 1 leg 2) — AHEAD of /api/today and
+  // without todayGuard: it calls no model, so the AI budget must not be able
+  // to refuse a dismissal (routes-today-briefs.ts header).
+  app.use('/api/today/briefs', isAuthenticated, getOrCreateOrg, todayBriefsRouter);
   app.use('/api/today', isAuthenticated, getOrCreateOrg, todayGuard, todayRouter);
   // Iyari #5 — Parcel alerts (owner-change / tax-status deltas) surfaced behind
   // the Today door. Detector writes them; this router is read + mark-read only.
@@ -1475,6 +1488,9 @@ export async function registerRoutes(
   // Wholesale Leg 2 — the operator's versioned buy box and candidate triage.
   app.use('/api/wholesale', isAuthenticated, getOrCreateOrg, wholesaleBuyBoxRouter);
   app.use('/api/wholesale', isAuthenticated, getOrCreateOrg, wholesaleUnderwritingRouter);
+  app.use('/api/wholesale', isAuthenticated, getOrCreateOrg, wholesaleDispositionRouter);
+  app.use('/api/note-investor', isAuthenticated, getOrCreateOrg, noteUnderwritingRouter);
+  app.use('/api/tax-lien', isAuthenticated, getOrCreateOrg, taxUnderwritingRouter);
   app.use('/api/exchange-1031', isAuthenticated, getOrCreateOrg, exchange1031Router);
   // FOUNDER-ONLY, and it was not. `client/src/App.tsx` gates the Dunning
   // Manager page behind FounderProtectedRoute with the note "the dunning API is
@@ -2440,11 +2456,18 @@ export async function registerRoutes(
   registerSubscriptionRoutes(app);
   // Note Investor vertical (Phase 5 §5) — acquired-notes + payments + amort.
   registerNoteRoutes(app);
+  // Deal document store (autonomy gap §8 slice 5) — the customer's own PDFs on
+  // a deal, a property or an acquired note. Registered AFTER the deal/property/
+  // note route files: every path here has the literal segment `documents` after
+  // :objectId, so nothing earlier can swallow it and it swallows nothing.
+  registerObjectDocumentRoutes(app);
   // Note Investor vertical (Phase 5 §5) — pre-book diligence pipeline.
   registerNoteAcquisitionRoutes(app);
   registerNoteTapeRoutes(app);
   registerNoteRecordRoutes(app);
   registerNoteWorkoutRoutes(app);
+  registerNoteDelinquencyRoutes(app);
+  registerNoteOriginationRoutes(app);
   // Note Servicer (Pillar K — Ursa) — owners-of-record, remittances, licenses.
   registerServicerRoutes(app);
   // Tax-Delinquent vertical TD-2 — redemption-clock surface.
@@ -2481,6 +2504,10 @@ export async function registerRoutes(
   registerCountyTimelineRoutes(app);
   // Subdivider vertical SD-7 — subdivision plans (GeoJSON storage + A/B).
   registerSubdivisionPlanRoutes(app);
+  // Subdivision V1 Leg 1 — the buildability screen (append-only runs, migration 0304).
+  registerSubdivisionScreenRoutes(app);
+  // Subdivision V1 Leg 4 — the decision desk (pursue/pass through the kit; read model).
+  registerSubdivisionDecisionRoutes(app);
   // Subdivider vertical SD-8 — CC&R / covenant template library.
   registerCcrTemplateRoutes(app);
   // Fix-and-flip vertical FF-2 — rehab budget builder.

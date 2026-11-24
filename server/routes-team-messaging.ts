@@ -2,6 +2,7 @@ import { limitsTierFor } from "@shared/billing/tier-limits";
 import type { Express, Response, NextFunction } from "express";
 import { withdrawnTargets, OCCUPIED_TARGET_STATUSES, MANUAL_POSTING } from "./services/listingWithdrawal";
 import { offerabilityRefusal } from "./services/listability";
+import { offerComplianceGate, sendComplianceRefusal } from "./services/wholesale/offerCompliance";
 import { readPropertiesBySellerIds } from "./storage/wholeBookReads";
 import type { AuthenticatedRequest } from "./types/request";
 import { storage, db } from "./storage";
@@ -984,11 +985,14 @@ export function registerTeamMessagingRoutes(app: Express): void {
       // take-down aims a platform-credentialed DELETE at — plus `status`
       // ("active" without publishing) and the counters. The client sends
       // `status: "draft"`, which is the only status it may name.
+      // The compliance acknowledgement is a flag on the request, not a listing
+      // field: taken off before the strict listing schema reads the body.
+      const { ackComplianceWarning, ...listingBody } = (req.body ?? {}) as Record<string, unknown>;
       const parsed = insertPropertyListingSchema
         .omit({ ...LISTING_SYSTEM_FIELDS, organizationId: true })
         .extend({ status: z.literal("draft").optional() })
         .strict()
-        .safeParse(req.body);
+        .safeParse(listingBody);
       
       if (!parsed.success) {
         return Errors.badRequest(res, "Invalid listing data", parsed.error.issues);
@@ -1004,6 +1008,17 @@ export function registerTeamMessagingRoutes(app: Express): void {
       if (notOfferable) return Errors.badRequest(res, notOfferable);
       // V-Tax-1 T4b: nor land still held by a tax position (not yet marketable in AcreOS).
       if (!(await refuseRedeemableDeedSpend(res, org.id, parsed.data.propertyId, "Listing this property"))) return;
+      // Assignment compliance (Leg 3, coordinator ruling 2026-11-05): creating
+      // a listing for a property held under an assignable contract is gated
+      // like publishing it — a block refuses, a warn needs a recorded ack.
+      const compliance = await offerComplianceGate({
+        organizationId: org.id,
+        userId: req.user?.id ?? null,
+        property: { id: property.id, status: property.status, state: property.state },
+        surface: "listing_create",
+        acknowledged: ackComplianceWarning === true,
+      });
+      if (!compliance.ok) return sendComplianceRefusal(res, compliance.status, compliance.body);
       
       // Check if listing already exists for this property
       const existing = await storage.getPropertyListingByPropertyId(org.id, parsed.data.propertyId);
@@ -1190,6 +1205,18 @@ export function registerTeamMessagingRoutes(app: Express): void {
         const notOfferable = offerabilityRefusal(property.status);
         if (notOfferable) return Errors.badRequest(res, notOfferable);
         if (!(await refuseRedeemableDeedSpend(res, org.id, property.id, "Publishing this listing"))) return;
+        // Assignment compliance (Leg 3): publishing offers the property; one
+        // held under an assignable contract is gated by its state's rule. A
+        // dry run sees a warn without needing an ack; a real publish records it.
+        const compliance = await offerComplianceGate({
+          organizationId: org.id,
+          userId: req.user?.id ?? null,
+          property: { id: property.id, status: property.status, state: property.state },
+          surface: "listing_publish",
+          acknowledged: req.body?.ackComplianceWarning === true,
+          previewOnly: dryRun,
+        });
+        if (!compliance.ok) return sendComplianceRefusal(res, compliance.status, compliance.body);
 
         const [orgRow] = await db
           .select()
@@ -1321,15 +1348,15 @@ export function registerTeamMessagingRoutes(app: Express): void {
           }
           return {
             platform: r.platform,
-            status: r.success
-              ? ("sent" as const)
-              : r.error?.toLowerCase().includes("not configured")
-              ? ("missing_credentials" as const)
-              : ("failed" as const),
+            // "manual" (never "sent") for copy the operator posts by hand,
+            // and the paste text itself rides along — without it the one
+            // real Craigslist deliverable never reached the UI (L-P3).
+            status: listingSyndication.publishStatusForResult(r),
             error: r.error,
             listingId: r.listingId,
             listingUrl: r.listingUrl,
             deepLinkUrl: r.deepLinkUrl,
+            preformattedText: r.preformattedText,
             manualInstructions: r.manualInstructions,
             requiresManualAction: r.requiresManualAction,
           };
@@ -1350,11 +1377,11 @@ export function registerTeamMessagingRoutes(app: Express): void {
           listingId: r.listingId,
           listingUrl: r.listingUrl,
           status:
-            r.status === "sent"
+            r.status === "manual"
               ? // Copy/paste text is not a live posting (DEFECT-0182 audit).
-                "requiresManualAction" in r && r.requiresManualAction && !r.listingId
-                ? MANUAL_POSTING
-                : "active"
+                MANUAL_POSTING
+              : r.status === "sent"
+              ? "active"
               : r.status === "simulated"
               ? "simulated"
               : r.status === "dry_run"
@@ -1480,6 +1507,47 @@ export function registerTeamMessagingRoutes(app: Express): void {
       res.json(updated);
     } catch (error: any) {
       logger.error("Unpublish listing error", error);
+      Errors.internal(res, error);
+    }
+  });
+
+  // POST /api/listings/:id/mark-listed - Record the operator's word that
+  // this listing is on the market (L-DEF-1, Option C).
+  //
+  // `listed` means exactly one thing: the operator states they posted this
+  // listing themselves, wherever they posted it. It is recorded as the
+  // operator's word, not a channel's — the same attestation pattern as
+  // confirm-removed. The write touches ONLY status + publishedAt (the
+  // on-market date the forecasting code reads for days-on-market):
+  // syndicationTargets keep saying exactly what AcreOS itself did
+  // (manual_posting, needs_credentials, …), and `active` keeps its strict
+  // meaning — a provider accepted a posting through AcreOS. No publish run
+  // is required first. Sold/withdrawn listings refuse (off the market);
+  // an already-`active` listing refuses too — downgrading it to `listed`
+  // would understate a provider-proven fact. Re-marking a `listed` listing
+  // is a no-op: the original on-market date stands.
+  api.post("/api/listings/:id/mark-listed", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const id = parseInt(routeParam(req.params.id));
+      if (isNaN(id)) return Errors.badRequest(res, "Invalid listing ID");
+      const listing = await storage.getPropertyListing(org.id, id);
+      if (!listing) return Errors.notFound(res, "Listing");
+      if (listing.status === "sold" || listing.status === "withdrawn") {
+        return Errors.badRequest(res, `This listing is ${listing.status}; a listing that is off the market cannot be marked as listed.`);
+      }
+      if (listing.status === "active") {
+        return Errors.badRequest(res, "This listing is already active — a channel accepted its posting through AcreOS.");
+      }
+      if (listing.status === "listed") return res.json(listing);
+      const updated = await storage.updatePropertyListing(
+        id,
+        { status: "listed", publishedAt: clock.now() },
+        org.id,
+      );
+      res.json(updated);
+    } catch (error: unknown) {
+      logger.error("Mark listing as listed error", error instanceof Error ? error : undefined);
       Errors.internal(res, error);
     }
   });

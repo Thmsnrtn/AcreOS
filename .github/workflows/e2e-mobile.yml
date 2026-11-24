@@ -6,9 +6,56 @@ on:
   pull_request:
     branches: [main]
 
+
+# CI efficiency package (2026-11-11): a superseded head's run cancels itself
+# instead of occupying the account's concurrent-job slots behind the new
+# head. The group is keyed by ref (a PR's ref is stable across its pushes).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
+  # ── Change scope ──────────────────────────────────────────────────────────
+  # Docs-only pull requests skip the heavy job below: a PR that touches
+  # nothing but markdown / docs cannot change what the suite measures, and
+  # the skipped check reports as SKIPPED (a by-design skip in settlement
+  # counting), never as absent. Only pull_request events can be docs-only —
+  # pushes always run everything, and any doubt resolves to a FULL run.
+  changes:
+    name: Change scope
+    runs-on: ubuntu-latest
+    outputs:
+      docs_only: ${{ steps.scope.outputs.docs_only }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Classify the change set
+        id: scope
+        run: |
+          echo "docs_only=false" >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "event=${{ github.event_name }} — full run"
+            exit 0
+          fi
+          files=$(git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}" || true)
+          if [ -z "$files" ]; then
+            echo "no diff available — full run"
+            exit 0
+          fi
+          echo "changed files:"
+          echo "$files"
+          nondocs=$(echo "$files" | grep -vE '\.(md|mdx)$' | grep -vE '^docs/' || true)
+          if [ -z "$nondocs" ]; then
+            echo "docs_only=true" >> "$GITHUB_OUTPUT"
+            echo "docs-only change set — heavy jobs will skip"
+          else
+            echo "non-docs files present — full run"
+          fi
+
   mobile-e2e:
     name: Mobile navigation smoke
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
 
     services:

@@ -176,15 +176,17 @@ describe("the gap prose matches the code (Wave 3 — core-closed truth)", () => 
     expect(personas).toMatch(/DSCR needs the operator's own/);
   });
 
-  it("multifamily is now CORE (Wave 3) — the assumption is CLOSED, not just disclosed", () => {
-    // The move to core is backed by real capability, not a flag flip: measured
-    // operating expenses (this file's route pins), per-building occupancy
-    // (perBuildingOccupancy.test.ts), and the T-12 workspace (t12Workspace.test.ts
-    // + the wiring gate in multifamilyCore.test.ts). The registry entry reads
-    // core, and the flat 40% is now only a disclosed fallback rather than the
-    // headline op-ex.
+  it("multifamily's assumption is CLOSED (Wave 3) and the entry reads registry_only (FD1)", () => {
+    // The Wave 3 move to core was backed by real capability, not a flag flip:
+    // measured operating expenses (this file's route pins), per-building
+    // occupancy (perBuildingOccupancy.test.ts), and the T-12 workspace
+    // (t12Workspace.test.ts + the wiring gate in multifamilyCore.test.ts). The
+    // flat 40% is only a disclosed fallback rather than the headline op-ex.
+    // FD1 (2026-11-12, re-pinned not deleted): the launch promise is 5 core +
+    // 0 beta, so the entry now reads registry_only — the capability prose
+    // above is unchanged and existing books keep it.
     const registry = read("shared/business-types.ts");
     const mf = registry.slice(registry.indexOf("multifamily: {"));
-    expect(mf.slice(0, mf.indexOf("workflowTemplateIds"))).toContain('maturity: "core"');
+    expect(mf.slice(0, mf.indexOf("workflowTemplateIds"))).toContain('maturity: "registry_only"');
   });
 });

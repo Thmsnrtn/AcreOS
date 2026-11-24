@@ -8,6 +8,7 @@
  * Extracted from client/src/pages/deals.tsx as part of P1-28 (URL routes
  * for deal-detail).
  */
+import { RequiredDisclaimer } from "@/components/required-disclaimer";
 import { WireVerificationDialog } from "@/components/wire-verification-dialog";
 import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -34,8 +35,10 @@ import { ListSkeleton } from "@/components/list-skeleton";
 import { ActivityTimeline } from "@/components/activity-timeline";
 import { DealNextAction } from "@/components/deals/DealNextAction";
 import { AssignmentPanel } from "@/components/deals/AssignmentPanel";
+import { SellerFollowUpsPanel } from "@/components/deals/SellerFollowUpsPanel";
 import { CmaPanel } from "@/components/deals/CmaPanel";
 import { AgencyDisclosurePanel } from "@/components/deals/AgencyDisclosurePanel";
+import { DocumentsPanel } from "@/components/documents-panel";
 import { CustomFieldValuesEditor } from "@/components/custom-fields";
 import { DealJourney } from "@/components/ui/deal-journey";
 import { FraudCheckPanel } from "@/components/deals/FraudCheckPanel";
@@ -466,6 +469,7 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
                                 </div>
                               </div>
                               <div className="p-4 space-y-4">
+                                <RequiredDisclaimer type="ai" />
                                 <div className="text-center">
                                   <p className="text-sm text-muted-foreground mb-1">Suggested offer</p>
                                   <p className="text-3xl font-bold tabular-nums text-primary" data-testid="text-suggested-offer">
@@ -566,6 +570,7 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
                         </ResponsiveModalHeader>
                         {negotiationScript && (
                           <div className="space-y-4">
+                            <RequiredDisclaimer type="ai" />
                             <div className="bg-primary/5 dark:bg-primary/10 rounded-card p-4 border border-primary/20">
                               <pre className="text-sm whitespace-pre-wrap font-sans leading-relaxed">{negotiationScript}</pre>
                             </div>
@@ -717,6 +722,19 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
                   only for wholesaler orgs (or when assignment records already
                   exist on this deal) — the panel self-gates. */}
               <AssignmentPanel dealId={deal.id} propertyId={deal.propertyId} />
+
+              {/* Slice 5 (docs/docstore-design-2026-11.md §9) — the customer's
+                  OWN PDFs on this deal (PSA, title commitment, deed). Sits
+                  above the generated packages because `uploaded_documents` is
+                  the mirror of `generated_documents`: what the customer
+                  brought, versus what AcreOS produced. */}
+              <DocumentsPanel objectType="deal" objectId={deal.id} />
+
+              {/* Wholesale §6.2 — seller follow-up drafts built from the org's
+                  own follow-up templates. Prepared, never sent: copy is the
+                  only way text leaves it. Renders only for wholesaler orgs (or
+                  when drafts already exist on this deal) — the panel self-gates. */}
+              <SellerFollowUpsPanel dealId={deal.id} />
               <div className="flex items-center justify-between gap-3">
                 <h3 className="font-medium text-sm md:text-base">Document packages</h3>
                 <Button aria-label="Copy link" asChild size="sm" className="min-h-[44px]" data-testid="button-create-package-from-deal">

@@ -90,9 +90,16 @@ export default function TaxDelinquentPage() {
             Find motivated sellers through property tax delinquency records.
           </p>
         </div>
-        <Button onClick={() => setImporterOpen(true)} className="min-h-11">
-          Import county CSV
-        </Button>
+        <div className="flex gap-2">
+          <Button asChild variant="outline" className="min-h-11">
+            <Link href="/tax/bid-desk" data-testid="tax-bid-desk-link">
+              Work out a max bid
+            </Link>
+          </Button>
+          <Button onClick={() => setImporterOpen(true)} className="min-h-11">
+            Import county CSV
+          </Button>
+        </div>
       </div>
       <TaxDelinquentImporter open={importerOpen} onOpenChange={onImporterOpenChange} />
 

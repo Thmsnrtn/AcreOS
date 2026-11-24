@@ -59,6 +59,17 @@ const NOT_SHIPPING: Array<{ verdict: string; claim: RegExp }> = [
     verdict: "Acquisition Radar — page archived 2026-06-01, /radar redirects to /deals/discover, module dark",
     claim: /acquisition[\s-]*radar/i,
   },
+  {
+    verdict:
+      "Atlas AI deal-finding — CR-033: no 'Atlas AI' surface finds deals; the 1 AM deal-machine registration is dead code",
+    claim: /atlas ai|finds deals (?:while you sleep|overnight)/i,
+  },
+  { verdict: "Sophie — not a product surface (P1-1 / audit Leg 7)", claim: /\bsophie\b/i },
+  { verdict: "White-label — not a shipped, purchasable feature (P1-1 / audit Leg 7)", claim: /white[- ]label/i },
+  {
+    verdict: "Churn save offer (T-GRW-07) — no redemption path exists in code; no percentage-discount or onboarding-call promise",
+    claim: /\d+\s*%\s*off|free 1-on-1|onboarding call|claim your offer/i,
+  },
 ];
 
 describe("growth_automation email copy advertises only what ships", () => {

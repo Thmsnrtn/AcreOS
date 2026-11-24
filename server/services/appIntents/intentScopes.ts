@@ -55,6 +55,7 @@ export const INTENT_META: Record<string, { door: CustomerDoor; scope: Scope | nu
   run_comps_analysis: { door: "map", scope: "deal_read" },
   run_comps: { door: "map", scope: "deal_read" },
   browse_web: { door: "map", scope: "deal_read" },
+  browse_search: { door: "map", scope: "deal_read" },
   propstream_lookup: { door: "map", scope: "deal_read" },
   propstream_comps: { door: "map", scope: "deal_read" },
   // tenant_pii_write, NOT deal_read — corrected 2026-08-19. The SAME operation
@@ -99,6 +100,13 @@ export const INTENT_META: Record<string, { door: CustomerDoor; scope: Scope | nu
 
   // ── Finance (notes / amortization / cashflow / ROI / payments) ───────────
   get_notes: { door: "finance", scope: "financial_read" },
+  // Tax certificates (T7): the REST routes are owner/admin; financial_* is the nearest scope
+  // the ladder has (owner/admin/bookkeeper write; member/accountant read).
+  get_tax_certificates: { door: "finance", scope: "financial_read" },
+  get_tax_certificate: { door: "finance", scope: "financial_read" },
+  get_tax_certificate_clock: { door: "finance", scope: "financial_read" },
+  get_tax_certificate_ledger: { door: "finance", scope: "financial_read" },
+  record_tax_ledger_entry: { door: "finance", scope: "financial_write" },
   calculate_amortization: { door: "finance", scope: "financial_read" },
   get_cashflow_summary: { door: "finance", scope: "financial_read" },
   calculate_roi: { door: "finance", scope: "financial_read" },

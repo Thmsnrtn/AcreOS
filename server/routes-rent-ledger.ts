@@ -14,6 +14,9 @@
  *   POST  /api/rent-charges/generate-scheduled  — post it (operator-confirmed)
  *   GET   /api/leases/:id/ledger                — full ledger (charges + payments)
  *   POST  /api/leases/:id/payments              — record payment (multi-charge)
+ *   POST  /api/leases/:id/rent-checkout         — card checkout on the landlord's
+ *                                                 OWN Stripe account (P3-3)
+ *   POST  /api/leases/:id/rent-checkout/verify  — post a completed checkout
  *   GET   /api/rent-charges/:id/late-fee-proposal — propose, never charge
  *   GET   /api/rent/late-fee-proposals          — org-wide proposals
  *   POST  /api/rent-charges/:id/apply-late-fee  — charge a CONFIRMED proposal
@@ -29,18 +32,23 @@
  * ever removed, remove its line in the same edit: a header that advertises
  * endpoints which do not exist is the dishonesty this codebase keeps deleting.
  *
- * MONEY POSTURE — this file is a LEDGER, not a payment rail. Nothing here
- * touches a payment processor and nothing here moves funds; a rent_payment row
- * records money the landlord received on their own rails. That is deliberate
- * and permanent (founder ruling "be the rail, not the provider", 2026-07-29):
- * customer money never moves on AcreOS's account, so AcreOS does not collect
- * rent. Every surface must read as "record what you received", never "we'll
- * collect it".
+ * MONEY POSTURE — this file is first a LEDGER. The record-payment route
+ * touches no payment processor and moves no funds; its rent_payment rows
+ * record money the landlord received on their own rails. The one exception
+ * is P3-3 (Tom's decision, 2026-11-16): the rent-checkout routes create a
+ * card checkout that is a DIRECT charge on the landlord's OWN connected
+ * Stripe account — scoped through prepareCustomerMoneyCall, which refuses
+ * any platform-take key — so AcreOS still never holds rent, takes no cut,
+ * and is never merchant of record (founder ruling "be the rail, not the
+ * provider", 2026-07-29, unchanged). An org with no connected processor is
+ * refused with a reason; there is no platform fallback. Copy must stay
+ * honest about the split: "record what you received" for hand-received
+ * money, "collected by <landlord>" for the checkout rail.
  */
 
 import type { Express, Response } from "express";
 import { z } from "zod";
-import { and, eq, asc, desc, sql, gt, gte, lte, inArray, isNull, isNotNull } from "drizzle-orm";
+import { and, eq, ne, asc, desc, sql, gt, gte, lte, inArray, isNull, isNotNull } from "drizzle-orm";
 import { db } from "./db";
 import {
   rentalLeases,
@@ -93,6 +101,17 @@ import {
   previewScheduledCharges,
   generateScheduledCharges,
 } from "./services/rental/rentChargeGenerator";
+import {
+  postRentCheckoutPayment,
+  loadOpenRentCharges,
+  totalOutstandingCents,
+} from "./services/rental/rentCollection";
+import {
+  resolveOrgCardProcessor,
+  prepareCustomerMoneyCall,
+  customerMoneyReadOptions,
+  buildRentCardCheckoutParams,
+} from "./services/customerMoneyRouting";
 import { startDepositClock, resolveMoveOutDate } from "./services/rental/depositClock";
 import {
   buildDispositionLetter,
@@ -108,6 +127,8 @@ import {
   computeCamReconciliation,
   renderCamStatementMarkdown,
   monthsInPeriod,
+  resolveCamEstimatedBilled,
+  findCamDoubleRecovery,
 } from "@shared/rental/camReconciliation";
 import { computePercentageRent } from "@shared/rental/percentageRent";
 import { sumEffectiveBaseRentOverPeriod } from "@shared/rental/rentEscalation";
@@ -130,13 +151,13 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { Errors, sendError } from "./utils/errors";
 import { logger } from "./utils/logger";
-import { emitPaymentEvent } from "./services/workflow-engine";
+
 // Audit Wave 1 (buy_and_hold beta→core): the landlord rent-receipt template never
 // ran because nothing emitted rent.received. This fires it, SECOND, right after
 // the pre-existing payment.received emit — both for one payment, on purpose (the
 // generic money lane vs. the landlord receipt lane). Fire-and-forget — see
 // services/rentalEvents.ts.
-import { emitRentReceived } from "./services/rentalEvents";
+import { emitRentReceived, emitRentPaymentReceived } from "./services/rentalEvents";
 // STR Wave A: a reservation's status→"checked_out" transition fires
 // reservation.checkout on the PATCH /api/reservations/:id/status seam below.
 // Fire-and-forget — see services/strEvents.ts.
@@ -197,6 +218,16 @@ const scheduledPreviewSchema = z.object({
 });
 
 const generateScheduledSchema = scheduledPreviewSchema;
+
+// P3-3 rent collection: create a card checkout for what the lease still owes.
+// Amount omitted ⇒ the full derived outstanding across every open charge.
+const rentCheckoutSchema = z.object({
+  amountCents: z.number().int().positive().optional(),
+});
+
+const rentCheckoutVerifySchema = z.object({
+  sessionId: z.string().min(1),
+});
 
 /**
  * A late fee is a PROPOSAL until an operator confirms the exact figure. When
@@ -269,25 +300,21 @@ const camPoolSchema = z.object({
 });
 
 /**
- * A CAM reconciliation the operator RECORDS by hand (stage 1). The engine-computed
- * snapshot (poolActual, recoverableShare, delta, statement) is filled by the
- * later reconciliation engine — here, only operator-supplied figures are stored,
- * and provenance is stamped `generatedBy: "operator_entered"` so nothing masquerades
- * as an engine statement. Omitted money fields stay null (honest absence, not zero).
+ * Generate a CAM reconciliation (the engine path — the only writer of
+ * cam_reconciliations). `estimatedBilledCents` is the landlord's OWN stated total
+ * of the CAM estimates billed over the period; it is used only when the ledger
+ * carries no CAM charges for the period, and with neither the engine refuses.
+ *
+ * DELETED (W2-COMMERCIAL, 2026-11-06): the Stage-1 `POST
+ * /api/cam-pools/:poolId/reconciliations` writer and its schema. It stored
+ * typed-in figures — a pool actual, a share, a "balance due" — with no relation
+ * to the expense ledger and no check that the delta was the share minus the
+ * billed amount, under the same (pool, lease) row the engine writes. It was a
+ * bridge until the engine existed; the engine exists, so it went.
  */
-const camReconciliationSchema = z.object({
+const camGenerateSchema = z.object({
   leaseId: z.string().min(1),
-  periodStart: isoDate.nullable().optional(),
-  periodEnd: isoDate.nullable().optional(),
-  proRataBpsUsed: bpField.nullable().optional(),
-  proRataBasis: z.enum(["lease_fixed", "sqft"]).nullable().optional(),
-  leasedSqftUsed: z.number().int().min(0).nullable().optional(),
-  totalRentableSqftUsed: z.number().int().min(0).nullable().optional(),
-  poolActualCents: centsField.nullable().optional(),
-  recoverableShareCents: centsField.nullable().optional(),
   estimatedBilledCents: centsField.nullable().optional(),
-  deltaCents: z.number().int().nullable().optional(),
-  notes: z.string().max(2000).nullable().optional(),
 });
 
 /** The tenant's reported gross sales for a period — the percentage-rent input. */
@@ -469,41 +496,16 @@ const turnoverGenerateSchema = z.object({
 });
 
 // ----------------------------------------------------------------------------
-// Workflow payment events (Wave B — "wire the engine")
+// Workflow payment events (Wave B — "wire the engine") live in
+// services/rentalEvents.ts — the landlord lifecycle's ONE emit seam — since
+// P3-3 gave the ledger a second posting path (rent checkout on the landlord's
+// own Stripe account, services/rental/rentCollection.ts) and both paths must
+// emit the identical `payment.received` from one implementation. This file
+// imports `emitRentPaymentReceived` from there and re-exports the family
+// below for its existing importers.
 // ----------------------------------------------------------------------------
-// POST /api/leases/:id/payments is the ONLY writer of the rent_payments
-// ledger (the single `insert(rentPayments)` in the repo), so it is the one
-// emit site for rent — exactly one `payment.received` per posted row.
-//
-// Money-path discipline: the insert + charge update run inside a db
-// transaction; the emit runs AFTER that transaction has committed and is
-// wrapped so a workflow failure can never fail, roll back, or double-post
-// rent. Never throws back into the request.
-//
-// `entityId` is 0 because rent_payments is uuid-keyed while
-// emitPaymentEvent's entityId is numeric; the real key rides in
-// `data.paymentId`.
-const UUID_KEYED_PAYMENT_ENTITY_ID = 0;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-
-/**
- * Whole days between a charge's due date and the date the payment was
- * received. Both are stored `date` columns (YYYY-MM-DD). Returns null when
- * the payment applied to no open charge (nothing to be late against) or a
- * date is unparseable — the event carries `null`, never a guessed number.
- */
-export function daysLateForRentPayment(
-  dueDate: string | null | undefined,
-  receivedAt: string | null | undefined,
-): number | null {
-  if (!dueDate || !receivedAt) return null;
-  const due = new Date(`${String(dueDate).slice(0, 10)}T00:00:00.000Z`).getTime();
-  const paid = new Date(`${String(receivedAt).slice(0, 10)}T00:00:00.000Z`).getTime();
-  if (Number.isNaN(due) || Number.isNaN(paid)) return null;
-  const diffDays = Math.floor((paid - due) / DAY_MS);
-  return diffDays > 0 ? diffDays : 0;
-}
 
 /** Whole days a charge due on `dueDate` is overdue as of `asOf`. Never negative. */
 export function daysOverdue(dueDate: string | null | undefined, asOf: Date): number | null {
@@ -515,84 +517,8 @@ export function daysOverdue(dueDate: string | null | undefined, asOf: Date): num
   return diff > 0 ? diff : 0;
 }
 
-/** Everything the emit needs, read from rows that are already committed. */
-export interface PostedRentPayment {
-  organizationId: number;
-  leaseId: string;
-  paymentId: string;
-  rentChargeId: string | null;
-  amountCents: number;
-  isPartial: boolean;
-  payorType: string;
-  method: string | null;
-  receivedAt: string;
-  dueDate: string | null;
-  chargeAmountCents: number | null;
-  /** rent_charges.balance_cents AFTER this payment applied. */
-  chargeBalanceAfterCents: number | null;
-  legalPosture: string | null;
-  /** Cents that landed on a charge. Omitted ⇒ reported as null, never guessed. */
-  allocatedCents?: number | null;
-  /** Cents held as an explicit credit because no open charge was left. */
-  unappliedCents?: number | null;
-  /** How many charges this one payment cured or reduced. */
-  allocationLineCount?: number | null;
-  /** Plain-language "where did my money go" line. */
-  allocationExplanation?: string | null;
-}
-
-/** The `data` bag workflow conditions match on / templates interpolate. */
-export function buildRentPaymentEventData(p: PostedRentPayment): Record<string, any> {
-  return {
-    source: "rent_ledger",
-    // Identity
-    leaseId: p.leaseId,
-    paymentId: p.paymentId,
-    rentChargeId: p.rentChargeId,
-    // Money
-    amountCents: p.amountCents,
-    amount: p.amountCents / 100,
-    chargeAmountCents: p.chargeAmountCents,
-    chargeBalanceAfterCents: p.chargeBalanceAfterCents,
-    // Shape
-    isPartial: p.isPartial,
-    isFullPayment: p.chargeBalanceAfterCents === null ? null : p.chargeBalanceAfterCents === 0,
-    payorType: p.payorType,
-    paymentMethod: p.method,
-    paymentDate: p.receivedAt,
-    dueDate: p.dueDate,
-    daysLate: daysLateForRentPayment(p.dueDate, p.receivedAt),
-    legalPosture: p.legalPosture,
-    // Allocation shape — a payment can now cure several months at once.
-    allocatedCents: p.allocatedCents ?? null,
-    unappliedCents: p.unappliedCents ?? null,
-    chargesTouched: p.allocationLineCount ?? null,
-    allocationExplanation: p.allocationExplanation ?? null,
-  };
-}
-
-/**
- * Fire-and-forget workflow emit for rent that is ALREADY committed to the
- * ledger. Never throws.
- */
-export function emitRentPaymentReceived(p: PostedRentPayment): void {
-  try {
-    emitPaymentEvent(
-      "payment.received",
-      p.organizationId,
-      UUID_KEYED_PAYMENT_ENTITY_ID,
-      buildRentPaymentEventData(p),
-    );
-  } catch (err) {
-    // Swallowed on purpose — the rent is banked; a workflow fault must not
-    // change the response or the ledger.
-    logger.error(
-      "[BH-3] rent payment workflow emit failed (payment already posted)",
-      err instanceof Error ? err : undefined,
-      { organizationId: p.organizationId, leaseId: p.leaseId, paymentId: p.paymentId },
-    );
-  }
-}
+export { buildRentPaymentEventData, daysLateForRentPayment, emitRentPaymentReceived } from "./services/rentalEvents";
+export type { PostedRentPayment } from "./services/rentalEvents";
 
 // ----------------------------------------------------------------------------
 // Late fees — a PROPOSAL, computed from the late_fee_rules table seeded in BH-1
@@ -1317,6 +1243,135 @@ export function registerRentLedgerRoutes(app: Express): void {
     }
   });
 
+  // ── P3-3: collect rent by card, on the landlord's OWN Stripe account ─────
+  //
+  // The operator creates a hosted Checkout for what the lease still owes and
+  // shares its URL with the tenant (on the operator's own identity — AcreOS
+  // does not send it). The charge is a DIRECT charge on the landlord's
+  // connected account: the landlord is merchant of record, the funds never
+  // touch AcreOS, and no fee field exists (prepareCustomerMoneyCall asserts
+  // it). An org with no usable connected processor is refused with the
+  // routing module's typed reason — never a platform fallback.
+  app.post("/api/leases/:id/rent-checkout", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const parsed = rentCheckoutSchema.safeParse(req.body ?? {});
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+
+      const [lease] = await db.select().from(rentalLeases)
+        .where(and(eq(rentalLeases.id, routeParam(req.params.id)), eq(rentalLeases.organizationId, orgId)));
+      if (!lease) return Errors.notFound(res, "Lease");
+      if (lease.status !== "active" && lease.status !== "pending_signature") {
+        return Errors.badRequest(res, "This lease is not in a state that collects rent.", { reason: "lease_not_collectable" });
+      }
+
+      const openCharges = await loadOpenRentCharges(orgId, lease.id);
+      const outstandingCents = totalOutstandingCents(openCharges);
+      if (outstandingCents <= 0) {
+        return Errors.badRequest(res, "Nothing is owed on this lease — there is no rent to collect.", { reason: "nothing_owed" });
+      }
+      const amountCents = parsed.data.amountCents ?? outstandingCents;
+      if (amountCents > outstandingCents) {
+        return Errors.badRequest(res, "That amount is more than the lease currently owes.", {
+          reason: "amount_exceeds_outstanding",
+          outstandingCents,
+        });
+      }
+
+      // WHOSE ACCOUNT THIS LANDS IN — the landlord's own, or nobody's.
+      const routing = await resolveOrgCardProcessor(orgId);
+      if (!routing.ok) {
+        logger.warn("[P3-3] rent checkout refused — landlord has no usable card processor", {
+          metadata: { leaseId: lease.id, organizationId: orgId, reason: routing.reason },
+        });
+        return Errors.badRequest(res, routing.operatorMessage, { reason: routing.reason });
+      }
+
+      const org = getOrganization(req);
+      const [primaryTenantRow] = await db
+        .select({ firstName: tenants.firstName, lastName: tenants.lastName, companyName: tenants.companyName, isEntity: tenants.isEntity, email: tenants.email })
+        .from(leaseTenants)
+        .innerJoin(tenants, eq(leaseTenants.tenantId, tenants.id))
+        .where(and(eq(leaseTenants.leaseId, lease.id), eq(leaseTenants.organizationId, orgId)))
+        .orderBy(desc(leaseTenants.isPrimary))
+        .limit(1);
+      const tenantName = primaryTenantRow ? tenantDisplayName(primaryTenantRow) ?? "Tenant" : "Tenant";
+
+      const { getUncachableStripeClient } = await import("./stripeClient");
+      const stripe = await getUncachableStripeClient();
+      const baseUrl = `${req.protocol}://${req.get("host")}`;
+      const { params, options } = prepareCustomerMoneyCall(
+        "rent.card.checkout.session",
+        buildRentCardCheckoutParams({
+          leaseId: lease.id,
+          organizationId: orgId,
+          landlordName: org?.name || "your landlord",
+          tenantName,
+          tenantEmail: primaryTenantRow?.email ?? undefined,
+          amountCents,
+          baseUrl,
+        }),
+        routing.processor,
+      );
+      const session = await stripe.checkout.sessions.create(params, options);
+
+      logger.info("[P3-3] rent checkout created", {
+        metadata: { organizationId: orgId, leaseId: lease.id, sessionId: session.id, amountCents, outstandingCents },
+      });
+      return res.json({ url: session.url, sessionId: session.id, collectedBy: org?.name || null, amountCents, outstandingCents });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // Post a completed rent checkout — the browser-return half of the ONE
+  // posting rule (the Connect webhook is the other half; whichever arrives
+  // second is told `already_recorded`). The session is retrieved SCOPED to
+  // the landlord's account: an unscoped retrieve looks in AcreOS's account,
+  // finds nothing, and would tell a tenant who really paid that they hadn't.
+  app.post("/api/leases/:id/rent-checkout/verify", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const parsed = rentCheckoutVerifySchema.safeParse(req.body ?? {});
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+
+      const [lease] = await db.select().from(rentalLeases)
+        .where(and(eq(rentalLeases.id, routeParam(req.params.id)), eq(rentalLeases.organizationId, orgId)));
+      if (!lease) return Errors.notFound(res, "Lease");
+
+      const routing = await resolveOrgCardProcessor(orgId);
+      if (!routing.ok) {
+        return Errors.badRequest(res, routing.operatorMessage, { reason: routing.reason });
+      }
+
+      const { getUncachableStripeClient } = await import("./stripeClient");
+      const stripe = await getUncachableStripeClient();
+      const session = await stripe.checkout.sessions.retrieve(
+        parsed.data.sessionId,
+        undefined,
+        customerMoneyReadOptions(routing.processor, "rent.card.checkout.retrieve"),
+      );
+
+      const result = await postRentCheckoutPayment({
+        organizationId: orgId,
+        leaseId: lease.id,
+        stripeSession: session,
+        source: "operator_verify",
+      });
+      if (result.outcome === "refused") {
+        return Errors.badRequest(res, "That checkout session is not a completed rent payment for this lease.", { reason: result.reason });
+      }
+      return res.json({
+        outcome: result.outcome,
+        payment: result.payment,
+        amountCents: result.outcome === "posted" ? result.amountCents : result.payment.amountCents,
+        isPartial: result.outcome === "posted" ? result.isPartial : result.payment.isPartial,
+      });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
   // ── Late fees: propose, then charge only a CONFIRMED proposal ─────────────
   //
   // Registered BEFORE the ":id" family below so the literal `scheduled-preview`
@@ -1934,6 +1989,16 @@ export function registerRentLedgerRoutes(app: Express): void {
   // provider"): none of these moves, holds or charges a cent — each *_cents is a
   // recorded fact, and the actual rent/CAM charges land on the existing
   // rent_charges ledger, on the operator's own account, elsewhere.
+  //
+  // REACHABILITY (W2-COMMERCIAL, 2026-11-06): until this date no screen called
+  // any handler in this block. The Commercial tab on /leases
+  // (client/src/components/rentals/commercial-panel.tsx, commercial orgs only)
+  // now calls the commercial-terms writer, the CAM pools, the reconciliation
+  // generate + list, the rent schedule and per-sqft. The sales-report /
+  // percentage-rent and contractual late-fee handlers still have no screen —
+  // held for a product decision (posting a computed commercial charge to the
+  // ledger), not deleted. The Stage-1 operator-entered reconciliation writer was
+  // deleted (see camGenerateSchema).
   // ==========================================================================
 
   // ── A lease's commercial terms (writer for the additive lease columns) ─────
@@ -2033,88 +2098,18 @@ export function registerRentLedgerRoutes(app: Express): void {
   });
 
   // ── CAM reconciliations — the per-lease true-up statement ──────────────────
-  // Stage-1 writer records an operator-entered reconciliation; the engine-
-  // computed snapshot columns (byCategory, coverage, statement) stay null until
-  // the reconciliation engine lands. Provenance is stamped so nothing here reads
-  // as an engine statement. Re-recording the same (pool, lease) UPSERTs.
-  app.post("/api/cam-pools/:poolId/reconciliations", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const orgId = getOrganizationId(req);
-      const parsed = camReconciliationSchema.safeParse(req.body ?? {});
-      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
-
-      const [pool] = await db.select({ id: camExpensePools.id }).from(camExpensePools)
-        .where(and(
-          eq(camExpensePools.id, routeParam(req.params.poolId)),
-          eq(camExpensePools.organizationId, orgId),
-        ));
-      if (!pool) return Errors.notFound(res, "CAM pool");
-
-      const [lease] = await db.select({ id: rentalLeases.id }).from(rentalLeases)
-        .where(and(eq(rentalLeases.id, parsed.data.leaseId), eq(rentalLeases.organizationId, orgId)));
-      if (!lease) return Errors.notFound(res, "Lease");
-
-      const [saved] = await db.insert(camReconciliations).values({
-        organizationId: orgId,
-        poolId: pool.id,
-        leaseId: lease.id,
-        periodStart: parsed.data.periodStart ?? null,
-        periodEnd: parsed.data.periodEnd ?? null,
-        proRataBpsUsed: parsed.data.proRataBpsUsed ?? null,
-        proRataBasis: parsed.data.proRataBasis ?? null,
-        leasedSqftUsed: parsed.data.leasedSqftUsed ?? null,
-        totalRentableSqftUsed: parsed.data.totalRentableSqftUsed ?? null,
-        poolActualCents: parsed.data.poolActualCents ?? null,
-        recoverableShareCents: parsed.data.recoverableShareCents ?? null,
-        estimatedBilledCents: parsed.data.estimatedBilledCents ?? null,
-        estimatedBilledBasis: parsed.data.estimatedBilledCents != null ? "operator_entered" : null,
-        deltaCents: parsed.data.deltaCents ?? null,
-        // Engine-only columns — left null until the reconciliation engine fills them.
-        byCategoryCents: null,
-        coverageMonths: null,
-        coverageComplete: null,
-        statementMarkdown: null,
-        statementVersion: null,
-        generatedAt: clock.now(),
-        generatedBy: "operator_entered",
-      })
-        .onConflictDoUpdate({
-          target: [camReconciliations.poolId, camReconciliations.leaseId],
-          set: {
-            periodStart: parsed.data.periodStart ?? null,
-            periodEnd: parsed.data.periodEnd ?? null,
-            proRataBpsUsed: parsed.data.proRataBpsUsed ?? null,
-            proRataBasis: parsed.data.proRataBasis ?? null,
-            leasedSqftUsed: parsed.data.leasedSqftUsed ?? null,
-            totalRentableSqftUsed: parsed.data.totalRentableSqftUsed ?? null,
-            poolActualCents: parsed.data.poolActualCents ?? null,
-            recoverableShareCents: parsed.data.recoverableShareCents ?? null,
-            estimatedBilledCents: parsed.data.estimatedBilledCents ?? null,
-            estimatedBilledBasis: parsed.data.estimatedBilledCents != null ? "operator_entered" : null,
-            deltaCents: parsed.data.deltaCents ?? null,
-            generatedAt: clock.now(),
-            generatedBy: "operator_entered",
-          },
-        })
-        .returning();
-
-      logger.info("[W4] CAM reconciliation recorded", {
-        orgId, poolId: pool.id, leaseId: lease.id, reconciliationId: saved?.id,
-      });
-      return res.json({ reconciliation: saved });
-    } catch (err) {
-      return Errors.internal(res, err);
-    }
-  });
-
   // Engine-generated reconciliation: computes the frozen true-up from the pool's
   // recoverable property_expenses × the lease's pro-rata and FREEZES it. Refuses
-  // (400, writes nothing) when the pro-rata share cannot be derived — a CAM bill
-  // on a fabricated share is never produced. Provenance: generatedBy "engine".
+  // (400, writes nothing) whenever an input the bill depends on is missing — the
+  // pro-rata share, the lease type, a term covering the period, a stop that fits
+  // the period, or a RECORD of what was billed (ledger CAM charges, else the
+  // landlord's stated total) — and when the lease is already reconciled for the
+  // same expenses in an overlapping pool. Provenance: generatedBy "engine".
+  // (The Stage-1 operator-entered writer was deleted — see camGenerateSchema.)
   app.post("/api/cam-pools/:poolId/reconciliations/generate", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const orgId = getOrganizationId(req);
-      const parsed = z.object({ leaseId: z.string().min(1) }).safeParse(req.body ?? {});
+      const parsed = camGenerateSchema.safeParse(req.body ?? {});
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
       const [pool] = await db.select().from(camExpensePools)
@@ -2149,9 +2144,10 @@ export function registerRentLedgerRoutes(app: Express): void {
           lte(propertyExpenses.incurredOn, pool.periodEnd),
         ));
 
-      // What the tenant was actually billed in CAM estimates over the period —
-      // the real charges first, the lease's monthly estimate only as a fallback,
-      // and an honest zero (basis "none") when neither exists.
+      // What the tenant was billed in CAM estimates over the period — a RECORD
+      // only: the ledger's CAM charges, else the landlord's own stated total, else
+      // nothing (the engine refuses). Never an assumed $0, never the lease's
+      // monthly estimate × the pool's months (resolveCamEstimatedBilled).
       const camCharges = await db
         .select({ amountCents: rentCharges.amountCents })
         .from(rentCharges)
@@ -2162,18 +2158,40 @@ export function registerRentLedgerRoutes(app: Express): void {
           gte(rentCharges.chargedForMonth, pool.periodStart),
           lte(rentCharges.chargedForMonth, pool.periodEnd),
         ));
-      const periodMonths = monthsInPeriod(pool.periodStart, pool.periodEnd);
-      let estimatedBilledCents = camCharges.reduce((s, c) => s + Number(c.amountCents), 0);
-      let estimatedBilledBasis = "from_charges";
-      if (camCharges.length === 0) {
-        if (lease.camEstimateMonthlyCents != null && periodMonths > 0) {
-          estimatedBilledCents = lease.camEstimateMonthlyCents * periodMonths;
-          estimatedBilledBasis = "lease_estimate";
-        } else {
-          estimatedBilledCents = 0;
-          estimatedBilledBasis = "none";
-        }
-      }
+      const billed = resolveCamEstimatedBilled({
+        ledgerCamChargeCents: camCharges.map((c) => Number(c.amountCents)),
+        statedCents: parsed.data.estimatedBilledCents ?? null,
+      });
+      if (billed.conflict) return Errors.badRequest(res, billed.conflict);
+
+      // One expense recovers once: the other pools on this property that this
+      // lease already has a frozen reconciliation in.
+      const reconciledElsewhere = await db
+        .select({
+          poolKind: camExpensePools.poolKind,
+          periodStart: camExpensePools.periodStart,
+          periodEnd: camExpensePools.periodEnd,
+          recoverableCategories: camExpensePools.recoverableCategories,
+        })
+        .from(camReconciliations)
+        .innerJoin(camExpensePools, eq(camExpensePools.id, camReconciliations.poolId))
+        .where(and(
+          eq(camReconciliations.organizationId, orgId),
+          eq(camReconciliations.leaseId, lease.id),
+          eq(camExpensePools.organizationId, orgId),
+          eq(camExpensePools.propertyId, pool.propertyId),
+          ne(camExpensePools.id, pool.id),
+        ));
+      const doubleRecovery = findCamDoubleRecovery(
+        {
+          poolKind: pool.poolKind,
+          periodStart: pool.periodStart,
+          periodEnd: pool.periodEnd,
+          recoverableCategories: pool.recoverableCategories,
+        },
+        reconciledElsewhere,
+      );
+      if (doubleRecovery) return Errors.badRequest(res, doubleRecovery);
 
       const result = computeCamReconciliation({
         pool: {
@@ -2189,6 +2207,8 @@ export function registerRentLedgerRoutes(app: Express): void {
           rentableSqft: lease.rentableSqft,
           camBaseYearStopCents: lease.camBaseYearStopCents,
           leaseType: lease.leaseType,
+          termStart: String(lease.startDate),
+          termEnd: lease.endDate ? String(lease.endDate) : null,
         },
         rows: expenseRows.map((r) => ({
           category: r.category,
@@ -2196,13 +2216,14 @@ export function registerRentLedgerRoutes(app: Express): void {
           isOperating: r.isOperating,
           incurredOn: r.incurredOn,
         })),
-        estimatedBilledCents,
+        estimatedBilledCents: billed.cents,
       });
 
       // Honest refusal — write nothing, say exactly why.
       if (result.refusedReason) {
         return Errors.badRequest(res, result.refusedReason);
       }
+      const estimatedBilledBasis = billed.basis;
 
       const statementMarkdown = renderCamStatementMarkdown(result, {
         periodStart: pool.periodStart,
@@ -2597,7 +2618,9 @@ export function registerRentLedgerRoutes(app: Express): void {
   // ── Per-square-foot metrics — commercial rent quoted the commercial way ────
   // Base rent $/sqft/yr and occupancy cost $/sqft/yr (base + CAM estimate),
   // derived by the pure engine, which returns nulls (unavailable) rather than a
-  // fabricated figure when the lease has no recorded rentable area.
+  // fabricated figure when the lease has no recorded rentable area. The base is
+  // the rent IN EFFECT this month — the lease's escalation steps applied by the
+  // canonical engine — not the lease's starting rent.
   app.get("/api/leases/:id/per-sqft", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const orgId = getOrganizationId(req);
@@ -2605,10 +2628,40 @@ export function registerRentLedgerRoutes(app: Express): void {
         .where(and(eq(rentalLeases.id, routeParam(req.params.id)), eq(rentalLeases.organizationId, orgId)));
       if (!lease) return Errors.notFound(res, "Lease");
 
+      const stepRows = await db
+        .select({
+          effectiveMonth: leaseRentSchedule.effectiveMonth,
+          stepType: leaseRentSchedule.stepType,
+          amountCents: leaseRentSchedule.amountCents,
+          pctBps: leaseRentSchedule.pctBps,
+          cpiIndexBase: leaseRentSchedule.cpiIndexBase,
+          cpiIndexCurrent: leaseRentSchedule.cpiIndexCurrent,
+          floorPctBps: leaseRentSchedule.floorPctBps,
+          ceilingPctBps: leaseRentSchedule.ceilingPctBps,
+        })
+        .from(leaseRentSchedule)
+        .where(and(
+          eq(leaseRentSchedule.organizationId, orgId),
+          eq(leaseRentSchedule.leaseId, lease.id),
+        ));
+
       const metrics = computePerSqftMetrics({
         monthlyRentCents: lease.monthlyRentCents,
+        scheduleSteps: stepRows.map((r) => ({
+          effectiveMonth: String(r.effectiveMonth).slice(0, 10),
+          stepType: r.stepType,
+          amountCents: r.amountCents ?? null,
+          pctBps: r.pctBps ?? null,
+          // numeric columns arrive as strings — normalise for the engine.
+          cpiIndexBase: r.cpiIndexBase != null ? Number(r.cpiIndexBase) : null,
+          cpiIndexCurrent: r.cpiIndexCurrent != null ? Number(r.cpiIndexCurrent) : null,
+          floorPctBps: r.floorPctBps ?? null,
+          ceilingPctBps: r.ceilingPctBps ?? null,
+        })),
+        asOfMonth: clock.now().toISOString().slice(0, 7),
         rentableSqft: lease.rentableSqft,
         camEstimateMonthlyCents: lease.camEstimateMonthlyCents,
+        leaseType: lease.leaseType,
       });
       return res.json({ perSqft: metrics });
     } catch (err) {

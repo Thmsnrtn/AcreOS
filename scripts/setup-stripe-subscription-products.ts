@@ -90,8 +90,8 @@ const SPECS: ProductSpec[] = [
     name: "AcreOS — Pro Seat",
     description: "Additional team-member seat on the Pro plan.",
     metadata: { type: "seat_addon", tier: "pro" },
-    monthlyPriceCents: 2000,   // $20/seat/mo
-    yearlyPriceCents: 20000,   // $200/seat/yr
+    monthlyPriceCents: TIER_PRICES_CENTS.pro.priceMonthlyPerSeatCents!,   // $20/seat/mo
+    yearlyPriceCents: TIER_PRICES_CENTS.pro.priceMonthlyPerSeatCents! * 10,   // $200/seat/yr
     envMonthly: "STRIPE_PRICE_OPERATOR_SEAT_MONTHLY",
     envYearly: "STRIPE_PRICE_OPERATOR_SEAT_YEARLY",
   },
@@ -100,8 +100,8 @@ const SPECS: ProductSpec[] = [
     name: "AcreOS — Scale Seat",
     description: "Additional team-member seat on the Scale plan.",
     metadata: { type: "seat_addon", tier: "scale" },
-    monthlyPriceCents: 2500,   // $25/seat/mo (was $40 — founder decision 2026-07-08)
-    yearlyPriceCents: 25000,   // $250/seat/yr
+    monthlyPriceCents: TIER_PRICES_CENTS.scale.priceMonthlyPerSeatCents!,   // $25/seat/mo (was $40 — founder decision 2026-07-08)
+    yearlyPriceCents: TIER_PRICES_CENTS.scale.priceMonthlyPerSeatCents! * 10,   // $250/seat/yr
     envMonthly: "STRIPE_PRICE_EMPIRE_SEAT_MONTHLY",
     envYearly: "STRIPE_PRICE_EMPIRE_SEAT_YEARLY",
   },

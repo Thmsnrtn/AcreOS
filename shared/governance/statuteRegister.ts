@@ -257,12 +257,18 @@ export const STATUTE_REGISTER: readonly StatuteEntry[] = [
     codeSites: [
       "server/storage/noteRepo.ts",
       "server/routes-finance.ts",
+      "server/services/notes/originationGate.ts",
       "shared/schema.ts",
     ],
     enforcement: {
       kind: "unit-test",
-      refs: ["tests/unit/abilityToRepayGate.test.ts"],
-      note: "Gate refusal, evidence record, all 8 caller paths into note creation/activation, and the 0099 DB CHECK constraint are pinned by tests/unit/abilityToRepayGate.test.ts (2026-08-01). Residual: three payment-side status flips (noteRepo.createPayment, routes-borrower's Stripe transaction, achAutopay's settle path) bypass the app-layer gate via direct updates and rely on the DB CHECK alone — which the same audit found missing from scripts/migrate.mjs and which is now mirrored there.",
+      refs: [
+        "tests/unit/abilityToRepayGate.test.ts",
+        "tests/unit/sellerFinanceGate.test.ts",
+        "tests/unit/sellerFinanceCounter.realdb.test.ts",
+        "tests/unit/statusTransitionCensus.test.ts",
+      ],
+      note: "Gate refusal, evidence record, all 8 caller paths into note creation/activation, and the 0099 DB CHECK constraint are pinned by tests/unit/abilityToRepayGate.test.ts (2026-08-01). The bypass this note used to record is CLOSED (Notes V2 Leg 3, 2026-11-09): the gate now lives in noteRepo.createNote/updateNote and refuses every activation without a basis — a completed determination, a recorded exclusion, or a stored-'legacy' row — on every path, including a bare completed-flag with no payload. The three payment-side status flips the 2026-08-01 audit found (noteRepo.createPayment, the borrower-portal Stripe transaction, achAutopay's settle path) now route through one pure rule (shared/notes/servicedStatus.ts nextServicedStatus: a payment never consummates a pending note and never un-defaults a defaulted one), and tests/unit/statusTransitionCensus.test.ts enumerates every .update(notes) site in server/** and fails on any unclassified status writer — the only other status writes are the paid_off-only ACH-return/Stripe-refund reversals, which cannot activate a pending note. Leg 3 enforcement is additionally pinned by tests/unit/sellerFinanceGate.test.ts, tests/unit/sellerFinanceCounter.realdb.test.ts (real-DB gate refusals and cures), and the 0307 append-only origination records.",
     },
     reviewStatus: "UNREVIEWED",
     failureMode:
@@ -275,13 +281,21 @@ export const STATUTE_REGISTER: readonly StatuteEntry[] = [
     what: "A seller who finances a limited number of properties per 12-month period is excluded from the definition of loan originator (the 3-property and 1-property natural-person exclusions), and therefore from licensing obligations that otherwise attach.",
     codeSites: [
       "server/services/doddFrankChecker.ts",
+      "shared/regulatory/doddFrankElements.ts",
+      "shared/notes/sellerFinanceGate.ts",
+      "server/services/notes/sellerFinanceCounter.ts",
+      "server/services/notes/originationGate.ts",
       "shared/regulatory/rmloAdvisor.ts",
       "server/services/legalDisclaimers.ts",
     ],
     enforcement: {
       kind: "unit-test",
-      refs: ["tests/unit/doddFrankChecker.test.ts"],
-      note: "Output carries DISCLAIMER_WORKSHEET ('guidance, not legal advice') on every artifact.",
+      refs: [
+        "tests/unit/doddFrankChecker.test.ts",
+        "tests/unit/sellerFinanceGate.test.ts",
+        "tests/unit/sellerFinanceCounter.realdb.test.ts",
+      ],
+      note: "Output carries DISCLAIMER_WORKSHEET ('guidance, not legal advice') on every artifact. Since Notes V2 Leg 3 (2026-11-09) a machine check also counts a seller's originations on the originated book (server/services/notes/sellerFinanceCounter.ts — seller keyed by owning entity, per ruling R3) and refuses activation past the exclusion ceilings: the §1026.36(a)(4)/(a)(5) element tests in shared/regulatory/doddFrankElements.ts are the one implementation the checker and the gate both use, and the gate's refusals name the operator's CLAIM as unrecorded-or-unsupported rather than adjudicating it. The checker's counts can now be read from the book instead of typed inputs (countSource 'book').",
     },
     reviewStatus: "UNREVIEWED",
     failureMode:

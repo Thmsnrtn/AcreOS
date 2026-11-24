@@ -74,4 +74,22 @@ describe("position record panel", () => {
     expect(text("ledger-notices")).toMatch(/Certified mail · to the owner of record — SYNTHETIC certified mail receipt 7019/);
     expect(host.textContent).not.toMatch(/\bLedger\b/);
   });
+
+  it("T-DEF-4: renders the three notice states — simulated, sent, and status not recorded", async () => {
+    const golden = JSON.parse(readFileSync(path.join(__dirname, "../../shared/tax/golden/ledger-golden.json"), "utf8"));
+    const rail = (n: number, detail: Record<string, unknown>) => ({
+      eventType: "redemption_notice_recorded", eventDate: `2027-03-0${n}`, ruleCited: { kind: "procedure_object", source: `SYNTHETIC rail ${n}` },
+      detail: { method: "mail via AcreOS", sentViaRail: true, ...detail }, recordedBy: "u", recordedAt: `2027-03-0${n}T10:00:00.000Z`,
+    });
+    const input = { ...golden.input, events: [rail(2, { providerId: "sim_a", testMode: true }), rail(3, { providerId: "psc_b", testMode: false }), rail(4, { providerId: "psc_c" })] };
+    await mount(React.createElement(CertificateLedgerPanel, { certificateId: "c1" }), { "/api/tax-certificates/c1/ledger": { ledger: certificateLedger(input) } });
+    const lis = Array.from(host.querySelectorAll('[data-testid="ledger-notices"] li')).map((li) => li.textContent!);
+    expect(lis).toHaveLength(3);
+    expect(lis[0]).toMatch(/simulated — not mailed · provider id sim_a/);
+    expect(lis[0]).not.toMatch(/sent through AcreOS/);
+    expect(lis[1]).toMatch(/sent through AcreOS · provider id psc_b/);
+    expect(lis[1]).not.toMatch(/simulated|not recorded/);
+    expect(lis[2]).toMatch(/sent through AcreOS — mailing status not recorded · provider id psc_c/);
+    expect(lis[2]).not.toMatch(/simulated/);
+  });
 });

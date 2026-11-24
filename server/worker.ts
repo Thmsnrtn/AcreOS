@@ -60,6 +60,7 @@ import { bootWorkerRuntimeSync, bootWorkerRuntimeAsync } from "./workerBoot";
 import { claimNextDispatch } from "./services/solene/dispatchQueue";
 import { runDispatch } from "./services/solene/dispatchRunner";
 import { clock } from "./utils/clock";
+import { reapOrphanedOutbox } from "./services/outboxOrphanReaper";
 
 // Initialize Sentry early so unhandled errors are reported.
 initSentry();
@@ -394,50 +395,6 @@ async function claimBatch(): Promise<Array<{
     payload: r.payload ?? {},
     attempts: r.attempts ?? 0,
   }));
-}
-
-// ── Orphan reaper ────────────────────────────────────────────────────────────
-// A worker killed mid-batch (OOM, deploy, kill -9) leaves its claimed rows in
-// status='running' forever: claimBatch only takes pending/retry, and before
-// this reaper existed NOTHING recovered them — the WS5 worker-kill drill
-// (2026-07-08) orphaned 196/200 rows permanently. Policy mirrors the dispatch
-// reaper's honesty split:
-//   • OUTWARD event types (emails, platform broadcasts) → 'failed', never
-//     requeued: the send may have partially fired, and at-most-once beats a
-//     double-send. Surfaced via the normal failed-row telemetry.
-//   • Internal compute types → requeued to 'retry' (bounded by MAX_ATTEMPTS,
-//     already incremented at claim time) or 'failed' once attempts exhaust.
-// claimed_at (migration 0199) is the staleness signal — created_at is enqueue
-// time and would mis-reap a backlog claimed right after downtime.
-const OUTWARD_EVENT_TYPES = new Set(["lifecycle_email", "cmo.broadcast"]);
-const REAP_RUNNING_TTL_MS = parseInt(process.env.WORKER_REAP_RUNNING_TTL_MS ?? String(30 * 60_000), 10);
-
-async function reapOrphanedOutbox(): Promise<void> {
-  try {
-    const cutoff = new Date(clock.nowMs() - REAP_RUNNING_TTL_MS);
-    const res = await db.execute<{ id: number; event_type: string; new_status: string }>(sql`
-      UPDATE outbox
-      SET status = CASE
-            WHEN event_type IN (${sql.join([...OUTWARD_EVENT_TYPES].map((t) => sql`${t}`), sql`, `)}) THEN 'failed'
-            WHEN attempts >= ${MAX_ATTEMPTS} THEN 'failed'
-            ELSE 'retry'
-          END,
-          last_error_at = now(),
-          last_error_message = 'reaped: orphaned running row past ' || ${Math.round(REAP_RUNNING_TTL_MS / 60_000)} || 'min TTL (likely a worker crash mid-batch)'
-      WHERE status = 'running'
-        AND (claimed_at IS NULL OR claimed_at < ${cutoff})
-      RETURNING id, event_type, status AS new_status
-    `);
-    const list: any[] = (res as any)?.rows ?? [];
-    if (list.length > 0) {
-      const requeued = list.filter((r) => r.new_status === "retry").length;
-      logger.warn(
-        `[worker] reaped ${list.length} orphaned running outbox row(s): ${requeued} requeued, ${list.length - requeued} failed (at-most-once / attempts exhausted)`,
-      );
-    }
-  } catch (err) {
-    logger.warn("[worker] outbox orphan reap failed", err instanceof Error ? err : undefined);
-  }
 }
 
 async function markSent(id: number, result: unknown, eventType: string): Promise<void> {

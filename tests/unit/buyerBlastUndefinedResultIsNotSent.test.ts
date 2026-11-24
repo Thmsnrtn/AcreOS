@@ -25,6 +25,9 @@ const S = vi.hoisted(() => ({
 
 vi.mock("../../server/services/emailService", () => ({
   sendEmail: async (o: { to: string }) => S.sendResults.get(o.to),
+  // W-DEF-1: the blast route now preflights the org's sending identity via
+  // the same resolver the transport uses; this suite's org has one.
+  counterpartyEmailIdentityStatus: async () => ({ canSend: true, ownSesCredentials: false, verifiedDomain: true }),
 }));
 vi.mock("../../server/services/listability", () => ({ offerabilityRefusal: () => null }));
 vi.mock("../../server/db", () => {

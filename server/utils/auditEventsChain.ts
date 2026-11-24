@@ -33,6 +33,59 @@
  *                                targetType, userAgent }, …, sorted keys)
  *               — `seq`, `prevHash`, `rowHash` are NOT part of the payload.
  *
+ * Canonicalization v2 (AUD-DEF-1 cure, 2026-11-21)
+ * ────────────────────────────────────────────────
+ * v1 sorted only the payload's TOP-LEVEL keys and passed nested `metadata`
+ * through JSON.stringify in the writer's in-memory insertion order.
+ * Postgres `jsonb` does NOT preserve that order (it stores keys sorted by
+ * length, then bytewise), so a hash computed at write time did not
+ * recompute after a DB round-trip for any row whose nested metadata keys
+ * were not already in jsonb order. Proven first-hand on staging's genesis
+ * row (seq=1, access_review.quarterly): the stored row_hash
+ * 2065e6b8… matches EXACTLY the payload whose metadata is in the writer's
+ * source order (reviewedCount, staleCount, thresholdDays, sentTo), while
+ * the v1 verifier — reading the jsonb round-tripped order (sentTo,
+ * staleCount, reviewedCount, thresholdDays) — recomputes 01e95f94….
+ * Rows with single-key metadata (e.g. seq=2) verify under both orders;
+ * rows with multi-key metadata (e.g. seq=605, writer order ipPrefix,
+ * uaFamily, country) match only in writer order. createdAt precision is
+ * NOT a factor: the stored hashes match millisecond ISO timestamps.
+ *
+ * v2 therefore canonicalizes RECURSIVELY and deterministically
+ * (stableCanonicalStringify): object keys sorted at every depth, arrays
+ * in order, Dates as ISO strings, undefined object properties dropped
+ * (JSON semantics). `metadata` null/undefined normalizes to {} — the
+ * value the writer actually stores — so the hashed value and the stored
+ * value are the same. `createdAt` normalizes to millisecond ISO, which
+ * is exactly what a JS Date writer produces and what timestamptz
+ * round-trips.
+ *
+ * Historical-rows disposition (EXPLICIT — AUD-DEF-1)
+ * ───────────────────────────────────────────────────
+ * Pre-v2 rows CANNOT be verified by ANY order-independent canonical form:
+ * the writer's key order was destroyed by the jsonb round-trip and is
+ * unrecoverable from the stored data. Recomputing and rewriting their
+ * hashes would destroy the very tamper-evidence the chain exists to
+ * provide, so hashes are NEVER silently rewritten. The disposition is
+ * GRANDFATHER + CHECKPOINT:
+ *   - Rows with seq <= the configured grandfather boundary
+ *     (AUDIT_EVENTS_GRANDFATHER_THROUGH_SEQ, or the verifier option) are
+ *     counted as `legacyGrandfathered`: their stored row_hash is used as
+ *     a linkage anchor but their content hash is not recomputed.
+ *   - The first post-boundary row must chain (prev_hash) onto the last
+ *     legacy row's stored row_hash — the checkpoint anchor. New rows
+ *     already do this via getPrevHashForEvents, so the v2 chain is
+ *     continuous with the legacy tip, not a re-genesis.
+ *   - With NO boundary configured the verifier stays strict and fails on
+ *     the first legacy row, exactly as v1 did — grandfathering is an
+ *     operator's explicit, per-environment act (set the boundary to the
+ *     last pre-v2 seq after a read-only review), never a silent default.
+ * The alternative — re-genesis with a documented checkpoint row that
+ * supersedes the legacy chain — was NOT chosen: it severs the new chain
+ * from the historical tip and still cannot make the legacy rows verify;
+ * it remains available as a founder decision if the grandfathered span
+ * is ever judged unacceptable as evidence.
+ *
  * Honest framing
  * ──────────────
  * TAMPER-EVIDENCE, not legal proof. The chain lets a reviewer DETECT an
@@ -70,8 +123,57 @@ export interface AuditEventHashable {
 }
 
 /**
- * Canonicalize an audit_events row's business payload for hashing. Keys sorted
- * for cross-runtime stability. Null/undefined normalized to null.
+ * Deterministic, recursive canonical stringify (canonicalization v2).
+ *
+ * Object keys are sorted at EVERY depth — this is the AUD-DEF-1 cure:
+ * Postgres jsonb reorders nested keys (by length, then bytewise), so any
+ * canonical form that depends on nested insertion order cannot survive a
+ * DB round-trip. Arrays keep their order (order is meaning in an array).
+ * Dates serialize as ISO strings; undefined object properties are dropped
+ * and undefined array elements become null (JSON.stringify semantics);
+ * non-finite numbers become null (JSON semantics). Values that JSONB
+ * cannot represent (functions, symbols, bigint) canonicalize as null —
+ * they can never come back from the database as anything else.
+ */
+export function stableCanonicalStringify(value: unknown): string {
+  if (value === null || value === undefined) return "null";
+  if (value instanceof Date) return JSON.stringify(value.toISOString());
+  if (Array.isArray(value)) {
+    return "[" + value.map((v) => stableCanonicalStringify(v)).join(",") + "]";
+  }
+  switch (typeof value) {
+    case "string":
+    case "boolean":
+      return JSON.stringify(value);
+    case "number":
+      return Number.isFinite(value) ? JSON.stringify(value) : "null";
+    case "object": {
+      const rec = value as Record<string, unknown>;
+      const keys = Object.keys(rec)
+        .filter((k) => rec[k] !== undefined && typeof rec[k] !== "function" && typeof rec[k] !== "symbol")
+        .sort();
+      return "{" + keys.map((k) => JSON.stringify(k) + ":" + stableCanonicalStringify(rec[k])).join(",") + "}";
+    }
+    default:
+      return "null";
+  }
+}
+
+function normalizeCreatedAt(value: Date | string | null): string | null {
+  if (value == null) return null;
+  const d = value instanceof Date ? value : new Date(value);
+  // Millisecond ISO: a JS Date writer has ms precision, and Date parsing
+  // truncates any sub-millisecond timestamptz fraction to ms, so write
+  // time and verify time agree after the DB round-trip.
+  return Number.isNaN(d.getTime()) ? String(value) : d.toISOString();
+}
+
+/**
+ * Canonicalize an audit_events row's business payload for hashing.
+ * Recursive/deterministic at write AND verify time (both call this).
+ * `metadata` null/undefined normalizes to {} — the value
+ * chainAndInsertAuditEvent actually stores — so the hashed value is the
+ * stored value.
  */
 export function canonicalAuditEventPayload(row: AuditEventHashable): string {
   const payload: Record<string, unknown> = {
@@ -82,15 +184,12 @@ export function canonicalAuditEventPayload(row: AuditEventHashable): string {
     targetType: row.targetType,
     targetId: row.targetId,
     justification: row.justification ?? null,
-    metadata: row.metadata ?? null,
+    metadata: row.metadata ?? {},
     ip: row.ip ?? null,
     userAgent: row.userAgent ?? null,
-    createdAt: row.createdAt ? new Date(row.createdAt).toISOString() : null,
+    createdAt: normalizeCreatedAt(row.createdAt),
   };
-  const keys = Object.keys(payload).sort();
-  const sorted: Record<string, unknown> = {};
-  for (const k of keys) sorted[k] = payload[k];
-  return JSON.stringify(sorted);
+  return stableCanonicalStringify(payload);
 }
 
 export function computeEventRowHash(prevHash: string, row: AuditEventHashable): string {
@@ -148,7 +247,10 @@ export async function chainAndInsertAuditEvent(
     targetType: entry.targetType,
     targetId: entry.targetId,
     justification: entry.justification ?? null,
-    metadata: (entry.metadata ?? null) as Record<string, unknown> | null,
+    // Hash exactly what will be stored: the insert below writes
+    // `metadata ?? {}`, so the hashable carries {} (not null) — the v1
+    // hash-null/store-{} split was a second round-trip instability.
+    metadata: (entry.metadata ?? {}) as Record<string, unknown>,
     ip: entry.ip ?? null,
     userAgent: entry.userAgent ?? null,
     createdAt,
@@ -186,6 +288,15 @@ export interface EventsChainVerificationResult {
   scanned: number;
   /** Rows that predate the chain (row_hash IS NULL) at the head of the table. */
   preChainSkipped: number;
+  /**
+   * Pre-v2 rows inside the configured grandfather boundary whose stored
+   * row_hash was accepted as a linkage anchor WITHOUT content
+   * recomputation (see the disposition note in the module header).
+   * Zero unless a boundary was explicitly configured.
+   */
+  legacyGrandfathered: number;
+  /** The grandfather boundary in effect for this walk, or null if none. */
+  checkpointSeq: number | null;
   ok: boolean;
   failure: null | {
     auditEventId: string;
@@ -198,19 +309,152 @@ export interface EventsChainVerificationResult {
   };
 }
 
+export interface VerifyAuditEventsChainOptions {
+  /**
+   * Grandfather boundary: rows with seq <= this value are legacy pre-v2
+   * rows (see header). Defaults to the AUDIT_EVENTS_GRANDFATHER_THROUGH_SEQ
+   * environment variable; absent/invalid means NO grandfathering (strict).
+   */
+  grandfatherThroughSeq?: number | null;
+  /**
+   * Expected prev_hash for the FIRST row supplied (used when verifying a
+   * segment that does not start at the genesis row — e.g. a round-trip
+   * test against a freshly written row). Defaults to GENESIS.
+   */
+  startingPrevHash?: string;
+}
+
+/** Environment variable carrying the per-environment grandfather boundary. */
+const AUDIT_EVENTS_GRANDFATHER_ENV = "AUDIT_EVENTS_GRANDFATHER_THROUGH_SEQ";
+
+function resolveGrandfatherThroughSeq(
+  opts?: VerifyAuditEventsChainOptions,
+): number | null {
+  if (opts && opts.grandfatherThroughSeq !== undefined) {
+    return opts.grandfatherThroughSeq;
+  }
+  const raw = process.env[AUDIT_EVENTS_GRANDFATHER_ENV];
+  if (raw == null || raw.trim() === "") return null;
+  const n = Number.parseInt(raw, 10);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+/** A stored audit_events row as the chain walker sees it. */
+export interface AuditEventChainRow extends AuditEventHashable {
+  seq: number | null;
+  prevHash: string | null;
+  rowHash: string | null;
+}
+
 /**
- * Walk the GLOBAL audit_events chain in ascending `seq` order and verify both
- * each row's own row_hash AND that each row's prev_hash matches its
- * predecessor's row_hash. Stops at the first failure. Pre-chain rows (NULL
- * row_hash) are tolerated only at the head — once the first chained row is
- * seen, every subsequent row must be chained.
+ * Pure chain walk over already-loaded rows (ascending `seq`). This is the
+ * ONE walk implementation: verifyAuditEventsChain loads the table and
+ * delegates here, and tests exercise the verifier logic against fixtures
+ * (including the historical byte pattern) through this function.
  */
-export async function verifyAuditEventsChain(): Promise<EventsChainVerificationResult> {
-  const BATCH = 1000;
-  let offset = 0;
+export function verifyAuditEventRows(
+  rows: AuditEventChainRow[],
+  opts?: VerifyAuditEventsChainOptions,
+): EventsChainVerificationResult {
+  const grandfatherThroughSeq = resolveGrandfatherThroughSeq(opts);
+  const ordered = [...rows].sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
   let scanned = 0;
   let preChainSkipped = 0;
-  let prevRowHash: string | null = null;
+  let legacyGrandfathered = 0;
+  let prevRowHash: string | null = opts?.startingPrevHash ?? null;
+  let sawChained = prevRowHash != null;
+
+  const fail = (
+    row: AuditEventChainRow,
+    reason: "row_hash_mismatch" | "prev_hash_mismatch" | "missing_row_hash",
+    extra?: { expectedRowHash?: string; actualRowHash?: string | null; expectedPrevHash?: string; actualPrevHash?: string | null },
+  ): EventsChainVerificationResult => ({
+    scanned,
+    preChainSkipped,
+    legacyGrandfathered,
+    checkpointSeq: legacyGrandfathered > 0 ? grandfatherThroughSeq : null,
+    ok: false,
+    failure: { auditEventId: row.id, seq: row.seq ?? null, reason, ...extra },
+  });
+
+  for (const row of ordered) {
+    scanned++;
+    const isLegacy =
+      grandfatherThroughSeq != null && row.seq != null && row.seq <= grandfatherThroughSeq;
+
+    if (row.rowHash == null) {
+      if (isLegacy) {
+        // A legacy row without a hash cannot anchor the chain; count it
+        // as grandfathered and leave the anchor unchanged.
+        legacyGrandfathered++;
+        continue;
+      }
+      if (sawChained) return fail(row, "missing_row_hash");
+      preChainSkipped++;
+      continue;
+    }
+
+    if (isLegacy) {
+      // GRANDFATHERED (explicit disposition, see header): the content
+      // hash is NOT recomputed — the v1 writer's nested key order was
+      // destroyed by the jsonb round-trip, so no canonical form can
+      // recompute it. The stored hash still anchors linkage for the
+      // first post-boundary row, which IS strictly checked.
+      legacyGrandfathered++;
+      prevRowHash = row.rowHash;
+      sawChained = true;
+      continue;
+    }
+
+    const expectedPrev = prevRowHash ?? GENESIS_PREV_HASH;
+    if ((row.prevHash ?? null) !== expectedPrev) {
+      return fail(row, "prev_hash_mismatch", {
+        expectedPrevHash: expectedPrev,
+        actualPrevHash: row.prevHash ?? null,
+      });
+    }
+
+    const recomputed = computeEventRowHash(row.prevHash ?? GENESIS_PREV_HASH, row);
+    if (recomputed !== row.rowHash) {
+      return fail(row, "row_hash_mismatch", {
+        expectedRowHash: recomputed,
+        actualRowHash: row.rowHash,
+      });
+    }
+
+    prevRowHash = row.rowHash;
+    sawChained = true;
+  }
+
+  return {
+    scanned,
+    preChainSkipped,
+    legacyGrandfathered,
+    checkpointSeq: legacyGrandfathered > 0 ? grandfatherThroughSeq : null,
+    ok: true,
+    failure: null,
+  };
+}
+
+/**
+ * Walk the GLOBAL audit_events chain in ascending `seq` order and verify
+ * both each row's own row_hash AND that each row's prev_hash matches its
+ * predecessor's row_hash. Stops at the first failure. Pre-chain rows
+ * (NULL row_hash) are tolerated only at the head — once the first chained
+ * row is seen, every subsequent row must be chained. Pre-v2 legacy rows
+ * are grandfathered ONLY when a boundary is explicitly configured (see
+ * the disposition note in the module header).
+ *
+ * audit_events is a low-volume operator/recovery-console table, so the
+ * walk loads rows in batches and delegates to the pure
+ * verifyAuditEventRows — one walk implementation for DB and fixtures.
+ */
+export async function verifyAuditEventsChain(
+  opts?: VerifyAuditEventsChainOptions,
+): Promise<EventsChainVerificationResult> {
+  const BATCH = 1000;
+  let offset = 0;
+  const all: AuditEventChainRow[] = [];
 
   while (true) {
     const rows = await db
@@ -221,44 +465,8 @@ export async function verifyAuditEventsChain(): Promise<EventsChainVerificationR
       .offset(offset);
 
     if (rows.length === 0) break;
-
     for (const row of rows) {
-      scanned++;
-
-      if (row.rowHash == null) {
-        if (prevRowHash != null) {
-          return {
-            scanned,
-            preChainSkipped,
-            ok: false,
-            failure: {
-              auditEventId: row.id,
-              seq: row.seq ?? null,
-              reason: "missing_row_hash",
-            },
-          };
-        }
-        preChainSkipped++;
-        continue;
-      }
-
-      const expectedPrev = prevRowHash ?? GENESIS_PREV_HASH;
-      if ((row.prevHash ?? null) !== expectedPrev) {
-        return {
-          scanned,
-          preChainSkipped,
-          ok: false,
-          failure: {
-            auditEventId: row.id,
-            seq: row.seq ?? null,
-            reason: "prev_hash_mismatch",
-            expectedPrevHash: expectedPrev,
-            actualPrevHash: row.prevHash ?? null,
-          },
-        };
-      }
-
-      const recomputed = computeEventRowHash(row.prevHash ?? GENESIS_PREV_HASH, {
+      all.push({
         id: row.id,
         actorUserId: row.actorUserId,
         actorEmail: row.actorEmail,
@@ -270,28 +478,14 @@ export async function verifyAuditEventsChain(): Promise<EventsChainVerificationR
         ip: row.ip,
         userAgent: row.userAgent,
         createdAt: row.createdAt,
+        seq: row.seq ?? null,
+        prevHash: row.prevHash ?? null,
+        rowHash: row.rowHash ?? null,
       });
-      if (recomputed !== row.rowHash) {
-        return {
-          scanned,
-          preChainSkipped,
-          ok: false,
-          failure: {
-            auditEventId: row.id,
-            seq: row.seq ?? null,
-            reason: "row_hash_mismatch",
-            expectedRowHash: recomputed,
-            actualRowHash: row.rowHash,
-          },
-        };
-      }
-
-      prevRowHash = row.rowHash;
     }
-
     offset += rows.length;
     if (rows.length < BATCH) break;
   }
 
-  return { scanned, preChainSkipped, ok: true, failure: null };
+  return verifyAuditEventRows(all, opts);
 }

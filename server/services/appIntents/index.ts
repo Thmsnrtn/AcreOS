@@ -58,6 +58,8 @@ function roleAllowList(role: string): string[] {
     underwriting: [
       ...CORE, ...MEMORY,
       "get_properties", "get_property_details", "update_property", "get_notes",
+      "get_tax_certificates", "get_tax_certificate", "get_tax_certificate_clock",
+      "get_tax_certificate_ledger", "record_tax_ledger_entry",
       "calculate_amortization", "get_cashflow_summary", "get_deals",
       "update_deal", "run_comps_analysis", "run_comps", "calculate_roi",
       "calculate_payment_schedule", "research_property", "draft_offer",
@@ -71,12 +73,15 @@ function roleAllowList(role: string): string[] {
       ...CORE, ...MEMORY,
       "get_properties", "get_property_details", "get_leads", "create_property",
       "update_property", "run_comps_analysis", "run_comps", "research_property",
-      "calculate_roi", "browse_web",
+      "calculate_roi", "browse_web", "browse_search",
     ],
     documents: [
       ...CORE,
       "get_leads", "get_lead_details", "get_properties", "get_property_details",
-      "get_notes", "get_deals", "generate_offer_letter", "draft_offer",
+      "get_notes",
+      "get_tax_certificates", "get_tax_certificate", "get_tax_certificate_clock",
+      "get_tax_certificate_ledger", "record_tax_ledger_entry",
+      "get_deals", "generate_offer_letter", "draft_offer",
     ],
   };
   return map[role] ?? map.executive;

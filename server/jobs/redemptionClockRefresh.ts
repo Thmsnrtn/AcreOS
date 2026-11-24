@@ -47,6 +47,7 @@ import {
 } from "../services/certificateEvents";
 import { logger } from "../utils/logger";
 import { clock } from "../utils/clock";
+import { pushOrgEvent } from "../services/orgPushFanout";
 
 // "Crosses threshold today" window. Configurable later via founder_settings
 // once we add the surface; 7d is the bucket Marcus uses in his head ("if
@@ -390,6 +391,19 @@ export async function runRedemptionClockRefresh(): Promise<RefreshResult> {
         },
       });
       result.alertsEmitted += 1;
+
+      // Phone push for the 7-day alert (autonomy gap slice 7). Runs only after
+      // the alert row is committed, once per cert per UTC day (the dedupe
+      // marker above guards the whole block), org-scoped to the cert's own
+      // org, and best-effort — `pushOrgEvent` never throws, so a push failure
+      // cannot count as a cert error or skip the remaining certs.
+      await pushOrgEvent(row.organizationId, {
+        family: "redemption_alert",
+        title: `Redemption window closes in ${daysRemaining} day(s)`,
+        body: `${row.county} County, ${row.state} (APN ${row.apn}): redemption deadline ${recomputed}.`,
+        url: "/redemption-clock",
+        tag: `redemption-${row.id}`,
+      });
     } catch (err) {
       result.errors += 1;
       logger.error(

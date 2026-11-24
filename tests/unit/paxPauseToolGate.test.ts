@@ -57,6 +57,10 @@ const {
     leadScoring: true,
     borrowerReminders: true,
     inboxDrafts: true,
+    rails: { records: { leads: "act_and_report", properties: "act_and_report", deals: "act_and_report", tasks: "act_and_report", follow_ups: "act_and_report", account: "act_and_report" }, sends: "ask" },
+    limits: { asksPerDay: null, creditSpendPerDay: null, browseCallsPerDay: null, batchRowsPerDay: null },
+    members: {},
+    mySites: [],
     paused: false,
     pausedUntil: null as Date | null,
     pausedBy: null as { userId: string; name: string } | null,
@@ -177,6 +181,10 @@ const state = (over: Partial<PaxControlsState> = {}): PaxControlsState => ({
   leadScoring: true,
   borrowerReminders: true,
   inboxDrafts: true,
+  rails: { records: { leads: "act_and_report", properties: "act_and_report", deals: "act_and_report", tasks: "act_and_report", follow_ups: "act_and_report", account: "act_and_report" }, sends: "ask" },
+  limits: { asksPerDay: null, creditSpendPerDay: null, browseCallsPerDay: null, batchRowsPerDay: null },
+  members: {},
+  mySites: [],
   paused: false,
   pausedUntil: null as Date | null,
   pausedBy: null as { userId: string; name: string } | null,
@@ -324,6 +332,7 @@ const NOT_PAUSE_SAFE = [
   "schedule_follow_up",
   "generate_offer_letter", // upserts a pipeline deal — a record write
   "draft_offer", // advances a negotiating deal to offer_sent + writes paxMemory (2026-09-02)
+  "record_tax_ledger_entry", // appends a tax_events ledger row on a certificate (T7)
 ] as const;
 
 describe("PAUSE_SAFE_TOOLS allowlist hygiene", () => {

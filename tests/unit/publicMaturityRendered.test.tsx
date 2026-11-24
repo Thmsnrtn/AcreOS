@@ -3,9 +3,9 @@
  * Given registry state X, the public landing truthfully represents X.
  *
  * ── WHY THIS EXISTS SEPARATELY FROM THE SOURCE SCAN ─────────────────────────
- * `verticalReadiness.test.ts` proves two things statically: the demotion map is
- * coherent, and no public source file reads `.maturity` directly. Both are
- * worth having, and neither is proof that a visitor is told the truth.
+ * `verticalReadiness.test.ts` proves two things statically: the public
+ * projection is coherent, and no public source file reads `.maturity` directly.
+ * Both are worth having, and neither is proof that a visitor is told the truth.
  *
  * The OD-5 failure was exactly that gap. The gate mapped the registry through
  * its own projection, called the answer consistent, and scanned nothing a human
@@ -18,27 +18,36 @@
  * makes it behavioural rather than a restatement: the assertions hold for
  * registry states nobody has committed yet.
  *
+ * ── SINCE FD1 (2026-11-12) ──────────────────────────────────────────────────
+ * The registry states the launch presentation (5 core / 0 beta / 10
+ * registry_only since Land's 2026-11-21 lift) and the demotion table is empty, so the tiers a visitor sees
+ * derive from the registry alone. The registry-only types render in the
+ * landing's third, muted tier — whose copy still reads "promised, not sold"
+ * (client/src/pages/landing/copy.ts, a landing follow-up outside this slice).
+ *
  * ── WHAT IT WILL NOT DO ─────────────────────────────────────────────────────
  * This is one representative high-consequence surface, not screenshot
  * infrastructure for every state transition. The rule earned from the Beta
  * badge is "when a canonical transition makes a rare UI state common, exercise
- * that state in the real surface" — twelve chips moved into a tier that had
- * been empty, so the tier gets exercised.
+ * that state in the real surface" — FD1 moved nine chips into a tier that had
+ * been empty, so that tier gets exercised too.
  */
 
 import { afterEach, describe, expect, it } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
 import React from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import {
   BUSINESS_TYPES,
+  BUSINESS_TYPE_IDS,
   type BusinessTypeId,
   type BusinessTypeMeta,
 } from "../../shared/business-types";
 import {
   PUBLIC_CLAIM_DEMOTIONS,
   publicMaturityOf,
-  type PublicClaimDemotion,
 } from "../../shared/business-types/publicClaims";
 import { readinessOf } from "../../shared/business-types/readiness";
 import { measureVerticalEvidence } from "../support/verticalEvidence";
@@ -46,6 +55,19 @@ import { deriveLandingTiers, Positioning } from "../../client/src/pages/landing/
 
 /** What the repo can actually demonstrate — the anchor that is NOT the map. */
 const evidence = measureVerticalEvidence();
+
+/**
+ * The verticals the founder promised as core on `surfaced` evidence (FD1).
+ * Mirrors FD1_CORE_ON_SURFACED_EVIDENCE in verticalReadiness.test.ts; both pin
+ * the same names, and an entry fails when its vertical records a
+ * decision (the entry must then go). tax_lien_deed joined 2026-11-19 on
+ * journey proof, on the same terms note_investor originally stood on;
+ * note_investor left the register on 2026-11-20 when its price-to-yield
+ * desk started recording decisions (Step 0 N5 lift), and tax_lien_deed
+ * left the same day when its max-bid desk started recording decisions
+ * (Step 0 T6 lift). THE REGISTER IS NOW EMPTY.
+ */
+const FD1_CORE_ON_SURFACED_EVIDENCE: Partial<Record<BusinessTypeId, string>> = {};
 
 let container: HTMLDivElement | null = null;
 let root: Root | null = null;
@@ -72,8 +94,12 @@ function renderedTiers() {
   return {
     core: read("Investor types with full workflow support"),
     beta: read("Investor types in beta"),
+    notSold: read("Investor types on the roadmap"),
   };
 }
+
+const registryIds = (maturity: BusinessTypeMeta["maturity"]) =>
+  BUSINESS_TYPE_IDS.filter((id) => BUSINESS_TYPES[id].maturity === maturity && id !== "hybrid");
 
 describe("what a visitor is actually shown", () => {
   it("renders exactly the verticals the canonical projection says are core", () => {
@@ -86,18 +112,21 @@ describe("what a visitor is actually shown", () => {
     expect([...core].sort()).toEqual([...expected].sort());
   });
 
-  it("shows NO vertical as core that cannot evidence a recorded decision", () => {
+  it("shows NO vertical as core that cannot evidence a recorded decision — except the ones FD1 names", () => {
     // THE ANCHOR THAT IS NOT THE MAP, and the reason tests/support exists.
     //
-    // Every other assertion here derives its expectation from
-    // PUBLIC_CLAIM_DEMOTIONS or publicMaturityOf, so DELETING a demotion moves
-    // the expectation and the DOM together and they still agree — measured: a
-    // mutation removing `commercial` passed all eight. A projection compared
-    // against itself proves only that it is a function.
+    // Every other assertion here derives its expectation from the registry or
+    // publicMaturityOf, so flipping a registry value moves the expectation and
+    // the DOM together and they still agree. A projection compared against
+    // itself proves only that it is a function.
     //
     // This compares the rendered page against the EVIDENCE instead: a chip may
     // sit in "full workflow support" only if that vertical actually records a
-    // decision snapshot in production.
+    // decision snapshot in production — or the founder decided it by name
+    // (FD1: the register is now empty — tax_lien_deed stood here from
+    // 2026-11-19 until its desk earned it off the register on 2026-11-20,
+    // as note_investor's did earlier that day), in which case the exemption must be exactly that
+    // set, dated and cited, and nothing wider.
     expect(
       evidence.definedWorkflowTemplateIds.size,
       "the evidence scan found no workflow templates — it broke, so the " +
@@ -106,55 +135,85 @@ describe("what a visitor is actually shown", () => {
     expect(evidence.decidingBusinessTypes.size).toBeGreaterThan(0);
 
     const { core } = renderedTiers();
-    const dishonest = Object.values(BUSINESS_TYPES)
+    const withoutDecision = Object.values(BUSINESS_TYPES)
       .filter((m) => core.some((t) => t.startsWith(m.label)))
       .filter((m) => readinessOf(m, evidence) !== "decided")
       .map((m) => m.id);
 
     expect(
-      dishonest,
+      withoutDecision.filter((id) => !(id in FD1_CORE_ON_SURFACED_EVIDENCE)),
       "the public landing advertises these as having FULL WORKFLOW SUPPORT, " +
-        "and they cannot show a recorded decision. Add a PUBLIC_CLAIM_DEMOTIONS " +
-        "entry, or close the loop for them.",
+        "and they cannot show a recorded decision. Lower the registry maturity " +
+        "(FD1 is the presentation of record), or close the loop for them.",
     ).toEqual([]);
+    // The exemption is exactly what the page needs — not a budget.
+    expect(withoutDecision.sort()).toEqual(Object.keys(FD1_CORE_ON_SURFACED_EVIDENCE).sort());
+    for (const [id, decision] of Object.entries(FD1_CORE_ON_SURFACED_EVIDENCE)) {
+      expect(fs.existsSync(path.resolve(__dirname, "../..", decision!)), `${id}: ${decision}`).toBe(true);
+    }
   });
 
-  it("labels every demoted vertical Beta in the DOM, not just in the map", () => {
+  it("labels every registry-beta vertical Beta in the DOM, not just in the registry", () => {
     const { beta, core } = renderedTiers();
+    const betaIds = registryIds("beta");
+    // PINNED EMPTY since the 2026-11-21 Land lift: Land was the last
+    // registry-beta vertical, and its lift to core emptied the tier, so
+    // today the pin is that there are none — in the registry or the DOM.
+    // The loop below is live again the day any vertical is beta.
+    expect(betaIds).toEqual([]);
+    expect(beta).toEqual([]);
 
-    for (const id of Object.keys(PUBLIC_CLAIM_DEMOTIONS) as BusinessTypeId[]) {
-      if (id === "hybrid") continue; // carries an entry but renders no chip
+    for (const id of betaIds) {
       const label = BUSINESS_TYPES[id].label;
       // The chip text is "<label>Beta" — the micro-label is inside the <li>.
       expect(
         beta.some((t) => t.startsWith(label)),
-        `${id} is demoted in PUBLIC_CLAIM_DEMOTIONS but is not in the rendered beta tier`,
+        `${id} is beta in the registry but is not in the rendered beta tier`,
       ).toBe(true);
       expect(
         core.some((t) => t.startsWith(label)),
-        `${id} is demoted but still renders as core — a visitor is told it is fully supported`,
+        `${id} is beta but still renders as core — a visitor is told it is fully supported`,
       ).toBe(false);
     }
   });
 
   it("every beta chip carries the visible qualifier, not a silent downgrade", () => {
-    // A demotion nobody can see is not a demotion. If the badge were dropped,
+    // A beta label nobody can see is not a label. If the badge were dropped,
     // the tier split would still be "correct" and the page would still claim
     // more than it can show.
     const { beta } = renderedTiers();
-    expect(beta.length).toBeGreaterThan(0);
+    // PINNED EMPTY since the 2026-11-21 Land lift (see the test above):
+    // no beta chips render today. The qualifier rule below is live again
+    // the day any vertical is beta.
+    expect(beta).toEqual([]);
     for (const text of beta) {
       expect(text, `a beta chip rendered without its qualifier: "${text}"`).toMatch(/Beta$/);
     }
   });
 
+  it("every registry-only vertical renders in the muted 'not sold' tier — never as core or beta (FD1)", () => {
+    const { core, beta, notSold } = renderedTiers();
+    const registryOnly = registryIds("registry_only");
+    expect(registryOnly.length, "no registry_only vertical — the loop below is vacuous").toBeGreaterThan(0);
+
+    for (const id of registryOnly) {
+      const label = BUSINESS_TYPES[id].label;
+      expect(notSold.some((t) => t.startsWith(label)), `${id} is registry-only but not in the rendered not-sold tier`).toBe(true);
+      expect(core.some((t) => t.startsWith(label)), `${id} is registry-only but renders as core`).toBe(false);
+      expect(beta.some((t) => t.startsWith(label)), `${id} is registry-only but renders as beta`).toBe(false);
+    }
+    // And nothing else lands there: the tier is exactly the registry-only set.
+    expect(notSold.length).toBe(registryOnly.length);
+  });
+
   it("the rendered split matches the pure derivation exactly", () => {
     // Ties the DOM to the function the static tests reason about. Without this,
     // `deriveLandingTiers` could be correct while the component ignored it.
-    const { core, beta } = renderedTiers();
+    const { core, beta, notSold } = renderedTiers();
     const tiers = deriveLandingTiers();
     expect(core.length).toBe(tiers.core.length);
     expect(beta.length).toBe(tiers.beta.length);
+    expect(notSold.length).toBe(tiers.roadmap.length);
   });
 });
 
@@ -171,23 +230,26 @@ describe("the surface follows the registry, for states the registry is not in", 
     [id]: { ...BUSINESS_TYPES[id], maturity },
   });
 
-  it("a vertical that closes the loop and loses its demotion returns to core", () => {
-    const demotions: Partial<Record<BusinessTypeId, PublicClaimDemotion>> = {
-      ...PUBLIC_CLAIM_DEMOTIONS,
-    };
-    delete demotions.commercial;
-
-    const tiers = deriveLandingTiers(BUSINESS_TYPES, demotions);
+  it("a registry promotion to core returns the chip to core — no table in between", () => {
+    // commercial is registry_only live. Promote it in a synthetic registry and
+    // the derivation must follow the registry, with the demotion table empty.
+    const tiers = deriveLandingTiers(registryWith("commercial", "core"), {});
     expect(tiers.core.map((c) => c.id)).toContain("commercial");
     expect(tiers.beta.map((c) => c.id)).not.toContain("commercial");
+    expect(tiers.roadmap.map((c) => c.id)).not.toContain("commercial");
   });
 
   it("a registry demotion to roadmap moves the chip to roadmap, muted", () => {
-    // The roadmap tier is currently empty. It is the next state a truthful
-    // registry could reach, and it must not render as a promise.
-    const tiers = deriveLandingTiers(registryWith("commercial", "roadmap"), {});
-    expect(tiers.roadmap.map((c) => c.id)).toContain("commercial");
-    expect(tiers.core.map((c) => c.id)).not.toContain("commercial");
+    const tiers = deriveLandingTiers(registryWith("land_flipper", "roadmap"), {});
+    expect(tiers.roadmap.map((c) => c.id)).toContain("land_flipper");
+    expect(tiers.core.map((c) => c.id)).not.toContain("land_flipper");
+  });
+
+  it("a registry move to registry_only renders in the same 'not sold' tier as roadmap (FD1)", () => {
+    const tiers = deriveLandingTiers(registryWith("land_flipper", "registry_only"), {});
+    expect(tiers.roadmap.map((c) => c.id)).toContain("land_flipper");
+    expect(tiers.core.map((c) => c.id)).not.toContain("land_flipper");
+    expect(tiers.beta.map((c) => c.id)).not.toContain("land_flipper");
   });
 
   it("hybrid never renders, demoted or not — it would double-count its halves", () => {
@@ -198,12 +260,26 @@ describe("the surface follows the registry, for states the registry is not in", 
     }
   });
 
-  it("with no demotions at all, the landing would claim fourteen core verticals", () => {
-    // The state OD-5 corrected, asserted so the correction cannot silently
-    // revert: an empty map means the page says every vertical is fully
-    // supported, which is what it did before the demotions landed.
+  it("the live registry with no demotions is the FD1 presentation: 5 core, 0 beta, 9 not sold", () => {
+    // Under OD-5 this asserted the opposite — that an empty table meant
+    // fourteen core chips. FD1 moved the conservatism into the registry, so the
+    // table being empty now yields the founder's presentation, not a lie.
     const tiers = deriveLandingTiers(BUSINESS_TYPES, {});
+    expect(tiers.core.map((c) => c.id).sort()).toEqual(["buy_and_hold", "land_flipper", "note_investor", "residential_wholesaler", "tax_lien_deed"]);
+    expect(tiers.beta.map((c) => c.id).sort()).toEqual([]);
+    expect(tiers.roadmap).toHaveLength(9);
+  });
+
+  it("canary: an all-core registry with no demotions would claim fourteen core — the OD-5 state", () => {
+    // The state OD-5 corrected and FD1 ended, asserted so the derivation is
+    // shown to be sensitive to the registry: if the component hardcoded the
+    // FD1 split, this synthetic registry would not move it.
+    const allCore = Object.fromEntries(
+      BUSINESS_TYPE_IDS.map((id) => [id, { ...BUSINESS_TYPES[id], maturity: "core" as const }]),
+    ) as Record<BusinessTypeId, BusinessTypeMeta>;
+    const tiers = deriveLandingTiers(allCore, {});
     expect(tiers.core).toHaveLength(14);
     expect(tiers.beta).toHaveLength(0);
+    expect(tiers.roadmap).toHaveLength(0);
   });
 });

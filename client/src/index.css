@@ -1599,7 +1599,7 @@ body[data-offline-banner="true"] [data-page-topbar] {
    `manipulation` preserves panning + pinch-zoom (so accessibility zoom still
    works), and only drops the double-tap-zoom gesture. Surfaces that genuinely
    need a different touch-action — the map canvas (its own double-tap-zoom), the
-   Vaul drawer / dnd-kit draggables (touch-action: none for drag) — set their
+   Vaul drawer / deals-board drag handles (touch-action: none for drag) — set their
    own value inline or via a utility class, which beats this universal selector
    on specificity and wins. */
 * {

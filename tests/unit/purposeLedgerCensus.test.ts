@@ -542,11 +542,13 @@ const DEBT: Record<string, ProposedSurface> = {
   "server/ai/supportAgent.ts case:detect_data_integrity_issues": "review",
   "server/ai/supportAgent.ts case:predict_user_issues": "review",
   // server/ai/tools.ts
+  "server/ai/tools.ts case:browse_search": "review",
   "server/ai/tools.ts case:create_properties_batch": "review",
   "server/ai/tools.ts case:create_property": "review",
   "server/ai/tools.ts case:draft_outreach_message": "lead_contact_model",
   "server/ai/tools.ts case:get_lead_details": "lead_contact_model",
   "server/ai/tools.ts case:get_leads": "lead_contact_model",
+  "server/ai/tools.ts case:get_notes": "lead_contact_model",
   "server/ai/tools.ts case:get_stale_leads": "lead_contact_model",
   "server/ai/tools.ts case:get_system_context": "review",
   "server/ai/tools.ts case:schedule_follow_up": "lead_contact_model",
@@ -588,6 +590,7 @@ const DEBT: Record<string, ProposedSurface> = {
   // server/routes-analytics.ts
   "server/routes-analytics.ts route:GET /api/analytics/cohort-dashboard": "review",
   // server/routes-borrower.ts
+  "server/routes-borrower.ts route:GET /api/borrower/payoff-letter": "review",
   "server/routes-borrower.ts route:GET /api/borrower/payoff-quote": "review",
   "server/routes-borrower.ts route:GET /api/borrower/periodic-statements/:statementId/pdf": "review",
   "server/routes-borrower.ts route:GET /api/borrower/session": "review",
@@ -730,6 +733,8 @@ const DEBT: Record<string, ProposedSurface> = {
   "server/routes-misc.ts route:POST /api/sms/send": "review",
   "server/routes-misc.ts route:POST /api/webhooks/twilio/sms": "review",
   // server/routes-notes.ts
+  "server/routes-notes.ts route:GET /api/notes/:id/payoff": "review",
+  "server/routes-notes.ts route:POST /api/notes/:id/payoff/quotes": "review",
   "server/routes-notes.ts route:POST /api/notes/from-deal/:dealId": "review",
   // server/routes-onboarding.ts
   "server/routes-onboarding.ts route:POST /complete": "review",
@@ -746,6 +751,8 @@ const DEBT: Record<string, ProposedSurface> = {
   // server/routes-pax-controls.ts
   "server/routes-pax-controls.ts route:GET /controls": "review",
   "server/routes-pax-controls.ts route:PATCH /controls": "review",
+  "server/routes-pax-controls.ts route:PATCH /controls/my-override": "review",
+  "server/routes-pax-controls.ts route:POST /controls/reset-rails": "review",
   "server/routes-pax-controls.ts route:POST /pause": "review",
   "server/routes-pax-controls.ts route:POST /resume": "review",
   // server/routes-pax-insights.ts
@@ -756,6 +763,8 @@ const DEBT: Record<string, ProposedSurface> = {
   "server/routes-platform-features.ts route:GET /api/pipeline/attribution": "review",
   "server/routes-platform-features.ts route:POST /api/export/full": "lead_contact_bulk",
   // server/routes-privacy-dsar.ts
+  "server/routes-privacy-dsar.ts route:GET /api/founder/dsar/:id/subject-candidates": "lead_contact_bulk",
+  "server/routes-privacy-dsar.ts route:POST /api/founder/dsar/:id/execute-erasure": "lead_contact_bulk",
   "server/routes-privacy-dsar.ts route:POST /api/founder/dsar/:id/generate-export": "lead_contact_bulk",
   // server/routes-properties.ts
   "server/routes-properties.ts route:GET /api/properties/:id/report.pdf": "review",
@@ -776,6 +785,7 @@ const DEBT: Record<string, ProposedSurface> = {
   "server/routes-support-tickets.ts route:POST /api/support/tickets/:id/messages": "review",
   // server/routes-tax-certificates.ts
   "server/routes-tax-certificates.ts route:POST /api/tax-certificates": "review",
+  "server/routes-tax-certificates.ts route:POST /api/tax-certificates/:id/redemption-notice": "review",
   // server/routes-tax-delinquent.ts
   "server/routes-tax-delinquent.ts route:GET /": "lead_contact_read",
   "server/routes-tax-delinquent.ts route:GET /:id": "lead_contact_read",
@@ -793,6 +803,10 @@ const DEBT: Record<string, ProposedSurface> = {
   "server/routes-trust-checks.ts route:GET /api/deals/:id/fraud-check": "review",
   // server/routes-va-engine.ts
   "server/routes-va-engine.ts route:GET /api/seller-communications/lead/:leadId": "lead_contact_read",
+  // server/routes-wholesale-disposition.ts
+  "server/routes-wholesale-disposition.ts route:GET /deals/:dealId/seller-follow-ups/preview": "lead_contact_read",
+  "server/routes-wholesale-disposition.ts route:POST /deals/:dealId/seller-follow-ups": "lead_contact_read",
+  "server/routes-wholesale-disposition.ts route:GET /deals/:dealId/seller-follow-ups": "lead_contact_read",
   // server/routes.ts
   "server/routes.ts route:GET /api/leads/deleted": "lead_contact_read",
   "server/routes.ts route:GET /api/search": "lead_contact_read",
@@ -811,6 +825,9 @@ const DEBT: Record<string, ProposedSurface> = {
   "server/services/core-agents.ts case:run_digest": "review",
   // server/services/outcomeVerificationLoop.ts
   "server/services/outcomeVerificationLoop.ts case:send_follow_up": "review",
+  // server/services/settlementRail/routes.ts
+  "server/services/settlementRail/routes.ts route:POST /api/notes/:id/lien-release": "review",
+  "server/services/settlementRail/routes.ts route:POST /api/notes/:id/payoff-letter": "review",
   // server/services/workflow-engine.ts
   "server/services/workflow-engine.ts case:conditional": "review",
   "server/services/workflow-engine.ts case:send_email#2": "review",
@@ -820,7 +837,53 @@ const DEBT: Record<string, ProposedSurface> = {
 /** DEBT may only shrink. Lower this in the same commit that removes an entry. */
 // 214 → 212 (2026-11-06, W2-TEAM): GET /api/analytics/team-kpi and
 // GET /api/analytics/team-leaderboard deleted — no client caller.
-const DEBT_BASELINE = 212;
+// 212 → 214 (2026-11-12, PX-3): two NEW routes honestly registered as DEBT —
+// PATCH /controls/my-override and POST /controls/reset-rails. This is the
+// census's growth path for new surface, not a rise to excuse existing debt.
+// 212 → 214 (2026-11-09, PKG-1): two NEW founder DSAR routes registered —
+// GET /api/founder/dsar/:id/subject-candidates and POST
+// /api/founder/dsar/:id/execute-erasure (generate-export was already in
+// DEBT). New-surface registration is the census's own remedy for a new
+// person-adjacent surface; these are founder-only rights-fulfilment
+// surfaces whose accesses are recorded in audit_events (DSAR_VERIFIED /
+// DSAR_ERASURE) and the DSAR record itself, not the FCRA purpose ledger —
+// PURPOSE_CODES there are pinned exactly to the skip-trace taxonomy.
+// 214 → 217 (2026-11-12, Lane A re-prep union of #477+#533 with #535):
+// the wholesale seller-follow-up trio from routes-wholesale-disposition.ts
+// (preview / create / list, lead_contact_read) registered by #477's branch
+// (its own tree read 215 = 212 + 3) unioned with PKG-1's +2 above —
+// 212 base + 3 + 2 = 217, disjoint entry sets, verified by key count.
+// 217 → 220 (merge-lane union, 2026-11-14, PR #477 slot): main's #564
+// settlement-rail trio (214 → 217 on main) unions with the wholesale
+// seller-follow-up trio above — disjoint entry sets, so the merged
+// baseline is 214 + 3 + 3 = 220. Census re-run on the merged tree is
+// the proof.
+// 220 → 222 (merge-lane union, 2026-11-14, PR #563 slot): PX-3's two new
+// pax-controls routes (the 212 → 214 note above, written against its own
+// base) union with the stack's 220 — disjoint entry sets, verified by key
+// count (222). Census re-run on the merged tree is the proof.
+// 222 → 223 (merge-lane union, 2026-11-14, PR #565 slot): PX-7's one
+// NEW surface — the browse_search dispatch case in server/ai/tools.ts
+// (its own note: 212 → 213 on its branch) — unions with the stack's 222;
+// disjoint entry sets, verified by key count (223). Census re-run on
+// the merged tree is the proof.
+// 223 → 224 (T-P1, 2026-11-18): the Tax transplant's ONE new surface —
+// POST /api/tax-certificates/:id/redemption-notice, which mails the owner
+// of record a statutory notice through the rail — registered "review",
+// mirroring its sibling POST /api/tax-certificates.
+// 224 → 226 (L9-DEF-1, 2026-11-19): the operator payoff cure's TWO new
+// surfaces — GET /api/notes/:id/payoff and POST /api/notes/:id/payoff/quotes
+// now read the borrower lead's name for serviced notes (loadServicedNoteForPayoff)
+// — registered "review", mirroring the borrower-side payoff-quote routes.
+// 226 → 227 (HYB-DEF-5 fix, 2026-11-21, PR #664): ONE new surface —
+// server/ai/tools.ts case:get_notes became person-adjacent in this PR when
+// its cross-book expansion began returning borrowerContact resolved from
+// the linked lead to the model — registered "lead_contact_model",
+// mirroring its eight sibling Pax cases in tools.ts (get_leads,
+// get_lead_details, send_email, …). Ledgering is not honestly available:
+// PURPOSE_SURFACES/PURPOSE_CODES are the FCRA skip-trace taxonomy and the
+// Pax dispatch collects no purpose attestation.
+const DEBT_BASELINE = 227;
 
 /**
  * Every file holding a dispatch switch (≥10 snake_case case labels, raw count)

@@ -9,10 +9,60 @@ on:
   # production ships only a SHA this workflow passed on.
   workflow_call:
 
+# CI efficiency package (2026-11-11): a superseded head's run cancels itself
+# instead of occupying the account's concurrent-job slots behind the new
+# head. The group is keyed by ref (a PR's ref is stable across its pushes).
+# workflow_call runs (the deploy gate) get a per-run group: a called gate
+# must never be cancelled by, or cancel, an unrelated run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'workflow_call' && github.run_id || github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  # ── 0. Change scope ───────────────────────────────────────────────────────
+  # Docs-only pull requests skip the heavy jobs below: a PR that touches
+  # nothing but markdown / docs cannot change what the suites measure, and
+  # the skipped checks report as SKIPPED (a by-design skip in settlement
+  # counting), never as absent. Only pull_request events can be docs-only —
+  # pushes to main and the deploy gate's workflow_call always run
+  # everything, and any doubt (no diff, odd event) resolves to a FULL run.
+  changes:
+    name: Change scope
+    runs-on: ubuntu-latest
+    outputs:
+      docs_only: ${{ steps.scope.outputs.docs_only }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Classify the change set
+        id: scope
+        run: |
+          echo "docs_only=false" >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "event=${{ github.event_name }} — full run"
+            exit 0
+          fi
+          files=$(git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}" || true)
+          if [ -z "$files" ]; then
+            echo "no diff available — full run"
+            exit 0
+          fi
+          echo "changed files:"
+          echo "$files"
+          nondocs=$(echo "$files" | grep -vE '\.(md|mdx)$' | grep -vE '^docs/' || true)
+          if [ -z "$nondocs" ]; then
+            echo "docs_only=true" >> "$GITHUB_OUTPUT"
+            echo "docs-only change set — heavy jobs will skip"
+          else
+            echo "non-docs files present — full run"
+          fi
+
   # ── 1. Lint & Type-check ────────────────────────────────────────────────────
   lint-and-typecheck:
     name: Lint & Type Check
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -26,20 +76,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Unified gate — same `npm run check` the deploy gate runs, so CI and
-      # deploy can never disagree on which lints run. `check` forces
-      # `--incremental false` (a stale tsBuildInfo in node_modules produced a
-      # false-negative this session) and runs the schema + no-fabrication ratchets.
-      #
-      # The heap ceiling is NOT set by this workflow. It lives in
-      # scripts/lib/heap-ceiling.mjs and is passed to each heavy child process; a
-      # `VAR=x cmd1 && cmd2` prefix in package.json reaches cmd1 only, which is
-      # what broke every deploy from 2026-08-17. The historical note is kept
-      # because it still constrains the value: 8192 invited the OOM-killer that
-      # broke deploys Jun 6-8, so raise the ceiling only against a fresh
-      # measurement, never speculatively.
-      - name: TypeScript type check + ratchets
-        run: npm run check
+      # NOTE — no `npm run check` step here, deliberately. The typecheck +
+      # ratchets family is owned by test.yml's `typecheck` job ("TypeScript
+      # check + ratchets"), which runs the identical command on every
+      # pull_request / push-to-main head AND on claude/** branch pushes where
+      # this workflow never fires (the discharge path for API-published heads).
+      # The deploy path still gates on the same command via deploy.yml's own
+      # pre-deploy `test` job. Removed 2026-11-15 (CI dedup) so the family
+      # runs once per head, not twice.
 
       # Blocking since 2026-07-07: `eslint client/src --max-warnings 0` passes
       # clean (the acreos/* ratchet baseline is all-zero), so a red here is a
@@ -73,30 +117,14 @@ jobs:
       - name: Sitemap freshness check
         run: node scripts/generate-sitemap.mjs --check
 
-      # Blocking test gate — the SAME `npx vitest run` the deploy gate
-      # (deploy.yml) runs. This is the line that decides whether CI is green:
-      # if the 6349-test suite passes, CI passes. Kept plain (no --coverage)
-      # so CI and deploy can never disagree on the test signal.
-      - name: Run tests (blocking — matches deploy gate)
-        run: npx vitest run
-        env:
-          CI: true
-
-      # Coverage is a BLOCKING RATCHET (2026-07-07). The old `lines: 50`
-      # threshold was aspirational (measured global coverage: 18.22%) so this
-      # step was permanently red behind continue-on-error — zero signal. The
-      # thresholds in vitest.config.ts now sit just UNDER measured coverage:
-      # a global floor plus per-file floors on the money/send/compliance
-      # paths (creditPool, webhookHandlers, dunning, smsService,
-      # directMailService, publicParcelReport). Green today; a red here means
-      # a change dropped coverage on code that moves money or sends messages.
-      # Raise floors as real coverage rises — never lower them.
-      - name: Coverage ratchet (blocking)
-        run: npm run test:coverage
-        env:
-          NODE_OPTIONS: --max-old-space-size=6144
-          CI: true
-
+      # The two test executions that used to run serially at the end of this
+      # job — the plain blocking suite and the coverage ratchet — moved out
+      # (CI efficiency package, 2026-11-11): the coverage ratchet is the
+      # parallel `coverage` job below, and the blocking suite is owned by
+      # test.yml's `test` job. Measured 2026-11-11, this job ran 60–84 min
+      # with those two steps as ~45–70 of it; the gates themselves are
+      # unchanged, only their placement: same commands, same env, same
+      # thresholds.
       - name: Build
         run: npm run build
         env:
@@ -130,11 +158,57 @@ jobs:
   # duplicate compute when green, zero signal when red. Coverage owner:
   # .github/workflows/security.yml.
 
+  # NOTE — no blocking-test-suite job here, deliberately. The blocking test
+  # suite is owned by test.yml's `test` job, which runs the SAME suite with
+  # the SAME 3-way shard partition plus a provisioned pgvector database and
+  # the schema-build gate, so the real-database suites execute there instead
+  # of skipping here. Every test that could fail in the removed no-DB run can
+  # fail in test.yml's run. The duplicate was removed in the CI dedup
+  # (2026-11-15) to stop paying for the suite twice per head.
+
+  # ── 3. Coverage ratchet ───────────────────────────────────────────────────
+  # Coverage is a BLOCKING RATCHET (2026-07-07). The old `lines: 50`
+  # threshold was aspirational (measured global coverage: 18.22%) so this
+  # step was permanently red behind continue-on-error — zero signal. The
+  # thresholds in vitest.config.ts now sit just UNDER measured coverage:
+  # a global floor plus per-file floors on the money/send/compliance
+  # paths (creditPool, webhookHandlers, dunning, smsService,
+  # directMailService, publicParcelReport). Green today; a red here means
+  # a change dropped coverage on code that moves money or sends messages.
+  # Raise floors as real coverage rises — never lower them.
+  #
+  # The ratchet still runs WHOLE over the full suite (it is a global
+  # measurement — sharding it would change what it measures). It moved to
+  # its own job so it runs in parallel with, not behind, the lint job.
+  coverage:
+    name: Coverage ratchet (blocking)
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Coverage ratchet (blocking)
+        run: npm run test:coverage
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+          CI: true
+
   # ── 6. Build & Container Image ──────────────────────────────────────────────
   build:
     name: Build
     runs-on: ubuntu-latest
-    needs: [lint-and-typecheck]
+    needs: [changes, lint-and-typecheck, coverage]
+    if: needs.changes.outputs.docs_only != 'true'
 
     steps:
       - uses: actions/checkout@v7
@@ -165,8 +239,18 @@ jobs:
       # Bundle budget (roadmap W10.1). Down-only ceilings in
       # scripts/bundle-budget.json: growth past one fails, a loose one fails
       # until lowered. CI=true makes a missing bundle a failure, never a skip.
-      - name: Bundle-size budget
-        run: node scripts/check-bundle-size.js
+      #
+      # TWO outputs since P1-9 / X-2 (the founder-OS extraction): the customer
+      # bundle (dist/public) and the founder bundle (dist/founder) are budgeted
+      # separately, and the gate runs once for each. The customer run
+      # (--require-graph) also fails if any customer chunk bundles a founder-only
+      # module, read from dist/client-chunk-graph.json. The founder run fails
+      # outright when dist/founder is absent.
+      - name: Bundle-size budget (customer)
+        run: node scripts/check-bundle-size.js --require-graph
+
+      - name: Bundle-size budget (founder)
+        run: node scripts/check-bundle-size.js --output founder
 
       # Map code loads only on routes that render a map. Reads the chunk graph
       # the build wrote (dist/client-chunk-graph.json): the entry and the

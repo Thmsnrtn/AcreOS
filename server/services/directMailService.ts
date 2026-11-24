@@ -69,6 +69,15 @@ interface SendLetterOptions {
   housePrepaid?: boolean;
   useType?: 'marketing' | 'operational';
   /**
+   * USPS extra services on this letter (Settlement & Documents Rail S-1):
+   * Lob `extra_services` values. On the house lane each is priced as a
+   * surcharge from the recorded cost table (shared/billing/
+   * house-mail-pricing.ts) before anything is charged; on the org's own key
+   * Lob bills the org directly. Letters only — Lob sells neither service on
+   * a postcard.
+   */
+  extraServices?: Array<'certified' | 'registered'>;
+  /**
    * Stable key for THIS logical letter, derived from durable domain identity
    * (a campaign piece id, a note-payment notice id) — never a random value,
    * which would defeat the mechanism on the retry it exists to protect.
@@ -468,6 +477,7 @@ export async function sendLetter(options: SendLetterOptions): Promise<SendResult
         color: options.color ?? false,
         doubleSided: options.doubleSided ?? false,
         useType: options.useType ?? 'marketing',
+        extraServices: options.extraServices ?? [],
       },
     },
     async () => {
@@ -482,10 +492,10 @@ export async function sendLetter(options: SendLetterOptions): Promise<SendResult
         //  · BEFORE Lob is contacted — a credit refusal. That path now throws
         //    ProviderNotContactedError, which withOutwardAction records `failed`,
         //    so a retry after topping up succeeds under the same durable key.
-        //  · FROM the Lob call itself — genuinely ambiguous. A network failure
-        //    there may or may not have printed a letter, so it stays
-        //    unclassified and is recorded AMBIGUOUS, refusing retry until
-        //    someone reconciles.
+        //  · FROM the Lob call itself — genuinely ambiguous (a definitive
+        //    rejection's `providerNotBilled` verdict aside, L-DEF-3). A
+        //    network failure there may or may not have printed a letter, so
+        //    it stays unclassified and is recorded AMBIGUOUS.
         //
         // Rethrowing unchanged is what preserves that distinction: the type
         // carries it, so this handler must not flatten it into a plain Error.
@@ -513,7 +523,7 @@ export class LetterAlreadySentError extends Error {
 }
 
 async function performLetterSend(options: SendLetterOptions): Promise<SendResult> {
-  const { organizationId, senderIdentity, recipientName, recipientAddress, htmlContent, color = false, doubleSided = false, useType = 'marketing' } = options;
+  const { organizationId, senderIdentity, recipientName, recipientAddress, htmlContent, color = false, doubleSided = false, useType = 'marketing', extraServices } = options;
   // Platform-wide owner opt-out (W5a) — before simulation, credits and Lob.
   await assertOwnerContactAllowed('mail', { addressLine1: recipientAddress.line1, zip: recipientAddress.zip });
 
@@ -544,8 +554,9 @@ async function performLetterSend(options: SendLetterOptions): Promise<SendResult
 
   const { lane, client, source, isTestKey, charge } = await prepareLobSend({
     organizationId,
-    // The house lane confirms the page count from the content itself.
-    spec: letterSpec({ color, file: htmlContent }),
+    // The house lane confirms the page count from the content itself; an
+    // extra service prices into the same spec as a recorded surcharge.
+    spec: letterSpec({ color, file: htmlContent, extraService: extraServices?.[0] ?? null }),
     senderIdentity,
     housePrepaid: options.housePrepaid === true,
     idempotencyKey: options.idempotencyKey,
@@ -564,6 +575,7 @@ async function performLetterSend(options: SendLetterOptions): Promise<SendResult
       color,
       double_sided: doubleSided,
       use_type: useType,
+      ...(extraServices && extraServices.length > 0 ? { extra_services: extraServices } : {}),
     });
     
     accepted = true;

@@ -14,6 +14,7 @@ import { eq, sql } from 'drizzle-orm';
 import Stripe from 'stripe';
 import { logger } from './utils/logger';
 import { postBorrowerPortalCheckoutPayment } from './services/borrower/portalPaymentPosting';
+import { recordPostedPaymentApplication } from './services/paymentApplication';
 import { recordSense } from './services/autopilot/perception';
 import { subscriptionEndedPatch, subscriptionHasEnded } from './services/borrower/servicingPhase';
 import { clock } from "./utils/clock";
@@ -1729,6 +1730,74 @@ export class WebhookHandlers {
     }
   }
 
+  /**
+   * A tenant paid rent by card (P3-3) — a Checkout Session created by
+   * POST /api/leases/:id/rent-checkout on the LANDLORD'S OWN connected
+   * account, so the session arrives here as a Connect event with
+   * metadata.type === "rent_payment".
+   *
+   * TENANT. There is no tenant access token to prove ownership, so — exactly
+   * as processPaymentLinkNotePayment — the Connect account the event arrived
+   * on must BE the metadata org's connected account. Metadata is written by
+   * whoever controls the account that created the session; a different
+   * account naming our org id is refused.
+   *
+   * Posting is the ONE rent rule (services/rental/rentCollection.ts), shared
+   * with the operator's browser-return verify: idempotent on the session id,
+   * so whichever arrives second is a no-op.
+   */
+  static async processRentPayment(
+    session: Stripe.Checkout.Session,
+    connectedAccountId: string | null,
+  ): Promise<void> {
+    const meta = session.metadata || {};
+    if (meta.type !== 'rent_payment') return;
+    const organizationId = Number(meta.organizationId);
+    const leaseId = meta.leaseId;
+    if (!Number.isInteger(organizationId) || !leaseId || !connectedAccountId) {
+      logger.error(
+        `[webhook] rent session ${session.id} lacks organizationId/leaseId metadata or a connected account — refusing`,
+      );
+      return;
+    }
+
+    const integration = await storage.findOrganizationIntegrationByCredential(
+      'stripe_connect',
+      'stripeConnectAccountId',
+      connectedAccountId,
+    );
+    if (!integration || integration.organizationId !== organizationId) {
+      logger.error(
+        `[webhook] rent session ${session.id} arrived on account ${connectedAccountId}, which is not organization ${organizationId}'s connected account — refusing`,
+      );
+      return;
+    }
+
+    const { postRentCheckoutPayment } = await import('./services/rental/rentCollection');
+    const result = await postRentCheckoutPayment({
+      organizationId,
+      leaseId,
+      stripeSession: session,
+      source: 'stripe_webhook',
+    });
+    switch (result.outcome) {
+      case 'refused':
+        logger.warn(`[webhook] rent payment ${session.id} not posted: ${result.reason}`, {
+          metadata: { leaseId, organizationId, reason: result.reason },
+        });
+        return;
+      case 'already_recorded':
+        logger.info(`Rent payment already recorded for session: ${session.id}`);
+        return;
+      case 'posted':
+        logger.info(
+          `Rent payment processed: Lease ${leaseId}, Amount: $${(result.amountCents / 100).toFixed(2)}`,
+          { metadata: { leaseId, organizationId, isPartial: result.isPartial } },
+        );
+        return;
+    }
+  }
+
   static async processBorrowerPortalPayment(session: Stripe.Checkout.Session): Promise<void> {
     try {
       const { noteId, accessToken } = session.metadata || {};
@@ -2050,6 +2119,28 @@ export class WebhookHandlers {
           .returning();
         if (inserted.length === 0) continue; // already posted by a redelivery
         restored += -rev.principalCents;
+
+        // The reversal's own application breakdown, in the SAME transaction
+        // (D4): a reversal row is itself a 'completed' posting, so without a
+        // mirror row the statement generator would refuse the refund cycle's
+        // statement as undescribed money movement. The reversal's split is
+        // already negative; the applications table carries a single fees
+        // bucket, so the fee and late-fee parts combine there. The original
+        // payment's breakdown stays in its own cycle — this row nets the
+        // refund in the cycle it happened.
+        await recordPostedPaymentApplication(tx, {
+          organizationId: original.organizationId,
+          loanId: String(original.noteId),
+          loanType: 'note',
+          paymentId: String(inserted[0].id),
+          receivedAt: rev.postedAt,
+          appliedAt: rev.postedAt,
+          appliedToPrincipalCents: rev.principalCents,
+          appliedToInterestCents: rev.interestCents,
+          appliedToEscrowCents: 0,
+          appliedToFeesCents: rev.feeCents + rev.lateFeeCents,
+          appliedToSuspenseCents: 0,
+        });
       }
 
       if (restored !== 0) {

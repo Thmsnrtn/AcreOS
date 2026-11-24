@@ -28,9 +28,11 @@
 import {
   PAX_CONTROLS_LABEL,
   PAX_CONTROLS_PATH,
-  PAX_NEVER_LIST,
-  PAX_STANCE_COPY,
-} from "./pax-glossary";
+  PAX_RAIL_DOMAINS,
+  PAX_RAIL_LEVEL_WORDS,
+  PAX_STANCE_LABELS,
+} from "./pax-glossary-core";
+import type { PAX_NEVER_LIST } from "./pax-glossary";
 
 // ── Stances ─────────────────────────────────────────────────────────────────
 
@@ -57,16 +59,302 @@ export const STANCE_RULINGS: Readonly<Record<PaxStance, string>> = {
 };
 
 /** Glossary-derived labels — the segmented control renders these. */
-export const STANCE_LABELS: Readonly<Record<PaxStance, string>> = {
-  ask_before_sending: PAX_STANCE_COPY.ask_before_sending.label,
-  ask_before_everything: PAX_STANCE_COPY.ask_before_everything.label,
+export const STANCE_LABELS: Readonly<Record<PaxStance, string>> = PAX_STANCE_LABELS;
+
+// ── Per-capability rails (PX-2) ─────────────────────────────────────────────
+
+/**
+ * The rail levels, weakest → strongest. THE one place the level ids are named
+ * (founder ruling 2026-11-10 §6.5 Q4: rails refine the stance, they are not a
+ * new stance). The design doc calls the top level "act-with-approval"; the
+ * stored id is `act_and_report` — it runs the change and leaves a receipt,
+ * which is exactly what "Ask before sending" does for record changes today.
+ */
+export const PAX_RAIL_LEVELS = ["watch", "draft", "ask", "act_and_report"] as const;
+
+export type PaxRailLevel = (typeof PAX_RAIL_LEVELS)[number];
+
+/**
+ * The sends rail's level type: `act_and_report` is UNREPRESENTABLE. A send is
+ * never Pax acting on its own (founder decision 1, 2026-09-02) — the cap is in
+ * the type, and clampSendsLevel() repeats it at runtime for hand-edited jsonb.
+ */
+export type PaxSendsRailLevel = Exclude<PaxRailLevel, "act_and_report">;
+
+export const PAX_SENDS_RAIL_LEVELS: readonly PaxSendsRailLevel[] = PAX_RAIL_LEVELS.filter(
+  (l): l is PaxSendsRailLevel => l !== "act_and_report",
+);
+
+/** The most a sends rail may be. */
+export const PAX_SENDS_RAIL_CEILING: PaxSendsRailLevel = "ask";
+
+/** Strength of a level: its index in PAX_RAIL_LEVELS (watch 0 … act_and_report 3). */
+function railLevelRank(level: PaxRailLevel): number {
+  return PAX_RAIL_LEVELS.indexOf(level);
+}
+
+/** The weaker of two levels — how a rail composes with a stance cap. */
+export function weakerRailLevel(a: PaxRailLevel, b: PaxRailLevel): PaxRailLevel {
+  return railLevelRank(a) <= railLevelRank(b) ? a : b;
+}
+
+/**
+ * The record domains a record-changing tool belongs to. Every changes_records
+ * tool maps to exactly one (TOOL_REGISTRY below; the population test fails an
+ * unclassified one). `account` holds the support switch's system fixes
+ * (alerts, job state, data-integrity repairs) that touch none of the other
+ * five — see BUILD-NOTES PX-2 for why it exists.
+ */
+export const PAX_RECORD_DOMAINS = [
+  "leads",
+  "properties",
+  "deals",
+  "tasks",
+  "follow_ups",
+  "account",
+] as const;
+
+export type PaxRecordDomain = (typeof PAX_RECORD_DOMAINS)[number];
+
+export interface PaxRails {
+  /** One level per record domain. */
+  records: Record<PaxRecordDomain, PaxRailLevel>;
+  /** The sends group — capped at `ask` by type. */
+  sends: PaxSendsRailLevel;
+}
+
+/** Glossary-derived labels — the page renders these, never its own strings. */
+export const PAX_RAIL_LEVEL_LABELS: Readonly<Record<PaxRailLevel, string>> = {
+  watch: PAX_RAIL_LEVEL_WORDS.watch.label,
+  draft: PAX_RAIL_LEVEL_WORDS.draft.label,
+  ask: PAX_RAIL_LEVEL_WORDS.ask.label,
+  act_and_report: PAX_RAIL_LEVEL_WORDS.act_and_report.label,
 };
+
+export const PAX_RAIL_LEVEL_SENTENCES: Readonly<Record<PaxRailLevel, string>> = {
+  watch: PAX_RAIL_LEVEL_WORDS.watch.sentence,
+  draft: PAX_RAIL_LEVEL_WORDS.draft.sentence,
+  ask: PAX_RAIL_LEVEL_WORDS.ask.sentence,
+  act_and_report: PAX_RAIL_LEVEL_WORDS.act_and_report.sentence,
+};
+
+export const PAX_RECORD_DOMAIN_LABELS: Readonly<Record<PaxRecordDomain, string>> = {
+  leads: PAX_RAIL_DOMAINS.leads.label,
+  properties: PAX_RAIL_DOMAINS.properties.label,
+  deals: PAX_RAIL_DOMAINS.deals.label,
+  tasks: PAX_RAIL_DOMAINS.tasks.label,
+  follow_ups: PAX_RAIL_DOMAINS.follow_ups.label,
+  account: PAX_RAIL_DOMAINS.account.label,
+};
+
+/**
+ * What a missing `rails` key means — today's live behaviour. Under the default
+ * stance (ask_before_sending) record changes run and are receipted, which is
+ * `act_and_report` for every domain; sends always wait for a tap, which is
+ * `ask`. Fresh copy per call so no caller can mutate the shared default.
+ */
+export function defaultPaxRails(): PaxRails {
+  return {
+    records: {
+      leads: "act_and_report",
+      properties: "act_and_report",
+      deals: "act_and_report",
+      tasks: "act_and_report",
+      follow_ups: "act_and_report",
+      account: "act_and_report",
+    },
+    sends: "ask",
+  };
+}
+
+/** Defence in depth for hand-edited jsonb: a stored sends level above ask reads as ask. */
+export function clampSendsLevel(level: PaxRailLevel): PaxSendsRailLevel {
+  return railLevelRank(level) > railLevelRank(PAX_SENDS_RAIL_CEILING)
+    ? PAX_SENDS_RAIL_CEILING
+    : (level as PaxSendsRailLevel);
+}
+
+// ── Daily limits and per-member narrowing (PX-3) ────────────────────────────
+
+/**
+ * Daily caps on what Pax may do (register P-1). Each is a whole number ≥ 0, or
+ * `null` = no cap — which is today's behaviour, so a NULL column and a row
+ * written before PX-3 read as all-null. "Today" is the org's local day.
+ */
+export interface PaxLimits {
+  /** Asks Pax may park for a tap per day. */
+  asksPerDay: number | null;
+  /** Customer outbound-send credits Pax's executed sends may cost per day (sendPricing). */
+  creditSpendPerDay: number | null;
+  /** Web pages Pax may open per day. */
+  browseCallsPerDay: number | null;
+  /** Rows Pax may create through a batch create per day. */
+  batchRowsPerDay: number | null;
+}
+
+export const PAX_LIMIT_KEYS = ["asksPerDay", "creditSpendPerDay", "browseCallsPerDay", "batchRowsPerDay"] as const;
+
+export type PaxLimitKey = (typeof PAX_LIMIT_KEYS)[number];
+
+/** No cap on anything — what a missing `limits` key means (= today). Fresh copy per call. */
+export function defaultPaxLimits(): PaxLimits {
+  return { asksPerDay: null, creditSpendPerDay: null, browseCallsPerDay: null, batchRowsPerDay: null };
+}
+
+/**
+ * One member's own NARROWER settings, keyed by userId in `PaxControls.members`.
+ * A member may only make Pax more careful for THEIR OWN calls: the effective
+ * value is the weaker rail / the smaller cap of (org, member), so an override
+ * that is wider than the org's has no effect (narrowRails / narrowLimits).
+ */
+export interface PaxMemberOverride {
+  rails?: {
+    records?: Partial<Record<PaxRecordDomain, PaxRailLevel>>;
+    sends?: PaxSendsRailLevel;
+  };
+  limits?: Partial<PaxLimits>;
+}
+
+/**
+ * The org's rails narrowed by a member's override: per record domain the WEAKER
+ * of the two; sends the weaker of the two, clamped to the sends ceiling. An
+ * absent override returns the org rails unchanged. Pure; fresh object.
+ */
+export function narrowRails(org: PaxRails, override?: PaxMemberOverride): PaxRails {
+  const records = { ...org.records };
+  const own = override?.rails;
+  if (own?.records) {
+    for (const d of PAX_RECORD_DOMAINS) {
+      const level = own.records[d];
+      if (level !== undefined) records[d] = weakerRailLevel(records[d], level);
+    }
+  }
+  let sends: PaxSendsRailLevel = clampSendsLevel(org.sends);
+  if (own?.sends !== undefined) sends = clampSendsLevel(weakerRailLevel(sends, own.sends));
+  return { records, sends };
+}
+
+/**
+ * The org's limits narrowed by a member's override: per key the SMALLER of the
+ * non-null values, null only when both are null. A member value higher than the
+ * org's has no effect (min wins); a member can never raise a cap or remove one
+ * the org set. Pure; fresh object.
+ */
+export function narrowLimits(org: PaxLimits, override?: PaxMemberOverride): PaxLimits {
+  const out = { ...org };
+  const own = override?.limits;
+  if (!own) return out;
+  for (const k of PAX_LIMIT_KEYS) {
+    const m = own[k];
+    if (m === null || m === undefined) continue;
+    const o = out[k];
+    out[k] = o === null ? m : Math.min(o, m);
+  }
+  return out;
+}
+
+/**
+ * The controls a particular caller is held to: rails and limits narrowed by
+ * `members[userId]`. A null / unknown userId returns the controls unchanged —
+ * org-level automation (a scheduled run, an inbound signal, the registry's own
+ * handler) acts under the org's own grant. This is the same identified /
+ * unidentified asymmetry as the permission-ladder gate in executeTool: an
+ * identified caller is held to what applies to THEM; an unidentified one has no
+ * person to hold, and refusing would break automation that has always run so.
+ * Generic so a PaxControlsState keeps its pause / timezone / checkFailed fields.
+ */
+export function effectiveControlsForMember<T extends PaxControls>(
+  controls: T,
+  userId: string | null | undefined,
+): T {
+  if (!userId) return controls;
+  // A hand-built state from before PX-3 may lack members / limits: read as none.
+  const members: Readonly<Record<string, PaxMemberOverride>> = controls.members ?? {};
+  const override = Object.prototype.hasOwnProperty.call(members, userId) ? members[userId] : undefined;
+  if (!override) return controls;
+  return {
+    ...controls,
+    rails: narrowRails(controls.rails ?? defaultPaxRails(), override),
+    limits: narrowLimits(controls.limits ?? defaultPaxLimits(), override),
+  };
+}
+// ── My county sites (PX-7) ──────────────────────────────────────────────────
+
+/** One public site the org lists for Pax's search sessions. `host` is a BARE hostname. */
+export interface PaxSiteEntry {
+  host: string;
+  label: string;
+}
+
+/** Most sites an org may list. */
+export const PAX_MY_SITES_MAX = 50;
+/** Longest label, in characters. */
+export const PAX_SITE_LABEL_MAX = 60;
+
+/** One DNS label: letters, digits and inner hyphens. */
+const HOST_LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+
+/**
+ * A bare public hostname, or null. Case and one trailing dot are normalised
+ * (the same rule as webSourceFence's normalizeHost); anything else that is not
+ * a bare host — a scheme, a path, a port, credentials, a query, whitespace, an
+ * underscore, an IP address, a single-label name like `localhost` — is REFUSED,
+ * never rewritten into a host the person did not write.
+ */
+export function normalizeSiteHost(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const host = raw.trim().toLowerCase().replace(/\.$/, "");
+  if (host.length === 0 || host.length > 253) return null;
+  const labels = host.split(".");
+  if (labels.length < 2) return null;
+  if (!labels.every((l) => HOST_LABEL.test(l))) return null;
+  // The last label must carry a letter: an all-numeric tail is an IPv4 address.
+  if (!/[a-z]/.test(labels[labels.length - 1])) return null;
+  return host;
+}
+
+/**
+ * The host out of what a person pastes ("https://assessor.example.gov/search?x=1",
+ * "assessor.example.gov"). Used by the page; the SERVER validates the result
+ * again with normalizeSiteHost. Credentials in the paste refuse (null).
+ */
+export function siteHostFromInput(input: string): string | null {
+  const text = String(input ?? "").trim();
+  if (!text || /\s/.test(text) || text.includes("@")) return null;
+  try {
+    const hasScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(text);
+    if (!hasScheme && /^[a-z][a-z0-9+.-]*:/i.test(text) && !/^[^/]+:\d+(\/|$)/.test(text)) return null;
+    const url = new URL(hasScheme ? text : `https://${text}`);
+    if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+    if (url.username || url.password) return null;
+    return normalizeSiteHost(url.hostname);
+  } catch {
+    return null;
+  }
+}
+
+const withoutWww = (host: string): string => (host.startsWith("www.") ? host.slice(4) : host);
+
+/**
+ * The listed entry that covers `hostname`, or null. A listed host covers
+ * itself and its `www.` twin, nothing else — a listed `records.example.gov`
+ * does not cover `example.gov` or a sibling subdomain.
+ */
+export function mySiteForHost(sites: readonly PaxSiteEntry[], hostname: string): PaxSiteEntry | null {
+  const wanted = normalizeSiteHost(hostname);
+  if (!wanted) return null;
+  const bare = withoutWww(wanted);
+  return sites.find((s) => withoutWww(s.host) === bare) ?? null;
+}
 
 // ── The stored column ───────────────────────────────────────────────────────
 
 /**
  * `organizations.pax_controls` (jsonb, migration 0250). The three switches
- * are the org-level "runs on its own" toggles from spec §3a.3.
+ * are the org-level "runs on its own" toggles from spec §3a.3. `rails` (PX-2)
+ * and `limits` / `members` (PX-3) are optional IN THE DATABASE — a row written
+ * before them has none and reads as the defaults — but always present on the
+ * object the reader returns.
  */
 export interface PaxControls {
   stance: PaxStance;
@@ -76,18 +364,36 @@ export interface PaxControls {
   borrowerReminders: boolean;
   /** Draft a reply when a message is opened (routes-ai-draft.ts). */
   inboxDrafts: boolean;
+  /** Per-capability rails — may only NARROW what the stance allows. */
+  rails: PaxRails;
+  /** Daily caps (PX-3). All null = no cap = today. */
+  limits: PaxLimits;
+  /** Per-member narrower settings, keyed by userId (PX-3). Empty = none. */
+  members: Readonly<Record<string, PaxMemberOverride>>;
+  /**
+   * PX-7: the public sites Pax may run search sessions on (browse_search).
+   * Optional IN THE DATABASE (a pre-PX-7 row reads as []); always present on
+   * the object the reader returns. EMPTY = nothing listed = no search runs on a
+   * listed site (fail-closed); the closed state keeps it empty.
+   */
+  mySites: readonly PaxSiteEntry[];
 }
 
 /**
  * What a NULL column means. These EQUAL today's live behaviour — the deploy
  * that adds the column changes nothing silently (spec §4.1; founder
- * question 5).
+ * question 5). The rails are today's behaviour too (defaultPaxRails): record
+ * changes act-and-report, sends ask.
  */
 export const PAX_CONTROLS_DEFAULTS: Readonly<PaxControls> = {
   stance: DEFAULT_STANCE,
   leadScoring: true,
   borrowerReminders: true,
   inboxDrafts: true,
+  rails: defaultPaxRails(),
+  limits: defaultPaxLimits(),
+  members: {},
+  mySites: [],
 };
 
 // ── Asks ("Waiting for your tap") ───────────────────────────────────────────
@@ -155,6 +461,8 @@ interface ToolEntry {
   dispatch: PaxToolDispatch;
   /** For refused tools: the Never line that explains the refusal. */
   neverLine?: NeverLineId;
+  /** For changes_records tools ONLY: the one record domain it belongs to (PX-2 rails). */
+  domain?: PaxRecordDomain;
 }
 
 /**
@@ -177,6 +485,14 @@ const tools = (
   group: PaxToolGroup,
   dispatch: PaxToolDispatch,
 ): Array<[string, ToolEntry]> => names.map((n) => [n, { group, dispatch }]);
+
+/** changes_records tools carry their domain — the only way to register one. */
+const recordTools = (
+  domain: PaxRecordDomain,
+  names: readonly string[],
+  dispatch: PaxToolDispatch,
+): Array<[string, ToolEntry]> =>
+  names.map((n) => [n, { group: "changes_records", dispatch, domain }]);
 
 /**
  * EVERY top-level case label of BOTH dispatch switches, plus the two names
@@ -203,6 +519,10 @@ const TOOL_REGISTRY: Readonly<Record<string, ToolEntry>> = Object.fromEntries([
       "get_tasks",
       "get_notes",
       "get_cashflow_summary",
+      "get_tax_certificates",
+      "get_tax_certificate",
+      "get_tax_certificate_clock",
+      "get_tax_certificate_ledger",
       "calculate_amortization",
       "calculate_payment_schedule",
       "calculate_roi",
@@ -210,6 +530,7 @@ const TOOL_REGISTRY: Readonly<Record<string, ToolEntry>> = Object.fromEntries([
       "run_comps_analysis",
       "research_property",
       "browse_web",
+      "browse_search",
       "extract_properties_from_text",
       "retrieve_land_knowledge",
       "generate_offer",
@@ -242,26 +563,18 @@ const TOOL_REGISTRY: Readonly<Record<string, ToolEntry>> = Object.fromEntries([
     "looks_and_drafts",
     "executeTool",
   ),
-  ...tools(
-    [
-      "update_lead_status",
-      "create_lead",
-      "create_property",
-      "update_property",
-      "create_properties_batch",
-      "create_deal",
-      "update_deal",
-      "create_task",
-      "update_task",
-      "complete_task",
-      "generate_offer_letter",
-      "draft_offer",
-      "schedule_followup",
-      "schedule_follow_up",
-    ],
-    "changes_records",
+  // Record changes, each in exactly one domain (PX-2 rails).
+  ...recordTools("leads", ["update_lead_status", "create_lead"], "executeTool"),
+  ...recordTools("properties", ["create_property", "update_property", "create_properties_batch"], "executeTool"),
+  ...recordTools(
+    "deals",
+    ["create_deal", "update_deal", "generate_offer_letter", "draft_offer"],
     "executeTool",
   ),
+  // A tax-certificate ledger entry is a record on a position the customer holds — the deals rail.
+  ...recordTools("deals", ["record_tax_ledger_entry"], "executeTool"),
+  ...recordTools("tasks", ["create_task", "update_task", "complete_task"], "executeTool"),
+  ...recordTools("follow_ups", ["schedule_followup", "schedule_follow_up"], "executeTool"),
   // APPROVAL_REQUIRED_TOOLS (server/services/approvalKernel.ts) — may only grow.
   ...tools(
     [
@@ -357,21 +670,20 @@ const TOOL_REGISTRY: Readonly<Record<string, ToolEntry>> = Object.fromEntries([
   // coordinates, job state). send_proactive_warning and
   // schedule_proactive_outreach write a system alert row — a record, not a
   // message to a counterparty.
-  ...tools(
+  ...recordTools("follow_ups", ["create_followup_task", "schedule_proactive_outreach"], "executeSupportTool"),
+  ...recordTools("properties", ["enrich_property_coordinates"], "executeSupportTool"),
+  ...recordTools(
+    "account",
     [
       "fix_common_issue",
-      "create_followup_task",
       "send_proactive_warning",
-      "schedule_proactive_outreach",
       "apply_bulk_fix",
       "fix_data_integrity_issue",
       "apply_self_healing_fix",
       "resolve_alert",
       "retry_failed_jobs",
       "unlock_stuck_jobs",
-      "enrich_property_coordinates",
     ],
-    "changes_records",
     "executeSupportTool",
   ),
   // Billing fixes — the spec's "Sends to people" row (§2).
@@ -386,6 +698,17 @@ export const PAX_TOOL_GROUPS: Readonly<Record<string, PaxToolGroup>> = Object.fr
 /** Group for a tool name, or null when the name is not a classified tool. */
 export function groupForTool(toolName: string): PaxToolGroup | null {
   return TOOL_REGISTRY[toolName]?.group ?? null;
+}
+
+/** tool → record domain, for changes_records tools only. */
+export const PAX_TOOL_DOMAINS: Readonly<Record<string, PaxRecordDomain>> = Object.fromEntries(
+  Object.entries(TOOL_REGISTRY).flatMap(([name, entry]) => (entry.domain ? [[name, entry.domain]] : [])),
+);
+
+/** Record domain for a tool name, or null when it is not a classified record change. */
+export function domainForTool(toolName: string): PaxRecordDomain | null {
+  const entry = TOOL_REGISTRY[toolName];
+  return entry?.group === "changes_records" ? (entry.domain ?? null) : null;
 }
 
 /** Which switch replays a tool name after a tap, or null when unknown. */
@@ -589,6 +912,18 @@ export const UNATTENDED_PATHS: readonly UnattendedPath[] = [
     stance: { ask_before_sending: "drafts", ask_before_everything: "drafts" },
     whilePaused: "still drafts (a draft is not an action)",
     pauseStops: false,
+    pausedReason: null,
+    switch: paxSwitch,
+    customerVisible: true,
+  },
+  {
+    id: "follow_up_enrolment",
+    label: "Follow-up enrolment for cold leads",
+    file: "server/jobs/autonomousDealMachine.ts",
+    fn: "runAutoFollowUpEngine",
+    stance: { ask_before_sending: WAITS_FOR_TAP, ask_before_everything: WAITS_FOR_TAP },
+    whilePaused: "skipped until the pause lifts",
+    pauseStops: true,
     pausedReason: null,
     switch: paxSwitch,
     customerVisible: true,
