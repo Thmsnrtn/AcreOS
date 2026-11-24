@@ -12,12 +12,12 @@
 
 import { useState, type FormEvent } from "react";
 import { useLocation } from "wouter";
-import { LANDING_COPY } from "./copy";
+import type { LandingCopy } from "./copy";
 import { SupportFeedbackModal } from "@/components/support-feedback-modal";
 import { emitMarketingTouch } from "@/lib/marketing-touch";
 
-export function FinalCTA() {
-  const c = LANDING_COPY.cta;
+export function FinalCTA({ copy }: { copy: LandingCopy["cta"] }) {
+  const c = copy;
   const [, setLocation] = useLocation();
   const [email, setEmail] = useState("");
   // 2026-05-11: replaced dead `mailto:thomas@acreos.io` with the
