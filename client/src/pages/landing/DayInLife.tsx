@@ -13,7 +13,7 @@
  * variants live on the future /verticals/<slug> pages.
  */
 
-import { LANDING_COPY } from "./copy";
+import type { LandingCopy } from "./copy";
 
 const BEFORE = [
   { t: "6:42 am", e: "11 unread seller texts. Sorted manually across SMS, Gmail, and CRM." },
@@ -37,8 +37,8 @@ const AFTER = [
   { t: "6:30 pm", e: "Overnight: comps run, replies drafted, drips you turned on go out." },
 ];
 
-export function DayInLife() {
-  const c = LANDING_COPY.day;
+export function DayInLife({ copy }: { copy: LandingCopy["day"] }) {
+  const c = copy;
   return (
     <section className="lp-section lp-day" id="day">
       <div className="lp-eyebrow">{c.eyebrow}</div>
