@@ -1126,6 +1126,26 @@ export async function registerTwilioWebhookRoutes(app: Express): Promise<void> {
     }
   });
 
+  // POST /api/webhooks/twilio/call-confirm/:orgId/:leadId
+  // Click-to-call keypress (W3.9). Verified like call-status. Answers TwiML:
+  // the lead is dialled only when the operator pressed 1; anything else —
+  // including an error here — hangs up, so a failure never dials the lead.
+  api.post("/api/webhooks/twilio/call-confirm/:orgId/:leadId", verifyOrgTwilioCallCallback, async (req, res) => {
+    const HANGUP = "<Response><Hangup/></Response>";
+    try {
+      const { confirmOperatorLeg } = await import("./services/clickToCall");
+      const leadId = Number(routeParam(req.params.leadId));
+      const { organizationId } = res.locals.twilioCallCallback as { organizationId: number };
+      const twiml = Number.isInteger(leadId) && leadId > 0
+        ? (await confirmOperatorLeg({ organizationId, leadId, body: (req.body ?? {}) as Record<string, unknown> })).twiml
+        : HANGUP;
+      res.type("text/xml").send(twiml);
+    } catch (err) {
+      logger.error("[clickToCall] confirm callback failed — hanging up, lead not dialled", err instanceof Error ? err : undefined);
+      res.type("text/xml").send(HANGUP);
+    }
+  });
+
   // POST /api/webhooks/twilio/recording-status
   // Twilio posts here when a call recording is ready.
   // Looks up the pending transcript by CallSid, then triggers Whisper transcription.

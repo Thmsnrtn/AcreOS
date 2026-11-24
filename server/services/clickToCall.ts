@@ -35,7 +35,7 @@ import { users, leads, type Lead, type ActivityEvent } from "@shared/schema";
 import { and, eq } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { commsRouter } from "./comms/router";
-import { orgByoTwilioNumber } from "./comms/providers/twilio";
+import { orgByoTwilioNumber, bridgeDialTwiml } from "./comms/providers/twilio";
 import { getConfiguredDncProvider, scrubPhone, evaluateDncGate, type DncScrubOutcome } from "./compliance/dncScrub";
 import { checkTcpaConsentFromLead, hasWrittenSmsConsent, isWithinQuietHours } from "./tcpaCompliance";
 import { leadHasOptedOut } from "./leadContactability";
@@ -236,6 +236,11 @@ export interface PlaceCallResult {
   simulated?: boolean;
 }
 
+/** Where Twilio posts the operator's keypress. The org and lead are bound by Twilio's signature over it. */
+function callConfirmUrl(base: string, organizationId: number, leadId: number): string {
+  return `${base.replace(/\/+$/, "")}/api/webhooks/twilio/call-confirm/${organizationId}/${leadId}`;
+}
+
 /** Callback URL for one leg. The org and lead are bound by Twilio's signature over it. */
 function callStatusCallbackUrl(base: string, organizationId: number, leadId: number, leg: "operator" | "lead"): string {
   return `${base.replace(/\/+$/, "")}/api/webhooks/twilio/call-status/${organizationId}/${leadId}/${leg}`;
@@ -303,7 +308,7 @@ export async function placeLeadCall(input: { organizationId: number; leadId: num
       preferredProvider: "twilio",
       feature: "click_to_call",
       statusCallbackUrl: callStatusCallbackUrl(base, organizationId, lead.id, "operator"),
-      bridge: { ringFirst, counterpartyStatusCallbackUrl: callStatusCallbackUrl(base, organizationId, lead.id, "lead") },
+      bridge: { ringFirst, confirmUrl: callConfirmUrl(base, organizationId, lead.id) },
     });
     sid = result.sid;
     simulated = result.simulated === true;
@@ -320,13 +325,71 @@ export async function placeLeadCall(input: { organizationId: number; leadId: num
     organizationId,
     lead.id,
     "call_made",
-    `Call started from ${ctx.verdict.callerId}: ringing your phone first, then the lead.`,
+    `Call started from ${ctx.verdict.callerId}: ringing your phone first. The lead is dialled only after you press 1.`,
     { status: "initiated", callSid: sid, callerId: ctx.verdict.callerId, operatorPhone: mask(ringFirst) },
     userId,
   );
   // Counts toward the contact-frequency cap only once Twilio accepted it.
   await recordContactTouch({ organizationId, leadId: lead.id, channel: "phone", messageId: sid, description: "Call placed (click-to-call)" });
-  return { placed: true, code: "ok", reason: `Ringing your phone (${mask(ringFirst)}). Answer to be connected.` };
+  return { placed: true, code: "ok", reason: `Ringing your phone (${mask(ringFirst)}). Answer and press 1 to be connected.` };
+}
+
+/** TwiML that ends the operator's call without dialling anyone. */
+const HANGUP_TWIML = "<Response><Hangup/></Response>";
+
+const UNCONFIRMED_TEXT =
+  "Nobody pressed 1 on your phone (no answer, or voicemail picked up), so the lead was not dialled.";
+
+/**
+ * The operator leg's keypress (a VERIFIED Twilio Gather callback —
+ * verifyOrgTwilioCallCallback ran first). The lead is dialled ONLY here and
+ * only when ALL hold: the call is one AcreOS started for this org's lead, it
+ * has not been answered before, the digit is exactly "1", and — re-checked
+ * at this moment, since the operator's phone was ringing — nobody at the
+ * number has opted out. Anything else hangs up; a missing digit is logged
+ * as `operator_unconfirmed` and the lead is never dialled.
+ */
+export async function confirmOperatorLeg(input: {
+  organizationId: number;
+  leadId: number;
+  body: Record<string, unknown>;
+}): Promise<{ twiml: string; dialled: boolean }> {
+  const { organizationId, leadId, body } = input;
+  const hangup = { twiml: HANGUP_TWIML, dialled: false };
+  const callSid = String(body.CallSid ?? "");
+  if (!callSid) return hangup;
+  const events: ActivityEvent[] = await storage.getActivityEvents(organizationId, "lead", leadId, ["call_made", "call_not_placed"]);
+  const meta = (e: ActivityEvent) => (e.metadata ?? {}) as Record<string, unknown>;
+  const started = events.find((e) => meta(e).callSid === callSid && meta(e).status === "initiated");
+  if (!started) return hangup; // not a call AcreOS started for this lead: write nothing
+  if (events.some((e) => meta(e).callSid === callSid && meta(e).leg === "operator")) return hangup; // answered once already
+  const log = (eventType: "call_made" | "call_not_placed", description: string, metadata: Record<string, unknown>) =>
+    logTimeline(organizationId, leadId, eventType, description, { leg: "operator", callSid, ...metadata }, started.userId ?? undefined);
+
+  if (String(body.Digits ?? "") !== "1") {
+    await log("call_not_placed", UNCONFIRMED_TEXT, { status: "operator_unconfirmed" });
+    return hangup;
+  }
+  const lead = await storage.getLead(organizationId, leadId);
+  const dialTo = usE164(lead?.phone);
+  const callerId = await orgByoTwilioNumber(organizationId);
+  if (!lead || !dialTo || !callerId) {
+    await log("call_not_placed", "Call not placed: the lead or your Twilio number is no longer available.", { status: "refused", gate: "unavailable" });
+    return hangup;
+  }
+  const atNumber = await storage.findLeadsByPhoneLast10(organizationId, dialTo);
+  const people = atNumber.some((l) => l.id === lead.id) ? atNumber : [lead, ...atNumber];
+  const ownerRefusal = people.some((l) => leadHasOptedOut(l)) ? "This number has opted out of contact (do not contact)." : await ownerContactRefusal("voice", { phone: dialTo });
+  if (ownerRefusal) {
+    await log("call_not_placed", `Call not placed: ${ownerRefusal}`, { status: "refused", gate: "opted_out" });
+    return hangup;
+  }
+  const base = (process.env.APP_URL || "").trim();
+  await log("call_made", "You pressed 1 — dialling the lead.", { status: "operator_confirmed" });
+  return {
+    twiml: bridgeDialTwiml(dialTo, callerId, /^https?:\/\//.test(base) ? callStatusCallbackUrl(base, organizationId, leadId, "lead") : undefined),
+    dialled: true,
+  };
 }
 
 const LEAD_LEG_TEXT: Record<string, string> = {
@@ -358,8 +421,11 @@ export async function recordCallStatus(input: {
   const status = String(body.CallStatus ?? "");
   const parentSid = String((leg === "lead" ? body.ParentCallSid : body.CallSid) ?? "");
   if (!parentSid) return { written: false };
-  const text = leg === "lead" ? LEAD_LEG_TEXT[status] : OPERATOR_LEG_TEXT[status];
-  if (!text) return { written: false }; // operator "completed" → the lead leg reports the outcome
+  // Operator "completed": the confirm callback normally reported it (pressed
+  // 1, or not). A completed operator leg with NO keypress record means the
+  // operator hung up during the prompt — the lead was never dialled.
+  const text = leg === "lead" ? LEAD_LEG_TEXT[status] : status === "completed" ? UNCONFIRMED_TEXT.replace(/\.$/, "") : OPERATOR_LEG_TEXT[status];
+  if (!text) return { written: false };
   // Existence only: the callback needs no contact field, so it reads the id
   // and nothing else (a status callback is not a person-adjacent read).
   const [lead] = await db
@@ -382,7 +448,12 @@ export async function recordCallStatus(input: {
     entityId: leadId,
     eventType: leg === "lead" ? "call_made" : "call_not_placed",
     description: text + ".",
-    metadata: { status, leg, callSid: parentSid, ...(callDuration !== undefined ? { callDuration } : {}) },
+    metadata: {
+      status: leg === "operator" && status === "completed" ? "operator_unconfirmed" : status,
+      leg,
+      callSid: parentSid,
+      ...(callDuration !== undefined ? { callDuration } : {}),
+    },
   });
   return { written: true };
 }

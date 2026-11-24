@@ -65,14 +65,15 @@ export interface InitiateCallOpts {
   externalEventId?: string;
   /**
    * Click-to-call bridge. The provider rings `ringFirst` — the operator's own
-   * verified phone — and, when they answer, dials `to` with the same caller
-   * ID. `to` stays the COUNTERPARTY, so every gate below (voice consent, owner
+   * verified phone — and, when it answers, asks for a keypress; only the
+   * confirm callback (`confirmUrl`, after a person pressed 1) dials `to`.
+   * `to` stays the COUNTERPARTY, so every gate below (voice consent, owner
    * opt-out) keeps asking about the person actually being called.
    */
   bridge?: {
     ringFirst: string;
-    /** Status callback for the counterparty leg (the dialled call). */
-    counterpartyStatusCallbackUrl?: string;
+    /** Where Twilio posts the operator's keypress (or its absence). Required: no bridge dials unconfirmed. */
+    confirmUrl: string;
   };
 }
 

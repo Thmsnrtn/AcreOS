@@ -418,6 +418,10 @@ describe("4 — every lead-id route is inside the gate's population", () => {
       verifier: "verifyOrgTwilioCallCallback",
       why: "click-to-call status from the org's OWN Twilio account (signature with that org's token + AccountSid); writes only to a call AcreOS started for that lead",
     },
+    "POST /api/webhooks/twilio/call-confirm/:orgId/:leadId": {
+      verifier: "verifyOrgTwilioCallCallback",
+      why: "click-to-call operator keypress from the org's OWN Twilio account (same verifier); dials only a call AcreOS started for that lead",
+    },
   };
   const outsideGate = (r: Reg) => {
     const k = `${r.method.toUpperCase()} ${r.full}`;

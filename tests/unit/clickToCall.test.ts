@@ -86,7 +86,7 @@ vi.mock("../../server/services/compliance/contactFrequency", () => ({
   },
 }));
 
-const { evaluateCallGate, placeLeadCall, recordCallStatus } = await import("../../server/services/clickToCall");
+const { evaluateCallGate, placeLeadCall, recordCallStatus, confirmOperatorLeg } = await import("../../server/services/clickToCall");
 const { verifyOrgTwilioCallCallback } = await import("../../server/middleware/twilioSignature");
 const { isCsrfExemptPath } = await import("../../server/middleware/csrf");
 
@@ -249,12 +249,14 @@ describe("all gates pass", () => {
     const body = new URLSearchParams(init.body);
     expect(body.get("To")).toBe(OPERATOR);
     expect(body.get("From")).toBe(ORG_NUMBER);
+    // Answering is not enough: the operator's call only asks for a keypress.
     expect(body.get("Twiml")).toBe(
-      `<Response><Dial callerId="${ORG_NUMBER}"><Number statusCallbackEvent="completed" statusCallback="https://app.example.test/api/webhooks/twilio/call-status/7/5/lead" statusCallbackMethod="POST">+15125550111</Number></Dial></Response>`,
+      `<Response><Gather input="dtmf" numDigits="1" timeout="8" actionOnEmptyResult="true" action="https://app.example.test/api/webhooks/twilio/call-confirm/7/5" method="POST"><Say>Press 1 to connect your call.</Say></Gather><Hangup/></Response>`,
     );
+    expect(body.get("Twiml")).not.toMatch(/<Dial|5550111/); // the lead's number is not handed over yet
     expect(body.get("StatusCallback")).toBe("https://app.example.test/api/webhooks/twilio/call-status/7/5/operator");
     expect(body.has("Record")).toBe(false);
-    expect(body.get("Twiml")).not.toMatch(/record|<Say/i);
+    expect(body.get("Twiml")).not.toMatch(/record/i);
     expect(H.created).toHaveLength(1);
     expect(H.created[0]).toMatchObject({ organizationId: ORG, entityType: "lead", entityId: 5, eventType: "call_made" });
     expect(H.created[0].metadata).toMatchObject({ status: "initiated", callSid: "CA_PARENT", callerId: ORG_NUMBER });
@@ -276,6 +278,75 @@ describe("all gates pass", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(H.created[0]).toMatchObject({ eventType: "call_not_placed" });
     expect(H.created[0].description).toMatch(/simulated/);
+  });
+});
+
+describe("the operator must press 1 before the lead is dialled (voicemail is not an answer)", () => {
+  const LEAD_DIAL = `<Response><Dial callerId="${ORG_NUMBER}"><Number statusCallbackEvent="completed" statusCallback="https://app.example.test/api/webhooks/twilio/call-status/7/5/lead" statusCallbackMethod="POST">+15125550111</Number></Dial></Response>`;
+  const HANGUP = "<Response><Hangup/></Response>";
+  const press = (Digits: string | undefined, CallSid = "CA_PARENT", organizationId = ORG) =>
+    confirmOperatorLeg({ organizationId, leadId: 5, body: { AccountSid: ORG_SID, CallSid, ...(Digits === undefined ? {} : { Digits }) } });
+  const ops = () => H.created.filter((e) => e.metadata?.leg === "operator");
+
+  it("pressing 1 dials the lead, from the org's number, with the lead-leg status callback", async () => {
+    await place();
+    H.created = [];
+    expect(await press("1")).toEqual({ twiml: LEAD_DIAL, dialled: true });
+    expect(ops()).toEqual([expect.objectContaining({ eventType: "call_made", metadata: expect.objectContaining({ status: "operator_confirmed", callSid: "CA_PARENT" }) })]);
+  });
+
+  it("no digit (voicemail picked up, or the prompt timed out) hangs up, never dials, and logs operator_unconfirmed", async () => {
+    await place();
+    H.created = [];
+    for (const r of [await press(undefined)]) {
+      expect(r).toEqual({ twiml: HANGUP, dialled: false });
+      expect(r.twiml).not.toMatch(/<Dial|5550111/);
+    }
+    expect(ops()).toEqual([expect.objectContaining({ eventType: "call_not_placed", metadata: expect.objectContaining({ status: "operator_unconfirmed" }) })]);
+    expect(ops()[0].description).toMatch(/not dialled/);
+    // A later "1" for the same call cannot revive it.
+    expect(await press("1")).toEqual({ twiml: HANGUP, dialled: false });
+    // …and the operator leg's own completion adds nothing more.
+    await recordCallStatus({ organizationId: ORG, leadId: 5, leg: "operator", body: { AccountSid: ORG_SID, CallSid: "CA_PARENT", CallStatus: "completed" } });
+    expect(ops()).toHaveLength(1);
+  });
+
+  it("any digit other than 1 hangs up without dialling", async () => {
+    await place();
+    for (const d of ["", "2", "11", "*"]) {
+      H.events = H.events.filter((e) => e.metadata?.leg !== "operator");
+      expect(await press(d), JSON.stringify(d)).toEqual({ twiml: HANGUP, dialled: false });
+    }
+  });
+
+  it("a keypress for a call AcreOS did not start — or on another org's lead — dials nothing and writes nothing", async () => {
+    await place();
+    H.created = [];
+    expect(await press("1", "CA_OTHER")).toEqual({ twiml: HANGUP, dialled: false });
+    expect(await press("1", "CA_PARENT", 8)).toEqual({ twiml: HANGUP, dialled: false });
+    expect(H.created).toHaveLength(0);
+  });
+
+  it("an opt-out that lands while the operator's phone rings is honoured at the keypress", async () => {
+    await place();
+    H.created = [];
+    H.leads = [lead({ doNotContact: true })];
+    expect(await press("1")).toEqual({ twiml: HANGUP, dialled: false });
+    expect(ops()[0]).toMatchObject({ eventType: "call_not_placed", metadata: expect.objectContaining({ status: "refused", gate: "opted_out" }) });
+  });
+
+  it("the operator hanging up during the prompt (completed, no keypress) is logged as operator_unconfirmed", async () => {
+    await place();
+    H.created = [];
+    await recordCallStatus({ organizationId: ORG, leadId: 5, leg: "operator", body: { AccountSid: ORG_SID, CallSid: "CA_PARENT", CallStatus: "completed" } });
+    expect(ops()).toEqual([expect.objectContaining({ eventType: "call_not_placed", metadata: expect.objectContaining({ status: "operator_unconfirmed" }) })]);
+  });
+
+  it("after a confirmed call, the operator leg's completion writes nothing (the lead leg reports the outcome)", async () => {
+    await place();
+    await press("1");
+    H.created = [];
+    expect(await recordCallStatus({ organizationId: ORG, leadId: 5, leg: "operator", body: { AccountSid: ORG_SID, CallSid: "CA_PARENT", CallStatus: "completed" } })).toEqual({ written: false });
   });
 });
 
@@ -348,6 +419,8 @@ describe("status callbacks: signed with the org's OWN token, written only to tha
     expect(isCsrfExemptPath("/webhooks/twilio/call-status/7/5/lead")).toBe(true);
     expect(isCsrfExemptPath("/webhooks/twilio/call-status/7/5/operator")).toBe(true);
     expect(isCsrfExemptPath("/webhooks/twilio/call-status/7/5/other")).toBe(false);
+    expect(isCsrfExemptPath("/webhooks/twilio/call-confirm/7/5")).toBe(true);
+    expect(isCsrfExemptPath("/webhooks/twilio/call-confirm/7/5/x")).toBe(false);
   });
 });
 
@@ -372,6 +445,7 @@ describe("structure", () => {
     expect(leadsSrc).toMatch(/api\.post\("\/api\/leads\/:id\/call",[^)]*requirePermission\("canEditLeads"\)/);
     const misc = stripComments(fs.readFileSync(path.join(ROOT, "server/routes-misc.ts"), "utf8"));
     expect(misc).toMatch(/api\.post\("\/api\/webhooks\/twilio\/call-status\/:orgId\/:leadId\/:leg", verifyOrgTwilioCallCallback,/);
+    expect(misc).toMatch(/api\.post\("\/api\/webhooks\/twilio\/call-confirm\/:orgId\/:leadId", verifyOrgTwilioCallCallback,/);
   });
 
   it("the gate's consent step agrees with the cold-text predicate over every source", async () => {

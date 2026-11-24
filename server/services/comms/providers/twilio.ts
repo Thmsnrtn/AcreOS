@@ -193,11 +193,24 @@ function xmlEscape(v: string): string {
 }
 
 /**
- * The click-to-call bridge: once the operator answers, dial the counterparty
- * with the org's own number as caller ID. No <Say>, no recording — the
- * operator hears the lead's phone ring, and nothing is recorded.
+ * The click-to-call bridge, first half: when the operator's phone answers,
+ * ASK for a human before anyone else is dialled. A voicemail box can pick up
+ * inside the ring timeout, and it never presses a key — so nothing is dialled
+ * until a person presses 1. With `actionOnEmptyResult`, a timeout posts an
+ * empty result to the confirm callback too, which hangs up and logs it.
+ * The lead's number is NOT in this document: it is handed to Twilio only by
+ * the confirm callback, after the digit (bridgeDialTwiml).
  */
-function bridgeTwiml(counterparty: string, callerId: string, statusCallbackUrl?: string): string {
+function bridgeConfirmTwiml(confirmUrl: string): string {
+  return `<Response><Gather input="dtmf" numDigits="1" timeout="8" actionOnEmptyResult="true" action="${xmlEscape(confirmUrl)}" method="POST"><Say>Press 1 to connect your call.</Say></Gather><Hangup/></Response>`;
+}
+
+/**
+ * The bridge, second half — served by the confirm callback only after the
+ * operator pressed 1: dial the counterparty with the org's own number as
+ * caller ID. No recording.
+ */
+export function bridgeDialTwiml(counterparty: string, callerId: string, statusCallbackUrl?: string): string {
   const cb = statusCallbackUrl
     ? ` statusCallbackEvent="completed" statusCallback="${xmlEscape(statusCallbackUrl)}" statusCallbackMethod="POST"`
     : "";
@@ -347,10 +360,11 @@ class TwilioProvider implements CommsProvider {
       From: from,
     });
     if (opts.bridge) {
-      // Ring the operator for 20 s — shorter than most voicemail pickup, so
-      // an unanswered phone ends the call before the lead is ever dialled.
+      // Ring the operator for 20 s. Answering is not enough: a voicemail box
+      // can answer inside that, so the lead is dialled only after a person
+      // presses 1 (bridgeConfirmTwiml → the confirm callback).
       body.append("Timeout", "20");
-      body.append("Twiml", bridgeTwiml(opts.to, from, opts.bridge.counterpartyStatusCallbackUrl));
+      body.append("Twiml", bridgeConfirmTwiml(opts.bridge.confirmUrl));
     } else if (opts.twimlUrl) {
       body.append("Url", opts.twimlUrl);
     }

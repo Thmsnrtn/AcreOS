@@ -83,6 +83,9 @@ const CSRF_EXEMPT_PATTERNS: RegExp[] = [
   // status from the org's OWN Twilio account; verified with that org's token
   // and AccountSid (verifyOrgTwilioCallCallback), rejected otherwise.
   /^\/webhooks\/twilio\/call-status\/\d+\/\d+\/(operator|lead)$/,
+  // POST /api/webhooks/twilio/call-confirm/:orgId/:leadId — the operator's
+  // keypress on the same org-owned call; same verifier.
+  /^\/webhooks\/twilio\/call-confirm\/\d+\/\d+$/,
 ];
 
 /**
