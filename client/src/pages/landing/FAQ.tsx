@@ -7,7 +7,7 @@
  */
 
 import { useState } from "react";
-import { LANDING_COPY } from "./copy";
+import type { LandingCopy } from "./copy";
 
 const ITEMS = [
   {
@@ -86,8 +86,8 @@ const ITEMS = [
   },
 ];
 
-export function FAQ() {
-  const c = LANDING_COPY.faq;
+export function FAQ({ copy }: { copy: LandingCopy["faq"] }) {
+  const c = copy;
   const [openIdx, setOpenIdx] = useState<number | null>(0);
 
   return (
