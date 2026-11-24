@@ -1055,11 +1055,18 @@ export function registerDocSystemRoutes(app: Express): void {
         return Errors.badRequest(res, "Signer name and signature data are required");
       }
 
+      // The document is resolved under the caller's organization BEFORE any
+      // write: a documentId that is not one of this org's documents (another
+      // org's, or nonexistent) is refused with 404, and no signature row is
+      // written against it.
       // §6.2: a seller follow-up draft is prepared text, not a signable
       // document. Refused before any signature is written.
       if (documentId) {
         const targetDoc = await storage.getGeneratedDocument(org.id, documentId);
-        if (targetDoc?.type === SELLER_FOLLOW_UP_DRAFT_TYPE) {
+        if (!targetDoc) {
+          return Errors.notFound(res, "Document");
+        }
+        if (targetDoc.type === SELLER_FOLLOW_UP_DRAFT_TYPE) {
           return Errors.unprocessable(res, "A follow-up draft is not a signable document.");
         }
       }

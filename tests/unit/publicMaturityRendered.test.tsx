@@ -52,6 +52,7 @@ import {
 import { readinessOf } from "../../shared/business-types/readiness";
 import { measureVerticalEvidence } from "../support/verticalEvidence";
 import { deriveLandingTiers, Positioning } from "../../client/src/pages/landing/Positioning";
+import { LANDING_COPY } from "../../client/src/pages/landing/copy";
 
 /** What the repo can actually demonstrate — the anchor that is NOT the map. */
 const evidence = measureVerticalEvidence();
@@ -84,7 +85,7 @@ function renderedTiers() {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
-  act(() => root!.render(<Positioning />));
+  act(() => root!.render(<Positioning copy={LANDING_COPY.positioning} />));
 
   const read = (label: string): string[] => {
     const ul = container!.querySelector(`ul[aria-label="${label}"]`);
