@@ -36,6 +36,7 @@ import {
   productLandingSchema,
   SITE,
 } from "@/lib/jsonld-schemas";
+import { useLandingCopy } from "@/lib/landing-copy";
 import { LandingNav } from "./landing/LandingNav";
 import { Hero } from "./landing/Hero";
 import { ProductShots } from "./landing/ProductShots";
@@ -64,6 +65,12 @@ const PAGE_DESCRIPTION =
   "AcreOS is the operating system for property investors — deepest in land: land flippers, note investors, fix-and-flippers, wholesalers, subdividers, tax-delinquent buyers, and buy-and-hold landlords. Run comps, send mail, draft replies, and track every deal through closing — Pax does the work and every message waits for your tap.";
 
 export default function LandingPage() {
+  // The page's copy is served as data (/landing-copy.json), loaded
+  // once here and threaded to the sections as props — copy.ts stays
+  // the source of truth and the claims audit reads it from disk.
+  // A failed or wrong-shape load renders the shell plus a visible
+  // error, never a silently-empty public page.
+  const { data: copy, error: copyError } = useLandingCopy();
   // Title is intentionally NOT set here — index.html ships the canonical
   // "AcreOS — The Operating System for Property Investors" title and we don't
   // want a flicker between that and a React-set variant on first paint.
@@ -90,21 +97,35 @@ export default function LandingPage() {
       {/* Full landing per /acreos-landing/. Section order matches the
           prototype's app.jsx switch statement. */}
       <main id="main-content">
-        <Hero />
-        {/* Simulated product screens (rendered UI, example-labeled) — the
-            benchmark pattern of showing the actual product, done honestly. */}
-        <ProductShots />
-        <Positioning />
-        <HowItWorks />
-        <Agents />
-        <DayInLife />
-        <Features />
-        <LandCreditScoreBand />
-        <DataProvenance />
-        <Quotes />
-        <Pricing />
-        <FAQ />
-        <FinalCTA />
+        {copyError && (
+          <p role="alert" className="lp-section text-sm" data-testid="landing-load-error">
+            We couldn't load this page's content. Please refresh and try again.
+          </p>
+        )}
+        {!copy && !copyError && (
+          <p className="lp-section text-sm" role="status" data-testid="landing-loading">
+            Loading…
+          </p>
+        )}
+        {copy && (
+          <>
+            <Hero copy={copy.hero} />
+            {/* Simulated product screens (rendered UI, example-labeled) — the
+                benchmark pattern of showing the actual product, done honestly. */}
+            <ProductShots copy={copy.productShots} />
+            <Positioning copy={copy.positioning} />
+            <HowItWorks copy={copy.how} />
+            <Agents copy={copy.agents} />
+            <DayInLife copy={copy.day} />
+            <Features copy={copy.features} />
+            <LandCreditScoreBand copy={copy.landCreditScore} />
+            <DataProvenance copy={copy.data} />
+            <Quotes copy={copy.quotes} />
+            <Pricing copy={copy.pricing} />
+            <FAQ copy={copy.faq} />
+            <FinalCTA copy={copy.cta} />
+          </>
+        )}
       </main>
       <Footer />
     </div>
