@@ -92,11 +92,20 @@ describe("note-tape import UI", () => {
     const boxes = host.querySelectorAll<HTMLButtonElement>('[role="checkbox"]');
     expect(boxes.length).toBe(2);
     for (const b of Array.from(boxes)) await act(async () => { b.click(); });
+    // Who services the notes is the operator's declaration: nothing is pre-selected, and Import waits for it.
+    const radios = Array.from(host.querySelectorAll<HTMLButtonElement>('[data-testid="note-tape-servicing-choice"] [role="radio"]'));
+    expect(radios.map((r) => r.getAttribute("aria-checked"))).toEqual(["false", "false", "false", "false"]);
+    expect(commitButton().disabled).toBe(true);
+    expect(host.querySelector('[data-testid="note-tape-servicing-needed"]')).not.toBeNull();
+    expect(host.textContent).toMatch(/AcreOS prepares periodic statements only for notes you mark as serviced by you/);
+    expect(host.textContent).toMatch(/your declaration/);
+    await act(async () => { radios.find((r) => r.id === "note-tape-servicing-self_serviced")!.click(); });
     expect(commitButton().disabled).toBe(false);
     await act(async () => { commitButton().click(); });
     await flush();
     const commit = calls.find((c) => c.url.endsWith("/commit"))!;
     expect(commit.body.excludeRows.sort()).toEqual([4, 5]);
+    expect(commit.body.servicingArrangement).toBe("self_serviced");
     expect(host.querySelector('[data-testid="note-tape-committed"]')).not.toBeNull();
   });
 
