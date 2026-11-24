@@ -44,8 +44,8 @@ Head SHAs are the PR heads at the time of this report. "merged" means merged to
 | #488 | W4.11 note-model merge plan + pricing engine | 884ea7ff | **draft** | B10 proposal + `note_pricing` engine; recording refused for non-note subjects (audit fix) |
 | #495 | W2-COMMERCIAL | c55b15cd | merged (11-11) | commercial tab on /leases — CAM, escalations, $/sqft lit; CAM refuses raw totals |
 | #497 | W2-TODAY vertical surfaces | c00eab6f | open (Muse's merge queue) | Today shows each vertical's tools on phones; widgets retirement. Build red on 11-09 was the bundle ceiling, since fixed on main |
-| #499 | W1.4 signup trim | c3051827 | open | front page = land_flipper, hybrid, note_investor; others waitlist behind a flag defaulting on. CodeQL CSRF fix pushed |
-| #500 | S-HARDEN parent-parcel scope | 9ad616df | open | parent parcel reference resolved in the caller's org; dashboard aggregates scoped |
+| #499 | W1.4 signup trim | 2ff85d5d | **closed as dead (Muse, 11-24)** | front page = land_flipper, hybrid, note_investor; others waitlist behind a flag defaulting on. Superseded by main itself: onboarding-v2's registry-maturity fork (#592 lineage) already derives the presented set (five core types), and this PR's hard-coded rule contradicted it both ways. A registry_only waitlist, if wanted, is a fresh registry-derived micro-slice |
+| #500 | S-HARDEN parent-parcel scope | 9ad616df | closed → superseded by Muse's **#723** (11-24); the audit-B1 bulk-update guard rides as **#725** stacked on #723 | parent parcel reference resolved in the caller's org; dashboard aggregates scoped |
 | #501 | W3.8 docgen → /sign | 30188887 | open | the deal prepares its own purchase agreement through the assignment-compliance gate, hands it to the native signing rail |
 | #502 | W3.9 click-to-call | dd1357b2 | open, **needs ruling** | org's own Twilio, DNC/consent-gated, logged to the lead timeline; 7 population gates satisfied; `DEBT_BASELINE` 212 → 214 (§3.1) |
 | #503 | W1.2 team invites | 5df7f480 | open | invites emailed on the system lane; TeamInviteCard says only what is true. CodeQL regex fix + audit fixes pushed |
@@ -148,11 +148,11 @@ models — the proposal is in the PR; the engine records nothing until ruled.
 - **Team (#494):** approvals and Slack/Teams notification channels stopped (see 3.5).
 - **OD-5 relabels:** STR, MHP, agent, commercial, developer public tiers are each one founder relabel away from lowering `MATURITY_OVERCLAIM_BASELINE`; nothing was relabelled by the session.
 
-### 3.8 Signup trim (#499)
-The flag defaults on. Which types are on the front page is a product call
-recorded in `shared/signupTrim` — confirm land_flipper / hybrid / note_investor,
-and whether the waitlist row (`signup_waitlist:<type>` source) is the wanted
-capture.
+### 3.8 Signup trim (#499) — closed
+Muse closed #499 as dead on 11-24: main's onboarding fork already derives the
+presented set from registry maturity (pinned by `onboardingForkRecut.test.ts`),
+so the hard-coded trim was a second source of truth. No decision remains; a
+waitlist for registry_only types would be a fresh registry-derived slice.
 
 ### 3.9 Docgen (#501)
 A promissory-note template needs `{{late_fee_percentage}}`, which no record
