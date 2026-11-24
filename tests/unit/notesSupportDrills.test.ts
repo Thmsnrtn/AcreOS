@@ -28,13 +28,95 @@
  *
  * Fixtures are synthetic (`SYNTHETIC Borrower …`, loan numbers `N9-*`).
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   assertNoRowLost,
   readNoteTape,
   suggestNoteTapeMapping,
   validateNoteTape,
 } from "../../server/services/notes/noteTapeImport";
+
+// ── Drills 1 + 3 (N9-DEF-1 cure) fixtures ───────────────────────────────────
+// The support resolver's notes/ladder reads run through the REAL
+// executeSupportTool switch. Only the two data sources underneath it are
+// mocked: `storage` (serviced book + leads) and `db` (the acquired book and
+// the ladder's note-events read, both plain selects). The acquired note is
+// 32 days past due — drill 1's seeded state.
+const ACQUIRED_ID = "9b1c0000-0000-4000-8000-0000000000d1";
+const daysAgoIso = (days: number) => {
+  const d = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  return d.toISOString().slice(0, 10);
+};
+const mocks = vi.hoisted(() => {
+  const acquiredRow = {
+    id: "9b1c0000-0000-4000-8000-0000000000d1",
+    organizationId: 77,
+    noteNumber: "N9-D1",
+    borrowerId: 501,
+    payerName: "SYNTHETIC Borrower D1",
+    payerAddress: { phone: "555-0150" },
+    status: "performing",
+    delinquencyStatus: "delinquent",
+    daysDelinquent: 32,
+    originalPrincipalCents: 5000000,
+    currentBalanceCents: 4000000,
+    paymentAmountCents: 65000,
+    interestRateBps: 950,
+    nextPaymentDate: null as string | null,
+    paidThroughDate: null as string | null,
+    acquisitionDate: "2026-09-15",
+  };
+  return { acquiredRow };
+});
+vi.mock("../../server/db", async () => {
+  const schema = await import("../../shared/schema");
+  const makeChain = (): any => {
+    const chain: any = {
+      _table: null as unknown,
+      from(t: unknown) { chain._table = t; return chain; },
+      where() { return chain; },
+      orderBy() { return chain; },
+      async limit() { return chain._table === schema.acquiredNotes ? [mocks.acquiredRow] : []; },
+      then(res: (v: unknown) => unknown, rej: (e: unknown) => unknown) {
+        const rows = chain._table === schema.acquiredNotes ? [mocks.acquiredRow] : [];
+        return Promise.resolve(rows).then(res, rej);
+      },
+    };
+    return chain;
+  };
+  return { db: { select: () => makeChain() } };
+});
+vi.mock("../../server/storage", () => ({
+  storage: {
+    getNotes: async () => [{
+      id: 42, propertyId: 7, borrowerId: 500,
+      originalPrincipal: 60000, currentBalance: 55000, interestRate: 9,
+      monthlyPayment: 700, termMonths: 120, status: "active",
+      startDate: "2025-01-15", nextPaymentDate: "2026-12-01",
+    }],
+    getLeads: async () => [
+      { id: 500, firstName: "SYNTHETIC", lastName: "Serviced Borrower", email: "serviced@example.test", phone: "555-0142" },
+      { id: 501, firstName: "SYNTHETIC", lastName: "Borrower D1", email: "d1@example.test", phone: "555-0151" },
+    ],
+  },
+}));
+
+import { executeSupportTool, PAUSE_SAFE_SUPPORT_TOOLS, supportToolDefinitions } from "../../server/ai/supportAgent";
+import { ladderStageFor } from "@shared/notes/delinquency";
+import fs from "node:fs";
+import path from "node:path";
+
+// The resolver subset is not exported (an export with no production consumer
+// fails the reachability ratchet); pin it from source, the
+// paxPauseSupportGate.test.ts pattern for exactly this shape.
+const RESOLVER_TOOL_NAMES: string[] = (() => {
+  const src = fs.readFileSync(path.resolve(__dirname, "../../server/ai/paxSupportResolver.ts"), "utf8");
+  const m = /const RESOLVER_TOOL_NAMES = \[([\s\S]*?)\] as const;/.exec(src);
+  if (!m) throw new Error("RESOLVER_TOOL_NAMES literal not found in paxSupportResolver.ts");
+  return [...m[1].matchAll(/"([a-z_0-9]+)"/g)].map((x) => x[1]);
+})();
+
+const SUPPORT_ORG = { id: 77, isFounder: false } as never;
 
 const HEADER =
   "Loan #,Borrower,Orig Balance,UPB,Note Rate,Term,P&I,Due Day,Note Date,Maturity,Purchase Date,Purchase Price,Loan Status,Original Note,Mortgage/DOT,Assignments";
@@ -109,5 +191,62 @@ describe("N9 drill 4 — tape preview with due-day/term columns swapped: the mis
     expect(out.valid[0].stated.termMonths?.source).toMatchObject({ column: "Term", raw: "120" });
     expect(out.valid[0].paymentDueDay).toBe(1);
     expect(out.valid[0].stated.paymentDueDay?.source).toMatchObject({ column: "Due Day", raw: "1" });
+  });
+});
+
+describe("N9-DEF-1 cure — the support resolver's subset now carries the notes/ladder reads", () => {
+  it("the resolver subset is exactly the prior read subset plus the two notes reads — no write/send power added", () => {
+    expect([...RESOLVER_TOOL_NAMES].sort()).toEqual([
+      "check_data_integrity", "diagnose_account", "draft_customer_response",
+      "escalate_to_human", "estimate_resolution_confidence", "get_account_summary",
+      "get_note_delinquency_ladder", "get_notes_book", "get_similar_resolutions",
+      "get_troubleshooting_steps", "get_user_activity", "query_user_data",
+      "recall_user_memory", "search_knowledge_base", "search_resolved_tickets",
+    ].sort());
+  });
+
+  it("every resolver tool has a support-catalog definition, and both notes reads are pause-safe (read-only)", () => {
+    for (const name of RESOLVER_TOOL_NAMES) {
+      expect((supportToolDefinitions as Record<string, unknown>)[name], name).toBeTruthy();
+    }
+    expect(PAUSE_SAFE_SUPPORT_TOOLS.has("get_notes_book")).toBe(true);
+    expect(PAUSE_SAFE_SUPPORT_TOOLS.has("get_note_delinquency_ladder")).toBe(true);
+  });
+});
+
+describe("N9 drill 3 — 'Pax told me X': the support path now reads BOTH books with the coverage statement", () => {
+  it("get_notes_book returns the serviced AND acquired books, labelled, with counts and lead-resolved borrower contact", async () => {
+    const out = await executeSupportTool("get_notes_book", {}, SUPPORT_ORG, undefined, { userId: "user-1" });
+    expect(out.success).toBe(true);
+    const data = (out as { data: Record<string, any> }).data;
+    expect(data.coverage).toContain("BOTH note books");
+    expect(data.coverage).toContain("serviced book (notes this account originated and services: 1)");
+    expect(data.coverage).toContain("acquired book (notes this account bought: 1)");
+    expect(data.serviced).toHaveLength(1);
+    expect(data.serviced[0]).toMatchObject({ book: "serviced", id: 42 });
+    expect(data.serviced[0].borrowerContact).toMatchObject({ email: "serviced@example.test", source: "linked_lead" });
+    expect(data.acquired).toHaveLength(1);
+    expect(data.acquired[0]).toMatchObject({ book: "acquired", noteNumber: "N9-D1" });
+    expect(data.acquired[0].borrowerContact).toMatchObject({ email: "d1@example.test", source: "linked_lead" });
+  });
+});
+
+describe("N9 drill 1 — money moment: the support path reads the ladder for a note 32 days past due", () => {
+  it("get_note_delinquency_ladder derives the current stage live from the next payment date", async () => {
+    mocks.acquiredRow.nextPaymentDate = daysAgoIso(32);
+    const out = await executeSupportTool("get_note_delinquency_ladder", { note_id: ACQUIRED_ID }, SUPPORT_ORG, undefined, { userId: "user-1" });
+    expect(out.success).toBe(true);
+    const data = (out as { data: Record<string, any> }).data;
+    expect(data.noteId).toBe(ACQUIRED_ID);
+    expect(data.onLadder).toBe(true);
+    expect(data.current.daysDelinquent).toBe(32);
+    expect(data.current.stage).toBe(ladderStageFor(32));
+    expect(data.reason).toBeNull();
+  });
+
+  it("the same state is visible in the book read: the acquired note carries its delinquency state, labelled by book", async () => {
+    const out = await executeSupportTool("get_notes_book", {}, SUPPORT_ORG, undefined, { userId: "user-1" });
+    const data = (out as { data: Record<string, any> }).data;
+    expect(data.acquired[0]).toMatchObject({ delinquencyStatus: "delinquent", daysDelinquent: 32 });
   });
 });

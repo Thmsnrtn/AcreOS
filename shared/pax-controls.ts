@@ -624,6 +624,8 @@ const TOOL_REGISTRY: Readonly<Record<string, ToolEntry>> = Object.fromEntries([
       "get_billing_issues",
       "get_contextual_suggestions",
       "get_feature_walkthrough",
+      "get_note_delinquency_ladder",
+      "get_notes_book",
       "get_payment_history",
       "get_resolution_stats",
       "get_similar_resolutions",

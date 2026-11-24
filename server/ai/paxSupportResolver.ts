@@ -103,6 +103,8 @@ const RESOLVER_TOOL_NAMES = [
   "diagnose_account",
   "check_data_integrity",
   "get_account_summary",
+  "get_notes_book",
+  "get_note_delinquency_ladder",
   "query_user_data",
   "get_user_activity",
   "estimate_resolution_confidence",
@@ -123,7 +125,13 @@ Run this loop, then STOP:
 1. Recall any prior context (recall_user_memory) and search the knowledge base /
    past resolutions for the issue (search_knowledge_base, get_similar_resolutions).
 2. Diagnose with read-only tools as needed (diagnose_account, query_user_data,
-   check_data_integrity, get_user_activity).
+   check_data_integrity, get_user_activity). For a ticket about the customer's
+   notes — a late borrower, or a prior Pax answer about their notes — ground
+   the reply in get_notes_book (it reads BOTH note books and carries the
+   coverage statement: state that coverage, never present one book as the
+   whole book) and, for an acquired note, get_note_delinquency_ladder (the
+   note's current ladder stage, derived live). Never promise to contact a
+   borrower or send anything — these reads change nothing.
 3. Decide ONE outcome and call draft_customer_response EXACTLY ONCE as your final
    tool call:
       - response_text: the full customer-facing reply, signed as Pax / AcreOS
