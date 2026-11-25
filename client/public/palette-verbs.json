@@ -1,0 +1,386 @@
+[
+  {
+    "id": "verb:lead-add",
+    "label": "Add lead",
+    "hint": "Capture a new lead",
+    "path": "/leads?new=true",
+    "keywords": [
+      "lead",
+      "new",
+      "create",
+      "capture",
+      "prospect"
+    ],
+    "scope": "leads",
+    "iconKey": "UserPlus"
+  },
+  {
+    "id": "verb:lead-edit",
+    "label": "Edit lead",
+    "path": "/leads",
+    "keywords": [
+      "update",
+      "modify",
+      "change"
+    ],
+    "scope": "leads",
+    "iconKey": "ClipboardList"
+  },
+  {
+    "id": "verb:lead-mark-contacted",
+    "label": "Mark contacted",
+    "hint": "Log that you spoke or wrote",
+    "path": "/leads?action=mark-contacted",
+    "keywords": [
+      "contacted",
+      "called",
+      "reached",
+      "outreach"
+    ],
+    "scope": "leads",
+    "iconKey": "CheckCircle"
+  },
+  {
+    "id": "verb:lead-qualify",
+    "label": "Qualify",
+    "path": "/leads?action=qualify",
+    "keywords": [
+      "qualify",
+      "score",
+      "vet"
+    ],
+    "scope": "leads",
+    "iconKey": "Filter"
+  },
+  {
+    "id": "verb:lead-dismiss",
+    "label": "Dismiss",
+    "path": "/leads?action=dismiss",
+    "keywords": [
+      "dismiss",
+      "reject",
+      "drop"
+    ],
+    "scope": "leads",
+    "iconKey": "Trash2"
+  },
+  {
+    "id": "verb:lead-assign",
+    "label": "Assign",
+    "path": "/leads?action=assign",
+    "keywords": [
+      "assign",
+      "delegate",
+      "team"
+    ],
+    "scope": "leads",
+    "iconKey": "Users"
+  },
+  {
+    "id": "verb:skip-trace",
+    "label": "Skip trace",
+    "hint": "Look up phone, email, & address",
+    "path": "/leads?action=skip-trace",
+    "keywords": [
+      "skip",
+      "trace",
+      "lookup",
+      "find",
+      "owner"
+    ],
+    "scope": "leads",
+    "iconKey": "Search"
+  },
+  {
+    "id": "verb:property-add",
+    "label": "Add property",
+    "path": "/properties?new=true",
+    "keywords": [
+      "parcel",
+      "land",
+      "new"
+    ],
+    "scope": "properties",
+    "iconKey": "Home"
+  },
+  {
+    "id": "verb:property-edit",
+    "label": "Edit property",
+    "path": "/properties",
+    "keywords": [
+      "update",
+      "edit"
+    ],
+    "scope": "properties",
+    "iconKey": "Building2"
+  },
+  {
+    "id": "verb:run-avm",
+    "label": "Run valuation",
+    "hint": "Run the valuation model",
+    "path": "/avm",
+    "keywords": [
+      "avm",
+      "valuation",
+      "value",
+      "estimate",
+      "appraisal"
+    ],
+    "scope": "properties",
+    "iconKey": "TrendingUp"
+  },
+  {
+    "id": "verb:property-flag-dd",
+    "label": "Mark for due diligence",
+    "path": "/properties?action=flag-dd",
+    "keywords": [
+      "due",
+      "diligence",
+      "dd",
+      "review"
+    ],
+    "scope": "properties",
+    "iconKey": "Tag"
+  },
+  {
+    "id": "verb:deal-new",
+    "label": "New deal",
+    "path": "/deals?new=true",
+    "keywords": [
+      "deal",
+      "transaction",
+      "open"
+    ],
+    "scope": "deals",
+    "iconKey": "FileText"
+  },
+  {
+    "id": "verb:deal-advance",
+    "label": "Advance stage",
+    "path": "/deals?action=advance",
+    "keywords": [
+      "advance",
+      "next",
+      "progress",
+      "stage"
+    ],
+    "scope": "deals",
+    "iconKey": "Handshake"
+  },
+  {
+    "id": "verb:deal-close-won",
+    "label": "Close won",
+    "path": "/deals?action=close-won",
+    "keywords": [
+      "won",
+      "closed",
+      "closing",
+      "complete"
+    ],
+    "scope": "deals",
+    "iconKey": "CheckCircle"
+  },
+  {
+    "id": "verb:deal-close-lost",
+    "label": "Close lost",
+    "path": "/deals?action=close-lost",
+    "keywords": [
+      "lost",
+      "dead",
+      "killed"
+    ],
+    "scope": "deals",
+    "iconKey": "Trash2"
+  },
+  {
+    "id": "verb:deal-reopen",
+    "label": "Reopen",
+    "path": "/deals?action=reopen",
+    "keywords": [
+      "reopen",
+      "revive"
+    ],
+    "scope": "deals",
+    "iconKey": "RefreshCw"
+  },
+  {
+    "id": "verb:generate-offer",
+    "label": "Generate offer",
+    "hint": "Draft an offer letter",
+    "path": "/offers?generate=true",
+    "keywords": [
+      "offer",
+      "draft",
+      "letter",
+      "generate"
+    ],
+    "scope": "deals",
+    "iconKey": "Sparkles"
+  },
+  {
+    "id": "verb:send-letter",
+    "label": "Send letter",
+    "path": "/campaigns?action=send-letter",
+    "keywords": [
+      "mail",
+      "post",
+      "letter",
+      "direct"
+    ],
+    "scope": "inbox",
+    "iconKey": "Mail"
+  },
+  {
+    "id": "verb:send-text",
+    "label": "Send text",
+    "path": "/campaigns?action=send-text",
+    "keywords": [
+      "sms",
+      "text",
+      "message"
+    ],
+    "scope": "inbox",
+    "iconKey": "MessageSquare"
+  },
+  {
+    "id": "verb:send-email",
+    "label": "Send email",
+    "path": "/inbox?action=compose",
+    "keywords": [
+      "email",
+      "compose",
+      "send"
+    ],
+    "scope": "inbox",
+    "iconKey": "Send"
+  },
+  {
+    "id": "verb:make-call",
+    "label": "Call",
+    "hint": "Place a call from a lead's record",
+    "path": "/leads?action=call",
+    "keywords": [
+      "call",
+      "dial",
+      "phone"
+    ],
+    "scope": "inbox",
+    "iconKey": "Phone"
+  },
+  {
+    "id": "verb:new-task",
+    "label": "New task",
+    "path": "/tasks?action=new",
+    "keywords": [
+      "task",
+      "todo",
+      "remind"
+    ],
+    "scope": "global",
+    "iconKey": "ListTodo"
+  },
+  {
+    "id": "verb:archive",
+    "label": "Archive",
+    "path": "/?action=archive",
+    "keywords": [
+      "archive",
+      "hide",
+      "stash"
+    ],
+    "scope": "global",
+    "iconKey": "Archive"
+  },
+  {
+    "id": "verb:restore",
+    "label": "Restore",
+    "path": "/?action=restore",
+    "keywords": [
+      "restore",
+      "unarchive"
+    ],
+    "scope": "global",
+    "iconKey": "RefreshCw"
+  },
+  {
+    "id": "verb:delete",
+    "label": "Delete",
+    "path": "/?action=delete",
+    "keywords": [
+      "delete",
+      "remove",
+      "trash"
+    ],
+    "scope": "global",
+    "iconKey": "Trash2"
+  },
+  {
+    "id": "verb:export",
+    "label": "Export",
+    "hint": "Download CSV / Excel",
+    "path": "/?action=export",
+    "keywords": [
+      "export",
+      "download",
+      "csv",
+      "excel"
+    ],
+    "scope": "global",
+    "iconKey": "Download"
+  },
+  {
+    "id": "verb:import",
+    "label": "Import",
+    "hint": "Upload CSV / mapping",
+    "path": "/?action=import",
+    "keywords": [
+      "import",
+      "upload",
+      "csv",
+      "load"
+    ],
+    "scope": "global",
+    "iconKey": "Upload"
+  },
+  {
+    "id": "verb:switch-org",
+    "label": "Switch organization",
+    "hint": "Change the active workspace",
+    "path": "/settings?tab=org",
+    "keywords": [
+      "org",
+      "organization",
+      "workspace",
+      "switch",
+      "change"
+    ],
+    "scope": "settings",
+    "iconKey": "Settings"
+  },
+  {
+    "id": "verb:invite-teammate",
+    "label": "Invite teammate",
+    "path": "/settings?tab=team",
+    "keywords": [
+      "invite",
+      "team",
+      "user",
+      "add"
+    ],
+    "scope": "settings",
+    "iconKey": "UserPlus"
+  },
+  {
+    "id": "verb:open-billing",
+    "label": "Open billing",
+    "path": "/settings?tab=billing",
+    "keywords": [
+      "billing",
+      "subscription",
+      "plan",
+      "invoice"
+    ],
+    "scope": "settings",
+    "iconKey": "DollarSign"
+  }
+]
