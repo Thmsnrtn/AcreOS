@@ -536,6 +536,11 @@ const TOOL_REGISTRY: Readonly<Record<string, ToolEntry>> = Object.fromEntries([
       "get_wholesale_decision",
       "get_wholesale_disposition_packet",
       "get_wholesale_blasts",
+      "get_parcel_passport",
+      "get_land_listings",
+      "get_land_listing",
+      "get_listing_paste_text",
+      "get_land_payoff_quote",
       "calculate_amortization",
       "calculate_payment_schedule",
       "calculate_roi",
@@ -590,6 +595,8 @@ const TOOL_REGISTRY: Readonly<Record<string, ToolEntry>> = Object.fromEntries([
   ...recordTools("deals", ["record_rent_payment", "generate_scheduled_rent_charges"], "executeTool"),
   // A buyer's reply on a blast recipient is a record on a deal the customer is disposing of — the deals rail.
   ...recordTools("deals", ["record_buyer_blast_response"], "executeTool"),
+  // Marking a listing listed is a change to a property's disposition record — the properties rail.
+  ...recordTools("properties", ["mark_land_listing_listed"], "executeTool"),
   ...recordTools("tasks", ["create_task", "update_task", "complete_task"], "executeTool"),
   ...recordTools("follow_ups", ["schedule_followup", "schedule_follow_up"], "executeTool"),
   // APPROVAL_REQUIRED_TOOLS (server/services/approvalKernel.ts) — may only grow.
