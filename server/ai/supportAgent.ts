@@ -154,7 +154,55 @@ export const supportToolDefinitions = {
       properties: {}
     }
   },
-  
+
+  get_tax_certificates_book: {
+    name: "get_tax_certificates_book",
+    description: "List this account's tax certificates (tax lien / tax deed positions), soonest redemption deadline first, with status, county/state, purchase amount, deadline, days remaining and the current redemption amount. The result carries a coverage statement naming what it reads and what it does not: state that coverage when you summarize the book. Defaults to active certificates. Read-only: this never records anything, contacts anyone, or sends a notice.",
+    parameters: {
+      type: "object",
+      properties: {
+        status: { type: "string", description: "Certificate status filter (default active)" },
+        state: { type: "string", description: "Two-letter state filter (optional)" }
+      }
+    }
+  },
+
+  get_tax_certificate_record: {
+    name: "get_tax_certificate_record",
+    description: "Get one tax certificate from this account's book (use the certificate id from get_tax_certificates_book): status, amounts, county/state, sale and redemption dates, the deadline's source and the current redemption amount. The result carries a coverage statement. Read-only: this never records anything or sends a notice.",
+    parameters: {
+      type: "object",
+      properties: {
+        certificate_id: { type: "string", description: "The certificate id from get_tax_certificates_book (a long identifier, not the printed certificate number)" }
+      },
+      required: ["certificate_id"]
+    }
+  },
+
+  get_tax_certificate_clock_view: {
+    name: "get_tax_certificate_clock_view",
+    description: "Get the redemption clock for one tax certificate in this account: the deadline and the rule it rests on, countdown, alert dates, next action, and a cross-check against the county's recorded procedure. A redemption deadline is a legal fact — report the basis shown; where the clock says no rule is encoded or the county procedure disagrees, say so and never invent a date. Read-only.",
+    parameters: {
+      type: "object",
+      properties: {
+        certificate_id: { type: "string", description: "The certificate id from get_tax_certificates_book" }
+      },
+      required: ["certificate_id"]
+    }
+  },
+
+  get_tax_certificate_ledger_view: {
+    name: "get_tax_certificate_ledger_view",
+    description: "Get the ledger for one tax certificate in this account: lien amount, rate, subsequent taxes paid, interest, redemption notices recorded and the foreclosure-filing deadline. The result carries a notice-simulation statement: a notice recorded in test mode was NOT mailed — never say it went out. Read-only: this never records an entry or sends a notice.",
+    parameters: {
+      type: "object",
+      properties: {
+        certificate_id: { type: "string", description: "The certificate id from get_tax_certificates_book" }
+      },
+      required: ["certificate_id"]
+    }
+  },
+
   draft_customer_response: {
     name: "draft_customer_response",
     description: "Draft a customer-facing response before escalating. The draft and confidence score determine if the support flow can auto-resolve or if internal review is needed.",
@@ -1282,6 +1330,10 @@ export const PAUSE_SAFE_SUPPORT_TOOLS: ReadonlySet<string> = new Set([
   "get_resolution_stats",
   "get_similar_resolutions",
   "get_subscription_details",
+  "get_tax_certificate_clock_view",
+  "get_tax_certificate_ledger_view",
+  "get_tax_certificate_record",
+  "get_tax_certificates_book",
   "get_troubleshooting_steps",
   "get_user_activity",
   // The support system's own bookkeeping — internal records of the
@@ -1918,6 +1970,40 @@ export async function executeSupportTool(
         };
       }
       
+      case "get_tax_certificates_book": {
+        // T9-DEF-1 cure: the support path's tax-certificate book read — the
+        // SAME read the chat path's get_tax_certificates performs (T7),
+        // under a support-only name because the registries key one dispatch
+        // per tool name. Read-only; coverage-stated by the shared helper.
+        const { paxGetTaxCertificates, taxOutcomeToResult } = await import("./taxCertificateTools");
+        return taxOutcomeToResult(await paxGetTaxCertificates(org.id, { status: args.status, state: args.state }));
+      }
+
+      case "get_tax_certificate_record": {
+        // T9-DEF-1 cure: one certificate, same shared T7 read as the chat
+        // path's get_tax_certificate. Read-only.
+        const { paxGetTaxCertificate, taxOutcomeToResult } = await import("./taxCertificateTools");
+        return taxOutcomeToResult(await paxGetTaxCertificate(org.id, args.certificate_id));
+      }
+
+      case "get_tax_certificate_clock_view": {
+        // T9-DEF-1 cure: the redemption clock for one certificate, same
+        // shared T7 read as the chat path's get_tax_certificate_clock —
+        // basis-stated, never an improvised date. Read-only.
+        const { paxGetTaxCertificateClock, taxOutcomeToResult } = await import("./taxCertificateTools");
+        return taxOutcomeToResult(await paxGetTaxCertificateClock(org.id, args.certificate_id));
+      }
+
+      case "get_tax_certificate_ledger_view": {
+        // T9-DEF-1 cure: the ledger for one certificate, same shared T7
+        // read as the chat path's get_tax_certificate_ledger, carrying the
+        // notice-simulation statement (a test-mode notice was NOT mailed).
+        // Read-only — recording an entry stays on the chat path; sending a
+        // notice stays ask-before-sending (FD5) and is not part of this cure.
+        const { paxGetTaxCertificateLedger, taxOutcomeToResult } = await import("./taxCertificateTools");
+        return taxOutcomeToResult(await paxGetTaxCertificateLedger(org.id, args.certificate_id));
+      }
+
       case "escalate_to_human": {
         const { reason, priority, summary, include_diagnostic_bundle = true } = args;
         
