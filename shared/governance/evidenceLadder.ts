@@ -241,7 +241,13 @@ export const CAPABILITIES: readonly Capability[] = [
   verticalEntry("short_term_rental", "short term rental", "surfaced"),
   verticalEntry("commercial", "commercial", "surfaced"),
   verticalEntry("creative_finance", "creative finance", "surfaced"),
-  verticalEntry("developer", "developer", "surfaced"),
+  // developer flipped surfaced → decided 2026-11-24 in the developer desk
+  // lift: the shared subdivision decision desk records decisions under the
+  // literal "developer" pack (server/routes-subdivision-decision.ts) citing
+  // scenarios from the subdivision_feasibility engine, which declares the
+  // developer vertical — the same desk and engine that carry subdivider's
+  // decided tier, so the ladder states the tier the measurement reports.
+  verticalEntry("developer", "developer", "decided"),
   verticalEntry("subdivider", "subdivider", "decided", {
     gradedCoarsely: "a price lock is asked for its outcome on the whole parcel (sold or abandoned), not lot by lot",
   }),
