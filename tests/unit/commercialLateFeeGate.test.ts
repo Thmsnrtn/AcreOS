@@ -1,16 +1,25 @@
 /**
- * Wave 2 pass B — the residential late-fee surface is gated OUT for commercial
- * orgs, front AND back. This is the FABRICATION FIX: the `late_fee_rules` table
+ * The residential late-fee surface is gated away from COMMERCIAL LEASES,
+ * front AND back. This is the FABRICATION FIX: the `late_fee_rules` table
  * encodes RESIDENTIAL statutory caps + citations, which do not bind a
- * commercial lease (a commercial late fee is contractual, set by the lease, not
- * by statute). Showing those caps to a commercial org — or letting it hit the
- * proposal/apply endpoints — presents wrong-domain data as the binding rule.
+ * commercial lease (a commercial late fee is contractual, set by the lease,
+ * not by statute). Showing those caps for a commercial lease — or letting
+ * one hit the proposal/apply endpoints — presents wrong-domain data as the
+ * binding rule.
+ *
+ * W-14: the gate used to key on the ORG's business type, which misrouted
+ * every mixed book (a buy-and-hold org's one commercial lease was refused
+ * its contractual proposal; a commercial org's one residential lease was
+ * refused its statutory proposal). The gate now keys on the LEASE itself —
+ * presence of any commercial-terms column — and these pins follow the gate:
+ * they pin that the per-lease predicate exists, that both 409 fences key on
+ * it, that every late-fee endpoint is wired to it, and that the old
+ * org-keyed guards are gone. The behavioral mixed-book cases live in
+ * rentLedgerLateFeeLeaseKind.test.ts (real handlers, mocked db).
  *
  * These are source-shape contracts (the same pattern as tailVerticalGates /
- * landlordFamilyGates): they run in the node env with no DOM and no DB, and pin
- * that the guard exists, refuses with a 4xx, is wired at every residential
- * late-fee endpoint, and that the client hides the whole surface for commercial.
- * If a future change removes the gate, this fails loudly rather than silently
+ * landlordFamilyGates): they run in the node env with no DOM and no DB. If a
+ * future change removes the gate, this fails loudly rather than silently
  * re-shipping the fabrication.
  */
 import { describe, it, expect } from "vitest";
@@ -21,7 +30,7 @@ const ROOT = path.resolve(__dirname, "../..");
 const ledgerSrc = fs.readFileSync(path.join(ROOT, "server/routes-rent-ledger.ts"), "utf-8");
 const rentRollSrc = fs.readFileSync(path.join(ROOT, "client/src/pages/rent-roll.tsx"), "utf-8");
 
-/** The four residential late-fee endpoints that must refuse a commercial org. */
+/** The four residential late-fee endpoints that must refuse a commercial lease. */
 const LATE_FEE_ENDPOINTS = [
   '"/api/late-fee-rules"',
   '"/api/rent-charges/:id/late-fee-proposal"',
@@ -29,18 +38,46 @@ const LATE_FEE_ENDPOINTS = [
   '"/api/rent-charges/:id/apply-late-fee"',
 ];
 
-describe("commercial late-fee gate — backend refusal (routes-rent-ledger.ts)", () => {
-  it("defines a commercial refusal guard that checks businessType and answers a 4xx", () => {
-    expect(ledgerSrc).toContain("function refuseResidentialLateFeeForCommercial");
-    // It must key on the commercial businessType…
-    expect(ledgerSrc).toMatch(/businessType\s*===\s*"commercial"/);
+describe("late-fee gate — per-lease predicate (routes-rent-ledger.ts)", () => {
+  it("defines the commercial-kind predicate over the lease's own commercial-terms fields", () => {
+    expect(ledgerSrc).toContain("function leaseHasCommercialTerms");
+    // The field list is the schema's commercial-terms family — leaseType and
+    // the contractual late-fee terms among them (founder call 3's source).
+    expect(ledgerSrc).toMatch(
+      /COMMERCIAL_TERMS_FIELDS = \[[\s\S]*?"leaseType"[\s\S]*?"lateFeeType"[\s\S]*?\]/,
+    );
+  });
+
+  it("the old org-keyed guards are gone — routing may not key on businessType again", () => {
+    expect(ledgerSrc).not.toContain("refuseResidentialLateFeeForCommercial");
+    expect(ledgerSrc).not.toContain("refuseCommercialLateFeeForNonCommercial");
+  });
+});
+
+describe("late-fee gate — backend refusal (routes-rent-ledger.ts)", () => {
+  it("defines a statutory-lane refusal that keys on the lease and answers a 4xx", () => {
+    expect(ledgerSrc).toContain("function refuseStatutoryLateFeeForCommercialLease");
+    // It must key on the lease's commercial terms…
+    expect(ledgerSrc).toMatch(
+      /function refuseStatutoryLateFeeForCommercialLease[\s\S]*?leaseHasCommercialTerms\(lease\)/,
+    );
     // …and refuse with a 4xx (409, not a silent 200), via the shared sender.
     expect(ledgerSrc).toMatch(/sendError\(\s*res,\s*409,\s*"LATE_FEE_NOT_APPLICABLE_COMMERCIAL"/);
   });
 
-  it("calls the guard at every residential late-fee endpoint (>= 4 wired sites)", () => {
-    const callSites = ledgerSrc.match(/if \(refuseResidentialLateFeeForCommercial\(req, res\)\) return;/g) ?? [];
-    expect(callSites.length).toBeGreaterThanOrEqual(4);
+  it("wires the per-lease statutory refusal at both charge-scoped statutory endpoints", () => {
+    const callSites = ledgerSrc.match(/if \(refuseStatutoryLateFeeForCommercialLease\(res, lease\)\) return;/g) ?? [];
+    expect(callSites.length).toBe(2);
+  });
+
+  it("routes the org-wide queue per lease and reports the commercial lane instead of dropping charges", () => {
+    expect(ledgerSrc).toContain("commercialLaneCharges");
+    expect(ledgerSrc).toMatch(/if \(leaseHasCommercialTerms\(lease\)\) \{\s*commercialLaneCharges\.push/);
+  });
+
+  it("keeps a book-aware fence on the rules list (no lease in scope there)", () => {
+    expect(ledgerSrc).toContain("function refuseLateFeeRulesForCommercialOnlyBook");
+    expect(ledgerSrc).toMatch(/if \(await refuseLateFeeRulesForCommercialOnlyBook\(req, res\)\) return;/);
   });
 
   it("still registers each residential late-fee endpoint (the guard gates them, does not delete them)", () => {
@@ -79,24 +116,26 @@ describe("commercial late-fee gate — frontend hiding (rent-roll.tsx)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Wave 4 Stage 5b — the SYMMETRIC other half. The residential gate above keeps
-// wrong-domain STATUTORY data away from a commercial org; this adds the path a
-// commercial org actually uses — a late fee computed from the lease's OWN
-// CONTRACTUAL terms — and gates it the other way (a residential lease must use
-// the statutory path, which enforces the legal cap). Both halves are pinned so
-// neither can be removed silently.
+// The SYMMETRIC other half. The gate above keeps wrong-domain STATUTORY data
+// away from a commercial lease; this is the path a commercial lease actually
+// uses — a late fee computed from the lease's OWN CONTRACTUAL terms — gated
+// the other way (a lease with no commercial terms must use the statutory
+// path, which enforces the legal cap). Both halves are pinned so neither
+// can be removed silently.
 // ---------------------------------------------------------------------------
-describe("commercial contractual late-fee path — the symmetric other half (Wave 4)", () => {
-  it("defines a symmetric guard that refuses a NON-commercial org from the contractual endpoint", () => {
-    expect(ledgerSrc).toContain("function refuseCommercialLateFeeForNonCommercial");
-    expect(ledgerSrc).toMatch(/businessType\s*!==\s*"commercial"/);
+describe("commercial contractual late-fee path — the symmetric other half (W-14)", () => {
+  it("defines a symmetric guard that refuses a lease with NO commercial terms from the contractual endpoint", () => {
+    expect(ledgerSrc).toContain("function refuseContractualLateFeeForResidentialLease");
+    expect(ledgerSrc).toMatch(
+      /function refuseContractualLateFeeForResidentialLease[\s\S]*?!leaseHasCommercialTerms\(lease\)/,
+    );
     // A distinct 409 that points a residential lease back to the statutory path.
     expect(ledgerSrc).toMatch(/sendError\(\s*res,\s*409,\s*"LATE_FEE_USE_STATUTORY_RESIDENTIAL"/);
   });
 
   it("registers the contractual late-fee endpoint, gated by that guard", () => {
     expect(ledgerSrc).toContain('app.post("/api/rent-charges/:id/commercial-late-fee"');
-    expect(ledgerSrc).toMatch(/if \(refuseCommercialLateFeeForNonCommercial\(req, res\)\) return;/);
+    expect(ledgerSrc).toMatch(/if \(refuseContractualLateFeeForResidentialLease\(res, lease\)\) return;/);
   });
 
   it("computes from the lease's own terms via the pure tested engine, refuses rather than fabricate, and only PROPOSES", () => {
@@ -107,7 +146,7 @@ describe("commercial contractual late-fee path — the symmetric other half (Wav
     expect(ledgerSrc).toContain("proposal: result");
   });
 
-  it("the two halves are symmetric: statutory refuses commercial, contractual refuses non-commercial", () => {
+  it("the two halves are symmetric: statutory refuses commercial leases, contractual refuses non-commercial leases", () => {
     expect(ledgerSrc).toContain('"LATE_FEE_NOT_APPLICABLE_COMMERCIAL"');
     expect(ledgerSrc).toContain('"LATE_FEE_USE_STATUTORY_RESIDENTIAL"');
   });

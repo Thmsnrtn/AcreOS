@@ -74,7 +74,7 @@ import {
   RESERVATION_CHANNELS,
   RESERVATION_STATUSES,
 } from "@shared/schema";
-import type { LateFeeRule, RentalUnitStatus } from "@shared/schema";
+import type { LateFeeRule, RentalLease, RentalUnitStatus } from "@shared/schema";
 import {
   computeStrMetrics,
   windowNights,
@@ -859,28 +859,77 @@ async function proposalForCharge(args: {
 // ----------------------------------------------------------------------------
 
 /**
+ * W-14 — late fees are routed by the LEASE's kind, never by the org's type.
+ *
  * The residential late-fee surface — state STATUTORY caps, grace periods and
  * citations (the `late_fee_rules` table) — is WRONG-DOMAIN for a commercial
- * lease. Commercial late fees are CONTRACTUAL: they are set by the lease itself,
- * not by a residential-tenancy statute. Presenting a residential statutory cap
- * as the binding rule for a commercial org is a fabrication (assumed /
- * wrong-domain data shown as real), so every residential late-fee endpoint
- * REFUSES a commercial org with an honest 409 rather than returning a rule that
- * does not bind them. Returns true (and has already responded) when the org is
- * commercial; the handler must then stop. (Wave 2 pass B, 2026-08.)
+ * lease. Commercial late fees are CONTRACTUAL: they are set by the lease
+ * itself, not by a residential-tenancy statute. Presenting a residential
+ * statutory cap as the binding rule for a commercial lease is a fabrication
+ * (assumed / wrong-domain data shown as real), so the statutory lane REFUSES
+ * a commercial lease with an honest 409. The symmetric fence also holds: a
+ * residential lease's late fee is bounded by statute, so it must never take
+ * the free-form contractual lane, which would strip that protection.
+ *
+ * Both fences used to key off the ORG's business type (Wave 2 pass B /
+ * Wave 4), which misrouted every MIXED book: a buy-and-hold org holding one
+ * commercial lease was refused the contractual proposal for that lease, and
+ * a commercial org holding one residential lease was refused the statutory
+ * proposal for it. The kind now comes from the lease itself — the
+ * commercial-terms column family on `rentalLeases` (shared/schema/rental.ts),
+ * where every column is additive, nullable, and null on a residential lease,
+ * so the presence of a value IS the commercial signal (commercial gap sheet,
+ * founder call 3: the lease's own leaseType / commercial-terms presence; no
+ * org-type wall). A lease carrying NO commercial terms takes the statutory
+ * lane; a commercial-kind lease whose late-fee terms are not set is refused
+ * in plain words by the contractual engine itself (no term ⇒ no invented
+ * fee), so it is served by neither lane and both refusals say why.
  */
-function refuseResidentialLateFeeForCommercial(req: AuthenticatedRequest, res: Response): boolean {
-  // businessType is stored on organizations.onboardingData.businessType (the
-  // same read the sidebar / contextProfile use), not a top-level column.
-  const businessType = getOrganization(req).onboardingData?.businessType;
-  if (businessType === "commercial") {
+
+/** The commercial-terms fields whose presence marks a lease as commercial-kind. */
+const COMMERCIAL_TERMS_FIELDS = [
+  "rentableSqft",
+  "leaseType",
+  "camProRataBps",
+  "camEstimateMonthlyCents",
+  "camBaseYearStopCents",
+  "pctRentBps",
+  "pctRentBreakpointType",
+  "pctRentArtificialBreakpointCents",
+  "pctRentFrequency",
+  "lateFeeType",
+  "lateFeeFlatCents",
+  "lateFeePctBps",
+  "lateFeeGraceDays",
+  "lateFeeMaxCents",
+  "lateFeePerDayCents",
+] as const;
+
+type LeaseCommercialTerms = Pick<RentalLease, (typeof COMMERCIAL_TERMS_FIELDS)[number]>;
+
+/**
+ * True when the lease carries ANY commercial term — it is a commercial lease
+ * for late-fee routing, whatever the org's business type says.
+ */
+function leaseHasCommercialTerms(lease: Partial<LeaseCommercialTerms>): boolean {
+  return COMMERCIAL_TERMS_FIELDS.some((field) => lease[field] != null);
+}
+
+/**
+ * Refuse the STATUTORY late-fee lane for a commercial lease. Returns true
+ * (and has already responded 409) when the handler must stop. Keyed on the
+ * lease (W-14): a residential lease in a commercial org is NOT refused here.
+ */
+function refuseStatutoryLateFeeForCommercialLease(res: Response, lease: Partial<LeaseCommercialTerms>): boolean {
+  if (leaseHasCommercialTerms(lease)) {
     sendError(
       res,
       409,
       "LATE_FEE_NOT_APPLICABLE_COMMERCIAL",
-      "State statutory late-fee rules are residential and do not bind a commercial lease — a " +
-        "commercial late fee is set by the lease, not by statute. AcreOS cannot post a manual charge yet; " +
-        "record it at the figure the lease specifies on your own books.",
+      "State statutory late-fee rules are residential and do not bind this commercial lease — its " +
+        "late fee is set by the lease itself, not by statute. Use the contractual late-fee proposal " +
+        "for this charge (POST /api/rent-charges/:id/commercial-late-fee), which computes the fee " +
+        "from the lease's own terms.",
     );
     return true;
   }
@@ -888,24 +937,69 @@ function refuseResidentialLateFeeForCommercial(req: AuthenticatedRequest, res: R
 }
 
 /**
- * The symmetric other half of the residential gate above (Wave 4): the
- * CONTRACTUAL late-fee surface is for a COMMERCIAL lease, whose late fee is set by
- * the lease itself. A residential lease's late fee is bounded by STATUTE, so a
- * non-commercial org must use the statutory proposal endpoint (which applies the
- * legal cap) — routing it through the free-form contractual computation would
- * strip that protection. Returns true (and has responded) when the org is NOT
- * commercial; the handler must then stop.
+ * The rules list has no lease in scope, so its fence is book-aware (W-14): a
+ * commercial org is refused the statutory table only when NO lease in its
+ * book could ever bind to it — every lease commercial-kind, or no leases at
+ * all. A commercial org holding even one residential lease is served,
+ * because that lease's fees ARE bounded by these rules. A non-commercial org
+ * is served exactly as before, with no extra read. Returns true (and has
+ * already responded 409) when the handler must stop.
  */
-function refuseCommercialLateFeeForNonCommercial(req: AuthenticatedRequest, res: Response): boolean {
-  const businessType = getOrganization(req).onboardingData?.businessType;
-  if (businessType !== "commercial") {
+async function refuseLateFeeRulesForCommercialOnlyBook(req: AuthenticatedRequest, res: Response): Promise<boolean> {
+  // businessType is stored on organizations.onboardingData.businessType (the
+  // same read the sidebar / contextProfile use), not a top-level column.
+  if (getOrganization(req).onboardingData?.businessType !== "commercial") return false;
+  const orgId = getOrganizationId(req);
+  const leases = await db
+    .select({
+      rentableSqft: rentalLeases.rentableSqft,
+      leaseType: rentalLeases.leaseType,
+      camProRataBps: rentalLeases.camProRataBps,
+      camEstimateMonthlyCents: rentalLeases.camEstimateMonthlyCents,
+      camBaseYearStopCents: rentalLeases.camBaseYearStopCents,
+      pctRentBps: rentalLeases.pctRentBps,
+      pctRentBreakpointType: rentalLeases.pctRentBreakpointType,
+      pctRentArtificialBreakpointCents: rentalLeases.pctRentArtificialBreakpointCents,
+      pctRentFrequency: rentalLeases.pctRentFrequency,
+      lateFeeType: rentalLeases.lateFeeType,
+      lateFeeFlatCents: rentalLeases.lateFeeFlatCents,
+      lateFeePctBps: rentalLeases.lateFeePctBps,
+      lateFeeGraceDays: rentalLeases.lateFeeGraceDays,
+      lateFeeMaxCents: rentalLeases.lateFeeMaxCents,
+      lateFeePerDayCents: rentalLeases.lateFeePerDayCents,
+    })
+    .from(rentalLeases)
+    .where(eq(rentalLeases.organizationId, orgId));
+  if (leases.some((lease) => !leaseHasCommercialTerms(lease))) return false;
+  sendError(
+    res,
+    409,
+    "LATE_FEE_NOT_APPLICABLE_COMMERCIAL",
+    "State statutory late-fee rules are residential and do not bind a commercial lease — a " +
+      "commercial late fee is set by the lease, not by statute. Every lease in this book is a " +
+      "commercial lease, so no lease here can use these rules; propose each fee from the lease's " +
+      "own terms via the contractual late-fee proposal (POST /api/rent-charges/:id/commercial-late-fee).",
+  );
+  return true;
+}
+
+/**
+ * The symmetric other half of the statutory fence above: refuse the
+ * CONTRACTUAL late-fee lane for a lease carrying no commercial terms.
+ * Returns true (and has already responded 409) when the handler must stop.
+ * Keyed on the lease (W-14): a commercial lease in a non-commercial org is
+ * NOT refused here.
+ */
+function refuseContractualLateFeeForResidentialLease(res: Response, lease: Partial<LeaseCommercialTerms>): boolean {
+  if (!leaseHasCommercialTerms(lease)) {
     sendError(
       res,
       409,
       "LATE_FEE_USE_STATUTORY_RESIDENTIAL",
-      "Contractual late fees are for commercial leases. A residential lease's late fee is bounded by " +
-        "state statute — use the statutory proposal endpoint (/api/rent-charges/:id/late-fee-proposal), " +
-        "which applies the legal cap, rather than a free-form contractual fee.",
+      "Contractual late fees are for commercial leases, and this lease carries no commercial terms. " +
+        "A residential lease's late fee is bounded by state statute — use the statutory proposal " +
+        "endpoint (/api/rent-charges/:id/late-fee-proposal), which applies the legal cap, rather than " +
+        "a free-form contractual fee.",
     );
     return true;
   }
@@ -914,11 +1008,12 @@ function refuseCommercialLateFeeForNonCommercial(req: AuthenticatedRequest, res:
 
 export function registerRentLedgerRoutes(app: Express): void {
   // List late-fee rules (read-only). getOrCreateOrg is required so the
-  // commercial guard can read the org's businessType — the residential statute
-  // table must not surface to a commercial org (see the guard's note).
+  // book-aware guard can read the org's businessType — the residential statute
+  // table must not surface to a book with no residential lease in it (see the
+  // guard's note).
   app.get("/api/late-fee-rules", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      if (refuseResidentialLateFeeForCommercial(req, res)) return;
+      if (await refuseLateFeeRulesForCommercialOnlyBook(req, res)) return;
       const rules = await db.select().from(lateFeeRules).orderBy(asc(lateFeeRules.state));
       return res.json({ rules });
     } catch (err) {
@@ -1381,7 +1476,6 @@ export function registerRentLedgerRoutes(app: Express): void {
   // Propose a late fee for ONE overdue charge. Read-only: nothing is charged.
   app.get("/api/rent-charges/:id/late-fee-proposal", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      if (refuseResidentialLateFeeForCommercial(req, res)) return;
       const orgId = getOrganizationId(req);
       const [charge] = await db.select().from(rentCharges)
         .where(and(eq(rentCharges.id, routeParam(req.params.id)), eq(rentCharges.organizationId, orgId)));
@@ -1390,6 +1484,9 @@ export function registerRentLedgerRoutes(app: Express): void {
       const [lease] = await db.select().from(rentalLeases)
         .where(and(eq(rentalLeases.id, charge.leaseId), eq(rentalLeases.organizationId, orgId)));
       if (!lease) return Errors.notFound(res, "Lease");
+
+      // W-14: the statutory lane refuses by the LEASE's kind, not the org's.
+      if (refuseStatutoryLateFeeForCommercialLease(res, lease)) return;
 
       const { proposal, rule, daysLate } = await proposalForCharge({
         organizationId: orgId,
@@ -1425,7 +1522,6 @@ export function registerRentLedgerRoutes(app: Express): void {
   // Nothing is charged; this is the operator's review queue.
   app.get("/api/rent/late-fee-proposals", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      if (refuseResidentialLateFeeForCommercial(req, res)) return;
       const orgId = getOrganizationId(req);
       const asOf = clock.now();
 
@@ -1441,8 +1537,25 @@ export function registerRentLedgerRoutes(app: Express): void {
       const rulesByState = new Map<string, LateFeeRule | null>();
       const unitsByProperty = new Map<number, PropertyUnitCount>();
       const proposals: Array<Record<string, unknown>> = [];
+      const commercialLaneCharges: Array<Record<string, unknown>> = [];
 
       for (const { charge, lease } of rows) {
+        // W-14: route by the LEASE's kind. A commercial lease's charge never
+        // gets a statutory proposal — it is reported on the contractual lane
+        // instead of silently vanishing from the operator's review queue,
+        // and the check runs before any rule/unit read for the row.
+        if (leaseHasCommercialTerms(lease)) {
+          commercialLaneCharges.push({
+            rentChargeId: charge.id,
+            leaseId: lease.id,
+            unitLabel: lease.unitLabel,
+            reason:
+              "Commercial lease — its late fee is contractual, set by the lease itself, not by state " +
+              "statute. Propose it from the lease's own terms via POST " +
+              "/api/rent-charges/:id/commercial-late-fee.",
+          });
+          continue;
+        }
         const stateKey = lease.state.toUpperCase();
         if (!rulesByState.has(stateKey)) {
           rulesByState.set(stateKey, await lateFeeRuleForState(stateKey));
@@ -1486,8 +1599,10 @@ export function registerRentLedgerRoutes(app: Express): void {
       return res.json({
         asOf: asOf.toISOString().slice(0, 10),
         proposals,
+        commercialLaneCharges,
         totals: {
-          overdueCharges: proposals.length,
+          // Every overdue charge the queue considered, on either lane.
+          overdueCharges: proposals.length + commercialLaneCharges.length,
           chargeableProposals: chargeable.length,
           proposedFeeCents: chargeable.reduce(
             (s, p) => s + (p.proposal as LateFeeProposal).proposedFeeCents,
@@ -1505,7 +1620,6 @@ export function registerRentLedgerRoutes(app: Express): void {
   // the one shared, statute-capped proposer — never from the client.
   app.post("/api/rent-charges/:id/apply-late-fee", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      if (refuseResidentialLateFeeForCommercial(req, res)) return;
       const orgId = getOrganizationId(req);
       const userId = getUserId(req);
       const parsed = applyLateFeeSchema.safeParse(req.body ?? {});
@@ -1518,6 +1632,10 @@ export function registerRentLedgerRoutes(app: Express): void {
       const [lease] = await db.select().from(rentalLeases)
         .where(and(eq(rentalLeases.id, charge.leaseId), eq(rentalLeases.organizationId, orgId)));
       if (!lease) return Errors.notFound(res, "Lease");
+
+      // W-14: a statutory fee is charged only onto a residential lease —
+      // the fence keys on the LEASE's kind, not the org's type.
+      if (refuseStatutoryLateFeeForCommercialLease(res, lease)) return;
 
       const { proposal, rule, daysLate } = await proposalForCharge({
         organizationId: orgId,
@@ -2562,13 +2680,13 @@ export function registerRentLedgerRoutes(app: Express): void {
   // ── Commercial contractual late fee — a PROPOSAL from the lease's own terms ─
   // The symmetric counterpart to the residential statutory late-fee proposal:
   // this computes a late fee from the lease's CONTRACTUAL terms (type, amount/
-  // rate, grace, cap), gated to commercial orgs (a residential lease must use the
-  // statutory endpoint, which enforces the legal cap). Refuses (400) when the
-  // lease has no contractual term or a shape is missing its parameter — it never
-  // invents a fee. Proposal only: it posts no charge (be the rail, not the provider).
+  // rate, grace, cap), routed by the LEASE's kind (W-14) — a lease with no
+  // commercial terms is refused to the statutory endpoint, which enforces the
+  // legal cap. Refuses (400) when the lease has no contractual late-fee term
+  // or a shape is missing its parameter — it never invents a fee. Proposal
+  // only: it posts no charge (be the rail, not the provider).
   app.post("/api/rent-charges/:id/commercial-late-fee", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      if (refuseCommercialLateFeeForNonCommercial(req, res)) return;
       const orgId = getOrganizationId(req);
       const parsed = z.object({ asOf: isoDate.optional() }).safeParse(req.body ?? {});
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
@@ -2580,6 +2698,9 @@ export function registerRentLedgerRoutes(app: Express): void {
       const [lease] = await db.select().from(rentalLeases)
         .where(and(eq(rentalLeases.id, charge.leaseId), eq(rentalLeases.organizationId, orgId)));
       if (!lease) return Errors.notFound(res, "Lease");
+
+      // W-14: the contractual lane refuses by the LEASE's kind, not the org's.
+      if (refuseContractualLateFeeForResidentialLease(res, lease)) return;
 
       const asOf = parsed.data.asOf ? new Date(parsed.data.asOf) : clock.now();
       const daysLate = daysOverdue(charge.dueDate, asOf) ?? 0;
