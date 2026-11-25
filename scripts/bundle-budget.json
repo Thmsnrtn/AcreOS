@@ -5,14 +5,14 @@
     "maxTotalKB": 3000
   },
   "ceilings": {
-    "totalKB": 7954,
+    "totalKB": 7943,
     "chunks": {
       "vendor-map": 1090
     }
   },
   "founder": {
     "ceilings": {
-      "totalKB": 2735
+      "totalKB": 2727
     }
   },
   "slackBeforeLoweringPct": 5
