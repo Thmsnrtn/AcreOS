@@ -118,6 +118,15 @@ export const INTENT_META: Record<string, { door: CustomerDoor; scope: Scope | nu
   get_rental_underwriting_decision: { door: "finance", scope: "financial_read" },
   record_rent_payment: { door: "finance", scope: "financial_write" },
   generate_scheduled_rent_charges: { door: "finance", scope: "financial_write" },
+  // Land tools: the passport is a parcel read (map door, like the property
+  // reads); listings are disposition records (deals door); the payoff quote
+  // is a finance read on the serviced-note book.
+  get_parcel_passport: { door: "map", scope: "deal_read" },
+  get_land_listings: { door: "deals", scope: "deal_read" },
+  get_land_listing: { door: "deals", scope: "deal_read" },
+  get_listing_paste_text: { door: "deals", scope: "deal_read" },
+  get_land_payoff_quote: { door: "finance", scope: "financial_read" },
+  mark_land_listing_listed: { door: "deals", scope: "deal_write" },
   calculate_amortization: { door: "finance", scope: "financial_read" },
   get_cashflow_summary: { door: "finance", scope: "financial_read" },
   calculate_roi: { door: "finance", scope: "financial_read" },

@@ -62,6 +62,8 @@ function roleAllowList(role: string): string[] {
       "get_tax_certificate_ledger", "record_tax_ledger_entry",
       "get_rent_roll", "get_rental_leases", "get_tenants", "get_lease_ledger",
       "get_rental_underwriting_decision", "record_rent_payment", "generate_scheduled_rent_charges",
+      "get_parcel_passport", "get_land_listings", "get_land_listing",
+      "get_listing_paste_text", "get_land_payoff_quote", "mark_land_listing_listed",
       "calculate_amortization", "get_cashflow_summary", "get_deals",
       "update_deal", "run_comps_analysis", "run_comps", "calculate_roi",
       "calculate_payment_schedule", "research_property", "draft_offer",
@@ -85,6 +87,8 @@ function roleAllowList(role: string): string[] {
       "get_tax_certificate_ledger", "record_tax_ledger_entry",
       "get_rent_roll", "get_rental_leases", "get_tenants", "get_lease_ledger",
       "get_rental_underwriting_decision", "record_rent_payment", "generate_scheduled_rent_charges",
+      "get_parcel_passport", "get_land_listings", "get_land_listing",
+      "get_listing_paste_text", "get_land_payoff_quote", "mark_land_listing_listed",
       "get_deals", "generate_offer_letter", "draft_offer",
     ],
   };
