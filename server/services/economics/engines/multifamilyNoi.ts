@@ -32,11 +32,25 @@
  * later reader. Widening the persisted metric shape to narrate it would be a
  * shape-version bump bought for a reason nobody has asked for yet.
  *
- * IT DOES NOT REUSE `total_cost`. Its denominator is a VALUATION, and a held
- * building's market value is not what it cost. Reusing the id would put two
- * different quantities under one label — a subtler version of the percent-under-
- * a-ratio-label error two earlier adapters hit, and the exact thing the metric
- * registry exists to prevent (BI182, BI92).
+ * IT DID NOT REUSE `total_cost` (v1). Its cap-rate denominator is a VALUATION,
+ * and a held building's market value is not what it cost. Reusing the id for
+ * the valuation would put two different quantities under one label — a subtler
+ * version of the percent-under-a-ratio-label error two earlier adapters hit,
+ * and the exact thing the metric registry exists to prevent (BI182, BI92).
+ * That objection stands in v2 and is NOT answered by folding the valuation in.
+ *
+ * WHAT V2 ADDS (multifamily bar-(b) item 1, founder call 1 option (a)): an
+ * ACQUISITION `total_cost`, built only from acquisition inputs the caller
+ * actually supplies — optional `purchasePriceCents` plus optional
+ * `closingCostsCents`. The gradeable predicate (tests/support/
+ * verticalEvidence.ts) credits an engine only if it produces `total_cost` or
+ * `profit`, and the outcome loop compares a predicted amount against an actual
+ * one; a bought building's acquisition cost is the one predicted number here
+ * that has a real-world actual to compare against. When no purchase price is
+ * supplied the metric is present and NULL — the engine declines rather than
+ * substituting the valuation, which would resurrect the v1 objection under a
+ * new name. The basis is declared as an assumption whenever the figure is
+ * produced, so no reader can mistake it for the valuation denominator.
  *
  * WHY IT IS NOT A CORE (shared/) ENGINE, even though it could be. Its arithmetic
  * is browser-safe, so `CORE_ENGINES` would accept it and the client could then
@@ -65,7 +79,7 @@ import {
 } from "@shared/rental/noi";
 
 /** Bumped when the ADAPTER's mapping changes, not the underlying decision. */
-const MULTIFAMILY_ENGINE_VERSION = "multifamily-noi-1" as const;
+const MULTIFAMILY_ENGINE_VERSION = "multifamily-noi-2" as const;
 
 /**
  * What the cap-rate denominator actually IS. The route this generalises falls
@@ -93,6 +107,7 @@ export const multifamilyNoiEngine: EngineSpec = {
     "monthly_cash_flow",
     "dscr",
     "gross_rent_multiplier",
+    "total_cost",
   ],
 
   compute(inputs) {
@@ -130,6 +145,33 @@ export const multifamilyNoiEngine: EngineSpec = {
     const opExBps =
       inputs["opExBps"] === undefined ? undefined : requireNumber(inputs, "opExBps");
     const debtServiceMonthlyCents = optionalCents(inputs, "debtServiceMonthlyCents");
+
+    // ── Acquisition cost (v2) ────────────────────────────────────────────────
+    // Optional because most runs underwrite a HELD building, which has no
+    // purchase in view. Both are validated even when they end up unused in a
+    // sum, so a malformed figure can never ride along silently in the
+    // persisted inputs.
+    const purchasePriceCents = optionalCents(inputs, "purchasePriceCents");
+    const closingCostsCents = optionalCents(inputs, "closingCostsCents");
+    if (purchasePriceCents !== null && purchasePriceCents <= 0) {
+      throw new ScenarioEngineError("purchasePriceCents must be positive when supplied");
+    }
+    if (closingCostsCents !== null && closingCostsCents < 0) {
+      throw new ScenarioEngineError("closingCostsCents must not be negative");
+    }
+    if (purchasePriceCents === null && closingCostsCents !== null) {
+      // Closing costs with no purchase price would sum to a "total cost" that
+      // is only the closing slice of an acquisition — a partial figure under a
+      // total's label. Refuse rather than produce it.
+      throw new ScenarioEngineError(
+        "closingCostsCents requires purchasePriceCents: an acquisition total " +
+          "cannot be built from closing costs alone",
+      );
+    }
+    const acquisitionTotalCostCents =
+      purchasePriceCents === null
+        ? null
+        : purchasePriceCents + (closingCostsCents ?? 0);
 
     const decision = decideOperatingExpense({
       hasMeasured,
@@ -215,6 +257,29 @@ export const multifamilyNoiEngine: EngineSpec = {
       });
     }
 
+    // ── What `total_cost` actually IS ────────────────────────────────────────
+    // Declared whenever the figure is produced, with its own basis: it is the
+    // ACQUISITION cost (purchase price, plus closing costs when supplied) and
+    // nothing else. It is deliberately NOT the valuation above — cap rate and
+    // GRM keep resting on `valuationCents` under their own declared basis —
+    // because the outcome loop reads `total_cost` as "what it cost to
+    // acquire", and a valuation under that reading would be a false variance.
+    if (acquisitionTotalCostCents !== null) {
+      assumptions.push({
+        key: "total_cost_basis",
+        value: "acquisition",
+        origin: "derived",
+        basis:
+          closingCostsCents === null
+            ? "Total cost is the ACQUISITION cost: the purchase price alone, " +
+              "because no closing costs were supplied. It is not the " +
+              "valuation used as the cap-rate denominator."
+            : "Total cost is the ACQUISITION cost: purchase price plus " +
+              "closing costs. It is not the valuation used as the cap-rate " +
+              "denominator.",
+      });
+    }
+
     const metrics: ScenarioMetric[] = [
       metric("annual_operating_expense", opExMonthly === null ? null : opExMonthly * 12),
       metric("annual_noi", noiAnnual),
@@ -245,6 +310,10 @@ export const multifamilyNoiEngine: EngineSpec = {
         "gross_rent_multiplier",
         annualCollections <= 0 ? null : valuationCents / annualCollections,
       ),
+      // Null when no purchase price was supplied: a held building has no
+      // acquisition cost to predict, and substituting the valuation is the
+      // exact conflation the header refuses.
+      metric("total_cost", acquisitionTotalCostCents),
     ];
 
     return {
@@ -258,6 +327,8 @@ export const multifamilyNoiEngine: EngineSpec = {
         ...(measuredOpExMonthlyCents === null ? {} : { measuredOpExMonthlyCents }),
         ...(opExBps === undefined ? {} : { opExBps }),
         ...(debtServiceMonthlyCents === null ? {} : { debtServiceMonthlyCents }),
+        ...(purchasePriceCents === null ? {} : { purchasePriceCents }),
+        ...(closingCostsCents === null ? {} : { closingCostsCents }),
       },
       assumptions,
       metrics,

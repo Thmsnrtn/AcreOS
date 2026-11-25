@@ -319,3 +319,25 @@ describe("the client labels the op-ex honestly", () => {
     expect(CLIENT).toContain("opExSource");
   });
 });
+
+// ---------------------------------------------------------------------------
+// 5. The scenario engine's gradeable figure (v2) — acquisition total_cost is
+//    built from ACQUISITION inputs only, never from the valuation that NOI and
+//    cap rate rest on. Behaviour is pinned in scenarioDeterminism.test.ts;
+//    this pins the wiring so the two quantities cannot be re-conflated by a
+//    later edit to the adapter.
+// ---------------------------------------------------------------------------
+
+describe("the multifamily engine's total_cost is an acquisition figure", () => {
+  const ENGINE_CODE = code(read("server/services/economics/engines/multifamilyNoi.ts"));
+
+  it("builds total_cost from purchase price plus closing costs", () => {
+    expect(ENGINE_CODE).toContain("purchasePriceCents + (closingCostsCents ?? 0)");
+    expect(ENGINE_CODE).toContain('metric("total_cost", acquisitionTotalCostCents)');
+  });
+
+  it("NEVER passes the valuation to total_cost", () => {
+    expect(ENGINE_CODE).not.toContain('metric("total_cost", valuationCents)');
+    expect(ENGINE_CODE).not.toMatch(/acquisitionTotalCostCents\s*=\s*[^;]*valuationCents/);
+  });
+});
