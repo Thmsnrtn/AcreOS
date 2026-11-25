@@ -155,6 +155,58 @@ export const supportToolDefinitions = {
     }
   },
   
+  get_parcel_passport_view: {
+    name: "get_parcel_passport_view",
+    description: "Read the parcel passport (LandProfile) recorded for one property in this account: every diligence field that has a recorded value, with its source, date and confidence, plus the list of fields that are GAPS with the reason for each. The result carries a coverage statement (e.g. 3 of 17 fields): state it whenever you quote a figure — never present a gap field as known, and never present this as a fresh lookup; it reads the passport recorded for this account. Read-only.",
+    parameters: {
+      type: "object",
+      properties: { property_id: { type: "number", description: "The property number in this account" } },
+      required: ["property_id"]
+    }
+  },
+
+  get_land_listings_view: {
+    name: "get_land_listings_view",
+    description: "List this account's OWN land listings (not external MLS or marketplace listings), oldest-first, with their status (draft, listed, active, pending, sold, withdrawn) and recorded channel status. 'listed' is the operator's word that they posted it; 'active' means a channel accepted a posting through AcreOS. The result carries a coverage statement. Read-only.",
+    parameters: {
+      type: "object",
+      properties: { status: { type: "string", description: "Listing status filter (optional; default every status)" } }
+    }
+  },
+
+  get_land_listing_view: {
+    name: "get_land_listing_view",
+    description: "Read one of this account's land listings: title, asking price, seller-financing terms as recorded, status and the recorded status of each syndication channel. The result carries a coverage statement. Read-only: this never marks a listing as listed or changes anything.",
+    parameters: {
+      type: "object",
+      properties: { listing_id: { type: "number", description: "The listing number from get_land_listings_view" } },
+      required: ["listing_id"]
+    }
+  },
+
+  get_listing_paste_text_view: {
+    name: "get_listing_paste_text_view",
+    description: "Read the ready-to-paste Craigslist text for one of this account's listings, built from the listing exactly as the publish screen builds it. This RETURNS text for the customer to post themselves — AcreOS has NOT posted anything and this never posts anything anywhere. Read-only.",
+    parameters: {
+      type: "object",
+      properties: { listing_id: { type: "number", description: "The listing number from get_land_listings_view" } },
+      required: ["listing_id"]
+    }
+  },
+
+  get_land_payoff_quote_view: {
+    name: "get_land_payoff_quote_view",
+    description: "Read an INDICATIVE payoff amount for one serviced note in this account (a seller-financed note this account originated — the land sell-on-terms book): principal, accrued interest, per-diem, late fees and the total through the payoff date, computed by the same engine as the note payoff calculator. It records no quote and takes no payment; a payoff a third party will rely on is issued from the note's payoff screen. The result carries a coverage statement. Read-only.",
+    parameters: {
+      type: "object",
+      properties: {
+        note_id: { type: "number", description: "The serviced note's number in this account" },
+        payoff_date: { type: "string", description: "Date the payoff would close, YYYY-MM-DD (optional; default today)" }
+      },
+      required: ["note_id"]
+    }
+  },
+
   draft_customer_response: {
     name: "draft_customer_response",
     description: "Draft a customer-facing response before escalating. The draft and confidence score determine if the support flow can auto-resolve or if internal review is needed.",
@@ -1278,6 +1330,11 @@ export const PAUSE_SAFE_SUPPORT_TOOLS: ReadonlySet<string> = new Set([
   "get_billing_issues",
   "get_contextual_suggestions",
   "get_feature_walkthrough",
+  "get_land_listing_view",
+  "get_land_listings_view",
+  "get_land_payoff_quote_view",
+  "get_listing_paste_text_view",
+  "get_parcel_passport_view",
   "get_payment_history",
   "get_resolution_stats",
   "get_similar_resolutions",
@@ -1918,6 +1975,50 @@ export async function executeSupportTool(
         };
       }
       
+      case "get_parcel_passport_view": {
+        // LD-DEF-1 cure: the support path's parcel-passport read — the SAME
+        // read the chat path's get_parcel_passport performs (#744), under a
+        // support-only name because the registries key one dispatch per
+        // tool name. Read-only; coverage- and gap-stated by the shared
+        // helper; Pax never runs a fresh lookup here.
+        const { paxGetParcelPassport, landOutcomeToResult } = await import("./landTools");
+        return landOutcomeToResult(await paxGetParcelPassport(org.id, args.property_id));
+      }
+
+      case "get_land_listings_view": {
+        // LD-DEF-1 cure: this account's own land listings, same shared #744
+        // read as the chat path's get_land_listings. Read-only.
+        const { paxGetLandListings, landOutcomeToResult } = await import("./landTools");
+        return landOutcomeToResult(await paxGetLandListings(org.id, { status: args.status }));
+      }
+
+      case "get_land_listing_view": {
+        // LD-DEF-1 cure: one listing with its recorded channel status, same
+        // shared #744 read as the chat path's get_land_listing. Read-only —
+        // marking a listing as listed stays on the chat path; nothing here
+        // records the operator's word or changes a status.
+        const { paxGetLandListing, landOutcomeToResult } = await import("./landTools");
+        return landOutcomeToResult(await paxGetLandListing(org.id, args.listing_id));
+      }
+
+      case "get_listing_paste_text_view": {
+        // LD-DEF-1 cure: the ready-to-paste Craigslist text, same shared
+        // #744 read as the chat path's get_listing_paste_text. It returns
+        // text only — AcreOS posts nothing on this path or any path.
+        // Read-only.
+        const { paxGetListingPasteText, landOutcomeToResult } = await import("./landTools");
+        return landOutcomeToResult(await paxGetListingPasteText(org.id, args.listing_id));
+      }
+
+      case "get_land_payoff_quote_view": {
+        // LD-DEF-1 cure: the indicative serviced-note payoff, same shared
+        // #744 read as the chat path's get_land_payoff_quote — the
+        // non-recording calculator behind the payoff route. Read-only: no
+        // quote row is recorded and no payment is taken here.
+        const { paxGetLandPayoffQuote, landOutcomeToResult } = await import("./landTools");
+        return landOutcomeToResult(await paxGetLandPayoffQuote(org.id, { note_id: args.note_id, payoff_date: args.payoff_date }));
+      }
+
       case "escalate_to_human": {
         const { reason, priority, summary, include_diagnostic_bundle = true } = args;
         
