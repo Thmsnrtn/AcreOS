@@ -24,6 +24,7 @@ import { Errors, sendError } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { idempotencyMiddleware } from "./middleware/idempotency";
 import { loadSigningProgress, statusPatchFor } from "./services/esign/signingProgress";
+import { hashDocumentContent } from "./services/esign/contentIntegrity";
 import { clock } from "./utils/clock";
 import { routeParam } from "./utils/routeParams";
 
@@ -185,6 +186,9 @@ export function registerPublicSignRoutes(app: Express): void {
           name: doc.name,
           type: doc.type,
           content: doc.content,
+          // The signing page echoes this back on submit, so the signature is
+          // bound to the exact content this response showed the signer.
+          contentHash: hashDocumentContent(doc.content),
           status: doc.status,
           expiresAt: doc.expiresAt,
         },
@@ -211,7 +215,8 @@ export function registerPublicSignRoutes(app: Express): void {
   app.post("/api/public/sign/:docId", idempotencyMiddleware, async (req, res) => {
     try {
       const docId = parseInt(routeParam(req.params.docId), 10);
-      const { s: signerId, t: token, signatureData, signatureType, consentGiven } = req.body || {};
+      const { s: signerId, t: token, signatureData, signatureType, consentGiven, viewedContentHash } =
+        req.body || {};
       if (!Number.isFinite(docId) || !signerId || !token || !signatureData) {
         return Errors.badRequest(res, "Missing doc, signer, token, or signature data");
       }
@@ -284,6 +289,30 @@ export function registerPublicSignRoutes(app: Express): void {
         });
       }
 
+      // What the signer saw must be what is signed. A pending_signature document
+      // is still editable, so the content may have changed after the page
+      // loaded; the page echoes the hash it was handed, and a difference
+      // refuses with nothing recorded. The signer reloads and reviews.
+      const currentContentHash = hashDocumentContent(doc.content);
+      const viewedHash =
+        typeof viewedContentHash === "string" && viewedContentHash.length > 0 ? viewedContentHash : null;
+      if (currentContentHash !== null && viewedHash === null) {
+        return sendError(
+          res,
+          400,
+          "viewed_content_hash_required",
+          "This signing page is out of date — reload to review the current version before signing.",
+        );
+      }
+      if (viewedHash !== currentContentHash) {
+        return sendError(
+          res,
+          409,
+          "content_changed_since_view",
+          "This document changed since you opened it — reload to review the current version.",
+        );
+      }
+
       await storage.createSignature({
         organizationId: doc.organizationId,
         documentId: doc.id,
@@ -297,6 +326,11 @@ export function registerPublicSignRoutes(app: Express): void {
         consentGiven: consentGiven !== false,
         consentText:
           "I agree that this electronic signature is legally binding and has the same legal effect as a handwritten signature.",
+        // The content this signer is signing, as read for this request, hashed
+        // exactly as the operator route and every integrity reader hash it.
+        // Without it the sealed PDF and the completion certificate have nothing
+        // to check this signature against.
+        documentContentHash: currentContentHash,
       });
 
       // Re-derive from the signatures table now that this signature exists.
