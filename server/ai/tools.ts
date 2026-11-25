@@ -326,6 +326,89 @@ export const toolDefinitions = {
       }
     }
   },
+  // Wholesale tools. Reads state their coverage (own buyer list / own book only); the one
+  // record change logs a buyer's reply. NO tool sends or blasts (FD5, W-DEF-1): a wholesale
+  // blast is counterparty email and goes out only from the product, on the org's own identity.
+  get_wholesale_buy_box: {
+    name: "get_wholesale_buy_box",
+    description: "Get this account's current wholesale buy box (the criteria saved on the Buy box screen) and its version history. The result carries a coverage statement: state it.",
+    parameters: { type: "object", properties: {} }
+  },
+  get_wholesale_triage: {
+    name: "get_wholesale_triage",
+    description: "Say whether one deal's property fits the wholesale buy box: fits / fails / undetermined / retired, with the named reasons passed, failed and unknown. Unknown means nothing is recorded, never a pass. The result carries a coverage statement: state it.",
+    parameters: {
+      type: "object",
+      properties: { deal_id: { type: "number", description: "The deal id from get_deals" } },
+      required: ["deal_id"]
+    }
+  },
+  get_wholesale_buyers: {
+    name: "get_wholesale_buyers",
+    description: "List this account's OWN cash-buyer list (active by default): name, what they buy, price range, financing, last contact. It never includes any other account's buyers; the result carries a coverage statement saying so — state it.",
+    parameters: {
+      type: "object",
+      properties: { include_inactive: { type: "boolean", description: "Also list deactivated buyers (default false)" } }
+    }
+  },
+  get_wholesale_buyer_matches: {
+    name: "get_wholesale_buyer_matches",
+    description: "Show the buyers matched to one deal's property, best score first, with reasons and concerns, plus whether the state's assignment-advertising rule blocks or warns on a blast. Matches come only from THIS account's own buyer list and are the stored scores — this does not re-run matching and does not send anything. The result carries a coverage statement: state it.",
+    parameters: {
+      type: "object",
+      properties: { deal_id: { type: "number", description: "The deal id from get_deals" } },
+      required: ["deal_id"]
+    }
+  },
+  get_wholesale_assignments: {
+    name: "get_wholesale_assignments",
+    description: "List the contract assignments on one deal with status, end buyer and assignment fee, and the signed fee total. The fee is a record — AcreOS holds and moves no money. The result carries a coverage statement: state it.",
+    parameters: {
+      type: "object",
+      properties: { deal_id: { type: "number", description: "The deal id from get_deals" } },
+      required: ["deal_id"]
+    }
+  },
+  get_wholesale_decision: {
+    name: "get_wholesale_decision",
+    description: "Get the latest wholesale underwriting decision recorded on a deal's property (the max-allowable-offer scenario it cited, its review date) and any outcome recorded against it. Comps and ARV are the operator's own inputs. Reads only — a decision is the operator's act on the Underwrite screen. The result carries a coverage statement: state it.",
+    parameters: {
+      type: "object",
+      properties: { deal_id: { type: "number", description: "The deal id from get_deals" } },
+      required: ["deal_id"]
+    }
+  },
+  get_wholesale_disposition_packet: {
+    name: "get_wholesale_disposition_packet",
+    description: "PREPARE a preview of the disposition packet (the buyer-facing price, comps and rehab the customer would send their buyers) for one deal. Preview only: it stores and sends nothing, and it is refused in a state whose assignment-advertising rule blocks it, exactly as the buyer blast is. To send it the customer uses Buyer blast on their own email identity — say so; never offer to send it.",
+    parameters: {
+      type: "object",
+      properties: { deal_id: { type: "number", description: "The deal id from get_deals" } },
+      required: ["deal_id"]
+    }
+  },
+  get_wholesale_blasts: {
+    name: "get_wholesale_blasts",
+    description: "Show the buyer blasts this account already sent for one deal's property and each recipient's recorded status and reply notes (with the recipient ids). Read-only: I cannot send or re-send a blast. The result carries a coverage statement: state it.",
+    parameters: {
+      type: "object",
+      properties: { deal_id: { type: "number", description: "The deal id from get_deals" } },
+      required: ["deal_id"]
+    }
+  },
+  record_buyer_blast_response: {
+    name: "record_buyer_blast_response",
+    description: "Record a buyer's reply on a recipient of a blast the customer already sent: that they were interested or not interested, and/or a note of what they said (added to any existing notes, never over them). Use the recipient id from get_wholesale_blasts. This records only what the customer tells you — it never sends anything to the buyer.",
+    parameters: {
+      type: "object",
+      properties: {
+        recipient_id: { type: "string", description: "The recipient id from get_wholesale_blasts (a long identifier)" },
+        status: { type: "string", enum: ["replied_interested", "replied_not_interested"], description: "Whether the buyer was interested (optional if only adding a note)" },
+        response_notes: { type: "string", description: "What the buyer said, in the customer's words (optional if giving a status)" }
+      },
+      required: ["recipient_id"]
+    }
+  },
   calculate_amortization: {
     name: "calculate_amortization",
     description: "Calculate loan amortization schedule given principal, rate, and term.",
@@ -1283,6 +1366,14 @@ export const PAUSE_SAFE_TOOLS: ReadonlySet<string> = new Set([
   "get_tenants",
   "get_lease_ledger",
   "get_rental_underwriting_decision",
+  "get_wholesale_buy_box",
+  "get_wholesale_triage",
+  "get_wholesale_buyers",
+  "get_wholesale_buyer_matches",
+  "get_wholesale_assignments",
+  "get_wholesale_decision",
+  "get_wholesale_disposition_packet",
+  "get_wholesale_blasts",
   // Pure calculations
   "calculate_amortization",
   "calculate_payment_schedule",
@@ -2091,6 +2182,72 @@ export async function executeTool(
         return buyHoldOutcomeToResult(out);
       }
 
+      case "get_wholesale_buy_box": {
+        const { paxGetWholesaleBuyBox, wholesaleOutcomeToResult } = await import("./wholesaleTools");
+        return wholesaleOutcomeToResult(await paxGetWholesaleBuyBox(org.id));
+      }
+
+      case "get_wholesale_triage": {
+        const { paxGetWholesaleTriage, wholesaleOutcomeToResult } = await import("./wholesaleTools");
+        return wholesaleOutcomeToResult(await paxGetWholesaleTriage(org.id, { deal_id: args.deal_id }));
+      }
+
+      case "get_wholesale_buyers": {
+        const { paxGetWholesaleBuyers, wholesaleOutcomeToResult } = await import("./wholesaleTools");
+        return wholesaleOutcomeToResult(await paxGetWholesaleBuyers(org.id, { include_inactive: args.include_inactive }));
+      }
+
+      case "get_wholesale_buyer_matches": {
+        const { paxGetWholesaleBuyerMatches, wholesaleOutcomeToResult } = await import("./wholesaleTools");
+        return wholesaleOutcomeToResult(await paxGetWholesaleBuyerMatches(org.id, options?.userId ?? null, { deal_id: args.deal_id }));
+      }
+
+      case "get_wholesale_assignments": {
+        const { paxGetWholesaleAssignments, wholesaleOutcomeToResult } = await import("./wholesaleTools");
+        return wholesaleOutcomeToResult(await paxGetWholesaleAssignments(org.id, { deal_id: args.deal_id }));
+      }
+
+      case "get_wholesale_decision": {
+        const { paxGetWholesaleDecision, wholesaleOutcomeToResult } = await import("./wholesaleTools");
+        return wholesaleOutcomeToResult(await paxGetWholesaleDecision(org.id, { deal_id: args.deal_id }));
+      }
+
+      case "get_wholesale_disposition_packet": {
+        // A preview behind the same state compliance gate the buyer blast runs; nothing is stored or sent.
+        const { paxGetWholesaleDispositionPacket, wholesaleOutcomeToResult } = await import("./wholesaleTools");
+        return wholesaleOutcomeToResult(await paxGetWholesaleDispositionPacket(org.id, options?.userId ?? null, { deal_id: args.deal_id }));
+      }
+
+      case "get_wholesale_blasts": {
+        const { paxGetWholesaleBlasts, wholesaleOutcomeToResult } = await import("./wholesaleTools");
+        return wholesaleOutcomeToResult(await paxGetWholesaleBlasts(org.id, { deal_id: args.deal_id }));
+      }
+
+      case "record_buyer_blast_response": {
+        // A record, not a send (FD5): what the customer says a buyer replied. The receipt names the
+        // before → after of the recipient's status and notes.
+        const { paxRecordBuyerBlastResponse, wholesaleOutcomeToResult } = await import("./wholesaleTools");
+        const out = await paxRecordBuyerBlastResponse(org.id, args);
+        if (out.ok && out.receipt && !trustedApproval) {
+          await recordPaxEffect({
+            orgId: org.id,
+            actor: "pax",
+            origin,
+            stance: controls?.stance ?? null,
+            tool: "record_buyer_blast_response",
+            action: "buyer_reply_recorded",
+            entityType: "organization",
+            entityId: org.id,
+            description: out.receipt.description,
+            before: out.receipt.before,
+            after: out.receipt.after,
+            witnessed: false,
+            userId: options?.userId ?? null,
+          });
+          receiptWritten = true;
+        }
+        return wholesaleOutcomeToResult(out);
+      }
       case "get_notes": {
         // HYB-DEF-5/6: cross-book read. The serviced book alone was
         // presented as the whole book (acquired notes silently absent,
@@ -4083,11 +4240,11 @@ export function getToolsForRole(role: string) {
   const memoryTools = ["remember_fact", "recall_facts"];
   const roleToolMap: Record<string, string[]> = {
     executive: allTools,
-    acquisitions: [...coreTools, ...memoryTools, "get_leads", "get_lead_details", "update_lead_status", "create_lead", "get_properties", "create_property", "get_deals", "create_deal", "get_tasks", "create_task", "get_pipeline_summary", "generate_offer", "generate_offer_letter", "send_email", "send_sms", "run_comps_analysis", "schedule_followup", "draft_offer", "schedule_follow_up", "run_comps", "get_stale_leads", "draft_outreach_message"],
+    acquisitions: [...coreTools, ...memoryTools, "get_leads", "get_lead_details", "update_lead_status", "create_lead", "get_properties", "create_property", "get_deals", "create_deal", "get_wholesale_buy_box", "get_wholesale_triage", "get_wholesale_buyers", "get_wholesale_buyer_matches", "get_wholesale_assignments", "get_wholesale_decision", "get_wholesale_disposition_packet", "get_wholesale_blasts", "record_buyer_blast_response", "get_tasks", "create_task", "get_pipeline_summary", "generate_offer", "generate_offer_letter", "send_email", "send_sms", "run_comps_analysis", "schedule_followup", "draft_offer", "schedule_follow_up", "run_comps", "get_stale_leads", "draft_outreach_message"],
     underwriting: [...coreTools, ...memoryTools, "get_properties", "get_property_details", "update_property", "get_notes", "get_tax_certificates", "get_tax_certificate", "get_tax_certificate_clock", "get_tax_certificate_ledger", "record_tax_ledger_entry", "get_rent_roll", "get_rental_leases", "get_tenants", "get_lease_ledger", "get_rental_underwriting_decision", "record_rent_payment", "generate_scheduled_rent_charges", "calculate_amortization", "get_cashflow_summary", "get_deals", "update_deal", "run_comps_analysis", "run_comps", "calculate_roi", "calculate_payment_schedule", "research_property", "draft_offer"],
     marketing: [...coreTools, ...memoryTools, "get_leads", "get_properties", "get_pipeline_summary", "create_task", "send_email", "send_sms", "get_stale_leads", "draft_outreach_message"],
     research: [...coreTools, ...memoryTools, "get_properties", "get_property_details", "get_leads", "create_property", "update_property", "run_comps_analysis", "run_comps", "research_property", "calculate_roi", "browse_web", "browse_search"],
-    documents: [...coreTools, "get_leads", "get_lead_details", "get_properties", "get_property_details", "get_notes", "get_tax_certificates", "get_tax_certificate", "get_tax_certificate_clock", "get_tax_certificate_ledger", "record_tax_ledger_entry", "get_rent_roll", "get_rental_leases", "get_tenants", "get_lease_ledger", "get_rental_underwriting_decision", "record_rent_payment", "generate_scheduled_rent_charges", "get_deals", "generate_offer_letter", "draft_offer"],
+    documents: [...coreTools, "get_leads", "get_lead_details", "get_properties", "get_property_details", "get_notes", "get_tax_certificates", "get_tax_certificate", "get_tax_certificate_clock", "get_tax_certificate_ledger", "record_tax_ledger_entry", "get_rent_roll", "get_rental_leases", "get_tenants", "get_lease_ledger", "get_rental_underwriting_decision", "record_rent_payment", "generate_scheduled_rent_charges", "get_deals", "get_wholesale_buy_box", "get_wholesale_triage", "get_wholesale_buyers", "get_wholesale_buyer_matches", "get_wholesale_assignments", "get_wholesale_decision", "get_wholesale_disposition_packet", "get_wholesale_blasts", "record_buyer_blast_response", "generate_offer_letter", "draft_offer"],
     assistant: allTools // Full access for the main assistant
   };
   
