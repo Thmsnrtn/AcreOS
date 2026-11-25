@@ -33,6 +33,101 @@ export interface CustomerChangelogEntry {
 
 export const CUSTOMER_CHANGELOG: CustomerChangelogEntry[] = [
   {
+    date: "2026-11-09",
+    version: "v6.9",
+    changes: [
+      {
+        type: "added",
+        title: "Wholesale buy-box, versioned",
+        body:
+          "Your wholesale buy-box is saved as a new version every time you change it, with the history kept, so you can see what criteria a deal was measured against. A maximum-allowable-offer calculation sits alongside it on wholesale deals.",
+      },
+      {
+        type: "added",
+        title: "Delinquency stages on notes",
+        body:
+          "Notes you hold now show where each borrower sits — current, under 30 days, 30, 60, or 90+ days past due — based on the payment record.",
+      },
+    ],
+  },
+  {
+    date: "2026-11-01",
+    version: "v6.8",
+    changes: [
+      {
+        type: "added",
+        title: "Tax-sale redemption clock and quiet-title gate",
+        body:
+          "The redemption clock shows time remaining and the current redemption amount, and the quiet-title step is surfaced on tax-delinquent deals so it isn't skipped.",
+      },
+    ],
+  },
+  {
+    date: "2026-10-28",
+    changes: [
+      {
+        type: "added",
+        title: "Note tape import",
+        body:
+          "Import a note tape and see where each value on the note record came from.",
+      },
+    ],
+  },
+  {
+    date: "2026-10-23",
+    version: "v6.7",
+    changes: [
+      {
+        type: "improved",
+        title: "Texting consent, kept separate from email",
+        body:
+          "A prospecting text now requires written consent on record. Email follows its own opt-out and suppression rules and is no longer tied to texting consent.",
+      },
+    ],
+  },
+  {
+    date: "2026-07-15",
+    version: "v6.6",
+    changes: [
+      {
+        type: "added",
+        title: "One-line thread summary in Inbox",
+        body:
+          "Open a message and ask for a one-line Pax summary of the thread. It is generated on request and not stored.",
+      },
+      {
+        type: "added",
+        title: "Team chat",
+        body:
+          "A team chat panel is available alongside your work so your team can talk without leaving the page.",
+      },
+      {
+        type: "added",
+        title: "Use your own data keys",
+        body:
+          "Property lookups can run on your own vendor key, managed from your settings.",
+      },
+    ],
+  },
+  {
+    date: "2026-07-13",
+    version: "v6.5",
+    changes: [
+      {
+        type: "added",
+        title: "Free statewide parcel lookups",
+        body:
+          "Parcel lookups can now use free statewide cadastral sources for supported states.",
+      },
+      {
+        type: "added",
+        title: "Open-data signals in due diligence",
+        body:
+          "Due diligence can draw on IRS migration data, Census building permits, county employment and wages, and recent severe-weather alerts.",
+      },
+    ],
+  },
+  {
     date: "2026-05-01",
     version: "v6.4",
     changes: [

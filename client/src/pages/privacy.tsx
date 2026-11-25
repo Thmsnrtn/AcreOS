@@ -12,6 +12,7 @@ import { LEGAL_ENTITY_NAME, LEGAL_ENTITY_FOOTER } from "@/lib/legal-entity";
 import { PAX_CONTROLS_LABEL } from "@shared/pax-glossary-core";
 import { LegalDocBody } from "@/components/legal-doc-body";
 import { PRIVACY_POLICY_URL } from "@/lib/legal-doc";
+import { subProcessorRowsHtml } from "@/data/sub-processors";
 
 // v1.0 — effective 2026-06-01 — Beatrice Whitfield, CRO (Beatrice audit P2).
 // Content sourced from docs/legal/privacy-policy.md.
@@ -82,7 +83,11 @@ export default function PrivacyPolicy() {
             <LegalDocBody
               url={PRIVACY_POLICY_URL}
               testId="privacy-doc-body"
-              substitutions={{ PAX_CONTROLS_LABEL }}
+              substitutions={{
+                PAX_CONTROLS_LABEL,
+                // Section 8's table rows come from the shared sub-processor list.
+                SUBPROCESSOR_ROWS: subProcessorRowsHtml(),
+              }}
               supportFeedbackButton={
                 <SupportFeedbackButton
                   variant="link"

@@ -119,9 +119,9 @@ export const PRICING_TIER_COPY: PricingTierCopy[] = [
     priceYearly: TIER_PRICES_CENTS.starter.priceYearlyCents / 100,
     features: [
       seatLine("starter"),
-      "3 counties in buy-box",
+      "Buy-box targeting by county",
       `Full Pax assistant (${fmtLimit(TIER_LIMITS.starter.ai_requests)} messages / mo)`,
-      "500 mailers / mo",
+      `${fmtLimit(TIER_LIMITS.starter.campaigns)} campaigns`,
       "Lead inbox with Pax drafts",
       "Audit log",
     ],
@@ -137,7 +137,7 @@ export const PRICING_TIER_COPY: PricingTierCopy[] = [
     priceYearly: TIER_PRICES_CENTS.pro.priceYearlyCents / 100,
     features: [
       seatLine("pro"),
-      "Unlimited counties in buy-box",
+      "Buy-box targeting by county",
       "Full Pax assistant + automation builder",
       "Unlimited campaigns (BYOK for postage)",
       "Bring-your-own-key for parcel + skip-trace data",
@@ -159,7 +159,6 @@ export const PRICING_TIER_COPY: PricingTierCopy[] = [
       seatLine("scale"),
       "Custom integrations",
       "Dedicated success partner",
-      "10K mailers / mo",
       "White-glove migration",
       "Quarterly portfolio review",
     ],
