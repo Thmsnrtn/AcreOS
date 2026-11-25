@@ -198,9 +198,12 @@ router.post("/deals/update", async (req: AuthenticatedRequest, res: Response) =>
       allowedUpdates.status = updates.status;
     }
     if (updates.assignedTo !== undefined) {
-      if (updates.assignedTo !== null && updates.assignedTo !== "") {
-        const ok = await assertUserIsOrgMember(String(updates.assignedTo), orgId);
-        if (!ok) return Errors.badRequest(res, "assignedTo must be a member of this organization");
+      // The assignee must be an active TEAM MEMBER of this org:
+      // `deals.assigned_to` stores team_members.id (see isAssignableLeadMember),
+      // not a user id — the same check /leads/update above runs. Null passes
+      // (unassigning clears the assignment, as before).
+      if (!(await isAssignableLeadMember(updates.assignedTo, orgId))) {
+        return Errors.badRequest(res, "assignedTo must be the id of an active team member of this organization");
       }
       allowedUpdates.assignedTo = updates.assignedTo;
     }
