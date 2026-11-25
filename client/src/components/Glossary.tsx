@@ -14,7 +14,8 @@
 
 import * as React from "react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { getGlossaryEntry, type GlossarySlug } from "@/lib/glossary";
+import type { GlossarySlug } from "@/lib/glossary";
+import { getGlossaryEntry, useGlossaryData } from "@/lib/glossary-data";
 import { cn } from "@/lib/utils";
 
 interface GlossaryTermProps {
@@ -36,7 +37,13 @@ export function GlossaryTerm({
   className,
   children,
 }: GlossaryTermProps) {
-  const entry = getGlossaryEntry(slug);
+  // The registry is served as /glossary.json (source of truth
+  // client/src/lib/glossary.ts) instead of riding inside the bundle.
+  // While the asset is in flight — and on load failure — the entry is
+  // unknown, so the term renders children plainly, exactly like an
+  // unknown slug; the tooltip appears once the data lands.
+  const { data: glossaryData } = useGlossaryData();
+  const entry = getGlossaryEntry(glossaryData, slug);
   // Stable id for aria-describedby across re-renders.
   const idRef = React.useRef<string | null>(null);
   if (idRef.current === null) {
