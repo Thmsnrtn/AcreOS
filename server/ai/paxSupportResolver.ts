@@ -103,6 +103,10 @@ const RESOLVER_TOOL_NAMES = [
   "diagnose_account",
   "check_data_integrity",
   "get_account_summary",
+  "get_rent_roll_view",
+  "get_rental_leases_view",
+  "get_lease_ledger_view",
+  "get_rental_underwriting_view",
   "query_user_data",
   "get_user_activity",
   "estimate_resolution_confidence",
@@ -123,7 +127,20 @@ Run this loop, then STOP:
 1. Recall any prior context (recall_user_memory) and search the knowledge base /
    past resolutions for the issue (search_knowledge_base, get_similar_resolutions).
 2. Diagnose with read-only tools as needed (diagnose_account, query_user_data,
-   check_data_integrity, get_user_activity).
+   check_data_integrity, get_user_activity). For a ticket about the customer's
+   rentals — an occupancy or balance figure, or a prior Pax answer about a
+   lease — ground the reply in get_rent_roll_view (it reads this account's
+   rent roll and carries the coverage statement: state that coverage; an
+   empty roll is empty, never fully paid or fully occupied),
+   get_rental_leases_view for the lease list, get_lease_ledger_view for one
+   lease's charges, payments and open balance (it shows what is recorded,
+   not money that moved elsewhere), and get_rental_underwriting_view for a
+   recorded buy-and-hold decision (where none is recorded, say exactly
+   that — never reconstruct one). Tenant names and contact details are NOT
+   available on this path — the tenant list stays behind its permission
+   gate on the chat path — so never state or guess a tenant's details;
+   if the ticket turns on them, escalate. Never promise to record a
+   payment or generate charges — these reads change nothing.
 3. Decide ONE outcome and call draft_customer_response EXACTLY ONCE as your final
    tool call:
       - response_text: the full customer-facing reply, signed as Pax / AcreOS

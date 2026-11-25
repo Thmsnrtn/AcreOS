@@ -154,7 +154,51 @@ export const supportToolDefinitions = {
       properties: {}
     }
   },
-  
+
+  get_rent_roll_view: {
+    name: "get_rent_roll_view",
+    description: "Read this account's rent roll: occupancy over its rental units (a never-leased unit counts as vacant; an empty roll is reported as empty, never as fully paid or fully occupied), one line per unit with its active lease and open/overdue balance. The result carries a coverage statement naming what it reads and what it does not: state that coverage when you summarize it. No tenant names or contact details are on it. Read-only: this never records anything or contacts anyone.",
+    parameters: {
+      type: "object",
+      properties: {}
+    }
+  },
+
+  get_rental_leases_view: {
+    name: "get_rental_leases_view",
+    description: "List this account's rental leases (unit label, status, dates, monthly rent, deposit) — tenant names are NOT on this list. The result carries a coverage statement. Read-only.",
+    parameters: {
+      type: "object",
+      properties: {
+        status: { type: "string", description: "Lease status filter (optional; default every status)" }
+      }
+    }
+  },
+
+  get_lease_ledger_view: {
+    name: "get_lease_ledger_view",
+    description: "Read the ledger of ONE lease in this account (use the lease id from get_rental_leases_view): charges, payments, allocations and late posture, with totals. It shows what is recorded, not money that moved outside AcreOS and was never recorded. The result carries a coverage statement. Read-only: this never records a payment or generates a charge.",
+    parameters: {
+      type: "object",
+      properties: {
+        lease_id: { type: "string", description: "The lease id from get_rental_leases_view (a long identifier, not the unit label)" }
+      },
+      required: ["lease_id"]
+    }
+  },
+
+  get_rental_underwriting_view: {
+    name: "get_rental_underwriting_view",
+    description: "Read the latest buy-and-hold underwriting decision recorded for one property in this account, exactly as frozen when it was made. If none is recorded, the result says so — never reconstruct one from the property's numbers. It is not a lender determination. Read-only.",
+    parameters: {
+      type: "object",
+      properties: {
+        property_id: { type: "number", description: "The property's number in this account" }
+      },
+      required: ["property_id"]
+    }
+  },
+
   draft_customer_response: {
     name: "draft_customer_response",
     description: "Draft a customer-facing response before escalating. The draft and confidence score determine if the support flow can auto-resolve or if internal review is needed.",
@@ -1278,7 +1322,11 @@ export const PAUSE_SAFE_SUPPORT_TOOLS: ReadonlySet<string> = new Set([
   "get_billing_issues",
   "get_contextual_suggestions",
   "get_feature_walkthrough",
+  "get_lease_ledger_view",
   "get_payment_history",
+  "get_rent_roll_view",
+  "get_rental_leases_view",
+  "get_rental_underwriting_view",
   "get_resolution_stats",
   "get_similar_resolutions",
   "get_subscription_details",
@@ -1917,7 +1965,41 @@ export async function executeSupportTool(
           }
         };
       }
-      
+
+      case "get_rent_roll_view": {
+        // BH-DEF-1 cure: the support path's rent-roll read — the SAME read
+        // the chat path's get_rent_roll performs (#737), under a support-only
+        // name because the registries key one dispatch per tool name.
+        // Read-only; coverage-stated by the shared helper.
+        const { paxGetRentRoll, buyHoldOutcomeToResult } = await import("./buyHoldTools");
+        return buyHoldOutcomeToResult(await paxGetRentRoll(org.id));
+      }
+
+      case "get_rental_leases_view": {
+        // BH-DEF-1 cure: this account's leases, same shared #737 read as the
+        // chat path's get_rental_leases. No tenant PII is shaped here.
+        // Read-only.
+        const { paxGetRentalLeases, buyHoldOutcomeToResult } = await import("./buyHoldTools");
+        return buyHoldOutcomeToResult(await paxGetRentalLeases(org.id, { status: args.status }));
+      }
+
+      case "get_lease_ledger_view": {
+        // BH-DEF-1 cure: one lease's ledger, same shared #737 read as the
+        // chat path's get_lease_ledger. Read-only — recording a payment stays
+        // on the chat path; nothing here generates a charge either.
+        const { paxGetLeaseLedger, buyHoldOutcomeToResult } = await import("./buyHoldTools");
+        return buyHoldOutcomeToResult(await paxGetLeaseLedger(org.id, args.lease_id));
+      }
+
+      case "get_rental_underwriting_view": {
+        // BH-DEF-1 cure: the recorded buy-and-hold underwriting decision for
+        // one property, same shared #737 read as the chat path's
+        // get_rental_underwriting_decision — the decision as frozen, or an
+        // explicit statement that none is recorded. Read-only.
+        const { paxGetRentalUnderwritingDecision, buyHoldOutcomeToResult } = await import("./buyHoldTools");
+        return buyHoldOutcomeToResult(await paxGetRentalUnderwritingDecision(org.id, { property_id: args.property_id }));
+      }
+
       case "escalate_to_human": {
         const { reason, priority, summary, include_diagnostic_bundle = true } = args;
         
