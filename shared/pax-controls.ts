@@ -528,6 +528,9 @@ const TOOL_REGISTRY: Readonly<Record<string, ToolEntry>> = Object.fromEntries([
       "get_tenants",
       "get_lease_ledger",
       "get_rental_underwriting_decision",
+      "get_lease_abstract",
+      "get_lease_rent_steps",
+      "get_lease_cam_status",
       "calculate_amortization",
       "calculate_payment_schedule",
       "calculate_roi",
@@ -580,6 +583,8 @@ const TOOL_REGISTRY: Readonly<Record<string, ToolEntry>> = Object.fromEntries([
   ...recordTools("deals", ["record_tax_ledger_entry"], "executeTool"),
   // A rent-ledger record is a record on a position the customer holds — the deals rail.
   ...recordTools("deals", ["record_rent_payment", "generate_scheduled_rent_charges"], "executeTool"),
+  // A tenant sales report is a record on a lease the customer holds — the deals rail.
+  ...recordTools("deals", ["record_tenant_sales_report"], "executeTool"),
   ...recordTools("tasks", ["create_task", "update_task", "complete_task"], "executeTool"),
   ...recordTools("follow_ups", ["schedule_followup", "schedule_follow_up"], "executeTool"),
   // APPROVAL_REQUIRED_TOOLS (server/services/approvalKernel.ts) — may only grow.
@@ -631,6 +636,9 @@ const TOOL_REGISTRY: Readonly<Record<string, ToolEntry>> = Object.fromEntries([
       "get_billing_issues",
       "get_contextual_suggestions",
       "get_feature_walkthrough",
+      "get_lease_abstract_view",
+      "get_lease_cam_status_view",
+      "get_lease_rent_steps_view",
       "get_payment_history",
       "get_resolution_stats",
       "get_similar_resolutions",
