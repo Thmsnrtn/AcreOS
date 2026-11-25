@@ -132,6 +132,21 @@ export interface OpExDecision {
  * override gets NO assumed op-ex — the residential ratio is meaningless for a
  * NNN/gross building, so op-ex is null (opExSource "commercial_unmeasured") and NOI/
  * cap rate fall away rather than being fabricated from a 60%-of-rent guess.
+ *
+ * A NEGATIVE measured op-ex is refused, not decided: operating expenses are
+ * stored nonnegative (the expense write path validates that), so a negative
+ * monthly figure is a data error, never a measurement and never a credit —
+ * there is no contra-entry semantics for this input anywhere. Computing with
+ * it would ADD the "expense" to NOI and present the result as measured books,
+ * the plausible-costume failure this module exists to prevent. The refusal is
+ * a throw (the shared/rental precedent: paymentAllocation throws plain Errors
+ * for impossible money states) rather than the null shape above, because the
+ * null shape means "unmeasured" and carries no words — a data error must be
+ * refused in plain words, not silently read as an absent measurement. The
+ * guard fires only when the figure would actually be computed with
+ * (`hasMeasured`); when nothing was measured the value is an unused
+ * placeholder and the precedence below never reads it. A measured ZERO is a
+ * real measurement and stays valid.
  */
 export function decideOperatingExpense(args: {
   hasMeasured: boolean;
@@ -141,6 +156,13 @@ export function decideOperatingExpense(args: {
   monthlyRentCollectedCents: number;
 }): OpExDecision {
   const { hasMeasured, measuredOpExMonthlyCents, opExBps, isCommercial, monthlyRentCollectedCents } = args;
+  if (hasMeasured && measuredOpExMonthlyCents < 0) {
+    throw new Error(
+      "measured operating expenses cannot be negative: a negative operating " +
+        "expense is a data error, not a measurement, and no NOI will be " +
+        "computed from it",
+    );
+  }
   if (hasMeasured) {
     return { opExMonthlyCents: measuredOpExMonthlyCents, opExBasis: "operator_supplied", opExSource: "measured_expenses" };
   }
