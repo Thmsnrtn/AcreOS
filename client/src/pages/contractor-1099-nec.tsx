@@ -46,6 +46,14 @@ interface BatchResponse {
   formCount: number;
   forms: Array<{ contractorId: string; name: string; pdfBase64: string }>;
   warning: string;
+  thresholdNote?: string | null;
+}
+
+/** The qualified-output gate withholds 1099-NEC generation until the threshold is confirmed. */
+interface FilingRefusal {
+  error: "not_qualified_filing_output";
+  message: string;
+  details?: { reason?: string; thresholdCents?: number; flagKey?: string };
 }
 
 function fmtUsd(c: number): string {
@@ -62,12 +70,20 @@ export default function Contractor1099NecPage() {
   const { toast } = useToast();
   const [taxYear, setTaxYear] = useState(String(new Date().getFullYear() - 1));
 
-  const preview = useQuery<PreviewResponse>({
+  const [generateRefusal, setGenerateRefusal] = useState<FilingRefusal | null>(null);
+
+  const preview = useQuery<PreviewResponse | FilingRefusal>({
     queryKey: ["/api/contractors/1099-nec-batch", taxYear],
     queryFn: async () => {
       const res = await fetch(`/api/contractors/1099-nec-batch?taxYear=${taxYear}`, { credentials: "include" });
+      const json = await res.json().catch(() => ({}));
+      if (res.status === 422 && json?.error === "not_qualified_filing_output") {
+        // Structured refusal, not a failure: the gate is withholding the
+        // form for a stated reason, and the page renders that reason.
+        return json as FilingRefusal;
+      }
       if (!res.ok) throw new Error(`Failed (${res.status})`);
-      return res.json();
+      return json as PreviewResponse;
     },
   });
 
@@ -79,6 +95,9 @@ export default function Contractor1099NecPage() {
       });
       if (!res.ok) {
         const detail = await res.json().catch(() => ({}));
+        if (res.status === 422 && detail?.error === "not_qualified_filing_output") {
+          setGenerateRefusal(detail as FilingRefusal);
+        }
         throw new Error(detail.message ?? `Failed (${res.status})`);
       }
       return res.json();
@@ -105,6 +124,12 @@ export default function Contractor1099NecPage() {
     return [cur, cur - 1, cur - 2, cur - 3];
   }, []);
 
+  const previewRefusal =
+    preview.data && "error" in preview.data ? (preview.data as FilingRefusal) : null;
+  const previewData =
+    preview.data && !("error" in preview.data) ? (preview.data as PreviewResponse) : null;
+  const refusal = previewRefusal ?? generateRefusal;
+
   return (
     <PageShell label="1099-NEC batch">
       <div className="mb-6">
@@ -113,9 +138,14 @@ export default function Contractor1099NecPage() {
           1099-NEC batch
         </h1>
         <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
-          Generates Copy B (recipient copy) PDFs for every contractor over $600
-          for the selected tax year. Paper IRS filing requires the red-ink Copy A
-          form — use the IRS FIRE / IRIS system for electronic filing.
+          Prepares Copy B (recipient copy) PDFs for contractors over the
+          reporting threshold for the selected tax year. 1099-NEC generation is
+          currently withheld: the reporting threshold this generator applies
+          ($600) has not been confirmed by a qualified tax reviewer for this
+          tax year, and the figure for payments made after 2025 may differ. No
+          forms are generated until the threshold is confirmed. When generation
+          is available: paper IRS filing requires the red-ink Copy A form — use
+          the IRS FIRE / IRIS system for electronic filing.
         </p>
       </div>
 
@@ -131,6 +161,22 @@ export default function Contractor1099NecPage() {
         </div>
       </div>
 
+      {refusal && (
+        <Card className="mb-6" data-testid="nec-filing-refusal-card">
+          <div className="p-5">
+            <div className="rounded-card border border-destructive/30 bg-destructive/5 p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <AlertTriangle className="w-4 h-4 text-destructive" aria-hidden="true" />
+                <p className="text-sm font-semibold text-destructive">
+                  1099-NEC generation is withheld.
+                </p>
+              </div>
+              <p className="text-xs text-muted-foreground">{refusal.message}</p>
+            </div>
+          </div>
+        </Card>
+      )}
+
       {preview.isLoading ? (
         <Skeleton className="h-32" />
       ) : preview.isError ? (
@@ -141,30 +187,30 @@ export default function Contractor1099NecPage() {
           compact
           testId="contractor-1099-nec-error"
         />
-      ) : preview.data ? (
+      ) : previewData ? (
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
             <Card className="p-3">
               <div className="text-xs text-muted-foreground">Eligible</div>
-              <div className="text-2xl font-semibold">{preview.data.contractorCount}</div>
-              <div className="text-xs text-muted-foreground">over ${preview.data.thresholdCents / 100}</div>
+              <div className="text-2xl font-semibold">{previewData.contractorCount}</div>
+              <div className="text-xs text-muted-foreground">over ${previewData.thresholdCents / 100}</div>
             </Card>
             <Card className="p-3">
               <div className="text-xs text-muted-foreground">Ready</div>
-              <div className="text-2xl font-semibold text-acr-pos">{preview.data.readyCount}</div>
+              <div className="text-2xl font-semibold text-acr-pos">{previewData.readyCount}</div>
               <div className="text-xs text-muted-foreground">all required fields</div>
             </Card>
             <Card className="p-3">
               <div className="text-xs text-muted-foreground">Blocked</div>
-              <div className={`text-2xl font-semibold ${preview.data.blockedCount > 0 ? "text-acr-warning" : ""}`}>
-                {preview.data.blockedCount}
+              <div className={`text-2xl font-semibold ${previewData.blockedCount > 0 ? "text-acr-warning" : ""}`}>
+                {previewData.blockedCount}
               </div>
               <div className="text-xs text-muted-foreground">missing W-9 / address</div>
             </Card>
             <Card className="p-3">
-              <Button disabled={preview.data.readyCount === 0 || generate.isPending} onClick={() => generate.mutate()} className="w-full mt-2">
+              <Button disabled={previewData.readyCount === 0 || generate.isPending} onClick={() => generate.mutate()} className="w-full mt-2">
                 <Download className="w-4 h-4 mr-1" aria-hidden="true" />
-                Generate {preview.data.readyCount} PDFs
+                Generate {previewData.readyCount} PDFs
               </Button>
             </Card>
           </div>
@@ -187,7 +233,7 @@ export default function Contractor1099NecPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {preview.data.contractors.map((c) => (
+                  {previewData.contractors.map((c) => (
                     <tr key={c.id} className="border-b border-border/40">
                       <td className="px-3 py-2 font-medium">{c.name}</td>
                       <td className="px-3 py-2 font-mono text-xs">{c.taxIdMasked}</td>

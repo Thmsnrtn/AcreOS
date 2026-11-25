@@ -37,6 +37,11 @@ interface Contractor {
   insuranceExpiresAt: string | null;
 }
 
+// Mirrors the server's NEC_THRESHOLD_CENTS (server/services/form1099NecPayer.ts),
+// the source of truth for the figure AcreOS currently applies. The contractors
+// list response carries no threshold of its own; if the server figure changes,
+// this flag threshold must change with it — the copy below states the figure
+// is unconfirmed either way.
 const NEC_THRESHOLD_CENTS = 60000;
 
 function fmtUsd(c: number): string {
@@ -109,7 +114,12 @@ export default function ContractorsPage() {
           </h1>
           <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
             Sub bench with YTD payment totals. Auto-flags contractors over the
-            $600 1099-NEC threshold so you're not chasing W-9s in December.
+            1099-NEC reporting threshold AcreOS currently applies ($600) so
+            you're not chasing W-9s in December. The $600 reporting threshold
+            has not been confirmed for this tax year — confirm it with your tax
+            professional. AcreOS flags against the unconfirmed figure so no one
+            is missed while it is confirmed; the flag is a reminder, not a
+            determination that a form is owed.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -180,10 +190,10 @@ export default function ContractorsPage() {
                         c.taxIdMasked === "—" ? (
                           <Badge variant="destructive" className="text-xs"><AlertTriangle className="w-3 h-3 mr-1" /> need W-9</Badge>
                         ) : (
-                          <Badge variant="default" className="text-xs">1099 eligible</Badge>
+                          <Badge variant="default" className="text-xs">over threshold — W-9 on file</Badge>
                         )
                       ) : (
-                        <Badge variant="outline" className="text-xs">below threshold</Badge>
+                        <Badge variant="outline" className="text-xs">below current threshold</Badge>
                       )}
                     </td>
                   </tr>
