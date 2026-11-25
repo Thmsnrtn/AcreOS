@@ -65,6 +65,15 @@
  *      module data for representative queries.
  *      Regenerate: npx tsx -e 'import {PALETTE_VERBS} from "./client/src/data/cmdk-verbs-data";
  *      import fs from "node:fs"; fs.writeFileSync("client/public/palette-verbs.json", JSON.stringify(PALETTE_VERBS,null,2)+"\n")'
+ *   9. (bundle diet Candidate 1) getting-started checklist copy:
+ *      client/src/data/onboarding-checklist-data.ts (source of truth) →
+ *      /onboarding-checklist.json; the checklist component loads it via
+ *      the shared loader, the lib's step factory rehydrates the rows
+ *      (signals/icons stay in code), the loaded shape is guarded at the
+ *      boundary (isOnboardingChecklistData), and a loader failure renders
+ *      the shell with a visible failure line, never a vanished checklist.
+ *      Regenerate: npx tsx -e 'import {ONBOARDING_CHECKLIST_DATA} from "./client/src/data/onboarding-checklist-data";
+ *      import fs from "node:fs"; fs.writeFileSync("client/public/onboarding-checklist.json", JSON.stringify(ONBOARDING_CHECKLIST_DATA, null, 2)+"\n")'
  */
 import { describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
@@ -85,6 +94,16 @@ import {
   getVerticalOnboarding,
   isOnboardingVerticalsData,
 } from "../../client/src/lib/onboarding-verticals";
+import {
+  ONBOARDING_CHECKLIST_DATA,
+  type OnboardingChecklistData,
+} from "../../client/src/data/onboarding-checklist-data";
+import {
+  buildChecklistsByBusinessType,
+  getChecklistItems,
+  isOnboardingChecklistData,
+} from "../../client/src/lib/onboarding-checklist";
+import { BUSINESS_TYPE_IDS } from "../../shared/business-types";
 import { LANDING_COPY } from "../../client/src/pages/landing/copy";
 import { isLandingCopy } from "../../client/src/lib/landing-copy";
 import { PALETTE_VERBS } from "../../client/src/data/cmdk-verbs-data";
@@ -137,6 +156,9 @@ const LANDING_ASSET = readJson("client/public/landing-copy.json");
 const PALETTE_ASSET = readJson(
   "client/public/palette-verbs.json",
 ) as PaletteVerb[];
+const CHECKLIST_ASSET = readJson(
+  "client/public/onboarding-checklist.json",
+) as OnboardingChecklistData;
 const HELP_ASSET = readJson("client/public/help-content.json") as {
   featureGuides: typeof HELP_FEATURE_GUIDES;
   faqItems: typeof HELP_FAQ_ITEMS;
@@ -170,6 +192,16 @@ describe("served assets are verbatim the modules' data", () => {
   it("onboarding-verticals.json is the generator's exact output (regenerate with the header's command)", () => {
     expect(read("client/public/onboarding-verticals.json")).toBe(
       JSON.stringify(MODULE_ONBOARDING_DATA, null, 2) + "\n",
+    );
+  });
+
+  it("onboarding-checklist.json deep-equals the checklist data module", () => {
+    expect(CHECKLIST_ASSET).toEqual(ONBOARDING_CHECKLIST_DATA);
+  });
+
+  it("onboarding-checklist.json is the generator's exact output (regenerate with the header's command)", () => {
+    expect(read("client/public/onboarding-checklist.json")).toBe(
+      JSON.stringify(ONBOARDING_CHECKLIST_DATA, null, 2) + "\n",
     );
   });
 
@@ -382,6 +414,85 @@ describe("isPaletteVerbs guards the loaded asset shape", () => {
   });
 });
 
+// ── 1d. Checklist builders: served asset behaves as the module data ──────
+
+describe("checklist builders over the served asset match the module", () => {
+  it("buildChecklistsByBusinessType agrees, icons and signals included", () => {
+    expect(buildChecklistsByBusinessType(CHECKLIST_ASSET)).toEqual(
+      buildChecklistsByBusinessType(ONBOARDING_CHECKLIST_DATA),
+    );
+  });
+
+  it("getChecklistItems agrees for every business type", () => {
+    for (const bt of BUSINESS_TYPE_IDS) {
+      expect(getChecklistItems(CHECKLIST_ASSET, bt)).toEqual(
+        getChecklistItems(ONBOARDING_CHECKLIST_DATA, bt),
+      );
+    }
+  });
+});
+
+// ── 1e. Checklist loaded-shape guard: a wrong-shape 200 is a load failure ─
+
+describe("isOnboardingChecklistData guards the loaded asset shape", () => {
+  it("accepts the served asset and the module data", () => {
+    expect(isOnboardingChecklistData(CHECKLIST_ASSET)).toBe(true);
+    expect(isOnboardingChecklistData(ONBOARDING_CHECKLIST_DATA)).toBe(true);
+  });
+
+  it("rejects the D-2 payload: a 200 with body {}", () => {
+    expect(isOnboardingChecklistData({})).toBe(false);
+  });
+
+  it.each([
+    ["null", null],
+    ["an array", []],
+    ["a string", "checklists"],
+    [
+      "connectServices missing",
+      { checklists: ONBOARDING_CHECKLIST_DATA.checklists },
+    ],
+    [
+      "one business type missing",
+      {
+        connectServices: ONBOARDING_CHECKLIST_DATA.connectServices,
+        checklists: { ...ONBOARDING_CHECKLIST_DATA.checklists, hybrid: undefined },
+      },
+    ],
+    [
+      "a row with an unknown step base",
+      {
+        connectServices: ONBOARDING_CHECKLIST_DATA.connectServices,
+        checklists: {
+          ...ONBOARDING_CHECKLIST_DATA.checklists,
+          hybrid: [
+            { base: "teleport", title: "Skip ahead", description: "No such step" },
+          ],
+        },
+      },
+    ],
+    [
+      "a row with an unresolvable icon override",
+      {
+        connectServices: ONBOARDING_CHECKLIST_DATA.connectServices,
+        checklists: {
+          ...ONBOARDING_CHECKLIST_DATA.checklists,
+          buy_and_hold: [
+            {
+              base: "propertyLookup",
+              title: "Add your first rental property",
+              description: "Add a property",
+              iconKey: "not_an_icon",
+            },
+          ],
+        },
+      },
+    ],
+  ])("rejects %s", (_label, payload) => {
+    expect(isOnboardingChecklistData(payload)).toBe(false);
+  });
+});
+
 // ── 2. Selector equivalence with campaignTemplatesFor ─────────────────────
 
 describe("selectCampaignTemplates reproduces campaignTemplatesFor", () => {
@@ -508,6 +619,7 @@ describe("no client file value-imports the externalised registries", () => {
           from.endsWith("/data/trust-content-data") ||
           from.endsWith("/data/onboarding-verticals-data") ||
           from.endsWith("/data/cmdk-verbs-data") ||
+          from.endsWith("/data/onboarding-checklist-data") ||
           from.endsWith("/pages/landing/copy") ||
           (from === "./copy" &&
             path.relative(ROOT, file).startsWith("client/src/pages/landing/"))
@@ -548,6 +660,19 @@ describe("no client file value-imports the externalised registries", () => {
     expect(palette).toContain("paletteVerbsError &&");
     expect(palette).toMatch(/<p\s+role="alert"/);
     expect(palette).toContain('data-testid="palette-verbs-load-error"');
+    expect(read("client/src/components/getting-started-checklist.tsx")).toContain(
+      "ONBOARDING_CHECKLIST_URL",
+    );
+  });
+
+  it("the getting-started checklist renders a VISIBLE error on loader failure, never a vanished card", () => {
+    const page = stripComments(
+      read("client/src/components/getting-started-checklist.tsx"),
+    );
+    expect(page).toContain("useStaticData<unknown>(ONBOARDING_CHECKLIST_URL)");
+    expect(page).toContain("isOnboardingChecklistData");
+    expect(page).toMatch(/<p\s+role="alert"/);
+    expect(page).toContain('data-testid="checklist-load-error"');
   });
 
   it("the onboarding wizard renders a VISIBLE error on loader failure, never a blank wizard", () => {
@@ -680,6 +805,7 @@ describe("static server cache discipline", () => {
       "/onboarding-verticals.json",
       "/landing-copy.json",
       "/palette-verbs.json",
+      "/onboarding-checklist.json",
     ]) {
       expect(src).toContain(`"${url}"`);
     }
