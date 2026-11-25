@@ -238,15 +238,15 @@ export async function paxGetLandListing(orgId: number, listingId: unknown): Prom
  * operator to post THEMSELVES — AcreOS posts nothing (Craigslist is manual).
  */
 export async function paxGetListingPasteText(orgId: number, listingId: unknown): Promise<LandToolOutcome> {
-  const row = await loadListing(orgId, listingId);
-  if (row === "bad_id") return badListingId();
-  if (!row) return noListing();
-  const property = await loadProperty(orgId, row.propertyId);
+  const listing = await loadListing(orgId, listingId);
+  if (listing === "bad_id") return badListingId();
+  if (!listing) return noListing();
+  const property = await loadProperty(orgId, listing.propertyId);
   if (property === "bad_id" || !property) return noProperty();
   const { db } = await import("../db");
   const [orgRow] = await db.select().from(organizations).where(eq(organizations.id, orgId)).limit(1);
   const { buildNormalizedListing, listingContentForChannels, syndicateListing } = await import("../services/listingSyndication");
-  const normalized = await buildNormalizedListing(property, orgRow ?? { name: "" }, listingContentForChannels(row));
+  const normalized = await buildNormalizedListing(property, orgRow ?? { name: "" }, listingContentForChannels(listing));
   const [result] = await syndicateListing(normalized, ["craigslist"]);
   if (!result?.success || !result.preformattedText) {
     return {
@@ -264,7 +264,7 @@ export async function paxGetListingPasteText(orgId: number, listingId: unknown):
       coverage:
         "Coverage: ready-to-paste Craigslist text built from THIS account's listing, exactly as the publish screen builds it. " +
         "AcreOS has NOT posted anything — Craigslist has no posting API here; the customer pastes this themselves, then can ask me to mark the listing as listed.",
-      listingId: row.id,
+      listingId: listing.id,
       pasteText: result.preformattedText,
       manualInstructions: result.manualInstructions ?? null,
       deepLinkUrl: result.deepLinkUrl ?? null,

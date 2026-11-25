@@ -268,7 +268,7 @@ export const toolDefinitions = {
   },
   get_land_listings: {
     name: "get_land_listings",
-    description: "List this account's OWN land listings (not external MLS or marketplace listings), newest records with their status (draft, listed, active, pending, sold, withdrawn) and recorded channel status. 'listed' is the operator's word that they posted it; 'active' means a channel accepted a posting through AcreOS. The result carries a coverage statement.",
+    description: "List this account's OWN land listings (not external MLS or marketplace listings), records in oldest-first order with their status (draft, listed, active, pending, sold, withdrawn) and recorded channel status. 'listed' is the operator's word that they posted it; 'active' means a channel accepted a posting through AcreOS. The result carries a coverage statement.",
     parameters: {
       type: "object",
       properties: { status: { type: "string", description: "Listing status filter (optional; default every status)" } }
