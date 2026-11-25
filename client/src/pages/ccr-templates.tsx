@@ -20,6 +20,26 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
+import { formatDate } from "@/lib/format";
+
+/**
+ * S-F5 cure (subdivider bar-(f) paper pass): header prepended to the
+ * rendered output the user previews and downloads, so a rendered
+ * document never leaves the surface bare.
+ */
+const CCR_RENDERED_OUTPUT_HEADER =
+  "DRAFT — generated from a template in AcreOS. This document has not been reviewed for your state or your facts unless a review stamp is shown on the template. Have it reviewed by your own attorney before signing or recording.";
+
+/**
+ * S-F5 cure: the attorney-review stamp the API already returns
+ * (attorneyReviewedAt / attorneyReviewedBy), shown on the surface.
+ * An unreviewed template says so, plainly.
+ */
+function attorneyReviewStampLabel(t: Pick<Template, "attorneyReviewedAt" | "attorneyReviewedBy">): string {
+  if (!t.attorneyReviewedAt) return "Not attorney-reviewed.";
+  const reviewer = t.attorneyReviewedBy ? `${t.attorneyReviewedBy}, ` : "";
+  return `Attorney-reviewed: ${reviewer}${formatDate(t.attorneyReviewedAt)}.`;
+}
 
 interface MergeField {
   key: string;
@@ -92,7 +112,7 @@ export default function CcrTemplatesPage() {
       return res.json();
     },
     onSuccess: (r: any) => {
-      setRenderedOutput(r.rendered);
+      setRenderedOutput(`${CCR_RENDERED_OUTPUT_HEADER}\n\n${r.rendered}`);
       toast({ title: "Rendered", description: r.name });
     },
     onError: (err: any) => toast({ title: "Render failed", description: err.message, variant: "destructive" }),
@@ -107,7 +127,9 @@ export default function CcrTemplatesPage() {
         </h1>
         <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
           Restrictive covenants, road maintenance agreements, HOA bylaws,
-          architectural review standards. Merge-field engine — no AI generation.
+          architectural review standards. Merge-field engine — no AI generation.{" "}
+          These templates are document tooling, not legal advice: have any
+          document you intend to record reviewed by your own attorney first.
         </p>
       </div>
 
@@ -129,6 +151,7 @@ export default function CcrTemplatesPage() {
                   {t.organizationId === null && <Badge variant="secondary" className="text-xs">global</Badge>}
                   {t.state && <Badge variant="outline" className="text-xs">{t.state}</Badge>}
                 </div>
+                <p className="text-xs text-muted-foreground mt-1">{attorneyReviewStampLabel(t)}</p>
               </button>
             ))}
             {list.data?.templates.length === 0 && (
@@ -150,6 +173,7 @@ export default function CcrTemplatesPage() {
                 <CardHeader>
                   <CardTitle className="text-base">{detail.data.template.name}</CardTitle>
                   <CardDescription>{detail.data.template.notes ?? ""}</CardDescription>
+                  <p className="text-xs text-muted-foreground">{attorneyReviewStampLabel(detail.data.template)}</p>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {detail.data.template.mergeFields.map((f) => (
