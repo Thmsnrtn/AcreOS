@@ -240,6 +240,17 @@ export const METRICS: readonly MetricSpec[] = [
   { id: "margin_after_carry_p90", label: "Margin after carry (p90 timeline)", unit: "cents", higherIsBetter: true },
   { id: "margin_per_lot", label: "Margin per lot (before carry)", unit: "cents", higherIsBetter: true },
   { id: "discount_to_face", label: "Discount to face", unit: "ratio", higherIsBetter: true },
+
+  // ── Commercial acquisition/hold metrics ──
+  // The commercial engine REUSES effective_gross_income, annual_noi, cap_rate,
+  // annual_operating_expense and operating_expense_ratio — the same quantities
+  // the rental engines produce. Only the three below are genuinely new: a CAM
+  // recovery is not rent (folding it into a rent twin would hide its source),
+  // a per-sqft rent is a dimensional figure no other engine emits, and the
+  // rollover share is a lease-term exposure, not a return.
+  { id: "cam_recoveries_annual", label: "Annual CAM recoveries (recorded)", unit: "cents", higherIsBetter: true },
+  { id: "annual_rent_per_sqft", label: "Annual in-place rent per sqft", unit: "cents", higherIsBetter: true },
+  { id: "rollover_rent_share_12m", label: "In-place rent expiring within 12 months (share)", unit: "ratio", higherIsBetter: false },
 ] as const;
 
 // `days` was added to MetricUnit the moment it was needed rather than deferred.
