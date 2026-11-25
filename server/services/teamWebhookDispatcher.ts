@@ -7,6 +7,11 @@
  * MessageCard format. Failures are caught and logged so a misconfigured
  * webhook never breaks a deal-closed workflow.
  *
+ * Every delivery runs the shared outbound URL check (`validateUrl`, the same
+ * check the customer webhook dispatcher runs per delivery), does not follow
+ * redirects, and is bounded by a request timeout. A URL the check does not
+ * accept is recorded on the integration's `lastError` and not fetched.
+ *
  * Supported event keys:
  *   • deal_closed       — payload: { dealId, propertyAddress, purchasePrice }
  *   • big_lead_arrived  — payload: { leadId, ownerName, score, source }
@@ -18,6 +23,10 @@ import { orgIntegrationsSlack } from "@shared/schema";
 import { and, eq, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { clock } from "../utils/clock";
+import { validateUrl, SSRFBlockedError } from "../middleware/fileUploadSecurity";
+
+/** Same per-request bound as the customer webhook dispatcher. */
+const TEAM_WEBHOOK_TIMEOUT_MS = 10_000;
 
 export type TeamEventKey =
   | "deal_closed"
@@ -57,19 +66,43 @@ export async function dispatchTeamEvent(
           ? buildTeamsPayload(payload)
           : buildSlackPayload(payload);
         try {
+          await validateUrl(target.webhookUrl);
+        } catch (err) {
+          await markError(
+            target.id,
+            err instanceof SSRFBlockedError
+              ? `Webhook URL not accepted: ${err.message}`
+              : `Webhook URL could not be checked: ${(err as Error).message}`,
+          );
+          return;
+        }
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), TEAM_WEBHOOK_TIMEOUT_MS);
+        try {
           const response = await fetch(target.webhookUrl, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(body),
+            redirect: "manual",
+            signal: controller.signal,
           });
-          if (!response.ok) {
+          if (response.status >= 300 && response.status < 400) {
+            await markError(target.id, `HTTP ${response.status}: redirects are not followed`);
+          } else if (!response.ok) {
             const text = await response.text().catch(() => "");
             await markError(target.id, `HTTP ${response.status}: ${text.slice(0, 200)}`);
           } else {
             await markDispatched(target.id);
           }
         } catch (err) {
-          await markError(target.id, (err as Error).message);
+          await markError(
+            target.id,
+            controller.signal.aborted
+              ? `Timed out after ${TEAM_WEBHOOK_TIMEOUT_MS / 1000}s`
+              : (err as Error).message,
+          );
+        } finally {
+          clearTimeout(timer);
         }
       }),
     );
