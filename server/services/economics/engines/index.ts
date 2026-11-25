@@ -31,6 +31,7 @@ import { rentalAcquisitionEngine } from "./rentalAcquisition";
 import { wholesaleMaoEngine } from "./wholesaleMao";
 import { notePriceYieldEngine } from "./notePriceYield";
 import { taxMaxBidEngine } from "./taxMaxBid";
+import { creativeFinanceTermsEngine } from "./creativeFinanceTerms";
 import { subdivisionFeasibilityEngine } from "./subdivisionFeasibility";
 import { commercialUnderwriteEngine } from "./commercialUnderwrite";
 
@@ -46,4 +47,5 @@ export const ALL_ENGINES: readonly EngineSpec[] = [
   notePriceYieldEngine,
   taxMaxBidEngine,
   commercialUnderwriteEngine,
+  creativeFinanceTermsEngine,
 ];
