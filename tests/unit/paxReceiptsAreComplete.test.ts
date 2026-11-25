@@ -127,9 +127,33 @@ vi.mock("../../server/db", () => {
     values: async () => undefined,
     update: () => chain,
     set: () => chain,
+    transaction: async (fn: any) => fn(chain),
   };
   return { db: chain };
 });
+// The buy-and-hold writers are stubbed at their service seam: the receipt
+// population proves the Pax receipt, not the ledger writer (its own suites
+// prove the writer against the allocation rule).
+vi.mock("../../server/services/rental/paymentPosting", () => ({
+  PartialPaymentUnderNoticeError: class extends Error { code = "PARTIAL_PAYMENT_VOIDS_NOTICE"; },
+  recordRentPayment: vi.fn(async () => ({
+    payment: { id: "pay-1" },
+    allocation: { appliedCents: 150000, unappliedCents: 0, allocations: [], explanation: "stub", orderRule: "stub" },
+    charges: [],
+    firstCharge: null,
+    firstChargeAmountCents: null,
+    isPartial: false,
+  })),
+}));
+vi.mock("../../server/services/rental/rentChargeGenerator", () => ({
+  generateScheduledCharges: vi.fn(async () => ({
+    leasesConsidered: 1, inserted: 2, skippedDuplicate: 0, skippedPartialPeriods: [], insertedTotalCents: 300000,
+  })),
+}));
+vi.mock("../../server/services/rentalEvents", () => ({
+  emitRentPaymentReceived: vi.fn(),
+  emitRentReceived: vi.fn(),
+}));
 vi.mock("../../server/websocket", () => ({ wsServer: { broadcastToOrg: vi.fn() } }));
 vi.mock("../../server/services/approvalKernel", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../server/services/approvalKernel")>();
@@ -223,6 +247,8 @@ const ARGS: Record<string, Record<string, unknown>> = {
   generate_offer_letter: { property_id: 3, offer_amount: 25000, buyer_name: "Acme" },
   draft_offer: { dealId: 11, offerAmount: 25000 },
   record_tax_ledger_entry: { certificate_id: TAX_CERT_ID, kind: "subsequent_tax_paid", paid_on: "2026-01-15", amount_cents: 12000, tax_year: "2025", source: "County treasurer receipt" },
+  record_rent_payment: { lease_id: "6f1c1c1e-2b7a-4c1d-9a55-0e0e0e0e0e0f", amount_cents: 150000, received_at: "2026-01-15", method: "ach" },
+  generate_scheduled_rent_charges: { lease_id: "6f1c1c1e-2b7a-4c1d-9a55-0e0e0e0e0e0f", through_date: "2026-02-01" },
   schedule_followup: { title: "Follow up", entity_type: "lead", entity_id: 42, due_date: "2026-09-10" },
   schedule_follow_up: { entityType: "lead", entityId: 42, note: "Call back", followUpDate: "2026-09-10" },
   // create_calendar_event / trigger_zapier / trigger_make left this population
@@ -285,6 +311,10 @@ describe("each executed member yields exactly one activity_log row with agentTyp
     // The tax ledger tool loads the certificate before it writes: give the stubbed
     // database the one row it needs (the rest of the population never reads it).
     if (name === "record_tax_ledger_entry") H.dbSelectRows = [{ id: TAX_CERT_ID, organizationId: 7, county: "Cochise", state: "AZ", apn: "100-20-030" }];
+    // The buy-and-hold record changes load the lease before they write.
+    if (name === "record_rent_payment" || name === "generate_scheduled_rent_charges") {
+      H.dbSelectRows = [{ id: "6f1c1c1e-2b7a-4c1d-9a55-0e0e0e0e0e0f", organizationId: 7, propertyId: 3, unitId: "unit-1", unitLabel: "3B", status: "active", startDate: "2026-01-01", endDate: null, monthlyRentCents: 150000, rentDueDayOfMonth: 1, securityDepositCents: 150000, state: "TX" }];
+    }
     const result = await executeTool(name, { ...ARGS[name] }, org, { userId: "u-1", origin: "chat" });
     // Per-member vacuity: the member must have RUN, or "one receipt" is a
     // claim about a tool that did nothing.

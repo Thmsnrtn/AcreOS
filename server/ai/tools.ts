@@ -253,6 +253,79 @@ export const toolDefinitions = {
       required: ["certificate_id", "kind", "source"]
     }
   },
+
+  // Buy-and-hold rental tools. Reads state their coverage; tenant identity is
+  // exposed only by get_tenants (tenant_pii_read scope). The two record changes
+  // write ledger records only — they never charge a tenant and never send
+  // anything to a tenant (FD5: tenant-facing sends stay ask-before-sending).
+  get_rent_roll: {
+    name: "get_rent_roll",
+    description: "Get this account's rent roll: occupancy over the units on record (a unit that has never been leased counts as vacant), each unit's active lease rent, open balance and overdue amount. The result carries a coverage statement: state it. Tenant names are not on the rent roll — use get_tenants for those. An empty rent roll is reported as empty, never as fully paid.",
+    parameters: { type: "object", properties: {} }
+  },
+  get_rental_leases: {
+    name: "get_rental_leases",
+    description: "List this account's rental leases with unit label, status, dates, monthly rent and deposit. The result carries a coverage statement. Tenant names are not included.",
+    parameters: {
+      type: "object",
+      properties: { status: { type: "string", description: "Lease status filter (optional, e.g. active, draft, ended)" } }
+    }
+  },
+  get_tenants: {
+    name: "get_tenants",
+    description: "List this account's tenant records: name (or company), email, phone and status as recorded. This is the only Pax tool that shows tenant contact details, and it is permission-scoped to tenant records. It never shows screening results, dates of birth or ID numbers — do not claim it does.",
+    parameters: {
+      type: "object",
+      properties: { status: { type: "string", description: "Tenant status filter (optional)" } }
+    }
+  },
+  get_lease_ledger: {
+    name: "get_lease_ledger",
+    description: "Get the ledger for one lease: every rent charge with its late fee, paid amount, balance and legal posture, every payment recorded, and how each payment was allocated across charges. The result carries a coverage statement: it shows what is recorded, not money that moved outside AcreOS and was never recorded.",
+    parameters: {
+      type: "object",
+      properties: { lease_id: { type: "string", description: "The lease id from get_rental_leases (a long identifier, not a unit label)" } },
+      required: ["lease_id"]
+    }
+  },
+  get_rental_underwriting_decision: {
+    name: "get_rental_underwriting_decision",
+    description: "Get the latest buy-and-hold rental underwriting decision recorded for one property: the operator's call (acquire / offer / pass), rationale, review date, and the rental_acquisition engine's frozen predicted metrics (cap rate, cash-on-cash, NOI, monthly cash flow) as recorded at decision time. If none is recorded, the result says so — never reconstruct one from the property's numbers. It is not a lender determination and carries no DSCR claim.",
+    parameters: {
+      type: "object",
+      properties: { property_id: { type: "number", description: "The property number" } },
+      required: ["property_id"]
+    }
+  },
+  record_rent_payment: {
+    name: "record_rent_payment",
+    description: "Record ONE rent payment the landlord has ALREADY received (on their own Stripe account or outside AcreOS) on a lease's ledger, allocated across its open charges oldest first. This records only — it never charges the tenant, never moves money, and AcreOS holds nothing. A date in the future is refused. If the payment would leave a charge under a notice to vacate still short, it is refused unless the customer confirms they accept it anyway (accepted_despite_partial).",
+    parameters: {
+      type: "object",
+      properties: {
+        lease_id: { type: "string", description: "The lease id" },
+        amount_cents: { type: "number", description: "Amount received, in cents" },
+        received_at: { type: "string", description: "Date received, YYYY-MM-DD" },
+        method: { type: "string", description: "How it was paid (e.g. ach, check, cash, card) — optional" },
+        reference_number: { type: "string", description: "Check / reference number — optional" },
+        payor_type: { type: "string", enum: ["tenant", "hap"], description: "Who paid: the tenant, or the housing authority (Section 8 HAP). Default tenant" },
+        accepted_despite_partial: { type: "boolean", description: "Customer confirms accepting a partial payment that leaves a notice-served charge short. Default false" },
+        notes: { type: "string", description: "Optional note" }
+      },
+      required: ["lease_id", "amount_cents", "received_at"]
+    }
+  },
+  generate_scheduled_rent_charges: {
+    name: "generate_scheduled_rent_charges",
+    description: "Generate the scheduled rent charges a lease's own schedule implies, up to a date (default today), on the ledger. Idempotent — charges already on the ledger are skipped, and partial first/final periods are skipped rather than prorated by invention. This writes ledger charges only: nothing is collected and no tenant is contacted.",
+    parameters: {
+      type: "object",
+      properties: {
+        lease_id: { type: "string", description: "Limit to one lease (optional; omit for every active lease in the account)" },
+        through_date: { type: "string", description: "Generate charges for periods starting on or before this date, YYYY-MM-DD (default today)" }
+      }
+    }
+  },
   calculate_amortization: {
     name: "calculate_amortization",
     description: "Calculate loan amortization schedule given principal, rate, and term.",
@@ -1202,6 +1275,14 @@ export const PAUSE_SAFE_TOOLS: ReadonlySet<string> = new Set([
   "get_tax_certificate",
   "get_tax_certificate_clock",
   "get_tax_certificate_ledger",
+  // Buy-and-hold reads (they only read; get_tenants is additionally held to
+  // the tenant_pii_read scope by the permission-ladder gate, which runs for
+  // PII scopes even while paused).
+  "get_rent_roll",
+  "get_rental_leases",
+  "get_tenants",
+  "get_lease_ledger",
+  "get_rental_underwriting_decision",
   // Pure calculations
   "calculate_amortization",
   "calculate_payment_schedule",
@@ -1930,6 +2011,84 @@ export async function executeTool(
           receiptWritten = true;
         }
         return taxOutcomeToResult(out);
+      }
+
+
+      case "get_rent_roll": {
+        const { paxGetRentRoll, buyHoldOutcomeToResult } = await import("./buyHoldTools");
+        return buyHoldOutcomeToResult(await paxGetRentRoll(org.id));
+      }
+
+      case "get_rental_leases": {
+        const { paxGetRentalLeases, buyHoldOutcomeToResult } = await import("./buyHoldTools");
+        return buyHoldOutcomeToResult(await paxGetRentalLeases(org.id, { status: args.status }));
+      }
+
+      case "get_tenants": {
+        const { paxGetTenants, buyHoldOutcomeToResult } = await import("./buyHoldTools");
+        return buyHoldOutcomeToResult(await paxGetTenants(org.id, { status: args.status }));
+      }
+
+      case "get_lease_ledger": {
+        const { paxGetLeaseLedger, buyHoldOutcomeToResult } = await import("./buyHoldTools");
+        return buyHoldOutcomeToResult(await paxGetLeaseLedger(org.id, args.lease_id));
+      }
+
+      case "get_rental_underwriting_decision": {
+        const { paxGetRentalUnderwritingDecision, buyHoldOutcomeToResult } = await import("./buyHoldTools");
+        return buyHoldOutcomeToResult(await paxGetRentalUnderwritingDecision(org.id, { property_id: args.property_id }));
+      }
+
+      case "record_rent_payment": {
+        // A ledger record of money already received on the landlord's own
+        // rails — never a charge (money fence) and never a send (FD5).
+        const { paxRecordRentPayment, buyHoldOutcomeToResult } = await import("./buyHoldTools");
+        const out = await paxRecordRentPayment(org.id, options?.userId ?? null, args);
+        if (out.ok && out.receipt && !trustedApproval) {
+          await recordPaxEffect({
+            orgId: org.id,
+            actor: "pax",
+            origin,
+            stance: controls?.stance ?? null,
+            tool: "record_rent_payment",
+            action: "rent_payment_recorded",
+            entityType: "organization",
+            entityId: org.id,
+            description: out.receipt.description,
+            before: out.receipt.before,
+            after: out.receipt.after,
+            witnessed: false,
+            userId: options?.userId ?? null,
+          });
+          receiptWritten = true;
+        }
+        return buyHoldOutcomeToResult(out);
+      }
+
+      case "generate_scheduled_rent_charges": {
+        // Ledger charges from the lease's own schedule — nothing is
+        // collected and no tenant is contacted.
+        const { paxGenerateScheduledRentCharges, buyHoldOutcomeToResult } = await import("./buyHoldTools");
+        const out = await paxGenerateScheduledRentCharges(org.id, options?.userId ?? null, args);
+        if (out.ok && out.receipt && !trustedApproval) {
+          await recordPaxEffect({
+            orgId: org.id,
+            actor: "pax",
+            origin,
+            stance: controls?.stance ?? null,
+            tool: "generate_scheduled_rent_charges",
+            action: "rent_charges_generated",
+            entityType: "organization",
+            entityId: org.id,
+            description: out.receipt.description,
+            before: out.receipt.before,
+            after: out.receipt.after,
+            witnessed: false,
+            userId: options?.userId ?? null,
+          });
+          receiptWritten = true;
+        }
+        return buyHoldOutcomeToResult(out);
       }
 
       case "get_notes": {
@@ -3925,10 +4084,10 @@ export function getToolsForRole(role: string) {
   const roleToolMap: Record<string, string[]> = {
     executive: allTools,
     acquisitions: [...coreTools, ...memoryTools, "get_leads", "get_lead_details", "update_lead_status", "create_lead", "get_properties", "create_property", "get_deals", "create_deal", "get_tasks", "create_task", "get_pipeline_summary", "generate_offer", "generate_offer_letter", "send_email", "send_sms", "run_comps_analysis", "schedule_followup", "draft_offer", "schedule_follow_up", "run_comps", "get_stale_leads", "draft_outreach_message"],
-    underwriting: [...coreTools, ...memoryTools, "get_properties", "get_property_details", "update_property", "get_notes", "get_tax_certificates", "get_tax_certificate", "get_tax_certificate_clock", "get_tax_certificate_ledger", "record_tax_ledger_entry", "calculate_amortization", "get_cashflow_summary", "get_deals", "update_deal", "run_comps_analysis", "run_comps", "calculate_roi", "calculate_payment_schedule", "research_property", "draft_offer"],
+    underwriting: [...coreTools, ...memoryTools, "get_properties", "get_property_details", "update_property", "get_notes", "get_tax_certificates", "get_tax_certificate", "get_tax_certificate_clock", "get_tax_certificate_ledger", "record_tax_ledger_entry", "get_rent_roll", "get_rental_leases", "get_tenants", "get_lease_ledger", "get_rental_underwriting_decision", "record_rent_payment", "generate_scheduled_rent_charges", "calculate_amortization", "get_cashflow_summary", "get_deals", "update_deal", "run_comps_analysis", "run_comps", "calculate_roi", "calculate_payment_schedule", "research_property", "draft_offer"],
     marketing: [...coreTools, ...memoryTools, "get_leads", "get_properties", "get_pipeline_summary", "create_task", "send_email", "send_sms", "get_stale_leads", "draft_outreach_message"],
     research: [...coreTools, ...memoryTools, "get_properties", "get_property_details", "get_leads", "create_property", "update_property", "run_comps_analysis", "run_comps", "research_property", "calculate_roi", "browse_web", "browse_search"],
-    documents: [...coreTools, "get_leads", "get_lead_details", "get_properties", "get_property_details", "get_notes", "get_tax_certificates", "get_tax_certificate", "get_tax_certificate_clock", "get_tax_certificate_ledger", "record_tax_ledger_entry", "get_deals", "generate_offer_letter", "draft_offer"],
+    documents: [...coreTools, "get_leads", "get_lead_details", "get_properties", "get_property_details", "get_notes", "get_tax_certificates", "get_tax_certificate", "get_tax_certificate_clock", "get_tax_certificate_ledger", "record_tax_ledger_entry", "get_rent_roll", "get_rental_leases", "get_tenants", "get_lease_ledger", "get_rental_underwriting_decision", "record_rent_payment", "generate_scheduled_rent_charges", "get_deals", "generate_offer_letter", "draft_offer"],
     assistant: allTools // Full access for the main assistant
   };
   
