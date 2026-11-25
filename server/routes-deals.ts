@@ -53,6 +53,33 @@ import { publishDealLifecycle } from "./services/dealLifecycleEvents";
 import { emitContractSigned, emitAssignmentPending, type ContractSignedEvidence } from "./services/wholesaleEvents";
 import { clock } from "./utils/clock";
 import { routeParam } from "./utils/routeParams";
+import { isAssignableLeadMember } from "./utils/orgScope";
+
+/**
+ * agent_investor item 3 — the assignment/book validation the generic deal
+ * write paths never had. `deals.assigned_to` stores a `team_members.id` (the
+ * close seam passes it to recordDealCommission as the teamMemberId), so the
+ * lead routes' canonical check applies verbatim: a non-null assignee must be
+ * an ACTIVE team member of THIS org — a member of another org, an inactive
+ * member, or a non-member is refused in plain words. `dealBook` must be one
+ * of the two tags the close seam and forecast understand ('client' |
+ * 'own_investment') or null (legacy/client); any other string would silently
+ * behave as a client deal at close, so it is refused rather than stored.
+ * Returns the refusal message, or null when the fields may be written.
+ */
+async function dealAssignmentRefusal(
+  assignedTo: unknown,
+  dealBook: unknown,
+  organizationId: number,
+): Promise<string | null> {
+  if (assignedTo !== undefined && !(await isAssignableLeadMember(assignedTo, organizationId))) {
+    return "assignedTo must be the id of an active team member of this organization";
+  }
+  if (dealBook !== undefined && dealBook !== null && dealBook !== "client" && dealBook !== "own_investment") {
+    return "dealBook must be 'client', 'own_investment', or null — it tags whether this is a client deal or your own-book deal";
+  }
+  return null;
+}
 
 /**
  * The evidence that a deal's purchase agreement was signed: a signed document
@@ -638,6 +665,13 @@ export function registerDealRoutes(app: Express): void {
 
       const input = insertDealSchema.parse({ ...req.body, organizationId: org.id });
 
+      // agent_investor item 3: the create schema accepts assignedTo/dealBook
+      // with no check on who the assignee is — run the same org-scoped
+      // validation the dedicated assignment route uses, so the generic path
+      // cannot land a cross-org assignee or a garbage book tag either.
+      const createAssignmentRefusal = await dealAssignmentRefusal(input.assignedTo, input.dealBook, org.id);
+      if (createAssignmentRefusal) return Errors.badRequest(res, createAssignmentRefusal);
+
       // Usury hard block: check analysisResults.interestRate against state law before saving
       const dealInterestRate = input.analysisResults?.interestRate;
       if (dealInterestRate && input.propertyId) {
@@ -753,6 +787,11 @@ export function registerDealRoutes(app: Express): void {
       }
 
       const validated = updateDealSchema.parse(req.body);
+
+      // agent_investor item 3: same assignment/book validation as the
+      // dedicated route — the generic update must not be a bypass around it.
+      const updateAssignmentRefusal = await dealAssignmentRefusal(validated.assignedTo, validated.dealBook, org.id);
+      if (updateAssignmentRefusal) return Errors.badRequest(res, updateAssignmentRefusal);
 
       // Task #210: Enforce deal status state machine transitions — the
       // shared rule, not a copy of the table that let an unknown current
@@ -2973,6 +3012,100 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
         disclosureDocRef: updated.disclosureDocRef ?? null,
         recordOnly: true,
         notice: RECORD_ONLY_NOTICE,
+      });
+    } catch (err) {
+      Errors.internal(res, err);
+    }
+  });
+
+  // =========================================================================
+  // Deal-to-agent assignment + client/own-book tag (agent_investor item 3,
+  // server half; columns from migration 0226)
+  // -------------------------------------------------------------------------
+  // The dedicated, disciplined writer for `deals.assignedTo` and
+  // `deals.dealBook`. Before this route the only writers were the generic
+  // deal create/update schemas, which accepted any integer assignee and any
+  // string book tag with no org check (those paths now run the same
+  // validation — see dealAssignmentRefusal). Here the deal is read within
+  // the caller's org (404 hides a foreign deal's existence, same as the
+  // dual-agency tracker above) and a non-null assignee must be an active
+  // team member of THIS org, so a cross-org assignment cannot be written.
+  //
+  // Money discipline: this moves NO money and records NO commission. It only
+  // sets the two fields the existing deal-close seam reads — at close, a
+  // commission is recorded only when the deal has an assigned agent, its
+  // book is not 'own_investment', AND the org has saved its own commission
+  // rates (hasCommissionConfig). AcreOS stays a records tool.
+  // =========================================================================
+  const ASSIGNMENT_NOTICE =
+    "Records only. Assigning a deal and tagging its book records no commission and moves no money — " +
+    "a commission is recorded when the deal closes, only if your workspace has saved its own commission rates.";
+
+  const dealAssignmentSchema = z
+    .object({
+      // A team_members.id of this org, or null to unassign.
+      assignedTo: z.number().int().positive().nullable().optional(),
+      // 'client' = a brokerage transaction; 'own_investment' = the agent's
+      // own buy/sell (never a commission); null clears the tag (legacy rows
+      // with a null book are read as client deals).
+      dealBook: z.enum(["client", "own_investment"]).nullable().optional(),
+    })
+    .refine((b) => b.assignedTo !== undefined || b.dealBook !== undefined, {
+      message: "Nothing to update: send assignedTo, dealBook, or both.",
+    });
+
+  // PUT /api/deals/:id/assignment — assign/unassign the deal's agent and/or
+  // tag its book. Either field may be sent alone.
+  api.put("/api/deals/:id/assignment", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const dealId = parseInt(routeParam(req.params.id), 10);
+      if (!Number.isInteger(dealId) || dealId <= 0) return Errors.badRequest(res, "Invalid deal id");
+      const parsed = dealAssignmentSchema.safeParse(req.body);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+      const deal = await storage.getDeal(orgId, dealId);
+      if (!deal) return Errors.notFound(res, "Deal");
+
+      const body = parsed.data;
+      const refusal = await dealAssignmentRefusal(body.assignedTo, body.dealBook, orgId);
+      if (refusal) return Errors.badRequest(res, refusal);
+
+      const updates: Partial<InsertDeal> = {};
+      if (body.assignedTo !== undefined) updates.assignedTo = body.assignedTo;
+      if (body.dealBook !== undefined) updates.dealBook = body.dealBook;
+
+      const updated = await storage.updateDeal(dealId, updates, undefined, orgId);
+
+      // Audit trail — the same entry shape the deal-create route writes.
+      // The write has committed; an audit failure is logged, never hidden,
+      // and never turns the committed assignment into a false failure.
+      try {
+        await storage.createAuditLogEntry({
+          organizationId: orgId,
+          userId: req.user?.id,
+          action: "update",
+          entityType: "deal",
+          entityId: dealId,
+          changes: {
+            before: { assignedTo: deal.assignedTo ?? null, dealBook: deal.dealBook ?? null },
+            after: { assignedTo: updated.assignedTo ?? null, dealBook: updated.dealBook ?? null },
+            fields: Object.keys(updates),
+          },
+          ipAddress: req.ip || req.socket?.remoteAddress,
+          userAgent: req.headers["user-agent"],
+        });
+      } catch (auditErr) {
+        logger.warn("deal assignment audit log failed (non-fatal)", {
+          metadata: { dealId, error: auditErr instanceof Error ? auditErr.message : String(auditErr) },
+        });
+      }
+
+      res.json({
+        dealId: updated.id,
+        assignedTo: updated.assignedTo ?? null,
+        dealBook: updated.dealBook ?? null,
+        recordsOnly: true,
+        notice: ASSIGNMENT_NOTICE,
       });
     } catch (err) {
       Errors.internal(res, err);
