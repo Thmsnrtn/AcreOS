@@ -6,8 +6,15 @@
  * The note on this page used to call net-of-split economics, a pipeline GCI
  * forecast, client-vs-own-book tagging, a dual-agency tracker and automatic
  * commission recording "live now". None had a screen, and recording needs a
- * deal assigned to an agent, which nothing in AcreOS sets. And the tier tab
+ * deal assigned to an agent, which no client caller sets (a server write
+ * path landed staged as PR #785, with no UI — the note's "not set up yet"
+ * stays true from the customer's seat). And the tier tab
  * listed a built-in 3/4/5/6% ladder as the org's own rates.
+ *
+ * The page itself is UNGATED (2026-11-25, agent_investor work item 1 —
+ * tailor, never wall): it used to return NotFound for every
+ * non-agent_investor org. The default-export assertions below pin that the
+ * gate is gone and the honest scope note renders for any org.
  *
  * Pinned against RENDERED output:
  *   1. every "works today" item is tied to a real client caller of a real
@@ -28,7 +35,27 @@ import ts from "typescript";
 import { stripComments } from "../helpers/stripComments";
 import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
 
-import { CommissionScopeNote } from "../../client/src/pages/finance-commissions";
+const h = vi.hoisted(() => ({
+  request: vi.fn(),
+  toast: vi.fn(),
+  org: null as null | { onboardingData: { businessType: string } },
+}));
+vi.mock("../../client/src/lib/queryClient", async (importOriginal) => ({
+  ...(await importOriginal<any>()),
+  apiRequest: h.request,
+}));
+vi.mock("../../client/src/hooks/use-toast", () => ({ useToast: () => ({ toast: h.toast }) }));
+vi.mock("../../client/src/hooks/use-organization", () => ({
+  useOrganization: () => ({ data: h.org, isLoading: false }),
+}));
+// PageShell (rendered by CommissionsPage) calls usePaxRail; no page test in
+// this repo mounts the real PaxRailProvider — the established pattern is the
+// module-seam mock (tests/unit/embeddedShellKeepsRailOffsets.test.tsx:19,
+// the only other test that renders the real PageShell).
+vi.mock("@/contexts/pax-rail-context", () => ({ usePaxRail: () => ({ isOpen: false }) }));
+
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import FinanceCommissionsPage, { CommissionScopeNote } from "../../client/src/pages/finance-commissions";
 import { CommissionTiers, type CommissionConfigResponse } from "../../client/src/pages/commissions";
 
 vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
@@ -193,6 +220,51 @@ describe("the tier tab shows only the org's own rates", () => {
     const rows = [...container.querySelectorAll("tbody tr")].map((tr) => tr.textContent);
     expect(rows).toEqual(["Base0+2.5%"]);
   });
+});
+
+describe("the page itself is ungated (agent_investor work item 1, 2026-11-25)", () => {
+  const ok = (body: unknown) => ({ ok: true, status: 200, json: async () => body });
+
+  it("a non-agent org renders the page with the honest scope note — not NotFound", async () => {
+    // The org is a land_flipper: under the removed gate this render was
+    // <NotFound />. Now the real commission surface renders, backed by the
+    // org-scoped commission APIs returning an unconfigured org's data.
+    h.org = { onboardingData: { businessType: "land_flipper" } };
+    h.request.mockImplementation(async (_method: string, url: string) =>
+      url.includes("/api/commissions/summaries")
+        ? ok([])
+        : ok({ configured: false, config: null } satisfies CommissionConfigResponse),
+    );
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } },
+    });
+    await render(
+      <QueryClientProvider client={client}>
+        <FinanceCommissionsPage />
+      </QueryClientProvider>,
+    );
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    // The honest scope note renders, with its not-set-up-yet line intact.
+    expect(byId("commission-scope-not-yet")).not.toBeNull();
+    expect(byId("commission-scope-not-yet")!.textContent).toMatch(/records no new commission/i);
+    // And the underlying page's honest empty state — never a 404, never a
+    // fabricated commission figure.
+    expect(container.textContent).toContain("No team members found");
+    client.clear();
+  });
+
+  it("the page source carries no persona gate (deep-link truth)", () => {
+    const page = read("client/src/pages/finance-commissions.tsx");
+    expect(page).not.toMatch(/businessType\s*!==\s*"agent_investor"/);
+    expect(page).not.toContain("NotFound");
+    expect(page).not.toContain("useOrganization");
+  });
+});
+
+describe("the tier tab — loading and failure states", () => {
+  const noop = () => {};
 
   it("loading is a skeleton and a failure is an error state with retry", async () => {
     await render(<CommissionTiers data={undefined} isLoading error={null} onRetry={noop} />);

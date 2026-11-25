@@ -4,13 +4,16 @@
  * Pins the wedge that promoted agent_investor roadmap → beta, now kept current
  * through the Wave 5 beta → core flip:
  *
- *   1. The commission surface is reachable by an agent_investor org BEHIND the
- *      Finance door — a persona-gated child of the money module + a
- *      /finance/commissions route — and is NOT a new top-level nav entry (the
- *      five customer doors are unchanged: "No new top-level nav entries EVER").
- *   2. It gates to agent_investor and refuses/omits honestly when unconfigured
- *      (NotFound for other personas; honest empty states, never a fabricated
- *      commission number).
+ *   1. The commission surface is reachable BEHIND the Finance door — a child
+ *      of the money module + a /finance/commissions route — and is NOT a new
+ *      top-level nav entry (the five customer doors are unchanged: "No new
+ *      top-level nav entries EVER").
+ *   2. It is NOT persona-gated (REWRITTEN 2026-11-25, agent_investor work
+ *      item 1 — tailor, never wall: the page-level NotFound gate and the
+ *      overflow child's businessTypeOnly gate were removed; the surface was
+ *      the product's only page-level hard gate). Every org reaches it and
+ *      gets honest empty states when unconfigured, never a fabricated
+ *      commission number.
  *   3. The deal-close seam auto-records the closing agent's commission with the
  *      CORRECT recordDealCommission argument order (guards the swapped-arg bug),
  *      only when an explicit config exists (never fabricate).
@@ -58,7 +61,7 @@ describe("commission surface lives BEHIND the Finance door (no new nav entry)", 
   const navItems = read("client/src/lib/nav-items.ts");
   const app = read("client/src/App.tsx");
 
-  it("the money (Finance) module carries a persona-gated Commissions child", () => {
+  it("the money (Finance) module carries an UNGATED Commissions child", () => {
     // The commission child must sit inside the money module (the Finance door),
     // between the `id: "money"` header and the next module (`id: "ai-hub"`).
     const moneyIdx = sidebar.indexOf('id: "money"');
@@ -68,15 +71,24 @@ describe("commission surface lives BEHIND the Finance door (no new nav entry)", 
     const block = sidebar.slice(moneyIdx, nextModuleIdx);
     // It IS the Finance door.
     expect(block).toMatch(/label:\s*"Finance"/);
-    // A child (not a top-level module) with the commission route, gated to
-    // agent_investor via businessTypeOnly.
+    // A child (not a top-level module) with the commission route, carrying
+    // NO businessTypeOnly gate (REWRITTEN 2026-11-25, not deleted: the child
+    // was persona-gated to agent_investor; tailor-never-wall removed the
+    // gate so nav visibility matches the ungated page).
     expect(block).toContain('href: "/finance/commissions"');
-    expect(block).toMatch(/businessTypeOnly:\s*\["agent_investor"\]/);
+    const childLine = block.split("\n").find((l) => l.includes('href: "/finance/commissions"')) ?? "";
+    expect(childLine).not.toContain("businessTypeOnly");
   });
 
   it("the child filter honours NavChild.businessTypeOnly (persona-gated children)", () => {
+    // The mechanism survives for the children that still use it (e.g. the
+    // rentals underwrite child); the Commissions child simply no longer
+    // sets it, and childBusinessTypeAllows returns true for a child with
+    // no businessTypeOnly — which is what makes the ungated child visible
+    // to every org.
     expect(sidebar).toContain("childBusinessTypeAllows");
-    // The interface must actually carry the field the child sets.
+    expect(sidebar).toMatch(/if \(!child\.businessTypeOnly \|\| child\.businessTypeOnly\.length === 0\) return true;/);
+    // The interface must actually carry the field the gated children set.
     expect(sidebar).toMatch(/interface NavChild[\s\S]*?businessTypeOnly\?:/);
   });
 
@@ -99,14 +111,22 @@ describe("commission surface lives BEHIND the Finance door (no new nav entry)", 
   });
 });
 
-describe("the customer commission page gates + stays honest", () => {
+describe("the customer commission page is ungated + stays honest", () => {
   const page = read("client/src/pages/finance-commissions.tsx");
   const commissions = read("client/src/pages/commissions.tsx");
 
-  it("gates to agent_investor and NotFounds every other persona", () => {
-    expect(page).toMatch(/businessType\s*!==\s*"agent_investor"/);
-    expect(page).toContain("<NotFound />");
-    expect(page).toContain("CommissionsPage");
+  it("renders for every persona — no businessType gate, no NotFound", () => {
+    // REWRITTEN 2026-11-25 (agent_investor work item 1), not deleted: this
+    // pinned the page returning NotFound unless businessType was
+    // agent_investor — the product's only page-level hard gate. The
+    // tailor-never-wall doctrine removes it: the page renders the
+    // commission surface for a non-agent org exactly as for an agent org.
+    const code = stripComments(page);
+    expect(code).not.toMatch(/businessType\s*!==\s*"agent_investor"/);
+    expect(code).not.toContain("<NotFound />");
+    expect(code).not.toContain("useOrganization");
+    expect(code).toContain("CommissionsPage");
+    expect(code).toMatch(/return <CommissionsPage intro=\{<CommissionScopeNote \/>\} \/>;/);
   });
 
   it("claims only what a customer can reach, and says what is not set up yet", () => {
