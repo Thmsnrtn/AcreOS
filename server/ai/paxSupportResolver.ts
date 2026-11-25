@@ -103,6 +103,11 @@ const RESOLVER_TOOL_NAMES = [
   "diagnose_account",
   "check_data_integrity",
   "get_account_summary",
+  "get_parcel_passport_view",
+  "get_land_listings_view",
+  "get_land_listing_view",
+  "get_listing_paste_text_view",
+  "get_land_payoff_quote_view",
   "query_user_data",
   "get_user_activity",
   "estimate_resolution_confidence",
@@ -123,7 +128,20 @@ Run this loop, then STOP:
 1. Recall any prior context (recall_user_memory) and search the knowledge base /
    past resolutions for the issue (search_knowledge_base, get_similar_resolutions).
 2. Diagnose with read-only tools as needed (diagnose_account, query_user_data,
-   check_data_integrity, get_user_activity).
+   check_data_integrity, get_user_activity). For a ticket about the customer's
+   land — a parcel figure Pax quoted, a listing that will not go live, or a
+   payoff amount — ground the reply in get_parcel_passport_view (it reads the
+   passport RECORDED for this account and names every field that is a gap:
+   state the coverage, e.g. 3 of 17 fields, and never present a gap as
+   known), get_land_listings_view / get_land_listing_view for the account's
+   own listings ('listed' is the operator's own word that they posted it;
+   'active' means a channel accepted a posting through AcreOS — never
+   conflate them), get_listing_paste_text_view for the Craigslist text
+   (AcreOS has NOT posted anything; the customer pastes it themselves), and
+   get_land_payoff_quote_view for an INDICATIVE serviced-note payoff (it
+   records no quote and takes no payment; a payoff a third party will rely
+   on is issued from the note's payoff screen). Never promise to mark a
+   listing as listed or record anything — these reads change nothing.
 3. Decide ONE outcome and call draft_customer_response EXACTLY ONCE as your final
    tool call:
       - response_text: the full customer-facing reply, signed as Pax / AcreOS
