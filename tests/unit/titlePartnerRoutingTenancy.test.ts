@@ -288,6 +288,13 @@ const fakeDb = {
   }),
 };
 
+// The partner post runs the shared outbound URL check first, which resolves the
+// host; answer it with a public address so the test never touches real DNS.
+vi.mock("node:dns/promises", () => {
+  const lookup = async () => [{ address: "93.184.216.34", family: 4 }];
+  return { default: { lookup }, lookup };
+});
+
 // The factory is hoisted above these declarations, so it reads `fakeDb` off
 // module scope at CALL time rather than closing over it (TDZ).
 vi.mock("../../server/db", () => {
@@ -463,7 +470,7 @@ describe("POST /api/title-orders — titleCompanyId cannot name another org's pa
     expect(res.body?.assignedPartnerId).toBe(PARTNER_B);
     expect(res.body?.status).toBe("assigned");
     expect(state.store[getTableName(titleOrders)]).toHaveLength(1);
-    expect(state.posted.map((p) => p.url)).toEqual(["https://org-b-own.example/hook"]);
+    await vi.waitFor(() => expect(state.posted.map((p) => p.url)).toEqual(["https://org-b-own.example/hook"]));
     expect(state.decrypted).toContain("secret-B");
   });
 
@@ -475,7 +482,7 @@ describe("POST /api/title-orders — titleCompanyId cannot name another org's pa
 
     expect(res.statusCode).toBe(201);
     expect(res.body?.assignedPartnerId).toBe(PARTNER_PLATFORM);
-    expect(state.posted.map((p) => p.url)).toEqual(["https://platform-default.example/hook"]);
+    await vi.waitFor(() => expect(state.posted.map((p) => p.url)).toEqual(["https://platform-default.example/hook"]));
   });
 
   it("AN INACTIVE OWN PARTNER IS STILL REFUSED — the is_active guard survived", async () => {
@@ -491,6 +498,8 @@ describe("POST /api/title-orders — titleCompanyId cannot name another org's pa
 
     expect(res.statusCode).toBe(201);
     expect(res.body?.assignedPartnerId, "territory routing picked a foreign partner").toBe(PARTNER_B);
+    // Let its partner post land here, not in the next test.
+    await vi.waitFor(() => expect(state.posted).toHaveLength(1));
   });
 
   it("A BROADCAST THAT MATCHES NOTHING STILL 201s AS pending — the 404 is scoped", async () => {

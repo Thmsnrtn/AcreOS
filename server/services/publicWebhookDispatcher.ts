@@ -17,6 +17,10 @@
  * After 5 failed attempts the row is marked status='dlq'. At 10
  * consecutive failures the subscription is auto-disabled.
  *
+ * Each attempt runs the shared outbound URL check (`validateUrl`) before the
+ * request, does not follow redirects (a 3xx is a failed attempt), and is
+ * bounded by a 10s timeout.
+ *
  * Concurrency: dispatchWebhookEvent fires the first attempt
  * asynchronously (not blocking the API response) and inserts a
  * delivery-log row. Retries are picked up by a background poller
@@ -33,6 +37,7 @@ import {
 import { eq, and, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { clock } from "../utils/clock";
+import { validateUrl } from "../middleware/fileUploadSecurity";
 
 export type PublicWebhookEventType =
   | "lead.created"
@@ -91,6 +96,15 @@ async function postToEndpoint(
   signed: SignedPayload,
 ): Promise<DispatchResult> {
   try {
+    await validateUrl(sub.url);
+  } catch (err) {
+    return {
+      ok: false,
+      status: null,
+      error: `Webhook URL not accepted: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+  try {
     const ctrl = new AbortController();
     const timeout = setTimeout(() => ctrl.abort(), 10_000);
     const resp = await fetch(sub.url, {
@@ -103,6 +117,7 @@ async function postToEndpoint(
         "AcreOS-Signature": signed.signature,
       },
       body: signed.body,
+      redirect: "manual",
       signal: ctrl.signal,
     });
     clearTimeout(timeout);
