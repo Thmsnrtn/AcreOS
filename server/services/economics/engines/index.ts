@@ -33,6 +33,7 @@ import { notePriceYieldEngine } from "./notePriceYield";
 import { taxMaxBidEngine } from "./taxMaxBid";
 import { subdivisionFeasibilityEngine } from "./subdivisionFeasibility";
 import { commercialUnderwriteEngine } from "./commercialUnderwrite";
+import { mobileHomeAcquisitionEngine } from "./mobileHomeAcquisition";
 
 export const ALL_ENGINES: readonly EngineSpec[] = [
   ...CORE_ENGINES,
@@ -46,4 +47,5 @@ export const ALL_ENGINES: readonly EngineSpec[] = [
   notePriceYieldEngine,
   taxMaxBidEngine,
   commercialUnderwriteEngine,
+  mobileHomeAcquisitionEngine,
 ];

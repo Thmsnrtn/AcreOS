@@ -251,6 +251,18 @@ export const METRICS: readonly MetricSpec[] = [
   { id: "cam_recoveries_annual", label: "Annual CAM recoveries (recorded)", unit: "cents", higherIsBetter: true },
   { id: "annual_rent_per_sqft", label: "Annual in-place rent per sqft", unit: "cents", higherIsBetter: true },
   { id: "rollover_rent_share_12m", label: "In-place rent expiring within 12 months (share)", unit: "ratio", higherIsBetter: false },
+
+  // ── Mobile-home park acquisition metrics ──
+  // The mobile-home engine REUSES total_cost, cash_required,
+  // effective_gross_income, annual_noi, cap_rate, annual_operating_expense,
+  // operating_expense_ratio, annual_debt_service, profit, monthly_cash_flow
+  // and cash_on_cash — the same quantities the rental engines produce. Only
+  // the two below are genuinely new: a utility pass-through recovery is not
+  // rent (folding it into a rent twin would hide its source, the same reason
+  // cam_recoveries_annual exists), and the recorded occupancy share is a
+  // pad-count fact no other engine emits.
+  { id: "utility_recoveries_annual", label: "Annual utility pass-through recoveries (recorded)", unit: "cents", higherIsBetter: true },
+  { id: "occupancy_rate", label: "Recorded occupancy (occupied pads / recorded pads)", unit: "ratio", higherIsBetter: true },
 ] as const;
 
 // `days` was added to MetricUnit the moment it was needed rather than deferred.
