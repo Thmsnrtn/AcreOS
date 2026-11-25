@@ -1,5 +1,5 @@
 /**
- * Vertical-aware getting-started checklist — the single data-driven config.
+ * Vertical-aware getting-started checklist — factory + pure helpers.
  *
  * Onboarding rebuild (2026-07-29 audit): the old checklist keyed on the
  * 3-value `organizations.investorType` fork ("land" | "notes" | "both"),
@@ -24,8 +24,19 @@
  *   - note_investor "connect your servicer"    — folded into the optional
  *     connect-services item (hasConnectedService / BYOK), never blocking.
  *
- * Pure data + pure functions (plus lucide icon references) — safe to import
- * from node-env vitest without jsdom.
+ * DIET (bundle diet Candidate 1): the COPY — every vertical's step rows
+ * (title/description pairs + optional href/icon overrides) and the
+ * connect-services nudge copy — lives in
+ * client/src/data/onboarding-checklist-data.ts (the source of truth) and
+ * reaches the browser as the served asset /onboarding-checklist.json via
+ * the shared static-data loader, so it no longer rides inside the bundle.
+ * What stays HERE, in code, is everything the copy is bound to: STEP_BASE
+ * (id → signal + Lucide icon + default door), the step() factory that
+ * rehydrates data rows into ChecklistItemDefs, and the pure progress /
+ * visibility helpers. Signals and icons never travel in the data.
+ * tests/unit/onboardingChecklist.test.ts pins the builders against the
+ * source module; tests/unit/staticDataServedAsData.test.ts pins the
+ * served asset deep-equal to the module.
  */
 import type { LucideIcon } from "lucide-react";
 import {
@@ -39,6 +50,17 @@ import {
   Users,
 } from "lucide-react";
 import { BUSINESS_TYPE_IDS, type BusinessTypeId } from "@shared/business-types";
+import type {
+  ChecklistStepBaseId,
+  ChecklistStepRow,
+  OnboardingChecklistData,
+} from "@/data/onboarding-checklist-data";
+
+export type {
+  ChecklistStepBaseId,
+  ChecklistStepRow,
+  OnboardingChecklistData,
+};
 
 /** Shape of GET /api/onboarding/checklist-status — the ONLY completion sources. */
 export interface ChecklistStatus {
@@ -84,13 +106,7 @@ export interface ChecklistItemDef {
 // Each base step binds an id to its honest signal + icon + default door.
 // Verticals re-title them in their own vocabulary; the signal never changes.
 
-type StepBaseId =
-  | "propertyLookup"
-  | "lead"
-  | "import"
-  | "campaign"
-  | "deal"
-  | "notePayment";
+type StepBaseId = ChecklistStepBaseId;
 
 const STEP_BASE: Record<
   StepBaseId,
@@ -113,254 +129,126 @@ function step(
   return { ...STEP_BASE[base], title, description, ...overrides };
 }
 
-// The optional connect-your-services nudge (R5 reshape) — appended after
-// every vertical's required steps. Completes via hasConnectedService (any
-// non-revoked BYOK credential); excluded from progress + auto-dismiss math.
-export const CONNECT_SERVICES_ITEM: ChecklistItemDef = {
-  id: "connectServices",
-  signal: "hasConnectedService",
-  title: "Connect your services (optional)",
-  description:
-    "Bring your own Twilio, SendGrid, Lob, or data accounts — your keys, your invoices. Or keep running on ours.",
-  icon: Plug,
-  href: "/settings/byok",
-  optional: true,
+// Row icon overrides, resolved in code: a data row names a key here, never
+// a component (the landlord family's property step wears Building2 instead
+// of the propertyLookup base's MapPin).
+const ROW_ICONS: Record<string, LucideIcon> = {
+  building2: Building2,
 };
 
-// ─── Shared per-persona builders ───────────────────────────────────────────
-// The landlord family (buy_and_hold / short_term_rental / multifamily /
-// mobile_home — all "landlord" in persona-mapping.ts) shares one loop with
-// per-type nouns. hasPropertyLookup completes on a real property row
-// (enrichment completed OR the first_property_added / first_lead_enriched
-// activation events), so "add your first X" is honest for it.
-function landlordSteps(noun: string, addDescription: string): ChecklistItemDef[] {
+/** Rehydrate one served data row through the factory. */
+function stepFromRow(row: ChecklistStepRow): ChecklistItemDef {
+  const overrides: Partial<Pick<ChecklistItemDef, "href" | "icon">> = {};
+  if (row.href !== undefined) overrides.href = row.href;
+  if (row.iconKey !== undefined && ROW_ICONS[row.iconKey]) {
+    overrides.icon = ROW_ICONS[row.iconKey];
+  }
+  return step(row.base, row.title, row.description, overrides);
+}
+
+// ─── Builders over the served data ─────────────────────────────────────────
+
+/**
+ * The optional connect-your-services nudge (R5 reshape) — appended after
+ * every vertical's required steps. Completes via hasConnectedService (any
+ * non-revoked BYOK credential); excluded from progress + auto-dismiss math.
+ * Its wiring (id/signal/icon/door/optional) stays in code; only its copy
+ * comes from the data.
+ */
+export function buildConnectServicesItem(
+  data: OnboardingChecklistData,
+): ChecklistItemDef {
+  return {
+    id: "connectServices",
+    signal: "hasConnectedService",
+    title: data.connectServices.title,
+    description: data.connectServices.description,
+    icon: Plug,
+    href: "/settings/byok",
+    optional: true,
+  };
+}
+
+/** Every vertical's required steps, rehydrated from the served rows. */
+export function buildChecklistsByBusinessType(
+  data: OnboardingChecklistData,
+): Record<BusinessTypeId, ChecklistItemDef[]> {
+  const out = {} as Record<BusinessTypeId, ChecklistItemDef[]>;
+  for (const bt of BUSINESS_TYPE_IDS) {
+    out[bt] = data.checklists[bt].map(stepFromRow);
+  }
+  return out;
+}
+
+/** The vertical's required steps plus the optional connect-services nudge. */
+export function getChecklistItems(
+  data: OnboardingChecklistData,
+  businessType: BusinessTypeId,
+): ChecklistItemDef[] {
   return [
-    step("propertyLookup", `Add your first ${noun}`, addDescription, {
-      href: "/properties",
-      icon: Building2,
-    }),
-    step(
-      "lead",
-      "Add your first seller lead",
-      "Your next acquisition starts as a lead — import a list or paste an address",
-    ),
-    step(
-      "deal",
-      "Track your first acquisition",
-      "Move a lead into Deals and follow it from offer to close",
-    ),
+    ...data.checklists[businessType].map(stepFromRow),
+    buildConnectServicesItem(data),
   ];
 }
 
-// The land sourcing loop (land_flipper vocabulary; agent_investor and
-// hybrid re-title pieces of it).
-const PARCEL_AHA_DESCRIPTION =
-  "Open a parcel on the map — soils, flood, wetlands & elevation light up from free public data";
+// ─── Loaded-shape guard ────────────────────────────────────────────────────
 
-// ─── The config: all 15 business types ─────────────────────────────────────
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
-export const CHECKLISTS_BY_BUSINESS_TYPE: Record<BusinessTypeId, ChecklistItemDef[]> = {
-  land_flipper: [
-    step("propertyLookup", "Look up your first parcel", PARCEL_AHA_DESCRIPTION),
-    step(
-      "import",
-      // Was "Pull your first county list": nothing pulls one — the task is a
-      // CSV import (quality directive 2026-09-29; readiness plan item 0.7).
-      "Import your county list",
-      "Import a CSV of owners from your target county — your acquisition pipeline starts here",
-    ),
-    step(
-      "campaign",
-      "Send your first mailer",
-      "Pick a template, target your list, watch responses land",
-    ),
-    step(
-      "deal",
-      "Track your first deal",
-      "Move a lead to deal and see the offer/close pipeline light up",
-    ),
-  ],
-  note_investor: [
-    step(
-      "import",
-      "Import your note portfolio",
-      "Upload your existing notes — amortization schedules render automatically",
-      { href: "/finance" },
-    ),
-    step(
-      "notePayment",
-      "Record your first payment",
-      "Log a P&I payment and see the schedule update to the cent",
-    ),
-    step(
-      "deal",
-      "Track a note buy or sell",
-      "Move a note acquisition or disposition through your pipeline",
-    ),
-  ],
-  hybrid: [
-    step("propertyLookup", "Look up your first property", PARCEL_AHA_DESCRIPTION),
-    step(
-      "lead",
-      "Add your first lead or note",
-      "Import a CSV — leads, notes, or both. Same pipeline, different surfaces",
-    ),
-    step(
-      "campaign",
-      "Send your first outreach",
-      "Mailer for sellers, or direct outreach to note holders",
-    ),
-    step(
-      "notePayment",
-      "Record your first note payment",
-      "Log a P&I payment and see the schedule update to the cent",
-    ),
-  ],
-  residential_wholesaler: [
-    step(
-      "lead",
-      "Add your first seller lead",
-      "Import a motivated-seller list or paste an address — your assignment pipeline starts here",
-    ),
-    step(
-      "campaign",
-      "Launch your first outreach campaign",
-      "Reach sellers by mail — responses land as leads you can put under contract",
-    ),
-    step(
-      "deal",
-      "Get your first contract into the pipeline",
-      "Move a signed contract into Deals — buyer blasts and assignment tracking light up",
-    ),
-  ],
-  fix_and_flip: [
-    step(
-      "lead",
-      "Add your first property lead",
-      "Import a distressed-property list or paste an address — your flip pipeline starts here",
-    ),
-    step(
-      "campaign",
-      "Send your first off-market mailer",
-      "Reach owners before the MLS does — pick a template, target your list",
-    ),
-    step(
-      "deal",
-      "Track your first flip",
-      "Move a lead into Deals and follow it from offer through rehab to resale",
-    ),
-  ],
-  buy_and_hold: landlordSteps(
-    "rental property",
-    "Add a property (or look one up on the map) — your portfolio starts here",
-  ),
-  short_term_rental: landlordSteps(
-    "rental",
-    "Add a property (or look one up on the map) — your portfolio starts here",
-  ),
-  multifamily: landlordSteps(
-    "building",
-    "Add a building (or look one up on the map) — your unit portfolio starts here",
-  ),
-  mobile_home: landlordSteps(
-    "park or home",
-    "Add a park or home (or look one up on the map) — your portfolio starts here",
-  ),
-  commercial: [
-    step("propertyLookup", "Look up your first parcel", PARCEL_AHA_DESCRIPTION),
-    step(
-      "lead",
-      "Add your first owner lead",
-      "Import an owner list or paste an address — your acquisition pipeline starts here",
-    ),
-    step(
-      "deal",
-      "Track your first acquisition",
-      "Move a lead into Deals and follow it from LOI to close",
-    ),
-  ],
-  creative_finance: [
-    step(
-      "lead",
-      "Add your first seller lead",
-      "Subject-to and owner-carry candidates enter here — import a list or paste an address",
-    ),
-    step(
-      "deal",
-      "Move your first creative deal",
-      "Track a subject-to or wrap through the pipeline — Close & Carry turns it into a serviced note",
-    ),
-    step(
-      "notePayment",
-      "Record a payment on your carried note",
-      "Log a P&I payment and see the amortization schedule update to the cent",
-    ),
-  ],
-  developer: [
-    step(
-      "propertyLookup",
-      "Look up your first parent parcel",
-      "Soils, flood, wetlands & elevation from free public data — the build decision starts here",
-    ),
-    step(
-      "lead",
-      "Add your first landowner lead",
-      "Import a list or paste an address — your land pipeline starts here",
-    ),
-    step(
-      "deal",
-      "Track your first acquisition",
-      "Move a parent parcel into Deals — permits, timelines and lot pricing follow",
-    ),
-  ],
-  subdivider: [
-    step(
-      "propertyLookup",
-      "Look up your first parent parcel",
-      "Soils, flood, wetlands & elevation from free public data — the split decision starts here",
-    ),
-    step(
-      "lead",
-      "Add your first landowner lead",
-      "Import a list or paste an address — your parent-parcel pipeline starts here",
-    ),
-    step(
-      "deal",
-      "Track your first acquisition",
-      "Move a parent parcel into Deals — plats, permits and lot pricing follow",
-    ),
-  ],
-  tax_lien_deed: [
-    step(
-      "import",
-      "Import your first certificate list",
-      "Upload the county's delinquent roll as a CSV — every certificate becomes a trackable lead",
-    ),
-    step(
-      "propertyLookup",
-      "Look up a delinquent parcel",
-      "Open it on the map — soils, flood, wetlands & elevation from free public data",
-    ),
-    step(
-      "deal",
-      "Track a certificate to deed",
-      "Move a certificate into Deals — the redemption clock and foreclosure timeline follow",
-    ),
-  ],
-  agent_investor: [
-    step("propertyLookup", "Look up your first parcel", PARCEL_AHA_DESCRIPTION),
-    step(
-      "lead",
-      "Add your first seller lead",
-      "Import a list or paste an address — own book or client sourcing, same pipeline",
-    ),
-    step(
-      "deal",
-      "Track your first deal",
-      "Move a lead into Deals and follow it from offer to close",
-    ),
-  ],
-};
+const isStr = (value: unknown): value is string => typeof value === "string";
+
+const STEP_BASE_IDS: ReadonlySet<string> = new Set(Object.keys(STEP_BASE));
+
+function isStepRow(value: unknown): value is ChecklistStepRow {
+  if (!isRecord(value)) return false;
+  if (!isStr(value.base) || !STEP_BASE_IDS.has(value.base)) return false;
+  if (!isStr(value.title) || value.title.length === 0) return false;
+  if (!isStr(value.description) || value.description.length === 0) return false;
+  if (value.href !== undefined && !isStr(value.href)) return false;
+  // An iconKey the code cannot resolve would silently swap the step's icon
+  // for the base's — treat it as a shape failure, never a quiet fallback.
+  if (
+    value.iconKey !== undefined &&
+    (!isStr(value.iconKey) || !(value.iconKey in ROW_ICONS))
+  ) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Shape guard for the SERVED checklist data, checked at the loader
+ * boundary before any builder runs. The asset is fetched at runtime, so
+ * a 200 response is not proof of shape: a mis-served fallback body
+ * (`{}`, an error page parsed as JSON, a truncated or edited asset)
+ * must be treated as a LOAD FAILURE — the component renders its shell
+ * with a visible failure line — never handed to the builders above,
+ * which dereference `data.checklists[…]` and would crash the render
+ * (white screen) or mis-title a step on a wrong-shape payload. Valid
+ * means: the connect-services copy is well-formed and EVERY registered
+ * business type has a non-empty list of well-formed rows whose base
+ * names a real step and whose icon override (if any) resolves in code.
+ */
+export function isOnboardingChecklistData(
+  value: unknown,
+): value is OnboardingChecklistData {
+  if (!isRecord(value)) return false;
+  const { connectServices, checklists } = value;
+  if (
+    !isRecord(connectServices) ||
+    !isStr(connectServices.title) ||
+    !isStr(connectServices.description)
+  ) {
+    return false;
+  }
+  if (!isRecord(checklists)) return false;
+  return BUSINESS_TYPE_IDS.every((bt) => {
+    const rows = checklists[bt];
+    return Array.isArray(rows) && rows.length > 0 && rows.every(isStepRow);
+  });
+}
 
 // ─── Resolution + progress helpers (pure) ──────────────────────────────────
 
@@ -382,11 +270,6 @@ export function resolveChecklistBusinessType(
   if (investorType === "notes") return "note_investor";
   if (investorType === "both") return "hybrid";
   return "land_flipper";
-}
-
-/** The vertical's required steps plus the optional connect-services nudge. */
-export function getChecklistItems(businessType: BusinessTypeId): ChecklistItemDef[] {
-  return [...CHECKLISTS_BY_BUSINESS_TYPE[businessType], CONNECT_SERVICES_ITEM];
 }
 
 /**

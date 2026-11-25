@@ -12,22 +12,40 @@
  *      GET /api/onboarding/checklist-status; no status → nothing complete.
  *   4. Skipped-onboarding users still see it: neither the component source
  *      nor the visibility helper keys on onboardingCompleted / skipped.
+ *   5. (Bundle diet Candidate 1) The copy is DATA, not bundle JS: the rows
+ *      live in client/src/data/onboarding-checklist-data.ts (source of
+ *      truth), reach the browser as /onboarding-checklist.json, and the
+ *      lib's builders rehydrate them through the step factory — the items
+ *      built from the module, and from a JSON round-trip of it (what the
+ *      browser actually receives), are identical, icons and signals
+ *      included. tests/unit/staticDataServedAsData.test.ts pins the
+ *      served asset verbatim to the module.
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 import path from "path";
 
 import {
-  CHECKLISTS_BY_BUSINESS_TYPE,
   CHECKLIST_SIGNALS,
-  CONNECT_SERVICES_ITEM,
+  buildChecklistsByBusinessType,
+  buildConnectServicesItem,
   computeChecklistProgress,
   getChecklistItems,
   isItemComplete,
+  isOnboardingChecklistData,
   resolveChecklistBusinessType,
   shouldShowChecklist,
   type ChecklistStatus,
 } from "../../client/src/lib/onboarding-checklist";
+import { ONBOARDING_CHECKLIST_DATA } from "../../client/src/data/onboarding-checklist-data";
+
+// The config the pre-diet module exported as constants, rebuilt from the
+// source-of-truth data module through the same builders the component's
+// served-data path uses.
+const CHECKLISTS_BY_BUSINESS_TYPE = buildChecklistsByBusinessType(
+  ONBOARDING_CHECKLIST_DATA,
+);
+const CONNECT_SERVICES_ITEM = buildConnectServicesItem(ONBOARDING_CHECKLIST_DATA);
 import { BUSINESS_TYPE_IDS } from "../../shared/business-types";
 import { BUSINESS_TYPE_TO_PERSONA } from "../../shared/models/persona-mapping";
 import { stripComments } from "../helpers/stripComments";
@@ -76,10 +94,10 @@ describe("checklist config — 15-vertical coverage (audit fix #2)", () => {
 
   it("getChecklistItems appends exactly one optional connect-services nudge", () => {
     for (const bt of BUSINESS_TYPE_IDS) {
-      const items = getChecklistItems(bt);
+      const items = getChecklistItems(ONBOARDING_CHECKLIST_DATA, bt);
       const optional = items.filter((i) => i.optional);
       expect(optional).toEqual([CONNECT_SERVICES_ITEM]);
-      expect(items[items.length - 1]).toBe(CONNECT_SERVICES_ITEM);
+      expect(items[items.length - 1]).toEqual(CONNECT_SERVICES_ITEM);
     }
   });
 
@@ -116,7 +134,7 @@ describe("checklist honesty — real completion signals only (audit fix #3)", ()
   it("every item (all verticals + optional) names a real /checklist-status signal", () => {
     const signalSet = new Set<string>(CHECKLIST_SIGNALS);
     for (const bt of BUSINESS_TYPE_IDS) {
-      for (const item of getChecklistItems(bt)) {
+      for (const item of getChecklistItems(ONBOARDING_CHECKLIST_DATA, bt)) {
         expect(signalSet.has(item.signal)).toBe(true);
       }
     }
@@ -124,7 +142,7 @@ describe("checklist honesty — real completion signals only (audit fix #3)", ()
 
   it("no loaded status → nothing is complete (never fabricate progress)", () => {
     for (const bt of BUSINESS_TYPE_IDS) {
-      const items = getChecklistItems(bt);
+      const items = getChecklistItems(ONBOARDING_CHECKLIST_DATA, bt);
       for (const item of items) {
         expect(isItemComplete(item, undefined)).toBe(false);
       }
@@ -136,7 +154,7 @@ describe("checklist honesty — real completion signals only (audit fix #3)", ()
 
   it("all-false status → zero progress; all-true → complete", () => {
     for (const bt of BUSINESS_TYPE_IDS) {
-      const items = getChecklistItems(bt);
+      const items = getChecklistItems(ONBOARDING_CHECKLIST_DATA, bt);
       expect(computeChecklistProgress(items, ALL_FALSE)).toMatchObject({
         completedCount: 0,
         progressPct: 0,
@@ -151,7 +169,10 @@ describe("checklist honesty — real completion signals only (audit fix #3)", ()
   it("the optional connect-services item never blocks completion", () => {
     const status: ChecklistStatus = { ...ALL_TRUE, hasConnectedService: false };
     for (const bt of BUSINESS_TYPE_IDS) {
-      const progress = computeChecklistProgress(getChecklistItems(bt), status);
+      const progress = computeChecklistProgress(
+        getChecklistItems(ONBOARDING_CHECKLIST_DATA, bt),
+        status,
+      );
       expect(progress.allComplete).toBe(true);
     }
   });
@@ -160,7 +181,7 @@ describe("checklist honesty — real completion signals only (audit fix #3)", ()
     // The audit's wished-for steps with no cheap real signal must NOT appear:
     // buy-box, auction watch, tenants, servicer-connection-as-required.
     for (const bt of BUSINESS_TYPE_IDS) {
-      const text = getChecklistItems(bt)
+      const text = getChecklistItems(ONBOARDING_CHECKLIST_DATA, bt)
         .filter((i) => !i.optional)
         .map((i) => `${i.id} ${i.title} ${i.description}`)
         .join(" | ")
@@ -234,5 +255,39 @@ describe("checklist visibility (audit fixes #1 + #4)", () => {
     expect(code).toMatch(/resolveChecklistBusinessType/);
     expect(code).toMatch(/@\/lib\/onboarding-checklist/);
     expect(code).not.toMatch(/PERSONA_CHECKLISTS/);
+  });
+});
+
+describe("served-data builders (diet Candidate 1)", () => {
+  it("a JSON round-trip of the data module builds identical items", () => {
+    // What the browser receives is JSON, not the module: the builders must
+    // produce byte-identical items (icon + signal bindings included) from
+    // the round-tripped shape.
+    const roundTripped = JSON.parse(JSON.stringify(ONBOARDING_CHECKLIST_DATA));
+    expect(isOnboardingChecklistData(roundTripped)).toBe(true);
+    expect(buildChecklistsByBusinessType(roundTripped)).toEqual(
+      CHECKLISTS_BY_BUSINESS_TYPE,
+    );
+    expect(buildConnectServicesItem(roundTripped)).toEqual(CONNECT_SERVICES_ITEM);
+    for (const bt of BUSINESS_TYPE_IDS) {
+      expect(getChecklistItems(roundTripped, bt)).toEqual(
+        getChecklistItems(ONBOARDING_CHECKLIST_DATA, bt),
+      );
+    }
+  });
+
+  it("the shape guard accepts the module data and rejects wrong shapes", () => {
+    expect(isOnboardingChecklistData(ONBOARDING_CHECKLIST_DATA)).toBe(true);
+    expect(isOnboardingChecklistData({})).toBe(false);
+    expect(isOnboardingChecklistData(null)).toBe(false);
+    const missingType = JSON.parse(JSON.stringify(ONBOARDING_CHECKLIST_DATA));
+    delete missingType.checklists.land_flipper;
+    expect(isOnboardingChecklistData(missingType)).toBe(false);
+    const badBase = JSON.parse(JSON.stringify(ONBOARDING_CHECKLIST_DATA));
+    badBase.checklists.hybrid[0].base = "not_a_step";
+    expect(isOnboardingChecklistData(badBase)).toBe(false);
+    const badIcon = JSON.parse(JSON.stringify(ONBOARDING_CHECKLIST_DATA));
+    badIcon.checklists.buy_and_hold[0].iconKey = "not_an_icon";
+    expect(isOnboardingChecklistData(badIcon)).toBe(false);
   });
 });
