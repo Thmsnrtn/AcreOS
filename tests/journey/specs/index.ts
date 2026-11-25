@@ -7,11 +7,13 @@
  */
 import { wholesaleWalk } from "./wholesale";
 import { notesWalk } from "./notes";
+import { taxWalk } from "./tax";
 import type { WalkSpec } from "../walk-spec";
 
 export const walkSpecs: Record<string, WalkSpec> = {
   wholesale: wholesaleWalk,
   notes: notesWalk,
+  tax: taxWalk,
 };
 
 export function getWalkSpec(id: string): WalkSpec {
