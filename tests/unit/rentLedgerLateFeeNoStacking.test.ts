@@ -327,33 +327,11 @@ describe("scheduled rent never back-fills before the ledger's first month", () =
   });
 });
 
-describe("a commercial org is refused the residential late-fee surface with a true next step", () => {
-  // The 409 copy is what a commercial landlord reads. AcreOS has no
-  // manual-charge route (rent_charges is written only by the scheduled
-  // generator and the rent-roll import), so the message must not send them to
-  // one. Driven through the real handlers, with the guard's own org read.
-  const commercialReq = () => req({ organization: { id: 7, onboardingData: { businessType: "commercial" } } });
-  const GUARDED: Array<[string, string]> = [
-    ["get", "/api/late-fee-rules"],
-    ["get", "/api/rent-charges/:id/late-fee-proposal"],
-    ["get", "/api/rent/late-fee-proposals"],
-    ["post", "/api/rent-charges/:id/apply-late-fee"],
-  ];
-
-  for (const [method, path] of GUARDED) {
-    it(`${method.toUpperCase()} ${path} answers 409 and points to the books, not a manual charge`, async () => {
-      const res = fakeRes();
-      await handlerFor(method, path)(commercialReq(), res);
-      expect(res.statusCode).toBe(409);
-      expect(res.body?.error).toBe("LATE_FEE_NOT_APPLICABLE_COMMERCIAL");
-      const message: string = res.body?.message ?? "";
-      expect(message).toContain("AcreOS cannot post a manual charge yet");
-      expect(message).toMatch(/on your own books/);
-      expect(message).not.toMatch(/enter it as a manual charge/i);
-      // Refused before any read or write.
-      expect(dbMock.select).not.toHaveBeenCalled();
-      expect(dbMock.update).not.toHaveBeenCalled();
-      expect(dbMock.insert).not.toHaveBeenCalled();
-    });
-  }
-});
+// W-14: the org-keyed refusal block that used to live here ("a commercial org
+// is refused the residential late-fee surface…") pinned the defect itself —
+// late fees are now routed by the LEASE's kind, so a commercial org is no
+// longer refused before any read, and a commercial LEASE is refused only
+// after its own row is read. The per-lease refusals, with the same
+// true-next-step copy discipline (the 409 now names the contractual proposal
+// endpoint that actually exists for the charge), are asserted through the
+// real handlers in rentLedgerLateFeeLeaseKind.test.ts.
