@@ -698,6 +698,16 @@ const DEBT: Record<string, ProposedSurface> = {
   "server/routes-leads.ts route:GET /api/leads": "lead_contact_read",
   "server/routes-leads.ts route:GET /api/leads/:id": "lead_contact_read",
   "server/routes-leads.ts route:GET /api/leads/:id/activities": "review",
+  // W3.9 click-to-call (2026-11-09; keypress added 2026-11-15 per audit B1).
+  // GET is the pre-dial verdict and POST places the operator's leg: both read
+  // the lead to gate it (consent, opt-out, quiet hours); neither returns or
+  // sends a contact field (POST's TwiML only asks the operator to press 1).
+  // The lead's number reaches the org's OWN Twilio only from the keypress
+  // callback (routes-misc call-confirm), after a human pressed 1. None can be
+  // ledgered yet: PURPOSE_SURFACES has no code for an operator-placed call,
+  // and choosing one is an attorney-review decision. Flagged on PR #502.
+  "server/routes-leads.ts route:GET /api/leads/:id/call": "review",
+  "server/routes-leads.ts route:POST /api/leads/:id/call": "review",
   "server/routes-leads.ts route:GET /api/leads/:id/deal-state": "review",
   "server/routes-leads.ts route:GET /api/leads/:id/properties": "review",
   "server/routes-leads.ts route:GET /api/leads/aging": "review",
@@ -731,6 +741,7 @@ const DEBT: Record<string, ProposedSurface> = {
   "server/routes-misc.ts route:POST /api/check-hot-leads": "review",
   "server/routes-misc.ts route:POST /api/leads/:leadId/sms": "review",
   "server/routes-misc.ts route:POST /api/sms/send": "review",
+  "server/routes-misc.ts route:POST /api/webhooks/twilio/call-confirm/:orgId/:leadId": "review", // W3.9 keypress: hands the lead's number to the org's own Twilio (see the routes-leads W3.9 note)
   "server/routes-misc.ts route:POST /api/webhooks/twilio/sms": "review",
   // server/routes-notes.ts
   "server/routes-notes.ts route:GET /api/notes/:id/payoff": "review",
@@ -883,7 +894,14 @@ const DEBT: Record<string, ProposedSurface> = {
 // get_lead_details, send_email, …). Ledgering is not honestly available:
 // PURPOSE_SURFACES/PURPOSE_CODES are the FCRA skip-trace taxonomy and the
 // Pax dispatch collects no purpose attestation.
-const DEBT_BASELINE = 227;
+// 227 → 230 (merge-lane union, 2026-11-23, PR #502 W3.9): GET/POST
+// /api/leads/:id/call (+2, the original click-to-call pair) and the keypress
+// callback POST /api/webhooks/twilio/call-confirm/:orgId/:leadId (+1, from
+// the audit-B1 voicemail fix — it is where the lead's number is handed to the
+// org's own Twilio) held as "review" pending a PURPOSE_SURFACES code for an
+// operator-placed call (attorney-review decision). Disjoint from main's
+// entries, verified by key count. The rise still needs Muse's ruling.
+const DEBT_BASELINE = 230;
 
 /**
  * Every file holding a dispatch switch (≥10 snake_case case labels, raw count)

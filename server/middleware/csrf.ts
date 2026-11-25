@@ -79,6 +79,13 @@ const CSRF_EXEMPT_PATTERNS: RegExp[] = [
   // status callback. Authenticated by bearer API key + HMAC-SHA256 over the
   // raw body (server/routes-title-partners.ts); fails closed without both.
   /^\/webhooks\/title-orders\/[^/]+\/status$/,
+  // POST /api/webhooks/twilio/call-status/:orgId/:leadId/:leg — click-to-call
+  // status from the org's OWN Twilio account; verified with that org's token
+  // and AccountSid (verifyOrgTwilioCallCallback), rejected otherwise.
+  /^\/webhooks\/twilio\/call-status\/\d+\/\d+\/(operator|lead)$/,
+  // POST /api/webhooks/twilio/call-confirm/:orgId/:leadId — the operator's
+  // keypress on the same org-owned call; same verifier.
+  /^\/webhooks\/twilio\/call-confirm\/\d+\/\d+$/,
 ];
 
 /**

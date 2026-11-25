@@ -188,6 +188,46 @@ async function resolveCredentials(organizationId?: number): Promise<TwilioCreden
   return platformCredentials();
 }
 
+function xmlEscape(v: string): string {
+  return v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+}
+
+/**
+ * The click-to-call bridge, first half: when the operator's phone answers,
+ * ASK for a human before anyone else is dialled. A voicemail box can pick up
+ * inside the ring timeout, and it never presses a key — so nothing is dialled
+ * until a person presses 1. With `actionOnEmptyResult`, a timeout posts an
+ * empty result to the confirm callback too, which hangs up and logs it.
+ * The lead's number is NOT in this document: it is handed to Twilio only by
+ * the confirm callback, after the digit (bridgeDialTwiml).
+ */
+function bridgeConfirmTwiml(confirmUrl: string): string {
+  return `<Response><Gather input="dtmf" numDigits="1" timeout="8" actionOnEmptyResult="true" action="${xmlEscape(confirmUrl)}" method="POST"><Say>Press 1 to connect your call.</Say></Gather><Hangup/></Response>`;
+}
+
+/**
+ * The bridge, second half — served by the confirm callback only after the
+ * operator pressed 1: dial the counterparty with the org's own number as
+ * caller ID. No recording.
+ */
+export function bridgeDialTwiml(counterparty: string, callerId: string, statusCallbackUrl?: string): string {
+  const cb = statusCallbackUrl
+    ? ` statusCallbackEvent="completed" statusCallback="${xmlEscape(statusCallbackUrl)}" statusCallbackMethod="POST"`
+    : "";
+  return `<Response><Dial callerId="${xmlEscape(callerId)}"><Number${cb}>${xmlEscape(counterparty)}</Number></Dial></Response>`;
+}
+
+/**
+ * For verifying a webhook Twilio sent on the org's OWN account: that account's
+ * SID and auth token. Server-internal — never serialize or log the token.
+ */
+export async function orgTwilioWebhookSecret(
+  organizationId: number,
+): Promise<{ accountSid: string; authToken: string } | null> {
+  const creds = await getOrgTwilioCredentials(organizationId).catch(() => null);
+  return creds ? { accountSid: creds.accountSid, authToken: creds.authToken } : null;
+}
+
 class TwilioProvider implements CommsProvider {
   readonly name = "twilio" as const;
 
@@ -282,16 +322,52 @@ class TwilioProvider implements CommsProvider {
   }
 
   async initiateCall(opts: InitiateCallOpts): Promise<InitiateCallResult> {
+    // `to` is the counterparty (in a bridge too) — the owner opt-out is
+    // checked against the person being called, here as well as in the router.
     await assertOwnerContactAllowed("voice", { phone: opts.to });
-    const creds = await resolveCredentials(opts.organizationId);
-    if (!creds) throw new Error("twilio.initiateCall: credentials unavailable");
+    const { shouldSimulate, recordSimulatedAction } = await import("../../../utils/simulationMode");
+    let org: { id?: number; settings?: unknown } | null = null;
+    if (opts.organizationId != null) {
+      try {
+        const { storage } = await import("../../../storage");
+        org = (await storage.getOrganization(opts.organizationId)) ?? null;
+      } catch {}
+    }
+    if (shouldSimulate("voice", org)) {
+      const rec = await recordSimulatedAction(
+        "voice",
+        "twilio.calls.create",
+        { to: opts.to, ringFirst: opts.bridge?.ringFirst ?? null },
+        org,
+      );
+      return { sid: rec.id, statusCallbackUrl: opts.statusCallbackUrl, simulated: true };
+    }
+    // A call is always to a counterparty, so it goes out ONLY on the org's
+    // own connected (BYO) Twilio account — never the platform account ("be
+    // the rail, not the provider"). No fallback exists on this path.
+    const creds =
+      opts.organizationId != null ? await getOrgTwilioCredentials(opts.organizationId).catch(() => null) : null;
+    if (!creds) {
+      throw new Error(
+        "twilio.initiateCall: no connected (BYO) Twilio identity — a call never falls back to the platform account",
+      );
+    }
     const url = `https://api.twilio.com/2010-04-01/Accounts/${creds.accountSid}/Calls.json`;
     const auth = Buffer.from(`${creds.accountSid}:${creds.authToken}`).toString("base64");
+    const from = opts.from || creds.phoneNumber;
     const body = new URLSearchParams({
-      To: opts.to,
-      From: opts.from || creds.phoneNumber,
+      To: opts.bridge ? opts.bridge.ringFirst : opts.to,
+      From: from,
     });
-    if (opts.twimlUrl) body.append("Url", opts.twimlUrl);
+    if (opts.bridge) {
+      // Ring the operator for 20 s. Answering is not enough: a voicemail box
+      // can answer inside that, so the lead is dialled only after a person
+      // presses 1 (bridgeConfirmTwiml → the confirm callback).
+      body.append("Timeout", "20");
+      body.append("Twiml", bridgeConfirmTwiml(opts.bridge.confirmUrl));
+    } else if (opts.twimlUrl) {
+      body.append("Url", opts.twimlUrl);
+    }
     if (opts.statusCallbackUrl) body.append("StatusCallback", opts.statusCallbackUrl);
     const response = await fetch(url, {
       method: "POST",

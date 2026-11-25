@@ -14,6 +14,7 @@ import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
 import {
   verifyTwilioSignature,
+  verifyOrgTwilioCallCallback,
   verifyInboundTwilioSms,
   type VerifiedTwilioInbound,
 } from "./middleware/twilioSignature";
@@ -1105,6 +1106,43 @@ export async function registerTwilioWebhookRoutes(app: Express): Promise<void> {
       }
     } catch (err: any) {
       logger.error("[Twilio SMS Status] Update failed", err);
+    }
+  });
+
+  // POST /api/webhooks/twilio/call-status/:orgId/:leadId/:leg
+  // Click-to-call status (W3.9). Verified with the org's OWN Twilio token and
+  // AccountSid; writes only to that org's lead, only for a call AcreOS started.
+  api.post("/api/webhooks/twilio/call-status/:orgId/:leadId/:leg", verifyOrgTwilioCallCallback, async (req, res) => {
+    try {
+      const leg = routeParam(req.params.leg);
+      const leadId = Number(routeParam(req.params.leadId));
+      if ((leg !== "operator" && leg !== "lead") || !Number.isInteger(leadId)) return Errors.badRequest(res, "Unknown call leg");
+      const { organizationId } = res.locals.twilioCallCallback as { organizationId: number };
+      const { recordCallStatus } = await import("./services/clickToCall");
+      await recordCallStatus({ organizationId, leadId, leg, body: (req.body ?? {}) as Record<string, unknown> });
+      res.sendStatus(204);
+    } catch (err) {
+      return Errors.internal(res, err as Error);
+    }
+  });
+
+  // POST /api/webhooks/twilio/call-confirm/:orgId/:leadId
+  // Click-to-call keypress (W3.9). Verified like call-status. Answers TwiML:
+  // the lead is dialled only when the operator pressed 1; anything else —
+  // including an error here — hangs up, so a failure never dials the lead.
+  api.post("/api/webhooks/twilio/call-confirm/:orgId/:leadId", verifyOrgTwilioCallCallback, async (req, res) => {
+    const HANGUP = "<Response><Hangup/></Response>";
+    try {
+      const { confirmOperatorLeg } = await import("./services/clickToCall");
+      const leadId = Number(routeParam(req.params.leadId));
+      const { organizationId } = res.locals.twilioCallCallback as { organizationId: number };
+      const twiml = Number.isInteger(leadId) && leadId > 0
+        ? (await confirmOperatorLeg({ organizationId, leadId, body: (req.body ?? {}) as Record<string, unknown> })).twiml
+        : HANGUP;
+      res.type("text/xml").send(twiml);
+    } catch (err) {
+      logger.error("[clickToCall] confirm callback failed — hanging up, lead not dialled", err instanceof Error ? err : undefined);
+      res.type("text/xml").send(HANGUP);
     }
   });
 
