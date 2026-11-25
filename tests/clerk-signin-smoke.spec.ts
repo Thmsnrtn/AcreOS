@@ -126,15 +126,24 @@ async function signInThroughClerk(page: Page): Promise<void> {
     .then(() => true)
     .catch(() => false);
   if (factorTwoShown) {
+    // Clerk's code field is a segmented one-time-code input: fill()
+    // does not reliably populate it, and attempting verification before
+    // Clerk's prepare_second_factor settles earns a "You need to send a
+    // verification code before attempting to verify" error (run
+    // 45664839689's snapshot). Type the code by keyboard after a short
+    // settle, let Clerk's auto-submit fire, and only click Continue if
+    // the step is still showing afterwards.
+    await page.waitForTimeout(1_500);
     await codeInput.click();
-    await codeInput.fill(TEST_CODE).catch(async () => {
-      await page.keyboard.type(TEST_CODE);
-    });
-    const verifyBtn = page
-      .getByRole("button", { name: /continue/i })
-      .first();
-    if (await verifyBtn.isVisible().catch(() => false)) {
-      await verifyBtn.click();
+    await page.keyboard.type(TEST_CODE, { delay: 50 });
+    await page.waitForTimeout(1_500);
+    if (await codeInput.isVisible().catch(() => false)) {
+      const verifyBtn = page
+        .getByRole("button", { name: /continue/i })
+        .first();
+      if (await verifyBtn.isVisible().catch(() => false)) {
+        await verifyBtn.click();
+      }
     }
   }
 
