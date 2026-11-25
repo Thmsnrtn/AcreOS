@@ -32,7 +32,12 @@ const toastVariants = cva(
   {
     variants: {
       variant: {
-        default: "liquid-glass",
+        // Solid surface, like the semantic variants below: a toast is a
+        // notification the user must be able to read over any content, so
+        // the default variant is opaque — never the semi-transparent
+        // liquid-glass treatment used on chrome surfaces.
+        default:
+          "border-l-4 bg-[var(--acr-surface)] border-[var(--acr-line)] text-[var(--acr-ink)] shadow-[var(--acr-shadow-2)]",
         success:
           "border-l-4 bg-[var(--acr-pos-soft)] border-[var(--acr-pos)] text-[var(--acr-ink)] shadow-[var(--acr-shadow-2)]",
         warning:

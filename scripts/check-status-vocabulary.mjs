@@ -58,8 +58,13 @@ function listOf(src, name) {
 }
 
 const vocabSrc = fs.readFileSync(path.join(cwd, VOCAB_FILE), "utf8");
+// LEAD_STATUSES is DEFINED in the leaf module shared/lifecycle/lead-statuses.ts
+// (pipeline-status.ts re-exports it), so that one list is parsed from there;
+// every other list still lives in — and is parsed from — pipeline-status.ts.
+const LEAD_VOCAB_FILE = "shared/lifecycle/lead-statuses.ts";
+const leadVocabSrc = fs.readFileSync(path.join(cwd, LEAD_VOCAB_FILE), "utf8");
 const WRITABLE = {
-  leads: new Set([...listOf(vocabSrc, "LEAD_STATUSES"), ...listOf(vocabSrc, "ADMINISTRATIVE_LEAD_STATUSES")]),
+  leads: new Set([...listOf(leadVocabSrc, "LEAD_STATUSES"), ...listOf(vocabSrc, "ADMINISTRATIVE_LEAD_STATUSES")]),
   deals: new Set([...listOf(vocabSrc, "DEAL_STATUSES"), ...listOf(vocabSrc, "ADMINISTRATIVE_DEAL_STATUSES")]),
 };
 const LEGACY = {
