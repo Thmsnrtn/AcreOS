@@ -224,4 +224,33 @@ describe("summary vocabulary — screening output, not a licensing conclusion (b
     const r = checkDoddFrankCompliance({ ...base, sellerType: "entity", sellerFinancedDealsLast12Months: 2 });
     expect(r.risk).toBe("compliant");
   });
+
+  // CF-F1 residual (i): the land-only summary previously stated an
+  // applicability conclusion ("Federal Dodd-Frank seller-financing rules
+  // generally do not apply"). It is screening-framed now, like every other
+  // summary — the screen does not reach the deal on the facts entered; it
+  // does not declare the rules inapplicable to it.
+  it("the land-only summary is a screening result, not an applicability conclusion", () => {
+    const r = checkDoddFrankCompliance({ ...base, hasDwelling: false, interestRate: 0.25 });
+    expect(r.summary).toBe(
+      "Screening result: on the facts entered, this is a land-only transaction with no dwelling, so the federal Dodd-Frank seller-financing screen does not reach it. " +
+        "Screening only — verify that no dwelling exists, and confirm which state seller-financing and usury laws apply to your deal with counsel.",
+    );
+    expect(r.summary).not.toMatch(/generally do not apply/i);
+  });
+
+  // CF-F1 residual (ii): the seller-constructed finding previously ended
+  // with the flat sentence "A licensed mortgage loan originator is
+  // required." — a licensing determination stated as fact. That assertion
+  // is inverted here on purpose: the finding now points to origination
+  // through a licensed MLO on these facts and defers to counsel.
+  it("the seller-constructed finding points to a licensed MLO on these facts instead of flatly requiring one", () => {
+    const r = checkDoddFrankCompliance({ ...base, sellerConstructedDwelling: true });
+    const finding = r.findings.find((f) => f.issue === "Seller-Constructed Dwelling");
+    expect(finding, "seller-constructed finding must be present").toBeTruthy();
+    expect(finding!.detail).toContain(
+      "On these facts the screen points to origination through a licensed mortgage loan originator — confirm with counsel.",
+    );
+    expect(finding!.detail).not.toMatch(/A licensed mortgage loan originator is required\./);
+  });
 });

@@ -427,6 +427,14 @@ export default function RegulatoryIntelPage() {
         <p className="text-muted-foreground text-sm md:text-base">
           State-by-state regulatory profiles, alerts, and due-diligence checklists for land investing.
         </p>
+        <p className="text-xs text-muted-foreground max-w-3xl">
+          State rules shown here are reference material compiled from public sources — not legal advice and not a
+          determination for your deal. Usury figures are general reference ceilings; where AcreOS's sources conflict
+          for a state, the usury audit reports that state as <strong>not determinable</strong> rather than picking a
+          number. A state with no contract-for-deed entry is <strong>not yet covered</strong> — that does not mean the
+          state has no rules. Confirm the current law for your state and your transaction with your own attorney
+          before you price, sign, or record anything.
+        </p>
       </div>
 
       {/* Critical Alerts Banner */}

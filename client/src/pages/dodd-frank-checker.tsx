@@ -355,7 +355,7 @@ export default function DoddFrankCheckerPage() {
 
             {result.exemptionApplicable && result.exemptionApplicable !== "none" && (
               <Badge variant="outline" className="text-xs capitalize">
-                Exemption: {result.exemptionApplicable.replace(/_/g, " ")}
+                Screen matched: {result.exemptionApplicable.replace(/_/g, " ")}
               </Badge>
             )}
 
