@@ -15,7 +15,11 @@ import { BookOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { SeoPageShell } from "@/components/seo/SeoPageShell";
-import { GLOSSARY } from "@/lib/glossary";
+import {
+  getGlossaryEntry,
+  useGlossaryData,
+  type GlossaryData,
+} from "@/lib/glossary-data";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { glossarySchema, SITE } from "@/lib/jsonld-schemas";
 
@@ -29,15 +33,17 @@ interface CrossReference {
  * the same term — gives the reader a why-this-matters cross-link path
  * and is a meaningful internal-linking SEO signal.
  */
-function computeCrossReferences(): Record<string, CrossReference[]> {
+function computeCrossReferences(
+  glossary: GlossaryData,
+): Record<string, CrossReference[]> {
   const refs: Record<string, CrossReference[]> = {};
-  const slugs = Object.keys(GLOSSARY);
+  const slugs = Object.keys(glossary);
   for (const slug of slugs) {
-    const entry = GLOSSARY[slug];
+    const entry = getGlossaryEntry(glossary, slug)!;
     refs[slug] = [];
     for (const otherSlug of slugs) {
       if (otherSlug === slug) continue;
-      const other = GLOSSARY[otherSlug];
+      const other = getGlossaryEntry(glossary, otherSlug)!;
       // Match whole-word, case-insensitive.
       const escaped = other.term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const pattern = new RegExp(`\\b${escaped}\\b`, "i");
@@ -58,11 +64,20 @@ const META_DESCRIPTION =
   "Plain-English definitions of the vocabulary every Land Investor needs — yellow letter, skip trace, AVM, BPO, executory contract, balloon, escrow shortfall, and more.";
 
 export default function GlossaryPage() {
-  const entries = Object.entries(GLOSSARY)
-    .map(([slug, e]) => ({ slug, ...e }))
-    .sort((a, b) => a.term.localeCompare(b.term));
+  // Shell-first: the registry is served as /glossary.json (source of
+  // truth client/src/lib/glossary.ts) instead of riding inside the
+  // bundle. The shell renders immediately; the terms and the JSON-LD
+  // land when the asset does, and a failed or wrong-shape load shows
+  // a visible error, never a silently-empty page.
+  const { data: glossary, error } = useGlossaryData();
 
-  const crossRefs = computeCrossReferences();
+  const entries = glossary
+    ? Object.entries(glossary)
+        .map(([slug, e]) => ({ slug, ...e }))
+        .sort((a, b) => a.term.localeCompare(b.term))
+    : [];
+
+  const crossRefs = glossary ? computeCrossReferences(glossary) : {};
 
   // Group by first letter for the index — A/B/C section headers help
   // both human scanability and search-engine outline detection.
@@ -81,16 +96,18 @@ export default function GlossaryPage() {
       description={META_DESCRIPTION}
       canonicalUrl={`${SITE.url}/glossary`}
       structuredData={
-        <JsonLd
-          id="glossary-defined-term-set"
-          data={glossarySchema(
-            entries.map((e) => ({
-              slug: e.slug,
-              term: e.term,
-              definition: e.definition,
-            })),
-          )}
-        />
+        glossary ? (
+          <JsonLd
+            id="glossary-defined-term-set"
+            data={glossarySchema(
+              entries.map((e) => ({
+                slug: e.slug,
+                term: e.term,
+                definition: e.definition,
+              })),
+            )}
+          />
+        ) : undefined
       }
       eyebrow={
         <p className="flex items-center gap-2 text-xs uppercase tracking-wide text-muted-foreground font-medium">
@@ -101,13 +118,20 @@ export default function GlossaryPage() {
       intro={
         <p className="text-lg text-muted-foreground max-w-2xl leading-relaxed">
           Land investing has dense vocabulary. Plain-English
-          definitions for the {entries.length} terms you'll see across
-          AcreOS — and a handful you'll see on a closing statement, in
-          a title commitment, or in your county appraisal portal.
+          definitions for the {entries.length || ""} terms you'll see
+          across AcreOS — and a handful you'll see on a closing
+          statement, in a title commitment, or in your county appraisal
+          portal.
         </p>
       }
     >
       <>
+        {error && (
+          <p role="alert" data-testid="glossary-load-error" className="mb-10 text-sm text-destructive">
+            We couldn't load the glossary definitions. Check your
+            connection and refresh to try again.
+          </p>
+        )}
         {/* A-Z jump nav */}
         <nav
           aria-label="Jump to letter"
