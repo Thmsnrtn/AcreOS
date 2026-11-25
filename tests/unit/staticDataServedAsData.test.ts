@@ -65,6 +65,20 @@
  *      module data for representative queries.
  *      Regenerate: npx tsx -e 'import {PALETTE_VERBS} from "./client/src/data/cmdk-verbs-data";
  *      import fs from "node:fs"; fs.writeFileSync("client/public/palette-verbs.json", JSON.stringify(PALETTE_VERBS,null,2)+"\n")'
+ *
+ *   9. (diet Candidate 2) the glossary registry: GLOSSARY
+ *      (client/src/lib/glossary.ts, source of truth) →
+ *      /glossary.json; the /glossary page and the <GlossaryTerm>
+ *      tooltip load it via useGlossaryData
+ *      (client/src/lib/glossary-data.ts), the loaded shape is
+ *      validated at the loader boundary (isGlossaryData) so a
+ *      wrong-shape 200 flows into the page's visible load-error,
+ *      the tooltip renders its children plainly while loading / on
+ *      failure (its unknown-slug behaviour), and the page's JSON-LD
+ *      is built from the loaded asset, identical to the schema the
+ *      module data produced.
+ *      Regenerate: npx tsx -e 'import {GLOSSARY} from "./client/src/lib/glossary";
+ *      import fs from "node:fs"; fs.writeFileSync("client/public/glossary.json", JSON.stringify(GLOSSARY,null,2)+"\n")'
  */
 import { describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
@@ -93,6 +107,16 @@ import {
   type PaletteVerb,
 } from "../../client/src/lib/cmdkVerbs";
 import { rankItems } from "../../shared/cmdkMatcher";
+import {
+  GLOSSARY,
+  getGlossaryEntry as moduleGetGlossaryEntry,
+} from "../../client/src/lib/glossary";
+import {
+  getGlossaryEntry as servedGetGlossaryEntry,
+  isGlossaryData,
+  type GlossaryData,
+} from "../../client/src/lib/glossary-data";
+import { glossarySchema } from "../../client/src/lib/jsonld-schemas";
 import { CUSTOMER_CHANGELOG } from "../../client/src/data/customer-changelog";
 import {
   HELP_FAQ_ITEMS,
@@ -137,6 +161,7 @@ const LANDING_ASSET = readJson("client/public/landing-copy.json");
 const PALETTE_ASSET = readJson(
   "client/public/palette-verbs.json",
 ) as PaletteVerb[];
+const GLOSSARY_ASSET = readJson("client/public/glossary.json") as GlossaryData;
 const HELP_ASSET = readJson("client/public/help-content.json") as {
   featureGuides: typeof HELP_FEATURE_GUIDES;
   faqItems: typeof HELP_FAQ_ITEMS;
@@ -190,6 +215,16 @@ describe("served assets are verbatim the modules' data", () => {
   it("palette-verbs.json is the generator's exact output (regenerate with the header's command)", () => {
     expect(read("client/public/palette-verbs.json")).toBe(
       JSON.stringify(PALETTE_VERBS, null, 2) + "\n",
+    );
+  });
+
+  it("glossary.json deep-equals GLOSSARY", () => {
+    expect(GLOSSARY_ASSET).toEqual(GLOSSARY);
+  });
+
+  it("glossary.json is the generator's exact output (regenerate with the header's command)", () => {
+    expect(read("client/public/glossary.json")).toBe(
+      JSON.stringify(GLOSSARY, null, 2) + "\n",
     );
   });
 
@@ -382,6 +417,57 @@ describe("isPaletteVerbs guards the loaded asset shape", () => {
   });
 });
 
+// ── 1d. Glossary: shape guard, selector + JSON-LD equivalence ────────────
+
+describe("isGlossaryData guards the loaded glossary shape", () => {
+  it("accepts the served asset and the module data", () => {
+    expect(isGlossaryData(GLOSSARY_ASSET)).toBe(true);
+    expect(isGlossaryData(GLOSSARY)).toBe(true);
+  });
+
+  it("rejects the D-2 payload: a 200 with body {}", () => {
+    expect(isGlossaryData({})).toBe(false);
+  });
+
+  it.each([
+    ["null", null],
+    ["an array", []],
+    ["a string", "glossary"],
+    ["an entry missing its definition", { comp: { term: "Comp" } }],
+    ["an entry with a non-string term", { comp: { term: 42, definition: "x" } }],
+    ["an entry that is not an object", { comp: "Comparable property" }],
+  ])("rejects %s", (_label, payload) => {
+    expect(isGlossaryData(payload)).toBe(false);
+  });
+});
+
+describe("glossary selector + JSON-LD over the served asset match the module", () => {
+  it("getGlossaryEntry(data, slug) reproduces the module selector for every slug + unknown", () => {
+    for (const slug of Object.keys(GLOSSARY)) {
+      expect(servedGetGlossaryEntry(GLOSSARY_ASSET, slug)).toEqual(
+        moduleGetGlossaryEntry(slug),
+      );
+    }
+    expect(servedGetGlossaryEntry(GLOSSARY_ASSET, "not_a_term")).toBeUndefined();
+    expect(moduleGetGlossaryEntry("not_a_term")).toBeUndefined();
+  });
+
+  it("getGlossaryEntry(null, slug) is undefined — the loading / failure state", () => {
+    expect(servedGetGlossaryEntry(null, "comp")).toBeUndefined();
+  });
+
+  it("glossarySchema over the asset entries deep-equals the module's schema", () => {
+    const toInputs = (data: GlossaryData) =>
+      Object.entries(data)
+        .map(([slug, e]) => ({ slug, ...e }))
+        .sort((a, b) => a.term.localeCompare(b.term))
+        .map((e) => ({ slug: e.slug, term: e.term, definition: e.definition }));
+    expect(glossarySchema(toInputs(GLOSSARY_ASSET))).toEqual(
+      glossarySchema(toInputs(GLOSSARY)),
+    );
+  });
+});
+
 // ── 2. Selector equivalence with campaignTemplatesFor ─────────────────────
 
 describe("selectCampaignTemplates reproduces campaignTemplatesFor", () => {
@@ -509,6 +595,8 @@ describe("no client file value-imports the externalised registries", () => {
           from.endsWith("/data/onboarding-verticals-data") ||
           from.endsWith("/data/cmdk-verbs-data") ||
           from.endsWith("/pages/landing/copy") ||
+          from === "@/lib/glossary" ||
+          from.endsWith("/lib/glossary") ||
           (from === "./copy" &&
             path.relative(ROOT, file).startsWith("client/src/pages/landing/"))
         ) {
@@ -557,6 +645,24 @@ describe("no client file value-imports the externalised registries", () => {
     );
     expect(page).toMatch(/<p role="alert"/);
     expect(page).toContain('data-testid="onboarding-verticals-load-error"');
+  });
+
+  it("the glossary consumers load the registry through the validated loader", () => {
+    expect(read("client/src/lib/glossary-data.ts")).toContain("GLOSSARY_URL");
+    expect(read("client/src/lib/glossary-data.ts")).toContain("isGlossaryData");
+    expect(read("client/src/lib/static-data.ts")).toContain(
+      'export const GLOSSARY_URL = "/glossary.json"',
+    );
+    expect(read("client/src/pages/glossary.tsx")).toContain("useGlossaryData()");
+    expect(read("client/src/components/Glossary.tsx")).toContain(
+      "useGlossaryData()",
+    );
+  });
+
+  it("the /glossary page renders a VISIBLE error on loader failure, never a blank page", () => {
+    const page = stripComments(read("client/src/pages/glossary.tsx"));
+    expect(page).toMatch(/\{error && \(\s*<p role="alert"/);
+    expect(page).toContain('data-testid="glossary-load-error"');
   });
 
   it("the landing page loads its copy ONCE through the validated loader", () => {
@@ -680,6 +786,7 @@ describe("static server cache discipline", () => {
       "/onboarding-verticals.json",
       "/landing-copy.json",
       "/palette-verbs.json",
+      "/glossary.json",
     ]) {
       expect(src).toContain(`"${url}"`);
     }
