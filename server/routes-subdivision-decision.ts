@@ -10,8 +10,15 @@
  *
  * §6.1 — THE DECISION. The feasibility inputs arrive from the operator and are
  * recomputed server-side through the kit (`recordUnderwrittenDecision`, engine
- * `subdivision_feasibility`, pack "subdivider"), so the evidence-rule-v2
- * ownership guard runs before anything is written. The decision freezes the
+ * `subdivision_feasibility`), so the evidence-rule-v2 ownership guard runs
+ * before anything is written. The pack follows the org's recorded business
+ * type (developer gap sheet, founder call 1: shared desk, per-pack
+ * declaration): a developer org records under the "developer" pack, every
+ * other org under "subdivider". Each pack is written as a STRING LITERAL at
+ * its own call site below — evidence rule v2 credits only literals and voids
+ * computed values, so the pack is never computed into a variable. The
+ * developer pack is scoped to the entitlement-and-lots workspace: no
+ * construction draws, no ground-up/vertical-construction claims. The decision freezes the
  * LATEST buildability screen run as derived assumptions — run id, rule version,
  * trigger counts, and both ends of the yield range with their stated bases — or
  * says, in one assumption, that no screen had been run. Only pursue and pass are
@@ -46,7 +53,7 @@ import {
   subdivisionScreenRuns,
 } from "@shared/schema";
 import type { AuthenticatedRequest } from "./types/request";
-import { getOrganizationId, getUserId } from "./types/request";
+import { getOrganization, getOrganizationId, getUserId } from "./types/request";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { Errors } from "./utils/errors";
@@ -66,7 +73,8 @@ import { scenariosForSubject } from "./services/economics/scenarioStore";
 
 /** Only these two calls are subdivision decisions; defer / offer are not. */
 const KINDS = ["pursue", "pass"] as const;
-const SUBDIVIDER_PACK = "subdivider";
+/** The packs this desk records under: subdivider, and developer on the shared desk. */
+const DESK_PACKS: ReadonlySet<string> = new Set(["subdivider", "developer"]);
 
 // The kit's own body, WITH its inputs: the feasibility inputs come from the
 // operator and are recomputed through the kit (§6.1).
@@ -152,21 +160,43 @@ export function registerSubdivisionDecisionRoutes(app: Express): void {
           });
         }
 
-        const out = await recordUnderwrittenDecision(organizationId, {
-          subjectType: "property",
-          subjectId: property.id,
-          engineId: "subdivision_feasibility",
-          strategyPackId: "subdivider",
-          inputs: body.inputs,
-          assumptions: evidence,
-          scenarioLabel: `Subdivision decision — ${describeProperty(property)}`,
-          kind: body.kind,
-          choice: body.choice,
-          rationale: body.rationale,
-          actorRef: userId,
-          authority: "org_member:subdivision_decide",
-          reviewDueAt: body.reviewDueAt ? new Date(body.reviewDueAt) : null,
-        });
+        // Two literal call sites, one per pack (see header): the branch picks
+        // WHICH literal runs from the org's recorded business type; the pack
+        // value itself is never computed. The authority string is per pack so
+        // the recorded act names the desk the operator was working as.
+        const orgBusinessType = getOrganization(req).onboardingData?.businessType ?? null;
+        const out =
+          orgBusinessType === "developer"
+            ? await recordUnderwrittenDecision(organizationId, {
+                subjectType: "property",
+                subjectId: property.id,
+                engineId: "subdivision_feasibility",
+                strategyPackId: "developer",
+                inputs: body.inputs,
+                assumptions: evidence,
+                scenarioLabel: `Subdivision decision — ${describeProperty(property)}`,
+                kind: body.kind,
+                choice: body.choice,
+                rationale: body.rationale,
+                actorRef: userId,
+                authority: "org_member:subdivision_decide_developer",
+                reviewDueAt: body.reviewDueAt ? new Date(body.reviewDueAt) : null,
+              })
+            : await recordUnderwrittenDecision(organizationId, {
+                subjectType: "property",
+                subjectId: property.id,
+                engineId: "subdivision_feasibility",
+                strategyPackId: "subdivider",
+                inputs: body.inputs,
+                assumptions: evidence,
+                scenarioLabel: `Subdivision decision — ${describeProperty(property)}`,
+                kind: body.kind,
+                choice: body.choice,
+                rationale: body.rationale,
+                actorRef: userId,
+                authority: "org_member:subdivision_decide",
+                reviewDueAt: body.reviewDueAt ? new Date(body.reviewDueAt) : null,
+              });
 
         res.json({ ...out, recordKind: "decision" as const });
       } catch (err) {
@@ -213,10 +243,13 @@ export function registerSubdivisionDecisionRoutes(app: Express): void {
             }
           : null;
 
-        // ── decisions (subdivider pursue / pass), newest first ────────────
+        // ── decisions (subdivider + developer pursue / pass), newest first ──
         const subjectDecisions = await decisionsForSubject(organizationId, "property", property.id);
         const recorded = subjectDecisions.filter(
-          (d) => d.body.strategyPackId === SUBDIVIDER_PACK && (d.body.kind === "pursue" || d.body.kind === "pass"),
+          (d) =>
+            typeof d.body.strategyPackId === "string" &&
+            DESK_PACKS.has(d.body.strategyPackId) &&
+            (d.body.kind === "pursue" || d.body.kind === "pass"),
         );
         const graded = new Set<number>();
         if (recorded.length > 0) {
@@ -254,7 +287,9 @@ export function registerSubdivisionDecisionRoutes(app: Express): void {
           .orderBy(desc(lotPricingRules.lockedAt));
         const lockSnapshots = new Map(
           subjectDecisions
-            .filter((d) => d.body.kind === "price" && d.body.strategyPackId === SUBDIVIDER_PACK)
+            .filter(
+              (d) => d.body.kind === "price" && typeof d.body.strategyPackId === "string" && DESK_PACKS.has(d.body.strategyPackId),
+            )
             .map((d) => [d.id, d] as const),
         );
         const lockSnapshotIds = [...lockSnapshots.keys()];

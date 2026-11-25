@@ -24,6 +24,7 @@ const world = vi.hoisted(() => ({
   properties: [] as any[],
   runs: [] as any[],
   reads: [] as Array<{ table: unknown; text: string; params: unknown[] }>,
+  orgBusinessType: null as string | null,
 }));
 
 vi.mock("../../server/db", async () => {
@@ -62,7 +63,7 @@ vi.mock("../../server/auth", () => ({
 }));
 vi.mock("../../server/middleware/getOrCreateOrg", () => ({
   getOrCreateOrg: (req: any, _res: any, next: any) => {
-    req.organization = { id: 7 };
+    req.organization = { id: 7, onboardingData: world.orgBusinessType ? { businessType: world.orgBusinessType } : undefined };
     req.organizationId = 7;
     next();
   },
@@ -189,6 +190,7 @@ beforeEach(() => {
   world.reads.length = 0;
   world.properties = [{ ...OWN_PARCEL }];
   world.runs = [];
+  world.orgBusinessType = null;
 });
 
 describe("POST /api/subdivision/decide — registration", () => {
@@ -225,6 +227,37 @@ describe("§8.4 test 15 — a valid pursue writes exactly one scenario and one d
     expect(stores.scenarios[0].org).toBe(7);
 
     expect(res.body).toMatchObject({ recordKind: "decision", scenarioId: 1, decisionId: 101 });
+  });
+
+  it("a developer org records under the literal 'developer' pack, with the developer authority (bar-(b) item 2)", async () => {
+    world.orgBusinessType = "developer";
+    const res = await post(bodyFor());
+    expect(res.statusCode).toBe(200);
+    expect(stores.scenarios).toHaveLength(1);
+    expect(stores.decisions).toHaveLength(1);
+    expect(stores.scenarios[0].req.strategyPackId).toBe("developer");
+    expect(stores.scenarios[0].req.engineId).toBe("subdivision_feasibility");
+    expect(stores.decisions[0].input.strategyPackId).toBe("developer");
+    expect(stores.decisions[0].input.authority).toBe("org_member:subdivision_decide_developer");
+    expect(stores.decisions[0].scenarioIds).toEqual([1]);
+  });
+
+  it("a subdivider org — and an org with no recorded type — records under the literal 'subdivider' pack", async () => {
+    world.orgBusinessType = "subdivider";
+    await post(bodyFor());
+    expect(stores.decisions[0].input.strategyPackId).toBe("subdivider");
+    expect(stores.decisions[0].input.authority).toBe("org_member:subdivision_decide");
+    stores.scenarios.length = 0;
+    stores.decisions.length = 0;
+    world.orgBusinessType = null;
+    await post(bodyFor());
+    expect(stores.decisions[0].input.strategyPackId).toBe("subdivider");
+    // Another vertical's org does not become a developer by using the desk.
+    stores.scenarios.length = 0;
+    stores.decisions.length = 0;
+    world.orgBusinessType = "land_flipper";
+    await post(bodyFor());
+    expect(stores.decisions[0].input.strategyPackId).toBe("subdivider");
   });
 
   it("kind 'pass' is accepted and recorded as pass", async () => {

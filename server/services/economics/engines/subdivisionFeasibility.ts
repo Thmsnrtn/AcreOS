@@ -2,8 +2,12 @@
  * The subdivision feasibility engine: the registered adapter over
  * shared/subdivision/feasibility.ts (Subdivision V1, Leg 3; package §5.4).
  *
- * It declares the `subdivider` vertical: a subdivider decision counts only when
- * it cites a scenario from this engine (evidence rule v2). The adapter's job is
+ * It declares the `subdivider` and `developer` verticals: a subdivider or
+ * developer decision counts only when it cites a scenario from this engine
+ * (evidence rule v2). Developer is the same arithmetic on the shared
+ * subdivision desk, declared per pack (developer gap sheet, founder call 1:
+ * shared desk, per-pack declaration) — scoped to the entitlement-and-lots
+ * workspace; no construction draws or ground-up claims ride on this engine. The adapter's job is
  * the boundary — validate the wire inputs, map outputs onto the shared metric
  * vocabulary, and DECLARE every substitution and modelling choice as an
  * assumption with its origin and basis, so they render wherever the figures
@@ -91,7 +95,7 @@ export const subdivisionFeasibilityEngine: EngineSpec = {
   id: SUBDIVISION_FEASIBILITY_ENGINE_ID,
   version: FEASIBILITY_ENGINE_VERSION,
   label: "Subdivision feasibility (costs, carry over your timeline, absorption, IRR)",
-  verticals: ["subdivider"],
+  verticals: ["subdivider", "developer"],
   produces: ["gross_sellout", "project_cost_before_carry", "margin_before_carry", "profit", "margin_after_carry_p90", "margin_per_lot", "irr", "hold_months"],
 
   compute(inputs) {
