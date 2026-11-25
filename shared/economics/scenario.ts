@@ -240,6 +240,12 @@ export const METRICS: readonly MetricSpec[] = [
   { id: "margin_after_carry_p90", label: "Margin after carry (p90 timeline)", unit: "cents", higherIsBetter: true },
   { id: "margin_per_lot", label: "Margin per lot (before carry)", unit: "cents", higherIsBetter: true },
   { id: "discount_to_face", label: "Discount to face", unit: "ratio", higherIsBetter: true },
+  // Creative finance origination terms (creative-finance-terms v1). The
+  // wrap loan's interest through its balloon, and the balloon itself —
+  // quantities no earlier engine produced, named once here so no engine
+  // mints a twin.
+  { id: "total_interest", label: "Total interest", unit: "cents", higherIsBetter: true },
+  { id: "balloon_amount", label: "Balloon amount due", unit: "cents", higherIsBetter: true },
 ] as const;
 
 // `days` was added to MetricUnit the moment it was needed rather than deferred.
