@@ -304,6 +304,44 @@ describe("renderCamStatementMarkdown", () => {
     expect(md).toContain("Balance due");
   });
 
+  it("carries the lease-governs legend at the foot of the statement (CM-F1)", () => {
+    // The statement is the one tenant-facing artifact this vertical produces:
+    // a tenant who sees "Balance due" must also see, on the same artifact,
+    // that the figure is a calculation from recorded expenses under the
+    // lease, that the lease governs, and that it is not a determination.
+    // Text is the drafted cure verbatim (paper-cures-commercial-2026-11.md,
+    // Item 1) — asserted in full so a paraphrase fails here.
+    const r = computeCamReconciliation({
+      pool: pool(),
+      lease: lease({ rentableSqft: 2_000 }),
+      rows: twoOperatingRows,
+      estimatedBilledCents: 25_000,
+    });
+    const md = renderCamStatementMarkdown(r, ctx);
+    expect(md).toContain(
+      "This reconciliation is a calculation by AcreOS software from the expenses the landlord recorded " +
+        "and the pro-rata share in the lease terms the landlord entered. It is not a determination of what " +
+        "the lease requires: the lease governs, and any dispute or audit right under the lease is between " +
+        "the landlord and the tenant. Verify the figures against the lease and the underlying expense " +
+        "records before relying on them.",
+    );
+    // At the foot: the legend is the statement's last text.
+    expect(md.trimEnd().endsWith("before relying on them.")).toBe(true);
+  });
+
+  it("keeps the thin-coverage caveat AND the legend, legend after caveat (CM-F1)", () => {
+    const r = computeCamReconciliation({
+      pool: pool(),
+      lease: lease({ rentableSqft: 2_000 }),
+      rows: twoOperatingRows,
+      estimatedBilledCents: 25_000,
+    });
+    const md = renderCamStatementMarkdown(r, ctx);
+    expect(md).toContain("PARTIAL reconciliation");
+    expect(md).toContain("the lease governs");
+    expect(md.indexOf("PARTIAL reconciliation")).toBeLessThan(md.indexOf("the lease governs"));
+  });
+
   it("surfaces how the estimated-billed figure was determined (provenance in the statement)", () => {
     // REWRITTEN (W2-COMMERCIAL), not deleted: the invariant — the statement says
     // where the billed figure came from — stands. The two sources it can come

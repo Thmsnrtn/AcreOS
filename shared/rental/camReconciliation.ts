@@ -395,6 +395,25 @@ function billedBasisLabel(basis: CamBilledBasis | null | undefined): string {
 }
 
 /**
+ * CM-F1 — the lease-governs legend carried at the foot of every produced CAM
+ * statement. The statement is the one tenant-facing artifact this vertical
+ * produces: it must say, on its face, that the figure is a calculation from
+ * the landlord's recorded expenses and the lease's pro-rata, that the lease
+ * governs, and that it is not a determination. This is the tenant-facing
+ * companion to `DISCLAIMER_WORKSHEET` (server/services/legalDisclaimers.ts —
+ * the standing legend for "computed statements"), whose artifact class covers
+ * this statement; the text lives here because this module is shared and
+ * browser-safe and cannot import the server constant. Wording is the drafted
+ * cure verbatim (paper-cures-commercial-2026-11.md, Item 1) — do not paraphrase.
+ */
+const CAM_STATEMENT_LEGEND =
+  "This reconciliation is a calculation by AcreOS software from the expenses the landlord recorded " +
+  "and the pro-rata share in the lease terms the landlord entered. It is not a determination of what " +
+  "the lease requires: the lease governs, and any dispute or audit right under the lease is between " +
+  "the landlord and the tenant. Verify the figures against the lease and the underlying expense " +
+  "records before relying on them.";
+
+/**
  * Render the frozen reconciliation as the operator-facing statement text. Pure so
  * the ONE piece of honesty that matters here — the thin-coverage caveat — is
  * decided in a testable place and cannot be dropped at a call site. A refused
@@ -448,5 +467,10 @@ export function renderCamStatementMarkdown(
         `remaining months' expenses are recorded, so treat this balance as provisional, not a settled true-up.`,
     );
   }
+  // The legend goes LAST — at the foot of the statement, after the
+  // thin-coverage caveat where present (the placement every other generated
+  // artifact uses for its disclaimer legend).
+  lines.push("");
+  lines.push(CAM_STATEMENT_LEGEND);
   return lines.join("\n") + "\n";
 }
