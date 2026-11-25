@@ -54,6 +54,17 @@
  *      tests/unit/landingCopyWrongShapeAsset.test.tsx).
  *      Regenerate: npx tsx -e 'import {LANDING_COPY} from "./client/src/pages/landing/copy";
  *      import fs from "node:fs"; fs.writeFileSync("client/public/landing-copy.json", JSON.stringify(LANDING_COPY,null,2)+"\n")'
+ *   9. (diet Candidate 3) ⌘K palette verbs: PALETTE_VERBS
+ *      (client/src/data/cmdk-verbs-data.ts, source of truth) →
+ *      /palette-verbs.json; the command palette loads it via
+ *      usePaletteVerbs (client/src/lib/cmdkVerbs.ts) over the shared
+ *      loader, the loaded shape is validated at the boundary
+ *      (isPaletteVerbs) so a wrong-shape 200 flows into the palette's
+ *      visible load-error line, and the matcher behaviour battery
+ *      below pins rankItems over the served asset identical to the
+ *      module data for representative queries.
+ *      Regenerate: npx tsx -e 'import {PALETTE_VERBS} from "./client/src/data/cmdk-verbs-data";
+ *      import fs from "node:fs"; fs.writeFileSync("client/public/palette-verbs.json", JSON.stringify(PALETTE_VERBS,null,2)+"\n")'
  */
 import { describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
@@ -76,6 +87,12 @@ import {
 } from "../../client/src/lib/onboarding-verticals";
 import { LANDING_COPY } from "../../client/src/pages/landing/copy";
 import { isLandingCopy } from "../../client/src/lib/landing-copy";
+import { PALETTE_VERBS } from "../../client/src/data/cmdk-verbs-data";
+import {
+  isPaletteVerbs,
+  type PaletteVerb,
+} from "../../client/src/lib/cmdkVerbs";
+import { rankItems } from "../../shared/cmdkMatcher";
 import { CUSTOMER_CHANGELOG } from "../../client/src/data/customer-changelog";
 import {
   HELP_FAQ_ITEMS,
@@ -117,6 +134,9 @@ const MODULE_ONBOARDING_DATA: OnboardingVerticalsData = {
   noteRoleOverrides: NOTE_ROLE_DATA_OVERRIDES,
 };
 const LANDING_ASSET = readJson("client/public/landing-copy.json");
+const PALETTE_ASSET = readJson(
+  "client/public/palette-verbs.json",
+) as PaletteVerb[];
 const HELP_ASSET = readJson("client/public/help-content.json") as {
   featureGuides: typeof HELP_FEATURE_GUIDES;
   faqItems: typeof HELP_FAQ_ITEMS;
@@ -160,6 +180,16 @@ describe("served assets are verbatim the modules' data", () => {
   it("landing-copy.json is the generator's exact output (regenerate with the header's command)", () => {
     expect(read("client/public/landing-copy.json")).toBe(
       JSON.stringify(LANDING_COPY, null, 2) + "\n",
+    );
+  });
+
+  it("palette-verbs.json deep-equals PALETTE_VERBS", () => {
+    expect(PALETTE_ASSET).toEqual(PALETTE_VERBS);
+  });
+
+  it("palette-verbs.json is the generator's exact output (regenerate with the header's command)", () => {
+    expect(read("client/public/palette-verbs.json")).toBe(
+      JSON.stringify(PALETTE_VERBS, null, 2) + "\n",
     );
   });
 
@@ -254,6 +284,101 @@ describe("isOnboardingVerticalsData guards the loaded asset shape", () => {
     ],
   ])("rejects %s", (_label, payload) => {
     expect(isOnboardingVerticalsData(payload)).toBe(false);
+  });
+});
+
+// ── 1d. Palette verbs: matcher behaviour over the asset == the module ────
+
+describe("palette matcher over the served asset matches the module data", () => {
+  // The palette's own item mapping (command-palette.tsx matchedVerbs).
+  const toItems = (verbs: readonly PaletteVerb[], scope?: string) =>
+    verbs
+      .filter((v) => (scope ? v.scope === scope || v.scope === "global" : true))
+      .map((v) => ({
+        id: v.id,
+        title: v.label,
+        subtitle: v.hint,
+        keywords: v.keywords,
+        kind: "verb" as const,
+        verb: v,
+      }));
+  const rankedShape = (
+    verbs: readonly PaletteVerb[],
+    query: string,
+    scope?: string,
+  ) =>
+    rankItems(query, toItems(verbs, scope), {
+      keepAll: query.trim() === "",
+    }).map((r) => ({ id: r.item.id, score: r.score }));
+
+  it.each([
+    "",
+    "add lead",
+    "send letter",
+    "skip trace",
+    "billing",
+    "export csv",
+    "qualify",
+    "close won",
+    "switch org",
+    "xyzqq",
+  ])("query %j ranks identically", (query) => {
+    expect(rankedShape(PALETTE_ASSET, query)).toEqual(
+      rankedShape(PALETTE_VERBS, query),
+    );
+  });
+
+  it.each(["leads", "deals", "properties", "inbox", "settings", "global"])(
+    "scope %s filters + ranks identically",
+    (scope) => {
+      expect(rankedShape(PALETTE_ASSET, "a", scope)).toEqual(
+        rankedShape(PALETTE_VERBS, "a", scope),
+      );
+    },
+  );
+
+  it("every verb iconKey names a real lucide export the palette maps", () => {
+    const component = read("client/src/components/command-palette.tsx");
+    for (const verb of PALETTE_VERBS) {
+      expect(
+        (lucide as Record<string, unknown>)[verb.iconKey],
+        `${verb.iconKey} is not a lucide export`,
+      ).toBeDefined();
+      expect(
+        component,
+        `command-palette.tsx does not map the ${verb.iconKey} icon`,
+      ).toContain(`${verb.iconKey},`);
+    }
+  });
+});
+
+// ── 1e. Palette-verbs shape guard: a wrong-shape 200 is a load failure ───
+
+describe("isPaletteVerbs guards the loaded asset shape", () => {
+  it("accepts the served asset and the module data", () => {
+    expect(isPaletteVerbs(PALETTE_ASSET)).toBe(true);
+    expect(isPaletteVerbs(PALETTE_VERBS)).toBe(true);
+  });
+
+  it.each([
+    ["null", null],
+    ["an object", {}],
+    ["a string", "verbs"],
+    ["an empty array", []],
+    ["a record missing label", [{ ...PALETTE_VERBS[0], label: undefined }]],
+    ["a record with a non-string path", [{ ...PALETTE_VERBS[0], path: 42 }]],
+    [
+      "a record with non-array keywords",
+      [{ ...PALETTE_VERBS[0], keywords: "lead" }],
+    ],
+    ["a record with an unknown scope", [{ ...PALETTE_VERBS[0], scope: "bogus" }]],
+    [
+      "a record with an unknown iconKey",
+      [{ ...PALETTE_VERBS[0], iconKey: "NotAnIcon" }],
+    ],
+    ["a record with a non-string hint", [{ ...PALETTE_VERBS[0], hint: 7 }]],
+  ])("rejects %s", (_label, payload) => {
+    expect(isPaletteVerbs(payload)).toBe(false);
   });
 });
 
@@ -382,6 +507,7 @@ describe("no client file value-imports the externalised registries", () => {
           from.endsWith("/data/help-content-data") ||
           from.endsWith("/data/trust-content-data") ||
           from.endsWith("/data/onboarding-verticals-data") ||
+          from.endsWith("/data/cmdk-verbs-data") ||
           from.endsWith("/pages/landing/copy") ||
           (from === "./copy" &&
             path.relative(ROOT, file).startsWith("client/src/pages/landing/"))
@@ -409,6 +535,19 @@ describe("no client file value-imports the externalised registries", () => {
     expect(read("client/src/pages/onboarding-v2.tsx")).toContain(
       "ONBOARDING_VERTICALS_URL",
     );
+    expect(read("client/src/components/command-palette.tsx")).toContain(
+      "usePaletteVerbs",
+    );
+    expect(read("client/src/lib/cmdkVerbs.ts")).toContain("PALETTE_VERBS_URL");
+  });
+
+  it("the command palette renders a VISIBLE error on verb-registry load failure, never a silently verb-less palette", () => {
+    const palette = stripComments(
+      read("client/src/components/command-palette.tsx"),
+    );
+    expect(palette).toContain("paletteVerbsError &&");
+    expect(palette).toMatch(/<p\s+role="alert"/);
+    expect(palette).toContain('data-testid="palette-verbs-load-error"');
   });
 
   it("the onboarding wizard renders a VISIBLE error on loader failure, never a blank wizard", () => {
@@ -540,6 +679,7 @@ describe("static server cache discipline", () => {
       "/trust-content.json",
       "/onboarding-verticals.json",
       "/landing-copy.json",
+      "/palette-verbs.json",
     ]) {
       expect(src).toContain(`"${url}"`);
     }

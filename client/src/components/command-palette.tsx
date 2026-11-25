@@ -62,7 +62,7 @@ import {
   type Scope,
   VALID_SCOPES,
 } from "@shared/cmdkMatcher";
-import { PALETTE_VERBS, type PaletteVerb } from "@/lib/cmdkVerbs";
+import { usePaletteVerbs, type PaletteVerb } from "@/lib/cmdkVerbs";
 import {
   ALL_NAV_ITEMS,
   type MasterNavItem,
@@ -293,10 +293,13 @@ const FOUNDER_PAGES: Array<{ name: string; icon: typeof Users; path: string }> =
 ];
 
 // Phase 4 Week 19-20 (cmdk-v2 / Anya §3): the prior 6-action
-// `quickActions` array was superseded by the 30-verb registry in
-// `client/src/lib/cmdkVerbs.ts`. The verb registry is matcher-aware
-// (acronym + bigram + recency scoring via shared/cmdkMatcher) and
-// scope-filterable, where this static list was neither.
+// `quickActions` array was superseded by the 30-verb registry whose
+// records now live in `client/src/data/cmdk-verbs-data.ts` and reach
+// this palette as the served asset /palette-verbs.json (loaded via
+// usePaletteVerbs in `client/src/lib/cmdkVerbs.ts`). The verb registry
+// is matcher-aware (acronym + bigram + recency scoring via
+// shared/cmdkMatcher) and scope-filterable, where this static list
+// was neither.
 
 interface AIResponse {
   reply: string;
@@ -327,6 +330,12 @@ export function CommandPalette() {
   const { isAvailable } = useProviderStatus();
 
   const [query, setQuery] = useState("");
+  // Verb registry, served as data (/palette-verbs.json): null while
+  // the asset is in flight — the palette shell, pages and search all
+  // render regardless; `paletteVerbsError` surfaces a visible line
+  // instead of a silently verb-less palette.
+  const { data: paletteVerbsData, error: paletteVerbsError } = usePaletteVerbs();
+  const paletteVerbs = paletteVerbsData ?? [];
 
   // /api/leads /api/properties /api/deals all return paginated
   // envelopes {data, total, page, pageSize, totalPages}. Bare useQuery
@@ -474,11 +483,11 @@ export function CommandPalette() {
     [open, deferredInput],
   );
 
-  // Verb matcher — re-ranks PALETTE_VERBS against the current query
-  // every render. Cheap (≤30 items) so no debounce needed beyond the
-  // useDeferredValue above.
+  // Verb matcher — re-ranks the served verb registry against the
+  // current query every render. Cheap (≤30 items) so no debounce
+  // needed beyond the useDeferredValue above.
   const matchedVerbs = useMemo(() => {
-    const items = PALETTE_VERBS.filter((v) =>
+    const items = paletteVerbs.filter((v) =>
       activeScope ? v.scope === activeScope || v.scope === "global" : true,
     ).map((v) => ({
       id: v.id,
@@ -495,7 +504,7 @@ export function CommandPalette() {
       return ranked.slice(0, 7);
     }
     return rankItems(matcherQuery, items, { recents }).slice(0, 8);
-  }, [matcherQuery, activeScope, recents]);
+  }, [matcherQuery, activeScope, recents, paletteVerbs]);
 
   // Page matcher — re-ranks the static `pages` list with the same
   // scoring logic so acronyms ("tdc" → Tax Delinquent Counties) and
@@ -1011,6 +1020,20 @@ export function CommandPalette() {
                     <p className="text-xs text-muted-foreground m-0">Press Enter or click the send button to ask</p>
                   )}
                 </div>
+              )}
+
+              {/* Verb-registry load failure: a visible line, never a
+                  silently verb-less palette (the static-data
+                  discipline). Pages, recents and search below are
+                  unaffected. */}
+              {paletteVerbsError && (
+                <p
+                  role="alert"
+                  data-testid="palette-verbs-load-error"
+                  className="px-3 py-1.5 text-xs text-destructive border-b m-0"
+                >
+                  Quick actions couldn't load. Search and navigation still work — reopen the palette to try again.
+                </p>
               )}
 
               <CommandList className="max-h-[400px]">

@@ -28,6 +28,7 @@ export const HELP_CONTENT_URL = "/help-content.json";
 export const TRUST_CONTENT_URL = "/trust-content.json";
 export const ONBOARDING_VERTICALS_URL = "/onboarding-verticals.json";
 export const LANDING_COPY_URL = "/landing-copy.json";
+export const PALETTE_VERBS_URL = "/palette-verbs.json";
 
 const cache = new Map<string, Promise<unknown>>();
 
