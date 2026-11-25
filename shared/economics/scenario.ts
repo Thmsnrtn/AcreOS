@@ -240,6 +240,14 @@ export const METRICS: readonly MetricSpec[] = [
   { id: "margin_after_carry_p90", label: "Margin after carry (p90 timeline)", unit: "cents", higherIsBetter: true },
   { id: "margin_per_lot", label: "Margin per lot (before carry)", unit: "cents", higherIsBetter: true },
   { id: "discount_to_face", label: "Discount to face", unit: "ratio", higherIsBetter: true },
+
+  // ── Agent own-book valuation metrics (agent-own-book-valuation v1) ──
+  // An ESTIMATE reconciled from operator-provided inputs (selected comps
+  // and/or a provided AVM value) — labelled an estimate here and in the
+  // engine, never upgraded to a licensed valuation product's vocabulary.
+  { id: "estimated_value", label: "Estimated value", unit: "cents", higherIsBetter: true },
+  { id: "estimated_value_low", label: "Estimated value — low end of range", unit: "cents", higherIsBetter: true },
+  { id: "estimated_value_high", label: "Estimated value — high end of range", unit: "cents", higherIsBetter: true },
 ] as const;
 
 // `days` was added to MetricUnit the moment it was needed rather than deferred.
