@@ -54,7 +54,7 @@ const SURFACES = [
       "Hands off when human judgment is needed",
     ],
     sample: {
-      title: "Pax has 4 drafts ready for review",
+      title: "Pax has drafts ready for review",
       rows: [
         ["Janet R. · price negotiation", "Reviewed"],
         ["Marcus T. · objection (taxes)", "Awaiting"],

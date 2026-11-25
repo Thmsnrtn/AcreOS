@@ -6,6 +6,9 @@
  * version-stamped, change-log-style page (not a bullet list buried
  * mid-privacy-policy).
  *
+ * The list itself lives in client/src/data/sub-processors.ts and is shared with
+ * /security and the privacy policy.
+ *
  * Each row: vendor, what they process, where (region), legal basis,
  * DPA link, effective date. Customer-facing — no auth required.
  */
@@ -17,119 +20,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { usePageMeta } from "@/hooks/use-document-title";
 import { SupportFeedbackButton } from "@/components/support-feedback-button";
-
-interface SubProcessor {
-  vendor: string;
-  purpose: string;
-  dataCategories: string[];
-  region: string;
-  dpaUrl: string;
-  effectiveDate: string;
-  optional?: boolean;
-}
-
-const SUB_PROCESSORS: SubProcessor[] = [
-  {
-    vendor: "Clerk",
-    purpose: "Authentication, session management, MFA",
-    dataCategories: ["email", "authentication factors", "session metadata"],
-    region: "US",
-    dpaUrl: "https://clerk.com/legal/dpa",
-    effectiveDate: "2025-09-01",
-  },
-  {
-    vendor: "Stripe",
-    purpose: "Payment processing, subscription billing, tax",
-    dataCategories: ["billing email", "payment method (tokenized)", "tax IDs"],
-    region: "US, EU",
-    dpaUrl: "https://stripe.com/legal/dpa",
-    effectiveDate: "2025-09-01",
-  },
-  {
-    vendor: "Fly.io",
-    purpose: "Application hosting, Postgres, edge compute",
-    dataCategories: ["all customer-uploaded data at rest"],
-    region: "US",
-    dpaUrl: "https://fly.io/legal/dpa",
-    effectiveDate: "2025-09-01",
-  },
-  {
-    vendor: "Cloudflare",
-    purpose: "DNS, CDN, R2 object storage, DDoS protection",
-    dataCategories: ["request metadata", "uploaded files"],
-    region: "Global",
-    dpaUrl: "https://www.cloudflare.com/cloudflare-customer-dpa/",
-    effectiveDate: "2025-09-01",
-  },
-  {
-    vendor: "Amazon Web Services (SES)",
-    purpose: "Transactional email delivery",
-    dataCategories: ["recipient email", "message body", "delivery metadata"],
-    region: "US",
-    dpaUrl: "https://aws.amazon.com/service-terms/",
-    effectiveDate: "2025-09-01",
-  },
-  {
-    vendor: "Anthropic",
-    purpose: "AI features (Pax inbox draft, contract assistance)",
-    dataCategories: ["redacted prompt content opted-in by operator"],
-    region: "US",
-    dpaUrl: "https://www.anthropic.com/legal/dpa",
-    effectiveDate: "2025-12-01",
-    optional: true,
-  },
-  {
-    vendor: "OpenAI",
-    purpose: "AI features (when routed via OpenRouter or direct)",
-    dataCategories: ["redacted prompt content opted-in by operator"],
-    region: "US",
-    dpaUrl: "https://openai.com/policies/data-processing-addendum",
-    effectiveDate: "2025-09-01",
-    optional: true,
-  },
-  {
-    vendor: "Twilio",
-    purpose: "SMS, voice (when operator enables)",
-    dataCategories: ["recipient phone", "message body", "call metadata"],
-    region: "US",
-    dpaUrl: "https://www.twilio.com/legal/data-protection-addendum",
-    effectiveDate: "2025-10-01",
-    optional: true,
-  },
-  {
-    vendor: "Lob",
-    purpose: "Direct mail (when operator enables campaigns)",
-    dataCategories: ["recipient name + mailing address", "campaign content"],
-    region: "US",
-    dpaUrl: "https://www.lob.com/legal/data-protection-agreement",
-    effectiveDate: "2025-10-01",
-    optional: true,
-  },
-  {
-    vendor: "Sentry",
-    purpose: "Error monitoring, exception tracing",
-    dataCategories: ["stack traces", "redacted request context"],
-    region: "US",
-    dpaUrl: "https://sentry.io/legal/dpa/",
-    effectiveDate: "2025-09-01",
-  },
-  {
-    vendor: "Regrid",
-    purpose: "Property parcel data enrichment (when operator enables)",
-    dataCategories: ["public-record parcel queries"],
-    region: "US",
-    dpaUrl: "https://regrid.com/dpa",
-    effectiveDate: "2025-12-01",
-    optional: true,
-  },
-];
+import { SUB_PROCESSORS, SUB_PROCESSORS_LAST_UPDATED } from "@/data/sub-processors";
 
 export default function SubProcessorsPage() {
   usePageMeta(
     "Sub-processors — AcreOS",
     "AcreOS sub-processor list. GDPR Art. 28 disclosures: vendor, purpose, data categories, region, DPA link, effective date.",
   );
-  const lastUpdated = "2026-05-08";
+  const lastUpdated = SUB_PROCESSORS_LAST_UPDATED;
   const docRef = useRef<HTMLDivElement>(null);
 
   return (
@@ -186,17 +84,21 @@ export default function SubProcessorsPage() {
                     </td>
                     <td className="px-4 py-3 text-xs text-muted-foreground">{sp.region}</td>
                     <td className="px-4 py-3">
-                      <a
-                        href={sp.dpaUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-primary hover:underline text-xs"
-                      >
-                        DPA →
-                      </a>
+                      {sp.dpaUrl ? (
+                        <a
+                          href={sp.dpaUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-primary hover:underline text-xs"
+                        >
+                          DPA →
+                        </a>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-xs text-muted-foreground">
-                      {sp.effectiveDate}
+                      {sp.effectiveDate ?? "—"}
                     </td>
                   </tr>
                 ))}
