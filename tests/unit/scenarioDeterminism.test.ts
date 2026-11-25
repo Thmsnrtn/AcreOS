@@ -914,10 +914,98 @@ describe("the multifamily engine — the first engine allowed to REFUSE", () => 
     ).toThrow(ScenarioEngineError);
   });
 
-  it("does NOT reuse total_cost — a valuation is not what the building cost", () => {
-    // Putting two different quantities under one metric id is the same class of
-    // error as storing a percent under a ratio label.
-    expect(multifamilyNoiEngine.produces).not.toContain("total_cost");
+  it("does NOT derive total_cost from the valuation — a valuation is not what the building cost", () => {
+    // v1 refused `total_cost` outright because its only candidate source was
+    // the valuation. v2 produces it ONLY from acquisition inputs (below); with
+    // none supplied it must stay null rather than quietly becoming the
+    // valuation under a cost label — putting two different quantities under
+    // one metric id is the same class of error as storing a percent under a
+    // ratio label.
+    expect(multifamilyNoiEngine.produces).toContain("total_cost");
+    const body = computeScenario(mfRequest(), ALL_ENGINES);
+    expect(metricValue(body, "total_cost")).toBeNull();
+    expect(body.assumptions.some((a) => a.key === "total_cost_basis")).toBe(false);
+  });
+
+  // ── Acquisition total_cost (v2 — the gradeable figure) ────────────────────
+
+  it("produces an ACQUISITION total_cost when a purchase price is supplied", () => {
+    // Purchase price + closing costs, and nothing else: not the valuation, not
+    // a year of expenses. This is the predicted number the outcome loop can
+    // later compare against what the building actually cost to acquire.
+    const body = computeScenario(
+      mfRequest({ purchasePriceCents: 230_000_000, closingCostsCents: 4_600_000 }),
+      ALL_ENGINES,
+    );
+    expect(metricValue(body, "total_cost")).toBe(234_600_000);
+    expect(body.inputs.purchasePriceCents).toBe(230_000_000);
+    expect(body.inputs.closingCostsCents).toBe(4_600_000);
+  });
+
+  it("declares the acquisition basis whenever total_cost is produced", () => {
+    // The figure carries its own basis so no later reader mistakes it for the
+    // valuation denominator sitting in the same run.
+    const body = computeScenario(
+      mfRequest({ purchasePriceCents: 230_000_000, closingCostsCents: 4_600_000 }),
+      ALL_ENGINES,
+    );
+    const basis = body.assumptions.find((a) => a.key === "total_cost_basis")!;
+    expect(basis).toBeDefined();
+    expect(basis.value).toBe("acquisition");
+    expect(basis.origin).toBe("derived");
+    expect(basis.basis).toContain("ACQUISITION cost");
+    expect(basis.basis).toContain("not the valuation");
+  });
+
+  it("total_cost is the purchase price alone when no closing costs are supplied", () => {
+    const body = computeScenario(
+      mfRequest({ purchasePriceCents: 230_000_000 }),
+      ALL_ENGINES,
+    );
+    expect(metricValue(body, "total_cost")).toBe(230_000_000);
+    const basis = body.assumptions.find((a) => a.key === "total_cost_basis")!;
+    expect(basis.basis).toContain("purchase price alone");
+    expect(body.inputs.closingCostsCents).toBeUndefined();
+  });
+
+  it("acquisition inputs do NOT move the valuation-denominator metrics", () => {
+    // Cap rate and GRM rest on valuationCents under their own basis; a
+    // purchase price arriving in the same run must not leak into them.
+    const plain = computeScenario(mfRequest(), ALL_ENGINES);
+    const bought = computeScenario(
+      mfRequest({ purchasePriceCents: 230_000_000, closingCostsCents: 4_600_000 }),
+      ALL_ENGINES,
+    );
+    expect(metricValue(bought, "cap_rate")).toBe(metricValue(plain, "cap_rate"));
+    expect(metricValue(bought, "gross_rent_multiplier")).toBe(
+      metricValue(plain, "gross_rent_multiplier"),
+    );
+    expect(metricValue(bought, "annual_noi")).toBe(metricValue(plain, "annual_noi"));
+  });
+
+  it("refuses closing costs with no purchase price rather than totalling a slice", () => {
+    expect(() =>
+      computeScenario(mfRequest({ closingCostsCents: 4_600_000 }), ALL_ENGINES),
+    ).toThrow(ScenarioEngineError);
+  });
+
+  it("refuses a non-positive purchase price and negative closing costs", () => {
+    expect(() =>
+      computeScenario(mfRequest({ purchasePriceCents: 0 }), ALL_ENGINES),
+    ).toThrow(ScenarioEngineError);
+    expect(() =>
+      computeScenario(
+        mfRequest({ purchasePriceCents: 230_000_000, closingCostsCents: -1 }),
+        ALL_ENGINES,
+      ),
+    ).toThrow(ScenarioEngineError);
+  });
+
+  it("is deterministic with acquisition inputs supplied", () => {
+    const over = { purchasePriceCents: 230_000_000, closingCostsCents: 4_600_000 };
+    const a = computeScenario(mfRequest(over), ALL_ENGINES);
+    const b = computeScenario(mfRequest(over), ALL_ENGINES);
+    expect(JSON.stringify(a)).toBe(JSON.stringify(b));
   });
 
   // ── DSCR and cash flow ────────────────────────────────────────────────────
