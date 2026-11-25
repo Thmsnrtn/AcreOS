@@ -702,11 +702,12 @@ const NAV_MODULES: NavModule[] = [
       // real revenue line (H4).
       { label: "Analytics", icon: Brain, href: "/analytics", description: "Insights and reporting" },
       // Commission tracking wedge (Wave 2 pass C) — lives BEHIND the Finance
-      // door, gated to agent_investor orgs (businessTypeOnly). NOT a new
-      // top-level nav entry: the five customer doors are unchanged. Reads the
-      // org's own commission records + YTD summaries; honest empty state when
-      // nothing is configured.
-      { label: "Commissions", icon: Receipt, href: "/finance/commissions", description: "Agent commission tracking — tiers, YTD, statements", businessTypeOnly: ["agent_investor"] },
+      // door. NOT a new top-level nav entry: the five customer doors are
+      // unchanged. Persona gate removed 2026-11-25 (agent_investor work
+      // item 1 — tailor, never wall): the child is visible to every org,
+      // matching the ungated page. Reads the org's own commission records +
+      // YTD summaries; honest empty state when nothing is configured.
+      { label: "Commissions", icon: Receipt, href: "/finance/commissions", description: "Agent commission tracking — tiers, YTD, statements" },
     ],
   },
 
