@@ -101,6 +101,43 @@ async function signInThroughClerk(page: Page): Promise<void> {
     await signInBtn.click();
   }
 
+  // Factor-two: the staging Clerk instance has new-device verification
+  // on, and a CI runner is always a new device — after the password is
+  // ACCEPTED (POST /v1/client/sign_ins → 200, then prepare_second_factor
+  // → 200) Clerk routes to /auth#/factor-two, "Check your email …
+  // You're signing in from a new device", and emails a 6-digit code
+  // (proven by re-proof run 45663560002's artifacts, 2026-11-25).
+  // On a Clerk DEVELOPMENT instance, an account whose email uses the
+  // +clerk_test subaddress (e.g. name+clerk_test@acreos.io) always
+  // receives the fixed test code 424242 and no real email is sent —
+  // Clerk's documented E2E affordance. Complete that step when it
+  // appears; if the account is NOT a +clerk_test account the code will
+  // be rejected and this smoke stays red with Clerk's error visible,
+  // which is the correct fail-closed behaviour until the account is
+  // switched (see the PR description for the instance-side item).
+  const TEST_CODE = process.env.E2E_CLERK_TEST_CODE ?? "424242";
+  const codeInput = page
+    .locator(
+      "input[name='code'], input[autocomplete='one-time-code'], input[inputmode='numeric']",
+    )
+    .first();
+  const factorTwoShown = await codeInput
+    .waitFor({ state: "visible", timeout: 10_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (factorTwoShown) {
+    await codeInput.click();
+    await codeInput.fill(TEST_CODE).catch(async () => {
+      await page.keyboard.type(TEST_CODE);
+    });
+    const verifyBtn = page
+      .getByRole("button", { name: /continue/i })
+      .first();
+    if (await verifyBtn.isVisible().catch(() => false)) {
+      await verifyBtn.click();
+    }
+  }
+
   // SignIn's fallbackRedirectUrl is /today: a completed sign-in leaves
   // /auth. Staying on /auth (or landing back on it) is a broken sign-in.
   await expect(page).not.toHaveURL(/\/auth/, { timeout: 30_000 });
