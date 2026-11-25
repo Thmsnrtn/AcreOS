@@ -252,6 +252,7 @@ const ARGS: Record<string, Record<string, unknown>> = {
   record_tax_ledger_entry: { certificate_id: TAX_CERT_ID, kind: "subsequent_tax_paid", paid_on: "2026-01-15", amount_cents: 12000, tax_year: "2025", source: "County treasurer receipt" },
   record_rent_payment: { lease_id: "6f1c1c1e-2b7a-4c1d-9a55-0e0e0e0e0e0f", amount_cents: 150000, received_at: "2026-01-15", method: "ach" },
   generate_scheduled_rent_charges: { lease_id: "6f1c1c1e-2b7a-4c1d-9a55-0e0e0e0e0e0f", through_date: "2026-02-01" },
+  mark_land_listing_listed: { listing_id: 9 },
   schedule_followup: { title: "Follow up", entity_type: "lead", entity_id: 42, due_date: "2026-09-10" },
   schedule_follow_up: { entityType: "lead", entityId: 42, note: "Call back", followUpDate: "2026-09-10" },
   // create_calendar_event / trigger_zapier / trigger_make left this population
@@ -320,6 +321,9 @@ describe("each executed member yields exactly one activity_log row with agentTyp
     }
     // The wholesale reply tool loads the recipient, then updates it and returns the row.
     if (name === "record_buyer_blast_response") H.dbSelectRows = [{ id: BLAST_RECIPIENT_ID, organizationId: 7, blastId: "b1", status: "sent", responseNotes: null }];
+    // The mark-listed tool loads the listing before it writes, and its update
+    // returns the row: give the stubbed database the one draft listing it needs.
+    if (name === "mark_land_listing_listed") H.dbSelectRows = [{ id: 9, organizationId: 7, propertyId: 42, title: "10 acres", status: "draft", syndicationTargets: [] }];
     const result = await executeTool(name, { ...ARGS[name] }, org, { userId: "u-1", origin: "chat" });
     // Per-member vacuity: the member must have RUN, or "one receipt" is a
     // claim about a tool that did nothing.
