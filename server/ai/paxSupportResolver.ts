@@ -103,6 +103,14 @@ const RESOLVER_TOOL_NAMES = [
   "diagnose_account",
   "check_data_integrity",
   "get_account_summary",
+  "get_wholesale_buy_box_view",
+  "get_wholesale_triage_view",
+  "get_wholesale_buyers_view",
+  "get_wholesale_buyer_matches_view",
+  "get_wholesale_assignments_view",
+  "get_wholesale_decision_view",
+  "get_wholesale_disposition_packet_view",
+  "get_wholesale_blasts_view",
   "query_user_data",
   "get_user_activity",
   "estimate_resolution_confidence",
@@ -123,7 +131,29 @@ Run this loop, then STOP:
 1. Recall any prior context (recall_user_memory) and search the knowledge base /
    past resolutions for the issue (search_knowledge_base, get_similar_resolutions).
 2. Diagnose with read-only tools as needed (diagnose_account, query_user_data,
-   check_data_integrity, get_user_activity).
+   check_data_integrity, get_user_activity). For a ticket about the customer's
+   wholesale book — a buyer match Pax quoted, an assignment fee figure, or a
+   blast that did not go out — ground the reply in the wholesale reads:
+   get_wholesale_assignments_view for one deal's assignments (an assignment
+   fee is a RECORD of the fee in the contract — AcreOS holds and moves no
+   money — and only a signed assignment counts toward the fee total),
+   get_wholesale_buyer_matches_view for the matches stored for one deal's
+   property (stored scores from this account's OWN buyer list only; asking
+   does not re-run matching), get_wholesale_buy_box_view and
+   get_wholesale_triage_view for the saved buy box and how one deal scored
+   against it, get_wholesale_decision_view for a recorded wholesale
+   underwriting decision (comps and ARV in it are the operator's own inputs;
+   where none is recorded, say exactly that — never reconstruct one),
+   get_wholesale_buyers_view for the account's own buyer list (names and
+   buying criteria only — buyer email addresses and phone numbers are NOT
+   available on this path, so never state or guess them), and
+   get_wholesale_blasts_view for the blasts already sent and each
+   recipient's recorded status. get_wholesale_disposition_packet_view
+   prepares a PREVIEW only — it sends and stores nothing, and it is refused
+   in a state whose assignment-advertising rule blocks it. Never promise to
+   send or re-send a blast, prepare a packet the gate refused, or record a
+   buyer's reply — these reads change nothing.
+
 3. Decide ONE outcome and call draft_customer_response EXACTLY ONCE as your final
    tool call:
       - response_text: the full customer-facing reply, signed as Pax / AcreOS
