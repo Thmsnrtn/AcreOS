@@ -302,6 +302,12 @@ const SUPPORT_BH_READS = [
   "get_lease_ledger_view",
   "get_rental_underwriting_view",
 ] as const;
+const SUPPORT_TAX_READS = [
+  "get_tax_certificates_book",
+  "get_tax_certificate_record",
+  "get_tax_certificate_clock_view",
+  "get_tax_certificate_ledger_view",
+] as const;
 const PRIOR_RESOLVER_NAMES = [
   "search_knowledge_base",
   "search_resolved_tickets",
@@ -324,7 +330,7 @@ const RESOLVER_TOOL_NAMES: string[] = (() => {
   return [...m[1].matchAll(/"([a-z_0-9]+)"/g)].map((x) => x[1]);
 })();
 
-describe("BH drill 3 — capability pin, cured: the resolver subset is the prior set + exactly the four support buy-hold reads", () => {
+describe("BH drill 3 — capability pin, cured: the resolver subset is the prior set + exactly the four support buy-hold reads (composed with the four support tax reads)", () => {
   const BH_TOOLS = [
     "get_rent_roll",
     "get_rental_leases",
@@ -340,9 +346,10 @@ describe("BH drill 3 — capability pin, cured: the resolver subset is the prior
     for (const t of BH_TOOLS) expect(toolsSrc, `chat path is missing ${t}`).toContain(t);
   });
 
-  it("the resolver subset is exactly the prior 13 + the four support reads, in order", () => {
+  it("the resolver subset is exactly the prior 13 + the four support tax reads + the four support buy-hold reads, in order", () => {
     expect(RESOLVER_TOOL_NAMES).toEqual([
       ...PRIOR_RESOLVER_NAMES.slice(0, 7),
+      ...SUPPORT_TAX_READS,
       ...SUPPORT_BH_READS,
       ...PRIOR_RESOLVER_NAMES.slice(7),
     ]);
