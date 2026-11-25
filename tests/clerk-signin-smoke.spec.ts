@@ -62,21 +62,44 @@ async function signInThroughClerk(page: Page): Promise<void> {
   await emailInput.waitFor({ state: "visible", timeout: 30_000 });
   await emailInput.fill(EMAIL);
 
-  const continueBtn = page
-    .locator("button:has-text('Continue'), button[type='submit']")
+  // NEVER select the submit button with a bare `button[type='submit']`
+  // union + .first(): Clerk's <form class="cl-form"> opens with a
+  // deliberately hidden submit button —
+  //   <button type="submit" aria-hidden="true"
+  //           style="visibility: hidden; position: absolute">
+  // — placed BEFORE the visible "Continue" button in DOM order, so a
+  // DOM-ordered .first() resolves to that invisible button and the click
+  // times out (run 45658284275, 2026-11-25: all 3 sign-in tests burned
+  // the full 120s at this click; see the failure artifacts' trace DOM).
+  // A role lookup only matches buttons with an accessible name, which
+  // the aria-hidden button does not have, and we additionally wait for
+  // visibility before clicking.
+  const submitBtn = page
+    .getByRole("button", { name: /continue|sign in/i })
     .first();
-  await continueBtn.click();
-
   const passwordInput = page
     .locator("input[type='password'], input[name='password']")
     .first();
-  await passwordInput.waitFor({ state: "visible", timeout: 30_000 });
-  await passwordInput.fill(PASSWORD);
 
-  const signInBtn = page
-    .locator("button:has-text('Continue'), button:has-text('Sign in'), button[type='submit']")
-    .first();
-  await signInBtn.click();
+  // Clerk renders this form two ways depending on instance config: the
+  // password field either appears only after the identifier step, or is
+  // already visible alongside the email field. Fill it up front when it
+  // is already there so a single submit completes the sign-in.
+  if (await passwordInput.isVisible().catch(() => false)) {
+    await passwordInput.fill(PASSWORD);
+    await submitBtn.waitFor({ state: "visible", timeout: 30_000 });
+    await submitBtn.click();
+  } else {
+    await submitBtn.waitFor({ state: "visible", timeout: 30_000 });
+    await submitBtn.click();
+    await passwordInput.waitFor({ state: "visible", timeout: 30_000 });
+    await passwordInput.fill(PASSWORD);
+    const signInBtn = page
+      .getByRole("button", { name: /continue|sign in/i })
+      .first();
+    await signInBtn.waitFor({ state: "visible", timeout: 30_000 });
+    await signInBtn.click();
+  }
 
   // SignIn's fallbackRedirectUrl is /today: a completed sign-in leaves
   // /auth. Staying on /auth (or landing back on it) is a broken sign-in.
