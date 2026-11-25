@@ -215,15 +215,19 @@ describe("§8.3 test 12 — sensitivity moves margin and IRR the right way, by t
 });
 
 describe("§8.3 tests 13–14 — engine registration, ownership, preview ≡ record", () => {
-  it("is registered, declares ONLY subdivider, and every produced metric is in the registry", () => {
+  it("is registered, declares subdivider + developer (developer bar-(b) item 1), and every produced metric is in the registry", () => {
     const e = engineById("subdivision_feasibility", ALL_ENGINES)!;
-    expect(e.verticals).toEqual(["subdivider"]);
+    expect(e.verticals).toEqual(["subdivider", "developer"]);
     const body = computeScenario({ subjectType: "property", subjectId: 1, label: "x", engineId: e.id, inputs: WIRE }, ALL_ENGINES);
     expect(body.metrics.map((m) => m.id).sort()).toEqual([...e.produces].sort());
   });
 
   it("no engine but this one declares subdivider (so a subdivider decision can only cite it)", () => {
     expect(ALL_ENGINES.filter((x) => (x.verticals ?? []).includes("subdivider")).map((x) => x.id)).toEqual(["subdivision_feasibility"]);
+  });
+
+  it("no engine but this one declares developer (so a developer decision can only cite it)", () => {
+    expect(ALL_ENGINES.filter((x) => (x.verticals ?? []).includes("developer")).map((x) => x.id)).toEqual(["subdivision_feasibility"]);
   });
 
   it("preview ≡ record: the preview's metrics and declared assumptions equal the scenario computeScenario freezes", () => {
@@ -274,6 +278,35 @@ describe("§8.3 test 13 — ownership guard (evidence rule v2): refused BEFORE a
     expect(stores.scenarios).toHaveLength(1);
     expect(stores.decisions).toHaveLength(1);
     expect(stores.scenarios[0]).toMatchObject({ engineId: "subdivision_feasibility", strategyPackId: "subdivider" });
+  });
+
+  // MUTATION CANARY (developer bar-(b) item 2): the developer pack is guarded
+  // by the same ownership rule — an engine that does not declare developer
+  // refuses the decision BEFORE any write, and the declaring engine passes.
+  const developerDecision = (engineId: string, inputs: Record<string, number | string>) => ({
+    ...decision(engineId, inputs),
+    strategyPackId: "developer" as const,
+    authority: "org_member:subdivision_decide_developer",
+  });
+
+  it("canary: a developer decision citing an engine that does not declare developer writes neither store", async () => {
+    stores.scenarios.length = 0;
+    stores.decisions.length = 0;
+    await expect(recordUnderwrittenDecision(7, developerDecision("flip_mao", { arv: 1 }))).rejects.toThrow(/does not underwrite developer/);
+    await expect(recordUnderwrittenDecision(7, developerDecision("land_deal", { purchaseCents: 1 }))).rejects.toThrow(/does not underwrite developer/);
+    await expect(recordUnderwrittenDecision(7, developerDecision("rental_acquisition", { purchaseCents: 1 }))).rejects.toThrow(/does not underwrite developer/);
+    expect(stores.scenarios).toEqual([]);
+    expect(stores.decisions).toEqual([]);
+  });
+
+  it("the feasibility engine passes the guard for the developer pack and writes exactly one scenario + one decision, citing it", async () => {
+    stores.scenarios.length = 0;
+    stores.decisions.length = 0;
+    await recordUnderwrittenDecision(7, developerDecision("subdivision_feasibility", WIRE));
+    expect(stores.scenarios).toHaveLength(1);
+    expect(stores.decisions).toHaveLength(1);
+    expect(stores.scenarios[0]).toMatchObject({ engineId: "subdivision_feasibility", strategyPackId: "developer" });
+    expect(stores.decisions[0]).toMatchObject({ strategyPackId: "developer" });
   });
 });
 

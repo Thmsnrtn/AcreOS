@@ -305,6 +305,17 @@ describe("GET /api/subdivision/parcels/:id/desk — decisions", () => {
     expect(res.body.decisions.map((x: any) => x.id)).not.toContain(4);
   });
 
+  it("developer-pack pursue/pass decisions are on the desk too (shared desk, both packs — bar-(b) item 2)", async () => {
+    world.rows.decision_snapshots = [
+      decisionRow({ id: 1, decidedAt: d("2026-09-01T00:00:00Z"), kind: "pass", choice: "Pass" }),
+      decisionRow({ id: 2, decidedAt: d("2026-10-01T00:00:00Z"), strategyPackId: "developer", authority: "org_member:subdivision_decide_developer" }),
+      decisionRow({ id: 3, decidedAt: d("2026-10-05T00:00:00Z"), kind: "price", choice: "Lock grid", strategyPackId: "developer", scenarios: [] }), // price-kind lock snapshot, not a desk decision
+    ];
+    const res = await getDesk(PARCEL);
+    expect(res.statusCode).toBe(200);
+    expect(res.body.decisions.map((x: any) => x.id)).toEqual([2, 1]);
+  });
+
   it("hasOutcome is false before an outcome row exists and true after — for that decision only, and only this org's outcome counts", async () => {
     world.rows.decision_snapshots = [
       decisionRow({ id: 1, decidedAt: d("2026-09-01T00:00:00Z") }),
