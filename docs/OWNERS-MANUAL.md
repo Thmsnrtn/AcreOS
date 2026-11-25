@@ -1319,31 +1319,31 @@ Each role has different access levels:
 
 ### Sending Invitations
 
-1. Go to **Settings** > **Team**
-2. Click **Invite Member**
+1. Go to **Settings** > **Organization**
+2. Find the **Invite team members** card
 3. Enter their email address
 4. Select their role
-5. Click **Send Invitation**
+5. Click **Send invite**
 
 ### Invitation Process
 
-1. Invitee receives an email with join link
-2. They click the link and sign in with Replit
+1. If email delivery is set up, the invitee receives an email with a join link. If it is not, or the address cannot be mailed, the card says so and shows a link for you to send them yourself
+2. They click the link and sign in or create an account with the invited email address
 3. They're added to your organization
 4. They appear in your team list
 
 ### Managing Pending Invitations
 
-- View pending invitations in **Settings** > **Team**
-- Resend invitation emails
-- Cancel invitations
-- Invitations expire after 7 days
+- View pending invitations in **Settings** > **Organization**
+- **Resend email** or **New link** issues a fresh link; the previous link stops working
+- Revoke invitations
+- Invitations expire after 14 days; a new link restarts the 14 days
 
 ## Managing Team Members
 
 ### Changing Roles
 
-1. Go to **Settings** > **Team**
+1. Go to **Settings** > **Organization**
 2. Find the team member
 3. Click their current role
 4. Select the new role
@@ -1351,7 +1351,7 @@ Each role has different access levels:
 
 ### Removing Team Members
 
-1. Go to **Settings** > **Team**
+1. Go to **Settings** > **Organization**
 2. Find the team member
 3. Click **Remove**
 4. Confirm the removal

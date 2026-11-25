@@ -17,6 +17,7 @@ import {
   redactToken,
   timingSafeEqualStr,
   tokenMatchesRow,
+  buildInviteLink,
 } from "../../server/utils/inviteTokens";
 import {
   checkInviteCreateLimit,
@@ -74,6 +75,38 @@ describe("inviteTokens primitives", () => {
     expect(tokenMatchesRow(plaintext, { token: plaintext, inviteTokenHash: null })).toBe(true);
     expect(tokenMatchesRow("other", { token: plaintext, inviteTokenHash: null })).toBe(false);
     expect(tokenMatchesRow(plaintext, { token: null, inviteTokenHash: null })).toBe(false);
+  });
+});
+
+describe("buildInviteLink", () => {
+  it("joins base and token, trimming any trailing slashes", () => {
+    expect(buildInviteLink("https://app.example.com", "tok")).toBe("https://app.example.com/auth?invite=tok");
+    expect(buildInviteLink("https://app.example.com/", "tok")).toBe("https://app.example.com/auth?invite=tok");
+    expect(buildInviteLink("https://app.example.com///", "tok")).toBe("https://app.example.com/auth?invite=tok");
+    expect(buildInviteLink("https://app.example.com/a/b/", "tok")).toBe("https://app.example.com/a/b/auth?invite=tok");
+    expect(buildInviteLink("", "tok")).toBe("/auth?invite=tok");
+    expect(buildInviteLink("///", "tok")).toBe("/auth?invite=tok");
+  });
+
+  it("stays linear on a header-sized run of '/' that does not end the string", () => {
+    // The base comes from the Origin/Host header. A long run of '/' followed by
+    // a non-slash is the worst case for an end-anchored trailing-slash regex
+    // (it retries from every start position). The trim must stay linear.
+    // 100k slashes: an end-anchored regex takes seconds here (quadratic);
+    // the linear trim takes microseconds. 100 ms leaves ample CI headroom.
+    const hostile = "https://x" + "/".repeat(100_000) + "y";
+    const started = performance.now();
+    const link = buildInviteLink(hostile, "tok");
+    expect(performance.now() - started).toBeLessThan(100);
+    expect(link).toBe(hostile + "/auth?invite=tok");
+  });
+
+  it("stays linear on a long run of trailing '/'", () => {
+    const hostile = "https://x" + "/".repeat(100_000);
+    const started = performance.now();
+    const link = buildInviteLink(hostile, "tok");
+    expect(performance.now() - started).toBeLessThan(100);
+    expect(link).toBe("https://x/auth?invite=tok");
   });
 });
 
