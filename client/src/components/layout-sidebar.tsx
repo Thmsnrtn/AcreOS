@@ -671,7 +671,7 @@ const NAV_MODULES: NavModule[] = [
     label: "Creative finance",
     icon: Lightbulb,
     href: "/deals",
-    description: "Seller-finance deals — carry the note, service it, stay compliant",
+    description: "Seller-finance deals — carry the note, service it, keep the records in order",
     businessTypeOnly: ["creative_finance"],
     children: [
       { label: "Deal pipeline", icon: GitBranch, href: "/deals", description: "Subject-to / wrap / owner-carry deals — Close & Carry on the closed deal" },

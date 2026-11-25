@@ -136,6 +136,19 @@ describe("Creative finance nav module (layout-sidebar.tsx)", () => {
     }
   });
 
+  it("module description makes no compliance claim (bar (f), work item 5)", () => {
+    // The module description previously ended "stay compliant" — a
+    // compliance claim by AcreOS. It is records language now, and the
+    // claim must not come back.
+    const description = block.match(/description:\s*"([^"]+)"/);
+    expect(description, "module must carry a description").toBeTruthy();
+    expect(description![1]).toBe(
+      "Seller-finance deals — carry the note, service it, keep the records in order",
+    );
+    expect(block).not.toMatch(/stay compliant/i);
+    expect(description![1]).not.toMatch(/complian/i);
+  });
+
   it("documents WHY /notes is absent (the land-investorType hide) — the gap stays stated", () => {
     // Pin the premise itself so a future sidebar-hidden-routes change is
     // noticed: today "/notes" IS hidden for this fingerprint, which is why
