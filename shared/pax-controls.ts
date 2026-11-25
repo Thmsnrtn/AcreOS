@@ -528,6 +528,9 @@ const TOOL_REGISTRY: Readonly<Record<string, ToolEntry>> = Object.fromEntries([
       "get_tenants",
       "get_lease_ledger",
       "get_rental_underwriting_decision",
+      "get_rehab_projects",
+      "get_rehab_detail",
+      "get_flip_analysis",
       "calculate_amortization",
       "calculate_payment_schedule",
       "calculate_roi",
@@ -580,6 +583,8 @@ const TOOL_REGISTRY: Readonly<Record<string, ToolEntry>> = Object.fromEntries([
   ...recordTools("deals", ["record_tax_ledger_entry"], "executeTool"),
   // A rent-ledger record is a record on a position the customer holds — the deals rail.
   ...recordTools("deals", ["record_rent_payment", "generate_scheduled_rent_charges"], "executeTool"),
+  // A holding-cost entry is an append-only record on a rehab the customer holds — the deals rail.
+  ...recordTools("deals", ["append_holding_cost_entry"], "executeTool"),
   ...recordTools("tasks", ["create_task", "update_task", "complete_task"], "executeTool"),
   ...recordTools("follow_ups", ["schedule_followup", "schedule_follow_up"], "executeTool"),
   // APPROVAL_REQUIRED_TOOLS (server/services/approvalKernel.ts) — may only grow.
@@ -595,6 +600,10 @@ const TOOL_REGISTRY: Readonly<Record<string, ToolEntry>> = Object.fromEntries([
       "trigger_zapier",
       "trigger_make",
       "create_calendar_event",
+      // A write-once exit/realized record, not a send: it sits in the
+      // waits-for-a-tap group because it is in APPROVAL_REQUIRED_TOOLS —
+      // it never executes without the customer's tap, and it sends nothing.
+      "record_exit_facts",
     ],
     "sends",
     "executeTool",

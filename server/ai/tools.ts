@@ -326,6 +326,75 @@ export const toolDefinitions = {
       }
     }
   },
+
+  // Fix-and-flip rehab tools. Reads state their coverage; the holding-cost
+  // entry appends an append-only fact; the exit/realized record is
+  // ask-before at every stance (APPROVAL_REQUIRED_TOOLS — it never runs
+  // without the customer's tap). Nothing here sends anything (FD5).
+  get_rehab_projects: {
+    name: "get_rehab_projects",
+    description: "List this account's rehab (fix-and-flip) projects with status, dates, purchase, budget, spent, holding and ARV figures, and whether realized facts are recorded. The result carries a coverage statement: state it. An account with no rehab projects is reported as empty, never as on budget.",
+    parameters: {
+      type: "object",
+      properties: {
+        status: { type: "string", description: "Rehab status filter (optional, e.g. planning, demo, finishes, listed, closed)" }
+      }
+    }
+  },
+  get_rehab_detail: {
+    name: "get_rehab_detail",
+    description: "Get one rehab project in full: scope lines with estimate / committed / actual variance (approved change orders folded into the effective estimate), the timeline against the original kickoff baseline (phase variances, listing variance), recorded holding-cost entries and their total, change orders, exit decisions, and the realized facts with their grading against the flip analysis. The result carries a coverage statement: it shows what is recorded, not costs paid outside AcreOS and never recorded.",
+    parameters: {
+      type: "object",
+      properties: { rehab_id: { type: "string", description: "The rehab id from get_rehab_projects (a long identifier, not the project name or address)" } },
+      required: ["rehab_id"]
+    }
+  },
+  get_flip_analysis: {
+    name: "get_flip_analysis",
+    description: "Get the latest flip analysis (the flip_mao maximum-allowable-offer scenario) recorded for one property — or for a rehab's property: the frozen inputs, the predicted profit / ROI / total cost, and every assumption with its origin and basis (the evidence the number rests on), plus the latest fix-and-flip decision recorded for the property. The result carries a coverage statement. If none is recorded, the result says so — never reconstruct one from the property's numbers. It is a screen the operator ran, not a valuation.",
+    parameters: {
+      type: "object",
+      properties: {
+        property_id: { type: "number", description: "The property number (either this or rehab_id)" },
+        rehab_id: { type: "string", description: "A rehab id — reads the analysis for that rehab's property" }
+      }
+    }
+  },
+  append_holding_cost_entry: {
+    name: "append_holding_cost_entry",
+    description: "Record ONE holding-cost entry the customer has already incurred on a rehab (taxes, insurance, utilities, interest, HOA or other), as an append-only fact. A correction is a NEW negative entry whose note says what it corrects — the original entry is never edited. A date in the future is refused. This records only — AcreOS paid nothing and never sends anything.",
+    parameters: {
+      type: "object",
+      properties: {
+        rehab_id: { type: "string", description: "The rehab id" },
+        entry_date: { type: "string", description: "Date the cost was incurred, YYYY-MM-DD" },
+        category: { type: "string", enum: ["taxes", "insurance", "utilities", "interest", "hoa", "other"], description: "Which holding cost" },
+        amount_cents: { type: "number", description: "Amount in cents; non-zero — negative only as a correction" },
+        note: { type: "string", description: "Optional note; on a correction, what it corrects" }
+      },
+      required: ["rehab_id", "entry_date", "category", "amount_cents"]
+    }
+  },
+  record_exit_facts: {
+    name: "record_exit_facts",
+    description: "Record, ONLY after the customer approves the ask this tool always raises, one of two write-once records on a rehab: the exit decision (sell, hold or wholesale — recorded from the listing onward, with the expected price and the customer's rationale), or the realized facts at close (sale price, selling costs, closing date — recorded once, never edited). Without the customer's tap this tool records nothing and sends nothing; it never lists, sells or contacts anyone.",
+    parameters: {
+      type: "object",
+      properties: {
+        rehab_id: { type: "string", description: "The rehab id" },
+        kind: { type: "string", enum: ["exit_decision", "realized"], description: "Which record" },
+        exit_kind: { type: "string", enum: ["sell", "hold", "wholesale"], description: "exit_decision: the exit the customer chose" },
+        expected_price_cents: { type: "number", description: "exit_decision: asking/expected price in cents (required for sell and wholesale)" },
+        rationale: { type: "string", description: "exit_decision: the customer's rationale, at least a sentence" },
+        review_due_at: { type: "string", description: "exit_decision: optional review date/time in the future (ISO), or omit for none" },
+        sale_price_cents: { type: "number", description: "realized: the sale price in cents" },
+        selling_costs_cents: { type: "number", description: "realized: the selling costs in cents" },
+        closing_date: { type: "string", description: "realized: the closing date, YYYY-MM-DD" }
+      },
+      required: ["rehab_id", "kind"]
+    }
+  },
   calculate_amortization: {
     name: "calculate_amortization",
     description: "Calculate loan amortization schedule given principal, rate, and term.",
@@ -1283,6 +1352,10 @@ export const PAUSE_SAFE_TOOLS: ReadonlySet<string> = new Set([
   "get_tenants",
   "get_lease_ledger",
   "get_rental_underwriting_decision",
+  // Fix-and-flip reads (they only read).
+  "get_rehab_projects",
+  "get_rehab_detail",
+  "get_flip_analysis",
   // Pure calculations
   "calculate_amortization",
   "calculate_payment_schedule",
@@ -2089,6 +2162,55 @@ export async function executeTool(
           receiptWritten = true;
         }
         return buyHoldOutcomeToResult(out);
+      }
+
+      case "get_rehab_projects": {
+        const { paxGetRehabProjects, flipOutcomeToResult } = await import("./flipTools");
+        return flipOutcomeToResult(await paxGetRehabProjects(org.id, { status: args.status }));
+      }
+
+      case "get_rehab_detail": {
+        const { paxGetRehabDetail, flipOutcomeToResult } = await import("./flipTools");
+        return flipOutcomeToResult(await paxGetRehabDetail(org.id, args.rehab_id));
+      }
+
+      case "get_flip_analysis": {
+        const { paxGetFlipAnalysis, flipOutcomeToResult } = await import("./flipTools");
+        return flipOutcomeToResult(await paxGetFlipAnalysis(org.id, { property_id: args.property_id, rehab_id: args.rehab_id }));
+      }
+
+      case "append_holding_cost_entry": {
+        // An append-only recorded fact — never a payment and never a send (FD5).
+        const { paxAppendHoldingCostEntry, flipOutcomeToResult } = await import("./flipTools");
+        const out = await paxAppendHoldingCostEntry(org.id, options?.userId ?? null, args);
+        if (out.ok && out.receipt && !trustedApproval) {
+          await recordPaxEffect({
+            orgId: org.id,
+            actor: "pax",
+            origin,
+            stance: controls?.stance ?? null,
+            tool: "append_holding_cost_entry",
+            action: "holding_cost_entry_recorded",
+            entityType: "organization",
+            entityId: org.id,
+            description: out.receipt.description,
+            before: out.receipt.before,
+            after: out.receipt.after,
+            witnessed: false,
+            userId: options?.userId ?? null,
+          });
+          receiptWritten = true;
+        }
+        return flipOutcomeToResult(out);
+      }
+
+      case "record_exit_facts": {
+        // Ask-before at every stance: this case is reachable only on the
+        // approval kernel's trusted replay (APPROVAL_REQUIRED_TOOLS), whose
+        // witnessed audit is the receipt — no own receipt is written here.
+        const { paxRecordExitFacts, flipOutcomeToResult } = await import("./flipTools");
+        const out = await paxRecordExitFacts(org.id, options?.userId ?? null, args);
+        return flipOutcomeToResult(out);
       }
 
       case "get_notes": {
@@ -4084,10 +4206,10 @@ export function getToolsForRole(role: string) {
   const roleToolMap: Record<string, string[]> = {
     executive: allTools,
     acquisitions: [...coreTools, ...memoryTools, "get_leads", "get_lead_details", "update_lead_status", "create_lead", "get_properties", "create_property", "get_deals", "create_deal", "get_tasks", "create_task", "get_pipeline_summary", "generate_offer", "generate_offer_letter", "send_email", "send_sms", "run_comps_analysis", "schedule_followup", "draft_offer", "schedule_follow_up", "run_comps", "get_stale_leads", "draft_outreach_message"],
-    underwriting: [...coreTools, ...memoryTools, "get_properties", "get_property_details", "update_property", "get_notes", "get_tax_certificates", "get_tax_certificate", "get_tax_certificate_clock", "get_tax_certificate_ledger", "record_tax_ledger_entry", "get_rent_roll", "get_rental_leases", "get_tenants", "get_lease_ledger", "get_rental_underwriting_decision", "record_rent_payment", "generate_scheduled_rent_charges", "calculate_amortization", "get_cashflow_summary", "get_deals", "update_deal", "run_comps_analysis", "run_comps", "calculate_roi", "calculate_payment_schedule", "research_property", "draft_offer"],
+    underwriting: [...coreTools, ...memoryTools, "get_properties", "get_property_details", "update_property", "get_notes", "get_tax_certificates", "get_tax_certificate", "get_tax_certificate_clock", "get_tax_certificate_ledger", "record_tax_ledger_entry", "get_rent_roll", "get_rental_leases", "get_tenants", "get_lease_ledger", "get_rental_underwriting_decision", "record_rent_payment", "generate_scheduled_rent_charges", "get_rehab_projects", "get_rehab_detail", "get_flip_analysis", "append_holding_cost_entry", "record_exit_facts", "calculate_amortization", "get_cashflow_summary", "get_deals", "update_deal", "run_comps_analysis", "run_comps", "calculate_roi", "calculate_payment_schedule", "research_property", "draft_offer"],
     marketing: [...coreTools, ...memoryTools, "get_leads", "get_properties", "get_pipeline_summary", "create_task", "send_email", "send_sms", "get_stale_leads", "draft_outreach_message"],
     research: [...coreTools, ...memoryTools, "get_properties", "get_property_details", "get_leads", "create_property", "update_property", "run_comps_analysis", "run_comps", "research_property", "calculate_roi", "browse_web", "browse_search"],
-    documents: [...coreTools, "get_leads", "get_lead_details", "get_properties", "get_property_details", "get_notes", "get_tax_certificates", "get_tax_certificate", "get_tax_certificate_clock", "get_tax_certificate_ledger", "record_tax_ledger_entry", "get_rent_roll", "get_rental_leases", "get_tenants", "get_lease_ledger", "get_rental_underwriting_decision", "record_rent_payment", "generate_scheduled_rent_charges", "get_deals", "generate_offer_letter", "draft_offer"],
+    documents: [...coreTools, "get_leads", "get_lead_details", "get_properties", "get_property_details", "get_notes", "get_tax_certificates", "get_tax_certificate", "get_tax_certificate_clock", "get_tax_certificate_ledger", "record_tax_ledger_entry", "get_rent_roll", "get_rental_leases", "get_tenants", "get_lease_ledger", "get_rental_underwriting_decision", "record_rent_payment", "generate_scheduled_rent_charges", "get_rehab_projects", "get_rehab_detail", "get_flip_analysis", "append_holding_cost_entry", "record_exit_facts", "get_deals", "generate_offer_letter", "draft_offer"],
     assistant: allTools // Full access for the main assistant
   };
   

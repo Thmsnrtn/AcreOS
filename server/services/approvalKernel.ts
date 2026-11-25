@@ -58,6 +58,11 @@ export const APPROVAL_REQUIRED_TOOLS: ReadonlySet<string> = new Set([
   "trigger_zapier",
   "trigger_make",
   "create_calendar_event",
+  // 2026-11-24: a rehab's exit decision and realized facts are write-once,
+  // consequential records (fix-and-flip Pax family). They are not sends —
+  // the tool sends nothing — but they must never be recorded on Pax's word
+  // alone, so the tap gates them exactly like a send.
+  "record_exit_facts",
 ]);
 
 /** Pending approvals expire after 24 hours — stale drafts must be re-witnessed. */
