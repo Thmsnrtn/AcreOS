@@ -246,7 +246,10 @@ export function registerSubdivisionDecisionRoutes(app: Express): void {
         // ── decisions (subdivider + developer pursue / pass), newest first ──
         const subjectDecisions = await decisionsForSubject(organizationId, "property", property.id);
         const recorded = subjectDecisions.filter(
-          (d) => DESK_PACKS.has(d.body.strategyPackId) && (d.body.kind === "pursue" || d.body.kind === "pass"),
+          (d) =>
+            typeof d.body.strategyPackId === "string" &&
+            DESK_PACKS.has(d.body.strategyPackId) &&
+            (d.body.kind === "pursue" || d.body.kind === "pass"),
         );
         const graded = new Set<number>();
         if (recorded.length > 0) {
@@ -284,7 +287,9 @@ export function registerSubdivisionDecisionRoutes(app: Express): void {
           .orderBy(desc(lotPricingRules.lockedAt));
         const lockSnapshots = new Map(
           subjectDecisions
-            .filter((d) => d.body.kind === "price" && DESK_PACKS.has(d.body.strategyPackId))
+            .filter(
+              (d) => d.body.kind === "price" && typeof d.body.strategyPackId === "string" && DESK_PACKS.has(d.body.strategyPackId),
+            )
             .map((d) => [d.id, d] as const),
         );
         const lockSnapshotIds = [...lockSnapshots.keys()];

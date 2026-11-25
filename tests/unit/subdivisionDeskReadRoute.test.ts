@@ -276,6 +276,7 @@ describe("GET /api/subdivision/parcels/:id/desk — decisions", () => {
       decisionRow({ id: 4, decidedAt: d("2026-10-06T00:00:00Z"), subjectId: 999 }), // another parcel
       decisionRow({ id: 5, decidedAt: d("2026-10-07T00:00:00Z"), organizationId: OTHER }), // another org
       decisionRow({ id: 6, decidedAt: d("2026-10-08T00:00:00Z"), strategyPackId: "flip", kind: "pursue" }), // another pack
+      decisionRow({ id: 7, decidedAt: d("2026-10-09T00:00:00Z"), strategyPackId: null, kind: "pursue" }), // no pack recorded → not a desk decision
     ];
     const res = await getDesk(PARCEL);
     expect(res.statusCode).toBe(200);
@@ -303,6 +304,7 @@ describe("GET /api/subdivision/parcels/:id/desk — decisions", () => {
     ]);
     expect(res.body.decisions.map((x: any) => x.id)).not.toContain(3);
     expect(res.body.decisions.map((x: any) => x.id)).not.toContain(4);
+    expect(res.body.decisions.map((x: any) => x.id)).not.toContain(7);
   });
 
   it("developer-pack pursue/pass decisions are on the desk too (shared desk, both packs — bar-(b) item 2)", async () => {
@@ -408,6 +410,14 @@ describe("GET /api/subdivision/parcels/:id/desk — pricingLocks: graded vs ungr
     expect((await getDesk(PARCEL)).body.pricingLocks[0].hasOutcome).toBe(false);
     world.rows.outcomes = [{ id: 2, organizationId: ORG, decisionSnapshotId: 91 }];
     expect((await getDesk(PARCEL)).body.pricingLocks[0].hasOutcome).toBe(true);
+  });
+
+  it("a lock whose price snapshot records NO strategy pack (null) is NOT shown as graded — null is not a desk pack", async () => {
+    world.rows.lot_pricing_rules = [lockRow(1, 94)];
+    world.rows.decision_snapshots = [priceSnapshot(94, { strategyPackId: null })]; // cites scenario 501, but pack is null
+    const res = await getDesk(PARCEL);
+    expect(res.body.pricingLocks[0].grading).toBe("ungraded_pricing_act");
+    expect(res.body.pricingLocks[0]).not.toHaveProperty("scenarioIds");
   });
 
   it("a lock pointing at a snapshot that is another parcel's (or missing) is NOT shown as graded", async () => {
