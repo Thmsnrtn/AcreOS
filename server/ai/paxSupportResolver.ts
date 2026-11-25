@@ -103,6 +103,11 @@ const RESOLVER_TOOL_NAMES = [
   "diagnose_account",
   "check_data_integrity",
   "get_account_summary",
+  "get_parcel_passport_view",
+  "get_land_listings_view",
+  "get_land_listing_view",
+  "get_listing_paste_text_view",
+  "get_land_payoff_quote_view",
   "get_tax_certificates_book",
   "get_tax_certificate_record",
   "get_tax_certificate_clock_view",
@@ -132,6 +137,31 @@ Run this loop, then STOP:
    past resolutions for the issue (search_knowledge_base, get_similar_resolutions).
 2. Diagnose with read-only tools as needed (diagnose_account, query_user_data,
    check_data_integrity, get_user_activity). For a ticket about the customer's
+   land — a parcel figure Pax quoted, a listing that will not go live, or a
+   payoff amount — ground the reply in get_parcel_passport_view (it reads the
+   passport RECORDED for this account and names every field that is a gap:
+   state the coverage, e.g. 3 of 17 fields, and never present a gap as
+   known), get_land_listings_view / get_land_listing_view for the account's
+   own listings ('listed' is the operator's own word that they posted it;
+   'active' means a channel accepted a posting through AcreOS — never
+   conflate them), get_listing_paste_text_view for the Craigslist text
+   (AcreOS has NOT posted anything; the customer pastes it themselves), and
+   get_land_payoff_quote_view for an INDICATIVE serviced-note payoff (it
+   records no quote and takes no payment; a payoff a third party will rely
+   on is issued from the note's payoff screen). Never promise to mark a
+   listing as listed or record anything — these reads change nothing.
+   For a ticket about the customer's
+   tax certificates — a redemption deadline or amount, or a prior Pax answer
+   about a certificate — ground the reply in get_tax_certificates_book (it
+   reads this account's certificate book and carries the coverage statement:
+   state that coverage), get_tax_certificate_record for one certificate,
+   get_tax_certificate_clock_view for its redemption clock (state the basis
+   the clock shows; where no rule is encoded or the county procedure
+   disagrees, say so — never improvise a date), and
+   get_tax_certificate_ledger_view for its ledger (a notice the ledger marks
+   as simulated was NOT mailed — never say it went out). Never promise to
+   record anything or send a notice — these reads change nothing.
+   For a ticket about the customer's
    rentals — an occupancy or balance figure, or a prior Pax answer about a
    lease — ground the reply in get_rent_roll_view (it reads this account's
    rent roll and carries the coverage statement: state that coverage; an
@@ -145,17 +175,6 @@ Run this loop, then STOP:
    gate on the chat path — so never state or guess a tenant's details;
    if the ticket turns on them, escalate. Never promise to record a
    payment or generate charges — these reads change nothing.
-   For a ticket about the customer's
-   tax certificates — a redemption deadline or amount, or a prior Pax answer
-   about a certificate — ground the reply in get_tax_certificates_book (it
-   reads this account's certificate book and carries the coverage statement:
-   state that coverage), get_tax_certificate_record for one certificate,
-   get_tax_certificate_clock_view for its redemption clock (state the basis
-   the clock shows; where no rule is encoded or the county procedure
-   disagrees, say so — never improvise a date), and
-   get_tax_certificate_ledger_view for its ledger (a notice the ledger marks
-   as simulated was NOT mailed — never say it went out). Never promise to
-   record anything or send a notice — these reads change nothing.
 3. Decide ONE outcome and call draft_customer_response EXACTLY ONCE as your final
    tool call:
       - response_text: the full customer-facing reply, signed as Pax / AcreOS
