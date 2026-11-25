@@ -958,6 +958,50 @@ describe("the multifamily engine — the first engine allowed to REFUSE", () => 
     ).toThrow(ScenarioEngineError);
   });
 
+  it("refuses a NEGATIVE measured op-ex in plain words (residential or commercial)", () => {
+    // A negative operating expense is a data error, not a measurement:
+    // computing with it would add the "expense" to NOI and present the
+    // result as measured books. The shared contract in noi.ts refuses it
+    // for every caller; this leg gives the refusal the engine's own shape.
+    for (const structureClass of ["residential", "commercial"]) {
+      expect(() =>
+        computeScenario(
+          mfRequest({
+            structureClass,
+            measuredOpExRowCount: 40,
+            measuredOpExMonthsCovered: 12,
+            measuredOpExMonthlyCents: -700_000,
+          }),
+          ALL_ENGINES,
+        ),
+      ).toThrow(/measuredOpExMonthlyCents must not be negative/);
+    }
+  });
+
+  it("refuses a supplied negative op-ex even when no rows were measured", () => {
+    // Left unrefused it would persist verbatim in normalisedInputs as if
+    // it were an input the maths had honoured.
+    expect(() =>
+      computeScenario(
+        mfRequest({ measuredOpExMonthlyCents: -1 }),
+        ALL_ENGINES,
+      ),
+    ).toThrow(ScenarioEngineError);
+  });
+
+  it("a measured op-ex of ZERO computes — zero is a real measurement", () => {
+    const body = computeScenario(
+      mfRequest({
+        measuredOpExRowCount: 40,
+        measuredOpExMonthsCovered: 12,
+        measuredOpExMonthlyCents: 0,
+      }),
+      ALL_ENGINES,
+    );
+    expect(metricValue(body, "annual_operating_expense")).toBe(0);
+    expect(metricValue(body, "annual_noi")).toBe(1_840_000 * 12);
+  });
+
   it("is deterministic", () => {
     const a = computeScenario(mfRequest(), ALL_ENGINES);
     const b = computeScenario(mfRequest(), ALL_ENGINES);

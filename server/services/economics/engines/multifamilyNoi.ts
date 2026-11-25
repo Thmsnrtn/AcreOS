@@ -127,6 +127,19 @@ export const multifamilyNoiEngine: EngineSpec = {
         "measuredOpExMonthlyCents is required when measuredOpExRowCount > 0",
       );
     }
+    // A supplied negative is refused whether or not it would be computed
+    // with: operating expenses are stored nonnegative, so a negative figure
+    // is a data error, never a measurement or a credit — and left unrefused
+    // it would either inflate NOI (when measured) or persist verbatim in
+    // normalisedInputs as if it were an input the maths had honoured.
+    // decideOperatingExpense refuses the measured case itself for every
+    // caller; this leg gives the refusal the engine's own error shape.
+    if (measuredOpExMonthlyCents !== null && measuredOpExMonthlyCents < 0) {
+      throw new ScenarioEngineError(
+        "measuredOpExMonthlyCents must not be negative — a negative " +
+          "operating expense is a data error, not a measurement",
+      );
+    }
     const opExBps =
       inputs["opExBps"] === undefined ? undefined : requireNumber(inputs, "opExBps");
     const debtServiceMonthlyCents = optionalCents(inputs, "debtServiceMonthlyCents");
