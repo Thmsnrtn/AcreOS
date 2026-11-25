@@ -62,21 +62,90 @@ async function signInThroughClerk(page: Page): Promise<void> {
   await emailInput.waitFor({ state: "visible", timeout: 30_000 });
   await emailInput.fill(EMAIL);
 
-  const continueBtn = page
-    .locator("button:has-text('Continue'), button[type='submit']")
+  // NEVER select the submit button with a bare `button[type='submit']`
+  // union + .first(): Clerk's <form class="cl-form"> opens with a
+  // deliberately hidden submit button —
+  //   <button type="submit" aria-hidden="true"
+  //           style="visibility: hidden; position: absolute">
+  // — placed BEFORE the visible "Continue" button in DOM order, so a
+  // DOM-ordered .first() resolves to that invisible button and the click
+  // times out (run 45658284275, 2026-11-25: all 3 sign-in tests burned
+  // the full 120s at this click; see the failure artifacts' trace DOM).
+  // A role lookup only matches buttons with an accessible name, which
+  // the aria-hidden button does not have, and we additionally wait for
+  // visibility before clicking.
+  const submitBtn = page
+    .getByRole("button", { name: /continue|sign in/i })
     .first();
-  await continueBtn.click();
-
   const passwordInput = page
     .locator("input[type='password'], input[name='password']")
     .first();
-  await passwordInput.waitFor({ state: "visible", timeout: 30_000 });
-  await passwordInput.fill(PASSWORD);
 
-  const signInBtn = page
-    .locator("button:has-text('Continue'), button:has-text('Sign in'), button[type='submit']")
+  // Clerk renders this form two ways depending on instance config: the
+  // password field either appears only after the identifier step, or is
+  // already visible alongside the email field. Fill it up front when it
+  // is already there so a single submit completes the sign-in.
+  if (await passwordInput.isVisible().catch(() => false)) {
+    await passwordInput.fill(PASSWORD);
+    await submitBtn.waitFor({ state: "visible", timeout: 30_000 });
+    await submitBtn.click();
+  } else {
+    await submitBtn.waitFor({ state: "visible", timeout: 30_000 });
+    await submitBtn.click();
+    await passwordInput.waitFor({ state: "visible", timeout: 30_000 });
+    await passwordInput.fill(PASSWORD);
+    const signInBtn = page
+      .getByRole("button", { name: /continue|sign in/i })
+      .first();
+    await signInBtn.waitFor({ state: "visible", timeout: 30_000 });
+    await signInBtn.click();
+  }
+
+  // Factor-two: the staging Clerk instance has new-device verification
+  // on, and a CI runner is always a new device — after the password is
+  // ACCEPTED (POST /v1/client/sign_ins → 200, then prepare_second_factor
+  // → 200) Clerk routes to /auth#/factor-two, "Check your email …
+  // You're signing in from a new device", and emails a 6-digit code
+  // (proven by re-proof run 45663560002's artifacts, 2026-11-25).
+  // On a Clerk DEVELOPMENT instance, an account whose email uses the
+  // +clerk_test subaddress (e.g. name+clerk_test@acreos.io) always
+  // receives the fixed test code 424242 and no real email is sent —
+  // Clerk's documented E2E affordance. Complete that step when it
+  // appears; if the account is NOT a +clerk_test account the code will
+  // be rejected and this smoke stays red with Clerk's error visible,
+  // which is the correct fail-closed behaviour until the account is
+  // switched (see the PR description for the instance-side item).
+  const TEST_CODE = process.env.E2E_CLERK_TEST_CODE ?? "424242";
+  const codeInput = page
+    .locator(
+      "input[name='code'], input[autocomplete='one-time-code'], input[inputmode='numeric']",
+    )
     .first();
-  await signInBtn.click();
+  const factorTwoShown = await codeInput
+    .waitFor({ state: "visible", timeout: 10_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (factorTwoShown) {
+    // Clerk's code field is a segmented one-time-code input: fill()
+    // does not reliably populate it, and attempting verification before
+    // Clerk's prepare_second_factor settles earns a "You need to send a
+    // verification code before attempting to verify" error (run
+    // 45664839689's snapshot). Type the code by keyboard after a short
+    // settle, let Clerk's auto-submit fire, and only click Continue if
+    // the step is still showing afterwards.
+    await page.waitForTimeout(1_500);
+    await codeInput.click();
+    await page.keyboard.type(TEST_CODE, { delay: 50 });
+    await page.waitForTimeout(1_500);
+    if (await codeInput.isVisible().catch(() => false)) {
+      const verifyBtn = page
+        .getByRole("button", { name: /continue/i })
+        .first();
+      if (await verifyBtn.isVisible().catch(() => false)) {
+        await verifyBtn.click();
+      }
+    }
+  }
 
   // SignIn's fallbackRedirectUrl is /today: a completed sign-in leaves
   // /auth. Staying on /auth (or landing back on it) is a broken sign-in.
