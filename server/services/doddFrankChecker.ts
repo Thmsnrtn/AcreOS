@@ -175,7 +175,7 @@ export function checkDoddFrankCompliance(input: DoddFrankInput): DoddFrankCheckR
     return {
       risk: 'compliant',
       exemptionApplicable: 'non_dwelling_land',
-      summary: 'This appears to be a land-only transaction. Federal Dodd-Frank seller-financing rules generally do not apply. Verify no dwelling exists and review applicable state laws.',
+      summary: 'Screening result: on the facts entered, this is a land-only transaction with no dwelling, so the federal Dodd-Frank seller-financing screen does not reach it. Screening only — verify that no dwelling exists, and confirm which state seller-financing and usury laws apply to your deal with counsel.',
       findings,
       recommendations,
       requiresLicensedMLO: false,
@@ -277,7 +277,7 @@ export function checkDoddFrankCompliance(input: DoddFrankInput): DoddFrankCheckR
   if (input.sellerConstructedDwelling) {
     findings.push({
       issue: 'Seller-Constructed Dwelling',
-      detail: 'A seller who constructed (or acted as contractor for) the residence in the ordinary course of business qualifies for neither seller-financer exclusion (12 CFR 1026.36(a)(4)(ii), (a)(5)(ii)). A licensed mortgage loan originator is required.',
+      detail: 'A seller who constructed (or acted as contractor for) the residence in the ordinary course of business qualifies for neither seller-financer exclusion (12 CFR 1026.36(a)(4)(ii), (a)(5)(ii)). On these facts the screen points to origination through a licensed mortgage loan originator — confirm with counsel.',
       severity: 'critical',
     });
     requiresMLO = true;

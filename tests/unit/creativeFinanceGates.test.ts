@@ -218,6 +218,30 @@ describe("registry entry (shared/business-types.ts)", () => {
   });
 });
 
+describe("checker + state-rules surface vocabulary (bar (f) residuals, CF-F1/CF-F6)", () => {
+  it("the checker badge names a screen result, not a granted exemption (CF-F1 residual (iii))", () => {
+    // The result badge previously read "Exemption: …" — naming a granted
+    // status. It names the screen that matched on the facts entered now.
+    const src = fs.readFileSync(path.join(CLIENT, "pages/dodd-frank-checker.tsx"), "utf-8");
+    expect(src).toContain("Screen matched:");
+    expect(src).not.toContain("Exemption: {");
+  });
+
+  it("the regulatory-intel surface carries the reference-material framing label (CF-F6)", () => {
+    // The state-rules surface previously rendered usury ceilings and
+    // contract-for-deed fields with no framing copy at all. The label
+    // states the provenance and limits: reference material, conflicts
+    // resolve to "not determinable", uncovered states are "not yet
+    // covered" — never "no rules".
+    const src = fs.readFileSync(path.join(CLIENT, "pages/regulatory-intel.tsx"), "utf-8");
+    expect(src).toContain("reference material compiled from public sources");
+    expect(src).toContain("not a determination for your deal");
+    expect(src).toContain("not determinable");
+    expect(src).toContain("not yet covered");
+    expect(src).toContain("Confirm the current law for your state and your transaction with your own attorney");
+  });
+});
+
 describe("onboarding wizard (onboarding-v2.tsx)", () => {
   // FD1 re-cut (P1-11 S2): creative_finance is registry_only — it left the
   // public promise, so the wizard no longer offers it to new signups. This
