@@ -1,34 +1,30 @@
-import { pgTable, serial, integer, text, timestamp } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "../db/createInsertSchema";
-import { z } from "zod";
-import { sql } from "drizzle-orm";
-
-export const conversations = pgTable("conversations", {
-  id: serial("id").primaryKey(),
-  title: text("title").notNull(),
-  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
-});
-
-export const messages = pgTable("messages", {
-  id: serial("id").primaryKey(),
-  conversationId: integer("conversation_id").notNull().references(() => conversations.id, { onDelete: "cascade" }),
-  role: text("role").notNull(),
-  content: text("content").notNull(),
-  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
-});
-
-export const insertConversationSchema = createInsertSchema(conversations).omit({
-  id: true,
-  createdAt: true,
-});
-
-export const insertMessageSchema = createInsertSchema(messages).omit({
-  id: true,
-  createdAt: true,
-});
-
-export type Conversation = typeof conversations.$inferSelect;
-export type InsertConversation = z.infer<typeof insertConversationSchema>;
-export type Message = typeof messages.$inferSelect;
-export type InsertMessage = z.infer<typeof insertMessageSchema>;
-
+/**
+ * Communications tables — the canonical declarations live in shared/schema.ts.
+ *
+ * This module previously declared its own `conversations` / `messages`
+ * pgTables (a minimal id/title/role chat shape). Those declarations were
+ * unreachable: shared/schema.ts both star-exports this module AND declares
+ * the operative tables itself (the org/lead/channel-scoped comms shape that
+ * migration 0000 created and every consumer uses), and explicit declarations
+ * shadow star-exported ones — so the pair here was a second, divergent
+ * declaration of the same physical tables (Q8-V5 census 2026-11-25, rank #1:
+ * the repo's only duplicated table declarations).
+ *
+ * The cure keeps this module as the import path it has always been, but as a
+ * pure re-export: every name below IS the canonical object/type declared in
+ * shared/schema.ts (identical runtime identity, pinned by
+ * tests/unit/commsTablesSingleDeclaration.test.ts). Do not redeclare a
+ * pgTable here — declare comms table changes in shared/schema.ts.
+ */
+export {
+  conversations,
+  messages,
+  insertConversationSchema,
+  insertMessageSchema,
+} from "../schema";
+export type {
+  Conversation,
+  InsertConversation,
+  Message,
+  InsertMessage,
+} from "../schema";
