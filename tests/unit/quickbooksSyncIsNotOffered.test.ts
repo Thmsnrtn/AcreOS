@@ -121,7 +121,9 @@ describe("the server refuses the QuickBooks flow instead of pretending (driven)"
     process.env.QBO_CLIENT_ID = "configured-client-id";
     try {
       const { getQboOAuthUrl } = await import("../../server/services/bookkeeping");
-      expect(() => getQboOAuthUrl(1)).toThrow(/not implemented/i);
+      expect(() => getQboOAuthUrl(1)).toThrow(/not available yet/i);
+      // The refusal must not send a customer to the founder-only ledger route.
+      expect(() => getQboOAuthUrl(1)).not.toThrow(/qbo-export/);
     } finally {
       if (prev === undefined) delete process.env.QBO_CLIENT_ID;
       else process.env.QBO_CLIENT_ID = prev;
