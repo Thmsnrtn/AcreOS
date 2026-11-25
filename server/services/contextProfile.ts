@@ -60,6 +60,7 @@ export function mapBusinessTypeToInvestorType(businessType: string): InvestorTyp
     mobile_home: 'portfolio_builder',
     tax_lien_deed: 'auction_hunter',
     developer: 'developer',
+    subdivider: 'developer',
     agent_investor: 'wholesaler',
     hybrid: 'portfolio_builder',
   };
