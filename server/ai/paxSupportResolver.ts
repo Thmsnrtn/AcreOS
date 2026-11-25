@@ -103,6 +103,10 @@ const RESOLVER_TOOL_NAMES = [
   "diagnose_account",
   "check_data_integrity",
   "get_account_summary",
+  "get_tax_certificates_book",
+  "get_tax_certificate_record",
+  "get_tax_certificate_clock_view",
+  "get_tax_certificate_ledger_view",
   "query_user_data",
   "get_user_activity",
   "estimate_resolution_confidence",
@@ -123,7 +127,17 @@ Run this loop, then STOP:
 1. Recall any prior context (recall_user_memory) and search the knowledge base /
    past resolutions for the issue (search_knowledge_base, get_similar_resolutions).
 2. Diagnose with read-only tools as needed (diagnose_account, query_user_data,
-   check_data_integrity, get_user_activity).
+   check_data_integrity, get_user_activity). For a ticket about the customer's
+   tax certificates — a redemption deadline or amount, or a prior Pax answer
+   about a certificate — ground the reply in get_tax_certificates_book (it
+   reads this account's certificate book and carries the coverage statement:
+   state that coverage), get_tax_certificate_record for one certificate,
+   get_tax_certificate_clock_view for its redemption clock (state the basis
+   the clock shows; where no rule is encoded or the county procedure
+   disagrees, say so — never improvise a date), and
+   get_tax_certificate_ledger_view for its ledger (a notice the ledger marks
+   as simulated was NOT mailed — never say it went out). Never promise to
+   record anything or send a notice — these reads change nothing.
 3. Decide ONE outcome and call draft_customer_response EXACTLY ONCE as your final
    tool call:
       - response_text: the full customer-facing reply, signed as Pax / AcreOS
