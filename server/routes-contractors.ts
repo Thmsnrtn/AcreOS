@@ -38,6 +38,7 @@ import { NEC_THRESHOLD_CENTS, NEC_THRESHOLD_REVIEW_NOTE, resolve1099Payer } from
 import { requireQualified1099Output } from "./services/form1099Refusal";
 import { clock } from "./utils/clock";
 import { routeParam } from "./utils/routeParams";
+import { encrypt, decrypt, isEncrypted, isAnyEncryptedEnvelope } from "./services/fieldEncryption";
 
 // The 1099-NEC threshold and its review note live in
 // services/form1099NecPayer.ts: the K13 tax reviewer must confirm the 2026 figure.
@@ -57,7 +58,7 @@ const createContractorSchema = z.object({
   licenseNumber: z.string().optional(),
   insuranceExpiresAt: z.string().optional(),
   trades: z.array(z.string()).optional(),
-  taxIdEncrypted: z.string().optional(),  // operator types raw, server encrypts (TODO: wire)
+  taxIdEncrypted: z.string().optional(),  // operator types raw, server encrypts before storage
   taxIdType: z.enum(["ein", "ssn"]).optional(),
   legalEntityName: z.string().optional(),
   notes: z.string().optional(),
@@ -77,10 +78,39 @@ const paymentSchema = z.object({
   excludedFrom1099: z.boolean().default(false),
 });
 
+/**
+ * Encrypt a raw contractor tax ID for storage, via the canonical
+ * fieldEncryption module — the same cure the org tax identity applies
+ * (routes-organization.ts: ein = encrypt(taxId)). Idempotent guard:
+ * never double-encrypt an already-enveloped value.
+ */
+function encryptTaxId(raw: string): string {
+  return isEncrypted(raw) ? raw : encrypt(raw);
+}
+
+/**
+ * Resolve a stored tax ID to plaintext for masking. Mirrors
+ * orgTaxIdentity.decryptTin: legacy rows stored before encryption was
+ * wired pass through as-is (fieldEncryption's gradual-migration
+ * convention); an undecryptable envelope resolves to "" (treated as
+ * missing) so neither ciphertext nor plaintext can leak into a mask
+ * or an error.
+ */
+function plainTaxId(stored: string | null | undefined): string {
+  if (!stored) return "";
+  if (!isAnyEncryptedEnvelope(stored)) return stored;
+  try {
+    return decrypt(stored);
+  } catch {
+    return "";
+  }
+}
+
 function maskTaxId(raw: string | null | undefined, type: string | null | undefined): string {
-  if (!raw) return "—";
+  const plain = plainTaxId(raw);
+  if (!plain) return "—";
   // Show last 4 only.
-  const last4 = raw.replace(/[^0-9]/g, "").slice(-4);
+  const last4 = plain.replace(/[^0-9]/g, "").slice(-4);
   if (type === "ein") return `XX-XXX${last4}`;
   return `XXX-XX-${last4}`;
 }
@@ -315,7 +345,7 @@ export function registerContractorRoutes(app: Express): void {
         licenseNumber: parsed.data.licenseNumber ?? null,
         insuranceExpiresAt: parsed.data.insuranceExpiresAt ?? null,
         trades: parsed.data.trades ?? [],
-        taxIdEncrypted: parsed.data.taxIdEncrypted ?? null,  // TODO: encrypt at rest in follow-on
+        taxIdEncrypted: parsed.data.taxIdEncrypted ? encryptTaxId(parsed.data.taxIdEncrypted) : null,
         taxIdType: parsed.data.taxIdType ?? null,
         legalEntityName: parsed.data.legalEntityName ?? null,
         notes: parsed.data.notes ?? null,
@@ -338,6 +368,11 @@ export function registerContractorRoutes(app: Express): void {
       const updates: Record<string, unknown> = { updatedAt: clock.now() };
       for (const k of Object.keys(parsed.data) as Array<keyof typeof parsed.data>) {
         if (parsed.data[k] !== undefined) updates[k] = parsed.data[k];
+      }
+      // Same encryption-at-rest as create: a tax ID arriving via PATCH
+      // is stored enveloped, never as typed.
+      if (typeof updates.taxIdEncrypted === "string" && updates.taxIdEncrypted) {
+        updates.taxIdEncrypted = encryptTaxId(updates.taxIdEncrypted);
       }
       const [updated] = await db.update(contractors).set(updates)
         .where(and(eq(contractors.id, routeParam(req.params.id)), eq(contractors.organizationId, orgId)))
