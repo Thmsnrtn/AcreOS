@@ -1,0 +1,106 @@
+name: Clerk Sign-In Smoke (post-deploy, staging)
+
+# A12-15 (EL-P1 batch 4): the post-deploy guard that signs in through REAL
+# Clerk after a staging deploy. tests/production-smoke.spec.ts navigates
+# routes unauthenticated, so a deploy that breaks sign-in (the Oct 18 build
+# failure class) passes it as REDIRECT/OK. This workflow is the cure,
+# staging first; prod wiring follows only after Tom's own prod deploy.
+#
+# Trigger discipline: workflow_run on "Deploy to Staging" COMPLETED, and
+# the job runs only when that deploy SUCCEEDED — a smoke run against a
+# half-finished deploy would be a false green/red (cf. AGENTS.md: verify
+# the deploy finished before trusting any reconcile/smoke result).
+#
+# 🔑 FOUNDER/TOM-SIDE PREREQUISITE — CI secrets (NAMES ONLY, set via
+# `gh secret set` or the repo Settings UI; values never enter the repo):
+#   E2E_USER_EMAIL     — dedicated staging Clerk TEST account email
+#   E2E_USER_PASSWORD  — that account's password (Secure Vault act if the
+#                        account is newly created; the fleet cannot set it)
+# Until both exist, the probe step below FAILS THE WORKFLOW VISIBLY naming
+# the missing secrets. That is deliberate: this guard must never skip
+# silently — a silently-skipped sign-in smoke is the blind spot A12-15
+# exists to close. The account must be a real user of the staging Clerk
+# instance with email/password sign-in enabled; the fleet's
+# E2E_TEST_AUTH_TOKEN persona-cookie bypass is NOT a substitute (bypassing
+# Clerk is exactly what this smoke refuses to do).
+
+on:
+  workflow_run:
+    workflows: ["Deploy to Staging"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      staging_url:
+        description: "Override staging URL (else resolved from FLY_STAGING_APP)"
+        required: false
+
+concurrency:
+  group: clerk-signin-smoke
+  cancel-in-progress: true
+
+jobs:
+  clerk-signin-smoke:
+    name: Clerk sign-in smoke vs staging
+    # Only when staging exists AND (manual run OR the deploy succeeded).
+    # Mirrors the gating in realism-audit.yml / staging.yml.
+    if: >-
+      vars.FLY_STAGING_APP != '' &&
+      (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The `secrets` context is NOT available in `if:` conditions, so
+      # probe secret PRESENCE here (step-level env) and fail visibly.
+      # Values never surface — only which NAMES are missing.
+      - name: Require Clerk smoke secrets (fail visibly if absent)
+        env:
+          SMOKE_EMAIL: ${{ secrets.E2E_USER_EMAIL }}
+          SMOKE_PASSWORD: ${{ secrets.E2E_USER_PASSWORD }}
+        run: |
+          missing=""
+          [ -z "$SMOKE_EMAIL" ] && missing="$missing E2E_USER_EMAIL"
+          [ -z "$SMOKE_PASSWORD" ] && missing="$missing E2E_USER_PASSWORD"
+          if [ -n "$missing" ]; then
+            echo "::error::Clerk sign-in smoke cannot run — missing CI secret(s):$missing. Provision the dedicated staging Clerk test account and set these secrets (names only) to enable the A12-15 guard."
+            exit 1
+          fi
+          echo "Clerk smoke secrets present (names: E2E_USER_EMAIL, E2E_USER_PASSWORD)."
+
+      - name: Resolve staging URL
+        id: url
+        run: |
+          if [ -n "${{ github.event.inputs.staging_url }}" ]; then
+            URL="${{ github.event.inputs.staging_url }}"
+          else
+            URL="https://${{ vars.FLY_STAGING_APP }}.fly.dev"
+          fi
+          echo "url=${URL}" >> "$GITHUB_OUTPUT"
+          echo "Staging: ${URL}"
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Clerk sign-in smoke (real Clerk, staging)
+        env:
+          CLERK_SMOKE_URL: ${{ steps.url.outputs.url }}
+          E2E_USER_EMAIL: ${{ secrets.E2E_USER_EMAIL }}
+          E2E_USER_PASSWORD: ${{ secrets.E2E_USER_PASSWORD }}
+        run: npx playwright test --config tests/clerk-signin-smoke.config.ts
+
+      - name: Upload smoke artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: clerk-signin-smoke-results
+          path: tests/clerk-smoke-results
+          if-no-files-found: ignore
+          retention-days: 14

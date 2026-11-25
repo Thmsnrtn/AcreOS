@@ -97,6 +97,12 @@ appearing here.
   job summary and files one standing GitHub issue while unset, so the dormancy
   is visible rather than hidden behind a conclusion.
 
+- **clerk-signin-smoke** (`.github/workflows/clerk-signin-smoke.yml`) — after
+  each staging deploy, signs in through the real Clerk widget with a dedicated
+  test account and proves the session works end to end. It does nothing until
+  you set BOTH `E2E_USER_EMAIL` and `E2E_USER_PASSWORD` — and unlike the quiet
+  ones above, its runs FAIL red naming the missing secret until you do.
+
 **Armed but mute — the automation works and cannot tell you:**
 
 - **release-watchdog** (`.github/workflows/release-watchdog.yml`) — hourly,
@@ -127,6 +133,10 @@ The exact secret names, verbatim (capitalization matters):
   server. Without it, red audits open a GitHub issue and nothing reaches you.
 - `SENTRY_AUTH_TOKEN` — (deploy, optional) uploads sourcemaps so production
   stack traces are readable.
+- `E2E_USER_EMAIL` — (clerk-signin-smoke) the staging Clerk test account's
+  email; the post-deploy sign-in smoke signs in with it.
+- `E2E_USER_PASSWORD` — that test account's password. A dedicated staging
+  account only — never your own login.
 
 ### Path A — GitHub website (no terminal)
 
@@ -150,6 +160,8 @@ gh secret set NTFY_TOPIC --body "<your-private-topic>"
 gh secret set TARGET_URL --body "https://<your-staging-host>"
 gh secret set SOLENE_PAGE_SECRET --body "<long-random-string>"
 gh secret set SENTRY_AUTH_TOKEN --body "<sentry token>"
+gh secret set E2E_USER_EMAIL --body "<staging test account email>"
+gh secret set E2E_USER_PASSWORD --body "<staging test account password>"
 ```
 
 And the server-side half of the probe token (Fly):

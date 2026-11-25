@@ -1246,6 +1246,19 @@ const EXTERNAL_WATCHDOGS: ExternalWatchdogInfo[] = [
       'Prove it: Actions tab → Borrower Cookie-Session E2E → Run workflow → the summary must NOT say "DID NOT RUN".',
     ],
   },
+  {
+    key: "clerk-signin-smoke",
+    title: "Clerk sign-in smoke",
+    what: "After each staging deploy, signs in through the real Clerk widget with a dedicated test account and proves the session works.",
+    stateLine:
+      "Can't verify from here — its runs fail red naming the missing secret until you set E2E_USER_EMAIL and E2E_USER_PASSWORD; here's how.",
+    secrets: ["E2E_USER_EMAIL", "E2E_USER_PASSWORD"],
+    how: [
+      'Terminal: gh secret set E2E_USER_EMAIL --body "<staging test account email>"',
+      'Terminal: gh secret set E2E_USER_PASSWORD --body "<staging test account password>"',
+      "Prove it: Actions tab → Clerk Sign-In Smoke (post-deploy, staging) → Run workflow → the run should end green.",
+    ],
+  },
 ];
 
 function ExternalSafetyNetSection() {
