@@ -307,7 +307,7 @@ export function checkDoddFrankCompliance(input: DoddFrankInput): DoddFrankCheckR
   const summary = undetermined && criticals === 0
     ? `No seller-financer exclusion can be confirmed yet: ${evaluation.unanswered.join('; ')}. Treat the loan as requiring a licensed MLO until these are answered.`
     : risk === 'compliant'
-    ? `Transaction appears to qualify for the ${applicableExemption?.replace(/_/g, ' ')} exemption. MLO licensing not required based on disclosed facts.`
+    ? `Screening result: on the facts entered, this transaction fits the ${applicableExemption?.replace(/_/g, ' ')} seller-financer screen. Screening only — not a determination that MLO licensing is or is not required; confirm with counsel before relying on it.`
     : risk === 'review_needed'
     ? `Transaction may qualify for an exemption but has conditions requiring attorney review. MLO may or may not be required.`
     : `This transaction appears to require a licensed MLO. The seller-financing exemptions may not apply based on disclosed facts.`;

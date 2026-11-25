@@ -51,6 +51,35 @@ const RISK_BADGE: Record<string, "default" | "secondary" | "destructive" | "outl
   attorney_required: "destructive",
 };
 
+// Display vocabulary ONLY. The `risk` enum stays internal (server logic and
+// the API payload are unchanged); what the customer sees is screening
+// language. This tool screens the facts entered against the Reg Z
+// seller-financer exclusions — it makes no legal determination and no
+// licensing conclusion (bar (f) paper pass, gap-sheet work item 4).
+function riskScreenLabel(result: ComplianceResult): string {
+  switch (result.risk) {
+    case "compliant":
+      if (result.exemptionApplicable === "3_property") {
+        return "Fits the 3-property screen on the facts entered";
+      }
+      if (result.exemptionApplicable === "1_property_natural_person") {
+        return "Fits the 1-property screen on the facts entered";
+      }
+      if (result.exemptionApplicable === "non_dwelling_land") {
+        return "Outside the dwelling-secured screen on the facts entered";
+      }
+      return "Fits the seller-financer screen on the facts entered";
+    case "review_needed":
+      return "Screen not confirmed on the facts entered — review needed";
+    case "likely_violation":
+      return "Does not fit the screen — licensed MLO likely needed; confirm with counsel";
+    case "attorney_required":
+      return "Does not fit the screen — attorney review needed; confirm with counsel";
+    default:
+      return "Screening result — confirm with counsel";
+  }
+}
+
 export default function DoddFrankCheckerPage() {
   useDocumentTitle("Dodd-Frank compliance");
   const { toast } = useToast();
@@ -286,9 +315,9 @@ export default function DoddFrankCheckerPage() {
         <Card aria-live="polite">
           <CardContent className="p-4 space-y-4">
             <div className="flex items-center justify-between gap-3 flex-wrap">
-              <span className="font-medium text-sm">Compliance status</span>
-              <Badge variant={RISK_BADGE[result.risk]} className="capitalize">
-                {result.risk.replace(/_/g, " ")}
+              <span className="font-medium text-sm">Screening result</span>
+              <Badge variant={RISK_BADGE[result.risk]}>
+                {riskScreenLabel(result)}
               </Badge>
             </div>
 
@@ -320,7 +349,7 @@ export default function DoddFrankCheckerPage() {
 
             {result.requiresLicensedMLO && (
               <div className="bg-acr-neg-soft border border-acr-neg-soft rounded p-3 text-xs text-acr-neg-soft-ink" role="alert">
-                <strong>Licensed MLO required.</strong> This deal likely requires a licensed mortgage loan originator.
+                <strong>Screening flag:</strong> on the facts entered, this deal does not fit a seller-financer exclusion — a licensed mortgage loan originator is likely needed. Confirm with counsel before proceeding.
               </div>
             )}
 

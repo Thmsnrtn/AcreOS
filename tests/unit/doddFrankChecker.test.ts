@@ -203,3 +203,25 @@ describe("pricing screens still run on exempt loans", () => {
     expect(r.risk).toBe("review_needed");
   });
 });
+
+describe("summary vocabulary — screening output, not a licensing conclusion (bar (f), work item 4)", () => {
+  it("the fits-the-screen summary is phrased as a screening result on the facts entered", () => {
+    const r = checkDoddFrankCompliance({ ...base, sellerType: "entity", sellerFinancedDealsLast12Months: 2 });
+    expect(r.risk).toBe("compliant");
+    expect(r.summary).toBe(
+      "Screening result: on the facts entered, this transaction fits the 3 property seller-financer screen. " +
+        "Screening only — not a determination that MLO licensing is or is not required; confirm with counsel before relying on it.",
+    );
+  });
+
+  it("no summary states a licensing conclusion", () => {
+    const r = checkDoddFrankCompliance({ ...base, sellerType: "entity", sellerFinancedDealsLast12Months: 2 });
+    expect(r.summary).not.toMatch(/licensing not required/i);
+    expect(r.summary).not.toMatch(/not required based on disclosed facts/i);
+  });
+
+  it("the internal risk enum is unchanged — only the display vocabulary moved", () => {
+    const r = checkDoddFrankCompliance({ ...base, sellerType: "entity", sellerFinancedDealsLast12Months: 2 });
+    expect(r.risk).toBe("compliant");
+  });
+});
