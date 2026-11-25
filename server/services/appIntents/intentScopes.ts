@@ -137,6 +137,15 @@ export const INTENT_META: Record<string, { door: CustomerDoor; scope: Scope | nu
   get_listing_paste_text: { door: "deals", scope: "deal_read" },
   get_land_payoff_quote: { door: "finance", scope: "financial_read" },
   mark_land_listing_listed: { door: "deals", scope: "deal_write" },
+  // Lease / commercial family on the shared lease base: abstract, steps and
+  // CAM reads are financial_read (no tenant PII is shaped by any of them, so
+  // none takes the tenant-records scope); the one record change — a tenant
+  // sales report, the sales-report route's own write class — is
+  // financial_write.
+  get_lease_abstract: { door: "finance", scope: "financial_read" },
+  get_lease_rent_steps: { door: "finance", scope: "financial_read" },
+  get_lease_cam_status: { door: "finance", scope: "financial_read" },
+  record_tenant_sales_report: { door: "finance", scope: "financial_write" },
   calculate_amortization: { door: "finance", scope: "financial_read" },
   get_cashflow_summary: { door: "finance", scope: "financial_read" },
   calculate_roi: { door: "finance", scope: "financial_read" },
