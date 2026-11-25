@@ -2,17 +2,20 @@
  * Finance › Commissions — the agent_investor commission wedge (Wave 2 pass C).
  *
  * A CUSTOMER-facing commission surface that lives BEHIND the Finance door
- * (route /finance/commissions, linked from the Finance module's overflow with
- * a businessTypeOnly=["agent_investor"] gate). It is NOT a new top-level nav
- * entry — the five customer doors (Today · Map · Deals · Finance · Pax) are
- * unchanged.
+ * (route /finance/commissions, linked from the Finance module's overflow).
+ * It is NOT a new top-level nav entry — the five customer doors
+ * (Today · Map · Deals · Finance · Pax) are unchanged.
  *
- * Gating: agent_investor orgs only. Any other org gets NotFound (the surface
- * genuinely does not exist for them). The data + write paths reuse the existing
- * commission APIs (routes-organization.ts, requireAdminOrAbove + org-scoped) —
- * so an agent_investor org owner/admin sees THEIR OWN org's records and YTD
- * summaries, with honest empty/zero states when nothing is configured. We do
- * NOT widen the founder-only /commissions surface or the admin write scope.
+ * Gating: NONE (agent_investor work item 1, 2026-11-25 — tailor, never
+ * wall). This page used to return NotFound for every non-agent_investor
+ * org — the product's only page-level hard gate — and the Finance overflow
+ * child was persona-gated to match. Both gates are removed: the page
+ * renders for every org. The data + write paths reuse the existing
+ * commission APIs (routes-organization.ts, requireAdminOrAbove +
+ * org-scoped) — so any org owner/admin sees THEIR OWN org's records and
+ * YTD summaries, with honest empty/zero states when nothing is configured.
+ * We do NOT widen the founder-only /commissions surface or the admin
+ * write scope.
  *
  * The note below claims ONLY what a customer can reach today (W2-AGENT,
  * 2026-11-06). It used to call net-of-split economics, a pipeline GCI
@@ -24,10 +27,6 @@
  */
 import { AlertTriangle } from "lucide-react";
 import CommissionsPage from "@/pages/commissions";
-import NotFound from "@/pages/not-found";
-import { PageShell } from "@/components/page-shell";
-import { Skeleton } from "@/components/ui/skeleton";
-import { useOrganization } from "@/hooks/use-organization";
 
 export function CommissionScopeNote() {
   return (
@@ -64,30 +63,10 @@ export function CommissionScopeNote() {
 }
 
 export default function FinanceCommissionsPage() {
-  const { data: organization, isLoading } = useOrganization();
-
-  if (isLoading) {
-    return (
-      <PageShell label="Commissions">
-        <div className="space-y-4" role="status" aria-busy="true" aria-live="polite">
-          <span className="sr-only">Loading commissions</span>
-          <Skeleton announce={false} className="h-20 w-full" />
-          <Skeleton announce={false} className="h-32 w-full" />
-        </div>
-      </PageShell>
-    );
-  }
-
-  const businessType = (organization?.onboardingData as any)?.businessType as
-    | string
-    | undefined;
-
-  // The commission surface exists only for the agent_investor persona. Any
-  // other workspace gets NotFound — honest, and it keeps the Finance door's
-  // content persona-scoped without adding a nav entry.
-  if (businessType !== "agent_investor") {
-    return <NotFound />;
-  }
-
+  // No persona gate (agent_investor work item 1, 2026-11-25): every org
+  // renders the commission surface with the honest scope note. An org with
+  // nothing configured sees CommissionsPage's empty/zero states — never a
+  // fabricated commission — exactly as an unconfigured agent_investor org
+  // always did.
   return <CommissionsPage intro={<CommissionScopeNote />} />;
 }
