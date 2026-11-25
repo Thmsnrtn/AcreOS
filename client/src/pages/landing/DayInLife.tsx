@@ -11,6 +11,13 @@
  * a land flipper, a note buyer, or a fix-and-flipper. The events are
  * intentionally vertical-agnostic; per-vertical "day in the life"
  * variants live on the future /verticals/<slug> pages.
+ *
+ * 2026-11 (EL-P1 A15-05): every time and count below is an ILLUSTRATION, not
+ * a measurement — no customer data backs them. The "~62 hr week → ~22 hr
+ * week" headline had no source and was removed rather than invented; the
+ * page now says in plain sight that the day is an example
+ * (ILLUSTRATIVE_NOTE), and the claims audit exempts these counts on exactly
+ * that ground (scripts/audit-public-claims.ts, DayInLife entries).
  */
 
 import type { LandingCopy } from "./copy";
@@ -37,6 +44,9 @@ const AFTER = [
   { t: "6:30 pm", e: "Overnight: comps run, replies drafted, drips you turned on go out." },
 ];
 
+const ILLUSTRATIVE_NOTE =
+  "Illustrative example. This is a written scenario showing the shape of the workflow — the times, counts and tools are not measurements from AcreOS customers, and no hours-saved figure is claimed.";
+
 export function DayInLife({ copy }: { copy: LandingCopy["day"] }) {
   const c = copy;
   return (
@@ -49,7 +59,7 @@ export function DayInLife({ copy }: { copy: LandingCopy["day"] }) {
         <div className="lp-day-col lp-day-before">
           <div className="lp-day-col-head">
             <h3 className="lp-day-col-label">Before AcreOS</h3>
-            <span className="lp-day-col-meta">~62 hr week</span>
+            <span className="lp-day-col-meta">Illustrative</span>
           </div>
           {BEFORE.map((x, i) => (
             <div key={i} className="lp-day-row">
@@ -65,7 +75,7 @@ export function DayInLife({ copy }: { copy: LandingCopy["day"] }) {
         <div className="lp-day-col lp-day-after">
           <div className="lp-day-col-head">
             <h3 className="lp-day-col-label lp-day-col-label-after">With AcreOS</h3>
-            <span className="lp-day-col-meta">~22 hr week</span>
+            <span className="lp-day-col-meta">Illustrative</span>
           </div>
           {AFTER.map((x, i) => (
             <div key={i} className="lp-day-row">
@@ -78,6 +88,9 @@ export function DayInLife({ copy }: { copy: LandingCopy["day"] }) {
           </div>
         </div>
       </div>
+      <p className="lp-section-sub" data-testid="day-in-life-illustrative-note">
+        {ILLUSTRATIVE_NOTE}
+      </p>
     </section>
   );
 }

@@ -12,7 +12,8 @@
   {{TOKENS}} are substituted at render time from their single sources of
   truth (client/src/lib/legal-entity.ts, @shared/pax-glossary-core) — never
   bake the current values in here, or the one-edit entity flip stops
-  propagating. <span data-support-feedback-slot=""> marks where the page
+  propagating. {{SUBPROCESSOR_ROWS}} (Section 8's table rows) is rendered from
+  client/src/data/sub-processors.ts — edit the list THERE, never here. <span data-support-feedback-slot=""> marks where the page
   portals the real SupportFeedbackButton. Internal links carry
   data-internal-link="true" and are routed client-side by the page.
 -->
@@ -108,20 +109,7 @@
 <tr class="border-b border-border"><th class="text-left py-2 pr-4 font-semibold text-foreground">Subprocessor</th><th class="text-left py-2 pr-4 font-semibold text-foreground">Category</th><th class="text-left py-2 pr-4 font-semibold text-foreground">Data processed</th><th class="text-left py-2 font-semibold text-foreground">Location</th></tr>
 </thead>
 <tbody class="divide-y divide-border">
-<tr><td class="py-2 pr-4 font-medium">Anthropic</td><td class="py-2 pr-4">AI model provider (Pax)</td><td class="py-2 pr-4">Prompt content, lead/property context sent to Pax</td><td class="py-2">United States</td></tr>
-<tr><td class="py-2 pr-4 font-medium">OpenRouter</td><td class="py-2 pr-4">LLM routing / failover gateway</td><td class="py-2 pr-4">Prompt content, lead/property context (routed to underlying LLM provider)</td><td class="py-2">United States</td></tr>
-<tr><td class="py-2 pr-4 font-medium">Voyage AI</td><td class="py-2 pr-4">Semantic-search embeddings</td><td class="py-2 pr-4">Text content of notes, leads, and documents (embedded as vectors for retrieval)</td><td class="py-2">United States</td></tr>
-<tr><td class="py-2 pr-4 font-medium">Stripe</td><td class="py-2 pr-4">Payment processing</td><td class="py-2 pr-4">Subscription billing, payment card data</td><td class="py-2">United States</td></tr>
-<tr><td class="py-2 pr-4 font-medium">Fly.io</td><td class="py-2 pr-4">Cloud hosting and compute</td><td class="py-2 pr-4">All Service data (hosted infrastructure)</td><td class="py-2">United States (+ EU regions as applicable)</td></tr>
-<tr><td class="py-2 pr-4 font-medium">Cloudflare</td><td class="py-2 pr-4">CDN, DNS, DDoS protection</td><td class="py-2 pr-4">IP addresses, request metadata</td><td class="py-2">United States</td></tr>
-<tr><td class="py-2 pr-4 font-medium">Clerk</td><td class="py-2 pr-4">Authentication</td><td class="py-2 pr-4">User identity, authentication tokens</td><td class="py-2">United States</td></tr>
-<tr><td class="py-2 pr-4 font-medium">AWS (SES)</td><td class="py-2 pr-4">Email delivery</td><td class="py-2 pr-4">Email addresses, email content</td><td class="py-2">United States</td></tr>
-<tr><td class="py-2 pr-4 font-medium">Twilio</td><td class="py-2 pr-4">SMS communications</td><td class="py-2 pr-4">Phone numbers, SMS content</td><td class="py-2">United States</td></tr>
-<tr><td class="py-2 pr-4 font-medium">Lob</td><td class="py-2 pr-4">Direct mail fulfillment</td><td class="py-2 pr-4">Recipient names and postal addresses</td><td class="py-2">United States</td></tr>
-<tr><td class="py-2 pr-4 font-medium">Regrid</td><td class="py-2 pr-4">Parcel data</td><td class="py-2 pr-4">Parcel identifiers, publicly-sourced property data</td><td class="py-2">United States</td></tr>
-<tr><td class="py-2 pr-4 font-medium">PostHog</td><td class="py-2 pr-4">Product analytics</td><td class="py-2 pr-4">Usage events, session data, anonymized identifiers</td><td class="py-2">United States / EU</td></tr>
-<tr><td class="py-2 pr-4 font-medium">Mercury</td><td class="py-2 pr-4">Business banking</td><td class="py-2 pr-4">Wire/ACH origination data (internal company use)</td><td class="py-2">United States</td></tr>
-<tr><td class="py-2 pr-4 font-medium">Sentry</td><td class="py-2 pr-4">Error monitoring</td><td class="py-2 pr-4">Stack traces, anonymized user identifiers</td><td class="py-2">United States</td></tr>
+{{SUBPROCESSOR_ROWS}}
 </tbody>
 </table>
 </div>

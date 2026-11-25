@@ -33,7 +33,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AcreosLogo } from "@/components/acreos-logo";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -44,69 +43,12 @@ import { JsonLd } from "@/components/seo/JsonLd";
 import { OpenGraph } from "@/components/seo/OpenGraph";
 import { securityPageSchema, organizationSchema, SITE } from "@/lib/jsonld-schemas";
 import { SupportFeedbackButton } from "@/components/support-feedback-button";
-
-interface SubProcessor {
-  vendor: string;
-  purpose: string;
-  dataCategory: string;
-  region: string;
-}
-
-const SUB_PROCESSORS: SubProcessor[] = [
-  {
-    vendor: "Stripe",
-    purpose: "Payments and subscription billing",
-    dataCategory: "Billing identifiers, last-4 of card",
-    region: "United States",
-  },
-  {
-    vendor: "Twilio",
-    purpose: "SMS and voice outreach",
-    dataCategory: "Phone numbers, message content",
-    region: "United States",
-  },
-  {
-    vendor: "SendGrid",
-    purpose: "Transactional and campaign email",
-    dataCategory: "Email addresses, message content",
-    region: "United States",
-  },
-  {
-    vendor: "Clerk",
-    purpose: "Authentication, MFA, session management",
-    dataCategory: "Email, hashed credentials, device metadata",
-    region: "United States",
-  },
-  {
-    vendor: "Anthropic",
-    purpose: "AI assistance (Pax)",
-    dataCategory: "Prompts and context the user submits",
-    region: "United States",
-  },
-  {
-    vendor: "OpenAI",
-    purpose: "AI assistance (model fallback and embeddings)",
-    dataCategory: "Prompts and context the user submits",
-    region: "United States",
-  },
-  {
-    vendor: "Lob",
-    purpose: "Direct mail (postcards, letters)",
-    dataCategory: "Mailing addresses, recipient names",
-    region: "United States",
-  },
-  {
-    vendor: "AWS",
-    purpose: "Application hosting and object storage",
-    dataCategory: "All application data at rest",
-    region: "United States (us-east-1)",
-  },
-];
+import { SUB_PROCESSORS } from "@/data/sub-processors";
 
 export default function SecurityPage() {
   usePageMeta(
     "Security",
-    "How AcreOS protects Land Investors' data — encryption at rest and in transit, MFA, sub-processors, and vulnerability disclosure.",
+    "How AcreOS protects Land Investors' data — field-level encryption, HTTPS, sign-in and MFA, sub-processors, and vulnerability disclosure.",
   );
 
   return (
@@ -115,7 +57,7 @@ export default function SecurityPage() {
       <OpenGraph
         url={`${SITE.url}/security`}
         title="Security · AcreOS"
-        description="How AcreOS protects Land Investors' data — encryption at rest and in transit, MFA, sub-processors, and vulnerability disclosure."
+        description="How AcreOS protects Land Investors' data — field-level encryption, HTTPS, sign-in and MFA, sub-processors, and vulnerability disclosure."
         type="website"
       />
       <JsonLd id="ld-security-webpage" data={securityPageSchema()} />
@@ -166,36 +108,38 @@ export default function SecurityPage() {
               How we protect your data
             </CardTitle>
             <CardDescription>
-              Encryption at rest and in transit — no exceptions.
+              What we encrypt, how connections are secured, and how tenants are separated.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4 text-sm leading-relaxed">
             <div>
-              <h3 className="font-semibold mb-1">Encryption at rest</h3>
+              <h3 className="font-semibold mb-1">Field-level encryption</h3>
               <p className="text-muted-foreground">
-                All customer data is stored encrypted at rest using{" "}
-                <span className="font-mono">AES-256-GCM</span>. Sensitive
-                fields — credentials, signing tokens, payout details, identity
-                verification artifacts — receive an additional layer of{" "}
-                <strong>field-level encryption</strong> with keys distinct
-                from the database key, so a compromise of one tier does not
-                expose the next.
+                Specific sensitive values are encrypted field by field with{" "}
+                <span className="font-mono">AES-256-GCM</span>: your
+                organization's own EIN or SSN for tax forms, a borrower's tax
+                ID on a purchased note, and the credentials you store for your
+                own integrations. Tax IDs are never sent back to the browser.
+                We never store full card or bank numbers — your payment
+                processor holds them, and AcreOS keeps a reference and the
+                last four digits. We do not claim every field is encrypted
+                individually.
               </p>
             </div>
             <div>
-              <h3 className="font-semibold mb-1">Encryption in transit</h3>
+              <h3 className="font-semibold mb-1">Connections</h3>
               <p className="text-muted-foreground">
-                Every connection to AcreOS — browser, API client, mobile —
-                requires TLS 1.2 or higher. Older protocols and weak ciphers
-                are rejected at the edge.
+                AcreOS is served over HTTPS only, and responses carry an HSTS
+                header with a one-year lifetime that includes subdomains.
               </p>
             </div>
             <div>
               <h3 className="font-semibold mb-1">Tenant isolation</h3>
               <p className="text-muted-foreground">
-                Tenant data is logically isolated by organization;
-                every authenticated request is scoped to the caller's
-                organization at the database query layer.
+                Tenant data is logically isolated by organization:
+                queries are scoped to the caller's organization, and
+                automated tests and a repository check run on every change to
+                catch reads that are not.
               </p>
             </div>
           </CardContent>
@@ -209,27 +153,20 @@ export default function SecurityPage() {
               Authentication
             </CardTitle>
             <CardDescription>
-              Sign-in, multi-factor, and session management — handled by
-              Clerk.
+              Sign-in, multi-factor, and sessions — handled by Clerk.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4 text-sm leading-relaxed text-muted-foreground">
             <p>
-              AcreOS uses Clerk as our identity provider. Clerk manages
-              password storage (bcrypt with per-account salts), email and
-              SMS verification, multi-factor authentication (TOTP and
-              backup codes), and session lifecycle.
+              AcreOS uses Clerk as our identity provider. Clerk handles
+              sign-in, verification, multi-factor authentication, and session
+              lifecycle; AcreOS does not store your password.
             </p>
             <p>
-              Sessions are short-lived JWTs refreshed against Clerk on each
-              navigation. Revoking a device, rotating a password, or
-              disabling a teammate's account takes effect across all open
-              tabs within minutes — there is no long-lived bearer token to
-              recover.
-            </p>
-            <p>
-              Multi-factor authentication is available on every plan and is
-              required for organization owners on the Scale tier.
+              Two-factor authentication is available to every account from
+              your account settings. It is not yet mandatory for customer
+              accounts on any plan. AcreOS's own founder and admin consoles
+              do enforce it server-side.
             </p>
           </CardContent>
         </Card>
@@ -259,7 +196,7 @@ export default function SecurityPage() {
                     <TableRow key={sp.vendor}>
                       <TableCell className="font-medium">{sp.vendor}</TableCell>
                       <TableCell className="text-muted-foreground">{sp.purpose}</TableCell>
-                      <TableCell className="text-muted-foreground">{sp.dataCategory}</TableCell>
+                      <TableCell className="text-muted-foreground">{sp.dataCategories.join(", ")}</TableCell>
                       <TableCell className="text-muted-foreground">{sp.region}</TableCell>
                     </TableRow>
                   ))}
@@ -267,9 +204,12 @@ export default function SecurityPage() {
               </Table>
             </div>
             <p className="text-xs text-muted-foreground mt-4">
-              We notify customers of material changes to this list via the
-              changelog and account-owner email. A current Data Processing
-              Addendum is available on request.
+              The full list, with each vendor's data processing terms, is
+              also published at{" "}
+              <Link href="/legal/sub-processors" className="text-primary hover:underline">
+                Sub-processors
+              </Link>
+              .
             </p>
           </CardContent>
         </Card>
@@ -331,45 +271,27 @@ export default function SecurityPage() {
           </CardContent>
         </Card>
 
-        {/* Compliance posture */}
+        {/* Privacy requests and export */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <FileCheck2 className="h-5 w-5 text-primary" aria-hidden="true" />
-              Compliance posture
+              Privacy requests and export
             </CardTitle>
             <CardDescription>
-              Privacy requests and data portability.
+              Where to send a privacy request and how to export your data.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4 text-sm leading-relaxed text-muted-foreground">
-            <div className="flex items-center gap-2 flex-wrap">
-              <Badge variant="outline">CCPA-aligned</Badge>
-              <Badge variant="outline">GDPR-aligned</Badge>
-            </div>
             <p>
-              We honor data-subject access, deletion, and portability
-              requests under both CCPA and GDPR-style frameworks. Account
-              owners can export an organization's full dataset from{" "}
+              You can submit a data-subject request from{" "}
+              <Link href="/settings/privacy" className="text-primary hover:underline">
+                Settings → Privacy
+              </Link>
+              . Account owners can export an organization's data from{" "}
               <Link href="/data-export" className="text-primary hover:underline">
                 Settings → Data export
-              </Link>{" "}
-              at any time.
-            </p>
-            <p>
-              For enterprise procurement: a current security questionnaire,
-              architecture diagram, and DPA are available on request —{" "}
-              <SupportFeedbackButton
-                variant="link"
-                defaultCategory="support"
-                source="security_disclosure"
-                ariaLabel="Open support form to request enterprise security documents"
-                testId="security-procurement-request"
-                className="font-medium"
-              >
-                contact us
-              </SupportFeedbackButton>
-              .
+              </Link>.
             </p>
           </CardContent>
         </Card>

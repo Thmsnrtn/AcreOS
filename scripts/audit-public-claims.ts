@@ -405,14 +405,68 @@ const EXEMPT: Record<string, string> = {
   // minutes."): a description of the pain, not a claim about the product.
   // (verified 2026-09-02)
   "90 minutes": "DayInLife BEFORE-column pain narrative, not a product capability claim (2026-09-02)",
+  // DayInLife.tsx counts (EL-P1 A15-05, 2026-11-25). The whole "Tuesday" is a
+  // written scenario with no measurement behind it; the page now says so in a
+  // visible note (data-testid day-in-life-illustrative-note: "Illustrative
+  // example … not measurements … no hours-saved figure is claimed") and each
+  // column is headed "Illustrative". The unsourced "~62 hr / ~22 hr week"
+  // headline was removed outright rather than exempted.
+  "3 leads": "DayInLife illustrative scenario count, labelled on page (2026-11-25)",
+  "14 owners": "DayInLife illustrative scenario count, labelled on page (2026-11-25)",
+  "8 mailers": "DayInLife illustrative scenario count, labelled on page (2026-11-25)",
+  "2 callbacks": "DayInLife illustrative scenario count, labelled on page (2026-11-25)",
+  "11 drafted": "DayInLife illustrative scenario count, labelled on page (2026-11-25)",
+  "9 sent": "DayInLife illustrative scenario count, labelled on page (2026-11-25)",
+  "22 leads": "DayInLife illustrative scenario count, labelled on page (2026-11-25)",
+  "3 calls": "DayInLife illustrative scenario count, labelled on page (2026-11-25)",
+  "2 meetings": "DayInLife illustrative scenario count, labelled on page (2026-11-25)",
+  "2 offers": "DayInLife illustrative scenario count, labelled on page (2026-11-25)",
+  "7 tools": "DayInLife illustrative scenario count, labelled on page (2026-11-25)",
   // shared/landData/publicFactText.ts buildable-acres wording: "the 1% flood
   // zone" is FEMA's name for the 1%-annual-chance Special Flood Hazard Area,
   // a defined term, not a performance claim (verified 2026-10-11).
   "1%": "FEMA's 1%-annual-chance flood zone, a defined term in the public fact text (2026-10-11)",
 };
 
-/** Number-bearing marketing-claim shapes. */
-const NUMBER_CLAIM = /\b\d+(?:\.\d+)?\s?(?:seconds?|minutes?|hours?|days?|federal data sources)\b|\$\d+|\b\d+%|\b\d{3}–\d{3}\b/g;
+/**
+ * Countable nouns a bare count may precede ("1,900 counties", "10K mailers",
+ * "22 leads"). A bare count is a capability/volume claim exactly like "30
+ * days" is, and used to match no pattern, so it passed the completeness scan
+ * unsourced (EL-P1 A15-05/A15-07). Kept to nouns a land-investing page uses
+ * for volumes of things AcreOS handles; a number followed by any other word
+ * ("3 steps", "Section 8") is deliberately not matched, to keep the scan
+ * from drowning in prose numerals.
+ */
+const COUNT_NOUNS = [
+  "leads?", "mailers?", "mailings?", "counties", "county", "replies", "reply", "types?", "texts?", "messages?",
+  "owners?", "comps?", "offers?", "calls?", "meetings?", "tools?", "handoffs?", "callbacks?", "properties",
+  "property", "parcels?", "states?", "users?", "seats?", "campaigns?", "drafts?", "drafted", "receipts?",
+  "documents?", "deals?", "contacts?", "sources?", "letters?", "postcards?", "emails?", "notes?",
+  "integrations?", "personas?", "verticals?", "templates?", "agents?", "investors?", "customers?",
+  "operators?", "reports?", "records?", "listings?", "borrowers?", "payments?", "sent", "comped",
+].join("|");
+
+/**
+ * Number-bearing marketing-claim shapes: time/money/percent/score ranges,
+ * then (2026-11 EL-P1) "hr"/"hrs" durations and bare counts — digit groups
+ * with thousands separators and K/M suffixes ("1,900", "10K", "2M") directly
+ * followed by a countable noun.
+ */
+const NUMBER_CLAIM = new RegExp(
+  [
+    String.raw`\b\d+(?:\.\d+)?\s?(?:seconds?|minutes?|hours?|days?|federal data sources)\b`,
+    String.raw`\$\d+`,
+    String.raw`\b\d+%`,
+    String.raw`\b\d{3}–\d{3}\b`,
+    String.raw`\b\d+(?:\.\d+)?\s?hrs?\b`,
+    // Lookarounds: the number must not be glued to a preceding class/identifier
+    // fragment ("py-2 text-sm") and the noun must be a whole word, not the
+    // head of a hyphenated token — first run flagged 74 Tailwind classes as
+    // "N text".
+    String.raw`(?<![-\w.$])(?:\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)[KkMm]?\+?\s(?:${COUNT_NOUNS})\b(?![-\w])`,
+  ].join("|"),
+  "gi",
+);
 
 function buildSources(): Source[] {
   return [
