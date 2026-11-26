@@ -64,10 +64,9 @@ const LANE_CALL = /\b(?:resolveMailLane|assertSendableLane)\s*\(/;
  * runs over it.
  */
 const SEND_SITES: Record<string, string> = {
-  "server/services/directMailService.ts": "router-sent pieces (outreach queue, sequences) — prepareLobSend",
+  "server/services/directMailService.ts": "router-sent pieces (outreach queue, sequences) — prepareLobSend; autopilot send_letter org sends + its narrow org-less system path — sendSystemLetter",
   "server/services/directMail.ts": "campaign sends + API queue — prepareLane",
   "server/services/lobService.ts": "communications counterparty letters — resolveClient",
-  "server/services/mailProvider.ts": "autopilot send_letter — planLobSend",
   "server/services/mail/providers/postgrid.ts": "PostGrid adapter — own key only",
 };
 
@@ -89,14 +88,12 @@ const LOB_CONSTRUCTORS = new Set([
   "server/services/directMailService.ts", // the credential authority (own key / house lane)
   "server/services/directMail.ts", // env clients for the house lane + test-mode
   "server/services/lobService.ts", // env clients for org-less system mail + test-mode
-  "server/services/mailProvider.ts", // org-less AcreOS system mail
 ]);
 
 /** Where the PLATFORM Lob key resolver may be called. */
 const PLATFORM_KEY_CALLERS = new Set([
   "server/services/mail/liveSendInterlock.ts", // its definition
-  "server/services/directMailService.ts", // getLobClientForLane (house) + house-lane verification
-  "server/services/mailProvider.ts", // org-less system mail only
+  "server/services/directMailService.ts", // getLobClientForLane (house) + house-lane verification + org-less system mail (sendSystemLetter)
   "server/services/mail/mailLane.ts", // houseMailConfigured probe
 ]);
 
@@ -301,7 +298,7 @@ describe("house mail is paid ONLY through the purchased-only debit (decision B)"
 
   it("every send site that can reach the house lane charges through chargeHouseMail and refunds through refundUnbilledHouseMail (vacuity per member)", () => {
     const house = Object.keys(SEND_SITES).filter((f) => f !== "server/services/mail/providers/postgrid.ts");
-    expect(house.length).toBe(4);
+    expect(house.length).toBe(3);
     for (const f of house) {
       expect(HOUSE_CHARGE.test(src(f)), `${f} never pre-pays a house piece`).toBe(true);
       expect(HOUSE_REFUND.test(src(f)), `${f} never settles a failed house piece`).toBe(true);

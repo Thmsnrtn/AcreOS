@@ -15,8 +15,9 @@
  *                    or never reached); a timeout / 5xx keeps the charge.
  *
  * Covered surfaces: directMailService (router-sent pieces: outreach queue,
- * sequences), directMail.ts (campaign sends), mailProvider (autopilot
- * send_letter), lobService, and verifyAddress. Email and SMS are not touched
+ * sequences — and, since K7-2a retired mailProvider's send paths, the
+ * autopilot send_letter hand's org sends), directMail.ts (campaign sends),
+ * lobService, and verifyAddress. Email and SMS are not touched
  * by any of this — emailPurposeEnforcement.test.ts keeps email BYO-only, and
  * the last block pins that the lane module never decides an email/SMS send.
  */
@@ -583,30 +584,32 @@ describe("the other send chokepoints follow the same lane", () => {
     expect(state.platformResolves).toBe(0);
   });
 
-  it("autopilot send_letter (mailProvider): house pre-pays the letter and replaces the typed return address", async () => {
-    const { sendLetter } = await import("../../server/services/mailProvider");
-    const typed = { name: "Someone Else", addressLine1: "9 Fake St", city: "X", state: "TX", zip: "1" };
-    const result = await sendLetter({ to: typed, from: typed, file: PDF_URL, organizationId: ORG });
+  it("autopilot send_letter (directMailService — the hand's canonical operation since K7-2a): house pre-pays the letter and prints the verified return address", async () => {
+    // The hand resolves the lane first and passes the lane's verified
+    // identity as senderIdentity (its typed `from` is replaced on the house
+    // lane) — letter() here does exactly that, with state.identity.
+    const result = await letter();
 
-    expect(result.success).toBe(true);
+    expect(result.lobId).toBe("ltr_1");
     expect(charged()).toEqual([120]);
     expect(state.lobCalls[0].params.from).toMatchObject({ name: "Brazos Land Partners", address_line1: "1 Main St" });
     // The PDF fetched and counted is the PDF Lob prints (never the URL again).
     expect(Buffer.isBuffer(state.lobCalls[0].params.file?.value)).toBe(true);
 
-    // Rejected → refunded; unknown → kept.
+    // Rejected → refunded; unknown → kept. The canonical operation throws
+    // (with its billing verdict attached) where the retired path returned
+    // {success:false} — the hand maps the throw back to its failure result.
     state.lobError = lobRejection(403);
-    expect((await sendLetter({ to: typed, from: typed, file: PDF_URL, organizationId: ORG })).success).toBe(false);
+    await expect(letter()).rejects.toThrow(/Failed to send letter/);
     expect(state.refunds).toHaveLength(1);
     state.lobError = lobRejection(500);
-    expect((await sendLetter({ to: typed, from: typed, file: PDF_URL, organizationId: ORG })).success).toBe(false);
+    await expect(letter()).rejects.toThrow(/Failed to send letter/);
     expect(state.refunds).toHaveLength(1);
     state.lobError = null;
 
     state.identity = null;
     state.lobCalls = [];
-    const refused = await sendLetter({ to: typed, from: typed, file: PDF_URL, organizationId: ORG });
-    expect(refused.success).toBe(false);
+    await expect(letter({ senderIdentity: null })).rejects.toThrow(/return address/);
     expect(state.lobCalls).toEqual([]);
   });
 
@@ -647,11 +650,10 @@ describe("house mail never charges for a piece that will not print (audit 2026-1
     expect(state.lobCalls).toEqual([]);
   });
 
-  it("disarmed: autopilot (mailProvider) and lobService refuse too — nothing charged", async () => {
+  it("disarmed: autopilot (directMailService, via the send_letter hand) and lobService refuse too — nothing charged", async () => {
     state.armed = false;
-    const { sendLetter } = await import("../../server/services/mailProvider");
     const typed = { name: "X", addressLine1: "9 Fake St", city: "X", state: "TX", zip: "1" };
-    expect((await sendLetter({ to: typed, from: typed, file: PDF_URL, organizationId: ORG })).success).toBe(false);
+    await expect(letter()).rejects.toThrow(/not available on this deployment/);
     const { lobService } = await import("../../server/services/lobService");
     expect((await lobService.sendLetter({ to: typed, from: typed, file: PDF_URL }, "live", { organizationId: ORG, purpose: "counterparty" })).success).toBe(false);
     expect(state.charges).toEqual([]);
