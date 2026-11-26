@@ -208,7 +208,7 @@ describe("printed mail is never funded by the trial allowance", () => {
     expect(lane).toMatch(/export async function chargeHouseMail\(/);
     expect(lane).not.toMatch(/\bpoolDebit\(/);
     expect(lane).not.toMatch(/hasEnoughCredits|evaluateCredits|deductOrFundFromTrial|trialAllowance/);
-    for (const f of ["server/services/directMailService.ts", "server/services/directMail.ts", "server/services/mailProvider.ts", "server/services/lobService.ts"]) {
+    for (const f of ["server/services/directMailService.ts", "server/services/directMail.ts", "server/services/lobService.ts"]) {
       const s = src(f);
       expect(s, f).toMatch(/chargeHouseMailPiece\(/);
       expect(s, f).not.toMatch(/hasEnoughCredits\(|evaluateCredits\(|deductOrFundFromTrial\(/);

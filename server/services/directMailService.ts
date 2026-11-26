@@ -3,7 +3,7 @@ import type { MailSenderIdentity } from '@shared/schema';
 import { storage } from '../storage';
 import { readIntegrationCredentials } from './integrationCredentials';
 import { logger } from "../utils/logger";
-import { resolvePlatformLobKey } from './mail/liveSendInterlock';
+import { resolvePlatformLobKey, isLiveSendArmed } from './mail/liveSendInterlock';
 import { clock } from "../utils/clock";
 import { assertOwnerContactAllowed } from "./trust/ownerSuppression";
 import {
@@ -60,6 +60,8 @@ interface SendLetterOptions {
   htmlContent: string;
   color?: boolean;
   doubleSided?: boolean;
+  /** Lob's free-text description of the piece (the autopilot hand passes the founder's note). */
+  description?: string;
   /**
    * The caller already charged this piece through its own ledger, so a house
    * piece is not charged again here. Only the outreach mail queue (via the
@@ -476,6 +478,7 @@ export async function sendLetter(options: SendLetterOptions): Promise<SendResult
         htmlContent: options.htmlContent,
         color: options.color ?? false,
         doubleSided: options.doubleSided ?? false,
+        description: options.description ?? null,
         useType: options.useType ?? 'marketing',
         extraServices: options.extraServices ?? [],
       },
@@ -523,7 +526,7 @@ export class LetterAlreadySentError extends Error {
 }
 
 async function performLetterSend(options: SendLetterOptions): Promise<SendResult> {
-  const { organizationId, senderIdentity, recipientName, recipientAddress, htmlContent, color = false, doubleSided = false, useType = 'marketing', extraServices } = options;
+  const { organizationId, senderIdentity, recipientName, recipientAddress, htmlContent, color = false, doubleSided = false, useType = 'marketing', extraServices, description } = options;
   // Platform-wide owner opt-out (W5a) — before simulation, credits and Lob.
   await assertOwnerContactAllowed('mail', { addressLine1: recipientAddress.line1, zip: recipientAddress.zip });
 
@@ -575,6 +578,7 @@ async function performLetterSend(options: SendLetterOptions): Promise<SendResult
       color,
       double_sided: doubleSided,
       use_type: useType,
+      ...(description ? { description } : {}),
       ...(extraServices && extraServices.length > 0 ? { extra_services: extraServices } : {}),
     });
     
@@ -696,5 +700,137 @@ export async function verifyAddress(address: RecipientAddress, organizationId: n
       errorMessage,
       providerNotBilled: providerDidNotBill(error),
     };
+  }
+}
+
+// ─── Org-less SYSTEM mail (K7-2a — the mailProvider retirement) ──────────────
+//
+// Exactly ONE org-less send exists in the product: AcreOS's own system mail,
+// sent by the Founder Autopilot `send_letter` hand when the founder's tap
+// approves a letter with no organization attached. That hand is the ONLY
+// caller of sendSystemLetter — it is founder-tap-gated (requiresApproval),
+// and this path exists so retiring mailProvider.ts's send paths did not
+// silently drop the org-less behaviour it carried:
+//
+//   · the platform key ONLY, resolved under the live-send interlock
+//     (resolvePlatformLobKey), with mailProvider's legacy LOB_API_KEY
+//     fallback preserved verbatim (a test_ key, or a live key only while
+//     the interlock is armed);
+//   · the caller-supplied return address is printed exactly as given —
+//     there is no org, so there is no lane and no verified identity to
+//     replace it with, and NO house charge is taken;
+//   · no credentials configured → refused ('mail provider not configured'),
+//     never a fabricated success — the MAIL_MOCK=1 dev flag is the sole
+//     exception, exactly as in mailProvider.
+//
+// This is NOT a platform fallback for org mail: getOwnLobClient above is
+// untouched and still never falls back to AcreOS's key, and org sends still
+// go through sendLetter/sendPostcard's lane resolution or not at all.
+
+export interface SystemLetterOptions {
+  recipientName: string;
+  recipientAddress: RecipientAddress;
+  /** AcreOS's own return address, printed exactly as given. */
+  senderName: string;
+  senderAddress: RecipientAddress;
+  /** HTML or a PDF URL, as the retired mailProvider send accepted. */
+  htmlContent: string;
+  color?: boolean;
+  doubleSided?: boolean;
+  description?: string;
+}
+
+// Bounded timeout for the Lob API, carried over from mailProvider.ts: the
+// SDK's create() has no default timeout, so a stalled Lob endpoint would
+// hang the caller indefinitely. A timeout surfaces as the distinct,
+// retryable 'lob timeout' error.
+const SYSTEM_LOB_TIMEOUT_MS = 18_000;
+
+class SystemLobTimeoutError extends Error {
+  constructor() {
+    super('lob timeout');
+    this.name = 'SystemLobTimeoutError';
+  }
+}
+
+function withSystemLobTimeout<T>(promise: Promise<T>): Promise<T> {
+  let timer: NodeJS.Timeout;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new SystemLobTimeoutError()), SYSTEM_LOB_TIMEOUT_MS);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+/** mailProvider.getDefaultCredentials, preserved: interlock first, legacy key second. */
+function resolveSystemLobCredentials(): { apiKey: string; isTestKey: boolean } | null {
+  try {
+    return resolvePlatformLobKey();
+  } catch {
+    // Legacy LOB_API_KEY-only installs: honor it, but never as a live key
+    // while disarmed.
+    const legacy = process.env.LOB_API_KEY;
+    if (legacy && (legacy.startsWith('test_') || isLiveSendArmed())) {
+      return { apiKey: legacy, isTestKey: legacy.startsWith('test_') };
+    }
+    return null;
+  }
+}
+
+/**
+ * Send ONE org-less system letter on AcreOS's own Lob account. Throws on
+ * failure (the canonical contract): the error carries the billing verdict
+ * (`providerNotBilled`, via withBillingVerdict) exactly as sendLetter's
+ * failures do — a timeout is "unknown" (Lob may have printed it), a
+ * rejection is certainly not billed. There is no charge to refund here.
+ */
+export async function sendSystemLetter(options: SystemLetterOptions): Promise<SendResult> {
+  const { recipientName, recipientAddress, senderName, senderAddress, htmlContent, color = false, doubleSided = false, description } = options;
+  // Platform-wide owner opt-out (W5a) — before credentials and Lob.
+  await assertOwnerContactAllowed('mail', { addressLine1: recipientAddress.line1, zip: recipientAddress.zip });
+
+  const credentials = resolveSystemLobCredentials();
+  if (!credentials) {
+    // No mail credentials configured. Only produce a mock mailing id under
+    // an explicit dev flag — never as the silent default, which would
+    // fabricate a successful send (mailProvider's rule, preserved).
+    if (process.env.MAIL_MOCK === '1') {
+      logger.info(`[DirectMailService] MAIL_MOCK - simulating system letter to ${recipientName}`);
+      return {
+        lobId: `mock-letter-${clock.nowMs()}`,
+        url: '',
+        expectedDeliveryDate: clock.now(),
+        credentialSource: 'platform',
+        testMode: true,
+      };
+    }
+    throw new Error('mail provider not configured');
+  }
+
+  const client = new Lob({ apiKey: credentials.apiKey });
+  try {
+    const result = await withSystemLobTimeout<any>((client.letters as any).create({
+      to: formatRecipientAddress(recipientName, recipientAddress),
+      from: formatRecipientAddress(senderName, senderAddress),
+      file: htmlContent,
+      color,
+      double_sided: doubleSided,
+      ...(description ? { description } : {}),
+    }));
+    logger.info(`[DirectMailService] System letter sent: ${result.id} (source: platform)`);
+    return {
+      lobId: result.id,
+      url: (result as any).url || '',
+      expectedDeliveryDate: parseExpectedDeliveryDate(result.expected_delivery_date),
+      credentialSource: 'platform',
+      testMode: credentials.isTestKey,
+    };
+  } catch (error: any) {
+    if (error instanceof SystemLobTimeoutError) {
+      // A timeout is "unknown" — Lob may have printed it, so the verdict is
+      // providerNotBilled: false (withBillingVerdict over a non-billing cause).
+      throw withBillingVerdict(new Error('lob timeout'), new Error('lob timeout'));
+    }
+    logger.error('[DirectMailService] System letter send failed', error);
+    throw withBillingVerdict(new Error(error?.message || 'Unknown error'), error);
   }
 }
