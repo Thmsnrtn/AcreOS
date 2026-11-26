@@ -467,6 +467,8 @@ export const toolDefinitions = {
       type: "object",
       properties: { listing_id: { type: "number", description: "The listing number from get_land_listings" } },
       required: ["listing_id"]
+    }
+  },
 
   // Fix-and-flip rehab tools. Reads state their coverage; the holding-cost
   // entry appends an append-only fact; the exit/realized record is
