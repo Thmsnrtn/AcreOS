@@ -36,7 +36,10 @@ const ACTION_TOOLS_TIER3 = [
 // Mock DB so persistPendingCall doesn't hit Postgres.
 vi.mock("../../server/db", () => {
   const insertReturning = vi.fn().mockResolvedValue([{}]);
-  const insertOnConflict = { onConflictDoUpdate: vi.fn().mockResolvedValue([{}]) };
+  // onConflictDoUpdate must return { returning } (not a bare promise):
+  // upsertOpStateRow (operationalState.ts) chains .returning() off it —
+  // the stub shape pinned in tests/unit/operationalState.test.ts:88-90.
+  const insertOnConflict = { onConflictDoUpdate: vi.fn().mockReturnValue({ returning: async () => [{}] }) };
   const insertValues = vi.fn().mockReturnValue({ ...insertOnConflict, returning: insertReturning });
   return {
     db: {
