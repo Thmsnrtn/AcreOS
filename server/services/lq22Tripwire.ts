@@ -59,6 +59,7 @@ import {
 } from "@shared/billing/tier-pricing";
 import { isFrozenRoute } from "@shared/feature-freeze";
 import { featureFlagService, type FlagContext } from "./featureFlags";
+import { upsertOpStateRow } from "./operationalState";
 import { logger } from "../utils/logger";
 import { clock } from "../utils/clock";
 
@@ -363,12 +364,50 @@ export async function runLq22TripwireCheck(): Promise<Lq22TripwireReport> {
     });
   }
 
-  // Persist the latest report for the ops watch (founder_settings KV —
-  // the gate-watcher precedent; no new table). Best-effort: a failed
+  // Persist the latest report for the ops watch. Best-effort: a failed
   // write is logged, never fatal — the structured log line above is
   // already emitted either way.
+  //
+  // P12-1c-4: the PRIMARY store is now operational_state (namespace
+  // "lq22_tripwire"), written via the 1c-1 access layer — same key
+  // string, same value bytes, same valueType/description/updatedBy as
+  // the founder_settings write below (operational_state has no category
+  // column; the legacy "general" category is dropped, it carried no
+  // information). The founder_settings write is kept alongside as the
+  // P12-1c-4 DUAL-WRITE, one-cycle insurance for the persisted report's
+  // unverified external consumer (design flag F1). Removal condition:
+  // F1 answered OR one daily cycle with the founder's go-ahead — the
+  // removal is a separate follow-up micro-PR, NOT this slice.
+  //
+  // The two writes are independent: each has its own try/catch, so a
+  // failure of either is logged (warn) and never fatal, and one failing
+  // never skips the other. The primary write goes first because
+  // operational_state is the going-forward record; the legacy dual-write
+  // is insurance only.
+  const value = JSON.stringify(report);
   try {
-    const value = JSON.stringify(report);
+    await upsertOpStateRow(db, {
+      namespace: "lq22_tripwire",
+      key: LQ22_SETTINGS_KEY,
+      value,
+      valueType: "json",
+      description:
+        "LQ-22 tripwire: latest daily paying-customer count + /investor-network freeze verification (PKG-4)",
+      updatedBy: "lq22-tripwire",
+    });
+  } catch (err) {
+    logger.warn(
+      "[lq22-tripwire] failed to persist latest report to operational_state",
+      {
+        metadata: { err: String(err) },
+      },
+    );
+  }
+
+  // P12-1c-4 DUAL-WRITE: legacy founder_settings write, kept for one
+  // cycle per the note above (removal condition: F1 answered or one
+  // daily cycle with founder go-ahead; removal is a follow-up micro-PR).
+  try {
     await db
       .insert(founderSettings)
       .values({
