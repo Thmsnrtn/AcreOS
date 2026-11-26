@@ -369,6 +369,101 @@ export const SETTINGS_CATALOG: SeedSettingArgs[] = [
     defaultValue: 90,
     validRange: { type: "number", min: 30, max: 730 },
   },
+
+  // ─── KNOBS catalog port (P12-1a) ───────────────────────────────────────
+  // The 10 founderSettings KNOBS keys that did NOT already overlap this
+  // catalog, seeded as global-scope entries with typed defaults (numbers
+  // as numbers, booleans as booleans) and validRange from the KNOBS
+  // min/max. Descriptions are the KNOBS descriptions verbatim.
+  // The 2 archival KNOBS are NOT re-seeded here — they already live above
+  // (note: this catalog's archival.horizon_days range is 30–730 vs the
+  // KNOBS 7–3650; reconciling that contradiction is a P12-1b decision).
+  // Reader switch lands in P12-1b: until then founderSettings remains
+  // the runtime reader for these keys and these rows are the registry
+  // copies the parity test (tests/unit/settingsKnobParity.test.ts) pins.
+  // The 2 KNOBS with envFallback get the registry's opt-in env fallback.
+  {
+    key: "FINANCIAL_HARD_CAP_CENTS",
+    category: "safety",
+    description:
+      "Hard cap on autonomous spend. Any spend request above this is blocked outright, with no consensus flow. In cents — $25,000 by default.",
+    defaultValue: 2500000,
+    validRange: { type: "number", min: 100000, max: 100000000 },
+    envFallback: "FINANCIAL_HARD_CAP_CENTS",
+  },
+  {
+    key: "FINANCIAL_APPROVAL_TTL_HOURS",
+    category: "safety",
+    description:
+      "How long a pending financial approval stays valid before the TTL sweeper retires it. 72h is the safe default — long enough for a weekend, short enough that stale approvals can't linger indefinitely.",
+    defaultValue: 72,
+    validRange: { type: "number", min: 1, max: 720 },
+    envFallback: "FINANCIAL_APPROVAL_TTL_HOURS",
+  },
+  {
+    key: "AUTO_EXECUTE_THRESHOLD",
+    category: "learning",
+    description:
+      "Confidence threshold above which the executor auto-acts on a decision. Below this, the item is deferred for founder review. Raise it if the calibration report shows overconfidence.",
+    defaultValue: 75,
+    validRange: { type: "number", min: 50, max: 99 },
+  },
+  {
+    key: "MAX_FINANCIAL_IMPACT_CENTS",
+    category: "safety",
+    description:
+      "Per-decision autonomous financial impact cap. Any decision with estimatedImpactCents above this is hard-stopped for founder review regardless of confidence. Defense-in-depth layer above the hard cap.",
+    defaultValue: 1000000,
+    validRange: { type: "number", min: 10000, max: 25000000 },
+  },
+  {
+    key: "OUTREACH_STOPLOSS_MONTHLY_CENTS",
+    category: "safety",
+    description:
+      "Monthly mail+data outreach spend line (founder ruling #5, 2026-07-28 — $500/month to start). When month-to-date mail+data spend crosses this line, outreach pauses until you tap ‘I’ve looked — resume’ in Costs. Resets monthly. In cents.",
+    defaultValue: 50000,
+    validRange: { type: "number", min: 1000, max: 10000000 },
+  },
+  {
+    key: "OUTCOME_GRADE_WINDOW_DAYS",
+    category: "learning",
+    description:
+      "How far back the autonomy-health meter looks when computing the rolling average outcome score.",
+    defaultValue: 14,
+    validRange: { type: "number", min: 3, max: 90 },
+  },
+  {
+    key: "ACTION_PREVIEW_WINDOW_SECONDS",
+    category: "safety",
+    description:
+      "Pause before each auto-approved action commits, giving you a chance to cancel from /founder/preview. Set to 0 for audit-only (no delay). Raise to 30+ to supervise in real-time.",
+    defaultValue: 0,
+    validRange: { type: "number", min: 0, max: 300 },
+  },
+  {
+    key: "atlas.kill_switch",
+    category: "safety",
+    description:
+      "Panic button for Atlas. When ON, every destructive Atlas tool refuses immediately; inquiry tools still work. Use during incidents where Atlas is misbehaving.",
+    defaultValue: false,
+    validRange: { type: "boolean" },
+  },
+  {
+    key: "atlas.bridge_enabled",
+    category: "general",
+    description:
+      "Enables the Bridge dashboard at /founder/bridge — a fused chat-first + modular-telemetry surface. Default OFF. Flip ON to dogfood the redesign before it replaces /founder.",
+    defaultValue: false,
+    validRange: { type: "boolean" },
+  },
+  {
+    key: "ai.daily_budget_cents",
+    category: "safety",
+    description:
+      "Total daily AI spend cap across the whole platform, in cents. When today's spend hits this, autonomous jobs refuse further LLM calls until UTC midnight. The cap is sliced into per-category budgets (executor, briefing, founder_brief, etc.) — see ai.budget.* knobs.",
+    defaultValue: 1000,
+    validRange: { type: "number", min: 100, max: 1000000 },
+  },
 ];
 
 export async function seedAllSettings(): Promise<void> {

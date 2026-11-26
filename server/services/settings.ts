@@ -85,7 +85,11 @@ export async function getSetting<T = unknown>(
     }
 
     const [row] = await db
-      .select({ value: platformSettings.value })
+      .select({
+        value: platformSettings.value,
+        defaultValue: platformSettings.defaultValue,
+        lastChangedBy: platformSettings.lastChangedBy,
+      })
       .from(platformSettings)
       .where(
         and(
@@ -97,11 +101,24 @@ export async function getSetting<T = unknown>(
       .limit(1);
 
     if (row) {
+      // P12-1a env fallback (opt-in keys only): at global scope, an
+      // untouched seed row does not shadow the env var.
+      if (scopeName === "global") {
+        const envVal = resolveEnvFallback(key, fallback, row);
+        if (envVal !== undefined) {
+          writeCache(key, scopeName, scopeRef, envVal);
+          return envVal as T;
+        }
+      }
       writeCache(key, scopeName, scopeRef, row.value);
       return row.value as T;
     }
     writeCache(key, scopeName, scopeRef, SENTINEL_MISS);
   }
+  // No row at any scope: an opt-in env fallback still beats the caller's
+  // fallback (founderSettings parity for env-only environments).
+  const envVal = resolveEnvFallback(key, fallback);
+  if (envVal !== undefined) return envVal as T;
   return fallback;
 }
 
@@ -169,6 +186,18 @@ export async function setSetting(args: SetSettingArgs): Promise<PlatformSetting>
       if (typeof range.max === "number" && args.value > range.max) {
         throw new SettingsValidationError(`value ${args.value} is above max ${range.max}`);
       }
+    }
+    // P12-1a: boolean validation. Previously validRange.type:"boolean" was
+    // ignored, so any shape could be written to a boolean key. Now a
+    // boolean-typed key requires a real boolean — EXCEPT null, which is
+    // the catalog's own cleared-override shape (e.g.
+    // infra.override.stripe.achEnabled defaults to null and is cleared
+    // back to null; its client writes real booleans). Every value shape
+    // the current catalog writes (boolean, null) stays accepted.
+    if (range.type === "boolean" && args.value !== null && typeof args.value !== "boolean") {
+      throw new SettingsValidationError(
+        `value '${String(args.value)}' is not a boolean`,
+      );
     }
     if (Array.isArray(range.oneOf) && !range.oneOf.includes(args.value as never)) {
       throw new SettingsValidationError(
@@ -280,10 +309,85 @@ export async function resetSetting(
 
 export interface SeedSettingArgs {
   key: string;
-  category: "autonomy" | "cost" | "lifecycle" | "voice" | "safety" | "compliance";
+  // P12-1a: union widened with the KNOBS catalog categories
+  // ("learning" | "scheduling" | "general") so founderSettings KNOBS can be
+  // seeded faithfully. Type-level only — platform_settings.category is text.
+  category:
+    | "autonomy"
+    | "cost"
+    | "lifecycle"
+    | "voice"
+    | "safety"
+    | "compliance"
+    | "learning"
+    | "scheduling"
+    | "general";
   description: string;
   defaultValue: unknown;
   validRange?: PlatformSetting["validRange"];
+  /**
+   * P12-1a: OPT-IN env fallback (default OFF — absent means the key never
+   * consults process.env, so no existing key's resolution changes). When
+   * set to an env var name, getSetting() mirrors founderSettings'
+   * resolution order for that key: a founder-set DB row wins, then the
+   * env var, then the seeded default. A global row that is still the
+   * untouched seed (value deep-equals defaultValue and lastChangedBy is
+   * null) does NOT shadow the env var — it is a default, not a founder
+   * set. Registration is in-process, populated by seedSetting() at boot
+   * (the seeder runs before reads); see registerSettingEnvFallback.
+   */
+  envFallback?: string;
+}
+
+// ─── Env fallback registry (P12-1a, opt-in per key) ─────────────────────────
+
+const envFallbackByKey = new Map<string, string>();
+
+/**
+ * Register an env fallback for a key. Called by seedSetting(); idempotent.
+ * Deliberately NOT exported: seedSetting() is its only caller, and an
+ * exported-but-internal symbol trips lint:reachability's
+ * internal-only-exports ratchet (+1 over baseline, found in P12-1a's
+ * resumed build). The registry stays an implementation detail of this
+ * module; keys opt in via SeedSettingArgs.envFallback.
+ */
+function registerSettingEnvFallback(key: string, envVar: string): void {
+  envFallbackByKey.set(key, envVar);
+}
+
+/**
+ * Resolve the env fallback for `key`, or undefined when the key has no
+ * registered fallback, the env var is unset/empty, or a founder-set row
+ * shadows it. `row` is the global row when one was found; an untouched
+ * seed row (value === defaultValue, never changed) does not shadow.
+ * Coercion follows the caller's fallback type: number → Number(raw)
+ * (non-finite → undefined), boolean → "true"/"false" only, else string.
+ */
+function resolveEnvFallback(
+  key: string,
+  fallback: unknown,
+  row?: { value: unknown; defaultValue: unknown; lastChangedBy: string | null },
+): unknown {
+  const envVar = envFallbackByKey.get(key);
+  if (!envVar) return undefined;
+  const raw = process.env[envVar];
+  if (raw === undefined || raw === "") return undefined;
+  if (row) {
+    const untouchedSeed =
+      row.lastChangedBy == null &&
+      JSON.stringify(row.value) === JSON.stringify(row.defaultValue);
+    if (!untouchedSeed) return undefined;
+  }
+  if (typeof fallback === "number") {
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : undefined;
+  }
+  if (typeof fallback === "boolean") {
+    if (raw === "true") return true;
+    if (raw === "false") return false;
+    return undefined;
+  }
+  return raw;
 }
 
 /**
@@ -296,6 +400,9 @@ export interface SeedSettingArgs {
  * value never gets overwritten by a deploy.
  */
 export async function seedSetting(args: SeedSettingArgs): Promise<void> {
+  // P12-1a: register the opt-in env fallback (if any) before any DB work,
+  // so resolution is armed even when the row already exists.
+  if (args.envFallback) registerSettingEnvFallback(args.key, args.envFallback);
   const existing = await getSettingRow(args.key, { scope: "global", scopeRef: null });
   if (existing) {
     // Metadata refresh only; do not touch value.

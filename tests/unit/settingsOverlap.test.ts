@@ -35,6 +35,16 @@
  * these two keys**. A third key declared in both catalogs would be a silent
  * repeat of this defect on a different toggle — this test turns that into a
  * decision someone has to make on purpose.
+ *
+ * ── P12-1a RE-PIN (2026-11, named and reasoned — not a silent baseline
+ * regeneration): the KNOBS catalog port seeded the 10 non-overlapping
+ * KNOBS keys into SETTINGS_CATALOG BY DESIGN, so the overlap is now all
+ * 12 KNOBS keys. The 10 are named below as "seeded in P12-1a, reader
+ * switch lands in P12-1b": their registry rows exist and are parity-
+ * tested (tests/unit/settingsKnobParity.test.ts), but no reader consults
+ * the registry for them yet and PLATFORM_OWNED_KEYS is deliberately NOT
+ * extended in P12-1a — founderSettings remains their runtime reader
+ * until P12-1b. The 2 archival keys remain the only bridged keys.
  */
 
 import { describe, it, expect } from "vitest";
@@ -55,7 +65,7 @@ function catalogKeys(rel: string, anchor: string): string[] {
   return [...src.slice(at).matchAll(/^\s*key:\s*["']([^"']+)["']/gm)].map((m) => m[1]);
 }
 
-describe("the two catalogs overlap on exactly the keys the bridge covers", () => {
+describe("the two catalogs overlap on exactly the pinned set (archival bridged; P12-1a keys seeded)", () => {
   const knobKeys = catalogKeys("server/services/founderSettings.ts", "const KNOBS");
   const seededKeys = catalogKeys("server/services/settingsSeeder.ts", "SETTINGS_CATALOG");
 
@@ -66,26 +76,49 @@ describe("the two catalogs overlap on exactly the keys the bridge covers", () =>
     expect(seededKeys.length).toBeGreaterThanOrEqual(25);
   });
 
-  it("the overlap is exactly the two archival keys", () => {
+  // P12-1a: seeded in P12-1a, reader switch lands in P12-1b.
+  const P12_1A_SEEDED_KEYS = [
+    "ACTION_PREVIEW_WINDOW_SECONDS",
+    "AUTO_EXECUTE_THRESHOLD",
+    "FINANCIAL_APPROVAL_TTL_HOURS",
+    "FINANCIAL_HARD_CAP_CENTS",
+    "MAX_FINANCIAL_IMPACT_CENTS",
+    "OUTCOME_GRADE_WINDOW_DAYS",
+    "OUTREACH_STOPLOSS_MONTHLY_CENTS",
+    "ai.daily_budget_cents",
+    "atlas.bridge_enabled",
+    "atlas.kill_switch",
+  ];
+
+  it("the overlap is exactly the 12 KNOBS keys (2 archival + 10 seeded in P12-1a)", () => {
     const overlap = knobKeys.filter((k) => seededKeys.includes(k)).sort();
     expect(
       overlap,
       "the set of keys declared in BOTH settings catalogs changed. Every key in " +
         "this set is written by one system and possibly read by the other — which " +
         "is how the archival toggle came to report success while reaching nothing. " +
-        "If you added one deliberately, add it to PLATFORM_OWNED_KEYS in " +
-        "founderSettings.ts as well, and update this assertion in the same commit.",
-    ).toEqual(["archival.enabled", "archival.horizon_days"]);
+        "The expected set is the 2 bridged archival keys plus the 10 keys seeded " +
+        "in P12-1a (reader switch lands in P12-1b). If you added an overlap " +
+        "deliberately, name it here with its slice and update this assertion in " +
+        "the same commit.",
+    ).toEqual([...P12_1A_SEEDED_KEYS, "archival.enabled", "archival.horizon_days"].sort());
   });
 
-  it("every overlapping key is in the bridge set", () => {
+  it("the bridge set covers exactly the archival keys; the P12-1a keys are seeded, not bridged", () => {
     const src = read("server/services/founderSettings.ts");
     const at = src.indexOf("const PLATFORM_OWNED_KEYS");
     expect(at, "the bridge set is gone — overlapping keys resolve from the wrong table again")
       .toBeGreaterThan(-1);
     const decl = src.slice(at, src.indexOf("]", at));
-    for (const k of knobKeys.filter((x) => seededKeys.includes(x))) {
+    // Bridged (reader consults platform_settings first): archival only.
+    for (const k of ["archival.enabled", "archival.horizon_days"]) {
       expect(decl, `${k} is declared in both catalogs but is not bridged`).toContain(k);
+    }
+    // Seeded in P12-1a, reader switch lands in P12-1b: these must NOT be
+    // in the bridge set yet — no reader consults the bridge for them in
+    // this slice, and extending the set is P12-1b's move.
+    for (const k of P12_1A_SEEDED_KEYS) {
+      expect(decl, `${k} was added to the bridge set before its P12-1b reader switch`).not.toContain(k);
     }
   });
 });
