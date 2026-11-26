@@ -27,7 +27,7 @@ function usd(cents: number | null | undefined): string {
   return `${cents < 0 ? "−" : ""}$${Math.abs(Math.round(cents / 100)).toLocaleString("en-US")}`;
 }
 
-function describeChoice(kind: DecisionKind, _inputs: Record<string, number>, metrics: ScenarioMetric[]): string {
+function describeChoice(kind: DecisionKind, _inputs: Record<string, number | string>, metrics: ScenarioMetric[]): string {
   const maxBid = metrics.find((m) => m.id === "max_allowable_offer")?.value;
   if (kind === "pass") return `No bid — my max on this stack is ${usd(maxBid)}`;
   return `Bid up to ${usd(maxBid)}`;
