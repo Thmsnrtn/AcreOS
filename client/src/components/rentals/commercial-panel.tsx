@@ -30,6 +30,7 @@
 
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { Link } from "wouter";
 import { Building2, FileText } from "lucide-react";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -203,6 +204,13 @@ export function CommercialPanel() {
             options={all.map((l) => [l.id, `Property #${l.propertyId}${l.unitLabel ? ` · ${l.unitLabel}` : ""} · ${l.status.replace(/_/g, " ")}`])}
             onChange={setLeaseId}
           />
+          <p className="mt-3 text-sm">
+            Underwriting an acquisition or a hold on a property like this one?{" "}
+            <Link href="/commercial/underwrite" className="underline underline-offset-2" data-testid="commercial-underwrite-link">
+              Work out the underwrite
+            </Link>{" "}
+            from the recorded figures.
+          </p>
         </CardContent>
       </Card>
 

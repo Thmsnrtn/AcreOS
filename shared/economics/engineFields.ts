@@ -20,9 +20,12 @@
  *   count    a whole count (units, lots, nights).
  *   number   a plain number with no unit (an occupancy ratio typed as 0.82,
  *            say). Avoid it when a percent would do.
+ *   month    a calendar month, typed and carried on the wire as the
+ *            validated YYYY-MM string itself — an engine that reads its
+ *            inputs "as of" a month takes the string, never a number.
  */
 
-export type EngineFieldUnit = "cents" | "percent" | "months" | "count" | "number";
+export type EngineFieldUnit = "cents" | "percent" | "months" | "count" | "number" | "month";
 
 export interface EngineField {
   /** The engine input key, verbatim. */
@@ -43,7 +46,12 @@ export interface EngineField {
 }
 
 /** Convert one typed value to its wire form, or `undefined` when empty/invalid. */
-function toWire(field: EngineField, typed: string): number | undefined {
+function toWire(field: EngineField, typed: string): number | string | undefined {
+  if (field.unit === "month") {
+    const t = typed.trim();
+    if (t === "") return undefined;
+    return /^\d{4}-(0[1-9]|1[0-2])$/.test(t) ? t : undefined;
+  }
   const t = typed.replace(/[$,%\s]/g, "");
   if (t === "") return undefined;
   const n = Number(t);
@@ -62,8 +70,8 @@ function toWire(field: EngineField, typed: string): number | undefined {
 export function wireInputs(
   fields: readonly EngineField[],
   typed: Readonly<Record<string, string>>,
-): { inputs: Record<string, number>; missing: string[] } {
-  const inputs: Record<string, number> = {};
+): { inputs: Record<string, number | string>; missing: string[] } {
+  const inputs: Record<string, number | string> = {};
   const missing: string[] = [];
   for (const f of fields) {
     const raw = typed[f.key] ?? "";

@@ -316,8 +316,12 @@ describe("readiness is a projection of evidence", () => {
 
   it("a declared template id the engine does not define earns nothing", () => {
     // The cheapest possible way to fake a tier is to add a string to an array.
+    // A non-registered id, like the bare construction above: commercial
+    // itself evidences `decided` through its decision desk since 2026-11-25,
+    // which would mask the template claim this test isolates.
     const fake = {
       ...BUSINESS_TYPES.commercial,
+      id: "not_a_registered_vertical" as BusinessTypeId,
       workflowTemplateIds: ["tpl_this_does_not_exist"],
       spotlightModules: [],
     };
@@ -624,8 +628,17 @@ describe("no PUBLIC claim outruns the evidence (OD-5, under FD1)", () => {
     );
     const toldCore = cannotShowCore.filter((id) => publicMaturityOf(BUSINESS_TYPES[id]) === "core");
     expect(toldCore.sort()).toEqual(Object.keys(FD1_CORE_ON_SURFACED_EVIDENCE).sort());
-    // Vacuity: the population is real — most verticals still cannot show decided.
-    expect(cannotShowCore.length).toBeGreaterThan(5);
+    // Vacuity: the population is real, and pinned exactly — the five
+    // verticals still at `surfaced`. Commercial graduated on 2026-11-25
+    // (its decision desk), which brought this set from six to five; a
+    // further graduation shrinks it again and must update this pin.
+    expect(cannotShowCore.sort()).toEqual([
+      "agent_investor",
+      "creative_finance",
+      "mobile_home",
+      "multifamily",
+      "short_term_rental",
+    ]);
   });
 });
 
