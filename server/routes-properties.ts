@@ -23,7 +23,6 @@ import { compsGuard } from "./middleware/expensiveEndpointGuard";
 // emitted property.created / property.status_changed. Both emitters are
 // fire-and-forget and no-op unless the pipeline status genuinely changed.
 import { emitPropertyCreated, emitPropertyStatusChanged } from "./services/propertyEvents";
-import { readIntegrationCredentials } from "./services/integrationCredentials";
 import { CSV_IMPORT_MAX_ROWS_PER_FILE } from "@shared/product-limits";
 import { clock } from "./utils/clock";
 import { routeParam } from "./utils/routeParams";
@@ -895,21 +894,20 @@ export function registerPropertyRoutes(app: Express): void {
       const isResidentialOrg = isResidentialBusinessType(await getOrgBusinessType(org.id));
 
       // Check if org has their own Regrid credentials (BYOK) - if so, skip credit check
-      const regridIntegration = await storage.getOrganizationIntegration(org.id, 'regrid');
-      // Whether the org pays for this lookup itself. This asked only whether an
-      // ENVELOPE existed, so an org whose Regrid key was set through the BYOK
-      // panel in Settings — which stored it in the clear — was charged ten cents
-      // a query for lookups their own key was meant to cover, while comps.ts
-      // could not see that key either and ran the query on the platform's.
-      // Resolved the same way the query itself resolves it, so the gate and the
-      // use cannot disagree.
-      const usingOrgRegridCredentials =
-        regridIntegration?.isEnabled &&
-        !!readIntegrationCredentials<{ apiKey?: string }>(
-          regridIntegration,
-          org.id,
-          'regrid credit check',
-        )?.apiKey;
+      // P9-2a: resolved through the vault-first resolver (byok vault, then the
+      // legacy organizationIntegrations fallback) — the same read the query
+      // itself uses (comps.ts), so the gate and the use cannot disagree. The
+      // previous probe read ONLY the legacy store, so an org whose Regrid key
+      // lived only in the vault was charged ten cents a query for lookups
+      // their own key covered. Both stores missing resolves to null and the
+      // credit check proceeds, exactly as before; the resolver never falls
+      // back to the platform/env key.
+      const { resolveProviderCredential } = await import("./services/providers/resolveProviderCredential");
+      const usingOrgRegridCredentials = !!(await resolveProviderCredential(org.id, {
+        channel: "regrid",
+        legacyProvider: "regrid",
+        legacyField: "apiKey",
+      }));
 
       if (!usingOrgRegridCredentials && !isResidentialOrg) {
         // Credit pre-check for comps query (10 cents per query) - only when using platform credentials
@@ -1004,21 +1002,20 @@ export function registerPropertyRoutes(app: Express): void {
       const isResidentialOrg = isResidentialBusinessType(await getOrgBusinessType(org.id));
 
       // Check if org has their own Regrid credentials (BYOK) - if so, skip credit check
-      const regridIntegration = await storage.getOrganizationIntegration(org.id, 'regrid');
-      // Whether the org pays for this lookup itself. This asked only whether an
-      // ENVELOPE existed, so an org whose Regrid key was set through the BYOK
-      // panel in Settings — which stored it in the clear — was charged ten cents
-      // a query for lookups their own key was meant to cover, while comps.ts
-      // could not see that key either and ran the query on the platform's.
-      // Resolved the same way the query itself resolves it, so the gate and the
-      // use cannot disagree.
-      const usingOrgRegridCredentials =
-        regridIntegration?.isEnabled &&
-        !!readIntegrationCredentials<{ apiKey?: string }>(
-          regridIntegration,
-          org.id,
-          'regrid credit check',
-        )?.apiKey;
+      // P9-2a: resolved through the vault-first resolver (byok vault, then the
+      // legacy organizationIntegrations fallback) — the same read the query
+      // itself uses (comps.ts), so the gate and the use cannot disagree. The
+      // previous probe read ONLY the legacy store, so an org whose Regrid key
+      // lived only in the vault was charged ten cents a query for lookups
+      // their own key covered. Both stores missing resolves to null and the
+      // credit check proceeds, exactly as before; the resolver never falls
+      // back to the platform/env key.
+      const { resolveProviderCredential } = await import("./services/providers/resolveProviderCredential");
+      const usingOrgRegridCredentials = !!(await resolveProviderCredential(org.id, {
+        channel: "regrid",
+        legacyProvider: "regrid",
+        legacyField: "apiKey",
+      }));
 
       if (!usingOrgRegridCredentials && !isResidentialOrg) {
         // Credit pre-check for comps query (10 cents per query) - only when using platform credentials

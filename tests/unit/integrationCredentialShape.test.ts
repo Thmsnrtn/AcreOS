@@ -280,8 +280,12 @@ describe("the surfaces this fixed stay fixed", () => {
       expect(decl, "the credit gate is keyed on the storage shape again").not.toMatch(
         /credentials\s*\??\.\s*encrypted/,
       );
+      // P9-2a: the gate resolves through the vault-first resolver — the same
+      // read comps.ts (the use) performs — which itself falls back to the
+      // legacy store via readIntegrationCredentials. Gate and use still
+      // cannot disagree; both now also see vault-only keys.
       expect(decl, "the credit gate no longer resolves the credential").toContain(
-        "readIntegrationCredentials",
+        "resolveProviderCredential",
       );
     }
   });
