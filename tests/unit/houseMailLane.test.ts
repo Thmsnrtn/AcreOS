@@ -259,7 +259,7 @@ vi.mock("../../server/services/mail/letterRender", () => ({
     return state.lastRendered;
   },
 }));
-vi.mock("../../server/services/settings", () => ({ getSetting: async (k: string, fallback: unknown) => state.settings[k] ?? fallback }));
+vi.mock("../../server/services/settings", () => ({ getSetting: async (k: string, fallback: unknown) => state.settings[k] ?? fallback, getStringSetting: async () => null, getNumberSetting: async (_k: string, f: number) => f }));
 
 // The outward-action boundary needs a database; letters in this file carry no
 // idempotency key, so it is never entered. Its error type is real. The house

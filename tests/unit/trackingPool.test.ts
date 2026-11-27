@@ -122,8 +122,8 @@ vi.mock("../../server/db", () => {
   };
 });
 
-vi.mock("../../server/services/founderSettings", () => ({
-  getSetting: vi.fn(async () => null),
+vi.mock("../../server/services/settings", () => ({
+  getStringSetting: vi.fn(async () => null),
   getNumberSetting: vi.fn(async (_k: string, fallback: number) => fallback),
 }));
 

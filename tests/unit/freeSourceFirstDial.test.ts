@@ -72,6 +72,7 @@ vi.mock("../../server/storage", () => ({ storage: {} }));
 const { getSettingMock } = vi.hoisted(() => ({ getSettingMock: vi.fn() }));
 vi.mock("../../server/services/settings", () => ({
   getSetting: getSettingMock,
+  getStringSetting: async () => null, getNumberSetting: async (_k: string, f: number) => f,
 }));
 
 describe("freeSourceFirst dial — pure ordering seam", () => {

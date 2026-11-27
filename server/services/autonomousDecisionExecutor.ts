@@ -1109,7 +1109,7 @@ async function processInboxItem(item: any): Promise<ExecutionResult> {
   // Legacy hard stop: financial impact above absolute threshold (Tier 5 fallback).
   // Reads the live founder-settings value so the founder can raise/lower
   // the per-decision cap without a deploy.
-  const { getNumberSetting } = await import("./founderSettings");
+  const { getNumberSetting } = await import("./settings");
   const maxImpactCents = await getNumberSetting(
     "MAX_FINANCIAL_IMPACT_CENTS",
     EXECUTOR_CONFIG.MAX_FINANCIAL_IMPACT_CENTS,

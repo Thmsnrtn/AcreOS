@@ -21,7 +21,7 @@ import { dataSources, dataSourceCache } from "@shared/schema";
 vi.mock("../../server/utils/logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
-vi.mock("../../server/services/settings", () => ({ getSetting: async (_k: string, d: unknown) => d }));
+vi.mock("../../server/services/settings", () => ({ getSetting: async (_k: string, d: unknown) => d, getStringSetting: async () => null, getNumberSetting: async (_k: string, f: number) => f }));
 
 const S = vi.hoisted(() => ({
   cacheRows: [] as Array<Record<string, unknown>>,

@@ -19,7 +19,7 @@
  */
 
 import { logger } from "../../utils/logger";
-import { getSetting } from "../founderSettings";
+import { getStringSetting } from "../settings";
 import { ALL_MAIL_PIECE_TYPES, ALL_MAIL_SPEEDS, undeliverableMailReason } from "@shared/outreach/mailOptions";
 
 // ── Public types ─────────────────────────────────────────────────────────────
@@ -182,7 +182,7 @@ const DEFAULT_ENABLED: MailProviderName[] = ["lob"];
 
 async function resolveEnabledProviders(): Promise<MailProviderName[]> {
   try {
-    const raw = await getSetting("mail.providers.enabled");
+    const raw = await getStringSetting("mail.providers.enabled");
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.every((p) => typeof p === "string")) {

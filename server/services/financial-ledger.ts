@@ -37,7 +37,7 @@ import {
   type AllocationPolicy,
   type BucketName,
 } from "@shared/billing/allocation-policy";
-import { getSetting } from "./founderSettings";
+import { getStringSetting } from "./settings";
 import { logger } from "../utils/logger";
 import { clock } from "../utils/clock";
 
@@ -95,7 +95,7 @@ export interface ContributionMargin {
  */
 export async function resolveAllocationPolicy(): Promise<AllocationPolicy> {
   try {
-    const raw = await getSetting(FOUNDER_SETTINGS_ALLOCATION_POLICY_KEY);
+    const raw = await getStringSetting(FOUNDER_SETTINGS_ALLOCATION_POLICY_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as AllocationPolicy;
       assertValidAllocationPolicy(parsed);

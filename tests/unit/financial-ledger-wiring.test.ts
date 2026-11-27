@@ -39,8 +39,8 @@ function resetLedger() {
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
-vi.mock("../../server/services/founderSettings", () => ({
-  getSetting: vi.fn(async () => null),
+vi.mock("../../server/services/settings", () => ({
+  getStringSetting: vi.fn(async () => null),
 }));
 
 vi.mock("../../server/utils/logger", () => ({

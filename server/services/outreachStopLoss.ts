@@ -298,7 +298,7 @@ export interface OutreachStopLossStatus {
 
 async function readLineCents(): Promise<number> {
   try {
-    const { getNumberSetting } = await import("./founderSettings");
+    const { getNumberSetting } = await import("./settings");
     return normalizeLineCents(
       await getNumberSetting(
         OUTREACH_STOPLOSS_SETTING_KEY,

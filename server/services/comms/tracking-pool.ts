@@ -27,7 +27,7 @@ import { trackingNumberAssignments } from "@shared/schema";
 import { and, eq, isNull, isNotNull, lt, or } from "drizzle-orm";
 import { logger } from "../../utils/logger";
 import { unscopedForPlatformOps } from "../../utils/orgScopedDb";
-import { getNumberSetting } from "../founderSettings";
+import { getNumberSetting } from "../settings";
 import { commsRouter, type CommsProviderName } from "./router";
 import { clock } from "../../utils/clock";
 

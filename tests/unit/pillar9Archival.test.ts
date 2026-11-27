@@ -11,8 +11,8 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-vi.mock("../../server/services/founderSettings", () => ({
-  getSetting: vi.fn(async (_key: string) => "false"),
+vi.mock("../../server/services/settings", () => ({
+  getStringSetting: vi.fn(async (_key: string) => "false"),
   getNumberSetting: vi.fn(async (_key: string, fallback: number) => fallback),
 }));
 

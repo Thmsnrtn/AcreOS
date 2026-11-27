@@ -44,9 +44,9 @@ function resetStore() {
 // Mock @shared/billing/allocation-policy at default (no founder override).
 // We rely on the real DEFAULT_ALLOCATION_POLICY values.
 
-// Mock founderSettings.getSetting to return null (forces default policy).
-vi.mock("../../server/services/founderSettings", () => ({
-  getSetting: vi.fn(async () => null),
+// Mock settings.getStringSetting to return null (forces default policy).
+vi.mock("../../server/services/settings", () => ({
+  getStringSetting: vi.fn(async () => null),
 }));
 
 // Mock logger so the service can call .warn without a real backend.

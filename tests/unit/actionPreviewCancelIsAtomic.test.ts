@@ -61,7 +61,7 @@ vi.mock("../../server/db", () => ({
     select: () => ({ from: () => ({ where: () => ({ limit: async () => [] }) }) }),
   },
 }));
-vi.mock("../../server/services/founderSettings", () => ({ getNumberSetting: async () => 0 }));
+vi.mock("../../server/services/settings", () => ({ getNumberSetting: async () => 0 }));
 vi.mock("../../server/utils/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
 
 import { beginActionPreview, cancelPreview } from "../../server/services/actionPreview";

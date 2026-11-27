@@ -104,7 +104,7 @@ vi.mock("../../server/services/creditCost", () => ({ creditCost: async () => 120
 // credits (mail/mailLane.ts chargeHouseMail), whose SQL is faked here
 // (tests/helpers/fakeHouseMailDb); a poolDebit would be a defect and is recorded.
 vi.mock("../../server/db", async () => (await import("../helpers/fakeHouseMailDb")).fakeHouseMailDbModule);
-vi.mock("../../server/services/settings", () => ({ getSetting: async (_k: string, fallback: unknown) => fallback }));
+vi.mock("../../server/services/settings", () => ({ getSetting: async (_k: string, fallback: unknown) => fallback, getStringSetting: async () => null, getNumberSetting: async (_k: string, f: number) => f }));
 vi.mock("../../server/services/creditPool", () => ({
   poolDebit: async (a: { action: string }) => {
     state.poolDebits.push(a.action);
