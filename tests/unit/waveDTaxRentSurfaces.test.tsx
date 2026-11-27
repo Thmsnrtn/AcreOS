@@ -56,6 +56,8 @@ vi.mock("@/components/mobile/CourthouseMode", async () => {
   return { CourthouseMode: () => react.createElement("div", null, "courthouse-mode") };
 });
 
+import { DEPOSIT_RETURN_RULES } from "../../shared/regulatory/depositReturnRules";
+
 import AuctionWorksheetPage from "../../client/src/pages/auction-worksheet";
 import StateRulesPage from "../../client/src/pages/state-rules";
 import RentRollPage from "../../client/src/pages/rent-roll";
@@ -141,6 +143,25 @@ function text(): string {
 
 function byTestId(id: string): HTMLElement | null {
   return container?.querySelector<HTMLElement>(`[data-testid="${id}"]`) ?? null;
+}
+
+/**
+ * Bounded wait for an element that arrives asynchronously — the deposit
+ * clock's rules table is served as data (/deposit-return-rules.json), so
+ * its rows render only after that fetch resolves. Same idiom as
+ * flaggedRouteSaysNotAvailable.test.tsx's findByTestId: poll with act
+ * flushes, bounded so an element that never arrives fails, not hangs.
+ */
+async function findByTestId(id: string, timeoutMs = 5000): Promise<HTMLElement | null> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const el = byTestId(id);
+    if (el) return el;
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
+  }
+  return null;
 }
 
 /** Radix portals render outside the container — search the whole document. */
@@ -751,6 +772,12 @@ describe("rent roll — allocation, deposit clock and late-fee proposal", () => 
       const fromExtra = extra?.(call);
       if (fromExtra) return fromExtra;
       const { url, method } = call;
+      if (url === "/deposit-return-rules.json") {
+        // The deposit clock loads its statutory rules table as data
+        // (bundle diet); serve the source module's table verbatim, the
+        // same value the generated asset carries.
+        return { body: DEPOSIT_RETURN_RULES };
+      }
       if (url === "/api/rent/aging") {
         return {
           body: {
@@ -891,6 +918,12 @@ describe("rent roll — allocation, deposit clock and late-fee proposal", () => 
     installFetch(rentHandler());
 
     await mount(React.createElement(RentRollPage));
+
+    // The deposit clock is shell-first: its rules table loads async from
+    // /deposit-return-rules.json, so await the clock rows before asserting.
+    const deadline = await findByTestId("deposit-deadline-lease-tx-ended");
+    expect(deadline, "the deposit clock did not render for the encoded state").not.toBeNull();
+    await findByTestId("deposit-unknown-lease-ky");
 
     // TX is encoded: 30 calendar days from the 2026-07-01 move-out.
     expect(byTestId("deposit-deadline-lease-tx-ended")!.textContent).toBe("2026-07-31");
