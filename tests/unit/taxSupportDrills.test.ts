@@ -26,12 +26,16 @@
  *   column, value, reason named), the good row stays valid, and
  *   `assertNoRowLost` proves every row read is accounted for.
  *
- *   Drill 4 ("Pax told me X"): the capability pin. The T7 tax tools ARE
- *   registered on the chat path (proven by paxTaxCertificateTools.test.ts),
- *   but the support resolver's tool subset contains NONE of them — the
- *   N9-DEF-1 shape, filed as T9-DEF-1 in the record. This pin makes the
- *   gap visible until a cure removes the tools' absence; the drill's live
- *   leg stays UNPROVEN in the record, never rounded up.
+ *   Drill 4 ("Pax told me X"): CLOSED by the T9-DEF-1 cure. The T7 tax
+ *   tools ARE registered on the chat path (proven by
+ *   paxTaxCertificateTools.test.ts); the cure adds support-only variants
+ *   of the four READS (the registries key one dispatch per name, and the
+ *   chat names already dispatch through the chat executor) and pins the
+ *   resolver subset at the prior 13 generic tools + exactly those four.
+ *   The one T7 write (record_tax_ledger_entry) has NO support variant —
+ *   the support path stays read-only. The resolver leg itself (mocked
+ *   model, real resolver gate) lives in taxSupportDrillsResolver.test.ts;
+ *   the real-switch legs for the four reads live below.
  *
  *   Drill 5 (the fence): redemption interest is income on the certificate,
  *   so the drill asks whether DEFECT-0101's fence refuses correctly for
@@ -83,6 +87,69 @@ vi.mock("../../server/services/founder", () => ({
   isFounderEmail: () => false,
 }));
 import { requireQualified1099Output } from "../../server/services/form1099Refusal";
+
+// ── Drill 4's real-switch legs run the REAL executeSupportTool switch and
+// the REAL T7 read helpers underneath it. Only the data sources are mocked:
+// `db` (certificate + notice-event rows, the paxTaxCertificateTools.test.ts
+// pattern, with the clock pinned to drill 1's as-of date so the GA amount
+// is the walk's $7,200) and the clock/ledger builders at their service
+// seams (the same stubs the T7 suite uses).
+const CERT_ID = "6f1c1c1e-2b7a-4c1d-9a55-0e0e0e0e0e0e";
+const CERT_ROW = {
+  id: CERT_ID, organizationId: 77, state: "GA", county: "Fulton", apn: "T9-1", certificateNumber: null,
+  saleType: "redeemable_deed", saleDate: "2025-11-23", status: "active", purchaseAmountCents: 600_000,
+  bidDownRateBps: null, redemptionDeadline: "2026-11-23", deadlineSource: "computed_preliminary",
+};
+const SIM_NOTICE_EVENT = {
+  organizationId: 77, certificateId: CERT_ID, eventType: "redemption_notice_recorded",
+  eventDate: "2026-11-20", recordedAt: "2026-11-20T10:00:00.000Z",
+  detail: { method: "certified mail via AcreOS", sentViaRail: true, providerId: "sim_T9DRILL", testMode: true },
+};
+const H = vi.hoisted(() => ({
+  rows: {} as Record<string, unknown[]>,
+  wheres: [] as Array<{ table: string; cond: unknown }>,
+}));
+vi.mock("../../server/db", async () => {
+  const { getTableName } = await import("drizzle-orm");
+  const make = () => {
+    let table = "";
+    const chain: any = {
+      select: () => chain,
+      from: (t: any) => { table = getTableName(t); return chain; },
+      where: (c: unknown) => { H.wheres.push({ table, cond: c }); return chain; },
+      orderBy: () => chain,
+      limit: () => chain,
+      then: (res: any, rej: any) => Promise.resolve(H.rows[table] ?? []).then(res, rej),
+    };
+    return chain;
+  };
+  return { db: make() };
+});
+vi.mock("../../server/storage", () => ({ storage: {} }));
+vi.mock("../../server/utils/clock", async (importOriginal) => {
+  const actual = await importOriginal<any>();
+  const now = () => new Date("2026-11-23T12:00:00Z");
+  return { ...actual, clock: { ...actual.clock, now, nowMs: () => now().getTime() } };
+});
+vi.mock("../../server/services/tax/certificateClock", async (importOriginal) => ({
+  ...(await importOriginal<any>()),
+  clockForCertificate: vi.fn(async (orgId: number, row: any) => ({ stub: true, orgId, certificateId: row.id })),
+}));
+vi.mock("../../server/services/tax/taxEvents", () => ({
+  latestTaxEvents: vi.fn(async () => ({ redemption_expiry: null })),
+}));
+vi.mock("../../server/services/tax/certificateLedger", async (importOriginal) => ({
+  ...(await importOriginal<any>()),
+  buildCertificateLedger: vi.fn(async () => ({ stub: true })),
+}));
+
+import { executeSupportTool, PAUSE_SAFE_SUPPORT_TOOLS, supportToolDefinitions } from "../../server/ai/supportAgent";
+import { groupForTool } from "@shared/pax-controls";
+import { CAPABILITY_ROWS } from "@shared/pax-capabilities";
+import { PgDialect } from "drizzle-orm/pg-core";
+
+const SUPPORT_ORG = { id: 77, isFounder: false } as never;
+const params = (cond: unknown) => new PgDialect().sqlToQuery(cond as any).params;
 
 // ── Drill 1 — money moment ─────────────────────────────────────────────────
 
@@ -261,12 +328,49 @@ describe("T9 drill 3b — a wrong county CSV: bad rows refused row-exactly, no r
   });
 });
 
-// ── Drill 4 — "Pax told me X": the support resolver has no tax read ───────
+// ── Drill 4 — "Pax told me X": T9-DEF-1 cured — the support reads ─────────
+//
+// The support resolver's subset is not exported (an export with no
+// production consumer fails the reachability ratchet); pin it from source,
+// the paxPauseSupportGate.test.ts pattern #738 used for the notes cure.
+const SUPPORT_TAX_READS = [
+  "get_tax_certificates_book",
+  "get_tax_certificate_record",
+  "get_tax_certificate_clock_view",
+  "get_tax_certificate_ledger_view",
+] as const;
+const SUPPORT_BH_READS = [
+  "get_rent_roll_view",
+  "get_rental_leases_view",
+  "get_lease_ledger_view",
+  "get_rental_underwriting_view",
+] as const;
+const PRIOR_RESOLVER_NAMES = [
+  "search_knowledge_base",
+  "search_resolved_tickets",
+  "get_similar_resolutions",
+  "get_troubleshooting_steps",
+  "diagnose_account",
+  "check_data_integrity",
+  "get_account_summary",
+  "query_user_data",
+  "get_user_activity",
+  "estimate_resolution_confidence",
+  "recall_user_memory",
+  "draft_customer_response",
+  "escalate_to_human",
+];
+const RESOLVER_TOOL_NAMES: string[] = (() => {
+  const src = readFileSync(resolve(__dirname, "../../server/ai/paxSupportResolver.ts"), "utf8");
+  const m = /const RESOLVER_TOOL_NAMES = \[([\s\S]*?)\] as const;/.exec(src);
+  if (!m) throw new Error("RESOLVER_TOOL_NAMES literal not found in paxSupportResolver.ts");
+  return [...m[1].matchAll(/"([a-z_0-9]+)"/g)].map((x) => x[1]);
+})();
 
-describe("T9 drill 4 — capability pin: the T7 tax tools exist on the chat path but NOT in the support resolver's subset (T9-DEF-1)", () => {
+describe("T9 drill 4 — capability pin, cured: the resolver subset is the prior set + exactly the four support tax reads (composed with the four support buy-hold reads)", () => {
   const root = resolve(__dirname, "../..");
   const read = (p: string) => stripComments(readFileSync(resolve(root, p), "utf8"));
-  const TAX_TOOLS = [
+  const CHAT_TAX_TOOLS = [
     "get_tax_certificates",
     "get_tax_certificate",
     "get_tax_certificate_clock",
@@ -274,16 +378,93 @@ describe("T9 drill 4 — capability pin: the T7 tax tools exist on the chat path
     "record_tax_ledger_entry",
   ];
 
-  it("the chat path registers all five tax tools (T7, proven in paxTaxCertificateTools.test.ts)", () => {
+  it("the chat path still registers all five tax tools (T7, proven in paxTaxCertificateTools.test.ts)", () => {
     const toolsSrc = read("server/ai/tools.ts");
-    for (const t of TAX_TOOLS) expect(toolsSrc, `chat path is missing ${t}`).toContain(t);
+    for (const t of CHAT_TAX_TOOLS) expect(toolsSrc, `chat path is missing ${t}`).toContain(t);
   });
 
-  it("the support resolver's subset contains none of them — a tax ticket cannot be grounded on the support path today", () => {
-    const resolverSrc = read("server/ai/paxSupportResolver.ts");
-    const block = resolverSrc.match(/RESOLVER_TOOL_NAMES\s*=\s*\[([\s\S]*?)\]/);
-    expect(block, "RESOLVER_TOOL_NAMES block not found — the pin must be re-pointed, not deleted").not.toBeNull();
-    for (const t of TAX_TOOLS) expect(block![1], `resolver unexpectedly gained ${t} — close T9-DEF-1 and re-drill`).not.toContain(t);
+  it("the resolver subset is exactly the prior 13 + the four support tax reads + the four support buy-hold reads, in order", () => {
+    expect(RESOLVER_TOOL_NAMES).toEqual([
+      ...PRIOR_RESOLVER_NAMES.slice(0, 7),
+      ...SUPPORT_TAX_READS,
+      ...SUPPORT_BH_READS,
+      ...PRIOR_RESOLVER_NAMES.slice(7),
+    ]);
+  });
+
+  it("no chat tax name and no write of any kind entered the subset — the support path stays read-only", () => {
+    for (const t of CHAT_TAX_TOOLS) expect(RESOLVER_TOOL_NAMES).not.toContain(t);
+    expect(RESOLVER_TOOL_NAMES.some((n) => n.startsWith("record_"))).toBe(false);
+  });
+
+  it("every subset name resolves to a real support tool definition (the resolver builds its tool list from these)", () => {
+    for (const n of RESOLVER_TOOL_NAMES) expect(supportToolDefinitions, n).toHaveProperty(n);
+  });
+
+  it("the four reads are registered everywhere the pattern registers a support tool", () => {
+    for (const n of SUPPORT_TAX_READS) {
+      expect(supportToolDefinitions[n], n).toBeDefined();
+      expect(PAUSE_SAFE_SUPPORT_TOOLS.has(n), n).toBe(true);
+      expect(groupForTool(n), n).toBe("looks_and_drafts");
+      expect(CAPABILITY_ROWS[n], n).toMatchObject({ dispatch: "executeSupportTool", group: "looks_and_drafts", family: "tax_lien_deed", pauseSafe: true });
+    }
+  });
+
+  it("there is NO support variant of the ledger write — recording stays off the support path", () => {
+    expect(Object.keys(supportToolDefinitions).filter((n) => n.includes("tax") && n.startsWith("record_"))).toEqual([]);
+    expect(PAUSE_SAFE_SUPPORT_TOOLS.has("record_tax_ledger_entry")).toBe(false);
+  });
+});
+
+describe("T9 drill 4 — the real support switch: the four reads run and ground the answer", () => {
+  beforeEach(() => {
+    H.rows = { tax_certificates: [CERT_ROW], tax_events: [SIM_NOTICE_EVENT] };
+    H.wheres = [];
+  });
+
+  it("the book read lists the GA certificate with the walk's redemption amount and states coverage", async () => {
+    const r = await executeSupportTool("get_tax_certificates_book", {}, SUPPORT_ORG);
+    expect(r.success).toBe(true);
+    expect(r.data.coverage).toContain("THIS account's tax certificates only (1 matches — status active; 1 shown)");
+    expect(r.data.coverage).toContain("does not include tax-sale listings");
+    expect(r.data.certificates).toHaveLength(1);
+    expect(r.data.certificates[0]).toMatchObject({
+      id: CERT_ID, state: "GA", county: "Fulton",
+      currentRedemptionAmountCents: 720_000, currentInterestCents: 120_000, preliminary: true,
+    });
+    // The org comes from the session and is in the WHERE of the query.
+    expect(H.wheres.some((w) => w.table === "tax_certificates" && params(w.cond).includes(77))).toBe(true);
+  });
+
+  it("the record read returns the one certificate, coverage-stated", async () => {
+    const r = await executeSupportTool("get_tax_certificate_record", { certificate_id: CERT_ID }, SUPPORT_ORG);
+    expect(r.success).toBe(true);
+    expect(r.data.certificate).toMatchObject({ id: CERT_ID, currentRedemptionAmountCents: 720_000 });
+  });
+
+  it("the clock read returns the clock for the certificate (the shared clock service, stubbed at its seam)", async () => {
+    const r = await executeSupportTool("get_tax_certificate_clock_view", { certificate_id: CERT_ID }, SUPPORT_ORG);
+    expect(r.success).toBe(true);
+    expect(r.data.clock).toMatchObject({ stub: true, orgId: 77, certificateId: CERT_ID });
+    expect(r.data.coverage).toContain("never improvise a date");
+  });
+
+  it("the ledger read carries the simulation statement: the test-mode notice was NOT mailed", async () => {
+    const r = await executeSupportTool("get_tax_certificate_ledger_view", { certificate_id: CERT_ID }, SUPPORT_ORG);
+    expect(r.success).toBe(true);
+    expect(r.data.noticeSimulation.statement).toContain("SIMULATED — recorded in test mode, NOT mailed");
+    expect(r.data.noticeSimulation.notices).toEqual([
+      expect.objectContaining({ providerId: "sim_T9DRILL", viaRail: true, simulated: true }),
+    ]);
+  });
+
+  it("a non-id is refused in plain words, and an unknown id is refused — no invented certificate", async () => {
+    const bad = await executeSupportTool("get_tax_certificate_record", { certificate_id: "C-1042" }, SUPPORT_ORG);
+    expect(bad.success).toBe(false);
+    expect(JSON.stringify(bad.refusal ?? bad)).not.toMatch(/get_tax_certificate|certificate_id|snake_case/);
+    H.rows = { tax_certificates: [] };
+    const missing = await executeSupportTool("get_tax_certificate_record", { certificate_id: CERT_ID }, SUPPORT_ORG);
+    expect(missing.success).toBe(false);
   });
 });
 
