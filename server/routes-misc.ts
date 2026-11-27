@@ -36,6 +36,14 @@ import { routeParam } from "./utils/routeParams";
 const TWILIO_FULL_CREDENTIAL_POINTER =
   "Twilio needs the full credential (account SID, auth token, phone number) — save via SMS settings (POST /api/sms/config) or the BYOK hub.";
 
+/**
+ * P9-2e: the single-key settings route cannot form the SES credential bag
+ * (access key ID + secret access key), so an aws_ses save there is
+ * rejected with this pointer to the surfaces that take the full bag.
+ */
+const SES_POINTER =
+  "AWS SES needs the full credential bag (access key ID + secret access key) — save via POST /api/integrations/aws_ses or the BYOK hub (channel 'ses').";
+
 const smsSendSchema = z.object({
   to: z.string().trim().min(7, "Phone number is required"),
   message: z.string().min(1, "Message is required"),
@@ -438,7 +446,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
   api.get("/api/settings/integrations/status", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const services = ["lob", "regrid", "twilio", "sendgrid", "rapidapi"];
+      const services = ["lob", "regrid", "twilio", "sendgrid", "rapidapi", "aws_ses"];
       
       const statuses = await Promise.all(
         services.map(async (service) => {
@@ -480,6 +488,26 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
               apiKey = resolved ?? undefined;
             }
           }
+          // P9-2e: aws_ses status resolves vault-first via its JSON bag
+          // (channel 'ses', the vault name for the legacy 'aws_ses'
+          // provider); the displayed key is the accessKeyId, reported
+          // only when the bag carries both secret-bearing fields — the
+          // same gate the send path applies. The legacy fallback reads
+          // the same fields out of the legacy bag.
+          if (service === "aws_ses") {
+            const { readSesVaultBag } = await import("./services/providers/sesCredential");
+            const sesBag = await readSesVaultBag(org.id);
+            if (sesBag) {
+              apiKey = sesBag.accessKeyId;
+            } else {
+              const legacySes = readIntegrationCredentials<{ accessKeyId?: string; secretAccessKey?: string }>(
+                integration,
+                org.id,
+                "aws_ses status",
+              );
+              apiKey = legacySes?.accessKeyId && legacySes?.secretAccessKey ? legacySes.accessKeyId : undefined;
+            }
+          }
           return {
             provider: service,
             isConfigured: !!apiKey,
@@ -506,6 +534,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       const { service, apiKey } = req.body;
 
       if (service === "twilio") return Errors.badRequest(res, TWILIO_FULL_CREDENTIAL_POINTER);
+      if (service === "aws_ses") return Errors.badRequest(res, SES_POINTER);
 
       if (!service || !apiKey) {
         return Errors.badRequest(res, "Service and API key are required");

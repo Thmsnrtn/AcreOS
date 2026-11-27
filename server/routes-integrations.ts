@@ -109,15 +109,24 @@ export function registerIntegrationRoutes(app: Express): void {
         legacyField: 'authToken',
       });
       const twilioApiKey = twilioResolved ? twilioAuthTokenFromResolved(twilioResolved) : null;
+      // P9-2e: SES resolves vault-first via its JSON bag (channel 'ses',
+      // the vault name for the legacy 'aws_ses' provider; sesCredential).
+      // The display key is the bag's accessKeyId — an identifier, masked
+      // like the other providers' keys. The legacy fallback reads the
+      // same field out of the legacy bag.
+      const { readSesVaultBag } = await import('./services/providers/sesCredential');
+      const sesVaultBag = await readSesVaultBag(org.id);
+      const sesAccessKeyId = sesVaultBag?.accessKeyId ?? null;
 
       const masked = integrations.map(i => {
         // Either stored shape. Keyed on `.encrypted` alone, this reported "not
         // configured" for every key saved through the BYOK panel in Settings.
-        const creds = readIntegrationCredentials<{ apiKey?: string }>(i, org.id, i.provider);
+        const creds = readIntegrationCredentials<{ apiKey?: string; accessKeyId?: string }>(i, org.id, i.provider);
         const apiKey = i.provider === 'regrid' ? (regridApiKey ?? undefined)
           : i.provider === 'lob' ? (lobApiKey ?? undefined)
           : i.provider === 'sendgrid' ? (sendgridApiKey ?? undefined)
           : i.provider === 'twilio' ? (twilioApiKey ?? undefined)
+          : i.provider === 'aws_ses' ? (sesAccessKeyId ?? creds?.accessKeyId)
           : creds?.apiKey;
         // An envelope we cannot open is still a configured key; saying "not
         // configured" would be false. Shown as configured but unreadable.
@@ -161,6 +170,17 @@ export function registerIntegrationRoutes(app: Express): void {
         } as typeof masked[number]);
       }
 
+      // P9-2e: same for a vault-only SES credential (provider 'aws_ses',
+      // masked on the bag's accessKeyId).
+      if (sesAccessKeyId && !masked.some(m => m.provider === 'aws_ses')) {
+        masked.push({
+          organizationId: org.id,
+          provider: 'aws_ses',
+          isEnabled: true,
+          credentials: { hasApiKey: true, maskedKey: maskApiKey(sesAccessKeyId) },
+        } as typeof masked[number]);
+      }
+
       // P9-2d: same for a vault-only twilio credential (masked on its
       // auth token, parsed out of the vault tuple).
       if (twilioApiKey && !masked.some(m => m.provider === 'twilio')) {
@@ -192,6 +212,21 @@ export function registerIntegrationRoutes(app: Express): void {
         // P9-2c: same for sendgrid.
         // P9-2d: same for twilio — its resolver legacy field is authToken
         // and its vault value is the tuple, masked on the parsed token.
+        if (provider === 'aws_ses') {
+          // P9-2e: a vault-only SES credential has no legacy row — check
+          // the vault 'ses' bag before reporting "not configured".
+          const { readSesVaultBag } = await import('./services/providers/sesCredential');
+          const sesBag = await readSesVaultBag(org.id);
+          if (sesBag) {
+            const { maskApiKey } = await import('./services/fieldEncryption');
+            return res.json({
+              provider,
+              isEnabled: true,
+              isConfigured: true,
+              credentials: { hasApiKey: true, maskedKey: maskApiKey(sesBag.accessKeyId) },
+            });
+          }
+        }
         if (provider === 'regrid' || provider === 'lob' || provider === 'sendgrid' || provider === 'twilio') {
           const { resolveProviderCredential } = await import('./services/providers/resolveProviderCredential');
           const resolved = await resolveProviderCredential(org.id, {
@@ -216,14 +251,22 @@ export function registerIntegrationRoutes(app: Express): void {
       const { maskApiKey } = await import('./services/fieldEncryption');
       const { readIntegrationCredentials } = await import('./services/integrationCredentials');
 
-      const creds = readIntegrationCredentials<{ apiKey?: string }>(integration, org.id, provider);
+      const creds = readIntegrationCredentials<{ apiKey?: string; accessKeyId?: string }>(integration, org.id, provider);
       // P9-2a: regrid resolves vault-first; other providers keep the legacy read.
       // P9-2b: lob resolves vault-first the same way.
       // P9-2c: sendgrid resolves vault-first the same way.
       // P9-2d: twilio resolves vault-first the same way — legacy field
       // authToken; the vault value is the tuple, so the displayed key is
       // the token parsed out of it.
+      // P9-2e: aws_ses resolves vault-first via its JSON bag (channel
+      // 'ses'); the displayed key is the bag's accessKeyId, falling back
+      // to the legacy bag's accessKeyId.
       let apiKey = creds?.apiKey;
+      if (provider === 'aws_ses') {
+        const { readSesVaultBag } = await import('./services/providers/sesCredential');
+        const sesBag = await readSesVaultBag(org.id);
+        apiKey = sesBag?.accessKeyId ?? creds?.accessKeyId;
+      }
       if (provider === 'regrid' || provider === 'lob' || provider === 'sendgrid' || provider === 'twilio') {
         const { resolveProviderCredential } = await import('./services/providers/resolveProviderCredential');
         const resolved = await resolveProviderCredential(org.id, {
@@ -271,7 +314,7 @@ export function registerIntegrationRoutes(app: Express): void {
         return Errors.badRequest(res, "API key is required");
       }
 
-      const validProviders = ['sendgrid', 'twilio', 'lob', 'regrid', 'rapidapi'];
+      const validProviders = ['sendgrid', 'twilio', 'lob', 'regrid', 'rapidapi', 'aws_ses'];
       if (!validProviders.includes(provider)) {
         return Errors.badRequest(res, `Invalid provider. Must be one of: ${validProviders.join(', ')}`);
       }
@@ -284,6 +327,7 @@ export function registerIntegrationRoutes(app: Express): void {
       // keep the legacy sealed write until their own flip slices.
       // P9-2b: lob is frozen the same way.
       // P9-2c: sendgrid is frozen the same way.
+      // P9-2e: aws_ses joins the freeze as the last branch below.
       let integration: { isEnabled: boolean | null };
       if (provider === 'regrid') {
         const { setByokCredential } = await import('./services/byok/key-vault');
@@ -296,6 +340,23 @@ export function registerIntegrationRoutes(app: Express): void {
       } else if (provider === 'sendgrid') {
         const { setByokCredential } = await import('./services/byok/key-vault');
         await setByokCredential({ organizationId: org.id, channel: 'sendgrid', plaintext: apiKey });
+        integration = { isEnabled: true };
+      } else if (provider === 'aws_ses') {
+        // P9-2e: aws_ses is frozen the same way — and it is NEWLY accepted
+        // here: neither generic route took aws_ses before this slice, so
+        // there is no live legacy write to freeze; accepting it vault-only
+        // (the JSON bag in channel 'ses', built by buildSesVaultPlaintext
+        // from this route's historical {apiKey, ...settings} shape) means
+        // no aws_ses save can ever create a legacy row. A save missing the
+        // access key id or the secret access key is rejected — a partial
+        // bag is never vaulted.
+        const { buildSesVaultPlaintext } = await import('./services/providers/sesCredential');
+        const plaintext = buildSesVaultPlaintext(apiKey, settings);
+        if (!plaintext) {
+          return Errors.badRequest(res, "AWS SES needs both the access key ID (apiKey, or settings.accessKeyId) and settings.secretAccessKey. Save the full credential here or via the BYOK hub (channel 'ses').");
+        }
+        const { setByokCredential } = await import('./services/byok/key-vault');
+        await setByokCredential({ organizationId: org.id, channel: 'ses', plaintext });
         integration = { isEnabled: true };
       } else {
         integration = await storage.upsertOrganizationIntegration({
@@ -478,6 +539,11 @@ export function registerIntegrationRoutes(app: Express): void {
       if (provider === 'twilio') {
         const { revokeByokCredential } = await import('./services/byok/key-vault');
         await revokeByokCredential({ organizationId: org.id, channel: 'twilio' });
+      }
+      // P9-2e: same for an aws_ses disconnect (vault channel 'ses').
+      if (provider === 'aws_ses') {
+        const { revokeByokCredential } = await import('./services/byok/key-vault');
+        await revokeByokCredential({ organizationId: org.id, channel: 'ses' });
       }
 
       await storage.deleteOrganizationIntegration(org.id, provider);

@@ -347,23 +347,41 @@ function getPlatformCredentials(): AWSCredentials {
 
 async function getOrgCredentials(orgId: number, lane: SendLane = 'system'): Promise<AWSCredentials | null> {
   try {
-    const integration = await storage.getOrganizationIntegration(orgId, 'aws_ses');
-    
-    if (!integration || !integration.isEnabled) {
-      return null;
-    }
-
-    const decrypted = readIntegrationCredentials<{
+    // P9-2e: vault-first. The org's SES bag lives in the byok vault under
+    // channel 'ses' (the vault name for this legacy 'aws_ses' provider),
+    // packed as the JSON bag parsed by sesCredential. A valid vault bag IS
+    // the credential — the vault has no enabled flag, so presence is
+    // connected, per the family precedent. The legacy leg below stays as
+    // the fallback for rows the Stage-2 backfill has not migrated yet;
+    // it retires at founder-gated Stage 4, not here.
+    const { readSesVaultBag } = await import('./providers/sesCredential');
+    let decrypted: {
       accessKeyId?: string;
       secretAccessKey?: string;
       region?: string;
       fromEmail?: string;
       fromName?: string;
-    }>(integration, orgId, 'aws_ses');
+    } | null = await readSesVaultBag(orgId);
+
+    if (!decrypted) {
+      const integration = await storage.getOrganizationIntegration(orgId, 'aws_ses');
+
+      if (!integration || !integration.isEnabled) {
+        return null;
+      }
+
+      decrypted = readIntegrationCredentials<{
+        accessKeyId?: string;
+        secretAccessKey?: string;
+        region?: string;
+        fromEmail?: string;
+        fromName?: string;
+      }>(integration, orgId, 'aws_ses');
+    }
     if (!decrypted) {
       return null;
     }
-    
+
     if (!decrypted.accessKeyId || !decrypted.secretAccessKey) {
       return null;
     }
