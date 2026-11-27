@@ -60,11 +60,11 @@ import { clock } from "../utils/clock";
 // every Tier 5 approver rubber-stamps it. Default is $25K — tuned low so the
 // system has to ask *the human founder* for anything that could meaningfully
 // dent runway. Raise via FINANCIAL_HARD_CAP_CENTS when you know a large
-// spend is coming. Now resolved through founderSettings so the founder
-// can adjust live from /founder/settings.
+// spend is coming. Now resolved through the settings registry
+// (settings.ts, P12-1b) so the founder can adjust live from /founder/settings.
 async function getHardCapCents(): Promise<number> {
   try {
-    const { getNumberSetting } = await import("./founderSettings");
+    const { getNumberSetting } = await import("./settings");
     return await getNumberSetting("FINANCIAL_HARD_CAP_CENTS", 2_500_000);
   } catch {
     const raw = process.env.FINANCIAL_HARD_CAP_CENTS;
@@ -78,7 +78,7 @@ async function getHardCapCents(): Promise<number> {
 // auto-expired on the next checkApprovalStatus() / sweep.
 async function getApprovalTtlHours(): Promise<number> {
   try {
-    const { getNumberSetting } = await import("./founderSettings");
+    const { getNumberSetting } = await import("./settings");
     return await getNumberSetting("FINANCIAL_APPROVAL_TTL_HOURS", 72);
   } catch {
     const raw = process.env.FINANCIAL_APPROVAL_TTL_HOURS;

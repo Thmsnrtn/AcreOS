@@ -15,8 +15,8 @@ import {
   type CommsProviderName,
 } from "../../server/services/comms/router";
 
-vi.mock("../../server/services/founderSettings", () => ({
-  getSetting: vi.fn(async () => JSON.stringify(["twilio", "telnyx"])),
+vi.mock("../../server/services/settings", () => ({
+  getStringSetting: vi.fn(async () => JSON.stringify(["twilio", "telnyx"])),
   getNumberSetting: vi.fn(async (_k: string, fallback: number) => fallback),
 }));
 

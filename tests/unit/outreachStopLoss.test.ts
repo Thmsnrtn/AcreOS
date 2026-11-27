@@ -232,7 +232,7 @@ describe("source shape — the chokepoints are really gated", () => {
     expect(stopLossSrc).toContain("Nothing sends until you tap resume in Costs.");
   });
 
-  it("the line is read through founderSettings (founder-adjustable, never machine-set)", () => {
+  it("the line is read through the settings registry (founder-adjustable, never machine-set)", () => {
     expect(stopLossSrc).toContain('getNumberSetting');
     expect(stopLossSrc).toContain("OUTREACH_STOPLOSS_MONTHLY_CENTS");
   });

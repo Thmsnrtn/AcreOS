@@ -17,7 +17,7 @@ import { randomBytes } from "node:crypto";
 import { and, eq, gt, sql } from "drizzle-orm";
 import { db } from "../../db";
 import { chatPendingToolCalls, chatToolCooldowns } from "@shared/schema";
-import { getSetting } from "../founderSettings";
+import { getStringSetting } from "../settings";
 import { logger } from "../../utils/logger";
 import { getTool, type FounderTool, type FounderToolContext, type ToolResult } from "./tool-registry";
 import { clock } from "../../utils/clock";
@@ -32,7 +32,7 @@ export const ATLAS_KILL_SWITCH_KEY = "atlas.kill_switch";
  */
 export async function isAtlasKillSwitchOn(): Promise<boolean> {
   try {
-    const raw = await getSetting(ATLAS_KILL_SWITCH_KEY);
+    const raw = await getStringSetting(ATLAS_KILL_SWITCH_KEY);
     return raw === "true" || raw === "1";
   } catch {
     return false;

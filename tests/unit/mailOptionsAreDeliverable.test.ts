@@ -22,7 +22,7 @@ import { stripComments } from "../helpers/stripComments";
 vi.mock("../../server/utils/logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
-vi.mock("../../server/services/founderSettings", () => ({ getSetting: vi.fn(async () => null) }));
+vi.mock("../../server/services/settings", () => ({ getStringSetting: vi.fn(async () => null) }));
 
 const { sendLetter, sendPostcard } = vi.hoisted(() => ({
   sendLetter: vi.fn(async () => ({ lobId: "ltr_1" })),
@@ -141,8 +141,8 @@ describe("mail products the providers cannot deliver are refused", () => {
     it(`the router neither quotes nor routes ${piece}/${speed}, even with a provider willing to take it`, async () => {
       const willing = acceptAll();
       __setMailRouterRegistry([lobAdapter, willing]);
-      const { getSetting } = await import("../../server/services/founderSettings");
-      vi.mocked(getSetting).mockResolvedValue(JSON.stringify(["lob", "postgrid"]));
+      const { getStringSetting } = await import("../../server/services/settings");
+      vi.mocked(getStringSetting).mockResolvedValue(JSON.stringify(["lob", "postgrid"]));
       const router = new MailRouter();
       expect(await router.quote(shipment(piece, speed))).toEqual([]);
       await expect(router.route(shipment(piece, speed))).rejects.toMatchObject({ providerNotBilled: true });

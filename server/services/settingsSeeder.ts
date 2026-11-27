@@ -15,6 +15,7 @@
  */
 
 import { seedSetting, type SeedSettingArgs } from "./settings";
+import { DEFAULT_SHARES, type BudgetCategory } from "./intelligence/budget";
 import { logger } from "../utils/logger";
 
 export const SETTINGS_CATALOG: SeedSettingArgs[] = [
@@ -345,6 +346,19 @@ export const SETTINGS_CATALOG: SeedSettingArgs[] = [
     validRange: { type: "object" },
   },
 
+  // ─── Comms providers (P12-1b) ─────────────────────────────────────────
+  // Read by server/services/comms/router.ts through founderSettings until
+  // P12-1b; that reader returned null when no founder_settings row existed
+  // and the caller fell back to ["twilio"] — so ["twilio"] is the typed
+  // default that preserves the effective behaviour.
+  {
+    key: "comms.providers.enabled",
+    category: "cost",
+    description: "List of comms (SMS/voice) providers the router is allowed to use.",
+    defaultValue: ["twilio"],
+    validRange: { type: "object" },
+  },
+
   // ─── Tracking-number pool auto-release (Pillar 5) ─────────────────────
   {
     key: "comms.pool.auto_release_days",
@@ -378,9 +392,10 @@ export const SETTINGS_CATALOG: SeedSettingArgs[] = [
   // The 2 archival KNOBS are NOT re-seeded here — they already live above
   // (note: this catalog's archival.horizon_days range is 30–730 vs the
   // KNOBS 7–3650; reconciling that contradiction is a P12-1b decision).
-  // Reader switch lands in P12-1b: until then founderSettings remains
-  // the runtime reader for these keys and these rows are the registry
-  // copies the parity test (tests/unit/settingsKnobParity.test.ts) pins.
+  // Reader switch landed in P12-1b: service readers now resolve these
+  // keys through settings.ts (via its string adapter where the caller
+  // expects the founderSettings string contract); these rows are the
+  // registry copies the parity test (tests/unit/settingsKnobParity.test.ts) pins.
   // The 2 KNOBS with envFallback get the registry's opt-in env fallback.
   {
     key: "FINANCIAL_HARD_CAP_CENTS",
@@ -464,6 +479,23 @@ export const SETTINGS_CATALOG: SeedSettingArgs[] = [
     defaultValue: 1000,
     validRange: { type: "number", min: 100, max: 1000000 },
   },
+
+  // ─── AI budget category shares (P12-1b) ───────────────────────────────
+  // The `ai.budget.${category}_share_pct` family read by
+  // server/services/intelligence/budget.ts. Until P12-1b these were read
+  // through founderSettings' generic string-KV path (no KNOBS entry, so
+  // an unset key resolved to the caller's DEFAULT_SHARES fallback). The
+  // category set is the closed BudgetCategory union, so the family seeds
+  // cleanly with the templated-family pattern (credits.weight.* etc.),
+  // with typed defaults taken from DEFAULT_SHARES itself — no second
+  // copy of the numbers to drift.
+  ...(Object.keys(DEFAULT_SHARES) as BudgetCategory[]).map((category): SeedSettingArgs => ({
+    key: `ai.budget.${category}_share_pct`,
+    category: "cost" as const,
+    description: `Share of the total daily AI budget cap allocated to the ${category} category, in percent.`,
+    defaultValue: DEFAULT_SHARES[category],
+    validRange: { type: "number", min: 0, max: 100 },
+  })),
 ];
 
 export async function seedAllSettings(): Promise<void> {

@@ -30,7 +30,7 @@ import { db } from "../db";
 import { actionPreviews } from "@shared/schema";
 import { and, eq, gte, lt, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
-import { getNumberSetting } from "./founderSettings";
+import { getNumberSetting } from "./settings";
 import { clock } from "../utils/clock";
 
 export interface PreviewInput {

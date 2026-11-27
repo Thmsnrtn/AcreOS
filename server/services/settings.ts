@@ -123,6 +123,45 @@ export async function getSetting<T = unknown>(
 }
 
 /**
+ * P12-1b string adapter — the founderSettings string contract over this
+ * registry. founderSettings.getSetting spoke strings end-to-end
+ * (string | null; objects as JSON text); this registry speaks typed
+ * JSON. Former founderSettings readers keep their exact observable
+ * behaviour through these two helpers:
+ *   string        → as-is
+ *   number/bool   → String(value)  ("true" / "90" — archival's literal
+ *                    comparison and the Atlas kill-switch check rely on it)
+ *   object/array  → JSON.stringify (allocation.policy and the provider
+ *                    lists are JSON.parsed by their callers)
+ *   null / absent → null (the caller's previous default path)
+ * A read failure resolves to null instead of throwing, mirroring
+ * founderSettings' fail-soft read (a settings-table outage must not
+ * become an exception in a job or a money path).
+ */
+export async function getStringSetting(key: string): Promise<string | null> {
+  try {
+    const value = await getSetting<unknown>(key, null);
+    if (value === null || value === undefined) return null;
+    if (typeof value === "string") return value;
+    if (typeof value === "number" || typeof value === "boolean") return String(value);
+    return JSON.stringify(value);
+  } catch (err) {
+    logger.warn("[settings] getStringSetting read failed", {
+      metadata: { key, error: err instanceof Error ? err.message : String(err) },
+    });
+    return null;
+  }
+}
+
+/** Number sibling of getStringSetting — founderSettings.getNumberSetting parity. */
+export async function getNumberSetting(key: string, fallback: number): Promise<number> {
+  const raw = await getStringSetting(key);
+  if (raw == null) return fallback;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+/**
  * Get the raw setting row (any scope) for the studio UI. Returns null
  * when the key has no row at the given scope.
  */

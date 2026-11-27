@@ -17,8 +17,8 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 
 vi.mock("../../server/services/trust/ownerSuppression", async () => (await import("../helpers/ownerSuppressionAllowAll")).ownerSuppressionAllowAll);
-vi.mock("../../server/services/founderSettings", () => ({
-  getSetting: vi.fn(async () => JSON.stringify(["twilio", "telnyx"])),
+vi.mock("../../server/services/settings", () => ({
+  getStringSetting: vi.fn(async () => JSON.stringify(["twilio", "telnyx"])),
   getNumberSetting: vi.fn(async (_k: string, fallback: number) => fallback),
 }));
 

@@ -38,7 +38,7 @@ vi.mock("../../server/db", async () => {
   };
 });
 vi.mock("../../server/utils/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
-vi.mock("../../server/services/founderSettings", () => ({ getSetting: async () => null }));
+vi.mock("../../server/services/settings", () => ({ getStringSetting: async () => null }));
 
 import { CommsRouter, type CommsProvider } from "../../server/services/comms/router";
 import { AiVoiceConsentRequiredError, hasWrittenArtificialVoiceConsent } from "../../server/services/comms/aiVoiceConsent";

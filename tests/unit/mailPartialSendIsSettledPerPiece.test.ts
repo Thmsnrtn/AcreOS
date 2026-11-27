@@ -98,7 +98,7 @@ vi.mock("../../server/services/outreachStopLoss", () => ({
   notifyOutreachPausedOnce: vi.fn(),
 }));
 vi.mock("../../server/services/solene/verifyQueue", () => ({ enqueueMailShipmentVerify: vi.fn(async () => undefined) }));
-vi.mock("../../server/services/founderSettings", () => ({ getSetting: async () => JSON.stringify(["lob", "postgrid"]) }));
+vi.mock("../../server/services/settings", () => ({ getStringSetting: async () => JSON.stringify(["lob", "postgrid"]) }));
 vi.mock("../../server/services/mail/qrCodes", () => ({ qrRedirectUrl: () => "https://example.test/r/x" }));
 vi.mock("../../server/services/mail/router", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../server/services/mail/router")>();

@@ -119,7 +119,7 @@ vi.mock("../../server/services/creditCost", async () => {
   return { creditCost: async (action: keyof typeof CREDIT_WEIGHTS) => CREDIT_WEIGHTS[action] };
 });
 vi.mock("../../server/db", async () => (await import("../helpers/fakeHouseMailDb")).fakeHouseMailDbModule);
-vi.mock("../../server/services/settings", () => ({ getSetting: async (_k: string, fallback: unknown) => fallback }));
+vi.mock("../../server/services/settings", () => ({ getSetting: async (_k: string, fallback: unknown) => fallback, getStringSetting: async () => null, getNumberSetting: async (_k: string, f: number) => f }));
 vi.mock("../../server/services/creditPool", () => ({
   poolDebit: async () => { throw new Error("house mail must never draw the pool"); },
   refundPoolDebit: async (args: { originalEventId: string; amountCents: number }) => {
