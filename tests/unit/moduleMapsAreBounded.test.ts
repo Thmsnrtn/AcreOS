@@ -76,6 +76,7 @@ const BOUNDED_BY_CONSTRUCTION: Record<string, string> = {
   "server/services/lcsCalibrator.ts::lcsWeightHistory": "keyed by organization id",
   "server/services/lcsCalibrator.ts::orgWeights": "keyed by organization id",
   "server/services/outcomeVerifiers.ts::verifiers": "static registry of verifiers",
+  "server/services/settings.ts::envFallbackByKey": "keyed by settings-catalog key; populated only by seedSetting() at boot from SETTINGS_CATALOG entries declaring envFallback (2 keys, P12-1a) — the key space is the finite catalog, never client input",
   "server/services/undoRegistry.ts::undoFunctions": "keyed by agent:action registered at boot",
   "server/services/voiceProfileTrigger.ts::newSampleCounts": "keyed by organization id",
 };
