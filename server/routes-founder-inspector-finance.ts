@@ -46,7 +46,7 @@ import {
   financialLedger,
   organizations,
   founderAudit,
-  founderSettings,
+  operationalState,
   byokCredentials,
   mailShipments,
   mailShipmentPieces,
@@ -59,6 +59,7 @@ import { isAuthenticated, requireFounder } from "./auth/clerkAuth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { getCacheHitSavingsForOrg } from "./services/data-cache/lookup-cache";
 import { getContributionMargin } from "./services/financial-ledger";
+import { getOpState, upsertOpStateRow } from "./services/operationalState";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import type { AuthenticatedRequest } from "./types/request";
@@ -209,33 +210,31 @@ async function upsertFounderSetting(args: {
     ? JSON.stringify(args.value)
     : String(args.value);
 
-  const [existing] = await db
-    .select()
-    .from(founderSettings)
-    .where(eq(founderSettings.key, args.key))
-    .limit(1);
+  // Storage is operational_state (P12-1c slice 1c-5): the legacy
+  // `category: "channel_overrides"` maps to the table's namespace (the
+  // table has no category column). The {previousValue, action} return
+  // contract is preserved exactly: read-first to determine the previous
+  // value and the created/updated determination, then one atomic upsert.
+  const existing = await getOpState(db, args.key);
 
   if (existing) {
-    await db
-      .update(founderSettings)
-      .set({
-        value: serialised,
-        valueType: args.valueType,
-        updatedAt: clock.now(),
-        updatedBy: args.founderId,
-        description: args.description ?? existing.description,
-        category: args.category,
-      })
-      .where(eq(founderSettings.id, existing.id));
+    await upsertOpStateRow(db, {
+      namespace: "channel_overrides",
+      key: args.key,
+      value: serialised,
+      valueType: args.valueType,
+      description: args.description ?? existing.description,
+      updatedBy: args.founderId,
+    });
     return { previousValue: existing.value, action: "update" as const };
   }
 
-  await db.insert(founderSettings).values({
+  await upsertOpStateRow(db, {
+    namespace: "channel_overrides",
     key: args.key,
     value: serialised,
     valueType: args.valueType,
     description: args.description ?? null,
-    category: args.category,
     updatedBy: args.founderId,
   });
   return { previousValue: null, action: "insert" as const };
@@ -417,14 +416,17 @@ export function registerFounderInspectorFinanceRoutes(app: Express) {
         // ── Channel pause + throttle overrides currently in effect ─────
         const overrideRows = await db
           .select()
-          .from(founderSettings)
+          .from(operationalState)
           .where(
-            inArray(
-              founderSettings.key,
-              [
-                ...PAUSE_CHANNELS.map((c) => settingKeyForChannelPause(orgId, c)),
-                ...PAUSE_CHANNELS.map((c) => settingKeyForChannelThrottle(orgId, c)),
-              ],
+            and(
+              eq(operationalState.namespace, "channel_overrides"),
+              inArray(
+                operationalState.key,
+                [
+                  ...PAUSE_CHANNELS.map((c) => settingKeyForChannelPause(orgId, c)),
+                  ...PAUSE_CHANNELS.map((c) => settingKeyForChannelThrottle(orgId, c)),
+                ],
+              ),
             ),
           );
         const overrides = {
