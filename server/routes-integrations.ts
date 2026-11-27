@@ -33,10 +33,17 @@ export function registerIntegrationRoutes(app: Express): void {
 
       // P9-2a: regrid reads go through the vault-first resolver (vault, then
       // legacy fallback) — a vault-only regrid key has no legacy row at all.
+      // P9-2b: lob reads go through the same resolver (its legacy fallback is
+      // inert once the write freeze + backfill have run).
       const { resolveProviderCredential } = await import('./services/providers/resolveProviderCredential');
       const regridApiKey = await resolveProviderCredential(org.id, {
         channel: 'regrid',
         legacyProvider: 'regrid',
+        legacyField: 'apiKey',
+      });
+      const lobApiKey = await resolveProviderCredential(org.id, {
+        channel: 'lob',
+        legacyProvider: 'lob',
         legacyField: 'apiKey',
       });
 
@@ -44,7 +51,9 @@ export function registerIntegrationRoutes(app: Express): void {
         // Either stored shape. Keyed on `.encrypted` alone, this reported "not
         // configured" for every key saved through the BYOK panel in Settings.
         const creds = readIntegrationCredentials<{ apiKey?: string }>(i, org.id, i.provider);
-        const apiKey = i.provider === 'regrid' ? (regridApiKey ?? undefined) : creds?.apiKey;
+        const apiKey = i.provider === 'regrid' ? (regridApiKey ?? undefined)
+          : i.provider === 'lob' ? (lobApiKey ?? undefined)
+          : creds?.apiKey;
         // An envelope we cannot open is still a configured key; saying "not
         // configured" would be false. Shown as configured but unreadable.
         const unreadable = !!(i.credentials as { encrypted?: string } | null)?.encrypted && !creds;
@@ -67,6 +76,16 @@ export function registerIntegrationRoutes(app: Express): void {
         } as typeof masked[number]);
       }
 
+      // P9-2b: same for a vault-only lob key.
+      if (lobApiKey && !masked.some(m => m.provider === 'lob')) {
+        masked.push({
+          organizationId: org.id,
+          provider: 'lob',
+          isEnabled: true,
+          credentials: { hasApiKey: true, maskedKey: maskApiKey(lobApiKey) },
+        } as typeof masked[number]);
+      }
+
       res.json(masked);
     } catch (err: any) {
       logger.error("Get integrations error", err instanceof Error ? err : undefined);
@@ -83,12 +102,12 @@ export function registerIntegrationRoutes(app: Express): void {
       
       if (!integration) {
         // P9-2a: a vault-only regrid key has no legacy row — check the vault
-        // before reporting "not configured".
-        if (provider === 'regrid') {
+        // before reporting "not configured". P9-2b: same for lob.
+        if (provider === 'regrid' || provider === 'lob') {
           const { resolveProviderCredential } = await import('./services/providers/resolveProviderCredential');
           const vaultKey = await resolveProviderCredential(org.id, {
-            channel: 'regrid',
-            legacyProvider: 'regrid',
+            channel: provider === 'lob' ? 'lob' : 'regrid',
+            legacyProvider: provider,
             legacyField: 'apiKey',
           });
           if (vaultKey) {
@@ -109,12 +128,13 @@ export function registerIntegrationRoutes(app: Express): void {
 
       const creds = readIntegrationCredentials<{ apiKey?: string }>(integration, org.id, provider);
       // P9-2a: regrid resolves vault-first; other providers keep the legacy read.
+      // P9-2b: lob resolves vault-first the same way.
       let apiKey = creds?.apiKey;
-      if (provider === 'regrid') {
+      if (provider === 'regrid' || provider === 'lob') {
         const { resolveProviderCredential } = await import('./services/providers/resolveProviderCredential');
         apiKey = (await resolveProviderCredential(org.id, {
-          channel: 'regrid',
-          legacyProvider: 'regrid',
+          channel: provider === 'lob' ? 'lob' : 'regrid',
+          legacyProvider: provider,
           legacyField: 'apiKey',
         })) ?? undefined;
       }
@@ -156,10 +176,15 @@ export function registerIntegrationRoutes(app: Express): void {
       // vault (setByokCredential) — no code path writes a regrid key to the
       // legacy organizationIntegrations store after this PR. Other providers
       // keep the legacy sealed write until their own flip slices.
+      // P9-2b: lob is frozen the same way.
       let integration: { isEnabled: boolean | null };
       if (provider === 'regrid') {
         const { setByokCredential } = await import('./services/byok/key-vault');
         await setByokCredential({ organizationId: org.id, channel: 'regrid', plaintext: apiKey });
+        integration = { isEnabled: true };
+      } else if (provider === 'lob') {
+        const { setByokCredential } = await import('./services/byok/key-vault');
+        await setByokCredential({ organizationId: org.id, channel: 'lob', plaintext: apiKey });
         integration = { isEnabled: true };
       } else {
         integration = await storage.upsertOrganizationIntegration({
@@ -210,16 +235,17 @@ export function registerIntegrationRoutes(app: Express): void {
       
       const { readIntegrationCredentials } = await import('./services/integrationCredentials');
       // P9-2a: regrid tests the vault-first resolved key; others read legacy.
+      // P9-2b: lob tests the vault-first resolved key the same way.
       let credentials = readIntegrationCredentials<{ apiKey: string }>(
         integration,
         org.id,
         `${provider} test`,
       );
-      if (provider === 'regrid') {
+      if (provider === 'regrid' || provider === 'lob') {
         const { resolveProviderCredential } = await import('./services/providers/resolveProviderCredential');
         const resolved = await resolveProviderCredential(org.id, {
-          channel: 'regrid',
-          legacyProvider: 'regrid',
+          channel: provider === 'lob' ? 'lob' : 'regrid',
+          legacyProvider: provider,
           legacyField: 'apiKey',
         });
         credentials = resolved ? { apiKey: resolved } : null;
@@ -321,6 +347,11 @@ export function registerIntegrationRoutes(app: Express): void {
       if (provider === 'regrid') {
         const { revokeByokCredential } = await import('./services/byok/key-vault');
         await revokeByokCredential({ organizationId: org.id, channel: 'regrid' });
+      }
+      // P9-2b: same for a lob disconnect.
+      if (provider === 'lob') {
+        const { revokeByokCredential } = await import('./services/byok/key-vault');
+        await revokeByokCredential({ organizationId: org.id, channel: 'lob' });
       }
 
       await storage.deleteOrganizationIntegration(org.id, provider);

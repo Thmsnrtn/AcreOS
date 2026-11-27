@@ -34,6 +34,12 @@
  * charges in credits). The order pinned here is therefore
  * vault → legacy row → house lane.
  *
+ * UPDATED P9-2b (2026-11-26): the legacy-row tier is REMOVED. getOwnLobClient
+ * is vault-only; a lob key that exists only in organization_integrations is
+ * invisible until the Stage-2 backfill (scripts/backfill-lob-credentials.ts)
+ * copies it into the vault. The order pinned here is now
+ * vault → house lane.
+ *
  * UPDATED K7-2a (2026-11-26): mailProvider's send paths are RETIRED — the
  * autopilot send_letter hand now calls directMailService directly (org
  * sends) and its narrow org-less sendSystemLetter (system sends). The
@@ -242,20 +248,20 @@ describe("the canonical operation resolves Lob credentials through the single au
     expect(state.poolDebits).toEqual([]);
   });
 
-  it("legacy organization_integrations row is SECOND — used only when the vault is empty", async () => {
+  it("legacy organization_integrations row is IGNORED (P9-2b) — a row-only key is no key until backfilled", async () => {
     state.legacyRow = { isEnabled: true, credentials: { apiKey: "test_row_key" } };
 
-    const result = await orgLetter();
-
-    expect(result.lobId).toBe("ltr_1");
-    expect(state.lobCreateCalls[0].apiKey).toBe("test_row_key");
-    expect(result.testMode).toBe(true);
-    expect(state.probes).not.toContain("platform");
-    expect(state.probes.slice(0, 2)).toEqual(["byok-vault", "legacy-row"]);
+    // With only the TEST platform key available, house mail is refused — so
+    // a row-only org is refused exactly like an org with nothing connected.
+    // Before P9-2b this send printed on the row's key.
+    await expect(orgLetter()).rejects.toThrow(/not available/);
+    expect(state.lobCreateCalls).toHaveLength(0);
+    expect(state.probes).not.toContain("legacy-row");
     expect(state.poolDebits).toEqual([]);
+    expect(houseMail.charges).toEqual([]);
   });
 
-  it("platform key is LAST and only as house mail — vault → legacy row → house lane (credits)", async () => {
+  it("platform key is LAST and only as house mail — vault → house lane (credits)", async () => {
     // House mail runs only on AcreOS's LIVE account with the interlock armed.
     state.armed = true;
     state.platformKey = { apiKey: "live_platform_key", isTestKey: false };
@@ -264,8 +270,9 @@ describe("the canonical operation resolves Lob credentials through the single au
     expect(result.lobId).toBe("ltr_1");
     expect(state.lobCreateCalls[0].apiKey).toBe("live_platform_key");
     expect(result.testMode).toBe(false);
-    expect(state.probes.slice(0, 2)).toEqual(["byok-vault", "legacy-row"]);
-    expect(state.probes.indexOf("platform")).toBeGreaterThan(state.probes.lastIndexOf("legacy-row"));
+    expect(state.probes[0]).toBe("byok-vault");
+    expect(state.probes).not.toContain("legacy-row");
+    expect(state.probes).toContain("platform");
     expect(state.poolDebits).toEqual([]); // never the monthly pool
     expect(houseMail.charges.map((c) => c.credits)).toEqual([120]); // pre-paid from purchased credits
   });
@@ -348,9 +355,10 @@ describe("mailProvider carries no send path and no credential resolution (source
   it("never queries organization_integrations itself", () => {
     expect(
       /organization_?integrations/i.test(src),
-      "mailProvider.ts references organization_integrations again — org-row " +
-        "credential reads belong to directMailService.getOwnLobClient, the single " +
-        "authority. A second resolution order is the exact defect this pins shut.",
+      "mailProvider.ts references organization_integrations again — credential " +
+        "resolution belongs to directMailService.getOwnLobClient, the single " +
+        "authority (vault-only since P9-2b). A second resolution order is the " +
+        "exact defect this pins shut.",
     ).toBe(false);
     expect(src).not.toContain("readIntegrationCredentials");
   });
@@ -366,7 +374,7 @@ describe("mailProvider carries no send path and no credential resolution (source
     expect(src).not.toMatch(/\bdb\s*\.\s*select\b/);
   });
 
-  it("the authority resolves the org's own key vault → legacy row, and never the platform key", () => {
+  it("the authority resolves the org's own key from the vault ONLY (P9-2b), and never the platform key", () => {
     const dms = stripComments(
       fs.readFileSync(path.join(ROOT, "server/services/directMailService.ts"), "utf8"),
     );
@@ -376,9 +384,9 @@ describe("mailProvider carries no send path and no credential resolution (source
     expect(end, "getLobClientForLane not found — renamed?").toBeGreaterThan(start);
     const body = dms.slice(start, end);
     const vault = body.indexOf("getByokCredential");
-    const legacy = body.indexOf("getOrganizationIntegration");
     expect(vault, "vault tier missing from getOwnLobClient").toBeGreaterThan(-1);
-    expect(legacy, "legacy-row tier missing from getOwnLobClient").toBeGreaterThan(vault);
+    expect(body, "legacy-row tier returned to getOwnLobClient — P9-2b removed it").not.toContain("getOrganizationIntegration");
+    expect(body, "legacy-row tier returned to getOwnLobClient — P9-2b removed it").not.toContain("readIntegrationCredentials");
     expect(body, "getOwnLobClient must never fall back to AcreOS's key").not.toContain("resolvePlatformLobKey");
     const lane = dms.slice(end, dms.indexOf("function getPlatformLobClient"));
     expect(lane).toContain("resolvePlatformLobKey");

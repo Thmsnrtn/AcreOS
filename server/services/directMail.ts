@@ -220,8 +220,8 @@ export class DirectMailService {
    * The org's OWN Lob client, or null when the org has none.
    *
    * Resolution is DELEGATED to `directMailService.getOwnLobClient` — the single
-   * credential authority (BYOK vault → legacy organization_integrations row),
-   * per the 2026-08-16 consolidation. This method used to run
+   * credential authority (BYOK vault only since P9-2b removed the legacy
+   * organization_integrations leg), per the 2026-08-16 consolidation. This method used to run
    * its own lookup that queried ONLY the legacy row, so an org whose Lob key
    * lives in the BYOK vault — the documented Universal-BYOK path — had its
    * campaign postcards and letters to LEADS printed on ACREOS's Lob account.

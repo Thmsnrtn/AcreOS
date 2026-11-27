@@ -31,8 +31,8 @@ import { assertOwnerContactAllowed } from "./trust/ownerSuppression";
  * 2026-08-16 consolidation fixed in `mailProvider.ts` and left standing here.
  *
  * The fix is NOT a fourth copy of the resolution order. `directMailService.
- * getLobClientForLane` is the single authority (own key: BYOK vault → legacy
- * organization_integrations row; house lane: platform key under the
+ * getLobClientForLane` is the single authority (own key: BYOK vault only
+ * since P9-2b removed the legacy organization_integrations leg; house lane: platform key under the
  * live-send interlock); this class obtains its client THROUGH it whenever an
  * organizationId is in hand. The env-key clients below survive only for the
  * org-less PLATFORM/system path, the customer's own test-mode dry runs, and
@@ -187,7 +187,7 @@ export class LobService {
 
   /**
    * Tenant-aware availability: true when ANY tier of the single credential
-   * authority resolves for this org (BYOK vault → legacy row → platform key).
+   * authority resolves for this org (BYOK vault → house lane platform key).
    */
   async isConfiguredForOrg(organizationId: number): Promise<boolean> {
     try {
