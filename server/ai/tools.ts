@@ -538,6 +538,55 @@ export const toolDefinitions = {
       required: ["rehab_id", "kind"]
     }
   },
+  // Lease / commercial tools — the commercial face of the shared lease base
+  // (buy-and-hold, multifamily, mobile-home and short-term-rental leases use
+  // the same records). Reads state their coverage; the CAM read discloses
+  // its statement's expense coverage. The one record change records a sales
+  // figure the tenant reported — it posts no charge and sends nothing (FD5).
+  get_lease_abstract: {
+    name: "get_lease_abstract",
+    description: "Get one lease's abstract: the lease itself, its commercial terms exactly as recorded (rentable area, lease type, CAM share and estimate, base-year stop, percentage-rent terms, contractual late-fee terms), its rent-step count, and per-square-foot figures from the same engine the lease screen uses. A lease with no commercial terms recorded is reported as having none — never describe it as a commercial lease. The result carries a coverage statement: state it.",
+    parameters: {
+      type: "object",
+      properties: { lease_id: { type: "string", description: "The lease id from get_rental_leases (a long identifier, not a unit label)" } },
+      required: ["lease_id"]
+    }
+  },
+  get_lease_rent_steps: {
+    name: "get_lease_rent_steps",
+    description: "List one lease's rent-escalation steps in the order they take effect: fixed amounts, fixed percentage bumps, and CPI steps with their index and collar. A lease with no steps bills at its starting rent and the result says so — never invent an escalation.",
+    parameters: {
+      type: "object",
+      properties: { lease_id: { type: "string", description: "The lease id from get_rental_leases (a long identifier, not a unit label)" } },
+      required: ["lease_id"]
+    }
+  },
+  get_lease_cam_status: {
+    name: "get_lease_cam_status",
+    description: "Get one lease's CAM status: its recorded CAM terms, the expense pools defined for its property, and every CAM reconciliation statement generated for it, with each statement's recoverable share, amount billed in estimates, and difference. The result carries a coverage disclosure: if the latest statement rests on only some of the period's months, that thin coverage is stated and must be repeated whenever its figures are quoted; if no statement exists, the result says so — never quote a CAM balance that was not generated.",
+    parameters: {
+      type: "object",
+      properties: { lease_id: { type: "string", description: "The lease id from get_rental_leases (a long identifier, not a unit label)" } },
+      required: ["lease_id"]
+    }
+  },
+  record_tenant_sales_report: {
+    name: "record_tenant_sales_report",
+    description: "Record ONE sales report for a lease: the gross sales figure the tenant reported for a period, as the input to percentage rent. Recording the same period again replaces the earlier figure and marks it as an amendment. This records only — it never verifies the sales, never computes percentage rent, never posts a charge, and never contacts the tenant.",
+    parameters: {
+      type: "object",
+      properties: {
+        lease_id: { type: "string", description: "The lease id" },
+        period_start: { type: "string", description: "First day of the reported period, YYYY-MM-DD" },
+        period_end: { type: "string", description: "Last day of the reported period, YYYY-MM-DD" },
+        gross_sales_cents: { type: "number", description: "The reported gross sales for the period, in cents" },
+        report_source: { type: "string", enum: ["tenant_statement", "operator_entered", "amended"], description: "Where the figure came from — optional" },
+        reported_by: { type: "string", description: "Who reported it — optional" },
+        notes: { type: "string", description: "Optional note" }
+      },
+      required: ["lease_id", "period_start", "period_end", "gross_sales_cents"]
+    }
+  },
   calculate_amortization: {
     name: "calculate_amortization",
     description: "Calculate loan amortization schedule given principal, rate, and term.",
@@ -1512,6 +1561,10 @@ export const PAUSE_SAFE_TOOLS: ReadonlySet<string> = new Set([
   "get_rehab_projects",
   "get_rehab_detail",
   "get_flip_analysis",
+  // Lease / commercial reads (they only read; no tenant PII is shaped).
+  "get_lease_abstract",
+  "get_lease_rent_steps",
+  "get_lease_cam_status",
   // Pure calculations
   "calculate_amortization",
   "calculate_payment_schedule",
@@ -2436,6 +2489,47 @@ export async function executeTool(
           receiptWritten = true;
         }
         return landOutcomeToResult(out);
+      }
+
+      case "get_lease_abstract": {
+        const { paxGetLeaseAbstract, commercialLeaseOutcomeToResult } = await import("./commercialLeaseTools");
+        return commercialLeaseOutcomeToResult(await paxGetLeaseAbstract(org.id, args.lease_id));
+      }
+
+      case "get_lease_rent_steps": {
+        const { paxGetLeaseRentSteps, commercialLeaseOutcomeToResult } = await import("./commercialLeaseTools");
+        return commercialLeaseOutcomeToResult(await paxGetLeaseRentSteps(org.id, args.lease_id));
+      }
+
+      case "get_lease_cam_status": {
+        const { paxGetLeaseCamStatus, commercialLeaseOutcomeToResult } = await import("./commercialLeaseTools");
+        return commercialLeaseOutcomeToResult(await paxGetLeaseCamStatus(org.id, args.lease_id));
+      }
+
+      case "record_tenant_sales_report": {
+        // A record of what the tenant reported — never a charge, never a
+        // percentage-rent computation, never a send (FD5 + money fence).
+        const { paxRecordTenantSalesReport, commercialLeaseOutcomeToResult } = await import("./commercialLeaseTools");
+        const out = await paxRecordTenantSalesReport(org.id, options?.userId ?? null, args);
+        if (out.ok && out.receipt && !trustedApproval) {
+          await recordPaxEffect({
+            orgId: org.id,
+            actor: "pax",
+            origin,
+            stance: controls?.stance ?? null,
+            tool: "record_tenant_sales_report",
+            action: "sales_report_recorded",
+            entityType: "organization",
+            entityId: org.id,
+            description: out.receipt.description,
+            before: out.receipt.before,
+            after: out.receipt.after,
+            witnessed: false,
+            userId: options?.userId ?? null,
+          });
+          receiptWritten = true;
+        }
+        return commercialLeaseOutcomeToResult(out);
       }
 
       case "get_rehab_projects": {
@@ -4481,10 +4575,10 @@ export function getToolsForRole(role: string) {
   const roleToolMap: Record<string, string[]> = {
     executive: allTools,
     acquisitions: [...coreTools, ...memoryTools, "get_leads", "get_lead_details", "update_lead_status", "create_lead", "get_properties", "create_property", "get_deals", "create_deal", "get_wholesale_buy_box", "get_wholesale_triage", "get_wholesale_buyers", "get_wholesale_buyer_matches", "get_wholesale_assignments", "get_wholesale_decision", "get_wholesale_disposition_packet", "get_wholesale_blasts", "record_buyer_blast_response", "get_tasks", "create_task", "get_pipeline_summary", "generate_offer", "generate_offer_letter", "send_email", "send_sms", "run_comps_analysis", "schedule_followup", "draft_offer", "schedule_follow_up", "run_comps", "get_stale_leads", "draft_outreach_message"],
-    underwriting: [...coreTools, ...memoryTools, "get_properties", "get_property_details", "update_property", "get_notes", "get_tax_certificates", "get_tax_certificate", "get_tax_certificate_clock", "get_tax_certificate_ledger", "record_tax_ledger_entry", "get_rent_roll", "get_rental_leases", "get_tenants", "get_lease_ledger", "get_rental_underwriting_decision", "record_rent_payment", "generate_scheduled_rent_charges", "get_rehab_projects", "get_rehab_detail", "get_flip_analysis", "append_holding_cost_entry", "record_exit_facts", "get_parcel_passport", "get_land_listings", "get_land_listing", "get_listing_paste_text", "get_land_payoff_quote", "mark_land_listing_listed", "calculate_amortization", "get_cashflow_summary", "get_deals", "update_deal", "run_comps_analysis", "run_comps", "calculate_roi", "calculate_payment_schedule", "research_property", "draft_offer"],
+    underwriting: [...coreTools, ...memoryTools, "get_properties", "get_property_details", "update_property", "get_notes", "get_tax_certificates", "get_tax_certificate", "get_tax_certificate_clock", "get_tax_certificate_ledger", "record_tax_ledger_entry", "get_rent_roll", "get_rental_leases", "get_tenants", "get_lease_ledger", "get_rental_underwriting_decision", "record_rent_payment", "generate_scheduled_rent_charges", "get_rehab_projects", "get_rehab_detail", "get_flip_analysis", "append_holding_cost_entry", "record_exit_facts", "get_parcel_passport", "get_land_listings", "get_land_listing", "get_listing_paste_text", "get_land_payoff_quote", "mark_land_listing_listed", "get_lease_abstract", "get_lease_rent_steps", "get_lease_cam_status", "record_tenant_sales_report", "calculate_amortization", "get_cashflow_summary", "get_deals", "update_deal", "run_comps_analysis", "run_comps", "calculate_roi", "calculate_payment_schedule", "research_property", "draft_offer"],
     marketing: [...coreTools, ...memoryTools, "get_leads", "get_properties", "get_pipeline_summary", "create_task", "send_email", "send_sms", "get_stale_leads", "draft_outreach_message"],
     research: [...coreTools, ...memoryTools, "get_properties", "get_property_details", "get_leads", "create_property", "update_property", "run_comps_analysis", "run_comps", "research_property", "calculate_roi", "browse_web", "browse_search"],
-    documents: [...coreTools, "get_leads", "get_lead_details", "get_properties", "get_property_details", "get_notes", "get_tax_certificates", "get_tax_certificate", "get_tax_certificate_clock", "get_tax_certificate_ledger", "record_tax_ledger_entry", "get_rent_roll", "get_rental_leases", "get_tenants", "get_lease_ledger", "get_rental_underwriting_decision", "record_rent_payment", "generate_scheduled_rent_charges", "get_rehab_projects", "get_rehab_detail", "get_flip_analysis", "append_holding_cost_entry", "record_exit_facts", "get_parcel_passport", "get_land_listings", "get_land_listing", "get_listing_paste_text", "get_land_payoff_quote", "mark_land_listing_listed", "get_deals", "get_wholesale_buy_box", "get_wholesale_triage", "get_wholesale_buyers", "get_wholesale_buyer_matches", "get_wholesale_assignments", "get_wholesale_decision", "get_wholesale_disposition_packet", "get_wholesale_blasts", "record_buyer_blast_response", "generate_offer_letter", "draft_offer"],
+    documents: [...coreTools, "get_leads", "get_lead_details", "get_properties", "get_property_details", "get_notes", "get_tax_certificates", "get_tax_certificate", "get_tax_certificate_clock", "get_tax_certificate_ledger", "record_tax_ledger_entry", "get_rent_roll", "get_rental_leases", "get_tenants", "get_lease_ledger", "get_rental_underwriting_decision", "record_rent_payment", "generate_scheduled_rent_charges", "get_rehab_projects", "get_rehab_detail", "get_flip_analysis", "append_holding_cost_entry", "record_exit_facts", "get_parcel_passport", "get_land_listings", "get_land_listing", "get_listing_paste_text", "get_land_payoff_quote", "mark_land_listing_listed", "get_lease_abstract", "get_lease_rent_steps", "get_lease_cam_status", "record_tenant_sales_report", "get_deals", "get_wholesale_buy_box", "get_wholesale_triage", "get_wholesale_buyers", "get_wholesale_buyer_matches", "get_wholesale_assignments", "get_wholesale_decision", "get_wholesale_disposition_packet", "get_wholesale_blasts", "record_buyer_blast_response", "generate_offer_letter", "draft_offer"],
     assistant: allTools // Full access for the main assistant
   };
   
