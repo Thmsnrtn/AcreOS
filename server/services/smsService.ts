@@ -897,7 +897,7 @@ export async function checkTwilioConfiguration(organizationId: number): Promise<
 }> {
   // P9-2d: vault-first — the org's twilio credential lives in the canonical
   // byok vault as the tuple "<accountSid>:<authToken>:<phoneNumber>" (the
-  // legacy organizationIntegrations read this replaced was legacy-only).
+  // legacy integrations-table read this replaced was legacy-only).
   // Platform fallback semantics are preserved: with no org credential, a
   // platform-configured deployment still reports configured.
   const { getByokCredential } = await import("./byok/key-vault");

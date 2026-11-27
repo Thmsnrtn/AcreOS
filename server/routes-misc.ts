@@ -497,6 +497,10 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       const org = req.organization;
       const { service, apiKey } = req.body;
 
+      // P9-2d (ruling, Option A): twilio is REJECTED here — a single
+      // string cannot form the vault tuple every send path requires.
+      if (service === "twilio") return Errors.badRequest(res, "Twilio needs the full credential (account SID, auth token, phone number) — save via SMS settings (POST /api/sms/config) or the BYOK hub.");
+
       if (!service || !apiKey) {
         return Errors.badRequest(res, "Service and API key are required");
       }
@@ -505,12 +509,6 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       const allowedServices = ["lob", "regrid", "twilio", "sendgrid", "rapidapi"];
       if (!allowedServices.includes(service)) {
         return Errors.badRequest(res, "Invalid service");
-      }
-
-      // P9-2d (ruling, Option A): twilio is REJECTED here — a single
-      // string cannot form the vault tuple every send path requires.
-      if (service === "twilio") {
-        return Errors.badRequest(res, "Twilio cannot be saved here: it needs the full credential (account SID, auth token, and phone number). Save it via the SMS settings (POST /api/sms/config) or the BYOK hub.");
       }
 
       // P9-2a write freeze: a regrid key saved here lands in the canonical
