@@ -6,11 +6,9 @@ import { sendError } from "../utils/errors";
 import { unscopedForPlatformOps } from '../utils/orgScopedDb';
 import {
   byokCredentials,
-  organizationIntegrations,
   provisionedPhoneNumbers,
   trackingNumberAssignments,
 } from '@shared/schema';
-import { readIntegrationCredentials } from '../services/integrationCredentials';
 
 /**
  * Middleware to verify Twilio webhook request signatures.
@@ -99,8 +97,9 @@ export function verifyTwilioSignature(req: Request, res: Response, next: NextFun
 //
 // The rule below:
 //   1. resolve every organization that owns the `To` number, from every place
-//      a number can be configured (the legacy integration row, the BYOK vault,
-//      purchased numbers, the tracking-number pool);
+//      a number can be configured (the BYOK vault, purchased numbers, the
+//      tracking-number pool — the legacy integration row leg was removed in
+//      P9-2d when the vault became the single twilio credential authority);
 //   2. accept the request iff its signature verifies with THAT owner's own
 //      token — which also binds the processed org to the token that signed,
 //      so one tenant's token can never deliver a message into another's org;
@@ -130,11 +129,6 @@ export interface VerifiedTwilioInbound {
 /** Compare numbers on their last ten digits — the same rule lead matching uses. */
 function last10(phone: unknown): string {
   return typeof phone === 'string' ? phone.replace(/\D/g, '').slice(-10) : '';
-}
-
-/** The value when it is a non-empty string, else null. */
-function nonEmptyString(v: unknown): string | null {
-  return typeof v === 'string' && v.length > 0 ? v : null;
 }
 
 /** The data Twilio signed: full URL + POST params sorted by key, concatenated. */
@@ -196,27 +190,12 @@ async function resolveTwilioNumberOwners(toNumber: string): Promise<TwilioNumber
     s.add(token);
   };
 
-  // (a) Legacy organization_integrations row — sealed or plaintext, read the
-  //     one canonical way so an envelope-stored credential is not invisible.
-  const integrations = await unscopedForPlatformOps(OWNER_LOOKUP_REASON)
-    .select()
-    .from(organizationIntegrations)
-    .where(
-      and(
-        eq(organizationIntegrations.provider, 'twilio'),
-        eq(organizationIntegrations.isEnabled, true),
-      ),
-    );
-  for (const row of integrations) {
-    const creds = readIntegrationCredentials<{ authToken?: string; fromPhoneNumber?: string }>(
-      row,
-      row.organizationId,
-      'twilio',
-    );
-    if (!creds) continue;
-    addToken(row.organizationId, nonEmptyString(creds.authToken));
-    if (last10(creds.fromPhoneNumber) === want) claim(row.organizationId, 'integration');
-  }
+  // (a) REMOVED (P9-2d): the legacy organization_integrations leg — an
+  //     unscoped select of every org's twilio row — is gone. The vault is
+  //     the single credential authority for twilio (write freeze + Stage-2
+  //     backfill); owner resolution runs on the vault legs below plus the
+  //     number-ownership legs (c)/(d). A number claimed only by a legacy
+  //     row no longer resolves an owner here.
 
   // (b) Universal-BYOK vault: plaintext "<accountSid>:<authToken>:<phoneNumber>",
   //     the format the Twilio comms provider reads. Decrypted through the
