@@ -95,9 +95,15 @@ const workflows = fs
 // A postgres service, however the image is spelled: the gating workflows run
 // `pgvector/pgvector:pg16` (shared/schema.ts needs the vector extension), and a
 // predicate pinned to the literal `postgres:16` silently emptied this
-// population the moment that changed.
+// population the moment that changed. test.yml's Fly shards provision the
+// same database a third way: no `services:` block and no container image —
+// the runner image bakes in a PostgreSQL 16 + pgvector cluster and the job
+// starts it with `pg_ctl`. When the hosted job (test.yml's last `services:`
+// spelling) was retired, an `image:`-only predicate emptied test.yml out of
+// this population while the gate itself kept running, so starting the
+// cluster binary counts as provisioning too.
 const withPostgres = workflows.filter((rel) =>
-  /image:\s*\S*(?:postgres|pgvector)\S*/.test(withoutComments(read(rel))),
+  /image:\s*\S*(?:postgres|pgvector)\S*|pg_ctl/.test(withoutComments(read(rel))),
 );
 const gatingWorkflows = withPostgres.filter((rel) =>
   withoutComments(read(rel)).includes("npm run check"),

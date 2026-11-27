@@ -56,7 +56,7 @@ describe("real-database tests run wherever CI builds a database", () => {
   it("finds the workflows and the jobs that build a schema (vacuity floors)", () => {
     expect(all.length).toBeGreaterThanOrEqual(20);
     expect(building.map((j) => `${j.file}:${j.name}`).sort()).toEqual(
-      expect.arrayContaining(["deploy.yml:test", "staging.yml:test", "test.yml:test"]),
+      expect.arrayContaining(["deploy.yml:test", "staging.yml:test", "test.yml:test-fly"]),
     );
   });
 
