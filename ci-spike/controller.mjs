@@ -12,6 +12,15 @@
 // WOULD_SPAWN decision, but does not (cannot) mint configs or create
 // machines. Those two tokens are the only pieces a human must provision
 // (see ci-spike/README.md).
+//
+// Concurrency cap + cost metering (Fly CI expansion, 2026-11-27): spawns
+// are capped at MAX_CONCURRENT_RUNNERS simultaneous runner machines;
+// over-cap jobs defer in memory and drain as machines free (completion
+// events + the reaper sweep). Every spawned machine is metered — spawn
+// to destroy lifetime x the published per-second rate for its guest
+// size — and reported at GET /metering: measured lifetimes, published-
+// rate prices (not invoice reads). Aggregates are in-memory; the
+// durable per-machine records are the "meter" log lines.
 
 import http from "node:http";
 import crypto from "node:crypto";
@@ -28,6 +37,15 @@ const FLY_REGION = process.env.FLY_REGION || "iad";
 const RUNNER_IMAGE =
   process.env.RUNNER_IMAGE || "ghcr.io/actions/actions-runner:latest";
 const MAX_MACHINE_AGE_MIN = Number(process.env.MAX_MACHINE_AGE_MIN || 60);
+const MAX_CONCURRENT_RUNNERS = Number(process.env.MAX_CONCURRENT_RUNNERS || 6);
+// Fly published per-second rates by guest shape (performance-4x/16GB read
+// from Fly's resource pricing page 2026-11-23). Unknown shapes meter as
+// unrated rather than guessing a price.
+const METER_RATES_PER_SEC = { "performance:4:16384": 0.00006328 };
+
+const pending = []; // deferred over-cap jobs: {at, base, run_id, job_id}
+const meterLive = new Map(); // machine_id -> {machine_name, spawned_at_ms, guest, job_id, run_id, workflow}
+const meterMonths = {}; // "YYYY-MM" -> {machines, total_seconds, est_usd, unrated}
 
 const events = []; // ring buffer of decision summaries (no secrets, no JIT configs)
 function record(kind, summary) {
@@ -74,6 +92,97 @@ async function flyMachines(method, path, body) {
   if (!resp.ok)
     throw new Error(`Fly machines ${method} ${path} -> ${resp.status}`);
   return resp.status === 204 ? null : resp.json();
+}
+
+async function liveRunnerMachines() {
+  const machines = (await flyMachines("GET", "/machines")) || [];
+  return machines.filter((m) => m.config?.metadata?.spike === "fly-ci");
+}
+
+function rateFor(guest) {
+  if (!guest) return null;
+  const k = `${guest.cpu_kind}:${guest.cpus}:${guest.memory_mb}`;
+  return Object.prototype.hasOwnProperty.call(METER_RATES_PER_SEC, k)
+    ? METER_RATES_PER_SEC[k]
+    : null;
+}
+
+function meterStart(machine, base, job) {
+  meterLive.set(machine.id, {
+    machine_name: machine.name,
+    spawned_at_ms: Date.now(),
+    guest: machine.config?.guest || { cpu_kind: "performance", cpus: 4, memory_mb: 16384 },
+    job_id: job.id,
+    run_id: job.run_id,
+    workflow: base.workflow,
+  });
+}
+
+function meterFinalize(machineId, source) {
+  const m = meterLive.get(machineId);
+  if (!m) return;
+  meterLive.delete(machineId);
+  const lifetimeS = Math.max(0, Math.round((Date.now() - m.spawned_at_ms) / 1000));
+  const rate = rateFor(m.guest);
+  const est = rate == null ? null : Number((lifetimeS * rate).toFixed(4));
+  const month = new Date(m.spawned_at_ms).toISOString().slice(0, 7);
+  const agg = (meterMonths[month] ||= { machines: 0, total_seconds: 0, est_usd: 0, unrated: 0 });
+  agg.machines += 1;
+  agg.total_seconds += lifetimeS;
+  if (est == null) agg.unrated += 1;
+  else agg.est_usd = Number((agg.est_usd + est).toFixed(4));
+  record("meter", {
+    machine_id: machineId, machine_name: m.machine_name, job_id: m.job_id,
+    run_id: m.run_id, workflow: m.workflow, guest: m.guest,
+    lifetime_s: lifetimeS, rate_per_sec: rate, est_usd: est, source,
+  });
+}
+
+async function spawnForJob(base, job) {
+  try {
+    const runnerName = `fly-spike-${job.run_id}-${job.id}`;
+    const jitConfig = await mintJitConfig(runnerName);
+    const machine = await flyMachines(
+      "POST",
+      "/machines",
+      buildRunnerMachineConfig(jitConfig, runnerName),
+    );
+    meterStart(machine, base, job);
+    record("spawned", { ...base, machine_id: machine.id, machine_name: runnerName });
+  } catch (e) {
+    record("spawn_error", { ...base, reason: String(e) });
+  }
+}
+
+// Drain deferred jobs while under the cap. A deferred job GitHub no
+// longer shows as queued (cancelled / superseded) is dropped, never
+// spawned — deferral therefore also saves the machine time a
+// superseded head would have burned.
+async function drainPending() {
+  if (!pending.length || !GH_TOKEN || !FLY_TOKEN) return;
+  let live;
+  try {
+    live = await liveRunnerMachines();
+  } catch {
+    return; // cannot count — retry on the next drain trigger
+  }
+  while (pending.length && live.length < MAX_CONCURRENT_RUNNERS) {
+    const item = pending[0];
+    try {
+      const j = await ghApi(`/repos/${GH_REPO}/actions/runs/${item.run_id}/jobs?per_page=100`);
+      const mine = (j.jobs || []).find((x) => x.id === item.job_id);
+      if (!mine || mine.status !== "queued") {
+        pending.shift();
+        record("deferred_dropped", { ...item.base, job_status: mine ? mine.status : "absent" });
+        continue;
+      }
+    } catch {
+      return; // cannot verify the job is still queued — retry next trigger
+    }
+    pending.shift();
+    await spawnForJob(item.base, { id: item.job_id, run_id: item.run_id });
+    live = [...live, {}]; // account for the machine just spawned
+  }
 }
 
 // The exact machine shape used for a runner. Mirrored by the operator-side
@@ -172,18 +281,23 @@ async function handleWorkflowJob(payload) {
       });
     }
 
+    // Concurrency cap: bound simultaneous runner machines. Over-cap
+    // jobs defer and drain as machines free. If the machine list cannot
+    // be read, fail OPEN with a loud record — a Fly API blip must not
+    // stall all CI; the reaper still bounds orphan lifetimes.
+    let live = null;
     try {
-      const runnerName = `fly-spike-${job.run_id}-${job.id}`;
-      const jitConfig = await mintJitConfig(runnerName);
-      const machine = await flyMachines(
-        "POST",
-        "/machines",
-        buildRunnerMachineConfig(jitConfig, runnerName),
-      );
-      record("spawned", { ...base, machine_id: machine.id, machine_name: runnerName });
+      live = await liveRunnerMachines();
     } catch (e) {
-      record("spawn_error", { ...base, reason: String(e) });
+      record("cap_check_error", { ...base, reason: String(e) });
     }
+    if (live && live.length >= MAX_CONCURRENT_RUNNERS) {
+      pending.push({ at: new Date().toISOString(), base, run_id: job.run_id, job_id: job.id });
+      return record("deferred_cap", {
+        ...base, live: live.length, cap: MAX_CONCURRENT_RUNNERS, pending: pending.length,
+      });
+    }
+    await spawnForJob(base, job);
     return;
   }
 
@@ -195,12 +309,15 @@ async function handleWorkflowJob(payload) {
         const mine = (machines || []).find(
           (m) => m.name === `fly-spike-${job.run_id}-${job.id}`,
         );
-        if (mine)
+        if (mine) {
           await flyMachines("DELETE", `/machines/${mine.id}?force=true`);
+          meterFinalize(mine.id, "job_completed");
+        }
       } catch (e) {
         record("cleanup_error", { ...base, reason: String(e) });
       }
     }
+    await drainPending();
   }
 }
 
@@ -216,8 +333,17 @@ async function reaper() {
       if (ageMin > MAX_MACHINE_AGE_MIN) {
         await flyMachines("DELETE", `/machines/${m.id}?force=true`);
         record("reaped", { machine_id: m.id, machine_name: m.name, age_min: Math.round(ageMin) });
+        meterFinalize(m.id, "reaped");
       }
     }
+    // Metering reconciliation: machines that auto-destroyed without a
+    // completion cleanup (the normal path) finalize from absence.
+    const alive = new Set(machines.map((m) => m.id));
+    for (const [id, m] of meterLive) {
+      if (!alive.has(id) && now - m.spawned_at_ms > 120000)
+        meterFinalize(id, "reconcile_absent");
+    }
+    await drainPending();
   } catch (e) {
     record("reaper_error", { reason: String(e) });
   }
@@ -239,6 +365,30 @@ const server = http.createServer((req, res) => {
   if (req.method === "GET" && req.url === "/status") {
     res.writeHead(200, { "Content-Type": "application/json" });
     return res.end(JSON.stringify({ events: events.slice(-25) }, null, 1));
+  }
+  if (req.method === "GET" && req.url === "/metering") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    return res.end(
+      JSON.stringify(
+        {
+          cap: MAX_CONCURRENT_RUNNERS,
+          pending: pending.length,
+          live_metered: [...meterLive.entries()].map(([id, m]) => ({
+            machine_id: id,
+            machine_name: m.machine_name,
+            age_s: Math.round((Date.now() - m.spawned_at_ms) / 1000),
+            guest: m.guest,
+            job_id: m.job_id,
+            run_id: m.run_id,
+          })),
+          months: meterMonths,
+          rates_per_sec: METER_RATES_PER_SEC,
+          note: "est_usd = measured machine lifetime x Fly published per-second rate (not an invoice read). Aggregates are in-memory and reset on controller restart; durable per-machine records are the 'meter' log lines.",
+        },
+        null,
+        1,
+      ),
+    );
   }
   if (req.method === "POST" && req.url === "/webhook") {
     const chunks = [];
@@ -270,5 +420,8 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, () => {
-  record("boot", { port: PORT, gh_token: Boolean(GH_TOKEN), fly_token: Boolean(FLY_TOKEN) });
+  record("boot", {
+    port: PORT, gh_token: Boolean(GH_TOKEN), fly_token: Boolean(FLY_TOKEN),
+    cap: MAX_CONCURRENT_RUNNERS, metering: true,
+  });
 });
