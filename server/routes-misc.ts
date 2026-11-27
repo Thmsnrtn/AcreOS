@@ -444,7 +444,17 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
             org.id,
             `${service} status`,
           );
-          const apiKey = creds?.apiKey;
+          // P9-2a: regrid status resolves vault-first (a vault-only key has
+          // no legacy row); other services keep the legacy read.
+          let apiKey = creds?.apiKey;
+          if (service === "regrid") {
+            const { resolveProviderCredential } = await import("./services/providers/resolveProviderCredential");
+            apiKey = (await resolveProviderCredential(org.id, {
+              channel: "regrid",
+              legacyProvider: "regrid",
+              legacyField: "apiKey",
+            })) ?? undefined;
+          }
           return {
             provider: service,
             isConfigured: !!apiKey,
@@ -478,6 +488,14 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       const allowedServices = ["lob", "regrid", "twilio", "sendgrid", "rapidapi"];
       if (!allowedServices.includes(service)) {
         return Errors.badRequest(res, "Invalid service");
+      }
+
+      // P9-2a write freeze: a regrid key saved here lands in the canonical
+      // vault via setByokCredential — never in the legacy store.
+      if (service === "regrid") {
+        const { setByokCredential } = await import("./services/byok/key-vault");
+        await setByokCredential({ organizationId: org.id, channel: "regrid", plaintext: apiKey });
+        return res.json({ success: true, message: `${service} API key saved successfully` });
       }
 
       // Save the integration. upsertOrganizationIntegration handles both the
