@@ -88,6 +88,34 @@
  *      the shell with a visible failure line, never a vanished checklist.
  *      Regenerate: npx tsx -e 'import {ONBOARDING_CHECKLIST_DATA} from "./client/src/data/onboarding-checklist-data";
  *      import fs from "node:fs"; fs.writeFileSync("client/public/onboarding-checklist.json", JSON.stringify(ONBOARDING_CHECKLIST_DATA, null, 2)+"\n")'
+ *   10. (bundle diet cure, main baeec610) the security-deposit statutory
+ *      rules table: DEPOSIT_RETURN_RULES
+ *      (shared/regulatory/depositReturnRules.ts, source of truth — the
+ *      server and the deposit suites import it synchronously) →
+ *      /deposit-return-rules.json; the rent roll's deposit clock loads
+ *      it via useDepositReturnRules (client/src/lib/deposit-return-rules.ts)
+ *      over the shared loader, the loaded shape is validated at the
+ *      boundary (isDepositReturnRulesData), the clock computes with the
+ *      module's own parameterised logic (computeDepositDeadlineFrom)
+ *      over the served table — pinned equivalent to the bundled-table
+ *      entry point below — and a loader failure renders a visible
+ *      error line, never a silently-empty clock. Only the TABLE left
+ *      the bundle; the module's logic stays shared code.
+ *      Regenerate: npx tsx -e 'import {DEPOSIT_RETURN_RULES} from "./shared/regulatory/depositReturnRules";
+ *      import fs from "node:fs"; fs.writeFileSync("client/public/deposit-return-rules.json", JSON.stringify(DEPOSIT_RETURN_RULES, null, 2)+"\n")'
+ *   11. (same diet cure, leg 2) the sub-processor list:
+ *      SUB_PROCESSORS + SUB_PROCESSORS_LAST_UPDATED
+ *      (client/src/data/sub-processors.ts, source of truth) →
+ *      /sub-processors.json; /security, /legal/sub-processors and the
+ *      privacy policy's Section 8 table load it via useSubProcessors
+ *      (client/src/lib/sub-processors.ts) over the shared loader, the
+ *      shape is validated at the boundary (isSubProcessorsData), the
+ *      privacy rows are built by the module's own subProcessorRowsHtml
+ *      over the loaded list (pinned byte-identical below), and a loader
+ *      failure renders a visible error on all three surfaces, never a
+ *      silently shorter list or legal document.
+ *      Regenerate: npx tsx -e 'import {SUB_PROCESSORS, SUB_PROCESSORS_LAST_UPDATED} from "./client/src/data/sub-processors";
+ *      import fs from "node:fs"; fs.writeFileSync("client/public/sub-processors.json", JSON.stringify({lastUpdated: SUB_PROCESSORS_LAST_UPDATED, processors: SUB_PROCESSORS}, null, 2)+"\n")'
  */
 import { describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
@@ -148,9 +176,29 @@ import {
   PAX_STANDING_LINE,
 } from "../../shared/pax-glossary-core";
 import {
+  DEPOSIT_RETURN_RULES_URL,
+  SUB_PROCESSORS_URL,
   loadStaticData,
   substituteTokens,
 } from "../../client/src/lib/static-data";
+import {
+  DEPOSIT_RETURN_RULES,
+  computeDepositDeadline,
+  computeDepositDeadlineFrom,
+} from "../../shared/regulatory/depositReturnRules";
+import {
+  isDepositReturnRulesData,
+  type DepositReturnRulesData,
+} from "../../client/src/lib/deposit-return-rules";
+import {
+  SUB_PROCESSORS,
+  SUB_PROCESSORS_LAST_UPDATED,
+  subProcessorRowsHtml,
+} from "../../client/src/data/sub-processors";
+import {
+  isSubProcessorsData,
+  type SubProcessorsData,
+} from "../../client/src/lib/sub-processors";
 import {
   selectCampaignTemplates,
   type CampaignTemplatesData,
@@ -187,6 +235,16 @@ const CHECKLIST_ASSET = readJson(
 const HELP_ASSET = readJson("client/public/help-content.json") as {
   featureGuides: typeof HELP_FEATURE_GUIDES;
   faqItems: typeof HELP_FAQ_ITEMS;
+};
+const DEPOSIT_ASSET = readJson(
+  "client/public/deposit-return-rules.json",
+) as DepositReturnRulesData;
+const SUBPROC_ASSET = readJson(
+  "client/public/sub-processors.json",
+) as SubProcessorsData;
+const MODULE_SUBPROC_DATA: SubProcessorsData = {
+  lastUpdated: SUB_PROCESSORS_LAST_UPDATED,
+  processors: [...SUB_PROCESSORS],
 };
 
 // ── 1. Verbatim: asset data == module data ────────────────────────────────
@@ -265,6 +323,160 @@ describe("served assets are verbatim the modules' data", () => {
       featureGuides: HELP_FEATURE_GUIDES,
       faqItems: HELP_FAQ_ITEMS,
     });
+  });
+
+  it("deposit-return-rules.json deep-equals DEPOSIT_RETURN_RULES", () => {
+    expect(DEPOSIT_ASSET).toEqual(DEPOSIT_RETURN_RULES);
+  });
+
+  it("deposit-return-rules.json is the generator's exact output (regenerate with the header's command)", () => {
+    expect(read("client/public/deposit-return-rules.json")).toBe(
+      JSON.stringify(DEPOSIT_RETURN_RULES, null, 2) + "\n",
+    );
+  });
+
+  it("sub-processors.json deep-equals the sub-processor module data", () => {
+    expect(SUBPROC_ASSET).toEqual(MODULE_SUBPROC_DATA);
+  });
+
+  it("sub-processors.json is the generator's exact output (regenerate with the header's command)", () => {
+    expect(read("client/public/sub-processors.json")).toBe(
+      JSON.stringify(MODULE_SUBPROC_DATA, null, 2) + "\n",
+    );
+  });
+});
+
+// ── 1f. Sub-processors: served list renders exactly as the module ───────
+
+describe("the served sub-processor list renders as the module list", () => {
+  it("the privacy Section 8 rows are byte-identical", () => {
+    expect(subProcessorRowsHtml(SUBPROC_ASSET.processors)).toBe(
+      subProcessorRowsHtml(SUB_PROCESSORS),
+    );
+  });
+
+  it("the version stamp is the module's", () => {
+    expect(SUBPROC_ASSET.lastUpdated).toBe(SUB_PROCESSORS_LAST_UPDATED);
+  });
+});
+
+// ── 1g. Sub-processors shape guard (the #716 D-2 mandate) ───────────────
+
+describe("isSubProcessorsData guards the loaded asset shape", () => {
+  it("accepts the served asset and the module data", () => {
+    expect(isSubProcessorsData(SUBPROC_ASSET)).toBe(true);
+    expect(isSubProcessorsData(MODULE_SUBPROC_DATA)).toBe(true);
+  });
+
+  it("rejects the D-2 payload: a 200 with body {}", () => {
+    expect(isSubProcessorsData({})).toBe(false);
+  });
+
+  it.each([
+    ["null", null],
+    ["an array", []],
+    ["an empty processors list", { lastUpdated: "2026-11-25", processors: [] }],
+    [
+      "a row missing its evidence pointer",
+      {
+        lastUpdated: "2026-11-25",
+        processors: [
+          { vendor: "Clerk", purpose: "Auth", dataCategories: ["email"], region: "United States" },
+        ],
+      },
+    ],
+    [
+      "a row with non-string data categories",
+      {
+        lastUpdated: "2026-11-25",
+        processors: [
+          {
+            vendor: "Clerk",
+            purpose: "Auth",
+            dataCategories: [42],
+            region: "United States",
+            evidence: "x",
+          },
+        ],
+      },
+    ],
+  ])("rejects %s", (_label, payload) => {
+    expect(isSubProcessorsData(payload)).toBe(false);
+  });
+});
+
+// ── 1d. Deposit clock: served table computes exactly as the module ──────
+
+describe("computeDepositDeadlineFrom over the served asset matches the bundled table", () => {
+  it("agrees for every encoded state, both deduction branches", () => {
+    for (const state of Object.keys(DEPOSIT_RETURN_RULES)) {
+      for (const hasDeductions of [true, false]) {
+        const args = { moveOutDate: "2026-11-02", state, hasDeductions };
+        expect(computeDepositDeadlineFrom(DEPOSIT_ASSET, args)).toEqual(
+          computeDepositDeadline(args),
+        );
+      }
+    }
+  });
+
+  it("agrees on the refusals: unencoded state, missing state, bad date", () => {
+    for (const args of [
+      { moveOutDate: "2026-11-02", state: "KY", hasDeductions: true },
+      { moveOutDate: "2026-11-02", state: null, hasDeductions: false },
+      { moveOutDate: "2026-02-30", state: "TX", hasDeductions: true },
+      { moveOutDate: null, state: "CA", hasDeductions: false },
+    ]) {
+      expect(computeDepositDeadlineFrom(DEPOSIT_ASSET, args)).toEqual(
+        computeDepositDeadline(args),
+      );
+    }
+  });
+});
+
+// ── 1e. Deposit rules shape guard (the #716 D-2 mandate) ────────────────
+
+describe("isDepositReturnRulesData guards the loaded asset shape", () => {
+  it("accepts the served asset and the module table", () => {
+    expect(isDepositReturnRulesData(DEPOSIT_ASSET)).toBe(true);
+    expect(isDepositReturnRulesData(DEPOSIT_RETURN_RULES)).toBe(true);
+  });
+
+  it("rejects the D-2 payload: a 200 with body {}", () => {
+    expect(isDepositReturnRulesData({})).toBe(false);
+  });
+
+  it.each([
+    ["null", null],
+    ["an array", []],
+    ["a string", "rules"],
+    [
+      "a rule missing its citation",
+      { TX: { state: "TX", deadlineDays: 30, itemizedStatementRequired: true } },
+    ],
+    [
+      "a rule with a non-numeric deadline",
+      {
+        TX: {
+          state: "TX",
+          deadlineDays: "30",
+          itemizedStatementRequired: true,
+          citation: "Tex. Prop. Code §92.103(a), §92.104(c)",
+        },
+      },
+    ],
+    [
+      "a rule keyed under the wrong state",
+      {
+        TX: {
+          state: "CA",
+          deadlineDays: 21,
+          itemizedStatementRequired: true,
+          citation: "Cal. Civ. Code §1950.5(g)",
+        },
+      },
+    ],
+  ])("rejects %s", (_label, payload) => {
+    expect(isDepositReturnRulesData(payload)).toBe(false);
   });
 });
 
@@ -804,6 +1016,79 @@ describe("no client file value-imports the externalised registries", () => {
     expect(page).toContain('data-testid="landing-load-error"');
   });
 
+  it("the rent roll's deposit clock loads the rules through the validated loader", () => {
+    expect(DEPOSIT_RETURN_RULES_URL).toBe("/deposit-return-rules.json");
+    expect(read("client/src/lib/static-data.ts")).toContain(
+      'export const DEPOSIT_RETURN_RULES_URL = "/deposit-return-rules.json"',
+    );
+    expect(read("client/src/lib/deposit-return-rules.ts")).toContain(
+      "isDepositReturnRulesData",
+    );
+    const page = stripComments(read("client/src/pages/rent-roll.tsx"));
+    expect(page).toContain("useDepositReturnRules()");
+    expect(page).toContain("computeDepositDeadlineFrom(rules, {");
+    // The bundled-table entry points must NOT come back into the client:
+    // they are what drags the table into the chunk.
+    expect(page).not.toContain("DEPOSIT_RETURN_RULES");
+    expect(page).not.toContain("computeDepositDeadline({");
+    expect(page).not.toContain("getDepositReturnRule(");
+  });
+
+  it("the rent roll's deposit clock renders a VISIBLE error on loader failure, never a silently-empty clock", () => {
+    const page = stripComments(read("client/src/pages/rent-roll.tsx"));
+    expect(page).toContain("rulesError");
+    expect(page).toMatch(/<p role="alert"/);
+    expect(page).toContain('data-testid="deposit-rules-load-error"');
+  });
+
+  it("the sub-processor consumers load the list through the validated loader", () => {
+    expect(SUB_PROCESSORS_URL).toBe("/sub-processors.json");
+    expect(read("client/src/lib/static-data.ts")).toContain(
+      'export const SUB_PROCESSORS_URL = "/sub-processors.json"',
+    );
+    expect(read("client/src/lib/sub-processors.ts")).toContain(
+      "isSubProcessorsData",
+    );
+    for (const rel of [
+      "client/src/pages/security.tsx",
+      "client/src/pages/sub-processors.tsx",
+      "client/src/pages/privacy.tsx",
+    ]) {
+      expect(stripComments(read(rel))).toContain("useSubProcessors()");
+    }
+    // The list itself must NOT come back into the client as a value
+    // import — that is what dragged it into the chunks. (privacy.tsx
+    // still value-imports subProcessorRowsHtml, the module's pure
+    // markup builder, and runs it over the LOADED list.)
+    for (const rel of [
+      "client/src/pages/security.tsx",
+      "client/src/pages/sub-processors.tsx",
+    ]) {
+      expect(stripComments(read(rel))).not.toContain("SUB_PROCESSORS");
+    }
+    const privacy = stripComments(read("client/src/pages/privacy.tsx"));
+    expect(privacy).toContain(
+      "subProcessorRowsHtml(subProcessors.processors)",
+    );
+    expect(privacy).not.toContain("subProcessorRowsHtml()");
+  });
+
+  it("the sub-processor consumers render a VISIBLE error on loader failure, never a silently shorter list", () => {
+    const security = stripComments(read("client/src/pages/security.tsx"));
+    expect(security).toMatch(/<p role="alert"/);
+    expect(security).toContain(
+      'data-testid="security-sub-processors-load-error"',
+    );
+    const list = stripComments(read("client/src/pages/sub-processors.tsx"));
+    expect(list).toMatch(/<p role="alert"/);
+    expect(list).toContain('data-testid="sub-processors-load-error"');
+    const privacy = stripComments(read("client/src/pages/privacy.tsx"));
+    expect(privacy).toMatch(/<p role="alert"/);
+    expect(privacy).toContain(
+      'data-testid="privacy-sub-processors-load-error"',
+    );
+  });
+
   it("/trust renders a VISIBLE error on loader failure, never a blank page", () => {
     const page = stripComments(read("client/src/pages/trust.tsx"));
     expect(page).toContain("useStaticData<TrustSection[]>(TRUST_CONTENT_URL)");
@@ -913,6 +1198,8 @@ describe("static server cache discipline", () => {
       "/palette-verbs.json",
       "/glossary.json",
       "/onboarding-checklist.json",
+      "/deposit-return-rules.json",
+      "/sub-processors.json",
     ]) {
       expect(src).toContain(`"${url}"`);
     }

@@ -13,6 +13,7 @@ import { PAX_CONTROLS_LABEL } from "@shared/pax-glossary-core";
 import { LegalDocBody } from "@/components/legal-doc-body";
 import { PRIVACY_POLICY_URL } from "@/lib/legal-doc";
 import { subProcessorRowsHtml } from "@/data/sub-processors";
+import { useSubProcessors } from "@/lib/sub-processors";
 
 // v1.0 — effective 2026-06-01 — Beatrice Whitfield, CRO (Beatrice audit P2).
 // Content sourced from docs/legal/privacy-policy.md.
@@ -29,6 +30,14 @@ export default function PrivacyPolicy() {
   usePageMeta(PAGE_TITLE, PAGE_DESCRIPTION);
   const lastUpdated = "2026-06-01";
   const docRef = useRef<HTMLDivElement>(null);
+  // Section 8's rows come from the sub-processor list, which is served
+  // as data (/sub-processors.json, sourced from
+  // client/src/data/sub-processors.ts) instead of riding inside this
+  // chunk as JS — see client/src/lib/sub-processors.ts. The body is
+  // rendered only once the list is in hand, so the policy never renders
+  // with a silently-empty Section 8 table; a failed or malformed asset
+  // renders a visible error in the body's place.
+  const { data: subProcessors, error: subProcessorsError } = useSubProcessors();
 
   return (
     <div className="min-h-screen bg-background">
@@ -80,14 +89,24 @@ export default function PrivacyPolicy() {
             {/* The 16 sections are served as a static asset (client/src/legal/
                 privacy-policy.html) and rendered by LegalDocBody — see
                 lib/legal-doc.ts. Edit the asset to change the sections. */}
-            <LegalDocBody
-              url={PRIVACY_POLICY_URL}
-              testId="privacy-doc-body"
-              substitutions={{
-                PAX_CONTROLS_LABEL,
-                // Section 8's table rows come from the shared sub-processor list.
-                SUBPROCESSOR_ROWS: subProcessorRowsHtml(),
-              }}
+            {subProcessorsError ? (
+              <p role="alert" className="text-sm text-destructive" data-testid="privacy-sub-processors-load-error">
+                We couldn't load this page's content. Please refresh and try again.
+              </p>
+            ) : !subProcessors ? (
+              <p className="text-sm text-muted-foreground" aria-busy="true">
+                Loading the privacy policy…
+              </p>
+            ) : (
+              <LegalDocBody
+                url={PRIVACY_POLICY_URL}
+                testId="privacy-doc-body"
+                substitutions={{
+                  PAX_CONTROLS_LABEL,
+                  // Section 8's table rows come from the shared sub-processor
+                  // list, loaded as served data above.
+                  SUBPROCESSOR_ROWS: subProcessorRowsHtml(subProcessors.processors),
+                }}
               supportFeedbackButton={
                 <SupportFeedbackButton
                   variant="link"
@@ -98,8 +117,9 @@ export default function PrivacyPolicy() {
                 >
                   contact our privacy team
                 </SupportFeedbackButton>
-              }
-            />
+                }
+              />
+            )}
 
             <div className="pt-6 border-t border-border">
               <p className="text-sm text-muted-foreground text-center">

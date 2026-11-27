@@ -27,6 +27,11 @@
   "allowlist": [
     {
       "kind": "export",
+      "id": "shared/regulatory/depositReturnRules.ts::DEPOSIT_RETURN_RULES",
+      "reason": "SERVED-DATA SOURCE OF TRUTH (bundle diet cure, 2026-11-26). The security-deposit statutory rules table: production reaches it inside its own module (computeDepositDeadline / DEPOSIT_RULE_STATES) and the client deliberately does NOT import it — the table ships as the static asset /deposit-return-rules.json, generated verbatim from this export, and the rent roll computes over the loaded asset via computeDepositDeadlineFrom (staticDataServedAsData.test.ts pins asset == this export, byte-exact). Exported so the generator one-liner and that pin can read it. REVOCATION: if a production module imports DEPOSIT_RETURN_RULES directly, remove this entry."
+    },
+    {
+      "kind": "export",
       "id": "server/services/mail/letterRender.ts::rendersInFlight",
       "reason": "TEST-INTROSPECTION SEAM (house mail audit, 2026-10-18). How many letter renders are running; houseLetterRenderReal.test.ts samples it during a burst to prove the global semaphore holds renders to MAX_CONCURRENT_RENDERS. REVOCATION: if a production module imports it, remove this entry."
     },
