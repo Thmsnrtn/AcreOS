@@ -345,6 +345,16 @@ const SUPPORT_BH_READS = [
   "get_lease_ledger_view",
   "get_rental_underwriting_view",
 ] as const;
+const SUPPORT_WS_READS = [
+  "get_wholesale_buy_box_view",
+  "get_wholesale_triage_view",
+  "get_wholesale_buyers_view",
+  "get_wholesale_buyer_matches_view",
+  "get_wholesale_assignments_view",
+  "get_wholesale_decision_view",
+  "get_wholesale_disposition_packet_view",
+  "get_wholesale_blasts_view",
+] as const;
 const PRIOR_RESOLVER_NAMES = [
   "search_knowledge_base",
   "search_resolved_tickets",
@@ -367,7 +377,7 @@ const RESOLVER_TOOL_NAMES: string[] = (() => {
   return [...m[1].matchAll(/"([a-z_0-9]+)"/g)].map((x) => x[1]);
 })();
 
-describe("T9 drill 4 — capability pin, cured: the resolver subset is the prior set + exactly the four support tax reads (composed with the four support buy-hold reads)", () => {
+describe("T9 drill 4 — capability pin, cured: the resolver subset is the prior set + exactly the four support tax reads (composed with the four support buy-hold reads and the eight support wholesale reads)", () => {
   const root = resolve(__dirname, "../..");
   const read = (p: string) => stripComments(readFileSync(resolve(root, p), "utf8"));
   const CHAT_TAX_TOOLS = [
@@ -383,11 +393,12 @@ describe("T9 drill 4 — capability pin, cured: the resolver subset is the prior
     for (const t of CHAT_TAX_TOOLS) expect(toolsSrc, `chat path is missing ${t}`).toContain(t);
   });
 
-  it("the resolver subset is exactly the prior 13 + the four support tax reads + the four support buy-hold reads, in order", () => {
+  it("the resolver subset is exactly the prior 13 + the four support tax reads + the four support buy-hold reads + the eight support wholesale reads, in order", () => {
     expect(RESOLVER_TOOL_NAMES).toEqual([
       ...PRIOR_RESOLVER_NAMES.slice(0, 7),
       ...SUPPORT_TAX_READS,
       ...SUPPORT_BH_READS,
+      ...SUPPORT_WS_READS,
       ...PRIOR_RESOLVER_NAMES.slice(7),
     ]);
   });

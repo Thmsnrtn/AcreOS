@@ -247,6 +247,99 @@ export const supportToolDefinitions = {
     }
   },
 
+  get_wholesale_buy_box_view: {
+    name: "get_wholesale_buy_box_view",
+    description: "Read this account's current wholesale buy box (the criteria saved on the Buy box screen) and its version history. The result carries a coverage statement: state that coverage when you summarize it. Read-only: this never saves or changes a buy box.",
+    parameters: {
+      type: "object",
+      properties: {}
+    }
+  },
+
+  get_wholesale_triage_view: {
+    name: "get_wholesale_triage_view",
+    description: "Read whether one deal's property fits this account's wholesale buy box: fits / fails / undetermined / retired, with the named reasons passed, failed and unknown. Unknown means nothing is recorded, never a pass. The result carries a coverage statement. Read-only.",
+    parameters: {
+      type: "object",
+      properties: {
+        deal_id: { type: "number", description: "The deal's number in this account" }
+      },
+      required: ["deal_id"]
+    }
+  },
+
+  get_wholesale_buyers_view: {
+    name: "get_wholesale_buyers_view",
+    description: "List this account's OWN cash-buyer list (active by default): name, what they buy, price range, financing, last contact. Buyer email addresses and phone numbers are NOT on this list, and it never includes any other account's buyers. The result carries a coverage statement. Read-only.",
+    parameters: {
+      type: "object",
+      properties: {
+        include_inactive: { type: "boolean", description: "Also list deactivated buyers (default false)" }
+      }
+    }
+  },
+
+  get_wholesale_buyer_matches_view: {
+    name: "get_wholesale_buyer_matches_view",
+    description: "Read the buyers matched to one deal's property, best score first, with reasons and concerns, plus whether the state's assignment-advertising rule blocks or warns on a blast. Matches come only from THIS account's own buyer list and are the stored scores — asking does not re-run matching and does not send anything. The result carries a coverage statement. Read-only.",
+    parameters: {
+      type: "object",
+      properties: {
+        deal_id: { type: "number", description: "The deal's number in this account" }
+      },
+      required: ["deal_id"]
+    }
+  },
+
+  get_wholesale_assignments_view: {
+    name: "get_wholesale_assignments_view",
+    description: "Read the contract assignments on one deal in this account, with status, end buyer and assignment fee, and the signed fee total. The fee is a record of the fee in the contract — AcreOS holds and moves no money — and only a signed assignment counts toward the total. The result carries a coverage statement. Read-only: this never records an assignment or a payment.",
+    parameters: {
+      type: "object",
+      properties: {
+        deal_id: { type: "number", description: "The deal's number in this account" }
+      },
+      required: ["deal_id"]
+    }
+  },
+
+  get_wholesale_decision_view: {
+    name: "get_wholesale_decision_view",
+    description: "Read the latest wholesale underwriting decision recorded on a deal's property in this account (the max-allowable-offer scenario it cited, its review date) and any outcome recorded against it. Comps and ARV in it are the operator's own inputs. If none is recorded, the result says so — never reconstruct one. Read-only.",
+    parameters: {
+      type: "object",
+      properties: {
+        deal_id: { type: "number", description: "The deal's number in this account" }
+      },
+      required: ["deal_id"]
+    }
+  },
+
+  get_wholesale_disposition_packet_view: {
+    name: "get_wholesale_disposition_packet_view",
+    description: "PREPARE a preview of the disposition packet for one deal in this account. Preview only: it stores and sends nothing, and it is refused in a state whose assignment-advertising rule blocks it, exactly as the buyer blast is. Never offer to send it — sending is the customer's Buyer blast, on their own email identity. Read-only.",
+    parameters: {
+      type: "object",
+      properties: {
+        deal_id: { type: "number", description: "The deal's number in this account" }
+      },
+      required: ["deal_id"]
+    }
+  },
+
+  get_wholesale_blasts_view: {
+    name: "get_wholesale_blasts_view",
+    description: "Read the buyer blasts this account already sent for one deal's property and each recipient's recorded status and reply notes. A record of what happened — it cannot send or re-send a blast, and recording a buyer's reply is not available on this path. The result carries a coverage statement. Read-only.",
+    parameters: {
+      type: "object",
+      properties: {
+        deal_id: { type: "number", description: "The deal's number in this account" }
+      },
+      required: ["deal_id"]
+    }
+  },
+
+
   draft_customer_response: {
     name: "draft_customer_response",
     description: "Draft a customer-facing response before escalating. The draft and confidence score determine if the support flow can auto-resolve or if internal review is needed.",
@@ -1384,6 +1477,14 @@ export const PAUSE_SAFE_SUPPORT_TOOLS: ReadonlySet<string> = new Set([
   "get_tax_certificates_book",
   "get_troubleshooting_steps",
   "get_user_activity",
+  "get_wholesale_assignments_view",
+  "get_wholesale_blasts_view",
+  "get_wholesale_buy_box_view",
+  "get_wholesale_buyer_matches_view",
+  "get_wholesale_buyers_view",
+  "get_wholesale_decision_view",
+  "get_wholesale_disposition_packet_view",
+  "get_wholesale_triage_view",
   // The support system's own bookkeeping — internal records of the
   // conversation, not automation acting on the customer's business.
   "learn_from_human_resolution",
@@ -2085,6 +2186,79 @@ export async function executeSupportTool(
         const { paxGetRentalUnderwritingDecision, buyHoldOutcomeToResult } = await import("./buyHoldTools");
         return buyHoldOutcomeToResult(await paxGetRentalUnderwritingDecision(org.id, { property_id: args.property_id }));
       }
+
+      case "get_wholesale_buy_box_view": {
+        // WS-DEF-1 cure: the support path's wholesale buy-box read — the SAME
+        // shared read the chat path's get_wholesale_buy_box performs (#753),
+        // under a support-only name because the registries key one dispatch
+        // per tool name. Read-only; coverage-stated by the shared helper.
+        const { paxGetWholesaleBuyBox, wholesaleOutcomeToResult } = await import("./wholesaleTools");
+        return wholesaleOutcomeToResult(await paxGetWholesaleBuyBox(org.id));
+      }
+
+      case "get_wholesale_triage_view": {
+        // WS-DEF-1 cure: one deal scored against the buy box, same shared
+        // #753 read as the chat path's get_wholesale_triage. Read-only.
+        const { paxGetWholesaleTriage, wholesaleOutcomeToResult } = await import("./wholesaleTools");
+        return wholesaleOutcomeToResult(await paxGetWholesaleTriage(org.id, { deal_id: args.deal_id }));
+      }
+
+      case "get_wholesale_buyers_view": {
+        // WS-DEF-1 cure: this account's OWN buyer list, same shared #753
+        // read as the chat path's get_wholesale_buyers. The helper shapes
+        // names only — no buyer email or phone leaves on either path.
+        // Read-only.
+        const { paxGetWholesaleBuyers, wholesaleOutcomeToResult } = await import("./wholesaleTools");
+        return wholesaleOutcomeToResult(await paxGetWholesaleBuyers(org.id, { include_inactive: args.include_inactive }));
+      }
+
+      case "get_wholesale_buyer_matches_view": {
+        // WS-DEF-1 cure: the stored matches for one deal's property, same
+        // shared #753 read as the chat path's get_wholesale_buyer_matches —
+        // including the assignment-advertising gate view the helper itself
+        // runs (previewOnly, with the caller's user id exactly as the chat
+        // path passes it). Read-only; asking never re-runs matching.
+        const { paxGetWholesaleBuyerMatches, wholesaleOutcomeToResult } = await import("./wholesaleTools");
+        return wholesaleOutcomeToResult(await paxGetWholesaleBuyerMatches(org.id, options?.userId ?? null, { deal_id: args.deal_id }));
+      }
+
+      case "get_wholesale_assignments_view": {
+        // WS-DEF-1 cure: one deal's assignments and the signed fee total,
+        // same shared #753 read as the chat path's get_wholesale_assignments.
+        // The fee is a record — no money moves on either path. Read-only.
+        const { paxGetWholesaleAssignments, wholesaleOutcomeToResult } = await import("./wholesaleTools");
+        return wholesaleOutcomeToResult(await paxGetWholesaleAssignments(org.id, { deal_id: args.deal_id }));
+      }
+
+      case "get_wholesale_decision_view": {
+        // WS-DEF-1 cure: the recorded wholesale underwriting decision for
+        // one deal's property, same shared #753 read as the chat path's
+        // get_wholesale_decision — the decision as recorded, or an explicit
+        // statement that none is recorded. Read-only.
+        const { paxGetWholesaleDecision, wholesaleOutcomeToResult } = await import("./wholesaleTools");
+        return wholesaleOutcomeToResult(await paxGetWholesaleDecision(org.id, { deal_id: args.deal_id }));
+      }
+
+      case "get_wholesale_disposition_packet_view": {
+        // WS-DEF-1 cure: a PREVIEW of the disposition packet, same shared
+        // #753 read as the chat path's get_wholesale_disposition_packet —
+        // the helper runs the state compliance gate FIRST and refuses
+        // before deriving anything, exactly as on the chat path. It stores
+        // nothing and sends nothing. Read-only.
+        const { paxGetWholesaleDispositionPacket, wholesaleOutcomeToResult } = await import("./wholesaleTools");
+        return wholesaleOutcomeToResult(await paxGetWholesaleDispositionPacket(org.id, options?.userId ?? null, { deal_id: args.deal_id }));
+      }
+
+      case "get_wholesale_blasts_view": {
+        // WS-DEF-1 cure: the blasts already sent for one deal's property
+        // and each recipient's recorded status, same shared #753 read as
+        // the chat path's get_wholesale_blasts. Read-only — recording a
+        // buyer's reply (record_buyer_blast_response) stays on the chat
+        // path; no support variant of that write exists.
+        const { paxGetWholesaleBlasts, wholesaleOutcomeToResult } = await import("./wholesaleTools");
+        return wholesaleOutcomeToResult(await paxGetWholesaleBlasts(org.id, { deal_id: args.deal_id }));
+      }
+
 
       case "escalate_to_human": {
         const { reason, priority, summary, include_diagnostic_bundle = true } = args;
