@@ -43,7 +43,7 @@ describe.runIf(realDbAvailable)("note record — real database", () => {
     const { readNoteTape, suggestNoteTapeMapping, validateNoteTape } = await import("../../server/services/notes/noteTapeImport");
     const { commitNoteTape } = await import("../../server/services/notes/noteTapeCommit");
     const { sheet, sha256 } = readNoteTape(tape);
-    const r = await commitNoteTape({ organizationId: org.id, actorUserId: `${tag}-u`, fileName: "golden.csv", fileSha256: sha256, asOf: "2026-09-30", validation: validateNoteTape({ sheet, mapping: suggestNoteTapeMapping(sheet.headers).mapping }), excludeRows: [4, 5] });
+    const r = await commitNoteTape({ servicingArrangement: "passive_holder", organizationId: org.id, actorUserId: `${tag}-u`, fileName: "golden.csv", fileSha256: sha256, asOf: "2026-09-30", validation: validateNoteTape({ sheet, mapping: suggestNoteTapeMapping(sheet.headers).mapping }), excludeRows: [4, 5] });
     if (r.status !== "committed") throw new Error(JSON.stringify(r));
     for (const n of r.notes) noteIds[n.noteNumber] = n.noteId;
   });
