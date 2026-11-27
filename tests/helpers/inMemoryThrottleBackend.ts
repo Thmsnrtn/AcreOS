@@ -3,7 +3,7 @@
  *
  * Mirrors the DB backend's contract: values are stored as RAW JSON STRINGS and
  * read back through the module's own parsers (so an unparseable row behaves as
- * it does in founder_settings), and `withLock` serialises callers like the
+ * it does in operational_state), and `withLock` serialises callers like the
  * advisory lock does. The throttle module under test is never mocked — only
  * its storage seam is replaced.
  */
@@ -19,7 +19,7 @@ import {
 
 export interface MemoryBackend {
   backend: ThrottleBackend;
-  /** Raw founder_settings-shaped rows: key → JSON string. */
+  /** Raw operational_state-shaped rows: key → JSON string. */
   rows: Map<string, string>;
   flags: { readFails: boolean; backendDown: boolean };
   subjectRowCount(): number;
